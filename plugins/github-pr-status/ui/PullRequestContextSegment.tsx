@@ -38,10 +38,7 @@ import { PullRequestNextStepLabel } from "./PullRequestNextStepLabel";
 import { PullRequestStatusPill } from "./PullRequestStatusPill";
 import { useEnvironmentPullRequest, usePullRequestActions } from "./queries";
 
-const CHANGED_FILES_SEGMENT: ExperimentalThreadContextSegmentReference = {
-  pluginId: "bb--core",
-  id: "changed-files",
-};
+const CHANGED_FILES_SEGMENT_KEY = "bb--core/changed-files";
 
 export function useOpenUrlClick(
   url: string,
@@ -82,10 +79,7 @@ function shouldShowAttentionLabel(pullRequest: PullRequest): boolean {
 function isChangedFilesSegment(
   segment: ExperimentalThreadContextSegmentReference,
 ): boolean {
-  return (
-    segment.pluginId === CHANGED_FILES_SEGMENT.pluginId &&
-    segment.id === CHANGED_FILES_SEGMENT.id
-  );
+  return segment.key === CHANGED_FILES_SEGMENT_KEY;
 }
 
 export function PullRequestLink({
@@ -306,23 +300,24 @@ function PullRequestAction({
   );
 }
 
-export function PullRequestContextSegment({
+export function PullRequestSegmentSummary({
   environment,
-  part,
   segments,
 }: ExperimentalThreadContextSegmentProps) {
   const pullRequest = useThreadPullRequest(environment);
+  if (pullRequest === null) return null;
+  return <PullRequestLink pullRequest={pullRequest} segments={segments} />;
+}
+
+export function PullRequestSegmentAction({
+  environment,
+}: ExperimentalThreadContextSegmentProps) {
+  const pullRequest = useThreadPullRequest(environment);
   if (environment === null || pullRequest === null) return null;
-  if (part === "summary") {
-    return <PullRequestLink pullRequest={pullRequest} segments={segments} />;
-  }
-  if (part === "action") {
-    return (
-      <PullRequestAction
-        environmentId={environment.id}
-        pullRequest={pullRequest}
-      />
-    );
-  }
-  return null;
+  return (
+    <PullRequestAction
+      environmentId={environment.id}
+      pullRequest={pullRequest}
+    />
+  );
 }

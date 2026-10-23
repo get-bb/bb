@@ -14,7 +14,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PendingInteraction } from "@bb/domain";
 import {
-  ThreadPromptContextBanner,
+  ThreadChildThreadsBanner,
   type ChildThreadQuestion,
   type ThreadPromptChildThreadsSection,
 } from "./ThreadPromptContextBanner";
@@ -114,25 +114,12 @@ function Harness({
   childThreads: ThreadPromptChildThreadsSection;
   initiallyExpanded: boolean;
 }) {
-  const [expandedSection, setExpandedSection] = useState<string | null>(
-    initiallyExpanded ? "bb--core/child-threads" : null,
-  );
+  const [isExpanded, setIsExpanded] = useState(initiallyExpanded);
   return (
-    <ThreadPromptContextBanner
-      input={{ threadId: "thr_parent", projectId: "proj_1", environment: null }}
-      core={{
-        git: null,
-        gitPending: false,
-        parentThread: null,
-        childThreads,
-      }}
-      archivedSection={null}
-      environmentGoneSection={null}
-      showInlineSegments
-      expandedSegment={expandedSection}
-      onToggleSegment={(next) =>
-        setExpandedSection((current) => (current === next ? null : next))
-      }
+    <ThreadChildThreadsBanner
+      childThreads={childThreads}
+      isExpanded={isExpanded}
+      onExpandedChange={setIsExpanded}
     />
   );
 }

@@ -2,7 +2,6 @@ import { useLayoutEffect, useState, type ReactNode } from "react";
 import type {
   ExperimentalThreadContextSegmentInput,
   ExperimentalThreadContextSegmentProps,
-  ExperimentalThreadContextSegmentReference,
   ExperimentalThreadContextSegmentRegistration,
 } from "@get-bb/plugin-sdk";
 import { compareGroupedPlacement } from "@/lib/grouped-placement";
@@ -23,9 +22,12 @@ export type ThreadContextSegmentEntry =
   | { owner: "core"; slot: CoreThreadContextSegment }
   | { owner: "plugin"; slot: PluginThreadContextSegmentSlot };
 
-export function threadContextSegmentKey(
-  segment: ExperimentalThreadContextSegmentReference,
-): string {
+export type ThreadContextSegmentPart = "summary" | "action" | "details";
+
+export function threadContextSegmentKey(segment: {
+  pluginId: string;
+  id: string;
+}): string {
   return `${segment.pluginId}/${segment.id}`;
 }
 
@@ -172,23 +174,26 @@ export function useThreadContextSegments(
 
 export function ThreadContextSegmentMount({
   entry,
+  part,
   ...props
 }: ExperimentalThreadContextSegmentProps & {
   entry: ThreadContextSegmentEntry;
+  part: ThreadContextSegmentPart;
 }) {
-  const Content = entry.slot.component;
+  const Content = entry.slot[part];
+  if (Content === undefined) return null;
   if (entry.owner === "core") return <Content {...props} />;
   const { slot } = entry;
   return (
     <PluginSlotMount
       pluginId={slot.pluginId}
-      slotKind={`threadContextSegment/${props.part}`}
+      slotKind={`threadContextSegment/${part}`}
       slotId={slot.id}
       instanceId={props.threadId}
       crashResetKey={String(slot.generation)}
       crashFallback={null}
     >
-      {props.part === "summary" && slot.placement !== "before" ? (
+      {part === "summary" ? (
         <span role="group" aria-label={slot.title} className="contents">
           <Content {...props} />
         </span>
@@ -202,7 +207,7 @@ export function ThreadContextSegmentMount({
 export function threadContextSegmentMountKey(
   entry: ThreadContextSegmentEntry,
   threadId: string,
-  part: ExperimentalThreadContextSegmentProps["part"],
+  part: ThreadContextSegmentPart,
 ): string {
   return `${entryKey(entry, threadId)}/${part}`;
 }

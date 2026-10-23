@@ -12,6 +12,7 @@ import {
   useThreadContextSegments,
   type CoreThreadContextSegment,
   type ThreadContextSegmentEntry,
+  type ThreadContextSegmentPart,
 } from "@/components/plugin/PluginThreadContextSegments";
 import {
   collectPluginAppRegistrations,
@@ -160,7 +161,6 @@ export interface CoreThreadContext {
   git: ThreadPromptGitSection | null;
   gitPending: boolean;
   parentThread: ThreadPromptParentThreadSection | null;
-  childThreads: ThreadPromptChildThreadsSection | null;
 }
 
 interface ThreadPromptContextBannerProps {
@@ -168,7 +168,6 @@ interface ThreadPromptContextBannerProps {
   core: CoreThreadContext;
   archivedSection: ThreadPromptArchivedSection | null;
   environmentGoneSection: ThreadPromptEnvironmentGoneSection | null;
-  showInlineSegments: boolean;
   expandedSegment: string | null;
   onToggleSegment: (key: string) => void;
 }
@@ -706,7 +705,7 @@ const NO_CHILD_THREAD_ITEMS: readonly ThreadPromptChildThreadItem[] = [];
 
 function useExpandForNewNeedsInput(
   items: readonly ThreadPromptChildThreadItem[],
-  expandedSegment: string | null,
+  isExpanded: boolean,
   onExpand: () => void,
 ) {
   const needsInputKey = items
@@ -720,10 +719,10 @@ function useExpandForNewNeedsInput(
     const hasNewNeedsInput =
       needsInputKey !== "" &&
       needsInputKey.split(" ").some((id) => !seen.has(id));
-    if (hasNewNeedsInput && expandedSegment === null) {
+    if (hasNewNeedsInput && !isExpanded) {
       onExpand();
     }
-  }, [needsInputKey, expandedSegment, onExpand]);
+  }, [needsInputKey, isExpanded, onExpand]);
 }
 
 function ActiveChildThreadsCard({
@@ -1012,37 +1011,38 @@ function useCoreThreadContext(): CoreThreadContextValue {
   return value;
 }
 
-function ParentThreadSegment({
-  part,
+function ParentThreadSummary({
   segments,
   isExpanded,
 }: ExperimentalThreadContextSegmentProps) {
   const { parentThread, parentFocus } = useCoreThreadContext();
   if (parentThread === null) return null;
-  const isAlone = segments.length === 1;
-  if (part === "summary") {
-    return isAlone ? (
-      <ParentThreadInlineSegment section={parentThread} />
-    ) : (
-      <ParentThreadSectionToggle
-        section={parentThread}
-        buttonRef={parentFocus.triggerRef}
-        isExpanded={isExpanded}
-        onToggle={parentFocus.onTriggerClick}
-      />
-    );
-  }
-  if (part === "details" && !isAlone) {
-    return (
-      <ParentThreadSectionBody
-        section={parentThread}
-        isExpanded={isExpanded}
-        collapseRef={parentFocus.collapseRef}
-        onCollapse={parentFocus.onCollapseClick}
-      />
-    );
-  }
-  return null;
+  return segments.length === 1 ? (
+    <ParentThreadInlineSegment section={parentThread} />
+  ) : (
+    <ParentThreadSectionToggle
+      section={parentThread}
+      buttonRef={parentFocus.triggerRef}
+      isExpanded={isExpanded}
+      onToggle={parentFocus.onTriggerClick}
+    />
+  );
+}
+
+function ParentThreadDetails({
+  segments,
+  isExpanded,
+}: ExperimentalThreadContextSegmentProps) {
+  const { parentThread, parentFocus } = useCoreThreadContext();
+  if (parentThread === null || segments.length === 1) return null;
+  return (
+    <ParentThreadSectionBody
+      section={parentThread}
+      isExpanded={isExpanded}
+      collapseRef={parentFocus.collapseRef}
+      onCollapse={parentFocus.onCollapseClick}
+    />
+  );
 }
 
 function ChangedFilesMergeBaseAction({
@@ -1078,47 +1078,55 @@ function ChangedFilesMergeBaseAction({
   );
 }
 
-function ChangedFilesSegment({
-  part,
+function ChangedFilesSummary({
   segments,
   isExpanded,
 }: ExperimentalThreadContextSegmentProps) {
   const { git, gitFocus } = useCoreThreadContext();
   if (git === null) return null;
-  if (part === "summary") {
-    const tally = toChangeTally(git.changedFiles.stats);
-    const prefix = KIND_PREFIX[git.changedFiles.kind];
-    return (
-      <SectionToggleButton
-        buttonRef={gitFocus.triggerRef}
-        fillRow
-        id={SECTION_IDS.git.toggle}
-        controlsId={SECTION_IDS.git.body}
-        icon={
-          <Icon
-            name="FileDiff"
-            className="size-3.5 shrink-0"
-            aria-hidden="true"
-          />
-        }
-        label={
-          <>
-            {prefix} · {renderChangeSummary(tally)}
-          </>
-        }
-        compactLabel={renderChangeSummary(tally)}
-        hideLabelInCompact={segments.length > 2}
-        ariaLabel={`Changed files: ${prefix}, ${formatChangeSummary(tally)}`}
-        isExpanded={isExpanded}
-        onToggle={gitFocus.onTriggerClick}
-      />
-    );
-  }
-  if (part === "action") {
-    return segments.length === 1 && git.mergeBase ? (
-      <ChangedFilesMergeBaseAction mergeBase={git.mergeBase} />
-    ) : null;
-  }
+  const tally = toChangeTally(git.changedFiles.stats);
+  const prefix = KIND_PREFIX[git.changedFiles.kind];
+  return (
+    <SectionToggleButton
+      buttonRef={gitFocus.triggerRef}
+      fillRow
+      id={SECTION_IDS.git.toggle}
+      controlsId={SECTION_IDS.git.body}
+      icon={
+        <Icon
+          name="FileDiff"
+          className="size-3.5 shrink-0"
+          aria-hidden="true"
+        />
+      }
+      label={
+        <>
+          {prefix} · {renderChangeSummary(tally)}
+        </>
+      }
+      compactLabel={renderChangeSummary(tally)}
+      hideLabelInCompact={segments.length > 2}
+      ariaLabel={`Changed files: ${prefix}, ${formatChangeSummary(tally)}`}
+      isExpanded={isExpanded}
+      onToggle={gitFocus.onTriggerClick}
+    />
+  );
+}
+
+function ChangedFilesAction({
+  segments,
+}: ExperimentalThreadContextSegmentProps) {
+  const { git } = useCoreThreadContext();
+  return segments.length === 1 && git?.mergeBase ? (
+    <ChangedFilesMergeBaseAction mergeBase={git.mergeBase} />
+  ) : null;
+}
+
+function ChangedFilesDetails({
+  isExpanded,
+}: ExperimentalThreadContextSegmentProps) {
+  const { git, gitFocus } = useCoreThreadContext();
+  if (git === null) return null;
   return (
     <AnimatedDisclosureBody
       collapsedBorder="reserve"
@@ -1141,18 +1149,23 @@ function ChangedFilesSegment({
   );
 }
 
-function ChildThreadsCard({
-  part,
+export function ThreadChildThreadsBanner({
+  childThreads,
   isExpanded,
-  onToggle,
-}: ExperimentalThreadContextSegmentProps) {
-  const { childThreads } = useCoreThreadContext();
-  if (part !== "summary" || childThreads === null) return null;
+  onExpandedChange,
+}: {
+  childThreads: ThreadPromptChildThreadsSection | null;
+  isExpanded: boolean;
+  onExpandedChange: (isExpanded: boolean) => void;
+}) {
+  const items = childThreads?.items ?? NO_CHILD_THREAD_ITEMS;
+  useExpandForNewNeedsInput(items, isExpanded, () => onExpandedChange(true));
+  if (childThreads === null || items.length === 0) return null;
   return (
     <ActiveChildThreadsCard
       childThreadsSection={childThreads}
       isExpanded={isExpanded}
-      onToggle={onToggle}
+      onToggle={() => onExpandedChange(!isExpanded)}
     />
   );
 }
@@ -1163,21 +1176,12 @@ const coreThreadContextSegments: readonly CoreThreadContextSegment[] =
   collectPluginAppRegistrations(
     definePluginApp((app) => {
       app.slots.experimental_threadContextSegment({
-        id: "child-threads",
-        title: "Child threads",
-        placement: "before",
-        group: SEGMENT_GROUPS.thread,
-        order: 20,
-        component: ChildThreadsCard,
-        useVisible: () =>
-          (useCoreThreadContext().childThreads?.items.length ?? 0) > 0,
-      });
-      app.slots.experimental_threadContextSegment({
         id: "parent-thread",
         title: "Parent thread",
         group: SEGMENT_GROUPS.thread,
         order: 10,
-        component: ParentThreadSegment,
+        summary: ParentThreadSummary,
+        details: ParentThreadDetails,
         useVisible: () => useCoreThreadContext().parentThread !== null,
       });
       app.slots.experimental_threadContextSegment({
@@ -1185,7 +1189,9 @@ const coreThreadContextSegments: readonly CoreThreadContextSegment[] =
         title: "Changed files",
         group: SEGMENT_GROUPS.git,
         order: 10,
-        component: ChangedFilesSegment,
+        summary: ChangedFilesSummary,
+        action: ChangedFilesAction,
+        details: ChangedFilesDetails,
         useVisible: () => useCoreThreadContext().git !== null,
       });
     }),
@@ -1207,13 +1213,12 @@ const PARENT_THREAD_ENTRY: ThreadContextSegmentEntry = {
   owner: "core",
   slot: PARENT_THREAD_SLOT,
 };
-const CHILD_THREADS_KEY = threadContextSegmentKey(coreSlot("child-threads"));
 const PARENT_THREAD_KEY = threadContextSegmentKey(PARENT_THREAD_SLOT);
 const CHANGED_FILES_KEY = threadContextSegmentKey(coreSlot("changed-files"));
 const STATUS_KEY = `${CORE_THREAD_CONTEXT_OWNER}/status`;
 const READ_ONLY_SEGMENTS = [
-  { pluginId: CORE_THREAD_CONTEXT_OWNER, id: PARENT_THREAD_SLOT.id },
-  { pluginId: CORE_THREAD_CONTEXT_OWNER, id: "status" },
+  { key: PARENT_THREAD_KEY, pluginId: CORE_THREAD_CONTEXT_OWNER },
+  { key: STATUS_KEY, pluginId: CORE_THREAD_CONTEXT_OWNER },
 ];
 
 interface ReadOnlyContextBannerProps {
@@ -1246,9 +1251,7 @@ function ReadOnlyContextBanner({
     <Icon name={iconName} className="size-3.5 shrink-0" aria-hidden="true" />
   );
   const showStatusAction = statusAction !== null && !hasParentThread;
-  const parentSegment = (
-    part: ExperimentalThreadContextSegmentProps["part"],
-  ) =>
+  const parentSegment = (part: ThreadContextSegmentPart) =>
     hasParentThread ? (
       <ThreadContextSegmentMount
         entry={PARENT_THREAD_ENTRY}
@@ -1325,12 +1328,12 @@ function ReadOnlyContextBanner({
 
 function WritableContextBanner({
   input,
-  showInlineSegments,
+  showRow,
   expandedSegment,
   onToggleSegment,
 }: {
   input: ExperimentalThreadContextSegmentInput;
-  showInlineSegments: boolean;
+  showRow: boolean;
   expandedSegment: string | null;
   onToggleSegment: (key: string) => void;
 }) {
@@ -1338,62 +1341,48 @@ function WritableContextBanner({
     input,
     coreThreadContextSegments,
   );
-  const before = entries.filter(({ slot }) => slot.placement === "before");
-  const inline = showInlineSegments
-    ? entries.filter(({ slot }) => slot.placement !== "before")
-    : [];
+  const segments = entries.map(({ slot }) => ({
+    key: threadContextSegmentKey(slot),
+    pluginId: slot.pluginId,
+  }));
   const mount = (
     entry: ThreadContextSegmentEntry,
-    part: ExperimentalThreadContextSegmentProps["part"],
-    segments: ExperimentalThreadContextSegmentProps["segments"],
+    part: ThreadContextSegmentPart,
   ) => {
     const key = threadContextSegmentKey(entry.slot);
     return (
       <ThreadContextSegmentMount
         key={threadContextSegmentMountKey(entry, input.threadId, part)}
         entry={entry}
-        {...input}
         part={part}
+        {...input}
         segments={segments}
         isExpanded={expandedSegment === key}
         onToggle={() => onToggleSegment(key)}
       />
     );
   };
-  const inlineSegments = inline.map(({ slot }) => ({
-    pluginId: slot.pluginId,
-    id: slot.id,
-  }));
-  const contextCard =
-    inline.length > 0 ? (
-      <PromptStackCard
-        ariaLabel="Thread context before sending"
-        className="overflow-hidden"
-        style={{ minHeight: PROMPT_CONTEXT_BANNER_COLLAPSED_HEIGHT }}
-      >
-        <div
-          className={cn(
-            "flex items-center gap-0.5 text-xs text-muted-foreground",
-            PROMPT_STACK_INLAY_INSET_CLASS,
-          )}
-        >
-          {inline.map((entry) => mount(entry, "summary", inlineSegments))}
-          {inline.map((entry) => mount(entry, "action", inlineSegments))}
-        </div>
-        {inline.map((entry) => mount(entry, "details", inlineSegments))}
-      </PromptStackCard>
-    ) : null;
   return (
     <>
       {observers}
-      {before.length > 0 ? (
-        <div className="flex min-w-0 flex-col gap-2">
-          {before.map((entry) => mount(entry, "summary", []))}
-          {contextCard}
-        </div>
-      ) : (
-        contextCard
-      )}
+      {showRow && entries.length > 0 ? (
+        <PromptStackCard
+          ariaLabel="Thread context before sending"
+          className="overflow-hidden"
+          style={{ minHeight: PROMPT_CONTEXT_BANNER_COLLAPSED_HEIGHT }}
+        >
+          <div
+            className={cn(
+              "flex items-center gap-0.5 text-xs text-muted-foreground",
+              PROMPT_STACK_INLAY_INSET_CLASS,
+            )}
+          >
+            {entries.map((entry) => mount(entry, "summary"))}
+            {entries.map((entry) => mount(entry, "action"))}
+          </div>
+          {entries.map((entry) => mount(entry, "details"))}
+        </PromptStackCard>
+      ) : null}
     </>
   );
 }
@@ -1403,7 +1392,6 @@ export function ThreadPromptContextBanner({
   core,
   archivedSection,
   environmentGoneSection,
-  showInlineSegments,
   expandedSegment,
   onToggleSegment,
 }: ThreadPromptContextBannerProps) {
@@ -1416,13 +1404,6 @@ export function ThreadPromptContextBanner({
   const gitFocus = useDisclosureFocusHandoff(
     expandedSegment === CHANGED_FILES_KEY,
     () => onToggleSegment(CHANGED_FILES_KEY),
-  );
-  useExpandForNewNeedsInput(
-    isReadOnly
-      ? NO_CHILD_THREAD_ITEMS
-      : (core.childThreads?.items ?? NO_CHILD_THREAD_ITEMS),
-    expandedSegment,
-    () => onToggleSegment(CHILD_THREADS_KEY),
   );
   const context: CoreThreadContextValue = { ...core, parentFocus, gitFocus };
   if (isReadOnly) {
@@ -1466,7 +1447,7 @@ export function ThreadPromptContextBanner({
     <CoreThreadContextContext.Provider value={context}>
       <WritableContextBanner
         input={input}
-        showInlineSegments={showInlineSegments && !core.gitPending}
+        showRow={!core.gitPending}
         expandedSegment={expandedSegment}
         onToggleSegment={onToggleSegment}
       />

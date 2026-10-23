@@ -379,7 +379,6 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "threadId",
     "projectId",
     "environment",
-    "part",
     "segments",
     "isExpanded",
     "onToggle",

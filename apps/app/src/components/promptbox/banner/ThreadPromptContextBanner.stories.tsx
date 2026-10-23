@@ -1,6 +1,8 @@
 import { useState, type ReactNode } from "react";
 import type { WorkspaceFileStatus, WorkspaceStatus } from "@bb/domain";
+import { PROMPT_STACK_TRACK_CLASS } from "@/components/promptbox/banner/PromptStackCard";
 import {
+  ThreadChildThreadsBanner,
   ThreadPromptContextBanner,
   type ContextBannerMergeBaseConfig,
   type ThreadPromptArchivedSection,
@@ -34,7 +36,7 @@ function PromptStage({
       data-promptbox-shell=""
       className={size === "desktop" ? "min-w-0 flex-1" : "w-[20rem] shrink-0"}
     >
-      {children}
+      <div className={`grid gap-2 ${PROMPT_STACK_TRACK_CLASS}`}>{children}</div>
     </div>
   );
 }
@@ -522,6 +524,7 @@ interface RowConfig {
   parentThread?: ThreadPromptParentThreadSection | null;
   childThreads?: ThreadPromptChildThreadsSection | null;
   initiallyExpandedSection?: string | null;
+  initiallyChildThreadsExpanded?: boolean;
 }
 
 function ContextBannerPreview({
@@ -532,13 +535,22 @@ function ContextBannerPreview({
   parentThread = null,
   childThreads = null,
   initiallyExpandedSection = null,
+  initiallyChildThreadsExpanded = false,
   size,
 }: RowConfig & { size: PromptStageSize }) {
   const [expandedSection, setExpandedSection] = useState<string | null>(
     initiallyExpandedSection,
   );
+  const [isChildThreadsExpanded, setIsChildThreadsExpanded] = useState(
+    initiallyChildThreadsExpanded,
+  );
   return (
     <PromptStage size={size}>
+      <ThreadChildThreadsBanner
+        childThreads={archived || environmentGone ? null : childThreads}
+        isExpanded={isChildThreadsExpanded}
+        onExpandedChange={setIsChildThreadsExpanded}
+      />
       <ThreadPromptContextBanner
         input={{
           threadId: "thr_story",
@@ -555,11 +567,9 @@ function ContextBannerPreview({
             : null,
           gitPending: false,
           parentThread,
-          childThreads,
         }}
         archivedSection={archived}
         environmentGoneSection={environmentGone}
-        showInlineSegments
         expandedSegment={expandedSection}
         onToggleSegment={(next) =>
           setExpandedSection((previous) => (previous === next ? null : next))
@@ -701,7 +711,7 @@ export function Overview() {
         <Row
           childThreads={childThreadsLargeFixture}
           mergeBase={null}
-          initiallyExpandedSection="bb--core/child-threads"
+          initiallyChildThreadsExpanded
         />
       </StoryRow>
       <StoryRow

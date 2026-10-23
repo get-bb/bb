@@ -6,6 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   isThreadDisplayStatusBannerActive,
+  ThreadChildThreadsBanner,
   ThreadPromptContextBanner,
   type ChildThreadQuestion,
   type ThreadPromptArchivedSection,
@@ -16,6 +17,7 @@ import {
 } from "./ThreadPromptContextBanner";
 
 const noop = () => {};
+const CHILD_THREADS = "child-threads";
 
 function Banner({
   gitSection,
@@ -36,21 +38,28 @@ function Banner({
   expandedSection: string | null;
   onToggleSection: (key: string) => void;
 }) {
+  const isReadOnly =
+    archivedSection !== null || environmentGoneSection !== null;
   return (
-    <ThreadPromptContextBanner
-      input={{ threadId: "thr_1", projectId: "proj_1", environment: null }}
-      core={{
-        git: gitSection,
-        gitPending: gitSectionPending,
-        parentThread: parentThreadSection,
-        childThreads: childThreadsSection,
-      }}
-      archivedSection={archivedSection}
-      environmentGoneSection={environmentGoneSection}
-      showInlineSegments
-      expandedSegment={expandedSection}
-      onToggleSegment={onToggleSection}
-    />
+    <>
+      <ThreadChildThreadsBanner
+        childThreads={isReadOnly ? null : childThreadsSection}
+        isExpanded={expandedSection === CHILD_THREADS}
+        onExpandedChange={() => onToggleSection(CHILD_THREADS)}
+      />
+      <ThreadPromptContextBanner
+        input={{ threadId: "thr_1", projectId: "proj_1", environment: null }}
+        core={{
+          git: gitSection,
+          gitPending: gitSectionPending,
+          parentThread: parentThreadSection,
+        }}
+        archivedSection={archivedSection}
+        environmentGoneSection={environmentGoneSection}
+        expandedSegment={expandedSection}
+        onToggleSegment={onToggleSection}
+      />
+    </>
   );
 }
 
@@ -365,7 +374,7 @@ describe("ThreadPromptContextBanner", () => {
             ],
             pendingInteractions: [],
           }}
-          expandedSection="bb--core/child-threads"
+          expandedSection={CHILD_THREADS}
           onToggleSection={noop}
         />
       </MemoryRouter>,
@@ -378,45 +387,12 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).toContain('data-icon="Loading"');
   });
 
-  it("lets combined child and context cards shrink inside the composer stack", () => {
-    render(
-      <MemoryRouter>
-        <Banner
-          gitSection={makeGitSection("uncommitted")}
-          gitSectionPending={false}
-          archivedSection={null}
-          environmentGoneSection={null}
-          parentThreadSection={null}
-          childThreadsSection={{
-            items: [
-              childThreadItem(
-                "thr_child",
-                "Host-owned SourceCode and Diff renderers",
-              ),
-            ],
-            pendingInteractions: [],
-          }}
-          expandedSection={null}
-          onToggleSection={noop}
-        />
-      </MemoryRouter>,
-    );
-
-    const childCard = screen.getByRole("region", { name: "Child threads" });
-    const contextCard = screen.getByRole("region", {
-      name: "Thread context before sending",
-    });
-
-    expect(childCard.parentElement).toBe(contextCard.parentElement);
-    expect(childCard.parentElement?.classList.contains("min-w-0")).toBe(true);
-  });
-
   it("counts a child waiting for a host as active banner work", () => {
     expect(isThreadDisplayStatusBannerActive("waiting-for-host")).toBe(true);
   });
 
   it("shows the waiting question in the header only while collapsed", () => {
-    const renderBanner = (expandedSection: "bb--core/child-threads" | null) => (
+    const renderBanner = (expandedSection: string | null) => (
       <MemoryRouter>
         <Banner
           gitSection={null}
@@ -452,7 +428,7 @@ describe("ThreadPromptContextBanner", () => {
     );
     expect(collapsed).not.toContain("Active child threads");
 
-    const expanded = renderToMarkup(renderBanner("bb--core/child-threads"));
+    const expanded = renderToMarkup(renderBanner(CHILD_THREADS));
     expect(expanded).toContain("Active child threads");
     expect(expanded).toContain('aria-label="2 active child threads"');
   });
@@ -494,7 +470,7 @@ describe("ThreadPromptContextBanner", () => {
 
     rerender(renderBanner([blocked, working]));
     expect(onToggleSection).toHaveBeenCalledTimes(1);
-    expect(onToggleSection).toHaveBeenCalledWith("bb--core/child-threads");
+    expect(onToggleSection).toHaveBeenCalledWith(CHILD_THREADS);
 
     rerender(renderBanner([blocked, working]));
     expect(onToggleSection).toHaveBeenCalledTimes(1);
@@ -569,7 +545,7 @@ describe("ThreadPromptContextBanner", () => {
     expect(screen.getByText("Thread is archived")).toBeTruthy();
   });
 
-  it("leaves another open section alone when a child thread newly needs input", () => {
+  it("opens the child card for a newly waiting child while changed files are open", () => {
     const onToggleSection = vi.fn();
     const renderBanner = (
       items: ReturnType<typeof childThreadItem>[],
@@ -598,10 +574,13 @@ describe("ThreadPromptContextBanner", () => {
     const blocked = childThreadItem("thr_blocked", "Install workspace tools", {
       pending: true,
     });
-    const { rerender } = render(renderBanner([working], "bb--core/changed-files"));
-    rerender(renderBanner([blocked, working], "bb--core/changed-files"));
-    rerender(renderBanner([blocked, working], null));
+    const { rerender } = render(
+      renderBanner([working], "bb--core/changed-files"),
+    );
     expect(onToggleSection).not.toHaveBeenCalled();
+    rerender(renderBanner([blocked, working], "bb--core/changed-files"));
+    expect(onToggleSection).toHaveBeenCalledTimes(1);
+    expect(onToggleSection).toHaveBeenCalledWith(CHILD_THREADS);
   });
 });
 

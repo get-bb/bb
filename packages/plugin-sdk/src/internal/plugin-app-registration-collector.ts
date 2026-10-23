@@ -899,14 +899,22 @@ export function collectPluginAppRegistrations(
       },
       experimental_threadContextSegment(registration) {
         const kind = "slots.experimental_threadContextSegment";
-        const { id, title, component } = collectTitledComponent(
-          kind,
-          seenIds.threadContextSegment,
-          registration,
-        );
-        const placement = registration.placement ?? "inline";
-        if (placement !== "inline" && placement !== "before") {
-          throw new Error(`${kind}: "placement" must be "inline" or "before"`);
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.threadContextSegment, id);
+        const optionalComponent = (field: "action" | "details") => {
+          const value = registration[field];
+          if (value === undefined) return {};
+          if (typeof value !== "function") {
+            throw new Error(
+              `${kind}: "${field}" must be a React component function`,
+            );
+          }
+          return { [field]: value };
+        };
+        if (typeof registration.summary !== "function") {
+          throw new Error(
+            `${kind}: "summary" must be a React component function`,
+          );
         }
         if (
           registration.useVisible !== undefined &&
@@ -916,11 +924,12 @@ export function collectPluginAppRegistrations(
         }
         collected.threadContextSegments.push({
           id,
-          title,
-          placement,
+          title: requireNonEmptyString(kind, "title", registration.title),
           group: requireNonEmptyString(kind, "group", registration.group),
           ...requireOptionalOrder(kind, registration.order),
-          component,
+          summary: registration.summary,
+          ...optionalComponent("action"),
+          ...optionalComponent("details"),
           ...(registration.useVisible !== undefined
             ? { useVisible: registration.useVisible }
             : {}),

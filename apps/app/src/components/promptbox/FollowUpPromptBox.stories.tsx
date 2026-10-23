@@ -435,11 +435,9 @@ const contextBannerElement: ReactNode = dirtyContextBannerSection ? (
       },
       gitPending: false,
       parentThread: null,
-      childThreads: null,
     }}
     archivedSection={null}
     environmentGoneSection={null}
-    showInlineSegments
     expandedSegment={null}
     onToggleSegment={noop}
   />
@@ -456,11 +454,9 @@ const archivedContextBannerElement: ReactNode = (
       git: null,
       gitPending: false,
       parentThread: null,
-      childThreads: null,
     }}
     archivedSection={{ archivedAt: 1_731_456_000_000 }}
     environmentGoneSection={null}
-    showInlineSegments
     expandedSegment={null}
     onToggleSegment={noop}
   />
@@ -477,11 +473,9 @@ const environmentGoneContextBannerElement: ReactNode = (
       git: null,
       gitPending: false,
       parentThread: null,
-      childThreads: null,
     }}
     archivedSection={null}
     environmentGoneSection={{ status: "destroyed" }}
-    showInlineSegments
     expandedSegment={null}
     onToggleSegment={noop}
   />

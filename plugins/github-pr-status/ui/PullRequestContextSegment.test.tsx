@@ -7,14 +7,12 @@ import {
   renderHook,
   screen,
 } from "@testing-library/react";
-import type {
-  ExperimentalThreadContextSegmentProps,
-  ExperimentalThreadContextSegmentReference,
-} from "@get-bb/plugin-sdk/app";
+import type { ExperimentalThreadContextSegmentReference } from "@get-bb/plugin-sdk/app";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EnvironmentPullRequest, PullRequest } from "../contract";
 import {
-  PullRequestContextSegment,
+  PullRequestSegmentAction,
+  PullRequestSegmentSummary,
   usePullRequestSegmentVisible,
 } from "./PullRequestContextSegment";
 
@@ -67,24 +65,32 @@ const PULL_REQUEST: PullRequest = {
   attention: "ready_to_merge",
 };
 
-const SELF = { pluginId: "bb--github-pr-status", id: "pull-request" };
-const CHANGED_FILES = { pluginId: "bb--core", id: "changed-files" };
-const PARENT = { pluginId: "bb--core", id: "parent-thread" };
+const SELF = {
+  key: "bb--github-pr-status/pull-request",
+  pluginId: "bb--github-pr-status",
+};
+const CHANGED_FILES = { key: "bb--core/changed-files", pluginId: "bb--core" };
+const PARENT = { key: "bb--core/parent-thread", pluginId: "bb--core" };
 
 function show(pullRequest: PullRequest) {
   sdk.rows = { env_1: { outcome: "available", pullRequest } };
 }
 
+const PARTS = {
+  summary: PullRequestSegmentSummary,
+  action: PullRequestSegmentAction,
+};
+
 function renderPart(
-  part: ExperimentalThreadContextSegmentProps["part"],
+  part: keyof typeof PARTS,
   segments: readonly ExperimentalThreadContextSegmentReference[] = [SELF],
 ) {
+  const Part = PARTS[part];
   return render(
-    <PullRequestContextSegment
+    <Part
       threadId="thr_1"
       projectId="proj_1"
       environment={{ id: "env_1" }}
-      part={part}
       segments={segments}
       isExpanded={false}
       onToggle={() => {}}

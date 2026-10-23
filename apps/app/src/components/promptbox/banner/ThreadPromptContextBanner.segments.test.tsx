@@ -48,50 +48,39 @@ const parentThread = {
   relationship: "parent" as const,
 };
 
-const childThreads = {
-  items: [
-    {
-      id: "thr_child",
-      title: "Run the checks",
-      href: "/threads/thr_child",
-      hasPendingInteraction: false,
-    },
-  ],
-  pendingInteractions: [],
-};
-
 const EMPTY_CORE: CoreThreadContext = {
   git: null,
   gitPending: false,
   parentThread: null,
-  childThreads: null,
 };
 
 const seenProps: ExperimentalThreadContextSegmentProps[] = [];
 
-function PluginSegment(props: ExperimentalThreadContextSegmentProps) {
+function PluginSummary(props: ExperimentalThreadContextSegmentProps) {
   seenProps.push(props);
-  if (props.part === "summary") {
-    return (
-      <button type="button" onClick={props.onToggle}>
-        Plugin summary {props.segments.map((segment) => segment.id).join(",")}
-      </button>
-    );
-  }
-  if (props.part === "action") return <span>Plugin action</span>;
-  return props.isExpanded ? <p>Plugin details</p> : null;
+  return (
+    <button type="button" onClick={props.onToggle}>
+      Plugin summary {props.segments.map((segment) => segment.key).join(",")}
+    </button>
+  );
+}
+
+function PluginAction() {
+  return <span>Plugin action</span>;
+}
+
+function PluginDetails({ isExpanded }: ExperimentalThreadContextSegmentProps) {
+  return isExpanded ? <p>Plugin details</p> : null;
 }
 
 function registerPluginSegment({
   visible = true,
   group = "2_pullRequest",
-  component = PluginSegment,
-  placement,
+  summary = PluginSummary,
 }: {
   visible?: boolean;
   group?: string;
-  component?: (props: ExperimentalThreadContextSegmentProps) => ReactNode;
-  placement?: "inline" | "before";
+  summary?: (props: ExperimentalThreadContextSegmentProps) => ReactNode;
 } = {}) {
   setPluginSlotRegistrations(
     "demo",
@@ -101,8 +90,9 @@ function registerPluginSegment({
           id: "status",
           title: "Demo status",
           group,
-          ...(placement ? { placement } : {}),
-          component,
+          summary,
+          action: PluginAction,
+          details: PluginDetails,
           useVisible: () => visible,
         },
       ],
@@ -113,13 +103,11 @@ function registerPluginSegment({
 function renderBanner({
   core = EMPTY_CORE,
   archived = false,
-  showInlineSegments = true,
   expandedSegment = null,
   onToggleSegment = () => {},
 }: {
   core?: CoreThreadContext;
   archived?: boolean;
-  showInlineSegments?: boolean;
   expandedSegment?: string | null;
   onToggleSegment?: (key: string) => void;
 } = {}) {
@@ -134,7 +122,6 @@ function renderBanner({
         core={core}
         archivedSection={archived ? { archivedAt: 1 } : null}
         environmentGoneSection={null}
-        showInlineSegments={showInlineSegments}
         expandedSegment={expandedSegment}
         onToggleSegment={onToggleSegment}
       />
@@ -174,7 +161,9 @@ describe("thread context segments", () => {
       row.indexOf("Plugin action"),
     );
     expect(
-      screen.getByText("Plugin summary parent-thread,status,changed-files"),
+      screen.getByText(
+        "Plugin summary bb--core/parent-thread,demo/status,bb--core/changed-files",
+      ),
     ).toBeTruthy();
     expect(seenProps.at(-1)).toMatchObject({
       threadId: "thr_1",
@@ -190,7 +179,9 @@ describe("thread context segments", () => {
     renderBanner({ core: { ...EMPTY_CORE, git, parentThread } });
 
     expect(
-      screen.getByText("Plugin summary parent-thread,changed-files,status"),
+      screen.getByText(
+        "Plugin summary bb--core/parent-thread,bb--core/changed-files,demo/status",
+      ),
     ).toBeTruthy();
   });
 
@@ -229,9 +220,8 @@ describe("thread context segments", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
     registerPluginSegment({
-      component: (props) => {
-        if (props.part === "summary") throw new Error("plugin crashed");
-        return props.part === "action" ? <span>Plugin action</span> : null;
+      summary: () => {
+        throw new Error("plugin crashed");
       },
     });
     renderBanner({ core: { ...EMPTY_CORE, git } });
@@ -251,7 +241,7 @@ describe("thread context segments", () => {
             id: "status",
             title: "Demo status",
             group: "2_pullRequest",
-            component: PluginSegment,
+            summary: PluginSummary,
             useVisible: () => {
               throw new Error("visibility crashed");
             },
@@ -273,27 +263,12 @@ describe("thread context segments", () => {
     expect(screen.queryByText(/Plugin summary/)).toBeNull();
   });
 
-  it("shows only before cards beside a pending question", () => {
-    registerPluginSegment({ placement: "before" });
-    renderBanner({
-      core: { ...EMPTY_CORE, childThreads, git },
-      showInlineSegments: false,
-    });
-
-    expect(screen.getByRole("region", { name: "Child threads" })).toBeTruthy();
-    expect(screen.getByText("Plugin summary")).toBeTruthy();
-    expect(
-      screen.queryByRole("region", { name: "Thread context before sending" }),
-    ).toBeNull();
-  });
-
   it("withholds the inline row while core git status loads", () => {
     registerPluginSegment();
     renderBanner({
-      core: { ...EMPTY_CORE, childThreads, parentThread, gitPending: true },
+      core: { ...EMPTY_CORE, parentThread, gitPending: true },
     });
 
-    expect(screen.getByRole("region", { name: "Child threads" })).toBeTruthy();
     expect(
       screen.queryByRole("region", { name: "Thread context before sending" }),
     ).toBeNull();

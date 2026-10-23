@@ -68,9 +68,12 @@ function RowStage({ children }: { children: ReactNode }) {
   );
 }
 
-const SELF = { pluginId: "bb--github-pr-status", id: "pull-request" };
-const CHANGED_FILES = { pluginId: "bb--core", id: "changed-files" };
-const PARENT = { pluginId: "bb--core", id: "parent-thread" };
+const SELF = {
+  key: "bb--github-pr-status/pull-request",
+  pluginId: "bb--github-pr-status",
+};
+const CHANGED_FILES = { key: "bb--core/changed-files", pluginId: "bb--core" };
+const PARENT = { key: "bb--core/parent-thread", pluginId: "bb--core" };
 
 function SegmentStage({
   pullRequest,
@@ -93,11 +96,11 @@ function SegmentStage({
             CONTEXT_CARD_INSET_CLASS,
           )}
         >
-          {segments.some((segment) => segment.id === PARENT.id) ? (
+          {segments.some((segment) => segment.key === PARENT.key) ? (
             <span className="px-2 py-1">Parent</span>
           ) : null}
           <PullRequestLink pullRequest={pullRequest} segments={segments} />
-          {segments.some((segment) => segment.id === CHANGED_FILES.id) ? (
+          {segments.some((segment) => segment.key === CHANGED_FILES.key) ? (
             <span className="flex-1 px-2 py-1">Uncommitted · 1 file</span>
           ) : null}
           <PullRequestActionButtons

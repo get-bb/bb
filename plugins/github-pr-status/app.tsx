@@ -3,7 +3,8 @@ import {
   experimental_THREAD_INFO_ROW_GROUPS,
 } from "@get-bb/plugin-sdk/app";
 import {
-  PullRequestContextSegment,
+  PullRequestSegmentAction,
+  PullRequestSegmentSummary,
   usePullRequestSegmentVisible,
 } from "./ui/PullRequestContextSegment";
 import { PullRequestInfoRow } from "./ui/PullRequestInfoRow";
@@ -16,7 +17,8 @@ export default definePluginApp((app) => {
     title: "Pull request",
     group: CONTEXT_SEGMENT_GROUP,
     order: 10,
-    component: PullRequestContextSegment,
+    summary: PullRequestSegmentSummary,
+    action: PullRequestSegmentAction,
     useVisible: usePullRequestSegmentVisible,
   });
   app.slots.experimental_threadInfoRow({

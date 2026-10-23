@@ -576,7 +576,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Warn or inform before someone sends, such as a rate limit or a retry",
           "Show only on new threads, open threads, or queued messages",
           "Add a segment to an open thread's context row, with details below it",
-          "Stack a thread context card above that row, like active child threads",
         ],
         apiSymbols: [
           "ComposerCustomization",

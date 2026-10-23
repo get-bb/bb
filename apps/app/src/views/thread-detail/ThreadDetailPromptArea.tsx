@@ -58,6 +58,7 @@ import {
   usePublishPluginComposerHost,
 } from "@/components/plugin/plugin-composer-host";
 import {
+  ThreadChildThreadsBanner,
   ThreadPromptContextBanner,
   type ContextBannerMergeBaseConfig,
   type ThreadPromptParentThreadSection,
@@ -604,6 +605,7 @@ export function ThreadDetailPromptArea({
   const [expandedBannerSegment, setExpandedBannerSegment] = useState<
     string | null
   >(null);
+  const [isChildThreadsExpanded, setIsChildThreadsExpanded] = useState(false);
   const [isGoalExpanded, setIsGoalExpanded] = useState(false);
   const [isTodoExpanded, setIsTodoExpanded] = useState(false);
   const [isPromptModeExpanded, setIsPromptModeExpanded] = useState(false);
@@ -2058,6 +2060,7 @@ export function ThreadDetailPromptArea({
     inlineTypeaheadConfig,
   ]);
   const contextBannerKey = `thread-prompt-context-banner:${thread.id}`;
+  const childThreadsBannerKey = `thread-child-threads-banner:${thread.id}`;
   const promptStack = useMemo(
     () => (
       <>
@@ -2093,6 +2096,16 @@ export function ThreadDetailPromptArea({
         environmentGoneStatus === null ? (
           <ThreadMachineStatus hostId={environmentHostId} />
         ) : null}
+        <ThreadChildThreadsBanner
+          key={childThreadsBannerKey}
+          childThreads={
+            thread.archivedAt === null && environmentGoneStatus === null
+              ? childThreadsSection
+              : null
+          }
+          isExpanded={isChildThreadsExpanded}
+          onExpandedChange={setIsChildThreadsExpanded}
+        />
         <ThreadPromptContextBanner
           key={contextBannerKey}
           archivedSection={
@@ -2127,7 +2140,6 @@ export function ThreadDetailPromptArea({
           }}
           core={{
             parentThread: parentThreadSection,
-            childThreads: childThreadsSection,
             git:
               workspaceChangedFilesSection && showGitChanges
                 ? {
@@ -2140,7 +2152,6 @@ export function ThreadDetailPromptArea({
                 : null,
             gitPending: workspaceStatusPending && showGitChanges,
           }}
-          showInlineSegments
           expandedSegment={expandedBannerSegment}
           onToggleSegment={handleToggleBannerSegment}
         />
@@ -2184,8 +2195,10 @@ export function ThreadDetailPromptArea({
       queueExpanded,
       setQueueExpanded,
       canUseGitUi,
+      childThreadsBannerKey,
       contextBannerKey,
       contextBannerMergeBase,
+      isChildThreadsExpanded,
       environmentHostId,
       expandedBannerSegment,
       contextEnvironmentId,
@@ -2255,27 +2268,11 @@ export function ThreadDetailPromptArea({
   const pendingInteractionStack = useMemo(
     () => (
       <>
-        <ThreadPromptContextBanner
-          key={contextBannerKey}
-          input={{
-            threadId: thread.id,
-            projectId: thread.projectId,
-            environment:
-              contextEnvironmentId === null
-                ? null
-                : { id: contextEnvironmentId },
-          }}
-          core={{
-            parentThread: null,
-            childThreads: childThreadsSection,
-            git: null,
-            gitPending: false,
-          }}
-          archivedSection={null}
-          environmentGoneSection={null}
-          showInlineSegments={false}
-          expandedSegment={expandedBannerSegment}
-          onToggleSegment={handleToggleBannerSegment}
+        <ThreadChildThreadsBanner
+          key={childThreadsBannerKey}
+          childThreads={childThreadsSection}
+          isExpanded={isChildThreadsExpanded}
+          onExpandedChange={setIsChildThreadsExpanded}
         />
         {activePromptMode ? activePromptModeCard : null}
         {goal ? activeGoalCard : null}
@@ -2285,14 +2282,10 @@ export function ThreadDetailPromptArea({
       activeGoalCard,
       activePromptMode,
       activePromptModeCard,
+      childThreadsBannerKey,
       childThreadsSection,
-      expandedBannerSegment,
-      contextEnvironmentId,
-      thread.id,
-      thread.projectId,
+      isChildThreadsExpanded,
       goal,
-      handleToggleBannerSegment,
-      contextBannerKey,
     ],
   );
 

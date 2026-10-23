@@ -1784,10 +1784,13 @@ export interface ExperimentalThreadEnvironment {
   id: string;
 }
 
-/** Identifies a visible thread context segment; bb's own use `pluginId: "bb--core"`. */
+/**
+ * A visible thread context segment. `key` is `<pluginId>/<id>`, where bb's own
+ * segments use `bb--core`, as thread action keys do.
+ */
 export interface ExperimentalThreadContextSegmentReference {
+  key: string;
   pluginId: string;
-  id: string;
 }
 
 /** What a thread context segment knows about its thread. */
@@ -1802,40 +1805,25 @@ export interface ExperimentalThreadContextSegmentInput {
   environment: ExperimentalThreadEnvironment | null;
 }
 
-/**
- * Props of an `experimental_threadContextSegment` component. The host mounts
- * an inline segment once per part, each in its own crash boundary.
- */
+/** Props of a thread context segment's `summary`, `action` and `details`. */
 export interface ExperimentalThreadContextSegmentProps extends ExperimentalThreadContextSegmentInput {
-  /**
-   * `summary` renders in the shared context row, `action` at the row's end
-   * after every summary, and `details` below the row. A `before` card
-   * receives only `summary` and draws its own card. Render null for a part
-   * you do not use.
-   */
-  part: "summary" | "action" | "details";
-  /**
-   * The visible inline segments in row order, this one included. Empty for a
-   * `before` card.
-   */
+  /** The visible segments in row order, this one included. */
   segments: readonly ExperimentalThreadContextSegmentReference[];
-  /** One segment of a thread's context banner is expanded at a time. */
+  /** One segment of a thread's context row is expanded at a time. */
   isExpanded: boolean;
   onToggle(): void;
 }
 
 /**
- * Context beside an existing thread's composer: an inline segment of the
- * shared context row, or a card stacked before it. bb's parent thread,
- * changed files and active child threads register through this slot too.
+ * A segment of the context row above an existing thread's composer. bb's
+ * parent thread and changed files register through this slot too. The host
+ * mounts each component in its own crash boundary.
  */
 export interface ExperimentalThreadContextSegmentRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
   id: string;
-  /** Accessible name of the inline summary group. */
+  /** Accessible name of the group the host wraps around `summary`. */
   title: string;
-  /** `inline` (default) shares the context row; `before` stacks a card above it. */
-  placement?: "inline" | "before";
   /**
    * Segments sort by `group` (string compare), then by `order` within a group
    * (unset sorts last), then by registration order, with bb's own first on a
@@ -1845,7 +1833,12 @@ export interface ExperimentalThreadContextSegmentRegistration {
    */
   group: string;
   order?: number;
-  component: ComponentType<ExperimentalThreadContextSegmentProps>;
+  /** Renders in the context row. */
+  summary: ComponentType<ExperimentalThreadContextSegmentProps>;
+  /** Renders at the row's end, after every segment's summary. */
+  action?: ComponentType<ExperimentalThreadContextSegmentProps>;
+  /** Renders below the row; show content only while `isExpanded`. */
+  details?: ComponentType<ExperimentalThreadContextSegmentProps>;
   /**
    * Runs in plugin scope for each thread; false hides the segment and leaves
    * it out of `segments`. Omit to always show.
@@ -5219,7 +5212,7 @@ export interface PluginSdkApp {
   /**
    * bb's thread context segment groups, for an
    * `experimental_threadContextSegment` that joins one: `thread` (Parent
-   * thread, Child threads) and `git` (Changed files). A plugin names its own
+   * thread) and `git` (Changed files). A plugin names its own
    * group to sort between them, such as `"2_pullRequest"`. Experimental: see
    * docs/api_to_audit.md.
    */
