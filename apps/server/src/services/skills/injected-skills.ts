@@ -114,8 +114,21 @@ interface SkillTreeManifest {
   treeHash: string;
 }
 
+interface SkillTreeFile {
+  absolutePath: string;
+  freshness: string;
+  mode: number;
+  path: string;
+}
+
+type TreeSkillSource = Extract<HostDaemonInjectedSkillSource, { kind: "tree" }>;
+
 export class SkillTreeRegistry {
   readonly #rootsByHash = new Map<string, string>();
+  readonly #candidatesByRoot = new Map<
+    string,
+    { fingerprint: string; source: TreeSkillSource }
+  >();
 
   register(treeHash: string, sourceRootPath: string): void {
     this.#rootsByHash.set(treeHash, sourceRootPath);
@@ -123,6 +136,42 @@ export class SkillTreeRegistry {
 
   resolve(treeHash: string): string | undefined {
     return this.#rootsByHash.get(treeHash);
+  }
+
+  readCandidate(
+    args: Omit<SkillCandidateArgs, "skillTreeRegistry">,
+  ): TreeSkillSource | null {
+    try {
+      const files = collectSkillTreeFiles(args.candidatePath);
+      const fingerprint = JSON.stringify(
+        files.map((file) => [file.path, file.freshness]),
+      );
+      const cached = this.#candidatesByRoot.get(args.candidatePath);
+      if (cached?.fingerprint === fingerprint) {
+        this.register(cached.source.treeHash, args.candidatePath);
+        return { ...cached.source, sourceType: args.sourceType };
+      }
+      this.#candidatesByRoot.delete(args.candidatePath);
+      const source = readSkillCandidate(
+        { ...args, skillTreeRegistry: this },
+        files,
+      );
+      if (source) {
+        this.#candidatesByRoot.set(args.candidatePath, {
+          fingerprint,
+          source: { ...source },
+        });
+      }
+      return source;
+    } catch (error) {
+      this.#candidatesByRoot.delete(args.candidatePath);
+      logInvalidSkill({
+        ...args,
+        reason:
+          error instanceof Error ? error.message : "Unable to read skill tree",
+      });
+      return null;
+    }
   }
 }
 
@@ -215,11 +264,11 @@ function normalizeRelativePath(relativePath: string): string {
   return relativePath.split(path.sep).join("/");
 }
 
-function collectSkillTreeEntries(
+function collectSkillTreeFiles(
   rootPath: string,
   currentPath = rootPath,
-): SkillTreeEntry[] {
-  const entries: SkillTreeEntry[] = [];
+): SkillTreeFile[] {
+  const entries: SkillTreeFile[] = [];
   for (const entry of fs
     .readdirSync(currentPath, { withFileTypes: true })
     .sort(sortDirentsByName)) {
@@ -235,14 +284,22 @@ function collectSkillTreeEntries(
       throw new Error(`Skill tree contains a symlink: ${entryPath}`);
     }
     if (stat.isDirectory()) {
-      entries.push(...collectSkillTreeEntries(rootPath, entryPath));
+      entries.push(...collectSkillTreeFiles(rootPath, entryPath));
       continue;
     }
     if (!stat.isFile()) {
       throw new Error(`Skill tree entry is not a regular file: ${entryPath}`);
     }
     entries.push({
-      bytes: fs.readFileSync(entryPath),
+      absolutePath: entryPath,
+      freshness: JSON.stringify([
+        stat.dev,
+        stat.ino,
+        stat.mode,
+        stat.size,
+        stat.mtimeMs,
+        stat.ctimeMs,
+      ]),
       mode: stat.mode & 0o777,
       path: normalizeRelativePath(path.relative(rootPath, entryPath)),
     });
@@ -271,7 +328,17 @@ export function hashSkillTreeEntries(
 }
 
 export function readSkillTreeManifest(rootPath: string): SkillTreeManifest {
-  const entries = collectSkillTreeEntries(rootPath);
+  return readSkillTreeManifestFromFiles(collectSkillTreeFiles(rootPath));
+}
+
+function readSkillTreeManifestFromFiles(
+  files: readonly SkillTreeFile[],
+): SkillTreeManifest {
+  const entries = files.map((file) => ({
+    bytes: fs.readFileSync(file.absolutePath),
+    mode: file.mode,
+    path: file.path,
+  }));
   return { entries, treeHash: hashSkillTreeEntries(entries) };
 }
 
@@ -287,7 +354,8 @@ function toSkillFilePath(candidatePath: string): string {
 
 function readSkillCandidate(
   args: SkillCandidateArgs,
-): HostDaemonInjectedSkillSource | null {
+  files: readonly SkillTreeFile[],
+): TreeSkillSource | null {
   const skillFilePath = toSkillFilePath(args.candidatePath);
   let skillFileStat;
   try {
@@ -360,7 +428,7 @@ function readSkillCandidate(
 
   let manifest: SkillTreeManifest;
   try {
-    manifest = readSkillTreeManifest(args.candidatePath);
+    manifest = readSkillTreeManifestFromFiles(files);
   } catch (error) {
     logInvalidSkill({
       ...args,
@@ -503,11 +571,10 @@ function readSkillsRoot(
       });
       continue;
     }
-    const source = readSkillCandidate({
+    const source = args.skillTreeRegistry.readCandidate({
       candidatePath,
       directoryName: entry.name,
       logger: args.logger,
-      skillTreeRegistry: args.skillTreeRegistry,
       sourceType: args.sourceType,
     });
     if (source) {
