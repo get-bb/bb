@@ -532,7 +532,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
         });
       });
       await tunnelIngress.closeAll();
-      terminalRelay.close();
+      await terminalRelay.close();
       await closeWebSockets();
       await closeServer;
     })();

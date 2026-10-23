@@ -262,7 +262,8 @@ export class ServerConnection {
       replyRequestId !== null &&
       this.terminalDataRequestIds.delete(replyRequestId);
     const dataOutput =
-      message.type === "terminal.output" &&
+      (message.type === "terminal.output" ||
+        message.type === "terminal.exited") &&
       this.terminalDataTerminalIds.has(message.terminalId);
     if (dataReply || dataOutput) {
       return this.terminalOutputSocket();

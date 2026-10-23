@@ -56,6 +56,7 @@ import {
 } from "./pending-rpc-registry.js";
 import {
   terminalRpcKey,
+  type TerminalRelayExitedMessage,
   type TerminalRelayHost,
   type TerminalRelayTerminal,
 } from "./terminal-relay.js";
@@ -553,6 +554,41 @@ export class TerminalSessionLifecycle implements TerminalRelayHost {
   relayTerminal(terminalId: string): TerminalRelayTerminal | null {
     const current = getTerminalById(this.options.db, terminalId);
     return current === null ? null : toRelayTerminal(current);
+  }
+
+  recordExit(args: {
+    daemonSessionId: string;
+    message: TerminalRelayExitedMessage;
+  }): void {
+    if (isServerMoveSnapshotFenced(this.options.db)) {
+      return;
+    }
+    const exited = updateTerminalSession(this.options.db, {
+      scope: {
+        daemonSessionId: args.daemonSessionId,
+        kind: "daemon",
+        terminalId: args.message.terminalId,
+      },
+      update: {
+        closeReason: args.message.closeReason,
+        exitCode: args.message.exitCode,
+        kind: "exit",
+      },
+    });
+    if (!exited) {
+      return;
+    }
+    this.pendingCloses.settle(
+      terminalRpcKey(args.daemonSessionId, exited.id, exited.id),
+      exited,
+    );
+    this.notifyTerminalSessionChanged(exited);
+    this.publishSession("exited", exited);
+    this.rejectPendingOutputReadsForTerminal({
+      terminalId: exited.id,
+      code: "terminal_exited",
+      message: "Terminal session exited",
+    });
   }
 
   recordInput(args: { hasData: boolean; terminalId: string }): void {
@@ -1458,31 +1494,10 @@ export class TerminalSessionLifecycle implements TerminalRelayHost {
         );
         return;
       case "terminal.exited":
-        const exited = updateTerminalSession(this.options.db, {
-          scope: {
-            daemonSessionId: args.sessionId,
-            kind: "daemon",
-            terminalId: args.message.terminalId,
-          },
-          update: {
-            closeReason: args.message.closeReason,
-            exitCode: args.message.exitCode,
-            kind: "exit",
-          },
+        this.recordExit({
+          daemonSessionId: args.sessionId,
+          message: args.message,
         });
-        if (exited) {
-          this.pendingCloses.settle(
-            terminalRpcKey(args.sessionId, exited.id, exited.id),
-            exited,
-          );
-          this.notifyTerminalSessionChanged(exited);
-          this.publishSession("exited", exited);
-          this.rejectPendingOutputReadsForTerminal({
-            terminalId: exited.id,
-            code: "terminal_exited",
-            message: "Terminal session exited",
-          });
-        }
         return;
       case "terminal.output":
         this.options.relay.control.handleDaemonControlMessage({

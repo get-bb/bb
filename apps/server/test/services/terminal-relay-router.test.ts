@@ -30,6 +30,7 @@ function fakeRelay(): FakeRelay {
     bindHost: () => undefined,
     close: () => {
       relay.closed = true;
+      return Promise.resolve();
     },
     upgrade: ({ grant }) => {
       relay.upgrades.push(

@@ -60,7 +60,16 @@ export type TerminalUpgradeGrant =
     }
   | { kind: "daemon"; daemonSessionId: string };
 
+export type TerminalRelayExitedMessage = Extract<
+  HostDaemonTerminalDataDaemonMessage,
+  { type: "terminal.exited" }
+>;
+
 export interface TerminalRelayHost {
+  recordExit(args: {
+    daemonSessionId: string;
+    message: TerminalRelayExitedMessage;
+  }): void;
   recordInput(args: { hasData: boolean; terminalId: string }): void;
   recordResize(args: { cols: number; rows: number; terminalId: string }): void;
   sendDaemonControlMessage(args: {
@@ -663,6 +672,9 @@ export class TerminalRelay implements TerminalRelayControl {
         }
         return;
       }
+      case "terminal.exited":
+        this.host?.recordExit({ daemonSessionId, message });
+        return;
       case "terminal.error": {
         const rpcKey = terminalRpcKey(
           daemonSessionId,

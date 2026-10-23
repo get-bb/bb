@@ -10,6 +10,7 @@ import {
 } from "@bb/host-daemon-contract";
 import { terminalSessionSchema } from "@bb/server-contract";
 import { WebSocketServer } from "ws";
+import { closeWebSocketServer } from "../../ws/close-websocket-server.js";
 import { z } from "zod";
 import type { ServerLogger } from "../../types.js";
 import {
@@ -34,7 +35,7 @@ export interface TerminalUpgrade {
 export interface TerminalRelayEndpoint {
   readonly control: TerminalRelayControl;
   bindHost(host: TerminalRelayHost): void;
-  close(): void;
+  close(): Promise<void>;
   upgrade(upgrade: TerminalUpgrade): void;
 }
 
@@ -93,6 +94,11 @@ type MainToRelayMessage = z.infer<typeof mainToRelayMessageSchema>;
 const relayToMainMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("ready") }),
   z.object({
+    type: z.literal("record-exit"),
+    daemonSessionId: z.string().min(1),
+    message: hostDaemonTerminalDataDaemonMessageSchema,
+  }),
+  z.object({
     type: z.literal("record-input"),
     hasData: z.boolean(),
     terminalId: z.string().min(1),
@@ -117,11 +123,12 @@ export function rejectUpgrade(socket: Duplex, status: number): void {
   );
 }
 
-function createTerminalUpgradeAcceptor(
-  relay: TerminalRelay,
-): (upgrade: TerminalUpgrade) => void {
+function createTerminalUpgradeAcceptor(relay: TerminalRelay): {
+  accept: (upgrade: TerminalUpgrade) => void;
+  close: () => Promise<void>;
+} {
   const wss = new WebSocketServer({ noServer: true });
-  return (upgrade) => {
+  const accept = (upgrade: TerminalUpgrade): void => {
     wss.handleUpgrade(upgrade.request, upgrade.socket, upgrade.head, (ws) => {
       const socket: TerminalRelaySocket = {
         close: (code, reason) => ws.close(code, reason),
@@ -156,19 +163,21 @@ function createTerminalUpgradeAcceptor(
       relay.open(grant, socket);
     });
   };
+  let closing: Promise<void> | null = null;
+  return { accept, close: () => (closing ??= closeWebSocketServer(wss)) };
 }
 
 export function createInProcessTerminalRelay(
   options: { attachTimeoutMs?: number } = {},
 ): TerminalRelayEndpoint & { readonly relay: TerminalRelay } {
   const relay = new TerminalRelay(options);
-  const accept = createTerminalUpgradeAcceptor(relay);
+  const acceptor = createTerminalUpgradeAcceptor(relay);
   return {
     control: relay,
     relay,
     bindHost: (host) => relay.bindHost(host),
-    close: () => undefined,
-    upgrade: accept,
+    close: acceptor.close,
+    upgrade: acceptor.accept,
   };
 }
 
@@ -205,7 +214,7 @@ export function createTerminalRelayRouter(options: {
       processRelay !== null &&
       ![...terminalPlacements.values()].includes("process")
     ) {
-      processRelay.close();
+      void processRelay.close();
       processRelay = null;
     }
   };
@@ -244,11 +253,10 @@ export function createTerminalRelayRouter(options: {
         relay.bindHost(nextHost);
       }
     },
-    close: () => {
-      for (const relay of relays()) {
-        relay.close();
-      }
+    close: async () => {
+      const closing = relays().map((relay) => relay.close());
       processRelay = null;
+      await Promise.all(closing);
     },
     reconcile,
     upgrade: (upgrade) => {
@@ -280,6 +288,14 @@ function handleRelayMessage(
 ): void {
   switch (message.type) {
     case "ready":
+      return;
+    case "record-exit":
+      if (message.message.type === "terminal.exited") {
+        host.recordExit({
+          daemonSessionId: message.daemonSessionId,
+          message: message.message,
+        });
+      }
       return;
     case "record-input":
       host.recordInput(message);
@@ -374,6 +390,7 @@ export function startTerminalRelayProcess(options: {
     close: () => {
       stopped = true;
       child?.kill();
+      return Promise.resolve();
     },
     upgrade: (upgrade) => {
       const { request, socket } = upgrade;
@@ -403,11 +420,12 @@ export function startTerminalRelayProcess(options: {
 
 export function runTerminalRelayChild(): void {
   const relay = new TerminalRelay();
-  const accept = createTerminalUpgradeAcceptor(relay);
+  const { accept } = createTerminalUpgradeAcceptor(relay);
   const send = (message: RelayToMainMessage): void => {
     process.send?.(message);
   };
   relay.bindHost({
+    recordExit: (args) => send({ type: "record-exit", ...args }),
     recordInput: (args) => send({ type: "record-input", ...args }),
     recordResize: (args) => send({ type: "record-resize", ...args }),
     sendDaemonControlMessage: (args) =>

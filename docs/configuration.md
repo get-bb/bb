@@ -813,7 +813,8 @@ turn on, and the rest stay off. An experiment you set yourself keeps your value 
   separate relay process that carries their keystrokes and output, so typing
   keeps echoing while the main server is busy. The host daemon keeps a second
   connection (`/internal/ws/terminals`) to that process and sends each
-  terminal's output on the connection the terminal was attached through. The
+  terminal's output and exit on the connection the terminal was attached
+  through, so the exit never overtakes the last output. The
   setting applies to terminals opened after a change: a terminal stays in the
   process it opened in until it exits, and the relay process stops once the
   experiment is off and its last terminal has exited.

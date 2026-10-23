@@ -923,6 +923,7 @@ export const hostDaemonTerminalDataDaemonMessageSchema = z.discriminatedUnion(
     hostDaemonTerminalOutputMessageSchema,
     hostDaemonTerminalReplayMessageSchema,
     hostDaemonTerminalErrorMessageSchema,
+    hostDaemonTerminalExitedMessageSchema,
   ],
 );
 export type HostDaemonTerminalDataDaemonMessage = z.infer<

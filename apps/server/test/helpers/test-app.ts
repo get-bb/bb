@@ -376,7 +376,7 @@ export async function createTestAppHarness(
     serverMove,
     terminalRelay: inProcessTerminalRelay.relay,
     async cleanup(): Promise<void> {
-      terminalRelay.close();
+      await terminalRelay.close();
       clearAllThreadProvisionSchedules();
       setPluginEnvironmentProviderBridge(undefined);
       await pluginService.stop();
@@ -472,6 +472,7 @@ export async function startTestServer(
         });
       });
       await tunnelIngress.closeAll();
+      await harness.deps.terminalSessions.relay.close();
       await closeWebSockets();
       await closeServer;
       await harness.cleanup();

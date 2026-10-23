@@ -52,7 +52,9 @@ function createRelayFixture() {
   const relay = new TerminalRelay();
   const controlMessages: HostDaemonTerminalDataServerMessage[] = [];
   const recordedInputs: string[] = [];
+  const recordedExits: string[] = [];
   relay.bindHost({
+    recordExit: ({ message }) => recordedExits.push(message.terminalId),
     recordInput: ({ terminalId }) => recordedInputs.push(terminalId),
     recordResize: () => undefined,
     sendDaemonControlMessage: ({ message }) => controlMessages.push(message),
@@ -92,7 +94,15 @@ function createRelayFixture() {
       JSON.stringify({ type: "resize", cols, rows: 24 }),
     );
   };
-  return { attach, controlMessages, output, recordedInputs, relay, resize };
+  return {
+    attach,
+    controlMessages,
+    output,
+    recordedExits,
+    recordedInputs,
+    relay,
+    resize,
+  };
 }
 
 function outputSeqs(messages: string[]): number[] {
@@ -132,6 +142,59 @@ describe("TerminalRelay", () => {
     ]);
     expect(fixture.controlMessages).toEqual([]);
     expect(fixture.recordedInputs).toEqual([TERMINAL_ID]);
+  });
+
+  it("delivers a terminal's last output before handing its exit to the main process", () => {
+    const fixture = createRelayFixture();
+    const daemonGrant: TerminalUpgradeGrant = {
+      kind: "daemon",
+      daemonSessionId: DAEMON_SESSION_ID,
+    };
+    const dataSocket = createMockHubSocket();
+    fixture.relay.open(daemonGrant, dataSocket);
+    const browser = createMockHubSocket();
+    fixture.relay.open(browserGrant(), browser);
+    const attach = hostDaemonTerminalDataServerMessageSchema.parse(
+      JSON.parse(dataSocket.messages[0] ?? "null"),
+    );
+    if (attach.type !== "terminal.attach") {
+      throw new Error("Expected terminal.attach");
+    }
+    const fromDaemon = (message: object): void => {
+      fixture.relay.message(daemonGrant, dataSocket, JSON.stringify(message));
+    };
+    fromDaemon({
+      type: "terminal.replay",
+      requestId: attach.requestId,
+      terminalId: TERMINAL_ID,
+      chunks: [],
+      replayStartSeq: 0,
+      nextSeq: 0,
+    });
+
+    fromDaemon({
+      type: "terminal.output",
+      terminalId: TERMINAL_ID,
+      chunk: { seq: 0, dataBase64: "YQ==" },
+    });
+    fromDaemon({
+      type: "terminal.exited",
+      terminalId: TERMINAL_ID,
+      exitCode: 1,
+      closeReason: "process-exit",
+    });
+    expect(outputSeqs(browser.messages)).toEqual([0]);
+    expect(fixture.recordedExits).toEqual([TERMINAL_ID]);
+
+    const exited = runningTerminal();
+    fixture.relay.publishSession({
+      kind: "exited",
+      terminal: { ...exited, session: { ...exited.session, status: "exited" } },
+    });
+    const types = browser.messages.map(
+      (raw) => (JSON.parse(raw) as TerminalServerMessage).type,
+    );
+    expect(types.slice(-2)).toEqual(["output", "exited"]);
   });
 
   it("stops forwarding output to a browser after its socket closes", () => {

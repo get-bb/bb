@@ -96,6 +96,7 @@ import {
   validateDaemonWebSocket,
 } from "./ws/daemon-protocol.js";
 import { roundDurationMs } from "@bb/process-utils";
+import { closeWebSocketServer } from "./ws/close-websocket-server.js";
 import {
   installTerminalUpgradeDispatcher,
   terminalUpgradeGrantSlot,
@@ -152,8 +153,6 @@ import {
 } from "./services/server-move/pending-boot.js";
 
 type CloseWebSockets = () => Promise<void>;
-type NodeWebSocketServer = ReturnType<typeof createNodeWebSocket>["wss"];
-type WebSocketCloseError = Error | undefined;
 
 interface ServerApp {
   app: Hono;
@@ -163,12 +162,6 @@ interface ServerApp {
   pluginCatalogService: PluginCatalogService;
   serverMove: ServerMoveCoordinator;
   tunnelIngress: TunnelIngressManager;
-}
-
-interface CloseWebSocketServerArgs {
-  forceCloseAfterMs: number;
-  reason: string;
-  server: NodeWebSocketServer;
 }
 
 function unauthorizedResponse(): Response {
@@ -217,9 +210,6 @@ interface StaticResponseHeadersArgs {
 const STATIC_INDEX_CACHE_CONTROL = "no-cache";
 const STATIC_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable";
 const STATIC_PUBLIC_FILE_CACHE_CONTROL = "public, max-age=86400";
-const WEB_SOCKET_SHUTDOWN_CODE = 1001;
-const WEB_SOCKET_SHUTDOWN_FORCE_CLOSE_MS = 1_000;
-const WEB_SOCKET_SHUTDOWN_REASON = "server-shutdown";
 const SLOW_API_REQUEST_LOG_THRESHOLD_MS = 1_000;
 const THREAD_EVENT_WAIT_PATH_PATTERN =
   /^\/api\/v1\/threads\/[^/]+\/events\/wait$/u;
@@ -443,30 +433,6 @@ async function findPrecompressedStaticFile(args: {
   return null;
 }
 
-function closeWebSocketServer(args: CloseWebSocketServerArgs): Promise<void> {
-  for (const client of args.server.clients) {
-    client.close(WEB_SOCKET_SHUTDOWN_CODE, args.reason);
-  }
-
-  return new Promise<void>((resolvePromise, reject) => {
-    const forceCloseTimeout = setTimeout(() => {
-      for (const client of args.server.clients) {
-        client.terminate();
-      }
-    }, args.forceCloseAfterMs);
-    forceCloseTimeout.unref();
-
-    args.server.close((error: WebSocketCloseError) => {
-      clearTimeout(forceCloseTimeout);
-      if (error) {
-        reject(error);
-        return;
-      }
-      resolvePromise();
-    });
-  });
-}
-
 export function createApp(
   deps: ServerAppDeps,
   options?: CreateAppOptions,
@@ -475,10 +441,18 @@ export function createApp(
   const { injectWebSocket, upgradeWebSocket, wss } = createNodeWebSocket({
     app,
   });
+  const injectWebSockets = (server: Parameters<typeof injectWebSocket>[0]) => {
+    injectWebSocket(server);
+    installTerminalUpgradeDispatcher(server, {
+      app,
+      logger: deps.logger,
+      upgrade: (upgrade) => deps.terminalSessions.relay.upgrade(upgrade),
+    });
+  };
   const tunnelIngressNow = options?.tunnelIngressNow ?? Date.now;
   const tunnelIngress = createTunnelIngressManager({
     app,
-    injectWebSocket,
+    injectWebSocket: injectWebSockets,
     keys: createGateKeyStore({
       url: () => deps.config.connectGateKeysUrl,
       logger: deps.logger,
@@ -1086,20 +1060,8 @@ export function createApp(
 
   return {
     app,
-    closeWebSockets: () =>
-      closeWebSocketServer({
-        forceCloseAfterMs: WEB_SOCKET_SHUTDOWN_FORCE_CLOSE_MS,
-        reason: WEB_SOCKET_SHUTDOWN_REASON,
-        server: wss,
-      }),
-    injectWebSocket: (server) => {
-      injectWebSocket(server);
-      installTerminalUpgradeDispatcher(server, {
-        app,
-        logger: deps.logger,
-        upgrade: (upgrade) => deps.terminalSessions.relay.upgrade(upgrade),
-      });
-    },
+    closeWebSockets: () => closeWebSocketServer(wss),
+    injectWebSocket: injectWebSockets,
     pluginService,
     pluginCatalogService,
     serverMove,

@@ -1,4 +1,5 @@
 import { Worker } from "node:worker_threads";
+import WebSocket from "ws";
 import { createTerminalSession } from "@bb/db";
 import {
   buildHostDaemonWebSocketAuthorizationHeader,
@@ -117,4 +118,37 @@ describe("terminal relay process", () => {
     },
     30_000,
   );
+});
+
+describe("terminal relay shutdown", () => {
+  it("closes open terminal sockets so the server can shut down", async () => {
+    server = await startTestServer();
+    const { host, session } = seedHostSession(server.deps);
+    const terminal = createTerminalSession(server.db, {
+      cols: 80,
+      daemonSessionId: session.id,
+      environmentId: null,
+      hostId: host.id,
+      initialCwd: "/tmp",
+      rows: 24,
+      status: "running",
+      threadId: null,
+      title: "Terminal 1",
+    });
+    const socket = new WebSocket(
+      `${server.baseUrl.replace(/^http/u, "ws")}/ws/terminals/${terminal.id}?sinceSeq=0`,
+    );
+    await new Promise((resolve, reject) => {
+      socket.once("open", resolve);
+      socket.once("error", reject);
+    });
+
+    const closed = server.close().then(() => "closed");
+    const timedOut = new Promise((resolve) => {
+      setTimeout(() => resolve("timed out"), 5_000).unref();
+    });
+    expect(await Promise.race([closed, timedOut])).toBe("closed");
+    server = null;
+    expect(socket.readyState).toBe(WebSocket.CLOSED);
+  });
 });

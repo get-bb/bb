@@ -645,7 +645,7 @@ describe("ServerConnection", () => {
     }
   });
 
-  it("queues output on the terminal data socket above high water and flushes it before lifecycle messages", async () => {
+  it("queues output on the terminal data socket above high water and flushes it before the exit", async () => {
     vi.useFakeTimers();
     const { connection, webSocket } = createConnectionFixture();
     try {
@@ -677,11 +677,11 @@ describe("ServerConnection", () => {
       expect(socket.send).not.toHaveBeenCalled();
 
       expect(connection.sendMessage(exited)).toBe(true);
-      expect(socket.send).toHaveBeenCalledWith(JSON.stringify(output));
-      expect(controlSocket.send).toHaveBeenCalledWith(JSON.stringify(exited));
-      expect(vi.mocked(socket.send).mock.invocationCallOrder[0]).toBeLessThan(
-        vi.mocked(controlSocket.send).mock.invocationCallOrder.at(-1) ?? 0,
-      );
+      expect(vi.mocked(socket.send).mock.calls.map(([payload]) => payload)).toEqual([
+        JSON.stringify(output),
+        JSON.stringify(exited),
+      ]);
+      expect(controlSocket.send).not.toHaveBeenCalledWith(JSON.stringify(exited));
     } finally {
       await connection.shutdown();
     }
@@ -832,7 +832,7 @@ describe("ServerConnection", () => {
     }
   });
 
-  it("returns a terminal's output to the control socket after it exits", async () => {
+  it("sends a terminal's exit behind its output on the data socket, then returns it to the control socket", async () => {
     const { connection, webSocket } = createConnectionFixture();
     try {
       await connection.start();
@@ -842,25 +842,31 @@ describe("ServerConnection", () => {
       if (!controlSocket || !dataSocket) {
         throw new Error("Expected control and terminal data sockets");
       }
-      const output = {
+      const output = (data: string) => ({
         type: "terminal.output" as const,
         terminalId: "term-1",
-        chunk: { seq: 0, dataBase64: Buffer.from("a").toString("base64") },
+        chunk: { seq: 0, dataBase64: Buffer.from(data).toString("base64") },
+      });
+      const exited = {
+        type: "terminal.exited" as const,
+        terminalId: "term-1",
+        exitCode: 0,
+        closeReason: "process-exit" as const,
       };
 
       dataSocket.onmessage?.({ data: JSON.stringify(terminalAttach("relay")) });
-      expect(
-        connection.sendMessage({
-          type: "terminal.exited",
-          terminalId: "term-1",
-          exitCode: 0,
-          closeReason: "process-exit",
-        }),
-      ).toBe(true);
-      expect(connection.sendMessage(output)).toBe(true);
+      expect(connection.sendMessage(output("last"))).toBe(true);
+      expect(connection.sendMessage(exited)).toBe(true);
+      expect(connection.sendMessage(output("after"))).toBe(true);
 
-      expect(dataSocket.send).not.toHaveBeenCalledWith(JSON.stringify(output));
-      expect(controlSocket.send).toHaveBeenCalledWith(JSON.stringify(output));
+      expect(vi.mocked(dataSocket.send).mock.calls.map(([payload]) => payload)).toEqual([
+        JSON.stringify(output("last")),
+        JSON.stringify(exited),
+      ]);
+      expect(controlSocket.send).not.toHaveBeenCalledWith(JSON.stringify(exited));
+      expect(controlSocket.send).toHaveBeenCalledWith(
+        JSON.stringify(output("after")),
+      );
     } finally {
       await connection.shutdown();
     }
