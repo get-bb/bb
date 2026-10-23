@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useAtom } from "jotai";
 import { useAtomCallback } from "jotai/utils";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import type { DiffFileEntry, DiffPatchEntry } from "@bb/server-contract";
 import { useEnvironmentDiffViewed } from "@/hooks/queries/environment-queries";
 import { useSetDiffFileViewed } from "@/hooks/mutations/environment-mutations";
 import type { DiffPresentation } from "@/components/code/code-rendering";
@@ -24,6 +23,7 @@ import {
   resolveCardCollapsed,
   resolveDiffFileCardInitialState,
 } from "./diffFilesStore";
+import type { DiffFileEntry, DiffPatchEntry } from "bb-plugin-bb--git/contract";
 
 const DIFF_FILES_OVERSCAN = 4;
 const DIFF_FILES_GAP_PX = 8;

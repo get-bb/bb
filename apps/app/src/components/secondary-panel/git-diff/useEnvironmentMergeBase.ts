@@ -3,7 +3,6 @@ import {
   resolveEnvironmentMergeBaseBranch,
   type Environment,
   type Thread,
-  type WorkspaceStatus,
 } from "@bb/domain";
 import { appToast } from "@/components/ui/app-toast";
 import {
@@ -13,6 +12,7 @@ import {
 } from "@/lib/lifecycle-errors";
 import { showMutationErrorToast } from "@/lib/mutation-errors";
 import { useUpdateEnvironment } from "../../../hooks/mutations/environment-mutations";
+import type { WorkspaceStatus } from "bb-plugin-bb--git/contract";
 
 interface UseEnvironmentMergeBaseParams {
   environment?: Environment;

@@ -1,9 +1,3 @@
-import type { WorkspaceCommitSummary, WorkspaceFileStatus } from "@bb/domain";
-import {
-  makeWorkspaceMergeBase,
-  makeWorkspaceStatus,
-  makeWorkspaceWorkingTree,
-} from "@bb/test-helpers";
 import { describe, expect, it } from "vitest";
 import {
   formatChangeSummary,
@@ -12,6 +6,8 @@ import {
   selectWorkspaceChangedFilesSection,
   selectWorkspaceChangedFilesSections,
 } from "./workspace-change-summary";
+import type { WorkspaceCommitSummary, WorkspaceFileStatus } from "bb-plugin-bb--git/contract";
+import { makeWorkspaceMergeBase, makeWorkspaceStatus, makeWorkspaceWorkingTree } from "bb-plugin-bb--git/testing";
 
 function makeWorkspaceFileStatus(
   status: WorkspaceFileStatus["status"],

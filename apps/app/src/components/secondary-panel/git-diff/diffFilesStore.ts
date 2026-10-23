@@ -2,9 +2,9 @@ import { useCallback, useMemo } from "react";
 import { atom, useAtomValue } from "jotai";
 import { useAtomCallback } from "jotai/utils";
 import { atomFamily } from "jotai-family";
-import type { DiffFileEntry } from "@bb/server-contract";
 import type { GitDiffStats } from "../../git-diff/git-diff-parsing";
 import { GIT_DIFF_AUTO_COLLAPSE_FILE_THRESHOLD } from "./gitDiffPanelHelpers";
+import type { DiffFileEntry } from "bb-plugin-bb--git/contract";
 
 export function summarizeDiffFileEntries(
   files: readonly DiffFileEntry[],

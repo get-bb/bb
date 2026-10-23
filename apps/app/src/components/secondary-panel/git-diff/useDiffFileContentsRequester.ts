@@ -1,14 +1,17 @@
 import { useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import type { WorkspaceDiffTarget } from "@bb/domain";
-import type { EnvironmentDiffFileResponse } from "@bb/server-contract";
-import type { EnvironmentDiffFileArgs } from "@bb/sdk/browser";
+
 import { environmentDiffFileQueryKey } from "@/hooks/queries/query-keys";
-import { sdk } from "@/lib/sdk";
+import { gitPluginReads } from "@/hooks/queries/git-plugin-reads";
 import type {
   DiffFileContentsResult,
   RequestDiffFileContents,
 } from "@/components/git-diff/GitDiffCardBody";
+import type { WorkspaceDiffTarget } from "@bb/domain";
+import type {
+  GitFileContent,
+  GitFileSideQuery,
+} from "bb-plugin-bb--git/contract";
 
 interface UseDiffFileContentsRequesterArgs {
   environmentId?: string;
@@ -47,16 +50,17 @@ export function useDiffFileContentsRequester({
           path,
           side,
         ),
-        queryFn: ({ signal }) =>
-          sdk.environments.diffFile(
-            buildEnvironmentDiffFileArgs(
-              envId,
-              resolvedTarget,
-              path,
-              side,
-              signal,
-            ),
-          ),
+        queryFn: async ({ signal }) => {
+          const result = await gitPluginReads.fileSide(
+            {
+              environmentId: envId,
+              query: buildFileSideQuery(resolvedTarget, path, side),
+            },
+            signal,
+          );
+          if (result.outcome === "unavailable") throw new Error(result.message);
+          return result.file;
+        },
         staleTime: 5_000,
       });
       return toDiffFileContentsResult(path, result);
@@ -64,35 +68,24 @@ export function useDiffFileContentsRequester({
   }, [environmentId, fileTarget, queryClient]);
 }
 
-function buildEnvironmentDiffFileArgs(
-  environmentId: string,
+function buildFileSideQuery(
   target: DiffFileTarget,
   path: string,
   side: "old" | "new",
-  signal: AbortSignal,
-): EnvironmentDiffFileArgs {
+): GitFileSideQuery {
   switch (target.type) {
     case "uncommitted":
-      return { environmentId, path, side, signal, target: target.type };
+      return { target: target.type, path, side };
     case "branch_committed":
     case "all":
       return {
-        environmentId,
+        target: target.type,
         mergeBaseRef: target.mergeBaseRef,
         path,
         side,
-        signal,
-        target: target.type,
       };
     case "commit":
-      return {
-        environmentId,
-        path,
-        sha: target.sha,
-        side,
-        signal,
-        target: target.type,
-      };
+      return { target: target.type, sha: target.sha, path, side };
   }
 }
 
@@ -148,7 +141,7 @@ const PREVIEWABLE_IMAGE_MIME_TYPES: ReadonlySet<string> = new Set([
 
 function toDiffFileContentsResult(
   path: string,
-  response: EnvironmentDiffFileResponse,
+  response: GitFileContent,
 ): DiffFileContentsResult | null {
   if (response.contentEncoding === "utf8") {
     return { kind: "text", file: { name: path, contents: response.content } };

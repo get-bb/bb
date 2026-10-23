@@ -1,6 +1,4 @@
 import { filterDiffFilesByPath } from "./filter-diff-files";
-import type { WorkspaceCommitSummary } from "@bb/domain";
-import type { DiffFileEntry } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import {
   buildGitDiffSelectionOptions,
@@ -12,6 +10,7 @@ import {
   UNCOMMITTED_GIT_DIFF_SELECTION,
   type PendingGitDiffIntent,
 } from "./gitDiffPanelHelpers";
+import type { DiffFileEntry, WorkspaceCommitSummary } from "bb-plugin-bb--git/contract";
 
 function makeCommit(
   overrides: Partial<WorkspaceCommitSummary> = {},

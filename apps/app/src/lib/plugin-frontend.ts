@@ -667,11 +667,18 @@ async function activateContentScripts(
 export async function reconcilePluginFrontends(
   state: PluginFrontendReconcileState,
   deps: PluginFrontendReconcileDeps,
+  onChanges?: () => void,
 ): Promise<void> {
   if (state.tornDown) return;
   const candidates = await deps.fetchCandidates();
   if (state.tornDown) return;
   const candidateIds = new Set(candidates.map((c) => c.pluginId));
+  if (
+    [...state.records.keys()].some((pluginId) => !candidateIds.has(pluginId)) ||
+    candidates.some((candidate) => !isCandidateApplied(candidate, state))
+  ) {
+    onChanges?.();
+  }
   for (const pluginId of [...state.records.keys()]) {
     if (candidateIds.has(pluginId)) continue;
     state.pendingControllers.get(pluginId)?.abort();
@@ -1104,17 +1111,19 @@ export function bootPluginFrontends(): Promise<void> {
 }
 
 async function runLiveReconcile(): Promise<void> {
-  setPluginFrontendReconcilePending(true);
   try {
     await bootPromise;
     await markEnabledPluginListStale({ queryClient: appQueryClient });
     if (state.tornDown) {
+      setPluginFrontendReconcilePending(true);
       state.tornDown = false;
       bootPromise = null;
       await bootPluginFrontends();
       return;
     }
-    await reconcilePluginFrontends(state, browserReconcileDeps);
+    await reconcilePluginFrontends(state, browserReconcileDeps, () =>
+      setPluginFrontendReconcilePending(true),
+    );
   } catch (error) {
     console.warn(
       `plugin frontend reconcile failed: ${error instanceof Error ? error.message : String(error)}`,

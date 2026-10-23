@@ -1,4 +1,3 @@
-import type { WorkspaceStatus } from "@bb/domain";
 import type { WorkspaceChangedFileSelection } from "@/components/workspace/workspace-change-summary";
 import { selectWorkspaceAheadCommits } from "@/components/workspace/workspace-change-summary";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
@@ -14,6 +13,7 @@ import {
   InfoSection,
   InfoSubheading,
 } from "./info-list";
+import type { WorkspaceStatus } from "bb-plugin-bb--git/contract";
 
 interface CommitsSectionProps {
   workspaceStatus: WorkspaceStatus | undefined;

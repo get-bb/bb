@@ -1,8 +1,5 @@
 import type { QueryKey } from "@tanstack/react-query";
 import type {
-  EnvironmentDiffBranchesResponse,
-  EnvironmentDiffFilesResponse,
-  EnvironmentStatusResponse,
   ProjectBranchesResponse,
   ThreadResponse,
   ThreadTimelineResponse,
@@ -15,6 +12,8 @@ import {
   THREAD_QUERY_KEY,
   THREAD_TIMELINE_QUERY_KEY,
 } from "./query-keys";
+import type { GitBranchOptions } from "@bb/domain";
+import type { GitFilesResult, GitStatusResult } from "bb-plugin-bb--git/contract";
 
 type ThreadScopedQueryKeyPrefix =
   | typeof THREAD_QUERY_KEY
@@ -32,7 +31,7 @@ interface ResolveProjectSourceBranchesPlaceholderArgs {
 }
 
 interface ResolveEnvironmentMergeBaseBranchesPlaceholderArgs {
-  previousData: EnvironmentDiffBranchesResponse | undefined;
+  previousData: GitBranchOptions | undefined;
   previousQueryKey: QueryKey | undefined;
   environmentId: string;
   limit: number;
@@ -70,10 +69,10 @@ function resolveThreadScopedPlaceholder<TData>(
 }
 
 export function resolveEnvironmentWorkStatusPlaceholder(
-  previousData: EnvironmentStatusResponse | undefined,
+  previousData: GitStatusResult | undefined,
   previousQueryKey: QueryKey | undefined,
   nextEnvironmentId: string,
-): EnvironmentStatusResponse | undefined {
+): GitStatusResult | undefined {
   return resolveThreadScopedPlaceholder(
     previousData,
     previousQueryKey,
@@ -83,10 +82,10 @@ export function resolveEnvironmentWorkStatusPlaceholder(
 }
 
 export function resolveEnvironmentDiffFilesPlaceholder(
-  previousData: EnvironmentDiffFilesResponse | undefined,
+  previousData: GitFilesResult | undefined,
   previousQueryKey: QueryKey | undefined,
   nextEnvironmentId: string,
-): EnvironmentDiffFilesResponse | undefined {
+): GitFilesResult | undefined {
   return resolveThreadScopedPlaceholder(
     previousData,
     previousQueryKey,
@@ -133,7 +132,7 @@ export function resolveEnvironmentMergeBaseBranchesPlaceholder({
   limit,
   selectedBranch,
 }: ResolveEnvironmentMergeBaseBranchesPlaceholderArgs):
-  | EnvironmentDiffBranchesResponse
+  | GitBranchOptions
   | undefined {
   if (
     previousData === undefined ||

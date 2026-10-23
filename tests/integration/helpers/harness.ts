@@ -55,7 +55,6 @@ import type {
 import { HostSharedPortCoordinator } from "../../../apps/server/src/ws/host-shared-ports.js";
 import { NotificationHub } from "../../../apps/server/src/ws/hub.js";
 import { WatchInterestCoordinator } from "../../../apps/server/src/ws/watch-interests.js";
-import { WorkspaceReadCaches } from "../../../apps/server/src/services/environments/workspace-read-cache.js";
 import { createPublicApiClient } from "@bb/server-contract";
 import {
   killProcessesReferencingPath,
@@ -113,6 +112,7 @@ export interface IntegrationHarness {
 }
 
 export const PROJECT_CHECKOUT_BUILTIN_PLUGIN = "environment-project-checkout";
+const GIT_BUILTIN_PLUGIN = "git";
 
 interface CreateHarnessOptions {
   serverPort?: number;
@@ -193,7 +193,6 @@ async function startIntegrationServer(
   const hub = new NotificationHub();
   const sharedPorts = new HostSharedPortCoordinator({ db, hub });
   const watchInterests = new WatchInterestCoordinator({ db, hub });
-  const workspaceReadCaches = new WorkspaceReadCaches({ hub });
   const config: ServerRuntimeConfig = {
     appVersion: "0.0.0-dev",
     builtinSkillsRootPath,
@@ -301,7 +300,6 @@ async function startIntegrationServer(
     telemetry,
     terminalSessions,
     watchInterests,
-    workspaceReadCaches,
   };
   const { app, closeWebSockets, injectWebSocket, pluginService } = createApp(
     serverDeps,
@@ -334,6 +332,7 @@ async function startIntegrationServer(
   pluginService.bindSdk({ baseUrl });
   const builtinPlugins = new Set([
     PROJECT_CHECKOUT_BUILTIN_PLUGIN,
+    GIT_BUILTIN_PLUGIN,
     ...(options.builtinPlugins ?? []),
   ]);
   for (const name of builtinPlugins) {

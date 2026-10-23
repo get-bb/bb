@@ -117,10 +117,6 @@ function createWorkspace(workspacePath = WORKSPACE_PATH): HostWorkspace {
     getLocalStateSnapshot: unexpectedWorkspaceCall,
     getSharedGitRefsSnapshot: unexpectedWorkspaceCall,
     getAdditionalWorkspaceWriteRoots: vi.fn(async () => []),
-    getStatus: unexpectedWorkspaceCall,
-    getDiff: unexpectedWorkspaceCall,
-    diffFiles: unexpectedWorkspaceCall,
-    diffPatch: unexpectedWorkspaceCall,
     commit: unexpectedWorkspaceCall,
   };
 }

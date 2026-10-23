@@ -1,5 +1,4 @@
 import { useCallback, useState } from "react";
-import type { DiffFileEntry } from "@bb/server-contract";
 import type { DiffPresentation } from "@/components/code/code-rendering";
 import type { RequestDiffFileContents } from "@/components/git-diff/GitDiffCardBody";
 import { DEFAULT_CODE_OVERFLOW_MODE } from "@/lib/code-overflow-mode";
@@ -8,6 +7,7 @@ import { appToast } from "@/components/ui/app-toast";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 import { DiffFileCard } from "./DiffFileCard";
 import { makeDiffFileEntry } from "@/test/fixtures/diff-files";
+import type { DiffFileEntry } from "bb-plugin-bb--git/contract";
 
 export default {
   title: "right-panel/Diff File Card",

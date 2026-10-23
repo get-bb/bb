@@ -1,4 +1,3 @@
-import type { WorkspaceStatus } from "@bb/domain";
 import { DiffStatsTally } from "@/components/ui/diff-stats-tally.js";
 import { EmptyState } from "@bb/shared-ui/empty-state";
 import { FilePathLink } from "@/components/ui/file-path-link.js";
@@ -7,6 +6,7 @@ import {
   formatOmittedChangedFilesLabel,
   formatWorkspaceFileStatus,
 } from "@/components/workspace/workspace-change-summary";
+import type { WorkspaceStatus } from "bb-plugin-bb--git/contract";
 
 export type WorkspaceChangedFile =
   WorkspaceStatus["workingTree"]["files"][number];

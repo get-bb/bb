@@ -1409,8 +1409,13 @@ Docs: `backend-foundation.md`, `testing.md`.
 12. **Test harness.** Audit both layers. The server harness has the
     `experimental_callHostRpc`, `experimental_hostEntry` and
     `experimental_declaredIconNames` options, the `experimental_hostRpcCalls`
-    inspection list, and the `experimental_emitHostWorkerExit` and
-    `experimental_emitHostSignal` drivers. The host-entry harness has
+    inspection list, the `experimental_emitHostWorkerExit` and
+    `experimental_emitHostSignal` drivers, and `experimental_watchRpc(method,
+    read)`, which runs a method's `experimental_whileWatched` producer as a
+    client watch would and returns the unwatch function; plugin disposal aborts
+    the watches still running, as the real host does. The Git plugin's server
+    tests use it to check that ended turns cost nothing while no environment is
+    watched. The host-entry harness has
     `experimental_call`, `experimental_getSignals`,
     `experimental_getRetainedWorkerLeaseCount`, `experimental_lifecycleSignal`,
     path/watch options, and `experimental_dispose`. Confirm the host harness
@@ -1431,8 +1436,12 @@ the second attempt a fresh `callId`, because the daemon rejects a duplicate id
 while the first call is pending. No daemon wire change. Client RPC
 registrations ignore the field.
 
-Callers: the GitHub PR Status plugin's `view` (core marked
-`workspace.pull_request` retryable; `act` is not).
+Callers: the Git plugin's host `status`, `diff`, `files`, `patches` and
+`branches` (base marked `workspace.status`, `workspace.diff`,
+`workspace.diffFiles`, `workspace.diffPatch` and `host.list_branch_options`
+retryable; its `fileSide` reads through `bb.sdk.files.read`, which still uses
+the retryable `host.read_file`), and the GitHub PR Status plugin's
+`view` (core marked `workspace.pull_request` retryable; `act` is not).
 
 Docs: `backend-foundation.md`.
 
@@ -3010,15 +3019,19 @@ lookup; an empty list returns no records. The SDK selects this path when
 independent of display filters, so marking Viewed cannot hide its own query.
 Records live in `diff_viewed_files`, keyed by environment, target
 (`uncommitted`, `commit:<sha>`, `branch_committed:<branch>`, `all:<branch>`)
-and path. Revisions come from the `revision` field that `diffFiles` now
-returns for every file: `<oldMode>:<oldBlob>:<newMode>:<newBlob>` from
-`git diff --raw`, with the worktree side hashed by `git hash-object`. A file
-counts as Viewed only while the stored revision equals the current one.
-`diffFiles` and `diffPatch` also accept `ignoreWhitespace` (git `-w`).
+and path. Revisions come from the `revision` field that the Git plugin's
+`files` RPC returns for every file: `<oldMode>:<oldBlob>:<newMode>:<newBlob>`
+from `git diff --raw`, with the worktree side hashed by `git hash-object`. A
+file counts as Viewed only while the stored revision equals the current one.
+The plugin's `files` and `patches` reads also take `ignoreWhitespace` (git
+`-w`).
 
-Core callers: the workspace diff panel's Viewed checkbox
+Callers: the workspace diff panel's Viewed checkbox
 (`DiffFilesPanel` through `useSetDiffFileViewed` and
-`useEnvironmentDiffViewed`) and `bb environment diff-viewed list|mark|unmark|clear`.
+`useEnvironmentDiffViewed`) and the bundled Git plugin
+(`plugins/git/server/viewed.ts`), which serves
+`bb git viewed list|mark|unmark|clear` through its `viewed`, `markViewed` and
+`clearViewed` RPCs.
 
 **Audit before stabilizing.**
 
@@ -3036,6 +3049,13 @@ Core callers: the workspace diff panel's Viewed checkbox
 and `experimental_sanitizeInheritedChildProcessEnv`
 (`ExperimentalSanitizeInheritedChildProcessEnvArgs`) filters the inherited
 environment, for host-local plugin commands.
+
+Callers: the one git runner in `bb-environment-provider-host/workspace-git`,
+which the daemon (`@bb/host-workspace`, `apps/host-daemon`), environment
+providers (`bb-environment-provider-host/git`) and the Git plugin host all call.
+Runs that feed git stdin spawn with the provider-bridge entry's
+`experimental_spawnPortableProcess`, the same spawn with piped stdin, and every
+run is admitted through `experimental_runVcsProcess` with an explicit priority.
 
 Before stabilization, audit command cancellation, inherited environment
 filtering, and portable output handling for host-local plugin commands on
@@ -3646,6 +3666,16 @@ Stabilize after exercising producer cancellation, reload, reconnect and byte lim
 ## Retired `experimental_useSidebarThreadPullRequest` runtime member
 
 `experimental_useSidebarThreadPullRequest(threadId)` and its `PluginSidebarPullRequest` and `PluginSidebarThreadPullRequestState` types are gone from `@get-bb/plugin-sdk/app`, the Plugin Guide and the authoring docs. Published bundles resolve `@get-bb/plugin-sdk/app` exports by name on `globalThis.__bbPluginRuntime.pluginSdkApp`, so the app installs `retiredPluginSdkAppMembers` (`apps/app/src/lib/plugin-sdk-app-impl.tsx`) next to the implementation. The member keeps its old shape, reads the GitHub PR Status plugin's `pullRequests` row for the thread's environment through `useRetiredSidebarEnvironmentPullRequest` (`apps/app/src/lib/retired-sidebar-pull-request.ts`), main's hook kept for it: a cached row refetches on mount and a stale row on page show. It returns `{ isLoading: false, pullRequest: null }` when the plugin is disabled or the read fails. The GitHub PR Status plugin's own segment and Info row use the plugin's copy of that hook. Both copies announce each refetch they start with `PULL_REQUESTS_REFETCH_EVENT` on `window` and recheck staleness before a page-show refetch, so a row shown by both is read once. The name leaves only the typings. `bb-plugin-build` keeps it in the `@get-bb/plugin-sdk/app` runtime shim's export list (`RETIRED_PLUGIN_SDK_APP_EXPORTS` in `packages/plugin-build/src/build-plugin-app.ts`), so plugins that still import it build and run, because git-sourced marketplace plugins are built by bb at install and update and path and builtin plugins rebuild when the SDK version changes. An import of it is a build warning carrying the replacement call: `bb plugin build` and `bb plugin dev` print it, and the server writes it to the plugin's log and the server log when it builds the plugin. Callers are marketplace plugins written against the old SDK (t3sidebar, dockside, gtd-sidebar, thread-inbox, radar-sidebar, bb-sidebar, sidebar-plus, cursor-sidebar, switchboard, vantage, jb-flow, tinted-threads among them). Remove the runtime member and the shim entry only after those plugins have migrated.
+
+## Retired environment git reads (`bb.sdk.environments.status`, `diff`, `diffFiles`, `diffPatch`, `diffFile`, `diffBranches`)
+
+These six `PluginBbSdk.environments` methods are gone from the public typings, the Plugin Guide and the authoring docs; the Git plugin's RPC contract (`bb--git`: `status`, `diff`, `files`, `patches`, `fileSide`, `branches`) replaces them, and core's HTTP read routes are deleted. Published and git-sourced plugins keep working: `packages/sdk/src/areas/retired-environment-reads.ts` adds runtime adapters with the old shapes that call `POST /api/v1/plugins/bb--git/rpc/<method>`, so they fail with the RPC error when the Git plugin is disabled. `bb-plugin-build` scans app and server bundles for calls to them (`packages/plugin-build/src/retired-sdk-members.ts`) and prints a warning with the replacement RPC call; `bb plugin build`, `bb plugin dev` and server-side builds at install and update log it, and never fail. Callers are marketplace plugins written against the old SDK (vantage, diff-tree, firstmate, diff-viewed among them). Remove the adapters after those plugins migrate.
+
+`PLUGIN_CLI_OUTPUT_MAX_BYTES` is 32 MiB (was 1 MiB) so `bb git diff` and
+`bb git file` print what `bb environment diff` and `diff-file` printed: a diff
+of up to 2 MiB with a 256 KiB file list, and file sides up to the 25 MB
+text and 10 MB image limits of `host.read_file`. The running bb enforces its
+own value, so plugins built against the old constant keep working.
 
 ## Unified tabs (`experimental_tab`)
 

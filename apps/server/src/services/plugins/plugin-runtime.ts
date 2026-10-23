@@ -1,6 +1,13 @@
 import {
   realtimeSubscriptionTargetKey,
   type PluginReadSubscriptionTarget,
+  calculateExponentialBackoffDelay,
+  isPluginOwnedIconPath,
+  parseNamespacedGlyph,
+  PLUGIN_SDK_MAJOR,
+  PLUGIN_SDK_VERSION,
+  type Thread,
+  type ThreadQueuedMessage,
 } from "@bb/domain";
 import { logPluginBuildWarnings } from "./plugin-log.js";
 import type { MachineEnrollmentService } from "../machines/machine-services.js";
@@ -24,15 +31,6 @@ import { createRequire, registerHooks } from "node:module";
 import { performance } from "node:perf_hooks";
 import semver from "semver";
 import { HOST_ARTIFACT_MAX_BYTES } from "@bb/host-daemon-contract/protocol";
-import {
-  calculateExponentialBackoffDelay,
-  isPluginOwnedIconPath,
-  parseNamespacedGlyph,
-  PLUGIN_SDK_MAJOR,
-  PLUGIN_SDK_VERSION,
-  type Thread,
-  type ThreadQueuedMessage,
-} from "@bb/domain";
 import { buildPluginApp } from "@bb/plugin-build";
 import { PluginHostArtifactRegistry } from "./plugin-host-artifact-registry.js";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
@@ -1147,7 +1145,13 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           },
         }),
       );
-      return { ...built, loader: "cjs" };
+      logPluginBuildWarnings({
+        dataDir: deps.dataDir,
+        logger,
+        pluginId: row.id,
+        warnings: built.warnings,
+      });
+      return { path: built.path, digest: built.digest, loader: "cjs" };
     }
     if (row.sourceKind === "path") return buildSource();
     if (

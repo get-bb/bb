@@ -1,4 +1,3 @@
-import type { WorkspaceFileStatus, WorkspaceStatus } from "@bb/domain";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { directoryFromPath } from "@bb/thread-view";
@@ -16,6 +15,7 @@ import {
 import { getFileNameFromPath } from "../rightPanelFileVisuals";
 import { FILE_STATUS_GLYPHS } from "./file-status-glyphs";
 import { InfoList, InfoListRow, InfoSection } from "./info-list";
+import type { WorkspaceFileStatus, WorkspaceStatus } from "bb-plugin-bb--git/contract";
 
 function toFolderHint(path: string): string | null {
   const folderPath = directoryFromPath(path);

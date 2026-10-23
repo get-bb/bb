@@ -1,6 +1,9 @@
-import type { WorkspaceDiffTarget } from "@bb/domain";
-import type { ThreadListFilters, ThreadSearchFilters } from "@bb/client-core";
-import type { EnvironmentFilePreviewSource } from "@bb/client-core";
+
+import type {
+  ThreadListFilters,
+  ThreadSearchFilters,
+  EnvironmentFilePreviewSource,
+} from "@bb/client-core";
 import {
   DEFAULT_THREAD_STORAGE_FILE_LIST_OPTIONS,
   type ThreadStorageFileListOptions,
@@ -9,6 +12,7 @@ import {
   DEFAULT_FILE_ONLY_PATH_LIST_OPTIONS,
   type PathListOptions,
 } from "@/lib/path-list-options";
+import type { WorkspaceDiffTarget } from "@bb/domain";
 
 const HOSTS_QUERY_KEY = "hosts";
 const HOST_QUERY_KEY = "host";

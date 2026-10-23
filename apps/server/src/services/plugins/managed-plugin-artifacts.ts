@@ -308,8 +308,9 @@ export function createManagedPluginArtifacts(
       }
     }
     if (kind === "git") {
+      let server: Awaited<ReturnType<typeof buildPluginServer>>;
       try {
-        await buildPluginServer(
+        server = await buildPluginServer(
           args.rootDir,
           deps.appVersion,
           await getPluginBuildToolchain(deps),
@@ -319,6 +320,12 @@ export function createManagedPluginArtifacts(
           `install failed: server bundle build for "${manifest.id}" failed: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
+      logPluginBuildWarnings({
+        dataDir: deps.dataDir,
+        logger: deps.logger,
+        pluginId: manifest.id,
+        warnings: server.migrationWarnings,
+      });
       if (manifest.hostEntry !== undefined) {
         try {
           await buildPluginHost(

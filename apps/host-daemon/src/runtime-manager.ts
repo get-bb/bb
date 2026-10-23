@@ -10,12 +10,13 @@ import {
 } from "@bb/agent-runtime";
 import type { Logger } from "@bb/logger";
 import { sliceUtf16Tail } from "@bb/text-utils";
-import type {
-  PendingInteractionCreate,
-  PendingInteractionResolution,
-  ThreadEvent,
+import {
+  type PendingInteractionCreate,
+  type PendingInteractionResolution,
+  type ThreadEvent,
+  threadScope,
+  turnScope,
 } from "@bb/domain";
-import { threadScope, turnScope } from "@bb/domain";
 import type {
   HostDaemonActiveThread,
   HostDaemonContributedEnvEntry,
@@ -29,7 +30,6 @@ import type {
 } from "@bb/host-watcher";
 import {
   provisionWorkspace,
-  WorkspaceError,
   type HostWorkspace,
   type ProvisionWorkspaceArgs,
 } from "@bb/host-workspace";
@@ -48,6 +48,7 @@ import type { SkillTreeTransport } from "./skill-trees.js";
 import { userExecutableProcessOptions } from "./user-executable-env.js";
 import { runSetupScript } from "./environment-lifecycle-script.js";
 import { runInSerialLane } from "./serial-lane.js";
+import { WorkspaceError } from "bb-environment-provider-host/workspace-git";
 
 type StopWatching = () => void | Promise<void>;
 

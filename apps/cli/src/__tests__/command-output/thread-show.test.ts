@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import * as domain from "@bb/domain";
-import type * as serverContract from "@bb/server-contract";
+import type { ThreadGitDiffResponse } from "bb-plugin-bb--git/contract";
 import type {
   EnvironmentPullRequest,
   PullRequest,
@@ -11,8 +11,8 @@ import {
   createClientMock,
   runCommand,
   stubServerApi,
+  type CommandRegistrar,
 } from "../helpers/command-output-harness.js";
-import type { CommandRegistrar } from "../helpers/command-output-harness.js";
 import * as fixtures from "../helpers/command-output-fixtures.js";
 import { registerThreadCommands } from "../../commands/thread/index.js";
 
@@ -33,6 +33,28 @@ describe("bb thread show command output", () => {
       bodies.push(JSON.parse(String(init?.body)));
       return new Response(
         JSON.stringify({ ok: true, result: { [environmentId]: row } }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    });
+    return { urls, bodies };
+  }
+
+  function stubGitRpc(result: unknown): { urls: string[]; bodies: unknown[] } {
+    const urls: string[] = [];
+    const bodies: unknown[] = [];
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = String(input);
+      const body: unknown = JSON.parse(String(init?.body));
+      if (url.includes("/plugins/bb--git/")) {
+        urls.push(url);
+        bodies.push(body);
+        return new Response(JSON.stringify({ ok: true, result }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response(
+        JSON.stringify({ ok: true, result: { "": { outcome: "absent" } } }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       );
     });
@@ -160,15 +182,14 @@ describe("bb thread show command output", () => {
     });
     const get = vi.fn(async () => thread);
     const environmentGet = vi.fn(async () => environment);
-    const statusGet = vi.fn(async () => ({
+    const rpc = stubGitRpc({
       outcome: "not_applicable",
       reason: "non_git_environment",
       message: "Workspace is not a Git repository.",
-    }));
+    });
     const timelineGet = fixtures.makeEmptyTimelineGetMock();
     stubServerApi({
       "v1.environments.:id.$get": environmentGet,
-      "v1.environments.:id.status.$get": statusGet,
       "v1.threads.:id.$get": get,
       "v1.threads.:id.timeline.$get": timelineGet,
     });
@@ -178,10 +199,12 @@ describe("bb thread show command output", () => {
       register,
     );
 
-    expect(statusGet).toHaveBeenCalledWith({
-      param: { id: "env-work-status" },
-      query: { mergeBaseBranch: "main" },
-    });
+    expect(rpc.urls).toEqual([
+      "http://server/api/v1/plugins/bb--git/rpc/workspaceStatus",
+    ]);
+    expect(rpc.bodies).toEqual([
+      { environmentId: "env-work-status", mergeBaseBranch: "main" },
+    ]);
     expect(collectLogLines(vi.mocked(console.log))).toContain(
       "Work status: Workspace is not a Git repository.",
     );
@@ -220,7 +243,7 @@ describe("bb thread show command output", () => {
       createdAt: 1,
       updatedAt: 2,
     });
-    const gitDiff: domain.ThreadGitDiffResponse = {
+    const gitDiff: ThreadGitDiffResponse = {
       diff: "",
       files: "M\tsrc/file.ts\n",
       mergeBaseRef: "abc1234",
@@ -229,15 +252,10 @@ describe("bb thread show command output", () => {
     };
     const get = vi.fn(async () => thread);
     const environmentGet = vi.fn(async () => environment);
-    const diffResponse: serverContract.EnvironmentDiffResponse = {
-      outcome: "available",
-      diff: gitDiff,
-    };
-    const diffGet = vi.fn(async () => diffResponse);
+    const rpc = stubGitRpc({ outcome: "available", diff: gitDiff });
     const timelineGet = fixtures.makeEmptyTimelineGetMock();
     stubServerApi({
       "v1.environments.:id.$get": environmentGet,
-      "v1.environments.:id.diff.$get": diffGet,
       "v1.threads.:id.$get": get,
       "v1.threads.:id.timeline.$get": timelineGet,
     });
@@ -247,13 +265,12 @@ describe("bb thread show command output", () => {
       register,
     );
 
-    expect(diffGet).toHaveBeenCalledWith({
-      param: { id: "env-diff-base" },
-      query: {
-        mergeBaseBranch: "release",
-        target: "all",
+    expect(rpc.bodies).toEqual([
+      {
+        environmentId: "env-diff-base",
+        target: { type: "all", mergeBaseBranch: "release" },
       },
-    });
+    ]);
   });
 
   it("bb thread show --git-diff renders an available uncommitted diff response", async () => {
@@ -273,7 +290,7 @@ describe("bb thread show command output", () => {
       createdAt: 1,
       updatedAt: 2,
     });
-    const diffResponse: serverContract.EnvironmentDiffResponse = {
+    const rpc = stubGitRpc({
       outcome: "available",
       diff: {
         diff: "diff --git a/smoke.txt b/smoke.txt\nnew file mode 100644\n",
@@ -282,14 +299,12 @@ describe("bb thread show command output", () => {
         shortstat: "1 file changed\n",
         truncated: false,
       },
-    };
+    });
     const get = vi.fn(async () => thread);
     const environmentGet = vi.fn(async () => environment);
-    const diffGet = vi.fn(async () => diffResponse);
     const timelineGet = fixtures.makeEmptyTimelineGetMock();
     stubServerApi({
       "v1.environments.:id.$get": environmentGet,
-      "v1.environments.:id.diff.$get": diffGet,
       "v1.threads.:id.$get": get,
       "v1.threads.:id.timeline.$get": timelineGet,
     });
@@ -306,12 +321,9 @@ describe("bb thread show command output", () => {
       register,
     );
 
-    expect(diffGet).toHaveBeenCalledWith({
-      param: { id: "env-uncommitted-diff" },
-      query: {
-        target: "uncommitted",
-      },
-    });
+    expect(rpc.bodies).toEqual([
+      { environmentId: "env-uncommitted-diff", target: { type: "uncommitted" } },
+    ]);
     const output = collectLogLines(vi.mocked(console.log)).join("\n");
     expect(output).toContain("Git diff:");
     expect(output).toContain("A\tsmoke.txt");

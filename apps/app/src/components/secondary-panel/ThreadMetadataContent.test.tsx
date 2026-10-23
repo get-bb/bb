@@ -20,13 +20,13 @@ import {
   makeHost,
   makeThread as makeThreadFixture,
 } from "@bb/test-helpers/domain-fixtures";
-import { makeWorkspaceMergeBase, makeWorkspaceStatus } from "@bb/test-helpers";
 import {
   EnvironmentProvisioningFailureRow,
   EnvironmentRow,
   formatBranchComparison,
   GitStatusRow,
 } from "./ThreadMetadataContent";
+import { makeWorkspaceMergeBase, makeWorkspaceStatus } from "bb-plugin-bb--git/testing";
 
 const localHost = { locality: "local", identity: null } as const;
 const connectedLocalHost: EnvironmentDisplayHostContext = {

@@ -7,7 +7,6 @@ import type {
   ProviderInfo,
   ReasoningLevel,
   Thread,
-  WorkspaceStatus,
 } from "@bb/domain";
 import type {
   ProviderCliKey,
@@ -35,6 +34,7 @@ import type {
   AttachmentsConfig,
   TypeaheadConfig,
 } from "../src/components/promptbox/ComposerBox";
+import type { WorkspaceStatus } from "bb-plugin-bb--git/contract";
 
 const noop = () => {};
 

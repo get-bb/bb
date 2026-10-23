@@ -1,10 +1,10 @@
-import type { WorkspaceFileStatus } from "@bb/domain";
 import { ThreadGitActionDialogContent } from "./ThreadGitActionDialog";
 import type { ThreadGitStatusDisplay } from "@/components/workspace/workspace-status";
 import type { WorkspaceChangedFilesSection } from "@/components/workspace/workspace-change-summary";
 import { BRANCH_NAMES } from "../../../.ladle/story-fixtures";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { DialogStage } from "../../../.ladle/story-dialog-stage";
+import type { WorkspaceFileStatus } from "bb-plugin-bb--git/contract";
 
 export default {
   title: "dialogs/Thread Git Action",

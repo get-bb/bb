@@ -1,12 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import type { WorkspaceDiffTarget } from "@bb/domain";
-import {
-  DIFF_PATCH_MAX_PATHS_PER_REQUEST,
-  type DiffPatchEntry,
-  type EnvironmentDiffPatchResponse,
-} from "@bb/server-contract";
-import { sdk } from "@/lib/sdk";
+
 import { extractErrorMessage } from "@bb/core-ui";
 import {
   type PatchQueryIdentity,
@@ -19,6 +13,12 @@ import {
   writeDiffPatchEntry,
 } from "../cache-owners/environment-diff-patch-cache-owner";
 import { environmentDiffTargetKey } from "./query-keys";
+import { gitPluginReads, type GitPatchPage } from "./git-plugin-reads";
+import type { WorkspaceDiffTarget } from "@bb/domain";
+import {
+  GIT_PATCHES_MAX_KEYS,
+  type DiffPatchEntry,
+} from "bb-plugin-bb--git/contract";
 
 const PATCH_REQUEST_DEBOUNCE_MS = 80;
 
@@ -100,19 +100,13 @@ function dedupeOrderedPaths(args: PendingPaths): string[] {
 
 function chunkPaths(paths: string[]): string[][] {
   const pages: string[][] = [];
-  for (
-    let index = 0;
-    index < paths.length;
-    index += DIFF_PATCH_MAX_PATHS_PER_REQUEST
-  ) {
-    pages.push(paths.slice(index, index + DIFF_PATCH_MAX_PATHS_PER_REQUEST));
+  for (let index = 0; index < paths.length; index += GIT_PATCHES_MAX_KEYS) {
+    pages.push(paths.slice(index, index + GIT_PATCHES_MAX_KEYS));
   }
   return pages;
 }
 
-function patchPageError(
-  response: EnvironmentDiffPatchResponse,
-): string | undefined {
+function patchPageError(response: GitPatchPage): string | undefined {
   switch (response.outcome) {
     case "available":
       return undefined;
@@ -199,7 +193,7 @@ export function useEnvironmentDiffPatches(
       const controller = new AbortController();
       abortControllersRef.current.add(controller);
       try {
-        const response = await sdk.environments.diffPatch({
+        const response = await gitPluginReads.patchPage({
           environmentId,
           target,
           paths,

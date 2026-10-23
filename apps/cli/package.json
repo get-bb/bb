@@ -26,6 +26,7 @@
     "@bb/templates": "workspace:*",
     "@bb/text-utils": "workspace:*",
     "@bb/thread-view": "workspace:*",
+    "bb-plugin-bb--git": "workspace:*",
     "bb-plugin-bb--github-pr-status": "workspace:*",
     "cli-table3": "^0.6.5",
     "commander": "^13.0.0",

@@ -97,86 +97,6 @@ interface OnlineRpcResponseRoundTripCase {
   result: JsonObject;
 }
 
-const WORKSPACE_UNAVAILABLE_RESULT: JsonObject = {
-  outcome: "unavailable",
-  failure: {
-    code: "path_not_found",
-    workspacePath: "/tmp/missing-workspace",
-    message: "Workspace path is missing",
-  },
-};
-
-const WORKSPACE_STATUS_AVAILABLE_RESULT: JsonObject = {
-  outcome: "available",
-  workspaceStatus: {
-    workingTree: {
-      insertions: 3,
-      deletions: 1,
-      lineStatsComplete: true,
-      fileCount: 1,
-      files: [
-        {
-          path: "src/index.ts",
-          status: "M",
-          insertions: 3,
-          deletions: 1,
-        },
-      ],
-      hasUncommittedChanges: true,
-      state: "dirty_and_committed_unmerged",
-    },
-    branch: {
-      currentBranch: "feature/host-rpc",
-      defaultBranch: "main",
-    },
-    checkout: {
-      kind: "branch",
-      branchName: "feature/host-rpc",
-      headSha: null,
-    },
-    mergeBase: {
-      insertions: 5,
-      deletions: 0,
-      lineStatsComplete: true,
-      fileCount: 1,
-      files: [
-        {
-          path: "README.md",
-          status: "A",
-          insertions: 5,
-          deletions: 0,
-        },
-      ],
-      mergeBaseBranch: "main",
-      baseRef: "abc123",
-      aheadCount: 1,
-      behindCount: 0,
-      squashMergeCheckComplete: true,
-      hasCommittedUnmergedChanges: true,
-      commits: [
-        {
-          sha: "abcdef123456",
-          shortSha: "abcdef1",
-          subject: "Add host RPC guard",
-          authorName: "Test User",
-          authoredAt: 1_700_000_000_000,
-        },
-      ],
-    },
-  },
-};
-
-const WORKSPACE_DIFF_AVAILABLE_RESULT: JsonObject = {
-  outcome: "available",
-  diff: {
-    diff: "diff --git a/src/index.ts b/src/index.ts\n",
-    truncated: false,
-    shortstat: "1 file changed, 3 insertions(+), 1 deletion(-)",
-    files: "src/index.ts\n",
-    mergeBaseRef: "abc123",
-  },
-};
-
 const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
   "environment.hook.run": {},
   "environment.hook.cancel": { status: "terminated" },
@@ -522,17 +442,6 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       },
     ],
   },
-  "workspace.status": WORKSPACE_UNAVAILABLE_RESULT,
-  "workspace.diff": {
-    outcome: "unavailable",
-    failure: {
-      code: "not_git_repo",
-      workspacePath: "/tmp/workspace",
-      message: "Path is not a git repository: /tmp/workspace",
-    },
-  },
-  "workspace.diffFiles": WORKSPACE_UNAVAILABLE_RESULT,
-  "workspace.diffPatch": WORKSPACE_UNAVAILABLE_RESULT,
   "server_move.inspect": {
     dataDir: "/home/me/.bb-machines/bb.example.com",
     platform: "linux",
@@ -596,36 +505,6 @@ const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
   },
 };
 
-const WORKSPACE_DIFF_FILES_AVAILABLE_RESULT: JsonObject = {
-  outcome: "available",
-  files: [
-    {
-      path: "src/renamed.ts",
-      previousPath: "src/original.ts",
-      statusLetter: "R",
-      additions: 3,
-      deletions: 1,
-      binary: false,
-      origin: "tracked",
-      revision: "100644:aaaa:100644:bbbb",
-    },
-  ],
-  shortstat: "1 file changed, 3 insertions(+), 1 deletion(-)",
-  mergeBaseRef: "abc123",
-  truncated: false,
-};
-
-const WORKSPACE_DIFF_PATCH_AVAILABLE_RESULT: JsonObject = {
-  outcome: "available",
-  patches: [
-    {
-      path: "src/renamed.ts",
-      patch: "diff --git a/src/original.ts b/src/renamed.ts\n",
-      truncated: true,
-    },
-  ],
-};
-
 const ADDITIONAL_ONLINE_RPC_RESPONSE_ROUND_TRIP_CASES: OnlineRpcResponseRoundTripCase[] =
   [
     {
@@ -656,54 +535,6 @@ const ADDITIONAL_ONLINE_RPC_RESPONSE_ROUND_TRIP_CASES: OnlineRpcResponseRoundTri
         operation: { kind: "merge", hasConflicts: true },
         originDefaultBranch: "origin/main",
       },
-    },
-    {
-      name: "workspace.status available result",
-      commandType: "workspace.status",
-      result: WORKSPACE_STATUS_AVAILABLE_RESULT,
-    },
-    {
-      name: "workspace.status clean result without a merge base",
-      commandType: "workspace.status",
-      result: {
-        outcome: "available",
-        workspaceStatus: {
-          workingTree: {
-            insertions: 0,
-            deletions: 0,
-            lineStatsComplete: true,
-            fileCount: 0,
-            files: [],
-            hasUncommittedChanges: false,
-            state: "clean",
-          },
-          branch: {
-            currentBranch: "bb/env-123",
-            defaultBranch: "main",
-          },
-          checkout: {
-            kind: "branch",
-            branchName: "bb/env-123",
-            headSha: null,
-          },
-          mergeBase: null,
-        },
-      },
-    },
-    {
-      name: "workspace.diff available result",
-      commandType: "workspace.diff",
-      result: WORKSPACE_DIFF_AVAILABLE_RESULT,
-    },
-    {
-      name: "workspace.diffFiles available result",
-      commandType: "workspace.diffFiles",
-      result: WORKSPACE_DIFF_FILES_AVAILABLE_RESULT,
-    },
-    {
-      name: "workspace.diffPatch available result",
-      commandType: "workspace.diffPatch",
-      result: WORKSPACE_DIFF_PATCH_AVAILABLE_RESULT,
     },
   ];
 
@@ -868,8 +699,6 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "host.read_file omits ifNoneMatch for unconditional reads; when present the daemon may omit unchanged file content.",
   "hostDaemonOnlineRpcCommandSchema.mode":
     "host.write_file may omit mode to preserve existing permissions; when present it only controls newly created files.",
-  "hostDaemonOnlineRpcCommandSchema.mergeBaseBranch":
-    "workspace.status may omit mergeBaseBranch when the caller only needs working-tree state.",
   "hostDaemonInteractiveRequestSchema.interaction.payload.subject.presentation.badge":
     "a tool_use approval's presentation carries a badge only when the bridge has something to flag about how the call will run, such as a command opting out of the session sandbox; absence means the ordinary case, not a blank badge.",
   "hostDaemonInteractiveRequestSchema.interaction.payload.subject.presentation.detail":
@@ -1234,7 +1063,7 @@ describe("host-daemon command schemas", () => {
   });
 
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(254);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(255);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1248,27 +1077,12 @@ describe("host-daemon command schemas", () => {
     expect(contract.isCompatibleHostDaemonProtocolVersion(251)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(252)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(253)).toBe(false);
-    expect(contract.isCompatibleHostDaemonProtocolVersion(254)).toBe(true);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(254)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(255)).toBe(true);
     expect(contract.hostDaemonSupportsConnectNext(246)).toBe(false);
     expect(contract.hostDaemonSupportsConnectNext(247)).toBe(true);
     expect(contract.hostDaemonSupportsDesktopBrokerProof(247)).toBe(false);
     expect(contract.hostDaemonSupportsDesktopBrokerProof(248)).toBe(true);
-  });
-
-  it("reads workspace status from daemons that predate squash-check completeness", () => {
-    const legacyResult: unknown = JSON.parse(
-      JSON.stringify(WORKSPACE_STATUS_AVAILABLE_RESULT, (key, value) =>
-        key === "squashMergeCheckComplete" ? undefined : value,
-      ),
-    );
-    expect(
-      contract.hostDaemonOnlineRpcResultSchemaByType["workspace.status"].parse(
-        legacyResult,
-      ),
-    ).toMatchObject({
-      outcome: "available",
-      workspaceStatus: { mergeBase: { squashMergeCheckComplete: true } },
-    });
   });
 
   it("parses connect next config and status messages strictly", () => {
@@ -1826,27 +1640,6 @@ describe("host-daemon command schemas", () => {
         contributedEnv: [],
         providerId: "codex",
         bridgeLaunch: BRIDGE_LAUNCH,
-      },
-      {
-        type: "workspace.status",
-        environmentId: "env_123",
-        maxFiles: 200,
-        maxUntrackedLineStatFiles: 50,
-        maxUntrackedLineStatBytes: 8 * 1024 * 1024,
-        workspaceContext: {
-          workspacePath: "/tmp/workspace",
-        },
-      },
-      {
-        type: "workspace.diff",
-        environmentId: "env_123",
-        workspaceContext: {
-          workspacePath: "/tmp/workspace",
-        },
-        target: { type: "uncommitted" },
-        maxDiffBytes: 1000,
-        maxFileListBytes: 1000,
-        maxUntrackedFiles: 5000,
       },
     ];
 
@@ -2763,29 +2556,6 @@ describe("host-daemon command schemas", () => {
       hostDaemonOnlineRpcCommandSchema.safeParse({
         ...listBranchOptions,
         selectedBranch: "origin/main lock",
-      }).success,
-    ).toBe(false);
-
-    const workspaceStatus = {
-      type: "workspace.status",
-      environmentId: "env_123",
-      maxFiles: 200,
-      maxUntrackedLineStatFiles: 50,
-      maxUntrackedLineStatBytes: 8 * 1024 * 1024,
-      workspaceContext: {
-        workspacePath: "/tmp/workspace",
-      },
-    };
-    expect(
-      hostDaemonOnlineRpcCommandSchema.safeParse({
-        ...workspaceStatus,
-        mergeBaseBranch: "origin/main",
-      }).success,
-    ).toBe(true);
-    expect(
-      hostDaemonOnlineRpcCommandSchema.safeParse({
-        ...workspaceStatus,
-        mergeBaseBranch: "origin/main lock",
       }).success,
     ).toBe(false);
   });

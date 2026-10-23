@@ -133,6 +133,8 @@ export const gitBranchOptionsSchema = z.object({
   selectedBranch: gitBranchRefClassificationSchema.nullable(),
 });
 
+export type GitBranchOptions = z.infer<typeof gitBranchOptionsSchema>;
+
 export const projectSourceCheckoutSchema = gitSourceInspectionSchema.extend(
   gitBranchOptionsSchema.shape,
 );

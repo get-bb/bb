@@ -1,24 +1,17 @@
-import { Command } from "commander";
-import type {
-  CommitActionResponse,
-  EnvironmentDiffViewedResponse,
-} from "@bb/server-contract";
-import type {
-  EnvironmentDiffArgs,
-  EnvironmentDiffFileArgs,
-  EnvironmentDiffPatchArgs,
-  EnvironmentUpdateArgs,
-} from "@bb/sdk";
 import {
+  GIT_PLUGIN_ID,
   environmentStatusSchema,
   environmentStatusValues,
   type EnvironmentStatus,
-  type WorkspaceDiffTarget,
 } from "@bb/domain";
+import { Command } from "commander";
+import type { CommitActionResponse } from "@bb/server-contract";
+import type { EnvironmentUpdateArgs } from "@bb/sdk";
 import { action } from "../action.js";
+import { runPluginCliCommand } from "../plugin-cli-proxy.js";
 import { createCliBbSdk } from "../client.js";
 import { resolveMachineHostId, resolveMachineTargetOption } from "./machine.js";
-import { collectOption, outputJson, prependErrorContext } from "./helpers.js";
+import { outputJson, prependErrorContext } from "./helpers.js";
 
 interface EnvironmentCommitCommandOptions {
   json?: boolean;
@@ -46,52 +39,12 @@ interface EnvironmentShowCommandOptions {
   json?: boolean;
 }
 
-interface EnvironmentStatusCommandOptions {
-  json?: boolean;
-  mergeBaseBranch?: string;
-}
-
-interface EnvironmentBranchesCommandOptions {
-  json?: boolean;
-  limit?: string;
-  query?: string;
-}
-
 interface EnvironmentPathsCommandOptions {
   directories?: boolean;
   files?: boolean;
   json?: boolean;
   limit?: string;
   query?: string;
-}
-
-interface EnvironmentDiffCommandOptions {
-  json?: boolean;
-  mergeBaseBranch?: string;
-  sha?: string;
-  target: string;
-}
-
-interface EnvironmentDiffFileCommandOptions {
-  json?: boolean;
-  mergeBaseRef?: string;
-  path: string;
-  sha?: string;
-  side: string;
-  target: string;
-}
-
-interface EnvironmentDiffFilesCommandOptions extends EnvironmentDiffCommandOptions {
-  ignoreWhitespace?: boolean;
-}
-
-interface EnvironmentDiffPatchCommandOptions extends EnvironmentDiffFilesCommandOptions {
-  path: string[];
-}
-
-interface EnvironmentDiffViewedCommandOptions extends EnvironmentDiffCommandOptions {
-  path?: string;
-  revision?: string;
 }
 
 interface EnvironmentUpdateCommandOptions {
@@ -106,6 +59,29 @@ interface BuildEnvironmentUpdateArgsInput {
   id: string;
   opts: EnvironmentUpdateCommandOptions;
 }
+
+const RETIRED_GIT_COMMANDS = [
+  "status",
+  "branches",
+  "diff",
+  "diff-files",
+  "diff-file",
+  "diff-patch",
+  "diff-viewed",
+] as const;
+
+const GIT_COMMAND_REPLACEMENTS: Record<
+  (typeof RETIRED_GIT_COMMANDS)[number],
+  string
+> = {
+  status: "status",
+  branches: "branches",
+  diff: "diff",
+  "diff-files": "files",
+  "diff-file": "file",
+  "diff-patch": "patch",
+  "diff-viewed": "viewed",
+};
 
 function parseEnvironmentStatus(value: string): EnvironmentStatus {
   const parsed = environmentStatusSchema.safeParse(value);
@@ -140,186 +116,6 @@ function parseNonNegativeIntegerOption(
 
 function booleanQueryValue(value: boolean): "true" | "false" {
   return value ? "true" : "false";
-}
-
-function parseDiffFileSide(value: string): "old" | "new" {
-  switch (value) {
-    case "old":
-      return "old";
-    case "new":
-      return "new";
-    default:
-      throw new Error("--side must be old or new.");
-  }
-}
-
-function buildEnvironmentDiffArgs(
-  id: string,
-  opts: EnvironmentDiffCommandOptions,
-): EnvironmentDiffArgs {
-  switch (opts.target) {
-    case "uncommitted":
-      if (opts.mergeBaseBranch !== undefined || opts.sha !== undefined) {
-        throw new Error(
-          "--target uncommitted cannot be combined with --merge-base-branch or --sha.",
-        );
-      }
-      return { environmentId: id, target: "uncommitted" };
-    case "branch_committed":
-    case "all":
-      if (!opts.mergeBaseBranch) {
-        throw new Error(
-          `--merge-base-branch is required when --target ${opts.target} is used.`,
-        );
-      }
-      if (opts.sha !== undefined) {
-        throw new Error(
-          `--target ${opts.target} cannot be combined with --sha.`,
-        );
-      }
-      return {
-        environmentId: id,
-        target: opts.target,
-        mergeBaseBranch: opts.mergeBaseBranch,
-      };
-    case "commit":
-      if (!opts.sha) {
-        throw new Error("--sha is required when --target commit is used.");
-      }
-      if (opts.mergeBaseBranch !== undefined) {
-        throw new Error(
-          "--target commit cannot be combined with --merge-base-branch.",
-        );
-      }
-      return { environmentId: id, target: "commit", sha: opts.sha };
-    default:
-      throw new Error(
-        "--target must be uncommitted, branch_committed, all, or commit.",
-      );
-  }
-}
-
-function buildEnvironmentDiffFileArgs(
-  id: string,
-  opts: EnvironmentDiffFileCommandOptions,
-): EnvironmentDiffFileArgs {
-  const side = parseDiffFileSide(opts.side);
-  const common = {
-    environmentId: id,
-    path: opts.path,
-    side,
-  };
-  switch (opts.target) {
-    case "uncommitted":
-      if (opts.mergeBaseRef !== undefined || opts.sha !== undefined) {
-        throw new Error(
-          "--target uncommitted cannot be combined with --merge-base-ref or --sha.",
-        );
-      }
-      return { ...common, target: "uncommitted" };
-    case "branch_committed":
-    case "all":
-      if (!opts.mergeBaseRef) {
-        throw new Error(
-          `--merge-base-ref is required when --target ${opts.target} is used.`,
-        );
-      }
-      if (opts.sha !== undefined) {
-        throw new Error(
-          `--target ${opts.target} cannot be combined with --sha.`,
-        );
-      }
-      return {
-        ...common,
-        target: opts.target,
-        mergeBaseRef: opts.mergeBaseRef,
-      };
-    case "commit":
-      if (!opts.sha) {
-        throw new Error("--sha is required when --target commit is used.");
-      }
-      if (opts.mergeBaseRef !== undefined) {
-        throw new Error(
-          "--target commit cannot be combined with --merge-base-ref.",
-        );
-      }
-      return { ...common, target: "commit", sha: opts.sha };
-    default:
-      throw new Error(
-        "--target must be uncommitted, branch_committed, all, or commit.",
-      );
-  }
-}
-
-function addDiffTargetOptions(command: Command): Command {
-  return command
-    .requiredOption(
-      "--target <target>",
-      "Diff target: uncommitted, branch_committed, all, or commit",
-    )
-    .option("--merge-base-branch <branch>", "Branch-based target base")
-    .option("--sha <sha>", "Commit target SHA");
-}
-
-function toWorkspaceDiffTarget(
-  diffArgs: EnvironmentDiffArgs,
-): WorkspaceDiffTarget {
-  switch (diffArgs.target) {
-    case "uncommitted":
-      return { type: "uncommitted" };
-    case "branch_committed":
-    case "all":
-      return {
-        type: diffArgs.target,
-        mergeBaseBranch: diffArgs.mergeBaseBranch,
-      };
-    case "commit":
-      return { type: "commit", sha: diffArgs.sha };
-  }
-}
-
-function buildEnvironmentDiffPatchArgs(
-  id: string,
-  opts: EnvironmentDiffPatchCommandOptions,
-): EnvironmentDiffPatchArgs {
-  if (opts.path.length === 0) {
-    throw new Error("Provide at least one --path.");
-  }
-  return {
-    environmentId: id,
-    paths: opts.path,
-    target: toWorkspaceDiffTarget(buildEnvironmentDiffArgs(id, opts)),
-    ignoreWhitespace: opts.ignoreWhitespace === true,
-  };
-}
-
-function printDiffViewedFiles(result: EnvironmentDiffViewedResponse): void {
-  if (result.files.length === 0) {
-    console.log("No files marked Viewed.");
-    return;
-  }
-  for (const file of result.files) {
-    console.log(`${file.revision}\t${file.path}`);
-  }
-}
-
-async function resolveCurrentDiffRevision(
-  url: string,
-  diffArgs: EnvironmentDiffArgs,
-  path: string,
-): Promise<string> {
-  const result = await createCliBbSdk(url).environments.diffFiles(diffArgs);
-  if (result.outcome === "not_applicable") {
-    throw new Error(`Diff files unavailable: ${result.message}`);
-  }
-  if (result.outcome === "unavailable") {
-    throw new Error(`Diff files unavailable: ${result.failure.message}`);
-  }
-  const file = result.files.find((entry) => entry.path === path);
-  if (file === undefined) {
-    throw new Error(`${path} is not a changed file in this diff.`);
-  }
-  return file.revision;
 }
 
 function buildEnvironmentUpdateArgs({
@@ -568,80 +364,6 @@ export function registerEnvironmentCommands(
     );
 
   environment
-    .command("status <id>")
-    .description("Show an environment's workspace status")
-    .option("--merge-base-branch <branch>", "Include merge-base status")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (id: string, opts: EnvironmentStatusCommandOptions) => {
-        const result = await createCliBbSdk(getUrl()).environments.status({
-          environmentId: id,
-          ...(opts.mergeBaseBranch !== undefined
-            ? { mergeBaseBranch: opts.mergeBaseBranch }
-            : {}),
-        });
-        if (outputJson(opts, result)) return;
-        if (result.outcome === "not_applicable") {
-          console.log(`Status unavailable: ${result.message}`);
-          return;
-        }
-        if (result.outcome === "unavailable") {
-          console.log(`Status unavailable: ${result.failure.message}`);
-          return;
-        }
-        const status = result.workspace;
-        console.log(`State: ${status.workingTree.state}`);
-        console.log(`Branch: ${status.branch.currentBranch ?? "(detached)"}`);
-        console.log(`Default branch: ${status.branch.defaultBranch}`);
-        console.log(`Changed files: ${status.workingTree.fileCount}`);
-        if (status.workingTree.lineStatsComplete) {
-          console.log(`Insertions: +${status.workingTree.insertions}`);
-          console.log(`Deletions: -${status.workingTree.deletions}`);
-        } else {
-          console.log("Line stats: unavailable for untracked files");
-        }
-        if (status.mergeBase) {
-          console.log(`Merge base: ${status.mergeBase.mergeBaseBranch}`);
-          if (!status.mergeBase.squashMergeCheckComplete) {
-            console.log(
-              "Squash-merge check incomplete; counts may include already-merged commits.",
-            );
-          }
-          console.log(`Ahead: ${status.mergeBase.aheadCount}`);
-          console.log(`Behind: ${status.mergeBase.behindCount}`);
-        }
-      }),
-    );
-
-  environment
-    .command("branches <id>")
-    .description("List branches available in an environment")
-    .option("--query <query>", "Branch-name filter")
-    .option("--limit <count>", "Maximum local and remote branches")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (id: string, opts: EnvironmentBranchesCommandOptions) => {
-        validateLimit(opts.limit);
-        const result = await createCliBbSdk(getUrl()).environments.diffBranches(
-          {
-            environmentId: id,
-            ...(opts.query !== undefined ? { query: opts.query } : {}),
-            ...(opts.limit !== undefined ? { limit: opts.limit } : {}),
-          },
-        );
-        if (outputJson(opts, result)) return;
-        console.log("Local branches:");
-        for (const branch of result.branches) console.log(`  ${branch}`);
-        if (result.branches.length === 0) console.log("  (none)");
-        if (result.branchesTruncated) console.log("  (truncated)");
-        console.log("Remote branches:");
-        for (const branch of result.remoteBranches) console.log(`  ${branch}`);
-        if (result.remoteBranches.length === 0) console.log("  (none)");
-        if (result.remoteBranchesTruncated) console.log("  (truncated)");
-      }),
-    );
-
-  environment
     .command("paths <id>")
     .description("Search an environment's files and directories")
     .option("--query <query>", "Fuzzy path query")
@@ -670,252 +392,23 @@ export function registerEnvironmentCommands(
       }),
     );
 
-  addDiffTargetOptions(
+  for (const name of RETIRED_GIT_COMMANDS) {
     environment
-      .command("diff <id>")
-      .description("Show an environment's git diff"),
-  )
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (id: string, opts: EnvironmentDiffCommandOptions) => {
-        const result = await createCliBbSdk(getUrl()).environments.diff(
-          buildEnvironmentDiffArgs(id, opts),
+      .command(name, { hidden: true })
+      .description(`Moved to bb git ${GIT_COMMAND_REPLACEMENTS[name]}`)
+      .helpOption(false)
+      .allowUnknownOption()
+      .allowExcessArguments()
+      .argument("[args...]")
+      .action(async (args: string[]) => {
+        process.stderr.write(
+          `bb environment ${name} moved to bb git ${GIT_COMMAND_REPLACEMENTS[name]}.\n`,
         );
-        if (outputJson(opts, result)) return;
-        if (result.outcome === "not_applicable") {
-          console.log(`Diff unavailable: ${result.message}`);
-          return;
-        }
-        if (result.outcome === "unavailable") {
-          console.log(`Diff unavailable: ${result.failure.message}`);
-          return;
-        }
-        if (result.diff.files.trim().length > 0) {
-          console.log(result.diff.files.trimEnd());
-        }
-        if (result.diff.shortstat.trim().length > 0) {
-          console.log(result.diff.shortstat.trim());
-        }
-        if (result.diff.diff.length > 0) {
-          console.log(result.diff.diff);
-        }
-        if (result.diff.truncated) console.log("(diff truncated)");
-      }),
-    );
-
-  addDiffTargetOptions(
-    environment
-      .command("diff-files <id>")
-      .description("List changed files in an environment"),
-  )
-    .option("--ignore-whitespace", "Hide whitespace-only changes (git -w)")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (id: string, opts: EnvironmentDiffFilesCommandOptions) => {
-        const result = await createCliBbSdk(getUrl()).environments.diffFiles({
-          ...buildEnvironmentDiffArgs(id, opts),
-          ignoreWhitespace: opts.ignoreWhitespace === true,
-        });
-        if (outputJson(opts, result)) return;
-        if (result.outcome === "not_applicable") {
-          console.log(`Diff files unavailable: ${result.message}`);
-          return;
-        }
-        if (result.outcome === "unavailable") {
-          console.log(`Diff files unavailable: ${result.failure.message}`);
-          return;
-        }
-        for (const file of result.files) {
-          const path = file.previousPath
-            ? `${file.previousPath} -> ${file.path}`
-            : file.path;
-          const stats = file.binary
-            ? "binary"
-            : `+${file.additions} -${file.deletions}`;
-          console.log(
-            `${file.changeKind}\t${stats}\t${file.origin}\t${file.loadMode}\t${path}`,
-          );
-        }
-        if (result.shortstat.trim().length > 0) {
-          console.log(result.shortstat.trim());
-        }
-        if (result.truncated) {
-          console.log("(additional changed files omitted)");
-        }
-      }),
-    );
-
-  environment
-    .command("diff-file <id>")
-    .description("Read one side of a changed environment file")
-    .requiredOption(
-      "--target <target>",
-      "Diff target: uncommitted, branch_committed, all, or commit",
-    )
-    .requiredOption("--path <path>", "Repository-relative file path")
-    .requiredOption("--side <side>", "File side: old or new")
-    .option("--merge-base-ref <sha>", "Resolved merge-base SHA")
-    .option("--sha <sha>", "Commit target SHA")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (id: string, opts: EnvironmentDiffFileCommandOptions) => {
-        const result = await createCliBbSdk(getUrl()).environments.diffFile(
-          buildEnvironmentDiffFileArgs(id, opts),
+        process.exit(
+          await runPluginCliCommand(getUrl(), GIT_PLUGIN_ID, [name, ...args]),
         );
-        if (outputJson(opts, result)) return;
-        if (result.contentEncoding === "base64") {
-          console.log(`Binary file: ${result.path}`);
-          console.log(`Encoding: ${result.contentEncoding}`);
-          console.log(`Size: ${result.sizeBytes} bytes`);
-          if (result.mimeType) console.log(`MIME type: ${result.mimeType}`);
-          console.log(result.content);
-          return;
-        }
-        console.log(result.content);
-      }),
-    );
-
-  environment
-    .command("diff-patch <id>")
-    .description("Fetch patches for selected changed files")
-    .requiredOption(
-      "--target <target>",
-      "Diff target: uncommitted, branch_committed, all, or commit",
-    )
-    .option(
-      "--path <path>",
-      "Changed file path (repeatable)",
-      collectOption,
-      [],
-    )
-    .option("--merge-base-branch <branch>", "Branch-based target base")
-    .option("--sha <sha>", "Commit target SHA")
-    .option("--ignore-whitespace", "Hide whitespace-only changes (git -w)")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (id: string, opts: EnvironmentDiffPatchCommandOptions) => {
-        const result = await createCliBbSdk(getUrl()).environments.diffPatch(
-          buildEnvironmentDiffPatchArgs(id, opts),
-        );
-        if (outputJson(opts, result)) return;
-        if (result.outcome === "not_applicable") {
-          console.log(`Diff patches unavailable: ${result.message}`);
-          return;
-        }
-        if (result.outcome === "unavailable") {
-          console.log(`Diff patches unavailable: ${result.failure.message}`);
-          return;
-        }
-        for (const patch of result.patches) {
-          console.log(`File: ${patch.path}`);
-          console.log(patch.patch);
-          if (patch.truncated) console.log("(patch truncated)");
-        }
-      }),
-    );
-
-  const diffViewed = environment
-    .command("diff-viewed")
-    .description(
-      "List or change the files marked Viewed in an environment diff",
-    );
-
-  addDiffTargetOptions(
-    diffViewed.command("list <id>").description("List files marked Viewed"),
-  )
-    .option(
-      "--path <path>",
-      "Limit to a changed path; repeat up to 500 times",
-      collectOption,
-      [],
-    )
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(
-        async (
-          id: string,
-          opts: EnvironmentDiffCommandOptions & { path: string[] },
-        ) => {
-          const result = await createCliBbSdk(
-            getUrl(),
-          ).environments.experimental_diffViewed({
-            ...buildEnvironmentDiffArgs(id, opts),
-            ...(opts.path.length ? { paths: opts.path } : {}),
-          });
-          if (outputJson(opts, result)) return;
-          printDiffViewedFiles(result);
-        },
-      ),
-    );
-
-  addDiffTargetOptions(
-    diffViewed
-      .command("mark <id>")
-      .description("Mark a changed file Viewed at its current revision"),
-  )
-    .requiredOption("--path <path>", "Changed file path")
-    .option(
-      "--revision <revision>",
-      "Revision to mark (default: the file's current revision from diff-files)",
-    )
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (id: string, opts: EnvironmentDiffViewedCommandOptions) => {
-        const diffArgs = buildEnvironmentDiffArgs(id, opts);
-        const path = opts.path ?? "";
-        const revision =
-          opts.revision ??
-          (await resolveCurrentDiffRevision(getUrl(), diffArgs, path));
-        const result = await createCliBbSdk(
-          getUrl(),
-        ).environments.experimental_markDiffViewed({
-          environmentId: id,
-          target: toWorkspaceDiffTarget(diffArgs),
-          path,
-          revision,
-        });
-        if (outputJson(opts, result)) return;
-        console.log("Viewed state updated.");
-      }),
-    );
-
-  addDiffTargetOptions(
-    diffViewed.command("unmark <id>").description("Clear Viewed for one file"),
-  )
-    .requiredOption("--path <path>", "Changed file path")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (id: string, opts: EnvironmentDiffViewedCommandOptions) => {
-        const result = await createCliBbSdk(
-          getUrl(),
-        ).environments.experimental_clearDiffViewed({
-          environmentId: id,
-          target: toWorkspaceDiffTarget(buildEnvironmentDiffArgs(id, opts)),
-          path: opts.path,
-        });
-        if (outputJson(opts, result)) return;
-        console.log("Viewed state updated.");
-      }),
-    );
-
-  addDiffTargetOptions(
-    diffViewed
-      .command("clear <id>")
-      .description("Clear Viewed for every file in the diff target"),
-  )
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (id: string, opts: EnvironmentDiffViewedCommandOptions) => {
-        const result = await createCliBbSdk(
-          getUrl(),
-        ).environments.experimental_clearDiffViewed({
-          environmentId: id,
-          target: toWorkspaceDiffTarget(buildEnvironmentDiffArgs(id, opts)),
-        });
-        if (outputJson(opts, result)) return;
-        console.log("Viewed state updated.");
-      }),
-    );
+      });
+  }
 
   environment
     .command("update <id>")

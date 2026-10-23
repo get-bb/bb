@@ -71,6 +71,9 @@ the same change.
 - Read references/frontend-pull-requests.md to show a thread's GitHub pull
   request on a row, or to migrate off
   `experimental_useSidebarThreadPullRequest`.
+- Read references/git-reads.md to read an environment's git status, changed
+  files or diffs, or to migrate off the retired `environments.status` and
+  `diff*` SDK methods.
 - Read references/frontend-api-index.md to check every public frontend
   runtime value and type export.
 - Read references/frontend-core-slots.md for trusted content scripts, homepage,

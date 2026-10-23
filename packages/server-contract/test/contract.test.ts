@@ -1,17 +1,13 @@
-import {
-  collectOptionalFieldPaths,
-  makeWorkspaceStatus,
-} from "@bb/test-helpers";
-import type { WorkspaceResolutionFailure } from "@bb/host-daemon-contract";
+import { collectOptionalFieldPaths } from "@bb/test-helpers";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import {
-  gitBranchSelectionSchema,
   TERMINAL_COLS_MAX,
   TERMINAL_DATA_MAX_BASE64_LENGTH,
   TERMINAL_DATA_MAX_BYTES,
   TERMINAL_ROWS_MAX,
+  gitBranchSelectionSchema,
 } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import * as contract from "../src/index.js";
@@ -43,6 +39,9 @@ import {
   updateEnvironmentRequestSchema,
   unmanagedBranchSpecSchema,
 } from "../src/index.js";
+import type {
+  WorkspaceResolutionFailure,
+} from "@bb/host-daemon-contract/workspace";
 
 interface OptionalServerFieldGroup {
   fields: readonly string[];
@@ -688,68 +687,6 @@ const WORKSPACE_RESOLUTION_FAILURE: WorkspaceResolutionFailure = {
 };
 
 describe("environment workspace response contract", () => {
-  it("uses explicit status outcomes instead of nullable parallel fields", () => {
-    expect(
-      contract.environmentStatusResponseSchema.safeParse({
-        outcome: "available",
-        workspace: makeWorkspaceStatus(),
-      }).success,
-    ).toBe(true);
-    expect(
-      contract.environmentStatusResponseSchema.safeParse({
-        outcome: "not_applicable",
-        reason: "non_git_environment",
-        message: "Workspace status is not available for non-git environments",
-      }).success,
-    ).toBe(true);
-    expect(
-      contract.environmentStatusResponseSchema.safeParse({
-        outcome: "unavailable",
-        failure: WORKSPACE_RESOLUTION_FAILURE,
-      }).success,
-    ).toBe(true);
-    expect(
-      contract.environmentStatusResponseSchema.safeParse({
-        workspace: null,
-        workspaceUnavailable: null,
-      }).success,
-    ).toBe(false);
-  });
-
-  it("uses explicit diff outcomes instead of nullable parallel fields", () => {
-    expect(
-      contract.environmentDiffResponseSchema.safeParse({
-        outcome: "available",
-        diff: {
-          diff: "",
-          files: "",
-          mergeBaseRef: null,
-          shortstat: "",
-          truncated: false,
-        },
-      }).success,
-    ).toBe(true);
-    expect(
-      contract.environmentDiffResponseSchema.safeParse({
-        outcome: "not_applicable",
-        reason: "non_git_environment",
-        message: "Workspace diff is not available for non-git environments",
-      }).success,
-    ).toBe(true);
-    expect(
-      contract.environmentDiffResponseSchema.safeParse({
-        outcome: "unavailable",
-        failure: WORKSPACE_RESOLUTION_FAILURE,
-      }).success,
-    ).toBe(true);
-    expect(
-      contract.environmentDiffResponseSchema.safeParse({
-        diff: null,
-        workspaceUnavailable: WORKSPACE_RESOLUTION_FAILURE,
-      }).success,
-    ).toBe(false);
-  });
-
   it("types workspace unavailable environment action errors", () => {
     expect(
       contract.environmentActionApiErrorSchema.safeParse({
@@ -858,16 +795,6 @@ describe("git branch name contract", () => {
       }).success,
     ).toBe(false);
     expect(
-      contract.environmentDiffBranchesQuerySchema.safeParse({
-        selectedBranch: "origin/main",
-      }).success,
-    ).toBe(true);
-    expect(
-      contract.environmentDiffBranchesQuerySchema.safeParse({
-        selectedBranch: "origin/main lock",
-      }).success,
-    ).toBe(false);
-    expect(
       contract.projectBranchesQuerySchema.safeParse({
         hostId: "host_123",
         selectedBranch: "upstream/main",
@@ -901,16 +828,6 @@ describe("git branch name contract", () => {
       }).success,
     ).toBe(false);
     expect(updateEnvironmentRequestSchema.safeParse({}).success).toBe(false);
-    expect(
-      contract.environmentStatusQuerySchema.safeParse({
-        mergeBaseBranch: "origin/main",
-      }).success,
-    ).toBe(true);
-    expect(
-      contract.environmentStatusQuerySchema.safeParse({
-        mergeBaseBranch: "origin/main lock",
-      }).success,
-    ).toBe(false);
     expect(
       contract.environmentDiffQuerySchema.safeParse({
         target: "all",
@@ -2161,7 +2078,6 @@ describe("server-contract clients", () => {
       queuedMessageListQuerySchema: contract.queuedMessageListQuerySchema,
       forkThreadRequestSchema: contract.forkThreadRequestSchema,
       environmentActionApiErrorSchema: contract.environmentActionApiErrorSchema,
-      environmentStatusResponseSchema: contract.environmentStatusResponseSchema,
       threadStorageFilesQuerySchema: contract.threadStorageFilesQuerySchema,
       projectFilesQuerySchema: contract.projectFilesQuerySchema,
       reorderPinnedThreadRequestSchema:

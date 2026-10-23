@@ -1,4 +1,6 @@
-import type { Environment, WorkspaceFileStatus } from "@bb/domain";
+import type {
+  Environment,
+} from "@bb/domain";
 import type { OpenInTargetContext } from "@bb/host-daemon-contract";
 import type { WorkspaceChangedFilesSection } from "@/components/workspace/workspace-change-summary";
 import type {
@@ -6,6 +8,7 @@ import type {
   WorkspaceFilePreviewStatusLabel,
 } from "@bb/client-core";
 import { buildAbsoluteFilePath } from "@/lib/absolute-file-path";
+import type { WorkspaceFileStatus } from "bb-plugin-bb--git/contract";
 
 interface ResolveThreadWorkspaceOpenPathArgs {
   canOpenWorkspace: boolean;

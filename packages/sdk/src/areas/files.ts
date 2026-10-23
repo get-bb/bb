@@ -14,6 +14,12 @@ export interface FileReadArgs {
   hostId?: string;
   path: string;
   rootPath?: string;
+  /**
+   * Read the file as it is at this git revision of the repository at
+   * `rootPath` instead of from disk. Requires `rootPath`; `path` stays the
+   * file's absolute path in the working tree.
+   */
+  ref?: string;
   signal?: AbortSignal;
 }
 
@@ -102,6 +108,7 @@ export function createFilesArea(args: CreateSdkAreaArgs): FilesArea {
               hostId: input.hostId,
               path: input.path,
               rootPath: input.rootPath,
+              ref: input.ref,
             },
           },
           ...signalRequestArgs(input.signal),

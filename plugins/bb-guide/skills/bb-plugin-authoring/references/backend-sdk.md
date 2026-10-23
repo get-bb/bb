@@ -39,9 +39,8 @@ signatures (see "Looking up the exact API" in distribution.md).
   `deleteMachineEnvironmentVariable`; sub-areas `attachments` (`upload` `read`
   `copy`), `sources` (`add` `update` `delete`)
 - `experimental_promptHistory`: `list`
-- `environments`: `list` `listProviders` `get` `update` `delete` `status`
-  `paths` `commit` `archiveThreads` `diff` `diffFile` `diffFiles`
-  `diffBranches` `diffPatch` `experimental_cleanup`
+- `environments`: `list` `listProviders` `get` `update` `delete` `paths`
+  `commit` `archiveThreads` `experimental_cleanup`
   `experimental_diffViewed` `experimental_markDiffViewed`
   `experimental_clearDiffViewed`
 - `hosts`: `list` `get` `update` `delete` `directory` `pathsExist`
@@ -299,6 +298,12 @@ it the right save path even locally):
 ```ts
 const file = await bb.sdk.files.read({ path: "/home/me/notes/todo.md" });
 // → { content, contentEncoding, sha256, sizeBytes, modifiedAtMs?, ... }
+
+const atHead = await bb.sdk.files.read({
+  path: "/home/me/repo/src/app.ts",
+  rootPath: "/home/me/repo",
+  ref: "HEAD", // read the file at a git revision; requires rootPath
+});
 
 const saved = await bb.sdk.files.write({
   path: "/home/me/notes/todo.md",

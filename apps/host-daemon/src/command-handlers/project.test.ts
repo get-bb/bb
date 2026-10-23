@@ -2,10 +2,10 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { runGit } from "@bb/host-workspace";
 import { afterEach, describe, expect, it } from "vitest";
 import { isExpectedCommandDispatchError } from "../command-dispatch-support.js";
 import { cloneProject, resolveProjectCloneDefaultPath } from "./project.js";
+import { runGit } from "bb-environment-provider-host/workspace-git";
 
 const tempDirs: string[] = [];
 

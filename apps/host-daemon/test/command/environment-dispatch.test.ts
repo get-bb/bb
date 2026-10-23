@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import { makeTempDir } from "@bb/test-helpers";
 import { describe, expect, it } from "vitest";
-import { WorkspaceError, type HostWorkspace } from "@bb/host-workspace";
+import type { HostWorkspace } from "@bb/host-workspace";
 import { dispatchCommand } from "../../src/command-dispatch.js";
 import type { EventSinkInput } from "../../src/event-sink.js";
 import {
@@ -11,6 +11,7 @@ import {
   makeDispatchOptions,
 } from "./dispatch-helpers.js";
 import { RuntimeManager } from "../../src/runtime-manager.js";
+import { WorkspaceError } from "bb-environment-provider-host/workspace-git";
 
 function streamedEntries(emitted: EventSinkInput[]) {
   return emitted.flatMap((input) =>

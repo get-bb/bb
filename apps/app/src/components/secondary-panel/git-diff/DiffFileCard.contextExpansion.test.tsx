@@ -8,7 +8,6 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DiffFileEntry } from "@bb/server-contract";
 import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import type {
   DiffFileContentsResult,
@@ -16,6 +15,7 @@ import type {
 } from "@/components/git-diff/GitDiffCardBody";
 import { DiffFileCard } from "./DiffFileCard";
 import { makeDiffFileEntry } from "@/test/fixtures/diff-files";
+import type { DiffFileEntry } from "bb-plugin-bb--git/contract";
 
 const diffViewMock = vi.hoisted(() => ({
   renderedFileDiffs: [] as unknown[],

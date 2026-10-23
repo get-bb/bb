@@ -1,8 +1,13 @@
 import type {
   ExperimentalRpcKeyedMethod,
   ExperimentalRpcKeyedValue,
+  experimental_PluginRpcCallError,
+  PluginRpcCallArgs,
+  PluginRpcContract,
+  PluginRpcMethodContract,
+  StandardSchemaV1InferInput,
+  PluginRpcResult,
 } from "./rpc-contract.js";
-import type { experimental_PluginRpcCallError } from "./rpc-contract.js";
 import type {
   ComponentPropsWithRef,
   ComponentPropsWithoutRef,
@@ -38,13 +43,6 @@ import type {
 } from "@bb/sdk";
 import type { JsonValue } from "./json-value.js";
 import type { PluginMentionTrigger } from "./backend-contract.js";
-import type {
-  PluginRpcCallArgs,
-  PluginRpcContract,
-  PluginRpcMethodContract,
-  StandardSchemaV1InferInput,
-  PluginRpcResult,
-} from "./rpc-contract.js";
 
 /**
  * The `@get-bb/plugin-sdk/app` contract (plugin design §5.2) — pure types with no
