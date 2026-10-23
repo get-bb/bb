@@ -3627,3 +3627,12 @@ Before stabilization, audit Windows/junction behavior, filesystem mutation durin
 scans, provider-native precedence, traversal-limit reporting, and duplicate aliases
 through read/write/delete. Exercise packaged provider forks and compare live
 provider catalogs. Then rename project-wide and remove this entry.
+
+## `PluginBbSdk.environments.experimental_describeWorkspace`
+
+Discovers a ready environment's current execution directory, repository root,
+Git kind, branch and default branch on its host. Results are not persisted.
+Core file previews, diff context and revision file routes use the same discovery
+path; the CLI exposes it as `bb environment workspace <id>`.
+Stabilization requires auditing host-offline behavior and subfolder, non-Git and
+linked-worktree discovery across these callers.

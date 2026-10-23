@@ -1,7 +1,8 @@
+import { WorkspaceError } from "bb-environment-provider-host/git";
 import fs from "node:fs/promises";
 import { makeTempDir } from "@bb/test-helpers";
 import { describe, expect, it } from "vitest";
-import { WorkspaceError, type HostWorkspace } from "@bb/host-workspace";
+import { type HostWorkspace } from "@bb/host-workspace";
 import { dispatchCommand } from "../../src/command-dispatch.js";
 import type { EventSinkInput } from "../../src/event-sink.js";
 import {

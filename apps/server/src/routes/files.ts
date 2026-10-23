@@ -1,3 +1,4 @@
+import { discoverEnvironmentWorkspace } from "../services/environments/workspace-discovery.js";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { Hono } from "hono";
@@ -454,12 +455,13 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
       deps.db,
       context.req.param("id"),
     );
+    const workspace = await discoverEnvironmentWorkspace(deps, environment);
     return serveRootedFile(
       deps,
       context.req.raw,
       {
         hostId: environment.hostId,
-        rootPath: environment.path,
+        rootPath: workspace.repoRoot ?? workspace.path,
         ref: parseRevisionRef(context.req.param("ref")),
       },
       parseRelativeFileSegments(context.req.param("filePath")),

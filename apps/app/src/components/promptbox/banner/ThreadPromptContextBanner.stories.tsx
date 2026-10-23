@@ -75,6 +75,7 @@ const promptboxBannerFiles: WorkspaceFileStatus[] = [
 ];
 
 const dirtyUncommittedStatus: WorkspaceStatus = {
+  repository: { root: "/repo", workspacePrefix: "" },
   workingTree: {
     state: "dirty_uncommitted",
     hasUncommittedChanges: true,
@@ -214,6 +215,7 @@ const dirtyUncommittedManyFiles: WorkspaceFileStatus[] = [
 ];
 
 const dirtyUncommittedManyStatus: WorkspaceStatus = {
+  repository: { root: "/repo", workspacePrefix: "" },
   workingTree: {
     state: "dirty_uncommitted",
     hasUncommittedChanges: true,
@@ -236,6 +238,7 @@ const dirtyUncommittedManyStatus: WorkspaceStatus = {
 };
 
 const untrackedOnlyStatus: WorkspaceStatus = {
+  repository: { root: "/repo", workspacePrefix: "" },
   workingTree: {
     state: "untracked",
     hasUncommittedChanges: false,
@@ -271,6 +274,7 @@ const untrackedOnlyStatus: WorkspaceStatus = {
 };
 
 const committedUnmergedStatus: WorkspaceStatus = {
+  repository: { root: "/repo", workspacePrefix: "" },
   workingTree: {
     state: "clean",
     hasUncommittedChanges: false,

@@ -1,3 +1,4 @@
+import { WorkspaceError } from "bb-environment-provider-host/git";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import {
@@ -29,7 +30,6 @@ import type {
 } from "@bb/host-watcher";
 import {
   provisionWorkspace,
-  WorkspaceError,
   type HostWorkspace,
   type ProvisionWorkspaceArgs,
 } from "@bb/host-workspace";

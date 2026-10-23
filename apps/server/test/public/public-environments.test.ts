@@ -17,6 +17,47 @@ import {
 import { withTestHarness } from "../helpers/test-app.js";
 
 describe("public environments", () => {
+  it("discovers current workspace metadata without persisting it", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-workspace-discovery",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/repo/app",
+        branchName: "stored-branch",
+      });
+      for (const branchName of ["first", "second"]) {
+        const responsePromise = harness.app.request(
+          `/api/v1/environments/${environment.id}/workspace`,
+        );
+        const command = await waitForQueuedCommand(
+          harness,
+          ({ command }) => command.type === "host.describe_workspace",
+        );
+        const descriptor = {
+          path: "/repo/app",
+          repoRoot: "/repo",
+          isGitRepo: true,
+          isWorktree: false,
+          branchName,
+          defaultBranch: "main",
+        };
+        await reportQueuedCommandSuccess(harness, command, descriptor);
+        const response = await responsePromise;
+        expect(response.status).toBe(200);
+        expect(await readJson(response)).toEqual(descriptor);
+        expect(getEnvironment(harness.db, environment.id)?.branchName).toBe(
+          "stored-branch",
+        );
+      }
+    });
+  });
+
   it("lists cached branch options while remotes refresh in the background", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
@@ -361,44 +402,62 @@ describe("public environments", () => {
     });
   });
 
-  it("remaps a daemon file-read failure on diff/file to its HTTP status", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-environment-diff-file-enoent",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-        path: "/tmp/diff-file-env",
-        environmentProviderId: "git-worktree",
-      });
+  it.each([false, true])(
+    "remaps a daemon file-read failure on diff/file to its HTTP status",
+    async (subfolder) => {
+      await withTestHarness(async (harness) => {
+        const { host } = seedHostSession(harness.deps, {
+          id: "host-environment-diff-file-enoent",
+        });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+        });
+        const environment = seedEnvironment(harness.deps, {
+          hostId: host.id,
+          projectId: project.id,
+          path: subfolder
+            ? "/tmp/diff-file-env/packages/app"
+            : "/tmp/diff-file-env",
+          environmentProviderId: "git-worktree",
+        });
 
-      const responsePromise = harness.app.request(
-        `/api/v1/environments/${environment.id}/diff/file?target=uncommitted&side=new&path=missing.md`,
-      );
-      const readCommand = await waitForQueuedCommand(
-        harness,
-        ({ command }) => command.type === "host.read_file",
-      );
-      expect(readCommand.command).toMatchObject({
-        path: "/tmp/diff-file-env/missing.md",
-        rootPath: "/tmp/diff-file-env",
-      });
-      await reportQueuedCommandError(harness, readCommand, {
-        errorCode: "ENOENT",
-        errorMessage: "Path does not exist: /tmp/diff-file-env/missing.md",
-      });
+        const responsePromise = harness.app.request(
+          `/api/v1/environments/${environment.id}/diff/file?target=uncommitted&side=new&path=missing.md`,
+        );
+        const discovery = await waitForQueuedCommand(
+          harness,
+          ({ command }) => command.type === "host.describe_workspace",
+        );
+        expect(discovery.command).toMatchObject({ path: environment.path });
+        await reportQueuedCommandSuccess(harness, discovery, {
+          path: environment.path!,
+          repoRoot: "/tmp/diff-file-env",
+          isGitRepo: true,
+          isWorktree: false,
+          branchName: "main",
+          defaultBranch: "main",
+        });
+        const readCommand = await waitForQueuedCommand(
+          harness,
+          ({ command }) => command.type === "host.read_file",
+        );
+        expect(readCommand.command).toMatchObject({
+          path: "/tmp/diff-file-env/missing.md",
+          rootPath: "/tmp/diff-file-env",
+        });
+        await reportQueuedCommandError(harness, readCommand, {
+          errorCode: "ENOENT",
+          errorMessage: "Path does not exist: /tmp/diff-file-env/missing.md",
+        });
 
-      const response = await responsePromise;
-      expect(response.status).toBe(404);
-      await expect(readJson(response)).resolves.toMatchObject({
-        code: "ENOENT",
+        const response = await responsePromise;
+        expect(response.status).toBe(404);
+        await expect(readJson(response)).resolves.toMatchObject({
+          code: "ENOENT",
+        });
       });
-    });
-  });
+    },
+  );
 
   it("remaps an oversized daemon file read on diff/file to 413", async () => {
     await withTestHarness(async (harness) => {
@@ -418,6 +477,19 @@ describe("public environments", () => {
       const responsePromise = harness.app.request(
         `/api/v1/environments/${environment.id}/diff/file?target=uncommitted&side=new&path=huge.bin`,
       );
+      const discovery = await waitForQueuedCommand(
+        harness,
+        ({ command }) => command.type === "host.describe_workspace",
+      );
+      expect(discovery.command).toMatchObject({ path: environment.path });
+      await reportQueuedCommandSuccess(harness, discovery, {
+        path: environment.path!,
+        repoRoot: "/tmp/diff-file-large-env",
+        isGitRepo: true,
+        isWorktree: false,
+        branchName: "main",
+        defaultBranch: "main",
+      });
       const readCommand = await waitForQueuedCommand(
         harness,
         ({ command }) => command.type === "host.read_file",
@@ -465,6 +537,7 @@ describe("public environments", () => {
       await reportQueuedCommandSuccess(harness, statusCommand, {
         outcome: "available",
         workspaceStatus: {
+          repository: { root: "/repo", workspacePrefix: "" },
           workingTree: {
             insertions: 0,
             deletions: 0,
@@ -534,6 +607,7 @@ describe("public environments", () => {
       await reportQueuedCommandSuccess(harness, statusCommand, {
         outcome: "available",
         workspaceStatus: {
+          repository: { root: "/repo", workspacePrefix: "" },
           workingTree: {
             insertions: 0,
             deletions: 0,

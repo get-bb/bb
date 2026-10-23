@@ -1,3 +1,4 @@
+import { discoverEnvironmentWorkspace } from "../services/environments/workspace-discovery.js";
 import { joinHostPathSegments } from "../services/lib/host-path.js";
 import {
   cleanupEnvironment,
@@ -284,6 +285,15 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
     return context.json({ ok: true } as const);
   });
 
+  get(routes.workspace, async (context) =>
+    context.json(
+      await discoverEnvironmentWorkspace(
+        deps,
+        requireReadyEnvironment(deps.db, context.req.param("id")),
+      ),
+    ),
+  );
+
   get(routes.get, (context) =>
     context.json(
       toEnvironmentResponse(
@@ -536,8 +546,9 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
     ) {
       throw new ApiError(400, "invalid_request", "Invalid path");
     }
+    const workspace = await discoverEnvironmentWorkspace(deps, environment);
     const absolutePath = joinHostPathSegments(
-      environment.path,
+      workspace.repoRoot ?? workspace.path,
       repoRelativePath,
     );
     const ref = resolveDiffFileRef(query);
@@ -547,7 +558,7 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
       command: {
         type: "host.read_file",
         path: absolutePath,
-        rootPath: environment.path,
+        rootPath: workspace.repoRoot ?? workspace.path,
         ...(ref !== undefined ? { ref } : {}),
       },
     }).catch(remapDaemonFileRouteError);

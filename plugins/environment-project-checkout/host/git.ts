@@ -1,11 +1,7 @@
-import {
-  detectGitRepo,
-  hasRef,
-  runGit,
-} from "bb-environment-provider-host/git";
+import { hasRef, runGit } from "bb-environment-provider-host/git";
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { GitCheckoutRef, WorkspaceGitOperation } from "../contract.js";
+import type { WorkspaceGitOperation } from "../contract.js";
 
 export async function pathExists(targetPath: string): Promise<boolean> {
   try {
@@ -14,44 +10,6 @@ export async function pathExists(targetPath: string): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-async function readHeadSha(cwd: string): Promise<string | null> {
-  const result = await runGit(["rev-parse", "--verify", "HEAD"], {
-    cwd,
-    allowFailure: true,
-  });
-  if (result.exitCode !== 0) {
-    return null;
-  }
-  const sha = result.stdout.trim();
-  return sha || null;
-}
-
-export async function getCheckoutRef(cwd: string): Promise<GitCheckoutRef> {
-  if (!(await detectGitRepo(cwd))) {
-    return { kind: "unknown", reason: "Path is not a git repository" };
-  }
-  const [symbolicRef, headSha] = await Promise.all([
-    runGit(["symbolic-ref", "--quiet", "--short", "HEAD"], {
-      cwd,
-      allowFailure: true,
-    }),
-    readHeadSha(cwd),
-  ]);
-  const branchName = symbolicRef.stdout.trim();
-  if (symbolicRef.exitCode === 0 && branchName) {
-    return headSha === null
-      ? { kind: "unborn", branchName }
-      : { kind: "branch", branchName, headSha };
-  }
-  if (headSha !== null) {
-    return { kind: "detached", headSha };
-  }
-  return {
-    kind: "unknown",
-    reason: "HEAD is not symbolic and no commit is checked out",
-  };
 }
 
 export async function locateBranch(

@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { resolveDefaultWorktreeBaseBranch } from "../../src/services/projects/worktree-base-branch.js";
+import { selectWorktreeBaseBranch } from "bb-environment-provider-host/base-branch";
 
-describe("resolveDefaultWorktreeBaseBranch", () => {
+describe("selectWorktreeBaseBranch", () => {
   it("keeps the local branch when origin is missing", () => {
     expect(
-      resolveDefaultWorktreeBaseBranch({
+      selectWorktreeBaseBranch({
         defaultBranch: "main",
         defaultBranchRelation: null,
         originDefaultBranch: null,
@@ -14,7 +14,7 @@ describe("resolveDefaultWorktreeBaseBranch", () => {
 
   it("uses origin when local default is equal, behind, or missing", () => {
     expect(
-      resolveDefaultWorktreeBaseBranch({
+      selectWorktreeBaseBranch({
         defaultBranch: "main",
         defaultBranchRelation: "equal",
         originDefaultBranch: "origin/main",
@@ -22,7 +22,7 @@ describe("resolveDefaultWorktreeBaseBranch", () => {
     ).toBe("origin/main");
 
     expect(
-      resolveDefaultWorktreeBaseBranch({
+      selectWorktreeBaseBranch({
         defaultBranch: "main",
         defaultBranchRelation: "local-behind",
         originDefaultBranch: "origin/main",
@@ -30,7 +30,7 @@ describe("resolveDefaultWorktreeBaseBranch", () => {
     ).toBe("origin/main");
 
     expect(
-      resolveDefaultWorktreeBaseBranch({
+      selectWorktreeBaseBranch({
         defaultBranch: null,
         defaultBranchRelation: null,
         originDefaultBranch: "origin/main",
@@ -41,7 +41,7 @@ describe("resolveDefaultWorktreeBaseBranch", () => {
   it("keeps local when local default is ahead, diverged, or unknown", () => {
     for (const relation of ["local-ahead", "diverged", "unknown"] as const) {
       expect(
-        resolveDefaultWorktreeBaseBranch({
+        selectWorktreeBaseBranch({
           defaultBranch: "main",
           defaultBranchRelation: relation,
           originDefaultBranch: "origin/main",

@@ -6,6 +6,7 @@ import {
   buildFilePreviewFromSample,
   isCsvFilePreview,
   isMarkdownFilePreview,
+  locateRepositoryFile,
   normalizeFilePreviewMimeType,
 } from "../src/file-preview.js";
 
@@ -270,4 +271,34 @@ describe("file-preview", () => {
     expect(isCsvFilePreview(csvByMime)).toBe(true);
     expect(isCsvFilePreview(plainText)).toBe(false);
   });
+
+  it.each([
+    {
+      prefix: "",
+      path: "src/a.ts",
+      expected: { kind: "workspace", path: "src/a.ts" },
+    },
+    {
+      prefix: "packages/app/",
+      path: "packages/app/src/a.ts",
+      expected: { kind: "workspace", path: "src/a.ts" },
+    },
+    {
+      prefix: "packages/app/",
+      path: "packages/application/a.ts",
+      expected: { kind: "repository", path: "packages/application/a.ts" },
+    },
+    {
+      prefix: "packages/app/",
+      path: "README.md",
+      expected: { kind: "repository", path: "README.md" },
+    },
+  ])(
+    "maps repository path $path under prefix '$prefix' to the environment folder when inside it",
+    ({ prefix, path, expected }) => {
+      expect(
+        locateRepositoryFile({ root: "/repo", workspacePrefix: prefix }, path),
+      ).toEqual(expected);
+    },
+  );
 });

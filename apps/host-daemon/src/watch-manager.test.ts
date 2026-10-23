@@ -33,6 +33,7 @@ function createFakeWorkspace(path: string, isGitRepo = true) {
   let sharedGitRefsFingerprintError: Error | null = null;
   const workspace = {
     path,
+    repository: isGitRepo ? { root: path, workspacePrefix: "" } : null,
     isGitRepo,
     isWorktree: false,
     getDefaultBranch: vi.fn(async () => "main"),

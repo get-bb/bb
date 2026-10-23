@@ -13,6 +13,40 @@ import {
 } from "./dispatch-helpers.js";
 
 describe("workspace command dispatch", () => {
+  it("discovers a subfolder repository and observes a later branch change", async () => {
+    const root = await makeTempDir("bb-workspace-discovery-");
+    const directory = path.join(root, "packages", "app");
+    await fs.mkdir(directory, { recursive: true });
+    await runGitCommand(["init", "--initial-branch=main"], { cwd: root });
+    const harness = createHarness();
+    const command = {
+      type: "host.describe_workspace" as const,
+      path: directory,
+    };
+    const first = await dispatchOnlineRpcCommand(
+      command,
+      harness.dispatchOptions(),
+      new AbortController().signal,
+    );
+    expect(first).toEqual({
+      path: directory,
+      repoRoot: await fs.realpath(root),
+      isGitRepo: true,
+      isWorktree: false,
+      branchName: "main",
+      defaultBranch: "main",
+    });
+    await runGitCommand(["symbolic-ref", "HEAD", "refs/heads/next"], {
+      cwd: root,
+    });
+    const second = await dispatchOnlineRpcCommand(
+      command,
+      harness.dispatchOptions(),
+      new AbortController().signal,
+    );
+    expect(second.branchName).toBe("next");
+  });
+
   it("covers workspace git commands", async () => {
     const harness = createHarness();
     await harness.manager.ensureEnvironment({

@@ -517,6 +517,23 @@ export function registerEnvironmentCommands(
     );
 
   environment
+    .command("workspace <id>")
+    .description("Discover the current workspace paths and Git identity")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (id: string, opts: EnvironmentShowCommandOptions) => {
+        const workspace = await createCliBbSdk(
+          getUrl(),
+        ).environments.experimental_describeWorkspace({ environmentId: id });
+        if (outputJson(opts, workspace)) return;
+        console.log(`Directory: ${workspace.path}`);
+        console.log(`Repository: ${workspace.repoRoot ?? "none"}`);
+        console.log(`Branch: ${workspace.branchName ?? "none"}`);
+        console.log(`Default branch: ${workspace.defaultBranch ?? "none"}`);
+      }),
+    );
+
+  environment
     .command("show <id>")
     .alias("get")
     .description("Show environment details")

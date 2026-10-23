@@ -1,19 +1,21 @@
+import {
+  detectGitRepo,
+  detectGitRepoKind,
+  detectLinkedWorktree,
+  getCheckoutRef,
+  readDefaultBranchRefs,
+} from "bb-environment-provider-host/git";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  detectGitRepo,
-  detectGitRepoKind,
-  detectLinkedWorktree,
   fetchRemoteBranches,
-  getCheckoutRef,
   getWorkspaceGitOperation,
   parseNameStatusEntries,
   parseNumstatEntriesZ,
   parsePorcelainEntries,
   parsePorcelainV2StatusZ,
-  readDefaultBranchRefs,
   readGitBlob,
   runGit,
   runGitWithNullRecordLimit,

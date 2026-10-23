@@ -373,6 +373,7 @@ const stackedCardsWithPillsMentions = buildStoryMentions(
 );
 
 const dirtyWorkspaceStatus: WorkspaceStatus = {
+  repository: { root: "/repo", workspacePrefix: "" },
   workingTree: {
     state: "dirty_uncommitted",
     hasUncommittedChanges: true,

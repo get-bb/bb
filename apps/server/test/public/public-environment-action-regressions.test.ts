@@ -100,6 +100,7 @@ describe("public environment action regressions", () => {
       await reportQueuedCommandSuccess(harness, statusCommand, {
         outcome: "available",
         workspaceStatus: {
+          repository: { root: "/repo", workspacePrefix: "" },
           workingTree: {
             insertions: 0,
             deletions: 0,

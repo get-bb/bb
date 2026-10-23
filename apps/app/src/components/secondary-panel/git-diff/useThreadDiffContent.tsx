@@ -47,7 +47,7 @@ type ThreadDiffContentProps = Pick<
   | "onOpenFileInEditor"
   | "onOpenFilePreview"
   | "onSelectionAddToChat"
-  | "workspaceRootPath"
+  | "repositoryRootPath"
 > & {
   toolbarClassName: string;
   isDiffPanelLive: boolean;
@@ -68,7 +68,7 @@ export function useThreadDiffContent({
   onOpenFileInEditor,
   onOpenFilePreview,
   onSelectionAddToChat,
-  workspaceRootPath,
+  repositoryRootPath,
   isDiffPanelLive,
   isLayoutOpen,
   resolvedGitDiffTabStatus,
@@ -256,7 +256,7 @@ export function useThreadDiffContent({
             onOpenFilePreview={onOpenFilePreview}
             onSelectionAddToChat={onSelectionAddToChat}
             pendingGitDiffScrollPath={pendingGitDiffScrollPath}
-            workspaceRootPath={workspaceRootPath}
+            repositoryRootPath={repositoryRootPath}
           />
         ) : null}
       </div>

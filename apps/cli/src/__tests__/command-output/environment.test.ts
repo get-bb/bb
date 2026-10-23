@@ -18,6 +18,7 @@ describe("bb environment command output", () => {
     registerEnvironmentCommands(program, () => "http://server");
 
   const workspaceStatus: WorkspaceStatus = {
+    repository: { root: "/repo", workspacePrefix: "" },
     workingTree: {
       state: "dirty_uncommitted",
       hasUncommittedChanges: true,

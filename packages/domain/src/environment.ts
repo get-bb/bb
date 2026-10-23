@@ -83,16 +83,15 @@ export type EnvironmentWorkspaceDisplayKind = z.infer<
   typeof environmentWorkspaceDisplayKindSchema
 >;
 
-export const discoveredWorkspacePropertiesSchema = z.object({
+export const workspaceDescriptorSchema = z.object({
   path: z.string().min(1),
+  repoRoot: z.string().min(1).nullable(),
   isGitRepo: z.boolean(),
   isWorktree: z.boolean(),
   branchName: z.string().nullable(),
   defaultBranch: z.string().nullable(),
 });
-export type DiscoveredWorkspaceProperties = z.infer<
-  typeof discoveredWorkspacePropertiesSchema
->;
+export type WorkspaceDescriptor = z.infer<typeof workspaceDescriptorSchema>;
 
 export const environmentLifecycleSchema = z.object({
   phase: z.enum(["active", "retiring", "teardown", "destroyed"]),
@@ -106,17 +105,19 @@ export const environmentLifecycleSchema = z.object({
     .nullable(),
 });
 
-export const environmentSchema = z.object({
+export const discoveredWorkspacePropertiesSchema =
+  workspaceDescriptorSchema.omit({ repoRoot: true });
+export type DiscoveredWorkspaceProperties = z.infer<
+  typeof discoveredWorkspacePropertiesSchema
+>;
+
+export const environmentSchema = discoveredWorkspacePropertiesSchema.extend({
   id: z.string(),
   name: z.string().nullable(),
   projectId: z.string(),
   hostId: z.string(),
   path: z.string().nullable(),
-  isGitRepo: z.boolean(),
-  isWorktree: z.boolean(),
-  branchName: z.string().nullable(),
   baseBranch: z.string().nullable(),
-  defaultBranch: z.string().nullable(),
   mergeBaseBranch: z.string().nullable(),
   status: environmentStatusSchema,
   environmentProviderId: z.string().nullable(),

@@ -63,7 +63,7 @@ interface GitDiffTabContentProps {
   onOpenFilePreview?: (path: string) => void;
   onSelectionAddToChat?: (text: string) => void;
   pendingGitDiffScrollPath?: string | null;
-  workspaceRootPath?: string | null;
+  repositoryRootPath?: string | null;
 }
 
 interface WorkspaceFilePreviewTabContentProps {
@@ -189,7 +189,7 @@ export function GitDiffTabContent({
   onOpenFilePreview,
   onSelectionAddToChat,
   pendingGitDiffScrollPath,
-  workspaceRootPath,
+  repositoryRootPath,
 }: GitDiffTabContentProps) {
   const isQueryEnabled =
     isPanelOpen && Boolean(environmentId) && target !== undefined;
@@ -320,7 +320,7 @@ export function GitDiffTabContent({
         filesUpdatedAt={diffFilesUpdatedAt}
         presentation={gitDiffPresentation}
         ignoreWhitespace={ignoreWhitespace}
-        filePathRoot={workspaceRootPath}
+        filePathRoot={repositoryRootPath}
         isPanelOpen={isPanelOpen}
         isPlaceholderData={isDiffFilesPlaceholder}
         scrollToPath={pendingGitDiffScrollPath}

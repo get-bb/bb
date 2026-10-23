@@ -2,6 +2,7 @@ import { cp, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
+import { buildPluginHost } from "./build-plugin-host.js";
 import { buildPluginServer } from "./build-plugin-server.js";
 import { resolvePluginBuildToolchain } from "./toolchain.js";
 
@@ -84,7 +85,9 @@ describe("builtin server artifacts", () => {
       await cp(source, root, {
         recursive: true,
         filter: (path) =>
-          !["node_modules", "dist", ".bundled-runtime"].includes(basename(path)),
+          !["node_modules", "dist", ".bundled-runtime"].includes(
+            basename(path),
+          ),
       });
       await symlink(
         join(source, "node_modules"),
@@ -111,6 +114,41 @@ describe("builtin server artifacts", () => {
           (specifier) => specifier !== "@get-bb/plugin-sdk",
         ),
       ).toEqual([]);
+    },
+    90_000,
+  );
+
+  it.each([
+    { pluginDir: "environment-project-checkout" },
+    { pluginDir: "environment-git-worktree" },
+    { pluginDir: "github-pr-status" },
+  ])(
+    "builds the $pluginDir host entry with the environment-provider runtime",
+    async ({ pluginDir }) => {
+      const root = await mkdtemp(join(repositoryRoot, ".builtin-host-test-"));
+      tempDirs.push(root);
+      const source = join(repositoryRoot, "plugins", pluginDir);
+      await cp(source, root, {
+        recursive: true,
+        filter: (path) =>
+          !["node_modules", "dist", ".bundled-runtime"].includes(
+            basename(path),
+          ),
+      });
+      await symlink(
+        join(source, "node_modules"),
+        join(root, "node_modules"),
+        "dir",
+      );
+      const toolchain = await resolvePluginBuildToolchain(
+        join(repositoryRoot, "node_modules", ".unused-toolchain"),
+      );
+
+      const built = await buildPluginHost(root, "0.9.0-test", toolchain);
+
+      expect(await readFile(built.jsPath, "utf8")).not.toMatch(
+        /from\s*"@bb\//u,
+      );
     },
     90_000,
   );

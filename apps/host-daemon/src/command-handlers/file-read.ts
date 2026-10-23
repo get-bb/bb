@@ -1,3 +1,4 @@
+import { WorkspaceError } from "bb-environment-provider-host/git";
 import { constants, type BigIntStats } from "node:fs";
 import { isUtf8 } from "node:buffer";
 import fs from "node:fs/promises";
@@ -7,11 +8,7 @@ import type {
   HostReadFileIfNoneMatch,
   HostReadFileRelativeDotfilePolicy,
 } from "@bb/host-daemon-contract";
-import {
-  readGitBlob,
-  WorkspaceError,
-  type GitProcessOptions,
-} from "@bb/host-workspace";
+import { readGitBlob, type GitProcessOptions } from "@bb/host-workspace";
 import { isPathWithinDirectory } from "@bb/process-utils";
 import {
   CommandDispatchError,

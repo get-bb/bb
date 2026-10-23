@@ -1,3 +1,8 @@
+import { buildAbsoluteFilePath } from "@/lib/absolute-file-path";
+import {
+  locateRepositoryFile,
+  resolveEnvironmentPreviewRoot,
+} from "@bb/client-core";
 import type { AppTabOpenIntent } from "@/lib/app-navigation-host";
 import { openAppTabFromDestinations } from "@/lib/app-fixed-tab-navigation";
 import { createPanelActionDestination } from "@/components/plugin/PluginPanelActions";
@@ -292,7 +297,7 @@ type MergeBasePickerOpenChangeHandler = NonNullable<
 type OpenInEditorHandler = NonNullable<
   ReturnType<typeof buildOpenInEditorHandler>
 >;
-type OpenFilePreviewHandler = (relativePath: string) => void;
+type OpenFilePreviewHandler = (repositoryPath: string) => void;
 
 interface SentMessageEditSession {
   draft: PromptDraftState;
@@ -1581,22 +1586,6 @@ function ThreadDetailViewInternal(
     }
     return desktopInfo.onCloseWindowRequest(handleCloseWindowRequest);
   }, [handleCloseWindowRequest, isFocused]);
-  const handleChangedFileClick = useCallback(
-    (selection: WorkspaceChangedFileSelection) => {
-      const openTarget = resolveWorkspaceChangedFileOpenTarget(selection);
-      if (openTarget.kind === "preview") {
-        openWorkspaceFile({
-          lineRange: null,
-          path: selection.file.path,
-          source: openTarget.source,
-          statusLabel: openTarget.statusLabel,
-        });
-        return;
-      }
-      openSecondaryPanelDiffFile(selection.file.path);
-    },
-    [openSecondaryPanelDiffFile, openWorkspaceFile],
-  );
   const workStatusQuery = useEnvironmentWorkStatus(
     thread?.environmentId,
     requestedMergeBaseBranch,
@@ -1614,6 +1603,37 @@ function ThreadDetailViewInternal(
     workStatusResponse?.outcome === "unavailable"
       ? workStatusResponse.failure
       : undefined;
+  const repository = workspaceStatus?.repository ?? null;
+  const handleChangedFileClick = useCallback(
+    (selection: WorkspaceChangedFileSelection) => {
+      const openTarget = resolveWorkspaceChangedFileOpenTarget(selection);
+      if (openTarget.kind === "diff") {
+        openSecondaryPanelDiffFile(selection.file.path);
+        return;
+      }
+      const location =
+        openTarget.source.kind === "working-tree" && repository !== null
+          ? locateRepositoryFile(repository, selection.file.path)
+          : null;
+      if (location?.kind === "repository" && repository !== null) {
+        openHostFile({
+          lineRange: null,
+          path: buildAbsoluteFilePath({
+            rootPath: repository.root,
+            path: location.path,
+          }),
+        });
+        return;
+      }
+      openWorkspaceFile({
+        lineRange: null,
+        path: location?.path ?? selection.file.path,
+        source: openTarget.source,
+        statusLabel: openTarget.statusLabel,
+      });
+    },
+    [repository, openHostFile, openSecondaryPanelDiffFile, openWorkspaceFile],
+  );
   const workspaceBranch = workspaceStatus?.branch;
   const workspaceChangedFilesSection = useMemo(
     () => selectWorkspaceChangedFilesSection(workspaceStatus),
@@ -1951,6 +1971,39 @@ function ThreadDetailViewInternal(
       workspacePreviewRootPath,
     ],
   );
+  const resolveRepositoryFilePath = useCallback(
+    (repositoryPath: string) => {
+      if (repository === null) {
+        return resolveAbsoluteFilePath({
+          path: repositoryPath,
+          rootPath: workspacePreviewRootPath,
+        });
+      }
+      const location = locateRepositoryFile(repository, repositoryPath);
+      return resolveAbsoluteFilePath({
+        path: location.path,
+        rootPath:
+          location.kind === "workspace"
+            ? workspacePreviewRootPath
+            : repository.root,
+      });
+    },
+    [repository, workspacePreviewRootPath],
+  );
+  const handleOpenRepositoryFileInEditor = useMemo(() => {
+    if (!canOpenPreferredFileTarget) {
+      return undefined;
+    }
+    return (repositoryPath: string) => {
+      const path = resolveRepositoryFilePath(repositoryPath);
+      if (path === null) return;
+      void openPathInPreferredFileTarget({ lineNumber: null, path });
+    };
+  }, [
+    canOpenPreferredFileTarget,
+    openPathInPreferredFileTarget,
+    resolveRepositoryFilePath,
+  ]);
   const handleOpenStorageFileInEditor = useMemo(
     () =>
       buildOpenInEditorHandler({
@@ -1993,7 +2046,12 @@ function ThreadDetailViewInternal(
   useAppCommandHandler("workspace.openPreferred", () => {
     if (!isFocused) return false;
     if (activeWorkspaceFilePath && handleOpenFileInEditor) {
-      handleOpenFileInEditor(activeWorkspaceFilePath);
+      const openFile =
+        activeFixedSecondaryTab?.kind === "workspace-file-preview" &&
+        activeFixedSecondaryTab.source.kind !== "working-tree"
+          ? handleOpenRepositoryFileInEditor
+          : handleOpenFileInEditor;
+      openFile?.(activeWorkspaceFilePath);
       return true;
     }
     if (activeHostFilePath && handleOpenHostFileInEditor) {
@@ -2104,23 +2162,45 @@ function ThreadDetailViewInternal(
     ],
   );
   const handleOpenFilePreview = useCallback<OpenFilePreviewHandler>(
-    (relativePath) => {
+    (repositoryPath) => {
       if (
         thread?.environmentId === null ||
         thread?.environmentId === undefined
       ) {
         return;
       }
+      const location =
+        repository === null
+          ? null
+          : locateRepositoryFile(repository, repositoryPath);
+      if (
+        location?.kind === "repository" &&
+        repository !== null &&
+        environment !== undefined
+      ) {
+        openLiveFilePreview({
+          target: {
+            kind: "host",
+            hostId: environment.hostId,
+            path: buildAbsoluteFilePath({
+              rootPath: repository.root,
+              path: location.path,
+            }),
+          },
+          location: null,
+        });
+        return;
+      }
       openLiveFilePreview({
         target: {
           kind: "workspace",
           environmentId: thread.environmentId,
-          path: relativePath,
+          path: location?.path ?? repositoryPath,
         },
         location: null,
       });
     },
-    [openLiveFilePreview, thread?.environmentId],
+    [environment, openLiveFilePreview, repository, thread?.environmentId],
   );
 
   if (threadQueryState.status === "loading") {
@@ -2445,10 +2525,15 @@ function ThreadDetailViewInternal(
           />
         );
       case "workspace-file-preview": {
-        const copyPath = resolveAbsoluteFilePath({
-          path: tab.path,
-          rootPath: workspacePreviewRootPath,
-        });
+        const previewRoot = resolveEnvironmentPreviewRoot(
+          workspacePreviewRootPath,
+          repository?.root ?? null,
+          tab.source,
+        );
+        const copyPath =
+          tab.source.kind === "working-tree"
+            ? resolveAbsoluteFilePath({ path: tab.path, rootPath: previewRoot })
+            : resolveRepositoryFilePath(tab.path);
         return (
           <LazyWorkspaceFilePreviewTabContent
             activePath={tab.path}
@@ -2462,9 +2547,13 @@ function ThreadDetailViewInternal(
                 : undefined,
               onOpenLink: handleOpenTimelineLink,
               onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
-              rootPath: workspacePreviewRootPath,
+              rootPath: previewRoot,
             })}
-            onOpenInEditor={handleOpenFileInEditor}
+            onOpenInEditor={
+              tab.source.kind === "working-tree"
+                ? handleOpenFileInEditor
+                : handleOpenRepositoryFileInEditor
+            }
             onSelectionAddToChat={handleSelectionAddToChat}
             source={tab.source}
             statusLabel={tab.statusLabel}
@@ -2763,7 +2852,7 @@ function ThreadDetailViewInternal(
               canUseGitUi,
               gitDiffTabStatus,
               environmentId: thread.environmentId ?? undefined,
-              workspaceRootPath: environment?.path,
+              repositoryRootPath: repository?.root ?? environment?.path,
               tabs: panelTabs,
               fixedTabs: secondaryPanelFixedTabs,
               splitPanelStateId: thread.id,
@@ -2773,7 +2862,7 @@ function ThreadDetailViewInternal(
               onClose: closeSecondaryPanel,
               onCollapse: closeSecondaryPanel,
               onClearPendingGitDiffIntent: clearPendingGitDiffIntent,
-              onOpenFileInEditor: handleOpenFileInEditor,
+              onOpenFileInEditor: handleOpenRepositoryFileInEditor,
               onTabReorder: reorderTab,
               onOpenNewTab: handleOpenNewTab,
               onRetryGitDiffEligibility: () => {

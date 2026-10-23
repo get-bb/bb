@@ -604,6 +604,7 @@ export function makeWorkspaceStatus(
   overrides: Partial<WorkspaceStatus> = {},
 ): WorkspaceStatus {
   const base: WorkspaceStatus = {
+    repository: { root: "/repo", workspacePrefix: "" },
     workingTree: {
       hasUncommittedChanges: false,
       state: "clean",

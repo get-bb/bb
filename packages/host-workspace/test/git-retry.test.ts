@@ -1,5 +1,6 @@
+import { WorkspaceError } from "bb-environment-provider-host/git";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { runGit, WorkspaceError } from "../src/git.js";
+import { runGit } from "../src/git.js";
 
 const execPortableFileMock = vi.hoisted(() => vi.fn());
 

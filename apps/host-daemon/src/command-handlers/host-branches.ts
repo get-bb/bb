@@ -1,18 +1,20 @@
+import {
+  detectGitRepoKind,
+  detectLinkedWorktree,
+  getCheckoutRef,
+  readDefaultBranchRefs,
+} from "bb-environment-provider-host/git";
 import path from "node:path";
 import type {
   GitBranchRefClassification,
   WorkspaceGitOperation,
 } from "@bb/domain";
 import {
-  detectGitRepoKind,
-  detectLinkedWorktree,
   fetchRemoteBranches,
-  getCheckoutRef,
   getGitCommonDir,
   getWorkspaceGitOperation,
   hasUncommittedChanges,
   listBranchRefsWithDefaults,
-  readDefaultBranchRefs,
   type GitProcessOptions,
   withGitRefMutationLock,
 } from "@bb/host-workspace";

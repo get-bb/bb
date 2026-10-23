@@ -1,5 +1,6 @@
 import {
   detectGitRepo,
+  getCheckoutRef,
   runGit,
   WorkspaceError,
 } from "bb-environment-provider-host/git";
@@ -10,7 +11,6 @@ import {
   type ProgressCallback,
 } from "bb-environment-provider-host/transcript";
 import {
-  getCheckoutRef,
   getWorkspaceGitOperation,
   hasUncommittedChanges,
   locateBranch,

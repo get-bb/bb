@@ -43,6 +43,7 @@ export function makeWorkspaceStatus(
   overrides: Partial<WorkspaceStatus> = {},
 ): WorkspaceStatus {
   return {
+    repository: { root: "/repo", workspacePrefix: "" },
     workingTree: makeWorkspaceWorkingTree(),
     checkout: { kind: "branch", branchName: "main", headSha: null },
     branch: { currentBranch: "main", defaultBranch: "main" },

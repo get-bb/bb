@@ -81,7 +81,7 @@ import {
   beginProjectDeletion,
   requestProjectDeletionAdvance,
 } from "../services/projects/project-deletion.js";
-import { resolveDefaultWorktreeBaseBranch } from "../services/projects/worktree-base-branch.js";
+import { selectWorktreeBaseBranch } from "bb-environment-provider-host/base-branch";
 import { listProjectPromptHistory } from "../services/prompt-history.js";
 import { parsePathKindInclusion } from "./path-list-inclusion.js";
 import {
@@ -947,7 +947,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     const result = { ...inspection, ...branchOptions };
     return {
       ...result,
-      defaultWorktreeBaseBranch: resolveDefaultWorktreeBaseBranch(result),
+      defaultWorktreeBaseBranch: selectWorktreeBaseBranch(result),
     };
   };
 

@@ -64,6 +64,7 @@ async function commitThroughRoute(harness: TestAppHarness): Promise<string> {
       branch: { currentBranch: "feature", defaultBranch: "main" },
       checkout: { kind: "branch", branchName: "feature", headSha: null },
       mergeBase: null,
+      repository: { root: "/repo", workspacePrefix: "" },
       workingTree: {
         deletions: 0,
         files: [],

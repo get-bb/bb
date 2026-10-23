@@ -124,7 +124,16 @@ const workspaceMergeBaseSchema = workspaceChangeStatsSchema.extend({
 });
 export type WorkspaceMergeBase = z.infer<typeof workspaceMergeBaseSchema>;
 
+const workspaceRepositoryLocationSchema = z.object({
+  root: z.string().min(1),
+  workspacePrefix: z.string(),
+});
+export type WorkspaceRepositoryLocation = z.infer<
+  typeof workspaceRepositoryLocationSchema
+>;
+
 export const workspaceStatusSchema = z.object({
+  repository: workspaceRepositoryLocationSchema,
   workingTree: workspaceWorkingTreeSchema,
   checkout: gitCheckoutRefSchema,
   branch: workspaceBranchSchema,

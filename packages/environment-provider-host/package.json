@@ -4,6 +4,11 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./base-branch": {
+      "source": "./src/base-branch.ts",
+      "types": "./src/base-branch.ts",
+      "default": "./src/base-branch.ts"
+    },
     "./git": {
       "source": "./src/git.ts",
       "types": "./src/git.ts",

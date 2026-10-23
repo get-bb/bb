@@ -10,6 +10,7 @@ import {
 } from "./server-move.js";
 import {
   availableModelSchema,
+  workspaceDescriptorSchema,
   discoveredWorkspacePropertiesSchema,
   dynamicToolSchema,
   gitBranchOptionsSchema,
@@ -1885,6 +1886,20 @@ export const hostDaemonCommandRegistry = {
     type: "host.global_skills_status",
     schema: hostGlobalSkillsStatusCommandSchema,
     resultSchema: globalSkillsStatusResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "host.describe_workspace": defineHostDaemonCommandDescriptor({
+    type: "host.describe_workspace",
+    schema: z
+      .object({
+        type: z.literal("host.describe_workspace"),
+        path: z.string().min(1),
+      })
+      .strict(),
+    resultSchema: workspaceDescriptorSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

@@ -27,7 +27,7 @@ import {
   projectCheckoutPathOnHost,
   resolveProjectWorkspaceTarget,
 } from "../projects/project-workspace.js";
-import { resolveDefaultWorktreeBaseBranch } from "../projects/worktree-base-branch.js";
+import { selectWorktreeBaseBranch } from "bb-environment-provider-host/base-branch";
 import {
   checkoutProviderInputs,
   worktreeProviderInputs,
@@ -314,7 +314,7 @@ export async function resolveProjectDefaultThreadEnvironment(
       remoteRefresh: "background",
     },
   });
-  const baseBranch = resolveDefaultWorktreeBaseBranch(checkout);
+  const baseBranch = selectWorktreeBaseBranch(checkout);
   if (baseBranch === null) {
     return {
       type: "provider",
@@ -342,6 +342,30 @@ export async function resolveCreateThreadEnvironment(
 ): Promise<ResolvedCreateThreadEnvironment> {
   const parentThread = args.parentThread;
   const hasLiveParent = isLiveParentThread({ parentThread });
+  if (
+    hasLiveParent &&
+    parentThread?.projectId === args.projectId &&
+    parentThread.environmentId &&
+    args.projectId !== PERSONAL_PROJECT_ID &&
+    (args.requestedEnvironment.type === "project-default" ||
+      isImplicitHostDefaultEnvironment(args.requestedEnvironment))
+  ) {
+    const parentEnvironment = getEnvironment(
+      deps.db,
+      parentThread.environmentId,
+    );
+    if (
+      parentEnvironment?.status === "ready" &&
+      parentEnvironment.projectId === args.projectId &&
+      parentEnvironment.path !== null &&
+      !parentEnvironment.isGitRepo &&
+      !parentEnvironment.providerOwnsPath &&
+      (args.requestedEnvironment.type === "project-default" ||
+        args.requestedEnvironment.hostId === undefined ||
+        args.requestedEnvironment.hostId === parentEnvironment.hostId)
+    )
+      return { type: "reuse", environmentId: parentEnvironment.id };
+  }
   if (
     hasLiveParent &&
     parentThread?.projectId === PERSONAL_PROJECT_ID &&

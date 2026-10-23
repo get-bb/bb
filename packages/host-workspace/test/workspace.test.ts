@@ -1,3 +1,4 @@
+import { WorkspaceError } from "bb-environment-provider-host/git";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -8,7 +9,7 @@ import {
   withProcessLocalQueuedLocks,
 } from "bb-environment-provider-host/process-local-lock";
 import { Workspace } from "../src/workspace.js";
-import { WorkspaceError } from "../src/git.js";
+
 import { runGit } from "../src/git.js";
 import { withCheckoutMutationLock } from "../src/checkout-mutation-lock.js";
 

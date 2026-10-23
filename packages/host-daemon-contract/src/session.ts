@@ -522,6 +522,7 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     onlineRpcResponseSuccessSchemaFor("host.install_global_skills"),
     onlineRpcResponseSuccessSchemaFor("host.global_skills_status"),
     onlineRpcResponseSuccessSchemaFor("host.list_branch_options"),
+    onlineRpcResponseSuccessSchemaFor("host.describe_workspace"),
     onlineRpcResponseSuccessSchemaFor("host.inspect_git_source"),
     onlineRpcResponseSuccessSchemaFor("host.read_file"),
     onlineRpcResponseSuccessSchemaFor("host.read_file_chunk"),

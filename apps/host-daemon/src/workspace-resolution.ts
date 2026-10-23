@@ -1,3 +1,4 @@
+import { WorkspaceError } from "bb-environment-provider-host/git";
 import type {
   HostDaemonInjectedSkillSource,
   WorkspaceContext,
@@ -5,7 +6,7 @@ import type {
   WorkspaceResolutionFailureCode,
 } from "@bb/host-daemon-contract";
 import { workspaceResolutionFailureCodeSchema } from "@bb/host-daemon-contract";
-import { WorkspaceError } from "@bb/host-workspace";
+
 import type { RuntimeEntry, RuntimeManager } from "./runtime-manager.js";
 import {
   CommandDispatchError,

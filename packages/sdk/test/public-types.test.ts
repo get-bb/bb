@@ -243,6 +243,7 @@ type ExpectedBbSdkKey =
 type ExpectedRealtimeKey = "subscribe";
 
 type ExpectedEnvironmentsKey =
+  | "experimental_describeWorkspace"
   | "experimental_cleanup"
   | "experimental_clearDiffViewed"
   | "experimental_diffViewed"

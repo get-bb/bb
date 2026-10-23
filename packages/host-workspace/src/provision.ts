@@ -1,4 +1,15 @@
-import type { ProvisioningTranscriptEntry, WorkspaceStatus } from "@bb/domain";
+import {
+  inspectGitRepository,
+  readRepoDefaultBranch,
+  readWorkTreeLocation,
+  WorkspaceError,
+} from "bb-environment-provider-host/git";
+import type {
+  ProvisioningTranscriptEntry,
+  WorkspaceDescriptor,
+  WorkspaceRepositoryLocation,
+  WorkspaceStatus,
+} from "@bb/domain";
 import { pathExists } from "@bb/process-utils";
 import type {
   CommitOptions,
@@ -13,13 +24,7 @@ import type {
   StatusOptions,
 } from "./workspace.js";
 import { Workspace } from "./workspace.js";
-import {
-  inspectGitRepository,
-  readDefaultBranch,
-  WorkspaceError,
-  type SharedGitRefsSnapshot,
-  type GitProcessOptions,
-} from "./git.js";
+import type { SharedGitRefsSnapshot, GitProcessOptions } from "./git.js";
 import { resolveAdditionalWorkspaceWriteRoots } from "./workspace-write-roots.js";
 
 type ProvisionProgressCallback = (entry: ProvisioningTranscriptEntry) => void;
@@ -54,6 +59,7 @@ const WORKSPACE_BRANCH_GIT_TIMEOUT_MS = 15_000;
 
 export interface HostWorkspace {
   readonly path: string;
+  readonly repository: WorkspaceRepositoryLocation | null;
   readonly isGitRepo: boolean;
   readonly isWorktree: boolean;
 
@@ -73,6 +79,7 @@ export interface HostWorkspace {
 
 class ProvisionedHostWorkspace implements HostWorkspace {
   readonly path: string;
+  readonly repository: WorkspaceRepositoryLocation | null;
   readonly isGitRepo: boolean;
   readonly isWorktree: boolean;
 
@@ -81,17 +88,20 @@ class ProvisionedHostWorkspace implements HostWorkspace {
 
   constructor(opts: {
     path: string;
-    isGitRepo: boolean;
+    repository: WorkspaceRepositoryLocation | null;
     isWorktree: boolean;
-    shellPath?: string;
+    gitProcessOptions: GitProcessOptions;
   }) {
     this.path = opts.path;
-    this.isGitRepo = opts.isGitRepo;
+    this.repository = opts.repository;
+    this.isGitRepo = opts.repository !== null;
     this.isWorktree = opts.isWorktree;
-    this.gitProcessOptions = {
-      ...(opts.shellPath !== undefined ? { shellPath: opts.shellPath } : {}),
-    };
-    this.ws = new Workspace(opts.path, this.gitProcessOptions, opts.isGitRepo);
+    this.gitProcessOptions = opts.gitProcessOptions;
+    this.ws = new Workspace(
+      opts.repository?.root ?? opts.path,
+      this.gitProcessOptions,
+      this.isGitRepo,
+    );
   }
 
   async getCurrentBranch(): Promise<string | null> {
@@ -103,7 +113,7 @@ class ProvisionedHostWorkspace implements HostWorkspace {
       return null;
     }
     return (
-      (await readDefaultBranch(this.path, {
+      (await readRepoDefaultBranch(this.path, {
         timeoutMs: WORKSPACE_BRANCH_GIT_TIMEOUT_MS,
         ...this.gitProcessOptions,
       })) ?? null
@@ -132,8 +142,17 @@ class ProvisionedHostWorkspace implements HostWorkspace {
     );
   }
 
-  getStatus(options?: StatusOptions): Promise<WorkspaceStatus> {
-    return this.ws.getStatus(options);
+  async getStatus(options?: StatusOptions): Promise<WorkspaceStatus> {
+    if (this.repository === null) {
+      throw new WorkspaceError(
+        "not_git_repo",
+        `Path is not a git repository: ${this.path}`,
+      );
+    }
+    return {
+      repository: this.repository,
+      ...(await this.ws.getStatus(options)),
+    };
   }
 
   getDiff(options?: DiffOptions): Promise<DiffResult> {
@@ -169,14 +188,50 @@ async function provisionUnmanaged(
       `Unmanaged workspace path does not exist: ${opts.path}`,
     );
   }
-  const { isGitRepo, isWorktree } = await inspectGitRepository(opts.path, {
+  const gitProcessOptions = {
     ...(opts.shellPath !== undefined ? { shellPath: opts.shellPath } : {}),
-  });
-
+  };
+  const [inspection, location] = await Promise.all([
+    inspectGitRepository(opts.path, gitProcessOptions),
+    readWorkTreeLocation(opts.path, gitProcessOptions),
+  ]);
+  if (inspection.isGitRepo && location === null) {
+    throw new WorkspaceError(
+      "git_command_failed",
+      `Could not read the repository root: ${opts.path}`,
+    );
+  }
   return new ProvisionedHostWorkspace({
     path: opts.path,
-    isGitRepo,
-    isWorktree,
-    shellPath: opts.shellPath,
+    repository: inspection.isGitRepo ? location : null,
+    isWorktree: inspection.isWorktree,
+    gitProcessOptions,
   });
+}
+
+export async function describeHostWorkspace(
+  workspace: HostWorkspace,
+): Promise<WorkspaceDescriptor> {
+  if (!workspace.isGitRepo) {
+    return {
+      path: workspace.path,
+      repoRoot: null,
+      isGitRepo: false,
+      isWorktree: false,
+      branchName: null,
+      defaultBranch: null,
+    };
+  }
+  const [branchName, defaultBranch] = await Promise.all([
+    workspace.getCurrentBranch(),
+    workspace.getDefaultBranch(),
+  ]);
+  return {
+    path: workspace.path,
+    repoRoot: workspace.repository?.root ?? null,
+    isGitRepo: true,
+    isWorktree: workspace.isWorktree,
+    branchName,
+    defaultBranch: defaultBranch ?? branchName,
+  };
 }

@@ -1,10 +1,7 @@
+import { WorkspaceError } from "bb-environment-provider-host/git";
 import fs from "node:fs/promises";
 import path from "node:path";
-import {
-  runGit,
-  WorkspaceError,
-  type GitProcessOptions,
-} from "@bb/host-workspace";
+import { runGit, type GitProcessOptions } from "@bb/host-workspace";
 import { ExpectedCommandDispatchError } from "../command-dispatch-support.js";
 
 const PROJECT_CLONE_TIMEOUT_MS = 20 * 60 * 1000;

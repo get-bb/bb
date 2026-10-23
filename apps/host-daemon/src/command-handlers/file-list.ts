@@ -1,8 +1,9 @@
+import { detectGitRepo } from "bb-environment-provider-host/git";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { setImmediate as yieldToEventLoop } from "node:timers/promises";
 import { fuzzyMatchPaths } from "@bb/fuzzy-match";
-import { detectGitRepo, runGit } from "@bb/host-workspace";
+import { runGit } from "@bb/host-workspace";
 import type {
   HostPathEntry,
   HostPathEntryKind,

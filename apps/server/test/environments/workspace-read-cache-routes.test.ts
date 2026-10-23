@@ -27,6 +27,7 @@ function workspaceStatus(
   return {
     outcome: "available",
     workspaceStatus: {
+      repository: { root: "/repo", workspacePrefix: "" },
       workingTree: {
         insertions: 0,
         deletions: 0,

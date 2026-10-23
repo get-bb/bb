@@ -11,14 +11,18 @@ import type {
 import path from "node:path";
 import { pathExists } from "@bb/process-utils";
 import {
-  createTempDir,
   ensureGitRepo,
   getCurrentBranch,
+  readCurrentBranchName,
+  readRepoDefaultBranch,
+  WorkspaceError,
+} from "bb-environment-provider-host/git";
+import {
+  createTempDir,
   parseNameStatusEntries,
   parseNameStatusSourceEntries,
   parseNumstatEntriesZ,
   parsePorcelainV2StatusZ,
-  readRepoDefaultBranch,
   readSharedGitRefsSnapshot,
   type SharedGitRefsSnapshot,
   readMergeBaseRef,
@@ -34,7 +38,6 @@ import {
   type NumstatEntry,
   type RunGitOptions,
   summarizeNumstat,
-  WorkspaceError,
 } from "./git.js";
 import { ByteBudgetCache } from "./byte-budget-cache.js";
 import {
@@ -572,10 +575,14 @@ export class Workspace {
   }
 
   get currentBranch(): Promise<string | undefined> {
-    return getCurrentBranch(this.path, this.gitProcessOptions);
+    return this.gitRepositoryKnown
+      ? readCurrentBranchName(this.path, this.gitProcessOptions)
+      : getCurrentBranch(this.path, this.gitProcessOptions);
   }
 
-  async getStatus(options: StatusOptions = {}): Promise<WorkspaceStatus> {
+  async getStatus(
+    options: StatusOptions = {},
+  ): Promise<Omit<WorkspaceStatus, "repository">> {
     const maxFiles = options.maxFiles;
     if (maxFiles !== undefined) {
       assertPositiveInteger(maxFiles, "maxFiles");
@@ -770,7 +777,10 @@ export class Workspace {
     );
     const { headOid, headBranch } = parsePorcelainV2StatusZ(status.stdout);
     return {
-      fingerprint: JSON.stringify({ headSha: headOid, porcelain: status.stdout }),
+      fingerprint: JSON.stringify({
+        headSha: headOid,
+        porcelain: status.stdout,
+      }),
       branchName: headBranch,
     };
   }

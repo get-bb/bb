@@ -362,3 +362,19 @@ function buildEnvironmentDiffArgs(
       return { environmentId, sha: target.sha, target: target.type };
   }
 }
+
+export function useEnvironmentWorkspace(environment: Environment | undefined) {
+  return useQuery({
+    queryKey: ["environment-workspace", environment?.id, environment?.path],
+    queryFn: ({ signal }) =>
+      sdk.environments.experimental_describeWorkspace({
+        environmentId: requireEnvironmentId(
+          environment?.id,
+          "useEnvironmentWorkspace",
+        ),
+        signal,
+      }),
+    enabled: environment?.status === "ready",
+    staleTime: 60_000,
+  });
+}

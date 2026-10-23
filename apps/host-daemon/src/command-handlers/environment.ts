@@ -7,7 +7,10 @@ import type {
   EnvironmentProvisionCommand,
   HostDaemonCommandResult,
 } from "@bb/host-daemon-contract";
-import type { ProvisionWorkspaceArgs } from "@bb/host-workspace";
+import {
+  describeHostWorkspace,
+  type ProvisionWorkspaceArgs,
+} from "@bb/host-workspace";
 import {
   type CommandDispatchOptions,
   type CommandOf,
@@ -47,15 +50,8 @@ export async function provisionEnvironment(
       setupContributedEnv: command.contributedEnv,
     });
 
-    const [branchName, resolvedDefaultBranch] = await Promise.all([
-      entry.workspace.getCurrentBranch(),
-      entry.workspace.isGitRepo
-        ? entry.workspace.getDefaultBranch()
-        : Promise.resolve(null),
-    ]);
-    const defaultBranch = entry.workspace.isGitRepo
-      ? (resolvedDefaultBranch ?? branchName)
-      : null;
+    const workspace = await describeHostWorkspace(entry.workspace);
+    const branchName = workspace.branchName;
 
     if (!alreadyExists || !streamedAnyStep) {
       onProgress({
@@ -87,11 +83,11 @@ export async function provisionEnvironment(
     }
 
     return {
-      path: entry.workspace.path,
-      isGitRepo: entry.workspace.isGitRepo,
-      isWorktree: entry.workspace.isWorktree,
+      path: workspace.path,
+      isGitRepo: workspace.isGitRepo,
+      isWorktree: workspace.isWorktree,
       branchName,
-      defaultBranch,
+      defaultBranch: workspace.defaultBranch,
     };
   } finally {
     progress.flush();

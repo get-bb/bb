@@ -1558,11 +1558,6 @@ function RootComposeSurface({
                     canUseGitUi: false,
                     environmentId: rootPanelEnvironmentId ?? undefined,
                     metadataContent: rootPanelMetadataContent,
-                    workspaceRootPath:
-                      rootPanelEnvironment?.path ??
-                      (rootPanelTerminalTarget?.kind === "host_path"
-                        ? (rootPanelTerminalTarget.cwd ?? undefined)
-                        : undefined),
                     tabs: panelTabs,
                     splitPanelStateId: ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
                     renderBrowserDeck,

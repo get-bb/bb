@@ -16,6 +16,19 @@ New Worktree branches start at the selected base without an upstream, regardless
 of Git's branch.autoSetupMerge setting. Publish with `git push -u origin HEAD`
 to track the task's remote branch. Existing branches keep their upstream.
 
+Workspace discovery distinguishes the execution directory (`path`) from the
+Git working-tree root (`repoRoot`). `bb environment workspace <id> --json` and
+`environments.experimental_describeWorkspace` inspect these on demand without
+storing them. Git changes and revision paths are repository-relative; ordinary
+workspace files and agent execution remain relative to `path`.
+
+Default and named worktree bases use the same comparison: choose the remote
+when local is equal or behind, and preserve local when ahead, diverged or
+unknown. A remote-only branch is also usable. Selected remote refs are fetched
+before creation. Explicit refs such as `refs/heads/main` and `origin/main` are
+honored exactly; local-only branches and tags remain usable.
+Implicit children in an unmanaged non-Git folder reuse their parent's environment.
+
 Making your repo work with bb:
 
   If the default environment plugin is disabled or missing, creation fails

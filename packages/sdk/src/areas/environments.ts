@@ -1,6 +1,8 @@
 import { z } from "zod";
 import {
   environmentSchema,
+  workspaceDescriptorSchema,
+  type WorkspaceDescriptor,
   type Environment,
   type EnvironmentStatus,
 } from "@bb/domain";
@@ -153,6 +155,9 @@ export type EnvironmentListProvidersResult = SystemEnvironmentProvider[];
 const okResponseSchema = z.object({ ok: z.literal(true) });
 
 export interface EnvironmentsArea {
+  experimental_describeWorkspace(
+    args: EnvironmentGetArgs,
+  ): Promise<WorkspaceDescriptor>;
   experimental_cleanup(
     args: EnvironmentActionArgs & { recover?: boolean },
   ): Promise<{ ok: true }>;
@@ -280,6 +285,16 @@ export function createEnvironmentsArea(
 ): EnvironmentsArea {
   const { transport } = args;
   return {
+    async experimental_describeWorkspace(input) {
+      return workspaceDescriptorSchema.parse(
+        await transport.readJson(
+          transport.api.v1.environments[":id"].workspace.$get(
+            { param: { id: input.environmentId } },
+            ...signalRequestArgs(input.signal),
+          ),
+        ),
+      );
+    },
     async archiveThreads(input) {
       return transport.readJson(
         transport.api.v1.environments[":id"]["archive-threads"].$post({

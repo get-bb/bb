@@ -222,6 +222,7 @@ This index lists every command path that the core CLI registers, including alias
 - `bb environment get`
 - `bb environment status`
 - `bb environment branches`
+- `bb environment workspace`
 - `bb environment paths`
 - `bb environment diff`
 - `bb environment diff-files`

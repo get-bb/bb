@@ -308,6 +308,19 @@ describe("file content routes", () => {
         hostId: host.id,
         sessionId: session.id,
         handle: ({ command }) => {
+          if (command.type === "host.describe_workspace") {
+            return {
+              ok: true,
+              result: {
+                path: command.path,
+                repoRoot: command.path,
+                isGitRepo: true,
+                isWorktree: false,
+                branchName: "main",
+                defaultBranch: "main",
+              },
+            };
+          }
           commands.push(command);
           if (command.type === "host.read_file") {
             return {

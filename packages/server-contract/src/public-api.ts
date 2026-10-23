@@ -1,3 +1,4 @@
+import type { WorkspaceDescriptor } from "@bb/domain";
 import {
   uiPreferencesRoute,
   updateUiPreferenceRoute,
@@ -1147,6 +1148,12 @@ export const publicApiRoutes = {
   },
 
   environments: {
+    workspace: defineRoute({
+      path: "/environments/:id/workspace",
+      method: "get",
+      request: noRequest<PathId>(),
+      response: jsonResponse<WorkspaceDescriptor>(),
+    }),
     cleanup: defineRoute({
       path: "/environments/:id/cleanup",
       method: "post",
