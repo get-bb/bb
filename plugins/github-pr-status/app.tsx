@@ -8,11 +8,14 @@ import {
 } from "./ui/PullRequestContextSegment";
 import { PullRequestInfoRow } from "./ui/PullRequestInfoRow";
 
+const CONTEXT_SEGMENT_GROUP = "2_pullRequest";
+
 export default definePluginApp((app) => {
   app.slots.experimental_threadContextSegment({
     id: "pull-request",
     title: "Pull request",
-    order: 200,
+    group: CONTEXT_SEGMENT_GROUP,
+    order: 10,
     component: PullRequestContextSegment,
     useVisible: usePullRequestSegmentVisible,
   });

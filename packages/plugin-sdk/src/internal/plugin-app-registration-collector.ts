@@ -918,6 +918,7 @@ export function collectPluginAppRegistrations(
           id,
           title,
           placement,
+          group: requireNonEmptyString(kind, "group", registration.group),
           ...requireOptionalOrder(kind, registration.order),
           component,
           ...(registration.useVisible !== undefined

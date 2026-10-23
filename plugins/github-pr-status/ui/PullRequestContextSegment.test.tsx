@@ -68,8 +68,8 @@ const PULL_REQUEST: PullRequest = {
 };
 
 const SELF = { pluginId: "bb--github-pr-status", id: "pull-request" };
-const CHANGED_FILES = { pluginId: "core", id: "changed-files" };
-const PARENT = { pluginId: "core", id: "parent-thread" };
+const CHANGED_FILES = { pluginId: "bb--core", id: "changed-files" };
+const PARENT = { pluginId: "bb--core", id: "parent-thread" };
 
 function show(pullRequest: PullRequest) {
   sdk.rows = { env_1: { outcome: "available", pullRequest } };

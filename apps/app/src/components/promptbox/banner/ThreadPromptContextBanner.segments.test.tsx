@@ -84,12 +84,12 @@ function PluginSegment(props: ExperimentalThreadContextSegmentProps) {
 
 function registerPluginSegment({
   visible = true,
-  order = 200,
+  group = "2_pullRequest",
   component = PluginSegment,
   placement,
 }: {
   visible?: boolean;
-  order?: number;
+  group?: string;
   component?: (props: ExperimentalThreadContextSegmentProps) => ReactNode;
   placement?: "inline" | "before";
 } = {}) {
@@ -100,7 +100,7 @@ function registerPluginSegment({
         {
           id: "status",
           title: "Demo status",
-          order,
+          group,
           ...(placement ? { placement } : {}),
           component,
           useVisible: () => visible,
@@ -185,6 +185,15 @@ describe("thread context segments", () => {
     expect(screen.queryByText("Merge base")).toBeNull();
   });
 
+  it("places a segment in a group of its own where that group sorts", () => {
+    registerPluginSegment({ group: "9_custom" });
+    renderBanner({ core: { ...EMPTY_CORE, git, parentThread } });
+
+    expect(
+      screen.getByText("Plugin summary parent-thread,changed-files,status"),
+    ).toBeTruthy();
+  });
+
   it("leaves a hidden segment out of the row and the shared list", () => {
     registerPluginSegment({ visible: false });
     renderBanner({ core: { ...EMPTY_CORE, git } });
@@ -241,6 +250,7 @@ describe("thread context segments", () => {
           {
             id: "status",
             title: "Demo status",
+            group: "2_pullRequest",
             component: PluginSegment,
             useVisible: () => {
               throw new Error("visibility crashed");

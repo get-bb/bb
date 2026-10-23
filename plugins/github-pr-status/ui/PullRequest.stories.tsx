@@ -69,8 +69,8 @@ function RowStage({ children }: { children: ReactNode }) {
 }
 
 const SELF = { pluginId: "bb--github-pr-status", id: "pull-request" };
-const CHANGED_FILES = { pluginId: "core", id: "changed-files" };
-const PARENT = { pluginId: "core", id: "parent-thread" };
+const CHANGED_FILES = { pluginId: "bb--core", id: "changed-files" };
+const PARENT = { pluginId: "bb--core", id: "parent-thread" };
 
 function SegmentStage({
   pullRequest,

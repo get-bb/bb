@@ -115,7 +115,7 @@ function Harness({
   initiallyExpanded: boolean;
 }) {
   const [expandedSection, setExpandedSection] = useState<string | null>(
-    initiallyExpanded ? "core/child-threads" : null,
+    initiallyExpanded ? "bb--core/child-threads" : null,
   );
   return (
     <ThreadPromptContextBanner

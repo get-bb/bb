@@ -1784,7 +1784,7 @@ export interface ExperimentalThreadEnvironment {
   id: string;
 }
 
-/** Identifies a visible thread context segment; bb's own use `pluginId: "core"`. */
+/** Identifies a visible thread context segment; bb's own use `pluginId: "bb--core"`. */
 export interface ExperimentalThreadContextSegmentReference {
   pluginId: string;
   id: string;
@@ -1837,10 +1837,13 @@ export interface ExperimentalThreadContextSegmentRegistration {
   /** `inline` (default) shares the context row; `before` stacks a card above it. */
   placement?: "inline" | "before";
   /**
-   * Segments sort by `order` (unset sorts last), then registration order,
-   * with bb's own first on a tie. bb's parent thread is 100 and its changed
-   * files 300.
+   * Segments sort by `group` (string compare), then by `order` within a group
+   * (unset sorts last), then by registration order, with bb's own first on a
+   * tie. bb's groups are
+   * {@link PluginSdkApp.experimental_THREAD_CONTEXT_SEGMENT_GROUPS}; any other
+   * string is a group of its own, placed where it sorts.
    */
+  group: string;
   order?: number;
   component: ComponentType<ExperimentalThreadContextSegmentProps>;
   /**
@@ -5212,6 +5215,17 @@ export interface PluginSdkApp {
     readonly organize: "2_organize";
     readonly settings: "3_settings";
     readonly lifecycle: "4_lifecycle";
+  };
+  /**
+   * bb's thread context segment groups, for an
+   * `experimental_threadContextSegment` that joins one: `thread` (Parent
+   * thread, Child threads) and `git` (Changed files). A plugin names its own
+   * group to sort between them, such as `"2_pullRequest"`. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_THREAD_CONTEXT_SEGMENT_GROUPS: {
+    readonly thread: "1_thread";
+    readonly git: "3_git";
   };
   /**
    * bb's thread Info row groups, for an `experimental_threadInfoRow` that

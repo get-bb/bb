@@ -184,7 +184,7 @@ describe("ThreadPromptContextBanner", () => {
       expect(screen.queryByText(/history|machine settings/)).toBeNull();
       expect(screen.queryByText("Provision")).toBeNull();
       toggle.click();
-      expect(toggled).toEqual(["core/status"]);
+      expect(toggled).toEqual(["bb--core/status"]);
     },
   );
 
@@ -197,7 +197,7 @@ describe("ThreadPromptContextBanner", () => {
         environmentGoneSection={{ status: "cleanup-failed" }}
         parentThreadSection={null}
         childThreadsSection={null}
-        expandedSection="core/status"
+        expandedSection="bb--core/status"
         onToggleSection={noop}
       />,
     );
@@ -365,7 +365,7 @@ describe("ThreadPromptContextBanner", () => {
             ],
             pendingInteractions: [],
           }}
-          expandedSection="core/child-threads"
+          expandedSection="bb--core/child-threads"
           onToggleSection={noop}
         />
       </MemoryRouter>,
@@ -416,7 +416,7 @@ describe("ThreadPromptContextBanner", () => {
   });
 
   it("shows the waiting question in the header only while collapsed", () => {
-    const renderBanner = (expandedSection: "core/child-threads" | null) => (
+    const renderBanner = (expandedSection: "bb--core/child-threads" | null) => (
       <MemoryRouter>
         <Banner
           gitSection={null}
@@ -452,7 +452,7 @@ describe("ThreadPromptContextBanner", () => {
     );
     expect(collapsed).not.toContain("Active child threads");
 
-    const expanded = renderToMarkup(renderBanner("core/child-threads"));
+    const expanded = renderToMarkup(renderBanner("bb--core/child-threads"));
     expect(expanded).toContain("Active child threads");
     expect(expanded).toContain('aria-label="2 active child threads"');
   });
@@ -494,7 +494,7 @@ describe("ThreadPromptContextBanner", () => {
 
     rerender(renderBanner([blocked, working]));
     expect(onToggleSection).toHaveBeenCalledTimes(1);
-    expect(onToggleSection).toHaveBeenCalledWith("core/child-threads");
+    expect(onToggleSection).toHaveBeenCalledWith("bb--core/child-threads");
 
     rerender(renderBanner([blocked, working]));
     expect(onToggleSection).toHaveBeenCalledTimes(1);
@@ -573,7 +573,7 @@ describe("ThreadPromptContextBanner", () => {
     const onToggleSection = vi.fn();
     const renderBanner = (
       items: ReturnType<typeof childThreadItem>[],
-      expandedSection: "core/changed-files" | null,
+      expandedSection: "bb--core/changed-files" | null,
     ) => (
       <MemoryRouter>
         <Banner
@@ -598,15 +598,15 @@ describe("ThreadPromptContextBanner", () => {
     const blocked = childThreadItem("thr_blocked", "Install workspace tools", {
       pending: true,
     });
-    const { rerender } = render(renderBanner([working], "core/changed-files"));
-    rerender(renderBanner([blocked, working], "core/changed-files"));
+    const { rerender } = render(renderBanner([working], "bb--core/changed-files"));
+    rerender(renderBanner([blocked, working], "bb--core/changed-files"));
     rerender(renderBanner([blocked, working], null));
     expect(onToggleSection).not.toHaveBeenCalled();
   });
 });
 
 describe("ThreadPromptContextBanner git section body", () => {
-  function renderBanner(expandedSection: "core/changed-files" | null) {
+  function renderBanner(expandedSection: "bb--core/changed-files" | null) {
     return (
       <MemoryRouter>
         <Banner
@@ -627,7 +627,7 @@ describe("ThreadPromptContextBanner git section body", () => {
     const { rerender } = render(renderBanner(null));
     expect(screen.queryByRole("list", { hidden: true })).toBeNull();
 
-    rerender(renderBanner("core/changed-files"));
+    rerender(renderBanner("bb--core/changed-files"));
     expect(screen.getByRole("list")).toBeTruthy();
     expect(
       screen.getByRole("button", { name: `Open ${changedFile.path}` }),

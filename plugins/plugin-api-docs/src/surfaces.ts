@@ -582,6 +582,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "ComposerCustomization",
           "PluginComposerScope",
           "PluginAppSlots.experimental_threadContextSegment",
+          "experimental_THREAD_CONTEXT_SEGMENT_GROUPS",
           "ExperimentalThreadContextSegmentRegistration",
           "ExperimentalThreadContextSegmentProps",
           "ExperimentalThreadContextSegmentInput",

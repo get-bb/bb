@@ -701,7 +701,7 @@ export function Overview() {
         <Row
           childThreads={childThreadsLargeFixture}
           mergeBase={null}
-          initiallyExpandedSection="core/child-threads"
+          initiallyExpandedSection="bb--core/child-threads"
         />
       </StoryRow>
       <StoryRow
@@ -722,7 +722,7 @@ export function Overview() {
       >
         <Row
           section={uncommittedManySection}
-          initiallyExpandedSection="core/changed-files"
+          initiallyExpandedSection="bb--core/changed-files"
         />
       </StoryRow>
       <StoryRow
@@ -731,7 +731,7 @@ export function Overview() {
       >
         <Row
           section={untrackedSection}
-          initiallyExpandedSection="core/changed-files"
+          initiallyExpandedSection="bb--core/changed-files"
         />
       </StoryRow>
       <StoryRow

@@ -1,6 +1,7 @@
-import type {
-  ExperimentalThreadContextSegmentInput,
-  ExperimentalThreadContextSegmentProps,
+import {
+  experimental_THREAD_CONTEXT_SEGMENT_GROUPS,
+  type ExperimentalThreadContextSegmentInput,
+  type ExperimentalThreadContextSegmentProps,
 } from "@get-bb/plugin-sdk";
 import { CONTEXT_CARD_TOGGLE_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import {
@@ -1156,6 +1157,8 @@ function ChildThreadsCard({
   );
 }
 
+const SEGMENT_GROUPS = experimental_THREAD_CONTEXT_SEGMENT_GROUPS;
+
 const coreThreadContextSegments: readonly CoreThreadContextSegment[] =
   collectPluginAppRegistrations(
     definePluginApp((app) => {
@@ -1163,6 +1166,8 @@ const coreThreadContextSegments: readonly CoreThreadContextSegment[] =
         id: "child-threads",
         title: "Child threads",
         placement: "before",
+        group: SEGMENT_GROUPS.thread,
+        order: 20,
         component: ChildThreadsCard,
         useVisible: () =>
           (useCoreThreadContext().childThreads?.items.length ?? 0) > 0,
@@ -1170,14 +1175,16 @@ const coreThreadContextSegments: readonly CoreThreadContextSegment[] =
       app.slots.experimental_threadContextSegment({
         id: "parent-thread",
         title: "Parent thread",
-        order: 100,
+        group: SEGMENT_GROUPS.thread,
+        order: 10,
         component: ParentThreadSegment,
         useVisible: () => useCoreThreadContext().parentThread !== null,
       });
       app.slots.experimental_threadContextSegment({
         id: "changed-files",
         title: "Changed files",
-        order: 300,
+        group: SEGMENT_GROUPS.git,
+        order: 10,
         component: ChangedFilesSegment,
         useVisible: () => useCoreThreadContext().git !== null,
       });

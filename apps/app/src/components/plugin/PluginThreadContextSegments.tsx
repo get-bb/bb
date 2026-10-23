@@ -5,16 +5,19 @@ import type {
   ExperimentalThreadContextSegmentReference,
   ExperimentalThreadContextSegmentRegistration,
 } from "@get-bb/plugin-sdk";
+import { compareGroupedPlacement } from "@/lib/grouped-placement";
 import {
   usePluginSlots,
   type PluginThreadContextSegmentSlot,
 } from "@/lib/plugin-slots";
 import { PluginSlotMount } from "./PluginSlotMount";
 
-export const CORE_THREAD_CONTEXT_OWNER = "core";
+export const CORE_THREAD_CONTEXT_OWNER = "bb--core";
 
 export type CoreThreadContextSegment =
-  ExperimentalThreadContextSegmentRegistration & { pluginId: "core" };
+  ExperimentalThreadContextSegmentRegistration & {
+    pluginId: typeof CORE_THREAD_CONTEXT_OWNER;
+  };
 
 export type ThreadContextSegmentEntry =
   | { owner: "core"; slot: CoreThreadContextSegment }
@@ -31,11 +34,13 @@ function sortThreadContextSegments(
 ): ThreadContextSegmentEntry[] {
   return entries
     .map((entry, index) => ({ entry, index }))
-    .sort(
-      (left, right) =>
-        (left.entry.slot.order ?? Number.POSITIVE_INFINITY) -
-          (right.entry.slot.order ?? Number.POSITIVE_INFINITY) ||
-        left.index - right.index,
+    .sort((left, right) =>
+      compareGroupedPlacement(
+        left.entry.slot,
+        left.index,
+        right.entry.slot,
+        right.index,
+      ),
     )
     .map(({ entry }) => entry);
 }

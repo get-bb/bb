@@ -39,7 +39,7 @@ import { PullRequestStatusPill } from "./PullRequestStatusPill";
 import { useEnvironmentPullRequest, usePullRequestActions } from "./queries";
 
 const CHANGED_FILES_SEGMENT: ExperimentalThreadContextSegmentReference = {
-  pluginId: "core",
+  pluginId: "bb--core",
   id: "changed-files",
 };
 

@@ -157,6 +157,7 @@ import { normalizePluginThreadRowStatus } from "../internal/composer-customizati
 import { normalizeExperimentalFileOpenOptions } from "../internal/file-navigation-validation.js";
 import { experimental_THREAD_ACTION_GROUPS } from "../thread-action-groups.js";
 import {
+  experimental_THREAD_CONTEXT_SEGMENT_GROUPS,
   experimental_THREAD_INFO_ROW_GROUPS,
   experimental_THREAD_INFO_SECTION_GROUPS,
 } from "../thread-info-groups.js";
@@ -1702,6 +1703,7 @@ const testPluginSdkApp = {
   experimental_ThreadActionsContextMenu: TestThreadActionsContextMenu,
   experimental_PluginRpcCallError,
   experimental_THREAD_ACTION_GROUPS,
+  experimental_THREAD_CONTEXT_SEGMENT_GROUPS,
   experimental_THREAD_INFO_ROW_GROUPS,
   experimental_THREAD_INFO_SECTION_GROUPS,
   experimental_useSidebarNavigation(): ExperimentalSidebarNavigationState {
