@@ -7,12 +7,18 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
+import { experimental_useExperiment } from "@get-bb/plugin-sdk/app";
 import { SIDEBAR_CONTENT_SELECTOR } from "../ui/sidebar.js";
 import { SIDEBAR_WINDOWED_NAV_ATTRIBUTE } from "../list/sidebarThreadShortcuts.js";
 
 const NO_THREAD_IDS: readonly string[] = [];
 
 const THREAD_ROW_TARGET_SELECTOR = "a[data-sidebar-thread-id]";
+
+const SELECTION_KEEPING_SELECTOR =
+  '[data-sidebar="sidebar"], [data-radix-popper-content-wrapper], [role="menu"]';
+
+export const SIDEBAR_MULTI_SELECT_EXPERIMENT = "sidebarMultiSelect";
 
 export interface ThreadSelectionModifiers {
   metaKey: boolean;
@@ -25,6 +31,7 @@ export class ThreadSelectionStore {
   private selectedSet: ReadonlySet<string> = new Set();
   private anchor: string | null = null;
   private activeThreadId: string | null = null;
+  private enabled = true;
   private readonly listeners = new Set<() => void>();
 
   subscribe = (listener: () => void): (() => void) => {
@@ -36,10 +43,6 @@ export class ThreadSelectionStore {
 
   getSelected = (): readonly string[] => this.selected;
 
-  getSelectedSet(): ReadonlySet<string> {
-    return this.selectedSet;
-  }
-
   isSelected(threadId: string): boolean {
     return this.selectedSet.has(threadId);
   }
@@ -48,14 +51,14 @@ export class ThreadSelectionStore {
     this.activeThreadId = threadId;
   }
 
+  setEnabled(enabled: boolean): void {
+    this.enabled = enabled;
+    if (!enabled) this.clear();
+  }
+
   clear(): void {
     this.anchor = null;
     this.replace(NO_THREAD_IDS);
-  }
-
-  select(threadIds: readonly string[], anchor: string | null): void {
-    this.anchor = anchor;
-    this.replace(threadIds.length === 0 ? NO_THREAD_IDS : threadIds);
   }
 
   handleClick(
@@ -64,6 +67,7 @@ export class ThreadSelectionStore {
     origin: Element,
   ): boolean {
     const toggle = modifiers.metaKey || modifiers.ctrlKey;
+    if (!this.enabled) return false;
     if (!toggle && !modifiers.shiftKey) {
       this.anchor = threadId;
       if (this.selected.length > 0) this.replace(NO_THREAD_IDS);
@@ -75,7 +79,8 @@ export class ThreadSelectionStore {
       const from = order.indexOf(anchor);
       const to = order.indexOf(threadId);
       if (from === -1 || to === -1) {
-        this.select([threadId], threadId);
+        this.anchor = threadId;
+        this.replace([threadId]);
         return true;
       }
       const range = order.slice(Math.min(from, to), Math.max(from, to) + 1);
@@ -170,9 +175,13 @@ export function ThreadSelectionProvider({
   children: ReactNode;
 }) {
   const [store] = useState(() => new ThreadSelectionStore());
+  const enabled = experimental_useExperiment(SIDEBAR_MULTI_SELECT_EXPERIMENT);
   useLayoutEffect(() => {
     store.setActiveThreadId(activeThreadId);
   }, [activeThreadId, store]);
+  useLayoutEffect(() => {
+    store.setEnabled(enabled);
+  }, [enabled, store]);
   const hasSelection = useSyncExternalStore(
     store.subscribe,
     () => store.getSelected().length > 0,
@@ -184,8 +193,21 @@ export function ThreadSelectionProvider({
         return;
       store.clear();
     };
+    const handlePointerDown = (event: PointerEvent) => {
+      if (
+        event.target instanceof Element &&
+        event.target.closest(SELECTION_KEEPING_SELECTOR) !== null
+      ) {
+        return;
+      }
+      store.clear();
+    };
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+    };
   }, [hasSelection, store]);
   return (
     <ThreadSelectionContext.Provider value={store}>
@@ -203,11 +225,6 @@ export function useIsThreadSelected(threadId: string): boolean {
   return useSyncExternalStore(store.subscribe, () =>
     store.isSelected(threadId),
   );
-}
-
-export function useSelectedThreadIds(): readonly string[] {
-  const store = useThreadSelectionStore();
-  return useSyncExternalStore(store.subscribe, store.getSelected);
 }
 
 export function useIsSelectionHidingActiveRow(isActive: boolean): boolean {

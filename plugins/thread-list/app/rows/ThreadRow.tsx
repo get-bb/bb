@@ -108,6 +108,7 @@ import {
   useThreadSelectionStore,
 } from "../selection/threadSelection.js";
 import { ThreadSelectionContextMenu } from "../selection/ThreadSelectionContextMenu.js";
+import { useOpenThreadInSplit } from "./threadRowNavigation.js";
 import { Button } from "@/components/ui/button";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing";
 import {
@@ -382,6 +383,7 @@ function ThreadRowComponent({
   const [isDropdownActionsOpen, setIsDropdownActionsOpen] = useState(false);
   const [isContextActionsOpen, setIsContextActionsOpen] = useState(false);
   const sdk = useSdk();
+  const openThreadInSplit = useOpenThreadInSplit();
   const selectionStore = useThreadSelectionStore();
   const isSelected = useIsThreadSelected(thread.id);
   const selectionHidesActive = useIsSelectionHidingActiveRow(isActive);
@@ -441,6 +443,10 @@ function ThreadRowComponent({
     multiSelection === null ? undefined : { dragThreadIds: multiSelection },
   );
   const onSplitDragPointerDown = split.splitProps.onPointerDown;
+  const splitAvailable = split.isAvailable;
+  const openInSplit = useCallback(() => {
+    openThreadInSplit(thread.id);
+  }, [openThreadInSplit, thread.id]);
   const rowActionKeys = useAtomValue(threadRowActionsAtom);
   const actionTarget = toThreadActionTarget(thread);
   const quickActions = experimental_useThreadActions(actionTarget, {
@@ -649,6 +655,11 @@ function ThreadRowComponent({
             ) {
               event.preventDefault();
               event.stopPropagation();
+              return;
+            }
+            if (splitAvailable && (event.metaKey || event.ctrlKey)) {
+              event.preventDefault();
+              openInSplit();
               return;
             }
             if (

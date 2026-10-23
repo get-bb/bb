@@ -930,6 +930,21 @@ Docs: `backend-sdk.md`.
 2. **Batch size.** 200 ids per request; callers chunk. Revisit if the
    attributes layer replaces per-registration reads.
 
+## `experimental_useExperiment` (`@get-bb/plugin-sdk/app`)
+
+`experimental_useExperiment(key)` returns whether the bb experiment `key` is
+on, from the same live system config core reads (Settings → Experiments,
+`bb settings experiment`). It is false while config loads and for unknown
+keys. First caller: the built-in thread list, which gates multi-row selection
+on `sidebarMultiSelect`.
+
+**Audit before stabilizing.**
+
+1. **Key type.** Keys are plain strings so the SDK does not ship bb's
+   experiment list; decide whether to export a typed key union instead.
+2. **Plugin-owned experiments.** Decide whether plugins should declare their
+   own experiments in Settings → Experiments rather than only read bb's.
+
 ## `bb.sdk.threads.experimental_listAncestors`
 
 `POST /threads/ancestors` with `{ threadIds }` (1–200 ids) returns

@@ -34,6 +34,7 @@ const unavailableSystemConfig: SystemConfigResponse = {
     compactExpiredCache: false,
     serverMove: false,
     performanceDiagnostics: false,
+    sidebarMultiSelect: false,
     timelinePush: false,
   },
   appearance: defaultAppTheme,

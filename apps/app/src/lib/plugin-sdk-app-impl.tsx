@@ -90,6 +90,7 @@ import {
   useSidebarSplitLayout,
   useSidebarThreadSplit,
 } from "./plugin-sidebar-split";
+import { useExperiment } from "./plugin-experiments";
 import { useAppNavigationHost } from "./app-navigation-host";
 import {
   experimental_PluginRpcCallError,
@@ -209,6 +210,7 @@ export const pluginSdkAppImplementation = {
   experimental_THREAD_INFO_ROW_GROUPS,
   experimental_THREAD_INFO_SECTION_GROUPS,
   experimental_useSidebarThreadSplit: useSidebarThreadSplit,
+  experimental_useExperiment: useExperiment,
   experimental_useSidebarNavigation: useSidebarNavigation,
   experimental_useSidebarNavigationSplit: useSidebarNavigationSplit,
   experimental_SidebarNavigationIcon: SidebarNavigationIcon,

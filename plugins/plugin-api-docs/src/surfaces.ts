@@ -152,6 +152,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "BbNavigate.toCompose",
           "experimental_useSidebarThreadSplit",
           "PluginSidebarThreadSplit",
+          "PluginSidebarThreadSplitOptions",
+          "experimental_useExperiment",
           "useSidebarThreadDraft",
           "PluginSidebarThreadDraftState",
           "useSidebarThreadDraftIds",

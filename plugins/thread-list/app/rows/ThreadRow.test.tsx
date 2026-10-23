@@ -176,6 +176,7 @@ interface RenderThreadRowArgs extends Omit<HarnessProps, "thread"> {
   providers?: PluginProvidersState["providers"];
   sdk?: PluginSdkTestFakes;
   threadActions?: TestThreadActionsResolver;
+  experiments?: string[];
 }
 
 function renderThreadRow({
@@ -189,6 +190,7 @@ function renderThreadRow({
   providers = [],
   sdk,
   threadActions = hostThreadActions(),
+  experiments,
   ...harness
 }: RenderThreadRowArgs = {}): RenderedSlot & {
   rerenderThreadRow(nextThread: PluginSidebarThread): void;
@@ -215,6 +217,7 @@ function renderThreadRow({
       sidebarSplitLayout: splitLayout,
       sdk,
       threadActions,
+      experiments,
     },
   );
   return Object.assign(slot, {
@@ -425,8 +428,21 @@ describe("ThreadRow", () => {
   it.each([
     ["meta", { metaKey: true }],
     ["ctrl", { ctrlKey: true }],
-  ])("selects the row instead of opening it on %s-click", (_label, modifier) => {
+  ])("opens the thread in a split on %s-click", (_label, modifier) => {
     const slot = renderThreadRow();
+    const link = screen.getByRole("link", { name: "Open Thread" });
+    const event = fireEvent.click(link, modifier);
+    expect(event).toBe(false);
+    expect(slot.inspection.navigateCalls).toEqual([
+      { method: "toThread", threadId: "thr_test", options: { split: true } },
+    ]);
+  });
+
+  it.each([
+    ["meta", { metaKey: true }],
+    ["ctrl", { ctrlKey: true }],
+  ])("selects the row instead of opening it on %s-click with multi-select on", (_label, modifier) => {
+    const slot = renderThreadRow({ experiments: ["sidebarMultiSelect"] });
     const link = screen.getByRole("link", { name: "Open Thread" });
     const row = link.closest("[data-sidebar-rename-row]");
     expect(row?.hasAttribute("data-sidebar-thread-selected")).toBe(false);
@@ -435,6 +451,24 @@ describe("ThreadRow", () => {
     expect(slot.inspection.navigateCalls).toEqual([]);
     fireEvent.click(link, modifier);
     expect(row?.hasAttribute("data-sidebar-thread-selected")).toBe(false);
+  });
+
+  it("clears the selection on a press outside the sidebar but keeps it for menus", () => {
+    renderThreadRow({ experiments: ["sidebarMultiSelect"] });
+    const link = screen.getByRole("link", { name: "Open Thread" });
+    const row = link.closest("[data-sidebar-rename-row]");
+    const menu = document.createElement("div");
+    menu.setAttribute("role", "menu");
+    document.body.append(menu);
+    try {
+      fireEvent.click(link, { metaKey: true });
+      fireEvent.pointerDown(menu);
+      expect(row?.hasAttribute("data-sidebar-thread-selected")).toBe(true);
+      fireEvent.pointerDown(document.body);
+      expect(row?.hasAttribute("data-sidebar-thread-selected")).toBe(false);
+    } finally {
+      menu.remove();
+    }
   });
 
   it("keeps desktop restore available, hides it on mobile, and blocks row event propagation", async () => {
@@ -1620,6 +1654,7 @@ describe("ThreadRow", () => {
       .mockReturnValue(false);
     const slot = renderThreadRow({
       options: { ...DEFAULT_OPTIONS, consumeClickSuppression },
+      experiments: ["sidebarMultiSelect"],
     });
     const link = screen.getByRole("link", { name: "Open Thread" });
 

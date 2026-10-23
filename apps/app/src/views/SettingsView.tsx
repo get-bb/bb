@@ -1155,6 +1155,11 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "Move the bb server to another machine from Settings → Machines, and export or import server data with bb server.",
   },
+  sidebarMultiSelect: {
+    label: "Select multiple sidebar threads",
+    description:
+      "Cmd/Ctrl-click and Shift-click threads in the sidebar to select several, right-click for bulk actions, and drag them together into a section, under a thread, into Pinned, or into a composer as mentions.",
+  },
   timelinePush: {
     label: "Pushed timeline updates",
     description:
