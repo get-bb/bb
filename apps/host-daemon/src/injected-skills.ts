@@ -1,3 +1,4 @@
+import { firstPerIdentity, resolveSkillPath } from "@bb/skill-index";
 import { createHash, randomUUID } from "node:crypto";
 import type { Dirent } from "node:fs";
 import fs from "node:fs/promises";
@@ -36,6 +37,7 @@ export interface InjectedSkillsLogger {
 }
 
 interface StageInjectedSkillSourcesArgs {
+  workspacePath: string | null;
   dataDir: string;
   fetchSkillTree?: FetchSkillTree;
   injectedSkillSources: readonly HostDaemonInjectedSkillSource[];
@@ -79,18 +81,21 @@ interface CollectedSkillTree {
 }
 
 interface CollectSkillTreeArgs {
+  boundaryPath: string | null;
   source: HostDaemonInjectedSkillSource;
   sourceRootPath: string;
   skillFilePath: string;
 }
 
 interface CollectSkillDirectoryArgs {
+  boundaryPath: string | null;
   name: string;
   sourceRootPath: string;
   skillFilePath: string;
 }
 
 interface WalkSkillTreeArgs {
+  boundaryPath: string | null;
   currentPath: string;
   depth: number;
   rootPath: string;
@@ -263,13 +268,21 @@ async function walkSkillTree(args: WalkSkillTreeArgs): Promise<void> {
     const relativePath = normalizeRelativePath(
       path.relative(args.rootPath, sourcePath),
     );
-    const entryStat = await fs.lstat(sourcePath);
+    let entryStat = await fs.lstat(sourcePath);
+    let readPath = sourcePath;
     if (entryStat.isSymbolicLink()) {
-      throw new Error(`Skill tree contains a symlink: ${sourcePath}`);
+      if (relativePath !== SKILL_FILE_NAME)
+        throw new Error(`Skill tree contains a symlink: ${sourcePath}`);
+      const resolved = await resolveSkillPath(sourcePath, args.boundaryPath);
+      if (resolved === null)
+        throw new Error(`Skill entry escapes read root: ${sourcePath}`);
+      readPath = resolved;
+      entryStat = await fs.stat(readPath);
     }
     if (entryStat.isDirectory()) {
       args.state.directories.push({ relativePath });
       await walkSkillTree({
+        boundaryPath: args.boundaryPath,
         currentPath: sourcePath,
         depth: args.depth + 1,
         rootPath: args.rootPath,
@@ -290,7 +303,7 @@ async function walkSkillTree(args: WalkSkillTreeArgs): Promise<void> {
         `Skill tree exceeds max byte count ${MAX_STAGED_SKILL_BYTES}: ${args.rootPath}`,
       );
     }
-    const bytes = await fs.readFile(sourcePath);
+    const bytes = await fs.readFile(readPath);
     args.state.files.push({
       bytes,
       contentSha256: sha256Hex(bytes),
@@ -305,21 +318,36 @@ async function collectSkillDirectory(
   args: CollectSkillDirectoryArgs,
 ): Promise<SkillTreeCollectionState> {
   assertUsableSkillDirectory(args);
-  const rootStat = await fs.lstat(args.sourceRootPath);
-  if (rootStat.isSymbolicLink()) {
-    throw new Error(
-      `Injected skill source root is a symlink: ${args.sourceRootPath}`,
-    );
-  }
+  const originalRootStat = await fs.lstat(args.sourceRootPath);
+  const realRootPath = await resolveSkillPath(
+    args.sourceRootPath,
+    args.boundaryPath,
+  );
+  if (realRootPath === null)
+    throw new Error(`Missing injected skill: ${args.sourceRootPath}`);
+  args = {
+    ...args,
+    sourceRootPath: realRootPath,
+    skillFilePath: path.join(
+      realRootPath,
+      path.relative(args.sourceRootPath, args.skillFilePath),
+    ),
+  };
+  const rootStat = originalRootStat.isSymbolicLink()
+    ? await fs.stat(args.sourceRootPath)
+    : originalRootStat;
   if (!rootStat.isDirectory()) {
     throw new Error(
       `Injected skill source root is not a directory: ${args.sourceRootPath}`,
     );
   }
-  const skillFileStat = await fs.lstat(args.skillFilePath);
-  if (skillFileStat.isSymbolicLink()) {
-    throw new Error(`Injected skill file is a symlink: ${args.skillFilePath}`);
-  }
+  const realSkillFile = await resolveSkillPath(
+    args.skillFilePath,
+    args.boundaryPath,
+  );
+  if (realSkillFile === null)
+    throw new Error(`Skill entry escapes read root: ${args.skillFilePath}`);
+  const skillFileStat = await fs.stat(realSkillFile);
   if (!skillFileStat.isFile()) {
     throw new Error(
       `Injected skill file is not a regular file: ${args.skillFilePath}`,
@@ -332,6 +360,7 @@ async function collectSkillDirectory(
     totalBytes: 0,
   };
   await walkSkillTree({
+    boundaryPath: args.boundaryPath,
     currentPath: args.sourceRootPath,
     depth: 0,
     rootPath: args.sourceRootPath,
@@ -386,6 +415,7 @@ async function collectSkillTree(
   return toCollectedSkillTree(
     args.source,
     await collectSkillDirectory({
+      boundaryPath: args.boundaryPath,
       name: args.source.name,
       sourceRootPath: args.sourceRootPath,
       skillFilePath: args.skillFilePath,
@@ -474,6 +504,7 @@ export async function copyInjectedSkillSource(
   args: CopyInjectedSkillSourceArgs,
 ): Promise<void> {
   const tree = await collectSkillDirectory({
+    boundaryPath: null,
     name: args.name,
     sourceRootPath: args.sourceRootPath,
     skillFilePath: args.skillFilePath,
@@ -743,6 +774,7 @@ export async function hashInstalledSkillDirectory(args: {
 }): Promise<string | null> {
   try {
     const tree = await collectSkillDirectory({
+      boundaryPath: null,
       name: args.name,
       sourceRootPath: args.skillDirectoryPath,
       skillFilePath: path.join(args.skillDirectoryPath, SKILL_FILE_NAME),
@@ -950,6 +982,7 @@ export async function stageInjectedSkillSources(
             );
           }
           const tree = await collectSkillTree({
+            boundaryPath: sourceRootPath,
             source,
             sourceRootPath,
             skillFilePath,
@@ -974,8 +1007,14 @@ export async function stageInjectedSkillSources(
         continue;
       }
       try {
+        const project =
+          source.sourceType === "project" ||
+          source.sourceType === "shared-project";
+        if (project && args.workspacePath === null)
+          throw new Error("Project skill staging requires a workspace");
         trees.push(
           await collectSkillTree({
+            boundaryPath: project ? args.workspacePath : null,
             source,
             sourceRootPath: source.sourceRootPath,
             skillFilePath: source.skillFilePath,
@@ -1003,7 +1042,17 @@ export async function stageInjectedSkillSources(
     }
   }
 
-  const sortedTrees = trees.sort(sortTreesByName);
+  const sortedTrees = firstPerIdentity(trees.sort(sortTreesByName), (tree) =>
+    JSON.stringify([
+      tree.source.name,
+      tree.files
+        .map((file): [string, string] => [
+          file.relativePath,
+          file.contentSha256,
+        ])
+        .sort(([left], [right]) => left.localeCompare(right)),
+    ]),
+  );
   if (sortedTrees.length === 0) {
     return {
       catalogHash: EMPTY_SKILL_CATALOG_HASH,

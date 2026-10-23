@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { experimental_selectedSkillMentions as selectedSkillMentions } from "@get-bb/plugin-sdk/provider-bridge";
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import {
@@ -1997,6 +1998,44 @@ function settleCompactionDispatchesWhenCodexIsNotRunning(
   }
 }
 
+const skillListSchema = z.object({
+  data: z.array(
+    z.object({
+      cwd: z.string(),
+      skills: z.array(
+        z.object({ name: z.string(), path: z.string(), enabled: z.boolean() }),
+      ),
+    }),
+  ),
+});
+
+async function resolveCodexSkillInput(
+  session: CodexBridgeSession,
+  input: PromptInput[],
+) {
+  if (
+    !input.some(
+      (chunk) =>
+        chunk.type === "text" && selectedSkillMentions(chunk).length > 0,
+    )
+  )
+    return toCodexUserInput(input);
+  if (session.connection === null)
+    throw new Error("Codex session is disconnected");
+  const result = await session.connection.request({
+    method: "skills/list",
+    params: { cwds: [session.construction.cwd], forceReload: true },
+    resultSchema: skillListSchema,
+    timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+  });
+  return toCodexUserInput(
+    input,
+    result.data.flatMap((entry) =>
+      entry.skills.filter((skill) => skill.enabled),
+    ),
+  );
+}
+
 async function handleTurnStart(
   id: string | number,
   params: TurnStartParamsShape,
@@ -2063,7 +2102,7 @@ async function handleTurnStart(
           method: "turn/start",
           params: {
             threadId: codexThreadId,
-            input: toCodexUserInput(input),
+            input: await resolveCodexSkillInput(session, input),
             approvalPolicy: permissionSettings.approvalPolicy,
             approvalsReviewer: permissionSettings.approvalsReviewer,
             sandboxPolicy: permissionSettings.sandboxPolicy,
@@ -2161,7 +2200,7 @@ async function handleTurnSteer(
       params: {
         threadId: session.codexThreadId,
         expectedTurnId: params.expectedTurnId,
-        input: toCodexUserInput(params.input),
+        input: await resolveCodexSkillInput(session, params.input),
       },
       resultSchema: ignoredChildResultSchema,
       timeoutMs: CHILD_REQUEST_TIMEOUT_MS,

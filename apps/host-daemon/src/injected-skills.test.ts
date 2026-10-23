@@ -1,3 +1,4 @@
+import { discoverSkills } from "./command-discovery.js";
 import {
   access,
   lstat,
@@ -202,11 +203,13 @@ describe("injected skill staging", () => {
     const source = createTreeSource("synced-skill", payload.treeHash);
 
     const first = await stageInjectedSkillSources({
+      workspacePath: dataDir,
       dataDir,
       fetchSkillTree,
       injectedSkillSources: [source],
     });
     await stageInjectedSkillSources({
+      workspacePath: dataDir,
       dataDir,
       fetchSkillTree,
       injectedSkillSources: [source],
@@ -255,6 +258,7 @@ describe("injected skill staging", () => {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       stages.push(
         await stageInjectedSkillSources({
+          workspacePath: dataDir,
           dataDir,
           fetchSkillTree,
           injectedSkillSources: [
@@ -298,6 +302,7 @@ describe("injected skill staging", () => {
     const dataDir = await makeTempDir();
     const payload = createTreePayload("concurrent-install");
     const staged = await stageInjectedSkillSources({
+      workspacePath: dataDir,
       dataDir,
       fetchSkillTree: async () => {
         const treeRootPath = await seedStoredTree(dataDir, payload);
@@ -353,6 +358,7 @@ describe("injected skill staging", () => {
         });
       try {
         const staged = await stageInjectedSkillSources({
+          workspacePath: dataDir,
           dataDir,
           fetchSkillTree: async () => payload,
           injectedSkillSources: [
@@ -395,6 +401,7 @@ describe("injected skill staging", () => {
       try {
         await expect(
           stageInjectedSkillSources({
+            workspacePath: dataDir,
             dataDir,
             fetchSkillTree: async () => payload,
             injectedSkillSources: [
@@ -420,6 +427,7 @@ describe("injected skill staging", () => {
 
     await expect(
       stageInjectedSkillSources({
+        workspacePath: dataDir,
         dataDir,
         fetchSkillTree: async () => Promise.reject(failure),
         injectedSkillSources: [
@@ -455,6 +463,7 @@ describe("injected skill staging", () => {
 
     await expect(
       stageInjectedSkillSources({
+        workspacePath: dataDir,
         dataDir,
         fetchSkillTree: async () => tampered,
         injectedSkillSources: [
@@ -497,6 +506,7 @@ describe("injected skill staging", () => {
 
     await expect(
       stageInjectedSkillSources({
+        workspacePath: dataDir,
         dataDir,
         fetchSkillTree: async () => payload,
         injectedSkillSources: [
@@ -526,6 +536,7 @@ describe("injected skill staging", () => {
     const name = "gc-newcomer";
     const payload = createTreePayload(name, "newcomer-token");
     await stageInjectedSkillSources({
+      workspacePath: dataDir,
       dataDir,
       fetchSkillTree: async () => payload,
       injectedSkillSources: [createTreeSource(name, payload.treeHash)],
@@ -582,6 +593,7 @@ describe("injected skill staging", () => {
       });
 
     const protectedStage = stageInjectedSkillSources({
+      workspacePath: dataDir,
       dataDir,
       fetchSkillTree: async () => protectedTree.payload,
       injectedSkillSources: [
@@ -594,6 +606,7 @@ describe("injected skill staging", () => {
       await utimes(path.join(protectedRoot, ".last-used"), oldest, oldest);
       const newcomer = createTreePayload("newcomer");
       await stageInjectedSkillSources({
+        workspacePath: dataDir,
         dataDir,
         fetchSkillTree: async () => newcomer,
         injectedSkillSources: [createTreeSource("newcomer", newcomer.treeHash)],
@@ -624,6 +637,7 @@ describe("injected skill staging", () => {
     });
 
     const staged = await stageInjectedSkillSources({
+      workspacePath: dataDir,
       dataDir,
       injectedSkillSources: [
         createDataDirSource({
@@ -688,6 +702,7 @@ describe("injected skill staging", () => {
     });
 
     const staged = await stageInjectedSkillSources({
+      workspacePath: dataDir,
       dataDir,
       injectedSkillSources: [
         {
@@ -722,6 +737,7 @@ describe("injected skill staging", () => {
       skillRootPath,
     });
     const first = await stageInjectedSkillSources({
+      workspacePath: dataDir,
       dataDir,
       injectedSkillSources: [source],
     });
@@ -740,6 +756,7 @@ describe("injected skill staging", () => {
       "utf8",
     );
     const second = await stageInjectedSkillSources({
+      workspacePath: dataDir,
       dataDir,
       injectedSkillSources: [source],
     });
@@ -753,6 +770,7 @@ describe("injected skill staging", () => {
     const fetchSkillTree = vi.fn(async () => payload);
     const source = createTreeSource("memo-tree", payload.treeHash);
     const first = await stageInjectedSkillSources({
+      workspacePath: dataDir,
       dataDir,
       fetchSkillTree,
       injectedSkillSources: [source],
@@ -767,6 +785,7 @@ describe("injected skill staging", () => {
     });
 
     const second = await stageInjectedSkillSources({
+      workspacePath: dataDir,
       dataDir,
       fetchSkillTree,
       injectedSkillSources: [source],
@@ -805,6 +824,7 @@ describe("injected skill staging", () => {
       skillRootPath,
     });
     const first = await stageInjectedSkillSources({
+      workspacePath: dataDir,
       dataDir,
       injectedSkillSources: [source],
     });
@@ -815,6 +835,7 @@ describe("injected skill staging", () => {
     );
     await utimes(skillFilePath, pinnedTime, pinnedTime);
     const second = await stageInjectedSkillSources({
+      workspacePath: dataDir,
       dataDir,
       injectedSkillSources: [source],
     });
@@ -849,6 +870,7 @@ describe("injected skill staging", () => {
       const staged = await Promise.all(
         Array.from({ length: 12 }, () =>
           stageInjectedSkillSources({
+            workspacePath: dataDir,
             dataDir,
             injectedSkillSources: [source],
           }),
@@ -903,6 +925,7 @@ describe("injected skill staging", () => {
       skillRootPath,
     });
     const first = await stageInjectedSkillSources({
+      workspacePath: dataDir,
       dataDir,
       injectedSkillSources: [source],
     });
@@ -921,6 +944,7 @@ describe("injected skill staging", () => {
     );
 
     const second = await stageInjectedSkillSources({
+      workspacePath: dataDir,
       dataDir,
       injectedSkillSources: [source],
     });
@@ -942,6 +966,78 @@ describe("injected skill staging", () => {
     ).resolves.toBeUndefined();
   });
 
+  it.each(["directory", "entry"] as const)(
+    "stages a discovered user skill reached through a linked %s",
+    async (shape) => {
+      const dataDir = await makeTempDir();
+      const pool = await makeTempDir();
+      const source = await writeSkill({ rootPath: pool, name: "linked-skill" });
+      const skillsRoot = path.join(dataDir, "source-skills");
+      await mkdir(skillsRoot);
+      const link = path.join(skillsRoot, "linked-skill");
+      if (shape === "directory") await symlink(source, link);
+      else {
+        await mkdir(link);
+        await symlink(
+          path.join(source, "SKILL.md"),
+          path.join(link, "SKILL.md"),
+        );
+      }
+      const skills = await discoverSkills({
+        roots: [
+          {
+            rootPath: skillsRoot,
+            shape: "skill",
+            origin: "user",
+            source: "skill",
+            namePrefix: "",
+            rootKind: "shared-user",
+            identitySeed: "shared",
+          },
+        ],
+      });
+      expect(skills).toHaveLength(1);
+      const skill = skills[0]!;
+      const staged = await stageInjectedSkillSources({
+        dataDir,
+        workspacePath: null,
+        injectedSkillSources: [
+          {
+            kind: "host-path",
+            sourceType: "shared-user",
+            name: skill.name,
+            description: skill.description!,
+            sourceRootPath: path.dirname(skill.filePath),
+            skillFilePath: skill.filePath,
+          },
+        ],
+      });
+      const stagedFile = path.join(
+        requireSkillRoot(staged.skillRoots).path,
+        "linked-skill",
+        "SKILL.md",
+      );
+      expect(await readFile(stagedFile, "utf8")).toBe(
+        await readFile(path.join(source, "SKILL.md"), "utf8"),
+      );
+      const projectStage = await stageInjectedSkillSources({
+        dataDir,
+        workspacePath: dataDir,
+        injectedSkillSources: [
+          {
+            kind: "host-path",
+            sourceType: "shared-project",
+            name: skill.name,
+            description: skill.description!,
+            sourceRootPath: path.dirname(skill.filePath),
+            skillFilePath: skill.filePath,
+          },
+        ],
+      });
+      expect(projectStage.skillRoots).toEqual([]);
+    },
+  );
+
   it("skips symlinked files during staging", async () => {
     const dataDir = await makeTempDir();
     const outsideDir = await makeTempDir();
@@ -957,6 +1053,7 @@ describe("injected skill staging", () => {
     const warnings: CapturedWarning[] = [];
 
     const staged = await stageInjectedSkillSources({
+      workspacePath: dataDir,
       dataDir,
       injectedSkillSources: [
         createDataDirSource({

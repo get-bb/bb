@@ -471,6 +471,9 @@ async function handleRequest(message) {
         respond(id, script?.configRead ?? { config: { model: null } });
       }
       return;
+    case "skills/list":
+      respond(id, script?.skillsList ?? { data: [] });
+      return;
     case "skills/extraRoots/set":
       respond(id, {});
       return;

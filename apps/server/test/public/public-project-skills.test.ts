@@ -178,6 +178,8 @@ function discovered(
     description: `${name} skill`,
     rootKind,
     filePath,
+    realPath: filePath,
+    contentSha256: createHash("sha256").update(filePath).digest("hex"),
     linked: false,
   };
 }
@@ -235,6 +237,108 @@ async function writePluginSkillFixture(rootPath: string): Promise<{
 }
 
 describe("public project skills route", () => {
+  it("collapses identical registrations across scopes while keeping hidden IDs usable for reads and mutations and different contents distinct", async () => {
+    await withTestHarness(
+      { sharedSkillRoots: { user: [".agents/skills"], project: [] } },
+      async (harness) => {
+        const { host, session } = seedHostSession(harness.deps, {
+          id: "host-index-aliases",
+        });
+        seedPrimaryHost(harness.deps, host.id);
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+          path: "/tmp/index-aliases",
+        });
+        const shared = discovered(
+          "review",
+          "shared-user",
+          "/home/.agents/skills/review/SKILL.md",
+        );
+        const native = {
+          ...discovered(
+            "review",
+            "provider-user",
+            "/home/.claude/skills/review/SKILL.md",
+          ),
+          contentSha256: shared.contentSha256,
+        };
+        const different = discovered(
+          "review",
+          "provider-user",
+          "/home/.claude/skills/other/SKILL.md",
+        );
+        const alias = {
+          ...discovered(
+            "critique",
+            "provider-user",
+            "/home/.claude/skills/critique/SKILL.md",
+          ),
+          contentSha256: shared.contentSha256,
+        };
+        const stub = registerSkillRpc(harness, {
+          hostId: host.id,
+          sessionId: session.id,
+          skillsByProvider: {
+            "bb-shared": [shared],
+            "claude-code": [native, different, alias],
+          },
+        });
+        const response = await harness.app.request(
+          `/api/v1/projects/${project.id}/skills?environmentId=`,
+        );
+        expect(response.status).toBe(200);
+        const listed = skillListResponseSchema.parse(await readJson(response));
+        expect(
+          listed.skills
+            .filter((skill) => skill.name === "review")
+            .map((skill) => skill.id),
+        ).toEqual([shared.id, different.id]);
+        expect(listed.skills.map((skill) => skill.id)).toContain(alias.id);
+        const read = await harness.app.request(
+          `/api/v1/projects/${project.id}/skills/content?environmentId=&skillId=${native.id}&path=SKILL.md`,
+        );
+        expect(read.status).toBe(200);
+        const edit = await harness.app.request(
+          `/api/v1/projects/${project.id}/skills/content`,
+          {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              skillId: native.id,
+              environmentId: null,
+              content: "# Updated native review",
+              revision: "0".repeat(64),
+            }),
+          },
+        );
+        expect(edit.status).toBe(200);
+        expect(stub.requests.map((request) => request.command)).toContainEqual(
+          expect.objectContaining({
+            type: "host.write_file",
+            path: native.filePath,
+            content: "# Updated native review",
+          }),
+        );
+        const remove = await harness.app.request(
+          `/api/v1/projects/${project.id}/skills`,
+          {
+            method: "DELETE",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ skillId: native.id, environmentId: null }),
+          },
+        );
+        expect(remove.status).toBe(200);
+        expect(stub.requests.map((request) => request.command)).toContainEqual(
+          expect.objectContaining({
+            type: "host.delete_skill",
+            rootPath: "/home/.claude/skills",
+            name: "review",
+          }),
+        );
+      },
+    );
+  });
+
   it("lists configured shared roots as read-only provider-neutral skills", async () => {
     await withTestHarness(
       {

@@ -5,7 +5,7 @@ import {
   groupHostDaemonEvents,
   type HostDaemonEventEnvelope,
 } from "@bb/host-daemon-contract";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { queueChildThreadTurnNotificationBestEffort } from "../../../src/services/threads/child-thread-notifications.js";
 import { sendThreadMessage } from "../../../src/services/threads/thread-send.js";
 import {
@@ -190,6 +190,12 @@ describe("child outcome reconciliation", () => {
         });
       }
 
+      await flushChildThreadNotifications();
+      await vi.waitFor(() => {
+        expect(parentSystemMessageKinds(harness, fixture.parent.id)).toEqual([
+          "child-failed",
+        ]);
+      });
       await flushChildThreadNotifications();
 
       expect(parentSystemMessageKinds(harness, fixture.parent.id)).toEqual([

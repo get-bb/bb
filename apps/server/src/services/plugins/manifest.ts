@@ -1,4 +1,5 @@
-import { lstat, readdir, readFile, stat } from "node:fs/promises";
+import { findSkillFiles } from "@bb/skill-index";
+import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import semver from "semver";
 import {
@@ -55,21 +56,12 @@ export interface PluginManifest {
 async function readSkillNames(rootPaths: string[]): Promise<string[]> {
   const names = new Set<string>();
   for (const rootPath of rootPaths) {
-    let entries;
-    try {
-      entries = await readdir(rootPath, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      try {
-        const skillFile = await lstat(join(rootPath, entry.name, "SKILL.md"));
-        if (!skillFile.isFile()) continue;
-      } catch {
-        continue;
-      }
-      names.add(entry.name);
+    for (const skill of await findSkillFiles({
+      path: rootPath,
+      shape: "skill",
+      boundaryPath: null,
+    })) {
+      names.add(skill.name);
     }
   }
   return [...names].sort();
@@ -197,7 +189,11 @@ export async function readPluginManifest(
       id: theme.id,
       name: theme.name,
       description: theme.description ?? null,
-      cssPath: resolveManifestPath(rootDir, theme.css, `bb.themes.${theme.id}.css`),
+      cssPath: resolveManifestPath(
+        rootDir,
+        theme.css,
+        `bb.themes.${theme.id}.css`,
+      ),
       codeTheme,
       codeThemePaths,
     };
@@ -240,7 +236,9 @@ export async function readPluginManifest(
       ({ id, displayName }) => ({ id, displayName }),
     ),
     serverEntry,
-    appEntry: bb.app ? resolveManifestPath(rootDir, bb.app, "bb.app") : undefined,
+    appEntry: bb.app
+      ? resolveManifestPath(rootDir, bb.app, "bb.app")
+      : undefined,
     hostEntry,
     themes,
     skillsRootPaths,

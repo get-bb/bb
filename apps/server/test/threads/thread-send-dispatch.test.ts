@@ -1657,9 +1657,11 @@ describe("service tier execution lifecycle", () => {
       await expect(
         buildExecutionOptions(harness.deps, {}, { threadId: thread.id }),
       ).resolves.toMatchObject({ serviceTier: "default" });
-      expect(listQueuedThreadMessages(harness.db, thread.id)).toMatchObject([
-        { id: newer.id, serviceTier: "fast" },
-      ]);
+      await vi.waitFor(() => {
+        expect(listQueuedThreadMessages(harness.db, thread.id)).toMatchObject([
+          { id: newer.id, serviceTier: "fast" },
+        ]);
+      });
       expect(
         listQueuedThreadCommands(harness, "turn.submit", thread.id),
       ).toContainEqual(

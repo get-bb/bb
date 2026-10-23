@@ -82,7 +82,7 @@ async function runGit(
 
 async function writeInjectedSkillSource(
   args: WriteInjectedSkillSourceArgs,
-): Promise<Extract<HostDaemonInjectedSkillSource, { kind: "workspace-path" }>> {
+): Promise<Extract<HostDaemonInjectedSkillSource, { kind: "host-path" }>> {
   const sourceRootPath = path.join(args.dataDir, "skills", args.name);
   await fs.mkdir(sourceRootPath, { recursive: true });
   await fs.writeFile(
@@ -99,8 +99,8 @@ async function writeInjectedSkillSource(
     "utf8",
   );
   return {
-    kind: "workspace-path",
-    sourceType: "project",
+    kind: "host-path",
+    sourceType: "shared-user",
     name: args.name,
     description: `Use ${args.name} when runtime manager tests run.`,
     sourceRootPath,

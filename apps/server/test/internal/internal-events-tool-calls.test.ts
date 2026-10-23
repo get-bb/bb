@@ -879,9 +879,11 @@ describe("internal event and tool-call routes", () => {
       expect(response.status).toBe(200);
       await flushChildThreadNotifications();
       expect(getThread(harness.db, childThread.id)?.status).toBe("idle");
-      expect(
-        listQueuedThreadCommands(harness, "turn.submit", parentThread.id),
-      ).toHaveLength(1);
+      await vi.waitFor(() => {
+        expect(
+          listQueuedThreadCommands(harness, "turn.submit", parentThread.id),
+        ).toHaveLength(1);
+      });
     });
   });
 
@@ -1263,8 +1265,9 @@ describe("internal event and tool-call routes", () => {
     "starts the follow-up turn in the new directory only when the directory-switch turn completes on its own ($name)",
     async ({ status, manualStop, queuedMessage, continues, submits }) => {
       await withChildThreadNotificationClock(async (harness) => {
-        const { threadId, targetEnvironmentId } =
-          await runDirectorySwitchTurn(harness, {
+        const { threadId, targetEnvironmentId } = await runDirectorySwitchTurn(
+          harness,
+          {
             withParent: false,
             status,
             beforeTurnCompleted: (fixture) => {
@@ -1289,45 +1292,48 @@ describe("internal event and tool-call routes", () => {
                 });
               }
             },
-          });
-
-        const continuationRequests = harness.db
-          .select()
-          .from(events)
-          .where(eq(events.threadId, threadId))
-          .all()
-          .filter(
-            (event) =>
-              event.type === "client/turn/requested" &&
-              event.data.includes('"environment-directory-updated"'),
-          );
-        const submitted = listQueuedThreadCommands(
-          harness,
-          "turn.submit",
-          threadId,
-        );
-        expect(submitted).toHaveLength(submits);
-        if (queuedMessage) {
-          expect(JSON.stringify(submitted[0])).toContain(
-            "Check the README before continuing",
-          );
-        }
-        if (!continues) {
-          expect(continuationRequests).toHaveLength(0);
-          return;
-        }
-        expect(continuationRequests).toHaveLength(1);
-        expect(JSON.parse(continuationRequests[0]!.data)).toMatchObject({
-          initiator: "system",
-          systemMessageKind: "environment-directory-updated",
-          systemMessageSubject: {
-            kind: "directory",
-            path: "/tmp/continue-worktree",
           },
-        });
-        expect(continuationRequests[0]!.environmentId).toBe(
-          targetEnvironmentId,
         );
+
+        await vi.waitFor(() => {
+          const continuationRequests = harness.db
+            .select()
+            .from(events)
+            .where(eq(events.threadId, threadId))
+            .all()
+            .filter(
+              (event) =>
+                event.type === "client/turn/requested" &&
+                event.data.includes('"environment-directory-updated"'),
+            );
+          const submitted = listQueuedThreadCommands(
+            harness,
+            "turn.submit",
+            threadId,
+          );
+          expect(submitted).toHaveLength(submits);
+          if (queuedMessage) {
+            expect(JSON.stringify(submitted[0])).toContain(
+              "Check the README before continuing",
+            );
+          }
+          if (!continues) {
+            expect(continuationRequests).toHaveLength(0);
+            return;
+          }
+          expect(continuationRequests).toHaveLength(1);
+          expect(JSON.parse(continuationRequests[0]!.data)).toMatchObject({
+            initiator: "system",
+            systemMessageKind: "environment-directory-updated",
+            systemMessageSubject: {
+              kind: "directory",
+              path: "/tmp/continue-worktree",
+            },
+          });
+          expect(continuationRequests[0]!.environmentId).toBe(
+            targetEnvironmentId,
+          );
+        });
       });
     },
   );
@@ -1356,12 +1362,14 @@ describe("internal event and tool-call routes", () => {
           },
         );
 
-        expect(
-          listQueuedThreadCommands(harness, "turn.submit", threadId),
-        ).toHaveLength(parentNotified ? 0 : 1);
-        expect(
-          listQueuedThreadCommands(harness, "turn.submit", parentThreadId!),
-        ).toHaveLength(parentNotified ? 1 : 0);
+        await vi.waitFor(() => {
+          expect(
+            listQueuedThreadCommands(harness, "turn.submit", threadId),
+          ).toHaveLength(parentNotified ? 0 : 1);
+          expect(
+            listQueuedThreadCommands(harness, "turn.submit", parentThreadId!),
+          ).toHaveLength(parentNotified ? 1 : 0);
+        });
       });
     },
   );

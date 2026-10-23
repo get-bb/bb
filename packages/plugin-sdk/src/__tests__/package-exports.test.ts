@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { access, readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
@@ -9,6 +10,20 @@ interface PackageExport {
 }
 
 describe("packed plugin SDK exports", () => {
+  it("loads the provider bridge and its skills index in Node ESM", () => {
+    const entry = new URL("../../dist/provider-bridge.js", import.meta.url);
+    const result = spawnSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "-e",
+        `await import(${JSON.stringify(entry.href)});`,
+      ],
+      { encoding: "utf8" },
+    );
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+  });
   it("maps every packed subpath to runtime JavaScript and portable declarations", async () => {
     const packageRoot = new URL("../../", import.meta.url);
     const packageJson = JSON.parse(

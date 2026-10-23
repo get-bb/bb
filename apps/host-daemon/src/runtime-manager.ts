@@ -593,6 +593,10 @@ export class RuntimeManager {
       throw new Error("Runtime skill staging requires a host dataDir");
     }
     return stageInjectedSkillSources({
+      workspacePath:
+        args.workspacePath ??
+        this.entries.get(args.environmentId)?.path ??
+        null,
       dataDir: this.options.dataDir,
       injectedSkillSources: args.injectedSkillSources,
       ...(this.options.fetchSkillTree !== undefined

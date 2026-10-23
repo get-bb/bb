@@ -1341,11 +1341,15 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Translate an agent CLI or SDK into bb's timeline, tool calls, approvals, and usage",
           "Run any Agent Client Protocol agent through the bundled ACP bridge, with no bridge code",
-          "Show the agent's own skills, slash commands, and plugins inside bb",
+          "Show native skills, commands, and plugins; validate selections with the shared skills index",
           "Test it against bb's conformance suite and recorded sessions, without a running bb",
         ],
         apiSymbols: [
           "experimental_defineProviderBridge",
+          "experimental_scanSkillFiles",
+          "experimental_selectedSkillMentions",
+          "ExperimentalSkillScanRoot",
+          "ExperimentalIndexedSkillFile",
           "ProviderBridgeDefinition",
           "ProviderBridgeContext",
           "ProviderBridgeEntry",

@@ -61,8 +61,8 @@ async function writeInjectedSkillSource(
     "utf8",
   );
   return {
-    kind: "workspace-path",
-    sourceType: "project",
+    kind: "host-path",
+    sourceType: "shared-user",
     name: "release-notes",
     description: "Use release-notes when command dispatch tests run.",
     sourceRootPath,
@@ -2320,6 +2320,7 @@ describe("dispatchCommand", () => {
     expect(result.providerThreadId).toBe("provider-thread-1");
     expect(fixture.runtime.startThread).toHaveBeenCalledTimes(1);
     const currentCatalog = await stageInjectedSkillSources({
+      workspacePath: fixture.dataDir,
       dataDir: fixture.dataDir,
       injectedSkillSources: [fixture.source],
     });

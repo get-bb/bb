@@ -746,6 +746,8 @@ const discoveredSkillSchema = z.object({
   name: z.string(),
   description: z.string().nullable(),
   filePath: z.string(),
+  realPath: z.string(),
+  contentSha256: z.string().regex(/^[a-f0-9]{64}$/u),
   rootKind: skillRootKindSchema,
   linked: z.boolean(),
 });

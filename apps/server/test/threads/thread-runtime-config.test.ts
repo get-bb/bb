@@ -1435,6 +1435,8 @@ describe("thread runtime config", () => {
               description: "Review code from one shared source.",
               filePath: skillFilePath,
               rootKind: "shared-project",
+              realPath: skillFilePath,
+              contentSha256: "a".repeat(64),
               linked: false,
             },
           ],

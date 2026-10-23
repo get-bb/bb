@@ -139,7 +139,7 @@ describe("resolveSkillScanRoots + discoverSkills", () => {
 
     const skills = await listSkills(fixture, fixture.cwd, AGENT_SKILL_ROOTS);
 
-    expect(byName(skills, "proj-bb")).toEqual({
+    expect(byName(skills, "proj-bb")).toMatchObject({
       id: expect.stringMatching(/^skill_[a-f0-9]{64}$/u),
       name: "proj-bb",
       description: "proj-bb skill",

@@ -40,14 +40,16 @@ interface WriteSkillArgs {
   rootPath: string;
 }
 
-function resolveInjectedSkillSources(
+async function resolveInjectedSkillSources(
   logger: ServerLogger,
   args: Omit<ResolveInjectedSkillSourcesArgs, "skillTreeRegistry">,
 ) {
-  return resolveSkillCatalogEntries(logger, {
-    ...args,
-    skillTreeRegistry: new SkillTreeRegistry(),
-  }).map((entry) => entry.runtimeSource);
+  return (
+    await resolveSkillCatalogEntries(logger, {
+      ...args,
+      skillTreeRegistry: new SkillTreeRegistry(),
+    })
+  ).map((entry) => entry.runtimeSource);
 }
 
 function createCapturingLogger(): CapturingLogger {
@@ -197,7 +199,7 @@ describe("injected skill source discovery", () => {
     const { logger, warnings } = createCapturingLogger();
 
     expect(
-      resolveInjectedSkillSources(logger, {
+      await resolveInjectedSkillSources(logger, {
         dataDir,
       }),
     ).toEqual([]);
@@ -213,7 +215,7 @@ describe("injected skill source discovery", () => {
     });
   });
 
-  it("rejects symlinked skill directories", async () => {
+  it("indexes symlinked skill directories", async () => {
     const dataDir = await makeTempDir();
     const outsideRoot = await makeTempDir();
     const skillsRootPath = path.join(dataDir, "skills");
@@ -228,15 +230,10 @@ describe("injected skill source discovery", () => {
     );
     const { logger, warnings } = createCapturingLogger();
 
-    expect(
-      resolveInjectedSkillSources(logger, {
-        dataDir,
-      }),
-    ).toEqual([]);
-    expect(warnings[0]?.context).toMatchObject({
-      reason: "Skill directory is a symlink",
-      sourceType: "data-dir",
-    });
+    expect(await resolveInjectedSkillSources(logger, { dataDir })).toEqual([
+      expect.objectContaining({ name: "outside-skill", kind: "tree" }),
+    ]);
+    expect(warnings).toEqual([]);
   });
 
   it("adds inherited skills as lower-priority user skills", async () => {
@@ -292,7 +289,7 @@ describe("injected skill source discovery", () => {
     const sharedProjectRoot = path.join(dataDir, "workspace", "deploy");
     const { logger } = createCapturingLogger();
 
-    const sources = resolveInjectedSkillSources(logger, {
+    const sources = await resolveInjectedSkillSources(logger, {
       dataDir,
       sharedSkillSources: [
         {
@@ -428,7 +425,7 @@ describe("injected skill source discovery", () => {
     });
     expect(projectSkillSource).not.toBeNull();
 
-    const sources = resolveInjectedSkillSources(logger, {
+    const sources = await resolveInjectedSkillSources(logger, {
       dataDir,
       projectSkillSources:
         projectSkillSource === null ? [] : [projectSkillSource],
@@ -451,12 +448,14 @@ describe("injected skill source discovery", () => {
     const dataDir = await makeTempDir();
     const { logger, warnings } = createCapturingLogger();
 
-    const sources = resolveServerOwnedSkillCatalogEntries({
-      builtinSkillsRootPath: resolveBuiltinSkillsRootPath(),
-      dataDir,
-      logger,
-      skillTreeRegistry: new SkillTreeRegistry(),
-    })
+    const sources = (
+      await resolveServerOwnedSkillCatalogEntries({
+        builtinSkillsRootPath: resolveBuiltinSkillsRootPath(),
+        dataDir,
+        logger,
+        skillTreeRegistry: new SkillTreeRegistry(),
+      })
+    )
       .filter((entry) => entry.provenance.kind === "builtin")
       .map((entry) => entry.runtimeSource);
 
@@ -485,7 +484,7 @@ describe("injected skill source discovery", () => {
       description: "User review.",
     });
     const { logger } = createCapturingLogger();
-    const entries = resolveServerOwnedSkillCatalogEntries({
+    const entries = await resolveServerOwnedSkillCatalogEntries({
       builtinSkillsRootPath,
       dataDir,
       logger,

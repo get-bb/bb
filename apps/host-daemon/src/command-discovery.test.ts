@@ -216,6 +216,32 @@ describe("discoverProviderCommands over declared roots", () => {
     });
   });
 
+  it("collapses identical skills under one name but keeps a same-content alias under another", async () => {
+    const fixture = await makeWorkspaceFixture();
+    const content = skillFile("deploy", "Deploy it");
+    await writeFileEnsuringDir(
+      path.join(fixture.homeDir, ".agent", "skills", "deploy", "SKILL.md"),
+      content,
+    );
+    await writeFileEnsuringDir(
+      path.join(fixture.cwd, ".agent", "skills", "deploy", "SKILL.md"),
+      content,
+    );
+    await symlink(
+      path.join(fixture.homeDir, ".agent", "skills", "deploy"),
+      path.join(fixture.homeDir, ".agent", "skills", "ship"),
+    );
+
+    const commands = await discover(fixture, fixture.cwd);
+
+    expect(
+      commands
+        .filter((command) => command.source === "skill")
+        .map((command) => command.name)
+        .sort(),
+    ).toEqual(["deploy", "ship"]);
+  });
+
   it("produces a name-only record for malformed frontmatter", async () => {
     const fixture = await makeWorkspaceFixture();
     await writeFileEnsuringDir(
@@ -1150,6 +1176,7 @@ describe("resolveDeclaredScanRoots", () => {
         skillIdentitySeed: `${PROVIDER_ID}:provider-user:${skillDirectory}`,
       },
       {
+        boundaryPath: fixture.cwd,
         filePath: skillFilePath,
         fallbackName: "notes",
         shape: "skill-file",

@@ -65,6 +65,14 @@ provider-specific item or state payloads, and `completedTurnDisplay: "flat"`
 when your agent narrates its work in text the user should keep reading. Each
 field's contract and limits are in `docs/provider-plugin-api.md` §1.
 
+Bridges that reconcile bb-injected skills with the agent's own catalog use the
+same skills index as core. `experimental_scanSkillFiles` walks one root (links
+followed for user roots, bounded by `boundaryPath` for project roots) and
+returns each `SKILL.md` with its bytes and SHA-256 digest.
+`experimental_selectedSkillMentions` returns the skill mentions the user picked
+in the composer, validated against their exact text ranges, so a typed `/name`
+is never mistaken for a selection.
+
 **The icon.** `icon` takes the two shapes of `bb.branding.icon` — a named
 host glyph (`"Zap"`) or a plugin-relative SVG path (`"./icons/echo.svg"`) —
 plus one `bb.branding.icon` itself refuses: one of the plugin's declared

@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+
+import { experimental_selectedSkillMentions as selectedSkillMentions } from "@get-bb/plugin-sdk/provider-bridge";
 import { ClaudeContextUsageCollector } from "./context-usage.js";
 import { readIsolatedClaudeContextUsage } from "./context-usage-probe.js";
 
@@ -102,6 +104,8 @@ import {
 import {
   createClaudeSkillPluginsRoot,
   ensureClaudeSkillPlugin,
+  filterClaudeSkillRoots,
+  claudeSkillsConfigDirectory,
 } from "./skill-plugins.js";
 import {
   buildBridgeMcpServer,
@@ -369,7 +373,7 @@ function nextInteractiveRequestId(): string {
   interactiveRequestIdCounter += 1;
   return `interaction-${interactiveRequestIdCounter}`;
 }
-let configuredSkillRoots: ClaudeCodeSkillRoot[] | null = null;
+let configuredSkillRoots: { id: string; path: string }[] | null = null;
 let skillPluginsRoot: string | null = null;
 let bridgeTempDir: string | null = null;
 
@@ -2277,7 +2281,7 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
       await handleThreadStart(
         request.id,
         claudeThreadStartParamsSchema.parse(
-          toClaudeSessionParams(request.params),
+          await toClaudeSessionParams(request.params),
         ),
       );
       break;
@@ -2285,7 +2289,7 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
       await handleThreadResume(
         request.id,
         claudeThreadResumeParamsSchema.parse({
-          ...toClaudeSessionParams(request.params),
+          ...(await toClaudeSessionParams(request.params)),
           providerThreadId: request.params.providerThreadId,
         }),
       );
@@ -2294,7 +2298,7 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
       await handleThreadFork(
         request.id,
         claudeThreadForkParamsSchema.parse({
-          ...toClaudeSessionParams(request.params),
+          ...(await toClaudeSessionParams(request.params)),
           sourceProviderThreadId: request.params.sourceProviderThreadId,
           ...(request.params.sourceProviderCheckpointId !== undefined
             ? {
@@ -2318,7 +2322,7 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
       sendResult(request.id, await closeThreadForStop(request.params.threadId));
       break;
     case "skills/configure":
-      configuredSkillRoots = assembleSkillPlugins(request.params.roots);
+      configuredSkillRoots = request.params.roots;
       sendResult(request.id, { ok: true });
       break;
   }
@@ -2477,16 +2481,27 @@ async function handleThreadFork(
   attachThreadSession(id, params, forkedProviderThreadId, true);
 }
 
-function toClaudeSessionParams(
+async function toClaudeSessionParams(
   params: z.infer<typeof canonicalThreadStartParamsSchema>,
-): Record<string, unknown> {
+): Promise<Record<string, unknown>> {
+  const roots =
+    configuredSkillRoots === null
+      ? undefined
+      : assembleSkillPlugins(
+          await filterClaudeSkillRoots({
+            roots: configuredSkillRoots,
+            cwd: params.cwd,
+            pluginsRoot: requireSkillPluginsRoot(),
+            claudeDir: claudeSkillsConfigDirectory(),
+          }),
+        );
   return buildClaudeSessionParams({
     threadId: params.threadId,
     cwd: params.cwd,
     options: params.options,
     instructionMode: params.instructionMode,
     dynamicTools: params.dynamicTools,
-    skillRoots: configuredSkillRoots ?? undefined,
+    skillRoots: roots,
   });
 }
 
@@ -2662,18 +2677,8 @@ function normalizeClaudeSkillMentions(
   entry: Extract<z.infer<typeof promptInputItemSchema>, { type: "text" }>,
 ): string {
   const replacements = new Set<number>();
-  for (const mention of entry.mentions) {
-    const resource = mention.resource;
-    if (
-      resource.kind === "command" &&
-      resource.source === "skill" &&
-      resource.trigger === "$" &&
-      typeof resource.name === "string" &&
-      mention.end <= entry.text.length &&
-      entry.text.slice(mention.start, mention.end) === `$${resource.name}`
-    ) {
-      replacements.add(mention.start);
-    }
+  for (const mention of selectedSkillMentions(entry)) {
+    if (mention.resource.trigger === "$") replacements.add(mention.start);
   }
 
   let normalized = entry.text;

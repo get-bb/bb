@@ -26,6 +26,7 @@
     "@bb/secret-storage": "workspace:*",
     "@bb/server-archive": "workspace:*",
     "@bb/server-contract": "workspace:*",
+    "@bb/skill-index": "workspace:*",
     "@bb/templates": "workspace:*",
     "@bb/text-utils": "workspace:*",
     "@bb/thread-view": "workspace:*",

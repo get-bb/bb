@@ -3563,3 +3563,24 @@ Stabilize after exercising producer cancellation, reload, reconnect and byte lim
 - **Core callers:** `ThreadPromptContextBanner` (`apps/app/src/components/promptbox/banner/ThreadPromptContextBanner.tsx`) registers the parent thread (summary and details, including read-only history) and changed files (summary, merge-base action, details) through `definePluginApp` and the same collector, and renders them with plugin registrations through `useThreadContextSegments` and `ThreadContextSegmentMount` (`apps/app/src/components/plugin/PluginThreadContextSegments.tsx`). Core segments read pane-local data from a React context and render without a plugin crash boundary, as core Info rows do. The GitHub PR Status plugin registers the pull request segment in its own group `2_pullRequest`, between core's two and its Mark ready and merge actions. Active child threads are a separate core row above the context row (`ThreadChildThreadsBanner`), not a segment. Contract tests: `ThreadPromptContextBanner.segments.test.tsx`.
 - **Known coupling:** `environment` folds in the "Show Git changes and Commit button" setting so the pull request segment hides with core's changed files, as before; that setting should become the git plugin's own when changed files move out of core.
 - **Stabilization:** audit per-component mounts and crash recovery across reloads and plugin disable, `segments` stability while visibility settles, focus handoff between a plugin's summary and details, independent panes, and compact widths with several plugin segments. Then rename project-wide and remove this entry.
+
+## Provider skills index
+
+`@get-bb/plugin-sdk/provider-bridge` exports `experimental_scanSkillFiles`,
+`experimental_selectedSkillMentions`, `ExperimentalSkillScanRoot`, and
+`ExperimentalIndexedSkillFile`. The scanner resolves canonical filesystem paths,
+follows user links, bounds project links, enforces traversal limits, and returns
+each `SKILL.md` with its bytes and SHA-256 digest. Selected mentions are
+validated against their exact text ranges before provider translation.
+
+The implementation lives in `@bb/skill-index`. Core daemon command/skill discovery,
+workspace context reads, server/plugin catalogs, listing identity, and staging use
+that same implementation. The SDK exports are direct re-exports; frontmatter
+parsing stays in core (`@bb/skill-index/metadata`). Provider callers are Claude
+Code (native catalog overlap and selected mentions), Codex (selected mentions and
+structured inputs), and Pi (selected mentions).
+
+Before stabilization, audit Windows/junction behavior, filesystem mutation during
+scans, provider-native precedence, traversal-limit reporting, and duplicate aliases
+through read/write/delete. Exercise packaged provider forks and compare live
+provider catalogs. Then rename project-wide and remove this entry.

@@ -13,6 +13,7 @@ import {
   CLAUDE_SKILL_PLUGIN_NAME,
   createClaudeSkillPluginsRoot,
   ensureClaudeSkillPlugin,
+  filterClaudeSkillRoots,
 } from "../skill-plugins.js";
 
 describe("claude skill plugins", () => {
@@ -35,6 +36,31 @@ describe("claude skill plugins", () => {
     );
     return root;
   }
+
+  it("omits identical native skills per workspace without hiding different content with the same name", async () => {
+    const cwd = join(baseDir, "workspace");
+    const claudeDir = join(baseDir, "home", ".claude");
+    const native = join(cwd, ".claude", "skills", "demo");
+    mkdirSync(native, { recursive: true });
+    mkdirSync(join(cwd, ".git"));
+    const staged = stageSkills("native-overlap");
+    writeFileSync(
+      join(native, "SKILL.md"),
+      readFileSync(join(staged, "demo", "SKILL.md")),
+    );
+    const args = {
+      roots: [{ id: "r", path: staged }],
+      cwd,
+      claudeDir,
+      pluginsRoot: createClaudeSkillPluginsRoot(baseDir),
+    };
+    expect(await filterClaudeSkillRoots(args)).toEqual([]);
+    writeFileSync(
+      join(native, "SKILL.md"),
+      "---\nname: demo\ndescription: Different instructions\n---\n",
+    );
+    expect(await filterClaudeSkillRoots(args)).toEqual(args.roots);
+  });
 
   it("is idempotent for a root and re-points the link when the root moves", () => {
     const pluginsRoot = createClaudeSkillPluginsRoot(baseDir);

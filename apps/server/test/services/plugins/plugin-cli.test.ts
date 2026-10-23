@@ -354,13 +354,15 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
     expect(content).toContain("## bb acme — Acme tools");
     expect(content).toContain("bb acme issues [--json]");
 
-    const sources = resolveSkillCatalogEntries(testLogger, {
-      additionalSkillsRootPaths: [
-        generatedSkillsRootPath(harness.config.dataDir),
-      ],
-      dataDir: harness.config.dataDir,
-      skillTreeRegistry: harness.deps.skillTreeRegistry,
-    }).map((entry) => entry.runtimeSource);
+    const sources = (
+      await resolveSkillCatalogEntries(testLogger, {
+        additionalSkillsRootPaths: [
+          generatedSkillsRootPath(harness.config.dataDir),
+        ],
+        dataDir: harness.config.dataDir,
+        skillTreeRegistry: harness.deps.skillTreeRegistry,
+      })
+    ).map((entry) => entry.runtimeSource);
     const skill = sources.find((source) => source.name === "plugin-commands");
     expect(skill?.sourceType).toBe("data-dir");
     expect(skill).toMatchObject({ kind: "tree", entryPath: "SKILL.md" });

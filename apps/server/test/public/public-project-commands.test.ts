@@ -195,6 +195,9 @@ describe("public project command typeahead route", () => {
               filePath:
                 "/tmp/shared-skills/.agents/skills/portable-review/SKILL.md",
               rootKind: "shared-project",
+              realPath:
+                "/tmp/shared-skills/.agents/skills/portable-review/SKILL.md",
+              contentSha256: "a".repeat(64),
               linked: false,
             },
           ],

@@ -1039,8 +1039,8 @@ describe("thread runtime stop", () => {
 
       await vi.waitFor(() => {
         expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
+        expect(getThread(harness.db, thread.id)?.status).toBe("active");
       });
-      expect(getThread(harness.db, thread.id)?.status).toBe("active");
     });
   });
 
@@ -1100,8 +1100,8 @@ describe("thread runtime stop", () => {
         expect(
           listQueuedThreadMessages(harness.db, thread.id).map((row) => row.id),
         ).toEqual([heldBack!.id]);
+        expect(getThread(harness.db, thread.id)?.status).toBe("active");
       });
-      expect(getThread(harness.db, thread.id)?.status).toBe("active");
       expect(isThreadQueueAutoSendPaused(harness.db, thread.id)).toBe(true);
     });
   });
@@ -1164,8 +1164,8 @@ describe("thread runtime stop", () => {
 
       await vi.waitFor(() => {
         expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
+        expect(getThread(harness.db, thread.id)?.status).toBe("active");
       });
-      expect(getThread(harness.db, thread.id)?.status).toBe("active");
     });
   });
 
