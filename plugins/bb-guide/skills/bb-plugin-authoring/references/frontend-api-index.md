@@ -35,6 +35,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `useRealtime`
 - `useRealtimeConnectionState`
 - `useSettings`
+- `experimental_useExperiment`
 - `useBbContext`
 - `experimental_usePluginId`
 - `experimental_useQuestionFormHost`
@@ -229,6 +230,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginSidebarSplitPane`
 - `PluginSidebarSplitLayout`
 - `PluginSidebarThreadSplit`
+- `PluginSidebarThreadSplitOptions`
 - `PluginThreadListRegistration`
 - `ExperimentalSidebarNavigationShortcut`
 - `ExperimentalSidebarNavigationAction`

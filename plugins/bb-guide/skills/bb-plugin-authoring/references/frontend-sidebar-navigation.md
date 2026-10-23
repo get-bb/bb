@@ -92,6 +92,12 @@ any "Open in split" affordance on `isAvailable`, and draw `layout` as a
 mini-map if you want one. For a row inside a menu or popover, pass
 `{ activation: "distance", onDragStart: closeMenu }`.
 
+`experimental_useSidebarThreadSplit(threadId, options?)` accepts
+`PluginSidebarThreadSplitOptions` with `dragThreadIds` in selection order,
+including the current row. Multiple threads drop into a composer as separate
+mentions and do not offer split or replace targets. Omit the option for a
+single-thread drag.
+
 While plugins load, bb reserves the placement your provider last had. If the
 picked provider is disabled or removed, bb falls back like Automatic; if it
 crashes, bb draws its own provider for the same placement and shows one

@@ -329,6 +329,7 @@ Read the installed declarations for exact current signatures.
 - `PluginSidebarThreadActivity`
 - `PluginSidebarThreadIndicator`
 - `PluginSidebarThreadSplit`
+- `PluginSidebarThreadSplitOptions`
 - `PluginSidebarThreadsState`
 - `PluginSourceCodeRendererProps`
 - `PluginSourceCodeRendererRegistration`
