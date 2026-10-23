@@ -64,7 +64,7 @@ jobs:
             edits_off="yes"
           fi
           issue_missing=""
-          if [ "$EVENT_ACTION" != "synchronize" ] && [ "$PR_AUTHOR_TYPE" != "Bot" ] && [ "$PR_ASSOCIATION" != "OWNER" ] && [ "$PR_ASSOCIATION" != "MEMBER" ]; then
+          if [ "$EVENT_ACTION" != "synchronize" ] && [ "$PR_AUTHOR_TYPE" != "Bot" ] && [ "$PR_ASSOCIATION" != "OWNER" ] && [ "$PR_ASSOCIATION" != "MEMBER" ] && [ "$HEAD_REPO" != "$GITHUB_REPOSITORY" ]; then
             issue_missing="yes"
             attempts=1
             if [ "$EVENT_ACTION" = "edited" ]; then
