@@ -7,6 +7,25 @@ module.exports = ({ config }) => {
     throw new Error("BB_MOBILE_VARIANT must be production or dev");
   }
   const isDev = variant === "dev";
+  const plugins = [
+    ...(config.plugins ?? []),
+    "./plugins/with-bb-share-extension",
+    [
+      "expo-share-intent",
+      {
+        disableAndroid: true,
+        iosAppGroupIdentifier: "group.app.getbb.mobile.shared",
+        iosActivationRules: {
+          NSExtensionActivationSupportsText: true,
+          NSExtensionActivationSupportsWebURLWithMaxCount: 1,
+          NSExtensionActivationSupportsWebPageWithMaxCount: 1,
+          NSExtensionActivationSupportsImageWithMaxCount: 20,
+          NSExtensionActivationSupportsMovieWithMaxCount: 20,
+          NSExtensionActivationSupportsFileWithMaxCount: 20,
+        },
+      },
+    ],
+  ];
   const googleServicesFile = process.env.GOOGLE_SERVICES_JSON
     ? resolve(process.env.GOOGLE_SERVICES_JSON)
     : resolve(__dirname, "google-services.json");
@@ -21,13 +40,14 @@ module.exports = ({ config }) => {
   }
   return {
     ...config,
+    plugins,
     extra: { ...config.extra, bbMobileVariant: variant },
     ...(isDev
       ? {
           name: "bb dev",
           icon: "./assets/icon-dev.png",
           web: { ...config.web, favicon: "./assets/favicon-dev.png" },
-          plugins: config.plugins.map((plugin) =>
+          plugins: plugins.map((plugin) =>
             Array.isArray(plugin) && plugin[0] === "expo-splash-screen"
               ? [
                   plugin[0],

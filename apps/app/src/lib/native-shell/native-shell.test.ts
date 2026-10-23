@@ -3,6 +3,7 @@
 import {
   buildBridgeInjectionScript,
   buildBridgeEventScript,
+  MOBILE_BRIDGE_VERSION,
   parsePageToShellMessage,
   type NativeShellHandshake,
 } from "@bb/mobile-bridge";
@@ -16,6 +17,7 @@ import {
   isInsideNativeShell,
   resetNativeShellForTests,
   shellOpenExternal,
+  shellReportReady,
 } from "./native-shell";
 
 const handshake: NativeShellHandshake = {
@@ -116,6 +118,31 @@ describe("shellOpenExternal", () => {
 
   it("declines in a plain browser so the caller can use window.open", () => {
     expect(shellOpenExternal("https://example.com/docs")).toBe(false);
+  });
+});
+
+describe("shellReportReady", () => {
+  it("advertises the page bridge version to native bridge v3", () => {
+    installShell({ bridgeVersion: 3 });
+
+    shellReportReady("/?shareId=7c5ac65a-1df3-4b9e-9632-e0d04201bf54");
+
+    expect(JSON.parse(posted.at(-1) ?? "null")).toEqual({
+      type: "ready",
+      path: "/?shareId=7c5ac65a-1df3-4b9e-9632-e0d04201bf54",
+      pageBridgeVersion: MOBILE_BRIDGE_VERSION,
+    });
+  });
+
+  it("omits the page bridge version for native bridge v2", () => {
+    installShell({ bridgeVersion: 2 });
+
+    shellReportReady("/?shareId=7c5ac65a-1df3-4b9e-9632-e0d04201bf54");
+
+    expect(lastMessage()).toEqual({
+      type: "ready",
+      path: "/?shareId=7c5ac65a-1df3-4b9e-9632-e0d04201bf54",
+    });
   });
 });
 

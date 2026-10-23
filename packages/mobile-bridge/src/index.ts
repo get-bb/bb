@@ -15,6 +15,11 @@ export {
   type NativeScreen,
   parsePageToShellMessage,
   type BridgeSharePayload,
+  type SharedContentResponse,
+  type SharedFileMetadata,
+  type SharedUploadStatus,
+  sharedContentResponseSchema,
+  sharedUploadStatusSchema,
   type PageToShellMessage,
 } from "./messages.js";
 export {

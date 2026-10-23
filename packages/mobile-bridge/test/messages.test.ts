@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   parsePageToShellMessage,
   parseNativeShellHandshake,
+  sharedContentResponseSchema,
+  sharedUploadStatusSchema,
   type NativeShellHandshake,
 } from "../src/index.js";
 
@@ -10,7 +12,7 @@ function json(value: unknown): string {
 }
 
 const handshake: NativeShellHandshake = {
-  bridgeVersion: 2,
+  bridgeVersion: 3,
   appVersion: "0.39.0",
   platform: "ios",
   profileMode: "connect",
@@ -30,6 +32,7 @@ describe("parsePageToShellMessage", () => {
   it("accepts every message kind the contract defines", () => {
     const cases: unknown[] = [
       { type: "ready", path: "/threads/thr_1" },
+      { type: "ready", path: "/?shareId=share_1", pageBridgeVersion: 3 },
       { type: "title", title: "bb", path: "/" },
       { type: "haptic", kind: "impact-medium" },
       { type: "badge", count: 0 },
@@ -56,6 +59,24 @@ describe("parsePageToShellMessage", () => {
       reason: "message was not a string",
     });
     expect(parsePageToShellMessage("not json").ok).toBe(false);
+  });
+
+  it("accepts older ready messages and validates optional page versions", () => {
+    expect(
+      parsePageToShellMessage(json({ type: "ready", path: "/" })),
+    ).toMatchObject({ ok: true });
+    expect(
+      parsePageToShellMessage(
+        json({ type: "ready", path: "/", pageBridgeVersion: 3 }),
+      ),
+    ).toMatchObject({ ok: true });
+    for (const pageBridgeVersion of [0, -1, 1.5, "3"]) {
+      expect(
+        parsePageToShellMessage(
+          json({ type: "ready", path: "/", pageBridgeVersion }),
+        ).ok,
+      ).toBe(false);
+    }
   });
 
   it("drops a message type an older shell does not know", () => {
@@ -134,6 +155,80 @@ describe("parsePageToShellMessage", () => {
         }),
       ).ok,
     ).toBe(false);
+  });
+
+  it("accepts scoped share requests and rejects local file locations at the web boundary", () => {
+    const shareId = "43d79879-0dd3-43b6-a76b-426cdcd94787";
+    const fileId = "d81f350a-9792-47ab-b944-12802eddb553";
+    const requests = [
+      { kind: "get-shared-content", payload: { shareId, projectId: "proj_1" } },
+      {
+        kind: "start-shared-upload",
+        payload: { shareId, fileId, projectId: "proj_1" },
+      },
+      { kind: "shared-upload-status", payload: { jobId: "job-1" } },
+      { kind: "acknowledge-share", payload: { shareId, projectId: "proj_1" } },
+    ];
+    for (const request of requests) {
+      expect(
+        parsePageToShellMessage(json({ type: "request", id: "r1", request }))
+          .ok,
+      ).toBe(true);
+    }
+    expect(
+      parsePageToShellMessage(
+        json({
+          type: "request",
+          id: "r2",
+          request: {
+            kind: "get-shared-content",
+            payload: {
+              shareId,
+              projectId: "proj_1",
+              uri: "file:///private/item",
+            },
+          },
+        }),
+      ).ok,
+    ).toBe(false);
+  });
+
+  it("validates public share metadata and upload results without accepting device URIs", () => {
+    const content = {
+      claimScopeKey: "43d79879-0dd3-43b6-a76b-426cdcd94787",
+      shareId: "d81f350a-9792-47ab-b944-12802eddb553",
+      text: "Look at this",
+      files: [
+        {
+          fileId: "e3d835be-51a7-4a6c-b33b-c36b67a9eb9e",
+          fileName: "image.png",
+          kind: "image",
+          mimeType: "image/png",
+          sizeBytes: 120,
+        },
+      ],
+    };
+    expect(sharedContentResponseSchema.parse(content)).toEqual(content);
+    expect(
+      sharedContentResponseSchema.safeParse({
+        ...content,
+        files: [{ ...content.files[0], uri: "file:///private/image.png" }],
+      }).success,
+    ).toBe(false);
+    expect(
+      sharedUploadStatusSchema.parse({
+        jobId: "job-1",
+        status: "complete",
+        attachment: {
+          type: "localImage",
+          path: "image.png",
+          name: "image.png",
+          mimeType: "image/png",
+          sizeBytes: 120,
+          sourceProjectId: "proj_1",
+        },
+      }).status,
+    ).toBe("complete");
   });
 });
 

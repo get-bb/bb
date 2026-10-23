@@ -107,10 +107,18 @@ export interface ProjectAttachmentFileLike {
   readonly type?: string;
 }
 
+export interface ProjectAttachmentNativeFile {
+  nativeFile: true;
+  mimeType: string;
+  name: string;
+  uri: string;
+}
+
 export type ProjectAttachmentUploadFile =
   | ArrayBuffer
   | Blob
   | ProjectAttachmentFileLike
+  | ProjectAttachmentNativeFile
   | Uint8Array;
 
 interface ProjectAttachmentUploadArgsBase {
@@ -120,6 +128,10 @@ interface ProjectAttachmentUploadArgsBase {
 
 export type ProjectAttachmentUploadArgs = ProjectAttachmentUploadArgsBase &
   (
+    | {
+        clientFile: ProjectAttachmentNativeFile;
+        filename?: string;
+      }
     | {
         clientFile: ProjectAttachmentFileLike;
         filename?: string;
@@ -291,6 +303,9 @@ function embeddedAttachmentMimeType(
   if ("type" in clientFile && typeof clientFile.type === "string") {
     return clientFile.type;
   }
+  if ("nativeFile" in clientFile && clientFile.nativeFile) {
+    return clientFile.mimeType;
+  }
   return undefined;
 }
 
@@ -303,11 +318,21 @@ function hasAttachmentArrayBuffer(
 async function attachmentBytes(
   clientFile: ProjectAttachmentUploadFile,
 ): Promise<ArrayBuffer> {
+  if ("nativeFile" in clientFile && clientFile.nativeFile) {
+    throw new Error(
+      "Native file URIs must be uploaded by a native FormData runtime",
+    );
+  }
   if (hasAttachmentArrayBuffer(clientFile)) {
     return clientFile.arrayBuffer();
   }
   if (ArrayBuffer.isView(clientFile)) {
     return Uint8Array.from(clientFile).buffer;
+  }
+  if ("nativeFile" in clientFile) {
+    throw new Error(
+      "Native file URIs must be uploaded by a native FormData runtime",
+    );
   }
   return clientFile.slice(0);
 }
@@ -319,6 +344,32 @@ function resolveAttachmentFilename(input: ProjectAttachmentUploadArgs): string {
     throw new Error("Project attachment filename must not be empty");
   }
   return filename;
+}
+
+function resolveNativeAttachmentUri(
+  clientFile: ProjectAttachmentNativeFile,
+): string {
+  if (
+    typeof clientFile.uri !== "string" ||
+    typeof clientFile.name !== "string" ||
+    typeof clientFile.mimeType !== "string"
+  ) {
+    throw new Error("Native project attachment metadata is invalid");
+  }
+  let uri: URL;
+  try {
+    uri = new URL(clientFile.uri);
+  } catch {
+    throw new Error("Native project attachment URI is invalid");
+  }
+  if (
+    uri.protocol !== "file:" ||
+    clientFile.name.trim() === "" ||
+    clientFile.mimeType.trim() === ""
+  ) {
+    throw new Error("Native project attachment metadata is invalid");
+  }
+  return uri.toString();
 }
 
 function encodeProjectFilePath(path: string): string {
@@ -401,14 +452,27 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
       const filename = resolveAttachmentFilename(input);
       const mimeType =
         input.mimeType ?? embeddedAttachmentMimeType(input.clientFile) ?? "";
-      const file =
-        input.clientFile instanceof Blob && input.clientFile.type === mimeType
-          ? input.clientFile
-          : new Blob([await attachmentBytes(input.clientFile)], {
-              type: mimeType,
-            });
       const form = new FormData();
-      form.set("file", file, filename);
+      if ("nativeFile" in input.clientFile && input.clientFile.nativeFile) {
+        const uri = resolveNativeAttachmentUri(input.clientFile);
+        form.append(
+          "file",
+          {
+            uri,
+            name: filename,
+            type: mimeType,
+          } as unknown as Blob,
+          filename,
+        );
+      } else {
+        const file =
+          input.clientFile instanceof Blob && input.clientFile.type === mimeType
+            ? input.clientFile
+            : new Blob([await attachmentBytes(input.clientFile)], {
+                type: mimeType,
+              });
+        form.append("file", file, filename);
+      }
       const baseUrl = transport.baseUrl.replace(/\/$/u, "");
       const response = await transport.resolve(
         transport.fetch(

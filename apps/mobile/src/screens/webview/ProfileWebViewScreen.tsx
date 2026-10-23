@@ -139,17 +139,21 @@ export function ProfileWebViewScreen() {
 
   const onFileDownload = useShellFileSaver();
 
-  const bridge = useShellBridge(webViewRef, {
-    onReady: (path) => {
-      setLoad({ kind: "ready" });
-      revealApp();
-      rememberPath(path);
+  const bridge = useShellBridge(
+    webViewRef,
+    {
+      onReady: (path) => {
+        setLoad({ kind: "ready" });
+        revealApp();
+        rememberPath(path);
+      },
+      onPath: rememberPath,
+      onOpenNative: (screen) => {
+        if (screen === "device-settings") openDeviceSettings();
+      },
     },
-    onPath: rememberPath,
-    onOpenNative: (screen) => {
-      if (screen === "device-settings") openDeviceSettings();
-    },
-  });
+    profile,
+  );
 
   const connectProfileId = profile?.mode === "connect" ? profile.id : null;
   useEffect(

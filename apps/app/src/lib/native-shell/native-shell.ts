@@ -1,4 +1,5 @@
 import {
+  MOBILE_BRIDGE_VERSION,
   compareBridgeVersions,
   isBridgeUsable,
   NATIVE_BRIDGE_GLOBAL,
@@ -135,7 +136,15 @@ export function canOpenNativeScreen(): boolean {
 }
 
 export function shellReportReady(path: string): void {
-  getNativeShell()?.post({ type: "ready", path });
+  const shell = getNativeShell();
+  if (shell === null) return;
+  shell.post({
+    type: "ready",
+    path,
+    ...(shell.handshake.bridgeVersion >= 3
+      ? { pageBridgeVersion: MOBILE_BRIDGE_VERSION }
+      : {}),
+  });
 }
 
 export function shellReportPath(title: string, path: string): void {

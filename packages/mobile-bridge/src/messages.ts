@@ -35,7 +35,90 @@ const sharePayloadSchema = z
 
 export type BridgeSharePayload = z.infer<typeof sharePayloadSchema>;
 
+export const sharedFileMetadataSchema = z
+  .object({
+    fileId: z.string().uuid(),
+    fileName: z.string().min(1).max(180),
+    kind: z.enum(["image", "video", "file"]),
+    mimeType: z.string().min(1).max(200),
+    processingError: z.string().max(500).optional(),
+    sizeBytes: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const sharedContentResponseSchema = z
+  .object({
+    alreadyAcknowledged: z.boolean().optional(),
+    claimScopeKey: z.string().uuid(),
+    files: z.array(sharedFileMetadataSchema).max(20),
+    shareId: z.string().uuid(),
+    text: z.string().max(100_000),
+  })
+  .strict();
+
+export const sharedUploadStatusSchema = z
+  .object({
+    attachment: z
+      .object({
+        type: z.enum(["localFile", "localImage"]),
+        path: z.string(),
+        name: z.string(),
+        mimeType: z.string().optional(),
+        sizeBytes: z.number(),
+        sourceProjectId: z.string().min(1).optional(),
+      })
+      .strict()
+      .optional(),
+    error: z.string().max(1000).optional(),
+    jobId: z.string().min(1).max(500),
+    status: z.enum(["queued", "uploading", "complete", "failed"]),
+  })
+  .strict();
+export type SharedFileMetadata = z.infer<typeof sharedFileMetadataSchema>;
+export type SharedContentResponse = z.infer<typeof sharedContentResponseSchema>;
+export type SharedUploadStatus = z.infer<typeof sharedUploadStatusSchema>;
+
 const bridgeRequestSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("get-shared-content"),
+      payload: z
+        .object({
+          projectId: z.string().min(1).max(200),
+          shareId: z.string().uuid(),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("acknowledge-share"),
+      payload: z
+        .object({
+          projectId: z.string().min(1).max(200),
+          shareId: z.string().uuid(),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("start-shared-upload"),
+      payload: z
+        .object({
+          fileId: z.string().uuid(),
+          projectId: z.string().min(1).max(200),
+          shareId: z.string().uuid(),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("shared-upload-status"),
+      payload: z.object({ jobId: z.string().min(1).max(500) }).strict(),
+    })
+    .strict(),
   z.object({ kind: z.literal("share"), payload: sharePayloadSchema }).strict(),
   z
     .object({
@@ -60,7 +143,13 @@ export const nativeScreenSchema = z.enum(NATIVE_SCREENS);
 export type NativeScreen = z.infer<typeof nativeScreenSchema>;
 
 export const pageToShellMessageSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("ready"), path: z.string() }).strict(),
+  z
+    .object({
+      type: z.literal("ready"),
+      path: z.string(),
+      pageBridgeVersion: z.number().int().positive().optional(),
+    })
+    .strict(),
   z
     .object({
       type: z.literal("title"),
