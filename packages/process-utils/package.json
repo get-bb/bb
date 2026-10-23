@@ -7,6 +7,11 @@
       "source": "./src/index.ts",
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./host-process": {
+      "source": "./src/host-process.ts",
+      "types": "./src/host-process.ts",
+      "default": "./src/host-process.ts"
     }
   },
   "types": "./src/index.ts",

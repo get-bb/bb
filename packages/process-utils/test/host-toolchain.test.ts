@@ -94,7 +94,10 @@ describe.skipIf(process.platform === "win32")("host toolchain recovery", () => {
     });
     expect(before.status, before.stderr).toBe(127);
     const after = join(root, "after");
-    run(new HostToolchain(env, node), "npm", install(after), env);
+    const toolchain = new HostToolchain(env, node);
+    const npm =
+      toolchain.npmCli("npm", { env }) ?? expect.fail("npm was not found");
+    run(toolchain, npm.node, [npm.cli, ...install(after)], env);
     const installed = JSON.parse(
       await readFile(
         join(
@@ -268,6 +271,14 @@ describe.skipIf(process.platform === "win32")("host toolchain recovery", () => {
     );
   });
 
+  it("searches only an explicit caller PATH", async () => {
+    const root = await scratch();
+    const env = { HOME: root, PATH: join(root, "empty") };
+    const toolchain = new HostToolchain({ HOME: root, PATH: "/usr/bin:/bin" });
+    expect(toolchain.resolve("sh", { env })).toBeNull();
+    expect(toolchain.command("sh", [], { env }).command).toBe("sh");
+  });
+
   it("launches Node shebang scripts directly instead of through the bb runtime", async () => {
     const root = await scratch();
     const tool = join(root, "bin", "node-tool");
@@ -299,14 +310,31 @@ describe.skipIf(process.platform === "win32")("host toolchain recovery", () => {
       join(prefix, "bin", "npm"),
     );
     const env = { HOME: root, PATH: `${join(prefix, "bin")}:/usr/bin:/bin` };
+    expect(new HostToolchain(env, runtime).npmCli("npm", { env })).toEqual({
+      node: realpathSync(process.execPath),
+      cli: realpathSync(join(npmRoot, "bin", "npm-cli.js")),
+    });
+  });
+
+  it("runs the npm on PATH instead of the runtime's own", async () => {
+    const root = await scratch();
+    const runtime = join(root, "runtime", "bin", "node");
+    await mkdir(join(root, "runtime", "lib", "node_modules"), {
+      recursive: true,
+    });
+    await mkdir(dirname(runtime), { recursive: true });
+    await symlink(process.execPath, runtime);
+    await symlink(
+      dirname(createRequire(import.meta.url).resolve("npm/package.json")),
+      join(root, "runtime", "lib", "node_modules", "npm"),
+    );
+    const npm = join(root, "tools", "npm");
+    await script(npm, "#!/bin/sh\necho tools-npm\n");
+    const env = { HOME: root, PATH: `${dirname(npm)}:/usr/bin:/bin` };
     const launch = new HostToolchain(env, runtime).command("npm", ["-v"], {
       env,
     });
-    expect(launch.command).toBe(realpathSync(process.execPath));
-    expect(launch.args).toEqual([
-      realpathSync(join(npmRoot, "bin", "npm-cli.js")),
-      "-v",
-    ]);
+    expect(launch).toMatchObject({ command: npm, args: ["-v"] });
   });
 
   it("preserves binary output from buffered launches", async () => {

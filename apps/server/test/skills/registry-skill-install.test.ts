@@ -14,9 +14,9 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const spawnMock = vi.hoisted(() => vi.fn());
-vi.mock("node:child_process", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("node:child_process")>()),
-  spawn: spawnMock,
+vi.mock("@bb/process-utils", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@bb/process-utils")>()),
+  spawnHostProcess: spawnMock,
 }));
 
 import { installServerRegistrySkill } from "../../src/services/skills/registry-skill-install.js";

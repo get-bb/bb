@@ -318,7 +318,7 @@ export class HostToolchain {
     }
     const extension = extname(command);
     const pathExt = envValue(env, "PATHEXT");
-    const path = this.searchPath(options.env ?? this.baseEnv);
+    const path = envValue(env, "PATH") ?? "";
     const lookupOptions = {
       cwd,
       path,
@@ -336,13 +336,7 @@ export class HostToolchain {
             )
             .find(Boolean)
         : whichCommandSync(command, lookupOptions);
-    if (found) return found;
-    if (command === "claude" && process.platform !== "win32") {
-      const home = env.HOME;
-      const candidate = home ? join(home, ".claude", "local", "claude") : null;
-      if (candidate && executable(candidate)) return candidate;
-    }
-    return null;
+    return found || null;
   }
 
   resolve(command: string, options: HostCommandOptions = {}): string | null {
@@ -465,31 +459,16 @@ export class HostToolchain {
     args: readonly string[] = [],
     options: HostCommandOptions = {},
   ): HostCommand {
-    let file =
+    const file =
       command === this.runtimePath
         ? this.node(options)
         : (this.resolve(command, options) ?? command);
-    const argv = [...args];
-    let needsRuntimePath = /(?:^|[\\/])(?:npm|npx)-cli\.js$/u.test(
-      args[0] ?? "",
-    );
-    const name = basename(command)
-      .toLowerCase()
-      .replace(/\.(cmd|exe|bat)$/u, "");
-    if (name === "npm" || name === "npx") {
-      const npm = this.npmCli(name, options);
-      if (npm) {
-        file = npm.node;
-        argv.unshift(npm.cli);
-        needsRuntimePath = true;
-      }
-    }
     const env = this.environment(options.env);
-    if (needsRuntimePath) {
+    if (/(?:^|[\\/])(?:npm|npx)-cli\.js$/u.test(args[0] ?? "")) {
       env.PATH = mergePath(dirname(file), env.PATH);
       this.generatedPaths.add(env.PATH);
     }
-    return { command: file, args: argv, env };
+    return { command: file, args: [...args], env };
   }
 }
 

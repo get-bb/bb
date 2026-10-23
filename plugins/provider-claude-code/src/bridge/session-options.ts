@@ -5,7 +5,7 @@ import {
   type ServiceTier,
   type RuntimePermissionScope,
 } from "@get-bb/plugin-sdk/provider-bridge";
-import { accessSync, constants } from "node:fs";
+import { accessSync, constants, statSync } from "node:fs";
 import { join } from "node:path";
 import type { Options, Settings } from "@anthropic-ai/claude-agent-sdk";
 import type { ClaudePermissionMode } from "../interactive-contract.js";
@@ -161,6 +161,39 @@ export function buildWorkspaceWriteSandbox(
   };
 }
 
+const CLAUDE_WINDOWS_EXECUTABLE_NAME = "claude.exe";
+
+function isExecutableFile(candidatePath: string): boolean {
+  try {
+    accessSync(candidatePath, constants.X_OK);
+    return statSync(candidatePath).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function wellKnownClaudeExecutablePaths(env: NodeJS.ProcessEnv): string[] {
+  if (process.getuid?.() === 0) {
+    return [];
+  }
+  if (process.platform === "win32") {
+    const userProfile = env.USERPROFILE?.trim();
+    return userProfile
+      ? [join(userProfile, ".local", "bin", CLAUDE_WINDOWS_EXECUTABLE_NAME)]
+      : [];
+  }
+  const candidatePaths: string[] = [];
+  const home = env.HOME?.trim();
+  if (home) {
+    candidatePaths.push(
+      join(home, ".local", "bin", "claude"),
+      join(home, ".claude", "local", "claude"),
+    );
+  }
+  candidatePaths.push("/opt/homebrew/bin/claude", "/usr/local/bin/claude");
+  return candidatePaths;
+}
+
 export function resolveClaudeCodeExecutable(
   args: ResolveClaudeCodeExecutableArgs,
 ): string | null {
@@ -177,7 +210,11 @@ export function resolveClaudeCodeExecutable(
     }
   }
 
-  return hostToolchain.resolve("claude", { env: args.env });
+  return (
+    hostToolchain.resolve("claude", { env: args.env }) ??
+    wellKnownClaudeExecutablePaths(args.env).find(isExecutableFile) ??
+    null
+  );
 }
 
 export function buildSessionOptions(

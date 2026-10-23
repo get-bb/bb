@@ -178,13 +178,18 @@ export async function defaultInstallTarball(
   }
   const prefixArgs =
     configuredPrefix === undefined ? [] : ["--prefix", configuredPrefix];
-  const launch = hostToolchain.command("npm", [
+  const args = [
     "install",
     "-g",
     BB_APP_ALLOW_SCRIPTS_ARG,
     ...prefixArgs,
     tarballPath,
-  ]);
+  ];
+  const npm = hostToolchain.npmCli("npm");
+  const launch =
+    npm === null
+      ? hostToolchain.command("npm", args)
+      : hostToolchain.command(npm.node, [npm.cli, ...args]);
   await runProcess(launch.command, launch.args, { env: launch.env });
 }
 

@@ -51,8 +51,9 @@ proxy settings.
 
 Core process launches and the Plugin SDK process helpers share one resolver.
 It reads the user's login-shell PATH (or Windows user/machine registry PATH),
-adds the running runtime and standard user tool directories, and uses an
-explicit caller PATH exactly. Native provider installs in `~/.local/bin` and
+and adds the running runtime and standard user tool directories. When a caller
+passes its own PATH, the child receives it unchanged and lookups search only
+that PATH. Native provider installs in `~/.local/bin` and
 mise/asdf shim directories are available to services as well as terminal launches.
 Shell network settings are read alongside PATH; unrelated shell variables are
 not copied into child environments. Discovery runs in the background, bounded to
@@ -66,9 +67,10 @@ exit 127 can happen after an installation has already changed files. An
 unavailable running Node path is re-resolved before launching a worker, and
 replacement runtimes must match its native-module ABI and Electron/Node family.
 Scripts with a `#!/usr/bin/env node` line run with the `node` found on PATH.
-npm runs through npm's JavaScript entry point with the Node installation that
-owns it, which avoids version-manager wrapper post-hooks; inside the Electron
-desktop runtime, bb never substitutes its own runtime for npm.
+`npm` and `npx` run as found on PATH. Daemon self-update instead runs npm's
+JavaScript entry point with the Node installation that owns it, which avoids
+version-manager wrapper post-hooks; inside the Electron desktop runtime, bb
+never substitutes its own runtime for npm.
 
 Standalone machine bootstrap installers run before the shared runtime is
 installed, so their initial Node/package acquisition remains self-contained.
