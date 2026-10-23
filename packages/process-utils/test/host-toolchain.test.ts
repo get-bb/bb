@@ -361,7 +361,14 @@ it.runIf(process.platform === "win32")(
   async () => {
     const root = await scratch();
     const bin = join(root, "bin & tools");
-    await script(join(bin, "tool.cmd"), "@echo off\r\necho %~1\r\n");
+    await writeFile(
+      join(bin, "print.js"),
+      "process.stdout.write(process.argv[2]);",
+    );
+    await script(
+      join(bin, "tool.cmd"),
+      `@"${process.execPath}" "%~dp0print.js" %*\r\n`,
+    );
     const env = {
       ...process.env,
       PATH: `${bin}${delimiter}${process.env.PATH ?? ""}`,

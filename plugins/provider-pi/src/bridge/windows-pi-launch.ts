@@ -108,7 +108,7 @@ export function resolveWindowsPiProcessLaunch(
   if (executable === null) return launch;
   const unwrapped = resolvePiNpmShim(
     executable,
-    hostToolchain.node({ env, cwd }),
+    hostToolchain.resolve("node.exe", { env, cwd }) ?? "node",
   );
   return unwrapped === null
     ? launch

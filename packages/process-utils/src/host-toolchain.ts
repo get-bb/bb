@@ -3,6 +3,7 @@ import {
   accessSync,
   constants,
   existsSync,
+  readdirSync,
   realpathSync,
   statSync,
 } from "node:fs";
@@ -84,6 +85,19 @@ function mergePath(...paths: (string | undefined)[]): string {
     .join(delimiter);
 }
 
+function onDiskName(file: string): string {
+  if (process.platform !== "win32") return file;
+  try {
+    const name = basename(file).toLowerCase();
+    const entry = readdirSync(dirname(file)).find(
+      (candidate) => candidate.toLowerCase() === name,
+    );
+    return entry === undefined ? file : join(dirname(file), entry);
+  } catch {
+    return file;
+  }
+}
+
 function runProbe(
   command: string,
   args: string[],
@@ -102,6 +116,7 @@ function runProbe(
     let child: ReturnType<typeof spawn>;
     try {
       child = spawn(command, args, {
+        cwd: homedir(),
         env,
         stdio: ["ignore", "pipe", "ignore"],
         windowsHide: true,
@@ -336,7 +351,7 @@ export class HostToolchain {
             )
             .find(Boolean)
         : whichCommandSync(command, lookupOptions);
-    return found || null;
+    return found ? onDiskName(found) : null;
   }
 
   resolve(command: string, options: HostCommandOptions = {}): string | null {

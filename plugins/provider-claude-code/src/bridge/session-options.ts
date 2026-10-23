@@ -211,7 +211,10 @@ export function resolveClaudeCodeExecutable(
   }
 
   return (
-    hostToolchain.resolve("claude", { env: args.env }) ??
+    hostToolchain.resolve(
+      process.platform === "win32" ? CLAUDE_WINDOWS_EXECUTABLE_NAME : "claude",
+      { env: args.env },
+    ) ??
     wellKnownClaudeExecutablePaths(args.env).find(isExecutableFile) ??
     null
   );
