@@ -113,7 +113,7 @@ jobs:
             add_label "needs-approval" "PR author is not on the approved contributor list" "d93f0b"
           fi
           if [ -n "$issue_missing" ]; then
-            item="**Linked issue.** Every pull request must close an open issue in this repository. Open an issue for the change, or find an existing one, and add \`Fixes #<number>\` to the pull request description. Feature requests and UI changes need a maintainer's sign-off on the issue first."
+            item="**Linked issue.** Every pull request must close an open issue in this repository. The issue keeps the problem tracked even if this pull request closes or we take a different approach. Open an issue for the change, or find an existing one, and add \`Fixes #<number>\` to the pull request description. Feature requests and UI changes need a maintainer's sign-off on the issue first."
             if [ -n "$edits_off" ]; then
               item="$item Include it in the new pull request."
             elif [ -n "$trusted" ]; then

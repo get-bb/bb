@@ -26,7 +26,11 @@ A maintainer can also approve you with `/approve @your-name` on the pull request
 
 ## Linked Issue
 
-Every pull request from outside the bb team must close an open issue in this repo. Write `Fixes #<number>`, `Closes #<number>`, or `Resolves #<number>` in the pull request description. A mention without one of these words does not count.
+Every pull request from outside the bb team must close an open issue in this repo.
+
+A pull request is one attempt at a change, and many attempts do not land as written. We may ask for rework, a pull request closes after two weeks open, or we may solve the problem another way. The issue records the problem itself, so it stays visible and tracked whatever happens to any one pull request.
+
+Write `Fixes #<number>`, `Closes #<number>`, or `Resolves #<number>` in the pull request description. A mention without one of these words does not count.
 
 If the gate closes your pull request only because it has no linked issue, add the line to the description and save it. The pull request reopens on its own.
 
