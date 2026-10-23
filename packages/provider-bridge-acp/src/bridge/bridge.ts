@@ -3560,10 +3560,11 @@ async function handleModelList(
   params: AcpModelListParams,
   dialectId: string | undefined,
 ): Promise<void> {
-  const resolvedDialectId = resolveAcpDialect({
+  const dialect = resolveAcpDialect({
     dialectId,
     command: params.optionsAgent?.command ?? params.agent?.command ?? "",
-  }).id;
+  });
+  const resolvedDialectId = dialect.id;
   const declaredOptions = (): Promise<ThreadSessionOption[]> =>
     params.optionsAgent
       ? loadDeclaredSessionOptions(
@@ -3585,10 +3586,13 @@ async function handleModelList(
       id,
       splitPrimaryModels(
         withDeclaredOptions(
-          applyConfiguredReasoningToModels(models, {
-            reasoningCli: params.reasoningCli,
-            nativeReasoning: params.nativeReasoning,
-          }),
+          applyConfiguredReasoningToModels(
+            models.map((model) => dialect.presentModel?.(model) ?? model),
+            {
+              reasoningCli: params.reasoningCli,
+              nativeReasoning: params.nativeReasoning,
+            },
+          ),
           await declaredOptions(),
         ),
         params.primaryModels,

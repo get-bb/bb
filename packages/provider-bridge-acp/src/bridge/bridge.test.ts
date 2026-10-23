@@ -753,6 +753,49 @@ describe("acp bridge", () => {
     });
   });
 
+  it.each([
+    { dialectId: "omp", routed: true },
+    { dialectId: "opencode", routed: true },
+    { dialectId: "acp", routed: false },
+  ])(
+    "lets the $dialectId dialect name each model's route provider",
+    async ({ dialectId, routed }) => {
+      const modelListId = sendModelList({
+        dialectId,
+        modelLines: [
+          "anthropic/claude-sonnet-5-5 - Claude Sonnet 5.5",
+          "openrouter/anthropic/claude-sonnet-5.5 - Claude Sonnet 5.5",
+          "openai/gpt-4.1 - openai/GPT-4.1",
+          "local - Local",
+        ].join("\n"),
+      });
+
+      const result = (await waitForResponse(modelListId)).result as {
+        models: { id: string; displayName: string; routeProviderId?: string }[];
+      };
+      expect(
+        result.models.map(({ displayName, routeProviderId }) => [
+          displayName,
+          routeProviderId,
+        ]),
+      ).toEqual(
+        routed
+          ? [
+              ["Claude Sonnet 5.5", "anthropic"],
+              ["Claude Sonnet 5.5", "openrouter"],
+              ["GPT-4.1", "openai"],
+              ["Local", undefined],
+            ]
+          : [
+              ["Claude Sonnet 5.5", undefined],
+              ["Claude Sonnet 5.5", undefined],
+              ["openai/GPT-4.1", undefined],
+              ["Local", undefined],
+            ],
+      );
+    },
+  );
+
   it("uses Cursor CLI variants as reasoning metadata for bare ACP models", async () => {
     const modelListId = sendModelList({
       dialectId: "cursor",
