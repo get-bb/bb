@@ -18,6 +18,7 @@ describe("product-map surfaces", () => {
       "sidebar-navigation",
       "nav-panel",
       "thread-row-status",
+      "thread-row-items",
       "thread-list",
       "sidebar-footer",
       "thread-header",

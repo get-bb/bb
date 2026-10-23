@@ -58,8 +58,7 @@ const {
   resetSidebarTitleDoubleClickForTest,
   SidebarProvidersContext,
   ThreadRow,
-} =
-  await import("./ThreadRow.js");
+} = await import("./ThreadRow.js");
 
 const DEFAULT_OPTIONS: ThreadRowOptions = {
   kind: "default",
@@ -122,37 +121,37 @@ function ThreadRowHarness({
   const content = (
     <SidebarProjectsContext.Provider value={projects}>
       <SidebarProvidersContext.Provider value={providers}>
-      <TooltipProvider>
-      <SidebarDraftPresenceSync />
-      <ThreadRowNavigationProvider>
-      <ThreadSelectionProvider activeThreadId={null}>
-        <SidebarRenameProvider>
-          <CustomizeRowActionsContext.Provider
-            value={onCustomizeRowActions ?? null}
-          >
-            <ThreadRowActionsCustomizingContext.Provider
-              value={
-                onFinishCustomizingRowActions
-                  ? {
-                      threadId: thread.id,
-                      onDone: onFinishCustomizingRowActions,
+        <TooltipProvider>
+          <SidebarDraftPresenceSync />
+          <ThreadRowNavigationProvider>
+            <ThreadSelectionProvider activeThreadId={null}>
+              <SidebarRenameProvider>
+                <CustomizeRowActionsContext.Provider
+                  value={onCustomizeRowActions ?? null}
+                >
+                  <ThreadRowActionsCustomizingContext.Provider
+                    value={
+                      onFinishCustomizingRowActions
+                        ? {
+                            threadId: thread.id,
+                            onDone: onFinishCustomizingRowActions,
+                          }
+                        : null
                     }
-                  : null
-              }
-            >
-              <div
-                onPointerDown={onRowEvent}
-                onKeyDown={onRowEvent}
-                onClick={onRowEvent}
-              >
-                {row}
-              </div>
-            </ThreadRowActionsCustomizingContext.Provider>
-          </CustomizeRowActionsContext.Provider>
-        </SidebarRenameProvider>
-      </ThreadSelectionProvider>
-      </ThreadRowNavigationProvider>
-      </TooltipProvider>
+                  >
+                    <div
+                      onPointerDown={onRowEvent}
+                      onKeyDown={onRowEvent}
+                      onClick={onRowEvent}
+                    >
+                      {row}
+                    </div>
+                  </ThreadRowActionsCustomizingContext.Provider>
+                </CustomizeRowActionsContext.Provider>
+              </SidebarRenameProvider>
+            </ThreadSelectionProvider>
+          </ThreadRowNavigationProvider>
+        </TooltipProvider>
       </SidebarProvidersContext.Provider>
     </SidebarProjectsContext.Provider>
   );
@@ -441,17 +440,20 @@ describe("ThreadRow", () => {
   it.each([
     ["meta", { metaKey: true }],
     ["ctrl", { ctrlKey: true }],
-  ])("selects the row instead of opening it on %s-click with multi-select on", (_label, modifier) => {
-    const slot = renderThreadRow({ experiments: ["sidebarMultiSelect"] });
-    const link = screen.getByRole("link", { name: "Open Thread" });
-    const row = link.closest("[data-sidebar-rename-row]");
-    expect(row?.hasAttribute("data-sidebar-thread-selected")).toBe(false);
-    expect(fireEvent.click(link, modifier)).toBe(false);
-    expect(row?.hasAttribute("data-sidebar-thread-selected")).toBe(true);
-    expect(slot.inspection.navigateCalls).toEqual([]);
-    fireEvent.click(link, modifier);
-    expect(row?.hasAttribute("data-sidebar-thread-selected")).toBe(false);
-  });
+  ])(
+    "selects the row instead of opening it on %s-click with multi-select on",
+    (_label, modifier) => {
+      const slot = renderThreadRow({ experiments: ["sidebarMultiSelect"] });
+      const link = screen.getByRole("link", { name: "Open Thread" });
+      const row = link.closest("[data-sidebar-rename-row]");
+      expect(row?.hasAttribute("data-sidebar-thread-selected")).toBe(false);
+      expect(fireEvent.click(link, modifier)).toBe(false);
+      expect(row?.hasAttribute("data-sidebar-thread-selected")).toBe(true);
+      expect(slot.inspection.navigateCalls).toEqual([]);
+      fireEvent.click(link, modifier);
+      expect(row?.hasAttribute("data-sidebar-thread-selected")).toBe(false);
+    },
+  );
 
   it("clears the selection on a press outside the sidebar but keeps it for menus", () => {
     renderThreadRow({ experiments: ["sidebarMultiSelect"] });
@@ -1184,6 +1186,24 @@ describe("ThreadRow", () => {
 
     fireEvent.click(link);
     expect(clickLink).toHaveBeenCalledTimes(2);
+  });
+
+  it("routes a click on other plugins' row items like the rest of the row", () => {
+    const slot = renderThreadRow({ experiments: ["sidebarMultiSelect"] });
+    const link = screen.getByRole("link", { name: "Open Thread" });
+    const row = link.closest("[data-sidebar-rename-row]");
+    const items = row?.querySelector("[data-thread-row-items]");
+    expect(items).not.toBeNull();
+    const clickLink = vi.spyOn(link, "click");
+
+    fireEvent.click(items!, { metaKey: true });
+    expect(row?.hasAttribute("data-sidebar-thread-selected")).toBe(true);
+    expect(clickLink).not.toHaveBeenCalled();
+    expect(slot.inspection.navigateCalls).toEqual([]);
+
+    fireEvent.click(items!);
+    expect(row?.hasAttribute("data-sidebar-thread-selected")).toBe(false);
+    expect(clickLink).toHaveBeenCalledOnce();
   });
 
   it("does not route a suppressed drag click on the trailing area", () => {

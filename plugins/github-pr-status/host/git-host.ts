@@ -773,14 +773,14 @@ async function resolveBranchReadTarget(
   };
 }
 
-export async function getPullRequestForCurrentBranch(
+export async function prepareCurrentBranchRead(
   args: GetPullRequestForCurrentBranchArgs,
-): Promise<HostPullRequestLookup> {
+): Promise<PreparedRead> {
   const target = await getPullRequestTarget(args);
-  if (target.outcome === "unavailable") return target;
+  if (target.outcome === "unavailable") return preparedResult(target);
   const branchTarget = await resolveBranchReadTarget(args, target);
   if (branchTarget !== null)
-    return enqueueRead(
+    return prepareRead(
       branchTarget,
       args.cwd,
       sanitizeInheritedChildProcessEnv({ env: process.env }),
@@ -793,28 +793,42 @@ export async function getPullRequestForCurrentBranch(
     "--json",
     GH_PR_VIEW_JSON_FIELDS,
   ];
-  try {
-    const { stdout } = await runGh(ghArgs, {
-      priority: "background",
-      cwd: args.cwd,
-      timeoutMs: GH_PR_VIEW_TIMEOUT_MS,
-      maxBuffer: GH_PR_VIEW_MAX_BUFFER_BYTES,
-    });
-    const pr = parseGitHubPullRequestView(stdout);
-    if (pr === null)
-      return {
-        outcome: "unavailable",
-        message: "gh pr view returned unparseable output",
-      };
-    if (pr.isDraft || pr.state !== "OPEN")
-      return { outcome: "found", pullRequest: { ...pr, inMergeQueue: false } };
-    const full = await getPullRequestByUrl(pr.url, args.cwd);
-    return full.outcome === "found"
-      ? full
-      : { outcome: "found", pullRequest: pr };
-  } catch (error) {
-    return classifyPullRequestViewError(error);
-  }
+  return {
+    kind: "direct",
+    async run() {
+      try {
+        const { stdout } = await runGh(ghArgs, {
+          priority: "background",
+          cwd: args.cwd,
+          timeoutMs: GH_PR_VIEW_TIMEOUT_MS,
+          maxBuffer: GH_PR_VIEW_MAX_BUFFER_BYTES,
+        });
+        const pr = parseGitHubPullRequestView(stdout);
+        if (pr === null)
+          return {
+            outcome: "unavailable",
+            message: "gh pr view returned unparseable output",
+          };
+        if (pr.isDraft || pr.state !== "OPEN")
+          return {
+            outcome: "found",
+            pullRequest: { ...pr, inMergeQueue: false },
+          };
+        const full = await getPullRequestByUrl(pr.url, args.cwd);
+        return full.outcome === "found"
+          ? full
+          : { outcome: "found", pullRequest: pr };
+      } catch (error) {
+        return classifyPullRequestViewError(error);
+      }
+    },
+  };
+}
+
+export async function getPullRequestForCurrentBranch(
+  args: GetPullRequestForCurrentBranchArgs,
+): Promise<HostPullRequestLookup> {
+  return startRead(await prepareCurrentBranchRead(args));
 }
 
 export async function runPullRequestActionForCurrentBranch(
@@ -857,6 +871,25 @@ type QueuedRead = {
   env: NodeJS.ProcessEnv;
   resolve(result: HostPullRequestLookup): void;
 };
+export type PreparedRead =
+  | {
+      kind: "batched";
+      target: ReadTarget;
+      cwd: string;
+      env: NodeJS.ProcessEnv;
+      group: string;
+      refresh: boolean;
+    }
+  | { kind: "direct"; run(): Promise<HostPullRequestLookup> };
+
+export function preparedResult(result: HostPullRequestLookup): PreparedRead {
+  return { kind: "direct", run: async () => result };
+}
+
+const BATCH_WEIGHT_LIMIT = 100;
+const BRANCH_READ_WEIGHT = 4;
+const URL_READ_WEIGHT = 1;
+
 const batches = new Map<string, QueuedRead[]>();
 const pendingReads = new Map<string, Promise<HostPullRequestLookup>>();
 const discovered = new Map<
@@ -1076,8 +1109,19 @@ async function flushBatch(group: string): Promise<void> {
   const queued = batches.get(group);
   if (queued === undefined) return;
   batches.delete(group);
-  for (let offset = 0; offset < queued.length; offset += 25) {
-    const entries = queued.slice(offset, offset + 25);
+  const chunks: QueuedRead[][] = [];
+  let weight = BATCH_WEIGHT_LIMIT;
+  for (const entry of queued) {
+    const entryWeight =
+      entry.target.kind === "branch" ? BRANCH_READ_WEIGHT : URL_READ_WEIGHT;
+    if (weight + entryWeight > BATCH_WEIGHT_LIMIT) {
+      chunks.push([]);
+      weight = 0;
+    }
+    chunks.at(-1)!.push(entry);
+    weight += entryWeight;
+  }
+  for (const entries of chunks) {
     const paused = pausedUntil.get(group) ?? 0;
     if (paused > Date.now()) {
       for (const entry of entries)
@@ -1143,14 +1187,22 @@ async function flushBatch(group: string): Promise<void> {
   }
 }
 
-async function enqueueRead(
+async function prepareRead(
   target: ReadTarget,
   cwd: string,
   inheritedEnv = sanitizeInheritedChildProcessEnv({ env: process.env }),
   refresh = false,
-): Promise<HostPullRequestLookup> {
+): Promise<PreparedRead> {
   const env = { ...inheritedEnv };
   const group = await credentialKey(target.host, env, cwd);
+  return { kind: "batched", target, cwd, env, group, refresh };
+}
+
+export function startRead(
+  prepared: PreparedRead,
+): Promise<HostPullRequestLookup> {
+  if (prepared.kind === "direct") return prepared.run();
+  const { target, cwd, env, group, refresh } = prepared;
   const key = `${group}:${JSON.stringify(target)}`;
   if (refresh) discovered.delete(key);
   const cached = discovered.get(key);
@@ -1185,12 +1237,35 @@ async function enqueueRead(
   return result;
 }
 
-export function getPullRequestByUrl(
+export async function readPullRequests(
+  preparations: readonly Promise<PreparedRead>[],
+): Promise<HostPullRequestLookup[]> {
+  const prepared = await Promise.all(preparations);
+  return Promise.all(prepared.map(startRead));
+}
+
+async function enqueueRead(
+  target: ReadTarget,
+  cwd: string,
+  inheritedEnv = sanitizeInheritedChildProcessEnv({ env: process.env }),
+  refresh = false,
+): Promise<HostPullRequestLookup> {
+  return startRead(await prepareRead(target, cwd, inheritedEnv, refresh));
+}
+
+export function prepareUrlRead(
   url: string,
   cwd: string,
-): Promise<HostPullRequestLookup> {
-  return enqueueRead(
+): Promise<PreparedRead> {
+  return prepareRead(
     { kind: "url", host: new URL(url).hostname, url, cursor: null },
     cwd,
   );
+}
+
+export async function getPullRequestByUrl(
+  url: string,
+  cwd: string,
+): Promise<HostPullRequestLookup> {
+  return startRead(await prepareUrlRead(url, cwd));
 }

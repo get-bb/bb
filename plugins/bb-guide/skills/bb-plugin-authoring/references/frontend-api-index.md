@@ -89,6 +89,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `useSidebarThreadShortcut`
 - `ThreadTitle`
 - `experimental_ThreadStatusGlyph`
+- `experimental_ThreadRowItems`
 - `useEnvironmentProviders`
 - `useSdk`
 - `experimental_useProviders`
@@ -138,6 +139,8 @@ Read the installed SDK declarations for the exact current signatures.
 - `ExperimentalThreadContextSegmentInput`
 - `ExperimentalThreadContextSegmentProps`
 - `ExperimentalThreadContextSegmentReference`
+- `ExperimentalThreadRowItemProps`
+- `ExperimentalThreadRowItemsProps`
 - `ExperimentalInfoSectionProps`
 - `ExperimentalDetailRowProps`
 - `ExperimentalInfoListProps`
@@ -209,6 +212,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginThreadHeaderActionRegistration`
 - `ExperimentalThreadContextSegmentRegistration`
 - `ExperimentalThreadInfoRowRegistration`
+- `ExperimentalThreadRowItemRegistration`
 - `ExperimentalThreadInfoSectionRegistration`
 - `PluginThreadActionTarget`
 - `PluginThreadActionChoice`

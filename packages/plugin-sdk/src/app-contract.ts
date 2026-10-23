@@ -1761,6 +1761,52 @@ export interface PluginThreadHeaderActionRegistration {
 }
 
 /**
+ * Props passed to an `experimental_threadRowItem` component, rendered on a
+ * thread's row in a thread list: bb's sidebar and any list that draws
+ * {@link PluginSdkApp.experimental_ThreadRowItems}.
+ */
+export interface ExperimentalThreadRowItemProps {
+  /** The row's thread, the same value the list renders. */
+  thread: PluginSidebarThread;
+  /**
+   * True while the row is on screen and the page is visible. It changes only
+   * at a scroll pause (about 200 ms after scrolling stops), for every row at
+   * once, and turns off immediately when the page hides. Gate network reads,
+   * watches and polling on it (for example `enabled: isLive` on
+   * `experimental_useRpcKeyedQuery`) and render cached data either way, so
+   * scrolling past rows reads nothing and rows on screen read together.
+   */
+  isLive: boolean;
+}
+
+/**
+ * A small item on each thread row, beside the title and before the row's
+ * status glyph: a badge, not a control. The host mounts the component once
+ * its row is live, and with the row from then on while it shows something,
+ * so cached content draws in the row's first frame. It caps the row's items
+ * at 80 px together, hides
+ * them while the row is renamed or customized, and keeps them visible on
+ * hover. Render null to show nothing for a thread. Keep it to an icon-sized
+ * glyph with a tooltip; clicks on it open the thread like the rest of the
+ * row. A crash removes only this item for that row.
+ */
+export interface ExperimentalThreadRowItemRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /**
+   * Items sort by `order` (unset sorts last), then registration order. The
+   * first item sits nearest the title.
+   */
+  order?: number;
+  component: ComponentType<ExperimentalThreadRowItemProps>;
+}
+
+/** Props for {@link PluginSdkApp.experimental_ThreadRowItems}. */
+export interface ExperimentalThreadRowItemsProps {
+  thread: PluginSidebarThread;
+}
+
+/**
  * Props passed to an `experimental_threadInfoRow` or
  * `experimental_threadInfoSection` component, rendered in a thread's Info tab.
  */
@@ -3514,6 +3560,14 @@ export interface PluginAppSlots {
     registration: ExperimentalThreadContextSegmentRegistration,
   ): void;
   /**
+   * Add a small item to every thread row in thread lists (see
+   * {@link ExperimentalThreadRowItemRegistration}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_threadRowItem(
+    registration: ExperimentalThreadRowItemRegistration,
+  ): void;
+  /**
    * Add a row to the thread Info tab's details block (see
    * {@link ExperimentalThreadInfoRowRegistration}). Experimental: see
    * docs/api_to_audit.md.
@@ -4949,7 +5003,7 @@ export interface ExperimentalRpcQueryState<T> {
   isLoading: boolean;
   /** A read attempt is active, including background refreshes. Keyed consumers share this activity for their method; offline-paused reads are not fetching. */
   isFetching: boolean;
-  /** Force a read regardless of freshness and wait for its attempt/retries. Keyed reads refresh the method's subscribed keys. Failures update error and retain data; this promise resolves rather than rejecting. */
+  /** Force a read regardless of freshness and wait for its attempt/retries. Keyed reads refresh only this hook's keys, batched with other hooks refreshing in the same render. Failures update error and retain data; this promise resolves rather than rejecting. */
   refetch(): Promise<void>;
 }
 
@@ -5057,7 +5111,7 @@ export interface PluginSdkApp {
   >(
     options: ExperimentalRpcMutationOptions<Contract, Method>,
   ): ExperimentalRpcMutationState<Contract[Method]>;
-  /** Cache each key independently and batch missing or invalidated keys in the same render. */
+  /** Cache each key independently and batch missing or invalidated keys in the same render. Each key is watched once while the hook holds it, so a changing key list subscribes only added keys and releases only removed ones. */
   experimental_useRpcKeyedQuery<
     Contract extends PluginRpcContract,
     Method extends ExperimentalRpcKeyedMethod<Contract>,
@@ -5067,6 +5121,12 @@ export interface PluginSdkApp {
     pluginId?: string;
     method: Method;
     keys: readonly string[];
+    /**
+     * The method's other input fields, sent with every batched read of these
+     * keys. Hooks with different `input` keep separate caches for the same
+     * keys, so pass a stable value.
+     */
+    input?: Omit<StandardSchemaV1InferInput<Contract[Method]["input"]>, "keys">;
     enabled?: boolean;
     /** Pure projection; the selection type is inferred from its return value. */
     select?(
@@ -5357,6 +5417,16 @@ export interface PluginSdkApp {
    * Experimental: see docs/api_to_audit.md.
    */
   experimental_ThreadStatusGlyph: ComponentType<PluginThreadStatusGlyphProps>;
+  /**
+   * Every `experimental_threadRowItem` contribution for one thread row (see
+   * {@link ExperimentalThreadRowItemRegistration}), the items bb's sidebar
+   * draws on its rows. Render it inside your row's title area, after the
+   * title; its parent element is what bb watches for visibility, so give it
+   * a box (not `display: contents`), so badges such as a pull request's status appear on your rows as
+   * they do on bb's. It renders nothing when no plugin contributes an item.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_ThreadRowItems: ComponentType<ExperimentalThreadRowItemsProps>;
   /**
    * bb's environment provider catalog (see
    * {@link PluginEnvironmentProvidersState}), the directory a thread's

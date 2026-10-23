@@ -8,6 +8,7 @@ import {
   usePullRequestSegmentVisible,
 } from "./ui/PullRequestContextSegment";
 import { PullRequestInfoRow } from "./ui/PullRequestInfoRow";
+import { PullRequestRowItem } from "./ui/PullRequestRowItem";
 
 const CONTEXT_SEGMENT_GROUP = "2_pullRequest";
 
@@ -26,5 +27,9 @@ export default definePluginApp((app) => {
     group: experimental_THREAD_INFO_ROW_GROUPS.pullRequest,
     order: 10,
     component: PullRequestInfoRow,
+  });
+  app.slots.experimental_threadRowItem({
+    id: "pull-request",
+    component: PullRequestRowItem,
   });
 });

@@ -374,6 +374,7 @@ export function createTaggedKeyedQueryOwner<Value>(options: {
   registerKeyedView(client, queryKey, keyedRowsView(collection));
   const keys = new Map<string, number>();
   let readingKeys = new Set<string>();
+  let collecting = false;
   let missingOnly = false;
   let refreshAll = false;
   const dirtyKeys = new Set<string>();
@@ -408,14 +409,17 @@ export function createTaggedKeyedQueryOwner<Value>(options: {
       let refresh = !missingOnly && dirtyKeys.size === 0;
       missingOnly = false;
       const refreshedKeys = new Set<string>();
-      let refreshedAll = false;
+      let refreshedInvalidated = false;
       return runTaggedRead(client, queryKey, async () => {
+        collecting = true;
         const subscribed = await collectSubscribedKeys();
-        const all = refreshAll || refresh;
+        collecting = false;
+        const invalidated = refreshAll;
+        const all = invalidated || refresh;
         refresh = false;
         const dirty = new Set(dirtyKeys);
         for (const key of dirty) refreshedKeys.add(key);
-        refreshedAll ||= all;
+        refreshedInvalidated ||= invalidated;
         dirtyKeys.clear();
         refreshAll = false;
         const requested = subscribed.filter(
@@ -441,7 +445,7 @@ export function createTaggedKeyedQueryOwner<Value>(options: {
             ),
           );
           const retained = (key: string) =>
-            !all && !dirty.has(key) && !readingKeys.has(key);
+            !invalidated && !dirty.has(key) && !readingKeys.has(key);
           for (const key of requested) startedAt.set(key, started);
           previous = {
             result: Object.fromEntries([
@@ -452,7 +456,7 @@ export function createTaggedKeyedQueryOwner<Value>(options: {
             ]),
             tags: [
               ...new Set([
-                ...(all ? [] : (previous?.tags ?? [])),
+                ...(invalidated ? [] : (previous?.tags ?? [])),
                 ...results.flatMap((r) => r.tags),
               ]),
             ],
@@ -468,7 +472,7 @@ export function createTaggedKeyedQueryOwner<Value>(options: {
           return previous;
         } catch (error) {
           for (const key of refreshedKeys) dirtyKeys.add(key);
-          refreshAll ||= refreshedAll;
+          refreshAll ||= refreshedInvalidated;
           throw error;
         }
       }).then((data) => {
@@ -481,6 +485,21 @@ export function createTaggedKeyedQueryOwner<Value>(options: {
   let stop: (() => void) | undefined;
   return {
     observer,
+    async refresh(requested: readonly string[]): Promise<void> {
+      const subscribed = requested.filter((key) => keys.has(key));
+      if (subscribed.length === 0) return;
+      const fetching =
+        observer.getCurrentQuery().state.fetchStatus === "fetching";
+      const unread =
+        fetching && !collecting
+          ? subscribed.filter((key) => !readingKeys.has(key))
+          : subscribed;
+      if (unread.length === 0) return;
+      for (const key of unread) dirtyKeys.add(key);
+      if (fetching && !collecting)
+        restartTaggedRead(observer.getCurrentQuery());
+      await observer.refetch({ cancelRefetch: false });
+    },
     subscribe(requested: readonly string[], listener: () => void) {
       let added = false;
       for (const key of requested) {

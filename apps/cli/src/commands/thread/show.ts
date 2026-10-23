@@ -16,9 +16,9 @@ import {
 import { BbHttpError, type BbSdk } from "@bb/sdk";
 import {
   environmentPullRequestSchema,
-  GITHUB_PR_STATUS_PLUGIN_ID,
   type PullRequest,
 } from "bb-plugin-bb--github-pr-status/contract";
+import { GITHUB_PR_STATUS_PLUGIN_ID } from "bb-plugin-bb--github-pr-status/read-contract";
 import { z } from "zod";
 import type {
   EnvironmentDiffQuery,

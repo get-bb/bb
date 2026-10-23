@@ -98,7 +98,7 @@ describe("plugin app runtime shim", () => {
         pluginName: "bb-plugin-runtime-shims",
         location: expect.objectContaining({ line: 4 }),
         text: expect.stringMatching(
-          /^experimental_useSidebarThreadPullRequest is retired from @get-bb\/plugin-sdk\/app\. Existing plugins remain supported\. Read pull requests from the GitHub PR Status plugin instead: experimental_useRpcKeyedQuery\(\{ pluginId: "bb--github-pr-status"/,
+          /^experimental_useSidebarThreadPullRequest is retired from @get-bb\/plugin-sdk\/app\. Existing plugins remain supported\. Render <experimental_ThreadRowItems thread=\{thread\} \/> in the row to draw bb's pull request badge, or read pull requests from the GitHub PR Status plugin: experimental_useRpcKeyedQuery\(\{ pluginId: "bb--github-pr-status"/,
         ),
       },
     ]);

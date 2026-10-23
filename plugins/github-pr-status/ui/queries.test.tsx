@@ -3,23 +3,21 @@
 import { cleanup, render, renderHook } from "@testing-library/react";
 import type { EnvironmentPullRequest, PullRequest } from "../contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  isEnvironmentPullRequestStale,
-  useEnvironmentPullRequest,
-} from "./queries";
+import { isEnvironmentPullRequestStale } from "../read-contract";
+import { useEnvironmentPullRequest } from "./queries";
 
 const keyedQuery = vi.hoisted(() => ({
   data: {} as Record<string, EnvironmentPullRequest>,
-  refetch: vi.fn(async () => {}),
+  refetch: vi.fn(async (_keys: readonly string[]) => {}),
 }));
 
 vi.mock("@get-bb/plugin-sdk/app", () => ({
-  experimental_useRpcKeyedQuery: () => ({
+  experimental_useRpcKeyedQuery: (options: { keys: readonly string[] }) => ({
     data: keyedQuery.data,
     error: null,
     isLoading: false,
     isFetching: false,
-    refetch: keyedQuery.refetch,
+    refetch: () => keyedQuery.refetch(options.keys),
   }),
   experimental_useRpcMutation: () => ({ mutate: vi.fn(), isPending: false }),
 }));
@@ -128,19 +126,20 @@ describe("useEnvironmentPullRequest refreshes", () => {
     expect(keyedQuery.refetch).toHaveBeenCalledTimes(1);
   });
 
-  it("sends one refetch when many rows show at once", async () => {
+  it("refetches each environment that shows at once in one flush", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     keyedQuery.data = { "env-a": row("open"), "env-b": row("open") };
     renderHook(() => {
       useEnvironmentPullRequest("env-a");
       useEnvironmentPullRequest("env-b");
     });
+    expect(keyedQuery.refetch).not.toHaveBeenCalled();
     await settle();
-    expect(keyedQuery.refetch).toHaveBeenCalledTimes(1);
+    expect(keyedQuery.refetch.mock.calls).toEqual([[["env-a"]], [["env-b"]]]);
 
     vi.setSystemTime(Date.now() + 31_000);
     await showPage();
-    expect(keyedQuery.refetch).toHaveBeenCalledTimes(2);
+    expect(keyedQuery.refetch).toHaveBeenCalledTimes(4);
   });
 
   it("refetches only when an environment starts showing, not for each extra view", async () => {

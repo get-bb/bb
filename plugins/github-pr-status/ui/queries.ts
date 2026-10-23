@@ -7,35 +7,19 @@ import {
   type PullRequest,
   type PullRequestMergeMethod,
 } from "../contract";
+import { isEnvironmentPullRequestStale } from "../read-contract";
 import {
   experimental_useRpcKeyedQuery as useRpcKeyedQuery,
   experimental_useRpcMutation as useRpcMutation,
 } from "@get-bb/plugin-sdk/app";
 
-const OPEN_PULL_REQUEST_STALE_MS = 30_000;
-const SETTLED_PULL_REQUEST_STALE_MS = 60 * 60_000;
-
-export function isEnvironmentPullRequestStale(
-  row: EnvironmentPullRequest,
-  loadedAt: number,
-  now: number,
-): boolean {
-  const settled =
-    row.outcome === "available" &&
-    (row.pullRequest.state === "merged" || row.pullRequest.state === "closed");
-  return (
-    now - loadedAt >
-    (settled ? SETTLED_PULL_REQUEST_STALE_MS : OPEN_PULL_REQUEST_STALE_MS)
-  );
-}
-
 const loadedAtByEnvironment = new Map<string, number>();
 const rowByEnvironment = new Map<string, EnvironmentPullRequest>();
 const shownEnvironments = new Map<string, number>();
-let pendingRefetch: {
-  refetch: () => Promise<void>;
-  onlyIfStale: boolean;
-} | null = null;
+const pendingRefetches = new Map<
+  string,
+  { refetch: () => Promise<void>; onlyIfStale: boolean }
+>();
 
 function markLoaded(environmentIds: readonly string[]): void {
   const loadedAt = Date.now();
@@ -64,29 +48,32 @@ function isShownRowStale(environmentId: string, now: number): boolean {
 }
 
 function queueRefetch(
+  environmentId: string,
   refetch: () => Promise<void>,
   onlyIfStale: boolean,
 ): void {
-  if (pendingRefetch) {
-    pendingRefetch.onlyIfStale &&= onlyIfStale;
-    return;
-  }
-  pendingRefetch = { refetch, onlyIfStale };
+  const flushQueued = pendingRefetches.size > 0;
+  const queued = pendingRefetches.get(environmentId);
+  pendingRefetches.set(environmentId, {
+    refetch,
+    onlyIfStale: (queued?.onlyIfStale ?? true) && onlyIfStale,
+  });
+  if (flushQueued) return;
   queueMicrotask(() => {
-    const pending = pendingRefetch;
-    pendingRefetch = null;
-    if (!pending) return;
-    const refreshed = [...shownEnvironments.keys()];
     const now = Date.now();
-    if (
-      pending.onlyIfStale &&
-      !refreshed.some((environmentId) => isShownRowStale(environmentId, now))
-    )
-      return;
+    const refetches = [...pendingRefetches].filter(
+      ([environmentId, pending]) =>
+        !pending.onlyIfStale || isShownRowStale(environmentId, now),
+    );
+    pendingRefetches.clear();
+    if (refetches.length === 0) return;
+    const refreshed = refetches.map(([environmentId]) => environmentId);
     window.dispatchEvent(
       new CustomEvent(PULL_REQUESTS_REFETCH_EVENT, { detail: refreshed }),
     );
-    void pending.refetch().then(() => markLoaded(refreshed));
+    void Promise.all(refetches.map(([, pending]) => pending.refetch())).then(
+      () => markLoaded(refreshed),
+    );
   });
 }
 
@@ -124,11 +111,11 @@ export function useEnvironmentPullRequest(
     const shownBefore = shownEnvironments.get(environmentId) ?? 0;
     shownEnvironments.set(environmentId, shownBefore + 1);
     if (shownBefore === 0 && latest.current.row !== undefined)
-      queueRefetch(latest.current.refetch, false);
+      queueRefetch(environmentId, latest.current.refetch, false);
     const refetchIfStale = () => {
       if (document.visibilityState === "hidden") return;
       if (isShownRowStale(environmentId, Date.now()))
-        queueRefetch(latest.current.refetch, true);
+        queueRefetch(environmentId, latest.current.refetch, true);
     };
     document.addEventListener("visibilitychange", refetchIfStale);
     window.addEventListener("pageshow", refetchIfStale);

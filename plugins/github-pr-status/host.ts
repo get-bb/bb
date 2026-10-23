@@ -3,9 +3,12 @@ import { experimental_defineHostEntry } from "@get-bb/plugin-sdk/host";
 import { getCurrentBranch, runGit } from "bb-environment-provider-host/git";
 import { githubPrStatusHostContract } from "./contract.js";
 import {
-  getPullRequestForCurrentBranch,
-  getPullRequestByUrl,
+  prepareCurrentBranchRead,
+  prepareUrlRead,
+  preparedResult,
+  readPullRequests,
   runPullRequestActionForCurrentBranch,
+  type PreparedRead,
 } from "./host/git-host.js";
 
 async function pathExists(path: string): Promise<boolean> {
@@ -17,24 +20,31 @@ async function pathExists(path: string): Promise<boolean> {
   }
 }
 
+async function prepareView({
+  path,
+  url,
+  refresh,
+}: {
+  path: string;
+  url: string | null;
+  refresh: boolean;
+}): Promise<PreparedRead> {
+  if (!(await pathExists(path)))
+    return preparedResult({
+      outcome: "unavailable",
+      message: `Workspace path no longer exists: ${path}`,
+    });
+  if (url !== null) return prepareUrlRead(url, path);
+  const localBranch = await getCurrentBranch(path);
+  if (!localBranch) return preparedResult({ outcome: "none" });
+  return prepareCurrentBranchRead({ cwd: path, localBranch, refresh });
+}
+
 export default experimental_defineHostEntry({
   contract: githubPrStatusHostContract,
   handlers: {
-    async view({ path, url, refresh }) {
-      if (!(await pathExists(path))) {
-        return {
-          outcome: "unavailable" as const,
-          message: `Workspace path no longer exists: ${path}`,
-        };
-      }
-      if (url !== null) return getPullRequestByUrl(url, path);
-      const localBranch = await getCurrentBranch(path);
-      if (!localBranch) return { outcome: "none" as const };
-      return getPullRequestForCurrentBranch({
-        cwd: path,
-        localBranch,
-        refresh,
-      });
+    views({ reads }) {
+      return readPullRequests(reads.map(prepareView));
     },
     async upstream({ path }) {
       const [result, branchName] = await Promise.all([

@@ -136,6 +136,15 @@ afterEach(() => {
 
 const harness = experimental_createHostEntryHarness(hostEntry);
 
+async function view(read: {
+  path: string;
+  url: string | null;
+  refresh: boolean;
+}) {
+  const [lookup] = await harness.experimental_call("views", { reads: [read] });
+  return lookup;
+}
+
 describe("pull request lookup for differently named upstream branches", () => {
   it.each(["origin-base", "none"])(
     "uses the managed local branch with %s upstream",
@@ -147,7 +156,7 @@ describe("pull request lookup for differently named upstream branches", () => {
       const gh = await installFakeGh(sameRepository);
 
       await expect(
-        harness.experimental_call("view", {
+        view({
           path: workspacePath,
           url: null,
           refresh: false,
@@ -177,7 +186,7 @@ describe("pull request lookup for differently named upstream branches", () => {
     const gh = await installFakeGh(sameRepository);
 
     await expect(
-      harness.experimental_call("view", {
+      view({
         path: workspacePath,
         url: null,
         refresh: false,
@@ -199,7 +208,7 @@ describe("pull request lookup for differently named upstream branches", () => {
     const gh = await installFakeGh(found);
 
     await expect(
-      harness.experimental_call("view", {
+      view({
         path: workspacePath,
         url: null,
         refresh: false,
@@ -239,7 +248,7 @@ describe("pull request lookup for differently named upstream branches", () => {
     );
 
     await expect(
-      harness.experimental_call("view", {
+      view({
         path: workspacePath,
         url: null,
         refresh: true,
@@ -265,7 +274,7 @@ describe("pull request lookup for differently named upstream branches", () => {
     const gh = await installFakeGh(found);
 
     await expect(
-      harness.experimental_call("view", {
+      view({
         path: workspacePath,
         url: null,
         refresh: true,
@@ -286,7 +295,7 @@ describe("pull request lookup for differently named upstream branches", () => {
     });
     const gh = await installFakeGh(sameRepository);
 
-    await harness.experimental_call("view", {
+    await view({
       path: workspacePath,
       url: null,
       refresh: true,
@@ -304,7 +313,7 @@ describe("pull request lookup for differently named upstream branches", () => {
     vi.stubEnv("GH_ENTERPRISE_TOKEN", "dummy-enterprise-token");
 
     await expect(
-      harness.experimental_call("view", {
+      view({
         path: workspacePath,
         url: null,
         refresh: false,
@@ -321,7 +330,7 @@ describe("pull request lookup for differently named upstream branches", () => {
     const workspacePath = await createTrackedForkWorkspace();
     const gh = await installFakeGh(found);
 
-    const first = await harness.experimental_call("view", {
+    const first = await view({
       path: workspacePath,
       url: null,
       refresh: false,
@@ -330,7 +339,7 @@ describe("pull request lookup for differently named upstream branches", () => {
       ["remote", "set-url", forkRemote, "git@github.com:other-owner/bb.git"],
       { cwd: workspacePath },
     );
-    const second = await harness.experimental_call("view", {
+    const second = await view({
       path: workspacePath,
       url: null,
       refresh: false,
@@ -378,7 +387,7 @@ describe("pull request lookup for differently named upstream branches", () => {
     });
 
     await expect(
-      harness.experimental_call("view", {
+      view({
         path: workspacePath,
         url: null,
         refresh: false,
@@ -402,7 +411,7 @@ describe("pull request lookup for differently named upstream branches", () => {
     }
 
     await expect(
-      harness.experimental_call("view", {
+      view({
         path: workspacePath,
         url: null,
         refresh: false,
@@ -433,7 +442,7 @@ describe("workspace state", () => {
   it("reports a missing workspace path as unavailable", async () => {
     const missing = path.join(await makeTempDir("bb-pr-missing-"), "gone");
     await expect(
-      harness.experimental_call("view", {
+      view({
         path: missing,
         url: null,
         refresh: false,
@@ -459,7 +468,7 @@ describe("workspace state", () => {
       message: "Cannot update pull request from a detached workspace",
     });
     await expect(
-      harness.experimental_call("view", {
+      view({
         path: workspacePath,
         url: null,
         refresh: false,

@@ -273,6 +273,39 @@
         }
       ]
     },
+    "thread-row-items": {
+      "groupId": "app-shell",
+      "fidelity": "anchor",
+      "responsiveStrategy": "scale-together",
+      "requiredStates": ["anchor"],
+      "labels": {
+        "anchor": ["Ship dark mode"]
+      },
+      "fixtureClassAnchors": ["size-4", "size-1.5", "rounded-full"],
+      "sources": [
+        {
+          "path": "apps/app/src/components/plugin/ThreadRowItems.tsx",
+          "anchors": [
+            "data-thread-row-items=\"\"",
+            "slotKind=\"threadRowItem\"",
+            "crashFallback={null}",
+            "max-w-20"
+          ]
+        },
+        {
+          "path": "plugins/thread-list/app/rows/ThreadRow.tsx",
+          "anchors": ["<ThreadRowItems thread={thread} />"]
+        },
+        {
+          "path": "plugins/github-pr-status/app.tsx",
+          "anchors": ["app.slots.experimental_threadRowItem"]
+        },
+        {
+          "path": "plugins/github-pr-status/ui/PullRequestRowItem.tsx",
+          "anchors": ["enabled: isLive && environmentId !== null"]
+        }
+      ]
+    },
     "thread-info": {
       "groupId": "app-shell",
       "fidelity": "anchor",
