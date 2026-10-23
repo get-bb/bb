@@ -702,9 +702,9 @@ describe("Docs vault operations", () => {
     expect(harness.sdk.callsTo("files.move")).toEqual([]);
   });
 
-  it("still follows the H1 when frontmatter has no title", async () => {
+  it("names an Untitled note after its first heading when it is saved", async () => {
     const { harness } = await loadNotebook({
-      "old-slug.md": ["---", "tags: [a]", "---", "# Brand new title"].join(
+      "Untitled 2.md": ["---", "tags: [a]", "---", "# Brand new title"].join(
         "\n",
       ),
     });
@@ -712,13 +712,30 @@ describe("Docs vault operations", () => {
     await expect(
       harness.callRpc("saveDocument", {
         vaultId: "personal",
-        path: "old-slug.md",
+        path: "Untitled 2.md",
         content: ["---", "tags: [a]", "---", "# Brand new title"].join("\n"),
         expectedSha256: "test-sha",
         renameToTitle: true,
       }),
     ).resolves.toEqual({ path: "brand-new-title.md", sha256: "written-sha" });
     expect(harness.sdk.callsTo("files.move")).toHaveLength(1);
+  });
+
+  it("keeps a named note at its path when its heading changes", async () => {
+    const { harness } = await loadNotebook({
+      "old-slug.md": "# Old title\n",
+    });
+
+    await expect(
+      harness.callRpc("saveDocument", {
+        vaultId: "personal",
+        path: "old-slug.md",
+        content: "# Brand new title\n",
+        expectedSha256: "test-sha",
+        renameToTitle: true,
+      }),
+    ).resolves.toEqual({ path: "old-slug.md", sha256: "written-sha" });
+    expect(harness.sdk.callsTo("files.move")).toEqual([]);
   });
 
   it("round-trips a folder edit through pull and push without changing binary assets", async () => {

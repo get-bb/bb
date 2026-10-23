@@ -103,28 +103,7 @@ describe("Docs document sessions", () => {
     });
   });
 
-  it("merges a remote change into a dirty draft when the edits do not overlap", async () => {
-    const { session, save } = loaded(
-      snapshot("Intro\n\nMiddle\n\nOutro\n", "base-sha"),
-    );
-    session.edit("Intro typed\n\nMiddle\n\nOutro\n");
-    session.receive(
-      snapshot("Intro\n\nMiddle\n\nOutro by agent\n", "agent-sha"),
-    );
-    expect(session.getSnapshot()).toMatchObject({
-      draft: "Intro typed\n\nMiddle\n\nOutro by agent\n",
-      conflict: null,
-      error: null,
-    });
-    await vi.advanceTimersByTimeAsync(500);
-    expect(save).toHaveBeenCalledTimes(1);
-    expect(save.mock.calls[0]?.slice(1, 3)).toEqual([
-      "Intro typed\n\nMiddle\n\nOutro by agent\n",
-      "agent-sha",
-    ]);
-  });
-
-  it("keeps the draft and offers both versions when the edits overlap", async () => {
+  it("keeps the draft and offers both versions when another writer saves during typing", async () => {
     const { session, save } = loaded(snapshot("Line\n", "base-sha"));
     session.edit("Line mine\n");
     const theirs = snapshot("Line theirs\n", "their-sha");
@@ -174,7 +153,7 @@ describe("Docs document sessions", () => {
     });
   });
 
-  it("refetches after a rejected save and retries against the newer file", async () => {
+  it("offers the newer file after a rejected save instead of retrying the stale one", async () => {
     const io = writer();
     io.save.mockRejectedValueOnce(
       new Error("This document changed elsewhere."),
@@ -186,16 +165,23 @@ describe("Docs document sessions", () => {
     session.edit("A typed\n\nB\n");
     await session.flush();
     expect(refetch).toHaveBeenCalledTimes(1);
-    expect(session.getSnapshot().error).toBe(
-      "This document changed elsewhere.",
-    );
-    session.receive(snapshot("A\n\nB remote\n", "remote-sha"));
-    await vi.advanceTimersByTimeAsync(500);
+    const theirs = snapshot("A\n\nB remote\n", "remote-sha");
+    session.receive(theirs);
+    expect(session.getSnapshot()).toMatchObject({
+      draft: "A typed\n\nB\n",
+      conflict: theirs,
+      error: null,
+    });
+    await session.keepMine();
     expect(save.mock.calls.at(-1)?.slice(1, 3)).toEqual([
-      "A typed\n\nB remote\n",
+      "A typed\n\nB\n",
       "remote-sha",
     ]);
-    expect(session.getSnapshot()).toMatchObject({ error: null, dirty: false });
+    expect(session.getSnapshot()).toMatchObject({
+      conflict: null,
+      error: null,
+      dirty: false,
+    });
   });
 
   it("stops saving a document that was moved or deleted elsewhere", async () => {

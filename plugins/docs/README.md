@@ -24,11 +24,14 @@ provider, and directive are all Docs.
   documents is on screen, local vaults are watched natively and remote or
   unwatchable vaults are polled every 10 seconds; nothing is watched otherwise.
 - **Live documents:** an open document shows saves from other windows, the CLI,
-  agents, and external editors as they land, without losing what you are
-  typing. A change to a different part of the document merges into your draft.
-  When both sides changed the same lines, the editor keeps your text and offers
-  Keep mine or Use theirs. A document moved or deleted elsewhere stops saving
-  and offers Save a copy instead of recreating the old file.
+  agents, and external editors as they land. A change that arrives while you
+  have unsaved typing keeps your text and offers Keep mine or Use theirs. A
+  document moved or deleted elsewhere stops saving and offers Save a copy
+  instead of recreating the old file.
+- **Stable file names:** a document's title is its first heading (or
+  frontmatter `title`), and editing it never renames the file, so thread cards,
+  tabs, and links keep working. A new note starts as `Untitled.md` and takes its
+  first heading as its file name when it is saved from the Docs panel.
 - **Default Markdown editor:** Docs registers for `.md`, `.mdx`, and
   `.markdown` files, so it can be selected under Settings → File openers or
   chosen from a file link's Open with menu. Workspace, absolute host, and
@@ -246,8 +249,8 @@ their document, folder, or vault is removed.
 
 The RPC equivalents are `readProposal`, `proposeNote`, `updateProposal`, and
 `resolveProposal`. The app reads a document, its proposal, and its preview link
-together through `readDocument`, and saves through `saveDocument`, which also
-renames the file after its first heading when asked to. Every write, from the
+together through `readDocument`, and saves through `saveDocument`, which can
+also give an `Untitled` note its first heading as its file name. Every write, from the
 app, CLI, HTTP API, sync, or the vault watcher, invalidates the tags of the
 documents, folders, and trees it changed (`doc:<vault>:<path>`,
 `folder:<vault>:<path>`, `tree:<vault>`, `vault:<vault>`, and `vaults`), so only

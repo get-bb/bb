@@ -1382,7 +1382,8 @@ export default async function plugin(
     currentPath: string,
     content: string,
   ): Promise<string | null> {
-    if (!/\.md$/i.test(currentPath)) return null;
+    if (!/^untitled(?: \d+)?\.md$/i.test(path.posix.basename(currentPath)))
+      return null;
     if (parseMarkdownDocument(content).title) return null;
     const base = kebabCase(deriveTitle(content, ""));
     if (!base) return null;

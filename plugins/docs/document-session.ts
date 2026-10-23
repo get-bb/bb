@@ -1,5 +1,4 @@
 import { useEffect, useSyncExternalStore } from "react";
-import { mergeText } from "./merge.js";
 import type { Proposal } from "./proposals.js";
 
 export interface DocumentSnapshot {
@@ -154,22 +153,12 @@ export function createDocumentSession(options: {
       return;
     }
     if (inFlight !== null && shown(snapshot) === inFlight) return;
-    if (!state.dirty && !state.saving && state.conflict === null)
+    if (
+      (!state.dirty && !state.saving && state.conflict === null) ||
+      shown(snapshot) === state.draft
+    )
       return adopt(snapshot);
-    const merged = mergeText(shown(base), state.draft, shown(snapshot));
-    if (merged === null) {
-      set({ conflict: snapshot, missing: false });
-      return;
-    }
-    replaceBase(snapshot);
-    set({
-      base: snapshot,
-      draft: merged,
-      conflict: null,
-      missing: false,
-      error: null,
-    });
-    if (state.dirty) schedule();
+    set({ conflict: snapshot, missing: false, error: null });
   };
 
   const receiveError = (message: string | null) => {
@@ -177,7 +166,7 @@ export function createDocumentSession(options: {
       if (state.missing || state.error) set({ missing: false, error: null });
       return;
     }
-    if (state.loaded && isMissingError(message)) {
+    if (isMissingError(message)) {
       if (timer) clearTimeout(timer);
       timer = null;
       set({
@@ -244,6 +233,7 @@ export function createDocumentSession(options: {
           }
         } catch (error) {
           if (state.base !== base) continue;
+          if (state.conflict !== null) return;
           set({
             error: error instanceof Error ? error.message : String(error),
           });

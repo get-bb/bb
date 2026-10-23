@@ -1577,7 +1577,7 @@ describe("Docs nav panel", () => {
     });
   });
 
-  it("preserves the file opener host through autosave and resolves an overlapping conflict in place", async () => {
+  it("preserves the file opener host through autosave and resolves a conflict in place", async () => {
     const source = {
       kind: "host",
       threadId: "thr_1",
@@ -1856,7 +1856,7 @@ function paragraph(slot: ReturnType<typeof renderSlot>, text: string) {
 }
 
 describe("Docs live documents", () => {
-  it("merges another writer's change into a card that is being edited instead of getting stuck", async () => {
+  it("offers Keep mine and Use theirs instead of getting stuck when another writer saves during typing", async () => {
     const vault = fakeVault({
       "live-card.md": "First paragraph.\n\nSecond paragraph.\n",
     });
@@ -1872,38 +1872,16 @@ describe("Docs live documents", () => {
       "live-card.md",
       "First paragraph.\n\nSecond paragraph, by the agent.\n",
     );
+    fireEvent.click(await slot.findByRole("button", { name: "Keep mine" }));
     await waitFor(
       () =>
         expect(vault.content("live-card.md")).toBe(
-          "First paragraph, typed.\n\nSecond paragraph, by the agent.\n",
+          "First paragraph, typed.\n\nSecond paragraph.\n",
         ),
       { timeout: 2_000 },
     );
-    expect(slot.getByText("Second paragraph, by the agent.")).toBeTruthy();
-    expect(slot.getByText("First paragraph, typed.")).toBeTruthy();
     expect(slot.queryByRole("alert")).toBeNull();
-  });
-
-  it("keeps a trailing space being typed when another writer's change merges in", async () => {
-    const vault = fakeVault({
-      "space-card.md": "First paragraph.\n\nSecond paragraph.\n",
-    });
-    const slot = renderDocument("space-card.md", "Space card", {
-      rpc: vault.rpc,
-    });
-    await slot.findByText("Second paragraph.");
-    const first = paragraph(slot, "First");
-    first.textContent = "First paragraph, typing ";
-    fireEvent.input(first);
-    await vault.remoteWrite(
-      slot,
-      "space-card.md",
-      "First paragraph.\n\nSecond paragraph, by the agent.\n",
-    );
-    await slot.findByText("Second paragraph, by the agent.");
-    expect(paragraph(slot, "First").textContent).toBe(
-      "First paragraph, typing ",
-    );
+    expect(slot.queryByRole("button", { name: "Retry" })).toBeNull();
   });
 
   it("does not undo another writer's change", async () => {

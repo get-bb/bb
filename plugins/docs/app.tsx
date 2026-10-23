@@ -43,7 +43,11 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { docsRpcContract, errorMessage } from "./contract.js";
-import { isRecord, parseMarkdownDocument } from "./markdown-document.js";
+import {
+  documentHeading,
+  isRecord,
+  parseMarkdownDocument,
+} from "./markdown-document.js";
 import {
   Editor,
   Extension,
@@ -790,7 +794,7 @@ function DocumentNotices({
         role="alert"
       >
         <span className="min-w-0 flex-1">
-          This document changed elsewhere, and the changes overlap with yours.
+          This document changed elsewhere while you were editing.
         </span>
         <Button
           size="sm"
@@ -811,9 +815,12 @@ function DocumentNotices({
         role="alert"
       >
         <span className="min-w-0 flex-1">
-          {state.error ?? "This document was moved or deleted elsewhere."}
+          {state.error ??
+            (state.loaded
+              ? "This document was moved or deleted elsewhere."
+              : "This document was moved or deleted.")}
         </span>
-        {onSaveCopy && state.error === null ? (
+        {onSaveCopy && state.loaded && state.error === null ? (
           <Button size="sm" variant="ghost" onClick={onSaveCopy}>
             Save a copy
           </Button>
@@ -970,13 +977,15 @@ function InlineDocument({
   panel = false,
 }: {
   document: DocumentRef;
-  openInTab?(): void;
+  openInTab?(title: string): void;
   panel?: boolean;
 }) {
   const { state, session } = useVaultDocument(document.vaultId, document.path, {
     showsProposals: true,
   });
   const saveCopy = useSaveCopy(document.vaultId, state);
+  const title =
+    (state.loaded ? documentHeading(state.draft) : null) ?? document.title;
   const rpc = useRpc<typeof docsRpcContract>();
   const composer = useComposer();
   const navigate = useBbNavigate();
@@ -1022,7 +1031,7 @@ function InlineDocument({
           {
             provider: "note",
             id: `${document.vaultId}:${document.path}`,
-            label: document.title,
+            label: title,
           },
           " ",
         ],
@@ -1044,7 +1053,7 @@ function InlineDocument({
   return (
     <TooltipProvider delayDuration={200}>
       <section
-        aria-label={document.title}
+        aria-label={title}
         className={
           panel
             ? "flex h-full min-h-0 min-w-0 flex-col overflow-hidden"
@@ -1054,7 +1063,7 @@ function InlineDocument({
         <header className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5 text-xs text-muted-foreground">
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <span className="shrink-0 font-semibold">Docs</span>
-            <span className="truncate opacity-70">{document.title}</span>
+            <span className="truncate opacity-70">{title}</span>
           </div>
           {(state.busy || state.saving || asking) && (
             <span
@@ -1131,7 +1140,7 @@ function InlineDocument({
                 <DocumentAction
                   label="Open in tab"
                   icon="ExternalLink"
-                  onClick={openInTab}
+                  onClick={() => openInTab(title)}
                 />
               </>
             )}
@@ -1162,7 +1171,9 @@ function InlineDocument({
           style={openInTab ? { maxHeight: 400, overflow: "clip" } : undefined}
         >
           {!state.loaded ? (
-            <DocumentSkeleton />
+            state.missing || state.error ? null : (
+              <DocumentSkeleton />
+            )
           ) : (
             <>
               <div
@@ -1208,9 +1219,9 @@ function InlineDocument({
               {truncated && openInTab && (
                 <button
                   type="button"
-                  aria-label={`Open ${document.title} in tab`}
+                  aria-label={`Open ${title} in tab`}
                   className="absolute inset-0 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
-                  onClick={openInTab}
+                  onClick={() => openInTab(title)}
                 >
                   <span className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-background via-background/95 to-transparent" />
                 </button>
@@ -1237,14 +1248,14 @@ function DocsDirectiveCard({ attributes }: PluginMessageDirectiveProps) {
     navigate.toPluginPanel("docs", {
       subPath: `${document.vaultId}/${document.path}`,
     });
-  const openPreview = () => {
+  const openPreview = (title = document.title) => {
     const opened = navigate.openThreadPanel({
       actionId: "document",
-      title: document.title,
+      title,
       params: {
         vaultId: document.vaultId,
         path: document.path,
-        title: document.title,
+        title,
       },
     });
     if (!opened) openInDocs();
@@ -1256,7 +1267,7 @@ function DocsDirectiveCard({ attributes }: PluginMessageDirectiveProps) {
       <button
         type="button"
         className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md px-1 py-1 text-left after:absolute after:inset-0 after:rounded-lg after:content-[''] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        onClick={openPreview}
+        onClick={() => openPreview()}
       >
         <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
           <HugeiconsIcon icon={HtmlFile01Icon} className="size-4" />
@@ -1384,7 +1395,11 @@ function SavedDocumentEditor({
   errorHint?: string;
 }) {
   if (!state.loaded)
-    return state.error ? (
+    return state.missing ? (
+      <div className="min-w-0 flex-1">
+        <DocumentNotices state={state} session={session} />
+      </div>
+    ) : state.error ? (
       <div className="min-w-0 flex-1 p-6 text-sm text-destructive">
         {state.error}
         {errorHint}
