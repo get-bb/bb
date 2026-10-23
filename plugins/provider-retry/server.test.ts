@@ -185,7 +185,7 @@ describe("provider retry policy", () => {
     );
   });
 
-  it("never schedules a retry in the past when the reset has already passed", () => {
+  it("declines an expired snapshot instead of retrying against a stale reset", () => {
     const decision = decideRetry({
       availability: { kind: "not-routed" },
       failure: failure({
@@ -205,9 +205,8 @@ describe("provider retry policy", () => {
       random: 0,
     });
     expect(decision).toEqual({
-      kind: "retry",
-      sendAt: NOW_MS + RESET_BUFFER_MS,
-      reason: "Rate limited",
+      kind: "decline",
+      reason: "stale-reset",
     });
   });
 
@@ -741,5 +740,49 @@ describe("provider retry plugin", () => {
     });
     expect(host.deleted).toEqual([]);
     await host.harness.dispose();
+  });
+});
+
+describe("structured failure safety boundaries", () => {
+  it.each([
+    "unauthorized",
+    "bad-request",
+    "policy",
+    "sandbox",
+    "billing",
+  ] as const)(
+    "does not retry %s even with a retryable HTTP code",
+    (category) => {
+      for (const httpStatusCode of [429, 503]) {
+        expect(
+          decideRetry({
+            failure: failure({
+              errorInfo: { category, httpStatusCode, providerCode: null },
+            }),
+            availability: { kind: "not-routed" },
+            maximumWaitMs: null,
+            now: NOW_MS,
+            random: 0,
+          }),
+        ).toEqual({ kind: "decline", reason: "not-retryable" });
+      }
+    },
+  );
+  it("does not use one known reset when another blocked window has no reset", () => {
+    const quota = rateLimits();
+    quota.windows.push({
+      ...quota.windows[0],
+      providerKey: "secondary",
+      resetsAtMs: null,
+    });
+    expect(
+      decideRetry({
+        failure: failure({ rateLimits: quota }),
+        availability: { kind: "not-routed" },
+        maximumWaitMs: null,
+        now: NOW_MS,
+        random: 0,
+      }),
+    ).toEqual({ kind: "decline", reason: "not-resettable" });
   });
 });

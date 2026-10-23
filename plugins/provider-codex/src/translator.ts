@@ -8,6 +8,7 @@ import {
   type ProviderRuntimeEvent,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
+import { reconcileFreshCodexUsageLimit } from "./reconcile-usage-limit.js";
 import {
   applyCodexRateLimitUpdate,
   normalizeCodexRateLimits,
@@ -1634,6 +1635,7 @@ export function createCodexEventTranslator(
 
   function recoverRateLimits(
     response: z.output<typeof codexRateLimitReadResponseSchema> | null,
+    terminalUsageLimit = false,
   ): ThreadDelta[] {
     const preferredLimitId = eventTranslationState.latestRateLimitId;
     eventTranslationState.rateLimitsByLimitId.clear();
@@ -1656,9 +1658,10 @@ export function createCodexEventTranslator(
     return [
       {
         kind: "provider.rateLimits",
-        rateLimits: normalizeCodexRateLimits(
-          eventTranslationState,
-          preferredLimitId,
+        rateLimits: reconcileFreshCodexUsageLimit(
+          normalizeCodexRateLimits(eventTranslationState, preferredLimitId),
+          response !== null && terminalUsageLimit,
+          Date.now(),
         ),
       },
     ];

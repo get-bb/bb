@@ -37,6 +37,7 @@ afterEach(async () => {
 });
 
 it.each([
+  "warning",
   "native",
   "recover",
   "error",
@@ -99,23 +100,34 @@ it.each([
           error: outcome === "error" || outcome === "no-update-error",
           delayMs: 20,
           result:
-            outcome === "model-bucket"
+            outcome === "warning"
               ? {
-                  rateLimits: { limitId: "codex" },
-                  rateLimitsByLimitId: {
-                    codex: { limitId: "codex" },
-                    premium: { ...recovered, limitId: "premium" },
-                    unrelated: {
-                      ...recovered,
-                      limitId: "unrelated",
-                      primary: {
-                        ...recovered.primary,
-                        resetsAt: resetsAt + 86400,
-                      },
+                  rateLimits: {
+                    limitId: "codex",
+                    primary: {
+                      usedPercent: 95,
+                      windowDurationMins: 300,
+                      resetsAt,
                     },
                   },
                 }
-              : { rateLimits: recovered },
+              : outcome === "model-bucket"
+                ? {
+                    rateLimits: { limitId: "codex" },
+                    rateLimitsByLimitId: {
+                      codex: { limitId: "codex" },
+                      premium: { ...recovered, limitId: "premium" },
+                      unrelated: {
+                        ...recovered,
+                        limitId: "unrelated",
+                        primary: {
+                          ...recovered.primary,
+                          resetsAt: resetsAt + 86400,
+                        },
+                      },
+                    },
+                  }
+                : { rateLimits: recovered },
         },
         turns: [
           [
@@ -227,7 +239,11 @@ it.each([
       requests().filter((r) => r.method === "account/rateLimits/read"),
     ).toHaveLength(shouldRead ? 1 : 0);
     expect(quotas.length).toBeGreaterThan(0);
-    if (["native", "recover", "expired", "model-bucket"].includes(outcome))
+    if (
+      ["warning", "native", "recover", "expired", "model-bucket"].includes(
+        outcome,
+      )
+    )
       expect(quotas.at(-1)).toMatchObject({
         rateLimits: {
           status: "blocked",

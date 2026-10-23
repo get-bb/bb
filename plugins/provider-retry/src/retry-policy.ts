@@ -17,6 +17,7 @@ export type RetryDeclineReason =
   | "not-retryable"
   | "no-rate-limit-state"
   | "not-resettable"
+  | "stale-reset"
   | "beyond-maximum-wait"
   | "attempts-exhausted"
   | "pool-unavailable";
@@ -44,6 +45,13 @@ export function blockedWindowResetAtMs(
     (window) => window.status === "blocked",
   );
   const relevant = blocked.length > 0 ? blocked : rateLimits.windows;
+  if (
+    relevant.some(
+      (window) =>
+        window.resetsAtMs === null || !Number.isFinite(window.resetsAtMs),
+    )
+  )
+    return null;
   const resets = relevant.flatMap((window) =>
     window.resetsAtMs === null ? [] : [window.resetsAtMs],
   );
@@ -94,6 +102,14 @@ export function isRateLimitFailure(failure: PluginTurnFailedEvent): boolean {
 
 export function decideRetry(input: RetryPolicyInput): RetryDecision {
   const { failure } = input;
+  if (
+    failure.errorInfo !== null &&
+    ["unauthorized", "bad-request", "policy", "sandbox", "billing"].includes(
+      failure.errorInfo.category,
+    )
+  ) {
+    return { kind: "decline", reason: "not-retryable" };
+  }
   if (failure.attemptNumber >= MAX_RETRY_ATTEMPTS) {
     return { kind: "decline", reason: "attempts-exhausted" };
   }
@@ -148,6 +164,9 @@ export function decideRetry(input: RetryPolicyInput): RetryDecision {
   const resetsAtMs = blockedWindowResetAtMs(rateLimits);
   if (rateLimits.kind !== "subscription-window" || resetsAtMs === null) {
     return { kind: "decline", reason: "not-resettable" };
+  }
+  if (resetsAtMs <= input.now) {
+    return { kind: "decline", reason: "stale-reset" };
   }
   if (
     input.maximumWaitMs !== null &&

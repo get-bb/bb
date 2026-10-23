@@ -761,7 +761,19 @@ async function handleChildNotification(
             })
           : null;
       if (currentSession(bbThreadId, serial) !== session) return;
-      sendThreadDeltas(session, session.translator.recoverRateLimits(snapshot));
+      sendThreadDeltas(
+        session,
+        session.translator.recoverRateLimits(
+          snapshot,
+          deltas.some(
+            (delta) =>
+              delta.kind === "provider.error" &&
+              delta.willRetry === false &&
+              delta.errorInfo?.category === "rate-limit" &&
+              delta.errorInfo.providerCode === "usageLimitExceeded",
+          ),
+        ),
+      );
     } catch {
       if (currentSession(bbThreadId, serial) !== session) return;
       sendThreadDeltas(session, session.translator.recoverRateLimits(null));
