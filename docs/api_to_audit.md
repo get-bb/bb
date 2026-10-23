@@ -3731,3 +3731,25 @@ Docs: `providers.md`.
 
 Before stabilization, decide whether `model/list` `supportedServiceTiers` may
 override the icon and whether reasoning levels should render it.
+
+## Host process toolchain (`@get-bb/plugin-sdk/process`)
+
+`experimental_hostToolchain` supplies `resolve`, `command`, `environment`,
+`node`, `npmCli`, `bundledNpmCli`, `refresh`, `invalidateFailure`, and a monotonic
+`generation`. `experimental_spawnHostProcess`, `experimental_forkHostProcess`,
+`experimental_execHostFile`, and `experimental_execHostFileCallback` use it to
+launch processes. Missing executables and exit 127 refresh discovery; running
+commands are never replayed automatically. These are host-local primitives,
+not remote-machine RPCs.
+
+Core callers use the same process-utils implementation: server and desktop
+launchers, daemon provider installation and terminals, provider workers,
+plugin workers, watcher workers, self-update, and server move. The MCP,
+automations, browser automation, and provider plugins use this SDK path.
+The Plugin Guide's Provider bridges card lists the symbols.
+
+Before stabilization, verify native Windows shims and registry refresh,
+macOS launchd and Electron updates, mise/asdf installations, caller environment
+precedence, bounded discovery failure, and module-ABI preservation after Node
+replacement. Settle the shared process-local instance lifecycle across SDK
+bundle versions and the synchronous refresh API before removing the prefix.

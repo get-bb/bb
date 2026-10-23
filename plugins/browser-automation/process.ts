@@ -1,4 +1,7 @@
-import { spawn } from "node:child_process";
+import {
+  experimental_hostToolchain as hostToolchain,
+  experimental_spawnHostProcess as spawn,
+} from "@get-bb/plugin-sdk/process";
 
 const supervisor = `
 const { spawn } = require('node:child_process');
@@ -30,12 +33,17 @@ export function supervise(
   args: string[],
   env: NodeJS.ProcessEnv,
 ) {
-  const child = spawn(process.execPath, ["-e", supervisor, command, ...args], {
-    env: process.versions.electron
-      ? { ...env, ELECTRON_RUN_AS_NODE: "1" }
-      : env,
-    stdio: ["pipe", "ignore", "ignore"],
-  });
+  const launch = hostToolchain.command(command, args, { env });
+  const child = spawn(
+    process.execPath,
+    ["-e", supervisor, launch.command, ...launch.args],
+    {
+      env: process.versions.electron
+        ? { ...launch.env, ELECTRON_RUN_AS_NODE: "1" }
+        : launch.env,
+      stdio: ["pipe", "ignore", "ignore"],
+    },
+  );
   child.stdin.on("error", () => {});
   let exited = false;
   const completion = new Promise<void>((resolve) => {

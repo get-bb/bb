@@ -15,14 +15,15 @@ import {
 } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import semver from "semver";
-import { resolveBundledNpmCli } from "@bb/plugin-build";
 import {
+  hostToolchain,
   killPortableProcess,
   killProcessGroup,
   omitNpmScriptPolicyEnv,
   spawnPortableOutputProcess,
   supportsProcessGroups,
 } from "@bb/process-utils";
+
 import {
   installCancellationSignal,
   PluginInstallCancelledError,
@@ -622,7 +623,7 @@ export async function runInstallCommand(
   const timeoutMs = 5 * 60_000;
   const cancellation = installCancellationSignal();
   if (cancellation?.aborted) throw new PluginInstallCancelledError();
-  const npmCliPath = command === "npm" ? resolveBundledNpmCli() : null;
+  const npmCliPath = command === "npm" ? hostToolchain.bundledNpmCli() : null;
   const child = spawnPortableOutputProcess({
     command: npmCliPath === null ? command : process.execPath,
     args: npmCliPath === null ? args : [npmCliPath, ...args],

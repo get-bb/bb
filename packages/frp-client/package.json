@@ -20,7 +20,8 @@
     "test": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
-    "@bb/tunnel-contract": "workspace:*"
+    "@bb/tunnel-contract": "workspace:*",
+    "@bb/process-utils": "workspace:*"
   },
   "devDependencies": {
     "@bb/tsconfig": "workspace:*",

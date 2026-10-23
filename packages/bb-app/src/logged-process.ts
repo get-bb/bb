@@ -1,4 +1,5 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawnHostProcess as spawn } from "@bb/process-utils";
+import type { ChildProcess } from "node:child_process";
 import { closeSync, mkdirSync, openSync, renameSync, statSync } from "node:fs";
 import { join } from "node:path";
 

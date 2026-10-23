@@ -1,4 +1,5 @@
-import { spawn } from "node:child_process";
+import { spawnHostProcess as spawn } from "@bb/process-utils";
+
 import { constants as fsConstants } from "node:fs";
 import {
   access,

@@ -1,10 +1,9 @@
 import { createAsyncTtlMemo, type AsyncTtlMemo } from "@bb/async-cache";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { execHostFile } from "@bb/process-utils";
 import type { HostDaemonContributedEnvEntry } from "@bb/host-daemon-contract";
 import { z } from "zod";
 
-const exec = promisify(execFile);
+const exec = execHostFile;
 
 const githubCredentialHelper =
   '!f() { test "$1" = get || exit 0; protocol=; host=; while IFS= read -r line && test -n "$line"; do case "$line" in protocol=*) protocol=${line#protocol=} ;; host=*) host=${line#host=} ;; esac; done; if test "$protocol" = https && test "$host" = github.com && test -n "$GH_TOKEN"; then printf "username=x-access-token\\npassword=%s\\n" "$GH_TOKEN"; fi; }; f';

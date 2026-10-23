@@ -1,9 +1,11 @@
 #!/usr/bin/env node
+import { hostToolchain, spawnHostProcess as spawn } from "@bb/process-utils";
+
 import { nodeNetworkArgs, nodeNetworkEnv } from "@bb/config/node-network";
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { relayDesktopAppUpdates } from "@bb/config/desktop-app-update";
-import { spawn } from "node:child_process";
+
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { spawnLoggedProcess } from "./logged-process.js";
 import {
@@ -2561,7 +2563,7 @@ function resolveOwnAppInstall(args: {
 }
 
 export function createServerEnv(args: CreateServerEnvArgs): NodeJS.ProcessEnv {
-  const inheritedEnv = nodeNetworkEnv(args.env);
+  const inheritedEnv = nodeNetworkEnv(hostToolchain.environment(args.env));
   delete inheritedEnv[APP_INSTALL_KIND_ENV_NAME];
   delete inheritedEnv[APP_SOURCE_COMMIT_ENV_NAME];
   delete inheritedEnv[APP_SOURCE_ORIGIN_ENV_NAME];
@@ -2585,7 +2587,9 @@ export function createServerEnv(args: CreateServerEnvArgs): NodeJS.ProcessEnv {
 
 export function createDaemonEnv(args: CreateDaemonEnvArgs): NodeJS.ProcessEnv {
   return {
-    ...nodeNetworkEnv(stripThreadContextEnv(args.env)),
+    ...nodeNetworkEnv(
+      hostToolchain.environment(stripThreadContextEnv(args.env)),
+    ),
     BB_APP_VERSION: args.context.appVersion,
     BB_BRIDGE_DIR: args.context.daemonBundleDir,
     BB_CLI_DIR: args.context.daemonBundleDir,
@@ -4382,6 +4386,7 @@ export async function runBbApp(
 }
 
 export function runLauncherEntry(entry: () => Promise<void>): void {
+  hostToolchain.refresh();
   void entry().catch((error) => {
     const message =
       error instanceof Error ? (error.stack ?? error.message) : String(error);

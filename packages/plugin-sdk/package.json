@@ -139,6 +139,12 @@
       "types": "./bundled-types/bb-plugin-sdk-internal-rpc-query-host.d.ts",
       "import": "./dist/internal/rpc-query-host.js",
       "default": "./dist/internal/rpc-query-host.js"
+    },
+    "./process": {
+      "source": "./src/process.ts",
+      "types": "./bundled-types/bb-plugin-sdk-process.d.ts",
+      "import": "./dist/process.js",
+      "default": "./dist/process.js"
     }
   },
   "types": "./bundled-types/bb-plugin-sdk.d.ts",

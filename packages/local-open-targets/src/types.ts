@@ -51,6 +51,7 @@ export interface WorkspaceOpenTargetRuntime {
   desktopFileDirectories?: string[];
   env?: NodeJS.ProcessEnv;
   execFile: ExecFileHandler;
+  hasExecutable: (command: string, env?: NodeJS.ProcessEnv) => Promise<boolean>;
   platform: NodeJS.Platform;
 }
 

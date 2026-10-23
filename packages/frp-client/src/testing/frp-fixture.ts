@@ -1,4 +1,5 @@
-import { spawn, execFile, type ChildProcess } from "node:child_process";
+import { spawnHostProcess as spawn, execHostFile } from "@bb/process-utils";
+import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
 import http from "node:http";
@@ -6,7 +7,6 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import tls from "node:tls";
-import { promisify } from "node:util";
 import {
   FRP_CREDENTIAL_META,
   FRP_LOGIN_REFUSED_REASON,
@@ -21,7 +21,7 @@ import {
   type FrpArchive,
 } from "../binary.js";
 
-const run = promisify(execFile);
+const run = execHostFile;
 
 export const FRP_CACHE_DIR =
   process.env.BB_FRP_CACHE_DIR ??

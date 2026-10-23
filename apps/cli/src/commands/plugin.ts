@@ -346,12 +346,8 @@ async function execNpm(
   args: readonly string[],
   options: { cwd?: string; timeout?: number; killSignal?: NodeJS.Signals },
 ): Promise<{ stdout: string; stderr: string }> {
-  const { exec, execFile } = await import("node:child_process");
-  const { promisify } = await import("node:util");
-  if (process.platform === "win32") {
-    return promisify(exec)(["npm", ...args].join(" "), options);
-  }
-  return promisify(execFile)("npm", [...args], options);
+  const { execHostFile } = await import("@bb/process-utils");
+  return execHostFile("npm", args, options);
 }
 
 async function probeSdkVersionPublished(): Promise<

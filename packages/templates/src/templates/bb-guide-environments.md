@@ -191,3 +191,10 @@ Making your repo work with bb:
 
 Every inspection command accepts an arbitrary environment ID and supports
 `--json`.
+
+Host commands share executable discovery across the daemon, server, desktop,
+providers, and plugins. Service launches include native `~/.local/bin` installs
+and mise/asdf shims. If a command disappears or exits 127, the next launch
+refreshes discovery. A replaced Node executable is recovered when a compatible
+runtime is available; commands with possible side effects are not retried
+automatically.

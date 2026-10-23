@@ -1,8 +1,8 @@
-import { execFile } from "node:child_process";
-import path from "node:path";
-import { promisify } from "node:util";
+import { execHostFile } from "./host-process.js";
 
-const execFileAsync = promisify(execFile);
+import path from "node:path";
+
+const execFileAsync = execHostFile;
 
 export interface ProcessIdentity {
   command: string | null;

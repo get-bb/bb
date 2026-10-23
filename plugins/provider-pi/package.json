@@ -37,7 +37,6 @@
   "dependencies": {
     "@bb/shared-ui": "workspace:*",
     "@get-bb/plugin-sdk": "workspace:*",
-    "which-command": "0.1.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {

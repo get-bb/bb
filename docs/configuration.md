@@ -47,6 +47,28 @@ or sockets can also bypass Node's global proxy support, including daemon
 WebSockets; these launch defaults do not configure those libraries or the OS
 proxy settings.
 
+## Host executable discovery
+
+Core process launches and the Plugin SDK process helpers share one resolver.
+It reads the user's login-shell PATH (or Windows user/machine registry PATH),
+adds the running runtime and standard user tool directories, and preserves
+explicit caller environments. Native provider installs in `~/.local/bin` and
+mise/asdf shim directories are available to services as well as terminal launches.
+Shell network settings are read alongside PATH; unrelated shell variables are
+not copied into child environments. Discovery probes are synchronous to preserve
+the child-process API contract, bounded to three seconds per probe, and cached
+between launches.
+
+Missing-command errors and exit 127 invalidate the discovery snapshot. The next
+launch refreshes it; commands are never replayed automatically because an exit
+127 can happen after an installation has already changed files. An unavailable
+running Node path is re-resolved before launching a worker, and replacement
+runtimes must match its native-module ABI and Electron/Node family. npm installs
+use npm's JavaScript entry point to avoid version-manager wrapper post-hooks.
+
+Standalone machine bootstrap installers run before the shared runtime is
+installed, so their initial Node/package acquisition remains self-contained.
+
 ## Repository worktree hooks
 
 Commit `.bb-env-setup.sh` when a managed worktree needs repository setup.
