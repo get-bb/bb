@@ -1,11 +1,8 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   accessSync,
   constants,
   existsSync,
-  openSync,
-  readSync,
-  closeSync,
   realpathSync,
   statSync,
 } from "node:fs";
@@ -35,12 +32,13 @@ const NETWORK_KEYS = [
 ];
 const SHELL_START = "__BB_SHELL_ENV_START__";
 const SHELL_END = "__BB_SHELL_ENV_END__";
+const PROBE_TIMEOUT_MS = 3000;
+const PROBE_OUTPUT_MAX_CHARS = 1024 * 1024;
 
 export interface HostCommand {
   command: string;
   args: string[];
   env: NodeJS.ProcessEnv;
-  generation: number;
 }
 
 interface HostCommandOptions {
@@ -86,10 +84,49 @@ function mergePath(...paths: (string | undefined)[]): string {
     .join(delimiter);
 }
 
-function readShellEnvironment(
+function runProbe(
+  command: string,
+  args: string[],
+  env: NodeJS.ProcessEnv,
+): Promise<{ status: number | null; stdout: string }> {
+  return new Promise((resolve) => {
+    let stdout = "";
+    let settled = false;
+    let timer: NodeJS.Timeout | undefined;
+    const finish = (status: number | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({ status, stdout });
+    };
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(command, args, {
+        env,
+        stdio: ["ignore", "pipe", "ignore"],
+        windowsHide: true,
+      });
+    } catch {
+      finish(null);
+      return;
+    }
+    timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      finish(null);
+    }, PROBE_TIMEOUT_MS);
+    child.stdout?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk: string) => {
+      if (stdout.length < PROBE_OUTPUT_MAX_CHARS) stdout += chunk;
+    });
+    child.once("error", () => finish(null));
+    child.once("close", (code) => finish(code));
+  });
+}
+
+async function readShellEnvironment(
   env: NodeJS.ProcessEnv,
   retainPrevious: boolean,
-): NodeJS.ProcessEnv | null {
+): Promise<NodeJS.ProcessEnv | null> {
   if (process.platform === "win32") {
     const registry = join(
       envValue(env, "SystemRoot") ?? "C:\\Windows",
@@ -102,13 +139,7 @@ function readShellEnvironment(
       "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment",
       "HKCU\\Environment",
     ]) {
-      const result = spawnSync(registry, ["query", key], {
-        env,
-        encoding: "utf8",
-        timeout: 3000,
-        killSignal: "SIGKILL",
-        windowsHide: true,
-      });
+      const result = await runProbe(registry, ["query", key], env);
       if (result.status !== 0) continue;
       for (const match of result.stdout.matchAll(
         /^ {4}(.+?) {4}REG_[A-Z_]+ {4}(.*)$/gmu,
@@ -149,14 +180,7 @@ function readShellEnvironment(
     ? ["-lc"]
     : ["-ilc", "-lc"];
   for (const arg of shellArgs) {
-    const result = spawnSync(shell, [arg, command], {
-      env,
-      encoding: "utf8",
-      timeout: 3000,
-      killSignal: "SIGKILL",
-      maxBuffer: 1024 * 1024,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    const result = await runProbe(shell, [arg, command], env);
     if (result.status !== 0) {
       if (retainPrevious) return null;
       continue;
@@ -187,9 +211,8 @@ export class HostToolchain {
   private readonly generatedPaths = new Set<string>();
   private readonly misses = new Set<string>();
   private nodePath: string;
-  private revision = 0;
+  private refreshing: Promise<void> | null = null;
   private refreshedAt = 0;
-  private invalidated = false;
 
   constructor(
     private readonly baseEnv: NodeJS.ProcessEnv = process.env,
@@ -199,20 +222,19 @@ export class HostToolchain {
     this.nodePath = runtimePath;
   }
 
-  get generation(): number {
-    return this.revision;
-  }
-
-  refresh(): void {
-    this.invalidated = false;
-    const env = readShellEnvironment(
-      this.baseEnv,
-      this.shellEnv.PATH !== undefined,
-    );
-    if (env !== null) this.shellEnv = env;
+  refresh(): Promise<void> {
+    if (this.refreshing !== null) return this.refreshing;
     this.misses.clear();
-    this.revision += 1;
     this.refreshedAt = Date.now();
+    const retainPrevious = this.shellEnv.PATH !== undefined;
+    this.refreshing = readShellEnvironment(this.baseEnv, retainPrevious)
+      .then((env) => {
+        if (env !== null) this.shellEnv = env;
+      })
+      .finally(() => {
+        this.refreshing = null;
+      });
+    return this.refreshing;
   }
 
   invalidateFailure(errorOrCode: unknown): void {
@@ -222,21 +244,22 @@ export class HostToolchain {
       "code" in errorOrCode
         ? errorOrCode.code
         : errorOrCode;
-    if (code === "ENOENT" || code === 127) {
-      this.invalidated = true;
-      this.misses.clear();
-    }
+    if (code === "ENOENT" || code === 127) void this.refresh();
   }
 
-  environment(env: NodeJS.ProcessEnv = this.baseEnv): NodeJS.ProcessEnv {
-    if (this.invalidated) this.refresh();
+  private managesPath(path: string | undefined): boolean {
+    return (
+      path === undefined ||
+      path === this.inheritedPath ||
+      this.generatedPaths.has(path)
+    );
+  }
+
+  private searchPath(env: NodeJS.ProcessEnv): string {
+    const inherited = envValue(env, "PATH");
     const home =
       envValue(env, process.platform === "win32" ? "USERPROFILE" : "HOME") ??
       homedir();
-    const inherited = envValue(env, "PATH");
-    const managedPath =
-      inherited === this.inheritedPath ||
-      (inherited !== undefined && this.generatedPaths.has(inherited));
     const fallbacks = [
       join(home, ".local", "bin"),
       join(home, ".local", "share", "mise", "shims"),
@@ -246,19 +269,27 @@ export class HostToolchain {
     ];
     if (process.platform !== "win32")
       fallbacks.push("/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin");
-    const path = mergePath(
-      managedPath ? this.shellEnv.PATH : inherited,
+    return mergePath(
+      this.managesPath(inherited) ? this.shellEnv.PATH : undefined,
       inherited,
       executable(this.nodePath) ? dirname(this.nodePath) : undefined,
       ...fallbacks,
     );
-    this.generatedPaths.add(path);
+  }
+
+  environment(env: NodeJS.ProcessEnv = this.baseEnv): NodeJS.ProcessEnv {
+    const inherited = envValue(env, "PATH");
+    let path = inherited;
+    if (this.managesPath(inherited)) {
+      path = this.searchPath(env);
+      this.generatedPaths.add(path);
+    }
     const result: NodeJS.ProcessEnv = { ...env };
     if (process.platform === "win32") {
       for (const key of Object.keys(result))
         if (key !== "PATH" && key.toUpperCase() === "PATH") delete result[key];
     }
-    result.PATH = path;
+    if (path !== undefined) result.PATH = path;
     for (const key of NETWORK_KEYS)
       if (result[key] === undefined && this.shellEnv[key] !== undefined)
         result[key] = this.shellEnv[key];
@@ -287,16 +318,17 @@ export class HostToolchain {
     }
     const extension = extname(command);
     const pathExt = envValue(env, "PATHEXT");
+    const path = this.searchPath(options.env ?? this.baseEnv);
     const lookupOptions = {
       cwd,
-      path: env.PATH,
+      path,
       pathExt: extension
         ? `${extension};${pathExt ?? ".EXE;.COM;.CMD;.BAT"}`
         : pathExt,
     };
     const found =
       command === "bb"
-        ? (env.PATH ?? "")
+        ? path
             .split(delimiter)
             .filter(isAbsolute)
             .map((directory) =>
@@ -314,24 +346,21 @@ export class HostToolchain {
   }
 
   resolve(command: string, options: HostCommandOptions = {}): string | null {
-    const generation = this.generation;
     const found = this.lookup(command, options);
     if (found !== null) return found;
     const key = `${command}\0${String(options.cwd ?? "")}\0${envValue(options.env ?? this.baseEnv, "PATH") ?? ""}`;
-    if (this.misses.has(key) && Date.now() - this.refreshedAt < 30_000)
-      return null;
+    const sinceRefresh = Date.now() - this.refreshedAt;
     if (
-      generation === this.generation &&
-      (this.misses.size === 0 || Date.now() - this.refreshedAt >= 1_000)
+      !(this.misses.has(key) && sinceRefresh < 30_000) &&
+      (this.misses.size === 0 || sinceRefresh >= 1_000)
     )
-      this.refresh();
+      void this.refresh();
     this.misses.add(key);
-    return this.lookup(command, options);
+    return null;
   }
 
   node(options: HostCommandOptions = {}): string {
     if (executable(this.nodePath)) return this.nodePath;
-    this.refresh();
     const stableHomebrew = this.runtimePath.replace(
       /\/Cellar\/([^/]+)\/[^/]+\//u,
       "/opt/$1/",
@@ -354,7 +383,7 @@ export class HostToolchain {
           env: this.environment(options.env),
           cwd: options.cwd,
           encoding: "utf8",
-          timeout: 3000,
+          timeout: PROBE_TIMEOUT_MS,
           killSignal: "SIGKILL",
           windowsHide: true,
         },
@@ -399,24 +428,36 @@ export class HostToolchain {
   npmCli(
     command: "npm" | "npx" = "npm",
     options: HostCommandOptions = {},
-  ): string | null {
-    const node = this.node(options);
+  ): { node: string; cli: string } | null {
     const bin = `${command}-cli.js`;
-    const candidates = [
-      join(dirname(node), "..", "lib", "node_modules", "npm", "bin", bin),
-      join(dirname(node), "node_modules", "npm", "bin", bin),
-    ];
+    const runtime = process.versions.electron ? null : this.node(options);
+    const candidates: { node: string; cli: string }[] = [];
+    if (runtime !== null)
+      for (const cli of [
+        join(dirname(runtime), "..", "lib", "node_modules", "npm", "bin", bin),
+        join(dirname(runtime), "node_modules", "npm", "bin", bin),
+      ])
+        candidates.push({ node: runtime, cli });
     const installed = this.resolve(command, options);
     if (installed) {
       try {
-        const real = realpathSync(installed);
-        if (basename(real) === bin) candidates.push(real);
+        const cli = realpathSync(installed);
+        const npmRoot = dirname(dirname(cli));
+        const node = [
+          join(npmRoot, "..", "..", "..", "bin", "node"),
+          join(npmRoot, "..", "..", "node.exe"),
+          join(dirname(installed), "node"),
+        ].find(executable);
+        if (basename(cli) === bin && node !== undefined)
+          candidates.push({ node: realpathSync(node), cli });
       } catch {}
     }
-    try {
-      candidates.push(this.bundledNpmCli(command));
-    } catch {}
-    return candidates.find((candidate) => existsSync(candidate)) ?? null;
+    if (runtime !== null) {
+      try {
+        candidates.push({ node: runtime, cli: this.bundledNpmCli(command) });
+      } catch {}
+    }
+    return candidates.find((candidate) => existsSync(candidate.cli)) ?? null;
   }
 
   command(
@@ -428,7 +469,7 @@ export class HostToolchain {
       command === this.runtimePath
         ? this.node(options)
         : (this.resolve(command, options) ?? command);
-    let argv = [...args];
+    const argv = [...args];
     let needsRuntimePath = /(?:^|[\\/])(?:npm|npx)-cli\.js$/u.test(
       args[0] ?? "",
     );
@@ -436,43 +477,19 @@ export class HostToolchain {
       .toLowerCase()
       .replace(/\.(cmd|exe|bat)$/u, "");
     if (name === "npm" || name === "npx") {
-      const cli = this.npmCli(name, options);
-      if (cli) {
-        file = this.node(options);
-        argv.unshift(cli);
+      const npm = this.npmCli(name, options);
+      if (npm) {
+        file = npm.node;
+        argv.unshift(npm.cli);
         needsRuntimePath = true;
       }
-    } else {
-      try {
-        if (!executable(file))
-          return {
-            command: file,
-            args: argv,
-            env: this.environment(options.env),
-            generation: this.generation,
-          };
-        const fd = openSync(file, "r");
-        const buffer = Buffer.alloc(256);
-        let size: number;
-        try {
-          size = readSync(fd, buffer, 0, buffer.length, 0);
-        } finally {
-          closeSync(fd);
-        }
-        const head = buffer.toString("utf8", 0, size).split(/\r?\n/u)[0] ?? "";
-        if (/^#!\s*\/usr\/bin\/env\s+node\s*$/u.test(head)) {
-          argv.unshift(file);
-          needsRuntimePath = true;
-          file = this.node(options);
-        }
-      } catch {}
     }
     const env = this.environment(options.env);
     if (needsRuntimePath) {
       env.PATH = mergePath(dirname(file), env.PATH);
       this.generatedPaths.add(env.PATH);
     }
-    return { command: file, args: argv, env, generation: this.generation };
+    return { command: file, args: argv, env };
   }
 }
 

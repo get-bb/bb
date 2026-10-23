@@ -1,5 +1,4 @@
 import { execHostFileCallback as execFile } from "@bb/process-utils";
-
 import { pbkdf2Sync } from "node:crypto";
 import { BrowserImportError } from "./cookie-database.js";
 

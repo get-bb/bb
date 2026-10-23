@@ -1,5 +1,4 @@
 import { execHostFile, spawnHostProcess as spawn } from "@bb/process-utils";
-
 import { closeSync, mkdirSync, openSync } from "node:fs";
 import { dirname } from "node:path";
 import type { ServiceDefinition } from "./service-definition.js";

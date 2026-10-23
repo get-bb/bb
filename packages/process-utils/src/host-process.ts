@@ -9,6 +9,7 @@ import {
   type ChildProcessWithoutNullStreams,
   type ExecFileException,
   type ExecFileOptions,
+  type ExecFileOptionsWithStringEncoding,
   type ForkOptions,
   type SpawnOptions,
   type SpawnOptionsWithoutStdio,
@@ -87,16 +88,11 @@ export function forkHostProcess(
   return observe(nodeFork(modulePath, args, { ...options, env, execPath }));
 }
 
-export function execHostFileCallback(
+function prepareExecFile(
   command: string,
   args: readonly string[],
   options: ExecFileOptions,
-  callback: (
-    error: ExecFileException | null,
-    stdout: string,
-    stderr: string,
-  ) => void,
-): ChildProcess {
+): { command: string; args: string[]; options: ExecFileOptions } {
   const launch = hostToolchain.command(command, args, options);
   const parsed =
     process.platform === "win32" &&
@@ -106,45 +102,85 @@ export function execHostFileCallback(
     }) === null
       ? { command: launch.command, args: launch.args, options }
       : parse(launch.command, launch.args, { ...options, env: launch.env });
+  return {
+    command: parsed.command,
+    args: parsed.args,
+    options: {
+      ...options,
+      ...parsed.options,
+      env: launch.env,
+      windowsHide: options.windowsHide ?? true,
+    },
+  };
+}
+
+export function execHostFileCallback(
+  command: string,
+  args: readonly string[],
+  options: ExecFileOptionsWithStringEncoding,
+  callback: (
+    error: ExecFileException | null,
+    stdout: string,
+    stderr: string,
+  ) => void,
+): ChildProcess {
+  const launch = prepareExecFile(command, args, options);
   return observe(
     nodeExecFile(
-      parsed.command,
-      parsed.args,
-      {
-        ...options,
-        ...parsed.options,
-        env: launch.env,
-        encoding: "utf8",
-        windowsHide: options.windowsHide ?? true,
-      },
+      launch.command,
+      launch.args,
+      { ...launch.options, encoding: options.encoding ?? "utf8" },
       callback,
     ),
   );
 }
 
-export function execHostFile(
-  command: string,
-  args: readonly string[] = [],
-  options: ExecFileOptions = {},
-): Promise<{ stdout: string; stderr: string }> & { child: ChildProcess } {
-  let resolve!: (output: { stdout: string; stderr: string }) => void;
+function settleExecFile<T>(
+  start: (
+    callback: (error: ExecFileException | null, stdout: T, stderr: T) => void,
+  ) => ChildProcess,
+): Promise<{ stdout: T; stderr: T }> & { child: ChildProcess } {
+  let resolve!: (output: { stdout: T; stderr: T }) => void;
   let reject!: (error: Error) => void;
-  const promise = new Promise<{ stdout: string; stderr: string }>(
+  const promise = new Promise<{ stdout: T; stderr: T }>(
     (resolvePromise, rejectPromise) => {
       resolve = resolvePromise;
       reject = rejectPromise;
     },
   );
-  const child = execHostFileCallback(
-    command,
-    args,
-    options,
-    (error, stdout, stderr) => {
-      if (error) reject(Object.assign(error, { stdout, stderr }));
-      else resolve({ stdout, stderr });
-    },
-  );
+  const child = start((error, stdout, stderr) => {
+    if (error) reject(Object.assign(error, { stdout, stderr }));
+    else resolve({ stdout, stderr });
+  });
   return Object.assign(promise, { child });
+}
+
+export function execHostFile(
+  command: string,
+  args: readonly string[] = [],
+  options: ExecFileOptionsWithStringEncoding = {},
+): Promise<{ stdout: string; stderr: string }> & { child: ChildProcess } {
+  return settleExecFile<string>((callback) =>
+    execHostFileCallback(command, args, options, callback),
+  );
+}
+
+export function execHostFileBuffer(
+  command: string,
+  args: readonly string[] = [],
+  options: ExecFileOptions = {},
+): Promise<{ stdout: Buffer; stderr: Buffer }> & { child: ChildProcess } {
+  const launch = prepareExecFile(command, args, options);
+  return settleExecFile<Buffer>((callback) =>
+    observe(
+      nodeExecFile(
+        launch.command,
+        launch.args,
+        { ...launch.options, encoding: "buffer" },
+        callback,
+      ),
+    ),
+  );
 }
 
 export function prepareHostPtyCommand(

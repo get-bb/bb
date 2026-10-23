@@ -6,7 +6,6 @@ import {
   serverHealthResponseSchema,
   type ServerMoveHealth,
 } from "@bb/host-daemon-contract";
-
 import { z } from "zod";
 import type { FetchFn } from "../server-client.js";
 import { CommandDispatchError } from "../command-dispatch-support.js";

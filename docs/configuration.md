@@ -51,20 +51,24 @@ proxy settings.
 
 Core process launches and the Plugin SDK process helpers share one resolver.
 It reads the user's login-shell PATH (or Windows user/machine registry PATH),
-adds the running runtime and standard user tool directories, and preserves
-explicit caller environments. Native provider installs in `~/.local/bin` and
+adds the running runtime and standard user tool directories, and uses an
+explicit caller PATH exactly. Native provider installs in `~/.local/bin` and
 mise/asdf shim directories are available to services as well as terminal launches.
 Shell network settings are read alongside PATH; unrelated shell variables are
-not copied into child environments. Discovery probes are synchronous to preserve
-the child-process API contract, bounded to three seconds per probe, and cached
-between launches.
+not copied into child environments. Discovery runs in the background, bounded to
+three seconds per probe; launches use the latest completed snapshot and never
+wait for a probe. The server, daemon, and packaged desktop app start discovery
+at launch; the `bb` CLI does not.
 
-Missing-command errors and exit 127 invalidate the discovery snapshot. The next
-launch refreshes it; commands are never replayed automatically because an exit
-127 can happen after an installation has already changed files. An unavailable
-running Node path is re-resolved before launching a worker, and replacement
-runtimes must match its native-module ABI and Electron/Node family. npm installs
-use npm's JavaScript entry point to avoid version-manager wrapper post-hooks.
+Missing-command errors and exit 127 start a background refresh, and later
+launches use its result; commands are never replayed automatically because an
+exit 127 can happen after an installation has already changed files. An
+unavailable running Node path is re-resolved before launching a worker, and
+replacement runtimes must match its native-module ABI and Electron/Node family.
+Scripts with a `#!/usr/bin/env node` line run with the `node` found on PATH.
+npm runs through npm's JavaScript entry point with the Node installation that
+owns it, which avoids version-manager wrapper post-hooks; inside the Electron
+desktop runtime, bb never substitutes its own runtime for npm.
 
 Standalone machine bootstrap installers run before the shared runtime is
 installed, so their initial Node/package acquisition remains self-contained.

@@ -8,11 +8,17 @@ import {
   symlink,
   writeFile,
 } from "node:fs/promises";
+import { realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { HostToolchain, execHostFile, spawnHostProcess } from "../src/index.js";
+import {
+  HostToolchain,
+  execHostFile,
+  execHostFileBuffer,
+  spawnHostProcess,
+} from "../src/index.js";
 
 const roots: string[] = [];
 async function scratch() {
@@ -102,7 +108,7 @@ describe.skipIf(process.platform === "win32")("host toolchain recovery", () => {
       ),
     );
     expect(installed.version).toBe("1.0.0");
-  });
+  }, 30_000);
 
   it("recovers a removed Homebrew Node path and advances the generation", async () => {
     const root = await scratch();
@@ -119,13 +125,11 @@ describe.skipIf(process.platform === "win32")("host toolchain recovery", () => {
     expect(run(toolchain, oldNode, ["-p", "'before'"], env).trim()).toBe(
       "before",
     );
-    const generation = toolchain.generation;
     await rm(oldNode);
     expect(spawnSync(oldNode, ["-v"]).error).toMatchObject({ code: "ENOENT" });
     expect(run(toolchain, oldNode, ["-p", "'after'"], env).trim()).toBe(
       "after",
     );
-    expect(toolchain.generation).toBeGreaterThan(generation);
   });
 
   it("refreshes the login PATH when a command appears, preserving caller overrides", async () => {
@@ -140,9 +144,11 @@ describe.skipIf(process.platform === "win32")("host toolchain recovery", () => {
     );
     const env = { HOME: root, PATH: "/usr/bin:/bin", SHELL: shell };
     const toolchain = new HostToolchain(env);
-    toolchain.refresh();
+    await toolchain.refresh();
     await script(join(bin, "host-fixture"), "#!/bin/sh\nprintf found");
     await writeFile(shellPath, bin);
+    expect(toolchain.resolve("host-fixture", { env })).toBeNull();
+    await toolchain.refresh();
     expect(run(toolchain, "host-fixture", [], env)).toBe("found");
     expect(
       toolchain.environment({ ...env, HTTPS_PROXY: "http://override.example" }),
@@ -152,7 +158,7 @@ describe.skipIf(process.platform === "win32")("host toolchain recovery", () => {
       "http://proxy.example:8080",
     );
     await script(shell, "#!/bin/sh\nexit 1\n");
-    toolchain.refresh();
+    await toolchain.refresh();
     expect(run(toolchain, "host-fixture", [], env)).toBe("found");
   });
 
@@ -203,7 +209,7 @@ describe.skipIf(process.platform === "win32")("host toolchain recovery", () => {
       SHELL: shell,
     });
     const started = Date.now();
-    toolchain.refresh();
+    await toolchain.refresh();
     expect(Date.now() - started).toBeLessThan(8000);
     expect(toolchain.environment().PATH?.split(delimiter)).toContain(
       "/usr/bin",
@@ -220,17 +226,96 @@ describe.skipIf(process.platform === "win32")("host toolchain recovery", () => {
       `#!/bin/sh\nprintf '__BB_SHELL_ENV_START__\\nPATH=/interactive-bin\\n__BB_SHELL_ENV_END__\\n'\n`,
     );
     const toolchain = new HostToolchain(env);
-    toolchain.refresh();
+    await toolchain.refresh();
     await script(
       shell,
       `#!/bin/sh\nprintf x >> "${calls}"\nif [ "$1" = '-ilc' ]; then exit 1; fi\nprintf '__BB_SHELL_ENV_START__\\nPATH=/wrong-fallback\\n__BB_SHELL_ENV_END__\\n'\n`,
     );
     for (const command of ["bb-missing-a", "bb-missing-b", "bb-missing-a"])
       expect(toolchain.resolve(command)).toBeNull();
+    await toolchain.refresh();
     expect(await readFile(calls, "utf8")).toBe("x");
     expect(toolchain.environment().PATH?.split(delimiter)[0]).toBe(
       "/interactive-bin",
     );
+  });
+
+  it("does not block the caller while discovery runs", async () => {
+    const root = await scratch();
+    const shell = join(root, "slow-shell");
+    await script(
+      shell,
+      "#!/bin/sh\nsleep 1\nprintf '__BB_SHELL_ENV_START__\\nPATH=/slow-bin\\n__BB_SHELL_ENV_END__\\n'\n",
+    );
+    const toolchain = new HostToolchain({
+      HOME: root,
+      PATH: "/usr/bin:/bin",
+      SHELL: shell,
+    });
+    const started = Date.now();
+    const refresh = toolchain.refresh();
+    toolchain.invalidateFailure(127);
+    expect(toolchain.resolve("bb-missing-command")).toBeNull();
+    expect(Date.now() - started).toBeLessThan(500);
+    await refresh;
+    expect(toolchain.environment().PATH?.split(delimiter)[0]).toBe("/slow-bin");
+  });
+
+  it("keeps an explicit caller PATH exactly", () => {
+    const toolchain = new HostToolchain({ HOME: "/home/me", PATH: "/usr/bin" });
+    expect(toolchain.environment({ PATH: "/review-toolchain:/bin" }).PATH).toBe(
+      "/review-toolchain:/bin",
+    );
+  });
+
+  it("launches Node shebang scripts directly instead of through the bb runtime", async () => {
+    const root = await scratch();
+    const tool = join(root, "bin", "node-tool");
+    await script(tool, "#!/usr/bin/env node\nconsole.log('tool');\n");
+    const env = { HOME: root, PATH: `${join(root, "bin")}:/usr/bin:/bin` };
+    const launch = new HostToolchain(env, join(root, "Electron")).command(
+      "node-tool",
+      ["--flag"],
+      { env },
+    );
+    expect(launch).toMatchObject({ command: tool, args: ["--flag"] });
+  });
+
+  it("runs an installed npm with the Node that owns it", async () => {
+    const root = await scratch();
+    const runtime = join(root, "runtime", "bin", "node");
+    await mkdir(dirname(runtime), { recursive: true });
+    await symlink(process.execPath, runtime);
+    const prefix = join(root, "user-node");
+    const npmRoot = dirname(
+      createRequire(import.meta.url).resolve("npm/package.json"),
+    );
+    await mkdir(join(prefix, "bin"), { recursive: true });
+    await mkdir(join(prefix, "lib", "node_modules"), { recursive: true });
+    await symlink(process.execPath, join(prefix, "bin", "node"));
+    await symlink(npmRoot, join(prefix, "lib", "node_modules", "npm"));
+    await symlink(
+      join(prefix, "lib", "node_modules", "npm", "bin", "npm-cli.js"),
+      join(prefix, "bin", "npm"),
+    );
+    const env = { HOME: root, PATH: `${join(prefix, "bin")}:/usr/bin:/bin` };
+    const launch = new HostToolchain(env, runtime).command("npm", ["-v"], {
+      env,
+    });
+    expect(launch.command).toBe(realpathSync(process.execPath));
+    expect(launch.args).toEqual([
+      realpathSync(join(npmRoot, "bin", "npm-cli.js")),
+      "-v",
+    ]);
+  });
+
+  it("preserves binary output from buffered launches", async () => {
+    const bytes = Buffer.from(Array.from({ length: 256 }, (_, index) => index));
+    const result = await execHostFileBuffer(process.execPath, [
+      "-e",
+      `process.stdout.write(Buffer.from(${JSON.stringify([...bytes])}))`,
+    ]);
+    expect(result.stdout.equals(bytes)).toBe(true);
   });
 
   it("does not replay a command that exits 127 after a side effect", async () => {

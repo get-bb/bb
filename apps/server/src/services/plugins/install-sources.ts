@@ -23,7 +23,6 @@ import {
   spawnPortableOutputProcess,
   supportsProcessGroups,
 } from "@bb/process-utils";
-
 import {
   installCancellationSignal,
   PluginInstallCancelledError,

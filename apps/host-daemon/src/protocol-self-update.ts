@@ -3,12 +3,10 @@ import {
   execHostFile,
   execPortableFile,
 } from "@bb/process-utils";
-
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { calculateExponentialBackoffDelay } from "@bb/domain";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
-
 import type { HostDaemonLogger } from "./logger.js";
 import type { FetchFn } from "./server-client.js";
 import { usesSecureInternalFetchTransport } from "./server-client.js";

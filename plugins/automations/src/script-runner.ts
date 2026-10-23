@@ -3,7 +3,6 @@ import {
   experimental_execHostFile,
   experimental_spawnHostProcess as spawn,
 } from "@get-bb/plugin-sdk/process";
-
 import type { ChildProcess } from "node:child_process";
 import { delimiter, dirname, isAbsolute, join } from "node:path";
 import { stripVTControlCharacters } from "node:util";
@@ -21,6 +20,8 @@ import {
 const execFileAsync = experimental_execHostFile;
 const SCRIPT_OUTPUT_MAX_BYTES = 1024 * 1024;
 const SCRIPT_FAILURE_DETAIL_MAX_CHARS = 200;
+
+let verifiedBbPath: string | null = null;
 
 const BB_NOT_INJECTED_WARNING =
   "[bb] warning: could not locate the bb CLI, so `bb` is not on PATH for this script.";
@@ -46,9 +47,11 @@ async function resolveBbBinary(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<string | null> {
   const candidate = hostToolchain.resolve("bb", { env });
-  return candidate !== null && (await commandWorks(candidate, ["--version"]))
-    ? candidate
-    : null;
+  if (candidate === null) return null;
+  if (candidate === verifiedBbPath) return candidate;
+  if (!(await commandWorks(candidate, ["--version"]))) return null;
+  verifiedBbPath = candidate;
+  return candidate;
 }
 
 export function scriptPathEnv(

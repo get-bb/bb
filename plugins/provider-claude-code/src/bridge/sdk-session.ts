@@ -1,5 +1,4 @@
 import { experimental_spawnHostProcess as spawn } from "@get-bb/plugin-sdk/process";
-
 import {
   query,
   type CanUseTool,

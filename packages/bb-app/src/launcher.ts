@@ -1,11 +1,9 @@
 #!/usr/bin/env node
 import { hostToolchain, spawnHostProcess as spawn } from "@bb/process-utils";
-
 import { nodeNetworkArgs, nodeNetworkEnv } from "@bb/config/node-network";
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { relayDesktopAppUpdates } from "@bb/config/desktop-app-update";
-
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { spawnLoggedProcess } from "./logged-process.js";
 import {
@@ -4386,7 +4384,6 @@ export async function runBbApp(
 }
 
 export function runLauncherEntry(entry: () => Promise<void>): void {
-  hostToolchain.refresh();
   void entry().catch((error) => {
     const message =
       error instanceof Error ? (error.stack ?? error.message) : String(error);

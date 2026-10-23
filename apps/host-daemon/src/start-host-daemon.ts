@@ -152,7 +152,7 @@ export async function startHostDaemon(
     );
     const hostWatcher = createHostWatcher();
     const resolveRuntimeShellEnv = async () => {
-      hostToolchain.refresh();
+      await hostToolchain.refresh();
       return prepareRuntimeShellEnv({
         bbExecutableDirectory,
         bbExecutablePath,

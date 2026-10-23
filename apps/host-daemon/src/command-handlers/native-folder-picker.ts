@@ -2,9 +2,7 @@ import {
   execHostFile,
   sanitizeInheritedChildProcessEnv,
 } from "@bb/process-utils";
-
 import type { HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
-
 import { ExpectedCommandDispatchError } from "../command-dispatch-support.js";
 
 const execFileAsync = execHostFile;

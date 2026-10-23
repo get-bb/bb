@@ -33,7 +33,7 @@ function reportStartupFailure(error: unknown): void {
 }
 
 async function main(): Promise<void> {
-  hostToolchain.refresh();
+  void hostToolchain.refresh();
   const serverModule = await import("./start-server.js");
   await serverModule.runServer(serverConfig);
 }

@@ -14,7 +14,6 @@ import { spawn as spawnPty } from "node-pty";
 import type { TerminalSessionCloseReason } from "@bb/domain";
 import type { HostDaemonDaemonWsMessage } from "@bb/host-daemon-contract";
 import { HOST_DAEMON_TERMINAL_EXIT_RETENTION_MS } from "@bb/host-daemon-contract/protocol";
-
 import { displayWidth, truncateToWidth } from "@bb/text-utils";
 import type { HostDaemonServerTerminalMessage } from "../server-connection-support.js";
 import type { HostDaemonLogger } from "../logger.js";

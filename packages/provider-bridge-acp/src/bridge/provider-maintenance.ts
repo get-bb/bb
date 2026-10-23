@@ -1,5 +1,4 @@
 import { execHostFile, execPortableFile } from "@bb/process-utils";
-
 import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -13,7 +12,6 @@ import type {
   ProviderUsageResult,
   ProviderUsageWindow,
 } from "@bb/provider-bridge-protocol";
-
 import {
   clampPercent,
   downloadedInstallerCommand,

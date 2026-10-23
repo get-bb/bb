@@ -3735,10 +3735,12 @@ override the icon and whether reasoning levels should render it.
 ## Host process toolchain (`@get-bb/plugin-sdk/process`)
 
 `experimental_hostToolchain` supplies `resolve`, `command`, `environment`,
-`node`, `npmCli`, `bundledNpmCli`, `refresh`, `invalidateFailure`, and a monotonic
-`generation`. `experimental_spawnHostProcess`, `experimental_forkHostProcess`,
-`experimental_execHostFile`, and `experimental_execHostFileCallback` use it to
-launch processes. Missing executables and exit 127 refresh discovery; running
+`node`, `npmCli` (an `{ node, cli }` pair), `bundledNpmCli`, an asynchronous
+`refresh`, and `invalidateFailure`. `bundledNpmCli` throws where the `npm`
+package cannot be resolved next to the calling bundle. `experimental_spawnHostProcess`,
+`experimental_forkHostProcess`, `experimental_execHostFile`, and
+`experimental_execHostFileCallback` use it to launch processes and never wait for
+discovery. Missing executables and exit 127 start a background refresh; running
 commands are never replayed automatically. These are host-local primitives,
 not remote-machine RPCs.
 
@@ -3752,4 +3754,5 @@ Before stabilization, verify native Windows shims and registry refresh,
 macOS launchd and Electron updates, mise/asdf installations, caller environment
 precedence, bounded discovery failure, and module-ABI preservation after Node
 replacement. Settle the shared process-local instance lifecycle across SDK
-bundle versions and the synchronous refresh API before removing the prefix.
+bundle versions and whether `bundledNpmCli` belongs on the public surface before
+removing the prefix.

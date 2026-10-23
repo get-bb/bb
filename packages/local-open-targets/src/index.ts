@@ -5,7 +5,6 @@ import {
   pathExists,
   sanitizeInheritedChildProcessEnv,
 } from "@bb/process-utils";
-
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -16,7 +15,6 @@ import {
   type WorkspaceOpenTargetIcon,
   type WorkspaceOpenTargetId,
 } from "@bb/host-daemon-contract";
-
 import {
   BASIC_FILE_OPEN_CAPABILITIES,
   FILE_MANAGER_OPEN_CAPABILITIES,

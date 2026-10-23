@@ -1,6 +1,5 @@
 import { spawnHostProcess as spawn, hostToolchain } from "@bb/process-utils";
 import { createDesktopLogger } from "./desktop-logger.js";
-
 import { attachServerUpdateControl } from "./server-update-control.js";
 import { registerServerChoiceIpc } from "./server-choice-ipc.js";
 import { randomUUID } from "node:crypto";
@@ -263,7 +262,6 @@ import {
   BB_DESKTOP_BROWSER_OPEN_FULL_DISK_ACCESS_SETTINGS_CHANNEL,
 } from "./desktop-browser-ipc.js";
 import { parseDesktopSystemConfig } from "./desktop-system-config.js";
-
 import { resolveDesktopReloadShortcut } from "./desktop-reload-shortcut.js";
 import {
   createLogTailer,
@@ -2830,7 +2828,7 @@ async function initializeRuntime(args: InitializeRuntimeArgs): Promise<void> {
 
 async function runDesktopApp(): Promise<void> {
   if (app.isPackaged) {
-    hostToolchain.refresh();
+    await hostToolchain.refresh();
     Object.assign(process.env, hostToolchain.environment());
   }
 

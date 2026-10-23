@@ -17,7 +17,6 @@ import type {
   HostPlatform,
   ServerMoveProgressMessage,
 } from "@bb/host-daemon-contract";
-
 import {
   archiveExistingServerData,
   discardImportBackups,
