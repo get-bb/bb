@@ -51,7 +51,7 @@ function parseWorktreeList(stdout: string) {
   for (const record of stdout.split("\0\0")) {
     const fields = record.split("\0").filter(Boolean);
     const worktreePath = fields[0]?.startsWith("worktree ")
-      ? fields[0].slice("worktree ".length)
+      ? path.normalize(fields[0].slice("worktree ".length))
       : null;
     if (worktreePath === null) continue;
     const value = (key: string) =>
