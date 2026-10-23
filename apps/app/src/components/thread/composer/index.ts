@@ -1,4 +1,3 @@
-export { EmbeddedThreadChat } from "./EmbeddedThreadChat";
 export {
   useInlineQueuedMessageEditing,
   type InlineQueuedMessageEditState,

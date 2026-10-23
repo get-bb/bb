@@ -19,26 +19,14 @@ import {
 } from "@/components/plugin/PluginThreadFixedTabs";
 import { BrowserTabIcon } from "@/components/secondary-panel/BrowserTabIcon";
 import { getPanelTabHistoryKey } from "@/components/secondary-panel/recentlyClosedPanelTabs";
-import {
-  appendQuoteAndAttachmentsToDraft,
-  getFilePreviewLineRangeStart,
-  isThreadForkable,
-  promptInputToDraft,
-  type PromptDraftAttachment,
-  type PromptDraftState,
-  type PromptMentionLinkResolver,
-} from "@bb/client-core";
 import { queueSplitDownload } from "@/lib/split-prefetch";
-import { createCoreComposerActions } from "@/lib/plugin-composer-handle";
 import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from "react";
-import { nanoid } from "nanoid";
 import {
   useSystemProviderInfo,
   useSystemConfig,
@@ -47,10 +35,6 @@ import { useImmediateRouteNavigate } from "@/components/ui/app-route-anchor";
 import { useAtom } from "jotai";
 import { useDesktopBrowserReveal } from "@/lib/use-desktop-browser-reveal";
 import {
-  isRunningThreadRuntimeDisplayStatus,
-  type ThreadTimelineEditMessageHandler,
-  type ThreadTimelineEditMessageTarget,
-  type ThreadTimelineInlineMessageEditor,
   type ThreadTimelineForkMessageHandler,
   type ThreadTimelineLinkHandler,
   type ThreadTimelineLocalFileLink,
@@ -60,11 +44,9 @@ import {
 } from "@/components/thread/timeline";
 import { ThreadProviderContext } from "@/components/thread/thread-provider-context";
 import {
-  defaultAppSettings,
   type ThreadListEntry,
-  type ThreadWithRuntime,
 } from "@bb/domain";
-import type { TerminalSession, TimelineRow } from "@bb/server-contract";
+import type { TerminalSession } from "@bb/server-contract";
 import type { WorkspaceOpenTarget } from "@bb/host-daemon-contract";
 import { appToast } from "@/components/ui/app-toast";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
@@ -75,26 +57,14 @@ import {
 import { useForkThreadFromMessage } from "@/hooks/useForkThreadFromMessage";
 import { useUpdateEnvironment } from "../../hooks/mutations/environment-mutations";
 import { useUpdateThread } from "../../hooks/mutations/thread-state-mutations";
-import {
-  useEditThreadMessage,
-  useSendThreadMessage,
-} from "../../hooks/mutations/thread-runtime-mutations";
 import { useEnvironment } from "../../hooks/queries/environment-queries";
 import {
-  useChildThreadPendingAttention,
-  type ChildThreadPendingAttentionSource,
-} from "../../hooks/queries/child-thread-pending-interactions";
-import {
-  useChildThreads,
   useProjectThreadSubset,
   useThread,
-  useThreadPendingInteractions,
   type ProjectThreadSubsetFilters,
 } from "../../hooks/queries/thread-queries";
 import { useThreadStorageLocation } from "../../hooks/queries/thread-panel-queries";
 import { isTransientReadError } from "@/hooks/queries/query-helpers";
-import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
-import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { RouteLoadingSkeleton } from "@/components/ui/route-loading-skeleton";
 import { ThreadTimelineLoadingSkeleton } from "@/components/thread/timeline/ThreadTimelineLoadingSkeleton";
@@ -144,30 +114,19 @@ import {
 } from "@bb/shared-ui/lib/absolute-file-path";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { hasThreadProvisioningFailure } from "@/lib/thread-provisioning-failure";
-import { showMutationErrorToast } from "@/lib/mutation-errors";
 import {
   getProjectComposeRoutePath,
-  getThreadRoutePath,
   type ThreadRoutePathArgs,
 } from "@/lib/route-paths";
 import { THREAD_INFO_FIXED_TAB_REFERENCE } from "@/components/secondary-panel/thread-info-fixed-tab-navigation";
 import { ThreadDetailHeader } from "./ThreadDetailHeader";
-import {
-  ThreadDetailPromptArea,
-  type ThreadDetailSentMessageEdit,
-} from "./ThreadDetailPromptArea";
-import {
-  isThreadDisplayStatusBannerActive,
-  type ThreadPromptParentThreadSection,
-  type ThreadPromptChildThreadsSection,
-} from "@/components/promptbox/banner/ThreadPromptContextBanner";
+import { ThreadScreen, useThreadComposerAddToChat } from "./ThreadScreen";
 import { ThreadDetailSecondaryContent } from "./ThreadDetailSecondaryContent";
 import {
   useThreadSecondaryPanelDrawerVisibility,
   useThreadSecondaryPanelVisibility,
   type ThreadSecondaryPanelFileOpenOptions,
 } from "./useThreadSecondaryPanelVisibility";
-import type { HostConnectionNotice } from "@/components/thread/timeline/ThreadTimelineSurface";
 import {
   shouldLoadThreadStorageFileList,
   useThreadStorageViewer,
@@ -217,7 +176,10 @@ import {
 } from "@/components/secondary-panel/useThreadFileTabs";
 import {
   getEnvironmentFilePreviewSourceRef,
+  getFilePreviewLineRangeStart,
   isSecondaryFileTab,
+  isThreadForkable,
+  type PromptMentionLinkResolver,
 } from "@bb/client-core";
 import { useThreadOpenFileSignal } from "@/components/secondary-panel/useThreadOpenFileSignal";
 import type {
@@ -266,34 +228,13 @@ import { usePaneContext } from "./PaneContext";
 import { PaneThreadActionCommandHandler } from "./PaneThreadActionCommandHandler";
 
 const EMPTY_PARENT_THREADS: readonly ThreadListEntry[] = [];
-const EMPTY_CHILD_THREAD_ITEMS: readonly ChildThreadPendingAttentionSource[] =
-  [];
 const EMPTY_PROJECT_THREAD_SUBSET_FILTERS =
   {} satisfies ProjectThreadSubsetFilters;
 const EMPTY_TERMINAL_SESSIONS: readonly TerminalSession[] = [];
 const THREAD_HEADER_ACTIONS_GROUP = "0_header";
+const THREAD_DETAIL_SCREEN_PRESENTATION = { kind: "page" } as const;
 
 type OpenFilePreviewHandler = (relativePath: string) => void;
-
-interface SentMessageEditSession {
-  draft: PromptDraftState;
-  operationId: string;
-  target: ThreadTimelineEditMessageTarget;
-  threadId: string;
-}
-
-function hasTimelineRowId(
-  rows: readonly TimelineRow[],
-  rowId: string,
-): boolean {
-  return rows.some(
-    (row) =>
-      row.id === rowId ||
-      (row.kind === "turn" &&
-        row.children !== null &&
-        hasTimelineRowId(row.children, rowId)),
-  );
-}
 
 interface ThreadDetailViewPageProps {
   surface: "page";
@@ -319,16 +260,6 @@ interface ResolveHostFilePreviewLinkRootPathArgs {
   baseDir: string | undefined;
   threadStorageRootPath: string | null;
   workspaceRootPath: string | null;
-}
-
-function buildHostConnectionNotice(
-  thread: ThreadWithRuntime,
-  hostName: string | null,
-): HostConnectionNotice | null {
-  if (thread.runtime.displayStatus !== "waiting-for-host") {
-    return null;
-  }
-  return { label: `${hostName ?? "Host"} disconnected` };
 }
 
 function buildMarkdownPreviewLinkRouting({
@@ -552,20 +483,7 @@ function ThreadDetailViewInternal(
     isLoadingError,
     isRecoverableLoadingError: isTransientReadError(error),
   });
-  const threadOriginKind = thread?.originKind ?? null;
-  const threadSourceThreadId =
-    thread?.sourceThreadId ??
-    (thread && threadOriginKind ? thread.parentThreadId : null);
   const { data: parentThread } = useThread(thread?.parentThreadId ?? "");
-  const { data: sourceThread } = useThread(threadSourceThreadId ?? "");
-  const pendingInteractionsQuery = useThreadPendingInteractions(
-    thread?.id ?? "",
-    {
-      enabled: threadQueryState.status === "ready" && Boolean(thread?.id),
-    },
-  );
-  const pendingInteractions = pendingInteractionsQuery.data ?? [];
-  const hasPendingInteraction = pendingInteractions.length > 0;
   const [shouldAutoFocusNewTab, setShouldAutoFocusNewTab] = useState(false);
   const handleNewTabAutoFocusHandled = useCallback(
     () => setShouldAutoFocusNewTab(false),
@@ -706,10 +624,6 @@ function ThreadDetailViewInternal(
     filters: EMPTY_PROJECT_THREAD_SUBSET_FILTERS,
     projectId,
   });
-  const childThreadSubsetQuery = useChildThreads({
-    enabled: threadQueryState.status === "ready" && Boolean(thread?.id),
-    parentThreadId: thread?.id,
-  });
   const parentThreads = useMemo(
     () =>
       shouldLoadParentThreads
@@ -726,31 +640,10 @@ function ThreadDetailViewInternal(
     [thread?.id],
   );
   const handleRetryParentThreads = parentThreadSubsetQuery.retry;
-  const {
-    activePromptMode,
-    activeThinking,
-    activeWorkflows,
-    activeBackgroundCommands,
-    contextBoundarySeq,
-    contextWindowUsage,
-    goal,
-    providerCommands,
-    sessionOptions,
-    hasOlderTimelineRows,
-    isCatchingUpTimeline,
-    isLoadingOlderTimelineRows,
-    loadOlderTimelineRows,
-    modelFallback,
-    pendingTodos,
-    timelineError,
-    timelineLoading,
-    timelineRows,
-  } = useThreadTimelineController({
+  const timeline = useThreadTimelineController({
     threadId,
     enabled: timelineEnabled,
   });
-  const sendMessage = useSendThreadMessage();
-  const editMessage = useEditThreadMessage();
   const updateEnvironment = useUpdateEnvironment();
   const updateThread = useUpdateThread({
     errorMessage: "Failed to assign parent thread.",
@@ -819,13 +712,6 @@ function ThreadDetailViewInternal(
   )
     ? resolvedThreadEnvironmentHost
     : null;
-  const hostConnectionNotice = useMemo(
-    () =>
-      thread
-        ? buildHostConnectionNotice(thread, threadEnvironmentHost?.name ?? null)
-        : null,
-    [thread, threadEnvironmentHost],
-  );
   const forkThreadFromMessage = useForkThreadFromMessage({
     navigateInPane,
     sourceThread: thread ?? null,
@@ -860,208 +746,10 @@ function ThreadDetailViewInternal(
     thread ?? null,
     threadProviderInfo?.capabilities.supportsFork ?? false,
   );
-  const dismissCompactKeyboard = useCallback(() => {
-    if (!renderSecondaryPanelAsDrawer) {
-      return;
-    }
-    const activeElement = document.activeElement;
-    if (activeElement instanceof HTMLElement) {
-      activeElement.blur();
-    }
-  }, [renderSecondaryPanelAsDrawer]);
-  const selectionPromptDraftProjectId = thread?.projectId ?? projectId;
-  const selectionPromptDraftThreadId = thread?.id ?? "";
-  const selectionPromptDraft = useMemo(
-    () =>
-      getPromptDraftAccessor({
-        kind: "thread",
-        projectId: selectionPromptDraftProjectId,
-        threadId: selectionPromptDraftThreadId,
-      }),
-    [selectionPromptDraftProjectId, selectionPromptDraftThreadId],
-  );
-  const [composerFocusRequestNonce, setComposerFocusRequestNonce] = useState(0);
-  const [sentMessageEditSession, setSentMessageEditSession] =
-    useState<SentMessageEditSession | null>(null);
-  const [sentMessageEditHostElement, setSentMessageEditHostElement] =
-    useState<HTMLDivElement | null>(null);
-  const activeSentMessageEditSession =
-    sentMessageEditSession?.threadId === thread?.id
-      ? sentMessageEditSession
-      : null;
-  const canEditSentMessages =
-    thread !== undefined &&
-    thread.canEditMessages &&
-    !hasPendingInteraction &&
-    sentMessageEditSession === null &&
-    !sendMessage.isPending &&
-    !editMessage.isPending &&
-    !(timelineLoading && timelineRows.length === 0);
-  const sentMessageEditEntryRef = useRef({ canEditSentMessages, thread });
-  sentMessageEditEntryRef.current = { canEditSentMessages, thread };
-  const handleEditSentMessage = useCallback<ThreadTimelineEditMessageHandler>(
-    (target: ThreadTimelineEditMessageTarget) => {
-      const current = sentMessageEditEntryRef.current;
-      if (!current.thread || !current.canEditSentMessages) {
-        return;
-      }
-      const editDraft = promptInputToDraft(target.input);
-      setSentMessageEditHostElement(null);
-      setSentMessageEditSession({
-        draft: editDraft,
-        operationId: nanoid(),
-        target,
-        threadId: current.thread.id,
-      });
-    },
-    [],
-  );
-  const sentMessageEditThreadId = sentMessageEditSession?.threadId ?? null;
-  const sentMessageEditTargetMessageId =
-    sentMessageEditSession?.target.messageId ?? null;
-  const currentThreadId = thread?.id ?? null;
-  const sentMessageEditTargetStillPresent =
-    sentMessageEditThreadId === currentThreadId &&
-    sentMessageEditTargetMessageId !== null
-      ? hasTimelineRowId(timelineRows, sentMessageEditTargetMessageId)
-      : true;
-  const shouldDiscardMissingSentMessageEdit =
-    sentMessageEditThreadId !== null &&
-    sentMessageEditThreadId === currentThreadId &&
-    !timelineLoading &&
-    !sentMessageEditTargetStillPresent;
-  useEffect(() => {
-    if (!shouldDiscardMissingSentMessageEdit) {
-      return;
-    }
-    setSentMessageEditHostElement(null);
-    setSentMessageEditSession(null);
-    appToast.warning("The message being edited is no longer available.");
-  }, [shouldDiscardMissingSentMessageEdit]);
-  const activeSentMessageEditOperationId =
-    activeSentMessageEditSession?.operationId ?? null;
-  const updateSentMessageEditDraft = useCallback(
-    (update: (current: PromptDraftState) => PromptDraftState) => {
-      setSentMessageEditSession((current) =>
-        current?.operationId === activeSentMessageEditOperationId
-          ? { ...current, draft: update(current.draft) }
-          : current,
-      );
-    },
-    [activeSentMessageEditOperationId],
-  );
-  const closeSentMessageEdit = useCallback((operationId: string) => {
-    setSentMessageEditSession((current) =>
-      current?.operationId === operationId ? null : current,
-    );
-  }, []);
-  const cancelSentMessageEdit = useCallback(() => {
-    if (!activeSentMessageEditSession) {
-      return;
-    }
-    closeSentMessageEdit(activeSentMessageEditSession.operationId);
-  }, [activeSentMessageEditSession, closeSentMessageEdit]);
-  const submitSentMessageEdit = useCallback<
-    ThreadDetailSentMessageEdit["onSubmit"]
-  >(
-    (target) => {
-      if (!activeSentMessageEditSession) {
-        return;
-      }
-      const session = activeSentMessageEditSession;
-      const execution = target.execution;
-      void editMessage
-        .mutateAsync({
-          id: session.threadId,
-          operationId: session.operationId,
-          expectedRequestSequence: session.target.expectedRequestSequence,
-          input: target.input,
-          ...(execution
-            ? {
-                model: execution.model,
-                permissionMode: execution.permissionMode,
-                reasoningLevel: execution.reasoningLevel,
-                executionInputSources: execution.executionInputSources,
-                ...(execution.supportsServiceTier && execution.serviceTier
-                  ? { serviceTier: execution.serviceTier }
-                  : {}),
-              }
-            : {}),
-        })
-        .then(() => {
-          closeSentMessageEdit(session.operationId);
-        })
-        .catch((error) => {
-          showMutationErrorToast({
-            error,
-            fallbackMessage: "Failed to edit the message",
-            lifecycleOperation: "edit_message",
-          });
-        });
-    },
-    [activeSentMessageEditSession, closeSentMessageEdit, editMessage],
-  );
-  const activeSentMessageEditTargetMessageId =
-    activeSentMessageEditSession?.target.messageId ?? null;
-  const inlineMessageEditor = useMemo<
-    ThreadTimelineInlineMessageEditor | undefined
-  >(
-    () =>
-      activeSentMessageEditTargetMessageId !== null
-        ? {
-            messageId: activeSentMessageEditTargetMessageId,
-            onHostElementChange: setSentMessageEditHostElement,
-          }
-        : undefined,
-    [activeSentMessageEditTargetMessageId],
-  );
-  const sentMessageEdit = useMemo<ThreadDetailSentMessageEdit | undefined>(
-    () =>
-      activeSentMessageEditSession
-        ? {
-            draft: activeSentMessageEditSession.draft,
-            hostElement: sentMessageEditHostElement,
-            isSubmitting: editMessage.isPending,
-            operationId: activeSentMessageEditSession.operationId,
-            onCancel: cancelSentMessageEdit,
-            onSubmit: submitSentMessageEdit,
-            updateDraft: updateSentMessageEditDraft,
-          }
-        : undefined,
-    [
-      activeSentMessageEditSession,
-      cancelSentMessageEdit,
-      editMessage.isPending,
-      sentMessageEditHostElement,
-      submitSentMessageEdit,
-      updateSentMessageEditDraft,
-    ],
-  );
-  useEffect(
-    () =>
-      subscribeComposerFocusRequests(selectionPromptDraft.storageKey, () =>
-        setComposerFocusRequestNonce((nonce) => nonce + 1),
-      ),
-    [selectionPromptDraft.storageKey],
-  );
-  const composerActions = useMemo(
-    () =>
-      createCoreComposerActions({
-        ...selectionPromptDraft,
-        focus: () => setComposerFocusRequestNonce((nonce) => nonce + 1),
-      }),
-    [selectionPromptDraft],
-  );
-  const handleSelectionAddToChat = useCallback(
-    (text: string, attachments?: readonly PromptDraftAttachment[]) => {
-      dismissCompactKeyboard();
-      composerActions.replace((current) =>
-        appendQuoteAndAttachmentsToDraft(current, text, attachments ?? []),
-      );
-      composerActions.focus();
-    },
-    [composerActions, dismissCompactKeyboard],
-  );
+  const handleSelectionAddToChat = useThreadComposerAddToChat({
+    id: thread?.id ?? "",
+    projectId: thread?.projectId ?? projectId,
+  });
   const canCreateTerminal =
     !executionUnavailable &&
     thread?.environmentId !== null &&
@@ -1513,97 +1201,6 @@ function ThreadDetailViewInternal(
     enabled: threadOpenContext !== null,
     ...(threadOpenContext ? { openContext: threadOpenContext } : {}),
   });
-  const parentThreadSection: ThreadPromptParentThreadSection | null =
-    useMemo(() => {
-      const relatedThreadId =
-        threadOriginKind !== null
-          ? threadSourceThreadId
-          : thread?.parentThreadId;
-      if (!thread || !relatedThreadId) return null;
-      const relationship = threadOriginKind === "fork" ? "fork" : "parent";
-      const relatedThread =
-        relationship === "parent" ? parentThread : sourceThread;
-      const href = getThreadRoutePath({
-        projectId: relatedThread?.projectId ?? thread.projectId,
-        threadId: relatedThreadId,
-      });
-      if (relatedThread === undefined) {
-        return {
-          parentThreadTitle: relatedThreadId.slice(0, 8),
-          href,
-          relationship,
-        };
-      }
-      if (
-        relatedThread.archivedAt !== null ||
-        relatedThread.deletedAt !== null ||
-        (relationship !== "parent" &&
-          relatedThread.projectId !== thread.projectId)
-      ) {
-        return null;
-      }
-      return {
-        parentThreadTitle: getThreadDisplayTitle(relatedThread),
-        href,
-        relationship,
-      };
-    }, [
-      parentThread,
-      sourceThread,
-      thread,
-      threadOriginKind,
-      threadSourceThreadId,
-    ]);
-  const childThreadsSection = useMemo(() => {
-    const list = childThreadSubsetQuery.data ?? [];
-    const activeItems = list
-      .filter(
-        (entry) =>
-          entry.originKind === null &&
-          (isThreadDisplayStatusBannerActive(entry.runtime.displayStatus) ||
-            entry.hasPendingInteraction),
-      )
-      .sort((left, right) =>
-        left.hasPendingInteraction === right.hasPendingInteraction
-          ? right.latestAttentionAt - left.latestAttentionAt
-          : left.hasPendingInteraction
-            ? -1
-            : 1,
-      )
-      .map((entry) => ({
-        id: entry.id,
-        title: getThreadDisplayTitle(entry),
-        href: getThreadRoutePath({
-          projectId: entry.projectId,
-          threadId: entry.id,
-        }),
-        hasPendingInteraction: entry.hasPendingInteraction,
-      }));
-    if (activeItems.length === 0) return null;
-    return { items: activeItems };
-  }, [childThreadSubsetQuery.data]);
-  const childPendingInteractions = useChildThreadPendingAttention(
-    childThreadsSection?.items ?? EMPTY_CHILD_THREAD_ITEMS,
-  );
-  const childThreadsBannerSection =
-    useMemo((): ThreadPromptChildThreadsSection | null => {
-      if (!childThreadsSection) return null;
-      const pendingInteractions = childPendingInteractions
-        .flatMap((child) =>
-          child.interactions.map((interaction) => ({
-            childThreadId: child.childThreadId,
-            childTitle: child.childTitle,
-            href: child.href,
-            interaction,
-          })),
-        )
-        .sort(
-          (left, right) =>
-            right.interaction.createdAt - left.interaction.createdAt,
-        );
-      return { ...childThreadsSection, pendingInteractions };
-    }, [childThreadsSection, childPendingInteractions]);
-  const isThreadTimelinePending = timelineLoading && timelineRows.length === 0;
   const parentThreadId = thread?.parentThreadId;
   const parentThreadDisplayName =
     parentThread?.title && parentThread.title.trim().length > 0
@@ -1967,7 +1564,7 @@ function ThreadDetailViewInternal(
   const canTakeOverThread = Boolean(thread.parentThreadId);
   const environmentProvisioningFailure =
     thread.status === "error" && thread.environmentId === null
-      ? hasThreadProvisioningFailure(timelineRows)
+      ? hasThreadProvisioningFailure(timeline.timelineRows)
       : false;
   const threadEnvironmentProviderLookup = findEnvironmentDisplayProvider(
     registeredEnvironmentProviders,
@@ -2001,9 +1598,6 @@ function ThreadDetailViewInternal(
   const threadCheckoutDisplay = workspaceStatus
     ? formatWorkspaceCheckoutDisplay({ checkout: workspaceStatus.checkout })
     : undefined;
-  const threadEnvironmentGoneStatus =
-    hostLifecycle ??
-    (environment?.status === "destroyed" ? environment.status : null);
   const threadTitle = getThreadDisplayTitle(thread);
   const responsiveWorkspaceActions: PluginThreadActionsInlineItem[] =
     workspaceOpenPath && preferredDirectoryTarget
@@ -2131,50 +1725,33 @@ function ThreadDetailViewInternal(
       workspaceOpenButton={workspaceOpenButton}
     />
   );
-  const composerFooter = (
-    <ThreadDetailPromptArea
-      contextWindowUsage={contextWindowUsage}
-      environmentCheckout={threadCheckoutDisplay}
-      environmentCompactLabel={
-        composerEnvironmentChrome?.environmentCompactLabel
-      }
-      environmentHost={composerEnvironmentChrome?.environmentHost}
-      environmentIcon={composerEnvironmentChrome?.environmentIcon}
-      environmentLabel={composerEnvironmentChrome?.environmentLabel}
-      environmentMachineProvider={
-        composerEnvironmentChrome?.environmentMachineProvider
-      }
-      environmentProviderName={
-        composerEnvironmentChrome?.environmentProviderName
-      }
-      canRestoreEnvironment={thread.canRestoreEnvironment}
-      environmentGoneStatus={threadEnvironmentGoneStatus}
-      environmentHostId={environment?.hostId}
-      onCreateNewThreadInEnvironment={onCreateNewThreadInEnvironment}
-      onOpenThreadInfo={openThreadInfo}
+  const threadScreen = (
+    <ThreadScreen
+      composer={{
+        environmentCheckout: threadCheckoutDisplay,
+        environmentChrome: composerEnvironmentChrome,
+        contextEnvironmentId: showGitChanges ? threadEnvironmentId : null,
+        onCreateNewThreadInEnvironment,
+        onOpenThreadInfo: openThreadInfo,
+        permissionPolicy: "editable",
+      }}
+      environment={environment ?? null}
+      presentation={THREAD_DETAIL_SCREEN_PRESENTATION}
       projectId={projectId}
       resolveMentionLink={resolveMentionLink}
-      composerFocusRequestNonce={composerFocusRequestNonce}
-      sendMessage={sendMessage}
-      sentMessageEdit={sentMessageEdit}
-      steerActiveThreadOnEnter={
-        systemConfigQuery.data?.generalSettings.steerActiveThreadOnEnter ??
-        defaultAppSettings.steerActiveThreadOnEnter
-      }
-      pendingInteractions={pendingInteractions}
-      queuedMessageCount={thread.queuedMessageCount}
-      pendingTodos={pendingTodos}
-      activePromptMode={activePromptMode}
-      goal={goal}
-      providerCommands={providerCommands}
-      sessionOptions={sessionOptions}
-      modelFallback={modelFallback}
-      activeWorkflows={activeWorkflows}
-      activeBackgroundCommands={activeBackgroundCommands}
-      parentThreadSection={parentThreadSection}
-      childThreadsSection={childThreadsBannerSection}
-      contextEnvironmentId={showGitChanges ? threadEnvironmentId : null}
       thread={thread}
+      timeline={timeline}
+      timelineHost={{
+        environmentHostName: threadEnvironmentHost?.name ?? null,
+        includePluginMessageActions: true,
+        onForkMessage: isForkAvailable ? handleForkMessage : undefined,
+        onOpenLink: handleOpenTimelineLink,
+        onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
+        onTitleAction: handleTimelineTitleAction,
+        unreadDividerAutoScroll: unreadDividerState.autoScroll,
+        unreadDividerPlacement: unreadDividerState.placement,
+      }}
+      workspaceRootPath={environment?.path ?? undefined}
     />
   );
   const renderSecondaryTabContent = (
@@ -2474,8 +2051,8 @@ function ThreadDetailViewInternal(
         <AppNavigationHostProvider capabilities={appNavigationCapabilities}>
           {threadFixedTabs.observers}
           <ThreadDetailSecondaryContent
-            footer={composerFooter}
             header={timelineHeader}
+            main={threadScreen}
             isMetadataLoading={
               !hasThreadDetailBootstrapSettled || environmentQuery.isLoading
             }
@@ -2538,45 +2115,6 @@ function ThreadDetailViewInternal(
               onOpenFilePreview: handleOpenFilePreview,
               onSelectionAddToChat: handleSelectionAddToChat,
               onPanelFocus: touchFixedPanelTabsState,
-            }}
-            timeline={{
-              activeThinking,
-              canSpawnChild: thread.canSpawnChild,
-              contextBoundarySeq,
-              hasOlderTimelineRows,
-              hostConnectionNotice,
-              isCatchingUpTimeline,
-              isLoadingOlderTimelineRows,
-              isThreadTimelinePending,
-              timelineError: Boolean(timelineError),
-              onForkMessage: isForkAvailable ? handleForkMessage : undefined,
-              onEditMessage: canEditSentMessages
-                ? handleEditSentMessage
-                : undefined,
-              inlineMessageEditor,
-              onMessageAddToChat: handleSelectionAddToChat,
-              onSelectionAddToChat: handleSelectionAddToChat,
-              onLoadOlderRows: loadOlderTimelineRows,
-              onOpenLink: handleOpenTimelineLink,
-              onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
-              onTitleAction: handleTimelineTitleAction,
-              projectId,
-              resolveMentionLink,
-              showOngoingIndicator:
-                thread.status !== "stopping" &&
-                !hasPendingInteraction &&
-                isRunningThreadRuntimeDisplayStatus(
-                  thread.runtime.displayStatus,
-                ) &&
-                !isThreadTimelinePending,
-              timelineRows,
-              isStopping: thread.status === "stopping",
-              stoppingAnchorAt: thread.updatedAt,
-              threadId: thread.id,
-              threadRuntimeDisplayStatus: thread.runtime.displayStatus,
-              unreadDividerAutoScroll: unreadDividerState.autoScroll,
-              unreadDividerPlacement: unreadDividerState.placement,
-              workspaceRootPath: environment?.path ?? undefined,
             }}
           />
         </AppNavigationHostProvider>

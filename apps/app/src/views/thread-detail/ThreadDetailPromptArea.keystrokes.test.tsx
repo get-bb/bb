@@ -129,7 +129,10 @@ function buildPromptArea({
         activePromptMode={null}
         activeWorkflows={[]}
         childThreadsSection={null}
-        composerFocusRequestNonce={0}
+        composerFocusRequestKey={0}
+        composerId="thread-detail-follow-up-composer"
+        isPrimaryComposer
+        permissionPolicy="editable"
         canRestoreEnvironment={false}
         environmentGoneStatus={null}
         goal={null}

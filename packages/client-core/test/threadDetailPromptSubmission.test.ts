@@ -8,7 +8,6 @@ import {
   buildAutoFollowUpRequest,
   buildFollowUpShortcutRequest,
   buildFollowUpSubmitMode,
-  buildSideChatSubmitMode,
   canSubmitFollowUpShortcut,
   resolveDefaultExecutionOptionsState,
   shouldQueueFollowUpMessage,
@@ -375,60 +374,6 @@ describe("threadDetailPromptSubmission", () => {
         isStopRequested: false,
         onStop,
         runtimeDisplayStatus: "starting",
-      }),
-    ).toEqual({ kind: "blocked", reason: "pending-interaction" });
-  });
-
-  it("blocks a draft side chat until inherited execution options load", () => {
-    const onStop = () => undefined;
-
-    expect(
-      buildSideChatSubmitMode({
-        childThreadId: null,
-        hasPendingInteraction: false,
-        isDefaultExecutionOptionsLoading: true,
-        isStopRequested: false,
-        onStop,
-        runtimeDisplayStatus: "provisioning",
-      }),
-    ).toEqual({ kind: "blocked", reason: "loading-execution-options" });
-
-    expect(
-      buildSideChatSubmitMode({
-        childThreadId: null,
-        hasPendingInteraction: false,
-        isDefaultExecutionOptionsLoading: false,
-        isStopRequested: false,
-        onStop,
-        runtimeDisplayStatus: "idle",
-      }),
-    ).toEqual({ kind: "ready" });
-  });
-
-  it("offers stop-capable queue mode for active side-chat child threads", () => {
-    const onStop = () => undefined;
-
-    expect(
-      buildSideChatSubmitMode({
-        childThreadId: "thr_side",
-        hasPendingInteraction: false,
-        isDefaultExecutionOptionsLoading: false,
-        isStopRequested: false,
-        onStop,
-        runtimeDisplayStatus: "active",
-      }),
-    ).toEqual({ kind: "queue", onStop });
-  });
-
-  it("blocks child side chats with a pending interaction", () => {
-    expect(
-      buildSideChatSubmitMode({
-        childThreadId: "thr_side",
-        hasPendingInteraction: true,
-        isDefaultExecutionOptionsLoading: false,
-        isStopRequested: false,
-        onStop: () => undefined,
-        runtimeDisplayStatus: "active",
       }),
     ).toEqual({ kind: "blocked", reason: "pending-interaction" });
   });

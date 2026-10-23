@@ -143,6 +143,9 @@ interface RenderPromptAreaOptions {
   goal?: ThreadTimelineGoal | null;
   modelFallback?: ThreadTimelineModelFallback | null;
   pendingInteractions?: readonly PendingInteraction[];
+  permissionPolicy?: ComponentProps<
+    typeof ThreadDetailPromptArea
+  >["permissionPolicy"];
   environmentGoneStatus?: ComponentProps<
     typeof ThreadDetailPromptArea
   >["environmentGoneStatus"];
@@ -161,6 +164,7 @@ function buildPromptAreaElement({
   goal = null,
   modelFallback = null,
   pendingInteractions = [],
+  permissionPolicy = "editable",
   environmentGoneStatus = null,
   queuedMessageCount = 0,
   sentMessageEdit,
@@ -174,7 +178,10 @@ function buildPromptAreaElement({
         activePromptMode={activePromptMode}
         activeWorkflows={activeWorkflows}
         childThreadsSection={childThreadsSection}
-        composerFocusRequestNonce={0}
+        composerFocusRequestKey={0}
+        composerId="thread-detail-follow-up-composer"
+        isPrimaryComposer
+        permissionPolicy={permissionPolicy}
         canRestoreEnvironment={false}
         environmentGoneStatus={environmentGoneStatus}
         goal={goal}
@@ -1576,6 +1583,35 @@ describe("ThreadDetailPromptArea", () => {
     if (failure !== null) throw failure;
     return result as unknown as ExperimentalComposerSelection;
   }
+
+  it("pins a snapshot-policy composer to the thread's permission mode", async () => {
+    mocks.defaultExecutionOptions = {
+      model: "gpt-5",
+      permissionMode: "full",
+      reasoningLevel: "medium",
+      serviceTier: "default",
+      source: "client/turn/requested",
+    };
+    mocks.promptDraft.text = "Keep going";
+    renderPromptArea({ permissionPolicy: "snapshot" });
+    expect(screen.getByTestId("permission-read-only").textContent).toBe("true");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Capture plugin host" }),
+    );
+
+    const result = await settledSelection(
+      mocks.pluginComposerHost!.setSelection!({ permissionMode: "auto" }),
+    );
+
+    expect(result.permissionMode).toBe("full");
+    expect(mocks.setPermissionMode).not.toHaveBeenCalled();
+    await act(async () => {
+      await mocks.composerSubmit?.();
+    });
+    expect(mocks.sendMessageMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "thr_1", permissionMode: "full" }),
+    );
+  });
 
   it("starts a handoff when a plugin sets another provider, and drops the fields a thread has no picker for", async () => {
     mocks.promptDraft.text = "Keep going";

@@ -125,15 +125,15 @@ const SHARED_FIXTURE_ANCHORS: readonly FixtureAnchor[] = [
 const VIEW_FIXTURE_ANCHORS: Record<string, readonly FixtureAnchor[]> = {
   thread: [
     {
-      file: "apps/app/src/views/thread-detail/ThreadTimelinePane.tsx",
+      file: "apps/app/src/views/thread-detail/ThreadScreen.tsx",
       mustContain: [
-        'variant="hosted-footer"',
+        'scrollBehavior="bottom-anchor"',
         "scrollOverlay=",
         "<ThreadTableOfContents",
-        "footer={footer}",
+        "footer={promptArea}",
       ],
       because:
-        "The thread projection keeps the real hosted-footer timeline, bottom composer, and held-open table of contents composition.",
+        "The thread projection keeps the real bottom-anchored timeline, bottom composer, and held-open table of contents composition.",
     },
     {
       file: "apps/app/src/components/thread/toc/ThreadTableOfContents.tsx",

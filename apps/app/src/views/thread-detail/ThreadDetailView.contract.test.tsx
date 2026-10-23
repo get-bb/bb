@@ -77,14 +77,14 @@ vi.mock("./ThreadDetailSecondaryContent", async () => {
     await import("@/test/panel-controller-contract");
   return {
     ThreadDetailSecondaryContent: ({
-      footer,
+      main,
       secondaryPanel,
     }: {
-      footer: ReactNode;
+      main: ReactNode;
       secondaryPanel: Parameters<typeof ContractSecondaryPanel>[0];
     }) => (
       <>
-        {footer}
+        {main}
         <ContractSecondaryPanel {...secondaryPanel} />
       </>
     ),
