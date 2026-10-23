@@ -811,13 +811,12 @@ turn on, and the rest stay off. An experiment you set yourself keeps your value 
   live.
 - `terminalRelayProcess` (on for early adopters) opens new terminals in a
   separate relay process that carries their keystrokes and output, so typing
-  keeps echoing while the main server is busy. The host daemon keeps a second
-  connection (`/internal/ws/terminals`) to that process and sends each
-  terminal's output and exit on the connection the terminal was attached
-  through, so the exit never overtakes the last output. The
-  setting applies to terminals opened after a change: a terminal stays in the
-  process it opened in until it exits, and the relay process stops once the
-  experiment is off and its last terminal has exited.
+  keeps echoing while the main server is busy. The relay process always runs,
+  and the host daemon always keeps a second connection
+  (`/internal/ws/terminals`) to it. The daemon sends each terminal's output and
+  exit on the connection the terminal was attached through, so the exit never
+  overtakes the last output. The setting applies to terminals opened after a
+  change: a terminal stays in the process it opened in until it exits.
 
 ## Thread Timeline Window
 

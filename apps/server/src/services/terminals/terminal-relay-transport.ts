@@ -181,56 +181,20 @@ export function createInProcessTerminalRelay(
   };
 }
 
-export interface TerminalRelayRouter extends TerminalRelayEndpoint {
-  reconcile(): void;
-}
-
 export function createTerminalRelayRouter(options: {
   inProcess: TerminalRelayEndpoint;
-  startProcess: () => TerminalRelayEndpoint;
+  process: TerminalRelayEndpoint;
   useProcess: () => boolean;
-}): TerminalRelayRouter {
-  const { inProcess } = options;
-  let host: TerminalRelayHost | null = null;
-  let processRelay: TerminalRelayEndpoint | null = null;
-  const terminalPlacements = new Map<string, "in-process" | "process">();
-
-  const startProcess = (): TerminalRelayEndpoint => {
-    if (processRelay === null) {
-      processRelay = options.startProcess();
-      if (host !== null) {
-        processRelay.bindHost(host);
-      }
-    }
-    return processRelay;
-  };
-
-  const reconcile = (): void => {
-    if (options.useProcess()) {
-      startProcess();
-      return;
-    }
-    if (
-      processRelay !== null &&
-      ![...terminalPlacements.values()].includes("process")
-    ) {
-      void processRelay.close();
-      processRelay = null;
-    }
-  };
-
+}): TerminalRelayEndpoint {
+  const relays = [options.inProcess, options.process];
+  const terminalPlacements = new Map<string, TerminalRelayEndpoint>();
   const relayForTerminal = (terminalId: string): TerminalRelayEndpoint =>
-    processRelay !== null && terminalPlacements.get(terminalId) === "process"
-      ? processRelay
-      : inProcess;
+    terminalPlacements.get(terminalId) ?? options.inProcess;
 
-  const relays = (): TerminalRelayEndpoint[] =>
-    processRelay === null ? [inProcess] : [inProcess, processRelay];
-
-  const router: TerminalRelayRouter = {
+  return {
     control: {
       closeDaemonSession: (daemonSessionId) => {
-        for (const relay of relays()) {
+        for (const relay of relays) {
           relay.control.closeDaemonSession(daemonSessionId);
         }
       },
@@ -242,44 +206,34 @@ export function createTerminalRelayRouter(options: {
       publishSession: (update) => {
         const terminalId = update.terminal.session.id;
         relayForTerminal(terminalId).control.publishSession(update);
-        if (update.kind === "exited" && terminalPlacements.delete(terminalId)) {
-          reconcile();
+        if (update.kind === "exited") {
+          terminalPlacements.delete(terminalId);
         }
       },
     },
-    bindHost: (nextHost) => {
-      host = nextHost;
-      for (const relay of relays()) {
-        relay.bindHost(nextHost);
+    bindHost: (host) => {
+      for (const relay of relays) {
+        relay.bindHost(host);
       }
     },
     close: async () => {
-      const closing = relays().map((relay) => relay.close());
-      processRelay = null;
-      await Promise.all(closing);
+      await Promise.all(relays.map((relay) => relay.close()));
     },
-    reconcile,
     upgrade: (upgrade) => {
       const { grant } = upgrade;
       if (grant.kind === "daemon") {
-        if (processRelay === null) {
-          rejectUpgrade(upgrade.socket, 503);
-          return;
-        }
-        processRelay.upgrade(upgrade);
+        options.process.upgrade(upgrade);
         return;
       }
-      const placement =
+      const relay =
         terminalPlacements.get(grant.terminalId) ??
-        (options.useProcess() ? "process" : "in-process");
+        (options.useProcess() ? options.process : options.inProcess);
       if (grant.terminal !== null && grant.terminal.session.status !== "exited") {
-        terminalPlacements.set(grant.terminalId, placement);
+        terminalPlacements.set(grant.terminalId, relay);
       }
-      (placement === "process" ? startProcess() : inProcess).upgrade(upgrade);
+      relay.upgrade(upgrade);
     },
   };
-  reconcile();
-  return router;
 }
 
 function handleRelayMessage(

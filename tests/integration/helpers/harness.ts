@@ -46,7 +46,6 @@ import { TerminalSessionLifecycle } from "../../../apps/server/src/services/term
 import {
   createInProcessTerminalRelay,
   createTerminalRelayRouter,
-  startTerminalRelayProcess,
 } from "../../../apps/server/src/services/terminals/terminal-relay-transport.js";
 import type {
   ServerLogger,
@@ -208,15 +207,7 @@ async function startIntegrationServer(
   };
   const terminalRelay = createTerminalRelayRouter({
     inProcess: createInProcessTerminalRelay({ attachTimeoutMs: 50 }),
-    startProcess: () =>
-      startTerminalRelayProcess({
-        entryUrl: new URL(
-          "../../../apps/server/src/terminal-relay-process.ts",
-          import.meta.url,
-        ),
-        execArgv: ["--conditions=source", "--import", "tsx"],
-        logger: testLogger,
-      }),
+    process: createInProcessTerminalRelay({ attachTimeoutMs: 50 }),
     useProcess: () => getExperiments(db).terminalRelayProcess,
   });
   const terminalSessions = new TerminalSessionLifecycle({

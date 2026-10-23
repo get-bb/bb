@@ -10,14 +10,12 @@ import {
 } from "../../src/services/terminals/terminal-relay-transport.js";
 
 interface FakeRelay extends TerminalRelayEndpoint {
-  closed: boolean;
   outputs: string[];
   upgrades: string[];
 }
 
 function fakeRelay(): FakeRelay {
   const relay: FakeRelay = {
-    closed: false,
     outputs: [],
     upgrades: [],
     control: {
@@ -28,10 +26,7 @@ function fakeRelay(): FakeRelay {
       publishSession: () => undefined,
     },
     bindHost: () => undefined,
-    close: () => {
-      relay.closed = true;
-      return Promise.resolve();
-    },
+    close: () => Promise.resolve(),
     upgrade: ({ grant }) => {
       relay.upgrades.push(
         grant.kind === "daemon" ? `daemon:${grant.daemonSessionId}` : grant.terminalId,
@@ -71,26 +66,20 @@ function browserGrant(terminalId: string): TerminalUpgradeGrant {
 
 function createFixture() {
   const inProcess = fakeRelay();
-  const started: FakeRelay[] = [];
+  const processRelay = fakeRelay();
   const setting = { useProcess: false };
   const router = createTerminalRelayRouter({
     inProcess,
-    startProcess: () => {
-      const relay = fakeRelay();
-      started.push(relay);
-      return relay;
-    },
+    process: processRelay,
     useProcess: () => setting.useProcess,
   });
-  const upgrade = (grant: TerminalUpgradeGrant): PassThrough => {
-    const socket = new PassThrough();
+  const upgrade = (grant: TerminalUpgradeGrant): void => {
     router.upgrade({
       grant,
       head: Buffer.alloc(0),
       request: new IncomingMessage(new Socket()),
-      socket,
+      socket: new PassThrough(),
     });
-    return socket;
   };
   const output = (terminalId: string): void => {
     router.control.handleDaemonControlMessage({
@@ -102,20 +91,7 @@ function createFixture() {
       },
     });
   };
-  const exit = (terminalId: string): void => {
-    const terminal = browserGrant(terminalId);
-    if (terminal.kind !== "browser" || terminal.terminal === null) {
-      throw new Error("Expected a browser grant");
-    }
-    router.control.publishSession({
-      kind: "exited",
-      terminal: {
-        ...terminal.terminal,
-        session: { ...terminal.terminal.session, status: "exited" },
-      },
-    });
-  };
-  return { exit, inProcess, output, router, setting, started, upgrade };
+  return { inProcess, output, processRelay, setting, upgrade };
 }
 
 describe("terminal relay router", () => {
@@ -124,54 +100,25 @@ describe("terminal relay router", () => {
 
     fixture.upgrade(browserGrant("before"));
     fixture.setting.useProcess = true;
-    fixture.router.reconcile();
     fixture.upgrade(browserGrant("after"));
     fixture.upgrade(browserGrant("before"));
+    fixture.setting.useProcess = false;
+    fixture.upgrade(browserGrant("after"));
     fixture.output("before");
     fixture.output("after");
 
-    const [processRelay] = fixture.started;
     expect(fixture.inProcess.upgrades).toEqual(["before", "before"]);
-    expect(processRelay?.upgrades).toEqual(["after"]);
+    expect(fixture.processRelay.upgrades).toEqual(["after", "after"]);
     expect(fixture.inProcess.outputs).toEqual(["before"]);
-    expect(processRelay?.outputs).toEqual(["after"]);
+    expect(fixture.processRelay.outputs).toEqual(["after"]);
   });
 
-  it("keeps the relay process until its last terminal exits after the setting turns off", () => {
+  it("sends daemon data sockets to the relay process whatever the setting", () => {
     const fixture = createFixture();
-    fixture.setting.useProcess = true;
-    fixture.router.reconcile();
-    fixture.upgrade(browserGrant("forked"));
 
-    fixture.setting.useProcess = false;
-    fixture.router.reconcile();
-    fixture.upgrade(browserGrant("main"));
-    fixture.upgrade(browserGrant("forked"));
-    const [processRelay] = fixture.started;
-    expect(processRelay?.closed).toBe(false);
-    expect(processRelay?.upgrades).toEqual(["forked", "forked"]);
-    expect(fixture.inProcess.upgrades).toEqual(["main"]);
+    fixture.upgrade({ kind: "daemon", daemonSessionId: "daemon-1" });
 
-    fixture.exit("forked");
-    expect(processRelay?.closed).toBe(true);
-    expect(fixture.started).toHaveLength(1);
-  });
-
-  it("accepts daemon data sockets only while the relay process runs", () => {
-    const fixture = createFixture();
-    const daemonGrant: TerminalUpgradeGrant = {
-      kind: "daemon",
-      daemonSessionId: "daemon-1",
-    };
-
-    const refused = fixture.upgrade(daemonGrant);
-    expect(String(refused.read())).toContain("503");
-
-    fixture.setting.useProcess = true;
-    fixture.router.reconcile();
-    fixture.upgrade(daemonGrant);
-
-    expect(fixture.started[0]?.upgrades).toEqual(["daemon:daemon-1"]);
+    expect(fixture.processRelay.upgrades).toEqual(["daemon:daemon-1"]);
     expect(fixture.inProcess.upgrades).toEqual([]);
   });
 });

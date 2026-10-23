@@ -215,16 +215,15 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   }
   const terminalRelay = createTerminalRelayRouter({
     inProcess: createInProcessTerminalRelay(),
-    startProcess: () =>
-      startTerminalRelayProcess({
-        entryUrl: new URL(
-          import.meta.url.endsWith(".ts")
-            ? "./terminal-relay-process.ts"
-            : "./terminal-relay-process.js",
-          import.meta.url,
-        ),
-        logger,
-      }),
+    process: startTerminalRelayProcess({
+      entryUrl: new URL(
+        import.meta.url.endsWith(".ts")
+          ? "./terminal-relay-process.ts"
+          : "./terminal-relay-process.js",
+        import.meta.url,
+      ),
+      logger,
+    }),
     useProcess: () => getExperiments(db).terminalRelayProcess,
   });
   const terminalSessions = new TerminalSessionLifecycle({

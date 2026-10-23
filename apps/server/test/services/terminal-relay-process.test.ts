@@ -60,7 +60,7 @@ describe("terminal relay process", () => {
   it(
     "keeps echoing keystrokes while the main server event loop is blocked",
     async () => {
-      server = await startTestServer();
+      server = await startTestServer({ forkTerminalRelay: true });
       const enabled = await server.app.request("/api/v1/settings/experiments", {
         method: "PUT",
         headers: { "content-type": "application/json" },
