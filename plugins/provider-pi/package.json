@@ -6,7 +6,7 @@
   "description": "Run bb threads with Pi.",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.6.76"
+    "bbPluginSdk": ">=0.6.77"
   },
   "bb": {
     "name": "Pi provider",
