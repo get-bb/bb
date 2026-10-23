@@ -37,6 +37,9 @@ export interface ParentThreadPickerProps {
   onOpenChange: (open: boolean) => void;
   onRetry: () => void;
   defaultOpen?: boolean;
+  triggerLabel?: string;
+  searchLabel?: string;
+  mobileTitle?: string;
 }
 
 export function ParentThreadPicker({
@@ -49,6 +52,9 @@ export function ParentThreadPicker({
   onOpenChange,
   onRetry,
   defaultOpen,
+  triggerLabel = "None",
+  searchLabel = "Search parent threads",
+  mobileTitle = "Assign parent thread",
 }: ParentThreadPickerProps) {
   const [open, setOpen] = useState(defaultOpen ?? false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -65,7 +71,7 @@ export function ParentThreadPicker({
     [options, resolveTitle, searchQuery],
   );
   const selectedLabel =
-    options.find((option) => option.value === value)?.label ?? "None";
+    options.find((option) => option.value === value)?.label ?? triggerLabel;
   const handleOpenChange = useCallback(
     (nextOpen: boolean) => {
       setOpen(nextOpen);
@@ -102,15 +108,11 @@ export function ParentThreadPicker({
         mobileClassName={PICKER_MOBILE_CLASS_NAME}
         align="start"
         className="flex min-h-0 w-72 flex-col p-0 max-md:flex-1"
-        mobileTitle="Assign parent thread"
+        mobileTitle={mobileTitle}
       >
-        <Command
-          label="Search parent threads"
-          shouldFilter={false}
-          className="min-h-0"
-        >
+        <Command label={searchLabel} shouldFilter={false} className="min-h-0">
           <CommandInput
-            aria-label="Search parent threads"
+            aria-label={searchLabel}
             placeholder="Search threads…"
             value={searchQuery}
             onValueChange={setSearchQuery}

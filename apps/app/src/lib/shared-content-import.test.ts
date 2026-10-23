@@ -268,4 +268,64 @@ describe("shared content import", () => {
       "existing.txt",
     ]);
   });
+
+  it("imports shared content into the selected thread draft without changing the new-thread draft", async () => {
+    const threadDraft = getPromptDraftAccessor({
+      kind: "thread",
+      projectId: "project-1",
+      threadId: "thread-1",
+    });
+    threadDraft.setDraft({
+      ...emptyPromptDraftState(),
+      text: "Existing thread draft",
+      attachments: [
+        {
+          type: "localImage",
+          path: "existing-thread.png",
+          name: "existing-thread.png",
+          mimeType: "image/png",
+          sizeBytes: 8,
+        },
+      ],
+    });
+    flushPendingPromptDraftPersists();
+    installBridge((kind) => {
+      if (kind === "get-shared-content") return sharedContent();
+      if (kind === "start-shared-upload") return { jobId: "thread-job" };
+      if (kind === "shared-upload-status")
+        return {
+          jobId: "thread-job",
+          status: "complete",
+          attachment: {
+            type: "localImage",
+            path: "uploaded/thread-photo.jpg",
+            name: "photo.jpg",
+            mimeType: "image/jpeg",
+            sizeBytes: 12,
+            sourceProjectId: "project-1",
+          },
+        };
+      return { acknowledged: true };
+    });
+
+    await importSharedContent({
+      shareId,
+      projectId: "project-1",
+      draft: threadDraft,
+      signal: new AbortController().signal,
+      onProgress: () => undefined,
+    });
+
+    expect(threadDraft.getCurrent().text).toBe(
+      "Existing thread draft\n\nShared note",
+    );
+    expect(
+      threadDraft.getCurrent().attachments.map(({ path }) => path),
+    ).toEqual(["existing-thread.png", "uploaded/thread-photo.jpg"]);
+    expect(draft.getCurrent().attachments.map(({ path }) => path)).toEqual([
+      "existing.txt",
+    ]);
+    expect(draft.getCurrent().text).toBe("Keep my existing prompt");
+    expect(threadDraft.storageKey).not.toBe(draft.storageKey);
+  });
 });

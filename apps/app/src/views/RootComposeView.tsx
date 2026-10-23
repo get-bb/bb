@@ -77,6 +77,7 @@ import { PluginThreadPanelNavigationProvider } from "@/components/plugin/plugin-
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { useCreateThread } from "@/hooks/mutations/thread-runtime-mutations";
 import { isShareId } from "@/lib/shared-content-import";
+import { SharedDestinationChooser } from "@/components/pickers/SharedDestinationChooser";
 import {
   useEnvironmentTerminals,
   useTerminals,
@@ -419,6 +420,14 @@ export function RootComposeView() {
   const [lastCreatedThreadId, setLastCreatedThreadId] = useState<string | null>(
     null,
   );
+  const [shareDestination, setShareDestination] = useState<{
+    shareId: string | null;
+    kind: "choose" | "new";
+  }>({ shareId: null, kind: "choose" });
+  const selectedShareDestination =
+    shareDestination.shareId === sharedImportId
+      ? shareDestination.kind
+      : "choose";
   const [navigateToThreadAfterCreate] =
     useNavigateToThreadAfterCreatePreference();
 
@@ -452,18 +461,39 @@ export function RootComposeView() {
       draftStorage={{ kind: "new-thread" }}
       selectionScope="new-thread"
       preferReadyProviderWhenUnset
-      sharedImportId={sharedImportId}
+      sharedImportId={
+        selectedShareDestination === "new" ? sharedImportId : null
+      }
       onSharedImportComplete={clearSharedImportRoute}
       onSubmit={handleSubmit}
     >
-      {(composer) => (
-        <RootComposeSurface
-          composer={composer}
-          lastCreatedThreadId={lastCreatedThreadId}
-          rootComposeProjectId={rootComposeProjectId}
-          setRootComposeProjectId={setRootComposeProjectId}
-        />
-      )}
+      {(composer) =>
+        sharedImportId && selectedShareDestination === "choose" ? (
+          <SharedDestinationChooser
+            projectId={composer.projectId}
+            projects={composer.projects ?? []}
+            onProjectChange={setRootComposeProjectId}
+            onAddToThread={(threadId) => {
+              const params = new URLSearchParams(location.search);
+              params.set("shareId", sharedImportId);
+              navigate(
+                `${getThreadRoutePath({ projectId: composer.projectId, threadId })}?${params}`,
+                { replace: true },
+              );
+            }}
+            onNewThread={() =>
+              setShareDestination({ shareId: sharedImportId, kind: "new" })
+            }
+          />
+        ) : (
+          <RootComposeSurface
+            composer={composer}
+            lastCreatedThreadId={lastCreatedThreadId}
+            rootComposeProjectId={rootComposeProjectId}
+            setRootComposeProjectId={setRootComposeProjectId}
+          />
+        )
+      }
     </NewThreadComposer>
   );
 }

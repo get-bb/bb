@@ -35,6 +35,7 @@ import {
 import { LazyQueuedMessagesList } from "@/components/promptbox/banner/LazyQueuedMessagesList";
 import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
 import { ThreadDetailPromptArea } from "./ThreadDetailPromptArea";
+import { MemoryRouter } from "react-router-dom";
 
 const shellProbeRenders = vi.fn();
 
@@ -121,44 +122,46 @@ function buildPromptArea({
   pendingInteractions = [],
 }: RenderPromptAreaArgs) {
   return (
-    <PluginComposerHostScopeProvider>
-      <ShellProbe />
-      <PublishedHostDraftProbe />
-      <ThreadDetailPromptArea
-        showGitChanges={true}
-        activeBackgroundCommands={[]}
-        activePromptMode={null}
-        activeWorkflows={[]}
-        canUseGitUi={false}
-        childThreadsSection={null}
-        composerFocusRequestNonce={0}
-        contextBannerMergeBase={null}
-        canRestoreEnvironment={false}
-        environmentGoneStatus={null}
-        goal={null}
-        providerCommands={null}
-        sessionOptions={null}
-        modelFallback={null}
-        isEnvironmentActionPending={false}
-        onChangedFileClick={vi.fn()}
-        parentThreadSection={null}
-        pendingInteractions={pendingInteractions}
-        queuedMessageCount={0}
-        pendingTodos={null}
-        projectId={PROJECT_ID}
-        pullRequest={null}
-        pullRequestMergeMethod="squash"
-        resolveMentionLink={() => null}
-        sendMessage={{
-          isPending: false,
-          mutateAsync: mocks.sendMessageMutateAsync,
-        }}
-        steerActiveThreadOnEnter={false}
-        thread={thread}
-        workspaceChangedFilesSection={null}
-        workspaceStatusPending={false}
-      />
-    </PluginComposerHostScopeProvider>
+    <MemoryRouter>
+      <PluginComposerHostScopeProvider>
+        <ShellProbe />
+        <PublishedHostDraftProbe />
+        <ThreadDetailPromptArea
+          showGitChanges={true}
+          activeBackgroundCommands={[]}
+          activePromptMode={null}
+          activeWorkflows={[]}
+          canUseGitUi={false}
+          childThreadsSection={null}
+          composerFocusRequestNonce={0}
+          contextBannerMergeBase={null}
+          canRestoreEnvironment={false}
+          environmentGoneStatus={null}
+          goal={null}
+          providerCommands={null}
+          sessionOptions={null}
+          modelFallback={null}
+          isEnvironmentActionPending={false}
+          onChangedFileClick={vi.fn()}
+          parentThreadSection={null}
+          pendingInteractions={pendingInteractions}
+          queuedMessageCount={0}
+          pendingTodos={null}
+          projectId={PROJECT_ID}
+          pullRequest={null}
+          pullRequestMergeMethod="squash"
+          resolveMentionLink={() => null}
+          sendMessage={{
+            isPending: false,
+            mutateAsync: mocks.sendMessageMutateAsync,
+          }}
+          steerActiveThreadOnEnter={false}
+          thread={thread}
+          workspaceChangedFilesSection={null}
+          workspaceStatusPending={false}
+        />
+      </PluginComposerHostScopeProvider>
+    </MemoryRouter>
   );
 }
 

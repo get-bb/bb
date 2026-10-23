@@ -83,7 +83,7 @@ import { newThreadEnvironmentArgsToSeed } from "@/components/plugin/new-thread-e
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
-import { importSharedContent } from "@/lib/shared-content-import";
+import { useSharedContentImport } from "@/hooks/useSharedContentImport";
 import { useSystemEnvironmentProviders } from "@/hooks/queries/environment-provider-queries";
 import { useSystemMachineProviders } from "@/hooks/queries/machine-provider-queries";
 import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
@@ -1404,49 +1404,19 @@ export function NewThreadComposer({
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [isCopyingAttachments, setIsCopyingAttachments] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [sharedImportMessage, setSharedImportMessage] = useState<string | null>(
-    null,
-  );
-  const [sharedImportAttempt, setSharedImportAttempt] = useState(0);
-  const pendingUploadCountRef = useRef(0);
   const isCopyingAttachmentsRef = useRef(false);
   const isSubmittingRef = useRef(false);
   const uploadPromptAttachment = useUploadPromptAttachment();
-  useEffect(() => {
-    if (!sharedImportId || isProjectlessProjectId(projectId)) return;
-    const controller = new AbortController();
-    const capturedProjectId = projectId;
-    const capturedDraft = promptDraft;
-    void importSharedContent({
-      shareId: sharedImportId,
-      projectId: capturedProjectId,
-      draft: capturedDraft,
-      signal: controller.signal,
-      onProgress: (message) => {
-        if (!controller.signal.aborted) setSharedImportMessage(message);
-      },
-    })
-      .then(() => {
-        if (controller.signal.aborted) return;
-        setSharedImportMessage(null);
-        onSharedImportComplete?.();
-      })
-      .catch((error: unknown) => {
-        if (controller.signal.aborted) return;
-        setSharedImportMessage(
-          error instanceof Error
-            ? error.message
-            : "Could not import the shared item.",
-        );
-      });
-    return () => controller.abort();
-  }, [
-    sharedImportAttempt,
-    sharedImportId,
+  const sharedImport = useSharedContentImport({
+    shareId:
+      sharedImportId && !isProjectlessProjectId(projectId)
+        ? sharedImportId
+        : null,
     projectId,
-    promptDraft,
-    onSharedImportComplete,
-  ]);
+    draft: promptDraft,
+    onComplete: onSharedImportComplete,
+  });
+  const sharedImportMessage = sharedImport.message;
   const uploadTargetKey = `${projectId}\0${promptDraft.storageKey}`;
   const { pendingUploads, startUploads, finishUploads } =
     usePendingAttachmentUploads(uploadTargetKey);
@@ -2280,7 +2250,7 @@ export function NewThreadComposer({
             : isProjectlessProjectId(projectId)
               ? "Select a project to import the shared item."
               : "Preparing shared item…"),
-        retrySharedImport: () => setSharedImportAttempt((value) => value + 1),
+        retrySharedImport: sharedImport.retry,
         seedEnvironmentSelectionValue: setCreationEnvironmentSelectionValue,
         hostSelectionReady:
           sidebarNavigationSettled &&

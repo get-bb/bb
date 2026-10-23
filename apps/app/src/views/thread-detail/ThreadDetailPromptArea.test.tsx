@@ -2,6 +2,7 @@
 
 import { promptAreaMocks as mocks } from "@/test/thread-detail-prompt-area-harness";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
 
 import type {
   PendingInteraction,
@@ -135,6 +136,7 @@ function makePendingInteraction(): PendingInteraction {
 }
 
 interface RenderPromptAreaOptions {
+  route?: string;
   activePromptMode?: ThreadTimelineActivePromptMode | null;
   activeWorkflows?: TimelineWorkflowWorkRow[];
   childThreadsSection?: ComponentProps<
@@ -155,6 +157,7 @@ interface RenderPromptAreaOptions {
 let testQueryClient: QueryClient;
 
 function buildPromptAreaElement({
+  route = "/",
   activePromptMode = null,
   activeWorkflows = [],
   childThreadsSection = null,
@@ -168,43 +171,45 @@ function buildPromptAreaElement({
   thread = makeThread(),
 }: RenderPromptAreaOptions = {}) {
   return (
-    <QueryClientProvider client={testQueryClient}>
-      <ThreadDetailPromptArea
-        showGitChanges={true}
-        activeBackgroundCommands={[]}
-        activePromptMode={activePromptMode}
-        activeWorkflows={activeWorkflows}
-        canUseGitUi={false}
-        childThreadsSection={childThreadsSection}
-        composerFocusRequestNonce={0}
-        contextBannerMergeBase={null}
-        canRestoreEnvironment={false}
-        environmentGoneStatus={environmentGoneStatus}
-        goal={goal}
-        providerCommands={null}
-        sessionOptions={sessionOptions}
-        modelFallback={modelFallback}
-        isEnvironmentActionPending={false}
-        onChangedFileClick={vi.fn()}
-        parentThreadSection={null}
-        pendingInteractions={pendingInteractions}
-        queuedMessageCount={queuedMessageCount}
-        pendingTodos={null}
-        projectId="proj_1"
-        pullRequest={null}
-        pullRequestMergeMethod="squash"
-        resolveMentionLink={() => null}
-        sendMessage={{
-          isPending: false,
-          mutateAsync: mocks.sendMessageMutateAsync,
-        }}
-        sentMessageEdit={sentMessageEdit}
-        steerActiveThreadOnEnter={false}
-        thread={thread}
-        workspaceChangedFilesSection={null}
-        workspaceStatusPending={false}
-      />
-    </QueryClientProvider>
+    <MemoryRouter initialEntries={[route]}>
+      <QueryClientProvider client={testQueryClient}>
+        <ThreadDetailPromptArea
+          showGitChanges={true}
+          activeBackgroundCommands={[]}
+          activePromptMode={activePromptMode}
+          activeWorkflows={activeWorkflows}
+          canUseGitUi={false}
+          childThreadsSection={childThreadsSection}
+          composerFocusRequestNonce={0}
+          contextBannerMergeBase={null}
+          canRestoreEnvironment={false}
+          environmentGoneStatus={environmentGoneStatus}
+          goal={goal}
+          providerCommands={null}
+          sessionOptions={sessionOptions}
+          modelFallback={modelFallback}
+          isEnvironmentActionPending={false}
+          onChangedFileClick={vi.fn()}
+          parentThreadSection={null}
+          pendingInteractions={pendingInteractions}
+          queuedMessageCount={queuedMessageCount}
+          pendingTodos={null}
+          projectId="proj_1"
+          pullRequest={null}
+          pullRequestMergeMethod="squash"
+          resolveMentionLink={() => null}
+          sendMessage={{
+            isPending: false,
+            mutateAsync: mocks.sendMessageMutateAsync,
+          }}
+          sentMessageEdit={sentMessageEdit}
+          steerActiveThreadOnEnter={false}
+          thread={thread}
+          workspaceChangedFilesSection={null}
+          workspaceStatusPending={false}
+        />
+      </QueryClientProvider>
+    </MemoryRouter>
   );
 }
 
@@ -392,6 +397,23 @@ describe("agent session options", () => {
 });
 
 describe("ThreadDetailPromptArea", () => {
+  it("keeps the bottom composer from sending while a share import is pending", () => {
+    mocks.promptDraft.text = "Existing thread draft";
+    renderPromptArea({
+      route:
+        "/projects/proj_1/threads/thr_1?shareId=7c5ac65a-1df3-4b9e-9632-e0d04201bf54",
+    });
+
+    expect(screen.getByRole("status").textContent).toContain(
+      "Preparing shared item",
+    );
+    expect(screen.getByTestId("submit-mode").textContent).toBe(
+      "blocked:pending-interaction",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+    expect(mocks.sendMessageMutateAsync).not.toHaveBeenCalled();
+  });
+
   it("sends plugin data through the send endpoint while Enter queues", async () => {
     mocks.promptDraft.text = "Queue this with data";
     renderPromptArea({

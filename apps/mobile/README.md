@@ -275,6 +275,12 @@ Manual checklist: share an image and video from Photos; share multiple items;
 try an offline import, switch projects, then retry; share with no server
 configured and confirm the item remains pending until a server is added.
 
+When continuing a share in BB, choose a project and a non-archived thread. The
+most recently active thread is selected by default; confirm **Add to chat** to
+open it with the shared content in its draft. Nothing is sent automatically.
+The project choice is remembered for the next share. **Start a new thread
+instead** remains available when the project has no suitable thread.
+
 The extension and containing app both need the App Group entitlement. Local
 contributors can inspect and typecheck the Expo configuration without Apple
 credentials, but installing the extension requires a rebuilt native app. A
