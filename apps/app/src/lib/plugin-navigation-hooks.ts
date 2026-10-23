@@ -3,7 +3,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { matchPath, useLocation, useNavigate } from "react-router-dom";
 import type { BbNavigate, PluginBrowserBbSdk } from "@get-bb/plugin-sdk";
 import { usePluginId } from "@/components/plugin/plugin-context";
-import { usePluginThreadPanelOpenHandler } from "@/components/plugin/plugin-thread-panel-navigation";
+import {
+  openPluginThreadPanel,
+  usePluginPanelTab,
+  usePluginThreadPanelOpenHandler,
+} from "@/components/plugin/plugin-thread-panel-navigation";
+import { PluginUrlClaimContext } from "@/components/plugin/plugin-url-claims";
 import { BbHttpError, sdk } from "@/lib/sdk";
 import { getPluginBoundSdk } from "@/lib/plugin-bound-sdk";
 import {
@@ -42,6 +47,8 @@ export function useBbNavigate(): BbNavigate {
   const onNavigate = useContext(RouteNavigationCallbackContext);
   const location = useLocation();
   const openThreadPanelHandler = usePluginThreadPanelOpenHandler();
+  const panelTab = usePluginPanelTab();
+  const openClaimedUrl = useContext(PluginUrlClaimContext);
   const navigate = useNavigate();
   const appNavigation = useAppNavigationHost();
   const store = useStore();
@@ -133,12 +140,20 @@ export function useBbNavigate(): BbNavigate {
     ],
   );
   const openThreadPanel = useCallback<BbNavigate["openThreadPanel"]>(
-    (options) => openThreadPanelHandler?.({ ...options, pluginId }) ?? false,
-    [openThreadPanelHandler, pluginId],
+    (options) =>
+      openPluginThreadPanel({
+        open: openThreadPanelHandler,
+        options,
+        panelTab,
+        pluginId,
+      }),
+    [openThreadPanelHandler, panelTab, pluginId],
   );
   const openUrl = useCallback<BbNavigate["openUrl"]>(
-    (url) => appNavigation.openUrl({ url }),
-    [appNavigation],
+    (url) =>
+      (openClaimedUrl !== null && openClaimedUrl(url, pluginId)) ||
+      appNavigation.openUrl({ url }),
+    [appNavigation, openClaimedUrl, pluginId],
   );
   const experimental_openFilePreview = useCallback<
     BbNavigate["experimental_openFilePreview"]

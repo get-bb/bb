@@ -6,16 +6,25 @@ import {
   type ReactNode,
   useContext,
 } from "react";
-import type { BbNavigate } from "@get-bb/plugin-sdk";
+import type { PluginTargetedPanelActionOpenOptions } from "@get-bb/plugin-sdk";
 
 export type PluginThreadPanelOpenHandler = (
-  options: Parameters<BbNavigate["openThreadPanel"]>[0] & {
+  options: PluginTargetedPanelActionOpenOptions & {
     pluginId: string;
+    replaceTabId?: string;
   },
 ) => boolean;
 
+export interface PluginPanelTabIdentity {
+  pluginId: string;
+  tabId: string;
+}
+
 const PluginThreadPanelNavigationContext =
   createContext<PluginThreadPanelOpenHandler | null>(null);
+
+export const PluginPanelTabContext =
+  createContext<PluginPanelTabIdentity | null>(null);
 
 export function PluginThreadPanelNavigationProvider({
   children,
@@ -33,6 +42,35 @@ export function PluginThreadPanelNavigationProvider({
 
 export function usePluginThreadPanelOpenHandler(): PluginThreadPanelOpenHandler | null {
   return useContext(PluginThreadPanelNavigationContext);
+}
+
+export function usePluginPanelTab(): PluginPanelTabIdentity | null {
+  return useContext(PluginPanelTabContext);
+}
+
+export function openPluginThreadPanel({
+  open,
+  options,
+  panelTab,
+  pluginId,
+}: {
+  open: PluginThreadPanelOpenHandler | null;
+  options: PluginTargetedPanelActionOpenOptions & {
+    experimental_replace?: boolean;
+  };
+  panelTab: PluginPanelTabIdentity | null;
+  pluginId: string;
+}): boolean {
+  if (open === null) return false;
+  const request = {
+    pluginId,
+    actionId: options.actionId,
+    ...(options.title === undefined ? {} : { title: options.title }),
+    ...(options.params === undefined ? {} : { params: options.params }),
+  };
+  if (options.experimental_replace !== true) return open(request);
+  if (panelTab === null || panelTab.pluginId !== pluginId) return false;
+  return open({ ...request, replaceTabId: panelTab.tabId });
 }
 
 const focusedOpeners = new Map<symbol, PluginThreadPanelOpenHandler>();

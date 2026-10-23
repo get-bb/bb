@@ -551,8 +551,9 @@ export function PluginPanelRightPanelHost({
               slot: "tab",
               openPluginPanel: (args) => {
                 selectPersistedPanelTab();
-                openPluginPanel(args);
+                const opened = openPluginPanel(args);
                 revealPanel();
+                return opened;
               },
             }),
             tab: { ownerId: fixedTabOwnerId, tabId: action.id },
@@ -589,8 +590,9 @@ export function PluginPanelRightPanelHost({
             },
             openPluginPanel: (args) => {
               selectPersistedPanelTab();
-              openPluginPanel(args);
+              const opened = openPluginPanel(args);
               revealPanel();
+              return opened;
             },
           });
         },

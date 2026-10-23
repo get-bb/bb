@@ -123,6 +123,7 @@ import {
   useRewriteLocalhostLinksPreference,
 } from "@/lib/localhost-link-rewrite-preference";
 import { resolveRouteHref } from "@/lib/route-paths";
+import { useOpenClaimedUrlOnClick } from "@/components/plugin/plugin-url-claims";
 import { cn } from "@bb/shared-ui/lib/utils";
 import remarkDirective from "remark-directive";
 import { PromptMentionPill } from "@/components/thread/timeline/ConversationMessageMentions.js";
@@ -683,6 +684,7 @@ function MarkdownAnchor({
   const anchorHref = buildLocalFileAnchorHref(localFileLink, rewrittenHref);
   const getContextMenuItems = useContext(MarkdownLocalFileContextMenuContext);
   const openTargets = useContext(MarkdownLocalFileOpenTargetsContext);
+  const openClaimedUrlOnClick = useOpenClaimedUrlOnClick();
   if (!anchorHref) {
     return <span>{children}</span>;
   }
@@ -703,6 +705,10 @@ function MarkdownAnchor({
     }
 
     if (isAppRouteHref) {
+      return;
+    }
+
+    if (rewrittenHref && openClaimedUrlOnClick(event, rewrittenHref)) {
       return;
     }
 

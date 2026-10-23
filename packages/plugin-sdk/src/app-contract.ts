@@ -1035,14 +1035,44 @@ type ExperimentalTabCommon = ExperimentalTabReference & {
   layout?: "padded" | "flush";
 };
 
-type ExperimentalTabLifecycle<Props, Context> =
-  | {
+interface ExperimentalThreadTabUrlClaim {
+  /**
+   * Claim web links this thread action tab can show. In a thread view, a
+   * plain click on an http(s) link in Markdown (its messages and side panel)
+   * and another plugin's `useBbNavigate().openUrl` (such as the GitHub PR
+   * Status plugin's pull request in the prompt banner and the Info tab) call
+   * this with the URL before bb opens it. Return the options `openPanel`
+   * takes to open this tab instead, or null (undefined counts as null) to
+   * leave the link to the browser. Return the same params for the same
+   * resource, so a second click focuses its tab. It runs on every such open,
+   * so keep it synchronous and cheap; `run` is not called. Clicks with Cmd,
+   * Ctrl, Shift, or Alt still open the URL, and so does a claim the side
+   * panel declines. When several tabs claim a link, the first in slot order
+   * wins; a claim that throws or returns anything but options or null is
+   * logged and skipped. Only thread tabs with action availability claim
+   * links, and a tab never claims its own plugin's `openUrl`.
+   *
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_claimUrl?(url: URL): PluginPanelActionOpenOptions | null;
+}
+
+interface ExperimentalTabNoUrlClaim {
+  experimental_claimUrl?: never;
+}
+
+type ExperimentalTabLifecycle<
+  Props,
+  Context,
+  ActionClaim = ExperimentalTabNoUrlClaim,
+> =
+  | ({
       availability: "fixed";
       component: ComponentType<Props>;
       run?: never;
       params?: never;
-    }
-  | {
+    } & ExperimentalTabNoUrlClaim)
+  | ({
       availability: "action";
       component: ComponentType<Props & { params: JsonValue | null }>;
       /** Default persisted params when opened without explicit params. */
@@ -1052,7 +1082,7 @@ type ExperimentalTabLifecycle<Props, Context> =
           openPanel(options?: PluginPanelActionOpenOptions): boolean;
         },
       ): void | Promise<void>;
-    };
+    } & ActionClaim);
 
 type ExperimentalTabContextProps<C extends ExperimentalTabContext> = C extends {
   kind: "thread";
@@ -1080,7 +1110,7 @@ type ExperimentalTabInput<
       experimental_target?: C extends { kind: "nav-panel" }
         ? ExperimentalFixedTabTargetContract<JsonValue>
         : never;
-    }
+    } & ExperimentalTabNoUrlClaim
   : {
       component: ComponentType<
         ExperimentalTabContextProps<C> & { params: JsonValue | null }
@@ -1092,7 +1122,9 @@ type ExperimentalTabInput<
         },
       ): void | Promise<void>;
       experimental_target?: never;
-    });
+    } & (C extends { kind: "thread" }
+      ? ExperimentalThreadTabUrlClaim
+      : ExperimentalTabNoUrlClaim));
 
 /** One registration for pinned destinations and actions opening closable instances. */
 export type ExperimentalTabRegistration = ExperimentalTabCommon &
@@ -1101,7 +1133,11 @@ export type ExperimentalTabRegistration = ExperimentalTabCommon &
         context: { kind: "thread" };
         useVisible?(props: { threadId: string }): boolean;
         experimental_target?: never;
-      } & ExperimentalTabLifecycle<{ threadId: string }, { threadId: string }>)
+      } & ExperimentalTabLifecycle<
+        { threadId: string },
+        { threadId: string },
+        ExperimentalThreadTabUrlClaim
+      >)
     | ({
         context: { kind: "nav-panel"; panelId: string };
         useVisible?(props: PluginNavPanelProps): boolean;
@@ -4874,11 +4910,33 @@ export interface BbNavigate {
    * commands and thread actions use the focused thread view's opener. Returns false when the surface has no side
    * panel actions (plugin pages) or the action is unavailable.
    */
-  openThreadPanel(options: PluginTargetedPanelActionOpenOptions): boolean;
+  openThreadPanel(
+    options: PluginTargetedPanelActionOpenOptions & {
+      /**
+       * Open it in place of the side-panel tab the calling component renders
+       * in, as `toPluginPanel`'s `replace` swaps a history entry: use it when
+       * a tab finds out what it shows, such as a picker's pick, so the tab
+       * takes that item's params and a later open of the same params focuses
+       * it. The new tab keeps the calling tab's place and split pane, is
+       * active only if the calling tab was, and leaves a closed panel closed.
+       * When a tab with those params is already open, bb closes the calling
+       * tab instead, and focuses the open one if the calling tab was active.
+       * Returns false outside one of this plugin's thread action tabs or New
+       * thread action tabs (fixed tabs and navigation-page tabs cannot
+       * replace themselves), or once that tab has closed.
+       * `experimental_useAppPanel().experimental_openTab` does not replace.
+       * Experimental: see docs/api_to_audit.md.
+       */
+      experimental_replace?: boolean;
+    },
+  ): boolean;
   /**
-   * Open an HTTP(S) URL using this client's BB browser preference. Returns
-   * false for schemes the host does not own. Experimental: see
-   * docs/api_to_audit.md.
+   * Open an HTTP(S) URL using this client's BB browser preference. In a
+   * thread view, another plugin's thread action tab that claims the URL
+   * (`experimental_claimUrl`) opens instead, as for a plain click on a link
+   * there. This plugin's own claims are skipped, so it can still open a URL
+   * its tabs claim in the browser. Returns false for schemes the host does
+   * not own. Experimental: see docs/api_to_audit.md.
    */
   openUrl(url: string): boolean;
   /** Open a live file in this surface's shared BB preview panel. */

@@ -783,7 +783,9 @@ export default async function plugin(bb: BbPluginApi) {
     number: number,
   ): CachedItem | null {
     const row = db
-      .prepare("SELECT * FROM items WHERE repo = ? AND kind = ? AND number = ?")
+      .prepare(
+        "SELECT * FROM items WHERE repo = ? COLLATE NOCASE AND kind = ? AND number = ?",
+      )
       .get(repo, kind, number) as Record<string, unknown> | undefined;
     return row === undefined ? null : rowToItem(row);
   }
@@ -820,17 +822,17 @@ export default async function plugin(bb: BbPluginApi) {
   ): void {
     if (patch.state !== undefined) {
       db.prepare(
-        "UPDATE items SET state = ? WHERE repo = ? AND kind = 'issue' AND number = ?",
+        "UPDATE items SET state = ? WHERE repo = ? COLLATE NOCASE AND kind = 'issue' AND number = ?",
       ).run(patch.state, repo, number);
     }
     if (patch.assignees !== undefined) {
       db.prepare(
-        "UPDATE items SET assignees = ? WHERE repo = ? AND kind = 'issue' AND number = ?",
+        "UPDATE items SET assignees = ? WHERE repo = ? COLLATE NOCASE AND kind = 'issue' AND number = ?",
       ).run(JSON.stringify(patch.assignees), repo, number);
     }
     if (patch.labels !== undefined) {
       db.prepare(
-        "UPDATE items SET labels = ? WHERE repo = ? AND kind = 'issue' AND number = ?",
+        "UPDATE items SET labels = ? WHERE repo = ? COLLATE NOCASE AND kind = 'issue' AND number = ?",
       ).run(JSON.stringify(patch.labels), repo, number);
     }
     bb.realtime.publish("data-changed", {});
@@ -960,8 +962,9 @@ export default async function plugin(bb: BbPluginApi) {
   }
 
   async function resolveProjectId(repo: string): Promise<string> {
+    const name = repo.toLowerCase();
     const repos = await discoverRepos();
-    const info = repos.find((entry) => entry.repo === repo);
+    const info = repos.find((entry) => entry.repo.toLowerCase() === name);
     if (info?.projectId != null) return info.projectId;
     const { defaultProject } = await settings.get();
     if (defaultProject) return defaultProject;

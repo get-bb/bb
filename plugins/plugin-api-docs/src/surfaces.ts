@@ -414,12 +414,12 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Show closable or pinned plugin tabs alongside the conversation",
           "Know which thread the tab belongs to and hide pinned tabs when they do not apply",
           "Use one tab registration for thread and navigation-page contexts; core Info and Diff use it too",
-          "Open from a [message action](message-actions), the side panel's + button, or plugin code",
+          "Open from a [message action](message-actions), the + button, plugin code, or a web link it claims",
         ],
         reference: [
           "Register tabs with app.slots.experimental_tab({ id, title, icon, tooltip?, layout?, context, availability, useVisible?, component }). context is { kind: 'thread' } or { kind: 'nav-panel', panelId }; the component receives threadId or subPath. Core Info and Diff use thread + fixed registrations. tooltip defaults to title; layout is padded (default) or flush.",
           "availability: 'fixed' creates one pinned, non-closable destination per owner and tab id. availability: 'action' adds a launcher for closable instances; only actions accept run, default params and persisted instance params. Identical params focus the existing instance; different params open siblings. useVisible controls the fixed tab or launcher, never existing action instances. Hooks and components run in plugin scope with crash isolation.",
-          "Open through experimental_useAppPanel().experimental_openTab({ surface: { kind: 'current' }, tab: { id, context, availability }, params?, title?, target? }). Actions accept JSON params and an optional title. Navigation-page fixed tabs may declare experimental_target and receive validated session targets through experimental_useFixedTabTarget; thread fixed tabs reject targets. Unknown, hidden or wrong-context destinations return false. Existing openFixedTab, openThreadPanel and action openPanel calls delegate to the same opening path.",
+          "Open through experimental_useAppPanel().experimental_openTab({ surface: { kind: 'current' }, tab: { id, context, availability }, params?, title?, target? }). Actions accept JSON params and an optional title. Navigation-page fixed tabs may declare experimental_target and receive validated session targets through experimental_useFixedTabTarget; thread fixed tabs reject targets. Unknown, hidden or wrong-context destinations return false. Existing openFixedTab, openThreadPanel and action openPanel calls delegate to the same opening path. A thread action tab may set experimental_claimUrl(url) to open for a web link it can show, plainly clicked in Markdown or opened by another plugin's openUrl, and openThreadPanel({ actionId, params, experimental_replace: true }) turns the calling tab into the item it found.",
           "Identity and order survive hiding, disabling and reload. Thread fixed tabs persist as { id, kind: 'plugin-fixed', pluginId, tabId }; navigation-page fixed tabs and action instances keep their existing storage identities. SDK threads.tabs.get/update and CLI bb thread tabs show/set support thread tab entries with revision checks. Selection stays client-local. See the authoring skill's Tab API migration section for upgrading source registrations.",
         ],
         apiSymbols: [
@@ -427,6 +427,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "experimental_useAppPanel",
           "ExperimentalTabRegistration",
           "ExperimentalTabRegistration.tooltip",
+          "ExperimentalTabRegistration.experimental_claimUrl",
           "ExperimentalTabReference",
           "ExperimentalTabContext",
           "ExperimentalAppPanel.experimental_openTab",

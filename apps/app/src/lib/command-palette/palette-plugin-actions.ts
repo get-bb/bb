@@ -1,6 +1,9 @@
 import { pluginCommandId, type PluginCommandId } from "@bb/domain";
 import type { PluginCommandContext } from "@get-bb/plugin-sdk";
-import type { PluginThreadPanelOpenHandler } from "@/components/plugin/plugin-thread-panel-navigation";
+import {
+  openPluginThreadPanel,
+  type PluginThreadPanelOpenHandler,
+} from "@/components/plugin/plugin-thread-panel-navigation";
 import type { PluginCommandPaletteActionSlot } from "@/lib/plugin-slots";
 import { getPluginDisplayName } from "@/lib/plugin-logos";
 import type { PaletteAction } from "./palette-action";
@@ -39,7 +42,12 @@ function actionContext(
         );
         return false;
       }
-      return args.openThreadPanel({ ...options, pluginId: slot.pluginId });
+      return openPluginThreadPanel({
+        open: args.openThreadPanel,
+        options,
+        panelTab: null,
+        pluginId: slot.pluginId,
+      });
     },
   };
 }

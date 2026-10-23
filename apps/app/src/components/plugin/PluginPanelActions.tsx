@@ -20,6 +20,7 @@ import {
   parseFileOpenerParams,
 } from "./file-opener-tabs";
 import { PluginSlotMount } from "./PluginSlotMount";
+import { PluginPanelTabContext } from "./plugin-thread-panel-navigation";
 import { PluginReplacementSlot } from "./PluginReplacementSlot";
 import { resolveReplacement } from "@/lib/plugin-slot-resolvers";
 
@@ -33,9 +34,10 @@ export interface OpenPluginPanelArgs {
   actionId: string;
   title: string;
   paramsJson: string | null;
+  replaceTabId?: string;
 }
 
-export type OpenPluginPanelHandler = (args: OpenPluginPanelArgs) => void;
+export type OpenPluginPanelHandler = (args: OpenPluginPanelArgs) => boolean;
 
 export interface PluginPanelActionEntry {
   id: string;
@@ -59,11 +61,13 @@ interface PanelActionOpenPanelArgs {
   };
   slot: string;
   openPluginPanel: OpenPluginPanelHandler;
+  replaceTabId?: string;
 }
 
 export function createPanelActionDestination({
   action,
   openPluginPanel,
+  replaceTabId,
 }: PanelActionOpenPanelArgs): AppFixedTabDestination {
   return {
     tab: {
@@ -80,13 +84,13 @@ export function createPanelActionDestination({
       } catch {
         return false;
       }
-      openPluginPanel({
+      return openPluginPanel({
         pluginId: action.pluginId,
         actionId: action.id,
         title: options?.title ?? action.title,
         paramsJson,
+        ...(replaceTabId === undefined ? {} : { replaceTabId }),
       });
-      return true;
     },
   };
 }
@@ -94,17 +98,24 @@ export function createPanelActionDestination({
 export function createPanelActionOpenPanel(
   args: PanelActionOpenPanelArgs,
 ): (options?: PluginPanelActionOpenOptions) => boolean {
-  const destination = createPanelActionDestination(args);
   return (options) => {
+    let reachedOpener = false;
+    const destination = createPanelActionDestination({
+      ...args,
+      openPluginPanel: (openArgs) => {
+        reachedOpener = true;
+        return args.openPluginPanel(openArgs);
+      },
+    });
     const accepted = openAppTabFromDestinations([destination], {
       surface: { kind: "current" },
       tab: destination.tab,
       availability: "action",
       ...options,
     });
-    if (!accepted)
+    if (!accepted && !reachedOpener)
       console.warn(
-        `[plugin:${args.action.pluginId}] ${args.slot} "${args.action.id}" openPanel declined: params must be JSON values`,
+        `[plugin:${args.action.pluginId}] ${args.slot} "${args.action.id}" openPanel declined: title must be a string and params JSON values`,
       );
     return accepted;
   };
@@ -315,6 +326,24 @@ function usePersistedActionParams(tab: PluginPanelFixedPanelTab) {
   );
 }
 
+function PluginPanelTabProvider({
+  tab,
+  children,
+}: {
+  tab: PluginPanelFixedPanelTab;
+  children: ReactNode;
+}) {
+  const identity = useMemo(
+    () => ({ pluginId: tab.pluginId, tabId: tab.id }),
+    [tab.id, tab.pluginId],
+  );
+  return (
+    <PluginPanelTabContext.Provider value={identity}>
+      {children}
+    </PluginPanelTabContext.Provider>
+  );
+}
+
 function RegisteredActionTabContent({
   tab,
   context,
@@ -349,7 +378,9 @@ function RegisteredActionTabContent({
         instanceId={`${context.kind}/${context.kind === "thread" ? context.threadId : `${context.panelId}/${context.subPath}`}/${tab.id}`}
       >
         {isThreadTab(action) && context.kind === "thread" ? (
-          <action.component threadId={context.threadId} params={params} />
+          <PluginPanelTabProvider tab={tab}>
+            <action.component threadId={context.threadId} params={params} />
+          </PluginPanelTabProvider>
         ) : isNavTab(action) && context.kind === "nav-panel" ? (
           <action.component subPath={context.subPath} params={params} />
         ) : null}
@@ -384,7 +415,9 @@ function NewThreadActionTabContent({
         slotKind="newThreadPanelAction"
         slotId={action.id}
       >
-        <action.component projectId={projectId} params={params} />
+        <PluginPanelTabProvider tab={tab}>
+          <action.component projectId={projectId} params={params} />
+        </PluginPanelTabProvider>
       </PluginSlotMount>
     </PanelActionTabFrame>
   );

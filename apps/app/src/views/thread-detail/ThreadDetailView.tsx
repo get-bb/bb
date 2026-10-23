@@ -199,6 +199,10 @@ import {
 } from "@/components/plugin/PluginPanelActions";
 import { createFileOpenerOriginalTab } from "@/components/plugin/file-opener-tabs";
 import { PluginThreadPanelNavigationProvider } from "@/components/plugin/plugin-thread-panel-navigation";
+import {
+  PluginUrlClaimContext,
+  useOpenClaimedUrl,
+} from "@/components/plugin/plugin-url-claims";
 import { ThreadTimelineNavigationProvider } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import {
   AttachmentOpenerContext,
@@ -1242,8 +1246,9 @@ function ThreadDetailViewInternal(
               slot: "tab",
               openPluginPanel: (args) => {
                 dismissPluginDetails();
-                openPluginPanel(args);
+                const opened = openPluginPanel(args);
                 openCompactDrawer();
+                return opened;
               },
             }),
           ),
@@ -1299,6 +1304,10 @@ function ThreadDetailViewInternal(
     reveal: openCompactDrawer,
     slot: "threadPanelAction",
   });
+  const openClaimedUrl = useOpenClaimedUrl(
+    handleOpenTimelinePluginPanel,
+    threadFixedTabs.actions,
+  );
 
   const handleSelectFileSearchResult = useCallback(
     (selection: FileSearchSelection) => {
@@ -2709,9 +2718,15 @@ function ThreadDetailViewInternal(
                 <MarkdownLocalFileOpenTargetsContext.Provider
                   value={fileOpenTargets}
                 >
-                  <UrlOpenRoutingProvider openInAppBrowser={openBrowser}>
-                    {panel}
-                  </UrlOpenRoutingProvider>
+                  <PluginUrlClaimContext.Provider value={openClaimedUrl}>
+                    <PluginThreadPanelNavigationProvider
+                      openThreadPanel={handleOpenTimelinePluginPanel}
+                    >
+                      <UrlOpenRoutingProvider openInAppBrowser={openBrowser}>
+                        {panel}
+                      </UrlOpenRoutingProvider>
+                    </PluginThreadPanelNavigationProvider>
+                  </PluginUrlClaimContext.Provider>
                 </MarkdownLocalFileOpenTargetsContext.Provider>
               </MarkdownLocalFileContextMenuContext.Provider>
             )}
@@ -2856,9 +2871,11 @@ function ThreadDetailViewInternal(
             <MarkdownLocalFileOpenTargetsContext.Provider
               value={fileOpenTargets}
             >
-              <AttachmentOpenerContext.Provider value={openAttachment}>
-                {threadDetailContent}
-              </AttachmentOpenerContext.Provider>
+              <PluginUrlClaimContext.Provider value={openClaimedUrl}>
+                <AttachmentOpenerContext.Provider value={openAttachment}>
+                  {threadDetailContent}
+                </AttachmentOpenerContext.Provider>
+              </PluginUrlClaimContext.Provider>
             </MarkdownLocalFileOpenTargetsContext.Provider>
           </PluginDetailPanelContext.Provider>
         </PluginThreadPanelNavigationProvider>

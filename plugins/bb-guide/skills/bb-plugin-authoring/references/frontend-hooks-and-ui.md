@@ -43,17 +43,32 @@ Hooks:
   and in `renderSlot`.
 - `useBbNavigate()` → `{ toThread(id), toProject(id), toPluginPanel(path,
 { subPath?, replace? }?), toCompose({ initialPrompt?, focusPrompt? }?),
-openThreadPanel({ actionId, title?, params? }), openUrl(url),
-experimental_openFilePreview(options), experimental_openFileExternally(options),
-experimental_openTerminal({ terminalId }) }`.
+openThreadPanel({ actionId, title?, params?, experimental_replace? }),
+openUrl(url), experimental_openFilePreview(options),
+experimental_openFileExternally(options), experimental_openTerminal({
+terminalId }) }`.
   `toCompose` opens the root compose screen; pass `initialPrompt` to seed the
   composer draft and `focusPrompt: true` to focus it. The panel
   opener opens one of the current plugin's registered `experimental_tab` with thread context and action availability tabs
   in a thread, or its `experimental_newThreadPanelAction` tabs on the New
   thread screen, and returns whether the host accepted it; it returns false on
-  plugin pages, which have no panel actions.
+  plugin pages, which have no panel actions. With `experimental_replace: true`
+  it opens the tab in place of the side-panel tab the calling component
+  renders in, the way `toPluginPanel`'s `replace` swaps a history entry: a
+  picker or lookup tab becomes the tab of what it found. The new tab keeps
+  the calling tab's place and split pane, is active only if the calling tab
+  was, and leaves a closed panel closed. When a tab with those params is
+  already open, bb closes the calling tab instead, and focuses the open one if
+  the calling tab was active. It returns false outside one of the plugin's own
+  thread or New thread action tabs (fixed and navigation-page tabs cannot
+  replace themselves), or once that tab has closed; `experimental_openTab`
+  does not replace. Experimental: see `docs/api_to_audit.md`.
   `openUrl` owns HTTP(S) only and returns false for schemes BB
-  leaves to normal anchor behavior. The two file methods accept an
+  leaves to normal anchor behavior. In a thread view it first offers the URL
+  to other plugins' thread action tabs that claim it (`experimental_claimUrl`,
+  in [core slots](frontend-core-slots.md)), as a plain click on a link there
+  does. The calling plugin's own claims are skipped, so it can still open a
+  URL its tabs claim in the browser. The two file methods accept an
   `ExperimentalFileOpenOptions` live-file target.
   `experimental_openTerminal` shows a terminal the plugin created with
   `useSdk().terminals.create` in the current surface's terminal panel; the

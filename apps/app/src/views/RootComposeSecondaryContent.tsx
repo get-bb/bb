@@ -66,6 +66,7 @@ interface RootComposeSecondaryContentProps {
   contentClassName?: string;
   isSecondaryPanelOpen: boolean;
   onToggleSecondaryPanel: () => void;
+  renderHostedPanel: (panel: ReactNode) => ReactNode;
   secondaryPanel: RootSecondaryPanelProps;
 }
 
@@ -89,6 +90,7 @@ export function RootComposeSecondaryContent({
   contentClassName,
   isSecondaryPanelOpen,
   onToggleSecondaryPanel,
+  renderHostedPanel,
   secondaryPanel,
 }: RootComposeSecondaryContentProps) {
   const paneContext = useOptionalPaneContext();
@@ -160,6 +162,7 @@ export function RootComposeSecondaryContent({
         open={isSecondaryPanelOpen}
         onToggle={onToggleSecondaryPanel}
         onSwipeOpen={onToggleSecondaryPanel}
+        renderHostedPanel={renderHostedPanel}
         onClose={threadSecondaryPanelProps.onClose}
         resetKey="new-thread"
         contentKey="new-thread"

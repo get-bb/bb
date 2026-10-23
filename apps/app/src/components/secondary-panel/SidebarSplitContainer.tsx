@@ -37,6 +37,7 @@ import {
 import {
   adjacentSidebarTab,
   createSidebarSplitState,
+  findReplacedSidebarTab,
   focusSidebarPane,
   getSidebarGroupForPane,
   getSidebarTabPlacement,
@@ -198,15 +199,28 @@ export function SidebarSplitContainer({
       !availableTabIds.includes(previousExternalActiveTabId)
         ? replaceSidebarTab(current, previousExternalActiveTabId, activeTabId)
         : current;
+    const inPlaceReplacement = findReplacedSidebarTab(
+      previousAvailable,
+      availableTabIds,
+    );
     let reconciled = reconcileSidebarSplitState(
-      withActiveTabReplacement,
+      inPlaceReplacement === null
+        ? withActiveTabReplacement
+        : replaceSidebarTab(
+            withActiveTabReplacement,
+            inPlaceReplacement.previousTabId,
+            inPlaceReplacement.nextTabId,
+          ),
       availableTabIds,
       activeTabId,
     );
     const previousAvailableTabIdSet = new Set(previousAvailable);
     for (const tab of tabs) {
       if (previousAvailableTabIdSet.has(tab.id)) continue;
-      if (!tab.restoresPlacementAfterRemoval) {
+      if (
+        !tab.restoresPlacementAfterRemoval ||
+        tab.id === inPlaceReplacement?.nextTabId
+      ) {
         removedTabPlacements.current.delete(tab.id);
         continue;
       }
@@ -375,7 +389,9 @@ export function SidebarSplitContainer({
     next?.scrollIntoView({ block: "nearest" });
     return true;
   };
-  useAppCommandHandler("panel.previousNewTabItem", () => navigateNewTabItem(-1));
+  useAppCommandHandler("panel.previousNewTabItem", () =>
+    navigateNewTabItem(-1),
+  );
   useAppCommandHandler("panel.nextNewTabItem", () => navigateNewTabItem(1));
 
   const focusPane = useCallback(

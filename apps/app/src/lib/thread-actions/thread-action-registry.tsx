@@ -21,7 +21,10 @@ import type {
   PluginThreadActionsOptions,
 } from "@get-bb/plugin-sdk";
 import { PluginContext } from "@/components/plugin/plugin-context";
-import { getActiveThreadPanelOpener } from "@/components/plugin/plugin-thread-panel-navigation";
+import {
+  getActiveThreadPanelOpener,
+  openPluginThreadPanel,
+} from "@/components/plugin/plugin-thread-panel-navigation";
 import { useBbNavigate, useSdk } from "@/lib/plugin-navigation-hooks";
 import { compareGroupedPlacement } from "@/lib/grouped-placement";
 import { usePluginSlots } from "@/lib/plugin-slots";
@@ -223,7 +226,12 @@ function useLatestNavigate(navigate: BbNavigate, pluginId: string): BbNavigate {
     toPluginPanel: (...args) => latest.current.toPluginPanel(...args),
     toCompose: (...args) => latest.current.toCompose(...args),
     openThreadPanel: (options) =>
-      getActiveThreadPanelOpener()?.({ ...options, pluginId }) ?? false,
+      openPluginThreadPanel({
+        open: getActiveThreadPanelOpener(),
+        options,
+        panelTab: null,
+        pluginId,
+      }),
     openUrl: (...args) => latest.current.openUrl(...args),
     experimental_openFilePreview: (...args) =>
       latest.current.experimental_openFilePreview(...args),

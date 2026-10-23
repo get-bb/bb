@@ -4,6 +4,7 @@ import type {
   ThreadChatMessageReference,
 } from "@get-bb/plugin-sdk";
 import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
+import { openPluginThreadPanel } from "@/components/plugin/plugin-thread-panel-navigation";
 import { createComposerHandleBinding } from "@get-bb/plugin-sdk/internal/composer-handle";
 import { detachedComposerController } from "./plugin-composer-handle";
 import type { MarkdownMessageDirectiveOpenThreadPanel } from "@/components/ui/markdown-message-directives";
@@ -52,7 +53,12 @@ export function runPluginMessageAction({
         );
         return false;
       }
-      return openThreadPanel({ ...options, pluginId: slot.pluginId });
+      return openPluginThreadPanel({
+        open: openThreadPanel,
+        options,
+        panelTab: null,
+        pluginId: slot.pluginId,
+      });
     },
     composer: messageActionComposer(slot.pluginId, threadId, composerHost),
   };
