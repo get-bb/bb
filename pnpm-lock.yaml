@@ -1314,6 +1314,9 @@ importers:
       bb-plugin-bb--connect-next:
         specifier: workspace:*
         version: link:../../plugins/connect-next
+      esbuild:
+        specifier: ^0.28.0
+        version: 0.28.1
       tsrs:
         specifier: 0.18.0-ts7.1.0-dev.20260929
         version: 0.18.0-ts7.1.0-dev.20260929

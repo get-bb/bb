@@ -11,6 +11,7 @@ import {
   ensurePersonalProject,
   getAppSettings,
   getDisabledProviderIds,
+  getExperiments,
   listRunningThreads,
   setAppSettings,
   type DbConnection,
@@ -44,6 +45,12 @@ import {
 import { createBbAppManagedConfigReloader } from "../../src/services/system/bb-app-managed-config.js";
 import { createNoopTelemetryService } from "../../src/services/system/telemetry.js";
 import { TerminalSessionLifecycle } from "../../src/services/terminals/terminal-session-lifecycle.js";
+import {
+  createInProcessTerminalRelay,
+  createTerminalRelayRouter,
+  startTerminalRelayProcess,
+} from "../../src/services/terminals/terminal-relay-transport.js";
+import type { TerminalRelay } from "../../src/services/terminals/terminal-relay.js";
 import { createLifecycleDedupers } from "../../src/lifecycle-dedupers.js";
 import type { ServerAppDeps, ServerRuntimeConfig } from "../../src/types.js";
 import type { NotificationHub } from "../../src/ws/hub.js";
@@ -69,6 +76,8 @@ export interface TestAppHarness {
   pluginService: ReturnType<typeof createApp>["pluginService"];
   pluginCatalogService: ReturnType<typeof createApp>["pluginCatalogService"];
   serverMove: ReturnType<typeof createApp>["serverMove"];
+  terminalRelay: TerminalRelay;
+  forkedTerminalRelay: { readonly pid: number | null } | null;
   cleanup(): Promise<void>;
 }
 
@@ -98,6 +107,7 @@ export type TestAppHarnessConfigOverrides = Partial<ServerRuntimeConfig> & {
   terminalAttachTimeoutMs?: number;
   terminalCloseTimeoutMs?: number;
   terminalOpenTimeoutMs?: number;
+  forkTerminalRelay?: boolean;
   nativeRootsClock?: () => number;
   seedFirstPartyProviders?: boolean;
   tunnelIngressNow?: () => number;
@@ -164,6 +174,7 @@ export async function createTestAppHarness(
     terminalAttachTimeoutMs = TEST_TERMINAL_RPC_TIMEOUT_MS,
     terminalCloseTimeoutMs,
     terminalOpenTimeoutMs = TEST_TERMINAL_RPC_TIMEOUT_MS,
+    forkTerminalRelay = false,
     nativeRootsClock,
     seedFirstPartyProviders = true,
     tunnelIngressNow: _tunnelIngressNow,
@@ -249,6 +260,23 @@ export async function createTestAppHarness(
     appUrl: "https://bb.example.test",
     ...configOverrides,
   };
+  const inProcessTerminalRelay = createInProcessTerminalRelay({
+    attachTimeoutMs: terminalAttachTimeoutMs,
+  });
+  const forkedTerminalRelay = forkTerminalRelay
+    ? startTerminalRelayProcess({
+        entryUrl: new URL("../../src/terminal-relay-process.ts", import.meta.url),
+        execArgv: ["--conditions=source", "--import", "tsx"],
+        logger: testLogger,
+      })
+    : null;
+  const terminalRelay = createTerminalRelayRouter({
+    inProcess: inProcessTerminalRelay,
+    process:
+      forkedTerminalRelay ??
+      createInProcessTerminalRelay({ attachTimeoutMs: terminalAttachTimeoutMs }),
+    useProcess: () => getExperiments(db).terminalRelayProcess,
+  });
   const terminalSessions = new TerminalSessionLifecycle({
     attachTimeoutMs: terminalAttachTimeoutMs,
     ...(terminalCloseTimeoutMs === undefined
@@ -259,6 +287,7 @@ export async function createTestAppHarness(
     hub,
     logger,
     openTimeoutMs: terminalOpenTimeoutMs,
+    relay: terminalRelay,
   });
   const bbAppManagedConfig = await createBbAppManagedConfigReloader({
     config,
@@ -352,7 +381,10 @@ export async function createTestAppHarness(
     pluginService,
     pluginCatalogService,
     serverMove,
+    terminalRelay: inProcessTerminalRelay.relay,
+    forkedTerminalRelay,
     async cleanup(): Promise<void> {
+      await terminalRelay.close();
       clearAllThreadProvisionSchedules();
       setPluginEnvironmentProviderBridge(undefined);
       await pluginService.stop();
@@ -448,6 +480,7 @@ export async function startTestServer(
         });
       });
       await tunnelIngress.closeAll();
+      await harness.deps.terminalSessions.relay.close();
       await closeWebSockets();
       await closeServer;
       await harness.cleanup();

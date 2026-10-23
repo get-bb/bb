@@ -64,6 +64,7 @@ export {
   HOST_DAEMON_DESKTOP_BROKER_PROOF_PROTOCOL_VERSION,
   HOST_DAEMON_ENVIRONMENT_CLEANUP_INSPECTION_PROTOCOL_VERSION,
   HOST_DAEMON_PROTOCOL_VERSION,
+  HOST_DAEMON_TERMINAL_DATA_PATH,
   hostDaemonSupportsConnectNext,
   hostDaemonSupportsDesktopBrokerProof,
   hostDaemonSupportsEnvironmentCleanupInspection,

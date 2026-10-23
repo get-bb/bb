@@ -215,6 +215,16 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+function terminalAttach(requestId: string, terminalId = "term-1") {
+  return {
+    type: "terminal.attach" as const,
+    requestId,
+    terminalId,
+    sinceSeq: 0,
+    tailBytes: 1024,
+  };
+}
+
 describe("ServerConnection", () => {
   it("applies the idle timeout on connection, live changes and reconnect", async () => {
     const onIdleProviderSessionTimeout = vi.fn();
@@ -635,15 +645,18 @@ describe("ServerConnection", () => {
     }
   });
 
-  it("queues output above high water and flushes it before lifecycle messages", async () => {
+  it("queues output on the terminal data socket above high water and flushes it before the exit", async () => {
     vi.useFakeTimers();
     const { connection, webSocket } = createConnectionFixture();
     try {
       await connection.start();
-      const socket = webSocket.sockets[0];
-      if (!socket) {
-        throw new Error("Expected test socket");
+      await vi.waitFor(() => expect(webSocket.sockets[1]?.readyState).toBe(1));
+      const controlSocket = webSocket.sockets[0];
+      const socket = webSocket.sockets[1];
+      if (!controlSocket || !socket) {
+        throw new Error("Expected control and terminal data sockets");
       }
+      socket.onmessage?.({ data: JSON.stringify(terminalAttach("attach-1")) });
       webSocket.setBufferedAmount(socket, 2 * 1024 * 1024);
       const output = {
         type: "terminal.output" as const,
@@ -664,8 +677,11 @@ describe("ServerConnection", () => {
       expect(socket.send).not.toHaveBeenCalled();
 
       expect(connection.sendMessage(exited)).toBe(true);
-      expect(socket.send).toHaveBeenNthCalledWith(1, JSON.stringify(output));
-      expect(socket.send).toHaveBeenNthCalledWith(2, JSON.stringify(exited));
+      expect(vi.mocked(socket.send).mock.calls.map(([payload]) => payload)).toEqual([
+        JSON.stringify(output),
+        JSON.stringify(exited),
+      ]);
+      expect(controlSocket.send).not.toHaveBeenCalledWith(JSON.stringify(exited));
     } finally {
       await connection.shutdown();
     }
@@ -701,14 +717,16 @@ describe("ServerConnection", () => {
     }
   });
 
-  it("closes the connection when a terminal websocket send throws", async () => {
+  it("reconnects the terminal data socket when a send on it throws", async () => {
     const { connection, webSocket } = createConnectionFixture();
     try {
       await connection.start();
-      const socket = webSocket.sockets[0];
+      await vi.waitFor(() => expect(webSocket.sockets[1]?.readyState).toBe(1));
+      const socket = webSocket.sockets[1];
       if (!socket) {
-        throw new Error("Expected test socket");
+        throw new Error("Expected terminal data socket");
       }
+      socket.onmessage?.({ data: JSON.stringify(terminalAttach("attach-1")) });
       vi.mocked(socket.send).mockImplementation(() => {
         throw new Error("send failed");
       });
@@ -723,7 +741,167 @@ describe("ServerConnection", () => {
           },
         }),
       ).toBe(false);
-      expect(socket.close).toHaveBeenCalledWith(1013, "send-failed");
+      expect(socket.reconnect).toHaveBeenCalledWith(1013, "send-failed");
+    } finally {
+      await connection.shutdown();
+    }
+  });
+
+  it("sends each terminal's replies and output on the socket that attached it", async () => {
+    const { connection, webSocket } = createConnectionFixture();
+    try {
+      await connection.start();
+      await vi.waitFor(() => expect(webSocket.sockets[1]?.readyState).toBe(1));
+      const controlSocket = webSocket.sockets[0];
+      const dataSocket = webSocket.sockets[1];
+      if (!controlSocket || !dataSocket) {
+        throw new Error("Expected control and terminal data sockets");
+      }
+      const replay = (requestId: string, terminalId: string) => ({
+        type: "terminal.replay" as const,
+        requestId,
+        terminalId,
+        chunks: [],
+        replayStartSeq: 0,
+        nextSeq: 0,
+      });
+      const output = (terminalId: string) => ({
+        type: "terminal.output" as const,
+        terminalId,
+        chunk: { seq: 0, dataBase64: Buffer.from("a").toString("base64") },
+      });
+
+      dataSocket.onmessage?.({
+        data: JSON.stringify(terminalAttach("from-relay", "term-relay")),
+      });
+      controlSocket.onmessage?.({
+        data: JSON.stringify(terminalAttach("from-main", "term-main")),
+      });
+      expect(connection.sendMessage(replay("from-relay", "term-relay"))).toBe(
+        true,
+      );
+      expect(connection.sendMessage(replay("from-main", "term-main"))).toBe(
+        true,
+      );
+      expect(connection.sendMessage(output("term-relay"))).toBe(true);
+      expect(connection.sendMessage(output("term-main"))).toBe(true);
+
+      expect(vi.mocked(dataSocket.send).mock.calls).toEqual([
+        [JSON.stringify(replay("from-relay", "term-relay"))],
+        [JSON.stringify(output("term-relay"))],
+      ]);
+      expect(controlSocket.send).toHaveBeenCalledWith(
+        JSON.stringify(replay("from-main", "term-main")),
+      );
+      expect(controlSocket.send).toHaveBeenCalledWith(
+        JSON.stringify(output("term-main")),
+      );
+    } finally {
+      await connection.shutdown();
+    }
+  });
+
+  it("keeps a terminal's output on the data socket when it is read over the control socket", async () => {
+    const { connection, webSocket } = createConnectionFixture();
+    try {
+      await connection.start();
+      await vi.waitFor(() => expect(webSocket.sockets[1]?.readyState).toBe(1));
+      const controlSocket = webSocket.sockets[0];
+      const dataSocket = webSocket.sockets[1];
+      if (!controlSocket || !dataSocket) {
+        throw new Error("Expected control and terminal data sockets");
+      }
+      const output = {
+        type: "terminal.output" as const,
+        terminalId: "term-1",
+        chunk: { seq: 0, dataBase64: Buffer.from("a").toString("base64") },
+      };
+
+      dataSocket.onmessage?.({ data: JSON.stringify(terminalAttach("relay")) });
+      controlSocket.onmessage?.({
+        data: JSON.stringify(terminalAttach("rest-read")),
+      });
+      expect(connection.sendMessage(output)).toBe(true);
+
+      expect(dataSocket.send).toHaveBeenCalledWith(JSON.stringify(output));
+      expect(controlSocket.send).not.toHaveBeenCalledWith(
+        JSON.stringify(output),
+      );
+    } finally {
+      await connection.shutdown();
+    }
+  });
+
+  it("sends a terminal's exit behind its output on the data socket, then returns it to the control socket", async () => {
+    const { connection, webSocket } = createConnectionFixture();
+    try {
+      await connection.start();
+      await vi.waitFor(() => expect(webSocket.sockets[1]?.readyState).toBe(1));
+      const controlSocket = webSocket.sockets[0];
+      const dataSocket = webSocket.sockets[1];
+      if (!controlSocket || !dataSocket) {
+        throw new Error("Expected control and terminal data sockets");
+      }
+      const output = (data: string) => ({
+        type: "terminal.output" as const,
+        terminalId: "term-1",
+        chunk: { seq: 0, dataBase64: Buffer.from(data).toString("base64") },
+      });
+      const exited = {
+        type: "terminal.exited" as const,
+        terminalId: "term-1",
+        exitCode: 0,
+        closeReason: "process-exit" as const,
+      };
+
+      dataSocket.onmessage?.({ data: JSON.stringify(terminalAttach("relay")) });
+      expect(connection.sendMessage(output("last"))).toBe(true);
+      expect(connection.sendMessage(exited)).toBe(true);
+      expect(connection.sendMessage(output("after"))).toBe(true);
+
+      expect(vi.mocked(dataSocket.send).mock.calls.map(([payload]) => payload)).toEqual([
+        JSON.stringify(output("last")),
+        JSON.stringify(exited),
+      ]);
+      expect(controlSocket.send).not.toHaveBeenCalledWith(JSON.stringify(exited));
+      expect(controlSocket.send).toHaveBeenCalledWith(
+        JSON.stringify(output("after")),
+      );
+    } finally {
+      await connection.shutdown();
+    }
+  });
+
+  it("keeps a data socket exit until the relay acknowledges it and resends it on the control socket otherwise", async () => {
+    const { connection, webSocket } = createConnectionFixture();
+    try {
+      await connection.start();
+      await vi.waitFor(() => expect(webSocket.sockets[1]?.readyState).toBe(1));
+      const controlSocket = webSocket.sockets[0];
+      const dataSocket = webSocket.sockets[1];
+      if (!controlSocket || !dataSocket) {
+        throw new Error("Expected control and terminal data sockets");
+      }
+      const exited = (terminalId: string) => ({
+        type: "terminal.exited" as const,
+        terminalId,
+        exitCode: 0,
+        closeReason: "process-exit" as const,
+      });
+
+      dataSocket.onmessage?.({ data: JSON.stringify(terminalAttach("a", "acked")) });
+      dataSocket.onmessage?.({ data: JSON.stringify(terminalAttach("b", "lost")) });
+      expect(connection.sendMessage(exited("acked"))).toBe(true);
+      expect(connection.sendMessage(exited("lost"))).toBe(true);
+      dataSocket.onmessage?.({
+        data: JSON.stringify({ type: "terminal.exited.ack", terminalId: "acked" }),
+      });
+      dataSocket.reconnect();
+
+      expect(controlSocket.send).toHaveBeenCalledWith(JSON.stringify(exited("lost")));
+      expect(controlSocket.send).not.toHaveBeenCalledWith(
+        JSON.stringify(exited("acked")),
+      );
     } finally {
       await connection.shutdown();
     }

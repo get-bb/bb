@@ -702,6 +702,13 @@ const hostDaemonTerminalAckMessageSchema = z
   })
   .strict();
 
+const hostDaemonTerminalExitedAckMessageSchema = z
+  .object({
+    type: z.literal("terminal.exited.ack"),
+    terminalId: terminalIdSchema,
+  })
+  .strict();
+
 export const hostDaemonServerWsMessageSchema = z.discriminatedUnion("type", [
   z
     .object({
@@ -748,6 +755,35 @@ export const hostDaemonServerWsMessageSchema = z.discriminatedUnion("type", [
 ]);
 export type HostDaemonServerWsMessage = z.infer<
   typeof hostDaemonServerWsMessageSchema
+>;
+
+export const hostDaemonTerminalServerMessageSchema = z.discriminatedUnion(
+  "type",
+  [
+    hostDaemonTerminalAttachMessageSchema,
+    hostDaemonTerminalInputMessageSchema,
+    hostDaemonTerminalResizeMessageSchema,
+    hostDaemonTerminalFlowControlMessageSchema,
+    hostDaemonTerminalAckMessageSchema,
+  ],
+);
+export type HostDaemonTerminalServerMessage = z.infer<
+  typeof hostDaemonTerminalServerMessageSchema
+>;
+
+export const hostDaemonTerminalDataServerMessageSchema = z.discriminatedUnion(
+  "type",
+  [
+    hostDaemonTerminalAttachMessageSchema,
+    hostDaemonTerminalInputMessageSchema,
+    hostDaemonTerminalResizeMessageSchema,
+    hostDaemonTerminalFlowControlMessageSchema,
+    hostDaemonTerminalAckMessageSchema,
+    hostDaemonTerminalExitedAckMessageSchema,
+  ],
+);
+export type HostDaemonTerminalDataServerMessage = z.infer<
+  typeof hostDaemonTerminalDataServerMessageSchema
 >;
 
 const hostDaemonHeartbeatMessageSchema = z
@@ -901,6 +937,19 @@ export const hostDaemonDaemonWsMessageSchema = z.union([
 ]);
 export type HostDaemonDaemonWsMessage = z.infer<
   typeof hostDaemonDaemonWsMessageSchema
+>;
+
+export const hostDaemonTerminalDataDaemonMessageSchema = z.discriminatedUnion(
+  "type",
+  [
+    hostDaemonTerminalOutputMessageSchema,
+    hostDaemonTerminalReplayMessageSchema,
+    hostDaemonTerminalErrorMessageSchema,
+    hostDaemonTerminalExitedMessageSchema,
+  ],
+);
+export type HostDaemonTerminalDataDaemonMessage = z.infer<
+  typeof hostDaemonTerminalDataDaemonMessageSchema
 >;
 
 export const hostDaemonToolCallRequestSchema = toolCallRequestSchema

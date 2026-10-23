@@ -656,6 +656,22 @@ describe("bb connect next tunnel ingress", () => {
     await closeSocket(plugin.socket);
   });
 
+  it("hands terminal sockets to the terminal relay", async () => {
+    const path = "/ws/terminals/term_missing?sinceSeq=0";
+    const terminal = await openSocket(ingressBaseUrl, path, {
+      origin: PUBLIC_ORIGIN,
+      [GATE_ASSERTION_HEADER]: await assertion({ method: "GET", path }),
+    });
+    if (!("socket" in terminal)) {
+      throw new Error(`expected terminal socket, got ${terminal.status}`);
+    }
+    expect(JSON.parse(await terminal.firstMessage)).toMatchObject({
+      type: "error",
+      code: "terminal_not_found",
+    });
+    await closeSocket(terminal.socket);
+  });
+
   it("refetches the key set once for an unknown kid and follows rotation", async () => {
     const health = () => gated({ method: "GET", path: "/health" });
     expect((await health()).status).toBe(200);

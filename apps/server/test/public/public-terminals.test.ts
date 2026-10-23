@@ -20,6 +20,7 @@ import {
   terminalListResponseSchema,
   terminalServerMessageSchema,
   terminalOutputResponseSchema,
+  type TerminalClientMessage,
   type TerminalServerMessage,
   terminalSessionSchema,
 } from "@bb/server-contract";
@@ -45,6 +46,10 @@ import {
   handleHostSessionOpened,
 } from "../../src/internal/session-owner-side-effects.js";
 import { onDaemonSocketOpen } from "../../src/ws/daemon-protocol.js";
+import type {
+  TerminalRelay,
+  TerminalUpgradeGrant,
+} from "../../src/services/terminals/terminal-relay.js";
 
 interface FakeDaemonSocket {
   close(code?: number, reason?: string): void;
@@ -271,6 +276,107 @@ async function waitForDaemonMessage(
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
   throw new Error("Timed out waiting for daemon message");
+}
+
+function inProcessRelay(fixture: TerminalRouteFixture): TerminalRelay {
+  return fixture.harness.terminalRelay;
+}
+
+function browserGrant(
+  fixture: TerminalRouteFixture,
+  args: { outputAcks: boolean; sinceSeq: number; terminalId: string },
+): TerminalUpgradeGrant {
+  return {
+    kind: "browser",
+    outputAcks: args.outputAcks,
+    sinceSeq: args.sinceSeq,
+    terminal: fixture.harness.deps.terminalSessions.relayTerminal(
+      args.terminalId,
+    ),
+    terminalId: args.terminalId,
+  };
+}
+
+function attachBrowserTerminal(
+  fixture: TerminalRouteFixture,
+  args: {
+    outputAcks: boolean;
+    sinceSeq: number;
+    socket: FakeBrowserSocket;
+    terminalId: string;
+  },
+): void {
+  inProcessRelay(fixture).open(browserGrant(fixture, args), args.socket);
+}
+
+function sendBrowserTerminalMessage(
+  fixture: TerminalRouteFixture,
+  args: {
+    message: TerminalClientMessage;
+    socket: FakeBrowserSocket;
+    terminalId: string;
+  },
+): void {
+  inProcessRelay(fixture).message(
+    browserGrant(fixture, {
+      outputAcks: false,
+      sinceSeq: 0,
+      terminalId: args.terminalId,
+    }),
+    args.socket,
+    JSON.stringify(args.message),
+  );
+}
+
+function detachBrowserTerminal(
+  fixture: TerminalRouteFixture,
+  args: { socket: FakeBrowserSocket; terminalId: string },
+): void {
+  inProcessRelay(fixture).close(
+    browserGrant(fixture, {
+      outputAcks: false,
+      sinceSeq: 0,
+      terminalId: args.terminalId,
+    }),
+    args.socket,
+  );
+}
+
+function registerAttachedBrowser(
+  fixture: TerminalRouteFixture,
+  terminalId: string,
+  socket: FakeBrowserSocket,
+): void {
+  const dataGrant: TerminalUpgradeGrant = {
+    kind: "daemon",
+    daemonSessionId: fixture.session.id,
+  };
+  const dataSocket = createFakeDaemonSocket();
+  inProcessRelay(fixture).open(dataGrant, dataSocket);
+  attachBrowserTerminal(fixture, {
+    outputAcks: false,
+    sinceSeq: 0,
+    socket,
+    terminalId,
+  });
+  const attach = hostDaemonServerWsMessageSchema.parse(
+    JSON.parse(dataSocket.sentMessages[0] ?? "null"),
+  );
+  if (attach.type !== "terminal.attach") {
+    throw new Error(`Expected terminal.attach, received ${attach.type}`);
+  }
+  inProcessRelay(fixture).handleDaemonControlMessage({
+    daemonSessionId: fixture.session.id,
+    message: {
+      type: "terminal.replay",
+      requestId: attach.requestId,
+      terminalId,
+      chunks: [],
+      replayStartSeq: 0,
+      nextSeq: 0,
+    },
+  });
+  inProcessRelay(fixture).close(dataGrant, dataSocket);
 }
 
 async function createTerminalRouteFixture(
@@ -808,7 +914,7 @@ describe("public terminal routes", () => {
     });
     const browserSocket = createFakeBrowserSocket();
 
-    fixture.harness.deps.terminalSessions.attachBrowserTerminal({
+    attachBrowserTerminal(fixture, {
       outputAcks: false,
       socket: browserSocket,
       sinceSeq: 0,
@@ -849,7 +955,7 @@ describe("public terminal routes", () => {
       }),
     );
 
-    fixture.harness.deps.terminalSessions.handleBrowserTerminalMessage({
+    sendBrowserTerminalMessage(fixture, {
       socket: browserSocket,
       terminalId: stored.id,
       message: {
@@ -1622,7 +1728,7 @@ describe("public terminal routes", () => {
       title: "Terminal 1",
     });
     const browserSocket = createFakeBrowserSocket();
-    fixture.harness.hub.registerTerminalClient(stored.id, browserSocket);
+    registerAttachedBrowser(fixture, stored.id, browserSocket);
     const chunk = (seq: number) => ({
       seq,
       dataBase64: Buffer.from(`chunk-${seq}`).toString("base64"),
@@ -1730,19 +1836,19 @@ describe("public terminal routes", () => {
         fixture.harness.hub.unregisterDaemon(fixture.session.id);
       }
       const browserSocket = createFakeBrowserSocket();
-      fixture.harness.deps.terminalSessions.attachBrowserTerminal({
+      attachBrowserTerminal(fixture, {
         outputAcks: false,
         socket: browserSocket,
         sinceSeq: 5,
         terminalId: stored.id,
       });
 
-      fixture.harness.deps.terminalSessions.handleBrowserTerminalMessage({
+      sendBrowserTerminalMessage(fixture, {
         message: { type: "resize", cols: 100, rows: 30 },
         socket: browserSocket,
         terminalId: stored.id,
       });
-      fixture.harness.deps.terminalSessions.handleBrowserTerminalMessage({
+      sendBrowserTerminalMessage(fixture, {
         message: { type: "input", dataBase64: btoa("ls\n") },
         socket: browserSocket,
         terminalId: stored.id,
@@ -1797,7 +1903,7 @@ describe("public terminal routes", () => {
       title: "Terminal 1",
     });
     const browserSocket = createFakeBrowserSocket();
-    fixture.harness.hub.registerTerminalClient(stored.id, browserSocket);
+    registerAttachedBrowser(fixture, stored.id, browserSocket);
 
     fixture.harness.deps.terminalSessions.handleDaemonSessionClosed({
       sessionId: fixture.session.id,
@@ -1862,7 +1968,7 @@ describe("public terminal routes", () => {
       title: "Terminal 1",
     });
     const browserSocket = createFakeBrowserSocket();
-    fixture.harness.hub.registerTerminalClient(stored.id, browserSocket);
+    registerAttachedBrowser(fixture, stored.id, browserSocket);
 
     const replacementSession = seedSession(
       fixture.harness.deps,
@@ -1942,7 +2048,7 @@ describe("public terminal routes", () => {
       title: "Terminal 1",
     });
     const browserSocket = createFakeBrowserSocket();
-    fixture.harness.hub.registerTerminalClient(stored.id, browserSocket);
+    registerAttachedBrowser(fixture, stored.id, browserSocket);
 
     handleDaemonSocketClosed(fixture.harness.deps, {
       sessionId: fixture.session.id,
@@ -1983,7 +2089,7 @@ describe("public terminal routes", () => {
       title: "Terminal 1",
     });
     const browserSocket = createFakeBrowserSocket();
-    fixture.harness.hub.registerTerminalClient(stored.id, browserSocket);
+    registerAttachedBrowser(fixture, stored.id, browserSocket);
 
     const response = await fixture.harness.app.request(
       `/api/v1/threads/${fixture.thread.id}`,
@@ -2053,7 +2159,7 @@ describe("public terminal routes", () => {
       title: "Terminal 1",
     });
     const browserSocket = createFakeBrowserSocket();
-    fixture.harness.hub.registerTerminalClient(stored.id, browserSocket);
+    registerAttachedBrowser(fixture, stored.id, browserSocket);
 
     const response = await fixture.harness.app.request(
       `/api/v1/threads/${fixture.thread.id}/archive-all`,
@@ -2504,7 +2610,7 @@ describe("public terminal routes", () => {
     const firstSocket = createFakeBrowserSocket();
     const secondSocket = createFakeBrowserSocket();
 
-    fixture.harness.deps.terminalSessions.attachBrowserTerminal({
+    attachBrowserTerminal(fixture, {
       outputAcks: false,
       terminalId: stored.id,
       socket: firstSocket,
@@ -2527,7 +2633,7 @@ describe("public terminal routes", () => {
       },
     });
 
-    fixture.harness.deps.terminalSessions.attachBrowserTerminal({
+    attachBrowserTerminal(fixture, {
       outputAcks: false,
       terminalId: stored.id,
       socket: secondSocket,
@@ -2551,7 +2657,7 @@ describe("public terminal routes", () => {
       },
     });
 
-    fixture.harness.deps.terminalSessions.handleBrowserTerminalMessage({
+    sendBrowserTerminalMessage(fixture, {
       terminalId: stored.id,
       socket: firstSocket,
       message: { type: "resize", cols: 120, rows: 40 },
@@ -2594,7 +2700,7 @@ describe("public terminal routes", () => {
         },
       });
 
-    fixture.harness.deps.terminalSessions.attachBrowserTerminal({
+    attachBrowserTerminal(fixture, {
       outputAcks: true,
       terminalId: stored.id,
       socket: browserSocket,
@@ -2622,12 +2728,12 @@ describe("public terminal routes", () => {
     sendOutput(0);
     sendOutput(1);
     sendOutput(2);
-    fixture.harness.deps.terminalSessions.handleBrowserTerminalMessage({
+    sendBrowserTerminalMessage(fixture, {
       terminalId: stored.id,
       socket: browserSocket,
       message: { type: "ack", nextSeq: 3 },
     });
-    fixture.harness.deps.terminalSessions.detachBrowserTerminal({
+    detachBrowserTerminal(fixture, {
       terminalId: stored.id,
       socket: browserSocket,
     });
@@ -2655,7 +2761,7 @@ describe("public terminal routes", () => {
     });
     const browserSocket = createFakeBrowserSocket();
 
-    fixture.harness.deps.terminalSessions.attachBrowserTerminal({
+    attachBrowserTerminal(fixture, {
       outputAcks: false,
       terminalId: stored.id,
       socket: browserSocket,
@@ -2728,7 +2834,7 @@ describe("public terminal routes", () => {
       chunk: liveChunk,
     });
 
-    fixture.harness.deps.terminalSessions.handleBrowserTerminalMessage({
+    sendBrowserTerminalMessage(fixture, {
       terminalId: stored.id,
       socket: browserSocket,
       message: {
@@ -2758,7 +2864,7 @@ describe("public terminal routes", () => {
       }),
     );
 
-    fixture.harness.deps.terminalSessions.handleBrowserTerminalMessage({
+    sendBrowserTerminalMessage(fixture, {
       terminalId: stored.id,
       socket: browserSocket,
       message: {

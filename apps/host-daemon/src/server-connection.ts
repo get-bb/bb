@@ -1,11 +1,13 @@
 import { Buffer } from "node:buffer";
 import {
   HOST_DAEMON_PROTOCOL_VERSION,
+  HOST_DAEMON_TERMINAL_DATA_PATH,
   buildHostDaemonWebSocketAuthorizationHeader,
   buildHostDaemonWebSocketProtocols,
   hostDaemonDaemonWsMessageSchema,
   hostDaemonRpcCommandTypeSchema,
   hostDaemonServerWsMessageSchema,
+  hostDaemonTerminalDataServerMessageSchema,
   type HostDaemonSessionCloseReason,
   type HostDaemonSessionOpenResponse,
   type HostDaemonDaemonWsMessage,
@@ -77,6 +79,7 @@ const TERMINAL_SOCKET_DRAIN_POLL_MS = 10;
 interface PendingTerminalSocketPayload {
   bytes: number;
   payload: string;
+  websocket: ReconnectingWebSocketLike;
 }
 
 function recoverableMessageKey(
@@ -93,6 +96,18 @@ function recoverableMessageKey(
       return `environment-metadata-change\u0000${message.environmentId}`;
     case "terminal.exited":
       return `terminal.exited\u0000${message.terminalId}`;
+    default:
+      return null;
+  }
+}
+
+function terminalDataReplyRequestId(
+  message: HostDaemonDaemonWsMessage,
+): string | null {
+  switch (message.type) {
+    case "terminal.replay":
+    case "terminal.error":
+      return message.requestId;
     default:
       return null;
   }
@@ -136,6 +151,13 @@ export class ServerConnection {
   private session: HostDaemonSessionOpenResponse | null = null;
   private machineEnvironmentRevision = -1;
   private websocket: ReconnectingWebSocketLike | null = null;
+  private terminalDataWebSocket: ReconnectingWebSocketLike | null = null;
+  private readonly terminalDataRequestIds = new Set<string>();
+  private readonly terminalDataTerminalIds = new Set<string>();
+  private readonly unacknowledgedExits = new Map<
+    string,
+    Extract<HostDaemonDaemonWsMessage, { type: "terminal.exited" }>
+  >();
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
   private lastHeartbeatAcknowledgedAt: number | null = null;
   private lastHeartbeatTickAt: number | null = null;
@@ -189,7 +211,7 @@ export class ServerConnection {
   sendMessage(message: HostDaemonDaemonWsMessage): boolean {
     const parsed = hostDaemonDaemonWsMessageSchema.parse(message);
     const recoverableKey = recoverableMessageKey(parsed);
-    const websocket = this.websocket;
+    const websocket = this.socketForMessage(parsed);
     if (!websocket || websocket.readyState !== OPEN_READY_STATE) {
       if (recoverableKey !== null) {
         this.pendingRecoverableMessages.set(recoverableKey, parsed);
@@ -203,7 +225,7 @@ export class ServerConnection {
       (this.pendingTerminalSocketPayloads.length > 0 ||
         (websocket.bufferedAmount ?? 0) > TERMINAL_SOCKET_HIGH_WATER_BYTES)
     ) {
-      return this.enqueueTerminalSocketPayload(payload);
+      return this.enqueueTerminalSocketPayload(payload, websocket);
     }
     if (
       isTerminalDaemonLifecycleMessage(parsed) &&
@@ -224,16 +246,150 @@ export class ServerConnection {
         { ...runtimeErrorLogFields(error), type: parsed.type },
         "Failed to send websocket message",
       );
-      websocket.close(1013, "send-failed");
+      this.abortSocket(websocket, "send-failed");
       return false;
     }
     if (recoverableKey !== null) {
       this.pendingRecoverableMessages.delete(recoverableKey);
     }
+    if (parsed.type === "terminal.exited") {
+      this.terminalDataTerminalIds.delete(parsed.terminalId);
+      if (websocket === this.terminalDataWebSocket) {
+        this.unacknowledgedExits.set(parsed.terminalId, parsed);
+      }
+    }
     return true;
   }
 
-  private enqueueTerminalSocketPayload(payload: string): boolean {
+  private socketForMessage(
+    message: HostDaemonDaemonWsMessage,
+  ): ReconnectingWebSocketLike | null {
+    const replyRequestId = terminalDataReplyRequestId(message);
+    const dataReply =
+      replyRequestId !== null &&
+      this.terminalDataRequestIds.delete(replyRequestId);
+    const dataOutput =
+      (message.type === "terminal.output" ||
+        message.type === "terminal.exited") &&
+      this.terminalDataTerminalIds.has(message.terminalId);
+    if (dataReply || dataOutput) {
+      return this.terminalOutputSocket();
+    }
+    return this.websocket;
+  }
+
+  private abortSocket(websocket: ReconnectingWebSocketLike, reason: string): void {
+    if (websocket === this.terminalDataWebSocket) {
+      websocket.reconnect(1013, reason);
+      return;
+    }
+    websocket.close(1013, reason);
+  }
+
+  private terminalOutputSocket(): ReconnectingWebSocketLike | null {
+    const dataWebSocket = this.terminalDataWebSocket;
+    if (dataWebSocket?.readyState === OPEN_READY_STATE) {
+      return dataWebSocket;
+    }
+    return this.websocket;
+  }
+
+  private openTerminalDataWebSocket(sessionId: string): void {
+    this.closeTerminalDataWebSocket();
+    const websocket = this.createWebSocket(
+      async () =>
+        this.buildWebSocketUrl(sessionId, HOST_DAEMON_TERMINAL_DATA_PATH),
+      {
+        minReconnectionDelay: DEFAULT_MIN_RECONNECTION_DELAY,
+        maxReconnectionDelay: DEFAULT_MAX_RECONNECTION_DELAY,
+        reconnectionDelayGrowFactor: DEFAULT_RECONNECTION_DELAY_GROW_FACTOR,
+        connectionTimeout: DEFAULT_CONNECTION_TIMEOUT_MS,
+        headers: {
+          authorization: buildHostDaemonWebSocketAuthorizationHeader(
+            this.options.hostKey,
+          ),
+          ...this.options.serverHeaders,
+        },
+        maxRetries: Number.POSITIVE_INFINITY,
+        protocols: buildHostDaemonWebSocketProtocols(),
+      },
+    );
+    websocket.onopen = () => {
+      this.flushTerminalSocketPayloads(true);
+    };
+    websocket.onmessage = (event) => {
+      this.handleTerminalDataMessage(event.data);
+    };
+    websocket.onclose = () => {
+      this.terminalDataRequestIds.clear();
+      this.resendUnacknowledgedExits();
+    };
+    websocket.onerror = (error) => {
+      this.options.logger.debug({ err: error }, "Terminal data socket error");
+    };
+    this.terminalDataWebSocket = websocket;
+  }
+
+  private resendUnacknowledgedExits(): void {
+    const exits = [...this.unacknowledgedExits.values()];
+    this.unacknowledgedExits.clear();
+    for (const exit of exits) {
+      this.sendMessage(exit);
+    }
+  }
+
+  private closeTerminalDataWebSocket(): void {
+    const websocket = this.terminalDataWebSocket;
+    this.terminalDataWebSocket = null;
+    this.terminalDataRequestIds.clear();
+    this.resendUnacknowledgedExits();
+    if (!websocket) {
+      return;
+    }
+    websocket.onopen = null;
+    websocket.onmessage = null;
+    websocket.onclose = null;
+    websocket.onerror = null;
+    websocket.close();
+  }
+
+  private handleTerminalDataMessage(data: unknown): void {
+    let decoded: unknown;
+    try {
+      decoded = JSON.parse(decodeWebSocketMessageData(data));
+    } catch {
+      decoded = null;
+    }
+    const message = hostDaemonTerminalDataServerMessageSchema.safeParse(decoded);
+    if (!message.success) {
+      this.options.logger.warn(
+        { ...summarizeServerMessagePayload(data) },
+        "Ignoring invalid terminal data socket message",
+      );
+      return;
+    }
+    if (message.data.type === "terminal.exited.ack") {
+      this.unacknowledgedExits.delete(message.data.terminalId);
+      return;
+    }
+    if (message.data.type === "terminal.attach") {
+      this.terminalDataRequestIds.add(message.data.requestId);
+      this.terminalDataTerminalIds.add(message.data.terminalId);
+    }
+    void Promise.resolve(this.options.onTerminalMessage?.(message.data)).catch(
+      (error) => {
+        this.options.logger.warn(
+          { type: message.data.type, ...runtimeErrorLogFields(error) },
+          "Terminal data socket message handler failed",
+        );
+      },
+    );
+  }
+
+  private enqueueTerminalSocketPayload(
+    payload: string,
+    websocket: ReconnectingWebSocketLike,
+  ): boolean {
     const bytes = Buffer.byteLength(payload, "utf8");
     if (
       this.pendingTerminalSocketBytes + bytes >
@@ -247,10 +403,10 @@ export class ServerConnection {
         "Terminal websocket output queue exceeded its limit",
       );
       this.clearTerminalSocketPayloads();
-      this.websocket?.close(1013, "terminal-backpressure");
+      this.abortSocket(websocket, "terminal-backpressure");
       return false;
     }
-    this.pendingTerminalSocketPayloads.push({ bytes, payload });
+    this.pendingTerminalSocketPayloads.push({ bytes, payload, websocket });
     this.pendingTerminalSocketBytes += bytes;
     this.scheduleTerminalSocketDrain();
     return true;
@@ -267,18 +423,20 @@ export class ServerConnection {
   }
 
   private flushTerminalSocketPayloads(ignoreHighWater: boolean): void {
-    const websocket = this.websocket;
-    if (!websocket || websocket.readyState !== OPEN_READY_STATE) {
-      this.clearTerminalSocketPayloads();
-      return;
-    }
-    while (
-      this.pendingTerminalSocketPayloads.length > 0 &&
-      (ignoreHighWater ||
-        (websocket.bufferedAmount ?? 0) <= TERMINAL_SOCKET_HIGH_WATER_BYTES)
-    ) {
+    for (;;) {
       const pending = this.pendingTerminalSocketPayloads[0];
       if (!pending) {
+        break;
+      }
+      const { websocket } = pending;
+      if (websocket.readyState !== OPEN_READY_STATE) {
+        this.clearTerminalSocketPayloads();
+        return;
+      }
+      if (
+        !ignoreHighWater &&
+        (websocket.bufferedAmount ?? 0) > TERMINAL_SOCKET_HIGH_WATER_BYTES
+      ) {
         break;
       }
       try {
@@ -288,7 +446,7 @@ export class ServerConnection {
           { ...runtimeErrorLogFields(error) },
           "Failed to drain terminal websocket output",
         );
-        websocket.close(1013, "send-failed");
+        this.abortSocket(websocket, "send-failed");
         this.clearTerminalSocketPayloads();
         return;
       }
@@ -507,6 +665,7 @@ export class ServerConnection {
           clearTimeout(startupTimer);
           this.resetHeartbeat();
           this.options.setSession?.(session);
+          this.openTerminalDataWebSocket(session.sessionId);
           this.options.logger.info(
             { sessionId: session.sessionId },
             "Connected to server",
@@ -898,6 +1057,7 @@ export class ServerConnection {
   }
 
   private clearSession(): void {
+    this.closeTerminalDataWebSocket();
     this.clearTerminalSocketPayloads();
     if (!this.session) {
       return;
@@ -907,10 +1067,13 @@ export class ServerConnection {
     this.options.setSession?.(null);
   }
 
-  private buildWebSocketUrl(sessionId: string): string {
+  private buildWebSocketUrl(
+    sessionId: string,
+    pathname = "/internal/ws",
+  ): string {
     const serverUrl = new URL(this.options.serverUrl);
     serverUrl.protocol = serverUrl.protocol === "https:" ? "wss:" : "ws:";
-    serverUrl.pathname = "/internal/ws";
+    serverUrl.pathname = pathname;
     serverUrl.searchParams.set("sessionId", sessionId);
     return serverUrl.toString();
   }
