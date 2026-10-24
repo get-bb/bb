@@ -266,6 +266,66 @@ function isSameTurnEntry(
   );
 }
 
+function placeWorkflowLaunches(
+  contexts: SemanticMessageContext[],
+): SemanticMessageContext[] {
+  const childrenByCallId = new Map<
+    string,
+    Map<string, SemanticMessageContext>
+  >();
+  for (const context of contexts) {
+    const parentCallId = context.message.parentToolCallId;
+    if (!parentCallId) continue;
+    const children =
+      childrenByCallId.get(parentCallId) ??
+      new Map<string, SemanticMessageContext>();
+    children.set(context.message.id, context);
+    childrenByCallId.set(parentCallId, children);
+  }
+
+  const siblingsByLauncher = new Map<
+    SemanticMessageContext,
+    SemanticMessageContext[]
+  >();
+  const movedMessageIds = new Set<string>();
+  for (const context of contexts) {
+    const launcher = context.message;
+    if (launcher.kind !== "tool-call") continue;
+    const children = childrenByCallId.get(launcher.callId);
+    if (
+      !children ||
+      ![...children.values()].every(
+        ({ message }) =>
+          message.kind === "workflow" && message.taskType === "local_workflow",
+      )
+    ) {
+      continue;
+    }
+    siblingsByLauncher.set(
+      context,
+      [...children.values()].map(({ message }) => {
+        movedMessageIds.add(message.id);
+        const { parentToolCallId: _parentToolCallId, ...workflow } = message;
+        return {
+          ...context,
+          message: {
+            ...workflow,
+            scope: launcher.scope,
+            ...(launcher.parentToolCallId
+              ? { parentToolCallId: launcher.parentToolCallId }
+              : {}),
+          },
+        };
+      }),
+    );
+  }
+  return contexts.flatMap((context) =>
+    movedMessageIds.has(context.message.id)
+      ? []
+      : [context, ...(siblingsByLauncher.get(context) ?? [])],
+  );
+}
+
 class SemanticProjectionBuilder {
   private readonly attachedMessageIds = new Set<string>();
   private readonly childrenByParentCallId = new Map<
@@ -275,6 +335,7 @@ class SemanticProjectionBuilder {
   private readonly rootContexts: SemanticMessageContext[];
 
   constructor(contexts: SemanticMessageContext[]) {
+    contexts = placeWorkflowLaunches(contexts);
     const referencedParentCallIds = new Set(
       contexts
         .map((context) => context.message.parentToolCallId)
