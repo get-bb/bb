@@ -1,89 +1,22 @@
+import fs from "node:fs/promises";
 import path from "node:path";
 import { isPathWithinDirectory } from "@bb/process-utils";
 import { RootSubscription } from "./root-subscription.js";
+import { toWatchErrorMessage } from "./watch-error.js";
 import { watchPathChanges } from "./watch-path.js";
 import { watchWorkspaceStatus } from "./watch-status.js";
 import type {
   HostWatcher,
   InjectedSkillsObservedChange,
-  ThreadStorageObservedChange,
-  ThreadStorageWatchTarget,
   WatchDataDirSkillsRootArgs,
-  WatchThreadStorageRootArgs,
+  WatchThreadStorageArgs,
   WatchPathRootArgs,
   WatchWorkspaceArgs,
 } from "./host-watcher-types.js";
 
-interface ThreadStoragePathArgs {
-  changedPath: string;
-  threadStorageRootPath: string;
-}
-
-interface ThreadStoragePath {
-  parts: string[];
-  threadId: string;
-}
-
-interface CollectThreadStorageObservedChangesArgs {
-  changedPaths: string[];
-  threadStorageRootPath: string;
-  resolveThreadTarget: (threadId: string) => ThreadStorageWatchTarget | null;
-}
-
 interface CollectDataDirSkillsObservedChangesArgs {
   changedPaths: string[];
   dataDirSkillsRootPath: string;
-}
-
-function toThreadStoragePath(
-  args: ThreadStoragePathArgs,
-): ThreadStoragePath | null {
-  const relativePath = path.relative(
-    args.threadStorageRootPath,
-    args.changedPath,
-  );
-  if (
-    relativePath.length === 0 ||
-    relativePath.startsWith("..") ||
-    path.isAbsolute(relativePath)
-  ) {
-    return null;
-  }
-  const parts = relativePath.split(path.sep).filter(Boolean);
-  const threadId = parts[0];
-  if (!threadId) {
-    return null;
-  }
-  return {
-    parts,
-    threadId,
-  };
-}
-
-export function collectThreadStorageObservedChanges(
-  args: CollectThreadStorageObservedChangesArgs,
-): ThreadStorageObservedChange[] {
-  const storageChanges = new Map<string, ThreadStorageWatchTarget>();
-  for (const changedPath of args.changedPaths) {
-    const storagePath = toThreadStoragePath({
-      changedPath,
-      threadStorageRootPath: args.threadStorageRootPath,
-    });
-    if (!storagePath) {
-      continue;
-    }
-    const target = args.resolveThreadTarget(storagePath.threadId);
-    if (!target) {
-      continue;
-    }
-    storageChanges.set(`${target.environmentId}:${target.threadId}`, target);
-  }
-
-  return Array.from(storageChanges.values()).map((target) => ({
-    kind: "thread-storage-changed",
-    environmentId: target.environmentId,
-    threadId: target.threadId,
-  }));
 }
 
 export function collectDataDirSkillsObservedChanges(
@@ -128,28 +61,40 @@ function watchWorkspace(args: WatchWorkspaceArgs): () => Promise<void> {
   });
 }
 
-function watchThreadStorageRoot(
-  args: WatchThreadStorageRootArgs,
-): () => Promise<void> {
-  return watchPathChanges(args.threadStorageRootPath, {
-    onChange: ({ changedPaths }) => {
-      const events = collectThreadStorageObservedChanges({
-        changedPaths,
-        threadStorageRootPath: args.threadStorageRootPath,
-        resolveThreadTarget: args.resolveThreadTarget,
-      });
-      for (const event of events) {
-        args.onChange(event);
+function watchThreadStorage(args: WatchThreadStorageArgs): () => Promise<void> {
+  const reportWatchError = (error: { rootPath: string; message: string }) => {
+    args.onWatchError({
+      kind: "thread-storage-watch-error",
+      rootPath: error.rootPath,
+      message: error.message,
+    });
+  };
+  let stopped = false;
+  let stopWatching: (() => Promise<void>) | null = null;
+  const started = fs.mkdir(args.threadStoragePath, { recursive: true }).then(
+    () => {
+      if (stopped) {
+        return;
       }
-    },
-    onWatchError: (error) => {
-      args.onWatchError({
-        kind: "thread-storage-watch-error",
-        rootPath: error.rootPath,
-        message: error.message,
+      stopWatching = watchPathChanges(args.threadStoragePath, {
+        onChange: () => {
+          args.onChange();
+        },
+        onWatchError: reportWatchError,
       });
     },
-  });
+    (error: unknown) => {
+      reportWatchError({
+        rootPath: args.threadStoragePath,
+        message: `Thread storage directory could not be created: ${toWatchErrorMessage(error)}`,
+      });
+    },
+  );
+  return async () => {
+    stopped = true;
+    await started;
+    await stopWatching?.();
+  };
 }
 
 function watchDataDirSkillsRoot(
@@ -208,7 +153,7 @@ export function createParcelHostWatcher(): HostWatcher {
   return {
     watchWorkspace,
     watchPathRoot,
-    watchThreadStorageRoot,
+    watchThreadStorage,
     watchDataDirSkillsRoot,
   };
 }

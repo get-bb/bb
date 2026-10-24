@@ -878,7 +878,7 @@ describe("createHostDaemonApp", () => {
     } satisfies AgentRuntime;
     const hostWatcher = {
       watchWorkspace: vi.fn(() => stopWatchingStatus),
-      watchThreadStorageRoot: vi.fn(() => () => undefined),
+      watchThreadStorage: vi.fn(() => () => undefined),
     } satisfies HostWatcher;
     const app = await createHostDaemonApp({
       dataDir,

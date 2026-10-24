@@ -1674,7 +1674,7 @@ describe("RuntimeManager", () => {
   it("does not start a workspace watcher when loading an environment", async () => {
     const hostWatcher = {
       watchWorkspace: vi.fn(() => () => undefined),
-      watchThreadStorageRoot: vi.fn(() => () => undefined),
+      watchThreadStorage: vi.fn(() => () => undefined),
     } satisfies HostWatcher;
     const manager = new RuntimeManager({
       hostWatcher,
@@ -1688,7 +1688,7 @@ describe("RuntimeManager", () => {
     });
 
     expect(hostWatcher.watchWorkspace).not.toHaveBeenCalled();
-    expect(hostWatcher.watchThreadStorageRoot).not.toHaveBeenCalled();
+    expect(hostWatcher.watchThreadStorage).not.toHaveBeenCalled();
   });
 
   it("lists live threads for session reconciliation before the first turn event", async () => {
