@@ -179,8 +179,9 @@ runners that do not accept Vitest's shard arguments:
 The `plugins-1` group runs provider plugins, Tasks, Connect, and the thread list.
 `plugins-2` uses negative filters to run every other plugin, including new ones.
 All Linux groups run four concurrent
-Turbo tasks and cap Vitest at two workers with `VITEST_MAX_WORKERS`, which
-Turbo hashes for test tasks. Electron's runtime libraries and Xvfb are set up
+Turbo tasks. The two server shards use four Vitest workers each; other groups
+cap Vitest at two workers with `VITEST_MAX_WORKERS`, which Turbo hashes for
+test tasks. Electron's runtime libraries and Xvfb are set up
 only when the selected tests include `@bb/desktop`. Electron setup queries
 dpkg first and runs apt only for missing packages, then starts Electron to
 verify the runtime.
@@ -769,3 +770,28 @@ on both operating systems, but timing gains were inconsistent: Windows builds
 took 19–20 seconds before and 16–29 after; Linux took 15–17 before and 14–19 after.
 That compiler change was not retained. Package-group timings include compiler
 prerequisites, so test-file savings are not whole-job or workflow savings.
+
+## Linux server worker allocation
+
+[Comparison 40104954325](https://github.com/get-bb/bb/actions/runs/40104954325)
+ran both existing server shards with two and four Vitest workers on four-vCPU
+Linux runners, twice per arrangement. The measured step includes SDK prerequisites:
+Turbo hashes the JSON reporter arguments into prerequisite tasks too, so the
+preparation step did not make those cache hits. Four workers passed all four jobs:
+
+| Shard    | Two workers            | Four workers |
+| -------- | ---------------------- | ------------ |
+| Server 1 | 85, 95s                | 63, 70s      |
+| Server 2 | 88s failed, 99s passed | 81, 72s      |
+
+The server test task itself, excluding prerequisites, took 66–79 seconds in the
+passing two-worker runs and 46–60 seconds with four workers.
+
+The failed baseline hit the unchanged bundled-dependency rebuild assertion in
+`plugin-host-build-policy.test.ts`; its timing is not a successful baseline.
+Both arrangements discovered the same 3,681 cases across the two shards
+(3,680 passing plus one existing skipped case in the passing runs). Test names
+containing a generated `sendAt` timestamp were normalized for inventory comparison.
+The retained setting uses four workers only for these single-package server
+shards. Other Linux groups retain two workers per package, because several Turbo
+tasks may run concurrently. No shards, runners, coverage, or timeouts were added.
