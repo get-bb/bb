@@ -217,6 +217,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginThreadAction`
 - `PluginThreadActionDataInput`
 - `PluginThreadActionItemInput`
+- `PluginThreadActionBulkItemInput`
 - `PluginThreadActionRegistration`
 - `PluginBoundThreadAction`
 - `PluginThreadActionEntry`

@@ -2064,6 +2064,21 @@ export interface PluginThreadActionItemInput<Data> {
 }
 
 /**
+ * What a registration's `experimental_bulkItem` receives for a selection
+ * of several threads.
+ */
+export interface PluginThreadActionBulkItemInput<Data> {
+  /** The selected threads in the surface's list order; always two or more. */
+  threads: readonly PluginThreadActionTarget[];
+  /** What `useData` last returned; undefined when the registration has none. */
+  data: Data;
+  /** The registering plugin's `useSdk()` client. */
+  sdk: PluginBrowserBbSdk;
+  /** The registering plugin's `useBbNavigate()`, as for `item`. */
+  navigate: BbNavigate;
+}
+
+/**
  * Add an action to every thread actions menu: the thread header's menu, the
  * sidebar row's menu and right-click menu, the compact long-press drawer, and,
  * when the user picks it, a sidebar row's quick-action buttons. bb's own
@@ -2096,6 +2111,17 @@ export interface PluginThreadActionRegistration<Data = undefined> {
   order?: number;
   useData?(input: PluginThreadActionDataInput): Data;
   item(input: PluginThreadActionItemInput<Data>): PluginThreadAction | null;
+  /**
+   * The action for several selected threads at once, shown when
+   * `experimental_ThreadActionsContextMenu` gets an `experimental_bulkThreads`
+   * (see {@link PluginThreadActionsContextMenuProps}). Pure and
+   * synchronous like `item`, with every selected thread in `useData`'s
+   * `threadIds`; `run` acts on all of them. Omit it, or return null, to leave
+   * the action out of selection menus. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_bulkItem?(
+    input: PluginThreadActionBulkItemInput<Data>,
+  ): PluginThreadAction | null;
 }
 
 /**
@@ -2194,6 +2220,18 @@ export interface PluginThreadActionsContextMenuProps extends PluginThreadActions
   disabled?: boolean;
   /** Closes the menu and suppresses opening while the row is being dragged. */
   dragging?: boolean;
+  /**
+   * The selected threads in list order when the row is part of a multi-row
+   * selection. With two or more, the menu acts on all of them: it lists every
+   * registration's `experimental_bulkItem` under a count of the
+   * selection, including bb's own Mark read, Pin, Archive and Delete, which
+   * confirm and clean up as the single-thread actions do, then `inline`.
+   * Omit it, or pass fewer than two, for `thread`'s own menu. Experimental:
+   * see docs/api_to_audit.md.
+   */
+  experimental_bulkThreads?: readonly PluginThreadActionTarget[];
+  /** Called when Escape dismisses the desktop menu, e.g. to clear a selection. */
+  onEscapeKeyDown?(event: KeyboardEvent): void;
 }
 
 /** One pane's place in the split layout, as fractions of the split area. */

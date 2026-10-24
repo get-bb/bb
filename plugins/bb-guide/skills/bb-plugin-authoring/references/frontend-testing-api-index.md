@@ -15,6 +15,7 @@ Read `testing.md` for examples and fidelity limits.
 - `SidebarActionCall`
 - `SidebarNavigationCall`
 - `TestThreadActionsResolver`
+- `TestThreadBulkActionsResolver`
 - `installTestPluginRuntime`
 - `CapturedPluginApp`
 - `PluginAppSource`

@@ -26,7 +26,7 @@ signatures (see "Looking up the exact API" in distribution.md).
   `storagePaths` `cancelPlan` `clearGoal` `defaultExecutionOptions`
   `restoreEnvironment` `getPluginMetadata` `updatePluginMetadata`
   `experimental_listPluginMetadata` `experimental_listAncestors`
-  `experimental_listDescendants`; sub-areas `events` (`list` `wait`),
+  `experimental_listDescendants` `experimental_listCascade`; sub-areas `events` (`list` `wait`),
   `interactions` (`get` `list` `cancel` `resolve` `respond`), `queue`
   (`list`), `queuedMessages` (`create` `list` `update` `delete` `send`
   `reorder` `setGroupBoundary` `experimental_holdForEdit`
@@ -165,7 +165,11 @@ omits threads without it.
 ancestor ids from its parent up to the root, and
 `bb.sdk.threads.experimental_listDescendants({ threadIds })` every thread below
 it, children first (1–200 ids per call), leaving out archived and hidden ones
-unless you pass `includeArchived` or `includeHidden`. Pair them with
+unless you pass `includeArchived` or `includeHidden`.
+`bb.sdk.threads.experimental_listCascade({ threadIds, action })` returns, for
+`action` `"archive"` or `"delete"`, the visible threads that archiving or
+deleting each thread would also affect, following the same parent and
+lifecycle-owner links the action does. Pair them with
 `experimental_listPluginMetadata` to read a setting that a parent applies to its
 subtree. `bb.events.on("experimental_thread.parentChanged", handler)` fires after
 a thread moves to a new parent or loses its parent (a `threads.update` of

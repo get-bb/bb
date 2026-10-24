@@ -951,7 +951,9 @@ on `sidebarMultiSelect`.
 `{ threads: { threadId, ancestorIds }[] }`, parent first up to the root,
 for every existing thread including archived and deleted ones, in one
 recursive primary-key query. First caller: push-notifications, so a parent's
-level follows the current tree.
+level follows the current tree. The thread list's Move to section for a
+multi-selection also reads it from the browser SDK to move only the topmost
+selected threads.
 
 Docs: `backend-sdk.md`.
 
@@ -989,6 +991,33 @@ Docs: `backend-sdk.md`.
    callers never need deleted ones. No event announces a hidden thread
    becoming visible, so a caller that skips hidden threads cannot refresh
    one when it appears; decide whether visibility changes need an event.
+
+## `bb.sdk.threads.experimental_listCascade`
+
+`POST /threads/cascade` with `{ threadIds, action }` (1–200 ids, `action`
+`"archive"` or `"delete"`) returns `{ threads: { threadId, cascadeThreadIds
+}[] }` for every existing, non-deleted thread: the visible threads that
+archiving or deleting it would also affect. Archive follows the same
+candidates `archive-all` archives (children, lifecycle dependents and hidden
+source threads) and omits threads already archived, so its count equals
+`childSummary`'s `unarchivedDescendantCount`. Delete follows the deletion
+tree (parent and lifecycle-owner links) and includes archived threads. Hidden,
+deleted and unknown threads are omitted. Core's archive and delete dialogs
+(`apps/app/src/lib/thread-selection-plan.ts`) read it to find the topmost
+selected threads and to count the threads that go with them, for one thread
+or a selection, so single and bulk dialogs count the same way.
+
+Docs: `backend-sdk.md`.
+
+**Audit before stabilizing.**
+
+1. **Per-thread cost.** Each id runs its own cascade walk. Decide whether a
+   batched recursive query is needed for large selections.
+2. **Shape.** Decide whether callers need the cascade's structure (which
+   thread pulled each one in) or counts alone, and whether `childSummary`
+   should be retired in its favor.
+3. **Actions.** Confirm `archive` and `delete` are the only cascading
+   actions worth previewing.
 
 ## `PluginSettingDescriptor.experimental_optionLabels`
 
@@ -2622,7 +2651,7 @@ Docs: `frontend-registration.md`, `frontend-components.md`.
    `[data-info-section]`, so a section that renders without
    `experimental_InfoSection` gets no separator. Confirm that is acceptable.
 
-## `app.slots.experimental_threadAction` / `experimental_useThreadActions` / `experimental_useThreadActionRegistrations` / `experimental_ThreadActionsMenu` / `experimental_ThreadActionsContextMenu` / `experimental_THREAD_ACTION_GROUPS` (`@get-bb/plugin-sdk/app`)
+## `app.slots.experimental_threadAction` / `PluginThreadActionRegistration.experimental_bulkItem` / `experimental_useThreadActions` / `experimental_useThreadActionRegistrations` / `experimental_ThreadActionsMenu` / `experimental_ThreadActionsContextMenu` (with `experimental_bulkThreads`) / `experimental_THREAD_ACTION_GROUPS` (`@get-bb/plugin-sdk/app`)
 
 A registration is `{ id, title, icon, group, order?, useData?, item }`.
 `useData` runs once per registration for the whole app and receives
@@ -2635,6 +2664,18 @@ for every menu and the quick-action picker. Thread-list registers Move to
 section, and push-notifications registers Notifications. The SDK test fake
 throws when a menu `trigger` drops its props and ref.
 
+`experimental_bulkItem` is an optional pure function of
+`{ threads, data, sdk, navigate }` (two or more selected threads in list
+order) returning one action for the whole selection, or null.
+`experimental_ThreadActionsContextMenu`'s optional `experimental_bulkThreads`
+(the selected targets) and `onEscapeKeyDown` turn the row's menu into the
+selection menu when it holds two or more threads: a "N threads selected"
+heading, every registration's bulk item in the same group order as the
+thread menu, then `inline`, with every selected id retained in `useData`'s
+`threadIds` while open. One component keeps a row to a single Radix menu, so
+a row joining or leaving a selection does not remount. The SDK test fake
+takes `threadBulkActions` for the entries it lists.
+
 **Core callers.** bb's own actions are `CORE_THREAD_ACTIONS`
 (`apps/app/src/lib/thread-actions/core-thread-actions.ts`), registered under
 the reserved `bb--core` owner. The header menu (`ThreadDetailView` →
@@ -2642,7 +2683,19 @@ the reserved `bb--core` owner. The header menu (`ThreadDetailView` →
 `ThreadArchiveCommandHandler` read the same registry, and the thread list's
 row menus and quick actions use the SDK exports. The contract table in
 `ThreadActionsMenu.test.tsx` runs every menu surface against the same
-registrations.
+registrations. Core's Mark read, Pin, Archive and Delete registrations carry
+the bulk items; Archive and Delete call `ThreadActionsProvider`'s
+`requestArchiveThreads` / `requestDeleteThreads`, which the single-thread
+`requestArchive` / `requestDelete` (and so every single-thread menu) also go
+through. Delete, for one thread or several, and archive for two or more plan
+the selection with `threads.experimental_listCascade`, confirm once with the
+count of unselected threads in the cascade (archive honors the confirmation
+setting), act on
+the topmost selected threads, and clean up panes and routes once; archive
+shares one Undo toast with `experimental_useArchiveEnvironmentThreads`. The
+thread list's multi-selection is the only caller of
+`experimental_bulkThreads`, and its Move to section and push-notifications'
+Notifications carry bulk items.
 
 Docs: `frontend-registration.md`.
 
@@ -2660,6 +2713,11 @@ Docs: `frontend-registration.md`.
 4. **Inline items.** `inline` exists for surface-specific entries that are not
    about a thread. Confirm it should stay a component prop rather than a
    registration.
+5. **Bulk shape.** Decide whether `experimental_bulkItem` should
+   stay a second function or `item` should take a target that is one thread
+   or several, whether selection menus need a dropdown or compact-drawer
+   variant beyond right-click and long-press, and whether a bulk item
+   should be able to report per-thread failures instead of one toast.
 
 ## `experimental_useArchiveEnvironmentThreads` (`@get-bb/plugin-sdk/app`)
 

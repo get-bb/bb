@@ -67,6 +67,7 @@ describe("collectPluginAppRegistrations — experimental_appOverlay", () => {
 describe("collectPluginAppRegistrations — experimental_threadAction", () => {
   const item = () => null;
   const useData = () => 1;
+  const experimental_bulkItem = () => null;
 
   it("collects a thread action with its hooks", () => {
     const definition = definePluginApp((app) => {
@@ -78,6 +79,7 @@ describe("collectPluginAppRegistrations — experimental_threadAction", () => {
         order: 5,
         useData,
         item,
+        experimental_bulkItem,
       });
     });
     expect(collectPluginAppRegistrations(definition).threadActions).toEqual([
@@ -89,6 +91,7 @@ describe("collectPluginAppRegistrations — experimental_threadAction", () => {
         order: 5,
         useData,
         item,
+        experimental_bulkItem,
       },
     ]);
   });
@@ -116,6 +119,11 @@ describe("collectPluginAppRegistrations — experimental_threadAction", () => {
   it.each([
     ["item", { item: null }, '"item" must be a function'],
     ["useData", { item, useData: 1 }, '"useData" must be a function'],
+    [
+      "experimental_bulkItem",
+      { item, experimental_bulkItem: 1 },
+      '"experimental_bulkItem" must be a function',
+    ],
     ["icon", { item, icon: "" }, "icon"],
     ["group", { item, group: "" }, "group"],
     ["order", { item, order: Number.NaN }, '"order" must be a finite number'],

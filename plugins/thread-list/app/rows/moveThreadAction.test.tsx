@@ -52,6 +52,9 @@ function makeTarget(
 
 interface Collected {
   item(thread: PluginThreadActionTarget): PluginThreadAction | null;
+  bulkItem(
+    threads: readonly PluginThreadActionTarget[],
+  ): PluginThreadAction | null;
 }
 
 function Probe({ collected }: { collected: { current: Collected | null } }) {
@@ -62,6 +65,13 @@ function Probe({ collected }: { collected: { current: Collected | null } }) {
   const navigate: BbNavigate = useBbNavigate();
   collected.current = {
     item: (thread) => moveThreadAction.item({ thread, data, sdk, navigate }),
+    bulkItem: (threads) =>
+      moveThreadAction.experimental_bulkItem?.({
+        threads,
+        data,
+        sdk,
+        navigate,
+      }) ?? null,
   };
   return null;
 }
@@ -78,11 +88,21 @@ function StoreHarness({
 
 function renderMove(
   organizationMode: "chronological" | "project" = "chronological",
+  ancestry: Record<string, string[]> = {},
 ) {
   const store = createStore();
   const collected: { current: Collected | null } = { current: null };
   const unpin = vi.fn(sdkResult({ ok: true }));
   const update = vi.fn(sdkResult({ ok: true }));
+  const experimental_listAncestors = vi.fn(
+    ({ threadIds }: { threadIds: readonly string[] }) =>
+      Promise.resolve({
+        threads: threadIds.map((threadId) => ({
+          threadId,
+          ancestorIds: ancestry[threadId] ?? [],
+        })),
+      }),
+  );
   const slot = renderSlot(
     { component: StoreHarness },
     { children: <Probe collected={collected} />, store },
@@ -92,7 +112,7 @@ function renderMove(
         projects: [makePluginProject()],
         sections: [makeSection("sec_a", "Alpha"), makeSection("sec_b", "Beta")],
       },
-      sdk: { threads: { unpin, update } },
+      sdk: { threads: { unpin, update, experimental_listAncestors } },
       rpc: {
         listPreferences: () => ({
           preferences: {
@@ -112,8 +132,13 @@ function renderMove(
     if (collected.current === null) throw new Error("Probe did not render");
     return collected.current.item(thread);
   };
+  const bulkItem = (threads: readonly PluginThreadActionTarget[]) => {
+    if (collected.current === null) throw new Error("Probe did not render");
+    return collected.current.bulkItem(threads);
+  };
   return {
     item,
+    bulkItem,
     sdkCalls: slot.inspection.sdkCalls,
     hydrated: () =>
       waitFor(() =>
@@ -192,5 +217,67 @@ describe("Move to section", () => {
         { method: "threads.unpin", args: [{ threadId: "thr_move" }] },
       ]),
     );
+  });
+});
+
+describe("Move to section for a selection", () => {
+  it("moves selected roots while preserving descendants and detaching independently selected children", async () => {
+    const { bulkItem, sdkCalls, hydrated } = renderMove("chronological", {
+      child: ["parent"],
+      grandchild: ["middle", "parent"],
+      independent: ["other-parent"],
+    });
+    await hydrated();
+    const action = await waitFor(() => {
+      const evaluated = bulkItem([
+        makeTarget({ id: "parent" }),
+        makeTarget({ id: "child", parentThreadId: "parent" }),
+        makeTarget({ id: "grandchild", parentThreadId: "middle" }),
+        makeTarget({
+          id: "independent",
+          parentThreadId: "other-parent",
+          pinnedAt: 1,
+        }),
+      ]);
+      expect(evaluated).not.toBeNull();
+      return evaluated;
+    });
+    await run(action, "sec_b");
+    expect(
+      sdkCalls.filter(
+        (call) => call.method !== "threads.experimental_listAncestors",
+      ),
+    ).toEqual([
+      {
+        method: "threads.update",
+        args: [{ threadId: "parent", sectionId: "sec_b" }],
+      },
+      { method: "threads.unpin", args: [{ threadId: "independent" }] },
+      {
+        method: "threads.update",
+        args: [
+          { threadId: "independent", sectionId: "sec_b", parentThreadId: null },
+        ],
+      },
+    ]);
+  });
+
+  it("marks a section current only when every selected thread is already in it", async () => {
+    const { bulkItem, hydrated } = renderMove();
+    await hydrated();
+    await waitFor(() =>
+      expect(
+        bulkItem([
+          makeTarget({ id: "a" }),
+          makeTarget({ id: "b", sectionId: "sec_b" }),
+        ])?.choices?.items.map((choice) => choice.selected),
+      ).toEqual([false, false, false]),
+    );
+    expect(
+      bulkItem([
+        makeTarget({ id: "a" }),
+        makeTarget({ id: "b" }),
+      ])?.choices?.items.map((choice) => choice.selected),
+    ).toEqual([false, false, true]);
   });
 });

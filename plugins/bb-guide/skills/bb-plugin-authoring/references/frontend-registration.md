@@ -475,6 +475,7 @@ the sidebar.
 `experimental_ThreadActionsContextMenu` around your row for bb's own thread
 menu (archive and delete confirmation included) plus every plugin's thread
 actions; see "An action in every thread menu".
+For multi-row selections (`experimental_bulkItem`), see frontend-sidebar-navigation.md.
 `experimental_useArchiveEnvironmentThreads()` archives a whole environment
 group with bb's pane cleanup and Undo toast.
 
