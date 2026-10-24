@@ -78,6 +78,7 @@ export type ClaudeSessionExecutionOptions = RuntimePermissionPolicy & {
   disable1MContext: boolean;
   artifactsEnabled: boolean;
   sandboxEnabled: boolean;
+  fullAccessApprovalsEnabled: boolean;
   memoryEnabled?: boolean | undefined;
   providerSubagentsEnabled?: boolean | undefined;
   skillRoots?: readonly ClaudeCodeSkillRoot[] | undefined;
@@ -140,6 +141,7 @@ function buildInternalSessionParams(
     disable1MContext: args.options.disable1MContext,
     artifactsEnabled: args.options.artifactsEnabled,
     sandboxEnabled: args.options.sandboxEnabled,
+    fullAccessApprovalsEnabled: args.options.fullAccessApprovalsEnabled,
     memoryEnabled: args.options.memoryEnabled,
     providerSubagentsEnabled: args.options.providerSubagentsEnabled,
     ...(dynamicTools && dynamicTools.length > 0 ? { dynamicTools } : {}),
@@ -154,6 +156,7 @@ const claudeProviderOptionsSchema = z
     disable1MContext: z.boolean().optional(),
     artifactsEnabled: z.boolean().optional(),
     sandboxEnabled: z.boolean().optional(),
+    fullAccessApprovalsEnabled: z.boolean().optional(),
     memoryEnabled: z.boolean().optional(),
     providerSubagentsEnabled: z.boolean().optional(),
     additionalWorkspaceWriteRoots: z.array(z.string()).optional(),
@@ -201,6 +204,8 @@ export function buildClaudeSessionParams(
       disable1MContext: providerOptions.disable1MContext ?? false,
       artifactsEnabled: providerOptions.artifactsEnabled ?? false,
       sandboxEnabled: providerOptions.sandboxEnabled ?? true,
+      fullAccessApprovalsEnabled:
+        providerOptions.fullAccessApprovalsEnabled ?? false,
       memoryEnabled: providerOptions.memoryEnabled,
       providerSubagentsEnabled: providerOptions.providerSubagentsEnabled,
     },
@@ -257,6 +262,7 @@ export function buildClaudeTurnParams(
     disable1MContext: providerOptions.disable1MContext,
     artifactsEnabled: providerOptions.artifactsEnabled,
     sandboxEnabled: providerOptions.sandboxEnabled,
+    fullAccessApprovalsEnabled: providerOptions.fullAccessApprovalsEnabled,
     memoryEnabled: providerOptions.memoryEnabled,
     providerSubagentsEnabled: providerOptions.providerSubagentsEnabled,
     ...(config ? { config } : {}),

@@ -37,6 +37,13 @@ with `bb plugin config provider-claude-code set <key> <value>`.
   bb runs Claude Code's Bash commands in its sandbox. Set it to `false` to use
   Claude Code's own command approvals and sandbox settings instead. A change
   restarts the thread's Claude process before its next turn, preserving context.
+- `fullAccessApprovalsEnabled` defaults to `false`, so Full Access approves
+  every request Claude Code sends, and unattended threads never wait. Set it to
+  `true` to show Claude Code's own prompts in Full Access: `permissions.ask`
+  rules, PreToolUse hooks that answer `ask`, and its built-in safety checks
+  (such as `rm` on a possibly-empty variable). It applies from the thread's
+  next turn without a restart. When bb runs as root, Full Access always
+  approves, because Claude Code refuses `bypassPermissions` there.
 - bb passes only `BB_CLAUDE_CODE_EXECUTABLE` and `CLAUDE_CODE_OAUTH_TOKEN` to
   the CLI. Mint the token with `claude setup-token` for machines with no
   interactive login.

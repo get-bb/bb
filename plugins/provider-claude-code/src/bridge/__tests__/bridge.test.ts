@@ -2167,7 +2167,7 @@ describe("bridge", () => {
     }
   });
 
-  it("forwards a permissions.ask rule prompt in full access mode", async () => {
+  it("forwards a permissions.ask rule prompt in full access mode when Approvals in Full Access is on", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];
     queryMock.mockImplementation(() => {
@@ -2195,6 +2195,7 @@ describe("bridge", () => {
           instructions: "test",
           providerOptions: {
             workflowsEnabled: false,
+            fullAccessApprovalsEnabled: true,
           },
         },
       });
@@ -2236,6 +2237,109 @@ describe("bridge", () => {
       await expect(resultPromise).resolves.toMatchObject({
         behavior: "deny",
         toolUseID,
+      });
+
+      await stopBridgeThread({ bridge, queries, threadId });
+    } finally {
+      uidSpy?.mockRestore();
+      bridge.restore();
+    }
+  });
+
+  it("approves Claude Code's prompts in full access mode until a turn turns Approvals in Full Access on", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    const uidSpy =
+      process.platform === "win32"
+        ? null
+        : vi.spyOn(process, "getuid").mockReturnValue(1000);
+    try {
+      const threadId = "thread-full-default-approvals";
+      const fullAccessOptions = {
+        permissionMode: "full",
+        permissionScope: "full",
+        approvalReviewer: null,
+        permissionEscalation: null,
+        instructions: "test",
+      };
+      bridge.sendRequest(1, "thread/start", {
+        threadId,
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        options: {
+          ...fullAccessOptions,
+          providerOptions: { workflowsEnabled: false },
+        },
+      });
+      await bridge.waitForResponse(1);
+      expect(getLatestQueryCall().options.permissionMode).toBe(
+        "bypassPermissions",
+      );
+
+      const safetyCheckOptions = {
+        decisionReason:
+          "Dangerous rm operation on possibly-empty variable path: $W/*.log",
+        requestId: "control-request",
+        signal: new AbortController().signal,
+      };
+      await expect(
+        getLastCanUseTool()(
+          "Bash",
+          { command: "rm -f $W/*.log" },
+          { ...safetyCheckOptions, toolUseID: "tool-before-opt-in" },
+        ),
+      ).resolves.toMatchObject({
+        behavior: "allow",
+        toolUseID: "tool-before-opt-in",
+      });
+      expect(
+        bridge.messages.filter((message) => isApprovalInteraction(message)),
+      ).toHaveLength(0);
+
+      bridge.sendRequest(2, "turn/start", {
+        threadId,
+        providerThreadId: threadId,
+        clientRequestId: "creq_abcdefghjk",
+        input: [{ type: "text", text: "keep going", mentions: [] }],
+        options: {
+          ...fullAccessOptions,
+          providerOptions: {
+            workflowsEnabled: false,
+            fullAccessApprovalsEnabled: true,
+          },
+        },
+      });
+      await readNextPrompt(getLatestQueryCall());
+      await bridge.waitForResponse(2);
+      expect(queries).toHaveLength(1);
+
+      const afterOptIn = getLastCanUseTool()(
+        "Bash",
+        { command: "rm -f $W/*.log" },
+        { ...safetyCheckOptions, toolUseID: "tool-after-opt-in" },
+      );
+      const permissionRequest = await waitForBridgeRequest(bridge, (message) =>
+        isApprovalInteraction(message),
+      );
+      if (permissionRequest?.id === undefined) {
+        throw new Error("Expected forwarded permission request");
+      }
+      handleLine(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: permissionRequest.id,
+          result: { decision: "deny", grantedPermissions: null },
+        }),
+      );
+      await expect(afterOptIn).resolves.toMatchObject({
+        behavior: "deny",
+        toolUseID: "tool-after-opt-in",
       });
 
       await stopBridgeThread({ bridge, queries, threadId });
