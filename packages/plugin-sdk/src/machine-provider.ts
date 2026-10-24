@@ -98,7 +98,7 @@ export interface PluginMachineProviderDefinition<
   suspend?(
     context: PluginMachineProviderResourceLifecycleContext,
   ): Promise<PluginMachineProviderResourceResult>;
-  /** Idempotent: reuse existing running compute instead of allocating a duplicate. */
+  /** Idempotent: reuse existing running compute instead of allocating a duplicate. Core also calls it for an active machine whose daemon stays disconnected while work waits on it. */
   resume?(
     context: PluginMachineProviderResourceLifecycleContext,
   ): Promise<PluginMachineProviderResourceResult>;

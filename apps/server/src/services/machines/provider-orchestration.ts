@@ -1,5 +1,8 @@
 import { withHostCleanup } from "../hosts/cleanup-context.js";
-import { readPrimaryHostIdFromDataDir } from "../hosts/primary-host.js";
+import {
+  isServerMachineHost,
+  readPrimaryHostIdFromDataDir,
+} from "../hosts/primary-host.js";
 import { requestQueuedMachineReadiness } from "../threads/queued-message-dispatch.js";
 import { and, desc, eq } from "drizzle-orm";
 import {
@@ -28,6 +31,7 @@ import {
   machineHasProvisioningEnvironment,
   machineHasLiveThreads,
   machineHasPendingThreads,
+  machineHasRunningThreads,
   updateHost,
 } from "@bb/db";
 import { jsonValueSchema, type Host, type JsonValue } from "@bb/domain";
@@ -38,6 +42,7 @@ import type {
 } from "@get-bb/plugin-sdk/machine-provider";
 import { summarizeStandardIssues } from "@get-bb/plugin-sdk/internal/host-policy";
 import { ApiError } from "../../errors.js";
+import { HOST_RECONNECT_GRACE_MS } from "../../constants.js";
 import type { ThreadProvisioningDeps } from "../threads/thread-provisioning-environment.js";
 import { decideWithinBox } from "../threads/dispatch-hooks.js";
 import {
@@ -130,6 +135,8 @@ const machineSweepOperations = new WeakMap<
 >();
 
 const MACHINE_CREATE_FAILURE_CLEANUP_GRACE_MS = 30_000;
+const MACHINE_RESUME_RETRY_MS = 10_000;
+const ACTIVE_MACHINE_RESUME_RETRY_MS = 60_000;
 
 function runTrackedOperation(args: {
   map: Map<string, ActiveOperation>;
@@ -905,17 +912,46 @@ export function startMachineResume(deps: Deps, hostId: string): void {
       "Only an active or suspended machine can be resumed",
     );
   }
-  void resumeMachine(deps, hostId).catch((error: unknown) => {
-    deps.logger.warn(
-      { hostId, error: errorMessage(error) },
-      "Requested machine resume will retry in the lifecycle sweep",
-    );
-  });
+  void resumeMachine(deps, hostId, { includeActive: true }).catch(
+    (error: unknown) => {
+      deps.logger.warn(
+        { hostId, error: errorMessage(error) },
+        "Requested machine resume will retry in the lifecycle sweep",
+      );
+    },
+  );
+}
+
+export function activeMachineNeedsResume(
+  deps: Pick<Deps, "config" | "db" | "hub">,
+  hostId: string,
+): boolean {
+  const row = getHost(deps.db, hostId);
+  const now = Date.now();
+  if (
+    row === null ||
+    row.destroyedAt !== null ||
+    row.phase !== "active" ||
+    row.machineProviderId === null ||
+    (getMachineProvider(row.machineProviderId)?.provider.resume ?? null) ===
+      null ||
+    deps.hub.hasDaemonForHost(hostId) ||
+    (row.lastSeenAt ?? 0) + HOST_RECONNECT_GRACE_MS > now ||
+    (row.suspendRetryAt ?? 0) > now ||
+    isServerMachineHost(deps, hostId)
+  ) {
+    return false;
+  }
+  return (
+    listThreadIdsWithHostOfflineQueueWaits(deps.db, hostId).length > 0 ||
+    machineHasRunningThreads(deps.db, hostId)
+  );
 }
 
 export async function resumeMachine(
   deps: WorkSessionDeps,
   hostId: string,
+  options?: { includeActive: true },
 ): Promise<void> {
   const removing = perDbRegistry(removeOperations, deps.db).get(hostId);
   if (removing !== undefined) {
@@ -926,13 +962,19 @@ export async function resumeMachine(
   if (suspending !== undefined) {
     await suspending.done.catch(() => {});
   }
-  await resumeMachineWithIntent(deps, hostId, false);
+  await resumeMachineWithIntent(
+    deps,
+    hostId,
+    false,
+    options?.includeActive === true,
+  );
 }
 
 async function resumeMachineWithIntent(
   deps: WorkSessionDeps,
   hostId: string,
   preserveRemoval: boolean,
+  includeActive = false,
 ): Promise<void> {
   let row = getHost(deps.db, hostId);
   if (
@@ -941,10 +983,15 @@ async function resumeMachineWithIntent(
     (row.phase === "removing" && !preserveRemoval)
   )
     return;
+  const restartsDaemon =
+    includeActive &&
+    row.phase === "active" &&
+    !deps.hub.hasDaemonForHost(hostId);
   if (
     row.phase !== "suspended" &&
     row.phase !== "suspending" &&
     row.phase !== "resuming" &&
+    !restartsDaemon &&
     !(row.phase === "removing" && row.suspendedAt !== null && preserveRemoval)
   ) {
     return;
@@ -1038,14 +1085,20 @@ async function resumeMachineWithIntent(
       operationId,
       resumePhase,
     );
+    const restoredPhase =
+      initialPhase === "active" || initialPhase === "suspending"
+        ? initialPhase
+        : "suspended";
+    const failedPhase =
+      ownsResume && !preserveRemoval ? restoredPhase : current?.phase;
     updateHost(deps.db, deps.hub, hostId, {
-      ...(ownsResume && !preserveRemoval
-        ? {
-            phase: initialPhase === "suspending" ? "suspending" : "suspended",
-          }
-        : {}),
+      ...(ownsResume && !preserveRemoval ? { phase: restoredPhase } : {}),
       statusMessage: `Machine resume failed: ${errorMessage(error)}`,
-      suspendRetryAt: Date.now() + 10_000,
+      suspendRetryAt:
+        Date.now() +
+        (failedPhase === "active"
+          ? ACTIVE_MACHINE_RESUME_RETRY_MS
+          : MACHINE_RESUME_RETRY_MS),
     });
     deps.hub.notifyHost(hostId, ["host-disconnected"]);
     throw error;
@@ -1353,6 +1406,17 @@ export async function sweepProviderMachine(
     listThreadIdsWithHostOfflineQueueWaits(deps.db, hostId).length > 0
   ) {
     await resumeMachine(deps, hostId);
+    return;
+  }
+  if (activeMachineNeedsResume(deps, hostId)) {
+    await resumeMachine(deps, hostId, { includeActive: true }).catch(
+      (error: unknown) => {
+        deps.logger.warn(
+          { hostId, error: errorMessage(error) },
+          "Active machine resume will retry",
+        );
+      },
+    );
     return;
   }
   if (row.phase === "suspending") {

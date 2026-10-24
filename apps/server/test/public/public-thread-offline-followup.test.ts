@@ -1,7 +1,15 @@
-import { listEvents, listQueuedThreadMessages } from "@bb/db";
+import { eq } from "drizzle-orm";
+import {
+  hosts,
+  listEvents,
+  listQueuedThreadMessages,
+  updateHost,
+} from "@bb/db";
 import { queuedMessageWaitingOnSchema } from "@bb/domain";
 import { sendMessageResponseSchema } from "@bb/server-contract";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
+import { HOST_RECONNECT_GRACE_MS } from "../../src/constants.js";
+import { setPluginMachineProviderBridge } from "../../src/services/plugins/plugin-machine-provider-registry.js";
 import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
 import { runQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
 import { onDaemonSocketOpen } from "../../src/ws/daemon-protocol.js";
@@ -12,6 +20,7 @@ import {
   waitForQueuedCommand,
 } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
+import { installMachineProvider } from "../helpers/machine-provider.js";
 import {
   seedEnvironment,
   seedHost,
@@ -75,6 +84,96 @@ describe("offline host follow-ups", () => {
         delivery: "queued",
         queuedMessage: { waitingOn: { kind: "host-offline", hostName: "M5" } },
       });
+    });
+  });
+
+  it("resumes the provider machine of a follow-up sent after its daemon stayed away", async () => {
+    await withTestHarness(async (harness) => {
+      onTestFinished(() => setPluginMachineProviderBridge(undefined));
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-lost-daemon-followup",
+        name: "M5",
+      });
+      const resume = vi.fn(async () => {
+        seedSession(harness.deps, host.id, { instanceId: "instance-2" });
+        return { resource: { id: "owned" } };
+      });
+      installMachineProvider({
+        suspend: async () => ({ resource: { id: "owned" } }),
+        resume,
+      });
+      updateHost(harness.db, harness.hub, host.id, {
+        machineProviderId: "test-machine",
+        resource: { id: "owned" },
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/lost-daemon-followup",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        status: "idle",
+      });
+      seedThreadRuntimeState(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-lost-daemon-followup",
+      });
+      handleDaemonSocketClosed(harness.deps, { sessionId: session.id });
+      harness.hub.cancelPendingDaemonDisconnect(session.id);
+      harness.db
+        .update(hosts)
+        .set({ lastSeenAt: Date.now() - HOST_RECONNECT_GRACE_MS - 1 })
+        .where(eq(hosts.id, host.id))
+        .run();
+      const input = [
+        {
+          type: "text" as const,
+          text: "Sent after the daemon died",
+          mentions: [],
+        },
+      ];
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/send`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            input,
+            mode: "steer-if-active",
+            model: "gpt-5",
+            permissionMode: "full",
+            reasoningLevel: "medium",
+            serviceTier: "default",
+          }),
+        },
+      );
+
+      expect(response.status).toBe(200);
+      expect(
+        sendMessageResponseSchema.parse(await readJson(response)),
+      ).toMatchObject({
+        delivery: "queued",
+        queuedMessage: { waitingOn: { kind: "host-offline", hostName: "M5" } },
+      });
+      const dispatched = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "turn.submit" && command.threadId === thread.id,
+      );
+      expect(resume).toHaveBeenCalledOnce();
+      expect(dispatched.command).toMatchObject({
+        threadId: thread.id,
+        input,
+        target: { mode: "start" },
+      });
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
     });
   });
 

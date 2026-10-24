@@ -80,6 +80,13 @@ async function waitForMachineLifecycle(args: {
     );
     host = await args.getHost();
   }
+  const message = host.lifecycle.message;
+  if (
+    args.host.lifecycle.phase !== args.targetPhase &&
+    message?.startsWith("Machine resume failed:")
+  ) {
+    throw new Error(message);
+  }
   return host;
 }
 
@@ -553,7 +560,9 @@ export function registerMachineCommands(
 
   machine
     .command("resume <id-or-name>")
-    .description("Resume a suspended provider-managed execution machine")
+    .description(
+      "Resume a suspended provider-managed machine, or an active one whose daemon is gone",
+    )
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (target: string, opts: MachineListCommandOptions) => {

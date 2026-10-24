@@ -46,7 +46,11 @@ import {
   seedSession,
 } from "../../helpers/seed.js";
 import { advanceUntilSettled } from "../../helpers/fake-timers.js";
-import { withTestHarness } from "../../helpers/test-app.js";
+import {
+  withTestHarness,
+  type TestAppHarness,
+} from "../../helpers/test-app.js";
+import { HOST_RECONNECT_GRACE_MS } from "../../../src/constants.js";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -119,6 +123,169 @@ it("recovers a persisted resuming machine without queued work", async () =>
       resource: { id: "restored" },
       suspendedAt: null,
     });
+  }));
+
+function installReconnectingMachineProvider(harness: TestAppHarness) {
+  const resume = vi.fn(async ({ hostId }: { hostId: string }) => {
+    seedSession(harness.deps, hostId, { instanceId: "instance-2" });
+    return { resource: { id: "owned" } };
+  });
+  installMachineProvider({
+    suspend: async () => ({ resource: { id: "owned" } }),
+    resume,
+  });
+  return resume;
+}
+
+function seedActiveMachineWithoutDaemon(
+  harness: TestAppHarness,
+  args: {
+    lastSeenAt: number;
+    queuedFollowUp: boolean;
+    threadStatus: "active" | "idle";
+  },
+) {
+  const target = seedHostSession(harness.deps, { id: "lost-daemon" });
+  const { project } = seedProjectWithSource(harness.deps, {
+    hostId: target.host.id,
+  });
+  const environment = createEnvironment(harness.db, harness.hub, {
+    projectId: project.id,
+    hostId: target.host.id,
+    path: "/tmp/lost-daemon",
+    providerOwnsPath: false,
+    status: "ready",
+    environmentProvider: null,
+  });
+  const thread = seedThread(harness.deps, {
+    projectId: project.id,
+    environmentId: environment.id,
+    status: args.threadStatus,
+  });
+  if (args.queuedFollowUp) {
+    seedQueuedMessage(harness.deps, {
+      threadId: thread.id,
+      content: [{ type: "text", text: "Follow up", mentions: [] }],
+      waitingOn: { kind: "host-offline", hostName: target.host.name },
+    });
+  }
+  updateHost(harness.db, harness.hub, target.host.id, {
+    machineProviderId: "test-machine",
+    resource: { id: "owned" },
+  });
+  harness.hub.unregisterDaemon(target.session.id);
+  harness.db
+    .update(hosts)
+    .set({ lastSeenAt: args.lastSeenAt })
+    .where(eq(hosts.id, target.host.id))
+    .run();
+  return target.host;
+}
+
+it.each([
+  { work: "a queued follow-up", queuedFollowUp: true, threadStatus: "idle" },
+  { work: "an active thread", queuedFollowUp: false, threadStatus: "active" },
+] as const)(
+  "resumes an active machine whose daemon stayed away while it has $work",
+  async ({ queuedFollowUp, threadStatus }) =>
+    withTestHarness(async (harness) => {
+      const resume = installReconnectingMachineProvider(harness);
+      const host = seedActiveMachineWithoutDaemon(harness, {
+        lastSeenAt: Date.now() - HOST_RECONNECT_GRACE_MS - 1,
+        queuedFollowUp,
+        threadStatus,
+      });
+
+      await sweepProviderMachine(harness.deps, host.id);
+
+      expect(resume).toHaveBeenCalledOnce();
+      expect(getHost(harness.db, host.id)).toMatchObject({
+        phase: "active",
+        statusMessage: null,
+        suspendRetryAt: null,
+      });
+      expect(harness.hub.hasDaemonForHost(host.id)).toBe(true);
+    }),
+);
+
+it.each([
+  {
+    situation: "within the reconnect grace",
+    lastSeenAgoMs: 0,
+    queuedFollowUp: true,
+    providerResumes: true,
+  },
+  {
+    situation: "without work waiting on it",
+    lastSeenAgoMs: HOST_RECONNECT_GRACE_MS + 1,
+    queuedFollowUp: false,
+    providerResumes: true,
+  },
+  {
+    situation: "when its provider cannot resume",
+    lastSeenAgoMs: HOST_RECONNECT_GRACE_MS + 1,
+    queuedFollowUp: true,
+    providerResumes: false,
+  },
+] as const)(
+  "leaves an active machine without its daemon alone $situation",
+  async ({ lastSeenAgoMs, queuedFollowUp, providerResumes }) =>
+    withTestHarness(async (harness) => {
+      const resume = providerResumes
+        ? installReconnectingMachineProvider(harness)
+        : null;
+      if (resume === null) installMachineProvider();
+      const host = seedActiveMachineWithoutDaemon(harness, {
+        lastSeenAt: Date.now() - lastSeenAgoMs,
+        queuedFollowUp,
+        threadStatus: "idle",
+      });
+
+      await sweepProviderMachine(harness.deps, host.id);
+
+      if (resume !== null) expect(resume).not.toHaveBeenCalled();
+      expect(getHost(harness.db, host.id)).toMatchObject({
+        phase: "active",
+        statusMessage: null,
+        suspendRetryAt: null,
+      });
+      expect(harness.hub.hasDaemonForHost(host.id)).toBe(false);
+    }),
+);
+
+it("keeps an active machine whose resume failed active until its retry time", async () =>
+  withTestHarness(async (harness) => {
+    const resume = vi.fn(async () => {
+      throw new Error("sandbox API unavailable");
+    });
+    installMachineProvider({
+      suspend: async () => ({ resource: { id: "owned" } }),
+      resume,
+    });
+    const host = seedActiveMachineWithoutDaemon(harness, {
+      lastSeenAt: Date.now() - HOST_RECONNECT_GRACE_MS - 1,
+      queuedFollowUp: true,
+      threadStatus: "idle",
+    });
+
+    await sweepProviderMachine(harness.deps, host.id);
+    await sweepProviderMachine(harness.deps, host.id);
+
+    expect(resume).toHaveBeenCalledOnce();
+    const failed = getHost(harness.db, host.id);
+    expect(failed).toMatchObject({
+      phase: "active",
+      statusMessage: "Machine resume failed: sandbox API unavailable",
+      teardownStatus: null,
+    });
+    expect(failed?.suspendRetryAt).toBeGreaterThan(Date.now());
+
+    updateHost(harness.db, harness.hub, host.id, {
+      suspendRetryAt: Date.now() - 1,
+    });
+    await sweepProviderMachine(harness.deps, host.id);
+
+    expect(resume).toHaveBeenCalledTimes(2);
   }));
 
 it.each([
