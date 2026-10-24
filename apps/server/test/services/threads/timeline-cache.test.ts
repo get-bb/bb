@@ -71,15 +71,49 @@ describe("createThreadTimelineCache", () => {
     expect(cache.size).toBe(1);
   });
 
-  it("does not cache responses above the row cap (streaming expanded turns)", () => {
-    const cache = createThreadTimelineCache({ maxCacheableRows: 5 });
-    const build = vi.fn(() => makeResponse(50));
+  it("shares large timeline pages between identical requests", () => {
+    const cache = createThreadTimelineCache();
+    const build = vi.fn(() => makeResponse(1_500));
+
+    const first = cache.getOrBuild("thr_x", "k", build);
+    const second = cache.getOrBuild("thr_x", "k", build);
+
+    expect(build).toHaveBeenCalledTimes(1);
+    expect(second).toBe(first);
+  });
+
+  it("does not retain a response exceeding the byte budget", () => {
+    const response = makeResponse(1);
+    response.timelinePage.historySnapshot = "界".repeat(1_000);
+    const maxBytes = JSON.stringify(response).length;
+    const cache = createThreadTimelineCache({ maxBytes });
+    const build = vi.fn(() => response);
 
     cache.getOrBuild("thr_x", "k", build);
     cache.getOrBuild("thr_x", "k", build);
 
     expect(build).toHaveBeenCalledTimes(2);
     expect(cache.size).toBe(0);
+  });
+
+  it("evicts by total bytes in access order and releases invalidated bytes", () => {
+    const response = makeResponse(20);
+    const maxBytes = Buffer.byteLength(JSON.stringify(response)) * 2;
+    const cache = createThreadTimelineCache({ maxBytes });
+    const build = vi.fn(() => response);
+
+    cache.getOrBuild("thr_x", "a", build);
+    cache.getOrBuild("thr_y", "b", build);
+    cache.getOrBuild("thr_x", "a", build);
+    cache.getOrBuild("thr_z", "c", build);
+    cache.getOrBuild("thr_x", "a", build);
+    expect(build).toHaveBeenCalledTimes(3);
+
+    cache.invalidateThread("thr_x");
+    cache.getOrBuild("thr_y", "b", build);
+    cache.getOrBuild("thr_z", "c", build);
+    expect(build).toHaveBeenCalledTimes(4);
+    expect(cache.size).toBe(2);
   });
 
   it("evicts least-recently-used entries beyond maxEntries", () => {

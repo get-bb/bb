@@ -3,11 +3,11 @@ import type { ThreadStatus } from "@bb/domain";
 import type { ThreadTimelinePageRequest } from "./timeline-pagination.js";
 
 const DEFAULT_MAX_ENTRIES = 128;
-const DEFAULT_MAX_CACHEABLE_ROWS = 200;
+const DEFAULT_MAX_BYTES = 8 * 1024 * 1024;
 
 interface ThreadTimelineCacheOptions {
   maxEntries?: number;
-  maxCacheableRows?: number;
+  maxBytes?: number;
 }
 
 interface ThreadTimelineCache {
@@ -21,6 +21,7 @@ interface ThreadTimelineCache {
 }
 
 interface ThreadTimelineCacheEntry {
+  bytes: number;
   response: ThreadTimelineResponse;
   threadId: string;
 }
@@ -29,9 +30,16 @@ export function createThreadTimelineCache(
   options: ThreadTimelineCacheOptions = {},
 ): ThreadTimelineCache {
   const maxEntries = options.maxEntries ?? DEFAULT_MAX_ENTRIES;
-  const maxCacheableRows =
-    options.maxCacheableRows ?? DEFAULT_MAX_CACHEABLE_ROWS;
+  const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
   const entries = new Map<string, ThreadTimelineCacheEntry>();
+  let totalBytes = 0;
+
+  function deleteEntry(key: string): void {
+    const entry = entries.get(key);
+    if (entry === undefined) return;
+    totalBytes -= entry.bytes;
+    entries.delete(key);
+  }
 
   return {
     getOrBuild(threadId, key, build) {
@@ -43,14 +51,16 @@ export function createThreadTimelineCache(
       }
 
       const value = build();
-      if (value.rows.length <= maxCacheableRows) {
-        entries.set(key, { response: value, threadId });
-        while (entries.size > maxEntries) {
+      const bytes = Buffer.byteLength(JSON.stringify(value));
+      if (bytes <= maxBytes) {
+        entries.set(key, { bytes, response: value, threadId });
+        totalBytes += bytes;
+        while (entries.size > maxEntries || totalBytes > maxBytes) {
           const oldest = entries.keys().next().value;
           if (oldest === undefined) {
             break;
           }
-          entries.delete(oldest);
+          deleteEntry(oldest);
         }
       }
       return value;
@@ -58,7 +68,7 @@ export function createThreadTimelineCache(
     invalidateThread(threadId) {
       for (const [key, entry] of entries) {
         if (entry.threadId === threadId) {
-          entries.delete(key);
+          deleteEntry(key);
         }
       }
     },
