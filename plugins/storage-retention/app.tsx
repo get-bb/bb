@@ -1883,23 +1883,22 @@ function ProjectWorktrees({
                 <tr key={project.projectId}>
                   <th
                     scope="row"
-                    className="py-3 text-left font-normal break-words"
+                    className="py-3 text-left align-top font-normal break-words"
                   >
                     {project.projectName}
                   </th>
-                  <td className="whitespace-nowrap py-3 pl-3 text-right font-normal tabular-nums sm:pl-6">
+                  <td className="whitespace-nowrap py-3 pl-3 text-right align-top font-normal tabular-nums sm:pl-6">
                     {project.worktreeCount.toLocaleString()}
                   </td>
-                  <td className="whitespace-nowrap py-3 pl-3 text-right font-normal tabular-nums sm:pl-6">
+                  <td className="whitespace-nowrap py-3 pl-3 text-right align-top font-normal tabular-nums sm:pl-6">
                     {project.externalCount.toLocaleString()}
                     {project.externalBytes > 0 && (
-                      <span className="text-muted-foreground">
-                        {" "}
-                        · {bytes(project.externalBytes)}
+                      <span className="block text-muted-foreground">
+                        {bytes(project.externalBytes)}
                       </span>
                     )}
                   </td>
-                  <td className="whitespace-nowrap py-3 pl-3 text-right tabular-nums text-muted-foreground sm:pl-6">
+                  <td className="whitespace-nowrap py-3 pl-3 text-right align-top tabular-nums text-muted-foreground sm:pl-6">
                     {project.cleanupPendingCount.toLocaleString()}
                   </td>
                 </tr>
