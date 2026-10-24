@@ -35,6 +35,7 @@ import {
   sidebarHiddenGroupsAtom,
   sidebarManualSectionOrderAtom,
   sidebarOrganizationModeAtom,
+  sidebarShowProviderIconsAtom,
 } from "../preferences/atoms.js";
 
 installTestPluginRuntime();
@@ -602,6 +603,73 @@ describe("ProjectRow interactions", () => {
       child?.closest<HTMLElement>(".bb-sidebar-hover-actions-row")?.style
         .paddingLeft,
     ).toBe("56px");
+  });
+
+  it("runs each sub-thread guide through its parent's disclosure without provider icons", () => {
+    const store = createStore();
+    store.set(sidebarShowProviderIconsAtom, false);
+    const threads = [
+      makeThread({
+        id: "thr_root",
+        title: "Root",
+        titleFallback: "Root",
+        pinnedAt: 1,
+      }),
+      makeThread({
+        id: "thr_middle",
+        title: "Middle",
+        titleFallback: "Middle",
+        parentThreadId: "thr_root",
+      }),
+      makeThread({
+        id: "thr_leaf",
+        title: "Leaf",
+        titleFallback: "Leaf",
+        parentThreadId: "thr_middle",
+      }),
+    ];
+    renderTree(
+      <ThreadTreeNodeRow
+        projectId="proj_test"
+        node={buildPinnedSidebarState({ threads }).rootNodes[0]}
+        depthOffset={0}
+        isEnvGrouped={false}
+        collapsedThreadIds={new Set()}
+        collapsedEnvironmentIds={new Set()}
+        onToggleThreadCollapsed={vi.fn()}
+        onToggleEnvironmentCollapsed={vi.fn()}
+      />,
+      { threads, store },
+    );
+    const disclosure = (title: string) => {
+      const toggle = screen.getByRole("button", {
+        name: `Collapse ${title} threads`,
+      });
+      const row = toggle.closest<HTMLElement>("[data-sidebar-rename-row]");
+      const left =
+        parseFloat(row?.style.paddingLeft ?? "") +
+        parseFloat(toggle.style.marginLeft);
+      return {
+        left,
+        center: `${left + parseFloat(toggle.style.width) / 2}px`,
+        row,
+        group: row?.closest("[data-sidebar-sticky-group]"),
+      };
+    };
+    const groupGuide = (group: Element | null | undefined) =>
+      group?.querySelector<HTMLElement>(
+        ":scope > div.relative > span.bg-border-hairline",
+      )?.style.left;
+    const root = disclosure("Root");
+    const middle = disclosure("Middle");
+
+    expect(root.left).toBeGreaterThan(0);
+    expect(groupGuide(root.group)).toBe(root.center);
+    expect(
+      middle.row?.querySelector<HTMLElement>("span.bg-border-hairline")?.style
+        .left,
+    ).toBe(root.center);
+    expect(groupGuide(middle.group)).toBe(middle.center);
   });
 
   it("shows generic runtime activity before a named workflow rollup", () => {
