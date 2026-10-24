@@ -11,7 +11,13 @@ import {
 import { delimiter, isAbsolute, join, relative } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod";
-import { outputSchema, type RunOutput } from "./contracts.js";
+import {
+  outputSchema,
+  type FillCode,
+  type PreviewFrame,
+  type RunOutput,
+} from "./contracts.js";
+import { fillTarget, findPageTarget, redactFilled } from "./fill.js";
 import { createPreview, type PreviewSource } from "./preview.js";
 import { execute, supervise } from "./process.js";
 import type { ResolvedRuntime } from "./runtime-pin.js";
@@ -68,6 +74,7 @@ export async function decodeOutput(
   home: string,
   connectionUrl: string,
   version: string,
+  filled: ReadonlySet<string>,
 ): Promise<RunOutput> {
   const text: string[] = [];
   const images: RunOutput["images"] = [];
@@ -141,6 +148,7 @@ export async function decodeOutput(
   }
   for (const value of endpoint.searchParams.values())
     if (value) safeText = safeText.split(value).join("[credential]");
+  safeText = redactFilled(safeText, filled);
   return outputSchema.parse({
     text: safeText.slice(0, 160_000),
     images,
@@ -179,6 +187,15 @@ export interface RuntimeSession {
     timeoutMs: number,
     signal: AbortSignal,
   ): Promise<RunOutput>;
+  fill(
+    input: {
+      page: string;
+      selector: string;
+      value: string;
+      expectedOrigin: string;
+    },
+    signal: AbortSignal,
+  ): Promise<FillCode>;
   preview: PreviewSource | null;
   close(): Promise<void>;
 }
@@ -199,6 +216,7 @@ export async function createRuntime(args: {
   let closing: Promise<void> | null = null;
   let preview: PreviewSource | null = null;
   const stopped = new AbortController();
+  const filled = new Set<string>();
   let queue = Promise.resolve();
   const close = (): Promise<void> => {
     if (closing) return closing;
@@ -273,58 +291,104 @@ export async function createRuntime(args: {
     processes.push(supervise(binary, ["daemon"], env));
     await waitForFile(join(home, "daemon.pid"));
     const url = connectionUrl;
-    const run = (
-      script: string,
-      timeoutMs: number,
-      signal: AbortSignal,
-    ): Promise<RunOutput> => {
-      const result = queue.then(async () => {
-        const deadline = AbortSignal.any([
-          signal,
-          stopped.signal,
-          AbortSignal.timeout(timeoutMs),
-        ]);
-        deadline.throwIfAborted();
-        if (closed || processes.some((child) => !child.alive()))
-          throw new Error("Browser session stopped; open a new session");
-        try {
-          const stdout = await execute(
-            binary,
-            [
-              "--json",
-              "--connect",
-              url,
-              "--timeout",
-              String(Math.ceil(timeoutMs / 1000)),
-              "--quiet-page",
-              "-e",
-              script,
-            ],
-            env,
-            deadline,
-          );
-          const output = await decodeOutput(
-            stdout,
-            home,
-            url,
-            args.runtime.version,
-          );
-          if (output.exitCode === 124) await close();
-          return output;
-        } catch (error) {
-          await close();
-          throw error;
-        }
-      });
+    const enqueue = <T>(work: () => Promise<T>): Promise<T> => {
+      const result = queue.then(work);
       queue = result.then(
         () => {},
         () => {},
       );
       return result;
     };
+    const runNow = async (
+      script: string,
+      timeoutMs: number,
+      signal: AbortSignal,
+    ): Promise<RunOutput> => {
+      const deadline = AbortSignal.any([
+        signal,
+        stopped.signal,
+        AbortSignal.timeout(timeoutMs),
+      ]);
+      deadline.throwIfAborted();
+      if (closed || processes.some((child) => !child.alive()))
+        throw new Error("Browser session stopped; open a new session");
+      try {
+        const stdout = await execute(
+          binary,
+          [
+            "--json",
+            "--connect",
+            url,
+            "--timeout",
+            String(Math.ceil(timeoutMs / 1000)),
+            "--quiet-page",
+            "-e",
+            script,
+          ],
+          env,
+          deadline,
+        );
+        const output = await decodeOutput(
+          stdout,
+          home,
+          url,
+          args.runtime.version,
+          filled,
+        );
+        if (output.exitCode === 124) await close();
+        return output;
+      } catch (error) {
+        await close();
+        throw error;
+      }
+    };
+    const run = (script: string, timeoutMs: number, signal: AbortSignal) =>
+      enqueue(() => runNow(script, timeoutMs, signal));
+    const fill: RuntimeSession["fill"] = (input, signal) =>
+      enqueue(async (): Promise<FillCode> => {
+        if (closed || processes.some((child) => !child.alive()))
+          return "session_unavailable";
+        filled.add(input.value);
+        const deadline = AbortSignal.any([
+          signal,
+          stopped.signal,
+          AbortSignal.timeout(30_000),
+        ]);
+        let listing: RunOutput;
+        try {
+          listing = await runNow("await browser.listPages()", 10_000, deadline);
+        } catch {
+          return "session_unavailable";
+        }
+        const targetId =
+          listing.exitCode === 0
+            ? findPageTarget(listing.text, input.page)
+            : null;
+        if (targetId === null) return "page_not_found";
+        return fillTarget({
+          connectionUrl: url,
+          targetId,
+          selector: input.selector,
+          value: input.value,
+          expectedOrigin: input.expectedOrigin,
+          signal: deadline,
+        });
+      });
     await run("await browser.listPages()", 30_000, startup);
-    if (args.connectionUrl === undefined) preview = createPreview(url);
-    return { run, preview, close };
+    if (args.connectionUrl === undefined) {
+      const source = createPreview(url);
+      const mask = (frame: PreviewFrame | null) =>
+        frame && {
+          ...frame,
+          url: redactFilled(frame.url, filled).slice(0, 2_000),
+          title: redactFilled(frame.title, filled).slice(0, 300),
+        };
+      preview = {
+        next: async (...request) => mask(await source.next(...request)),
+        close: () => source.close(),
+      };
+    }
+    return { run, fill, preview, close };
   } catch (error) {
     await close();
     throw error;

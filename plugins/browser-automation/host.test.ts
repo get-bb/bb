@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createHostEntry } from "./host.js";
 import type { ResolvedRuntime } from "./runtime-pin.js";
 import type { RuntimeSession } from "./runtime.js";
+import type { FillCode } from "./contracts.js";
 
 const runtime: ResolvedRuntime = {
   binary: process.execPath,
@@ -11,6 +12,7 @@ const runtime: ResolvedRuntime = {
   source: "release",
 };
 const resolver = async () => runtime;
+const unusedFill = async (): Promise<FillCode> => "fill_failed";
 
 const open = (sessionId: string) => ({
   sessionId,
@@ -33,6 +35,7 @@ describe("host runtime preparation", () => {
       async (): Promise<RuntimeSession> => ({
         close: async () => {},
         preview: null,
+        fill: unusedFill,
         run: async () => {
           throw new Error("unused");
         },
@@ -147,6 +150,7 @@ describe("host session lifetime", () => {
         async () => ({
           close,
           preview: null,
+          fill: unusedFill,
           run: async () => {
             await vi.advanceTimersByTimeAsync(2 * 60_000);
             return output;
@@ -189,7 +193,12 @@ describe("host session lifetime", () => {
       const next = vi.fn();
       const harness = experimental_createHostEntryHarness(
         createHostEntry(
-          async () => ({ close, run, preview: { next, close() {} } }),
+          async () => ({
+            close,
+            run,
+            fill: unusedFill,
+            preview: { next, close() {} },
+          }),
           resolver,
         ),
       );
@@ -235,6 +244,7 @@ describe("host session lifetime", () => {
         async () => ({
           close,
           preview: null,
+          fill: unusedFill,
           run: async (_script, _timeout, signal) =>
             new Promise((_resolve, reject) => {
               started();
@@ -302,6 +312,7 @@ describe("host session lifetime", () => {
         async () => ({
           close,
           preview: null,
+          fill: unusedFill,
           run: async (_script, _timeout, signal) =>
             new Promise((_resolve, reject) => {
               signal.addEventListener(
@@ -346,7 +357,7 @@ describe("host session lifetime", () => {
       .mockResolvedValueOnce(undefined);
     const harness = experimental_createHostEntryHarness(
       createHostEntry(
-        async () => ({ close, preview: null, run: vi.fn() }),
+        async () => ({ close, preview: null, fill: unusedFill, run: vi.fn() }),
         resolver,
       ),
     );
@@ -388,7 +399,7 @@ describe("host session lifetime", () => {
       expect(factory.mock.calls[0]![0].signal.aborted).toBe(true),
     );
     const close = vi.fn(async () => {});
-    finishStartup({ close, preview: null, run: vi.fn() });
+    finishStartup({ close, preview: null, fill: unusedFill, run: vi.fn() });
     await closing;
     await rejected;
     expect(close).toHaveBeenCalledOnce();
@@ -435,6 +446,7 @@ describe("host live preview", () => {
         async () => ({
           close,
           preview: { next, close() {} },
+          fill: unusedFill,
           run: async () => ({ text: "", images: [], exitCode: 0 }),
         }),
         resolver,
@@ -521,6 +533,54 @@ describe("host live preview", () => {
     await vi.waitFor(() => expect(waiting).toHaveBeenCalledOnce());
     await harness.experimental_call("close", { sessionId: local });
     await rejected;
+    await harness.experimental_dispose();
+  });
+});
+
+describe("host private fill", () => {
+  const input = (sessionId: string) => ({
+    sessionId,
+    page: "main",
+    selector: "#password",
+    value: "planted-Secret-0d2e",
+    expectedOrigin: "https://accounts.example.com",
+  });
+  it("returns fixed codes and never surfaces runtime errors", async () => {
+    const fill = vi
+      .fn<RuntimeSession["fill"]>()
+      .mockResolvedValueOnce("ok")
+      .mockRejectedValueOnce(new Error("typing planted-Secret-0d2e failed"));
+    const harness = experimental_createHostEntryHarness(
+      createHostEntry(
+        async () => ({
+          close: async () => {},
+          preview: null,
+          fill,
+          run: async () => ({ text: "", images: [], exitCode: 0 }),
+        }),
+        resolver,
+      ),
+    );
+    const id = randomUUID();
+    expect(
+      await harness.experimental_call("fill", input(randomUUID())),
+    ).toEqual({ code: "session_unavailable" });
+    await harness.experimental_call("open", open(id));
+    expect(await harness.experimental_call("fill", input(id))).toEqual({
+      code: "ok",
+    });
+    expect(fill).toHaveBeenCalledWith(
+      {
+        page: "main",
+        selector: "#password",
+        value: "planted-Secret-0d2e",
+        expectedOrigin: "https://accounts.example.com",
+      },
+      expect.any(AbortSignal),
+    );
+    expect(await harness.experimental_call("fill", input(id))).toEqual({
+      code: "fill_failed",
+    });
     await harness.experimental_dispose();
   });
 });

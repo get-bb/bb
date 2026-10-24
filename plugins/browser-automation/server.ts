@@ -2,14 +2,17 @@ import { randomUUID } from "node:crypto";
 import { posix, win32 } from "node:path";
 import type {
   BbPluginApi,
+  ExperimentalPluginRpcHandlerContext,
   PluginCliContext,
   PluginRpcHandlers,
 } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import {
+  fillContract,
   hostContract,
   rpcContract,
   sessionSchema,
+  type FillCode,
   type PreviewOutput,
   type RunOutput,
   type Session,
@@ -388,16 +391,20 @@ export default async function browserAutomationPlugin(bb: BbPluginApi) {
     );
     await save(record);
   }
+  function usable(record: RecordEntry) {
+    return (
+      record.session.state === "ready" &&
+      Date.now() < hardDeadline(record.session) &&
+      ((busy.get(record.session.id) ?? 0) > 0 ||
+        Date.now() < record.session.expiresAt)
+    );
+  }
   async function run(
     input: z.output<typeof rpcContract.run.input>,
     signal: AbortSignal,
   ): Promise<RunOutput> {
     const record = await owned(input.threadId, input.sessionId);
-    if (
-      record.session.state !== "ready" ||
-      Date.now() >= hardDeadline(record.session) ||
-      (!busy.get(input.sessionId) && Date.now() >= record.session.expiresAt)
-    )
+    if (!usable(record))
       throw new Error("Session stopped or expired; open a new session");
     busy.set(input.sessionId, (busy.get(input.sessionId) ?? 0) + 1);
     try {
@@ -423,6 +430,46 @@ export default async function browserAutomationPlugin(bb: BbPluginApi) {
       else busy.delete(input.sessionId);
       const current = active.get(input.sessionId);
       if (current?.session.state === "ready") await touch(current);
+    }
+  }
+  async function fill(
+    {
+      threadId,
+      sessionId,
+      ...input
+    }: z.output<typeof fillContract.experimental_fill.input>,
+    context: ExperimentalPluginRpcHandlerContext,
+    signal: AbortSignal,
+  ): Promise<{ code: FillCode }> {
+    if (context.experimental_caller.kind !== "plugin")
+      return { code: "caller_not_allowed" };
+    let record: RecordEntry;
+    try {
+      record = await owned(threadId, sessionId);
+    } catch {
+      return { code: "session_unavailable" };
+    }
+    if (!usable(record)) return { code: "session_unavailable" };
+    busy.set(sessionId, (busy.get(sessionId) ?? 0) + 1);
+    try {
+      await touch(record);
+      return await host.call(
+        "fill",
+        { sessionId, ...input },
+        {
+          hostId: record.session.hostId,
+          signal: AbortSignal.any([signal, AbortSignal.timeout(60_000)]),
+        },
+      );
+    } catch {
+      return { code: "fill_failed" };
+    } finally {
+      const remaining = (busy.get(sessionId) ?? 1) - 1;
+      if (remaining > 0) busy.set(sessionId, remaining);
+      else busy.delete(sessionId);
+      const current = active.get(sessionId);
+      if (current?.session.state === "ready")
+        await touch(current).catch(() => {});
     }
   }
   async function preview(
@@ -491,6 +538,10 @@ export default async function browserAutomationPlugin(bb: BbPluginApi) {
     };
   }
   bb.rpc.register(rpcContract, handlers(lifecycle.signal));
+  bb.rpc.register(fillContract, {
+    experimental_fill: (input, context) =>
+      fill(input, context, lifecycle.signal),
+  });
   function dispatch(
     method: BrowserCliMethod,
     input: unknown,

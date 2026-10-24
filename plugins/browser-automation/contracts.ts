@@ -77,6 +77,34 @@ export const previewOutputSchema = z
   .object({ session: sessionSchema, frame: previewFrameSchema.nullable() })
   .strict();
 export type PreviewOutput = z.infer<typeof previewOutputSchema>;
+export const fillCodeSchema = z.enum([
+  "ok",
+  "caller_not_allowed",
+  "session_unavailable",
+  "page_not_found",
+  "origin_mismatch",
+  "navigated",
+  "element_not_found",
+  "element_not_fillable",
+  "fill_failed",
+]);
+export type FillCode = z.infer<typeof fillCodeSchema>;
+export const fillValueSchema = z.string().min(1).max(4_096);
+export const fillSchema = ownedSchema.extend({
+  page: z.string().min(1).max(120).default("main"),
+  selector: z.string().min(1).max(1_000),
+  value: fillValueSchema,
+  expectedOrigin: z.string().url().max(2_000),
+});
+export const fillOutputSchema = z.object({ code: fillCodeSchema }).strict();
+export const fillContract = defineRpcContract({
+  experimental_fill: {
+    experimental_description:
+      "Experimental. Type a value into one element of a session page after an atomic HTTPS registrable-domain check. Plugin callers only; returns a fixed code.",
+    input: fillSchema,
+    output: fillOutputSchema,
+  },
+});
 export const rpcContract = defineRpcContract({
   open: { input: openSchema, output: sessionSchema },
   list: {
@@ -134,6 +162,18 @@ export const hostContract = defineRpcContract({
       })
       .strict(),
     output: z.object({ frame: previewFrameSchema.nullable() }).strict(),
+  },
+  fill: {
+    input: z
+      .object({
+        sessionId: sessionIdSchema,
+        page: z.string().min(1).max(120),
+        selector: z.string().min(1).max(1_000),
+        value: fillValueSchema,
+        expectedOrigin: z.string().url().max(2_000),
+      })
+      .strict(),
+    output: fillOutputSchema,
   },
   close: {
     input: z.object({ sessionId: sessionIdSchema }).strict(),

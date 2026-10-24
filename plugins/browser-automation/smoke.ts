@@ -2,6 +2,7 @@ import {
   copyFile,
   mkdir,
   mkdtemp,
+  readdir,
   readFile,
   rm,
   symlink,
@@ -10,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { strict as assert } from "node:assert";
 import { execFile } from "node:child_process";
+import { createServer } from "node:https";
 import { promisify } from "node:util";
 import { supervise } from "./process.js";
 import { setTimeout as delay } from "node:timers/promises";
@@ -222,6 +224,146 @@ try {
       .text,
     /handoff-preserved/,
   );
+  const plantedSecret = "smoke-planted-Secret-7f3a9c";
+  await promisify(execFile)("openssl", [
+    "req",
+    "-x509",
+    "-newkey",
+    "rsa:2048",
+    "-nodes",
+    "-days",
+    "1",
+    "-subj",
+    "/CN=localhost",
+    "-keyout",
+    join(root, "key.pem"),
+    "-out",
+    join(root, "cert.pem"),
+  ]);
+  const posted: string[] = [];
+  const login = createServer(
+    {
+      key: await readFile(join(root, "key.pem")),
+      cert: await readFile(join(root, "cert.pem")),
+    },
+    (request, response) => {
+      if (request.method === "POST") {
+        let body = "";
+        request.on("data", (chunk: Buffer) => (body += chunk.toString()));
+        request.on("end", () => {
+          posted.push(new URLSearchParams(body).get("password") ?? "");
+          response.end("<title>Signed in</title>signed-in");
+        });
+        return;
+      }
+      response.setHeader("content-type", "text/html");
+      response.end(
+        `<title>Login</title><form method="post"><input id="password" name="password" type="password"><input id="otp" name="otp"><button id="go">Sign in</button></form>`,
+      );
+    },
+  );
+  await new Promise<void>((resolve) => login.listen(0, "127.0.0.1", resolve));
+  const loginPort = z.object({ port: z.number() }).parse(login.address()).port;
+  const loginOrigin = `https://localhost:${loginPort}`;
+  try {
+    const tlsProfile = join(root, "tls-profile");
+    const tlsBrowser = supervise(
+      resolve(chrome),
+      [
+        "--headless=new",
+        "--no-sandbox",
+        "--ignore-certificate-errors",
+        "--remote-debugging-port=0",
+        `--user-data-dir=${tlsProfile}`,
+        "--no-first-run",
+        "about:blank",
+      ],
+      process.env,
+    );
+    attachedBrowsers.push(tlsBrowser);
+    let tlsPortFile = "";
+    const tlsDeadline = AbortSignal.timeout(15_000);
+    while (!tlsPortFile) {
+      tlsDeadline.throwIfAborted();
+      try {
+        tlsPortFile = await readFile(
+          join(tlsProfile, "DevToolsActivePort"),
+          "utf8",
+        );
+      } catch {
+        await delay(25);
+      }
+    }
+    const [tlsPort, tlsPath] = tlsPortFile.trim().split("\n");
+    const tls = await createRuntime({
+      ...args,
+      connectionUrl: `ws://127.0.0.1:${tlsPort}${tlsPath}`,
+    });
+    sessions.push(tls);
+    assert.equal(
+      (
+        await tls.run(
+          `const p = await browser.getPage("main"); await p.goto(${JSON.stringify(`${loginOrigin}/login`)}); p.url()`,
+          10_000,
+          args.signal,
+        )
+      ).exitCode,
+      0,
+    );
+    const fill = (expectedOrigin: string, selector = "#password") =>
+      tls.fill(
+        { page: "main", selector, value: plantedSecret, expectedOrigin },
+        args.signal,
+      );
+    assert.equal(await fill("https://example.com"), "origin_mismatch");
+    assert.equal(await fill(loginOrigin, "#missing"), "element_not_found");
+    assert.equal(
+      await tls.fill(
+        {
+          page: "absent",
+          selector: "#password",
+          value: plantedSecret,
+          expectedOrigin: loginOrigin,
+        },
+        args.signal,
+      ),
+      "page_not_found",
+    );
+    assert.equal(await fill(loginOrigin), "ok");
+    assert.equal(await fill(loginOrigin, "#otp"), "ok");
+    const reads = await tls.run(
+      'const p = await browser.getPage("main"); const values = await p.evaluate(() => [document.querySelector("#password").value, document.querySelector("#otp").value, getComputedStyle(document.querySelector("#otp")).webkitTextSecurity]); console.log(JSON.stringify(values)); await p.snapshot()',
+      10_000,
+      args.signal,
+    );
+    assert.equal(reads.exitCode, 0, reads.text);
+    assert.ok(!reads.text.includes(plantedSecret));
+    assert.match(reads.text, /\[filled value\]/);
+    assert.match(reads.text, /disc/);
+    if (process.platform === "linux") {
+      for (const pid of await readdir("/proc")) {
+        if (!/^\d+$/.test(pid)) continue;
+        for (const file of ["cmdline", "environ"]) {
+          const content = await readFile(join("/proc", pid, file)).catch(
+            () => null,
+          );
+          assert.ok(
+            !content?.includes(plantedSecret),
+            `planted secret found in /proc/${pid}/${file}`,
+          );
+        }
+      }
+    }
+    await tls.run(
+      'const p = await browser.getPage("main"); await p.click("#go"); await p.waitForLoad(); p.url()',
+      10_000,
+      args.signal,
+    );
+    assert.deepEqual(posted, [plantedSecret]);
+    await tls.close();
+  } finally {
+    login.close();
+  }
   console.log(
     JSON.stringify({
       passed: true,
@@ -237,6 +379,7 @@ try {
         "reopen after timeout",
         "close rejects further work",
         "attachment close preserves browser and page state",
+        "private fill types into an HTTPS page, refuses other sites, and masks the value",
       ],
     }),
   );

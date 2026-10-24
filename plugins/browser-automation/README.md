@@ -238,6 +238,64 @@ as `{session, frame}` where `frame` has `sequence`, `mimeType`, `width`,
 `height`, `url`, `title`, and `bytes`, or is `null` when nothing newer than
 `--after` arrived. It omits the image bytes; use `screenshot` for a file.
 
+## Private fill for plugins (experimental)
+
+`experimental_fill` lets another installed plugin type a value it holds, such
+as a credential from a vault, into one element of a session's page without the
+value passing through a script. Only plugins can call it, through
+`bb.sdk.plugins.callRpc`. Any other caller (the app, `bb plugin rpc call`, or
+agents) gets `caller_not_allowed`. There is no `bb browser-automation` command
+or agent tool for it.
+
+```ts
+await bb.sdk.plugins.callRpc({
+  pluginId: "browser-automation",
+  method: "experimental_fill",
+  input: {
+    threadId,
+    sessionId,
+    page: "main",
+    selector: "#password",
+    value,
+    expectedOrigin: "https://accounts.example.com",
+  },
+  outputSchema: z.object({ code: z.string() }),
+});
+```
+
+The result is always `{ code }`: one of `ok`, `caller_not_allowed`,
+`session_unavailable`, `page_not_found`, `origin_mismatch`, `navigated`,
+`element_not_found`, `element_not_fillable`, or `fill_failed`. Underlying
+errors are never returned or logged. A failed fill does not stop the session.
+
+How the host worker fills (`fill.ts`):
+
+1. It resolves the named page to its CDP target with `browser.listPages()`.
+   That is the only DevBrowser script the fill runs, and it contains no value.
+2. It opens its own CDP connection to the session's browser and reads the top
+   frame's URL. The page must be HTTPS and share a registrable domain with
+   `expectedOrigin`, using the Public Suffix List including private suffixes,
+   so `alice.github.io` and `bob.github.io` are different sites. Otherwise it
+   returns `origin_mismatch` before the value is sent anywhere.
+3. One synchronous call in an isolated world receives the value as a call
+   argument, never as script source. That call re-checks that the frame still
+   has the verified origin (`navigated` if not), finds the selector in the top
+   document, masks the element with `-webkit-text-security: disc`, and sets
+   its value with the native setter. It then dispatches `input` and `change`.
+   Because the check and the write happen in one task, a navigation cannot
+   land between them. Page scripts cannot tamper with the check. Only text-like
+   `input` elements and `textarea` are fillable. Elements inside iframes are
+   not.
+
+The value travels in memory over the plugin RPC and host RPC channels and the
+loopback CDP socket. It never goes into argv, env, DevBrowser scripts or logs.
+For the rest of the session, the host replaces the value, raw or JSON-escaped,
+with `[filled value]` in `run`, `pages` and `screenshot` text and in preview
+titles and URLs. That covers snapshots and `evaluate` results. The masking
+style keeps the field unreadable in screenshots and live previews. Masking
+matches exact text, so a script that deliberately transforms the field's value
+can still read it. Scripts are trusted code, as above.
+
 ## Validation
 
 From the BB checkout, use Turbo:
@@ -270,7 +328,11 @@ frames on request, serialization,
 independent session cancellation, a synchronous infinite-loop timeout,
 reopening, closing a runtime session (further runs are rejected), and
 preservation of an attached browser and its page state after that session
-closes.
+closes. It also fills a planted value into a self-signed HTTPS login page,
+checks that a wrong site and a missing element are refused, and confirms that
+the form POST received the value. It then checks that `evaluate` and snapshot
+output show `[filled value]` and that no process's argv or environment contains
+the value.
 Both smokes link directly to Chrome and exercise the production launch flags
 without a wrapper. The attachment smoke also launches its separate browser
 fixture with `--no-sandbox` so it works on hosts with restricted user namespaces.
