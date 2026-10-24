@@ -33,6 +33,29 @@ export function buildBridgeInjectionScript(
     var nextId = 0;
     var imagePastes = {};
 
+    var lockViewportScale = function () {
+      var viewport = document.querySelector('meta[name="viewport"]');
+      if (!viewport) return;
+      var directives = (viewport.getAttribute("content") || "").split(",");
+      var locked = [];
+      for (var i = 0; i < directives.length; i += 1) {
+        var directive = directives[i].trim();
+        if (!directive || /^(maximum-scale|user-scalable)\\s*=/i.test(directive)) continue;
+        locked.push(directive);
+      }
+      locked.push("maximum-scale=1.0", "user-scalable=no");
+      viewport.setAttribute("content", locked.join(", "));
+    };
+
+    if (
+      typeof document !== "undefined" &&
+      typeof document.querySelector === "function" &&
+      typeof document.addEventListener === "function"
+    ) {
+      lockViewportScale();
+      document.addEventListener("DOMContentLoaded", lockViewportScale, { once: true });
+    }
+
     var discardImagePaste = function (id) {
       var entry = imagePastes[id];
       if (!entry) return;

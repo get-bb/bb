@@ -333,6 +333,7 @@ export function ProfileWebViewScreen() {
         sharedCookiesEnabled
         javaScriptEnabled
         domStorageEnabled
+        setBuiltInZoomControls={false}
         allowsInlineMediaPlayback
         mediaPlaybackRequiresUserAction={false}
         mediaCapturePermissionGrantType="grant"
