@@ -3634,8 +3634,10 @@ like the default `Zap`, or a declared icon `"<pluginId>/<name>"` from the
 plugin's `bb.branding.experimental_icons`. The model picker trigger and the
 single-tier toggle row show it when that tier is selected; Codex declares
 `"provider-codex/ultrafast"`, a double bolt shipped in its own `icons/`.
-Plugin-relative paths are rejected. The server
-projects it onto `ProviderInfo.serviceTiers[].icon`; reasoning levels ignore it.
+Plugin-relative paths are rejected, and a declared icon must be one of the
+registering plugin's, checked with the provider icon at
+`bb.providers.register`. The server projects it onto
+`ProviderInfo.serviceTiers[].icon`; reasoning levels ignore it.
 
 Docs: `providers.md`.
 

@@ -41,6 +41,7 @@ import {
   normalizeWebSocketRouteRegistration,
   pluginCliCollisionWarning,
   providerAlreadyRegisteredMessage,
+  providerDeclarationIconRefusal,
   providerIconRefusalMessage,
   providerWithoutBridgeMessage,
   registerSettingDescriptors,
@@ -1002,12 +1003,13 @@ function createFakePluginHostInternal(
     // The same refusals production makes at the register call, in its
     // order: the icon against the manifest's declared icons, then the
     // bridge the declaration runs on, then the id.
-    const iconProblem =
-      normalized.icon === undefined
-        ? null
-        : undeclaredIconProblem(pluginId, declaredIconNames, normalized.icon);
-    if (iconProblem !== null) {
-      throw new Error(providerIconRefusalMessage(normalized.id, iconProblem));
+    const iconRefusal = providerDeclarationIconRefusal(
+      pluginId,
+      declaredIconNames,
+      normalized,
+    );
+    if (iconRefusal !== null) {
+      throw new Error(iconRefusal);
     }
     if (options.experimental_hostEntry === false) {
       throw new Error(providerWithoutBridgeMessage(normalized.id));
