@@ -30,6 +30,7 @@ import {
 } from "@/components/plugin/PluginSidebarFooterItems";
 import { SidebarPluginAttentionGlyph } from "./SidebarPluginAttentionGlyph";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
+import { SidebarReleaseWidget } from "./SidebarReleaseWidget";
 import { SidebarResizeHandle, SidebarTopReserveRow } from "./SidebarChrome";
 import { SIDEBAR_FOOTER_ACTION_CLASS } from "@bb/shared-ui/sidebar-row-classes";
 import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
@@ -347,6 +348,7 @@ export function AppSidebar({
           "relative flex flex-col gap-2",
           (isFooterCustomizing || pluginSidebarFooter.activeItem !== null) &&
             "px-2 pt-2",
+          "has-[[data-release-widget]]:px-2 has-[[data-release-widget]]:pt-2",
         )}
       >
         <OverflowFade placement="above" tone="sidebar" size="sm" />
@@ -360,10 +362,13 @@ export function AppSidebar({
             />
           </div>
         ) : (
-          <PluginSidebarFooterDisclosure
-            item={pluginSidebarFooter.activeItem}
-            onDismiss={pluginSidebarFooter.dismiss}
-          />
+          <>
+            <SidebarReleaseWidget visible={isThreadListVisible} />
+            <PluginSidebarFooterDisclosure
+              item={pluginSidebarFooter.activeItem}
+              onDismiss={pluginSidebarFooter.dismiss}
+            />
+          </>
         )}
       </div>
       {placement === "list" ? footer : null}

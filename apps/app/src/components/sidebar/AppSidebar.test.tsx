@@ -65,6 +65,10 @@ vi.mock("./SidebarUpdatesBadge", () => ({
   SidebarUpdatesBadge: () => null,
 }));
 
+vi.mock("./SidebarReleaseWidget", () => ({
+  SidebarReleaseWidget: () => null,
+}));
+
 function Harness() {
   const navigation = useResolvedSidebarNavigation();
   return (

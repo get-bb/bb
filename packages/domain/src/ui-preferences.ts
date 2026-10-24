@@ -50,6 +50,7 @@ export const UI_PREFERENCE_KEYS = [
   "sidebar.threadListProvider",
   "composer.provider",
   "infoPanel.collapsedSections",
+  "updates.dismissedReleaseVersion",
 ] as const;
 export type UiPreferenceKey = (typeof UI_PREFERENCE_KEYS)[number];
 const uiPreferenceKeySchema = z.enum(UI_PREFERENCE_KEYS);
@@ -158,6 +159,11 @@ export const uiPreferenceDefinitions = {
     uiPreferenceStringListSchema,
     [],
     "Thread Info panel section ids that are collapsed, such as commits, uncommittedChanges, forks, threadStorage, or <pluginId>/<sectionId> for plugin sections.",
+  ),
+  "updates.dismissedReleaseVersion": defineUiPreference(
+    uiPreferenceStringSchema.nullable(),
+    null,
+    "The bb release whose sidebar widget the person dismissed.",
   ),
 } as const satisfies Record<UiPreferenceKey, UiPreferenceDefinition>;
 

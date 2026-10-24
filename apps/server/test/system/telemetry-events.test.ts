@@ -56,6 +56,123 @@ describe("client telemetry events", () => {
     });
   });
 
+  it("forwards accepted release widget events to telemetry unchanged", async () => {
+    await withTestHarness(async (harness) => {
+      const capture = vi.fn<TelemetryService["capture"]>();
+      harness.deps.telemetry = { ...harness.deps.telemetry, capture };
+      const events = [
+        {
+          name: "release_widget_shown",
+          properties: { release_version: "0.47.0" },
+        },
+        {
+          name: "release_widget_action",
+          properties: { release_version: "0.47.0", action: "open_notes" },
+        },
+        {
+          name: "release_widget_action",
+          properties: { release_version: "1.2", action: "dismiss" },
+        },
+        {
+          name: "release_notes_opened",
+          properties: { release_version: "0.47.0", entry_point: "widget" },
+        },
+        {
+          name: "release_notes_opened",
+          properties: {
+            release_version: "0.47.0.1",
+            entry_point: "updates_link",
+          },
+        },
+      ];
+      for (const event of events) {
+        capture.mockClear();
+        const response = await post(harness, event);
+        expect(response.status).toBe(200);
+        await expect(readJson(response)).resolves.toEqual({ ok: true });
+        expect(capture).toHaveBeenCalledExactlyOnceWith(event);
+      }
+    });
+  });
+
+  it("rejects release widget events with free-text versions or extra properties", async () => {
+    await withTestHarness(async (harness) => {
+      const capture = vi.fn<TelemetryService["capture"]>();
+      harness.deps.telemetry = { ...harness.deps.telemetry, capture };
+      for (const event of [
+        {
+          name: "release_widget_shown",
+          properties: { release_version: "0.47.0; drop" },
+        },
+        {
+          name: "release_widget_shown",
+          properties: { release_version: "v0.47.0" },
+        },
+        {
+          name: "release_widget_shown",
+          properties: { release_version: "0.47.0-beta.1" },
+        },
+        {
+          name: "release_widget_shown",
+          properties: { release_version: `0.${"1".repeat(40)}` },
+        },
+        {
+          name: "release_widget_shown",
+          properties: { release_version: "0.47.0", threadId: "thr_123" },
+        },
+        {
+          name: "release_widget_action",
+          properties: { release_version: "0.47.0", action: "open" },
+        },
+        {
+          name: "release_widget_action",
+          properties: { release_version: "0.47.0", action: "snooze" },
+        },
+        {
+          name: "release_widget_action",
+          properties: {
+            release_version: "0.47.0",
+            action: "open_notes",
+            notes: "Release highlights text",
+          },
+        },
+        {
+          name: "release_notes_opened",
+          properties: {
+            release_version: "0.47.0",
+            entry_point: "settings_search",
+          },
+        },
+        {
+          name: "release_notes_opened",
+          properties: {
+            release_version: "0.47.0",
+            entry_point: "sidebar",
+          },
+        },
+        {
+          name: "release_notes_opened",
+          properties: {
+            release_version: "0.47.0",
+            entry_point: "updates_link",
+            destination: "external_browser",
+          },
+        },
+        {
+          name: "release_notes_opened",
+          properties: {
+            release_version: "0.47.0",
+            entry_point: "widget",
+            url: "https://example.com/notes",
+          },
+        },
+      ]) {
+        expect((await post(harness, event)).status).toBe(400);
+      }
+      expect(capture).not.toHaveBeenCalled();
+    });
+  });
+
   it("rejects unknown events and identifying extra properties", async () => {
     await withTestHarness(async (harness) => {
       const capture = vi.fn<TelemetryService["capture"]>();

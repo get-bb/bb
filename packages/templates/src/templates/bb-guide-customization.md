@@ -174,8 +174,8 @@ existing threads too, including `bb thread log`. Settings → Providers has the
 same per-provider switch.
 
 Experiments: `bb settings experiment <key> <true|false>` toggles a default-off
-experiment (Settings → Experiments). `changelogPreview` shows the latest
-release notes as a dismissible card on Settings → Updates. Experiments that
+experiment (Settings → Experiments). `changelogPreview` is retired: the key is
+still accepted but does nothing. Experiments that
 gate a feature are documented with it: `serverMove` in `bb guide machines`,
 `performanceDiagnostics` under Server performance diagnostics below.
 `timelinePush` sends an open thread's timeline updates over the live
@@ -253,7 +253,8 @@ Sidebar preferences
 
 `bb settings ui` reads and writes server-side sidebar preferences shared by
 every window, device, and the CLI. The same registry stores which thread Info
-panel sections are collapsed (`infoPanel.collapsedSections`).
+panel sections are collapsed (`infoPanel.collapsedSections`) and which release's
+sidebar release widget was dismissed (`updates.dismissedReleaseVersion`).
 
 bb settings ui list [--json]
 bb settings ui get <key> [--json]

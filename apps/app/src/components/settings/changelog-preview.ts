@@ -1,10 +1,14 @@
+import { queryOptions } from "@tanstack/react-query";
 import changelogSource from "../../../../../CHANGELOG.md?raw";
 import {
   parseChangelog,
   type ChangelogEntry,
 } from "../../../../../changelog-parser";
 export { RELEASE_META } from "../../../../../changelog-metadata";
-export type { ChangelogBlock } from "../../../../../changelog-parser";
+export type {
+  ChangelogBlock,
+  ChangelogEntry,
+} from "../../../../../changelog-parser";
 
 const LATEST_CHANGELOG_SOURCE_URL =
   "https://raw.githubusercontent.com/get-bb/bb/main/CHANGELOG.md";
@@ -14,17 +18,28 @@ export const CHANGELOG_ENTRIES = parseChangelog(changelogSource);
 export const LATEST_CHANGELOG_ENTRY: ChangelogEntry | null =
   CHANGELOG_ENTRIES[0] ?? null;
 
-export async function fetchLatestChangelogEntry(
+export const CHANGELOG_STALE_TIME_MS = 5 * 60_000;
+
+export async function fetchChangelogEntries(
   fetchFn: typeof fetch,
   signal?: AbortSignal,
-): Promise<ChangelogEntry> {
+): Promise<ChangelogEntry[]> {
   const response = await fetchFn(LATEST_CHANGELOG_SOURCE_URL, { signal });
   if (!response.ok) {
     throw new Error(`Changelog request failed (${response.status})`);
   }
-  const [entry] = parseChangelog(await response.text());
-  if (entry === undefined) {
+  const entries = parseChangelog(await response.text());
+  if (entries.length === 0) {
     throw new Error("The changelog has no releases");
   }
-  return entry;
+  return entries;
+}
+
+export function changelogEntriesQueryOptions() {
+  return queryOptions({
+    queryKey: ["updates", "changelog", "entries"] as const,
+    queryFn: ({ signal }) => fetchChangelogEntries(fetch, signal),
+    retry: false,
+    staleTime: CHANGELOG_STALE_TIME_MS,
+  });
 }

@@ -7,8 +7,12 @@ describe("visibleExperimentKeys", () => {
       "performanceDiagnostics",
     );
     expect(visibleExperimentKeys(false)).toEqual(
-      expect.arrayContaining(["changelogPreview", "serverMove", "timelinePush"]),
+      expect.arrayContaining(["serverMove", "timelinePush"]),
     );
+  });
+
+  it("hides the retired changelog preview experiment", () => {
+    expect(visibleExperimentKeys(true)).not.toContain("changelogPreview");
   });
 
   it("shows performance diagnostics when the server was launched with permission", () => {

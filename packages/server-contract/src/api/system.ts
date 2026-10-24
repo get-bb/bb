@@ -222,6 +222,11 @@ const onboardingStepTelemetryPropertiesSchema = z
   })
   .strict();
 
+const releaseVersionTelemetrySchema = z
+  .string()
+  .max(32)
+  .regex(/^\d+(\.\d+){1,3}$/);
+
 export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
   z
     .object({
@@ -294,6 +299,36 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
           outcome: z.enum(["completed", "skipped"]),
           entry: onboardingEntryTelemetrySchema,
           last_step: onboardingStepTelemetrySchema,
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("release_widget_shown"),
+      properties: z
+        .object({ release_version: releaseVersionTelemetrySchema })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("release_widget_action"),
+      properties: z
+        .object({
+          release_version: releaseVersionTelemetrySchema,
+          action: z.enum(["open_notes", "dismiss"]),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("release_notes_opened"),
+      properties: z
+        .object({
+          release_version: releaseVersionTelemetrySchema,
+          entry_point: z.enum(["widget", "updates_link"]),
         })
         .strict(),
     })

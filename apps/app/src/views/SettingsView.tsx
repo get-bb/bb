@@ -1131,15 +1131,12 @@ export function PrivacySettingsSection({
   );
 }
 
+type VisibleExperimentKey = Exclude<ExperimentKey, "changelogPreview">;
+
 const EXPERIMENT_DEFINITIONS: Record<
-  ExperimentKey,
+  VisibleExperimentKey,
   { label: string; description: string }
 > = {
-  changelogPreview: {
-    label: "Changelog preview",
-    description:
-      "Show the latest release notes as a compact preview on the Updates page.",
-  },
   compactExpiredCache: {
     label: "Compact before resuming expired sessions",
     description:
@@ -1166,14 +1163,22 @@ const EXPERIMENT_DEFINITIONS: Record<
       "Send an open thread's timeline changes over the live connection instead of reloading the latest window after each update.",
   },
 };
+function isVisibleExperimentKey(
+  experimentKey: ExperimentKey,
+): experimentKey is VisibleExperimentKey {
+  return experimentKey !== "changelogPreview";
+}
+
 export function visibleExperimentKeys(
   performanceDiagnosticsAvailable: boolean,
-): ExperimentKey[] {
-  return experimentKeys.filter(
-    (experimentKey) =>
-      experimentKey !== "performanceDiagnostics" ||
-      performanceDiagnosticsAvailable,
-  );
+): VisibleExperimentKey[] {
+  return experimentKeys
+    .filter(isVisibleExperimentKey)
+    .filter(
+      (experimentKey) =>
+        experimentKey !== "performanceDiagnostics" ||
+        performanceDiagnosticsAvailable,
+    );
 }
 
 const EARLY_ADOPTER_LABEL = "Early adopter";
@@ -1395,11 +1400,7 @@ export function SettingsView() {
   } else if (activeSection === "environment-variables") {
     content = <MachineEnvironmentSettings />;
   } else if (activeSection === "updates") {
-    content = (
-      <UpdatesSettingsSection
-        showChangelogPreview={experiments.changelogPreview}
-      />
-    );
+    content = <UpdatesSettingsSection />;
   } else if (activeSection === "mobile") {
     content = <MobileAppSection />;
   } else if (activeSection === "experiments") {
