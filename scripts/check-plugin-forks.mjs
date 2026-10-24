@@ -359,9 +359,10 @@ try {
     await mkdir(evidenceDir, { recursive: true });
     await cp(sdkTarball, join(evidenceDir, basename(sdkTarball)));
   }
+  const longRunningPlugins = new Set(["plugins/provider-pi", "plugins/tasks"]);
   const queue = [...pluginDirs].sort(
     (a, b) =>
-      Number(b === "plugins/provider-pi") - Number(a === "plugins/provider-pi"),
+      Number(longRunningPlugins.has(b)) - Number(longRunningPlugins.has(a)),
   );
   const failures = [];
   const results = [];

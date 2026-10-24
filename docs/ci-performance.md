@@ -59,9 +59,9 @@ merge's first parent; pushes fetch all branches and tags.
 ## Fork checks
 
 The Plugin Fork Check runs in three shards. On pull requests it checks only
-the forkable plugins a change touches. Within each shard, the Pi provider starts
-first because its subprocess-heavy suite otherwise dominates the tail after
-shorter forks finish. CI caps each fork's Vitest at two workers while retaining
+the forkable plugins a change touches. Within each shard, Pi and Tasks start
+first because their longer checks otherwise extend the tail after shorter
+forks finish. CI caps each fork's Vitest at two workers while retaining
 four concurrent forks; see
 [forkable-plugins.md](forkable-plugins.md) for selection and local commands.
 
@@ -841,3 +841,29 @@ clearing installed npx trees before reuse. Both runners passed every smoke:
 Local archive creation took 1–3 seconds and extraction 0–1 second. These timings
 do not include GitHub cache transfer. The separately measured Linux benefit was
 only a few seconds, so this change scopes the cache to the Windows app smoke.
+
+## Pi timeout tests and fork scheduling
+
+Pi's child-shutdown and hung-model-refresh tests retain real child processes,
+RPC acknowledgements, model results, and process-exit assertions. Once the real
+child reaches the exercised state, the tests advance only the parent timeout
+clock through the eight-second shutdown escalation or five-second refresh
+limit. The child keeps its real clock. Polls for actual I/O retain explicit
+real-time budgets, and the tests restore the parent clock before teardown.
+The version-probe test still waits its full 15 seconds because Node's internal
+`execFile` timeout is outside the parent fake timer boundary.
+
+Tasks now starts early within its existing fork shard, alongside the existing
+Pi priority. All three shard memberships, four concurrent fork checks, and two
+Vitest workers per fork stay the same. In two Linux repetitions of the full
+standalone fork check, shard 2 took 86.47/95.05 seconds before and 69.74/83.11
+seconds after (means 90.76 to 76.43 seconds, 16%). These measurements include
+fresh dependency resolution, install, typecheck, tests, and build after preparing
+the SDK and CLI. See [the scheduling experiment](https://github.com/get-bb/bb/actions/runs/40139306094).
+Giving Codex early priority instead regressed shard 3 from 59.49/64.15 seconds
+to 80.59/82.45 seconds, so that change was discarded. These are fork-command
+measurements, not end-to-end CI gains.
+
+A local full Pi run retained all 319 passing tests and seven existing skips.
+Reported suite time fell from 31.05 to 24.40 seconds; the shutdown case fell
+from 8.13 to 0.22 seconds and the hanging refresh from 5.21 to 0.26 seconds.
