@@ -83,20 +83,15 @@ function pageKeyPart(page: ThreadTimelinePageRequest): string {
     : `latest:${page.segmentLimit}`;
 }
 
-export function buildThreadTimelineParamsKey(
-  args: Omit<ThreadTimelineCacheKeyArgs, "maxSeq">,
+export function buildThreadTimelineCacheKey(
+  args: ThreadTimelineCacheKeyArgs,
 ): string {
   return [
+    args.maxSeq,
     args.threadId,
     args.status,
     args.surface,
     pageKeyPart(args.page),
     args.summaryOnly ? "1" : "0",
   ].join("|");
-}
-
-export function buildThreadTimelineCacheKey(
-  args: ThreadTimelineCacheKeyArgs,
-): string {
-  return `${args.maxSeq}|${buildThreadTimelineParamsKey(args)}`;
 }

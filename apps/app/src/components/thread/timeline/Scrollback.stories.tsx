@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { defaultExperiments } from "@bb/domain";
 import {
-  computeTimelineRowDelta,
+  computeThreadTimelineDelta,
   type ThreadTimelineResponse,
   type TimelinePaginationCursor,
   type TimelineRow,
@@ -123,6 +123,7 @@ class StoryTimelineServer {
     return makeThreadTimelineResponse({
       rows,
       maxSeq: this.maxSeq,
+      tag: `story:${this.surfaceVersion}:${this.maxSeq}:${startTurn}:${endTurn}`,
       timelinePage: {
         returnedSegmentCount: endTurn - startTurn,
         olderCursor: this.cursor(startTurn),
@@ -245,12 +246,7 @@ function createScrollbackStory(delivery: TimelineDelivery): {
         segmentLimit: resolveThreadTimelineSegmentLimit() ?? null,
         deferContent: true,
       },
-      afterSequence: previous.maxSeq,
-      timeline: {
-        ...latest,
-        rows: [],
-        delta: computeTimelineRowDelta(previous.rows, latest.rows),
-      },
+      timeline: computeThreadTimelineDelta(previous, latest),
     });
   };
   const deliverLatest = delivery === "push" ? pushLatest : refetchLatest;

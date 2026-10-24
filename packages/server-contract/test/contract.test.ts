@@ -55,9 +55,6 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
     reason:
       "Older parent notices have no per-child outcomes. New notices omit interruption details for completed, failed, or unclassified turns; a recorded host-connection-loss cause is optional even when the interruption reason is known.",
     fields: [
-      "threadTimelineResponseSchema.delta.upsertRows.systemMessageSubject.outcomes",
-      "threadTimelineResponseSchema.delta.upsertRows.systemMessageSubject.outcomes.interruption",
-      "threadTimelineResponseSchema.delta.upsertRows.systemMessageSubject.outcomes.interruption.cause",
       "threadTimelineResponseSchema.rows.systemMessageSubject.outcomes",
       "threadTimelineResponseSchema.timelinePage.olderRowUpdates.systemMessageSubject.outcomes",
       "threadTimelineResponseSchema.rows.systemMessageSubject.outcomes.interruption",
@@ -129,7 +126,6 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "threadPendingInteractionsResponseSchema.payload.presentation",
       "threadTimelineResponseSchema.activeBackgroundCommands.presentation",
       "threadTimelineResponseSchema.activeWorkflows.presentation",
-      "threadTimelineResponseSchema.delta.upsertRows.presentation",
       "threadTimelineResponseSchema.rows.presentation",
       "threadTimelineResponseSchema.timelinePage.olderRowUpdates.presentation",
     ],
@@ -158,11 +154,6 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "threadTimelineResponseSchema.activeWorkflows.presentation.suppress",
       "threadTimelineResponseSchema.activeWorkflows.presentation.tint",
       "threadTimelineResponseSchema.activeWorkflows.presentation.title",
-      "threadTimelineResponseSchema.delta.upsertRows.presentation.badge",
-      "threadTimelineResponseSchema.delta.upsertRows.presentation.detail",
-      "threadTimelineResponseSchema.delta.upsertRows.presentation.suppress",
-      "threadTimelineResponseSchema.delta.upsertRows.presentation.tint",
-      "threadTimelineResponseSchema.delta.upsertRows.presentation.title",
       "threadTimelineResponseSchema.rows.presentation.badge",
       "threadTimelineResponseSchema.timelinePage.olderRowUpdates.presentation.badge",
       "threadTimelineResponseSchema.rows.presentation.detail",
@@ -182,9 +173,6 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "threadPendingInteractionsResponseSchema.payload.questions.options",
       "threadPendingInteractionsResponseSchema.payload.questions.options.description",
       "threadPendingInteractionsResponseSchema.payload.questions.shortLabel",
-      "threadTimelineResponseSchema.delta.upsertRows.questions.options",
-      "threadTimelineResponseSchema.delta.upsertRows.questions.options.description",
-      "threadTimelineResponseSchema.delta.upsertRows.questions.shortLabel",
       "threadTimelineResponseSchema.rows.questions.options",
       "threadTimelineResponseSchema.timelinePage.olderRowUpdates.questions.options",
       "threadTimelineResponseSchema.rows.questions.options.description",
@@ -225,20 +213,6 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "threadTimelineResponseSchema.activeWorkflows.workflow.agents.startedAt",
       "threadTimelineResponseSchema.activeWorkflows.workflow.agents.tokens",
       "threadTimelineResponseSchema.activeWorkflows.workflow.agents.toolCalls",
-      "threadTimelineResponseSchema.delta.upsertRows.workflow.agents.agentType",
-      "threadTimelineResponseSchema.delta.upsertRows.workflow.agents.durationMs",
-      "threadTimelineResponseSchema.delta.upsertRows.workflow.agents.error",
-      "threadTimelineResponseSchema.delta.upsertRows.workflow.agents.isolation",
-      "threadTimelineResponseSchema.delta.upsertRows.workflow.agents.lastToolName",
-      "threadTimelineResponseSchema.delta.upsertRows.workflow.agents.lastToolSummary",
-      "threadTimelineResponseSchema.delta.upsertRows.workflow.agents.phaseIndex",
-      "threadTimelineResponseSchema.delta.upsertRows.workflow.agents.phaseTitle",
-      "threadTimelineResponseSchema.delta.upsertRows.workflow.agents.promptPreview",
-      "threadTimelineResponseSchema.delta.upsertRows.workflow.agents.queuedAt",
-      "threadTimelineResponseSchema.delta.upsertRows.workflow.agents.resultPreview",
-      "threadTimelineResponseSchema.delta.upsertRows.workflow.agents.startedAt",
-      "threadTimelineResponseSchema.delta.upsertRows.workflow.agents.tokens",
-      "threadTimelineResponseSchema.delta.upsertRows.workflow.agents.toolCalls",
       "threadTimelineResponseSchema.rows.workflow.agents.agentType",
       "threadTimelineResponseSchema.timelinePage.olderRowUpdates.workflow.agents.agentType",
       "threadTimelineResponseSchema.rows.workflow.agents.durationMs",
@@ -275,7 +249,6 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
     fields: [
       "threadTimelineResponseSchema.activeBackgroundCommands.workflow.phases.kind",
       "threadTimelineResponseSchema.activeWorkflows.workflow.phases.kind",
-      "threadTimelineResponseSchema.delta.upsertRows.workflow.phases.kind",
       "threadTimelineResponseSchema.rows.workflow.phases.kind",
       "threadTimelineResponseSchema.timelinePage.olderRowUpdates.workflow.phases.kind",
     ],
@@ -284,10 +257,8 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
     reason:
       "A command row carries an output preview only when its output was truncated and the full text may still be fetchable, and a row is marked contentDeferred only when its expandable content was left out to be loaded on expand; absence means the row's fields hold the whole content.",
     fields: [
-      "threadTimelineResponseSchema.delta.upsertRows.contentDeferred",
       "threadTimelineResponseSchema.rows.contentDeferred",
       "threadTimelineResponseSchema.timelinePage.olderRowUpdates.contentDeferred",
-      "threadTimelineResponseSchema.delta.upsertRows.outputPreview",
       "threadTimelineResponseSchema.rows.outputPreview",
       "threadTimelineResponseSchema.timelinePage.olderRowUpdates.outputPreview",
     ],
@@ -296,7 +267,6 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
     reason:
       "A generic operation row carries a reasoning id only when the provider tied the operation to a reasoning block; absence means there is no reasoning to link to.",
     fields: [
-      "threadTimelineResponseSchema.delta.upsertRows.reasoningId",
       "threadTimelineResponseSchema.rows.reasoningId",
       "threadTimelineResponseSchema.timelinePage.olderRowUpdates.reasoningId",
     ],
@@ -305,7 +275,6 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
     reason:
       "A plan step carries a status only once the provider reports progress on it; absence means the step is listed but not yet started, which is not the same as pending.",
     fields: [
-      "threadTimelineResponseSchema.delta.upsertRows.steps.status",
       "threadTimelineResponseSchema.rows.steps.status",
       "threadTimelineResponseSchema.timelinePage.olderRowUpdates.steps.status",
     ],
@@ -580,7 +549,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "threadTimelineQuerySchema.beforeAnchorSeq",
       "threadTimelineQuerySchema.beforeAnchorId",
       "threadTimelineQuerySchema.summaryOnly",
-      "threadTimelineQuerySchema.afterSequence",
+      "threadTimelineQuerySchema.afterTag",
       "threadTimelineQuerySchema.deferContent",
     ],
   },
@@ -600,11 +569,8 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "Timeline responses carry a row-patch delta only for a usable afterSequence, and that delta carries rowOrder only when membership or ordering changed.",
-    fields: [
-      "threadTimelineResponseSchema.delta",
-      "threadTimelineResponseSchema.delta.rowOrder",
-    ],
+      "Timeline deltas carry rowOrder only when membership or ordering changed.",
+    fields: ["timelineDeltaSchema.rowOrder"],
   },
   {
     reason:
@@ -2099,6 +2065,10 @@ describe("server-contract clients", () => {
         contract.threadPendingInteractionsResponseSchema,
       threadTimelineQuerySchema: contract.threadTimelineQuerySchema,
       threadTimelineResponseSchema: contract.threadTimelineResponseSchema,
+      timelineDeltaSchema: contract.timelineDeltaSchema.omit({
+        upsertRows: true,
+        fields: true,
+      }),
       timelineTurnSummaryDetailsQuerySchema:
         contract.timelineTurnSummaryDetailsQuerySchema,
       resolvePendingInteractionRequestSchema:

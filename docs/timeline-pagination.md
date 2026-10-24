@@ -180,6 +180,47 @@ characters and, for responses without nested rows, replaces outputs over 4,000
 characters with a head-and-tail preview. Turn summary details apply all three
 in one walk before their content pagination.
 
+## Deltas and pushes
+
+Every full timeline response carries `tag`, a hash of the window's whole
+content: rows, every top-level field, and `maxSeq`. Equal tags mean equal
+windows, whatever thread status, settings, or request built them. A client that
+holds a latest window sends `afterTag=<tag>` on its next read. When the server
+still holds the window it served under that tag (the last eight latest windows
+per thread, for the 64 most recent threads), it answers with a delta,
+`{ maxSeq, tag, delta }`, built against exactly that window; otherwise it
+answers with the full window. `delta` holds:
+
+- `afterTag`: the tag of the window the delta applies to;
+- `upsertRows`: rows that are new or whose content changed;
+- `rowOrder`, only when membership or order changed: the new order as a list
+  of row ids new to the window and `[start, length]` ranges of the base
+  window's rows, by position;
+- `fields`: the top-level fields whose value changed, with
+  `contextWindowUsage: null` when usage is no longer reported.
+
+`applyThreadTimelineDelta` from `@bb/server-contract` rebuilds the full window,
+or returns `null` when the held window's tag differs from `afterTag` or the
+delta does not fit its rows; the client then reads again with its own tag. The
+client keeps optimistic rows after the server's rows, so ranges still address
+the base window. `sdk.threads.timeline` returns a full window unless it is
+given `afterTag`.
+
+With the `timelinePush` experiment, the server pushes the same full window or
+delta over the WebSocket after events are appended. The baseline is the window
+last pushed to that subscription or, for a new subscription, the window most
+recently served for the same request. Every subscriber of a window receives the
+same signal: a subscriber whose tag matches `afterTag` applies it, and any other
+subscriber with an older `maxSeq` refetches with its own tag, which is usually
+a small HTTP delta. This keeps clients exact when windows built while a thread
+was idle and while it was active share a `maxSeq`.
+
+Pushes keep `afterSequence: null` so that a client from before tags treats a
+pushed delta as unusable and refetches. That older client sends
+`afterSequence`, which servers no longer read, so it receives full windows. A
+client reading from a server from before tags treats untagged responses and
+pushes as unusable and reads full windows.
+
 ## Conversation outline caching
 
 The conversation outline returns the full list of message previews;

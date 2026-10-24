@@ -277,9 +277,11 @@ export interface ThreadTimelineBuildProfile {
   totalDurationMs: number;
 }
 
+export type ThreadTimelineWindow = Omit<ThreadTimelineResponse, "tag">;
+
 interface BuildThreadTimelineInternalResult {
   profile: ThreadTimelineBuildProfile;
-  response: ThreadTimelineResponse;
+  response: ThreadTimelineWindow;
 }
 
 interface ThreadTimelineBuildProfileAccumulator {
@@ -1505,7 +1507,7 @@ function buildThreadTimelineInternal(
   profile.responseRowCount = paginatedTimeline.rows.length;
   profile.returnedSegmentCount = paginatedTimeline.returnedSegmentCount;
 
-  const response: ThreadTimelineResponse = {
+  const response: ThreadTimelineWindow = {
     maxSeq: snapshot.maxSeq,
     rows: options.summaryOnly ? [] : paginatedTimeline.rows,
     contextBoundarySeq,
@@ -1557,7 +1559,7 @@ export function buildThreadTimelineWithProfile(
   db: DbConnection,
   thread: Thread,
   options: BuildThreadTimelineOptions,
-): { profile: ThreadTimelineBuildProfile; response: ThreadTimelineResponse } {
+): { profile: ThreadTimelineBuildProfile; response: ThreadTimelineWindow } {
   return runEventLoopWorkSync(`timeline-build ${thread.id}`, () =>
     db.transaction(() => {
       const result = buildThreadTimelineInternal(db, thread, options);

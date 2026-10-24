@@ -17,7 +17,7 @@ import type {
   ThreadOpenFile,
   ThreadOpenSignal,
   ThreadPaneActionSignal,
-  ThreadTimelineSignal,
+  ReceivedThreadTimelineSignal,
 } from "@bb/server-contract";
 import { buildBrowserWebSocketUrl } from "./dev-websocket-url";
 import {
@@ -29,7 +29,7 @@ type ChangeCallback = (message: ChangedMessage) => void;
 type ThreadOpenCallback = (signal: ThreadOpenSignal) => void;
 type ThreadPaneActionCallback = (signal: ThreadPaneActionSignal) => void;
 type PluginSignalCallback = (signal: PluginSignal) => void;
-type ThreadTimelineCallback = (signal: ThreadTimelineSignal) => void;
+type ThreadTimelineCallback = (signal: ReceivedThreadTimelineSignal) => void;
 export type WebSocketConnectedEvent =
   | { reconnected: false }
   | {
@@ -137,8 +137,7 @@ export class WebSocketManager {
       if (this.watchesReleased)
         this.sendMessage({ type: "visibility", visible: false });
       const targets = this.activeSubscriptionTargets();
-      if (targets.length > 0)
-        this.sendMessage({ type: "subscribe", targets });
+      if (targets.length > 0) this.sendMessage({ type: "subscribe", targets });
       const event: WebSocketConnectedEvent = reconnected
         ? { reconnected, disconnectedAt: disconnectedAt ?? Date.now() }
         : { reconnected };

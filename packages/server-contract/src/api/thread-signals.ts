@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { threadTimelineSubscriptionTargetSchema } from "@bb/domain";
-import type { ThreadTimelineResponse } from "./threads.js";
+import type { ThreadTimelineReadResponse } from "./threads.js";
 export const panelFileSourceSchema = z.enum(["workspace", "thread-storage"]);
 
 export const threadOpenSplitSchema = z.enum([
@@ -40,11 +40,24 @@ export const threadPaneActionSignalLenientSchema = z.object({
   action: threadPaneActionSchema,
 });
 
+const taggedThreadTimelineSchema = z.union([
+  z.looseObject({
+    tag: z.string().min(1),
+    delta: z.looseObject({ afterTag: z.string().min(1) }),
+  }),
+  z.looseObject({ tag: z.string().min(1), rows: z.array(z.unknown()) }),
+]);
+
 export const threadTimelineSignalLenientSchema = z.object({
   type: z.literal("thread-timeline"),
   target: threadTimelineSubscriptionTargetSchema,
-  afterSequence: z.number().int().nonnegative().nullable(),
-  timeline: z.custom<ThreadTimelineResponse>(
-    (value) => typeof value === "object" && value !== null,
-  ),
+  timeline: z
+    .custom<ThreadTimelineReadResponse>(
+      (value) => taggedThreadTimelineSchema.safeParse(value).success,
+    )
+    .nullable()
+    .catch(null),
 });
+export type ReceivedThreadTimelineSignal = z.infer<
+  typeof threadTimelineSignalLenientSchema
+>;

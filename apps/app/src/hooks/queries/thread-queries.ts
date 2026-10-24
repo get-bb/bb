@@ -17,11 +17,16 @@ import type {
   ThreadResponse,
   ThreadSearchResponse,
   ThreadWithIncludesResponse,
+  ThreadTimelineReadResponse,
   ThreadTimelineResponse,
 } from "@bb/server-contract";
 import { useDebouncedValue } from "../useDebouncedValue";
 import { routeTaggedPages, routeTaggedRead } from "./route-tags";
-import { applyTimelineDelta, publicApiRoutes } from "@bb/server-contract";
+import {
+  applyThreadTimelineDelta,
+  isThreadTimelineDelta,
+  publicApiRoutes,
+} from "@bb/server-contract";
 import type { ThreadListFilters } from "@bb/client-core";
 import { sdk } from "@/lib/sdk";
 import {
@@ -842,19 +847,17 @@ export function useThreadPendingInteractions(
 
 async function mergeThreadTimelineDelta(
   previous: ThreadTimelineResponse | undefined,
-  response: ThreadTimelineResponse,
+  response: ThreadTimelineReadResponse,
   fetchFull: () => Promise<ThreadTimelineResponse>,
 ): Promise<ThreadTimelineResponse> {
-  if (response.delta === undefined) {
+  if (!isThreadTimelineDelta(response)) {
     return response;
   }
-  const merged = previous
-    ? applyTimelineDelta(previous.rows, response.delta)
-    : null;
-  if (merged !== null) {
-    return { ...response, rows: merged, delta: undefined };
-  }
-  return fetchFull();
+  const merged =
+    previous === undefined
+      ? null
+      : applyThreadTimelineDelta(previous, response);
+  return merged ?? fetchFull();
 }
 
 interface FetchThreadTimelineArgs {
@@ -881,9 +884,7 @@ export async function fetchThreadTimeline({
     threadId,
     signal,
     ...pageArgs,
-    ...(previous?.maxSeq !== undefined
-      ? { afterSequence: String(previous.maxSeq) }
-      : {}),
+    ...(previous === undefined ? {} : { afterTag: previous.tag }),
   });
   const merged = await mergeThreadTimelineDelta(previous, response, () =>
     sdk.threads.timeline({ threadId, signal, ...pageArgs }),
@@ -897,7 +898,7 @@ export async function fetchThreadTimeline({
   markStreamTrace("bb:timeline-applied", {
     threadId,
     maxSeq: timeline.maxSeq,
-    source: response.delta === undefined ? "fetch" : "fetch-delta",
+    source: isThreadTimelineDelta(response) ? "fetch-delta" : "fetch",
   });
   return timeline;
 }
