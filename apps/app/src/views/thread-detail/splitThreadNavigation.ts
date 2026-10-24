@@ -74,6 +74,14 @@ export function paneContentRoute(content: PaneContent): string {
   });
 }
 
+function decodePluginRouteParam(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 export function paneContentForPathname(pathname: string): PaneContent | null {
   if (pathname === APP_ROOT_ROUTE_PATH) {
     return { kind: "new-thread" };
@@ -102,15 +110,18 @@ export function paneContentForPathname(pathname: string): PaneContent | null {
   }
   const detail = matchPath(PLUGIN_DETAIL_ROUTE_PATH, pathname);
   if (detail?.params.pluginId) {
-    return { kind: "plugin-detail", pluginId: detail.params.pluginId };
+    return {
+      kind: "plugin-detail",
+      pluginId: decodePluginRouteParam(detail.params.pluginId),
+    };
   }
   const panel = matchPath(PLUGIN_PANEL_ROUTE_PATH, pathname);
   if (panel?.params.pluginId && panel.params.panelPath) {
     return {
       kind: "plugin-panel",
-      pluginId: panel.params.pluginId,
-      panelPath: panel.params.panelPath,
-      subPath: panel.params["*"] ?? "",
+      pluginId: decodePluginRouteParam(panel.params.pluginId),
+      panelPath: decodePluginRouteParam(panel.params.panelPath),
+      subPath: decodePluginRouteParam(panel.params["*"] ?? ""),
     };
   }
   return null;
