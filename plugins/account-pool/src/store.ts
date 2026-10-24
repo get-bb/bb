@@ -53,6 +53,17 @@ export type RoutedThread = z.infer<typeof routedThreadSchema> & {
   threadId: string;
 };
 
+export class DuplicateAccountError extends Error {
+  constructor() {
+    super("This account is already in the pool.");
+  }
+}
+
+function providerAccountId(account: Account): string | null {
+  if (account.provider === "codex") return account.codexAccountId ?? null;
+  return account.accountUuid;
+}
+
 export class AccountStore {
   private mutationLock: Promise<void> | null = null;
 
@@ -88,9 +99,16 @@ export class AccountStore {
         lastUsedAt: null,
         lastUsedHostId: null,
       });
+      const accounts = await this.list();
+      if (secret.kind === "oauth") {
+        for (const existing of accounts) {
+          if (await this.isSameOAuthAccount(existing, account, secret)) {
+            throw new DuplicateAccountError();
+          }
+        }
+      }
       await this.writeSecret(account.id, secret);
       try {
-        const accounts = await this.list();
         accounts.push(account);
         await this.kv.set(ACCOUNTS_KEY, accounts);
       } catch (error) {
@@ -99,6 +117,28 @@ export class AccountStore {
       }
       return account;
     });
+  }
+
+  private async isSameOAuthAccount(
+    existing: Account,
+    account: Account,
+    secret: Extract<AccountSecret, { kind: "oauth" }>,
+  ): Promise<boolean> {
+    if (existing.kind !== "oauth" || existing.provider !== account.provider) {
+      return false;
+    }
+    const existingId = providerAccountId(existing);
+    const accountId = providerAccountId(account);
+    if (existingId && accountId) return existingId === accountId;
+    if (existing.email && account.email) {
+      return existing.email.toLowerCase() === account.email.toLowerCase();
+    }
+    const stored = await this.readSecret(existing.id).catch(() => null);
+    return (
+      stored?.kind === "oauth" &&
+      (stored.accessToken === secret.accessToken ||
+        stored.refreshToken === secret.refreshToken)
+    );
   }
 
   async remove(id: string): Promise<boolean> {
