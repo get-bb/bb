@@ -258,7 +258,9 @@ coverage. Test those separately once Firebase/signing are configured.
 
 ### iOS prerequisites
 
-- Xcode 26.2 with an iOS 26 simulator runtime (`xcodebuild -downloadPlatform iOS`).
+- Xcode 26.2 with an iOS 26 simulator runtime (`xcodebuild -downloadPlatform iOS`)
+  for the current CI flows. Use Xcode 27.1 and its iPhone Duo simulator to
+  verify full-screen foldable layouts.
 - CocoaPods (`brew install cocoapods`), `export LANG=en_US.UTF-8`.
 - For Maestro e2e: `brew install --cask temurin@17` or `brew install openjdk@17`
   plus `brew install mobile-dev-inc/tap/maestro`; the `e2e:ios` script sets
@@ -267,7 +269,7 @@ coverage. Test those separately once Firebase/signing are configured.
 ## Develop
 
 ```bash
-pnpm install                                   # applies patches/expo-modules-jsi@57.0.4.patch
+pnpm install
 cd apps/mobile
 pnpm ios                                       # prebuild + build the dev-client, opens the simulator
 EXPO_PUBLIC_BB_SERVER_URL=http://127.0.0.1:<port> pnpm dev   # Metro (dev-client)
@@ -672,9 +674,14 @@ push key); nobody needs a local Xcode signing setup to ship.
   review, for example for a store release. Repo
   secrets: `EXPO_TOKEN` (a robot token from the `bb-team` Expo org) and
   `ASC_API_KEY_P8` (the `.p8` contents).
-- The `expo-modules-jsi` pnpm patch and the `lightningcss` override ship
-  with the repo and apply on EAS; the default build image provides
-  Xcode 26.x.
+- iOS uses Expo's SDK 57 UIKit scene lifecycle through
+  `expo-build-properties` `ios.enableSceneSupport`. The development and
+  production EAS profiles pin `macos-tahoe-26.6-xcode-27.1`: builds made with
+  earlier SDKs stay in a phone-sized compatibility window on an unfolded
+  iPhone Duo. Check `DTSDKName`, `DTXcode`, and `UIApplicationSceneManifest`
+  in a rebuilt IPA, then test folding, unfolding, rotation, and keyboard use
+  on a Duo device or simulator.
+- The `lightningcss` override ships with the repo and applies on EAS.
 - Universal links need the signed app's team id in the AASA the connect gate
   serves (`packages/connect-db/src/app-links.ts`) and a physical-device
   check against `https://<handle>.getbb.app/threads/…`. Android signing

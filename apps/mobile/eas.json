@@ -8,7 +8,8 @@
       "developmentClient": true,
       "distribution": "internal",
       "ios": {
-        "simulator": true
+        "simulator": true,
+        "image": "macos-tahoe-26.6-xcode-27.1"
       }
     },
     "development-device": {
@@ -26,7 +27,10 @@
       }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "ios": {
+        "image": "macos-tahoe-26.6-xcode-27.1"
+      }
     }
   },
   "submit": {
