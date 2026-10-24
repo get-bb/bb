@@ -33,6 +33,7 @@ import {
   type ThreadOpenSplit,
   type TerminalServerMessage,
 } from "@bb/server-contract";
+import { COMPRESSED_SEND } from "./compression.js";
 import {
   WatchedTargetRegistry,
   type WatchedTarget,
@@ -50,7 +51,7 @@ const LIST_RELEVANT_THREAD_EVENT_TYPES: ReadonlySet<ThreadEventType> =
 interface HubSocket {
   close(code?: number, reason?: string): void;
   raw?: { bufferedAmount: number };
-  send(data: string): void;
+  send(data: string, options?: { compress: boolean }): void;
 }
 
 interface TerminalSocketSendQueue {
@@ -1135,7 +1136,7 @@ export class NotificationHub implements DbNotifier {
   private broadcastToAllClients(payload: string): number {
     let delivered = 0;
     for (const socket of this.clientKeysBySocket.keys()) {
-      socket.send(payload);
+      socket.send(payload, COMPRESSED_SEND);
       delivered += 1;
     }
     return delivered;
@@ -1367,7 +1368,7 @@ export class NotificationHub implements DbNotifier {
       if (this.clientKeysBySocket.get(socket)?.has(detailKey)) {
         continue;
       }
-      socket.send(payload);
+      socket.send(payload, COMPRESSED_SEND);
     }
   }
 
@@ -1398,7 +1399,7 @@ export class NotificationHub implements DbNotifier {
     payload: string,
   ): void {
     for (const socket of sockets) {
-      socket.send(payload);
+      socket.send(payload, COMPRESSED_SEND);
     }
   }
 

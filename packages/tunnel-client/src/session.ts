@@ -517,6 +517,7 @@ export class TunnelSession {
     try {
       socket = new NodeWebSocket(`${wsOrigin}${frame.path}`, frame.protocols, {
         headers,
+        perMessageDeflate: false,
       });
     } catch (e) {
       this.send({

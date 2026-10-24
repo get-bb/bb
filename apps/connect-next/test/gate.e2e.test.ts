@@ -1,3 +1,4 @@
+import type { IncomingMessage } from "node:http";
 import { brotliDecompressSync, gunzipSync } from "node:zlib";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import WebSocket from "ws";
@@ -925,6 +926,31 @@ describe.skipIf(!availability.ok)("connect-next gate end to end", () => {
         ok: true,
         claims: { kind: "session", htm: "GET", htu: "/ws?room=1" },
       });
+    });
+
+    it("negotiates permessage-deflate with the origin through the raw pipe", async () => {
+      const socket = new WebSocket(`ws://127.0.0.1:${gate.webPort}/ws`, {
+        headers: { host: BEE, ...owner, origin: `http://${BEE}` },
+      });
+      const upgraded = new Promise<IncomingMessage>((resolve) =>
+        socket.once("upgrade", resolve),
+      );
+      await new Promise((resolve, reject) => {
+        socket.once("open", resolve);
+        socket.once("error", reject);
+      });
+      const upgrade = await upgraded;
+      expect(socket.extensions).toContain("permessage-deflate");
+      const before = upgrade.socket.bytesRead;
+      socket.send(origin.BIG_JSON);
+      const message = await new Promise<string>((resolve) =>
+        socket.once("message", (data) => resolve(String(data))),
+      );
+      expect(message).toBe(`echo:${origin.BIG_JSON}`);
+      expect(upgrade.socket.bytesRead - before).toBeLessThan(
+        message.length / 4,
+      );
+      socket.close();
     });
   });
 
