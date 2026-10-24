@@ -732,3 +732,40 @@ passed all 45 jobs with compiler caching and parallel validation retained, and
 no shard or coverage changes. Workflow creation to last completion was six
 minutes. This is an integration result, not a controlled end-to-end speedup
 measurement, and the three-minute target remains unmet.
+
+## Reusing replay results and Git fixtures
+
+The provider-parity self-suite runs 48 recorded scenarios through real provider
+bridges. Separate conformance files previously repeated 22 of those scenarios:
+eight Claude, eight Codex, and six Pi. The self-suite now applies the independent
+recorded conformance checks to those existing results before comparing event and
+timeline parity. It retains response, schema, grammar, turn-lifecycle, nonempty
+output, and provider-cell inventory assertions. This removes 22 subprocess
+launches and 77 repeated request-drain gates without changing bridge startup
+throttling or coverage.
+
+[Comparison 40104010818](https://github.com/get-bb/bb/actions/runs/40104010818)
+and [repeat 40104177343](https://github.com/get-bb/bb/actions/runs/40104177343)
+each ran two baseline and candidate replicas on four-vCPU Linux and Windows
+runners. All jobs passed. Windows parity test steps took 31–33 seconds before
+and 25–31 seconds after (medians 32 and 26 seconds); Linux took 25–26 seconds
+before and 21–22 after. Both versions retain 59 test cases, with the three
+aggregate conformance cases replaced by their inventory assertions and the
+replay assertions moved into the existing cases. Independent mutation checks
+confirmed that all five conformance failures still fail the retained Pi replay;
+dropped replies also fail the retained Claude and Codex cases.
+
+The update-resolver tests build one real repository with eight commits and both
+annotated and lightweight tags, then copy the entire repository and commit map
+for each test. Tests still mutate independent refs and objects. This removes
+210 repeated Git setup processes across seven cases. In the second comparison,
+the unchanged 15-test file took 4.00–4.02 seconds on Windows before and
+1.76–3.32 seconds after, including the shared setup. Linux took 0.79–0.94 seconds
+before and 0.41–0.55 after. Local shuffled-order verification also passed.
+
+The same runs tested reuse of the SDK declaration emitter's discovery program.
+All 20 declaration outputs remained byte-identical across baseline and candidate
+on both operating systems, but timing gains were inconsistent: Windows builds
+took 19–20 seconds before and 16–29 after; Linux took 15–17 before and 14–19 after.
+That compiler change was not retained. Package-group timings include compiler
+prerequisites, so test-file savings are not whole-job or workflow savings.
