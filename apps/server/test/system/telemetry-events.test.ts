@@ -17,6 +17,13 @@ describe("client telemetry events", () => {
       const capture = vi.fn<TelemetryService["capture"]>();
       harness.deps.telemetry = { ...harness.deps.telemetry, capture };
       const events = [
+        ...["needs_input", "failed", "finished", "day2_result"].flatMap(
+          (kind) =>
+            ["desktop", "browser", "phone"].map((channel) => ({
+              name: "notification_sent",
+              properties: { kind, channel },
+            })),
+        ),
         {
           name: "onboarding_step_skipped",
           properties: { step: "projects", entry: "first_run" },
@@ -73,6 +80,22 @@ describe("client telemetry events", () => {
       expect(unknown.status).toBe(400);
       expect(extra.status).toBe(400);
       for (const event of [
+        {
+          name: "notification_sent",
+          properties: {
+            kind: "finished",
+            channel: "desktop",
+            threadId: "private",
+          },
+        },
+        {
+          name: "notification_sent",
+          properties: { kind: "private title", channel: "desktop" },
+        },
+        {
+          name: "notification_sent",
+          properties: { kind: "finished", channel: "web" },
+        },
         {
           name: "onboarding_agent_state",
           properties: {

@@ -15,6 +15,7 @@ import {
   ipcMain,
   Menu,
   nativeImage,
+  Notification,
   nativeTheme,
   net,
   safeStorage,
@@ -56,6 +57,16 @@ import {
   type ClientMessage,
 } from "@bb/server-contract";
 import { z } from "zod";
+import {
+  connectDesktopNotifications,
+  createDesktopNotificationDelivery,
+  createNotificationClaims,
+  DESKTOP_NOTIFICATION_CLAIM_CHANNEL,
+} from "./desktop-notifications.js";
+import {
+  closeLastDesktopWindow,
+  hasPendingDesktopWork,
+} from "./desktop-background-work.js";
 import { registerDesktopClipboardIpc } from "./desktop-clipboard.js";
 import { registerDesktopWindowFocusIpc } from "./desktop-window-focus.js";
 import {
@@ -1085,18 +1096,76 @@ function createRemoteSystemConfigSync(serverUrl: string): SystemConfigSync {
   };
 }
 
+const claimDesktopNotification = createNotificationClaims();
+let desktopNotifications: { stop(): void } | null = null;
+let desktopNotificationServerUrl: string | null = null;
+
+function startDesktopNotifications(serverUrl: string): void {
+  desktopNotifications?.stop();
+  desktopNotificationServerUrl = serverUrl;
+  const delivery = createDesktopNotificationDelivery({
+    serverUrl,
+    hasOpenWindows: () => desktopWindowFactory?.hasOpenWindows() !== false,
+    isSupported: () => !quitting && Notification.isSupported(),
+    claim: claimDesktopNotification,
+    createNotification: ({ title, body }) => new Notification({ title, body }),
+    openThread(threadId) {
+      void (async () => {
+        const url = new URL(serverUrl);
+        if (threadId !== null) {
+          url.pathname = `/threads/${encodeURIComponent(threadId)}`;
+        }
+        await createApplicationWindow({ initialUrl: url.href, stateKey: null });
+      })().catch((error: unknown) => desktopLogger.warn(String(error)));
+    },
+    recordSent(kind) {
+      void net
+        .fetch(new URL("/api/v1/system/telemetry/events", serverUrl).href, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            name: "notification_sent",
+            properties: { kind, channel: "desktop" },
+          }),
+        })
+        .catch(() => undefined);
+    },
+  });
+  const connection = connectDesktopNotifications({
+    serverUrl,
+    async getCookie() {
+      const cookies = await session.defaultSession.cookies.get({
+        url: serverUrl,
+      });
+      return cookies.map(({ name, value }) => `${name}=${value}`).join("; ");
+    },
+    receive: delivery.receive,
+  });
+  desktopNotifications = {
+    stop() {
+      connection.stop();
+      delivery.stop();
+    },
+  };
+}
+
 function stopSystemConfigSync(): void {
+  desktopNotifications?.stop();
+  desktopNotifications = null;
+  desktopNotificationServerUrl = null;
   systemConfigSync?.stop();
   systemConfigSync = null;
 }
 
 function startSystemConfigSync(serverUrl: string): void {
+  startDesktopNotifications(serverUrl);
   systemConfigSync?.stop();
   systemConfigSync = createSystemConfigSync(serverUrl);
   void refreshSystemConfig({ fetchImpl: fetch, serverUrl });
 }
 
 function startRemoteSystemConfigSync(serverUrl: string): void {
+  startDesktopNotifications(serverUrl);
   systemConfigSync?.stop();
   systemConfigSync = createRemoteSystemConfigSync(serverUrl);
 }
@@ -2857,9 +2926,38 @@ async function runDesktopApp(): Promise<void> {
   });
   app.on("before-quit", handleBeforeQuit);
   app.on("window-all-closed", () => {
-    if (process.platform !== "darwin") {
-      app.quit();
-    }
+    void closeLastDesktopWindow({
+      platform: process.platform,
+      isQuitting: () => quitting,
+      hasOpenWindows: () => desktopWindowFactory?.hasOpenWindows() === true,
+      hasPendingWork: () =>
+        currentRuntime === null
+          ? Promise.resolve(false)
+          : hasPendingDesktopWork(currentRuntime.serverUrl, fetch),
+      quit: () => app.quit(),
+      onError: (error) =>
+        desktopLogger.warn(
+          `Keeping bb open because scheduled work could not be checked: ${String(error)}`,
+        ),
+    });
+  });
+  ipcMain.on(DESKTOP_NOTIFICATION_CLAIM_CHANNEL, (event, id: unknown) => {
+    event.returnValue = false;
+    if (
+      !applicationWindowWebContentsIds.has(event.sender.id) ||
+      event.senderFrame !== event.sender.mainFrame ||
+      typeof id !== "string" ||
+      id.length === 0 ||
+      id.length > 200
+    )
+      return;
+    const url = event.sender.getURL();
+    if (!url.startsWith("http://") && !url.startsWith("https://")) return;
+    if (desktopNotificationServerUrl === null) return;
+    event.returnValue = claimDesktopNotification(
+      desktopNotificationServerUrl,
+      id,
+    );
   });
   app.on("activate", () => {
     if (desktopWindowFactory?.hasOpenWindows() === false) {
@@ -2904,8 +3002,7 @@ async function runDesktopApp(): Promise<void> {
   }
 
   const paths = createDesktopPathContext();
-  const devIcon =
-    !paths.isPackaged || process.env.BB_DESKTOP_DEV_ICON === "1";
+  const devIcon = !paths.isPackaged || process.env.BB_DESKTOP_DEV_ICON === "1";
   const iconPath = resolveDesktopIconPath({
     devIcon,
     packagedIconFileName: DESKTOP_RELEASE_INFO.iconFileName,

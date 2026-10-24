@@ -7,9 +7,10 @@ description: "Register mobile devices, toggle mobile, web, and desktop notificat
 
 The plugin notifies when a thread asks a question, finishes a turn, or stops on
 an error. Mobile devices receive Expo push messages even when the app is
-closed. Web and desktop clients receive system notifications only while a bb
-tab or app window stays open, and each browser grants permission separately in
-the plugin settings.
+closed. Web clients need an open bb tab and grant permission separately in the
+plugin settings. Desktop notifications also work with the windows closed while
+bb is running. On Windows, pending scheduled messages or automations keep bb
+running after the last window closes; reopen bb to use Quit to stop it.
 
 ```sh
 bb push-notifications status [--json]

@@ -5,6 +5,7 @@ import {
   type BbDesktopServerChoice,
 } from "@bb/desktop-contract";
 import { contextBridge, ipcRenderer, webFrame } from "electron";
+import { DESKTOP_NOTIFICATION_CLAIM_CHANNEL } from "./desktop-notifications-ipc.js";
 import { appCommandIdSchema, type AppCommandId } from "@bb/domain";
 import {
   desktopBrowserImportOutcomeSchema,
@@ -653,3 +654,11 @@ void invokeDesktopInfo(BB_DESKTOP_GET_INFO_CHANNEL);
 void invokeDesktopWindowState();
 
 contextBridge.exposeInMainWorld("bbDesktop", bbDesktopApi);
+
+contextBridge.exposeInMainWorld("bbDesktopNotifications", {
+  claim(id: string): boolean {
+    return (
+      ipcRenderer.sendSync(DESKTOP_NOTIFICATION_CLAIM_CHANNEL, id) === true
+    );
+  },
+});

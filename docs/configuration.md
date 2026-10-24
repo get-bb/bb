@@ -278,7 +278,14 @@ version, install kind, platform, OS release, architecture, and Node version.
 The server sends `app_started`, `telemetry_disabled`, `thread_created`,
 `user_message_sent`, `turn_finished`, and `plugin_installed`. The app reports setup-guide and
 first-send events through `POST /api/v1/system/telemetry/events`
-(`sdk.system.experimental_recordTelemetryEvent`): `onboarding_started`,
+(`sdk.system.experimental_recordTelemetryEvent`). Notifications report
+`notification_sent`, with only `kind` (`needs_input`, `failed`, `finished`, or
+`day2_result`) and `channel` (`desktop`, `browser`, or `phone`). Desktop and
+browser events count requests to the system notification API; phone events
+count messages accepted by the push relay, not confirmed display. The
+`day2_result` kind is reserved for the day-2 workflow. These events use the same
+anonymous install ID and telemetry opt-out. Setup and first-send events are
+`onboarding_started`,
 `onboarding_step_reached`, `onboarding_step_completed`,
 `onboarding_step_skipped`, `onboarding_finished`, `onboarding_agent_state`,
 `onboarding_sign_in`, and `new_thread_submit` (started, accepted, or failed).

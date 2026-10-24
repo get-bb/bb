@@ -143,3 +143,44 @@ describe("client system notifications", () => {
     delivery.dispose();
   });
 });
+
+it("shares the desktop claim with the main process before displaying", async () => {
+  vi.stubGlobal("bbDesktop", { platform: "macos" });
+  const claim = vi.fn(() => false);
+  vi.stubGlobal("bbDesktopNotifications", { claim });
+  const delivery = createClientDelivery(vi.fn());
+  await delivery.deliver({ ...message, channels: ["desktop"] }, true);
+  expect(claim).toHaveBeenCalledWith(message.id);
+  expect(TestNotification.instances).toHaveLength(0);
+  claim.mockReturnValue(true);
+  await delivery.deliver({ ...message, channels: ["desktop"] }, true);
+  expect(TestNotification.instances).toHaveLength(1);
+  delivery.dispose();
+});
+
+it("records sending a desktop notification once, without contents or identifiers", async () => {
+  vi.stubGlobal("bbDesktop", { platform: "macos" });
+  const record = vi.fn().mockResolvedValue({ ok: true });
+  vi.stubGlobal("fetch", record);
+  const delivery = createClientDelivery(vi.fn());
+  await delivery.deliver(
+    { ...message, channels: ["desktop"], kind: "finished" },
+    true,
+  );
+  await delivery.deliver(
+    { ...message, channels: ["desktop"], kind: "finished" },
+    true,
+  );
+  expect(record).toHaveBeenCalledExactlyOnceWith(
+    "/api/v1/system/telemetry/events",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "notification_sent",
+        properties: { kind: "finished", channel: "desktop" },
+      }),
+    },
+  );
+  delivery.dispose();
+});

@@ -48,6 +48,10 @@ export const clientNotificationSchema = z
     body: z.string(),
     threadId: z.string().nullable(),
     channels: z.array(clientChannelSchema),
+    kind: z
+      .enum(["needs_input", "failed", "finished", "day2_result"])
+      .nullable()
+      .optional(),
   })
   .strict();
 export type ClientNotification = z.infer<typeof clientNotificationSchema>;

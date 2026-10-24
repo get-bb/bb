@@ -45,6 +45,19 @@ export function createClientDelivery(navigate: (threadId: string) => void) {
       tag: `bb-${message.threadId ?? message.id}`,
     });
     active.add(notification);
+    if (message.kind) {
+      void fetch("/api/v1/system/telemetry/events", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "notification_sent",
+          properties: {
+            kind: message.kind,
+            channel: clientChannel() === "desktop" ? "desktop" : "browser",
+          },
+        }),
+      }).catch(() => undefined);
+    }
     notification.onclose = () => active.delete(notification);
     notification.onclick = () => {
       if (disposed) return;
@@ -92,6 +105,16 @@ export function createClientDelivery(navigate: (threadId: string) => void) {
       } catch {
         ids = [];
       }
+      if (
+        channel === "desktop" &&
+        "bbDesktopNotifications" in window &&
+        typeof window.bbDesktopNotifications === "object" &&
+        window.bbDesktopNotifications !== null &&
+        "claim" in window.bbDesktopNotifications &&
+        typeof window.bbDesktopNotifications.claim === "function" &&
+        window.bbDesktopNotifications.claim(message.id) !== true
+      )
+        return;
       display(message);
       try {
         localStorage.setItem(

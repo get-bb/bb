@@ -245,20 +245,32 @@ describe("telemetry service", () => {
         logger: createTestLogger(),
       };
       const telemetry = await createTelemetryService(args);
-      telemetry.capture({ name: "app_started" });
+      telemetry.capture({
+        name: "notification_sent",
+        properties: { kind: "finished", channel: "desktop" },
+      });
       expect(fetchMock).not.toHaveBeenCalled();
       setAppSettings(db, { ...getAppSettings(db), telemetryEnabled: true });
       telemetry.setEnabled(true);
-      telemetry.capture({ name: "app_started" });
+      telemetry.capture({
+        name: "notification_sent",
+        properties: { kind: "finished", channel: "desktop" },
+      });
       expect(fetchMock).toHaveBeenCalledTimes(1);
       setAppSettings(db, { ...getAppSettings(db), telemetryEnabled: false });
       telemetry.setEnabled(false);
-      telemetry.capture({ name: "app_started" });
+      telemetry.capture({
+        name: "notification_sent",
+        properties: { kind: "finished", channel: "desktop" },
+      });
       const restarted = await createTelemetryService({
         ...args,
         telemetryEnabled: getAppSettings(db).telemetryEnabled,
       });
-      restarted.capture({ name: "app_started" });
+      restarted.capture({
+        name: "notification_sent",
+        properties: { kind: "finished", channel: "desktop" },
+      });
       expect(fetchMock).toHaveBeenCalledTimes(1);
     } finally {
       db.$client.close();

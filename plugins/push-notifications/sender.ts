@@ -365,6 +365,12 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
         title,
         body,
         threadId: thread.id,
+        kind:
+          resolved.kind === "pending-interaction"
+            ? "needs_input"
+            : resolved.kind === "thread-error"
+              ? "failed"
+              : "finished",
         channels,
       } satisfies ClientNotification);
     }
@@ -466,6 +472,21 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
       const delivery = batch[index];
       if (!delivery) continue;
       if (ticket.status === "ok") {
+        const kind = delivery.message.data.kind;
+        void bb.sdk.system
+          .experimental_recordTelemetryEvent({
+            name: "notification_sent",
+            properties: {
+              kind:
+                kind === "pending-interaction"
+                  ? "needs_input"
+                  : kind === "thread-error"
+                    ? "failed"
+                    : "finished",
+              channel: "phone",
+            },
+          })
+          .catch(() => undefined);
         sentCount += 1;
         continue;
       }
