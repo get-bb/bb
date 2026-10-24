@@ -174,7 +174,11 @@ Each bundled plugin documents its commands and behavior in its own skill.
   commands; see the `storage-retention` skill.
 - Automations (builtin): recurring or one-shot agent prompts and stored
   server scripts. `bb automation create|list|show|update|pause|resume|run|runs|delete`;
-  see the `automations` skill.
+  agent creation needs `--prompt`. Omitted `--provider`/`--model` inherit the
+  calling thread (`BB_THREAD_ID`), otherwise the project's remembered
+  new-thread choices, then the user's default provider and its default model.
+  Explicit flags override these defaults; models are inherited only within
+  the selected provider. See the `automations` skill.
 - Workflows (builtin, off by default): durable JavaScript orchestration of
   worker threads. Run `bb plugin enable workflows`, then
   `bb workflows validate|run|status|history|list|stop`; see the `workflows`

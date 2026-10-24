@@ -117,12 +117,14 @@ const AGENT_OPTIONS = {
   provider: {
     type: "string",
     placeholder: "id",
-    description: "Provider id, for example claude-code or codex",
+    description:
+      "Provider id; on create, defaults to the calling thread, then new-thread defaults",
   },
   model: {
     type: "string",
     placeholder: "model",
-    description: "Model id the provider accepts",
+    description:
+      "Model id; on create, defaults to the calling thread or new-thread defaults for the selected provider",
   },
   reasoning: {
     type: "string",
@@ -602,10 +604,83 @@ type BuiltExecution = {
   scriptSource?: ScriptFileSource;
 };
 
+async function resolveAgentModel(
+  bb: Pick<BbPluginApi, "sdk">,
+  options: Pick<AgentOptionValues, "provider" | "model">,
+  ctx: Pick<PluginCliContext, "threadId">,
+  projectId: string,
+  environment: AgentEnvironment,
+): Promise<{ providerId: string; model: string }> {
+  let providerId = options.provider;
+  let model = options.model;
+  if (providerId === "" || model === "") {
+    throw cliError(
+      "Agent automations require non-empty --provider and --model values.",
+      "invalid_value",
+    );
+  }
+  if (providerId !== undefined && model !== undefined) {
+    return { providerId, model };
+  }
+  if (ctx.threadId !== undefined) {
+    const thread = await bb.sdk.threads.get({ threadId: ctx.threadId });
+    providerId ??= thread.providerId;
+    if (model === undefined && providerId === thread.providerId) {
+      model = (
+        await bb.sdk.threads.defaultExecutionOptions({ threadId: ctx.threadId })
+      )?.model;
+    }
+    if (providerId !== undefined && model !== undefined) {
+      return { providerId, model };
+    }
+  }
+  const defaults = await bb.sdk.projects.defaultExecutionOptions({ projectId });
+  const routing = providerRoutingForEnvironment(environment);
+  if (providerId === undefined) {
+    const providers = (await bb.sdk.providers.list(routing)).filter(
+      (provider) => provider.available,
+    );
+    const preferred = providers.some(
+      (provider) => provider.id === defaults?.providerId,
+    )
+      ? defaults?.providerId
+      : (await bb.sdk.system.config()).generalSettings.defaultProviderId;
+    providerId =
+      providers.find((provider) => provider.id === preferred)?.id ??
+      providers[0]?.id;
+    if (providerId === undefined) {
+      throw cliError(
+        "No agent provider is available. Enable a provider in Settings → Providers.",
+        "no_provider_available",
+      );
+    }
+  }
+  model ??= defaults?.providerId === providerId ? defaults.model : undefined;
+  if (model === undefined) {
+    const catalog = await bb.sdk.providers.models(
+      routing.environmentId === undefined
+        ? { ...routing, projectId, providerId }
+        : { environmentId: routing.environmentId, providerId },
+    );
+    const defaultModel =
+      catalog.models.find((candidate) => candidate.isDefault) ??
+      catalog.models[0];
+    if (catalog.modelLoadError !== null || defaultModel === undefined) {
+      throw cliError(
+        `Unable to resolve a default model for ${providerId}. Pass --model explicitly or retry when the provider's models are available.`,
+        "model_catalog_unavailable",
+      );
+    }
+    model = defaultModel.model;
+  }
+  return { providerId, model };
+}
+
 async function buildExecution(
   bb: Pick<BbPluginApi, "sdk">,
   options: ExecutionOptionValues,
   ctx: Pick<PluginCliContext, "cwd" | "threadId">,
+  projectId: string,
 ): Promise<BuiltExecution> {
   const prompt = options.prompt;
   const script = options.script;
@@ -632,21 +707,20 @@ async function buildExecution(
   }
   if (!hasAgent && !hasScript) {
     throw cliError(
-      "Provide an execution mode: agent (--prompt --provider --model) or script (--script-file <path> or --script <inline>).",
+      "Provide an execution mode: agent (--prompt) or script (--script-file <path> or --script <inline>).",
       "missing_required",
     );
   }
   if (hasAgent) {
-    const provider = options.provider;
-    const model = options.model;
-    if (!provider || !model) {
-      throw cliError(
-        "Agent automations require --provider and --model alongside --prompt.",
-        "missing_required",
-      );
-    }
     validateAgentTargetOptions(options);
     const environment = await buildAgentEnvironment(bb, options);
+    const { providerId: provider, model } = await resolveAgentModel(
+      bb,
+      options,
+      ctx,
+      projectId,
+      environment,
+    );
     const serviceTier = options["service-tier"];
     return {
       execution: {
@@ -815,7 +889,7 @@ async function buildUpdateRequest(
     replacesAgentExecution ||
     COMPLETE_EXECUTION_OPTION_NAMES.some((name) => options[name] !== undefined)
   ) {
-    const built = await buildExecution(bb, options, ctx);
+    const built = await buildExecution(bb, options, ctx, projectId);
     request.execution = built.execution;
     scriptSource = built.scriptSource;
   } else {
@@ -1115,7 +1189,7 @@ export function registerAutomationCli(args: {
         create: cliCommand({
           summary: "Create an automation",
           description:
-            "Pick exactly one schedule flag and one execution mode: agent (--prompt --provider --model) or script (--script or --script-file).",
+            "Pick exactly one schedule flag and one execution mode: agent (--prompt) or script (--script or --script-file). Omitted provider/model use the calling thread, then new-thread defaults; explicit flags win.",
           options: {
             project: PROJECT_OPTION,
             name: {
@@ -1145,6 +1219,7 @@ export function registerAutomationCli(args: {
                 bb,
                 input.options,
                 ctx,
+                projectId,
               );
               const request: ResolvedCreateAutomationInput = {
                 projectId,

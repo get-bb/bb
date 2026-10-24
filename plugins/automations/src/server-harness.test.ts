@@ -112,9 +112,10 @@ async function bootAutomationsPlugin(
               ? routedPermissionModes
               : declaredPermissionModes;
           return [
-            { id: "codex", capabilities: { permissionModes } },
+            { id: "codex", available: true, capabilities: { permissionModes } },
             {
               id: "claude",
+              available: true,
               capabilities: { permissionModes: ["auto", "full"] },
             },
           ] as never;
@@ -203,6 +204,170 @@ function signalKinds(host: FakePluginHost) {
 describe("automations server plugin harness", () => {
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it.each([
+    {
+      name: "calling thread",
+      inside: true,
+      remembered: true,
+      flags: [],
+      providerId: "claude",
+      model: "thread-model",
+    },
+    {
+      name: "remembered project",
+      inside: false,
+      remembered: true,
+      flags: [],
+      providerId: "codex",
+      model: "project-model",
+    },
+    {
+      name: "user default provider and catalog model",
+      inside: false,
+      remembered: false,
+      flags: [],
+      providerId: "claude",
+      model: "catalog-model",
+    },
+    {
+      name: "explicit pair",
+      inside: true,
+      remembered: true,
+      flags: ["--provider", "codex", "--model", "explicit-model"],
+      providerId: "codex",
+      model: "explicit-model",
+    },
+    {
+      name: "explicit model",
+      inside: true,
+      remembered: true,
+      flags: ["--model", "explicit-model"],
+      providerId: "claude",
+      model: "explicit-model",
+    },
+    {
+      name: "same provider",
+      inside: true,
+      remembered: true,
+      flags: ["--provider", "claude"],
+      providerId: "claude",
+      model: "thread-model",
+    },
+    {
+      name: "different provider",
+      inside: true,
+      remembered: true,
+      flags: ["--provider", "codex"],
+      providerId: "codex",
+      model: "project-model",
+    },
+    {
+      name: "different provider without remembered model",
+      inside: true,
+      remembered: false,
+      flags: ["--provider", "codex"],
+      providerId: "codex",
+      model: "catalog-model",
+    },
+  ])(
+    "creates agent automation using $name",
+    async ({ inside, remembered, flags, providerId, model }) => {
+      const { harness } = await bootAutomationsPlugin();
+      harness.sdk.stub("threads.get", async () => {
+        if (flags.includes("--provider") && flags.includes("--model")) {
+          throw new Error("Calling thread is unavailable");
+        }
+        return { providerId: "claude" };
+      });
+      harness.sdk.stub("threads.defaultExecutionOptions", async () => ({
+        model: "thread-model",
+      }));
+      harness.sdk.stub("projects.defaultExecutionOptions", async () =>
+        remembered ? { providerId: "codex", model: "project-model" } : null,
+      );
+      harness.sdk.stub("system.config", async () => ({
+        primaryHostId: "host_fake",
+        generalSettings: { defaultProviderId: "claude" },
+      }));
+      harness.sdk.stub("providers.models", async () => ({
+        models: [
+          { model: "first-model", isDefault: false },
+          { model: "catalog-model", isDefault: true },
+        ],
+        modelLoadError: null,
+      }));
+
+      const result = await harness.runCli(
+        [
+          "create",
+          "--project",
+          PROJECT_ID,
+          "--name",
+          "Inherited execution",
+          "--in",
+          "1d",
+          "--prompt",
+          "Summarize the day's work",
+          "--disabled",
+          "--json",
+          ...flags,
+        ],
+        inside ? { threadId: THREAD_ID } : {},
+      );
+      expect(result.exitCode, result.stderr).toBe(0);
+      const created = automationDetailResponseSchema.parse(
+        JSON.parse(result.stdout ?? ""),
+      );
+      const stored = automationDetailResponseSchema.parse(
+        await harness.callRpc("automations_get", {
+          projectId: PROJECT_ID,
+          automationId: created.id,
+        }),
+      );
+      expect(stored).toMatchObject({
+        origin: inside ? "agent" : "human",
+        createdByThreadId: inside ? THREAD_ID : null,
+        execution: { providerId, model },
+      });
+      await harness.dispose();
+    },
+  );
+
+  it("does not create an automation when the default model catalog cannot load", async () => {
+    const { harness } = await bootAutomationsPlugin();
+    harness.sdk.stub("projects.defaultExecutionOptions", async () => null);
+    harness.sdk.stub("providers.models", async () => ({
+      models: [{ model: "stale-fallback", isDefault: true }],
+      modelLoadError: {
+        providerId: "codex",
+        code: "failed",
+        detail: "offline",
+      },
+    }));
+    const result = await harness.runCli([
+      "create",
+      "--project",
+      PROJECT_ID,
+      "--name",
+      "Unavailable model",
+      "--in",
+      "1d",
+      "--prompt",
+      "Summarize",
+      "--provider",
+      "codex",
+      "--json",
+    ]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(
+      "Unable to resolve a default model for codex",
+    );
+    expect(
+      await harness.callRpc("automations_list", { projectId: PROJECT_ID }),
+    ).toEqual([]);
+    await harness.dispose();
   });
 
   it("boots through server.ts and registers rpc, cli, thread events, and sweep service", async () => {
