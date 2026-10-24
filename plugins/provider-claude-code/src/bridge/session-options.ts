@@ -23,6 +23,7 @@ export interface BuildSessionOptionsArgs {
   permissionMode: ClaudePermissionMode;
   permissionScope: RuntimePermissionScope;
   plugins?: Options["plugins"];
+  providerSubagentsEnabled: boolean;
   reasoningLevel?: ReasoningLevel;
   serviceTier: ServiceTier;
   workflowsEnabled: boolean;
@@ -61,6 +62,18 @@ const SUMMARIZED_ADAPTIVE_THINKING = {
   display: "summarized",
 } satisfies Exclude<Options["thinking"], undefined>;
 const CLAUDE_CODE_EXECUTABLE_ENV = "BB_CLAUDE_CODE_EXECUTABLE";
+
+export const CLAUDE_PROVIDER_SUBAGENT_TOOL_NAMES: ReadonlySet<string> = new Set(
+  ["Agent", "Task"],
+);
+
+export function buildDisallowedTools(
+  providerSubagentsEnabled: boolean,
+): string[] | undefined {
+  return providerSubagentsEnabled
+    ? undefined
+    : [...CLAUDE_PROVIDER_SUBAGENT_TOOL_NAMES];
+}
 
 export function toSdkEffort(
   reasoningLevel: ReasoningLevel,
@@ -289,6 +302,7 @@ export function buildSessionOptions(
     },
     permissionMode: params.permissionMode,
     allowBypassPermissions: params.permissionScope === "full",
+    disallowedTools: buildDisallowedTools(params.providerSubagentsEnabled),
     ...(effort !== undefined ? { effort } : {}),
     ...(effort !== undefined ? { thinking: SUMMARIZED_ADAPTIVE_THINKING } : {}),
     settings: flagSettings,

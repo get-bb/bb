@@ -109,6 +109,7 @@ interface ClaudeQueryCallOptions {
   allowDangerouslySkipPermissions?: boolean;
   mcpServers?: BridgeSessionOptions["mcpServers"];
   canUseTool?: CanUseTool;
+  disallowedTools?: string[];
   env?: Record<string, string | undefined>;
   extraArgs?: Record<string, string | null>;
   hooks?: BridgeSessionHooks;
@@ -1278,6 +1279,31 @@ describe("bridge", () => {
     }
   });
 
+  it.each([true, false])(
+    "derives native subagent tool exclusions with providerSubagentsEnabled=%s",
+    (providerSubagentsEnabled) => {
+      const options = buildSessionOptions(
+        {
+          chromeEnabled: false,
+          disable1MContext: false,
+          artifactsEnabled: false,
+          sandboxEnabled: true,
+          serviceTier: "default",
+          workflowsEnabled: false,
+          providerSubagentsEnabled,
+          cwd: "/tmp/worktree",
+          instructionMode: "append",
+          permissionMode: "default",
+          permissionScope: "workspace",
+        },
+        {},
+      );
+      expect(options.disallowedTools).toEqual(
+        providerSubagentsEnabled ? undefined : ["Agent", "Task"],
+      );
+    },
+  );
+
   it("keeps manager sessions on a plain string system prompt", () => {
     const options = buildSessionOptions(
       {
@@ -1285,6 +1311,7 @@ describe("bridge", () => {
         disable1MContext: false,
         artifactsEnabled: false,
         sandboxEnabled: true,
+        providerSubagentsEnabled: true,
         serviceTier: "default",
         workflowsEnabled: false,
         baseInstructions: "You are a manager.",
@@ -1317,6 +1344,7 @@ describe("bridge", () => {
           disable1MContext: false,
           artifactsEnabled,
           sandboxEnabled: true,
+          providerSubagentsEnabled: true,
           serviceTier: "default",
           workflowsEnabled: false,
           baseInstructions: "You are a coder.",
@@ -1339,6 +1367,7 @@ describe("bridge", () => {
         disable1MContext: false,
         artifactsEnabled: false,
         sandboxEnabled: true,
+        providerSubagentsEnabled: true,
         serviceTier: "default",
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
@@ -1367,6 +1396,7 @@ describe("bridge", () => {
         disable1MContext: false,
         artifactsEnabled: false,
         sandboxEnabled: true,
+        providerSubagentsEnabled: true,
         serviceTier: "default",
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
@@ -1396,6 +1426,7 @@ describe("bridge", () => {
         artifactsEnabled: false,
         sandboxEnabled: true,
         workflowsEnabled: false,
+        providerSubagentsEnabled: true,
         serviceTier: "fast",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -1416,6 +1447,7 @@ describe("bridge", () => {
         disable1MContext: false,
         artifactsEnabled: false,
         sandboxEnabled: true,
+        providerSubagentsEnabled: true,
         serviceTier: "default",
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
@@ -1443,6 +1475,7 @@ describe("bridge", () => {
         disable1MContext: false,
         artifactsEnabled: false,
         sandboxEnabled: true,
+        providerSubagentsEnabled: true,
         serviceTier: "default",
         workflowsEnabled: false,
         memoryEnabled: false,
@@ -1469,6 +1502,7 @@ describe("bridge", () => {
         disable1MContext: false,
         artifactsEnabled: false,
         sandboxEnabled: true,
+        providerSubagentsEnabled: true,
         serviceTier: "default",
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
@@ -1510,6 +1544,7 @@ describe("bridge", () => {
           instructionMode: "append",
           permissionMode,
           permissionScope,
+          providerSubagentsEnabled: true,
           serviceTier: "default",
         },
         {},
@@ -1535,6 +1570,7 @@ describe("bridge", () => {
         disable1MContext: false,
         artifactsEnabled: false,
         sandboxEnabled: true,
+        providerSubagentsEnabled: true,
         serviceTier: "default",
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
@@ -1564,6 +1600,7 @@ describe("bridge", () => {
         disable1MContext: false,
         artifactsEnabled: false,
         sandboxEnabled: true,
+        providerSubagentsEnabled: true,
         serviceTier: "default",
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
@@ -1586,6 +1623,7 @@ describe("bridge", () => {
         disable1MContext: false,
         artifactsEnabled: false,
         sandboxEnabled: true,
+        providerSubagentsEnabled: true,
         serviceTier: "default",
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
@@ -1615,6 +1653,7 @@ describe("bridge", () => {
           disable1MContext: false,
           artifactsEnabled: false,
           sandboxEnabled: true,
+          providerSubagentsEnabled: true,
           serviceTier: "default",
           workflowsEnabled: false,
           baseInstructions: "You are a coder.",
@@ -1638,6 +1677,7 @@ describe("bridge", () => {
         disable1MContext: false,
         artifactsEnabled: false,
         sandboxEnabled: true,
+        providerSubagentsEnabled: true,
         serviceTier: "default",
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
@@ -1654,6 +1694,7 @@ describe("bridge", () => {
         disable1MContext: false,
         artifactsEnabled: false,
         sandboxEnabled: true,
+        providerSubagentsEnabled: true,
         serviceTier: "default",
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
@@ -1690,6 +1731,7 @@ describe("bridge", () => {
         disable1MContext: false,
         artifactsEnabled: false,
         sandboxEnabled: true,
+        providerSubagentsEnabled: true,
         serviceTier: "default",
         workflowsEnabled: false,
         additionalWorkspaceWriteRoots: ["/repo/.git/worktrees/bb13"],
@@ -1714,6 +1756,7 @@ describe("bridge", () => {
         disable1MContext: false,
         artifactsEnabled: false,
         sandboxEnabled: false,
+        providerSubagentsEnabled: true,
         serviceTier: "default",
         workflowsEnabled: false,
         additionalWorkspaceWriteRoots: ["/repo/.git/worktrees/bb13"],
@@ -4069,7 +4112,12 @@ describe("bridge", () => {
     }
   });
 
-  it.each(["chromeEnabled", "disable1MContext", "artifactsEnabled"])(
+  it.each([
+    "chromeEnabled",
+    "disable1MContext",
+    "artifactsEnabled",
+    "providerSubagentsEnabled",
+  ])(
     "restarts the Claude process before the next turn when %s changes",
     async (setting) => {
       const bridge = createBridgeJsonRpcTestHarness(handleLine);
@@ -4103,6 +4151,8 @@ describe("bridge", () => {
           });
         } else if (setting === "artifactsEnabled") {
           expect(getLatestQueryOptions().env?.CLAUDE_CODE_ARTIFACT).toBe("1");
+        } else if (setting === "providerSubagentsEnabled") {
+          expect(getLatestQueryOptions().disallowedTools).toBeUndefined();
         } else {
           expect(
             getLatestQueryOptions().env?.CLAUDE_CODE_DISABLE_1M_CONTEXT,
@@ -4139,6 +4189,12 @@ describe("bridge", () => {
         expect(queries).toHaveLength(2);
         expect(queries[0]?.close).toHaveBeenCalled();
         expect(getLatestQueryOptions()).toMatchObject({ resume: threadId });
+        if (setting === "providerSubagentsEnabled") {
+          expect(getLatestQueryOptions().disallowedTools).toEqual([
+            "Agent",
+            "Task",
+          ]);
+        }
         expect(getLatestQueryOptions().extraArgs).toEqual({
           "replay-user-messages": null,
         });
@@ -4175,6 +4231,188 @@ describe("bridge", () => {
         await bridge.flushWork();
         queries.at(-1)?.finish();
         await bridge.waitForResponse(4);
+        queries.forEach((query) => query.finish());
+        bridge.restore();
+      }
+    },
+  );
+
+  it.each(["thread/resume", "turn/steer"])(
+    "defers native subagent tool changes from %s until the next turn",
+    async (method) => {
+      const bridge = createBridgeJsonRpcTestHarness(handleLine);
+      const queries: ControlledClaudeQuery[] = [];
+      queryMock.mockImplementation(() => {
+        const query = createControlledClaudeQuery();
+        queries.push(query);
+        return query;
+      });
+      const threadId = `thread-subagents-${method}`;
+      const providerThreadId = `provider-subagents-${method}`;
+      try {
+        sendResumeThread({ bridge, threadId, providerThreadId, requestId: 1 });
+        await bridge.waitForResponse(1);
+        expect(getLatestQueryOptions().disallowedTools).toBeUndefined();
+        bridge.sendRequest(
+          2,
+          "turn/start",
+          canonicalTurnParams({
+            threadId,
+            providerThreadId,
+            input: [{ type: "text", text: "first turn" }],
+          }),
+        );
+        await readNextPrompt(getLatestQueryCall());
+        await bridge.waitForResponse(2);
+        if (method === "thread/resume") {
+          queries[0]?.emit(createSuccessfulResultMessage(providerThreadId));
+          await bridge.flushWork();
+        }
+        const hooks = getLatestQueryOptions().hooks;
+        if (!hooks) {
+          throw new Error("Expected Claude hooks");
+        }
+        const providerOptions = { providerSubagentsEnabled: false };
+        bridge.sendRequest(
+          3,
+          method,
+          method === "thread/resume"
+            ? {
+                threadId,
+                providerThreadId,
+                cwd: "/tmp/worktree",
+                instructionMode: "append",
+                options: canonicalOptions({ providerOptions }),
+              }
+            : canonicalTurnParams({
+                threadId,
+                providerThreadId,
+                providerOptions,
+                expectedTurnId: "turn-1",
+                input: [
+                  { type: "text", text: "steer with subagents disabled" },
+                ],
+              }),
+        );
+        if (method === "turn/steer") {
+          await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
+            "steer with subagents disabled",
+          );
+        }
+        await bridge.waitForResponse(3);
+        expect(queries).toHaveLength(1);
+        expect(queries[0]?.close).not.toHaveBeenCalled();
+        for (const toolName of ["Agent", "Task"]) {
+          const outputs = await invokeBridgeHooks(
+            hooks.PreToolUse,
+            {
+              hook_event_name: "PreToolUse",
+              tool_name: toolName,
+              tool_input: {},
+              tool_use_id: `disabled-${toolName}`,
+              session_id: providerThreadId,
+              transcript_path: "/tmp/transcript.jsonl",
+              cwd: "/tmp/worktree",
+            },
+            `disabled-${toolName}`,
+          );
+          expect(outputs).toContainEqual(
+            expect.objectContaining({
+              hookSpecificOutput: expect.objectContaining({
+                permissionDecision: "deny",
+              }),
+            }),
+          );
+        }
+        if (method === "turn/steer") {
+          queries[0]?.emit(createSuccessfulResultMessage(providerThreadId));
+          await bridge.flushWork();
+        }
+        bridge.sendRequest(
+          4,
+          "turn/start",
+          canonicalTurnParams({
+            threadId,
+            providerThreadId,
+            providerOptions,
+            input: [{ type: "text", text: "next turn" }],
+          }),
+        );
+        await bridge.flushWork();
+        expect(queries).toHaveLength(2);
+        expect(queries[0]?.close).toHaveBeenCalledTimes(1);
+        expect(getLatestQueryOptions()).toMatchObject({
+          resume: providerThreadId,
+          disallowedTools: ["Agent", "Task"],
+        });
+        await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
+          "next turn",
+        );
+        await bridge.waitForResponse(4);
+        expect(
+          bridge.messages.filter(
+            (message) => message.method === "session/replaced",
+          ),
+        ).toContainEqual(
+          expect.objectContaining({
+            params: expect.objectContaining({
+              contextLost: false,
+              providerThreadId,
+              threadId,
+            }),
+          }),
+        );
+        queries[1]?.emit(createSuccessfulResultMessage(providerThreadId));
+        await bridge.flushWork();
+        bridge.sendRequest(
+          5,
+          "turn/start",
+          canonicalTurnParams({
+            threadId,
+            providerThreadId,
+            providerOptions: { providerSubagentsEnabled: true },
+            input: [{ type: "text", text: "subagents enabled again" }],
+          }),
+        );
+        await bridge.flushWork();
+        expect(queries).toHaveLength(3);
+        expect(getLatestQueryOptions().disallowedTools).toBeUndefined();
+        expect(getLatestQueryOptions().resume).toBe(providerThreadId);
+        await readNextPrompt(getLatestQueryCall());
+        await bridge.waitForResponse(5);
+        const enabledHooks = getLatestQueryOptions().hooks;
+        for (const toolName of ["Agent", "Task"]) {
+          const outputs = await invokeBridgeHooks(
+            enabledHooks?.PreToolUse,
+            {
+              hook_event_name: "PreToolUse",
+              tool_name: toolName,
+              tool_input: {},
+              tool_use_id: `enabled-${toolName}`,
+              session_id: providerThreadId,
+              transcript_path: "/tmp/transcript.jsonl",
+              cwd: "/tmp/worktree",
+            },
+            `enabled-${toolName}`,
+          );
+          expect(outputs).not.toContainEqual(
+            expect.objectContaining({
+              hookSpecificOutput: expect.objectContaining({
+                permissionDecision: "deny",
+              }),
+            }),
+          );
+        }
+      } finally {
+        bridge.sendRequest(6, "thread/stop", {
+          threadId,
+          providerThreadId,
+          intent: "interrupt",
+          activeTurnId: null,
+        });
+        await bridge.flushWork();
+        queries.at(-1)?.finish();
+        await bridge.waitForResponse(6);
         queries.forEach((query) => query.finish());
         bridge.restore();
       }
@@ -4435,7 +4673,7 @@ describe("bridge", () => {
     }
   });
 
-  it("applies turn model, reasoning, memory, workflow, and subagent settings live", async () => {
+  it("applies turn model, reasoning, memory, and workflow settings live", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];
     queryMock.mockImplementation(() => {
@@ -4461,7 +4699,6 @@ describe("bridge", () => {
           providerOptions: {
             workflowsEnabled: false,
             memoryEnabled: true,
-            providerSubagentsEnabled: true,
           },
         },
       });
@@ -4490,7 +4727,6 @@ describe("bridge", () => {
           providerOptions: {
             workflowsEnabled: true,
             memoryEnabled: false,
-            providerSubagentsEnabled: false,
           },
         },
       });
@@ -4508,29 +4744,6 @@ describe("bridge", () => {
         fastMode: true,
       });
 
-      for (const toolName of ["Agent", "Task"]) {
-        const toolUseId = `tool-disabled-${toolName.toLowerCase()}`;
-        const disabledSubagentOutputs = await invokeBridgeHooks(
-          hooks.PreToolUse,
-          {
-            hook_event_name: "PreToolUse",
-            tool_name: toolName,
-            tool_input: {},
-            tool_use_id: toolUseId,
-            session_id: "session-1",
-            transcript_path: "/tmp/transcript.jsonl",
-            cwd: "/tmp/worktree",
-          },
-          toolUseId,
-        );
-        expect(disabledSubagentOutputs).toContainEqual(
-          expect.objectContaining({
-            hookSpecificOutput: expect.objectContaining({
-              permissionDecision: "deny",
-            }),
-          }),
-        );
-      }
       const enabledWorkflowOutputs = await invokeBridgeHooks(
         hooks.PreToolUse,
         {
@@ -4568,7 +4781,6 @@ describe("bridge", () => {
           providerOptions: {
             workflowsEnabled: false,
             memoryEnabled: true,
-            providerSubagentsEnabled: true,
           },
         },
       });
@@ -6002,6 +6214,7 @@ describe("canonical model context-window hint", () => {
         options: {
           ...canonicalOptions,
           envVars: { PLUGIN_ACCESS_TOKEN: "second" },
+          providerOptions: { providerSubagentsEnabled: false },
         },
       });
       await bridge.flushWork();
@@ -6015,6 +6228,7 @@ describe("canonical model context-window hint", () => {
           CLAUDE_CODE_ARTIFACT: "1",
         },
         resume: providerThreadId,
+        disallowedTools: ["Agent", "Task"],
       });
       await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
         "continue",
