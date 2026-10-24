@@ -260,6 +260,14 @@ inaccessible WAL files report a null size with a sample timestamp. WAL size
 can include space reused by earlier generations; it does not measure uncheckpointed backlog or identify
 checkpoint progress. Resource sampling is also disabled with the live gate.
 
+Agent workloads run at a lower CPU priority than bb itself. The host daemon
+sets nice 10 (the below-normal priority class on Windows) on provider
+processes, terminal shells, and environment lifecycle scripts as soon as they
+start, and the builds and tests they launch inherit it. A slow-DB record whose
+`cpuDurationMs` is a small fraction of `durationMs` with many
+`involuntaryContextSwitches` means the server thread was waiting for a CPU
+rather than working; on Linux check that agent processes show `NI` 10 in `ps -o pid,ni,command`.
+
 ## Pending Question Drafts
 
 Native provider questions and Ask User Question plugin forms save partial

@@ -6,6 +6,7 @@ import {
 import { operationEnvironment } from "./operation-environment.js";
 import type { HostDaemonContributedEnvEntry } from "@bb/host-daemon-contract";
 import {
+  deprioritizeAgentWorkload,
   execPortableFile,
   isProcessGroupAlive,
   killProcessGroup,
@@ -215,6 +216,7 @@ async function runLifecycleScript(
     detached: supportsProcessGroups(),
     env: scriptEnv,
   });
+  deprioritizeAgentWorkload(child.pid);
   const gitBash =
     windowsBashPath === null
       ? null

@@ -3,6 +3,7 @@ import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import {
+  deprioritizeAgentWorkload,
   sanitizeInheritedChildProcessEnv,
   spawnManagedProcess,
   type ManagedProcess,
@@ -388,6 +389,7 @@ export class RuntimeProviderProcessManager {
       env,
     });
     const { child } = managed;
+    deprioritizeAgentWorkload(child.pid);
     let finalizeExit: () => void = () => undefined;
     const exitFinalized = new Promise<void>((resolve) => {
       finalizeExit = resolve;
