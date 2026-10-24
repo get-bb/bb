@@ -92,6 +92,7 @@ describe("buildFrpcConfig", () => {
       },
       transport: {
         protocol: "wss",
+        poolCount: 10,
         tls: {
           enable: true,
           serverName: "tunnel.next.getbb.app",
