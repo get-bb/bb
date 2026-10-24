@@ -121,6 +121,22 @@ If any input is unclear, ask before bumping the version.
    redeploy `@bb/web` after the release commit lands so the site shows the new
    version.
 
+   Every release must include an image or GIF showing a real capture of its
+   most visual highlight, usually the first. Save it in
+   `apps/web/public/changelog/<version>/` and reference it as its own paragraph
+   at the end of the release's Highlights section:
+
+   ```markdown
+   ![<alt text>](https://getbb.app/changelog/<version>/<file>)
+   ```
+
+   Use descriptive alt text. PNG or JPG images should be about 1600 px wide and
+   under about 500 KB. GIFs must be under 1 MB and about 10 seconds or less,
+   with no flashing and a first frame that reads as a still. Capture from an
+   isolated dev bb or a release build, with no personal data: no real thread
+   titles, emails, usernames, machine names, paths or ports. See 0.46.0's
+   `navigation-rail.jpg` for the existing convention.
+
 5. Make any release documentation updates requested by the user.
 
 6. Run validation.
@@ -135,7 +151,7 @@ If any input is unclear, ask before bumping the version.
 7. Commit the release change.
 
    ```bash
-   git add README.md docs packages/bb-app/package.json packages/bb-app/README.md apps/desktop/package.json
+   git add README.md docs packages/bb-app/package.json packages/bb-app/README.md apps/desktop/package.json apps/web/public/changelog
    git commit -m "Prepare bb-app <version>"
    ```
 

@@ -11,6 +11,8 @@ Customizable sidebar navigation, new and improved ACP support, file-by-file diff
 - **Diff review:** mark files Viewed so they stay collapsed until they change, ignore whitespace, and filter by name, extension, or deleted and viewed files.
 - **More customization surfaces:** bb's composer and GitHub pull request status are now bundled plugins you can replace or fork, and plugins can add tabs, Info rows and segments above the composer.
 
+![Navigation settings with Rail and Top list options](https://getbb.app/changelog/0.47.0/sidebar-layouts.png)
+
 ### Agents and threads
 
 - Choose whether a child thread notifies its parent of every outcome, only when stuck, or never.
@@ -79,6 +81,8 @@ Connect MCP clients to bb, install the bb CLI from Settings, search Settings, an
 - **Search Settings:** find pages, individual settings, and plugin settings from the Settings sidebar. Press **/** to focus the search.
 - **Child threads at a glance:** one banner lists waiting and working child threads, and you can answer their questions right there. The Info panel also lists a thread's child threads.
 - **New ACP adapter (Experimental):** an opt-in rebuilt adapter adds agent options in the model picker, live slash commands, agent questions, and the official ACP registry (`bb acp add <agent-id>`). Enable "ACP providers (new adapter)" in Settings → Plugins.
+
+![Settings search results for theme, showing Theme and Palette](https://getbb.app/changelog/0.46.1/search-results.png)
 
 ### Improvements
 
@@ -151,6 +155,8 @@ Thread titles and voice transcription without a Codex login, faster conversation
 - **Faster conversations:** smoother streaming, quicker thread switching, and less background work.
 - **Customize navigation:** choose thread-row actions and footer icons, with independent sidebar layouts per tab.
 - **New platforms (Alpha):** Android app and Windows desktop.
+
+![Provider controls with the Codex Disable action and faster service tiers setting](https://getbb.app/changelog/0.45.0/provider-controls.png)
 
 ### Improvements
 
