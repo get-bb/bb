@@ -1,4 +1,5 @@
 import { createDesktopAppUpdateService } from "./services/system/desktop-app-update.js";
+import { createScheduledAppUpdateService } from "./services/system/app-update-schedule.js";
 import { createDesktopUpdateChannel } from "./services/system/desktop-update-channel.js";
 import { serve } from "@hono/node-server";
 import { existsSync } from "node:fs";
@@ -271,7 +272,10 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     serverConfig.BB_APP_SURFACE === "desktop"
       ? createDesktopUpdateChannel(process)
       : null;
-  const appUpdate =
+  const countRunningThreads = (): number => listRunningThreads(db).length;
+  const notifyAppUpdateChanged = (): void =>
+    hub.notifySystem(["app-update-changed"]);
+  const appUpdateService =
     desktopUpdateChannel === null
       ? createAppUpdateService({
           currentCommit:
@@ -281,21 +285,28 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
           appSurface: serverConfig.BB_APP_SURFACE,
           appVersion,
           config: runtimeConfig,
-          countRunningThreads: () => listRunningThreads(db).length,
+          countRunningThreads,
           launcher:
             appUpdateMode === null ? null : createLauncherChannel(process),
           logger,
           mode: appUpdateMode,
-          notifyChanged: () => hub.notifySystem(["app-update-changed"]),
+          notifyChanged: notifyAppUpdateChanged,
         })
       : createDesktopAppUpdateService({
           channel: desktopUpdateChannel,
           currentVersion: runtimeConfig.appVersion,
           dataDir: serverConfig.BB_DATA_DIR,
-          countRunningThreads: () => listRunningThreads(db).length,
-          notifyChanged: () => hub.notifySystem(["app-update-changed"]),
+          countRunningThreads,
+          notifyChanged: notifyAppUpdateChanged,
           logger,
         });
+  const appUpdate = createScheduledAppUpdateService({
+    countRunningThreads,
+    inner: appUpdateService,
+    logger,
+    notifyChanged: notifyAppUpdateChanged,
+    onChangedMessage: (listener) => hub.onChangedMessage(listener),
+  });
   const cliCommand = createCliCommandService({
     env: process.env,
     homeDir: homedir(),

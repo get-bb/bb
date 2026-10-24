@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   AppUpdateLauncherRequest,
   LauncherAppUpdateStatus,
@@ -9,6 +9,8 @@ import type {
 import type { SystemVersionResponse } from "@bb/server-contract";
 import { ApiError } from "../../src/errors.js";
 import { createAppUpdateService } from "../../src/services/system/app-update.js";
+import { createScheduledAppUpdateService } from "../../src/services/system/app-update-schedule.js";
+import type { ServerChangedMessage } from "../../src/ws/hub.js";
 import type { AppVersionService } from "../../src/services/system/app-version.js";
 import {
   createLauncherChannel,
@@ -155,7 +157,7 @@ describe("app update service", () => {
     expect(status.support).toEqual({ kind: "unsupported", reason });
     expect(status.available).toBeNull();
     await expectApiError(
-      service.apply({ confirmInterruptingThreads: true }),
+      service.apply({ runningThreads: { kind: "interrupt" } }),
       "app_update_unsupported",
     );
   });
@@ -196,13 +198,13 @@ describe("app update service", () => {
     const { launcher, service } = createService({ runningThreads: 2 });
 
     const error = await expectApiError(
-      service.apply({ confirmInterruptingThreads: false }),
+      service.apply({ runningThreads: { kind: "refuse" } }),
       "threads_running",
     );
     expect(error.body.details).toEqual({ runningThreadCount: 2 });
     expect(launcher?.requests).toEqual([]);
 
-    await service.apply({ confirmInterruptingThreads: true });
+    await service.apply({ runningThreads: { kind: "interrupt" } });
     expect(launcher?.requests).toEqual([
       {
         target: { kind: "npm", version: "1.1.0" },
@@ -218,7 +220,7 @@ describe("app update service", () => {
     });
 
     await expectApiError(
-      service.apply({ confirmInterruptingThreads: true }),
+      service.apply({ runningThreads: { kind: "interrupt" } }),
       "app_update_unavailable",
     );
   });
@@ -236,7 +238,7 @@ describe("app update service", () => {
       },
     });
     await expectApiError(
-      service.apply({ confirmInterruptingThreads: true }),
+      service.apply({ runningThreads: { kind: "interrupt" } }),
       "app_update_in_progress",
     );
   });
@@ -249,7 +251,7 @@ describe("app update service", () => {
     const { service } = createService({ launcher });
 
     const error = await expectApiError(
-      service.apply({ confirmInterruptingThreads: true }),
+      service.apply({ runningThreads: { kind: "interrupt" } }),
       "app_update_rejected",
     );
     expect(error.body.message).toContain("not source");
@@ -321,7 +323,7 @@ describe("app update service", () => {
     });
     expect(status.blocked?.reason).toBe("uncommitted-changes");
     await expectApiError(
-      service.apply({ confirmInterruptingThreads: true }),
+      service.apply({ runningThreads: { kind: "interrupt" } }),
       "app_update_blocked",
     );
   });
@@ -389,7 +391,7 @@ describe("app update service", () => {
       notifyChanged: vi.fn(),
     });
     launcher.push({});
-    await service.apply({ confirmInterruptingThreads: false });
+    await service.apply({ runningThreads: { kind: "refuse" } });
 
     runningThreads = 1;
     launcher.push({
@@ -418,7 +420,7 @@ describe("app update service", () => {
     ]);
 
     launcher.push({});
-    await service.apply({ confirmInterruptingThreads: true });
+    await service.apply({ runningThreads: { kind: "interrupt" } });
     launcher.push({
       activity: {
         phase: "ready",
@@ -474,12 +476,246 @@ describe("app update service", () => {
     const { service } = createService({ launcher, mode: "source" });
     await service.getStatus({ forceRefresh: true });
 
-    await service.apply({ confirmInterruptingThreads: false });
+    await service.apply({ runningThreads: { kind: "refuse" } });
 
     expect(launcher.requests.at(-1)).toMatchObject({
       target: { commit: "c".repeat(40), kind: "source" },
       type: "apply",
     });
+  });
+});
+
+const READY_STATUS = {
+  activity: {
+    phase: "ready",
+    startedAt: "2026-10-23T00:00:00.000Z",
+    target: { kind: "npm", version: "1.1.0" },
+    targetVersion: "1.1.0",
+  },
+} satisfies Partial<LauncherAppUpdateStatus>;
+
+const PREPARING_STATUS = {
+  activity: {
+    output: [],
+    phase: "preparing",
+    startedAt: "2026-10-23T00:00:00.000Z",
+    step: "Downloading bb-app 1.1.0",
+    target: { kind: "npm", version: "1.1.0" },
+    targetVersion: "1.1.0",
+  },
+} satisfies Partial<LauncherAppUpdateStatus>;
+
+function createScheduledService(args: { runningThreads: number }) {
+  const running = { count: args.runningThreads };
+  const listeners = new Set<(message: ServerChangedMessage) => void>();
+  const launcher = new FakeLauncher();
+  const inner = createAppUpdateService({
+    currentCommit: null,
+    appSurface: "web",
+    appVersion: appVersion({}),
+    config: { appVersion: "1.0.0", isDevelopment: false },
+    countRunningThreads: () => running.count,
+    launcher,
+    logger: testLogger,
+    mode: "npm",
+    notifyChanged: vi.fn(),
+  });
+  launcher.push({});
+  const service = createScheduledAppUpdateService({
+    countRunningThreads: () => running.count,
+    inner,
+    logger: testLogger,
+    notifyChanged: vi.fn(),
+    now: () => new Date("2026-10-23T00:00:00.000Z"),
+    onChangedMessage: (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    settleMs: 5_000,
+  });
+  const setRunningThreads = (count: number): void => {
+    running.count = count;
+    for (const listener of listeners) {
+      listener({
+        changes: ["status-changed"],
+        entity: "thread",
+        id: "thr_1",
+        type: "changed",
+      });
+    }
+  };
+  const applyRequests = () =>
+    launcher.requests.filter((request) => request.type === "apply");
+  return { applyRequests, launcher, service, setRunningThreads };
+}
+
+describe("app update scheduled for when threads finish", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("waits for running threads to stay finished before starting the update", async () => {
+    const { applyRequests, service, setRunningThreads } =
+      createScheduledService({ runningThreads: 2 });
+
+    const scheduled = await service.schedule();
+
+    expect(scheduled.scheduled).toEqual({
+      requestedAt: "2026-10-23T00:00:00.000Z",
+    });
+    expect(applyRequests()).toEqual([]);
+
+    setRunningThreads(0);
+    await vi.advanceTimersByTimeAsync(4_000);
+    setRunningThreads(1);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(applyRequests()).toEqual([]);
+
+    setRunningThreads(0);
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(applyRequests()).toHaveLength(1);
+    expect(
+      (await service.getStatus({ forceRefresh: false })).scheduled,
+    ).toBeNull();
+  });
+
+  it("starts at once when no thread is running", async () => {
+    const { applyRequests, service } = createScheduledService({
+      runningThreads: 0,
+    });
+
+    const status = await service.schedule();
+
+    expect(status.scheduled).toBeNull();
+    expect(applyRequests()).toHaveLength(1);
+  });
+
+  it("goes back to waiting when a thread starts while the update downloads", async () => {
+    const { applyRequests, launcher, service, setRunningThreads } =
+      createScheduledService({ runningThreads: 0 });
+    await service.schedule();
+
+    setRunningThreads(1);
+    launcher.push(READY_STATUS);
+
+    expect(launcher.requests.at(-1)).toEqual({ type: "defer" });
+    expect(
+      (await service.getStatus({ forceRefresh: false })).scheduled,
+    ).not.toBeNull();
+
+    launcher.push({});
+    setRunningThreads(0);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(applyRequests()).toHaveLength(2);
+
+    launcher.push({
+      activity: {
+        ...READY_STATUS.activity,
+        startedAt: "2026-10-23T00:01:00.000Z",
+      },
+    });
+    expect(launcher.requests.at(-1)).toEqual({ type: "restart" });
+  });
+
+  it("stops a scheduled update that is already downloading when cancelled", async () => {
+    const { applyRequests, launcher, service, setRunningThreads } =
+      createScheduledService({ runningThreads: 0 });
+    await service.schedule();
+    launcher.push(PREPARING_STATUS);
+    expect(
+      (await service.getStatus({ forceRefresh: false })).scheduled,
+    ).not.toBeNull();
+
+    await service.cancelScheduled();
+    launcher.push(READY_STATUS);
+
+    expect(launcher.requests.at(-1)).toEqual({ type: "defer" });
+    launcher.push({});
+    setRunningThreads(1);
+    setRunningThreads(0);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(applyRequests()).toHaveLength(1);
+    expect(
+      (await service.getStatus({ forceRefresh: false })).scheduled,
+    ).toBeNull();
+  });
+
+  it("keeps one scheduled update when it is requested again mid-download", async () => {
+    const { applyRequests, launcher, service, setRunningThreads } =
+      createScheduledService({ runningThreads: 0 });
+    await service.schedule();
+    launcher.push(PREPARING_STATUS);
+
+    const again = await service.schedule();
+    expect(again.scheduled).not.toBeNull();
+    expect(applyRequests()).toHaveLength(1);
+
+    setRunningThreads(1);
+    launcher.push(READY_STATUS);
+    expect(launcher.requests.at(-1)).toEqual({ type: "defer" });
+    launcher.push({});
+    setRunningThreads(0);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(applyRequests()).toHaveLength(2);
+  });
+
+  it("lets a hand-started update keep its thread policy when the schedule comes due", async () => {
+    const { applyRequests, launcher, service, setRunningThreads } =
+      createScheduledService({ runningThreads: 1 });
+    await service.schedule();
+    let accept = (): void => undefined;
+    launcher.respond = (request) =>
+      request.type === "apply"
+        ? new Promise((resolvePromise) => {
+            accept = () => resolvePromise(null);
+          })
+        : Promise.resolve(null);
+    setRunningThreads(0);
+    await vi.advanceTimersByTimeAsync(4_999);
+
+    const manual = service.apply({ confirmInterruptingThreads: true });
+    await vi.advanceTimersByTimeAsync(1);
+    accept();
+    await manual;
+    await vi.advanceTimersByTimeAsync(0);
+    accept();
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(applyRequests()).toHaveLength(1);
+    setRunningThreads(1);
+    launcher.push(READY_STATUS);
+    expect(launcher.requests.at(-1)).toEqual({ type: "restart" });
+  });
+
+  it("drops the schedule once the update is applied by hand", async () => {
+    const { applyRequests, service, setRunningThreads } =
+      createScheduledService({ runningThreads: 1 });
+    await service.schedule();
+
+    const status = await service.apply({ confirmInterruptingThreads: true });
+    setRunningThreads(0);
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(status.scheduled).toBeNull();
+    expect(applyRequests()).toHaveLength(1);
+  });
+
+  it("keeps the schedule when a hand-started update is refused for running threads", async () => {
+    const { service } = createScheduledService({ runningThreads: 1 });
+    await service.schedule();
+
+    await expectApiError(
+      service.apply({ confirmInterruptingThreads: false }),
+      "threads_running",
+    );
+
+    expect(
+      (await service.getStatus({ forceRefresh: false })).scheduled,
+    ).not.toBeNull();
   });
 });
 

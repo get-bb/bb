@@ -121,6 +121,7 @@ This index lists every command path that the core CLI registers, including alias
 - `bb updates app`
 - `bb updates app status`
 - `bb updates app apply`
+- `bb updates app cancel`
 - `bb updates app dismiss`
 
 ## terminal

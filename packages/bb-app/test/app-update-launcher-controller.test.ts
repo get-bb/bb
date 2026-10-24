@@ -255,6 +255,27 @@ describe("launcher app update controller", () => {
     expect(await controller.finalizeExit()).toBeNull();
   });
 
+  it("returns to idle without a failure when the server defers the restart", async () => {
+    const { controller, dataDir, port, shutdowns } = setUp();
+
+    port.request("apply", applyRequest());
+    await vi.waitFor(() =>
+      expect(port.statuses().at(-1)?.activity.phase).toBe("ready"),
+    );
+    port.request("defer", { type: "defer" });
+    expect(await port.response("defer")).toMatchObject({ error: null });
+
+    await vi.waitFor(() =>
+      expect(port.statuses().at(-1)?.activity.phase).toBe("idle"),
+    );
+    expect((await readAppUpdateState(dataDir)).lastResult).toBeNull();
+    expect(shutdowns).toEqual([]);
+
+    await stageAndRestart(port);
+    await vi.waitFor(() => expect(shutdowns).toHaveLength(1));
+    expect(await controller.finalizeExit()).toBe(75);
+  });
+
   it("stops an in-flight download on shutdown without recording a failure", async () => {
     const startedSignals: AbortSignal[] = [];
     const runner: RunCommand = (call) =>
