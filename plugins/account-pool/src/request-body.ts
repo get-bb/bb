@@ -1,5 +1,10 @@
 import { z } from "zod";
 import type { ModelFamily } from "./contracts.js";
+import {
+  findTopLevelJsonFields,
+  parseJsonField,
+  replaceJsonField,
+} from "./json-fields.js";
 import { modelFamily } from "./quota.js";
 
 const requestSchema = z
@@ -13,6 +18,14 @@ const requestSchema = z
   .passthrough();
 
 const encodedUserSchema = z.object({}).passthrough();
+const CLAUDE_ROUTING_FIELDS: ReadonlySet<string> = new Set([
+  "model",
+  "metadata",
+]);
+const CODEX_ROUTING_FIELDS: ReadonlySet<string> = new Set([
+  "client_metadata",
+  "prompt_cache_key",
+]);
 const accountUuidSchema = z.string().uuid().nullish();
 
 const ACCOUNT_COMPONENT =
@@ -85,17 +98,21 @@ function parseUserId(userId: string): {
 
 export function parseRequestBody(body: Uint8Array): ParsedRequestBody {
   const original = body;
+  const unbound: ParsedRequestBody = {
+    family: "other",
+    affinityId: null,
+    parentAffinityId: null,
+    forAccount: () => original,
+  };
   try {
-    const parsed = requestSchema.safeParse(
-      JSON.parse(new TextDecoder().decode(body)),
-    );
-    if (!parsed.success)
-      return {
-        family: "other",
-        affinityId: null,
-        parentAffinityId: null,
-        forAccount: () => original,
-      };
+    const fields = findTopLevelJsonFields(body, CLAUDE_ROUTING_FIELDS);
+    if (fields === null) return unbound;
+    const metadataSpan = fields.get("metadata");
+    const parsed = requestSchema.safeParse({
+      model: parseJsonField(body, fields.get("model")),
+      metadata: parseJsonField(body, metadataSpan),
+    });
+    if (!parsed.success) return unbound;
     const request = parsed.data;
     const userId = request.metadata?.user_id;
     const user =
@@ -111,24 +128,18 @@ export function parseRequestBody(body: Uint8Array): ParsedRequestBody {
           ? null
           : `session:${user.parentSessionId}`,
       forAccount(accountUuid) {
-        if (accountUuid === null || user === null) return original;
+        if (accountUuid === null || user === null || metadataSpan === undefined)
+          return original;
         const rewritten = user.forAccount(accountUuid);
         if (rewritten === null) return original;
-        return new TextEncoder().encode(
-          JSON.stringify({
-            ...request,
-            metadata: { ...request.metadata, user_id: rewritten },
-          }),
-        );
+        return replaceJsonField(original, metadataSpan, {
+          ...request.metadata,
+          user_id: rewritten,
+        });
       },
     };
   } catch {
-    return {
-      family: "other",
-      affinityId: null,
-      parentAffinityId: null,
-      forAccount: () => original,
-    };
+    return unbound;
   }
 }
 
@@ -144,11 +155,26 @@ function parseMetadata(
   }
 }
 
+function parseCodexRoutingFields(
+  body: Uint8Array,
+): { client_metadata: unknown; prompt_cache_key: unknown } | null {
+  try {
+    const fields = findTopLevelJsonFields(body, CODEX_ROUTING_FIELDS);
+    if (fields === null) return null;
+    return {
+      client_metadata: parseJsonField(body, fields.get("client_metadata")),
+      prompt_cache_key: parseJsonField(body, fields.get("prompt_cache_key")),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function parseCodexRequestBody(
   body: Uint8Array,
   headers: Headers,
 ): ParsedRequestBody {
-  const request = parseMetadata(new TextDecoder().decode(body));
+  const request = parseCodexRoutingFields(body);
   const parsedClient = encodedUserSchema.safeParse(request?.client_metadata);
   const client = parsedClient.success ? parsedClient.data : null;
   const headerTurn = parseMetadata(headers.get("x-codex-turn-metadata"));

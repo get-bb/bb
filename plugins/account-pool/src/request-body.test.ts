@@ -141,11 +141,37 @@ describe("Claude request parsing", () => {
     });
   });
 
+  it("rewrites the account without re-encoding the rest of the request", () => {
+    const user = JSON.stringify({
+      account_uuid: accountUuid,
+      session_id: sessionId,
+    });
+    const prefix =
+      '{\n  "model": "claude-fable-5",\n  "messages": [{"role":"user","content":"caf\u00e9 \\u00e9 \\" } { ["}],\n  "metadata": ';
+    const suffix = ',\n  "stream": true\n}';
+    const body = new TextEncoder().encode(
+      `${prefix}${JSON.stringify({ user_id: user, extra: "keep" })}${suffix}`,
+    );
+    const parsed = parseRequestBody(body);
+    expect(parsed.affinityId).toBe(`session:${sessionId}`);
+    expect(new TextDecoder().decode(parsed.forAccount(nextAccountUuid))).toBe(
+      `${prefix}${JSON.stringify({
+        user_id: JSON.stringify({
+          account_uuid: nextAccountUuid,
+          session_id: sessionId,
+        }),
+        extra: "keep",
+      })}${suffix}`,
+    );
+  });
+
   it.each([
     "not-json",
     "[]",
     '{"metadata":{"user_id":"malformed"}}',
     '{"metadata":{"user_id":123}}',
+    '{"metadata":{"user_id":"user_account_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}',
+    '{"metadata":{"user_id":"user_account_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"},}',
   ])("leaves malformed request %s unbound and byte-identical", (raw) => {
     const body = new TextEncoder().encode(raw);
     const parsed = parseRequestBody(body);
