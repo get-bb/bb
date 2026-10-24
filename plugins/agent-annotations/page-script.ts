@@ -9,7 +9,7 @@ interface AnnotationPageState {
 
 interface AnnotationController {
   activate(): AnnotationPageState;
-  deactivate(): AnnotationPageState;
+  deactivate(save?: boolean): AnnotationPageState;
   state(): AnnotationPageState;
   setTheme(theme: Record<string, string>): void;
   clear(): AnnotationPageState;
@@ -137,6 +137,7 @@ function installAgentAnnotations(
   let active = false;
   let hovered: Element | null = null;
   let editor: HTMLElement | null = null;
+  let saveEditor: (() => void) | null = null;
   let nextNumber = 1;
   let frame = 0;
   const annotations: PinnedAnnotation[] = [];
@@ -330,6 +331,12 @@ function installAgentAnnotations(
   function closeEditor(): void {
     editor?.remove();
     editor = null;
+    saveEditor = null;
+  }
+
+  function settleEditor(): void {
+    saveEditor?.();
+    closeEditor();
   }
 
   function commit(element: Element, comment: string): void {
@@ -409,8 +416,9 @@ function installAgentAnnotations(
     element: Element,
     annotation: PinnedAnnotation | null = null,
   ): void {
-    closeEditor();
+    settleEditor();
     showHover(element);
+    hoverLabel.style.display = "none";
     const rect = element.getBoundingClientRect();
     const panel = part("div", "editor");
     panel.setAttribute("role", "dialog");
@@ -464,6 +472,13 @@ function installAgentAnnotations(
     panel.append(header, textarea, actions);
     root.append(panel);
     editor = panel;
+    saveEditor = () => {
+      if (annotation === null) {
+        commit(element, textarea.value);
+      } else if (textarea.value.trim() !== annotation.comment) {
+        update(annotation, textarea.value);
+      }
+    };
     const panelRect = panel.getBoundingClientRect();
     const below = rect.bottom + 8;
     const preferredTop =
@@ -519,12 +534,10 @@ function installAgentAnnotations(
     }
     event.preventDefault();
     event.stopImmediatePropagation();
-    if (editor !== null) {
-      closeEditor();
-      return;
-    }
     const target = targetAt(event.clientX, event.clientY);
-    if (target !== null) {
+    if (target === null) {
+      settleEditor();
+    } else {
       openEditor(target);
     }
   }
@@ -561,8 +574,11 @@ function installAgentAnnotations(
     return state();
   }
 
-  function deactivate(): AnnotationPageState {
+  function deactivate(save = true): AnnotationPageState {
     if (active) {
+      if (save) {
+        settleEditor();
+      }
       active = false;
       window.removeEventListener("pointermove", onPointerMove, true);
       window.removeEventListener("pointerdown", swallow, true);
@@ -679,9 +695,10 @@ export function buildActivateExpression(theme: Record<string, string>): string {
 }
 
 export function buildControllerExpression(
-  method: "deactivate" | "state" | "clear",
+  method: "deactivate" | "dismiss" | "state" | "clear",
 ): string {
-  return `globalThis.${ANNOTATION_CONTROLLER_KEY} ? globalThis.${ANNOTATION_CONTROLLER_KEY}.${method}() : { active: false, count: 0 }`;
+  const call = method === "dismiss" ? "deactivate(false)" : `${method}()`;
+  return `globalThis.${ANNOTATION_CONTROLLER_KEY} ? globalThis.${ANNOTATION_CONTROLLER_KEY}.${call} : { active: false, count: 0 }`;
 }
 
 export function buildReactProbeExpression(annotationId: string): string {

@@ -14,6 +14,24 @@ const { useComposer } = await import("@get-bb/plugin-sdk/app");
 
 afterEach(cleanup);
 
+const secondAnnotation = {
+  id: "mfx34def",
+  number: 2,
+  comment: "Second",
+  url: "http://localhost:5173/checkout",
+  title: "Checkout",
+  viewport: { width: 1280, height: 720 },
+  element: {
+    tagName: "h1",
+    name: "h1",
+    selector: "h1",
+    text: "Checkout",
+    attributes: {},
+    rect: { x: 0, y: 0, width: 200, height: 40 },
+    styles: {},
+  },
+};
+
 const pageAnnotation = {
   id: "mfx12abc",
   number: 1,
@@ -93,7 +111,10 @@ describe("AnnotateAction", () => {
       },
       {
         rpc: {
-          save: () => ({ id: "ann_saved" }),
+          save: vi
+            .fn()
+            .mockReturnValueOnce({ id: pageAnnotation.id })
+            .mockReturnValueOnce({ id: secondAnnotation.id }),
           update: () => ({ id: pageAnnotation.id }),
         },
       },
@@ -120,11 +141,12 @@ describe("AnnotateAction", () => {
       expect(slot.inspection.composer.draft.mentions).toMatchObject([
         {
           provider: "annotation",
-          id: "ann_saved",
-          label: '1. button#pay "Pay now"',
+          id: pageAnnotation.id,
+          label: "1. Make this green",
         },
       ]);
     });
+    expect(slot.inspection.composer.focusCount).toBe(0);
     expect(slot.inspection.rpcCalls).toEqual([
       {
         method: "save",
@@ -142,6 +164,13 @@ describe("AnnotateAction", () => {
     );
 
     act(() => {
+      fake.emit({ type: "annotation", annotation: secondAnnotation });
+    });
+    await waitFor(() => {
+      expect(slot.inspection.composer.draft.mentions).toHaveLength(2);
+    });
+
+    act(() => {
       fake.emit({
         type: "annotation-update",
         id: pageAnnotation.id,
@@ -154,17 +183,81 @@ describe("AnnotateAction", () => {
         input: { id: pageAnnotation.id, comment: "Make this blue" },
       });
     });
-    expect(slot.inspection.composer.draft.mentions).toHaveLength(1);
+    await waitFor(() => {
+      expect(slot.inspection.composer.draft.text).toBe(
+        "@1. Make this blue @2. Second ",
+      );
+    });
+    expect(slot.inspection.composer.draft.mentions).toMatchObject([
+      { id: pageAnnotation.id, label: "1. Make this blue", from: 0, to: 18 },
+      { id: secondAnnotation.id, label: "2. Second", from: 19, to: 29 },
+    ]);
 
     act(() => {
-      fake.emit({ type: "state", active: false, count: 1 });
+      fake.emit({ type: "state", active: false, count: 2 });
+    });
+    await waitFor(() => {
+      expect(slot.inspection.composer.focusCount).toBe(1);
     });
     expect(
       slot
         .getByRole("button", { name: "Annotate elements" })
         .getAttribute("aria-pressed"),
     ).toBe("false");
-    expect(slot.getByTestId("agent-annotations-count").textContent).toBe("1");
+    expect(slot.getByTestId("agent-annotations-count").textContent).toBe("2");
+  });
+
+  it("focuses the composer after the last pending pill when annotating ends", async () => {
+    const fake = createFakePage();
+    let finishSave: (value: { id: string }) => void = () => undefined;
+    const slot = renderSlot(
+      registration(),
+      {
+        threadId: "thr_1",
+        tabId: "browser:1",
+        url: "http://localhost:5173/checkout",
+        isCompactViewport: false,
+        experimental_page: fake.page,
+      },
+      {
+        rpc: {
+          save: () =>
+            new Promise<{ id: string }>((resolve) => {
+              finishSave = resolve;
+            }),
+        },
+      },
+    );
+    act(() => fake.emit({ type: "state", active: true, count: 0 }));
+    act(() => fake.emit({ type: "annotation", annotation: pageAnnotation }));
+    act(() => fake.emit({ type: "state", active: false, count: 1 }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(slot.inspection.composer.focusCount).toBe(0);
+
+    await act(async () => {
+      finishSave({ id: pageAnnotation.id });
+    });
+    await waitFor(() => {
+      expect(slot.inspection.composer.focusCount).toBe(1);
+    });
+    expect(slot.inspection.composer.draft.mentions).toHaveLength(1);
+  });
+
+  it("dismisses the page without saving its draft when the toolbar unmounts", () => {
+    const fake = createFakePage();
+    const slot = renderSlot(registration(), {
+      threadId: "thr_1",
+      tabId: "browser:1",
+      url: "http://localhost:5173/checkout",
+      isCompactViewport: false,
+      experimental_page: fake.page,
+    });
+    slot.unmount();
+    expect(fake.evaluate).toHaveBeenCalledWith(
+      expect.stringContaining(".deactivate(false)"),
+    );
   });
 
   it("removes deleted mentions and clears page annotations on submission, not draft clearing", async () => {

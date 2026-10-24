@@ -65,12 +65,13 @@ async function readReactComponents(
   }
 }
 
-function withoutAnnotation(
+function rewriteAnnotation(
   draft: ComposerDraftSnapshot,
   pluginId: string,
   id: string,
+  relabel: ((label: string) => string) | null,
 ): ComposerDraftSnapshot {
-  const removed = draft.mentions
+  const matches = draft.mentions
     .filter(
       (mention) =>
         mention.kind === "plugin" &&
@@ -80,22 +81,31 @@ function withoutAnnotation(
     )
     .sort((a, b) => b.from - a.from);
   let next = draft;
-  for (const match of removed) {
-    const length = match.to - match.from;
+  for (const match of matches) {
+    const label = relabel?.(match.label) ?? null;
+    const replacement =
+      label === null
+        ? ""
+        : next.text
+            .slice(match.from, match.to)
+            .replace(match.label, () => label);
+    const shift = replacement.length - (match.to - match.from);
     next = {
       ...next,
-      text: next.text.slice(0, match.from) + next.text.slice(match.to),
-      mentions: next.mentions
-        .filter((mention) => mention !== match)
-        .map((mention) =>
-          mention.from >= match.to
-            ? {
-                ...mention,
-                from: mention.from - length,
-                to: mention.to - length,
-              }
-            : mention,
-        ),
+      text:
+        next.text.slice(0, match.from) +
+        replacement +
+        next.text.slice(match.to),
+      mentions: next.mentions.flatMap((mention) => {
+        if (mention === match) {
+          return label === null
+            ? []
+            : [{ ...mention, label, to: match.from + replacement.length }];
+        }
+        return mention.from >= match.to
+          ? [{ ...mention, from: mention.from + shift, to: mention.to + shift }]
+          : [mention];
+      }),
     };
   }
   return next;
@@ -111,11 +121,28 @@ export function AnnotateAction({
   const pendingSaves = useRef(Promise.resolve());
   const [state, setState] = useState<PageState>(INACTIVE_STATE);
   const [error, setError] = useState<string | null>(null);
+  const wasActive = useRef(false);
 
-  const applyState = useCallback((value: JsonValue) => {
-    const parsed = pageStateSchema.safeParse(value);
-    setState(parsed.success ? parsed.data : INACTIVE_STATE);
-  }, []);
+  const showState = useCallback(
+    (next: PageState) => {
+      if (wasActive.current && !next.active && next.count > 0) {
+        pendingSaves.current = pendingSaves.current.then(() =>
+          composer.focus(),
+        );
+      }
+      wasActive.current = next.active;
+      setState(next);
+    },
+    [composer],
+  );
+
+  const applyState = useCallback(
+    (value: JsonValue) => {
+      const parsed = pageStateSchema.safeParse(value);
+      showState(parsed.success ? parsed.data : INACTIVE_STATE);
+    },
+    [showState],
+  );
 
   const addToPrompt = useCallback(
     async (annotation: PageAnnotation) => {
@@ -130,13 +157,15 @@ export function AnnotateAction({
           {
             provider: ANNOTATION_MENTION_PROVIDER_ID,
             id: saved.id,
-            label: annotationMentionLabel(annotation),
+            label: annotationMentionLabel(
+              annotation.number,
+              annotation.comment,
+            ),
           },
           " ",
         ],
         { at: "end" },
       );
-      composer.focus();
     },
     [composer, page, rpc],
   );
@@ -151,7 +180,7 @@ export function AnnotateAction({
         return;
       }
       if (parsed.data.type === "state") {
-        setState({ active: parsed.data.active, count: parsed.data.count });
+        showState({ active: parsed.data.active, count: parsed.data.count });
         return;
       }
       const message = parsed.data;
@@ -159,13 +188,21 @@ export function AnnotateAction({
         .then(async () => {
           if (message.type === "annotation-delete") {
             composer.replace((draft) =>
-              withoutAnnotation(draft, pluginId, message.id),
+              rewriteAnnotation(draft, pluginId, message.id, null),
             );
           } else if (message.type === "annotation-update") {
             await rpc.call("update", {
               id: message.id,
               comment: message.comment,
             });
+            composer.replace((draft) =>
+              rewriteAnnotation(draft, pluginId, message.id, (label) => {
+                const number = /^(\d+)\. /.exec(label)?.[1];
+                return number === undefined
+                  ? label
+                  : annotationMentionLabel(Number(number), message.comment);
+              }),
+            );
           } else {
             await addToPrompt(message.annotation);
           }
@@ -175,7 +212,7 @@ export function AnnotateAction({
           setError(errorMessage(cause));
         });
     });
-  }, [addToPrompt, composer, page, pluginId, rpc]);
+  }, [addToPrompt, composer, page, pluginId, rpc, showState]);
 
   useEffect(() => {
     if (page === null) {
@@ -189,7 +226,7 @@ export function AnnotateAction({
   useEffect(
     () => () => {
       page
-        ?.evaluate(buildControllerExpression("deactivate"))
+        ?.evaluate(buildControllerExpression("dismiss"))
         .catch(() => undefined);
     },
     [page],
