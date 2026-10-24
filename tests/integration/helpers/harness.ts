@@ -5,7 +5,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
-import { listRunningThreads, type DbConnection } from "@bb/db";
+import {
+  ensurePersonalProject,
+  listRunningThreads,
+  type DbConnection,
+} from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import { defaultFeatureFlags } from "@bb/domain";
 import {
   acquireDaemonLock,
@@ -15,7 +20,6 @@ import {
   type HostDaemon,
   type HostDaemonApp,
 } from "@bb/host-daemon/test";
-import { initDb } from "../../../apps/server/src/db.js";
 import { createLifecycleDedupers } from "../../../apps/server/src/lifecycle-dedupers.js";
 import { createApp } from "../../../apps/server/src/server.js";
 import { createAiServiceRegistry } from "../../../apps/server/src/services/ai/ai-service-registry.js";
@@ -180,7 +184,8 @@ async function startIntegrationServer(
     targetPath: builtinSkillsRootPath,
   });
 
-  const db = initDb(":memory:");
+  const db = createMigratedConnection();
+  ensurePersonalProject(db);
   const hub = new NotificationHub();
   const sharedPorts = new HostSharedPortCoordinator({ db, hub });
   const watchInterests = new WatchInterestCoordinator({ db, hub });
