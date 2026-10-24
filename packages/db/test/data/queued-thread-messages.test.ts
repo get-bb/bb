@@ -2030,14 +2030,19 @@ describe("queued thread messages", () => {
         }),
       ).toBe(false);
 
-      expect(
-        claimNextQueuedThreadMessageGroup(
-          db,
-          noopNotifier,
-          thread.id,
-          () => true,
-        )?.map((row) => row.id),
-      ).toEqual([released.id]);
+      const claimed = claimNextQueuedThreadMessageGroup(
+        db,
+        noopNotifier,
+        thread.id,
+        () => true,
+      );
+      expect(claimed?.map((row) => row.id)).toEqual([released.id]);
+      if (!claimed) throw new Error("Expected the released row to be claimed");
+      db.transaction((tx) =>
+        deleteClaimedQueuedThreadMessageBatchInTransaction(tx, {
+          queuedMessages: claimed,
+        }),
+      );
       expect(
         claimNextQueuedThreadMessageGroup(
           db,

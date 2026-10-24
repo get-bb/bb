@@ -22,10 +22,12 @@ import {
   type ThreadEvent,
 } from "@bb/domain";
 import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
+import { createDeferredPromise } from "@bb/test-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TelemetryService } from "../../src/services/system/telemetry.js";
 import * as queuedDispatch from "../../src/services/threads/queued-message-dispatch.js";
 import * as threadEvents from "../../src/services/threads/thread-events.js";
+import * as threadCommands from "../../src/services/threads/thread-commands.js";
 import { runQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
 import {
   createAutomaticQueuedMessageGroupEligibility,
@@ -1613,64 +1615,108 @@ describe("service tier execution lifecycle", () => {
     },
   );
 
-  it("keeps queued choices separate until dispatch and preserves the next row", async () => {
-    await withTestHarness(async (harness) => {
-      const { thread } = seedProviderThreadFixture({
-        harness,
-        value: 81,
-        serviceTier: "fast",
-      });
-      const older = await createQueuedMessageForThread(harness.deps, {
-        thread,
-        payload: {
-          input: textInput("older standard turn"),
-          serviceTier: "default",
-        },
-      });
-      const newer = await createQueuedMessageForThread(harness.deps, {
-        thread,
-        payload: { input: textInput("newer fast turn"), serviceTier: "fast" },
-      });
-      expect(listQueuedThreadMessages(harness.db, thread.id)).toMatchObject([
-        { id: older.id, serviceTier: "default" },
-        { id: newer.id, serviceTier: "fast" },
-      ]);
-      await expect(
-        buildExecutionOptions(harness.deps, {}, { threadId: thread.id }),
-      ).resolves.toMatchObject({ serviceTier: "fast" });
-      await sendQueuedMessage(harness.deps, {
-        claimPolicy: {
-          kind: "automatic",
-          isGroupEligible: createAutomaticQueuedMessageGroupEligibility(
-            harness.deps,
-            { now: Date.now(), retryingFailure: false, thread },
-          ),
-          retryingFailure: false,
-        },
-        threadId: thread.id,
-        queuedMessageId: older.id,
-        mode: "auto",
-      });
-      expect(
-        threadEvents.getLastExecutionOptions(harness.deps, thread.id),
-      ).toMatchObject({ serviceTier: "default" });
-      await expect(
-        buildExecutionOptions(harness.deps, {}, { threadId: thread.id }),
-      ).resolves.toMatchObject({ serviceTier: "default" });
-      await vi.waitFor(() => {
+  it.each(["next", "targeted"] as const)(
+    "keeps queued choices separate until dispatch and preserves the next row with a competing %s claim",
+    async (claim) => {
+      await withTestHarness(async (harness) => {
+        const { thread } = seedProviderThreadFixture({
+          harness,
+          value: 81,
+          status: "active",
+          serviceTier: "fast",
+        });
+        const older = await createQueuedMessageForThread(harness.deps, {
+          thread,
+          payload: {
+            input: textInput("older standard turn"),
+            serviceTier: "default",
+          },
+        });
+        const newer = await createQueuedMessageForThread(harness.deps, {
+          thread,
+          payload: { input: textInput("newer fast turn"), serviceTier: "fast" },
+        });
         expect(listQueuedThreadMessages(harness.db, thread.id)).toMatchObject([
+          { id: older.id, serviceTier: "default" },
           { id: newer.id, serviceTier: "fast" },
         ]);
+        await expect(
+          buildExecutionOptions(harness.deps, {}, { threadId: thread.id }),
+        ).resolves.toMatchObject({ serviceTier: "fast" });
+        const idle = applyLoggedThreadLifecycleEvent(harness.deps, {
+          event: { type: "run.succeeded" },
+          threadId: thread.id,
+        });
+        if (!idle.applied)
+          throw new Error("Expected the queued thread to become idle");
+        const preparing = createDeferredPromise<void>();
+        const release = createDeferredPromise<void>();
+        const prepare = threadCommands.prepareTurnSubmitCommandPayload;
+        vi.spyOn(
+          threadCommands,
+          "prepareTurnSubmitCommandPayload",
+        ).mockImplementationOnce(async (...args) => {
+          preparing.resolve();
+          await release.promise;
+          return prepare(...args);
+        });
+        const sendAutomatically = (queuedMessageId: string) =>
+          sendQueuedMessage(harness.deps, {
+            claimPolicy: {
+              kind: "automatic",
+              isGroupEligible: createAutomaticQueuedMessageGroupEligibility(
+                harness.deps,
+                {
+                  now: Date.now(),
+                  retryingFailure: false,
+                  thread: idle.thread,
+                },
+              ),
+              retryingFailure: false,
+            },
+            threadId: thread.id,
+            queuedMessageId,
+            mode: "auto",
+          });
+        const sending = sendAutomatically(older.id);
+        try {
+          await preparing.promise;
+          if (claim === "next") {
+            await runQueuedMessageDispatch(harness.deps, {
+              kind: "thread-ready",
+              threadId: thread.id,
+            });
+          } else {
+            await sendAutomatically(newer.id);
+          }
+        } finally {
+          release.resolve();
+          await sending;
+        }
+        expect(
+          threadEvents.getLastExecutionOptions(harness.deps, thread.id),
+        ).toMatchObject({ serviceTier: "default" });
+        await expect(
+          buildExecutionOptions(harness.deps, {}, { threadId: thread.id }),
+        ).resolves.toMatchObject({ serviceTier: "default" });
+        await vi.waitFor(() => {
+          expect(listQueuedThreadMessages(harness.db, thread.id)).toMatchObject(
+            [{ id: newer.id, serviceTier: "fast" }],
+          );
+        });
+        expect(
+          listQueuedThreadCommands(harness, "turn.submit", thread.id),
+        ).toHaveLength(1);
+        expect(
+          listQueuedThreadCommands(harness, "turn.submit", thread.id),
+        ).toContainEqual(
+          expect.objectContaining({
+            options: expect.objectContaining({ serviceTier: "default" }),
+          }),
+        );
       });
-      expect(
-        listQueuedThreadCommands(harness, "turn.submit", thread.id),
-      ).toContainEqual(
-        expect.objectContaining({
-          options: expect.objectContaining({ serviceTier: "default" }),
-        }),
-      );
-    });
-  });
+    },
+  );
 
   it("snapshots a busy follow-up without changing the active tier", async () => {
     await withTestHarness(async (harness) => {
