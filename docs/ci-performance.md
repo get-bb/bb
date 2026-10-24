@@ -179,7 +179,7 @@ runners that do not accept Vitest's shard arguments:
 The `plugins-1` group runs provider plugins, Tasks, Connect, and the thread list.
 `plugins-2` uses negative filters to run every other plugin, including new ones.
 All Linux groups run four concurrent
-Turbo tasks. The two server shards use four Vitest workers each; other groups
+Turbo tasks. The two server shards and integration group use four Vitest workers each; other groups
 cap Vitest at two workers with `VITEST_MAX_WORKERS`, which Turbo hashes for
 test tasks. Electron's runtime libraries and Xvfb are set up
 only when the selected tests include `@bb/desktop`. Electron setup queries
@@ -792,9 +792,26 @@ The failed baseline hit the unchanged bundled-dependency rebuild assertion in
 Both arrangements discovered the same 3,681 cases across the two shards
 (3,680 passing plus one existing skipped case in the passing runs). Test names
 containing a generated `sendAt` timestamp were normalized for inventory comparison.
-The retained setting uses four workers only for these single-package server
-shards. Other Linux groups retain two workers per package, because several Turbo
-tasks may run concurrently. No shards, runners, coverage, or timeouts were added.
+The server shards use four workers; the integration group also uses four after
+the fixture measurements below. Other Linux groups retain two workers per
+package, because several Turbo tasks may run concurrently. No shards, runners,
+coverage, or timeouts were added.
+
+## Integration fixture setup
+
+Integration harnesses copy a fresh SQLite database from one template built by
+the real migrations, then initialize the personal project separately. The scripted
+echo provider bundle is built once per worker. Each harness still creates its own
+database, registry, server, daemon, provider processes, and sessions.
+
+[Repeated Linux and Windows measurements](https://github.com/get-bb/bb/actions/runs/40137507494)
+passed all 77 tests in all 12 jobs on four-vCPU runners with empty Turbo caches.
+On Linux, integration task time fell from 39.2–46.5 seconds to 33.1–34.4 seconds
+with fixture reuse, then to 24.8–27.1 seconds with four workers. Windows keeps its
+default worker count: fixture reuse took 41.6–42.9 seconds, while four workers
+took 54.2–68.1 seconds. The Windows baseline varied from 42.5–65.7 seconds, so these
+runs do not establish a precise Windows percentage gain. Shard counts and test
+inventories remain unchanged.
 
 ## Windows package-smoke download reuse
 
