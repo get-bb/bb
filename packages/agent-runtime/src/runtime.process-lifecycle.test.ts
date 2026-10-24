@@ -7,7 +7,15 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
 import type { ThreadEvent } from "@bb/domain";
 import { createAgentRuntime } from "./runtime.js";
 import { createProviderForId } from "./provider-registry.js";
@@ -354,6 +362,11 @@ describe("createAgentRuntime process lifecycle", () => {
     });
     expect(starts).toBe(2);
     const replacementProcess = manager.requireProviderProcess(MANAGER_PROVIDER);
+    onTestFinished(async () => {
+      await replacementProcess.stop();
+    });
+    const exited = vi.fn();
+    replacementProcess.child.once("exit", exited);
     const fullShutdown = manager.shutdown();
     const operations = Promise.all([
       retirement,
@@ -375,7 +388,7 @@ describe("createAgentRuntime process lifecycle", () => {
       undefined,
     ]);
     expect(completedPromptly).toBe(true);
-    expect(processIsAlive(replacementProcess.child.pid ?? 0)).toBe(false);
+    expect(exited).toHaveBeenCalledOnce();
     await manager.ensureProvider(MANAGER_PROVIDER);
     expect(manager.listRunningProviders()).toEqual([]);
   });
