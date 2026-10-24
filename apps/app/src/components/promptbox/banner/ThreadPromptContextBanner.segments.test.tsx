@@ -171,7 +171,7 @@ describe("thread context segments", () => {
       environment: { id: "env_1" },
     });
     expect(screen.getByRole("group", { name: "Demo status" })).toBeTruthy();
-    expect(screen.queryByText("Merge base")).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Merge base" })).toBeNull();
   });
 
   it("places a segment in a group of its own where that group sorts", () => {
@@ -190,7 +190,7 @@ describe("thread context segments", () => {
     renderBanner({ core: { ...EMPTY_CORE, git } });
 
     expect(screen.queryByText(/Plugin summary/)).toBeNull();
-    expect(screen.getByText("Merge base")).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Merge base" })).toBeTruthy();
   });
 
   it("expands one segment at a time through the shared key", () => {
@@ -252,7 +252,7 @@ describe("thread context segments", () => {
     renderBanner({ core: { ...EMPTY_CORE, git } });
 
     expect(screen.queryByText(/Plugin summary/)).toBeNull();
-    expect(screen.getByText("Merge base")).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Merge base" })).toBeTruthy();
   });
 
   it("keeps plugin segments off read-only history", () => {

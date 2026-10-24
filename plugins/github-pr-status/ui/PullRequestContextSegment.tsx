@@ -116,7 +116,7 @@ export function PullRequestLink({
           className="min-w-0 truncate"
           data-promptbox-hide-compact={isAlone ? undefined : ""}
         >
-          PR #{pullRequest.number}
+          #{pullRequest.number}
           {isAlone && pullRequest.state !== "open"
             ? ` · ${PULL_REQUEST_STATE_DISPLAY[pullRequest.state].label}`
             : ""}

@@ -78,9 +78,9 @@ import {
 } from "@/components/promptbox/banner/AnimatedBody";
 import {
   PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
+  PROMPT_STACK_HOVER_CHEVRON_CLASS,
   PromptStackCollapseRow,
   PromptStackCountSlot,
-  PromptStackHoverChevron,
   useDisclosureFocusHandoff,
 } from "@bb/shared-ui/prompt-stack-disclosure";
 import {
@@ -222,10 +222,14 @@ const SECTION_IDS = {
 } as const;
 
 const SEGMENT_SHRINK_CLASS = "min-w-0 overflow-hidden";
+const MERGE_BASE_TRIGGER_CLASS = cn(
+  PROMPT_STACK_INLAY_SEGMENT_CLASS,
+  "mx-0 h-auto max-w-[12rem] gap-1.5 [&_[data-icon-root]]:size-3.5",
+);
 
 interface SectionToggleButtonProps {
   buttonRef: RefObject<HTMLButtonElement | null>;
-  fillRow: boolean;
+  showChevron: boolean;
   id: string;
   controlsId: string;
   ariaLabel?: string;
@@ -239,7 +243,7 @@ interface SectionToggleButtonProps {
 
 function SectionToggleButton({
   buttonRef,
-  fillRow,
+  showChevron,
   id,
   controlsId,
   ariaLabel,
@@ -264,7 +268,6 @@ function SectionToggleButton({
         PROMPT_STACK_INLAY_SEGMENT_CLASS,
         SEGMENT_SHRINK_CLASS,
         label !== null && label !== undefined ? "gap-1.5" : "gap-0",
-        fillRow && "flex-1 justify-start text-left",
         PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
         isExpanded ? "text-foreground" : "text-muted-foreground",
       )}
@@ -285,7 +288,13 @@ function SectionToggleButton({
           {compactLabel}
         </span>
       ) : null}
-      {fillRow ? <PromptStackHoverChevron isExpanded={isExpanded} /> : null}
+      {showChevron && !isExpanded ? (
+        <Icon
+          name="ChevronDown"
+          className={PROMPT_STACK_HOVER_CHEVRON_CLASS}
+          aria-hidden="true"
+        />
+      ) : null}
     </button>
   );
 }
@@ -374,7 +383,7 @@ function ParentThreadSectionToggle({
   return (
     <SectionToggleButton
       buttonRef={buttonRef}
-      fillRow={false}
+      showChevron={false}
       id={SECTION_IDS.parentThread.toggle}
       controlsId={SECTION_IDS.parentThread.body}
       ariaLabel={ariaLabel}
@@ -1057,20 +1066,22 @@ function ChangedFilesMergeBaseAction({
     remoteMergeBaseBranchOptions: mergeBase.remoteOptions,
   });
   return (
-    <BannerActionSlot hideInCompact>
-      <Icon name="GitMerge" className="size-3.5 shrink-0" aria-hidden="true" />
-      <span className="shrink-0">Merge base</span>
+    <BannerActionSlot hideInCompact className="pr-0">
       <BranchPicker
         value={mergeBase.branch}
         options={candidates.options}
         remoteOptions={candidates.remoteOptions}
         variant="minimal"
+        triggerIcon="GitMerge"
+        triggerTitle={`Merge base: ${mergeBase.branch}`}
+        ariaLabel="Merge base"
+        menuLabel="Merge base"
         emphasizeTriggerValue={false}
         loading={mergeBase.optionsLoading}
         onChange={mergeBase.onChange}
         onOpenChange={mergeBase.onPickerOpenChange}
         onSearchQueryChange={mergeBase.onSearchQueryChange}
-        className="max-w-[10rem]"
+        className={MERGE_BASE_TRIGGER_CLASS}
         muted
         popoverAlign="end"
       />
@@ -1089,7 +1100,7 @@ function ChangedFilesSummary({
   return (
     <SectionToggleButton
       buttonRef={gitFocus.triggerRef}
-      fillRow
+      showChevron
       id={SECTION_IDS.git.toggle}
       controlsId={SECTION_IDS.git.body}
       icon={
@@ -1292,7 +1303,7 @@ function ReadOnlyContextBanner({
         ) : (
           <SectionToggleButton
             buttonRef={statusFocus.triggerRef}
-            fillRow
+            showChevron
             id={SECTION_IDS.status.toggle}
             controlsId={SECTION_IDS.status.body}
             icon={statusIcon}

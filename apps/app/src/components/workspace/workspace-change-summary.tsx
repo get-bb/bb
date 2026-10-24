@@ -71,10 +71,11 @@ export function renderChangeSummary(tally: ChangeTally): ReactNode {
   return (
     formatChangeSummaryWithoutLineStats(tally) ?? (
       <>
-        {formatWorkspaceChangedFilesLabel(tally.filesCount)},{" "}
+        {formatWorkspaceChangedFilesLabel(tally.filesCount)}{" "}
         <DiffStatsTally
           insertions={tally.insertions}
           deletions={tally.deletions}
+          className="ml-1"
         />
       </>
     )

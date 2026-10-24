@@ -37,16 +37,21 @@ export const PROMPT_STACK_ROW_ACTION_TAKEOVER_CLASS =
 
 export function BannerActionSlot({
   children,
+  className,
   hideInCompact = false,
   hideInTiny = true,
 }: {
   children: ReactNode;
+  className?: string;
   hideInCompact?: boolean;
   hideInTiny?: boolean;
 }) {
   return (
     <div
-      className="ml-auto flex shrink-0 items-center gap-1.5 pr-2 text-xs text-muted-foreground"
+      className={cn(
+        "ml-auto flex shrink-0 items-center gap-1.5 pr-2 text-xs text-muted-foreground",
+        className,
+      )}
       data-promptbox-hide-compact={hideInCompact ? "" : undefined}
       data-promptbox-hide-tiny={hideInTiny ? "" : undefined}
     >
