@@ -65,6 +65,8 @@ vi.mock("@/lib/sdk", async () => {
         acknowledgeAppUpdate: vi.fn(),
         appUpdate: vi.fn(),
         applyAppUpdate: vi.fn(),
+        experimental_cancelScheduledAppUpdate: vi.fn(),
+        experimental_scheduleAppUpdate: vi.fn(),
         version: vi.fn(),
         config: vi.fn(async () =>
           makeSystemConfig({ primaryHostId: "host_primary" }),
@@ -319,6 +321,7 @@ function makeAppUpdateStatus(
     current: { commit: null, version: "0.0.5" },
     lastResult: null,
     runningThreadCount: 0,
+    scheduled: null,
     support: { kind: "supported", mode: "npm" },
     ...overrides,
   };
@@ -1936,6 +1939,88 @@ The canonical release summary.
       within(dialog).getByRole("button", { name: "Update and restart" }),
     );
 
+    await waitFor(() => {
+      expect(sdk.system.applyAppUpdate).toHaveBeenCalledWith({
+        confirmInterruptingThreads: true,
+      });
+    });
+  });
+
+  it("offers to update once running threads finish instead of interrupting them", async () => {
+    useWebApp();
+    vi.mocked(sdk.system.appUpdate).mockResolvedValue(
+      makeAppUpdateStatus({ runningThreadCount: 2 }),
+    );
+    vi.mocked(sdk.system.experimental_scheduleAppUpdate).mockResolvedValue(
+      makeAppUpdateStatus({
+        runningThreadCount: 2,
+        scheduled: { requestedAt: "2026-10-23T00:00:00.000Z" },
+      }),
+    );
+    vi.mocked(
+      sdk.system.experimental_cancelScheduledAppUpdate,
+    ).mockResolvedValue(makeAppUpdateStatus({ runningThreadCount: 2 }));
+
+    renderSection();
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Update available · Download the update and restart bb",
+      }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(
+      within(dialog).getByRole("button", {
+        name: "Update when threads finish",
+      }),
+    );
+
+    expect(
+      await screen.findByText("Updates when 2 running threads finish"),
+    ).toBeDefined();
+    expect(sdk.system.applyAppUpdate).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Update available · Cancel the scheduled update",
+      }),
+    );
+    expect(
+      await screen.findByRole("button", {
+        name: "Update available · Download the update and restart bb",
+      }),
+    ).toBeDefined();
+    expect(sdk.system.experimental_cancelScheduledAppUpdate).toHaveBeenCalled();
+  });
+
+  it("updates now from a scheduled update after confirming the interruption", async () => {
+    useWebApp();
+    const scheduled = makeAppUpdateStatus({
+      runningThreadCount: 1,
+      scheduled: { requestedAt: "2026-10-23T00:00:00.000Z" },
+    });
+    vi.mocked(sdk.system.appUpdate).mockResolvedValue(scheduled);
+    vi.mocked(sdk.system.applyAppUpdate).mockResolvedValue(
+      makeAppUpdateStatus({ runningThreadCount: 1 }),
+    );
+
+    renderSection();
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Update available · Update now instead of waiting for threads",
+      }),
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/1 thread is running/)).toBeDefined();
+    expect(
+      within(dialog).queryByRole("button", {
+        name: "Update when threads finish",
+      }),
+    ).toBeNull();
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Update and restart" }),
+    );
     await waitFor(() => {
       expect(sdk.system.applyAppUpdate).toHaveBeenCalledWith({
         confirmInterruptingThreads: true,
