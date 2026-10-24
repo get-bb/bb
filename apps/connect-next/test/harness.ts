@@ -392,7 +392,10 @@ export async function startOrigin(options: OriginOptions) {
     response.writeHead(200, { "content-type": "application/json" });
     response.end(JSON.stringify({ ok: true, url: request.url }));
   });
-  const sockets = new WebSocketServer({ noServer: true });
+  const sockets = new WebSocketServer({
+    noServer: true,
+    perMessageDeflate: true,
+  });
   server.on("upgrade", (request, socket, head) => {
     void verify(request).then((assertion) => {
       seen.push({

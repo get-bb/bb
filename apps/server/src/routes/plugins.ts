@@ -37,6 +37,7 @@ import {
   type AppAssetCompressionCache,
 } from "../services/plugins/app-asset-compression-cache.js";
 import { rankAcceptedAssetEncodings } from "../asset-content-encoding.js";
+import { declineWebSocketCompression } from "../ws/compression.js";
 import {
   hashedAssetCacheControl,
   pluginImageResponse,
@@ -388,6 +389,7 @@ export function registerPluginRoutes(
     MAX_CACHED_APP_ASSETS,
   );
   const upgradePluginWebSocket = upgradeWebSocket?.(async (context) => {
+    declineWebSocketCompression(context);
     const id = context.req.param("id");
     const subPath = pluginHttpSubPath(context, id);
     const lookup = plugins.getWebSocketRoute(id, subPath);

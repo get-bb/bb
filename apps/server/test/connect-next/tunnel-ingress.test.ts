@@ -631,6 +631,7 @@ describe("bb connect next tunnel ingress", () => {
       [GATE_ASSERTION_HEADER]: await assertion({ method: "GET", path: "/ws" }),
     });
     if (!("socket" in realtime)) throw new Error("expected /ws to open");
+    expect(realtime.socket.extensions).toContain("permessage-deflate");
     await closeSocket(realtime.socket);
 
     const plugin = await openSocket(ingressBaseUrl, SOCKET_PATH, {
@@ -642,6 +643,7 @@ describe("bb connect next tunnel ingress", () => {
       }),
     });
     if (!("socket" in plugin)) throw new Error("expected plugin socket");
+    expect(plugin.socket.extensions).toBe("");
     const loopbackOrigin = `http://127.0.0.1:${server.config.serverPort}`;
     expect(JSON.parse(await plugin.firstMessage)).toEqual({
       host: new URL(loopbackOrigin).host,
@@ -871,6 +873,18 @@ describe("bb connect next tunnel ingress", () => {
         "x-bb-gate-auth": "session",
       });
       await closeSocket(socket.socket);
+
+      const realtime = await openSocket(vhost, "/ws", {
+        host,
+        origin: `https://${host}`,
+        [GATE_ASSERTION_HEADER]: await assertion({
+          method: "GET",
+          path: "/ws",
+        }),
+      });
+      if (!("socket" in realtime)) throw new Error("expected /ws to open");
+      expect(realtime.socket.extensions).toContain("permessage-deflate");
+      await closeSocket(realtime.socket);
       expect(logs.join("\n")).not.toContain("bbcred_ingress");
     } finally {
       await tunnel.stop();
