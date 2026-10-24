@@ -137,7 +137,7 @@ const CODEX_NOTIFICATION_COVERAGE = {
   "fs/changed": "unknown",
   "fuzzyFileSearch/sessionCompleted": "unknown",
   "fuzzyFileSearch/sessionUpdated": "unknown",
-  guardianWarning: "unknown",
+  guardianWarning: "normalized",
   "hook/completed": "unknown",
   "hook/started": "unknown",
   "item/agentMessage/delta": "normalized",
