@@ -278,6 +278,7 @@ export class NotificationHub implements DbNotifier {
     HostOnlineRpcWaiter
   >();
   private readonly hostProtocolUpdateRetryRequests = new Set<string>();
+  private readonly daemonShutdownAckSessionIds = new Set<string>();
   private readonly changedMessageListeners = new Set<ChangedMessageListener>();
   private readonly pendingDaemonDisconnects = new Map<
     string,
@@ -828,8 +829,19 @@ export class NotificationHub implements DbNotifier {
     if (entry === undefined) {
       return false;
     }
+    this.daemonShutdownAckSessionIds.delete(sessionId);
     entry.socket.send(JSON.stringify({ type: "machine.shutdown" }));
     return true;
+  }
+
+  recordDaemonShutdownAck(sessionId: string): void {
+    if (this.daemonSessions.has(sessionId)) {
+      this.daemonShutdownAckSessionIds.add(sessionId);
+    }
+  }
+
+  takeDaemonShutdownAck(sessionId: string): boolean {
+    return this.daemonShutdownAckSessionIds.delete(sessionId);
   }
 
   closeDaemonSession(
