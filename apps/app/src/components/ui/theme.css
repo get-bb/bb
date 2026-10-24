@@ -976,6 +976,100 @@ body.sidebar-resizing [data-sidebar="panel"] {
     max-width: max-content;
   }
 
+  .bb-thread-title-pan {
+    overflow: hidden;
+  }
+
+  .bb-thread-title-content {
+    flex: 1 1 0%;
+    min-width: 0;
+    overflow: hidden;
+    --bb-thread-title-gradient: linear-gradient(
+      to right,
+      black calc(var(--bb-thread-title-visible-end, 100%) - 1em),
+      transparent var(--bb-thread-title-visible-end, 100%),
+      transparent 100%
+    );
+    mask-image: var(--bb-thread-title-mask, none);
+    -webkit-mask-image: var(--bb-thread-title-mask, none);
+  }
+
+  .bb-thread-title-pan[data-thread-title-overflow="true"]
+    .bb-thread-title-content {
+    --bb-thread-title-mask: var(--bb-thread-title-gradient);
+  }
+
+  .bb-thread-title-text {
+    display: inline-flex;
+    width: max-content;
+    align-items: baseline;
+    white-space: nowrap;
+  }
+
+  @keyframes bb-thread-title-pan {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(
+        calc(-1 * var(--bb-thread-title-pan-distance, 0px))
+      );
+    }
+  }
+
+  @media (hover: hover) and (prefers-reduced-motion: no-preference) {
+    .bb-thread-title-pan[data-thread-title-hover-overflow="true"]:hover
+      .bb-thread-title-text,
+    .bb-sidebar-hover-actions-row:hover
+      .bb-thread-title-pan[data-thread-title-hover-overflow="true"]
+      .bb-thread-title-text {
+      animation: bb-thread-title-pan var(--bb-thread-title-pan-duration, 9s)
+        linear(
+          0 0% var(--bb-thread-title-pan-hold-end),
+          1 50% calc(50% + var(--bb-thread-title-pan-hold-end)),
+          0 100%
+        )
+        infinite;
+      animation-delay: -2.5s;
+    }
+  }
+
+  @media (hover: hover) {
+    .bb-sidebar-hover-actions-row:is(
+        :hover,
+        :has(:focus-visible),
+        :has([data-sidebar-hover-actions-open="true"])
+      )
+      .bb-thread-title-pan[data-thread-title-hover-overflow="true"]
+      .bb-thread-title-content,
+    .bb-thread-title-pan[data-thread-title-hover-overflow="true"]:is(
+        :hover,
+        :focus-within
+      )
+      .bb-thread-title-content {
+      --bb-thread-title-mask: var(--bb-thread-title-gradient);
+      --bb-thread-title-visible-end: calc(
+        100% - var(--bb-thread-title-hover-inset, 0px)
+      );
+    }
+  }
+
+  .bb-thread-title-pan .prompt-mention-pill {
+    @apply shrink-0;
+  }
+
+  .bb-thread-title-pan .prompt-mention-pill .truncate {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: nowrap;
+  }
+
+  .bb-thread-title-pan .bb-thread-title-text > .truncate {
+    flex: none;
+    overflow: visible;
+    text-overflow: clip;
+  }
+
   /*
    * The working sweep is an animated image used as a mask: `shine-sweep.png`
    * is a 128x2 APNG whose alpha band travels left to right once a second,
