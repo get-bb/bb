@@ -1840,7 +1840,7 @@ function ProjectWorktrees({
         title="Worktrees by project"
         description="BB worktrees are the managed checkouts BB tracks. Other worktrees were added to the same repositories outside BB, for example by agents running git worktree add. Projects with a source here are included even when they have no worktrees. These counts are separate from thread files."
       />
-      <div className="rounded-lg border border-border bg-card px-4 py-2">
+      <div className="overflow-x-auto rounded-lg border border-border bg-card px-4 py-2">
         {report.projectWorktrees.length === 0 ? (
           <p className="py-3 text-xs text-muted-foreground">
             No projects with sources or managed worktrees on this machine.
@@ -1852,24 +1852,27 @@ function ProjectWorktrees({
             </caption>
             <thead>
               <tr className="text-muted-foreground">
-                <th scope="col" className="w-full py-2 text-left font-normal">
+                <th
+                  scope="col"
+                  className="w-full py-2 text-left align-bottom font-normal"
+                >
                   Project
                 </th>
                 <th
                   scope="col"
-                  className="whitespace-nowrap py-2 pl-6 text-right font-normal"
+                  className="py-2 pl-3 text-right align-bottom font-normal sm:whitespace-nowrap sm:pl-6"
                 >
                   BB worktrees
                 </th>
                 <th
                   scope="col"
-                  className="whitespace-nowrap py-2 pl-6 text-right font-normal"
+                  className="py-2 pl-3 text-right align-bottom font-normal sm:whitespace-nowrap sm:pl-6"
                 >
                   Other worktrees
                 </th>
                 <th
                   scope="col"
-                  className="whitespace-nowrap py-2 pl-6 text-right font-normal"
+                  className="py-2 pl-3 text-right align-bottom font-normal sm:whitespace-nowrap sm:pl-6"
                 >
                   Awaiting cleanup
                 </th>
@@ -1884,10 +1887,10 @@ function ProjectWorktrees({
                   >
                     {project.projectName}
                   </th>
-                  <td className="whitespace-nowrap py-3 pl-6 text-right font-normal tabular-nums">
+                  <td className="whitespace-nowrap py-3 pl-3 text-right font-normal tabular-nums sm:pl-6">
                     {project.worktreeCount.toLocaleString()}
                   </td>
-                  <td className="whitespace-nowrap py-3 pl-6 text-right font-normal tabular-nums">
+                  <td className="whitespace-nowrap py-3 pl-3 text-right font-normal tabular-nums sm:pl-6">
                     {project.externalCount.toLocaleString()}
                     {project.externalBytes > 0 && (
                       <span className="text-muted-foreground">
@@ -1896,7 +1899,7 @@ function ProjectWorktrees({
                       </span>
                     )}
                   </td>
-                  <td className="whitespace-nowrap py-3 pl-6 text-right tabular-nums text-muted-foreground">
+                  <td className="whitespace-nowrap py-3 pl-3 text-right tabular-nums text-muted-foreground sm:pl-6">
                     {project.cleanupPendingCount.toLocaleString()}
                   </td>
                 </tr>
