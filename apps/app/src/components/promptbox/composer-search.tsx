@@ -24,7 +24,6 @@ import type { TypeaheadConfig } from "./ComposerBox";
 interface ComposerSearches {
   mention: ExperimentalComposerMentionSearch;
   command: ExperimentalComposerCommandSearch;
-  prefetchCommands(): void;
 }
 
 const ComposerSearchContext = createContext<ComposerSearches | null>(null);
@@ -57,13 +56,11 @@ export const ComposerSearchProvider = memo(function ComposerSearchProvider({
     useState<ExperimentalComposerSearchQuery<ExperimentalComposerCommandTrigger> | null>(
       null,
     );
-  const [prefetchRequested, setPrefetchRequested] = useState(false);
   const mention = usePromptMentions(typeahead.mention.source, mentionQuery);
   const command = useCommandSuggestions({
     ...typeahead.command.source,
     activeTrigger: commandQuery?.trigger ?? null,
     query: commandQuery?.text ?? null,
-    composerFocused: prefetchRequested,
   });
   const searches: ComposerSearches = {
     mention: {
@@ -106,7 +103,6 @@ export const ComposerSearchProvider = memo(function ComposerSearchProvider({
           sameQuery(current, query) ? current : query,
         ),
     },
-    prefetchCommands: () => setPrefetchRequested(true),
   };
   return (
     <ComposerSearchContext.Provider value={searches}>
@@ -131,8 +127,4 @@ export function useComposerMentionSearch(): ExperimentalComposerMentionSearch {
 
 export function useComposerCommandSearch(): ExperimentalComposerCommandSearch {
   return useComposerSearches("experimental_useComposerCommandSearch").command;
-}
-
-export function useComposerCommandPrefetch(): () => void {
-  return useComposerSearches("experimental_ComposerRoot").prefetchCommands;
 }

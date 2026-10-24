@@ -83,9 +83,9 @@ provider, triggers): a keystroke in an open menu renders the provider and the
 composer once, and plain typing never runs the search. A query passed during
 render would have to reach the provider from an effect, a second render.
 Both report `refreshing` while earlier results show. The command search has
-no paging, since bb returns every match, and no prefetch call:
-`experimental_ComposerRoot` starts loading commands when focus enters the
-composer. A character is a mention trigger or a command trigger, never both;
+no paging, since bb returns every match, and no prefetch: commands load when
+the first command query arrives and report `loading` until they do, so
+focusing a composer costs no request. A character is a mention trigger or a command trigger, never both;
 when a plugin mention provider claims `$`, `$` opens the mention menu.
 Every type in the contract is public: mentions, attachments and history use
 the `useComposer()` shapes, and suggestions carry the mention to insert plus

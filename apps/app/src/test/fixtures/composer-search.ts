@@ -25,7 +25,6 @@ const state: {
 export const composerSearchQueries = {
   mention: vi.fn<(text: string | null, trigger: string | null) => void>(),
   command: vi.fn<(text: string | null, trigger: string | null) => void>(),
-  commandPrefetch: vi.fn<(requested: boolean) => void>(),
 };
 
 export function setComposerSearchResults({
@@ -39,7 +38,6 @@ export function setComposerSearchResults({
   state.commandSuggestions = commandSuggestions;
   composerSearchQueries.mention.mockClear();
   composerSearchQueries.command.mockClear();
-  composerSearchQueries.commandPrefetch.mockClear();
 }
 
 function fakeUsePromptMentions(
@@ -65,11 +63,9 @@ function fakeUseCommandSuggestions(
   args: CommandSuggestionSource & {
     activeTrigger: PromptMentionCommandTrigger | null;
     query: string | null;
-    composerFocused?: boolean;
   },
 ): ReturnType<typeof useCommandSuggestions> {
   composerSearchQueries.command(args.query, args.activeTrigger);
-  composerSearchQueries.commandPrefetch(args.composerFocused === true);
   return {
     triggers: args.skillsTriggers,
     suggestions: [...state.commandSuggestions],

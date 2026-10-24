@@ -50,7 +50,10 @@ import {
 } from "./server-connection.js";
 import { runtimeErrorLogFields, summarizeError } from "./error-utils.js";
 import { ensureThreadStorageRoot } from "./thread-storage-root.js";
-import { createRuntimeShellEnvCache } from "./runtime-shell-env-cache.js";
+import {
+  createRuntimeShellEnvCache,
+  type RuntimeShellEnvRefreshArgs,
+} from "./runtime-shell-env-cache.js";
 import type { AgentRuntime, AgentRuntimeOptions } from "@bb/agent-runtime";
 import { createProtocolSelfUpdater } from "./protocol-self-update.js";
 import {
@@ -696,9 +699,10 @@ export async function createHostDaemonApp(
       : { resolvedAtMs: options.runtimeShellEnvResolvedAtMs }),
   });
   const withMaintenanceRuntime = async <TResult>(
+    shellEnv: RuntimeShellEnvRefreshArgs,
     request: (runtime: AgentRuntime) => Promise<TResult>,
   ): Promise<TResult> => {
-    await runtimeShellEnvCache.refresh({ allowStale: false });
+    await runtimeShellEnvCache.refresh(shellEnv);
     return runtimeManager.withProviderMaintenanceRuntime(
       { dataDir: options.dataDir },
       request,
@@ -802,19 +806,27 @@ export async function createHostDaemonApp(
       }),
     runtimeManager,
     listModels: (args) =>
-      withMaintenanceRuntime((runtime) => runtime.listModels(args)),
+      withMaintenanceRuntime({ allowStale: false }, (runtime) =>
+        runtime.listModels(args),
+      ),
     listCommands: (args) =>
-      withMaintenanceRuntime((runtime) => runtime.listCommands(args)),
+      withMaintenanceRuntime({ allowStale: true }, (runtime) =>
+        runtime.listCommands(args),
+      ),
     providerHealth: (args) =>
-      withMaintenanceRuntime((runtime) => runtime.providerHealth(args)),
+      withMaintenanceRuntime({ allowStale: false }, (runtime) =>
+        runtime.providerHealth(args),
+      ),
     providerUsage: (args) =>
-      withMaintenanceRuntime((runtime) => runtime.providerUsage(args)),
+      withMaintenanceRuntime({ allowStale: true }, (runtime) =>
+        runtime.providerUsage(args),
+      ),
     providerInstallationStatus: (args) =>
-      withMaintenanceRuntime((runtime) =>
+      withMaintenanceRuntime({ allowStale: false }, (runtime) =>
         runtime.providerInstallationStatus(args),
       ),
     providerInstallationRun: (args) =>
-      withMaintenanceRuntime((runtime) =>
+      withMaintenanceRuntime({ allowStale: false }, (runtime) =>
         runtime.providerInstallationRun(args),
       ),
     refreshShellEnv: async (args) => {

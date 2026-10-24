@@ -1,17 +1,12 @@
-import { useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import type { PromptMentionCommandTrigger } from "@bb/domain";
 import type { ProviderCommand } from "@bb/server-contract";
-import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import {
   filterCommandSuggestions,
   toProviderCommandSuggestion,
   type ProviderCommandSuggestion,
 } from "@bb/client-core";
-import {
-  projectCommandsQueryOptions,
-  useProjectCommands,
-} from "./queries/project-queries";
+import { useProjectCommands } from "./queries/project-queries";
 
 interface UseCommandSuggestionsArgs {
   projectId: string | undefined;
@@ -24,15 +19,12 @@ interface UseCommandSuggestionsArgs {
   environmentId: string | null;
   hostId?: string | null;
   query: string | null;
-  composerFocused?: boolean;
 }
 
 export type CommandSuggestionSource = Omit<
   UseCommandSuggestionsArgs,
-  "activeTrigger" | "query" | "composerFocused"
+  "activeTrigger" | "query"
 >;
-
-const COMMAND_CATALOG_PREFETCH_STALE_TIME_MS = 30_000;
 
 interface UseCommandSuggestionsResult {
   triggers: readonly PromptMentionCommandTrigger[];
@@ -126,7 +118,7 @@ function mergeCommandSuggestions(
   return suggestions;
 }
 
-export function isCommandSuggestionsActive({
+function isCommandSuggestionsActive({
   projectId,
   providerId,
   skillsTriggers,
@@ -143,41 +135,6 @@ export function isCommandSuggestionsActive({
     skillsTriggers.includes(activeTrigger) &&
     query !== null
   );
-}
-
-export function shouldPrefetchCommandCatalog({
-  composerFocused,
-  isPointerCoarse,
-  projectId,
-  providerId,
-  skillsTriggers,
-}: Pick<
-  UseCommandSuggestionsArgs,
-  "composerFocused" | "projectId" | "providerId" | "skillsTriggers"
-> & { isPointerCoarse: boolean }): boolean {
-  return (
-    composerFocused === true &&
-    isPointerCoarse &&
-    projectId !== undefined &&
-    providerId !== undefined &&
-    skillsTriggers.length > 0
-  );
-}
-
-export function prefetchCommandCatalog(
-  queryClient: QueryClient,
-  target: {
-    projectId: string | undefined;
-    providerId: string | undefined;
-    environmentId: string | null;
-    hostId: string | null;
-  },
-): Promise<void> {
-  return queryClient.prefetchQuery({
-    ...projectCommandsQueryOptions(target),
-    retry: false,
-    staleTime: COMMAND_CATALOG_PREFETCH_STALE_TIME_MS,
-  });
 }
 
 export function discoveredCommandSuggestions({
@@ -234,35 +191,6 @@ export function useCommandSuggestions(
     },
     { enabled: isActive },
   );
-  const queryClient = useQueryClient();
-  const isPointerCoarse = usePointerCoarse();
-  const shouldPrefetchCatalog = shouldPrefetchCommandCatalog({
-    ...args,
-    isPointerCoarse,
-  });
-  const prefetchProjectId = args.projectId;
-  const prefetchProviderId = args.providerId;
-  const prefetchEnvironmentId = args.environmentId;
-  const prefetchHostId = args.hostId ?? null;
-  useEffect(() => {
-    if (!shouldPrefetchCatalog) {
-      return;
-    }
-    void prefetchCommandCatalog(queryClient, {
-      projectId: prefetchProjectId,
-      providerId: prefetchProviderId,
-      environmentId: prefetchEnvironmentId,
-      hostId: prefetchHostId,
-    });
-  }, [
-    prefetchEnvironmentId,
-    prefetchHostId,
-    prefetchProjectId,
-    prefetchProviderId,
-    queryClient,
-    shouldPrefetchCatalog,
-  ]);
-
   const suggestions = useMemo<ProviderCommandSuggestion[]>(() => {
     if (!isActive) {
       return [];
