@@ -30,6 +30,17 @@ interface TimelineOrderingContext {
   boundaryScanThroughSequence: number;
 }
 
+type TimelineOrderingContextRow = ReturnType<
+  typeof listTimelineOrderingContext
+>[number];
+
+interface TimelineOrderingContextRows {
+  dataVersion: number;
+  generation: number;
+  maxSeq: number;
+  rows: readonly TimelineOrderingContextRow[];
+}
+
 interface TimelineGroupingContextEntry {
   orderingContext: TimelineOrderingContext;
   context: TimelineGroupingContext;
@@ -46,9 +57,14 @@ const orderingContexts = new WeakMap<
   DbConnection,
   Map<string, TimelineGroupingContextEntry[]>
 >();
+const orderingContextRows = new WeakMap<
+  DbConnection,
+  Map<string, TimelineOrderingContextRows>
+>();
 
 export function clearTimelineOrderingContextCache(db: DbConnection): void {
   orderingContexts.delete(db);
+  orderingContextRows.delete(db);
 }
 
 function nearestEntry(
@@ -122,7 +138,15 @@ export function getTimelineGroupingContext(
     return reusable.entry.context;
   }
   const orderingContext =
-    reusable?.entry.orderingContext ?? computeTimelineOrderingContext(db, args);
+    reusable?.entry.orderingContext ??
+    computeTimelineOrderingContext(
+      loadTimelineOrderingContextRows(db, {
+        ...args,
+        dataVersion,
+        generation,
+        key,
+      }),
+    );
   const parentedBoundary = getFirstParentedTimelineBoundarySequence(db, args);
   const context: TimelineGroupingContext = {
     acceptedTurnIds: orderingContext.acceptedTurnIds,
@@ -142,11 +166,55 @@ export function getTimelineGroupingContext(
   return context;
 }
 
-function computeTimelineOrderingContext(
+function loadTimelineOrderingContextRows(
   db: DbConnection,
-  args: TimelineGroupingContextArgs,
+  args: TimelineGroupingContextArgs & {
+    dataVersion: number;
+    generation: number;
+    key: string;
+  },
+): readonly TimelineOrderingContextRow[] {
+  let cache = orderingContextRows.get(db);
+  if (cache === undefined) {
+    cache = new Map();
+    orderingContextRows.set(db, cache);
+  }
+  const cached = cache.get(args.key);
+  cache.delete(args.key);
+  const valid =
+    cached !== undefined &&
+    cached.generation === args.generation &&
+    cached.dataVersion === args.dataVersion;
+  if (valid && args.maxSeq < cached.maxSeq) {
+    cache.set(args.key, cached);
+    const end = cached.rows.findIndex((row) => row.sequence > args.maxSeq);
+    return end < 0 ? cached.rows : cached.rows.slice(0, end);
+  }
+  const rows = valid
+    ? [
+        ...cached.rows,
+        ...listTimelineOrderingContext(db, {
+          maxSeq: args.maxSeq,
+          sequenceStart: cached.maxSeq + 1,
+          threadId: args.threadId,
+        }),
+      ]
+    : listTimelineOrderingContext(db, args);
+  cache.set(args.key, {
+    dataVersion: args.dataVersion,
+    generation: args.generation,
+    maxSeq: args.maxSeq,
+    rows,
+  });
+  if (cache.size > GROUPING_CONTEXT_KEY_LIMIT) {
+    cache.delete(cache.keys().next().value!);
+  }
+  return rows;
+}
+
+function computeTimelineOrderingContext(
+  context: readonly TimelineOrderingContextRow[],
 ): TimelineOrderingContext {
-  const context = listTimelineOrderingContext(db, args);
   const spans = new Map<string, ExternalUserBoundaryTurnSpan>();
   const accepted = new Map<string, { sequence: number; turnId: string }>();
   for (const row of context) {
