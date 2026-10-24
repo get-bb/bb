@@ -107,19 +107,28 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
       ),
     [appPluginCommands],
   );
-  useIndexedAppCommandHandlers(appPluginCommandIds, (index) => {
+  const getAppPluginAction = (index: number) => {
     const slot = appPluginCommands[index];
-    if (!slot) return false;
-    const action = buildPluginPaletteActions({
+    if (!slot) return undefined;
+    return buildPluginPaletteActions({
       slots: [slot],
       threadId,
       projectId,
       openThreadPanel: getActiveThreadPanelOpener(),
     })[0];
-    if (!action) return false;
-    action.run();
-    return true;
-  });
+  };
+  useIndexedAppCommandHandlers(
+    appPluginCommandIds,
+    (index) => {
+      const action = getAppPluginAction(index);
+      if (!action) return false;
+      action.run();
+      return true;
+    },
+    0,
+    true,
+    (index) => getAppPluginAction(index) !== undefined,
+  );
   const openTargetRef = useRef<EventTarget | null>(null);
   const pendingRunRef = useRef<(() => void) | null>(null);
 

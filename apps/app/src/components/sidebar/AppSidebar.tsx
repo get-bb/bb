@@ -205,6 +205,12 @@ export function AppSidebar({
   useIndexedAppCommandHandlers(
     THREAD_JUMP_APP_COMMAND_IDS,
     activateVisibleThreadShortcut,
+    0,
+    true,
+    (index) =>
+      !isBodyHidden &&
+      getSidebarThreadShortcutTargets(sidebarRef.current)[index]?.element !==
+        undefined,
   );
   useAppCommandHandler("thread.previous", () =>
     isBodyHidden ? false : activateAdjacentThread(-1),

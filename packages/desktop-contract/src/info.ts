@@ -1,9 +1,20 @@
 import type { BbDesktopServerChoice } from "./servers.js";
 import { z } from "zod";
+import { appKeybindingsSchema, keyboardCommandIdSchema } from "@bb/domain";
 import type { BbDesktopBrowserApi } from "./browser.js";
 import type { BbDesktopWindowFindRequest } from "./find.js";
 import { bbDesktopVersionFeedPlatformSchema } from "./version-feed.js";
-import type { AppCommandId } from "@bb/domain";
+import type { AppCommandId, KeyboardCommandId } from "@bb/domain";
+
+export const bbDesktopAppKeybindingsSchema = z
+  .object({
+    keybindings: appKeybindingsSchema,
+    availableCommands: z.array(keyboardCommandIdSchema).max(1024),
+  })
+  .strict();
+export type BbDesktopAppKeybindings = z.infer<
+  typeof bbDesktopAppKeybindingsSchema
+>;
 
 const isoUtcDateTimeSchema = z.iso.datetime();
 
@@ -59,7 +70,7 @@ export type BbDesktopWindowStateChangeHandler = (
 ) => void;
 export type BbDesktopZoomChangeHandler = (zoomFactor: number) => void;
 export type BbDesktopOpenNewTabHandler = () => void;
-export type BbDesktopAppCommandHandler = (command: AppCommandId) => void;
+export type BbDesktopAppCommandHandler = (command: KeyboardCommandId) => void;
 export type BbDesktopCloseWindowRequestHandler = () => boolean;
 
 export interface BbDesktopApi extends BbDesktopInfo {
@@ -96,6 +107,7 @@ export interface BbDesktopApi extends BbDesktopInfo {
     enabled: boolean,
     directionalCommands?: readonly AppCommandId[],
   ): void;
+  setAppKeybindings?(bindings: BbDesktopAppKeybindings): void;
   setTheme(theme: BbDesktopTheme): void;
   writeClipboard?(content: BbDesktopClipboardContent): Promise<void>;
 }

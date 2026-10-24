@@ -5,7 +5,7 @@ import {
   type BbDesktopServerChoice,
 } from "@bb/desktop-contract";
 import { contextBridge, ipcRenderer, webFrame } from "electron";
-import { appCommandIdSchema, type AppCommandId } from "@bb/domain";
+import { keyboardCommandIdSchema, type AppCommandId } from "@bb/domain";
 import {
   desktopBrowserImportOutcomeSchema,
   desktopBrowserImportSourceSchema,
@@ -103,6 +103,7 @@ import {
   BB_DESKTOP_OPEN_WINDOW_FIND_CHANNEL,
   BB_DESKTOP_RELOAD_WINDOW_CHANNEL,
   BB_DESKTOP_SET_SPLIT_NAVIGATION_ENABLED_CHANNEL,
+  BB_DESKTOP_SET_APP_KEYBINDINGS_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
   BB_DESKTOP_FOCUS_WINDOW_CHANNEL,
@@ -529,6 +530,9 @@ const bbDesktopApi: BbDesktopApi = {
       directionalCommands,
     );
   },
+  setAppKeybindings(keybindings): void {
+    ipcRenderer.send(BB_DESKTOP_SET_APP_KEYBINDINGS_CHANNEL, keybindings);
+  },
   setTheme(theme: BbDesktopTheme): void {
     ipcRenderer.send(BB_DESKTOP_SET_THEME_CHANNEL, theme);
   },
@@ -562,7 +566,7 @@ ipcRenderer.on(BB_DESKTOP_OPEN_NEW_TAB_CHANNEL, () => {
 
 forwardParsed(
   BB_DESKTOP_APP_COMMAND_CHANNEL,
-  appCommandIdSchema,
+  keyboardCommandIdSchema,
   appCommandListeners,
 );
 

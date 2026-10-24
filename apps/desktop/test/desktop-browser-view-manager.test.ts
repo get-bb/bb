@@ -3313,6 +3313,41 @@ describe("DesktopBrowserViewManager", () => {
     expect(dispatchAppCommand).toHaveBeenCalledTimes(1);
   });
 
+  it.each(["palette.open", "thread.jump.1", "plugin:example/open"] as const)(
+    "dispatches %s without moving focus out of browser content",
+    (command) => {
+      const dispatchAppCommand = vi.fn();
+      const focusHostWebContents = vi.fn();
+      const manager = createDesktopBrowserViewManager({
+        dispatchAppCommand,
+        focusHostWebContents,
+        resolveAppCommand: () => command,
+      });
+      const hostWindow = new FakeHostWindow({
+        contentBounds: { width: 700, height: 450 },
+        webContentsId: 50,
+      });
+      attachBrowserTab({
+        manager,
+        hostWindow,
+        tabId: "browser:a",
+        url: "https://example.com",
+      });
+      expect(
+        requireFakeView(0).webContents.emitBeforeInput({
+          key: "p",
+          meta: true,
+          shift: true,
+        }),
+      ).toBe(true);
+      expect(dispatchAppCommand).toHaveBeenCalledWith({
+        command,
+        hostWebContentsId: 50,
+      });
+      expect(focusHostWebContents).not.toHaveBeenCalled();
+    },
+  );
+
   it.each([
     "browser.find",
     "panel.previousTab",

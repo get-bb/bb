@@ -16,18 +16,19 @@ import {
   keyboardPlatform,
   isMacKeyboardPlatform,
   matchesAppShortcut,
+  resolveAppShortcutCommand,
   type AppCommandContext,
   type AppCommandContextKey,
   type KeyboardCommandId,
   type AppShortcut,
 } from "@bb/domain";
+import type { BbDesktopAppKeybindings } from "@bb/desktop-contract";
 import { usePluginCommandBindings } from "@/hooks/usePluginCommandBindings";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { getBbDesktopInfo } from "@/lib/bb-desktop";
 import {
   browserPlatform,
   isEditableKeyboardTarget,
-  matchesAppCommandContext,
   presentAppShortcut,
   type AppShortcutPresentation,
 } from "@/lib/app-keybindings";
@@ -57,6 +58,7 @@ interface AppCommandProviderValue {
     command: KeyboardCommandId,
     target: EventTarget | null,
   ) => boolean;
+  refreshNativeKeybindings: () => void;
   registerContext: (
     key: AppCommandContextKey,
     source: symbol,
@@ -180,28 +182,71 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
     };
   }, [showKeyboardHints]);
 
+  const nativeSyncQueuedRef = useRef(false);
+  const nativeBindingsRef = useRef<BbDesktopAppKeybindings | null>(null);
+  const refreshNativeKeybindings = useCallback(() => {
+    if (!getBbDesktopInfo()?.setAppKeybindings || nativeSyncQueuedRef.current)
+      return;
+    nativeSyncQueuedRef.current = true;
+    queueMicrotask(() => {
+      nativeSyncQueuedRef.current = false;
+      const keybindings = keybindingsRef.current;
+      const availableCommands = [...handlersRef.current.entries()].flatMap(
+        ([command, registrations]) =>
+          [...registrations.values()].some((registration) =>
+            registration.isAvailable({ target: null }),
+          )
+            ? [command]
+            : [],
+      );
+      const previous = nativeBindingsRef.current;
+      if (
+        previous?.keybindings === keybindings &&
+        previous.availableCommands.length === availableCommands.length &&
+        previous.availableCommands.every(
+          (command, index) => command === availableCommands[index],
+        )
+      )
+        return;
+      const bindings = { keybindings, availableCommands };
+      nativeBindingsRef.current = bindings;
+      getBbDesktopInfo()?.setAppKeybindings?.(bindings);
+    });
+  }, []);
+
   useEffect(() => {
     keybindingsRef.current = keybindings;
-  }, [keybindings]);
+    refreshNativeKeybindings();
+  }, [keybindings, refreshNativeKeybindings]);
+
+  useEffect(
+    () => getBbDesktopInfo()?.browser?.onFocus?.(refreshNativeKeybindings),
+    [refreshNativeKeybindings],
+  );
 
   const registerHandler = useCallback<
     AppCommandProviderValue["registerHandler"]
-  >((command, registration) => {
-    const token = Symbol(command);
-    const registrations = handlersRef.current.get(command) ?? new Map();
-    sequenceRef.current += 1;
-    registrations.set(token, {
-      ...registration,
-      sequence: sequenceRef.current,
-    });
-    handlersRef.current.set(command, registrations);
-    return () => {
-      registrations.delete(token);
-      if (registrations.size === 0) {
-        handlersRef.current.delete(command);
-      }
-    };
-  }, []);
+  >(
+    (command, registration) => {
+      const token = Symbol(command);
+      const registrations = handlersRef.current.get(command) ?? new Map();
+      sequenceRef.current += 1;
+      registrations.set(token, {
+        ...registration,
+        sequence: sequenceRef.current,
+      });
+      handlersRef.current.set(command, registrations);
+      refreshNativeKeybindings();
+      return () => {
+        registrations.delete(token);
+        if (registrations.size === 0) {
+          handlersRef.current.delete(command);
+        }
+        refreshNativeKeybindings();
+      };
+    },
+    [refreshNativeKeybindings],
+  );
 
   const registerContext = useCallback<
     AppCommandProviderValue["registerContext"]
@@ -346,29 +391,17 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
       }
       if (attemptedEventsRef.current.has(event)) return false;
       attemptedEventsRef.current.add(event);
-      const bindings = keybindingsRef.current;
-      let context: AppCommandContext | null = null;
-      const isMac = isMacKeyboardPlatform(browserPlatform());
-      for (let index = bindings.length - 1; index >= 0; index -= 1) {
-        const binding = bindings[index];
-        if (!binding) continue;
-        if (
-          !isAppKeybindingAvailableForClient(binding, {
-            isDesktop,
-            platform: browserPlatform(),
-          })
-        ) {
-          continue;
-        }
-        if (!matchesAppShortcut(event, binding.shortcut, isMac)) continue;
-        context ??= currentContext(event.target);
-        if (!matchesAppCommandContext(binding, context)) continue;
-        if (!dispatch(binding.command, event.target)) return false;
-        event.preventDefault();
-        event.stopPropagation();
-        return true;
-      }
-      return false;
+      const command = resolveAppShortcutCommand({
+        input: event,
+        keybindings: keybindingsRef.current,
+        platform: browserPlatform(),
+        isDesktop,
+        context: currentContext(event.target),
+      });
+      if (command === null || !dispatch(command, event.target)) return false;
+      event.preventDefault();
+      event.stopPropagation();
+      return true;
     },
     [currentContext, dispatch, isDesktop],
   );
@@ -417,6 +450,7 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
       isCommandAvailable,
       registerContext,
       registerHandler,
+      refreshNativeKeybindings,
     }),
     [
       dispatch,
@@ -426,6 +460,7 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
       isCommandAvailable,
       registerContext,
       registerHandler,
+      refreshNativeKeybindings,
     ],
   );
 
@@ -466,13 +501,16 @@ export function useIndexedAppCommandHandlers(
   enabled = true,
   isAvailable?: (index: number, invocation: AppCommandInvocation) => boolean,
 ): void {
-  const registerHandler = useContext(AppCommandContextValue)?.registerHandler;
+  const commandContext = useContext(AppCommandContextValue);
+  const registerHandler = commandContext?.registerHandler;
+  const refreshNativeKeybindings = commandContext?.refreshNativeKeybindings;
   const handlerRef = useRef(handler);
   const isAvailableRef = useRef(isAvailable);
   useLayoutEffect(() => {
     handlerRef.current = handler;
     isAvailableRef.current = isAvailable;
-  }, [handler, isAvailable]);
+    refreshNativeKeybindings?.();
+  }, [handler, isAvailable, refreshNativeKeybindings]);
   useEffect(() => {
     if (!registerHandler || !enabled) return;
     const unregister = commands.map((command, index) =>

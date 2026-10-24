@@ -45,7 +45,7 @@ import {
 } from "@bb/desktop-contract";
 import {
   PANE_DIRECTION_APP_COMMAND_IDS,
-  type AppCommandId,
+  type KeyboardCommandId,
   type AppShortcutInput,
 } from "@bb/domain";
 import {
@@ -254,7 +254,7 @@ export interface DesktopBrowserHostWindow {
 }
 
 interface DispatchDesktopBrowserAppCommandArgs {
-  command: AppCommandId;
+  command: KeyboardCommandId;
   hostWebContentsId: number;
 }
 
@@ -266,7 +266,7 @@ export interface CreateDesktopBrowserViewManagerArgs {
   resolveAppCommand: (
     input: AppShortcutInput,
     hostWebContentsId: number,
-  ) => AppCommandId | null;
+  ) => KeyboardCommandId | null;
 }
 
 interface HostScopedRequestArgs<TRequest> {

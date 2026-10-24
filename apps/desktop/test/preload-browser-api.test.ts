@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { AppCommandId } from "@bb/domain";
+import type { KeyboardCommandId } from "@bb/domain";
 import type {
   BbDesktopApi,
   BbDesktopBrowserFindResult,
@@ -470,7 +470,7 @@ describe("desktop preload browser API", () => {
     const findResults: BbDesktopBrowserFindResult[] = [];
     let closeWindowRequestCount = 0;
     let openNewTabCount = 0;
-    const appCommands: AppCommandId[] = [];
+    const appCommands: KeyboardCommandId[] = [];
     const windowStates: BbDesktopWindowState[] = [];
     const state: BbDesktopBrowserState = {
       tabId: "browser:a",
@@ -605,6 +605,10 @@ describe("desktop preload browser API", () => {
       payload: "thread.new",
     });
     emitIpcPayload({
+      channel: BB_DESKTOP_APP_COMMAND_CHANNEL,
+      payload: "plugin:example/open",
+    });
+    emitIpcPayload({
       channel: BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
       payload: null,
     });
@@ -618,7 +622,7 @@ describe("desktop preload browser API", () => {
     expect(windowStates).toEqual([{ isFullScreen: true }]);
     expect(closeWindowRequestCount).toBe(1);
     expect(openNewTabCount).toBe(1);
-    expect(appCommands).toEqual(["thread.new"]);
+    expect(appCommands).toEqual(["thread.new", "plugin:example/open"]);
     expect(electronMock.sendCalls).toContainEqual({
       channel: BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
       payload: true,

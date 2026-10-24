@@ -47,6 +47,8 @@ import {
 } from "@bb/domain";
 import {
   bbDesktopBrowserImportCookiesRequestSchema,
+  bbDesktopAppKeybindingsSchema,
+  type BbDesktopAppKeybindings,
   bbDesktopThemeSchema,
   type BbDesktopInfo,
   type BbDesktopWindowState,
@@ -217,6 +219,7 @@ import {
   BB_DESKTOP_OPEN_WINDOW_FIND_CHANNEL,
   BB_DESKTOP_RELOAD_WINDOW_CHANNEL,
   BB_DESKTOP_SET_SPLIT_NAVIGATION_ENABLED_CHANNEL,
+  BB_DESKTOP_SET_APP_KEYBINDINGS_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
   BB_DESKTOP_GET_WINDOW_STATE_CHANNEL,
@@ -419,6 +422,10 @@ let systemConfigSync: SystemConfigSync | null = null;
 let systemConfigRefreshToken = 0;
 let refreshRemoteSystemConfig: (() => void) | null = null;
 const applicationWindowWebContentsIds = new Set<number>();
+const appKeybindingsByWebContentsId = new Map<
+  number,
+  BbDesktopAppKeybindings
+>();
 const splitNavigationEnabledWebContentsIds = new Set<number>();
 const splitNavigationCommandsByWebContentsId = new Map<
   number,
@@ -1111,6 +1118,7 @@ function registerApplicationWindow(browserWindow: DesktopBrowserWindow): void {
       "did-start-navigation",
       (_event, _url, isInPlace, isMainFrame) => {
         if (isMainFrame && !isInPlace) {
+          appKeybindingsByWebContentsId.delete(webContentsId);
           splitNavigationEnabledWebContentsIds.delete(webContentsId);
           splitNavigationCommandsByWebContentsId.delete(webContentsId);
           desktopFindViewManager?.close(nativeWindow);
@@ -1138,6 +1146,7 @@ function registerApplicationWindow(browserWindow: DesktopBrowserWindow): void {
     desktopFindViewManager?.releaseWindow(webContentsId);
     desktopBrowserBroker?.releaseWindow(webContentsId);
     applicationWindowWebContentsIds.delete(webContentsId);
+    appKeybindingsByWebContentsId.delete(webContentsId);
     splitNavigationEnabledWebContentsIds.delete(webContentsId);
     splitNavigationCommandsByWebContentsId.delete(webContentsId);
   });
@@ -2408,6 +2417,19 @@ function registerDesktopUpdateIpc(): void {
   });
   ipcMain.handle(BB_DESKTOP_INSTALL_UPDATE_CHANNEL, installDesktopUpdate);
   ipcMain.on(
+    BB_DESKTOP_SET_APP_KEYBINDINGS_CHANNEL,
+    (event, payload: unknown) => {
+      if (
+        !applicationWindowWebContentsIds.has(event.sender.id) ||
+        event.senderFrame !== event.sender.mainFrame
+      )
+        return;
+      const parsed = bbDesktopAppKeybindingsSchema.safeParse(payload);
+      if (parsed.success)
+        appKeybindingsByWebContentsId.set(event.sender.id, parsed.data);
+    },
+  );
+  ipcMain.on(
     BB_DESKTOP_SET_SPLIT_NAVIGATION_ENABLED_CHANNEL,
     (event, enabled: unknown, directionalCommands: unknown) => {
       if (
@@ -2904,8 +2926,7 @@ async function runDesktopApp(): Promise<void> {
   }
 
   const paths = createDesktopPathContext();
-  const devIcon =
-    !paths.isPackaged || process.env.BB_DESKTOP_DEV_ICON === "1";
+  const devIcon = !paths.isPackaged || process.env.BB_DESKTOP_DEV_ICON === "1";
   const iconPath = resolveDesktopIconPath({
     devIcon,
     packagedIconFileName: DESKTOP_RELEASE_INFO.iconFileName,
@@ -3161,7 +3182,12 @@ async function runDesktopApp(): Promise<void> {
       return resolveDesktopBrowserAppCommand({
         input,
         platform: process.platform,
-        keybindings: currentAppKeybindings,
+        keybindings:
+          appKeybindingsByWebContentsId.get(hostWebContentsId)?.keybindings ??
+          currentAppKeybindings,
+        availableCommands:
+          appKeybindingsByWebContentsId.get(hostWebContentsId)
+            ?.availableCommands,
         splitNavigationEnabled:
           splitNavigationEnabledWebContentsIds.has(hostWebContentsId),
         splitNavigationCommands:

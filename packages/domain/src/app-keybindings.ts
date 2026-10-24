@@ -304,6 +304,46 @@ export function isAppKeybindingAvailableForClient(
   return true;
 }
 
+export function matchesAppCommandContext(
+  binding: AppKeybinding,
+  context: AppCommandContext,
+): boolean {
+  return (
+    binding.when.all.every((key) => context[key]) &&
+    binding.when.none.every((key) => !context[key])
+  );
+}
+
+export function resolveAppShortcutCommand({
+  input,
+  keybindings,
+  platform,
+  isDesktop,
+  context,
+}: {
+  input: AppShortcutInput;
+  keybindings: AppKeybindings;
+  platform: string;
+  isDesktop: boolean;
+  context: AppCommandContext;
+}): KeyboardCommandId | null {
+  for (let index = keybindings.length - 1; index >= 0; index -= 1) {
+    const binding = keybindings[index];
+    if (
+      binding &&
+      isAppKeybindingAvailableForClient(binding, { isDesktop, platform }) &&
+      matchesAppShortcut(
+        input,
+        binding.shortcut,
+        keyboardPlatform(platform) === "mac",
+      ) &&
+      matchesAppCommandContext(binding, context)
+    )
+      return binding.command;
+  }
+  return null;
+}
+
 export const appKeybindingsSchema = z.array(appKeybindingSchema).max(1024);
 export type AppKeybindings = z.infer<typeof appKeybindingsSchema>;
 

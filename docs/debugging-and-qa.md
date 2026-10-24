@@ -18,6 +18,16 @@ including updater, Connect, and startup errors. View → Local Logs is available
 on every desktop platform and when attached to an existing server; it follows
 local desktop, server, and daemon files in the selected data directory.
 
+## Desktop Browser Shortcuts
+
+Focused native Browser pages use the same shortcut matcher and command dispatcher
+as the app renderer. Each window publishes its resolved bindings, including plugin
+commands, and available handlers to the desktop bridge. Browser matching applies
+browser and editable context guards; unavailable or unbound chords stay with the
+page. The bridge clears window registrations on document navigation and close.
+Terminal and file-panel input continues through the renderer's existing dispatch,
+so their editing and shell keys retain their existing ownership.
+
 ## Desktop Browser Tab Recovery
 
 When the desktop app connects to a BB Connect server, it installs and renews

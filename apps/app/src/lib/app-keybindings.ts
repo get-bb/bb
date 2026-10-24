@@ -1,4 +1,4 @@
-import type { AppCommandContext, AppKeybinding, AppShortcut } from "@bb/domain";
+import type { AppShortcut } from "@bb/domain";
 import { isMacKeyboardPlatform } from "@bb/domain";
 
 export interface AppShortcutPresentation {
@@ -26,15 +26,7 @@ export function isEditableKeyboardTarget(target: EventTarget | null): boolean {
   );
 }
 
-export function matchesAppCommandContext(
-  binding: AppKeybinding,
-  context: AppCommandContext,
-): boolean {
-  return (
-    binding.when.all.every((key) => context[key]) &&
-    binding.when.none.every((key) => !context[key])
-  );
-}
+export { matchesAppCommandContext } from "@bb/domain";
 
 const SHORTCUT_KEY_GLYPHS: Readonly<Record<string, string>> = {
   ArrowUp: "↑",

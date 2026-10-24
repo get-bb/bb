@@ -32,6 +32,141 @@ const keybindings: AppKeybindings = [
 ];
 
 describe("resolveDesktopBrowserAppCommand", () => {
+  it("leaves Escape to the page until the renderer supplies command availability", () => {
+    const args = {
+      input: {
+        key: "Escape",
+        code: "Escape",
+        altKey: false,
+        ctrlKey: false,
+        metaKey: false,
+        shiftKey: false,
+      },
+      platform: "darwin",
+      keybindings: [
+        {
+          ...keybindings[0]!,
+          command: "app.back" as const,
+          shortcut: { ...keybindings[0]!.shortcut, key: "Escape", mod: false },
+        },
+      ],
+    };
+    expect(resolveDesktopBrowserAppCommand(args)).toBeNull();
+    expect(
+      resolveDesktopBrowserAppCommand({ ...args, availableCommands: [] }),
+    ).toBeNull();
+    expect(
+      resolveDesktopBrowserAppCommand({
+        ...args,
+        availableCommands: ["app.back"],
+      }),
+    ).toBe("app.back");
+  });
+
+  it.each([
+    "thread.new",
+    "palette.open",
+    "sidebar.toggle",
+    "panel.toggle",
+    "thread.jump.1",
+    "thread.previous",
+  ] as const)(
+    "forwards a global %s binding from browser content",
+    (command) => {
+      expect(
+        resolveDesktopBrowserAppCommand({
+          input: {
+            key: "k",
+            code: "KeyK",
+            altKey: false,
+            ctrlKey: false,
+            metaKey: true,
+            shiftKey: false,
+          },
+          platform: "darwin",
+          keybindings: [{ ...keybindings[0]!, command }],
+          availableCommands: [command],
+        }),
+      ).toBe(command);
+    },
+  );
+
+  it.each([
+    { all: ["mainSurface"], none: ["browserFocus"] },
+    { all: ["mainSurface", "promptAvailable"], none: [] },
+    { all: ["mainSurface"], none: ["editableFocus"] },
+    { all: ["mainSurface", "questionOpen"], none: [] },
+  ] satisfies AppKeybindings[number]["when"][])(
+    "leaves browser input alone when the binding context is unavailable: %j",
+    (when) => {
+      expect(
+        resolveDesktopBrowserAppCommand({
+          input: {
+            key: "k",
+            code: "KeyK",
+            altKey: false,
+            ctrlKey: false,
+            metaKey: true,
+            shiftKey: false,
+          },
+          platform: "darwin",
+          keybindings: [{ ...keybindings[0]!, when }],
+          availableCommands: ["thread.search"],
+        }),
+      ).toBeNull();
+    },
+  );
+
+  it.each(["c", "v", "x", "a", "ArrowLeft"])(
+    "leaves unbound browser editing key %s alone",
+    (key) => {
+      expect(
+        resolveDesktopBrowserAppCommand({
+          input: {
+            key,
+            code: "",
+            altKey: false,
+            ctrlKey: false,
+            metaKey: true,
+            shiftKey: false,
+          },
+          platform: "darwin",
+          keybindings,
+        }),
+      ).toBeNull();
+    },
+  );
+
+  it("does not fall through an unavailable winning command to an older binding", () => {
+    const args = {
+      input: {
+        key: "k",
+        code: "KeyK",
+        altKey: false,
+        ctrlKey: false,
+        metaKey: true,
+        shiftKey: false,
+      },
+      platform: "darwin",
+      keybindings: [
+        keybindings[0]!,
+        { ...keybindings[0]!, command: "plugin:example/open" as const },
+      ],
+    };
+    expect(
+      resolveDesktopBrowserAppCommand({
+        ...args,
+        availableCommands: ["thread.search"],
+      }),
+    ).toBeNull();
+    expect(
+      resolveDesktopBrowserAppCommand({
+        ...args,
+        availableCommands: ["plugin:example/open"],
+      }),
+    ).toBe("plugin:example/open");
+  });
+
   it.each([
     "panel.previousTab",
     "panel.nextTab",
@@ -159,7 +294,7 @@ describe("resolveDesktopBrowserAppCommand", () => {
     ).toBeNull();
   });
 
-  it("keeps frontend plugin commands out of native browser dispatch", () => {
+  it("forwards registered plugin commands from native browser content", () => {
     expect(
       resolveDesktopBrowserAppCommand({
         input: {
@@ -171,6 +306,7 @@ describe("resolveDesktopBrowserAppCommand", () => {
           shiftKey: false,
         },
         platform: "win32",
+        availableCommands: ["plugin:example/open"],
         keybindings: [
           {
             command: "plugin:example/open",
@@ -187,10 +323,10 @@ describe("resolveDesktopBrowserAppCommand", () => {
           },
         ],
       }),
-    ).toBeNull();
+    ).toBe("plugin:example/open");
   });
 
-  it("resolves only browser commands using platform modifier semantics", () => {
+  it("resolves app and browser commands using platform modifier semantics", () => {
     expect(
       resolveDesktopBrowserAppCommand({
         input: {
@@ -217,8 +353,9 @@ describe("resolveDesktopBrowserAppCommand", () => {
         },
         platform: "darwin",
         keybindings,
+        availableCommands: ["thread.search"],
       }),
-    ).toBeNull();
+    ).toBe("thread.search");
     expect(
       resolveDesktopBrowserAppCommand({
         input: {
