@@ -38,4 +38,9 @@ runs:
       shell: node {0}
       env:
         DOWNLOAD_CACHE: ${{ steps.identity.outputs.path }}
-      run: require('node:fs').appendFileSync(process.env.GITHUB_ENV, `npm_config_cache=${process.env.DOWNLOAD_CACHE}\n`);
+        CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
+      run: |
+        const { appendFileSync, rmSync } = require('node:fs');
+        const cache = process.env.DOWNLOAD_CACHE;
+        if (process.env.CACHE_HIT !== 'true') rmSync(cache, { recursive: true, force: true });
+        appendFileSync(process.env.GITHUB_ENV, `npm_config_cache=${cache}\n`);
