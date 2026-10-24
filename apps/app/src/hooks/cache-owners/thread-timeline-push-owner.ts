@@ -44,7 +44,7 @@ function resolvePushedThreadTimeline(
   if (timeline.delta === undefined) {
     return timeline;
   }
-  if (afterSequence === null || previous.maxSeq < afterSequence) {
+  if (previous.maxSeq !== afterSequence) {
     return null;
   }
   const rows = applyTimelineDelta(previous.rows, timeline.delta);

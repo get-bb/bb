@@ -16,9 +16,12 @@ import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 async function getTimeline(
   harness: TestAppHarness,
   threadId: string,
+  afterSequence?: number,
 ): Promise<ThreadTimelineResponse> {
   const response = await harness.app.request(
-    `/api/v1/threads/${threadId}/timeline`,
+    `/api/v1/threads/${threadId}/timeline${
+      afterSequence === undefined ? "" : `?afterSequence=${afterSequence}`
+    }`,
   );
   expect(response.status).toBe(200);
   return threadTimelineResponseSchema.parse(await readJson(response));
@@ -45,7 +48,7 @@ function applySignal(
 }
 
 describe("thread-timeline realtime push", () => {
-  it("pushes a full window, then deltas that keep a subscriber equal to a fresh GET", async () => {
+  it("pushes deltas from the fetched window that keep a subscriber equal to a fresh GET", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedThreadFixture(harness);
       const turn = {
@@ -83,10 +86,10 @@ describe("thread-timeline realtime push", () => {
         const [signal] = timelineSignals(socket.messages.splice(0));
         expect(signal).toMatchObject({
           target,
-          afterSequence: index === 0 ? null : client.maxSeq,
+          afterSequence: client.maxSeq,
           timeline: { maxSeq: index + 2 },
         });
-        expect(signal!.timeline.delta === undefined).toBe(index === 0);
+        expect(signal!.timeline.delta).toBeDefined();
         const rows = applySignal(client.rows, signal!);
         expect(rows).not.toBeNull();
         client = { ...signal!.timeline, rows: rows!, delta: undefined };
@@ -163,7 +166,7 @@ describe("thread-timeline realtime push", () => {
     });
   });
 
-  it("resumes a dropped socket with a full window instead of a stale delta", async () => {
+  it("resumes a dropped socket with a delta from the window it last received", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedThreadFixture(harness);
       const target: ThreadTimelineSubscriptionTarget = {
@@ -189,15 +192,125 @@ describe("thread-timeline realtime push", () => {
       };
 
       harness.deps.hub.subscribe(socket, target);
-      expect((await appendAndPush(1))[0]?.afterSequence).toBeNull();
-      expect((await appendAndPush(2))[0]?.afterSequence).toBe(1);
+      const [first] = await appendAndPush(1);
+      expect(first?.afterSequence).toBeNull();
+      const [second] = await appendAndPush(2);
+      expect(second?.afterSequence).toBe(1);
+      const received = applySignal(first!.timeline.rows, second!);
       harness.deps.hub.unregisterClient(socket);
       expect(await appendAndPush(3)).toEqual([]);
       socket = createMockHubSocket();
       harness.deps.hub.subscribe(socket, { ...target });
       const [resumed] = await appendAndPush(4);
-      expect(resumed?.afterSequence).toBeNull();
-      expect(resumed?.timeline.rows).toEqual(
+      expect(resumed?.afterSequence).toBe(2);
+      expect(applySignal(received!, resumed!)).toEqual(
+        (await getTimeline(harness, thread.id)).rows,
+      );
+    });
+  });
+
+  it("resumes a hidden client with deltas over HTTP and the socket", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness);
+      const target: ThreadTimelineSubscriptionTarget = {
+        kind: "thread-timeline",
+        threadId: thread.id,
+        segmentLimit: null,
+        deferContent: false,
+      };
+      const socket = createMockHubSocket();
+      const append = (sequence: number) => {
+        seedEvent(harness.deps, {
+          threadId: thread.id,
+          environmentId: environment.id,
+          providerThreadId: "p1",
+          scope: turnScope("turn-1"),
+          sequence,
+          type: sequence === 1 ? "turn/started" : "item/agentMessage/delta",
+          data: sequence === 1 ? {} : { itemId: "a", delta: `${sequence}\n` },
+        });
+        harness.deps.hub.notifyThread(thread.id, ["events-appended"]);
+      };
+
+      append(1);
+      harness.deps.hub.subscribe(socket, target);
+      let client = await getTimeline(harness, thread.id);
+      append(2);
+      await settlePushes();
+      const [pushed] = timelineSignals(socket.messages.splice(0));
+      expect(pushed?.afterSequence).toBe(1);
+      client = {
+        ...pushed!.timeline,
+        rows: applySignal(client.rows, pushed!)!,
+        delta: undefined,
+      };
+
+      harness.deps.hub.setClientVisible(socket, false);
+      append(3);
+      await settlePushes();
+      expect(timelineSignals(socket.messages.splice(0))).toEqual([]);
+      harness.deps.hub.setClientVisible(socket, true);
+      const refetched = await getTimeline(harness, thread.id, client.maxSeq);
+      expect(refetched.delta).toBeDefined();
+      client = {
+        ...refetched,
+        rows: applyTimelineDelta(client.rows, refetched.delta!)!,
+        delta: undefined,
+      };
+
+      append(4);
+      await settlePushes();
+      const [resumed] = timelineSignals(socket.messages.splice(0));
+      expect(resumed).toMatchObject({
+        afterSequence: 3,
+        timeline: { maxSeq: 4 },
+      });
+      expect(resumed!.timeline.delta).toBeDefined();
+      expect(applySignal(client.rows, resumed!)).toEqual(
+        (await getTimeline(harness, thread.id)).rows,
+      );
+    });
+  });
+
+  it("pushes a full window after history is rewritten", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness);
+      const target: ThreadTimelineSubscriptionTarget = {
+        kind: "thread-timeline",
+        threadId: thread.id,
+        segmentLimit: null,
+        deferContent: false,
+      };
+      const socket = createMockHubSocket();
+      const append = (sequence: number) => {
+        seedEvent(harness.deps, {
+          threadId: thread.id,
+          environmentId: environment.id,
+          providerThreadId: "p1",
+          scope: turnScope("turn-1"),
+          sequence,
+          type: sequence === 1 ? "turn/started" : "item/agentMessage/delta",
+          data: sequence === 1 ? {} : { itemId: "a", delta: `${sequence}\n` },
+        });
+        harness.deps.hub.notifyThread(thread.id, ["events-appended"]);
+      };
+
+      append(1);
+      harness.deps.hub.subscribe(socket, target);
+      await getTimeline(harness, thread.id);
+      append(2);
+      await settlePushes();
+      expect(timelineSignals(socket.messages.splice(0))[0]?.afterSequence).toBe(
+        1,
+      );
+
+      harness.deps.hub.notifyThread(thread.id, ["history-rewritten"]);
+      await getTimeline(harness, thread.id);
+      append(3);
+      await settlePushes();
+      const [rewritten] = timelineSignals(socket.messages.splice(0));
+      expect(rewritten?.afterSequence).toBeNull();
+      expect(rewritten?.timeline.rows).toEqual(
         (await getTimeline(harness, thread.id)).rows,
       );
     });

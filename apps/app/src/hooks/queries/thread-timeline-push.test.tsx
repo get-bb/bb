@@ -159,17 +159,29 @@ describe("pushed thread timeline", () => {
     });
   });
 
-  it("applies a delta at or past its base without fetching", () => {
-    for (const cachedSeq of [7, 8]) {
-      const { queryClient } = seedTimeline(cachedSeq);
-      applyThreadTimelineSignal(queryClient, deltaSignal(7));
-      expect(cachedTimeline(queryClient)).toMatchObject({
-        maxSeq: 9,
-        rows: [firstRow, secondRow],
-        delta: undefined,
-      });
-    }
+  it("applies a delta at its base without fetching", () => {
+    const { queryClient } = seedTimeline(7);
+    applyThreadTimelineSignal(queryClient, deltaSignal(7));
+    expect(cachedTimeline(queryClient)).toMatchObject({
+      maxSeq: 9,
+      rows: [firstRow, secondRow],
+      delta: undefined,
+    });
     expect(sdk.threads.timeline).not.toHaveBeenCalled();
+  });
+
+  it("refetches instead of applying a delta whose base it has moved past", async () => {
+    const { queryClient, wrapper } = seedTimeline(8);
+    renderHook(() => useThreadTimeline("thread-1", { staleTime: Infinity }), {
+      wrapper,
+    });
+    applyThreadTimelineSignal(queryClient, deltaSignal(7));
+    expect(cachedTimeline(queryClient)?.maxSeq).toBe(8);
+    await waitFor(() => {
+      expect(sdk.threads.timeline).toHaveBeenCalledWith(
+        expect.objectContaining({ afterSequence: "8" }),
+      );
+    });
   });
 
   it("refetches when a push was missed and ignores stale or foreign windows", async () => {

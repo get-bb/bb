@@ -3,7 +3,7 @@ import type { TimelineRow } from "@bb/server-contract";
 const DEFAULT_MAX_ENTRIES = 64;
 const DEFAULT_RING_SIZE = 4;
 
-interface TimelineLatestRows {
+export interface TimelineLatestRows {
   maxSeq: number;
   rows: readonly TimelineRow[];
 }
@@ -15,6 +15,7 @@ interface TimelineLatestRowsCache {
     maxSeq: number,
   ): TimelineLatestRows | undefined;
   invalidateThread(threadId: string): void;
+  latest(threadId: string, paramsKey: string): TimelineLatestRows | undefined;
   set(threadId: string, paramsKey: string, value: TimelineLatestRows): void;
   readonly size: number;
 }
@@ -44,6 +45,14 @@ export function createTimelineLatestRowsCache(
       }
       touch(paramsKey, entry);
       return entry.ring.find((value) => value.maxSeq === maxSeq);
+    },
+    latest(threadId, paramsKey) {
+      const entry = entries.get(paramsKey);
+      if (entry === undefined || entry.threadId !== threadId) {
+        return undefined;
+      }
+      touch(paramsKey, entry);
+      return entry.ring.at(-1);
     },
     invalidateThread(threadId) {
       for (const [paramsKey, entry] of entries) {

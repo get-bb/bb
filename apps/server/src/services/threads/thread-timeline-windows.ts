@@ -28,7 +28,10 @@ import {
   createThreadTimelineCache,
 } from "./timeline-cache.js";
 import { clearTimelineOrderingContextCache } from "./timeline-context-order.js";
-import { createTimelineLatestRowsCache } from "./timeline-latest-rows-cache.js";
+import {
+  createTimelineLatestRowsCache,
+  type TimelineLatestRows,
+} from "./timeline-latest-rows-cache.js";
 import { isCompactionOfferEnabled } from "./compaction-offer.js";
 import {
   DEFAULT_MAX_INLINE_OUTPUT_CHARS,
@@ -162,16 +165,19 @@ export function createThreadTimelineWindows(
     return { paramsKey: buildThreadTimelineParamsKey(keyArgs), response };
   }
 
+  function isAboveDeltaFloor(threadId: string, maxSeq: number): boolean {
+    const deltaFloor = deltaFloorByThreadId.get(threadId);
+    return deltaFloor === undefined || maxSeq > deltaFloor;
+  }
+
   function deltaSince(
     threadId: string,
     paramsKey: string,
     afterSequence: number | undefined,
     full: ThreadTimelineResponse,
   ): ThreadTimelineResponse | undefined {
-    const deltaFloor = deltaFloorByThreadId.get(threadId);
     const previous =
-      afterSequence === undefined ||
-      (deltaFloor !== undefined && afterSequence <= deltaFloor)
+      afterSequence === undefined || !isAboveDeltaFloor(threadId, afterSequence)
         ? undefined
         : latestRowsCache.get(threadId, paramsKey, afterSequence);
     latestRowsCache.set(threadId, paramsKey, {
@@ -187,6 +193,21 @@ export function createThreadTimelineWindows(
         };
   }
 
+  function resolvePushBaseline(
+    threadId: string,
+    paramsKey: string,
+    target: ThreadTimelineSubscriptionTarget,
+  ): TimelineLatestRows | undefined {
+    const previous = lastPushedByTarget.get(target);
+    if (previous !== undefined) {
+      return previous;
+    }
+    const served = latestRowsCache.latest(threadId, paramsKey);
+    return served !== undefined && isAboveDeltaFloor(threadId, served.maxSeq)
+      ? served
+      : undefined;
+  }
+
   function pushTarget(
     thread: Thread,
     target: ThreadTimelineSubscriptionTarget,
@@ -196,18 +217,22 @@ export function createThreadTimelineWindows(
     if (segmentLimit > THREAD_TIMELINE_SEGMENT_LIMIT_MAX) {
       return null;
     }
-    const { response } = buildWindow(thread, {
+    const { paramsKey, response } = buildWindow(thread, {
       deferContent: target.deferContent,
       includeNestedRows: false,
       page: { kind: "latest", segmentLimit },
       summaryOnly: false,
     });
-    const previous = lastPushedByTarget.get(target);
-    if (previous?.maxSeq === response.maxSeq) {
+    const baseline = resolvePushBaseline(thread.id, paramsKey, target);
+    lastPushedByTarget.set(target, response);
+    if (baseline?.maxSeq === response.maxSeq) {
       return null;
     }
-    lastPushedByTarget.set(target, response);
-    return previous === undefined
+    latestRowsCache.set(thread.id, paramsKey, {
+      maxSeq: response.maxSeq,
+      rows: response.rows,
+    });
+    return baseline === undefined
       ? {
           type: "thread-timeline",
           target,
@@ -217,11 +242,11 @@ export function createThreadTimelineWindows(
       : {
           type: "thread-timeline",
           target,
-          afterSequence: previous.maxSeq,
+          afterSequence: baseline.maxSeq,
           timeline: {
             ...response,
             rows: [],
-            delta: computeTimelineRowDelta(previous.rows, response.rows),
+            delta: computeTimelineRowDelta(baseline.rows, response.rows),
           },
         };
   }
