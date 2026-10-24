@@ -15,7 +15,8 @@ import {
   turnScope,
 } from "@bb/domain";
 import {
-  applyTimelineDelta,
+  applyThreadTimelineDelta,
+  isThreadTimelineDelta,
   threadTimelineResponseSchema,
   threadTimelineSignalSchema,
   type ThreadTimelineResponse,
@@ -249,19 +250,12 @@ async function refresh(
     .filter((message) => message.type === "thread-timeline")
     .map((message) => threadTimelineSignalSchema.parse(message));
   expect(signals.length).toBeGreaterThan(0);
-  for (const { afterSequence, timeline } of signals) {
-    const rows =
-      timeline.delta === undefined
-        ? timeline.rows
-        : afterSequence !== null && afterSequence <= client.latest.maxSeq
-          ? applyTimelineDelta(client.latest.rows, timeline.delta)
-          : null;
-    expect(rows).not.toBeNull();
-    receiveLatest(client, threadId, {
-      ...timeline,
-      rows: rows!,
-      delta: undefined,
-    });
+  for (const { timeline } of signals) {
+    const latest = isThreadTimelineDelta(timeline)
+      ? applyThreadTimelineDelta(client.latest, timeline)
+      : timeline;
+    expect(latest).not.toBeNull();
+    receiveLatest(client, threadId, latest!);
   }
 }
 

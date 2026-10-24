@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import { getTimelineGroupingContext } from "../../../src/services/threads/timeline-context-order.js";
 import { prependOlderTimelineRows } from "@bb/client-core";
 import {
-  applyTimelineDelta,
+  applyThreadTimelineDelta,
+  isThreadTimelineDelta,
+  threadTimelineReadResponseSchema,
   threadTimelineResponseSchema,
   type TimelineRow,
 } from "@bb/server-contract";
@@ -32,7 +34,10 @@ import type {
   ThreadTimelineResponse,
   TimelinePaginationCursor,
 } from "@bb/server-contract";
-import { buildThreadTimelineWithProfile } from "../../../src/services/threads/timeline.js";
+import {
+  buildThreadTimelineWithProfile,
+  type ThreadTimelineWindow,
+} from "../../../src/services/threads/timeline.js";
 
 const LARGE_BUDGET = 1_000_000;
 
@@ -331,7 +336,7 @@ function walkAllFileChangeDiffs(
   const diffsByPage: string[][] = [];
   let cursor: TimelinePaginationCursor | null = null;
   for (let page = 0; page < 200; page += 1) {
-    const response: ThreadTimelineResponse = buildThreadTimelineWithProfile(
+    const response: ThreadTimelineWindow = buildThreadTimelineWithProfile(
       db,
       thread,
       {
@@ -383,7 +388,7 @@ function walkAllPages(
   let pages = 0;
 
   for (;;) {
-    const response: ThreadTimelineResponse = buildThreadTimelineWithProfile(
+    const response: ThreadTimelineWindow = buildThreadTimelineWithProfile(
       db,
       thread,
       {
@@ -466,7 +471,7 @@ describe("timeline event budget", () => {
       let cursor: TimelinePaginationCursor | null = null;
       const seen = new Set<string>();
       do {
-        const page: ThreadTimelineResponse = buildThreadTimelineWithProfile(
+        const page: ThreadTimelineWindow = buildThreadTimelineWithProfile(
           db,
           thread,
           {
@@ -575,7 +580,7 @@ describe("timeline event budget", () => {
     let rows: TimelineRow[] = [];
     let cursor: TimelinePaginationCursor | null = null;
     for (let index = 0; index < 200; index += 1) {
-      const response: ThreadTimelineResponse = buildThreadTimelineWithProfile(
+      const response: ThreadTimelineWindow = buildThreadTimelineWithProfile(
         db,
         thread,
         {
@@ -1144,6 +1149,13 @@ describe("timeline event budget", () => {
           expect(response.status).toBe(200);
           return threadTimelineResponseSchema.parse(await response.json());
         };
+        const readDelta = async (afterTag: string) => {
+          const response = await harness.app.request(
+            `/api/v1/threads/${thread.id}/timeline?segmentLimit=1&afterTag=${afterTag}`,
+          );
+          expect(response.status).toBe(200);
+          return threadTimelineReadResponseSchema.parse(await response.json());
+        };
         const walk = async (latest: ThreadTimelineResponse) => {
           let rows = latest.rows;
           let cursor = latest.timelinePage.olderCursor;
@@ -1180,16 +1192,14 @@ describe("timeline event budget", () => {
               data: backgroundTask(progress),
             }),
           ]);
-          const response = await read(`afterSequence=${previous.maxSeq}`);
-          expect(response.delta).toBeDefined();
-          const live =
-            response.delta === undefined
-              ? response
-              : {
-                  ...response,
-                  rows: applyTimelineDelta(previous.rows, response.delta) ?? [],
-                  delta: undefined,
-                };
+          const response = await readDelta(previous.tag);
+          if (!isThreadTimelineDelta(response)) {
+            throw new Error("expected a timeline delta");
+          }
+          const live = applyThreadTimelineDelta(previous, response);
+          if (live === null) {
+            throw new Error("expected the delta to apply");
+          }
           previous = live;
           expect(live.timelinePage.olderRowUpdates?.length).toBeGreaterThan(0);
           const summary = await read("summaryOnly=true");
@@ -1232,7 +1242,7 @@ describe("timeline event budget", () => {
       let cursor: TimelinePaginationCursor | null = null;
       let pages = 0;
       do {
-        const response: ThreadTimelineResponse = buildThreadTimelineWithProfile(
+        const response: ThreadTimelineWindow = buildThreadTimelineWithProfile(
           db,
           thread,
           {

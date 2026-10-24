@@ -51,6 +51,7 @@ import type {
   ThreadStorageLocationResponse,
   ThreadStoragePathListResponse,
   ThreadTabsResponse,
+  ThreadTimelineReadResponse,
   ThreadTimelineResponse,
   ThreadContextResponse,
   ThreadWithIncludesResponse,
@@ -194,6 +195,7 @@ export type ThreadEventsListResult = ThreadEventRow[];
 export type ThreadEventWaitResult = ThreadEventRow | null;
 export type ThreadContextResult = ThreadContextResponse;
 export type ThreadTimelineResult = ThreadTimelineResponse;
+export type ThreadTimelineReadResult = ThreadTimelineReadResponse;
 export type ThreadArchiveResult = ThreadArchiveAllResponse;
 export type ThreadOpenResult = ThreadOpenResponse;
 export type ThreadPaneActionResult = ThreadPaneActionResponse;
@@ -701,7 +703,10 @@ export interface ThreadsArea {
   stop(args: ThreadActionArgs): Promise<ThreadStopResult>;
   tabs: ThreadTabsArea;
   context(args: ThreadStatusArgs): Promise<ThreadContextResult>;
-  timeline(args: ThreadTimelineArgs): Promise<ThreadTimelineResult>;
+  timeline(
+    args: ThreadTimelineArgs & { afterTag?: undefined },
+  ): Promise<ThreadTimelineResult>;
+  timeline(args: ThreadTimelineArgs): Promise<ThreadTimelineReadResult>;
   timelineTurnSummaryDetails(
     args: ThreadTimelineTurnSummaryDetailsArgs,
   ): Promise<ThreadTimelineTurnSummaryDetailsResult>;
@@ -893,9 +898,7 @@ function timelineQuery(args: ThreadTimelineArgs): ThreadTimelineQuery {
     ...(args.beforeAnchorId !== undefined
       ? { beforeAnchorId: args.beforeAnchorId }
       : {}),
-    ...(args.afterSequence !== undefined
-      ? { afterSequence: args.afterSequence }
-      : {}),
+    ...(args.afterTag !== undefined ? { afterTag: args.afterTag } : {}),
   };
 }
 
@@ -975,6 +978,25 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
         ...signalRequestArgs(input.signal),
       ),
     );
+  function timeline(
+    input: ThreadTimelineArgs & { afterTag?: undefined },
+  ): Promise<ThreadTimelineResult>;
+  function timeline(
+    input: ThreadTimelineArgs,
+  ): Promise<ThreadTimelineReadResult>;
+  function timeline(
+    input: ThreadTimelineArgs,
+  ): Promise<ThreadTimelineReadResult> {
+    return transport.readJson(
+      transport.api.v1.threads[":id"].timeline.$get(
+        {
+          param: { id: input.threadId },
+          query: timelineQuery(input),
+        },
+        ...signalRequestArgs(input.signal),
+      ),
+    );
+  }
   const archiveAll = async (
     input: ThreadActionArgs,
   ): Promise<ThreadArchiveAllResult> =>
@@ -1552,17 +1574,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
         ),
       );
     },
-    async timeline(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"].timeline.$get(
-          {
-            param: { id: input.threadId },
-            query: timelineQuery(input),
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
+    timeline,
     async timelineTurnSummaryDetails(input) {
       return transport.readJson(
         transport.api.v1.threads[":id"].timeline["turn-summary-details"].$get(

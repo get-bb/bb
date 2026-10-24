@@ -290,7 +290,7 @@ import type {
   ThreadStoragePathListResponse,
   ThreadStoragePathsQuery,
   ThreadTimelineQuery,
-  ThreadTimelineResponse,
+  ThreadTimelineReadResponse,
   ThreadContextResponse,
   ThreadWithIncludesResponse,
   TimelineTurnSummaryDetailsQuery,
@@ -1787,7 +1787,7 @@ export const publicApiRoutes = {
       request: optionalQueryRequest<PathId, ThreadTimelineQuery>(
         threadTimelineQuerySchema,
       ),
-      response: jsonResponse<ThreadTimelineResponse>(),
+      response: jsonResponse<ThreadTimelineReadResponse>(),
     }),
     context: defineRoute({
       path: "/threads/:id/context",

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyTimelineDelta } from "@bb/server-contract";
+import { applyThreadTimelineDelta } from "@bb/server-contract";
 import { OPTIMISTIC_TIMELINE_ROW_ID_PREFIX } from "../src/timeline/optimistic-timeline-row.js";
 import type {
   ThreadTimelineResponse,
@@ -125,6 +125,7 @@ function makeTimelineResponse(
     sessionOptions: null,
     modelFallback: null,
     maxSeq,
+    tag: `timeline-${maxSeq}`,
     timelinePage: {
       returnedSegmentCount: rows.length > 0 ? 1 : 0,
       olderCursor,
@@ -132,6 +133,20 @@ function makeTimelineResponse(
       olderRowsSourceSeqEnd: null,
     },
   };
+}
+
+function applyRowUpserts(
+  rows: TimelineRow[],
+  upsertRows: TimelineRow[],
+): TimelineRow[] | null {
+  const held = makeTimelineResponse(rows, null);
+  return (
+    applyThreadTimelineDelta(held, {
+      maxSeq: held.maxSeq,
+      tag: `${held.tag}-next`,
+      delta: { afterTag: held.tag, upsertRows, fields: {} },
+    })?.rows ?? null
+  );
 }
 
 function makeLoadedTimelineState(
@@ -1112,9 +1127,7 @@ describe("snapshot content pagination", () => {
         ...makeLoadedTimelineState([summary, tail], null),
         historySnapshot: "snapshot-1",
       };
-      const rows = applyTimelineDelta(current.rows, {
-        upsertRows: [updatedTail],
-      });
+      const rows = applyRowUpserts(current.rows, [updatedTail]);
       expect(rows).not.toBeNull();
       const latestTimeline = makeTimelineResponse(rows!, null);
       latestTimeline.timelinePage.historySnapshot = historySnapshot;
@@ -1150,7 +1163,7 @@ describe("snapshot content pagination", () => {
     };
     const updatedChild = { ...child, output: "new output" };
     const updated = { ...partial, children: [updatedChild] };
-    const rows = applyTimelineDelta([partial], { upsertRows: [updated] });
+    const rows = applyRowUpserts([partial], [updated]);
     expect(rows).not.toBeNull();
     const latestTimeline = makeTimelineResponse(rows!, null);
     latestTimeline.timelinePage.historySnapshot = current.historySnapshot;

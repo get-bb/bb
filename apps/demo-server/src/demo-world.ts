@@ -544,6 +544,7 @@ export class DemoWorld {
       contextBoundarySeq: null,
       completedTurnDisplay: "flat",
       maxSeq: seq,
+      tag: `demo:${threadId}:${seq}`,
       activePromptMode: null,
       activeThinking: null,
       activeWorkflows: [],
