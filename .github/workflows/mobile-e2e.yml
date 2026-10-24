@@ -80,22 +80,26 @@ jobs:
           turbo-cache: "false"
 
       # The macOS 15 image ships several Xcodes with 16.4 as the default;
-      # apps/mobile is verified on Xcode 26.2 (iOS 26 runtime). Prefer that,
-      # then the newest 26.x, and only then whatever is selected. DEVELOPER_DIR
-      # needs no sudo and is honored by xcodebuild, xcrun/simctl and CocoaPods.
+      # apps/mobile is verified on Xcode 27.1 (iOS 27.1 runtime). Prefer that,
+      # then the newest 27.x, then the newest 26.x, and only then whatever is
+      # selected. DEVELOPER_DIR needs no sudo and is honored by xcodebuild,
+      # xcrun/simctl and CocoaPods.
       - name: Select Xcode
         run: |
           set -x
-          if [ -d /Applications/Xcode_26.2.app ]; then
-            xcode=/Applications/Xcode_26.2.app
+          if [ -d /Applications/Xcode_27.1.app ]; then
+            xcode=/Applications/Xcode_27.1.app
           else
+            xcode=$(find /Applications -maxdepth 1 -name 'Xcode_27*.app' | sort -V | tail -1)
+          fi
+          if [ -z "${xcode:-}" ]; then
             xcode=$(find /Applications -maxdepth 1 -name 'Xcode_26*.app' | sort -V | tail -1)
           fi
           if [ -n "${xcode:-}" ]; then
             echo "DEVELOPER_DIR=$xcode/Contents/Developer" >> "$GITHUB_ENV"
             export DEVELOPER_DIR="$xcode/Contents/Developer"
           else
-            echo "::warning::No Xcode 26.x found; using the selected Xcode"
+            echo "::warning::No Xcode 27.x or 26.x found; using the selected Xcode"
           fi
           sw_vers
           xcodebuild -version
