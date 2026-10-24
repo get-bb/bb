@@ -1,4 +1,7 @@
-import { HOST_DAEMON_RESTART_EXIT_CODE } from "@bb/config/machine-service";
+import {
+  HOST_DAEMON_RESTART_EXIT_CODE,
+  HOST_DAEMON_SIGNAL_EXIT_CODES,
+} from "@bb/config/machine-service";
 import { describe, expect, it } from "vitest";
 import {
   superviseHostDaemonProcess,
@@ -100,6 +103,19 @@ describe("superviseHostDaemonProcess", () => {
 
     await expect(run.result).resolves.toEqual(code(0));
     expect(run.delays).toEqual([1_000, 2_000, 1_000]);
+  });
+
+  it("restarts a daemon stopped by a signal the launcher did not send", async () => {
+    const run = supervise({
+      exits: [
+        code(HOST_DAEMON_SIGNAL_EXIT_CODES.SIGTERM),
+        code(HOST_DAEMON_SIGNAL_EXIT_CODES.SIGINT),
+        code(0),
+      ],
+    });
+
+    await expect(run.result).resolves.toEqual(code(0));
+    expect(run.delays).toEqual([1_000, 2_000]);
   });
 
   it("stops restarting once shutdown is requested", async () => {

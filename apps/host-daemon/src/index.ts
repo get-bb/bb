@@ -4,6 +4,10 @@ import { fileURLToPath } from "node:url";
 import { loadHostDaemonStartConfig } from "@bb/config/host-daemon";
 import { loadHostDaemonEntrypointConfig } from "@bb/config/host-daemon-entrypoint";
 import {
+  HOST_DAEMON_PROCESS_NAME,
+  setLinuxProcessName,
+} from "@bb/config/machine-service";
+import {
   installSafeProcessDiagnostics,
   installSocketTypeOfServiceGuard,
   writeSafeProcessDiagnosticReport,
@@ -75,6 +79,7 @@ const isMainModule =
   fileURLToPath(import.meta.url) === entrypointPath;
 
 if (isMainModule) {
+  setLinuxProcessName(HOST_DAEMON_PROCESS_NAME);
   const diagnosticsLogsDir = resolveDiagnosticsLogsDir();
   installSafeProcessDiagnostics({
     logsDir: diagnosticsLogsDir,

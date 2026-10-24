@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -42,8 +43,13 @@ const starts = join(process.env.BB_DATA_DIR, "starts");
 appendFileSync(starts, "started\\n");
 if (readFileSync(starts, "utf8") === "started\\n") {
   if (process.env.TEST_FIRST_EXIT === "signal") {
-    process.on("SIGTERM", () => process.exit(0));
+    process.on("SIGTERM", () => process.exit(143));
     process.kill(process.ppid, "SIGTERM");
+    await new Promise(() => setInterval(() => {}, 1000));
+  }
+  if (process.env.TEST_FIRST_EXIT === "external-signal") {
+    process.on("SIGTERM", () => process.exit(143));
+    process.kill(process.pid, "SIGTERM");
     await new Promise(() => setInterval(() => {}, 1000));
   }
   process.exit(Number(process.env.TEST_FIRST_EXIT));
@@ -64,14 +70,16 @@ afterAll(async () => {
   if (root) await rm(root, { recursive: true, force: true });
 });
 
-it.for([75, 1, 0, "signal"])(
+it.for([75, 1, 0, "signal", "external-signal"])(
   "handles daemon exit %s before readiness through the launcher",
   async (firstExit, { skip }) => {
     skip(
-      process.platform === "win32" && firstExit === "signal",
-      "Windows cannot deliver a catchable SIGTERM to the launcher",
+      process.platform === "win32" &&
+        (firstExit === "signal" || firstExit === "external-signal"),
+      "Windows cannot deliver a catchable SIGTERM",
     );
-    const restarts = firstExit === 75 || firstExit === 1;
+    const restarts =
+      firstExit === 75 || firstExit === 1 || firstExit === "external-signal";
     const dataDir = await mkdtemp(join(root, "data-"));
     const listener = createServer();
     await new Promise((resolve) => listener.listen(0, "127.0.0.1", resolve));
@@ -107,8 +115,15 @@ it.for([75, 1, 0, "signal"])(
       },
     );
     let output = "";
+    let launcherProcessName = null;
     child.stdout.on("data", (chunk) => {
       output += chunk;
+      if (process.platform === "linux" && launcherProcessName === null) {
+        launcherProcessName = readFileSync(
+          `/proc/${child.pid}/comm`,
+          "utf8",
+        ).trim();
+      }
     });
     child.stderr.on("data", (chunk) => {
       output += chunk;
@@ -124,6 +139,9 @@ it.for([75, 1, 0, "signal"])(
         restarts ? "started\nstarted\n" : "started\n",
       );
       expect(output.includes("bb host-daemon is ready")).toBe(restarts);
+      if (process.platform === "linux") {
+        expect(launcherProcessName).toBe("bb-app");
+      }
     } finally {
       clearTimeout(timeout);
       child.kill("SIGTERM");

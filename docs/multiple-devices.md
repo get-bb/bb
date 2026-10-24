@@ -184,10 +184,14 @@ unavailable on a systemd host, installation fails before enrolling or creating
 a unit; rerun it from a systemd user session. In containers and on machines without systemd
 as init, the installer runs a detached daemon instead. Set
 `BB_INSTALL_SKIP_SERVICE=1` only when a detached daemon is acceptable: no
-service starts it after a reboot. The temporary daemon used
-for a first join is not supervised. When the installer starts a previously
-joined daemon without a service, its launcher restarts it after crashes and
-self-updates while the launcher remains running.
+service starts it after a reboot. Without a service the installer always leaves
+a supervised daemon (`bb-app host-daemon --supervise`), replacing the temporary
+daemon of a first join once it has joined. Its launcher restarts the daemon
+after crashes, self-updates, and signals the launcher did not send, such as an
+out-of-memory killer's SIGTERM, while the launcher remains running; a daemon
+stopped by the server, or through its launcher, stays stopped. On Linux the
+launcher's process is named `bb-app` and the daemon's `bb-host-daemon`, so a
+userspace memory killer such as earlyoom can spare both by name.
 
 The installed launchd/systemd service enables `--auto-update`. If session open
 reports a newer server protocol, the daemon downloads the server artifact,

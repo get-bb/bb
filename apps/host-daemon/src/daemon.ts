@@ -1,4 +1,8 @@
-import { HOST_DAEMON_RESTART_EXIT_CODE } from "@bb/config/machine-service";
+import {
+  HOST_DAEMON_RESTART_EXIT_CODE,
+  HOST_DAEMON_SIGNAL_EXIT_CODES,
+  type HostDaemonSignalExitCode,
+} from "@bb/config/machine-service";
 import type { HostDaemonLogger } from "./logger.js";
 import { normalizeCaughtError } from "./error-utils.js";
 
@@ -25,7 +29,11 @@ interface CreateDaemonOptions {
   shutdownExitGraceMs?: number;
 }
 
-export type HostDaemonExitCode = 0 | 1 | typeof HOST_DAEMON_RESTART_EXIT_CODE;
+export type HostDaemonExitCode =
+  | 0
+  | 1
+  | typeof HOST_DAEMON_RESTART_EXIT_CODE
+  | HostDaemonSignalExitCode;
 
 export interface HostDaemon {
   readonly identity: HostDaemonIdentity;
@@ -34,7 +42,7 @@ export interface HostDaemon {
   waitUntilStopped(): Promise<void>;
 }
 
-const TERMINATION_SIGNALS: NodeJS.Signals[] = ["SIGINT", "SIGTERM"];
+const TERMINATION_SIGNALS = ["SIGINT", "SIGTERM"] as const;
 
 const DEFAULT_SHUTDOWN_EXIT_GRACE_MS = 15_000;
 
@@ -187,12 +195,14 @@ export function createDaemon(options: CreateDaemonOptions): HostDaemon {
 
       for (const signal of TERMINATION_SIGNALS) {
         const listener = () => {
-          void stop(signal, 0).catch((error) => {
-            options.logger.error(
-              { err: error, signal },
-              "Signal-triggered host daemon shutdown failed",
-            );
-          });
+          void stop(signal, HOST_DAEMON_SIGNAL_EXIT_CODES[signal]).catch(
+            (error) => {
+              options.logger.error(
+                { err: error, signal },
+                "Signal-triggered host daemon shutdown failed",
+              );
+            },
+          );
         };
         listeners.set(signal, listener);
         signalSource.on(signal, listener);
