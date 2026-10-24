@@ -1,4 +1,5 @@
 import {
+  useContext,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -79,6 +80,10 @@ import {
 import type { ThreadTimelinePluginMessageAction } from "./types.js";
 import type { PromptDraftAttachment } from "@bb/client-core";
 import { buildMarkdownMessageLinkRouting } from "@/components/ui/markdown-message-link-routing";
+import {
+  TimelineTouchedFilesContext,
+  useMessageTouchedFiles,
+} from "./timeline-touched-files.js";
 import { markStreamTrace } from "@/lib/stream-trace";
 
 interface ConversationMessageContentBaseProps {
@@ -539,15 +544,26 @@ function AssistantConversationMessage({
     () => resolveStreamingMarkdown(text, streaming),
     [streaming, text],
   );
+  const touchedFiles = useMessageTouchedFiles(
+    text,
+    useContext(TimelineTouchedFilesContext),
+  );
   const linkRouting = useMemo(
     () =>
       buildMarkdownMessageLinkRouting({
         onOpenLink,
         onOpenLocalFileLink,
         threadId,
+        touchedFiles,
         workspaceRootPath,
       }),
-    [onOpenLink, onOpenLocalFileLink, threadId, workspaceRootPath],
+    [
+      onOpenLink,
+      onOpenLocalFileLink,
+      threadId,
+      touchedFiles,
+      workspaceRootPath,
+    ],
   );
 
   const messageDirectiveRegistry = useMessageDirectiveRegistry();

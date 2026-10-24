@@ -3,13 +3,17 @@ import type {
   MarkdownLocalFileLinkRouting,
 } from "./markdown-link-routing.js";
 import type { MarkdownPreviewLinkHandler } from "./markdown-link.js";
-import type { MarkdownPreviewLocalFileLinkHandler } from "./markdown-local-file-link.js";
+import type {
+  MarkdownPreviewLocalFileLinkHandler,
+  MarkdownTouchedFiles,
+} from "./markdown-local-file-link.js";
 import { buildThreadHostFileContentUrl } from "@/lib/file-content-urls";
 
 interface BuildMarkdownMessageLinkRoutingArgs {
   onOpenLink?: MarkdownPreviewLinkHandler;
   onOpenLocalFileLink?: MarkdownPreviewLocalFileLinkHandler;
   threadId?: string;
+  touchedFiles?: MarkdownTouchedFiles;
   workspaceRootPath?: string;
 }
 
@@ -17,6 +21,7 @@ export function buildMarkdownMessageLinkRouting({
   onOpenLink,
   onOpenLocalFileLink,
   threadId,
+  touchedFiles,
   workspaceRootPath,
 }: BuildMarkdownMessageLinkRoutingArgs): MarkdownLinkRouting | undefined {
   if (
@@ -54,6 +59,7 @@ export function buildMarkdownMessageLinkRouting({
       localFile.relativeLinks = {
         baseDir: workspaceRootPath,
         rootPath: workspaceRootPath,
+        ...(touchedFiles === undefined ? {} : { touchedFiles }),
       };
     }
     routing.localFile = localFile;

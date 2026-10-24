@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   buildLocalFileAnchorHref,
+  buildMarkdownTouchedFiles,
   parseLocalFileHref,
   resolveRelativeLocalFileHref,
+  resolveTouchedLocalFileHref,
+  selectMentionedTouchedFiles,
   type MarkdownAbsoluteLocalFileLinkRouting,
 } from "./markdown-local-file-link.js";
 
@@ -534,5 +537,88 @@ describe("Windows drive paths", () => {
         rootPath: "C:\\src\\repo",
       }),
     ).toBeNull();
+  });
+});
+
+describe("resolveTouchedLocalFileHref", () => {
+  const touchedFiles = buildMarkdownTouchedFiles({
+    paths: [
+      "/home/dev/fork-work/sidebar/plugins/thread-list/app/rows/ThreadRow.tsx",
+      "/home/dev/fork-work/sidebar/plugins/thread-list/app/list/index.ts",
+      "/home/dev/fork-work/sidebar/apps/app/src/index.ts",
+      "docs/notes.md",
+    ],
+    rootPath: "/workspace",
+  });
+
+  it.each([
+    [
+      "ThreadRow.tsx",
+      "/home/dev/fork-work/sidebar/plugins/thread-list/app/rows/ThreadRow.tsx",
+    ],
+    [
+      "rows/ThreadRow.tsx:12",
+      "/home/dev/fork-work/sidebar/plugins/thread-list/app/rows/ThreadRow.tsx:12",
+    ],
+    [
+      "./plugins/thread-list/app/rows/ThreadRow.tsx#L3-L5",
+      "/home/dev/fork-work/sidebar/plugins/thread-list/app/rows/ThreadRow.tsx#L3-L5",
+    ],
+    [
+      "list/index.ts",
+      "/home/dev/fork-work/sidebar/plugins/thread-list/app/list/index.ts",
+    ],
+    ["notes.md", "/workspace/docs/notes.md"],
+  ])("resolves %s to the one touched file it names", (href, expected) => {
+    expect(resolveTouchedLocalFileHref({ href, touchedFiles })).toBe(expected);
+  });
+
+  it.each([
+    ["index.ts", "two touched files share the name"],
+    ["ows/ThreadRow.tsx", "a suffix must start at a path segment"],
+    ["package.json", "no touched file has the name"],
+    ["../rows/ThreadRow.tsx", "parent segments name no touched file"],
+    ["/elsewhere/ThreadRow.tsx", "an absolute path is not a mention"],
+    ["~/fork-work/sidebar/ThreadRow.tsx", "a home path is not a mention"],
+    ["vscode://file/ThreadRow.tsx", "a URL is not a mention"],
+  ])("leaves %s unresolved: %s", (href) => {
+    expect(resolveTouchedLocalFileHref({ href, touchedFiles })).toBeNull();
+  });
+});
+
+describe("selectMentionedTouchedFiles", () => {
+  it("keeps only the touched files a message names", () => {
+    const touchedFiles = buildMarkdownTouchedFiles({
+      paths: [
+        "/home/dev/fork-work/sidebar/plugins/rows/ThreadRow.tsx",
+        "/home/dev/fork-work/sidebar/plugins/list/index.ts",
+        "/home/dev/fork-work/sidebar/apps/app/src/index.ts",
+        "/home/dev/fork-work/sidebar/docs/notes.md",
+        "/home/dev/fork-work/sidebar/README.md",
+      ],
+      rootPath: "/workspace",
+    });
+
+    expect(
+      selectMentionedTouchedFiles({
+        markdown: [
+          "Updated `ThreadRow.tsx:12` and `index.ts`, see [notes](<docs/notes.md>)",
+          "and [the row](./plugins/rows/ThreadRow.tsx#L3).",
+          '```ts\nimport "README.md";\n```',
+          "`/home/dev/fork-work/sidebar/README.md` stays.",
+        ].join("\n"),
+        touchedFiles,
+      }),
+    ).toEqual([
+      [
+        "ThreadRow.tsx",
+        "/home/dev/fork-work/sidebar/plugins/rows/ThreadRow.tsx",
+      ],
+      ["docs/notes.md", "/home/dev/fork-work/sidebar/docs/notes.md"],
+      [
+        "plugins/rows/ThreadRow.tsx",
+        "/home/dev/fork-work/sidebar/plugins/rows/ThreadRow.tsx",
+      ],
+    ]);
   });
 });

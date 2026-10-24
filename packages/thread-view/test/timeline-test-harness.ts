@@ -244,6 +244,7 @@ interface FileChangeCompletedArgs extends ProviderTurnEventOptions {
   changes: Array<{
     diff?: string;
     kind: "add" | "delete" | "update";
+    movePath?: string;
     path: string;
   }>;
   error?: string;
