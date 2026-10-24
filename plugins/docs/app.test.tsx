@@ -230,6 +230,34 @@ function makeDataTransfer(path: string) {
 }
 
 describe("Docs nav panel", () => {
+  it("autosaves edited text without escaping a lone tilde or wrapping a URL", async () => {
+    const saveNote = vi.fn((_input: unknown) => ({
+      outcome: "written",
+      sha256: "next-sha",
+    }));
+    const slot = renderDocument("round-trip.md", "Round trip", {
+      rpc: {
+        readNote: () => ({
+          content: "- all ~1,300 records at https://example.com/docs\n",
+          sha256: "original-sha",
+        }),
+        saveNote,
+      },
+    });
+    const editor = await slot.findByRole("textbox", {
+      name: "Document content",
+    });
+    const paragraph = editor.querySelector("li p")!;
+    paragraph.prepend(document.createTextNode("New "));
+    fireEvent.input(paragraph);
+    await waitFor(() => expect(saveNote).toHaveBeenCalled(), {
+      timeout: 2_000,
+    });
+    expect(saveNote.mock.calls.at(-1)?.[0]).toMatchObject({
+      content: "- New all ~1,300 records at https://example.com/docs\n",
+    });
+  });
+
   it("keeps one shared request across page and navigation Strict Mode replay", async () => {
     let requests = 0;
     const StrictDocsSurfaces = (props: { subPath: string }) => (
