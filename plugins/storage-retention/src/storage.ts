@@ -13,6 +13,8 @@ import {
   externalWorktreeScanSchema,
 } from "./storage-types.js";
 import type {
+  ExternalWorktreeRemoval,
+  ExternalWorktreeSkipReason,
   HostStorageRemoveExternalWorktreesResponse,
   MaintenanceKind,
   HostStorageReport,
@@ -209,6 +211,10 @@ export function createStorage(
   const scans = new Map<string, HostStorageScanStatus>();
   const archivedFileCleanups = new Map<string, ArchivedFileCleanupStatus>();
   const largeFileCleanups = new Map<string, LargeFileCleanupStatus>();
+  const worktreeRemovals = new Map<
+    string,
+    Map<string, ExternalWorktreeRemoval>
+  >();
   const jobs = new Set<Promise<void>>();
   bb.onDispose(async () => {
     lifecycle.abort();
@@ -573,6 +579,9 @@ export function createStorage(
       archivedFileCleanup: archivedFileCleanups.get(hostId) ?? {
         state: "idle",
       },
+      externalWorktreeRemovals: [
+        ...(worktreeRemovals.get(hostId)?.values() ?? []),
+      ],
     };
   }
   async function hosts() {
@@ -1493,6 +1502,111 @@ export function createStorage(
       release();
     }
   }
+  async function externalWorktreeTargets(
+    hostId: string,
+    paths: string[] | null,
+  ) {
+    await requireHost(hostId, true);
+    const scanned = read(hostId)?.externalWorktrees;
+    if (!scanned) throw new Error("Scan the machine before removing worktrees");
+    const targets = scanned.filter(
+      (worktree) => paths === null || paths.includes(worktree.path),
+    );
+    const unknown = (paths ?? []).filter(
+      (target) => !targets.some((worktree) => worktree.path === target),
+    );
+    if (unknown.length > 0)
+      throw new Error(
+        `Not a worktree created outside BB in the last scan: ${unknown.join(", ")}`,
+      );
+    const [environments, projects] = await Promise.all([
+      readEnvironments(hostId),
+      bb.sdk.projects.list({ signal: lifecycle.signal }),
+    ]);
+    return { targets, owned: bbOwnedPaths(hostId, environments, projects) };
+  }
+  function setWorktreeRemoval(
+    hostId: string,
+    removal: ExternalWorktreeRemoval,
+  ) {
+    const removals = worktreeRemovals.get(hostId) ?? new Map();
+    removals.set(removal.path, removal);
+    worktreeRemovals.set(hostId, removals);
+    changed();
+  }
+  async function startRemoveExternalWorktree({
+    hostId,
+    path: target,
+    force,
+  }: {
+    hostId: string;
+    path: string;
+    force: boolean;
+  }) {
+    const release = acquireEntries(
+      hostId,
+      [`worktree:${target}`],
+      "This worktree is already being removed",
+    );
+    let reasons: ExternalWorktreeSkipReason[];
+    try {
+      const { targets, owned } = await externalWorktreeTargets(hostId, [
+        target,
+      ]);
+      const worktree = targets[0]!;
+      reasons = owned.has(hostPath(worktree.path))
+        ? ["inUseByBb"]
+        : force
+          ? []
+          : (
+              await worker.call(
+                "inspectGitWorktree",
+                { repositoryPath: worktree.repositoryPath, path: target },
+                { hostId, signal: lifecycle.signal },
+              )
+            ).reasons;
+    } catch (error) {
+      release();
+      throw error;
+    }
+    if (reasons.length > 0) {
+      release();
+      return { state: "skipped" as const, reasons };
+    }
+    setWorktreeRemoval(hostId, { path: target, state: "running" });
+    const job = (async () => {
+      try {
+        const result = await removeExternalWorktrees(
+          { hostId, paths: [target], force },
+          release,
+        );
+        const skipped = result.skipped[0];
+        const failed = result.failed[0];
+        setWorktreeRemoval(
+          hostId,
+          skipped
+            ? { path: target, state: "skipped", reasons: skipped.reasons }
+            : failed
+              ? { path: target, state: "failed", message: failed.message }
+              : {
+                  path: target,
+                  state: "completed",
+                  removedBytes: result.removedBytes,
+                },
+        );
+      } catch (error) {
+        if (!lifecycle.signal.aborted)
+          setWorktreeRemoval(hostId, {
+            path: target,
+            state: "failed",
+            message: error instanceof Error ? error.message : String(error),
+          });
+      }
+    })();
+    jobs.add(job);
+    void job.finally(() => jobs.delete(job));
+    return { state: "started" as const };
+  }
   async function removeExternalWorktrees(
     input:
       | { hostId: string; paths: null }
@@ -1511,25 +1625,7 @@ export function createStorage(
             "This worktree is already being removed",
           ));
     try {
-      await requireHost(hostId, true);
-      const scanned = read(hostId)?.externalWorktrees;
-      if (!scanned)
-        throw new Error("Scan the machine before removing worktrees");
-      const targets = scanned.filter(
-        (worktree) => paths === null || paths.includes(worktree.path),
-      );
-      const unknown = (paths ?? []).filter(
-        (target) => !targets.some((worktree) => worktree.path === target),
-      );
-      if (unknown.length > 0)
-        throw new Error(
-          `Not a worktree created outside BB in the last scan: ${unknown.join(", ")}`,
-        );
-      const [environments, projects] = await Promise.all([
-        readEnvironments(hostId),
-        bb.sdk.projects.list({ signal: lifecycle.signal }),
-      ]);
-      const owned = bbOwnedPaths(hostId, environments, projects);
+      const { targets, owned } = await externalWorktreeTargets(hostId, paths);
       const response: HostStorageRemoveExternalWorktreesResponse = {
         removedCount: 0,
         removedBytes: 0,
@@ -1653,6 +1749,7 @@ export function createStorage(
     startClearArchivedFiles,
     removeDevInstances,
     removeExternalWorktrees,
+    startRemoveExternalWorktree,
     clearThread,
     queueArchivedStorage,
     cancelArchivedStorage,

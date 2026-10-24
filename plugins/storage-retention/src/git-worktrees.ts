@@ -9,10 +9,19 @@ type Worktree = ListOutput["repositories"][number]["worktrees"][number];
 type RemoveOutput = z.infer<
   typeof hostStorageContract.removeGitWorktrees.output
 >["results"][number];
+type SkipReason = Extract<
+  RemoveOutput,
+  { outcome: "skipped" }
+>["reasons"][number];
 
 const GIT_TIMEOUT_MS = 60_000;
 
-function git(args: string[], cwd: string, signal: AbortSignal) {
+function git(
+  args: string[],
+  cwd: string,
+  signal: AbortSignal,
+  timeoutMs = GIT_TIMEOUT_MS,
+) {
   return new Promise<{ exitCode: number; stdout: string; stderr: string }>(
     (resolve, reject) => {
       execFile(
@@ -21,7 +30,7 @@ function git(args: string[], cwd: string, signal: AbortSignal) {
         {
           cwd,
           signal,
-          timeout: GIT_TIMEOUT_MS,
+          timeout: timeoutMs,
           maxBuffer: 16 * 1024 * 1024,
           env: { ...process.env, GIT_OPTIONAL_LOCKS: "0", LC_ALL: "C" },
         },
@@ -201,12 +210,12 @@ export async function listGitWorktrees(
   return { repositories, failures };
 }
 
-async function removeOne(
+async function check(
   repositoryPath: string,
   worktreePath: string,
   force: boolean,
   signal: AbortSignal,
-): Promise<RemoveOutput> {
+) {
   const [main, ...linked] = await listRepository(repositoryPath, signal);
   const entry = linked.find(
     (candidate) =>
@@ -215,20 +224,31 @@ async function removeOne(
       path.relative(candidate.path, worktreePath) === "",
   );
   if (entry === undefined || entry.bare || entry.prunable)
-    return { path: worktreePath, outcome: "skipped", reasons: ["notWorktree"] };
-  if (!force) {
-    const { changedFileCount, unsavedCommitCount } = await inspect(
-      entry,
-      signal,
-    );
-    const reasons = [
-      ...(entry.locked ? (["locked"] as const) : []),
-      ...(changedFileCount > 0 ? (["uncommittedChanges"] as const) : []),
-      ...(unsavedCommitCount > 0 ? (["unsavedCommits"] as const) : []),
-    ];
-    if (reasons.length > 0)
-      return { path: worktreePath, outcome: "skipped", reasons };
-  }
+    return { entry: null, reasons: ["notWorktree"] as SkipReason[] };
+  if (force) return { entry, reasons: [] };
+  const { changedFileCount, unsavedCommitCount } = await inspect(entry, signal);
+  const reasons: SkipReason[] = [
+    ...(entry.locked ? (["locked"] as const) : []),
+    ...(changedFileCount > 0 ? (["uncommittedChanges"] as const) : []),
+    ...(unsavedCommitCount > 0 ? (["unsavedCommits"] as const) : []),
+  ];
+  return { entry, reasons };
+}
+
+async function removeOne(
+  repositoryPath: string,
+  worktreePath: string,
+  force: boolean,
+  signal: AbortSignal,
+): Promise<RemoveOutput> {
+  const { entry, reasons } = await check(
+    repositoryPath,
+    worktreePath,
+    force,
+    signal,
+  );
+  if (entry === null || reasons.length > 0)
+    return { path: worktreePath, outcome: "skipped", reasons };
   signal.throwIfAborted();
   const removal = await git(
     [
@@ -240,10 +260,31 @@ async function removeOne(
     ],
     repositoryPath,
     signal,
+    0,
   );
   if (removal.exitCode !== 0)
     throw new Error(removal.stderr || "git worktree remove failed");
   return { path: worktreePath, outcome: "removed" };
+}
+
+function assertAbsolute(repositoryPath: string, paths: string[]) {
+  if (
+    !path.isAbsolute(repositoryPath) ||
+    paths.some((target) => !path.isAbsolute(target))
+  )
+    throw new Error("Worktree paths must be absolute");
+}
+
+export async function inspectGitWorktree(
+  {
+    repositoryPath,
+    path: worktreePath,
+  }: { repositoryPath: string; path: string },
+  signal: AbortSignal,
+) {
+  assertAbsolute(repositoryPath, [worktreePath]);
+  const { reasons } = await check(repositoryPath, worktreePath, false, signal);
+  return { reasons };
 }
 
 export async function removeGitWorktrees(
@@ -254,11 +295,7 @@ export async function removeGitWorktrees(
   }: { repositoryPath: string; paths: string[]; force: boolean },
   signal: AbortSignal,
 ) {
-  if (
-    !path.isAbsolute(repositoryPath) ||
-    paths.some((target) => !path.isAbsolute(target))
-  )
-    throw new Error("Worktree paths must be absolute");
+  assertAbsolute(repositoryPath, paths);
   const results: RemoveOutput[] = [];
   for (const target of paths) {
     signal.throwIfAborted();

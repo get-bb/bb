@@ -40,6 +40,7 @@ function fixture(subPath = "host_test") {
       largeFileCleanup: { state: "idle" },
       archivedFileCleanup: { state: "idle" },
       maintenance: { state: "idle" },
+      externalWorktreeRemovals: [],
       report: {
         hostId: "host_test",
         scannedAt: Date.now(),
@@ -88,11 +89,11 @@ function fixture(subPath = "host_test") {
   });
   const remove = vi.fn(
     async (_input: z.infer<typeof storageRpc.removeDevInstances.input>) => ({
-    running: [] as string[],
-    removedCount: 1,
-    removedBytes: 20,
-    skippedCount: 0,
-    stoppedProcessCount: 1,
+      running: [] as string[],
+      removedCount: 1,
+      removedBytes: 20,
+      skippedCount: 0,
+      stoppedProcessCount: 1,
     }),
   );
   const start = vi.fn(async () => null);

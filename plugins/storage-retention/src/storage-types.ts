@@ -193,12 +193,46 @@ export const maintenanceStatusSchema = z.discriminatedUnion("state", [
 ]);
 export type MaintenanceStatus = z.infer<typeof maintenanceStatusSchema>;
 
+export const externalWorktreeSkipReasonSchema = z.enum([
+  "notWorktree",
+  "locked",
+  "uncommittedChanges",
+  "unsavedCommits",
+  "inUseByBb",
+]);
+export type ExternalWorktreeSkipReason = z.infer<
+  typeof externalWorktreeSkipReasonSchema
+>;
+
+export const externalWorktreeRemovalSchema = z.discriminatedUnion("state", [
+  z.object({ path: z.string(), state: z.literal("running") }),
+  z.object({
+    path: z.string(),
+    state: z.literal("completed"),
+    removedBytes: byteCountSchema,
+  }),
+  z.object({
+    path: z.string(),
+    state: z.literal("skipped"),
+    reasons: z.array(externalWorktreeSkipReasonSchema).min(1),
+  }),
+  z.object({
+    path: z.string(),
+    state: z.literal("failed"),
+    message: z.string(),
+  }),
+]);
+export type ExternalWorktreeRemoval = z.infer<
+  typeof externalWorktreeRemovalSchema
+>;
+
 export const hostStorageResponseSchema = z.object({
   report: hostStorageReportSchema.nullable(),
   scan: hostStorageScanStatusSchema,
   largeFileCleanup: largeFileCleanupStatusSchema,
   archivedFileCleanup: archivedFileCleanupStatusSchema,
   maintenance: maintenanceStatusSchema,
+  externalWorktreeRemovals: z.array(externalWorktreeRemovalSchema),
 });
 export type HostStorageResponse = z.infer<typeof hostStorageResponseSchema>;
 
@@ -211,6 +245,7 @@ export const hostStorageListResponseSchema = z.object({
       largeFileCleanup: largeFileCleanupStatusSchema,
       archivedFileCleanup: archivedFileCleanupStatusSchema,
       maintenance: maintenanceStatusSchema,
+      externalWorktreeRemovals: z.array(externalWorktreeRemovalSchema),
     }),
   ),
 });
@@ -240,17 +275,7 @@ export const hostStorageRemoveExternalWorktreesResponseSchema = z.object({
   skipped: z.array(
     z.object({
       path: z.string(),
-      reasons: z
-        .array(
-          z.enum([
-            "notWorktree",
-            "locked",
-            "uncommittedChanges",
-            "unsavedCommits",
-            "inUseByBb",
-          ]),
-        )
-        .min(1),
+      reasons: z.array(externalWorktreeSkipReasonSchema).min(1),
     }),
   ),
   failed: z.array(z.object({ path: z.string(), message: z.string() })),

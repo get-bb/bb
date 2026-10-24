@@ -448,6 +448,7 @@ it.each([false, true])(
         largeFileCleanup: { state: "idle" },
         archivedFileCleanup: { state: "idle" },
         maintenance: { state: "idle" },
+        externalWorktreeRemovals: [],
       });
       await expect(
         host.harness.callRpc("clearThread", { threadId: "thr_live" }),
@@ -1295,15 +1296,18 @@ it("finds worktrees created outside BB, removes only safe ones in bulk, and forc
     updatedAt: 0,
   };
   const worker = experimental_createHostEntryHarness(hostEntry);
+  let removalGate: Promise<void> | null = null;
   const host = createFakePluginHost({
     pluginId: "storage-retention",
     experimental_hostEntry: true,
     experimental_callHostRpc: async (call) => {
       if (call.method === "homeDirectory") return "/missing-home";
+      if (call.method === "removeGitWorktrees") await removalGate;
       for (const method of [
         "measure",
         "capacity",
         "listGitWorktrees",
+        "inspectGitWorktree",
         "removeGitWorktrees",
       ] as const)
         if (call.method === method)
@@ -1450,12 +1454,54 @@ it("finds worktrees created outside BB, removes only safe ones in bulk, and forc
       }),
     ).rejects.toThrow("Not a worktree created outside BB");
     await expect(
-      host.harness.callRpc("removeExternalWorktrees", {
+      host.harness.callRpc("startRemoveExternalWorktree", {
         hostId: "host_test",
-        paths: [dirty, detached, locked],
+        path: dirty,
+        force: false,
+      }),
+    ).resolves.toEqual({ state: "skipped", reasons: ["uncommittedChanges"] });
+    let releaseRemoval!: () => void;
+    removalGate = new Promise((resolve) => {
+      releaseRemoval = resolve;
+    });
+    await expect(
+      host.harness.callRpc("startRemoveExternalWorktree", {
+        hostId: "host_test",
+        path: dirty,
         force: true,
       }),
-    ).resolves.toMatchObject({ removedCount: 3, skipped: [], failed: [] });
+    ).resolves.toEqual({ state: "started" });
+    const removals = async () =>
+      hostStorageResponseSchema.parse(
+        await host.harness.callRpc("host", { hostId: "host_test" }),
+      ).externalWorktreeRemovals;
+    expect(await removals()).toEqual([{ path: dirty, state: "running" }]);
+    await expect(
+      host.harness.callRpc("startRemoveExternalWorktree", {
+        hostId: "host_test",
+        path: dirty,
+        force: true,
+      }),
+    ).rejects.toThrow("already being removed");
+    await expect(
+      host.harness.callRpc("startCleanup", {
+        hostId: "host_test",
+        kind: "externalWorktrees",
+      }),
+    ).rejects.toThrow("already running");
+    releaseRemoval();
+    await expect
+      .poll(removals)
+      .toEqual([
+        { path: dirty, state: "completed", removedBytes: expect.any(Number) },
+      ]);
+    await expect(
+      host.harness.callRpc("removeExternalWorktrees", {
+        hostId: "host_test",
+        paths: [detached, locked],
+        force: true,
+      }),
+    ).resolves.toMatchObject({ removedCount: 2, skipped: [], failed: [] });
     for (const removed of [dirty, detached, locked])
       await expect(fs.stat(removed)).rejects.toThrow();
     await expect(fs.stat(managed)).resolves.toBeTruthy();

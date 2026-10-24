@@ -191,6 +191,7 @@ function StoragePanel(props: PluginNavPanelProps) {
     }
   }, [rpc, sdk]);
   const previousJobs = useRef(new Map<string, string>());
+  const previousRemovals = useRef(new Map<string, Map<string, string>>());
   useEffect(() => {
     for (const host of data?.hosts ?? []) {
       for (const kind of [
@@ -235,6 +236,35 @@ function StoragePanel(props: PluginNavPanelProps) {
         }
         previousJobs.current.set(key, signature);
       }
+      const seen = previousRemovals.current.get(host.hostId);
+      const next = new Map<string, string>();
+      for (const removal of host.externalWorktreeRemovals) {
+        const signature = JSON.stringify(removal);
+        next.set(removal.path, signature);
+        if (seen === undefined || seen.get(removal.path) === signature)
+          continue;
+        const id = worktreeRemovalToastId(host.hostId, removal.path);
+        if (removal.state === "running")
+          toast.loading("Removing worktree", {
+            id,
+            description: removal.path,
+          });
+        else if (removal.state === "completed")
+          toast.success("Worktree removed", {
+            id,
+            description: `${removal.path} · ${bytes(removal.removedBytes)} freed`,
+          });
+        else
+          toast.error("Couldn’t remove worktree", {
+            id,
+            description: `${removal.path} · ${
+              removal.state === "skipped"
+                ? EXTERNAL_WORKTREE_SKIP_REASONS[removal.reasons[0]!]
+                : removal.message
+            }`,
+          });
+      }
+      previousRemovals.current.set(host.hostId, next);
     }
   }, [data]);
   useEffect(() => {
@@ -449,7 +479,18 @@ function StoragePage({
   const scanning = detail?.scan.state === "scanning";
   const machine = hostId ? machines[hostId] : undefined;
   const offline = machine !== undefined && machine.status !== "connected";
-  const rowActionRunning = Object.values(rowActions).some(
+  const activeRowActions: Record<string, RowAction> = {
+    ...rowActions,
+    ...Object.fromEntries(
+      (detail?.externalWorktreeRemovals ?? [])
+        .filter((removal) => removal.state === "running")
+        .map((removal) => [
+          `worktree:${removal.path}`,
+          { state: "running" } as const,
+        ]),
+    ),
+  };
+  const rowActionRunning = Object.values(activeRowActions).some(
     (action) => action.state === "running",
   );
   const locked = busy || offline || rowActionRunning;
@@ -981,46 +1022,57 @@ function StoragePage({
                             )
                           }
                           rowDisabled={rowDisabled}
-                          rowActions={rowActions}
+                          rowActions={activeRowActions}
                           confirmationKey={cleanup?.key ?? null}
                           confirmation={cleanupConfirmation}
                           onRemove={(worktree, label) => {
+                            const id = worktreeRemovalToastId(
+                              report.hostId,
+                              worktree.path,
+                            );
                             const feedback = {
                               title: "Removing worktree",
                               completed: "Worktree removed",
                               failed: "Couldn’t remove worktree",
                               description: worktree.path,
+                              id,
+                              background: { hostId: report.hostId },
                             };
-                            const remove = async (force: boolean) => {
+                            const start = async (force: boolean) => {
                               const result = await rpc.call(
-                                "removeExternalWorktrees",
+                                "startRemoveExternalWorktree",
                                 {
                                   hostId: report.hostId,
-                                  paths: [worktree.path],
+                                  path: worktree.path,
                                   force,
                                 },
                               );
-                              const failed = result.failed[0];
-                              if (failed) throw new Error(failed.message);
+                              if (result.state === "started") {
+                                toast.loading(feedback.title, {
+                                  id,
+                                  description: worktree.path,
+                                });
+                                await refresh();
+                              }
                               return result;
                             };
                             void runRowAction(
                               `worktree:${worktree.path}`,
                               feedback,
                               async () => {
-                                const result = await remove(false);
-                                const reasons = result.skipped[0]?.reasons;
-                                if (reasons === undefined)
-                                  return `${worktree.path} · ${bytes(result.removedBytes)} freed`;
-                                const forceable = reasons.filter(
+                                const result = await start(false);
+                                if (result.state === "started") return null;
+                                const forceable = result.reasons.filter(
                                   (reason) =>
                                     reason === "locked" ||
                                     reason === "uncommittedChanges" ||
                                     reason === "unsavedCommits",
                                 );
-                                if (forceable.length !== reasons.length)
+                                if (forceable.length !== result.reasons.length)
                                   throw new Error(
-                                    EXTERNAL_WORKTREE_SKIP_REASONS[reasons[0]!],
+                                    EXTERNAL_WORKTREE_SKIP_REASONS[
+                                      result.reasons[0]!
+                                    ],
                                   );
                                 setCleanup({
                                   key: `external-worktree:${worktree.path}`,
@@ -1037,15 +1089,14 @@ function StoragePage({
                                     "The checkout is deleted, including ignored files. Its branch is kept. This can’t be undone.",
                                   ].join(" "),
                                   run: async () => {
-                                    const forced = await remove(true);
-                                    const skipped = forced.skipped[0];
-                                    if (skipped)
+                                    const forced = await start(true);
+                                    if (forced.state === "skipped")
                                       throw new Error(
                                         EXTERNAL_WORKTREE_SKIP_REASONS[
-                                          skipped.reasons[0]!
+                                          forced.reasons[0]!
                                         ],
                                       );
-                                    return `${worktree.path} · ${bytes(forced.removedBytes)} freed`;
+                                    return worktree.path;
                                   },
                                 });
                                 return null;
@@ -1916,6 +1967,10 @@ type RowAction = { state: "running" };
 type ExternalWorktree = NonNullable<
   HostReport["report"]
 >["externalWorktrees"][number];
+
+function worktreeRemovalToastId(hostId: string, worktreePath: string) {
+  return `storage:${hostId}:worktree:${worktreePath}`;
+}
 
 const EXTERNAL_WORKTREE_SKIP_REASONS = {
   notWorktree: "It is no longer a worktree of this repository",

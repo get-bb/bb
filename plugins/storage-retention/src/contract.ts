@@ -4,6 +4,7 @@ import {
   hostStorageRemoveOrphansResponseSchema,
   hostStorageRetryWorktreeCleanupResponseSchema,
   hostStorageRemoveExternalWorktreesResponseSchema,
+  externalWorktreeSkipReasonSchema,
   maintenanceKindSchema,
 } from "./storage-types.js";
 import { defineRpcContract } from "@get-bb/plugin-sdk";
@@ -71,6 +72,22 @@ export const storageRpc = defineRpcContract({
         .strict(),
     ]),
     output: hostStorageRemoveExternalWorktreesResponseSchema,
+  },
+  startRemoveExternalWorktree: {
+    input: z
+      .object({
+        hostId: z.string().min(1),
+        path: z.string().min(1),
+        force: z.boolean(),
+      })
+      .strict(),
+    output: z.discriminatedUnion("state", [
+      z.object({ state: z.literal("started") }),
+      z.object({
+        state: z.literal("skipped"),
+        reasons: z.array(externalWorktreeSkipReasonSchema).min(1),
+      }),
+    ]),
   },
   startClearLargeFiles: {
     input: z.object({ hostId: z.string().min(1).nullable() }).strict(),
