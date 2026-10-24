@@ -3,8 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetChatGptCloudflareCookiesForTests } from "../ai/chatgpt-fetch.js";
+import { resolveCodexCommand } from "./codex-executable.js";
 import {
   __testing,
+  codexInstallerCommand,
+  codexLoginCommand,
   getCodexProviderHealth,
   getCodexProviderInstallationStatus,
   getCodexProviderUsage,
@@ -366,4 +369,86 @@ describe("Codex credential health and usage", () => {
     expect(retryHeaders.get("authorization")).toBe(`Bearer ${accessToken}`);
     expect(retryHeaders.get("chatgpt-account-id")).toBe("account-123");
   });
+});
+
+describe("Codex native install", () => {
+  let root: string;
+
+  beforeEach(async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "bb-codex-native-"));
+    const emptyPath = path.join(root, "empty-path");
+    await fs.mkdir(emptyPath);
+    vi.stubEnv("PATH", emptyPath);
+    vi.stubEnv("HOME", root);
+    vi.stubEnv("USERPROFILE", root);
+    vi.stubEnv("LOCALAPPDATA", path.join(root, "AppData", "Local"));
+  });
+
+  afterEach(async () => {
+    vi.unstubAllEnvs();
+    await fs.rm(root, { force: true, recursive: true });
+  });
+
+  it("offers OpenAI's native installer, which needs no Node.js, when npm is missing", async () => {
+    const status = await getCodexProviderInstallationStatus();
+
+    expect(status.installed).toBe(false);
+    expect(status.installAction?.kind).toBe("install");
+    expect(status.installAction?.command).toContain(
+      "https://chatgpt.com/codex/install",
+    );
+    expect(status.installAction?.command).not.toContain("npm");
+  });
+
+  it("finds a native install that is not on PATH yet", async () => {
+    const binDir =
+      process.platform === "win32"
+        ? path.join(root, "AppData", "Local", "Programs", "OpenAI", "Codex")
+        : path.join(root, ".local");
+    const nativeBin = path.join(binDir, "bin");
+    await fs.mkdir(nativeBin, { recursive: true });
+    if (process.platform === "win32") {
+      await fs.writeFile(path.join(nativeBin, "codex.exe"), "");
+    } else {
+      await writeFakeCli({
+        binDir: nativeBin,
+        name: "codex",
+        output: "codex-cli 0.150.0",
+      });
+    }
+
+    expect(resolveCodexCommand()).toBe(
+      path.join(nativeBin, process.platform === "win32" ? "codex.exe" : "codex"),
+    );
+    if (process.platform !== "win32") {
+      const status = await getCodexProviderInstallationStatus(undefined, false);
+      expect(status.installed).toBe(true);
+      expect(status.currentVersion).toBe("0.150.0");
+      const health = await getCodexProviderHealth();
+      expect(health.supported && health.health.status).not.toBe(
+        "not_installed",
+      );
+      expect(health.supported && health.health.localLoginCommand).toBe(
+        `${path.join(nativeBin, "codex")} login`,
+      );
+    }
+  });
+
+  it("calls a native Windows path with PowerShell's call operator", () => {
+    const nativePath =
+      "C:\\Users\\First Last\\AppData\\Local\\Programs\\OpenAI\\Codex\\bin\\codex.exe";
+    expect(codexLoginCommand(nativePath, ["login"], "win32")).toMatch(/^& '/);
+    expect(codexLoginCommand("codex", ["login"], "win32")).toBe("codex login");
+    expect(
+      codexLoginCommand("/home/a/.local/bin/codex", ["login"], "linux"),
+    ).toBe("/home/a/.local/bin/codex login");
+  });
+
+  it.each(["darwin", "linux", "win32"] as const)(
+    "runs OpenAI's installer without its interactive prompts on %s",
+    (platform) => {
+      const { args } = codexInstallerCommand(platform);
+      expect(args.join(" ")).toContain("CODEX_NON_INTERACTIVE");
+    },
+  );
 });
