@@ -7,7 +7,11 @@ import {
   ThreadTimelineRows,
   type ThreadTimelineRowsProps,
 } from "@/components/thread/timeline";
-import { systemRow } from "@/test/fixtures/thread-timeline-rows";
+import {
+  commandRow,
+  conversationRow,
+  systemRow,
+} from "@/test/fixtures/thread-timeline-rows";
 import { StoryCard, StoryRow } from "../../../../../.ladle/story-card";
 
 export default {
@@ -196,6 +200,89 @@ const systemTurnSubmitTooLargeExpanded = new Set<string>([
 const systemThreadStartModuleMissingExpanded = new Set<string>([
   systemThreadStartModuleMissing.id,
 ]);
+
+const IN_CONTEXT_THREAD_ID = "thr_q8wz3nd5tc";
+const IN_CONTEXT_TURN_ID = "turn_q8wz3nd5tc_1";
+
+const claudeApiRetry: TimelineNonOperationSystemRow = systemRow({
+  id: "thr_q8wz3nd5tc:error:1820",
+  threadId: IN_CONTEXT_THREAD_ID,
+  turnId: IN_CONTEXT_TURN_ID,
+  sourceSeqStart: 1820,
+  sourceSeqEnd: 1820,
+  startedAt: 1792536580000,
+  createdAt: 1792536580000,
+  systemKind: "reconnect",
+  title: "Claude Code API retry 1/10 after 616ms: unknown",
+  detail: null,
+  status: null,
+});
+
+const claudeApiOverloaded: TimelineNonOperationSystemRow = systemRow({
+  id: "thr_q8wz3nd5tc:error:1822",
+  threadId: IN_CONTEXT_THREAD_ID,
+  turnId: IN_CONTEXT_TURN_ID,
+  sourceSeqStart: 1822,
+  sourceSeqEnd: 1822,
+  startedAt: 1792536590000,
+  createdAt: 1792536590000,
+  systemKind: "error",
+  title: "API Error: Overloaded",
+  detail: null,
+  status: "error",
+});
+
+const errorsInContextRows: TimelineRow[] = [
+  commandRow({
+    id: "thr_q8wz3nd5tc:command:1817",
+    threadId: IN_CONTEXT_THREAD_ID,
+    turnId: IN_CONTEXT_TURN_ID,
+    seq: 1817,
+    command: "pnpm exec turbo run test --filter=@bb/thread-view",
+    durationMs: 80_000,
+  }),
+  conversationRow({
+    id: "thr_q8wz3nd5tc:assistant:1819",
+    threadId: IN_CONTEXT_THREAD_ID,
+    turnId: IN_CONTEXT_TURN_ID,
+    seq: 1819,
+    role: "assistant",
+    text: "The failing assertion points at the reconnect title; checking how the timeline renders provider errors.",
+  }),
+  claudeApiRetry,
+  commandRow({
+    id: "thr_q8wz3nd5tc:command:1821",
+    threadId: IN_CONTEXT_THREAD_ID,
+    turnId: IN_CONTEXT_TURN_ID,
+    seq: 1821,
+    command: 'rg -n "api_retry" plugins/provider-claude-code/src',
+    durationMs: 18_000,
+  }),
+  claudeApiOverloaded,
+];
+
+const narrowErrorRows: TimelineRow[] = [claudeApiRetry, providerRateLimit];
+
+export function ErrorsInContext() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="provider/error — between chat and work rows"
+        hint="a retrying API error and a terminal failure must not read as assistant prose"
+      >
+        <ErrorRowsPreview rows={errorsInContextRows} />
+      </StoryRow>
+      <StoryRow
+        label="provider/error — narrow column"
+        hint="wrapped titles keep the glyph on the first line"
+      >
+        <div className="w-full max-w-[280px]">
+          <ThreadTimelineRows {...baseProps} timelineRows={narrowErrorRows} />
+        </div>
+      </StoryRow>
+    </StoryCard>
+  );
+}
 
 export function Errors() {
   return (
