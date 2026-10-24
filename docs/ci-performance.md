@@ -510,7 +510,10 @@ account API malformed/null-response test now advances a fake clock through its
 unchanged 300ms deadline with fixed retry jitter. A fake clock alone was not
 sufficient: fixing the random value at 0.66 reproduced a retry landing exactly
 on the deadline, changing the error classification. The response-handling test
-uses a fixed random value of zero, as the neighboring retry test does. The existing
+uses a fixed random value of zero, as the neighboring retry test does. The
+stale-answer test also advances fake timers through its unchanged 50ms request
+deadline and background refresh windows, retaining expiration, retry suppression,
+and recovery assertions without depending on real Windows scheduling. The existing
 1,005-supporting-file skill test exposed unnecessary scanner work: recursive
 skill traversal resolved and statted ordinary files it could never consume.
 The scanner now skips those known regular files after handling `SKILL.md`,
