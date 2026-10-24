@@ -1227,8 +1227,10 @@ function LandingPage() {
         </a>
         <h1>The IDE that builds itself</h1>
         <p className="sub">
-          bb can control, customize, and automate itself, laying the groundwork
-          for your own software factory.
+          Make bb yours. Ask, and an agent changes it.
+          <br />
+          Most of bb is plugins, even the parts it ships with, so an agent can
+          change any of them.
         </p>
 
         <InstallOptions placement="hero" />
