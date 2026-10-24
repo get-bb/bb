@@ -225,6 +225,8 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
     policy: { retireGraceMs: null },
     experimental_existingPath: (inputs) =>
       inputs.branch === undefined ? (inputs.path ?? null) : null,
+    experimental_usesSuggestedBranchName: (inputs) =>
+      inputs.branch?.kind === "new",
     async validate(context) {
       const branch = context.inputs.branch;
       const path = context.inputs.path ?? context.projectCheckout.path;

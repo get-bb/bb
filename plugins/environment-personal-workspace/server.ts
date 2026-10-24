@@ -15,6 +15,7 @@ export default async function personalWorkspacePlugin(
     description: "Create a personal directory without a project.",
     icon: "Folder",
     requires: { projectless: true },
+    experimental_usesSuggestedBranchName: () => false,
     async create({ host: machine, pathKey, report, signal }) {
       report.step("Preparing personal workspace…");
       try {

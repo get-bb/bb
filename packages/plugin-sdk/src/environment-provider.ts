@@ -146,6 +146,8 @@ export interface PluginEnvironmentProviderDefinition<
     | Promise<PluginEnvironmentValidateDecision>;
   /** Pure path selection from parsed inputs. Core reuses a recorded environment on the selected host before calling create; null requests normal creation. */
   experimental_existingPath?(inputs: InputsValue<S>): string | null;
+  /** Pure: whether create names a branch from `suggestedBranchName` for these parsed inputs. Core waits for the thread's generated title before create only when this is true or absent; on false, `suggestedBranchName` may be built from the prompt instead. */
+  experimental_usesSuggestedBranchName?(inputs: InputsValue<S>): boolean;
   create(
     context: PluginEnvironmentProviderCreateContext<R, S>,
   ): Promise<PluginEnvironmentProviderCreateResult>;
