@@ -16,10 +16,10 @@ const AGENT_PROMPT = withIntake(
     { label: "Task", hint: "what to build or fix" },
     {
       label: "Reviewer",
-      hint: "a different agent from you",
+      hint: "the same agent or a different one",
     },
   ],
-  `Build the task, have a different agent review it in its own thread, talk it through with the reviewer. One review round, then stop.
+  `Build the task, have it reviewed in a fresh thread, and talk it through with the reviewer. One review round, then stop.
 Guide: https://getbb.app/guides/orchestrate-coding-agents
 
 Do these steps in order and run each check. If a check fails, stop and tell me what you saw. Don't push, open a pull request, or merge unless I ask.
@@ -30,9 +30,9 @@ Do these steps in order and run each check. If a check fails, stop and tell me w
 2. Build the task and commit your work.
    Check: \`git status\` is clean and \`git log -1\` shows your commit.
 
-3. Start the reviewer in its own thread, in this worktree. Use my Reviewer answer. By default, pick a signed-in agent other than you from bb provider list.
+3. Start a fresh thread to review the change. It can use the same agent or a different one. Keep it in this worktree and use my Reviewer answer. By default, use your current provider from bb provider list.
    bb thread spawn --json --project "$BB_PROJECT_ID" --environment "$BB_ENVIRONMENT_ID" --parent-self --provider <provider-id> --title "<task>" --prompt "Task: <task>. Review git diff <BASE>..HEAD read-only. Don't edit files or commit. List each issue as serious or minor, with file and line."
-   Check: the spawn returns a thread ID. If the reviewer fails to start, stop and ask me to sign in to that agent on this computer.
+   Check: the spawn returns a thread ID. If the reviewer fails to start, stop and report the error.
 
 4. Wait for the review and read it:
    bb thread wait <reviewer-thread-id>
@@ -54,7 +54,7 @@ export const guide: Guide = {
   heroTop: null,
   concept: <SpawnTimeline />,
   agentPrompt: AGENT_PROMPT,
-  requirement: "two or more agents signed in, like Claude Code and Codex",
+  requirement: "one agent signed in. A second agent is optional",
   steps: [
     {
       id: "step-1",
@@ -83,7 +83,7 @@ export const guide: Guide = {
     {
       id: "step-2",
       title: "Get a second opinion from another agent",
-      lead: "A different agent reads the change with fresh context and catches what the first one missed. You don't copy anything between them.",
+      lead: "A fresh thread reviews the change with new context. It can use the same agent or a different one. You don't copy anything between them.",
       body: (
         <p>
           Once its work is committed, your agent starts the reviewer in a thread
