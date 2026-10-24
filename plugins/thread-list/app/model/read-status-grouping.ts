@@ -35,18 +35,18 @@ export function resolveHeldReadStatus(
     selectedThreadId === undefined
       ? undefined
       : threads.find((candidate) => candidate.id === selectedThreadId);
-  return thread ? { threadId: thread.id, isUnread: thread.isUnread } : null;
+  return thread
+    ? { threadId: thread.id, isUnread: isUnreadDoneThread(thread) }
+    : null;
 }
 
 export function createThreadUnreadPredicate(
   held: HeldReadStatus | null,
 ): ThreadUnreadPredicate {
   return (thread) =>
-    isUnreadDoneThread(
-      held !== null && thread.id === held.threadId
-        ? { ...thread, isUnread: held.isUnread }
-        : thread,
-    );
+    held !== null && thread.id === held.threadId
+      ? held.isUnread
+      : isUnreadDoneThread(thread);
 }
 
 export function groupComparatorByReadStatus(

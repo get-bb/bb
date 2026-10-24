@@ -23,6 +23,7 @@ import {
   deleteThread,
   archiveThread,
   markThreadDeleted,
+  markThreadRead,
   pinThread,
   reorderPinnedThread,
   unpinThread,
@@ -1445,6 +1446,61 @@ describe("thread lifecycle transitions and read state", () => {
       expect(activeAgainThread.updatedAt).toBe(3_000);
       expect(activeAgainThread.latestAttentionAt).toBe(2_000);
       expect(activeAgainThread.lastReadAt).toBe(2_000);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("marks a thread read only through the attention the reader saw", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(1_000);
+      const { db, project } = setup();
+      const spy: DbNotifier = {
+        notifyThread: vi.fn(),
+        notifyEnvironment: vi.fn(),
+        notifyHost: vi.fn(),
+        notifyProject: vi.fn(),
+        notifySystem: vi.fn(),
+      };
+      const thread = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        status: "active",
+      });
+      vi.setSystemTime(2_000);
+      requireThreadLifecycleEventApplied(
+        applyThreadLifecycleEvent(db, {
+          event: { type: "run.succeeded" },
+          threadId: thread.id,
+        }),
+      );
+
+      vi.setSystemTime(3_000);
+      const stale = markThreadRead(db, spy, thread.id, {
+        throughAttentionAt: 1_000,
+      });
+      expect(stale).toMatchObject({
+        lastReadAt: 1_000,
+        latestAttentionAt: 2_000,
+        updatedAt: 2_000,
+      });
+      expect(spy.notifyThread).not.toHaveBeenCalled();
+
+      vi.setSystemTime(4_000);
+      const current = markThreadRead(db, spy, thread.id, {
+        throughAttentionAt: 2_000,
+      });
+      expect(current).toMatchObject({ lastReadAt: 4_000, updatedAt: 4_000 });
+      expect(spy.notifyThread).toHaveBeenCalledExactlyOnceWith(
+        thread.id,
+        ["read-state-changed"],
+        { projectId: project.id },
+      );
+
+      expect(
+        markThreadRead(db, spy, "thr_missing", { throughAttentionAt: null }),
+      ).toBeNull();
     } finally {
       vi.useRealTimers();
     }

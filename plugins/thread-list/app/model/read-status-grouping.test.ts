@@ -124,6 +124,35 @@ describe("resolveHeldReadStatus", () => {
     ).toBe(false);
   });
 
+  it("keeps the open thread in the unread group while its turn runs", () => {
+    const isUnread = createThreadUnreadPredicate(
+      resolveHeldReadStatus(null, [thread("opened")], "opened"),
+    );
+
+    expect(isUnread(thread("opened", { ...read, status: "active" }))).toBe(
+      true,
+    );
+    expect(isUnread(thread("opened", read))).toBe(true);
+  });
+
+  it("keeps a thread opened mid-turn out of the unread group until another thread opens", () => {
+    const opened = resolveHeldReadStatus(
+      null,
+      [thread("opened", { status: "active" })],
+      "opened",
+    );
+    expect(createThreadUnreadPredicate(opened)(thread("opened"))).toBe(false);
+
+    const afterSwitch = resolveHeldReadStatus(
+      opened,
+      [thread("opened"), thread("other", read)],
+      "other",
+    );
+    expect(createThreadUnreadPredicate(afterSwitch)(thread("opened"))).toBe(
+      true,
+    );
+  });
+
   it("keeps the held status when the sidebar remounts", () => {
     rememberHeldReadStatus(
       resolveHeldReadStatus(null, [thread("remounted")], "remounted"),

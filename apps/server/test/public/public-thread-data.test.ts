@@ -2738,6 +2738,35 @@ describe("public thread data routes", () => {
     });
   });
 
+  it("reads a thread only through the attention the reader saw", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedThreadFixture(harness);
+      await harness.app.request(`/api/v1/threads/${thread.id}/unread`, {
+        method: "POST",
+      });
+      const readThrough = (attentionAt: string) =>
+        harness.app.request(
+          `/api/v1/threads/${thread.id}/read?throughAttentionAt=${attentionAt}`,
+          { method: "POST" },
+        );
+
+      const stale = await readThrough(String(thread.latestAttentionAt - 1));
+      expect(stale.status).toBe(200);
+      await expect(readJson(stale)).resolves.toMatchObject({
+        lastReadAt: null,
+      });
+      expect(getThread(harness.db, thread.id)?.lastReadAt).toBeNull();
+
+      const current = await readThrough(String(thread.latestAttentionAt));
+      expect(current.status).toBe(200);
+      expect(
+        threadReadResponseSchema.parse(await readJson(current)).lastReadAt,
+      ).toBeGreaterThanOrEqual(thread.latestAttentionAt);
+
+      expect((await readThrough("soon")).status).toBe(400);
+    });
+  });
+
   it("creates and deletes thread queued messages", async () => {
     await withTestHarness(async (harness) => {
       const capture = vi.fn<TelemetryService["capture"]>();
