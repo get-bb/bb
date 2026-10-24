@@ -5,7 +5,7 @@ import { useState } from "react";
 import { copyPlainText } from "../lib/copy-plain-text";
 import { trackLandingEvent } from "./analytics";
 import type { CtaPlacement } from "./site";
-import { SITE_TITLE } from "./site";
+import { SITE_TITLE, UTM_PARAM_NAMES } from "./site";
 
 export function SendToComputerButton({
   placement,
@@ -13,12 +13,36 @@ export function SendToComputerButton({
   placement: CtaPlacement;
 }) {
   const [status, setStatus] = useState<"idle" | "copied" | "failed">("idle");
-  const send = async () => {
+  const link = () => {
+    const url = new URL(window.location.pathname, "https://getbb.app");
+    const current = new URL(window.location.href);
+    for (const name of UTM_PARAM_NAMES) {
+      const value = current.searchParams.get(name);
+      if (value) url.searchParams.set(name, value);
+    }
+    if (!url.searchParams.has("utm_source"))
+      url.searchParams.set("utm_source", "share");
+    if (!url.searchParams.has("utm_medium"))
+      url.searchParams.set("utm_medium", "referral");
+    if (!url.searchParams.has("utm_campaign"))
+      url.searchParams.set("utm_campaign", "send-to-computer");
+    if (!url.searchParams.has("utm_content"))
+      url.searchParams.set("utm_content", "send-to-computer");
+    return url.href;
+  };
+  const recordClick = () => {
     trackLandingEvent({
       name: "landing_send_to_computer_clicked",
       properties: { placement },
     });
-    const url = window.location.href;
+  };
+  const copy = async () => {
+    const copied = await copyPlainText(link());
+    setStatus(copied ? "copied" : "failed");
+  };
+  const send = async () => {
+    recordClick();
+    const url = link();
     if (typeof navigator.share === "function") {
       try {
         await navigator.share({
@@ -33,24 +57,35 @@ export function SendToComputerButton({
         }
       }
     }
-    const copied = await copyPlainText(url);
-    setStatus(copied ? "copied" : "failed");
-    setTimeout(() => setStatus("idle"), 1500);
+    await copy();
   };
   return (
-    <button
-      type="button"
-      className="btn btn-primary btn-install install-send"
-      onClick={() => void send()}
-    >
-      <HugeiconsIcon icon={LaptopIcon} className="btn-ic" />
-      Send to my computer
-      <span
-        className={status === "idle" ? "cmd-toast" : "cmd-toast show"}
-        aria-hidden="true"
+    <span className="install-phone-actions">
+      <button
+        type="button"
+        className="btn btn-primary btn-install"
+        onClick={() => void send()}
       >
-        {status === "failed" ? "Copy failed" : "Link copied"}
+        <HugeiconsIcon icon={LaptopIcon} className="btn-ic" />
+        Get bb on your computer
+      </button>
+      <button
+        type="button"
+        className="install-copy-link"
+        onClick={() => {
+          recordClick();
+          void copy();
+        }}
+      >
+        Copy link
+      </button>
+      <span className="install-copy-status" role="status">
+        {status === "failed"
+          ? "Copy failed. Try sharing the link instead."
+          : status === "copied"
+            ? "Link copied"
+            : ""}
       </span>
-    </button>
+    </span>
   );
 }

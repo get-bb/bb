@@ -570,23 +570,45 @@ body {
   color: var(--ink);
 }
 
-.install-choice .install-send,
+.install-choice .install-phone-actions,
 .install-choice .install-note-touch {
   display: none;
 }
 
-.install-send {
-  position: relative;
-  font-family: var(--font-sans);
+.install-phone-actions {
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
 }
 
-@media (hover: none) and (pointer: coarse) {
+.install-copy-link {
+  border: 0;
+  background: none;
+  color: var(--dim);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  padding: 8px;
+}
+
+.install-copy-status {
+  color: var(--dim);
+  font-size: inherit;
+}
+
+.install-copy-status:empty {
+  display: none;
+}
+
+@media (hover: none) and (pointer: coarse) and (max-width: 600px) {
   .install-choice .install-download,
-  .install-choice .install-note-desktop {
+  .install-choice .install-note-desktop,
+  .install-browser-command {
     display: none;
   }
 
-  .install-choice .install-send {
+  .install-choice .install-phone-actions {
     display: inline-flex;
   }
 
