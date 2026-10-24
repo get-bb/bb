@@ -109,12 +109,15 @@ pnpm exec turbo run test --filter=@bb/server --continue --output-logs=new-only
 ```
 
 Each shard uploads `.turbo/runs/*.json` as a
-`test-timings-windows-<shard>-<attempt>` artifact. With nothing restored from
-the Turbo cache, a shard finishes in about three to four minutes. Setup
-(checkout, cache restore, install) is one and a half to two minutes of that,
-against under one minute on Linux: unpacking the pnpm store and linking
-`node_modules` are slow on NTFS, and the runners have no antivirus scanner to
-turn off.
+`test-timings-windows-<shard>-<attempt>` artifact. The original shard-balancing
+measurements took about three to four minutes without Turbo hits, including
+one and a half to two minutes of setup. Current CI omits pnpm store archives:
+the October 24 comparison found that restoring and linking a scoped store
+was slower than a fresh install. CI now restores an exact dependency disk
+when available and otherwise installs normally. Main runs warm the disk
+independently; every consumer retains its frozen install. See the
+[dependency-cache measurements](ci-performance.md#windows-dependency-cache-measurements)
+for timings, verification, cache keys, and fallback behavior.
 
 ## Windows runner rules
 

@@ -89,11 +89,11 @@ checksums come from official release metadata, with portable baseline builds on
 x64 runners. These changes reduce exposure to bootstrap download stalls; they do
 not establish a reduction in total successful CI time.
 
-
 CI installs Node and the checksum-verified pnpm executable before restoring
 caches. Turbo restores have a one-minute step budget. Linux and Windows skip
 pnpm store archives; macOS restores pnpm separately with its own one-minute
-budget. On Linux and Windows, extracting the full store archive could exhaust
+budget. Windows can restore a dependency disk with a separate one-minute
+budget; a miss or failed restore leaves the normal fresh install in place. On Linux and Windows, extracting the full store archive could exhaust
 the shared restore budget before Turbo outputs were restored, and the fallback
 then discarded both caches and forced a cold build. A failed pnpm restore
 selects a fresh store without discarding healthy Turbo outputs. A failed Turbo
@@ -227,6 +227,187 @@ In the tarball smoke, Windows runs the npx entrypoint and SDK consumer installs
 concurrently in separate directories; macOS and Linux run them sequentially.
 Both settle before temporary files are removed, including on failure.
 
+## Windows dependency-cache measurements
+
+An October 24 investigation sampled six successful CI runs
+([40061197725](https://github.com/get-bb/bb/actions/runs/40061197725),
+[40056664872](https://github.com/get-bb/bb/actions/runs/40056664872),
+[40055907009](https://github.com/get-bb/bb/actions/runs/40055907009),
+[40061385407](https://github.com/get-bb/bb/actions/runs/40061385407),
+[40061017932](https://github.com/get-bb/bb/actions/runs/40061017932), and
+[40060416041](https://github.com/get-bb/bb/actions/runs/40060416041)). Windows
+finished last in all six. Across their 75 Windows jobs, dependency installation
+took a median 33 seconds and p90 64 seconds. Scheduling and runner startup,
+measured from job creation to start, added a median 27 seconds and p90 44 seconds.
+The 59 Windows test shards had a median test-step duration of 65 seconds; only
+12 finished that step within three seconds. Installation matters on both warm
+and cold runs, but is not the entire critical path.
+
+[Archive benchmark 40065135842](https://github.com/get-bb/bb/actions/runs/40065135842)
+compared three fresh four-vCPU Windows Server 2025 runners per strategy, with
+the same source, Node 22.23.4, pnpm 9.15.0, lockfile, and app/database install
+filters. Each installation was followed by the same forced, uncached app test
+shard through Turbo. Dependency archives were saved immediately after an
+installation with lifecycle scripts disabled, before any build or native-module
+preparation. The archives came from the seed job in
+[40064989311](https://github.com/get-bb/bb/actions/runs/40064989311); that run's
+measurement jobs were discarded after a benchmark timer quoting error.
+
+| Strategy                         | Restore seconds | Frozen-install seconds | Restore + install seconds | Verification                               |
+| -------------------------------- | --------------- | ---------------------- | ------------------------- | ------------------------------------------ |
+| Fresh install                    | 0, 0, 0         | 24, 32, 32             | 24, 32, 32                | All three app shards passed                |
+| pnpm store archive               | 33, 24, 27      | 16, 10, 15             | 49, 34, 42                | All three app shards passed                |
+| Installed `node_modules` archive | 40, 24, 25      | 3, 1, 2                | 43, 25, 27                | All three failed native-module preparation |
+
+These are Actions step durations, excluding runner startup, checkout, tool
+setup, and cache creation. The scoped pnpm archive was 282 MiB and took eight
+seconds to save; the installed-dependency archive was 230 MiB and took nine
+seconds to save. In one store restore, download took about one second and
+extraction took another 23 seconds. The pnpm trace then found all 1,200 cached
+packages within about one second but took another seven seconds to finish
+importing them into the workspace.
+
+Re-enabling the pnpm store archive would regress this sample: median restore
+plus installation was 42 seconds against 32 seconds for fresh installation,
+even before charging cache creation. Restoring installed dependencies made
+`pnpm install --frozen-lockfile` succeed quickly, but the actual native-module
+check failed with `EPERM` while accessing the restored `prebuild-install`
+dependency. A successful install or cache-hit message alone does not establish
+a usable dependency tree. Neither archive strategy was adopted.
+
+[Disk benchmark 40065422778](https://github.com/get-bb/bb/actions/runs/40065422778)
+then compared three fresh runners per strategy using the same app dependency
+scope. An NTFS virtual disk held both pnpm's content-addressable store and its
+virtual store. The runner restored one VHDX file and mounted it before running
+the unchanged frozen install; workspace `node_modules` links were recreated
+by pnpm. This avoids unpacking individual files and preserves the dependency
+links inside the virtual store. The benchmark did not restore Turbo outputs.
+
+| Strategy               | Restore seconds | Mount seconds | Frozen-install seconds | Detach seconds | Total dependency setup/cleanup seconds |
+| ---------------------- | --------------- | ------------- | ---------------------- | -------------- | -------------------------------------- |
+| Fresh install          | 0, 0, 0         | 0, 0, 0       | 22, 39, 25             | 0, 0, 0        | 22, 39, 25                             |
+| Cached dependency disk | 5, 3, 3         | 3, 5, 3       | 3, 2, 1                | 2, 1, 2        | 13, 11, 9                              |
+
+All six forced app shards passed, including native-module preparation. Median
+dependency setup and cleanup fell from 25 to 11 seconds in this sample. This
+is not a measured whole-workflow speedup: runner startup and the test steps
+remain, and the disk needs a compatible prior installation. The 289 MiB disk
+archive took three seconds to save after a three-second detach in the seed
+job; consumers did not save it again. Unlike the package-file archive, its
+extraction took about 1.3 seconds in one consumer.
+
+[Broad-install benchmark 40065673929](https://github.com/get-bb/bb/actions/runs/40065673929)
+used the normal non-mobile install scope (1,697 packages), with two fresh
+runners per strategy. Each consumer ran the complete Windows `packages-build`
+test group through Turbo with `--force --concurrency=2`: templates, bb-app,
+demo server, desktop, and plugin build.
+
+| Strategy               | Restore seconds | Mount seconds | Frozen-install seconds | Detach seconds | Total dependency setup/cleanup seconds |
+| ---------------------- | --------------- | ------------- | ---------------------- | -------------- | -------------------------------------- |
+| Fresh install          | 0, 0            | 0, 0          | 44, 30                 | 0, 0           | 44, 30                                 |
+| Cached dependency disk | 6, 5            | 6, 6          | 2, 2                   | 1, 2           | 15, 15                                 |
+
+All four consumers passed the uncached build-package tests. That step took
+86 and 88 seconds for disk consumers and 175 and 88 seconds for controls;
+the small sample and runner variability do not establish a test-execution
+speedup. The 656 MiB image took seven seconds to save after a four-second
+detach in the seed job. These setup measurements exclude that one-time cache
+creation cost; a cache miss must still install dependencies and create the
+image. They establish disk reuse as a candidate optimization, without
+claiming that changing dependency setup fixes runner queues or uncached test
+duration.
+
+### Dependency image lifecycle
+
+`.github/actions/windows-dependency-cache` restores a single NTFS VHDX file
+containing both the pnpm content store and virtual store. Both live on `P:` so
+pnpm can link package files without cross-volume copies. The checkout stays in
+its normal location. Each consumer still runs its existing frozen install,
+install filters, and lifecycle-script policy; pnpm reconstructs workspace
+links and fetches any additional packages, including mobile dependencies when
+that shard needs them. Cached test outputs remain separate in Turbo.
+
+The independent `Warm Windows dependencies` job runs on main and manual CI
+runs. On an exact miss it creates a fresh disk and installs the non-mobile
+workspace with scripts disabled. It detaches the disk, verifies that it is no
+longer attached, then saves it before running any builds or native-module
+preparation. Consumers never save their mutated copies. The warmer is optional
+and no test job waits for it; the first run after dependency changes uses normal
+installs, and subsequent runs can reuse the image.
+
+Keys include the lockfile, workspace manifests and pnpm configuration, patches,
+the install and disk setup implementation, the declared pnpm version, actual
+Node version and architecture, Windows release and runner image version when
+available, and workspace/temp paths. There are no partial-key restores. A
+missing image, restore failure, invalid disk, missing store directories, or
+occupied `P:` leaves pnpm on its ordinary filesystem. The existing install
+remains responsible for validating dependencies. Mounted consumer images are
+discarded with their ephemeral runners.
+
+The small `diskpart` wrapper is necessary on the current Blacksmith image:
+[the maintained Dev Drive action failed](https://github.com/get-bb/bb/actions/runs/40067279701/job/120793062708)
+because `New-VHD` and `Dismount-VHD` are unavailable. A fresh ReFS disk using
+`diskpart` was also measured in
+[40067454032](https://github.com/get-bb/bb/actions/runs/40067454032): disk creation
+plus install took 28 and 31 seconds, compared with fresh NTFS installs of 28
+and 30 seconds. That sample gives no reason to add a fresh drive to every cold
+install; the measured benefit comes from reusing installed dependency files.
+
+### Comparison with other projects
+
+The October 24 source review found established caching and filesystem tools,
+but different Windows coverage and no universal fast-install configuration:
+
+- **T3 Code** has no Windows jobs in its normal CI. Its
+  [Windows test workflow](https://github.com/pingdotgg/t3code/blob/b24e8ce2df0f09bf01883c6b0010f75497e212b3/.github/workflows/windows-tests.yml#L1-L61)
+  is manual-only and uses an ordinary pnpm store archive. An observed
+  [manual test job](https://github.com/pingdotgg/t3code/actions/runs/39196778958/job/117881161362)
+  spent 67 seconds installing dependencies after a cache miss. Its Windows
+  [release targets build on Linux](https://github.com/pingdotgg/t3code/blob/b24e8ce2df0f09bf01883c6b0010f75497e212b3/.github/workflows/release.yml#L681-L732)
+  and only verify the packaged artifacts on Windows; platform-independent
+  JavaScript is built once and shared. Its Linux setup also
+  [records rejecting a store-only Sticky Disk](https://github.com/pingdotgg/t3code/blob/b24e8ce2df0f09bf01883c6b0010f75497e212b3/.github/actions/setup-ci-deps/action.yml#L51-L67)
+  because cross-filesystem copies erased the fast mount's benefit.
+- **Orca** deliberately
+  [omits store restoration for measured Windows PR installs](https://github.com/stablyai/orca/blob/a75cdc828771891fb3554e866ebdb605e0bebdfa/.github/actions/install-node-dependencies/action.yml#L147-L196).
+  It uses host-only architecture selection and excludes unused optional CLI
+  binaries in its
+  [dependency policy](https://github.com/stablyai/orca/blob/a75cdc828771891fb3554e866ebdb605e0bebdfa/pnpm-workspace.yaml#L39-L59).
+  One successful [Windows PR job](https://github.com/stablyai/orca/actions/runs/40065723726/job/120788913442)
+  installed 1,208 root packages in 13.7 seconds with pnpm 12.14.0 and Node
+  24.22.1; the complete dependency action took 34 seconds and a separate
+  mobile install took 22.3 seconds. Full unit shards run on Linux; Windows
+  runs selected boundary and packaged-app checks. Native outputs are cached
+  separately and probed before reuse. The observed time does not isolate the
+  effects of pnpm version, architecture selection, runner, or dependency set.
+- **VS Code** caches fully installed npm dependencies in a
+  [custom 7-Zip archive](https://github.com/microsoft/vscode/blob/1184ad4d45794110deb6b897ea83b15aac44ed89/.github/workflows/node_modules_cache/cache.ps1#L18-L25),
+  skips installation on exact hits, and
+  [prewarms missing caches from main](https://github.com/microsoft/vscode/blob/1184ad4d45794110deb6b897ea83b15aac44ed89/.github/workflows/pr-node-modules.yml#L1-L43).
+  In [PR run 40062837040](https://github.com/microsoft/vscode/actions/runs/40062837040),
+  seven Windows jobs each spent 75–77 seconds restoring dependencies and then
+  skipped installation. One 1,098 MiB archive took about 62 seconds just to
+  extract. This is an established reuse design, not evidence that extraction
+  is cheap. Its npm archive traversal is not a verified replacement for
+  pnpm's linked layout.
+
+For Windows filesystem setup, an existing implementation was evaluated first.
+[`samypr100/setup-dev-drive`](https://github.com/samypr100/setup-dev-drive/tree/562171fe8df7401fdf582d766cd3b6ab80d5b1a0)
+supports ReFS or NTFS, remounting cached VHDX files, and post-job cleanup.
+[Oxc](https://github.com/oxc-project/oxc/blob/a22c9f2abc74cbc00a75cf3d7ad6adeeb2a22fc1/.github/workflows/ci.yml#L79-L134)
+and [Rolldown](https://github.com/rolldown/rolldown/blob/c50bb60abb4adde786c3ca02e0eef1821897d93c/.github/workflows/reusable-native-build.yml#L24-L46)
+use it for Windows ReFS Dev Drives; these workflows do not establish that they
+cache the entire VHDX. Oxc explicitly copies the workspace before installing
+because the copy operation does not preserve pnpm directory links.
+
+Host-only dependency selection was also tested with BB's current pnpm: the
+installs took 29 and 31 seconds versus 31 and 50 seconds in the controls, but
+failed the desktop contract requiring both x64 and arm64 plugin-build packages.
+CI retains both targets and the current pnpm version. A newer pnpm and
+sharing platform-independent release JavaScript remain separate optimizations.
+Copying T3 Code's or Orca's Linux-first test allocation would change coverage;
+the dependency image preserves BB's existing blocking Windows matrix.
+
 ## Cache maintenance
 
 `CI Cache Maintenance` reports GitHub-visible storage by family and runs daily.
@@ -359,9 +540,9 @@ restored them through Actions cache. All output files matched byte-for-byte
 within each platform: 1,751 on Linux and 1,752 on Windows.
 
 | Platform | Cold build seconds | Warm build seconds | Restore seconds | Cache save seconds |
-| --- | --- | --- | --- | --- |
-| Linux | 43.0, 36.0, 28.8 | 5.5, 5.6, 4.7 | 1, 1, 0 | 2 |
-| Windows | 39.6, 35.1, 40.7 | 6.3, 6.8, 7.0 | 2, 1, 2 | 2 |
+| -------- | ------------------ | ------------------ | --------------- | ------------------ |
+| Linux    | 43.0, 36.0, 28.8   | 5.5, 5.6, 4.7      | 1, 1, 0         | 2                  |
+| Windows  | 39.6, 35.1, 40.7   | 6.3, 6.8, 7.0      | 2, 1, 2         | 2                  |
 
 Charging each warm sample the measured cache-save cost gives median paired
 savings of 27 seconds on Linux and 29 seconds on Windows. These are app-rebuild
@@ -383,10 +564,10 @@ ran three copies of each arrangement against identical source on four-vCPU
 Linux runners:
 
 | Replica | Serial planning and validation | Parallel planning | Earlier release |
-| --- | --- | --- | --- |
-| 1 | 39s | 13s | 26s |
-| 2 | 35s | 12s | 23s |
-| 3 | 40s | 13s | 27s |
+| ------- | ------------------------------ | ----------------- | --------------- |
+| 1       | 39s                            | 13s               | 26s             |
+| 2       | 35s                            | 12s               | 23s             |
+| 3       | 40s                            | 13s               | 27s             |
 
 Every frozen install passed, including the three separate validation jobs
 (34–46 seconds each, including their setup). Median planning time fell from
