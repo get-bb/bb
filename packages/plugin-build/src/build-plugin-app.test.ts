@@ -256,6 +256,54 @@ describe("plugin app runtime shim", () => {
     expect(js).toMatch(/runtime\d*\.questionFormHost\b/);
   });
 
+  it.each([
+    ["shared-ui source", "shared-ui/src", true],
+    ["a registry flavor", "flavors", false],
+  ])(
+    "shims an @/ alias for question-form-host only when it points into %s",
+    async (_label, aliasRoot, shimmed) => {
+      const dir = await mkdtemp(
+        join(tmpdir(), "bb-plugin-question-host-alias-"),
+      );
+      tempDirs.push(dir);
+      const files: Record<string, string> = {
+        [join(
+          dir,
+          "shared-ui",
+          "src",
+          "components",
+          "ui",
+          "question-form-host.tsx",
+        )]:
+          `export function useQuestionFormHost() { return "bundled-default-context"; }\n`,
+        [join(dir, "flavors", "components", "ui", "question-form-host.tsx")]:
+          `export function useQuestionFormHost() { return "bundled-default-context"; }\n`,
+        [join(dir, "plugin", "tsconfig.json")]: JSON.stringify({
+          compilerOptions: { paths: { "@/*": [`../${aliasRoot}/*`] } },
+        }),
+        [join(dir, "plugin", "app.tsx")]:
+          `import { useQuestionFormHost } from "@/components/ui/question-form-host";\nexport { useQuestionFormHost };\n`,
+      };
+      for (const [filePath, contents] of Object.entries(files)) {
+        await mkdir(dirname(filePath), { recursive: true });
+        await writeFile(filePath, contents);
+      }
+      const result = await build({
+        entryPoints: [join(dir, "plugin", "app.tsx")],
+        bundle: true,
+        format: "esm",
+        platform: "browser",
+        jsx: "automatic",
+        write: false,
+        logLevel: "silent",
+        plugins: [runtimeShimPlugin()],
+      });
+      const js = result.outputFiles[0]?.text ?? "";
+      expect(js.includes("bundled-default-context")).toBe(!shimmed);
+      expect(/runtime\d*\.questionFormHost\b/.test(js)).toBe(shimmed);
+    },
+  );
+
   it("recognizes only shared-ui's own host-backed modules as relative imports", () => {
     const sharedUiComponent =
       "/repo/packages/shared-ui/src/components/ui/empty-state.tsx";
