@@ -826,6 +826,38 @@ a.marketplace-detail-author:hover {
   font-size: 13px;
 }
 
+.marketplace-playgrounds-install {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.marketplace-playgrounds-install > .btn {
+  max-width: 100%;
+  white-space: normal;
+}
+
+.marketplace-playgrounds-trust {
+  max-width: 60ch;
+  margin: 0;
+  color: var(--dim);
+}
+
+.marketplace-playgrounds-command {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.marketplace-playgrounds-command > summary {
+  cursor: pointer;
+  color: var(--dim);
+}
+
+.marketplace-playgrounds-command[open] > summary {
+  margin-bottom: 12px;
+}
+
 .marketplace-detail-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -1200,7 +1232,6 @@ a.marketplace-detail-author:hover {
 }
 
 @media (max-width: 560px) {
-
   .marketplace-detail-download {
     display: none;
   }
