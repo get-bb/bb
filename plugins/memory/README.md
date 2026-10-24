@@ -13,6 +13,8 @@ provides:
 - optimistic update/forget operations and soft deletion;
 - basic prompt-injection and secret-pattern rejection;
 - a bundled `memory` skill that teaches agents retrieval and write policy;
+- a bundled `import-native-memories` skill that moves Claude Code and Codex
+  memories into this store after you approve the plan;
 - a Settings → Plugins → Memory table for reviewing, editing, and deleting
   every stored global or project memory.
 
@@ -58,6 +60,14 @@ The same switches are the Claude Code memory and Codex memory toggles under
 Settings → Plugins → Claude Code provider and Codex provider. The bundled
 [`memory` skill](skills/memory/SKILL.md#provider-native-memory) explains what
 each setting controls and when it applies.
+
+To keep what your agents already remember, click **Import memories** in
+Settings → Plugins → Memory. It opens a new thread with the request filled in.
+The card shows only when an enabled provider's plugin defines a
+`memoryEnabled` setting. The bundled
+[`import-native-memories`](skills/import-native-memories/SKILL.md) skill has
+the agent find those memories on every connected machine, propose what to
+keep, and save only after you approve. It only reads the provider files.
 
 ## Scopes
 

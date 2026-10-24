@@ -2,7 +2,9 @@ import { Fragment, useCallback, useEffect, useState } from "react";
 import {
   definePluginApp,
   UrlLink,
+  useBbNavigate,
   useRpc,
+  useSdk,
   type PluginRpcResult,
 } from "@get-bb/plugin-sdk/app";
 import type { memoryRpcContract } from "./server.js";
@@ -15,6 +17,108 @@ import { Textarea } from "@/components/ui/textarea";
 type MemoryRecord = PluginRpcResult<
   (typeof memoryRpcContract)["listMemories"]
 >["memories"][number];
+
+const IMPORT_NATIVE_MEMORIES_PROMPT =
+  "Import my agents' built-in memories into bb Memory. Show me the plan before saving.";
+
+interface NativeMemoryProvider {
+  pluginId: string;
+}
+
+function useNativeMemoryProviders(): NativeMemoryProvider[] | null {
+  const sdk = useSdk();
+  const [providers, setProviders] = useState<NativeMemoryProvider[] | null>(
+    null,
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    const resolve = async (): Promise<NativeMemoryProvider[]> => {
+      const catalog = await sdk.providers.catalog();
+      const enabled = new Map<string, (typeof catalog)[number]>();
+      for (const entry of catalog) {
+        if (
+          entry.enabled &&
+          entry.pluginEnabled &&
+          !enabled.has(entry.pluginId)
+        ) {
+          enabled.set(entry.pluginId, entry);
+        }
+      }
+      const resolved = await Promise.all(
+        [...enabled.values()].map(async (entry) => {
+          try {
+            const settings = await sdk.plugins.getSettings({
+              pluginId: entry.pluginId,
+            });
+            const descriptor = settings.schema.memoryEnabled;
+            if (descriptor?.type !== "boolean") return null;
+            return { pluginId: entry.pluginId };
+          } catch {
+            return null;
+          }
+        }),
+      );
+      return resolved.filter(
+        (provider): provider is NativeMemoryProvider => provider !== null,
+      );
+    };
+    resolve()
+      .catch(() => [])
+      .then((next) => {
+        if (!cancelled) setProviders(next);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sdk]);
+
+  return providers;
+}
+
+function NativeMemoryNotice({
+  providers,
+}: {
+  providers: NativeMemoryProvider[] | null;
+}) {
+  const navigate = useBbNavigate();
+  if (providers === null || providers.length === 0) return null;
+  const [onlyProvider] = providers;
+  const settingsHref =
+    providers.length === 1 && onlyProvider !== undefined
+      ? `/settings/plugins/${encodeURIComponent(onlyProvider.pluginId)}`
+      : "/settings/plugins";
+  return (
+    <div className="rounded-md border border-border bg-muted/20 p-3 text-sm text-muted-foreground">
+      <p>
+        Turn off your agents&apos;{" "}
+        <UrlLink
+          href={settingsHref}
+          className="text-foreground underline underline-offset-2"
+        >
+          built-in memory
+        </UrlLink>{" "}
+        to avoid duplicates.
+      </p>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
+        <p className="min-w-0 flex-1 basis-48 text-foreground">
+          Bring over what your agents already remember.
+        </p>
+        <Button
+          size="sm"
+          onClick={() =>
+            navigate.toCompose({
+              focusPrompt: true,
+              initialPrompt: IMPORT_NATIVE_MEMORIES_PROMPT,
+            })
+          }
+        >
+          Import memories
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -157,6 +261,7 @@ function MemoryEditor({
 
 function MemorySettings() {
   const rpc = useRpc<typeof memoryRpcContract>();
+  const nativeMemoryProviders = useNativeMemoryProviders();
   const [memories, setMemories] = useState<MemoryRecord[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -185,16 +290,7 @@ function MemorySettings() {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-md border border-border bg-muted/20 p-3 text-sm text-muted-foreground">
-        Turn off your agents&apos;{" "}
-        <UrlLink
-          href="/settings/plugins"
-          className="text-foreground underline underline-offset-2"
-        >
-          built-in memory
-        </UrlLink>{" "}
-        to avoid duplicates.
-      </div>
+      <NativeMemoryNotice providers={nativeMemoryProviders} />
       {error ? (
         <p className="text-sm text-destructive" role="alert">
           {error}

@@ -44,6 +44,10 @@ modify the provider's global configuration, so the provider's own sessions
 outside bb keep their setting. Turning it off does not delete memories the
 provider already stored.
 
+To bring those stored memories into bb memory, follow the
+`import-native-memories` skill. Settings → Plugins → Memory has an
+**Import memories** button that starts a thread with that request.
+
 ## Retrieve progressively
 
 When a memory summary may be relevant, inspect it instead of guessing:

@@ -7,6 +7,7 @@ Give your agents a memory that survives across threads, projects, and providers.
 - A summary catalog that bb adds to the agent's instructions on every turn. The catalog holds summaries only, up to 3,900 characters.
 - A table in Settings → Plugins → Memory where you review, edit, and delete every stored memory.
 - Kinds, tags, importance, pinning, provenance, and version history for each record.
+- An **Import memories** button that asks an agent to bring over what your agents already remember. The agent shows its plan before saving and never changes the original files.
 
 ## How it works
 
