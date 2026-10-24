@@ -48,8 +48,8 @@ Cached reports are snapshots; rescan to see external filesystem changes. Bulk
 cleanup runs exclusively per machine. Scans run alongside cleanup; a finished
 scan leaves out entries cleared while it ran. Different stopped threads
 can clear concurrently, while duplicate clears for one thread are rejected.
-The UI starts a clear immediately, shows row progress and error toasts,
-and keeps other thread actions available. Settings save immediately without
+The UI starts a clear immediately, reports progress, results and errors in
+toasts only, and keeps every other action available. Settings save immediately without
 success toasts; failed saves restore the previous value. Concurrent core cleanup tolerates
 missing entries. Disk measurement and deletion remain in the plugin host worker. Core emits an environment-removal notification; storage scans and cleanup stay
 in the plugin.

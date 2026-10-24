@@ -334,17 +334,8 @@ function StoragePage({
   const detail = hosts.find((host) => host.hostId === hostId) ?? null;
   const [savingSetting, setSavingSetting] = useState(false);
   const settingSavePending = useRef(false);
-  const [actionBusy, setBusy] = useState(false);
-  const busy =
-    actionBusy ||
-    hosts.some(
-      (host) =>
-        (hostId === null || host.hostId === hostId) &&
-        (host.largeFileCleanup.state === "running" ||
-          host.archivedFileCleanup.state === "running" ||
-          host.maintenance.state === "running"),
-    );
-  const [rowActions, setRowActions] = useState<Record<string, RowAction>>({});
+  const [busy, setBusy] = useState(false);
+  const rowActions = useRef(new Set<string>());
   const [expandedThreadsHostId, setExpandedThreadsHostId] = useState<
     string | null
   >(null);
@@ -430,15 +421,16 @@ function StoragePage({
     feedback: ActionFeedback,
     work: () => Promise<string | null>,
   ) {
-    if (rowActions[key]?.state === "running") return;
-    setRowActions((current) => ({ ...current, [key]: { state: "running" } }));
+    if (rowActions.current.has(key)) return;
+    rowActions.current.add(key);
     const id = toast.loading(feedback.title, {
+      id: feedback.id,
       description: feedback.description,
     });
     try {
       const description = await work();
       if (description === null) toast.dismiss(id);
-      else
+      else if (!feedback.background)
         toast.success(feedback.completed, {
           id,
           description: description || feedback.description,
@@ -450,11 +442,7 @@ function StoragePage({
         description: `${feedback.description} · ${message(error)}`,
       });
     } finally {
-      setRowActions((current) => {
-        const next = { ...current };
-        delete next[key];
-        return next;
-      });
+      rowActions.current.delete(key);
     }
   }
   const retentionOn =
@@ -479,22 +467,7 @@ function StoragePage({
   const scanning = detail?.scan.state === "scanning";
   const machine = hostId ? machines[hostId] : undefined;
   const offline = machine !== undefined && machine.status !== "connected";
-  const activeRowActions: Record<string, RowAction> = {
-    ...rowActions,
-    ...Object.fromEntries(
-      (detail?.externalWorktreeRemovals ?? [])
-        .filter((removal) => removal.state === "running")
-        .map((removal) => [
-          `worktree:${removal.path}`,
-          { state: "running" } as const,
-        ]),
-    ),
-  };
-  const rowActionRunning = Object.values(activeRowActions).some(
-    (action) => action.state === "running",
-  );
-  const locked = busy || offline || rowActionRunning;
-  const rowDisabled = busy || offline;
+  const locked = busy || offline;
   function devInstancesCleanup(target: string, count: number, size: number) {
     return {
       key: "dev-instances",
@@ -548,50 +521,12 @@ function StoragePage({
         : totals,
     { threadCount: 0, fileCount: 0, bytes: 0 },
   );
-  const cleanupStatuses = hosts.filter((host) => {
-    const status = host.largeFileCleanup;
-    return (
-      (hostId === null || host.hostId === hostId) && status.state === "running"
-    );
-  });
-  const cleanupRunning = cleanupStatuses.some(
-    (host) => host.largeFileCleanup.state === "running",
-  );
-  const cleanupStatus = cleanupStatuses.length > 0 && (
-    <div className="space-y-2 border-t border-border pt-3">
-      {cleanupStatuses.map((host) => {
-        const status = host.largeFileCleanup;
-        if (status.state !== "running") return null;
-        return (
-          <p
-            key={host.hostId}
-            role="status"
-            className="flex items-center gap-2 text-xs text-muted-foreground"
-          >
-            <Icon name="Spinner" className="size-3.5 shrink-0 animate-spin" />
-            {hostId === null &&
-              `${machines[host.hostId]?.name ?? host.hostId}: `}
-            Deleting large files…
-          </p>
-        );
-      })}
-    </div>
-  );
   const suggestions =
-    archivedLargeFiles.bytes >= LARGE_FILE_NUDGE_MIN_BYTES ||
-    cleanupStatuses.length > 0
+    archivedLargeFiles.bytes >= LARGE_FILE_NUDGE_MIN_BYTES
       ? [
           {
-            title: cleanupRunning
-              ? "Deleting large files"
-              : archivedLargeFiles.bytes >= LARGE_FILE_NUDGE_MIN_BYTES
-                ? `Free up ${bytes(archivedLargeFiles.bytes)} from archived threads`
-                : "Large-file cleanup",
-            description:
-              cleanupRunning ||
-              archivedLargeFiles.bytes < LARGE_FILE_NUDGE_MIN_BYTES
-                ? "Smaller files and conversation history are kept."
-                : `${plural(archivedLargeFiles.fileCount, "file")} of ${bytes(LARGE_FILE_MIN_BYTES)} or more sit in the thread storage of ${plural(archivedLargeFiles.threadCount, "archived thread")}. Deleting them keeps smaller files like reports, and conversation history isn’t affected.`,
+            title: `Free up ${bytes(archivedLargeFiles.bytes)} from archived threads`,
+            description: `${plural(archivedLargeFiles.fileCount, "file")} of ${bytes(LARGE_FILE_MIN_BYTES)} or more sit in the thread storage of ${plural(archivedLargeFiles.threadCount, "archived thread")}. Deleting them keeps smaller files like reports, and conversation history isn’t affected.`,
             action: "Delete large files",
             cleanup: largeFilesCleanup(null, archivedLargeFiles),
           },
@@ -636,7 +571,7 @@ function StoragePage({
             )
           }
         >
-          {busy ? "Removing…" : cleanup.action}
+          {cleanup.action}
         </Button>
       </div>
     </div>
@@ -702,7 +637,7 @@ function StoragePage({
                 variant="outline"
                 size="sm"
                 className="shrink-0"
-                disabled={actionBusy || scanning || offline || !detail}
+                disabled={busy || scanning || offline || !detail}
                 onClick={() =>
                   void perform(() => rpc.call("scanHost", { hostId }))
                 }
@@ -736,17 +671,6 @@ function StoragePage({
               </Button>
             )}
           </div>
-        )}
-        {detail?.maintenance.state === "running" && (
-          <p role="status" className="text-xs text-muted-foreground">
-            {detail.maintenance.kind === "orphans"
-              ? "Removing orphaned storage…"
-              : detail.maintenance.kind === "development"
-                ? "Removing development instances…"
-                : detail.maintenance.kind === "externalWorktrees"
-                  ? "Removing worktrees created outside BB…"
-                  : "Retrying worktree cleanup…"}
-          </p>
         )}
         {!state ? (
           !loadError && (
@@ -860,22 +784,6 @@ function StoragePage({
                       }
                     >
                       {cleanup?.key === "archived-files" && cleanupConfirmation}
-                      {detail?.archivedFileCleanup &&
-                        detail.archivedFileCleanup.state === "running" && (
-                          <p
-                            role="status"
-                            className="mt-3 text-xs text-muted-foreground"
-                          >
-                            Removing archived files in the background. Cleared{" "}
-                            {bytes(detail.archivedFileCleanup.clearedBytes)}{" "}
-                            from{" "}
-                            {plural(
-                              detail.archivedFileCleanup.clearedThreads,
-                              "thread",
-                            )}
-                            .
-                          </p>
-                        )}
                     </CleanupRow>
                     <CleanupRow
                       title="Large files in archived threads"
@@ -899,7 +807,6 @@ function StoragePage({
                       }
                     >
                       {cleanup?.key === "large-files" && cleanupConfirmation}
-                      {cleanupStatus}
                     </CleanupRow>
                     <CleanupRow
                       title="Orphaned storage"
@@ -1021,47 +928,34 @@ function StoragePage({
                               ]),
                             )
                           }
-                          rowDisabled={rowDisabled}
-                          rowActions={activeRowActions}
+                          rowDisabled={locked}
                           confirmationKey={cleanup?.key ?? null}
                           confirmation={cleanupConfirmation}
                           onRemove={(worktree, label) => {
-                            const id = worktreeRemovalToastId(
-                              report.hostId,
-                              worktree.path,
-                            );
                             const feedback = {
                               title: "Removing worktree",
                               completed: "Worktree removed",
                               failed: "Couldn’t remove worktree",
                               description: worktree.path,
-                              id,
+                              id: worktreeRemovalToastId(
+                                report.hostId,
+                                worktree.path,
+                              ),
                               background: { hostId: report.hostId },
                             };
-                            const start = async (force: boolean) => {
-                              const result = await rpc.call(
-                                "startRemoveExternalWorktree",
-                                {
-                                  hostId: report.hostId,
-                                  path: worktree.path,
-                                  force,
-                                },
-                              );
-                              if (result.state === "started") {
-                                toast.loading(feedback.title, {
-                                  id,
-                                  description: worktree.path,
-                                });
-                                await refresh();
-                              }
-                              return result;
-                            };
+                            const start = (force: boolean) =>
+                              rpc.call("startRemoveExternalWorktree", {
+                                hostId: report.hostId,
+                                path: worktree.path,
+                                force,
+                              });
                             void runRowAction(
                               `worktree:${worktree.path}`,
                               feedback,
                               async () => {
                                 const result = await start(false);
-                                if (result.state === "started") return null;
+                                if (result.state === "started")
+                                  return worktree.path;
                                 const forceable = result.reasons.filter(
                                   (reason) =>
                                     reason === "locked" ||
@@ -1144,7 +1038,6 @@ function StoragePage({
                       ? report.largestThreads
                       : report.largestThreads.slice(0, PREVIEW_COUNT)
                     ).map((thread) => {
-                      const clear = rowActions[thread.threadId];
                       return (
                         <div
                           key={thread.threadId}
@@ -1164,10 +1057,6 @@ function StoragePage({
                               ]}
                               onOpen={() => navigate.toThread(thread.threadId)}
                             />
-                            <RowActionStatus
-                              action={clear}
-                              runningLabel="Clearing files…"
-                            />
                           </div>
                           <div className="flex h-5 shrink-0 items-center gap-2">
                             <span className="text-xs tabular-nums text-muted-foreground">
@@ -1176,8 +1065,7 @@ function StoragePage({
                             <RowActionButton
                               label="Clear files"
                               target={thread.title}
-                              action={clear}
-                              disabled={rowDisabled || thread.running}
+                              disabled={locked || thread.running}
                               onClick={() =>
                                 void runRowAction(
                                   thread.threadId,
@@ -1218,8 +1106,7 @@ function StoragePage({
                 {report.developerStorage && (
                   <DeveloperStorage
                     storage={report.developerStorage}
-                    rowDisabled={rowDisabled}
-                    rowActions={rowActions}
+                    rowDisabled={locked}
                     confirmationKey={cleanup?.key ?? null}
                     confirmation={cleanupConfirmation}
                     onRemoveSelected={(entries) => {
@@ -1361,7 +1248,6 @@ function StoragePage({
                   </Button>
                 </div>
                 {cleanup?.key === suggestion.cleanup.key && cleanupConfirmation}
-                {cleanupStatus}
               </div>
             ))}
             <section className="space-y-3">
@@ -1371,7 +1257,7 @@ function StoragePage({
                   <Button
                     variant="outline"
                     size="sm"
-                    disabled={actionBusy || scannable.length === 0}
+                    disabled={busy || scannable.length === 0}
                     onClick={() =>
                       void perform(() => rpc.call("scanAll", null))
                     }
@@ -1399,7 +1285,7 @@ function StoragePage({
                     host={host}
                     machine={machines[host.hostId]}
                     server={host.hostId === primaryHostId}
-                    busy={actionBusy}
+                    busy={busy}
                     onOpen={() =>
                       navigate.toPluginPanel(PANEL, { subPath: host.hostId })
                     }
@@ -1962,8 +1848,6 @@ function ProjectWorktrees({
   );
 }
 
-type RowAction = { state: "running" };
-
 type ExternalWorktree = NonNullable<
   HostReport["report"]
 >["externalWorktrees"][number];
@@ -2003,7 +1887,6 @@ function ExternalWorktrees({
   worktrees,
   projectNames,
   rowDisabled,
-  rowActions,
   confirmationKey,
   confirmation,
   onRemove,
@@ -2011,7 +1894,6 @@ function ExternalWorktrees({
   worktrees: ExternalWorktree[];
   projectNames: ReadonlyMap<string, string>;
   rowDisabled: boolean;
-  rowActions: Record<string, RowAction>;
   confirmationKey: string | null;
   confirmation: ReactNode;
   onRemove: (worktree: ExternalWorktree, label: string) => void;
@@ -2089,10 +1971,6 @@ function ExternalWorktrees({
                           )}
                         </p>
                       )}
-                      <RowActionStatus
-                        action={rowActions[`worktree:${worktree.path}`]}
-                        runningLabel="Removing worktree…"
-                      />
                     </div>
                     <div className="flex h-5 shrink-0 items-center gap-2">
                       <span className="tabular-nums">
@@ -2101,7 +1979,6 @@ function ExternalWorktrees({
                       <RowActionButton
                         label="Remove worktree"
                         target={label}
-                        action={rowActions[`worktree:${worktree.path}`]}
                         disabled={rowDisabled}
                         onClick={() => onRemove(worktree, label)}
                       />
@@ -2135,17 +2012,14 @@ function ExternalWorktrees({
 function RowActionButton({
   label,
   target,
-  action,
   disabled,
   onClick,
 }: {
   label: string;
   target: string;
-  action: RowAction | undefined;
   disabled: boolean;
   onClick: () => void;
 }) {
-  const running = action?.state === "running";
   return (
     <TooltipProvider delayDuration={250}>
       <Tooltip>
@@ -2155,33 +2029,15 @@ function RowActionButton({
             size="icon"
             className="-my-1.5 size-7 text-muted-foreground hover:text-destructive"
             aria-label={`${label}: ${target}`}
-            disabled={disabled || running}
+            disabled={disabled}
             onClick={onClick}
           >
-            <Icon
-              name={running ? "Spinner" : "Trash2"}
-              className={cn("size-4", running && "animate-spin")}
-            />
+            <Icon name="Trash2" className="size-4" />
           </Button>
         </TooltipTrigger>
         <TooltipContent>{label}</TooltipContent>
       </Tooltip>
     </TooltipProvider>
-  );
-}
-
-function RowActionStatus({
-  action,
-  runningLabel,
-}: {
-  action: RowAction | undefined;
-  runningLabel: string;
-}) {
-  if (action === undefined) return null;
-  return (
-    <p role="status" className="text-xs text-muted-foreground">
-      {runningLabel}
-    </p>
   );
 }
 
@@ -2231,7 +2087,6 @@ function ShowMoreToggle({
 function DeveloperStorage({
   storage,
   rowDisabled,
-  rowActions,
   confirmationKey,
   confirmation,
   onRemove,
@@ -2239,7 +2094,6 @@ function DeveloperStorage({
 }: {
   storage: NonNullable<NonNullable<HostReport["report"]>["developerStorage"]>;
   rowDisabled: boolean;
-  rowActions: Record<string, RowAction>;
   confirmationKey: string | null;
   confirmation: ReactNode;
   onRemove: (entry: DeveloperEntry, label: string) => void;
@@ -2452,7 +2306,6 @@ function DeveloperStorage({
                   ).map((entry) => {
                     const primary = entry.threads[0];
                     const label = primary?.title ?? developerEntryLabel(entry);
-                    const removal = rowActions[`dev:${entry.name}`];
                     return (
                       <div key={entry.name} className="space-y-3">
                         <div className="flex items-start justify-between gap-3">
@@ -2509,10 +2362,6 @@ function DeveloperStorage({
                                 </p>
                               )
                             )}
-                            <RowActionStatus
-                              action={removal}
-                              runningLabel="Removing instance…"
-                            />
                           </div>
                           <div className="flex h-5 shrink-0 items-center gap-2">
                             <span className="text-xs font-normal tabular-nums text-muted-foreground">
@@ -2521,7 +2370,6 @@ function DeveloperStorage({
                             <RowActionButton
                               label="Remove instance"
                               target={label}
-                              action={removal}
                               disabled={rowDisabled || entry.current}
                               onClick={() => onRemove(entry, label)}
                             />

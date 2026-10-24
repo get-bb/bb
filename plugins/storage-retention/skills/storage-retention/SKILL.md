@@ -102,7 +102,7 @@ RPC methods are `hosts(null)`, `host({hostId})`, `scanHost({hostId})`,
 Cross-plugin protection is deferred. Pin automation target threads to keep them.
 Disabling the plugin stops scheduled retention and removes its storage actions. Core's idle orphan sweep remains independent.
 
-The page uses app toasts for setting saves, cleanup results, and action failures. Running scans and cleanup progress stay beside their controls. Completed cleanup messages are not retained inline or replayed on page open. Initial loading failures retain an inline retry action. Settings and unrelated machines remain usable during cleanup; report refreshes do not extend action locks.
+The page uses app toasts for setting saves, cleanup progress and results, and action failures; cleanup and row actions show no inline progress and lock no controls, so a conflicting action fails with a toast instead. Running scans stay beside their controls. Completed cleanup messages are not retained inline or replayed on page open. Initial loading failures retain an inline retry action. Settings and unrelated machines remain usable during cleanup; report refreshes do not extend action locks.
 
 `bb storage cleanup --machine HOST_ID --kind orphans|development|worktrees|externalWorktrees --yes` starts a background job and returns immediately. RPC: `startCleanup({hostId, kind})`. Read `maintenance` in usage/host reports for running, completed or failed status. Retry failures with the same command; remaining candidates are re-read. The page uses this for bulk orphan removal, missing-checkout development data, worktree retries and removing worktrees created outside BB. Existing synchronous commands remain available.
 
