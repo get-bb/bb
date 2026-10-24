@@ -45,6 +45,8 @@ import type {
   PluginThreadMetadataListResponse,
   ThreadAncestorsListResponse,
   ThreadDescendantsListResponse,
+  ThreadCascadeAction,
+  ThreadCascadeListResponse,
   ThreadPluginMetadataResponse,
   ThreadSearchResponse,
   ThreadStorageFileListResponse,
@@ -183,6 +185,7 @@ export type ThreadPluginMetadataResult = ThreadPluginMetadataResponse;
 export type PluginThreadMetadataListResult = PluginThreadMetadataListResponse;
 export type ThreadAncestorsListResult = ThreadAncestorsListResponse;
 export type ThreadDescendantsListResult = ThreadDescendantsListResponse;
+export type ThreadCascadeListResult = ThreadCascadeListResponse;
 export type ThreadSpawnResult = ThreadResponse;
 export type ThreadForkResult = ThreadResponse;
 export type ThreadInteractionGetResult = PendingInteraction;
@@ -277,6 +280,11 @@ export interface PluginThreadMetadataListArgs {
 }
 export interface ThreadAncestorsListArgs {
   threadIds: readonly string[];
+  signal?: AbortSignal;
+}
+export interface ThreadCascadeListArgs {
+  threadIds: readonly string[];
+  action: ThreadCascadeAction;
   signal?: AbortSignal;
 }
 export interface ThreadDescendantsListArgs {
@@ -649,6 +657,18 @@ export interface ThreadsArea {
   experimental_listDescendants(
     args: ThreadDescendantsListArgs,
   ): Promise<ThreadDescendantsListResult>;
+  /**
+   * Each of `threadIds` (1–200 per request) that exists and is not deleted,
+   * with `cascadeThreadIds`: the visible threads that archiving
+   * (`action: "archive"`) or deleting (`action: "delete"`) it would also
+   * affect, matching the cascade `archiveAll` and `delete` apply. Archive
+   * omits threads already archived; delete includes them. Hidden threads,
+   * deleted threads and unknown ids are omitted.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_listCascade(
+    args: ThreadCascadeListArgs,
+  ): Promise<ThreadCascadeListResult>;
   updatePluginMetadata(
     args: ThreadPluginMetadataUpdateArgs,
   ): Promise<ThreadPluginMetadataResult>;
@@ -1309,6 +1329,16 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
                 ? {}
                 : { includeHidden: input.includeHidden }),
             },
+          },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async experimental_listCascade(input) {
+      return transport.readJson(
+        transport.api.v1.threads.cascade.$post(
+          {
+            json: { threadIds: [...input.threadIds], action: input.action },
           },
           ...signalRequestArgs(input.signal),
         ),

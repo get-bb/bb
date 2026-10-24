@@ -62,6 +62,7 @@ import {
   PLUGIN_THREAD_METADATA_LIST_MAX_IDS,
   THREAD_ANCESTORS_LIST_MAX_IDS,
   THREAD_DESCENDANTS_LIST_MAX_IDS,
+  THREAD_CASCADE_LIST_MAX_IDS,
   THREAD_LIST_MAX_IDS,
   parseThreadListThreadIds,
   THREAD_MESSAGE_CONTEXT_LIMIT,
@@ -85,6 +86,7 @@ export {
   PLUGIN_THREAD_METADATA_LIST_MAX_IDS,
   THREAD_ANCESTORS_LIST_MAX_IDS,
   THREAD_DESCENDANTS_LIST_MAX_IDS,
+  THREAD_CASCADE_LIST_MAX_IDS,
   THREAD_LIST_MAX_IDS,
   parseThreadListThreadIds,
   THREAD_COUNT_ROOT_PARENT,
@@ -668,6 +670,32 @@ export const threadDescendantsListResponseSchema = z
   .strict();
 export type ThreadDescendantsListResponse = z.infer<
   typeof threadDescendantsListResponseSchema
+>;
+export const threadCascadeActionSchema = z.enum(["archive", "delete"]);
+export type ThreadCascadeAction = z.infer<typeof threadCascadeActionSchema>;
+export const threadCascadeListRequestSchema = z
+  .object({
+    threadIds: z
+      .array(z.string().min(1))
+      .min(1)
+      .max(THREAD_CASCADE_LIST_MAX_IDS),
+    action: threadCascadeActionSchema,
+  })
+  .strict();
+export type ThreadCascadeListRequest = z.infer<
+  typeof threadCascadeListRequestSchema
+>;
+export const threadCascadeListResponseSchema = z
+  .object({
+    threads: z.array(
+      z
+        .object({ threadId: z.string(), cascadeThreadIds: z.array(z.string()) })
+        .strict(),
+    ),
+  })
+  .strict();
+export type ThreadCascadeListResponse = z.infer<
+  typeof threadCascadeListResponseSchema
 >;
 export const updateThreadPluginMetadataRequestSchema = z
   .object({

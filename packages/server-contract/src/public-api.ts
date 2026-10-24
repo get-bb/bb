@@ -280,6 +280,8 @@ import type {
   ThreadAncestorsListResponse,
   ThreadDescendantsListRequest,
   ThreadDescendantsListResponse,
+  ThreadCascadeListRequest,
+  ThreadCascadeListResponse,
   ThreadPluginMetadataQuery,
   ThreadPluginMetadataResponse,
   ThreadSearchQuery,
@@ -336,6 +338,7 @@ import {
   pluginThreadMetadataListRequestSchema,
   threadAncestorsListRequestSchema,
   threadDescendantsListRequestSchema,
+  threadCascadeListRequestSchema,
   threadPluginMetadataQuerySchema,
   deleteThreadRequestSchema,
   environmentActionRequestSchema,
@@ -1462,6 +1465,22 @@ export const publicApiRoutes = {
         threadDescendantsListRequestSchema,
       ),
       response: jsonResponse<ThreadDescendantsListResponse>(),
+    }),
+    /**
+     * Each of `threadIds` (1–200) that exists and is not deleted, with the
+     * ids of the visible threads that archiving (`action: "archive"`) or
+     * deleting (`action: "delete"`) it would also affect: the same cascade
+     * the archive-all and delete routes apply. Archive omits threads that
+     * are already archived; delete includes them. Hidden threads, deleted
+     * threads and unknown ids are omitted.
+     */
+    cascade: defineRoute({
+      path: "/threads/cascade",
+      method: "post",
+      request: jsonRequest<EmptyInput, ThreadCascadeListRequest>(
+        threadCascadeListRequestSchema,
+      ),
+      response: jsonResponse<ThreadCascadeListResponse>(),
     }),
     pluginMetadata: {
       /**

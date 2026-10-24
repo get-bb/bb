@@ -829,8 +829,12 @@ off. An experiment you set yourself keeps your value either way.
   open thread), Shift-click selects the visible range from the last clicked row,
   and a plain click, Cmd/Ctrl-click, Escape, or a click outside the sidebar
   clears the selection.
-  Right-clicking a selected row offers Mark read/unread, Pin/Unpin, Move to
-  section, and Archive for the whole selection. Dragging a selected row moves
+  Right-clicking a selected row offers Mark read/unread, Pin/Unpin,
+  Notifications, Move to section, Archive (Unarchive when every selected
+  thread is archived), and Delete for the whole selection. Archive and Delete
+  ask once for the whole selection, counting child threads that are not
+  selected, and act on the topmost selected threads; Archive skips the
+  question when the Archive confirmation setting is off. Dragging a selected row moves
   every selected thread onto a section, under a thread, or into Pinned, or drops
   them onto a composer as one mention per thread. Cmd/Ctrl-click still opens a
   thread in a split. Plugins read it with

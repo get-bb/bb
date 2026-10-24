@@ -98,6 +98,26 @@ including the current row. Multiple threads drop into a composer as separate
 mentions and do not offer split or replace targets. Omit the option for a
 single-thread drag.
 
+### Bulk actions for a multi-row selection
+
+A thread action acts on several threads at once when its registration adds
+`experimental_bulkItem` next to `item`. It is pure like `item`, receives
+`{ threads, data, sdk, navigate }` with two or more selected threads in list
+order, and returns one action whose `run` applies to all of them, or null to
+stay out of the bulk menu. `useData` receives every selected thread in
+`threadIds` while that menu is open. bb's own Mark read, Pin, Archive and
+Delete have bulk items; Archive and Delete confirm once for the whole
+selection, count the threads that go with it but are not selected, and act
+only on the topmost selected threads.
+
+A thread list with multi-selection passes a selected row's
+`experimental_ThreadActionsContextMenu` the selection as
+`experimental_bulkThreads` (two or more targets in list order), its own
+`inline` entries such as Clear selection, and `onEscapeKeyDown` to clear the
+selection when Escape closes the menu; with fewer than two the row gets its
+own thread menu. In tests, `renderSlot(..., { threadBulkActions })` sets what
+that menu lists.
+
 While plugins load, bb reserves the placement your provider last had. If the
 picked provider is disabled or removed, bb falls back like Automatic; if it
 crashes, bb draws its own provider for the same placement and shows one

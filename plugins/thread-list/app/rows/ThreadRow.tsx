@@ -52,6 +52,7 @@ import {
   useSidebarThreadShortcut,
   useSdk,
   type PluginSidebarSplitPane,
+  type PluginThreadActionsContextMenuProps,
   type PluginThreadActionsInlineItem,
   type PluginThreadActionsTriggerProps,
   type PluginSidebarThreadRowStatus,
@@ -107,7 +108,7 @@ import {
   useMultiSelectionContaining,
   useThreadSelectionStore,
 } from "../selection/threadSelection.js";
-import { ThreadSelectionContextMenu } from "../selection/ThreadSelectionContextMenu.js";
+import { useThreadSelectionMenu } from "../selection/useThreadSelectionMenu.js";
 import { useOpenThreadInSplit } from "./threadRowNavigation.js";
 import { Button } from "@/components/ui/button";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing";
@@ -388,6 +389,7 @@ function ThreadRowComponent({
   const isSelected = useIsThreadSelected(thread.id);
   const selectionHidesActive = useIsSelectionHidingActiveRow(isActive);
   const multiSelection = useMultiSelectionContaining(thread.id);
+  const selectionMenu = useThreadSelectionMenu(multiSelection);
   const showProviderIcons = useAtomValue(sidebarShowProviderIconsAtom);
   const providers = useContext(SidebarProvidersContext);
   const provider = showProviderIcons
@@ -916,27 +918,31 @@ function ThreadRowComponent({
     style: rowStyle,
   });
 
+  const bulkMenuProps: Pick<
+    PluginThreadActionsContextMenuProps,
+    "experimental_bulkThreads" | "onEscapeKeyDown"
+  > =
+    selectionMenu === null
+      ? {}
+      : {
+          experimental_bulkThreads: selectionMenu.selection,
+          onEscapeKeyDown: selectionMenu.onEscapeKeyDown,
+        };
+
   return (
     <ThreadActionsContextMenu
       thread={actionTarget}
-      inline={inlineMenuActions}
+      inline={selectionMenu?.inline ?? inlineMenuActions}
       requestRename={requestRenameFromMenu}
       onOpenChange={setIsContextActionsOpen}
-      onCloseAutoFocus={handleActionsMenuCloseAutoFocus}
-      disabled={isEditing || multiSelection !== null}
+      onCloseAutoFocus={
+        selectionMenu?.onCloseAutoFocus ?? handleActionsMenuCloseAutoFocus
+      }
+      disabled={isEditing}
       dragging={rowDragBindings?.isDragging ?? false}
+      {...bulkMenuProps}
     >
-      <ThreadSelectionContextMenu
-        threadIds={multiSelection}
-        onOpenChange={setIsContextActionsOpen}
-        disabled={
-          multiSelection === null ||
-          isEditing ||
-          (rowDragBindings?.isDragging ?? false)
-        }
-      >
-        {row}
-      </ThreadSelectionContextMenu>
+      {row}
     </ThreadActionsContextMenu>
   );
 }

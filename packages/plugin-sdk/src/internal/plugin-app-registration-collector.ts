@@ -970,6 +970,14 @@ export function collectPluginAppRegistrations(
         ) {
           throw new Error(`${kind}: "useData" must be a function`);
         }
+        if (
+          registration.experimental_bulkItem !== undefined &&
+          typeof registration.experimental_bulkItem !== "function"
+        ) {
+          throw new Error(
+            `${kind}: "experimental_bulkItem" must be a function`,
+          );
+        }
         collected.threadActions.push({
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
@@ -980,6 +988,11 @@ export function collectPluginAppRegistrations(
             ? { useData: registration.useData }
             : {}),
           item: registration.item,
+          ...(registration.experimental_bulkItem !== undefined
+            ? {
+                experimental_bulkItem: registration.experimental_bulkItem,
+              }
+            : {}),
         });
       },
       experimental_browserToolbarAction(registration) {

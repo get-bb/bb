@@ -19,8 +19,8 @@ import {
 import { ThreadArchiveCommandHandler } from "./ThreadArchiveCommandHandler";
 
 const mocks = vi.hoisted(() => ({
-  requestArchive: vi.fn(),
-  requestDelete: vi.fn(),
+  requestArchiveThreads: vi.fn(),
+  requestDeleteThreads: vi.fn(),
 }));
 
 const testState = vi.hoisted(() => {
@@ -165,14 +165,16 @@ describe("thread archive command handler", () => {
 
     pressShortcut("A");
     await waitFor(() =>
-      expect(mocks.requestArchive.mock.calls).toEqual([[firstThread]]),
+      expect(mocks.requestArchiveThreads.mock.calls).toEqual([[[firstThread]]]),
     );
 
-    mocks.requestArchive.mockClear();
+    mocks.requestArchiveThreads.mockClear();
     view.rerender(<SplitHandlers focusedThreadId={secondThread.id} />);
     pressShortcut("A");
     await waitFor(() =>
-      expect(mocks.requestArchive.mock.calls).toEqual([[secondThread]]),
+      expect(mocks.requestArchiveThreads.mock.calls).toEqual([
+        [[secondThread]],
+      ]),
     );
   });
 
@@ -182,7 +184,7 @@ describe("thread archive command handler", () => {
     pressShortcut("A");
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(mocks.requestArchive).not.toHaveBeenCalled();
+    expect(mocks.requestArchiveThreads).not.toHaveBeenCalled();
   });
 
   it("does nothing when the focused thread is archived", async () => {
@@ -197,6 +199,6 @@ describe("thread archive command handler", () => {
     pressShortcut("A");
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(mocks.requestArchive).not.toHaveBeenCalled();
+    expect(mocks.requestArchiveThreads).not.toHaveBeenCalled();
   });
 });

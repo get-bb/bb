@@ -45,6 +45,17 @@ afterEach(() => {
 });
 
 describe("ThreadSelectionStore", () => {
+  it("drops removed threads and forgets a removed range anchor", () => {
+    renderSidebar(["a", "b", "c", "d"]);
+    const store = new ThreadSelectionStore();
+    store.handleClick("b", SHIFT, row("b"));
+    store.handleClick("c", META_SHIFT, row("c"));
+    store.remove(new Set(["c", "x"]));
+    expect(store.getSelected()).toEqual(["b"]);
+    store.handleClick("d", SHIFT, row("d"));
+    expect(store.getSelected()).toEqual(["d"]);
+  });
+
   it("seeds a cmd-shift-click selection with the open thread and toggles rows in list order", () => {
     renderSidebar(["a", "b", "c", "d"]);
     const store = new ThreadSelectionStore();

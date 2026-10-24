@@ -8,6 +8,8 @@ export const THREAD_ANCESTORS_LIST_MAX_IDS = 200;
 
 export const THREAD_DESCENDANTS_LIST_MAX_IDS = 200;
 
+export const THREAD_CASCADE_LIST_MAX_IDS = 200;
+
 export const THREAD_LIST_MAX_IDS = 200;
 
 export function parseThreadListThreadIds(value: string): string[] {

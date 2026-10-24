@@ -371,19 +371,28 @@ export function bindThreadAction(
 
 function evaluateRecord(
   record: ThreadActionRegistrationRecord,
-  thread: PluginThreadActionTarget,
+  target: ThreadActionEvaluationTarget,
   registry: ThreadActionRegistrySnapshot,
   requestRename: (threadId: string) => void,
 ): PluginThreadActionEntry | null {
   const input = registry.collected.get(record.key);
   if (input === undefined) return null;
+  const { registration } = record;
   try {
-    const action = record.registration.item({
-      thread,
-      data: input.data,
-      sdk: input.sdk,
-      navigate: input.navigate,
-    });
+    const action =
+      target.kind === "thread"
+        ? registration.item({
+            thread: target.thread,
+            data: input.data,
+            sdk: input.sdk,
+            navigate: input.navigate,
+          })
+        : (registration.experimental_bulkItem?.({
+            threads: target.threads,
+            data: input.data,
+            sdk: input.sdk,
+            navigate: input.navigate,
+          }) ?? null);
     if (action === null) return null;
     return {
       key: record.key,
@@ -392,14 +401,22 @@ function evaluateRecord(
       action: bindThreadAction(record.key, action, requestRename),
     };
   } catch (error) {
-    reportFailure(record.key, "item", error);
+    reportFailure(
+      record.key,
+      target.kind === "thread" ? "item" : "experimental_bulkItem",
+      error,
+    );
     return null;
   }
 }
 
+type ThreadActionEvaluationTarget =
+  | { kind: "thread"; thread: PluginThreadActionTarget }
+  | { kind: "bulk"; threads: readonly PluginThreadActionTarget[] };
+
 function evaluateThreadActions(
   registry: ThreadActionRegistrySnapshot,
-  thread: PluginThreadActionTarget,
+  target: ThreadActionEvaluationTarget,
   options: PluginThreadActionsOptions | undefined,
 ): PluginThreadActionEntry[] {
   const requestRename = options?.requestRename ?? registry.requestRename;
@@ -413,7 +430,7 @@ function evaluateThreadActions(
           return record === undefined ? [] : [record];
         });
   return records.flatMap((record) => {
-    const entry = evaluateRecord(record, thread, registry, requestRename);
+    const entry = evaluateRecord(record, target, registry, requestRename);
     return entry === null ? [] : [entry];
   });
 }
@@ -428,7 +445,23 @@ export function useThreadActionEntries(
     () => (surfaceVisible ? retainThreadId(thread.id) : undefined),
     [surfaceVisible, thread.id],
   );
-  return evaluateThreadActions(registry, thread, options);
+  return evaluateThreadActions(registry, { kind: "thread", thread }, options);
+}
+
+export function useThreadBulkActionEntries(
+  threads: readonly PluginThreadActionTarget[],
+): readonly PluginThreadActionEntry[] {
+  const registry = useSyncExternalStore(subscribe, getSnapshot);
+  const surfaceVisible = useContext(ThreadActionSurfaceVisibleContext);
+  const threadIdsKey = threads.map((thread) => thread.id).join("\n");
+  useEffect(() => {
+    if (!surfaceVisible || threadIdsKey === "") return undefined;
+    const releases = threadIdsKey.split("\n").map(retainThreadId);
+    return () => {
+      for (const release of releases) release();
+    };
+  }, [surfaceVisible, threadIdsKey]);
+  return evaluateThreadActions(registry, { kind: "bulk", threads }, undefined);
 }
 
 export function useDefaultRequestRename(): (threadId: string) => void {
