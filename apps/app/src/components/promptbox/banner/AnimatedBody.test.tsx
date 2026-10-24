@@ -59,7 +59,7 @@ describe("AnimatedBody", () => {
 });
 
 describe("prompt-stack card bodies", () => {
-  it("does not mount per-row live durations for a collapsed background-activity card", () => {
+  it("mounts only the newest row's live duration until a background-activity card first opens", () => {
     vi.useFakeTimers();
     const setInterval = vi.spyOn(globalThis, "setInterval");
     const startedAt = Date.now() - 5_000;
@@ -86,7 +86,7 @@ describe("prompt-stack card bodies", () => {
     }
     render(<Card />);
     expect(screen.queryByText("Background agent 2")).toBeNull();
-    expect(setInterval).not.toHaveBeenCalled();
+    expect(setInterval).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getByRole("button", { expanded: false }));
     expect(screen.getByText("Background agent 2")).not.toBeNull();
