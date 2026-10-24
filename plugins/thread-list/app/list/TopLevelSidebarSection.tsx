@@ -11,10 +11,7 @@ import { cn } from "@/lib/utils";
 import { Icon } from "@/components/ui/icon";
 import { LIST_HOVER_TRANSITION } from "@/components/ui/motion";
 import { CHROME_SECTION_LABEL_CLASS } from "@/components/ui/chrome-style-tokens";
-import {
-  SidebarStickyGroup,
-  SidebarStickyTier,
-} from "../ui/sidebar.js";
+import { SidebarStickyGroup, SidebarStickyTier } from "../ui/sidebar.js";
 import {
   SIDEBAR_HOVER_ACTIONS_CLASS,
   SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
@@ -33,20 +30,15 @@ import {
   useSectionDropTargetState,
 } from "../dnd/useSectionDropTargetState.js";
 import type { SidebarSortableDragBindings } from "@/components/ui/sortable-motion";
-import {
-  NO_COLLAPSED_CHILD_ACTIVITY,
-  type CollapsedChildActivity,
-} from "../model/thread-activity.js";
-import { CollapsedThreadStatusGlyph } from "../rows/ThreadRow.js";
-import {
-  useThreadGroupSplitIndicator,
-  type ThreadSplitIndicatorTarget,
-} from "./groupRollups.js";
+import type { CollapsedChildActivity } from "../model/thread-activity.js";
+import { useThreadGroupSplitIndicator } from "./groupRollups.js";
 import { SplitPaneMiniMap } from "@/components/ui/split-pane-mini-map";
 import { COARSE_POINTER_ROW_ACTION_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing";
-import { usePluginThreadRowStatusForThreads } from "./groupRollups.js";
+import { useThreadGroupStatus } from "./groupRollups.js";
+import type { SidebarThread } from "../model/sidebar-thread.js";
+import { experimental_ThreadStatusGlyph as ThreadStatusGlyph } from "@get-bb/plugin-sdk/app";
 
-const EMPTY_SPLIT_INDICATOR_THREADS: readonly ThreadSplitIndicatorTarget[] = [];
+const EMPTY_SPLIT_INDICATOR_THREADS: readonly SidebarThread[] = [];
 
 function stopActionsClick(event: MouseEvent<HTMLSpanElement>) {
   event.stopPropagation();
@@ -72,7 +64,7 @@ export interface TopLevelSidebarSectionProps {
   actionsOpen?: boolean;
   collapseControl?: TopLevelSidebarSectionCollapseControl;
   collapsedActivity?: CollapsedChildActivity;
-  collapsedThreads?: readonly ThreadSplitIndicatorTarget[];
+  collapsedThreads?: readonly SidebarThread[];
   dragBindings?: SidebarSortableDragBindings;
   sectionRef?: (element: HTMLDivElement | null) => void;
   sectionStyle?: CSSProperties;
@@ -107,12 +99,14 @@ export function TopLevelSidebarSection({
     collapsedThreads,
     collapseControl?.isCollapsed === true,
   );
-  const pluginStatus = usePluginThreadRowStatusForThreads(collapsedThreads);
+  const groupStatus = useThreadGroupStatus(collapsedThreads);
+  const pluginStatus = groupStatus.rowStatus;
   const showCollapsedActivity =
     !status &&
     collapseControl?.isCollapsed === true &&
     (collapsedSplitIndicator.miniMap !== null ||
-      collapsedActivity !== undefined ||
+      groupStatus.indicator !== "none" ||
+      groupStatus.archived ||
       pluginStatus !== null);
   const collapsedActivityIndicator = showCollapsedActivity ? (
     <span
@@ -132,12 +126,9 @@ export function TopLevelSidebarSection({
             collapsedActivity?.working || pluginStatus?.tone === "running"
           }
         />
-      ) : collapsedActivity || pluginStatus ? (
-        <CollapsedThreadStatusGlyph
-          activity={collapsedActivity ?? NO_COLLAPSED_CHILD_ACTIVITY}
-          pluginStatus={pluginStatus}
-        />
-      ) : null}
+      ) : (
+        <ThreadStatusGlyph {...groupStatus} />
+      )}
     </span>
   ) : null;
   const handleClickCapture = useCallback<MouseEventHandler<HTMLDivElement>>(

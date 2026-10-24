@@ -27,24 +27,21 @@ import {
 import { cn } from "@/lib/utils";
 import type { SidebarSectionId } from "../model/sidebar-section-id.js";
 import type { CollapsedChildActivity } from "../model/thread-activity.js";
-import { NO_THREAD_IDS, useThreadsHaveDraft } from "./sidebarDraftPresence.js";
 import {
   SIDEBAR_ROW_BASE_CLASS,
   SIDEBAR_GROUP_TEXT_CLASS,
   getSidebarThreadRowPaddingLeft,
 } from "@/components/ui/sidebar-row-classes";
 import { SidebarChildToggleChevron } from "../rows/SidebarChildToggleChevron.js";
-import { CollapsedThreadStatusGlyph } from "../rows/ThreadRow.js";
 import type { SidebarSortableDragBindings } from "@/components/ui/sortable-motion";
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
-import {
-  useThreadGroupSplitIndicator,
-  type ThreadSplitIndicatorTarget,
-} from "./groupRollups.js";
+import { useThreadGroupSplitIndicator } from "./groupRollups.js";
 import { SplitPaneMiniMap } from "@/components/ui/split-pane-mini-map";
-import { usePluginThreadRowStatusForThreads } from "./groupRollups.js";
+import { useThreadGroupStatus } from "./groupRollups.js";
+import type { SidebarThread } from "../model/sidebar-thread.js";
+import { experimental_ThreadStatusGlyph as ThreadStatusGlyph } from "@get-bb/plugin-sdk/app";
 
-const EMPTY_SPLIT_INDICATOR_THREADS: readonly ThreadSplitIndicatorTarget[] = [];
+const EMPTY_SPLIT_INDICATOR_THREADS: readonly SidebarThread[] = [];
 
 function stopActionsClick(event: MouseEvent<HTMLElement>) {
   event.stopPropagation();
@@ -57,7 +54,7 @@ interface SidebarSectionRowProps {
   sectionId?: SidebarSectionId;
   depth: number;
   activity: CollapsedChildActivity;
-  collapsedThreads?: readonly ThreadSplitIndicatorTarget[];
+  collapsedThreads?: readonly SidebarThread[];
   isCollapsed: boolean;
   onToggleCollapsed: () => void;
   stickyLevel?: number;
@@ -96,20 +93,15 @@ function SidebarSectionRowComponent({
     collapsedThreads,
     isCollapsed,
   );
-  const pluginStatus = usePluginThreadRowStatusForThreads(collapsedThreads);
+  const groupStatus = useThreadGroupStatus(collapsedThreads);
+  const pluginStatus = groupStatus.rowStatus;
   const hasMenuActions = Boolean(onRename || onRemove);
   const hasActions = Boolean(onCreateThread || hasMenuActions);
-  const hiddenThreadsHaveDraft = useThreadsHaveDraft(
-    isCollapsed ? activity.threadIds : NO_THREAD_IDS,
-  );
   const showRollupIndicator =
     isCollapsed &&
     (collapsedSplitIndicator.miniMap !== null ||
-      activity.pending ||
-      activity.working ||
-      hiddenThreadsHaveDraft ||
-      activity.unread ||
-      activity.unreadError ||
+      groupStatus.indicator !== "none" ||
+      groupStatus.archived ||
       pluginStatus !== null);
   const renderRollupIndicator = () =>
     collapsedSplitIndicator.miniMap ? (
@@ -119,10 +111,7 @@ function SidebarSectionRowComponent({
         isWorking={activity.working || pluginStatus?.tone === "running"}
       />
     ) : (
-      <CollapsedThreadStatusGlyph
-        activity={activity}
-        pluginStatus={pluginStatus}
-      />
+      <ThreadStatusGlyph {...groupStatus} />
     );
   const className = cn(
     SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
