@@ -294,6 +294,15 @@ runs into an existing thread report `automation`. `bb thread spawn` run inside a
 sends that thread as `senderThreadId`; the new thread reports `agent` when the sender has a
 turn running, and `user` otherwise.
 
+With `BB_FF_APP_UPDATE_TELEMETRY=true` (off by default), in-app updates also
+send `app_update_started` (running thread count, mode, and where the update
+started: `settings`, `cli`, `desktop_relaunch`, or `api`),
+`app_update_thread_settled` (provider and whether each running thread saved
+its work), `app_update_restart_started` (counts, seconds waited, and why bb
+restarted), and `app_update_finished` on the next start (threads resumed,
+seconds offline, `succeeded` or `failed`). Counts are capped at 50 and seconds
+at 600. They carry no thread, project, or host ids, prompts, or commands.
+
 `turn_finished` sends only `outcome` (`succeeded`, `failed`, or `stopped`),
 `error_category` (`none`, `auth`, `billing`, `rate_limit`, `limit_reached`,
 `provider_unavailable`, `start_failed`, `process_exited`, `host_lost`, or `other`),

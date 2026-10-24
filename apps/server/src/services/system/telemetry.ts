@@ -33,7 +33,57 @@ export type TurnErrorCategory =
   | "host_lost"
   | "other";
 
+export type AppUpdateEntry = "settings" | "cli" | "desktop_relaunch" | "api";
+export type AppUpdateMode = "prepare" | "now";
+export type AppUpdateSaveResult = "saved" | "forced" | "no_progress";
+export type AppUpdateStopMethod =
+  | "send_now"
+  | "terminate"
+  | "follow_up"
+  | "steer"
+  | "plain_steer_fallback"
+  | "none";
+export type AppUpdateRestartReason =
+  | "all_saved"
+  | "cap_reached"
+  | "update_now"
+  | "nothing_running";
+
 export type TelemetryEvent =
+  | {
+      name: "app_update_started";
+      properties: {
+        running_threads: number;
+        mode: AppUpdateMode;
+        entry: AppUpdateEntry;
+      };
+    }
+  | {
+      name: "app_update_thread_settled";
+      properties: {
+        provider: string;
+        save_result: AppUpdateSaveResult;
+        stop_method: AppUpdateStopMethod;
+      };
+    }
+  | {
+      name: "app_update_restart_started";
+      properties: {
+        threads_stopped: number;
+        threads_saved: number;
+        threads_forced: number;
+        wait_seconds: number;
+        reason: AppUpdateRestartReason;
+      };
+    }
+  | {
+      name: "app_update_finished";
+      properties: {
+        threads_resumed: number;
+        offline_seconds: number;
+        outcome: "succeeded" | "failed";
+      };
+    }
   | {
       name: "turn_finished";
       properties: {
@@ -75,6 +125,7 @@ export type TelemetryEvent =
 
 export interface TelemetryService {
   capture(event: TelemetryEvent): void;
+  flush(timeoutMs: number): Promise<void>;
   setEnabled(enabled: boolean): void;
   isEnabled(): boolean;
 }
@@ -93,6 +144,7 @@ interface CreateTelemetryServiceArgs {
 const noopTelemetryService: TelemetryService = {
   isEnabled: () => false,
   capture: () => {},
+  flush: async () => {},
   setEnabled: () => {},
 };
 
@@ -172,10 +224,18 @@ export async function createTelemetryService(
     os_release: osRelease,
     platform: process.platform,
   };
+  const inflight = new Set<Promise<void>>();
   return {
     isEnabled: () => telemetryEnabled,
     setEnabled(enabled: boolean): void {
       telemetryEnabled = enabled;
+    },
+    async flush(timeoutMs: number): Promise<void> {
+      if (inflight.size === 0) return;
+      await Promise.race([
+        Promise.allSettled([...inflight]),
+        new Promise((resolve) => setTimeout(resolve, timeoutMs)),
+      ]);
     },
     capture(event: TelemetryEvent): void {
       if (!telemetryEnabled) return;
@@ -193,20 +253,24 @@ export async function createTelemetryService(
         },
         timestamp: new Date().toISOString(),
       });
-      fetch(POSTHOG_INGESTION_URL, {
+      const request = fetch(POSTHOG_INGESTION_URL, {
         body,
         headers: { "content-type": "application/json" },
         method: "POST",
-      }).catch((error: unknown) => {
-        args.logger.debug(
-          {
-            app_surface: appSurface,
-            err: error,
-            event: event.name,
-          },
-          "Telemetry event send failed",
-        );
-      });
+      })
+        .then(() => undefined)
+        .catch((error: unknown) => {
+          args.logger.debug(
+            {
+              app_surface: appSurface,
+              err: error,
+              event: event.name,
+            },
+            "Telemetry event send failed",
+          );
+        });
+      inflight.add(request);
+      void request.finally(() => inflight.delete(request));
     },
   };
 }

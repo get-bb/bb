@@ -1907,6 +1907,7 @@ The canonical release summary.
     await waitFor(() => {
       expect(sdk.system.applyAppUpdate).toHaveBeenCalledWith({
         confirmInterruptingThreads: false,
+        entry: "settings",
       });
     });
     expect(await screen.findByText("Downloading bb-app 0.0.6")).toBeDefined();
@@ -1939,6 +1940,7 @@ The canonical release summary.
     await waitFor(() => {
       expect(sdk.system.applyAppUpdate).toHaveBeenCalledWith({
         confirmInterruptingThreads: true,
+        entry: "settings",
       });
     });
   });
@@ -1977,6 +1979,7 @@ The canonical release summary.
     await waitFor(() => {
       expect(sdk.system.applyAppUpdate).toHaveBeenLastCalledWith({
         confirmInterruptingThreads: true,
+        entry: "settings",
       });
     });
   });
@@ -2332,6 +2335,7 @@ The canonical release summary.
     await waitFor(() => {
       expect(sdk.system.applyAppUpdate).toHaveBeenCalledWith({
         confirmInterruptingThreads: false,
+        entry: "settings",
       });
     });
     await waitFor(() => {
@@ -2475,6 +2479,7 @@ The canonical release summary.
       await waitFor(() =>
         expect(sdk.system.applyAppUpdate).toHaveBeenCalledWith({
           confirmInterruptingThreads: false,
+          entry: "settings",
         }),
       );
       expect(installUpdate).not.toHaveBeenCalled();

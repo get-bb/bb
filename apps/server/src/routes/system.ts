@@ -718,6 +718,7 @@ export function registerSystemRoutes(
     return context.json(
       await deps.appUpdate.apply({
         confirmInterruptingThreads: body.confirmInterruptingThreads,
+        entry: body.entry ?? "api",
       }),
     );
   });
