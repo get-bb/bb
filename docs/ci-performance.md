@@ -795,3 +795,32 @@ containing a generated `sendAt` timestamp were normalized for inventory comparis
 The retained setting uses four workers only for these single-package server
 shards. Other Linux groups retain two workers per package, because several Turbo
 tasks may run concurrently. No shards, runners, coverage, or timeouts were added.
+
+## Windows package-smoke download reuse
+
+The Windows app smoke uses a dedicated npm download cache for `_cacache` and
+`_prebuilds`. It never restores `_npx`, `node_modules`, consumer directories, or
+lockfiles. The real npm and npx installations, native lifecycle scripts, registry
+metadata checks, and all package assertions still run. Turbo passes the cache
+location only to `smoke:tarball`; it remains an uncached task.
+
+Snapshots use an exact key for OS, architecture, actual Node version, the app
+manifest, workspace lockfile, and cache-action implementation. There are no
+fallback keys: each new dependency identity starts a fresh snapshot rather than
+accumulating old local app tarballs across saved versions. A matching snapshot
+is immutable; downloads added by that job are not saved over it. Restore has a
+one-minute budget and failure falls back to normal npm fetching. npm verifies
+cached data when reading it; see [npm cache documentation](https://docs.npmjs.com/cli/cache/).
+
+[Windows comparison 40106037278](https://github.com/get-bb/bb/actions/runs/40106037278)
+ran cold, archived-download, and cold-again smokes on each of two runners,
+clearing installed npx trees before reuse. Both runners passed every smoke:
+
+| Runner | Cold  | Restored downloads | Cold again |
+| ------ | ----- | ------------------ | ---------- |
+| 1      | 50.9s | 37.3s              | 43.0s      |
+| 2      | 74.3s | 43.9s              | 60.6s      |
+
+Local archive creation took 1–3 seconds and extraction 0–1 second. These timings
+do not include GitHub cache transfer. The separately measured Linux benefit was
+only a few seconds, so this change scopes the cache to the Windows app smoke.

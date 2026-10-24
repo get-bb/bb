@@ -240,8 +240,25 @@ jobs:
         shell: bash
         run: pnpm exec turbo run smoke:boot --filter=bb-app --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only
 
+      - name: Restore npm package downloads
+        id: npm-downloads
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/cache-npm-downloads
+
       - name: Smoke test the bb-app tarball
         run: pnpm exec turbo run smoke:tarball --filter=bb-app --output-logs=new-only
+
+      - name: Save newly populated npm downloads
+        if: steps.npm-downloads.outcome == 'success' && steps.npm-downloads.outputs.cache-hit != 'true'
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
+            ${{ steps.npm-downloads.outputs.path }}/_cacache
+            ${{ steps.npm-downloads.outputs.path }}/_prebuilds
+          key: ${{ steps.npm-downloads.outputs.key }}
 
       - name: Bound saved Turbo cache
         run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 256

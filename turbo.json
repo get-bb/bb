@@ -847,6 +847,7 @@
     "smoke:tarball": {
       "dependsOn": ["build"],
       "cache": false,
+      "passThroughEnv": ["npm_config_cache"],
       "outputs": []
     },
     "smoke:boot": {
