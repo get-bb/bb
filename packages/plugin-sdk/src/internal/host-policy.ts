@@ -813,6 +813,15 @@ function validateProviderOptionDescriptors(args: {
               field: `${field}[${index}].experimental_icon`,
               value: record.experimental_icon,
             });
+      if (
+        icon !== undefined &&
+        !isNamespacedGlyph(icon) &&
+        /[/\\]/u.test(icon)
+      ) {
+        throw new Error(
+          `provider "${providerId}" ${field}[${index}].experimental_icon must be a host glyph name ("Zap") or a declared icon ("<pluginId>/<name>")`,
+        );
+      }
       return Object.freeze({
         id,
         label,

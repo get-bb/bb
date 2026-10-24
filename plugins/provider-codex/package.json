@@ -12,7 +12,10 @@
     "name": "Codex provider",
     "description": "Run bb threads with Codex.",
     "branding": {
-      "icon": "./icons/codex.svg"
+      "icon": "./icons/codex.svg",
+      "experimental_icons": {
+        "ultrafast": "./icons/ultrafast.svg"
+      }
     },
     "server": "./server.ts",
     "app": "./app.tsx",
