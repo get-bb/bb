@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  check,
   index,
   integer,
   primaryKey,
@@ -304,7 +305,30 @@ export const oauthRefreshToken = sqliteTable(
   (table) => [index("oauth_refresh_token_grant_id_idx").on(table.grantId)],
 );
 
+export const communitySurveyResponse = sqliteTable(
+  "community_survey_response",
+  {
+    id: text("id").primaryKey(),
+    createdAt: integer("created_at").notNull(),
+    answers: text("answers").notNull(),
+  },
+);
+
+export const communityStickerCode = sqliteTable(
+  "community_sticker_code",
+  {
+    slot: integer("slot").primaryKey(),
+    codeHash: text("code_hash").notNull().unique(),
+    shipped: integer("shipped", { mode: "boolean" }).notNull().default(false),
+  },
+  (table) => [
+    check("community_sticker_pool_cap", sql`${table.slot} BETWEEN 1 AND 250`),
+  ],
+);
+
 export const schema = {
+  communitySurveyResponse,
+  communityStickerCode,
   user,
   session,
   account,
