@@ -1,5 +1,8 @@
 import { PassThrough, type Readable } from "node:stream";
-import { resolvePortableCommand } from "@bb/process-utils";
+import {
+  preparePortablePtyCommand,
+  resolvePortableCommand,
+} from "@bb/process-utils";
 import type { ProviderInstallationCommand } from "@bb/provider-bridge-protocol";
 import {
   providerCliInstallEventSchema,
@@ -58,7 +61,13 @@ function createPtyProviderInstallationProcessSpawner(): ProviderInstallationProc
         throw new Error(`Command not found: ${args.command}`);
       }
       ensureNodePtySpawnHelperExecutable(nodePtyLogger);
-      const pty = spawnPty(command, args.args, {
+      const launch = preparePortablePtyCommand({
+        command,
+        args: args.args,
+        cwd,
+        env,
+      });
+      const pty = spawnPty(launch.command, launch.args, {
         cols: 120,
         cwd,
         env,
