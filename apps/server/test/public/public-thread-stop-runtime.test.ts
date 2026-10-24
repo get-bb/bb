@@ -24,6 +24,7 @@ import {
   seedStoredEvent,
   seedThread,
   seedThreadFixture,
+  seedThreadIdentity,
   seedTurnStarted,
 } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
@@ -908,31 +909,13 @@ describe("thread runtime stop", () => {
       expect(getThread(harness.db, thread.id)?.status).toBe("idle");
       expect(isThreadQueueAutoSendPaused(harness.db, thread.id)).toBe(true);
 
-      const laterQueueResponse = await harness.app.request(
-        `/api/v1/threads/${thread.id}/queued-messages`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            input: [{ type: "text", text: "Queue after the stop" }],
-            model: "gpt-5",
-            permissionMode: "full",
-            reasoningLevel: "medium",
-            serviceTier: "default",
-          }),
-        },
-      );
-      expect(
-        laterQueueResponse.status,
-        await laterQueueResponse.clone().text(),
-      ).toBe(201);
       await runQueuedMessageDispatch(harness.deps, {
         kind: "thread-ready",
         threadId: thread.id,
       });
-      const pausedMessages = listQueuedThreadMessages(harness.db, thread.id);
-      expect(pausedMessages).toHaveLength(2);
-      expect(pausedMessages[0]?.id).toBe(queuedMessage.id);
+      expect(
+        listQueuedThreadMessages(harness.db, thread.id).map((row) => row.id),
+      ).toEqual([queuedMessage.id]);
       expect(
         listQueuedThreadCommands(harness, "turn.submit", thread.id),
       ).toEqual([]);
@@ -946,9 +929,7 @@ describe("thread runtime stop", () => {
         },
       );
       expect(sendResponse.status).toBe(200);
-      expect(
-        listQueuedThreadMessages(harness.db, thread.id).map((row) => row.id),
-      ).toEqual([pausedMessages[1]!.id]);
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
       expect(getThread(harness.db, thread.id)?.status).toBe("active");
       expect(
         listQueuedThreadCommands(harness, "turn.submit", thread.id),
@@ -1103,6 +1084,59 @@ describe("thread runtime stop", () => {
         expect(getThread(harness.db, thread.id)?.status).toBe("active");
       });
       expect(isThreadQueueAutoSendPaused(harness.db, thread.id)).toBe(true);
+    });
+  });
+
+  it("dispatches a message queued after a manual stop has landed", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedThreadFixture(harness, {
+        thread: { status: "active", visibility: "hidden" },
+      });
+      seedThreadIdentity(harness, {
+        threadId: thread.id,
+        providerThreadId: "provider-stopped-thread",
+      });
+      const stopResponsePromise = harness.app.request(
+        `/api/v1/threads/${thread.id}/stop`,
+        { method: "POST" },
+      );
+      const stop = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.stop" && command.threadId === thread.id,
+      );
+      await reportQueuedCommandSuccess(harness, stop, {
+        providerCheckpointId: null,
+      });
+      expect((await stopResponsePromise).status).toBe(200);
+      expect(getThread(harness.db, thread.id)?.status).toBe("idle");
+      expect(isThreadQueueAutoSendPaused(harness.db, thread.id)).toBe(true);
+
+      const queueResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/queued-messages`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            input: [{ type: "text", text: "Try again" }],
+            model: "gpt-5",
+            permissionMode: "full",
+            reasoningLevel: "medium",
+            serviceTier: "default",
+          }),
+        },
+      );
+      expect(queueResponse.status, await queueResponse.clone().text()).toBe(
+        201,
+      );
+
+      await vi.waitFor(() => {
+        expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
+        expect(getThread(harness.db, thread.id)?.status).toBe("active");
+      });
+      expect(
+        listQueuedThreadCommands(harness, "turn.submit", thread.id),
+      ).toHaveLength(1);
     });
   });
 

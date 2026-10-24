@@ -267,12 +267,14 @@ export async function createQueuedMessageForThread(
           // leaving the wait null keeps every row on one vocabulary, and the
           // idle drain treats the two identically anyway.
           //
-          // Queued while the thread is stopping, it is instead a message the
-          // user composed AFTER asking for the stop, so it carries `stopping`
-          // and runs when the stop lands rather than joining the rows the
-          // manual-stop pause holds back.
+          // Queued while the thread is stopping, or after a manual stop whose
+          // pause is still in force, it is instead a message the user composed
+          // AFTER asking for the stop, so it carries `stopping` and runs once
+          // the thread is idle rather than joining the rows the manual-stop
+          // pause holds back.
           waitingOn:
-            currentThread.status === "stopping"
+            currentThread.status === "stopping" ||
+            isThreadQueueAutoSendPaused(tx, thread.id)
               ? { kind: "stopping" }
               : { kind: "thread-busy" },
           sendAt: null,
