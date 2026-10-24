@@ -334,6 +334,15 @@ with `cwd: null`. The host daemon probes from a dedicated empty
 receives an absolute working directory, so global provider commands are available
 before a personal workspace exists. Selected projects use their workspace path.
 
+The server caches each answer per machine, provider, and working directory,
+because a cold answer waits on a login-shell refresh and a bridge start. For
+60 seconds the cached list is served as is. After that, a request still gets
+the cached list while the server asks again in the background. When the new
+answer differs, the server sends a `provider-commands-changed` host change so
+open composers refetch. A failed refresh keeps the previous list. The
+native-root scan and skill catalog are read on every request, so commands and
+skills added or edited on disk appear right away.
+
 ### Recovery hints
 
 A hint says what went wrong in the provider's own terms and what the runtime

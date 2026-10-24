@@ -530,6 +530,9 @@ export const REALTIME_HOST_CHANGE_REGISTRY = {
   "provider-model-catalog-changed": {
     dirty: [dirtyHostSystemExecutionOptionQueries],
   },
+  "provider-commands-changed": {
+    dirty: [dirtyProjectCommandCatalogQueries],
+  },
 } satisfies HostChangeRegistry;
 
 export const REALTIME_SYSTEM_CHANGE_REGISTRY = {

@@ -28,6 +28,7 @@ import { buildPluginProviderRegistration } from "../../src/services/providers/pl
 import { SkillTreeRegistry } from "../../src/services/skills/injected-skills.js";
 import { PluginHostArtifactRegistry } from "../../src/services/plugins/plugin-host-artifact-registry.js";
 import { createProviderNativeRootsCache } from "../../src/services/providers/native-roots.js";
+import { createProviderLiveCommandsCache } from "../../src/services/providers/provider-live-commands.js";
 import { createAiServiceRegistry } from "../../src/services/ai/ai-service-registry.js";
 import {
   createAppUpdateService,
@@ -99,6 +100,7 @@ export type TestAppHarnessConfigOverrides = Partial<ServerRuntimeConfig> & {
   terminalCloseTimeoutMs?: number;
   terminalOpenTimeoutMs?: number;
   nativeRootsClock?: () => number;
+  liveCommandsClock?: () => number;
   seedFirstPartyProviders?: boolean;
   tunnelIngressNow?: () => number;
   extraProviders?: readonly {
@@ -165,6 +167,7 @@ export async function createTestAppHarness(
     terminalCloseTimeoutMs,
     terminalOpenTimeoutMs = TEST_TERMINAL_RPC_TIMEOUT_MS,
     nativeRootsClock,
+    liveCommandsClock,
     seedFirstPartyProviders = true,
     tunnelIngressNow: _tunnelIngressNow,
     ...configOverrides
@@ -331,6 +334,9 @@ export async function createTestAppHarness(
     providerRegistry,
     pluginHostArtifacts,
     providerNativeRoots,
+    providerLiveCommands: createProviderLiveCommandsCache(
+      liveCommandsClock === undefined ? {} : { now: liveCommandsClock },
+    ),
     aiServices,
     skillTreeRegistry,
     telemetry,
