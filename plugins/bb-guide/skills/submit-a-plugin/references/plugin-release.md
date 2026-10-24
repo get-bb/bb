@@ -33,7 +33,7 @@ user:
 - The repository and remote URL.
 - The release commit.
 - The package name and version.
-- The Git tag or npm source.
+- The Git tag or npm source, and the range the entry will use.
 - Every command that will change remote state.
 
 Get approval for these exact values. Approval for another release does not
@@ -132,3 +132,27 @@ Use this source shape:
 
 Use tag instead of range only when the author wants to track an npm
 distribution tag.
+
+## Choose the range
+
+A Git range and an npm range follow the same rules. BB reads the range with
+npm semver rules and installs the highest release that the range admits.
+
+- ^1.2.3 admits every 1.x release from 1.2.3 and stops before 2.0.0.
+- ^0.6.1 admits only 0.6.x patch releases. A 0.7.0 release never reaches an
+  install with this range.
+- The range >=0.6.1 <1.0.0 admits every 0.x release from 0.6.1, including a
+  0.x minor release that breaks compatibility.
+- A range with no upper bound, such as >=0.6.1, admits every future major
+  release. Do not propose one.
+
+BB skips a prerelease unless the range names one.
+
+The range is the author's decision. Ask the author of a 0.x plugin whether
+users should get each 0.x minor release, and show both costs: ^0.6.1 holds
+users on 0.6.x, and >=0.6.1 <1.0.0 also brings them minor releases that can
+break compatibility.
+
+BB records the range in each install. A later range change in the marketplace
+entry reaches new installs only. An existing install keeps its range until
+its user changes it with bb plugin track.
