@@ -685,7 +685,7 @@ describe("app keybindings", () => {
   it("persists command overrides and resolves every scoped binding", async () => {
     await withTestHarness(async (harness) => {
       const shortcut = {
-        key: "u",
+        key: "л",
         mod: true,
         meta: false,
         control: false,
@@ -723,7 +723,7 @@ describe("app keybindings", () => {
       expect(
         config.keybindings
           .filter((binding) => binding.command === "modelPicker.toggle")
-          .every((binding) => binding.shortcut.key === "u"),
+          .every((binding) => binding.shortcut.key === "л"),
       ).toBe(true);
     });
   });

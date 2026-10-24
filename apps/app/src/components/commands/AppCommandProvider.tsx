@@ -15,7 +15,7 @@ import {
   isAppKeybindingAvailableForClient,
   keyboardPlatform,
   isMacKeyboardPlatform,
-  matchesAppShortcut,
+  resolveAppShortcutBinding,
   type AppCommandContext,
   type AppCommandContextKey,
   type KeyboardCommandId,
@@ -262,17 +262,17 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
     [isDesktop],
   );
 
+  const hasAvailableHandler = useCallback(
+    (command: KeyboardCommandId, target: EventTarget | null): boolean =>
+      [...(handlersRef.current.get(command)?.values() ?? [])].some(
+        (registration) => registration.isAvailable({ target }),
+      ),
+    [],
+  );
+
   const isCommandAvailable = useCallback(
     (command: KeyboardCommandId, target: EventTarget | null): boolean => {
-      const registrations = handlersRef.current.get(command);
-      if (
-        registrations === undefined ||
-        ![...registrations.values()].some((registration) =>
-          registration.isAvailable({ target }),
-        )
-      ) {
-        return false;
-      }
+      if (!hasAvailableHandler(command, target)) return false;
       const applicable = defaultKeybindings.filter(
         (binding) =>
           binding.command === command &&
@@ -287,7 +287,7 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
         binding.when.all.every((key) => context[key]),
       );
     },
-    [currentContext, defaultKeybindings, isDesktop],
+    [currentContext, defaultKeybindings, hasAvailableHandler, isDesktop],
   );
 
   const getShortcut = useCallback(
@@ -320,21 +320,19 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
         return null;
       }
       const isMac = isMacKeyboardPlatform(browserPlatform());
-      for (let index = keybindings.length - 1; index >= 0; index -= 1) {
-        const candidate = keybindings[index];
-        if (
-          candidate &&
-          commands.includes(candidate.command) &&
-          isAppKeybindingAvailableForClient(candidate, {
-            isDesktop,
-            platform: browserPlatform(),
-          }) &&
-          matchesAppShortcut(event, candidate.shortcut, isMac)
-        ) {
-          return candidate.command;
-        }
-      }
-      return null;
+      return (
+        resolveAppShortcutBinding(
+          event,
+          keybindings,
+          isMac,
+          (candidate) =>
+            commands.includes(candidate.command) &&
+            isAppKeybindingAvailableForClient(candidate, {
+              isDesktop,
+              platform: browserPlatform(),
+            }),
+        )?.command ?? null
+      );
     },
     [isDesktop, keybindings],
   );
@@ -349,28 +347,30 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
       const bindings = keybindingsRef.current;
       let context: AppCommandContext | null = null;
       const isMac = isMacKeyboardPlatform(browserPlatform());
-      for (let index = bindings.length - 1; index >= 0; index -= 1) {
-        const binding = bindings[index];
-        if (!binding) continue;
-        if (
-          !isAppKeybindingAvailableForClient(binding, {
-            isDesktop,
-            platform: browserPlatform(),
-          })
-        ) {
-          continue;
-        }
-        if (!matchesAppShortcut(event, binding.shortcut, isMac)) continue;
-        context ??= currentContext(event.target);
-        if (!matchesAppCommandContext(binding, context)) continue;
-        if (!dispatch(binding.command, event.target)) return false;
-        event.preventDefault();
-        event.stopPropagation();
-        return true;
-      }
-      return false;
+      const binding = resolveAppShortcutBinding(
+        event,
+        bindings,
+        isMac,
+        (candidate) => {
+          if (
+            !isAppKeybindingAvailableForClient(candidate, {
+              isDesktop,
+              platform: browserPlatform(),
+            })
+          )
+            return false;
+          if (!hasAvailableHandler(candidate.command, event.target))
+            return false;
+          context ??= currentContext(event.target);
+          return matchesAppCommandContext(candidate, context);
+        },
+      );
+      if (!binding || !dispatch(binding.command, event.target)) return false;
+      event.preventDefault();
+      event.stopPropagation();
+      return true;
     },
-    [currentContext, dispatch, isDesktop],
+    [currentContext, dispatch, hasAvailableHandler, isDesktop],
   );
 
   useEffect(() => {
