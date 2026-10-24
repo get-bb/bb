@@ -219,6 +219,7 @@ export function makeThreadQueuedMessage(
     permissionMode: "auto",
     serviceTier: "default",
     groupWithNext: false,
+    compactFirst: false,
     sendAt: null,
     state: "queued",
     waitingOn: null,

@@ -408,6 +408,27 @@ describe("bb thread action command output", () => {
     },
   );
 
+  it("bb thread compact names the wait when the compaction is queued", async () => {
+    stubServerApi({
+      "v1.threads.:id.compact.$post": async () => ({
+        ok: true,
+        delivery: "queued",
+        queuedMessage: {
+          id: "queued_compact",
+          waitingOn: { kind: "host-offline", hostName: "berth-1" },
+          sendAt: null,
+          compactFirst: false,
+        },
+      }),
+    });
+
+    await runCommand(["thread", "compact", "thread-action"], register);
+
+    expect(collectLogLines(vi.mocked(console.log))).toContain(
+      "Thread thread-action compaction queued (waiting for berth-1 to reconnect); it starts when that clears",
+    );
+  });
+
   it("bb thread retry defaults the turn and the reason at the boundary", async () => {
     const retryPost = vi.fn(async () => ({
       ok: true,

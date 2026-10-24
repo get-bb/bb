@@ -289,6 +289,7 @@ export function seedQueuedMessage(
     sendAt: args.sendAt ?? null,
     payload: { kind: "inline" },
     systemNotice: null,
+    compactFirst: false,
   });
 }
 

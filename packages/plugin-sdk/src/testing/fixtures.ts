@@ -324,6 +324,7 @@ export function makeQueueEntry(
     permissionMode: "auto",
     serviceTier: "default",
     groupWithNext: false,
+    compactFirst: false,
     sendAt: null,
     state: "waiting",
     waitingOn: {

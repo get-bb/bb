@@ -179,6 +179,44 @@ describe("bb thread tell command output", () => {
     );
   });
 
+  it.each([
+    [
+      "waits on its host",
+      { kind: "host-offline", hostName: "berth-1" },
+      true,
+      "Thread thread-compact message queued to compact first (waiting for berth-1 to reconnect); it compacts, then sends, when that clears",
+    ],
+    [
+      "runs",
+      { kind: "thread-busy" },
+      false,
+      "Thread thread-compact compacting; the message sends when compaction finishes",
+    ],
+  ] as const)(
+    "bb thread tell --compact-first says when the compaction %s",
+    async (_label, waitingOn, compactFirst, line) => {
+      stubServerApi({
+        "v1.threads.:id.send.$post": async () => ({
+          ok: true,
+          delivery: "queued",
+          queuedMessage: {
+            id: "qm_compact",
+            waitingOn,
+            sendAt: null,
+            compactFirst,
+          },
+        }),
+      });
+
+      await runCommand(
+        ["thread", "tell", "thread-compact", "hello", "--compact-first"],
+        register,
+      );
+
+      expect(vi.mocked(console.log).mock.calls[0]?.[0]).toBe(line);
+    },
+  );
+
   it("bb thread tell keeps the steered wording for servers that only report ok", async () => {
     const post = vi.fn(async () => ({ ok: true }));
     stubServerApi({ "v1.threads.:id.send.$post": post });

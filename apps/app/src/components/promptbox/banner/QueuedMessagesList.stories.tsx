@@ -249,6 +249,15 @@ const waitingForHost: readonly ThreadQueuedMessage[] = [
   }),
 ];
 
+const compactingFirstForHost: readonly ThreadQueuedMessage[] = [
+  makeQueuedMessage({
+    id: "q_compact_first",
+    text: "Pick the review back up where we left off.",
+    compactFirst: true,
+    waitingOn: { kind: "host-offline", hostName: "M4" },
+  }),
+];
+
 const scheduled: readonly ThreadQueuedMessage[] = [
   makeQueuedMessage({
     id: "q_scheduled",
@@ -661,6 +670,14 @@ export function SteerWaitStates() {
       >
         <ResponsivePromptStage>
           <StaticQueuedMessagesList queuedMessages={waitingForHost} />
+        </ResponsivePromptStage>
+      </StoryRow>
+      <StoryRow
+        label="compact first · host offline"
+        hint="a compact-first send while the machine sleeps stays one row; it compacts, then sends, once the host is ready"
+      >
+        <ResponsivePromptStage>
+          <StaticQueuedMessagesList queuedMessages={compactingFirstForHost} />
         </ResponsivePromptStage>
       </StoryRow>
     </StoryCard>

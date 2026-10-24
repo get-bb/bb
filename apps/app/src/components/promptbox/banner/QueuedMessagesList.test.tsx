@@ -2142,6 +2142,20 @@ describe("queued row affordances", () => {
     expect(queryByLabelText("Send queued message 1 now")).toBeNull();
   });
 
+  it("leads a compact-first row's wait line with the compaction", () => {
+    const { getByText } = renderQueuedMessages([
+      {
+        ...makeQueuedMessage("q_compact_first", "Pick the review back up"),
+        compactFirst: true,
+        waitingOn: { kind: "host-offline", hostName: "M4" },
+      },
+    ]);
+    expandQueue();
+    expect(
+      getByText("Compact first · Waiting for M4 to be ready"),
+    ).toBeDefined();
+  });
+
   it("lets a drain failure take over the line the wait would have used", () => {
     const { getByText, queryByText, container } = renderQueuedMessages([
       {

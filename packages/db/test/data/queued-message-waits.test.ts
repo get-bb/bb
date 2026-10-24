@@ -68,6 +68,7 @@ function queue(
     sendAt: null,
     payload: { kind: "inline" },
     systemNotice: null,
+    compactFirst: false,
   });
 }
 

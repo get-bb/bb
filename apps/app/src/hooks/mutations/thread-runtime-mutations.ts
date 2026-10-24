@@ -14,6 +14,7 @@ import type {
   UpdateQueuedMessageRequest,
 } from "@bb/server-contract";
 import type { AppCreateThreadRequest } from "@bb/client-core";
+import { isUnansweredGateRequestError } from "@/lib/mutation-errors";
 import { BbHttpError, sdk } from "@/lib/sdk";
 import { wsManager } from "@/lib/ws";
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
@@ -58,6 +59,7 @@ import {
 import {
   invalidateThreadBannerQueries,
   invalidateThreadHistoryRewriteQueries,
+  invalidateThreadQueuedMessageSendQueries,
 } from "../cache-owners/mutation-cache-effects";
 
 interface CreateThreadQueuedMessageMutationRequest extends CreateQueuedMessageRequest {
@@ -184,12 +186,18 @@ export function sendThreadMessageMutationOptions(queryClient: QueryClient) {
         queryClient,
         request: variables,
       }),
-    onError: (_error, variables, context) => {
+    onError: (error, variables, context) => {
       rollbackSendThreadMessageTransaction({
         queryClient,
         request: variables,
         transaction: context,
       });
+      if (isUnansweredGateRequestError(error)) {
+        invalidateThreadQueuedMessageSendQueries({
+          queryClient,
+          threadId: variables.id,
+        });
+      }
     },
     onSuccess: (data, variables, context) => {
       notifyComposerSubmitted({ kind: "thread", threadId: variables.id });

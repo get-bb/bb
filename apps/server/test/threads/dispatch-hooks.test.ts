@@ -1120,6 +1120,7 @@ describe("message.dispatch grouped authors", () => {
             waitingOn: { kind: "thread-busy" },
             sendAt: null,
             systemNotice: null,
+            compactFirst: false,
           }),
         );
         const ids = rows.map((row) => row.id);

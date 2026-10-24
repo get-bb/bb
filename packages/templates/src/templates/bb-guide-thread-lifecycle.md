@@ -21,6 +21,11 @@ Lifecycle:
   cancel-plan and clear-goal wait for the provider to confirm.
   `thread compact` enqueues the same structured /compact turn used by the
   composer. Follow the thread timeline for the eventual compaction result.
+  While the thread's machine is suspended or its host is offline, it answers
+  at once and the /compact waits in the queue until the host is back, then
+  runs on the thread's settings at that time; asking again while that /compact
+  is the last queued row returns the same row. `--json` reports `delivery` as
+  `sent` or `queued` with the `queuedMessage`.
   `thread clear` keeps the BB thread, workspace, durable event history, and
   sticky execution settings. Its active timeline starts at one visible
   `Context cleared` boundary, and its next prompt starts a fresh provider

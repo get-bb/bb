@@ -218,6 +218,7 @@ export function queuedMessage(args: {
     permissionMode: THREAD_DEFAULT_EXECUTION_OPTIONS.permissionMode,
     serviceTier: THREAD_DEFAULT_EXECUTION_OPTIONS.serviceTier,
     groupWithNext: false,
+    compactFirst: false,
     sendAt: null,
     state: "queued",
     waitingOn: null,

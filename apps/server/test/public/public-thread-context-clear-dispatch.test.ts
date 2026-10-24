@@ -179,6 +179,7 @@ describe("context clear dispatch races", () => {
               source === "queued notice"
                 ? { kind: "child-completed", subject: null }
                 : null,
+            compactFirst: false,
           });
         }
         const clearing = harness.app.request(

@@ -56,6 +56,7 @@ function queueTurnEndMessage(
     sendAt: wait.sendAt,
     payload: { kind: "inline" },
     systemNotice: null,
+    compactFirst: false,
   });
 }
 
@@ -94,6 +95,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
 
     expect(
@@ -114,6 +116,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     const second = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -126,6 +129,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     setQueuedThreadMessageGroupBoundary({
       db,
@@ -173,6 +177,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
 
     expect(
@@ -212,6 +217,7 @@ describe("queued thread messages", () => {
         sendAt: null,
         payload: { kind: "inline" },
         systemNotice: null,
+        compactFirst: false,
       });
 
       const result = updateQueuedThreadMessage(db, noopNotifier, {
@@ -243,6 +249,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     claimQueuedThreadMessageGroup(db, noopNotifier, queuedMessage.id, {
       kind: "explicit-send",
@@ -274,6 +281,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
 
     expect(deleteQueuedThreadMessage(db, noopNotifier, queuedMessage.id)).toBe(
@@ -298,6 +306,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
 
     const claimedQueuedMessage = claimQueuedThreadMessageGroup(
@@ -335,6 +344,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     const firstClaim = claimQueuedThreadMessageGroup(
       db,
@@ -420,6 +430,7 @@ describe("queued thread messages", () => {
         sendAt: null,
         payload: { kind: "inline" },
         systemNotice: null,
+        compactFirst: false,
       });
       const claimedQueuedMessage = claimQueuedThreadMessageGroup(
         db,
@@ -468,6 +479,7 @@ describe("queued thread messages", () => {
           sendAt: null,
           payload: { kind: "inline" },
           systemNotice: null,
+          compactFirst: false,
         },
       );
       const releasableQueuedMessage = createQueuedThreadMessage(
@@ -484,6 +496,7 @@ describe("queued thread messages", () => {
           sendAt: null,
           payload: { kind: "inline" },
           systemNotice: null,
+          compactFirst: false,
         },
       );
       const protectedClaim = claimQueuedThreadMessageGroup(
@@ -540,6 +553,7 @@ describe("queued thread messages", () => {
         sendAt: null,
         payload: { kind: "inline" },
         systemNotice: null,
+        compactFirst: false,
       });
       nowSpy.mockReturnValueOnce(2_000);
       const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
@@ -553,6 +567,7 @@ describe("queued thread messages", () => {
         sendAt: null,
         payload: { kind: "inline" },
         systemNotice: null,
+        compactFirst: false,
       });
 
       const claimedQueuedMessage = claimNextQueuedThreadMessageGroup(
@@ -585,6 +600,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -597,6 +613,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -609,6 +626,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
 
     const result = setQueuedThreadMessageGroupBoundary({
@@ -648,6 +666,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -660,6 +679,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -672,6 +692,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     expect(
       reorderQueuedThreadMessage({
@@ -721,6 +742,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -733,6 +755,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -745,6 +768,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     setQueuedThreadMessageGroupBoundary({
       db,
@@ -792,6 +816,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     const notice = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -811,6 +836,7 @@ describe("queued thread messages", () => {
           threadName: "Child",
         },
       },
+      compactFirst: false,
     });
     insertEvents(db, noopNotifier, [
       {
@@ -866,6 +892,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     const askedForDuringStop = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -878,6 +905,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     insertEvents(db, noopNotifier, [
       {
@@ -933,6 +961,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     insertEvents(db, noopNotifier, [
       {
@@ -965,6 +994,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     const tail = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -977,6 +1007,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     setQueuedThreadMessageGroupBoundary({
       db,
@@ -1025,6 +1056,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     expect(
       claimNextQueuedThreadMessageGroup(
@@ -1049,6 +1081,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     const tail = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1061,6 +1094,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     setQueuedThreadMessageGroupBoundary({
       db,
@@ -1108,6 +1142,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1120,6 +1155,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1132,6 +1168,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     setQueuedThreadMessageGroupBoundary({
       db,
@@ -1174,6 +1211,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1186,6 +1224,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1198,6 +1237,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     setQueuedThreadMessageGroupBoundary({
       db,
@@ -1246,6 +1286,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1258,6 +1299,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1270,6 +1312,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     setQueuedThreadMessageGroupBoundary({
       db,
@@ -1312,6 +1355,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1324,6 +1368,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1336,6 +1381,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     setQueuedThreadMessageGroupBoundary({
       db,
@@ -1391,6 +1437,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1404,6 +1451,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
 
     const result = setQueuedThreadMessageGroupBoundary({
@@ -1442,6 +1490,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1454,6 +1503,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
 
     const result = setQueuedThreadMessageGroupBoundary({
@@ -1492,6 +1542,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1504,6 +1555,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     setQueuedThreadMessageGroupBoundary({
       db,
@@ -1558,6 +1610,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1570,6 +1623,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1582,6 +1636,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
 
     const moveToFront = reorderQueuedThreadMessage({
@@ -1649,6 +1704,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1661,6 +1717,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
 
     expect(
@@ -1699,6 +1756,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1712,6 +1770,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1724,6 +1783,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
 
     expect(
@@ -1763,6 +1823,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1775,6 +1836,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1787,6 +1849,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     setQueuedThreadMessageGroupBoundary({
       db,
@@ -1847,6 +1910,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1859,6 +1923,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1871,6 +1936,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
     const otherQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: otherThread.id,
@@ -1883,6 +1949,7 @@ describe("queued thread messages", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
 
     expect(

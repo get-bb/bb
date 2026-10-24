@@ -1,4 +1,7 @@
-import { requestQueuedMachineReadiness } from "./queued-message-dispatch.js";
+import {
+  requestQueuedMachineReadiness,
+  requestQueuedMessageDispatch,
+} from "./queued-message-dispatch.js";
 import {
   cancelPreparingMachinePause,
   isMachineWaitingForExecution,
@@ -6,14 +9,19 @@ import {
 import {
   deleteClaimedQueuedThreadMessageBatchInTransaction,
   getEnvironment,
+  getLastQueuedThreadMessage,
   getThread,
   isThreadQueueAutoSendPaused,
   listRunningThreads,
   type ClaimedQueuedThreadMessageRow,
+  type EnvironmentRow,
+  type QueuedThreadMessageRow,
   type RunningThreadRow,
 } from "@bb/db";
 import {
   createStandaloneBuiltinCompactCommandInput,
+  isQueuedMessageFailedState,
+  isStandaloneBuiltinCompactCommand,
   promptInputSchema,
   type PromptInput,
   type QueuedMessagePayload,
@@ -25,7 +33,10 @@ import {
   type ThreadCreateOrigin,
   type ThreadQueuedMessage,
 } from "@bb/domain";
-import type { SendMessageRequest } from "@bb/server-contract";
+import type {
+  SendMessageRequest,
+  SendMessageResponse,
+} from "@bb/server-contract";
 import type {
   MessageDispatchHookContext,
   PluginDispatchEnvironmentIntent,
@@ -49,8 +60,11 @@ import {
   type DispatchAttemptKind,
 } from "./dispatch-hooks.js";
 import {
+  announceQueuedMessageWait,
   createQueuedMessageAutoSendPausedError,
   createQueuedMessageClaimLostError,
+  createQueuedMessageWait,
+  queueBehindCompactionInTransaction,
   recordQueuedMessageWait,
   settleQueueRowDispatched,
   type QueuedDispatchMessage,
@@ -316,8 +330,20 @@ async function runDispatchAttempt(
   // everything the user lined up behind it.
   ensureThreadIsWritable(thread, true);
   assertThreadHostAcceptsWork(deps.db, thread);
+  const needsOwnTurn =
+    payload.compactFirst === true ||
+    isStandaloneBuiltinCompactCommand(payload.input);
+  if (
+    needsOwnTurn &&
+    payload.mode !== "start" &&
+    payload.mode !== "queue-if-active"
+  ) {
+    payload = { ...payload, mode: "queue-if-active" };
+    args = { ...args, payload };
+  }
   if (
     payload.mode === "queue-if-active" &&
+    !needsOwnTurn &&
     isActiveTurnMainRunIdle(deps, thread)
   ) {
     payload = { ...payload, mode: "steer-if-active" };
@@ -375,12 +401,6 @@ async function runDispatchAttempt(
     payload,
     args.executionDefaults ?? { threadId: thread.id },
   );
-  if (payload.compactFirst) {
-    const { compactFirst, ...request } = payload;
-    await compactThreadContext(deps, thread);
-    payload = request;
-    args = { ...args, payload };
-  }
   const resolvedPayload = resolveExecutionIntoPayload(payload, execution);
   const queuedMessage: QueuedDispatchMessage = {
     input: payload.input,
@@ -391,6 +411,7 @@ async function runDispatchAttempt(
     requestedBy: args.startedOnBehalfOf,
     payload: args.queuePayload,
     systemNotice: null,
+    compactFirst: payload.compactFirst === true,
   };
 
   const waitOn = (
@@ -465,12 +486,15 @@ async function runDispatchAttempt(
       dispatchHost !== null &&
       isMachineWaitingForExecution(deps, dispatchHost.id)
     ) {
-      cancelPreparingMachinePause(deps, dispatchHost.id);
-      continued.outcome = waitOn(
-        { kind: "host-offline", hostName: dispatchHost.name },
-        null,
+      continued.outcome = holdOnHost(
+        deps,
+        {
+          hostId: dispatchHost.id,
+          hostName: dispatchHost.name,
+          machineWaiting: true,
+        },
+        (waitingOn) => waitOn(waitingOn, null),
       );
-      requestQueuedMachineReadiness(deps, dispatchHost.id);
       return;
     }
 
@@ -623,6 +647,16 @@ async function runDispatchAttempt(
   }
 
   markTurnTraceSpan("dispatch.checkpoint.done");
+  if (payload.compactFirst) {
+    return compactBeforeMessage(deps, {
+      attempt: args,
+      claimed,
+      message: queuedMessage,
+      reattempted,
+      respectManualStopPause,
+      sendNow,
+    });
+  }
   const environment = await requireThreadCommandEnvironment(deps, { thread });
   try {
     await sendThreadMessage(deps, {
@@ -867,10 +901,56 @@ function resolveExecutionIntoPayload(
   };
 }
 
-export async function compactThreadContext(
+interface HostOfflineHold {
+  hostId: string;
+  hostName: string;
+  machineWaiting: boolean;
+}
+
+function hostOfflineHold(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  thread: Pick<Thread, "environmentId">,
+): HostOfflineHold | null {
+  const { environment, host } = dispatchEnvironmentAndHost(
+    deps,
+    thread.environmentId,
+  );
+  if (host === null) return null;
+  if (isMachineWaitingForExecution(deps, host.id)) {
+    return { hostId: host.id, hostName: host.name, machineWaiting: true };
+  }
+  if (
+    environment !== null &&
+    goneThreadEnvironmentDetails(environment) === null &&
+    !deps.hub.hasDaemonForHost(host.id)
+  ) {
+    return { hostId: host.id, hostName: host.name, machineWaiting: false };
+  }
+  return null;
+}
+
+function holdOnHost<T>(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  hold: HostOfflineHold,
+  record: (waitingOn: QueuedMessageWaitingOn) => T,
+): T {
+  if (hold.machineWaiting) cancelPreparingMachinePause(deps, hold.hostId);
+  const recorded = record({ kind: "host-offline", hostName: hold.hostName });
+  if (hold.machineWaiting) {
+    requestQueuedMachineReadiness(deps, hold.hostId);
+  } else if (deps.hub.hasDaemonForHost(hold.hostId)) {
+    requestQueuedMessageDispatch(deps, {
+      kind: "host-connected",
+      hostId: hold.hostId,
+    });
+  }
+  return recorded;
+}
+
+export function assertThreadCanCompact(
   deps: LoggedPendingInteractionWorkSessionDeps,
   thread: Thread,
-): Promise<void> {
+): void {
   ensureThreadIsWritable(thread);
   if (!deps.providerRegistry.supportsManualCompaction(thread.providerId)) {
     throw new ApiError(
@@ -886,15 +966,140 @@ export async function compactThreadContext(
       "Context can only be compacted while the thread is idle or errored",
     );
   }
+}
 
-  const environment = await requireThreadCommandEnvironment(deps, { thread });
+async function prepareThreadCompaction(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  thread: Thread,
+): Promise<EnvironmentRow> {
+  assertThreadCanCompact(deps, thread);
+  return requireThreadCommandEnvironment(deps, { thread });
+}
+
+function compactionCommandPayload(): SendMessageRequest {
+  return { input: createStandaloneBuiltinCompactCommandInput(), mode: "start" };
+}
+
+async function compactBeforeMessage(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  args: {
+    attempt: DispatchAttemptArgs;
+    claimed: ClaimedQueuedThreadMessageRow[] | null;
+    message: QueuedDispatchMessage;
+    reattempted: boolean;
+    respectManualStopPause: boolean;
+    sendNow: boolean;
+  },
+): Promise<DispatchAttemptOutcome> {
+  const { thread } = args.attempt;
+  const environment = await prepareThreadCompaction(deps, thread);
+  const queued: { row: QueuedThreadMessageRow | null } = { row: null };
+  try {
+    await sendThreadMessage(deps, {
+      environment,
+      payload: compactionCommandPayload(),
+      thread,
+      trigger: args.attempt.trigger,
+      beforeAppendInTransaction: ({ tx }) => {
+        if (getThread(tx, thread.id)?.status !== thread.status) {
+          throw new DispatchThreadStatusChangedError();
+        }
+        if (
+          args.respectManualStopPause &&
+          isThreadQueueAutoSendPaused(tx, thread.id)
+        ) {
+          throw createQueuedMessageAutoSendPausedError();
+        }
+        queued.row = queueBehindCompactionInTransaction(tx, {
+          claimed: args.claimed,
+          message: args.message,
+          sendNow: args.sendNow,
+          thread,
+        });
+      },
+    });
+  } catch (error) {
+    if (!(error instanceof DispatchThreadStatusChangedError)) {
+      throw error;
+    }
+    return reattemptDispatchForThreadChange(
+      deps,
+      args.attempt,
+      getThread(deps.db, thread.id),
+      args.reattempted,
+    );
+  }
+  if (queued.row === null) {
+    throw new ApiError(
+      500,
+      "internal_error",
+      `Thread ${thread.id} started compacting without queueing the message behind it`,
+    );
+  }
+  return { kind: "queued", entry: announceQueuedMessageWait(deps, queued.row) };
+}
+
+export async function requestThreadCompaction(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  thread: Thread,
+): Promise<SendMessageResponse> {
+  const environment = await prepareThreadCompaction(deps, thread);
+  const hold = hostOfflineHold(deps, thread);
+  if (hold !== null) {
+    return {
+      ok: true,
+      delivery: "queued",
+      queuedMessage: await queueThreadCompaction(deps, { hold, thread }),
+    };
+  }
   await sendThreadMessage(deps, {
     environment,
-    payload: {
-      input: createStandaloneBuiltinCompactCommandInput(),
-      mode: "start",
-    },
+    payload: compactionCommandPayload(),
     thread,
     trigger: "user",
   });
+  return { ok: true, delivery: "sent" };
+}
+
+async function queueThreadCompaction(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  args: { hold: HostOfflineHold; thread: Thread },
+): Promise<ThreadQueuedMessage> {
+  const execution = await buildExecutionOptions(
+    deps,
+    {},
+    { threadId: args.thread.id },
+  );
+  return holdOnHost(
+    deps,
+    args.hold,
+    (waitingOn) =>
+      lastQueuedCompaction(deps, args.thread.id) ??
+      createQueuedMessageWait(deps, {
+        thread: args.thread,
+        message: {
+          input: createStandaloneBuiltinCompactCommandInput(),
+          execution,
+          senderThreadId: null,
+          origin: null,
+          originPluginId: null,
+          requestedBy: null,
+          payload: { kind: "inline" },
+          systemNotice: null,
+          compactFirst: false,
+        },
+        waitingOn,
+        sendAt: null,
+      }),
+  );
+}
+
+function lastQueuedCompaction(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  threadId: string,
+): ThreadQueuedMessage | null {
+  const row = getLastQueuedThreadMessage(deps.db, threadId);
+  if (row === null || isQueuedMessageFailedState(row.state)) return null;
+  const entry = toThreadQueuedMessage(row);
+  return isStandaloneBuiltinCompactCommand(entry.content) ? entry : null;
 }

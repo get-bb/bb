@@ -28,6 +28,7 @@ function queuedMessage(
     permissionMode: "auto",
     serviceTier: "default",
     groupWithNext: false,
+    compactFirst: false,
     sendAt: null,
     state: "queued",
     waitingOn: null,
@@ -264,6 +265,27 @@ describe("bb thread organization commands", () => {
     expect(output).toContain("Sender");
     expect(output).toContain("thr_sender");
     expect(output).toContain("System");
+  });
+
+  it("marks a message that compacts first in queue list", async () => {
+    stubServerApi({
+      "v1.queued-messages.$get": async () => [
+        queuedMessage({
+          compactFirst: true,
+          state: "waiting",
+          waitingOn: { kind: "host-offline", hostName: "berth-1" },
+        }),
+      ],
+    });
+
+    await runCommand(["thread", "queue", "list"], register);
+
+    expect(
+      vi
+        .mocked(console.log)
+        .mock.calls.map((args) => args.join(" "))
+        .join("\n"),
+    ).toContain("compact first; waiting for berth-1");
   });
 
   it.each([false, true])(

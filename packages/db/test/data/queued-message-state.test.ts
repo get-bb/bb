@@ -36,6 +36,7 @@ function setup() {
       sendAt,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
   return { db, queue, threadId: thread.id };
 }

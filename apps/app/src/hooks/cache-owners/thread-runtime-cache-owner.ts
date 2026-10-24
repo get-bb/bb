@@ -414,6 +414,7 @@ function buildOptimisticQueuedMessage({
     serviceTier:
       request.serviceTier ?? defaultExecutionOptions?.serviceTier ?? "default",
     groupWithNext: false,
+    compactFirst: false,
     sendAt: scheduledSendAt,
     state: scheduledSendAt === null ? "queued" : "scheduled",
     waitingOn: scheduledSendAt === null ? null : { kind: "time" },
