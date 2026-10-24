@@ -75,6 +75,32 @@ describe("spawnLoggedProcess", () => {
     },
   );
 
+  it("keeps the spawned pid and IPC channel when the child runs under a scheduling wrapper", async () => {
+    const child = spawnLoggedProcess({
+      command: process.execPath,
+      args: [
+        "-e",
+        `process.send({ pid: process.pid });
+         process.once("message", (message) => {
+           process.send({ echo: message });
+           process.disconnect();
+         });`,
+      ],
+      env: process.env,
+      ipc: true,
+      logDir: scratchDir(),
+      logName: "server",
+    });
+    const messages: unknown[] = [];
+    child.on("message", (message) => {
+      messages.push(message);
+      if (messages.length === 1) child.send("ping");
+    });
+
+    expect(await waitForExit(child)).toBe(0);
+    expect(messages).toEqual([{ pid: child.pid }, { echo: "ping" }]);
+  });
+
   it("preserves output across child restarts, including early failures", async () => {
     const logDir = scratchDir();
     for (const message of ["first startup", "second startup"]) {
