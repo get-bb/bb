@@ -3,7 +3,15 @@ import { readFile } from "node:fs/promises";
 import { extname } from "node:path";
 import { promisify } from "node:util";
 
-const binaryExtensions = new Set([".png", ".jpg", ".webp", ".icns", ".mp4"]);
+const binaryExtensions = new Set([
+  ".png",
+  ".jpg",
+  ".webp",
+  ".icns",
+  ".mp4",
+  ".heic",
+  ".heif",
+]);
 const { stdout } = await promisify(execFile)("git", ["ls-files", "-z"], {
   maxBuffer: 16 * 1024 * 1024,
 });

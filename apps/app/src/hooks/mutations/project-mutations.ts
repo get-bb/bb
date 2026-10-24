@@ -221,7 +221,9 @@ export function useUploadPromptAttachment() {
         projectId,
         clientFile: file,
       });
-      registerLocalAttachmentPreview(uploaded.path, file);
+      if (uploaded.mimeType === file.type) {
+        registerLocalAttachmentPreview(uploaded.path, file);
+      }
       return uploaded;
     },
     retry: false,

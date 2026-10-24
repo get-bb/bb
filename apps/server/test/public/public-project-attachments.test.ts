@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { createBbSdk } from "@bb/sdk/core";
+import { createHttpTransport } from "@bb/sdk/node";
 import { uploadedPromptAttachmentSchema } from "@bb/server-contract";
 import { readJson } from "../helpers/json.js";
 import { seedHostSession, seedProjectWithSource } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
+import { readFile } from "node:fs/promises";
 
 async function upload(
   app: {
@@ -158,7 +161,7 @@ describe("public project attachments", () => {
     });
   });
 
-  it("rejects HEIC/HEIF image uploads instead of storing an image nothing can render", async () => {
+  it("rejects corrupt HEIC/HEIF images but preserves explicit file uploads", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-project-attachment-heic",
@@ -172,8 +175,7 @@ describe("public project attachments", () => {
       ]);
       const rejected = {
         code: "invalid_request",
-        message:
-          "HEIC images are not supported. Convert the image to JPEG or PNG before attaching it.",
+        message: "Could not convert HEIC/HEIF image to PNG",
       };
 
       const heic = await upload(
@@ -216,6 +218,71 @@ describe("public project attachments", () => {
       expect(stillAcceptsOtherImages.status).toBe(201);
     });
   });
+
+  const raw = "application/octet-stream";
+  it.each([
+    ["photo.heic", "image/heic", undefined, "image/png"],
+    ["photo.HEIF", "Image/HEIF; charset=binary", undefined, "image/png"],
+    ["photo.heic", "image/heic-sequence", undefined, "image/png"],
+    ["photo.heif", "image/heif-sequence", undefined, "image/png"],
+    ["photo", "image/heic", undefined, "image/png"],
+    ["photo.HEIC", "", undefined, "image/png"],
+    ["photo.heif", "", undefined, "image/png"],
+    ["photo.heic", raw, undefined, raw],
+    ["photo.heic", "image/heic", raw, raw],
+    ["notes.txt", "", undefined, raw],
+  ])(
+    "uploads %s (%s, override %s) as %s",
+    async (name, mimeType, override, storedMimeType) => {
+      const bytes = await readFile(
+        new URL("../fixtures/images/quadrants.heic", import.meta.url),
+      );
+      await withTestHarness(async (harness) => {
+        const { host } = seedHostSession(harness.deps, { id: "host-heic-sdk" });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+        });
+        const sdk = createBbSdk({
+          transport: createHttpTransport({
+            baseUrl: "http://localhost",
+            runtime: "browser",
+            fetch: async (input, init) =>
+              harness.app.request(new Request(input, init)),
+          }),
+        });
+        const uploaded = await sdk.projects.attachments.upload({
+          projectId: project.id,
+          clientFile: new File([bytes], name, { type: mimeType }),
+          ...(override === undefined ? {} : { mimeType: override }),
+        });
+        const converted = storedMimeType === "image/png";
+        expect(uploaded).toMatchObject({
+          type: converted ? "localImage" : "localFile",
+          sourceProjectId: project.id,
+          name: converted ? "photo.png" : name,
+          mimeType: storedMimeType,
+        });
+        const content = await sdk.projects.attachments.read({
+          projectId: project.id,
+          path: uploaded.path,
+        });
+        expect(uploaded.sizeBytes).toBe(content.bytes.byteLength);
+        const stored = Buffer.from(content.bytes);
+        if (converted) {
+          expect(content.mimeType).toBe("image/png");
+          expect(uploaded.path).toMatch(/\.png$/u);
+          expect(stored.subarray(0, 8)).toEqual(
+            Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+          );
+          expect([stored.readUInt32BE(16), stored.readUInt32BE(20)]).toEqual([
+            64, 32,
+          ]);
+        } else {
+          expect(stored).toEqual(bytes);
+        }
+      });
+    },
+  );
 
   it("keeps attachment read tokens scoped to their owning project", async () => {
     await withTestHarness(async (harness) => {

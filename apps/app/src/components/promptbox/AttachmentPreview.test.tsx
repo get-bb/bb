@@ -80,6 +80,53 @@ describe("AttachmentPreview", () => {
     expect(revoked).toEqual(["blob:local-1"]);
   });
 
+  it.each([
+    "image/heic",
+    "image/heif",
+    "image/heic-sequence",
+    "image/heif-sequence",
+    "Image/HEIF; charset=binary",
+    "image/heic; charset=binary",
+  ])("shows a placeholder until a %s upload becomes PNG", (mimeType) => {
+    const file = new File(["image"], "pending.HEIC", { type: mimeType });
+    const props = {
+      attachments: [],
+      expandedImageIndex: null,
+      onExpandedImageIndexChange: vi.fn(),
+      attachmentProjectId: "proj_1",
+    };
+    const { getByRole, queryByRole, rerender } = render(
+      <AttachmentPreview
+        {...props}
+        pendingUploads={[{ id: "upload-1", file }]}
+      />,
+    );
+    const status = getByRole("status", { name: "Uploading pending.HEIC" });
+    expect(status.querySelector("img")).toBeNull();
+    expect(status.querySelector('[data-icon="FileAttachment"]')).not.toBeNull();
+    expect(status.textContent).toContain("Uploading");
+    expect(created).toBe(0);
+
+    rerender(
+      <AttachmentPreview
+        {...props}
+        attachments={[
+          {
+            type: "localImage",
+            path: "converted.png",
+            name: "pending.png",
+            mimeType: "image/png",
+          },
+        ]}
+      />,
+    );
+    expect(queryByRole("status")).toBeNull();
+    expect(getByRole("img", { name: "pending.png" }).getAttribute("src")).toBe(
+      "/api/v1/projects/proj_1/attachments/content?path=converted.png",
+    );
+    expect(revoked).toEqual([]);
+  });
+
   it("shows an uploading file in the file pill row so finishing does not move it", () => {
     const { getByRole } = render(
       <AttachmentPreview
