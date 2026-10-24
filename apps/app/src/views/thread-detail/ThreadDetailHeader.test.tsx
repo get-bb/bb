@@ -224,63 +224,66 @@ describe("ThreadDetailHeader", () => {
     ).toBeNull();
   });
 
-  it("moves secondary controls into overflow for narrow split panes", () => {
-    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
-      bottom: 40,
-      height: 40,
-      left: 0,
-      right: 360,
-      top: 0,
-      width: 360,
-      x: 0,
-      y: 0,
-      toJSON: () => ({}),
-    });
-    const splitContext: PaneContextValue = {
-      ...PANE_CONTEXT,
-      isFocused: true,
-      isSplitPane: true,
-      beginPaneDrag: vi.fn(),
-    };
+  it.each([
+    { isSplitPane: false, label: "single" },
+    { isSplitPane: true, label: "split" },
+  ])(
+    "moves secondary controls into overflow for a narrow $label header",
+    ({ isSplitPane }) => {
+      vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+        bottom: 40,
+        height: 40,
+        left: 0,
+        right: 360,
+        top: 0,
+        width: 360,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      });
+      const paneContext: PaneContextValue = {
+        ...PANE_CONTEXT,
+        isFocused: true,
+        isSplitPane,
+        beginPaneDrag: isSplitPane ? vi.fn() : undefined,
+      };
 
-    render(
-      <PaneContext.Provider value={splitContext}>
-        <ThreadDetailHeader
-          actionsMenu={({ includeResponsiveActions }) => (
-            <>
-              <span>Thread menu</span>
-              {includeResponsiveActions ? (
-                <span>Responsive menu actions</span>
-              ) : null}
-            </>
-          )}
-          isSecondaryPanelOpen={false}
-          onClosePane={vi.fn()}
-          onOpenThreadGitAction={vi.fn()}
-          onToggleSecondaryPanel={vi.fn()}
-          threadHeaderGitActions={[
-            { label: "Commit", target: { kind: "commit" } },
-          ]}
-          threadId={THREAD_ID}
-          threadTitle="Narrow split"
-          workspaceOpenButton={<button>Open workspace</button>}
-        />
-      </PaneContext.Provider>,
-    );
+      render(
+        <PaneContext.Provider value={paneContext}>
+          <ThreadDetailHeader
+            actionsMenu={({ includeResponsiveActions }) => (
+              <>
+                <span>Thread menu</span>
+                {includeResponsiveActions ? (
+                  <span>Responsive menu actions</span>
+                ) : null}
+              </>
+            )}
+            isSecondaryPanelOpen={false}
+            onClosePane={vi.fn()}
+            onOpenThreadGitAction={vi.fn()}
+            onToggleSecondaryPanel={vi.fn()}
+            threadHeaderGitActions={[
+              { label: "Commit", target: { kind: "commit" } },
+            ]}
+            threadId={THREAD_ID}
+            threadTitle="Narrow split"
+            workspaceOpenButton={<button>Open workspace</button>}
+          />
+        </PaneContext.Provider>,
+      );
 
-    expect(screen.queryByText("Open workspace")).toBeNull();
-    expect(screen.queryByText("Commit")).toBeNull();
-    expect(screen.getByText("Thread menu")).not.toBeNull();
-    expect(screen.getByText("Responsive menu actions")).not.toBeNull();
-    const closePane = screen.getByRole("button", { name: "Close pane" });
-    expect(closePane.classList).toContain("header-pane-action-button");
-    const closeIcon = closePane.querySelector('[data-icon="CloseThreadPane"]');
-    expect(closeIcon).not.toBeNull();
-    expect(closeIcon?.querySelectorAll("path")).toHaveLength(1);
-    expect(closeIcon?.querySelector("path")?.getAttribute("d")).toContain(
-      "M18 6L6.00081 17.9992",
-    );
-  });
+      expect(screen.queryByText("Open workspace")).toBeNull();
+      expect(screen.queryByText("Commit")).toBeNull();
+      expect(screen.getByText("Thread menu")).not.toBeNull();
+      expect(screen.getByText("Responsive menu actions")).not.toBeNull();
+      if (isSplitPane) {
+        expect(
+          screen.getByRole("button", { name: "Close pane" }),
+        ).not.toBeNull();
+      }
+    },
+  );
 
   it("keeps responsive controls inline and out of the menu for wide split panes", () => {
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({

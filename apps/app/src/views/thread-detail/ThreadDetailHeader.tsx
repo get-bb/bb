@@ -57,7 +57,7 @@ const THREAD_HEADER_ACTION_BUTTON_CLASS = cn(
   COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS,
   "border-border/70 bg-transparent font-normal hover:bg-state-hover",
 );
-const NARROW_SPLIT_HEADER_MAX_WIDTH = 560;
+const NARROW_HEADER_ACTION_OVERFLOW_WIDTH = 560;
 
 export interface ThreadDetailHeaderActionsMenuArgs {
   includeResponsiveActions: boolean;
@@ -143,33 +143,29 @@ export function ThreadDetailHeader({
   const isWindowPanelOpen =
     useContext(SecondaryPanelHostLayoutContext)?.isOpen === true;
   const isSplitPaneHeader = beginPaneDrag !== undefined;
-  const [measuredPaneWidth, setMeasuredPaneWidth] = useState(0);
+  const [measuredHeaderWidth, setMeasuredHeaderWidth] = useState(0);
   const usesResponsiveActionOverflow =
     isCompactViewport ||
-    (isSplitPaneHeader &&
-      measuredPaneWidth > 0 &&
-      measuredPaneWidth < NARROW_SPLIT_HEADER_MAX_WIDTH);
+    (measuredHeaderWidth > 0 &&
+      measuredHeaderWidth < NARROW_HEADER_ACTION_OVERFLOW_WIDTH);
   useLayoutEffect(() => {
-    if (!isSplitPaneHeader) {
-      return;
-    }
-
     const header = headerRef.current;
-    const pane = header.closest<HTMLElement>("[data-split-pane-id]");
-    const measuredElement = pane ?? header;
     const measure = () => {
-      const width = measuredElement.getBoundingClientRect().width;
+      const width = header.getBoundingClientRect().width;
       if (width > 0) {
-        setMeasuredPaneWidth(width);
+        setMeasuredHeaderWidth(width);
       }
     };
     measure();
+    if (typeof ResizeObserver === "undefined") {
+      return;
+    }
     const observer = new ResizeObserver(measure);
-    observer.observe(measuredElement);
+    observer.observe(header);
     return () => {
       observer.disconnect();
     };
-  }, [isSplitPaneHeader]);
+  }, []);
   const handleTitlePointerDown = (event: ReactPointerEvent) => {
     if (isEditing || !beginPaneDrag || event.button !== 0) {
       return;
@@ -204,7 +200,7 @@ export function ThreadDetailHeader({
       >
         <p
           className={cn(
-            "relative min-w-0 text-sm font-normal transition-colors",
+            "relative min-w-0 truncate text-sm font-medium transition-colors",
             isEditing && "overflow-visible",
             isSplitPaneHeader &&
               !isFocused &&
@@ -239,7 +235,12 @@ export function ThreadDetailHeader({
   const actions = (
     <>
       <div
-        className="flex items-center gap-1"
+        className={cn(
+          "flex min-w-0 max-w-[min(50cqw,32rem)] items-center gap-1 overflow-x-auto",
+          usesDesktopChrome &&
+            isTopRow &&
+            "max-h-7 overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+        )}
         data-thread-header-workflow-actions=""
       >
         {pluginActions}
