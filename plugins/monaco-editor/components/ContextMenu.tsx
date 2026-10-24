@@ -16,7 +16,7 @@ export interface ContextMenuState {
 const VIEWPORT_MARGIN_PX = 8;
 
 const MENU_CLASS =
-  "fixed z-50 w-auto rounded-md border bg-popover p-0.5 text-popover-foreground shadow-md outline-none animate-in fade-in-0 zoom-in-95";
+  "fixed z-50 w-auto rounded-md border bg-popover p-0.5 text-popover-foreground shadow-md outline-none";
 const ITEM_CLASS =
   "flex w-full cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-left text-xs text-foreground transition-colors select-none hover:bg-surface-recessed focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none max-md:pointer-coarse:min-h-7 max-md:pointer-coarse:px-2 max-md:pointer-coarse:py-1";
 
