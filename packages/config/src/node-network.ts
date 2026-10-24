@@ -1,11 +1,13 @@
-export function nodeNetworkEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  return {
-    ...env,
-    NODE_USE_ENV_PROXY: env.NODE_USE_ENV_PROXY ?? "1",
-    NODE_USE_SYSTEM_CA: env.NODE_USE_SYSTEM_CA ?? "1",
-  };
-}
+const NODE_NETWORK_FLAGS = {
+  "--use-system-ca": "NODE_USE_SYSTEM_CA",
+  "--use-env-proxy": "NODE_USE_ENV_PROXY",
+} as const;
 
 export function nodeNetworkArgs(env: NodeJS.ProcessEnv): string[] {
-  return (env.NODE_USE_SYSTEM_CA ?? "1") === "1" ? ["--use-system-ca"] : [];
+  return Object.entries(NODE_NETWORK_FLAGS)
+    .filter(
+      ([flag, key]) =>
+        env[key] !== "0" && process.allowedNodeEnvironmentFlags.has(flag),
+    )
+    .map(([flag]) => flag);
 }

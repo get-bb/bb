@@ -1,5 +1,4 @@
 import { spawnHostProcess as spawn } from "@bb/process-utils";
-import { nodeNetworkEnv } from "@bb/config/node-network";
 import type { ChildProcess } from "node:child_process";
 import { posix as posixPath } from "node:path";
 import {
@@ -252,10 +251,10 @@ export function createBbAppProcessEnv(
   args: CreateBbAppProcessEnvArgs,
 ): NodeJS.ProcessEnv {
   if (args.runtimeMode === "electron-node") {
-    return { ...nodeNetworkEnv(args.env), ELECTRON_RUN_AS_NODE: "1" };
+    return { ...args.env, ELECTRON_RUN_AS_NODE: "1" };
   }
 
-  const env = nodeNetworkEnv(args.env);
+  const env = { ...args.env };
   delete env.ELECTRON_RUN_AS_NODE;
   return env;
 }

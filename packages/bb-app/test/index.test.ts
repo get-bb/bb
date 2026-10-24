@@ -2266,7 +2266,12 @@ describe("managed process networking", () => {
           { env: launchEnv, timeout: 10000 },
         );
         expect(result.stdout.trim().split("\n")).toEqual(["proxied", "direct"]);
-        expect(launchEnv.NODE_USE_SYSTEM_CA).toBe("1");
+        expect(nodeNetworkArgs(launchEnv)).toEqual([
+          "--use-system-ca",
+          "--use-env-proxy",
+        ]);
+        expect(launchEnv.NODE_USE_ENV_PROXY).toBeUndefined();
+        expect(launchEnv.NODE_USE_SYSTEM_CA).toBeUndefined();
       } finally {
         proxy.closeAllConnections();
         direct.closeAllConnections();

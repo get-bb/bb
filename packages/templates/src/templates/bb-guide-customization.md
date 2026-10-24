@@ -429,8 +429,9 @@ backup before rolling back to a build predating the tolerant-reader fix #5286.
 
 Outbound networking
 
-Server and daemon launches trust OS-managed certificate authorities and enable
-Node's environment proxy support by default. Configure `HTTP_PROXY`,
+bb's own server, daemon, and worker processes trust OS-managed certificate
+authorities and enable Node's environment proxy support by default; terminals,
+provider CLIs, and agent shells keep the user's Node networking defaults. Configure `HTTP_PROXY`,
 `HTTPS_PROXY`, and `NO_PROXY` with `bb-app env set` or in the launch environment;
 include `localhost,127.0.0.1,::1` in `NO_PROXY`. `NODE_EXTRA_CA_CERTS` adds a PEM
 bundle. `NODE_USE_SYSTEM_CA=0` and `NODE_USE_ENV_PROXY=0` opt out of the defaults.
