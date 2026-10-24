@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { FRP_HOOK_OPS, FRP_HOOK_PATH } from "./frp-hooks.js";
 import type { Log } from "./log.js";
+import { unreachablePageHtml } from "./pages.js";
 
 export interface FrpsOptions {
   binary: string;
@@ -27,7 +28,10 @@ const STOP_TIMEOUT_MS = 500;
 const LOOPBACK = "127.0.0.1";
 const ANSI = /\u001b\[[0-9;]*m/gu;
 
-export function frpsConfig(options: Omit<FrpsOptions, "binary" | "log">) {
+export function frpsConfig(
+  options: Omit<FrpsOptions, "binary" | "log">,
+  custom404Page: string,
+) {
   return {
     bindAddr: LOOPBACK,
     bindPort: options.bindPort,
@@ -36,6 +40,7 @@ export function frpsConfig(options: Omit<FrpsOptions, "binary" | "log">) {
     vhostHTTPTimeout: 120,
     subdomainHost: options.subdomainHost,
     transport: { maxPoolCount: 10 },
+    custom404Page,
     log: { level: options.logLevel, disablePrintColor: true },
     httpPlugins: [
       {
@@ -62,7 +67,11 @@ async function canConnect(port: number): Promise<boolean> {
 export async function startFrps(options: FrpsOptions): Promise<Frps> {
   const dir = await mkdtemp(join(tmpdir(), "bb-frps-"));
   const file = join(dir, "frps.json");
-  await writeFile(file, JSON.stringify(frpsConfig(options)), { mode: 0o600 });
+  const notFoundPage = join(dir, "404.html");
+  await writeFile(notFoundPage, unreachablePageHtml(), { mode: 0o600 });
+  await writeFile(file, JSON.stringify(frpsConfig(options, notFoundPage)), {
+    mode: 0o600,
+  });
   const child = spawn(options.binary, ["-c", file], {
     stdio: ["ignore", "pipe", "pipe"],
   });

@@ -134,13 +134,14 @@ describe.skipIf(!availability.ok)("connect-next gate end to end", () => {
     label: string,
     credential: string,
     subdomains: string[],
+    localPort: number = origin.port,
   ): Promise<FrpcProcess> {
     const client = await startFrpc({
       binary: binaries.frpc,
       edgePort: edge.port,
       label,
       credential,
-      localPort: origin.port,
+      localPort,
       subdomains,
       loginFailExit: true,
     });
@@ -984,6 +985,30 @@ describe.skipIf(!availability.ok)("connect-next gate end to end", () => {
         "accept-encoding": "gzip",
       });
       expect(cached.headers["x-bb-cache"]).toBe("hit");
+    });
+
+    it("answers with a bb page when nothing listens behind a proxy", async () => {
+      const client = await connect(
+        "wasp",
+        "cred-wasp",
+        ["wasp"],
+        await freePort(),
+      );
+      try {
+        await waitFor(
+          () => gate.directory.locate("wasp").kind === "here",
+          15_000,
+          "wasp to connect",
+        );
+        const html = await visit(gate.webPort, `wasp.${BASE_DOMAIN}`, "/", {
+          headers: { ...owner, accept: "text/html" },
+        });
+        expect(html.status).toBe(404);
+        expect(html.text).toContain("Nothing answered at this address");
+        expect(html.text).not.toContain("frp");
+      } finally {
+        await client.kill();
+      }
     });
 
     it("answers 502 when the account API fails", async () => {
