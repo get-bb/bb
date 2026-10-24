@@ -455,6 +455,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginFileOpenerRegistration",
           "PluginFileOpenerProps",
           "PluginFileOpenerSource",
+          "PluginFileOpenerOpenArgs",
         ],
         firstParty: ["Docs", "File Editor", "PDF preview"],
       },

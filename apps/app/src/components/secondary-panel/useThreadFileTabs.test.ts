@@ -1254,6 +1254,110 @@ describe("useThreadFileTabs file opener diversion", () => {
     });
   });
 
+  function registerHandlingOpener(
+    handleOpen: (args: unknown) => boolean | Promise<boolean>,
+  ) {
+    setPluginSlotRegistrations(
+      "notes",
+      makePluginRegistrationSet({
+        fileOpeners: [
+          {
+            id: "editor",
+            title: "Notes editor",
+            extensions: ["md"],
+            component: NotesEditor,
+            experimental_handleOpen: handleOpen,
+          },
+        ],
+      }),
+    );
+  }
+
+  const HANDLED_REQUEST = {
+    kind: "workspace-file-preview",
+    tab: {
+      lineRange: { startLineNumber: 3, endLineNumber: 4 },
+      path: "notes/todo.md",
+      source: { kind: "working-tree" },
+      statusLabel: null,
+    },
+  } as const;
+
+  function renderHandledHook(id: string) {
+    return renderThreadHook(() =>
+      useThreadFileTabsWithActiveTab({
+        panelStateId: id,
+        syncThreadId: id,
+        environmentId: "env_1",
+        storageFiles: undefined,
+        terminalSessions: undefined,
+      }),
+    );
+  }
+
+  it("opens no tab when the opener handles the open itself", async () => {
+    const handleOpen = vi.fn(() => Promise.resolve(true));
+    registerHandlingOpener(handleOpen);
+    const { result } = renderHandledHook("opener-handled");
+
+    await act(async () => {
+      result.current.openTab(HANDLED_REQUEST);
+      await Promise.resolve();
+    });
+
+    expect(handleOpen).toHaveBeenCalledWith({
+      path: "notes/todo.md",
+      source: {
+        kind: "workspace",
+        environmentId: "env_1",
+        projectId: null,
+        threadId: "opener-handled",
+      },
+      lineRange: { startLineNumber: 3, endLineNumber: 4 },
+    });
+    expect(result.current.orderedSecondaryFileTabs).toEqual([]);
+  });
+
+  it.each([
+    ["declines", () => false],
+    [
+      "throws",
+      () => {
+        throw new Error("boom");
+      },
+    ],
+  ])("opens the opener tab when the handler %s", async (_label, impl) => {
+    registerHandlingOpener(impl);
+    const { result } = renderHandledHook("opener-declined");
+
+    await act(async () => {
+      result.current.openTab(HANDLED_REQUEST);
+      await Promise.resolve();
+    });
+
+    expect(requirePluginPanelTab(result.current.activeTab)).toMatchObject({
+      actionId: "file-opener:editor",
+      pluginId: "notes",
+    });
+  });
+
+  it("skips the handler for an explicit Open with choice", () => {
+    const handleOpen = vi.fn(() => true);
+    registerHandlingOpener(handleOpen);
+    const { result } = renderHandledHook("opener-explicit");
+
+    act(() => {
+      result.current.openTab(HANDLED_REQUEST, {
+        viewer: { pluginId: "notes", openerId: "editor" },
+      });
+    });
+
+    expect(handleOpen).not.toHaveBeenCalled();
+    expect(requirePluginPanelTab(result.current.activeTab).actionId).toBe(
+      "file-opener:editor",
+    );
+  });
+
   it("refreshes an identical target in the active opener tab", () => {
     registerNotesOpener();
     const { result } = renderThreadHook(() =>
