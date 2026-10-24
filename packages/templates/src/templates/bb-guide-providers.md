@@ -77,14 +77,18 @@ threads use the next enabled provider in saved order, including in projects whos
 last-used provider is disabled. Explicit or existing-thread choices never
 silently switch.
 
-Provider-native memory can be controlled on the separate Settings → Providers
-→ Codex and Settings → Providers → Claude Code pages. Codex memory controls
-both recall (`memories.use_memories`) and future generation
+Provider-native memory is controlled by each provider plugin's
+`memoryEnabled` setting: the Codex memory and Claude Code memory toggles under
+Settings → Plugins → Codex provider and Settings → Plugins → Claude Code
+provider, or `bb plugin config provider-codex set memoryEnabled false` and
+`bb plugin config provider-claude-code set memoryEnabled false`. Codex memory
+controls both recall (`memories.use_memories`) and future generation
 (`memories.generate_memories`). Claude Code memory controls native auto-memory
 reads and writes (`autoMemoryEnabled`). Both preferences default on and apply
-when a provider thread is started, resumed, or forked; they do not interrupt
-an active turn. These settings are separate from bb's optional Memory plugin,
-an official plugin bundled with the app.
+when a provider thread is started, resumed, or forked, and from a running
+thread's next message; Codex rebuilds its session to apply a change. They do
+not modify the provider's global configuration. These settings are separate
+from bb's optional Memory plugin, an official plugin bundled with the app.
 
 Provider-native subagents can also be disabled on those provider pages: Codex
 loses its native multi-agent feature and Claude Code its native Task tool. The preferences default off and apply

@@ -5,13 +5,9 @@ description: "Retrieve relevant durable BB memories or save verified knowledge u
 
 # BB memory
 
-This plugin is provider-independent. When diagnosing duplicate or conflicting
-memories, check whether provider-native memory is also enabled; recommend
-turning it off under Settings → Providers.
-
 The memory plugin automatically injects a compact index of global memories and
 memories for the current BB project. The index contains summaries only.
-Settings → Memory lists every memory for the user to edit or delete.
+Settings → Plugins → Memory lists every memory for the user to edit or delete.
 
 ```sh
 bb memory catalog [--scope project|global|all] [--json]
@@ -21,6 +17,32 @@ bb memory history <id> [--scope project|global|all] [--limit 1-100] [--json]
 ```
 
 Project-scoped commands use the invoking CLI's current BB project.
+
+## Provider-native memory
+
+This plugin works across providers. Claude Code and Codex also keep their own
+native memory, on by default, and running both can duplicate or contradict
+memories. Recommend turning native memory off when the user relies on this
+plugin, and check it first when diagnosing duplicate or conflicting memories.
+
+Each provider plugin has a boolean `memoryEnabled` setting (default `true`):
+
+| Provider | Turn off | Controls |
+| --- | --- | --- |
+| Claude Code | `bb plugin config provider-claude-code set memoryEnabled false` | `autoMemoryEnabled`: native auto-memory reads and writes |
+| Codex | `bb plugin config provider-codex set memoryEnabled false` | `memories.use_memories` and `memories.generate_memories`: recall and new memories |
+
+`bb plugin config <id>` prints the current value. In the app, the same
+settings are the Claude Code memory and Codex memory toggles under
+Settings → Plugins → Claude Code provider and Settings → Plugins → Codex
+provider. There is no memory control on Settings → Providers.
+
+The setting applies when a bb thread starts, resumes, or forks, and from a
+running thread's next message; Codex rebuilds its session to apply a change.
+bb passes it to each bb thread's provider session and does not
+modify the provider's global configuration, so the provider's own sessions
+outside bb keep their setting. Turning it off does not delete memories the
+provider already stored.
 
 ## Retrieve progressively
 

@@ -935,8 +935,9 @@ skills.
 
 Set them with `bb plugin config provider-claude-code set <key> <value>`. A
 change restarts the thread's Claude process before its next turn, keeping the
-conversation. Memory, native subagents, and the Workflow tool are toggled on
-the provider's page in Settings → Providers (see `bb guide providers`).
+conversation. Memory (`memoryEnabled`), native subagents (`subagentsDisabled`),
+and the Workflow tool (`workflowsDisabled`) are toggled on the same plugin's
+page, Settings → Plugins → Claude Code provider (see `bb guide providers`).
 
 Two host-daemon environment variables reach the Claude Code bridge:
 `BB_CLAUDE_CODE_EXECUTABLE` picks the `claude` binary, and

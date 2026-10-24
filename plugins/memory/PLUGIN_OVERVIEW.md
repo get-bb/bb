@@ -5,7 +5,7 @@ Give your agents a memory that survives across threads, projects, and providers.
 - Global memories for user preferences and cross-project habits.
 - Project memories for commands, conventions, decisions, and verified quirks.
 - A summary catalog that bb adds to the agent's instructions on every turn. The catalog holds summaries only, up to 3,900 characters.
-- A table in the plugin settings where you review, edit, and delete every stored memory.
+- A table in Settings → Plugins → Memory where you review, edit, and delete every stored memory.
 - Kinds, tags, importance, pinning, provenance, and version history for each record.
 
 ## How it works
@@ -16,4 +16,4 @@ Project writes use the project of the current thread. Global writes must pass `-
 
 ## Requirements
 
-Disable provider-native memory in Settings under Providers to avoid duplicate or conflicting stores. The CLI connects to the local bb server. Some provider sandboxes ask for approval before they allow that connection.
+Turn off your agents' built-in memory so they keep one memory store. Each agent provider's plugin settings has the switch, or ask an agent to turn it off. The CLI connects to the local bb server. Some provider sandboxes ask for approval before they allow that connection.
