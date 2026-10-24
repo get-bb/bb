@@ -359,7 +359,10 @@ try {
     await mkdir(evidenceDir, { recursive: true });
     await cp(sdkTarball, join(evidenceDir, basename(sdkTarball)));
   }
-  const queue = [...pluginDirs];
+  const queue = [...pluginDirs].sort(
+    (a, b) =>
+      Number(b === "plugins/provider-pi") - Number(a === "plugins/provider-pi"),
+  );
   const failures = [];
   const results = [];
   await Promise.all(

@@ -1,10 +1,10 @@
 # CI performance
 
 The main CI workflow keeps build, lint/typecheck, two server test shards, eight app test
-shards, integration tests, three package test groups, plugin tests, three fork
+shards, integration tests, three package test groups, two plugin test groups, three fork
 check shards, and package smokes independent. Node 24/26 compatibility smokes run on
 main and manual runs. Windows runs the nine host packages, an app smoke, a desktop
-smoke, and thirteen test shards that cover the remaining suites; see
+smoke, and seventeen test shards that cover the remaining suites; see
 [windows-ci.md](windows-ci.md).
 
 ## PR selection
@@ -59,7 +59,10 @@ merge's first parent; pushes fetch all branches and tags.
 ## Fork checks
 
 The Plugin Fork Check runs in three shards. On pull requests it checks only
-the forkable plugins a change touches; see
+the forkable plugins a change touches. Within each shard, the Pi provider starts
+first because its subprocess-heavy suite otherwise dominates the tail after
+shorter forks finish. CI caps each fork's Vitest at two workers while retaining
+four concurrent forks; see
 [forkable-plugins.md](forkable-plugins.md) for selection and local commands.
 
 Each selected fork resolves a fresh package lock with lifecycle scripts
@@ -173,7 +176,9 @@ runners that do not accept Vitest's shard arguments:
 - `packages-other`: every remaining non-plugin package outside app, server, and
   integration. Negative filters automatically include new packages.
 
-The `plugins` group runs `bb-plugin-*`. All Linux groups run four concurrent
+The `plugins-1` group runs provider plugins, Tasks, Connect, and the thread list.
+`plugins-2` uses negative filters to run every other plugin, including new ones.
+All Linux groups run four concurrent
 Turbo tasks and cap Vitest at two workers with `VITEST_MAX_WORKERS`, which
 Turbo hashes for test tasks. Electron's runtime libraries and Xvfb are set up
 only when the selected tests include `@bb/desktop`. Electron setup queries
@@ -193,9 +198,8 @@ of a job rather than one against one.
 ## Windows test shards
 
 [windows-ci.md](windows-ci.md#full-test-suite) owns the Windows shard
-composition, install filters, and concurrency rules. The thirteen shards are
-sized so each test step takes about 100 seconds on a four-vCPU runner and
-finishes with the slowest Linux job rather than after it. Windows setup takes
+composition, install filters, and concurrency rules. The seventeen shards distribute the app tests across eight runners and keep
+process-heavy packages in separate groups. Windows setup takes
 roughly twice as long as Linux, and test files run about half as fast.
 
 Windows server and other-package shards build SDK declarations
@@ -415,6 +419,56 @@ CI retains both targets and the current pnpm version. A newer pnpm and
 sharing platform-independent release JavaScript remain separate optimizations.
 Copying T3 Code's or Orca's Linux-first test allocation would change coverage;
 the dependency image preserves BB's existing blocking Windows matrix.
+
+## Test runtime and parallelism measurements
+
+A sample of 20 successful first-attempt PR runs on October 24, 2026 excluded
+this investigation's cache-validation runs. Nineteen included Windows checks;
+Windows finished last in 15. The median Windows tail beyond the final
+non-Windows job was 34 seconds. Removing Windows entirely while holding all
+other job timings fixed would have saved a median 17.7% of workflow time.
+Linux plugin, fork, server, and packaging jobs also constrain completion.
+These observations do not justify removing blocking Windows coverage.
+
+The Pi scripted RPC fixture imports the real pinned runtime's `SessionManager`
+directly instead of loading its entire public entry point and unrelated CLI/UI
+and model dependencies for each child process. Real CLI relocation, public SDK
+session persistence, settlement compatibility, and Bun coverage remain. The
+Markdown streaming tests reuse independent whole-document reference renders
+for identical normalized input within each fixture; every chunk still renders
+and compares the incremental implementation.
+
+Controlled runs on the same four-vCPU runner types measured:
+
+| Change                                     | Control | Candidate | Evidence                                                             |
+| ------------------------------------------ | ------- | --------- | -------------------------------------------------------------------- |
+| Windows Pi fixture                         | 61, 62s | 34, 39s   | [40072329816](https://github.com/get-bb/bb/actions/runs/40072329816) |
+| Linux Pi fixture                           | 56, 67s | 41, 38s   | Same run                                                             |
+| Linux fork shard 1, prepared prerequisites | 84, 85s | 60, 72s   | [40072767336](https://github.com/get-bb/bb/actions/runs/40072767336) |
+| Windows app, longest test step             | 90s     | 63s       | [40073326000](https://github.com/get-bb/bb/actions/runs/40073326000) |
+| Linux plugin group, longest test step      | 131s    | 89s       | Same run                                                             |
+
+The fork candidate combines the fixture change, starting Pi first within its
+existing shard, and two Vitest workers per fork. One worker regressed the Pi
+suite and was rejected. The app comparison combines faster Markdown references
+with eight shards instead of four, and includes warm dependency-image restore
+on both sides. Both layouts ran the same 6,303 test identities and statuses in
+645 files. The first Linux split separated providers from other plugins; its
+task union matched all 49 original plugin test tasks with no overlap.
+
+Including queue, setup, and teardown, the app group completed 15 seconds earlier
+and the Linux plugin group 39 seconds earlier in that run. These are group
+measurements, not additive reductions in total CI latency. Eight app shards add
+four Windows jobs; splitting plugins adds one Linux job. Runner cost and queue
+pressure increase, and unrelated checks can become the critical path.
+
+[Oxc](https://github.com/oxc-project/oxc/blob/a22c9f2abc74cbc00a75cf3d7ad6adeeb2a22fc1/.github/workflows/ci.yml#L77-L134)
+overlaps dependency installation with Rust compilation and copies its Windows
+workspace onto a Dev Drive. [Rolldown](https://github.com/rolldown/rolldown/blob/c50bb60abb4adde786c3ca02e0eef1821897d93c/.github/workflows/ci.yml#L127-L181)
+shares native-build artifacts across consumers. Both also limit ordinary PR
+Windows coverage, which this change does not adopt. Their useful general
+lesson here is to overlap independent work and avoid repeated expensive setup;
+artifact transfer and extra runner startup must be charged to the result.
 
 ## Cache maintenance
 

@@ -641,7 +641,7 @@ jobs:
           bash .github/actions/setup-workspace/install-dependencies.sh "${filters[@]}"
 
       - name: Setup Bun
-        if: ${{ startsWith(matrix.shard, 'packages-') || matrix.shard == 'plugins' }}
+        if: ${{ startsWith(matrix.shard, 'packages-') || startsWith(matrix.shard, 'plugins-') }}
         timeout-minutes: 4
         uses: ./.github/actions/setup-bun
         with:
@@ -755,6 +755,7 @@ jobs:
       - name: Build, typecheck, and test forkable plugins outside the workspace
         if: steps.selection.outputs.count != '0'
         env:
+          VITEST_MAX_WORKERS: "2"
           BASE_SHA: ${{ github.event_name == 'pull_request' && needs.plan.outputs.base || '' }}
         run: node scripts/check-plugin-forks.mjs --changed-from="$BASE_SHA" --shard=${{ matrix.shard }}/3
 
