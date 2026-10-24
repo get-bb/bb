@@ -59,8 +59,9 @@ function ThreadSecondaryPanelInlinePlaceholder({
       minSize={(1 - minimumSize.max) * 100}
       maxSize={isConversationCollapsed ? 100 : (1 - minimumSize.min) * 100}
       order={2}
+      style={{ overflow: "clip" }}
       className={cn(
-        "min-w-0 overflow-clip",
+        "min-w-0",
         `relative transition-[flex-grow,flex-basis] ${PANEL_COLLAPSE_TRANSITION_CLASS}`,
         isOpen && !isConversationCollapsed && "border-l border-border-seam",
       )}

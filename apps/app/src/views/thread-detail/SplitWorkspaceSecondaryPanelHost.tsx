@@ -263,8 +263,9 @@ export function SplitWorkspaceSecondaryPanelHost({
             }
             minSize={minimumSize.min * 100}
             order={1}
+            style={{ overflow: "clip" }}
             className={cn(
-              "min-w-0 overflow-clip transition-[flex-grow,flex-basis]",
+              "min-w-0 transition-[flex-grow,flex-basis]",
               PANEL_COLLAPSE_TRANSITION_CLASS,
             )}
           >
@@ -309,8 +310,9 @@ export function SplitWorkspaceSecondaryPanelHost({
                   onCollapse={handleEmptyPanelCollapse}
                   onResize={handleEmptyPanelResize}
                   order={2}
+                  style={{ overflow: "clip" }}
                   className={cn(
-                    "min-w-0 overflow-clip transition-[flex-grow,flex-basis]",
+                    "min-w-0 transition-[flex-grow,flex-basis]",
                     PANEL_COLLAPSE_TRANSITION_CLASS,
                   )}
                 >
