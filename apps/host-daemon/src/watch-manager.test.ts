@@ -5,11 +5,7 @@ import type {
   WorkspaceWatchError,
 } from "@bb/host-watcher";
 import type { HostWorkspace } from "@bb/host-workspace";
-import {
-  createDeferredPromise,
-  makeWorkspaceMergeBase,
-  makeWorkspaceStatus,
-} from "@bb/test-helpers";
+import { createDeferredPromise } from "@bb/test-helpers";
 import { describe, expect, it, vi } from "vitest";
 import { WatchManager, type WatchManagerOptions } from "./watch-manager.js";
 
@@ -56,25 +52,6 @@ function createFakeWorkspace(path: string, isGitRepo = true) {
       return { fingerprint: sharedGitRefsFingerprint, defaultBranch: "main" };
     }),
     getAdditionalWorkspaceWriteRoots: vi.fn(async () => []),
-    getStatus: vi.fn(async () =>
-      makeWorkspaceStatus({
-        mergeBase: makeWorkspaceMergeBase(),
-      }),
-    ),
-    getDiff: vi.fn(async () => ({
-      diff: "",
-      truncated: false,
-      shortstat: "",
-      files: "",
-      mergeBaseRef: null,
-    })),
-    diffFiles: vi.fn(async () => ({
-      files: [],
-      shortstat: "",
-      mergeBaseRef: null,
-      truncated: false,
-    })),
-    diffPatch: vi.fn(async () => []),
     commit: vi.fn(async () => ({
       commitSha: "commit-1",
       commitSubject: "commit",

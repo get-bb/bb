@@ -1,9 +1,5 @@
 import type { ReactNode } from "react";
-import type {
-  ThreadListEntry,
-  WorkspaceMergeBase,
-  WorkspaceWorkingTree,
-} from "@bb/domain";
+import type { ThreadListEntry } from "@bb/domain";
 import type { EnvironmentDisplayHostContext } from "@bb/core-ui";
 import {
   makeEnvironment,
@@ -12,7 +8,7 @@ import {
   makeWorkspaceStatus,
 } from "../../../.ladle/story-fixtures";
 import type { ThreadMetadataContentProps } from "./ThreadMetadataContent";
-
+import type { WorkspaceMergeBase, WorkspaceWorkingTree } from "bb-plugin-bb--git/contract";
 export { makeEnvironment, makeThread, makeWorkspaceStatus };
 
 const noop = () => {};

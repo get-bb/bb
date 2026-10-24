@@ -1,11 +1,11 @@
 import type { DiffFileFilters } from "./git-diff/diff-file-filters";
 import { type ReactNode, useEffect, useMemo } from "react";
 import type { UseQueryResult } from "@tanstack/react-query";
-import type { DiffPresentation } from "@/components/code/code-rendering";
-import type { WorkspaceDiffTarget } from "@bb/domain";
+import type { DiffPresentation } from "@bb/shared-ui/git-diff/renderers";
+
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
 import { Skeleton } from "@bb/shared-ui/skeleton";
-import { DiffLoadingSkeleton } from "@/components/code/code-loading-skeletons";
+import { DiffLoadingSkeleton } from "@bb/shared-ui/diff-loading-skeleton";
 import { BbDiffSplit } from "@/components/code/BbDiffSplit";
 import { useRequestPierreWorkerPool } from "@/lib/pierre-worker-pool-gate";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
@@ -46,7 +46,8 @@ import {
   buildMarkdownFileImageRouting,
   buildMarkdownHostFileImageRouting,
 } from "@/components/ui/markdown-file-image-routing";
-import { getAbsoluteDirname } from "@/lib/absolute-file-path";
+import { getAbsoluteDirname } from "@bb/shared-ui/lib/absolute-file-path";
+import type { WorkspaceDiffTarget } from "@bb/domain";
 
 const GIT_DIFF_SKELETON_FILE_COUNT = 3;
 

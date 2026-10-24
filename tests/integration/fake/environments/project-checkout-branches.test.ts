@@ -65,7 +65,7 @@ describe.sequential("project checkout branches", () => {
         },
       });
 
-      const diff = await getEnvironmentDiff(harness.api, environment.id);
+      const diff = await getEnvironmentDiff(harness.api, harness.serverUrl, environment.id);
       expect(diff.files).toBe("");
       expect(environment.mergeBaseBranch).toBe("origin/dev");
     }));
@@ -97,7 +97,7 @@ describe.sequential("project checkout branches", () => {
         args: ["commit", "-m", "Commit by the thread"],
       });
 
-      const diff = await getEnvironmentDiff(harness.api, environment.id);
+      const diff = await getEnvironmentDiff(harness.api, harness.serverUrl, environment.id);
       expect(diff.files).toBe("A\tthread.txt\n");
       expect(environment.mergeBaseBranch).toBe("origin/dev");
     }));

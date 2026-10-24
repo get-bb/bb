@@ -1,7 +1,7 @@
 import {
   createAsyncTtlMemo,
   type AsyncTtlMemo,
-} from "../lib/async-ttl-memo.js";
+} from "@bb/query-tags/async-ttl-memo";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { HostDaemonContributedEnvEntry } from "@bb/host-daemon-contract";

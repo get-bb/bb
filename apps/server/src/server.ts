@@ -1,6 +1,9 @@
 import { createPluginUpdateJobs } from "./services/plugins/plugin-update-jobs.js";
 import { registerPluginUpdateJobRoutes } from "./routes/plugin-update-jobs.js";
-import { recheckEnvironmentProvisioning } from "./services/threads/thread-environment-providers.js";
+import {
+  recheckEnvironmentProvisioning,
+  recheckEnvironmentProviderCreations,
+} from "./services/threads/thread-environment-providers.js";
 import {
   enrolledInstallerScript,
   enrolledWindowsInstallerScript,
@@ -58,7 +61,6 @@ import {
   setEnvironmentProvisioningRecheckHandler,
   setPluginEnvironmentProviderBridge,
 } from "./services/plugins/plugin-environment-provider-registry.js";
-import { recheckEnvironmentProviderCreations } from "./services/threads/thread-environment-providers.js";
 import {
   setServerAccessBridge,
   setServerAccessRecheckHandler,
@@ -908,7 +910,7 @@ export function createApp(
   registerHostRoutes(publicApi, deps, pluginService);
   registerDesktopBrowserRoutes(publicApi, deps);
   registerTerminalRoutes(publicApi, deps);
-  registerEnvironmentRoutes(publicApi, deps);
+  registerEnvironmentRoutes(publicApi, deps, pluginService);
   registerThreadRoutes(publicApi, deps);
   registerQueueRoutes(publicApi, deps);
   registerSystemRoutes(publicApi, deps, pluginService);

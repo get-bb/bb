@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { AnimatedDisclosureBody } from "@/components/promptbox/banner/AnimatedBody";
 import {
   PROMPT_STACK_CARD_ROW_HEIGHT,
   PromptStackCard,
@@ -15,6 +14,7 @@ import {
   PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
   PromptStackHoverChevron,
   useDisclosureFocusHandoff,
+  AnimatedDisclosureBody,
 } from "@bb/shared-ui/prompt-stack-disclosure";
 
 const HEADER_GROUP_CLASS = activityRowClass(

@@ -13,6 +13,11 @@
       "source": "./src/testing.ts",
       "types": "./src/testing.ts",
       "default": "./src/testing.ts"
+    },
+    "./async-ttl-memo": {
+      "source": "./src/async-ttl-memo.ts",
+      "types": "./src/async-ttl-memo.ts",
+      "default": "./src/async-ttl-memo.ts"
     }
   },
   "types": "./src/index.ts",

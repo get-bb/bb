@@ -4,8 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { AgentRuntime, AgentRuntimeOptions } from "@bb/agent-runtime";
-import type { ThreadEvent } from "@bb/domain";
-import { threadScope, turnScope } from "@bb/domain";
+import { type ThreadEvent, threadScope, turnScope } from "@bb/domain";
 import type { HostDaemonInjectedSkillSource } from "@bb/host-daemon-contract";
 import type { HostWatcher } from "@bb/host-watcher";
 import {
@@ -13,13 +12,7 @@ import {
   type HostWorkspace,
   type ProvisionWorkspaceArgs,
 } from "@bb/host-workspace";
-import {
-  createDeferredPromise,
-  initRepo,
-  makeTempDir,
-  makeWorkspaceMergeBase,
-  makeWorkspaceStatus,
-} from "@bb/test-helpers";
+import { createDeferredPromise, initRepo, makeTempDir } from "@bb/test-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   RuntimeManager,
@@ -28,8 +21,6 @@ import {
 import { createRuntimeShellEnvCache } from "./runtime-shell-env-cache.js";
 
 type GetCurrentBranchArgs = Parameters<HostWorkspace["getCurrentBranch"]>;
-type GetStatusResult = Awaited<ReturnType<HostWorkspace["getStatus"]>>;
-type GetDiffResult = Awaited<ReturnType<HostWorkspace["getDiff"]>>;
 type GetLocalStateFingerprintResult = Awaited<
   ReturnType<HostWorkspace["getLocalStateSnapshot"]>
 >["fingerprint"];
@@ -117,16 +108,6 @@ function getProvisionWorkspacePath(args: ProvisionWorkspaceArgs): string {
 }
 
 function createFakeWorkspace(path: string, isGitRepo = true) {
-  const status: GetStatusResult = makeWorkspaceStatus({
-    mergeBase: makeWorkspaceMergeBase(),
-  });
-  const diff: GetDiffResult = {
-    diff: "",
-    truncated: false,
-    shortstat: "",
-    files: "",
-    mergeBaseRef: null,
-  };
   let localStateFingerprint: GetLocalStateFingerprintResult = `local:${path}:initial`;
   let localStateFingerprintError: Error | null = null;
   let sharedGitRefsFingerprint: GetSharedGitRefsFingerprintResult = `refs:${path}:initial`;
@@ -151,15 +132,6 @@ function createFakeWorkspace(path: string, isGitRepo = true) {
       return { fingerprint: sharedGitRefsFingerprint, defaultBranch: "main" };
     }),
     getAdditionalWorkspaceWriteRoots: vi.fn(async () => []),
-    getStatus: vi.fn(async () => status),
-    getDiff: vi.fn(async () => diff),
-    diffFiles: vi.fn(async () => ({
-      files: [],
-      shortstat: "",
-      mergeBaseRef: null,
-      truncated: false,
-    })),
-    diffPatch: vi.fn(async () => []),
     commit: vi.fn(async (..._args: CommitArgs) => ({
       commitSha: "commit-1",
       commitSubject: "commit",

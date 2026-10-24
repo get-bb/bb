@@ -4,7 +4,6 @@ import {
   type HostDaemonOnlineRpcRequestMessage,
   type HostDaemonOnlineRpcResponseMessage,
 } from "@bb/host-daemon-contract";
-import { WorkspaceError } from "@bb/host-workspace";
 import {
   encodeClientTurnRequestIdNumber,
   type ClientTurnRequestId,
@@ -30,6 +29,7 @@ import {
   fetchDispatchTestArtifact,
 } from "./dispatch-helpers.js";
 import { RuntimeManager } from "../../src/runtime-manager.js";
+import { WorkspaceError } from "bb-environment-provider-host/workspace-git";
 
 type EnvironmentProvisionCommand = Extract<
   HostDaemonCommand,

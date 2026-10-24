@@ -2,11 +2,10 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PluginDiffRendererProps } from "@get-bb/plugin-sdk";
-import type { DiffFileEntry } from "@bb/server-contract";
 import type {
   DiffFileContentsResult,
   RequestDiffFileContents,
-} from "@/components/git-diff/GitDiffCardBody";
+} from "@bb/shared-ui/git-diff/card-body";
 import type { DiffPatchState } from "@/hooks/queries/use-environment-diff-patches";
 import {
   resetPluginSlotStoreForTest,
@@ -15,6 +14,7 @@ import {
 import { DiffFileCard } from "./DiffFileCard";
 import { makeDiffFileEntry } from "@/test/fixtures/diff-files";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
+import type { DiffFileEntry } from "bb-plugin-bb--git/contract";
 
 vi.mock("usehooks-ts", async (importOriginal) => ({
   ...(await importOriginal<typeof import("usehooks-ts")>()),

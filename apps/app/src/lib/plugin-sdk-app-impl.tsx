@@ -1,10 +1,15 @@
 import { ProviderIcon } from "@/components/plugin/ProviderIcon";
 import { Icon } from "@bb/shared-ui/icon";
 import { useCallback, useMemo } from "react";
-import type {
-  ExperimentalInfoListRowProps,
-  MarkdownProps,
-  PluginSdkApp,
+import {
+  type ExperimentalInfoListRowProps,
+  type MarkdownProps,
+  type PluginSdkApp,
+  experimental_PluginRpcCallError,
+  experimental_THREAD_ACTION_GROUPS,
+  experimental_THREAD_CONTEXT_SEGMENT_GROUPS,
+  experimental_THREAD_INFO_ROW_GROUPS,
+  experimental_THREAD_INFO_SECTION_GROUPS,
 } from "@get-bb/plugin-sdk";
 import { PluginDiff } from "@/components/plugin/PluginDiff";
 import { PluginBranchPicker } from "@/components/plugin/PluginBranchPicker";
@@ -92,13 +97,6 @@ import {
 } from "./plugin-sidebar-split";
 import { useExperiment } from "./plugin-experiments";
 import { useAppNavigationHost } from "./app-navigation-host";
-import {
-  experimental_PluginRpcCallError,
-  experimental_THREAD_ACTION_GROUPS,
-  experimental_THREAD_CONTEXT_SEGMENT_GROUPS,
-  experimental_THREAD_INFO_ROW_GROUPS,
-  experimental_THREAD_INFO_SECTION_GROUPS,
-} from "@get-bb/plugin-sdk";
 import {
   ThreadActionsContextMenu,
   ThreadActionsMenu,

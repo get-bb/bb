@@ -1,4 +1,22 @@
-import { experimental_PluginRpcCallError } from "@get-bb/plugin-sdk";
+import {
+  experimental_PluginRpcCallError,
+  type BbContext,
+  type ComposerView,
+  type PluginComposerApi,
+  type PluginComposerScope,
+  type PluginComposerTextEffect,
+  type PluginRealtimeConnectionState,
+  type PluginRpcContract,
+  type PluginRpcClient,
+  type PluginEnvironmentProvider,
+  type PluginEnvironmentProvidersState,
+  type PluginProvidersState,
+  type PluginSettingsState,
+  type ExperimentalAppPanel,
+  type ExperimentalFixedTabTargetState,
+  type ExperimentalPluginFixedTabReference,
+  type JsonValue,
+} from "@get-bb/plugin-sdk";
 import { createRpcQueryHooks } from "@get-bb/plugin-sdk/internal/rpc-query-host";
 import { subscribeComposerSubmitted } from "./composer-submissions";
 import {
@@ -11,24 +29,6 @@ import {
   useSyncExternalStore,
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type {
-  BbContext,
-  ComposerView,
-  PluginComposerApi,
-  PluginComposerScope,
-  PluginComposerTextEffect,
-  PluginRealtimeConnectionState,
-  PluginRpcContract,
-  PluginRpcClient,
-  PluginEnvironmentProvider,
-  PluginEnvironmentProvidersState,
-  PluginProvidersState,
-  PluginSettingsState,
-  ExperimentalAppPanel,
-  ExperimentalFixedTabTargetState,
-  ExperimentalPluginFixedTabReference,
-  JsonValue,
-} from "@get-bb/plugin-sdk";
 import {
   PluginContext,
   PluginSlotOwnershipContext,

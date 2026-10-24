@@ -1,7 +1,7 @@
 import {
   createAsyncTtlMemo,
   type AsyncTtlMemo,
-} from "../lib/async-ttl-memo.js";
+} from "@bb/query-tags/async-ttl-memo";
 import type {
   ProviderCliStatus,
   ProviderCliStatusResponse,

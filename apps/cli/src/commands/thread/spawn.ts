@@ -3,11 +3,11 @@ import {
   jsonValueSchema,
   PERSONAL_PROJECT_ID,
   threadVisibilitySchema,
-  type GitBranchSelection,
   type EnvironmentMachineSelection,
   type Thread,
   type ThreadParentNotifications,
   type JsonValue,
+  type GitBranchSelection,
 } from "@bb/domain";
 import type { CreateThreadEnvironmentArgs } from "@bb/server-contract";
 import { action, CliUsageError } from "../../action.js";

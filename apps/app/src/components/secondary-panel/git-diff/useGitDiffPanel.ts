@@ -1,8 +1,10 @@
-import { isGitDiffFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
+import {
+  isGitDiffFixedPanelTab,
+  type SecondaryFixedPanelTab,
+} from "@/lib/fixed-panel-tabs-state";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { GitBranchRefClassification } from "@bb/domain";
+
 import { useEnvironmentMergeBaseBranches } from "../../../hooks/queries/environment-queries";
-import type { SecondaryFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import type { ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
 import {
   selectScopedMergeBaseBranch,
@@ -10,6 +12,7 @@ import {
   type PendingGitDiffIntent,
   type SelectedMergeBaseBranchState,
 } from "./gitDiffPanelHelpers";
+import type { GitBranchRefClassification } from "@bb/domain";
 
 type ThreadSecondaryPanelSetter = (
   panel: ThreadSecondaryPanelTab | null,

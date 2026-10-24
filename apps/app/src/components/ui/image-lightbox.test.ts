@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  getImageLightboxKeyAction,
-  getWrappedImageIndex,
-} from "@/components/ui/image-lightbox";
+import { getImageLightboxKeyAction } from "@/components/ui/image-lightbox";
 
 interface TestKeyboardEvent {
   altKey: boolean;
@@ -27,34 +24,6 @@ function createKeyboardEvent(
 }
 
 describe("ImageLightbox", () => {
-  it("wraps image navigation in both directions", () => {
-    expect(
-      getWrappedImageIndex({
-        currentIndex: 0,
-        direction: "previous",
-        itemCount: 3,
-      }),
-    ).toBe(2);
-
-    expect(
-      getWrappedImageIndex({
-        currentIndex: 2,
-        direction: "next",
-        itemCount: 3,
-      }),
-    ).toBe(0);
-  });
-
-  it("leaves the index unchanged when there are no images to navigate", () => {
-    expect(
-      getWrappedImageIndex({
-        currentIndex: 1,
-        direction: "next",
-        itemCount: 0,
-      }),
-    ).toBe(1);
-  });
-
   it("keeps Escape available when only a single image is open", () => {
     expect(
       getImageLightboxKeyAction({

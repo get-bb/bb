@@ -4,7 +4,7 @@ import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultResolvedCodeTheme } from "@bb/domain";
 import { applyResolvedCodeTheme } from "@/lib/code-theme";
-import { parseGitDiffFiles } from "@/components/git-diff/git-diff-parsing";
+import { parseGitDiffFiles } from "@bb/shared-ui/git-diff/parsing";
 import BbDiff from "./BbDiff";
 
 interface RenderedOptions {

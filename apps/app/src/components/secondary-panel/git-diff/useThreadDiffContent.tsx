@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import type { DiffFileEntry } from "@bb/server-contract";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Button } from "@bb/shared-ui/button";
 import {
@@ -30,9 +29,10 @@ import {
   GitDiffLoadingSkeleton,
   GitDiffTabContent,
 } from "../ThreadSecondaryPanelTabContent";
-import type { DiffPresentation } from "@/components/code/code-rendering";
+import type { DiffPresentation } from "@bb/shared-ui/git-diff/renderers";
 import type { ThreadSecondaryPanelProps } from "../ThreadSecondaryPanel";
 import type { GitDiffTabStatus } from "../gitDiffTabEligibility";
+import type { DiffFileEntry } from "bb-plugin-bb--git/contract";
 
 const EMPTY_DIFF_FILES: readonly DiffFileEntry[] = [];
 

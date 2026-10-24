@@ -1,12 +1,12 @@
 import { Button } from "@bb/shared-ui/button";
 import { DetailCard, DetailRow } from "./detail-card";
 import { Input } from "@bb/shared-ui/input";
-import { BranchPicker } from "../pickers/BranchPicker";
+import { BranchPicker } from "@bb/shared-ui/branch-picker";
 import { OptionPicker } from "../pickers/OptionPicker";
 import {
   WorkspaceChangesList,
   type WorkspaceChangedFile,
-} from "../thread/WorkspaceChangesList";
+} from "@bb/shared-ui/workspace-changes-list";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { Icon } from "@bb/shared-ui/icon";
 

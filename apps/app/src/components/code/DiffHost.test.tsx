@@ -14,7 +14,7 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlotMount";
-import { parseGitDiffFiles } from "@/components/git-diff/git-diff-parsing";
+import { parseGitDiffFiles } from "@bb/shared-ui/git-diff/parsing";
 import { PluginDiff } from "@/components/plugin/PluginDiff";
 import {
   AUTOMATIC_REPLACEMENT_PROVIDER,

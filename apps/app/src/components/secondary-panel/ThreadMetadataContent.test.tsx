@@ -20,7 +20,7 @@ import {
   makeHost,
   makeThread as makeThreadFixture,
 } from "@bb/test-helpers/domain-fixtures";
-import { makeWorkspaceMergeBase, makeWorkspaceStatus } from "@bb/test-helpers";
+import { makeWorkspaceMergeBase, makeWorkspaceStatus } from "bb-plugin-bb--git/testing";
 import {
   EnvironmentProvisioningFailureRow,
   EnvironmentRow,

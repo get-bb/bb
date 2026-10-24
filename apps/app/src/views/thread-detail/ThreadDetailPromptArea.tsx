@@ -14,24 +14,43 @@ import {
 import { createPortal } from "react-dom";
 import { useImmediateRouteNavigate } from "@/components/ui/app-route-anchor";
 import type { IconName } from "@bb/shared-ui/icon";
-import type { PromptMentionLinkResolver } from "@bb/client-core";
+import {
+  type PromptMentionLinkResolver,
+  buildThreadHandoffCreateRequest,
+  buildThreadHandoffFollowUpDraft,
+  stripThreadHandoffPrefix,
+  type ThreadHandoffCreateSeed,
+  emptyPromptDraftState,
+  promptDraftToInput,
+  type PromptDraftAttachment,
+  type PromptDraftState,
+  buildAutoFollowUpRequest,
+  buildCreateQueuedFollowUpRequest,
+  buildFollowUpSubmitMode,
+  buildFollowUpShortcutRequest,
+  canCompactBeforeSend,
+  canSubmitFollowUpShortcut,
+  resolveDefaultExecutionOptionsState,
+  shouldQueueFollowUpMessage,
+  type FollowUpExecutionSelection,
+} from "@bb/client-core";
 import {
   getFollowUpPromptPlaceholder,
   getCompactFollowUpPromptPlaceholder,
 } from "@/components/promptbox/follow-up-placeholder";
-import { PERSONAL_PROJECT_ID } from "@bb/domain";
-import type {
-  PermissionMode,
-  ReasoningLevel,
-  ServiceTier,
-  PendingInteraction,
-  PromptInput,
-  ThreadQueuedMessage,
-  ThreadTimelineActivePromptMode,
-  ThreadTimelineGoal,
-  ThreadTimelineModelFallback,
-  ThreadTimelinePendingTodos,
-  ThreadWithRuntime,
+import {
+  PERSONAL_PROJECT_ID,
+  type PermissionMode,
+  type ReasoningLevel,
+  type ServiceTier,
+  type PendingInteraction,
+  type PromptInput,
+  type ThreadQueuedMessage,
+  type ThreadTimelineActivePromptMode,
+  type ThreadTimelineGoal,
+  type ThreadTimelineModelFallback,
+  type ThreadTimelinePendingTodos,
+  type ThreadWithRuntime,
 } from "@bb/domain";
 import type {
   ProviderCommand,
@@ -83,7 +102,7 @@ import { useThreadSessionOptionChoices } from "./useThreadSessionOptionChoices";
 import type {
   WorkspaceChangedFileSelection,
   WorkspaceChangedFilesSection,
-} from "@/components/workspace/workspace-change-summary";
+} from "@bb/shared-ui/workspace-change-summary";
 import {
   LazyQueuedMessagesList,
   QueuedMessagesPendingCard,
@@ -95,7 +114,7 @@ import {
 } from "@/components/promptbox/ThreadEnvironmentSummary";
 import type { MachineLabelHost } from "@/components/machines/MachineLabel";
 import type { MachineProviderPresentation } from "@/components/plugin/MachineProviderIcon";
-import type { WorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
+import type { WorkspaceCheckoutDisplay } from "@bb/shared-ui/lib/workspace-checkout-display";
 import { useComposerTextEffects } from "@/lib/composer-text-effects";
 import { useLatestRef } from "@/hooks/useLatestRef";
 import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
@@ -135,18 +154,6 @@ import { usePromptHistoryEnabled } from "@/hooks/usePromptHistoryEnabled";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import {
-  buildThreadHandoffCreateRequest,
-  buildThreadHandoffFollowUpDraft,
-  stripThreadHandoffPrefix,
-  type ThreadHandoffCreateSeed,
-} from "@bb/client-core";
-import {
-  emptyPromptDraftState,
-  promptDraftToInput,
-  type PromptDraftAttachment,
-  type PromptDraftState,
-} from "@bb/client-core";
-import {
   FollowUpPromptBox,
   type FollowUpComposerProps,
   type FollowUpPromptBoxProps,
@@ -154,17 +161,7 @@ import {
 } from "@/components/promptbox/FollowUpPromptBox";
 import type { SendMessageMutationLike } from "./threadDetailMutationTypes";
 import { useTimeHasPassed } from "@/hooks/useTimeHasPassed";
-import {
-  buildAutoFollowUpRequest,
-  buildCreateQueuedFollowUpRequest,
-  buildFollowUpSubmitMode,
-  buildFollowUpShortcutRequest,
-  canCompactBeforeSend,
-  canSubmitFollowUpShortcut,
-  resolveDefaultExecutionOptionsState,
-  shouldQueueFollowUpMessage,
-  type FollowUpExecutionSelection,
-} from "@bb/client-core";
+import type { WorkspaceFileStatus } from "bb-plugin-bb--git/contract";
 
 const ignorePromptBannerFileClick = () => {};
 const ignoreReportedSubmitError = () => {};
@@ -206,10 +203,10 @@ interface ThreadDetailPromptAreaProps {
   onOpenThreadInfo?: () => void;
   pendingInteractions: readonly PendingInteraction[];
   queuedMessageCount: number;
-  onChangedFileClick: (selection: WorkspaceChangedFileSelection) => void;
+  onChangedFileClick: (selection: WorkspaceChangedFileSelection<WorkspaceFileStatus>) => void;
   projectId: string;
   resolveMentionLink: PromptMentionLinkResolver;
-  workspaceChangedFilesSection: WorkspaceChangedFilesSection | null;
+  workspaceChangedFilesSection: WorkspaceChangedFilesSection<WorkspaceFileStatus> | null;
   showGitChanges: boolean;
   workspaceStatusPending: boolean;
   contextBannerMergeBase: ContextBannerMergeBaseConfig | null;

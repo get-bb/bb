@@ -1,13 +1,12 @@
 import { useState } from "react";
-import { reconcileReasoningLevel } from "@bb/domain";
-import type {
-  Host,
-  ProjectSource,
-  PromptMentionCommandTrigger,
-  ProviderInfo,
-  ReasoningLevel,
-  Thread,
-  WorkspaceStatus,
+import {
+  reconcileReasoningLevel,
+  type Host,
+  type ProjectSource,
+  type PromptMentionCommandTrigger,
+  type ProviderInfo,
+  type ReasoningLevel,
+  type Thread,
 } from "@bb/domain";
 import type {
   ProviderCliKey,
@@ -35,6 +34,7 @@ import type {
   AttachmentsConfig,
   TypeaheadConfig,
 } from "../src/components/promptbox/ComposerBox";
+import type { WorkspaceStatus } from "bb-plugin-bb--git/contract";
 
 const noop = () => {};
 

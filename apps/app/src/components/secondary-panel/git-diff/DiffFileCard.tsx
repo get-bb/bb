@@ -1,8 +1,8 @@
-import { DiffLoadingSkeleton } from "@/components/code/code-loading-skeletons";
+import { CoreGitDiffRendererProvider } from "@/components/git-diff/CoreGitDiffRendererProvider";
+import { DiffLoadingSkeleton } from "@bb/shared-ui/diff-loading-skeleton";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useIntersectionObserver } from "usehooks-ts";
-import type { DiffFileEntry } from "@bb/server-contract";
-import type { DiffPresentation } from "@/components/code/code-rendering";
+import type { DiffPresentation } from "@bb/shared-ui/git-diff/renderers";
 import {
   getGitDiffCardImageSizeStat,
   GitDiffCardBody,
@@ -13,25 +13,26 @@ import {
   type GitDiffCardImagePreview,
   type GitDiffCardSvgDisplayMode,
   type RequestDiffFileContents,
-} from "@/components/git-diff/GitDiffCardBody";
+} from "@bb/shared-ui/git-diff/card-body";
 import {
   GitDiffCardHeader,
   GitDiffCardImageSizeStat,
   GitDiffCardRawToggle,
   gitDiffCardHeaderWrapperClass,
   type GitDiffCardHeaderModel,
-} from "@/components/git-diff/GitDiffCardHeader";
+} from "@bb/shared-ui/git-diff/card-header";
 import {
   isPreviewableImagePath,
   isSvgGitDiffFile,
   parseGitDiffFiles,
   type ParsedGitDiffFile,
-} from "@/components/git-diff/git-diff-parsing";
+} from "@bb/shared-ui/git-diff/parsing";
 import { Button } from "@bb/shared-ui/button";
 import { Checkbox } from "@bb/shared-ui/checkbox";
-import { FilePathLink } from "@/components/ui/file-path-link.js";
+import { FilePathLink } from "@bb/shared-ui/file-path-link";
 import type { DiffPatchState } from "@/hooks/queries/use-environment-diff-patches";
 import { cn } from "@bb/shared-ui/lib/utils";
+import type { DiffFileEntry } from "bb-plugin-bb--git/contract";
 
 function formatDiffEntryLabel(entry: DiffFileEntry): string {
   if (
@@ -254,7 +255,7 @@ function useBinaryImagePreview({
   return state;
 }
 
-export const DiffFileCard = memo(function DiffFileCard({
+function DiffFileCardContent({
   entry,
   presentation,
   ignoreWhitespace,
@@ -404,6 +405,16 @@ export const DiffFileCard = memo(function DiffFileCard({
         />
       )}
     </div>
+  );
+}
+
+export const DiffFileCard = memo(function DiffFileCard(
+  props: DiffFileCardProps,
+) {
+  return (
+    <CoreGitDiffRendererProvider>
+      <DiffFileCardContent {...props} />
+    </CoreGitDiffRendererProvider>
   );
 }, areDiffFileCardPropsEqual);
 

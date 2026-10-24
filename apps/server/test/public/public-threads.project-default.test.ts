@@ -7,8 +7,10 @@ import {
 import { threadSchema, type GitSourceInspection } from "@bb/domain";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { setPluginMachineProviderBridge } from "../../src/services/plugins/plugin-machine-provider-registry.js";
-import { getThreadProvisionContext } from "../../src/services/threads/thread-startup-store.js";
-import type { ThreadProvisionEnvironmentIntent } from "../../src/services/threads/thread-startup-store.js";
+import {
+  getThreadProvisionContext,
+  type ThreadProvisionEnvironmentIntent,
+} from "../../src/services/threads/thread-startup-store.js";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import { installMachineProvider } from "../helpers/machine-provider.js";

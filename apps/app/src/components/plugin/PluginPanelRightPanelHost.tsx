@@ -16,14 +16,17 @@ import {
 import { createPortal } from "react-dom";
 import { atom, useAtom, useAtomValue, useStore } from "jotai";
 import { atomFamily } from "jotai-family";
-import type { Host, JsonValue } from "@bb/domain";
-import { jsonValueSchema } from "@bb/domain";
+import { type Host, type JsonValue, jsonValueSchema } from "@bb/domain";
 import { PluginTabScope, usePluginTabs } from "./PluginTabs";
-import type { PluginNavTabSlot } from "@/lib/plugin-slots";
-import type { AppTabOpenIntent } from "@/lib/app-navigation-host";
+import { type PluginNavTabSlot, usePluginSlots } from "@/lib/plugin-slots";
+import {
+  type AppTabOpenIntent,
+  AppNavigationHostProvider,
+} from "@/lib/app-navigation-host";
 import {
   createPanelActionDestination,
   runPluginPanelAction,
+  PluginPanelTabContent,
 } from "./PluginPanelActions";
 import { Button } from "@bb/shared-ui/button";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
@@ -82,8 +85,6 @@ import {
 import { useIsSidebarFramed } from "@/components/ui/sidebar.js";
 import { getBrowserUrlHost } from "@/lib/browser-url";
 import { UrlOpenRoutingProvider } from "@/lib/url-open-routing";
-import { usePluginSlots } from "@/lib/plugin-slots";
-import { AppNavigationHostProvider } from "@/lib/app-navigation-host";
 import {
   AppFixedTabTargetProvider,
   getPluginFixedTabOwnerId,
@@ -98,7 +99,6 @@ import {
   TerminalHostSelector,
 } from "@/components/secondary-panel/TerminalHostSelector";
 import { getPluginPagePanelStateId } from "./plugin-page-panel-state";
-import { PluginPanelTabContent } from "./PluginPanelActions";
 import { PluginDetailRouteNavigationProvider } from "@/components/ui/app-route-anchor";
 import { usePluginCatalogSearch } from "@/hooks/queries/plugin-catalog-queries";
 import { usePluginList } from "@/hooks/queries/plugin-settings-queries";

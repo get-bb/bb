@@ -95,7 +95,7 @@ export async function buildCachedPluginServer(args: {
   toolchain: () => Promise<PluginBuildToolchain>;
   runtimeImports: Record<string, { path: string; external?: boolean }>;
   fallbackResolve: (specifier: string) => string | undefined;
-}): Promise<{ path: string; digest: string }> {
+}): Promise<{ path: string; digest: string; warnings: string[] }> {
   const pluginCacheDir = dirname(
     pluginServerCacheDirectory({
       dataDir: args.dataDir,
@@ -134,7 +134,11 @@ export async function buildCachedPluginServer(args: {
     });
     if (await isCompleteCacheEntry(cacheDir)) {
       await prunePluginServerCache(pluginCacheDir, cacheDir);
-      return { path: join(cacheDir, "server.cjs"), digest };
+      return {
+        path: join(cacheDir, "server.cjs"),
+        digest,
+        warnings: built.migrationWarnings,
+      };
     }
     try {
       await rename(stageDir, cacheDir);
@@ -142,7 +146,11 @@ export async function buildCachedPluginServer(args: {
       if (!(await isCompleteCacheEntry(cacheDir))) throw error;
     }
     await prunePluginServerCache(pluginCacheDir, cacheDir);
-    return { path: join(cacheDir, "server.cjs"), digest };
+    return {
+      path: join(cacheDir, "server.cjs"),
+      digest,
+      warnings: built.migrationWarnings,
+    };
   } finally {
     await rm(stageDir, { recursive: true, force: true });
   }

@@ -4,23 +4,8 @@ import {
   runTaggedRead,
   taggedQueryOptions,
 } from "@bb/query-tags";
-import { machineEnvironmentQueryKey } from "./queries/query-keys";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { QueryObserver } from "@tanstack/react-query";
 import {
-  ENVIRONMENT_CHANGE_KINDS,
-  HOST_CHANGE_KINDS,
-  PROJECT_CHANGE_KINDS,
-  SYSTEM_CHANGE_KINDS,
-  THREAD_CHANGE_KINDS,
-  defaultExperiments,
-} from "@bb/domain";
-import type { QueryClient } from "@tanstack/react-query";
-import { makeEnvironment } from "@bb/test-helpers/domain-fixtures";
-import { createAppQueryClient } from "@/lib/query-client";
-import { makeSystemConfig } from "@/test/fixtures/system-config";
-import { hasThreadTimelineUnseenEvents } from "./cache-owners/thread-timeline-unseen-events";
-import {
+  machineEnvironmentQueryKey,
   archivedThreadsListQueryKey,
   environmentDiffFilesQueryKey,
   environmentDiffPatchQueryKey,
@@ -56,8 +41,22 @@ import {
   threadTimelineQueryKey,
   threadTimelineQueryKeyPrefix,
   threadTimelineTurnSummaryDetailsQueryKey,
+  pluginContributionsQueryKey,
 } from "./queries/query-keys";
-import { pluginContributionsQueryKey } from "./queries/query-keys";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { QueryObserver, type QueryClient } from "@tanstack/react-query";
+import {
+  ENVIRONMENT_CHANGE_KINDS,
+  HOST_CHANGE_KINDS,
+  PROJECT_CHANGE_KINDS,
+  SYSTEM_CHANGE_KINDS,
+  THREAD_CHANGE_KINDS,
+  defaultExperiments,
+} from "@bb/domain";
+import { makeEnvironment } from "@bb/test-helpers/domain-fixtures";
+import { createAppQueryClient } from "@/lib/query-client";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
+import { hasThreadTimelineUnseenEvents } from "./cache-owners/thread-timeline-unseen-events";
 import { systemEnvironmentProvidersQueryKey } from "./queries/environment-provider-queries";
 import {
   createRealtimeCacheEffects,

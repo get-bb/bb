@@ -14,8 +14,10 @@ import {
   environmentPathsQueryKey,
   threadStoragePathsQueryKey,
 } from "@/hooks/queries/query-keys";
-import { ThreadSecondaryPanel } from "./ThreadSecondaryPanel";
-import type { SecondaryPanelRenderableTab } from "./ThreadSecondaryPanel";
+import {
+  ThreadSecondaryPanel,
+  type SecondaryPanelRenderableTab,
+} from "./ThreadSecondaryPanel";
 import { NewTabPage } from "./NewTabPage";
 import type { FileSearchSelection } from "./useThreadFileTabs";
 import { Icon } from "@bb/shared-ui/icon";

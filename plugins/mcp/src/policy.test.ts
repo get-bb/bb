@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { evaluateCliAccess, READ_ONLY_COMMAND_PATHS } from "./policy.js";
+import {
+  evaluateCliAccess,
+  READ_ONLY_BUNDLED_PLUGIN_COMMAND_PATHS,
+  READ_ONLY_COMMAND_PATHS,
+} from "./policy.js";
 
 const KNOWN_PATHS = new Set([
   "status",
@@ -53,6 +57,10 @@ describe("evaluateCliAccess in read mode", () => {
     [["guide"]],
     [["guide", "commands", "thread", "--json"]],
     [["--version"]],
+    [["git", "status", "env_1", "--json"]],
+    [["git", "diff", "env_1", "--target", "uncommitted"]],
+    [["git", "viewed", "list", "env_1"]],
+    [["git", "patch", "--help"]],
   ])("allows %j", (argv) => {
     expect(allowed(argv, "read")).toBe(true);
   });
@@ -224,5 +232,24 @@ describe("evaluateCliAccess in write mode", () => {
     expect(allowed(["thread", "tell", "x".repeat(200_001)], "write")).toBe(
       false,
     );
+  });
+});
+
+describe("READ_ONLY_BUNDLED_PLUGIN_COMMAND_PATHS", () => {
+  it("lists the Git plugin's commands that change nothing", () => {
+    expect([...READ_ONLY_BUNDLED_PLUGIN_COMMAND_PATHS].sort()).toEqual([
+      "git branches",
+      "git diff",
+      "git file",
+      "git files",
+      "git patch",
+      "git status",
+      "git viewed list",
+    ]);
+  });
+
+  it("denies the Git plugin's writes in read mode", () => {
+    expect(allowed(["git", "viewed", "mark", "env_1"], "read")).toBe(false);
+    expect(allowed(["git", "viewed", "clear", "env_1"], "read")).toBe(false);
   });
 });

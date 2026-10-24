@@ -1,3 +1,4 @@
+import { retiredSdkMemberWarningsForInputs } from "./retired-sdk-members.js";
 import {
   mkdir,
   mkdtemp,
@@ -82,6 +83,7 @@ interface PluginServerBuildResult {
   jsPath: string;
   mapPath: string;
   metaPath: string;
+  migrationWarnings: string[];
 }
 
 export interface PluginServerBuildOptions {
@@ -153,6 +155,7 @@ export async function buildPluginServer(
   const metaPath = join(distDir, "server.meta.json");
 
   const stageDir = await mkdtemp(join(distDir, ".stage-"));
+  let migrationWarnings: string[] = [];
   try {
     const stagedJsPath = join(stageDir, fileName);
     const stagedMetaPath = join(stageDir, "server.meta.json");
@@ -161,7 +164,8 @@ export async function buildPluginServer(
       toolchain.esbuild
     )) as typeof import("esbuild");
     const runtimeImports = options.runtimeImports ?? {};
-    await esbuild.build({
+    const bundle = await esbuild.build({
+      metafile: true,
       entryPoints: [serverEntry],
       outfile: stagedJsPath,
       bundle: true,
@@ -344,6 +348,10 @@ export async function buildPluginServer(
       ],
       logLevel: "error",
     });
+    migrationWarnings = await retiredSdkMemberWarningsForInputs(
+      bundle.metafile,
+      process.cwd(),
+    );
     await writeFile(
       stagedMetaPath,
       JSON.stringify(
@@ -369,5 +377,5 @@ export async function buildPluginServer(
   } finally {
     await rm(stageDir, { recursive: true, force: true });
   }
-  return { jsPath, mapPath, metaPath };
+  return { jsPath, mapPath, metaPath, migrationWarnings };
 }

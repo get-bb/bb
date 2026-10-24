@@ -40,7 +40,3 @@ export function requireWorkspaceCommandTarget(
     workspaceContext: workspaceContextFromPath({ path: environment.path }),
   };
 }
-
-export function workspaceReadCacheKey(target: WorkspaceCommandTarget): string {
-  return JSON.stringify(target.workspaceContext);
-}

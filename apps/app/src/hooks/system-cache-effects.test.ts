@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { QueryObserver } from "@tanstack/react-query";
-import type { QueryClient, QueryKey } from "@tanstack/react-query";
+import {
+  QueryObserver,
+  type QueryClient,
+  type QueryKey,
+} from "@tanstack/react-query";
 import { createAppQueryClient } from "@/lib/query-client";
 import {
   environmentDiffFilesQueryKey,

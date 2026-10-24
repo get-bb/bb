@@ -2,26 +2,30 @@
 
 import { DEFAULT_DIFF_FILE_FILTERS } from "./git-diff/diff-file-filters";
 import { act, cleanup, render, waitFor } from "@testing-library/react";
-import type { WorkspaceDiffTarget } from "@bb/domain";
-import type { EnvironmentDiffFilesResponse } from "@bb/server-contract";
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   environmentDiffFilesQueryKeyPrefix,
   environmentFilePreviewQueryKeyPrefix,
   hostFilePreviewQueryKey,
 } from "@/hooks/queries/query-keys";
-import { sdk } from "@/lib/sdk";
+import { gitPluginReads } from "@/hooks/queries/git-plugin-reads";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
   GitDiffTabContent,
   HostScopedFilePreviewTabContent,
   WorkspaceFilePreviewTabContent,
 } from "./ThreadSecondaryPanelTabContent";
+import type { WorkspaceDiffTarget } from "@bb/domain";
+import type { GitFilesResult } from "bb-plugin-bb--git/contract";
 
 vi.mock("@/lib/sdk", () => ({
-  sdk: {
-    environments: { diffFiles: vi.fn() },
-  },
+  sdk: { environments: {} },
+}));
+
+vi.mock("@/hooks/queries/git-plugin-reads", () => ({
+  gitPluginReads: { files: vi.fn() },
+  useGitPluginWatch: () => undefined,
 }));
 
 vi.mock("@pierre/diffs/react", async () => {
@@ -36,7 +40,7 @@ vi.mock("@pierre/diffs/react", async () => {
 const ENVIRONMENT_ID = "env-1";
 const TARGET: WorkspaceDiffTarget = { type: "all", mergeBaseBranch: "main" };
 
-const emptyDiff: EnvironmentDiffFilesResponse = {
+const emptyDiff: GitFilesResult = {
   outcome: "available",
   files: [],
   truncated: false,
@@ -65,7 +69,7 @@ afterEach(() => {
 
 describe("GitDiffTabContent panel gating", () => {
   it("fetches the diff TOC only while the panel is open, and refetches once on reopen", async () => {
-    vi.mocked(sdk.environments.diffFiles).mockResolvedValue(emptyDiff);
+    vi.mocked(gitPluginReads.files).mockResolvedValue(emptyDiff);
     const { queryClient, wrapper: Wrapper } = createQueryClientTestHarness();
     const renderTab = (isPanelOpen: boolean) => (
       <Wrapper>
@@ -86,11 +90,11 @@ describe("GitDiffTabContent panel gating", () => {
     );
 
     const view = render(renderTab(false));
-    expect(sdk.environments.diffFiles).not.toHaveBeenCalled();
+    expect(gitPluginReads.files).not.toHaveBeenCalled();
 
     view.rerender(renderTab(true));
     await waitFor(() => {
-      expect(sdk.environments.diffFiles).toHaveBeenCalledTimes(1);
+      expect(gitPluginReads.files).toHaveBeenCalledTimes(1);
     });
 
     view.rerender(renderTab(false));
@@ -99,11 +103,11 @@ describe("GitDiffTabContent panel gating", () => {
         queryKey: environmentDiffFilesQueryKeyPrefix(ENVIRONMENT_ID),
       });
     });
-    expect(sdk.environments.diffFiles).toHaveBeenCalledTimes(1);
+    expect(gitPluginReads.files).toHaveBeenCalledTimes(1);
 
     view.rerender(renderTab(true));
     await waitFor(() => {
-      expect(sdk.environments.diffFiles).toHaveBeenCalledTimes(2);
+      expect(gitPluginReads.files).toHaveBeenCalledTimes(2);
     });
   });
 });

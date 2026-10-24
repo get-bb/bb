@@ -1,11 +1,12 @@
 import type { QueryClient } from "@tanstack/react-query";
-import type { WorkspaceDiffTarget } from "@bb/domain";
+
 import type { EnvironmentDiffViewedResponse } from "@bb/server-contract";
 import {
   environmentDiffTargetKey,
   environmentDiffViewedQueryKey,
 } from "../queries/query-keys";
 import { cancelOptimisticQueries } from "./optimistic-query-cancellation";
+import type { WorkspaceDiffTarget } from "@bb/domain";
 
 interface DiffViewedChange {
   environmentId: string;

@@ -18,6 +18,7 @@ import {
   RUNTIME_SLOT_BY_SPECIFIER,
 } from "./build-plugin-app.js";
 import { RUNTIME_EXPORT_MANIFEST } from "./generated/runtime-export-manifest.generated.js";
+import { buildPluginServer } from "./build-plugin-server.js";
 import { resolvePluginBuildToolchain } from "./toolchain.js";
 
 function testToolchain() {
@@ -424,6 +425,54 @@ describe("plugin app runtime shim", () => {
         warning.includes("frontend-registration.md#tab-api-migration"),
       ).length,
     ).toBe(2);
+  });
+
+  it("builds app and server code that still calls retired environment reads and warns with the Git plugin replacement", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "bb-plugin-retired-git-reads-"));
+    tempDirs.push(dir);
+    await writeFile(
+      join(dir, "package.json"),
+      JSON.stringify({
+        name: "bb-plugin-retired-git-reads-fixture",
+        version: "0.0.0",
+        bb: {
+          name: "Retired git reads",
+          description: "Published API compatibility",
+          branding: { icon: "Info" },
+          server: "./server.ts",
+          app: "./app.ts",
+        },
+      }),
+    );
+    await writeFile(
+      join(dir, "server.ts"),
+      `export default function plugin(bb: any) {
+        void bb.sdk.environments.status({ environmentId: "env_1" });
+      }\n`,
+    );
+    await writeFile(
+      join(dir, "app.ts"),
+      `import { definePluginApp, useSdk } from "@get-bb/plugin-sdk/app";
+      export function useFiles() {
+        const sdk: any = useSdk();
+        return sdk.environments.diffFiles({ environmentId: "env_1", target: "uncommitted" });
+      }
+      export default definePluginApp(() => {});`,
+    );
+    const toolchain = await testToolchain();
+    const app = await buildPluginApp(dir, "0.9.0-test", toolchain);
+    const server = await buildPluginServer(dir, "0.9.0-test", toolchain);
+
+    expect(app.migrationWarnings).toEqual([
+      expect.stringContaining(
+        'environments.diffFiles is retired from the bb SDK typings and keeps working only for existing plugins. Read through the Git plugin instead: bb.sdk.plugins.callRpc({ pluginId: "bb--git", method: "files"',
+      ),
+    ]);
+    expect(server.migrationWarnings).toEqual([
+      expect.stringContaining(
+        'server.ts: environments.status is retired from the bb SDK typings',
+      ),
+    ]);
   });
 
   it("minifies app.js and app.css unless the caller asks for readable output", async () => {

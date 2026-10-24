@@ -1,8 +1,22 @@
-import type { AppTabOpenIntent } from "@/lib/app-navigation-host";
-import { openAppTabFromDestinations } from "@/lib/app-fixed-tab-navigation";
-import { createPanelActionDestination } from "@/components/plugin/PluginPanelActions";
+import {
+  type AppTabOpenIntent,
+  AppNavigationHostProvider,
+  type AppFixedTabOpenIntent,
+} from "@/lib/app-navigation-host";
+import {
+  openAppTabFromDestinations,
+  openAppFixedTabFromDestinations,
+} from "@/lib/app-fixed-tab-navigation";
+import {
+  createPanelActionDestination,
+  PluginPanelTabContent,
+  usePluginPanelActions,
+} from "@/components/plugin/PluginPanelActions";
 import { ThreadDiffVisibilityContext } from "@/components/secondary-panel/git-diff/thread-diff-registration";
-import { isGitDiffFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
+import {
+  isGitDiffFixedPanelTab,
+  type SecondaryFileFixedPanelTab,
+} from "@/lib/fixed-panel-tabs-state";
 import {
   useThreadFixedTabs,
   createThreadFixedTabDescriptor,
@@ -10,7 +24,16 @@ import {
 } from "@/components/plugin/PluginThreadFixedTabs";
 import { BrowserTabIcon } from "@/components/secondary-panel/BrowserTabIcon";
 import { getPanelTabHistoryKey } from "@/components/secondary-panel/recentlyClosedPanelTabs";
-import { appendQuoteAndAttachmentsToDraft } from "@bb/client-core";
+import {
+  appendQuoteAndAttachmentsToDraft,
+  isThreadForkable,
+  promptInputToDraft,
+  type PromptDraftAttachment,
+  type PromptDraftState,
+  getFilePreviewLineRangeStart,
+  isSecondaryFileTab,
+  type PromptMentionLinkResolver,
+} from "@bb/client-core";
 import { queueSplitDownload } from "@/lib/split-prefetch";
 import { createCoreComposerActions } from "@/lib/plugin-composer-handle";
 import {
@@ -22,7 +45,10 @@ import {
   type ReactNode,
 } from "react";
 import { nanoid } from "nanoid";
-import { useSystemProviderInfo } from "@/hooks/queries/system-queries";
+import {
+  useSystemProviderInfo,
+  useSystemConfig,
+} from "@/hooks/queries/system-queries";
 import { useImmediateRouteNavigate } from "@/components/ui/app-route-anchor";
 import { useAtom } from "jotai";
 import { useDesktopBrowserReveal } from "@/lib/use-desktop-browser-reveal";
@@ -54,8 +80,10 @@ import {
   usePluginDetailPanelState,
 } from "@/components/plugin/plugin-detail-navigation";
 import { useForkThreadFromMessage } from "@/hooks/useForkThreadFromMessage";
-import { isThreadForkable } from "@bb/client-core";
-import { useRequestEnvironmentAction } from "../../hooks/mutations/environment-mutations";
+import {
+  useRequestEnvironmentAction,
+  useUpdateEnvironment,
+} from "../../hooks/mutations/environment-mutations";
 import {
   useMarkThreadRead,
   useUpdateThread,
@@ -65,7 +93,6 @@ import {
   useEditThreadMessage,
   useSendThreadMessage,
 } from "../../hooks/mutations/thread-runtime-mutations";
-import { useUpdateEnvironment } from "../../hooks/mutations/environment-mutations";
 import {
   useEnvironment,
   useEnvironmentWorkStatus,
@@ -96,7 +123,10 @@ import type { PluginThreadActionsInlineItem } from "@get-bb/plugin-sdk";
 import { ThreadActionsMenu } from "@/components/thread/ThreadActionsMenu";
 import { toThreadActionTarget } from "@/lib/thread-actions/thread-action-target";
 import { Button } from "@bb/shared-ui/button";
-import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import {
+  COARSE_POINTER_ICON_SIZE_CLASS,
+  COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
+} from "@bb/shared-ui/coarse-pointer-sizing";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { PluginThreadHeaderActions } from "@/components/plugin/PluginThreadHeaderActions";
 import { ThreadWorkspaceOpenButton } from "@/components/thread/ThreadWorkspaceOpenButton";
@@ -109,7 +139,6 @@ import { useCreateThreadInEnvironment } from "@/hooks/useCreateThreadInEnvironme
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 import { selectHosts, useHosts } from "@/hooks/queries/host-queries";
-import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useConnectionAwareQueryState } from "@/hooks/queries/connection-aware-query-state";
 import { useThreadTerminals } from "@/hooks/queries/thread-terminal-queries";
 import { usePanelBrowser } from "@/components/secondary-panel/usePanelBrowser";
@@ -123,25 +152,23 @@ import {
 } from "@/lib/environment-workspace-display";
 import { useSystemEnvironmentProviders } from "@/hooks/queries/environment-provider-queries";
 import { useSystemMachineProviders } from "@/hooks/queries/machine-provider-queries";
-import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
+import { formatWorkspaceCheckoutDisplay } from "@bb/shared-ui/lib/workspace-checkout-display";
 import {
   getAbsoluteDirname,
   isAbsoluteFilePathWithinRoot,
   resolveAbsoluteFilePath,
-} from "@/lib/absolute-file-path";
-import { getGitStatusDisplay } from "@/components/workspace/workspace-status";
+} from "@bb/shared-ui/lib/absolute-file-path";
+import {
+  getGitStatusDisplay,
+  gitStatusErrorMessage,
+} from "@bb/shared-ui/git-status-display";
 import {
   selectWorkspaceChangedFilesSection,
   type WorkspaceChangedFileSelection,
-} from "@/components/workspace/workspace-change-summary";
+} from "@bb/shared-ui/workspace-change-summary";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { hasThreadProvisioningFailure } from "@/lib/thread-provisioning-failure";
 import { showMutationErrorToast } from "@/lib/mutation-errors";
-import {
-  promptInputToDraft,
-  type PromptDraftAttachment,
-  type PromptDraftState,
-} from "@bb/client-core";
 import {
   getProjectComposeRoutePath,
   getThreadRoutePath,
@@ -175,6 +202,7 @@ import {
   shouldLoadThreadStorageFileList,
   useThreadStorageViewer,
 } from "@/components/secondary-panel/useThreadStorageViewer";
+import type { WorkspaceFileStatus } from "bb-plugin-bb--git/contract";
 import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { BrowserTabLifecycleObserver } from "@/components/secondary-panel/BrowserTabLifecycleObserver";
 import {
@@ -191,12 +219,7 @@ import {
   SIDE_CHAT_PLUGIN_PANEL_ACTION_ID,
 } from "@/lib/side-chat-plugin";
 import { RightPanelFileTabIcon } from "@/components/secondary-panel/RightPanelFileTabIcon";
-import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { PluginItemIcon } from "@/components/plugin/PluginIcon";
-import {
-  PluginPanelTabContent,
-  usePluginPanelActions,
-} from "@/components/plugin/PluginPanelActions";
 import { createFileOpenerOriginalTab } from "@/components/plugin/file-opener-tabs";
 import { PluginThreadPanelNavigationProvider } from "@/components/plugin/plugin-thread-panel-navigation";
 import { ThreadTimelineNavigationProvider } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
@@ -209,13 +232,7 @@ import { getFileExtension } from "@/lib/plugin-slot-resolvers";
 import { Icon } from "@bb/shared-ui/icon";
 import { getBbDesktopInfo, isDesktopBrowserAvailable } from "@/lib/bb-desktop";
 import { UrlOpenRoutingProvider } from "@/lib/url-open-routing";
-import {
-  AppNavigationHostProvider,
-  type AppFixedTabOpenIntent,
-} from "@/lib/app-navigation-host";
-import { openAppFixedTabFromDestinations } from "@/lib/app-fixed-tab-navigation";
 import { getFileBasename } from "@/lib/live-file-navigation";
-import { getFilePreviewLineRangeStart } from "@bb/client-core";
 import { getBrowserUrlHost } from "@/lib/browser-url";
 import {
   useThreadStorageBrowser,
@@ -225,9 +242,7 @@ import {
   useThreadFileTabs,
   type FileSearchSelection,
 } from "@/components/secondary-panel/useThreadFileTabs";
-import { isSecondaryFileTab } from "@bb/client-core";
 import { useThreadOpenFileSignal } from "@/components/secondary-panel/useThreadOpenFileSignal";
-import type { PromptMentionLinkResolver } from "@bb/client-core";
 import type {
   SecondaryPanelFixedTab,
   SecondaryPanelRenderableTab,
@@ -264,7 +279,6 @@ import {
   useTouchFixedPanelTabsState,
   useUpdateFixedPanelTabsState,
 } from "@/lib/fixed-panel-tabs";
-import type { SecondaryFileFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import { resolveGitDiffTabStatus } from "@/components/secondary-panel/gitDiffTabEligibility";
 import { isRootThread } from "./threadParentSelectorOptions";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
@@ -1582,7 +1596,7 @@ function ThreadDetailViewInternal(
     return desktopInfo.onCloseWindowRequest(handleCloseWindowRequest);
   }, [handleCloseWindowRequest, isFocused]);
   const handleChangedFileClick = useCallback(
-    (selection: WorkspaceChangedFileSelection) => {
+    (selection: WorkspaceChangedFileSelection<WorkspaceFileStatus>) => {
       const openTarget = resolveWorkspaceChangedFileOpenTarget(selection);
       if (openTarget.kind === "preview") {
         openWorkspaceFile({
@@ -2186,7 +2200,7 @@ function ThreadDetailViewInternal(
   const threadGitStatusDisplay = getGitStatusDisplay(workspaceStatus, {
     mergeBaseBranch: effectiveMergeBaseBranch,
     showBranchComparison: showBranchComparisonUi,
-    error: workspaceStatusError,
+    errorMessage: gitStatusErrorMessage(workspaceStatusError),
     workspaceUnavailable,
     workspaceDeleted: isWorkspaceDeleted,
   });

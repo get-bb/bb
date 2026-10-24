@@ -1,6 +1,10 @@
 import { ThreadDiffContentContext } from "./git-diff/thread-diff-registration";
 import { useThreadDiffContent } from "./git-diff/useThreadDiffContent";
-import { isGitDiffFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
+import {
+  isGitDiffFixedPanelTab,
+  type FixedPanelViewTab,
+  type SecondaryFixedPanelTab,
+} from "@/lib/fixed-panel-tabs-state";
 import { ThreadInfoContentContext } from "@/components/secondary-panel/thread-info-registration";
 import { usePluginDetailPanelProps } from "@/components/plugin/plugin-detail-navigation";
 import {
@@ -84,10 +88,6 @@ import {
   useSidebarKeepsCollapsedRail,
 } from "@/components/ui/sidebar.js";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
-import type {
-  FixedPanelViewTab,
-  SecondaryFixedPanelTab,
-} from "@/lib/fixed-panel-tabs-state";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";

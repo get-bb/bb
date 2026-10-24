@@ -10,8 +10,8 @@ import {
   createTerminalFixedPanelTab,
   createThreadInfoFixedPanelTab,
   type FixedPanelTab,
+  createPluginPageFixedPanelTab,
 } from "./fixed-panel-tabs-state";
-import { createPluginPageFixedPanelTab } from "./fixed-panel-tabs-state";
 import {
   areThreadTabListsEquivalent,
   mergeThreadTabChanges,

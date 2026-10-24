@@ -6,8 +6,7 @@ import {
   useRef,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { atom } from "jotai";
-import { useAtomValue, useSetAtom, useStore } from "jotai";
+import { atom, useAtomValue, useSetAtom, useStore } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { atomFamily } from "jotai-family";
 import type { TerminalCreateTarget } from "@bb/server-contract";
@@ -33,7 +32,7 @@ import {
   type FixedPanelTabsState,
   type FixedPanelViewTab,
 } from "./fixed-panel-tabs-state";
-import { type ThreadSecondaryPanel } from "./thread-secondary-panel";
+import type { ThreadSecondaryPanel } from "./thread-secondary-panel";
 import {
   areThreadTabListsEquivalent,
   hasPendingThreadTabsWrite,

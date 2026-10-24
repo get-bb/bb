@@ -3,7 +3,6 @@ import {
   type ExperimentalThreadContextSegmentInput,
   type ExperimentalThreadContextSegmentProps,
 } from "@get-bb/plugin-sdk";
-import { CONTEXT_CARD_TOGGLE_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import {
   CORE_THREAD_CONTEXT_OWNER,
   ThreadContextSegmentMount,
@@ -39,13 +38,11 @@ import { NavLink } from "react-router-dom";
 import type {
   EnvironmentStatus,
   PendingInteraction,
-  GitBranchRefClassification,
   ThreadRuntimeDisplayStatus,
+  GitBranchRefClassification,
 } from "@bb/domain";
-import {
-  BranchPicker,
-  getMergeBaseBranchCandidateGroups,
-} from "@/components/pickers/BranchPicker";
+import { BranchPicker } from "@bb/shared-ui/branch-picker";
+import { getMergeBaseBranchCandidateGroups } from "@/lib/merge-base-branch-candidates";
 import {
   PromptStackCard,
   PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
@@ -59,7 +56,7 @@ import {
   activityRowClass,
   activityTextClass,
 } from "@bb/shared-ui/activity-row-styles";
-import { WorkspaceChangesList } from "@/components/thread/WorkspaceChangesList";
+import { WorkspaceChangesList } from "@bb/shared-ui/workspace-changes-list";
 import { formatPendingInteractionSummary } from "@bb/core-ui";
 import { InlinePendingInteractionContext } from "@/components/thread/pending-interactions/PendingInteractionShell";
 import { ThreadPendingInteractionBanners } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
@@ -69,18 +66,16 @@ import {
   toChangeTally,
   type WorkspaceChangedFileSelection,
   type WorkspaceChangedFilesSection,
-} from "@/components/workspace/workspace-change-summary";
+} from "@bb/shared-ui/workspace-change-summary";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
   AnimatedBody,
   AnimatedDisclosureBody,
-} from "@/components/promptbox/banner/AnimatedBody";
-import {
   PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
   PromptStackCollapseRow,
   PromptStackCountSlot,
-  PromptStackHoverChevron,
+  SectionToggleButton,
   useDisclosureFocusHandoff,
 } from "@bb/shared-ui/prompt-stack-disclosure";
 import {
@@ -93,6 +88,7 @@ import {
 } from "@/components/thread/ThreadTitleMentions";
 import { childThreadNoun } from "@/lib/child-thread-copy";
 import { SIDEBAR_WORKING_STATUS_COLOR_CLASS } from "@bb/shared-ui/sidebar-row-classes";
+import type { WorkspaceFileStatus } from "bb-plugin-bb--git/contract";
 
 export interface ContextBannerMergeBaseConfig {
   branch: string;
@@ -106,9 +102,9 @@ export interface ContextBannerMergeBaseConfig {
 }
 
 export interface ThreadPromptGitSection {
-  changedFiles: WorkspaceChangedFilesSection;
+  changedFiles: WorkspaceChangedFilesSection<WorkspaceFileStatus>;
   mergeBase: ContextBannerMergeBaseConfig | null;
-  onPromptBannerFileClick: (selection: WorkspaceChangedFileSelection) => void;
+  onPromptBannerFileClick: (selection: WorkspaceChangedFileSelection<WorkspaceFileStatus>) => void;
 }
 
 export interface ThreadPromptParentThreadSection {
@@ -172,7 +168,7 @@ interface ThreadPromptContextBannerProps {
   onToggleSegment: (key: string) => void;
 }
 
-const KIND_PREFIX: Record<WorkspaceChangedFilesSection["kind"], string> = {
+const KIND_PREFIX: Record<WorkspaceChangedFilesSection<WorkspaceFileStatus>["kind"], string> = {
   uncommitted: "Uncommitted",
   untracked: "Untracked",
   committed: "Committed",
@@ -220,75 +216,6 @@ const SECTION_IDS = {
     body: "thread-prompt-banner-status-body",
   },
 } as const;
-
-const SEGMENT_SHRINK_CLASS = "min-w-0 overflow-hidden";
-
-interface SectionToggleButtonProps {
-  buttonRef: RefObject<HTMLButtonElement | null>;
-  fillRow: boolean;
-  id: string;
-  controlsId: string;
-  ariaLabel?: string;
-  icon: ReactNode;
-  label: ReactNode;
-  compactLabel?: ReactNode;
-  hideLabelInCompact?: boolean;
-  isExpanded: boolean;
-  onToggle: () => void;
-}
-
-function SectionToggleButton({
-  buttonRef,
-  fillRow,
-  id,
-  controlsId,
-  ariaLabel,
-  icon,
-  label,
-  compactLabel,
-  hideLabelInCompact = true,
-  isExpanded,
-  onToggle,
-}: SectionToggleButtonProps) {
-  return (
-    <button
-      ref={buttonRef}
-      type="button"
-      id={id}
-      aria-expanded={isExpanded}
-      aria-controls={controlsId}
-      aria-label={ariaLabel}
-      onClick={onToggle}
-      className={cn(
-        CONTEXT_CARD_TOGGLE_CLASS,
-        PROMPT_STACK_INLAY_SEGMENT_CLASS,
-        SEGMENT_SHRINK_CLASS,
-        label !== null && label !== undefined ? "gap-1.5" : "gap-0",
-        fillRow && "flex-1 justify-start text-left",
-        PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
-        isExpanded ? "text-foreground" : "text-muted-foreground",
-      )}
-    >
-      {icon}
-      {label !== null && label !== undefined ? (
-        <span
-          className="min-w-0 truncate"
-          data-promptbox-hide-compact={hideLabelInCompact ? "" : undefined}
-        >
-          {label}
-        </span>
-      ) : null}
-      {hideLabelInCompact &&
-      compactLabel !== null &&
-      compactLabel !== undefined ? (
-        <span className="min-w-0 truncate" data-promptbox-compact-label="">
-          {compactLabel}
-        </span>
-      ) : null}
-      {fillRow ? <PromptStackHoverChevron isExpanded={isExpanded} /> : null}
-    </button>
-  );
-}
 
 const PARENT_SECTION_COPY: Record<
   ThreadPromptParentThreadSection["relationship"],

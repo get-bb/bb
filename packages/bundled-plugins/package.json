@@ -26,6 +26,7 @@
     "bb-plugin-environment-personal-workspace": "workspace:*",
     "bb-plugin-environment-project-checkout": "workspace:*",
     "bb-plugin-github": "workspace:*",
+    "bb-plugin-bb--git": "workspace:*",
     "bb-plugin-bb--github-pr-status": "workspace:*",
     "bb-plugin-inline-vis": "workspace:*",
     "bb-plugin-keep-awake": "workspace:*",

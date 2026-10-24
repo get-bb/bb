@@ -1,11 +1,12 @@
-import type { Environment, WorkspaceFileStatus } from "@bb/domain";
+import type { Environment } from "@bb/domain";
 import type { OpenInTargetContext } from "@bb/host-daemon-contract";
-import type { WorkspaceChangedFilesSection } from "@/components/workspace/workspace-change-summary";
+import type { WorkspaceChangedFilesSection } from "@bb/shared-ui/workspace-change-summary";
 import type {
   EnvironmentFilePreviewSource,
   WorkspaceFilePreviewStatusLabel,
 } from "@bb/client-core";
-import { buildAbsoluteFilePath } from "@/lib/absolute-file-path";
+import { buildAbsoluteFilePath } from "@bb/shared-ui/lib/absolute-file-path";
+import type { WorkspaceFileStatus } from "bb-plugin-bb--git/contract";
 
 interface ResolveThreadWorkspaceOpenPathArgs {
   canOpenWorkspace: boolean;
@@ -53,7 +54,7 @@ type WorkspaceChangedFileOpenTarget =
 
 interface ResolveWorkspaceChangedFileOpenTargetArgs {
   file: WorkspaceFileStatus;
-  section: WorkspaceChangedFilesSection;
+  section: WorkspaceChangedFilesSection<WorkspaceFileStatus>;
 }
 
 export function resolveWorkspaceChangedFileOpenTarget(

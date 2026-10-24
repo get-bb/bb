@@ -1,31 +1,16 @@
 import { Video } from "@bb/shared-ui/video";
-import {
-  useCallback,
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useRef,
-  type CSSProperties,
-} from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@bb/shared-ui/button";
 import { usePersistentOverlayFocus } from "@bb/shared-ui/responsive-overlay";
 import { usePortalScopeProps } from "@bb/shared-ui/lib/portal-scope";
 import { useBrowserDimmingOverlay } from "@/hooks/useBrowserDimmingModal";
 import { Icon } from "@bb/shared-ui/icon";
+import {
+  IMAGE_TRANSPARENCY_CHECKER_STYLE,
+} from "@bb/shared-ui/lib/image-preview";
 
 type ImageLightboxKeyAction = "close" | "next" | "previous";
-
-const IMAGE_TRANSPARENCY_CHECKER_BASE =
-  "color-mix(in oklch, var(--ink) 5%, var(--canvas))";
-const IMAGE_TRANSPARENCY_CHECKER_MARK =
-  "color-mix(in oklch, var(--ink) 14%, var(--canvas))";
-
-export const IMAGE_TRANSPARENCY_CHECKER_STYLE: CSSProperties = {
-  backgroundColor: IMAGE_TRANSPARENCY_CHECKER_BASE,
-  backgroundImage: `conic-gradient(${IMAGE_TRANSPARENCY_CHECKER_MARK} 25%, ${IMAGE_TRANSPARENCY_CHECKER_BASE} 0 50%, ${IMAGE_TRANSPARENCY_CHECKER_MARK} 0 75%, ${IMAGE_TRANSPARENCY_CHECKER_BASE} 0)`,
-  backgroundSize: "16px 16px",
-};
 
 interface ImageLightboxKeyActionInput {
   event: Pick<
@@ -33,12 +18,6 @@ interface ImageLightboxKeyActionInput {
     "altKey" | "ctrlKey" | "defaultPrevented" | "key" | "metaKey"
   >;
   hasNavigation: boolean;
-}
-
-interface WrappedImageIndexInput {
-  currentIndex: number;
-  direction: "next" | "previous";
-  itemCount: number;
 }
 
 interface ImageLightboxProps {
@@ -86,20 +65,6 @@ export function getImageLightboxKeyAction({
   }
 
   return null;
-}
-
-export function getWrappedImageIndex({
-  currentIndex,
-  direction,
-  itemCount,
-}: WrappedImageIndexInput): number {
-  if (itemCount <= 0) {
-    return currentIndex;
-  }
-  if (direction === "previous") {
-    return currentIndex === 0 ? itemCount - 1 : currentIndex - 1;
-  }
-  return currentIndex === itemCount - 1 ? 0 : currentIndex + 1;
 }
 
 export function ImageLightbox({

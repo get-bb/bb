@@ -37,7 +37,7 @@ import {
   resolveEnvironmentOpenContext,
 } from "./thread-detail/threadWorkspaceOpenPath";
 import { getFilePreviewLineRangeStart } from "@bb/client-core";
-import { resolveAbsoluteFilePath } from "@/lib/absolute-file-path";
+import { resolveAbsoluteFilePath } from "@bb/shared-ui/lib/absolute-file-path";
 import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 

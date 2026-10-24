@@ -1,10 +1,10 @@
 import type { QueryClient } from "@tanstack/react-query";
-import type { DiffPatchEntry } from "@bb/server-contract";
 import { HEAVY_PAYLOAD_GC_TIME_MS } from "../queries/query-policies";
 import {
   environmentDiffPatchQueryKey,
   environmentDiffPatchQueryKeyPrefix,
 } from "../queries/query-keys";
+import type { DiffPatchEntry } from "bb-plugin-bb--git/contract";
 
 export interface PatchQueryIdentity {
   environmentId: string;

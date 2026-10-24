@@ -1,17 +1,25 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { updateHost } from "@bb/db";
 import { registerFakeAiService } from "../helpers/ai-services.js";
 import { generateCommitMessage } from "../../src/services/ai/commit-message.js";
-import {
-  reportQueuedCommandSuccess,
-  waitForQueuedCommand,
-} from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
 import {
   seedEnvironment,
   seedHostSession,
   seedProjectWithSource,
 } from "../helpers/seed.js";
-import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import { makeWorkspaceStatus } from "bb-plugin-bb--git/testing";
+import { installGitPluginWithHost } from "../helpers/git-plugin.js";
+import { installMachineProvider } from "../helpers/machine-provider.js";
+import {
+  setPluginMachineProviderBridge,
+} from "../../src/services/plugins/plugin-machine-provider-registry.js";
+import {
+  startTestServer,
+  withTestHarness,
+  type RunningTestServer,
+  type TestAppHarness,
+} from "../helpers/test-app.js";
 
 const commitMessageArgs = {
   diffDescription: "uncommitted changes",
@@ -33,17 +41,75 @@ function registerCodex(
   });
 }
 
-async function commitThroughRoute(harness: TestAppHarness): Promise<string> {
-  const { host } = seedHostSession(harness.deps);
-  const { project } = seedProjectWithSource(harness.deps, {
+afterEach(() => {
+  setPluginMachineProviderBridge(undefined);
+});
+
+async function commitThroughRoute(
+  server: RunningTestServer,
+  options: { suspended: boolean } = { suspended: false },
+): Promise<string> {
+  const { host, session } = seedHostSession(server.deps);
+  const { project } = seedProjectWithSource(server.deps, {
     hostId: host.id,
   });
-  const environment = seedEnvironment(harness.deps, {
+  const environment = seedEnvironment(server.deps, {
     hostId: host.id,
     projectId: project.id,
   });
+  if (options.suspended) {
+    installMachineProvider({
+      resume: async () => ({ resource: { id: "restored" } }),
+      suspend: async () => ({ resource: { id: "saved" } }),
+    });
+    updateHost(server.db, server.hub, host.id, {
+      machineProviderId: "test-machine",
+      phase: "suspended",
+      resource: { id: "saved" },
+      suspendedAt: 1,
+    });
+  }
+  const commits: string[] = [];
+  const responder = await installGitPluginWithHost(server, {
+    hostId: host.id,
+    sessionId: session.id,
+    reads: {
+      status: makeWorkspaceStatus({
+        mergeBase: null,
+        workingTree: {
+          deletions: 0,
+          files: [],
+          hasUncommittedChanges: true,
+          insertions: 1,
+          lineStatsComplete: true,
+          fileCount: 0,
+          state: "dirty_uncommitted",
+        },
+      }),
+      diff: {
+        diff: commitMessageArgs.patch,
+        files: commitMessageArgs.files,
+        mergeBaseRef: null,
+        shortstat: commitMessageArgs.shortstat,
+        truncated: false,
+      },
+    },
+    handleOther({ command }) {
+      if (
+        command.type !== "workspace.commit" ||
+        command.environmentId !== environment.id
+      ) {
+        throw new Error(`unexpected host command ${command.type}`);
+      }
+      commits.push(command.message);
+      return {
+        ok: true,
+        result: { commitSha: "abc123", commitSubject: command.message },
+      };
+    },
+  });
 
-  const responsePromise = harness.app.request(
+  const response = await server.app.request(
     `/api/v1/environments/${environment.id}/actions`,
     {
       method: "POST",
@@ -51,71 +117,31 @@ async function commitThroughRoute(harness: TestAppHarness): Promise<string> {
       body: JSON.stringify({ action: "commit" }),
     },
   );
-
-  const statusCommand = await waitForQueuedCommand(
-    harness,
-    ({ command }) =>
-      command.type === "workspace.status" &&
-      command.environmentId === environment.id,
-  );
-  await reportQueuedCommandSuccess(harness, statusCommand, {
-    outcome: "available",
-    workspaceStatus: {
-      branch: { currentBranch: "feature", defaultBranch: "main" },
-      checkout: { kind: "branch", branchName: "feature", headSha: null },
-      mergeBase: null,
-      workingTree: {
-        deletions: 0,
-        files: [],
-        hasUncommittedChanges: true,
-        insertions: 1,
-        lineStatsComplete: true,
-        fileCount: 0,
-        state: "dirty_uncommitted",
-      },
-    },
-  });
-
-  const diffCommand = await waitForQueuedCommand(
-    harness,
-    ({ command }) =>
-      command.type === "workspace.diff" &&
-      command.environmentId === environment.id,
-  );
-  await reportQueuedCommandSuccess(harness, diffCommand, {
-    outcome: "available",
-    diff: {
-      diff: commitMessageArgs.patch,
-      files: commitMessageArgs.files,
-      mergeBaseRef: null,
-      shortstat: commitMessageArgs.shortstat,
-      truncated: false,
-    },
-  });
-
-  const commitCommand = await waitForQueuedCommand(
-    harness,
-    ({ command }) =>
-      command.type === "workspace.commit" &&
-      command.environmentId === environment.id,
-  );
-  const message =
-    commitCommand.command.type === "workspace.commit"
-      ? commitCommand.command.message
-      : "";
-  await reportQueuedCommandSuccess(harness, commitCommand, {
-    commitSha: "abc123",
-    commitSubject: message,
-  });
-
-  const response = await responsePromise;
   expect(response.status).toBe(200);
+  const [message = ""] = commits;
   await expect(readJson(response)).resolves.toMatchObject({
     action: "commit",
     commitSubject: message,
     ok: true,
   });
+  expect(
+    responder.requests.map((request) =>
+      request.command.type === "plugin.host.call" ? request.command.method : null,
+    ),
+  ).toEqual(expect.arrayContaining(["status", "diff"]));
+  responder.unregister();
   return message;
+}
+
+async function withGitServer(
+  run: (server: RunningTestServer) => Promise<void>,
+): Promise<void> {
+  const server = await startTestServer();
+  try {
+    await run(server);
+  } finally {
+    await server.close();
+  }
 }
 
 describe("commit message generation", () => {
@@ -168,20 +194,29 @@ describe("commit message generation", () => {
   });
 
   it("commits with the generated message through the environment action", async () => {
-    await withTestHarness({}, async (harness) => {
-      registerCodex(harness, async () => "fix: export the changed flag");
-      await expect(commitThroughRoute(harness)).resolves.toBe(
+    await withGitServer(async (server) => {
+      registerCodex(server, async () => "fix: export the changed flag");
+      await expect(commitThroughRoute(server)).resolves.toBe(
         "fix: export the changed flag",
       );
     });
   });
 
+  it("wakes a suspended machine before reading what to commit", async () => {
+    await withGitServer(async (server) => {
+      registerCodex(server, async () => "fix: export the changed flag");
+      await expect(
+        commitThroughRoute(server, { suspended: true }),
+      ).resolves.toBe("fix: export the changed flag");
+    });
+  });
+
   it("commits with the fallback message when generation fails", async () => {
-    await withTestHarness({}, async (harness) => {
-      registerCodex(harness, async () => {
+    await withGitServer(async (server) => {
+      registerCodex(server, async () => {
         throw new Error("Codex request failed");
       });
-      await expect(commitThroughRoute(harness)).resolves.toBe(
+      await expect(commitThroughRoute(server)).resolves.toBe(
         "bb: automated commit",
       );
     });

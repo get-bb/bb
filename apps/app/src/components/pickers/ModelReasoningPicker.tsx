@@ -48,15 +48,17 @@ import {
   OPTION_MUTED_CLASS_NAME,
   OPTION_TRIGGER_CONTENT_CLASS_NAME,
 } from "@bb/shared-ui/option-display";
-import { type PickerOption } from "./OptionPicker";
+import type { PickerOption } from "./OptionPicker";
 import type { ModelPickerOption } from "./model-picker-option";
 import {
   MODEL_PICKER_MENU_WIDTH_CLASS_NAME,
   splitModelLabelTag,
 } from "./model-picker-menu";
 import { ModelReasoningMenu } from "./ModelReasoningMenuSplit";
-import { searchPickerOptions } from "./picker-search";
-import { useResetPickerScroll } from "./useResetPickerScroll";
+import { searchPickerOptions } from "@bb/shared-ui/picker-search";
+import {
+  useResetPickerScroll,
+} from "@bb/shared-ui/hooks/use-reset-picker-scroll";
 import { formatModelLoadErrorText } from "./model-load-error-message";
 import {
   useAppCommandContext,

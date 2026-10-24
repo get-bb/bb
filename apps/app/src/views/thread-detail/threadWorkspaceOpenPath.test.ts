@@ -1,9 +1,5 @@
-import type {
-  Environment,
-  WorkspaceFileStatus,
-  WorkspaceFileStatusKind,
-} from "@bb/domain";
-import type { WorkspaceChangedFilesSection } from "@/components/workspace/workspace-change-summary";
+import type { Environment } from "@bb/domain";
+import type { WorkspaceChangedFilesSection } from "@bb/shared-ui/workspace-change-summary";
 import { makeEnvironment } from "@bb/test-helpers/domain-fixtures";
 import { describe, expect, it } from "vitest";
 import {
@@ -11,6 +7,7 @@ import {
   resolveEnvironmentOpenContext,
   resolveThreadWorkspaceOpenPath,
 } from "./threadWorkspaceOpenPath";
+import type { WorkspaceFileStatus, WorkspaceFileStatusKind } from "bb-plugin-bb--git/contract";
 
 function makeWorkspaceEnvironment(
   overrides: Partial<Environment> = {},
@@ -41,8 +38,8 @@ function makeWorkspaceFileStatus(
 }
 
 function makeWorkspaceChangedFilesSection(
-  overrides: Partial<WorkspaceChangedFilesSection> = {},
-): WorkspaceChangedFilesSection {
+  overrides: Partial<WorkspaceChangedFilesSection<WorkspaceFileStatus>> = {},
+): WorkspaceChangedFilesSection<WorkspaceFileStatus> {
   const file = makeWorkspaceFileStatus("M");
   return {
     kind: "uncommitted",

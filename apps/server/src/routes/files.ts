@@ -203,28 +203,16 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
     });
   }
 
-  const runHostFileMutation = async <T>(
-    hostId: string,
-    run: () => Promise<T>,
-  ): Promise<T> => {
-    try {
-      return await run();
-    } finally {
-      deps.workspaceReadCaches.invalidateHost(hostId);
-    }
-  };
 
   const runHostFileMutationCommand = <TCommand extends HostDaemonRpcCommand>(
     hostId: string,
     command: TCommand,
   ) =>
-    runHostFileMutation(hostId, () =>
-      callHostOnlineRpcForWork(deps, {
-        hostId,
-        timeoutMs: COMMAND_TIMEOUT_MS,
-        command,
-      }),
-    );
+    callHostOnlineRpcForWork(deps, {
+      hostId,
+      timeoutMs: COMMAND_TIMEOUT_MS,
+      command,
+    });
 
   const withHostFileRoute = async <T>(
     hostIdInput: string | undefined,
@@ -249,6 +237,7 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
           ...(payload.rootPath !== undefined
             ? { rootPath: payload.rootPath }
             : {}),
+          ...(payload.ref !== undefined ? { ref: payload.ref } : {}),
         },
       });
       return context.json(requireDaemonFileContentResult(result));

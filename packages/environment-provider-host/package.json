@@ -4,10 +4,20 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./branch-options": {
+      "source": "./src/branch-options.ts",
+      "types": "./src/branch-options.ts",
+      "default": "./src/branch-options.ts"
+    },
     "./git": {
       "source": "./src/git.ts",
       "types": "./src/git.ts",
       "default": "./src/git.ts"
+    },
+    "./git-types": {
+      "source": "./src/git-types.ts",
+      "types": "./src/git-types.ts",
+      "default": "./src/git-types.ts"
     },
     "./locks": {
       "source": "./src/locks.ts",
@@ -33,20 +43,29 @@
       "source": "./src/transcript.ts",
       "types": "./src/transcript.ts",
       "default": "./src/transcript.ts"
+    },
+    "./workspace-git": {
+      "source": "./src/workspace-git.ts",
+      "types": "./src/workspace-git.ts",
+      "default": "./src/workspace-git.ts"
     }
   },
   "scripts": {
     "clean": "rimraf dist tsconfig.tsbuildinfo",
-    "typecheck": "tsrs --noEmit"
+    "lint": "oxlint src test",
+    "typecheck": "tsrs --noEmit",
+    "test": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
     "@get-bb/plugin-sdk": "workspace:*",
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@bb/test-helpers": "workspace:*",
     "@bb/tsconfig": "workspace:*",
     "@types/node": "^22.0.0",
     "tsrs": "0.18.0-ts7.1.0-dev.20260929",
-    "typescript": "npm:@typescript/typescript6@^6.0.2"
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vitest": "^4.1.1"
   }
 }

@@ -4,9 +4,9 @@ import {
 } from "../helpers/environment-provider.js";
 import {
   PERSONAL_PROJECT_ID,
-  type GitSourceInspection,
   type ProjectExecutionDefaults,
   type Thread,
+  type GitSourceInspection,
 } from "@bb/domain";
 import { createEnvironment } from "@bb/db";
 import { describe, expect, it } from "vitest";

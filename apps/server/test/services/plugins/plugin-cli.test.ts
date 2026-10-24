@@ -349,7 +349,7 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
     );
     const content = await readFile(skillFile, "utf8");
     expect(content).toContain("name: plugin-commands");
-    expect(content).toContain("capped at 1048576 UTF-8 bytes");
+    expect(content).toContain("capped at 33554432 UTF-8 bytes");
     expect(content).toContain("plugin_cli_output_too_large");
     expect(content).toContain("## bb acme — Acme tools");
     expect(content).toContain("bb acme issues [--json]");

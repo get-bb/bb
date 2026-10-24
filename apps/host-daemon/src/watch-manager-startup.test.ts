@@ -4,7 +4,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import parcelWatcher from "@parcel/watcher";
 import { createHostWatcher } from "@bb/host-watcher";
-import { provisionWorkspace, type HostWorkspace } from "@bb/host-workspace";
+import { provisionWorkspace } from "@bb/host-workspace";
 import { createDeferredPromise, initRepo, makeTempDir } from "@bb/test-helpers";
 import { expect, it, vi } from "vitest";
 import { WatchManager } from "./watch-manager.js";
@@ -28,9 +28,11 @@ it("reconciles content and branch changed between ignore discovery and root watc
     return { unsubscribe: async () => undefined };
   });
   const onWorkspaceMetadataChanged = vi.fn();
-  const reportedStatuses: ReturnType<HostWorkspace["getStatus"]>[] = [];
+  const reportedStatuses: Promise<{ stdout: string }>[] = [];
   const onWorkspaceStatusChanged = vi.fn(() => {
-    reportedStatuses.push(workspace.getStatus());
+    reportedStatuses.push(
+      execFileAsync("git", ["status", "--porcelain"], { cwd: root }),
+    );
   });
   const onWorkspaceStatusWatchError = vi.fn();
   const manager = new WatchManager({
@@ -66,10 +68,7 @@ it("reconciles content and branch changed between ignore discovery and root watc
       }),
     );
     const statuses = await Promise.all(reportedStatuses);
-    expect(statuses[0]?.workingTree).toMatchObject({
-      state: "dirty_uncommitted",
-      files: [expect.objectContaining({ path: "README.md", status: "M" })],
-    });
+    expect(statuses[0]?.stdout).toBe(" M README.md\n");
     await vi.waitFor(() =>
       expect(onWorkspaceMetadataChanged).toHaveBeenCalledWith({
         environmentId: "env-watch",

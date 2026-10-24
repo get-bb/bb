@@ -1,13 +1,11 @@
-import type {
-  AppCommandContextKey,
-  AppCommandId,
-  AppDefaultKeybinding,
-  AppDefaultKeybindings,
-  AppKeybinding,
-  AppKeybindings,
-  AppShortcut,
-} from "@bb/domain";
 import {
+  type AppCommandContextKey,
+  type AppCommandId,
+  type AppDefaultKeybinding,
+  type AppDefaultKeybindings,
+  type AppKeybinding,
+  type AppKeybindings,
+  type AppShortcut,
   QUESTION_SELECT_APP_COMMAND_IDS,
   PANE_FOCUS_APP_COMMAND_IDS,
   THREAD_JUMP_APP_COMMAND_IDS,

@@ -1,4 +1,15 @@
-import { hostDaemonContributedEnvEntrySchema } from "./commands.js";
+import {
+  hostDaemonContributedEnvEntrySchema,
+  type HostDaemonOnlineRpcCommandType,
+  type HostDaemonSettledCommandType,
+  hostDaemonConnectTunnelIdentitySchema,
+  hostDaemonOnlineRpcResultSchemaByType,
+  hostDaemonCommandResultSchemaByType,
+  hostDaemonSettledCommandTypeSchema,
+  hostDaemonRpcCommandSchema,
+  hostDaemonRpcCommandTypeSchema,
+  workspaceContextSchema,
+} from "./commands.js";
 import { desktopBrowserChangedSchema } from "./desktop-browser.js";
 import {
   serverMovedMessageSchema,
@@ -20,19 +31,6 @@ import {
 } from "@bb/domain";
 import { z } from "zod";
 import type { Endpoint } from "@bb/hono-typed-routes";
-import type {
-  HostDaemonOnlineRpcCommandType,
-  HostDaemonSettledCommandType,
-} from "./commands.js";
-import {
-  hostDaemonConnectTunnelIdentitySchema,
-  hostDaemonOnlineRpcResultSchemaByType,
-  hostDaemonCommandResultSchemaByType,
-  hostDaemonSettledCommandTypeSchema,
-  hostDaemonRpcCommandSchema,
-  hostDaemonRpcCommandTypeSchema,
-  workspaceContextSchema,
-} from "./commands.js";
 import { hostPlatformSchema } from "./local.js";
 
 const HOST_DAEMON_WEBSOCKET_PROTOCOL = "bb-host-daemon.v1";
@@ -534,10 +532,6 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     onlineRpcResponseSuccessSchemaFor("provider.installation.run"),
     onlineRpcResponseSuccessSchemaFor("provider.usage"),
     onlineRpcResponseSuccessSchemaFor("host.discover_repos"),
-    onlineRpcResponseSuccessSchemaFor("workspace.status"),
-    onlineRpcResponseSuccessSchemaFor("workspace.diff"),
-    onlineRpcResponseSuccessSchemaFor("workspace.diffFiles"),
-    onlineRpcResponseSuccessSchemaFor("workspace.diffPatch"),
     onlineRpcResponseSuccessSchemaFor("server_move.inspect"),
     onlineRpcResponseSuccessSchemaFor("server_move.probe"),
     onlineRpcResponseSuccessSchemaFor("server_move.prepare"),

@@ -1,5 +1,4 @@
 import { useState, type ReactNode } from "react";
-import type { WorkspaceFileStatus, WorkspaceStatus } from "@bb/domain";
 import { PROMPT_STACK_TRACK_CLASS } from "@/components/promptbox/banner/PromptStackCard";
 import {
   ThreadChildThreadsBanner,
@@ -13,8 +12,9 @@ import {
 import {
   selectWorkspaceChangedFilesSection,
   type WorkspaceChangedFilesSection,
-} from "@/components/workspace/workspace-change-summary";
+} from "@bb/shared-ui/workspace-change-summary";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
+import type { WorkspaceFileStatus, WorkspaceStatus } from "bb-plugin-bb--git/contract";
 
 export default {
   title: "promptbox/banner/Context Banner",
@@ -305,7 +305,7 @@ const committedUnmergedStatus: WorkspaceStatus = {
   },
 };
 
-function sectionFor(status: WorkspaceStatus): WorkspaceChangedFilesSection {
+function sectionFor(status: WorkspaceStatus): WorkspaceChangedFilesSection<WorkspaceFileStatus> {
   const section = selectWorkspaceChangedFilesSection(status);
   if (!section) throw new Error("fixture should produce a section");
   return section;
@@ -324,7 +324,7 @@ const committedManyFiles: WorkspaceFileStatus[] = Array.from(
     deletions: 2,
   }),
 );
-const committedManySection: WorkspaceChangedFilesSection = {
+const committedManySection: WorkspaceChangedFilesSection<WorkspaceFileStatus> = {
   ...committedSection,
   files: committedManyFiles,
   stats: {
@@ -517,7 +517,7 @@ const childThreadsLargeFixture: ThreadPromptChildThreadsSection = {
 };
 
 interface RowConfig {
-  section?: WorkspaceChangedFilesSection;
+  section?: WorkspaceChangedFilesSection<WorkspaceFileStatus>;
   mergeBase?: ContextBannerMergeBaseConfig | null;
   archived?: ThreadPromptArchivedSection | null;
   environmentGone?: ThreadPromptEnvironmentGoneSection | null;

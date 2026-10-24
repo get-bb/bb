@@ -1,5 +1,7 @@
-import type { WorkspaceCommitSummary, WorkspaceDiffTarget } from "@bb/domain";
+
 import type { GitDiffSelectionOption } from "../GitDiffToolbar";
+import type { WorkspaceCommitSummary } from "bb-plugin-bb--git/contract";
+import type { WorkspaceDiffTarget } from "@bb/domain";
 
 interface GitDiffIdentityParams {
   environmentId?: string;

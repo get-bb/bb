@@ -1,5 +1,5 @@
-import type { DiffFileEntry } from "@bb/server-contract";
 import picomatch from "picomatch/posix";
+import type { DiffFileEntry } from "bb-plugin-bb--git/contract";
 
 type DiffFilePathMatcher = (path: string) => boolean;
 

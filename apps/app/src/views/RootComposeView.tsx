@@ -1,6 +1,11 @@
 import { BrowserTabIcon } from "@/components/secondary-panel/BrowserTabIcon";
 import { getPanelTabHistoryKey } from "@/components/secondary-panel/recentlyClosedPanelTabs";
-import { appendQuoteAndAttachmentsToDraft } from "@bb/client-core";
+import {
+  appendQuoteAndAttachmentsToDraft,
+  PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID,
+  type PromptMentionLinkResolver,
+  isSecondaryFileTab,
+} from "@bb/client-core";
 import type { ComposerAttachment } from "@get-bb/plugin-sdk";
 import { createCoreComposerActions } from "@/lib/plugin-composer-handle";
 
@@ -8,11 +13,17 @@ import {
   readThreadCreationPlacement,
   DEFAULT_THREAD_CREATION_PLACEMENT,
 } from "@/lib/thread-creation-placement";
-import { useRootComposePlacement } from "@/lib/root-compose-selection";
+import {
+  useRootComposePlacement,
+  useRootComposeProjectId,
+} from "@/lib/root-compose-selection";
 import { useInitialPromptDraft } from "@/components/promptbox/mentions/initial-prompt-draft";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useSystemProviders } from "@/hooks/queries/system-queries";
+import {
+  useSystemProviders,
+  useHostProviderCliStatus,
+} from "@/hooks/queries/system-queries";
 import {
   findLocalPathProjectSourceForHost,
   type EnvironmentStatus,
@@ -39,7 +50,6 @@ import {
   useProviderCliInstallRunner,
 } from "@/components/provider-cli/provider-cli-install";
 import { providerCliJobKey } from "@/components/provider-cli/provider-cli-install-store";
-import { PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID } from "@bb/client-core";
 import {
   encodeProviderValue,
   encodeReuseValue,
@@ -85,7 +95,6 @@ import { usePanelPluginPanels } from "@/components/secondary-panel/usePanelPlugi
 import { usePanelFiles } from "@/components/secondary-panel/usePanelFiles";
 import { usePanelTerminals } from "@/components/secondary-panel/usePanelTerminals";
 import { useEnvironment } from "@/hooks/queries/environment-queries";
-import { useHostProviderCliStatus } from "@/hooks/queries/system-queries";
 import {
   requestComposerFocus,
   subscribeComposerFocusRequests,
@@ -95,7 +104,6 @@ import {
   type OpenAttachmentRequest,
 } from "@/components/secondary-panel/AttachmentOpenerContext";
 import { PluginComposerHostProvider } from "@/components/plugin/plugin-composer-host";
-import type { PromptMentionLinkResolver } from "@bb/client-core";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import { useNavigateToThreadAfterCreatePreference } from "@/lib/root-compose-create-preference";
 import {
@@ -122,7 +130,6 @@ import {
   type AppFixedTabOpenIntent,
 } from "@/lib/app-navigation-host";
 import { openAppFixedTabFromDestinations } from "@/lib/app-fixed-tab-navigation";
-import { useRootComposeProjectId } from "@/lib/root-compose-selection";
 import {
   RootComposeSecondaryContent,
   useRootComposePinnedPanelToggleBoxClassName,
@@ -136,7 +143,6 @@ import {
   useThreadFileTabs,
   type FileSearchSelection,
 } from "@/components/secondary-panel/useThreadFileTabs";
-import { isSecondaryFileTab } from "@bb/client-core";
 import { RightPanelFileTabIcon } from "@/components/secondary-panel/RightPanelFileTabIcon";
 import {
   buildTerminalSyncedSecondaryFileTabs,

@@ -1,13 +1,9 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
-import type { WorkspaceDiffTarget } from "@bb/domain";
-import type {
-  DiffPatchEntry,
-  EnvironmentDiffPatchResponse,
-} from "@bb/server-contract";
+
 import { createDeferredPromise } from "@bb/test-helpers";
-import { sdk } from "@/lib/sdk";
+import { gitPluginReads, type GitPatchPage } from "./git-plugin-reads";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { removeEnvironmentDiffPatchQueries } from "../cache-owners/query-cache";
@@ -18,9 +14,11 @@ import {
 import { environmentDiffPatchQueryKey } from "./query-keys";
 import { HEAVY_PAYLOAD_GC_TIME_MS } from "./query-policies";
 import { useEnvironmentDiffPatches } from "./use-environment-diff-patches";
+import type { WorkspaceDiffTarget } from "@bb/domain";
+import type { DiffPatchEntry } from "bb-plugin-bb--git/contract";
 
-vi.mock("@/lib/sdk", () => ({
-  sdk: { environments: { diffPatch: vi.fn() } },
+vi.mock("./git-plugin-reads", () => ({
+  gitPluginReads: { patchPage: vi.fn() },
 }));
 
 const ENVIRONMENT_ID = "env-1";
@@ -39,7 +37,7 @@ function patchKey() {
 
 function availableResponse(
   entry: DiffPatchEntry,
-): EnvironmentDiffPatchResponse {
+): GitPatchPage {
   return { outcome: "available", patches: [entry] };
 }
 
@@ -49,7 +47,7 @@ afterEach(() => {
 });
 
 beforeEach(() => {
-  vi.mocked(sdk.environments.diffPatch).mockReset();
+  vi.mocked(gitPluginReads.patchPage).mockReset();
 });
 
 describe("useEnvironmentDiffPatches", () => {
@@ -59,8 +57,8 @@ describe("useEnvironmentDiffPatches", () => {
       type: "branch_committed",
       mergeBaseBranch: "main",
     };
-    const firstFetch = createDeferredPromise<EnvironmentDiffPatchResponse>();
-    vi.mocked(sdk.environments.diffPatch).mockReturnValue(firstFetch.promise);
+    const firstFetch = createDeferredPromise<GitPatchPage>();
+    vi.mocked(gitPluginReads.patchPage).mockReturnValue(firstFetch.promise);
 
     const { result, rerender } = renderHook(
       ({ target }) =>
@@ -76,9 +74,9 @@ describe("useEnvironmentDiffPatches", () => {
     });
 
     await waitFor(() => {
-      expect(sdk.environments.diffPatch).toHaveBeenCalledTimes(1);
+      expect(gitPluginReads.patchPage).toHaveBeenCalledTimes(1);
     });
-    const request = vi.mocked(sdk.environments.diffPatch).mock.calls[0]?.[0];
+    const request = vi.mocked(gitPluginReads.patchPage).mock.calls[0]?.[0];
     expect(request?.signal?.aborted).toBe(false);
     rerender({ target: changedTarget });
 
@@ -98,7 +96,7 @@ describe("useEnvironmentDiffPatches", () => {
       patch: "",
       truncated: false,
     };
-    vi.mocked(sdk.environments.diffPatch)
+    vi.mocked(gitPluginReads.patchPage)
       .mockResolvedValueOnce(availableResponse(fullPatch))
       .mockResolvedValueOnce(availableResponse(filteredPatch));
 
@@ -129,7 +127,7 @@ describe("useEnvironmentDiffPatches", () => {
       });
     });
     expect(
-      vi.mocked(sdk.environments.diffPatch).mock.calls[1]?.[0],
+      vi.mocked(gitPluginReads.patchPage).mock.calls[1]?.[0],
     ).toMatchObject({ ignoreWhitespace: true });
 
     rerender({ ignoreWhitespace: false });
@@ -150,8 +148,8 @@ describe("useEnvironmentDiffPatches", () => {
       truncated: false,
     };
 
-    const firstFetch = createDeferredPromise<EnvironmentDiffPatchResponse>();
-    vi.mocked(sdk.environments.diffPatch)
+    const firstFetch = createDeferredPromise<GitPatchPage>();
+    vi.mocked(gitPluginReads.patchPage)
       .mockReturnValueOnce(firstFetch.promise)
       .mockResolvedValueOnce(availableResponse(freshPatch));
 
@@ -168,7 +166,7 @@ describe("useEnvironmentDiffPatches", () => {
       result.current.requestPaths({ visible: [PATH], overscan: [] });
     });
     await waitFor(() => {
-      expect(sdk.environments.diffPatch).toHaveBeenCalledTimes(1);
+      expect(gitPluginReads.patchPage).toHaveBeenCalledTimes(1);
     });
     await waitFor(() => {
       expect(result.current.getPatchState(PATH).status).toBe("loading");
@@ -195,7 +193,7 @@ describe("useEnvironmentDiffPatches", () => {
       result.current.requestPaths({ visible: [PATH], overscan: [] });
     });
     await waitFor(() => {
-      expect(sdk.environments.diffPatch).toHaveBeenCalledTimes(2);
+      expect(gitPluginReads.patchPage).toHaveBeenCalledTimes(2);
     });
     await waitFor(() => {
       const state = result.current.getPatchState(PATH);
@@ -221,8 +219,8 @@ describe("useEnvironmentDiffPatches", () => {
       truncated: false,
     };
 
-    const firstFetch = createDeferredPromise<EnvironmentDiffPatchResponse>();
-    vi.mocked(sdk.environments.diffPatch)
+    const firstFetch = createDeferredPromise<GitPatchPage>();
+    vi.mocked(gitPluginReads.patchPage)
       .mockReturnValueOnce(firstFetch.promise)
       .mockResolvedValueOnce(availableResponse(freshPatch));
 
@@ -239,7 +237,7 @@ describe("useEnvironmentDiffPatches", () => {
       result.current.requestPaths({ visible: [PATH], overscan: [] });
     });
     await waitFor(() => {
-      expect(sdk.environments.diffPatch).toHaveBeenCalledTimes(1);
+      expect(gitPluginReads.patchPage).toHaveBeenCalledTimes(1);
     });
     await waitFor(() => {
       expect(result.current.getPatchState(PATH).status).toBe("loading");
@@ -256,7 +254,7 @@ describe("useEnvironmentDiffPatches", () => {
       result.current.requestPaths({ visible: [PATH], overscan: [] });
     });
     await waitFor(() => {
-      expect(sdk.environments.diffPatch).toHaveBeenCalledTimes(2);
+      expect(gitPluginReads.patchPage).toHaveBeenCalledTimes(2);
     });
     await waitFor(() => {
       const state = result.current.getPatchState(PATH);
@@ -301,8 +299,8 @@ describe("useEnvironmentDiffPatches", () => {
       truncated: false,
     };
 
-    const firstFetch = createDeferredPromise<EnvironmentDiffPatchResponse>();
-    vi.mocked(sdk.environments.diffPatch)
+    const firstFetch = createDeferredPromise<GitPatchPage>();
+    vi.mocked(gitPluginReads.patchPage)
       .mockReturnValueOnce(firstFetch.promise)
       .mockResolvedValueOnce(availableResponse(freshPatch));
 
@@ -319,7 +317,7 @@ describe("useEnvironmentDiffPatches", () => {
       result.current.requestPaths({ visible: [PATH], overscan: [] });
     });
     await waitFor(() => {
-      expect(sdk.environments.diffPatch).toHaveBeenCalledTimes(1);
+      expect(gitPluginReads.patchPage).toHaveBeenCalledTimes(1);
     });
     await waitFor(() => {
       expect(result.current.getPatchState(PATH).status).toBe("loading");
@@ -343,7 +341,7 @@ describe("useEnvironmentDiffPatches", () => {
       result.current.requestPaths({ visible: [PATH], overscan: [] });
     });
     await waitFor(() => {
-      expect(sdk.environments.diffPatch).toHaveBeenCalledTimes(2);
+      expect(gitPluginReads.patchPage).toHaveBeenCalledTimes(2);
     });
     await waitFor(() => {
       const state = result.current.getPatchState(PATH);
@@ -364,8 +362,8 @@ describe("useEnvironmentDiffPatches", () => {
       patch: "diff --git a/file.ts b/file.ts\n+refreshed\n",
       truncated: false,
     };
-    const refresh = createDeferredPromise<EnvironmentDiffPatchResponse>();
-    vi.mocked(sdk.environments.diffPatch).mockReturnValue(refresh.promise);
+    const refresh = createDeferredPromise<GitPatchPage>();
+    vi.mocked(gitPluginReads.patchPage).mockReturnValue(refresh.promise);
 
     const { result } = renderHook(
       () =>
@@ -385,7 +383,7 @@ describe("useEnvironmentDiffPatches", () => {
     });
 
     await waitFor(() => {
-      expect(sdk.environments.diffPatch).toHaveBeenCalledTimes(1);
+      expect(gitPluginReads.patchPage).toHaveBeenCalledTimes(1);
     });
     expect(result.current.getPatchState(PATH)).toMatchObject({
       status: "loaded",
@@ -415,7 +413,7 @@ describe("useEnvironmentDiffPatches", () => {
       patch: "fresh",
       truncated: false,
     };
-    vi.mocked(sdk.environments.diffPatch)
+    vi.mocked(gitPluginReads.patchPage)
       .mockRejectedValueOnce(new Error("Failed to fetch"))
       .mockResolvedValueOnce(availableResponse(patch));
     const { result } = renderHook(
@@ -440,7 +438,7 @@ describe("useEnvironmentDiffPatches", () => {
     act(() => result.current.loadPath(PATH));
 
     await waitFor(() =>
-      expect(sdk.environments.diffPatch).toHaveBeenCalledTimes(2),
+      expect(gitPluginReads.patchPage).toHaveBeenCalledTimes(2),
     );
     await waitFor(() =>
       expect(result.current.getPatchState(PATH)).toMatchObject({
@@ -452,8 +450,8 @@ describe("useEnvironmentDiffPatches", () => {
 
   it("rejects an older response and starts a newer request after a freshness change", async () => {
     const { wrapper, queryClient } = createQueryClientTestHarness();
-    const staleRequest = createDeferredPromise<EnvironmentDiffPatchResponse>();
-    const freshRequest = createDeferredPromise<EnvironmentDiffPatchResponse>();
+    const staleRequest = createDeferredPromise<GitPatchPage>();
+    const freshRequest = createDeferredPromise<GitPatchPage>();
     const stalePatch: DiffPatchEntry = {
       path: PATH,
       patch: "stale",
@@ -464,7 +462,7 @@ describe("useEnvironmentDiffPatches", () => {
       patch: "fresh",
       truncated: false,
     };
-    vi.mocked(sdk.environments.diffPatch)
+    vi.mocked(gitPluginReads.patchPage)
       .mockReturnValueOnce(staleRequest.promise)
       .mockReturnValueOnce(freshRequest.promise);
     const { result } = renderHook(
@@ -479,14 +477,14 @@ describe("useEnvironmentDiffPatches", () => {
       result.current.requestPaths({ visible: [PATH], overscan: [] });
     });
     await waitFor(() =>
-      expect(sdk.environments.diffPatch).toHaveBeenCalledTimes(1),
+      expect(gitPluginReads.patchPage).toHaveBeenCalledTimes(1),
     );
     act(() => {
       bumpDiffPatchFreshnessGeneration(ENVIRONMENT_ID);
       result.current.requestPaths({ visible: [PATH], overscan: [] });
     });
     await waitFor(() =>
-      expect(sdk.environments.diffPatch).toHaveBeenCalledTimes(2),
+      expect(gitPluginReads.patchPage).toHaveBeenCalledTimes(2),
     );
     await act(async () => {
       staleRequest.resolve(availableResponse(stalePatch));

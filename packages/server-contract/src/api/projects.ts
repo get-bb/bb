@@ -2,14 +2,14 @@ import { z } from "zod";
 import {
   FILE_LIST_QUERY_MAX_LENGTH,
   getProjectPathValidationMessage,
-  gitBranchNameSchema,
   normalizeProjectPathInput,
   projectExecutionDefaultsSchema,
   projectSchema,
-  projectSourceCheckoutSchema,
   projectSourceSchema,
   promptHistoryEntrySchema,
   threadListEntrySchema,
+  gitBranchNameSchema,
+  projectSourceCheckoutSchema,
 } from "@bb/domain";
 import {
   rejectMultipleWorkspaceSelectors,

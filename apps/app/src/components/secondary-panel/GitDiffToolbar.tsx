@@ -31,17 +31,17 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
-import { DiffStatsTally } from "@/components/ui/diff-stats-tally.js";
+import { DiffStatsTally } from "@bb/shared-ui/diff-stats-tally";
 import {
   formatChangeSummary,
   renderChangeSummary,
-} from "@/components/workspace/workspace-change-summary";
+} from "@bb/shared-ui/workspace-change-summary";
 import {
   type CodeOverflowMode,
   type CodeOverflowModeChangeHandler,
 } from "@/lib/code-overflow-mode";
 import { cn } from "@bb/shared-ui/lib/utils";
-import type { GitDiffStats } from "../git-diff/git-diff-parsing";
+import type { GitDiffStats } from "@bb/shared-ui/git-diff/parsing";
 
 const GIT_DIFF_SELECTOR_MENU_MIN_WIDTH = "20rem";
 

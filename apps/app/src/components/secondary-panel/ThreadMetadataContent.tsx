@@ -32,13 +32,12 @@ import {
 import { Link } from "react-router-dom";
 import type {
   Environment,
-  GitBranchRefClassification,
   Thread,
   ThreadListEntry,
   ThreadParentNotifications,
-  WorkspaceStatus,
+  GitBranchRefClassification,
 } from "@bb/domain";
-import type { WorkspaceResolutionFailure } from "@bb/host-daemon-contract";
+
 import {
   formatEnvironmentDisplay,
   type EnvironmentDisplayHostContext,
@@ -53,7 +52,7 @@ import { useSystemMachineProviders } from "@/hooks/queries/machine-provider-quer
 import { useHosts } from "@/hooks/queries/host-queries";
 import { useProjectDisplayName } from "@/hooks/queries/sidebar-navigation-query";
 import { MachineIcon } from "@/components/machines/MachineLabel";
-import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
+import { formatWorkspaceCheckoutDisplay } from "@bb/shared-ui/lib/workspace-checkout-display";
 import { Button } from "@bb/shared-ui/button";
 import { COARSE_POINTER_TEXT_SM_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { CopyableInlineLabel } from "@/components/ui/copy-button.js";
@@ -66,19 +65,18 @@ import {
 import { useCreateThreadInEnvironment } from "@/hooks/useCreateThreadInEnvironment";
 import { Icon } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
-import {
-  BranchPicker,
-  getMergeBaseBranchCandidateGroups,
-} from "@/components/pickers/BranchPicker";
+import { BranchPicker } from "@bb/shared-ui/branch-picker";
+import { getMergeBaseBranchCandidateGroups } from "@/lib/merge-base-branch-candidates";
 import { ThreadUnarchiveButton } from "@/components/thread/ThreadUnarchiveButton";
 import {
   selectWorkspaceChangedFilesSections,
   type WorkspaceChangedFileSelection,
-} from "@/components/workspace/workspace-change-summary";
+} from "@bb/shared-ui/workspace-change-summary";
 import {
   getGitStatusDisplay,
   SquashMergeInfo,
-} from "@/components/workspace/workspace-status";
+  gitStatusErrorMessage,
+} from "@bb/shared-ui/git-status-display";
 import {
   useUnarchiveThread,
   useUpdateThread,
@@ -91,6 +89,11 @@ import { buildParentSelectorOptions } from "@/views/thread-detail/threadParentSe
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { ThreadTitle } from "@/components/thread/ThreadTitleMentions";
 import { ParentThreadPicker } from "@/components/pickers/ParentThreadPicker";
+import type { WorkspaceResolutionFailure } from "@bb/host-daemon-contract/workspace";
+import type {
+  WorkspaceStatus,
+  WorkspaceFileStatus,
+} from "bb-plugin-bb--git/contract";
 
 interface ParentSelectorRowProps {
   thread: Thread;
@@ -662,7 +665,7 @@ export function GitStatusRow({
     if (!mergeBase?.mergeBaseBranch) return null;
     const refreshFailure = workspaceStatusError
       ? `Couldn't refresh: ${getGitStatusDisplay(undefined, {
-          error: workspaceStatusError,
+          errorMessage: gitStatusErrorMessage(workspaceStatusError),
         }).summary.replace(/\.$/, "")}. Showing the last known status.`
       : null;
     return (
@@ -700,7 +703,7 @@ export function GitStatusRow({
   }
 
   const display = getGitStatusDisplay(undefined, {
-    error: workspaceStatusError,
+    errorMessage: gitStatusErrorMessage(workspaceStatusError),
     workspaceUnavailable,
     workspaceDeleted: environment?.status === "destroyed",
   });
@@ -777,7 +780,7 @@ export interface ThreadMetadataContentProps {
   onMergeBaseBranchChange: (branch: string) => void;
   onMergeBasePickerOpenChange?: (open: boolean) => void;
   onMergeBaseBranchSearchQueryChange?: (query: string) => void;
-  onChangedFileClick?: (selection: WorkspaceChangedFileSelection) => void;
+  onChangedFileClick?: (selection: WorkspaceChangedFileSelection<WorkspaceFileStatus>) => void;
   onCommitClick?: (sha: string) => void;
   onOpenChangedFile?: (path: string) => void;
 }

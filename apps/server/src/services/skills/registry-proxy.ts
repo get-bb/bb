@@ -1,5 +1,5 @@
 import { ApiError } from "../../errors.js";
-import { createAsyncTtlMemo } from "../lib/async-ttl-memo.js";
+import { createAsyncTtlMemo } from "@bb/query-tags/async-ttl-memo";
 import type {
   RegistryPagination,
   RegistryRanking,

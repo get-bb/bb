@@ -1,8 +1,8 @@
-import type {
-  ExperimentalRpcKeyedMethod,
-  ExperimentalRpcKeyedValue,
+import {
+  type ExperimentalRpcKeyedMethod,
+  type ExperimentalRpcKeyedValue,
+  experimental_PluginRpcCallError,
 } from "../rpc-contract.js";
-import { experimental_PluginRpcCallError } from "../rpc-contract.js";
 import { useCallback, useEffect, useMemo } from "react";
 import { useIsFetching, type QueryClient } from "@tanstack/react-query";
 import {

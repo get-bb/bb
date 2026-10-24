@@ -1,21 +1,19 @@
-import type { WorkspaceFileStatus, WorkspaceStatus } from "@bb/domain";
+
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { directoryFromPath } from "@bb/thread-view";
-import {
-  DiffSizeBar,
-  DiffStatsTally,
-} from "@/components/ui/diff-stats-tally.js";
+import { DiffSizeBar, DiffStatsTally } from "@bb/shared-ui/diff-stats-tally";
 import {
   formatOmittedChangedFilesLabel,
   selectWorkspaceChangedFilesSections,
   toChangeTally,
   type WorkspaceChangedFileSelection,
   type WorkspaceChangedFilesSection,
-} from "@/components/workspace/workspace-change-summary";
+} from "@bb/shared-ui/workspace-change-summary";
 import { getFileNameFromPath } from "../rightPanelFileVisuals";
 import { FILE_STATUS_GLYPHS } from "./file-status-glyphs";
 import { InfoList, InfoListRow, InfoSection } from "./info-list";
+import type { WorkspaceFileStatus, WorkspaceStatus } from "bb-plugin-bb--git/contract";
 
 function toFolderHint(path: string): string | null {
   const folderPath = directoryFromPath(path);
@@ -23,14 +21,14 @@ function toFolderHint(path: string): string | null {
 }
 
 interface ChangedFilesHandlers {
-  onChangedFileClick?: (selection: WorkspaceChangedFileSelection) => void;
+  onChangedFileClick?: (selection: WorkspaceChangedFileSelection<WorkspaceFileStatus>) => void;
   onOpenChangedFile?: (path: string) => void;
 }
 
 export function selectChangedFilesSection(
   workspaceStatus: WorkspaceStatus | undefined,
   kind: "uncommitted" | "committed",
-): WorkspaceChangedFilesSection | undefined {
+): WorkspaceChangedFilesSection<WorkspaceFileStatus> | undefined {
   return selectWorkspaceChangedFilesSections(workspaceStatus).find(
     (candidate) =>
       kind === "committed"
@@ -42,7 +40,7 @@ export function selectChangedFilesSection(
 export function ChangedFilesTally({
   section,
 }: {
-  section: WorkspaceChangedFilesSection;
+  section: WorkspaceChangedFilesSection<WorkspaceFileStatus>;
 }) {
   const tally = toChangeTally(section.stats);
   if (!tally.lineStatsComplete) return null;
@@ -59,7 +57,7 @@ export function ChangedFilesList({
   section,
   onChangedFileClick,
   onOpenChangedFile,
-}: ChangedFilesHandlers & { section: WorkspaceChangedFilesSection }) {
+}: ChangedFilesHandlers & { section: WorkspaceChangedFilesSection<WorkspaceFileStatus> }) {
   const omittedFilesLabel = formatOmittedChangedFilesLabel(section.stats);
   return (
     <>
@@ -113,8 +111,8 @@ function ChangedFileRow({
   onOpenChangedFile,
 }: {
   file: WorkspaceFileStatus;
-  section: WorkspaceChangedFilesSection;
-  onChangedFileClick?: (selection: WorkspaceChangedFileSelection) => void;
+  section: WorkspaceChangedFilesSection<WorkspaceFileStatus>;
+  onChangedFileClick?: (selection: WorkspaceChangedFileSelection<WorkspaceFileStatus>) => void;
   onOpenChangedFile?: (path: string) => void;
 }) {
   const glyph = FILE_STATUS_GLYPHS[file.status];

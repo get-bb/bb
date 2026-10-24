@@ -1,13 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import type { WorkspaceStatus } from "@bb/domain";
 import {
   setupCommandOutputTestEnvironment,
   collectLogLines,
   getHelpOutput,
   runCommand,
   stubServerApi,
+  type CommandRegistrar,
 } from "../helpers/command-output-harness.js";
-import type { CommandRegistrar } from "../helpers/command-output-harness.js";
 import * as fixtures from "../helpers/command-output-fixtures.js";
 import { registerEnvironmentCommands } from "../../commands/environment.js";
 
@@ -16,48 +15,6 @@ describe("bb environment command output", () => {
 
   const register: CommandRegistrar = (program) =>
     registerEnvironmentCommands(program, () => "http://server");
-
-  const workspaceStatus: WorkspaceStatus = {
-    workingTree: {
-      state: "dirty_uncommitted",
-      hasUncommittedChanges: true,
-      files: [
-        {
-          path: "src/environment.ts",
-          status: "M",
-          insertions: 3,
-          deletions: 1,
-        },
-      ],
-      insertions: 3,
-      deletions: 1,
-      lineStatsComplete: true,
-      fileCount: 1,
-    },
-    checkout: {
-      kind: "branch",
-      branchName: "bb/environment-cli",
-      headSha: "abc123",
-    },
-    branch: {
-      currentBranch: "bb/environment-cli",
-      defaultBranch: "main",
-    },
-    mergeBase: {
-      mergeBaseBranch: "main",
-      baseRef: "def456",
-      aheadCount: 2,
-      behindCount: 0,
-      squashMergeCheckComplete: true,
-      hasCommittedUnmergedChanges: true,
-      commits: [],
-      files: [],
-      insertions: 0,
-      deletions: 0,
-      lineStatsComplete: true,
-      fileCount: 0,
-    },
-  };
 
   it("does not list a squash-merge command in help", async () => {
     const help = await getHelpOutput(["environment"], register);
@@ -297,152 +254,6 @@ describe("bb environment command output", () => {
     ]);
   });
 
-  it("bb environment status inspects an arbitrary environment id", async () => {
-    const get = vi.fn(async () => ({
-      outcome: "available",
-      workspace: workspaceStatus,
-    }));
-    stubServerApi({ "v1.environments.:id.status.$get": get });
-
-    await runCommand(
-      [
-        "environment",
-        "status",
-        "env-status-only",
-        "--merge-base-branch",
-        "main",
-      ],
-      register,
-    );
-
-    expect(get).toHaveBeenCalledWith({
-      param: { id: "env-status-only" },
-      query: { mergeBaseBranch: "main" },
-    });
-    expect(collectLogLines(vi.mocked(console.log))).toEqual(
-      expect.arrayContaining([
-        "State: dirty_uncommitted",
-        "Branch: bb/environment-cli",
-        "Changed files: 1",
-        "Merge base: main",
-        "Ahead: 2",
-      ]),
-    );
-  });
-
-  it("qualifies status counts when squash detection is incomplete", async () => {
-    const workspace = structuredClone(workspaceStatus);
-    if (!workspace.mergeBase) throw new Error("Missing comparison fixture");
-    workspace.mergeBase.squashMergeCheckComplete = false;
-    stubServerApi({
-      "v1.environments.:id.status.$get": vi.fn(async () => ({
-        outcome: "available",
-        workspace,
-      })),
-    });
-    await runCommand(["environment", "status", "env-incomplete"], register);
-    expect(collectLogLines(vi.mocked(console.log))).toEqual(
-      expect.arrayContaining([
-        "Ahead: 2",
-        "Squash-merge check incomplete; counts may include already-merged commits.",
-      ]),
-    );
-  });
-
-  it("bb environment status --json preserves the canonical response", async () => {
-    const response = {
-      outcome: "available",
-      workspace: workspaceStatus,
-    };
-    stubServerApi({
-      "v1.environments.:id.status.$get": vi.fn(async () => response),
-    });
-
-    await runCommand(
-      ["environment", "status", "env-status-json", "--json"],
-      register,
-    );
-
-    expect(
-      JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
-    ).toEqual(response);
-  });
-
-  it("does not print incomplete line totals for untracked files", async () => {
-    stubServerApi({
-      "v1.environments.:id.status.$get": vi.fn(async () => ({
-        outcome: "available",
-        workspace: {
-          ...workspaceStatus,
-          workingTree: {
-            ...workspaceStatus.workingTree,
-            lineStatsComplete: false,
-          },
-        },
-      })),
-    });
-
-    await runCommand(["environment", "status", "env-untracked"], register);
-
-    const lines = collectLogLines(vi.mocked(console.log));
-    expect(lines).toContain("Line stats: unavailable for untracked files");
-    expect(lines.some((line) => line.startsWith("Insertions:"))).toBe(false);
-    expect(lines.some((line) => line.startsWith("Deletions:"))).toBe(false);
-  });
-
-  it("bb environment status explains non-git environments", async () => {
-    stubServerApi({
-      "v1.environments.:id.status.$get": vi.fn(async () => ({
-        outcome: "not_applicable",
-        reason: "non_git_environment",
-        message: "Workspace status is not available for non-git environments",
-      })),
-    });
-
-    await runCommand(["environment", "status", "env-non-git"], register);
-
-    expect(collectLogLines(vi.mocked(console.log))).toContain(
-      "Status unavailable: Workspace status is not available for non-git environments",
-    );
-  });
-
-  it("bb environment branches returns local and remote results", async () => {
-    const get = vi.fn(async () => ({
-      branches: ["main", "release"],
-      branchesTruncated: false,
-      remoteBranches: ["origin/main"],
-      remoteBranchesTruncated: true,
-      selectedBranch: null,
-    }));
-    stubServerApi({ "v1.environments.:id.diff.branches.$get": get });
-
-    await runCommand(
-      [
-        "environment",
-        "branches",
-        "env-branches-direct",
-        "--query",
-        "main",
-        "--limit",
-        "20",
-      ],
-      register,
-    );
-
-    expect(get).toHaveBeenCalledWith({
-      param: { id: "env-branches-direct" },
-      query: { query: "main", limit: "20" },
-    });
-    expect(collectLogLines(vi.mocked(console.log))).toEqual([
-      "Local branches:",
-      "  main",
-      "  release",
-      "Remote branches:",
-      "  origin/main",
-      "  (truncated)",
-    ]);
-  });
-
   it("bb environment paths targets the environment and path kinds", async () => {
     const response = {
       paths: [
@@ -486,487 +297,6 @@ describe("bb environment command output", () => {
       "directory\tapps/cli",
       "(results truncated)",
     ]);
-  });
-
-  it("bb environment diff prints summary, full diff, and truncation", async () => {
-    const get = vi.fn(async () => ({
-      outcome: "available",
-      diff: {
-        files: "M\tapps/cli/src/commands/environment.ts\n",
-        shortstat: "1 file changed, 3 insertions(+)",
-        diff: "diff --git a/environment.ts b/environment.ts",
-        truncated: true,
-        mergeBaseRef: "abc123",
-      },
-    }));
-    stubServerApi({ "v1.environments.:id.diff.$get": get });
-
-    await runCommand(
-      [
-        "environment",
-        "diff",
-        "env-diff-direct",
-        "--target",
-        "all",
-        "--merge-base-branch",
-        "main",
-      ],
-      register,
-    );
-
-    expect(get).toHaveBeenCalledWith({
-      param: { id: "env-diff-direct" },
-      query: { target: "all", mergeBaseBranch: "main" },
-    });
-    expect(collectLogLines(vi.mocked(console.log))).toEqual([
-      "M\tapps/cli/src/commands/environment.ts",
-      "1 file changed, 3 insertions(+)",
-      "diff --git a/environment.ts b/environment.ts",
-      "(diff truncated)",
-    ]);
-  });
-
-  it("bb environment diff-files --json preserves binary and initial patch metadata", async () => {
-    const response = {
-      outcome: "available",
-      files: [
-        {
-          path: "assets/logo.png",
-          previousPath: null,
-          changeKind: "modified",
-          additions: 0,
-          deletions: 0,
-          binary: true,
-          origin: "tracked",
-          loadMode: "on_demand",
-        },
-      ],
-      shortstat: "1 file changed",
-      mergeBaseRef: null,
-      truncated: false,
-      initialPatches: [
-        {
-          path: "assets/logo.png",
-          patch: "Binary files differ",
-          truncated: true,
-        },
-      ],
-    };
-    const get = vi.fn(async () => response);
-    stubServerApi({ "v1.environments.:id.diff.files.$get": get });
-
-    await runCommand(
-      [
-        "environment",
-        "diff-files",
-        "env-diff-files-direct",
-        "--target",
-        "uncommitted",
-        "--json",
-      ],
-      register,
-    );
-
-    expect(get).toHaveBeenCalledWith({
-      param: { id: "env-diff-files-direct" },
-      query: { target: "uncommitted" },
-    });
-    expect(
-      JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
-    ).toEqual(response);
-  });
-
-  it("bb environment diff-files reports a truncated file list", async () => {
-    stubServerApi({
-      "v1.environments.:id.diff.files.$get": vi.fn(async () => ({
-        outcome: "available",
-        files: [
-          {
-            path: "one.txt",
-            previousPath: null,
-            changeKind: "added",
-            additions: 1,
-            deletions: 0,
-            binary: false,
-            origin: "untracked",
-            loadMode: "auto",
-          },
-        ],
-        shortstat: "1 file changed, 1 insertion(+)",
-        mergeBaseRef: null,
-        initialPatches: [],
-        truncated: true,
-      })),
-    });
-
-    await runCommand(
-      [
-        "environment",
-        "diff-files",
-        "env-diff-files-truncated",
-        "--target",
-        "uncommitted",
-      ],
-      register,
-    );
-
-    expect(collectLogLines(vi.mocked(console.log))).toEqual([
-      "added\t+1 -0\tuntracked\tauto\tone.txt",
-      "1 file changed, 1 insertion(+)",
-      "(additional changed files omitted)",
-    ]);
-  });
-
-  it("bb environment diff-file distinguishes text and binary content", async () => {
-    const get = vi
-      .fn()
-      .mockResolvedValueOnce({
-        path: "README.md",
-        content: "hello\n",
-        contentEncoding: "utf8",
-        mimeType: "text/markdown",
-        sizeBytes: 6,
-      })
-      .mockResolvedValueOnce({
-        path: "assets/logo.png",
-        content: "iVBORw0KGgo=",
-        contentEncoding: "base64",
-        mimeType: "image/png",
-        sizeBytes: 8,
-      });
-    stubServerApi({ "v1.environments.:id.diff.file.$get": get });
-
-    await runCommand(
-      [
-        "environment",
-        "diff-file",
-        "env-text-file",
-        "--target",
-        "uncommitted",
-        "--path",
-        "README.md",
-        "--side",
-        "new",
-      ],
-      register,
-    );
-    expect(collectLogLines(vi.mocked(console.log))).toEqual(["hello\n"]);
-
-    vi.mocked(console.log).mockClear();
-    await runCommand(
-      [
-        "environment",
-        "diff-file",
-        "env-binary-file",
-        "--target",
-        "commit",
-        "--sha",
-        "abc123",
-        "--path",
-        "assets/logo.png",
-        "--side",
-        "old",
-      ],
-      register,
-    );
-
-    expect(get).toHaveBeenNthCalledWith(1, {
-      param: { id: "env-text-file" },
-      query: { target: "uncommitted", path: "README.md", side: "new" },
-    });
-    expect(get).toHaveBeenNthCalledWith(2, {
-      param: { id: "env-binary-file" },
-      query: {
-        target: "commit",
-        sha: "abc123",
-        path: "assets/logo.png",
-        side: "old",
-      },
-    });
-    expect(collectLogLines(vi.mocked(console.log))).toEqual([
-      "Binary file: assets/logo.png",
-      "Encoding: base64",
-      "Size: 8 bytes",
-      "MIME type: image/png",
-      "iVBORw0KGgo=",
-    ]);
-  });
-
-  it("bb environment diff-patch preserves patch paths and truncation", async () => {
-    const post = vi.fn(async () => ({
-      outcome: "available",
-      patches: [
-        {
-          path: "src/a.ts",
-          patch: "@@ -1 +1 @@\n-old\n+new",
-          truncated: false,
-        },
-        {
-          path: "src/b.ts",
-          patch: "@@ -1 +1 @@",
-          truncated: true,
-        },
-      ],
-    }));
-    stubServerApi({ "v1.environments.:id.diff.patch.$post": post });
-
-    await runCommand(
-      [
-        "environment",
-        "diff-patch",
-        "env-patch-direct",
-        "--target",
-        "branch_committed",
-        "--merge-base-branch",
-        "main",
-        "--path",
-        "src/a.ts",
-        "--path",
-        "src/b.ts",
-      ],
-      register,
-    );
-
-    expect(post).toHaveBeenCalledWith({
-      param: { id: "env-patch-direct" },
-      json: {
-        target: { type: "branch_committed", mergeBaseBranch: "main" },
-        paths: ["src/a.ts", "src/b.ts"],
-        ignoreWhitespace: false,
-      },
-    });
-    expect(collectLogLines(vi.mocked(console.log))).toEqual([
-      "File: src/a.ts",
-      "@@ -1 +1 @@\n-old\n+new",
-      "File: src/b.ts",
-      "@@ -1 +1 @@",
-      "(patch truncated)",
-    ]);
-  });
-
-  it("bb environment diff-files and diff-patch forward --ignore-whitespace", async () => {
-    const get = vi.fn(async () => ({
-      outcome: "available",
-      files: [],
-      shortstat: "",
-      mergeBaseRef: null,
-      initialPatches: [],
-      truncated: false,
-    }));
-    const post = vi.fn(async () => ({ outcome: "available", patches: [] }));
-    stubServerApi({
-      "v1.environments.:id.diff.files.$get": get,
-      "v1.environments.:id.diff.patch.$post": post,
-    });
-
-    await runCommand(
-      [
-        "environment",
-        "diff-files",
-        "env-ws",
-        "--target",
-        "uncommitted",
-        "--ignore-whitespace",
-      ],
-      register,
-    );
-    await runCommand(
-      [
-        "environment",
-        "diff-patch",
-        "env-ws",
-        "--target",
-        "uncommitted",
-        "--path",
-        "a.ts",
-        "--ignore-whitespace",
-      ],
-      register,
-    );
-
-    expect(get).toHaveBeenCalledWith({
-      param: { id: "env-ws" },
-      query: { target: "uncommitted", ignoreWhitespace: "true" },
-    });
-    expect(post).toHaveBeenCalledWith({
-      param: { id: "env-ws" },
-      json: {
-        target: { type: "uncommitted" },
-        paths: ["a.ts"],
-        ignoreWhitespace: true,
-      },
-    });
-  });
-
-  it("bb environment diff-viewed mark uses the file's current revision", async () => {
-    const get = vi.fn(async () => ({
-      outcome: "available",
-      files: [
-        {
-          path: "src/a.ts",
-          previousPath: null,
-          changeKind: "modified",
-          additions: 1,
-          deletions: 1,
-          binary: false,
-          origin: "tracked",
-          loadMode: "auto",
-          revision: "100644:aaa:100644:bbb",
-        },
-      ],
-      shortstat: "1 file changed",
-      mergeBaseRef: null,
-      initialPatches: [],
-      truncated: false,
-    }));
-    const post = vi.fn(async () => ({
-      files: [{ path: "src/a.ts", revision: "100644:aaa:100644:bbb" }],
-    }));
-    const put = vi.fn(async () => ({ ok: true }));
-    const del = vi.fn(async () => ({ ok: true }));
-    stubServerApi({
-      "v1.environments.:id.diff.files.$get": get,
-      "v1.environments.:id.diff.viewed.$put": put,
-      "v1.environments.:id.diff.viewed.$post": post,
-      "v1.environments.:id.diff.viewed.$delete": del,
-    });
-
-    await runCommand(
-      [
-        "environment",
-        "diff-viewed",
-        "list",
-        "env-viewed",
-        "--target",
-        "uncommitted",
-        "--path",
-        "src/a.ts",
-        "--path",
-        "src/b.ts",
-      ],
-      register,
-    );
-    expect(post).toHaveBeenCalledWith({
-      param: { id: "env-viewed" },
-      json: { target: "uncommitted", paths: ["src/a.ts", "src/b.ts"] },
-    });
-    await runCommand(
-      [
-        "environment",
-        "diff-viewed",
-        "mark",
-        "env-viewed",
-        "--target",
-        "uncommitted",
-        "--path",
-        "src/a.ts",
-      ],
-      register,
-    );
-    await runCommand(
-      [
-        "environment",
-        "diff-viewed",
-        "unmark",
-        "env-viewed",
-        "--target",
-        "uncommitted",
-        "--path",
-        "src/a.ts",
-      ],
-      register,
-    );
-
-    expect(put).toHaveBeenCalledWith({
-      param: { id: "env-viewed" },
-      json: {
-        target: { type: "uncommitted" },
-        path: "src/a.ts",
-        revision: "100644:aaa:100644:bbb",
-      },
-    });
-    expect(del).toHaveBeenCalledWith({
-      param: { id: "env-viewed" },
-      json: { target: { type: "uncommitted" }, path: "src/a.ts" },
-    });
-    expect(collectLogLines(vi.mocked(console.log))).toEqual([
-      "100644:aaa:100644:bbb\tsrc/a.ts",
-      "Viewed state updated.",
-      "Viewed state updated.",
-    ]);
-  });
-
-  it("bb environment diff explains non-git results", async () => {
-    stubServerApi({
-      "v1.environments.:id.diff.$get": vi.fn(async () => ({
-        outcome: "not_applicable",
-        reason: "non_git_environment",
-        message: "Workspace diff is not available for non-git environments",
-      })),
-    });
-
-    await runCommand(
-      ["environment", "diff", "env-diff-non-git", "--target", "uncommitted"],
-      register,
-    );
-
-    expect(collectLogLines(vi.mocked(console.log))).toContain(
-      "Diff unavailable: Workspace diff is not available for non-git environments",
-    );
-  });
-
-  it("rejects incompatible diff flags before calling the server", async () => {
-    const get = vi.fn();
-    stubServerApi({ "v1.environments.:id.diff.$get": get });
-
-    await expect(
-      runCommand(
-        [
-          "environment",
-          "diff",
-          "env-invalid-target",
-          "--target",
-          "commit",
-          "--merge-base-branch",
-          "main",
-        ],
-        register,
-      ),
-    ).rejects.toThrow("process.exit:1");
-
-    expect(get).not.toHaveBeenCalled();
-    expect(collectLogLines(vi.mocked(console.error))).toContain(
-      "Error: --sha is required when --target commit is used.",
-    );
-  });
-
-  it("preserves nonzero behavior for environment inspection errors", async () => {
-    stubServerApi({
-      "v1.environments.:id.diff.file.$get": vi.fn(async () => {
-        throw new Error("workspace is unavailable");
-      }),
-    });
-
-    await expect(
-      runCommand(
-        [
-          "environment",
-          "diff-file",
-          "env-read-error",
-          "--target",
-          "uncommitted",
-          "--path",
-          "README.md",
-          "--side",
-          "new",
-        ],
-        register,
-      ),
-    ).rejects.toThrow("process.exit:1");
-
-    expect(collectLogLines(vi.mocked(console.error))).toContain(
-      "Error: workspace is unavailable",
-    );
   });
 
   it("bb environment commit prefixes failures with environment context", async () => {
@@ -1228,5 +558,46 @@ describe("bb environment command output", () => {
     expect(
       JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
     ).toEqual(environment);
+  });
+  it("forwards retired git commands to bb git and names the new command", async () => {
+    const bodies: unknown[] = [];
+    const urls: string[] = [];
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      urls.push(String(input));
+      bodies.push(JSON.parse(String(init?.body)));
+      return new Response(JSON.stringify({ exitCode: 0, stdout: "State: clean" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    const completeWrite = (...args: unknown[]) => {
+      const callback = args.find((arg) => typeof arg === "function");
+      if (typeof callback === "function") callback();
+      return true;
+    };
+    const stderr = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(completeWrite);
+    const stdout = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation(completeWrite);
+
+    await expect(
+      runCommand(
+        ["environment", "diff-files", "env-1", "--target", "uncommitted", "--json"],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:0");
+
+    expect(urls).toEqual(["http://server/api/v1/plugins/bb--git/cli"]);
+    expect(bodies[0]).toMatchObject({
+      argv: ["diff-files", "env-1", "--target", "uncommitted", "--json"],
+    });
+    expect(stderr).toHaveBeenCalledWith(
+      "bb environment diff-files moved to bb git files.\n",
+    );
+    expect(stdout.mock.calls[0]?.[0]).toBe("State: clean\n");
+    stderr.mockRestore();
+    stdout.mockRestore();
   });
 });

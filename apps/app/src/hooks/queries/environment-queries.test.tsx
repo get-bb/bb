@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
 
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
-import { sdk } from "@/lib/sdk";
+import { gitPluginReads } from "@/hooks/queries/git-plugin-reads";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useEnvironmentMergeBaseBranches } from "./environment-queries";
 
-vi.mock("@/lib/sdk", () => ({
-  sdk: { environments: { diffBranches: vi.fn() } },
+vi.mock("@/hooks/queries/git-plugin-reads", () => ({
+  gitPluginReads: { branches: vi.fn() },
+  useGitPluginWatch: () => undefined,
 }));
 
 vi.mock("@/hooks/useRealtimeSubscription", () => ({
@@ -24,7 +25,7 @@ afterEach(() => {
 describe("useEnvironmentMergeBaseBranches", () => {
   it("only requests the query a typist settles on", async () => {
     const { wrapper } = createQueryClientTestHarness();
-    vi.mocked(sdk.environments.diffBranches).mockResolvedValue({
+    vi.mocked(gitPluginReads.branches).mockResolvedValue({
       branches: ["main"],
       branchesTruncated: false,
       remoteBranches: [],
@@ -37,7 +38,7 @@ describe("useEnvironmentMergeBaseBranches", () => {
       { wrapper, initialProps: { query: "" } },
     );
     await waitFor(() =>
-      expect(sdk.environments.diffBranches).toHaveBeenCalledTimes(1),
+      expect(gitPluginReads.branches).toHaveBeenCalledTimes(1),
     );
 
     for (const query of ["m", "ma", "mai"]) {
@@ -46,10 +47,11 @@ describe("useEnvironmentMergeBaseBranches", () => {
     rerender({ query: "main" });
 
     await waitFor(() =>
-      expect(sdk.environments.diffBranches).toHaveBeenCalledWith(
+      expect(gitPluginReads.branches).toHaveBeenCalledWith(
         expect.objectContaining({ query: "main" }),
+        expect.any(AbortSignal),
       ),
     );
-    expect(sdk.environments.diffBranches).toHaveBeenCalledTimes(2);
+    expect(gitPluginReads.branches).toHaveBeenCalledTimes(2);
   });
 });
