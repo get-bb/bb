@@ -104,6 +104,12 @@ export function runningThreadCountFromError(error: unknown): number | null {
   return parsed.success ? parsed.data.details.runningThreadCount : null;
 }
 
+export function scheduledAppUpdateCaption(count: number): string {
+  return count === 0
+    ? "Updating once threads stay finished"
+    : `Updates when ${String(count)} running thread${count === 1 ? " finishes" : "s finish"}`;
+}
+
 export function runningThreadsWarning(count: number): string {
   return `${String(count)} thread${count === 1 ? " is" : "s are"} running. Updating restarts bb and interrupts ${
     count === 1 ? "it" : "them"
