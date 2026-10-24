@@ -48,6 +48,12 @@ export function resolveOpenWindowAction(
 
 const SUBFRAME_LOCAL_PROTOCOLS = new Set(["about:", "blob:", "data:"]);
 
+export const SHELL_ORIGIN_WHITELIST: string[] = [
+  "http://*",
+  "https://*",
+  ...[...SUBFRAME_LOCAL_PROTOCOLS].map((protocol) => `${protocol}*`),
+];
+
 export function allowsSubframeLoad(url: string, serverUrl: string): boolean {
   let target: URL;
   try {

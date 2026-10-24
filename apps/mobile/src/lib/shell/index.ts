@@ -19,5 +19,6 @@ export {
   isServerApiUrl,
   resolveOpenWindowAction,
   resolveServerFileUrl,
+  SHELL_ORIGIN_WHITELIST,
   supportsNativeDownloads,
 } from "./shell-save-file";

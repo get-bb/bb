@@ -35,6 +35,7 @@ import {
   resolveShellLoadPath,
   resolveShellScreenState,
   revealsShellFailure,
+  SHELL_ORIGIN_WHITELIST,
   shellPathFromUrl,
   shouldReloadForSession,
   subscribeToShellCommands,
@@ -330,6 +331,7 @@ export function ProfileWebViewScreen() {
         ref={webViewRef}
         initialUrl={sourceUrl}
         style={{ backgroundColor: tokens.background }}
+        originWhitelist={SHELL_ORIGIN_WHITELIST}
         sharedCookiesEnabled
         javaScriptEnabled
         domStorageEnabled
