@@ -29,9 +29,9 @@ const single: TimelineWorkflowWorkRow[] = [
 
 const many: TimelineWorkflowWorkRow[] = [
   runningCommand({
-    id: "thr_fixture:bg:dev-server",
-    description: "Run the dev server",
-    startedAt: Date.now() - 26_000,
+    id: "thr_fixture:bg:tail-log",
+    description: "Tail the dev server log",
+    startedAt: Date.now() - 4_000,
   }),
   runningCommand({
     id: "thr_fixture:bg:watch-tests",
@@ -39,9 +39,9 @@ const many: TimelineWorkflowWorkRow[] = [
     startedAt: Date.now() - 12_000,
   }),
   runningCommand({
-    id: "thr_fixture:bg:tail-log",
-    description: "Tail the dev server log",
-    startedAt: Date.now() - 4_000,
+    id: "thr_fixture:bg:dev-server",
+    description: "Run the dev server",
+    startedAt: Date.now() - 26_000,
   }),
 ];
 
@@ -63,7 +63,7 @@ function ExpandableCard({
 }) {
   const [expanded, setExpanded] = useState(startExpanded);
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex min-h-44 flex-col justify-end gap-2">
       <ThreadBackgroundCommandsCard
         commands={commands}
         isExpanded={expanded}
@@ -79,7 +79,7 @@ export function Overview() {
     <StoryCard>
       <StoryRow
         label="single"
-        hint="compact: summarized and expandable; wide: detailed single line"
+        hint="one command: a plain row with its duration"
       >
         <ResponsiveStage>
           <ExpandableCard commands={single} />
@@ -87,7 +87,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="multiple (collapsed)"
-        hint="most recent command + total count; click to expand"
+        hint="newest command with its duration; the row and its count chip unfold the others"
       >
         <ResponsiveStage>
           <ExpandableCard commands={many} />
@@ -95,18 +95,18 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="multiple (expanded)"
-        hint="expanded: the other running commands listed below the primary"
+        hint="older commands open above the newest, oldest first; the same row folds them"
       >
         <ResponsiveStage>
           <ExpandableCard commands={many} startExpanded />
         </ResponsiveStage>
       </StoryRow>
       <StoryRow
-        label="long command (expanded)"
-        hint="compact rows clamp the command to two lines"
+        label="long command"
+        hint="a long command truncates; its tooltip shows the full text"
       >
         <ResponsiveStage>
-          <ExpandableCard commands={longCommand} startExpanded />
+          <ExpandableCard commands={longCommand} />
         </ResponsiveStage>
       </StoryRow>
     </StoryCard>
