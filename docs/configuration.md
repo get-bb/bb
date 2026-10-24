@@ -988,12 +988,24 @@ The builtin Push notifications plugin's `mobileEnabled`, `webEnabled`, and
 `desktopEnabled` booleans default to `true`. `expoPushUrl` (default
 `https://exp.host/--/api/v2/push/send`) is the relay URL, read on every send.
 `defaultLevel` (default `all`) and `childLevel` (default `input-only`) set
-top-level and child thread levels. Set them with
-`bb plugin config push-notifications set <key> <value>`. Web and desktop
-notifications need an open bb tab or window, HTTPS or localhost, and
+top-level and child thread levels. `agentNotifications` (default `true`) lets
+the agent send a push on request through the `notify_user` tool,
+`bb push-notifications notify`, or the `notifications.send` RPC; it ignores the
+thread's level and read state. `agentNotifyCooldownMinutes` (`0`, `1`, `5`,
+`15`, or `60`, default `5`) sets the per-thread cooldown for delivery attempts,
+including failures; a send with no available channel or device does not consume
+it. The cooldown is kept in memory and resets on plugin reload or server restart. Explicit sends
+do not suppress automatic notifications; use `muted` for only requested pushes.
+Success confirms publication or relay acceptance, not an OS banner. Web/desktop
+clients may consolidate notifications sharing a thread, and publication can
+succeed with no connected client. `bb push-notifications notify --message-stdin`
+reads one nonempty line from piped stdin instead of a `--message` argument.
+Each send selects registered devices, then reads settings immediately before
+dispatch. Later changes do not recall an in-flight send. Set them with `bb plugin config push-notifications set <key> <value>`. Web and
+desktop notifications need an open bb tab or window, HTTPS or localhost, and
 per-device permission; the plugin's settings page offers permission and test
 controls. See the `push-notifications` skill for levels, devices, and
-`bb push-notifications test|thread`.
+`bb push-notifications test|notify|thread`.
 
 ### Storage & retention
 

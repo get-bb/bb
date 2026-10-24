@@ -25,11 +25,13 @@ type PendingInteraction =
 
 const EXPO_PUSH_BATCH_SIZE = 100;
 const DEFAULT_COALESCE_MS = 2_000;
+const COOLDOWN_RETENTION_MS = 60 * 60 * 1_000;
 const PUSH_TITLE_MAX_LENGTH = 80;
 const PUSH_BODY_MAX_LENGTH = 180;
 const NETWORK_WARNING_INTERVAL_MS = 60 * 60 * 1_000;
 const LAST_OUTCOME_KEY = "last-send-outcome";
 const FALLBACK_BODIES: Record<PushNotificationKind, string> = {
+  "agent-message": "The agent sent you a notification",
   "pending-interaction": "Waiting for your input",
   "thread-error": "The thread hit an error",
   "turn-finished": "Finished and waiting for you",
@@ -124,8 +126,35 @@ interface BatchResult {
   failure: string | null;
 }
 
+interface DeliveryCounts {
+  mobile: number;
+  web: boolean;
+  desktop: boolean;
+}
+
+interface DeliveryOutcome extends DeliveryCounts {
+  failure: string | null;
+}
+
+export type ExplicitNotificationRefusal =
+  | "disabled"
+  | "cooldown"
+  | "thread-unavailable"
+  | "sender-stopped"
+  | "empty-message";
+
+export type ExplicitNotificationResult =
+  | ({ status: "sent" } & DeliveryCounts)
+  | ({ status: "failed"; reason: string } & DeliveryCounts)
+  | ({ status: "undelivered" } & DeliveryCounts)
+  | { status: "refused"; reason: ExplicitNotificationRefusal };
+
 export interface PushSender {
   getLastOutcome(): LastSendOutcome;
+  sendNow(request: {
+    threadId: string;
+    message: string;
+  }): Promise<ExplicitNotificationResult>;
   onInteractionPending(
     payload: PluginThreadEventPayloads["interaction.pending"],
   ): void;
@@ -139,15 +168,17 @@ export interface PushSender {
 export interface CreatePushSenderArgs {
   bb: BbPluginApi;
   subscriptions: PushSubscriptionStore;
-  getExpoPushUrl(): Promise<string>;
   getNotificationLevel(thread: {
     id: string;
     parentThreadId: string | null;
   }): Promise<NotificationLevel>;
-  getDeliverySettings(): Promise<{
+  getSettings(): Promise<{
     mobileEnabled: boolean;
     webEnabled: boolean;
     desktopEnabled: boolean;
+    expoPushUrl: string;
+    agentNotifications: boolean;
+    agentNotifyCooldownMinutes: string;
   }>;
   fetch?: PushSenderFetch;
   coalesceMs?: number;
@@ -219,11 +250,15 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
   } = args;
   const fetchImpl = args.fetch ?? undiciFetch;
   const pending = new Map<string, PendingThreadPush>();
+  const explicitSentAt = new Map<string, number>();
+  const explicitThreadLocks = new Map<string, Promise<void>>();
   const inFlight = new Set<Promise<void>>();
   let dispatcher: EnvHttpProxyAgent | null = null;
   let lastNetworkWarningAt = Number.NEGATIVE_INFINITY;
   let lastOutcome: LastSendOutcome = { status: "never" };
+  let runGeneration = 0;
   let running = false;
+  let lifecycleQueue: Promise<void> | null = null;
 
   async function setLastOutcome(outcome: LastSendOutcome): Promise<void> {
     lastOutcome = outcome;
@@ -318,6 +353,133 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
     }
   }
 
+  interface DeliveryPlan {
+    channels: ClientNotification["channels"];
+    deliveries: Delivery[];
+  }
+
+  function planDelivery(
+    thread: ThreadResponse,
+    kind: PushNotificationKind,
+    title: string,
+    body: string,
+    rows: readonly PushSubscription[],
+    config: Awaited<ReturnType<CreatePushSenderArgs["getSettings"]>>,
+  ): DeliveryPlan {
+    const channels: ClientNotification["channels"] = [];
+    if (config.webEnabled) channels.push("web");
+    if (config.desktopEnabled) channels.push("desktop");
+    if (!config.mobileEnabled) return { channels, deliveries: [] };
+    if (rows.length === 0) return { channels, deliveries: [] };
+    const serverUrl = bb.server.experimental_appUrl;
+    return {
+      channels,
+      deliveries: rows.map((subscription) => ({
+        subscription,
+        message: {
+          to: subscription.expoPushToken,
+          title,
+          body,
+          data: {
+            kind,
+            projectId: thread.projectId,
+            ...(serverUrl === null ? {} : { serverUrl }),
+            threadId: thread.id,
+          },
+          sound: "default",
+          channelId: "threads",
+          priority: "high",
+        },
+      })),
+    };
+  }
+
+  async function dispatchDelivery(
+    thread: ThreadResponse,
+    plan: DeliveryPlan,
+    title: string,
+    body: string,
+    expoPushUrl: string,
+    activeDispatcher: Dispatcher,
+  ): Promise<DeliveryOutcome> {
+    const outcome: DeliveryOutcome = {
+      mobile: 0,
+      web: false,
+      desktop: false,
+      failure: null,
+    };
+    try {
+      if (plan.channels.length > 0) {
+        bb.realtime.publish(CLIENT_NOTIFICATION_CHANNEL, {
+          id: randomUUID(),
+          title,
+          body,
+          threadId: thread.id,
+          channels: plan.channels,
+        } satisfies ClientNotification);
+        outcome.web = plan.channels.includes("web");
+        outcome.desktop = plan.channels.includes("desktop");
+      }
+    } catch (error) {
+      outcome.failure =
+        error instanceof Error ? error.message : "client publication failed";
+    }
+    for (const batch of chunks(plan.deliveries, EXPO_PUSH_BATCH_SIZE)) {
+      const result = await sendBatch(batch, expoPushUrl, activeDispatcher);
+      outcome.mobile += result.sentCount;
+      outcome.failure ??= result.failure;
+    }
+    if (plan.deliveries.length > 0) {
+      if (outcome.mobile === 0)
+        outcome.failure ??= "the relay accepted no deliveries";
+      try {
+        await setLastOutcome(
+          outcome.failure === null
+            ? { status: "sent", at: now(), sentCount: outcome.mobile }
+            : { status: "failed", at: now(), reason: outcome.failure },
+        );
+      } catch (error) {
+        outcome.failure ??=
+          error instanceof Error
+            ? error.message
+            : "delivery bookkeeping failed";
+      }
+    }
+    return outcome;
+  }
+
+  async function publishAndPush(
+    thread: ThreadResponse,
+    kind: PushNotificationKind,
+    title: string,
+    body: string,
+  ): Promise<DeliveryOutcome> {
+    const startedRunGeneration = runGeneration;
+    const rows = await subscriptions.list();
+    const config = await args.getSettings();
+    if (
+      !running ||
+      runGeneration !== startedRunGeneration ||
+      dispatcher === null
+    ) {
+      return {
+        mobile: 0,
+        web: false,
+        desktop: false,
+        failure: "sender is stopped",
+      };
+    }
+    const plan = planDelivery(thread, kind, title, body, rows, config);
+    return dispatchDelivery(
+      thread,
+      plan,
+      title,
+      body,
+      config.expoPushUrl,
+      dispatcher,
+    );
+  }
+
   async function flushThread(
     threadId: string,
     entry: PendingThreadPush,
@@ -355,63 +517,149 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
       preview || FALLBACK_BODIES[resolved.kind],
       PUSH_BODY_MAX_LENGTH,
     );
-    const config = await args.getDeliverySettings();
-    const channels: ClientNotification["channels"] = [];
-    if (config.webEnabled) channels.push("web");
-    if (config.desktopEnabled) channels.push("desktop");
-    if (channels.length > 0) {
-      bb.realtime.publish(CLIENT_NOTIFICATION_CHANNEL, {
-        id: randomUUID(),
-        title,
-        body,
-        threadId: thread.id,
-        channels,
-      } satisfies ClientNotification);
+    await publishAndPush(thread, resolved.kind, title, body);
+  }
+
+  function recordExplicitSend(threadId: string): void {
+    const sentAt = now();
+    explicitSentAt.set(threadId, sentAt);
+    for (const [id, at] of explicitSentAt) {
+      if (sentAt - at >= COOLDOWN_RETENTION_MS) explicitSentAt.delete(id);
     }
-    if (!config.mobileEnabled) return;
+  }
+
+  function withThreadLock<T>(
+    threadId: string,
+    run: () => Promise<T>,
+  ): Promise<T> {
+    const previous = explicitThreadLocks.get(threadId) ?? Promise.resolve();
+    const result = previous.then(run, run);
+    const settled = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    explicitThreadLocks.set(threadId, settled);
+    void settled.then(() => {
+      if (explicitThreadLocks.get(threadId) === settled) {
+        explicitThreadLocks.delete(threadId);
+      }
+    });
+    return result;
+  }
+
+  function trackExplicit<T>(promise: Promise<T>): Promise<T> {
+    const tracked = promise.then(
+      () => undefined,
+      () => undefined,
+    );
+    inFlight.add(tracked);
+    void tracked.then(() => inFlight.delete(tracked));
+    return promise;
+  }
+
+  async function runSendNow(
+    threadId: string,
+    message: string,
+    startedRunGeneration: number,
+  ): Promise<ExplicitNotificationResult> {
+    let thread: ThreadResponse;
+    try {
+      thread = await bb.sdk.threads.get({ threadId });
+    } catch {
+      return { status: "refused", reason: "thread-unavailable" };
+    }
+    if (
+      thread.deletedAt !== null ||
+      thread.archivedAt !== null ||
+      thread.visibility !== "visible"
+    ) {
+      return { status: "refused", reason: "thread-unavailable" };
+    }
+    const preview = await notificationPreviewText(
+      message,
+      referencedThreadTitle,
+    );
+    const title = truncate(threadDisplayTitle(thread), PUSH_TITLE_MAX_LENGTH);
+    const body = truncate(preview || message, PUSH_BODY_MAX_LENGTH);
     const rows = await subscriptions.list();
-    if (rows.length === 0) return;
-    const serverUrl = bb.server.experimental_appUrl;
-    const deliveries: Delivery[] = rows.map((subscription) => ({
-      subscription,
-      message: {
-        to: subscription.expoPushToken,
-        title,
-        body,
-        data: {
-          kind: resolved.kind,
-          projectId: thread.projectId,
-          ...(serverUrl === null ? {} : { serverUrl }),
-          threadId: thread.id,
-        },
-        sound: "default",
-        channelId: "threads",
-        priority: "high",
-      },
-    }));
-    let sentCount = 0;
-    let failure: string | null = null;
-    for (const batch of chunks(deliveries, EXPO_PUSH_BATCH_SIZE)) {
-      const result = await sendBatch(batch);
-      sentCount += result.sentCount;
-      failure ??= result.failure;
+    const config = await args.getSettings();
+    if (
+      !running ||
+      runGeneration !== startedRunGeneration ||
+      dispatcher === null
+    ) {
+      return { status: "refused", reason: "sender-stopped" };
     }
-    await setLastOutcome(
-      failure === null
-        ? { status: "sent", at: now(), sentCount }
-        : { status: "failed", at: now(), reason: failure },
+    if (!config.agentNotifications) {
+      return { status: "refused", reason: "disabled" };
+    }
+    const previous = explicitSentAt.get(threadId);
+    const cooldownMs = Number(config.agentNotifyCooldownMinutes) * 60_000;
+    if (
+      previous !== undefined &&
+      cooldownMs > 0 &&
+      now() - previous < cooldownMs
+    ) {
+      return { status: "refused", reason: "cooldown" };
+    }
+    const plan = planDelivery(
+      thread,
+      "agent-message",
+      title,
+      body,
+      rows,
+      config,
+    );
+    const web = plan.channels.includes("web");
+    const desktop = plan.channels.includes("desktop");
+    if (!web && !desktop && plan.deliveries.length === 0) {
+      return { status: "undelivered", mobile: 0, web, desktop };
+    }
+    recordExplicitSend(threadId);
+    const outcome = await dispatchDelivery(
+      thread,
+      plan,
+      title,
+      body,
+      config.expoPushUrl,
+      dispatcher,
+    );
+    const counts = {
+      mobile: outcome.mobile,
+      web: outcome.web,
+      desktop: outcome.desktop,
+    };
+    return outcome.failure === null
+      ? { status: "sent", ...counts }
+      : { status: "failed", reason: outcome.failure, ...counts };
+  }
+
+  function sendNow(request: {
+    threadId: string;
+    message: string;
+  }): Promise<ExplicitNotificationResult> {
+    const message = request.message.trim();
+    if (message.length === 0) {
+      return Promise.resolve({ status: "refused", reason: "empty-message" });
+    }
+    const { threadId } = request;
+    const startedRunGeneration = runGeneration;
+    return trackExplicit(
+      withThreadLock(threadId, () =>
+        runSendNow(threadId, message, startedRunGeneration),
+      ),
     );
   }
 
-  async function sendBatch(batch: readonly Delivery[]): Promise<BatchResult> {
-    const activeDispatcher = dispatcher;
-    if (activeDispatcher === null) {
-      return { sentCount: 0, failure: "sender is stopped" };
-    }
+  async function sendBatch(
+    batch: readonly Delivery[],
+    expoPushUrl: string,
+    activeDispatcher: Dispatcher,
+  ): Promise<BatchResult> {
     let responseText: string;
     let status: number;
     try {
-      const response = await fetchImpl(await args.getExpoPushUrl(), {
+      const response = await fetchImpl(expoPushUrl, {
         method: "POST",
         headers: {
           accept: "application/json",
@@ -431,6 +679,9 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
         );
       }
       return { sentCount: 0, failure: "network request failed" };
+    }
+    if (status < 200 || status >= 300) {
+      return { sentCount: 0, failure: `relay returned HTTP ${status}` };
     }
     const parsed = expoPushResponseSchema.safeParse(
       (() => {
@@ -461,7 +712,11 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
       return { sentCount: 0, failure: "relay returned no tickets" };
     }
     let sentCount = 0;
-    let ticketFailure = false;
+    let failure: string | null =
+      parsed.data.data.length === batch.length
+        ? null
+        : "relay returned an unexpected number of tickets";
+    const unregistered: Delivery[] = [];
     for (const [index, ticket] of parsed.data.data.entries()) {
       const delivery = batch[index];
       if (!delivery) continue;
@@ -471,21 +726,28 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
       }
       const errorCode = ticket.details?.error ?? "unknown";
       if (errorCode === "DeviceNotRegistered") {
-        await subscriptions.remove(delivery.subscription.id);
-        bb.log.info(
-          `Removed push subscription row ${delivery.subscription.id}: device is not registered`,
-        );
+        unregistered.push(delivery);
         continue;
       }
-      ticketFailure = true;
+      failure ??= "relay rejected one or more tickets";
       bb.log.warn(
         `Expo push ticket reported ${errorCode} for subscription row ${delivery.subscription.id}`,
       );
     }
-    return {
-      sentCount,
-      failure: ticketFailure ? "relay rejected one or more tickets" : null,
-    };
+    for (const delivery of unregistered) {
+      try {
+        await subscriptions.remove(delivery.subscription.id);
+        bb.log.info(
+          `Removed push subscription row ${delivery.subscription.id}: device is not registered`,
+        );
+      } catch (error) {
+        failure ??=
+          error instanceof Error
+            ? error.message
+            : "subscription cleanup failed";
+      }
+    }
+    return { sentCount, failure };
   }
 
   async function settle(): Promise<void> {
@@ -494,8 +756,23 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
     }
   }
 
+  function queueLifecycle(operation: () => Promise<void>): Promise<void> {
+    const result =
+      lifecycleQueue === null ? operation() : lifecycleQueue.then(operation);
+    const settled = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    lifecycleQueue = settled;
+    void settled.then(() => {
+      if (lifecycleQueue === settled) lifecycleQueue = null;
+    });
+    return result;
+  }
+
   return {
     getLastOutcome: () => lastOutcome,
+    sendNow,
     onInteractionPending(payload) {
       schedule(
         payload.thread.id,
@@ -511,23 +788,28 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
       schedule(thread.id, "turn-finished", lastAssistantText ?? "");
     },
     settle,
-    async start() {
-      if (running) return;
-      const stored = lastSendOutcomeSchema.safeParse(
-        await bb.storage.kv.get<unknown>(LAST_OUTCOME_KEY),
-      );
-      if (stored.success) lastOutcome = stored.data;
-      dispatcher = new EnvHttpProxyAgent();
-      running = true;
+    start() {
+      return queueLifecycle(async () => {
+        if (running) return;
+        runGeneration += 1;
+        const stored = lastSendOutcomeSchema.safeParse(
+          await bb.storage.kv.get<unknown>(LAST_OUTCOME_KEY),
+        );
+        if (stored.success) lastOutcome = stored.data;
+        dispatcher = new EnvHttpProxyAgent();
+        running = true;
+      });
     },
-    async stop() {
-      if (!running) return;
-      running = false;
-      for (const threadId of [...pending.keys()]) cancel(threadId);
-      await settle();
-      const activeDispatcher = dispatcher;
-      dispatcher = null;
-      await activeDispatcher?.close();
+    stop() {
+      return queueLifecycle(async () => {
+        if (!running) return;
+        running = false;
+        for (const threadId of [...pending.keys()]) cancel(threadId);
+        await settle();
+        const activeDispatcher = dispatcher;
+        dispatcher = null;
+        await activeDispatcher?.close();
+      });
     },
   };
 }

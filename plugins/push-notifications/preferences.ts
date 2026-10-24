@@ -58,6 +58,7 @@ export const NOTIFICATION_LEVEL_LABELS: Record<OwnNotificationLevel, string> = {
 };
 
 export type PushNotificationKind =
+  | "agent-message"
   | "pending-interaction"
   | "turn-finished"
   | "thread-error";

@@ -8,6 +8,7 @@ import {
 export const DEFAULT_EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 export const EXPO_PUSH_TOKEN_MAX_LENGTH = 512;
 export const DEVICE_LABEL_MAX_LENGTH = 120;
+export const AGENT_NOTIFICATION_MESSAGE_MAX_LENGTH = 500;
 
 export const pushPlatformSchema = z.enum(["ios", "android"]);
 
@@ -59,10 +60,50 @@ export const listPushSubscriptionsOutputSchema = z
   .object({ subscriptions: z.array(pushSubscriptionSummarySchema) })
   .strict();
 
+const deliveryCountsSchema = z
+  .object({
+    mobile: z.number().int().nonnegative(),
+    web: z.boolean(),
+    desktop: z.boolean(),
+  })
+  .strict();
+
+const explicitNotificationOutputSchema = z.discriminatedUnion("status", [
+  z
+    .object({ status: z.literal("sent"), delivered: deliveryCountsSchema })
+    .strict(),
+  z
+    .object({
+      status: z.literal("failed"),
+      delivered: deliveryCountsSchema,
+      reason: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      status: z.literal("undelivered"),
+      delivered: deliveryCountsSchema,
+    })
+    .strict(),
+]);
+
 export const pushNotificationsRpcContract = defineRpcContract({
   "notifications.test": {
     input: z.object({ channel: clientChannelSchema }).strict(),
     output: z.object({ ok: z.literal(true) }).strict(),
+  },
+  "notifications.send": {
+    input: z
+      .object({
+        threadId: z.string().min(1),
+        message: z
+          .string()
+          .trim()
+          .min(1)
+          .max(AGENT_NOTIFICATION_MESSAGE_MAX_LENGTH),
+      })
+      .strict(),
+    output: explicitNotificationOutputSchema,
   },
   "pushSubscriptions.list": {
     input: emptyInputSchema,

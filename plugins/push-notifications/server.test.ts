@@ -1,6 +1,7 @@
 import type { PluginThreadEventPayloads } from "@get-bb/plugin-sdk";
 import {
   createFakePluginHost,
+  makePluginAgentConfigurationContext,
   makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
 import { EnvHttpProxyAgent } from "undici";
@@ -95,6 +96,7 @@ interface SetupOptions {
   expo?: FakeExpo;
   fetch?: PushSenderFetch;
   now?: () => number;
+  onThreadGet?: (threadId: string) => void | Promise<void>;
 }
 
 async function setup(options: SetupOptions = {}) {
@@ -119,6 +121,7 @@ async function setup(options: SetupOptions = {}) {
   );
   const fake = createFakePluginHost({
     pluginId: "push-notifications",
+    experimental_declaredIconNames: ["ringing", "off"],
     ...(options.appUrl === undefined ? {} : { appUrl: options.appUrl }),
     settings: { expoPushUrl: EXPO_URL },
     sdk: {
@@ -126,6 +129,7 @@ async function setup(options: SetupOptions = {}) {
         get: async ({ threadId }) => {
           const thread = threads.get(threadId);
           if (!thread) throw new Error("Thread not found");
+          await options.onThreadGet?.(threadId);
           return thread;
         },
         experimental_listAncestors: listAncestors,
@@ -260,6 +264,7 @@ async function setup(options: SetupOptions = {}) {
     ...fake,
     addSubscription,
     cleanup,
+    service,
     clientSignals: () => signals(CLIENT_NOTIFICATION_CHANNEL),
     expo,
     getLevel,
@@ -365,6 +370,8 @@ describe("push subscription RPC and CLI", () => {
         desktopEnabled: true,
         defaultLevel: "all",
         childLevel: "input-only",
+        agentNotifications: true,
+        agentNotifyCooldownMinutes: "5",
         subscriptionCount: 1,
         relayUrl: EXPO_URL,
         lastSendOutcome: { status: "never" },
@@ -1386,6 +1393,1001 @@ describe("thread notification levels", () => {
       expect(host.clientSignals().at(-1)?.payload).toMatchObject({
         threadId: plainWorker.id,
         body: "Worker done again",
+      });
+    } finally {
+      await host.cleanup();
+    }
+  });
+});
+
+describe("model notifications", () => {
+  it("sends an explicit notification on a muted, already-read thread", async () => {
+    const host = await setup();
+    try {
+      await host.addSubscription();
+      await host.harness.behavior.setSettings({ defaultLevel: "muted" });
+      const thread = host.setThread({
+        id: "thread-muted",
+        latestAttentionAt: 100,
+        lastReadAt: 500,
+      });
+
+      const result = await host.harness.behavior.callAgentTool(
+        "notify_user",
+        { message: "Build is green" },
+        { threadId: thread.id },
+      );
+
+      expect(result).toBe("Sent a push notification (web, desktop, 1 mobile).");
+      expect(host.clientSignals().map((signal) => signal.payload)).toEqual([
+        expect.objectContaining({
+          threadId: thread.id,
+          title: "Fix the flaky test",
+          body: "Build is green",
+        }),
+      ]);
+      expect(host.expo.requests).toEqual([
+        [
+          expect.objectContaining({
+            to: "ExponentPushToken[phone]",
+            title: "Fix the flaky test",
+            body: "Build is green",
+            data: expect.objectContaining({
+              kind: "agent-message",
+              threadId: thread.id,
+            }),
+          }),
+        ],
+      ]);
+    } finally {
+      await host.cleanup();
+    }
+  });
+
+  it("refuses a second send inside the cooldown and allows it afterwards", async () => {
+    let clock = 1_000_000;
+    const host = await setup({ now: () => clock });
+    try {
+      const thread = host.setThread({ id: "thread-cooldown" });
+
+      await expect(
+        host.harness.behavior.callAgentTool(
+          "notify_user",
+          { message: "First" },
+          { threadId: thread.id },
+        ),
+      ).resolves.toBe("Sent a push notification (web, desktop).");
+
+      await expect(
+        host.harness.behavior.callAgentTool(
+          "notify_user",
+          { message: "Second" },
+          { threadId: thread.id },
+        ),
+      ).resolves.toEqual({
+        content: [
+          {
+            type: "text",
+            text: "A notification was recently attempted for this thread",
+          },
+        ],
+        isError: true,
+      });
+      expect(host.clientSignals()).toHaveLength(1);
+
+      clock += 5 * 60_000;
+      await expect(
+        host.harness.behavior.callAgentTool(
+          "notify_user",
+          { message: "Third" },
+          { threadId: thread.id },
+        ),
+      ).resolves.toBe("Sent a push notification (web, desktop).");
+      expect(host.clientSignals()).toHaveLength(2);
+    } finally {
+      await host.cleanup();
+    }
+  });
+
+  it("refuses explicit tool/RPC sends with the kill switch off without muting automatic delivery", async () => {
+    const host = await setup();
+    try {
+      await host.harness.behavior.setSettings({ agentNotifications: false });
+      const thread = host.setThread({ id: "thread-disabled" });
+      await expect(
+        host.harness.behavior.callAgentTool(
+          "notify_user",
+          { message: "Anything" },
+          { threadId: thread.id },
+        ),
+      ).resolves.toEqual({
+        content: [{ type: "text", text: "Agent notifications are turned off" }],
+        isError: true,
+      });
+      await expect(
+        host.harness.behavior.callRpc("notifications.send", {
+          threadId: thread.id,
+          message: "RPC",
+        }),
+      ).rejects.toMatchObject({
+        code: "handler_error",
+        message: "Agent notifications are turned off",
+      });
+      expect(host.clientSignals()).toHaveLength(0);
+      await host.harness.behavior.emitThreadEvent("thread.idle", {
+        thread,
+        lastAssistantText: "Automatic completion",
+      });
+      await waitForCoalesce();
+      expect(host.clientSignals().map((signal) => signal.payload)).toEqual([
+        expect.objectContaining({ body: "Automatic completion" }),
+      ]);
+    } finally {
+      await host.cleanup();
+    }
+  });
+
+  it("honours disabled mobile delivery and zero cooldown across immediate CLI/RPC sends", async () => {
+    const host = await setup({ now: () => 1_000_000 });
+    try {
+      await host.addSubscription();
+      await host.harness.behavior.setSettings({
+        mobileEnabled: false,
+        agentNotifyCooldownMinutes: "0",
+      });
+      const thread = host.setThread({ id: "thread-cli" });
+
+      const cli = await host.harness.behavior.runCli(
+        ["notify", "--message", "Blocked on credentials"],
+        { threadId: thread.id },
+      );
+      expect(cli).toMatchObject({
+        exitCode: 0,
+        stdout: "Sent a push notification (web, desktop)",
+      });
+
+      await expect(
+        host.harness.behavior.callRpc("notifications.send", {
+          threadId: thread.id,
+          message: "Second one",
+        }),
+      ).resolves.toEqual({
+        status: "sent",
+        delivered: { mobile: 0, web: true, desktop: true },
+      });
+      expect(host.expo.requests).toHaveLength(0);
+    } finally {
+      await host.cleanup();
+    }
+  });
+
+  it("uses an explicit CLI thread override and emits structured success", async () => {
+    const host = await setup();
+    try {
+      await host.addSubscription();
+      const invoking = host.setThread({ id: "thread-invoking" });
+      const target = host.setThread({ id: "thread-target" });
+      const result = await host.harness.behavior.runCli(
+        [
+          "notify",
+          "--thread",
+          target.id,
+          "--message",
+          "Target ready",
+          "--json",
+        ],
+        { threadId: invoking.id },
+      );
+      expect(result.exitCode).toBe(0);
+      expect(JSON.parse(result.stdout)).toEqual({
+        status: "sent",
+        delivered: { mobile: 1, web: true, desktop: true },
+      });
+      expect(host.clientSignals().map((signal) => signal.payload)).toEqual([
+        expect.objectContaining({ threadId: target.id, body: "Target ready" }),
+      ]);
+      expect(host.expo.requests[0]?.[0]?.data.threadId).toBe(target.id);
+    } finally {
+      await host.cleanup();
+    }
+  });
+
+  it.each(["tool", "rpc", "cli"] as const)(
+    "enforces trimmed message boundaries and display limits via %s",
+    async (surface) => {
+      const host = await setup();
+      try {
+        await host.addSubscription();
+        await host.harness.behavior.setSettings({
+          agentNotifyCooldownMinutes: "0",
+        });
+        const thread = host.setThread();
+        async function send(message: string): Promise<boolean> {
+          try {
+            if (surface === "tool")
+              return (
+                typeof (await host.harness.behavior.callAgentTool(
+                  "notify_user",
+                  { message },
+                  { threadId: thread.id },
+                )) === "string"
+              );
+            if (surface === "rpc") {
+              await host.harness.behavior.callRpc("notifications.send", {
+                threadId: thread.id,
+                message,
+              });
+              return true;
+            }
+            return (
+              (
+                await host.harness.behavior.runCli(
+                  ["notify", "--message", message],
+                  { threadId: thread.id },
+                )
+              ).exitCode === 0
+            );
+          } catch {
+            return false;
+          }
+        }
+        expect(await send("x".repeat(501))).toBe(false);
+        expect(await send(" \n ")).toBe(false);
+        expect(host.clientSignals()).toHaveLength(0);
+        expect(host.expo.requests).toHaveLength(0);
+        expect(await send(`  ${"x".repeat(500)}  `)).toBe(true);
+        expect(host.clientSignals().map((signal) => signal.payload)).toEqual([
+          expect.objectContaining({ body: `${"x".repeat(179)}…` }),
+        ]);
+        expect(host.expo.requests[0]?.[0]?.body).toBe(`${"x".repeat(179)}…`);
+      } finally {
+        await host.cleanup();
+      }
+    },
+  );
+
+  it("exposes the tool through the agent configuration resolver", async () => {
+    const host = await setup();
+    try {
+      const configuration =
+        await host.harness.behavior.resolveAgentConfiguration(
+          makePluginAgentConfigurationContext({
+            pluginMetadata: {},
+            thread: { id: "thread-test" },
+          }),
+        );
+      expect(configuration.tools.map((tool) => tool.name)).toEqual([
+        "notify_user",
+      ]);
+      expect(host.harness.registrations.agentConfigurationProvider).toBeNull();
+    } finally {
+      await host.cleanup();
+    }
+  });
+
+  it("refuses archived, hidden, and deleted threads", async () => {
+    const host = await setup();
+    try {
+      for (const thread of [
+        host.setThread({ id: "thread-archived", archivedAt: 1 }),
+        host.setThread({ id: "thread-hidden", visibility: "hidden" }),
+        host.setThread({ id: "thread-deleted", deletedAt: 1 }),
+      ]) {
+        await expect(
+          host.harness.behavior.callAgentTool(
+            "notify_user",
+            { message: "Anything" },
+            { threadId: thread.id },
+          ),
+        ).resolves.toEqual({
+          content: [
+            { type: "text", text: "This thread cannot be notified right now" },
+          ],
+          isError: true,
+        });
+        await expect(
+          host.harness.behavior.callRpc("notifications.send", {
+            threadId: thread.id,
+            message: "RPC",
+          }),
+        ).rejects.toMatchObject({
+          code: "handler_error",
+          message: "This thread cannot be notified right now",
+        });
+      }
+      expect(host.clientSignals()).toHaveLength(0);
+    } finally {
+      await host.cleanup();
+    }
+  });
+
+  it("admits one send per thread across simultaneous tool, RPC, and CLI calls", async () => {
+    const host = await setup();
+    try {
+      const thread = host.setThread({ id: "thread-concurrent" });
+      const results = await Promise.all([
+        host.harness.behavior
+          .callAgentTool(
+            "notify_user",
+            { message: "Tool" },
+            { threadId: thread.id },
+          )
+          .then((result) => typeof result === "string"),
+        host.harness.behavior
+          .callRpc("notifications.send", {
+            threadId: thread.id,
+            message: "RPC",
+          })
+          .then(
+            () => true,
+            (error: Error) => {
+              expect(error.message).toContain("recently");
+              return false;
+            },
+          ),
+        host.harness.behavior
+          .runCli(["notify", "--message", "CLI"], { threadId: thread.id })
+          .then((result) => result.exitCode === 0),
+      ]);
+      expect(results.filter(Boolean)).toHaveLength(1);
+      expect(host.clientSignals()).toHaveLength(1);
+    } finally {
+      await host.cleanup();
+    }
+  });
+
+  it("rechecks the kill switch before dispatching a prepared send", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let reached!: () => void;
+    const reachedGate = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    const host = await setup({
+      onThreadGet: async () => {
+        reached();
+        await gate;
+      },
+    });
+    try {
+      const thread = host.setThread({ id: "thread-toggle" });
+      const pending = host.harness.behavior.callAgentTool(
+        "notify_user",
+        { message: "Ready" },
+        { threadId: thread.id },
+      );
+      await reachedGate;
+      await host.harness.behavior.setSettings({ agentNotifications: false });
+      release();
+      await expect(pending).resolves.toEqual({
+        content: [{ type: "text", text: "Agent notifications are turned off" }],
+        isError: true,
+      });
+      expect(host.clientSignals()).toHaveLength(0);
+    } finally {
+      await host.cleanup();
+    }
+  });
+
+  it("does not deliver an explicit send after the sender stops", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let reached!: () => void;
+    const reachedGate = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    const host = await setup({
+      onThreadGet: async () => {
+        reached();
+        await gate;
+      },
+    });
+    try {
+      const thread = host.setThread({ id: "thread-stop" });
+      const pending = host.harness.behavior.callAgentTool(
+        "notify_user",
+        { message: "Ready" },
+        { threadId: thread.id },
+      );
+      await reachedGate;
+      host.service.controller.abort();
+      let settled = false;
+      void host.service.done.then(() => {
+        settled = true;
+      });
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      expect(settled).toBe(false);
+      release();
+      await expect(pending).resolves.toEqual({
+        content: [{ type: "text", text: "Push delivery is not running" }],
+        isError: true,
+      });
+      await host.service.done;
+      expect(host.clientSignals()).toHaveLength(0);
+    } finally {
+      await host.cleanup();
+    }
+  });
+
+  it("does not consume the cooldown when nothing was delivered", async () => {
+    const host = await setup();
+    try {
+      await host.harness.behavior.setSettings({
+        mobileEnabled: false,
+        webEnabled: false,
+        desktopEnabled: false,
+      });
+      const thread = host.setThread({ id: "thread-undelivered" });
+      await expect(
+        host.harness.behavior.callAgentTool(
+          "notify_user",
+          { message: "Ready" },
+          { threadId: thread.id },
+        ),
+      ).resolves.toEqual({
+        content: [
+          {
+            type: "text",
+            text: "The notification was not delivered: no delivery channels or devices are available. Tell the user in your reply instead.",
+          },
+        ],
+        isError: true,
+      });
+      await host.harness.behavior.setSettings({ webEnabled: true });
+      await expect(
+        host.harness.behavior.callAgentTool(
+          "notify_user",
+          { message: "Ready again" },
+          { threadId: thread.id },
+        ),
+      ).resolves.toBe("Sent a push notification (web).");
+      expect(host.clientSignals()).toHaveLength(1);
+    } finally {
+      await host.cleanup();
+    }
+  });
+
+  it("reports a mobile relay failure instead of success and rate limits it", async () => {
+    const failureFetch: PushSenderFetch = async () => ({
+      ok: false,
+      status: 502,
+      text: async () => "bad gateway",
+    });
+    const host = await setup({ fetch: failureFetch });
+    try {
+      await host.addSubscription();
+      await host.harness.behavior.setSettings({
+        webEnabled: false,
+        desktopEnabled: false,
+      });
+      const thread = host.setThread({ id: "thread-relay-failure" });
+      const result = await host.harness.behavior.callAgentTool(
+        "notify_user",
+        { message: "Ready" },
+        { threadId: thread.id },
+      );
+      if (typeof result === "string") throw new Error("expected a failure");
+      expect(result.isError).toBe(true);
+      expect(result.content[0]).toMatchObject({
+        type: "text",
+        text: expect.stringContaining("could not be delivered"),
+      });
+      expect(host.clientSignals()).toHaveLength(0);
+      await expect(
+        host.harness.behavior.callAgentTool(
+          "notify_user",
+          { message: "Again" },
+          { threadId: thread.id },
+        ),
+      ).resolves.toMatchObject({
+        isError: true,
+        content: [
+          {
+            type: "text",
+            text: "A notification was recently attempted for this thread",
+          },
+        ],
+      });
+    } finally {
+      await host.cleanup();
+    }
+  });
+
+  it("keeps cooldown history when the duration changes", async () => {
+    let clock = 1_000_000;
+    const host = await setup({ now: () => clock });
+    try {
+      const a = host.setThread({ id: "thread-a" });
+      const b = host.setThread({ id: "thread-b" });
+      await host.harness.behavior.callAgentTool(
+        "notify_user",
+        { message: "A1" },
+        { threadId: a.id },
+      );
+      clock += 61_000;
+      await host.harness.behavior.setSettings({
+        agentNotifyCooldownMinutes: "1",
+      });
+      await host.harness.behavior.callAgentTool(
+        "notify_user",
+        { message: "B1" },
+        { threadId: b.id },
+      );
+      await host.harness.behavior.setSettings({
+        agentNotifyCooldownMinutes: "60",
+      });
+      await expect(
+        host.harness.behavior.callAgentTool(
+          "notify_user",
+          { message: "A2" },
+          { threadId: a.id },
+        ),
+      ).resolves.toMatchObject({
+        isError: true,
+        content: [
+          {
+            type: "text",
+            text: "A notification was recently attempted for this thread",
+          },
+        ],
+      });
+    } finally {
+      await host.cleanup();
+    }
+  });
+
+  it("keeps explicit and automatic completion notifications independent", async () => {
+    const host = await setup();
+    try {
+      const thread = host.setThread({ id: "thread-turn", status: "active" });
+      await host.harness.behavior.callAgentTool(
+        "notify_user",
+        { message: "Done" },
+        { threadId: thread.id },
+      );
+      expect(host.clientSignals()).toHaveLength(1);
+
+      const firstIdle: ThreadResponse = { ...thread, status: "idle" };
+      host.threads.set(thread.id, firstIdle);
+      await host.harness.behavior.emitThreadEvent("thread.idle", {
+        thread: firstIdle,
+        lastAssistantText: "Done",
+      });
+      await waitForCoalesce();
+      expect(host.clientSignals()).toHaveLength(2);
+
+      const active: ThreadResponse = { ...thread, status: "active" };
+      host.threads.set(thread.id, active);
+      await host.harness.behavior.emitThreadEvent("thread.active", {
+        thread: active,
+      });
+      const idle: ThreadResponse = { ...thread, status: "idle" };
+      host.threads.set(thread.id, idle);
+      await host.harness.behavior.emitThreadEvent("thread.idle", {
+        thread: idle,
+        lastAssistantText: "Second turn",
+      });
+      await waitForCoalesce();
+      expect(host.clientSignals()).toHaveLength(3);
+    } finally {
+      await host.cleanup();
+    }
+  });
+
+  it("preserves delivered counts and cooldown when bookkeeping throws", async () => {
+    const host = await setup();
+    try {
+      await host.addSubscription();
+      const thread = host.setThread({ id: "thread-bookkeeping" });
+      vi.spyOn(host.bb.storage.kv, "set").mockRejectedValue(
+        new Error("kv down"),
+      );
+      await expect(
+        host.harness.behavior.callRpc("notifications.send", {
+          threadId: thread.id,
+          message: "Ready",
+        }),
+      ).resolves.toEqual({
+        status: "failed",
+        reason: "kv down",
+        delivered: { mobile: 1, web: true, desktop: true },
+      });
+      expect(host.expo.requests).toHaveLength(1);
+      expect(host.clientSignals()).toHaveLength(1);
+      await expect(
+        host.harness.behavior.callAgentTool(
+          "notify_user",
+          { message: "Again" },
+          { threadId: thread.id },
+        ),
+      ).resolves.toMatchObject({
+        isError: true,
+        content: [
+          {
+            type: "text",
+            text: "A notification was recently attempted for this thread",
+          },
+        ],
+      });
+    } finally {
+      vi.restoreAllMocks();
+      await host.cleanup();
+    }
+  });
+
+  it("does not suppress a healthy completion after a failed explicit attempt", async () => {
+    const failureFetch: PushSenderFetch = async () => ({
+      ok: false,
+      status: 502,
+      text: async () => "bad gateway",
+    });
+    const host = await setup({ fetch: failureFetch });
+    try {
+      await host.addSubscription();
+      await host.harness.behavior.setSettings({
+        webEnabled: false,
+        desktopEnabled: false,
+      });
+      const thread = host.setThread({
+        id: "thread-failed-suppress",
+        status: "active",
+      });
+      const result = await host.harness.behavior.callAgentTool(
+        "notify_user",
+        { message: "Ready" },
+        { threadId: thread.id },
+      );
+      if (typeof result === "string") throw new Error("expected a failure");
+      expect(result.isError).toBe(true);
+      expect(host.clientSignals()).toHaveLength(0);
+
+      await host.harness.behavior.setSettings({ webEnabled: true });
+      const idle: ThreadResponse = { ...thread, status: "idle" };
+      host.threads.set(thread.id, idle);
+      await host.harness.behavior.emitThreadEvent("thread.idle", {
+        thread: idle,
+        lastAssistantText: "Finished",
+      });
+      await waitForCoalesce();
+      expect(host.clientSignals().map((signal) => signal.payload)).toEqual([
+        expect.objectContaining({ body: "Finished" }),
+      ]);
+    } finally {
+      await host.cleanup();
+    }
+  });
+
+  it("delivers automatic completions before and after a pending explicit send independently", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let reached!: () => void;
+    const reachedGate = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    let lookupStarted = false;
+    const host = await setup({
+      onThreadGet: async () => {
+        if (lookupStarted) return;
+        lookupStarted = true;
+        reached();
+        await gate;
+      },
+    });
+    try {
+      const thread = host.setThread({ id: "thread-slow", status: "active" });
+      const pending = host.harness.behavior.callAgentTool(
+        "notify_user",
+        { message: "Explicit A" },
+        { threadId: thread.id },
+      );
+      await reachedGate;
+
+      const idleA: ThreadResponse = { ...thread, status: "idle" };
+      host.threads.set(thread.id, idleA);
+      await host.harness.behavior.emitThreadEvent("thread.idle", {
+        thread: idleA,
+        lastAssistantText: "Completion A",
+      });
+      await waitForCoalesce();
+      expect(host.clientSignals().map((signal) => signal.payload)).toEqual([
+        expect.objectContaining({ body: "Completion A" }),
+      ]);
+
+      const activeB: ThreadResponse = { ...thread, status: "active" };
+      host.threads.set(thread.id, activeB);
+      await host.harness.behavior.emitThreadEvent("thread.active", {
+        thread: activeB,
+      });
+      release();
+      await pending;
+
+      const idleB: ThreadResponse = { ...thread, status: "idle" };
+      host.threads.set(thread.id, idleB);
+      await host.harness.behavior.emitThreadEvent("thread.idle", {
+        thread: idleB,
+        lastAssistantText: "Completion B",
+      });
+      await waitForCoalesce();
+      const bodies = host
+        .clientSignals()
+        .map((signal) => (signal.payload as { body: string }).body);
+      expect(bodies).toEqual(["Completion A", "Explicit A", "Completion B"]);
+    } finally {
+      release();
+      await host.cleanup();
+    }
+  });
+
+  it("reports failure when the relay accepts no deliveries", async () => {
+    const expo = createFakeExpo();
+    expo.ticketErrors.set("ExponentPushToken[phone]", "DeviceNotRegistered");
+    const host = await setup({ expo });
+    try {
+      await host.addSubscription();
+      await host.harness.behavior.setSettings({
+        webEnabled: false,
+        desktopEnabled: false,
+      });
+      const thread = host.setThread({ id: "thread-unregistered" });
+      const result = await host.harness.behavior.callAgentTool(
+        "notify_user",
+        { message: "Ready" },
+        { threadId: thread.id },
+      );
+      if (typeof result === "string") throw new Error("expected a failure");
+      expect(result.isError).toBe(true);
+      await expect(
+        host.harness.behavior.callRpc("pushSubscriptions.list", {}),
+      ).resolves.toEqual({ subscriptions: [] });
+    } finally {
+      await host.cleanup();
+    }
+  });
+
+  it.each(["tool", "cli"] as const)(
+    "reports accepted mobile delivery after bookkeeping failure via %s",
+    async (surface) => {
+      const host = await setup();
+      try {
+        await host.addSubscription();
+        await host.harness.behavior.setSettings({
+          webEnabled: false,
+          desktopEnabled: false,
+        });
+        const thread = host.setThread();
+        vi.spyOn(host.bb.storage.kv, "set").mockRejectedValue(
+          new Error("kv down"),
+        );
+        if (surface === "tool") {
+          const result = await host.harness.behavior.callAgentTool(
+            "notify_user",
+            { message: "Ready" },
+            { threadId: thread.id },
+          );
+          expect(result).toMatchObject({
+            isError: true,
+            content: [
+              {
+                type: "text",
+                text: expect.stringContaining(
+                  "reached 1 mobile, but processing reported an error",
+                ),
+              },
+            ],
+          });
+        } else {
+          const result = await host.harness.behavior.runCli(
+            ["notify", "--message", "Ready"],
+            { threadId: thread.id },
+          );
+          expect(result.exitCode).toBe(1);
+          expect(result.stderr).toContain(
+            "reached 1 mobile, but processing reported an error",
+          );
+        }
+        expect(host.expo.requests).toHaveLength(1);
+      } finally {
+        vi.restoreAllMocks();
+        await host.cleanup();
+      }
+    },
+  );
+
+  it("does not claim web delivery when publication throws", async () => {
+    const host = await setup();
+    try {
+      await host.addSubscription();
+      const thread = host.setThread();
+      vi.spyOn(host.bb.realtime, "publish").mockImplementation(() => {
+        throw new Error("publish down");
+      });
+      await expect(
+        host.harness.behavior.callRpc("notifications.send", {
+          threadId: thread.id,
+          message: "Ready",
+        }),
+      ).resolves.toEqual({
+        status: "failed",
+        reason: "publish down",
+        delivered: { mobile: 1, web: false, desktop: false },
+      });
+      expect(host.expo.requests).toHaveLength(1);
+      expect(host.clientSignals()).toHaveLength(0);
+    } finally {
+      vi.restoreAllMocks();
+      await host.cleanup();
+    }
+  });
+
+  it("preserves all accepted tickets when subscription cleanup fails", async () => {
+    const host = await setup();
+    try {
+      await host.addSubscription("ExponentPushToken[before]");
+      await host.addSubscription("ExponentPushToken[unregistered]");
+      await host.addSubscription("ExponentPushToken[after]");
+      host.expo.ticketErrors.set(
+        "ExponentPushToken[unregistered]",
+        "DeviceNotRegistered",
+      );
+      const thread = host.setThread();
+      vi.spyOn(host.bb.storage.kv, "delete").mockRejectedValue(
+        new Error("delete down"),
+      );
+      await expect(
+        host.harness.behavior.callRpc("notifications.send", {
+          threadId: thread.id,
+          message: "Ready",
+        }),
+      ).resolves.toEqual({
+        status: "failed",
+        reason: "delete down",
+        delivered: { mobile: 2, web: true, desktop: true },
+      });
+    } finally {
+      vi.restoreAllMocks();
+      await host.cleanup();
+    }
+  });
+
+  it.each([0, 1, 3])(
+    "rejects a response containing %i tickets for two devices, retaining accepted counts",
+    async (ticketCount) => {
+      const host = await setup({
+        fetch: async () => ({
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              data: Array.from({ length: ticketCount }, () => ({
+                status: "ok",
+              })),
+            }),
+        }),
+      });
+      try {
+        await host.addSubscription("ExponentPushToken[first]");
+        await host.addSubscription("ExponentPushToken[second]");
+        await host.harness.behavior.setSettings({
+          webEnabled: false,
+          desktopEnabled: false,
+        });
+        const thread = host.setThread();
+        await expect(
+          host.harness.behavior.callRpc("notifications.send", {
+            threadId: thread.id,
+            message: "Ready",
+          }),
+        ).resolves.toEqual({
+          status: "failed",
+          reason: "relay returned an unexpected number of tickets",
+          delivered: {
+            mobile: Math.min(ticketCount, 2),
+            web: false,
+            desktop: false,
+          },
+        });
+      } finally {
+        await host.cleanup();
+      }
+    },
+  );
+
+  it("rejects a non-success HTTP response even when its body contains successful tickets", async () => {
+    const host = await setup({
+      fetch: async () => ({
+        ok: false,
+        status: 502,
+        text: async () => JSON.stringify({ data: [{ status: "ok" }] }),
+      }),
+    });
+    try {
+      await host.addSubscription();
+      await host.harness.behavior.setSettings({
+        webEnabled: false,
+        desktopEnabled: false,
+      });
+      const thread = host.setThread();
+      await expect(
+        host.harness.behavior.callRpc("notifications.send", {
+          threadId: thread.id,
+          message: "Ready",
+        }),
+      ).resolves.toEqual({
+        status: "failed",
+        reason: "relay returned HTTP 502",
+        delivered: { mobile: 0, web: false, desktop: false },
+      });
+    } finally {
+      await host.cleanup();
+    }
+  });
+
+  it.each([{ validIndexes: [0, 1] }, { validIndexes: [0, 100] }])(
+    "classifies accepted and unregistered tickets independently of batch layout ($validIndexes)",
+    async ({ validIndexes }) => {
+      const host = await setup();
+      try {
+        for (let index = 0; index < 101; index += 1) {
+          const token = `ExponentPushToken[${index}]`;
+          await host.addSubscription(token);
+          if (!validIndexes.includes(index))
+            host.expo.ticketErrors.set(token, "DeviceNotRegistered");
+        }
+        await host.harness.behavior.setSettings({
+          webEnabled: false,
+          desktopEnabled: false,
+        });
+        const thread = host.setThread();
+        await expect(
+          host.harness.behavior.callRpc("notifications.send", {
+            threadId: thread.id,
+            message: "Ready",
+          }),
+        ).resolves.toEqual({
+          status: "sent",
+          delivered: { mobile: 2, web: false, desktop: false },
+        });
+        expect(host.expo.requests.map((batch) => batch.length)).toEqual([
+          100, 1,
+        ]);
+      } finally {
+        await host.cleanup();
+      }
+    },
+  );
+
+  it("maps undelivered outcomes through the CLI and RPC", async () => {
+    const host = await setup();
+    try {
+      await host.harness.behavior.setSettings({
+        mobileEnabled: false,
+        webEnabled: false,
+        desktopEnabled: false,
+      });
+      const thread = host.setThread({ id: "thread-mapping" });
+      await expect(
+        host.harness.behavior.callRpc("notifications.send", {
+          threadId: thread.id,
+          message: "Nothing",
+        }),
+      ).resolves.toEqual({
+        status: "undelivered",
+        delivered: { mobile: 0, web: false, desktop: false },
+      });
+      const cli = await host.harness.behavior.runCli(
+        ["notify", "--message", "Nothing", "--json"],
+        { threadId: thread.id },
+      );
+      expect(cli.exitCode).toBe(1);
+      expect(JSON.parse(cli.stdout)).toMatchObject({
+        ok: false,
+        error: { code: "no_recipients" },
       });
     } finally {
       await host.cleanup();

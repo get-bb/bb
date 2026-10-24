@@ -708,46 +708,79 @@ describe("runPluginCliCommand", () => {
     expect(stream.listenerCount("close")).toBe(0);
   });
 
-  it("materializes an arbitrary stdin flag only in the proxied request", async () => {
-    const requests: string[][] = [];
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (_url, init: RequestInit | undefined) => {
-        const parsed = JSON.parse(String(init?.body)) as { argv: string[] };
-        requests.push(parsed.argv);
-        return new Response(JSON.stringify({ exitCode: 0 }), { status: 200 });
-      }),
-    );
-    const writes: string[] = [];
-    const output = new Writable({
-      write(chunk, _encoding, callback) {
-        writes.push(chunk.toString());
-        callback();
-      },
-    });
-    const input = {
-      isTTY: false,
-      async *[Symbol.asyncIterator]() {
-        yield Buffer.from("opaque-credential\n");
-      },
-    };
-    const argv = ["deploy", "--credential-stdin", "--format", "json"];
+  it.each([
+    {
+      pluginId: "fixture",
+      argv: ["deploy", "--credential-stdin", "--format", "json"],
+      value: "opaque-credential",
+      expected: [
+        "deploy",
+        "--credential",
+        "opaque-credential",
+        "--format",
+        "json",
+      ],
+    },
+    {
+      pluginId: "push-notifications",
+      argv: [
+        "notify",
+        "--message-stdin",
+        "--thread",
+        "thread-target",
+        "--json",
+      ],
+      value: "Build finished",
+      expected: [
+        "notify",
+        "--message",
+        "Build finished",
+        "--thread",
+        "thread-target",
+        "--json",
+      ],
+    },
+  ])(
+    "materializes stdin only in the proxied request for $pluginId",
+    async ({ pluginId, argv, value, expected }) => {
+      const originalArgv = [...argv];
+      const requests: string[][] = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (_url, init: RequestInit | undefined) => {
+          const parsed = JSON.parse(String(init?.body)) as { argv: string[] };
+          requests.push(parsed.argv);
+          return new Response(JSON.stringify({ exitCode: 0 }), { status: 200 });
+        }),
+      );
+      const writes: string[] = [];
+      const output = new Writable({
+        write(chunk, _encoding, callback) {
+          writes.push(chunk.toString());
+          callback();
+        },
+      });
+      const input = {
+        isTTY: false,
+        async *[Symbol.asyncIterator]() {
+          yield Buffer.from(`${value}\n`);
+        },
+      };
 
-    await expect(
-      runPluginCliCommand(
-        "http://localhost",
-        "fixture",
-        argv,
-        { stdout: output, stderr: output },
-        input,
-      ),
-    ).resolves.toBe(0);
-    expect(argv).toEqual(["deploy", "--credential-stdin", "--format", "json"]);
-    expect(requests).toEqual([
-      ["deploy", "--credential", "opaque-credential", "--format", "json"],
-    ]);
-    expect(writes).toEqual([]);
-  });
+      await expect(
+        runPluginCliCommand(
+          "http://localhost",
+          pluginId,
+          argv,
+          { stdout: output, stderr: output },
+          input,
+        ),
+      ).resolves.toBe(0);
+      expect(argv).toEqual(originalArgv);
+      expect(requests).toEqual([expected]);
+      expect(writes).toEqual([]);
+    },
+  );
 
   it("leaves a stdin-style flag after -- for the passed-through command", async () => {
     const requests: string[][] = [];

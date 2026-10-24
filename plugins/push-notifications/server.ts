@@ -4,10 +4,12 @@ import {
   cliCommand,
   defineCli,
   type BbPluginApi,
+  type PluginAgentToolResult,
 } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import {
   addPushSubscriptionInputSchema,
+  AGENT_NOTIFICATION_MESSAGE_MAX_LENGTH,
   CLIENT_NOTIFICATION_CHANNEL,
   clientChannelSchema,
   DEFAULT_EXPO_PUSH_URL,
@@ -28,6 +30,7 @@ import {
 import {
   createPushSender,
   type CreatePushSenderArgs,
+  type ExplicitNotificationRefusal,
   type LastSendOutcome,
 } from "./sender.js";
 import { createPushSubscriptionStore } from "./subscriptions.js";
@@ -45,16 +48,61 @@ interface StatusView {
   mobileEnabled: boolean;
   webEnabled: boolean;
   desktopEnabled: boolean;
+  agentNotifications: boolean;
+  agentNotifyCooldownMinutes: string;
   defaultLevel: string;
   childLevel: string;
   relayUrl: string;
   lastSendOutcome: LastSendOutcome;
 }
 
+const AGENT_NOTIFY_TOOL_NAME = "notify_user";
 const JSON_OPTION = {
   type: "boolean",
   description: "Emit machine-readable JSON",
 } as const;
+
+function describeRefusal(reason: ExplicitNotificationRefusal): {
+  message: string;
+  hint?: string;
+} {
+  switch (reason) {
+    case "disabled":
+      return {
+        message: "Agent notifications are turned off",
+        hint: "Turn them on with `bb plugin config push-notifications set agentNotifications true`.",
+      };
+    case "cooldown":
+      return {
+        message: "A notification was recently attempted for this thread",
+        hint: "Wait for the cooldown to pass before sending another.",
+      };
+    case "thread-unavailable":
+      return {
+        message: "This thread cannot be notified right now",
+        hint: "The thread may be archived, deleted, or hidden.",
+      };
+    case "sender-stopped":
+      return {
+        message: "Push delivery is not running",
+        hint: "Reload the plugin with `bb plugin reload push-notifications`.",
+      };
+    case "empty-message":
+      return { message: "The notification message was empty" };
+  }
+}
+
+function explicitChannels(result: {
+  mobile: number;
+  web: boolean;
+  desktop: boolean;
+}): string[] {
+  return [
+    ...(result.web ? ["web"] : []),
+    ...(result.desktop ? ["desktop"] : []),
+    ...(result.mobile > 0 ? [`${result.mobile} mobile`] : []),
+  ];
+}
 
 function formatSubscriptions(
   subscriptions: readonly PushSubscriptionSummary[],
@@ -90,6 +138,8 @@ function formatStatus(status: StatusView): string {
     `Desktop: ${status.desktopEnabled}`,
     `Default level: ${status.defaultLevel}`,
     `Child thread level: ${status.childLevel}`,
+    `Agent notifications: ${status.agentNotifications}`,
+    `Agent notification cooldown: ${status.agentNotifyCooldownMinutes} minutes`,
     `Subscriptions: ${status.subscriptionCount}`,
     `Relay URL: ${status.relayUrl}`,
     `Last send: ${formatLastOutcome(status.lastSendOutcome)}`,
@@ -174,6 +224,28 @@ export function createPushNotificationsPlugin(
         default: DEFAULT_EXPO_PUSH_URL,
         experimental_schema: z.string().url(),
       },
+      agentNotifications: {
+        type: "boolean",
+        label: "Model notifications",
+        description:
+          "Let the agent push you when it finishes work or gets blocked and you asked it to. Independent of thread levels.",
+        default: true,
+      },
+      agentNotifyCooldownMinutes: {
+        type: "select",
+        label: "Model notification cooldown",
+        description:
+          "How long a thread waits after a model notification attempt, including failed attempts. 0 disables the limit.",
+        options: ["0", "1", "5", "15", "60"],
+        experimental_optionLabels: {
+          "0": "No limit",
+          "1": "1 minute",
+          "5": "5 minutes",
+          "15": "15 minutes",
+          "60": "1 hour",
+        },
+        default: "5",
+      },
     });
     const preferences = createNotificationPreferences({
       bb,
@@ -194,8 +266,7 @@ export function createPushNotificationsPlugin(
     const sender = createPushSender({
       bb,
       subscriptions,
-      getDeliverySettings: () => settings.get(),
-      getExpoPushUrl: async () => (await settings.get()).expoPushUrl,
+      getSettings: () => settings.get(),
       getNotificationLevel: (thread) => preferences.effectiveLevel(thread),
       ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
       ...(options.coalesceMs === undefined
@@ -211,6 +282,8 @@ export function createPushNotificationsPlugin(
           mobileEnabled,
           webEnabled,
           desktopEnabled,
+          agentNotifications,
+          agentNotifyCooldownMinutes,
           defaultLevel,
           childLevel,
         },
@@ -222,6 +295,8 @@ export function createPushNotificationsPlugin(
         mobileEnabled,
         webEnabled,
         desktopEnabled,
+        agentNotifications,
+        agentNotifyCooldownMinutes,
         defaultLevel,
         childLevel,
         relayUrl: expoPushUrl,
@@ -246,6 +321,29 @@ export function createPushNotificationsPlugin(
 
     bb.rpc.register(pushNotificationsRpcContract, {
       "notifications.test": ({ channel }) => sendTest(channel),
+      "notifications.send": async ({ threadId, message }) => {
+        const result = await sender.sendNow({ threadId, message });
+        if (result.status === "refused") {
+          const refusal = describeRefusal(result.reason);
+          throw new Error(refusal.message);
+        }
+        const delivered = {
+          mobile: result.mobile,
+          web: result.web,
+          desktop: result.desktop,
+        };
+        if (result.status === "failed") {
+          return {
+            status: "failed" as const,
+            delivered,
+            reason: result.reason,
+          };
+        }
+        if (result.status === "undelivered") {
+          return { status: "undelivered" as const, delivered };
+        }
+        return { status: "sent" as const, delivered };
+      },
       "pushSubscriptions.list": async () => ({
         subscriptions: await subscriptions.listSummaries(),
       }),
@@ -316,6 +414,96 @@ export function createPushNotificationsPlugin(
                 stdout: input.options.json
                   ? JSON.stringify({ ok: true, channel: channel.data })
                   : `Test sent to connected ${channel.data} clients with notification permission`,
+              };
+            },
+          }),
+          notify: cliCommand({
+            summary: "Send a push notification for a thread",
+            description:
+              "Sends immediately, ignoring the thread's notification level. Fails when model notifications are disabled or the thread is in its cooldown.",
+            options: {
+              message: {
+                type: "string",
+                required: true,
+                placeholder: "message",
+                aliases: ["body", "text"],
+                stdin: true,
+                description: `Notification text, at most ${AGENT_NOTIFICATION_MESSAGE_MAX_LENGTH} characters`,
+              },
+              thread: {
+                type: "string",
+                placeholder: "thread-id",
+                aliases: ["thread-id"],
+                description:
+                  "Thread to notify about; defaults to the invoking thread",
+              },
+              json: JSON_OPTION,
+            },
+            async run(input, ctx) {
+              const threadId = input.options.thread ?? ctx.threadId;
+              if (threadId === undefined) {
+                throw new PluginCliError("No thread to notify about", {
+                  code: "missing_thread",
+                  hint: "Pass --thread <id> or run this from a thread.",
+                });
+              }
+              const parsed = z
+                .object({
+                  threadId: z.string().min(1),
+                  message: z
+                    .string()
+                    .trim()
+                    .min(1)
+                    .max(AGENT_NOTIFICATION_MESSAGE_MAX_LENGTH),
+                })
+                .strict()
+                .safeParse({ threadId, message: input.options.message });
+              if (!parsed.success) {
+                throw new PluginCliError(
+                  parsed.error.issues.map((issue) => issue.message).join("; "),
+                  { code: "invalid_notification" },
+                );
+              }
+              const result = await sender.sendNow(parsed.data);
+              if (result.status === "refused") {
+                const refusal = describeRefusal(result.reason);
+                throw new PluginCliError(refusal.message, {
+                  code: result.reason,
+                  ...(refusal.hint === undefined ? {} : { hint: refusal.hint }),
+                });
+              }
+              const delivered = {
+                mobile: result.mobile,
+                web: result.web,
+                desktop: result.desktop,
+              };
+              if (result.status === "undelivered") {
+                throw new PluginCliError(
+                  "No delivery channels or devices are available; nothing was sent",
+                  {
+                    code: "no_recipients",
+                    hint: "Enable a channel or register a device first.",
+                  },
+                );
+              }
+              if (result.status === "failed") {
+                const delivered = explicitChannels(result);
+                throw new PluginCliError(
+                  delivered.length > 0
+                    ? `Notification reached ${delivered.join(", ")}, but processing reported an error: ${result.reason}`
+                    : `Notification delivery failed: ${result.reason}`,
+                  {
+                    code: "delivery_failed",
+                    hint: "Check the Expo relay URL and this machine's network.",
+                  },
+                );
+              }
+              const channels = explicitChannels(result);
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? JSON.stringify({ status: "sent", delivered })
+                  : `Sent a push notification (${channels.join(", ")})`,
               };
             },
           }),
@@ -464,6 +652,65 @@ export function createPushNotificationsPlugin(
         },
       }),
     );
+
+    bb.agents.registerTool({
+      name: AGENT_NOTIFY_TOOL_NAME,
+      description:
+        "Send the user a push notification about this thread. Call it only when the user asked to be notified, for example when a task is finished or you are blocked waiting for them. Do not call it on every turn. Keep the message short and free of secrets: it leaves the server in the push payload and is ordinary tool input in the conversation.",
+      presentation: {
+        label: { pending: "Notifying you", completed: "Notified you" },
+        icon: { glyph: "push-notifications/ringing" },
+      },
+      parameters: z
+        .object({
+          message: z
+            .string()
+            .trim()
+            .min(1)
+            .max(AGENT_NOTIFICATION_MESSAGE_MAX_LENGTH),
+        })
+        .strict(),
+      async execute(input, ctx): Promise<PluginAgentToolResult> {
+        const result = await sender.sendNow({
+          threadId: ctx.threadId,
+          message: input.message,
+        });
+        if (result.status === "refused") {
+          const refusal = describeRefusal(result.reason);
+          return {
+            content: [{ type: "text", text: refusal.message }],
+            isError: true,
+          };
+        }
+        if (result.status === "undelivered") {
+          return {
+            content: [
+              {
+                type: "text",
+                text: "The notification was not delivered: no delivery channels or devices are available. Tell the user in your reply instead.",
+              },
+            ],
+            isError: true,
+          };
+        }
+        if (result.status === "failed") {
+          const delivered = explicitChannels(result);
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  delivered.length > 0
+                    ? `The notification reached ${delivered.join(", ")}, but processing reported an error: ${result.reason}.`
+                    : `The notification could not be delivered: ${result.reason}. Tell the user in your reply instead.`,
+              },
+            ],
+            isError: true,
+          };
+        }
+        return `Sent a push notification (${explicitChannels(result).join(", ")}).`;
+      },
+    });
 
     bb.events.on("interaction.pending", (payload) => {
       sender.onInteractionPending(payload);
