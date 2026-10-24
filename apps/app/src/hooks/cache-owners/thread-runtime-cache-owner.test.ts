@@ -27,19 +27,16 @@ import {
 } from "../queries/query-keys";
 import { threadDefaultExecutionOptionsQueryKey } from "../queries/thread-default-execution-options-query";
 import {
-  applyQueuedMessageCreateResult,
   applyQueuedMessageSendResult,
   applyQueuedMessageUpdateResult,
   applySendThreadMessageSuccess,
   applyThreadGoalClearResult,
   applyThreadPlanCancellationResult,
-  beginCreateQueuedMessageTransaction,
   beginRemoveQueuedMessageTransaction,
   beginReorderQueuedMessageTransaction,
   beginSendQueuedMessageTransaction,
   beginSendThreadMessageTransaction,
   beginUpdateQueuedMessageTransaction,
-  rollbackCreateQueuedMessageTransaction,
   rollbackRemoveQueuedMessageTransaction,
   rollbackSendThreadMessageTransaction,
   rollbackUpdateQueuedMessageTransaction,
@@ -236,109 +233,6 @@ describe("thread runtime cache owner", () => {
       role: "user",
       text: "Visible question",
     });
-  });
-
-  it("optimistically appends queued messages and replaces them with the server row", async () => {
-    const queryClient = createAppQueryClient({
-      defaultOptions: { queries: { gcTime: Infinity, retry: false } },
-      showMutationErrorToasts: false,
-    });
-    queryClient.setQueryData(threadQueuedMessagesQueryKey("thread-1"), [
-      makeQueuedMessage({ id: "qmsg-existing" }),
-    ]);
-    queryClient.setQueryData(
-      threadDefaultExecutionOptionsQueryKey("thread-1"),
-      {
-        model: "codex-default",
-        reasoningLevel: "high",
-        permissionMode: "accept-edits",
-        serviceTier: "fast",
-      },
-    );
-    queryClient.setQueryData(threadPromptHistoryQueryKey("thread-1"), []);
-
-    const transaction = await beginCreateQueuedMessageTransaction({
-      queryClient,
-      request: {
-        id: "thread-1",
-        input: [{ type: "text", text: "Queue this", mentions: [] }],
-      },
-    });
-
-    const optimisticQueue = queryClient.getQueryData<ThreadQueuedMessage[]>(
-      threadQueuedMessagesQueryKey("thread-1"),
-    );
-    expect(optimisticQueue).toHaveLength(2);
-    expect(optimisticQueue?.[1]).toMatchObject({
-      id: expect.stringMatching(/^optimistic-queued-/u),
-      content: [{ type: "text", text: "Queue this", mentions: [] }],
-      model: "codex-default",
-      reasoningLevel: "high",
-      permissionMode: "accept-edits",
-      serviceTier: "fast",
-    });
-
-    const serverQueuedMessage = makeQueuedMessage({
-      id: "qmsg-server",
-      content: [{ type: "text", text: "Queue this", mentions: [] }],
-      createdAt: 10,
-      updatedAt: 10,
-    });
-    applyQueuedMessageCreateResult({
-      queryClient,
-      queuedMessage: serverQueuedMessage,
-      threadId: "thread-1",
-      transaction,
-    });
-
-    expect(
-      queryClient
-        .getQueryData<ThreadQueuedMessage[]>(
-          threadQueuedMessagesQueryKey("thread-1"),
-        )
-        ?.map((queuedMessage) => queuedMessage.id),
-    ).toEqual(["qmsg-existing", "qmsg-server"]);
-    expect(
-      queryClient.getQueryData(threadPromptHistoryQueryKey("thread-1")),
-    ).toEqual([
-      {
-        id: "queued-message:qmsg-server",
-        createdAt: 10,
-        input: [{ type: "text", text: "Queue this", mentions: [] }],
-      },
-    ]);
-  });
-
-  it("rolls back optimistic queued message creation", async () => {
-    const queryClient = createAppQueryClient({
-      defaultOptions: { queries: { gcTime: Infinity, retry: false } },
-      showMutationErrorToasts: false,
-    });
-    const previousQueue = [makeQueuedMessage({ id: "qmsg-existing" })];
-    queryClient.setQueryData(
-      threadQueuedMessagesQueryKey("thread-1"),
-      previousQueue,
-    );
-
-    const transaction = await beginCreateQueuedMessageTransaction({
-      queryClient,
-      request: {
-        id: "thread-1",
-        input: [{ type: "text", text: "Queue this", mentions: [] }],
-      },
-    });
-    rollbackCreateQueuedMessageTransaction({
-      queryClient,
-      request: {
-        id: "thread-1",
-        input: [{ type: "text", text: "Queue this", mentions: [] }],
-      },
-      transaction,
-    });
-
-    expect(
-      queryClient.getQueryData(threadQueuedMessagesQueryKey("thread-1")),
-    ).toEqual(previousQueue);
   });
 
   it("updates queued message content without changing its queue position", async () => {
@@ -539,13 +433,20 @@ describe("thread runtime cache owner", () => {
     ).toEqual([remaining]);
   });
 
-  it("optimistically queues queue-if-active sends", async () => {
+  it.each([
+    "active",
+    "provisioning",
+    "starting",
+    "stopping",
+    "waiting-for-host",
+  ] as const)("optimistically queues queue-if-active sends while %s", async (displayStatus) => {
     const queryClient = createAppQueryClient({
       defaultOptions: { queries: { gcTime: Infinity, retry: false } },
       showMutationErrorToasts: false,
     });
     queryClient.setQueryData(threadQueryKey("thread-1"), {
       status: "active",
+      runtime: { displayStatus },
     });
     queryClient.setQueryData(threadQueuedMessagesQueryKey("thread-1"), []);
 

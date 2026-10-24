@@ -6,7 +6,6 @@ import {
 import { describe, expect, it } from "vitest";
 import {
   buildAutoFollowUpRequest,
-  buildCreateQueuedFollowUpRequest,
   buildFollowUpShortcutRequest,
   buildFollowUpSubmitMode,
   buildSideChatSubmitMode,
@@ -162,9 +161,10 @@ describe("threadDetailPromptSubmission", () => {
     });
   });
 
-  it("omits unsupported service tier when queueing a follow-up", () => {
+  it("omits unsupported service tier from auto follow-up requests", () => {
     expect(
-      buildCreateQueuedFollowUpRequest({
+      buildAutoFollowUpRequest({
+        compactFirst: false,
         execution: {
           model: "gpt-5",
           permissionMode: "accept-edits",
@@ -183,6 +183,7 @@ describe("threadDetailPromptSubmission", () => {
     ).toEqual({
       id: "thread-1",
       input: textInput,
+      mode: "queue-if-active",
       model: "gpt-5",
       permissionMode: "accept-edits",
       reasoningLevel: "high",
@@ -191,19 +192,6 @@ describe("threadDetailPromptSubmission", () => {
         reasoningLevel: "explicit",
         permissionMode: "explicit",
       },
-    });
-  });
-
-  it("omits execution overrides when queueing a follow-up without concrete defaults", () => {
-    expect(
-      buildCreateQueuedFollowUpRequest({
-        execution: null,
-        input: textInput,
-        threadId: "thread-1",
-      }),
-    ).toEqual({
-      id: "thread-1",
-      input: textInput,
     });
   });
 

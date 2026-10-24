@@ -111,7 +111,6 @@ import {
 } from "@/components/thread/embedded-chat";
 import {
   useCreateThread,
-  useCreateThreadQueuedMessage,
   useCancelThreadPlan,
   useClearThreadGoal,
   useStopThread,
@@ -156,7 +155,6 @@ import type { SendMessageMutationLike } from "./threadDetailMutationTypes";
 import { useTimeHasPassed } from "@/hooks/useTimeHasPassed";
 import {
   buildAutoFollowUpRequest,
-  buildCreateQueuedFollowUpRequest,
   buildFollowUpSubmitMode,
   buildFollowUpShortcutRequest,
   canCompactBeforeSend,
@@ -506,7 +504,6 @@ export function ThreadDetailPromptArea({
       enabled: promptHistoryEnabled,
     },
   );
-  const createQueuedMessage = useCreateThreadQueuedMessage();
   const stopThread = useStopThread();
   const cancelThreadPlan = useCancelThreadPlan();
   const clearThreadGoal = useClearThreadGoal();
@@ -939,12 +936,12 @@ export function ThreadDetailPromptArea({
     activeComposerDraftInput,
   });
   const isQueueMutationPending =
-    createQueuedMessage.isPending ||
+    (sendMessage.isPending &&
+      shouldQueueFollowUpMessage(runtimeDisplayStatus)) ||
     queuedMessageActionPending ||
     isFollowUpShortcutSending;
   const isFollowUpSubmitting =
     sendMessage.isPending ||
-    createQueuedMessage.isPending ||
     createThread.isPending ||
     isFollowUpShortcutSending;
   const handleStopThread = useCallback(() => {
@@ -1277,28 +1274,19 @@ export function ThreadDetailPromptArea({
       setBottomAttachmentError(null);
 
       try {
-        if (isQueuingMessage) {
-          const request = buildCreateQueuedFollowUpRequest({
-            threadId: thread.id,
-            input: submittedInput,
-            execution: followUpExecutionSelection,
+        const request = buildAutoFollowUpRequest({
+          compactFirst: compactFirst && sendAt === undefined,
+          threadId: thread.id,
+          input: submittedInput,
+          execution: followUpExecutionSelection,
+        });
+        if (request) {
+          await sendMessage.mutateAsync({
+            ...request,
+            ...(sendAt === undefined ? {} : { sendAt }),
+            ...(pluginSubmission === undefined ? {} : { pluginSubmission }),
           });
-          if (request) {
-            await createQueuedMessage.mutateAsync(request);
-          }
-        } else {
-          const request = buildAutoFollowUpRequest({
-            compactFirst: compactFirst && sendAt === undefined,
-            threadId: thread.id,
-            input: submittedInput,
-            execution: followUpExecutionSelection,
-          });
-          if (request) {
-            await sendMessage.mutateAsync({
-              ...request,
-              ...(sendAt === undefined ? {} : { sendAt }),
-              ...(pluginSubmission === undefined ? {} : { pluginSubmission }),
-            });
+          if (!isQueuingMessage) {
             setFullHistoryThreadId(null);
           }
         }
@@ -1318,7 +1306,6 @@ export function ThreadDetailPromptArea({
     [
       compactFirst,
       createHandoffThread,
-      createQueuedMessage,
       effectiveSelectedModel,
       followUpExecutionSelection,
       isDefaultExecutionOptionsLoading,
