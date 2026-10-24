@@ -149,7 +149,10 @@ it("clears the multi-selection when Escape dismisses its context menu", async ()
     {},
     { experiments: ["sidebarMultiSelect"] },
   );
-  fireEvent.click(screen.getByText("Second"), { metaKey: true });
+  fireEvent.click(screen.getByText("Second"), {
+    metaKey: true,
+    shiftKey: true,
+  });
   expect(screen.getByText("2 selected")).toBeTruthy();
   fireEvent.contextMenu(screen.getByText("Second"));
   const menu = await screen.findByRole("menu", {

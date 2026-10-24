@@ -825,14 +825,15 @@ off. An experiment you set yourself keeps your value either way.
   normal logging and flushes the in-flight profile, keeping saved files. See
   [diagnostics](debugging-and-qa.md#opt-in-server-performance-diagnostics).
 - `sidebarMultiSelect` (on for early adopters) lets the built-in thread list
-  select several threads: Cmd/Ctrl-click toggles a row (starting from the open
-  thread), Shift-click selects the visible range from the last clicked row, and
-  a plain click, Escape, or a click outside the sidebar clears the selection.
+  select several threads: Cmd/Ctrl+Shift-click toggles a row (starting from the
+  open thread), Shift-click selects the visible range from the last clicked row,
+  and a plain click, Cmd/Ctrl-click, Escape, or a click outside the sidebar
+  clears the selection.
   Right-clicking a selected row offers Mark read/unread, Pin/Unpin, Move to
   section, and Archive for the whole selection. Dragging a selected row moves
   every selected thread onto a section, under a thread, or into Pinned, or drops
-  them onto a composer as one mention per thread. While it is off, Cmd/Ctrl-click
-  opens a thread in a split. Plugins read it with
+  them onto a composer as one mention per thread. Cmd/Ctrl-click still opens a
+  thread in a split. Plugins read it with
   `experimental_useExperiment("sidebarMultiSelect")`.
 - `timelinePush` makes an open thread view subscribe to its latest timeline
   window over the WebSocket (`thread-timeline` subscription target); the server
