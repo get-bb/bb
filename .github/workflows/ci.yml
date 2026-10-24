@@ -402,6 +402,7 @@ jobs:
       - name: Test on Windows
         shell: cmd
         env:
+          VITEST_MAX_WORKERS: ${{ startsWith(matrix.shard, 'app-') && '4' || '' }}
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
           BB_CI_TEST_SHARD: ${{ matrix.vitestShard }}

@@ -104,49 +104,25 @@
       "shard": "app-1",
       "filter": "--filter=@bb/app",
       "concurrency": 2,
-      "vitestShard": "1/8"
+      "vitestShard": "1/4"
     },
     {
       "shard": "app-2",
       "filter": "--filter=@bb/app",
       "concurrency": 2,
-      "vitestShard": "2/8"
+      "vitestShard": "2/4"
     },
     {
       "shard": "app-3",
       "filter": "--filter=@bb/app",
       "concurrency": 2,
-      "vitestShard": "3/8"
+      "vitestShard": "3/4"
     },
     {
       "shard": "app-4",
       "filter": "--filter=@bb/app",
       "concurrency": 2,
-      "vitestShard": "4/8"
-    },
-    {
-      "shard": "app-5",
-      "filter": "--filter=@bb/app",
-      "concurrency": 2,
-      "vitestShard": "5/8"
-    },
-    {
-      "shard": "app-6",
-      "filter": "--filter=@bb/app",
-      "concurrency": 2,
-      "vitestShard": "6/8"
-    },
-    {
-      "shard": "app-7",
-      "filter": "--filter=@bb/app",
-      "concurrency": 2,
-      "vitestShard": "7/8"
-    },
-    {
-      "shard": "app-8",
-      "filter": "--filter=@bb/app",
-      "concurrency": 2,
-      "vitestShard": "8/8"
+      "vitestShard": "4/4"
     },
     {
       "shard": "plugins-1",

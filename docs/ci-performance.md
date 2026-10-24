@@ -4,7 +4,7 @@ The main CI workflow keeps build, lint/typecheck, two server test shards, eight 
 shards, integration tests, three package test groups, two plugin test groups, three fork
 check shards, and package smokes independent. Node 24/26 compatibility smokes run on
 main and manual runs. Windows runs the nine host packages, an app smoke, a desktop
-smoke, and seventeen test shards that cover the remaining suites; see
+smoke, and thirteen test shards that cover the remaining suites; see
 [windows-ci.md](windows-ci.md).
 
 ## PR selection
@@ -198,8 +198,8 @@ of a job rather than one against one.
 ## Windows test shards
 
 [windows-ci.md](windows-ci.md#full-test-suite) owns the Windows shard
-composition, install filters, and concurrency rules. The seventeen shards distribute the app tests across eight runners and keep
-process-heavy packages in separate groups. Windows setup takes
+composition, install filters, and concurrency rules. The thirteen shards distribute the app tests across four runners with four
+Vitest workers each and keep process-heavy packages in separate groups. Windows setup takes
 roughly twice as long as Linux, and test files run about half as fast.
 
 Windows server and other-package shards build SDK declarations
@@ -461,6 +461,49 @@ and the Linux plugin group 39 seconds earlier in that run. These are group
 measurements, not additive reductions in total CI latency. Eight app shards add
 four Windows jobs; splitting plugins adds one Linux job. Runner cost and queue
 pressure increase, and unrelated checks can become the critical path.
+
+The extra four Windows app shards were subsequently rejected: their second
+comparison saved 19 seconds but used 31% more app runner time. The retained
+configuration keeps four Windows app shards and sets four Vitest workers per
+runner. [Worker comparison](https://github.com/get-bb/bb/actions/runs/40074965277)
+measured the slowest test step at 82 seconds with three workers, 73 seconds
+with four workers, and 137 seconds with only two shards. One 16-vCPU runner
+with twelve workers took 160 seconds for the full app suite, before charging
+its slower setup. All completed layouts retained the full app test inventory.
+More workers in one process pool did not replace distributed execution well.
+
+Further targeted fixes keep the test cases and assertions while removing
+avoidable waiting and setup:
+
+- The Connect server-move integration test gates its simulated RPC transport
+  before enabling the freeze. Previously an already-started account long poll
+  delayed the freeze check by 25 seconds. Both real plugins and the real socket
+  still run; the account long-poll deadline has its own test.
+- Thread-cache tests keep sequential opening and the same settlement assertions
+  while polling immediately-resolving mock queries every millisecond instead
+  of waiting 50 milliseconds per thread.
+- Three machine-enrollment tests advance timeout timers inside React `act`,
+  exercising the same production polling loop without three wall-clock seconds.
+
+Local measurements: Connect integration file 30.96 to 5.99 seconds (12 tests),
+thread-query file 4.61 to 1.00 seconds (30 tests), and machine-enrollment file
+3.34 to 0.28 seconds (8 tests). Cross-platform measurements are recorded in
+[the wait-removal benchmark](https://github.com/get-bb/bb/actions/runs/40075320364).
+These are suite measurements, not additive whole-CI savings.
+
+That cross-platform run passed every control and candidate: 143 Connect tests,
+410 Tasks tests, and 38 query/enrollment tests per job, with identical case
+identities and statuses. Windows Connect steps fell from 36–37 to 12–14 seconds;
+Linux Connect steps fell from 34 to 9–11 seconds. Windows query-file execution
+fell from 4.66–4.69 to 1.31–1.47 seconds, and enrollment-file execution from
+3.37 to 0.39–0.59 seconds. A concurrent experiment deferring Tasks DOM setup
+showed no consistent Windows benefit and was not retained.
+
+One app shard with eight workers on a four-vCPU runner took 353 seconds and
+failed a retry-button assertion. Increasing concurrency did not fix the
+workload; the four-shard, four-worker layout passed all 6,303 cases with the
+same inventory as the other layouts. No timeouts were increased to make the
+oversubscribed configuration pass.
 
 [Oxc](https://github.com/oxc-project/oxc/blob/a22c9f2abc74cbc00a75cf3d7ad6adeeb2a22fc1/.github/workflows/ci.yml#L77-L134)
 overlaps dependency installation with Rust compilation and copies its Windows
