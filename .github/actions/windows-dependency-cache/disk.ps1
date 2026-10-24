@@ -59,3 +59,4 @@ try {
   }
   'active=false' | Out-File -Append $env:GITHUB_OUTPUT
 }
+exit 0

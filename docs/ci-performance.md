@@ -317,6 +317,14 @@ image. They establish disk reuse as a candidate optimization, without
 claiming that changing dependency setup fixes runner queues or uncached test
 duration.
 
+[Production-action validation](https://github.com/get-bb/bb/actions/runs/40067670163)
+then restored the same non-mobile dependency image across all sixteen Windows
+checks. All passed, including both packaging smokes. Restore/mount plus frozen
+installation took a median 14 seconds, ranging from 10 to 25 seconds. The
+other-package shard still fetched its additional mobile dependencies. This run
+used the normal Turbo cache policy; the earlier controlled app and build-package
+benchmarks forced test execution.
+
 ### Dependency image lifecycle
 
 `.github/actions/windows-dependency-cache` restores a single NTFS VHDX file
