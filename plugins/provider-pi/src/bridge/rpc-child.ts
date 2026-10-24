@@ -104,6 +104,7 @@ export function buildPiChildEnv(
     sanitizeInheritedChildProcessEnv({ env: process.env }),
   );
   delete inheritedEnv.PI_BB_TOOLS_FILE;
+  delete inheritedEnv.PI_BB_SERVICE_TIER;
   return {
     ...inheritedEnv,
     ...overrides,

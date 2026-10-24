@@ -3,7 +3,10 @@ import {
   type DynamicTool,
   type InstructionMode,
   type ReasoningLevel,
+  type ServiceTier,
 } from "@get-bb/plugin-sdk/provider-bridge";
+
+const DEFAULT_PI_SERVICE_TIER: ServiceTier = "default";
 
 type PiReasoningLevel = "off" | "low" | "medium" | "high" | "xhigh" | "max";
 
@@ -27,6 +30,7 @@ function toPiThinkingLevel(
 interface PiSessionOptions {
   model?: string | undefined;
   reasoningLevel?: ReasoningLevel | undefined;
+  serviceTier?: ServiceTier | undefined;
   instructions?: string | undefined;
   envVars?: Record<string, string> | undefined;
 }
@@ -47,18 +51,21 @@ export interface PiSessionParams {
   cwd: string;
   dynamicTools?: readonly DynamicTool[];
   model?: string;
+  serviceTier: ServiceTier;
   shellEnvOverrides: Record<string, string>;
   thinkingLevel?: PiReasoningLevel;
 }
 
 export interface PiTurnOptions {
   model: string | undefined;
+  serviceTier: ServiceTier | undefined;
   thinkingLevel: PiReasoningLevel | undefined;
 }
 
 export function buildPiTurnOptions(options: PiSessionOptions): PiTurnOptions {
   return {
     model: options.model ? options.model : undefined,
+    serviceTier: options.serviceTier,
     thinkingLevel: toPiThinkingLevel(options.reasoningLevel),
   };
 }
@@ -70,6 +77,7 @@ export function buildPiSessionParams(
   const thinkingLevel = toPiThinkingLevel(args.options.reasoningLevel);
   return {
     cwd: args.cwd,
+    serviceTier: args.options.serviceTier ?? DEFAULT_PI_SERVICE_TIER,
     shellEnvOverrides: {
       BB_THREAD_ID: args.threadId,
       ...buildShellEnvOverrides(args.options.envVars),
