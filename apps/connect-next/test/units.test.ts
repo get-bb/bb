@@ -397,20 +397,30 @@ describe("account API client", () => {
   });
 
   it("treats a null batch answer as could-not-check and a malformed one as an error", async () => {
+    vi.useFakeTimers();
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
     const unchecked = createAccountApi({
       baseUrl: "https://connect.test",
       secret: "s",
       fetch: async () => Response.json({ answers: [null] }),
     });
-    await expect(unchecked.resolve(ASK, { deadlineMs: 300 })).rejects.toThrow(
-      "could not check",
-    );
+    const uncheckedResult = expect(
+      unchecked.resolve(ASK, { deadlineMs: 300 }),
+    ).rejects.toThrow("could not check");
+    await vi.runAllTimersAsync();
+    await uncheckedResult;
     const malformed = createAccountApi({
       baseUrl: "https://connect.test",
       secret: "s",
       fetch: async () => Response.json({ answers: [{ label: null }] }),
     });
-    await expect(malformed.resolve(ASK)).rejects.toThrow("malformed");
+    const malformedResult = expect(malformed.resolve(ASK)).rejects.toThrow(
+      "malformed",
+    );
+    await vi.runAllTimersAsync();
+    await malformedResult;
   });
 
   it(`sends presence in calls of at most ${GATE_PRESENCE_BATCH_MAX} and checks the results`, async () => {

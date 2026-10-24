@@ -501,9 +501,26 @@ showed no consistent Windows benefit and was not retained.
 
 One app shard with eight workers on a four-vCPU runner took 353 seconds and
 failed a retry-button assertion. Increasing concurrency did not fix the
-workload; the four-shard, four-worker layout passed all 6,303 cases with the
-same inventory as the other layouts. No timeouts were increased to make the
+workload; the four-shard, four-worker layout completed with 6,302 passing cases and one
+existing skip, matching the other layouts' inventory. No timeouts were increased to make the
 oversubscribed configuration pass.
+
+A subsequent full run exposed two timing failures in unchanged tests. The
+account API malformed/null-response test now advances a fake clock through its
+unchanged 300ms deadline, avoiding a race with Windows scheduling. The existing
+1,005-supporting-file skill test exposed unnecessary scanner work: recursive
+skill traversal resolved and statted ordinary files it could never consume.
+The scanner now skips those known regular files after handling `SKILL.md`,
+while preserving directory, symlink, boundary, and command traversal. A direct
+before/after profile produced identical results and reduced supporting-file
+metadata calls from 2,010 to zero; the fixture and its timeout are unchanged.
+The bundled provider-bridge runtime changed, requiring SDK patch 0.6.80.
+
+[Windows timing-fix comparison](https://github.com/get-bb/bb/actions/runs/40076120786)
+passed both control and candidate replicas, retaining the complete skill-index
+and Connect Next suites. The full-run failures demonstrate timing sensitivity;
+the controlled baselines passed, so they are not claimed as deterministic
+baseline correctness failures.
 
 [Oxc](https://github.com/oxc-project/oxc/blob/a22c9f2abc74cbc00a75cf3d7ad6adeeb2a22fc1/.github/workflows/ci.yml#L77-L134)
 overlaps dependency installation with Rust compilation and copies its Windows
