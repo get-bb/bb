@@ -337,7 +337,10 @@
       "passThroughEnv": ["*"]
     },
     "@bb/app#dev": {
-      "dependsOn": ["@bb/templates#generate:templates"],
+      "dependsOn": [
+        "@bb/templates#generate:templates",
+        "@bb/plugin-build#generate"
+      ],
       "cache": false,
       "persistent": true,
       "passThroughEnv": ["*"]
@@ -375,7 +378,10 @@
       "passThroughEnv": ["*"]
     },
     "storybook": {
-      "dependsOn": ["@bb/templates#generate:templates"],
+      "dependsOn": [
+        "@bb/templates#generate:templates",
+        "@bb/plugin-build#generate"
+      ],
       "cache": false,
       "persistent": true,
       "passThroughEnv": ["*"]

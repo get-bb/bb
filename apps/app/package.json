@@ -106,6 +106,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@bb/plugin-build": "workspace:*",
     "@bb/plugin-registry": "workspace:*",
     "@bb/test-helpers": "workspace:*",
     "@bb/tsconfig": "workspace:*",

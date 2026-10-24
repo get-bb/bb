@@ -1,3 +1,4 @@
+import { HOST_TAILWIND_VERSION } from "@bb/plugin-build/host-tailwind-version";
 import { useInsertionEffect } from "react";
 
 const CSS_MARKER = "data-bb-plugin-css";
@@ -151,11 +152,15 @@ function deactivateAfterFinalRelease(
   }, CSS_RELEASE_GRACE_MS);
 }
 
+function hostTailwindUrl(url: string): string {
+  return `${url}${url.includes("?") ? "&" : "?"}host-tailwind=${HOST_TAILWIND_VERSION}`;
+}
+
 export function prefetchPluginCss(url: string): void {
   const link = document.createElement("link");
   link.rel = "preload";
   link.as = "style";
-  link.href = url;
+  link.href = hostTailwindUrl(url);
   link.setAttribute(CSS_PREFETCH_MARKER, "");
   link.onload = () => link.remove();
   link.onerror = () => link.remove();
@@ -175,6 +180,7 @@ export function applyPluginCss(pluginId: string, url: string | null): void {
     return;
   }
 
+  url = hostTailwindUrl(url);
   if (record.url === url) {
     if (record.consumers > 0) activateStylesheet(pluginId, record, url);
     else startPreload(pluginId, record, url);

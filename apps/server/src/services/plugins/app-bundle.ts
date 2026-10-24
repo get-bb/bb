@@ -6,6 +6,7 @@ import { PLUGIN_SDK_MAJOR } from "@bb/domain";
 import {
   assertValidPluginCompactIconSvg,
   assertValidPluginIconSvg,
+  dropHostProvidedTailwind,
 } from "@bb/plugin-build";
 
 interface PluginArtifactMeta {
@@ -42,8 +43,29 @@ interface PluginAppState {
 
 interface PluginAppAssets {
   jsPath: string;
-  cssPath: string | null;
+  css: { original: Buffer; withoutHostTailwind: Buffer } | null;
   hash: string;
+}
+
+export interface PluginAppAsset {
+  hash: string;
+  read(hostTailwind: boolean): Promise<Buffer>;
+}
+
+export function pluginAppAsset(
+  assets: PluginAppAssets,
+  kind: "js" | "css",
+): PluginAppAsset | undefined {
+  if (kind === "js")
+    return { hash: assets.hash, read: () => readFile(assets.jsPath) };
+  const css = assets.css;
+  return css === null
+    ? undefined
+    : {
+        hash: assets.hash,
+        read: async (hostTailwind) =>
+          hostTailwind ? css.withoutHostTailwind : css.original,
+      };
 }
 
 export interface PluginAppBundleSnapshot {
@@ -311,14 +333,23 @@ export async function loadPluginAppBundle(
   if (meta === null) {
     return { state: { hasApp: true, bundle: null }, assets: null };
   }
-  let css: Buffer | null;
+  let css: PluginAppAssets["css"];
   try {
-    css = await readFile(cssPath);
+    const original = await readFile(cssPath);
+    css = {
+      original,
+      withoutHostTailwind: Buffer.from(
+        dropHostProvidedTailwind(original.toString("utf8")),
+      ),
+    };
   } catch {
     css = null;
   }
   const hasher = createHash("sha256").update(js);
-  if (css !== null) hasher.update(css);
+  if (css !== null) {
+    hasher.update(css.original);
+    hasher.update(css.withoutHostTailwind);
+  }
   hasher.update(metaRaw);
   hasher.update(pluginId);
   const hash = hasher.digest("hex").slice(0, 16);
@@ -337,6 +368,6 @@ export async function loadPluginAppBundle(
         compatible: meta.sdkMajor === PLUGIN_SDK_MAJOR,
       },
     },
-    assets: { jsPath, cssPath: css !== null ? cssPath : null, hash },
+    assets: { jsPath, css, hash },
   };
 }

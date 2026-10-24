@@ -18,6 +18,7 @@ import {
   RUNTIME_SLOT_BY_SPECIFIER,
 } from "./build-plugin-app.js";
 import { RUNTIME_EXPORT_MANIFEST } from "./generated/runtime-export-manifest.generated.js";
+import { dropHostProvidedTailwind } from "./scope-plugin-utilities.js";
 import { resolvePluginBuildToolchain } from "./toolchain.js";
 
 function testToolchain() {
@@ -424,6 +425,51 @@ describe("plugin app runtime shim", () => {
         warning.includes("frontend-registration.md#tab-api-migration"),
       ).length,
     ).toBe(2);
+  });
+
+  it("emits Tailwind rules the host provides, which dropHostProvidedTailwind removes", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "bb-plugin-properties-"));
+    tempDirs.push(dir);
+    await writeFile(
+      join(dir, "package.json"),
+      JSON.stringify({
+        name: "bb-plugin-properties-fixture",
+        version: "0.0.0",
+        bb: {
+          name: "Properties fixture",
+          description:
+            "Verifies plugin CSS leaves property registration to the host.",
+          branding: { icon: "Paintbrush" },
+          server: "./server.ts",
+          app: "./app.ts",
+        },
+      }),
+    );
+    await writeFile(
+      join(dir, "server.ts"),
+      "export default function plugin() {}\n",
+    );
+    await writeFile(
+      join(dir, "app.ts"),
+      'export const classes = "shadow-md ring-2 blur-sm translate-x-1 bg-linear-to-r from-red-500 animate-in fade-in-0 zoom-in-95 animate-spin";\n',
+    );
+
+    const result = await buildPluginApp(
+      dir,
+      "0.9.0-test",
+      await testToolchain(),
+    );
+    const built = await readFile(result.cssPath, "utf8");
+    expect(built).toContain("@property --tw-enter-opacity");
+    expect(built).toContain(":root,:host{");
+
+    const css = dropHostProvidedTailwind(built);
+    expect(css).toContain("--tw-enter-opacity:0");
+    expect(css).toContain("@keyframes enter");
+    expect(css).toContain("@keyframes spin");
+    expect(css).not.toContain("@property");
+    expect(css).not.toContain("@supports (((-webkit-hyphens");
+    expect(css).not.toContain(":root");
   });
 
   it("minifies app.js and app.css unless the caller asks for readable output", async () => {
