@@ -15,19 +15,20 @@ describe("SideChatPanel", () => {
     sourceSeqEnd: 7,
   };
 
-  it("send-to-main queues the message text on the source thread through the public API", async () => {
-    const create = vi.fn(async () => ({ id: "qm_1" }) as never);
+  it("send-to-main sends the message text to the source thread, queueing it if that thread is busy", async () => {
+    const send = vi.fn(async () => ({ ok: true, delivery: "sent" }) as never);
     const slot = renderSlot(
       app.threadPanelActions[0]!,
       { threadId: "thr_src", params },
-      { rpc: {}, sdk: { threads: { queuedMessages: { create } } } },
+      { rpc: {}, sdk: { threads: { send } } },
     );
 
     fireEvent.click(slot.getByTestId("bb-thread-chat-action-send-to-main"));
 
     await waitFor(() => {
-      expect(create).toHaveBeenCalledWith({
+      expect(send).toHaveBeenCalledWith({
         threadId: "thr_src",
+        mode: "queue-if-active",
         input: [{ type: "text", text: "test message text", mentions: [] }],
         senderThreadId: "thr_fork",
       });
