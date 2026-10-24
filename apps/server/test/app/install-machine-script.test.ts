@@ -15,6 +15,7 @@ import {
 import { tmpdir } from "node:os";
 import { createServer as createNetServer } from "node:net";
 import { delimiter, dirname, join } from "node:path";
+import { killProcessesReferencingPath } from "@bb/test-helpers";
 import { afterEach, describe, expect, it } from "vitest";
 
 const SCRIPT_PATH = new URL(
@@ -308,14 +309,9 @@ function writeUnreachableUserBus(fixture: Fixture, init: string): void {
   writeExecutable(join(fixture.binDir, "loginctl"), "#!/bin/sh\nexit 1\n");
 }
 
-afterEach(() => {
+afterEach(async () => {
   for (const directory of createdDirectories.splice(0)) {
-    try {
-      const servicePid = Number(
-        readFileSync(join(directory, "data/service-daemon.pid"), "utf8"),
-      );
-      process.kill(servicePid, "SIGTERM");
-    } catch {}
+    await killProcessesReferencingPath(directory);
     rmSync(directory, { force: true, recursive: true });
   }
 });

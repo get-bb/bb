@@ -12,6 +12,7 @@ import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
+import { killProcessesReferencingPath } from "@bb/test-helpers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createStandaloneBuiltinCompactCommandInput } from "@bb/domain";
 import type { DynamicTool, ReasoningLevel } from "@bb/domain";
@@ -687,6 +688,7 @@ afterEach(async () => {
     threadStartRequests.clear();
     vi.unstubAllEnvs();
     output.restore();
+    await killProcessesReferencingPath(workspaceDir);
     rmSync(workspaceDir, { recursive: true, force: true });
   }
 }, 30_000);

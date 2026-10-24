@@ -52,7 +52,10 @@ import { NotificationHub } from "../../../apps/server/src/ws/hub.js";
 import { WatchInterestCoordinator } from "../../../apps/server/src/ws/watch-interests.js";
 import { WorkspaceReadCaches } from "../../../apps/server/src/services/environments/workspace-read-cache.js";
 import { createPublicApiClient } from "@bb/server-contract";
-import { resolveProjectEnvCandidates } from "@bb/test-helpers";
+import {
+  killProcessesReferencingPath,
+  resolveProjectEnvCandidates,
+} from "@bb/test-helpers";
 import { waitForHostConnected } from "./assertions.js";
 import { createIntegrationFetch } from "./fetch.js";
 import { isNodeError, removePathWithRetry } from "./remove-path.js";
@@ -508,6 +511,7 @@ export async function createIntegrationHarness(
 
     await shutdownDaemon("integration-cleanup").catch(() => undefined);
     await server?.close().catch(() => undefined);
+    await killProcessesReferencingPath(tmpRoot);
     await removePathWithRetry(tmpRoot);
   }
 

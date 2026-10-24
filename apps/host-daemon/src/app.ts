@@ -3,6 +3,7 @@ import { HOST_DAEMON_RESTART_EXIT_CODE } from "@bb/config/machine-service";
 import { startDesktopBrowserBroker } from "./desktop-browser-broker.js";
 import { MachineEnvironment } from "./machine-environment.js";
 import { CommandRouter } from "./command-router.js";
+import { cancelEnvironmentHooks } from "./command-handlers/environment-hook.js";
 import { createDaemon, type HostDaemon } from "./daemon.js";
 import {
   createEventSink,
@@ -992,6 +993,7 @@ export async function createHostDaemonApp(
       disposeParcelWatcherBackend();
       await terminalManager.shutdownAll();
       terminalManager.dispose();
+      await cancelEnvironmentHooks(runtimeManager);
       await runtimeManager.shutdownAll();
       await eventSink.flush();
       await eventSink.dispose();

@@ -1075,6 +1075,14 @@ export class RuntimeManager {
   }
 
   async shutdownAll(): Promise<void> {
+    for (const pending of this.pendingEnvironmentProvisions.values()) {
+      pending.abortController.abort(
+        new WorkspaceError(
+          "provision_cancelled",
+          "Environment provisioning was cancelled because the host daemon is shutting down",
+        ),
+      );
+    }
     const entries = [...this.entries.values()];
     for (const pending of this.pendingEntries.values()) {
       try {

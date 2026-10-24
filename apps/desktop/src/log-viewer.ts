@@ -717,6 +717,9 @@ export function createLogTailer(args: CreateLogTailerArgs): LogTailer {
         component: state.component,
         logDir: args.logDir,
       });
+      if (stopped) {
+        return;
+      }
       if (currentFilePath === null) {
         if (state.currentFilePath !== null) {
           stopTailProcess({ state });

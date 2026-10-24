@@ -1,7 +1,11 @@
 import fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { listOpenFilePids, readPositivePidFile } from "@bb/test-helpers";
+import {
+  killProcessesReferencingPath,
+  listOpenFilePids,
+  readPositivePidFile,
+} from "@bb/test-helpers";
 import { isNodeError, removePathWithRetry } from "./helpers/remove-path.js";
 
 const INTEGRATION_TMP_PREFIX = "bb-integration-";
@@ -41,6 +45,7 @@ async function killProcess(pid: number): Promise<void> {
 }
 
 async function cleanupTmpRoot(tmpRoot: string): Promise<void> {
+  await killProcessesReferencingPath(tmpRoot);
   const openFilePids = new Set(await listOpenFilePids(tmpRoot));
   for (const pid of openFilePids) {
     await killProcess(pid).catch(() => undefined);

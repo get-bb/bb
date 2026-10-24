@@ -1,6 +1,7 @@
 import { appendFile, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { killProcessesReferencingPath } from "@bb/test-helpers";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createLogLineBuffer,
@@ -41,6 +42,7 @@ afterEach(async () => {
   while (tempDirs.length > 0) {
     const tempDir = tempDirs.pop();
     if (tempDir !== undefined) {
+      await killProcessesReferencingPath(tempDir.path);
       await rm(tempDir.path, { force: true, recursive: true });
     }
   }
@@ -270,6 +272,29 @@ describe("log viewer", () => {
           return processIds.every((pid) => !isProcessRunning(pid));
         },
       });
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "does not start tail processes when stopped while a refresh is resolving log files",
+    async () => {
+      const tempDir = await createTempDir();
+      await writeFile(join(tempDir.path, "desktop.log"), "");
+      await writeFile(join(tempDir.path, "server.1.log"), "");
+      await writeFile(join(tempDir.path, "host-daemon.1.log"), "");
+      const tailer = createLogTailer({
+        logDir: tempDir.path,
+        onLines() {},
+      });
+      tailers.push(tailer);
+      const started = tailer.start();
+      while (tailer.processIds().length === 0) {
+        await new Promise((resolvePromise) => setImmediate(resolvePromise));
+      }
+      tailer.stop();
+      await started;
+
+      expect(tailer.processIds()).toEqual([]);
     },
   );
 

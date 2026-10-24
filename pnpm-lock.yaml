@@ -2645,6 +2645,9 @@ importers:
         specifier: 4.6.5
         version: 4.6.5
     devDependencies:
+      '@bb/test-helpers':
+        specifier: workspace:*
+        version: link:../test-helpers
       '@bb/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
