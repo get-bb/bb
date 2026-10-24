@@ -97,7 +97,8 @@
     "semver": "^7.7.0",
     "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "vitest": "^4.1.1"
+    "vitest": "^4.1.1",
+    "@bb/process-utils": "workspace:*"
   },
   "engines": {
     "node": "^22.19.0 || ^24.0.0 || ^26.0.0"

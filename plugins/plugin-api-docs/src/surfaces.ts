@@ -1346,6 +1346,9 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Show native skills, commands, and plugins; validate selections with the shared skills index",
           "Test it against bb's conformance suite and recorded sessions, without a running bb",
         ],
+        reference: [
+          "Use @get-bb/plugin-sdk/process for hostToolchain executable and environment discovery, or spawnHostProcess, forkHostProcess and execHostFile (all experimental_ exports). Core uses these same launch paths; ENOENT or exit 127 starts a background discovery refresh without replaying side effects, and launches never wait for discovery. Explicit cwd and env are preserved, Windows shims are quoted, and workers recover a replaced Node runtime only when its native-module ABI matches.",
+        ],
         apiSymbols: [
           "experimental_defineProviderBridge",
           "experimental_scanSkillFiles",
@@ -1363,6 +1366,11 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "experimental_BridgeRecoveryError",
           "experimental_toolPresentation",
           "experimental_resolveExecutablePath",
+          "experimental_hostToolchain",
+          "experimental_spawnHostProcess",
+          "experimental_forkHostProcess",
+          "experimental_execHostFile",
+          "experimental_execHostFileCallback",
           "experimental_recordProviderChildIo",
           "experimental_acpProviderBridge",
           "AcpLaunchSpec",

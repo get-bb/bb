@@ -1,13 +1,14 @@
+import {
+  execHostFile,
+  sanitizeInheritedChildProcessEnv,
+} from "@bb/process-utils";
 import { randomUUID } from "node:crypto";
-import { execFile as execFileCallback } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { promisify } from "node:util";
 import { HOST_ID_FILE_NAME } from "@bb/host-daemon-contract";
-import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
 
-const execFileAsync = promisify(execFileCallback);
+const execFileAsync = execHostFile;
 
 type ExecFileResult = {
   stdout?: string | Buffer;

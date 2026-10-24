@@ -6,7 +6,6 @@ import {
   CliUnavailableError,
   cliEnvironment,
   createCliRunner,
-  resolveCliLaunch,
 } from "./cli-runner.js";
 
 const posix = process.platform !== "win32";
@@ -142,23 +141,6 @@ describe.runIf(posix)("createCliRunner", () => {
     await script(`echo ok`);
     found = binary;
     expect((await run(["status"], options())).stdout).toBe("ok\n");
-  });
-});
-
-describe("resolveCliLaunch", () => {
-  it("runs an extensionless CLI through Node on Windows", () => {
-    expect(
-      resolveCliLaunch("C:\\bb\\bundle\\bb", ["status"], "win32", "node.exe"),
-    ).toEqual({ command: "node.exe", args: ["C:\\bb\\bundle\\bb", "status"] });
-    expect(
-      resolveCliLaunch("C:\\bb\\bb.exe", ["status"], "win32", "node.exe"),
-    ).toEqual({ command: "C:\\bb\\bb.exe", args: ["status"] });
-  });
-
-  it("runs the CLI directly elsewhere", () => {
-    expect(resolveCliLaunch("/opt/bb/bb", ["status"], "linux", "node")).toEqual(
-      { command: "/opt/bb/bb", args: ["status"] },
-    );
   });
 });
 

@@ -1,8 +1,9 @@
 #!/usr/bin/env node
+import { hostToolchain, spawnHostProcess as spawn } from "@bb/process-utils";
+import { nodeNetworkArgs } from "@bb/config/node-network";
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { relayDesktopAppUpdates } from "@bb/config/desktop-app-update";
-import { spawn } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { spawnLoggedProcess } from "./logged-process.js";
 import {
@@ -173,6 +174,15 @@ const MANAGED_CONFIG_KEYS = BB_APP_MANAGED_CONFIG_KEYS;
 const MANAGED_CONFIG_KEY_VALUES = new Set<string>(MANAGED_CONFIG_KEYS);
 const STARTUP_ONLY_MANAGED_CONFIG_KEYS = new Set<string>(["BB_LOG_LEVEL"]);
 const STARTUP_ONLY_MANAGED_ENV_KEYS = new Set<string>([
+  "NODE_USE_ENV_PROXY",
+  "NODE_USE_SYSTEM_CA",
+  "NODE_EXTRA_CA_CERTS",
+  "HTTP_PROXY",
+  "HTTPS_PROXY",
+  "NO_PROXY",
+  "http_proxy",
+  "https_proxy",
+  "no_proxy",
   "BB_APP_SURFACE",
   "BB_APP_URL",
   "BB_DATA_DIR",
@@ -2551,7 +2561,7 @@ function resolveOwnAppInstall(args: {
 }
 
 export function createServerEnv(args: CreateServerEnvArgs): NodeJS.ProcessEnv {
-  const inheritedEnv = { ...args.env };
+  const inheritedEnv = hostToolchain.environment(args.env);
   delete inheritedEnv[APP_INSTALL_KIND_ENV_NAME];
   delete inheritedEnv[APP_SOURCE_COMMIT_ENV_NAME];
   delete inheritedEnv[APP_SOURCE_ORIGIN_ENV_NAME];
@@ -2575,7 +2585,7 @@ export function createServerEnv(args: CreateServerEnvArgs): NodeJS.ProcessEnv {
 
 export function createDaemonEnv(args: CreateDaemonEnvArgs): NodeJS.ProcessEnv {
   return {
-    ...stripThreadContextEnv(args.env),
+    ...hostToolchain.environment(stripThreadContextEnv(args.env)),
     BB_APP_VERSION: args.context.appVersion,
     BB_BRIDGE_DIR: args.context.daemonBundleDir,
     BB_CLI_DIR: args.context.daemonBundleDir,
@@ -2840,7 +2850,7 @@ Exits with code 3 without starting when the server on this data directory moved 
   log(" ", dim(`logs: ${runtime.context.logDir}/`));
   const childProcess = spawnLoggedProcess({
     command: process.execPath,
-    args: [runtime.context.serverEntry],
+    args: [...nodeNetworkArgs(runtime.serverEnv), runtime.context.serverEntry],
     logDir: runtime.context.logDir,
     logName: "server",
     env: createServerEnv({
@@ -2911,7 +2921,7 @@ async function runHostDaemonOnly(args: RunHostDaemonOnlyArgs): Promise<void> {
 
   const startDaemon = (): ChildManagedProcessRun =>
     spawnNamedManagedProcess({
-      args: [args.context.daemonEntry],
+      args: [...nodeNetworkArgs(daemonEnv), args.context.daemonEntry],
       command: process.execPath,
       env: daemonEnv,
       logDir: args.context.logDir,
@@ -3135,7 +3145,7 @@ export async function startFullStackServerProcess(
 
   const launchId = randomUUID();
   const serverRun = spawnNamedManagedProcess({
-    args: [args.context.serverEntry],
+    args: [...nodeNetworkArgs(args.env), args.context.serverEntry],
     command: process.execPath,
     env: { ...args.env, BB_SERVER_LAUNCH_ID: launchId },
     ipc: args.onSpawned !== undefined,
@@ -3171,7 +3181,7 @@ async function startDaemonProcess(
   args: StartDaemonProcessArgs,
 ): Promise<ManagedProcessRun> {
   const daemonRun = spawnNamedManagedProcess({
-    args: [args.context.daemonEntry],
+    args: [...nodeNetworkArgs(args.env), args.context.daemonEntry],
     command: process.execPath,
     env: args.env,
     logDir: args.context.logDir,

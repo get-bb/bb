@@ -532,6 +532,9 @@ importers:
       '@bb/plugin-build':
         specifier: workspace:*
         version: link:../../packages/plugin-build
+      '@bb/process-utils':
+        specifier: workspace:*
+        version: link:../../packages/process-utils
       '@bb/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
@@ -657,6 +660,9 @@ importers:
       '@bb/connect-db':
         specifier: workspace:*
         version: link:../../packages/connect-db
+      '@bb/process-utils':
+        specifier: workspace:*
+        version: link:../../packages/process-utils
       '@bb/text-utils':
         specifier: workspace:*
         version: link:../../packages/text-utils
@@ -746,6 +752,9 @@ importers:
       '@bb/host-daemon-contract':
         specifier: workspace:*
         version: link:../../packages/host-daemon-contract
+      '@bb/process-utils':
+        specifier: workspace:*
+        version: link:../../packages/process-utils
       bb-app:
         specifier: workspace:*
         version: link:../../packages/bb-app
@@ -1660,6 +1669,9 @@ importers:
       '@bb/host-daemon-contract':
         specifier: workspace:*
         version: link:../host-daemon-contract
+      '@bb/process-utils':
+        specifier: workspace:*
+        version: link:../process-utils
       '@bb/sdk':
         specifier: workspace:*
         version: link:../sdk
@@ -2089,6 +2101,9 @@ importers:
 
   packages/frp-client:
     dependencies:
+      '@bb/process-utils':
+        specifier: workspace:*
+        version: link:../process-utils
       '@bb/tunnel-contract':
         specifier: workspace:*
         version: link:../tunnel-contract
@@ -2604,6 +2619,9 @@ importers:
       execa:
         specifier: 9.6.1
         version: 9.6.1
+      npm:
+        specifier: 11.16.0
+        version: 11.16.0
       which-command:
         specifier: 0.1.0
         version: 0.1.0
@@ -5224,9 +5242,6 @@ importers:
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
-      which-command:
-        specifier: 0.1.0
-        version: 0.1.0
       zod:
         specifier: 4.6.5
         version: 4.6.5

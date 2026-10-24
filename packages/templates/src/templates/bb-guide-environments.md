@@ -242,3 +242,10 @@ Every inspection command accepts an arbitrary environment ID and supports
 `--json`. Non-git status/diff responses are reported explicitly. `diff-file`
 prints UTF-8 content directly and labels base64 binary content; diff and patch
 truncation markers are preserved.
+
+Host commands share executable discovery across the daemon, server, desktop,
+providers, and plugins. Service launches include native `~/.local/bin` installs
+and mise/asdf shims. If a command disappears or exits 127, the next launch
+refreshes discovery. A replaced Node executable is recovered when a compatible
+runtime is available; commands with possible side effects are not retried
+automatically.

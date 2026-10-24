@@ -1,8 +1,12 @@
-import { execFile, spawn, type ChildProcess } from "node:child_process";
-import { constants } from "node:fs";
+import {
+  experimental_hostToolchain as hostToolchain,
+  experimental_execHostFile,
+  experimental_spawnHostProcess as spawn,
+} from "@get-bb/plugin-sdk/process";
+import type { ChildProcess } from "node:child_process";
 import { delimiter, dirname, isAbsolute, join } from "node:path";
-import { promisify, stripVTControlCharacters } from "node:util";
-import { access, mkdir, stat } from "node:fs/promises";
+import { stripVTControlCharacters } from "node:util";
+import { mkdir, stat } from "node:fs/promises";
 import {
   AUTOMATION_SCRIPT_TIMEOUT_MAX_MS,
   type AutomationScriptInterpreter,
@@ -13,11 +17,11 @@ import {
   scriptsRoot,
 } from "./script-files.js";
 
-const execFileAsync = promisify(execFile);
+const execFileAsync = experimental_execHostFile;
 const SCRIPT_OUTPUT_MAX_BYTES = 1024 * 1024;
 const SCRIPT_FAILURE_DETAIL_MAX_CHARS = 200;
 
-let resolvedBbPath: string | null = null;
+let verifiedBbPath: string | null = null;
 
 const BB_NOT_INJECTED_WARNING =
   "[bb] warning: could not locate the bb CLI, so `bb` is not on PATH for this script.";
@@ -25,42 +29,6 @@ const BB_NOT_INJECTED_WARNING =
 async function commandWorks(command: string, args: string[]): Promise<boolean> {
   try {
     await execFileAsync(command, args, { timeout: 5_000 });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export function bbBinaryCandidates(env: NodeJS.ProcessEnv): string[] {
-  const candidates: string[] = [];
-  const pushIfAbsolute = (candidate: string): void => {
-    if (isAbsolute(candidate)) {
-      candidates.push(candidate);
-    }
-  };
-  const fromCli = env.BB_CLI?.trim();
-  if (fromCli !== undefined && fromCli.length > 0) {
-    pushIfAbsolute(fromCli);
-  }
-  const fromCliDir = env.BB_CLI_DIR?.trim();
-  if (fromCliDir !== undefined && fromCliDir.length > 0) {
-    pushIfAbsolute(join(fromCliDir, "bb"));
-  }
-  for (const entry of (env.PATH ?? "").split(delimiter)) {
-    const trimmed = entry.trim();
-    if (trimmed.length > 0) {
-      pushIfAbsolute(join(trimmed, "bb"));
-    }
-  }
-  candidates.push("/opt/homebrew/bin/bb", "/usr/local/bin/bb");
-  return candidates;
-}
-
-async function isExecutableFile(candidate: string): Promise<boolean> {
-  try {
-    const stats = await stat(candidate);
-    if (!stats.isFile()) return false;
-    await access(candidate, constants.X_OK);
     return true;
   } catch {
     return false;
@@ -78,15 +46,12 @@ async function isDirectory(candidate: string): Promise<boolean> {
 async function resolveBbBinary(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<string | null> {
-  if (resolvedBbPath !== null) return resolvedBbPath;
-  for (const candidate of bbBinaryCandidates(env)) {
-    if (!(await isExecutableFile(candidate))) continue;
-    if (await commandWorks(candidate, ["--version"])) {
-      resolvedBbPath = candidate;
-      return candidate;
-    }
-  }
-  return null;
+  const candidate = hostToolchain.resolve("bb", { env });
+  if (candidate === null) return null;
+  if (candidate === verifiedBbPath) return candidate;
+  if (!(await commandWorks(candidate, ["--version"]))) return null;
+  verifiedBbPath = candidate;
+  return candidate;
 }
 
 export function scriptPathEnv(

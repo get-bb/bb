@@ -178,8 +178,9 @@ describe("protocol self-update", () => {
 
     expect(test.runProcess).toHaveBeenCalledOnce();
     expect(test.runProcess).toHaveBeenCalledWith(
-      "npm",
+      process.execPath,
       [
+        expect.stringMatching(/npm-cli\.js$/u),
         "install",
         "-g",
         "--allow-scripts=better-sqlite3,node-pty,@parcel/watcher",
@@ -187,7 +188,9 @@ describe("protocol self-update", () => {
       ],
       {
         env: expect.objectContaining({
-          PATH: `${dirname(process.execPath)}${delimiter}/usr/bin:/bin`,
+          PATH: expect.stringContaining(
+            `${dirname(process.execPath)}${delimiter}/usr/bin:/bin`,
+          ),
         }),
       },
     );
@@ -202,8 +205,9 @@ describe("protocol self-update", () => {
     );
 
     expect(test.runProcess).toHaveBeenCalledWith(
-      "npm",
+      process.execPath,
       [
+        expect.stringMatching(/npm-cli\.js$/u),
         "install",
         "-g",
         "--allow-scripts=better-sqlite3,node-pty,@parcel/watcher",
@@ -224,8 +228,9 @@ describe("protocol self-update", () => {
     );
 
     expect(test.runProcess).toHaveBeenCalledWith(
-      "npm",
+      process.execPath,
       [
+        expect.stringMatching(/npm-cli\.js$/u),
         "install",
         "-g",
         "--allow-scripts=better-sqlite3,node-pty,@parcel/watcher",

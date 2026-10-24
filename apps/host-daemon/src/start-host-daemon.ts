@@ -1,3 +1,4 @@
+import { hostToolchain } from "@bb/process-utils";
 import { randomUUID } from "node:crypto";
 import { dirname } from "node:path";
 import { loadHostDaemonStartConfig } from "@bb/config/host-daemon";
@@ -19,7 +20,6 @@ import { loadHostIdentity, persistHostId } from "./identity.js";
 import { acquireDaemonLock } from "./lock.js";
 import { resolveHostDaemonLocalApiConfig } from "./local-api-config.js";
 import {
-  createUserShellPathResolver,
   prepareRuntimeShellEnv,
   resolvePowerShellExecutionPolicyDefault,
   resolveBbExecutablePathInDirectory,
@@ -151,17 +151,18 @@ export async function startHostDaemon(
       }),
     );
     const hostWatcher = createHostWatcher();
-    const resolveUserShellPath = createUserShellPathResolver();
-    const resolveRuntimeShellEnv = async () =>
-      prepareRuntimeShellEnv({
+    const resolveRuntimeShellEnv = async () => {
+      await hostToolchain.refresh();
+      return prepareRuntimeShellEnv({
         bbExecutableDirectory,
         bbExecutablePath,
         hostDaemonPort: localApiConfig.port,
-        inheritedPath: (await resolveUserShellPath()) ?? process.env.PATH,
+        inheritedPath: hostToolchain.environment().PATH,
         powershellExecutionPolicy:
           await resolvePowerShellExecutionPolicyDefault(),
         serverUrl: machineAuthProxy?.serverUrl ?? serverUrl,
       });
+    };
     const runtimeShellEnv = await resolveRuntimeShellEnv();
     const runtimeShellEnvResolvedAtMs = Date.now();
     app = await createHostDaemonApp({

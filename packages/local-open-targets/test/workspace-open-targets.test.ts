@@ -23,14 +23,19 @@ describe("default workspace open-target runtime", () => {
       "-e",
       "process.stdout.write(process.env.PATH ?? '')",
     ]);
-    expect(inheritedResult.stdout).toBe(process.env.PATH ?? "");
+    expect(inheritedResult.stdout.split(path.delimiter)[0]).toBe(
+      process.env.PATH?.split(path.delimiter)[0],
+    );
+    expect(inheritedResult.stdout).not.toContain("/Users/test/.local/bin");
 
     const userExecutableResult = await runtime.execFile(
       process.execPath,
       ["-e", "process.stdout.write(process.env.PATH ?? '')"],
       { env: runtime.env },
     );
-    expect(userExecutableResult.stdout).toBe("/Users/test/.local/bin:/usr/bin");
+    expect(userExecutableResult.stdout).toMatch(
+      /^\/Users\/test\/\.local\/bin:\/usr\/bin(?::|$)/u,
+    );
   });
 });
 
@@ -102,6 +107,19 @@ function createRuntime(
         }
         return { stdout: "" };
       }),
+    hasExecutable: async (command, env) => {
+      if (!args.execFile) return false;
+      try {
+        await args.execFile(
+          args.platform === "win32" ? "where.exe" : "which",
+          [command],
+          env === undefined ? undefined : { env },
+        );
+        return true;
+      } catch {
+        return false;
+      }
+    },
     env: args.env,
     platform: args.platform ?? "darwin",
   };

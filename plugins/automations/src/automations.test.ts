@@ -38,7 +38,6 @@ import {
   validateOnceDefinition,
 } from "./schedule-helpers.js";
 import {
-  bbBinaryCandidates,
   executeStoredScript,
   isWakeAgentSuppressed,
   mapScriptResultToRun,
@@ -2022,49 +2021,6 @@ describe("automation CLI --script-file", () => {
 });
 
 describe("bb CLI injection for script runs", () => {
-  it("prefers the env pointers over PATH and macOS install locations", () => {
-    expect(
-      bbBinaryCandidates({
-        BB_CLI: "/daemon/bundle/bb",
-        BB_CLI_DIR: "/other/dir",
-      })[0],
-    ).toBe("/daemon/bundle/bb");
-    expect(bbBinaryCandidates({ BB_CLI_DIR: "/daemon/bundle" })[0]).toBe(
-      join("/daemon/bundle", "bb"),
-    );
-  });
-
-  it("expands PATH itself so every candidate is absolute", () => {
-    expect(
-      bbBinaryCandidates({ PATH: ["/usr/bin", "/opt/tools"].join(delimiter) }),
-    ).toEqual([
-      join("/usr/bin", "bb"),
-      join("/opt/tools", "bb"),
-      "/opt/homebrew/bin/bb",
-      "/usr/local/bin/bb",
-    ]);
-    expect(
-      bbBinaryCandidates({ PATH: "/usr/bin" }).every((c) => isAbsolute(c)),
-    ).toBe(true);
-  });
-
-  it("drops entries that would resolve against the wrong directory", () => {
-    expect(
-      bbBinaryCandidates({ PATH: ["/usr/bin", "", "/bin"].join(delimiter) }),
-    ).toEqual([
-      join("/usr/bin", "bb"),
-      join("/bin", "bb"),
-      "/opt/homebrew/bin/bb",
-      "/usr/local/bin/bb",
-    ]);
-    expect(
-      bbBinaryCandidates({ BB_CLI: "  ", BB_CLI_DIR: "", PATH: "" }),
-    ).toEqual(["/opt/homebrew/bin/bb", "/usr/local/bin/bb"]);
-    expect(
-      bbBinaryCandidates({ BB_CLI: "./bb", BB_CLI_DIR: "rel/dir", PATH: "" }),
-    ).toEqual(["/opt/homebrew/bin/bb", "/usr/local/bin/bb"]);
-  });
-
   it("prepends bb's directory to PATH only when it is absolute", () => {
     expect(scriptPathEnv("/daemon/bundle/bb", "/usr/bin:/bin")).toBe(
       `${dirname("/daemon/bundle/bb")}${delimiter}/usr/bin:/bin`,

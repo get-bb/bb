@@ -7,6 +7,11 @@
       "source": "./src/index.ts",
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./host-process": {
+      "source": "./src/host-process.ts",
+      "types": "./src/host-process.ts",
+      "default": "./src/host-process.ts"
     }
   },
   "types": "./src/index.ts",
@@ -20,7 +25,8 @@
   "dependencies": {
     "cross-spawn": "^7.0.6",
     "execa": "9.6.1",
-    "which-command": "0.1.0"
+    "which-command": "0.1.0",
+    "npm": "11.16.0"
   },
   "devDependencies": {
     "@bb/tsconfig": "workspace:*",

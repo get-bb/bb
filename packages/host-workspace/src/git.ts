@@ -1,22 +1,21 @@
-import { execFile, type ExecFileException } from "node:child_process";
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { promisify } from "node:util";
-import type {
-  DefaultBranchRelation,
-  GitCheckoutRef,
-  WorkspaceGitOperation,
-} from "@bb/domain";
 import {
+  execHostFileBuffer,
   execPortableFile,
   runVcsProcess,
   spawnManagedProcess,
   pathExists,
   sanitizeInheritedChildProcessEnv,
 } from "@bb/process-utils";
+import type { ExecFileException } from "node:child_process";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import type {
+  DefaultBranchRelation,
+  GitCheckoutRef,
+  WorkspaceGitOperation,
+} from "@bb/domain";
 
-const execFileAsync = promisify(execFile);
 const DEFAULT_BUFFER_BYTES = 16 * 1024 * 1024;
 
 export class WorkspaceError extends Error {
@@ -1640,9 +1639,8 @@ export async function readGitBlob(
   try {
     const blobArgs = ["cat-file", "blob", target];
     const result = await runVcsProcess("git", blobArgs, () =>
-      execFileAsync("git", blobArgs, {
+      execHostFileBuffer("git", blobArgs, {
         cwd,
-        encoding: "buffer",
         env: resolveGitProcessEnv({
           env: undefined,
           shellPath: options.shellPath,

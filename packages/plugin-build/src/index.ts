@@ -8,7 +8,6 @@ export {
   PLUGIN_SERVER_EXTERNALS,
 } from "./build-plugin-server.js";
 export { buildPluginHost } from "./build-plugin-host.js";
-export { resolveBundledNpmCli, resolveBundledNpxCli } from "./npm-cli.js";
 export * from "./plugin-dev-loop.js";
 export {
   PLUGIN_TOOLCHAIN_PINS,

@@ -1,8 +1,7 @@
-import { execFile } from "node:child_process";
+import { experimental_execHostFile } from "@get-bb/plugin-sdk/process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { promisify } from "node:util";
 import {
   type ProviderHealthResult,
   type ProviderInstallationRunResult,
@@ -25,7 +24,7 @@ import {
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
 
-const execFileAsync = promisify(execFile);
+const execFileAsync = experimental_execHostFile;
 const USAGE_FETCH_TIMEOUT_MS = 15_000;
 const CLAUDE_USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
 const CLAUDE_KEYCHAIN_SERVICE = "Claude Code-credentials";
@@ -57,19 +56,7 @@ const claudeAccountSchema = z.object({
 async function claudeExecutable(): Promise<string> {
   const explicit = process.env.BB_CLAUDE_CODE_EXECUTABLE?.trim();
   if (explicit) return explicit;
-  if (
-    process.platform !== "win32" ||
-    (await resolveExecutablePath("claude")) !== null
-  ) {
-    return "claude";
-  }
-  const nativePath = path.join(os.homedir(), ".local", "bin", "claude.exe");
-  try {
-    await fs.access(nativePath);
-    return nativePath;
-  } catch {
-    return "claude";
-  }
+  return (await resolveExecutablePath("claude")) ?? "claude";
 }
 
 function claudeInstallerCommand() {

@@ -1,10 +1,9 @@
-import { spawn } from "node:child_process";
+import { spawnHostProcess as spawn, hostToolchain } from "@bb/process-utils";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { resolveDataDirSkillsRootPath } from "@bb/config/skill-storage-paths";
-import { resolveBundledNpxCli } from "@bb/plugin-build";
 import matter from "gray-matter";
 import { ApiError } from "../../errors.js";
 import { REGISTRY_SKILL_NAME_PATTERN } from "./registry-parse.js";
@@ -68,7 +67,7 @@ function registrySkillsCliInvocation(args: {
   return {
     command: process.execPath,
     args: [
-      resolveBundledNpxCli(),
+      hostToolchain.bundledNpmCli("npx"),
       "-y",
       `skills@${REGISTRY_SKILLS_CLI_VERSION}`,
       "add",

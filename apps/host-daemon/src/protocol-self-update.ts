@@ -1,16 +1,18 @@
-import { execFile } from "node:child_process";
+import {
+  hostToolchain,
+  execHostFile,
+  execPortableFile,
+} from "@bb/process-utils";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { delimiter, dirname, isAbsolute, join } from "node:path";
-import { promisify } from "node:util";
+import { isAbsolute, join } from "node:path";
 import { calculateExponentialBackoffDelay } from "@bb/domain";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
-import { execPortableFile } from "@bb/process-utils";
 import type { HostDaemonLogger } from "./logger.js";
 import type { FetchFn } from "./server-client.js";
 import { usesSecureInternalFetchTransport } from "./server-client.js";
 import { sha256Hex } from "./sha256-hex.js";
 
-const execFileAsync = promisify(execFile);
+const execFileAsync = execHostFile;
 export const SELF_UPDATE_INITIAL_RETRY_DELAY_MS = 5_000;
 export const SELF_UPDATE_MAX_RETRY_DELAY_MS = 5 * 60 * 1000;
 const ATTEMPT_FILE_NAME = "host-daemon-update-attempt.json";
@@ -168,11 +170,6 @@ export async function defaultInstallTarball(
   tarballPath: string,
   runProcess: SelfUpdateProcessRunner,
 ): Promise<void> {
-  const executableDirectory = dirname(process.execPath);
-  const inheritedPath = process.env.PATH;
-  const path = inheritedPath
-    ? `${executableDirectory}${delimiter}${inheritedPath}`
-    : executableDirectory;
   const rawConfiguredPrefix = process.env.BB_APP_NPM_PREFIX?.trim();
   const configuredPrefix =
     rawConfiguredPrefix === "" ? undefined : rawConfiguredPrefix;
@@ -181,13 +178,19 @@ export async function defaultInstallTarball(
   }
   const prefixArgs =
     configuredPrefix === undefined ? [] : ["--prefix", configuredPrefix];
-  await runProcess(
-    "npm",
-    ["install", "-g", BB_APP_ALLOW_SCRIPTS_ARG, ...prefixArgs, tarballPath],
-    {
-      env: { ...process.env, PATH: path },
-    },
-  );
+  const args = [
+    "install",
+    "-g",
+    BB_APP_ALLOW_SCRIPTS_ARG,
+    ...prefixArgs,
+    tarballPath,
+  ];
+  const npm = hostToolchain.npmCli("npm");
+  const launch =
+    npm === null
+      ? hostToolchain.command("npm", args)
+      : hostToolchain.command(npm.node, [npm.cli, ...args]);
+  await runProcess(launch.command, launch.args, { env: launch.env });
 }
 
 export function createProtocolSelfUpdater(

@@ -1,10 +1,11 @@
-import { join } from "node:path";
-import { loadServerConfig } from "@bb/config/server";
 import {
+  hostToolchain,
   installSafeProcessDiagnostics,
   installSocketTypeOfServiceGuard,
   writeSafeProcessDiagnosticReport,
 } from "@bb/process-utils";
+import { join } from "node:path";
+import { loadServerConfig } from "@bb/config/server";
 
 const serverConfig = loadServerConfig();
 const diagnosticsLogsDir = join(serverConfig.BB_DATA_DIR, "logs");
@@ -32,6 +33,7 @@ function reportStartupFailure(error: unknown): void {
 }
 
 async function main(): Promise<void> {
+  void hostToolchain.refresh();
   const serverModule = await import("./start-server.js");
   await serverModule.runServer(serverConfig);
 }

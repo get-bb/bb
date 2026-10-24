@@ -208,7 +208,7 @@ describe("streamProviderInstallation with node-pty", () => {
 
       const { events, output } = await runPlan(envWithPath(binDir));
 
-      expect(output).toContain("example-cli-cmd update");
+      expect(output).toContain('example-cli-cmd "update"');
       expect(events.at(-1)).toMatchObject({ type: "completed", success: true });
     },
   );

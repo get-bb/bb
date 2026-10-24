@@ -1,4 +1,7 @@
-import { spawn } from "node:child_process";
+import {
+  experimental_hostToolchain as hostToolchain,
+  experimental_spawnHostProcess as spawn,
+} from "@get-bb/plugin-sdk/process";
 import { createHash, randomBytes } from "node:crypto";
 import {
   constants,
@@ -22,7 +25,7 @@ import {
   unlink,
   writeFile,
 } from "node:fs/promises";
-import { delimiter, join } from "node:path";
+import { join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod";
@@ -160,6 +163,8 @@ function installEnvironment(
     "no_proxy",
     "SSL_CERT_FILE",
     "NODE_EXTRA_CA_CERTS",
+    "NODE_USE_SYSTEM_CA",
+    "NODE_USE_ENV_PROXY",
   ]) {
     if (base[key]) env[key] = base[key];
   }
@@ -176,13 +181,8 @@ function installEnvironment(
 }
 
 export async function findNpm(env: NodeJS.ProcessEnv): Promise<string> {
-  for (const dir of (env.PATH ?? "").split(delimiter).filter(Boolean)) {
-    const candidate = join(dir, "npm");
-    try {
-      await access(candidate, constants.X_OK);
-      return candidate;
-    } catch {}
-  }
+  const command = hostToolchain.resolve("npm", { env });
+  if (command !== null) return command;
   throw new Error(
     "npm is not available on this browser host's PATH; install Node.js with npm on the selected host so the DevBrowser runtime can be installed there.",
   );

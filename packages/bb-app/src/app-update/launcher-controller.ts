@@ -18,7 +18,6 @@ import {
   formatNpmRevisionPackageRoot,
   installNpmRevision,
   pruneNpmRevisions,
-  resolveNpmCliPath,
 } from "./npm-revision.js";
 import type { RunCommand } from "./run-command.js";
 import { inspectSourceCheckout } from "./source-checkout.js";
@@ -180,7 +179,6 @@ export function createLauncherAppUpdateController(
     if (target.kind === "npm") {
       return installNpmRevision({
         dataDir: args.dataDir,
-        npmCliPath: resolveNpmCliPath(),
         onLine: (line) => {
           output.push(line);
           if (output.length > ACTIVITY_OUTPUT_LINES) output.shift();

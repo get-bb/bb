@@ -152,6 +152,11 @@
       "source": "./src/desktop-app-update.ts",
       "types": "./src/desktop-app-update.ts",
       "default": "./src/desktop-app-update.ts"
+    },
+    "./node-network": {
+      "source": "./src/node-network.ts",
+      "types": "./src/node-network.ts",
+      "default": "./src/node-network.ts"
     }
   },
   "scripts": {

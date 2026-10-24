@@ -1,7 +1,7 @@
+import { hostToolchain } from "@bb/process-utils";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
-import { createRequire } from "node:module";
-import { delimiter, dirname, join } from "node:path";
+import { join } from "node:path";
 import semver from "semver";
 import { z } from "zod";
 import {
@@ -73,35 +73,8 @@ export function formatNpmRevisionPackageRoot(
   );
 }
 
-export function resolveNpmCliPath(): string | null {
-  try {
-    const require = createRequire(import.meta.url);
-    return join(
-      dirname(require.resolve("npm/package.json")),
-      "bin",
-      "npm-cli.js",
-    );
-  } catch {
-    return null;
-  }
-}
-
-function createInstallEnv(): NodeJS.ProcessEnv {
-  const executableDirectory = dirname(process.execPath);
-  const inheritedPath = process.env.PATH;
-  return {
-    ...process.env,
-    PATH: inheritedPath
-      ? `${executableDirectory}${delimiter}${inheritedPath}`
-      : executableDirectory,
-    npm_config_fund: "false",
-    npm_config_update_notifier: "false",
-  };
-}
-
 export interface InstallNpmRevisionArgs {
   dataDir: string;
-  npmCliPath: string | null;
   onLine: (line: string) => void;
   onStep: (step: string) => void;
   runner: RunCommand;
@@ -150,11 +123,16 @@ export async function installNpmRevision(
     )}\n`,
   );
 
-  const env = createInstallEnv();
-  const npmCommand =
-    args.npmCliPath === null
-      ? { args: [] as string[], command: "npm" }
-      : { args: [args.npmCliPath], command: process.execPath };
+  const env = {
+    ...hostToolchain.environment(),
+    npm_config_fund: "false",
+    npm_config_update_notifier: "false",
+  };
+  const npmCommand = hostToolchain.command(
+    hostToolchain.node(),
+    [hostToolchain.bundledNpmCli()],
+    { env },
+  );
   try {
     args.signal?.throwIfAborted();
     args.onStep(`Downloading bb-app ${args.version}`);
