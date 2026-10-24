@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { delimiter, dirname, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
@@ -181,9 +182,28 @@ export async function defaultInstallTarball(
   }
   const prefixArgs =
     configuredPrefix === undefined ? [] : ["--prefix", configuredPrefix];
+  const npmCliPath = [
+    join(
+      executableDirectory,
+      "..",
+      "lib",
+      "node_modules",
+      "npm",
+      "bin",
+      "npm-cli.js",
+    ),
+    join(executableDirectory, "node_modules", "npm", "bin", "npm-cli.js"),
+  ].find((candidate) => existsSync(candidate));
   await runProcess(
-    "npm",
-    ["install", "-g", BB_APP_ALLOW_SCRIPTS_ARG, ...prefixArgs, tarballPath],
+    npmCliPath === undefined ? "npm" : process.execPath,
+    [
+      ...(npmCliPath === undefined ? [] : [npmCliPath]),
+      "install",
+      "-g",
+      BB_APP_ALLOW_SCRIPTS_ARG,
+      ...prefixArgs,
+      tarballPath,
+    ],
     {
       env: { ...process.env, PATH: path },
     },
