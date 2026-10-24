@@ -746,6 +746,12 @@ function isSummarizableActivityRow(
     row.workKind !== "approval" &&
     row.workKind !== "question" &&
     row.workKind !== "workflow" &&
+    !(
+      row.workKind === "image-generation" &&
+      row.status === "completed" &&
+      row.path &&
+      !row.error
+    ) &&
     (row.workKind !== "command" || parseSentThreadMessage(row) === null)
   );
 }

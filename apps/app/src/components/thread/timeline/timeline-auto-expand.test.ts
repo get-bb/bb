@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildTimelineViewRows } from "@bb/thread-view";
+import { generatedImageTimeline } from "@/test/fixtures/generated-image-turn";
 import {
   ECHO_RECEIPT_PRESENTATION,
   commandRow,
@@ -24,12 +25,16 @@ function collectAutoExpandedIds({
   rows,
   scopeActive,
 }: CollectAutoExpandedIdsArgs): Set<string> {
-  const { liveExpandedRowIds, terminalFrontierRowIds } =
+  const { liveExpandedRowIds, terminalFrontierRowIds, persistentExpandedRowIds } =
     collectTimelineAutoExpansionRowIds({
       rows,
       scopeActive,
     });
-  return new Set([...liveExpandedRowIds, ...terminalFrontierRowIds]);
+  return new Set([
+    ...liveExpandedRowIds,
+    ...terminalFrontierRowIds,
+    ...persistentExpandedRowIds,
+  ]);
 }
 
 const extensionPresentation = {
@@ -470,5 +475,55 @@ describe("collectTimelineAutoExpansionRowIds", () => {
 
     expect(ids.has("active-pending-delegation")).toBe(true);
     expect(ids.has("nested-pending-command")).toBe(false);
+  });
+});
+
+describe("completed generated images", () => {
+  it.each([true, false])(
+    "keeps a successful image expanded with scopeActive=%s after later output",
+    (scopeActive) => {
+      const rows = generatedImageTimeline(true, "flat");
+      const image = rows.find(
+        (row) => row.kind === "work" && row.workKind === "image-generation",
+      );
+      expect(image).toBeDefined();
+      if (image === undefined) throw new Error("Expected generated image row");
+      const ids = collectAutoExpandedIds({
+        rows: buildTimelineViewRows(rows),
+        scopeActive,
+      });
+      expect(ids.has(image.id)).toBe(true);
+    },
+  );
+
+  it.each([
+    {
+      status: "pending" as const,
+      path: "/workspace/generated.svg",
+      error: null,
+    },
+    {
+      status: "error" as const,
+      path: "/workspace/generated.svg",
+      error: "Failed",
+    },
+    { status: "completed" as const, path: null, error: null },
+    {
+      status: "completed" as const,
+      path: "/workspace/generated.svg",
+      error: "Failed",
+    },
+  ])("does not persistently expand unavailable image output: %j", (output) => {
+    const image = generatedImageTimeline(true, "flat").find(
+      (row) => row.kind === "work" && row.workKind === "image-generation",
+    );
+    if (image?.kind !== "work" || image.workKind !== "image-generation") {
+      throw new Error("Expected generated image row");
+    }
+    const ids = collectAutoExpandedIds({
+      rows: [{ ...image, ...output }],
+      scopeActive: false,
+    });
+    expect(ids.size).toBe(0);
   });
 });

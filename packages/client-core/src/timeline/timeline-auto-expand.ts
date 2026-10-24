@@ -20,6 +20,7 @@ export interface TimelineAutoExpansionRowIds {
    */
   liveExpandedRowIds: ReadonlySet<string>;
   terminalFrontierRowIds: ReadonlySet<string>;
+  persistentExpandedRowIds: ReadonlySet<string>;
 }
 
 function isWorkRowExpandable(row: TimelineViewWorkRow): boolean {
@@ -200,6 +201,18 @@ export function collectTimelineAutoExpansionRowIds({
   rows,
   scopeActive,
 }: CollectTimelineAutoExpansionRowIdsArgs): TimelineAutoExpansionRowIds {
+  const persistentExpandedRowIds = new Set<string>();
+  for (const row of rows) {
+    if (
+      row.kind === "work" &&
+      row.workKind === "image-generation" &&
+      row.status === "completed" &&
+      row.path &&
+      !row.error
+    ) {
+      persistentExpandedRowIds.add(row.id);
+    }
+  }
   const terminalFrontierRowIds = new Set<string>();
   const liveExpandedRowIds = new Set<string>();
   visitForTerminalFrontierAutoExpand(rows, terminalFrontierRowIds);
@@ -207,5 +220,6 @@ export function collectTimelineAutoExpansionRowIds({
   return {
     liveExpandedRowIds,
     terminalFrontierRowIds,
+    persistentExpandedRowIds,
   };
 }

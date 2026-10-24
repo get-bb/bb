@@ -26,6 +26,11 @@ export function isTimelineUngroupableMessage(
   if (message.kind === "assistant-text") {
     return message.isLegacyUserMessage === true;
   }
+  if (message.kind === "image-generation") {
+    return (
+      message.status === "completed" && Boolean(message.path) && !message.error
+    );
+  }
   if (message.kind === "command") {
     return parseSentThreadMessage(message) !== null;
   }
