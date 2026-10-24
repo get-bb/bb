@@ -507,7 +507,10 @@ oversubscribed configuration pass.
 
 A subsequent full run exposed two timing failures in unchanged tests. The
 account API malformed/null-response test now advances a fake clock through its
-unchanged 300ms deadline, avoiding a race with Windows scheduling. The existing
+unchanged 300ms deadline with fixed retry jitter. A fake clock alone was not
+sufficient: fixing the random value at 0.66 reproduced a retry landing exactly
+on the deadline, changing the error classification. The response-handling test
+uses a fixed random value of zero, as the neighboring retry test does. The existing
 1,005-supporting-file skill test exposed unnecessary scanner work: recursive
 skill traversal resolved and statted ordinary files it could never consume.
 The scanner now skips those known regular files after handling `SKILL.md`,

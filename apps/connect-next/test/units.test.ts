@@ -404,13 +404,13 @@ describe("account API client", () => {
     const unchecked = createAccountApi({
       baseUrl: "https://connect.test",
       secret: "s",
+      random: () => 0,
       fetch: async () => Response.json({ answers: [null] }),
     });
     const uncheckedResult = expect(
       unchecked.resolve(ASK, { deadlineMs: 300 }),
     ).rejects.toThrow("could not check");
-    await vi.runAllTimersAsync();
-    await uncheckedResult;
+    await Promise.all([uncheckedResult, vi.runAllTimersAsync()]);
     const malformed = createAccountApi({
       baseUrl: "https://connect.test",
       secret: "s",
@@ -419,8 +419,7 @@ describe("account API client", () => {
     const malformedResult = expect(malformed.resolve(ASK)).rejects.toThrow(
       "malformed",
     );
-    await vi.runAllTimersAsync();
-    await malformedResult;
+    await Promise.all([malformedResult, vi.runAllTimersAsync()]);
   });
 
   it(`sends presence in calls of at most ${GATE_PRESENCE_BATCH_MAX} and checks the results`, async () => {
