@@ -293,6 +293,15 @@ function compareProjectThreadItemsByTitleAscending(
     : 0;
 }
 
+const THREAD_STATUS_SORT_RANK: Record<SidebarThread["status"], number> = {
+  active: 0,
+  starting: 1,
+  stopping: 2,
+  error: 3,
+  idle: 4,
+  pending: 5,
+};
+
 export function getSidebarThreadComparator(
   sort: SidebarChronologicalSort,
   direction: SidebarSortDirection = "default",
@@ -302,7 +311,10 @@ export function getSidebarThreadComparator(
 
   const multiplier =
     direction === "default" ||
-    direction === (normalizedSort === "alpha" ? "ascending" : "descending")
+    direction ===
+      (normalizedSort === "alpha" || normalizedSort === "status"
+        ? "ascending"
+        : "descending")
       ? 1
       : -1;
   if (normalizedSort === "alpha") {
@@ -312,6 +324,13 @@ export function getSidebarThreadComparator(
       multiplier *
       compareProjectThreadItemsByTitleAscending(left, right, rename);
     return comparator;
+  }
+  if (normalizedSort === "status") {
+    return (left, right) =>
+      multiplier *
+        (THREAD_STATUS_SORT_RANK[left.status] -
+          THREAD_STATUS_SORT_RANK[right.status]) ||
+      compareStandardThreads(left, right);
   }
   const base =
     normalizedSort === "created"

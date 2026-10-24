@@ -17,6 +17,7 @@ export const chronologicalSortSchema = z.enum([
   "updated",
   "created",
   "alpha",
+  "status",
   "none",
 ]);
 export type ChronologicalSort = z.infer<typeof chronologicalSortSchema>;
@@ -127,7 +128,7 @@ export const preferenceDefinitions = {
   chronologicalSort: definePreference(
     chronologicalSortSchema,
     "updated",
-    "Sort field for the chronological organization.",
+    "Sort field within every organization: updated, created, alpha, or status (active, starting, stopping, error, idle, pending). none is a legacy alias for updated.",
     "sidebar.chronologicalSort",
   ),
   sortDirection: definePreference(

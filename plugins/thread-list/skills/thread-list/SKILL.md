@@ -36,7 +36,12 @@ collapse into a single row: `"auto"` (default) groups them in every
 organization except chronological, `false` never groups, and `true` always
 groups. Children sharing their parent’s worktree stay directly beneath the
 parent without another worktree header. `sortDirection` is `default` (each field's natural order: newest first
-for dates, A–Z for titles), `ascending`, or `descending`.
+for dates, A–Z for titles, active → starting → stopping → error → idle → pending
+for status), `ascending`, or `descending`. `chronologicalSort` accepts `updated`,
+`created`, `alpha`, and `status` in every organization (`none` aliases `updated`).
+Status sorting keeps the existing updated order within each status even when
+reversed. Use `bb thread-list prefs set chronologicalSort status`, or the
+plugin's `setPreference` RPC with `{ "key": "chronologicalSort", "value": "status" }`.
 
 `hiddenGroups` (default `[]`) moves groups into More, the same as a group
 menu's Hide from list. Keys are `threads`, `project:<projectId>`,

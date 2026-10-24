@@ -1078,7 +1078,7 @@ row's Customize actions, or `bb thread-list prefs get|set|reset <key>`
 | `organizationMode`    | `chronological`                   | `project`, `chronological` (Custom), or `machine`                                                                                           |
 | `environmentGrouping` | `auto`                            | `true` collapses sibling threads sharing a worktree into one row, `false` never does, `auto` groups except in `chronological`               |
 | `groupByReadStatus`   | `false`                           | Lists unread threads above the rest; exclusive with environment grouping                                                                    |
-| `chronologicalSort`   | `updated`                         | Sort field for `chronological`                                                                                                              |
+| `chronologicalSort`   | `updated`                         | `updated`, `created`, `alpha`, or `status`, within every organization (`none` aliases `updated`)                                                                                                              |
 | `sortDirection`       | `default`                         | `default`, `ascending`, or `descending`                                                                                                     |
 | `sectionOrder`        | `["pinned","projects","threads"]` | Top-level order by project; `manualSectionOrder` and `machineSectionOrder` cover the other modes                                            |
 | `hiddenGroups`        | `[]`                              | Groups moved into More: `threads`, `project:<id>`, `section:<id>`, `machine:<hostId>` (`machine:no-machine`); `set` replaces the whole list |
@@ -1086,6 +1086,10 @@ row's Customize actions, or `bb thread-list prefs get|set|reset <key>`
 | `rowActions`          | `["bb--core/archive"]`            | Up to three thread action keys in display order; see below                                                                                  |
 | `showProviderIcons`   | `false`                           | Shows the provider icon before each thread title                                                                                            |
 | `collapsed*`          | `[]`                              | Collapsed sections, projects, threads, environments, custom sections, and machines                                                          |
+
+Status sorting defaults to active → starting → stopping → error → idle → pending.
+Descending reverses the statuses; threads within a status keep the existing
+updated order in either direction.
 
 `rowActions` keys are `bb--core/<id>` (`split`, `newThreadInEnvironment`,
 `copyLink`, `read`, `pin`, `rename`, `archive`, `delete`), `thread-list/move`,

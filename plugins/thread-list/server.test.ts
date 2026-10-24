@@ -62,6 +62,22 @@ describe("thread-list preferences rpc", () => {
     ]);
   });
 
+  it("persists status sorting through the preference RPC and broadcasts it", async () => {
+    const { bb, harness } = setup();
+    await plugin(bb);
+    await harness.behavior.callRpc("setPreference", {
+      key: "chronologicalSort",
+      value: "status",
+    });
+    await expect(harness.behavior.callRpc("listPreferences", null)).resolves.toMatchObject({
+      preferences: { chronologicalSort: "status" },
+    });
+    expect(harness.realtimeSignals).toContainEqual({
+      channel: "preferences",
+      payload: { key: "chronologicalSort", value: "status" },
+    });
+  });
+
   it("rejects a value that fails the preference's schema and leaves storage alone", async () => {
     const { bb, harness } = setup();
     await plugin(bb);

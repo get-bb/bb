@@ -35,6 +35,7 @@ const SIDEBAR_SORT_OPTIONS = [
   { label: "Updated at", sort: "updated", direction: "descending" },
   { label: "Created at", sort: "created", direction: "descending" },
   { label: "Alphabetical", sort: "alpha", direction: "ascending" },
+  { label: "Status", sort: "status", direction: "ascending" },
 ] as const;
 
 type SidebarViewPage = "organize" | "sort" | "filter";

@@ -3,6 +3,7 @@ import { getSidebarThreadComparator } from "./ProjectList.js";
 import { getThreadSidebarExpansion } from "./useSidebarThreadReveal.js";
 import {
   CHRONOLOGICAL_CONTAINER_ID,
+  buildSectionThreadList,
   type ProjectThreadNode,
   type ProjectThreadItem,
   type ThreadComparator,
@@ -164,6 +165,38 @@ describe("getSidebarThreadComparator", () => {
       }
     },
   );
+
+  it.each(["default", "ascending", "descending"] as const)(
+    "orders every execution status with %s direction and preserves time order within a status",
+    (direction) => {
+      const statuses = ["active", "starting", "stopping", "error", "idle", "pending"] as const;
+      const entries = statuses.flatMap((status) => [
+        thread({ id: `${status}_old`, status, createdAt: 1, latestAttentionAt: 1 }),
+        thread({ id: `${status}_new`, status, createdAt: 2, latestAttentionAt: 2 }),
+      ]);
+      const expected = direction === "descending" ? [...statuses].reverse() : statuses;
+      expect(order(getSidebarThreadComparator("status", direction), entries.reverse())).toEqual(
+        expected.flatMap((status) => [`${status}_new`, `${status}_old`]),
+      );
+    },
+  );
+
+  it("sorts environment groups and children by status without separating families", () => {
+    const environment = makeSidebarEnvironment({ id: "env_shared", isWorktree: true });
+    const entries = [
+      thread({ id: "idle", status: "idle" }),
+      thread({ id: "env_idle", status: "idle", environment }),
+      thread({ id: "env_active", status: "active", environment }),
+      thread({ id: "child_idle", status: "idle", parentThreadId: "env_active" }),
+      thread({ id: "child_error", status: "error", parentThreadId: "env_active" }),
+    ];
+    const items = buildSectionThreadList(entries, getSidebarThreadComparator("status"), [], true);
+    expect(items.map(itemRepresentativeId)).toEqual(["env_active", "idle"]);
+    const group = items[0];
+    if (group.kind !== "environment") throw new Error("Expected environment group");
+    expect(group.group.nodes.map((node) => node.thread.id)).toEqual(["env_active", "env_idle"]);
+    expect(group.group.nodes[0].children.map(itemRepresentativeId)).toEqual(["child_error", "child_idle"]);
+  });
 
   it("reverses created dates", () => {
     expect(

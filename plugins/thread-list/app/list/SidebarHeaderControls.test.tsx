@@ -304,6 +304,22 @@ describe("sidebar header controls", () => {
     ).toBe("true");
   });
 
+  it.each([false, true])("selects and reverses status sort (compact: %s)", async (compact) => {
+    const { store } = setup("Pinned", false, "project", compact);
+    if (compact) {
+      fireEvent.click(screen.getByRole("button", { name: "Pinned actions" }));
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Sort by" }));
+    } else {
+      await openMenu();
+      await openSubmenu("Sort by");
+    }
+    fireEvent.click(await screen.findByRole("menuitemradio", { name: "Status" }));
+    expect(store.get(sidebarChronologicalSortAtom)).toBe("status");
+    expect(store.get(sidebarSortDirectionAtom)).toBe("ascending");
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Status, ascending. Sort descending" }));
+    expect(store.get(sidebarSortDirectionAtom)).toBe("descending");
+  });
+
   it("announces compact sort direction and resets the nested page after closing", async () => {
     const { store } = setup("Pinned", false, "project", true);
     fireEvent.click(
