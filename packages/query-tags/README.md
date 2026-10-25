@@ -71,14 +71,20 @@ Refreshing subscribed keys retains cached rows and key tags for inactive keys.
 Invalidated inactive rows remain visible and refresh when subscribed again, so
 switching consumers does not discard their last successful values.
 
-A read writes a row only if it fetched that row. A prediction accepted by the
-server becomes the row's stored value. A row read that started before the
-acceptance does not replace it; a view decides how a later read merges, so
-thread rows also compare `updatedAt`. A rejected write removes its prediction,
-leaving later predictions in place, and an accepted prediction waits behind
-older pending ones on the same row. Rows that load while a write is pending
-show its prediction. A row leaves the store when no view holds it.
-`writeKeyedEntity` changes a stored row directly, beneath pending predictions.
+A read writes a row only if it fetched that row. A prediction is never written
+into the stored row. One accepted by the server stays on its row until server
+data confirms it: a read of that row that started after the acceptance, or
+`confirmKeyedEntity`, which stores a server row the caller already has, such as
+one returned by the write. The confirming data then replaces the prediction on
+that row. A read that started before the acceptance lands beneath the
+prediction; a view decides how any read merges into the stored row, so thread
+rows also compare `updatedAt`. `confirmKeyedEntity` returns false and keeps the
+prediction when its update returns undefined, for example because the stored
+row is newer than the caller's; a row that is not stored has nothing to
+confirm. A rejected write removes its prediction, leaving later predictions in
+place. Rows that load while a write is pending show its prediction. A row
+leaves the store, with its accepted predictions, when no view holds it.
+`writeKeyedEntity` changes a stored row directly, beneath predictions.
 
 `@bb/query-tags/testing` exports `keyedStoreContract`, the cases every keyed
 surface runs through a `KeyedStoreSubject`.

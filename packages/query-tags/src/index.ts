@@ -46,6 +46,7 @@ export {
 } from "./optimistic.js";
 export {
   KeyedCollection,
+  confirmKeyedEntity,
   insertKeyedEntry,
   keyedEntities,
   readKeyedEntity,

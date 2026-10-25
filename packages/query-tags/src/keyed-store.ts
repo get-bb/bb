@@ -35,9 +35,9 @@ type AnyView = KeyedView<unknown>;
 type ViewResolver = (queryKey: QueryKey) => AnyView | undefined;
 
 interface Layer {
-  ids: ReadonlySet<string>;
+  ids: Set<string>;
   apply(entity: unknown, id: string): unknown;
-  settled: boolean;
+  acceptedAt: number | null;
 }
 
 interface Collection {
@@ -158,6 +158,26 @@ function writeBase(
   changed(store, collection, [id]);
 }
 
+function dropAccepted(
+  collection: Collection,
+  id: string,
+  acceptedBefore: number,
+): boolean {
+  let dropped = false;
+  collection.layers = collection.layers.filter((layer) => {
+    if (
+      layer.acceptedAt === null ||
+      layer.acceptedAt >= acceptedBefore ||
+      !layer.ids.has(id)
+    )
+      return true;
+    dropped = true;
+    layer.ids.delete(id);
+    return layer.ids.size > 0;
+  });
+  return dropped;
+}
+
 function ingest(
   store: Store,
   skeleton: Pick<Skeleton, "view" | "collection">,
@@ -165,10 +185,12 @@ function ingest(
   item: unknown,
   readStart: number,
 ): void {
-  const fresh = readStart > (skeleton.collection.acknowledgedAt.get(id) ?? -1);
-  writeBase(store, skeleton.collection, id, (current) =>
+  const { collection } = skeleton;
+  const fresh = readStart > (collection.acknowledgedAt.get(id) ?? -1);
+  writeBase(store, collection, id, (current) =>
     skeleton.view.read(item, current, fresh),
   );
+  if (dropAccepted(collection, id, readStart)) changed(store, collection, [id]);
 }
 
 function materializeItem(
@@ -302,6 +324,7 @@ function setSkeleton(
       collection.views.delete(id);
       collection.base.delete(id);
       collection.visible.delete(id);
+      dropAccepted(collection, id, Number.POSITIVE_INFINITY);
     }
   }
 }
@@ -583,6 +606,25 @@ export function writeKeyedEntity<Entity>(
   );
 }
 
+export function confirmKeyedEntity<Entity>(
+  client: QueryClient,
+  collection: KeyedCollection<Entity>,
+  id: string,
+  update: (current: Entity) => Entity | undefined,
+): boolean {
+  const store = storeOf(client);
+  const state = collectionOf(store, collection);
+  const current = state.base.get(id) as Entity | undefined;
+  const next = current === undefined ? undefined : update(current);
+  if (current !== undefined && next === undefined) return false;
+  batch(store, () => {
+    if (next !== undefined) writeBase(store, state, id, () => next);
+    if (dropAccepted(state, id, Number.POSITIVE_INFINITY))
+      changed(store, state, [id]);
+  });
+  return true;
+}
+
 export function insertKeyedEntry<Entity>(
   client: QueryClient,
   queryKey: QueryKey,
@@ -624,26 +666,6 @@ export function insertKeyedEntry<Entity>(
   notifyManager.batch(() => rematerialize(store, query));
 }
 
-function bakeSettledLayers(collection: Collection): Set<string> {
-  const baked = new Set<string>();
-  const pending = new Set<string>();
-  collection.layers = collection.layers.filter((layer) => {
-    const blocked = [...layer.ids].some((id) => pending.has(id));
-    if (!layer.settled || blocked) {
-      for (const id of layer.ids) pending.add(id);
-      return true;
-    }
-    for (const id of layer.ids) {
-      const current = collection.base.get(id);
-      if (current !== undefined)
-        collection.base.set(id, layer.apply(current, id));
-      baked.add(id);
-    }
-    return false;
-  });
-  return baked;
-}
-
 export function predictKeyed(
   client: QueryClient,
   token: KeyedCollection<unknown>,
@@ -652,22 +674,22 @@ export function predictKeyed(
 ): { accept(): void; remove(): void } {
   const store = storeOf(client);
   const collection = collectionOf(store, token);
-  const layer: Layer = { ids, apply, settled: false };
+  const layer: Layer = { ids: new Set(ids), apply, acceptedAt: null };
   collection.layers.push(layer);
   changed(store, collection, ids);
-  const live = () => !layer.settled && collection.layers.includes(layer);
+  const live = () =>
+    layer.acceptedAt === null && collection.layers.includes(layer);
   return {
     accept() {
       if (!live()) return;
       const at = tick();
       for (const id of ids) collection.acknowledgedAt.set(id, at);
-      layer.settled = true;
-      changed(store, collection, [...ids, ...bakeSettledLayers(collection)]);
+      layer.acceptedAt = at;
     },
     remove() {
       if (!live()) return;
       collection.layers = collection.layers.filter((other) => other !== layer);
-      changed(store, collection, [...ids, ...bakeSettledLayers(collection)]);
+      changed(store, collection, ids);
     },
   };
 }

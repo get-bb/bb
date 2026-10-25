@@ -66,9 +66,10 @@ import {
   invalidateThreadQueueQueries,
   markThreadAcceptedMessageQueriesStale,
   invalidateThreadQueuedMessageSendQueries,
-  invalidateThreadListMembershipQueries,
+  invalidateThreadListQueries,
   refetchThreadListsAfterComposerThreadCreate,
 } from "./mutation-cache-effects";
+import { readThreadBack } from "./thread-read-back";
 
 interface ThreadIdCacheArgs {
   queryClient: QueryClient;
@@ -982,7 +983,7 @@ export function applySendThreadMessageSuccess({
         createdAt: optimisticCreatedAt,
         queryClient,
         threadId: request.id,
-      }).succeed();
+      }).confirm([], readThreadBack(queryClient));
       insertOptimisticTimelineRow(
         queryClient,
         request.id,
@@ -1001,7 +1002,8 @@ export function applySendThreadMessageSuccess({
     });
   }
 
-  if (transaction?.kind === "accepted-turn") transaction.prediction.succeed();
+  if (transaction?.kind === "accepted-turn")
+    transaction.prediction.confirm([], readThreadBack(queryClient));
   prependThreadPromptHistory(
     queryClient,
     request.id,
@@ -1255,7 +1257,7 @@ export function applyQueuedMessageSendResult({
       );
     }
     transaction?.prediction?.fail();
-  } else transaction?.prediction?.succeed();
+  } else transaction?.prediction?.confirm([], readThreadBack(queryClient));
   invalidateThreadQueuedMessageSendQueries({
     queryClient,
     threadId: request.id,
@@ -1375,9 +1377,11 @@ export function rollbackStopThreadTransaction({
 
 export function settleStopThreadTransaction({
   queryClient,
-  threadId,
   transaction,
-}: ThreadIdCacheArgs & { transaction?: StopThreadTransaction }): void {
-  transaction?.prediction.succeed();
-  invalidateThreadListMembershipQueries({ queryClient, threadId });
+}: {
+  queryClient: QueryClient;
+  transaction?: StopThreadTransaction | undefined;
+}): void {
+  transaction?.prediction.confirm([], readThreadBack(queryClient));
+  invalidateThreadListQueries({ queryClient });
 }

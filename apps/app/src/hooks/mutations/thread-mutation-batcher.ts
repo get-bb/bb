@@ -6,6 +6,7 @@ import type {
 } from "@bb/sdk";
 import { sdk } from "@/lib/sdk";
 import { registerThreadEntityViews } from "../cache-owners/thread-entity-store";
+import { readThreadBack } from "../cache-owners/thread-read-back";
 import {
   applyThreadMetadataBatchResult,
   beginThreadMetadataBatchTransaction,
@@ -146,7 +147,7 @@ export function createThreadMutationBatcher(
         });
         const acknowledge = async (outcome: Promise<ThreadMutationResult>) => {
           try {
-            prediction.succeed(await outcome);
+            prediction.confirm([await outcome], readThreadBack(queryClient));
           } catch {
             prediction.fail();
           }
