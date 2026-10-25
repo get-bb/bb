@@ -730,7 +730,7 @@ describe("collectPluginAppRegistrations", () => {
       },
     ]);
     expect(registrations.messageDirectives).toEqual([
-      { id: "inline-vis", component: Component },
+      { id: "inline-vis", component: Component, experimental_inline: false },
     ]);
     expect(registrations.messageActions).toEqual([
       { id: "summarize", title: "Summarize", icon: "Zap", run },

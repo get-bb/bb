@@ -2459,6 +2459,45 @@ Docs: `frontend-renderer-slots.md`, `testing.md`.
 5. **Source visibility.** Decide whether BB should offer its own "view
    source" control for claimed fences instead of leaving it to each plugin.
 
+## Inline message directives (`PluginMessageDirectiveRegistration.experimental_inline` and `PluginMessageDirectiveProps.experimental_label`)
+
+`messageDirective({ id, component, experimental_inline: true })` mounts the
+component inside the surrounding sentence for the text-directive form
+`:id[label]{attrs}`, instead of as a block for `::id{attrs}`. Every
+directive component also receives `experimental_label`, the plain text of the
+directive's `[label]` (empty when there is none). Inline mounts render in a
+`<span>` plugin root, need a label or attributes (a bare `:id` and a
+half-streamed `:id[lab` stay literal), fall back to the label when the
+component throws, and do not count toward `MESSAGE_DIRECTIVE_MOUNT_LIMIT`. An
+inline registration leaves `::id` literal and a block registration leaves
+`:id[…]` literal. Inline directives get the same pane-scoped
+`useBbNavigate().openThreadPanel` as block directives, so a highlighted word
+can open the plugin's thread side panel with no content script.
+
+**Core callers.** The same `remarkMessageDirectives` pass and
+`MountedDirective` mount in `markdown-message-directives.tsx` render block and
+inline directives; there is no inline-only path. No first-party plugin
+registers an inline directive yet. The motivating caller is an external
+language-learning plugin that previously decorated `https://*.invalid` links
+from a content script and routed clicks through a thread header action to
+reach `openThreadPanel`.
+
+Docs: `frontend-renderer-slots.md`.
+
+**Audit before stabilizing.**
+
+1. **First-party caller.** Land a first-party inline directive (for example a
+   thread or file chip) before dropping the prefix.
+2. **Label shape.** Decide whether a plain-text label is enough, or whether
+   components need the label's rendered Markdown (emphasis, code).
+3. **Plugin-off fallback.** An unregistered `:id[label]{…}` renders as its
+   source, which is noisier than a link's text. Decide whether unregistered
+   inline directives should render only their label.
+4. **Mount budget.** Inline mounts have no per-message cap. Confirm that holds
+   for long replies with hundreds of marks.
+5. **Plain-text surfaces.** Confirm copy, notifications, and previews that
+   strip Markdown handle `:id[label]{…}` acceptably.
+
 ## `experimental_useSidebarThreads` / `experimental_useSidebarThreadActions` (`@get-bb/plugin-sdk/app`)
 
 **Kept experimental (2026-08-22).** There are no consumers. Items 4 (a

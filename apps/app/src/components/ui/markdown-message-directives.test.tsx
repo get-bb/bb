@@ -98,6 +98,7 @@ function slot(
     Pick<PluginMessageDirectiveSlot, "id" | "pluginId" | "component">,
 ): PluginMessageDirectiveSlot {
   return {
+    experimental_inline: false,
     generation: 1,
     ...overrides,
   };
@@ -558,6 +559,188 @@ describe("MarkdownPreview message directives", () => {
     expect(screen.getByTestId("stateful-vis")).toBeTruthy();
     expect(screen.getByText("Later streamed prose.")).toBeTruthy();
     expect(mountCount).toBe(1);
+  });
+});
+
+function LangMark(props: PluginMessageDirectiveProps) {
+  return (
+    <button
+      type="button"
+      data-testid="lang-mark"
+      data-gloss={props.attributes.gloss ?? ""}
+      data-source={props.source}
+    >
+      {props.experimental_label}
+    </button>
+  );
+}
+
+function LangPanelMark(props: PluginMessageDirectiveProps) {
+  const navigate = useBbNavigate();
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        navigate.openThreadPanel({
+          actionId: "lesson",
+          title: props.experimental_label,
+          params: { text: props.experimental_label },
+        })
+      }
+    >
+      {props.experimental_label}
+    </button>
+  );
+}
+
+function inlineSlot(
+  overrides: Partial<PluginMessageDirectiveSlot> &
+    Pick<PluginMessageDirectiveSlot, "component">,
+): PluginMessageDirectiveSlot {
+  return slot({
+    id: "lang",
+    pluginId: "lang",
+    experimental_inline: true,
+    ...overrides,
+  });
+}
+
+function renderInline(
+  content: string,
+  slots: readonly PluginMessageDirectiveSlot[] = [
+    inlineSlot({ component: LangMark }),
+  ],
+) {
+  return render(
+    <MarkdownPreview
+      content={content}
+      messageDirectives={{
+        registry: buildMessageDirectiveRegistry(slots),
+        message: MESSAGE,
+        openWorkspaceFile: null,
+      }}
+    />,
+  );
+}
+
+describe("MarkdownPreview inline message directives", () => {
+  it("mounts an inline directive inside its sentence with its label and attributes", () => {
+    renderInline('Las pruebas :lang[pasaron]{gloss="passed"} sin errores.');
+
+    const mark = screen.getByTestId("lang-mark");
+    expect(mark.textContent).toBe("pasaron");
+    expect(mark.getAttribute("data-gloss")).toBe("passed");
+    expect(mark.getAttribute("data-source")).toBe(
+      ':lang[pasaron]{gloss="passed"}',
+    );
+    const paragraph = mark.closest("p");
+    expect(paragraph?.textContent).toBe("Las pruebas pasaron sin errores.");
+    expect(mark.parentElement?.tagName).toBe("SPAN");
+    expect(mark.parentElement?.getAttribute("data-bb-plugin")).toBe("lang");
+  });
+
+  it("flattens Markdown inside the label to plain text", () => {
+    renderInline(':lang[**las** pruebas]{gloss="the tests"}');
+    expect(screen.getByTestId("lang-mark").textContent).toBe("las pruebas");
+  });
+
+  it("mounts inline directives with only a label or only attributes", () => {
+    renderInline('Before :lang[hola] and :lang{gloss="x"} after.');
+    const marks = screen.getAllByTestId("lang-mark");
+    expect(marks.map((mark) => mark.textContent)).toEqual(["hola", ""]);
+  });
+
+  it("mounts inline directives beyond the block embed limit", () => {
+    const count = MESSAGE_DIRECTIVE_MOUNT_LIMIT + 8;
+    renderInline(
+      Array.from({ length: count }, (_, i) => `:lang[w${i}]`).join(" "),
+    );
+    expect(screen.getAllByTestId("lang-mark")).toHaveLength(count);
+  });
+
+  it("keeps the block form of an inline directive and the inline form of a block directive literal", () => {
+    renderInline(
+      [
+        '::lang{gloss="block"}',
+        "",
+        ':inline-vis[x]{file="demo.html"} trailing',
+      ].join("\n"),
+      [
+        inlineSlot({ component: LangMark }),
+        slot({ id: "inline-vis", pluginId: "demo", component: InlineVis }),
+      ],
+    );
+    expect(screen.queryByTestId("lang-mark")).toBeNull();
+    expect(screen.queryByTestId("inline-vis")).toBeNull();
+    expect(screen.getByText('::lang{gloss="block"}')).toBeTruthy();
+    expect(
+      screen.getByText(':inline-vis[x]{file="demo.html"} trailing'),
+    ).toBeTruthy();
+  });
+
+  it("keeps inline directives in code and unregistered or incomplete ones literal", () => {
+    renderInline(
+      [
+        "Code `:lang[x]` here.",
+        "",
+        "Other :note[y] here.",
+        "",
+        "Open :lang[tex",
+        "",
+        "Bare :lang here.",
+      ].join("\n"),
+    );
+    expect(screen.queryByTestId("lang-mark")).toBeNull();
+    expect(screen.getByText(":lang[x]")).toBeTruthy();
+    expect(screen.getByText("Other :note[y] here.")).toBeTruthy();
+    expect(screen.getByText("Open :lang[tex")).toBeTruthy();
+    expect(screen.getByText("Bare :lang here.")).toBeTruthy();
+  });
+
+  it("falls back to the label when an inline directive crashes", () => {
+    renderInline('Las :lang[pruebas]{gloss="tests"} fallaron.', [
+      inlineSlot({ component: CrashVis }),
+    ]);
+    expect(screen.getByText("Las pruebas fallaron.")).toBeTruthy();
+    expect(screen.queryByText(/plugin lang crashed/i)).toBeNull();
+    resetCrashedPluginSlots("lang");
+  });
+
+  it("opens the registering plugin's thread panel from an inline directive", () => {
+    const onOpenPluginPanel = vi.fn(() => true);
+    const registry = buildMessageDirectiveRegistry([
+      inlineSlot({ component: LangPanelMark }),
+    ]);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <RouteNavigationProvider>
+            <MessageDirectiveRegistryProvider registry={registry}>
+              <ConversationMessageContent
+                role="assistant"
+                attachments={null}
+                id="msg_a"
+                threadId="thr_a"
+                turnId="turn_a"
+                showActions={false}
+                text={'Las pruebas :lang[pasaron]{gloss="passed"}.'}
+                timestamp={0}
+                projectId="proj_a"
+                onOpenPluginPanel={onOpenPluginPanel}
+              />
+            </MessageDirectiveRegistryProvider>
+          </RouteNavigationProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "pasaron" }));
+    expect(onOpenPluginPanel).toHaveBeenCalledWith({
+      pluginId: "lang",
+      actionId: "lesson",
+      title: "pasaron",
+      params: { text: "pasaron" },
+    });
   });
 });
 

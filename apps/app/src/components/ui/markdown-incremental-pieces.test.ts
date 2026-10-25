@@ -42,7 +42,13 @@ interface RenderedMarkdownDocument {
 }
 
 const registry = buildMessageDirectiveRegistry([
-  { id: "inline-vis", pluginId: "demo", generation: 1, component: () => null },
+  {
+    id: "inline-vis",
+    pluginId: "demo",
+    generation: 1,
+    component: () => null,
+    experimental_inline: false,
+  },
 ]);
 
 const config: MarkdownPieceRenderConfig = {

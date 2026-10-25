@@ -91,6 +91,7 @@ function legMessageDirectives(leg: PreviewLeg) {
         pluginId: "demo",
         generation: 1,
         component: countingDirective(leg),
+        experimental_inline: false,
       },
     ]),
     message: {

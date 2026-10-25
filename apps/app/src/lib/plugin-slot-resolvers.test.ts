@@ -126,6 +126,7 @@ describe("keyed renderer resolvers", () => {
       generation: 1,
       id: "card",
       component: Component,
+      experimental_inline: false,
     };
     const beta = { ...alpha, pluginId: "alpha" };
     const chart = { ...alpha, id: "chart" };

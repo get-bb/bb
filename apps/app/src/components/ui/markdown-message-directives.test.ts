@@ -17,6 +17,7 @@ function slot(
 ): PluginMessageDirectiveSlot {
   return {
     component: DirectiveStub,
+    experimental_inline: false,
     generation: 1,
     ...overrides,
   };

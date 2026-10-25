@@ -41,6 +41,7 @@ const props = (sessionId: string = session.id) => ({
   attributes: { session: sessionId },
   source: `::browser-preview{session="${sessionId}"}`,
   message: { id: "msg_1", threadId: "thr_1", turnId: "turn_1", projectId: "p" },
+  experimental_label: "",
   openWorkspaceFile: null,
 });
 const previewInputs = (slot: {

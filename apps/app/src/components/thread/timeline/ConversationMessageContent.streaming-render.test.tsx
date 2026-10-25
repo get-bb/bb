@@ -36,7 +36,13 @@ function Directive(props: PluginMessageDirectiveProps) {
 }
 
 const registry = buildMessageDirectiveRegistry([
-  { id: "inline-vis", pluginId: "test", generation: 1, component: Directive },
+  {
+    id: "inline-vis",
+    pluginId: "test",
+    generation: 1,
+    component: Directive,
+    experimental_inline: false,
+  },
 ]);
 
 function assistant(

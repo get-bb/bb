@@ -520,6 +520,11 @@ const app = await loadPluginApp(
       id: "inline-vis",
       component: InlineVis,
     });
+    builder.slots.messageDirective({
+      id: "lang",
+      component: InlineVis,
+      experimental_inline: true,
+    });
     builder.slots.homepageSection({
       id: "realtime-connection",
       title: "Realtime connection",
@@ -1092,7 +1097,8 @@ describe("loadPluginApp", () => {
 
   it("captures messageDirective registrations", () => {
     expect(app.messageDirectives).toEqual([
-      { id: "inline-vis", component: InlineVis },
+      { id: "inline-vis", component: InlineVis, experimental_inline: false },
+      { id: "lang", component: InlineVis, experimental_inline: true },
     ]);
   });
 
@@ -1221,6 +1227,19 @@ describe("loadPluginApp", () => {
         }),
       ),
     ).rejects.toThrow('slots.messageDirective: duplicate id "inline-vis"');
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.messageDirective({
+            id: "lang",
+            component: InlineVis,
+            experimental_inline: "yes" as unknown as boolean,
+          });
+        }),
+      ),
+    ).rejects.toThrow(
+      'slots.messageDirective: "experimental_inline" must be a boolean when set',
+    );
   });
 
   it("captures experimental_codeFenceRenderer registrations and validates them like the host", async () => {
@@ -1744,6 +1763,7 @@ describe("renderSlot", () => {
         turnId: "turn_1",
         projectId: "proj_1",
       },
+      experimental_label: "",
       openWorkspaceFile: null,
     });
     expect(slot.getByTestId("file").textContent).toBe("demo.html");

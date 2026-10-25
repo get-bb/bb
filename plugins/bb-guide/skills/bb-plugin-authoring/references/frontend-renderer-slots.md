@@ -131,14 +131,15 @@ Original }`. `experimental_fullFileContents` is either
 
   Experimental: see `docs/api_to_audit.md`.
 
-- `messageDirective` → `{ attributes, source, message,
-openWorkspaceFile }` — register a leaf
-  assistant-message directive. Registration:
-  `{ id, component }` where `id` is lowercase kebab-case beginning with a
-  letter (e.g. `inline-vis` matches `::inline-vis{file="demo.html"}`).
+- `messageDirective` → `{ attributes, source, experimental_label, message,
+openWorkspaceFile }` — register an assistant-message directive.
+  Registration: `{ id, component, experimental_inline? }` where `id` is
+  lowercase kebab-case beginning with a letter (e.g. `inline-vis` matches
+  `::inline-vis{file="demo.html"}`).
   Props: `attributes` is a `Readonly<Record<string, string>>` of untrusted
   parsed key/values (validate your own fields); `source` is the original
-  directive text (useful for diagnostics); `message` is
+  directive text (useful for diagnostics); `experimental_label` is the plain
+  text of the directive's `[label]`, empty when it has none; `message` is
   `{ id, threadId, turnId, projectId }` for the enclosing assistant (or
   nested agent) message. `openWorkspaceFile` is either
   `(path: string) => boolean` or `null`; pass it a worktree-relative path to
@@ -162,6 +163,18 @@ openWorkspaceFile }` — register a leaf
   `plugins/inline-vis` (a workspace or thread-storage HTML file shown in a
   borderless, sandboxed frame that follows the page's height and bb's theme,
   including relative assets and normal web loading).
+  **Inline directives (experimental):** with `experimental_inline: true` the
+  component mounts inside the sentence for `:id[label]{attrs}` (e.g.
+  `Las pruebas :lang[pasaron]{gloss="passed"}.`) instead of as a block for
+  `::id{attrs}`. Use it for highlighted words or chips that open a side
+  panel: render the label yourself and call
+  `useBbNavigate().openThreadPanel` on click, which targets the pane the
+  message is in. The inline form needs a label or attributes, so a bare
+  `:id` and a half-streamed `:id[lab` stay literal; `::id` stays literal for
+  an inline registration and `:id[…]` for a block one. Inline mounts render
+  in a `<span>` root, fall back to the label when the component throws, and
+  are not capped by the per-message embed limit. Experimental: see
+  `docs/api_to_audit.md`.
 - `experimental_codeFenceRenderer` → `{ code, language, status, index,
 message, Original }` — render fenced code blocks of chosen languages in
   assistant-message Markdown with a plugin component (e.g. a ` ```ui `

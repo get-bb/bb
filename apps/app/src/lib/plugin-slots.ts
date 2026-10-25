@@ -14,7 +14,6 @@ import type {
   PluginFileOpenerRegistration,
   PluginHomepageSectionRegistration,
   PluginMessageActionRegistration,
-  PluginMessageDirectiveRegistration,
   PluginNavPanelRegistration,
   PluginNewThreadPanelActionRegistration,
   ExperimentalIconRegistration,
@@ -36,6 +35,7 @@ import {
   type LegacyNavPanelRegistration,
   adaptSidebarFooterAction,
   getCollectedSidebarFooterItems,
+  type CollectedPluginMessageDirectiveRegistration,
   type CollectedPluginProviderIconRegistration,
   type CollectedExperimentalSidebarFooterItem,
   type CollectedManagedSidebarFooterItem,
@@ -67,7 +67,7 @@ export interface PluginRegistrationSet {
   sourceCodeRenderers?: readonly PluginSourceCodeRendererRegistration[];
   diffRenderers?: readonly PluginDiffRendererRegistration[];
   composers?: readonly ExperimentalComposerRegistration[];
-  messageDirectives: readonly PluginMessageDirectiveRegistration[];
+  messageDirectives: readonly CollectedPluginMessageDirectiveRegistration[];
   codeFenceRenderers?: readonly ExperimentalCodeFenceRendererRegistration[];
   messageActions?: readonly PluginMessageActionRegistration[];
   commandPaletteActions?: readonly CollectedPluginCommandRegistration[];
@@ -145,7 +145,7 @@ export interface PluginDiffRendererSlot
 export interface PluginComposerSlot
   extends ExperimentalComposerRegistration, PluginSlotBase {}
 export interface PluginMessageDirectiveSlot
-  extends PluginMessageDirectiveRegistration, PluginSlotBase {}
+  extends CollectedPluginMessageDirectiveRegistration, PluginSlotBase {}
 export interface PluginCodeFenceRendererSlot
   extends ExperimentalCodeFenceRendererRegistration, PluginSlotBase {}
 export interface PluginMessageActionSlot

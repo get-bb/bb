@@ -743,6 +743,13 @@ export interface PluginMessageDirectiveProps {
   attributes: Readonly<Record<string, string>>;
   /** Original directive source text (useful for diagnostics / crash fallback). */
   source: string;
+  /**
+   * Plain text of the directive's `[label]`, e.g. `texto` for
+   * `:lang[texto]{gloss="text"}`; empty when the directive has no label.
+   *
+   * @experimental Audit before relying on this as a stable contract.
+   */
+  experimental_label: string;
   message: PluginMessageDirectiveMessage;
   /**
    * Opens a worktree-relative file in the host's workspace file viewer. Null
@@ -3066,9 +3073,10 @@ export interface ExperimentalThreadTitleTextProps {
 }
 
 /**
- * Register a leaf message directive rendered inside assistant (and nested
- * agent) message Markdown. `id` is the directive name: `inline-vis` matches
- * `::inline-vis{file="demo.html"}`.
+ * Register a message directive rendered inside assistant (and nested agent)
+ * message Markdown. `id` is the directive name: `inline-vis` matches
+ * `::inline-vis{file="demo.html"}`, and with `experimental_inline` a `lang`
+ * directive matches `:lang[texto]{gloss="text"}` within a sentence.
  */
 export interface PluginMessageDirectiveRegistration {
   /**
@@ -3076,6 +3084,19 @@ export interface PluginMessageDirectiveRegistration {
    */
   id: string;
   component: ComponentType<PluginMessageDirectiveProps>;
+  /**
+   * Mount the component inside the surrounding text for the inline form
+   * `:name[label]{attrs}` instead of as a block for `::name{attrs}`. The
+   * inline form needs a label, attributes, or both, so a bare `:name` (and a
+   * half-streamed `:name[lab`) stays literal. An inline directive's `::name`
+   * form stays literal, and a block directive's `:name` form stays literal.
+   * Inline mounts render in a `<span>` root, fall back to the label when the
+   * component throws, and do not count toward the per-message embed limit.
+   * Defaults to `false`.
+   *
+   * @experimental Audit before relying on this as a stable contract.
+   */
+  experimental_inline?: boolean;
 }
 
 /**

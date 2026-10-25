@@ -199,6 +199,7 @@ interface PluginSlotMountProps {
   crashResetKey?: string;
   instanceId?: string;
   wrapRoot?: boolean;
+  rootTag?: "div" | "span";
   onCrash?: (pluginId: string) => void;
 }
 
@@ -211,6 +212,7 @@ export function PluginSlotMount({
   crashResetKey,
   instanceId,
   wrapRoot = true,
+  rootTag: RootTag = "div",
   onCrash,
 }: PluginSlotMountProps) {
   const onRouteAnchorClick = useRouteAnchorDelegate();
@@ -230,14 +232,14 @@ export function PluginSlotMount({
         {...(onCrash ? { onCrash } : {})}
       >
         {wrapRoot ? (
-          <div
+          <RootTag
             data-bb-plugin-root=""
             data-bb-plugin={pluginId}
             className="contents"
             onClick={onRouteAnchorClick}
           >
             {children}
-          </div>
+          </RootTag>
         ) : (
           children
         )}

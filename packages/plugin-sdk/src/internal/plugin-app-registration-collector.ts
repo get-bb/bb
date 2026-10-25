@@ -288,6 +288,9 @@ export type CollectedPluginCommandRegistration =
       defaultShortcut: CollectedCommandShortcut;
     });
 
+export type CollectedPluginMessageDirectiveRegistration =
+  Required<PluginMessageDirectiveRegistration>;
+
 export interface CollectedPluginAppRegistrations {
   homepageSections: PluginHomepageSectionRegistration[];
   settingsSections: PluginSettingsSectionRegistration[];
@@ -312,7 +315,7 @@ export interface CollectedPluginAppRegistrations {
   sourceCodeRenderers: PluginSourceCodeRendererRegistration[];
   diffRenderers: PluginDiffRendererRegistration[];
   composers: ExperimentalComposerRegistration[];
-  messageDirectives: PluginMessageDirectiveRegistration[];
+  messageDirectives: CollectedPluginMessageDirectiveRegistration[];
   codeFenceRenderers: ExperimentalCodeFenceRendererRegistration[];
   messageActions: PluginMessageActionRegistration[];
   commandPaletteActions: CollectedPluginCommandRegistration[];
@@ -1051,9 +1054,16 @@ export function collectPluginAppRegistrations(
         const kind = "slots.messageDirective";
         const id = requireMessageDirectiveId(kind, registration?.id);
         requireUniqueId(kind, seenIds.messageDirective, id);
+        const inline: unknown = registration.experimental_inline ?? false;
+        if (typeof inline !== "boolean") {
+          throw new Error(
+            `${kind}: "experimental_inline" must be a boolean when set`,
+          );
+        }
         collected.messageDirectives.push({
           id,
           component: requireComponent(kind, registration.component),
+          experimental_inline: inline,
         });
       },
       experimental_codeFenceRenderer(registration) {

@@ -1,8 +1,4 @@
-import {
-  createContext,
-  useContext,
-  type ReactNode,
-} from "react";
+import { createContext, useContext, type ReactNode } from "react";
 import type { Nodes, Paragraph, Parent, RootContent } from "mdast";
 import type {} from "mdast-util-to-hast";
 import type {
@@ -26,6 +22,7 @@ export const MESSAGE_DIRECTIVE_MOUNT_LIMIT = 32;
 
 const MESSAGE_DIRECTIVE_HAST_NAME = "bb-message-directive";
 const MESSAGE_DIRECTIVE_INDEX_PROPERTY = "dataDirectiveIndex";
+const MESSAGE_INLINE_DIRECTIVE_HAST_NAME = "bb-message-inline-directive";
 
 type MessageDirectiveRegistryEntry = ResolvedMessageDirective;
 
@@ -37,6 +34,7 @@ export type MessageDirectiveRegistry = ReadonlyMap<
 export interface MountedMessageDirective {
   attributes: Readonly<Record<string, string>>;
   index: number;
+  label: string;
   slot: PluginMessageDirectiveSlot;
   source: string;
 }
@@ -80,10 +78,18 @@ interface MessageDirectiveElementProps {
   "data-directive-index"?: string;
 }
 
+interface MessageInlineDirectiveElementProps {
+  "data-directive-name"?: string;
+  "data-directive-attributes"?: string;
+  "data-directive-label"?: string;
+  "data-directive-source"?: string;
+}
+
 declare module "react" {
   namespace JSX {
     interface IntrinsicElements {
       "bb-message-directive": MessageDirectiveElementProps;
+      "bb-message-inline-directive": MessageInlineDirectiveElementProps;
     }
   }
 }
@@ -170,6 +176,47 @@ function messageDirectiveMountNode(index: number): RootContent {
   };
 }
 
+function messageInlineDirectiveMountNode(
+  name: string,
+  attributes: Readonly<Record<string, string>>,
+  label: string,
+  source: string,
+): RootContent {
+  return {
+    type: "emphasis",
+    children: [],
+    data: {
+      hName: MESSAGE_INLINE_DIRECTIVE_HAST_NAME,
+      hProperties: {
+        dataDirectiveName: name,
+        dataDirectiveAttributes: JSON.stringify(attributes),
+        dataDirectiveLabel: label,
+        dataDirectiveSource: source,
+      },
+      hChildren: [],
+    },
+  };
+}
+
+function directiveLabel(node: DirectiveNode): string {
+  const parts: string[] = [];
+  const collect = (children: readonly unknown[] | undefined) => {
+    for (const child of children ?? []) {
+      if (typeof child !== "object" || child === null) continue;
+      const { value, children: nested } = child as {
+        value?: unknown;
+        children?: unknown[];
+      };
+      if (typeof value === "string") {
+        parts.push(value);
+      }
+      collect(nested);
+    }
+  };
+  collect(node.children);
+  return parts.join("");
+}
+
 function spliceLiteralDirective(
   parent: Parent,
   index: number,
@@ -249,7 +296,9 @@ function gluedDirectiveSyntax(registry: MessageDirectiveRegistry): Extension {
                 }
               }
               const entry = registry.get(name);
-              return hasAttributes && entry?.status === "ok"
+              return hasAttributes &&
+                entry?.status === "ok" &&
+                !entry.slot.experimental_inline
                 ? ok(code)
                 : nok(code);
             },
@@ -315,11 +364,27 @@ export function remarkMessageDirectives(
       );
 
       const entry = registry.get(name);
+      const label = directiveLabel(directive);
+      if (
+        !isGlued &&
+        directive.type === "textDirective" &&
+        entry?.status === "ok" &&
+        entry.slot.experimental_inline &&
+        source !== `:${name}`
+      ) {
+        parent.children.splice(
+          index,
+          1,
+          messageInlineDirectiveMountNode(name, attributes, label, source),
+        );
+        return [SKIP, index + 1];
+      }
       if (
         (!isGlued && directive.type !== "leafDirective") ||
         name.length === 0 ||
         entry === undefined ||
         entry.status === "collision" ||
+        entry.slot.experimental_inline ||
         mounts.length >= limit
       ) {
         if (isGlued) return;
@@ -330,6 +395,7 @@ export function remarkMessageDirectives(
       mounts.push({
         attributes,
         index: mountIndex,
+        label,
         slot: entry.slot,
         source,
       });
@@ -352,6 +418,7 @@ export interface MessageDirectiveRenderContext {
   message: PluginMessageDirectiveProps["message"];
   openWorkspaceFile: PluginMessageDirectiveProps["openWorkspaceFile"];
   openThreadPanel: MarkdownMessageDirectiveOpenThreadPanel | null;
+  registry: MessageDirectiveRegistry;
 }
 
 export const EMPTY_MOUNTED_MESSAGE_DIRECTIVES: readonly MountedMessageDirective[] =
@@ -361,6 +428,52 @@ export const MessageDirectiveMountsContext = createContext<{
   mounts: readonly MountedMessageDirective[];
   render: MessageDirectiveRenderContext | null;
 }>({ mounts: EMPTY_MOUNTED_MESSAGE_DIRECTIVES, render: null });
+
+function MountedDirective({
+  attributes,
+  inline,
+  label,
+  render,
+  slot,
+  source,
+}: {
+  attributes: Readonly<Record<string, string>>;
+  inline: boolean;
+  label: string;
+  render: MessageDirectiveRenderContext;
+  slot: PluginMessageDirectiveSlot;
+  source: string;
+}) {
+  const { message, openWorkspaceFile, openThreadPanel } = render;
+  const Component = slot.component;
+  const element = (
+    <Component
+      attributes={attributes}
+      source={source}
+      experimental_label={label}
+      message={message}
+      openWorkspaceFile={openWorkspaceFile}
+    />
+  );
+  return (
+    <PluginSlotMount
+      key={`${slot.pluginId}/${slot.id}/${slot.generation}`}
+      pluginId={slot.pluginId}
+      slotKind="messageDirective"
+      slotId={slot.id}
+      crashFallback={inline && label.length > 0 ? label : source}
+      rootTag={inline ? "span" : "div"}
+    >
+      {openThreadPanel === null ? (
+        element
+      ) : (
+        <PluginThreadPanelNavigationProvider openThreadPanel={openThreadPanel}>
+          {element}
+        </PluginThreadPanelNavigationProvider>
+      )}
+    </PluginSlotMount>
+  );
+}
 
 export function MessageDirectiveElement(props: MessageDirectiveElementProps) {
   const { mounts, render } = useContext(MessageDirectiveMountsContext);
@@ -372,33 +485,69 @@ export function MessageDirectiveElement(props: MessageDirectiveElementProps) {
   if (mount === undefined) {
     return null;
   }
-  const { message, openWorkspaceFile, openThreadPanel } = render;
-  const { slot, attributes, source } = mount;
-  const Component = slot.component;
-  const element = (
-    <Component
-      attributes={attributes}
-      source={source}
-      message={message}
-      openWorkspaceFile={openWorkspaceFile}
+  return (
+    <MountedDirective
+      attributes={mount.attributes}
+      inline={false}
+      label={mount.label}
+      render={render}
+      slot={mount.slot}
+      source={mount.source}
     />
   );
+}
+
+function parseInlineDirectiveAttributes(
+  raw: string | undefined,
+): Record<string, string> {
+  if (raw === undefined) {
+    return {};
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return {};
+  }
+  if (typeof parsed !== "object" || parsed === null) {
+    return {};
+  }
+  const attributes: Record<string, string> = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    if (typeof value === "string") {
+      attributes[key] = value;
+    }
+  }
+  return attributes;
+}
+
+export function MessageInlineDirectiveElement(
+  props: MessageInlineDirectiveElementProps,
+) {
+  const { render } = useContext(MessageDirectiveMountsContext);
+  const name = props["data-directive-name"] ?? "";
+  const label = props["data-directive-label"] ?? "";
+  const source = props["data-directive-source"] ?? "";
+  const entry = render?.registry.get(name);
+  if (
+    render === null ||
+    entry === undefined ||
+    entry.status !== "ok" ||
+    !entry.slot.experimental_inline
+  ) {
+    return source;
+  }
   return (
-    <PluginSlotMount
-      key={`${slot.pluginId}/${slot.id}/${slot.generation}`}
-      pluginId={slot.pluginId}
-      slotKind="messageDirective"
-      slotId={slot.id}
-      crashFallback={source}
-    >
-      {openThreadPanel === null ? (
-        element
-      ) : (
-        <PluginThreadPanelNavigationProvider openThreadPanel={openThreadPanel}>
-          {element}
-        </PluginThreadPanelNavigationProvider>
+    <MountedDirective
+      attributes={parseInlineDirectiveAttributes(
+        props["data-directive-attributes"],
       )}
-    </PluginSlotMount>
+      inline
+      label={label}
+      render={render}
+      slot={entry.slot}
+      source={source}
+    />
   );
 }
 

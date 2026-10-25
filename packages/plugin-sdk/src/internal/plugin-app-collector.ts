@@ -12,6 +12,7 @@ export {
 export {
   type CollectedPluginProviderIconRegistration,
   type CollectedPluginCommandRegistration,
+  type CollectedPluginMessageDirectiveRegistration,
   type CollectedPluginAppRegistrations,
   type LegacyThreadPanelActionRegistration,
   type LegacyNavPanelRegistration,

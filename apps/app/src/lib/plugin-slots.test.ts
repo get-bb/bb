@@ -150,15 +150,29 @@ describe("plugin slot store", () => {
     setPluginSlotRegistrations(
       "zeta",
       registrationSet({
-        messageDirectives: [{ id: "z-vis", component: DirectiveComponent }],
+        messageDirectives: [
+          {
+            id: "z-vis",
+            component: DirectiveComponent,
+            experimental_inline: false,
+          },
+        ],
       }),
     );
     setPluginSlotRegistrations(
       "alpha",
       registrationSet({
         messageDirectives: [
-          { id: "inline-vis", component: DirectiveComponent },
-          { id: "chart", component: DirectiveComponent },
+          {
+            id: "inline-vis",
+            component: DirectiveComponent,
+            experimental_inline: false,
+          },
+          {
+            id: "chart",
+            component: DirectiveComponent,
+            experimental_inline: false,
+          },
         ],
       }),
     );
@@ -232,14 +246,26 @@ describe("plugin slot store structural sharing", () => {
     setPluginSlotRegistrations(
       "b",
       registrationSet({
-        messageDirectives: [{ id: "b-vis", component: DirectiveComponent }],
+        messageDirectives: [
+          {
+            id: "b-vis",
+            component: DirectiveComponent,
+            experimental_inline: false,
+          },
+        ],
       }),
     );
     const before = getPluginSlotSnapshot();
     setPluginSlotRegistrations(
       "b",
       registrationSet({
-        messageDirectives: [{ id: "b-chart", component: DirectiveComponent }],
+        messageDirectives: [
+          {
+            id: "b-chart",
+            component: DirectiveComponent,
+            experimental_inline: false,
+          },
+        ],
       }),
     );
     const after = getPluginSlotSnapshot();

@@ -95,6 +95,7 @@ import {
 } from "./markdown-prompt-mentions.js";
 import {
   MessageDirectiveElement,
+  MessageInlineDirectiveElement,
   EMPTY_MOUNTED_MESSAGE_DIRECTIVES,
   MESSAGE_DIRECTIVE_MOUNT_LIMIT,
   MessageDirectiveMountsContext,
@@ -1526,6 +1527,7 @@ function buildMarkdownComponents({
 
   if (hasMessageDirectives) {
     components["bb-message-directive"] = MessageDirectiveElement;
+    components["bb-message-inline-directive"] = MessageInlineDirectiveElement;
   }
 
   return components;

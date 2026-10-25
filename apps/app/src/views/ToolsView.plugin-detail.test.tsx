@@ -2302,7 +2302,9 @@ describe("PluginDetail capability inventory", () => {
             component: EmptySlot,
           },
         ],
-        messageDirectives: [{ id: "docs", component: EmptySlot }],
+        messageDirectives: [
+          { id: "docs", component: EmptySlot, experimental_inline: false },
+        ],
       }),
     );
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();

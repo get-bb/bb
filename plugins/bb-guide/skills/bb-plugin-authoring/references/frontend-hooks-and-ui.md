@@ -305,7 +305,8 @@ compact viewports (the host's responsive behavior) — same API.
 
 Crash isolation stays local to the slot. Additive slots can show a crash chip
 or nothing. Replacement slots fall back to the native list or renderer.
-`messageDirective` falls back to the original source text.
+`messageDirective` falls back to the original source text (an inline
+directive falls back to its label).
 `experimental_codeFenceRenderer` falls back to BB's code block (`Original`).
 
 Styling: Tailwind classes compile against the host theme's live CSS

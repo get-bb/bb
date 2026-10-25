@@ -203,6 +203,7 @@ function renderDocument(
         turnId: "turn_1",
         projectId: null,
       },
+      experimental_label: "",
       openWorkspaceFile: null,
     },
     {

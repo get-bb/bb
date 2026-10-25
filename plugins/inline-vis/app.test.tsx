@@ -28,7 +28,13 @@ function directiveProps(attributes: Record<string, string>) {
   const source = `::inline-vis{${Object.entries(attributes)
     .map(([name, value]) => `${name}="${value}"`)
     .join(" ")}}`;
-  return { attributes, source, message, openWorkspaceFile: null };
+  return {
+    attributes,
+    source,
+    experimental_label: "",
+    message,
+    openWorkspaceFile: null,
+  };
 }
 
 function htmlPreview(
@@ -143,6 +149,7 @@ describe("InlineVisDirective", () => {
         attributes: { file: "notes.md" },
         source: '::inline-vis{file="notes.md"}',
         message,
+        experimental_label: "",
         openWorkspaceFile: null,
       };
       const first = renderSlot(app.messageDirectives[0]!, props, {
@@ -196,6 +203,7 @@ describe("InlineVisDirective", () => {
         attributes: {},
         source: "::inline-vis{}",
         message,
+        experimental_label: "",
         openWorkspaceFile: null,
       },
       { rpc: {} },
@@ -213,6 +221,7 @@ describe("InlineVisDirective", () => {
         attributes: { file: "demo.html", source: "project" },
         source: '::inline-vis{source="project" file="demo.html"}',
         message,
+        experimental_label: "",
         openWorkspaceFile: null,
       },
       {
@@ -649,6 +658,7 @@ describe("InlineVisDirective", () => {
         attributes: { file: "reports/notes.md" },
         source: '::inline-vis{file="reports/notes.md"}',
         message,
+        experimental_label: "",
         openWorkspaceFile: null,
       },
       {
@@ -710,6 +720,7 @@ describe("InlineVisDirective", () => {
         attributes: { source: "thread-storage", file: "reports/notes.md" },
         source: '::inline-vis{source="thread-storage" file="reports/notes.md"}',
         message,
+        experimental_label: "",
         openWorkspaceFile: null,
       },
       {
