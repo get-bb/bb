@@ -52,7 +52,13 @@ import {
   makePluginRegistrationSet,
 } from "@/test/fixtures/plugins";
 import { LocationProbe } from "@/test/location-probe";
+import {
+  AppCommandProvider,
+  useAppCommandRunner,
+} from "@/components/commands/AppCommandProvider";
 import { pluginWorkspaceAtom } from "@/components/plugin/plugin-workspace-state";
+import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
+import type { BbDesktopCloseWindowRequestHandler } from "@bb/desktop-contract";
 
 vi.mock("@/components/layout/AppLayout", () => ({
   AppLayout: ({ children }: { children: ReactNode }) => <>{children}</>,
@@ -148,6 +154,131 @@ afterEach(() => {
   resetPluginSlotStoreForTest();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  delete window.bbDesktop;
+});
+
+function ClosePluginCommand({
+  onHandled,
+}: {
+  onHandled: (handled: boolean) => void;
+}) {
+  const runner = useAppCommandRunner();
+  return (
+    <button onClick={() => onHandled(runner.dispatch("panel.close", null))}>
+      Request plugin close
+    </button>
+  );
+}
+
+describe("Plugins catalog close arbitration", () => {
+  it.each([
+    ["desktop", false],
+    ["command", false],
+    ["desktop", true],
+    ["command", true],
+  ] as const)(
+    "closes active details before window fallback via %s (compact: %s)",
+    async (entryPoint, compact) => {
+      const handlers = new Set<BbDesktopCloseWindowRequestHandler>();
+      window.bbDesktop = {
+        ...createBbDesktopApi({
+          platform: "macos",
+          version: "0.0.0-test",
+          lastCheckedAt: null,
+          latestVersion: null,
+          pendingVersion: null,
+          updateAvailable: false,
+          updateDownloaded: false,
+        }),
+        onCloseWindowRequest(handler) {
+          handlers.add(handler);
+          return () => handlers.delete(handler);
+        },
+      };
+      const entries = [
+        GITHUB_CATALOG_ENTRY,
+        {
+          ...GITHUB_CATALOG_ENTRY,
+          entryId: "automations",
+          pluginId: "automations",
+          displayName: "Automations",
+          source: "builtin:automations",
+        },
+      ];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: RequestInfo | URL) => {
+          const url = String(input);
+          if (url === "/api/v1/plugins") {
+            return Response.json({ enabled: true, plugins: [] });
+          }
+          if (url.startsWith("/api/v1/plugin-catalog/search")) {
+            return Response.json({ results: entries, collections: [] });
+          }
+          return Response.json({ error: "not found" }, { status: 404 });
+        }),
+      );
+      const store = createStore();
+      store.set(pluginWorkspaceAtom, {
+        tabs: ["github", "automations"],
+        activePluginId: "automations",
+      });
+      const onHandled = vi.fn();
+      const view = renderWithQueryClient(
+        <Provider store={store}>
+          <CompactViewportOverrideProvider isCompactViewport={compact}>
+            <MemoryRouter initialEntries={["/plugins/automations"]}>
+              <AppCommandProvider>
+                <ClosePluginCommand onHandled={onHandled} />
+                <RoutedPluginsView />
+              </AppCommandProvider>
+            </MemoryRouter>
+          </CompactViewportOverrideProvider>
+        </Provider>,
+      );
+      await screen.findByRole("heading", { name: "Automations", level: 1 });
+      const requestClose = () => {
+        let handled = false;
+        act(() => {
+          if (entryPoint === "desktop") {
+            handled = [...handlers].some((handler) => handler());
+          } else {
+            fireEvent.click(
+              screen.getByRole("button", { name: "Request plugin close" }),
+            );
+            handled = onHandled.mock.lastCall?.[0] ?? false;
+          }
+        });
+        return handled;
+      };
+      expect(requestClose()).toBe(true);
+      expect(store.get(pluginWorkspaceAtom)).toEqual({
+        tabs: ["github"],
+        activePluginId: "github",
+      });
+      await screen.findByRole("heading", { name: "GitHub", level: 1 });
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/plugins/github",
+      );
+      expect(requestClose()).toBe(true);
+      expect(store.get(pluginWorkspaceAtom)).toEqual({
+        tabs: [],
+        activePluginId: null,
+      });
+      expect(screen.getByTestId("location").textContent).toBe("/plugins");
+      expect(requestClose()).toBe(false);
+      act(() =>
+        store.set(pluginWorkspaceAtom, {
+          tabs: ["github"],
+          activePluginId: null,
+        }),
+      );
+      expect(requestClose()).toBe(false);
+      expect(store.get(pluginWorkspaceAtom).tabs).toEqual(["github"]);
+      view.unmount();
+      expect(handlers.size).toBe(0);
+    },
+  );
 });
 
 describe("PluginDetail official catalog lifecycle", () => {

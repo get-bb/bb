@@ -2,6 +2,8 @@ import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { useAtom, useStore } from "jotai";
 import { PluginSettingsPage } from "@/components/plugin/PluginSettings";
 import { pluginWorkspaceAtom } from "@/components/plugin/plugin-workspace-state";
+import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
+import { getBbDesktopInfo } from "@/lib/bb-desktop";
 import { useSetPluginEnabled } from "@/components/plugin/useSetPluginEnabled";
 import {
   Suspense,
@@ -548,6 +550,15 @@ export function PluginsView({ detailKey }: { detailKey?: string } = {}) {
     },
     [closePanel, selectPlugin, setWorkspace, store],
   );
+  const closeActiveTab = useCallback(() => {
+    if (!isPanelOpen || activePluginId === null) return false;
+    closeTab(activePluginId);
+    return true;
+  }, [activePluginId, closeTab, isPanelOpen]);
+  useAppCommandHandler("panel.close", closeActiveTab);
+  useEffect(() => {
+    return getBbDesktopInfo()?.onCloseWindowRequest?.(closeActiveTab);
+  }, [closeActiveTab]);
   const reorderTab = useCallback<SecondaryPanelTabReorderHandler>(
     ({ activeTabId, overTabId }) => {
       const tabs = [...openIds];
