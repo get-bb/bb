@@ -107,10 +107,13 @@ function resolveWorkspaceSource(id) {
   return source ? path.join(packageDirectory, source) : null;
 }
 
-const tempRoot =
-  process.platform === "win32"
-    ? null
-    : await mkdtemp(path.join(tmpdir(), "bb-public-sdk-dts-"));
+const supportsNativeCompiler =
+  (process.platform === "darwin" && process.arch === "arm64") ||
+  (process.platform === "linux" &&
+    (process.arch === "arm64" || process.arch === "x64"));
+const tempRoot = supportsNativeCompiler
+  ? await mkdtemp(path.join(tmpdir(), "bb-public-sdk-dts-"))
+  : null;
 try {
   const declarationRoot =
     tempRoot === null ? null : await emitNativeDeclarations(tempRoot);
