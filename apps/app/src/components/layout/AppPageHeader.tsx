@@ -93,6 +93,7 @@ export function AppPageHeader({
               if (
                 event.defaultPrevented ||
                 !(event.target instanceof Element) ||
+                !event.currentTarget.contains(event.target) ||
                 event.target.closest(
                   'button, a, input, textarea, select, [role="button"], [role="link"], [contenteditable]:not([contenteditable="false"])',
                 )
