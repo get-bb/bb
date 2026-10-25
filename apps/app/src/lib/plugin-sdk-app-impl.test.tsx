@@ -19,13 +19,15 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { twMerge } from "tailwind-merge";
 import { beforeAll, afterEach, describe, expect, it, vi } from "vitest";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { ThreadTimelineNavigationProvider } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { pluginSdkAppImplementation } from "./plugin-sdk-app-impl";
 import { AppNavigationHostProvider } from "./app-navigation-host";
+import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
+import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
 
 beforeAll(() =>
   Promise.all([LazyMarkdownHtml.preload(), LazyPluginMarkdown.preload()]),
@@ -34,6 +36,59 @@ beforeAll(() =>
 afterEach(cleanup);
 
 describe("plugin SDK Markdown", () => {
+  it.each([
+    ["@thread:thr_1234567890", "/projects/proj_demo/threads/thr_1234567890"],
+    [
+      "@thread:thr_1234567890#msg=42",
+      "/projects/proj_demo/threads/thr_1234567890#msg=42",
+    ],
+  ])(
+    "renders %s as a titled, navigable thread mention",
+    async (mention, destination) => {
+      const Markdown = pluginSdkAppImplementation.Markdown;
+      function Location() {
+        const location = useLocation();
+        return (
+          <output>{location.pathname + location.search + location.hash}</output>
+        );
+      }
+
+      render(
+        <MemoryRouter>
+          <RouteNavigationProvider>
+            <ThreadTitleMentionResourcesProvider
+              sectionNamesById={new Map()}
+              projectNamesById={new Map()}
+              threadById={
+                new Map([
+                  [
+                    "thr_1234567890",
+                    {
+                      id: "thr_1234567890",
+                      projectId: "proj_demo",
+                      title: "Rendering regression",
+                      titleFallback: "Rendering regression",
+                    },
+                  ],
+                ])
+              }
+            >
+              <Markdown content={`Continue in ${mention}.`} />
+              <Location />
+            </ThreadTitleMentionResourcesProvider>
+          </RouteNavigationProvider>
+        </MemoryRouter>,
+      );
+
+      const link = await screen.findByRole("link", {
+        name: /Rendering regression/,
+      });
+      expect(link.getAttribute("href")).toBe(destination);
+      fireEvent.click(link);
+      expect(screen.getByRole("status").textContent).toBe(destination);
+    },
+  );
+
   it("uses the surrounding thread detail navigation for file and web links", async () => {
     const onOpenLink = vi.fn(() => false);
     const openUrl = vi.fn(() => true);
