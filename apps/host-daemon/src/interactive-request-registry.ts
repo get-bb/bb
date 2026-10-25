@@ -45,6 +45,7 @@ interface PendingInteractiveRequestEntry {
   reject: (error: Error) => void;
   resolve: (resolution: PendingInteractionResolution) => void;
   request: PendingInteractionCreate;
+  revalidateAfterRegistration: boolean;
 }
 
 interface DeliveredInteractiveRequestTombstone {
@@ -131,12 +132,19 @@ export class InteractiveRequestRegistry {
       reject: (error) => rejectEntry(error),
       resolve: (resolution) => resolveEntry(resolution),
       request,
+      revalidateAfterRegistration: false,
     };
     this.pendingEntries.set(key, entry);
 
     try {
       const response = await this.options.registerRequest(request);
       this.applyRegistrationResponse(key, entry, response);
+      if (
+        entry.revalidateAfterRegistration &&
+        this.pendingEntries.get(key) === entry
+      ) {
+        void this.revalidateEntry(key, entry);
+      }
     } catch (error) {
       this.pendingEntries.delete(key);
       const registrationError = normalizeCaughtError(error);
@@ -180,23 +188,17 @@ export class InteractiveRequestRegistry {
   }
 
   async revalidateRegisteredRequests(): Promise<void> {
-    const registeredEntries = [...this.pendingEntries].filter(
-      ([, entry]) => entry.interactionId !== null,
-    );
+    const registeredEntries: Array<[string, PendingInteractiveRequestEntry]> =
+      [];
+    for (const [key, entry] of this.pendingEntries) {
+      if (entry.interactionId === null) {
+        entry.revalidateAfterRegistration = true;
+        continue;
+      }
+      registeredEntries.push([key, entry]);
+    }
     await Promise.all(
-      registeredEntries.map(async ([key, entry]) => {
-        let response: HostDaemonInteractiveRequestResponse;
-        try {
-          response = await this.options.registerRequest(entry.request);
-        } catch (error) {
-          this.options.onRevalidationFailure?.({
-            error: normalizeCaughtError(error),
-            request: entry.request,
-          });
-          return;
-        }
-        this.applyRegistrationResponse(key, entry, response);
-      }),
+      registeredEntries.map(([key, entry]) => this.revalidateEntry(key, entry)),
     );
   }
 
@@ -213,6 +215,24 @@ export class InteractiveRequestRegistry {
       this.pendingEntries.delete(key);
       entry.reject(new Error(args.reason));
     }
+  }
+
+  private async revalidateEntry(
+    key: string,
+    entry: PendingInteractiveRequestEntry,
+  ): Promise<void> {
+    entry.revalidateAfterRegistration = false;
+    let response: HostDaemonInteractiveRequestResponse;
+    try {
+      response = await this.options.registerRequest(entry.request);
+    } catch (error) {
+      this.options.onRevalidationFailure?.({
+        error: normalizeCaughtError(error),
+        request: entry.request,
+      });
+      return;
+    }
+    this.applyRegistrationResponse(key, entry, response);
   }
 
   private applyRegistrationResponse(

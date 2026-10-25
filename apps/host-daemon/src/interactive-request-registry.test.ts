@@ -329,15 +329,19 @@ describe("InteractiveRequestRegistry", () => {
     await expect(pending).resolves.toEqual(createCommandApprovalResolution());
   });
 
-  it("leaves a provider wait whose first registration is in flight to that registration", async () => {
+  it("rechecks a provider wait whose first registration was in flight during a reconnect", async () => {
     const request = createCommandApprovalRequest();
-    const registration =
+    const firstRegistration =
       createDeferredPromise<HostDaemonInteractiveRequestResponse>();
+    const settledReason = `Provider request ${request.providerRequestId} was already handled and cannot be reused`;
     const registrations: PendingInteractionCreate[] = [];
     const registry = createRegistry({
       registerRequest: async (registeredRequest) => {
         registrations.push(registeredRequest);
-        return registration.promise;
+        if (registrations.length === 1) {
+          return firstRegistration.promise;
+        }
+        return { outcome: "rejected", reason: settledReason };
       },
     });
 
@@ -345,13 +349,41 @@ describe("InteractiveRequestRegistry", () => {
     await registry.revalidateRegisteredRequests();
     expect(registrations).toEqual([request]);
 
-    registration.resolve({
+    const rejection = expect(pending).rejects.toMatchObject({
+      code: "interactive_request_rejected",
+      message: settledReason,
+    });
+    firstRegistration.resolve({
       outcome: "created",
       interactionId: "pint_registry",
       status: "pending",
     });
+
+    await rejection;
+    expect(registrations).toEqual([request, request]);
+  });
+
+  it("does not recheck a provider wait registered after the last reconnect", async () => {
+    const request = createCommandApprovalRequest();
+    const registrations: PendingInteractionCreate[] = [];
+    const registry = createRegistry({
+      registerRequest: async (registeredRequest) => {
+        registrations.push(registeredRequest);
+        return {
+          outcome: "created",
+          interactionId: "pint_registry",
+          status: "pending",
+        };
+      },
+    });
+
+    await registry.revalidateRegisteredRequests();
+    const pending = registry.registerAndWait(request);
+    await Promise.resolve();
     await Promise.resolve();
     registry.resolve(createResolveCommand(request, "pint_registry"));
+
     await expect(pending).resolves.toEqual(createCommandApprovalResolution());
+    expect(registrations).toEqual([request]);
   });
 });
