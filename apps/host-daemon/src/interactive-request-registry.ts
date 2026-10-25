@@ -25,6 +25,9 @@ interface InteractiveRequestRegistryOptions {
   onRegistrationFailure?: (
     failure: InteractiveRequestRegistrationFailure,
   ) => void;
+  onRevalidationFailure?: (
+    failure: InteractiveRequestRegistrationFailure,
+  ) => void;
   registerRequest: (
     request: PendingInteractionCreate,
   ) => Promise<HostDaemonInteractiveRequestResponse>;
@@ -133,26 +136,7 @@ export class InteractiveRequestRegistry {
 
     try {
       const response = await this.options.registerRequest(request);
-      if (response.outcome === "rejected") {
-        this.pendingEntries.delete(key);
-        entry.reject(
-          new InteractiveRequestRegistryError(
-            "interactive_request_rejected",
-            response.reason,
-          ),
-        );
-        return promise;
-      }
-
-      entry.interactionId = response.interactionId;
-      if (response.status !== "pending" && response.status !== "resolving") {
-        this.pendingEntries.delete(key);
-        entry.reject(
-          new Error(
-            `Pending interaction ${response.interactionId} is already ${response.status}`,
-          ),
-        );
-      }
+      this.applyRegistrationResponse(key, entry, response);
     } catch (error) {
       this.pendingEntries.delete(key);
       const registrationError = normalizeCaughtError(error);
@@ -195,6 +179,27 @@ export class InteractiveRequestRegistry {
     entry.resolve(request.resolution);
   }
 
+  async revalidateRegisteredRequests(): Promise<void> {
+    const registeredEntries = [...this.pendingEntries].filter(
+      ([, entry]) => entry.interactionId !== null,
+    );
+    await Promise.all(
+      registeredEntries.map(async ([key, entry]) => {
+        let response: HostDaemonInteractiveRequestResponse;
+        try {
+          response = await this.options.registerRequest(entry.request);
+        } catch (error) {
+          this.options.onRevalidationFailure?.({
+            error: normalizeCaughtError(error),
+            request: entry.request,
+          });
+          return;
+        }
+        this.applyRegistrationResponse(key, entry, response);
+      }),
+    );
+  }
+
   interruptThreads(args: InterruptInteractiveThreadsArgs): void {
     const threadIds = new Set(args.threadIds);
     for (const [key, entry] of this.pendingEntries) {
@@ -207,6 +212,36 @@ export class InteractiveRequestRegistry {
 
       this.pendingEntries.delete(key);
       entry.reject(new Error(args.reason));
+    }
+  }
+
+  private applyRegistrationResponse(
+    key: string,
+    entry: PendingInteractiveRequestEntry,
+    response: HostDaemonInteractiveRequestResponse,
+  ): void {
+    if (this.pendingEntries.get(key) !== entry) {
+      return;
+    }
+    if (response.outcome === "rejected") {
+      this.pendingEntries.delete(key);
+      entry.reject(
+        new InteractiveRequestRegistryError(
+          "interactive_request_rejected",
+          response.reason,
+        ),
+      );
+      return;
+    }
+
+    entry.interactionId = response.interactionId;
+    if (response.status !== "pending" && response.status !== "resolving") {
+      this.pendingEntries.delete(key);
+      entry.reject(
+        new Error(
+          `Pending interaction ${response.interactionId} is already ${response.status}`,
+        ),
+      );
     }
   }
 

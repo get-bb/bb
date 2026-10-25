@@ -11,6 +11,10 @@ import {
 } from "./interactive-request-registry.js";
 
 interface CreateRegistryArgs {
+  onRevalidationFailure?: (failure: {
+    error: Error;
+    request: PendingInteractionCreate;
+  }) => void;
   registerRequest: (
     request: PendingInteractionCreate,
   ) => Promise<HostDaemonInteractiveRequestResponse>;
@@ -54,8 +58,42 @@ function createCommandApprovalResolution(): PendingInteractionResolution {
 
 function createRegistry(args: CreateRegistryArgs): InteractiveRequestRegistry {
   return new InteractiveRequestRegistry({
+    ...(args.onRevalidationFailure
+      ? { onRevalidationFailure: args.onRevalidationFailure }
+      : {}),
     registerRequest: args.registerRequest,
   });
+}
+
+function createScriptedRegisterRequest(
+  responses: Array<HostDaemonInteractiveRequestResponse | Error>,
+): CreateRegistryArgs["registerRequest"] {
+  let index = 0;
+  return async () => {
+    const response = responses[Math.min(index, responses.length - 1)];
+    index += 1;
+    if (!response) {
+      throw new Error("Expected a scripted registration response");
+    }
+    if (response instanceof Error) {
+      throw response;
+    }
+    return response;
+  };
+}
+
+function createResolveCommand(
+  request: PendingInteractionCreate,
+  interactionId: string,
+) {
+  return {
+    interactionId,
+    providerId: request.providerId,
+    providerRequestId: request.providerRequestId,
+    providerThreadId: request.providerThreadId,
+    resolution: createCommandApprovalResolution(),
+    threadId: request.threadId,
+  };
 }
 
 describe("InteractiveRequestRegistry", () => {
@@ -177,5 +215,143 @@ describe("InteractiveRequestRegistry", () => {
     });
 
     await expect(pending).rejects.toThrow("Provider exited");
+  });
+
+  it("rejects a provider wait the server settled while the daemon was away", async () => {
+    const request = createCommandApprovalRequest();
+    const registry = createRegistry({
+      registerRequest: createScriptedRegisterRequest([
+        {
+          outcome: "created",
+          interactionId: "pint_registry",
+          status: "pending",
+        },
+        {
+          outcome: "rejected",
+          reason: `Provider request ${request.providerRequestId} was already handled and cannot be reused`,
+        },
+      ]),
+    });
+
+    const pending = registry.registerAndWait(request);
+    await Promise.resolve();
+    const rejection = expect(pending).rejects.toMatchObject({
+      code: "interactive_request_rejected",
+      message: `Provider request ${request.providerRequestId} was already handled and cannot be reused`,
+    });
+    await registry.revalidateRegisteredRequests();
+
+    await rejection;
+    expect(() =>
+      registry.resolve(createResolveCommand(request, "pint_registry")),
+    ).toThrowError(InteractiveRequestRegistryError);
+  });
+
+  it("keeps a provider wait the server still holds open after a reconnect", async () => {
+    const request = createCommandApprovalRequest();
+    const registry = createRegistry({
+      registerRequest: createScriptedRegisterRequest([
+        {
+          outcome: "created",
+          interactionId: "pint_registry",
+          status: "pending",
+        },
+        {
+          outcome: "existing",
+          interactionId: "pint_registry",
+          status: "pending",
+        },
+      ]),
+    });
+
+    const pending = registry.registerAndWait(request);
+    await Promise.resolve();
+    await registry.revalidateRegisteredRequests();
+    registry.resolve(createResolveCommand(request, "pint_registry"));
+
+    await expect(pending).resolves.toEqual(createCommandApprovalResolution());
+  });
+
+  it("keeps a provider wait when rechecking it with the server fails", async () => {
+    const request = createCommandApprovalRequest();
+    const failures: Array<{ error: Error; request: PendingInteractionCreate }> =
+      [];
+    const registry = createRegistry({
+      onRevalidationFailure: (failure) => {
+        failures.push(failure);
+      },
+      registerRequest: createScriptedRegisterRequest([
+        {
+          outcome: "created",
+          interactionId: "pint_registry",
+          status: "pending",
+        },
+        new Error("Server unavailable"),
+      ]),
+    });
+
+    const pending = registry.registerAndWait(request);
+    await Promise.resolve();
+    await registry.revalidateRegisteredRequests();
+    registry.resolve(createResolveCommand(request, "pint_registry"));
+
+    await expect(pending).resolves.toEqual(createCommandApprovalResolution());
+    expect(failures).toEqual([
+      { error: new Error("Server unavailable"), request },
+    ]);
+  });
+
+  it("adopts the interaction a server recreates for a provider wait", async () => {
+    const request = createCommandApprovalRequest();
+    const registry = createRegistry({
+      registerRequest: createScriptedRegisterRequest([
+        {
+          outcome: "created",
+          interactionId: "pint_registry",
+          status: "pending",
+        },
+        {
+          outcome: "created",
+          interactionId: "pint_recreated",
+          status: "pending",
+        },
+      ]),
+    });
+
+    const pending = registry.registerAndWait(request);
+    await Promise.resolve();
+    await registry.revalidateRegisteredRequests();
+
+    expect(() =>
+      registry.resolve(createResolveCommand(request, "pint_registry")),
+    ).toThrowError(InteractiveRequestRegistryError);
+    registry.resolve(createResolveCommand(request, "pint_recreated"));
+    await expect(pending).resolves.toEqual(createCommandApprovalResolution());
+  });
+
+  it("leaves a provider wait whose first registration is in flight to that registration", async () => {
+    const request = createCommandApprovalRequest();
+    const registration =
+      createDeferredPromise<HostDaemonInteractiveRequestResponse>();
+    const registrations: PendingInteractionCreate[] = [];
+    const registry = createRegistry({
+      registerRequest: async (registeredRequest) => {
+        registrations.push(registeredRequest);
+        return registration.promise;
+      },
+    });
+
+    const pending = registry.registerAndWait(request);
+    await registry.revalidateRegisteredRequests();
+    expect(registrations).toEqual([request]);
+
+    registration.resolve({
+      outcome: "created",
+      interactionId: "pint_registry",
+      status: "pending",
+    });
+    await Promise.resolve();
+    registry.resolve(createResolveCommand(request, "pint_registry"));
+    await expect(pending).resolves.toEqual(createCommandApprovalResolution());
   });
 });

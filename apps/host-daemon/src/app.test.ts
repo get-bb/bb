@@ -54,6 +54,7 @@ interface CreateFetchRecorderArgs {
   inactiveSessionOnFirstEventPost?: boolean;
   interactiveRequestError?: Error;
   interactiveRequestResponse?: HostDaemonInteractiveRequestResponse;
+  interactiveRequestResponses?: HostDaemonInteractiveRequestResponse[];
   interruptResponses?: Array<() => Response>;
   retiredEnvironmentIds?: string[];
   sessionIds?: string[];
@@ -110,6 +111,7 @@ function createFetchRecorder(
 ): FetchRecorder {
   const requests: RecordedFetchRequest[] = [];
   let eventPostCount = 0;
+  let interactiveRequestCount = 0;
   let interruptCount = 0;
   let sessionOpenCount = 0;
   const fetchFn: FetchFn = async (input, init) => {
@@ -165,7 +167,10 @@ function createFetchRecorder(
       if (args.interactiveRequestError) {
         throw args.interactiveRequestError;
       }
-      const response: HostDaemonInteractiveRequestResponse =
+      const scripted =
+        args.interactiveRequestResponses?.[interactiveRequestCount];
+      interactiveRequestCount += 1;
+      const response: HostDaemonInteractiveRequestResponse = scripted ??
         args.interactiveRequestResponse ?? {
           outcome: "created",
           interactionId: "pint_app_test",
@@ -1104,6 +1109,75 @@ describe("createHostDaemonApp", () => {
         threadIds: [request.threadId],
         reason: 'Provider "codex" exited while awaiting user interaction',
       });
+    } finally {
+      await app.daemon.shutdown("test", 0);
+    }
+  });
+
+  it("rejects a provider wait after reconnecting when the server settled its interaction while the daemon was away", async () => {
+    const sockets: ReconnectingWebSocketLike[] = [];
+    const request = createCommandApprovalRequest();
+    const settledReason = `Provider request ${request.providerRequestId} was already handled and cannot be reused`;
+    const { app, fetchRecorder, logger, runtimeOptions } =
+      await createAppFixture(
+        {
+          interactiveRequestResponses: [
+            {
+              outcome: "created",
+              interactionId: "pint_app_test",
+              status: "pending",
+            },
+            { outcome: "rejected", reason: settledReason },
+          ],
+          sessionIds: ["session-app-test-1", "session-app-test-2"],
+        },
+        {
+          createWebSocket: createOpeningWebSocket((socket) => {
+            sockets.push(socket);
+          }),
+        },
+      );
+    try {
+      await app.connection.start();
+      await app.runtimeManager.ensureEnvironment({
+        environmentId: "env-app-reconnect-revalidate",
+        workspacePath: await makeTempDir("bb-host-daemon-app-workspace-"),
+      });
+      const options = runtimeOptions.current;
+      if (!options?.onInteractiveRequest) {
+        throw new Error("Expected runtime callbacks to be captured");
+      }
+      const registrationBodies = () =>
+        fetchRecorder.requests
+          .filter(
+            (record) =>
+              record.pathname === "/internal/session/interactive-request",
+          )
+          .map((record) => JSON.parse(record.body ?? "{}"));
+
+      const pending = options.onInteractiveRequest(request);
+      await vi.waitFor(() => {
+        expect(registrationBodies()).toHaveLength(1);
+      });
+      const pendingRejection = expect(pending).rejects.toMatchObject({
+        code: "interactive_request_rejected",
+        message: settledReason,
+      });
+
+      sockets[0]?.reconnect();
+
+      await pendingRejection;
+      expect(registrationBodies()).toEqual([
+        { sessionId: "session-app-test-1", interaction: request },
+        { sessionId: "session-app-test-2", interaction: request },
+      ]);
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          interactiveRequestErrorCode: "interactive_request_rejected",
+          providerRequestId: request.providerRequestId,
+        }),
+        "Interactive provider request rejected by server",
+      );
     } finally {
       await app.daemon.shutdown("test", 0);
     }

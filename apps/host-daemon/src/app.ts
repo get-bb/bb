@@ -438,6 +438,18 @@ export async function createHostDaemonApp(
         threadIds: [request.threadId],
       });
     },
+    onRevalidationFailure: ({ error, request }) => {
+      options.logger.warn(
+        {
+          threadId: request.threadId,
+          providerThreadId: request.providerThreadId,
+          turnId: request.turnId,
+          providerRequestId: request.providerRequestId,
+          ...runtimeErrorLogFields(error),
+        },
+        "Failed to recheck interactive provider request after reconnecting",
+      );
+    },
   });
 
   let sendServerMessage = (_message: HostDaemonDaemonWsMessage) => false;
@@ -925,6 +937,7 @@ export async function createHostDaemonApp(
         );
       });
       void flushPendingInteractiveInterrupts();
+      void interactiveRequestRegistry.revalidateRegisteredRequests();
     },
     setSession: (session) => {
       sessionState.value = session?.sessionId ?? null;
