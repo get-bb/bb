@@ -275,6 +275,7 @@ let dynamicToolBridgePromise: Promise<AcpDynamicToolBridge> | null = null;
 
 const THREAD_STOP_CANCEL_TIMEOUT_MS = 4_000;
 const SHUTDOWN_CANCEL_TIMEOUT_MS = 1_500;
+const KIMI_SESSION_CLOSE_TIMEOUT_MS = 5_000;
 const AGENT_TURN_QUIET_MS = 5_000;
 const SESSION_BUSY_QUIET_MS = 2_000;
 const SESSION_BUSY_MAX_WAITS = 300;
@@ -2542,6 +2543,7 @@ async function startAgentSession(
         `ACP session for thread "${bbThreadId}" was released during construction`,
       );
     }
+    await enforceKimiPermissionMode(session, sessionId, true);
     session.providerThreadId = sessionId;
     bbThreadIdByProviderThreadId.set(sessionId, bbThreadId);
     sendNotification(BRIDGE_NOTIFICATION_METHODS.threadIdentity, {
@@ -2588,6 +2590,31 @@ async function startAgentSession(
   }
 }
 
+async function closeKimiSession(session: AcpThreadSession): Promise<void> {
+  if (
+    session.dialect.id !== "kimi" ||
+    session.capabilities?.session.close !== true ||
+    session.providerThreadId === "" ||
+    session.connection.exited
+  ) {
+    return;
+  }
+  try {
+    await session.connection.request({
+      method: "session/close",
+      params: { sessionId: session.providerThreadId },
+      resultSchema: z.unknown(),
+      timeoutMs: KIMI_SESSION_CLOSE_TIMEOUT_MS,
+    });
+  } catch (error) {
+    emitForSession(session, ACP_WARNING_METHOD, {
+      threadId: session.bbThreadId,
+      summary: "Kimi could not finish saving the session before closing",
+      details: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 async function stopSession(
   session: AcpThreadSession,
   cancelTimeoutMs = THREAD_STOP_CANCEL_TIMEOUT_MS,
@@ -2617,6 +2644,7 @@ async function stopSession(
   }
   settleInterruptedPrompt(session);
 
+  await closeKimiSession(session);
   await session.connection.kill();
   removeSession(session);
   await releaseCursorMcpApproval(session);
@@ -2749,10 +2777,69 @@ function publishThreadState(
   ]);
 }
 
+function assertKimiSessionOptionsAllowed(
+  session: AcpThreadSession,
+  selections: SessionOptionSelections | undefined,
+): void {
+  if (
+    session.dialect.id === "kimi" &&
+    session.policy.permissionMode === "accept-edits" &&
+    selections?.mode !== undefined &&
+    selections.mode !== "default" &&
+    selections.mode !== "plan"
+  ) {
+    throw new Error(
+      `Kimi mode "${String(selections.mode)}" requires BB's full permission mode.`,
+    );
+  }
+}
+
+async function enforceKimiPermissionMode(
+  session: AcpThreadSession,
+  sessionId = session.providerThreadId,
+  resetPlanMode = false,
+): Promise<void> {
+  if (
+    session.dialect.id !== "kimi" ||
+    session.policy.permissionMode !== "accept-edits"
+  ) {
+    return;
+  }
+  const mode = session.model
+    .snapshot()
+    .configOptions.find((option) => option.id === "mode");
+  if (
+    !resetPlanMode &&
+    mode?.type === "select" &&
+    mode.currentValue === "plan"
+  ) {
+    return;
+  }
+  await session.connection.request({
+    method: "session/set_mode",
+    params: { sessionId, modeId: "default" },
+    resultSchema: z.unknown(),
+    timeoutMs: ACP_SESSION_CONFIG_TIMEOUT_MS,
+  });
+  session.nativeConfig = {
+    ...session.nativeConfig,
+    configOptions: withAcpConfigValue(
+      session.nativeConfig.configOptions,
+      "mode",
+      "default",
+    ),
+  };
+  publishSessionStateEvents(
+    session,
+    session.model.applyConfigOptionValue("mode", "default"),
+  );
+}
+
 async function applySessionOptionSelections(
   session: AcpThreadSession,
   selections: SessionOptionSelections,
 ): Promise<void> {
+  assertKimiSessionOptionsAllowed(session, selections);
   for (const [optionId, value] of Object.entries(selections)) {
     const option = session.model
       .snapshot()
@@ -2913,6 +3000,7 @@ async function releaseSession(session: AcpThreadSession): Promise<void> {
     "ACP session released before the steer was sent",
   );
   cancelPendingPermissions(session);
+  await closeKimiSession(session);
   await session.connection.kill();
   removeSession(session);
   await releaseCursorMcpApproval(session);
@@ -3074,6 +3162,11 @@ function runTurn(
           });
           session.awaitingFirstPrompt = false;
         }
+        assertKimiSessionOptionsAllowed(
+          session,
+          pending.options.sessionOptions,
+        );
+        await enforceKimiPermissionMode(session);
         const prompt = buildPromptContentBlocks(session, pending.input);
         let inputAccepted = false;
         let busyRetries = 0;
@@ -3243,6 +3336,10 @@ function reconcileExecutionSettings(
     session.restartAfterCancelError ||
     launchArgsChanged ||
     !isDeepStrictEqual(envVars ?? {}, session.construction.envVars ?? {});
+  const resetKimiPermissions =
+    session.dialect.id === "kimi" &&
+    session.policy.permissionMode === "full" &&
+    options.permissionMode === "accept-edits";
   cancelPendingPermissions(session);
   session.policy = {
     permissionMode: options.permissionMode,
@@ -3250,6 +3347,13 @@ function reconcileExecutionSettings(
   };
   if (restart) {
     return rebuildAgentSession(session, construction);
+  }
+  if (resetKimiPermissions) {
+    return enforceKimiPermissionMode(
+      session,
+      session.providerThreadId,
+      true,
+    ).then(() => applyNativeModelSelection(session, construction));
   }
   if (
     isDeepStrictEqual(

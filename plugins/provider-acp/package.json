@@ -90,6 +90,11 @@
         "kind": "agent",
         "id": "acp-hermes-agent",
         "displayName": "Hermes"
+      },
+      {
+        "kind": "agent",
+        "id": "acp-kimi",
+        "displayName": "Kimi Code"
       }
     ]
   },

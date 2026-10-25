@@ -510,9 +510,10 @@ bb plugin config provider-acp set customAgents '[
 Each entry needs `id` (lowercase letters, digits, and dashes), `displayName`,
 and `command`. bb derives the provider id `acp-<id>`, which never changes once
 a thread has used it. `cursor` is reserved; an entry with an id bb lists only
-where the agent is installed (`opencode`, `omp`, `grok`, `hermes-agent`)
+where the agent is installed (`opencode`, `omp`, `grok`, `hermes-agent`, `kimi`)
 replaces the shipped agent and keeps its `nativeSkillRoots` unless it sets its
-own. Optional fields: `args`, `env`, `cwd`, `modelCli` (CLI model listing and
+own. Overrides also inherit the shipped agent's dialect unless they explicitly
+set `dialect`. Optional fields: `args`, `env`, `cwd`, `modelCli` (CLI model listing and
 selection), `reasoningCli` (launch-time reasoning flags), `nativeReasoning`
 (ACP `session/set_config_option` reasoning), `nativeSkillRoots`
 (`{"user": [...], "project": [...]}` relative paths; an entry is a path or
@@ -622,6 +623,7 @@ declare:
 | omp          | The active `~/.omp/.../agent` roots and supported Pi, Agents, Claude, Codex, and OpenCode roots          | `.omp/skills` and the supported compatibility roots from the repository root to the current directory        |
 | Grok Build   | `$GROK_HOME/skills` or `~/.grok/skills`, plus `~/.agents/skills`, `~/.claude/skills`, `~/.cursor/skills` | The same four roots from the repository root to the current directory                                        |
 | Hermes Agent | `$HERMES_HOME/skills` or `~/.hermes/skills`                                                              | None                                                                                                         |
+| Kimi Code    | `$KIMI_CODE_HOME/skills` or `~/.kimi-code/skills`, plus `~/.agents/skills`                               | `.kimi-code/skills` and `.agents/skills` at the nearest Git repository root, or the workspace outside Git    |
 
 OpenCode also uses `$OPENCODE_CONFIG_DIR/skills`. Pi and omp use
 `$PI_CODING_AGENT_DIR`; omp selects its profile with `$OMP_PROFILE` or
@@ -630,6 +632,15 @@ skills at any depth under its roots. Pi settings
 and packages, omp's `skills.customDirectories`, Hermes' `skills.external_dirs`,
 and Grok's `[skills].paths` in `config.toml` add paths; Grok also reads enabled
 Grok and Claude-compatible plugin skills.
+
+Kimi roots follow the npm Kimi Code CLI (version 2 or later), are scanned
+recursively, and include `extra_skill_dirs` (`extraSkillDirs` also accepted)
+from `$KIMI_CODE_HOME/config.toml` (default `~/.kimi-code/config.toml`). Relative
+extra paths resolve from the project root, or the host's home without a
+workspace; `~/` expands to the host's home. Indexing reads `KIMI_CODE_HOME`
+from the host daemon's environment, independently of a custom agent's
+launch-only `env` overrides. Legacy Python Kimi CLI skill locations are not
+included.
 
 ## Multi-machine
 

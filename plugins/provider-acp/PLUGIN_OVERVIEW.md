@@ -2,7 +2,7 @@ Use one bb workspace with the coding agents you already run on your machine. Thi
 
 ## What you get
 
-- Ready-made providers for Cursor, opencode, omp, Grok Build, and Hermes Agent.
+- Ready-made providers for Cursor, opencode, omp, Grok Build, Hermes Agent, and Kimi Code.
 - The official ACP registry. Add any agent it lists that ships through `npx` or `uvx` with one click in the plugin's settings, or with `bb acp add <agent-id>`.
 - A `Custom agents` setting. Add any other ACP agent as a JSON array with an `id`, a `displayName`, and a `command`.
 - Permission modes `accept-edits` and `full` for every ACP provider.
@@ -16,7 +16,8 @@ The plugin launches the agent command on the host machine and talks to it over A
 
 ## Requirements
 
-- Install the agent CLI on the host: `cursor-agent`, `opencode`, `omp`, `grok`, or `hermes`.
+- Install the agent CLI on the host: `cursor-agent`, `opencode`, `omp`, `grok`, `hermes`, or `kimi`.
 - Sign in with the agent's own command, for example `cursor-agent login` or `opencode auth login`.
+- For Kimi Code, install the current npm CLI (version 2 or later) with `npm install -g @moonshot-ai/kimi-code`, then run `kimi login`. bb discovers it as `acp-kimi` and starts it with `kimi acp`.
 - A custom agent needs a command that starts an ACP server on stdio.
 - An agent added from the registry needs Node.js (`npx`) or uv (`uvx`) on the host.

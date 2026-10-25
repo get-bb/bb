@@ -286,6 +286,39 @@ describe("custom agents that report usage", () => {
 });
 
 describe("acpProviderDeclaration", () => {
+  it("launches installed Kimi Code through ACP with terminal login guidance", () => {
+    const agent = KNOWN_ACP_AGENTS.find((agent) => agent.id === "acp-kimi")!;
+    const declaration = acpProviderDeclaration(agent);
+
+    expect(experimental_acpLaunchSpecSchema.parse(agent.launch)).toEqual({
+      displayName: "Kimi Code",
+      command: "kimi",
+      args: ["acp"],
+      env: {},
+    });
+    expect(declaration).toMatchObject({
+      id: "acp-kimi",
+      displayName: "Kimi Code",
+      icon: "provider-acp/registry-kimi",
+      experimental_visibility: "installed",
+      experimental_resolvesNativeRoots: true,
+      strings: {
+        signInHint: "Run `kimi login` on the machine to sign in.",
+        expiredHint:
+          "Your Kimi Code session expired. Run `kimi login`, then reload.",
+      },
+      capabilities: {
+        fork: "none",
+        permissionModes: ["accept-edits", "full"],
+      },
+      maintenance: { health: true, usage: false, installation: false },
+    });
+    expect(declaration.experimental_bridgeOptions).toEqual({
+      acpDialect: "kimi",
+      acpLaunchSpec: agent.launch,
+    });
+  });
+
   it("declares no skill roots for an agent that names none", () => {
     for (const agent of KNOWN_ACP_AGENTS) {
       if (agent.launch.nativeSkillRoots !== undefined) continue;

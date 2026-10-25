@@ -1,7 +1,27 @@
 # ACP providers
 
 First-party plugin for ACP (Agent Client Protocol) agent providers: Cursor,
-opencode, omp, Grok Build and Hermes Agent.
+opencode, omp, Grok Build, Hermes Agent and Kimi Code.
+
+Kimi Code appears as `acp-kimi` when `kimi` is on the host's PATH. Install the
+current npm CLI (version 2 or later) with
+`npm install -g @moonshot-ai/kimi-code` and sign in with `kimi login` on that
+host. bb launches `kimi acp`; the `acp-provider` skill includes CLI and SDK
+examples for listing its models and starting a thread, plus its native skill
+locations.
+
+Kimi thread forking is disabled: its ACP fork currently preserves the source
+workspace and does not attach the destination session's MCP servers. Starting
+and resuming threads use the shared ACP bridge. Before stopping Kimi, the
+bridge waits for its advertised `session/close` operation to finish saving
+the session. A close failure or timeout produces a warning before cleanup.
+
+In bb's `accept-edits` permission mode, the bridge resets Kimi's native mode
+to `default` when creating or restoring a session, when leaving Full Access,
+and before ordinary prompts. This ensures a configured native `yolo` default
+still goes through bb's approval handling. Native `auto` and `yolo` selections
+require Full Access. Explicit plan mode is preserved between turns in a live
+restricted session; restoring that session resets it to `default`.
 
 OpenCode Go usage appears under OpenCode in the Provider usage panel for the
 selected machine. It reads the official Go endpoint using the machine's OpenCode

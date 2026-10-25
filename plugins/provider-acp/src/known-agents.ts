@@ -2,6 +2,7 @@ import type { AcpAgentDefinition } from "./agents.js";
 import { resolveCursorNativeRoots } from "./native-roots/cursor.js";
 import { resolveGrokNativeRoots } from "./native-roots/grok.js";
 import { resolveHermesNativeRoots } from "./native-roots/hermes.js";
+import { resolveKimiNativeRoots } from "./native-roots/kimi.js";
 import { resolveOmpNativeRoots } from "./native-roots/omp.js";
 import { resolveOpenCodeNativeRoots } from "./native-roots/opencode.js";
 
@@ -197,6 +198,24 @@ export const KNOWN_ACP_AGENTS: readonly AcpAgentDefinition[] = [
       },
     },
     nativeRootsResolver: resolveHermesNativeRoots,
+  },
+  {
+    id: "acp-kimi",
+    displayName: "Kimi Code",
+    icon: declaredIcon("registry-kimi"),
+    dialect: "kimi",
+    signInCommand: "kimi login",
+    installUrl:
+      "https://www.kimi.com/code/docs/en/kimi-code-cli/guides/getting-started",
+    visibility: "installed",
+    fork: "none",
+    launch: {
+      displayName: "Kimi Code",
+      command: "kimi",
+      args: ["acp"],
+      env: {},
+    },
+    nativeRootsResolver: resolveKimiNativeRoots,
   },
 ];
 

@@ -105,19 +105,23 @@ subscription-window limits come from the bundled Provider retry plugin
 failed turn, use `bb thread retry`.
 
 Known ACP agents can appear automatically when their CLI is installed on the
-host. For example, opencode, omp, Grok Build's grok CLI, or Hermes' hermes CLI
-on PATH appears as provider acp-opencode, acp-omp, acp-grok, or
-acp-hermes-agent. The acp-provider skill covers OpenCode launch settings,
-OpenCode Go usage, and per-agent compaction support.
+host. For example, opencode, omp, Grok Build's grok CLI, Hermes' hermes CLI, or
+Kimi Code's kimi CLI on PATH appears as provider acp-opencode, acp-omp,
+acp-grok, acp-hermes-agent, or acp-kimi. The acp-provider skill covers Kimi Code
+setup, OpenCode launch settings, OpenCode Go usage, and per-agent compaction
+support.
 
 bb indexes the native user and project skill roots for Codex, Claude Code, Pi,
-Cursor, OpenCode, omp, Grok Build, and Hermes Agent. This includes compatibility
-roots such as .agents/skills and .claude/skills when the provider supports them.
-It also includes project ancestor roots for providers that search to the Git
-repository root. Configured Pi, omp, Grok, and Hermes directories are included.
+Cursor, OpenCode, omp, Grok Build, Hermes Agent, and Kimi Code. This includes
+compatibility roots such as .agents/skills and .claude/skills when the provider
+supports them. It also includes project ancestor roots for providers that
+search to the Git repository root. Configured Pi, omp, Grok, Hermes, and Kimi
+directories are included.
+Kimi's npm CLI uses .kimi-code/skills and .agents/skills at the project root;
+its acp-provider skill documents KIMI_CODE_HOME and extra skill directories.
 Enabled provider plugins also contribute skills to the selected provider's `/`
-command menu. `bb skill list` shows native skills for Claude Code, Codex, and
-Cursor.
+command menu. `bb skill list` shows native skills for providers that declare
+native skill roots, including Kimi Code.
 
 ACP agents (acp-*), including custom agents set in the ACP providers plugin's
 customAgents setting, are documented in the acp-provider skill.

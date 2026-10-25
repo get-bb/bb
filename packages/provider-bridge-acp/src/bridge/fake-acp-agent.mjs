@@ -115,6 +115,7 @@ const failLoad = process.env.FAKE_ACP_FAIL_LOAD === "1";
 const loadSession = process.env.FAKE_ACP_LOAD_SESSION === "1" || failLoad;
 const forkSession = process.env.FAKE_ACP_FORK_SESSION === "1";
 const deleteSession = process.env.FAKE_ACP_DELETE_SESSION === "1";
+const closeSession = process.env.FAKE_ACP_CLOSE_SESSION === "1";
 const forkReuseSourceId = process.env.FAKE_ACP_FORK_REUSE_SOURCE_ID === "1";
 const usageOnLoad = process.env.FAKE_ACP_USAGE_ON_LOAD === "1";
 const usageSessionId = process.env.FAKE_ACP_USAGE_SESSION_ID;
@@ -127,6 +128,13 @@ const unmappedReasoningConfig =
 const acceptNativeReasoning =
   process.env.FAKE_ACP_ACCEPT_NATIVE_REASONING === "1";
 const sessionOptionsConfig = process.env.FAKE_ACP_SESSION_OPTIONS === "1";
+const kimiModes = process.env.FAKE_ACP_KIMI_MODES === "1";
+const kimiSetModeErrorAt = Number(
+  process.env.FAKE_ACP_KIMI_SET_MODE_ERROR_AT ?? "0",
+);
+let kimiSetModeCalls = 0;
+let selectedKimiMode = "yolo";
+let reportedKimiMode = "default";
 const sessionOptionRejectedValue =
   process.env.FAKE_ACP_SESSION_OPTION_REJECTED_VALUE;
 let selectedApproach = "build";
@@ -383,7 +391,45 @@ function sessionOptionConfigOptions() {
   ];
 }
 
+function setKimiMode(message, mode, configResult) {
+  kimiSetModeCalls += 1;
+  if (
+    kimiSetModeCalls === kimiSetModeErrorAt ||
+    (selectedKimiMode === "plan" && mode === "plan")
+  ) {
+    send({
+      jsonrpc: "2.0",
+      id: message.id,
+      error: { code: -32603, message: "Kimi mode change failed" },
+    });
+    return;
+  }
+  selectedKimiMode = mode;
+  reportedKimiMode = mode;
+  notifyUpdate({ sessionUpdate: "config_option_update", ...configState() });
+  send({
+    jsonrpc: "2.0",
+    id: message.id,
+    result: configResult ? configState() : {},
+  });
+}
+
 function configOptions() {
+  if (kimiModes) {
+    return [
+      {
+        id: "mode",
+        name: "Mode",
+        category: "mode",
+        type: "select",
+        currentValue: reportedKimiMode,
+        options: ["default", "plan", "auto", "yolo"].map((value) => ({
+          value,
+          name: value,
+        })),
+      },
+    ];
+  }
   if (cursorParameterizedModels) {
     return cursorConfigOptions();
   }
@@ -789,6 +835,8 @@ async function handlePrompt(message) {
   } else if (text.includes("slow")) {
     notifyUpdate(messageChunk(`echo:${text}`));
     await sleep(300);
+  } else if (text.includes("echo-kimi-mode")) {
+    notifyUpdate(messageChunk(`kimi-mode:${selectedKimiMode}`));
   } else if (text.includes("echo-permission-env")) {
     notifyUpdate(
       messageChunk(`permission:${process.env.OPENCODE_PERMISSION ?? "unset"}`),
@@ -882,12 +930,13 @@ async function handleMessage(message) {
           agentCapabilities: {
             loadSession,
             promptCapabilities: { image: false },
-            ...(forkSession || resumeSession || deleteSession
+            ...(forkSession || resumeSession || deleteSession || closeSession
               ? {
                   sessionCapabilities: {
                     ...(forkSession ? { fork: {} } : {}),
                     ...(resumeSession ? { resume: {} } : {}),
                     ...(deleteSession ? { delete: {} } : {}),
+                    ...(closeSession ? { close: {} } : {}),
                   },
                 }
               : {}),
@@ -1056,6 +1105,17 @@ async function handleMessage(message) {
         ...configState(),
       });
       return;
+    case "session/set_mode":
+      if (kimiModes) {
+        setKimiMode(message, message.params?.modeId, false);
+      } else {
+        send({
+          jsonrpc: "2.0",
+          id: message.id,
+          error: { code: -32601, message: "Unknown method session/set_mode" },
+        });
+      }
+      return;
     case "session/set_model": {
       const modelId = message.params?.modelId;
       const availableModels = cursorParameterizedModels
@@ -1084,6 +1144,10 @@ async function handleMessage(message) {
     case "session/set_config_option": {
       const configId = message.params?.configId;
       const value = message.params?.value;
+      if (configId === "mode" && kimiModes) {
+        setKimiMode(message, value, true);
+        return;
+      }
       if (configId === "model") {
         if (setConfigModelError || value === setConfigModelErrorValue) {
           send({
@@ -1195,6 +1259,32 @@ async function handleMessage(message) {
       });
       return;
     }
+    case "session/close":
+      if (process.env.FAKE_ACP_CLOSE_SESSION_HANG === "1") {
+        return;
+      }
+      if (process.env.FAKE_ACP_CLOSE_SESSION_ERROR === "1") {
+        send({
+          jsonrpc: "2.0",
+          id: message.id,
+          error: { code: -32603, message: "Session flush failed" },
+        });
+        return;
+      }
+      await new Promise((resolveClose) =>
+        setTimeout(
+          resolveClose,
+          Number(process.env.FAKE_ACP_CLOSE_SESSION_DELAY_MS ?? "0"),
+        ),
+      );
+      if (process.env.FAKE_ACP_CLOSE_SESSION_FILE) {
+        writeFileSync(
+          process.env.FAKE_ACP_CLOSE_SESSION_FILE,
+          message.params.sessionId,
+        );
+      }
+      send({ jsonrpc: "2.0", id: message.id, result: {} });
+      return;
     case "session/prompt":
       await handlePrompt(message);
       return;

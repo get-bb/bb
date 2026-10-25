@@ -5094,6 +5094,338 @@ describe("acp bridge: questions the agent asks", () => {
   });
 });
 
+describe("acp bridge: Kimi permissions", () => {
+  function kimiLaunch(
+    requestLog: string,
+    extraEnv: Record<string, string> = {},
+  ) {
+    return {
+      dialectId: "kimi",
+      envVars: {
+        FAKE_ACP_KIMI_MODES: "1",
+        FAKE_ACP_REQUEST_LOG: requestLog,
+        ...extraEnv,
+      },
+    };
+  }
+
+  const restrictedOptions = () =>
+    executionOptions({ permissionMode: "accept-edits" });
+  const modeRequests = (requestLog: string) =>
+    loggedAcpRequests(requestLog).filter(
+      (request) => request.method === "session/set_mode",
+    );
+
+  it("resets a hidden native yolo default before accepting the session and before prompts", async () => {
+    const requestLog = join(workspaceDir, "kimi-requests.log");
+    const { providerThreadId } = await startThread({
+      ...kimiLaunch(requestLog),
+      permissionMode: "accept-edits",
+    });
+
+    expect(
+      modeRequests(requestLog).map((request) => request.params?.modeId),
+    ).toEqual(["default"]);
+    expect(
+      await completeTurnWith(
+        providerThreadId,
+        "echo-kimi-mode",
+        restrictedOptions(),
+      ),
+    ).toBe("kimi-mode:default");
+    expect(
+      modeRequests(requestLog).map((request) => request.params?.modeId),
+    ).toEqual(["default", "default"]);
+    const requests = loggedAcpRequests(requestLog).map(
+      (request) => request.method,
+    );
+    expect(requests.lastIndexOf("session/set_mode")).toBeLessThan(
+      requests.indexOf("session/prompt"),
+    );
+  });
+
+  it("normalizes restored native permissions before resuming work", async () => {
+    const requestLog = join(workspaceDir, "kimi-resume.log");
+    const launch = kimiLaunch(requestLog, { FAKE_ACP_RESUME_SESSION: "1" });
+    const response = await waitForResponse(
+      sendRequest("thread/resume", {
+        threadId: "kimi-resumed",
+        providerThreadId: "persisted-kimi-session",
+        cwd: workspaceDir,
+        instructionMode: "append",
+        options: executionOptions({
+          permissionMode: "accept-edits",
+          providerOptions: launchProviderOptions(launch),
+        }),
+      }),
+    );
+    const providerThreadId = providerThreadIdOf(response);
+
+    expect(
+      loggedAcpRequests(requestLog).map((request) => request.method),
+    ).toContain("session/resume");
+    expect(modeRequests(requestLog)).toHaveLength(1);
+    expect(
+      await completeTurnWith(
+        providerThreadId,
+        "echo-kimi-mode",
+        restrictedOptions(),
+      ),
+    ).toBe("kimi-mode:default");
+  });
+
+  it("removes native yolo when Full Access changes to accept-edits", async () => {
+    const requestLog = join(workspaceDir, "kimi-downgrade.log");
+    const { providerThreadId } = await startThread(kimiLaunch(requestLog));
+
+    expect(
+      await completeTurnWith(providerThreadId, "echo-kimi-mode", {
+        ...executionOptions({}),
+        sessionOptions: { mode: "yolo" },
+      }),
+    ).toBe("kimi-mode:yolo");
+    expect(modeRequests(requestLog)).toEqual([]);
+    expect(
+      await completeTurnWith(
+        providerThreadId,
+        "echo-kimi-mode",
+        restrictedOptions(),
+      ),
+    ).toBe("kimi-mode:default");
+    expect(
+      modeRequests(requestLog).map((request) => request.params?.modeId),
+    ).toEqual(["default", "default"]);
+  });
+
+  it("clears a plan entered under Full Access when permissions are restricted", async () => {
+    const requestLog = join(workspaceDir, "kimi-plan-downgrade.log");
+    const { providerThreadId } = await startThread(kimiLaunch(requestLog));
+
+    await completeTurnWith(providerThreadId, "echo-kimi-mode", {
+      ...executionOptions({}),
+      sessionOptions: { mode: "yolo" },
+    });
+    expect(
+      await completeTurnWith(providerThreadId, "echo-kimi-mode", {
+        ...executionOptions({}),
+        sessionOptions: { mode: "plan" },
+      }),
+    ).toBe("kimi-mode:plan");
+    expect(
+      await completeTurnWith(
+        providerThreadId,
+        "echo-kimi-mode",
+        restrictedOptions(),
+      ),
+    ).toBe("kimi-mode:default");
+    expect(
+      await completeTurnWith(providerThreadId, "echo-kimi-mode", {
+        ...restrictedOptions(),
+        sessionOptions: { mode: "plan" },
+      }),
+    ).toBe("kimi-mode:plan");
+  });
+
+  it("preserves an explicitly selected plan mode over successive restricted turns", async () => {
+    const requestLog = join(workspaceDir, "kimi-plan.log");
+    const { providerThreadId } = await startThread({
+      ...kimiLaunch(requestLog),
+      permissionMode: "accept-edits",
+    });
+    const options = {
+      ...restrictedOptions(),
+      sessionOptions: { mode: "plan" },
+    };
+
+    expect(
+      await completeTurnWith(providerThreadId, "echo-kimi-mode", options),
+    ).toBe("kimi-mode:plan");
+    expect(
+      await completeTurnWith(providerThreadId, "echo-kimi-mode", options),
+    ).toBe("kimi-mode:plan");
+    expect(modeRequests(requestLog)).toHaveLength(1);
+    expect(
+      loggedAcpRequests(requestLog).filter(
+        (request) => request.method === "session/set_config_option",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it.each(["auto", "yolo"])(
+    "rejects native %s mode before any restricted prompt",
+    async (mode) => {
+      const requestLog = join(workspaceDir, `kimi-unsafe-${mode}.log`);
+      const { providerThreadId } = await startThread({
+        ...kimiLaunch(requestLog),
+        permissionMode: "accept-edits",
+      });
+      const response = await waitForResponse(
+        sendTurnRequest("turn/start", providerThreadId, {
+          input: [{ type: "text", text: "echo-kimi-mode", mentions: [] }],
+          options: { ...restrictedOptions(), sessionOptions: { mode } },
+        }),
+      );
+
+      expect(response.error?.message).toContain(
+        "requires BB's full permission mode",
+      );
+      expect(
+        loggedAcpRequests(requestLog).some(
+          (request) => request.method === "session/prompt",
+        ),
+      ).toBe(false);
+      expect(
+        loggedAcpRequests(requestLog).some(
+          (request) => request.method === "session/set_config_option",
+        ),
+      ).toBe(false);
+    },
+  );
+
+  it("fails session creation if native permissions cannot be normalized", async () => {
+    const requestLog = join(workspaceDir, "kimi-start-failure.log");
+    await expect(
+      startThread({
+        ...kimiLaunch(requestLog, { FAKE_ACP_KIMI_SET_MODE_ERROR_AT: "1" }),
+        permissionMode: "accept-edits",
+      }),
+    ).rejects.toThrow("Kimi mode change failed");
+    expect(
+      loggedAcpRequests(requestLog).some(
+        (request) => request.method === "session/prompt",
+      ),
+    ).toBe(false);
+  });
+
+  it("fails a turn without sending its prompt when permission normalization fails", async () => {
+    const requestLog = join(workspaceDir, "kimi-turn-failure.log");
+    const { providerThreadId } = await startThread({
+      ...kimiLaunch(requestLog, { FAKE_ACP_KIMI_SET_MODE_ERROR_AT: "2" }),
+      permissionMode: "accept-edits",
+    });
+    const response = await waitForResponse(
+      sendTurnRequest("turn/start", providerThreadId, {
+        input: [{ type: "text", text: "echo-kimi-mode", mentions: [] }],
+        options: restrictedOptions(),
+      }),
+    );
+
+    expect(response.error).toBeDefined();
+    expect(
+      loggedAcpRequests(requestLog).some(
+        (request) => request.method === "session/prompt",
+      ),
+    ).toBe(false);
+    expect(JSON.stringify(threadEventsOfType("provider/error"))).toContain(
+      "Kimi mode change failed",
+    );
+  });
+});
+
+describe("acp bridge: Kimi session persistence", () => {
+  it.each(["release", "interrupt"])(
+    "waits for Kimi to flush the session before %s terminates the agent",
+    async (intent) => {
+      const requestLog = join(workspaceDir, "kimi-close-requests.log");
+      const closeFile = join(workspaceDir, "kimi-session-flushed");
+      const readyFile = join(workspaceDir, "kimi-agent-ready");
+      const { bbThreadId, providerThreadId } = await startThread({
+        dialectId: "kimi",
+        envVars: {
+          FAKE_ACP_CLOSE_SESSION: "1",
+          FAKE_ACP_CLOSE_SESSION_DELAY_MS: "100",
+          FAKE_ACP_CLOSE_SESSION_FILE: closeFile,
+          FAKE_ACP_REQUEST_LOG: requestLog,
+          FAKE_ACP_READY_FILE: readyFile,
+        },
+      });
+      await completeTurnWith(providerThreadId, "ping", executionOptions({}));
+
+      const stopId = sendRequest("thread/stop", {
+        threadId: bbThreadId,
+        providerThreadId,
+        intent,
+        activeTurnId: null,
+      });
+      expect((await waitForResponse(stopId)).result).toEqual({ ok: true });
+      expect(readFileSync(closeFile, "utf8")).toBe(providerThreadId);
+      expect(
+        loggedAcpRequests(requestLog)
+          .filter((request) => request.method === "session/close")
+          .map((request) => request.params?.sessionId),
+      ).toEqual([providerThreadId]);
+      await waitForAgentExit(readyFile);
+    },
+  );
+
+  it.each(["error", "timeout"])(
+    "warns and still reaps Kimi when closing the session ends with %s",
+    async (failure) => {
+      const requestLog = join(workspaceDir, "kimi-close-requests.log");
+      const readyFile = join(workspaceDir, "kimi-agent-ready");
+      const { bbThreadId, providerThreadId } = await startThread({
+        dialectId: "kimi",
+        envVars: {
+          FAKE_ACP_CLOSE_SESSION: "1",
+          FAKE_ACP_CLOSE_SESSION_ERROR: failure === "error" ? "1" : "0",
+          FAKE_ACP_CLOSE_SESSION_HANG: failure === "timeout" ? "1" : "0",
+          FAKE_ACP_REQUEST_LOG: requestLog,
+          FAKE_ACP_READY_FILE: readyFile,
+        },
+      });
+      if (failure === "timeout") {
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      }
+      try {
+        const stopId = sendRequest("thread/stop", {
+          threadId: bbThreadId,
+          providerThreadId,
+          intent: "release",
+          activeTurnId: null,
+        });
+        if (failure === "timeout") {
+          await waitFor(
+            () =>
+              loggedAcpRequests(requestLog).some(
+                (request) => request.method === "session/close",
+              ) || undefined,
+            "Kimi close request",
+          );
+          await vi.advanceTimersByTimeAsync(5_001);
+        }
+        expect((await waitForResponse(stopId)).result).toEqual({ ok: true });
+        expect(
+          JSON.stringify(threadEventsOfType("provider/warning")),
+        ).toContain("Kimi could not finish saving the session before closing");
+        await waitForAgentExit(readyFile);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it.each([
+    { dialectId: "acp", close: "1" },
+    { dialectId: "kimi", close: "0" },
+  ])("preserves termination without Kimi close support: %j", async (agent) => {
+    const requestLog = join(workspaceDir, "agent-close-requests.log");
+    const { providerThreadId } = await startThread({
+      dialectId: agent.dialectId,
+      envVars: {
+        FAKE_ACP_CLOSE_SESSION: agent.close,
+        FAKE_ACP_REQUEST_LOG: requestLog,
+      },
+    });
+
+    await stopThread(providerThreadId);
+    expect(
+      loggedAcpRequests(requestLog).some(
+        (request) => request.method === "session/close",
+      ),
+    ).toBe(false);
+  });
+});
+
 describe("acp bridge: live session state", () => {
   function threadStates(kind: string): unknown[] {
     return threadEventsOfType("thread/extensionState/updated")

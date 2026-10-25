@@ -123,6 +123,50 @@ describe("the ACP plugin's registrations", () => {
 });
 
 describe("the ACP plugin's registration bookkeeping", () => {
+  it("preserves an existing Kimi override and restores the built-in when removed", async () => {
+    const host = await loadPlugin({
+      customAgents: customAgents({
+        id: "kimi",
+        displayName: "My Kimi",
+        command: "/opt/kimi-wrapper",
+        args: ["acp"],
+        env: { KIMI_CODE_HOME: "/srv/kimi" },
+      }),
+    });
+    const kimiProviders = () =>
+      host.harness.registrations.providerRegistrations.filter(
+        (declaration) => declaration.id === "acp-kimi",
+      );
+
+    expect(kimiProviders()).toHaveLength(1);
+    expect(kimiProviders()[0]).toMatchObject({
+      displayName: "My Kimi",
+      experimental_visibility: "always",
+      experimental_resolvesNativeRoots: true,
+      experimental_bridgeOptions: {
+        acpDialect: "kimi",
+        acpLaunchSpec: {
+          command: "/opt/kimi-wrapper",
+          args: ["acp"],
+          env: { KIMI_CODE_HOME: "/srv/kimi" },
+        },
+      },
+    });
+
+    await host.harness.setSettings({ customAgents: "[]" });
+
+    await vi.waitFor(() => {
+      expect(kimiProviders()).toHaveLength(1);
+      expect(kimiProviders()[0]).toMatchObject({
+        displayName: "Kimi Code",
+        experimental_visibility: "installed",
+        experimental_bridgeOptions: {
+          acpLaunchSpec: { command: "kimi", args: ["acp"] },
+        },
+      });
+    });
+  });
+
   it("registers the shipped agents before the factory's first await", async () => {
     const host = createFakePluginHost({
       pluginId: PLUGIN_ID,
@@ -222,6 +266,26 @@ describe("the ACP plugin's registration bookkeeping", () => {
 });
 
 describe("the ACP plugin's capability probe", () => {
+  it("keeps Kimi forks disabled even when the CLI advertises session/fork", async () => {
+    const probed: string[] = [];
+    const host = await loadPlugin({
+      hosts: [{ id: "host_1", status: "connected" }],
+      probe: (command) => {
+        probed.push(command);
+        return { reachable: true, fork: true };
+      },
+    });
+    expect(forkOf(host, "acp-kimi")).toBe("none");
+
+    const run = host.harness.runService("acp-capability-probe");
+    await vi.waitFor(() => expect(probed.length).toBeGreaterThan(0));
+    run.controller.abort();
+    await run.done;
+
+    expect(probed).not.toContain("kimi");
+    expect(forkOf(host, "acp-kimi")).toBe("none");
+  });
+
   it("narrows a declared fork the agent does not advertise", async () => {
     const host = await loadPlugin({
       hosts: [{ id: "host_1", status: "connected" }],
@@ -435,6 +499,35 @@ describe("the ACP registry", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("recognizes Kimi as built in instead of adding a second registry launch", async () => {
+    stubRegistry(() =>
+      Response.json({
+        version: "1.0.0",
+        agents: [
+          {
+            id: "kimi",
+            name: "Kimi Code",
+            version: "2.2.0",
+            distribution: {
+              npx: { package: "@moonshot-ai/kimi-code@2.2.0", args: ["acp"] },
+            },
+          },
+        ],
+      }),
+    );
+    const host = await loadPlugin({});
+
+    expect(
+      statuses(await host.harness.callRpc("listRegistry", { refresh: false })),
+    ).toEqual({ kimi: "built-in" });
+    await expect(
+      host.harness.callRpc("addRegistryAgent", { id: "kimi" }),
+    ).rejects.toThrow("already built into bb");
+    expect(registeredIds(host).filter((id) => id === "acp-kimi")).toHaveLength(
+      1,
+    );
   });
 
   it("adds a registry agent as a provider and removes it again, through RPC and the CLI", async () => {

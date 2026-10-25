@@ -3,6 +3,7 @@ import {
   CURSOR_ACP_DIALECT,
   GENERIC_ACP_DIALECT,
   GROK_ACP_DIALECT,
+  KIMI_ACP_DIALECT,
   OMP_ACP_DIALECT,
   OPENCODE_ACP_DIALECT,
   grokContextUsageFromPromptResult,
@@ -41,6 +42,15 @@ describe("resolveAcpDialect", () => {
     );
   });
 
+  it("recognizes Kimi through its registration or executable", () => {
+    expect(resolveAcpDialect({ dialectId: "kimi", command: "node" })).toBe(
+      KIMI_ACP_DIALECT,
+    );
+    expect(resolveAcpDialect({ command: "/usr/local/bin/kimi" })).toBe(
+      KIMI_ACP_DIALECT,
+    );
+  });
+
   it("is generic for a dialect id it does not ship", () => {
     expect(
       resolveAcpDialect({ dialectId: "amp", command: "cursor-agent" }),
@@ -70,7 +80,7 @@ describe("registerAcpDialect", () => {
 
   it("refuses an empty id and every id the bridge ships", () => {
     expect(() => registerAcpDialect({ id: " " })).toThrow("non-empty id");
-    for (const id of ["acp", "cursor", "grok", "omp", "opencode"]) {
+    for (const id of ["acp", "cursor", "grok", "kimi", "omp", "opencode"]) {
       expect(() => registerAcpDialect({ id })).toThrow(
         `ACP dialect id "${id}" is reserved by a built-in dialect.`,
       );

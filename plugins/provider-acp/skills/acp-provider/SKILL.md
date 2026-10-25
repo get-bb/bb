@@ -6,10 +6,60 @@ description: "Configure or troubleshoot ACP agent discovery, custom models, skil
 # ACP providers
 
 Known agents can be discovered automatically when their CLI is installed on the
-host: `opencode`, `omp`, `grok`, and `hermes` appear as `acp-opencode`, `acp-omp`,
-`acp-grok`, and `acp-hermes-agent`. Inspect the target host's catalog with
-`bb provider list` and `bb provider models <provider-id>` using its environment
-or machine selector.
+host: `opencode`, `omp`, `grok`, `hermes`, and `kimi` appear as `acp-opencode`,
+`acp-omp`, `acp-grok`, `acp-hermes-agent`, and `acp-kimi`. Inspect the target
+host's catalog with `bb provider list` and `bb provider models <provider-id>`
+using its environment or machine selector.
+
+Install the current npm Kimi Code CLI (version 2 or later) with
+`npm install -g @moonshot-ai/kimi-code`, then run `kimi login` on the machine
+that will host the thread. bb launches `kimi acp` and reads the models reported
+by that installation. With an existing project and environment selected:
+
+```sh
+bb provider list --environment "$BB_ENVIRONMENT_ID"
+bb provider models acp-kimi --environment "$BB_ENVIRONMENT_ID"
+bb thread spawn --project "$BB_PROJECT_ID" --environment "$BB_ENVIRONMENT_ID" \
+  --provider acp-kimi --prompt "Summarize this repository"
+```
+
+The SDK equivalents are `bb.sdk.providers.list({ environmentId })`,
+`bb.sdk.providers.models({ providerId: "acp-kimi", environmentId })`, and:
+
+```ts
+await bb.sdk.threads.spawn({
+  projectId,
+  environment: { type: "reuse", environmentId },
+  providerId: "acp-kimi",
+  prompt: "Summarize this repository",
+});
+```
+
+Kimi Code is already built in, so it needs no `bb acp add kimi` step. An
+existing custom entry with `id: "kimi"` keeps its command and environment and
+inherits the Kimi dialect unless it explicitly selects a different one;
+removing that entry restores automatic discovery of the installed CLI.
+Kimi Code threads currently cannot be forked in bb.
+
+Under bb's `accept-edits` permissions, Kimi uses native `default` mode so
+operations reach bb's approval handling even if the CLI config defaults to
+`yolo`. Native `auto` and `yolo` modes require bb's Full Access. Explicit plan
+mode stays active across turns in a live restricted session, but creating or
+restoring a restricted session, or switching out of Full Access, resets the
+native mode to `default`; select plan mode again when needed.
+
+Kimi native skills are scanned recursively under `$KIMI_CODE_HOME/skills`
+(default `~/.kimi-code/skills`) and `~/.agents/skills`, plus `.kimi-code/skills`
+and `.agents/skills` at the nearest Git repository root. Outside a Git
+repository, the workspace directory is the project root. The CLI's
+`$KIMI_CODE_HOME/config.toml` can add `extra_skill_dirs` (`extraSkillDirs` is
+also accepted): relative paths resolve from the project root, `~/` from the
+host's home, and absolute paths stay absolute. Without a workspace, relative
+extra paths resolve from the host's home and project roots are omitted.
+For indexing, `KIMI_CODE_HOME` is read from the host daemon's environment;
+a custom agent's launch-only `env` override does not change indexed roots.
+These skill locations follow the npm CLI; legacy Python Kimi CLI skill
+locations are not included.
 
 Agents in the official ACP registry can be added without writing JSON.
 `bb acp registry [--refresh] [--json]` lists them with a status: `available`,
@@ -129,15 +179,16 @@ restart is needed.
 
 - Required: `id` (lowercase letters, digits, and dashes; permanent),
   `displayName`, and `command`. The provider id is `acp-<id>`. `cursor` is
-  reserved; an entry with id `opencode`, `omp`, `grok`, or `hermes-agent`
+  reserved; an entry with id `opencode`, `omp`, `grok`, `hermes-agent`, or `kimi`
   replaces the shipped agent.
 - Launch: `args`, `env`, and `cwd`.
 - `modelCli` for CLI model listing and selection, `reasoningCli` for
   launch-time reasoning flags, `nativeReasoning` for ACP
   `session/set_config_option` reasoning, and `permissionCli` for
   permission-mode launch flags.
-- `dialect` (`cursor`, `opencode`, `omp`, or `grok`) selects the vendor side
-  channels bb reads.
+- `dialect` (`cursor`, `opencode`, `omp`, `grok`, or `kimi`) selects the vendor
+  behavior bb applies. Overrides inherit the shipped agent's dialect unless
+  they set their own.
 - `nativeSkillRoots` adds native skills to the composer: a `user` list resolved
   from the target host's home directory and a `project` list resolved from the
   workspace, each a relative path without dot segments.

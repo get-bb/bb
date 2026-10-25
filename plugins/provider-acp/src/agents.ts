@@ -68,6 +68,7 @@ export function customAcpAgentDefinition(
 ): AcpAgentDefinition {
   const nativeSkillRoots =
     agent.nativeSkillRoots ?? shipped?.launch.nativeSkillRoots;
+  const dialect = agent.dialect ?? shipped?.dialect;
   return {
     id: formatCustomAcpProviderId(agent.id),
     displayName: agent.displayName,
@@ -91,7 +92,7 @@ export function customAcpAgentDefinition(
         : { permissionCli: agent.permissionCli }),
     },
     ...(agent.providerUsage ? { providerUsage: true } : {}),
-    ...(agent.dialect === undefined ? {} : { dialect: agent.dialect }),
+    ...(dialect === undefined ? {} : { dialect }),
     ...(shipped?.nativeRootsResolver === undefined
       ? {}
       : { nativeRootsResolver: shipped.nativeRootsResolver }),
