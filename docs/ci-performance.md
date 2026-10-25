@@ -228,8 +228,8 @@ Approaches measured and not adopted:
 - Running the tarball smoke and desktop packaging in one job; see
   [windows-ci.md](windows-ci.md#app-boot-smoke).
 
-In the tarball smoke, Windows runs the npx entrypoint and SDK consumer installs
-concurrently in separate directories; macOS and Linux run them sequentially.
+In the tarball smoke, Windows and Linux run the npx entrypoint and SDK consumer
+installs concurrently in separate directories; macOS runs them sequentially.
 Both settle before temporary files are removed, including on failure.
 
 ## Windows dependency-cache measurements
@@ -867,3 +867,25 @@ measurements, not end-to-end CI gains.
 A local full Pi run retained all 319 passing tests and seven existing skips.
 Reported suite time fell from 31.05 to 24.40 seconds; the shutdown case fell
 from 8.13 to 0.22 seconds and the hanging refresh from 5.21 to 0.26 seconds.
+
+## Linux packaging critical path
+
+Linux runs the bb-app tarball smoke and AppImage packaging in one Turbo graph.
+Their shared build prerequisites complete once, then the two checks can overlap.
+`--continue=dependencies-successful` lets an independent successful branch finish
+when the other fails, while still failing CI and blocking tasks with failed
+prerequisites. The AppImage mount lifecycle check still runs after packaging.
+
+The tarball smoke copies the Linux package into its temporary directory before
+inserting a stale CLI chunk and invoking real `npm pack`. This preserves the
+prepack pruning regression check without modifying the shared build output
+while Electron reads it. Only root `node_modules` and `.turbo` are excluded;
+nested vendored dependencies remain in the fixture.
+
+Within the Linux tarball smoke, the npx and SDK installs run together, followed
+by the existing installed-package checks. Repacking finishes before runtime
+checks start because its prepack hook prunes the installed tree. Full-stack and
+daemon-join checks then run together with separate data directories, reserved
+ports, and child environments. Both parallel groups settle, including process
+cleanup, before the temporary directory is removed. macOS scheduling is
+unchanged; Windows retains its existing parallel installs.

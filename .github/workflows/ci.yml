@@ -922,7 +922,12 @@ jobs:
         run: bash .github/actions/setup-workspace/install-dependencies.sh --filter '!@bb/mobile'
 
       - name: Smoke bb-app tarball
+        if: ${{ runner.os != 'Linux' }}
         run: pnpm exec turbo run smoke:tarball --filter=bb-app --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4
+
+      - name: Package Linux artifacts and smoke bb-app tarball
+        if: ${{ runner.os == 'Linux' }}
+        run: pnpm exec turbo run 'bb-app#smoke:tarball' '@bb/desktop#desktop:build:linux' --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4 --continue=dependencies-successful
 
       - name: Install AppImage FUSE runtime
         if: ${{ runner.os == 'Linux' }}
@@ -930,10 +935,6 @@ jobs:
         timeout-minutes: 5
         with:
           package: libfuse2t64
-
-      - name: Package Linux AppImage
-        if: ${{ runner.os == 'Linux' }}
-        run: pnpm exec turbo run desktop:build:linux --filter=@bb/desktop --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize
 
       - name: Smoke Linux AppImage mount lifecycle
         if: ${{ runner.os == 'Linux' }}
