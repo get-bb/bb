@@ -44,15 +44,11 @@ Hooks:
   and in `renderSlot`.
 - `useBbNavigate()` → `{ toThread(id), toProject(id), toPluginPanel(path,
 { subPath?, replace? }?), toCompose({ initialPrompt?, focusPrompt? }?),
-openThreadPanel({ actionId, title?, params? }), openUrl(url),
-experimental_openFilePreview(options), experimental_openFileExternally(options),
-experimental_openTerminal({ terminalId }) }`.
+openUrl(url), experimental_openFilePreview(options),
+experimental_openFileExternally(options), experimental_openTerminal({ terminalId }) }`.
   `toCompose` opens the root compose screen; pass `initialPrompt` to seed the
-  composer draft and `focusPrompt: true` to focus it. The panel
-  opener opens one of the current plugin's registered `experimental_tab` with thread context and action availability tabs
-  in a thread, or its `experimental_newThreadPanelAction` tabs on the New
-  thread screen, and returns whether the host accepted it; it returns false on
-  plugin pages, which have no panel actions.
+  composer draft and `focusPrompt: true` to focus it. Open side-panel tabs
+  with the [panel controller](#panel-controller).
   `openUrl` owns HTTP(S) only and returns false for schemes BB
   leaves to normal anchor behavior. The two file methods accept an
   `ExperimentalFileOpenOptions` live-file target.
@@ -315,6 +311,65 @@ define custom `@theme` colors and never hand-set `oklch(...)`/gray
 literals: the build's Tailwind pass emits default-theme utilities only, and
 hardcoded colors break custom palettes. `tw-animate-css` utilities also
 compile in plugin builds.
+
+## Panel controller
+
+`experimental_useAppPanel()` returns the `ExperimentalPanelController` of the
+surface the component renders in: the thread view, the plugin page, or the New
+thread screen. Every launcher context carries the same controller as
+`experimental_panel`: plugin commands, thread actions, message actions,
+New-thread panel actions, and action tabs' `run`. Commands and thread actions
+use the focused surface's controller.
+
+```tsx
+const panel = experimental_useAppPanel();
+panel.openTab({
+  tab: { id: "chat", context: { kind: "thread" }, availability: "action" },
+  params: { threadId },
+  title: "Chat",
+});
+panel.toggleTab({
+  tab: {
+    id: "details",
+    context: { kind: "nav-panel", panelId },
+    availability: "fixed",
+  },
+  target: { recordId },
+});
+panel.close();
+```
+
+- `openTab({ tab, target?, params?, title? })` selects one of this plugin's
+  registered tabs and reveals the side panel. Fixed tabs take a session-only
+  `target`, validated by the tab's `experimental_target` (thread and
+  nav-panel fixed tabs may both declare one) and read with
+  `experimental_useFixedTabTarget(tab)`. Action tabs take persisted `params`
+  and a `title`; the same params focus the existing tab.
+- `toggleTab(options)` closes the side panel when that tab is showing — a
+  fixed tab selected with the panel open (the target is ignored), or the action
+  tab instance with the same params selected — otherwise it calls `openTab`.
+- `close()` closes the side panel.
+- Each call returns true when the host accepted it and false when it declined:
+  no side panel on this surface, a tab this plugin did not register for the
+  surface, or a target or params that are not JSON or fail validation. On the
+  New thread screen a `{ context: { kind: "thread" }, availability: "action" }`
+  tab resolves against `experimental_newThreadPanelAction` with the same id.
+
+bb's own panel shortcuts and controls (Mod+D, panel toggle, Info, tab strip,
+close buttons) go through the same controller.
+
+Retired members keep working for existing plugins, and `bb plugin build` warns
+with the replacement:
+
+| Retired                                                                               | Replacement                                                                                                                         |
+| ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `ctx.openPanel({ actionId?, params?, title? })`                                       | `ctx.experimental_panel.openTab({ tab: { id, context: { kind: "thread" }, availability: "action" }, params, title })`               |
+| `useBbNavigate().openThreadPanel({ actionId, params?, title? })`                      | `experimental_useAppPanel().openTab({ tab: { id: actionId, context: { kind: "thread" }, availability: "action" }, params, title })` |
+| `experimental_useAppPanel().experimental_openTab({ surface, ...options })`            | `experimental_useAppPanel().openTab(options)`                                                                                       |
+| `experimental_useAppPanel().openFixedTab({ surface, tab: { panelId, id }, target? })` | `experimental_useAppPanel().openTab({ tab: { id, context: { kind: "nav-panel", panelId }, availability: "fixed" }, target })`       |
+
+In `renderSlot`, pass `experimental_panel: { openTab?, toggleTab?, close? }` to
+accept calls (omitted methods decline) and read `inspection.experimental_panelCalls`.
 
 ## Optimistic RPC updates
 

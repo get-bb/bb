@@ -532,12 +532,10 @@ export function collectPluginAppRegistrations(
     const target = registration.experimental_target;
     if (
       target !== undefined &&
-      (context.kind !== "nav-panel" ||
-        availability !== "fixed" ||
-        typeof target?.validate !== "function")
+      (availability !== "fixed" || typeof target?.validate !== "function")
     ) {
       throw new Error(
-        `${kind}: experimental_target requires a nav-panel fixed tab and a validate function`,
+        `${kind}: experimental_target requires a fixed tab and a validate function`,
       );
     }
     const validated = {

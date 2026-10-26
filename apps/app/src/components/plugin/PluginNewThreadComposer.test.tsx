@@ -61,7 +61,7 @@ import {
   serializeFixedPanelTabsState,
 } from "@/lib/fixed-panel-tabs-state";
 import { buildPluginPaletteActions } from "@/lib/command-palette/palette-plugin-actions";
-import { getActiveThreadPanelOpener } from "./plugin-thread-panel-navigation";
+import { getFocusedAppPanelController } from "@/lib/app-fixed-tab-navigation";
 import { PluginDetailPanelContext } from "./plugin-detail-navigation";
 import { openPluginDetailsInWorkspace } from "./plugin-detail-opener";
 import { PluginNewThreadComposer } from "./PluginNewThreadComposer";
@@ -1541,10 +1541,14 @@ describe("PluginNewThreadComposer seeding", () => {
           defaultShortcut: null,
           id: "inspect",
           title: "Inspect project",
-          run: ({ openPanel }) => {
+          run: ({ experimental_panel }) => {
             accepted.push(
-              openPanel({
-                actionId: "inspect-project",
+              experimental_panel.openTab({
+                tab: {
+                  id: "inspect-project",
+                  context: { kind: "thread" },
+                  availability: "action",
+                },
                 title: "Inspect current project",
                 params: { section: "changes" },
               }),
@@ -1554,7 +1558,7 @@ describe("PluginNewThreadComposer seeding", () => {
       ],
       threadId: null,
       projectId: null,
-      openThreadPanel: getActiveThreadPanelOpener(),
+      panel: getFocusedAppPanelController(),
     });
     await act(async () => {
       command.run();
@@ -1582,7 +1586,7 @@ describe("PluginNewThreadComposer seeding", () => {
     ]);
     expect(panel.secondary.activeTabId).toBe(panel.secondary.tabs[0].id);
     view.unmount();
-    expect(getActiveThreadPanelOpener()).toBeNull();
+    expect(getFocusedAppPanelController()).toBeNull();
   });
 
   it("renders the root composer with a loading project picker before the sidebar bootstrap settles", () => {

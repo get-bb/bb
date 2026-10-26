@@ -11,6 +11,7 @@ import {
 } from "react";
 import type {
   BbNavigate,
+  ExperimentalPanelController,
   PluginBoundThreadAction,
   PluginBrowserBbSdk,
   PluginThreadAction,
@@ -21,7 +22,11 @@ import type {
   PluginThreadActionsOptions,
 } from "@get-bb/plugin-sdk";
 import { PluginContext } from "@/components/plugin/plugin-context";
-import { getActiveThreadPanelOpener } from "@/components/plugin/plugin-thread-panel-navigation";
+import { getFocusedAppPanelController } from "@/lib/app-fixed-tab-navigation";
+import {
+  createPluginPanelController,
+  createRetiredOpenPanel,
+} from "@/lib/plugin-panel-controller";
 import { useBbNavigate, useSdk } from "@/lib/plugin-navigation-hooks";
 import { compareGroupedPlacement } from "@/lib/grouped-placement";
 import { usePluginSlots } from "@/lib/plugin-slots";
@@ -39,6 +44,7 @@ interface CollectedThreadAction {
   data: unknown;
   sdk: PluginBrowserBbSdk;
   navigate: BbNavigate;
+  panel: ExperimentalPanelController;
 }
 
 interface ThreadActionRegistrySnapshot {
@@ -80,7 +86,8 @@ function publishCollected(key: string, value: CollectedThreadAction): void {
     current !== undefined &&
     Object.is(current.data, value.data) &&
     current.sdk === value.sdk &&
-    current.navigate === value.navigate
+    current.navigate === value.navigate &&
+    current.panel === value.panel
   ) {
     return;
   }
@@ -212,18 +219,22 @@ function reportFailure(key: string, phase: string, error: unknown): void {
   console.error(`thread action "${key}" failed in ${phase}`, error);
 }
 
-function useLatestNavigate(navigate: BbNavigate, pluginId: string): BbNavigate {
+function useLatestNavigate(
+  navigate: BbNavigate,
+  panel: ExperimentalPanelController,
+): BbNavigate {
   const latest = useRef(navigate);
   useLayoutEffect(() => {
     latest.current = navigate;
   });
-  const [stable] = useState<BbNavigate>(() => ({
+  const [stable] = useState<
+    BbNavigate & { openThreadPanel: ReturnType<typeof createRetiredOpenPanel> }
+  >(() => ({
     toThread: (...args) => latest.current.toThread(...args),
     toProject: (...args) => latest.current.toProject(...args),
     toPluginPanel: (...args) => latest.current.toPluginPanel(...args),
     toCompose: (...args) => latest.current.toCompose(...args),
-    openThreadPanel: (options) =>
-      getActiveThreadPanelOpener()?.({ ...options, pluginId }) ?? false,
+    openThreadPanel: createRetiredOpenPanel(panel),
     openUrl: (...args) => latest.current.openUrl(...args),
     experimental_openFilePreview: (...args) =>
       latest.current.experimental_openFilePreview(...args),
@@ -246,10 +257,13 @@ function ThreadActionCollector({
   );
   const data = record.registration.useData?.({ threadIds });
   const sdk = useSdk();
-  const navigate = useLatestNavigate(useBbNavigate(), record.pluginId);
+  const [panel] = useState(() =>
+    createPluginPanelController(record.pluginId, getFocusedAppPanelController),
+  );
+  const navigate = useLatestNavigate(useBbNavigate(), panel);
   useLayoutEffect(() => {
-    publishCollected(record.key, { data, sdk, navigate });
-  }, [data, navigate, record.key, sdk]);
+    publishCollected(record.key, { data, sdk, navigate, panel });
+  }, [data, navigate, panel, record.key, sdk]);
   useLayoutEffect(() => () => dropCollected(record.key), [record.key]);
   return null;
 }
@@ -386,12 +400,14 @@ function evaluateRecord(
             data: input.data,
             sdk: input.sdk,
             navigate: input.navigate,
+            experimental_panel: input.panel,
           })
         : (registration.experimental_bulkItem?.({
             threads: target.threads,
             data: input.data,
             sdk: input.sdk,
             navigate: input.navigate,
+            experimental_panel: input.panel,
           }) ?? null);
     if (action === null) return null;
     return {

@@ -52,8 +52,7 @@ function ThreadChatDemoPanel({ subPath }: { subPath: string }) {
           disabled={!activeThreadId}
           className="h-8 cursor-pointer rounded-md border px-2 text-sm hover:bg-surface-recessed disabled:cursor-not-allowed disabled:opacity-50"
           onClick={() =>
-            panel.experimental_openTab({
-              surface: { kind: "current" },
+            panel.openTab({
               tab: demoThreadFixedTab,
               target: { kind: "thread", threadId: activeThreadId },
             })
@@ -181,8 +180,12 @@ export default definePluginApp((app) => {
     title: "Open in demo panel",
     icon: "MessageSquarePlus",
     run(context) {
-      const opened = context.openPanel({
-        actionId: "demo-panel",
+      const opened = context.experimental_panel.openTab({
+        tab: {
+          id: "demo-panel",
+          context: { kind: "thread" },
+          availability: "action",
+        },
         title: "Demo panel",
         params: {
           anchorText: context.message.text.slice(0, 200),

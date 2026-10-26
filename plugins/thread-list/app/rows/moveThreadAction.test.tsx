@@ -21,7 +21,8 @@ import {
 } from "../preferences/preferences-sync.js";
 
 installTestPluginRuntime();
-const { useBbNavigate, useSdk } = await import("@get-bb/plugin-sdk/app");
+const { experimental_useAppPanel, useBbNavigate, useSdk } =
+  await import("@get-bb/plugin-sdk/app");
 const { moveThreadAction } = await import("./moveThreadAction.js");
 
 afterEach(() => {
@@ -63,14 +64,23 @@ function Probe({ collected }: { collected: { current: Collected | null } }) {
   const data = useData({ threadIds: [] });
   const sdk: PluginBrowserBbSdk = useSdk();
   const navigate: BbNavigate = useBbNavigate();
+  const experimental_panel = experimental_useAppPanel();
   collected.current = {
-    item: (thread) => moveThreadAction.item({ thread, data, sdk, navigate }),
+    item: (thread) =>
+      moveThreadAction.item({
+        thread,
+        data,
+        sdk,
+        navigate,
+        experimental_panel,
+      }),
     bulkItem: (threads) =>
       moveThreadAction.experimental_bulkItem?.({
         threads,
         data,
         sdk,
         navigate,
+        experimental_panel,
       }) ?? null,
   };
   return null;

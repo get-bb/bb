@@ -7,9 +7,6 @@ import type { ThreadTimelineSurfaceProps } from "@/components/thread/timeline/Th
 vi.mock("@/components/thread/timeline/ThreadTimelineSurface", () => ({
   ThreadTimelineSurface: (props: ThreadTimelineSurfaceProps) => (
     <div data-testid="timeline">
-      <span data-testid="plugin-panel-opener">
-        {props.onOpenPluginPanel === undefined ? "missing" : "available"}
-      </span>
       <span data-testid="navigation-target">
         {props.timelineNavigationTargetRowId ?? "none"}
       </span>
@@ -45,7 +42,6 @@ it("forwards pane callbacks to the timeline and conversation outline", () => {
       isStopping={false}
       isThreadTimelinePending={false}
       onLoadOlderRows={() => undefined}
-      onOpenPluginPanel={() => true}
       projectId="proj_1"
       resolveMentionLink={() => null}
       showOngoingIndicator={false}
@@ -60,9 +56,6 @@ it("forwards pane callbacks to the timeline and conversation outline", () => {
     />,
   );
 
-  expect(screen.getByTestId("plugin-panel-opener").textContent).toBe(
-    "available",
-  );
   expect(screen.getByTestId("navigation-target").textContent).toBe("none");
   fireEvent.click(screen.getByRole("button", { name: "Jump to row" }));
   expect(screen.getByTestId("navigation-target").textContent).toBe(

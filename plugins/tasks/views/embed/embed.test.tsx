@@ -87,16 +87,19 @@ describe("Task directive card", () => {
   });
 
   it("opens the side panel on primary click and the Tasks app from the arrow", async () => {
-    const openThreadPanel = vi.fn(() => true);
+    const openTab = vi.fn(() => true);
     const slot = renderSlot(
       app.messageDirectives[0]!,
       directiveProps({ key: "TSK-4" }),
-      { openThreadPanel, rpc: { getTaskByKey: () => ({ task }) } },
+      {
+        experimental_panel: { openTab },
+        rpc: { getTaskByKey: () => ({ task }) },
+      },
     );
 
     fireEvent.click(await slot.findByText("Ship task embeds"));
-    expect(openThreadPanel).toHaveBeenCalledWith({
-      actionId: "task",
+    expect(openTab).toHaveBeenCalledWith({
+      tab: { id: "task", context: { kind: "thread" }, availability: "action" },
       title: "TSK-4",
       params: { taskKey: "TSK-4" },
     });

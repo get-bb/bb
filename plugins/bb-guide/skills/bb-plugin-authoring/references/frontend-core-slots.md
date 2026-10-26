@@ -159,19 +159,18 @@ Slot props contracts (versioned, additive-only):
   Thread components receive `{ threadId }`; navigation-page components receive
   `{ subPath }`. `availability: "fixed"` pins one non-closable destination.
   `availability: "action"` adds a launcher; its component also receives persisted
-  JSON `params`, and optional `run` receives context plus `openPanel`.
+  JSON `params`, and optional `run` receives context plus `experimental_panel`.
   Without `run`, selection opens with default params. Matching owner/id/params
   focuses an existing instance; different params open siblings. `useVisible`
   controls the fixed destination or action launcher, and never closes opened
   action instances. `tooltip` defaults to title; layout is padded or flush.
-  All opening uses `experimental_useAppPanel().experimental_openTab`; existing
-  action `openPanel` and navigation `openThreadPanel` calls remain wrappers.
+  Open tabs with the [panel controller](frontend-hooks-and-ui.md#panel-controller).
   See [Tab API migration](frontend-registration.md#tab-api-migration).
 - `experimental_newThreadPanelAction` → the root New thread counterpart to
   thread action tabs. It appears in that screen's right-panel Actions list
   and never appears beside an existing thread. Registration has the same
   `{ id, title, icon?, component, layout?, run? }` shape, but activating it
-  calls `run({ projectId, openPanel })` and its component receives
+  calls `run({ projectId, experimental_panel })` and its component receives
   `{ projectId: string | null, params: JsonValue | null }`; `projectId` is
   null in projectless compose. Panel opening, JSON params, layout, persistence,
   deduplication, the `boolean` return, and error containment otherwise match
@@ -310,8 +309,11 @@ app.slots.experimental_tab({
   title: "Issue",
   icon: "FileText",
   component: IssuePanel,
-  run: ({ threadId, openPanel }) => {
-    openPanel({ params: { threadId } });
+  run: ({ threadId, experimental_panel }) => {
+    experimental_panel.openTab({
+      tab: { id: "issue", context: { kind: "thread" }, availability: "action" },
+      params: { threadId },
+    });
   },
 });
 ```
@@ -332,11 +334,12 @@ app.slots.experimental_tab({
 ```
 
 Open any registered tab with
-`experimental_useAppPanel().experimental_openTab({ surface: { kind: "current" },
-tab: { id, context, availability }, params?, title?, target? })`.
-Navigation-page fixed tabs can declare `experimental_target: { validate }` and
-read its session-only target with `experimental_useFixedTabTarget(registration)`.
-Existing `openFixedTab`, `openThreadPanel` and action `openPanel` calls still work.
+`experimental_useAppPanel().openTab({ tab: { id, context, availability },
+params?, title?, target? })`. Fixed tabs can declare
+`experimental_target: { validate }` and read their session-only target with
+`experimental_useFixedTabTarget(registration)`. Retired `openFixedTab`,
+`experimental_openTab`, `openThreadPanel` and action `openPanel` calls still
+work; see [Panel controller](frontend-hooks-and-ui.md#panel-controller).
 Existing saved tab identities, orders, action params and split layouts survive;
 no plugin data migration is needed when registration ids stay unchanged.
 

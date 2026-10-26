@@ -10,7 +10,6 @@ Read `testing.md` for examples and fidelity limits.
 - `SdkCall`
 - `PluginSdkTestFakes`
 - `NavigateCall`
-- `ExperimentalFixedTabOpenCall`
 - `ComposerLog`
 - `SidebarActionCall`
 - `SidebarNavigationCall`

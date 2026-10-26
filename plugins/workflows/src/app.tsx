@@ -38,6 +38,7 @@ import {
   type WorkflowStatusPillState,
 } from "@/components/ui/workflow-progress";
 import {
+  experimental_useAppPanel,
   definePluginApp,
   useBbNavigate,
   useComposer,
@@ -655,6 +656,7 @@ function WorkflowComposerSummary({ run }: { run: WorkflowRunView }) {
 
 function WorkflowComposerCard({ run }: { run: WorkflowRunView }) {
   const navigate = useBbNavigate();
+  const panel = experimental_useAppPanel();
   const [expanded, setExpanded] = useState(false);
   const bodyId = useId();
   const toggleId = useId();
@@ -694,8 +696,12 @@ function WorkflowComposerCard({ run }: { run: WorkflowRunView }) {
           type="button"
           aria-label={`Open workflow ${run.name} in side panel`}
           onClick={() =>
-            navigate.openThreadPanel({
-              actionId: WORKFLOW_PANEL_ACTION_ID,
+            panel.openTab({
+              tab: {
+                id: WORKFLOW_PANEL_ACTION_ID,
+                context: { kind: "thread" },
+                availability: "action",
+              },
               title: run.name,
               params: { runId: run.id },
             })
@@ -850,6 +856,7 @@ function WorkflowPreviewLoaded({
   source: string;
 }) {
   const navigate = useBbNavigate();
+  const panel = experimental_useAppPanel();
   const { state } = useWorkflowRun(threadId, runId);
   const [expanded, setExpanded] = useState(true);
   const bodyId = useId();
@@ -985,8 +992,12 @@ function WorkflowPreviewLoaded({
           size="sm"
           className="h-7 px-2 text-xs"
           onClick={() =>
-            navigate.openThreadPanel({
-              actionId: WORKFLOW_PANEL_ACTION_ID,
+            panel.openTab({
+              tab: {
+                id: WORKFLOW_PANEL_ACTION_ID,
+                context: { kind: "thread" },
+                availability: "action",
+              },
               title: run.name,
               params: { runId: run.id },
             })

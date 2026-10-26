@@ -24,7 +24,7 @@ import type {
   PluginEnvironmentProvidersState,
   PluginProvidersState,
   PluginSettingsState,
-  ExperimentalAppPanel,
+  ExperimentalPanelController,
   ExperimentalFixedTabTargetState,
   ExperimentalPluginFixedTabReference,
   JsonValue,
@@ -68,6 +68,10 @@ import { useServerConnectionState } from "@/hooks/useServerConnectionState";
 import { wsManager } from "@/lib/ws";
 import { pluginSdkSettingsQueryKey } from "@/hooks/queries/query-keys";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
+import {
+  createPluginPanelController,
+  withRetiredAppPanelMembers,
+} from "@/lib/plugin-panel-controller";
 import {
   getThreadFixedTabOwnerId,
   getPluginFixedTabOwnerId,
@@ -322,63 +326,15 @@ export function useBbContext(): BbContext {
   );
 }
 
-function useExperimentalAppPanel(): ExperimentalAppPanel {
+function useExperimentalAppPanel(): ExperimentalPanelController {
   const pluginId = usePluginId();
-  const appNavigation = useAppNavigationHost();
-  const experimental_openTab = useCallback<
-    ExperimentalAppPanel["experimental_openTab"]
-  >(
-    (options) =>
-      appNavigation.openTab({
-        surface: options.surface,
-        tab: {
-          ownerId:
-            options.tab.context.kind === "thread"
-              ? getThreadFixedTabOwnerId(pluginId)
-              : getPluginFixedTabOwnerId(pluginId, options.tab.context.panelId),
-          tabId: options.tab.id,
-        },
-        availability: options.tab.availability,
-        ...("params" in options && options.params !== undefined
-          ? { params: options.params }
-          : {}),
-        ...("title" in options && options.title !== undefined
-          ? { title: options.title }
-          : {}),
-        ...("target" in options && options.target !== undefined
-          ? { target: options.target }
-          : {}),
-      }),
-    [appNavigation, pluginId],
-  );
-  const openFixedTab = useCallback<ExperimentalAppPanel["openFixedTab"]>(
-    (options) => {
-      if (options.tab.panelId === undefined) {
-        if (options.target !== undefined) return false;
-        return experimental_openTab({
-          surface: options.surface,
-          tab: {
-            id: options.tab.id,
-            context: { kind: "thread" },
-            availability: "fixed",
-          },
-        });
-      }
-      return experimental_openTab({
-        surface: options.surface,
-        tab: {
-          id: options.tab.id,
-          context: { kind: "nav-panel", panelId: options.tab.panelId },
-          availability: "fixed",
-        },
-        ...(options.target === undefined ? {} : { target: options.target }),
-      });
-    },
-    [experimental_openTab],
-  );
+  const { panel } = useAppNavigationHost();
   return useMemo(
-    () => ({ openFixedTab, experimental_openTab }),
-    [openFixedTab, experimental_openTab],
+    () =>
+      withRetiredAppPanelMembers(
+        createPluginPanelController(pluginId, () => panel),
+      ),
+    [panel, pluginId],
   );
 }
 
@@ -389,10 +345,11 @@ function useExperimentalFixedTabTarget<Target extends JsonValue>(
 ): ExperimentalFixedTabTargetState<Target> | null {
   const pluginId = usePluginId();
   const state = useAppFixedTabTarget(
-    getPluginFixedTabOwnerId(
-      pluginId,
-      "context" in tab ? tab.context.panelId : tab.panelId,
-    ),
+    !("context" in tab)
+      ? getPluginFixedTabOwnerId(pluginId, tab.panelId)
+      : tab.context.kind === "thread"
+        ? getThreadFixedTabOwnerId(pluginId)
+        : getPluginFixedTabOwnerId(pluginId, tab.context.panelId),
     tab.id,
   );
   if (state === null || tab.experimental_target === undefined) return null;

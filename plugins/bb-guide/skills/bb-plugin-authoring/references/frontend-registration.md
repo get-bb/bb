@@ -73,17 +73,17 @@ export default definePluginApp((app) => {
     id: "issue",
     title: "Open issue",
     component: IssuePanel,
-    run: async ({ threadId, openPanel }) => {
-      openPanel({ title: `Issue for ${threadId}` });
+    run: async ({ threadId, experimental_panel }) => {
+      experimental_panel.openTab({
+        tab: { id: "issue", context: { kind: "thread" }, availability: "action" },
+        title: `Issue for ${threadId}`,
+      });
     },
   });
   app.slots.experimental_newThreadPanelAction({
     id: "template",
     title: "Apply template",
     component: TemplatePanel,
-    run: ({ projectId, openPanel }) => {
-      openPanel({ title: `Template for ${projectId ?? "projectless"}` });
-    },
   });
   app.composer.customize({
     id: "prompt-tools",

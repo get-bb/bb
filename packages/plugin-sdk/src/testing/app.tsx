@@ -130,9 +130,9 @@ import {
   type UrlLinkProps,
   type ExperimentalFileLinkProps,
   type ExperimentalFileOpenOptions,
-  type ExperimentalAppPanel,
   type ExperimentalFixedTabTargetState,
-  type ExperimentalOpenFixedTabOptions,
+  type ExperimentalOpenTabOptions,
+  type ExperimentalPanelController,
   type ExperimentalPluginFixedTabReference,
   type NewThreadComposerProps,
   type BranchPickerProps,
@@ -235,10 +235,6 @@ export type NavigateCall =
       method: "toCompose";
       options?: Parameters<BbNavigate["toCompose"]>[0];
     }
-  | {
-      method: "openThreadPanel";
-      options: Parameters<BbNavigate["openThreadPanel"]>[0];
-    }
   | { method: "openUrl"; url: string }
   | {
       method: "experimental_openFilePreview";
@@ -253,12 +249,35 @@ export type NavigateCall =
       options: Parameters<BbNavigate["experimental_openTerminal"]>[0];
     };
 
-export interface ExperimentalFixedTabOpenCall {
-  surface: ExperimentalOpenFixedTabOptions<JsonValue>["surface"];
+interface RetiredActionTabOpenOptions {
+  actionId: string;
+  title?: string;
+  params?: JsonValue;
+}
+
+interface RetiredFixedTabOpenCall {
+  surface: { kind: "current" };
   panelId?: string;
   tabId: string;
   target?: JsonValue;
 }
+
+type RetiredTabOpenOptions = {
+  surface: { kind: "current" };
+} & ExperimentalOpenTabOptions;
+
+interface RetiredRenderSlotOptions {
+  openThreadPanel?: (options: RetiredActionTabOpenOptions) => boolean;
+  experimental_openFixedTab?: (call: RetiredFixedTabOpenCall) => boolean;
+  experimental_openTab?: (call: RetiredTabOpenOptions) => boolean;
+}
+
+type ExperimentalPanelCall =
+  | {
+      method: "openTab" | "toggleTab";
+      options: ExperimentalOpenTabOptions;
+    }
+  | { method: "close" };
 
 export interface ComposerLog {
   /** Latest plain text in this isolated composer scope. */
@@ -325,9 +344,7 @@ interface SlotEnv {
   questionFormHost: ExperimentalQuestionFormHost;
   navigate: BbNavigate;
   navigateCalls: NavigateCall[];
-  appPanel: ExperimentalAppPanel;
-  experimental_fixedTabOpenCalls: ExperimentalFixedTabOpenCall[];
-  experimental_tabOpenCalls: import("@get-bb/plugin-sdk").ExperimentalTabOpenOptions[];
+  appPanel: ExperimentalPanelController;
   fixedTabTarget: TestFixedTabTargetStore;
   composer: TestComposerStore;
   composerLog: ComposerLog;
@@ -358,7 +375,7 @@ interface SlotEnv {
 interface TestFixedTabTargetStore {
   clear(sequence: number): void;
   getSnapshot(): {
-    panelId: string;
+    panelId: string | null;
     sequence: number;
     tabId: string;
     target: JsonValue;
@@ -1603,7 +1620,7 @@ const testPluginSdkApp = {
   useBbNavigate(): BbNavigate {
     return useSlotEnv("useBbNavigate").navigate;
   },
-  experimental_useAppPanel(): ExperimentalAppPanel {
+  experimental_useAppPanel(): ExperimentalPanelController {
     return useSlotEnv("experimental_useAppPanel").appPanel;
   },
   experimental_useFixedTabTarget<Target extends JsonValue>(
@@ -1620,7 +1637,11 @@ const testPluginSdkApp = {
     if (
       state === null ||
       state.panelId !==
-        ("context" in tab ? tab.context.panelId : tab.panelId) ||
+        ("context" in tab
+          ? tab.context.kind === "nav-panel"
+            ? tab.context.panelId
+            : null
+          : tab.panelId) ||
       state.tabId !== tab.id ||
       tab.experimental_target === undefined
     ) {
@@ -2289,10 +2310,6 @@ export interface RenderSlotOptions<
    * in `inspection.sdkCalls`; a call to a method you did not provide throws.
    */
   sdk?: PluginSdkTestFakes;
-  /** Host acceptance for `useBbNavigate().openThreadPanel`. */
-  openThreadPanel?: (
-    options: Parameters<BbNavigate["openThreadPanel"]>[0],
-  ) => boolean;
   /** Host acceptance for URL intents from the hook or `UrlLink`. */
   openUrl?: (url: string) => boolean;
   /** Host acceptance for preview intents from the hook or file link. */
@@ -2303,14 +2320,18 @@ export interface RenderSlotOptions<
   openTerminal?: (
     options: Parameters<BbNavigate["experimental_openTerminal"]>[0],
   ) => boolean;
-  /** Host acceptance for an owner-scoped fixed-tab selection. */
-  experimental_openFixedTab?: (call: ExperimentalFixedTabOpenCall) => boolean;
-  experimental_openTab?: (
-    call: import("@get-bb/plugin-sdk").ExperimentalTabOpenOptions,
-  ) => boolean;
-  /** Initial session target visible to `experimental_useFixedTabTarget`. */
+  /**
+   * Host acceptance for `experimental_useAppPanel()` calls, one handler per
+   * method; an omitted method declines. An accepted `openTab` of a fixed tab
+   * with a `target` makes that target visible to `experimental_useFixedTabTarget`.
+   */
+  experimental_panel?: Partial<ExperimentalPanelController>;
+  /**
+   * Initial session target visible to `experimental_useFixedTabTarget`.
+   * Omit `panelId` for a thread fixed tab.
+   */
   experimental_fixedTabTarget?: {
-    panelId: string;
+    panelId?: string;
     tabId: string;
     target: JsonValue;
   };
@@ -2345,9 +2366,8 @@ export interface RenderedSlotInspectionState {
   readonly rpcCalls: RpcCall[];
   /** Every `useBbNavigate()` call, in order. */
   readonly navigateCalls: NavigateCall[];
-  /** Every validated `experimental_useAppPanel().openFixedTab` call. */
-  readonly experimental_fixedTabOpenCalls: ExperimentalFixedTabOpenCall[];
-  readonly experimental_tabOpenCalls: import("@get-bb/plugin-sdk").ExperimentalTabOpenOptions[];
+  /** Every `experimental_useAppPanel()` call, in order. */
+  readonly experimental_panelCalls: ExperimentalPanelCall[];
   /** @internal Every `experimental_useSidebarThreadActions()` call, in order; kept for plugins built against older SDKs. */
   readonly sidebarActionCalls: SidebarActionCall[];
   /**
@@ -2517,14 +2537,16 @@ export function renderSlot<
   };
 
   const navigateCalls: NavigateCall[] = [];
-  const experimental_fixedTabOpenCalls: ExperimentalFixedTabOpenCall[] = [];
-  const experimental_tabOpenCalls: import("@get-bb/plugin-sdk").ExperimentalTabOpenOptions[] =
-    [];
+  const retired: RetiredRenderSlotOptions =
+    options as RenderSlotOptions<Contract> & RetiredRenderSlotOptions;
+  const experimental_panelCalls: ExperimentalPanelCall[] = [];
+  const experimental_fixedTabOpenCalls: RetiredFixedTabOpenCall[] = [];
+  const experimental_tabOpenCalls: RetiredTabOpenOptions[] = [];
   let fixedTabTargetSnapshot =
     options.experimental_fixedTabTarget === undefined
       ? null
       : {
-          panelId: options.experimental_fixedTabTarget.panelId,
+          panelId: options.experimental_fixedTabTarget.panelId ?? null,
           sequence: 1,
           tabId: options.experimental_fixedTabTarget.tabId,
           target: strictJsonRoundTrip(
@@ -2545,69 +2567,126 @@ export function renderSlot<
       for (const listener of fixedTabTargetListeners) listener();
     },
   };
-  function captureFixedTabOpen(
-    surface: ExperimentalFixedTabOpenCall["surface"],
-    panelId: string | undefined,
-    tabId: string,
-    target: JsonValue | undefined,
-  ): boolean {
-    const call: ExperimentalFixedTabOpenCall = {
-      surface: surface,
-      ...(panelId === undefined ? {} : { panelId: panelId }),
-      tabId: tabId,
-      ...(target === undefined ? {} : { target }),
+  function openTabWithRetiredHosts(tabOptions: ExperimentalOpenTabOptions) {
+    if (retired.experimental_openTab !== undefined)
+      return retired.experimental_openTab({
+        surface: { kind: "current" },
+        ...tabOptions,
+      });
+    if (tabOptions.tab.availability === "action") {
+      navigateCalls.push({
+        method: "openThreadPanel",
+        options: {
+          actionId: tabOptions.tab.id,
+          ...(tabOptions.title === undefined
+            ? {}
+            : { title: tabOptions.title }),
+          ...(tabOptions.params === undefined
+            ? {}
+            : { params: tabOptions.params }),
+        },
+      } as unknown as NavigateCall);
+      return (
+        retired.openThreadPanel?.({
+          actionId: tabOptions.tab.id,
+          ...(tabOptions.title === undefined
+            ? {}
+            : { title: tabOptions.title }),
+          ...(tabOptions.params === undefined
+            ? {}
+            : { params: tabOptions.params }),
+        }) ?? false
+      );
+    }
+    const call: RetiredFixedTabOpenCall = {
+      surface: { kind: "current" },
+      ...(tabOptions.tab.context.kind === "nav-panel"
+        ? { panelId: tabOptions.tab.context.panelId }
+        : {}),
+      tabId: tabOptions.tab.id,
+      ...(tabOptions.target === undefined ? {} : { target: tabOptions.target }),
     };
     experimental_fixedTabOpenCalls.push(call);
-    const accepted = options.experimental_openFixedTab?.(call) ?? false;
-    if (accepted && target !== undefined && panelId !== undefined) {
-      fixedTabTargetSnapshot = {
-        panelId: panelId,
-        sequence: (fixedTabTargetSnapshot?.sequence ?? 0) + 1,
-        tabId: tabId,
-        target,
-      };
-      for (const listener of fixedTabTargetListeners) listener();
-    }
-    return accepted;
+    return retired.experimental_openFixedTab?.(call) ?? false;
   }
-  const appPanel: ExperimentalAppPanel = {
+  function jsonTabOptions(
+    tabOptions: ExperimentalOpenTabOptions,
+  ): ExperimentalOpenTabOptions | null {
+    try {
+      if (tabOptions.tab.availability === "fixed")
+        return tabOptions.target === undefined
+          ? { tab: tabOptions.tab }
+          : {
+              tab: tabOptions.tab,
+              target: strictJsonRoundTrip(tabOptions.target, "tab target"),
+            };
+      return {
+        tab: tabOptions.tab,
+        ...(tabOptions.title === undefined ? {} : { title: tabOptions.title }),
+        ...(tabOptions.params === undefined
+          ? {}
+          : { params: strictJsonRoundTrip(tabOptions.params, "tab params") }),
+      };
+    } catch {
+      return null;
+    }
+  }
+  const panelController: ExperimentalPanelController = {
+    openTab(tabOptions) {
+      experimental_panelCalls.push({ method: "openTab", options: tabOptions });
+      const json = jsonTabOptions(tabOptions);
+      if (json === null) return false;
+      const accepted =
+        options.experimental_panel?.openTab?.(json) ??
+        openTabWithRetiredHosts(json);
+      if (
+        accepted &&
+        json.tab.availability === "fixed" &&
+        json.target !== undefined
+      ) {
+        fixedTabTargetSnapshot = {
+          panelId:
+            json.tab.context.kind === "nav-panel"
+              ? json.tab.context.panelId
+              : null,
+          sequence: (fixedTabTargetSnapshot?.sequence ?? 0) + 1,
+          tabId: json.tab.id,
+          target: json.target,
+        };
+        for (const listener of fixedTabTargetListeners) listener();
+      }
+      return accepted;
+    },
+    toggleTab(tabOptions) {
+      experimental_panelCalls.push({
+        method: "toggleTab",
+        options: tabOptions,
+      });
+      const json = jsonTabOptions(tabOptions);
+      if (json === null) return false;
+      return options.experimental_panel?.toggleTab?.(json) ?? false;
+    },
+    close() {
+      experimental_panelCalls.push({ method: "close" });
+      return options.experimental_panel?.close?.() ?? false;
+    },
+  };
+  const appPanel: ExperimentalPanelController & {
+    experimental_openTab(tabOptions: RetiredTabOpenOptions): boolean;
+    openFixedTab(panelOptions: {
+      surface: { kind: "current" };
+      tab: {
+        id: string;
+        panelId?: string;
+        experimental_target?: { validate(value: JsonValue): boolean };
+      };
+      target?: JsonValue;
+    }): boolean;
+  } = {
+    ...panelController,
     experimental_openTab(tabOptions) {
       experimental_tabOpenCalls.push(tabOptions);
-      if (options.experimental_openTab !== undefined)
-        return options.experimental_openTab(tabOptions);
-      if (tabOptions.tab.availability === "action") {
-        try {
-          const params =
-            tabOptions.params === undefined
-              ? undefined
-              : strictJsonRoundTrip(tabOptions.params, "tab params");
-          return navigate.openThreadPanel({
-            actionId: tabOptions.tab.id,
-            ...(tabOptions.title === undefined
-              ? {}
-              : { title: tabOptions.title }),
-            ...(params === undefined ? {} : { params }),
-          });
-        } catch {
-          return false;
-        }
-      }
-      try {
-        const target =
-          tabOptions.target === undefined
-            ? undefined
-            : strictJsonRoundTrip(tabOptions.target, "tab target");
-        return captureFixedTabOpen(
-          tabOptions.surface,
-          tabOptions.tab.context.kind === "nav-panel"
-            ? tabOptions.tab.context.panelId
-            : undefined,
-          tabOptions.tab.id,
-          target,
-        );
-      } catch {
-        return false;
-      }
+      return panelController.openTab(tabOptions);
     },
     openFixedTab(panelOptions) {
       let target: JsonValue | undefined;
@@ -2629,22 +2708,16 @@ export function renderSlot<
           return false;
         }
       }
-      if (panelOptions.tab.panelId === undefined) {
-        if (target !== undefined) return false;
-        return appPanel.experimental_openTab({
-          surface: panelOptions.surface,
-          tab: {
-            id: panelOptions.tab.id,
-            context: { kind: "thread" },
-            availability: "fixed",
-          },
-        });
-      }
+      if (panelOptions.tab.panelId === undefined && target !== undefined)
+        return false;
       return appPanel.experimental_openTab({
         surface: panelOptions.surface,
         tab: {
           id: panelOptions.tab.id,
-          context: { kind: "nav-panel", panelId: panelOptions.tab.panelId },
+          context:
+            panelOptions.tab.panelId === undefined
+              ? { kind: "thread" }
+              : { kind: "nav-panel", panelId: panelOptions.tab.panelId },
           availability: "fixed",
         },
         ...(target === undefined ? {} : { target }),
@@ -2770,7 +2843,9 @@ export function renderSlot<
       sidebarActionCalls.push({ method: "requestDelete", threadId });
     },
   };
-  const navigate: BbNavigate = {
+  const navigate: BbNavigate & {
+    openThreadPanel(options: RetiredActionTabOpenOptions): boolean;
+  } = {
     toThread(threadId, threadOptions) {
       navigateCalls.push({
         method: "toThread",
@@ -2795,11 +2870,19 @@ export function renderSlot<
       });
     },
     openThreadPanel(panelOptions) {
-      navigateCalls.push({
-        method: "openThreadPanel",
-        options: panelOptions,
+      return panelController.openTab({
+        tab: {
+          id: panelOptions.actionId,
+          context: { kind: "thread" },
+          availability: "action",
+        },
+        ...(panelOptions.title === undefined
+          ? {}
+          : { title: panelOptions.title }),
+        ...(panelOptions.params === undefined
+          ? {}
+          : { params: panelOptions.params }),
       });
-      return options.openThreadPanel?.(panelOptions) ?? false;
     },
     openUrl(url) {
       navigateCalls.push({ method: "openUrl", url });
@@ -3113,8 +3196,6 @@ export function renderSlot<
     navigate,
     navigateCalls,
     appPanel,
-    experimental_fixedTabOpenCalls,
-    experimental_tabOpenCalls,
     fixedTabTarget,
     composer,
     composerLog,
@@ -3240,6 +3321,10 @@ export function renderSlot<
     result.unmount();
   };
 
+  const retiredLogs = {
+    experimental_fixedTabOpenCalls,
+    experimental_tabOpenCalls,
+  };
   return {
     ...result,
     rerender: rerenderSlot,
@@ -3251,8 +3336,8 @@ export function renderSlot<
     setComposerText,
     setComposerScope,
     navigateCalls,
-    experimental_fixedTabOpenCalls,
-    experimental_tabOpenCalls,
+    experimental_panelCalls,
+    ...retiredLogs,
     sidebarActionCalls,
     sidebarNavigationCalls,
     experimental_environmentArchiveCalls: environmentArchiveCalls,
@@ -3272,8 +3357,8 @@ export function renderSlot<
       },
       rpcCalls,
       navigateCalls,
-      experimental_fixedTabOpenCalls,
-      experimental_tabOpenCalls,
+      experimental_panelCalls,
+      ...retiredLogs,
       sidebarActionCalls,
       sidebarNavigationCalls,
       experimental_environmentArchiveCalls: environmentArchiveCalls,

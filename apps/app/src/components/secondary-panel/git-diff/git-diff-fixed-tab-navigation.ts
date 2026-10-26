@@ -51,7 +51,7 @@ export function createGitDiffFixedTabDestination({
   openCommit: (sha: string) => void;
   openFile: (path: string) => void;
   openOrdinary: () => void;
-}): AppFixedTabDestination {
+}): Omit<AppFixedTabDestination, "panelTabId"> {
   return {
     tab: GIT_DIFF_FIXED_TAB_REFERENCE,
     open(target) {

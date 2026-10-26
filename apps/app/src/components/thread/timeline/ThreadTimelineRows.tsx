@@ -61,7 +61,6 @@ import type {
   ThreadTimelineForkMessageHandler,
   ThreadTimelineLinkHandler,
   ThreadTimelineLocalFileLinkHandler,
-  ThreadTimelineOpenPluginPanelHandler,
   ThreadTimelineImageViewSrcResolver,
   ThreadTimelineConsumerMessageAction,
   ThreadTimelinePluginMessageAction,
@@ -143,6 +142,8 @@ import {
   type PluginMessageActionSlot,
 } from "@/lib/plugin-slots.js";
 import { runPluginMessageAction } from "@/lib/plugin-message-actions.js";
+import { useAppNavigationHost } from "@/lib/app-navigation-host";
+import type { AppPanelController } from "@/lib/app-fixed-tab-navigation";
 import {
   usePluginComposerHost,
   type PluginComposerHost,
@@ -175,7 +176,6 @@ export interface ThreadTimelineRowsProps {
   includePluginMessageActions?: boolean;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
-  onOpenPluginPanel?: ThreadTimelineOpenPluginPanelHandler;
   onTitleAction?: TimelineTitleActionResolver;
   projectId?: string;
   resolveMentionLink?: PromptMentionLinkResolver;
@@ -212,7 +212,7 @@ interface TimelineRendererStaticContextValue {
     | undefined;
   onOpenLink: ThreadTimelineLinkHandler | undefined;
   onOpenLocalFileLink: ThreadTimelineLocalFileLinkHandler | undefined;
-  onOpenPluginPanel: ThreadTimelineOpenPluginPanelHandler | undefined;
+  panel: AppPanelController;
   onTitleAction: TimelineTitleActionResolver | undefined;
   projectId: string | undefined;
   resolveImageViewSrc: ThreadTimelineImageViewSrcResolver | undefined;
@@ -737,7 +737,7 @@ function buildRowPluginMessageActions(args: {
   timelineThreadId: string | undefined;
   message: ThreadChatMessageReference;
   selectedText?: string;
-  openThreadPanel: ThreadTimelineOpenPluginPanelHandler | undefined;
+  panel: AppPanelController;
   composerHost: PluginComposerHost | null;
 }): readonly ThreadTimelinePluginMessageAction[] | undefined {
   const {
@@ -745,7 +745,7 @@ function buildRowPluginMessageActions(args: {
     timelineThreadId,
     message,
     selectedText,
-    openThreadPanel,
+    panel,
     composerHost,
   } = args;
   if (timelineThreadId === undefined || slots.length === 0) {
@@ -762,7 +762,7 @@ function buildRowPluginMessageActions(args: {
         threadId: timelineThreadId,
         message,
         selectedText,
-        openThreadPanel,
+        panel,
         composerHost,
       }),
   }));
@@ -868,7 +868,7 @@ const ConversationRowContent = memo(function ConversationRowContent({
     reportProseSelection,
     onOpenLink,
     onOpenLocalFileLink,
-    onOpenPluginPanel,
+    panel,
     onTitleAction,
     projectId,
     resolveMentionLink,
@@ -896,7 +896,7 @@ const ConversationRowContent = memo(function ConversationRowContent({
     slots: pluginMessageActions,
     timelineThreadId: threadId,
     message: messageReference,
-    openThreadPanel: onOpenPluginPanel,
+    panel,
     composerHost,
   });
   const rowConsumerActions =
@@ -1035,7 +1035,6 @@ const ConversationRowContent = memo(function ConversationRowContent({
       onSelectProse={onSelectProse}
       onOpenLink={onOpenLink}
       onOpenLocalFileLink={onOpenLocalFileLink}
-      onOpenPluginPanel={onOpenPluginPanel}
       pluginActions={rowPluginActions}
       projectId={projectId}
       resolveUserAttachmentImageSrc={resolveUserAttachmentImageSrc}
@@ -2420,7 +2419,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   );
   const selectionAddToChatHandler =
     onSelectionAddToChat === undefined ? undefined : handleSelectionAddToChat;
-  const onOpenPluginPanel = props.onOpenPluginPanel;
+  const { panel } = useAppNavigationHost();
   const composerHost = usePluginComposerHost();
   const selectionPluginActions = useMemo<
     readonly ThreadTimelinePluginMessageAction[]
@@ -2437,7 +2436,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
         timelineThreadId,
         message: activeSelection.message,
         selectedText: activeSelection.selection.text,
-        openThreadPanel: onOpenPluginPanel,
+        panel,
         composerHost,
       }) ?? []
     );
@@ -2446,7 +2445,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
     composerHost,
     messageActionSlots,
     props.includePluginMessageActions,
-    onOpenPluginPanel,
+    panel,
     timelineThreadId,
   ]);
   const staticContextValue = useMemo<TimelineRendererStaticContextValue>(
@@ -2468,7 +2467,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       reportProseSelection,
       onOpenLink: props.onOpenLink,
       onOpenLocalFileLink: props.onOpenLocalFileLink,
-      onOpenPluginPanel: props.onOpenPluginPanel,
+      panel,
       onTitleAction: props.onTitleAction,
       projectId,
       resolveImageViewSrc: props.resolveImageViewSrc,
@@ -2492,7 +2491,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       timelineThreadId,
       props.onOpenLink,
       props.onOpenLocalFileLink,
-      props.onOpenPluginPanel,
+      panel,
       props.onTitleAction,
       projectId,
       props.resolveImageViewSrc,

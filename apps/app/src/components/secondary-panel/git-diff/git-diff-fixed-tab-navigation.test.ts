@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { openAppFixedTabFromDestinations } from "@/lib/app-fixed-tab-navigation";
+import { createAppPanelController } from "@/lib/app-fixed-tab-navigation";
 import {
   createGitDiffFixedTabDestination,
   GIT_DIFF_FIXED_TAB_REFERENCE,
@@ -17,12 +17,17 @@ describe("createGitDiffFixedTabDestination", () => {
       openOrdinary,
     });
 
+    const panel = createAppPanelController(() => ({
+      activeTabId: null,
+      close: vi.fn(),
+      destinations: [{ ...destination, panelTabId: () => "diff" }],
+    }));
     const open = (
       target?: { kind: "file"; path: string } | { kind: "commit"; sha: string },
     ) =>
-      openAppFixedTabFromDestinations([destination], {
-        surface: { kind: "current" },
+      panel.openTab({
         tab: GIT_DIFF_FIXED_TAB_REFERENCE,
+        availability: "fixed",
         ...(target === undefined ? {} : { target }),
       });
 

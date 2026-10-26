@@ -6,7 +6,10 @@ import {
   createPluginFixedPanelTab,
   type FixedPanelViewTab,
 } from "@/lib/fixed-panel-tabs-state";
-import { getThreadFixedTabOwnerId } from "@/lib/app-fixed-tab-navigation";
+import {
+  FixedTabTargetScope,
+  getThreadFixedTabOwnerId,
+} from "@/lib/app-fixed-tab-navigation";
 import type { AppFixedTabReference } from "@/lib/app-navigation-host";
 import { isThreadTab, type PluginThreadFixedTabSlot } from "@/lib/plugin-slots";
 import { PluginTabScope, usePluginTabs } from "./PluginTabs";
@@ -15,6 +18,13 @@ export interface ThreadFixedTabEntry {
   slot: PluginThreadFixedTabSlot;
   tab: FixedPanelViewTab;
   reference: AppFixedTabReference;
+}
+
+export function getThreadFixedTabTargetKey(
+  threadId: string,
+  reference: AppFixedTabReference,
+): string {
+  return `${threadId}\0${reference.ownerId}\0${reference.tabId}`;
 }
 
 export function createThreadFixedTabDescriptor(
@@ -36,7 +46,13 @@ export function createThreadFixedTabDescriptor(
     contentFillsRegion: entry.slot.layout === "flush",
     renderContent: () => (
       <PluginTabScope slot={entry.slot} instanceId={threadId}>
-        <Component threadId={threadId} />
+        <FixedTabTargetScope
+          ownerId={entry.reference.ownerId}
+          tabId={entry.reference.tabId}
+          targetKey={getThreadFixedTabTargetKey(threadId, entry.reference)}
+        >
+          <Component threadId={threadId} />
+        </FixedTabTargetScope>
       </PluginTabScope>
     ),
   } satisfies SecondaryPanelFixedTab;

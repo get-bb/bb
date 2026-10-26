@@ -671,12 +671,12 @@ function FileIntentButtons() {
       <button
         type="button"
         onClick={() =>
-          navigation.openFixedTab({
-            surface: { kind: "current" },
+          navigation.panel.openTab({
             tab: {
               ownerId: getPluginFixedTabOwnerId("demo", "board"),
               tabId: "details",
             },
+            availability: "fixed",
             target: { kind: "record", recordId: "issue-42" },
           })
         }
@@ -686,12 +686,12 @@ function FileIntentButtons() {
       <button
         type="button"
         onClick={() =>
-          navigation.openFixedTab({
-            surface: { kind: "current" },
+          navigation.panel.openTab({
             tab: {
               ownerId: getPluginFixedTabOwnerId("demo", "board"),
               tabId: "details",
             },
+            availability: "fixed",
             target: { kind: "wrong" },
           })
         }

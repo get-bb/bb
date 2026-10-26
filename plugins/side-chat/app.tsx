@@ -8,6 +8,7 @@ import {
   useSdk,
   type PluginMessageActionContext,
   type ExperimentalThreadTabActionContext,
+  type ExperimentalPanelController,
   type ExperimentalThreadActionTabProps,
   type ThreadChatMessageAction,
 } from "@get-bb/plugin-sdk/app";
@@ -95,7 +96,7 @@ interface OpenSideChatArgs {
   sourceThreadId: string;
   anchorText: string;
   sourceSeqEnd: number | null;
-  openPanel(options: { title: string; params: SideChatPanelParams }): boolean;
+  panel: ExperimentalPanelController;
 }
 
 const inFlightOpens = new Map<string, Promise<void>>();
@@ -130,7 +131,7 @@ async function createAndOpenSideChat({
   sourceThreadId,
   anchorText,
   sourceSeqEnd,
-  openPanel,
+  panel,
 }: OpenSideChatArgs): Promise<void> {
   let threadId: string;
   try {
@@ -149,7 +150,12 @@ async function createAndOpenSideChat({
     );
     throw error;
   }
-  openPanel({
+  panel.openTab({
+    tab: {
+      id: PANEL_ACTION_ID,
+      context: { kind: "thread" },
+      availability: "action",
+    },
     title: PANEL_TAB_TITLE,
     params: {
       threadId,
@@ -287,8 +293,7 @@ export default definePluginApp((app) => {
         sourceThreadId: context.threadId,
         anchorText,
         sourceSeqEnd: context.message.sourceSeqEnd,
-        openPanel: (options) =>
-          context.openPanel({ actionId: PANEL_ACTION_ID, ...options }),
+        panel: context.experimental_panel,
       });
     },
   });
@@ -305,7 +310,7 @@ export default definePluginApp((app) => {
         sourceThreadId: context.threadId,
         anchorText: "",
         sourceSeqEnd: null,
-        openPanel: (options) => context.openPanel(options),
+        panel: context.experimental_panel,
       });
     },
   });

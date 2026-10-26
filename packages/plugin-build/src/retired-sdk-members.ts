@@ -3,7 +3,8 @@ import { resolve } from "node:path";
 import type { Metafile } from "esbuild";
 
 const GIT_READS_REPLACEMENT: Readonly<Record<string, string>> = {
-  status: 'bb.sdk.plugins.callRpc({ pluginId: "bb--git", method: "workspaceStatus", input: { environmentId, mergeBaseBranch } })',
+  status:
+    'bb.sdk.plugins.callRpc({ pluginId: "bb--git", method: "workspaceStatus", input: { environmentId, mergeBaseBranch } })',
   diff: 'bb.sdk.plugins.callRpc({ pluginId: "bb--git", method: "diff", input: { environmentId, target } })',
   diffFiles:
     'bb.sdk.plugins.callRpc({ pluginId: "bb--git", method: "files", input: { environmentId, target, ignoreWhitespace } })',
@@ -29,6 +30,40 @@ const ENVIRONMENTS_DESTRUCTURING =
   /\{([^{}]*)\}\s*=\s*[\w$.?\s]*\benvironments\b/gu;
 const RETIRED_NAME = new RegExp(`^(?:${RETIRED_NAMES})$`, "u");
 
+const PANEL_MEMBER_REPLACEMENTS: Readonly<Record<string, string>> = {
+  openPanel:
+    'ctx.openPanel is retired. Use ctx.experimental_panel.openTab({ tab: { id, context: { kind: "thread" }, availability: "action" }, params, title })',
+  openThreadPanel:
+    'useBbNavigate().openThreadPanel is retired. Use experimental_useAppPanel().openTab({ tab: { id: actionId, context: { kind: "thread" }, availability: "action" }, params, title })',
+  experimental_openTab:
+    "experimental_useAppPanel().experimental_openTab is retired. Use experimental_useAppPanel().openTab({ tab, target, params, title }) without surface",
+  openFixedTab:
+    'experimental_useAppPanel().openFixedTab is retired. Use experimental_useAppPanel().openTab({ tab: { id, context: { kind: "nav-panel", panelId }, availability: "fixed" }, target })',
+};
+
+const PANEL_MEMBER_NAMES = Object.keys(PANEL_MEMBER_REPLACEMENTS).join("|");
+const RETIRED_PANEL_CALL = new RegExp(
+  `\\.\\s*(${PANEL_MEMBER_NAMES})\\s*\\(`,
+  "gu",
+);
+const RETIRED_PANEL_DESTRUCTURING = new RegExp(
+  `\\{[^{}]*\\b(${PANEL_MEMBER_NAMES})\\b(?!\\s*:)[^{}]*\\}\\s*(?:\\)|=(?!=))`,
+  "gu",
+);
+
+function retiredPanelMemberWarnings(source: string): string[] {
+  const found = new Set<string>();
+  for (const pattern of [RETIRED_PANEL_CALL, RETIRED_PANEL_DESTRUCTURING]) {
+    for (const match of source.matchAll(pattern)) {
+      if (match[1] !== undefined) found.add(match[1]);
+    }
+  }
+  return [...found].map(
+    (name) =>
+      `${PANEL_MEMBER_REPLACEMENTS[name]}. It keeps working only for existing plugins. See bb-plugin-authoring, frontend-hooks-and-ui.md#panel-controller.`,
+  );
+}
+
 export function retiredSdkMemberWarnings(source: string): string[] {
   const found = new Set<string>();
   for (const pattern of [RETIRED_MEMBER_ACCESS, RETIRED_BRACKET_ACCESS]) {
@@ -42,10 +77,13 @@ export function retiredSdkMemberWarnings(source: string): string[] {
       if (RETIRED_NAME.test(name)) found.add(name);
     }
   }
-  return [...found].map(
-    (name) =>
-      `environments.${name} is retired from the bb SDK typings and keeps working only for existing plugins. Read through the Git plugin instead: ${GIT_READS_REPLACEMENT[name]}. See bb-plugin-authoring, git-reads.md.`,
-  );
+  return [
+    ...[...found].map(
+      (name) =>
+        `environments.${name} is retired from the bb SDK typings and keeps working only for existing plugins. Read through the Git plugin instead: ${GIT_READS_REPLACEMENT[name]}. See bb-plugin-authoring, git-reads.md.`,
+    ),
+    ...retiredPanelMemberWarnings(source),
+  ];
 }
 
 export async function retiredSdkMemberWarningsForInputs(

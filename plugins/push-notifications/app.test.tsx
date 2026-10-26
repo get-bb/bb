@@ -58,7 +58,8 @@ describe("device notification settings", () => {
   });
 });
 
-const { useBbNavigate, useSdk } = await import("@get-bb/plugin-sdk/app");
+const { experimental_useAppPanel, useBbNavigate, useSdk } =
+  await import("@get-bb/plugin-sdk/app");
 const { notificationsThreadAction } = await import("./notificationsAction.js");
 
 function makeTarget(
@@ -93,16 +94,24 @@ function Probe({
   const data = notificationsThreadAction.useData!({ threadIds });
   const sdk = useSdk();
   const navigate = useBbNavigate();
+  const experimental_panel = experimental_useAppPanel();
   useLayoutEffect(() => {
     onItem(
       (thread) =>
-        notificationsThreadAction.item({ thread, data, sdk, navigate }),
+        notificationsThreadAction.item({
+          thread,
+          data,
+          sdk,
+          navigate,
+          experimental_panel,
+        }),
       (threads) =>
         notificationsThreadAction.experimental_bulkItem?.({
           threads,
           data,
           sdk,
           navigate,
+          experimental_panel,
         }) ?? null,
     );
   });

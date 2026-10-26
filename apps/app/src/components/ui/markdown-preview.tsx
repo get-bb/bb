@@ -434,7 +434,6 @@ function areMarkdownMessageDirectivesEqual({
   return (
     previous.registry === next.registry &&
     previous.openWorkspaceFile === next.openWorkspaceFile &&
-    previous.openThreadPanel === next.openThreadPanel &&
     previous.message.id === next.message.id &&
     previous.message.threadId === next.message.threadId &&
     previous.message.turnId === next.message.turnId &&
@@ -1884,7 +1883,6 @@ function MarkdownPreviewComponent({
       mounts,
       message: messageDirectives.message,
       openWorkspaceFile: messageDirectives.openWorkspaceFile,
-      openThreadPanel: messageDirectives.openThreadPanel,
       registry: messageDirectives.registry,
     };
   }, [messageDirectives]);

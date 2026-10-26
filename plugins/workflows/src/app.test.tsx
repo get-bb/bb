@@ -397,7 +397,7 @@ describe("workflow composer banner", () => {
   });
 
   it("opens the run in the workflow side panel without stopping it", async () => {
-    const openThreadPanel = vi.fn(() => true);
+    const openTab = vi.fn(() => true);
     const slot = renderSlot(
       banner,
       {},
@@ -405,7 +405,7 @@ describe("workflow composer banner", () => {
         composer: {
           scope: { kind: "thread", threadId: "thr_scope" },
         },
-        openThreadPanel,
+        experimental_panel: { openTab },
         rpc: {
           workflowActiveRuns: () => ({ runs: [run] }),
         },
@@ -417,8 +417,12 @@ describe("workflow composer banner", () => {
         name: /open workflow review.*in side panel/i,
       }),
     );
-    expect(openThreadPanel).toHaveBeenCalledWith({
-      actionId: "workflow-run",
+    expect(openTab).toHaveBeenCalledWith({
+      tab: {
+        id: "workflow-run",
+        context: { kind: "thread" },
+        availability: "action",
+      },
       title: "Review the release",
       params: { runId: run.id },
     });
@@ -448,7 +452,7 @@ describe("workflow-preview directive", () => {
   });
 
   it("renders live phases and opens the matching shared thread panel", async () => {
-    const openThreadPanel = vi.fn(() => true);
+    const openTab = vi.fn(() => true);
     const slot = renderSlot(
       app.messageDirectives[0]!,
       {
@@ -458,7 +462,7 @@ describe("workflow-preview directive", () => {
         openWorkspaceFile: null,
       },
       {
-        openThreadPanel,
+        experimental_panel: { openTab },
         rpc: {
           workflowRunView: (input) => {
             expect(input).toEqual({ threadId: "thr_origin", runId: run.id });
@@ -503,8 +507,12 @@ describe("workflow-preview directive", () => {
     fireEvent.click(workflowToggle);
 
     fireEvent.click(slot.getByRole("button", { name: /open in right panel/i }));
-    expect(openThreadPanel).toHaveBeenCalledWith({
-      actionId: "workflow-run",
+    expect(openTab).toHaveBeenCalledWith({
+      tab: {
+        id: "workflow-run",
+        context: { kind: "thread" },
+        availability: "action",
+      },
       title: "Review the release",
       params: { runId: run.id },
     });

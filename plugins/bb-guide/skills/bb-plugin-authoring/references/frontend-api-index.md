@@ -171,7 +171,6 @@ Read the installed SDK declarations for the exact current signatures.
 - `ExperimentalPageBreadcrumb`
 - `ExperimentalBadge`
 - `ExperimentalBadgeTone`
-- `PluginPanelActionOpenOptions`
 - `PluginNewThreadPanelActionContext`
 - `PluginNewThreadPanelActionRegistration`
 - `PluginPendingInteractionRegistration`
@@ -255,7 +254,6 @@ Read the installed SDK declarations for the exact current signatures.
 - `ExperimentalCodeFenceRendererRegistration`
 - `ExperimentalCodeFenceStatus`
 - `ThreadChatMessageReference`
-- `PluginTargetedPanelActionOpenOptions`
 - `PluginMessageActionContext`
 - `PluginMessageActionRegistration`
 - `PluginAppCommands`
@@ -371,17 +369,15 @@ Read the installed SDK declarations for the exact current signatures.
 - `ExperimentalFileLocation`
 - `ExperimentalFileOpenOptions`
 - `ExperimentalFileLinkProps`
-- `ExperimentalAppPanelSurface`
 - `ExperimentalFixedTabTargetState`
-- `ExperimentalOpenFixedTabOptions`
 - `ExperimentalTabRegistration`
 - `ExperimentalTabContext`
 - `ExperimentalTabReference`
-- `ExperimentalTabOpenOptions`
+- `ExperimentalOpenTabOptions`
 - `ExperimentalTabTargetReference`
 - `ExperimentalThreadActionTabProps`
 - `ExperimentalThreadTabActionContext`
-- `ExperimentalAppPanel`
+- `ExperimentalPanelController`
 - `BbContext`
 - `BbNavigate`
 - `PluginSdkApp`
@@ -414,6 +410,6 @@ Read-state and error behavior is documented in [Frontend hooks and UI](frontend-
 
 For `app.slots.experimental_tab`, `ExperimentalTabRegistration`,
 `ExperimentalTabReference`, `ExperimentalTabContext`, and
-`experimental_useAppPanel().experimental_openTab`, see
+`experimental_useAppPanel().openTab`, see
 [Thread side-panel tabs in the Plugin Guide](https://getbb.app/plugin-guide#surface-thread-panel).
 Source upgrades are in [Tab API migration](frontend-registration.md#tab-api-migration).

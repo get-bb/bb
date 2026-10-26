@@ -40,7 +40,10 @@ import {
   useThreadActionRegistrationInfos,
 } from "@/lib/thread-actions/thread-action-registry";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
-import { usePublishThreadPanelOpener } from "@/components/plugin/plugin-thread-panel-navigation";
+import {
+  useAppPanelController,
+  type AppFixedTabDestination,
+} from "@/lib/app-fixed-tab-navigation";
 import {
   ThreadActionsContextMenu,
   ThreadActionsMenu,
@@ -848,13 +851,30 @@ describe("thread actions outside bb's own surfaces", () => {
     expect(sdkThreads.get).toHaveBeenCalledWith({ threadId: baseThread.id });
   });
 
-  it("opens a plugin's thread panel in the focused thread view", async () => {
-    const opener = vi.fn(() => true);
+  it("opens a plugin's thread panel in the focused thread view, through experimental_panel and the retired openThreadPanel", async () => {
+    const open = vi.fn(() => true);
+    const close = vi.fn();
     const opened = vi.fn();
+    const destinations: AppFixedTabDestination[] = [
+      {
+        tab: { ownerId: "plugin-thread:fixture", tabId: "details" },
+        availability: "action",
+        open,
+        panelTabId: () => "details-tab",
+      },
+    ];
     function FocusedThreadView() {
-      usePublishThreadPanelOpener(opener, true);
+      useAppPanelController({
+        activeTabId: null,
+        close,
+        destinations,
+        isFocused: true,
+      });
       return null;
     }
+    type RetiredNavigate = {
+      openThreadPanel(options: { actionId: string }): boolean;
+    };
     render(<FocusedThreadView />);
     renderSurface(
       surface,
@@ -866,11 +886,24 @@ describe("thread actions outside bb's own surfaces", () => {
             title: "Open details",
             icon: "Info",
             group: "5_plugin",
-            item: ({ navigate }) => ({
+            item: ({ navigate, experimental_panel }) => ({
               label: "Open details",
               icon: "Info",
               run: () => {
-                opened(navigate.openThreadPanel({ actionId: "details" }));
+                opened(
+                  experimental_panel.openTab({
+                    tab: {
+                      id: "details",
+                      context: { kind: "thread" },
+                      availability: "action",
+                    },
+                    params: { from: "panel" },
+                  }),
+                  (navigate as unknown as RetiredNavigate).openThreadPanel({
+                    actionId: "details",
+                  }),
+                  experimental_panel.close(),
+                );
               },
             }),
           },
@@ -882,11 +915,12 @@ describe("thread actions outside bb's own surfaces", () => {
     fireEvent.click(
       await screen.findByRole("menuitem", { name: "Open details" }),
     );
-    await waitFor(() => expect(opened).toHaveBeenCalledWith(true));
-    expect(opener).toHaveBeenCalledWith({
-      actionId: "details",
-      pluginId: "fixture",
+    await waitFor(() => expect(opened).toHaveBeenCalledWith(true, true, true));
+    expect(open).toHaveBeenNthCalledWith(1, undefined, {
+      params: { from: "panel" },
     });
+    expect(open).toHaveBeenNthCalledWith(2, undefined, {});
+    expect(close).toHaveBeenCalledOnce();
   });
 });
 

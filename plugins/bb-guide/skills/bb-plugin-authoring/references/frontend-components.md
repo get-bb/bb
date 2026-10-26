@@ -196,16 +196,13 @@ className? }` —
   an environment id or turn a project id into a workspace target. The testing
   harness records both calls in `navigateCalls` and gates them with the
   `openFilePreview` / `openFileExternally` behavior options.
-- `experimental_useAppPanel` — returns the generic current-surface fixed-tab
-  controller. `openFixedTab({ surface: { kind: "current" }, tab, target? })`
-  accepts a plugin's own eligible fixed-tab registration, validates any target
-  through that registration's `experimental_target` contract, opens the shared
-  panel, and returns host acceptance. The controller does not interpret target
-  shapes. Targeted fixed tabs use `experimental_useFixedTabTarget(tab)` to read
-  current-session state and call `clear()` when returning to an untargeted
-  state. The frontend harness records accepted calls in
-  `experimental_fixedTabOpenCalls`, gates them with
-  `experimental_openFixedTab`, and seeds state with
+- `experimental_useAppPanel` — returns the current surface's
+  `ExperimentalPanelController`; see
+  [Panel controller](frontend-hooks-and-ui.md#panel-controller). Targeted
+  fixed tabs use `experimental_useFixedTabTarget(tab)` to read current-session
+  state and call `clear()` when returning to an untargeted state. The frontend
+  harness records every call in `experimental_panelCalls`, gates them with the
+  `experimental_panel` option, and seeds state with
   `experimental_fixedTabTarget`.
 - `experimental_NewThreadComposer` — bb's complete compose surface for
   CREATING a thread (the create-side counterpart to `ThreadChat`): prompt

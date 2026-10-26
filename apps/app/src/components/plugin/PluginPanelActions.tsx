@@ -1,6 +1,5 @@
 import { PluginTabScope } from "./PluginTabs";
 import { useMemo, type ReactNode } from "react";
-import type { PluginPanelActionOpenOptions } from "@get-bb/plugin-sdk";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { usePluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
 import {
@@ -10,7 +9,10 @@ import {
   isNavTab,
   type PluginTabSlot,
 } from "@/lib/plugin-slots";
-import type { PluginPanelFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
+import {
+  createPluginPanelFixedPanelTab,
+  type PluginPanelFixedPanelTab,
+} from "@/lib/fixed-panel-tabs-state";
 import {
   parsePersistedPluginPanelParams,
   serializePluginPanelParams,
@@ -25,9 +27,13 @@ import { resolveReplacement } from "@/lib/plugin-slot-resolvers";
 
 import {
   getThreadFixedTabOwnerId,
-  openAppTabFromDestinations,
   type AppFixedTabDestination,
+  type AppPanelController,
 } from "@/lib/app-fixed-tab-navigation";
+import {
+  createPluginPanelController,
+  createRetiredOpenPanel,
+} from "@/lib/plugin-panel-controller";
 export interface OpenPluginPanelArgs {
   pluginId: string;
   actionId: string;
@@ -50,33 +56,46 @@ function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-interface PanelActionOpenPanelArgs {
+interface PanelActionDestinationArgs {
   action: {
     pluginId: string;
     id: string;
     title: string;
     params?: import("@get-bb/plugin-sdk").JsonValue;
   };
-  slot: string;
   openPluginPanel: OpenPluginPanelHandler;
 }
 
 export function createPanelActionDestination({
   action,
   openPluginPanel,
-}: PanelActionOpenPanelArgs): AppFixedTabDestination {
+}: PanelActionDestinationArgs): AppFixedTabDestination {
+  const serializeParams = (
+    params: import("@get-bb/plugin-sdk").JsonValue | undefined,
+  ) =>
+    serializePluginPanelParams(params === undefined ? action.params : params);
   return {
     tab: {
       ownerId: getThreadFixedTabOwnerId(action.pluginId),
       tabId: action.id,
     },
     availability: "action",
+    panelTabId(params) {
+      try {
+        return createPluginPanelFixedPanelTab({
+          actionId: action.id,
+          paramsJson: serializeParams(params),
+          pluginId: action.pluginId,
+          title: action.title,
+        }).id;
+      } catch {
+        return null;
+      }
+    },
     open(_target, options) {
       let paramsJson: string | null;
       try {
-        paramsJson = serializePluginPanelParams(
-          options?.params === undefined ? action.params : options.params,
-        );
+        paramsJson = serializeParams(options?.params);
       } catch {
         return false;
       }
@@ -91,102 +110,104 @@ export function createPanelActionDestination({
   };
 }
 
-export function createPanelActionOpenPanel(
-  args: PanelActionOpenPanelArgs,
-): (options?: PluginPanelActionOpenOptions) => boolean {
-  const destination = createPanelActionDestination(args);
-  return (options) => {
-    const accepted = openAppTabFromDestinations([destination], {
-      surface: { kind: "current" },
-      tab: destination.tab,
-      availability: "action",
-      ...options,
-    });
-    if (!accepted)
-      console.warn(
-        `[plugin:${args.action.pluginId}] ${args.slot} "${args.action.id}" openPanel declined: params must be JSON values`,
-      );
-    return accepted;
+function runPanelActionLauncher(
+  action: { pluginId: string; id: string },
+  slot: string,
+  run: () => void | Promise<void>,
+): void {
+  const warn = (error: unknown) => {
+    console.warn(
+      `[plugin:${action.pluginId}] ${slot} "${action.id}" failed: ${describeError(error)}`,
+    );
   };
+  try {
+    const result = run();
+    if (result instanceof Promise) result.catch(warn);
+  } catch (error) {
+    warn(error);
+  }
 }
 
 interface RunPluginPanelActionArgs {
   action: Extract<PluginTabSlot, { availability: "action" }>;
-  openPluginPanel: OpenPluginPanelHandler;
+  panel: AppPanelController;
   context: import("./PluginTabs").PluginTabContext;
 }
 
 export function runPluginPanelAction({
   action,
-  openPluginPanel,
+  panel,
   context,
 }: RunPluginPanelActionArgs): void {
-  const openPanel = createPanelActionOpenPanel({
-    action,
-    slot: "threadPanelAction",
-    openPluginPanel,
-  });
-  const warn = (error: unknown) => {
-    console.warn(
-      `[plugin:${action.pluginId}] threadPanelAction "${action.id}" failed: ${describeError(error)}`,
-    );
-  };
-  try {
+  const experimental_panel = createPluginPanelController(
+    action.pluginId,
+    () => panel,
+  );
+  const ownTab = {
+    id: action.id,
+    context: action.context,
+    availability: "action",
+  } as const;
+  const openPanel = createRetiredOpenPanel(experimental_panel, ownTab);
+  runPanelActionLauncher(action, "threadPanelAction", () => {
     if (action.run === undefined) {
-      openPanel();
+      experimental_panel.openTab({ tab: ownTab });
       return;
     }
-    const result =
-      isThreadTab(action) && context.kind === "thread"
-        ? action.run({ threadId: context.threadId, openPanel })
-        : isNavTab(action) && context.kind === "nav-panel"
-          ? action.run({ subPath: context.subPath, openPanel })
-          : undefined;
-    if (result instanceof Promise) result.catch(warn);
-  } catch (error) {
-    warn(error);
-  }
-}
-
-interface RunPluginNewThreadPanelActionArgs {
-  action: PluginNewThreadPanelActionSlot;
-  openPluginPanel: OpenPluginPanelHandler;
-  projectId: string | null;
+    if (isThreadTab(action) && context.kind === "thread") {
+      const runContext = {
+        threadId: context.threadId,
+        experimental_panel,
+        openPanel,
+      };
+      return action.run(runContext);
+    }
+    if (isNavTab(action) && context.kind === "nav-panel") {
+      const runContext = {
+        subPath: context.subPath,
+        experimental_panel,
+        openPanel,
+      };
+      return action.run(runContext);
+    }
+  });
 }
 
 function runPluginNewThreadPanelAction({
   action,
-  openPluginPanel,
+  panel,
   projectId,
-}: RunPluginNewThreadPanelActionArgs): void {
-  const openPanel = createPanelActionOpenPanel({
-    action,
-    slot: "experimental_newThreadPanelAction",
-    openPluginPanel,
-  });
-  const warn = (error: unknown) => {
-    console.warn(
-      `[plugin:${action.pluginId}] experimental_newThreadPanelAction "${action.id}" failed: ${describeError(error)}`,
-    );
-  };
-  try {
+}: {
+  action: PluginNewThreadPanelActionSlot;
+  panel: AppPanelController;
+  projectId: string | null;
+}): void {
+  const experimental_panel = createPluginPanelController(
+    action.pluginId,
+    () => panel,
+  );
+  const ownTab = {
+    id: action.id,
+    context: { kind: "thread" },
+    availability: "action",
+  } as const;
+  const openPanel = createRetiredOpenPanel(experimental_panel, ownTab);
+  runPanelActionLauncher(action, "experimental_newThreadPanelAction", () => {
     if (action.run === undefined) {
-      openPanel();
+      experimental_panel.openTab({ tab: ownTab });
       return;
     }
-    const result = action.run({ projectId, openPanel });
-    if (result instanceof Promise) result.catch(warn);
-  } catch (error) {
-    warn(error);
-  }
+    const runContext = { projectId, experimental_panel, openPanel };
+    return action.run(runContext);
+  });
 }
 
 export function usePluginPanelActions({
-  openPluginPanel,
+  panel,
   threadId,
   actions,
 }: {
-  openPluginPanel: OpenPluginPanelHandler;
+  panel: AppPanelController;
   threadId: string | null | undefined;
   actions: readonly Extract<
     PluginTabSlot,
@@ -206,18 +227,18 @@ export function usePluginPanelActions({
       onSelect: () =>
         runPluginPanelAction({
           action,
-          openPluginPanel,
+          panel,
           context: { kind: "thread", threadId },
         }),
     }));
-  }, [openPluginPanel, threadId, actions]);
+  }, [panel, threadId, actions]);
 }
 
 export function usePluginNewThreadPanelActions({
-  openPluginPanel,
+  panel,
   projectId,
 }: {
-  openPluginPanel: OpenPluginPanelHandler;
+  panel: AppPanelController;
   projectId: string | null;
 }): readonly PluginPanelActionEntry[] {
   const { newThreadPanelActions } = usePluginSlots();
@@ -231,11 +252,11 @@ export function usePluginNewThreadPanelActions({
         onSelect: () =>
           runPluginNewThreadPanelAction({
             action,
-            openPluginPanel,
+            panel,
             projectId,
           }),
       })),
-    [newThreadPanelActions, openPluginPanel, projectId],
+    [newThreadPanelActions, panel, projectId],
   );
 }
 

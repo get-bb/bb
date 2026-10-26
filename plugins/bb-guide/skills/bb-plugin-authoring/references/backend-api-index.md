@@ -29,12 +29,11 @@ Read the installed declarations for exact current signatures.
 - `ExperimentalTabRegistration`
 - `ExperimentalTabContext`
 - `ExperimentalTabReference`
-- `ExperimentalTabOpenOptions`
+- `ExperimentalOpenTabOptions`
 - `ExperimentalTabTargetReference`
 - `ExperimentalThreadActionTabProps`
 - `ExperimentalThreadTabActionContext`
-- `ExperimentalAppPanel`
-- `ExperimentalAppPanelSurface`
+- `ExperimentalPanelController`
 - `ExperimentalDesktopBrowserAcquireInput`
 - `ExperimentalDesktopBrowserCreateInput`
 - `ExperimentalDesktopBrowserLease`
@@ -64,7 +63,6 @@ Read the installed declarations for exact current signatures.
 - `ExperimentalHostWatchSubscription`
 - `ExperimentalHostWorkerLease`
 - `ExperimentalLiveFileTarget`
-- `ExperimentalOpenFixedTabOptions`
 - `ExperimentalPermissionModePickerProps`
 - `ExperimentalPluginFixedTabReference`
 - `ExperimentalPluginRpcCaller`
@@ -267,7 +265,6 @@ Read the installed declarations for exact current signatures.
 - `PluginNewThreadPanelActionContext`
 - `PluginNewThreadPanelActionRegistration`
 - `PluginNewThreadPanelProps`
-- `PluginPanelActionOpenOptions`
 - `PluginPendingInteractionProps`
 - `PluginPendingInteractionRegistration`
 - `PluginPendingInteractionView`
@@ -335,7 +332,6 @@ Read the installed declarations for exact current signatures.
 - `PluginSourceCodeRendererRegistration`
 - `PluginStatusApi`
 - `PluginStorage`
-- `PluginTargetedPanelActionOpenOptions`
 - `PluginThreadEventHandler`
 - `PluginThreadEventName`
 - `PluginThreadEventPayloads`

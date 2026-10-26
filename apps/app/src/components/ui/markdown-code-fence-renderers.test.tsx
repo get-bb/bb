@@ -112,7 +112,6 @@ function hostedMarkdown(
     <CodeFenceRendererHost
       registry={registry}
       message={MESSAGE}
-      openThreadPanel={null}
       streaming={streaming}
     >
       <MarkdownPreview content={content} />

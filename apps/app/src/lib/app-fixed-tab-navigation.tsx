@@ -1,8 +1,21 @@
-import { createContext, useContext, type ReactNode } from "react";
-import type { JsonValue } from "@get-bb/plugin-sdk";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { atom, useAtomValue, useStore } from "jotai";
+import { atomFamily } from "jotai-family";
+import type {
+  ExperimentalFixedTabTargetContract,
+  JsonValue,
+} from "@get-bb/plugin-sdk";
 import { jsonValueSchema } from "@bb/domain";
 import type {
-  AppFixedTabOpenIntent,
   AppTabOpenIntent,
   AppFixedTabReference,
 } from "@/lib/app-navigation-host";
@@ -13,7 +26,20 @@ export interface AppFixedTabDestination {
     target: JsonValue | undefined,
     options?: { params?: JsonValue; title?: string },
   ): boolean;
+  panelTabId(params: JsonValue | undefined): string | null;
   tab: AppFixedTabReference;
+}
+
+export interface AppPanelController {
+  openTab(intent: AppTabOpenIntent): boolean;
+  toggleTab(intent: AppTabOpenIntent): boolean;
+  close(): boolean;
+}
+
+interface AppPanelSurface {
+  activeTabId: string | null;
+  close(): void;
+  destinations: readonly AppFixedTabDestination[];
 }
 
 export function getPluginFixedTabOwnerId(
@@ -27,29 +53,26 @@ export function getThreadFixedTabOwnerId(pluginId: string): string {
   return `plugin-thread:${pluginId}`;
 }
 
-export function openAppFixedTabFromDestinations(
-  destinations: readonly AppFixedTabDestination[],
-  intent: AppFixedTabOpenIntent,
-): boolean {
-  return openAppTabFromDestinations(destinations, {
-    ...intent,
-    availability: "fixed",
-  });
-}
+const rejectPanelIntent = () => false;
+export const UNAVAILABLE_APP_PANEL_CONTROLLER: AppPanelController = {
+  openTab: rejectPanelIntent,
+  toggleTab: rejectPanelIntent,
+  close: rejectPanelIntent,
+};
 
-export function openAppTabFromDestinations(
+function resolveAppTabIntent(
   destinations: readonly AppFixedTabDestination[],
   intent: AppTabOpenIntent,
-): boolean {
-  const availability = intent.availability ?? "fixed";
+) {
+  const { availability } = intent;
   if (
     availability === "fixed"
       ? intent.params !== undefined || intent.title !== undefined
       : intent.target !== undefined
   )
-    return false;
+    return null;
   if (intent.title !== undefined && typeof intent.title !== "string")
-    return false;
+    return null;
   const params =
     intent.params === undefined
       ? null
@@ -58,20 +81,101 @@ export function openAppTabFromDestinations(
     intent.target === undefined
       ? null
       : jsonValueSchema.safeParse(intent.target);
-  if (params?.success === false || target?.success === false) return false;
+  if (params?.success === false || target?.success === false) return null;
   const destination = destinations.find(
     (candidate) =>
       candidate.tab.ownerId === intent.tab.ownerId &&
       candidate.tab.tabId === intent.tab.tabId &&
       (candidate.availability ?? "fixed") === availability,
   );
-  if (destination === undefined) return false;
-  return availability === "fixed"
-    ? destination.open(target?.success ? target.data : undefined)
+  if (destination === undefined) return null;
+  return {
+    destination,
+    params: params?.success ? params.data : undefined,
+    target: target?.success ? target.data : undefined,
+    title: intent.title,
+  };
+}
+
+function openResolvedTab(
+  resolved: NonNullable<ReturnType<typeof resolveAppTabIntent>>,
+): boolean {
+  const { destination, params, target, title } = resolved;
+  return (destination.availability ?? "fixed") === "fixed"
+    ? destination.open(target)
     : destination.open(undefined, {
-        ...(params?.success ? { params: params.data } : {}),
-        ...(intent.title === undefined ? {} : { title: intent.title }),
+        ...(params === undefined ? {} : { params }),
+        ...(title === undefined ? {} : { title }),
       });
+}
+
+function openSurfaceTab(surface: AppPanelSurface, intent: AppTabOpenIntent) {
+  const resolved = resolveAppTabIntent(surface.destinations, intent);
+  return resolved !== null && openResolvedTab(resolved);
+}
+
+function toggleSurfaceTab(surface: AppPanelSurface, intent: AppTabOpenIntent) {
+  const resolved = resolveAppTabIntent(surface.destinations, intent);
+  if (resolved === null) return false;
+  if (
+    surface.activeTabId !== null &&
+    surface.activeTabId === resolved.destination.panelTabId(resolved.params)
+  ) {
+    surface.close();
+    return true;
+  }
+  return openResolvedTab(resolved);
+}
+
+function closeSurface(surface: AppPanelSurface) {
+  surface.close();
+  return true;
+}
+
+export function createAppPanelController(
+  getSurface: () => AppPanelSurface,
+): AppPanelController {
+  return {
+    openTab: (intent) => openSurfaceTab(getSurface(), intent),
+    toggleTab: (intent) => toggleSurfaceTab(getSurface(), intent),
+    close: () => closeSurface(getSurface()),
+  };
+}
+
+const focusedControllers = new Map<symbol, AppPanelController>();
+
+export function useAppPanelController({
+  isFocused,
+  ...surface
+}: AppPanelSurface & { isFocused: boolean }): AppPanelController {
+  const surfaceRef = useRef(surface);
+  useLayoutEffect(() => {
+    surfaceRef.current = surface;
+  });
+  const [controller] = useState<AppPanelController>(() => ({
+    openTab: (intent) => openSurfaceTab(surfaceRef.current, intent),
+    toggleTab: (intent) => toggleSurfaceTab(surfaceRef.current, intent),
+    close: () => closeSurface(surfaceRef.current),
+  }));
+  useEffect(() => {
+    if (!isFocused) return;
+    const token = Symbol("app-panel-controller");
+    focusedControllers.set(token, controller);
+    return () => {
+      focusedControllers.delete(token);
+    };
+  }, [controller, isFocused]);
+  return controller;
+}
+
+export function getFocusedAppPanelController(): AppPanelController | null {
+  let focused: AppPanelController | null = null;
+  for (const controller of focusedControllers.values()) focused = controller;
+  return focused;
+}
+
+export function resetFocusedAppPanelControllersForTest(): void {
+  focusedControllers.clear();
 }
 
 interface AppFixedTabTargetSnapshot {
@@ -85,23 +189,74 @@ export interface AppFixedTabTargetState extends AppFixedTabTargetSnapshot {
   clear(): void;
 }
 
-const AppFixedTabTargetContext = createContext<AppFixedTabTargetState | null>(
-  null,
+const fixedTabTargetAtomFamily = atomFamily((_targetKey: string) =>
+  atom<{ sequence: number; target: JsonValue } | null>(null),
 );
 
-export function AppFixedTabTargetProvider({
+export function useSetFixedTabTarget() {
+  const store = useStore();
+  return useMemo(
+    () =>
+      (
+        targetKey: string,
+        contract: ExperimentalFixedTabTargetContract<JsonValue> | undefined,
+        target: JsonValue,
+      ): boolean => {
+        const result = jsonValueSchema.safeParse(target);
+        if (!result.success || contract === undefined) return false;
+        try {
+          if (!contract.validate(result.data)) return false;
+        } catch {
+          return false;
+        }
+        store.set(fixedTabTargetAtomFamily(targetKey), (current) => ({
+          sequence: (current?.sequence ?? 0) + 1,
+          target: result.data,
+        }));
+        return true;
+      },
+    [store],
+  );
+}
+
+export function FixedTabTargetScope({
   children,
-  state,
+  ownerId,
+  tabId,
+  targetKey,
 }: {
   children: ReactNode;
-  state: AppFixedTabTargetState | null;
+  ownerId: string;
+  tabId: string;
+  targetKey: string;
 }) {
+  const store = useStore();
+  const targetAtom = fixedTabTargetAtomFamily(targetKey);
+  const snapshot = useAtomValue(targetAtom);
+  const state = useMemo<AppFixedTabTargetState | null>(() => {
+    if (snapshot === null) return null;
+    const { sequence } = snapshot;
+    return {
+      ...snapshot,
+      ownerId,
+      tabId,
+      clear: () => {
+        store.set(targetAtom, (current) =>
+          current?.sequence === sequence ? null : current,
+        );
+      },
+    };
+  }, [ownerId, snapshot, store, tabId, targetAtom]);
   return (
     <AppFixedTabTargetContext.Provider value={state}>
       {children}
     </AppFixedTabTargetContext.Provider>
   );
 }
+
+const AppFixedTabTargetContext = createContext<AppFixedTabTargetState | null>(
+  null,
+);
 
 export function useAppFixedTabTarget(
   ownerId: string,
