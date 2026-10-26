@@ -906,6 +906,7 @@ describe("thread runtime config", () => {
         artifactsEnabled: false,
         chromeEnabled: false,
         disable1MContext: false,
+        fullAccessApprovalsEnabled: false,
         memoryEnabled: true,
         providerSubagentsEnabled: true,
         sandboxEnabled: true,

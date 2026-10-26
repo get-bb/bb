@@ -3,6 +3,7 @@ import {
   StyleSheet,
   TextInput,
   type StyleProp,
+  type TextInputInstance,
   type TextInputProps,
   type TextStyle,
 } from "react-native";
@@ -82,9 +83,10 @@ export function useInputFieldProps({
   };
 }
 
-export interface InputProps extends TextInputProps, InputFieldOptions {}
+export type InputProps = Omit<TextInputProps, keyof InputFieldOptions> &
+  InputFieldOptions;
 
-export const Input = forwardRef<TextInput, InputProps>(function Input(
+export const Input = forwardRef<TextInputInstance, InputProps>(function Input(
   { invalid, editable = true, mono, grouped, className, style, ...props },
   ref,
 ) {

@@ -131,7 +131,7 @@ export type HostStorageScanStatus = z.infer<typeof hostStorageScanStatusSchema>;
 
 export const largeFileCleanupStatusSchema = z.discriminatedUnion("state", [
   z.object({ state: z.literal("idle") }),
-  z.object({ state: z.literal("running"), startedAt: z.number() }),
+  z.object({ state: z.enum(["queued", "running"]), startedAt: z.number() }),
   z.object({
     state: z.literal("completed"),
     clearedFiles: byteCountSchema,
@@ -146,7 +146,7 @@ export type LargeFileCleanupStatus = z.infer<
 export const archivedFileCleanupStatusSchema = z.discriminatedUnion("state", [
   z.object({ state: z.literal("idle") }),
   z.object({
-    state: z.literal("running"),
+    state: z.enum(["queued", "running"]),
     clearedThreads: byteCountSchema,
     clearedBytes: byteCountSchema,
   }),
@@ -177,7 +177,7 @@ export type MaintenanceKind = z.infer<typeof maintenanceKindSchema>;
 export const maintenanceStatusSchema = z.discriminatedUnion("state", [
   z.object({ state: z.literal("idle") }),
   z.object({
-    state: z.literal("running"),
+    state: z.enum(["queued", "running"]),
     kind: maintenanceKindSchema,
   }),
   z.object({
@@ -193,12 +193,47 @@ export const maintenanceStatusSchema = z.discriminatedUnion("state", [
 ]);
 export type MaintenanceStatus = z.infer<typeof maintenanceStatusSchema>;
 
+export const externalWorktreeSkipReasonSchema = z.enum([
+  "notWorktree",
+  "locked",
+  "uncommittedChanges",
+  "unsavedCommits",
+  "inUseByBb",
+]);
+export type ExternalWorktreeSkipReason = z.infer<
+  typeof externalWorktreeSkipReasonSchema
+>;
+
+export const externalWorktreeRemovalSchema = z.discriminatedUnion("state", [
+  z.object({ path: z.string(), state: z.enum(["queued", "running"]) }),
+  z.object({
+    path: z.string(),
+    state: z.literal("completed"),
+    removedBytes: byteCountSchema,
+  }),
+  z.object({
+    path: z.string(),
+    state: z.literal("skipped"),
+    reasons: z.array(externalWorktreeSkipReasonSchema).min(1),
+  }),
+  z.object({
+    path: z.string(),
+    state: z.literal("failed"),
+    message: z.string(),
+  }),
+]);
+export type ExternalWorktreeRemoval = z.infer<
+  typeof externalWorktreeRemovalSchema
+>;
+
 export const hostStorageResponseSchema = z.object({
   report: hostStorageReportSchema.nullable(),
   scan: hostStorageScanStatusSchema,
   largeFileCleanup: largeFileCleanupStatusSchema,
   archivedFileCleanup: archivedFileCleanupStatusSchema,
   maintenance: maintenanceStatusSchema,
+  maintenanceJobs: z.array(maintenanceStatusSchema),
+  externalWorktreeRemovals: z.array(externalWorktreeRemovalSchema),
 });
 export type HostStorageResponse = z.infer<typeof hostStorageResponseSchema>;
 
@@ -211,6 +246,8 @@ export const hostStorageListResponseSchema = z.object({
       largeFileCleanup: largeFileCleanupStatusSchema,
       archivedFileCleanup: archivedFileCleanupStatusSchema,
       maintenance: maintenanceStatusSchema,
+      maintenanceJobs: z.array(maintenanceStatusSchema),
+      externalWorktreeRemovals: z.array(externalWorktreeRemovalSchema),
     }),
   ),
 });
@@ -240,17 +277,7 @@ export const hostStorageRemoveExternalWorktreesResponseSchema = z.object({
   skipped: z.array(
     z.object({
       path: z.string(),
-      reasons: z
-        .array(
-          z.enum([
-            "notWorktree",
-            "locked",
-            "uncommittedChanges",
-            "unsavedCommits",
-            "inUseByBb",
-          ]),
-        )
-        .min(1),
+      reasons: z.array(externalWorktreeSkipReasonSchema).min(1),
     }),
   ),
   failed: z.array(z.object({ path: z.string(), message: z.string() })),
@@ -258,3 +285,35 @@ export const hostStorageRemoveExternalWorktreesResponseSchema = z.object({
 export type HostStorageRemoveExternalWorktreesResponse = z.infer<
   typeof hostStorageRemoveExternalWorktreesResponseSchema
 >;
+
+export const entryCleanupInputSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("thread"), threadId: z.string().min(1) }).strict(),
+  z
+    .object({
+      kind: z.literal("development"),
+      hostId: z.string().min(1),
+      names: z.array(z.string().min(1)).min(1).max(500),
+      stopRunning: z.boolean(),
+    })
+    .strict(),
+]);
+export type EntryCleanupInput = z.infer<typeof entryCleanupInputSchema>;
+export const entryCleanupStatusSchema = z.discriminatedUnion("state", [
+  z.object({ state: z.enum(["queued", "running"]) }),
+  z.object({ state: z.literal("failed"), message: z.string() }),
+  z.object({
+    state: z.literal("completed"),
+    result: z.discriminatedUnion("kind", [
+      z.object({ kind: z.literal("thread"), ok: z.literal(true) }),
+      z.object({
+        kind: z.literal("development"),
+        running: z.array(z.string()),
+        removedCount: byteCountSchema,
+        removedBytes: byteCountSchema,
+        skippedCount: byteCountSchema,
+        stoppedProcessCount: byteCountSchema,
+      }),
+    ]),
+  }),
+]);
+export type EntryCleanupStatus = z.infer<typeof entryCleanupStatusSchema>;

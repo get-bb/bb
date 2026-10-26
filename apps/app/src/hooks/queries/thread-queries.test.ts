@@ -954,10 +954,13 @@ describe("thread open cache retention", () => {
         observer.setOptions(threadTimelineQueryOptions(queryClient, threadId));
       }
       const current = observer;
-      await vi.waitFor(() => {
-        expect(current.getCurrentResult().isFetchedAfterMount).toBe(true);
-        expect(current.getCurrentResult().isFetching).toBe(false);
-      });
+      await vi.waitFor(
+        () => {
+          expect(current.getCurrentResult().isFetchedAfterMount).toBe(true);
+          expect(current.getCurrentResult().isFetching).toBe(false);
+        },
+        { interval: 1 },
+      );
     }
     observer?.destroy();
   }

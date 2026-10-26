@@ -260,8 +260,11 @@ async function emitExtensionEvent(type, payload = {}) {
 }
 
 async function loadExtension(path) {
-  const runtimeUrl = import.meta.resolve("@earendil-works/pi-coding-agent");
-  const runtimeShim = `data:text/javascript,${encodeURIComponent(`export * from ${JSON.stringify(runtimeUrl)}; export const VERSION = ${JSON.stringify(supportsSettlement ? (process.env.FAKE_PI_VERSION ?? "0.84.0") : "0.83.0")};`)}`;
+  const runtimeUrl = new URL(
+    "./core/session-manager.js",
+    import.meta.resolve("@earendil-works/pi-coding-agent"),
+  ).href;
+  const runtimeShim = `data:text/javascript,${encodeURIComponent(`export { SessionManager } from ${JSON.stringify(runtimeUrl)}; export const VERSION = ${JSON.stringify(supportsSettlement ? (process.env.FAKE_PI_VERSION ?? "0.84.0") : "0.83.0")};`)}`;
   const aliases = new Map([
     ["@earendil-works/pi-coding-agent", runtimeShim],
     ["typebox", import.meta.resolve("typebox")],

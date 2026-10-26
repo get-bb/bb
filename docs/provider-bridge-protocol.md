@@ -630,8 +630,10 @@ compares against that file when it exists. `pnpm parity --dump-dir <dir>`
 writes both legs' normalized event and row lists per cell.
 
 The conformance kit runs the same recordings as its recorded-traffic
-scenario set: `checkRecordedCellReplay` replays a bridge's cells and reports
+scenario set: `checkRecordedCellReplay` checks a bridge's replay results and reports
 `recorded/<cell>/{replays, events-schema-valid, grammar, turn-lifecycle,
 not-empty}` per cell. The pi, Claude Code, and Codex plugins' tests use only
 public dependencies, so `packages/provider-parity` replays their committed
-cells instead.
+cells instead. Its self-suite applies the recorded conformance checks to the
+same replay used for event and timeline parity, so each cell launches its
+bridge only once.

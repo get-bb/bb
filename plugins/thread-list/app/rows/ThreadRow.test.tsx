@@ -441,16 +441,19 @@ describe("ThreadRow", () => {
   it.each([
     ["meta", { metaKey: true }],
     ["ctrl", { ctrlKey: true }],
-  ])("selects the row instead of opening it on %s-click with multi-select on", (_label, modifier) => {
+  ])("selects the row on %s-shift-click and still splits without shift with multi-select on", (_label, modifier) => {
     const slot = renderThreadRow({ experiments: ["sidebarMultiSelect"] });
     const link = screen.getByRole("link", { name: "Open Thread" });
     const row = link.closest("[data-sidebar-rename-row]");
     expect(row?.hasAttribute("data-sidebar-thread-selected")).toBe(false);
-    expect(fireEvent.click(link, modifier)).toBe(false);
+    expect(fireEvent.click(link, { ...modifier, shiftKey: true })).toBe(false);
     expect(row?.hasAttribute("data-sidebar-thread-selected")).toBe(true);
     expect(slot.inspection.navigateCalls).toEqual([]);
-    fireEvent.click(link, modifier);
+    expect(fireEvent.click(link, modifier)).toBe(false);
     expect(row?.hasAttribute("data-sidebar-thread-selected")).toBe(false);
+    expect(slot.inspection.navigateCalls).toEqual([
+      { method: "toThread", threadId: "thr_test", options: { split: true } },
+    ]);
   });
 
   it("clears the selection on a press outside the sidebar but keeps it for menus", () => {
@@ -461,7 +464,7 @@ describe("ThreadRow", () => {
     menu.setAttribute("role", "menu");
     document.body.append(menu);
     try {
-      fireEvent.click(link, { metaKey: true });
+      fireEvent.click(link, { metaKey: true, shiftKey: true });
       fireEvent.pointerDown(menu);
       expect(row?.hasAttribute("data-sidebar-thread-selected")).toBe(true);
       fireEvent.pointerDown(document.body);
@@ -1662,7 +1665,9 @@ describe("ThreadRow", () => {
 
     expect(fireEvent.click(link)).toBe(false);
     expect(row?.hasAttribute("data-sidebar-thread-selected")).toBe(false);
-    expect(fireEvent.click(link, { metaKey: true })).toBe(false);
+    expect(fireEvent.click(link, { metaKey: true, shiftKey: true })).toBe(
+      false,
+    );
     expect(consumeClickSuppression).toHaveBeenCalledTimes(2);
     expect(row?.hasAttribute("data-sidebar-thread-selected")).toBe(true);
     expect(slot.inspection.navigateCalls).toEqual([]);

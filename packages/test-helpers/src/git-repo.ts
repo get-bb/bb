@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { writeFile } from "node:fs/promises";
+import { appendFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
@@ -14,9 +14,11 @@ export async function initRepo(
   { commit = true }: { commit?: boolean } = {},
 ): Promise<string> {
   await git(directory, ["init", "-q", "-b", "main"]);
-  await git(directory, ["config", "user.name", "BB Tests"]);
-  await git(directory, ["config", "user.email", "bb@example.com"]);
-  await git(directory, ["config", "core.autocrlf", "false"]);
+  await appendFile(
+    join(directory, ".git", "config"),
+    "\n[user]\n\tname = BB Tests\n\temail = bb@example.com\n[core]\n\tautocrlf = false\n",
+    "utf8",
+  );
   if (commit) {
     await writeFile(join(directory, "README.md"), "hello\n", "utf8");
     await git(directory, ["add", "README.md"]);

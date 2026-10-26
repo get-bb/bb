@@ -11,6 +11,10 @@ import { holdSplitPreloads } from "../lib/split-prefetch";
 import { whenRouteContentPainted } from "../lib/route-content-paint";
 import { getPluginPanelRoutePluginId } from "../lib/route-paths";
 import { useSystemConfig } from "./queries/system-queries";
+import { pluginListQueryOptions } from "./queries/plugin-settings-queries";
+import { appQueryClient } from "../lib/app-query-client";
+import { prefetchPluginModule } from "../lib/plugin-module-preload";
+import { prefetchPluginCss } from "../lib/plugin-css";
 
 export const PLUGIN_FRONTEND_SETTLE_FLOOR_MS = 15_000;
 const PRIORITY_PRELOAD_HOLD_MAX_MS = 10_000;
@@ -22,6 +26,28 @@ export function usePluginFrontendBoot(): void {
     if (!resolved) return;
     const pathname = window.location.pathname;
     const priorityPluginIds = frontendPriorityPluginIds(pathname);
+    let cancelled = false;
+    void appQueryClient
+      .fetchQuery(pluginListQueryOptions({ enabled: true }))
+      .then((plugins) => {
+        if (cancelled) return;
+        for (const pluginId of priorityPluginIds) {
+          const plugin = plugins.find((candidate) => candidate.id === pluginId);
+          if (
+            !plugin?.enabled ||
+            !["running", "needs-configuration", "degraded"].includes(
+              plugin.status,
+            )
+          ) {
+            continue;
+          }
+          const bundle = plugin.app.bundle;
+          if (bundle === null || !bundle.compatible) continue;
+          prefetchPluginModule(bundle.jsUrl);
+          if (bundle.cssUrl !== null) prefetchPluginCss(bundle.cssUrl);
+        }
+      })
+      .catch(() => {});
     const releaseHold =
       priorityPluginIds.length > 0 ? holdSplitPreloads() : () => {};
     const holdTimeout = window.setTimeout(
@@ -32,10 +58,17 @@ export function usePluginFrontendBoot(): void {
       window.clearTimeout(holdTimeout);
       releaseHold();
     };
+    const cleanup = () => {
+      cancelled = true;
+      releasePreloads();
+    };
     const boot = () => void bootPluginFrontends().then(releasePreloads);
-    if (getPluginPanelRoutePluginId(pathname) !== null) {
+    if (
+      priorityPluginIds.length > 0 ||
+      getPluginPanelRoutePluginId(pathname) !== null
+    ) {
       boot();
-      return releasePreloads;
+      return cleanup;
     }
     const cancelBoot = scheduleDeferredPluginFrontendBoot(boot, {
       whenRoutePainted: whenRouteContentPainted,
@@ -46,7 +79,7 @@ export function usePluginFrontendBoot(): void {
     });
     return () => {
       cancelBoot();
-      releasePreloads();
+      cleanup();
     };
   }, [resolved]);
   useEffect(() => {

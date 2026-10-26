@@ -108,6 +108,7 @@ export type {
 } from "./secondaryPanelTab";
 
 const SECONDARY_RESIZABLE_PANEL_STYLE: CSSProperties = {
+  overflow: "clip",
   pointerEvents: "auto",
 };
 const SECONDARY_PANEL_CHROME_ICON_BUTTON_CLASS = `${COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS} shrink-0 ${CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS}`;
@@ -1061,7 +1062,7 @@ function ThreadSecondaryPanelContent({
         order={2}
         style={SECONDARY_RESIZABLE_PANEL_STYLE}
         className={cn(
-          "min-w-0 overflow-clip",
+          "min-w-0",
           `relative transition-[flex-grow,flex-basis] ${PANEL_COLLAPSE_TRANSITION_CLASS}`,
         )}
       >

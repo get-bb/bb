@@ -96,8 +96,26 @@ warming panel tab code when the right panel opens.
 A preload-tier split needs no registration: defining it queues it, and
 `RouteContentPaintSignal` in `App.tsx` starts the queue with
 `startSplitPreloading()`, and marks route content painted only after critical
-loads settle, which also defers plugin frontend boot until the page's own code
-has arrived. Splits defined by modules that load later (a route
+loads settle. Essential plugin frontend boot starts as soon as system config
+resolves when the page has expected surface providers or a plugin panel.
+Priority plugin bundles and styles preload from the shared plugin-list query
+while the runtime loads. Pages without expected providers or a plugin panel
+retain deferred boot after route paint and browser idle, with a 1.5-second
+fallback. Plugin activation does not wait for the toaster to mount; startup
+notifications queue until it attaches, including custom plugin toasts.
+SDK Markdown, source-code, and diff wrappers use preload-tier splits. After
+plugin registration settles, the app also queues the selected built-in source
+and diff implementations on the same idle queue. A plugin replacement leaves
+the corresponding built-in implementation cold unless it delegates to Original;
+changing selection before idle cancels the obsolete warm-up. Rendering before
+warming completes uses the existing skeleton and shares the pending import.
+SDK diff/source and timeline diff entry components start the selected built-in
+module and request its workers while their outer module is still loading.
+Idle warming imports the lightweight split definitions statically and preloads
+the implementations directly; it does not start workers. Worker readiness
+remains a separate loading state. Direct shared diff-library imports remain eager
+for compatibility with existing plugin bundles.
+Splits defined by modules that load later (a route
 chunk, for example) join the queue and drain at the next idle period. Tests do
 not start the queue, so defining a split never triggers a speculative import
 there.
@@ -190,3 +208,51 @@ real content. Do not add artificial production delays for screenshots.
   first mount explicitly, then retain it where closing must preserve state.
 - Start data fetching outside the code boundary so it runs alongside the import.
 - Do not preload a built-in renderer that a plugin can replace completely.
+
+## Lazy waterfall audit (October 2026)
+
+The audit covered runtime dynamic imports, React lazy components, and
+`defineSplit` entry points in `apps/app/src`, plus browser loaders in `plugins`.
+Type-only imports and schema `z.lazy` calls are not loading boundaries.
+
+| Path                                                                 | Finding and disposition                                                                                                                                                                                                                                                                               |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| SDK diff/source → built-in renderer                                  | Fixed: the mounted outer entry starts the selected built-in import in parallel with its adapter, even before startup warming. Registered replacements keep built-ins cold.                                                                                                                            |
+| Timeline diff block → built-in diff                                  | Fixed with the same selection-aware early load.                                                                                                                                                                                                                                                       |
+| Renderer → worker pool                                               | SDK and timeline entries now request workers alongside code; initialization still has to finish before highlighted output. Idle warming does not request workers.                                                                                                                                     |
+| Idle renderer warming → split definition → renderer                  | Fixed: split definitions are lightweight static imports, with direct preload calls. Source split definition extracted from the host.                                                                                                                                                                  |
+| Secondary panel → tab modules                                        | Existing outer wrapper preloads tab modules while the panel loads. Terminal module loading starts xterm and addons in parallel.                                                                                                                                                                       |
+| File preview → source renderer; git tab → diff renderer              | Existing preview/tab components start renderer and worker loading while data loads. These preloads currently do not check replacement selection; that is unnecessary warming, not a serial module wait.                                                                                               |
+| SDK Markdown → HTML/math/Mermaid                                     | Residual content-dependent cold paths: the outer Markdown module must load before these features are detected. HTML and math can potentially be predicted from SDK content earlier; Mermaid visibility/render policy needs preserving. Idle warming reduces exposure but does not remove these waits. |
+| Workspace route → thread/root view                                   | Nested route modules remain. Root/thread views use preload tier, but that alone does not prove parallel cold-navigation requests. Route-specific dependency priming is a follow-up.                                                                                                                   |
+| SDK thread chat → thread query → environment query                   | Module-to-data wait remains; environment ID genuinely depends on thread data. The known thread ID could support fetching thread data alongside the outer module.                                                                                                                                      |
+| Monaco plugin CSS → editor JavaScript                                | Existing serial independent asset requests in `plugins/monaco-editor/lib/monaco-loader.ts`. Start both together, still awaiting CSS before editor creation, in a focused plugin change.                                                                                                               |
+| Menus, settings, onboarding, external-file dispatch, queued messages | Conditional entry points remain lazy. No additional unconditional module-to-module sequence identified in their loaders. Child features may still depend on data or subsequent interaction.                                                                                                           |
+
+The audit is a source review, not a claim that every route and plugin is free
+of network waterfalls. The SDK regression test holds adapter downloads open
+and requires renderer downloads and worker requests to start before resolving
+them; it also checks that plugin replacements suppress those requests.
+
+### Core-route verification
+
+`AppRoutes` owns route-specific code preparation through the existing
+`useRouteState` matcher. `AppLayout` owns the thread bootstrap observer, including
+parallel timeline prefetch and realtime subscription. The loaded thread view
+reuses those query keys and ingested thread/environment/host data. No additional
+route preparation layer is needed for these two paths.
+
+In a production-build mobile-viewport check with browser cache disabled and the
+workspace module response held for 1.5 seconds:
+
+| Destination     | Required work started                                   | Workspace response completed |
+| --------------- | ------------------------------------------------------- | ---------------------------- |
+| New thread      | Compose module at 78 ms                                 | 1,539 ms                     |
+| Existing thread | Bootstrap and timeline at 68 ms; thread module at 72 ms | 1,529 ms                     |
+
+These timings demonstrate request independence under an artificial hold, not a
+performance improvement or representative load-time benchmark. The inactive
+view warmed only after the held critical load completed. The route regression
+test holds workspace loading unresolved, verifies destination module requests,
+and checks that new-thread startup does not request the thread view. Removing
+the existing route-preload effects makes it fail.

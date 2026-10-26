@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { setupMigratedConnectionTemplate } from "@bb/db/testing";
 import {
   killProcessesReferencingPath,
   listOpenFilePids,
@@ -63,7 +64,7 @@ async function listIntegrationTmpRoots(): Promise<string[]> {
     .map((entry) => path.join(tmpdir(), entry.name));
 }
 
-export default async function globalSetup(): Promise<void> {
+export default async function globalSetup(): Promise<() => void> {
   const now = Date.now();
   for (const tmpRoot of await listIntegrationTmpRoots()) {
     const metadata = await fs.stat(tmpRoot).catch(() => null);
@@ -80,4 +81,5 @@ export default async function globalSetup(): Promise<void> {
 
     await cleanupTmpRoot(tmpRoot).catch(() => undefined);
   }
+  return setupMigratedConnectionTemplate();
 }

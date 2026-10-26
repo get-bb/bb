@@ -83,15 +83,14 @@ export class ThreadSelectionStore {
     modifiers: ThreadSelectionModifiers,
     origin: Element,
   ): boolean {
-    const toggle = modifiers.metaKey || modifiers.ctrlKey;
     if (!this.enabled) return false;
-    if (!toggle && !modifiers.shiftKey) {
+    if (!modifiers.shiftKey) {
       this.anchor = threadId;
       if (this.selected.length > 0) this.replace(NO_THREAD_IDS);
       return false;
     }
     const order = collectVisibleThreadIds(origin);
-    if (modifiers.shiftKey) {
+    if (!modifiers.metaKey && !modifiers.ctrlKey) {
       const anchor = this.anchor ?? this.activeThreadId ?? threadId;
       const from = order.indexOf(anchor);
       const to = order.indexOf(threadId);
@@ -100,12 +99,8 @@ export class ThreadSelectionStore {
         this.replace([threadId]);
         return true;
       }
-      const range = order.slice(Math.min(from, to), Math.max(from, to) + 1);
-      const next = toggle
-        ? sortByOrder(new Set([...this.selected, ...range]), order)
-        : range;
       this.anchor = anchor;
-      this.replace(next);
+      this.replace(order.slice(Math.min(from, to), Math.max(from, to) + 1));
       return true;
     }
     const base = new Set(this.selected);

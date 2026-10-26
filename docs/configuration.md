@@ -825,14 +825,15 @@ off. An experiment you set yourself keeps your value either way.
   normal logging and flushes the in-flight profile, keeping saved files. See
   [diagnostics](debugging-and-qa.md#opt-in-server-performance-diagnostics).
 - `sidebarMultiSelect` (on for early adopters) lets the built-in thread list
-  select several threads: Cmd/Ctrl-click toggles a row (starting from the open
-  thread), Shift-click selects the visible range from the last clicked row, and
-  a plain click, Escape, or a click outside the sidebar clears the selection.
+  select several threads: Cmd/Ctrl+Shift-click toggles a row (starting from the
+  open thread), Shift-click selects the visible range from the last clicked row,
+  and a plain click, Cmd/Ctrl-click, Escape, or a click outside the sidebar
+  clears the selection.
   Right-clicking a selected row offers Mark read/unread, Pin/Unpin, Move to
   section, and Archive for the whole selection. Dragging a selected row moves
   every selected thread onto a section, under a thread, or into Pinned, or drops
-  them onto a composer as one mention per thread. While it is off, Cmd/Ctrl-click
-  opens a thread in a split. Plugins read it with
+  them onto a composer as one mention per thread. Cmd/Ctrl-click still opens a
+  thread in a split. Plugins read it with
   `experimental_useExperiment("sidebarMultiSelect")`.
 - `timelinePush` makes an open thread view subscribe to its latest timeline
   window over the WebSocket (`thread-timeline` subscription target); the server
@@ -925,16 +926,17 @@ skills.
 
 ### Claude Code provider
 
-| Setting            | Default | Effect                                                                                                                                                                                                                                                                |
-| ------------------ | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `disable1MContext` | `false` | Sets `CLAUDE_CODE_DISABLE_1M_CONTEXT=1` (`0` when off).                                                                                                                                                                                                               |
-| `chromeEnabled`    | `false` | Starts Claude Code with `--chrome` for Claude in Chrome tools, which bb otherwise leaves off even when the interactive `claude` CLI enables them; the host needs the extension and a claude.ai login (API-key sessions stay off).                                     |
-| `artifactsEnabled` | `false` | Sets `CLAUDE_CODE_ARTIFACT=1` so Claude Code loads its Artifact tools (read, publish, and edit claude.ai artifacts), which it withholds from SDK sessions by default; when off, bb leaves any inherited value alone. Claude may publish private pages without asking. |
-| `sandboxEnabled`   | `true`  | Runs Bash in Claude Code's sandbox in Accept Edits and Approve for me modes; `false` uses Claude Code's own approvals and sandbox settings.                                                                                                                           |
+| Setting                      | Default | Effect                                                                                                                                                                                                                                                                |
+| ---------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `disable1MContext`           | `false` | Sets `CLAUDE_CODE_DISABLE_1M_CONTEXT=1` (`0` when off).                                                                                                                                                                                                               |
+| `chromeEnabled`              | `false` | Starts Claude Code with `--chrome` for Claude in Chrome tools, which bb otherwise leaves off even when the interactive `claude` CLI enables them; the host needs the extension and a claude.ai login (API-key sessions stay off).                                     |
+| `artifactsEnabled`           | `false` | Sets `CLAUDE_CODE_ARTIFACT=1` so Claude Code loads its Artifact tools (read, publish, and edit claude.ai artifacts), which it withholds from SDK sessions by default; when off, bb leaves any inherited value alone. Claude may publish private pages without asking. |
+| `sandboxEnabled`             | `true`  | Runs Bash in Claude Code's sandbox in Accept Edits and Approve for me modes; `false` uses Claude Code's own approvals and sandbox settings.                                                                                                                           |
+| `fullAccessApprovalsEnabled` | `false` | Shows Claude Code's own prompts in Full Access (`permissions.ask` rules, PreToolUse hooks that answer `ask`, and built-in safety checks); `false` approves every request. Applies from the next turn without a restart.                                               |
 
-Set them with `bb plugin config provider-claude-code set <key> <value>`. A
-change restarts the thread's Claude process before its next turn, keeping the
-conversation. Memory, native subagents, and the Workflow tool are toggled on
+Set them with `bb plugin config provider-claude-code set <key> <value>`. Unless
+noted, a change restarts the thread's Claude process before its next turn,
+keeping the conversation. Memory, native subagents, and the Workflow tool are toggled on
 the provider's page in Settings → Providers (see `bb guide providers`).
 
 Two host-daemon environment variables reach the Claude Code bridge:

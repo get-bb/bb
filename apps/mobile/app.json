@@ -8,7 +8,6 @@
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "ios": {
       "bundleIdentifier": "app.getbb.mobile",
       "supportsTablet": true,

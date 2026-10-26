@@ -94,7 +94,8 @@ provider's global configuration.
 Claude Code's native Workflow tool can be disabled separately on its provider
 page. This preference also defaults off and applies to newly started, resumed,
 or forked provider sessions. Claude Code plugin settings (`disable1MContext`,
-`chromeEnabled`, `artifactsEnabled`, `sandboxEnabled`) are set with
+`chromeEnabled`, `artifactsEnabled`, `sandboxEnabled`,
+`fullAccessApprovalsEnabled`) are set with
 `bb plugin config provider-claude-code set <key> <value>` and documented in the
 claude-code-provider skill.
 

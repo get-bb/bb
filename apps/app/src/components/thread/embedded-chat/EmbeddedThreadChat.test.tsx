@@ -18,7 +18,7 @@ import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
 import { EmbeddedThreadChat } from "./EmbeddedThreadChat";
 
 const mocks = vi.hoisted(() => ({
-  createQueuedMessageMutateAsync: vi.fn(),
+  toastMessage: vi.fn(),
   onOpenLink: vi.fn(),
   onOpenLocalFileLink: vi.fn(),
   pendingInteractions: [] as
@@ -179,7 +179,7 @@ vi.mock("@/components/thread/timeline", () => ({
 }));
 
 vi.mock("@/components/ui/app-toast", () => ({
-  appToast: { error: vi.fn() },
+  appToast: { error: vi.fn(), message: mocks.toastMessage },
 }));
 
 vi.mock("@/hooks/useThreadCreationOptions", () => ({
@@ -282,11 +282,6 @@ vi.mock("@/hooks/queries/system-queries", () => ({
 }));
 
 vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
-  useCreateThreadQueuedMessage: () => ({
-    mutateAsync: mocks.createQueuedMessageMutateAsync,
-    mutate: vi.fn(),
-    isPending: false,
-  }),
   useSendThreadMessage: () => ({
     mutateAsync: mocks.sendThreadMessageMutateAsync,
     isPending: false,
@@ -382,7 +377,7 @@ describe("EmbeddedThreadChat", () => {
 
   beforeEach(() => {
     window.localStorage.clear();
-    mocks.createQueuedMessageMutateAsync.mockReset().mockResolvedValue({});
+    mocks.toastMessage.mockReset();
     mocks.sendThreadMessageMutateAsync.mockReset().mockResolvedValue({});
     mocks.onOpenLink.mockReset();
     mocks.onOpenLocalFileLink.mockReset();
@@ -477,28 +472,49 @@ describe("EmbeddedThreadChat", () => {
     expect(mocks.injectedTimelineProps.at(-1)).toBeUndefined();
   });
 
-  it("queues the submitted draft itself while the thread runtime is active", async () => {
+  it("queues the submitted draft through send without a surprise toast while the thread runtime is active", async () => {
     mocks.threadRuntimeDisplayStatus = "active";
+    mocks.sendThreadMessageMutateAsync.mockResolvedValue({
+      ok: true,
+      delivery: "queued",
+    });
     renderEmbeddedChat();
     fireEvent.change(screen.getByTestId("embedded-chat-composer"), {
       target: { value: "Queue me" },
     });
     fireEvent.click(screen.getByText("Send"));
     await vi.waitFor(() => {
-      expect(mocks.createQueuedMessageMutateAsync).toHaveBeenCalledTimes(1);
+      expect(mocks.sendThreadMessageMutateAsync).toHaveBeenCalledTimes(1);
     });
-    expect(mocks.createQueuedMessageMutateAsync).toHaveBeenCalledWith(
+    expect(mocks.sendThreadMessageMutateAsync).toHaveBeenCalledWith(
       expect.objectContaining({
         id: "thr_child",
+        mode: "queue-if-active",
         input: [{ type: "text", text: "Queue me", mentions: [] }],
         model: "gpt-5",
         permissionMode: "auto",
       }),
     );
-    expect(mocks.sendThreadMessageMutateAsync).not.toHaveBeenCalled();
+    expect(mocks.toastMessage).not.toHaveBeenCalled();
     expect(
       screen.getByTestId<HTMLInputElement>("embedded-chat-composer").value,
     ).toBe("");
+  });
+
+  it("tells the user when a send the composer expected to go out is queued", async () => {
+    mocks.threadRuntimeDisplayStatus = "idle";
+    mocks.sendThreadMessageMutateAsync.mockResolvedValue({
+      ok: true,
+      delivery: "queued",
+    });
+    renderEmbeddedChat();
+    fireEvent.change(screen.getByTestId("embedded-chat-composer"), {
+      target: { value: "Held by a plugin" },
+    });
+    fireEvent.click(screen.getByText("Send"));
+    await vi.waitFor(() => {
+      expect(mocks.toastMessage).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("sends directly when the thread runtime is idle", async () => {

@@ -1,7 +1,15 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import {
   detectGitRepo,
   detectGitRepoKind,
@@ -22,11 +30,11 @@ import {
 
 const tempDirs: string[] = [];
 
-async function initReadGitBlobRepo() {
-  const repoPath = await fs.mkdtemp(
-    path.join(os.tmpdir(), "bb-read-git-blob-"),
-  );
-  tempDirs.push(repoPath);
+let templateRepo: string;
+
+beforeAll(async () => {
+  templateRepo = await fs.mkdtemp(path.join(os.tmpdir(), "bb-git-template-"));
+  const repoPath = templateRepo;
   await runGit(["init", "-b", "main"], { cwd: repoPath });
   await runGit(["config", "user.name", "BB Tests"], { cwd: repoPath });
   await runGit(["config", "user.email", "bb@example.com"], { cwd: repoPath });
@@ -36,6 +44,25 @@ async function initReadGitBlobRepo() {
   await fs.writeFile(path.join(repoPath, "large.txt"), "0123456789\n", "utf8");
   await runGit(["add", "."], { cwd: repoPath });
   await runGit(["commit", "-m", "Initial commit"], { cwd: repoPath });
+});
+
+afterAll(async () => {
+  if (templateRepo) {
+    await fs.rm(templateRepo, {
+      recursive: true,
+      force: true,
+      maxRetries: 10,
+      retryDelay: 100,
+    });
+  }
+});
+
+async function initReadGitBlobRepo() {
+  const repoPath = await fs.mkdtemp(
+    path.join(os.tmpdir(), "bb-read-git-blob-"),
+  );
+  tempDirs.push(repoPath);
+  await fs.cp(templateRepo, repoPath, { recursive: true });
   return repoPath;
 }
 

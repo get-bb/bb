@@ -56,8 +56,13 @@
       "vitestShard": ""
     },
     {
-      "shard": "plugins",
-      "filter": "--filter='bb-plugin-*'",
+      "shard": "plugins-1",
+      "filter": "--filter='bb-plugin-provider-*' --filter=bb-plugin-tasks --filter=bb-plugin-connect --filter=bb-plugin-thread-list",
+      "vitestShard": ""
+    },
+    {
+      "shard": "plugins-2",
+      "filter": "--filter='bb-plugin-*' --filter='!bb-plugin-provider-*' --filter='!bb-plugin-tasks' --filter='!bb-plugin-connect' --filter='!bb-plugin-thread-list'",
       "vitestShard": ""
     },
     {
@@ -98,25 +103,25 @@
     {
       "shard": "app-1",
       "filter": "--filter=@bb/app",
-      "concurrency": 4,
+      "concurrency": 2,
       "vitestShard": "1/4"
     },
     {
       "shard": "app-2",
       "filter": "--filter=@bb/app",
-      "concurrency": 4,
+      "concurrency": 2,
       "vitestShard": "2/4"
     },
     {
       "shard": "app-3",
       "filter": "--filter=@bb/app",
-      "concurrency": 4,
+      "concurrency": 2,
       "vitestShard": "3/4"
     },
     {
       "shard": "app-4",
       "filter": "--filter=@bb/app",
-      "concurrency": 4,
+      "concurrency": 2,
       "vitestShard": "4/4"
     },
     {

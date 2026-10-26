@@ -40,6 +40,8 @@ function fixture(subPath = "host_test") {
       largeFileCleanup: { state: "idle" },
       archivedFileCleanup: { state: "idle" },
       maintenance: { state: "idle" },
+      maintenanceJobs: [],
+      externalWorktreeRemovals: [],
       report: {
         hostId: "host_test",
         scannedAt: Date.now(),
@@ -88,14 +90,19 @@ function fixture(subPath = "host_test") {
   });
   const remove = vi.fn(
     async (_input: z.infer<typeof storageRpc.removeDevInstances.input>) => ({
-    running: [] as string[],
-    removedCount: 1,
-    removedBytes: 20,
-    skippedCount: 0,
-    stoppedProcessCount: 1,
+      running: [] as string[],
+      removedCount: 1,
+      removedBytes: 20,
+      skippedCount: 0,
+      stoppedProcessCount: 1,
     }),
   );
+  const entryJobs = new Map<
+    string,
+    import("./src/storage-types.js").EntryCleanupStatus
+  >();
   const start = vi.fn(async () => null);
+  const removeWorktree = vi.fn(async () => ({ state: "started" as const }));
   const Component = app.navPanels[0]!.component;
   const slot = renderSlot<{ subPath: string }>(
     {
@@ -112,11 +119,33 @@ function fixture(subPath = "host_test") {
         state: () => state,
         configure: (input) => configure(policySchema.parse(input)),
         hosts: reports,
-        removeDevInstances: (input) =>
-          remove(storageRpc.removeDevInstances.input.parse(input)),
+        startEntryCleanup: (raw) => {
+          const input = storageRpc.startEntryCleanup.input.parse(raw);
+          const id = JSON.stringify(input);
+          if (input.kind !== "development")
+            throw new Error("Unexpected cleanup");
+          entryJobs.set(id, { state: "running" });
+          void remove({
+            hostId: input.hostId,
+            names: input.names,
+            stopRunning: input.stopRunning,
+          }).then(
+            (result) =>
+              entryJobs.set(id, {
+                state: "completed",
+                result: { kind: "development", ...result },
+              }),
+            (error: Error) =>
+              entryJobs.set(id, { state: "failed", message: error.message }),
+          );
+          return { id };
+        },
+        entryCleanup: (raw) =>
+          entryJobs.get(storageRpc.entryCleanup.input.parse(raw).id),
         startClearArchivedFiles: start,
         startClearLargeFiles: start,
         startCleanup: start,
+        startRemoveExternalWorktree: removeWorktree,
       },
       sdk: {
         subscribe: () => () => {},
@@ -135,7 +164,7 @@ function fixture(subPath = "host_test") {
       },
     },
   );
-  return { slot, configure, remove, start, hosts, reports };
+  return { slot, configure, remove, start, removeWorktree, hosts, reports };
 }
 
 it("stops a running development instance only after the user confirms stop and remove", async () => {
@@ -226,7 +255,7 @@ it("saves switches immediately and rolls failed saves back without a storage sca
   ).toBe(false);
 });
 
-it("toasts background completion once and keeps completed messages out of the page", async () => {
+it("reports background progress and completion only in a toast", async () => {
   const { slot, hosts } = fixture();
   await within(slot.container).findByRole("button", {
     name: "Clear archived files",
@@ -239,9 +268,12 @@ it("toasts background completion once and keeps completed messages out of the pa
   await act(async () => {
     await slot.emitRealtime("changed", null);
   });
-  await within(slot.container).findByText(
-    /Removing archived files in the background/,
+  await waitFor(() =>
+    expect(
+      document.querySelector("[data-sonner-toast]")?.textContent,
+    ).toContain("Deleting archived thread files"),
   );
+  expect(within(slot.container).queryAllByRole("status")).toEqual([]);
   hosts[0]!.archivedFileCleanup = {
     state: "completed",
     clearedThreads: 1,
@@ -352,7 +384,7 @@ it("does not keep cleanup controls locked while the follow-up report is slow", a
   }
 });
 
-it("starts orphan cleanup in the background, shows progress, and toasts completion", async () => {
+it("starts orphan cleanup in the background without locking the page and toasts completion", async () => {
   const { slot, hosts, start } = fixture();
   const page = within(slot.container);
   fireEvent.click(await page.findByRole("button", { name: "Remove orphans" }));
@@ -366,21 +398,28 @@ it("starts orphan cleanup in the background, shows progress, and toasts completi
   expect(
     slot.rpcCalls.find((call) => call.method === "startCleanup")?.input,
   ).toEqual({ hostId: "host_test", kind: "orphans" });
-  hosts[0]!.maintenance = { state: "running", kind: "orphans" };
+  hosts[0]!.maintenanceJobs = [{ state: "running", kind: "orphans" }];
   await act(async () => {
     await slot.emitRealtime("changed", null);
   });
-  await page.findByText("Removing orphaned storage…");
+  await waitFor(() =>
+    expect(
+      document.querySelector("[data-sonner-toast]")?.textContent,
+    ).toContain("Deleting orphaned files"),
+  );
+  expect(page.queryAllByRole("status")).toEqual([]);
   expect(
     page
       .getByRole("button", { name: "Remove orphans" })
       .hasAttribute("disabled"),
-  ).toBe(true);
-  hosts[0]!.maintenance = {
-    state: "completed",
-    kind: "orphans",
-    message: "Removed 1 orphaned storage folder",
-  };
+  ).toBe(false);
+  hosts[0]!.maintenanceJobs = [
+    {
+      state: "completed",
+      kind: "orphans",
+      message: "Removed 1 orphaned storage folder",
+    },
+  ];
   await act(async () => {
     await slot.emitRealtime("changed", null);
   });
@@ -391,7 +430,6 @@ it("starts orphan cleanup in the background, shows progress, and toasts completi
       ),
     ).toBe(true),
   );
-  expect(page.queryByText("Removing orphaned storage…")).toBeNull();
   expect(
     page
       .getByRole("button", { name: "Remove orphans" })
@@ -458,11 +496,13 @@ it.each([
     await within(slot.container).findByRole("button", {
       name: "Remove orphans",
     });
-    hosts[0]!.maintenance = {
-      state: "completed",
-      kind,
-      message: "Test machine",
-    };
+    hosts[0]!.maintenanceJobs = [
+      {
+        state: "completed",
+        kind,
+        message: "Test machine",
+      },
+    ];
     await act(async () => {
       await slot.emitRealtime("changed", null);
     });
@@ -473,3 +513,75 @@ it.each([
     );
   },
 );
+
+it("hands a started worktree removal to one toast that the server's result completes", async () => {
+  const { slot, hosts, removeWorktree } = fixture();
+  const worktreePath = "/fixture/worktrees/heavy";
+  hosts[0]!.report!.externalWorktrees = [
+    {
+      projectId: "proj_test",
+      repositoryPath: "/fixture/repo",
+      path: worktreePath,
+      branch: "heavy",
+      locked: false,
+      changedFileCount: 0,
+      unsavedCommitCount: 0,
+      lastActivityAt: null,
+      sizeBytes: 4096,
+      threads: [],
+    },
+  ];
+  const page = within(slot.container);
+  fireEvent.click(
+    await page.findByRole("button", { name: "Remove worktree: heavy" }),
+  );
+  await waitFor(() =>
+    expect(
+      document.querySelector(
+        '[data-sonner-toast][data-type="loading"] [data-title]',
+      )?.textContent,
+    ).toBe("Removing worktree"),
+  );
+  expect(removeWorktree).toHaveBeenCalledTimes(1);
+  expect(page.queryAllByRole("status")).toEqual([]);
+  hosts[0]!.externalWorktreeRemovals = [
+    { path: worktreePath, state: "queued" },
+  ];
+  await act(async () => {
+    await slot.emitRealtime("changed", null);
+  });
+  await waitFor(() =>
+    expect(
+      document.querySelector("[data-sonner-toast] [data-title]")?.textContent,
+    ).toBe("Queued: Removing worktree"),
+  );
+  expect(document.querySelectorAll("[data-sonner-toast]")).toHaveLength(1);
+  expect(
+    page
+      .getByRole("button", { name: "Remove worktree: heavy" })
+      .hasAttribute("disabled"),
+  ).toBe(false);
+  hosts[0]!.externalWorktreeRemovals = [
+    { path: worktreePath, state: "running" },
+  ];
+  await act(async () => {
+    await slot.emitRealtime("changed", null);
+  });
+  hosts[0]!.report!.externalWorktrees = [];
+  hosts[0]!.externalWorktreeRemovals = [
+    { path: worktreePath, state: "completed", removedBytes: 4096 },
+  ];
+  await act(async () => {
+    await slot.emitRealtime("changed", null);
+  });
+  await waitFor(() =>
+    expect(
+      document.querySelector("[data-sonner-toast] [data-title]")?.textContent,
+    ).toBe("Worktree removed"),
+  );
+  expect(document.querySelectorAll("[data-sonner-toast]")).toHaveLength(1);
+  expect(
+    document.querySelector("[data-sonner-toast] [data-description]")
+      ?.textContent,
+  ).toBe(`${worktreePath} · 4 KB freed`);
+});

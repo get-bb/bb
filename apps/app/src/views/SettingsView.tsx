@@ -1158,7 +1158,7 @@ const EXPERIMENT_DEFINITIONS: Record<
   sidebarMultiSelect: {
     label: "Select multiple sidebar threads",
     description:
-      "In the built-in thread list sidebar, Cmd/Ctrl-click and Shift-click threads to select several, right-click for bulk actions, and drag them together into a section, under a thread, into Pinned, or into a composer as mentions.",
+      "In the built-in thread list sidebar, Cmd/Ctrl+Shift-click and Shift-click threads to select several, right-click for bulk actions, and drag them together into a section, under a thread, into Pinned, or into a composer as mentions.",
   },
   timelinePush: {
     label: "Pushed timeline updates",

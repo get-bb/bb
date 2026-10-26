@@ -31,10 +31,12 @@ const stringSchema = { "~standard": { validate(value) { return typeof value === 
 let lastPaths;
 let retainedLease;
 let hangOnDispose = false;
+const heldEnvironments = new Map();
 export default {
   experimental_apiVersion: 1,
   contract: {
     environment: { input: anySchema, output: anySchema },
+    releaseEnvironment: { input: anySchema, output: anySchema },
     secretProbe: { input: anySchema, output: anySchema },
     echo: { input: anySchema, output: anySchema },
     wait: { input: anySchema, output: anySchema },
@@ -69,14 +71,22 @@ export default {
         if (input.hang) return;
         const finish = () => {
           clearTimeout(timer);
+          heldEnvironments.delete(input.id);
           context.signal.removeEventListener("abort", finish);
           resolve();
         };
-        const timer = setTimeout(finish, input.delay ?? 0);
+        const timer = input.hold ? undefined : setTimeout(finish, input.delay ?? 0);
+        if (input.hold) heldEnvironments.set(input.id, finish);
         context.signal.addEventListener("abort", finish, { once: true });
         if (context.signal.aborted) finish();
       });
       return { before: before ?? null, after: process.env.GATE_VALUE ?? null, token: process.env.GH_TOKEN ?? null };
+    },
+    releaseEnvironment(input) {
+      const finish = heldEnvironments.get(input.id);
+      if (finish === undefined) throw new Error("No held environment for " + input.id);
+      finish();
+      return { released: true };
     },
     echo(input) { return { input, pid: process.pid }; },
     wait(_input, context) {
@@ -322,9 +332,9 @@ describe("PluginHostManager", () => {
           payload: expect.objectContaining({ id }),
         });
       const waitForStart = (id: string) =>
-        vi.waitFor(() => expect(onSignal).toHaveBeenCalledWith(started(id)), {
-          timeout: 10_000,
-        });
+        expect
+          .poll(() => onSignal, { timeout: 10_000 })
+          .toHaveBeenCalledWith(started(id));
       return {
         manager,
         command,
@@ -339,63 +349,77 @@ describe("PluginHostManager", () => {
     it.each(["cancel", "deadline", "same-value"])(
       "preserves a long running call and its PID after %s",
       async (mode) => {
-        const {
-          manager,
-          command,
-          cancel,
-          started,
-          waitForStart,
-          onSignal,
-          onWorkerExit,
-        } = await fixture();
-        const initial = await manager.call(callCommand());
-        const running = Promise.allSettled([
-          manager.call(command("a", "first", 6500)),
-        ]);
-        await waitForStart("a");
-        const b = command(
-          "b",
-          mode === "same-value" ? "first" : "second",
-          10_000,
-        );
-        const cancelled = manager
-          .call({
-            ...b,
-            timeoutMs: mode === "deadline" ? 200 : b.timeoutMs,
-          })
-          .catch((error: unknown) => error);
-        await waitForStart("b");
-        if (mode !== "deadline") {
-          expect(cancel("b")).toEqual({ cancelled: true });
-          cancel("b");
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+        try {
+          const {
+            manager,
+            command,
+            cancel,
+            started,
+            waitForStart,
+            onSignal,
+            onWorkerExit,
+          } = await fixture();
+          const initial = await manager.call(callCommand());
+          const running = Promise.allSettled([
+            manager.call({
+              ...command("a", "first"),
+              input: { id: "a", hold: true },
+            }),
+          ]);
+          await waitForStart("a");
+          const b = command(
+            "b",
+            mode === "same-value" ? "first" : "second",
+            10_000,
+          );
+          const cancelled = manager
+            .call({
+              ...b,
+              timeoutMs: mode === "deadline" ? 200 : b.timeoutMs,
+            })
+            .catch((error: unknown) => error);
+          await waitForStart("b");
+          if (mode === "deadline") await vi.advanceTimersByTimeAsync(200);
+          if (mode !== "deadline") {
+            expect(cancel("b")).toEqual({ cancelled: true });
+            cancel("b");
+          }
+          const error = await cancelled;
+          if (mode === "deadline")
+            expect(error).toMatchObject({
+              message: expect.stringMatching(/deadline/u),
+            });
+          else expect(error).toMatchObject({ name: "AbortError" });
+          await vi.advanceTimersByTimeAsync(5_000);
+          expect(onWorkerExit).not.toHaveBeenCalled();
+          await manager.call(
+            callCommand({ method: "releaseEnvironment", input: { id: "a" } }),
+          );
+          expect(await running).toMatchObject([
+            {
+              status: "fulfilled",
+              value: { output: { before: "first", after: "first" } },
+            },
+          ]);
+          expect(onSignal).toHaveBeenCalledWith(started("b"));
+          expect(
+            (await manager.call(command("c", "third"))).output,
+          ).toMatchObject({ before: "third", after: "third" });
+          expect(
+            (
+              await manager.call(
+                callCommand({ method: "environment", input: {} }),
+              )
+            ).output,
+          ).toMatchObject({ before: "base", after: "base" });
+          expect((await manager.call(callCommand())).output).toEqual(
+            initial.output,
+          );
+          expect(onWorkerExit).not.toHaveBeenCalled();
+        } finally {
+          vi.useRealTimers();
         }
-        const error = await cancelled;
-        if (mode === "deadline")
-          expect(error).toMatchObject({
-            message: expect.stringMatching(/deadline/u),
-          });
-        else expect(error).toMatchObject({ name: "AbortError" });
-        expect(await running).toMatchObject([
-          {
-            status: "fulfilled",
-            value: { output: { before: "first", after: "first" } },
-          },
-        ]);
-        expect(onSignal).toHaveBeenCalledWith(started("b"));
-        expect(
-          (await manager.call(command("c", "third"))).output,
-        ).toMatchObject({ before: "third", after: "third" });
-        expect(
-          (
-            await manager.call(
-              callCommand({ method: "environment", input: {} }),
-            )
-          ).output,
-        ).toMatchObject({ before: "base", after: "base" });
-        expect((await manager.call(callCommand())).output).toEqual(
-          initial.output,
-        );
-        expect(onWorkerExit).not.toHaveBeenCalled();
       },
     );
 
@@ -452,51 +476,69 @@ describe("PluginHostManager", () => {
     });
 
     it("still force-kills a started handler that ignores cancellation", async () => {
-      const { manager, command, cancel, waitForStart, onWorkerExit } =
-        await fixture();
-      const initial = await manager.call(callCommand());
-      const hung = manager
-        .call({
-          ...command("hung", "first"),
-          input: { id: "hung", hang: true },
-        })
-        .catch((error: unknown) => error);
-      await waitForStart("hung");
-      cancel("hung");
-      await expect(hung).resolves.toMatchObject({ name: "AbortError" });
-      expect(onWorkerExit).toHaveBeenCalledOnce();
-      expect((await manager.call(callCommand())).output).not.toEqual(
-        initial.output,
-      );
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      try {
+        const { manager, command, cancel, waitForStart, onWorkerExit } =
+          await fixture();
+        const initial = await manager.call(callCommand());
+        const hung = manager
+          .call({
+            ...command("hung", "first"),
+            input: { id: "hung", hang: true },
+          })
+          .catch((error: unknown) => error);
+        await waitForStart("hung");
+        cancel("hung");
+        await vi.advanceTimersByTimeAsync(5_000);
+        await expect(hung).resolves.toMatchObject({ name: "AbortError" });
+        expect(onWorkerExit).toHaveBeenCalledOnce();
+        expect((await manager.call(callCommand())).output).not.toEqual(
+          initial.output,
+        );
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("abandons a handler that ignores cancellation without killing other calls or pinning its environment", async () => {
-      const { manager, command, cancel, waitForStart, onWorkerExit } =
-        await fixture();
-      const initial = await manager.call(callCommand());
-      const running = manager.call(command("a", "first", 6500));
-      await waitForStart("a");
-      const hung = manager
-        .call({
-          ...command("hung", "first"),
-          input: { id: "hung", hang: true },
-        })
-        .catch((error: unknown) => error);
-      await waitForStart("hung");
-      cancel("hung");
-      await expect(hung).resolves.toMatchObject({ name: "AbortError" });
-      await expect(running).resolves.toMatchObject({
-        output: { before: "first", after: "first" },
-      });
-      await expect(
-        manager.call(command("rotated", "rotated")),
-      ).resolves.toMatchObject({
-        output: { before: "rotated", after: "rotated" },
-      });
-      expect(onWorkerExit).not.toHaveBeenCalled();
-      expect((await manager.call(callCommand())).output).toEqual(
-        initial.output,
-      );
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      try {
+        const { manager, command, cancel, waitForStart, onWorkerExit } =
+          await fixture();
+        const initial = await manager.call(callCommand());
+        const running = manager.call({
+          ...command("a", "first"),
+          input: { id: "a", hold: true },
+        });
+        await waitForStart("a");
+        const hung = manager
+          .call({
+            ...command("hung", "first"),
+            input: { id: "hung", hang: true },
+          })
+          .catch((error: unknown) => error);
+        await waitForStart("hung");
+        cancel("hung");
+        await vi.advanceTimersByTimeAsync(5_000);
+        await expect(hung).resolves.toMatchObject({ name: "AbortError" });
+        await manager.call(
+          callCommand({ method: "releaseEnvironment", input: { id: "a" } }),
+        );
+        await expect(running).resolves.toMatchObject({
+          output: { before: "first", after: "first" },
+        });
+        await expect(
+          manager.call(command("rotated", "rotated")),
+        ).resolves.toMatchObject({
+          output: { before: "rotated", after: "rotated" },
+        });
+        expect(onWorkerExit).not.toHaveBeenCalled();
+        expect((await manager.call(callCommand())).output).toEqual(
+          initial.output,
+        );
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 

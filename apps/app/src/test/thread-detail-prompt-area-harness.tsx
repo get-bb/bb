@@ -21,7 +21,6 @@ import type { PluginComposerHost } from "@/components/plugin/plugin-composer-hos
 export const promptAreaMocks = {
   cancelThreadPlanMutate: vi.fn(),
   clearThreadGoalMutate: vi.fn(),
-  createQueuedMessageMutateAsync: vi.fn(),
   createThreadMutateAsync: vi.fn(),
   defaultExecutionOptions: null as ResolvedThreadExecutionOptions | null,
   executionInputSources: {} as ExistingThreadExecutionInputSources,
@@ -661,10 +660,6 @@ vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
   useCreateThread: () => ({
     isPending: false,
     mutateAsync: promptAreaMocks.createThreadMutateAsync,
-  }),
-  useCreateThreadQueuedMessage: () => ({
-    isPending: false,
-    mutateAsync: promptAreaMocks.createQueuedMessageMutateAsync,
   }),
   useDeleteThreadQueuedMessage: () => ({
     isPending: false,

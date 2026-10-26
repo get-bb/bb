@@ -8,17 +8,12 @@ import {
   type ThreadRuntimeDisplayStatus,
 } from "@bb/domain";
 import type {
-  CreateQueuedMessageRequest,
   ExistingThreadExecutionInputSources,
   SendMessageRequest,
 } from "@bb/server-contract";
 import type { FollowUpSubmitMode } from "./follow-up-submit-mode.js";
 
 export interface SendMessageMutationRequest extends SendMessageRequest {
-  id: string;
-}
-
-export interface CreateQueuedFollowUpRequest extends CreateQueuedMessageRequest {
   id: string;
 }
 
@@ -54,10 +49,6 @@ interface BaseFollowUpRequestArgs {
 
 interface BuildAutoFollowUpRequestArgs extends BaseFollowUpRequestArgs {
   compactFirst: boolean;
-  execution: FollowUpExecutionSelection;
-}
-
-interface BuildCreateQueuedFollowUpRequestArgs extends BaseFollowUpRequestArgs {
   execution: FollowUpExecutionSelection;
 }
 
@@ -262,22 +253,6 @@ function buildSteerFollowUpRequest({
     id: threadId,
     input,
     mode: "steer-if-active",
-    ...buildSharedThreadExecutionRequestFields(execution),
-  };
-}
-
-export function buildCreateQueuedFollowUpRequest({
-  execution,
-  input,
-  threadId,
-}: BuildCreateQueuedFollowUpRequestArgs): CreateQueuedFollowUpRequest | null {
-  if (input.length === 0) {
-    return null;
-  }
-
-  return {
-    id: threadId,
-    input,
     ...buildSharedThreadExecutionRequestFields(execution),
   };
 }

@@ -40,7 +40,7 @@ async function directory() {
   return dir;
 }
 
-it("clears different threads concurrently, excludes overlapping maintenance and releases locks after success or failure", async () => {
+it("queues thread cleanup and bulk maintenance in order and continues after a failure", async () => {
   const threads = ["thr_one", "thr_two"].map((id) =>
     makeThreadResponse({ id, status: "idle", environmentId: "env_test" }),
   );
@@ -88,8 +88,8 @@ it("clears different threads concurrently, excludes overlapping maintenance and 
     sdk: {
       projects: { list: async () => [] },
       hosts: {
-        get: async () => ({
-          ...makeHostResponse({ id: "host_test", status: "connected" }),
+        get: async ({ hostId }) => ({
+          ...makeHostResponse({ id: hostId, status: "connected" }),
           threadStorageRootPath: "/storage",
         }),
       },
@@ -102,7 +102,7 @@ it("clears different threads concurrently, excludes overlapping maintenance and 
             environmentId: "env_test",
           }),
         storageLocation: async ({ threadId }) => ({
-          hostId: "host_test",
+          hostId: threadId === "thr_other" ? "host_other" : "host_test",
           storageRootPath: `/storage/${threadId}`,
         }),
       },
@@ -121,15 +121,31 @@ it("clears different threads concurrently, excludes overlapping maintenance and 
       )
       .toBe(2);
     const first = host.harness.callRpc("clearThread", { threadId: "thr_one" });
-    const second = host.harness.callRpc("clearThread", { threadId: "thr_two" });
-    const secondFailure = expect(second).rejects.toThrow("host disconnected");
-    await expect.poll(() => pending.size).toBe(2);
+    await expect.poll(() => pending.size).toBe(1);
+    const other = host.harness.callRpc("clearThread", {
+      threadId: "thr_other",
+    });
+    await expect.poll(() => pending.has("thr_other")).toBe(true);
+    pending.get("thr_other")!.resolve();
+    await other;
+    const queued = { kind: "thread", threadId: "thr_two" };
+    const second = await host.harness.callRpc("startEntryCleanup", queued);
     await expect(
-      host.harness.callRpc("clearThread", { threadId: "thr_one" }),
-    ).rejects.toThrow("already being cleared");
-    await expect(
-      host.harness.callRpc("removeOrphans", { hostId: "host_test" }),
-    ).rejects.toThrow("already running");
+      host.harness.callRpc("startEntryCleanup", queued),
+    ).resolves.toEqual(second);
+    await expect(host.harness.callRpc("entryCleanup", second)).resolves.toEqual(
+      { state: "queued" },
+    );
+    await host.harness.callRpc("startCleanup", {
+      hostId: "host_test",
+      kind: "orphans",
+    });
+    expect(
+      hostStorageResponseSchema.parse(
+        await host.harness.callRpc("host", { hostId: "host_test" }),
+      ).maintenance,
+    ).toEqual({ state: "queued", kind: "orphans" });
+    expect(pending.has("thr_two")).toBe(false);
     pending.get("thr_one")!.resolve();
     await first;
     expect(
@@ -137,8 +153,19 @@ it("clears different threads concurrently, excludes overlapping maintenance and 
         .parse(await host.harness.callRpc("host", { hostId: "host_test" }))
         .report?.largestThreads.map((thread) => thread.threadId),
     ).toEqual(["thr_two"]);
+    await expect.poll(() => pending.has("thr_two")).toBe(true);
     pending.get("thr_two")!.reject();
-    await secondFailure;
+    await expect
+      .poll(() => host.harness.callRpc("entryCleanup", second))
+      .toEqual({ state: "failed", message: "host disconnected" });
+    await expect
+      .poll(
+        async () =>
+          hostStorageResponseSchema.parse(
+            await host.harness.callRpc("host", { hostId: "host_test" }),
+          ).maintenance.state,
+      )
+      .toBe("completed");
     hold = false;
     await host.harness.callRpc("clearThread", { threadId: "thr_two" });
     expect(
@@ -251,7 +278,7 @@ it.each([
         });
         await expect(
           host.harness.callRpc("startCleanup", input),
-        ).rejects.toThrow("already running");
+        ).resolves.toBeNull();
         gate.pending!.reject();
         await expect
           .poll(async () => (await status()).maintenance)
@@ -291,7 +318,7 @@ it.each([
         host.harness.callRpc("startClearArchivedFiles", {
           hostId: "host_test",
         }),
-      ).rejects.toThrow("already running");
+      ).resolves.toBeNull();
       if (change === "unarchive") threads[100]!.archivedAt = null;
       if (change === "pin") threads[100]!.pinnedAt = Date.now();
       if (change === "active") threads[100]!.status = "active";
@@ -448,6 +475,8 @@ it.each([false, true])(
         largeFileCleanup: { state: "idle" },
         archivedFileCleanup: { state: "idle" },
         maintenance: { state: "idle" },
+        maintenanceJobs: [],
+        externalWorktreeRemovals: [],
       });
       await expect(
         host.harness.callRpc("clearThread", { threadId: "thr_live" }),
@@ -697,7 +726,7 @@ it("deletes only large files from archived threads on scanned online machines, k
     ).toBe("running");
     await expect(
       host.harness.callRpc("startClearLargeFiles", { hostId: "host_test" }),
-    ).rejects.toThrow("already running");
+    ).resolves.toBeNull();
     pendingCleanup!.reject(new Error("host disconnected"));
     await expect
       .poll(
@@ -1295,15 +1324,19 @@ it("finds worktrees created outside BB, removes only safe ones in bulk, and forc
     updatedAt: 0,
   };
   const worker = experimental_createHostEntryHarness(hostEntry);
+  let removalGate: Promise<void> | null = null;
+  let releaseRemoval = () => {};
   const host = createFakePluginHost({
     pluginId: "storage-retention",
     experimental_hostEntry: true,
     experimental_callHostRpc: async (call) => {
       if (call.method === "homeDirectory") return "/missing-home";
+      if (call.method === "removeGitWorktrees") await removalGate;
       for (const method of [
         "measure",
         "capacity",
         "listGitWorktrees",
+        "inspectGitWorktree",
         "removeGitWorktrees",
       ] as const)
         if (call.method === method)
@@ -1450,17 +1483,128 @@ it("finds worktrees created outside BB, removes only safe ones in bulk, and forc
       }),
     ).rejects.toThrow("Not a worktree created outside BB");
     await expect(
-      host.harness.callRpc("removeExternalWorktrees", {
+      host.harness.callRpc("startRemoveExternalWorktree", {
         hostId: "host_test",
-        paths: [dirty, detached, locked],
+        path: dirty,
+        force: false,
+      }),
+    ).resolves.toEqual({ state: "skipped", reasons: ["uncommittedChanges"] });
+    removalGate = new Promise((resolve) => {
+      releaseRemoval = resolve;
+    });
+    await expect(
+      host.harness.callRpc("startRemoveExternalWorktree", {
+        hostId: "host_test",
+        path: dirty,
         force: true,
       }),
-    ).resolves.toMatchObject({ removedCount: 3, skipped: [], failed: [] });
+    ).resolves.toEqual({ state: "started" });
+    const removals = async () =>
+      hostStorageResponseSchema.parse(
+        await host.harness.callRpc("host", { hostId: "host_test" }),
+      ).externalWorktreeRemovals;
+    expect(await removals()).toEqual([{ path: dirty, state: "running" }]);
+    await expect(
+      host.harness.callRpc("startRemoveExternalWorktree", {
+        hostId: "host_test",
+        path: dirty,
+        force: true,
+      }),
+    ).resolves.toEqual({ state: "started" });
+    await expect(
+      host.harness.callRpc("startCleanup", {
+        hostId: "host_test",
+        kind: "externalWorktrees",
+      }),
+    ).resolves.toBeNull();
+    expect(
+      hostStorageResponseSchema.parse(
+        await host.harness.callRpc("host", { hostId: "host_test" }),
+      ).maintenance,
+    ).toEqual({ state: "queued", kind: "externalWorktrees" });
+    releaseRemoval();
+    await expect
+      .poll(removals)
+      .toEqual([
+        { path: dirty, state: "completed", removedBytes: expect.any(Number) },
+      ]);
+    await expect
+      .poll(
+        async () =>
+          hostStorageResponseSchema.parse(
+            await host.harness.callRpc("host", { hostId: "host_test" }),
+          ).maintenance.state,
+      )
+      .toBe("completed");
+    await expect(
+      host.harness.callRpc("removeExternalWorktrees", {
+        hostId: "host_test",
+        paths: [detached, locked],
+        force: true,
+      }),
+    ).resolves.toMatchObject({ removedCount: 2, skipped: [], failed: [] });
     for (const removed of [dirty, detached, locked])
       await expect(fs.stat(removed)).rejects.toThrow();
     await expect(fs.stat(managed)).resolves.toBeTruthy();
     expect((await report())!.externalWorktrees).toEqual([]);
+    const queuedClean = worktree("queued-clean", "-b", "queued-clean");
+    const queuedDirty = worktree("queued-dirty", "-b", "queued-dirty");
+    await host.harness.callRpc("scanHost", { hostId: "host_test" });
+    await expect
+      .poll(async () => (await report())?.externalWorktrees.length)
+      .toBe(2);
+    removalGate = new Promise((resolve) => {
+      releaseRemoval = resolve;
+    });
+    await host.harness.callRpc("startCleanup", {
+      hostId: "host_test",
+      kind: "externalWorktrees",
+    });
+    await expect
+      .poll(
+        async () =>
+          hostStorageResponseSchema.parse(
+            await host.harness.callRpc("host", { hostId: "host_test" }),
+          ).maintenance.state,
+      )
+      .toBe("running");
+    for (const target of [queuedClean, queuedDirty]) {
+      await expect(
+        host.harness.callRpc("startRemoveExternalWorktree", {
+          hostId: "host_test",
+          path: target,
+          force: false,
+        }),
+      ).resolves.toEqual({ state: "started" });
+      expect(
+        (await removals()).find((entry) => entry.path === target)?.state,
+      ).toBe("queued");
+    }
+    await fs.writeFile(
+      path.join(queuedDirty, "new-work.txt"),
+      "keep this work created while queued",
+    );
+    releaseRemoval();
+    await expect
+      .poll(async () =>
+        (await removals()).filter((entry) =>
+          [queuedClean, queuedDirty].includes(entry.path),
+        ),
+      )
+      .toEqual([
+        { path: queuedClean, state: "completed", removedBytes: 0 },
+        {
+          path: queuedDirty,
+          state: "skipped",
+          reasons: ["uncommittedChanges"],
+        },
+      ]);
+    await expect(fs.stat(queuedClean)).rejects.toThrow();
+    expect(
+      await fs.readFile(path.join(queuedDirty, "new-work.txt"), "utf8"),
+    ).toBe("keep this work created while queued");
   } finally {
+    releaseRemoval();
     await host.harness.dispose();
   }
 }, 60_000);

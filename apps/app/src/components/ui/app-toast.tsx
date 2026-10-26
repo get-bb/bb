@@ -13,7 +13,7 @@ import {
   openNotificationCenter,
   recordNotification,
 } from "@/lib/notifications/notification-store";
-import { withSonnerToast } from "./app-toast-runtime";
+import { dismissSonnerToast, withSonnerToast } from "./app-toast-runtime";
 
 export type AppToastTone =
   | "message"
@@ -103,7 +103,7 @@ function dismissToast(id: number | string | undefined): void {
   if (id === undefined) {
     return;
   }
-  withSonnerToast((sonnerToast) => sonnerToast.dismiss(id));
+  dismissSonnerToast(id);
 }
 
 function AppToastActionButton({
@@ -302,28 +302,30 @@ function showAppToast({
         });
 
   const toastId = sonnerOptions.id ?? `app-toast-${(nextToastId += 1)}`;
-  withSonnerToast((sonnerToast) =>
-    sonnerToast.custom(
-      (id) => (
-        <AppToastContent
-          action={action}
-          cancel={cancel}
-          description={description}
-          dismissible={dismissible}
-          id={id}
-          notificationId={notificationId}
-          title={title}
-          tone={tone}
-        />
+  withSonnerToast(
+    (sonnerToast) =>
+      sonnerToast.custom(
+        (id) => (
+          <AppToastContent
+            action={action}
+            cancel={cancel}
+            description={description}
+            dismissible={dismissible}
+            id={id}
+            notificationId={notificationId}
+            title={title}
+            tone={tone}
+          />
+        ),
+        {
+          ...sonnerOptions,
+          id: toastId,
+          className: cn("bb-app-toast", className),
+          dismissible,
+          duration: nextDuration,
+        },
       ),
-      {
-        ...sonnerOptions,
-        id: toastId,
-        className: cn("bb-app-toast", className),
-        dismissible,
-        duration: nextDuration,
-      },
-    ),
+    toastId,
   );
   return toastId;
 }
@@ -344,7 +346,7 @@ const showLoadingToast: AppToastMethod = (title, options) =>
   showAppToast({ options, title, tone: "loading" });
 
 function dismissAppToast(id?: number | string): void {
-  withSonnerToast((sonnerToast) => sonnerToast.dismiss(id));
+  dismissSonnerToast(id);
 }
 
 export const appToast = {

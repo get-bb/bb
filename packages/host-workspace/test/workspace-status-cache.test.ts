@@ -113,11 +113,13 @@ async function createDivergedRepo({
   await runGit(["checkout", "-b", "feature"], { cwd: repo });
   await fs.writeFile(path.join(repo, featurePath), featureText);
   await runGit(["add", "."], { cwd: repo });
-  await runGit(["commit", "-m", "Feature"], { cwd: repo });
+  await runGit(["commit", "-m", `Feature ${path.basename(repo)}`], {
+    cwd: repo,
+  });
   await runGit(["checkout", "main"], { cwd: repo });
   await fs.writeFile(path.join(repo, basePath), baseText);
   await runGit(["add", "."], { cwd: repo });
-  await runGit(["commit", "-m", "Main"], { cwd: repo });
+  await runGit(["commit", "-m", `Main ${path.basename(repo)}`], { cwd: repo });
   await runGit(["checkout", "feature"], { cwd: repo });
   return repo;
 }
