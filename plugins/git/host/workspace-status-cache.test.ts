@@ -159,7 +159,7 @@ async function createDivergedRepo({
     file: string,
     text: string,
   ) =>
-    `commit refs/heads/${branch}\ncommitter BB Tests <bb@example.com> ${timestamp} +0000\ndata ${Buffer.byteLength(subject)}\n${subject}\nfrom ${initialCommit}\nM 100644 inline ${JSON.stringify(file)}\ndata ${Buffer.byteLength(text)}\n${text}\n`;
+    `commit refs/heads/${branch}\ncommitter BB Tests <bb@example.com> ${timestamp} +0000\ndata ${Buffer.byteLength(subject) + 1}\n${subject}\n\nfrom ${initialCommit}\nM 100644 inline ${JSON.stringify(file)}\ndata ${Buffer.byteLength(text)}\n${text}\n`;
   await runGit(["fast-import", "--quiet"], {
     cwd: repo,
     input:
