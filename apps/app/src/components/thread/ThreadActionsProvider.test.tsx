@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -10,6 +11,7 @@ import {
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Thread } from "@bb/domain";
+import type { ThreadCascadeListResponse } from "@bb/server-contract";
 import { makeThread as makeThreadFixture } from "@bb/test-helpers/domain-fixtures";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
@@ -227,10 +229,7 @@ beforeEach(() => {
     archivedThreadIds: ["thr_child", "thr_parent"],
     ok: true,
   });
-  vi.mocked(sdk.threads.childSummary).mockResolvedValue({
-    nonDeletedChildCount: 1,
-    unarchivedDescendantCount: 1,
-  });
+  mockCascade({ thr_parent: ["thr_child"] });
   vi.mocked(sdk.threads.unarchive).mockResolvedValue({ ok: true });
   mocks.closePanesForThreads.mockReturnValue({
     focusedRoute: null,
@@ -278,14 +277,11 @@ describe("ThreadActionsProvider archive confirmation", () => {
   });
 
   it.each(["archive", "confirmation", "error", "archive-error"] as const)(
-    "optimistically removes the sidebar row during the child check and handles %s",
+    "keeps the sidebar row during planning and handles %s",
     async (outcome) => {
-      let resolveSummary!: (summary: {
-        nonDeletedChildCount: number;
-        unarchivedDescendantCount: number;
-      }) => void;
+      let resolveSummary!: (summary: ThreadCascadeListResponse) => void;
       let rejectSummary!: (error: Error) => void;
-      vi.mocked(sdk.threads.childSummary).mockImplementationOnce(
+      vi.mocked(sdk.threads.experimental_listCascade).mockImplementationOnce(
         () =>
           new Promise((resolve, reject) => {
             resolveSummary = resolve;
@@ -312,16 +308,22 @@ describe("ThreadActionsProvider archive confirmation", () => {
       renderProvider(<ArchiveButton thread={thread} />);
       fireEvent.click(screen.getByRole("button", { name: "Archive" }));
       await vi.waitFor(() => {
-        expect(sdk.threads.childSummary).toHaveBeenCalled();
-        expect(getCachedSidebarNavigationThreads(queryClient)).toEqual([]);
+        expect(sdk.threads.experimental_listCascade).toHaveBeenCalled();
+        expect(getCachedSidebarNavigationThreads(queryClient)).toEqual([
+          thread,
+        ]);
       });
       expect(sdk.threads.archiveAll).not.toHaveBeenCalled();
       if (outcome === "error") {
         rejectSummary(new Error("Could not check children"));
       } else {
         resolveSummary({
-          nonDeletedChildCount: outcome === "confirmation" ? 1 : 0,
-          unarchivedDescendantCount: outcome === "confirmation" ? 1 : 0,
+          threads: [
+            {
+              threadId: thread.id,
+              cascadeThreadIds: outcome === "confirmation" ? ["thr_child"] : [],
+            },
+          ],
         });
       }
       if (outcome === "archive") {
@@ -330,6 +332,9 @@ describe("ThreadActionsProvider archive confirmation", () => {
         );
         expect(getCachedSidebarNavigationThreads(queryClient)).toEqual([]);
       } else {
+        if (outcome !== "confirmation") {
+          await vi.waitFor(() => expect(appToast.error).toHaveBeenCalled());
+        }
         await vi.waitFor(() =>
           expect(getCachedSidebarNavigationThreads(queryClient)).toEqual([
             thread,
@@ -354,22 +359,14 @@ describe("ThreadActionsProvider archive confirmation", () => {
     },
   );
 
-  it("does not restore another archived row when a delayed child check requires confirmation", async () => {
-    let resolveSummary!: (summary: {
-      nonDeletedChildCount: number;
-      unarchivedDescendantCount: number;
-    }) => void;
-    vi.mocked(sdk.threads.childSummary)
-      .mockImplementationOnce(
-        () =>
-          new Promise((resolve) => {
-            resolveSummary = resolve;
-          }),
-      )
-      .mockResolvedValueOnce({
-        nonDeletedChildCount: 0,
-        unarchivedDescendantCount: 0,
-      });
+  it("ignores a superseded child check without restoring another archived row", async () => {
+    let resolveCascade!: (response: ThreadCascadeListResponse) => void;
+    vi.mocked(sdk.threads.experimental_listCascade).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveCascade = resolve;
+        }),
+    );
     const first = makeThreadListEntry(makeThread());
     const second = makeThreadListEntry(makeThread({ id: "thr_second" }));
     const untouched = makeThreadListEntry(makeThread({ id: "thr_untouched" }));
@@ -398,19 +395,24 @@ describe("ThreadActionsProvider archive confirmation", () => {
     );
     fireEvent.click(screen.getAllByRole("button", { name: "Archive" })[0]!);
     await vi.waitFor(() =>
-      expect(getCachedSidebarNavigationThreads(queryClient)).toEqual([
-        second,
-        untouched,
-      ]),
+      expect(sdk.threads.experimental_listCascade).toHaveBeenCalledTimes(1),
     );
+    expect(getCachedSidebarNavigationThreads(queryClient)).toEqual([
+      first,
+      second,
+      untouched,
+    ]);
     fireEvent.click(screen.getAllByRole("button", { name: "Archive" })[1]!);
-    await vi.waitFor(() =>
-      expect(sdk.threads.archiveAll).toHaveBeenCalledWith({
-        threadId: second.id,
-      }),
-    );
-    resolveSummary({ nonDeletedChildCount: 1, unarchivedDescendantCount: 1 });
-    await screen.findByRole("button", { name: "Cancel" });
+    await vi.waitFor(() => expect(appToast.success).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      resolveCascade({
+        threads: [{ threadId: first.id, cascadeThreadIds: ["thr_child"] }],
+      });
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(sdk.threads.archiveAll).toHaveBeenCalledExactlyOnceWith({
+      threadId: second.id,
+    });
     expect(getCachedSidebarNavigationThreads(queryClient)).toEqual([
       first,
       untouched,
@@ -419,10 +421,7 @@ describe("ThreadActionsProvider archive confirmation", () => {
   });
 
   it("archives without confirmation when its only child is already archived", async () => {
-    vi.mocked(sdk.threads.childSummary).mockResolvedValue({
-      nonDeletedChildCount: 1,
-      unarchivedDescendantCount: 0,
-    });
+    mockCascade({});
     vi.mocked(sdk.threads.archiveAll).mockResolvedValue({
       archivedThreadIds: ["thr_parent"],
       ok: true,
@@ -442,9 +441,8 @@ describe("ThreadActionsProvider archive confirmation", () => {
   });
 
   it("reports child threads and archives nothing before confirmation", async () => {
-    vi.mocked(sdk.threads.childSummary).mockResolvedValue({
-      nonDeletedChildCount: 6,
-      unarchivedDescendantCount: 4,
+    mockCascade({
+      thr_parent: ["thr_child1", "thr_child2", "thr_child3", "thr_child4"],
     });
     renderProvider(<ArchiveButton thread={makeThread()} />);
 
@@ -456,63 +454,114 @@ describe("ThreadActionsProvider archive confirmation", () => {
     expect(sdk.threads.archiveAll).not.toHaveBeenCalled();
   });
 
-  it("leaves a thread unchanged when confirmation is cancelled", async () => {
-    renderProvider(<ArchiveButton thread={makeThread()} />);
+  it.each(["single", "multiple"])(
+    "leaves %s threads unchanged when confirmation is cancelled",
+    async (size) => {
+      renderProvider(
+        size === "single" ? (
+          <ArchiveButton thread={makeThread()} />
+        ) : (
+          <SelectionButtons
+            threads={[makeThread(), makeThread({ id: "thr_other" })]}
+          />
+        ),
+      );
 
-    fireEvent.click(screen.getByRole("button", { name: "Archive" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: size === "single" ? "Archive" : "Archive selection",
+        }),
+      );
+      fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
 
-    expect(
-      screen.queryByRole("heading", { name: /Archive \d+ threads\?/ }),
-    ).toBeNull();
-    expect(sdk.threads.archiveAll).not.toHaveBeenCalled();
-  });
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(sdk.threads.archiveAll).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("ThreadActionsProvider archive feedback", () => {
-  it("offers the shared Undo toast for a group and restores its parent before descendants", async () => {
-    vi.mocked(sdk.environments.archiveThreads).mockResolvedValue({
-      ok: true,
-      archivedThreadIds: ["thr_grandchild", "thr_child", "thr_parent"],
-    });
-    renderProvider(<ArchiveEnvironmentButton />);
-    fireEvent.click(screen.getByRole("button", { name: "Archive group" }));
-    await vi.waitFor(() => expect(appToast.success).toHaveBeenCalledTimes(1));
-    const call = vi.mocked(appToast.success).mock.calls[0];
-    if (!call) throw new Error("Expected archive toast");
-    const [title, options] = call;
-    expect(title).toBe("Threads archived");
-    expect(options).toMatchObject({
-      cancel: { label: "Undo" },
-      duration: 10_000,
-    });
-    const undo = options?.cancel;
-    if (!undo) throw new Error("Expected archive Undo");
-    let releaseParent: () => void = () => {};
-    vi.mocked(sdk.threads.unarchive).mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          releaseParent = () => resolve({ ok: true });
+  it.each(["single", "multiple", "environment"])(
+    "restores parents before descendants when undoing a %s archive",
+    async (source) => {
+      mocks.confirmThreadArchive = false;
+      const archivedThreadIds = ["thr_grandchild", "thr_child", "thr_parent"];
+      vi.mocked(sdk.environments.archiveThreads).mockResolvedValue({
+        ok: true,
+        archivedThreadIds,
+      });
+      vi.mocked(sdk.threads.archiveAll).mockImplementation(
+        async ({ threadId }) => ({
+          ok: true,
+          archivedThreadIds:
+            threadId === "thr_parent" ? archivedThreadIds : [threadId],
         }),
-    );
-    render(<button onClick={undo.onClick}>Undo group</button>);
-    fireEvent.click(screen.getByRole("button", { name: "Undo group" }));
-    await vi.waitFor(() =>
-      expect(sdk.threads.unarchive).toHaveBeenCalledTimes(1),
-    );
-    expect(sdk.threads.unarchive).toHaveBeenLastCalledWith({
-      threadId: "thr_parent",
-    });
-    releaseParent();
-    await vi.waitFor(() =>
-      expect(sdk.threads.unarchive).toHaveBeenCalledTimes(3),
-    );
-    expect(
-      vi
-        .mocked(sdk.threads.unarchive)
-        .mock.calls.map(([args]) => args.threadId),
-    ).toEqual(["thr_parent", "thr_child", "thr_grandchild"]);
-  });
+      );
+      const expectedRestored =
+        source === "multiple"
+          ? ["thr_parent", "thr_child", "thr_grandchild", "thr_other"]
+          : ["thr_parent", "thr_child", "thr_grandchild"];
+      renderProvider(
+        source === "environment" ? (
+          <ArchiveEnvironmentButton />
+        ) : source === "single" ? (
+          <ArchiveButton thread={makeThread()} />
+        ) : (
+          <SelectionButtons
+            threads={[makeThread({ id: "thr_other" }), makeThread()]}
+          />
+        ),
+      );
+      fireEvent.click(
+        screen.getByRole("button", {
+          name:
+            source === "environment"
+              ? "Archive group"
+              : source === "single"
+                ? "Archive"
+                : "Archive selection",
+        }),
+      );
+      await vi.waitFor(() => expect(appToast.success).toHaveBeenCalledTimes(1));
+      const call = vi.mocked(appToast.success).mock.calls[0];
+      if (!call) throw new Error("Expected archive toast");
+      const [title, options] = call;
+      expect(title).toBe(
+        source === "single" ? "Thread archived" : "Threads archived",
+      );
+      expect(options).toMatchObject({
+        cancel: { label: "Undo" },
+        duration: 10_000,
+      });
+      const undo = options?.cancel;
+      if (!undo) throw new Error("Expected archive Undo");
+      let releaseParent!: () => void;
+      vi.mocked(sdk.threads.unarchive).mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            releaseParent = () => resolve({ ok: true });
+          }),
+      );
+      render(<button onClick={undo.onClick}>Undo archive</button>);
+      fireEvent.click(screen.getByRole("button", { name: "Undo archive" }));
+      await vi.waitFor(() =>
+        expect(sdk.threads.unarchive).toHaveBeenCalledTimes(1),
+      );
+      expect(sdk.threads.unarchive).toHaveBeenLastCalledWith({
+        threadId: "thr_parent",
+      });
+      await act(async () => {
+        releaseParent();
+      });
+      await vi.waitFor(() =>
+        expect(
+          vi
+            .mocked(sdk.threads.unarchive)
+            .mock.calls.map(([args]) => args.threadId),
+        ).toEqual(expectedRestored),
+      );
+    },
+  );
 
   it("shows one archive toast whose Undo restores the parent and children", async () => {
     renderProvider(<ArchiveButton thread={makeThread()} />);
@@ -537,8 +586,19 @@ describe("ThreadActionsProvider archive feedback", () => {
       duration: 10_000,
       id: "thread-archived-thr_parent",
     });
-    expect(toastOptions?.description).toBeDefined();
     expect(toastOptions?.action).toBeUndefined();
+    render(
+      <QueryClientProvider client={queryClient}>
+        {toastOptions?.description}
+      </QueryClientProvider>,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Investigate archive behavior" }),
+    );
+    expect(mocks.navigate).toHaveBeenLastCalledWith(
+      `/projects/${makeThread().projectId}/threads/thr_parent`,
+    );
+    expect(appToast.dismiss).toHaveBeenCalledWith("thread-archived-thr_parent");
 
     const undoAction = toastOptions?.cancel;
     if (undoAction === undefined) {
@@ -592,8 +652,10 @@ describe("ThreadActionsProvider archive feedback", () => {
     render(<button onClick={undoAction.onClick}>Run undo</button>);
     fireEvent.click(screen.getByRole("button", { name: "Run undo" }));
 
-    expect(mocks.navigate).toHaveBeenLastCalledWith(
-      `/projects/${thread.projectId}/threads/${thread.id}`,
+    await vi.waitFor(() =>
+      expect(mocks.navigate).toHaveBeenLastCalledWith(
+        `/projects/${thread.projectId}/threads/${thread.id}`,
+      ),
     );
   });
 
@@ -630,6 +692,9 @@ describe("ThreadActionsProvider archive feedback", () => {
     render(<button onClick={undoAction.onClick}>Run undo</button>);
     fireEvent.click(screen.getByRole("button", { name: "Run undo" }));
 
+    await vi.waitFor(() =>
+      expect(sdk.threads.unarchive).toHaveBeenCalledTimes(2),
+    );
     expect(mocks.navigate).toHaveBeenCalledTimes(1);
     expect(mocks.navigate).toHaveBeenCalledWith("/");
   });
