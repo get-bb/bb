@@ -54,13 +54,13 @@ export function createConnectCredentialCache(
     },
     clear,
     async read() {
-      if (!args.encryption.isEncryptionAvailable()) {
-        return null;
-      }
       let encrypted: Buffer;
       try {
         encrypted = await fsImpl.readFile(filePath);
       } catch {
+        return null;
+      }
+      if (!args.encryption.isEncryptionAvailable()) {
         return null;
       }
       let plainText: string;
