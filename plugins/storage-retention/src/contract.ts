@@ -6,6 +6,8 @@ import {
   hostStorageRemoveExternalWorktreesResponseSchema,
   externalWorktreeSkipReasonSchema,
   maintenanceKindSchema,
+  entryCleanupInputSchema,
+  entryCleanupStatusSchema,
 } from "./storage-types.js";
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
@@ -39,6 +41,14 @@ export const previewSchema = z.object({
 export type Preview = z.infer<typeof previewSchema>;
 const machineInput = z.object({ hostId: z.string().min(1) }).strict();
 export const storageRpc = defineRpcContract({
+  startEntryCleanup: {
+    input: entryCleanupInputSchema,
+    output: z.object({ id: z.string() }),
+  },
+  entryCleanup: {
+    input: z.object({ id: z.string() }).strict(),
+    output: entryCleanupStatusSchema,
+  },
   startCleanup: {
     input: z
       .object({

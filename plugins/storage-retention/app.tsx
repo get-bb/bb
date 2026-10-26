@@ -45,6 +45,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import type { EntryCleanupInput } from "./src/storage-types.js";
 import type { storageRpc, State, Policy } from "./src/contract.js";
 import {
   LARGE_FILE_MIN_BYTES,
@@ -144,7 +145,7 @@ function cleanupFeedback(
     failed,
     description,
     background: { hostId },
-    id: `storage:${hostId ?? "all"}:${kind === "largeFileCleanup" || kind === "archivedFileCleanup" ? kind : "maintenance"}`,
+    id: `storage:${hostId ?? "all"}:${kind}`,
   };
 }
 type StorageData = {
@@ -191,20 +192,24 @@ function StoragePanel(props: PluginNavPanelProps) {
     }
   }, [rpc, sdk]);
   const previousJobs = useRef(new Map<string, string>());
+  const observedHosts = useRef(new Set<string>());
   const previousRemovals = useRef(new Map<string, Map<string, string>>());
   useEffect(() => {
     for (const host of data?.hosts ?? []) {
-      for (const kind of [
-        "largeFileCleanup",
-        "archivedFileCleanup",
-        "maintenance",
-      ] as const) {
-        const job = host[kind];
-        const key = `${host.hostId}:${kind}`;
+      const statuses = [
+        { kind: "largeFileCleanup" as const, job: host.largeFileCleanup },
+        { kind: "archivedFileCleanup" as const, job: host.archivedFileCleanup },
+        ...host.maintenanceJobs.map((job) => ({
+          kind: "maintenance" as const,
+          job,
+        })),
+      ];
+      for (const { kind, job } of statuses) {
+        const key = `${host.hostId}:${"kind" in job ? job.kind : kind}`;
         const signature = JSON.stringify(job);
         const previous = previousJobs.current.get(key);
         if (
-          previous !== undefined &&
+          observedHosts.current.has(host.hostId) &&
           previous !== signature &&
           job.state !== "idle"
         ) {
@@ -218,11 +223,16 @@ function StoragePanel(props: PluginNavPanelProps) {
             host.hostId,
             machine,
           );
-          if (job.state === "running")
-            toast.loading(feedback.title, {
-              id: feedback.id,
-              description: machine,
-            });
+          if (job.state === "running" || job.state === "queued")
+            toast.loading(
+              job.state === "queued"
+                ? `Queued: ${feedback.title}`
+                : feedback.title,
+              {
+                id: feedback.id,
+                description: machine,
+              },
+            );
           if (job.state === "failed")
             toast.error(feedback.failed, {
               id: feedback.id,
@@ -244,17 +254,22 @@ function StoragePanel(props: PluginNavPanelProps) {
         if (seen === undefined || seen.get(removal.path) === signature)
           continue;
         const id = worktreeRemovalToastId(host.hostId, removal.path);
-        if (removal.state === "running")
-          toast.loading("Removing worktree", {
-            id,
-            description: removal.path,
-          });
+        if (removal.state === "running" || removal.state === "queued")
+          toast.loading(
+            removal.state === "queued"
+              ? "Queued: Removing worktree"
+              : "Removing worktree",
+            {
+              id,
+              description: removal.path,
+            },
+          );
         else if (removal.state === "completed")
           toast.success("Worktree removed", {
             id,
             description: `${removal.path} · ${bytes(removal.removedBytes)} freed`,
           });
-        else
+        else if (removal.state === "skipped" || removal.state === "failed")
           toast.error("Couldn’t remove worktree", {
             id,
             description: `${removal.path} · ${
@@ -265,6 +280,7 @@ function StoragePanel(props: PluginNavPanelProps) {
           });
       }
       previousRemovals.current.set(host.hostId, next);
+      observedHosts.current.add(host.hostId);
     }
   }, [data]);
   useEffect(() => {
@@ -334,7 +350,6 @@ function StoragePage({
   const detail = hosts.find((host) => host.hostId === hostId) ?? null;
   const [savingSetting, setSavingSetting] = useState(false);
   const settingSavePending = useRef(false);
-  const [busy, setBusy] = useState(false);
   const rowActions = useRef(new Set<string>());
   const [expandedThreadsHostId, setExpandedThreadsHostId] = useState<
     string | null
@@ -363,7 +378,6 @@ function StoragePage({
     },
     success?: (result: T) => string,
   ) {
-    setBusy(true);
     const id = toast.loading(feedback.title, {
       id: feedback.id,
       description: feedback.description,
@@ -386,9 +400,50 @@ function StoragePage({
         id,
         description: `${feedback.description} · ${message(error)}`,
       });
-    } finally {
-      setBusy(false);
     }
+  }
+  async function runEntryCleanup(
+    input: EntryCleanupInput,
+    feedback: ActionFeedback,
+  ) {
+    const { id } = await rpc.call("startEntryCleanup", input);
+    let previous = "";
+    for (;;) {
+      const status = await rpc.call("entryCleanup", { id });
+      if (status.state === "failed") throw new Error(status.message);
+      if (status.state === "completed") return status.result;
+      if (status.state !== previous) {
+        toast.loading(
+          status.state === "queued"
+            ? `Queued: ${feedback.title}`
+            : feedback.title,
+          {
+            id: feedback.id,
+            description: feedback.description,
+          },
+        );
+        previous = status.state;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+  async function removeDevelopment(
+    input: { hostId: string; names: string[]; stopRunning: boolean },
+    toastId = developmentToastId(input.hostId, input.names),
+  ) {
+    const result = await runEntryCleanup(
+      { kind: "development", ...input },
+      {
+        id: toastId,
+        title: "Deleting development data",
+        completed: "Development data deleted",
+        failed: "Couldn’t delete development data",
+        description: `${hosts.find((host) => host.hostId === input.hostId)?.report?.developerStorage?.path ?? ""}/${input.names.join(", ")}`,
+      },
+    );
+    if (result.kind !== "development")
+      throw new Error("Unexpected cleanup result");
+    return result;
   }
   async function saveSetting<K extends keyof Policy>(key: K, value: Policy[K]) {
     if (state === null || settingSavePending.current) return;
@@ -467,7 +522,7 @@ function StoragePage({
   const scanning = detail?.scan.state === "scanning";
   const machine = hostId ? machines[hostId] : undefined;
   const offline = machine !== undefined && machine.status !== "connected";
-  const locked = busy || offline;
+  const locked = offline;
   function devInstancesCleanup(target: string, count: number, size: number) {
     return {
       key: "dev-instances",
@@ -550,7 +605,7 @@ function StoragePage({
         <Button
           variant="outline"
           size="sm"
-          disabled={busy}
+          disabled={offline}
           onClick={() => setCleanup(null)}
         >
           Cancel
@@ -558,7 +613,7 @@ function StoragePage({
         <Button
           variant="destructive"
           size="sm"
-          disabled={busy}
+          disabled={offline}
           onClick={() =>
             void perform(
               async () => {
@@ -637,7 +692,7 @@ function StoragePage({
                 variant="outline"
                 size="sm"
                 className="shrink-0"
-                disabled={busy || scanning || offline || !detail}
+                disabled={scanning || offline || !detail}
                 onClick={() =>
                   void perform(() => rpc.call("scanHost", { hostId }))
                 }
@@ -1070,15 +1125,26 @@ function StoragePage({
                                 void runRowAction(
                                   thread.threadId,
                                   {
+                                    id: `storage:thread:${thread.threadId}`,
                                     title: "Deleting thread files",
                                     completed: "Thread files deleted",
                                     failed: "Couldn’t delete thread files",
                                     description: thread.title,
                                   },
                                   async () => {
-                                    await rpc.call("clearThread", {
-                                      threadId: thread.threadId,
-                                    });
+                                    await runEntryCleanup(
+                                      {
+                                        kind: "thread",
+                                        threadId: thread.threadId,
+                                      },
+                                      {
+                                        id: `storage:thread:${thread.threadId}`,
+                                        title: "Deleting thread files",
+                                        completed: "Thread files deleted",
+                                        failed: "Couldn’t delete thread files",
+                                        description: thread.title,
+                                      },
+                                    );
                                     return thread.title;
                                   },
                                 )
@@ -1120,6 +1186,10 @@ function StoragePage({
                       setCleanup({
                         key: "dev-selected",
                         feedback: {
+                          id: developmentToastId(
+                            report.hostId,
+                            entries.map((entry) => entry.name),
+                          ),
                           title: "Deleting development data",
                           completed: "Development data deleted",
                           failed: "Couldn’t delete development data",
@@ -1139,8 +1209,7 @@ function StoragePage({
                             offset < entries.length;
                             offset += 500
                           ) {
-                            const result = await rpc.call(
-                              "removeDevInstances",
+                            const result = await removeDevelopment(
                               {
                                 hostId: report.hostId,
                                 names: entries
@@ -1148,14 +1217,15 @@ function StoragePage({
                                   .map((entry) => entry.name),
                                 stopRunning: true,
                               },
+                              developmentToastId(
+                                report.hostId,
+                                entries.map((entry) => entry.name),
+                              ),
                             );
                             removedCount += result.removedCount;
                             removedBytes += result.removedBytes;
                           }
-                          if (removedCount === 0)
-                            throw new Error(
-                              "No data was deleted. Rescan the machine to update its status.",
-                            );
+
                           return `${plural(removedCount, "instance")} removed · ${bytes(removedBytes)} freed`;
                         },
                       });
@@ -1164,13 +1234,14 @@ function StoragePage({
                       void runRowAction(
                         `dev:${entry.name}`,
                         {
+                          id: developmentToastId(report.hostId, [entry.name]),
                           title: "Deleting development data",
                           completed: "Development data deleted",
                           failed: "Couldn’t delete development data",
                           description: `${report.developerStorage!.path}/${entry.name}`,
                         },
                         async () => {
-                          const result = await rpc.call("removeDevInstances", {
+                          const result = await removeDevelopment({
                             hostId: report.hostId,
                             names: [entry.name],
                             stopRunning: false,
@@ -1179,6 +1250,9 @@ function StoragePage({
                             setCleanup({
                               key: `dev-instance:${entry.name}`,
                               feedback: {
+                                id: developmentToastId(report.hostId, [
+                                  entry.name,
+                                ]),
                                 title: "Deleting development data",
                                 completed: "Development data deleted",
                                 failed: "Couldn’t delete development data",
@@ -1189,25 +1263,15 @@ function StoragePage({
                               detail:
                                 "Its dev server is running. BB will stop it, then delete its database, logs, and thread files. The source checkout is kept. This can’t be undone.",
                               run: async () => {
-                                const stopped = await rpc.call(
-                                  "removeDevInstances",
-                                  {
-                                    hostId: report.hostId,
-                                    names: [entry.name],
-                                    stopRunning: true,
-                                  },
-                                );
-                                if (stopped.removedCount === 0)
-                                  throw new Error(
-                                    "No data was deleted. Rescan the machine to update its status.",
-                                  );
+                                const stopped = await removeDevelopment({
+                                  hostId: report.hostId,
+                                  names: [entry.name],
+                                  stopRunning: true,
+                                });
+
                                 return `${report.developerStorage!.path}/${entry.name} · ${bytes(stopped.removedBytes)} freed`;
                               },
                             });
-                          else if (result.removedCount === 0)
-                            throw new Error(
-                              "No data was deleted. Rescan the machine to update its status.",
-                            );
                           else
                             return `${report.developerStorage!.path}/${entry.name} · ${bytes(result.removedBytes)} freed`;
                           return null;
@@ -1241,7 +1305,7 @@ function StoragePage({
                     variant="outline"
                     size="sm"
                     className="shrink-0"
-                    disabled={busy || archivedLargeFiles.fileCount === 0}
+                    disabled={archivedLargeFiles.fileCount === 0}
                     onClick={() => setCleanup(suggestion.cleanup)}
                   >
                     {suggestion.action}
@@ -1257,7 +1321,7 @@ function StoragePage({
                   <Button
                     variant="outline"
                     size="sm"
-                    disabled={busy || scannable.length === 0}
+                    disabled={scannable.length === 0}
                     onClick={() =>
                       void perform(() => rpc.call("scanAll", null))
                     }
@@ -1285,7 +1349,6 @@ function StoragePage({
                     host={host}
                     machine={machines[host.hostId]}
                     server={host.hostId === primaryHostId}
-                    busy={busy}
                     onOpen={() =>
                       navigate.toPluginPanel(PANEL, { subPath: host.hostId })
                     }
@@ -1609,14 +1672,12 @@ function MachineRow({
   host,
   machine,
   server,
-  busy,
   onOpen,
   onScan,
 }: {
   host: Hosts[number];
   machine: Machine | undefined;
   server: boolean;
-  busy: boolean;
   onOpen: () => void;
   onScan: () => void;
 }) {
@@ -1700,7 +1761,7 @@ function MachineRow({
           size="icon"
           className="size-7"
           aria-label={`${report ? "Rescan" : "Scan"} ${name}`}
-          disabled={busy || scanning || machine?.status !== "connected"}
+          disabled={scanning || machine?.status !== "connected"}
           onClick={onScan}
         >
           <Icon
@@ -1851,6 +1912,10 @@ function ProjectWorktrees({
 type ExternalWorktree = NonNullable<
   HostReport["report"]
 >["externalWorktrees"][number];
+
+function developmentToastId(hostId: string, names: string[]) {
+  return `storage:${hostId}:dev:${JSON.stringify([...names].sort())}`;
+}
 
 function worktreeRemovalToastId(hostId: string, worktreePath: string) {
   return `storage:${hostId}:worktree:${worktreePath}`;

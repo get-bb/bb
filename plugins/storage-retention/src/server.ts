@@ -71,6 +71,8 @@ export default function plugin(bb: BbPluginApi) {
     storage.clearPendingArchives(cleanupEnabled),
   );
   bb.rpc.register(storageRpc, {
+    startEntryCleanup: storage.startEntryCleanup,
+    entryCleanup: storage.entryCleanup,
     startCleanup: storage.startCleanup,
     hosts: () => storage.hosts(),
     host: storage.host,

@@ -40,6 +40,7 @@ function fixture(subPath = "host_test") {
       largeFileCleanup: { state: "idle" },
       archivedFileCleanup: { state: "idle" },
       maintenance: { state: "idle" },
+      maintenanceJobs: [],
       externalWorktreeRemovals: [],
       report: {
         hostId: "host_test",
@@ -96,6 +97,10 @@ function fixture(subPath = "host_test") {
       stoppedProcessCount: 1,
     }),
   );
+  const entryJobs = new Map<
+    string,
+    import("./src/storage-types.js").EntryCleanupStatus
+  >();
   const start = vi.fn(async () => null);
   const removeWorktree = vi.fn(async () => ({ state: "started" as const }));
   const Component = app.navPanels[0]!.component;
@@ -114,8 +119,29 @@ function fixture(subPath = "host_test") {
         state: () => state,
         configure: (input) => configure(policySchema.parse(input)),
         hosts: reports,
-        removeDevInstances: (input) =>
-          remove(storageRpc.removeDevInstances.input.parse(input)),
+        startEntryCleanup: (raw) => {
+          const input = storageRpc.startEntryCleanup.input.parse(raw);
+          const id = JSON.stringify(input);
+          if (input.kind !== "development")
+            throw new Error("Unexpected cleanup");
+          entryJobs.set(id, { state: "running" });
+          void remove({
+            hostId: input.hostId,
+            names: input.names,
+            stopRunning: input.stopRunning,
+          }).then(
+            (result) =>
+              entryJobs.set(id, {
+                state: "completed",
+                result: { kind: "development", ...result },
+              }),
+            (error: Error) =>
+              entryJobs.set(id, { state: "failed", message: error.message }),
+          );
+          return { id };
+        },
+        entryCleanup: (raw) =>
+          entryJobs.get(storageRpc.entryCleanup.input.parse(raw).id),
         startClearArchivedFiles: start,
         startClearLargeFiles: start,
         startCleanup: start,
@@ -372,7 +398,7 @@ it("starts orphan cleanup in the background without locking the page and toasts 
   expect(
     slot.rpcCalls.find((call) => call.method === "startCleanup")?.input,
   ).toEqual({ hostId: "host_test", kind: "orphans" });
-  hosts[0]!.maintenance = { state: "running", kind: "orphans" };
+  hosts[0]!.maintenanceJobs = [{ state: "running", kind: "orphans" }];
   await act(async () => {
     await slot.emitRealtime("changed", null);
   });
@@ -387,11 +413,13 @@ it("starts orphan cleanup in the background without locking the page and toasts 
       .getByRole("button", { name: "Remove orphans" })
       .hasAttribute("disabled"),
   ).toBe(false);
-  hosts[0]!.maintenance = {
-    state: "completed",
-    kind: "orphans",
-    message: "Removed 1 orphaned storage folder",
-  };
+  hosts[0]!.maintenanceJobs = [
+    {
+      state: "completed",
+      kind: "orphans",
+      message: "Removed 1 orphaned storage folder",
+    },
+  ];
   await act(async () => {
     await slot.emitRealtime("changed", null);
   });
@@ -468,11 +496,13 @@ it.each([
     await within(slot.container).findByRole("button", {
       name: "Remove orphans",
     });
-    hosts[0]!.maintenance = {
-      state: "completed",
-      kind,
-      message: "Test machine",
-    };
+    hosts[0]!.maintenanceJobs = [
+      {
+        state: "completed",
+        kind,
+        message: "Test machine",
+      },
+    ];
     await act(async () => {
       await slot.emitRealtime("changed", null);
     });
@@ -514,6 +544,23 @@ it("hands a started worktree removal to one toast that the server's result compl
   );
   expect(removeWorktree).toHaveBeenCalledTimes(1);
   expect(page.queryAllByRole("status")).toEqual([]);
+  hosts[0]!.externalWorktreeRemovals = [
+    { path: worktreePath, state: "queued" },
+  ];
+  await act(async () => {
+    await slot.emitRealtime("changed", null);
+  });
+  await waitFor(() =>
+    expect(
+      document.querySelector("[data-sonner-toast] [data-title]")?.textContent,
+    ).toBe("Queued: Removing worktree"),
+  );
+  expect(document.querySelectorAll("[data-sonner-toast]")).toHaveLength(1);
+  expect(
+    page
+      .getByRole("button", { name: "Remove worktree: heavy" })
+      .hasAttribute("disabled"),
+  ).toBe(false);
   hosts[0]!.externalWorktreeRemovals = [
     { path: worktreePath, state: "running" },
   ];
