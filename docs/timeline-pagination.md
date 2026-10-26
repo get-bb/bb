@@ -198,10 +198,13 @@ answers with the full window. `delta` holds:
 - `fields`: the top-level fields whose value changed, with
   `contextWindowUsage: null` when usage is no longer reported.
 
-The server holds the last eight latest windows per thread for the 16 most
-recently used threads, within 32 MB of window JSON. Over the budget it drops the
-least recently used threads first, then the oldest windows of the current
-thread, keeping its newest. A dropped tag only costs a full window.
+The server keeps a served window while someone may diff against it: the latest
+window for each request shape, every window a connected subscriber's tag names,
+and each read's window for 30 seconds. A later read with that window's
+`afterTag`, or the subscription sending its tag, releases the read's hold. It
+keeps at most 16 threads within 32 MB of window JSON, dropping the least
+recently used threads first, and never keeps a window over 8 MB. A dropped tag
+only costs a full window.
 
 `applyThreadTimelineDelta` from `@bb/server-contract` rebuilds the full window,
 or returns `null` when the held window's tag differs from `afterTag` or the

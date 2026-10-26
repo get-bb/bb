@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { threads } from "@bb/db";
 import { turnScope, type ThreadTimelineSubscriptionTarget } from "@bb/domain";
 import {
@@ -73,6 +73,10 @@ function applySignal(
   }
   return held === null ? null : applyThreadTimelineDelta(held, timeline);
 }
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("thread-timeline realtime push", () => {
   it("pushes deltas from the fetched window that keep a subscriber equal to a fresh GET", async () => {
@@ -639,6 +643,32 @@ describe("thread-timeline pushes for tag-aware subscriptions", () => {
       });
       expect(applySignal(older, olderPush!)).toEqual(fresh);
       expect(applySignal(newer, newerPush!)).toEqual(fresh);
+    });
+  });
+
+  it("keeps the window a hidden subscriber holds while other readers move past it", async () => {
+    await withTestHarness(async (harness) => {
+      const { append, target, thread } = seedRunningThread(harness);
+      append();
+      const held = await freshTimeline(harness, thread.id);
+      const socket = createMockHubSocket();
+      subscribe(harness, socket, target, held.tag);
+      harness.deps.hub.setClientVisible(socket, false);
+      vi.useFakeTimers({ now: Date.now() + 30_001, toFake: ["Date"] });
+      for (let read = 0; read < 3; read += 1) {
+        append();
+        await freshTimeline(harness, thread.id);
+      }
+      harness.deps.hub.setClientVisible(socket, true);
+      append();
+      await settlePushes();
+      const [resumed] = timelineSignals(socket.messages.splice(0));
+      expect(resumed?.timeline).toMatchObject({
+        delta: { afterTag: held.tag },
+      });
+      expect(applySignal(held, resumed!)).toEqual(
+        await freshTimeline(harness, thread.id),
+      );
     });
   });
 

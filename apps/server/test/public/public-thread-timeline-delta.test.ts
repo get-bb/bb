@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   encodeClientTurnRequestIdNumber,
   threadScope,
@@ -119,6 +119,10 @@ function assistantText(rows: readonly TimelineRow[]): string | null {
   }
   return null;
 }
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("GET /threads/:id/timeline?afterTag (row-patch delta)", () => {
   it("a full fetch carries a tag, no delta, and echoes maxSeq", async () => {
@@ -249,7 +253,7 @@ describe("GET /threads/:id/timeline?afterTag (row-patch delta)", () => {
     });
   });
 
-  it("answers interleaved clients from the exact window each holds, then evicts", async () => {
+  it("answers interleaved clients from the exact window each holds until the hold lapses", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedThreadFixture(harness);
       const turn = {
@@ -280,7 +284,8 @@ describe("GET /threads/:id/timeline?afterTag (row-patch delta)", () => {
       appendMessage("one");
 
       let desktop = await getTimeline(harness, thread.id);
-      const phone = desktop;
+      const phone = await getTimeline(harness, thread.id);
+      expect(phone.tag).toBe(desktop.tag);
       for (const text of ["two", "three"]) {
         appendMessage(text);
         desktop = (await getDelta(harness, thread.id, desktop)).applied;
@@ -291,11 +296,13 @@ describe("GET /threads/:id/timeline?afterTag (row-patch delta)", () => {
         fresh,
       );
 
-      for (let read = 0; read < 8; read += 1) {
-        appendMessage(`more-${read}`);
-        await getTimeline(harness, thread.id);
-      }
-      const evicted = await readTimeline(harness, thread.id, phone.tag);
+      const stale = await getTimeline(harness, thread.id);
+      appendMessage("four");
+      await getTimeline(harness, thread.id);
+      vi.useFakeTimers({ now: Date.now() + 30_001, toFake: ["Date"] });
+      appendMessage("five");
+      await getTimeline(harness, thread.id);
+      const evicted = await readTimeline(harness, thread.id, stale.tag);
       expect(isThreadTimelineDelta(evicted)).toBe(false);
     });
   });
@@ -415,6 +422,7 @@ describe("GET /threads/:id/timeline?afterTag (row-patch delta)", () => {
       });
       const before = await getTimeline(harness, thread.id);
       expect(JSON.stringify(before.rows)).toContain("before compaction");
+      expect((await getTimeline(harness, thread.id)).tag).toBe(before.tag);
 
       harness.deps.db.$client
         .prepare(

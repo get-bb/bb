@@ -69,6 +69,7 @@ export type ServerChangedMessage =
 type ChangedMessageListener = (message: ServerChangedMessage) => void;
 type ThreadTimelineTagListener = (
   target: ThreadTimelineSubscriptionTarget,
+  tag: string,
 ) => void;
 
 export type ThreadTimelineSubscriberBaseline =
@@ -662,7 +663,7 @@ export class NotificationHub implements DbNotifier {
     this.watchedTargets.update([{ key, target: { ...target } }], []);
     if (target.kind === "thread-timeline" && typeof timelineTag === "string") {
       for (const listener of [...this.timelineTagListeners]) {
-        listener(target);
+        listener(target, timelineTag);
       }
     }
   }
@@ -707,6 +708,24 @@ export class NotificationHub implements DbNotifier {
         socket,
       };
     });
+  }
+
+  listThreadTimelineTags(threadId: string): Set<string> {
+    const held = new Set<string>();
+    for (const [socket, tags] of this.timelineTagsBySocket) {
+      const targets = this.clientKeysBySocket.get(socket);
+      for (const [key, tag] of tags) {
+        const target = targets?.get(key);
+        if (
+          tag !== null &&
+          target?.kind === "thread-timeline" &&
+          target.threadId === threadId
+        ) {
+          held.add(tag);
+        }
+      }
+    }
+    return held;
   }
 
   sendThreadTimelineSignal(
