@@ -48,6 +48,7 @@ type PersistedThreadFixedPanelTab = Exclude<
 function persistedThreadTabs(
   tabs: readonly (FixedPanelTab | ThreadTab)[],
 ): readonly PersistedThreadFixedPanelTab[] {
+  const seenIds = new Set<string>();
   return tabs
     .filter(
       (tab): tab is PersistedThreadFixedPanelTab =>
@@ -59,7 +60,12 @@ function persistedThreadTabs(
         : tab.kind === "thread-info"
           ? createThreadInfoFixedPanelTab()
           : tab,
-    );
+    )
+    .filter((tab) => {
+      if (seenIds.has(tab.id)) return false;
+      seenIds.add(tab.id);
+      return true;
+    });
 }
 
 export function areThreadTabListsEquivalent(
