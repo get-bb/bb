@@ -413,6 +413,10 @@ chat-pane focus). These start unassigned on Windows/Linux to preserve native
 Control-arrow editing. `pane.focus.previous` / `pane.focus.next` and
 `panel.fullScreen.toggle` start unassigned.
 
+`thread.rename`, `thread.archive`, `thread.markRead`, and `thread.pin` start
+unassigned and act on the focused pane's open thread; Mark read and Pin toggle
+like the matching thread menu item.
+
 | Area      | Command                                      | Default                     | Availability             |
 | --------- | -------------------------------------------- | --------------------------- | ------------------------ |
 | Palette   | Quick palette                                | `Mod+Shift+P`               | All clients              |
@@ -421,6 +425,8 @@ Control-arrow editing. `pane.focus.previous` / `pane.focus.next` and
 | Threads   | Search threads                               | `Mod+K`                     | All clients              |
 | Threads   | Rename focused thread                        | Unassigned                  | Thread view              |
 | Threads   | Archive focused thread                       | Unassigned                  | Thread view              |
+| Threads   | Mark focused thread read or unread           | Unassigned                  | Thread view              |
+| Threads   | Pin or unpin focused thread                  | Unassigned                  | Thread view              |
 | Threads   | Previous / next thread                       | Surface defaults above      | Desktop / web            |
 | Threads   | Open visible thread 1–9                      | Platform defaults above     | Web / desktop            |
 | Layout    | Previous / next chat pane                    | Unassigned                  | While split              |

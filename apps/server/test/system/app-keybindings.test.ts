@@ -245,6 +245,8 @@ describe("app keybindings", () => {
       for (const command of [
         "thread.rename",
         "thread.archive",
+        "thread.markRead",
+        "thread.pin",
         "panel.fullScreen.toggle",
       ] as const) {
         expect(

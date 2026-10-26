@@ -2680,7 +2680,7 @@ takes `threadBulkActions` for the entries it lists.
 (`apps/app/src/lib/thread-actions/core-thread-actions.ts`), registered under
 the reserved `bb--core` owner. The header menu (`ThreadDetailView` →
 `ThreadDetailHeader`), `RootComposeMobileRecents`, and
-`ThreadArchiveCommandHandler` read the same registry, and the thread list's
+`PaneThreadActionCommandHandler` read the same registry, and the thread list's
 row menus and quick actions use the SDK exports. The contract table in
 `ThreadActionsMenu.test.tsx` runs every menu surface against the same
 registrations. Core's Mark read, Pin, Archive and Delete registrations carry

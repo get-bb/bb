@@ -1653,6 +1653,24 @@
       }
     },
     {
+      "command": "thread.markRead",
+      "desktopOnly": false,
+      "shortcut": null,
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.pin",
+      "desktopOnly": false,
+      "shortcut": null,
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
       "command": "app.back",
       "desktopOnly": false,
       "shortcut": {

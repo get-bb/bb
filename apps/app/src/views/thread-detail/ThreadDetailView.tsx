@@ -269,7 +269,7 @@ import {
 import { useRouteState } from "@/hooks/useRouteState";
 import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
 import { usePaneContext } from "./PaneContext";
-import { ThreadArchiveCommandHandler } from "./ThreadArchiveCommandHandler";
+import { PaneThreadActionCommandHandler } from "./PaneThreadActionCommandHandler";
 
 const EMPTY_PARENT_THREADS: readonly ThreadListEntry[] = [];
 const EMPTY_CHILD_THREAD_ITEMS: readonly ChildThreadPendingAttentionSource[] =
@@ -2825,7 +2825,7 @@ function ThreadDetailViewInternal(
   );
   return (
     <>
-      <ThreadArchiveCommandHandler thread={threadActionTarget} />
+      <PaneThreadActionCommandHandler thread={threadActionTarget} />
       <ThreadProviderContext.Provider value={threadProviderContextValue}>
         <PluginThreadPanelNavigationProvider
           openThreadPanel={handleOpenTimelinePluginPanel}
