@@ -1229,98 +1229,140 @@ describe("workspace open targets", () => {
     });
   });
 
-  it("discovers generic macOS apps from file-specific LaunchServices results", async () => {
-    const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
-    const filePath = path.join(workspacePath, "notes.md");
-    const mockEditPath = "/Applications/MockEdit.app";
-    const zedPath = "/Applications/Zed.app";
-    const execFile: ExecFileHandler = async (file, commandArgs) => {
-      if (file === "mdfind") {
-        const query = commandArgs.join(" ");
-        if (query.includes("kMDItemContentType")) {
-          return { stdout: `${mockEditPath}\n${zedPath}\n` };
-        }
-        if (query.includes("dev.zed.Zed")) {
-          return { stdout: `${zedPath}\n` };
-        }
-        return { stdout: "" };
-      }
-      if (file === "osascript" && commandArgs.includes("JavaScript")) {
-        return {
-          stdout: JSON.stringify([
-            { appPath: mockEditPath, bundleId: "com.example.MockEdit" },
-            { appPath: zedPath, bundleId: "dev.zed.Zed" },
-          ]),
-        };
-      }
-      if (file === "plutil") {
-        const key = commandArgs[1];
-        const plistPath = commandArgs.at(-1) ?? "";
-        if (plistPath.includes("MockEdit.app")) {
-          if (key === "CFBundleIdentifier") {
-            return { stdout: "com.example.MockEdit\n" };
+  it.each([false, true])(
+    "discovers fresh file associations with cached base targets: %s",
+    async (reuseBaseTargets) => {
+      const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
+      const filePath = path.join(workspacePath, "notes.md");
+      const mockEditPath = "/Applications/MockEdit.app";
+      const zedPath = "/Applications/Zed.app";
+      const calls: string[] = [];
+      let associatedApplications = [
+        { appPath: mockEditPath, bundleId: "com.example.MockEdit" },
+        { appPath: zedPath, bundleId: "dev.zed.Zed" },
+      ];
+      const execFile: ExecFileHandler = async (file, commandArgs) => {
+        calls.push(file);
+        if (file === "mdfind") {
+          const query = commandArgs.join(" ");
+          if (query.includes("kMDItemContentType")) {
+            return { stdout: `${mockEditPath}\n${zedPath}\n` };
           }
-          if (key === "CFBundleDisplayName") {
-            return { stdout: "Mock Edit\n" };
+          if (query.includes("dev.zed.Zed")) {
+            return { stdout: `${zedPath}\n` };
           }
           return { stdout: "" };
         }
-        if (plistPath.includes("Zed.app")) {
-          if (key === "CFBundleIdentifier") {
-            return { stdout: "dev.zed.Zed\n" };
+        if (file === "osascript" && commandArgs.includes("JavaScript")) {
+          return {
+            stdout: JSON.stringify(associatedApplications),
+          };
+        }
+        if (file === "plutil") {
+          const key = commandArgs[1];
+          const plistPath = commandArgs.at(-1) ?? "";
+          if (plistPath.includes("MockEdit.app")) {
+            if (key === "CFBundleIdentifier") {
+              return { stdout: "com.example.MockEdit\n" };
+            }
+            if (key === "CFBundleDisplayName") {
+              return { stdout: "Mock Edit\n" };
+            }
+            return { stdout: "" };
           }
-          if (key === "CFBundleDisplayName") {
-            return { stdout: "Zed\n" };
+          if (plistPath.includes("Zed.app")) {
+            if (key === "CFBundleIdentifier") {
+              return { stdout: "dev.zed.Zed\n" };
+            }
+            if (key === "CFBundleDisplayName") {
+              return { stdout: "Zed\n" };
+            }
           }
         }
+        if (file === "which") {
+          throw new Error("Executable not found");
+        }
+        return { stdout: "" };
+      };
+
+      try {
+        await writeFile(filePath, "# Notes\n");
+
+        const globalTargets = await listWorkspaceOpenTargetsWithRuntime(
+          createRuntime({ execFile }),
+        );
+        expect(
+          globalTargets.find((target) => target.id === "zed"),
+        ).toBeDefined();
+        expect(
+          globalTargets.find(
+            (target) => target.id === "mac-app:com.example.MockEdit",
+          ),
+        ).toBeUndefined();
+
+        calls.length = 0;
+        const options = {
+          path: filePath,
+          ...(reuseBaseTargets ? { baseTargets: globalTargets } : {}),
+        };
+        const fileTargets = await listWorkspaceOpenTargetsWithRuntime(
+          createRuntime({ execFile }),
+          options,
+        );
+        expect(calls.includes("mdfind")).toBe(!reuseBaseTargets);
+        expect(calls).toContain("osascript");
+        expect(
+          fileTargets.filter((target) => target.id === "zed"),
+        ).toHaveLength(1);
+
+        expect(fileTargets.find((target) => target.id === "zed")).toBeDefined();
+        expect(
+          fileTargets.find((target) => target.id === "mac-app:dev.zed.Zed"),
+        ).toBeUndefined();
+        expect(
+          fileTargets.find(
+            (target) => target.id === "mac-app:com.example.MockEdit",
+          ),
+        ).toMatchObject({
+          capabilities: {
+            openDirectory: true,
+            openFile: true,
+            openFileAtColumn: false,
+            openFileAtLine: false,
+          },
+          icon: { kind: "symbol", name: "app" },
+          kind: "native-app",
+          label: "Mock Edit",
+        });
+        expect(
+          globalTargets.some(
+            (target) => target.id === "mac-app:com.example.MockEdit",
+          ),
+        ).toBe(false);
+        associatedApplications = [];
+        expect(
+          await listWorkspaceOpenTargetsWithRuntime(
+            createRuntime({ execFile }),
+            options,
+          ),
+        ).toEqual(globalTargets);
+        associatedApplications = [
+          { appPath: mockEditPath, bundleId: "com.example.MockEdit" },
+        ];
+        await rm(filePath);
+        calls.length = 0;
+        expect(
+          await listWorkspaceOpenTargetsWithRuntime(
+            createRuntime({ execFile }),
+            options,
+          ),
+        ).toEqual(globalTargets);
+        expect(calls).not.toContain("osascript");
+      } finally {
+        await rm(workspacePath, { force: true, recursive: true });
       }
-      if (file === "which") {
-        throw new Error("Executable not found");
-      }
-      return { stdout: "" };
-    };
-
-    try {
-      await writeFile(filePath, "# Notes\n");
-
-      const globalTargets = await listWorkspaceOpenTargetsWithRuntime(
-        createRuntime({ execFile }),
-      );
-      expect(globalTargets.find((target) => target.id === "zed")).toBeDefined();
-      expect(
-        globalTargets.find(
-          (target) => target.id === "mac-app:com.example.MockEdit",
-        ),
-      ).toBeUndefined();
-
-      const fileTargets = await listWorkspaceOpenTargetsWithRuntime(
-        createRuntime({ execFile }),
-        { path: filePath },
-      );
-
-      expect(fileTargets.find((target) => target.id === "zed")).toBeDefined();
-      expect(
-        fileTargets.find((target) => target.id === "mac-app:dev.zed.Zed"),
-      ).toBeUndefined();
-      expect(
-        fileTargets.find(
-          (target) => target.id === "mac-app:com.example.MockEdit",
-        ),
-      ).toMatchObject({
-        capabilities: {
-          openDirectory: true,
-          openFile: true,
-          openFileAtColumn: false,
-          openFileAtLine: false,
-        },
-        icon: { kind: "symbol", name: "app" },
-        kind: "native-app",
-        label: "Mock Edit",
-      });
-    } finally {
-      await rm(workspacePath, { force: true, recursive: true });
-    }
-  });
+    },
+  );
 
   it("opens generic macOS app targets by bundle id", async () => {
     const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));

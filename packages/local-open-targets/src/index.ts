@@ -975,9 +975,8 @@ async function listKnownMacWorkspaceOpenTargets(
   return targets;
 }
 
-export async function listWorkspaceOpenTargetsWithRuntime(
+async function listBaseWorkspaceOpenTargets(
   runtime: WorkspaceOpenTargetRuntime,
-  options: ListWorkspaceOpenTargetsOptions = {},
 ): Promise<WorkspaceOpenTarget[]> {
   if (runtime.platform === "win32") {
     return [
@@ -998,8 +997,21 @@ export async function listWorkspaceOpenTargetsWithRuntime(
     ];
   }
 
-  const targets: WorkspaceOpenTarget[] = [];
-  const seenTargetIds = new Set<WorkspaceOpenTargetId>();
+  return listKnownMacWorkspaceOpenTargets(runtime);
+}
+
+export async function listWorkspaceOpenTargetsWithRuntime(
+  runtime: WorkspaceOpenTargetRuntime,
+  options: ListWorkspaceOpenTargetsOptions = {},
+): Promise<WorkspaceOpenTarget[]> {
+  const baseTargets =
+    options.baseTargets ?? (await listBaseWorkspaceOpenTargets(runtime));
+  if (runtime.platform !== "darwin" || options.path === undefined) {
+    return baseTargets;
+  }
+
+  const targets = [...baseTargets];
+  const seenTargetIds = new Set(baseTargets.map((target) => target.id));
   const pushTarget = (target: WorkspaceOpenTarget): void => {
     if (seenTargetIds.has(target.id)) {
       return;
@@ -1008,20 +1020,18 @@ export async function listWorkspaceOpenTargetsWithRuntime(
     targets.push(target);
   };
 
-  for (const target of await listKnownMacWorkspaceOpenTargets(runtime)) {
-    pushTarget(target);
-  }
-
-  const pathSpecificApplications =
-    options.path === undefined
-      ? []
-      : await listMacApplicationsForFilePath(options.path, runtime);
+  const pathSpecificApplications = await listMacApplicationsForFilePath(
+    options.path,
+    runtime,
+  );
   for (const application of pathSpecificApplications) {
     const adapter = findLaunchAdapterForMacApplication(application);
     if (adapter !== null) {
-      pushTarget(
-        await toWorkspaceOpenTarget(adapter, runtime, application.appPath),
-      );
+      if (!seenTargetIds.has(adapter.id)) {
+        pushTarget(
+          await toWorkspaceOpenTarget(adapter, runtime, application.appPath),
+        );
+      }
       continue;
     }
     if (application.bundleId !== null) {

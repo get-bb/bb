@@ -1009,17 +1009,23 @@ the resolved environment is applied.
 
 ## Workspace Open-Target Discovery
 
-The host daemon's `GET /workspace-open-targets` caches the general installed-app
-list, including icons, for 60 seconds after discovery completes. Concurrent
-requests share the pending discovery, including scans that take longer than
-60 seconds. The cache belongs to the local API server instance and is discarded
-on restart or when the effective executable search `PATH` changes. Failed
-requests are retried on the next call. Discovery's existing per-app fallbacks
-can still produce a successful partial list, which is cached for the same TTL.
+The host daemon's `GET /workspace-open-targets` shares the installed-app list,
+including icons, between general and file-specific discovery. It stays fresh
+for 60 seconds after discovery completes. After expiry, requests return the
+previous list immediately and share one background refresh. The first request
+after daemon startup or an effective executable search `PATH` change waits for
+a fresh scan. The cache belongs to the local API server instance.
 
-Requests with a `path` query bypass this cache so file-specific application
-associations and file existence are checked fresh. Installing or removing an
-application can take up to 60 seconds to appear in the general list.
+Failed initial scans are retried on the next call. Failed background scans keep
+the previous list and retry on the next request. Discovery's existing per-app
+fallbacks can still produce a successful partial list, which is cached for the
+same TTL. Installing or removing an application appears after the next successful
+refresh; the request that triggers an expired refresh still sees the old list.
+
+Requests with a `path` query reuse that same base list, then check file existence
+and macOS file associations fresh. File-associated apps do not enter the shared
+list, and already-listed apps reuse their cached icons. File discovery still
+waits for its native association lookup and any additional apps' icon extraction.
 
 ## Environment Status Loading
 

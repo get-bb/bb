@@ -4,6 +4,7 @@ import { createServer as createNetServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createDeferredPromise } from "@bb/test-helpers";
 import {
   HOST_DAEMON_PROTOCOL_VERSION,
   createHostDaemonLocalClient,
@@ -12,7 +13,10 @@ import {
 import { startLocalApiServer, type LocalApiServer } from "./local-api.js";
 import { resolveHostPlatform } from "./host-platform.js";
 import type { HostDaemonLocalApiConfig } from "./local-api-config.js";
-import { WorkspaceOpenTargetError } from "@bb/local-open-targets";
+import {
+  WorkspaceOpenTargetError,
+  type ListWorkspaceOpenTargetsOptions,
+} from "@bb/local-open-targets";
 
 describe("local API server", () => {
   let server: LocalApiServer | null = null;
@@ -303,7 +307,7 @@ describe("local API server", () => {
     await rm(workspacePath, { recursive: true, force: true });
   });
 
-  it("shares slow open-target discovery and caches it for a minute after completion", async () => {
+  it("shares slow discovery and serves stale targets while refreshing after a minute", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(0);
     const listWorkspaceOpenTargets = vi.fn(async () => {
@@ -332,17 +336,37 @@ describe("local API server", () => {
     expect((await fetch(url)).status).toBe(200);
     expect(listWorkspaceOpenTargets).toHaveBeenCalledTimes(1);
 
-    listWorkspaceOpenTargets.mockResolvedValue([]);
+    const refresh = createDeferredPromise<WorkspaceOpenTarget[]>();
+    listWorkspaceOpenTargets.mockReturnValue(refresh.promise);
     vi.setSystemTime(121_000);
-    expect(await (await fetch(url)).json()).toEqual({ targets: [] });
-    expect(listWorkspaceOpenTargets).toHaveBeenCalledTimes(2);
+    try {
+      const staleResponses = await Promise.all([
+        fetch(url, { signal: AbortSignal.timeout(1_000) }),
+        fetch(url, { signal: AbortSignal.timeout(1_000) }),
+      ]);
+      for (const response of staleResponses) {
+        expect(await response.json()).toEqual({ targets: [finderTarget] });
+      }
+      expect(listWorkspaceOpenTargets).toHaveBeenCalledTimes(2);
+    } finally {
+      refresh.resolve([]);
+    }
+    await expect
+      .poll(async () => (await fetch(url)).json())
+      .toEqual({ targets: [] });
   });
 
   it("keeps file-specific discovery fresh and invalidates cached targets when PATH changes", async () => {
     let shellPath = "/first/bin";
-    const listWorkspaceOpenTargets = vi.fn(async () => [
-      { ...finderTarget, label: shellPath },
-    ]);
+    const listWorkspaceOpenTargets = vi.fn(
+      async (query: ListWorkspaceOpenTargetsOptions) =>
+        query.path === undefined
+          ? [{ ...finderTarget, label: shellPath }]
+          : [
+              ...(query.baseTargets ?? []),
+              { ...finderTarget, id: "vscode" as const, label: query.path },
+            ],
+    );
     server = await startLocalApiServer({
       hostId: "host-1",
       localApiConfig: createLocalApiConfig(),
@@ -356,22 +380,32 @@ describe("local API server", () => {
     const initial = await (await fetch(url)).json();
     for (const filePath of ["/tmp/file.ts", "/tmp/file.png", "/tmp/file.ts"]) {
       expect(
-        (await fetch(`${url}?path=${encodeURIComponent(filePath)}`)).status,
-      ).toBe(200);
-      expect(listWorkspaceOpenTargets).toHaveBeenLastCalledWith({
-        path: filePath,
+        await (
+          await fetch(`${url}?path=${encodeURIComponent(filePath)}`)
+        ).json(),
+      ).toEqual({
+        targets: [
+          { ...finderTarget, label: "/first/bin" },
+          { ...finderTarget, id: "vscode", label: filePath },
+        ],
       });
     }
     expect(await (await fetch(url)).json()).toEqual(initial);
     expect(listWorkspaceOpenTargets).toHaveBeenCalledTimes(4);
 
     shellPath = "/second/bin";
+    expect(await (await fetch(`${url}?path=/tmp/file.ts`)).json()).toEqual({
+      targets: [
+        { ...finderTarget, label: "/second/bin" },
+        { ...finderTarget, id: "vscode", label: "/tmp/file.ts" },
+      ],
+    });
     expect(await (await fetch(url)).json()).toEqual({
       targets: [{ ...finderTarget, label: "/second/bin" }],
     });
-    expect(listWorkspaceOpenTargets).toHaveBeenCalledTimes(5);
+    expect(listWorkspaceOpenTargets).toHaveBeenCalledTimes(6);
     expect((await fetch(url)).status).toBe(200);
-    expect(listWorkspaceOpenTargets).toHaveBeenCalledTimes(5);
+    expect(listWorkspaceOpenTargets).toHaveBeenCalledTimes(6);
   });
 
   it("retries failed open-target discovery instead of caching the failure", async () => {

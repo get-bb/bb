@@ -1,4 +1,5 @@
 import type {
+  WorkspaceOpenTarget,
   WorkspaceOpenTargetCapabilities,
   WorkspaceOpenTargetIcon,
   WorkspaceOpenTargetId,
@@ -28,6 +29,7 @@ export interface OpenPathInTargetArgs {
 
 export interface ListWorkspaceOpenTargetsOptions {
   path?: string;
+  baseTargets?: WorkspaceOpenTarget[];
 }
 
 export interface ExecFileResult {

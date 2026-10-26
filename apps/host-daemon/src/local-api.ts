@@ -22,13 +22,13 @@ import {
   type HostDaemonLocalSchema,
   type OpenInTargetRequest,
   type WorkspaceOpenTarget,
-  type WorkspaceOpenTargetsQuery,
 } from "@bb/host-daemon-contract";
 import {
   createWorkspaceOpenTargetRuntime,
   listWorkspaceOpenTargetsWithRuntime,
   openPathInTargetWithRuntime,
   type OpenPathInTargetArgs,
+  type ListWorkspaceOpenTargetsOptions,
   WorkspaceOpenTargetError,
 } from "@bb/local-open-targets";
 import { Hono } from "hono";
@@ -40,7 +40,7 @@ import { resolveHostPlatform } from "./host-platform.js";
 import { userExecutableProcessOptions } from "./user-executable-env.js";
 
 type WorkspaceOpenTargetListHandler = (
-  query: WorkspaceOpenTargetsQuery,
+  query: ListWorkspaceOpenTargetsOptions,
 ) => Promise<WorkspaceOpenTarget[]>;
 type OpenInTargetHandler = (request: OpenPathInTargetArgs) => Promise<void>;
 
@@ -186,20 +186,21 @@ function createWorkspaceOpenTargetLoader(
   const cache = createAsyncTtlMemo<string | undefined, WorkspaceOpenTarget[]>({
     ttlMs: WORKSPACE_OPEN_TARGETS_CACHE_TTL_MS,
     maxEntries: 1,
+    staleWhileRevalidate: true,
   });
 
-  return (query) => {
+  return async (query) => {
     const runtime = workspaceOpenTargetRuntime(options);
-    const load = () =>
+    const load = (query: ListWorkspaceOpenTargetsOptions) =>
       options.listWorkspaceOpenTargets
         ? options.listWorkspaceOpenTargets(query)
         : listWorkspaceOpenTargetsWithRuntime(runtime, query);
-    if (query.path !== undefined) {
-      return load();
-    }
     const shellPath = runtime.env?.PATH;
     cache.invalidateWhere((key) => key !== shellPath);
-    return cache.run(shellPath, load);
+    const baseTargets = await cache.run(shellPath, () => load({}));
+    return query.path === undefined
+      ? baseTargets
+      : load({ path: query.path, baseTargets });
   };
 }
 
