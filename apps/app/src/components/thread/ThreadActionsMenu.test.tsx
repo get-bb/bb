@@ -323,7 +323,7 @@ afterEach(() => {
   window.sessionStorage.clear();
   resetPluginSlotStoreForTest();
   resetThreadActionRegistryForTest();
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   vi.useRealTimers();
 });
 
@@ -1091,6 +1091,7 @@ describe.each([
   });
 
   it("runs each selection action against every selected thread", async () => {
+    sdkThreads.pin.mockResolvedValue({ ...readThread, pinnedAt: 9 });
     renderSelection([readThread, unreadThread]);
     const open = () => fireEvent.contextMenu(screen.getByText("Selection"));
 
