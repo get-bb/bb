@@ -5,7 +5,7 @@ import {
   type TextFilePreviewKind,
 } from "./FilePreview";
 import { useEffect } from "react";
-import { BbSourceCodeSplit } from "@/components/code/SourceCodeHost";
+import { BbSourceCodeSplit } from "@/components/code/BbSourceCodeSplit";
 import { hashSourceContents } from "@/components/code/source-code-budget";
 import { useRequestPierreWorkerPool } from "@/lib/pierre-worker-pool-gate";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";

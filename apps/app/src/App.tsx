@@ -26,6 +26,7 @@ import { useAppTheme } from "./hooks/useAppTheme";
 import { useFaviconColorSync } from "./lib/favicon-color-preference";
 import { useDesktopThemeSync } from "./hooks/useDesktopThemeSync";
 import { usePluginFrontendBoot } from "./hooks/usePluginFrontendBoot";
+import { useCodeRendererPreloads } from "./hooks/useCodeRendererPreloads";
 import { markRouteContentPainted } from "./lib/route-content-paint";
 import { useRememberPluginNavPanelChrome } from "@/lib/plugin-nav-panel-chrome";
 import { useWebSocket } from "./hooks/useWebSocket";
@@ -470,6 +471,7 @@ export function App() {
   useAppTheme();
   useFaviconColorSync();
   usePluginFrontendBoot();
+  useCodeRendererPreloads();
   useRememberPluginNavPanelChrome();
 
   return (

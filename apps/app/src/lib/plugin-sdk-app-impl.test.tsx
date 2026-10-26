@@ -16,7 +16,7 @@ beforeAll(() => LazyMarkdownHtml.preload());
 afterEach(cleanup);
 
 describe("plugin SDK Markdown", () => {
-  it("uses the surrounding thread detail navigation for file and web links", () => {
+  it("uses the surrounding thread detail navigation for file and web links", async () => {
     const onOpenLink = vi.fn(() => false);
     const openUrl = vi.fn(() => true);
     const onOpenLocalFileLink = vi.fn(() => true);
@@ -37,7 +37,7 @@ describe("plugin SDK Markdown", () => {
       </AppNavigationHostProvider>,
     );
 
-    const fileLink = screen.getByRole("link", { name: "README" });
+    const fileLink = await screen.findByRole("link", { name: "README" });
     expect(fileLink.getAttribute("href")).toBe("file:///workspace/README.md");
     fireEvent.click(fileLink);
     expect(onOpenLocalFileLink).toHaveBeenCalledWith({
@@ -58,7 +58,7 @@ describe("plugin SDK Markdown", () => {
 
   it.each(["workspace", "thread-storage"] as const)(
     "resolves nested %s document destinations independently of message context",
-    (kind) => {
+    async (kind) => {
       const openFilePreview = vi.fn(() => true);
       const openUrl = vi.fn(() => true);
       const Markdown = pluginSdkAppImplementation.Markdown;
@@ -96,7 +96,7 @@ describe("plugin SDK Markdown", () => {
           </ThreadTimelineNavigationProvider>
         </AppNavigationHostProvider>,
       );
-      fireEvent.click(screen.getByRole("link", { name: "Sibling" }));
+      fireEvent.click(await screen.findByRole("link", { name: "Sibling" }));
       expect(openFilePreview).toHaveBeenLastCalledWith({
         target: { ...target, path: "reports/nested/sibling.md" },
         location: { kind: "range", startLine: 2, endLine: 4 },
@@ -128,7 +128,7 @@ describe("plugin SDK Markdown", () => {
     },
   );
 
-  it("keeps escaping relative paths out of file navigation and preserves absolute links", () => {
+  it("keeps escaping relative paths out of file navigation and preserves absolute links", async () => {
     const openFilePreview = vi.fn(() => true);
     const onOpenLocalFileLink = vi.fn(() => true);
     const Markdown = pluginSdkAppImplementation.Markdown;
@@ -158,7 +158,9 @@ describe("plugin SDK Markdown", () => {
       </AppNavigationHostProvider>,
     );
     expect(
-      screen.getByRole("link", { name: "Escape" }).getAttribute("href"),
+      (await screen.findByRole("link", { name: "Escape" })).getAttribute(
+        "href",
+      ),
     ).toBe("../../../outside.md");
     expect(
       screen.getByRole("img", { name: "Escape" }).getAttribute("src"),
@@ -175,7 +177,7 @@ describe("plugin SDK Markdown", () => {
     ).toBe("/api/v1/threads/thr_document/host-files/outside.svg");
   });
 
-  it("routes web links without requiring a thread navigation context", () => {
+  it("routes web links without requiring a thread navigation context", async () => {
     const openUrl = vi.fn(() => true);
     const Markdown = pluginSdkAppImplementation.Markdown;
     render(
@@ -183,7 +185,7 @@ describe("plugin SDK Markdown", () => {
         <Markdown content="[Docs](https://example.com/docs)" />
       </AppNavigationHostProvider>,
     );
-    fireEvent.click(screen.getByRole("link", { name: "Docs" }));
+    fireEvent.click(await screen.findByRole("link", { name: "Docs" }));
     expect(openUrl).toHaveBeenCalledWith({ url: "https://example.com/docs" });
   });
 });
