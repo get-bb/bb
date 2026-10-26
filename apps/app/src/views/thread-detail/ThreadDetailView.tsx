@@ -198,6 +198,7 @@ import {
   AttachmentOpenerContext,
   type OpenAttachmentRequest,
 } from "@/components/secondary-panel/AttachmentOpenerContext";
+import { SelectionAddToChatContext } from "@/components/thread/SelectionAddToChatContext";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { getFileExtension } from "@/lib/plugin-slot-resolvers";
 import { Icon } from "@bb/shared-ui/icon";
@@ -2843,7 +2844,11 @@ function ThreadDetailViewInternal(
               value={fileOpenTargets}
             >
               <AttachmentOpenerContext.Provider value={openAttachment}>
-                {threadDetailContent}
+                <SelectionAddToChatContext.Provider
+                  value={handleSelectionAddToChat}
+                >
+                  {threadDetailContent}
+                </SelectionAddToChatContext.Provider>
               </AttachmentOpenerContext.Provider>
             </MarkdownLocalFileOpenTargetsContext.Provider>
           </PluginDetailPanelContext.Provider>

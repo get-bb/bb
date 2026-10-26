@@ -11,6 +11,7 @@ import {
 } from "@/lib/plugin-slots";
 import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlotMount";
 import { PluginSourceCode } from "@/components/plugin/PluginSourceCode";
+import { SelectionAddToChatContext } from "@/components/thread/SelectionAddToChatContext";
 import { SourceCodeHost } from "./SourceCodeHost";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 
@@ -135,5 +136,23 @@ describe("experimental_SourceCode", () => {
     expect(received.at(-1)?.content).toBe(CONTENT);
     expect(received.at(-1)?.highlightedLines).toBeNull();
     expect(bbSourceCode.lastProps).toBeNull();
+  });
+
+  it("offers Add to chat only inside a thread", async () => {
+    const addToChat = vi.fn();
+    const { unmount } = render(
+      <PluginSourceCode content={CONTENT} path="src/app.ts" />,
+    );
+    await screen.findByTestId("bb-source-code");
+    expect(bbSourceCode.lastProps?.onSelectionAddToChat).toBeUndefined();
+    unmount();
+
+    render(
+      <SelectionAddToChatContext.Provider value={addToChat}>
+        <PluginSourceCode content={CONTENT} path="src/app.ts" />
+      </SelectionAddToChatContext.Provider>,
+    );
+    await screen.findByTestId("bb-source-code");
+    expect(bbSourceCode.lastProps?.onSelectionAddToChat).toBe(addToChat);
   });
 });

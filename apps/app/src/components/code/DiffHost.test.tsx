@@ -16,6 +16,7 @@ import {
 import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlotMount";
 import { parseGitDiffFiles } from "@/components/git-diff/git-diff-parsing";
 import { PluginDiff } from "@/components/plugin/PluginDiff";
+import { SelectionAddToChatContext } from "@/components/thread/SelectionAddToChatContext";
 import {
   AUTOMATIC_REPLACEMENT_PROVIDER,
   BUILT_IN_REPLACEMENT_PROVIDER,
@@ -362,6 +363,36 @@ describe("experimental_Diff", () => {
     expect(bbDiff.lastProps?.patchText).toBe(PATCH);
     expect(bbDiff.lastProps?.fullFileContents).toBe(FULL_FILE_CONTENTS);
     expect(bbDiff.lastProps).not.toHaveProperty("expansionLineCount");
+  });
+
+  it("offers Add to chat only inside a thread", async () => {
+    const addToChat = vi.fn();
+    const { unmount } = render(<PluginDiff patch={PATCH} path="src/app.ts" />);
+    await screen.findByTestId("bb-diff");
+    expect(bbDiff.lastProps?.onSelectionAddToChat).toBeUndefined();
+    unmount();
+
+    render(
+      <SelectionAddToChatContext.Provider value={addToChat}>
+        <PluginDiff patch={PATCH} path="src/app.ts" />
+      </SelectionAddToChatContext.Provider>,
+    );
+    await screen.findByTestId("bb-diff");
+    expect(bbDiff.lastProps?.onSelectionAddToChat).toBe(addToChat);
+  });
+
+  it("renders a mode-only git diff as a diff instead of raw text", async () => {
+    render(
+      <PluginDiff
+        patch={
+          "diff --git a/run.sh b/run.sh\nold mode 100644\nnew mode 100755\n"
+        }
+        path="run.sh"
+      />,
+    );
+
+    await screen.findByTestId("bb-diff");
+    expect(screen.queryByText(/diff --git/)).toBeNull();
   });
 
   it("degrades to plain text instead of an empty diff when the patch will not parse", () => {

@@ -34,14 +34,17 @@ export function normalizeFilePatch({
   patch: string;
   path: string;
 }): NormalizedFilePatch | null {
-  const normalizedPatch = patch.replace(/\r\n/g, "\n").trimEnd();
-  if (normalizedPatch.length === 0) return null;
+  const normalizedPatch = patch.replace(/\r\n/g, "\n").replace(/\n+$/, "");
+  if (normalizedPatch.trim().length === 0) return null;
   const normalizedPath = normalizeGitDiffPath(path) ?? path;
-  const patchText = normalizedPatch.startsWith("diff --git")
+  const isGitDiff = normalizedPatch.startsWith("diff --git");
+  const patchText = isGitDiff
     ? `${normalizedPatch}\n`
     : `diff --git a/${normalizedPath} b/${normalizedPath}\n--- a/${normalizedPath}\n+++ b/${normalizedPath}\n${normalizedPatch}\n`;
   const file = parseGitDiffFiles(patchText)[0];
-  if (file === undefined || file.hunks.length === 0) return null;
+  if (file === undefined || (!isGitDiff && file.hunks.length === 0)) {
+    return null;
+  }
   return { patch: patchText, file };
 }
 

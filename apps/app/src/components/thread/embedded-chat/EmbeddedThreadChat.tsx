@@ -1,6 +1,7 @@
 import { appendQuoteAndAttachmentsToDraft } from "@bb/client-core";
 import { useQueuedMessagesExpanded } from "@/components/promptbox/banner/queued-messages-expanded";
 import { createCoreComposerActions } from "@/lib/plugin-composer-handle";
+import { SelectionAddToChatContext } from "@/components/thread/SelectionAddToChatContext";
 import {
   useCallback,
   useEffect,
@@ -1230,20 +1231,22 @@ function EmbeddedThreadChatWithComposer({
 
   const maxWidthClassName = measure === "page" ? "max-w-[760px]" : "max-w-none";
   const timelineBody = (
-    <ThreadTimelinePanelContent
-      isTurnSubmitting={isTurnSubmitting}
-      leadingContent={leadingContent}
-      consumerMessageActions={consumerMessageActions}
-      includePluginMessageActions={includePluginMessageActions}
-      onOpenLink={onOpenLink}
-      onOpenLocalFileLink={onOpenLocalFileLink}
-      onMessageAddToChat={handleAddToChat}
-      onSelectionAddToChat={handleAddToChat}
-      projectId={projectId}
-      resolveMentionLink={resolveMentionLink}
-      threadId={threadId}
-      workspaceRootPath={workspaceRootPath}
-    />
+    <SelectionAddToChatContext.Provider value={handleAddToChat}>
+      <ThreadTimelinePanelContent
+        isTurnSubmitting={isTurnSubmitting}
+        leadingContent={leadingContent}
+        consumerMessageActions={consumerMessageActions}
+        includePluginMessageActions={includePluginMessageActions}
+        onOpenLink={onOpenLink}
+        onOpenLocalFileLink={onOpenLocalFileLink}
+        onMessageAddToChat={handleAddToChat}
+        onSelectionAddToChat={handleAddToChat}
+        projectId={projectId}
+        resolveMentionLink={resolveMentionLink}
+        threadId={threadId}
+        workspaceRootPath={workspaceRootPath}
+      />
+    </SelectionAddToChatContext.Provider>
   );
 
   if (layout === "document") {

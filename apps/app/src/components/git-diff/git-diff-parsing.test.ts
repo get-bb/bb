@@ -4,6 +4,7 @@ import {
   formatGitDiffFileLabel,
   getGitDiffFileChangeKind,
   getOpenableGitDiffPath,
+  normalizeFilePatch,
   parseGitDiffFiles,
   summarizeGitDiffFile,
 } from "./git-diff-parsing";
@@ -230,5 +231,61 @@ describe("threadDetailGitDiff", () => {
 
     expect(result).toBe(file);
     expect(result.isPartial).toBe(true);
+  });
+});
+
+describe("normalizeFilePatch", () => {
+  it("keeps a trailing blank context line so full-file context still applies", () => {
+    const normalized = normalizeFilePatch({
+      patch: [
+        "diff --git a/a.txt b/b.txt",
+        "similarity index 88%",
+        "rename from a.txt",
+        "rename to b.txt",
+        "index 0eb9c84..a8a3973 100644",
+        "--- a/a.txt",
+        "+++ b/b.txt",
+        "@@ -1,4 +1,4 @@",
+        "-one",
+        "+ONE",
+        " two",
+        " three",
+        " ",
+        "",
+      ].join("\n"),
+      path: "b.txt",
+    });
+    if (normalized === null) throw new Error("expected a parsed patch");
+
+    const enriched = enrichGitDiffFileForContext({
+      fileDiff: normalized.file,
+      oldFile: {
+        name: "a.txt",
+        contents: "one\ntwo\nthree\n\nfive\nsix\n",
+      },
+      newFile: {
+        name: "b.txt",
+        contents: "ONE\ntwo\nthree\n\nfive\nsix\n",
+      },
+      patchText: normalized.patch,
+    });
+
+    expect(enriched.isPartial).toBe(false);
+  });
+
+  it("parses a git diff without hunks instead of rejecting it", () => {
+    const normalized = normalizeFilePatch({
+      patch: "diff --git a/b.txt b/b.txt\nold mode 100755\nnew mode 100644\n",
+      path: "b.txt",
+    });
+
+    expect(normalized?.file.name).toBe("b.txt");
+    expect(normalized?.file.hunks).toEqual([]);
+  });
+
+  it("rejects text that is not a patch", () => {
+    expect(
+      normalizeFilePatch({ patch: "not a patch at all", path: "notes.txt" }),
+    ).toBeNull();
   });
 });
