@@ -29,11 +29,11 @@ import {
   buildThreadHostFileContentUrl,
   buildThreadStorageRawContentUrl,
 } from "@/lib/file-content-urls";
-import type {
-  EnvironmentFilePreviewSource,
-  FilePreview,
-  FilePreviewLineRange,
-  WorkspaceFilePreviewStatusLabel,
+import {
+  getEnvironmentFilePreviewSourceRef,
+  type EnvironmentFilePreviewSource,
+  type FilePreview,
+  type FilePreviewLineRange,
 } from "@bb/client-core";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { PANEL_SCROLL_SLOT_CLASS } from "./panelChromeClasses";
@@ -76,7 +76,6 @@ interface WorkspaceFilePreviewTabContentProps {
   onSelectionAddToChat?: (text: string) => void;
   onOpenInEditor?: (path: string) => void;
   source: EnvironmentFilePreviewSource | null;
-  statusLabel: WorkspaceFilePreviewStatusLabel | null;
   threadId?: string | null;
 }
 
@@ -344,7 +343,6 @@ export function WorkspaceFilePreviewTabContent({
   onSelectionAddToChat,
   onOpenInEditor,
   source,
-  statusLabel,
   threadId,
 }: WorkspaceFilePreviewTabContentProps) {
   const environmentQuery = useEnvironment(environmentId ?? null, {
@@ -396,7 +394,9 @@ export function WorkspaceFilePreviewTabContent({
       markdownLinkRouting={resolvedMarkdownLinkRouting}
       onSelectionAddToChat={onSelectionAddToChat}
       onOpenInEditor={onOpenInEditor}
-      statusLabel={statusLabel}
+      statusLabel={
+        source === null ? null : getEnvironmentFilePreviewSourceRef(source)
+      }
     />
   );
 }

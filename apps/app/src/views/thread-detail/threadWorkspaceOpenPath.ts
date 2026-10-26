@@ -3,10 +3,6 @@ import type {
 } from "@bb/domain";
 import type { OpenInTargetContext } from "@bb/host-daemon-contract";
 import type { WorkspaceChangedFilesSection } from "@/components/workspace/workspace-change-summary";
-import type {
-  EnvironmentFilePreviewSource,
-  WorkspaceFilePreviewStatusLabel,
-} from "@bb/client-core";
 import { buildAbsoluteFilePath } from "@/lib/absolute-file-path";
 import type { WorkspaceFileStatus } from "bb-plugin-bb--git/contract";
 
@@ -48,11 +44,7 @@ export function buildOpenInEditorHandler(
 
 type WorkspaceChangedFileOpenTarget =
   | { kind: "diff" }
-  | {
-      kind: "preview";
-      source: EnvironmentFilePreviewSource;
-      statusLabel: WorkspaceFilePreviewStatusLabel | null;
-    };
+  | { kind: "preview"; ref: string | undefined };
 
 interface ResolveWorkspaceChangedFileOpenTargetArgs {
   file: WorkspaceFileStatus;
@@ -63,28 +55,16 @@ export function resolveWorkspaceChangedFileOpenTarget(
   args: ResolveWorkspaceChangedFileOpenTargetArgs,
 ): WorkspaceChangedFileOpenTarget {
   if (args.file.status === "A" || args.file.status === "??") {
-    return {
-      kind: "preview",
-      source: { kind: "working-tree" },
-      statusLabel: null,
-    };
+    return { kind: "preview", ref: undefined };
   }
 
   if (args.file.status === "D") {
     if (args.section.kind === "committed") {
       return args.section.mergeBaseRef
-        ? {
-            kind: "preview",
-            source: { kind: "merge-base", ref: args.section.mergeBaseRef },
-            statusLabel: "deleted",
-          }
+        ? { kind: "preview", ref: args.section.mergeBaseRef }
         : { kind: "diff" };
     }
-    return {
-      kind: "preview",
-      source: { kind: "head" },
-      statusLabel: "deleted",
-    };
+    return { kind: "preview", ref: "HEAD" };
   }
 
   return { kind: "diff" };

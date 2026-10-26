@@ -4775,7 +4775,18 @@ export interface UrlLinkProps extends Omit<
 
 /** A live file whose identity is complete without ambient route context. */
 export type ExperimentalLiveFileTarget =
-  | { kind: "workspace"; environmentId: string; path: string }
+  | {
+      kind: "workspace";
+      environmentId: string;
+      path: string;
+      /**
+       * Git revision to read instead of the working copy: `"HEAD"` or a 4–40
+       * character commit SHA; other values make the target invalid. Previews
+       * open read-only and are labelled with the ref; external opens ignore it
+       * and open the working copy.
+       */
+      experimental_ref?: string;
+    }
   | { kind: "host"; hostId: string; path: string }
   | { kind: "thread-storage"; threadId: string; path: string };
 

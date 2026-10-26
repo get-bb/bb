@@ -1,8 +1,9 @@
 import { useCallback } from "react";
-import type {
-  HostFileTabState,
-  ThreadStorageFileTabState,
-  WorkspaceFileTabState,
+import {
+  getEnvironmentFilePreviewSourceAtRef,
+  type HostFileTabState,
+  type ThreadStorageFileTabState,
+  type WorkspaceFileTabState,
 } from "@bb/client-core";
 import type { AppFilePreviewIntent } from "@/lib/app-navigation-host";
 import {
@@ -67,7 +68,7 @@ function livePreviewRequest(
         tab: {
           lineRange,
           path: target.path,
-          source: { kind: "working-tree" },
+          source: getEnvironmentFilePreviewSourceAtRef(target.experimental_ref),
           statusLabel: null,
         },
       };

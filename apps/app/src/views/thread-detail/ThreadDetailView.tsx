@@ -219,7 +219,10 @@ import {
   useThreadFileTabs,
   type FileSearchSelection,
 } from "@/components/secondary-panel/useThreadFileTabs";
-import { isSecondaryFileTab } from "@bb/client-core";
+import {
+  getEnvironmentFilePreviewSourceRef,
+  isSecondaryFileTab,
+} from "@bb/client-core";
 import { useThreadOpenFileSignal } from "@/components/secondary-panel/useThreadOpenFileSignal";
 import type { PromptMentionLinkResolver } from "@bb/client-core";
 import type {
@@ -1566,18 +1569,24 @@ function ThreadDetailViewInternal(
   const handleChangedFileClick = useCallback(
     (selection: WorkspaceChangedFileSelection) => {
       const openTarget = resolveWorkspaceChangedFileOpenTarget(selection);
-      if (openTarget.kind === "preview") {
-        openWorkspaceFile({
-          lineRange: null,
-          path: selection.file.path,
-          source: openTarget.source,
-          statusLabel: openTarget.statusLabel,
+      const environmentId = thread?.environmentId;
+      if (openTarget.kind === "preview" && environmentId) {
+        openLiveFilePreview({
+          target: {
+            kind: "workspace",
+            environmentId,
+            path: selection.file.path,
+            ...(openTarget.ref === undefined
+              ? {}
+              : { experimental_ref: openTarget.ref }),
+          },
+          location: null,
         });
         return;
       }
       openSecondaryPanelDiffFile(selection.file.path);
     },
-    [openSecondaryPanelDiffFile, openWorkspaceFile],
+    [openLiveFilePreview, openSecondaryPanelDiffFile, thread?.environmentId],
   );
   const workStatusQuery = useEnvironmentWorkStatus(
     thread?.environmentId,
@@ -2445,7 +2454,6 @@ function ThreadDetailViewInternal(
             onOpenInEditor={handleOpenFileInEditor}
             onSelectionAddToChat={handleSelectionAddToChat}
             source={tab.source}
-            statusLabel={tab.statusLabel}
             threadId={thread.id}
           />
         );
@@ -2596,7 +2604,7 @@ function ThreadDetailViewInternal(
             ...shared,
             label: filenameOfPanelTab(tab.path),
             leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
-            statusLabel: tab.statusLabel,
+            statusLabel: getEnvironmentFilePreviewSourceRef(tab.source),
             onSelect: () => handleActivateFileTab(tab.id),
           };
         case "host-file-preview":

@@ -64,7 +64,10 @@ import {
   type TerminalFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
 import { createFileOpenerOriginalTab } from "./file-opener-tabs";
-import { activateSecondaryPanelTabInState } from "@bb/client-core";
+import {
+  activateSecondaryPanelTabInState,
+  getEnvironmentFilePreviewSourceRef,
+} from "@bb/client-core";
 import {
   terminalQueryScopeForTarget,
   useTerminals,
@@ -931,7 +934,6 @@ export function PluginPanelRightPanelHost({
               isPanelOpen={isOpen}
               lineRange={tab.lineRange}
               source={tab.source}
-              statusLabel={tab.statusLabel}
             />
           );
         case "host-file-preview":
@@ -1063,7 +1065,7 @@ export function PluginPanelRightPanelHost({
                 leadingVisual: <Icon name="File" className="size-3.5" />,
                 statusLabel:
                   tab.kind === "workspace-file-preview"
-                    ? tab.statusLabel
+                    ? getEnvironmentFilePreviewSourceRef(tab.source)
                     : null,
                 onClose: () => closeTab(tab.id),
               },

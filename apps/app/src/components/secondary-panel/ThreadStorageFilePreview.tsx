@@ -15,7 +15,6 @@ import type {
   FilePreview,
   FilePreviewLineRange,
   TextFilePreview,
-  WorkspaceFilePreviewStatusLabel,
 } from "@bb/client-core";
 import {
   FILE_PREVIEW_HTML_MAX_BYTES,
@@ -39,7 +38,7 @@ interface SecondaryPanelFilePreviewProps {
   onSelectionAddToChat?: (text: string) => void;
   onOpenInEditor?: (path: string) => void;
   onRefresh?: () => void;
-  statusLabel?: WorkspaceFilePreviewStatusLabel | null;
+  statusLabel?: string | null;
 }
 
 interface BuildTextPreviewFileArgs {

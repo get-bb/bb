@@ -1,4 +1,7 @@
-import type { EnvironmentFilePreviewSource } from "@bb/client-core";
+import {
+  getEnvironmentFilePreviewSourceRef,
+  type EnvironmentFilePreviewSource,
+} from "@bb/client-core";
 import { apiClient, toRelativeUrl } from "./api-server";
 
 function encodePathSegments(path: string): string {
@@ -75,7 +78,8 @@ export function buildEnvironmentFileContentUrl(
   path: string,
 ): string {
   const filePath = encodePathSegments(path);
-  if (source.kind === "working-tree") {
+  const ref = getEnvironmentFilePreviewSourceRef(source);
+  if (ref === null) {
     return toRelativeUrl(
       apiClient.environments[":id"].files[":filePath{.+}"].$url({
         param: { id: environmentId, filePath },
@@ -84,13 +88,7 @@ export function buildEnvironmentFileContentUrl(
   }
   return toRelativeUrl(
     apiClient.environments[":id"].revisions[":ref"].files[":filePath{.+}"].$url(
-      {
-        param: {
-          id: environmentId,
-          ref: source.kind === "head" ? "HEAD" : source.ref,
-          filePath,
-        },
-      },
+      { param: { id: environmentId, ref, filePath } },
     ),
   );
 }

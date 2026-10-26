@@ -95,7 +95,6 @@ describe("secondary-panel Markdown image routing", () => {
         isPanelOpen
         lineRange={null}
         source={{ kind: "working-tree" }}
-        statusLabel={null}
         threadId="thr_preview"
       />,
     );

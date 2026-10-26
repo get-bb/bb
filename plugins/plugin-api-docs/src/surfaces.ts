@@ -1591,6 +1591,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "experimental_FileLink",
           "ExperimentalFileLinkProps",
           "ExperimentalLiveFileTarget",
+          "ExperimentalLiveFileTarget.experimental_ref",
           "ExperimentalFileLocation",
           "ExperimentalFileOpenOptions",
           "BbNavigate.openUrl",

@@ -208,7 +208,6 @@ function ownerRequestForOpenRequest({
         return null;
       }
       if (request.tab.source.kind !== "working-tree") return null;
-      if (request.tab.statusLabel === "deleted") return null;
       const environmentId =
         request.environmentId ?? resolvedEnvironmentId ?? null;
       return {

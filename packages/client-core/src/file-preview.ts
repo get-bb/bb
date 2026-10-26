@@ -170,6 +170,26 @@ export function areEnvironmentFilePreviewSourcesEqual(
   }
 }
 
+export function getEnvironmentFilePreviewSourceAtRef(
+  ref: string | undefined,
+): EnvironmentFilePreviewSource {
+  if (ref === undefined) return { kind: "working-tree" };
+  return ref === "HEAD" ? { kind: "head" } : { kind: "merge-base", ref };
+}
+
+export function getEnvironmentFilePreviewSourceRef(
+  source: EnvironmentFilePreviewSource,
+): string | null {
+  switch (source.kind) {
+    case "working-tree":
+      return null;
+    case "head":
+      return "HEAD";
+    case "merge-base":
+      return source.ref;
+  }
+}
+
 interface BuildFilePreviewArgs extends FilePreviewTarget {
   contentBytes: Uint8Array;
   mimeType: string;

@@ -40,7 +40,9 @@ export function ExperimentalFileLinkMenu({
   const { fileOpeners } = usePluginSlots();
   const extension = getFileExtension(intent.target.path);
   const matchingOpeners =
-    extension === null
+    extension === null ||
+    (intent.target.kind === "workspace" &&
+      intent.target.experimental_ref !== undefined)
       ? []
       : fileOpeners.filter((opener) => opener.extensions.includes(extension));
   const location = getExperimentalFileLocationStart(intent.location);

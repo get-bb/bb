@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { makeEnvironment } from "@bb/test-helpers/domain-fixtures";
 import {
   getLiveFileTargetLookups,
   resolveLiveFileTarget,
@@ -18,6 +19,28 @@ const storageLocation = {
 };
 
 describe("useResolvedLiveFileTarget", () => {
+  it("resolves a workspace revision target to the working copy", () => {
+    expect(
+      resolveLiveFileTarget({
+        target: {
+          kind: "workspace",
+          environmentId: "env_test",
+          path: "src/app.ts",
+          experimental_ref: "HEAD",
+        },
+        enabled: true,
+        environmentQuery: { data: makeEnvironment(), isLoading: false },
+        storageQuery: { data: undefined, isLoading: false },
+        isLocalDaemonHost: () => true,
+        serverOrigin: SERVER_ORIGIN,
+      }),
+    ).toEqual({
+      status: "available",
+      absolutePath: "/workspace/src/app.ts",
+      openContext: { kind: "local" },
+    });
+  });
+
   it.each([
     {
       isLocal: true,

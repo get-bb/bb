@@ -123,7 +123,6 @@ describe("WorkspaceFilePreviewTabContent panel gating", () => {
           isPanelOpen={isPanelOpen}
           lineRange={null}
           source={{ kind: "working-tree" }}
-          statusLabel={null}
           threadId="thr-1"
         />
       </Wrapper>

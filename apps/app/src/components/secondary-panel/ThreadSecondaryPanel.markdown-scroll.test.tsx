@@ -94,7 +94,6 @@ function Harness({
           isPanelOpen
           lineRange={null}
           source={document.source}
-          statusLabel={null}
           markdownLinkRouting={{
             onOpenLink: () => {
               setActiveId(browserTab.id);

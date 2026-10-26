@@ -454,7 +454,6 @@ function RootComposeFilePreviewTabContent({
             onOpenInEditor={onOpenInEditor}
             onSelectionAddToChat={onSelectionAddToChat}
             source={tab.source}
-            statusLabel={tab.statusLabel}
             threadId={imageThreadId}
           />
         ) : projectPreviewId !== null ? (

@@ -112,6 +112,26 @@ describe.each(SURFACES)("panel files on the $name", (surface) => {
     );
   });
 
+  it.each([
+    ["HEAD", { kind: "head" }],
+    ["abc1234", { kind: "merge-base", ref: "abc1234" }],
+  ] as const)("opens the %s revision as a read-only preview", (ref, source) => {
+    const { openTab, panelFiles } = renderSurface(surface);
+    panelFiles.openFilePreview({
+      target: { ...OWN_WORKSPACE, experimental_ref: ref },
+      location: null,
+    });
+
+    expect(openTab).toHaveBeenCalledWith(
+      {
+        kind: "workspace-file-preview",
+        environmentId: "env_1",
+        tab: { lineRange: null, path: "src/a.ts", source, statusLabel: null },
+      },
+      undefined,
+    );
+  });
+
   it("declines malformed targets and unavailable surfaces", () => {
     const { panelFiles: available } = renderSurface(surface);
     const { panelFiles: unavailable, openTab } = renderSurface(surface, false);

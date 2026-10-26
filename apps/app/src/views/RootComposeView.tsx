@@ -136,7 +136,10 @@ import {
   useThreadFileTabs,
   type FileSearchSelection,
 } from "@/components/secondary-panel/useThreadFileTabs";
-import { isSecondaryFileTab } from "@bb/client-core";
+import {
+  getEnvironmentFilePreviewSourceRef,
+  isSecondaryFileTab,
+} from "@bb/client-core";
 import { RightPanelFileTabIcon } from "@/components/secondary-panel/RightPanelFileTabIcon";
 import {
   buildTerminalSyncedSecondaryFileTabs,
@@ -1301,7 +1304,7 @@ function RootComposeSurface({
               ...shared,
               label: filenameOf(tab.path),
               leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
-              statusLabel: tab.statusLabel,
+              statusLabel: getEnvironmentFilePreviewSourceRef(tab.source),
               onSelect: () => handleActivateFileTab(tab.id),
             };
           case "host-file-preview":

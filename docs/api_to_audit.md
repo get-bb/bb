@@ -1303,8 +1303,36 @@ Docs: `frontend-components.md`, `frontend-hooks-and-ui.md`.
    rather than become plugin-selectable API.
 5. Measure the lazy boundary: mounting a file link must not start file reads,
    preview imports, editor discovery, or panel-destination loading.
-6. Decide whether Git snapshots or deleted working-tree files merit separate
-   target variants; do not weaken live-file guarantees to accommodate them.
+6. Audit `experimental_ref` (below) with the rest of the target before
+   stabilizing either.
+
+## Workspace file revisions (`ExperimentalLiveFileTarget.experimental_ref`)
+
+A workspace target's optional `experimental_ref` names a Git revision:
+`"HEAD"` or a 4–40 character commit SHA, the forms the revision file route
+accepts; anything else makes the target invalid.
+`experimental_openFilePreview` and `experimental_FileLink` then open a
+read-only preview of the file at that revision, labelled with the ref and read
+through `GET /environments/:id/revisions/:ref/files/*`. The link menu hides
+plugin file openers, which only read the working copy, and Open externally
+ignores the ref and opens the working copy. A ref preview shares the
+working-copy tab for the same path. The panel tab persists the ref in the
+existing `head`/`merge-base` sources because shipped mobile builds parse the
+synced tab schema strictly.
+
+**Core callers.** Deleted rows in the Info tab and composer changed-files lists
+open their HEAD or merge-base content through `usePanelFiles.openFilePreview`
+with this field.
+
+**Audit before stabilizing.**
+
+1. Decide whether a ref preview should get its own tab instead of replacing
+   the working-copy tab for the same path.
+2. Decide whether the persisted tab source should become a single revision
+   variant once shipped clients accept it.
+3. Decide whether branch names and revision expressions should be accepted,
+   and confirm error states for unknown SHAs and paths missing at the
+   revision.
 
 ## Terminal navigation (`BbNavigate.experimental_openTerminal`)
 

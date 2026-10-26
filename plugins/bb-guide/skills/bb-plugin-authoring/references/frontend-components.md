@@ -184,6 +184,10 @@ className? }` —
   target, available client apps, and copy actions. Valid targets expose an
   encoded, scheme-safe href; traversal paths, ill-formed Unicode, and other
   malformed runtime targets are inert in both the app and SDK test harness.
+  A workspace target's optional `experimental_ref` (`"HEAD"` or a 4–40
+  character commit SHA; anything else makes the target invalid) previews the
+  file read-only at that Git revision, labelled with the ref; external opens
+  ignore it and open the working copy.
   Optional `location` is a one-based line/column or line range. For buttons and
   effects use
   `useBbNavigate().experimental_openFilePreview({ target, location })` or
