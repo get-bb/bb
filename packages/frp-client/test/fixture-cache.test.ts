@@ -34,9 +34,67 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.useRealTimers();
   vi.unstubAllEnvs();
   vi.clearAllMocks();
   await fs.rm(dir, { recursive: true, force: true });
+});
+
+it("recovers a transient network failure and reuses the verified archive", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout"] });
+  vi.mocked(fetchArchive).mockRejectedValueOnce(
+    new TypeError("fetch failed", {
+      cause: Object.assign(new Error("Connect Timeout Error"), {
+        code: "UND_ERR_CONNECT_TIMEOUT",
+      }),
+    }),
+  );
+  const { cachedDownload } = await import("../src/testing/frp-fixture.js");
+  const download = cachedDownload("win32", "x64");
+  const result = expect(
+    download("https://example.test/fixture.zip"),
+  ).resolves.toEqual(bytes);
+  await Promise.race([
+    result,
+    vi.waitFor(() => expect(vi.getTimerCount()).toBe(1)),
+  ]);
+  await vi.runAllTimersAsync();
+  await result;
+  await expect(download("https://example.test/fixture.zip")).resolves.toEqual(
+    bytes,
+  );
+  expect(fetchArchive).toHaveBeenCalledTimes(2);
+  expect(
+    new Uint8Array(await fs.readFile(path.join(dir, "fixture.zip"))),
+  ).toEqual(bytes);
+});
+
+it("bounds persistent network failures without publishing an archive", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout"] });
+  const failure = new TypeError("fetch failed");
+  vi.mocked(fetchArchive).mockRejectedValue(failure);
+  const { cachedDownload } = await import("../src/testing/frp-fixture.js");
+  const result = expect(
+    cachedDownload("win32", "x64")("https://example.test/fixture.zip"),
+  ).rejects.toBe(failure);
+  await Promise.race([
+    result,
+    vi.waitFor(() => expect(vi.getTimerCount()).toBe(1)),
+  ]);
+  await vi.runAllTimersAsync();
+  await result;
+  expect(fetchArchive).toHaveBeenCalledTimes(3);
+  expect(await fs.readdir(dir)).toEqual([]);
+});
+
+it("refuses a corrupt download without retrying or publishing it", async () => {
+  vi.mocked(fetchArchive).mockResolvedValue(new Uint8Array([0]));
+  const { cachedDownload } = await import("../src/testing/frp-fixture.js");
+  await expect(
+    cachedDownload("win32", "x64")("https://example.test/fixture.zip"),
+  ).rejects.toThrow("does not match its pinned sha256");
+  expect(fetchArchive).toHaveBeenCalledTimes(1);
+  expect(await fs.readdir(dir)).toEqual([]);
 });
 
 it.each([true, false])(
