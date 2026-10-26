@@ -24,6 +24,7 @@ import {
   vi,
 } from "vitest";
 import { unlink, utimes } from "node:fs/promises";
+import { experimental_hostToolchain as hostToolchain } from "@get-bb/plugin-sdk/process";
 import {
   acquireLock,
   checkProvenance,
@@ -350,9 +351,14 @@ describe("runtime installer", () => {
     await expect(install(dir)).rejects.toThrow(
       /npm install .* failed .*ENOTFOUND/s,
     );
-    await expect(install(dir, { env: env(false) })).rejects.toThrow(
-      "npm is not available",
-    );
+    const resolve = vi.spyOn(hostToolchain, "resolve").mockReturnValue(null);
+    try {
+      await expect(install(dir, { env: env(false) })).rejects.toThrow(
+        "npm is not available",
+      );
+    } finally {
+      resolve.mockRestore();
+    }
     await expect(
       install(dir, { release: { ...release, artifacts: {} } }),
     ).rejects.toThrow(`no verified release artifact recorded for ${platform}`);

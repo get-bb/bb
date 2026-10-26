@@ -3736,8 +3736,9 @@ override the icon and whether reasoning levels should render it.
 
 `experimental_hostToolchain` supplies `resolve`, `command`, `environment`,
 `node`, `npmCli`, `bundledNpmCli`, an asynchronous `refresh`, and
-`invalidateFailure`. `command` runs what PATH resolves, `npm` included; an
-explicit caller PATH is passed through unchanged and is the only PATH searched.
+`invalidateFailure`. `command` runs what PATH resolves, `npm` included; a
+caller's PATH entries come first, followed by the login-shell PATH and the
+standard tool directories.
 `npmCli` returns a `{ node, cli }` pair: the running Node's own npm, else the
 PATH npm with the Node that owns it, else the bundled npm; self-update uses it.
 `bundledNpmCli` throws where the `npm`

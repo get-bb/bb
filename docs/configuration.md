@@ -53,9 +53,11 @@ proxy settings.
 
 Core process launches and the Plugin SDK process helpers share one resolver.
 It reads the user's login-shell PATH (or Windows user/machine registry PATH),
-and adds the running runtime and standard user tool directories. When a caller
-passes its own PATH, the child receives it unchanged and lookups search only
-that PATH. Native provider installs in `~/.local/bin` and
+and adds the running Node's directory and standard user tool directories to
+every child PATH. When the PATH is the one bb started with, the login-shell
+PATH comes first; when a caller passes a different PATH, its entries come first
+and the login-shell PATH and standard directories follow. Native provider
+installs in `~/.local/bin` and
 mise/asdf shim directories are available to services as well as terminal launches.
 Shell network settings are read alongside PATH; unrelated shell variables are
 not copied into child environments. Discovery runs in the background, bounded to

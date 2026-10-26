@@ -354,6 +354,10 @@ it("applies hook NODE_ENV and PATH contributions after sanitizing inherited stat
       expect.stringMatching(/^PATH=[^:]*:\/c\/review-toolchain:/u),
     );
   } else {
-    expect(output).toContain("PATH=/review-toolchain:/usr/bin:/bin");
+    expect(output).toContainEqual(
+      expect.stringMatching(
+        /^PATH=\/review-toolchain:\/usr\/bin:\/bin(?::|$)/u,
+      ),
+    );
   }
 });

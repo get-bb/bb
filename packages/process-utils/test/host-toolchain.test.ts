@@ -272,19 +272,23 @@ describe.skipIf(process.platform === "win32")("host toolchain recovery", () => {
     expect(toolchain.environment().PATH?.split(delimiter)[0]).toBe("/slow-bin");
   });
 
-  it("keeps an explicit caller PATH exactly", () => {
+  it("keeps a caller's PATH entries first and adds the standard folders after them", () => {
     const toolchain = new HostToolchain({ HOME: "/home/me", PATH: "/usr/bin" });
-    expect(toolchain.environment({ PATH: "/review-toolchain:/bin" }).PATH).toBe(
-      "/review-toolchain:/bin",
-    );
+    const path = toolchain
+      .environment({ HOME: "/home/me", PATH: "/review-toolchain:/bin" })
+      .PATH?.split(delimiter);
+    expect(path?.slice(0, 2)).toEqual(["/review-toolchain", "/bin"]);
+    expect(path).toContain("/home/me/.local/bin");
   });
 
-  it("searches only an explicit caller PATH", async () => {
+  it("finds a tool in a standard folder when the caller's PATH lacks it", async () => {
     const root = await scratch();
+    const tool = join(root, ".local", "bin", "host-fixture");
+    await script(tool, "#!/bin/sh\nprintf found");
     const env = { HOME: root, PATH: join(root, "empty") };
     const toolchain = new HostToolchain({ HOME: root, PATH: "/usr/bin:/bin" });
-    expect(toolchain.resolve("sh", { env })).toBeNull();
-    expect(toolchain.command("sh", [], { env }).command).toBe("sh");
+    expect(toolchain.resolve("host-fixture", { env })).toBe(tool);
+    expect(run(toolchain, "host-fixture", [], env)).toBe("found");
   });
 
   it("launches Node shebang scripts directly instead of through the bb runtime", async () => {

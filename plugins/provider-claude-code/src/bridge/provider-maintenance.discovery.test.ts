@@ -2,6 +2,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getClaudeProviderInstallationStatus } from "./provider-maintenance.js";
 
 describe.skipIf(process.platform === "win32")(
   "Claude Code installation status",
@@ -16,7 +17,6 @@ describe.skipIf(process.platform === "win32")(
       vi.stubEnv("HOME", homeDir);
       vi.stubEnv("PATH", pathDir);
       vi.stubEnv("BB_CLAUDE_CODE_EXECUTABLE", "");
-      vi.resetModules();
     });
 
     afterEach(async () => {
@@ -35,8 +35,6 @@ describe.skipIf(process.platform === "win32")(
       await writeFile(nativePath, executable, { mode: 0o755 });
       if (onPath) await writeFile(pathExecutable, executable, { mode: 0o755 });
 
-      const { getClaudeProviderInstallationStatus } =
-        await import("./provider-maintenance.js");
       const status = await getClaudeProviderInstallationStatus(false);
 
       expect(status).toMatchObject({

@@ -223,7 +223,6 @@ async function readShellEnvironment(
 export class HostToolchain {
   private shellEnv: NodeJS.ProcessEnv = {};
   private readonly inheritedPath: string | undefined;
-  private readonly generatedPaths = new Set<string>();
   private readonly misses = new Set<string>();
   private nodePath: string;
   private refreshing: Promise<void> | null = null;
@@ -262,14 +261,6 @@ export class HostToolchain {
     if (code === "ENOENT" || code === 127) void this.refresh();
   }
 
-  private managesPath(path: string | undefined): boolean {
-    return (
-      path === undefined ||
-      path === this.inheritedPath ||
-      this.generatedPaths.has(path)
-    );
-  }
-
   private searchPath(env: NodeJS.ProcessEnv): string {
     const inherited = envValue(env, "PATH");
     const home =
@@ -285,9 +276,13 @@ export class HostToolchain {
     if (process.platform === "darwin") fallbacks.push("/opt/homebrew/bin");
     if (process.platform !== "win32")
       fallbacks.push("/usr/local/bin", "/usr/bin", "/bin");
+    const [first, second] =
+      inherited === undefined || inherited === this.inheritedPath
+        ? [this.shellEnv.PATH, inherited]
+        : [inherited, this.shellEnv.PATH];
     return mergePath(
-      this.managesPath(inherited) ? this.shellEnv.PATH : undefined,
-      inherited,
+      first,
+      second,
       executable(this.nodePath) &&
         /^node(?:\.exe)?$/iu.test(basename(this.nodePath))
         ? dirname(this.nodePath)
@@ -297,18 +292,13 @@ export class HostToolchain {
   }
 
   environment(env: NodeJS.ProcessEnv = this.baseEnv): NodeJS.ProcessEnv {
-    const inherited = envValue(env, "PATH");
-    let path = inherited;
-    if (this.managesPath(inherited)) {
-      path = this.searchPath(env);
-      this.generatedPaths.add(path);
-    }
+    const path = this.searchPath(env);
     const result: NodeJS.ProcessEnv = { ...env };
     if (process.platform === "win32") {
       for (const key of Object.keys(result))
         if (key !== "PATH" && key.toUpperCase() === "PATH") delete result[key];
     }
-    if (path !== undefined) result.PATH = path;
+    if (path !== "") result.PATH = path;
     const callerKeys = new Set(
       Object.keys(env)
         .filter((key) => env[key] !== undefined)
@@ -493,7 +483,6 @@ export class HostToolchain {
     const env = this.environment(options.env);
     if (/(?:^|[\\/])(?:npm|npx)-cli\.js$/u.test(args[0] ?? "")) {
       env.PATH = mergePath(dirname(file), env.PATH);
-      this.generatedPaths.add(env.PATH);
     }
     return { command: file, args: [...args], env };
   }
