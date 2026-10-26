@@ -4,7 +4,7 @@ See the GitHub pull request for each thread's branch where you already work: the
 
 - One rolled-up status per pull request: checks, review, conflicts, merge queue and auto-merge.
 - Ready for review, Convert to draft and Merge (merge, squash or rebase).
-- Live updates while you watch: pending checks are re-checked every 30 seconds and other open PRs every 5 minutes, and views refresh only when something changed.
+- Live updates while you watch: pending checks are re-checked every 30 seconds and other open or draft PRs every 5 minutes, and views refresh only when something changed.
 
 ## How it works
 

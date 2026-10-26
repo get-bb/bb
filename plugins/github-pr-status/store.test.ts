@@ -260,6 +260,62 @@ describe("shared pull request refresh", () => {
     ]);
   });
 
+  it("polls a watched draft PR with pending checks every 30 seconds and publishes when they pass", async () => {
+    vi.useFakeTimers();
+    const { store, load, publish } = setup([
+      available({ ...pending, state: "draft" }),
+    ]);
+    await store.read("a", { viewer: true });
+    store.watch("a", new AbortController().signal);
+    await flush();
+    load.mockClear();
+    load.mockResolvedValue(available(pullRequest({ state: "draft" })));
+    await vi.advanceTimersByTimeAsync(ACTIVE_CHECK_MS - 1);
+    expect(load).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(publish).toHaveBeenCalledExactlyOnceWith(["a"]);
+    await vi.advanceTimersByTimeAsync(5 * 60_000 - 1);
+    expect(load).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it("rechecks a quiet failing draft PR and polls actively while a rerun is pending beside a failure", async () => {
+    vi.useFakeTimers();
+    const checks = (failedCount: number, pendingCount: number) => ({
+      state: failedCount > 0 ? ("failing" as const) : ("passing" as const),
+      totalCount: 2,
+      passedCount: 2 - failedCount - pendingCount,
+      failedCount,
+      pendingCount,
+    });
+    const { store, load, publish } = setup([
+      available(pullRequest({ state: "draft", checks: checks(2, 0) })),
+    ]);
+    await store.read("a", { viewer: true });
+    store.watch("a", new AbortController().signal);
+    await flush();
+    load.mockClear();
+    load.mockResolvedValue(
+      available(pullRequest({ state: "draft", checks: checks(1, 1) })),
+    );
+    await vi.advanceTimersByTimeAsync(5 * 60_000 - 1);
+    expect(load).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(publish).toHaveBeenCalledExactlyOnceWith(["a"]);
+    load.mockResolvedValue(
+      available(pullRequest({ state: "draft", checks: checks(0, 0) })),
+    );
+    await vi.advanceTimersByTimeAsync(ACTIVE_CHECK_MS);
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(publish).toHaveBeenLastCalledWith(["a"]);
+    await expect(store.read("a", { viewer: true })).resolves.toEqual(
+      available(pullRequest({ state: "draft", checks: checks(0, 0) })),
+    );
+  });
+
   it("keeps a missing PR for five minutes for viewers unless discovery is forced", async () => {
     vi.useFakeTimers();
     const { store, load } = setup([{ outcome: "absent" }]);

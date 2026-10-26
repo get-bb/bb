@@ -14,12 +14,16 @@ type Lookup =
 type Entry = { lookup: Lookup; fetchedAt: number };
 type Check = { environmentId: string; interval: number; dueAt: number };
 
+function live(pr: PullRequest): boolean {
+  return pr.state === "open" || pr.state === "draft";
+}
+
 function active(pr: PullRequest): boolean {
   return (
-    pr.state === "open" &&
+    live(pr) &&
     (pr.autoMerge ||
       pr.inMergeQueue === true ||
-      pr.checks.state === "pending" ||
+      pr.checks.pendingCount > 0 ||
       pr.mergeability.state === "unknown")
   );
 }
@@ -117,7 +121,7 @@ export function createPullRequestStore(options: {
         active(snapshot.pullRequest) ||
         (settling.get(url) ?? 0) > snapshot.fetchedAt
           ? ACTIVE_CHECK_MS
-          : snapshot.pullRequest.state === "open"
+          : live(snapshot.pullRequest)
             ? QUIET_CHECK_MS
             : null;
       if (interval !== null)
