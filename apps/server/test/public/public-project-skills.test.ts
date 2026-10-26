@@ -3,7 +3,7 @@ import type {
   HostDaemonOnlineRpcRequestMessage,
 } from "@bb/host-daemon-contract";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setExperiments } from "@bb/db";
@@ -1883,6 +1883,76 @@ describe("public project skills route", () => {
         createParents: false,
         expectedSha256: "0".repeat(64),
       });
+    });
+  });
+
+  it("saves a server-owned bb user skill on the server's disk with a revision check", async () => {
+    await withTestHarness(async (harness) => {
+      const skillFilePath = join(
+        harness.deps.config.dataDir,
+        "skills",
+        "notes",
+        "SKILL.md",
+      );
+      await mkdir(join(skillFilePath, ".."), { recursive: true });
+      await writeFile(
+        skillFilePath,
+        "---\nname: notes\ndescription: Notes.\n---\n",
+      );
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-server-owned-skill-edit",
+      });
+      seedPrimaryHost(harness.deps, host.id);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/server-owned-skill-edit-project",
+      });
+      const stub = registerSkillRpc(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+      });
+      const listed = skillListResponseSchema.parse(
+        await readJson(
+          await harness.app.request(
+            `/api/v1/projects/${project.id}/skills?environmentId=`,
+          ),
+        ),
+      );
+      const skill = listed.skills.find((entry) => entry.name === "notes");
+      if (skill === undefined) throw new Error("Expected server-owned skill");
+      const read = skillContentResponseSchema.parse(
+        await readJson(
+          await harness.app.request(
+            `/api/v1/projects/${project.id}/skills/content?${new URLSearchParams(
+              { skillId: skill.id, environmentId: "", path: "SKILL.md" },
+            )}`,
+          ),
+        ),
+      );
+      const savedContent = "---\nname: notes\ndescription: Saved.\n---\n";
+      const save = (revision: string) =>
+        harness.app.request(`/api/v1/projects/${project.id}/skills/content`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            skillId: skill.id,
+            environmentId: null,
+            content: savedContent,
+            revision,
+          }),
+        });
+
+      expect((await save(read.revision)).status).toBe(200);
+      await expect(readFile(skillFilePath, "utf8")).resolves.toBe(savedContent);
+      expect((await save(read.revision)).status).toBe(409);
+      await expect(readFile(skillFilePath, "utf8")).resolves.toBe(savedContent);
+      expect(
+        stub.requests.some((request) =>
+          ["host.write_file", "host.write_skill"].includes(
+            request.command.type,
+          ),
+        ),
+      ).toBe(false);
     });
   });
 

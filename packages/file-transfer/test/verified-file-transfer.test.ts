@@ -2,7 +2,7 @@ import { access, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { makeTempDir } from "@bb/test-helpers";
 import { describe, expect, it } from "vitest";
-import { copyVerifiedFile } from "./verified-file-transfer.js";
+import { copyVerifiedFile } from "../src/index.js";
 
 describe("copyVerifiedFile", () => {
   it("rejects a missing source without leaving a destination file", async () => {

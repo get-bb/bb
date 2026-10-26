@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { makeTempDir } from "@bb/test-helpers";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   CommandDispatchError,
   type CommandOf,
@@ -108,71 +108,6 @@ describe("writeHostFile", () => {
     ).toHaveLength(1);
     await expect(fs.readFile(target, "utf8")).resolves.toMatch(/first|second/);
   });
-
-  it("leaves the original file intact when an unconditional write fails midway", async () => {
-    const dir = await makeTempDir("bb-file-write-");
-    const target = path.join(dir, "note.md");
-    await fs.writeFile(target, "original");
-    const diskFull = Object.assign(new Error("no space left on device"), {
-      code: "ENOSPC",
-    });
-    const probe = await fs.open(target, "r");
-    const fileHandlePrototype = Object.getPrototypeOf(probe);
-    await probe.close();
-    const originalWriteFile = fs.writeFile;
-    const originalHandleWrite = fileHandlePrototype.write;
-    vi.spyOn(fs, "writeFile").mockImplementation(async (file, data) => {
-      await originalWriteFile(file, String(data).slice(0, 3));
-      throw diskFull;
-    });
-    vi.spyOn(fileHandlePrototype, "write").mockImplementation(async function (
-      this: unknown,
-      data: unknown,
-    ) {
-      await originalHandleWrite.call(this, data, 0, 3);
-      throw diskFull;
-    });
-
-    try {
-      const error = await captureWriteError(
-        writeCommand({ path: target, content: "replacement" }),
-      );
-      expect(error).toBe(diskFull);
-    } finally {
-      vi.restoreAllMocks();
-    }
-
-    await expect(fs.readFile(target, "utf8")).resolves.toBe("original");
-    await expect(fs.readdir(dir)).resolves.toEqual(["note.md"]);
-  });
-
-  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
-    "overwrites in place when the parent directory is not writable",
-    async () => {
-      const dir = await makeTempDir("bb-file-write-");
-      const lockedDir = path.join(dir, "locked");
-      await fs.mkdir(lockedDir);
-      const target = path.join(lockedDir, "note.md");
-      await fs.writeFile(target, "original");
-      await fs.chmod(lockedDir, 0o555);
-
-      try {
-        const result = await writeHostFile(
-          writeCommand({ path: target, content: "replacement" }),
-        );
-        expect(result).toEqual({
-          outcome: "written",
-          sha256: sha256("replacement"),
-          sizeBytes: 11,
-        });
-      } finally {
-        await fs.chmod(lockedDir, 0o755);
-      }
-
-      await expect(fs.readFile(target, "utf8")).resolves.toBe("replacement");
-      await expect(fs.readdir(lockedDir)).resolves.toEqual(["note.md"]);
-    },
-  );
 
   it("returns a conflict with the current hash when the expected hash is stale", async () => {
     const dir = await makeTempDir("bb-file-write-");

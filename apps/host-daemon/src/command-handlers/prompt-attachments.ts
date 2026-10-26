@@ -16,7 +16,7 @@ import {
   publishFileWithoutReplacing,
   writeVerifiedFile,
   type WrittenFile,
-} from "../verified-file-transfer.js";
+} from "@bb/file-transfer";
 
 type AttachmentPromptInput = Extract<
   PromptInput,

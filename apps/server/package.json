@@ -19,6 +19,7 @@
     "@bb/core-ui": "workspace:*",
     "@bb/db": "workspace:*",
     "@bb/domain": "workspace:*",
+    "@bb/file-transfer": "workspace:*",
     "@bb/host-daemon-contract": "workspace:*",
     "@bb/logger": "workspace:*",
     "@bb/plugin-build": "workspace:*",

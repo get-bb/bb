@@ -24,7 +24,7 @@ import {
   hashFile,
   takeExactBytes,
   writeVerifiedFile,
-} from "./verified-file-transfer.js";
+} from "@bb/file-transfer";
 
 const STAGING_ROOT_SEGMENTS = ["runtime", "global-skills"] as const;
 const STORE_ROOT_SEGMENTS = ["runtime", "skill-store"] as const;
