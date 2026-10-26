@@ -1271,7 +1271,7 @@ fires after a final unterminated line is emitted.
    session instead of logging the drop. Decide whether the reader should offer
    a fail-closed mode before the signature is a promise.
 
-## Live-file navigation (`experimental_FileLink`, `BbNavigate.experimental_openFilePreview`, and `BbNavigate.experimental_openFileExternally`)
+## Live-file navigation (`experimental_FileLink`, `BbNavigate.experimental_openFilePreview`, `BbNavigate.experimental_openFileExternally`, and `experimental_useCanOpenFileExternally`)
 
 **Kept experimental (2026-08-22).** Windows/UNC paths were never verified.
 
@@ -1280,12 +1280,22 @@ workspace, host and thread-storage file targets through the current surface's
 shared file-tab controller. `experimental_openFileExternally` opens a target
 in the client's preferred external app. The boolean results report host
 acceptance, and malformed targets stay inert.
+`experimental_useCanOpenFileExternally(target)` is a hook that reports
+whether that open can succeed now: the target resolves to a path on its host
+(a ready environment on an active host, a host, or thread storage) and this
+client has an external file target for that host. It is false while either is
+loading, and the component re-renders when the answer changes.
 
 **Core callers.** `usePanelFiles` owns file opening on the thread view, New
 thread screen, and plugin page: core's workspace, host, and storage opens and
 `openFilePreview` build the same tab requests under one scope rule, which
 `usePanelFiles.test.tsx` checks against every surface. Links route through
-`usePanelBrowser` on every surface.
+`usePanelBrowser` on every surface. `useCanOpenFileExternally` is the only
+availability check for external opening: the file-link menu's Open
+externally item and the thread and New-thread file previews' Open in editor
+buttons use it. It resolves targets and checks the preferred file target with
+the same hooks the external-open dispatcher uses, and those buttons open
+through the same host intent as `experimental_openFileExternally`.
 
 Docs: `frontend-components.md`, `frontend-hooks-and-ui.md`.
 
@@ -1298,6 +1308,8 @@ Docs: `frontend-components.md`, `frontend-hooks-and-ui.md`.
    Settings, and plugin-page surfaces.
 3. Audit external opening across local and remote clients, disconnected hosts,
    missing preferred apps, and targets with line but not column support.
+   Decide whether `experimental_useCanOpenFileExternally` should also report
+   disconnected hosts as unavailable.
 4. Confirm link anchor behavior, unavailable menu states, copy semantics, and
    whether per-app external choices should remain host-owned menu affordances
    rather than become plugin-selectable API.

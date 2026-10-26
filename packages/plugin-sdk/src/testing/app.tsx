@@ -130,6 +130,7 @@ import {
   type UrlLinkProps,
   type ExperimentalFileLinkProps,
   type ExperimentalFileOpenOptions,
+  type ExperimentalLiveFileTarget,
   type ExperimentalFixedTabTargetState,
   type ExperimentalOpenTabOptions,
   type ExperimentalPanelController,
@@ -368,6 +369,7 @@ interface SlotEnv {
   sdkCalls: SdkCall[];
   providers: PluginProvidersState;
   codeTheme: PluginCodeThemeState;
+  canOpenFileExternally: (target: ExperimentalLiveFileTarget) => boolean;
   branchesState: BranchesState;
   checkoutState: CheckoutState;
 }
@@ -1757,6 +1759,13 @@ const testPluginSdkApp = {
   experimental_useCodeTheme(): PluginCodeThemeState {
     return useSlotEnv("experimental_useCodeTheme").codeTheme;
   },
+  experimental_useCanOpenFileExternally(
+    target: ExperimentalLiveFileTarget,
+  ): boolean {
+    return useSlotEnv(
+      "experimental_useCanOpenFileExternally",
+    ).canOpenFileExternally(target);
+  },
   experimental_copyToClipboard(
     content: ExperimentalClipboardContent,
   ): Promise<boolean> {
@@ -2316,6 +2325,11 @@ export interface RenderSlotOptions<
   openFilePreview?: (options: ExperimentalFileOpenOptions) => boolean;
   /** Host acceptance for preferred-external file intents. */
   openFileExternally?: (options: ExperimentalFileOpenOptions) => boolean;
+  /**
+   * Answer for `experimental_useCanOpenFileExternally(target)`. Omitted →
+   * false for every target.
+   */
+  canOpenFileExternally?: (target: ExperimentalLiveFileTarget) => boolean;
   /** Host acceptance for `useBbNavigate().experimental_openTerminal`. */
   openTerminal?: (
     options: Parameters<BbNavigate["experimental_openTerminal"]>[0],
@@ -3220,6 +3234,7 @@ export function renderSlot<
     sdkCalls,
     providers,
     codeTheme,
+    canOpenFileExternally: options.canOpenFileExternally ?? (() => false),
     branchesState: {
       branches: options.branchesState?.branches ?? [],
       remoteBranches: options.branchesState?.remoteBranches ?? [],

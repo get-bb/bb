@@ -192,10 +192,15 @@ className? }` —
   effects use
   `useBbNavigate().experimental_openFilePreview({ target, location })` or
   `.experimental_openFileExternally({ target, location })`; the boolean means
-  host acceptance, not completed I/O. Every identity is explicit—never invent
+  host acceptance, not completed I/O.
+  The `experimental_useCanOpenFileExternally(target)` hook is true when the
+  target resolves on its host and this client has an external file target
+  for it; it is false while loading and re-renders the component when it
+  changes. Every identity is explicit—never invent
   an environment id or turn a project id into a workspace target. The testing
   harness records both calls in `navigateCalls` and gates them with the
-  `openFilePreview` / `openFileExternally` behavior options.
+  `openFilePreview` / `openFileExternally` behavior options; its
+  `canOpenFileExternally` option answers the hook.
 - `experimental_useAppPanel` — returns the current surface's
   `ExperimentalPanelController`; see
   [Panel controller](frontend-hooks-and-ui.md#panel-controller). Targeted

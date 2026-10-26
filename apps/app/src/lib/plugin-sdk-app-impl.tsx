@@ -54,6 +54,7 @@ import { definePluginApp } from "./plugin-app-definition";
 import {
   useBbContext,
   useBbNavigate,
+  usePluginCanOpenFileExternally,
   useComposer,
   useComposers,
   useComposerView,
@@ -143,6 +144,7 @@ export const pluginSdkAppImplementation = {
   experimental_usePluginId: usePluginId,
   experimental_useQuestionFormHost: useQuestionFormHost,
   useBbNavigate,
+  experimental_useCanOpenFileExternally: usePluginCanOpenFileExternally,
   experimental_useAppPanel,
   experimental_useFixedTabTarget,
   useComposer,

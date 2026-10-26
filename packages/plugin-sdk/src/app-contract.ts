@@ -5114,6 +5114,16 @@ export interface PluginSdkApp {
   experimental_useQuestionFormHost(): ExperimentalQuestionFormHost;
   useBbNavigate(): BbNavigate;
   /**
+   * Whether `useBbNavigate().experimental_openFileExternally` can open this
+   * target now: it resolves to a path on its host (a ready environment, a
+   * host, or thread storage) and this client has an external file target for
+   * that host. False while either is loading; the component re-renders when
+   * the answer changes. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_useCanOpenFileExternally(
+    target: ExperimentalLiveFileTarget,
+  ): boolean;
+  /**
    * The side panel of the surface the calling component renders in: the
    * thread view, the plugin page, or the New thread screen.
    */

@@ -49,9 +49,13 @@ and ill-formed Unicode—have no active href and cannot record a preview in the
 frontend harness. Buttons and menus can call
 `experimental_openFilePreview({ target, location })` or
 `experimental_openFileExternally({ target, location })`; both return whether
-the current host accepted the intent. Targets never infer an ambient workspace.
-The frontend harness records both methods and accepts `openFilePreview` and
-`openFileExternally` behavior options.
+the current host accepted the intent. The
+`experimental_useCanOpenFileExternally(target)` hook reports whether the
+external open can succeed now (false while loading) and re-renders the
+component when that changes; use it to disable an Open externally control.
+Targets never infer an ambient workspace.
+The frontend harness records both methods and accepts `openFilePreview`,
+`openFileExternally`, and `canOpenFileExternally` behavior options.
 
 To show a terminal beside your UI, create it with `useSdk().terminals.create`
 in the thread, environment, or host directory you want, then call

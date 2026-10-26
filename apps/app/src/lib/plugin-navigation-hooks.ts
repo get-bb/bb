@@ -1,7 +1,11 @@
 import { useCallback, useContext, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { matchPath, useLocation, useNavigate } from "react-router-dom";
-import type { BbNavigate, PluginBrowserBbSdk } from "@get-bb/plugin-sdk";
+import type {
+  BbNavigate,
+  ExperimentalLiveFileTarget,
+  PluginBrowserBbSdk,
+} from "@get-bb/plugin-sdk";
 import { usePluginId } from "@/components/plugin/plugin-context";
 import { BbHttpError, sdk } from "@/lib/sdk";
 import { getPluginBoundSdk } from "@/lib/plugin-bound-sdk";
@@ -21,11 +25,15 @@ import { lookupCachedThread } from "@/lib/cached-thread";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import { openThreadInSplit } from "@/lib/split-layout/openThreadInSplit";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
-import { normalizeExperimentalFileOpenOptions } from "@/lib/live-file-navigation";
+import {
+  normalizeExperimentalFileOpenOptions,
+  normalizeExperimentalLiveFileTarget,
+} from "@/lib/live-file-navigation";
 import {
   createPluginPanelController,
   createRetiredOpenPanel,
 } from "@/lib/plugin-panel-controller";
+import { useCanOpenFileExternally } from "@/hooks/useCanOpenFileExternally";
 
 export function isAutomationEditRoutePath(pathname: string): boolean {
   return (
@@ -38,6 +46,12 @@ export function useSdk(): PluginBrowserBbSdk {
   const pluginId = usePluginId();
   const queryClient = useQueryClient();
   return getPluginBoundSdk(sdk, pluginId, queryClient);
+}
+
+export function usePluginCanOpenFileExternally(
+  target: ExperimentalLiveFileTarget,
+): boolean {
+  return useCanOpenFileExternally(normalizeExperimentalLiveFileTarget(target));
 }
 
 export function useBbNavigate(): BbNavigate {

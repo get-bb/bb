@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { makeEnvironment } from "@bb/test-helpers/domain-fixtures";
 import {
   getLiveFileTargetLookups,
+  resolveLiveFileRoot,
   resolveLiveFileTarget,
 } from "./useResolvedLiveFileTarget";
 
@@ -102,6 +103,36 @@ describe("useResolvedLiveFileTarget", () => {
           serverOrigin: SERVER_ORIGIN,
         }),
       ).toEqual({ status });
+    },
+  );
+
+  it.each([
+    { status: "ready", hostLifecycle: "active", expected: "available" },
+    {
+      status: "provisioning",
+      hostLifecycle: "active",
+      expected: "unavailable",
+    },
+    { status: "destroyed", hostLifecycle: "active", expected: "unavailable" },
+    { status: "ready", hostLifecycle: "removing", expected: "unavailable" },
+  ] as const)(
+    "treats a $status environment on a $hostLifecycle host as $expected",
+    ({ status, hostLifecycle, expected }) => {
+      expect(
+        resolveLiveFileRoot({
+          root: { kind: "workspace", environmentId: "env_1" },
+          environmentQuery: {
+            data: makeEnvironment({
+              hostId: "host_1",
+              path: "/work/repo",
+              status,
+              hostLifecycle,
+            }),
+            isLoading: false,
+          },
+          storageQuery: { data: undefined, isLoading: false },
+        }).status,
+      ).toBe(expected);
     },
   );
 });

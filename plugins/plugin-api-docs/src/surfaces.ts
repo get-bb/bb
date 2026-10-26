@@ -1608,6 +1608,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "BbNavigate.openUrl",
           "BbNavigate.experimental_openFilePreview",
           "BbNavigate.experimental_openFileExternally",
+          "experimental_useCanOpenFileExternally",
         ],
         firstParty: [
           "Account Pooler [Experimental]",

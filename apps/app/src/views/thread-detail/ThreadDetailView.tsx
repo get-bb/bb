@@ -108,6 +108,8 @@ import {
 import { assertNever } from "@bb/thread-view";
 import { useCreateThreadInEnvironment } from "@/hooks/useCreateThreadInEnvironment";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
+import { useCanOpenFileExternally } from "@/hooks/useCanOpenFileExternally";
+import type { LiveFileRoot } from "@/hooks/useResolvedLiveFileTarget";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 import { selectHosts, useHosts } from "@/hooks/queries/host-queries";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
@@ -209,7 +211,10 @@ import { getFileExtension } from "@/lib/plugin-slot-resolvers";
 import { Icon } from "@bb/shared-ui/icon";
 import { getBbDesktopInfo, isDesktopBrowserAvailable } from "@/lib/bb-desktop";
 import { UrlOpenRoutingProvider } from "@/lib/url-open-routing";
-import { AppNavigationHostProvider } from "@/lib/app-navigation-host";
+import {
+  AppNavigationHostProvider,
+  useAppNavigationHost,
+} from "@/lib/app-navigation-host";
 import { getFileBasename } from "@/lib/live-file-navigation";
 import { getFilePreviewLineRangeStart } from "@bb/client-core";
 import { getBrowserUrlHost } from "@/lib/browser-url";
@@ -240,7 +245,7 @@ import {
 } from "@/components/secondary-panel/terminalPanelTabs";
 import { usePendingTerminalIds } from "@/components/thread/terminal/pending-terminals";
 import {
-  buildOpenInEditorHandler,
+  buildOpenFileExternallyHandler,
   resolveEnvironmentOpenContext,
   resolveWorkspaceChangedFileOpenTarget,
   resolveThreadWorkspaceOpenPath,
@@ -286,9 +291,6 @@ const THREAD_HEADER_ACTIONS_GROUP = "0_header";
 
 type MergeBasePickerOpenChangeHandler = NonNullable<
   ContextBannerMergeBaseConfig["onPickerOpenChange"]
->;
-type OpenInEditorHandler = NonNullable<
-  ReturnType<typeof buildOpenInEditorHandler>
 >;
 type OpenFilePreviewHandler = (relativePath: string) => void;
 
@@ -1643,13 +1645,11 @@ function ThreadDetailViewInternal(
       });
   const {
     canOpenPreferredDirectoryTarget,
-    canOpenPreferredFileTarget,
     directoryOpenTargets,
     fileOpenTargets,
     openPathInDirectoryTarget,
     openPathInFileTarget,
     openPathInPreferredDirectoryTarget,
-    openPathInPreferredFileTarget,
     preferredDirectoryTarget,
   } = useLocalOpenTargets({
     enabled: threadOpenContext !== null,
@@ -1913,51 +1913,61 @@ function ThreadDetailViewInternal(
       threadStorageFilesError,
     ],
   );
+  const workspaceFileEnvironmentId = thread?.environmentId ?? null;
+  const environmentHostId = environment?.hostId ?? null;
+  const workspaceFileRoot = useMemo<LiveFileRoot | null>(
+    () =>
+      workspaceFileEnvironmentId
+        ? { kind: "workspace", environmentId: workspaceFileEnvironmentId }
+        : null,
+    [workspaceFileEnvironmentId],
+  );
+  const storageFileRoot = useMemo<LiveFileRoot>(
+    () => ({ kind: "thread-storage", threadId }),
+    [threadId],
+  );
+  const hostFileRoot = useMemo<LiveFileRoot | null>(
+    () =>
+      environmentHostId ? { kind: "host", hostId: environmentHostId } : null,
+    [environmentHostId],
+  );
+  const canOpenWorkspaceFile = useCanOpenFileExternally(workspaceFileRoot);
+  const canOpenStorageFile = useCanOpenFileExternally(storageFileRoot);
+  const canOpenHostFile = useCanOpenFileExternally(hostFileRoot);
+  const { openFileExternally } = useAppNavigationHost();
   const handleOpenFileInEditor = useMemo(
     () =>
-      buildOpenInEditorHandler({
-        rootPath: workspacePreviewRootPath,
-        canOpenPreferredTarget: canOpenPreferredFileTarget,
-        openInPreferredTarget: openPathInPreferredFileTarget,
+      buildOpenFileExternallyHandler({
+        root: workspaceFileRoot,
+        canOpenFileExternally: canOpenWorkspaceFile,
+        openFileExternally,
+        lineNumber: null,
       }),
-    [
-      canOpenPreferredFileTarget,
-      openPathInPreferredFileTarget,
-      workspacePreviewRootPath,
-    ],
+    [canOpenWorkspaceFile, openFileExternally, workspaceFileRoot],
   );
   const handleOpenStorageFileInEditor = useMemo(
     () =>
-      buildOpenInEditorHandler({
-        rootPath: threadStorageRootPath,
-        canOpenPreferredTarget: canOpenPreferredFileTarget,
-        openInPreferredTarget: openPathInPreferredFileTarget,
+      buildOpenFileExternallyHandler({
+        root: storageFileRoot,
+        canOpenFileExternally: canOpenStorageFile,
+        openFileExternally,
+        lineNumber: null,
       }),
-    [
-      canOpenPreferredFileTarget,
-      openPathInPreferredFileTarget,
-      threadStorageRootPath,
-    ],
+    [canOpenStorageFile, openFileExternally, storageFileRoot],
   );
-  const handleOpenHostFileInEditor = useMemo<
-    OpenInEditorHandler | undefined
-  >(() => {
-    if (!canOpenPreferredFileTarget) {
-      return undefined;
-    }
-    return (path) => {
-      void openPathInPreferredFileTarget({
-        lineNumber: getFilePreviewLineRangeStart({
-          lineRange: activeHostFileLineRange,
-        }),
-        path,
-      });
-    };
-  }, [
-    activeHostFileLineRange,
-    canOpenPreferredFileTarget,
-    openPathInPreferredFileTarget,
-  ]);
+  const hostFileLineNumber = getFilePreviewLineRangeStart({
+    lineRange: activeHostFileLineRange,
+  });
+  const handleOpenHostFileInEditor = useMemo(
+    () =>
+      buildOpenFileExternallyHandler({
+        root: hostFileRoot,
+        canOpenFileExternally: canOpenHostFile,
+        openFileExternally,
+        lineNumber: hostFileLineNumber,
+      }),
+    [canOpenHostFile, hostFileLineNumber, hostFileRoot, openFileExternally],
+  );
   const workspaceOpenPath = executionUnavailable
     ? null
     : resolveThreadWorkspaceOpenPath({
