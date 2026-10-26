@@ -84,6 +84,7 @@ describe("usePluginFrontendBoot", () => {
               sdkMajor: 0,
               sdkVersion: "0.0.0",
               compatible: true,
+              runtimeSlots: [],
             },
           },
         }),

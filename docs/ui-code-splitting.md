@@ -113,8 +113,18 @@ SDK diff/source and timeline diff entry components start the selected built-in
 module and request its workers while their outer module is still loading.
 Idle warming imports the lightweight split definitions statically and preloads
 the implementations directly; it does not start workers. Worker readiness
-remains a separate loading state. Direct shared diff-library imports remain eager
-for compatibility with existing plugin bundles.
+remains a separate loading state.
+
+Plugin builds record shared runtime dependencies in `app.meta.json` as
+`runtimeSlots`. Before evaluating a bundle, the frontend matches those slots
+against `lazyRuntimeGroups` and loads the matching groups in parallel while
+preloading the bundle itself. Each group shares a cached, retryable loader.
+Pierre's core and React bindings form the first lazy group; other runtime slots
+remain eager. Older bundles without dependency metadata receive all slots for
+compatibility. SDK component splits remain separate from this mechanism:
+runtime slots must be installed before a plugin module evaluates, while SDK
+components can load when rendered or warmed at idle.
+
 Splits defined by modules that load later (a route
 chunk, for example) join the queue and drain at the next idle period. Tests do
 not start the queue, so defining a split never triggers a speculative import

@@ -3,7 +3,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { act } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import { PluginSourceCode } from "@/components/plugin/PluginSourceCode";
-import { PluginDiffSplit } from "@/components/plugin/PluginDiffSplit";
+import { LazyPluginDiff } from "@/components/plugin/lazy-plugin-renderers";
 import { parseGitDiffFiles } from "@/components/git-diff/git-diff-parsing";
 import { DiffHost } from "./DiffHost";
 import { SourceCodeHost } from "./SourceCodeHost";
@@ -47,7 +47,7 @@ it("shows the renderer skeleton until the renderer imports resolve", async () =>
   );
   const sdk = render(
     <>
-      <PluginDiffSplit patch={patch} path="app.ts" />
+      <LazyPluginDiff patch={patch} path="app.ts" />
       <PluginSourceCode content="const a = 2;" path="app.ts" />
     </>,
   );

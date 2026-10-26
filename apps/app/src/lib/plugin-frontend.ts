@@ -158,8 +158,16 @@ export async function loadPluginFrontend(
     };
   }
   try {
-    if (needsLazyRuntimeSlots(bundle.runtimeSlots)) {
-      const slotsProvided = provideLazyRuntimeSlots();
+    const runtimeGroups = lazyRuntimeGroups.filter((group) =>
+      group.slots.some((slot) => bundle.runtimeSlots.includes(slot)),
+    );
+    if (runtimeGroups.length > 0) {
+      const slotsProvided = Promise.all(
+        runtimeGroups.map(async (group) => {
+          const slots = await group.load();
+          Object.assign(installPluginRuntime(), slots);
+        }),
+      );
       deps.prefetchModule(bundle.jsUrl);
       await slotsProvided;
     }
@@ -246,21 +254,18 @@ export function installPluginRuntime(): BbPluginRuntime {
   return host.__bbPluginRuntime;
 }
 
-const loadPierreRuntime = createRetryingModuleLoader(
-  () => import("./plugin-pierre-runtime"),
-);
-
-function needsLazyRuntimeSlots(runtimeSlots: readonly string[]): boolean {
-  return (
-    runtimeSlots.includes("pierreDiffs") ||
-    runtimeSlots.includes("pierreDiffsReact")
-  );
-}
-
-async function provideLazyRuntimeSlots(): Promise<void> {
-  const { pierreRuntimeSlots } = await loadPierreRuntime();
-  Object.assign(installPluginRuntime(), pierreRuntimeSlots);
-}
+const lazyRuntimeGroups = [
+  {
+    slots: ["pierreDiffs", "pierreDiffsReact"],
+    load: createRetryingModuleLoader(async () => {
+      const { pierreRuntimeSlots } = await import("./plugin-pierre-runtime");
+      return pierreRuntimeSlots;
+    }),
+  },
+] satisfies {
+  slots: (keyof BbPluginRuntime)[];
+  load: () => Promise<Partial<BbPluginRuntime>>;
+}[];
 
 export async function fetchFrontendCandidates(
   queryClient: QueryClient = appQueryClient,
