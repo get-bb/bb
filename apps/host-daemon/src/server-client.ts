@@ -255,70 +255,29 @@ function parseContentLength(value: string | null): number | null {
   return parsed;
 }
 
-function validateProjectAttachmentPartialByteLength(
+function validateProjectAttachmentContentLength(
   args: FetchProjectAttachmentArgs,
-  byteLength: number,
+  contentLength: number,
 ): void {
   if (
     args.expectedSizeBytes !== undefined &&
-    byteLength > args.expectedSizeBytes
+    contentLength !== args.expectedSizeBytes
   ) {
     throw new Error(
-      `Project attachment size mismatch: expected ${args.expectedSizeBytes} bytes, received more than ${args.expectedSizeBytes}`,
+      `Project attachment size mismatch: expected ${args.expectedSizeBytes} bytes, received ${contentLength}`,
     );
   }
-  if (byteLength > args.maxBytes) {
+  if (contentLength > args.maxBytes) {
     throw new Error(
-      `Project attachment exceeds ${args.maxBytes} byte limit: received ${byteLength}`,
+      `Project attachment exceeds ${args.maxBytes} byte limit: received ${contentLength}`,
     );
   }
 }
 
-function validateProjectAttachmentFinalByteLength(
-  args: FetchProjectAttachmentArgs,
-  byteLength: number,
-): void {
-  if (
-    args.expectedSizeBytes !== undefined &&
-    byteLength !== args.expectedSizeBytes
-  ) {
-    throw new Error(
-      `Project attachment size mismatch: expected ${args.expectedSizeBytes} bytes, received ${byteLength}`,
-    );
-  }
-  validateProjectAttachmentPartialByteLength(args, byteLength);
-}
+async function* emptyBody(): AsyncGenerator<Uint8Array> {}
 
-async function readProjectAttachmentBytes(
-  response: Response,
-  args: FetchProjectAttachmentArgs,
-): Promise<Uint8Array> {
-  if (!response.body) {
-    validateProjectAttachmentFinalByteLength(args, 0);
-    return new Uint8Array();
-  }
-
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let totalBytes = 0;
-  while (true) {
-    const result = await reader.read();
-    if (result.done) {
-      break;
-    }
-    totalBytes += result.value.byteLength;
-    validateProjectAttachmentPartialByteLength(args, totalBytes);
-    chunks.push(result.value);
-  }
-
-  validateProjectAttachmentFinalByteLength(args, totalBytes);
-  const bytes = new Uint8Array(totalBytes);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return bytes;
+function responseContent(response: Response): AsyncIterable<Uint8Array> {
+  return response.body ?? emptyBody();
 }
 
 function validateHostArtifactPartialByteLength(
@@ -519,13 +478,15 @@ export function createServerClient(
         response.headers.get("content-length"),
       );
       if (contentLength !== null) {
-        validateProjectAttachmentFinalByteLength(args, contentLength);
+        try {
+          validateProjectAttachmentContentLength(args, contentLength);
+        } catch (error) {
+          await response.body?.cancel().catch(() => undefined);
+          throw error;
+        }
       }
 
-      const bytes = await readProjectAttachmentBytes(response, args);
-      return {
-        bytes,
-      };
+      return { content: responseContent(response) };
     },
 
     async fetchSkillTree(treeHash: string): Promise<HostDaemonSkillTree> {

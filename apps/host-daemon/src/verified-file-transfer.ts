@@ -1,0 +1,135 @@
+import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
+import fs, { type FileHandle } from "node:fs/promises";
+import { isFsErrorWithCode } from "./fs-errors.js";
+
+export interface VerifiedFileExpectation {
+  maxBytes: number;
+  sha256: string | null;
+  sizeBytes: number | null;
+}
+
+export interface WrittenFile {
+  sha256: string;
+  sizeBytes: number;
+}
+
+export class FileTransferVerificationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "FileTransferVerificationError";
+  }
+}
+
+function assertWithinLimits(
+  label: string,
+  expected: VerifiedFileExpectation,
+  sizeBytes: number,
+): void {
+  if (expected.sizeBytes !== null && sizeBytes > expected.sizeBytes) {
+    throw new FileTransferVerificationError(
+      `${label} size mismatch: expected ${expected.sizeBytes} bytes, received more than ${expected.sizeBytes}`,
+    );
+  }
+  if (sizeBytes > expected.maxBytes) {
+    throw new FileTransferVerificationError(
+      `${label} exceeds ${expected.maxBytes} byte limit: received ${sizeBytes}`,
+    );
+  }
+}
+
+async function writeFully(
+  handle: FileHandle,
+  chunk: Uint8Array,
+): Promise<void> {
+  for (let offset = 0; offset < chunk.byteLength;) {
+    const { bytesWritten } = await handle.write(
+      chunk,
+      offset,
+      chunk.byteLength - offset,
+    );
+    if (bytesWritten === 0) {
+      throw new Error("File write made no progress");
+    }
+    offset += bytesWritten;
+  }
+}
+
+export async function writeVerifiedFile(args: {
+  destinationPath: string;
+  expected: VerifiedFileExpectation;
+  label: string;
+  mode: number;
+  source: AsyncIterable<Uint8Array>;
+}): Promise<WrittenFile> {
+  const handle = await fs.open(args.destinationPath, "wx", args.mode);
+  const hash = createHash("sha256");
+  let sizeBytes = 0;
+  try {
+    for await (const chunk of args.source) {
+      sizeBytes += chunk.byteLength;
+      assertWithinLimits(args.label, args.expected, sizeBytes);
+      hash.update(chunk);
+      await writeFully(handle, chunk);
+    }
+    if (
+      args.expected.sizeBytes !== null &&
+      sizeBytes !== args.expected.sizeBytes
+    ) {
+      throw new FileTransferVerificationError(
+        `${args.label} size mismatch: expected ${args.expected.sizeBytes} bytes, received ${sizeBytes}`,
+      );
+    }
+    const sha256 = hash.digest("hex");
+    if (args.expected.sha256 !== null && sha256 !== args.expected.sha256) {
+      throw new FileTransferVerificationError(
+        `${args.label} content hash mismatch: expected ${args.expected.sha256}, received ${sha256}`,
+      );
+    }
+    await handle.chmod(args.mode);
+    await handle.close();
+    return { sha256, sizeBytes };
+  } catch (error) {
+    await handle.close().catch(() => undefined);
+    await fs.rm(args.destinationPath, { force: true });
+    throw error;
+  }
+}
+
+export async function hashFile(filePath: string): Promise<WrittenFile> {
+  const hash = createHash("sha256");
+  let sizeBytes = 0;
+  for await (const chunk of createReadStream(filePath)) {
+    const bytes = chunk as Buffer;
+    sizeBytes += bytes.byteLength;
+    hash.update(bytes);
+  }
+  return { sha256: hash.digest("hex"), sizeBytes };
+}
+
+export async function publishFileWithoutReplacing(
+  sourcePath: string,
+  destinationPath: string,
+): Promise<boolean> {
+  try {
+    await fs.link(sourcePath, destinationPath);
+    return true;
+  } catch (error) {
+    if (isFsErrorWithCode(error, "EEXIST")) return false;
+    if (
+      !["EPERM", "ENOTSUP", "EXDEV", "ENOSYS", "EMLINK"].some((code) =>
+        isFsErrorWithCode(error, code),
+      )
+    ) {
+      throw error;
+    }
+  }
+  try {
+    await fs.copyFile(sourcePath, destinationPath, fs.constants.COPYFILE_EXCL);
+    return true;
+  } catch (error) {
+    if (isFsErrorWithCode(error, "EEXIST")) return false;
+    await fs.rm(destinationPath, { force: true }).catch(() => undefined);
+    throw error;
+  }
+}

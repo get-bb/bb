@@ -41,6 +41,12 @@ function createInteractiveRequest(): PendingInteractionCreate {
   };
 }
 
+async function readText(source: AsyncIterable<Uint8Array>): Promise<string> {
+  const chunks: Uint8Array[] = [];
+  for await (const chunk of source) chunks.push(chunk);
+  return Buffer.concat(chunks).toString("utf8");
+}
+
 describe("createServerClient", () => {
   it("narrows a protocol update retry request from error details", async () => {
     const fetchFn = vi.fn<FetchFn>(async () =>
@@ -274,9 +280,7 @@ describe("createServerClient", () => {
       path: "network-tab.har",
     });
 
-    expect(Buffer.from(attachment.bytes).toString("utf8")).toBe(
-      "attachment-body",
-    );
+    await expect(readText(attachment.content)).resolves.toBe("attachment-body");
     expect(fetchFn).toHaveBeenCalledTimes(1);
   });
 
@@ -380,10 +384,12 @@ describe("createServerClient", () => {
     expect(fetchFn).toHaveBeenCalledTimes(1);
   });
 
-  it("rejects project attachment responses with unexpected byte length", async () => {
+  it("rejects a project attachment whose declared length differs before reading it", async () => {
+    const cancel = vi.fn();
     const fetchFn = vi.fn<FetchFn>(
       async () =>
-        new Response("too-large", {
+        new Response(new ReadableStream({ cancel }), {
+          headers: { "content-length": "9" },
           status: 200,
         }),
     );
@@ -404,6 +410,7 @@ describe("createServerClient", () => {
         path: "network-tab.har",
       }),
     ).rejects.toThrow("Project attachment size mismatch");
+    expect(cancel).toHaveBeenCalledOnce();
   });
 
   it("fetches project attachment bytes over loopback HTTP", async () => {
@@ -429,9 +436,7 @@ describe("createServerClient", () => {
       path: "network-tab.har",
     });
 
-    expect(Buffer.from(attachment.bytes).toString("utf8")).toBe(
-      "loopback-body",
-    );
+    await expect(readText(attachment.content)).resolves.toBe("loopback-body");
     expect(fetchFn).toHaveBeenCalledTimes(1);
   });
 

@@ -1,4 +1,5 @@
-import { mkdir, readFile, rm, rmdir, stat, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, rm, rmdir } from "node:fs/promises";
 import path from "node:path";
 import {
   PROMPT_ATTACHMENT_MAX_BYTES,
@@ -10,7 +11,12 @@ import {
   CommandDispatchError,
   type CommandDispatchOptions,
 } from "../command-dispatch-support.js";
-import { isFsErrorWithCode } from "../fs-errors.js";
+import {
+  hashFile,
+  publishFileWithoutReplacing,
+  writeVerifiedFile,
+  type WrittenFile,
+} from "../verified-file-transfer.js";
 
 type AttachmentPromptInput = Extract<
   PromptInput,
@@ -109,29 +115,6 @@ function validateExpectedAttachmentSize(args: StageAttachmentArgs): void {
   }
 }
 
-function validateFetchedAttachmentSize(
-  attachment: AttachmentPromptInput,
-  bytes: Uint8Array,
-): void {
-  const expectedSizeBytes = expectedAttachmentSizeBytes(attachment);
-  if (
-    expectedSizeBytes !== undefined &&
-    bytes.byteLength !== expectedSizeBytes
-  ) {
-    throw new CommandDispatchError(
-      "attachment_unavailable",
-      `Attachment ${attachment.path} size mismatch: expected ${expectedSizeBytes} bytes, received ${bytes.byteLength}`,
-    );
-  }
-
-  if (bytes.byteLength > PROMPT_ATTACHMENT_MAX_BYTES) {
-    throw new CommandDispatchError(
-      "attachment_unavailable",
-      `Attachment ${attachment.path} exceeds ${PROMPT_ATTACHMENT_MAX_BYTES} byte limit`,
-    );
-  }
-}
-
 export function requireContainedPath(
   rootPath: string,
   candidatePath: string,
@@ -170,15 +153,19 @@ function appendFilenameSuffix(filename: string, suffix: string): string {
 
 async function hasContents(
   filePath: string,
-  bytes: Uint8Array,
+  written: WrittenFile,
 ): Promise<boolean> {
-  if ((await stat(filePath)).size !== bytes.byteLength) return false;
-  return Buffer.from(bytes).equals(await readFile(filePath));
+  const existing = await hashFile(filePath);
+  return (
+    existing.sizeBytes === written.sizeBytes &&
+    existing.sha256 === written.sha256
+  );
 }
 
-async function writeStagedAttachment(
+async function publishStagedAttachment(
   args: StageAttachmentArgs,
-  bytes: Uint8Array,
+  downloadPath: string,
+  written: WrittenFile,
 ): Promise<string> {
   const filename = attachmentFilename(args.attachment);
   for (let suffix = 1; ; suffix += 1) {
@@ -187,17 +174,11 @@ async function writeStagedAttachment(
       suffix === 1 ? filename : appendFilenameSuffix(filename, `-${suffix}`),
     );
     if (args.stagedPaths.includes(candidate)) continue;
-    try {
-      await writeFile(candidate, bytes, {
-        flag: "wx",
-        mode: STAGED_ATTACHMENT_MODE,
-      });
+    if (await publishFileWithoutReplacing(downloadPath, candidate)) {
       args.createdPaths.push(candidate);
       return candidate;
-    } catch (error) {
-      if (!isFsErrorWithCode(error, "EEXIST")) throw error;
     }
-    if (await hasContents(candidate, bytes)) return candidate;
+    if (await hasContents(candidate, written)) return candidate;
   }
 }
 
@@ -216,25 +197,42 @@ async function cleanupStagedAttachments(
 async function stageAttachment(args: StageAttachmentArgs): Promise<string> {
   validateExpectedAttachmentSize(args);
 
-  let bytes: Uint8Array;
+  const expectedSizeBytes = expectedAttachmentSizeBytes(args.attachment);
+  const downloadPath = path.join(
+    args.stagingDir,
+    `.bb-attachment-${randomUUID()}.partial`,
+  );
   try {
-    const attachment = await args.fetchProjectAttachment({
-      expectedSizeBytes: expectedAttachmentSizeBytes(args.attachment),
-      maxBytes: PROMPT_ATTACHMENT_MAX_BYTES,
-      projectId: args.projectId,
-      threadId: args.threadId,
-      path: args.attachment.path,
-    });
-    bytes = attachment.bytes;
-  } catch (error) {
-    throw new CommandDispatchError(
-      "attachment_unavailable",
-      `Failed to fetch attachment ${args.attachment.path}: ${attachmentFetchErrorMessage(error)}`,
-    );
+    let written: WrittenFile;
+    try {
+      const attachment = await args.fetchProjectAttachment({
+        expectedSizeBytes,
+        maxBytes: PROMPT_ATTACHMENT_MAX_BYTES,
+        projectId: args.projectId,
+        threadId: args.threadId,
+        path: args.attachment.path,
+      });
+      written = await writeVerifiedFile({
+        destinationPath: downloadPath,
+        expected: {
+          maxBytes: PROMPT_ATTACHMENT_MAX_BYTES,
+          sha256: null,
+          sizeBytes: expectedSizeBytes ?? null,
+        },
+        label: `Attachment ${args.attachment.path}`,
+        mode: STAGED_ATTACHMENT_MODE,
+        source: attachment.content,
+      });
+    } catch (error) {
+      throw new CommandDispatchError(
+        "attachment_unavailable",
+        `Failed to fetch attachment ${args.attachment.path}: ${attachmentFetchErrorMessage(error)}`,
+      );
+    }
+    return await publishStagedAttachment(args, downloadPath, written);
+  } finally {
+    await rm(downloadPath, { force: true });
   }
-
-  validateFetchedAttachmentSize(args.attachment, bytes);
-  return writeStagedAttachment(args, bytes);
 }
 
 async function stagePromptInputList(
