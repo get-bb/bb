@@ -949,6 +949,7 @@ async function downloadTreeFiles(args: {
           args.contentRootPath,
           ...file.path.split("/"),
         ),
+        durable: false,
         expected: storedFileExpectation(file),
         label: `Skill tree file ${file.path}`,
         mode: file.mode,

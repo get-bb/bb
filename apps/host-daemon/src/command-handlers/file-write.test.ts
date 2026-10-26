@@ -120,17 +120,18 @@ describe("writeHostFile", () => {
     const fileHandlePrototype = Object.getPrototypeOf(probe);
     await probe.close();
     const originalWriteFile = fs.writeFile;
-    const originalHandleWriteFile = fileHandlePrototype.writeFile;
+    const originalHandleWrite = fileHandlePrototype.write;
     vi.spyOn(fs, "writeFile").mockImplementation(async (file, data) => {
       await originalWriteFile(file, String(data).slice(0, 3));
       throw diskFull;
     });
-    vi.spyOn(fileHandlePrototype, "writeFile").mockImplementation(
-      async function (this: unknown, data: unknown) {
-        await originalHandleWriteFile.call(this, String(data).slice(0, 3));
-        throw diskFull;
-      },
-    );
+    vi.spyOn(fileHandlePrototype, "write").mockImplementation(async function (
+      this: unknown,
+      data: unknown,
+    ) {
+      await originalHandleWrite.call(this, data, 0, 3);
+      throw diskFull;
+    });
 
     try {
       const error = await captureWriteError(
@@ -144,6 +145,34 @@ describe("writeHostFile", () => {
     await expect(fs.readFile(target, "utf8")).resolves.toBe("original");
     await expect(fs.readdir(dir)).resolves.toEqual(["note.md"]);
   });
+
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "overwrites in place when the parent directory is not writable",
+    async () => {
+      const dir = await makeTempDir("bb-file-write-");
+      const lockedDir = path.join(dir, "locked");
+      await fs.mkdir(lockedDir);
+      const target = path.join(lockedDir, "note.md");
+      await fs.writeFile(target, "original");
+      await fs.chmod(lockedDir, 0o555);
+
+      try {
+        const result = await writeHostFile(
+          writeCommand({ path: target, content: "replacement" }),
+        );
+        expect(result).toEqual({
+          outcome: "written",
+          sha256: sha256("replacement"),
+          sizeBytes: 11,
+        });
+      } finally {
+        await fs.chmod(lockedDir, 0o755);
+      }
+
+      await expect(fs.readFile(target, "utf8")).resolves.toBe("replacement");
+      await expect(fs.readdir(lockedDir)).resolves.toEqual(["note.md"]);
+    },
+  );
 
   it("returns a conflict with the current hash when the expected hash is stale", async () => {
     const dir = await makeTempDir("bb-file-write-");

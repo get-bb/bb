@@ -214,6 +214,7 @@ async function stageAttachment(args: StageAttachmentArgs): Promise<string> {
       });
       written = await writeVerifiedFile({
         destinationPath: downloadPath,
+        durable: false,
         expected: {
           maxBytes: PROMPT_ATTACHMENT_MAX_BYTES,
           sha256: null,

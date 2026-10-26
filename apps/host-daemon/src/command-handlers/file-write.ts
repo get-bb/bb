@@ -14,6 +14,10 @@ import {
 } from "./file-read.js";
 import { resolveNonSymlinkDirectoryPath } from "./root-path.js";
 import { runInSerialLane } from "../serial-lane.js";
+import {
+  publishFileWithoutReplacing,
+  writeVerifiedFile,
+} from "../verified-file-transfer.js";
 
 const guardedWriteTails = new Map<string, Promise<void>>();
 
@@ -142,53 +146,41 @@ async function writeResolvedHostFile(
   if (command.createParents) {
     await fs.mkdir(path.dirname(target.writePath), { recursive: true });
   }
-  const preservedMode =
-    command.expectedSha256 === undefined || command.mode === undefined
-      ? currentMode
-      : undefined;
-  let temporaryPath: string | null =
-    `${target.writePath}.bb-write-${randomUUID()}`;
+  const mode =
+    command.expectedSha256 === undefined
+      ? (currentMode ?? command.mode)
+      : (command.mode ?? currentMode);
+  const temporaryPath = `${target.writePath}.bb-write-${randomUUID()}`;
   try {
-    const handle = await fs.open(
-      temporaryPath,
-      "wx",
-      preservedMode ?? command.mode,
-    );
     try {
-      if (preservedMode !== undefined) {
-        await handle.chmod(preservedMode);
+      await writeVerifiedFile({
+        destinationPath: temporaryPath,
+        durable: true,
+        expected: {
+          maxBytes: contents.length,
+          sha256: null,
+          sizeBytes: contents.length,
+        },
+        label: `File ${command.path}`,
+        mode: mode ?? null,
+        source: [contents],
+      });
+    } catch (error) {
+      if (
+        currentContents !== null &&
+        (isFsErrorWithCode(error, "EACCES") ||
+          isFsErrorWithCode(error, "EPERM"))
+      ) {
+        return await overwriteInPlace(command, contents, target.writePath);
       }
-      await handle.writeFile(contents);
-      await handle.sync();
-    } finally {
-      await handle.close();
+      throw error;
     }
-
-    if (command.expectedSha256 === undefined) {
-      await fs.rename(temporaryPath, target.writePath);
-      temporaryPath = null;
-    } else if (command.expectedSha256 === null) {
-      try {
-        await fs.link(temporaryPath, target.writePath);
-      } catch (error) {
-        if (isFsErrorWithCode(error, "EEXIST")) {
-          const latest = await fs.readFile(target.writePath).catch(() => null);
-          return {
-            outcome: "conflict",
-            currentSha256: latest === null ? null : sha256Hex(latest),
-          };
-        }
-        throw error;
-      }
-    } else {
-      const latest = await fs.readFile(target.writePath).catch(() => null);
-      const latestSha256 = latest === null ? null : sha256Hex(latest);
-      if (latestSha256 !== command.expectedSha256) {
-        return { outcome: "conflict", currentSha256: latestSha256 };
-      }
-      await fs.rename(temporaryPath, target.writePath);
-      temporaryPath = null;
-    }
+    return await publishTemporaryFile(
+      command,
+      contents,
+      temporaryPath,
+      target.writePath,
+    );
   } catch (error) {
     if (isFsErrorWithCode(error, "ENOENT")) {
       throw createMissingTargetError(path.dirname(command.path));
@@ -204,14 +196,70 @@ async function writeResolvedHostFile(
     }
     throw error;
   } finally {
-    if (temporaryPath !== null) {
-      await fs.rm(temporaryPath, { force: true }).catch(() => undefined);
-    }
+    await fs.rm(temporaryPath, { force: true }).catch(() => undefined);
   }
+}
 
+async function readCurrentSha256(writePath: string): Promise<string | null> {
+  const latest = await fs.readFile(writePath).catch(() => null);
+  return latest === null ? null : sha256Hex(latest);
+}
+
+async function findLatestConflict(
+  command: CommandOf<"host.write_file">,
+  writePath: string,
+): Promise<HostDaemonOnlineRpcResult<"host.write_file"> | null> {
+  if (command.expectedSha256 === undefined) {
+    return null;
+  }
+  const latestSha256 = await readCurrentSha256(writePath);
+  return latestSha256 === command.expectedSha256
+    ? null
+    : { outcome: "conflict", currentSha256: latestSha256 };
+}
+
+function writtenResult(
+  contents: Buffer,
+): HostDaemonOnlineRpcResult<"host.write_file"> {
   return {
     outcome: "written",
     sha256: sha256Hex(contents),
     sizeBytes: contents.length,
   };
+}
+
+async function publishTemporaryFile(
+  command: CommandOf<"host.write_file">,
+  contents: Buffer,
+  temporaryPath: string,
+  writePath: string,
+): Promise<HostDaemonOnlineRpcResult<"host.write_file">> {
+  if (command.expectedSha256 === null) {
+    if (!(await publishFileWithoutReplacing(temporaryPath, writePath))) {
+      return {
+        outcome: "conflict",
+        currentSha256: await readCurrentSha256(writePath),
+      };
+    }
+    return writtenResult(contents);
+  }
+  const conflict = await findLatestConflict(command, writePath);
+  if (conflict !== null) {
+    return conflict;
+  }
+  await fs.rename(temporaryPath, writePath);
+  return writtenResult(contents);
+}
+
+async function overwriteInPlace(
+  command: CommandOf<"host.write_file">,
+  contents: Buffer,
+  writePath: string,
+): Promise<HostDaemonOnlineRpcResult<"host.write_file">> {
+  const conflict = await findLatestConflict(command, writePath);
+  if (conflict !== null) {
+    return conflict;
+  }
+  await fs.writeFile(writePath, contents);
+  return writtenResult(contents);
 }

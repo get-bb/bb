@@ -42,7 +42,7 @@ async function writeFully(
   handle: FileHandle,
   chunk: Uint8Array,
 ): Promise<void> {
-  for (let offset = 0; offset < chunk.byteLength;) {
+  for (let offset = 0; offset < chunk.byteLength; ) {
     const { bytesWritten } = await handle.write(
       chunk,
       offset,
@@ -63,12 +63,17 @@ async function* readFileChunks(filePath: string): AsyncGenerator<Uint8Array> {
 
 export async function writeVerifiedFile(args: {
   destinationPath: string;
+  durable: boolean;
   expected: VerifiedFileExpectation;
   label: string;
-  mode: number;
-  source: AsyncIterable<Uint8Array>;
+  mode: number | null;
+  source: AsyncIterable<Uint8Array> | Iterable<Uint8Array>;
 }): Promise<WrittenFile> {
-  const handle = await fs.open(args.destinationPath, "wx", args.mode);
+  const handle = await fs.open(
+    args.destinationPath,
+    "wx",
+    args.mode ?? undefined,
+  );
   const hash = createHash("sha256");
   let sizeBytes = 0;
   try {
@@ -92,7 +97,12 @@ export async function writeVerifiedFile(args: {
         `${args.label} content hash mismatch: expected ${args.expected.sha256}, received ${sha256}`,
       );
     }
-    await handle.chmod(args.mode);
+    if (args.mode !== null) {
+      await handle.chmod(args.mode);
+    }
+    if (args.durable) {
+      await handle.sync();
+    }
     await handle.close();
     return { sha256, sizeBytes };
   } catch (error) {
@@ -111,6 +121,7 @@ export async function copyVerifiedFile(args: {
 }): Promise<WrittenFile> {
   return writeVerifiedFile({
     destinationPath: args.destinationPath,
+    durable: false,
     expected: args.expected,
     label: args.label,
     mode: args.mode,
