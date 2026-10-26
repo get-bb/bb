@@ -1,3 +1,7 @@
+import { normalizeConnectOrigin } from "@bb/connect-client";
+
+export { normalizeConnectOrigin as normalizeOrigin } from "@bb/connect-client";
+
 export const DEFAULT_BASE_URL = "https://getbb.app";
 
 const STAGING_BASE_URL = "https://vibecodethis.site";
@@ -43,28 +47,40 @@ export function isAllowedBaseUrl(
   origin: string,
   env: NodeJS.ProcessEnv,
 ): boolean {
-  if (origin === DEFAULT_BASE_URL || origin === STAGING_BASE_URL) return true;
-  if (env.NODE_ENV !== "development") return false;
-  const url = new URL(origin);
-  return (
-    url.protocol === "http:" &&
-    url.hostname === "bb.localhost" &&
-    url.port.length > 0
-  );
+  return createBaseUrlAllowed(env)(origin);
 }
 
-export function normalizeOrigin(value: string, label: string): string {
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    throw new Error(`${label} must be an http(s) URL`);
+export function createBaseUrlAllowed(env: NodeJS.ProcessEnv): BaseUrlAllowed {
+  const trusted = new Set([DEFAULT_BASE_URL, STAGING_BASE_URL]);
+  const configured = env.BB_ACCOUNT_TRUSTED_ORIGINS;
+  if (configured !== undefined) {
+    for (const value of configured.split(",")) {
+      let origin: string;
+      try {
+        origin = normalizeConnectOrigin(value.trim(), "origin");
+        if (!origin.startsWith("https://")) throw new Error("https required");
+      } catch {
+        throw new Error(
+          "BB_ACCOUNT_TRUSTED_ORIGINS must be a comma-separated list of HTTPS origins without credentials, paths, queries, fragments or wildcards",
+        );
+      }
+      trusted.add(origin);
+    }
   }
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error(`${label} must be an http(s) URL`);
-  }
-  if (url.username.length > 0 || url.password.length > 0) {
-    throw new Error(`${label} must not contain credentials`);
-  }
-  return url.origin;
+  const development = env.NODE_ENV === "development";
+  return (origin) => {
+    if (trusted.has(origin)) return true;
+    if (!development) return false;
+    try {
+      const url = new URL(origin);
+      return (
+        url.origin === origin &&
+        url.protocol === "http:" &&
+        url.hostname === "bb.localhost" &&
+        url.port.length > 0
+      );
+    } catch {
+      return false;
+    }
+  };
 }

@@ -185,6 +185,154 @@ afterEach(async () => {
   await connectHost.harness.dispose();
   await accountHost.harness.dispose();
   await stub.close();
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+});
+
+describe("operator-trusted account origins through Connect", () => {
+  const origin = "https://bb.example.test";
+  let attemptedUrls: string[];
+  beforeEach(() => {
+    attemptedUrls = [];
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("BB_ACCOUNT_TRUSTED_ORIGINS", origin);
+    const send = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        const url = new URL(input instanceof Request ? input.url : input);
+        attemptedUrls.push(url.href);
+        if (url.origin !== origin && url.origin !== stub.apexUrl)
+          throw new Error("unexpected test egress");
+        return send(
+          url.origin === origin
+            ? new URL(url.pathname + url.search, stub.apexUrl)
+            : input,
+          init,
+        );
+      },
+    );
+  });
+
+  it.each([
+    ["--base-url", "https://evil.test"],
+    ["--base-url", "https://bb.example.test.evil.test"],
+    ["--base-url", "http://bb.example.test"],
+    ["--server", "https://host.evil.test"],
+    ["--server", "https://host.bb.example.test.evil.test"],
+    ["--server", "http://host.bb.example.test"],
+  ])("denies untrusted Connect before fetch: %s %s", async (flag, value) => {
+    await loadBoth(undefined, { timing: ACCOUNT_OPTIONS.timing });
+    const result = await connectHost.harness.runCli([
+      "--code",
+      "UNUSED",
+      flag,
+      value,
+    ]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("can't sign in");
+    expect(attemptedUrls).toEqual([]);
+    expect(stub.requests).toEqual([]);
+  });
+
+  it.each([
+    ["/path", "must be an origin"],
+    ["?", "must be an origin"],
+    ["#", "must be an origin"],
+    ["/../", "must be an origin"],
+  ])(
+    "rejects non-origin Connect inputs before fetch: %s",
+    async (suffix, error) => {
+      await loadBoth(undefined, { timing: ACCOUNT_OPTIONS.timing });
+      for (const [flag, value] of [
+        ["--base-url", `${origin}${suffix}`],
+        ["--server", `https://host.bb.example.test${suffix}`],
+      ]) {
+        const result = await connectHost.harness.runCli([
+          "--code",
+          "UNUSED",
+          flag,
+          value,
+        ]);
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain(error);
+        expect(attemptedUrls).toEqual([]);
+      }
+    },
+  );
+
+  it.each(["--base-url", "--server"])(
+    "rejects Connect credentials before fetch: %s",
+    async (flag) => {
+      await loadBoth(undefined, { timing: ACCOUNT_OPTIONS.timing });
+      const result = await connectHost.harness.runCli([
+        "--code",
+        "UNUSED",
+        flag,
+        "https://user:password@host.bb.example.test",
+      ]);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("must not contain credentials");
+      expect(attemptedUrls).toEqual([]);
+    },
+  );
+
+  it("uses the account policy for --server and connects a real local tunnel", async () => {
+    await loadBoth(undefined, { timing: ACCOUNT_OPTIONS.timing });
+    stub.issueRedeemCode("TRUSTED-SERVER");
+    const result = await connectHost.harness.runCli([
+      "--code",
+      "TRUSTED-SERVER",
+      "--server",
+      "https://host.bb.example.test/",
+      "--json",
+    ]);
+    expect(result.exitCode).toBe(0);
+    expect(await accountHost.bb.storage.kv.get("credential")).toMatchObject({
+      baseUrl: origin,
+    });
+    startTunnel();
+    await waitForConnected(1);
+    expect(stub.requestsTo("/api/connect/redeem")).toHaveLength(1);
+  });
+
+  it("uses the same configured policy for an explicit --base-url", async () => {
+    await loadBoth(undefined, { timing: ACCOUNT_OPTIONS.timing });
+    stub.issueRedeemCode("TRUSTED-BASE");
+    const result = await connectHost.harness.runCli([
+      "--code",
+      "TRUSTED-BASE",
+      "--base-url",
+      origin,
+      "--json",
+    ]);
+    expect(result.exitCode).toBe(0);
+    expect(await accountState()).toBe("signed-in");
+    expect(await accountHost.bb.storage.kv.get("credential")).toMatchObject({
+      baseUrl: origin,
+    });
+  });
+  it("resolves only the selected base-url when an invalid server is also supplied", async () => {
+    await loadBoth(undefined, { timing: ACCOUNT_OPTIONS.timing });
+    stub.issueRedeemCode("BASE-PRECEDENCE");
+    const result = await connectHost.harness.runCli([
+      "--code",
+      "BASE-PRECEDENCE",
+      "--base-url",
+      origin,
+      "--server",
+      "not-a-server-url",
+      "--json",
+    ]);
+    expect(result.exitCode).toBe(0);
+    expect(attemptedUrls).toContain(`${origin}/api/connect/redeem`);
+    expect(attemptedUrls.every((url) => new URL(url).origin === origin)).toBe(
+      true,
+    );
+    expect(await accountHost.bb.storage.kv.get("credential")).toMatchObject({
+      baseUrl: origin,
+    });
+  });
 });
 
 describe("connect on top of bb account", () => {

@@ -5,6 +5,7 @@ export {
 export {
   connectPublicProtocol,
   deriveConnectBaseUrl,
+  normalizeConnectOrigin,
   serverUrlForHandle,
 } from "./urls.js";
 export { ConnectListError } from "./errors.js";
