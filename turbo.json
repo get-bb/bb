@@ -1122,7 +1122,11 @@
     },
     "bb-plugin-bb--github-pr-status#test": {
       "env": ["VITEST_MAX_WORKERS"],
-      "dependsOn": ["@get-bb/plugin-sdk#build", "topo"]
+      "dependsOn": [
+        "//#ensure-native-modules",
+        "@get-bb/plugin-sdk#build",
+        "topo"
+      ]
     },
     "bb-plugin-environment-personal-workspace#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
