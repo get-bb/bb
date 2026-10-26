@@ -3,9 +3,11 @@ import {
   useThread,
   useThreadDetailBootstrap,
 } from "@/hooks/queries/thread-queries";
+import { useMarkThreadRead } from "@/hooks/mutations/thread-state-mutations";
+import { useThreadReadTracking } from "@/hooks/useThreadReadTracking";
 import { useThreadUnreadDividerState } from "./useThreadUnreadDividerState";
 
-export function useThreadDetailThread(threadId: string) {
+export function useThreadDetailThread(threadId: string, trackRead: boolean) {
   const threadDetailBootstrapQuery = useThreadDetailBootstrap(threadId);
   const hasThreadDetailBootstrapSettled =
     threadDetailBootstrapQuery.isSuccess || threadDetailBootstrapQuery.isError;
@@ -21,10 +23,15 @@ export function useThreadDetailThread(threadId: string) {
   const unreadDividerState = useThreadUnreadDividerState({
     hasFreshThread:
       thread !== undefined &&
+      !threadQuery.isPlaceholderData &&
       !threadQuery.isFetching &&
       !threadDetailBootstrapQuery.isFetching,
     routeThreadId: threadId,
     thread,
+  });
+  useThreadReadTracking({
+    markThreadRead: useMarkThreadRead(),
+    thread: trackRead && unreadDividerState.ready ? thread : undefined,
   });
   return {
     hasThreadDetailBootstrapSettled,

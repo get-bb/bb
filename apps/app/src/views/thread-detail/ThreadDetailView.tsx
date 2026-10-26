@@ -56,10 +56,7 @@ import {
 import { useForkThreadFromMessage } from "@/hooks/useForkThreadFromMessage";
 import { isThreadForkable } from "@bb/client-core";
 import { useRequestEnvironmentAction } from "../../hooks/mutations/environment-mutations";
-import {
-  useMarkThreadRead,
-  useUpdateThread,
-} from "../../hooks/mutations/thread-state-mutations";
+import { useUpdateThread } from "../../hooks/mutations/thread-state-mutations";
 import {
   useCreateThreadQueuedMessage,
   useEditThreadMessage,
@@ -232,7 +229,6 @@ import type {
 } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import { useEnvironmentMergeBase } from "@/components/secondary-panel/git-diff/useEnvironmentMergeBase";
 import { useThreadGitActions } from "./useThreadGitActions";
-import { useThreadReadTracking } from "@/hooks/useThreadReadTracking";
 import { useThreadDetailThread } from "./useThreadDetailThread";
 import {
   buildTerminalSyncedSecondaryFileTabs,
@@ -468,7 +464,7 @@ function ThreadDetailViewInternal(
     threadDetailBootstrapQuery,
     threadQuery: { data: thread, isFetching, isLoadingError, error },
     unreadDividerState,
-  } = useThreadDetailThread(threadId);
+  } = useThreadDetailThread(threadId, timelineEnabled);
   const environmentQuery = useEnvironment(thread?.environmentId, {
     enabled: hasThreadDetailBootstrapSettled,
     staleTime: 5_000,
@@ -757,7 +753,6 @@ function ThreadDetailViewInternal(
   const editMessage = useEditThreadMessage();
   const createQueuedMessage = useCreateThreadQueuedMessage();
   const requestEnvironmentAction = useRequestEnvironmentAction();
-  const markThreadRead = useMarkThreadRead();
   const updateEnvironment = useUpdateEnvironment();
   const updateThread = useUpdateThread({
     errorMessage: "Failed to assign parent thread.",
@@ -1754,10 +1749,6 @@ function ThreadDetailViewInternal(
       return { ...childThreadsSection, pendingInteractions };
     }, [childThreadsSection, childPendingInteractions]);
   const isThreadTimelinePending = timelineLoading && timelineRows.length === 0;
-  useThreadReadTracking({
-    markThreadRead,
-    thread: timelineEnabled ? thread : undefined,
-  });
   const {
     effectiveMergeBaseBranch,
     handleMergeBaseBranchChange,

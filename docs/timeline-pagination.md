@@ -331,7 +331,9 @@ survives a thread switch.
 
 Opening an unread thread decides its landing once, from the first copy of the
 thread fetched after it opens, not a cached one, and the rows loaded at that
-moment. If the read cutoff falls inside the loaded rows, the NEW divider is
+moment. Automatic read tracking waits for that opening snapshot, so sidebar
+placeholder data cannot mark the thread read before its unread cutoff is saved.
+If the read cutoff falls inside the loaded rows, the NEW divider is
 placed and the owner lands on it through the restore path, with the divider as
 the anchor at the top of the viewport, so rows that render or resize around it
 afterwards do not move it. Otherwise, and for a thread marked unread, there is
@@ -341,7 +343,8 @@ the reader pages back. A reader who scrolls before the landing keeps their
 position.
 
 `thread-opening.model.test.tsx` checks the landing end to end. It renders the
-timeline with the thread view's own loading hooks against a fake server that
+timeline with the thread view's own loading and automatic read-tracking hooks,
+including cached sidebar placeholders, against a fake server that
 pages a random history, opens or returns to the thread with random read
 states, page sizes, and time away, and resolves the bootstrap, thread, and
 timeline requests in random orders, sometimes with the reader scrolling while

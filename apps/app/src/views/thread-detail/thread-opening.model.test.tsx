@@ -12,6 +12,8 @@ import { BottomAnchoredScrollBody } from "@/components/ui/bottom-anchored-scroll
 import { ThreadTimelineSurface } from "@/components/thread/timeline/ThreadTimelineSurface";
 import { useThreadTimelineController } from "@/components/thread/timeline/useThreadTimelineController";
 import { sdk } from "@/lib/sdk";
+import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
+import { threadListQueryKey } from "@/hooks/queries/query-keys";
 import { installFakeFlowLayout } from "@/test/fake-flow-layout";
 import {
   makeThreadResponse,
@@ -33,7 +35,7 @@ vi.mock("@/lib/sdk", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/sdk")>();
   return {
     ...actual,
-    sdk: { threads: { get: vi.fn(), timeline: vi.fn() } },
+    sdk: { threads: { get: vi.fn(), timeline: vi.fn(), markRead: vi.fn() } },
   };
 });
 
@@ -53,6 +55,8 @@ vi.mock("@bb/shared-ui/hooks/use-compact-viewport", async (importOriginal) => {
     >();
   return { ...actual, useIsCompactViewport: () => viewport.compact };
 });
+
+vi.mock("@/lib/user-activity", () => ({ useUserActive: () => true }));
 
 function createRandom(seed: number) {
   let state = seed >>> 0;
@@ -83,7 +87,7 @@ interface Pending {
 }
 
 function OpenedThread() {
-  const { unreadDividerState } = useThreadDetailThread(THREAD_ID);
+  const { unreadDividerState } = useThreadDetailThread(THREAD_ID, true);
   const timeline = useThreadTimelineController({ threadId: THREAD_ID });
   return (
     <BottomAnchoredScrollBody
@@ -144,6 +148,7 @@ afterEach(() => {
   restoreLayout = null;
   vi.mocked(sdk.threads.get).mockReset();
   vi.mocked(sdk.threads.timeline).mockReset();
+  vi.mocked(sdk.threads.markRead).mockReset();
   vi.useRealTimers();
   vi.restoreAllMocks();
   document.body.replaceChildren();
@@ -275,6 +280,13 @@ async function runSeed(seed: number): Promise<void> {
         ),
     )) as unknown as typeof sdk.threads.timeline);
 
+  vi.mocked(sdk.threads.markRead).mockImplementation(() =>
+    deferred("mark read", () => {
+      lastReadAt = latestAttentionAt;
+      return threadResponse();
+    }),
+  );
+
   const getScrollElement = () =>
     document.querySelector<HTMLElement>("[data-page-scroll-viewport]");
   const layout = installFakeFlowLayout({
@@ -345,7 +357,7 @@ async function runSeed(seed: number): Promise<void> {
       `${message}\n  scrollTop=${layout.scrollTop} max=${layout.maxScrollTop()}\n  ${log.join("\n  ")}`,
     );
 
-  const { wrapper: Wrapper } = createQueryClientTestHarness();
+  const { wrapper: Wrapper, queryClient } = createQueryClientTestHarness();
   const tree = (shown: boolean) => (
     <MemoryRouter>
       <Wrapper>
@@ -353,13 +365,14 @@ async function runSeed(seed: number): Promise<void> {
       </Wrapper>
     </MemoryRouter>
   );
-  const view = render(tree(true));
+  const view = render(tree(false));
   const showThread = (shown: boolean) => view.rerender(tree(shown));
 
   const returning = random.next() < 0.5;
   let saved: { id: string; top: number } | null = null;
   if (returning) {
     log.push("first visit, read");
+    await act(async () => showThread(true));
     await releaseAll();
     await flush(500);
     if (random.next() < 0.5 && layout.maxScrollTop() > 0) {
@@ -409,10 +422,12 @@ async function runSeed(seed: number): Promise<void> {
     );
   }
   latestAttentionAt = clock + 2;
+  const openingLastReadAt = lastReadAt;
 
-  if (returning) {
-    await act(async () => showThread(true));
-  }
+  queryClient.setQueryData(threadListQueryKey({ archived: false }), [
+    makeThreadListEntry({ id: THREAD_ID, lastReadAt, latestAttentionAt }),
+  ]);
+  await act(async () => showThread(true));
   log.push(returning ? "returns to the thread" : "opens the thread");
 
   let readerScroll: { id: string; top: number } | null = null;
@@ -446,8 +461,9 @@ async function runSeed(seed: number): Promise<void> {
     `settled: divider=${dividerTop === null ? "none" : Math.round(dividerTop)} fromEnd=${Math.round(fromEnd)} attached=${attached}`,
   );
 
-  const unread = lastReadAt !== null && lastReadAt < latestAttentionAt;
-  const cutoff = lastReadAt ?? 0;
+  const unread =
+    openingLastReadAt !== null && openingLastReadAt < latestAttentionAt;
+  const cutoff = openingLastReadAt ?? 0;
   const expected = unread
     ? history.find(
         (entry) => entry.row.startedAt > cutoff && !entry.authoredByReader,

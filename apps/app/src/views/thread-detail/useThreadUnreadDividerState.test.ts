@@ -60,6 +60,7 @@ describe("useThreadUnreadDividerState", () => {
     });
 
     expect(renders[0]).toEqual({
+      ready: true,
       autoScroll: true,
       placement: { cutoffAt: 100 },
     });
@@ -75,6 +76,7 @@ describe("useThreadUnreadDividerState", () => {
     show({ id: "thr_b", lastReadAt: 250, latestAttentionAt: 300 });
 
     expect(renders[0]).toEqual({
+      ready: true,
       autoScroll: true,
       placement: { cutoffAt: 250 },
     });
@@ -86,11 +88,19 @@ describe("useThreadUnreadDividerState", () => {
       lastReadAt: null,
       latestAttentionAt: 200,
     });
-    expect(result.current).toEqual({ autoScroll: false, placement: null });
+    expect(result.current).toEqual({
+      ready: true,
+      autoScroll: false,
+      placement: null,
+    });
 
     show({ id: "thr_b", lastReadAt: 300, latestAttentionAt: 200 });
     show({ id: "thr_b", lastReadAt: null, latestAttentionAt: 200 });
-    expect(result.current).toEqual({ autoScroll: false, placement: null });
+    expect(result.current).toEqual({
+      ready: true,
+      autoScroll: false,
+      placement: null,
+    });
   });
 
   it("keeps the opening divider when the thread is marked read, and drops it after a watched reply", () => {
@@ -102,12 +112,17 @@ describe("useThreadUnreadDividerState", () => {
 
     show({ id: "thr_a", lastReadAt: 250, latestAttentionAt: 200 });
     expect(result.current).toEqual({
+      ready: true,
       autoScroll: true,
       placement: { cutoffAt: 100 },
     });
 
     show({ id: "thr_a", lastReadAt: 400, latestAttentionAt: 300 });
-    expect(result.current).toEqual({ autoScroll: false, placement: null });
+    expect(result.current).toEqual({
+      ready: true,
+      autoScroll: false,
+      placement: null,
+    });
   });
 
   it("opens a read thread without a divider", () => {
@@ -117,7 +132,11 @@ describe("useThreadUnreadDividerState", () => {
       latestAttentionAt: 200,
     });
 
-    expect(renders[0]).toEqual({ autoScroll: false, placement: null });
+    expect(renders[0]).toEqual({
+      ready: true,
+      autoScroll: false,
+      placement: null,
+    });
   });
 
   it("auto-scrolls to a divider that arrives with the fresh fetch after reopening on cached read state", () => {
@@ -125,10 +144,15 @@ describe("useThreadUnreadDividerState", () => {
       { id: "thr_a", lastReadAt: 300, latestAttentionAt: 200 },
       false,
     );
-    expect(result.current).toEqual({ autoScroll: false, placement: null });
+    expect(result.current).toEqual({
+      ready: false,
+      autoScroll: false,
+      placement: null,
+    });
 
     show({ id: "thr_a", lastReadAt: 300, latestAttentionAt: 400 });
     expect(result.current).toEqual({
+      ready: true,
       autoScroll: true,
       placement: { cutoffAt: 300 },
     });
@@ -143,6 +167,7 @@ describe("useThreadUnreadDividerState", () => {
 
     show({ id: "thr_a", lastReadAt: 300, latestAttentionAt: 400 });
     expect(result.current).toEqual({
+      ready: true,
       autoScroll: false,
       placement: { cutoffAt: 300 },
     });

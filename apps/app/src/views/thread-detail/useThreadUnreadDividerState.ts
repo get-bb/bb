@@ -15,6 +15,7 @@ interface ThreadUnreadDividerSnapshot {
 }
 
 interface ThreadUnreadDividerState {
+  ready: boolean;
   autoScroll: boolean;
   placement: ThreadTimelineUnreadDividerPlacement | null;
 }
@@ -31,6 +32,7 @@ interface UseThreadUnreadDividerStateArgs {
 }
 
 const NO_UNREAD_DIVIDER_STATE: ThreadUnreadDividerState = {
+  ready: false,
   autoScroll: false,
   placement: null,
 };
@@ -122,6 +124,7 @@ export function useThreadUnreadDividerState({
   }
 
   return {
+    ready: true,
     autoScroll: currentSnapshot.autoScroll,
     placement: currentSnapshot.placement,
   };
