@@ -359,3 +359,35 @@ it.each([
   expect(data.get("text/plain")).toBe(text);
   expect(data.get("text/html")).toContain("<a href=");
 });
+
+it.each([
+  [
+    "/Users/michael/.bb/thread-storage/thr_v5h7wv4b4f/sanity-check.sh",
+    "file:///Users/michael/.bb/thread-storage/thr_v5h7wv4b4f/sanity-check.sh",
+    "sanity-check.sh",
+  ],
+  [
+    "/work space/my_script.sh",
+    "file:///work%20space/my_script.sh",
+    "my_script",
+  ],
+  [
+    "C:\\work space\\my_script.sh",
+    "file:///C:/work%20space/my_script.sh",
+    "my_script.sh",
+  ],
+])("copies file path %s without Markdown syntax", (path, href, part) => {
+  const { container } = render(
+    <SelectableMessageProse>
+      <p>
+        <a href={href}>{path}</a>
+      </p>
+    </SelectableMessageProse>,
+  );
+  for (const selected of [path, part]) {
+    window.getSelection()!.removeAllRanges();
+    const { data } = copyRange(selectText(container, selected));
+    expect(data.get("text/plain")).toBe(selected);
+    expect(data.get("text/html")).toContain(`<a href="${href}">`);
+  }
+});
