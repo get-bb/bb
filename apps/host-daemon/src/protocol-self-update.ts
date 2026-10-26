@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { delimiter, dirname, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
@@ -56,7 +57,6 @@ interface CreateProtocolSelfUpdaterOptions {
   serverUrl: string;
   fetchFn?: FetchFn;
   installTarball?: ProtocolSelfUpdateInstaller;
-  runProcess?: SelfUpdateProcessRunner;
   now?: () => number;
 }
 
@@ -164,11 +164,29 @@ export const defaultRunProcess: SelfUpdateProcessRunner = async (
 const BB_APP_ALLOW_SCRIPTS_ARG =
   "--allow-scripts=better-sqlite3,node-pty,@parcel/watcher";
 
+function resolveNodeNpmCliPath(nodeExecPath: string): string | null {
+  const nodeDirectory = dirname(nodeExecPath);
+  const npmCliPath =
+    process.platform === "win32"
+      ? join(nodeDirectory, "node_modules", "npm", "bin", "npm-cli.js")
+      : join(
+          nodeDirectory,
+          "..",
+          "lib",
+          "node_modules",
+          "npm",
+          "bin",
+          "npm-cli.js",
+        );
+  return existsSync(npmCliPath) ? npmCliPath : null;
+}
+
 export async function defaultInstallTarball(
   tarballPath: string,
   runProcess: SelfUpdateProcessRunner,
+  nodeExecPath: string,
 ): Promise<void> {
-  const executableDirectory = dirname(process.execPath);
+  const executableDirectory = dirname(nodeExecPath);
   const inheritedPath = process.env.PATH;
   const path = inheritedPath
     ? `${executableDirectory}${delimiter}${inheritedPath}`
@@ -181,9 +199,17 @@ export async function defaultInstallTarball(
   }
   const prefixArgs =
     configuredPrefix === undefined ? [] : ["--prefix", configuredPrefix];
+  const npmArgs = [
+    "install",
+    "-g",
+    BB_APP_ALLOW_SCRIPTS_ARG,
+    ...prefixArgs,
+    tarballPath,
+  ];
+  const npmCliPath = resolveNodeNpmCliPath(nodeExecPath);
   await runProcess(
-    "npm",
-    ["install", "-g", BB_APP_ALLOW_SCRIPTS_ARG, ...prefixArgs, tarballPath],
+    npmCliPath === null ? "npm" : nodeExecPath,
+    npmCliPath === null ? npmArgs : [npmCliPath, ...npmArgs],
     {
       env: { ...process.env, PATH: path },
     },
@@ -197,10 +223,7 @@ export function createProtocolSelfUpdater(
   const installTarball =
     options.installTarball ??
     ((tarballPath) =>
-      defaultInstallTarball(
-        tarballPath,
-        options.runProcess ?? defaultRunProcess,
-      ));
+      defaultInstallTarball(tarballPath, defaultRunProcess, process.execPath));
   const now = options.now ?? Date.now;
   const attemptPath = join(options.dataDir, ATTEMPT_FILE_NAME);
   const installedArtifactDigestPath = join(

@@ -1,5 +1,12 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
@@ -7,6 +14,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HostDaemonLogger } from "./logger.js";
 import {
   createProtocolSelfUpdater,
+  defaultInstallTarball,
+  defaultRunProcess,
   SELF_UPDATE_INITIAL_RETRY_DELAY_MS,
   SELF_UPDATE_MAX_RETRY_DELAY_MS,
 } from "./protocol-self-update.js";
@@ -29,7 +38,6 @@ async function createFixture(
     installFailure?: Error;
     now?: () => number;
     serverUrl?: string;
-    useDefaultInstaller?: boolean;
   } = {},
 ) {
   const dataDir = await mkdtemp(join(tmpdir(), "bb-self-update-test-"));
@@ -37,7 +45,6 @@ async function createFixture(
   const installTarball = vi.fn(async () => {
     if (args.installFailure) throw args.installFailure;
   });
-  const runProcess = vi.fn(async () => undefined);
   const fetchFn = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url.endsWith("/install/version")) {
@@ -57,7 +64,7 @@ async function createFixture(
     dataDir,
     enabled: args.enabled ?? true,
     fetchFn,
-    ...(args.useDefaultInstaller ? { runProcess } : { installTarball }),
+    installTarball,
     logger: testLogger,
     now: args.now,
     serverUrl: args.serverUrl ?? "https://server.example.test",
@@ -67,10 +74,32 @@ async function createFixture(
     fetchFn,
     installTarball,
     logger: testLogger,
-    runProcess,
     updater,
   };
 }
+
+async function createNodeInstall(args: { npmCli: boolean }) {
+  const root = await mkdtemp(join(tmpdir(), "bb-self-update-node-"));
+  roots.push(root);
+  const nodeExecPath =
+    process.platform === "win32"
+      ? join(root, "node.exe")
+      : join(root, "bin", "node");
+  const npmCliPath =
+    process.platform === "win32"
+      ? join(root, "node_modules", "npm", "bin", "npm-cli.js")
+      : join(root, "lib", "node_modules", "npm", "bin", "npm-cli.js");
+  await mkdir(dirname(nodeExecPath), { recursive: true });
+  if (args.npmCli) {
+    await mkdir(dirname(npmCliPath), { recursive: true });
+    await writeFile(npmCliPath, "");
+  }
+  return { nodeExecPath, npmCliPath, root };
+}
+
+const ALLOW_SCRIPTS_ARG =
+  "--allow-scripts=better-sqlite3,node-pty,@parcel/watcher";
+const TARBALL_PATH = join(tmpdir(), "bb-app-update-test.tgz");
 
 afterEach(async () => {
   vi.unstubAllEnvs();
@@ -165,73 +194,6 @@ describe("protocol self-update", () => {
     expect(test.logger.info).toHaveBeenCalledWith(
       { artifactDigest: digest },
       expect.stringContaining("already installed"),
-    );
-  });
-
-  it("finds npm beside the running Node executable when the service PATH omits it", async () => {
-    vi.stubEnv("PATH", "/usr/bin:/bin");
-    const test = await createFixture({ useDefaultInstaller: true });
-
-    await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
-      "updated",
-    );
-
-    expect(test.runProcess).toHaveBeenCalledOnce();
-    expect(test.runProcess).toHaveBeenCalledWith(
-      "npm",
-      [
-        "install",
-        "-g",
-        "--allow-scripts=better-sqlite3,node-pty,@parcel/watcher",
-        expect.stringContaining("bb-app-update-"),
-      ],
-      {
-        env: expect.objectContaining({
-          PATH: `${dirname(process.execPath)}${delimiter}/usr/bin:/bin`,
-        }),
-      },
-    );
-  });
-
-  it("updates an installer-managed bb-app inside its machine-specific prefix", async () => {
-    vi.stubEnv("BB_APP_NPM_PREFIX", "/machine-data/npm");
-    const test = await createFixture({ useDefaultInstaller: true });
-
-    await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
-      "updated",
-    );
-
-    expect(test.runProcess).toHaveBeenCalledWith(
-      "npm",
-      [
-        "install",
-        "-g",
-        "--allow-scripts=better-sqlite3,node-pty,@parcel/watcher",
-        "--prefix",
-        "/machine-data/npm",
-        expect.stringContaining("bb-app-update-"),
-      ],
-      expect.any(Object),
-    );
-  });
-
-  it("keeps legacy global updates when the installer prefix is blank", async () => {
-    vi.stubEnv("BB_APP_NPM_PREFIX", " ");
-    const test = await createFixture({ useDefaultInstaller: true });
-
-    await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
-      "updated",
-    );
-
-    expect(test.runProcess).toHaveBeenCalledWith(
-      "npm",
-      [
-        "install",
-        "-g",
-        "--allow-scripts=better-sqlite3,node-pty,@parcel/watcher",
-        expect.stringContaining("bb-app-update-"),
-      ],
-      expect.any(Object),
     );
   });
 
@@ -370,4 +332,117 @@ describe("protocol self-update", () => {
     );
     expect(test.installTarball).toHaveBeenCalledTimes(2);
   });
+});
+
+describe("default tarball installer", () => {
+  it("runs the npm CLI installed with the running Node, not an npm found on PATH", async () => {
+    vi.stubEnv("PATH", "/usr/bin:/bin");
+    vi.stubEnv("BB_APP_NPM_PREFIX", "");
+    const node = await createNodeInstall({ npmCli: true });
+    const runProcess = vi.fn(async () => undefined);
+
+    await defaultInstallTarball(TARBALL_PATH, runProcess, node.nodeExecPath);
+
+    expect(runProcess).toHaveBeenCalledOnce();
+    expect(runProcess).toHaveBeenCalledWith(
+      node.nodeExecPath,
+      [node.npmCliPath, "install", "-g", ALLOW_SCRIPTS_ARG, TARBALL_PATH],
+      {
+        env: expect.objectContaining({
+          PATH: `${dirname(node.nodeExecPath)}${delimiter}/usr/bin:/bin`,
+        }),
+      },
+    );
+  });
+
+  it("falls back to npm on PATH, searched beside Node first, when that Node install has no npm CLI", async () => {
+    vi.stubEnv("PATH", "/usr/bin:/bin");
+    vi.stubEnv("BB_APP_NPM_PREFIX", "");
+    const node = await createNodeInstall({ npmCli: false });
+    const runProcess = vi.fn(async () => undefined);
+
+    await defaultInstallTarball(TARBALL_PATH, runProcess, node.nodeExecPath);
+
+    expect(runProcess).toHaveBeenCalledWith(
+      "npm",
+      ["install", "-g", ALLOW_SCRIPTS_ARG, TARBALL_PATH],
+      {
+        env: expect.objectContaining({
+          PATH: `${dirname(node.nodeExecPath)}${delimiter}/usr/bin:/bin`,
+        }),
+      },
+    );
+  });
+
+  it("updates an installer-managed bb-app inside its machine-specific prefix", async () => {
+    vi.stubEnv("BB_APP_NPM_PREFIX", "/machine-data/npm");
+    const node = await createNodeInstall({ npmCli: true });
+    const runProcess = vi.fn(async () => undefined);
+
+    await defaultInstallTarball(TARBALL_PATH, runProcess, node.nodeExecPath);
+
+    expect(runProcess).toHaveBeenCalledWith(
+      node.nodeExecPath,
+      [
+        node.npmCliPath,
+        "install",
+        "-g",
+        ALLOW_SCRIPTS_ARG,
+        "--prefix",
+        "/machine-data/npm",
+        TARBALL_PATH,
+      ],
+      expect.any(Object),
+    );
+  });
+
+  it("keeps legacy global updates when the installer prefix is blank", async () => {
+    vi.stubEnv("BB_APP_NPM_PREFIX", " ");
+    const node = await createNodeInstall({ npmCli: true });
+    const runProcess = vi.fn(async () => undefined);
+
+    await defaultInstallTarball(TARBALL_PATH, runProcess, node.nodeExecPath);
+
+    expect(runProcess).toHaveBeenCalledWith(
+      node.nodeExecPath,
+      [node.npmCliPath, "install", "-g", ALLOW_SCRIPTS_ARG, TARBALL_PATH],
+      expect.any(Object),
+    );
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "installs when the npm wrapper beside Node fails after installing, as mise's does without mise on PATH",
+    async () => {
+      const node = await createNodeInstall({ npmCli: true });
+      const prefix = join(node.root, "prefix");
+      vi.stubEnv("PATH", "/usr/bin:/bin");
+      vi.stubEnv("BB_APP_NPM_PREFIX", prefix);
+      const argvPath = join(node.root, "npm-argv.json");
+      await symlink(process.execPath, node.nodeExecPath);
+      await writeFile(
+        join(dirname(node.nodeExecPath), "npm"),
+        "#!/bin/sh\necho 'mise: command not found' >&2\nexit 127\n",
+        { mode: 0o755 },
+      );
+      await writeFile(
+        node.npmCliPath,
+        `require("node:fs").writeFileSync(${JSON.stringify(argvPath)}, JSON.stringify(process.argv.slice(2)));\n`,
+      );
+
+      await defaultInstallTarball(
+        TARBALL_PATH,
+        defaultRunProcess,
+        node.nodeExecPath,
+      );
+
+      expect(JSON.parse(await readFile(argvPath, "utf8"))).toEqual([
+        "install",
+        "-g",
+        ALLOW_SCRIPTS_ARG,
+        "--prefix",
+        prefix,
+        TARBALL_PATH,
+      ]);
+    },
+  );
 });
