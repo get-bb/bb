@@ -144,6 +144,10 @@ same frozen lockfile, test commands, and sharding:
   `ensure-native-modules` can prepare `better-sqlite3`.
 - Windows server shards install the server, host daemon, app, and plugin
   closures; see [windows-ci.md](windows-ci.md#full-test-suite).
+- Windows `plugins-2` installs root tools, the selected plugins' dependency
+  closures, and app/database closures for generator and native prerequisites.
+  It selects plugin names first, then expands positive closures so test
+  exclusions cannot remove another package's dependencies.
 - Demo-server-only Linux test jobs use a scoped install and omit Electron
   runtime setup.
 - Test matrices carry whether their selected packages include `@bb/mobile`.
@@ -889,3 +893,42 @@ daemon-join checks then run together with separate data directories, reserved
 ports, and child environments. Both parallel groups settle, including process
 cleanup, before the temporary directory is removed. macOS scheduling is
 unchanged; Windows retains its existing parallel installs.
+
+## Windows plugin setup and private Git fixtures
+
+Windows `plugins-2` installs the root tools, selected plugin dependency closures,
+and app/database prerequisites. Selecting package names before expanding their
+closures preserves dependencies even when their own tests belong to another
+shard. At the measured lockfile this reduces Windows dependency snapshots from
+1,708 to 1,309, without changing the frozen lockfile or cache rules.
+
+[Cold-install comparison 40410136756](https://github.com/get-bb/bb/actions/runs/40410136756)
+used two four-vCPU Windows runners, each with four alternating baseline/candidate
+installs into fresh checkouts and stores. Selection-query time is included.
+All eight installs passed; both candidate checkouts then passed the complete
+plugin shard, including all 48 uncached Turbo tasks and prerequisites.
+Mean install time fell from 46.10 to 39.14 seconds (15.1%). A separate clean local
+comparison produced byte-identical contents for all 27 generated/runtime files.
+
+Three Git test files prepare one real repository and copy it into each test's
+private directory. The squash comparison fixture constructs its two divergent
+commits with real `git fast-import`, preserving unique commit identities per
+fixture. Tests still exercise real Git, independent working trees, and the same
+assertions. Seven old/new fixture comparisons produced identical commit graphs,
+subjects, and working-tree state with fixed Git dates, including Unicode paths,
+embedded newlines, same-file divergence, and a large payload.
+
+[Fixture comparison 40408582544](https://github.com/get-bb/bb/actions/runs/40408582544)
+ran the complete plugin test step after common prerequisite preparation, forcing
+all test tasks to execute. The two fixture-only runners each used four alternating
+baseline/candidate trials; all eight passed with identical inventories of 2,493
+passing tests and 69 existing skips. Mean time fell from 192.49 to 175.85 seconds
+(8.6%), saving 16.63 seconds. The install and test measurements are separate stage
+comparisons, not a measured end-to-end CI reduction.
+
+The same experiment tried four concurrent packages with one Vitest worker each.
+Its two runner comparisons disagreed, and one baseline hit the existing bounded
+squash-check assertion. That worker change was discarded; package concurrency,
+worker counts, shard counts, and selected tests remain unchanged. Increasing pnpm
+network concurrency also failed to improve a separate eight-install comparison
+and was discarded.

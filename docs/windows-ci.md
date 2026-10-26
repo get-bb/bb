@@ -57,12 +57,16 @@ suite exactly once:
   negative filters exclude the groups above and the nine host packages, so a
   new package lands here without a workflow change.
 
-The shards are sized so that each finishes with the slowest Linux job instead
-of after it; see [ci-performance.md](ci-performance.md#windows-test-shards).
+Shard timings depend on the selected packages and available build outputs;
+see [ci-performance.md](ci-performance.md#windows-test-shards).
 
 App shards install the app and database dependency closures. Server shards
 install the server, host daemon, app, and plugin dependency closures, including
-the plugins loaded dynamically by the server test harness. Plugin, host, build,
+the plugins loaded dynamically by the server test harness. `plugins-2` installs
+the root tools, selected plugin dependency closures, and app/database closures
+needed by generators and native preparation. Selection happens before expanding
+the positive dependency closures, so an excluded test package remains available
+when another selected package depends on it. Other plugin, host, build,
 and integration shards omit the mobile toolchain. The catch-all `packages-other`
 shard retains the full install when its selected tests include mobile; other
 affected PRs omit the mobile toolchain. Full main and manual runs keep mobile
