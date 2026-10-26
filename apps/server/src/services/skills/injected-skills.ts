@@ -117,20 +117,17 @@ export interface SkillTreeManifest {
   treeHash: string;
 }
 
-interface CachedFileHash {
+interface HashedFile {
   sha256: string;
   statKey: string;
 }
 
-const MAX_CACHED_FILE_HASHES = 20_000;
 const MAX_REGISTERED_SKILL_TREES = 4_096;
-const RACY_TIMESTAMP_WINDOW_NS = 2_000_000_000n;
 const MAX_FILE_HASH_ATTEMPTS = 3;
 
 export class SkillTreeRegistry {
   readonly #manifestsByHash = new Map<string, SkillTreeManifest>();
   readonly #hashByRoot = new Map<string, string>();
-  readonly #fileHashes = new Map<string, CachedFileHash>();
 
   async readTree(rootPath: string): Promise<SkillTreeManifest> {
     const files = await this.#collectFiles(rootPath, rootPath);
@@ -223,22 +220,14 @@ export class SkillTreeRegistry {
   async #hashFile(
     filePath: string,
     initialStat: BigIntStats,
-  ): Promise<{ hashed: CachedFileHash; stat: BigIntStats }> {
+  ): Promise<{ hashed: HashedFile; stat: BigIntStats }> {
     let stat = initialStat;
     for (let attempt = 1; ; attempt += 1) {
       const statKey = fileStatKey(stat);
-      const cached = this.#fileHashes.get(filePath);
-      if (cached?.statKey === statKey) {
-        this.#fileHashes.delete(filePath);
-        this.#fileHashes.set(filePath, cached);
-        return { hashed: cached, stat };
-      }
       const sha256 = await sha256File(filePath);
       const after = await fsPromises.stat(filePath, { bigint: true });
       if (fileStatKey(after) === statKey) {
-        const hashed = { sha256, statKey };
-        if (!hasRacyTimestamp(after)) this.#rememberFileHash(filePath, hashed);
-        return { hashed, stat: after };
+        return { hashed: { sha256, statKey }, stat: after };
       }
       if (attempt >= MAX_FILE_HASH_ATTEMPTS) {
         throw new Error(
@@ -248,27 +237,10 @@ export class SkillTreeRegistry {
       stat = after;
     }
   }
-
-  #rememberFileHash(filePath: string, hashed: CachedFileHash): void {
-    this.#fileHashes.delete(filePath);
-    this.#fileHashes.set(filePath, hashed);
-    if (this.#fileHashes.size > MAX_CACHED_FILE_HASHES) {
-      const oldest = this.#fileHashes.keys().next().value;
-      if (oldest !== undefined) this.#fileHashes.delete(oldest);
-    }
-  }
 }
 
 export function fileStatKey(stat: BigIntStats): string {
   return [stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].join(":");
-}
-
-function hasRacyTimestamp(stat: BigIntStats): boolean {
-  const nowNs = BigInt(Date.now()) * 1_000_000n;
-  return (
-    nowNs - stat.mtimeNs < RACY_TIMESTAMP_WINDOW_NS ||
-    nowNs - stat.ctimeNs < RACY_TIMESTAMP_WINDOW_NS
-  );
 }
 
 async function sha256File(filePath: string): Promise<string> {

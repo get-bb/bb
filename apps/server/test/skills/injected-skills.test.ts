@@ -4,12 +4,11 @@ import {
   readFile,
   rename,
   symlink,
-  utimes,
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
 import { makeTempDir } from "@bb/test-helpers";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { resolveBuiltinSkillsRootPath } from "../../src/services/skills/builtin-skills-copy.js";
 import {
   resolveProjectSkillSourceFromContent,
@@ -155,36 +154,6 @@ describe("injected skill source discovery", () => {
     if (process.platform !== "win32") {
       await chmod(secondReference, 0o755);
       expect(await treeHashOf(secondRoot)).not.toBe(baseline);
-    }
-  });
-
-  it("rehashes a file edited in place with its size and mtime unchanged", async () => {
-    const temp = await makeTempDir();
-    const rootPath = await writeSkill({
-      rootPath: path.join(temp, "skills"),
-      name: "cached-hash",
-    });
-    const referencePath = path.join(rootPath, "notes.md");
-    const pinnedTime = new Date(1_700_000_000_000);
-    await writeFile(referencePath, "aaaa\n");
-    await utimes(referencePath, pinnedTime, pinnedTime);
-    await utimes(path.join(rootPath, "SKILL.md"), pinnedTime, pinnedTime);
-    const registry = new SkillTreeRegistry();
-    vi.useFakeTimers({ toFake: ["Date"] });
-    try {
-      vi.setSystemTime(Date.now() + 60_000);
-      const first = await registry.readTree(rootPath);
-
-      await writeFile(referencePath, "bbbb\n");
-      await utimes(referencePath, pinnedTime, pinnedTime);
-      const second = await registry.readTree(rootPath);
-
-      expect(second.treeHash).not.toBe(first.treeHash);
-      expect(second.treeHash).toBe(await treeHashOf(rootPath));
-      expect(registry.manifest(first.treeHash)).toBeUndefined();
-      expect(registry.resolve(second.treeHash)).toBe(rootPath);
-    } finally {
-      vi.useRealTimers();
     }
   });
 
