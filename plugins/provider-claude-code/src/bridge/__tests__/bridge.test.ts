@@ -7,9 +7,11 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import type {
   CanUseTool,
   SDKMessage,
@@ -1231,7 +1233,42 @@ describe("bridge", () => {
     }
   });
 
-  it("forks a Claude session through the requested provider checkpoint", async () => {
+  it("forks a Claude session from the session config directory through the requested checkpoint", async () => {
+    const actualSdk = await vi.importActual<
+      typeof import("@anthropic-ai/claude-agent-sdk")
+    >("@anthropic-ai/claude-agent-sdk");
+    forkSessionMock.mockImplementation(actualSdk.forkSession);
+    const root = mkdtempSync(join(tmpdir(), "bb-claude-fork-"));
+    tempDirs.push(root);
+    const hostConfigDir = join(root, "host-config");
+    const projectConfigDir = join(root, "project-config");
+    const transcriptDir = join(projectConfigDir, "projects", "-tmp-worktree");
+    mkdirSync(join(hostConfigDir, "projects"), { recursive: true });
+    mkdirSync(transcriptDir, { recursive: true });
+    vi.stubEnv("CLAUDE_CONFIG_DIR", hostConfigDir);
+    const sourceSessionId = randomUUID();
+    const messageIds = [randomUUID(), randomUUID(), randomUUID()];
+    writeFileSync(
+      join(transcriptDir, `${sourceSessionId}.jsonl`),
+      [
+        { role: "user", text: "first question" },
+        { role: "assistant", text: "first answer" },
+        { role: "user", text: "discarded follow-up" },
+      ]
+        .map((message, index) =>
+          JSON.stringify({
+            type: message.role,
+            uuid: messageIds[index],
+            parentUuid: index === 0 ? null : messageIds[index - 1],
+            sessionId: sourceSessionId,
+            cwd: "/tmp/worktree",
+            isSidechain: false,
+            timestamp: `2026-10-26T00:00:0${index}.000Z`,
+            message: { role: message.role, content: message.text },
+          }),
+        )
+        .join("\n") + "\n",
+    );
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];
     queryMock.mockImplementation(() => {
@@ -1245,30 +1282,41 @@ describe("bridge", () => {
         threadId: "forked-thread-1",
         cwd: "/tmp/worktree",
         instructionMode: "append",
-        sourceProviderThreadId: "source-session-1",
-        sourceProviderCheckpointId: "assistant-message-42",
+        sourceProviderThreadId: sourceSessionId,
+        sourceProviderCheckpointId: messageIds[1],
         options: {
           permissionMode: "accept-edits",
           permissionScope: "workspace",
           approvalReviewer: "user",
           permissionEscalation: "ask",
           instructions: "test",
+          envVars: { CLAUDE_CONFIG_DIR: projectConfigDir },
           providerOptions: {
             workflowsEnabled: false,
           },
         },
       });
 
-      await expect(bridge.waitForResponse(1)).resolves.toMatchObject({
-        result: {
-          providerThreadId: "forked-session-1",
-          sessionRestorable: true,
-        },
-      });
-      expect(forkSessionMock).toHaveBeenCalledWith("source-session-1", {
-        upToMessageId: "assistant-message-42",
-      });
+      const response = await bridge.waitForResponse(1);
+      expect(response.error).toBeUndefined();
+      const { providerThreadId } = z
+        .object({ providerThreadId: z.string() })
+        .parse(response.result);
+      expect(providerThreadId).not.toBe(sourceSessionId);
+      const forkedTranscript = readFileSync(
+        join(transcriptDir, `${providerThreadId}.jsonl`),
+        "utf8",
+      );
+      expect(forkedTranscript).toContain("first question");
+      expect(forkedTranscript).toContain("first answer");
+      expect(forkedTranscript).not.toContain("discarded follow-up");
+      expect(queryMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          options: expect.objectContaining({ resume: providerThreadId }),
+        }),
+      );
     } finally {
+      vi.unstubAllEnvs();
       await stopBridgeThread({
         bridge,
         queries,

@@ -25,6 +25,7 @@ import {
   threadTimelineResponseSchema,
 } from "@bb/server-contract";
 import { eq } from "drizzle-orm";
+import { hostDaemonCommandSchema } from "@bb/host-daemon-contract";
 import { createDeferredPromise } from "@bb/test-helpers";
 import { describe, expect, it, vi } from "vitest";
 import { storeAttachment } from "../../src/services/projects/attachments.js";
@@ -600,6 +601,89 @@ describe("public thread fork route", () => {
       expect(queued.command.fork).toEqual({
         sourceProviderThreadId: "provider-fork-source",
         sourceProviderCheckpointId: "checkpoint-fork-source",
+      });
+    });
+  });
+
+  it("keeps the fork when a failed fork start is retried or messaged", async () => {
+    await withTestHarness(async (harness) => {
+      const { sourceThread } = seedForkSource(harness);
+      const response = await postFork(harness, {
+        sourceThreadId: sourceThread.id,
+      });
+      expect(response.status).toBe(201);
+      const fork = threadResponseSchema.parse(await readJson(response));
+      const failedStart = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.start" && command.threadId === fork.id,
+      );
+      if (failedStart.command.type !== "thread.start") {
+        throw new Error("Expected thread.start");
+      }
+      const forkDescriptor = failedStart.command.fork;
+      expect(forkDescriptor).toEqual({
+        sourceProviderThreadId: "provider-fork-source",
+      });
+      await reportQueuedCommandError(harness, failedStart, {
+        errorCode: "provider_error",
+        errorMessage: "Session provider-fork-source not found",
+      });
+      await vi.waitFor(() =>
+        expect(getThread(harness.db, fork.id)?.status).toBe("error"),
+      );
+
+      const retry = await harness.app.request(
+        `/api/v1/threads/${fork.id}/retry`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({}),
+        },
+      );
+      expect(retry.status).toBe(200);
+      const retriedStart = await waitForQueuedCommandAfter(
+        harness,
+        failedStart.row.cursor,
+        ({ command }) =>
+          command.type === "thread.start" && command.threadId === fork.id,
+      );
+      expect(retriedStart.command).toMatchObject({
+        fork: forkDescriptor,
+        input: [],
+      });
+      expect(
+        hostDaemonCommandSchema.safeParse(retriedStart.command).success,
+      ).toBe(true);
+      await reportQueuedCommandError(harness, retriedStart, {
+        errorCode: "provider_error",
+        errorMessage: "Session provider-fork-source not found",
+      });
+      await vi.waitFor(() =>
+        expect(getThread(harness.db, fork.id)?.status).toBe("error"),
+      );
+
+      const send = await harness.app.request(
+        `/api/v1/threads/${fork.id}/send`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            mode: "start",
+            input: textInput("Continue the fork"),
+          }),
+        },
+      );
+      expect(send.status).toBe(200);
+      const sentStart = await waitForQueuedCommandAfter(
+        harness,
+        retriedStart.row.cursor,
+        ({ command }) =>
+          command.type === "thread.start" && command.threadId === fork.id,
+      );
+      expect(sentStart.command).toMatchObject({
+        fork: forkDescriptor,
+        input: textInput("Continue the fork"),
       });
     });
   });

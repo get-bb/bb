@@ -376,7 +376,6 @@ async function queueReadyParentSystemMessage(
 
   const command = await prepareReadyThreadTurnCommand(deps, {
     thread: args.thread,
-    fork: null,
     input: args.input,
     requestId,
     execution: args.execution,

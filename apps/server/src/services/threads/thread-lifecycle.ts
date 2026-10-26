@@ -106,6 +106,7 @@ import { isParentNotifiableChildThread } from "./thread-parent.js";
 import {
   clearThreadProvisionSchedule,
   getThreadProvisionContext,
+  readDispatchedThreadStartFork,
 } from "./thread-startup-store.js";
 import { cancelAbandonedProviderCreations } from "./thread-environment-providers.js";
 import { scheduleThreadProvisioningAdvance } from "./thread-provisioning.js";
@@ -973,7 +974,7 @@ export function ensureThreadCanStartRequest(thread: Thread): void {
 
 export async function prepareReadyThreadTurnCommand(
   deps: LoggedWorkSessionDeps,
-  args: ThreadStartCommandArgs,
+  args: Omit<ThreadStartCommandArgs, "fork">,
 ): Promise<PreparedReadyThreadTurnCommand> {
   await ensureHostSessionReadyForWork(deps, {
     hostId: args.environment.hostId,
@@ -1005,7 +1006,10 @@ export async function prepareReadyThreadTurnCommand(
   }
 
   return {
-    command: await buildThreadStartCommand(deps, args),
+    command: await buildThreadStartCommand(deps, {
+      ...args,
+      fork: readDispatchedThreadStartFork(deps.db, args.thread.id),
+    }),
     mode: "thread.start",
   };
 }
