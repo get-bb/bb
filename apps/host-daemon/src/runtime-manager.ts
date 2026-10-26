@@ -44,7 +44,7 @@ import {
   PROVIDER_INSTALLATION_GATE_TTL_MS,
   type ProviderInstallationGate,
 } from "./provider-installation-gate.js";
-import type { FetchSkillTree } from "./skill-trees.js";
+import type { SkillTreeTransport } from "./skill-trees.js";
 import { userExecutableProcessOptions } from "./user-executable-env.js";
 import { runSetupScript } from "./environment-lifecycle-script.js";
 import { runInSerialLane } from "./serial-lane.js";
@@ -169,7 +169,7 @@ export interface RuntimeManagerOptions {
   createRuntime?: (options: AgentRuntimeOptions) => AgentRuntime;
   dataDir?: string;
   dataDirSkillsRootPath?: string | null;
-  fetchSkillTree?: FetchSkillTree;
+  skillTreeTransport?: SkillTreeTransport;
   hostWatcher?: HostWatcher;
   logger?: Pick<Logger, "debug" | "warn">;
   provisionWorkspace?: (
@@ -599,8 +599,8 @@ export class RuntimeManager {
         null,
       dataDir: this.options.dataDir,
       injectedSkillSources: args.injectedSkillSources,
-      ...(this.options.fetchSkillTree !== undefined
-        ? { fetchSkillTree: this.options.fetchSkillTree }
+      ...(this.options.skillTreeTransport !== undefined
+        ? { skillTreeTransport: this.options.skillTreeTransport }
         : {}),
       logger: this.getInjectedSkillsLogger(),
     });

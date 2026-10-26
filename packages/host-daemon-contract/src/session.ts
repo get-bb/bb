@@ -973,24 +973,47 @@ export type HostDaemonInteractiveInterruptResponse = z.infer<
   typeof hostDaemonInteractiveInterruptResponseSchema
 >;
 
-const hostDaemonSkillTreeEntrySchema = z
+const sha256HexSchema = z.string().regex(/^[a-f0-9]{64}$/u);
+const hostDaemonSkillTreeFileSchema = z
   .object({
     path: z.string().min(1),
     mode: z.number().int().min(0).max(0o777),
-    contentBase64: z.string(),
+    sizeBytes: z.number().int().min(0),
+    sha256: sha256HexSchema,
   })
   .strict();
-export const hostDaemonSkillTreeSchema = z
+export type HostDaemonSkillTreeFile = z.infer<
+  typeof hostDaemonSkillTreeFileSchema
+>;
+export const hostDaemonSkillTreeManifestSchema = z
   .object({
-    treeHash: z.string().regex(/^[a-f0-9]{64}$/u),
-    entries: z.array(hostDaemonSkillTreeEntrySchema),
+    treeHash: sha256HexSchema,
+    files: z.array(hostDaemonSkillTreeFileSchema),
   })
   .strict();
-export type HostDaemonSkillTree = z.infer<typeof hostDaemonSkillTreeSchema>;
+export type HostDaemonSkillTreeManifest = z.infer<
+  typeof hostDaemonSkillTreeManifestSchema
+>;
+export const hostDaemonSkillTreeContentRequestSchema = z
+  .object({
+    paths: z.array(z.string().min(1)).min(1),
+  })
+  .strict();
+export type HostDaemonSkillTreeContentRequest = z.infer<
+  typeof hostDaemonSkillTreeContentRequestSchema
+>;
 
 export type HostDaemonInternalSchema = {
   "/skills/tree/:hash": {
-    $get: Endpoint<Record<never, never>, HostDaemonSkillTree, 200>;
+    $get: Endpoint<Record<never, never>, HostDaemonSkillTreeManifest, 200>;
+  };
+  "/skills/tree/:hash/content": {
+    $post: Endpoint<
+      { json: HostDaemonSkillTreeContentRequest },
+      Uint8Array,
+      200,
+      "binary"
+    >;
   };
   "/plugins/:pluginId/host/:digest": {
     $get: Endpoint<Record<never, never>, Uint8Array, 200, "binary">;

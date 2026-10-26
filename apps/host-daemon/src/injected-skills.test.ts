@@ -18,8 +18,10 @@ import { describe, expect, it, vi } from "vitest";
 import type { AgentRuntimeSkillRoot } from "@bb/agent-runtime";
 import type {
   HostDaemonInjectedSkillSource,
-  HostDaemonSkillTree,
+  HostDaemonSkillTreeManifest,
 } from "@bb/host-daemon-contract";
+import { hashSkillTreeFiles } from "@bb/host-daemon-contract/skill-tree";
+import type { SkillTreeTransport } from "./skill-trees.js";
 import {
   cleanupInjectedSkillStagingDirs,
   ensureDataDirSkillsRootPath,
@@ -93,46 +95,101 @@ function createDataDirSource(
   };
 }
 
+interface TreeFixtureFile {
+  content: Buffer;
+  mode: number;
+  path: string;
+}
+
+interface TreeFixture {
+  files: TreeFixtureFile[];
+  treeHash: string;
+}
+
+function sha256(content: Buffer): string {
+  return createHash("sha256").update(content).digest("hex");
+}
+
+function manifestOf(fixture: TreeFixture): HostDaemonSkillTreeManifest {
+  return {
+    treeHash: fixture.treeHash,
+    files: fixture.files.map((file) => ({
+      path: file.path,
+      mode: file.mode,
+      sizeBytes: file.content.byteLength,
+      sha256: sha256(file.content),
+    })),
+  };
+}
+
 function createTreePayload(
   name: string,
   token = "tree bytes",
-): HostDaemonSkillTree {
-  const entries = [
+  extraFiles: TreeFixtureFile[] = [],
+): TreeFixture {
+  const files = [
     {
       path: "SKILL.md",
       mode: 0o644,
-      contentBase64: Buffer.from(
+      content: Buffer.from(
         `---\nname: ${name}\ndescription: Use ${name} in pull tests.\n---\n\n${token}\n`,
-      ).toString("base64"),
+      ),
     },
     {
       path: "scripts/run.sh",
       mode: 0o755,
-      contentBase64: Buffer.from("#!/bin/sh\necho synced\n").toString("base64"),
+      content: Buffer.from("#!/bin/sh\necho synced\n"),
     },
+    ...extraFiles,
   ];
-  entries.sort((left, right) =>
-    left.path < right.path ? -1 : left.path > right.path ? 1 : 0,
-  );
-  const hash = createHash("sha256");
-  hash.update("bb-skill-tree-v1");
-  for (const entry of entries) {
-    const bytes = Buffer.from(entry.contentBase64, "base64");
-    hash.update("\0file\0");
-    hash.update(entry.path);
-    hash.update("\0");
-    hash.update(entry.mode.toString(8));
-    hash.update("\0");
-    hash.update(String(bytes.length));
-    hash.update("\0");
-    hash.update(bytes);
+  return {
+    files,
+    treeHash: hashSkillTreeFiles(manifestOf({ files, treeHash: "" }).files),
+  };
+}
+
+async function* chunked(
+  content: Buffer,
+  chunkBytes = 5,
+): AsyncGenerator<Uint8Array> {
+  for (let offset = 0; offset < content.byteLength; offset += chunkBytes) {
+    yield content.subarray(offset, offset + chunkBytes);
   }
-  return { treeHash: hash.digest("hex"), entries };
+}
+
+function createTransport(...fixtures: TreeFixture[]) {
+  const byHash = new Map(
+    fixtures.map((fixture) => [fixture.treeHash, fixture]),
+  );
+  function requireFixture(treeHash: string): TreeFixture {
+    const fixture = byHash.get(treeHash);
+    if (fixture === undefined) throw new Error(`Unknown tree ${treeHash}`);
+    return fixture;
+  }
+  return {
+    fetchManifest: vi.fn(async (treeHash: string) =>
+      manifestOf(requireFixture(treeHash)),
+    ),
+    fetchContent: vi.fn(async (treeHash: string, paths: readonly string[]) => {
+      const fixture = requireFixture(treeHash);
+      return chunked(
+        Buffer.concat(
+          paths.map((requestedPath) => {
+            const file = fixture.files.find(
+              (candidate) => candidate.path === requestedPath,
+            );
+            if (file === undefined) throw new Error(`Unknown ${requestedPath}`);
+            return file.content;
+          }),
+        ),
+      );
+    }),
+  } satisfies SkillTreeTransport;
 }
 
 async function seedStoredTree(
   dataDir: string,
-  tree: HostDaemonSkillTree,
+  tree: TreeFixture,
 ): Promise<string> {
   const treeRootPath = path.join(
     dataDir,
@@ -142,17 +199,17 @@ async function seedStoredTree(
   );
   const contentRootPath = path.join(treeRootPath, "content");
   await Promise.all(
-    tree.entries.map(async (entry) => {
-      const destinationPath = path.join(contentRootPath, entry.path);
+    tree.files.map(async (file) => {
+      const destinationPath = path.join(contentRootPath, file.path);
       await mkdir(path.dirname(destinationPath), { recursive: true });
-      await writeFile(
-        destinationPath,
-        Buffer.from(entry.contentBase64, "base64"),
-        { mode: entry.mode },
-      );
+      await writeFile(destinationPath, file.content, { mode: file.mode });
     }),
   );
   await Promise.all([
+    writeFile(
+      path.join(treeRootPath, "manifest.json"),
+      JSON.stringify(manifestOf(tree)),
+    ),
     writeFile(path.join(treeRootPath, ".complete"), "complete\n"),
     writeFile(path.join(treeRootPath, ".last-used"), ""),
   ]);
@@ -199,19 +256,19 @@ describe("injected skill staging", () => {
   it("pulls a missing tree, stages identical bytes and modes, and reuses the store", async () => {
     const dataDir = await makeTempDir();
     const payload = createTreePayload("synced-skill");
-    const fetchSkillTree = vi.fn(async () => payload);
+    const skillTreeTransport = createTransport(payload);
     const source = createTreeSource("synced-skill", payload.treeHash);
 
     const first = await stageInjectedSkillSources({
       workspacePath: dataDir,
       dataDir,
-      fetchSkillTree,
+      skillTreeTransport,
       injectedSkillSources: [source],
     });
     await stageInjectedSkillSources({
       workspacePath: dataDir,
       dataDir,
-      fetchSkillTree,
+      skillTreeTransport,
       injectedSkillSources: [source],
     });
 
@@ -229,8 +286,15 @@ describe("injected skill staging", () => {
         lstat(stagedScript).then((stat) => stat.mode & 0o777),
       ).resolves.toBe(0o755);
     }
-    expect(fetchSkillTree).toHaveBeenCalledTimes(1);
-    expect(fetchSkillTree).toHaveBeenCalledWith(payload.treeHash);
+    expect(skillTreeTransport.fetchManifest).toHaveBeenCalledTimes(1);
+    expect(skillTreeTransport.fetchManifest).toHaveBeenCalledWith(
+      payload.treeHash,
+    );
+    expect(skillTreeTransport.fetchContent).toHaveBeenCalledTimes(1);
+    expect(skillTreeTransport.fetchContent).toHaveBeenCalledWith(
+      payload.treeHash,
+      ["SKILL.md", "scripts/run.sh"],
+    );
   });
 
   it.each([
@@ -253,14 +317,14 @@ describe("injected skill staging", () => {
       await mkdir(path.dirname(filePath), { recursive: true });
       await writeFile(filePath, "unfinished\n");
     }
-    const fetchSkillTree = vi.fn(async () => payload);
+    const skillTreeTransport = createTransport(payload);
     const stages = [];
     for (let attempt = 0; attempt < 2; attempt += 1) {
       stages.push(
         await stageInjectedSkillSources({
           workspacePath: dataDir,
           dataDir,
-          fetchSkillTree,
+          skillTreeTransport,
           injectedSkillSources: [
             createTreeSource("repaired-skill", payload.treeHash),
           ],
@@ -295,7 +359,7 @@ describe("injected skill staging", () => {
         ),
       ).resolves.toBe("#!/bin/sh\necho synced\n");
     }
-    expect(fetchSkillTree).toHaveBeenCalledTimes(1);
+    expect(skillTreeTransport.fetchManifest).toHaveBeenCalledTimes(1);
   });
 
   it("reuses a complete tree installed while the fetch is pending", async () => {
@@ -304,10 +368,13 @@ describe("injected skill staging", () => {
     const staged = await stageInjectedSkillSources({
       workspacePath: dataDir,
       dataDir,
-      fetchSkillTree: async () => {
-        const treeRootPath = await seedStoredTree(dataDir, payload);
-        await writeFile(path.join(treeRootPath, "resident"), "keep\n");
-        return payload;
+      skillTreeTransport: {
+        ...createTransport(payload),
+        fetchManifest: async () => {
+          const treeRootPath = await seedStoredTree(dataDir, payload);
+          await writeFile(path.join(treeRootPath, "resident"), "keep\n");
+          return manifestOf(payload);
+        },
       },
       injectedSkillSources: [
         createTreeSource("concurrent-install", payload.treeHash),
@@ -360,7 +427,7 @@ describe("injected skill staging", () => {
         const staged = await stageInjectedSkillSources({
           workspacePath: dataDir,
           dataDir,
-          fetchSkillTree: async () => payload,
+          skillTreeTransport: createTransport(payload),
           injectedSkillSources: [
             createTreeSource("locked-skill", payload.treeHash),
           ],
@@ -403,7 +470,7 @@ describe("injected skill staging", () => {
           stageInjectedSkillSources({
             workspacePath: dataDir,
             dataDir,
-            fetchSkillTree: async () => payload,
+            skillTreeTransport: createTransport(payload),
             injectedSkillSources: [
               createTreeSource("denied-skill", payload.treeHash),
             ],
@@ -429,7 +496,10 @@ describe("injected skill staging", () => {
       stageInjectedSkillSources({
         workspacePath: dataDir,
         dataDir,
-        fetchSkillTree: async () => Promise.reject(failure),
+        skillTreeTransport: {
+          ...createTransport(payload),
+          fetchManifest: async () => Promise.reject(failure),
+        },
         injectedSkillSources: [
           createTreeSource("failed-pull", payload.treeHash),
         ],
@@ -446,74 +516,193 @@ describe("injected skill staging", () => {
     ]);
   });
 
-  it("rejects fetched tree content that does not match its declared hash", async () => {
+  it.each([
+    {
+      failure: "a manifest that does not hash to the requested tree",
+      error: "Fetched skill tree manifest hash mismatch",
+      transport: (payload: TreeFixture) => ({
+        ...createTransport(payload),
+        fetchManifest: async () => ({
+          ...manifestOf(payload),
+          files: manifestOf(payload).files.map((file) => ({
+            ...file,
+            mode: 0o777,
+          })),
+        }),
+      }),
+    },
+    {
+      failure: "an unsafe manifest path",
+      error: "Skill tree entry has unsafe path: ../escape.sh",
+      transport: (payload: TreeFixture) => ({
+        ...createTransport(payload),
+        fetchManifest: async () => ({
+          ...manifestOf(payload),
+          files: [
+            ...manifestOf(payload).files,
+            {
+              path: "../escape.sh",
+              mode: 0o644,
+              sizeBytes: 0,
+              sha256: sha256(Buffer.alloc(0)),
+            },
+          ],
+        }),
+      }),
+    },
+    {
+      failure: "content bytes that do not match the manifest",
+      error: "Skill tree file SKILL.md content hash mismatch",
+      transport: (payload: TreeFixture) => ({
+        ...createTransport(payload),
+        fetchContent: async () =>
+          chunked(
+            Buffer.concat(
+              payload.files.map((file) => Buffer.alloc(file.content.length)),
+            ),
+          ),
+      }),
+    },
+    {
+      failure: "a truncated content stream",
+      error: "Transfer ended",
+      transport: (payload: TreeFixture) => ({
+        ...createTransport(payload),
+        fetchContent: async () => chunked(payload.files[0]!.content),
+      }),
+    },
+    {
+      failure: "a content stream with trailing bytes",
+      error: "Transfer returned more bytes than requested",
+      transport: (payload: TreeFixture) => ({
+        ...createTransport(payload),
+        fetchContent: async () =>
+          chunked(
+            Buffer.concat([
+              ...payload.files.map((file) => file.content),
+              Buffer.from("extra"),
+            ]),
+          ),
+      }),
+    },
+  ])("rejects $failure without publishing a stored tree", async (args) => {
     const dataDir = await makeTempDir();
     const payload = createTreePayload("tampered-tree");
-    const tampered = {
-      ...payload,
-      entries: payload.entries.map((entry, index) =>
-        index === 0
-          ? {
-              ...entry,
-              contentBase64: Buffer.from("tampered\n").toString("base64"),
-            }
-          : entry,
-      ),
-    };
 
     await expect(
       stageInjectedSkillSources({
         workspacePath: dataDir,
         dataDir,
-        fetchSkillTree: async () => tampered,
+        skillTreeTransport: args.transport(payload),
         injectedSkillSources: [
           createTreeSource("tampered-tree", payload.treeHash),
         ],
       }),
-    ).rejects.toThrow("Fetched skill tree content hash mismatch");
+    ).rejects.toThrow(args.error);
+    await expect(
+      readdir(path.join(dataDir, "runtime", "skill-store")).catch(() => []),
+    ).resolves.toEqual([]);
   });
 
-  it("verifies Unicode paths with locale-independent code-point ordering", async () => {
+  it("downloads only files the local store does not already hold", async () => {
     const dataDir = await makeTempDir();
-    const entries = ["ä", "z", "A", "a"].map((entryPath) => ({
-      path: entryPath,
+    const asset = {
+      path: "assets/model.bin",
       mode: 0o644,
-      contentBase64: Buffer.from(entryPath).toString("base64"),
-    }));
-    entries.push({
-      path: "SKILL.md",
-      mode: 0o644,
-      contentBase64: Buffer.from(
-        "---\nname: unicode-paths\ndescription: Use Unicode paths in tests.\n---\n",
-      ).toString("base64"),
-    });
-    const hash = createHash("sha256");
-    hash.update("bb-skill-tree-v1");
-    for (const entry of [...entries].sort((left, right) =>
-      left.path < right.path ? -1 : left.path > right.path ? 1 : 0,
-    )) {
-      const bytes = Buffer.from(entry.contentBase64, "base64");
-      hash.update("\0file\0");
-      hash.update(entry.path);
-      hash.update("\0");
-      hash.update(entry.mode.toString(8));
-      hash.update("\0");
-      hash.update(String(bytes.length));
-      hash.update("\0");
-      hash.update(bytes);
-    }
-    const payload = { treeHash: hash.digest("hex"), entries };
+      content: Buffer.alloc(256 * 1024, 7),
+    };
+    const original = createTreePayload("edited-skill", "v1", [asset]);
+    const edited = createTreePayload("edited-skill", "v2", [asset]);
+    const skillTreeTransport = createTransport(original, edited);
 
+    await stageInjectedSkillSources({
+      workspacePath: dataDir,
+      dataDir,
+      skillTreeTransport,
+      injectedSkillSources: [
+        createTreeSource("edited-skill", original.treeHash),
+      ],
+    });
+    const staged = await stageInjectedSkillSources({
+      workspacePath: dataDir,
+      dataDir,
+      skillTreeTransport,
+      injectedSkillSources: [createTreeSource("edited-skill", edited.treeHash)],
+    });
+
+    expect(skillTreeTransport.fetchContent).toHaveBeenLastCalledWith(
+      edited.treeHash,
+      ["SKILL.md"],
+    );
+    const stagedSkillPath = path.join(
+      requireSkillRoot(staged.skillRoots).path,
+      "edited-skill",
+    );
     await expect(
-      stageInjectedSkillSources({
-        workspacePath: dataDir,
-        dataDir,
-        fetchSkillTree: async () => payload,
-        injectedSkillSources: [
-          createTreeSource("unicode-paths", payload.treeHash),
-        ],
-      }),
-    ).resolves.toMatchObject({ skillRoots: expect.any(Array) });
+      readFile(path.join(stagedSkillPath, "SKILL.md"), "utf8"),
+    ).resolves.toContain("v2");
+    await expect(
+      readFile(path.join(stagedSkillPath, "assets", "model.bin")),
+    ).resolves.toEqual(asset.content);
+  });
+
+  it("downloads a file again when its stored copy no longer matches", async () => {
+    const dataDir = await makeTempDir();
+    const original = createTreePayload("corrupt-store");
+    const edited = createTreePayload("corrupt-store", "edited");
+    const storedRoot = await seedStoredTree(dataDir, original);
+    await writeFile(
+      path.join(storedRoot, "content", "scripts", "run.sh"),
+      "#!/bin/sh\necho broken\n",
+    );
+    const skillTreeTransport = createTransport(edited);
+
+    const staged = await stageInjectedSkillSources({
+      workspacePath: dataDir,
+      dataDir,
+      skillTreeTransport,
+      injectedSkillSources: [
+        createTreeSource("corrupt-store", edited.treeHash),
+      ],
+    });
+
+    expect(skillTreeTransport.fetchContent).toHaveBeenCalledWith(
+      edited.treeHash,
+      ["SKILL.md", "scripts/run.sh"],
+    );
+    await expect(
+      readFile(
+        path.join(
+          requireSkillRoot(staged.skillRoots).path,
+          "corrupt-store",
+          "scripts",
+          "run.sh",
+        ),
+        "utf8",
+      ),
+    ).resolves.toBe("#!/bin/sh\necho synced\n");
+  });
+
+  it("pulls a tree once for concurrent stages that need it", async () => {
+    const dataDir = await makeTempDir();
+    const payload = createTreePayload("concurrent-pull");
+    const skillTreeTransport = createTransport(payload);
+    const source = createTreeSource("concurrent-pull", payload.treeHash);
+
+    const stages = await Promise.all(
+      [1, 2, 3].map(() =>
+        stageInjectedSkillSources({
+          workspacePath: dataDir,
+          dataDir,
+          skillTreeTransport,
+          injectedSkillSources: [source],
+        }),
+      ),
+    );
+
+    expect(new Set(stages.map((stage) => stage.catalogHash)).size).toBe(1);
+    expect(skillTreeTransport.fetchManifest).toHaveBeenCalledTimes(1);
+    expect(skillTreeTransport.fetchContent).toHaveBeenCalledTimes(1);
   });
 
   it("garbage-collects the least-recently-used trees beyond the store cap", async () => {
@@ -538,7 +727,7 @@ describe("injected skill staging", () => {
     await stageInjectedSkillSources({
       workspacePath: dataDir,
       dataDir,
-      fetchSkillTree: async () => payload,
+      skillTreeTransport: createTransport(payload),
       injectedSkillSources: [createTreeSource(name, payload.treeHash)],
     });
 
@@ -595,7 +784,7 @@ describe("injected skill staging", () => {
     const protectedStage = stageInjectedSkillSources({
       workspacePath: dataDir,
       dataDir,
-      fetchSkillTree: async () => protectedTree.payload,
+      skillTreeTransport: createTransport(protectedTree.payload),
       injectedSkillSources: [
         createTreeSource(protectedTree.name, protectedTree.payload.treeHash),
       ],
@@ -608,7 +797,7 @@ describe("injected skill staging", () => {
       await stageInjectedSkillSources({
         workspacePath: dataDir,
         dataDir,
-        fetchSkillTree: async () => newcomer,
+        skillTreeTransport: createTransport(newcomer),
         injectedSkillSources: [createTreeSource("newcomer", newcomer.treeHash)],
       });
       await vi.waitFor(async () => {
@@ -764,48 +953,45 @@ describe("injected skill staging", () => {
     expect(second.catalogHash).not.toBe(first.catalogHash);
   });
 
-  it("reuses a collected tree without returning to the skill store", async () => {
+  it("reuses a collected tree while its stage exists and re-pulls it to rebuild the stage", async () => {
     const dataDir = await makeTempDir();
     const payload = createTreePayload("memo-tree");
-    const fetchSkillTree = vi.fn(async () => payload);
+    const skillTreeTransport = createTransport(payload);
     const source = createTreeSource("memo-tree", payload.treeHash);
-    const first = await stageInjectedSkillSources({
-      workspacePath: dataDir,
-      dataDir,
-      fetchSkillTree,
-      injectedSkillSources: [source],
-    });
-    await rm(path.join(dataDir, "runtime", "skill-store"), {
-      recursive: true,
-      force: true,
-    });
+    const stage = () =>
+      stageInjectedSkillSources({
+        workspacePath: dataDir,
+        dataDir,
+        skillTreeTransport,
+        injectedSkillSources: [source],
+      });
+    const first = await stage();
+    const storeRoot = path.join(dataDir, "runtime", "skill-store");
+    await rm(storeRoot, { recursive: true, force: true });
+
+    const reused = await stage();
+    await expect(
+      access(path.join(storeRoot, payload.treeHash)),
+    ).rejects.toMatchObject({ code: "ENOENT" });
     await rm(path.join(dataDir, "runtime", "global-skills"), {
       recursive: true,
       force: true,
     });
+    const rebuilt = await stage();
 
-    const second = await stageInjectedSkillSources({
-      workspacePath: dataDir,
-      dataDir,
-      fetchSkillTree,
-      injectedSkillSources: [source],
-    });
-
-    expect(second.catalogHash).toBe(first.catalogHash);
-    expect(fetchSkillTree).toHaveBeenCalledTimes(1);
+    expect(reused.catalogHash).toBe(first.catalogHash);
+    expect(rebuilt.catalogHash).toBe(first.catalogHash);
+    expect(skillTreeTransport.fetchManifest).toHaveBeenCalledTimes(2);
     await expect(
       readFile(
         path.join(
-          requireSkillRoot(second.skillRoots).path,
+          requireSkillRoot(rebuilt.skillRoots).path,
           "memo-tree",
           "SKILL.md",
         ),
         "utf8",
       ),
     ).resolves.toContain("tree bytes");
-    await expect(
-      access(path.join(dataDir, "runtime", "skill-store", payload.treeHash)),
-    ).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("restages a host skill edited in place with its size and mtime unchanged", async () => {

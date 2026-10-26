@@ -1,19 +1,17 @@
-import { createHash } from "node:crypto";
 import {
   chmod,
   mkdir,
   readFile,
   rename,
   symlink,
+  utimes,
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
 import { makeTempDir } from "@bb/test-helpers";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { resolveBuiltinSkillsRootPath } from "../../src/services/skills/builtin-skills-copy.js";
 import {
-  hashSkillTreeEntries,
-  readSkillTreeManifest,
   resolveProjectSkillSourceFromContent,
   resolveServerOwnedSkillCatalogEntries,
   resolveSkillCatalogEntries,
@@ -104,7 +102,11 @@ async function writeSkill(args: WriteSkillArgs): Promise<string> {
   return skillRootPath;
 }
 
-function expectedTreeSource(args: {
+async function treeHashOf(rootPath: string): Promise<string> {
+  return (await new SkillTreeRegistry().readTree(rootPath)).treeHash;
+}
+
+async function expectedTreeSource(args: {
   description: string;
   name: string;
   rootPath: string;
@@ -115,7 +117,7 @@ function expectedTreeSource(args: {
     sourceType: args.sourceType,
     name: args.name,
     description: args.description,
-    treeHash: readSkillTreeManifest(args.rootPath).treeHash,
+    treeHash: await treeHashOf(args.rootPath),
     entryPath: "SKILL.md",
   };
 }
@@ -138,47 +140,52 @@ describe("injected skill source discovery", () => {
     await writeFile(firstReference, "same bytes\n");
     await writeFile(secondReference, "same bytes\n");
 
-    const baseline = readSkillTreeManifest(firstRoot).treeHash;
-    expect(readSkillTreeManifest(secondRoot).treeHash).toBe(baseline);
+    const baseline = await treeHashOf(firstRoot);
+    expect(await treeHashOf(secondRoot)).toBe(baseline);
 
     await writeFile(secondReference, "changed bytes\n");
-    expect(readSkillTreeManifest(secondRoot).treeHash).not.toBe(baseline);
+    expect(await treeHashOf(secondRoot)).not.toBe(baseline);
     await writeFile(secondReference, "same bytes\n");
 
     const renamedReference = path.join(secondRoot, "references", "renamed.md");
     await rename(secondReference, renamedReference);
-    expect(readSkillTreeManifest(secondRoot).treeHash).not.toBe(baseline);
+    expect(await treeHashOf(secondRoot)).not.toBe(baseline);
     await rename(renamedReference, secondReference);
 
     if (process.platform !== "win32") {
       await chmod(secondReference, 0o755);
-      expect(readSkillTreeManifest(secondRoot).treeHash).not.toBe(baseline);
+      expect(await treeHashOf(secondRoot)).not.toBe(baseline);
     }
   });
 
-  it("hashes Unicode paths in locale-independent code-point order", () => {
-    const entries = ["ä", "z", "A", "a"].map((entryPath) => ({
-      path: entryPath,
-      mode: 0o644,
-      bytes: Buffer.from(entryPath),
-    }));
+  it("rehashes a file edited in place with its size and mtime unchanged", async () => {
+    const temp = await makeTempDir();
+    const rootPath = await writeSkill({
+      rootPath: path.join(temp, "skills"),
+      name: "cached-hash",
+    });
+    const referencePath = path.join(rootPath, "notes.md");
+    const pinnedTime = new Date(1_700_000_000_000);
+    await writeFile(referencePath, "aaaa\n");
+    await utimes(referencePath, pinnedTime, pinnedTime);
+    await utimes(path.join(rootPath, "SKILL.md"), pinnedTime, pinnedTime);
+    const registry = new SkillTreeRegistry();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(Date.now() + 60_000);
+      const first = await registry.readTree(rootPath);
 
-    const expected = createHash("sha256");
-    expected.update("bb-skill-tree-v1");
-    for (const entry of [...entries].sort((left, right) =>
-      left.path < right.path ? -1 : left.path > right.path ? 1 : 0,
-    )) {
-      expected.update("\0file\0");
-      expected.update(entry.path);
-      expected.update("\0");
-      expected.update(entry.mode.toString(8));
-      expected.update("\0");
-      expected.update(String(entry.bytes.length));
-      expected.update("\0");
-      expected.update(entry.bytes);
+      await writeFile(referencePath, "bbbb\n");
+      await utimes(referencePath, pinnedTime, pinnedTime);
+      const second = await registry.readTree(rootPath);
+
+      expect(second.treeHash).not.toBe(first.treeHash);
+      expect(second.treeHash).toBe(await treeHashOf(rootPath));
+      expect(registry.manifest(first.treeHash)).toBeUndefined();
+      expect(registry.resolve(second.treeHash)).toBe(rootPath);
+    } finally {
+      vi.useRealTimers();
     }
-
-    expect(hashSkillTreeEntries(entries)).toBe(expected.digest("hex"));
   });
 
   it("skips invalid skills and logs the reason", async () => {
@@ -257,13 +264,13 @@ describe("injected skill source discovery", () => {
     });
 
     expect(sources).toEqual([
-      expectedTreeSource({
+      await expectedTreeSource({
         sourceType: "data-dir",
         name: "review-loop",
         description: "Data-dir review skill.",
         rootPath: dataDirSkillRoot,
       }),
-      expectedTreeSource({
+      await expectedTreeSource({
         sourceType: "data-dir",
         name: "stories",
         description: "Inherited stories skill.",
@@ -320,7 +327,7 @@ describe("injected skill source discovery", () => {
         sourceRootPath: sharedProjectRoot,
         skillFilePath: path.join(sharedProjectRoot, "SKILL.md"),
       },
-      expectedTreeSource({
+      await expectedTreeSource({
         sourceType: "data-dir",
         name: "review",
         description: "bb user review skill.",
@@ -350,7 +357,7 @@ describe("injected skill source discovery", () => {
     });
 
     expect(sources).toEqual([
-      expectedTreeSource({
+      await expectedTreeSource({
         sourceType: "data-dir",
         name: "stories",
         description: "Local stories skill.",
@@ -388,7 +395,7 @@ describe("injected skill source discovery", () => {
     });
 
     expect(sources).toEqual([
-      expectedTreeSource({
+      await expectedTreeSource({
         sourceType: "data-dir",
         name: "stories",
         description: "Parent stories skill.",

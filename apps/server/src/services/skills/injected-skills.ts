@@ -1,11 +1,16 @@
-import type { Dirent } from "node:fs";
+import type { BigIntStats, Dirent } from "node:fs";
 import fs from "node:fs";
+import fsPromises from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { scanSkillFiles, SKILL_FILE_NAME } from "@bb/skill-index";
 import { parseSkillMetadata } from "@bb/skill-index/metadata";
 import { resolveDataDirSkillsRootPath } from "@bb/config/skill-storage-paths";
-import type { HostDaemonInjectedSkillSource } from "@bb/host-daemon-contract";
+import type {
+  HostDaemonInjectedSkillSource,
+  HostDaemonSkillTreeFile,
+} from "@bb/host-daemon-contract";
+import { hashSkillTreeFiles } from "@bb/host-daemon-contract/skill-tree";
 import { z } from "zod";
 import type { ServerLogger } from "../../types.js";
 import { joinHostPathSegments } from "../lib/host-path.js";
@@ -101,27 +106,173 @@ export type SharedInjectedSkillSource = Extract<
   { kind: "host-path" }
 >;
 
-export interface SkillTreeEntry {
-  bytes: Buffer;
-  mode: number;
-  path: string;
+export interface SkillTreeFile extends HostDaemonSkillTreeFile {
+  sourcePath: string;
+  statKey: string;
 }
 
-interface SkillTreeManifest {
-  entries: readonly SkillTreeEntry[];
+export interface SkillTreeManifest {
+  files: readonly SkillTreeFile[];
+  rootPath: string;
   treeHash: string;
 }
 
-export class SkillTreeRegistry {
-  readonly #rootsByHash = new Map<string, string>();
+interface CachedFileHash {
+  sha256: string;
+  statKey: string;
+}
 
-  register(treeHash: string, sourceRootPath: string): void {
-    this.#rootsByHash.set(treeHash, sourceRootPath);
+const MAX_CACHED_FILE_HASHES = 20_000;
+const MAX_REGISTERED_SKILL_TREES = 4_096;
+const RACY_TIMESTAMP_WINDOW_NS = 2_000_000_000n;
+const MAX_FILE_HASH_ATTEMPTS = 3;
+
+export class SkillTreeRegistry {
+  readonly #manifestsByHash = new Map<string, SkillTreeManifest>();
+  readonly #hashByRoot = new Map<string, string>();
+  readonly #fileHashes = new Map<string, CachedFileHash>();
+
+  async readTree(rootPath: string): Promise<SkillTreeManifest> {
+    const files = await this.#collectFiles(rootPath, rootPath);
+    const manifest: SkillTreeManifest = {
+      files,
+      rootPath,
+      treeHash: hashSkillTreeFiles(files),
+    };
+    this.#register(manifest);
+    return manifest;
+  }
+
+  manifest(treeHash: string): SkillTreeManifest | undefined {
+    return this.#manifestsByHash.get(treeHash);
   }
 
   resolve(treeHash: string): string | undefined {
-    return this.#rootsByHash.get(treeHash);
+    return this.#manifestsByHash.get(treeHash)?.rootPath;
   }
+
+  #register(manifest: SkillTreeManifest): void {
+    const previousHash = this.#hashByRoot.get(manifest.rootPath);
+    if (
+      previousHash !== undefined &&
+      previousHash !== manifest.treeHash &&
+      this.#manifestsByHash.get(previousHash)?.rootPath === manifest.rootPath
+    ) {
+      this.#manifestsByHash.delete(previousHash);
+    }
+    this.#hashByRoot.delete(manifest.rootPath);
+    this.#hashByRoot.set(manifest.rootPath, manifest.treeHash);
+    this.#manifestsByHash.delete(manifest.treeHash);
+    this.#manifestsByHash.set(manifest.treeHash, manifest);
+    for (const [oldestRoot, oldestHash] of this.#hashByRoot) {
+      if (this.#hashByRoot.size <= MAX_REGISTERED_SKILL_TREES) break;
+      this.#hashByRoot.delete(oldestRoot);
+      if (this.#manifestsByHash.get(oldestHash)?.rootPath === oldestRoot) {
+        this.#manifestsByHash.delete(oldestHash);
+      }
+    }
+  }
+
+  async #collectFiles(
+    rootPath: string,
+    currentPath: string,
+  ): Promise<SkillTreeFile[]> {
+    const files: SkillTreeFile[] = [];
+    for (const entry of (
+      await fsPromises.readdir(currentPath, { withFileTypes: true })
+    ).sort(sortDirentsByName)) {
+      if (
+        currentPath === rootPath &&
+        entry.name === REGISTRY_SKILL_PROVENANCE_FILE_NAME
+      ) {
+        continue;
+      }
+      const entryPath = path.join(currentPath, entry.name);
+      const linkStat = await fsPromises.lstat(entryPath);
+      if (
+        linkStat.isSymbolicLink() &&
+        !(currentPath === rootPath && entry.name === SKILL_FILE_NAME)
+      ) {
+        throw new Error(`Skill tree contains a symlink: ${entryPath}`);
+      }
+      const stat = linkStat.isSymbolicLink()
+        ? await fsPromises.stat(entryPath, { bigint: true })
+        : await fsPromises.lstat(entryPath, { bigint: true });
+      if (stat.isDirectory()) {
+        files.push(...(await this.#collectFiles(rootPath, entryPath)));
+        continue;
+      }
+      if (!stat.isFile()) {
+        throw new Error(`Skill tree entry is not a regular file: ${entryPath}`);
+      }
+      files.push({
+        ...(await this.#hashFile(entryPath, stat)),
+        mode: Number(stat.mode & 0o777n),
+        path: normalizeRelativePath(path.relative(rootPath, entryPath)),
+        sizeBytes: Number(stat.size),
+        sourcePath: entryPath,
+      });
+    }
+    return files;
+  }
+
+  async #hashFile(
+    filePath: string,
+    initialStat: BigIntStats,
+  ): Promise<CachedFileHash> {
+    let stat = initialStat;
+    for (let attempt = 1; ; attempt += 1) {
+      const statKey = fileStatKey(stat);
+      const cached = this.#fileHashes.get(filePath);
+      if (cached?.statKey === statKey) {
+        this.#fileHashes.delete(filePath);
+        this.#fileHashes.set(filePath, cached);
+        return cached;
+      }
+      const sha256 = await sha256File(filePath);
+      const after = await fsPromises.stat(filePath, { bigint: true });
+      if (fileStatKey(after) === statKey) {
+        const hashed = { sha256, statKey };
+        if (!hasRacyTimestamp(after)) this.#rememberFileHash(filePath, hashed);
+        return hashed;
+      }
+      if (attempt >= MAX_FILE_HASH_ATTEMPTS) {
+        throw new Error(
+          `Skill tree file kept changing while hashed: ${filePath}`,
+        );
+      }
+      stat = after;
+    }
+  }
+
+  #rememberFileHash(filePath: string, hashed: CachedFileHash): void {
+    this.#fileHashes.delete(filePath);
+    this.#fileHashes.set(filePath, hashed);
+    if (this.#fileHashes.size > MAX_CACHED_FILE_HASHES) {
+      const oldest = this.#fileHashes.keys().next().value;
+      if (oldest !== undefined) this.#fileHashes.delete(oldest);
+    }
+  }
+}
+
+export function fileStatKey(stat: BigIntStats): string {
+  return [stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].join(":");
+}
+
+function hasRacyTimestamp(stat: BigIntStats): boolean {
+  const nowNs = BigInt(Date.now()) * 1_000_000n;
+  return (
+    nowNs - stat.mtimeNs < RACY_TIMESTAMP_WINDOW_NS ||
+    nowNs - stat.ctimeNs < RACY_TIMESTAMP_WINDOW_NS
+  );
+}
+
+async function sha256File(filePath: string): Promise<string> {
+  const hash = createHash("sha256");
+  for await (const chunk of fs.createReadStream(filePath)) {
+    hash.update(chunk as Buffer);
+  }
+  return hash.digest("hex");
 }
 
 interface SkillCandidateSource {
@@ -196,70 +347,6 @@ function compareStringsByCodePoint(left: string, right: string): number {
 
 function normalizeRelativePath(relativePath: string): string {
   return relativePath.split(path.sep).join("/");
-}
-
-function collectSkillTreeEntries(
-  rootPath: string,
-  currentPath = rootPath,
-): SkillTreeEntry[] {
-  const entries: SkillTreeEntry[] = [];
-  for (const entry of fs
-    .readdirSync(currentPath, { withFileTypes: true })
-    .sort(sortDirentsByName)) {
-    if (
-      currentPath === rootPath &&
-      entry.name === REGISTRY_SKILL_PROVENANCE_FILE_NAME
-    ) {
-      continue;
-    }
-    const entryPath = path.join(currentPath, entry.name);
-    const linkStat = fs.lstatSync(entryPath);
-    if (
-      linkStat.isSymbolicLink() &&
-      !(currentPath === rootPath && entry.name === SKILL_FILE_NAME)
-    ) {
-      throw new Error(`Skill tree contains a symlink: ${entryPath}`);
-    }
-    const stat = linkStat.isSymbolicLink() ? fs.statSync(entryPath) : linkStat;
-    if (stat.isDirectory()) {
-      entries.push(...collectSkillTreeEntries(rootPath, entryPath));
-      continue;
-    }
-    if (!stat.isFile()) {
-      throw new Error(`Skill tree entry is not a regular file: ${entryPath}`);
-    }
-    entries.push({
-      bytes: fs.readFileSync(entryPath),
-      mode: stat.mode & 0o777,
-      path: normalizeRelativePath(path.relative(rootPath, entryPath)),
-    });
-  }
-  return entries;
-}
-
-export function hashSkillTreeEntries(
-  entries: readonly SkillTreeEntry[],
-): string {
-  const hash = createHash("sha256");
-  hash.update("bb-skill-tree-v1");
-  for (const entry of [...entries].sort((left, right) =>
-    compareStringsByCodePoint(left.path, right.path),
-  )) {
-    hash.update("\0file\0");
-    hash.update(entry.path);
-    hash.update("\0");
-    hash.update(entry.mode.toString(8));
-    hash.update("\0");
-    hash.update(String(entry.bytes.length));
-    hash.update("\0");
-    hash.update(entry.bytes);
-  }
-  return hash.digest("hex");
-}
-
-export function readSkillTreeManifest(rootPath: string): SkillTreeManifest {
-  const entries = collectSkillTreeEntries(rootPath);
-  return { entries, treeHash: hashSkillTreeEntries(entries) };
 }
 
 function sourceRootPath(source: HostDaemonInjectedSkillSource): string {
@@ -348,8 +435,7 @@ async function readSkillsRoot(
     });
     if (validated === null) continue;
     try {
-      const manifest = readSkillTreeManifest(candidatePath);
-      args.skillTreeRegistry.register(manifest.treeHash, candidatePath);
+      const manifest = await args.skillTreeRegistry.readTree(candidatePath);
       sources.push({
         kind: "tree",
         sourceType: args.sourceType,

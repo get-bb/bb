@@ -16,7 +16,7 @@ import type { PluginAgentConfigurationContext } from "@get-bb/plugin-sdk";
 import { buildPluginProviderRegistration } from "../../src/services/providers/plugin-provider-registration.js";
 import type { DiscoveredSkill } from "@bb/host-daemon-contract";
 import { setPluginAgentContributions } from "../../src/services/plugins/plugin-agent-contributions.js";
-import { readSkillTreeManifest } from "../../src/services/skills/injected-skills.js";
+import { SkillTreeRegistry } from "../../src/services/skills/injected-skills.js";
 import type { PluginAgentToolContribution } from "../../src/services/plugins/plugin-service.js";
 import { resolveThreadRuntimeCommandConfig } from "../../src/services/threads/thread-runtime-config.js";
 import {
@@ -840,7 +840,8 @@ describe("thread runtime config", () => {
           sourceType: "data-dir",
           name: "release-notes",
           description: "Use release-notes when server runtime tests run.",
-          treeHash: readSkillTreeManifest(sourceRootPath).treeHash,
+          treeHash: (await new SkillTreeRegistry().readTree(sourceRootPath))
+            .treeHash,
           entryPath: "SKILL.md",
         },
       ]);

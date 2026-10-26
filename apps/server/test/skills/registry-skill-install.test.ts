@@ -20,7 +20,7 @@ vi.mock("node:child_process", async (importOriginal) => ({
 }));
 
 import { installServerRegistrySkill } from "../../src/services/skills/registry-skill-install.js";
-import { readSkillTreeManifest } from "../../src/services/skills/injected-skills.js";
+import { SkillTreeRegistry } from "../../src/services/skills/injected-skills.js";
 import {
   readRegistrySkillProvenance,
   REGISTRY_SKILL_PROVENANCE_FILE_NAME,
@@ -91,9 +91,9 @@ describe("installServerRegistrySkill", () => {
         (await stat(join(skillDirectory, REGISTRY_SKILL_PROVENANCE_FILE_NAME)))
           .mode & 0o777,
       ).toBe(0o444);
-      expect(readSkillTreeManifest(skillDirectory).entries).toEqual([
-        expect.objectContaining({ path: "SKILL.md" }),
-      ]);
+      expect(
+        (await new SkillTreeRegistry().readTree(skillDirectory)).files,
+      ).toEqual([expect.objectContaining({ path: "SKILL.md" })]);
     } finally {
       await rm(dataDir, { recursive: true, force: true });
     }

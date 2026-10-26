@@ -50,6 +50,10 @@ function nextClientRequestId(): ClientTurnRequestId {
   return requestId;
 }
 
+async function* attachmentContent(content: string): AsyncGenerator<Uint8Array> {
+  yield Buffer.from(content);
+}
+
 describe("thread command dispatch", () => {
   it("evicts stale runtime and rejects thread.start when the loaded runtime path differs from workspaceContext", async () => {
     const harness = createHarness({ workspacePath: "/tmp/env-loaded" });
@@ -170,7 +174,7 @@ describe("thread command dispatch", () => {
     const uploadedNotesContent = "content:notes-uploaded.txt";
     const fetchProjectAttachment = vi.fn<FetchProjectAttachment>(
       async (args) => ({
-        bytes: Buffer.from(`content:${args.path}`),
+        content: attachmentContent(`content:${args.path}`),
       }),
     );
 
@@ -290,7 +294,7 @@ describe("thread command dispatch", () => {
     const requestId = nextClientRequestId();
     const fetchProjectAttachment = vi.fn<FetchProjectAttachment>(
       async (args) => ({
-        bytes: Buffer.from(`content:${args.path}`),
+        content: attachmentContent(`content:${args.path}`),
       }),
     );
 
@@ -653,7 +657,7 @@ describe("thread command dispatch", () => {
         expect(harness.runtimeState.resumedThreadId).toBeUndefined();
         harness.threadControls.clearProviderSession(threadId);
         return {
-          bytes: Buffer.from("content:follow-up-uploaded.txt"),
+          content: attachmentContent("content:follow-up-uploaded.txt"),
         };
       },
     );
@@ -772,7 +776,7 @@ describe("thread command dispatch", () => {
     await fs.mkdir(stagingDir, { recursive: true });
     await fs.writeFile(restagedPath, "stale");
     const fetchProjectAttachment = vi.fn<FetchProjectAttachment>(async () => ({
-      bytes: Buffer.from("fresh"),
+      content: attachmentContent("fresh"),
     }));
 
     await dispatchCommand(
@@ -841,7 +845,7 @@ describe("thread command dispatch", () => {
     await fs.mkdir(stagingDir, { recursive: true });
     await fs.writeFile(earlierPath, "same");
     const fetchProjectAttachment = vi.fn<FetchProjectAttachment>(async () => ({
-      bytes: Buffer.from("same"),
+      content: attachmentContent("same"),
     }));
 
     await expect(
@@ -894,7 +898,7 @@ describe("thread command dispatch", () => {
     const requestId = nextClientRequestId();
     const fetchProjectAttachment = vi.fn<FetchProjectAttachment>(
       async (args) => ({
-        bytes: Buffer.from(`content:${args.path}`),
+        content: attachmentContent(`content:${args.path}`),
       }),
     );
 
@@ -974,7 +978,7 @@ describe("thread command dispatch", () => {
           throw new Error("server unavailable");
         }
         return {
-          bytes: Buffer.from(`content:${args.path}`),
+          content: attachmentContent(`content:${args.path}`),
         };
       },
     );
@@ -1046,7 +1050,7 @@ describe("thread command dispatch", () => {
     const harness = createHarness();
     const requestId = nextClientRequestId();
     const fetchProjectAttachment = vi.fn<FetchProjectAttachment>(async () => ({
-      bytes: Buffer.from("too-large"),
+      content: attachmentContent("too-large"),
     }));
 
     await expect(
@@ -1093,15 +1097,76 @@ describe("thread command dispatch", () => {
     ).rejects.toMatchObject({ code: "attachment_unavailable" });
     expect(harness.provisions).toEqual([]);
     await expect(
-      fs.stat(
+      fs.readdir(
         path.join(
           threadStorageRootPath,
           "thread-oversized-stage-attachments",
           "Attachments",
-          "oversized-uploaded.txt",
         ),
       ),
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("removes a partially downloaded attachment when its stream fails", async () => {
+    const threadStorageRootPath = await makeTempDir(
+      "bb-interrupted-stage-attachments-",
+    );
+    const harness = createHarness();
+    const fetchProjectAttachment = vi.fn<FetchProjectAttachment>(async () => ({
+      content: (async function* () {
+        yield Buffer.from("partial");
+        throw new Error("connection reset");
+      })(),
+    }));
+
+    await expect(
+      dispatchCommand(
+        {
+          bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+          type: "thread.start",
+          environmentId: "env-interrupted-stage-attachments",
+          threadId: "thread-interrupted-stage-attachments",
+          workspaceContext: {
+            workspacePath: "/tmp/env-interrupted-stage-attachments",
+          },
+          projectId: "project-interrupted-stage-attachments",
+          providerId: "fake",
+          requestId: nextClientRequestId(),
+          input: [{ type: "localFile", path: "interrupted-uploaded.txt" }],
+          options: {
+            model: "gpt-5",
+            serviceTier: "default",
+            reasoningLevel: "medium",
+            providerOptions: {},
+            permissionMode: "full",
+            permissionScope: "full",
+            approvalReviewer: null,
+            permissionEscalation: null,
+          },
+          instructions: "Be a helpful coding agent.",
+          dynamicTools: [],
+          contributedEnv: [],
+          injectedSkillSources: [],
+          instructionMode: "append",
+        },
+        {
+          ...harness.dispatchOptions({ threadStorageRootPath }),
+          fetchProjectAttachment,
+        },
+      ),
+    ).rejects.toMatchObject({
+      code: "attachment_unavailable",
+      message: expect.stringContaining("connection reset"),
+    });
+    await expect(
+      fs.readdir(
+        path.join(
+          threadStorageRootPath,
+          "thread-interrupted-stage-attachments",
+          "Attachments",
+        ),
+      ),
+    ).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("cleans up staged thread.start attachments when runtime start fails", async () => {
@@ -1114,7 +1179,7 @@ describe("thread command dispatch", () => {
       throw new Error("runtime start failed");
     };
     const fetchProjectAttachment = vi.fn<FetchProjectAttachment>(async () => ({
-      bytes: Buffer.from("content"),
+      content: attachmentContent("content"),
     }));
 
     await expect(
@@ -1175,7 +1240,7 @@ describe("thread command dispatch", () => {
       throw new Error("runtime turn failed");
     };
     const fetchProjectAttachment = vi.fn<FetchProjectAttachment>(async () => ({
-      bytes: Buffer.from("content"),
+      content: attachmentContent("content"),
     }));
 
     await expect(

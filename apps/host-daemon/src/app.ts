@@ -62,6 +62,7 @@ import {
   type HostWatcher,
 } from "@bb/host-watcher";
 import { PluginHostManager } from "./plugin-host-manager.js";
+import type { SkillTreeTransport } from "./skill-trees.js";
 import { writeMachineSuspensionMarker } from "./suspension-marker.js";
 import {
   defaultServerMoveServiceOptions,
@@ -537,16 +538,24 @@ export async function createHostDaemonApp(
       sendServerMessage({ type: "connect-next.status", status });
     },
   });
+  const skillTreeTransport: SkillTreeTransport = {
+    fetchManifest: (treeHash) =>
+      runSessionRequest({
+        source: "fetchSkillTree",
+        request: () => serverClient.fetchSkillTreeManifest(treeHash),
+      }),
+    fetchContent: (treeHash, paths) =>
+      runSessionRequest({
+        source: "fetchSkillTree",
+        request: () => serverClient.fetchSkillTreeContent(treeHash, paths),
+      }),
+  };
   runtimeManager = new RuntimeManager({
     bridgeBundleDir: options.bridgeBundleDir,
     createRuntime: options.createRuntime,
     dataDir: options.dataDir,
     dataDirSkillsRootPath,
-    fetchSkillTree: (treeHash) =>
-      runSessionRequest({
-        source: "fetchSkillTree",
-        request: () => serverClient.fetchSkillTree(treeHash),
-      }),
+    skillTreeTransport,
     hostWatcher: options.hostWatcher,
     logger: options.logger,
     shellEnv: options.runtimeShellEnv,
@@ -795,11 +804,7 @@ export async function createHostDaemonApp(
         source: "fetchProjectAttachment",
         request: () => serverClient.fetchProjectAttachment(args),
       }),
-    fetchSkillTree: (treeHash) =>
-      runSessionRequest({
-        source: "fetchSkillTree",
-        request: () => serverClient.fetchSkillTree(treeHash),
-      }),
+    skillTreeTransport,
     fetchPluginHostArtifact: (args) =>
       runSessionRequest({
         source: "fetchPluginHostArtifact",
