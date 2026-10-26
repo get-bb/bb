@@ -20,6 +20,10 @@ vi.mock("node:fs/promises", async (importOriginal) => {
   return { ...actual, rm: vi.fn(actual.rm) };
 });
 
+async function* artifactBody(bytes: Uint8Array): AsyncGenerator<Uint8Array> {
+  yield bytes;
+}
+
 type PluginCall = Extract<
   HostDaemonOnlineRpcCommand,
   { type: "plugin.host.call" }
@@ -196,7 +200,7 @@ describe("PluginHostManager", () => {
     const manager = new PluginHostManager({
       dataDir,
       logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn() },
-      fetchArtifact: vi.fn(async () => artifactSource),
+      fetchArtifact: vi.fn(async () => artifactBody(artifactSource)),
       ...overrides,
     });
     managers.push(manager);
@@ -204,7 +208,7 @@ describe("PluginHostManager", () => {
   }
 
   it("verifies, caches, and reuses one worker for an artifact generation", async () => {
-    const fetchArtifact = vi.fn(async () => artifactSource);
+    const fetchArtifact = vi.fn(async () => artifactBody(artifactSource));
     const manager = await createManager({ fetchArtifact });
 
     const [first, second] = await Promise.all([
@@ -299,7 +303,7 @@ describe("PluginHostManager", () => {
         shellEnv: () => ({ GATE_VALUE: "base" }),
         onSignal,
         onWorkerExit,
-        fetchArtifact: vi.fn(async () => source),
+        fetchArtifact: vi.fn(async () => artifactBody(source)),
       });
       const command = (id: string, value: string, delay = 0) =>
         callCommand({
@@ -681,10 +685,10 @@ describe("PluginHostManager", () => {
   });
 
   it("bounds call count and input bytes while worker startup is pending", async () => {
-    let resolveCountFetch!: (bytes: Uint8Array) => void;
+    let resolveCountFetch!: (body: AsyncIterable<Uint8Array>) => void;
     const countFetch = vi.fn(
       () =>
-        new Promise<Uint8Array>((resolve) => {
+        new Promise<AsyncIterable<Uint8Array>>((resolve) => {
           resolveCountFetch = resolve;
         }),
     );
@@ -701,14 +705,14 @@ describe("PluginHostManager", () => {
     await expect(countManager.call(callCommand())).rejects.toThrow(
       /too many active calls/u,
     );
-    resolveCountFetch(artifactSource);
+    resolveCountFetch(artifactBody(artifactSource));
 
     const input = { value: "1234567890" };
     const inputByteLength = Buffer.byteLength(JSON.stringify(input));
-    let resolveByteFetch!: (bytes: Uint8Array) => void;
+    let resolveByteFetch!: (body: AsyncIterable<Uint8Array>) => void;
     const byteFetch = vi.fn(
       () =>
-        new Promise<Uint8Array>((resolve) => {
+        new Promise<AsyncIterable<Uint8Array>>((resolve) => {
           resolveByteFetch = resolve;
         }),
     );
@@ -722,7 +726,7 @@ describe("PluginHostManager", () => {
     await expect(byteManager.call(callCommand({ input }))).rejects.toThrow(
       /active call inputs exceed/u,
     );
-    resolveByteFetch(artifactSource);
+    resolveByteFetch(artifactBody(artifactSource));
     await firstByteCall;
   });
 
@@ -744,7 +748,7 @@ describe("PluginHostManager", () => {
       fetchArtifact: vi.fn(async ({ digest }) => {
         const source = sourceByDigest.get(digest);
         if (source === undefined) throw new Error("unexpected artifact digest");
-        return source;
+        return artifactBody(source);
       }),
     });
 
@@ -840,7 +844,7 @@ describe("PluginHostManager", () => {
 
   it("rejects unverified or invalid artifacts", async () => {
     const tampered = await createManager({
-      fetchArtifact: async () => Buffer.from("tampered"),
+      fetchArtifact: async () => artifactBody(Buffer.from("tampered")),
     });
     await expect(tampered.call(callCommand())).rejects.toThrow(
       /failed verification after retry/u,
@@ -848,7 +852,7 @@ describe("PluginHostManager", () => {
 
     const invalidArtifact = Buffer.from("export default {};\n");
     const invalid = await createManager({
-      fetchArtifact: async () => invalidArtifact,
+      fetchArtifact: async () => artifactBody(invalidArtifact),
     });
     await expect(
       invalid.call(

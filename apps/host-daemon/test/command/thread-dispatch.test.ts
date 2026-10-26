@@ -18,6 +18,7 @@ import { CommandDispatchError } from "../../src/command-dispatch-support.js";
 import type { FetchProjectAttachment } from "../../src/project-attachments.js";
 import { RuntimeManager } from "../../src/runtime-manager.js";
 import {
+  artifactBody,
   createFakeRuntime,
   createFakeWorkspace,
   createHarness,
@@ -369,8 +370,8 @@ describe("thread command dispatch", () => {
     const bridgeBytes = Buffer.from("export const bridge = true;\n");
     const sha256 = createHash("sha256").update(bridgeBytes).digest("hex");
     const harness = createHarness({ workspacePath: "/tmp/env-bridge-start" });
-    const fetchPluginHostArtifact = vi.fn(
-      async () => new Uint8Array(bridgeBytes),
+    const fetchPluginHostArtifact = vi.fn(async () =>
+      artifactBody(new Uint8Array(bridgeBytes)),
     );
 
     await dispatchCommand(
@@ -456,8 +457,8 @@ describe("thread command dispatch", () => {
     const bridgeBytes = Buffer.from("export const archiveBridge = true;\n");
     const sha256 = createHash("sha256").update(bridgeBytes).digest("hex");
     const harness = createHarness({ workspacePath: "/tmp/env-bridge-archive" });
-    const fetchPluginHostArtifact = vi.fn(
-      async () => new Uint8Array(bridgeBytes),
+    const fetchPluginHostArtifact = vi.fn(async () =>
+      artifactBody(new Uint8Array(bridgeBytes)),
     );
     const bridgeLaunch: HostDaemonBridgeLaunch = {
       pluginId: "provider-echo",
@@ -543,8 +544,8 @@ describe("thread command dispatch", () => {
     const bridgeBytes = Buffer.from("export const resumeBridge = true;\n");
     const sha256 = createHash("sha256").update(bridgeBytes).digest("hex");
     const harness = createHarness({ workspacePath: "/tmp/env-bridge-resume" });
-    const fetchPluginHostArtifact = vi.fn(
-      async () => new Uint8Array(bridgeBytes),
+    const fetchPluginHostArtifact = vi.fn(async () =>
+      artifactBody(new Uint8Array(bridgeBytes)),
     );
 
     await dispatchCommand(

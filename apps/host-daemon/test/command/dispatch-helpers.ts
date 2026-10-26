@@ -438,8 +438,15 @@ const DISPATCH_TEST_ARTIFACT_DIGEST = createHash("sha256")
   .digest("hex");
 const DISPATCH_TEST_DATA_DIR = "/tmp/bb-test-data";
 
-export const fetchDispatchTestArtifact = async (): Promise<Uint8Array> =>
-  new Uint8Array(DISPATCH_TEST_ARTIFACT_BYTES);
+export async function* artifactBody(
+  bytes: Uint8Array,
+): AsyncGenerator<Uint8Array> {
+  yield bytes;
+}
+
+export const fetchDispatchTestArtifact = async (): Promise<
+  AsyncIterable<Uint8Array>
+> => artifactBody(new Uint8Array(DISPATCH_TEST_ARTIFACT_BYTES));
 
 export const DISPATCH_TEST_BRIDGE_LAUNCH: HostDaemonBridgeLaunch = {
   pluginId: "provider-pi",

@@ -71,6 +71,7 @@ import { requestQueuedMessageDispatch } from "./services/threads/queued-message-
 import { registerInternalEventRoutes } from "./internal/events.js";
 import { registerInternalHostRoutes } from "./internal/hosts.js";
 import { registerInternalInteractiveRequestRoutes } from "./internal/interactive-requests.js";
+import { hostArtifactFileResponse } from "./internal/host-artifact-response.js";
 import { registerInternalPluginHostArtifactRoutes } from "./internal/plugin-host-artifacts.js";
 import { registerInternalSessionRoutes } from "./internal/session.js";
 import { registerInternalSkillRoutes } from "./internal/skills.js";
@@ -687,10 +688,15 @@ export function createApp(
       if (context.req.header("if-none-match") === etag) {
         return new Response(null, { headers, status: 304 });
       }
-      const tarball = await readFile(artifact.path);
-      return new Response(tarball, {
-        headers: { ...headers, "content-length": String(artifact.size) },
+      const response = await hostArtifactFileResponse({
+        path: artifact.path,
+        byteLength: artifact.size,
+        headers,
       });
+      if (response === null) {
+        throw new Error(`Host package ${artifact.path} is missing or changed`);
+      }
+      return response;
     } catch (error) {
       const diagnosticId = randomUUID();
       const code =

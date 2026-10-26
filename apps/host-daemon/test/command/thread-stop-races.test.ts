@@ -33,6 +33,7 @@ import {
 import { CommandRouter } from "../../src/command-router.js";
 import { RuntimeManager } from "../../src/runtime-manager.js";
 import {
+  artifactBody,
   createFakeWorkspace,
   makeDispatchOptions,
   noopEventSink,
@@ -186,7 +187,7 @@ async function createRaceHarness(): Promise<RaceHarness> {
         if (digest !== artifact.digest) {
           throw new Error(`unknown plugin host artifact ${digest}`);
         }
-        return artifact.bytes;
+        return artifactBody(artifact.bytes);
       },
     }),
     events,

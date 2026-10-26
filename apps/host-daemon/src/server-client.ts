@@ -215,7 +215,7 @@ export interface ServerClient {
     pluginId: string;
     digest: string;
     expectedByteLength: number;
-  }): Promise<Uint8Array>;
+  }): Promise<AsyncIterable<Uint8Array>>;
   postEvents(events: HostDaemonEventEnvelope[]): Promise<EventPostResult>;
   callTool(
     request: ToolCallRequest,
@@ -287,21 +287,6 @@ function responseContent(response: Response): AsyncIterable<Uint8Array> {
   return response.body ?? emptyBody();
 }
 
-function validateHostArtifactPartialByteLength(
-  expectedByteLength: number,
-  byteLength: number,
-  maxBytes: number,
-): void {
-  if (byteLength > maxBytes) {
-    throw new Error(`Host artifact exceeds the ${maxBytes} byte limit`);
-  }
-  if (byteLength > expectedByteLength) {
-    throw new Error(
-      `Host artifact length mismatch: expected ${expectedByteLength}, received more than ${expectedByteLength}`,
-    );
-  }
-}
-
 function assertHostArtifactContentLength(
   response: Response,
   expectedByteLength: number,
@@ -322,51 +307,6 @@ function assertHostArtifactContentLength(
       `Host artifact length mismatch: expected ${expectedByteLength}, received ${contentLength}`,
     );
   }
-}
-
-export async function readHostArtifactBytes(
-  response: Response,
-  expectedByteLength: number,
-  maxBytes = HOST_ARTIFACT_MAX_BYTES,
-): Promise<Uint8Array> {
-  if (!response.body) {
-    throw new Error(
-      `Host artifact length mismatch: expected ${expectedByteLength}, received 0`,
-    );
-  }
-
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let totalBytes = 0;
-  try {
-    while (true) {
-      const result = await reader.read();
-      if (result.done) break;
-      totalBytes += result.value.byteLength;
-      validateHostArtifactPartialByteLength(
-        expectedByteLength,
-        totalBytes,
-        maxBytes,
-      );
-      chunks.push(result.value);
-    }
-  } catch (error) {
-    await reader.cancel(error).catch(() => undefined);
-    throw error;
-  }
-
-  if (totalBytes !== expectedByteLength) {
-    throw new Error(
-      `Host artifact length mismatch: expected ${expectedByteLength}, received ${totalBytes}`,
-    );
-  }
-  const bytes = new Uint8Array(totalBytes);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return bytes;
 }
 
 export function createServerClient(
@@ -526,7 +466,7 @@ export function createServerClient(
       return responseContent(response);
     },
 
-    async fetchPluginHostArtifact(args): Promise<Uint8Array> {
+    async fetchPluginHostArtifact(args): Promise<AsyncIterable<Uint8Array>> {
       if (args.expectedByteLength > HOST_ARTIFACT_MAX_BYTES) {
         throw new Error(
           `Host artifact exceeds the ${HOST_ARTIFACT_MAX_BYTES} byte limit`,
@@ -541,8 +481,13 @@ export function createServerClient(
       if (!response.ok) {
         throw await createResponseError("fetch plugin host artifact", response);
       }
-      assertHostArtifactContentLength(response, args.expectedByteLength);
-      return readHostArtifactBytes(response, args.expectedByteLength);
+      try {
+        assertHostArtifactContentLength(response, args.expectedByteLength);
+      } catch (error) {
+        await response.body?.cancel().catch(() => undefined);
+        throw error;
+      }
+      return responseContent(response);
     },
 
     async postEvents(

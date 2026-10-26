@@ -3,12 +3,15 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { delimiter, dirname, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
 import { calculateExponentialBackoffDelay } from "@bb/domain";
+import {
+  writeVerifiedFile,
+  type VerifiedFileExpectation,
+} from "@bb/file-transfer";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import { execPortableFile } from "@bb/process-utils";
 import type { HostDaemonLogger } from "./logger.js";
 import type { FetchFn } from "./server-client.js";
 import { usesSecureInternalFetchTransport } from "./server-client.js";
-import { sha256Hex } from "./sha256-hex.js";
 
 const execFileAsync = promisify(execFile);
 export const SELF_UPDATE_INITIAL_RETRY_DELAY_MS = 5_000;
@@ -17,6 +20,8 @@ const ATTEMPT_FILE_NAME = "host-daemon-update-attempt.json";
 const INSTALLED_ARTIFACT_DIGEST_FILE_NAME = "host-artifact.sha256";
 const ARTIFACT_DIGEST_HEADER = "x-bb-artifact-sha256";
 const ARTIFACT_DIGEST_PATTERN = /^[a-f0-9]{64}$/u;
+const DOWNLOAD_DIR_NAME = "host-package-download";
+const HOST_PACKAGE_MAX_BYTES = 1024 * 1024 * 1024;
 
 interface UpdateVersion {
   protocolVersion: number;
@@ -136,11 +141,48 @@ async function writeInstalledArtifactDigest(
   await rename(temporary, path);
 }
 
-function responseArtifactDigest(response: Response): string | null {
-  const digest = response.headers.get(ARTIFACT_DIGEST_HEADER);
-  return digest !== null && ARTIFACT_DIGEST_PATTERN.test(digest)
-    ? digest
-    : null;
+function parseContentLength(value: string | null): number | null {
+  if (value === null || !/^[0-9]+$/u.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+async function* emptyBody(): AsyncGenerator<Uint8Array> {}
+
+async function packageDownload(response: Response): Promise<{
+  body: AsyncIterable<Uint8Array>;
+  digest: string;
+  expected: VerifiedFileExpectation;
+}> {
+  try {
+    if (!response.ok) {
+      throw new Error(
+        `Package download failed: ${response.status} ${response.statusText}`,
+      );
+    }
+    const digest = response.headers.get(ARTIFACT_DIGEST_HEADER);
+    if (digest === null || !ARTIFACT_DIGEST_PATTERN.test(digest)) {
+      throw new Error(
+        `Package download did not include a valid ${ARTIFACT_DIGEST_HEADER} header`,
+      );
+    }
+    const sizeBytes = parseContentLength(
+      response.headers.get("content-length"),
+    );
+    if (sizeBytes !== null && sizeBytes > HOST_PACKAGE_MAX_BYTES) {
+      throw new Error(
+        `Package download is ${sizeBytes} bytes, over the ${HOST_PACKAGE_MAX_BYTES}-byte limit`,
+      );
+    }
+    return {
+      body: response.body ?? emptyBody(),
+      digest,
+      expected: { maxBytes: HOST_PACKAGE_MAX_BYTES, sha256: digest, sizeBytes },
+    };
+  } catch (error) {
+    await response.body?.cancel().catch(() => undefined);
+    throw error;
+  }
 }
 
 const SELF_UPDATE_PROCESS_MAX_BUFFER_BYTES = 16 * 1024 * 1024;
@@ -290,10 +332,8 @@ export function createProtocolSelfUpdater(
           protocolVersion: server.protocolVersion,
         });
 
-        const tarballPath = join(
-          options.dataDir,
-          `bb-app-update-${process.pid}.tgz`,
-        );
+        const downloadDir = join(options.dataDir, DOWNLOAD_DIR_NAME);
+        await rm(downloadDir, { force: true, recursive: true });
         try {
           const tarballUrl = new URL("/install/bb-app.tgz", options.serverUrl);
           const installedDigest = await readInstalledArtifactDigest(
@@ -316,33 +356,26 @@ export function createProtocolSelfUpdater(
             );
             return "updated";
           }
-          if (!response.ok) {
-            throw new Error(
-              `Package download failed: ${response.status} ${response.statusText}`,
-            );
-          }
-          const bytes = new Uint8Array(await response.arrayBuffer());
-          const expectedDigest = responseArtifactDigest(response);
-          if (expectedDigest !== null) {
-            const actualDigest = sha256Hex(bytes);
-            if (actualDigest !== expectedDigest) {
-              throw new Error(
-                `Package digest mismatch: expected ${expectedDigest}, received ${actualDigest}`,
-              );
-            }
-          }
-          await writeFile(tarballPath, bytes, { mode: 0o600 });
+          const download = await packageDownload(response);
+          await mkdir(downloadDir, { recursive: true });
+          const partialPath = join(downloadDir, "bb-app.tgz.partial");
+          const tarballPath = join(downloadDir, "bb-app.tgz");
+          await writeVerifiedFile({
+            destinationPath: partialPath,
+            durable: false,
+            expected: download.expected,
+            label: "Host package",
+            mode: { kind: "create", mode: 0o600 },
+            source: download.body,
+          });
+          await rename(partialPath, tarballPath);
           await installTarball(tarballPath);
-          if (expectedDigest === null) {
-            await rm(installedArtifactDigestPath, { force: true });
-          } else {
-            await writeInstalledArtifactDigest(
-              installedArtifactDigestPath,
-              expectedDigest,
-            );
-          }
+          await writeInstalledArtifactDigest(
+            installedArtifactDigestPath,
+            download.digest,
+          );
         } finally {
-          await rm(tarballPath, { force: true });
+          await rm(downloadDir, { force: true, recursive: true });
         }
 
         options.logger.info(

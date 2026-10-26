@@ -10,7 +10,7 @@ export type FetchPluginHostArtifact = (args: {
   pluginId: string;
   digest: string;
   expectedByteLength: number;
-}) => Promise<Uint8Array>;
+}) => Promise<AsyncIterable<Uint8Array>>;
 
 export async function ensureCachedPluginHostArtifact(args: {
   dataDir: string;
