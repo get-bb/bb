@@ -463,7 +463,13 @@ function ThreadDetailViewInternal(
     threadDetailBootstrapQuery,
     threadQuery: { data: thread, isFetching, isLoadingError, error },
     unreadDividerState,
-  } = useThreadDetailThread(threadId, timelineEnabled);
+  } = useThreadDetailThread(
+    threadId,
+    timelineEnabled,
+    systemConfigQuery.data?.experiments.unreadDividerAtAnswer === true
+      ? "turn-answer"
+      : "first-unread-row",
+  );
   const environmentQuery = useEnvironment(thread?.environmentId, {
     enabled: hasThreadDetailBootstrapSettled,
     staleTime: 5_000,

@@ -21,5 +21,6 @@ export type {
   ThreadTimelineLocalFileLink,
   ThreadTimelineLocalFileLinkHandler,
   ThreadTimelineOpenPluginPanelHandler,
+  ThreadTimelineUnreadDividerAnchor,
   ThreadTimelineUnreadDividerPlacement,
 } from "./types.js";

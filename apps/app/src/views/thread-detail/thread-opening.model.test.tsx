@@ -87,7 +87,11 @@ interface Pending {
 }
 
 function OpenedThread() {
-  const { unreadDividerState } = useThreadDetailThread(THREAD_ID, true);
+  const { unreadDividerState } = useThreadDetailThread(
+    THREAD_ID,
+    true,
+    "first-unread-row",
+  );
   const timeline = useThreadTimelineController({ threadId: THREAD_ID });
   return (
     <BottomAnchoredScrollBody

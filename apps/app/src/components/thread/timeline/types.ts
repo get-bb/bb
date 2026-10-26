@@ -63,7 +63,12 @@ export interface ThreadTimelineConsumerMessageAction {
   run(message: ThreadChatMessageReference): void | Promise<void>;
 }
 
+export type ThreadTimelineUnreadDividerAnchor =
+  | "first-unread-row"
+  | "turn-answer";
+
 export interface ThreadTimelineUnreadDividerPlacement {
+  anchor: ThreadTimelineUnreadDividerAnchor;
   cutoffAt: number;
 }
 

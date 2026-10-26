@@ -107,6 +107,7 @@ const conversationRows: TimelineRow[] = [
 ];
 
 const afterCutoffPlacement: ThreadTimelineUnreadDividerPlacement = {
+  anchor: "first-unread-row",
   cutoffAt: T0 + 3 * MINUTE + 30_000,
 };
 

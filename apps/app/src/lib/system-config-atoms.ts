@@ -36,6 +36,7 @@ const unavailableSystemConfig: SystemConfigResponse = {
     performanceDiagnostics: false,
     sidebarMultiSelect: false,
     timelinePush: false,
+    unreadDividerAtAnswer: false,
   },
   appearance: defaultAppTheme,
   customThemes: [],

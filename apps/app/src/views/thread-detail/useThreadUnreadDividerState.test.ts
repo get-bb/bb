@@ -23,6 +23,7 @@ function renderDividerState(
   const view = renderHook(
     ({ hasFreshThread, thread }: DividerProps) => {
       const state = useThreadUnreadDividerState({
+        anchor: "first-unread-row",
         hasFreshThread,
         routeThreadId: thread.id,
         thread,
@@ -62,7 +63,7 @@ describe("useThreadUnreadDividerState", () => {
     expect(renders[0]).toEqual({
       ready: true,
       autoScroll: true,
-      placement: { cutoffAt: 100 },
+      placement: { anchor: "first-unread-row", cutoffAt: 100 },
     });
   });
 
@@ -78,7 +79,7 @@ describe("useThreadUnreadDividerState", () => {
     expect(renders[0]).toEqual({
       ready: true,
       autoScroll: true,
-      placement: { cutoffAt: 250 },
+      placement: { anchor: "first-unread-row", cutoffAt: 250 },
     });
   });
 
@@ -114,7 +115,7 @@ describe("useThreadUnreadDividerState", () => {
     expect(result.current).toEqual({
       ready: true,
       autoScroll: true,
-      placement: { cutoffAt: 100 },
+      placement: { anchor: "first-unread-row", cutoffAt: 100 },
     });
 
     show({ id: "thr_a", lastReadAt: 400, latestAttentionAt: 300 });
@@ -154,7 +155,7 @@ describe("useThreadUnreadDividerState", () => {
     expect(result.current).toEqual({
       ready: true,
       autoScroll: true,
-      placement: { cutoffAt: 300 },
+      placement: { anchor: "first-unread-row", cutoffAt: 300 },
     });
   });
 
@@ -169,7 +170,7 @@ describe("useThreadUnreadDividerState", () => {
     expect(result.current).toEqual({
       ready: true,
       autoScroll: false,
-      placement: { cutoffAt: 300 },
+      placement: { anchor: "first-unread-row", cutoffAt: 300 },
     });
   });
 });

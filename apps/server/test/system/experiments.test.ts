@@ -44,6 +44,7 @@ describe("experiments settings", () => {
         performanceDiagnostics: false,
         sidebarMultiSelect: false,
         timelinePush: false,
+        unreadDividerAtAnswer: false,
       });
     });
   });
@@ -74,6 +75,7 @@ describe("experiments settings", () => {
           performanceDiagnostics: true,
           sidebarMultiSelect: true,
           timelinePush: true,
+          unreadDividerAtAnswer: true,
         }),
       });
       expect(put.status).toBe(200);
@@ -84,6 +86,7 @@ describe("experiments settings", () => {
         performanceDiagnostics: true,
         sidebarMultiSelect: true,
         timelinePush: true,
+        unreadDividerAtAnswer: true,
       });
       expect(getExperiments(harness.db)).toEqual({
         changelogPreview: true,
@@ -92,6 +95,7 @@ describe("experiments settings", () => {
         performanceDiagnostics: true,
         sidebarMultiSelect: true,
         timelinePush: true,
+        unreadDividerAtAnswer: true,
       });
 
       const config = await harness.app.request("/api/v1/system/config");
@@ -104,6 +108,7 @@ describe("experiments settings", () => {
         performanceDiagnostics: true,
         sidebarMultiSelect: true,
         timelinePush: true,
+        unreadDividerAtAnswer: true,
       });
     });
   });
@@ -120,6 +125,7 @@ describe("experiments settings", () => {
         performanceDiagnostics: false,
         sidebarMultiSelect: false,
         timelinePush: false,
+        unreadDividerAtAnswer: false,
       });
       expect(
         harness.db.$client

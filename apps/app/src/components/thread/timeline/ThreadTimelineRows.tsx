@@ -282,6 +282,7 @@ interface TimelineSystemDetailBlockProps {
 
 interface BuildTimelineRowsListItemsArgs {
   rows: readonly ThreadTimelineViewRow[];
+  scopeActive: boolean;
   unreadDividerPlacement: ThreadTimelineUnreadDividerPlacement | null;
 }
 
@@ -298,9 +299,10 @@ interface UseLoadedUnreadDividerPlacementArgs {
   unreadDividerPlacement: ThreadTimelineUnreadDividerPlacement | null;
 }
 
-interface IsUnreadDividerCandidateAfterCutoffArgs {
-  cutoffAt: number;
+interface IsReadingResumeRowArgs {
+  index: number;
   row: ThreadTimelineViewRow;
+  settledTurnReplyIndexes: ReadonlyMap<string, number>;
 }
 
 interface ActiveSummaryTreatmentArgs {
@@ -1939,18 +1941,31 @@ function useLandOnUnreadDivider({
 
 function findUnreadDividerIndex({
   rows,
+  scopeActive,
   unreadDividerPlacement,
 }: BuildTimelineRowsListItemsArgs): number {
   if (unreadDividerPlacement === null) {
     return -1;
   }
 
-  return rows.findIndex((row) =>
-    isUnreadDividerCandidateAfterCutoff({
-      cutoffAt: unreadDividerPlacement.cutoffAt,
-      row,
-    }),
+  const { cutoffAt } = unreadDividerPlacement;
+  const firstNewIndex = rows.findIndex((row) =>
+    isNewRowAfterCutoff(row, cutoffAt),
   );
+  if (firstNewIndex === -1 || unreadDividerPlacement.anchor !== "turn-answer") {
+    return firstNewIndex;
+  }
+  const settledTurnReplyIndexes = findSettledTurnReplyIndexes(
+    rows,
+    scopeActive,
+  );
+  const resumeIndex = rows.findIndex(
+    (row, index) =>
+      index >= firstNewIndex &&
+      isNewRowAfterCutoff(row, cutoffAt) &&
+      isReadingResumeRow({ index, row, settledTurnReplyIndexes }),
+  );
+  return resumeIndex === -1 ? firstNewIndex : resumeIndex;
 }
 
 function isUserAuthoredConversationRow(row: ThreadTimelineViewRow): boolean {
@@ -1961,24 +1976,66 @@ function isUserAuthoredConversationRow(row: ThreadTimelineViewRow): boolean {
   );
 }
 
-function isUnreadDividerCandidateAfterCutoff({
-  cutoffAt,
-  row,
-}: IsUnreadDividerCandidateAfterCutoffArgs): boolean {
-  if (row.startedAt <= cutoffAt) {
-    return false;
-  }
+function isNewRowAfterCutoff(
+  row: ThreadTimelineViewRow,
+  cutoffAt: number,
+): boolean {
+  return row.startedAt > cutoffAt && !isUserAuthoredConversationRow(row);
+}
 
-  return !isUserAuthoredConversationRow(row);
+function isTurnReplyRow(row: ThreadTimelineViewRow): boolean {
+  if (row.kind === "conversation") {
+    return row.role === "assistant";
+  }
+  return row.kind === "system" && row.systemKind === "error";
+}
+
+function findSettledTurnReplyIndexes(
+  rows: readonly ThreadTimelineViewRow[],
+  scopeActive: boolean,
+): Map<string, number> {
+  const runningTurnId = scopeActive ? (rows.at(-1)?.turnId ?? null) : null;
+  const replyIndexes = new Map<string, number>();
+  for (const [index, row] of rows.entries()) {
+    if (row.turnId === null || row.turnId === runningTurnId) {
+      continue;
+    }
+    if (isTurnReplyRow(row)) {
+      replyIndexes.set(row.turnId, index);
+    }
+  }
+  return replyIndexes;
+}
+
+function isReadingResumeRow({
+  index,
+  row,
+  settledTurnReplyIndexes,
+}: IsReadingResumeRowArgs): boolean {
+  if (row.kind === "system") {
+    return row.systemKind === "error";
+  }
+  const replyIndex =
+    row.turnId === null ? undefined : settledTurnReplyIndexes.get(row.turnId);
+  if (replyIndex === undefined || index >= replyIndex) {
+    return true;
+  }
+  return (
+    row.kind === "conversation" &&
+    row.role === "user" &&
+    row.turnRequest.kind !== "steer"
+  );
 }
 
 export function buildTimelineRowsListItems({
   rows,
+  scopeActive,
   unreadDividerPlacement,
 }: BuildTimelineRowsListItemsArgs): TimelineRowsListItem[] {
   const items: TimelineRowsListItem[] = [];
   const dividerIndex = findUnreadDividerIndex({
     rows,
+    scopeActive,
     unreadDividerPlacement,
   });
 
@@ -2092,9 +2149,10 @@ function TimelineRowsList({
     () =>
       buildTimelineRowsListItems({
         rows,
+        scopeActive,
         unreadDividerPlacement: loadedUnreadDividerPlacement,
       }),
-    [rows, loadedUnreadDividerPlacement],
+    [rows, scopeActive, loadedUnreadDividerPlacement],
   );
   useLandOnUnreadDivider({
     items,
