@@ -288,7 +288,10 @@ export class HostToolchain {
     return mergePath(
       this.managesPath(inherited) ? this.shellEnv.PATH : undefined,
       inherited,
-      executable(this.nodePath) ? dirname(this.nodePath) : undefined,
+      executable(this.nodePath) &&
+        /^node(?:\.exe)?$/iu.test(basename(this.nodePath))
+        ? dirname(this.nodePath)
+        : undefined,
       ...fallbacks,
     );
   }

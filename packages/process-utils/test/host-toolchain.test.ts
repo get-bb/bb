@@ -300,6 +300,23 @@ describe.skipIf(process.platform === "win32")("host toolchain recovery", () => {
     expect(launch).toMatchObject({ command: tool, args: ["--flag"] });
   });
 
+  it("adds the runtime directory to PATH only for a Node runtime", async () => {
+    const root = await scratch();
+    const app = join(root, "bb.app", "Contents", "MacOS", "bb");
+    const node = join(root, "node", "bin", "node");
+    await mkdir(dirname(app), { recursive: true });
+    await mkdir(dirname(node), { recursive: true });
+    await symlink(process.execPath, app);
+    await symlink(process.execPath, node);
+    const env = { HOME: root, PATH: "/usr/bin:/bin" };
+    expect(
+      new HostToolchain(env, app).environment(env).PATH?.split(":"),
+    ).not.toContain(dirname(app));
+    expect(
+      new HostToolchain(env, node).environment(env).PATH?.split(":"),
+    ).toContain(dirname(node));
+  });
+
   it("runs an installed npm with the Node that owns it", async () => {
     const root = await scratch();
     const runtime = join(root, "runtime", "bin", "node");
