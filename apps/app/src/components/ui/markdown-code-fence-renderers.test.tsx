@@ -323,10 +323,10 @@ describe("code fence renderers in assistant messages", () => {
     view.rerender(assistantMessage(registry, "Plain prose only."));
     await waitFor(() => {
       expect(screen.queryByTestId("ui-fence")).toBeNull();
+      expect(
+        view.container.querySelector("[data-code-fence-parking]"),
+      ).toBeNull();
     });
-    expect(
-      view.container.querySelector("[data-code-fence-parking]"),
-    ).toBeNull();
   });
 
   it("keeps claimed fences through the sanitized HTML pipeline", () => {

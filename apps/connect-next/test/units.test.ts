@@ -397,6 +397,7 @@ describe("account API client", () => {
     const down = createAccountApi({
       baseUrl: "https://connect.test",
       secret: "s",
+      random: () => 0,
       fetch: async () => new Response("no", { status: 503 }),
     });
     const tried = Date.now();

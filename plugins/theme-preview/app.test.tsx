@@ -430,7 +430,10 @@ describe("Theme Preview", () => {
     dark.focus();
     expect(document.activeElement).toBe(dark);
     fireEvent.click(dark, { detail: 0 });
-    await waitFor(() => expect(selections).toEqual([{ themeId: "default" }]));
+    await waitFor(() => {
+      expect(selections).toEqual([{ themeId: "default" }]);
+      expect(light.hasAttribute("disabled")).toBe(false);
+    });
     expect(dark.getAttribute("aria-pressed")).toBe("true");
     expect(light.getAttribute("aria-pressed")).toBe("false");
     expect(document.documentElement.classList.contains("dark")).toBe(true);
