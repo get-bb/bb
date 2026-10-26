@@ -19,7 +19,7 @@ const NO_THREAD_IDS: readonly string[] = [];
 const THREAD_ROW_TARGET_SELECTOR = "a[data-sidebar-thread-id]";
 
 const SELECTION_KEEPING_SELECTOR =
-  '[data-sidebar="sidebar"], [data-radix-popper-content-wrapper], [role="menu"]';
+  '[data-sidebar-rename-row], [data-radix-popper-content-wrapper], [role="menu"]';
 
 export const SIDEBAR_MULTI_SELECT_EXPERIMENT = "sidebarMultiSelect";
 

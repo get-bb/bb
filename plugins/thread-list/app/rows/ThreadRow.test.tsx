@@ -522,23 +522,36 @@ describe("ThreadRow", () => {
     ).toBeTruthy();
   });
 
-  it("clears the selection on a press outside the sidebar but keeps it for menus", () => {
-    renderThreadRow({ experiments: ["sidebarMultiSelect"] });
-    const link = screen.getByRole("link", { name: "Open Thread" });
-    const row = link.closest("[data-sidebar-rename-row]");
-    const menu = document.createElement("div");
-    menu.setAttribute("role", "menu");
-    document.body.append(menu);
-    try {
-      fireEvent.click(link, { metaKey: true, shiftKey: true });
-      fireEvent.pointerDown(menu);
-      expect(row?.hasAttribute("data-sidebar-thread-selected")).toBe(true);
-      fireEvent.pointerDown(document.body);
-      expect(row?.hasAttribute("data-sidebar-thread-selected")).toBe(false);
-    } finally {
-      menu.remove();
-    }
-  });
+  it.each(["sidebar", "outside"])(
+    "clears selection on empty %s space but keeps it for rows and menus",
+    (target) => {
+      const { container } = renderThreadRow({
+        experiments: ["sidebarMultiSelect"],
+      });
+      container.setAttribute("data-sidebar", "sidebar");
+      const link = screen.getByRole("link", { name: "Open Thread" });
+      const row = link.closest("[data-sidebar-rename-row]")!;
+      const menu = document.createElement("div");
+      menu.setAttribute("role", "menu");
+      document.body.append(menu);
+      try {
+        fireEvent.click(link, { metaKey: true, shiftKey: true });
+        for (const keepingTarget of [
+          row,
+          link,
+          screen.getByRole("button", { name: "Thread actions" }),
+          menu,
+        ]) {
+          fireEvent.pointerDown(keepingTarget);
+          expect(row.hasAttribute("data-sidebar-thread-selected")).toBe(true);
+        }
+        fireEvent.pointerDown(target === "sidebar" ? container : document.body);
+        expect(row.hasAttribute("data-sidebar-thread-selected")).toBe(false);
+      } finally {
+        menu.remove();
+      }
+    },
+  );
 
   it("keeps desktop restore available, hides it on mobile, and blocks row event propagation", async () => {
     const thread = createThread({ archivedAt: 1, isArchived: true });
