@@ -326,6 +326,47 @@ describe("resolveCreateThreadEnvironment", () => {
     });
   });
 
+  it.each(["project-default", "host"] as const)(
+    "reuses a non-git parent's stored workspace for implicit %s children",
+    async (type) => {
+      await withTestHarness(async (harness) => {
+        installFakeGitWorktreeProvider();
+        const { host } = seedHostSession(harness.deps, {
+          id: "host-plain-parent",
+        });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+          path: "/tmp/Документы",
+        });
+        const environment = createEnvironment(harness.db, harness.hub, {
+          projectId: project.id,
+          hostId: host.id,
+          path: "/tmp/Документы",
+          isGitRepo: false,
+          providerOwnsPath: false,
+          status: "ready",
+        });
+        await expect(
+          resolveCreateThreadEnvironment(harness.deps, {
+            parentThread: makeParentThread({
+              projectId: project.id,
+              environmentId: environment.id,
+            }),
+            projectId: project.id,
+            requestedEnvironment:
+              type === "project-default"
+                ? { type }
+                : {
+                    type,
+                    hostId: host.id,
+                    workspace: { type: "unmanaged", path: null },
+                  },
+          }),
+        ).resolves.toEqual({ type: "reuse", environmentId: environment.id });
+      });
+    },
+  );
+
   it("uses a fresh worktree on the parent's machine for a project child", async () => {
     await withTestHarness(async (harness) => {
       installFakeGitWorktreeProvider();

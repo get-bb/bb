@@ -73,6 +73,7 @@ export const {
   getCurrentBranch,
   getGitCommonDir,
   hasRef,
+  readBranchRelation,
   readDefaultBranch,
   readDefaultBranchRefs,
 } = createGitQueries(runGit);

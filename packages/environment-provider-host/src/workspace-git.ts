@@ -656,7 +656,7 @@ export function createGitQueries(run: GitQueryRunner) {
     return undefined;
   }
 
-  async function readDefaultBranchRelation(
+  async function readBranchRelation(
     cwd: string,
     localDefaultBranch: string | undefined,
     originDefaultBranch: string | undefined,
@@ -724,7 +724,7 @@ export function createGitQueries(run: GitQueryRunner) {
       defaultBranch,
       options,
     );
-    const defaultBranchRelation = await readDefaultBranchRelation(
+    const defaultBranchRelation = await readBranchRelation(
       cwd,
       defaultBranch,
       originDefaultBranch,
@@ -767,6 +767,7 @@ export function createGitQueries(run: GitQueryRunner) {
     getCurrentBranch,
     getGitCommonDir,
     hasRef,
+    readBranchRelation,
     readOriginHeadBranchName,
     readLocalBranches,
     readDefaultBranchRefs,
@@ -783,6 +784,7 @@ export const {
   getCurrentBranch,
   getGitCommonDir,
   hasRef,
+  readBranchRelation,
   readOriginHeadBranchName,
   readLocalBranches,
   readDefaultBranchRefs,

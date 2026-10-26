@@ -13,7 +13,6 @@ import {
   getCurrentBranch,
   getGitCommonDir,
   hasRef,
-  readDefaultBranch,
   readGitRepositoryState,
   runGit,
   WorkspaceError,
@@ -538,8 +537,7 @@ export async function createWorktree(
   if (reuseExistingBranch) {
     gitArgs = ["worktree", "add", args.targetPath, args.branchName];
   } else {
-    const baseBranch =
-      args.baseBranch ?? (await readDefaultBranch(args.sourcePath));
+    const baseBranch = args.baseBranch;
     if (!baseBranch) {
       throw new WorkspaceError(
         "missing_default_branch",

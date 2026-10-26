@@ -1,4 +1,8 @@
-import { readDefaultBranchRefs } from "bb-environment-provider-host/git";
+import {
+  hasRef,
+  readBranchRelation,
+  readDefaultBranchRefs,
+} from "bb-environment-provider-host/git";
 import type {
   DefaultBranchRelation,
 } from "bb-environment-provider-host/git-types";
@@ -33,15 +37,33 @@ export async function resolveWorktreeBaseBranch(
   requested: WorktreeBaseBranch,
 ): Promise<string | null> {
   if (requested.kind === "named") {
-    return requested.name;
+    if (
+      requested.name.startsWith("refs/") ||
+      (await hasRef(sourcePath, `refs/remotes/${requested.name}`))
+    )
+      return requested.name;
+    const [hasLocalBranch, hasRemoteBranch] = await Promise.all([
+      hasRef(sourcePath, `refs/heads/${requested.name}`),
+      hasRef(sourcePath, `refs/remotes/origin/${requested.name}`),
+    ]);
+    if (!hasRemoteBranch) return requested.name;
+    const localBranch = hasLocalBranch ? requested.name : null;
+    const remoteBranch = `origin/${requested.name}`;
+    return resolveDefaultWorktreeBaseBranch({
+      defaultBranch: localBranch,
+      originDefaultBranch: remoteBranch,
+      defaultBranchRelation:
+        (await readBranchRelation(
+          sourcePath,
+          localBranch ?? undefined,
+          remoteBranch,
+        )) ?? null,
+    });
   }
   const refs = await readDefaultBranchRefs(sourcePath);
-  const resolved = resolveDefaultWorktreeBaseBranch({
+  return resolveDefaultWorktreeBaseBranch({
     defaultBranch: refs.defaultBranch ?? null,
     defaultBranchRelation: refs.defaultBranchRelation ?? null,
     originDefaultBranch: refs.originDefaultBranch ?? null,
   });
-  return resolved && resolved !== (refs.defaultBranch ?? null)
-    ? resolved
-    : null;
 }
