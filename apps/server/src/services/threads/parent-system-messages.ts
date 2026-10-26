@@ -36,6 +36,7 @@ import {
   appendPreparedClientTurnRequestedEventWithNotificationInTransaction,
   createClientTurnRequestId,
   getActiveTurnId,
+  isManualCompactionActive,
 } from "./thread-events.js";
 import {
   dispatchTurnDuringReprovision,
@@ -460,7 +461,7 @@ export async function queueParentSystemMessage(
       parentThread.id,
     );
   let hostUnavailable = false;
-  if (!hasPendingInteraction) {
+  if (!hasPendingInteraction && !isManualCompactionActive(deps, parentThread)) {
     try {
       return await deliverParentSystemMessage(deps, {
         input: args.input,
