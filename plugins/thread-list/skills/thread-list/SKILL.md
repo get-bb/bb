@@ -31,6 +31,10 @@ section are bb core state: use `bb thread section` and `bb thread update`.
 On first load the plugin copies any non-default `sidebar.*` values from
 `bb settings ui` once; after that the two are independent.
 
+Collapsed groups stay collapsed when background threads appear or become
+unread. Their headers retain activity indicators. Opening a thread reveals
+its containing groups; background activity does not change collapse preferences.
+
 `environmentGrouping` decides whether sibling threads sharing one worktree
 collapse into a single row: `"auto"` (default) groups them in every
 organization except chronological, `false` never groups, and `true` always
