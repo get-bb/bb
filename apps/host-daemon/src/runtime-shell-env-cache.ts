@@ -1,3 +1,4 @@
+import { createAsyncTtlMemo } from "@bb/async-cache";
 import type { AgentRuntimeOptions } from "@bb/agent-runtime";
 
 export type RuntimeShellEnv = NonNullable<AgentRuntimeOptions["shellEnv"]>;
@@ -20,54 +21,38 @@ export interface RuntimeShellEnvCache {
   refresh(args: RuntimeShellEnvRefreshArgs): Promise<RuntimeShellEnv>;
 }
 
-interface CacheEntry {
-  expiresAtMs: number;
-  promise: Promise<RuntimeShellEnv>;
-}
-
 export function createRuntimeShellEnvCache(
   options: RuntimeShellEnvCacheOptions,
 ): RuntimeShellEnvCache {
   const resolveShellEnv = options.resolveShellEnv;
   let hasResolvedEnv = options.resolvedAtMs !== undefined;
-  let entry: CacheEntry | null =
+  const startupFreshUntil =
     options.resolvedAtMs === undefined
-      ? null
-      : {
-          expiresAtMs: options.resolvedAtMs + options.ttlMs,
-          promise: Promise.resolve(options.readShellEnv()),
-        };
+      ? -Infinity
+      : options.resolvedAtMs + options.ttlMs;
+  const cache = createAsyncTtlMemo<string, RuntimeShellEnv>({
+    ttlMs: options.ttlMs,
+    now: options.now,
+    maxEntries: 1,
+  });
 
   return {
     async refresh({ allowStale }) {
-      if (!resolveShellEnv) {
+      if (!resolveShellEnv || options.now() < startupFreshUntil) {
         return options.readShellEnv();
       }
-      const now = options.now();
-      if (entry && entry.expiresAtMs > now) {
-        return allowStale && hasResolvedEnv
-          ? options.readShellEnv()
-          : entry.promise;
-      }
-
-      const promise = (async () => {
-        await options.applyShellEnv(await resolveShellEnv());
-        hasResolvedEnv = true;
-        return options.readShellEnv();
-      })();
-      const started: CacheEntry = {
-        expiresAtMs: now + options.ttlMs,
-        promise,
-      };
-      entry = started;
-      const resolved = promise.catch((error: unknown) => {
-        if (entry === started) {
-          entry = null;
+      const resolved = cache.run("shell", async () => {
+        try {
+          await options.applyShellEnv(await resolveShellEnv());
+          hasResolvedEnv = true;
+          return options.readShellEnv();
+        } catch (error) {
+          if (allowStale && hasResolvedEnv) options.onRefreshError(error);
+          throw error;
         }
-        throw error;
       });
       if (allowStale && hasResolvedEnv) {
-        resolved.catch(options.onRefreshError);
+        resolved.catch(() => undefined);
         return options.readShellEnv();
       }
       return resolved;

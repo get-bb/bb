@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@bb/agent-runtime": "workspace:*",
+    "@bb/async-cache": "workspace:*",
     "bb-environment-provider-host": "workspace:*",
     "@bb/cli": "workspace:*",
     "@bb/connect-client": "workspace:*",

@@ -992,6 +992,35 @@ the last realtime refresh, then whether its recovery ran after the mutation
 callbacks. Cover this ordering with real Query and Mutation observers; an
 isolated rollback helper test does not exercise mutation settlement.
 
+## Shared Async Caches
+
+The server and daemon share `createAsyncTtlMemo` from `@bb/async-cache` for
+keyed asynchronous reads. It shares pending work, starts TTLs at completion,
+retries rejected reads, and prevents invalidated work from repopulating the
+cache. Callers own keys, lifetimes, invalidation, and stale-result policy;
+set `maxEntries` when keys can grow. Invalidation does not cancel existing
+readers or replace their results.
+
+The daemon also uses this helper for client configuration and shell-environment
+refresh. Client configuration keeps its one-second TTL and retries failed reads
+on the next request. Shell refresh preserves startup values and optional stale
+reads, shares even slow pending refreshes, and starts its ten-second TTL after
+the resolved environment is applied.
+
+## Workspace Open-Target Discovery
+
+The host daemon's `GET /workspace-open-targets` caches the general installed-app
+list, including icons, for 60 seconds after discovery completes. Concurrent
+requests share the pending discovery, including scans that take longer than
+60 seconds. The cache belongs to the local API server instance and is discarded
+on restart or when the effective executable search `PATH` changes. Failed
+requests are retried on the next call. Discovery's existing per-app fallbacks
+can still produce a successful partial list, which is cached for the same TTL.
+
+Requests with a `path` query bypass this cache so file-specific application
+associations and file existence are checked fresh. Installing or removing an
+application can take up to 60 seconds to appear in the general list.
+
 ## Environment Status Loading
 
 Merge-base status is cached per host daemon process at two levels, each a

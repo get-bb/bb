@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createAsyncTtlMemo } from "../../src/services/lib/async-ttl-memo.js";
+import { createAsyncTtlMemo } from "../src/index.js";
 import { createDeferredPromise } from "@bb/test-helpers";
 
 describe("createAsyncTtlMemo", () => {

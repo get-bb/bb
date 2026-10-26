@@ -1,7 +1,4 @@
-import {
-  createAsyncTtlMemo,
-  type AsyncTtlMemo,
-} from "../lib/async-ttl-memo.js";
+import { createAsyncTtlMemo, type AsyncTtlMemo } from "@bb/async-cache";
 import type {
   ProviderUsage,
   ProviderUsageResponse,

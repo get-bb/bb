@@ -16,6 +16,15 @@ import { WorkspaceOpenTargetError } from "@bb/local-open-targets";
 
 describe("local API server", () => {
   let server: LocalApiServer | null = null;
+  const finderTarget: WorkspaceOpenTarget = {
+    id: "finder",
+    label: "Finder",
+    capabilities: {
+      openDirectory: true,
+      openFile: false,
+      openFileAtLine: false,
+    },
+  };
 
   function createLocalApiConfig(
     overrides: Partial<HostDaemonLocalApiConfig> = {},
@@ -32,6 +41,7 @@ describe("local API server", () => {
   afterEach(async () => {
     await server?.close();
     server = null;
+    vi.useRealTimers();
   });
 
   it("rejects a foreign browser origin instead of only withholding CORS", async () => {
@@ -291,6 +301,127 @@ describe("local API server", () => {
     });
 
     await rm(workspacePath, { recursive: true, force: true });
+  });
+
+  it("shares slow open-target discovery and caches it for a minute after completion", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(0);
+    const listWorkspaceOpenTargets = vi.fn(async () => {
+      vi.setSystemTime(61_000);
+      await new Promise<void>((resolve) => setTimeout(resolve, 30));
+      return [finderTarget];
+    });
+    server = await startLocalApiServer({
+      hostId: "host-1",
+      localApiConfig: createLocalApiConfig(),
+      serverUrl: "http://server.test",
+      serverPort: 3334,
+      getConnected: () => true,
+      listWorkspaceOpenTargets,
+    });
+    const url = `http://localhost:${server.port}/workspace-open-targets`;
+    const responses = await Promise.all([fetch(url), fetch(url)]);
+    for (const response of responses) {
+      expect(await response.json()).toEqual({
+        targets: [finderTarget],
+      });
+    }
+    expect(listWorkspaceOpenTargets).toHaveBeenCalledTimes(1);
+
+    vi.setSystemTime(120_999);
+    expect((await fetch(url)).status).toBe(200);
+    expect(listWorkspaceOpenTargets).toHaveBeenCalledTimes(1);
+
+    listWorkspaceOpenTargets.mockResolvedValue([]);
+    vi.setSystemTime(121_000);
+    expect(await (await fetch(url)).json()).toEqual({ targets: [] });
+    expect(listWorkspaceOpenTargets).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps file-specific discovery fresh and invalidates cached targets when PATH changes", async () => {
+    let shellPath = "/first/bin";
+    const listWorkspaceOpenTargets = vi.fn(async () => [
+      { ...finderTarget, label: shellPath },
+    ]);
+    server = await startLocalApiServer({
+      hostId: "host-1",
+      localApiConfig: createLocalApiConfig(),
+      serverUrl: "http://server.test",
+      serverPort: 3334,
+      getConnected: () => true,
+      listWorkspaceOpenTargets,
+      shellEnv: () => ({ PATH: shellPath }),
+    });
+    const url = `http://localhost:${server.port}/workspace-open-targets`;
+    const initial = await (await fetch(url)).json();
+    for (const filePath of ["/tmp/file.ts", "/tmp/file.png", "/tmp/file.ts"]) {
+      expect(
+        (await fetch(`${url}?path=${encodeURIComponent(filePath)}`)).status,
+      ).toBe(200);
+      expect(listWorkspaceOpenTargets).toHaveBeenLastCalledWith({
+        path: filePath,
+      });
+    }
+    expect(await (await fetch(url)).json()).toEqual(initial);
+    expect(listWorkspaceOpenTargets).toHaveBeenCalledTimes(4);
+
+    shellPath = "/second/bin";
+    expect(await (await fetch(url)).json()).toEqual({
+      targets: [{ ...finderTarget, label: "/second/bin" }],
+    });
+    expect(listWorkspaceOpenTargets).toHaveBeenCalledTimes(5);
+    expect((await fetch(url)).status).toBe(200);
+    expect(listWorkspaceOpenTargets).toHaveBeenCalledTimes(5);
+  });
+
+  it("retries failed open-target discovery instead of caching the failure", async () => {
+    const listWorkspaceOpenTargets = vi
+      .fn<() => Promise<WorkspaceOpenTarget[]>>()
+      .mockRejectedValueOnce(new Error("discovery failed"))
+      .mockResolvedValue([finderTarget]);
+    server = await startLocalApiServer({
+      hostId: "host-1",
+      localApiConfig: createLocalApiConfig(),
+      serverUrl: "http://server.test",
+      serverPort: 3334,
+      getConnected: () => true,
+      listWorkspaceOpenTargets,
+    });
+    const url = `http://localhost:${server.port}/workspace-open-targets`;
+    expect((await fetch(url)).status).toBe(500);
+    expect(await (await fetch(url)).json()).toEqual({
+      targets: [finderTarget],
+    });
+    expect((await fetch(url)).status).toBe(200);
+    expect(listWorkspaceOpenTargets).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries client configuration after an invalid file is repaired", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(0);
+    const dataDir = await mkdtemp(path.join(tmpdir(), "bb-client-config-"));
+    const configPath = path.join(dataDir, "client.json");
+    const origin = "https://remote-bb.example.test";
+    try {
+      await writeFile(configPath, "{");
+      server = await startLocalApiServer({
+        dataDir,
+        hostId: "host-1",
+        localApiConfig: createLocalApiConfig(),
+        serverUrl: "http://server.test",
+        serverPort: 3334,
+        getConnected: () => true,
+      });
+      const url = `http://localhost:${server.port}/status`;
+      expect((await fetch(url, { headers: { origin } })).status).toBe(403);
+      await writeFile(
+        configPath,
+        JSON.stringify({ servers: { [origin]: {} } }),
+      );
+      expect((await fetch(url, { headers: { origin } })).status).toBe(200);
+    } finally {
+      await rm(dataDir, { recursive: true, force: true });
+    }
   });
 
   it("allows configured remote origins and resolves remote SSH open requests", async () => {
