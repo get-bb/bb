@@ -13,6 +13,7 @@ import type {
 import { editableSkillScopeSchema } from "@bb/server-contract";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
+import { remapDaemonFileRouteError } from "../hosts/daemon-file-response.js";
 import type { AppDeps } from "../../types.js";
 import {
   callHostOnlineRpcForWork,
@@ -512,7 +513,7 @@ export async function readProjectSkill(
           : args.path,
       dotfiles: "deny",
     },
-  });
+  }).catch(remapDaemonFileRouteError);
   return {
     content:
       result.contentEncoding === "utf8"

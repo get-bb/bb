@@ -225,6 +225,25 @@ describe("readHostFile (no ref — disk read)", () => {
     expect(isExpectedCommandDispatchError(thrown)).toBe(true);
   });
 
+  it("rejects oversized root-relative reads before loading them", async () => {
+    const rootPath = await makeTempDir("bb-host-files-relative-large-");
+    await fs.writeFile(path.join(rootPath, "SKILL.md"), "");
+    await fs.truncate(path.join(rootPath, "SKILL.md"), 25 * 1024 * 1024 + 1);
+
+    await expect(
+      readHostRelativeFile({
+        type: "host.read_file_relative",
+        followRootSymlink: false,
+        rootPath,
+        path: "SKILL.md",
+        dotfiles: "deny",
+      }),
+    ).rejects.toMatchObject({
+      code: "file_too_large",
+      message: "File size 26214401 bytes exceeds the 25 MB limit",
+    });
+  });
+
   it("rejects rootless directory paths", async () => {
     const repoPath = await initRepo(await makeTempDir("bb-host-files-test-"), {
       commit: false,

@@ -142,51 +142,52 @@ async function writeResolvedHostFile(
   if (command.createParents) {
     await fs.mkdir(path.dirname(target.writePath), { recursive: true });
   }
-  const writeOptions = {
-    ...(command.mode !== undefined
-      ? { mode: command.mode }
-      : currentMode !== undefined
-        ? { mode: currentMode }
-        : {}),
-  };
-  let temporaryPath: string | null = null;
+  const preservedMode =
+    command.expectedSha256 === undefined || command.mode === undefined
+      ? currentMode
+      : undefined;
+  let temporaryPath: string | null =
+    `${target.writePath}.bb-write-${randomUUID()}`;
   try {
-    if (command.expectedSha256 === undefined) {
-      await fs.writeFile(target.writePath, contents, writeOptions);
-    } else {
-      temporaryPath = `${target.writePath}.bb-write-${randomUUID()}`;
-      const handle = await fs.open(temporaryPath, "wx", writeOptions.mode);
-      try {
-        await handle.writeFile(contents);
-        await handle.sync();
-      } finally {
-        await handle.close();
+    const handle = await fs.open(
+      temporaryPath,
+      "wx",
+      preservedMode ?? command.mode,
+    );
+    try {
+      if (preservedMode !== undefined) {
+        await handle.chmod(preservedMode);
       }
+      await handle.writeFile(contents);
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
 
-      if (command.expectedSha256 === null) {
-        try {
-          await fs.link(temporaryPath, target.writePath);
-        } catch (error) {
-          if (isFsErrorWithCode(error, "EEXIST")) {
-            const latest = await fs
-              .readFile(target.writePath)
-              .catch(() => null);
-            return {
-              outcome: "conflict",
-              currentSha256: latest === null ? null : sha256Hex(latest),
-            };
-          }
-          throw error;
+    if (command.expectedSha256 === undefined) {
+      await fs.rename(temporaryPath, target.writePath);
+      temporaryPath = null;
+    } else if (command.expectedSha256 === null) {
+      try {
+        await fs.link(temporaryPath, target.writePath);
+      } catch (error) {
+        if (isFsErrorWithCode(error, "EEXIST")) {
+          const latest = await fs.readFile(target.writePath).catch(() => null);
+          return {
+            outcome: "conflict",
+            currentSha256: latest === null ? null : sha256Hex(latest),
+          };
         }
-      } else {
-        const latest = await fs.readFile(target.writePath).catch(() => null);
-        const latestSha256 = latest === null ? null : sha256Hex(latest);
-        if (latestSha256 !== command.expectedSha256) {
-          return { outcome: "conflict", currentSha256: latestSha256 };
-        }
-        await fs.rename(temporaryPath, target.writePath);
-        temporaryPath = null;
+        throw error;
       }
+    } else {
+      const latest = await fs.readFile(target.writePath).catch(() => null);
+      const latestSha256 = latest === null ? null : sha256Hex(latest);
+      if (latestSha256 !== command.expectedSha256) {
+        return { outcome: "conflict", currentSha256: latestSha256 };
+      }
+      await fs.rename(temporaryPath, target.writePath);
+      temporaryPath = null;
     }
   } catch (error) {
     if (isFsErrorWithCode(error, "ENOENT")) {

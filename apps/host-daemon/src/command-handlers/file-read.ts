@@ -96,6 +96,16 @@ function getFileSizeLimitBytes(mimeType?: string): number {
     : NON_IMAGE_FILE_SIZE_LIMIT_BYTES;
 }
 
+function assertFileWithinSizeLimit(sizeBytes: number, mimeType?: string) {
+  const fileSizeLimitBytes = getFileSizeLimitBytes(mimeType);
+  if (sizeBytes > fileSizeLimitBytes) {
+    throw new CommandDispatchError(
+      "file_too_large",
+      `File size ${sizeBytes} bytes exceeds the ${Math.floor(fileSizeLimitBytes / (1024 * 1024))} MB limit`,
+    );
+  }
+}
+
 function getContentEncoding(
   fileContents: Buffer,
   mimeType?: string,
@@ -357,13 +367,7 @@ export async function readFileForTransport(
   }
 
   const mimeType = mimeTypes.lookup(args.resultPath) || undefined;
-  const fileSizeLimitBytes = getFileSizeLimitBytes(mimeType);
-  if (stat.size > fileSizeLimitBytes) {
-    throw new CommandDispatchError(
-      "file_too_large",
-      `File size ${stat.size} bytes exceeds the ${Math.floor(fileSizeLimitBytes / (1024 * 1024))} MB limit`,
-    );
-  }
+  assertFileWithinSizeLimit(stat.size, mimeType);
 
   const fileContents = await fs
     .readFile(readablePath)
@@ -421,6 +425,7 @@ export async function readRootRelativeFileForTransport(
   }
 
   const mimeType = mimeTypes.lookup(relativePath.resultPath) || undefined;
+  assertFileWithinSizeLimit(stat.size, mimeType);
   const fileContents = await fs
     .readFile(readablePath)
     .catch((error: unknown) => throwMissingTargetOrRethrow(readArgs, error));

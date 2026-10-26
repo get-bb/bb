@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { makeTempDir } from "@bb/test-helpers";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   CommandDispatchError,
   type CommandOf,
@@ -107,6 +107,42 @@ describe("writeHostFile", () => {
       results.filter((result) => result.outcome === "conflict"),
     ).toHaveLength(1);
     await expect(fs.readFile(target, "utf8")).resolves.toMatch(/first|second/);
+  });
+
+  it("leaves the original file intact when an unconditional write fails midway", async () => {
+    const dir = await makeTempDir("bb-file-write-");
+    const target = path.join(dir, "note.md");
+    await fs.writeFile(target, "original");
+    const diskFull = Object.assign(new Error("no space left on device"), {
+      code: "ENOSPC",
+    });
+    const probe = await fs.open(target, "r");
+    const fileHandlePrototype = Object.getPrototypeOf(probe);
+    await probe.close();
+    const originalWriteFile = fs.writeFile;
+    const originalHandleWriteFile = fileHandlePrototype.writeFile;
+    vi.spyOn(fs, "writeFile").mockImplementation(async (file, data) => {
+      await originalWriteFile(file, String(data).slice(0, 3));
+      throw diskFull;
+    });
+    vi.spyOn(fileHandlePrototype, "writeFile").mockImplementation(
+      async function (this: unknown, data: unknown) {
+        await originalHandleWriteFile.call(this, String(data).slice(0, 3));
+        throw diskFull;
+      },
+    );
+
+    try {
+      const error = await captureWriteError(
+        writeCommand({ path: target, content: "replacement" }),
+      );
+      expect(error).toBe(diskFull);
+    } finally {
+      vi.restoreAllMocks();
+    }
+
+    await expect(fs.readFile(target, "utf8")).resolves.toBe("original");
+    await expect(fs.readdir(dir)).resolves.toEqual(["note.md"]);
   });
 
   it("returns a conflict with the current hash when the expected hash is stale", async () => {

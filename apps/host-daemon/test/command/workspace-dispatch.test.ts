@@ -373,30 +373,6 @@ describe("workspace command dispatch", () => {
     expect(result.sizeBytes).toBe(imageBytes.length);
   });
 
-  it("does not apply host.read_file size caps to host.read_file_relative", async () => {
-    const tempDir = await makeTempDir("bb-dispatch-host-read-relative-large-");
-    const imagePath = path.join(tempDir, "large.png");
-    const imageBytes = Buffer.alloc(10 * 1024 * 1024 + 1);
-    await fs.writeFile(imagePath, imageBytes);
-
-    const harness = createHarness();
-    const result = await dispatchOnlineRpcCommand(
-      {
-        type: "host.read_file_relative",
-        followRootSymlink: false,
-        rootPath: tempDir,
-        path: "large.png",
-        dotfiles: "deny",
-      },
-      harness.dispatchOptions(),
-      new AbortController().signal,
-    );
-
-    expect(result.path).toBe("large.png");
-    expect(result.contentEncoding).toBe("base64");
-    expect(result.sizeBytes).toBe(imageBytes.length);
-  });
-
   it("rejects host.read_file_relative traversal", async () => {
     const tempDir = await makeTempDir("bb-dispatch-host-read-relative-dotdot-");
     const harness = createHarness();

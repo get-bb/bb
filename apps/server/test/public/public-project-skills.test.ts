@@ -70,6 +70,7 @@ function registerSkillRpc(
     listedFiles?: string[];
     fileContents?: Record<string, string>;
     fileContentsByRoot?: Record<string, string>;
+    readFileErrorCode?: string;
     writeConflicts?: boolean;
   },
 ): SkillRpcStub {
@@ -109,6 +110,16 @@ function registerSkillRpc(
             })),
             truncated: false,
           },
+        };
+      }
+      if (
+        request.command.type === "host.read_file_relative" &&
+        args.readFileErrorCode !== undefined
+      ) {
+        return {
+          ok: false,
+          errorCode: args.readFileErrorCode,
+          errorMessage: "File size 26214401 bytes exceeds the 25 MB limit",
         };
       }
       if (request.command.type === "host.read_file_relative") {
@@ -1572,6 +1583,51 @@ describe("public project skills route", () => {
         name: "moss-notes",
         cwd: "/tmp/provider-skill-delete-env",
         rootPath: "/home/.claude/skills",
+      });
+    });
+  });
+
+  it("returns 413 when the daemon rejects an oversized skill file", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-skill-too-large",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/skill-too-large-project",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/skill-too-large-env",
+      });
+      registerSkillRpc(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        skillsByProvider: {
+          codex: [
+            discovered(
+              "documents",
+              "provider-user",
+              "/home/.codex/skills/documents/SKILL.md",
+            ),
+          ],
+        },
+        readFileErrorCode: "file_too_large",
+      });
+      const query = new URLSearchParams({
+        skillId: skillId("/home/.codex/skills/documents/SKILL.md"),
+        environmentId: environment.id,
+        path: "SKILL.md",
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/projects/${project.id}/skills/content?${query}`,
+      );
+
+      expect(response.status).toBe(413);
+      expect(await readJson(response)).toMatchObject({
+        code: "file_too_large",
       });
     });
   });
