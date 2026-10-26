@@ -1,6 +1,7 @@
 import {
   clipboard,
   Menu,
+  shell,
   type ContextMenuParams,
   type Event,
   type MenuItemConstructorOptions,
@@ -55,6 +56,28 @@ function trimTrailingSeparator(
   return template.slice(0, -1);
 }
 
+function parseUrl(value: string): URL | null {
+  try {
+    return new URL(value);
+  } catch {
+    return null;
+  }
+}
+
+function isWebLink({
+  linkURL,
+  pageURL,
+}: Pick<ContextMenuParams, "linkURL" | "pageURL">): boolean {
+  const link = parseUrl(linkURL);
+  if (link === null) {
+    return false;
+  }
+  return (
+    (link.protocol === "http:" || link.protocol === "https:") &&
+    link.origin !== parseUrl(pageURL)?.origin
+  );
+}
+
 function getSpellcheckContextFromParams(
   params: ContextMenuParams,
 ): DesktopContextMenuSpellcheckContext | null {
@@ -101,6 +124,14 @@ export function buildDesktopContextMenuTemplate({
     pushSeparatorIfNeeded(template);
   }
 
+  if (isWebLink(params)) {
+    template.push({
+      label: "Open in Browser",
+      click: () => {
+        void shell.openExternal(params.linkURL);
+      },
+    });
+  }
   if (params.linkURL.length > 0) {
     template.push({
       label: "Copy Link",
