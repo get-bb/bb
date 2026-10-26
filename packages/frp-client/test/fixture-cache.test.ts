@@ -3,7 +3,7 @@ import * as fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { fetchArchive, frpArchiveFor } from "../src/binary.js";
+import { fetchArchive, FrpBinaryError, frpArchiveFor } from "../src/binary.js";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
   const original = await importOriginal<typeof import("node:fs/promises")>();
@@ -51,15 +51,13 @@ it("recovers a transient network failure and reuses the verified archive", async
   );
   const { cachedDownload } = await import("../src/testing/frp-fixture.js");
   const download = cachedDownload("win32", "x64");
-  const result = expect(
-    download("https://example.test/fixture.zip"),
-  ).resolves.toEqual(bytes);
-  await Promise.race([
-    result,
-    vi.waitFor(() => expect(vi.getTimerCount()).toBe(1)),
-  ]);
+  const result = download("https://example.test/fixture.zip").then(
+    (value) => ({ value }),
+    (error: unknown) => ({ error }),
+  );
+  await vi.waitFor(() => expect(fetchArchive).toHaveBeenCalled());
   await vi.runAllTimersAsync();
-  await result;
+  await expect(result).resolves.toEqual({ value: bytes });
   await expect(download("https://example.test/fixture.zip")).resolves.toEqual(
     bytes,
   );
@@ -69,23 +67,29 @@ it("recovers a transient network failure and reuses the verified archive", async
   ).toEqual(bytes);
 });
 
-it("bounds persistent network failures without publishing an archive", async () => {
-  vi.useFakeTimers({ toFake: ["setTimeout"] });
-  const failure = new TypeError("fetch failed");
-  vi.mocked(fetchArchive).mockRejectedValue(failure);
-  const { cachedDownload } = await import("../src/testing/frp-fixture.js");
-  const result = expect(
-    cachedDownload("win32", "x64")("https://example.test/fixture.zip"),
-  ).rejects.toBe(failure);
-  await Promise.race([
-    result,
-    vi.waitFor(() => expect(vi.getTimerCount()).toBe(1)),
-  ]);
-  await vi.runAllTimersAsync();
-  await result;
-  expect(fetchArchive).toHaveBeenCalledTimes(3);
-  expect(await fs.readdir(dir)).toEqual([]);
-});
+it.each([
+  { failure: new TypeError("fetch failed"), attempts: 3 },
+  {
+    failure: new FrpBinaryError("downloading fixture answered HTTP 404"),
+    attempts: 1,
+  },
+])(
+  "bounds $failure failures without publishing an archive",
+  async ({ failure, attempts }) => {
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    vi.mocked(fetchArchive).mockRejectedValue(failure);
+    const { cachedDownload } = await import("../src/testing/frp-fixture.js");
+    const result = cachedDownload(
+      "win32",
+      "x64",
+    )("https://example.test/fixture.zip").catch((error: unknown) => error);
+    await vi.waitFor(() => expect(fetchArchive).toHaveBeenCalled());
+    await vi.runAllTimersAsync();
+    await expect(result).resolves.toBe(failure);
+    expect(fetchArchive).toHaveBeenCalledTimes(attempts);
+    expect(await fs.readdir(dir)).toEqual([]);
+  },
+);
 
 it("refuses a corrupt download without retrying or publishing it", async () => {
   vi.mocked(fetchArchive).mockResolvedValue(new Uint8Array([0]));
