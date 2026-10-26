@@ -191,6 +191,7 @@ const STARTUP_ONLY_MANAGED_ENV_KEYS = new Set<string>([
   "http_proxy",
   "https_proxy",
   "no_proxy",
+  "BB_ACCOUNT_TRUSTED_ORIGINS",
   "BB_APP_SURFACE",
   "BB_APP_URL",
   "BB_DATA_DIR",
