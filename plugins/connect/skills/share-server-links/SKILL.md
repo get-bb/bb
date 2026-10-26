@@ -66,7 +66,7 @@ pairing, and `bb account status` shows which account is signed in.
 `bb connect --code <code>` still pairs with a dashboard code like
 `bb account login --code <code>`, and also turns remote access back on if it
 was off. `--server` takes the dashboard's `https://<handle>.getbb.app` (or
-`https://<handle>.vibecodethis.site`) URL; other origins are refused.
+`https://<handle>.vibecodethis.site`) origin, or a server under an HTTPS account origin the operator explicitly trusted in `BB_ACCOUNT_TRUSTED_ORIGINS` on the standalone server. Use `--base-url <account-origin>` to name the account site directly. The setting is read when bb account loads; restart the server after changing its launch/service environment. Neither flag grants trust. Paths, queries, fragments, credentials and wildcards are refused.
 
 ## Agent instructions setting
 

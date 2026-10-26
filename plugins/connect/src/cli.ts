@@ -7,6 +7,7 @@ import {
 } from "@get-bb/plugin-sdk";
 import {
   deriveConnectBaseUrl,
+  normalizeConnectOrigin,
   mobilePairingPayload,
   type MobilePairingPayload,
 } from "@bb/connect-client";
@@ -197,13 +198,13 @@ export function registerConnectCli(args: {
             type: "string",
             placeholder: "url",
             description:
-              "Server URL the dashboard printed, https://<handle>.getbb.app or https://<handle>.vibecodethis.site; only its apex origin is used",
+              "Server origin printed by the dashboard; its account origin must be built-in or operator-trusted (no path, query or fragment)",
           },
           "base-url": {
             type: "string",
             placeholder: "url",
             description:
-              "getbb.app origin: https://getbb.app or https://vibecodethis.site (development builds also accept http://bb.localhost:<port>)",
+              "Account origin: https://getbb.app, https://vibecodethis.site, or HTTPS origins configured by the server operator in BB_ACCOUNT_TRUSTED_ORIGINS (development also accepts http://bb.localhost:<port>)",
           },
           json: JSON_OPTION,
         },
@@ -220,7 +221,11 @@ export function registerConnectCli(args: {
             const server = input.options.server;
             const baseUrl =
               input.options["base-url"] ??
-              (server === undefined ? null : deriveConnectBaseUrl(server));
+              (server === undefined
+                ? null
+                : deriveConnectBaseUrl(
+                    normalizeConnectOrigin(server, "server"),
+                  ));
             let status: ConnectStatus;
             try {
               status = await tunnel.signIn(

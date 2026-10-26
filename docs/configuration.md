@@ -62,7 +62,7 @@ These entries are startup-only:
 
 - `BB_APP_SURFACE`, `BB_APP_URL` (when set through `bb-app env`),
   `BB_DATA_DIR`, `BB_DEV_APP_PORT`, and `BB_EXTERNAL_URL`
-- `BB_HOST_DAEMON_PORT` and `BB_INHERITED_SKILLS_ROOTS`
+- `BB_ACCOUNT_TRUSTED_ORIGINS`, `BB_HOST_DAEMON_PORT`, and `BB_INHERITED_SKILLS_ROOTS`
 - `BB_CONNECT_GATE_KEYS_URL`, `BB_LOG_LEVEL`,
   `BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD`, `BB_MARKETPLACE_URL`,
   `BB_PERF_DIAGNOSTICS`, `BB_POSTHOG_API_KEY`, and `BB_TELEMETRY`
@@ -1118,15 +1118,44 @@ in and the `share-server-links` skill for `bb connect` and port shares.
 | `remoteAccess`           | `true`  | The Remote access switch; `false` closes the tunnel and machine shares without signing out. Also `bb connect off\|on`. |
 | `sendRemoteInstructions` | `true`  | "Tell agents about remote access"; `false` suppresses Connect's remote-use agent message without disabling sharing.    |
 
-`bb plugin disable connect` cuts off all remote access. `--server` and
-`--base-url` on `bb connect` and `bb account login` accept only
-`https://getbb.app` and `https://vibecodethis.site` (plus
-`http://bb.localhost:<port>` in a development build).
+`bb plugin disable connect` cuts off all remote access. Account sign-in and Connect accept the built-in `https://getbb.app` and `https://vibecodethis.site` account origins (plus `http://bb.localhost:<port>` in a development build), or additional exact HTTPS origins explicitly trusted by the standalone server operator as described below.
 
 Settings → Mobile links the iOS TestFlight and Android APK downloads and pairs
 the bb mobile app (`bb connect machine-code`, see `bb guide machines`). Mobile
 builds, the optional `GOOGLE_SERVICES_JSON` Firebase config, and publishing
 are documented in [`apps/mobile/README.md`](../apps/mobile/README.md).
+
+#### Trusted self-hosted account origins
+
+A standalone bb server operator can set `BB_ACCOUNT_TRUSTED_ORIGINS` to a comma-separated list of additional HTTPS account/relay origins in the **server process's launch or service environment**:
+
+```dotenv
+BB_ACCOUNT_TRUSTED_ORIGINS=https://bb.example.com,https://accounts.example.net:8443
+```
+
+The bb account plugin validates the entire list and snapshots it when it loads. Restart the server after changing it. For the packaged launcher, persist it and explicitly stop/start:
+
+```sh
+npx bb-app env set BB_ACCOUNT_TRUSTED_ORIGINS https://bb.example.com
+npx bb-app stop && npx bb-app start
+```
+
+This managed environment key is startup-only; a config refresh does not change the running account policy. This is not a workspace setting, plugin setting, or per-request opt-in; setting it only on a CLI talking to an already running server does not grant trust. Each origin authorizes sending that server's sign-in codes and account credentials to the named service, so configure only services you trust.
+
+After that server restarts, select the account site explicitly:
+
+```sh
+bb account login --base-url https://bb.example.com
+bb account login --code <code> --base-url https://bb.example.com
+bb connect --code <code> --base-url https://bb.example.com
+bb connect --code <code> --server https://alice.bb.example.com
+```
+
+When both flags are supplied, `--base-url` takes precedence; only the selected CLI input is resolved and validated. `--server` removes exactly the first hostname label to derive the account origin; the account origin, not each tenant hostname, belongs in the trust list. The flags cannot add trust. Built-in getbb.app/staging origins and development-only localhost behavior remain unchanged, and the default is still `https://getbb.app` (or the existing development override).
+
+List entries may have surrounding whitespace and a trailing root slash; normal URL hostname/default-port normalization applies. Empty lists/entries, HTTP, credentials, wildcards, paths (including paths normalized away by URL parsing), queries and fragments are rejected. Login `--base-url` and Connect `--server` also reject non-origin URLs instead of silently removing those components. Trust matches the complete normalized origin, including a non-default port; it does not extend to subdomains or suffix matches. An empty or invalid list fails account-plugin activation rather than ignoring an entry. The server itself continues: at startup account and remote access are unavailable until the configuration is corrected and the server restarted. A failed plugin reload retains the previous running plugin instance; it does not disable that instance.
+
+The allowlist controls new sign-ins. It does not revoke a stored pairing; use `bb account logout` to revoke and remove it. This setting does not deploy an account server/relay or configure desktop/mobile enrollment UI, app links, or push services.
 
 ### Connect next (beta)
 

@@ -153,6 +153,7 @@ const invalidConfigCommandCases: InvalidConfigCommandCase[] = [
 ];
 
 const startupOnlyManagedEnvCases: StartupOnlyManagedEnvCase[] = [
+  { key: "BB_ACCOUNT_TRUSTED_ORIGINS", value: "https://bb.example.test" },
   { key: "BB_APP_SURFACE", value: "desktop" },
   { key: "BB_APP_URL", value: "https://app.example.test" },
   { key: "BB_DATA_DIR", value: "/tmp/bb-managed-data" },
