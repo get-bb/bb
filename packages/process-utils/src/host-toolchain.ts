@@ -282,8 +282,9 @@ export class HostToolchain {
       join(home, ".asdf", "bin"),
       join(home, ".volta", "bin"),
     ];
+    if (process.platform === "darwin") fallbacks.push("/opt/homebrew/bin");
     if (process.platform !== "win32")
-      fallbacks.push("/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin");
+      fallbacks.push("/usr/local/bin", "/usr/bin", "/bin");
     return mergePath(
       this.managesPath(inherited) ? this.shellEnv.PATH : undefined,
       inherited,
