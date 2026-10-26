@@ -8,5 +8,6 @@ export {
   takeExactBytes,
   writeVerifiedFile,
   type VerifiedFileExpectation,
+  type VerifiedFileMode,
   type WrittenFile,
 } from "./verified-file-transfer.js";

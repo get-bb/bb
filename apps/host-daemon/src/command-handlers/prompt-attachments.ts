@@ -221,7 +221,7 @@ async function stageAttachment(args: StageAttachmentArgs): Promise<string> {
           sizeBytes: expectedSizeBytes ?? null,
         },
         label: `Attachment ${args.attachment.path}`,
-        mode: STAGED_ATTACHMENT_MODE,
+        mode: { kind: "exact", mode: STAGED_ATTACHMENT_MODE },
         source: attachment.content,
       });
     } catch (error) {

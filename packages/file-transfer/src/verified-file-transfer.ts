@@ -9,6 +9,10 @@ export interface VerifiedFileExpectation {
   sizeBytes: number | null;
 }
 
+export type VerifiedFileMode =
+  | { kind: "create"; mode: number }
+  | { kind: "exact"; mode: number };
+
 export interface WrittenFile {
   sha256: string;
   sizeBytes: number;
@@ -66,14 +70,10 @@ export async function writeVerifiedFile(args: {
   durable: boolean;
   expected: VerifiedFileExpectation;
   label: string;
-  mode: number | null;
+  mode: VerifiedFileMode;
   source: AsyncIterable<Uint8Array> | Iterable<Uint8Array>;
 }): Promise<WrittenFile> {
-  const handle = await fs.open(
-    args.destinationPath,
-    "wx",
-    args.mode ?? undefined,
-  );
+  const handle = await fs.open(args.destinationPath, "wx", args.mode.mode);
   const hash = createHash("sha256");
   let sizeBytes = 0;
   try {
@@ -97,8 +97,8 @@ export async function writeVerifiedFile(args: {
         `${args.label} content hash mismatch: expected ${args.expected.sha256}, received ${sha256}`,
       );
     }
-    if (args.mode !== null) {
-      await handle.chmod(args.mode);
+    if (args.mode.kind === "exact") {
+      await handle.chmod(args.mode.mode);
     }
     if (args.durable) {
       await handle.sync();
@@ -124,7 +124,7 @@ export async function copyVerifiedFile(args: {
     durable: false,
     expected: args.expected,
     label: args.label,
-    mode: args.mode,
+    mode: { kind: "exact", mode: args.mode },
     source: readFileChunks(args.sourcePath),
   });
 }

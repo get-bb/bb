@@ -1,10 +1,14 @@
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
+import path from "node:path";
 import { isFsErrorWithCode } from "./fs-errors.js";
 import {
   publishFileWithoutReplacing,
   writeVerifiedFile,
+  type VerifiedFileMode,
 } from "./verified-file-transfer.js";
+
+const DEFAULT_CREATE_MODE = 0o666;
 
 export type ReplaceFileResult =
   | { outcome: "written"; sha256: string; sizeBytes: number }
@@ -67,17 +71,6 @@ async function publishTemporaryFile(
   return writtenResult(args.contents);
 }
 
-async function overwriteInPlace(
-  args: ReplaceFileArgs,
-): Promise<ReplaceFileResult> {
-  const conflict = await findLatestConflict(args);
-  if (conflict !== null) {
-    return conflict;
-  }
-  await fs.writeFile(args.path, args.contents);
-  return writtenResult(args.contents);
-}
-
 export async function replaceFile(
   args: ReplaceFileArgs,
 ): Promise<ReplaceFileResult> {
@@ -100,11 +93,19 @@ export async function replaceFile(
     return { outcome: "conflict", currentSha256 };
   }
 
+  const preservedMode: VerifiedFileMode | null =
+    currentMode === undefined ? null : { kind: "exact", mode: currentMode };
+  const requestedMode: VerifiedFileMode | null =
+    args.mode === undefined ? null : { kind: "create", mode: args.mode };
   const mode =
-    args.expectedSha256 === undefined
-      ? (currentMode ?? args.mode)
-      : (args.mode ?? currentMode);
-  const temporaryPath = `${args.path}.bb-write-${randomUUID()}`;
+    (args.expectedSha256 === undefined
+      ? (preservedMode ?? requestedMode)
+      : (requestedMode ?? preservedMode)) ??
+    ({ kind: "create", mode: DEFAULT_CREATE_MODE } as const);
+  const temporaryPath = path.join(
+    path.dirname(args.path),
+    `.bb-write-${randomUUID()}`,
+  );
   try {
     try {
       await writeVerifiedFile({
@@ -116,16 +117,18 @@ export async function replaceFile(
           sizeBytes: args.contents.length,
         },
         label: `File ${args.path}`,
-        mode: mode ?? null,
+        mode,
         source: [args.contents],
       });
     } catch (error) {
       if (
         currentContents !== null &&
+        args.expectedSha256 === undefined &&
         (isFsErrorWithCode(error, "EACCES") ||
           isFsErrorWithCode(error, "EPERM"))
       ) {
-        return await overwriteInPlace(args);
+        await fs.writeFile(args.path, args.contents);
+        return writtenResult(args.contents);
       }
       throw error;
     }

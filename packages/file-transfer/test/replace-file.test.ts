@@ -47,7 +47,34 @@ describe("replaceFile", () => {
   });
 
   it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
-    "overwrites in place when the parent directory is not writable",
+    "overwrites in place without a precondition when the parent directory is not writable",
+    async () => {
+      const dir = await makeTempDir("bb-replace-file-");
+      const lockedDir = path.join(dir, "locked");
+      await fs.mkdir(lockedDir);
+      const target = path.join(lockedDir, "note.md");
+      await fs.writeFile(target, "original");
+      await fs.chmod(lockedDir, 0o555);
+
+      try {
+        await expect(
+          replaceFile({ contents: Buffer.from("replacement"), path: target }),
+        ).resolves.toEqual({
+          outcome: "written",
+          sha256: sha256("replacement"),
+          sizeBytes: 11,
+        });
+      } finally {
+        await fs.chmod(lockedDir, 0o755);
+      }
+
+      await expect(fs.readFile(target, "utf8")).resolves.toBe("replacement");
+      await expect(fs.readdir(lockedDir)).resolves.toEqual(["note.md"]);
+    },
+  );
+
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "refuses a revision-checked save rather than overwrite in place in a read-only directory",
     async () => {
       const dir = await makeTempDir("bb-replace-file-");
       const lockedDir = path.join(dir, "locked");
@@ -63,17 +90,40 @@ describe("replaceFile", () => {
             expectedSha256: sha256("original"),
             path: target,
           }),
-        ).resolves.toEqual({
-          outcome: "written",
-          sha256: sha256("replacement"),
-          sizeBytes: 11,
-        });
+        ).rejects.toMatchObject({ code: "EACCES" });
       } finally {
         await fs.chmod(lockedDir, 0o755);
       }
 
-      await expect(fs.readFile(target, "utf8")).resolves.toBe("replacement");
-      await expect(fs.readdir(lockedDir)).resolves.toEqual(["note.md"]);
+      await expect(fs.readFile(target, "utf8")).resolves.toBe("original");
     },
   );
+
+  it.skipIf(process.platform === "win32")(
+    "applies the process umask to a requested mode on new files",
+    async () => {
+      const dir = await makeTempDir("bb-replace-file-");
+      const target = path.join(dir, "shared.txt");
+      const umask = process.umask();
+
+      await replaceFile({
+        contents: Buffer.from("hello"),
+        mode: 0o666,
+        path: target,
+      });
+
+      expect((await fs.stat(target)).mode & 0o777).toBe(0o666 & ~umask);
+    },
+  );
+
+  it("saves files whose names are close to the filesystem limit", async () => {
+    const dir = await makeTempDir("bb-replace-file-");
+    const target = path.join(dir, `${"n".repeat(240)}.md`);
+    await fs.writeFile(target, "original");
+
+    await expect(
+      replaceFile({ contents: Buffer.from("replacement"), path: target }),
+    ).resolves.toMatchObject({ outcome: "written" });
+    await expect(fs.readdir(dir)).resolves.toEqual([path.basename(target)]);
+  });
 });

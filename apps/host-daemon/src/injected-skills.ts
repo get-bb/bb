@@ -952,7 +952,7 @@ async function downloadTreeFiles(args: {
         durable: false,
         expected: storedFileExpectation(file),
         label: `Skill tree file ${file.path}`,
-        mode: file.mode,
+        mode: { kind: "exact", mode: file.mode },
         source: takeExactBytes(reader, file.sizeBytes),
       });
     }
