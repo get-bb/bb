@@ -140,33 +140,20 @@ describe.each([
   },
 ])("plugin URL round trips through $surface", ({ readRoute }) => {
   it.each([
-    { subPath: "items/key:42", encoded: "items/key%3A42" },
-    { subPath: "items/discount%", encoded: "items/discount%25" },
-    { subPath: "items/план", encoded: "items/%D0%BF%D0%BB%D0%B0%D0%BD" },
-    { subPath: "items/key%2Fpart", encoded: "items/key%252Fpart" },
-    { subPath: "items/key%3Apart", encoded: "items/key%253Apart" },
-    { subPath: "items/key/part", encoded: "items/key/part" },
-    {
-      subPath: "items/key/part",
-      encoded: "items/key%2Fpart",
-      canonical: "items/key/part",
-    },
-    {
-      subPath: "items/key/part",
-      encoded: "items/key%2fpart",
-      canonical: "items/key/part",
-    },
-    {
-      subPath: "items/bad%ZZ",
-      encoded: "items/bad%ZZ",
-      canonical: "items/bad%25ZZ",
-    },
-    { subPath: "", encoded: "" },
+    { path: "items/key%3A42" },
+    { path: "items/key:42" },
+    { path: "items/discount%25" },
+    { path: "items/%D0%BF%D0%BB%D0%B0%D0%BD" },
+    { path: "items/key%252Fpart" },
+    { path: "items/key/part" },
+    { path: "items/key%2Fpart", subPath: "items/key/part" },
+    { path: "items/bad%ZZ" },
+    { path: "" },
   ])(
-    "preserves semantic subpath $subPath across five rounds",
-    ({ subPath, encoded, canonical = encoded }) => {
-      const expected = `/plugins/notes/board${canonical ? `/${canonical}` : ""}`;
-      let pathname = `/plugins/notes/board${encoded ? `/${encoded}` : ""}`;
+    "keeps /plugins/notes/board/$path stable across five rounds",
+    ({ path, subPath = path }) => {
+      const expected = `/plugins/notes/board${subPath ? `/${subPath}` : ""}`;
+      let pathname = `/plugins/notes/board${path ? `/${path}` : ""}`;
       for (let round = 0; round < 5; round += 1) {
         const parsed = readRoute(pathname);
         expect(parsed.subPath).toBe(subPath);

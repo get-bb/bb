@@ -86,12 +86,14 @@ Slot props contracts (versioned, additive-only):
   not need React context. Experimental: see `docs/api_to_audit.md`.
 - `navPanel` → `{ subPath: string }` — owns the whole route at
   `/plugins/<pluginId>/<path>/*` and gets its own navigation rail destination. `subPath`
-  is the route remainder after the panel root (`""` at the root), so deep
-  links like `/plugins/notes/notes/work/ideas.md` land with
-  `subPath: "work/ideas.md"`. Navigate within the panel via
-  `useBbNavigate().toPluginPanel(path, { subPath, replace? })` — browser
-  back/forward then walks panel-internal history (prefer this over hash
-  routing).
+  is the route remainder after the panel root (`""` at the root) as it appears
+  in the URL, with each segment still percent-encoded, so deep links like
+  `/plugins/notes/notes/work/my%20ideas.md` land with
+  `subPath: "work/my%20ideas.md"`; decode each segment with
+  `decodeURIComponent`. Navigate within the panel via
+  `useBbNavigate().toPluginPanel(path, { subPath, replace? })`, passing
+  unencoded segments (bb encodes them) — browser back/forward then walks
+  panel-internal history (prefer this over hash routing).
   Registration:
   `{ id, title, icon, path, component, experimental_useBadge?, experimental_usePageTitle?, headerContent?, experimental_sidebar? }`.
   The host renders your compact plugin icon + `title` into the shared app

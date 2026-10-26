@@ -67,11 +67,13 @@ export function paneContentRoute(content: PaneContent): string {
   if (content.kind === "plugin-detail") {
     return getPluginDetailRoutePath({ pluginId: content.pluginId });
   }
-  return getPluginPanelRoutePath({
+  const panelRoute = getPluginPanelRoutePath({
     pluginId: content.pluginId,
     path: content.panelPath,
-    subPath: content.subPath,
   });
+  return content.subPath === ""
+    ? panelRoute
+    : `${panelRoute}/${content.subPath}`;
 }
 
 function decodePluginRouteParam(value: string): string {
@@ -121,7 +123,7 @@ export function paneContentForPathname(pathname: string): PaneContent | null {
       kind: "plugin-panel",
       pluginId: decodePluginRouteParam(panel.params.pluginId),
       panelPath: decodePluginRouteParam(panel.params.panelPath),
-      subPath: decodePluginRouteParam(panel.params["*"] ?? ""),
+      subPath: panel.params["*"] ?? "",
     };
   }
   return null;
