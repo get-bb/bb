@@ -33,9 +33,11 @@ describe("default workspace open-target runtime", () => {
       ["-e", "process.stdout.write(process.env.PATH ?? '')"],
       { env: runtime.env },
     );
-    expect(userExecutableResult.stdout).toMatch(
-      /^\/Users\/test\/\.local\/bin:\/usr\/bin(?::|$)/u,
-    );
+    expect(
+      `${userExecutableResult.stdout}${path.delimiter}`.startsWith(
+        `/Users/test/.local/bin:/usr/bin${path.delimiter}`,
+      ),
+    ).toBe(true);
   });
 });
 

@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
+import { experimental_hostToolchain as hostToolchain } from "@get-bb/plugin-sdk/process";
 import { experimental_createHostEntryHarness } from "@get-bb/plugin-sdk/testing/host";
 import { runGit } from "bb-environment-provider-host/git";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -401,16 +402,29 @@ describe("pull request lookup for differently named upstream branches", () => {
       vi.stubEnv("PATH", binPath);
     }
 
-    await expect(
-      harness.experimental_call("view", {
-        path: workspacePath,
-        url: null,
-        refresh: false,
-      }),
-    ).resolves.toEqual({
-      outcome: "unavailable",
-      message: "GitHub CLI is not available",
-    });
+    const command = hostToolchain.command.bind(hostToolchain);
+    const missingGh = vi
+      .spyOn(hostToolchain, "command")
+      .mockImplementation((name, args, options) => {
+        const launch = command(name, args, options);
+        return name === "gh"
+          ? { ...launch, command: path.join(binPath, "gh") }
+          : launch;
+      });
+    try {
+      await expect(
+        harness.experimental_call("view", {
+          path: workspacePath,
+          url: null,
+          refresh: false,
+        }),
+      ).resolves.toEqual({
+        outcome: "unavailable",
+        message: "GitHub CLI is not available",
+      });
+    } finally {
+      missingGh.mockRestore();
+    }
   });
 });
 

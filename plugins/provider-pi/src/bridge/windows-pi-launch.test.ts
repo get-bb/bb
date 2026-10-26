@@ -201,13 +201,15 @@ describe("Windows Pi npm launch", () => {
     async () => {
       const first = await fixture();
       const second = await fixture();
-      expect(
-        resolvePiProcessLaunch(
-          {},
-          { Path: second.root, PATHEXT: ".CMD" },
-          first.root,
-        ),
-      ).toEqual({ command: "node", args: [first.cli] });
+      const fallback = resolvePiProcessLaunch(
+        {},
+        { Path: second.root, PATHEXT: ".CMD" },
+        first.root,
+      );
+      expect(fallback.args).toEqual([first.cli]);
+      expect(path.basename(fallback.command).toLowerCase()).toMatch(
+        /^node(?:\.exe)?$/u,
+      );
       const node = path.join(second.root, "node.exe");
       await writeFile(node, "");
       const childEnv = { Path: second.root, PATHEXT: ".EXE;.CMD" };
