@@ -1,8 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { execFile, type ExecFileException } from "node:child_process";
-import { promisify } from "node:util";
-import { runVcsProcess } from "@bb/process-utils";
+import type { ExecFileException } from "node:child_process";
+import { execHostFileBuffer, runVcsProcess } from "@bb/process-utils";
 import type { GitCheckoutRef, WorkspaceGitOperation } from "@bb/domain";
 import {
   createGitCommandFailedError,
@@ -18,8 +17,6 @@ import {
   trimOutput,
   WorkspaceError,
 } from "bb-environment-provider-host/workspace-git";
-
-const execFileAsync = promisify(execFile);
 
 function toExecError(error: unknown): ExecFileException | undefined {
   return error instanceof Error ? (error as ExecFileException) : undefined;
@@ -567,9 +564,8 @@ export async function readGitBlob(
   try {
     const blobArgs = ["cat-file", "blob", target];
     const result = await runVcsProcess("git", blobArgs, () =>
-      execFileAsync("git", blobArgs, {
+      execHostFileBuffer("git", blobArgs, {
         cwd,
-        encoding: "buffer",
         env: resolveGitProcessEnv({
           env: undefined,
           shellPath: options.shellPath,
