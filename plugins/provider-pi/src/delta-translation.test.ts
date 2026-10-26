@@ -239,6 +239,70 @@ describe("pi delta translation equivalence", () => {
     expect(events.some((event) => event.type === "provider/error")).toBe(false);
   });
 
+  it("completes each assistant message at its own message_end, once", () => {
+    const harness = createHarness();
+    harness.translate(loadFixture("agent-start.json"));
+    const assistant = (text: string) => {
+      const message = {
+        role: "assistant",
+        content: [{ type: "text", text }],
+        stopReason: "stop",
+      };
+      const events = [
+        ...harness.translate({ type: "message_start", message }),
+        ...harness.translate({
+          type: "message_update",
+          message,
+          assistantMessageEvent: {
+            type: "text_delta",
+            contentIndex: 0,
+            delta: text,
+          },
+        }),
+        ...harness.translate({ type: "message_end", message }),
+      ];
+      return { message, events };
+    };
+    const completedMessages = (events: ThreadEvent[]) =>
+      events.flatMap((event) =>
+        event.type === "item/completed" && event.item.type === "agentMessage"
+          ? [event.item]
+          : [],
+      );
+
+    const first = assistant("Checking the workspace.");
+    expect(completedMessages(first.events)).toEqual([
+      expect.objectContaining({
+        id: agentMessageDeltaId(first.events),
+        text: "Checking the workspace.",
+      }),
+    ]);
+
+    harness.translate(
+      createPiBashStartEvent({ command: "pwd", toolCallId: "tool-1" }),
+    );
+    harness.translate(loadFixture("tool-execution-end-bash.json"));
+    const last = assistant("The workspace is ready.");
+    const end = harness.translate({
+      type: "agent_end",
+      messages: [first.message, last.message],
+    });
+
+    expect(completedMessages(last.events)).toEqual([
+      expect.objectContaining({
+        id: agentMessageDeltaId(last.events),
+        text: "The workspace is ready.",
+      }),
+    ]);
+    expect(agentMessageDeltaId(last.events)).not.toBe(
+      agentMessageDeltaId(first.events),
+    );
+    expect(completedMessages(end)).toEqual([]);
+    expect(end).toContainEqual(
+      expect.objectContaining({ type: "turn/completed", status: "completed" }),
+    );
+  });
+
   it("completes extension-triggered turns when agent_end includes string custom content", () => {
     const harness = createHarness();
     harness.translate(loadFixture("agent-start.json"));
