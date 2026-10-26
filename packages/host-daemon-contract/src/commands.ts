@@ -435,10 +435,21 @@ const hostReadFileCommandSchema = z
     type: z.literal("host.read_file"),
     path: z.string().min(1),
     rootPath: z.string().min(1).optional(),
+    followRootSymlink: z.boolean(),
     ref: z.string().min(1).optional(),
     ifNoneMatch: hostReadFileIfNoneMatchSchema.optional(),
   })
   .superRefine((command, context) => {
+    if (
+      command.followRootSymlink &&
+      (command.rootPath === undefined || command.ref !== undefined)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["followRootSymlink"],
+        message: "followRootSymlink requires rootPath and no ref",
+      });
+    }
     if (command.ref !== undefined && command.rootPath === undefined) {
       context.addIssue({
         code: "custom",
@@ -473,21 +484,6 @@ const hostReadFileChunkResultSchema = z
     revision: z.string().regex(/^[a-f0-9]{64}$/u),
     offset: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
     content: z.string().max(4 * Math.ceil(HOST_FILE_CHUNK_MAX_BYTES / 3)),
-  })
-  .strict();
-
-const hostReadFileRelativeDotfilePolicySchema = z.enum(["allow", "deny"]);
-export type HostReadFileRelativeDotfilePolicy = z.infer<
-  typeof hostReadFileRelativeDotfilePolicySchema
->;
-
-const hostReadFileRelativeCommandSchema = z
-  .object({
-    type: z.literal("host.read_file_relative"),
-    followRootSymlink: z.boolean(),
-    rootPath: z.string().min(1),
-    path: z.string().min(1),
-    dotfiles: hostReadFileRelativeDotfilePolicySchema,
   })
   .strict();
 
@@ -1807,15 +1803,6 @@ export const hostDaemonCommandRegistry = {
     flushEventsBeforeResult: false,
     envLane: null,
   }),
-  "host.read_file_relative": defineHostDaemonCommandDescriptor({
-    type: "host.read_file_relative",
-    schema: hostReadFileRelativeCommandSchema,
-    resultSchema: fileReadResultSchema,
-    transport: "onlineRpc",
-    retryable: true,
-    flushEventsBeforeResult: false,
-    envLane: null,
-  }),
   "host.write_file": defineHostDaemonCommandDescriptor({
     type: "host.write_file",
     schema: hostWriteFileCommandSchema,
@@ -1966,9 +1953,7 @@ type HostDaemonRetryableOnlineRpcCommandSchema =
 type HostDaemonResultSchemaMapForTransport<
   Transport extends HostDaemonCommandTransport,
 > = {
-  [
-    Descriptor in HostDaemonCommandDescriptorForTransport<Transport> as Descriptor["type"]
-  ]: Descriptor["resultSchema"];
+  [Descriptor in HostDaemonCommandDescriptorForTransport<Transport> as Descriptor["type"]]: Descriptor["resultSchema"];
 };
 
 type HostDaemonCommandResultSchemaMap =

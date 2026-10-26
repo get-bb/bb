@@ -113,7 +113,7 @@ function registerSkillRpc(
         };
       }
       if (
-        request.command.type === "host.read_file_relative" &&
+        request.command.type === "host.read_file" &&
         args.readFileErrorCode !== undefined
       ) {
         return {
@@ -122,21 +122,20 @@ function registerSkillRpc(
           errorMessage: "File size 26214401 bytes exceeds the 25 MB limit",
         };
       }
-      if (request.command.type === "host.read_file_relative") {
+      if (request.command.type === "host.read_file") {
+        const content =
+          (request.command.rootPath === undefined
+            ? undefined
+            : args.fileContentsByRoot?.[request.command.rootPath]) ??
+          args.fileContents?.[request.command.path] ??
+          "# Skill content";
         return {
           ok: true,
           result: {
             path: request.command.path,
-            content:
-              args.fileContentsByRoot?.[request.command.rootPath] ??
-              args.fileContents?.[request.command.path] ??
-              "# Skill content",
+            content,
             contentEncoding: "utf8" as const,
-            sizeBytes: (
-              args.fileContentsByRoot?.[request.command.rootPath] ??
-              args.fileContents?.[request.command.path] ??
-              "# Skill content"
-            ).length,
+            sizeBytes: content.length,
             sha256: "0".repeat(64),
           },
         };
@@ -1464,7 +1463,7 @@ describe("public project skills route", () => {
         ).toMatchObject({ content: "# Plugin reference\n" });
         expect(
           stub.requests.some(
-            (request) => request.command.type === "host.read_file_relative",
+            (request) => request.command.type === "host.read_file",
           ),
         ).toBe(false);
       });
@@ -1659,7 +1658,10 @@ describe("public project skills route", () => {
           ],
         },
         listedFiles: ["references/layout.md", "SKILL.md"],
-        fileContents: { "references/layout.md": "# Layout reference" },
+        fileContents: {
+          "/home/.codex/skills/documents/references/layout.md":
+            "# Layout reference",
+        },
       });
       const query = new URLSearchParams({
         skillId: skillId("/home/.codex/skills/documents/SKILL.md"),
@@ -1689,12 +1691,28 @@ describe("public project skills route", () => {
         revision: "0".repeat(64),
       });
       expect(stub.requests.map((request) => request.command)).toContainEqual({
-        type: "host.read_file_relative",
-        followRootSymlink: true,
+        type: "host.read_file",
+        path: "/home/.codex/skills/documents/references/layout.md",
         rootPath: "/home/.codex/skills/documents",
-        path: "references/layout.md",
-        dotfiles: "deny",
+        followRootSymlink: true,
       });
+
+      for (const [hiddenPath, status] of [
+        [".env", 404],
+        ["references/../../secrets.md", 404],
+        ["/etc/passwd", 400],
+      ] as const) {
+        query.set("path", hiddenPath);
+        const rejected = await harness.app.request(
+          `/api/v1/projects/${project.id}/skills/content?${query}`,
+        );
+        expect(rejected.status).toBe(status);
+      }
+      expect(
+        stub.requests.filter(
+          (request) => request.command.type === "host.read_file",
+        ),
+      ).toHaveLength(1);
       expect(stub.requests.map((request) => request.command)).toContainEqual(
         expect.objectContaining({
           type: "host.list_files",

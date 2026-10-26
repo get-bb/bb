@@ -326,14 +326,6 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
     mimeType: "video/mp4",
     revision: "a".repeat(64),
   },
-  "host.read_file_relative": {
-    path: "assets/logo.png",
-    content: "iVBORw0KGgo=",
-    contentEncoding: "base64",
-    mimeType: "image/png",
-    sizeBytes: 8,
-    sha256: "b".repeat(64),
-  },
   "host.write_file": {
     outcome: "written",
     sha256: "c".repeat(64),
@@ -1063,7 +1055,7 @@ describe("host-daemon command schemas", () => {
   });
 
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(255);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(256);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1078,7 +1070,8 @@ describe("host-daemon command schemas", () => {
     expect(contract.isCompatibleHostDaemonProtocolVersion(252)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(253)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(254)).toBe(false);
-    expect(contract.isCompatibleHostDaemonProtocolVersion(255)).toBe(true);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(255)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(256)).toBe(true);
     expect(contract.hostDaemonSupportsConnectNext(246)).toBe(false);
     expect(contract.hostDaemonSupportsConnectNext(247)).toBe(true);
     expect(contract.hostDaemonSupportsDesktopBrokerProof(247)).toBe(false);
@@ -1511,6 +1504,7 @@ describe("host-daemon command schemas", () => {
     expect(
       hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.read_file",
+        followRootSymlink: false,
         path: "/tmp/bb-data/thread-storage/thread-123/notes.md",
         rootPath: "/tmp/bb-data/thread-storage/thread-123",
         ifNoneMatch: {
@@ -1520,6 +1514,7 @@ describe("host-daemon command schemas", () => {
       }),
     ).toMatchObject({
       type: "host.read_file",
+      followRootSymlink: false,
       path: "/tmp/bb-data/thread-storage/thread-123/notes.md",
       rootPath: "/tmp/bb-data/thread-storage/thread-123",
       ifNoneMatch: {
@@ -1532,10 +1527,12 @@ describe("host-daemon command schemas", () => {
       hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.read_file",
         path: "/tmp/bb-data/thread-storage/thread-123/notes.md",
+        followRootSymlink: false,
       }),
     ).toMatchObject({
       type: "host.read_file",
       path: "/tmp/bb-data/thread-storage/thread-123/notes.md",
+      followRootSymlink: false,
     });
 
     expect(
@@ -1543,10 +1540,12 @@ describe("host-daemon command schemas", () => {
         type: "host.read_file",
         path: "/tmp/bb-data/thread-storage/thread-123/notes.md",
         rootPath: "/tmp/bb-data/thread-storage/thread-123",
+        followRootSymlink: false,
         ref: "HEAD",
       }),
     ).toMatchObject({
       type: "host.read_file",
+      followRootSymlink: false,
       path: "/tmp/bb-data/thread-storage/thread-123/notes.md",
       rootPath: "/tmp/bb-data/thread-storage/thread-123",
       ref: "HEAD",
@@ -1554,18 +1553,15 @@ describe("host-daemon command schemas", () => {
 
     expect(
       hostDaemonOnlineRpcCommandSchema.parse({
-        type: "host.read_file_relative",
-        followRootSymlink: false,
-        rootPath: "/tmp/bb-data/apps/demo/assets",
-        path: "logo.png",
-        dotfiles: "deny",
+        type: "host.read_file",
+        path: "/tmp/skills/linked/references/layout.md",
+        rootPath: "/tmp/skills/linked",
+        followRootSymlink: true,
       }),
     ).toMatchObject({
-      type: "host.read_file_relative",
-      followRootSymlink: false,
-      rootPath: "/tmp/bb-data/apps/demo/assets",
-      path: "logo.png",
-      dotfiles: "deny",
+      type: "host.read_file",
+      rootPath: "/tmp/skills/linked",
+      followRootSymlink: true,
     });
 
     expect(
@@ -1627,13 +1623,7 @@ describe("host-daemon command schemas", () => {
         type: "host.read_file",
         path: "/tmp/workspace/README.md",
         rootPath: "/tmp/workspace",
-      },
-      {
-        type: "host.read_file_relative",
         followRootSymlink: false,
-        rootPath: "/tmp/workspace",
-        path: "README.md",
-        dotfiles: "deny",
       },
       {
         type: "provider.list_models",
@@ -1707,19 +1697,28 @@ describe("host-daemon command schemas", () => {
     expect(() =>
       hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.read_file",
+        followRootSymlink: false,
         path: "/tmp/bb-data/thread-storage/thread-123/notes.md",
         ref: "HEAD",
       }),
     ).toThrow();
 
-    expect(() =>
-      hostDaemonOnlineRpcCommandSchema.parse({
-        type: "host.read_file_relative",
-        followRootSymlink: false,
-        rootPath: "/tmp/bb-data/apps/demo/assets",
-        path: "logo.png",
-      }),
-    ).toThrow();
+    for (const command of [
+      {
+        type: "host.read_file",
+        path: "/tmp/workspace/README.md",
+        followRootSymlink: true,
+      },
+      {
+        type: "host.read_file",
+        path: "/tmp/workspace/README.md",
+        rootPath: "/tmp/workspace",
+        followRootSymlink: true,
+        ref: "HEAD",
+      },
+    ]) {
+      expect(() => hostDaemonOnlineRpcCommandSchema.parse(command)).toThrow();
+    }
   });
 
   it("requires environmentId on thread and turn commands", () => {
@@ -3431,38 +3430,6 @@ describe("host-daemon session schemas", () => {
         modifiedAtMs: 1234.5,
         sizeBytes: 13,
         sha256: "e".repeat(64),
-      },
-    });
-
-    expect(
-      hostDaemonDaemonWsMessageSchema.parse({
-        type: "host-rpc.response",
-        requestId: "rpc-1",
-        commandType: "host.read_file_relative",
-        ok: true,
-        result: {
-          path: "assets/logo.png",
-          content: "iVBORw0KGgo=",
-          contentEncoding: "base64",
-          mimeType: "image/png",
-          modifiedAtMs: 1234.5,
-          sizeBytes: 8,
-          sha256: "f".repeat(64),
-        },
-      }),
-    ).toEqual({
-      type: "host-rpc.response",
-      requestId: "rpc-1",
-      commandType: "host.read_file_relative",
-      ok: true,
-      result: {
-        path: "assets/logo.png",
-        content: "iVBORw0KGgo=",
-        contentEncoding: "base64",
-        mimeType: "image/png",
-        modifiedAtMs: 1234.5,
-        sizeBytes: 8,
-        sha256: "f".repeat(64),
       },
     });
   });

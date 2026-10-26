@@ -145,6 +145,7 @@ async function serveRootedFile(
     timeoutMs: COMMAND_TIMEOUT_MS,
     command: {
       type: "host.read_file",
+      followRootSymlink: false,
       path: filePath,
       rootPath: root.rootPath,
       ref: root.ref,
@@ -233,6 +234,7 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
         timeoutMs: COMMAND_TIMEOUT_MS,
         command: {
           type: "host.read_file",
+          followRootSymlink: false,
           path: payload.path,
           ...(payload.rootPath !== undefined
             ? { rootPath: payload.rootPath }

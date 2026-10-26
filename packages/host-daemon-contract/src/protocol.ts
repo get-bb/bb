@@ -1,4 +1,4 @@
-export const HOST_DAEMON_PROTOCOL_VERSION = 255 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 256 as const;
 
 export const HOST_DAEMON_CONNECT_NEXT_PROTOCOL_VERSION = 247 as const;
 

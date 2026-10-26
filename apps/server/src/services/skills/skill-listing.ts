@@ -13,7 +13,10 @@ import type {
 import { editableSkillScopeSchema } from "@bb/server-contract";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
-import { remapDaemonFileRouteError } from "../hosts/daemon-file-response.js";
+import {
+  remapDaemonFileRouteError,
+  requireDaemonFileContentResult,
+} from "../hosts/daemon-file-response.js";
 import type { AppDeps } from "../../types.js";
 import {
   callHostOnlineRpcForWork,
@@ -54,6 +57,12 @@ function hostPathBasename(filePath: string): string {
   return /^[a-zA-Z]:[\\/]/u.test(filePath)
     ? path.win32.basename(filePath)
     : path.posix.basename(filePath);
+}
+
+function hostPathJoin(rootPath: string, segments: readonly string[]): string {
+  return /^[a-zA-Z]:[\\/]/u.test(rootPath)
+    ? path.win32.join(rootPath, ...segments)
+    : path.posix.join(rootPath, ...segments);
 }
 
 function isBundledProviderSkill(filePath: string): boolean {
@@ -504,22 +513,22 @@ export async function readProjectSkill(
     hostId: args.workspace.hostId,
     timeoutMs: COMMAND_TIMEOUT_MS,
     command: {
-      type: "host.read_file_relative",
-      followRootSymlink: true,
-      rootPath,
+      type: "host.read_file",
       path:
         args.path === SKILL_FILE_NAME
-          ? hostPathBasename(skill.realPath)
-          : args.path,
-      dotfiles: "deny",
+          ? skill.realPath
+          : hostPathJoin(rootPath, validateServerSkillRelativePath(args.path)),
+      rootPath,
+      followRootSymlink: true,
     },
   }).catch(remapDaemonFileRouteError);
+  const content = requireDaemonFileContentResult(result);
   return {
     content:
-      result.contentEncoding === "utf8"
-        ? result.content
-        : Buffer.from(result.content, "base64").toString("utf8"),
-    revision: result.sha256,
+      content.contentEncoding === "utf8"
+        ? content.content
+        : Buffer.from(content.content, "base64").toString("utf8"),
+    revision: content.sha256,
   };
 }
 

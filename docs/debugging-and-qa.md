@@ -761,10 +761,11 @@ HEAD returns full-file headers without reading the body. To check partial reads,
 use `curl -D - -H 'Range: bytes=0-1023' '<attachment-url>' -o /tmp/attachment-part`.
 
 Skill detail reads and file listings resolve symlinked skill directories on
-their owning host. The server opts into `followRootSymlink` for
-`host.read_file_relative` and `host.list_files`; other callers pass `false`.
-Relative skill reads remain confined to the resolved directory and deny dotfiles,
-and listings skip nested symlinks. Linked skills remain read-only in bb.
+their owning host. The server opts into `followRootSymlink` for `host.read_file`
+and `host.list_files`; other callers pass `false`. The server rejects absolute,
+`..`, and dotfile skill paths before reading, the host confines reads to the
+resolved directory, and listings skip nested symlinks. Linked skills remain
+read-only in bb.
 
 ## Prepared Worktree Restarts
 

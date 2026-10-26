@@ -365,6 +365,7 @@ describe("file content routes", () => {
       );
       expect(commands.at(-1)).toEqual({
         type: "host.read_file",
+        followRootSymlink: false,
         path: "/tmp/lease-env/logo.bin",
         rootPath: "/tmp/lease-env",
         ref: "HEAD",

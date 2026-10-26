@@ -63,7 +63,6 @@ const hostCommandWakePolicy = {
   "host.list_branch_options": "work",
   "host.read_file": "work",
   "host.read_file_chunk": "work",
-  "host.read_file_relative": "work",
   "host.write_file": "work",
   "provider.list_models": "work",
   "provider.list_commands": "work",

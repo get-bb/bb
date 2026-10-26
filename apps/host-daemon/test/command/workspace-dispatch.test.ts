@@ -291,11 +291,10 @@ describe("workspace command dispatch", () => {
     const read = (relativePath: string) =>
       dispatchOnlineRpcCommand(
         {
-          type: "host.read_file_relative",
-          followRootSymlink: true,
+          type: "host.read_file",
+          path: path.join(linkedRoot, relativePath),
           rootPath: linkedRoot,
-          path: relativePath,
-          dotfiles: "deny",
+          followRootSymlink: true,
         },
         harness.dispatchOptions(),
         signal,
@@ -313,7 +312,6 @@ describe("workspace command dispatch", () => {
     await expect(read("../outside.md")).rejects.toMatchObject({
       code: "invalid_path",
     });
-    await expect(read(".env")).rejects.toMatchObject({ code: "ENOENT" });
 
     await fs.rm(skillRoot, { recursive: true });
     await expect(read("SKILL.md")).rejects.toMatchObject({ code: "ENOENT" });
@@ -329,6 +327,7 @@ describe("workspace command dispatch", () => {
     const result = await dispatchOnlineRpcCommand(
       {
         type: "host.read_file",
+        followRootSymlink: false,
         path: imagePath,
         rootPath: tempDir,
       },
@@ -343,138 +342,6 @@ describe("workspace command dispatch", () => {
     expect(result.contentEncoding).toBe("base64");
     expect(result.mimeType).toBe("image/png");
     expect(result.sizeBytes).toBe(imageBytes.length);
-  });
-
-  it("covers host.read_file_relative for nested status assets", async () => {
-    const tempDir = await makeTempDir("bb-dispatch-host-read-relative-");
-    const assetDir = path.join(tempDir, "assets");
-    const assetPath = path.join(assetDir, "logo.png");
-    const imageBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
-    await fs.mkdir(assetDir);
-    await fs.writeFile(assetPath, imageBytes);
-
-    const harness = createHarness();
-    const result = await dispatchOnlineRpcCommand(
-      {
-        type: "host.read_file_relative",
-        followRootSymlink: false,
-        rootPath: tempDir,
-        path: "assets/logo.png",
-        dotfiles: "deny",
-      },
-      harness.dispatchOptions(),
-      new AbortController().signal,
-    );
-
-    expect(result.path).toBe("assets/logo.png");
-    expect(result.content).toBe(imageBytes.toString("base64"));
-    expect(result.contentEncoding).toBe("base64");
-    expect(result.mimeType).toBe("image/png");
-    expect(result.sizeBytes).toBe(imageBytes.length);
-  });
-
-  it("rejects host.read_file_relative traversal", async () => {
-    const tempDir = await makeTempDir("bb-dispatch-host-read-relative-dotdot-");
-    const harness = createHarness();
-
-    await expect(
-      dispatchOnlineRpcCommand(
-        {
-          type: "host.read_file_relative",
-          followRootSymlink: false,
-          rootPath: tempDir,
-          path: "../secrets.txt",
-          dotfiles: "deny",
-        },
-        harness.dispatchOptions(),
-        new AbortController().signal,
-      ),
-    ).rejects.toMatchObject({
-      code: "invalid_path",
-      message: "Path must be relative",
-    });
-  });
-
-  it("hides host.read_file_relative dotfiles when dotfiles are denied", async () => {
-    const tempDir = await makeTempDir(
-      "bb-dispatch-host-read-relative-dotfile-",
-    );
-    await fs.writeFile(path.join(tempDir, ".env"), "secret");
-    const harness = createHarness();
-
-    await expect(
-      dispatchOnlineRpcCommand(
-        {
-          type: "host.read_file_relative",
-          followRootSymlink: false,
-          rootPath: tempDir,
-          path: ".env",
-          dotfiles: "deny",
-        },
-        harness.dispatchOptions(),
-        new AbortController().signal,
-      ),
-    ).rejects.toMatchObject({
-      code: "ENOENT",
-      message: expect.stringContaining("Path does not exist"),
-    });
-  });
-
-  it("rejects host.read_file_relative symlink escapes", async () => {
-    const tempDir = await makeTempDir(
-      "bb-dispatch-host-read-relative-symlink-",
-    );
-    const outsidePath = path.join(tempDir, "..", "outside.txt");
-    await fs.writeFile(outsidePath, "outside");
-    await fs.symlink(outsidePath, path.join(tempDir, "outside-link.txt"));
-    const harness = createHarness();
-
-    await expect(
-      dispatchOnlineRpcCommand(
-        {
-          type: "host.read_file_relative",
-          followRootSymlink: false,
-          rootPath: tempDir,
-          path: "outside-link.txt",
-          dotfiles: "deny",
-        },
-        harness.dispatchOptions(),
-        new AbortController().signal,
-      ),
-    ).rejects.toMatchObject({
-      code: "invalid_path",
-      message: expect.stringContaining("escapes read root"),
-    });
-  });
-
-  it("rejects host.read_file_relative when rootPath itself is a symlink", async () => {
-    const tempDir = await makeTempDir(
-      "bb-dispatch-host-read-relative-root-symlink-",
-    );
-    const targetRoot = path.join(tempDir, "target-root");
-    const symlinkRoot = path.join(tempDir, "root-link");
-    await fs.mkdir(targetRoot);
-    await fs.writeFile(path.join(targetRoot, "index.html"), "<p>Status</p>");
-    await fs.symlink(targetRoot, symlinkRoot);
-
-    const harness = createHarness();
-
-    await expect(
-      dispatchOnlineRpcCommand(
-        {
-          type: "host.read_file_relative",
-          followRootSymlink: false,
-          rootPath: symlinkRoot,
-          path: "index.html",
-          dotfiles: "deny",
-        },
-        harness.dispatchOptions(),
-        new AbortController().signal,
-      ),
-    ).rejects.toMatchObject({
-      code: "invalid_path",
-      message: expect.stringContaining("must not be a symlink"),
-    });
   });
 
   it("rejects host.read_file when the resolved path escapes rootPath through a symlink", async () => {
@@ -492,6 +359,7 @@ describe("workspace command dispatch", () => {
       dispatchOnlineRpcCommand(
         {
           type: "host.read_file",
+          followRootSymlink: false,
           path: symlinkPath,
           rootPath: tempDir,
         },
@@ -519,6 +387,7 @@ describe("workspace command dispatch", () => {
       dispatchOnlineRpcCommand(
         {
           type: "host.read_file",
+          followRootSymlink: false,
           path: filePath,
           rootPath: symlinkRoot,
         },
@@ -542,6 +411,7 @@ describe("workspace command dispatch", () => {
       dispatchOnlineRpcCommand(
         {
           type: "host.read_file",
+          followRootSymlink: false,
           path: imagePath,
           rootPath: tempDir,
         },
@@ -565,6 +435,7 @@ describe("workspace command dispatch", () => {
       dispatchOnlineRpcCommand(
         {
           type: "host.read_file",
+          followRootSymlink: false,
           path: filePath,
           rootPath: tempDir,
         },
@@ -587,6 +458,7 @@ describe("workspace command dispatch", () => {
     const result = await dispatchOnlineRpcCommand(
       {
         type: "host.read_file",
+        followRootSymlink: false,
         path: filePath,
         rootPath: tempDir,
       },
@@ -609,6 +481,7 @@ describe("workspace command dispatch", () => {
     const result = await dispatchOnlineRpcCommand(
       {
         type: "host.read_file",
+        followRootSymlink: false,
         path: filePath,
         rootPath: tempDir,
       },

@@ -39,6 +39,7 @@ async function readContainedUtf8File(args: {
 }): Promise<string | null> {
   try {
     const file = await readFileForTransport({
+      followRootSymlink: false,
       resolvedPath: args.filePath,
       resultPath: args.filePath,
       rootPath: args.rootPath,
