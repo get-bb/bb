@@ -186,8 +186,7 @@ Every full timeline response carries `tag`, a hash of the window's whole
 content: rows, every top-level field, and `maxSeq`. Equal tags mean equal
 windows, whatever thread status, settings, or request built them. A client that
 holds a latest window sends `afterTag=<tag>` on its next read. When the server
-still holds the window it served under that tag (the last eight latest windows
-per thread, for the 64 most recent threads), it answers with a delta,
+still holds the window it served under that tag, it answers with a delta,
 `{ maxSeq, tag, delta }`, built against exactly that window; otherwise it
 answers with the full window. `delta` holds:
 
@@ -198,6 +197,11 @@ answers with the full window. `delta` holds:
   window's rows, by position;
 - `fields`: the top-level fields whose value changed, with
   `contextWindowUsage: null` when usage is no longer reported.
+
+The server holds the last eight latest windows per thread for the 16 most
+recently used threads, within 32 MB of window JSON. Over the budget it drops the
+least recently used threads first, then the oldest windows of the current
+thread, keeping its newest. A dropped tag only costs a full window.
 
 `applyThreadTimelineDelta` from `@bb/server-contract` rebuilds the full window,
 or returns `null` when the held window's tag differs from `afterTag` or the

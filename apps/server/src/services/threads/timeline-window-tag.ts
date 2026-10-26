@@ -4,25 +4,45 @@ import type { ThreadTimelineWindow } from "./timeline.js";
 
 const TAG_LENGTH = 22;
 
-const rowHashes = new WeakMap<TimelineRow, string>();
+interface RowDigest {
+  hash: string;
+  jsonLength: number;
+}
 
-export function timelineRowHash(row: TimelineRow): string {
-  const cached = rowHashes.get(row);
+const rowDigests = new WeakMap<TimelineRow, RowDigest>();
+
+function rowDigest(row: TimelineRow): RowDigest {
+  const cached = rowDigests.get(row);
   if (cached !== undefined) {
     return cached;
   }
-  const hash = createHash("sha256")
-    .update(JSON.stringify(row))
-    .digest("base64url");
-  rowHashes.set(row, hash);
-  return hash;
+  const json = JSON.stringify(row);
+  const digest = {
+    hash: createHash("sha256").update(json).digest("base64url"),
+    jsonLength: json.length,
+  };
+  rowDigests.set(row, digest);
+  return digest;
+}
+
+export function timelineRowHash(row: TimelineRow): string {
+  return rowDigest(row).hash;
 }
 
 export function timelineWindowTag(window: ThreadTimelineWindow): string {
   const { rows, ...fields } = window;
   const hash = createHash("sha256").update(JSON.stringify(fields));
   for (const row of rows) {
-    hash.update(timelineRowHash(row));
+    hash.update(rowDigest(row).hash);
   }
   return hash.digest("base64url").slice(0, TAG_LENGTH);
+}
+
+export function timelineWindowJsonLength(window: ThreadTimelineWindow): number {
+  const { rows, ...fields } = window;
+  let length = JSON.stringify(fields).length;
+  for (const row of rows) {
+    length += rowDigest(row).jsonLength + 1;
+  }
+  return length;
 }
