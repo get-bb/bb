@@ -32,7 +32,7 @@ sign-in, if any.
   the getbb.app dashboard. `bb connect --code <code>` is an alias.
 - `--base-url <url>` points sign-in at `https://getbb.app` or
   `https://vibecodethis.site` (staging); a development build also accepts
-  `http://bb.localhost:<port>`. Any other origin is refused. In a source
+  `http://bb.localhost:<port>`. A standalone server operator can additionally trust exact HTTPS account origins with `BB_ACCOUNT_TRUSTED_ORIGINS` in the server process environment, then restart bb. Select one with `--base-url`; adding trust does not change the default. Do not set this from a project, agent request, or the CLI process to authorize a running server. Paths, queries, fragments, credentials and wildcards are refused. In a source
   checkout, `pnpm dev` sets `BB_DEV_CONNECT_BASE_URL` so sign-in uses that
   worktree's local Cloud.
 
