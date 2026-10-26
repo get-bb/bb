@@ -309,3 +309,22 @@ require independent work to begin. Restoring each former prerequisite gate makes
 its test fail. Query ownership coverage also checks late consumers, realtime
 invalidation, reopening, and disabled routes; reverting the mount policy detects
 duplicate fetches.
+
+The same controlled hold was subsequently run against baseline `612383411c`:
+
+| Request                            | Before   | After  |
+| ---------------------------------- | -------- | ------ |
+| New-thread plugin runtime          | 2,616 ms | 106 ms |
+| Existing-thread plugin runtime     | 2,607 ms | 117 ms |
+| New-thread unscoped catalogs       | 2,932 ms | 105 ms |
+| Existing-thread defaults and queue | 2,945 ms | 116 ms |
+
+Baseline holds released at 2,585 ms (new) and 2,584 ms (existing). The plugin
+list already started at 124/123 ms through another consumer on these routes;
+the hook change removes its own config dependency but establishes no measured
+route-level improvement for that request.
+
+Production build sizes (KiB Brotli) moved from 378.2 to 381.0 for boot,
+165.2 to 162.1 for PluginFrontend beyond boot, 452.7 to 450.0 for ThreadPage,
+and 223.0 to 219.8 for NewThreadPage. Earlier query imports shift approximately
+2.8 KiB into boot. Closure sizes overlap and must not be added together as savings.
