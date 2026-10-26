@@ -11,3 +11,9 @@ export function nodeNetworkArgs(env: NodeJS.ProcessEnv): string[] {
     )
     .map(([flag]) => flag);
 }
+
+export function inheritedNodeNetworkArgs(
+  execArgv: readonly string[],
+): string[] {
+  return execArgv.filter((arg) => Object.hasOwn(NODE_NETWORK_FLAGS, arg));
+}

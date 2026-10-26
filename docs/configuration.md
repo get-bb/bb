@@ -30,7 +30,8 @@ takes precedence. In-place progress updates require a stdout TTY.
 ## Outbound proxies and trusted certificates
 
 The packaged server and daemon launchers start bb's own Node processes with
-`--use-system-ca` and `--use-env-proxy`, and bb's forked workers inherit them.
+`--use-system-ca` and `--use-env-proxy`, and bb's forked workers and provider
+bridge workers inherit them.
 The flags are not exported as environment variables, so terminals, provider
 CLIs, and agent shells keep the Node networking defaults of the user's
 environment. `--use-system-ca` adds OS-managed certificate authorities to Node's
