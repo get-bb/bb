@@ -206,7 +206,11 @@ const hasSubscriptionTargets = (value: {
   targets?: RealtimeSubscriptionTarget[];
 }) => (value.target !== undefined) !== (value.targets !== undefined);
 const subscribeMessageSchema = z
-  .object({ type: z.literal("subscribe"), ...subscriptionFields })
+  .object({
+    type: z.literal("subscribe"),
+    ...subscriptionFields,
+    timelineTags: z.record(z.string(), z.string().min(1).nullable()).optional(),
+  })
   .refine(hasSubscriptionTargets);
 const unsubscribeMessageSchema = z
   .object({ type: z.literal("unsubscribe"), ...subscriptionFields })

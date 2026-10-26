@@ -72,6 +72,7 @@ import { clearThreadTimelineUnseenEvents } from "../cache-owners/thread-timeline
 import {
   isCachedThreadTimelinePushEnabled,
   resolveThreadTimelineSegmentLimit,
+  syncThreadTimelineSubscriptionTag,
 } from "../cache-owners/thread-timeline-push-owner";
 import { markStreamTrace } from "@/lib/stream-trace";
 import { THREAD_OPEN_CACHE_GC_MS } from "../cache-owners/thread-open-cache-owner";
@@ -895,6 +896,7 @@ export async function fetchThreadTimeline({
   const timeline =
     pushed !== undefined && pushed.maxSeq > merged.maxSeq ? pushed : merged;
   clearThreadTimelineUnseenEvents(queryClient, threadId, timeline.maxSeq);
+  syncThreadTimelineSubscriptionTag(queryClient, threadId, timeline.tag);
   markStreamTrace("bb:timeline-applied", {
     threadId,
     maxSeq: timeline.maxSeq,

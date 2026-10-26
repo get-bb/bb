@@ -10,6 +10,7 @@ import {
   type ThreadTimelineResponse,
 } from "@bb/server-contract";
 import { markStreamTrace } from "@/lib/stream-trace";
+import { wsManager } from "@/lib/ws";
 import {
   systemConfigQueryKey,
   threadTimelineQueryKey,
@@ -35,6 +36,25 @@ export function isCachedThreadTimelinePushEnabled(
 ): boolean {
   return isThreadTimelinePushEnabled(
     queryClient.getQueryData<SystemConfigResponse>(systemConfigQueryKey()),
+  );
+}
+
+export function syncThreadTimelineSubscriptionTag(
+  queryClient: QueryClient,
+  threadId: string,
+  tag: string,
+): void {
+  if (!isCachedThreadTimelinePushEnabled(queryClient)) {
+    return;
+  }
+  wsManager.syncThreadTimelineTag(
+    {
+      kind: "thread-timeline",
+      threadId,
+      segmentLimit: resolveThreadTimelineSegmentLimit() ?? null,
+      deferContent: true,
+    },
+    tag,
   );
 }
 

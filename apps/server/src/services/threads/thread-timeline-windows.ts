@@ -15,6 +15,7 @@ import {
   type ThreadTimelineSignal,
 } from "@bb/server-contract";
 import type { AppDeps } from "../../types.js";
+import type { ThreadTimelineSubscriber } from "../../ws/hub.js";
 import { resolveProviderPlanCommand } from "../providers/provider-plan-command.js";
 import { observeTimelinePushTrace } from "../system/turn-trace.js";
 import {
@@ -51,6 +52,11 @@ export interface ThreadTimelineWindowRequest {
 }
 
 const MAX_PUSH_PAUSE_MS = 1_000;
+
+interface TimelinePush {
+  signal: ThreadTimelineSignal;
+  subscribers: ThreadTimelineSubscriber[];
+}
 
 interface ThreadPushSchedule {
   nextAllowedAt: number;
@@ -178,11 +184,17 @@ export function createThreadTimelineWindows(
   function pushTarget(
     thread: Thread,
     target: ThreadTimelineSubscriptionTarget,
-  ): ThreadTimelineSignal | null {
+  ): TimelinePush[] {
     const segmentLimit =
       target.segmentLimit ?? THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT;
     if (segmentLimit > THREAD_TIMELINE_SEGMENT_LIMIT_MAX) {
-      return null;
+      return [];
+    }
+    const subscribers = deps.hub
+      .listThreadTimelineSubscribers(target)
+      .filter(({ baseline }) => baseline.kind !== "pending");
+    if (subscribers.length === 0) {
+      return [];
     }
     const request: ThreadTimelineWindowRequest = {
       deferContent: target.deferContent,
@@ -192,23 +204,52 @@ export function createThreadTimelineWindows(
     };
     const windowKey = latestWindowKey(request, segmentLimit);
     const response = buildWindow(thread, request);
-    const baseline =
-      lastPushedByTarget.get(target) ??
-      servedWindows.latest(thread.id, windowKey);
-    lastPushedByTarget.set(target, response);
-    if (baseline?.tag === response.tag) {
-      return null;
+    const hasLegacySubscribers = subscribers.some(
+      ({ baseline }) => baseline.kind === "legacy",
+    );
+    const legacyBaseline = hasLegacySubscribers
+      ? (lastPushedByTarget.get(target) ??
+        servedWindows.latest(thread.id, windowKey))
+      : undefined;
+    if (hasLegacySubscribers) {
+      lastPushedByTarget.set(target, response);
+    }
+    const groups = new Map<
+      string | null,
+      {
+        baseline: ThreadTimelineResponse | undefined;
+        subscribers: ThreadTimelineSubscriber[];
+      }
+    >();
+    for (const subscriber of subscribers) {
+      const baseline =
+        subscriber.baseline.kind === "tag"
+          ? servedWindows.get(thread.id, subscriber.baseline.tag)
+          : legacyBaseline;
+      if (baseline?.tag === response.tag) {
+        continue;
+      }
+      const groupKey = baseline?.tag ?? null;
+      const group = groups.get(groupKey) ?? { baseline, subscribers: [] };
+      group.subscribers.push(subscriber);
+      groups.set(groupKey, group);
+    }
+    if (groups.size === 0) {
+      return [];
     }
     servedWindows.set(thread.id, windowKey, response);
-    return {
-      type: "thread-timeline",
-      target,
-      afterSequence: null,
-      timeline:
-        baseline === undefined
-          ? response
-          : computeThreadTimelineDelta(baseline, response, timelineRowHash),
-    };
+    return [...groups.values()].map(({ baseline, subscribers }) => ({
+      subscribers,
+      signal: {
+        type: "thread-timeline",
+        target,
+        afterSequence: null,
+        timeline:
+          baseline === undefined
+            ? response
+            : computeThreadTimelineDelta(baseline, response, timelineRowHash),
+      },
+    }));
   }
 
   function pushThread(threadId: string): void {
@@ -224,21 +265,20 @@ export function createThreadTimelineWindows(
     }
     for (const target of targets) {
       const startedAt = performance.now();
-      const signal = pushTarget(thread, target);
-      if (signal === null) {
-        continue;
-      }
+      const pushes = pushTarget(thread, target);
       const builtAt = performance.now();
-      const bytes = deps.hub.sendThreadTimelineSignal(signal);
-      observeTimelinePushTrace(deps, {
-        builtAt,
-        bytes,
-        maxSeq: signal.timeline.maxSeq,
-        sentAt: performance.now(),
-        startedAt,
-        threadId,
-        withDelta: isThreadTimelineDelta(signal.timeline),
-      });
+      for (const { signal, subscribers } of pushes) {
+        const bytes = deps.hub.sendThreadTimelineSignal(subscribers, signal);
+        observeTimelinePushTrace(deps, {
+          builtAt,
+          bytes,
+          maxSeq: signal.timeline.maxSeq,
+          sentAt: performance.now(),
+          startedAt,
+          threadId,
+          withDelta: isThreadTimelineDelta(signal.timeline),
+        });
+      }
     }
   }
 
@@ -279,6 +319,10 @@ export function createThreadTimelineWindows(
       Math.max(0, schedule.nextAllowedAt - performance.now()),
     );
   }
+
+  deps.hub.onThreadTimelineTag((target) => {
+    schedulePush(target.threadId);
+  });
 
   deps.hub.onChangedMessage((message) => {
     if (message.entity !== "thread") {

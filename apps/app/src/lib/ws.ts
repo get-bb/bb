@@ -1,5 +1,8 @@
 import ReconnectingWebSocket from "partysocket/ws";
-import { realtimeSubscriptionTargetSchema } from "@bb/domain";
+import {
+  realtimeSubscriptionTargetSchema,
+  type ThreadTimelineSubscriptionTarget,
+} from "@bb/domain";
 import {
   changedMessageLenientSchema,
   pluginSignalLenientSchema,
@@ -83,6 +86,7 @@ interface ActiveSubscription {
 export class WebSocketManager {
   private socket: ReconnectingWebSocket | null = null;
   private subscriptions = new Map<string, ActiveSubscription>();
+  private readonly timelineTags = new Map<string, string>();
   private callbacks = new Set<ChangeCallback>();
   private threadOpenCallbacks = new Set<ThreadOpenCallback>();
   private threadPaneActionCallbacks = new Set<ThreadPaneActionCallback>();
@@ -137,7 +141,12 @@ export class WebSocketManager {
       if (this.watchesReleased)
         this.sendMessage({ type: "visibility", visible: false });
       const targets = this.activeSubscriptionTargets();
-      if (targets.length > 0) this.sendMessage({ type: "subscribe", targets });
+      if (targets.length > 0)
+        this.sendMessage({
+          type: "subscribe",
+          targets,
+          ...this.timelineTagsFor(targets),
+        });
       const event: WebSocketConnectedEvent = reconnected
         ? { reconnected, disconnectedAt: disconnectedAt ?? Date.now() }
         : { reconnected };
@@ -390,6 +399,13 @@ export class WebSocketManager {
 
     const threadTimeline = threadTimelineSignalLenientSchema.safeParse(parsed);
     if (threadTimeline.success) {
+      const { target, timeline } = threadTimeline.data;
+      if (timeline !== null) {
+        this.timelineTags.set(
+          realtimeSubscriptionTargetKey(target),
+          timeline.tag,
+        );
+      }
       for (const cb of this.threadTimelineCallbacks) {
         cb(threadTimeline.data);
       }
@@ -476,8 +492,50 @@ export class WebSocketManager {
 
     this.subscriptions.set(key, { count: 1, target });
     if (this.socket?.readyState === WebSocket.OPEN) {
-      this.sendMessage({ type: "subscribe", target });
+      this.sendMessage({
+        type: "subscribe",
+        target,
+        ...this.timelineTagsFor([target]),
+      });
     }
+  }
+
+  syncThreadTimelineTag(
+    target: ThreadTimelineSubscriptionTarget,
+    tag: string,
+  ): void {
+    const key = realtimeSubscriptionTargetKey(target);
+    if (this.timelineTags.get(key) === tag) {
+      return;
+    }
+    this.timelineTags.set(key, tag);
+    const subscription = this.subscriptions.get(key);
+    if (
+      subscription !== undefined &&
+      subscription.count > 0 &&
+      this.socket?.readyState === WebSocket.OPEN
+    ) {
+      this.sendMessage({
+        type: "subscribe",
+        target,
+        timelineTags: { [key]: tag },
+      });
+    }
+  }
+
+  private timelineTagsFor(targets: readonly RealtimeSubscriptionTarget[]): {
+    timelineTags?: Record<string, string | null>;
+  } {
+    const keys = targets
+      .filter((target) => target.kind === "thread-timeline")
+      .map(realtimeSubscriptionTargetKey);
+    return keys.length === 0
+      ? {}
+      : {
+          timelineTags: Object.fromEntries(
+            keys.map((key) => [key, this.timelineTags.get(key) ?? null]),
+          ),
+        };
   }
 
   unsubscribe(target: RealtimeSubscriptionTarget): void {
@@ -495,6 +553,7 @@ export class WebSocketManager {
         return;
       }
       this.subscriptions.delete(key);
+      this.timelineTags.delete(key);
       if (this.socket?.readyState === WebSocket.OPEN) {
         this.sendMessage({ type: "unsubscribe", target });
       }

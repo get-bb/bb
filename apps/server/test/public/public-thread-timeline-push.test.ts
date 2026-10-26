@@ -10,6 +10,8 @@ import {
   type ThreadTimelineResponse,
   type ThreadTimelineSignal,
 } from "@bb/server-contract";
+import { realtimeSubscriptionTargetKey } from "@bb/domain";
+import { onClientSocketMessage } from "../../src/ws/client-protocol.js";
 import { readJson } from "../helpers/json.js";
 import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
 import {
@@ -439,6 +441,228 @@ describe("thread-timeline realtime push", () => {
       const applied = applySignal(client, rewritten!);
       expect(applied).toEqual(await freshTimeline(harness, thread.id));
       expect(JSON.stringify(applied!.rows)).toContain("rewritten");
+    });
+  });
+});
+
+describe("thread-timeline pushes for tag-aware subscriptions", () => {
+  function seedRunningThread(harness: TestAppHarness) {
+    const { environment, thread } = seedThreadFixture(harness, {
+      thread: { status: "active" },
+    });
+    let sequence = 0;
+    const append = () => {
+      sequence += 1;
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "p1",
+        scope: turnScope("turn-1"),
+        sequence,
+        type: sequence === 1 ? "turn/started" : "item/agentMessage/delta",
+        data:
+          sequence === 1 ? {} : { itemId: "a", delta: `line ${sequence}\n` },
+      });
+      harness.deps.hub.notifyThread(thread.id, ["events-appended"]);
+    };
+    const target: ThreadTimelineSubscriptionTarget = {
+      kind: "thread-timeline",
+      threadId: thread.id,
+      segmentLimit: null,
+      deferContent: false,
+    };
+    return { append, target, thread };
+  }
+
+  function subscribe(
+    harness: TestAppHarness,
+    socket: ReturnType<typeof createMockHubSocket>,
+    target: ThreadTimelineSubscriptionTarget,
+    tag: string | null,
+  ) {
+    onClientSocketMessage(
+      harness.deps.hub,
+      socket,
+      JSON.stringify({
+        type: "subscribe",
+        target,
+        timelineTags: { [realtimeSubscriptionTargetKey(target)]: tag },
+      }),
+    );
+  }
+
+  it("sends nothing until the GET's tag arrives, then a delta for what changed after the GET", async () => {
+    await withTestHarness(async (harness) => {
+      const { append, target, thread } = seedRunningThread(harness);
+      append();
+      const socket = createMockHubSocket();
+      subscribe(harness, socket, target, null);
+      append();
+      await settlePushes();
+      expect(timelineSignals(socket.messages.splice(0))).toEqual([]);
+
+      const fetched = await freshTimeline(harness, thread.id);
+      expect(fetched.maxSeq).toBe(2);
+      append();
+      await settlePushes();
+      expect(timelineSignals(socket.messages.splice(0))).toEqual([]);
+
+      subscribe(harness, socket, target, fetched.tag);
+      await settlePushes();
+      const [pushed] = timelineSignals(socket.messages.splice(0));
+      expect(pushed?.timeline).toMatchObject({
+        maxSeq: 3,
+        delta: { afterTag: fetched.tag },
+      });
+      let client = applySignal(fetched, pushed!);
+      expect(client).toEqual(await freshTimeline(harness, thread.id));
+
+      append();
+      await settlePushes();
+      const signals = timelineSignals(socket.messages.splice(0));
+      expect(signals).toHaveLength(1);
+      expect(signals[0]!.timeline).toMatchObject({
+        delta: { afterTag: client!.tag },
+      });
+      client = applySignal(client, signals[0]!);
+      expect(client).toEqual(await freshTimeline(harness, thread.id));
+    });
+  });
+
+  it("pushes no window when the GET already holds the latest change", async () => {
+    await withTestHarness(async (harness) => {
+      const { append, target, thread } = seedRunningThread(harness);
+      append();
+      const socket = createMockHubSocket();
+      subscribe(harness, socket, target, null);
+      append();
+      await settlePushes();
+      const fetched = await freshTimeline(harness, thread.id);
+      subscribe(harness, socket, target, fetched.tag);
+      await settlePushes();
+      expect(timelineSignals(socket.messages)).toEqual([]);
+    });
+  });
+
+  it("pushes a delta right away to a subscriber holding a stale tag", async () => {
+    await withTestHarness(async (harness) => {
+      const { append, target, thread } = seedRunningThread(harness);
+      append();
+      const held = await freshTimeline(harness, thread.id);
+      append();
+      append();
+      const socket = createMockHubSocket();
+      subscribe(harness, socket, target, held.tag);
+      await settlePushes();
+      const [pushed] = timelineSignals(socket.messages.splice(0));
+      expect(pushed?.timeline).toMatchObject({
+        maxSeq: 3,
+        delta: { afterTag: held.tag },
+      });
+      expect(applySignal(held, pushed!)).toEqual(
+        await freshTimeline(harness, thread.id),
+      );
+    });
+  });
+
+  it("pushes the full window for a tag the server no longer holds", async () => {
+    await withTestHarness(async (harness) => {
+      const { append, target, thread } = seedRunningThread(harness);
+      append();
+      const socket = createMockHubSocket();
+      subscribe(harness, socket, target, "evicted-tag");
+      await settlePushes();
+      const [pushed] = timelineSignals(socket.messages.splice(0));
+      expect(isThreadTimelineDelta(pushed!.timeline)).toBe(false);
+      expect(applySignal(null, pushed!)).toEqual(
+        await freshTimeline(harness, thread.id),
+      );
+    });
+  });
+
+  it("shares one delta among subscribers holding the same window, legacy included", async () => {
+    await withTestHarness(async (harness) => {
+      const { append, target, thread } = seedRunningThread(harness);
+      append();
+      const older = await freshTimeline(harness, thread.id);
+      append();
+      const newer = await freshTimeline(harness, thread.id);
+      const legacySocket = createMockHubSocket();
+      harness.deps.hub.subscribe(legacySocket, { ...target });
+      const olderSocket = createMockHubSocket();
+      const newerSocket = createMockHubSocket();
+      subscribe(harness, olderSocket, target, older.tag);
+      subscribe(harness, newerSocket, target, newer.tag);
+      await settlePushes();
+      for (const socket of [legacySocket, olderSocket, newerSocket]) {
+        socket.messages.splice(0);
+      }
+      const caughtUp = await freshTimeline(harness, thread.id);
+
+      append();
+      await settlePushes();
+      const fresh = await freshTimeline(harness, thread.id);
+      const [olderPush] = timelineSignals(olderSocket.messages);
+      const [newerPush] = timelineSignals(newerSocket.messages);
+      const [legacyPush] = timelineSignals(legacySocket.messages);
+      expect(olderPush!.timeline).toMatchObject({
+        delta: { afterTag: caughtUp.tag },
+      });
+      expect(newerPush).toEqual(olderPush);
+      expect(applySignal(caughtUp, olderPush!)).toEqual(fresh);
+      expect(applySignal(newer, legacyPush!)).toEqual(fresh);
+    });
+  });
+
+  it("gives subscribers holding different tags their own deltas in one push", async () => {
+    await withTestHarness(async (harness) => {
+      const { append, target, thread } = seedRunningThread(harness);
+      append();
+      const older = await freshTimeline(harness, thread.id);
+      append();
+      const newer = await freshTimeline(harness, thread.id);
+      const olderSocket = createMockHubSocket();
+      const newerSocket = createMockHubSocket();
+      harness.deps.hub.subscribe(olderSocket, target, older.tag);
+      harness.deps.hub.subscribe(newerSocket, { ...target }, newer.tag);
+
+      append();
+      await settlePushes();
+      const fresh = await freshTimeline(harness, thread.id);
+      const [olderPush] = timelineSignals(olderSocket.messages);
+      const [newerPush] = timelineSignals(newerSocket.messages);
+      expect(olderPush!.timeline).toMatchObject({
+        delta: { afterTag: older.tag },
+      });
+      expect(newerPush!.timeline).toMatchObject({
+        delta: { afterTag: newer.tag },
+      });
+      expect(applySignal(older, olderPush!)).toEqual(fresh);
+      expect(applySignal(newer, newerPush!)).toEqual(fresh);
+    });
+  });
+
+  it("resumes a hidden subscriber with a delta against the tag it held", async () => {
+    await withTestHarness(async (harness) => {
+      const { append, target, thread } = seedRunningThread(harness);
+      append();
+      const held = await freshTimeline(harness, thread.id);
+      const socket = createMockHubSocket();
+      subscribe(harness, socket, target, held.tag);
+      harness.deps.hub.setClientVisible(socket, false);
+      append();
+      await settlePushes();
+      expect(timelineSignals(socket.messages.splice(0))).toEqual([]);
+      harness.deps.hub.setClientVisible(socket, true);
+      append();
+      await settlePushes();
+      const [resumed] = timelineSignals(socket.messages.splice(0));
+      expect(resumed?.timeline).toMatchObject({
+        delta: { afterTag: held.tag },
+      });
+      expect(applySignal(held, resumed!)).toEqual(
+        await freshTimeline(harness, thread.id),
+      );
     });
   });
 });

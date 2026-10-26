@@ -11,6 +11,7 @@ import {
   type ThreadChangeKind,
   type ThreadChangeMetadata,
   type ThreadEventType,
+  type ThreadTimelineSubscriptionTarget,
 } from "@bb/domain";
 import type { DbNotifier } from "@bb/db";
 import type {
@@ -66,6 +67,19 @@ export type ServerChangedMessage =
   | Extract<ChangedMessage, { entity: "system" | "tags" | "plugin" }>;
 
 type ChangedMessageListener = (message: ServerChangedMessage) => void;
+type ThreadTimelineTagListener = (
+  target: ThreadTimelineSubscriptionTarget,
+) => void;
+
+export type ThreadTimelineSubscriberBaseline =
+  | { kind: "legacy" }
+  | { kind: "pending" }
+  | { kind: "tag"; tag: string };
+
+export interface ThreadTimelineSubscriber {
+  baseline: ThreadTimelineSubscriberBaseline;
+  socket: HubSocket;
+}
 
 interface PendingThreadListEventsAppended {
   timelineSequence: number | undefined;
@@ -244,6 +258,11 @@ export class NotificationHub implements DbNotifier {
   >();
   private readonly clientSocketsByKey = new Map<string, Set<HubSocket>>();
   private readonly hiddenClients = new Set<HubSocket>();
+  private readonly timelineTagsBySocket = new Map<
+    HubSocket,
+    Map<string, string | null>
+  >();
+  private readonly timelineTagListeners = new Set<ThreadTimelineTagListener>();
   private readonly watchedTargets = new WatchedTargetRegistry();
   private readonly daemonSessions = new Map<
     string,
@@ -392,6 +411,7 @@ export class NotificationHub implements DbNotifier {
 
     this.clientKeysBySocket.delete(socket);
     this.hiddenClients.delete(socket);
+    this.timelineTagsBySocket.delete(socket);
     this.watchedTargets.update([], stoppedKeys);
   }
 
@@ -619,22 +639,38 @@ export class NotificationHub implements DbNotifier {
     this.terminalSocketSendQueues.delete(socket);
   }
 
-  subscribe(socket: HubSocket, target: RealtimeSubscriptionTarget): void {
+  subscribe(
+    socket: HubSocket,
+    target: RealtimeSubscriptionTarget,
+    timelineTag?: string | null,
+  ): void {
     this.registerClient(socket);
     const key = subscriptionKey(target);
     this.clientKeysBySocket.get(socket)?.set(key, target);
+    if (target.kind === "thread-timeline" && timelineTag !== undefined) {
+      const tags = this.timelineTagsBySocket.get(socket) ?? new Map();
+      tags.set(key, timelineTag);
+      this.timelineTagsBySocket.set(socket, tags);
+    }
 
     const sockets = this.clientSocketsByKey.get(key) ?? new Set<HubSocket>();
     sockets.add(socket);
     this.clientSocketsByKey.set(key, sockets);
-    if (!this.hiddenClients.has(socket)) {
-      this.watchedTargets.update([{ key, target: { ...target } }], []);
+    if (this.hiddenClients.has(socket)) {
+      return;
+    }
+    this.watchedTargets.update([{ key, target: { ...target } }], []);
+    if (target.kind === "thread-timeline" && typeof timelineTag === "string") {
+      for (const listener of [...this.timelineTagListeners]) {
+        listener(target);
+      }
     }
   }
 
   unsubscribe(socket: HubSocket, target: RealtimeSubscriptionTarget): void {
     const key = subscriptionKey(target);
     this.clientKeysBySocket.get(socket)?.delete(key);
+    this.timelineTagsBySocket.get(socket)?.delete(key);
 
     const sockets = this.clientSocketsByKey.get(key);
     if (!sockets) {
@@ -649,13 +685,45 @@ export class NotificationHub implements DbNotifier {
     }
   }
 
-  sendThreadTimelineSignal(signal: ThreadTimelineSignal): number {
-    const sockets = this.clientSocketsByKey.get(subscriptionKey(signal.target));
-    if (!sockets) {
-      return 0;
-    }
+  onThreadTimelineTag(listener: ThreadTimelineTagListener): () => void {
+    this.timelineTagListeners.add(listener);
+    return () => {
+      this.timelineTagListeners.delete(listener);
+    };
+  }
+
+  listThreadTimelineSubscribers(
+    target: ThreadTimelineSubscriptionTarget,
+  ): ThreadTimelineSubscriber[] {
+    const key = subscriptionKey(target);
+    return [...(this.clientSocketsByKey.get(key) ?? [])].map((socket) => {
+      const tags = this.timelineTagsBySocket.get(socket);
+      if (tags === undefined || !tags.has(key)) {
+        return { baseline: { kind: "legacy" }, socket };
+      }
+      const tag = tags.get(key) ?? null;
+      return {
+        baseline: tag === null ? { kind: "pending" } : { kind: "tag", tag },
+        socket,
+      };
+    });
+  }
+
+  sendThreadTimelineSignal(
+    subscribers: readonly ThreadTimelineSubscriber[],
+    signal: ThreadTimelineSignal,
+  ): number {
+    const key = subscriptionKey(signal.target);
     const payload = JSON.stringify(signal);
-    this.notifyClientsByKeySet(sockets, payload);
+    for (const { baseline, socket } of subscribers) {
+      if (baseline.kind !== "legacy") {
+        this.timelineTagsBySocket.get(socket)?.set(key, signal.timeline.tag);
+      }
+    }
+    this.notifyClientsByKeySet(
+      subscribers.map(({ socket }) => socket),
+      payload,
+    );
     return payload.length;
   }
 

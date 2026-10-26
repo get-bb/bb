@@ -198,6 +198,63 @@ describe("client websocket protocol", () => {
     ]);
   });
 
+  it("records timeline tags from subscribe messages and keeps untagged subscriptions legacy", () => {
+    const hub = new NotificationHub();
+    const target = {
+      kind: "thread-timeline",
+      threadId: "thread-1",
+      segmentLimit: null,
+      deferContent: true,
+    } as const;
+    const key = "thread-timeline:thread-1:default:deferred";
+    const legacy = createMockHubSocket();
+    const pending = createMockHubSocket();
+    const tagged = createMockHubSocket();
+    const tagEvents: unknown[] = [];
+    hub.onThreadTimelineTag((changed) => tagEvents.push(changed));
+
+    onClientSocketMessage(
+      hub,
+      legacy,
+      JSON.stringify({ type: "subscribe", target }),
+    );
+    onClientSocketMessage(
+      hub,
+      pending,
+      JSON.stringify({
+        type: "subscribe",
+        target,
+        timelineTags: { [key]: null },
+      }),
+    );
+    onClientSocketMessage(
+      hub,
+      tagged,
+      JSON.stringify({ type: "subscribe", target, timelineTags: {} }),
+    );
+    onClientSocketMessage(
+      hub,
+      tagged,
+      JSON.stringify({
+        type: "subscribe",
+        targets: [target],
+        timelineTags: { [key]: "tag-1" },
+      }),
+    );
+
+    expect(
+      hub.listThreadTimelineSubscribers(target).map(({ baseline }) => baseline),
+    ).toEqual([
+      { kind: "legacy" },
+      { kind: "pending" },
+      { kind: "tag", tag: "tag-1" },
+    ]);
+    expect(tagEvents).toEqual([target]);
+    expect(
+      [legacy, pending, tagged].flatMap((socket) => socket.closed),
+    ).toEqual([]);
+  });
+
   it("answers a ping with a pong on the same socket only", () => {
     const hub = new NotificationHub();
     const socket = createMockHubSocket();

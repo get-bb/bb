@@ -11,6 +11,7 @@ import type {
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { useThreadTimelineRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import { sdk } from "@/lib/sdk";
+import { wsManager } from "@/lib/ws";
 import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { makeThreadTimelineResponse } from "@/test/fixtures/thread-responses";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -245,6 +246,23 @@ describe("pushed thread timeline", () => {
         expect.objectContaining({ afterTag: "timeline-5" }),
       );
     });
+  });
+
+  it("reports each fetched window's tag to the timeline subscription", async () => {
+    const sync = vi.spyOn(wsManager, "syncThreadTimelineTag");
+    const { queryClient, wrapper } = seedTimeline(7);
+    vi.mocked(sdk.threads.timeline).mockResolvedValueOnce({
+      maxSeq: 8,
+      tag: "timeline-8",
+      delta: { afterTag: "timeline-7", upsertRows: [], fields: {} },
+    });
+    renderHook(() => useThreadTimeline("thread-1", { staleTime: Infinity }), {
+      wrapper,
+    });
+    await queryClient.refetchQueries({
+      queryKey: threadTimelineQueryKey("thread-1"),
+    });
+    expect(sync).toHaveBeenLastCalledWith(target, "timeline-8");
   });
 
   it("keeps a pushed window that lands while an older fetch is in flight", async () => {

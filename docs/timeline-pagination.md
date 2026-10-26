@@ -206,14 +206,34 @@ client keeps optimistic rows after the server's rows, so ranges still address
 the base window. `sdk.threads.timeline` returns a full window unless it is
 given `afterTag`.
 
-With the `timelinePush` experiment, the server pushes the same full window or
-delta over the WebSocket after events are appended. The baseline is the window
-last pushed to that subscription or, for a new subscription, the window most
-recently served for the same request. Every subscriber of a window receives the
-same signal: a subscriber whose tag matches `afterTag` applies it, and any other
-subscriber with an older `maxSeq` refetches with its own tag, which is usually
-a small HTTP delta. This keeps clients exact when windows built while a thread
-was idle and while it was active share a `maxSeq`.
+With the `timelinePush` experiment, the server pushes a full window or a delta
+over the WebSocket after events are appended. A `subscribe` message tells the
+server which window the client holds: `timelineTags` maps each
+`thread-timeline` target key to the tag the client holds, or to `null` before
+its first read returns. The tag is not part of the target, so updating it does
+not start a new watch. The app subscribes with `null`, reads the window over
+HTTP, then sends the response's tag; it resends its current tag whenever a read
+changes it, and with every subscription after a reconnect. The server tracks
+the tag per socket and moves it to each window it pushes there.
+
+- A subscriber holding a tag gets a delta built against that tag's window, and
+  receiving a tag schedules a push, so anything that changed after the client's
+  read is delivered. A tag the server no longer holds gets the full window.
+- A subscriber whose tag is `null` gets no push. Its read is built and recorded
+  in one synchronous step, so a change either lands in that read or comes after
+  it, and the tag that follows brings a delta for it.
+- A subscription without `timelineTags`, from a client from before this
+  protocol, gets the earlier behaviour: a delta against the window last pushed
+  to that subscription or, for a new subscription, the window most recently
+  served for the same request, which the client applies only if its tag
+  matches `afterTag`.
+
+Subscribers that hold the same window share one signal; each distinct baseline
+gets its own. A client applies a delta only if its tag matches `afterTag` and
+otherwise refetches with its own tag, which is usually a small HTTP delta. This
+keeps clients exact when windows built while a thread was idle and while it was
+active share a `maxSeq`. An older server ignores `timelineTags` and pushes as
+before.
 
 Pushes keep `afterSequence: null` so that a client from before tags treats a
 pushed delta as unusable and refetches. That older client sends
