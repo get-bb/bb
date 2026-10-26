@@ -35,6 +35,7 @@ describe("runtime output boundary", () => {
       home,
       endpoint,
       "1.0.0-test",
+      new Set(),
     );
     expect(result.images).toEqual([
       {
@@ -81,6 +82,7 @@ describe("runtime output boundary", () => {
       "/tmp/isolated",
       endpoint,
       "1.0.0-test",
+      new Set(),
     );
     expect(result.text).not.toContain("private-secret");
     expect(result.text).not.toContain("/tmp/isolated");
@@ -100,6 +102,7 @@ describe("runtime output boundary", () => {
       "/tmp/isolated",
       endpoint,
       "1.0.0-test",
+      new Set(),
     );
     expect(result.text).not.toContain(token);
     expect(result.text).not.toContain(path);
@@ -123,6 +126,7 @@ describe("runtime output boundary", () => {
       "/tmp/isolated",
       endpoint,
       "1.0.0-test",
+      new Set(),
     );
     expect(result.exitCode).toBe(1);
     expect(result.text).toContain("WebSocketError");
@@ -137,10 +141,17 @@ describe("runtime output boundary", () => {
         "/tmp/home",
         endpoint,
         "1.0.0-test",
+        new Set(),
       ),
     ).rejects.toThrow("completion");
     await expect(
-      decodeOutput(frames(done, done), "/tmp/home", endpoint, "1.0.0-test"),
+      decodeOutput(
+        frames(done, done),
+        "/tmp/home",
+        endpoint,
+        "1.0.0-test",
+        new Set(),
+      ),
     ).rejects.toThrow("after completion");
     await expect(
       decodeOutput(
@@ -148,6 +159,7 @@ describe("runtime output boundary", () => {
         "/tmp/home",
         endpoint,
         "1.0.0-test",
+        new Set(),
       ),
     ).rejects.toThrow();
   });
@@ -174,6 +186,7 @@ describe("runtime output boundary", () => {
         home,
         endpoint,
         "1.0.0-test",
+        new Set(),
       ),
     ).rejects.toThrow("escaped");
   });

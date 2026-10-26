@@ -3634,6 +3634,9 @@ importers:
       '@bb/shared-ui':
         specifier: workspace:*
         version: link:../../packages/shared-ui
+      tldts:
+        specifier: ^7.0.27
+        version: 7.0.27
       zod:
         specifier: 4.6.5
         version: 4.6.5

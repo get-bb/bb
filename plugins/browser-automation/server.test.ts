@@ -956,3 +956,144 @@ describe("server live preview", () => {
     }
   });
 });
+
+describe("private fill", () => {
+  const planted = "planted-Secret-91c4";
+  const asPlugin = {
+    experimental_caller: { kind: "plugin", pluginId: "onepassword-fill" },
+  } as const;
+  async function local(h: Awaited<ReturnType<typeof setup>>) {
+    return rpcContract.open.output.parse(
+      await h.harness.behavior.callRpc("open", {
+        threadId: "thread-test",
+        selection: { backend: "local", hostId: "local-host" },
+      }),
+    );
+  }
+  const fill = (sessionId: string) => ({
+    threadId: "thread-test",
+    sessionId,
+    selector: "#password",
+    value: planted,
+    expectedOrigin: "https://accounts.example.com",
+  });
+  async function observed(h: Awaited<ReturnType<typeof setup>>) {
+    const stored = await Promise.all(
+      (await h.bb.storage.kv.list("")).map((key) => h.bb.storage.kv.get(key)),
+    );
+    return JSON.stringify([h.harness.inspection.logEntries, stored]);
+  }
+
+  it("refuses non-plugin callers and forwards plugin calls to the session host", async () => {
+    const h = await setup();
+    try {
+      const session = await local(h);
+      h.worker.mockImplementation(async ({ method }) =>
+        method === "fill"
+          ? { code: "ok" }
+          : method === "prepare"
+            ? { status: "ready", version: "1.0.0-test", source: "release" }
+            : null,
+      );
+      expect(
+        await h.harness.behavior.callRpc("experimental_fill", fill(session.id)),
+      ).toEqual({ code: "caller_not_allowed" });
+      expect(h.worker).not.toHaveBeenCalledWith(
+        expect.objectContaining({ method: "fill" }),
+      );
+      expect(
+        await h.harness.behavior.callRpc(
+          "experimental_fill",
+          fill(session.id),
+          asPlugin,
+        ),
+      ).toEqual({ code: "ok" });
+      expect(h.worker).toHaveBeenCalledWith(
+        expect.objectContaining({
+          method: "fill",
+          hostId: "local-host",
+          input: {
+            sessionId: session.id,
+            page: "main",
+            selector: "#password",
+            value: planted,
+            expectedOrigin: "https://accounts.example.com",
+          },
+        }),
+      );
+      expect(await observed(h)).not.toContain(planted);
+    } finally {
+      await h.harness.lifecycle.dispose();
+    }
+  });
+
+  it("suppresses host failures into a fixed code without recording the value", async () => {
+    const h = await setup();
+    try {
+      const session = await local(h);
+      h.worker.mockImplementation(async ({ method }) => {
+        if (method === "fill") throw new Error(`typing ${planted} failed`);
+        return method === "prepare"
+          ? { status: "ready", version: "1.0.0-test", source: "release" }
+          : null;
+      });
+      const result = await h.harness.behavior.callRpc(
+        "experimental_fill",
+        fill(session.id),
+        asPlugin,
+      );
+      expect(result).toEqual({ code: "fill_failed" });
+      expect(await observed(h)).not.toContain(planted);
+      const [listed] = rpcContract.list.output.parse(
+        await h.harness.behavior.callRpc("list", { threadId: "thread-test" }),
+      );
+      expect(listed?.state).toBe("ready");
+    } finally {
+      await h.harness.lifecycle.dispose();
+    }
+  });
+
+  it("answers unknown, foreign, and closed sessions with session_unavailable", async () => {
+    const h = await setup();
+    try {
+      const session = await local(h);
+      const call = (input: object) =>
+        h.harness.behavior.callRpc("experimental_fill", input, asPlugin);
+      expect(await call(fill("00000000-0000-4000-8000-000000000000"))).toEqual({
+        code: "session_unavailable",
+      });
+      expect(
+        await call({ ...fill(session.id), threadId: "another-thread" }),
+      ).toEqual({ code: "session_unavailable" });
+      await h.harness.behavior.callRpc("close", {
+        threadId: "thread-test",
+        sessionId: session.id,
+      });
+      expect(await call(fill(session.id))).toEqual({
+        code: "session_unavailable",
+      });
+      expect(h.worker).not.toHaveBeenCalledWith(
+        expect.objectContaining({ method: "fill" }),
+      );
+    } finally {
+      await h.harness.lifecycle.dispose();
+    }
+  });
+
+  it("offers no CLI path", async () => {
+    const h = await setup();
+    try {
+      const session = await local(h);
+      const result = await h.harness.behavior.runCli(
+        ["fill", session.id, "--selector", "#password", "--value", planted],
+        { threadId: "thread-test" },
+      );
+      expect(result.exitCode).not.toBe(0);
+      expect(h.worker).not.toHaveBeenCalledWith(
+        expect.objectContaining({ method: "fill" }),
+      );
+    } finally {
+      await h.harness.lifecycle.dispose();
+    }
+  });
+});

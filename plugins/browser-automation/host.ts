@@ -5,7 +5,7 @@ import {
 } from "@get-bb/plugin-sdk/host";
 import { constants } from "node:fs";
 import { access } from "node:fs/promises";
-import { hostContract, type RuntimeState } from "./contracts.js";
+import { hostContract, type FillCode, type RuntimeState } from "./contracts.js";
 import { resolveRuntime, type ResolvedRuntime } from "./runtime-pin.js";
 import { createRuntime, type RuntimeSession } from "./runtime.js";
 
@@ -270,6 +270,37 @@ export function createHostEntry(
         } catch (error) {
           await close(input.sessionId).catch(() => {});
           throw error;
+        } finally {
+          session.active--;
+          session.lastUsed = Date.now();
+        }
+      },
+      async fill(
+        { sessionId, ...input },
+        context,
+      ): Promise<{ code: FillCode }> {
+        let session: Session;
+        try {
+          session = await available(sessionId);
+        } catch {
+          return { code: "session_unavailable" };
+        }
+        session.active++;
+        session.lastUsed = Date.now();
+        try {
+          const runtime = await session.runtime;
+          return {
+            code: await runtime.fill(
+              input,
+              AbortSignal.any([
+                context.signal,
+                context.lifecycle.signal,
+                session.abort.signal,
+              ]),
+            ),
+          };
+        } catch {
+          return { code: "fill_failed" };
         } finally {
           session.active--;
           session.lastUsed = Date.now();
