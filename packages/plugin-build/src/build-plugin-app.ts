@@ -500,7 +500,7 @@ function bundledRuntimeSlots(metafile: Metafile): string[] {
   for (const input of Object.keys(metafile.inputs)) {
     if (!input.startsWith(prefix)) continue;
     const specifier = input.slice(prefix.length);
-    slots.add(RUNTIME_SLOT_BY_SPECIFIER[specifier] ?? specifier);
+    slots.add(RUNTIME_SLOT_BY_SPECIFIER[specifier]);
   }
   return [...slots].sort();
 }

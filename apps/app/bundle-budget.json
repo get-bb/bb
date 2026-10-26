@@ -128,8 +128,8 @@
     "On 2026-10-21 the plugin runtime stopped importing @pierre/diffs eagerly.",
     "Bundles that import it get it before they evaluate; experimental_Diff",
     "loads behind a split. The PluginFrontend closure, which every plugin",
-    "waits on, dropped from 1728.0 KB raw / 471.2 KB brotli to 1159.1 KB /",
-    "340.3 KB. Its limits sit 25% above that, and the diff engine is forbidden."
+    "waits on, measures 528.9 KB raw / 165.3 KB brotli. Its limits sit 25%",
+    "above that, and the diff engine and Shiki are forbidden."
   ],
   "maxBootBytes": 1722436,
   "maxBootBrotliBytes": 424031,
@@ -280,8 +280,8 @@
   },
   "routeClosures": {
     "PluginFrontend": {
-      "maxBytes": 1483700,
-      "maxBrotliBytes": 435600,
+      "maxBytes": 676970,
+      "maxBrotliBytes": 211533,
       "forbiddenPackages": [
         "@pierre/diffs",
         "@pierre/theming",
