@@ -205,11 +205,15 @@ export class SkillTreeRegistry {
       if (!stat.isFile()) {
         throw new Error(`Skill tree entry is not a regular file: ${entryPath}`);
       }
+      const { hashed, stat: hashedStat } = await this.#hashFile(
+        entryPath,
+        stat,
+      );
       files.push({
-        ...(await this.#hashFile(entryPath, stat)),
-        mode: Number(stat.mode & 0o777n),
+        ...hashed,
+        mode: Number(hashedStat.mode & 0o777n),
         path: normalizeRelativePath(path.relative(rootPath, entryPath)),
-        sizeBytes: Number(stat.size),
+        sizeBytes: Number(hashedStat.size),
         sourcePath: entryPath,
       });
     }
@@ -219,7 +223,7 @@ export class SkillTreeRegistry {
   async #hashFile(
     filePath: string,
     initialStat: BigIntStats,
-  ): Promise<CachedFileHash> {
+  ): Promise<{ hashed: CachedFileHash; stat: BigIntStats }> {
     let stat = initialStat;
     for (let attempt = 1; ; attempt += 1) {
       const statKey = fileStatKey(stat);
@@ -227,14 +231,14 @@ export class SkillTreeRegistry {
       if (cached?.statKey === statKey) {
         this.#fileHashes.delete(filePath);
         this.#fileHashes.set(filePath, cached);
-        return cached;
+        return { hashed: cached, stat };
       }
       const sha256 = await sha256File(filePath);
       const after = await fsPromises.stat(filePath, { bigint: true });
       if (fileStatKey(after) === statKey) {
         const hashed = { sha256, statKey };
         if (!hasRacyTimestamp(after)) this.#rememberFileHash(filePath, hashed);
-        return hashed;
+        return { hashed, stat: after };
       }
       if (attempt >= MAX_FILE_HASH_ATTEMPTS) {
         throw new Error(

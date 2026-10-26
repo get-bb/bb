@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import fs from "node:fs/promises";
+import fs, { type FileHandle } from "node:fs/promises";
 import { isFsErrorWithCode } from "./fs-errors.js";
 
 export interface VerifiedFileExpectation {
@@ -38,6 +38,29 @@ function assertWithinLimits(
   }
 }
 
+async function writeFully(
+  handle: FileHandle,
+  chunk: Uint8Array,
+): Promise<void> {
+  for (let offset = 0; offset < chunk.byteLength;) {
+    const { bytesWritten } = await handle.write(
+      chunk,
+      offset,
+      chunk.byteLength - offset,
+    );
+    if (bytesWritten === 0) {
+      throw new Error("File write made no progress");
+    }
+    offset += bytesWritten;
+  }
+}
+
+async function* readFileChunks(filePath: string): AsyncGenerator<Uint8Array> {
+  for await (const chunk of createReadStream(filePath)) {
+    yield chunk as Buffer;
+  }
+}
+
 export async function writeVerifiedFile(args: {
   destinationPath: string;
   expected: VerifiedFileExpectation;
@@ -53,7 +76,7 @@ export async function writeVerifiedFile(args: {
       sizeBytes += chunk.byteLength;
       assertWithinLimits(args.label, args.expected, sizeBytes);
       hash.update(chunk);
-      await handle.write(chunk);
+      await writeFully(handle, chunk);
     }
     if (
       args.expected.sizeBytes !== null &&
@@ -91,7 +114,7 @@ export async function copyVerifiedFile(args: {
     expected: args.expected,
     label: args.label,
     mode: args.mode,
-    source: createReadStream(args.sourcePath),
+    source: readFileChunks(args.sourcePath),
   });
 }
 
