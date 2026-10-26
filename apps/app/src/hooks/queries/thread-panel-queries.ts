@@ -93,7 +93,8 @@ export function threadQueuedMessagesQueryOptions(
         signal,
       }),
     enabled: (options?.enabled ?? true) && Boolean(id),
-    refetchOnMount: options?.refetchOnMount ?? true,
+    refetchOnMount:
+      options?.refetchOnMount ?? ((query) => query.getObserversCount() === 1),
     refetchOnWindowFocus: true,
     staleTime: options?.staleTime,
   });

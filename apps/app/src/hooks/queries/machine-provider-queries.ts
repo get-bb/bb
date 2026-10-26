@@ -9,12 +9,16 @@ const NO_MACHINE_PROVIDERS: readonly SystemMachineProvider[] = [];
 export function useSystemMachineProviders(): {
   providers: readonly SystemMachineProvider[] | undefined;
 } {
-  const result = useQuery({
+  const result = useQuery(machineProvidersQueryOptions());
+  return {
+    providers: result.isError ? NO_MACHINE_PROVIDERS : result.data,
+  };
+}
+
+export function machineProvidersQueryOptions() {
+  return {
     queryKey: systemMachineProvidersQueryKey(),
     queryFn: () => sdk.hosts.experimental_listProviders(),
     ...SERVER_SESSION_QUERY_POLICY,
-  });
-  return {
-    providers: result.isError ? NO_MACHINE_PROVIDERS : result.data,
   };
 }

@@ -560,7 +560,6 @@ describe("useThreadQueuedMessages", () => {
 
     expect(query?.options).toEqual(
       expect.objectContaining({
-        refetchOnMount: true,
         refetchOnWindowFocus: true,
       }),
     );

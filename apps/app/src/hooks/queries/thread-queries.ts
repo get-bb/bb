@@ -1,3 +1,5 @@
+import { useThreadDefaultExecutionOptions } from "./thread-default-execution-options-query";
+import { useThreadQueuedMessages } from "./thread-panel-queries";
 import {
   infiniteQueryOptions,
   queryOptions,
@@ -802,6 +804,8 @@ export function useThreadDetailBootstrap(
   const queryClient = useQueryClient();
   const enabled = (options?.enabled ?? true) && Boolean(id);
   useThreadDetailRealtimeSubscription(id, { enabled });
+  useThreadDefaultExecutionOptions(id, { enabled });
+  useThreadQueuedMessages(id, { enabled });
   return useQuery(threadDetailBootstrapQueryOptions(queryClient, id, options));
 }
 

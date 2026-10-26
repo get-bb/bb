@@ -5,7 +5,10 @@ import {
   scheduleDeferredPluginFrontendBoot,
 } from "../lib/plugin-frontend-boot-schedule";
 import { markPluginFrontendSettleFloorReached } from "../lib/plugin-frontend-boot-state";
-import { bootPluginFrontends } from "../lib/plugin-frontend-lazy";
+import {
+  bootPluginFrontends,
+  preloadPluginFrontend,
+} from "../lib/plugin-frontend-lazy";
 import { frontendPriorityPluginIds } from "../lib/plugin-surface-providers";
 import { holdSplitPreloads } from "../lib/split-prefetch";
 import { whenRouteContentPainted } from "../lib/route-content-paint";
@@ -23,7 +26,6 @@ export function usePluginFrontendBoot(): void {
   const systemConfig = useSystemConfig();
   const resolved = systemConfig.data !== undefined;
   useEffect(() => {
-    if (!resolved) return;
     const pathname = window.location.pathname;
     const priorityPluginIds = frontendPriorityPluginIds(pathname);
     let cancelled = false;
@@ -48,6 +50,20 @@ export function usePluginFrontendBoot(): void {
         }
       })
       .catch(() => {});
+    if (
+      priorityPluginIds.length > 0 ||
+      getPluginPanelRoutePluginId(pathname) !== null
+    ) {
+      preloadPluginFrontend();
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  useEffect(() => {
+    if (!resolved) return;
+    const pathname = window.location.pathname;
+    const priorityPluginIds = frontendPriorityPluginIds(pathname);
     const releaseHold =
       priorityPluginIds.length > 0 ? holdSplitPreloads() : () => {};
     const holdTimeout = window.setTimeout(
@@ -59,7 +75,6 @@ export function usePluginFrontendBoot(): void {
       releaseHold();
     };
     const cleanup = () => {
-      cancelled = true;
       releasePreloads();
     };
     const boot = () => void bootPluginFrontends().then(releasePreloads);

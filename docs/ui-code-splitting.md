@@ -96,10 +96,10 @@ warming panel tab code when the right panel opens.
 A preload-tier split needs no registration: defining it queues it, and
 `RouteContentPaintSignal` in `App.tsx` starts the queue with
 `startSplitPreloading()`, and marks route content painted only after critical
-loads settle. Essential plugin frontend boot starts as soon as system config
-resolves when the page has expected surface providers or a plugin panel.
-Priority plugin bundles and styles preload from the shared plugin-list query
-while the runtime loads. Pages without expected providers or a plugin panel
+loads settle. On pages with expected surface providers or a plugin panel,
+the plugin runtime download and shared plugin-list query start alongside system
+config. Priority plugin bundles and styles preload as soon as the list resolves.
+Activation still waits for system config. Pages without expected providers or a plugin panel
 retain deferred boot after route paint and browser idle, with a 1.5-second
 fallback. Plugin activation does not wait for the toaster to mount; startup
 notifications queue until it attaches, including custom plugin toasts.
@@ -234,7 +234,7 @@ Type-only imports and schema `z.lazy` calls are not loading boundaries.
 | Secondary panel → tab modules                                        | Existing outer wrapper preloads tab modules while the panel loads. Terminal module loading starts xterm and addons in parallel.                                                                                                                                                                       |
 | File preview → source renderer; git tab → diff renderer              | Existing preview/tab components start renderer and worker loading while data loads. These preloads currently do not check replacement selection; that is unnecessary warming, not a serial module wait.                                                                                               |
 | SDK Markdown → HTML/math/Mermaid                                     | Residual content-dependent cold paths: the outer Markdown module must load before these features are detected. HTML and math can potentially be predicted from SDK content earlier; Mermaid visibility/render policy needs preserving. Idle warming reduces exposure but does not remove these waits. |
-| Workspace route → thread/root view                                   | Nested route modules remain. Root/thread views use preload tier, but that alone does not prove parallel cold-navigation requests. Route-specific dependency priming is a follow-up.                                                                                                                   |
+| Workspace route → thread/root view                                   | Fixed: the existing AppRoutes effects start destination modules alongside the workspace module. Held-request browser verification is recorded below.                                                                                                                                                  |
 | SDK thread chat → thread query → environment query                   | Module-to-data wait remains; environment ID genuinely depends on thread data. The known thread ID could support fetching thread data alongside the outer module.                                                                                                                                      |
 | Monaco plugin CSS → editor JavaScript                                | Existing serial independent asset requests in `plugins/monaco-editor/lib/monaco-loader.ts`. Start both together, still awaiting CSS before editor creation, in a focused plugin change.                                                                                                               |
 | Menus, settings, onboarding, external-file dispatch, queued messages | Conditional entry points remain lazy. No additional unconditional module-to-module sequence identified in their loaders. Child features may still depend on data or subsequent interaction.                                                                                                           |
@@ -266,3 +266,46 @@ view warmed only after the held critical load completed. The route regression
 test holds workspace loading unresolved, verifies destination module requests,
 and checks that new-thread startup does not request the thread view. Removing
 the existing route-preload effects makes it fail.
+
+### Composer startup follow-up
+
+The bootstrap hook now observes thread execution defaults and queued messages
+alongside bootstrap and timeline. The prompt area shares these queries. A late
+observer reuses the active owner's baseline; the first observer after a
+zero-owner interval refreshes stale data. Realtime invalidation still refetches
+active queries, queue focus refresh remains enabled, and unresolved execution
+defaults still gate sending.
+
+The existing new-thread route preload effect also prefetches unscoped environment
+and machine provider catalogs using the same query options as the composer.
+Project-specific catalogs still wait for selection. Hosts already have an early
+consumer; model/execution catalogs retain their scope-dependent resolution.
+Terminals, file previews, and unopened panels retain their existing demand policy.
+
+A production-build Chromium check used a fresh isolated server store, disabled
+browser cache, cleared local/session storage, a 390×844 mobile viewport, and the
+existing `bb.onboarding.seen=1` preference. Requests for system config and the
+destination module were held unresolved; the existing-thread run also held
+bootstrap. The thread was a synthetic scheduled thread with no provider turn.
+
+| Destination     | Work requested while prerequisites were held                                                   | Held requests released |
+| --------------- | ---------------------------------------------------------------------------------------------- | ---------------------- |
+| New thread      | Environment/machine catalogs at 105 ms; plugin list/runtime at 106 ms                          | 2,578 ms               |
+| Existing thread | Defaults/queue at 116 ms; bootstrap and plugin list/runtime at 117 ms; thread module at 118 ms | 2,585 ms               |
+
+Each unscoped catalog, thread defaults, and queue request occurred once through
+composer mounting after release. Both composers rendered, and the existing thread
+showed its scheduled queue. These are request-order observations under artificial
+holds, not representative performance measurements. Chromium mobile emulation
+is not iOS Safari verification.
+
+Without the recognized onboarding preference, a separate run confirmed that
+OnboardingGate withheld routes until config resolved, even on the configured test
+server. Plugin list/runtime and priority bundles still downloaded during that
+hold. Changing onboarding rendering policy remains separate work.
+
+The regression tests hold config, workspace code, or bootstrap unresolved and
+require independent work to begin. Restoring each former prerequisite gate makes
+its test fail. Query ownership coverage also checks late consumers, realtime
+invalidation, reopening, and disabled routes; reverting the mount policy detects
+duplicate fetches.

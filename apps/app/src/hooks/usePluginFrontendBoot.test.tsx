@@ -17,6 +17,7 @@ import {
 
 const mocks = vi.hoisted(() => ({
   bootPluginFrontends: vi.fn(async () => {}),
+  preloadPluginFrontend: vi.fn(),
   releaseSplitPreloads: vi.fn(),
   systemConfigData: undefined as unknown,
 }));
@@ -27,6 +28,7 @@ vi.mock("@/lib/split-prefetch", () => ({
 
 vi.mock("@/lib/plugin-frontend-lazy", () => ({
   bootPluginFrontends: mocks.bootPluginFrontends,
+  preloadPluginFrontend: mocks.preloadPluginFrontend,
   whenPriorityPluginFrontendsLoaded: () => new Promise(() => {}),
 }));
 
@@ -64,6 +66,7 @@ afterEach(() => {
   mocks.bootPluginFrontends.mockReset();
   mocks.bootPluginFrontends.mockImplementation(async () => {});
   mocks.releaseSplitPreloads.mockClear();
+  mocks.preloadPluginFrontend.mockClear();
   resetPluginFrontendBootStateForTest();
 });
 
@@ -117,14 +120,23 @@ describe("usePluginFrontendBoot", () => {
     expect(mocks.bootPluginFrontends).toHaveBeenCalledTimes(1);
   });
 
-  it("does nothing until system config resolves", async () => {
+  it("downloads runtime and plugin list before config, but gates activation", async () => {
     mocks.systemConfigData = undefined;
-    renderHook(() => usePluginFrontendBoot());
+    const fetchList = vi.spyOn(appQueryClient, "fetchQuery");
+    const { rerender } = renderHook(() => usePluginFrontendBoot());
     await act(async () => {
       markRouteContentPainted();
       await vi.advanceTimersByTimeAsync(5_000);
     });
     expect(mocks.bootPluginFrontends).not.toHaveBeenCalled();
+    expect(mocks.preloadPluginFrontend).toHaveBeenCalledTimes(1);
+    expect(fetchList).toHaveBeenCalledTimes(1);
+    mocks.systemConfigData = {};
+    rerender();
+    await flushMicrotasks();
+    expect(mocks.bootPluginFrontends).toHaveBeenCalledTimes(1);
+    expect(fetchList).toHaveBeenCalledTimes(1);
+    fetchList.mockRestore();
   });
 
   it("settles after the floor even when system config never resolves", () => {
