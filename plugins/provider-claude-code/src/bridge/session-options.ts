@@ -218,38 +218,51 @@ function wellKnownClaudeExecutablePaths(env: NodeJS.ProcessEnv): string[] {
   return candidatePaths;
 }
 
-export function resolveClaudeCodeExecutable(
-  args: ResolveClaudeCodeExecutableArgs,
-): string | null {
-  const explicitPath = args.env[CLAUDE_CODE_EXECUTABLE_ENV];
-  const trimmedExplicitPath = explicitPath?.trim();
-  if (trimmedExplicitPath && trimmedExplicitPath.length > 0) {
-    try {
-      accessSync(trimmedExplicitPath, constants.X_OK);
-      return trimmedExplicitPath;
-    } catch {
-      throw new Error(
-        `${CLAUDE_CODE_EXECUTABLE_ENV} must point to an executable Claude CLI path: ${trimmedExplicitPath}`,
-      );
-    }
+export type ClaudeCodeExecutableLocation = {
+  source: "explicit" | "path" | "wellKnown";
+  path: string;
+};
+
+export function locateClaudeCodeExecutable(
+  env: NodeJS.ProcessEnv,
+): ClaudeCodeExecutableLocation | null {
+  const explicitPath = env[CLAUDE_CODE_EXECUTABLE_ENV]?.trim();
+  if (explicitPath) {
+    return { source: "explicit", path: explicitPath };
   }
 
   const executableOnPath = resolveExecutableOnPath({
     executableName:
       process.platform === "win32" ? CLAUDE_WINDOWS_EXECUTABLE_NAME : "claude",
-    pathEnv: args.env.PATH ?? args.env.Path,
+    pathEnv: env.PATH ?? env.Path,
   });
   if (executableOnPath) {
-    return executableOnPath;
+    return { source: "path", path: executableOnPath };
   }
 
-  for (const candidate of wellKnownClaudeExecutablePaths(args.env)) {
+  for (const candidate of wellKnownClaudeExecutablePaths(env)) {
     if (isExecutableFile(candidate)) {
-      return candidate;
+      return { source: "wellKnown", path: candidate };
     }
   }
 
   return null;
+}
+
+export function resolveClaudeCodeExecutable(
+  args: ResolveClaudeCodeExecutableArgs,
+): string | null {
+  const location = locateClaudeCodeExecutable(args.env);
+  if (location?.source === "explicit") {
+    try {
+      accessSync(location.path, constants.X_OK);
+    } catch {
+      throw new Error(
+        `${CLAUDE_CODE_EXECUTABLE_ENV} must point to an executable Claude CLI path: ${location.path}`,
+      );
+    }
+  }
+  return location?.path ?? null;
 }
 
 export function buildSessionOptions(

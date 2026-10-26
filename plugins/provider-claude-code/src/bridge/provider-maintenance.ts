@@ -24,6 +24,7 @@ import {
   experimental_versionFrom as versionFrom,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
+import { locateClaudeCodeExecutable } from "./session-options.js";
 
 const execFileAsync = promisify(execFile);
 const USAGE_FETCH_TIMEOUT_MS = 15_000;
@@ -54,22 +55,22 @@ const claudeAccountSchema = z.object({
     .nullish(),
 });
 
-async function claudeExecutable(): Promise<string> {
-  const explicit = process.env.BB_CLAUDE_CODE_EXECUTABLE?.trim();
-  if (explicit) return explicit;
-  if (
-    process.platform !== "win32" ||
-    (await resolveExecutablePath("claude")) !== null
-  ) {
-    return "claude";
-  }
-  const nativePath = path.join(os.homedir(), ".local", "bin", "claude.exe");
-  try {
-    await fs.access(nativePath);
-    return nativePath;
-  } catch {
-    return "claude";
-  }
+function claudeExecutable(): string {
+  const location = locateClaudeCodeExecutable(process.env);
+  return location === null || location.source === "path"
+    ? "claude"
+    : location.path;
+}
+
+export function claudeLoginCommand(
+  command: string,
+  args: readonly string[],
+  platform: NodeJS.Platform = process.platform,
+): string {
+  const text = formatCommand(command, args);
+  return platform === "win32" && path.win32.isAbsolute(command)
+    ? `& ${text}`
+    : text;
 }
 
 function claudeInstallerCommand() {
@@ -146,7 +147,7 @@ function isDefaultNativeClaudePath(executablePath: string | null): boolean {
 export async function getClaudeProviderInstallationStatus(
   checkUpdates = true,
 ): Promise<ProviderInstallationStatus> {
-  const command = await claudeExecutable();
+  const command = claudeExecutable();
   const [
     resolvedExecutable,
     versionOutput,
@@ -351,6 +352,7 @@ function planLabel(credentials: ClaudeCredentials): string | null {
 }
 
 function healthResult(
+  command: string,
   status: "ready" | "not_installed" | "unauthenticated" | "expired" | "unknown",
   args: {
     accountEmail?: string | null;
@@ -370,15 +372,15 @@ function healthResult(
       minimumSupportedVersion: null,
       canInstall: true,
       canUpdate: status !== "not_installed",
-      loginCommand: "claude auth login",
+      loginCommand: claudeLoginCommand(command, ["auth", "login"]),
     },
   };
 }
 
 export async function getClaudeProviderHealth(): Promise<ProviderHealthResult> {
-  const command = await claudeExecutable();
+  const command = claudeExecutable();
   if ((await resolveExecutablePath(command)) === null) {
-    return healthResult("not_installed");
+    return healthResult(command, "not_installed");
   }
   const version = await readCliVersion(command);
   try {
@@ -387,7 +389,9 @@ export async function getClaudeProviderHealth(): Promise<ProviderHealthResult> {
       readAccountEmail(),
     ]);
     if (!credentials) {
-      return healthResult("unauthenticated", { installedVersion: version });
+      return healthResult(command, "unauthenticated", {
+        installedVersion: version,
+      });
     }
     const known = {
       accountEmail: email,
@@ -395,10 +399,10 @@ export async function getClaudeProviderHealth(): Promise<ProviderHealthResult> {
       installedVersion: version,
     };
     return credentials.expiresAt != null && Date.now() >= credentials.expiresAt
-      ? healthResult("expired", known)
-      : healthResult("ready", known);
+      ? healthResult(command, "expired", known)
+      : healthResult(command, "ready", known);
   } catch (error) {
-    return healthResult("unknown", {
+    return healthResult(command, "unknown", {
       installedVersion: version,
       statusMessage: error instanceof Error ? error.message : String(error),
     });
@@ -524,7 +528,7 @@ function normalizeUsage(
 }
 
 export async function getClaudeProviderUsage(): Promise<ProviderUsageResult> {
-  const command = await claudeExecutable();
+  const command = claudeExecutable();
   if ((await resolveExecutablePath(command)) === null) {
     return { supported: true, usage: { status: "not_installed" } };
   }
