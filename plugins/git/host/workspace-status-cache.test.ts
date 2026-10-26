@@ -1,7 +1,7 @@
 import { tmpdir } from "node:os";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
 import { initRepo, makeTempDir } from "@bb/test-helpers";
 import { WorkspaceReads } from "./workspace-reads.js";
 import { runGit } from "bb-environment-provider-host/workspace-git";
@@ -12,9 +12,34 @@ function fresh() {
   return { work: `work-${freshReads}`, refs: `refs-${freshReads}` };
 }
 
-vi.mock("bb-environment-provider-host/workspace-git", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("bb-environment-provider-host/workspace-git")>();
-  return { ...actual, runGit: vi.fn(actual.runGit) };
+vi.mock(
+  "bb-environment-provider-host/workspace-git",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("bb-environment-provider-host/workspace-git")
+      >();
+    return { ...actual, runGit: vi.fn(actual.runGit) };
+  },
+);
+
+let initialRepository: string;
+let initialCommit: string;
+
+beforeAll(async () => {
+  initialRepository = await fs.mkdtemp(
+    path.join(tmpdir(), "bb-squash-template-"),
+  );
+  await initRepo(initialRepository);
+  initialCommit = (
+    await runGit(["rev-parse", "HEAD"], { cwd: initialRepository })
+  ).stdout.trim();
+});
+
+afterAll(async () => {
+  if (initialRepository) {
+    await fs.rm(initialRepository, { recursive: true, force: true });
+  }
 });
 
 afterEach(() => vi.clearAllMocks());
@@ -27,7 +52,11 @@ it("reuses committed comparisons across readers while refreshing edits and moved
   await runGit(["add", "."], { cwd: repo });
   await runGit(["commit", "-m", "Feature"], { cwd: repo });
   const read = (maxFiles = 200) =>
-    new WorkspaceReads(repo, tmpdir()).getStatus({ freshness: fresh(), mergeBaseBranch: "main", maxFiles });
+    new WorkspaceReads(repo, tmpdir()).getStatus({
+      freshness: fresh(),
+      mergeBaseBranch: "main",
+      maxFiles,
+    });
   const comparisons = () =>
     vi
       .mocked(runGit)
@@ -76,8 +105,9 @@ it("returns degraded comparisons on Git failures without caching them", async ()
   await fs.writeFile(path.join(repo, "feature.txt"), "feature\n");
   await runGit(["add", "."], { cwd: repo });
   await runGit(["commit", "-m", "Feature"], { cwd: repo });
-  const actual =
-    await vi.importActual<typeof import("bb-environment-provider-host/workspace-git")>("bb-environment-provider-host/workspace-git");
+  const actual = await vi.importActual<
+    typeof import("bb-environment-provider-host/workspace-git")
+  >("bb-environment-provider-host/workspace-git");
   let fail = true;
   vi.mocked(runGit).mockImplementation(async (args, options) => {
     if (
@@ -91,7 +121,11 @@ it("returns degraded comparisons on Git failures without caching them", async ()
     }
     return actual.runGit(args, options);
   });
-  const read = () => new WorkspaceReads(repo, tmpdir()).getStatus({ freshness: fresh(), mergeBaseBranch: "main" });
+  const read = () =>
+    new WorkspaceReads(repo, tmpdir()).getStatus({
+      freshness: fresh(),
+      mergeBaseBranch: "main",
+    });
   try {
     expect((await read()).mergeBase).toMatchObject({
       aheadCount: 1,
@@ -116,18 +150,27 @@ async function createDivergedRepo({
   basePath = "main.txt",
   baseText = "main\n",
 } = {}) {
-  const repo = await initRepo(await makeTempDir("bb-squash-budget-"));
-  await runGit(["checkout", "-b", "feature"], { cwd: repo });
-  await fs.writeFile(path.join(repo, featurePath), featureText);
-  await runGit(["add", "."], { cwd: repo });
-  await runGit(["commit", "-m", `Feature ${path.basename(repo)}`], {
+  const repo = await makeTempDir("bb-squash-budget-");
+  await fs.cp(initialRepository, repo, { recursive: true });
+  const timestamp = Math.floor(Date.now() / 1000);
+  const commit = (
+    branch: string,
+    subject: string,
+    file: string,
+    text: string,
+  ) =>
+    `commit refs/heads/${branch}\ncommitter BB Tests <bb@example.com> ${timestamp} +0000\ndata ${Buffer.byteLength(subject)}\n${subject}\nfrom ${initialCommit}\nM 100644 inline ${JSON.stringify(file)}\ndata ${Buffer.byteLength(text)}\n${text}\n`;
+  await runGit(["fast-import", "--quiet"], {
     cwd: repo,
+    input:
+      commit(
+        "feature",
+        `Feature ${path.basename(repo)}`,
+        featurePath,
+        featureText,
+      ) + commit("main", `Main ${path.basename(repo)}`, basePath, baseText),
   });
-  await runGit(["checkout", "main"], { cwd: repo });
-  await fs.writeFile(path.join(repo, basePath), baseText);
-  await runGit(["add", "."], { cwd: repo });
-  await runGit(["commit", "-m", `Main ${path.basename(repo)}`], { cwd: repo });
-  await runGit(["checkout", "feature"], { cwd: repo });
+  await runGit(["checkout", "--force", "feature"], { cwd: repo });
   return repo;
 }
 
@@ -147,7 +190,8 @@ async function advanceMain(repo: string, count: number) {
 it("filters irrelevant history beyond 200 commits and reports incomplete only at the metadata limit", async () => {
   const repo = await createDivergedRepo();
   await advanceMain(repo, 200);
-  const underLimit = await new WorkspaceReads(repo, tmpdir()).getStatus({ freshness: fresh(),
+  const underLimit = await new WorkspaceReads(repo, tmpdir()).getStatus({
+    freshness: fresh(),
     mergeBaseBranch: "main",
   });
   expect(underLimit.mergeBase).toMatchObject({
@@ -157,7 +201,10 @@ it("filters irrelevant history beyond 200 commits and reports incomplete only at
   });
   await advanceMain(repo, 800);
   const workspace = new WorkspaceReads(repo, tmpdir());
-  const result = await workspace.getStatus({ freshness: fresh(), mergeBaseBranch: "main" });
+  const result = await workspace.getStatus({
+    freshness: fresh(),
+    mergeBaseBranch: "main",
+  });
   expect(result.mergeBase).toMatchObject({
     squashMergeCheckComplete: false,
     aheadCount: 1,
@@ -183,7 +230,10 @@ it("filters irrelevant history beyond 200 commits and reports incomplete only at
       ).length;
   const comparisonsBeforeRefresh = comparisons();
   await fs.writeFile(path.join(repo, "feature.txt"), "edited\n");
-  const refreshed = await workspace.getStatus({ freshness: fresh(), mergeBaseBranch: "main" });
+  const refreshed = await workspace.getStatus({
+    freshness: fresh(),
+    mergeBaseBranch: "main",
+  });
   expect(refreshed.workingTree.hasUncommittedChanges).toBe(true);
   expect(refreshed.mergeBase).toEqual(result.mergeBase);
   expect(patchCommands()).toHaveLength(0);
@@ -192,8 +242,9 @@ it("filters irrelevant history beyond 200 commits and reports incomplete only at
 
 it("cancels an over-budget squash command and returns basic comparison data", async () => {
   const repo = await createDivergedRepo({ basePath: "feature.txt" });
-  const actual =
-    await vi.importActual<typeof import("bb-environment-provider-host/workspace-git")>("bb-environment-provider-host/workspace-git");
+  const actual = await vi.importActual<
+    typeof import("bb-environment-provider-host/workspace-git")
+  >("bb-environment-provider-host/workspace-git");
   let canceled = false;
   vi.mocked(runGit).mockImplementation((args, options) => {
     if (options.cwd === repo && args[0] === "patch-id" && options.signal) {
@@ -209,7 +260,8 @@ it("cancels an over-budget squash command and returns basic comparison data", as
     return actual.runGit(args, options);
   });
   try {
-    const status = await new WorkspaceReads(repo, tmpdir()).getStatus({ freshness: fresh(),
+    const status = await new WorkspaceReads(repo, tmpdir()).getStatus({
+      freshness: fresh(),
       mergeBaseBranch: "main",
     });
     expect(canceled).toBe(true);
@@ -229,7 +281,8 @@ it("stops oversized patch collection without claiming the branch is merged", asy
     featureText: "large line\n".repeat(850_000),
     basePath: "feature.txt",
   });
-  const status = await new WorkspaceReads(repo, tmpdir()).getStatus({ freshness: fresh(),
+  const status = await new WorkspaceReads(repo, tmpdir()).getStatus({
+    freshness: fresh(),
     mergeBaseBranch: "main",
   });
   expect(status.mergeBase).toMatchObject({
@@ -259,7 +312,8 @@ it.each([
       cwd: repo,
     });
     await runGit(["checkout", "feature"], { cwd: repo });
-    const status = await new WorkspaceReads(repo, tmpdir()).getStatus({ freshness: fresh(),
+    const status = await new WorkspaceReads(repo, tmpdir()).getStatus({
+      freshness: fresh(),
       mergeBaseBranch: "main",
     });
     expect(status.mergeBase).toMatchObject({
@@ -281,7 +335,8 @@ it("proves exact squash integration without hashing even beyond the metadata lim
   await runGit(["merge", "--squash", "feature"], { cwd: repo });
   await runGit(["commit", "-m", "Squashed feature"], { cwd: repo });
   await runGit(["checkout", "feature"], { cwd: repo });
-  const status = await new WorkspaceReads(repo, tmpdir()).getStatus({ freshness: fresh(),
+  const status = await new WorkspaceReads(repo, tmpdir()).getStatus({
+    freshness: fresh(),
     mergeBaseBranch: "main",
   });
   expect(status.mergeBase).toMatchObject({
@@ -320,7 +375,8 @@ it.each([
   await runGit(["merge", "--squash", "feature"], { cwd: repo });
   await runGit(["commit", "-m", "Squashed feature"], { cwd: repo });
   await runGit(["checkout", "feature"], { cwd: repo });
-  const status = await new WorkspaceReads(repo, tmpdir()).getStatus({ freshness: fresh(),
+  const status = await new WorkspaceReads(repo, tmpdir()).getStatus({
+    freshness: fresh(),
     mergeBaseBranch: "main",
   });
   expect(status.mergeBase).toMatchObject({
@@ -342,8 +398,9 @@ it("finishes a timed-out squash check on the next refresh without rehashing comm
   await runGit(["add", "."], { cwd: repo });
   await runGit(["commit", "-m", "Later main change"], { cwd: repo });
   await runGit(["checkout", "feature"], { cwd: repo });
-  const actual =
-    await vi.importActual<typeof import("bb-environment-provider-host/workspace-git")>("bb-environment-provider-host/workspace-git");
+  const actual = await vi.importActual<
+    typeof import("bb-environment-provider-host/workspace-git")
+  >("bb-environment-provider-host/workspace-git");
   let interrupted = false;
   vi.mocked(runGit).mockImplementation((args, options) => {
     if (
@@ -372,7 +429,11 @@ it("finishes a timed-out squash check on the next refresh without rehashing comm
           args.includes("-p") &&
           args.includes("--no-renames") !== renames,
       ).length;
-  const read = () => new WorkspaceReads(repo, tmpdir()).getStatus({ freshness: fresh(), mergeBaseBranch: "main" });
+  const read = () =>
+    new WorkspaceReads(repo, tmpdir()).getStatus({
+      freshness: fresh(),
+      mergeBaseBranch: "main",
+    });
   try {
     expect((await read()).mergeBase).toMatchObject({
       squashMergeCheckComplete: false,
@@ -410,7 +471,8 @@ it("excludes cherry-picked commits on both sides but keeps same-file changes", a
   await runGit(["commit", "-m", "Same file, different change"], { cwd: repo });
   await runGit(["checkout", "feature"], { cwd: repo });
 
-  const status = await new WorkspaceReads(repo, tmpdir()).getStatus({ freshness: fresh(),
+  const status = await new WorkspaceReads(repo, tmpdir()).getStatus({
+    freshness: fresh(),
     mergeBaseBranch: "main",
   });
 
@@ -446,13 +508,19 @@ it("keeps renamed files compact when comparing squash patches", async () => {
   await runGit(["commit", "-m", "Later main change"], { cwd: repo });
   await runGit(["checkout", "feature"], { cwd: repo });
 
-  let status = await new WorkspaceReads(repo, tmpdir()).getStatus({ freshness: fresh(), mergeBaseBranch: "main" });
+  let status = await new WorkspaceReads(repo, tmpdir()).getStatus({
+    freshness: fresh(),
+    mergeBaseBranch: "main",
+  });
   for (
     let refresh = 0;
     refresh < 5 && !status.mergeBase?.squashMergeCheckComplete;
     refresh += 1
   ) {
-    status = await new WorkspaceReads(repo, tmpdir()).getStatus({ freshness: fresh(), mergeBaseBranch: "main" });
+    status = await new WorkspaceReads(repo, tmpdir()).getStatus({
+      freshness: fresh(),
+      mergeBaseBranch: "main",
+    });
   }
 
   expect(status.mergeBase).toMatchObject({

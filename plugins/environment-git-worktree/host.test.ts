@@ -1,6 +1,7 @@
 import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import {
+  cp,
   mkdir,
   mkdtemp,
   readFile,
@@ -14,11 +15,26 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
 import { experimental_createHostEntryHarness } from "@get-bb/plugin-sdk/testing/host";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { createWorktreeHostEntry } from "./host.js";
 
 const execFileAsync = promisify(execFile);
 const temporaryRoots: string[] = [];
+let repositoryTemplate: string;
+
+beforeAll(async () => {
+  repositoryTemplate = await mkdtemp(join(tmpdir(), "bb-worktree-template-"));
+  await git(repositoryTemplate, "init", "--initial-branch=main");
+  await writeFile(join(repositoryTemplate, "README.md"), "hello\n");
+  await git(repositoryTemplate, "add", ".");
+  await git(repositoryTemplate, "commit", "-m", "initial");
+});
+
+afterAll(async () => {
+  if (repositoryTemplate) {
+    await rm(repositoryTemplate, { recursive: true, force: true });
+  }
+});
 
 function isPidAlive(pid: number): boolean {
   try {
@@ -54,10 +70,7 @@ async function createSourceRepository(repositoryName = "repo"): Promise<{
   const dataDir = join(root, "plugin-data");
   await mkdir(sourcePath, { recursive: true });
   await mkdir(dataDir, { recursive: true });
-  await git(sourcePath, "init", "--initial-branch=main");
-  await writeFile(join(sourcePath, "README.md"), "hello\n");
-  await git(sourcePath, "add", ".");
-  await git(sourcePath, "commit", "-m", "initial");
+  await cp(repositoryTemplate, sourcePath, { recursive: true });
   return { root, sourcePath, dataDir };
 }
 
