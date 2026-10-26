@@ -96,8 +96,8 @@ warming panel tab code when the right panel opens.
 A preload-tier split needs no registration: defining it queues it, and
 `RouteContentPaintSignal` in `App.tsx` starts the queue with
 `startSplitPreloading()`, and marks route content painted only after critical
-loads settle. On pages with expected surface providers or a plugin panel,
-the plugin runtime download and shared plugin-list query start alongside system
+loads settle. On pages with expected surface providers (including the plugin
+that owned the open thread panel tab last session) or a plugin panel, the plugin runtime download and shared plugin-list query start alongside system
 config. Priority plugin bundles and styles preload as soon as the list resolves.
 Activation still waits for system config. Pages without expected providers or a plugin panel
 retain deferred boot after route paint and browser idle, with a 1.5-second

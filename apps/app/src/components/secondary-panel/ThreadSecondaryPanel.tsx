@@ -84,6 +84,7 @@ import {
   useSidebarKeepsCollapsedRail,
 } from "@/components/ui/sidebar.js";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
+import { useRememberSurfaceProvider } from "@/lib/plugin-surface-providers";
 import type {
   FixedPanelViewTab,
   SecondaryFixedPanelTab,
@@ -230,6 +231,20 @@ export interface ThreadSecondaryPanelProps {
   isAtWindowTop?: boolean;
 }
 
+function panelTabPluginId(
+  tab: SecondaryPanelRenderableTab["tab"] | FixedPanelViewTab | undefined,
+): string | null {
+  switch (tab?.kind) {
+    case "plugin-panel":
+    case "plugin-page-fixed":
+      return tab.pluginId;
+    case "plugin-fixed":
+      return tab.pluginId === "core" ? null : tab.pluginId;
+    default:
+      return null;
+  }
+}
+
 export function ThreadSecondaryPanel(props: ThreadSecondaryPanelProps) {
   const panelProps = usePluginDetailPanelProps(props);
   return (
@@ -361,6 +376,12 @@ function ThreadSecondaryPanelContent({
   const activeFixedTab =
     fixedTabs.find((fixedTab) => fixedTab.tab.id === activeTab?.id) ??
     (!hasActiveRenderableTab ? fixedTabs[0] : undefined);
+  useRememberSurfaceProvider(
+    "thread-panel-tab",
+    isOpen
+      ? panelTabPluginId(activeRenderableTab?.tab ?? activeFixedTab?.tab)
+      : null,
+  );
   const diffContent = useThreadDiffContent({
     toolbarClassName: getSecondaryPanelChromeStackClassName(true),
     environmentId,
