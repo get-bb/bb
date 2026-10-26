@@ -67,6 +67,9 @@ slots of items, read each item into its row, and render rows back into the
 query's data. Every view of a row shows the same visible value: the stored row
 with pending predictions applied in order. `createTaggedKeyedQueryOwner` stores
 its rows in the collection it is given, and core threads use the same store.
+Refreshing subscribed keys retains cached rows and key tags for inactive keys.
+Invalidated inactive rows remain visible and refresh when subscribed again, so
+switching consumers does not discard their last successful values.
 
 A read writes a row only if it fetched that row. A prediction accepted by the
 server becomes the row's stored value. A row read that started before the

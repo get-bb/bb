@@ -405,7 +405,8 @@ export function createTaggedKeyedQueryOwner<Value>(options: {
     queryFn: () => {
       let previous = getTaggedReadData<KeyedData<Value>>(client, queryKey);
       const startedAt = new Map<string, number>();
-      let refresh = !missingOnly && dirtyKeys.size === 0;
+      let refresh =
+        !missingOnly && ![...keys.keys()].some((key) => dirtyKeys.has(key));
       missingOnly = false;
       const refreshedKeys = new Set<string>();
       let refreshedAll = false;
@@ -414,9 +415,10 @@ export function createTaggedKeyedQueryOwner<Value>(options: {
         const all = refreshAll || refresh;
         refresh = false;
         const dirty = new Set(dirtyKeys);
-        for (const key of dirty) refreshedKeys.add(key);
         refreshedAll ||= all;
-        dirtyKeys.clear();
+        if (all)
+          for (const key of Object.keys(previous?.result ?? {}))
+            dirtyKeys.add(key);
         refreshAll = false;
         const requested = subscribed.filter(
           (key) =>
@@ -424,6 +426,10 @@ export function createTaggedKeyedQueryOwner<Value>(options: {
             dirty.has(key) ||
             !Object.hasOwn(previous?.result ?? {}, key),
         );
+        for (const key of requested) {
+          refreshedKeys.add(key);
+          dirtyKeys.delete(key);
+        }
         readingKeys = new Set(requested);
         const started = tick();
         try {
@@ -440,8 +446,7 @@ export function createTaggedKeyedQueryOwner<Value>(options: {
               },
             ),
           );
-          const retained = (key: string) =>
-            !all && !dirty.has(key) && !readingKeys.has(key);
+          const retained = (key: string) => !readingKeys.has(key);
           for (const key of requested) startedAt.set(key, started);
           previous = {
             result: Object.fromEntries([
@@ -488,8 +493,9 @@ export function createTaggedKeyedQueryOwner<Value>(options: {
         keys.set(key, (keys.get(key) ?? 0) + 1);
       }
       const cached = getTaggedReadData<KeyedData<Value>>(client, queryKey);
-      const missing = requested.filter(
-        (key) => !Object.hasOwn(cached?.result ?? {}, key),
+      const pending = requested.filter(
+        (key) =>
+          dirtyKeys.has(key) || !Object.hasOwn(cached?.result ?? {}, key),
       );
       if (!stop) missingOnly = cached === undefined;
       listeners.add(listener);
@@ -498,11 +504,11 @@ export function createTaggedKeyedQueryOwner<Value>(options: {
           for (const notify of listeners) notify();
         });
       }
-      if (added && missing.length > 0) {
+      if (added && pending.length > 0) {
         if (observer.getCurrentResult().isFetching) {
           if (
             readingKeys.size > 0 &&
-            missing.some((key) => !readingKeys.has(key))
+            pending.some((key) => !readingKeys.has(key))
           )
             restartTaggedRead(observer.getCurrentQuery());
         } else {

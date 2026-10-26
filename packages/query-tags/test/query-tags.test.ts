@@ -268,6 +268,69 @@ it("shares one keyed observer, batches consumers, and retains data through refre
   expect(owner.observer.getCurrentResult().error).toBeNull();
 });
 
+it.each(["refetch", "all", "key"] as const)(
+  "retains inactive rows during %s refresh and refreshes them when revisited",
+  async (refresh) => {
+    const client = setup();
+    let value = 1;
+    const requested: string[][] = [];
+    const owner = createTaggedKeyedQueryOwner({
+      client,
+      queryKey: ["switching"],
+      scope: CORE_TAG_SCOPE,
+      collection,
+      read: async (keys) => {
+        requested.push([...keys]);
+        return {
+          result: Object.fromEntries(keys.map((key) => [key, value])),
+          tags: [],
+          keyTags: Object.fromEntries(
+            keys.map((key) => [key, [`item:${key}`]]),
+          ),
+        };
+      },
+    });
+    const stopA = owner.subscribe(["a"], () => {});
+    disposers.push(owner.subscribe(["b"], () => {}));
+    await vi.waitFor(() =>
+      expect(owner.observer.getCurrentResult().data?.result).toEqual({
+        a: 1,
+        b: 1,
+      }),
+    );
+    stopA();
+    value = 2;
+    if (refresh === "refetch") await owner.observer.refetch();
+    else
+      await invalidateTags(
+        client,
+        CORE_TAG_SCOPE,
+        refresh === "all" ? null : ["item:a", "item:b"],
+      );
+    expect(owner.observer.getCurrentResult().data?.result).toEqual({
+      a: 1,
+      b: 2,
+    });
+    expect(requested).toEqual([["a", "b"], ["b"]]);
+    value = 3;
+    await owner.observer.refetch();
+    expect(owner.observer.getCurrentResult().data?.result).toEqual({
+      a: 1,
+      b: 3,
+    });
+    value = 4;
+    disposers.push(owner.subscribe(["a"], () => {}));
+    expect(owner.observer.getCurrentResult().data?.result.a).toBe(1);
+    await vi.waitFor(() =>
+      expect(owner.observer.getCurrentResult().data?.result).toEqual({
+        a: 4,
+        b: 3,
+      }),
+    );
+    expect(requested.at(-1)).toEqual(["a"]);
+  },
+);
+
 it("re-reads after a dormant read completes without a subscription to changes", async () => {
   const client = setup();
   const gate = deferred<void>();
@@ -703,7 +766,7 @@ describe("optimistic tagged mutations", () => {
     },
   );
 
-  it("drops an unsubscribed stale row with an accepted prediction and reads it fresh on resubscribe", async () => {
+  it("retains an unsubscribed stale row with an accepted prediction and reads it fresh on resubscribe", async () => {
     const client = setup();
     const queryKey = ["optimistic-rows"];
     let value = 1;
@@ -751,7 +814,10 @@ describe("optimistic tagged mutations", () => {
     stopA();
     value = 3;
     await invalidateTags(client, CORE_TAG_SCOPE, ["item:b"]);
-    expect(owner.observer.getCurrentResult().data?.result).toEqual({ b: 3 });
+    expect(owner.observer.getCurrentResult().data?.result).toEqual({
+      a: 2,
+      b: 3,
+    });
     failure = false;
     value = 4;
     disposers.push(owner.subscribe(["a"], () => {}));
@@ -849,7 +915,10 @@ it("does not show a row read that started before the write once a later batch re
     write.resolve({ result: "saved", invalidated: ["item:a"] });
   });
   await Promise.all([first, second, mutation]);
-  expect(owner.observer.getCurrentResult().data?.result).toEqual({ b: 3 });
+  expect(owner.observer.getCurrentResult().data?.result).toEqual({
+    a: 2,
+    b: 3,
+  });
   disposers.push(owner.subscribe(["a"], () => {}));
   await vi.waitFor(() =>
     expect(owner.observer.getCurrentResult().data?.result).toEqual({
