@@ -305,8 +305,16 @@ export class HostToolchain {
         if (key !== "PATH" && key.toUpperCase() === "PATH") delete result[key];
     }
     if (path !== undefined) result.PATH = path;
+    const callerKeys = new Set(
+      Object.keys(env)
+        .filter((key) => env[key] !== undefined)
+        .map((key) => key.toUpperCase()),
+    );
     for (const key of NETWORK_KEYS)
-      if (result[key] === undefined && this.shellEnv[key] !== undefined)
+      if (
+        !callerKeys.has(key.toUpperCase()) &&
+        this.shellEnv[key] !== undefined
+      )
         result[key] = this.shellEnv[key];
     return result;
   }

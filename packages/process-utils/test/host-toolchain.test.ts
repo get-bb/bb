@@ -143,7 +143,7 @@ describe.skipIf(process.platform === "win32")("host toolchain recovery", () => {
     await writeFile(shellPath, "/usr/bin:/bin");
     await script(
       shell,
-      `#!/bin/sh\nprintf 'startup noise\\n__BB_SHELL_ENV_START__\\nPATH='\n/bin/cat "${shellPath}"\nprintf '\\nHTTPS_PROXY=http://proxy.example:8080\\nIGNORED_SECRET=secret\\n__BB_SHELL_ENV_END__\\nshutdown noise\\n'\n`,
+      `#!/bin/sh\nprintf 'startup noise\\n__BB_SHELL_ENV_START__\\nPATH='\n/bin/cat "${shellPath}"\nprintf '\\nHTTPS_PROXY=http://proxy.example:8080\\nhttps_proxy=http://proxy.example:8080\\nIGNORED_SECRET=secret\\n__BB_SHELL_ENV_END__\\nshutdown noise\\n'\n`,
     );
     const env = { HOME: root, PATH: "/usr/bin:/bin", SHELL: shell };
     const toolchain = new HostToolchain(env);
@@ -156,6 +156,14 @@ describe.skipIf(process.platform === "win32")("host toolchain recovery", () => {
     expect(
       toolchain.environment({ ...env, HTTPS_PROXY: "http://override.example" }),
     ).toMatchObject({ HTTPS_PROXY: "http://override.example" });
+    expect(
+      toolchain.environment({ ...env, HTTPS_PROXY: "http://override.example" })
+        .https_proxy,
+    ).toBeUndefined();
+    expect(
+      toolchain.environment({ ...env, https_proxy: "http://override.example" })
+        .HTTPS_PROXY,
+    ).toBeUndefined();
     expect(toolchain.environment().IGNORED_SECRET).toBeUndefined();
     expect(toolchain.environment().HTTPS_PROXY).toBe(
       "http://proxy.example:8080",
