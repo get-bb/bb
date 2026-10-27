@@ -1,8 +1,14 @@
-import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+} from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 import type { ImperativePanelHandle } from "react-resizable-panels";
 import {
-  secondaryPanelWidthPercentAtom,
+  SecondaryPanelWidthPercentAtomContext,
   threadSecondaryPanelResizingAtom,
 } from "./threadSecondaryPanelAtoms";
 import { usePanelResizeSnap } from "./usePanelResizeSnap";
@@ -20,8 +26,9 @@ export function useSecondaryPanelResize({
   panelId,
   renderAsDrawer,
 }: UseSecondaryPanelResizeArgs) {
-  const persistedWidthPercent = useAtomValue(secondaryPanelWidthPercentAtom);
-  const setPersistedWidthPercent = useSetAtom(secondaryPanelWidthPercentAtom);
+  const widthPercentAtom = useContext(SecondaryPanelWidthPercentAtomContext);
+  const persistedWidthPercent = useAtomValue(widthPercentAtom);
+  const setPersistedWidthPercent = useSetAtom(widthPercentAtom);
   const setIsResizing = useSetAtom(threadSecondaryPanelResizingAtom);
   const secondaryPanelRef = useRef<HTMLElement>(null!);
   const secondaryResizablePanelRef = useRef<ImperativePanelHandle | null>(null);

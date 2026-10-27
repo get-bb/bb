@@ -78,7 +78,9 @@ export function SplitWorkspaceSecondaryPanelHost({
   const { ref: sizingRef, minimum: minimumSize } = useSecondaryPanelSizing(1);
   const model = usePaneSecondaryPanelModel(registry, focusedPaneId);
   const panelGroupRef = useRef<ImperativePanelGroupHandle | null>(null);
-  const panelWidthPercent = useAtomValue(secondaryPanelWidthPercentAtom);
+  const widthPercentAtom =
+    model?.widthPercentAtom ?? secondaryPanelWidthPercentAtom;
+  const panelWidthPercent = useAtomValue(widthPercentAtom);
   const shortcut = useAppCommandShortcut("panel.toggle");
 
   const [isPanelVisible, setIsPanelVisible] = useState<boolean | null>(null);
@@ -161,7 +163,7 @@ export function SplitWorkspaceSecondaryPanelHost({
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
   const isSidebarFramed = useIsSidebarFramed();
 
-  const setPanelWidthPercent = useSetAtom(secondaryPanelWidthPercentAtom);
+  const setPanelWidthPercent = useSetAtom(widthPercentAtom);
   const lastEmptyPanelSizeRef = useRef(0);
   const handleEmptyPanelPointerResize = useCallback(
     (leadingFraction: number) => {

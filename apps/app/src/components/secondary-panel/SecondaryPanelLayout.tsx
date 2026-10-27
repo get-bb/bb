@@ -32,7 +32,10 @@ import {
   PANEL_COLLAPSE_TRANSITION_CLASS,
   usePanelCollapseTransitionsReady,
 } from "./panelTransitionTokens";
-import { secondaryPanelWidthPercentAtom } from "./threadSecondaryPanelAtoms";
+import {
+  SecondaryPanelWidthPercentAtomContext,
+  type SecondaryPanelWidthPercentAtom,
+} from "./threadSecondaryPanelAtoms";
 import {
   isCompactSidebarDrawerShowing,
   subscribeCompactSidebarDrawerShowing,
@@ -75,6 +78,7 @@ interface SecondaryPanelLayoutProps {
   renderPanel: (args: SecondaryPanelRenderArgs) => ReactNode;
   renderHostedPanel?: (panel: ReactNode) => ReactNode;
   composerHost: PluginComposerHost | null;
+  widthPercentAtom: SecondaryPanelWidthPercentAtom;
 }
 
 export function SecondaryPanelLayout({
@@ -94,17 +98,20 @@ export function SecondaryPanelLayout({
   renderPanel: renderWorkspacePanel,
   renderHostedPanel,
   composerHost,
+  widthPercentAtom,
 }: SecondaryPanelLayoutProps) {
   const { ref: sizingRef, minimum: minimumSize } = useSecondaryPanelSizing();
   const paneContext = useOptionalPaneContext();
   const pluginDetails = useContext(PluginDetailPanelContext);
   const renderPanel = useCallback(
     (args: SecondaryPanelRenderArgs) => (
-      <PluginDetailPanelContext.Provider value={pluginDetails}>
-        {renderWorkspacePanel(args)}
-      </PluginDetailPanelContext.Provider>
+      <SecondaryPanelWidthPercentAtomContext.Provider value={widthPercentAtom}>
+        <PluginDetailPanelContext.Provider value={pluginDetails}>
+          {renderWorkspacePanel(args)}
+        </PluginDetailPanelContext.Provider>
+      </SecondaryPanelWidthPercentAtomContext.Provider>
     ),
-    [pluginDetails, renderWorkspacePanel],
+    [pluginDetails, renderWorkspacePanel, widthPercentAtom],
   );
   const secondaryPanelHost = paneContext?.secondaryPanelHost ?? null;
   const renderAsDrawer = useIsCompactViewport();
@@ -125,9 +132,7 @@ export function SecondaryPanelLayout({
     resetKey,
     !renderAsDrawer,
   );
-  const persistedSecondaryWidthPercent = useAtomValue(
-    secondaryPanelWidthPercentAtom,
-  );
+  const persistedSecondaryWidthPercent = useAtomValue(widthPercentAtom);
   const isMainCollapsed = open && !renderAsDrawer && collapse?.active === true;
 
   const horizontalPanelGroupRef = useRef<ImperativePanelGroupHandle | null>(
@@ -300,6 +305,7 @@ export function SecondaryPanelLayout({
       panel: renderHostedPanel?.(inlinePanel) ?? inlinePanel,
       onToggle,
       transitionsReady,
+      widthPercentAtom,
     }),
     [
       composerHost,
@@ -310,6 +316,7 @@ export function SecondaryPanelLayout({
       open,
       renderHostedPanel,
       transitionsReady,
+      widthPercentAtom,
     ],
   );
   usePaneSecondaryPanelRegistration(secondaryPanelHost, hostedPanelModel);

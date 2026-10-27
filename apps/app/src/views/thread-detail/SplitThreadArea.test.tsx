@@ -64,6 +64,10 @@ import {
   type PaneContextValue,
 } from "./PaneContext";
 import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
+import {
+  getPluginPageSecondaryPanelWidthPercentAtom,
+  secondaryPanelWidthPercentAtom,
+} from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { SplitThreadArea } from "./SplitThreadArea";
 import { applyThreadOpenToLayout } from "./splitThreadNavigation";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
@@ -196,6 +200,7 @@ function RootComposeFixture() {
       panel: <div data-testid="hosted-new-thread-panel" />,
       onToggle: () => setIsPanelOpen((open) => !open),
       transitionsReady: true,
+      widthPercentAtom: secondaryPanelWidthPercentAtom,
     }),
     [isPanelOpen],
   );
@@ -366,6 +371,10 @@ vi.mock("@/components/plugin/PluginPanelRightPanelHost", () => ({
         ),
         onToggle: () => setIsPanelOpen((open) => !open),
         transitionsReady: true,
+        widthPercentAtom: getPluginPageSecondaryPanelWidthPercentAtom({
+          panelPath,
+          pluginId,
+        }),
       }),
       [isPanelOpen, panelPath, pluginId],
     );
@@ -466,6 +475,7 @@ function ThreadPaneFixture({
       ),
       onToggle: () => setIsPanelOpen((open) => !open),
       transitionsReady: true,
+      widthPercentAtom: secondaryPanelWidthPercentAtom,
     }),
     [composerHost, isPanelOpen, threadId],
   );

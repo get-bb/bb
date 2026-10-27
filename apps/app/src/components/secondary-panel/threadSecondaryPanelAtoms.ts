@@ -1,4 +1,5 @@
-import { atom } from "jotai";
+import { createContext } from "react";
+import { atom, type WritableAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { atomFamily } from "jotai-family";
 import {
@@ -26,12 +27,47 @@ const secondaryPanelWidthStorage = createLocalStorageSyncStorage<number>({
   },
   serialize: (value) => String(value),
 });
-export const secondaryPanelWidthPercentAtom = atomWithStorage<number>(
-  "bb.thread.secondaryPanel.widthPercent",
-  DEFAULT_SECONDARY_PANEL_WIDTH_PERCENT,
-  secondaryPanelWidthStorage,
-  { getOnInit: true },
+export type SecondaryPanelWidthPercentAtom = WritableAtom<
+  number,
+  [number],
+  void
+>;
+
+export const secondaryPanelWidthPercentAtom: SecondaryPanelWidthPercentAtom =
+  atomWithStorage<number>(
+    "bb.thread.secondaryPanel.widthPercent",
+    DEFAULT_SECONDARY_PANEL_WIDTH_PERCENT,
+    secondaryPanelWidthStorage,
+    { getOnInit: true },
+  );
+
+const PLUGIN_PAGE_SECONDARY_PANEL_WIDTH_STORAGE_PREFIX =
+  "bb.pluginPage.secondaryPanel.widthPercent";
+
+const pluginPageSecondaryPanelWidthPercentAtomFamily = atomFamily(
+  (pageKey: string): SecondaryPanelWidthPercentAtom =>
+    atomWithStorage<number>(
+      `${PLUGIN_PAGE_SECONDARY_PANEL_WIDTH_STORAGE_PREFIX}-${pageKey}`,
+      DEFAULT_SECONDARY_PANEL_WIDTH_PERCENT,
+      secondaryPanelWidthStorage,
+      { getOnInit: true },
+    ),
 );
+
+export function getPluginPageSecondaryPanelWidthPercentAtom({
+  panelPath,
+  pluginId,
+}: {
+  panelPath: string;
+  pluginId: string;
+}): SecondaryPanelWidthPercentAtom {
+  return pluginPageSecondaryPanelWidthPercentAtomFamily(
+    `${encodeURIComponent(pluginId)}:${encodeURIComponent(panelPath)}`,
+  );
+}
+
+export const SecondaryPanelWidthPercentAtomContext =
+  createContext<SecondaryPanelWidthPercentAtom>(secondaryPanelWidthPercentAtom);
 
 const THREAD_CONVERSATION_COLLAPSED_STORAGE_PREFIX =
   "bb.thread.conversation.collapsed";
