@@ -838,7 +838,6 @@ function handleChildRequest(
       callId: parsed.data.callId,
       tool: parsed.data.tool,
       arguments: parsed.data.arguments ?? {},
-      providerNativeIds: true,
     })
       .then((result) => {
         responder.result(result);
@@ -889,7 +888,6 @@ function handleChildRequest(
           threadId: session.bbThreadId,
           turnId: request.turnId,
           payload: request.payload,
-          providerNativeIds: true,
         }),
       ]);
       responder.result(

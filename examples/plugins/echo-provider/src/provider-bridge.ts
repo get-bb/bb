@@ -204,7 +204,6 @@ function runEchoTurn(args: {
       callId: id,
       tool: ECHO_STAMP_TOOL_NAME,
       arguments: { text: prompt },
-      providerNativeIds: true,
     });
     pendingToolCalls.set(requestId, { turn });
     return;

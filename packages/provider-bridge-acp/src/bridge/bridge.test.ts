@@ -3064,7 +3064,6 @@ describe("acp bridge", () => {
       "forwarded permission request",
     );
     expect(forwarded.params).toMatchObject({
-      providerNativeIds: true,
       payload: {
         kind: "approval",
         subject: {

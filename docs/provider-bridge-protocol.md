@@ -137,8 +137,11 @@ deltas and owns every timeline invariant:
   stream keys, parent refs, optional provider turn ids) and the assembler
   holds the bidirectional provider↔bb maps — both for scoping incoming
   deltas and for reverse-mapping bb ids on the command plane
-  (`turn/steer.expectedTurnId`, `thread/stop.activeTurnId`) and on
-  provider-native interaction requests (`providerNativeIds: true`). An
+  (`turn/steer.expectedTurnId`, `thread/stop.activeTurnId`). Bridges
+  send `interaction/request` and `item/tool/call` with the ids they put
+  on deltas: when the request names its `threadId`, the runtime maps its
+  `turnId`, approval subject `itemId`, and tool `callId` to the bb ids
+  minted for them, and passes through any id the assembler has not seen. An
   `interaction/request` carries an approval, a user question, or a
   plugin-defined request (`"<pluginId>/<name>"`); the resolution pairs with
   the payload kind ([provider-plugin-api.md](provider-plugin-api.md) §4).

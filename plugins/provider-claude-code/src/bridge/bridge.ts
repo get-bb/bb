@@ -1970,7 +1970,6 @@ function createForwardInteractiveRequest(
           threadId: args.threadId,
           providerThreadId: args.providerThreadId,
           turnId: null,
-          providerNativeIds: true,
           payload,
         },
       });
@@ -2031,7 +2030,6 @@ function createForwardUserQuestionRequest(
           threadId: args.threadId,
           providerThreadId: args.providerThreadId,
           turnId: null,
-          providerNativeIds: true,
           payload,
         },
       });

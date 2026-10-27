@@ -288,7 +288,6 @@ const interactionRequestParamsSchema = z
       approvalInteractionOutcomeSchema.shape.payload,
       ...interactionRequestPayloadSchema.options,
     ]),
-    providerNativeIds: z.boolean().optional(),
   })
   .passthrough();
 
@@ -482,7 +481,6 @@ it("replays one scripted codex session onto the golden event stream", async () =
   ) {
     throw new Error("Expected a canonical command-approval payload");
   }
-  expect(approvalRequest?.providerNativeIds).toBe(true);
   expect(canonicalApproval.subject.itemId).toBe(COMMAND_ITEM_ID);
   const commandEventItemId = canonical.events.find(
     (event) =>
