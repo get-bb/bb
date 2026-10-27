@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from "react";
+import { toast } from "sonner";
 import {
   experimental_THREAD_ACTION_GROUPS,
   experimental_useRpcKeyedQuery,
@@ -27,7 +28,10 @@ export interface ThreadNotificationsData {
   error: string | null;
   unloadedThreadIds: ReadonlySet<string> | null;
   retry(): Promise<void>;
-  setLevel(threadId: string, level: OwnNotificationLevel): Promise<void>;
+  setLevels(
+    threadIds: readonly string[],
+    level: OwnNotificationLevel,
+  ): Promise<void>;
 }
 
 function parseDefaults(
@@ -85,9 +89,17 @@ function useThreadNotificationsData({
     () => new Map(Object.entries(query.data?.levels ?? {})),
     [query.data?.levels],
   );
-  const setLevel = useCallback(
-    async (threadId: string, level: OwnNotificationLevel) => {
-      await saveLevel({ threadId, level });
+  const setLevels = useCallback(
+    async (threadIds: readonly string[], level: OwnNotificationLevel) => {
+      try {
+        await Promise.all(
+          threadIds.map((threadId) => saveLevel({ threadId, level })),
+        );
+      } catch (error) {
+        toast.error("Failed to update notifications", {
+          description: error instanceof Error ? error.message : undefined,
+        });
+      }
     },
     [saveLevel],
   );
@@ -95,8 +107,8 @@ function useThreadNotificationsData({
   const defaults = useMemo(() => parseDefaults(values), [values]);
 
   return useMemo(
-    () => ({ levels, defaults, setLevel, error, unloadedThreadIds, retry }),
-    [defaults, levels, setLevel, error, unloadedThreadIds, retry],
+    () => ({ levels, defaults, setLevels, error, unloadedThreadIds, retry }),
+    [defaults, levels, setLevels, error, unloadedThreadIds, retry],
   );
 }
 
@@ -162,7 +174,7 @@ export const notificationsThreadAction: PluginThreadActionRegistration<ThreadNot
           }
           const level = ownNotificationLevelSchema.safeParse(value);
           if (!level.success) return;
-          await data.setLevel(thread.id, level.data);
+          await data.setLevels([thread.id], level.data);
         },
       };
     },
@@ -233,8 +245,9 @@ export const notificationsThreadAction: PluginThreadActionRegistration<ThreadNot
           }
           const level = ownNotificationLevelSchema.safeParse(value);
           if (!level.success) return;
-          await Promise.all(
-            active.map((thread) => data.setLevel(thread.id, level.data)),
+          await data.setLevels(
+            active.map((thread) => thread.id),
+            level.data,
           );
         },
       };

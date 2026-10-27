@@ -352,6 +352,7 @@ export function createRpcQueryHooks(useHost: () => RpcQueryHost) {
       PluginRpcResult<Contract[Method]>
     >({
       client: host.queryClient,
+      meta: { showErrorToast: false },
       invalidate: (tags) =>
         invalidateTags(host.queryClient, pluginTagScope(pluginId), tags),
       call: async (input) => {
