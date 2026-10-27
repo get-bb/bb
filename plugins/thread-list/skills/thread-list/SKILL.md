@@ -83,9 +83,11 @@ provider ids have no icon.
 
 Organize → Rows → Metadata adds a line under each thread's title where plugins
 draw metadata, such as GitHub PR Status's pull request number. Rows grow to
-two lines only when a plugin shows something for them. `showRowMetadata`
-defaults to `false`; use `bb thread-list prefs set showRowMetadata true` to
-turn it on.
+two lines only when a plugin shows something for them. The option appears only
+while the `threadRowMetadata` experiment is on
+(`bb settings experiment threadRowMetadata true`); while it is off the sidebar
+ignores `showRowMetadata`. `showRowMetadata` defaults to `false`; use
+`bb thread-list prefs set showRowMetadata true` to turn it on.
 
 Organize → Groups → By read status lists threads that show the unread dot above
 the rest, keeping the selected sort within each group. `groupByReadStatus`

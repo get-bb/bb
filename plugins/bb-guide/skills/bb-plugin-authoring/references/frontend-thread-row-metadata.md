@@ -2,8 +2,9 @@
 
 `app.slots.experimental_threadRowMetadata` adds a small item to the metadata
 line under each thread row's title in bb's sidebar. The sidebar draws that line
-only while the user turns on Organize → Rows → Metadata (off by default), and
-only on rows where an item shows something. Plugin-built lists draw the same
+only while the `threadRowMetadata` experiment is on and the user turns on
+Organize → Rows → Metadata (both off by default), and only on rows where an
+item shows something. Plugin-built lists draw the same
 items with `experimental_ThreadRowMetadata` (see "bb's row metadata on your
 row"). The GitHub PR Status plugin's pull request badge is one.
 

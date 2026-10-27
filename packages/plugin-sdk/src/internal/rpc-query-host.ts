@@ -392,7 +392,7 @@ export function createRpcQueryHooks(useHost: () => RpcQueryHost) {
     }, [current]);
     const refetchKeys = useCallback(
       async (requested: readonly string[]) => {
-        await current.refetchKeys(
+        await current.refresh(
           requested.filter((key) => keys.includes(key)),
         );
       },

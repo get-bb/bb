@@ -195,6 +195,9 @@ see `bb guide thread-messaging` for `--compact-first`.
 `sidebarMultiSelect` lets the built-in thread list sidebar select several threads with
 Cmd/Ctrl+Shift-click and Shift-click for bulk actions and drag; Cmd/Ctrl-click
 still opens a thread in a split.
+`threadRowMetadata` adds Organize → Rows → Metadata to the built-in thread list,
+a line under each thread title where plugins show details such as the pull
+request number.
 `unreadDividerAtAnswer` places the NEW divider of an unread thread before the
 final assistant message of a turn that finished while you were away, instead of
 before its first tool call.

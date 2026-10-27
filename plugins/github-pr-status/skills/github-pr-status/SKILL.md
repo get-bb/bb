@@ -8,7 +8,7 @@ description: "Inspect an environment's GitHub pull request, mark it ready or dra
 The plugin finds the pull request for an environment's current branch by
 running `gh` in the environment's workspace on its machine, so forks, upstream
 remotes and the machine's own `gh` login apply. The sidebar row badge (state
-icon and number, shown when Organize → Rows → Metadata is on), the composer banner, the Info panel and plugin-built
+icon and number, shown when the `threadRowMetadata` experiment and Organize → Rows → Metadata are on), the composer banner, the Info panel and plugin-built
 sidebars read their PR status from it. Rows off screen are not read, and
 pending checks on screen re-check about every 30 seconds in one batched GitHub
 request per machine.

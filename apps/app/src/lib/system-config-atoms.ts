@@ -36,6 +36,7 @@ const unavailableSystemConfig: SystemConfigResponse = {
     serverMove: false,
     performanceDiagnostics: false,
     sidebarMultiSelect: false,
+    threadRowMetadata: false,
     timelinePush: false,
     unreadDividerAtAnswer: false,
     websocketCompression: false,

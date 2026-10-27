@@ -2717,8 +2717,9 @@ background.
 
 **Core callers.** bb's sidebar (`plugins/thread-list`, `ThreadRow.tsx`) renders
 `experimental_ThreadRowMetadata` on a line under each row's title, the same call a
-plugin-built list makes, only while the user turns on Organize → Rows →
-Metadata (`showRowMetadata`, off by default). The row grows to two lines only
+plugin-built list makes, only while the `threadRowMetadata` experiment is on
+and the user turns on Organize → Rows → Metadata (`showRowMetadata`); both are
+off by default. The row grows to two lines only
 while an item draws something, the line is hidden while the row is renamed or
 customized, and clicks on it go through the row's own click handling. The
 GitHub PR Status plugin registers the first item: the current-branch pull

@@ -1149,6 +1149,11 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "In the built-in thread list sidebar, Cmd/Ctrl+Shift-click and Shift-click threads to select several, right-click for bulk actions, and drag them together into a section, under a thread, into Pinned, or into a composer as mentions.",
   },
+  threadRowMetadata: {
+    label: "Thread row metadata",
+    description:
+      "Add Metadata to the built-in thread list's Organize → Rows menu. When it is checked, plugins can show details such as a thread's pull request on a second line under its title.",
+  },
   timelinePush: {
     label: "Pushed timeline updates",
     description:

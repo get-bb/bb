@@ -1730,8 +1730,9 @@ export interface ExperimentalThreadRowMetadataProps {
 /**
  * A small item on a thread row's metadata line, under the title: a badge, not
  * a control. Items share one line, left to right, and the line clips at the
- * row's edge. bb's sidebar draws the line only while the user turns on
- * Organize → Rows → Metadata, and only on rows where an item shows something.
+ * row's edge. bb's sidebar draws the line only while the `threadRowMetadata`
+ * experiment is on and the user turns on Organize → Rows → Metadata, and only
+ * on rows where an item shows something.
  * The host mounts the component once its row is live, and with the row from
  * then on while it shows something, so cached content draws in the row's
  * first frame. It hides the line while the row is renamed or customized and

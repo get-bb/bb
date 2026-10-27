@@ -913,6 +913,11 @@ off. An experiment you set yourself keeps your value either way.
   them onto a composer as one mention per thread. Cmd/Ctrl-click still opens a
   thread in a split. Plugins read it with
   `experimental_useExperiment("sidebarMultiSelect")`.
+- `threadRowMetadata` adds Metadata to the built-in thread list's Organize →
+  Rows menu. With it checked (`showRowMetadata`), plugins draw details such as
+  GitHub PR Status's pull request number on a line under each thread title.
+  While the experiment is off the sidebar ignores `showRowMetadata`. Plugins
+  read it with `experimental_useExperiment("threadRowMetadata")`.
 - `timelinePush` makes an open thread view subscribe to its latest timeline
   window over the WebSocket (`thread-timeline` subscription target); the server
   pushes the full window once, then row deltas after new events, instead of the
@@ -1206,7 +1211,7 @@ row's Customize actions, or `bb thread-list prefs get|set|reset <key>`
 | `threadLifecycles`    | `["active"]`                      | `["active"]`, `["archived"]`, or both; empty and duplicate values are rejected                                                              |
 | `rowActions`          | `["bb--core/archive"]`            | Up to three thread action keys in display order; see below                                                                                  |
 | `showProviderIcons`   | `false`                           | Shows the provider icon before each thread title                                                                                            |
-| `showRowMetadata`     | `false`                           | Shows plugins' metadata, such as the pull request number, on a line under each thread title                                                 |
+| `showRowMetadata`     | `false`                           | Shows plugins' metadata on a line under each thread title; needs the `threadRowMetadata` experiment                                         |
 | `collapsed*`          | `[]`                              | Collapsed sections, projects, threads, environments, custom sections, and machines                                                          |
 
 `rowActions` keys are `bb--core/<id>` (`split`, `newThreadInEnvironment`,
