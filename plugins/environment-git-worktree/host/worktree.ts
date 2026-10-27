@@ -40,6 +40,7 @@ import {
   WORKTREE_INCLUDE_FILE_NAME,
   type CopyWorktreeIncludeFilesResult,
 } from "./worktree-include.js";
+import type { ResolvedWorktreeBaseBranch } from "./base-branch.js";
 
 export type BranchMode = "reset" | "reuse-existing";
 
@@ -49,7 +50,7 @@ interface CreateWorktreeArgs {
   completionPath: string;
   ownWorktreesRoot: string;
   branchName: string;
-  baseBranch: string | null;
+  baseBranch: ResolvedWorktreeBaseBranch | null;
   branchMode: BranchMode;
   onProgress?: ProgressCallback | undefined;
   signal?: AbortSignal | undefined;
@@ -257,9 +258,31 @@ async function resolveRemoteBaseBranch(
   };
 }
 
+function isFetchFailureWithFallback(error: unknown): boolean {
+  return (
+    error instanceof WorkspaceError &&
+    (error.code === "git_command_failed" ||
+      error.code === "git_command_timeout")
+  );
+}
+
+async function readShortCommit(
+  sourcePath: string,
+  ref: string,
+  signal: AbortSignal | undefined,
+): Promise<string | null> {
+  const result = await runGit(
+    ["rev-parse", "--verify", "--quiet", "--short", `${ref}^{commit}`],
+    { cwd: sourcePath, ...signalOptions(signal), allowFailure: true },
+  );
+  const commit = result.stdout.trim();
+  return result.exitCode === 0 && commit !== "" ? commit : null;
+}
+
 export async function fetchRemoteBaseBranch(args: {
   sourcePath: string;
   baseBranch: string;
+  fetchFailureFallback: boolean;
   onProgress: ProgressCallback | undefined;
   signal: AbortSignal | undefined;
 }): Promise<void> {
@@ -366,7 +389,32 @@ export async function fetchRemoteBaseBranch(args: {
       startedAt,
       metadata: { durationMs: Date.now() - startedAt },
     });
-    throw error;
+    if (
+      !args.fetchFailureFallback ||
+      args.signal?.aborted ||
+      !isFetchFailureWithFallback(error)
+    ) {
+      throw error;
+    }
+    const fallbackCommit = await readShortCommit(
+      args.sourcePath,
+      remoteRef,
+      args.signal,
+    );
+    if (fallbackCommit === null) {
+      throw error;
+    }
+    emitOutput(
+      args.onProgress,
+      "git-fetch",
+      error instanceof Error ? error.message : String(error),
+    );
+    emitStep({
+      onProgress: args.onProgress,
+      key: "git-fetch-fallback",
+      text: `Using the last fetched ${args.baseBranch} (${fallbackCommit}); it may be out of date`,
+      status: "completed",
+    });
   }
 }
 
@@ -547,7 +595,8 @@ export async function createWorktree(
     throwIfProvisionAborted(args.signal);
     await fetchRemoteBaseBranch({
       sourcePath: args.sourcePath,
-      baseBranch,
+      baseBranch: baseBranch.ref,
+      fetchFailureFallback: baseBranch.fetchFailureFallback,
       onProgress: args.onProgress,
       signal: args.signal,
     });
@@ -558,7 +607,7 @@ export async function createWorktree(
       "-B",
       args.branchName,
       args.targetPath,
-      baseBranch,
+      baseBranch.ref,
     ];
   }
 

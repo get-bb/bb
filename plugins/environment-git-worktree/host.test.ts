@@ -221,6 +221,176 @@ describe("worktree host entry", () => {
   });
 
   it.each([
+    ["equal", "main"],
+    ["behind", "main"],
+    ["equal", "default"],
+    ["behind", "default"],
+    ["remote-only", "release"],
+  ])(
+    "uses the last fetched remote when the fetch fails for %s with base %s",
+    async (relation, base) => {
+      const { root, sourcePath, dataDir } = await createSourceRepository();
+      const clone = join(root, "clone");
+      await git(sourcePath, "branch", "release");
+      await git(root, "clone", sourcePath, clone);
+      const localHead = (await git(clone, "rev-parse", "HEAD")).trim();
+      if (relation === "behind" || relation === "remote-only") {
+        await writeFile(join(sourcePath, "README.md"), "remote advance\n");
+        await git(sourcePath, "commit", "-am", "advance remote");
+        await git(sourcePath, "branch", "-f", "release", "HEAD");
+        await git(clone, "fetch", "origin");
+      }
+      const lastFetched = base === "release" ? "origin/release" : "origin/main";
+      const lastFetchedHead = (
+        await git(clone, "rev-parse", lastFetched)
+      ).trim();
+      await git(clone, "remote", "set-url", "origin", join(root, "missing"));
+      const harness = createHarness(dataDir);
+      try {
+        const result = await harness.experimental_call("create", {
+          ...createInput({
+            operationId: "offline",
+            sourcePath: clone,
+            pathKey: "offline",
+            branchName: "bb/offline",
+          }),
+          baseBranch:
+            base === "default"
+              ? { kind: "default" }
+              : { kind: "named", name: base },
+        });
+        expect(result).toMatchObject({
+          status: "created",
+          baseBranch: lastFetched,
+        });
+        if (result.status !== "created") throw new Error(result.message);
+        expect((await git(result.path, "rev-parse", "HEAD")).trim()).toBe(
+          lastFetchedHead,
+        );
+        expect((await git(clone, "rev-parse", "main")).trim()).toBe(localHead);
+        const progress = progressText(harness);
+        expect(progress).toContain(`Failed to fetch ${lastFetched}`);
+        expect(progress).toContain(
+          `Using the last fetched ${lastFetched} (${lastFetchedHead.slice(0, 7)}`,
+        );
+      } finally {
+        await harness.experimental_dispose();
+      }
+    },
+  );
+
+  it.each(["main", "default"])(
+    "keeps a local base that is ahead without fetching for base %s",
+    async (base) => {
+      const { root, sourcePath, dataDir } = await createSourceRepository();
+      const clone = join(root, "clone");
+      await git(root, "clone", sourcePath, clone);
+      await writeFile(join(clone, "local.txt"), "local work\n");
+      await git(clone, "add", ".");
+      await git(clone, "commit", "-m", "local work");
+      const localHead = (await git(clone, "rev-parse", "HEAD")).trim();
+      await git(clone, "remote", "set-url", "origin", join(root, "missing"));
+      const harness = createHarness(dataDir);
+      try {
+        const result = await harness.experimental_call("create", {
+          ...createInput({
+            operationId: "offline-ahead",
+            sourcePath: clone,
+            pathKey: "offline-ahead",
+            branchName: "bb/offline-ahead",
+          }),
+          baseBranch:
+            base === "default"
+              ? { kind: "default" }
+              : { kind: "named", name: base },
+        });
+        expect(result).toMatchObject({ status: "created", baseBranch: "main" });
+        if (result.status !== "created") throw new Error(result.message);
+        expect((await git(result.path, "rev-parse", "HEAD")).trim()).toBe(
+          localHead,
+        );
+        expect(progressText(harness)).not.toMatch(/fetch/iu);
+      } finally {
+        await harness.experimental_dispose();
+      }
+    },
+  );
+
+  it("fails when an explicit remote base cannot be fetched", async () => {
+    const { root, sourcePath, dataDir } = await createSourceRepository();
+    const clone = join(root, "clone");
+    await git(root, "clone", sourcePath, clone);
+    await git(clone, "remote", "set-url", "origin", join(root, "missing"));
+    const harness = createHarness(dataDir);
+    try {
+      const result = await harness.experimental_call("create", {
+        ...createInput({
+          operationId: "offline-explicit",
+          sourcePath: clone,
+          pathKey: "offline-explicit",
+          branchName: "bb/offline-explicit",
+        }),
+        baseBranch: { kind: "named", name: "origin/main" },
+      });
+      expect(result).toMatchObject({
+        status: "failed",
+        message: expect.stringContaining("git fetch"),
+      });
+      expect(progressText(harness)).not.toContain("Using the last fetched");
+      expect(
+        existsSync(join(dataDir, "worktrees", "offline-explicit", "clone")),
+      ).toBe(false);
+    } finally {
+      await harness.experimental_dispose();
+    }
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "cancels a create whose base fetch is still running",
+    async () => {
+      const { root, sourcePath, dataDir } = await createSourceRepository();
+      const clone = join(root, "clone");
+      await git(root, "clone", sourcePath, clone);
+      const sshPidPath = join(root, "ssh.pid");
+      const sshPath = join(root, "hanging-ssh");
+      await writeFile(
+        sshPath,
+        `#!/bin/sh\necho $$ > "${sshPidPath}"\nexec sleep 30\n`,
+        { mode: 0o755 },
+      );
+      await git(clone, "config", "core.sshCommand", sshPath);
+      await git(clone, "remote", "set-url", "origin", "ssh://bb.invalid/repo");
+      const harness = createHarness(dataDir);
+      const controller = new AbortController();
+      const created = harness
+        .experimental_call(
+          "create",
+          {
+            ...createInput({
+              operationId: "cancelled-fetch",
+              sourcePath: clone,
+              pathKey: "cancelled-fetch",
+              branchName: "bb/cancelled-fetch",
+            }),
+            baseBranch: { kind: "named", name: "main" },
+          },
+          { signal: controller.signal },
+        )
+        .catch((error: unknown) => error);
+      await expect
+        .poll(() => existsSync(sshPidPath), { timeout: 10_000 })
+        .toBe(true);
+      controller.abort();
+      expect(await created).toBeInstanceOf(Error);
+      expect(progressText(harness)).not.toContain("Using the last fetched");
+      expect(
+        existsSync(join(dataDir, "worktrees", "cancelled-fetch", "clone")),
+      ).toBe(false);
+      await harness.experimental_dispose();
+    },
+  );
+
+  it.each([
     { existingBranch: false, branchMode: "reset" },
     { existingBranch: false, branchMode: "reuse-existing" },
     { existingBranch: true, branchMode: "reuse-existing" },
