@@ -98,8 +98,7 @@ export function WaveformVisualizer({
     const canAnimate =
       active &&
       audioTrack !== null &&
-      typeof window.AudioContext !== "undefined" &&
-      !prefersReducedMotion;
+      typeof window.AudioContext !== "undefined";
 
     if (!canAnimate || audioTrack === null) {
       if (barsRef.current.length === 0) {
@@ -139,9 +138,13 @@ export function WaveformVisualizer({
         const rms = Math.sqrt(sumSquares / timeData.length);
         const boosted = Math.max(0, rms - NOISE_FLOOR) * AMPLITUDE_GAIN;
         const amp = Math.min(1, boosted ** AMPLITUDE_GAMMA);
-        const bars = barsRef.current;
-        bars.push(amp);
-        if (bars.length > barCount) bars.shift();
+        if (prefersReducedMotion) {
+          barsRef.current = Array.from({ length: barCount }, () => amp);
+        } else {
+          const bars = barsRef.current;
+          bars.push(amp);
+          if (bars.length > barCount) bars.shift();
+        }
         draw();
       }
       frame++;
