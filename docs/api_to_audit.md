@@ -3829,8 +3829,13 @@ package cannot be resolved next to the calling bundle. `experimental_spawnHostPr
 `experimental_forkHostProcess`, `experimental_execHostFile`, and
 `experimental_execHostFileCallback` use it to launch processes and never wait for
 discovery. Missing executables and exit 127 start a background refresh; running
-commands are never replayed automatically. These are host-local primitives,
-not remote-machine RPCs.
+commands are never replayed automatically. When a launch's leading Node
+options (or a fork's `execArgv`, which defaults to the parent's) carry
+`--use-env-proxy`, `command` and `experimental_forkHostProcess` drop the flag if
+the child's `HTTP_PROXY`/`HTTPS_PROXY` (either case) is not an `http:`/`https:`
+URL, drop network flags opted out with `NODE_USE_ENV_PROXY=0` or
+`NODE_USE_SYSTEM_CA=0`, and otherwise append loopback hosts to the child's
+`NO_PROXY`. These are host-local primitives, not remote-machine RPCs.
 
 Core callers use the same process-utils implementation: server and desktop
 launchers, daemon provider installation and terminals, provider workers,

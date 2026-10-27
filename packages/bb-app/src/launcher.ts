@@ -1,6 +1,9 @@
 #!/usr/bin/env node
-import { hostToolchain, spawnHostProcess as spawn } from "@bb/process-utils";
-import { nodeNetworkArgs } from "@bb/config/node-network";
+import {
+  hostToolchain,
+  nodeNetworkArgs,
+  spawnHostProcess as spawn,
+} from "@bb/process-utils";
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { relayDesktopAppUpdates } from "@bb/config/desktop-app-update";

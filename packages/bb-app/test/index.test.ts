@@ -1,6 +1,5 @@
-import { promisify } from "node:util";
-import { nodeNetworkArgs } from "@bb/config/node-network";
-import { execFile, execFileSync, spawn } from "node:child_process";
+import { execHostFile, nodeNetworkArgs } from "@bb/process-utils";
+import { execFileSync, spawn } from "node:child_process";
 import {
   mkdirSync,
   mkdtempSync,
@@ -2205,7 +2204,7 @@ it("preserves machine identity and access headers through real config set and un
 
 describe("managed process networking", () => {
   it.each(["server", "daemon"] as const)(
-    "%s uses the environment proxy and bypasses it for NO_PROXY",
+    "%s uses the environment proxy and keeps loopback direct",
     async (kind) => {
       if (!process.allowedNodeEnvironmentFlags.has("--use-env-proxy")) return;
       const proxy = createServer();
@@ -2236,7 +2235,6 @@ describe("managed process networking", () => {
       };
       const env = {
         HTTP_PROXY: `http://127.0.0.1:${port(proxy)}`,
-        NO_PROXY: "127.0.0.1",
       };
       const context = createTestStartContext();
       const launchEnv =
@@ -2253,7 +2251,7 @@ describe("managed process networking", () => {
               serverUrl: "http://127.0.0.1:38886",
             });
       try {
-        const result = await promisify(execFile)(
+        const result = await execHostFile(
           process.execPath,
           [
             ...nodeNetworkArgs(launchEnv),

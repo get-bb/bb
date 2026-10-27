@@ -20,6 +20,7 @@ import {
 import type { Readable, Writable } from "node:stream";
 import crossSpawn from "cross-spawn";
 import { hostToolchain } from "./host-toolchain.js";
+import { prepareNodeNetworkLaunch } from "./node-network.js";
 
 function observe(child: ChildProcess): ChildProcess {
   child.once("error", (error) => hostToolchain.invalidateFailure(error));
@@ -80,12 +81,17 @@ export function forkHostProcess(
   args: readonly string[] = [],
   options: ForkOptions = {},
 ): ChildProcess {
-  const env = hostToolchain.environment(options.env);
+  const { nodeArgs: execArgv, env } = prepareNodeNetworkLaunch(
+    options.execArgv ?? process.execArgv,
+    hostToolchain.environment(options.env),
+  );
   const execPath =
     options.execPath === undefined || options.execPath === process.execPath
       ? hostToolchain.node({ env, cwd: options.cwd })
       : options.execPath;
-  return observe(nodeFork(modulePath, args, { ...options, env, execPath }));
+  return observe(
+    nodeFork(modulePath, args, { ...options, env, execArgv, execPath }),
+  );
 }
 
 function prepareExecFile(

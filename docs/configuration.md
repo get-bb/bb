@@ -39,9 +39,17 @@ bundled roots; `NODE_EXTRA_CA_CERTS` still adds a PEM bundle. Set
 `NODE_USE_SYSTEM_CA=0` or `NODE_USE_ENV_PROXY=0` before launch to opt out.
 
 Set `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` (or their lowercase forms) in the
-launch environment or with `bb-app env set`. Include `localhost,127.0.0.1,::1`
-in `NO_PROXY` to keep local bb connections direct. Restart bb after changing
-these settings; existing sockets and workers keep their startup configuration.
+launch environment or with `bb-app env set`. Proxy URLs need an `http://` or
+`https://` scheme: when any `HTTP_PROXY`/`HTTPS_PROXY` variable (either case)
+lacks one, such as `proxy.corp:3128`, bb starts that Node process without
+`--use-env-proxy` and prints a `BB_INVALID_PROXY_ENV` warning instead of letting
+Node fail at startup. bb checks this against each process's final environment,
+including forked and provider bridge workers that inherit the flag. When a
+process keeps `--use-env-proxy` with a proxy set, bb appends
+`localhost,127.0.0.1,::1,[::1]` to its existing `NO_PROXY`/`no_proxy` values
+(a `*` entry is left as is), so local bb connections stay direct; that process's
+children inherit those entries. Restart bb after changing these settings;
+existing sockets and workers keep their startup configuration.
 
 Built-in proxy support requires Node 22.21+ or 24.5+ (or Node 26); on older
 supported Node releases the launcher omits `--use-env-proxy`. Libraries that create their own agents

@@ -24,7 +24,6 @@
     "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
-    "@bb/config": "workspace:*",
     "@bb/domain": "workspace:*",
     "@bb/process-utils": "workspace:*",
     "@bb/provider-bridge-protocol": "workspace:*",
