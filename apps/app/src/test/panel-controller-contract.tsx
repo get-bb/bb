@@ -42,7 +42,6 @@ export interface PanelContractSurface {
   };
   fixed: { targeted: ContractTab; untargeted: ContractTab } | null;
   foreignTab: ExperimentalTabReference;
-  info: { open: () => void; panelTabId: string } | null;
   diff: { panelTabId: string } | null;
   toggleRestoresActiveTab: boolean;
 }
@@ -129,7 +128,6 @@ function actionOptions(
 export interface PanelContractSupport {
   fixedTabs: boolean;
   diffToggle: boolean;
-  info: boolean;
 }
 
 function required<T>(value: T | null): T {
@@ -326,20 +324,6 @@ export function describePanelControllerContract(
         });
         expect(call(() => surface.command("diff.toggle"))).toBe(true);
         expect(surface.snapshot().isOpen).toBe(false);
-      },
-    );
-
-    it.runIf(supports.info)(
-      "opens core Info through the controller",
-      async () => {
-        const surface = await mount();
-        const info = required(surface.info);
-        call(() => surface.panel().close());
-        call(() => info.open());
-        expect(surface.snapshot()).toMatchObject({
-          isOpen: true,
-          activeTabId: info.panelTabId,
-        });
       },
     );
   });

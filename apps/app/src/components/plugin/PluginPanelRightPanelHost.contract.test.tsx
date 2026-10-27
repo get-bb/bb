@@ -173,7 +173,7 @@ afterEach(() => {
 
 describePanelControllerContract(
   "plugin nav-panel page",
-  { fixedTabs: true, diffToggle: false, info: false },
+  { fixedTabs: true, diffToggle: false },
   async () => {
     const probe: ContractPanelRef = { current: null };
     const sink: ContractStateSink = { current: null };
@@ -233,7 +233,6 @@ describePanelControllerContract(
         context: { kind: "thread" },
         availability: "action",
       },
-      info: null,
       diff: null,
       toggleRestoresActiveTab: true,
     };

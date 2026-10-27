@@ -97,19 +97,10 @@ vi.mock("./ThreadDetailPromptArea", async () => {
   const { ContractPanelProbe } =
     await import("@/test/panel-controller-contract");
   return {
-    ThreadDetailPromptArea: ({
-      onOpenThreadInfo,
-    }: {
-      onOpenThreadInfo?: () => void;
-    }) => (
-      <>
-        <button type="button" onClick={onOpenThreadInfo}>
-          Open thread info
-        </button>
-        <PluginContext.Provider value={CONTRACT_PLUGIN_ID}>
-          <ContractPanelProbe probe={fixtures.probe} />
-        </PluginContext.Provider>
-      </>
+    ThreadDetailPromptArea: () => (
+      <PluginContext.Provider value={CONTRACT_PLUGIN_ID}>
+        <ContractPanelProbe probe={fixtures.probe} />
+      </PluginContext.Provider>
     ),
   };
 });
@@ -141,7 +132,7 @@ vi.mock("@/hooks/queries/environment-queries", async (importOriginal) => ({
 
 describePanelControllerContract(
   "thread view",
-  { fixedTabs: true, diffToggle: true, info: true },
+  { fixedTabs: true, diffToggle: true },
   async () => {
     const probe = fixtures.probe;
     probe.current = null;
@@ -183,7 +174,6 @@ describePanelControllerContract(
         </Provider>
       </QueryClientProvider>,
     );
-    await screen.findByRole("button", { name: "Open thread info" });
     await waitFor(() =>
       expect(snapshotFromState(sink).tabIds).toEqual(
         expect.arrayContaining([
@@ -211,11 +201,6 @@ describePanelControllerContract(
         id: "chat",
         context: { kind: "nav-panel", panelId: "board" },
         availability: "action",
-      },
-      info: {
-        open: () =>
-          screen.getByRole("button", { name: "Open thread info" }).click(),
-        panelTabId: createThreadInfoFixedPanelTab().id,
       },
       diff: { panelTabId: createGitDiffFixedPanelTab().id },
       toggleRestoresActiveTab: true,
