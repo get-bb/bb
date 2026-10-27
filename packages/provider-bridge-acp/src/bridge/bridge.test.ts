@@ -24,6 +24,7 @@ import {
 import {
   assembleCapturedThreadEvents,
   captureBridgeJsonRpcOutput,
+  createBridgeDeltaEventCollector,
   permissionChangeCases,
   runPermissionChangeCase,
 } from "@bb/provider-bridge-protocol/testing";
@@ -3038,7 +3039,7 @@ describe("acp bridge", () => {
   });
 
   it("presents an external-directory write permission as a file-change approval", async () => {
-    const { providerThreadId } = await startThread({
+    const { bbThreadId, providerThreadId } = await startThread({
       permissionMode: "accept-edits",
       permissionEscalation: "ask",
     });
@@ -3063,6 +3064,7 @@ describe("acp bridge", () => {
       "forwarded permission request",
     );
     expect(forwarded.params).toMatchObject({
+      providerNativeIds: true,
       payload: {
         kind: "approval",
         subject: {
@@ -3072,6 +3074,18 @@ describe("acp bridge", () => {
         },
       },
     });
+    const collector = createBridgeDeltaEventCollector("acp");
+    const fileChangeItemIds = output.messages
+      .flatMap((message) => collector.assembleMessage(message))
+      .flatMap((event) =>
+        event.type === "item/started" && event.item.type === "fileChange"
+          ? [event.item.id]
+          : [],
+      );
+    expect(fileChangeItemIds).toHaveLength(1);
+    expect(collector.assembler.getBbItemId(bbThreadId, "write-tool-1")).toBe(
+      fileChangeItemIds[0],
+    );
     handleLine(
       JSON.stringify({
         jsonrpc: "2.0",

@@ -2025,6 +2025,7 @@ function handlePermissionRequest(
     providerThreadId: session.providerThreadId,
     threadId: session.bbThreadId,
     turnId: null,
+    providerNativeIds: true,
     payload,
   })
     .then((result) => {
