@@ -694,7 +694,7 @@ function ThreadRowComponent({
                   data-sidebar-thread-provider={provider.id}
                   role="img"
                   aria-label={provider.displayName}
-                  className="pointer-events-auto relative z-[31] flex size-4 shrink-0 items-center justify-center mr-1.5 text-muted-foreground"
+                  className="pointer-events-auto relative z-[31] flex size-4 shrink-0 items-center justify-center mr-2 text-muted-foreground"
                   onClick={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
@@ -704,7 +704,7 @@ function ThreadRowComponent({
                   <ProviderIcon
                     providerKind="agent"
                     provider={provider}
-                    className="size-4"
+                    className="size-3.5"
                   />
                 </span>
               </TooltipTrigger>
