@@ -46,6 +46,7 @@ describe("experiments settings", () => {
         sidebarMultiSelect: false,
         timelinePush: false,
         unreadDividerAtAnswer: false,
+        websocketCompression: false,
       });
     });
   });
@@ -78,6 +79,7 @@ describe("experiments settings", () => {
           sidebarMultiSelect: true,
           timelinePush: true,
           unreadDividerAtAnswer: true,
+          websocketCompression: true,
         }),
       });
       expect(put.status).toBe(200);
@@ -90,6 +92,7 @@ describe("experiments settings", () => {
         sidebarMultiSelect: true,
         timelinePush: true,
         unreadDividerAtAnswer: true,
+        websocketCompression: true,
       });
       expect(getExperiments(harness.db)).toEqual({
         applicationLinks: true,
@@ -100,6 +103,7 @@ describe("experiments settings", () => {
         sidebarMultiSelect: true,
         timelinePush: true,
         unreadDividerAtAnswer: true,
+        websocketCompression: true,
       });
 
       const config = await harness.app.request("/api/v1/system/config");
@@ -114,6 +118,7 @@ describe("experiments settings", () => {
         sidebarMultiSelect: true,
         timelinePush: true,
         unreadDividerAtAnswer: true,
+        websocketCompression: true,
       });
     });
   });
@@ -132,6 +137,7 @@ describe("experiments settings", () => {
         sidebarMultiSelect: false,
         timelinePush: false,
         unreadDividerAtAnswer: false,
+        websocketCompression: false,
       });
       expect(
         harness.db.$client

@@ -852,7 +852,8 @@ bb stores only the experiments you set; the others follow the shipped default.
 The `earlyAdopter` general setting (the Become an early adopter banner on
 Settings → Experiments, `bb settings general earlyAdopter on`) switches the
 shipped default to the early adopter default: experiments marked Early adopter
-(currently `applicationLinks`, `timelinePush`, `compactExpiredCache`, and `sidebarMultiSelect`) turn on, and the rest stay
+(currently `applicationLinks`, `timelinePush`, `compactExpiredCache`,
+`sidebarMultiSelect`, and `websocketCompression`) turn on, and the rest stay
 off. An experiment you set yourself keeps your value either way.
 `/system/config` and `sdk.system.config()` return the resolved values in
 `experiments`.
@@ -914,6 +915,14 @@ off. An experiment you set yourself keeps your value either way.
   message that started a new turn keeps the divider above it, a turn that is
   still running or has no answer keeps the old placement, and the divider never
   lands on your own message. It applies the next time you open a thread.
+- `websocketCompression` (on for early adopters) lets the realtime client
+  WebSocket (`/ws`) negotiate `permessage-deflate`, so messages of 1 KB or more,
+  such as timeline pushes, are compressed (about 4x for timeline JSON). It
+  helps clients that reach the server over a network, including bb connect
+  next; the bb connect relay re-frames messages and does not carry it.
+  Terminal, host daemon, and plugin WebSockets are never compressed. The server
+  reads the experiment when a client connects, so a toggle applies when the
+  app reconnects.
 
 ## Thread Timeline Window
 

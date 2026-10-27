@@ -1175,6 +1175,11 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "When you open a thread whose turn finished while you were away, place the NEW divider before the turn's final assistant message, or the error that ended it, instead of before its first tool call. The turn's work stays above the divider.",
   },
+  websocketCompression: {
+    label: "Compressed live updates",
+    description:
+      "Compress large messages on the live connection, such as timeline updates, which cuts their size about 4x for remote access. Applies when the app reconnects.",
+  },
 };
 export function visibleExperimentKeys(
   performanceDiagnosticsAvailable: boolean,

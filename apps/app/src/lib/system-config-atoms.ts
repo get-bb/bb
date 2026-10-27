@@ -38,6 +38,7 @@ const unavailableSystemConfig: SystemConfigResponse = {
     sidebarMultiSelect: false,
     timelinePush: false,
     unreadDividerAtAnswer: false,
+    websocketCompression: false,
   },
   appearance: defaultAppTheme,
   customThemes: [],

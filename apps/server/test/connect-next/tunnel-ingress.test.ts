@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
-import { getHost } from "@bb/db";
+import { getHost, setExperiments } from "@bb/db";
 import {
   GATE_ASSERTION_HEADER,
   generateGateKeyPair,
@@ -606,6 +606,7 @@ describe("bb connect next tunnel ingress", () => {
   });
 
   it("verifies WebSocket upgrades for /ws and plugin sockets", async () => {
+    setExperiments(server.db, { websocketCompression: true });
     const refused = await openSocket(ingressBaseUrl, "/ws", {});
     expect(refused).toMatchObject({ status: 401 });
     expect(JSON.parse((refused as { body: string }).body)).toMatchObject({
@@ -769,6 +770,7 @@ describe("bb connect next tunnel ingress", () => {
   });
 
   it("carries gate-signed requests through real frps and the connect-next plugin's frpc", async () => {
+    setExperiments(server.db, { websocketCompression: true });
     const binaries = await installTestFrp(join(workDir, "bin"));
     const hooks = await startGateHooks(() => "bbcred_ingress");
     const frps = await startFrps(binaries.frps, workDir, hooks.port);
