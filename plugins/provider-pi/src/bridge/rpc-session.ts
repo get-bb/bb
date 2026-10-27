@@ -116,6 +116,17 @@ interface ChannelReply {
 
 const PI_TRANSIENT_AUTH_RETRY_DELAY_MS = 250;
 const PI_TRANSIENT_AUTH_MAX_RETRIES = 8;
+const PI_COMPACTION_PROMPT_REJECTION =
+  "Cannot submit a prompt while compaction is in progress.";
+const PI_COMPACTION_PROMPT_MAX_RETRIES = 8;
+
+function isPiCompactionPromptRejection(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    !(error instanceof PiRpcChildExitedError) &&
+    error.message.startsWith(PI_COMPACTION_PROMPT_REJECTION)
+  );
+}
 function readinessTimeoutMs(): number {
   const configured = Number(process.env.BB_PI_BRIDGE_READINESS_TIMEOUT_MS);
   return Number.isFinite(configured) && configured > 0 ? configured : 60_000;
@@ -175,6 +186,8 @@ export class PiRpcSession {
   >();
   private deliveredRunActive = false;
   private isCompacting = false;
+  private piManualCompactionActive = false;
+  private piManualCompactionWaiters: (() => void)[] = [];
   private manualCompactionCompletionCount = 0;
   private lastCompactionEndDelivery: Promise<void> = Promise.resolve();
   private deliveryChain: Promise<void> = Promise.resolve();
@@ -395,7 +408,7 @@ export class PiRpcSession {
     const settlement = new Promise<PiPromptRunOutcome>((resolve) => {
       this.pendingRunSettlements.push({ resolve });
     });
-    const settled = this.dispatchWithTransientAuthRetry(
+    const settled = this.dispatchPromptAfterManualCompaction(
       child,
       {
         type: "prompt",
@@ -403,7 +416,7 @@ export class PiRpcSession {
         ...(images && images.length > 0 ? { images } : {}),
         streamingBehavior: "followUp",
       },
-      NO_REQUEST_TIMEOUT,
+      tracked.pending,
     ).then(
       async (): Promise<PiPromptRunOutcome | null> => {
         if (tracked.pending.queuedText !== null) {
@@ -483,6 +496,7 @@ export class PiRpcSession {
       "Pi session closed before input was consumed",
     );
     this.closed = true;
+    this.releasePiManualCompactionWaiters();
     if (!child || child.exited) {
       return this.lastKnownLeafId ?? undefined;
     }
@@ -570,6 +584,58 @@ export class PiRpcSession {
       paths.push(file);
     }
     return { args, paths };
+  }
+
+  private async dispatchPromptAfterManualCompaction(
+    child: PiRpcChild,
+    command: Record<string, unknown>,
+    pending: PendingInputConsumption,
+  ): Promise<void> {
+    for (let attempt = 0; ; attempt += 1) {
+      if (this.piManualCompactionActive) {
+        this.resolvePendingInputConsumption(pending);
+        await this.waitForPiManualCompactionEnd();
+      }
+      if (this.closed) {
+        throw new Error("Pi session closed before queued input was sent");
+      }
+      this.isProcessing = true;
+      try {
+        await this.dispatchWithTransientAuthRetry(
+          child,
+          command,
+          NO_REQUEST_TIMEOUT,
+        );
+        return;
+      } catch (error) {
+        if (
+          !isPiCompactionPromptRejection(error) ||
+          attempt >= PI_COMPACTION_PROMPT_MAX_RETRIES
+        ) {
+          throw error;
+        }
+        this.resolvePendingInputConsumption(pending);
+        if (!this.piManualCompactionActive) {
+          await waitForPiTransientAuthRetry();
+        }
+      }
+    }
+  }
+
+  private waitForPiManualCompactionEnd(): Promise<void> {
+    if (!this.piManualCompactionActive || this.closed) {
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      this.piManualCompactionWaiters.push(resolve);
+    });
+  }
+
+  private releasePiManualCompactionWaiters(): void {
+    this.piManualCompactionActive = false;
+    for (const resolve of this.piManualCompactionWaiters.splice(0)) {
+      resolve();
+    }
   }
 
   private async dispatchWithTransientAuthRetry(
@@ -1053,6 +1119,7 @@ export class PiRpcSession {
     }
     this.isProcessing = false;
     this.isCompacting = false;
+    this.releasePiManualCompactionWaiters();
     if (!wasClosed) {
       this.onDone(new PiRpcChildExitedError(info));
     }
@@ -1064,6 +1131,9 @@ export class PiRpcSession {
       (event.type === "compaction_start" && event.reason === "manual")
     ) {
       this.isProcessing = true;
+    }
+    if (event.type === "compaction_start" && event.reason === "manual") {
+      this.piManualCompactionActive = true;
     }
     if (event.type === "agent_start") {
       this.agentRunsStarted += 1;
@@ -1077,7 +1147,8 @@ export class PiRpcSession {
       this.isProcessing = false;
     }
     if (event.type === "compaction_end" && event.reason === "manual") {
-      this.isProcessing = false;
+      this.isProcessing = this.piManualCompactionWaiters.length > 0;
+      this.releasePiManualCompactionWaiters();
     }
   }
 
