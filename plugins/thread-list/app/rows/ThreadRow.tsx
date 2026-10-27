@@ -632,6 +632,36 @@ function ThreadRowComponent({
     rename.onCloseAutoFocus(event);
   };
 
+  const providerIcon = provider ? (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          data-sidebar-thread-provider={provider.id}
+          role="img"
+          aria-label={provider.displayName}
+          className={cn(
+            "pointer-events-auto z-[31] flex size-4 shrink-0 items-center justify-center text-muted-foreground",
+            showRowMetadata
+              ? "absolute left-0 top-1/2 -translate-y-1/2"
+              : "relative mr-2",
+          )}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            rowLinkRef.current?.click();
+          }}
+        >
+          <ProviderIcon
+            providerKind="agent"
+            provider={provider}
+            className="size-3.5"
+          />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top">{provider.displayName}</TooltipContent>
+    </Tooltip>
+  ) : null;
+
   const rowContent = (
     <>
       {parentOptions?.stickyLevel !== undefined && parentGuideLeft !== null ? (
@@ -645,6 +675,7 @@ function ThreadRowComponent({
         className={cn(
           "relative flex min-w-0 flex-1 items-center gap-1.5 self-stretch",
           showRowMetadata && "flex-wrap content-center gap-y-0 py-1",
+          showRowMetadata && provider !== undefined && "pl-6",
           !isActionsOpen &&
             "group-data-[sidebar-touch-armed=true]/thread-row:hidden",
           !shortcut &&
@@ -656,6 +687,7 @@ function ThreadRowComponent({
         )}
         style={getHoverActionsInsetStyle(quickActions.length)}
       >
+        {showRowMetadata ? providerIcon : null}
         <a
           ref={rowLinkRef}
           href={thread.href}
@@ -704,30 +736,7 @@ function ThreadRowComponent({
               "flex-1",
           )}
         >
-          {provider ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span
-                  data-sidebar-thread-provider={provider.id}
-                  role="img"
-                  aria-label={provider.displayName}
-                  className="pointer-events-auto relative z-[31] flex size-4 shrink-0 items-center justify-center mr-2 text-muted-foreground"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    rowLinkRef.current?.click();
-                  }}
-                >
-                  <ProviderIcon
-                    providerKind="agent"
-                    provider={provider}
-                    className="size-3.5"
-                  />
-                </span>
-              </TooltipTrigger>
-              <TooltipContent side="top">{provider.displayName}</TooltipContent>
-            </Tooltip>
-          ) : null}
+          {showRowMetadata ? null : providerIcon}
           {isEditing ? (
             <span className="pointer-events-auto relative z-10 min-w-0 flex-1 overflow-visible">
               {editor}
@@ -777,12 +786,7 @@ function ThreadRowComponent({
           />
         ) : null}
         {!showRowMetadata || isEditing || isCustomizingActions ? null : (
-          <span
-            className={cn(
-              "flex min-w-0 basis-full",
-              provider !== undefined && "pl-6",
-            )}
-          >
+          <span className="flex min-w-0 basis-full">
             <ThreadRowMetadata thread={thread} />
           </span>
         )}
@@ -798,8 +802,6 @@ function ThreadRowComponent({
         data-sidebar-thread-trailing=""
         className={cn(
           "flex shrink-0 items-center gap-0.5",
-          showRowMetadata &&
-            "min-h-[var(--bb-sidebar-row-height)] self-start max-md:pointer-coarse:min-h-[var(--bb-sidebar-row-height-coarse)]",
           !isActionsOpen &&
             "group-data-[sidebar-touch-armed=true]/thread-row:hidden",
           (isEditing || isCustomizingActions) && "hidden",
