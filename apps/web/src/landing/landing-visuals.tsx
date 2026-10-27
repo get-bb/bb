@@ -59,7 +59,7 @@ export function InstallOptions({ placement }: { placement: CtaPlacement }) {
             bb runs on macOS, Windows, and Linux
           </span>
         </span>
-        <span className="install-choice">
+        <span className="install-choice install-browser-command">
           <CommandButton
             command={CLI_COMMAND}
             label={`Copy browser install command: ${CLI_COMMAND}`}
