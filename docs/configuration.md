@@ -505,6 +505,7 @@ like the matching thread menu item.
 | Panel     | Reopen closed tab                            | `Mod+Shift+T`               | Desktop                  |
 | Workspace | Quick open file / toggle diff                | `Mod+P` / `Mod+D`           | All clients              |
 | Workspace | Open terminal                                | `Mod+Shift+Enter`           | All clients              |
+| Terminal  | Find in scrollback                           | `Cmd+F` / `Ctrl+Shift+F`    | Terminal focus           |
 | Workspace | Open in preferred app                        | `Mod+O`                     | All clients              |
 | Composer  | Focus composer                               | `Mod+Shift+C`               | All clients              |
 | Composer  | Toggle model picker                          | `Mod+Shift+M`               | All clients              |

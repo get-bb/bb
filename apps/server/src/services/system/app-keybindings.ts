@@ -132,6 +132,11 @@ const composerWithoutModal = {
   none: ["modalOpen", "terminalFocus", "browserFocus"],
 } as const;
 
+const terminalWithoutModal = {
+  all: ["mainSurface", "terminalFocus"],
+  none: ["modalOpen"],
+} as const;
+
 const pickerOpenOnly = {
   all: ["mainSurface", "modelPickerOpen"],
   none: [],
@@ -279,6 +284,24 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
     mainWithoutModal,
   ),
   binding(
+    "terminal.find",
+    "f",
+    { mod: true },
+    {
+      ...terminalWithoutModal,
+      all: [...terminalWithoutModal.all, "macPlatform"],
+    },
+  ),
+  binding(
+    "terminal.find",
+    "f",
+    { mod: true, shift: true },
+    {
+      ...terminalWithoutModal,
+      none: [...terminalWithoutModal.none, "macPlatform"],
+    },
+  ),
+  binding(
     "composer.focus",
     "c",
     { mod: true, shift: true },
@@ -375,7 +398,7 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
     {
       all: ["mainSurface", "browserFocus"],
       desktopOnly: true,
-      none: ["modalOpen"],
+      none: ["modalOpen", "terminalFocus"],
     },
   ),
   binding(
@@ -385,7 +408,7 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
     {
       all: ["mainSurface"],
       desktopOnly: true,
-      none: ["modalOpen", "browserFocus"],
+      none: ["modalOpen", "browserFocus", "terminalFocus"],
     },
   ),
   binding("workspace.openPreferred", "o", { mod: true }, mainWithoutModal),

@@ -65,6 +65,27 @@ describe("app keybindings", () => {
     },
   );
 
+  it.each(DEFAULT_KEYBINDING_CLIENTS)(
+    "binds terminal find to terminal focus without shell control keys: $name",
+    (client) => {
+      const bindings = applyAppKeybindingOverrides(
+        DEFAULT_APP_KEYBINDINGS,
+        [],
+      ).filter(
+        (binding) =>
+          binding.command === "terminal.find" &&
+          isAppKeybindingAvailableForClient(binding, client),
+      );
+      expect(bindings).toHaveLength(1);
+      expect(bindings[0]?.when.all).toContain("terminalFocus");
+      expect(bindings[0]?.shortcut).toMatchObject({
+        key: "f",
+        mod: true,
+        shift: !client.isMac,
+      });
+    },
+  );
+
   it("persists plugin bindings even before the plugin is loaded", async () => {
     await withTestHarness(async (harness) => {
       const overrides = [
@@ -696,6 +717,7 @@ describe("app keybindings", () => {
       };
       const overrides = [
         { command: "thread.new" as const, shortcut },
+        { command: "terminal.find" as const, shortcut },
         { command: "modelPicker.toggle" as const, shortcut },
       ];
       const response = await harness.app.request("/api/v1/settings/keyboard", {
@@ -717,6 +739,26 @@ describe("app keybindings", () => {
       expect(
         config.keybindings.find((binding) => binding.command === "thread.new"),
       ).toMatchObject({ shortcut });
+      expect(
+        config.keybindings.filter(
+          (binding) => binding.command === "terminal.find",
+        ),
+      ).toEqual([
+        expect.objectContaining({
+          shortcut,
+          when: {
+            all: ["mainSurface", "terminalFocus", "macPlatform"],
+            none: ["modalOpen"],
+          },
+        }),
+        expect.objectContaining({
+          shortcut,
+          when: {
+            all: ["mainSurface", "terminalFocus"],
+            none: ["modalOpen", "macPlatform"],
+          },
+        }),
+      ]);
       expect(
         config.keybindings.filter(
           (binding) => binding.command === "modelPicker.toggle",

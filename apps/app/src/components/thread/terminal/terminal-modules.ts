@@ -4,6 +4,7 @@ export function importTerminalModules() {
     import("@xterm/addon-fit"),
     import("@xterm/addon-web-links"),
     import("@xterm/addon-unicode11"),
+    import("@xterm/addon-search"),
   ]);
 }
 

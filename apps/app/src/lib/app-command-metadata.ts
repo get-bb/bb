@@ -261,6 +261,11 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "Open a terminal in the secondary panel.",
       ),
       command(
+        "terminal.find",
+        "Find in terminal",
+        "Search the focused terminal scrollback.",
+      ),
+      command(
         "workspace.openPreferred",
         "Open in preferred app",
         "Open the workspace in the preferred editor or terminal.",
