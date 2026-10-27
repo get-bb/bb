@@ -56,12 +56,12 @@ it.each([
   const { links, openFile } = await linksFor(text);
   const detected = await links(1);
   expect(detected).toHaveLength(1);
+  detected[0]!.activate(new MouseEvent("click"), detected[0]!.text);
+  expect(openFile).not.toHaveBeenCalled();
   detected[0]!.activate(
-    new MouseEvent("click", { button: 1 }),
+    new MouseEvent("click", { ctrlKey: true }),
     detected[0]!.text,
   );
-  expect(openFile).not.toHaveBeenCalled();
-  detected[0]!.activate(new MouseEvent("click"), detected[0]!.text);
   expect(openFile).toHaveBeenCalledExactlyOnceWith({
     target: { kind: "host", hostId: "host_remote", path },
     location,

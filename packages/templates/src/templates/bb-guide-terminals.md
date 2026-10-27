@@ -92,7 +92,8 @@ find and returns focus. Rebind it in Settings → Keyboard or with
 `bb settings keyboard set terminal.find <shortcut>`; the SDK's
 `system.updateKeyboardSettings` accepts the same command ID.
 
-Printed file paths, including `path:line` and `path:line:column`, open in bb's
-file viewer on the terminal's machine. Relative paths use the shell's OSC 7
-working directory when reported, otherwise the session's initial directory.
-Quoted paths may contain spaces.
+Terminal URLs and file paths open with Cmd+click on macOS, Ctrl+click
+elsewhere, or a tap on touch screens. Printed file paths, including `path:line`
+and `path:line:column`, open in bb's file viewer on the terminal's machine.
+Relative paths use the shell's OSC 7 working directory when reported, otherwise
+the session's initial directory. Quoted paths may contain spaces.

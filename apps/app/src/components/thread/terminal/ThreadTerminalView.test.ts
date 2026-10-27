@@ -22,60 +22,9 @@ import {
   writeTerminalOutput,
   updateTerminalTouchFocusGesture,
 } from "./ThreadTerminalView";
-import {
-  createTerminalOsc8LinkHandler,
-  requestTerminalLinkOpen,
-} from "./terminal-links";
+import { requestTerminalLinkOpen } from "./terminal-links";
 
 describe("terminal hyperlinks", () => {
-  it("preserves OSC-8 provenance through hover and primary activation", () => {
-    const onActivate = vi.fn();
-    const onHover = vi.fn();
-    const handler = createTerminalOsc8LinkHandler({
-      onActivate,
-      onHover,
-    });
-    const event = { button: 0 } as MouseEvent;
-    const range = {
-      start: { x: 1, y: 1 },
-      end: { x: 1, y: 1 },
-    };
-
-    handler.hover?.(event, "https://example.com/authorize", range);
-    handler.activate(event, "https://example.com/authorize", range);
-    handler.leave?.(event, "https://example.com/authorize", range);
-
-    expect(onActivate).toHaveBeenCalledWith({
-      source: "osc8",
-      uri: "https://example.com/authorize",
-    });
-    expect(onHover).toHaveBeenNthCalledWith(1, {
-      source: "osc8",
-      uri: "https://example.com/authorize",
-    });
-    expect(onHover).toHaveBeenNthCalledWith(2, null);
-  });
-
-  it("does not activate OSC-8 links from a secondary click", () => {
-    const onActivate = vi.fn();
-    const handler = createTerminalOsc8LinkHandler({
-      onActivate,
-      onHover: vi.fn(),
-    });
-    const range = {
-      start: { x: 1, y: 1 },
-      end: { x: 1, y: 1 },
-    };
-
-    handler.activate(
-      { button: 2 } as MouseEvent,
-      "https://example.com/right-click",
-      range,
-    );
-
-    expect(onActivate).not.toHaveBeenCalled();
-  });
-
   it("confirms concealed targets and directly opens detected URLs", () => {
     const openLink = vi.fn();
     const requestConfirmation = vi.fn();

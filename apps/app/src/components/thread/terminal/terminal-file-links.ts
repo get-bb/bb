@@ -5,6 +5,7 @@ import {
   normalizeHostPath,
 } from "@bb/domain";
 import type { ExperimentalFileOpenOptions } from "@get-bb/plugin-sdk";
+import { isTerminalLinkActivation } from "./terminal-links";
 
 export function createTerminalFileLinkProvider({
   terminal,
@@ -85,7 +86,7 @@ export function createTerminalFileLinkProvider({
           text: raw,
           range,
           activate: (event: MouseEvent) => {
-            if (event.button !== 0) return;
+            if (!isTerminalLinkActivation(event)) return;
             openFile({
               target: { kind: "host", hostId, path: resolved },
               location: line === null ? null : { kind: "line", line, column },

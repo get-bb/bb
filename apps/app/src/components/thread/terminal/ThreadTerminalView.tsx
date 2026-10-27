@@ -75,6 +75,7 @@ import {
 } from "./terminal-mobile-input";
 import {
   createTerminalOsc8LinkHandler,
+  isTerminalLinkActivation,
   requestTerminalLinkOpen,
   type TerminalLinkTarget,
 } from "./terminal-links";
@@ -1118,7 +1119,7 @@ export function ThreadTerminalView({
       terminal.loadAddon(
         new WebLinksAddon(
           (event, uri) => {
-            if (event.button !== 0) {
+            if (!isTerminalLinkActivation(event)) {
               return;
             }
             requestOpenTerminalLink({ source: "detected-url", uri });
