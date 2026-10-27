@@ -2699,7 +2699,7 @@ crash boundary keyed by thread, left to right in one line container that fills
 its parent, clips at the row's edge and is hidden while empty. It renders
 nothing when no plugin registers an item.
 
-`ThreadRowMetadataCollectors` (in `AppLayout`) runs each registration's
+`ThreadRowMetadataCollectors` (in `AppLayout`, loaded on demand) runs each registration's
 `useData` while any line is mounted; with none mounted (the experiment or
 Metadata off) it runs nothing and reads nothing. Because `useData` loads every
 listable thread, a windowed list's rows find their data when they render, so

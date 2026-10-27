@@ -14,10 +14,8 @@ import {
 } from "@/lib/plugin-slots";
 import { toPluginSidebarThread } from "@/lib/plugin-sidebar-threads";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
-import {
-  ThreadRowMetadata,
-  ThreadRowMetadataCollectors,
-} from "./ThreadRowMetadata";
+import { ThreadRowMetadata } from "./ThreadRowMetadata";
+import { ThreadRowMetadataCollectorsView } from "./ThreadRowMetadataCollectorsView";
 
 const thread = toPluginSidebarThread(makeThreadListEntry({ id: "thr_row" }));
 const otherThread = toPluginSidebarThread(
@@ -100,7 +98,7 @@ describe("thread row metadata", () => {
         threadRowMetadata: [{ id: "badge", useData, component: Badge }],
       }),
     );
-    render(<ThreadRowMetadataCollectors />);
+    render(<ThreadRowMetadataCollectorsView />);
     await act(async () => {});
     expect(calls).toEqual([]);
 
