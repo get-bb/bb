@@ -51,6 +51,14 @@ export function installFakeFlowLayout({
       : (heightOf?.(element) ?? null);
   };
 
+  const marginBottom = (element: Element): number =>
+    element instanceof HTMLElement ? pixels(element.style.marginBottom) : 0;
+
+  const childGap = (element: Element): number =>
+    ownHeight(element) === null && element instanceof HTMLElement
+      ? pixels(element.style.gap)
+      : 0;
+
   const measureHeight = (
     element: Element,
     snapshot?: Map<Element, number>,
@@ -68,7 +76,10 @@ export function installFakeFlowLayout({
         child !== null;
         child = child.nextElementSibling
       ) {
-        used += measureHeight(child, snapshot) + (first ? 0 : gap);
+        used +=
+          measureHeight(child, snapshot) +
+          marginBottom(child) +
+          (first ? 0 : gap);
         first = false;
       }
       height ??= used;
@@ -100,7 +111,7 @@ export function installFakeFlowLayout({
         sibling !== null && sibling !== current;
         sibling = sibling.nextElementSibling
       ) {
-        top += measureHeight(sibling) + gap;
+        top += measureHeight(sibling) + marginBottom(sibling) + gap;
       }
       current = parent;
     }
@@ -116,16 +127,54 @@ export function installFakeFlowLayout({
       child !== null;
       child = child.nextElementSibling
     ) {
-      height += measureHeight(child, snapshot);
+      height += measureHeight(child, snapshot) + marginBottom(child);
     }
     return height;
   };
-  const contentHeight = () =>
-    Math.max(
-      viewportHeight,
-      measureContentHeight(observerSnapshot ?? undefined),
-    );
+  const measureOverflowBottom = (element: Element, top: number): number => {
+    let bottom = top + measureHeight(element);
+    const gap = childGap(element);
+    let childTop = top;
+    for (
+      let child = element.firstElementChild;
+      child !== null;
+      child = child.nextElementSibling
+    ) {
+      bottom = Math.max(bottom, measureOverflowBottom(child, childTop));
+      childTop += measureHeight(child) + marginBottom(child) + gap;
+    }
+    return bottom;
+  };
+  const measureScrollExtent = () => {
+    let bottom = 0;
+    let top = 0;
+    const scrollElement = resolveScrollElement();
+    for (
+      let child = scrollElement?.firstElementChild ?? null;
+      child !== null;
+      child = child.nextElementSibling
+    ) {
+      bottom = Math.max(bottom, measureOverflowBottom(child, top));
+      top += measureHeight(child) + marginBottom(child);
+    }
+    return Math.max(top, bottom);
+  };
+  const contentHeight = () => {
+    if (observerSnapshot !== null) measureContentHeight(observerSnapshot);
+    return Math.max(viewportHeight, measureScrollExtent());
+  };
   const maxScrollTop = () => Math.max(0, contentHeight() - viewportHeight);
+  let laidOutMax: number | null = null;
+  let clampedSinceTake = false;
+  const layOut = () => {
+    const max = maxScrollTop();
+    if (laidOutMax !== null && max < laidOutMax && scrollTop > max) {
+      scrollTop = max;
+      clampedSinceTake = true;
+    }
+    laidOutMax = max;
+    return max;
+  };
 
   const isScrollElement = (element: Element) =>
     element === resolveScrollElement();
@@ -144,13 +193,15 @@ export function installFakeFlowLayout({
   Object.defineProperty(Element.prototype, "scrollTop", {
     configurable: true,
     get(this: Element) {
-      return isScrollElement(this)
-        ? scrollTop
-        : (scrollTopDescriptor?.get?.call(this) ?? 0);
+      if (!isScrollElement(this)) {
+        return scrollTopDescriptor?.get?.call(this) ?? 0;
+      }
+      layOut();
+      return scrollTop;
     },
     set(this: Element, value: number) {
       if (isScrollElement(this)) {
-        scrollTop = Math.min(Math.max(0, value), maxScrollTop());
+        scrollTop = Math.min(Math.max(0, value), layOut());
       } else {
         scrollTopDescriptor?.set?.call(this, value);
       }
@@ -167,9 +218,10 @@ export function installFakeFlowLayout({
   Object.defineProperty(Element.prototype, "scrollHeight", {
     configurable: true,
     get(this: Element) {
-      return isScrollElement(this)
-        ? contentHeight()
-        : (scrollHeightDescriptor?.get?.call(this) ?? 0);
+      if (!isScrollElement(this)) {
+        return scrollHeightDescriptor?.get?.call(this) ?? 0;
+      }
+      return layOut() + viewportHeight;
     },
   });
 
@@ -218,13 +270,20 @@ export function installFakeFlowLayout({
 
   return {
     get scrollTop() {
+      layOut();
       return scrollTop;
     },
-    maxScrollTop,
+    maxScrollTop: layOut,
+    takeClamp() {
+      layOut();
+      const clamped = clampedSinceTake;
+      clampedSinceTake = false;
+      return clamped;
+    },
     userScrollTo(value: number) {
       const scrollElement = resolveScrollElement();
       if (scrollElement === null) throw new Error("No scroll element");
-      const next = Math.min(Math.max(0, value), maxScrollTop());
+      const next = Math.min(Math.max(0, value), layOut());
       scrollElement.dispatchEvent(
         new WheelEvent("wheel", { deltaY: next - scrollTop }),
       );
@@ -271,7 +330,7 @@ export function installFakeFlowLayout({
     layoutScrollTo(value: number) {
       const scrollElement = resolveScrollElement();
       if (scrollElement === null) throw new Error("No scroll element");
-      scrollTop = Math.min(Math.max(0, value), maxScrollTop());
+      scrollTop = Math.min(Math.max(0, value), layOut());
       scrollElement.dispatchEvent(new Event("scroll"));
     },
     restore() {

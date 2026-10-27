@@ -107,6 +107,7 @@ export function BottomAnchoredScrollBody({
   const scrollContentRef = useRef<HTMLDivElement>(null);
   const pageContentRef = useRef<HTMLDivElement>(null);
   const scrollFooterRef = useRef<HTMLDivElement>(null);
+  const scrollFloorRef = useRef<HTMLDivElement>(null);
   const hasFooter = Boolean(footer);
   const scrollAnchorCaptureThrottleRef = useRef<{
     lastWriteAt: number;
@@ -131,6 +132,7 @@ export function BottomAnchoredScrollBody({
         bottomThresholdPx: BOTTOM_ANCHOR_THRESHOLD_PX,
         deferWritesWhileScrolling: isIOSWebKit(navigator),
         getContentElement: () => pageContentRef.current,
+        getFloorElement: () => scrollFloorRef.current,
         getFooterElement: () => scrollFooterRef.current,
         getScrollElement: () => scrollAreaRef.current,
         getTopLevelRows,
@@ -338,6 +340,11 @@ export function BottomAnchoredScrollBody({
               ref={scrollContentRef}
               className="flex min-h-full min-w-0 flex-col"
             >
+              <div
+                ref={scrollFloorRef}
+                aria-hidden="true"
+                className="pointer-events-none invisible w-px shrink-0"
+              />
               <div
                 ref={pageContentRef}
                 data-scroll-attached={isAtBottom ? "" : undefined}

@@ -42,6 +42,8 @@ function createTimeline(
   } = {},
 ) {
   const scrollElement = document.createElement("div");
+  const scrollContent = document.createElement("div");
+  const floor = document.createElement("div");
   const content = document.createElement("div");
   const list = document.createElement("div");
   list.setAttribute("data-timeline-row-list", "top-level");
@@ -49,7 +51,8 @@ function createTimeline(
   items.setAttribute("data-timeline-items", "");
   list.append(items);
   content.append(list);
-  scrollElement.append(content);
+  scrollContent.append(floor, content);
+  scrollElement.append(scrollContent);
   document.body.append(scrollElement);
   const layout = installFakeFlowLayout({
     scrollElement,
@@ -79,6 +82,7 @@ function createTimeline(
     bottomThresholdPx: 4,
     deferWritesWhileScrolling: deferWrites,
     getContentElement: () => content,
+    getFloorElement: () => floor,
     getFooterElement: () => (footerTop === null ? null : footer),
     getScrollElement: () => scrollElement,
     getTopLevelRows: () =>
@@ -156,7 +160,7 @@ describe("ScrollPositionKeeper", () => {
     timeline.userScrollTo(1200);
 
     timeline.setRows(rows.slice(0, 7));
-    timeline.keeper.reconcile();
+    timeline.layout.flushResizeObservers();
     timeline.scrollElement.dispatchEvent(new Event("scroll"));
     expect(timeline.keeper.isAttached()).toBe(false);
     vi.advanceTimersToNextFrame();
@@ -207,6 +211,57 @@ describe("ScrollPositionKeeper", () => {
 
     expect(timeline.layout.scrollTop).toBe(0);
     expect(timeline.keeper.isAttached()).toBe(false);
+  });
+
+  it.each([false, true])(
+    "stays attached when content shrinks and regrows within a frame and the clamp scroll arrives late (deferWrites=%s)",
+    (deferWrites) => {
+      vi.useFakeTimers({
+        toFake: [
+          "setTimeout",
+          "clearTimeout",
+          "requestAnimationFrame",
+          "cancelAnimationFrame",
+          "performance",
+        ],
+      });
+      const rows = [...rowsOf(9), { id: "last", height: 1200 }];
+      const timeline = createTimeline(rows, { attached: true, deferWrites });
+      timeline.layout.flushResizeObservers();
+      vi.advanceTimersByTime(5_000);
+      expect(timeline.layout.scrollTop).toBe(timeline.layout.maxScrollTop());
+
+      timeline.resize("last", 975);
+      void timeline.scrollElement.scrollHeight;
+      timeline.resize("last", 1200);
+      timeline.layout.flushResizeObservers();
+      const clamped = timeline.layout.takeClamp();
+      if (clamped) timeline.scrollElement.dispatchEvent(new Event("scroll"));
+      vi.advanceTimersToNextFrame();
+      vi.advanceTimersByTime(5_000);
+
+      expect(clamped).toBe(false);
+      expect(timeline.keeper.isAttached()).toBe(true);
+      expect(timeline.layout.scrollTop).toBe(timeline.layout.maxScrollTop());
+    },
+  );
+
+  it("follows content that stays shrunk to the new end", () => {
+    vi.useFakeTimers({
+      toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"],
+    });
+    const rows = [...rowsOf(9), { id: "last", height: 1200 }];
+    const timeline = createTimeline(rows, { attached: true });
+    timeline.layout.flushResizeObservers();
+    const before = timeline.layout.maxScrollTop();
+
+    timeline.resize("last", 975);
+    timeline.layout.flushResizeObservers();
+    vi.advanceTimersToNextFrame();
+
+    expect(timeline.layout.maxScrollTop()).toBe(before - 225);
+    expect(timeline.layout.scrollTop).toBe(before - 225);
+    expect(timeline.keeper.isAttached()).toBe(true);
   });
 
   it("keeps a detached reader on their row when content shrinks onto the end for a single frame", () => {
@@ -272,7 +327,7 @@ describe("ScrollPositionKeeper", () => {
     const timeline = createTimeline(rows);
     timeline.userScrollTo(1200);
     timeline.setRows(rows.slice(0, 7));
-    timeline.keeper.reconcile();
+    timeline.layout.flushResizeObservers();
     expect(timeline.keeper.isAttached()).toBe(false);
 
     expect(timeline.keeper.savedPosition()).toEqual({

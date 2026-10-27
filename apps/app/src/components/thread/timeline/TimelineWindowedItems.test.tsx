@@ -50,6 +50,7 @@ function setup({
     bottomThresholdPx: 4,
     deferWritesWhileScrolling: false,
     getContentElement: () => content,
+    getFloorElement: () => null,
     getFooterElement: () => null,
     getScrollElement: () => (rootReady ? scrollElement : null),
     getTopLevelRows: () =>

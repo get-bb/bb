@@ -70,7 +70,14 @@ function runSeed(seed: number): string[] {
   const items = document.createElement("div");
   items.setAttribute("data-timeline-items", "");
   content.append(items);
-  scrollElement.append(content);
+  const floor = initiallyAttached ? document.createElement("div") : null;
+  if (floor === null) {
+    scrollElement.append(content);
+  } else {
+    const scrollContent = document.createElement("div");
+    scrollContent.append(floor, content);
+    scrollElement.append(scrollContent);
+  }
   document.body.append(scrollElement);
   let viewportHeight = random.int(300, 900);
   const layout = installFakeFlowLayout({ scrollElement, viewportHeight });
@@ -91,6 +98,7 @@ function runSeed(seed: number): string[] {
     bottomThresholdPx: THRESHOLD_PX,
     deferWritesWhileScrolling: deferWrites,
     getContentElement: () => content,
+    getFloorElement: () => floor,
     getFooterElement: () => null,
     getScrollElement: () => scrollElement,
     getTopLevelRows: () =>
@@ -113,14 +121,13 @@ function runSeed(seed: number): string[] {
       : null;
 
   const browserLayout = () => {
-    const clamped = layout.scrollTop > layout.maxScrollTop();
-    if (clamped) layout.bounceTo(layout.maxScrollTop());
     const fireScroll = () => {
-      if (clamped) scrollElement.dispatchEvent(new Event("scroll"));
+      if (layout.takeClamp()) scrollElement.dispatchEvent(new Event("scroll"));
     };
     if (random.next() < 0.5) {
       fireScroll();
       layout.flushResizeObservers();
+      fireScroll();
     } else {
       layout.flushResizeObservers();
       fireScroll();
@@ -304,6 +311,31 @@ function runSeed(seed: number): string[] {
               ),
             );
             changeRows(original);
+          },
+        };
+      },
+    },
+    {
+      weight: floor === null ? 0 : 2,
+      make: () => {
+        const index = randomIndex();
+        const shrunk = random.int(10, 60);
+        return {
+          kind: "layout",
+          label: `shrink row ${index} to ${shrunk} and back before the frame ends`,
+          run: () => {
+            const original = rows;
+            rows = rows.map((row, current) =>
+              current === index ? { ...row, height: shrunk } : row,
+            );
+            render();
+            void scrollElement.scrollHeight;
+            rows = original;
+            render();
+            layout.flushResizeObservers();
+            if (layout.takeClamp()) {
+              scrollElement.dispatchEvent(new Event("scroll"));
+            }
           },
         };
       },

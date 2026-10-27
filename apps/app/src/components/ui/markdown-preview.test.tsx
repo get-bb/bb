@@ -855,6 +855,63 @@ describe("MarkdownPreview", () => {
     expect(screen.getByRole("link", { name: "preview" })).toBe(link);
   });
 
+  it.each([false, true])(
+    "keeps links and inline code mounted when link routing and thread mentions change identity (incrementalBlocks=%s)",
+    (incrementalBlocks) => {
+      const content =
+        "See [docs](https://example.com/docs) and `inline_code` here.";
+      const routing = (): MarkdownLinkRouting => ({
+        onOpenLink: () => true,
+        localImage: {
+          absolutePaths: { kind: "trusted-host" },
+          resolveSrc: ({ path }) => `/files${path}`,
+        },
+      });
+      const { container, rerender } = render(
+        <MarkdownPreview
+          content={content}
+          incrementalBlocks={incrementalBlocks}
+          linkRouting={routing()}
+          threadMentions={{ mentions: [], preserveSoftBreaks: false }}
+        />,
+      );
+      const link = screen.getByRole("link", { name: "docs" });
+      const code = container.querySelector("code");
+
+      rerender(
+        <MarkdownPreview
+          content={content}
+          incrementalBlocks={incrementalBlocks}
+          linkRouting={routing()}
+          threadMentions={{ mentions: [], preserveSoftBreaks: false }}
+        />,
+      );
+
+      expect(screen.getByRole("link", { name: "docs" })).toBe(link);
+      expect(container.querySelector("code")).toBe(code);
+    },
+  );
+
+  it("routes a link through the latest handler after routing changes", () => {
+    const content = "See [docs](https://example.com/docs).";
+    const first = vi.fn(() => true);
+    const second = vi.fn(() => true);
+    const { rerender } = render(
+      <MarkdownPreview content={content} linkRouting={{ onOpenLink: first }} />,
+    );
+
+    rerender(
+      <MarkdownPreview
+        content={content}
+        linkRouting={{ onOpenLink: second }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("link", { name: "docs" }));
+
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledTimes(1);
+  });
+
   it("renders inline LaTeX math with KaTeX", async () => {
     const { container } = render(
       <MarkdownPreview content={"Mass-energy is $$E = mc^2$$ exactly."} />,

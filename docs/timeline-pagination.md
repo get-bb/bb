@@ -311,10 +311,23 @@ removes itself, such as the send button, still ends the touch. A drag counts
 as scrolled only by the distance the reader moved. When the app scrolls to the
 end, as a send does, the input session ends and the touch baseline is reset,
 so the app's own jump is never counted as the reader's gesture. Any other
-scroll that comes with a change in the scroll extent is layout, such as a clamp
-after content briefly shrank, and the owner reconciles it back to the position.
-A scroll without input or size change, such as find in page or focus moving to
-an offscreen control, is navigation, and the position follows it.
+scroll that comes with a change in the scroll extent, or in the content's
+height since the last ResizeObserver delivery, is layout, and the owner
+reconciles it back to the position. A scroll without input or size change,
+such as find in page or focus moving to an offscreen control, is navigation,
+and the position follows it.
+
+The thread timeline holds a floor under its scroll extent. The first child of
+its scroll content is a spacer whose height equals the content's height at the
+last ResizeObserver delivery, cancelled by an equal negative bottom margin, so
+it takes no space but keeps the scroll extent from dropping below that height.
+Content that collapses and regrows within one task, such as the composer
+footer or a row remounting while something forces a layout, therefore never
+lowers the extent, and the browser has nothing to clamp. Without the floor that
+clamp arrives as a scroll with no input and no size change once the content has
+regrown, which reads as navigation and detaches a view at the end. A shrink
+that lasts reaches the ResizeObserver, which lowers the floor before
+reconciling. Tool output boxes have no floor.
 
 Attachment follows one rule: a detached view within 4 px of the end attaches,
 whatever put it there, unless a restore or landing is still waiting for its row.

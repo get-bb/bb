@@ -32,6 +32,7 @@ interface ScrollPositionKeeperOptions {
   bottomThresholdPx: number;
   deferWritesWhileScrolling: boolean;
   getContentElement: () => HTMLElement | null;
+  getFloorElement: () => HTMLElement | null;
   getFooterElement: () => HTMLElement | null;
   getScrollElement: () => HTMLElement | null;
   getTopLevelRows: (scrollElement: HTMLElement) => ArrayLike<HTMLElement>;
@@ -147,6 +148,7 @@ export class ScrollPositionKeeper {
   private settleTimeout: number | null = null;
   private clampFrame: number | null = null;
   private attachFrame: number | null = null;
+  private floorHeight = 0;
   private readonly lists = new Set<ScrollWindowList>();
   private readonly listeners = new Set<() => void>();
   private readonly positionListeners = new Set<() => void>();
@@ -276,7 +278,10 @@ export class ScrollPositionKeeper {
     window.addEventListener("keydown", onKeyDown);
     let observer: ResizeObserver | undefined;
     if (typeof ResizeObserver !== "undefined") {
-      observer = new ResizeObserver(() => this.reconcile());
+      observer = new ResizeObserver(() => {
+        this.syncFloor();
+        this.reconcile();
+      });
       observer.observe(scrollElement);
       const content = this.options.getContentElement();
       if (content !== null) {
@@ -287,9 +292,11 @@ export class ScrollPositionKeeper {
         }
       }
     }
+    this.syncFloor();
     this.reconcile();
     return () => {
       observer?.disconnect();
+      this.clearFloor();
       scrollElement.removeEventListener("scroll", onScroll);
       scrollElement.removeEventListener("wheel", onWheel);
       scrollElement.removeEventListener(
@@ -452,7 +459,10 @@ export class ScrollPositionKeeper {
     }
     if (!this.isInputSession()) {
       const cachedMax = this.maxScrollTop;
-      if (Math.abs(this.refreshExtent(scrollElement) - cachedMax) >= 1) {
+      const extentChanged =
+        Math.abs(this.refreshExtent(scrollElement) - cachedMax) >= 1;
+      if (extentChanged || this.isFloorStale()) {
+        this.syncFloor();
         this.ownScrollTop = scrollTop;
         this.apply(scrollElement, true);
         return;
@@ -903,6 +913,34 @@ export class ScrollPositionKeeper {
       this.refreshExtent(current);
       this.attachIfAtEnd(current);
     });
+  }
+
+  private naturalFloorHeight(): number | null {
+    const container = this.options.getFloorElement()?.parentElement;
+    if (container === null || container === undefined) return null;
+    return container.getBoundingClientRect().height;
+  }
+
+  private isFloorStale(): boolean {
+    const height = this.naturalFloorHeight();
+    return height !== null && Math.abs(height - this.floorHeight) >= 1;
+  }
+
+  private syncFloor(): void {
+    const floor = this.options.getFloorElement();
+    const height = this.naturalFloorHeight();
+    if (floor === null || height === null) return;
+    this.floorHeight = height;
+    floor.style.height = `${height}px`;
+    floor.style.marginBottom = `${-height}px`;
+  }
+
+  private clearFloor(): void {
+    const floor = this.options.getFloorElement();
+    this.floorHeight = 0;
+    if (floor === null) return;
+    floor.style.height = "";
+    floor.style.marginBottom = "";
   }
 
   private write(scrollElement: HTMLElement, target: number): void {
