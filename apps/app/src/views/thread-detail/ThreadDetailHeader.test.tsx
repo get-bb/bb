@@ -769,7 +769,7 @@ describe("ThreadDetailHeader", () => {
       requestRenameDialog.mockClear();
       fireEvent.doubleClick(screen.getByText("Focused thread"));
       if (coarse) {
-        expect(requestRenameDialog).toHaveBeenCalledWith(THREAD_ID);
+        expect(requestRenameDialog).not.toHaveBeenCalled();
         expect(
           screen.queryByRole("textbox", { name: "Thread name" }),
         ).toBeNull();

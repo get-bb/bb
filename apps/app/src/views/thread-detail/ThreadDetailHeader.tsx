@@ -177,11 +177,10 @@ export function ThreadDetailHeader({
     beginPaneDrag(event, threadTitle);
   };
   const handleTitleDoubleClick = () => {
-    if (isEditing) {
+    if (isEditing || isPointerCoarse) {
       return;
     }
-    if (isPointerCoarse) requestRenameDialog(threadId);
-    else startEditing();
+    startEditing();
   };
   const rightPanelLabel = isSecondaryPanelOpen
     ? "Hide right panel"
