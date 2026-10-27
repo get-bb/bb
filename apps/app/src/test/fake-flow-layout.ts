@@ -38,6 +38,7 @@ export function installFakeFlowLayout({
 }: FakeFlowLayoutOptions) {
   let viewportHeight = initialViewportHeight;
   let scrollTop = 0;
+  let observerSnapshot: Map<Element, number> | null = null;
   const resolveScrollElement = (): HTMLElement | null =>
     typeof scrollElementOption === "function"
       ? scrollElementOption()
@@ -106,7 +107,8 @@ export function installFakeFlowLayout({
     return { top, height: measureHeight(element) };
   };
 
-  const contentHeight = () => {
+  const measureContentHeight = (snapshot?: Map<Element, number>) => {
+    snapshot?.clear();
     let height = 0;
     const scrollElement = resolveScrollElement();
     for (
@@ -114,10 +116,15 @@ export function installFakeFlowLayout({
       child !== null;
       child = child.nextElementSibling
     ) {
-      height += measureHeight(child);
+      height += measureHeight(child, snapshot);
     }
-    return Math.max(viewportHeight, height);
+    return height;
   };
+  const contentHeight = () =>
+    Math.max(
+      viewportHeight,
+      measureContentHeight(observerSnapshot ?? undefined),
+    );
   const maxScrollTop = () => Math.max(0, contentHeight() - viewportHeight);
 
   const isScrollElement = (element: Element) =>
@@ -172,6 +179,7 @@ export function installFakeFlowLayout({
       if (isScrollElement(this)) {
         return new DOMRect(0, 0, 400, viewportHeight);
       }
+      if (observerSnapshot !== null) measureContentHeight(observerSnapshot);
       const box = measureBox(this);
       if (box === null) return new DOMRect(0, 0, 0, 0);
       return new DOMRect(0, box.top - scrollTop, 400, box.height);
@@ -227,32 +235,31 @@ export function installFakeFlowLayout({
       return element.getBoundingClientRect().top;
     },
     flushResizeObservers() {
-      const heights = new Map<Element, number>();
-      const scrollElement = resolveScrollElement();
-      for (
-        let child = scrollElement?.firstElementChild ?? null;
-        child !== null;
-        child = child.nextElementSibling
-      ) {
-        measureHeight(child, heights);
-      }
-      for (const observer of [...observers]) {
-        const entries: ResizeObserverEntry[] = [];
-        for (const target of observer.targets) {
-          const height = heights.get(target) ?? 0;
-          if (observer.sizes.get(target) === height) continue;
-          observer.sizes.set(target, height);
-          entries.push({
-            target,
-            borderBoxSize: [{ blockSize: height, inlineSize: 400 }],
-            contentBoxSize: [{ blockSize: height, inlineSize: 400 }],
-            contentRect: new DOMRect(0, 0, 400, height),
-            devicePixelContentBoxSize: [],
-          });
+      const previousSnapshot = observerSnapshot;
+      const heights = previousSnapshot ?? new Map<Element, number>();
+      observerSnapshot = heights;
+      try {
+        measureContentHeight(heights);
+        for (const observer of [...observers]) {
+          const entries: ResizeObserverEntry[] = [];
+          for (const target of observer.targets) {
+            const height = heights.get(target) ?? 0;
+            if (observer.sizes.get(target) === height) continue;
+            observer.sizes.set(target, height);
+            entries.push({
+              target,
+              borderBoxSize: [{ blockSize: height, inlineSize: 400 }],
+              contentBoxSize: [{ blockSize: height, inlineSize: 400 }],
+              contentRect: new DOMRect(0, 0, 400, height),
+              devicePixelContentBoxSize: [],
+            });
+          }
+          if (entries.length > 0) {
+            observer.callback(entries);
+          }
         }
-        if (entries.length > 0) {
-          observer.callback(entries);
-        }
+      } finally {
+        observerSnapshot = previousSnapshot;
       }
     },
     setViewportHeight(height: number) {
