@@ -87,13 +87,88 @@ function message(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
+type CleanupCompletion = {
+  description: string;
+  freedBytes: number | null;
+  removedInstances: number | null;
+};
+type NotifySuccess = (
+  title: string,
+  result: string | CleanupCompletion,
+) => void;
+
+function useStorageSuccessToast(): NotifySuccess {
+  const current = useRef<{
+    id: string | number;
+    lastAt: number;
+    count: number;
+    freedBytes: number | null;
+    removedInstances: number | null;
+    titles: Set<string>;
+  } | null>(null);
+  return useCallback((title, result) => {
+    const completion =
+      typeof result === "string"
+        ? { description: result, freedBytes: null, removedInstances: null }
+        : result;
+    const now = Date.now();
+    const batch = current.current;
+    if (batch === null || now - batch.lastAt >= 5000) {
+      const next = {
+        id: toast.success(title, {
+          description: completion.description,
+          duration: 5000,
+          onDismiss: () => {
+            if (current.current === next) current.current = null;
+          },
+          onAutoClose: () => {
+            if (current.current === next) current.current = null;
+          },
+        }),
+        lastAt: now,
+        count: 1,
+        freedBytes: completion.freedBytes,
+        removedInstances: completion.removedInstances,
+        titles: new Set([title]),
+      };
+      current.current = next;
+      return;
+    }
+    batch.lastAt = now;
+    batch.count++;
+    batch.titles.add(title);
+    batch.freedBytes =
+      batch.freedBytes === null && completion.freedBytes === null
+        ? null
+        : (batch.freedBytes ?? 0) + (completion.freedBytes ?? 0);
+    batch.removedInstances =
+      batch.removedInstances === null || completion.removedInstances === null
+        ? null
+        : batch.removedInstances + completion.removedInstances;
+    toast.success(
+      batch.removedInstances === null
+        ? `${plural(batch.count, "storage action")} completed`
+        : `${plural(batch.removedInstances, "instance")} deleted`,
+      {
+        id: batch.id,
+        duration: 5000,
+        description: [
+          ...(batch.removedInstances === null ? [...batch.titles] : []),
+          ...(batch.freedBytes === null
+            ? []
+            : [`${bytes(batch.freedBytes)} freed`]),
+        ].join(" · "),
+      },
+    );
+  }, []);
+}
+
 type ActionFeedback = {
-  title: string;
   completed: string;
   failed: string;
   description: string;
   id?: string;
-  background?: { hostId: string | null };
+  background?: boolean;
 };
 function cleanupFeedback(
   kind:
@@ -108,43 +183,27 @@ function cleanupFeedback(
 ): ActionFeedback {
   const titles = {
     development: [
-      "Deleting development data",
       "Development data deleted",
       "Couldn’t delete development data",
     ],
-    orphans: [
-      "Deleting orphaned files",
-      "Orphaned files deleted",
-      "Couldn’t delete orphaned files",
-    ],
-    worktrees: [
-      "Retrying checkout cleanup",
-      "Checkout cleanup retried",
-      "Couldn’t clean up checkouts",
-    ],
-    externalWorktrees: [
-      "Removing worktrees created outside BB",
-      "Worktrees removed",
-      "Couldn’t remove worktrees",
-    ],
+    orphans: ["Orphaned files deleted", "Couldn’t delete orphaned files"],
+    worktrees: ["Checkout cleanup retried", "Couldn’t clean up checkouts"],
+    externalWorktrees: ["Worktrees removed", "Couldn’t remove worktrees"],
     largeFileCleanup: [
-      "Deleting large archived files",
       "Large archived files deleted",
       "Couldn’t delete large archived files",
     ],
     archivedFileCleanup: [
-      "Deleting archived thread files",
       "Archived thread files deleted",
       "Couldn’t delete archived thread files",
     ],
   } as const;
-  const [title, completed, failed] = titles[kind];
+  const [completed, failed] = titles[kind];
   return {
-    title,
     completed,
     failed,
     description,
-    background: { hostId },
+    background: true,
     id: `storage:${hostId ?? "all"}:${kind}`,
   };
 }
@@ -158,6 +217,7 @@ type StorageData = {
 function StoragePanel(props: PluginNavPanelProps) {
   const rpc = useRpc<typeof storageRpc>();
   const sdk = useSdk();
+  const notifySuccess = useStorageSuccessToast();
   const [data, setData] = useState<StorageData | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const stateRevision = useRef(0);
@@ -191,11 +251,32 @@ function StoragePanel(props: PluginNavPanelProps) {
       if (request === refreshRevision.current) setLoadError(message(error));
     }
   }, [rpc, sdk]);
+  const previousScans = useRef(
+    new Map<string, { scannedAt: number | undefined; status: string }>(),
+  );
   const previousJobs = useRef(new Map<string, string>());
   const observedHosts = useRef(new Set<string>());
   const previousRemovals = useRef(new Map<string, Map<string, string>>());
   useEffect(() => {
     for (const host of data?.hosts ?? []) {
+      const previousScan = previousScans.current.get(host.hostId);
+      if (previousScan) {
+        const description = data?.machines[host.hostId]?.name ?? host.hostId;
+        if (host.scan.state === "failed" && previousScan.status !== "failed")
+          toast.error("Storage scan failed", {
+            description: `${description} · ${host.scan.message}`,
+          });
+        else if (
+          host.scan.state === "idle" &&
+          host.report &&
+          previousScan.scannedAt !== host.report.scannedAt
+        )
+          notifySuccess("Storage scan completed", description);
+      }
+      previousScans.current.set(host.hostId, {
+        scannedAt: host.report?.scannedAt,
+        status: host.scan.state,
+      });
       const statuses = [
         { kind: "largeFileCleanup" as const, job: host.largeFileCleanup },
         { kind: "archivedFileCleanup" as const, job: host.archivedFileCleanup },
@@ -223,25 +304,16 @@ function StoragePanel(props: PluginNavPanelProps) {
             host.hostId,
             machine,
           );
-          if (job.state === "running" || job.state === "queued")
-            toast.loading(
-              job.state === "queued"
-                ? `Queued: ${feedback.title}`
-                : feedback.title,
-              {
-                id: feedback.id,
-                description: machine,
-              },
-            );
           if (job.state === "failed")
             toast.error(feedback.failed, {
               id: feedback.id,
               description: `${machine} · ${job.message}`,
             });
           if (job.state === "completed")
-            toast.success(feedback.completed, {
-              id: feedback.id,
+            notifySuccess(feedback.completed, {
               description: `${machine} · ${"message" in job ? job.message : `${bytes(job.clearedBytes)} freed`}`,
+              freedBytes: "clearedBytes" in job ? job.clearedBytes : null,
+              removedInstances: null,
             });
         }
         previousJobs.current.set(key, signature);
@@ -254,20 +326,11 @@ function StoragePanel(props: PluginNavPanelProps) {
         if (seen === undefined || seen.get(removal.path) === signature)
           continue;
         const id = worktreeRemovalToastId(host.hostId, removal.path);
-        if (removal.state === "running" || removal.state === "queued")
-          toast.loading(
-            removal.state === "queued"
-              ? "Queued: Removing worktree"
-              : "Removing worktree",
-            {
-              id,
-              description: removal.path,
-            },
-          );
-        else if (removal.state === "completed")
-          toast.success("Worktree removed", {
-            id,
+        if (removal.state === "completed")
+          notifySuccess("Worktree removed", {
             description: `${removal.path} · ${bytes(removal.removedBytes)} freed`,
+            freedBytes: removal.removedBytes,
+            removedInstances: null,
           });
         else if (removal.state === "skipped" || removal.state === "failed")
           toast.error("Couldn’t remove worktree", {
@@ -282,7 +345,7 @@ function StoragePanel(props: PluginNavPanelProps) {
       previousRemovals.current.set(host.hostId, next);
       observedHosts.current.add(host.hostId);
     }
-  }, [data]);
+  }, [data, notifySuccess]);
   useEffect(() => {
     void refresh();
   }, [refresh]);
@@ -323,6 +386,7 @@ function StoragePanel(props: PluginNavPanelProps) {
       data={data}
       loadError={loadError}
       refresh={refresh}
+      notifySuccess={notifySuccess}
       updateState={updateState}
     />
   );
@@ -334,12 +398,14 @@ function StoragePage({
   loadError,
   refresh,
   updateState,
+  notifySuccess,
 }: {
   hostId: string | null;
   data: StorageData | null;
   loadError: string | null;
   refresh: () => Promise<void>;
   updateState: (state: State) => void;
+  notifySuccess: NotifySuccess;
 }) {
   const rpc = useRpc<typeof storageRpc>();
   const navigate = useBbNavigate();
@@ -350,7 +416,35 @@ function StoragePage({
   const detail = hosts.find((host) => host.hostId === hostId) ?? null;
   const [savingSetting, setSavingSetting] = useState(false);
   const settingSavePending = useRef(false);
-  const rowActions = useRef(new Set<string>());
+  const pendingActions = useRef(new Set<string>());
+  const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
+  function setPendingAction(id: string, active: boolean) {
+    if (active) pendingActions.current.add(id);
+    else pendingActions.current.delete(id);
+    setPending(new Set(pendingActions.current));
+  }
+  const busyActions = new Set(pending);
+  for (const host of hosts) {
+    const jobs = [
+      { kind: "largeFileCleanup", job: host.largeFileCleanup },
+      { kind: "archivedFileCleanup", job: host.archivedFileCleanup },
+      ...host.maintenanceJobs.flatMap((job) =>
+        "kind" in job ? [{ kind: job.kind, job }] : [],
+      ),
+    ];
+    for (const { kind, job } of jobs) {
+      if (job.state === "queued" || job.state === "running") {
+        busyActions.add(`storage:${host.hostId}:${kind}`);
+        busyActions.add(`storage:all:${kind}`);
+      }
+    }
+    for (const removal of host.externalWorktreeRemovals) {
+      if (removal.state === "queued" || removal.state === "running")
+        busyActions.add(worktreeRemovalToastId(host.hostId, removal.path));
+    }
+  }
+  const cleanupBusy = (kind: string) =>
+    busyActions.has(`storage:${hostId ?? "all"}:${kind}`);
   const [expandedThreadsHostId, setExpandedThreadsHostId] = useState<
     string | null
   >(null);
@@ -360,7 +454,7 @@ function StoragePage({
     title: string;
     detail: string;
     action: string;
-    run: () => Promise<string>;
+    run: () => Promise<string | CleanupCompletion>;
     feedback: ActionFeedback;
   } | null>(null);
   function setCleanup(value: typeof cleanup) {
@@ -369,78 +463,52 @@ function StoragePage({
   async function perform<T>(
     work: () => Promise<T>,
     feedback: ActionFeedback = {
-      title: "Starting storage scan",
+      id: `scan:${hostId ?? "all"}`,
+      background: true,
+
       completed: "Storage scan started",
       failed: "Couldn’t start storage scan",
       description: hostId
         ? (machines[hostId]?.name ?? hostId)
         : "Online machines",
     },
-    success?: (result: T) => string,
+    success?: (result: T) => string | CleanupCompletion,
   ) {
-    const id = toast.loading(feedback.title, {
-      id: feedback.id,
-      description: feedback.description,
-    });
+    const id = feedback.id ?? `scan:${hostId ?? "all"}`;
+    if (pendingActions.current.has(id)) return;
+    setPendingAction(id, true);
     try {
       const result = await work();
       if (!feedback.background)
-        toast.success(feedback.completed, {
-          id,
-          description: success?.(result) || feedback.description,
-        });
-      else if (feedback.background.hostId === null)
-        toast.info(feedback.title, {
-          id,
-          description: "Started on all online machines",
-        });
-      void refresh();
+        notifySuccess(
+          feedback.completed,
+          success?.(result) || feedback.description,
+        );
+      await refresh();
     } catch (error) {
       toast.error(feedback.failed, {
         id,
         description: `${feedback.description} · ${message(error)}`,
       });
+    } finally {
+      setPendingAction(id, false);
     }
   }
-  async function runEntryCleanup(
-    input: EntryCleanupInput,
-    feedback: ActionFeedback,
-  ) {
+  async function runEntryCleanup(input: EntryCleanupInput) {
     const { id } = await rpc.call("startEntryCleanup", input);
-    let previous = "";
     for (;;) {
       const status = await rpc.call("entryCleanup", { id });
       if (status.state === "failed") throw new Error(status.message);
       if (status.state === "completed") return status.result;
-      if (status.state !== previous) {
-        toast.loading(
-          status.state === "queued"
-            ? `Queued: ${feedback.title}`
-            : feedback.title,
-          {
-            id: feedback.id,
-            description: feedback.description,
-          },
-        );
-        previous = status.state;
-      }
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
   }
-  async function removeDevelopment(
-    input: { hostId: string; names: string[]; stopRunning: boolean },
-    toastId = developmentToastId(input.hostId, input.names),
-  ) {
-    const result = await runEntryCleanup(
-      { kind: "development", ...input },
-      {
-        id: toastId,
-        title: "Deleting development data",
-        completed: "Development data deleted",
-        failed: "Couldn’t delete development data",
-        description: `${hosts.find((host) => host.hostId === input.hostId)?.report?.developerStorage?.path ?? ""}/${input.names.join(", ")}`,
-      },
-    );
+  async function removeDevelopment(input: {
+    hostId: string;
+    names: string[];
+    stopRunning: boolean;
+  }) {
+    const result = await runEntryCleanup({ kind: "development", ...input });
     if (result.kind !== "development")
       throw new Error("Unexpected cleanup result");
     return result;
@@ -474,30 +542,23 @@ function StoragePage({
   async function runRowAction(
     key: string,
     feedback: ActionFeedback,
-    work: () => Promise<string | null>,
+    work: () => Promise<string | CleanupCompletion | null>,
   ) {
-    if (rowActions.current.has(key)) return;
-    rowActions.current.add(key);
-    const id = toast.loading(feedback.title, {
-      id: feedback.id,
-      description: feedback.description,
-    });
+    const id = feedback.id ?? key;
+    if (pendingActions.current.has(id)) return;
+    setPendingAction(id, true);
     try {
       const description = await work();
-      if (description === null) toast.dismiss(id);
-      else if (!feedback.background)
-        toast.success(feedback.completed, {
-          id,
-          description: description || feedback.description,
-        });
-      void refresh();
+      if (description !== null && !feedback.background)
+        notifySuccess(feedback.completed, description || feedback.description);
+      await refresh();
     } catch (error) {
       toast.error(feedback.failed, {
         id,
         description: `${feedback.description} · ${message(error)}`,
       });
     } finally {
-      rowActions.current.delete(key);
+      setPendingAction(id, false);
     }
   }
   const retentionOn =
@@ -519,7 +580,11 @@ function StoragePage({
     0,
   );
   const threadsExpanded = hostId !== null && expandedThreadsHostId === hostId;
-  const scanning = detail?.scan.state === "scanning";
+  const scanning =
+    detail?.scan.state === "scanning" || pending.has(`scan:${hostId}`);
+  const scanningAll =
+    pending.has("scan:all") ||
+    hosts.some((host) => host.scan.state === "scanning");
   const machine = hostId ? machines[hostId] : undefined;
   const offline = machine !== undefined && machine.status !== "connected";
   const locked = offline;
@@ -605,7 +670,7 @@ function StoragePage({
         <Button
           variant="outline"
           size="sm"
-          disabled={offline}
+          disabled={offline || busyActions.has(cleanup.feedback.id ?? "")}
           onClick={() => setCleanup(null)}
         >
           Cancel
@@ -613,7 +678,7 @@ function StoragePage({
         <Button
           variant="destructive"
           size="sm"
-          disabled={offline}
+          disabled={offline || busyActions.has(cleanup.feedback.id ?? "")}
           onClick={() =>
             void perform(
               async () => {
@@ -626,6 +691,9 @@ function StoragePage({
             )
           }
         >
+          {busyActions.has(cleanup.feedback.id ?? "") && (
+            <Icon name="Spinner" className="animate-spin" />
+          )}
           {cleanup.action}
         </Button>
       </div>
@@ -815,6 +883,7 @@ function StoragePage({
                       size={report.archivedFiles.bytes}
                       description={`Clear stored files of any size from ${plural(report.archivedFiles.threadCount, "archived thread")}. Pinned and running threads are skipped. Conversations and uploaded attachments are kept.`}
                       action="Clear archived files"
+                      busy={cleanupBusy("archivedFileCleanup")}
                       disabled={
                         locked || report.archivedFiles.threadCount === 0
                       }
@@ -849,6 +918,7 @@ function StoragePage({
                           : `No files of ${bytes(LARGE_FILE_MIN_BYTES)} or more in archived threads.`
                       }
                       action="Delete large files"
+                      busy={cleanupBusy("largeFileCleanup")}
                       disabled={
                         locked || report.archivedLargeFiles.fileCount === 0
                       }
@@ -868,6 +938,7 @@ function StoragePage({
                       size={report.orphanBytes}
                       description="Files left behind by deleted threads. BB cleans these up automatically while idle."
                       action="Remove orphans"
+                      busy={cleanupBusy("orphans")}
                       disabled={locked || report.orphanCount === 0}
                       onAction={() =>
                         setCleanup({
@@ -898,6 +969,7 @@ function StoragePage({
                       size={report.leftoverWorktreeBytes}
                       description="Checkouts BB could not remove after their threads were archived. BB retries automatically."
                       action="Retry cleanup"
+                      busy={cleanupBusy("worktrees")}
                       disabled={locked || report.leftoverWorktrees.length === 0}
                       onAction={() =>
                         void perform(
@@ -947,6 +1019,7 @@ function StoragePage({
                       size={externalBytes}
                       description="Git worktrees of your projects that BB didn’t create, such as ones agents added with git worktree add. Removing them keeps their branches. Bulk removal keeps worktrees with uncommitted changes, locked worktrees, and detached worktrees with commits on no branch; remove those one at a time."
                       action="Remove worktrees"
+                      busy={cleanupBusy("externalWorktrees")}
                       disabled={locked || report.externalWorktrees.length === 0}
                       onAction={() =>
                         setCleanup({
@@ -983,12 +1056,16 @@ function StoragePage({
                               ]),
                             )
                           }
+                          isRemoving={(path) =>
+                            busyActions.has(
+                              worktreeRemovalToastId(report.hostId, path),
+                            )
+                          }
                           rowDisabled={locked}
                           confirmationKey={cleanup?.key ?? null}
                           confirmation={cleanupConfirmation}
                           onRemove={(worktree, label) => {
                             const feedback = {
-                              title: "Removing worktree",
                               completed: "Worktree removed",
                               failed: "Couldn’t remove worktree",
                               description: worktree.path,
@@ -996,7 +1073,7 @@ function StoragePage({
                                 report.hostId,
                                 worktree.path,
                               ),
-                              background: { hostId: report.hostId },
+                              background: true,
                             };
                             const start = (force: boolean) =>
                               rpc.call("startRemoveExternalWorktree", {
@@ -1061,6 +1138,7 @@ function StoragePage({
                         size={missingDevBytes}
                         description={`${plural(missingDev.length, "development instance")} in ~/.bb-dev whose source checkout no longer exists. Servers still running from them are stopped before removal.`}
                         action="Remove instances"
+                        busy={cleanupBusy("development")}
                         disabled={locked || missingDev.length === 0}
                         onAction={() =>
                           setCleanup(
@@ -1118,6 +1196,9 @@ function StoragePage({
                               {bytes(thread.sizeBytes)}
                             </span>
                             <RowActionButton
+                              busy={busyActions.has(
+                                `storage:thread:${thread.threadId}`,
+                              )}
                               label="Clear files"
                               target={thread.title}
                               disabled={locked || thread.running}
@@ -1126,25 +1207,16 @@ function StoragePage({
                                   thread.threadId,
                                   {
                                     id: `storage:thread:${thread.threadId}`,
-                                    title: "Deleting thread files",
+
                                     completed: "Thread files deleted",
                                     failed: "Couldn’t delete thread files",
                                     description: thread.title,
                                   },
                                   async () => {
-                                    await runEntryCleanup(
-                                      {
-                                        kind: "thread",
-                                        threadId: thread.threadId,
-                                      },
-                                      {
-                                        id: `storage:thread:${thread.threadId}`,
-                                        title: "Deleting thread files",
-                                        completed: "Thread files deleted",
-                                        failed: "Couldn’t delete thread files",
-                                        description: thread.title,
-                                      },
-                                    );
+                                    await runEntryCleanup({
+                                      kind: "thread",
+                                      threadId: thread.threadId,
+                                    });
                                     return thread.title;
                                   },
                                 )
@@ -1172,6 +1244,9 @@ function StoragePage({
                 {report.developerStorage && (
                   <DeveloperStorage
                     storage={report.developerStorage}
+                    isRemoving={(name) =>
+                      busyActions.has(developmentToastId(report.hostId, [name]))
+                    }
                     rowDisabled={locked}
                     confirmationKey={cleanup?.key ?? null}
                     confirmation={cleanupConfirmation}
@@ -1190,7 +1265,7 @@ function StoragePage({
                             report.hostId,
                             entries.map((entry) => entry.name),
                           ),
-                          title: "Deleting development data",
+
                           completed: "Development data deleted",
                           failed: "Couldn’t delete development data",
                           description: plural(
@@ -1209,24 +1284,22 @@ function StoragePage({
                             offset < entries.length;
                             offset += 500
                           ) {
-                            const result = await removeDevelopment(
-                              {
-                                hostId: report.hostId,
-                                names: entries
-                                  .slice(offset, offset + 500)
-                                  .map((entry) => entry.name),
-                                stopRunning: true,
-                              },
-                              developmentToastId(
-                                report.hostId,
-                                entries.map((entry) => entry.name),
-                              ),
-                            );
+                            const result = await removeDevelopment({
+                              hostId: report.hostId,
+                              names: entries
+                                .slice(offset, offset + 500)
+                                .map((entry) => entry.name),
+                              stopRunning: true,
+                            });
                             removedCount += result.removedCount;
                             removedBytes += result.removedBytes;
                           }
 
-                          return `${plural(removedCount, "instance")} removed · ${bytes(removedBytes)} freed`;
+                          return {
+                            description: `${plural(removedCount, "instance")} removed · ${bytes(removedBytes)} freed`,
+                            freedBytes: removedBytes,
+                            removedInstances: removedCount,
+                          };
                         },
                       });
                     }}
@@ -1235,7 +1308,7 @@ function StoragePage({
                         `dev:${entry.name}`,
                         {
                           id: developmentToastId(report.hostId, [entry.name]),
-                          title: "Deleting development data",
+
                           completed: "Development data deleted",
                           failed: "Couldn’t delete development data",
                           description: `${report.developerStorage!.path}/${entry.name}`,
@@ -1253,7 +1326,7 @@ function StoragePage({
                                 id: developmentToastId(report.hostId, [
                                   entry.name,
                                 ]),
-                                title: "Deleting development data",
+
                                 completed: "Development data deleted",
                                 failed: "Couldn’t delete development data",
                                 description: `${report.developerStorage!.path}/${entry.name}`,
@@ -1269,11 +1342,19 @@ function StoragePage({
                                   stopRunning: true,
                                 });
 
-                                return `${report.developerStorage!.path}/${entry.name} · ${bytes(stopped.removedBytes)} freed`;
+                                return {
+                                  description: `${report.developerStorage!.path}/${entry.name} · ${bytes(stopped.removedBytes)} freed`,
+                                  freedBytes: stopped.removedBytes,
+                                  removedInstances: stopped.removedCount,
+                                };
                               },
                             });
                           else
-                            return `${report.developerStorage!.path}/${entry.name} · ${bytes(result.removedBytes)} freed`;
+                            return {
+                              description: `${report.developerStorage!.path}/${entry.name} · ${bytes(result.removedBytes)} freed`,
+                              freedBytes: result.removedBytes,
+                              removedInstances: result.removedCount,
+                            };
                           return null;
                         },
                       )
@@ -1305,9 +1386,16 @@ function StoragePage({
                     variant="outline"
                     size="sm"
                     className="shrink-0"
-                    disabled={archivedLargeFiles.fileCount === 0}
+                    disabled={
+                      archivedLargeFiles.fileCount === 0 ||
+                      cleanupBusy("largeFileCleanup")
+                    }
+                    aria-busy={cleanupBusy("largeFileCleanup")}
                     onClick={() => setCleanup(suggestion.cleanup)}
                   >
+                    {cleanupBusy("largeFileCleanup") && (
+                      <Icon name="Spinner" className="animate-spin" />
+                    )}
                     {suggestion.action}
                   </Button>
                 </div>
@@ -1321,13 +1409,16 @@ function StoragePage({
                   <Button
                     variant="outline"
                     size="sm"
-                    disabled={scannable.length === 0}
+                    disabled={scannable.length === 0 || scanningAll}
                     onClick={() =>
                       void perform(() => rpc.call("scanAll", null))
                     }
                   >
-                    <Icon name="RotateCcw" />
-                    Scan all
+                    <Icon
+                      name="RotateCcw"
+                      className={scanningAll ? "animate-spin" : ""}
+                    />
+                    {scanningAll ? "Scanning…" : "Scan all"}
                   </Button>
                 }
               />
@@ -1346,6 +1437,10 @@ function StoragePage({
                 {hosts.map((host) => (
                   <MachineRow
                     key={host.hostId}
+                    pendingScan={
+                      pending.has(`scan:${host.hostId}`) ||
+                      pending.has("scan:all")
+                    }
                     host={host}
                     machine={machines[host.hostId]}
                     server={host.hostId === primaryHostId}
@@ -1356,7 +1451,9 @@ function StoragePage({
                       void perform(
                         () => rpc.call("scanHost", { hostId: host.hostId }),
                         {
-                          title: "Starting storage scan",
+                          id: `scan:${host.hostId}`,
+                          background: true,
+
                           completed: "Storage scan started",
                           failed: "Couldn’t start storage scan",
                           description:
@@ -1601,6 +1698,7 @@ function CleanupRow({
   description,
   action,
   disabled,
+  busy,
   onAction,
   children,
 }: {
@@ -1609,6 +1707,7 @@ function CleanupRow({
   description: string;
   action: string;
   disabled: boolean;
+  busy: boolean;
   onAction: () => void;
   children?: ReactNode;
 }) {
@@ -1628,9 +1727,11 @@ function CleanupRow({
         <Button
           variant="outline"
           size="sm"
-          disabled={disabled}
+          disabled={disabled || busy}
+          aria-busy={busy}
           onClick={onAction}
         >
+          {busy && <Icon name="Spinner" className="animate-spin" />}
           {action}
         </Button>
       </div>
@@ -1674,15 +1775,17 @@ function MachineRow({
   server,
   onOpen,
   onScan,
+  pendingScan,
 }: {
   host: Hosts[number];
   machine: Machine | undefined;
   server: boolean;
   onOpen: () => void;
   onScan: () => void;
+  pendingScan: boolean;
 }) {
   const report = host.report;
-  const scanning = host.scan.state === "scanning";
+  const scanning = pendingScan || host.scan.state === "scanning";
   const name = machine?.name ?? host.hostId;
   const scanState = scanning
     ? "scanning…"
@@ -1952,6 +2055,7 @@ function ExternalWorktrees({
   worktrees,
   projectNames,
   rowDisabled,
+  isRemoving,
   confirmationKey,
   confirmation,
   onRemove,
@@ -1959,6 +2063,7 @@ function ExternalWorktrees({
   worktrees: ExternalWorktree[];
   projectNames: ReadonlyMap<string, string>;
   rowDisabled: boolean;
+  isRemoving: (key: string) => boolean;
   confirmationKey: string | null;
   confirmation: ReactNode;
   onRemove: (worktree: ExternalWorktree, label: string) => void;
@@ -2042,6 +2147,7 @@ function ExternalWorktrees({
                         {bytes(worktree.sizeBytes)}
                       </span>
                       <RowActionButton
+                        busy={isRemoving(worktree.path)}
                         label="Remove worktree"
                         target={label}
                         disabled={rowDisabled}
@@ -2077,11 +2183,13 @@ function ExternalWorktrees({
 function RowActionButton({
   label,
   target,
+  busy,
   disabled,
   onClick,
 }: {
   label: string;
   target: string;
+  busy: boolean;
   disabled: boolean;
   onClick: () => void;
 }) {
@@ -2094,10 +2202,14 @@ function RowActionButton({
             size="icon"
             className="-my-1.5 size-7 text-muted-foreground hover:text-destructive"
             aria-label={`${label}: ${target}`}
-            disabled={disabled}
+            disabled={disabled || busy}
+            aria-busy={busy}
             onClick={onClick}
           >
-            <Icon name="Trash2" className="size-4" />
+            <Icon
+              name={busy ? "Spinner" : "Trash2"}
+              className={cn("size-4", busy && "animate-spin")}
+            />
           </Button>
         </TooltipTrigger>
         <TooltipContent>{label}</TooltipContent>
@@ -2152,6 +2264,7 @@ function ShowMoreToggle({
 function DeveloperStorage({
   storage,
   rowDisabled,
+  isRemoving,
   confirmationKey,
   confirmation,
   onRemove,
@@ -2159,6 +2272,7 @@ function DeveloperStorage({
 }: {
   storage: NonNullable<NonNullable<HostReport["report"]>["developerStorage"]>;
   rowDisabled: boolean;
+  isRemoving: (key: string) => boolean;
   confirmationKey: string | null;
   confirmation: ReactNode;
   onRemove: (entry: DeveloperEntry, label: string) => void;
@@ -2433,6 +2547,7 @@ function DeveloperStorage({
                               {bytes(entry.sizeBytes)}
                             </span>
                             <RowActionButton
+                              busy={isRemoving(entry.name)}
                               label="Remove instance"
                               target={label}
                               disabled={rowDisabled || entry.current}

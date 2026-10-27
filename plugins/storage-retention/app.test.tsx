@@ -142,6 +142,7 @@ function fixture(subPath = "host_test") {
         },
         entryCleanup: (raw) =>
           entryJobs.get(storageRpc.entryCleanup.input.parse(raw).id),
+        scanHost: start,
         startClearArchivedFiles: start,
         startClearLargeFiles: start,
         startCleanup: start,
@@ -255,7 +256,7 @@ it("saves switches immediately and rolls failed saves back without a storage sca
   ).toBe(false);
 });
 
-it("reports background progress and completion only in a toast", async () => {
+it("shows background progress on the action and toasts only completion", async () => {
   const { slot, hosts } = fixture();
   await within(slot.container).findByRole("button", {
     name: "Clear archived files",
@@ -268,12 +269,12 @@ it("reports background progress and completion only in a toast", async () => {
   await act(async () => {
     await slot.emitRealtime("changed", null);
   });
-  await waitFor(() =>
-    expect(
-      document.querySelector("[data-sonner-toast]")?.textContent,
-    ).toContain("Deleting archived thread files"),
-  );
-  expect(within(slot.container).queryAllByRole("status")).toEqual([]);
+  const button = within(slot.container).getByRole("button", {
+    name: "Clear archived files",
+  });
+  expect(button.getAttribute("aria-busy")).toBe("true");
+  expect(button.hasAttribute("disabled")).toBe(true);
+  expect(document.querySelector("[data-sonner-toast]")).toBeNull();
   hosts[0]!.archivedFileCleanup = {
     state: "completed",
     clearedThreads: 1,
@@ -296,7 +297,7 @@ it("reports background progress and completion only in a toast", async () => {
   ).toBe(false);
 });
 
-it("hands an all-machines large-file cleanup toast over to each machine's job until it completes", async () => {
+it("keeps all-machines cleanup busy until the machine jobs complete", async () => {
   const { slot, hosts, start } = fixture("");
   hosts[0]!.report!.archivedLargeFiles = {
     threadCount: 1,
@@ -314,24 +315,17 @@ it("hands an all-machines large-file cleanup toast over to each machine's job un
     ),
   );
   await waitFor(() => expect(start).toHaveBeenCalled());
-  await waitFor(() =>
-    expect(
-      document.querySelector('[data-sonner-toast][data-type="info"]')
-        ?.textContent,
-    ).toContain("Started on all online machines"),
-  );
-  const loadingDescriptions = () =>
-    [
-      ...document.querySelectorAll(
-        '[data-sonner-toast][data-type="loading"]:not([data-removed="true"]) [data-description]',
-      ),
-    ].map((node) => node.textContent);
-  await waitFor(() => expect(loadingDescriptions()).toEqual([]));
+  expect(document.querySelector("[data-sonner-toast]")).toBeNull();
   hosts[0]!.largeFileCleanup = { state: "running", startedAt: Date.now() };
   await act(async () => {
     await slot.emitRealtime("changed", null);
   });
-  await waitFor(() => expect(loadingDescriptions()).toEqual(["Test machine"]));
+  expect(
+    page
+      .getByRole("button", { name: "Delete large files" })
+      .getAttribute("aria-busy"),
+  ).toBe("true");
+  expect(document.querySelector("[data-sonner-toast]")).toBeNull();
   hosts[0]!.largeFileCleanup = {
     state: "completed",
     clearedFiles: 2,
@@ -346,7 +340,11 @@ it("hands an all-machines large-file cleanup toast over to each machine's job un
         ?.textContent,
     ).toContain("Large archived files deleted"),
   );
-  expect(loadingDescriptions()).toEqual([]);
+  expect(
+    page
+      .getByRole("button", { name: "Delete large files" })
+      .getAttribute("aria-busy"),
+  ).toBe("false");
 });
 
 it("does not keep cleanup controls locked while the follow-up report is slow", async () => {
@@ -402,17 +400,17 @@ it("starts orphan cleanup in the background without locking the page and toasts 
   await act(async () => {
     await slot.emitRealtime("changed", null);
   });
-  await waitFor(() =>
-    expect(
-      document.querySelector("[data-sonner-toast]")?.textContent,
-    ).toContain("Deleting orphaned files"),
-  );
-  expect(page.queryAllByRole("status")).toEqual([]);
+  expect(document.querySelector("[data-sonner-toast]")).toBeNull();
+  expect(
+    page
+      .getByRole("button", { name: "Remove orphans" })
+      .getAttribute("aria-busy"),
+  ).toBe("true");
   expect(
     page
       .getByRole("button", { name: "Remove orphans" })
       .hasAttribute("disabled"),
-  ).toBe(false);
+  ).toBe(true);
   hosts[0]!.maintenanceJobs = [
     {
       state: "completed",
@@ -437,7 +435,7 @@ it("starts orphan cleanup in the background without locking the page and toasts 
   ).toBe(false);
 });
 
-it("shows the development path below a short pending title and updates the same toast on completion", async () => {
+it("spins the development trash button immediately and only toasts completion", async () => {
   const { slot, remove } = fixture();
   const completion: {
     resolve: (value: Awaited<ReturnType<typeof remove>>) => void;
@@ -452,19 +450,15 @@ it("shows the development path below a short pending title and updates the same 
   fireEvent.click(
     await page.findByRole("button", { name: "Remove instance: after" }),
   );
-  await waitFor(() =>
-    expect(
-      document.querySelector(
-        '[data-sonner-toast][data-type="loading"] [data-title]',
-      )?.textContent,
-    ).toBe("Deleting development data"),
-  );
-  const pending = document.querySelector(
-    '[data-sonner-toast][data-type="loading"]',
-  );
-  expect(pending?.querySelector("[data-description]")?.textContent).toBe(
-    "/fixture/dev/after",
-  );
+  const button = page.getByRole("button", { name: "Remove instance: after" });
+  expect(button.getAttribute("aria-busy")).toBe("true");
+  expect(button.hasAttribute("disabled")).toBe(true);
+  expect(
+    button.querySelector('[data-icon="Spinner"].animate-spin'),
+  ).not.toBeNull();
+  expect(document.querySelector("[data-sonner-toast]")).toBeNull();
+  fireEvent.click(button);
+  expect(remove).toHaveBeenCalledTimes(1);
   await act(async () =>
     completion.resolve({
       running: [],
@@ -475,13 +469,14 @@ it("shows the development path below a short pending title and updates the same 
     }),
   );
   await waitFor(() =>
-    expect(pending?.querySelector("[data-title]")?.textContent).toBe(
-      "Development data deleted",
-    ),
+    expect(
+      document.querySelector("[data-sonner-toast] [data-title]")?.textContent,
+    ).toBe("Development data deleted"),
   );
-  expect(pending?.querySelector("[data-description]")?.textContent).toBe(
-    "/fixture/dev/after · 20 B freed",
-  );
+  expect(
+    document.querySelector("[data-sonner-toast] [data-description]")
+      ?.textContent,
+  ).toBe("/fixture/dev/after · 20 B freed");
   expect(document.querySelectorAll("[data-sonner-toast]")).toHaveLength(1);
 });
 
@@ -514,7 +509,7 @@ it.each([
   },
 );
 
-it("hands a started worktree removal to one toast that the server's result completes", async () => {
+it("keeps worktree removal spinning through queued and running states, then toasts completion", async () => {
   const { slot, hosts, removeWorktree } = fixture();
   const worktreePath = "/fixture/worktrees/heavy";
   hosts[0]!.report!.externalWorktrees = [
@@ -535,32 +530,18 @@ it("hands a started worktree removal to one toast that the server's result compl
   fireEvent.click(
     await page.findByRole("button", { name: "Remove worktree: heavy" }),
   );
-  await waitFor(() =>
-    expect(
-      document.querySelector(
-        '[data-sonner-toast][data-type="loading"] [data-title]',
-      )?.textContent,
-    ).toBe("Removing worktree"),
-  );
-  expect(removeWorktree).toHaveBeenCalledTimes(1);
-  expect(page.queryAllByRole("status")).toEqual([]);
+  await waitFor(() => expect(removeWorktree).toHaveBeenCalledTimes(1));
+  expect(document.querySelector("[data-sonner-toast]")).toBeNull();
   hosts[0]!.externalWorktreeRemovals = [
     { path: worktreePath, state: "queued" },
   ];
   await act(async () => {
     await slot.emitRealtime("changed", null);
   });
-  await waitFor(() =>
-    expect(
-      document.querySelector("[data-sonner-toast] [data-title]")?.textContent,
-    ).toBe("Queued: Removing worktree"),
-  );
-  expect(document.querySelectorAll("[data-sonner-toast]")).toHaveLength(1);
-  expect(
-    page
-      .getByRole("button", { name: "Remove worktree: heavy" })
-      .hasAttribute("disabled"),
-  ).toBe(false);
+  const button = page.getByRole("button", { name: "Remove worktree: heavy" });
+  expect(button.getAttribute("aria-busy")).toBe("true");
+  expect(button.hasAttribute("disabled")).toBe(true);
+  expect(document.querySelector("[data-sonner-toast]")).toBeNull();
   hosts[0]!.externalWorktreeRemovals = [
     { path: worktreePath, state: "running" },
   ];
@@ -584,4 +565,149 @@ it("hands a started worktree removal to one toast that the server's result compl
     document.querySelector("[data-sonner-toast] [data-description]")
       ?.textContent,
   ).toBe(`${worktreePath} · 4 KB freed`);
+});
+
+it("shows scan progress immediately and waits for the updated report before toasting", async () => {
+  const { slot, hosts, start } = fixture();
+  let finish = () => {};
+  start.mockImplementationOnce(
+    () =>
+      new Promise<null>((resolve) => {
+        finish = () => resolve(null);
+      }),
+  );
+  const page = within(slot.container);
+  fireEvent.click(await page.findByRole("button", { name: "Rescan machine" }));
+  const button = page.getByRole("button", { name: "Scanning…" });
+  expect(button.hasAttribute("disabled")).toBe(true);
+  expect(button.querySelector(".animate-spin")).not.toBeNull();
+  expect(document.querySelector("[data-sonner-toast]")).toBeNull();
+  hosts[0]!.scan = { state: "scanning", startedAt: Date.now() };
+  await act(async () => finish());
+  expect(
+    page.getByRole("button", { name: "Scanning…" }).hasAttribute("disabled"),
+  ).toBe(true);
+  expect(document.querySelector("[data-sonner-toast]")).toBeNull();
+  hosts[0]!.scan = { state: "idle" };
+  hosts[0]!.report!.scannedAt += 1000;
+  await act(async () => {
+    await slot.emitRealtime("changed", null);
+  });
+  await waitFor(() =>
+    expect(
+      document.querySelector("[data-sonner-toast] [data-title]")?.textContent,
+    ).toBe("Storage scan completed"),
+  );
+  expect(
+    page
+      .getByRole("button", { name: "Rescan machine" })
+      .hasAttribute("disabled"),
+  ).toBe(false);
+});
+
+it("aggregates nearby instance deletions and starts a fresh toast after the window expires", async () => {
+  const { slot, hosts, remove } = fixture();
+  const storage = hosts[0]!.report!.developerStorage!;
+  const template = storage.entries[0]!;
+  storage.entries = ["first", "second", "later"].map((name) => ({
+    ...template,
+    name,
+    sourcePath: `/fixture/${name}`,
+    running: false,
+  }));
+  remove.mockResolvedValue({
+    running: [],
+    removedCount: 1,
+    removedBytes: 100,
+    skippedCount: 0,
+    stoppedProcessCount: 0,
+  });
+  const page = within(slot.container);
+  fireEvent.click(
+    await page.findByRole("button", { name: "Remove instance: first" }),
+  );
+  await waitFor(() =>
+    expect(
+      document.querySelector('[data-sonner-toast][data-type="success"]')
+        ?.textContent,
+    ).toContain("Development data deleted"),
+  );
+  const firstToast = document.querySelector(
+    '[data-sonner-toast][data-type="success"]',
+  );
+  fireEvent.click(
+    page.getByRole("button", { name: "Remove instance: second" }),
+  );
+  await waitFor(() =>
+    expect(firstToast?.textContent).toContain("2 instances deleted"),
+  );
+  expect(firstToast?.textContent).toContain("200 B freed");
+  expect(
+    document.querySelectorAll('[data-sonner-toast][data-type="success"]'),
+  ).toHaveLength(1);
+  vi.spyOn(Date, "now").mockReturnValue(Date.now() + 6000);
+  fireEvent.click(page.getByRole("button", { name: "Remove instance: later" }));
+  await waitFor(() =>
+    expect(
+      document.querySelectorAll('[data-sonner-toast][data-type="success"]'),
+    ).toHaveLength(2),
+  );
+  const titles = [
+    ...document.querySelectorAll(
+      '[data-sonner-toast][data-type="success"] [data-title]',
+    ),
+  ].map((node) => node.textContent);
+  expect(titles).toEqual(
+    expect.arrayContaining(["2 instances deleted", "Development data deleted"]),
+  );
+});
+
+it("aggregates background completions across cleanup types while keeping failures separate", async () => {
+  const { slot, hosts } = fixture();
+  await within(slot.container).findByRole("button", {
+    name: "Clear archived files",
+  });
+  hosts[0]!.archivedFileCleanup = {
+    state: "completed",
+    clearedThreads: 1,
+    clearedBytes: 100,
+  };
+  hosts[0]!.largeFileCleanup = {
+    state: "completed",
+    clearedFiles: 2,
+    clearedBytes: 200,
+  };
+  hosts[0]!.externalWorktreeRemovals = [
+    { path: "/fixture/worktree", state: "completed", removedBytes: 300 },
+  ];
+  hosts[0]!.maintenanceJobs = [
+    { kind: "orphans", state: "failed", message: "Machine disconnected" },
+  ];
+  await act(async () => {
+    await slot.emitRealtime("changed", null);
+  });
+  await waitFor(() =>
+    expect(
+      document.querySelector('[data-sonner-toast][data-type="success"]')
+        ?.textContent,
+    ).toContain("3 storage actions completed"),
+  );
+  expect(
+    document.querySelector('[data-sonner-toast][data-type="success"]')
+      ?.textContent,
+  ).toContain("600 B freed");
+  expect(
+    document.querySelectorAll('[data-sonner-toast][data-type="success"]'),
+  ).toHaveLength(1);
+  expect(
+    document.querySelector('[data-sonner-toast][data-type="error"]')
+      ?.textContent,
+  ).toContain("Machine disconnected");
+  await act(async () => {
+    await slot.emitRealtime("changed", null);
+  });
+  expect(
+    document.querySelector('[data-sonner-toast][data-type="success"]')
+      ?.textContent,
+  ).toContain("3 storage actions completed");
 });
