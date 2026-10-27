@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { runCommand } from "../src/app-update/run-command.js";
 import {
   fastForwardSource,
@@ -15,13 +15,22 @@ import {
 } from "./app-update-git-fixture.js";
 
 const fixtures: GitCheckoutFixture[] = [];
+let template: GitCheckoutFixture;
+
+beforeAll(async () => {
+  template = await createGitCheckout();
+});
+
+afterAll(() => {
+  template?.cleanup();
+});
 
 afterEach(() => {
   for (const fixture of fixtures.splice(0)) fixture.cleanup();
 });
 
 async function createCheckout(): Promise<GitCheckoutFixture> {
-  const fixture = await createGitCheckout();
+  const fixture = await createGitCheckout(template);
   fixtures.push(fixture);
   return fixture;
 }

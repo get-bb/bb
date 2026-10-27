@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   APP_UPDATE_RESTART_EXIT_CODE,
   mutateAppUpdateState,
@@ -25,6 +25,15 @@ import {
 } from "./app-update-git-fixture.js";
 
 const fixtures: GitCheckoutFixture[] = [];
+let template: GitCheckoutFixture;
+
+beforeAll(async () => {
+  template = await createGitCheckout();
+});
+
+afterAll(() => {
+  template?.cleanup();
+});
 
 afterEach(() => {
   for (const fixture of fixtures.splice(0)) fixture.cleanup();
@@ -39,7 +48,7 @@ interface SourceUpdateSetup {
 }
 
 async function setUpIncomingCommit(): Promise<SourceUpdateSetup> {
-  const fixture = await createGitCheckout();
+  const fixture = await createGitCheckout(template);
   fixtures.push(fixture);
   const from = await git(fixture.checkout, "rev-parse", "HEAD");
   const to = await publish(fixture.upstream, "1.1.0", "Add feature");
