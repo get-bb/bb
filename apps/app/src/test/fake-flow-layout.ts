@@ -83,7 +83,7 @@ export function installFakeFlowLayout({
     let top = 0;
     let current = element;
     while (current !== scrollElement) {
-      const parent = current.parentElement;
+      const parent: Element | null = current.parentElement;
       if (parent === null) return null;
       if (current instanceof HTMLElement) top += translateY(current);
       let gap = 0;
