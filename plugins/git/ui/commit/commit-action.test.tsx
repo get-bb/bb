@@ -102,11 +102,12 @@ function Probe({ onItem }: { onItem(item: ItemFor): void }) {
 
 function renderAction({
   workspace = DIRTY,
-  showGitChanges = true,
-}: { workspace?: WorkspaceStatus; showGitChanges?: boolean } = {}) {
+  settings = { showGitChanges: true },
+}: {
+  workspace?: WorkspaceStatus;
+  settings?: Record<string, boolean>;
+} = {}) {
   let itemFor: ItemFor | null = null;
-  const configChanged: (() => void)[] = [];
-  const settings = { showGitChanges };
   const view = renderSlot(
     { component: Probe },
     {
@@ -118,19 +119,10 @@ function renderAction({
       rpc: statusFor(workspace) as PluginRpcTestHandlers<typeof gitRpcContract>,
       experimental_rpcContract: gitRpcContract,
       pluginId: "bb--git",
+      settings,
       sdk: {
-        system: {
-          config: async () => ({
-            generalSettings: { showGitChanges: settings.showGitChanges },
-          }),
-        },
         threads: { get: async () => ({ environmentId: "env-1" }) },
-        subscribe: (args: { event: string; callback: () => void }) => {
-          if (args.event === "system:config-changed") {
-            configChanged.push(args.callback);
-          }
-          return () => {};
-        },
+        subscribe: () => () => {},
       } as never,
     },
   );
@@ -138,10 +130,6 @@ function renderAction({
     view,
     item: (overrides: Partial<PluginThreadActionTarget> = {}) =>
       itemFor?.(target(overrides)) ?? null,
-    setShowGitChanges(value: boolean) {
-      settings.showGitChanges = value;
-      for (const callback of configChanged) callback();
-    },
   };
 }
 
@@ -168,14 +156,10 @@ describe("commit header action", () => {
     expect(dirty.item({ environment: { id: "env-2", path: "/x" } })).toBeNull();
   });
 
-  it("follows the Show Git changes setting as it changes", async () => {
-    const action = renderAction({ showGitChanges: false });
+  it("hides Commit while the Show Git changes setting is off", async () => {
+    const action = renderAction({ settings: { showGitChanges: false } });
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(action.item()).toBeNull();
-    await act(async () => action.setShowGitChanges(true));
-    await waitFor(() => expect(action.item()?.label).toBe("Commit"));
-    await act(async () => action.setShowGitChanges(false));
-    await waitFor(() => expect(action.item()).toBeNull());
   });
 });
 

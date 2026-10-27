@@ -6,6 +6,7 @@ import {
 } from "react";
 import {
   useBbNavigate,
+  useSettings,
   type ExperimentalThreadContextSegmentInput,
   type ExperimentalThreadContextSegmentProps,
   type ExperimentalThreadContextSegmentReference,
@@ -26,7 +27,11 @@ import {
   PROMPT_BANNER_ACTION_SEGMENT_CLASS,
   PromptBannerActionButton,
 } from "@bb/shared-ui/prompt-banner-actions";
-import type { PullRequest, PullRequestMergeMethod } from "../contract";
+import {
+  SHOW_PULL_REQUEST_SETTING,
+  type PullRequest,
+  type PullRequestMergeMethod,
+} from "../contract";
 import {
   describePullRequestStatus,
   getPullRequestGithubCheckStatus,
@@ -62,7 +67,8 @@ function useThreadPullRequest(
 export function usePullRequestSegmentVisible(
   input: ExperimentalThreadContextSegmentInput,
 ): boolean {
-  return useThreadPullRequest(input.environment) !== null;
+  const show = useSettings().values?.[SHOW_PULL_REQUEST_SETTING] === true;
+  return useThreadPullRequest(show ? input.environment : null) !== null;
 }
 
 function shouldShowAttentionLabel(pullRequest: PullRequest): boolean {

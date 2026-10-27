@@ -43,10 +43,6 @@ export const SETTINGS_SEARCH_INDEX: Record<
         keywords: ["new thread", "open", "background"],
       },
       {
-        title: "Show Git changes and Commit button",
-        keywords: ["pull request", "pr", "diff", "composer"],
-      },
-      {
         title: "Default thread followup behavior",
         keywords: ["enter", "steer", "queue", "follow-up"],
       },

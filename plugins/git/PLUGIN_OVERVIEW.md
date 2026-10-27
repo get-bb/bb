@@ -18,4 +18,4 @@ Use the CLI from any thread:
 - `bb git diff <environment-id> --target all` prints the diff.
 - `bb git viewed mark <environment-id> --path <path>` marks a file Viewed.
 
-The Commit button and dialog stay in core.
+Turn off Show Git changes and Commit button on this page to hide the changed-files segment and the Commit button.

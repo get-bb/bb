@@ -5,7 +5,7 @@ import {
   type PluginThreadActionDataInput,
   type PluginThreadActionRegistration,
 } from "@get-bb/plugin-sdk/app";
-import { useGitWorkspaces } from "../queries.js";
+import { useGitWorkspaces, useShowGitChanges } from "../queries.js";
 import {
   closeCommitDialogUnlessShown,
   openCommitDialog,
@@ -14,38 +14,6 @@ import {
 export interface CommitActionData {
   showGitChanges: boolean;
   environmentIdsWithChanges: ReadonlySet<string>;
-}
-
-function useShowGitChanges(sdk: PluginBrowserBbSdk): boolean {
-  const [showGitChanges, setShowGitChanges] = useState(false);
-  useEffect(() => {
-    let current = true;
-    const load = () => {
-      sdk.system.config().then(
-        (config) => {
-          if (current) setShowGitChanges(config.generalSettings.showGitChanges);
-        },
-        () => undefined,
-      );
-    };
-    load();
-    const config = sdk.subscribe({
-      event: "system:config-changed",
-      callback: load,
-    });
-    const connection = sdk.subscribe({
-      event: "realtime:connection",
-      callback: (event) => {
-        if (event.state === "connected" && event.reconnected) load();
-      },
-    });
-    return () => {
-      current = false;
-      config();
-      connection();
-    };
-  }, [sdk]);
-  return showGitChanges;
 }
 
 type ThreadEnvironmentIds = ReadonlyMap<string, string | null>;
@@ -104,7 +72,7 @@ function useCommitActionData({
   threadIds,
 }: PluginThreadActionDataInput): CommitActionData {
   const sdk = useSdk();
-  const showGitChanges = useShowGitChanges(sdk);
+  const showGitChanges = useShowGitChanges();
   const threadEnvironmentIds = useThreadEnvironmentIds(sdk, threadIds);
   const environmentIds = useMemo(
     () => [

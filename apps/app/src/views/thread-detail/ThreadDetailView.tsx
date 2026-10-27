@@ -1630,8 +1630,6 @@ function ThreadDetailViewInternal(
           },
         }))
       : [];
-  const showGitChanges =
-    systemConfigQuery.data?.generalSettings.showGitChanges ?? false;
   const threadActionTarget = toThreadActionTarget(
     thread,
     isThreadOnReusableEnvironment && thread.environmentId !== null
@@ -1730,7 +1728,7 @@ function ThreadDetailViewInternal(
       composer={{
         environmentCheckout: threadCheckoutDisplay,
         environmentChrome: composerEnvironmentChrome,
-        contextEnvironmentId: showGitChanges ? threadEnvironmentId : null,
+        contextEnvironmentId: threadEnvironmentId,
         onCreateNewThreadInEnvironment,
         onOpenThreadInfo: openThreadInfo,
         permissionPolicy: "editable",

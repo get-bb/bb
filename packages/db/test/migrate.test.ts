@@ -458,6 +458,12 @@ const providerSettingsToPluginsMigrationPath = resolve(
   "drizzle",
   "0105_provider_settings_to_plugins.sql",
 );
+const showGitChangesToPluginsMigrationPath = resolve(
+  __dirname,
+  "..",
+  "drizzle",
+  "0147_git_and_pr_status_plugin_show_settings.sql",
+);
 const retireRequestedAtMigrationPath = resolve(
   __dirname,
   "..",
@@ -1785,7 +1791,6 @@ describe("migrate", () => {
 
       expect(getAppSettings(db)).toEqual({
         showKeyboardHints: false,
-        showGitChanges: true,
         steerActiveThreadOnEnter: true,
         terminalCopyOnSelect: true,
         confirmThreadArchive: true,
@@ -1906,6 +1911,67 @@ describe("migrate", () => {
           key: "subagentsDisabled",
           value: "true",
           updatedAt: 12,
+        },
+      ]);
+      expect(
+        db.$client
+          .prepare<[], { key: string }>(
+            "SELECT key FROM app_settings_values ORDER BY key",
+          )
+          .all(),
+      ).toEqual([{ key: "showKeyboardHints" }]);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("carries showGitChanges into the Git and GitHub PR Status plugins and retires the shared row", () => {
+    const db = createConnection(":memory:");
+    try {
+      db.$client.exec(`
+        CREATE TABLE app_settings_values (
+          key text PRIMARY KEY NOT NULL,
+          value text NOT NULL,
+          updated_at integer NOT NULL
+        );
+        CREATE TABLE plugin_settings (
+          plugin_id text NOT NULL,
+          key text NOT NULL,
+          value text NOT NULL,
+          updated_at integer NOT NULL,
+          PRIMARY KEY (plugin_id, key)
+        );
+        INSERT INTO app_settings_values (key, value, updated_at) VALUES
+          ('showKeyboardHints', 'false', 10),
+          ('showGitChanges', 'false', 11);
+      `);
+
+      runMigrationFile({
+        db,
+        migrationPath: showGitChangesToPluginsMigrationPath,
+      });
+
+      expect(
+        db.$client
+          .prepare<
+            [],
+            { pluginId: string; key: string; value: string; updatedAt: number }
+          >(
+            "SELECT plugin_id AS pluginId, key, value, updated_at AS updatedAt FROM plugin_settings ORDER BY plugin_id, key",
+          )
+          .all(),
+      ).toEqual([
+        {
+          pluginId: "bb--git",
+          key: "showGitChanges",
+          value: "false",
+          updatedAt: 11,
+        },
+        {
+          pluginId: "bb--github-pr-status",
+          key: "showPullRequest",
+          value: "false",
+          updatedAt: 11,
         },
       ]);
       expect(

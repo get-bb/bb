@@ -28,6 +28,11 @@ bb pull-request merge <environment-id> [--method merge|squash|rebase] [--json]
   with a message naming the machine.
 - `gh` must be installed and logged in on that machine.
 
+The `showPullRequest` setting (default true) shows the pull request segment
+above the composer. Turn it off with
+`bb plugin config bb--github-pr-status set showPullRequest false`; the Info
+panel's Pull request row stays.
+
 Other plugins read the same data through RPC. `pullRequests` is a keyed read:
 pass up to 200 environment ids and get one row per id. While a client watches
 a row, the plugin re-checks an open or draft PR every 30 seconds while any check is pending,

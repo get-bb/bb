@@ -129,7 +129,6 @@ function useSettingsStoryState() {
   const [keepHistoryAfterContextClear, setKeepHistoryAfterContextClear] =
     useState(false);
   const [summarizeShellCommands, setSummarizeShellCommands] = useState(true);
-  const [showGitChanges, setShowGitChanges] = useState(true);
   const [streamerMode, setStreamerMode] = useState(false);
   const [telemetryEnabled, setTelemetryEnabled] = useState(true);
   const [managedBranchPrefix, setManagedBranchPrefix] = useState(
@@ -150,8 +149,6 @@ function useSettingsStoryState() {
     openLinksInAppBrowser,
     rewriteLocalhostLinks,
     steerActiveThreadOnEnter,
-    showGitChanges,
-    setShowGitChanges,
     confirmThreadArchive,
     setConfirmThreadArchive,
     keepHistoryAfterContextClear,
@@ -203,8 +200,6 @@ function GeneralSettingsStory({
   return (
     <>
       <GeneralSettingsSection
-        showGitChanges={state.showGitChanges}
-        onShowGitChangesChange={state.setShowGitChanges}
         confirmThreadArchive={state.confirmThreadArchive}
         onConfirmThreadArchiveChange={state.setConfirmThreadArchive}
         keepHistoryAfterContextClear={state.keepHistoryAfterContextClear}

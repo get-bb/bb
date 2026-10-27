@@ -4,6 +4,7 @@ import {
   type BbPluginApi,
 } from "@get-bb/plugin-sdk";
 import {
+  GIT_SHOW_CHANGES_SETTING,
   gitFilesTag,
   gitRefsTag,
   gitStatusTag,
@@ -31,6 +32,15 @@ function patchGroupKey(key: GitPatchKey): string {
 }
 
 export default function gitPlugin(bb: BbPluginApi): void {
+  bb.settings.define({
+    [GIT_SHOW_CHANGES_SETTING]: {
+      type: "boolean",
+      label: "Show Git changes and Commit button",
+      description:
+        "Show changed files above the composer, and Commit in the header.",
+      default: true,
+    },
+  });
   const watchedEnvironments = new Map<string, number>();
   const generations = createReadGenerations((environmentId) =>
     watchedEnvironments.has(environmentId),

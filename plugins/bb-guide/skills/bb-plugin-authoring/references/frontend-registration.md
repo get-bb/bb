@@ -203,12 +203,12 @@ remembers it per registration. A crash removes only that row or section.
 
 `app.slots.experimental_threadContextSegment({ id, title, group, order?, summary, action?, details?, useVisible? })`
 adds a segment to the context row above an open thread's composer; bb's parent
-thread and changed files use it too. `group`/`order` sort as for Info rows; bb's
+thread and the Git plugin's changed files use it too. `group`/`order` sort as for Info rows; bb's
 groups are `experimental_THREAD_CONTEXT_SEGMENT_GROUPS`, and any other string
 sorts in place (GitHub PR Status uses `"2_pullRequest"`). Each component mounts
 in its own crash boundary: `summary` in the row, `action` at its end, `details`
 below it. Props carry `threadId`, `projectId`, `environment` (null without a
-usable environment or when "Show Git changes" is off), the visible `segments`
+usable environment), the visible `segments`
 as `{ key, pluginId }` in row order (`key` is `<pluginId>/<id>`; bb's own use
 `bb--core`), and `isExpanded`/`onToggle` (one segment is expanded at a time).
 `useVisible(input)` false leaves it out.

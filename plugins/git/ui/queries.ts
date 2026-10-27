@@ -3,6 +3,7 @@ import {
   experimental_useRpcMutation as useRpcMutation,
   experimental_useRpcQuery as useRpcQuery,
   useSdk,
+  useSettings,
 } from "@get-bb/plugin-sdk/app";
 import { useEffect, useState } from "react";
 import { useDebounceValue } from "usehooks-ts";
@@ -12,7 +13,10 @@ import {
   type GitStatusKeyedQuery,
 } from "../status-state.js";
 import { gitRpcContract } from "../rpc-contract.js";
-import type { WorkspaceDiffTarget } from "../contract.js";
+import {
+  GIT_SHOW_CHANGES_SETTING,
+  type WorkspaceDiffTarget,
+} from "../contract.js";
 
 const useGitStatusQuery: GitStatusKeyedQuery = (args) =>
   useRpcKeyedQuery({ contract: gitRpcContract, method: "status", ...args });
@@ -20,6 +24,10 @@ const useGitStatusQuery: GitStatusKeyedQuery = (args) =>
 export const useGitStatus = createGitStatusHook(useGitStatusQuery);
 
 export const useGitWorkspaces = createGitWorkspacesHook(useGitStatusQuery);
+
+export function useShowGitChanges(): boolean {
+  return useSettings().values?.[GIT_SHOW_CHANGES_SETTING] === true;
+}
 
 const workspacePaths = new Map<string, string | null>();
 

@@ -16,6 +16,8 @@ Use the CLI from any thread:
 - `bb pull-request ready|draft <environment-id>` changes draft state.
 - `bb pull-request merge <environment-id> --method squash` merges it.
 
+Turn off Show pull request above the composer on this page to hide the composer segment; the Info panel keeps its Pull request row.
+
 ## Requirements
 
 Install the GitHub CLI and run `gh auth login` on each machine whose pull requests you want to see.

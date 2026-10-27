@@ -1745,8 +1745,7 @@ export interface ExperimentalThreadContextSegmentInput {
   projectId: string;
   /**
    * The thread's environment, or null when the thread has no environment,
-   * its host is not active, the environment is not a usable checkout, or the
-   * user turned off "Show Git changes and Commit button".
+   * its host is not active, or the environment is not a usable checkout.
    */
   environment: ExperimentalThreadEnvironment | null;
 }

@@ -10,6 +10,7 @@ import {
   environmentPullRequestTag,
   githubPrStatusHostContract,
   githubPrStatusRpcContract,
+  SHOW_PULL_REQUEST_SETTING,
   type EnvironmentPullRequest,
   type HostPullRequestAction,
   type PullRequest,
@@ -118,6 +119,15 @@ function describeEnvironmentPullRequest(
 }
 
 export default function githubPrStatusPlugin(bb: BbPluginApi): void {
+  bb.settings.define({
+    [SHOW_PULL_REQUEST_SETTING]: {
+      type: "boolean",
+      label: "Show pull request above the composer",
+      description:
+        "Show the pull request's status, Mark ready and merge above the composer.",
+      default: true,
+    },
+  });
   const host = bb.hosts.experimental_client({
     contract: githubPrStatusHostContract,
   });
