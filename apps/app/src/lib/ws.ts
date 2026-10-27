@@ -78,6 +78,10 @@ function createDefaultBrowserEvents(): WebSocketManagerBrowserEvents {
   };
 }
 
+type HeldThreadTimelineTagSource = (
+  target: ThreadTimelineSubscriptionTarget,
+) => string | null;
+
 interface ActiveSubscription {
   count: number;
   target: RealtimeSubscriptionTarget;
@@ -87,6 +91,7 @@ export class WebSocketManager {
   private socket: ReconnectingWebSocket | null = null;
   private subscriptions = new Map<string, ActiveSubscription>();
   private readonly timelineTags = new Map<string, string>();
+  private heldThreadTimelineTag: HeldThreadTimelineTagSource = () => null;
   private callbacks = new Set<ChangeCallback>();
   private threadOpenCallbacks = new Set<ThreadOpenCallback>();
   private threadPaneActionCallbacks = new Set<ThreadPaneActionCallback>();
@@ -400,11 +405,9 @@ export class WebSocketManager {
     const threadTimeline = threadTimelineSignalLenientSchema.safeParse(parsed);
     if (threadTimeline.success) {
       const { target, timeline } = threadTimeline.data;
-      if (timeline !== null) {
-        this.timelineTags.set(
-          realtimeSubscriptionTargetKey(target),
-          timeline.tag,
-        );
+      const key = realtimeSubscriptionTargetKey(target);
+      if (timeline !== null && this.subscriptions.has(key)) {
+        this.timelineTags.set(key, timeline.tag);
       }
       for (const cb of this.threadTimelineCallbacks) {
         cb(threadTimeline.data);
@@ -523,19 +526,42 @@ export class WebSocketManager {
     }
   }
 
+  setHeldThreadTimelineTagSource(
+    source: HeldThreadTimelineTagSource,
+  ): () => void {
+    this.heldThreadTimelineTag = source;
+    return () => {
+      if (this.heldThreadTimelineTag === source) {
+        this.heldThreadTimelineTag = () => null;
+      }
+    };
+  }
+
   private timelineTagsFor(targets: readonly RealtimeSubscriptionTarget[]): {
     timelineTags?: Record<string, string | null>;
   } {
-    const keys = targets
-      .filter((target) => target.kind === "thread-timeline")
-      .map(realtimeSubscriptionTargetKey);
-    return keys.length === 0
-      ? {}
-      : {
-          timelineTags: Object.fromEntries(
-            keys.map((key) => [key, this.timelineTags.get(key) ?? null]),
-          ),
-        };
+    const timelineTargets = targets.filter(
+      (target): target is ThreadTimelineSubscriptionTarget =>
+        target.kind === "thread-timeline",
+    );
+    if (timelineTargets.length === 0) {
+      return {};
+    }
+    return {
+      timelineTags: Object.fromEntries(
+        timelineTargets.map((target) => {
+          const key = realtimeSubscriptionTargetKey(target);
+          const tag =
+            this.heldThreadTimelineTag(target) ??
+            this.timelineTags.get(key) ??
+            null;
+          if (tag !== null) {
+            this.timelineTags.set(key, tag);
+          }
+          return [key, tag];
+        }),
+      ),
+    };
   }
 
   unsubscribe(target: RealtimeSubscriptionTarget): void {

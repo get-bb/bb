@@ -218,10 +218,15 @@ over the WebSocket after events are appended. A `subscribe` message tells the
 server which window the client holds: `timelineTags` maps each
 `thread-timeline` target key to the tag the client holds, or to `null` before
 its first read returns. The tag is not part of the target, so updating it does
-not start a new watch. The app subscribes with `null`, reads the window over
-HTTP, then sends the response's tag; it resends its current tag whenever a read
-changes it, and with every subscription after a reconnect. The server tracks
-the tag per socket and moves it to each window it pushes there.
+not start a new watch. Each `subscribe` carries the tag of the window in the
+app's query cache, or `null` when the cache holds none. On a first open the app
+subscribes with `null`, reads the window over HTTP, then sends the response's
+tag; it resends its current tag whenever a read changes it. Returning to a
+thread whose window is still cached, or resubscribing after a reconnect, sends
+the cached window's tag, because the app may not read again: a cached window
+newer than the query's stale time is not refetched on mount, and appended
+events do not invalidate a pushed timeline. The server tracks the tag per
+socket and moves it to each window it pushes there.
 
 - A subscriber holding a tag gets a delta built against that tag's window, and
   receiving a tag schedules a push, so anything that changed after the client's

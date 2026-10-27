@@ -569,6 +569,40 @@ describe("thread-timeline pushes for tag-aware subscriptions", () => {
     });
   });
 
+  it("pushes a delta to a subscriber that returns with the last pushed window's tag", async () => {
+    await withTestHarness(async (harness) => {
+      const { append, target, thread } = seedRunningThread(harness);
+      append();
+      const fetched = await freshTimeline(harness, thread.id);
+      const socket = createMockHubSocket();
+      subscribe(harness, socket, target, fetched.tag);
+      append();
+      await settlePushes();
+      const [pushed] = timelineSignals(socket.messages.splice(0));
+      const held = applySignal(fetched, pushed!);
+      expect(held).not.toBeNull();
+      onClientSocketMessage(
+        harness.deps.hub,
+        socket,
+        JSON.stringify({ type: "unsubscribe", target }),
+      );
+      vi.useFakeTimers({ now: Date.now() + 30_001, toFake: ["Date"] });
+      append();
+      await settlePushes();
+      expect(timelineSignals(socket.messages.splice(0))).toEqual([]);
+
+      subscribe(harness, socket, target, held!.tag);
+      await settlePushes();
+      const [resumed] = timelineSignals(socket.messages.splice(0));
+      expect(resumed?.timeline).toMatchObject({
+        delta: { afterTag: held!.tag },
+      });
+      expect(applySignal(held, resumed!)).toEqual(
+        await freshTimeline(harness, thread.id),
+      );
+    });
+  });
+
   it("pushes the full window for a tag the server no longer holds", async () => {
     await withTestHarness(async (harness) => {
       const { append, target, thread } = seedRunningThread(harness);

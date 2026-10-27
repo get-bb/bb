@@ -58,6 +58,17 @@ export function syncThreadTimelineSubscriptionTag(
   );
 }
 
+export function trackHeldThreadTimelineTags(
+  queryClient: QueryClient,
+): () => void {
+  return wsManager.setHeldThreadTimelineTagSource(
+    (target) =>
+      queryClient.getQueryData<ThreadTimelineResponse>(
+        threadTimelineQueryKey(target.threadId),
+      )?.tag ?? null,
+  );
+}
+
 type PushedThreadTimeline =
   | { kind: "apply"; timeline: ThreadTimelineResponse }
   | { kind: "ignore" }
