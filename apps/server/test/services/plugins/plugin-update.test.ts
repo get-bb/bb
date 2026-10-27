@@ -822,6 +822,7 @@ describe("plugin update service and routes", () => {
     vi.stubGlobal("__bbPluginStabilizationCrash", serviceCrash);
     await service.stop();
     service = createPluginService({
+      bundledPlugins: [],
       aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
       db,
@@ -926,6 +927,7 @@ describe("plugin update service and routes", () => {
     );
     await service.stop();
     service = createPluginService({
+      bundledPlugins: [],
       aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
       db,
@@ -966,6 +968,7 @@ describe("plugin update service and routes", () => {
 
     await service.stop();
     service = createPluginService({
+      bundledPlugins: [],
       aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
       db,
@@ -1085,6 +1088,7 @@ describe("plugin update service and routes", () => {
     let clock = Date.now();
     const makeService = () =>
       createPluginService({
+        bundledPlugins: [],
         aiServices: createAiServiceRegistry(),
         telemetry: createNoopTelemetryService(),
         db,
