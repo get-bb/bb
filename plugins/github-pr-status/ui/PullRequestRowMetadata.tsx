@@ -119,7 +119,6 @@ const ROW_READ_INPUT = { maxAgeMs: PULL_REQUESTS_ANY_AGE_MS };
 
 export function PullRequestRowMetadata({
   thread,
-  isLive,
 }: ExperimentalThreadRowMetadataProps) {
   const environmentId = thread.environment?.id ?? null;
   const query = experimental_useRpcKeyedQuery({
@@ -127,7 +126,7 @@ export function PullRequestRowMetadata({
     method: "pullRequests",
     keys: environmentId === null ? [] : [environmentId],
     input: ROW_READ_INPUT,
-    enabled: isLive && environmentId !== null,
+    enabled: environmentId !== null,
   });
   const row = environmentId === null ? undefined : query.data?.[environmentId];
   const pullRequest = row?.outcome === "available" ? row.pullRequest : null;

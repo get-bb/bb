@@ -134,7 +134,7 @@ function renderRow(
 }
 
 describe("pull request row metadata", () => {
-  it("reads nothing until the row is live, then draws the current-branch PR's state and checks", async () => {
+  it("reads the row's saved PR at any age and draws its state and checks", async () => {
     const pr = pullRequest();
     const rows: Record<string, EnvironmentPullRequest> = {
       env_row: {
@@ -142,11 +142,7 @@ describe("pull request row metadata", () => {
         pullRequest: pr,
       },
     };
-    const view = renderRow({ thread: thread("env_row"), isLive: false }, rows);
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(view.inspection.rpcCalls).toEqual([]);
-
-    view.rerender(<Row thread={thread("env_row")} isLive />);
+    const view = renderRow({ thread: thread("env_row") }, rows);
     const badge = await view.findByRole("img", {
       name: "Pull request #6143, open, checks running",
     });
@@ -168,7 +164,7 @@ describe("pull request row metadata", () => {
     ],
   ])("draws nothing when %s", async (_case, row) => {
     const view = renderRow(
-      { thread: thread("env_row"), isLive: true },
+      { thread: thread("env_row") },
       { env_row: row },
     );
     await waitFor(() => expect(view.inspection.rpcCalls).toHaveLength(1));
@@ -184,7 +180,7 @@ describe("pull request row metadata", () => {
     [{ state: "merged", attention: "merged" }, "merged"],
 ])("labels %o as %s", async (overrides, expected) => {
     const view = renderRow(
-      { thread: thread("env_row"), isLive: true },
+      { thread: thread("env_row") },
       {
         env_row: {
           outcome: "available",
@@ -200,7 +196,7 @@ describe("pull request row metadata", () => {
   it("draws a glyph only while checks run, after they fail, or on conflicts", async () => {
     const glyphs = async (overrides: Partial<PullRequest>) => {
       const view = renderRow(
-        { thread: thread("env_row"), isLive: true },
+        { thread: thread("env_row") },
         {
           env_row: {
             outcome: "available",
@@ -228,7 +224,7 @@ describe("pull request row metadata", () => {
   it("shows the number, title and check counts in a tooltip on hover", async () => {
     const pr = pullRequest();
     const view = renderRow(
-      { thread: thread("env_row"), isLive: true },
+      { thread: thread("env_row") },
       {
         env_row: {
           outcome: "available",

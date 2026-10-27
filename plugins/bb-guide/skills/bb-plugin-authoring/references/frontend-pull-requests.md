@@ -35,10 +35,9 @@ function Row({ thread }: { thread: PluginSidebarThread }) {
 }
 ```
 
-Items mount once the row is live, and with the row from then on once they have
-drawn something, so cached badges draw at once. They read only once the row is
-live: on screen in a still list, or at the pause after scrolling, so every row
-on screen shares one batched request and rows scrolled past read nothing. The badge asks for saved
+bb loads every active thread's badge in one batched request, whether its row
+is rendered or not, so rows have their final height before they scroll into
+view. The badge asks for saved
 rows of any age (`maxAgeMs`), so it never waits on GitHub; saved rows refresh
 in the background. Clicks on an item reach your row's own handlers; forward
 them to your row link if the row is not itself the link.
@@ -52,9 +51,7 @@ row is `available` with the current branch's `pullRequest`, `absent`, or
 `unavailable` (the machine is offline or `gh` failed).
 Treat a query error, `absent` and `unavailable` as nothing to show. While a
 key is held by a mounted hook the plugin re-checks pending pull requests about
-every 30 seconds and refreshes the row only when it changes. Hold keys only for
-rows on screen: register your own `experimental_threadRowMetadata` and pass
-`enabled: isLive`, or gate the hook on your list's windowing.
+every 30 seconds and refreshes the row only when it changes.
 
 ```tsx
 import { defineRpcContract } from "@get-bb/plugin-sdk";

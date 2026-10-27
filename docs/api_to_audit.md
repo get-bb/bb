@@ -2686,34 +2686,24 @@ Docs: `frontend-registration.md`, `frontend-components.md`.
 ## `app.slots.experimental_threadRowMetadata` / `experimental_ThreadRowMetadata` (`@get-bb/plugin-sdk/app`)
 
 A registration is `{ id, order?, component }`. The component receives
-`{ thread, isLive }` (`thread` is the row's `PluginSidebarThread`) and renders
-a small item on that thread's metadata line, under the title.
+`{ thread }` (the row's `PluginSidebarThread`) and renders a small item on that
+thread's metadata line, under the title.
 `experimental_ThreadRowMetadata({ thread })` renders every registration for one
 row, sorted by `order` (unset last) then registration order, each in its own
 crash boundary keyed by thread, left to right in one line container that fills
 its parent, clips at the row's edge and is hidden while empty. It renders
 nothing when no plugin registers an item.
 
-Visibility is the host's (`apps/app/src/lib/thread-row-visibility.ts`). An item
-mounts once its row is live; an item that has drawn something mounts with its
-row from then on, so cached data draws in the row's first frame, and rows
-scrolled past mount nothing. Every mounted line keeps each registering
-plugin's stylesheet loaded, so scrolling through rows whose items are not
-mounted does not unload and reload it (each costs a whole-document restyle).
-The container shows while any item draws something (a MutationObserver keeps a
-`data-has-items` attribute current). One
-viewport IntersectionObserver
-watches each row (the items container's parent element). When rows enter or
-leave the screen after 200 ms with no such change (page load, a revealed list,
-the first step of a scroll), every on-screen row turns live and every
-off-screen row stops at once. Otherwise `isLive` changes at the next pause:
-200 ms after the last row entered or left the screen, in one batch, so
-continuous scrolling re-renders no items. Hiding the page clears it at once.
-Items gate network reads on `isLive`, so a scroll pause costs one keyed request
-and rows scrolled past read nothing; the first step of a scroll costs one
-more for the rows it brings on screen. The GitHub PR Status badge reads with
-`input: { maxAgeMs }`, so saved rows answer at once and refresh in the
-background.
+While any `experimental_ThreadRowMetadata` line is mounted,
+`ThreadRowMetadataPrefetch` (in `AppLayout`) also mounts every registration,
+hidden, for every active thread from `useSidebarThreads`. A windowed list's
+rows therefore find their data cached when they render, so scrolling never
+changes a row's height. With no line mounted (the experiment or Metadata off)
+it mounts nothing and reads nothing. The container shows while any item draws something (a
+MutationObserver keeps a `data-has-items` attribute current). Items read
+through `experimental_useRpcKeyedQuery`, so every row's read lands in one keyed
+request. The GitHub PR Status badge reads with `input: { maxAgeMs }`, so saved
+rows answer at once and refresh in the background.
 
 **Core callers.** bb's sidebar (`plugins/thread-list`, `ThreadRow.tsx`) renders
 `experimental_ThreadRowMetadata` on a line under each row's title, the same call a
@@ -2725,8 +2715,8 @@ customized, and clicks on it go through the row's own click handling. The
 GitHub PR Status plugin registers the first item: the current-branch pull
 request's state icon in the state's color and its muted `#number`, plus a yellow
 dot while an open or draft PR's checks run or a red cross when they fail or the
-PR has conflicts (passing checks show nothing), read through `experimental_useRpcKeyedQuery` with
-`enabled: isLive`. No core row indicator moved into the slot: the status
+PR has conflicts (passing checks show nothing), read through `experimental_useRpcKeyedQuery`
+for every row. No core row indicator moved into the slot: the status
 glyph, split mini-map, shortcut pill and hover actions share the row's fixed
 trailing box, the cross-project icon depends on the row's position in the
 list, and the provider icon and child chevron sit elsewhere. Contract tests: `ThreadRowMetadata.test.tsx`,
@@ -2742,12 +2732,12 @@ Docs: `frontend-registration.md`, `frontend-pull-requests.md`.
 2. **Width.** Items share one line and the line clips at the row's edge, so a
    late item can disappear. Decide whether items need a width cap, a
    priority, or a per-item toggle once several plugins contribute.
-3. **Visibility contract.** `isLive` is advisory: the host does not block a
-   read from an item that is not live, and a row that leaves the screen stays
-   live until the next scroll pause. Decide whether the SDK should enforce it.
-4. **Settle delay.** Uncached rows wait 200 ms after scrolling stops; rows
-   that appear in a still list go live at once. Confirm the delay with users
-   on slow and fast scrollers.
+3. **Every thread reads.** Items mount and read for every active sidebar
+   thread, on screen or not, and their keyed hooks hold (so the GitHub PR
+   Status plugin keeps refreshing) every thread's key. Confirm the cost on
+   long lists, whether archived threads a list shows need the same, and
+   whether the props need a visibility signal for items that poll something
+   costlier.
 
 ## `app.slots.experimental_threadAction` / `PluginThreadActionRegistration.experimental_bulkItem` / `PluginThreadActionRegistration.placement` / `experimental_useThreadActions` / `experimental_useThreadActionRegistrations` / `experimental_ThreadActionsMenu` / `experimental_ThreadActionsContextMenu` (with `experimental_bulkThreads`) / `experimental_THREAD_ACTION_GROUPS` (`@get-bb/plugin-sdk/app`)
 

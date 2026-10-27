@@ -1714,17 +1714,6 @@ export interface PluginSidebarThreadActions {
 export interface ExperimentalThreadRowMetadataProps {
   /** The row's thread, the same value the list renders. */
   thread: PluginSidebarThread;
-  /**
-   * True while the row is on screen and the page is visible. A row that comes
-   * on screen while the list is still turns live at once; while rows keep
-   * entering and leaving it changes only at the next pause (about 200 ms after
-   * scrolling stops), for every row at once. It turns off immediately when
-   * the page hides. Gate network reads,
-   * watches and polling on it (for example `enabled: isLive` on
-   * `experimental_useRpcKeyedQuery`) and render cached data either way, so
-   * scrolling past rows reads nothing and rows on screen read together.
-   */
-  isLive: boolean;
 }
 
 /**
@@ -1733,10 +1722,13 @@ export interface ExperimentalThreadRowMetadataProps {
  * row's edge. bb's sidebar draws the line only while the `threadRowMetadata`
  * experiment is on and the user turns on Organize → Rows → Metadata, and only
  * on rows where an item shows something.
- * The host mounts the component once its row is live, and with the row from
- * then on while it shows something, so cached content draws in the row's
- * first frame. It hides the line while the row is renamed or customized and
- * keeps it visible on hover. Render null to show nothing for a thread. Keep
+ * While any list draws a metadata line, bb also mounts the component,
+ * hidden, for every active thread in the sidebar, so its data is loaded
+ * before a row renders and rows keep their height as they scroll into view.
+ * Render the same way either way, and read with
+ * `experimental_useRpcKeyedQuery` so every thread shares one batched request.
+ * It hides the line while the row is renamed or customized and keeps it
+ * visible on hover. Render null to show nothing for a thread. Keep
  * it to an icon and a few characters with a tooltip; clicks on it open the
  * thread like the rest of the row. A crash removes only this item for that
  * row.
@@ -5434,9 +5426,7 @@ export interface PluginSdkApp {
    * Every `experimental_threadRowMetadata` contribution for one thread row (see
    * {@link ExperimentalThreadRowMetadataRegistration}), the items bb's sidebar
    * draws on its rows' metadata line. Render it under your row's title, in
-   * a flex parent as wide as the line; that parent element is what bb
-   * watches for visibility, so give it a box (not `display: contents`). Badges
-   * such as a pull request's status then appear on your rows as they do on
+   * a flex parent as wide as the line. Badges such as a pull request's status then appear on your rows as they do on
    * bb's. It renders nothing when no plugin contributes an item.
    * Experimental: see docs/api_to_audit.md.
    */

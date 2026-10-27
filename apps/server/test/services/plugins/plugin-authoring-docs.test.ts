@@ -384,7 +384,7 @@ const FRONTEND_SLOT_PROP_FIELDS = {
   ],
   experimental_threadInfoRow: ["threadId", "projectId", "environment"],
   experimental_threadInfoSection: ["threadId", "projectId", "environment"],
-  experimental_threadRowMetadata: ["thread", "isLive"],
+  experimental_threadRowMetadata: ["thread"],
   experimental_threadAction: [
     "thread",
     "data",
