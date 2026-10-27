@@ -1,8 +1,11 @@
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import {
   getPullRequestByUrl,
+  prepareCurrentBranchRead,
   prepareUrlRead,
   readPullRequests,
 } from "./git-host.js";
@@ -180,12 +183,12 @@ describe("host GraphQL batching", () => {
     expect(queries[2]).not.toContain("isInMergeQueue");
   });
 
-  it("caps each document at 100 PR URLs", async () => {
+  it("caps each document at 25 PR URLs", async () => {
     const gh = await installFakeGh({
       "api graphql": {
         stdout: JSON.stringify({
           data: Object.fromEntries(
-            Array.from({ length: 100 }, (_, index) => [
+            Array.from({ length: 25 }, (_, index) => [
               `p${index}`,
               raw(index + 1),
             ]),
@@ -195,11 +198,45 @@ describe("host GraphQL batching", () => {
     });
     const cwd = await makeTempDir("bb-pr-cap-");
     const results = await Promise.all(
-      Array.from({ length: 101 }, (_, index) =>
+      Array.from({ length: 26 }, (_, index) =>
         getPullRequestByUrl(raw(index + 1).url, cwd),
       ),
     );
     expect(results.every((result) => result.outcome === "found")).toBe(true);
+    expect(await gh.readCalls()).toHaveLength(2);
+  });
+
+  it("keeps each document under GitHub's 500,000-node limit for branch lookups", async () => {
+    const gh = await installFakeGh({
+      "api graphql": {
+        stdout: JSON.stringify({
+          data: Object.fromEntries(
+            Array.from({ length: 25 }, (_, index) => [
+              `p${index}`,
+              { defaultBranchRef: { name: "main" }, pullRequests: { nodes: [] } },
+            ]),
+          ),
+        }),
+      },
+    });
+    const cwd = await makeTempDir("bb-pr-branches-");
+    const git = promisify(execFile);
+    await git("git", ["init", "-q"], { cwd });
+    await git(
+      "git",
+      ["remote", "add", "origin", "https://github.com/acme/bb.git"],
+      { cwd },
+    );
+    const results = await readPullRequests(
+      Array.from({ length: 25 }, (_, index) =>
+        prepareCurrentBranchRead({
+          cwd,
+          localBranch: `bb/branch-${index}`,
+          refresh: false,
+        }),
+      ),
+    );
+    expect(results.every((result) => result.outcome === "none")).toBe(true);
     expect(await gh.readCalls()).toHaveLength(2);
   });
 

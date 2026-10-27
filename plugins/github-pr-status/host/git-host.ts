@@ -886,9 +886,14 @@ export function preparedResult(result: HostPullRequestLookup): PreparedRead {
   return { kind: "direct", run: async () => result };
 }
 
-const BATCH_WEIGHT_LIMIT = 100;
-const BRANCH_READ_WEIGHT = 4;
-const URL_READ_WEIGHT = 1;
+const MAX_DOCUMENT_READS = 25;
+const MAX_DOCUMENT_NODES = 500_000;
+
+function readNodes(target: ReadTarget): number {
+  return target.kind === "branch"
+    ? BRANCH_PULL_REQUESTS_PAGE * (1 + PULL_REQUEST_NODES)
+    : PULL_REQUEST_NODES;
+}
 
 const batches = new Map<string, QueuedRead[]>();
 const pendingReads = new Map<string, Promise<HostPullRequestLookup>>();
@@ -931,11 +936,16 @@ async function credentialKey(
     .digest("hex");
 }
 
+const REVIEW_REQUESTS_PAGE = 100;
+const CHECK_CONTEXTS_PAGE = 100;
+const BRANCH_PULL_REQUESTS_PAGE = 100;
+const PULL_REQUEST_NODES = REVIEW_REQUESTS_PAGE + 1 + CHECK_CONTEXTS_PAGE;
+
 function fields(cursor: string | null, mergeQueue: boolean): string {
   return `number title state url isDraft autoMergeRequest { enabledAt }${mergeQueue ? " isInMergeQueue" : ""}
-    baseRefName headRefName headRefOid updatedAt reviewDecision reviewRequests(first: 100) { totalCount }
+    baseRefName headRefName headRefOid updatedAt reviewDecision reviewRequests(first: ${REVIEW_REQUESTS_PAGE}) { totalCount }
     mergeStateStatus mergeable isCrossRepository headRepositoryOwner { login }
-    commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100${cursor === null ? "" : `, after: ${JSON.stringify(cursor)}`}) {
+    commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: ${CHECK_CONTEXTS_PAGE}${cursor === null ? "" : `, after: ${JSON.stringify(cursor)}`}) {
       nodes { ... on CheckRun { name status conclusion detailsUrl startedAt }
         ... on StatusContext { context state targetUrl createdAt } }
       pageInfo { hasNextPage endCursor }
@@ -951,7 +961,7 @@ function selection(
     return `${alias}: resource(url: ${JSON.stringify(target.url)}) { ... on PullRequest { ${fields(target.cursor, mergeQueue)} } }`;
   return `${alias}: repository(owner: ${JSON.stringify(target.owner)}, name: ${JSON.stringify(target.repository)}) {
     defaultBranchRef { name }
-    pullRequests(headRefName: ${JSON.stringify(target.branch)}, first: 100, orderBy: {field: CREATED_AT, direction: DESC}) {
+    pullRequests(headRefName: ${JSON.stringify(target.branch)}, first: ${BRANCH_PULL_REQUESTS_PAGE}, orderBy: {field: CREATED_AT, direction: DESC}) {
       nodes { ${fields(null, mergeQueue)} }
     }
   }`;
@@ -1110,16 +1120,21 @@ async function flushBatch(group: string): Promise<void> {
   if (queued === undefined) return;
   batches.delete(group);
   const chunks: QueuedRead[][] = [];
-  let weight = BATCH_WEIGHT_LIMIT;
+  let nodes = 0;
   for (const entry of queued) {
-    const entryWeight =
-      entry.target.kind === "branch" ? BRANCH_READ_WEIGHT : URL_READ_WEIGHT;
-    if (weight + entryWeight > BATCH_WEIGHT_LIMIT) {
-      chunks.push([]);
-      weight = 0;
+    const entryNodes = readNodes(entry.target);
+    const current = chunks.at(-1);
+    if (
+      current === undefined ||
+      current.length === MAX_DOCUMENT_READS ||
+      nodes + entryNodes > MAX_DOCUMENT_NODES
+    ) {
+      chunks.push([entry]);
+      nodes = entryNodes;
+      continue;
     }
-    chunks.at(-1)!.push(entry);
-    weight += entryWeight;
+    current.push(entry);
+    nodes += entryNodes;
   }
   for (const entries of chunks) {
     const paused = pausedUntil.get(group) ?? 0;
