@@ -88,41 +88,50 @@ describe("bb settings commands", () => {
     ]);
   });
 
-  it("sets and resets a plugin shortcut while preserving other overrides", async () => {
-    const other = { command: "plugin:other/open", shortcut: null };
-    const put = vi.fn(async ({ json }) => json);
-    stubServerApi({
-      "v1.system.config.$get": vi.fn(async () => ({
-        keybindingOverrides: [other],
-      })),
-      "v1.settings.keyboard.$put": put,
-    });
-    await runCommand(
-      ["settings", "keyboard", "set", "plugin:example/open", "Mod+Shift+I"],
-      register,
-    );
-    expect(put).toHaveBeenLastCalledWith({
-      json: [
-        other,
-        {
-          command: "plugin:example/open",
-          shortcut: {
-            key: "I",
-            mod: true,
-            meta: false,
-            control: false,
-            alt: false,
-            shift: true,
+  it.each(["I", "л"])(
+    "sets and resets a literal %s plugin shortcut while preserving other overrides",
+    async (key) => {
+      const other = { command: "plugin:other/open", shortcut: null };
+      const put = vi.fn(async ({ json }) => json);
+      stubServerApi({
+        "v1.system.config.$get": vi.fn(async () => ({
+          keybindingOverrides: [other],
+        })),
+        "v1.settings.keyboard.$put": put,
+      });
+      await runCommand(
+        [
+          "settings",
+          "keyboard",
+          "set",
+          "plugin:example/open",
+          `Mod+Shift+${key}`,
+        ],
+        register,
+      );
+      expect(put).toHaveBeenLastCalledWith({
+        json: [
+          other,
+          {
+            command: "plugin:example/open",
+            shortcut: {
+              key,
+              mod: true,
+              meta: false,
+              control: false,
+              alt: false,
+              shift: true,
+            },
           },
-        },
-      ],
-    });
-    await runCommand(
-      ["settings", "keyboard", "reset", "plugin:example/open"],
-      register,
-    );
-    expect(put).toHaveBeenLastCalledWith({ json: [other] });
-  });
+        ],
+      });
+      await runCommand(
+        ["settings", "keyboard", "reset", "plugin:example/open"],
+        register,
+      );
+      expect(put).toHaveBeenLastCalledWith({ json: [other] });
+    },
+  );
 
   it("keeps command scopes separate when setting and resetting platform bindings", async () => {
     const general = { command: "thread.new", shortcut: null };

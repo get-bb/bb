@@ -256,6 +256,15 @@ conflicting plugin defaults stay unbound. Plugin defaults resolve in each app
 window, not in `keyboard list`, so CLI/SDK callers should clear conflicting
 explicit bindings in the same update.
 
+ASCII shortcuts follow the reported character (including AZERTY). For a
+single non-ASCII character, matching and new recordings also use the standard
+US key at the physical position when the event supplies a supported code.
+Explicit Unicode keys saved through CLI/SDK or older recordings remain literal;
+within the eligible context, direct matches take precedence over physical
+fallbacks. Static conflict checks cannot infer those Unicode aliases. Re-record
+a binding for canonical matching. Native menu layout handling and OS/browser
+reserved chords remain platform-dependent; see docs/configuration.md.
+
 Sidebar preferences
 
 `bb settings ui` reads and writes server-side sidebar preferences shared by

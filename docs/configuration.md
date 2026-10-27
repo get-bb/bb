@@ -435,6 +435,23 @@ unbinds a command. Overrides may be scoped to `mac`, `windows`, or `linux`. Plug
 commands bind as `plugin:<plugin-id>/<command-id>`. See
 `bb guide customization` for scoping and plugin-binding rules.
 
+Shortcut matching keeps ASCII characters layout-dependent (including AZERTY).
+For a single non-ASCII character, bb also tries the standard US letter, digit,
+or punctuation at the event's physical key position, with the same modifiers;
+existing macOS Option compositions remain supported. New recordings use that
+canonical key, so supported EN/RU physical chords record identically. This is
+not full positional matching: ASCII punctuation and letters still follow the
+reported character, and missing or unknown physical codes cannot be converted.
+
+Saved Unicode keys from Settings, CLI, or SDK remain literal and are never
+migrated by guessing their layout. A direct character match takes precedence
+over a physical fallback in the eligible context, across core and plugin
+bindings; equal matches keep existing binding precedence. Static conflict
+checks cannot infer physical aliases from saved Unicode keys without a code.
+Re-record a legacy binding to opt into canonical matching. Native desktop menu
+accelerators remain subject to Electron/OS layout handling, and OS/browser
+reserved chords must reach bb before it can handle them.
+
 `showKeyboardHints` (default `true`; `bb settings keyboard hints <true|false>`)
 shows delayed shortcut badges while the modifier is held; shortcuts work
 either way.

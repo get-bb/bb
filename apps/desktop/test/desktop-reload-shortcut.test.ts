@@ -10,6 +10,7 @@ function input(
     isAutoRepeat: false,
     isComposing: false,
     key: "r",
+    code: "KeyR",
     meta: true,
     shift: false,
     type: "keyDown",
@@ -24,6 +25,23 @@ describe("resolveDesktopReloadShortcut", () => {
       "force-reload",
     );
   });
+
+  it.each([false, true])(
+    "reloads Russian input with the existing Meta-only policy (shift=%s)",
+    (shift) => {
+      expect(resolveDesktopReloadShortcut(input({ key: "к", shift }))).toBe(
+        shift ? "force-reload" : "reload",
+      );
+      expect(
+        resolveDesktopReloadShortcut(input({ key: "к", shift, control: true })),
+      ).toBeNull();
+      expect(
+        resolveDesktopReloadShortcut(
+          input({ key: "к", shift, meta: false, control: true }),
+        ),
+      ).toBeNull();
+    },
+  );
 
   it("ignores unrelated, repeated, and composing input", () => {
     expect(resolveDesktopReloadShortcut(input({ key: "x" }))).toBeNull();

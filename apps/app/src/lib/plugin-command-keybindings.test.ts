@@ -9,7 +9,10 @@ import {
   resolvePluginCommandDefaults,
   shortcutsConflict,
 } from "./plugin-command-keybindings";
-import { setCommandShortcutOverride } from "./keyboard-shortcut-settings";
+import {
+  appShortcutFromInput,
+  setCommandShortcutOverride,
+} from "./keyboard-shortcut-settings";
 
 const shortcut: AppShortcut = {
   key: "i",
@@ -32,6 +35,40 @@ function binding(
 }
 
 describe("plugin command keybindings", () => {
+  it("detects recorded EN/RU collisions without guessing legacy Unicode positions", () => {
+    const recorded = appShortcutFromInput(
+      {
+        key: "л",
+        code: "KeyK",
+        ctrlKey: true,
+        metaKey: false,
+        altKey: false,
+        shiftKey: false,
+      },
+      "Linux",
+    );
+    expect(recorded).not.toBeNull();
+    if (!recorded) throw new Error("Expected a recorded shortcut");
+    const legacy = { ...recorded, key: "л" };
+    expect(
+      shortcutsConflict(recorded, { ...recorded, key: "k" }, "Linux"),
+    ).toBe(true);
+    expect(shortcutsConflict(legacy, recorded, "Linux")).toBe(false);
+    const result = resolvePluginCommandDefaults(
+      [
+        binding("thread.search", recorded),
+        binding("plugin:example/open", { ...recorded, key: "k" }),
+      ],
+      [],
+      false,
+      "Linux",
+    );
+    expect(result.defaults[1]?.shortcut).toBeNull();
+    expect(result.conflicts.get("plugin:example/open")).toEqual([
+      "thread.search",
+    ]);
+  });
+
   it("suppresses colliding defaults regardless of registration order", () => {
     const defaults = [
       binding("plugin:first/open"),

@@ -44,6 +44,30 @@ const defaults: AppKeybindings = [
 ];
 
 describe("keyboard shortcut settings", () => {
+  it.each([
+    ["k", "л", "KeyK", false],
+    ["[", "х", "BracketLeft", false],
+    [",", "б", "Comma", false],
+    ["#", "№", "Digit3", true],
+  ])(
+    "records the same canonical shortcut for %s and %s",
+    (english, russian, code, shiftKey) => {
+      const input = {
+        key: english,
+        code,
+        ctrlKey: true,
+        metaKey: false,
+        altKey: false,
+        shiftKey,
+      };
+      const recorded = appShortcutFromInput(input, "Linux");
+      expect(recorded?.key).toBe(shiftKey ? "3" : english);
+      expect(appShortcutFromInput({ ...input, key: russian }, "Linux")).toEqual(
+        recorded,
+      );
+    },
+  );
+
   it("has settings metadata for every command", () => {
     expect(
       APP_COMMAND_GROUPS.flatMap((group) =>

@@ -191,27 +191,54 @@ const SHIFTED_KEY_BASES: Readonly<Record<string, string>> = {
   "?": "/",
 };
 
+const CODE_KEY_BASES: Readonly<Record<string, string>> = {
+  BracketLeft: "[",
+  BracketRight: "]",
+  Comma: ",",
+  Period: ".",
+  Slash: "/",
+  Semicolon: ";",
+  Quote: "'",
+  Backslash: "\\",
+  Backquote: "`",
+  Minus: "-",
+  Equal: "=",
+};
+
 function baseKeyFromCode(code: string): string | null {
   if (/^Key[A-Z]$/u.test(code)) return code.slice(3).toLowerCase();
   if (/^Digit[0-9]$/u.test(code)) return code.slice(5);
-  return null;
+  return Object.hasOwn(CODE_KEY_BASES, code)
+    ? (CODE_KEY_BASES[code] ?? null)
+    : null;
 }
 
 function isAsciiAlphanumeric(value: string): boolean {
   return /^[a-z0-9]$/iu.test(value);
 }
 
-export function normalizeAppShortcutInputKey(input: AppShortcutInput): string {
-  if (input.key === " " || input.key === "Spacebar") {
-    return "Space";
-  }
-  if (input.altKey && !isAsciiAlphanumeric(input.key)) {
-    const fromCode = baseKeyFromCode(input.code);
-    if (fromCode !== null) return fromCode;
-  }
+function isNonAsciiCharacter(value: string): boolean {
+  return /^[^\x00-\x7f]$/u.test(value);
+}
+
+function shortcutInputCharacterKey(input: AppShortcutInput): string {
+  if (input.key === " " || input.key === "Spacebar") return "Space";
   return input.shiftKey
     ? (SHIFTED_KEY_BASES[input.key] ?? input.key)
     : input.key;
+}
+
+export function normalizeAppShortcutInputKey(input: AppShortcutInput): string {
+  if (
+    input.key !== " " &&
+    [...input.key].length === 1 &&
+    (isNonAsciiCharacter(input.key) ||
+      (input.altKey && !isAsciiAlphanumeric(input.key)))
+  ) {
+    const fromCode = baseKeyFromCode(input.code);
+    if (fromCode !== null) return fromCode;
+  }
+  return shortcutInputCharacterKey(input);
 }
 
 export const keyboardPlatformSchema = z.enum(["mac", "windows", "linux"]);
@@ -256,13 +283,40 @@ export function matchesAppShortcut(
   const expectedMeta = shortcut.meta || (shortcut.mod && useMetaForMod);
   const expectedControl = shortcut.control || (shortcut.mod && !useMetaForMod);
   return (
-    normalizeAppShortcutInputKey(input).toLowerCase() ===
-      shortcut.key.toLowerCase() &&
+    input.key !== "Dead" &&
+    input.key !== "Unidentified" &&
+    (normalizeAppShortcutInputKey(input).toLowerCase() ===
+      shortcut.key.toLowerCase() ||
+      (isNonAsciiCharacter(input.key) &&
+        shortcutInputCharacterKey(input).toLowerCase() ===
+          shortcut.key.toLowerCase())) &&
     input.metaKey === expectedMeta &&
     input.ctrlKey === expectedControl &&
     input.altKey === shortcut.alt &&
     input.shiftKey === shortcut.shift
   );
+}
+
+export function resolveAppShortcutBinding(
+  input: AppShortcutInput,
+  bindings: readonly AppKeybinding[],
+  useMetaForMod: boolean,
+  isEligible: (binding: AppKeybinding) => boolean,
+): AppKeybinding | null {
+  let fallback: AppKeybinding | null = null;
+  for (let index = bindings.length - 1; index >= 0; index -= 1) {
+    const binding = bindings[index];
+    if (!binding || !matchesAppShortcut(input, binding.shortcut, useMetaForMod))
+      continue;
+    const direct =
+      shortcutInputCharacterKey(input).toLowerCase() ===
+      binding.shortcut.key.toLowerCase();
+    if (!direct && fallback !== null) continue;
+    if (!isEligible(binding)) continue;
+    if (direct) return binding;
+    fallback = binding;
+  }
+  return fallback;
 }
 
 const appCommandWhenSchema = z

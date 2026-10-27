@@ -32,6 +32,53 @@ const keybindings: AppKeybindings = [
 ];
 
 describe("resolveDesktopBrowserAppCommand", () => {
+  it.each([false, true])(
+    "prioritizes available Unicode bindings before physical fallback (%s)",
+    (reverse) => {
+      const latin: AppKeybindings[number] = {
+        ...keybindings[1]!,
+        shortcut: { ...keybindings[1]!.shortcut, key: "k" },
+      };
+      const legacy: AppKeybindings[number] = {
+        ...latin,
+        command: "browser.reload",
+        shortcut: { ...latin.shortcut, key: "л" },
+      };
+      const input = {
+        key: "л",
+        code: "KeyK",
+        ctrlKey: true,
+        metaKey: false,
+        altKey: false,
+        shiftKey: false,
+      };
+      const args = {
+        input,
+        platform: "win32",
+        keybindings: reverse ? [latin, legacy] : [legacy, latin],
+      };
+      expect(resolveDesktopBrowserAppCommand(args)).toBe("browser.reload");
+      expect(
+        resolveDesktopBrowserAppCommand({
+          ...args,
+          keybindings: [
+            latin,
+            {
+              ...legacy,
+              when: { all: ["macPlatform", "browserFocus"], none: [] },
+            },
+          ],
+        }),
+      ).toBe("browser.focusLocation");
+      expect(
+        resolveDesktopBrowserAppCommand({
+          ...args,
+          input: { ...input, key: "k" },
+        }),
+      ).toBe("browser.focusLocation");
+    },
+  );
+
   it.each([
     "panel.previousTab",
     "panel.nextTab",

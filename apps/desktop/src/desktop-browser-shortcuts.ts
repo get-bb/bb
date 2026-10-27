@@ -2,7 +2,7 @@ import {
   PANE_DIRECTION_APP_COMMAND_IDS,
   appCommandIdSchema,
   isAppKeybindingAvailableForClient,
-  matchesAppShortcut,
+  resolveAppShortcutBinding,
   keyboardPlatform,
   type AppCommandId,
   type AppKeybindings,
@@ -25,43 +25,46 @@ export function resolveDesktopBrowserAppCommand({
   splitNavigationCommands = [],
 }: ResolveDesktopBrowserAppCommandArgs): AppCommandId | null {
   const isMac = keyboardPlatform(platform) === "mac";
-  for (let index = keybindings.length - 1; index >= 0; index -= 1) {
-    const binding = keybindings[index];
-    if (
-      !binding ||
-      !isAppKeybindingAvailableForClient(binding, {
-        isDesktop: true,
-        platform,
-      }) ||
-      (!binding.when.all.includes("browserFocus") &&
-        binding.command !== "panel.previousTab" &&
-        binding.command !== "panel.nextTab" &&
-        binding.command !== "pane.focus.previous" &&
-        binding.command !== "pane.focus.next" &&
-        !PANE_DIRECTION_APP_COMMAND_IDS.some(
+  const binding = resolveAppShortcutBinding(
+    input,
+    keybindings,
+    isMac,
+    (binding) => {
+      if (
+        !isAppKeybindingAvailableForClient(binding, {
+          isDesktop: true,
+          platform,
+        }) ||
+        (!binding.when.all.includes("browserFocus") &&
+          binding.command !== "panel.previousTab" &&
+          binding.command !== "panel.nextTab" &&
+          binding.command !== "pane.focus.previous" &&
+          binding.command !== "pane.focus.next" &&
+          !PANE_DIRECTION_APP_COMMAND_IDS.some(
+            (command) => command === binding.command,
+          ))
+      )
+        return false;
+      if (
+        !splitNavigationEnabled &&
+        (binding.command === "pane.focus.previous" ||
+          binding.command === "pane.focus.next")
+      ) {
+        return false;
+      }
+      if (
+        PANE_DIRECTION_APP_COMMAND_IDS.some(
           (command) => command === binding.command,
-        ))
-    )
-      continue;
-    if (
-      !splitNavigationEnabled &&
-      (binding.command === "pane.focus.previous" ||
-        binding.command === "pane.focus.next")
-    ) {
-      continue;
-    }
-    if (
-      PANE_DIRECTION_APP_COMMAND_IDS.some(
-        (command) => command === binding.command,
-      ) &&
-      (!splitNavigationEnabled ||
-        !splitNavigationCommands.some((command) => command === binding.command))
-    )
-      continue;
-    if (matchesAppShortcut(input, binding.shortcut, isMac)) {
-      const command = appCommandIdSchema.safeParse(binding.command);
-      if (command.success) return command.data;
-    }
-  }
-  return null;
+        ) &&
+        (!splitNavigationEnabled ||
+          !splitNavigationCommands.some(
+            (command) => command === binding.command,
+          ))
+      )
+        return false;
+      return appCommandIdSchema.safeParse(binding.command).success;
+    },
+  );
+  const command = appCommandIdSchema.safeParse(binding?.command);
+  return command.success ? command.data : null;
 }

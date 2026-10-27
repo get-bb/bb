@@ -1,9 +1,12 @@
+import { matchesAppShortcut } from "@bb/domain";
+
 interface DesktopReloadShortcutInput {
   alt: boolean;
   control: boolean;
   isAutoRepeat: boolean;
   isComposing: boolean;
   key: string;
+  code: string;
   meta: boolean;
   shift: boolean;
   type: string;
@@ -18,10 +21,25 @@ export function resolveDesktopReloadShortcut(
     input.type !== "keyDown" ||
     input.isAutoRepeat ||
     input.isComposing ||
-    input.alt ||
-    input.control ||
-    !input.meta ||
-    input.key.toLowerCase() !== "r"
+    !matchesAppShortcut(
+      {
+        key: input.key,
+        code: input.code,
+        altKey: input.alt,
+        ctrlKey: input.control,
+        metaKey: input.meta,
+        shiftKey: input.shift,
+      },
+      {
+        key: "r",
+        mod: false,
+        meta: true,
+        control: false,
+        alt: false,
+        shift: input.shift,
+      },
+      true,
+    )
   ) {
     return null;
   }
