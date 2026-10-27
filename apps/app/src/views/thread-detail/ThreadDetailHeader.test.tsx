@@ -117,12 +117,33 @@ const COMMIT_HEADER_ACTION: PluginThreadActionRegistration<unknown> = {
   item: () => ({ label: "Commit", icon: "GitBranch", run: () => {} }),
 };
 
-function HeaderActionCollectors() {
+function headerAction(
+  id: string,
+  order: number,
+  disabled: boolean,
+  run: () => void,
+): PluginThreadActionRegistration<unknown> {
+  return {
+    id,
+    placement: "header",
+    group: "release",
+    order,
+    title: id,
+    icon: "Rocket",
+    item: () => ({ label: id, icon: "Rocket", disabled, run }),
+  };
+}
+
+function HeaderActionCollectors({
+  registrations = [COMMIT_HEADER_ACTION],
+}: {
+  registrations?: readonly PluginThreadActionRegistration<unknown>[];
+}) {
   return (
     <QueryClientProvider client={new QueryClient()}>
       <MemoryRouter>
         <ThreadActionCollectors
-          coreRegistrations={[COMMIT_HEADER_ACTION]}
+          coreRegistrations={registrations}
           requestRename={vi.fn()}
         />
       </MemoryRouter>
@@ -369,6 +390,43 @@ describe("ThreadDetailHeader", () => {
     expect(screen.getByText("Thread menu")).not.toBeNull();
     expect(screen.queryByText("Responsive menu actions")).toBeNull();
     expect(screen.queryByText("menu: Commit")).toBeNull();
+  });
+
+  it("keeps each of several header actions independently enabled in one split button", async () => {
+    const runs = { Ship: vi.fn(), Review: vi.fn(), Deploy: vi.fn() };
+    render(
+      <>
+        <HeaderActionCollectors
+          registrations={[
+            headerAction("Deploy", 3, false, runs.Deploy),
+            headerAction("Ship", 1, true, runs.Ship),
+            headerAction("Review", 2, true, runs.Review),
+          ]}
+        />
+        <PaneContext.Provider value={PANE_CONTEXT}>
+          <ThreadDetailHeader
+            actionsMenu={null}
+            isSecondaryPanelOpen={false}
+            onToggleSecondaryPanel={vi.fn()}
+            thread={THREAD_TARGET}
+            threadTitle="Several header actions"
+          />
+        </PaneContext.Provider>
+      </>,
+    );
+
+    const ship = await screen.findByRole("button", { name: "Ship" });
+    expect(ship.hasAttribute("disabled")).toBe(true);
+    const more = screen.getByRole("button", { name: "More actions" });
+    expect(more.hasAttribute("disabled")).toBe(false);
+    fireEvent.pointerDown(more, { button: 0, ctrlKey: false });
+    const items = screen.getAllByRole("menuitem");
+    expect(items.map((item) => item.textContent)).toEqual(["Review", "Deploy"]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Review" }));
+    expect(runs.Review).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Deploy" }));
+    expect(runs.Deploy).toHaveBeenCalledTimes(1);
+    expect(runs.Ship).not.toHaveBeenCalled();
   });
 
   it("renders serialized mentions in the thread title as pills", () => {

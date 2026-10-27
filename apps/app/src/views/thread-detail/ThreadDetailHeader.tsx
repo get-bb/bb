@@ -257,12 +257,14 @@ export function ThreadDetailHeader({
             {secondaryActions.length > 0 ? (
               <SplitButton
                 className={THREAD_HEADER_ACTION_BUTTON_CLASS}
-                disabled={primaryAction.action.disabled}
                 primaryAction={{
+                  disabled: primaryAction.action.disabled,
                   label: primaryAction.action.label,
                   onSelect: () => void primaryAction.action.run(),
                 }}
-                secondaryActions={secondaryActions.map(({ action }) => ({
+                secondaryActions={secondaryActions.map(({ key, action }) => ({
+                  id: key,
+                  disabled: action.disabled,
                   label: action.label,
                   onSelect: () => void action.run(),
                 }))}
