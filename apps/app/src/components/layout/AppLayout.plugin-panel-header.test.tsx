@@ -123,6 +123,10 @@ vi.mock("@/components/plugin/PluginAppOverlays", () => ({
   PluginAppOverlays: () => <div data-testid="plugin-app-overlays" />,
 }));
 
+vi.mock("@/components/plugin/ThreadRowMetadata", () => ({
+  ThreadRowMetadataCollectors: () => null,
+}));
+
 vi.mock("@/components/dialogs/ProjectPathDialog", () => ({
   ProjectPathDialog: () => null,
 }));
