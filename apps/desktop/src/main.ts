@@ -2843,11 +2843,6 @@ async function initializeRuntime(args: InitializeRuntimeArgs): Promise<void> {
 }
 
 async function runDesktopApp(): Promise<void> {
-  if (app.isPackaged) {
-    await hostToolchain.refresh();
-    Object.assign(process.env, hostToolchain.environment());
-  }
-
   const applicationName = app.isPackaged
     ? DESKTOP_RELEASE_INFO.applicationName
     : "bb-dev";
@@ -2911,6 +2906,10 @@ async function runDesktopApp(): Promise<void> {
     },
   });
 
+  if (app.isPackaged) {
+    await hostToolchain.refresh();
+    Object.assign(process.env, hostToolchain.environment());
+  }
   await app.whenReady();
   if (app.isPackaged) {
     await session.defaultSession.clearCache();
