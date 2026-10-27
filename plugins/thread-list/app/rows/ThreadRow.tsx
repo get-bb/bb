@@ -780,7 +780,7 @@ function ThreadRowComponent({
           <span
             className={cn(
               "flex min-w-0 basis-full",
-              provider !== undefined && "pl-[1.375rem]",
+              provider !== undefined && "pl-6",
             )}
           >
             <ThreadRowMetadata thread={thread} />
