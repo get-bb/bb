@@ -134,12 +134,13 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Add a small badge on the metadata line under each thread's title in the sidebar. With this, a plugin can:",
         bullets: [
           "Show per-thread state at a glance, like a pull request's number and its checks",
-          "Read every row in one batched request, so rows have their final height before they scroll into view",
+          "Load every listed thread in one hook, so rows have their final height before they scroll in",
           "Appear on plugin-built thread lists too, and on bb's rows once Metadata is turned on",
         ],
         apiSymbols: [
           "ExperimentalThreadRowMetadataRegistration",
           "ExperimentalThreadRowMetadataProps",
+          "ExperimentalThreadRowMetadataDataInput",
           "experimental_ThreadRowMetadata",
           "ExperimentalThreadRowMetadataLineProps",
         ],

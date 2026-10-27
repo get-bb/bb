@@ -302,7 +302,7 @@
         },
         {
           "path": "plugins/github-pr-status/ui/PullRequestRowMetadata.tsx",
-          "anchors": ["enabled: environmentId !== null"]
+          "anchors": ["export function usePullRequestRows", "enabled: keys.length > 0"]
         }
       ]
     },

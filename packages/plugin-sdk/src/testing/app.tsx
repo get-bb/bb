@@ -2002,7 +2002,7 @@ export interface CapturedPluginApp {
   threadHeaderActions: import("../internal/plugin-app-registration-collector.js").LegacyThreadHeaderActionRegistration[];
   threadContextSegments: ExperimentalThreadContextSegmentRegistration[];
   threadInfoRows: ExperimentalThreadInfoRowRegistration[];
-  threadRowMetadata: ExperimentalThreadRowMetadataRegistration[];
+  threadRowMetadata: ExperimentalThreadRowMetadataRegistration<unknown>[];
   threadInfoSections: ExperimentalThreadInfoSectionRegistration[];
   threadActions: PluginThreadActionRegistration<unknown>[];
   browserToolbarActions: ExperimentalPluginBrowserToolbarActionRegistration[];

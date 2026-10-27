@@ -61,7 +61,7 @@ export interface PluginRegistrationSet {
   threadHeaderActions?: readonly LegacyThreadHeaderActionRegistration[];
   threadContextSegments?: readonly ExperimentalThreadContextSegmentRegistration[];
   threadInfoRows?: readonly ExperimentalThreadInfoRowRegistration[];
-  threadRowMetadata?: readonly ExperimentalThreadRowMetadataRegistration[];
+  threadRowMetadata?: readonly ExperimentalThreadRowMetadataRegistration<unknown>[];
   threadInfoSections?: readonly ExperimentalThreadInfoSectionRegistration[];
   threadActions?: readonly PluginThreadActionRegistration<unknown>[];
   browserToolbarActions?: readonly ExperimentalPluginBrowserToolbarActionRegistration[];
@@ -133,7 +133,8 @@ export interface PluginThreadContextSegmentSlot
 export interface PluginThreadInfoRowSlot
   extends ExperimentalThreadInfoRowRegistration, PluginSlotBase {}
 export interface PluginThreadRowMetadataSlot
-  extends ExperimentalThreadRowMetadataRegistration, PluginSlotBase {}
+  extends ExperimentalThreadRowMetadataRegistration<unknown>,
+    PluginSlotBase {}
 export interface PluginThreadInfoSectionSlot
   extends ExperimentalThreadInfoSectionRegistration, PluginSlotBase {}
 export interface PluginThreadActionSlot

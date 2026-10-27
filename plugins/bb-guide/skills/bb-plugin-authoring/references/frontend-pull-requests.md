@@ -35,9 +35,9 @@ function Row({ thread }: { thread: PluginSidebarThread }) {
 }
 ```
 
-bb loads every active thread's badge in one batched request, whether its row
-is rendered or not, so rows have their final height before they scroll into
-view. The badge asks for saved
+The badge's `useData` loads every listed thread's pull request in one batched
+request, whether its row is rendered or not, so rows have their final height
+before they scroll into view. The badge asks for saved
 rows of any age (`maxAgeMs`), so it never waits on GitHub; saved rows refresh
 in the background. Clicks on an item reach your row's own handlers; forward
 them to your row link if the row is not itself the link.

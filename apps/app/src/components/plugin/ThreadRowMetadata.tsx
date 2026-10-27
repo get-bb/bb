@@ -1,7 +1,7 @@
 import {
   memo,
-  useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useSyncExternalStore,
 } from "react";
@@ -33,29 +33,60 @@ function sortThreadRowMetadata(
     .map(({ slot }) => slot);
 }
 
-let mountedLines = 0;
-const lineListeners = new Set<() => void>();
-
-function subscribeLines(listener: () => void): () => void {
-  lineListeners.add(listener);
-  return () => lineListeners.delete(listener);
+function slotKey(slot: PluginThreadRowMetadataSlot): string {
+  return `${slot.pluginId}/${slot.id}/${slot.generation}`;
 }
 
-function anyLineMounted(): boolean {
-  return mountedLines > 0;
+function createStore<Snapshot>(read: () => Snapshot) {
+  const listeners = new Set<() => void>();
+  let snapshot = read();
+  let queued = false;
+  return {
+    subscribe(listener: () => void): () => void {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    getSnapshot: () => snapshot,
+    changed(): void {
+      if (queued) return;
+      queued = true;
+      queueMicrotask(() => {
+        queued = false;
+        snapshot = read();
+        for (const listener of listeners) listener();
+      });
+    },
+  };
 }
 
-function useCountMountedLine(): void {
-  useEffect(() => {
-    mountedLines += 1;
-    if (mountedLines === 1) for (const listener of lineListeners) listener();
+const lineThreads = new Map<
+  string,
+  { thread: PluginSidebarThread; lines: number }
+>();
+const lineThreadsStore = createStore(() =>
+  [...lineThreads.values()].map((entry) => entry.thread),
+);
+
+function useRegisterLineThread(thread: PluginSidebarThread): void {
+  useLayoutEffect(() => {
+    const entry = lineThreads.get(thread.id);
+    lineThreads.set(thread.id, { thread, lines: (entry?.lines ?? 0) + 1 });
+    if (entry?.thread !== thread) lineThreadsStore.changed();
     return () => {
-      mountedLines -= 1;
-      if (mountedLines === 0)
-        for (const listener of lineListeners) listener();
+      const current = lineThreads.get(thread.id);
+      if (current === undefined) return;
+      if (current.lines > 1)
+        lineThreads.set(thread.id, { ...current, lines: current.lines - 1 });
+      else {
+        lineThreads.delete(thread.id);
+        lineThreadsStore.changed();
+      }
     };
-  }, []);
+  }, [thread]);
 }
+
+const collectedData = new Map<string, { data: unknown }>();
+const collectedStore = createStore(() => new Map(collectedData));
 
 function recordItemContent(container: HTMLElement): void {
   const roots = container.querySelectorAll(":scope > [data-bb-plugin-root]");
@@ -73,7 +104,11 @@ function MountedThreadRowMetadata({
   slots: readonly PluginThreadRowMetadataSlot[];
 }) {
   const anchor = useRef<HTMLSpanElement>(null);
-  useCountMountedLine();
+  useRegisterLineThread(thread);
+  const collected = useSyncExternalStore(
+    collectedStore.subscribe,
+    collectedStore.getSnapshot,
+  );
   useLayoutEffect(() => {
     if (anchor.current !== null) recordItemContent(anchor.current);
   });
@@ -91,17 +126,19 @@ function MountedThreadRowMetadata({
       className="pointer-events-auto relative z-[31] hidden min-w-0 flex-1 items-center gap-2 overflow-hidden data-[has-items]:flex"
     >
       {slots.map((slot) => {
+        const entry = collected.get(slotKey(slot));
+        if (slot.useData !== undefined && entry === undefined) return null;
         const Component = slot.component;
         return (
           <PluginSlotMount
-            key={`${slot.pluginId}/${slot.id}/${slot.generation}`}
+            key={slotKey(slot)}
             pluginId={slot.pluginId}
             slotKind="threadRowMetadata"
             slotId={slot.id}
             instanceId={thread.id}
             crashFallback={null}
           >
-            <Component thread={thread} />
+            <Component thread={thread} data={entry?.data} />
           </PluginSlotMount>
         );
       })}
@@ -122,46 +159,64 @@ export const ThreadRowMetadata = memo(function ThreadRowMetadata({
   );
 });
 
-function PrefetchedThreadRowMetadata({
-  slots,
+function ThreadRowMetadataCollector({
+  slot,
+  threads,
 }: {
-  slots: readonly PluginThreadRowMetadataSlot[];
+  slot: PluginThreadRowMetadataSlot;
+  threads: readonly PluginSidebarThread[];
 }) {
-  const { threads } = useSidebarThreads();
-  return (
-    <div hidden data-thread-row-metadata-prefetch="">
-      {threads.flatMap((thread) =>
-        slots.map((slot) => {
-          const Component = slot.component;
-          return (
-            <PluginSlotMount
-              key={`${thread.id}/${slot.pluginId}/${slot.id}/${slot.generation}`}
-              pluginId={slot.pluginId}
-              slotKind="threadRowMetadata"
-              slotId={slot.id}
-              instanceId={thread.id}
-              crashFallback={null}
-            >
-              <Component thread={thread} />
-            </PluginSlotMount>
-          );
-        }),
-      )}
-    </div>
+  const data = slot.useData?.({ threads });
+  const key = slotKey(slot);
+  useLayoutEffect(() => {
+    collectedData.set(key, { data });
+    collectedStore.changed();
+  }, [key, data]);
+  useLayoutEffect(
+    () => () => {
+      collectedData.delete(key);
+      collectedStore.changed();
+    },
+    [key],
   );
+  return null;
 }
 
-export function ThreadRowMetadataPrefetch() {
-  const active = useSyncExternalStore(
-    subscribeLines,
-    anyLineMounted,
-    anyLineMounted,
+function ListableThreads({
+  slots,
+  mounted,
+}: {
+  slots: readonly PluginThreadRowMetadataSlot[];
+  mounted: readonly PluginSidebarThread[];
+}) {
+  const sidebar = useSidebarThreads().threads;
+  const threads = useMemo(() => {
+    const ids = new Set(sidebar.map((thread) => thread.id));
+    return [...sidebar, ...mounted.filter((thread) => !ids.has(thread.id))];
+  }, [sidebar, mounted]);
+  return slots.map((slot) => (
+    <PluginSlotMount
+      key={slotKey(slot)}
+      pluginId={slot.pluginId}
+      slotKind="threadRowMetadata"
+      slotId={slot.id}
+      instanceId="useData"
+      crashFallback={null}
+      wrapRoot={false}
+    >
+      <ThreadRowMetadataCollector slot={slot} threads={threads} />
+    </PluginSlotMount>
+  ));
+}
+
+export function ThreadRowMetadataCollectors() {
+  const mounted = useSyncExternalStore(
+    lineThreadsStore.subscribe,
+    lineThreadsStore.getSnapshot,
   );
-  const { threadRowMetadata } = usePluginSlots();
-  if (!active || threadRowMetadata.length === 0) return null;
-  return (
-    <PrefetchedThreadRowMetadata
-      slots={sortThreadRowMetadata(threadRowMetadata)}
-    />
+  const slots = usePluginSlots().threadRowMetadata.filter(
+    (slot) => slot.useData !== undefined,
   );
+  if (mounted.length === 0 || slots.length === 0) return null;
+  return <ListableThreads slots={slots} mounted={mounted} />;
 }

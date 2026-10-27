@@ -68,7 +68,7 @@ import {
   PluginPanelHeaderCenter,
 } from "@/components/plugin/PluginPanelHeader";
 import { PluginAppOverlays } from "@/components/plugin/PluginAppOverlays";
-import { ThreadRowMetadataPrefetch } from "@/components/plugin/ThreadRowMetadata";
+import { ThreadRowMetadataCollectors } from "@/components/plugin/ThreadRowMetadata";
 import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
 import {
   usePluginNavPanelChrome,
@@ -863,7 +863,7 @@ function AppLayoutContent({ children }: AppLayoutProps) {
                 />
               </SidebarStateBridge>
               <PluginAppOverlays />
-              <ThreadRowMetadataPrefetch />
+              <ThreadRowMetadataCollectors />
               <IframeDragGuardOverlay
                 active={isSidebarResizing}
                 cursor="col-resize"

@@ -2,7 +2,10 @@
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { useEffect, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ExperimentalThreadRowMetadataProps } from "@get-bb/plugin-sdk";
+import type {
+  ExperimentalThreadRowMetadataDataInput,
+  ExperimentalThreadRowMetadataProps,
+} from "@get-bb/plugin-sdk";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlotMount";
 import {
@@ -13,7 +16,7 @@ import { toPluginSidebarThread } from "@/lib/plugin-sidebar-threads";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import {
   ThreadRowMetadata,
-  ThreadRowMetadataPrefetch,
+  ThreadRowMetadataCollectors,
 } from "./ThreadRowMetadata";
 
 const thread = toPluginSidebarThread(makeThreadListEntry({ id: "thr_row" }));
@@ -25,8 +28,12 @@ vi.mock("@/lib/plugin-sidebar-hooks", () => ({
   useSidebarThreads: () => ({ threads: [thread, otherThread] }),
 }));
 
+const archivedThread = toPluginSidebarThread(
+  makeThreadListEntry({ id: "thr_archived" }),
+);
+
 function item(label: string) {
-  return function Item({ thread }: ExperimentalThreadRowMetadataProps) {
+  return function Item({ thread }: ExperimentalThreadRowMetadataProps<unknown>) {
     return <span data-testid={label}>{thread.id}</span>;
   };
 }
@@ -74,27 +81,41 @@ describe("thread row metadata", () => {
     ).toEqual([thread.id, otherThread.id]);
   });
 
-  it("mounts every sidebar thread's items, hidden, only while a list draws a metadata line", () => {
+  it("runs useData once for every listable thread while a line is mounted, and draws rows from its result", async () => {
+    const calls: string[][] = [];
+    function useData({ threads }: ExperimentalThreadRowMetadataDataInput) {
+      calls.push(threads.map((listed) => listed.id));
+      return new Map(threads.map((listed) => [listed.id, `pr:${listed.id}`]));
+    }
+    function Badge({
+      thread,
+      data,
+    }: ExperimentalThreadRowMetadataProps<unknown>) {
+      const label = data instanceof Map ? data.get(thread.id) : undefined;
+      return <span data-testid="badge">{String(label)}</span>;
+    }
     setPluginSlotRegistrations(
       "demo",
       makePluginRegistrationSet({
-        threadRowMetadata: [{ id: "badge", component: item("badge") }],
+        threadRowMetadata: [{ id: "badge", useData, component: Badge }],
       }),
     );
-    const prefetched = () =>
-      [
-        ...document.querySelectorAll(
-          "[data-thread-row-metadata-prefetch] [data-testid=badge]",
-        ),
-      ].map((badge) => badge.textContent);
-    render(<ThreadRowMetadataPrefetch />);
-    expect(prefetched()).toEqual([]);
+    render(<ThreadRowMetadataCollectors />);
+    await act(async () => {});
+    expect(calls).toEqual([]);
 
-    const line = render(<ThreadRowMetadata thread={thread} />);
-    expect(prefetched()).toEqual([thread.id, otherThread.id]);
+    const line = render(<ThreadRowMetadata thread={archivedThread} />);
+    expect(screen.queryByTestId("badge")).toBeNull();
+    await act(async () => {});
+    expect(calls.at(-1)).toEqual([thread.id, otherThread.id, archivedThread.id]);
+    expect(screen.getByTestId("badge").textContent).toBe("pr:thr_archived");
 
     line.unmount();
-    expect(prefetched()).toEqual([]);
+    await act(async () => {});
+    const settled = calls.length;
+    render(<ThreadRowMetadata thread={thread} />);
+    await act(async () => {});
+    expect(calls.slice(settled).at(-1)).toEqual([thread.id, otherThread.id]);
   });
 
   it("shows the metadata line only while one of them draws something, including updates the item makes itself", async () => {

@@ -2685,25 +2685,29 @@ Docs: `frontend-registration.md`, `frontend-components.md`.
 
 ## `app.slots.experimental_threadRowMetadata` / `experimental_ThreadRowMetadata` (`@get-bb/plugin-sdk/app`)
 
-A registration is `{ id, order?, component }`. The component receives
-`{ thread }` (the row's `PluginSidebarThread`) and renders a small item on that
-thread's metadata line, under the title.
+A registration is `{ id, order?, useData?, component }`. `useData` is a React
+hook the host calls once for the whole app, never per row, with
+`{ threads }`: bb's active sidebar threads in sidebar order, then any other
+thread whose line is mounted, deduplicated. Rows a windowed list has not
+rendered are included. The component receives `{ thread, data }`, where
+`data` is what `useData` last returned (undefined without `useData`), and
+renders a small item on that thread's metadata line, under the title; with
+`useData` it first renders once `useData` has returned.
 `experimental_ThreadRowMetadata({ thread })` renders every registration for one
 row, sorted by `order` (unset last) then registration order, each in its own
 crash boundary keyed by thread, left to right in one line container that fills
 its parent, clips at the row's edge and is hidden while empty. It renders
 nothing when no plugin registers an item.
 
-While any `experimental_ThreadRowMetadata` line is mounted,
-`ThreadRowMetadataPrefetch` (in `AppLayout`) also mounts every registration,
-hidden, for every active thread from `useSidebarThreads`. A windowed list's
-rows therefore find their data cached when they render, so scrolling never
-changes a row's height. With no line mounted (the experiment or Metadata off)
-it mounts nothing and reads nothing. The container shows while any item draws something (a
-MutationObserver keeps a `data-has-items` attribute current). Items read
-through `experimental_useRpcKeyedQuery`, so every row's read lands in one keyed
-request. The GitHub PR Status badge reads with `input: { maxAgeMs }`, so saved
-rows answer at once and refresh in the background.
+`ThreadRowMetadataCollectors` (in `AppLayout`) runs each registration's
+`useData` while any line is mounted; with none mounted (the experiment or
+Metadata off) it runs nothing and reads nothing. Because `useData` loads every
+listable thread, a windowed list's rows find their data when they render, so
+scrolling never changes a row's height. The container shows while any item
+draws something (a MutationObserver keeps a `data-has-items` attribute
+current). The GitHub PR Status plugin's `useData` reads every listed
+environment in one `experimental_useRpcKeyedQuery` with `input: { maxAgeMs }`,
+so saved rows answer at once and refresh in the background.
 
 **Core callers.** bb's sidebar (`plugins/thread-list`, `ThreadRow.tsx`) renders
 `experimental_ThreadRowMetadata` on a line under each row's title, the same call a
@@ -2715,8 +2719,8 @@ customized, and clicks on it go through the row's own click handling. The
 GitHub PR Status plugin registers the first item: the current-branch pull
 request's state icon in the state's color and its muted `#number`, plus a yellow
 dot while an open or draft PR's checks run or a red cross when they fail or the
-PR has conflicts (passing checks show nothing), read through `experimental_useRpcKeyedQuery`
-for every row. No core row indicator moved into the slot: the status
+PR has conflicts (passing checks show nothing), from one `useData` read of
+every listed environment. No core row indicator moved into the slot: the status
 glyph, split mini-map, shortcut pill and hover actions share the row's fixed
 trailing box, the cross-project icon depends on the row's position in the
 list, and the provider icon and child chevron sit elsewhere. Contract tests: `ThreadRowMetadata.test.tsx`,
@@ -2732,12 +2736,13 @@ Docs: `frontend-registration.md`, `frontend-pull-requests.md`.
 2. **Width.** Items share one line and the line clips at the row's edge, so a
    late item can disappear. Decide whether items need a width cap, a
    priority, or a per-item toggle once several plugins contribute.
-3. **Every thread reads.** Items mount and read for every active sidebar
-   thread, on screen or not, and their keyed hooks hold (so the GitHub PR
-   Status plugin keeps refreshing) every thread's key. Confirm the cost on
-   long lists, whether archived threads a list shows need the same, and
-   whether the props need a visibility signal for items that poll something
-   costlier.
+3. **Every thread reads.** `useData` receives every active sidebar thread,
+   on screen or not, so the GitHub PR Status plugin holds (and keeps
+   refreshing) every thread's key. Archived threads are included only once
+   their line mounts. Confirm the cost on long lists, and whether the input
+   needs a visibility signal for items that poll something costlier.
+4. **Shape.** `useData` mirrors `experimental_threadAction`'s, but receives
+   threads rather than ids. Decide whether the two should match.
 
 ## `app.slots.experimental_threadAction` / `PluginThreadActionRegistration.experimental_bulkItem` / `PluginThreadActionRegistration.placement` / `experimental_useThreadActions` / `experimental_useThreadActionRegistrations` / `experimental_ThreadActionsMenu` / `experimental_ThreadActionsContextMenu` (with `experimental_bulkThreads`) / `experimental_THREAD_ACTION_GROUPS` (`@get-bb/plugin-sdk/app`)
 

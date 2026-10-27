@@ -1,6 +1,8 @@
 import { useState } from "react";
+import { useMemo } from "react";
 import {
   experimental_useRpcKeyedQuery,
+  type ExperimentalThreadRowMetadataDataInput,
   type ExperimentalThreadRowMetadataProps,
 } from "@get-bb/plugin-sdk/app";
 import { Icon } from "@/components/ui/icon";
@@ -10,7 +12,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import type { PullRequest } from "../contract";
+import type { EnvironmentPullRequest, PullRequest } from "../contract";
 import {
   PULL_REQUESTS_ANY_AGE_MS,
   pullRequestsReadContract,
@@ -117,18 +119,37 @@ export function PullRequestBadge({
 
 const ROW_READ_INPUT = { maxAgeMs: PULL_REQUESTS_ANY_AGE_MS };
 
-export function PullRequestRowMetadata({
-  thread,
-}: ExperimentalThreadRowMetadataProps) {
-  const environmentId = thread.environment?.id ?? null;
-  const query = experimental_useRpcKeyedQuery({
+type PullRequestRows = Record<string, EnvironmentPullRequest> | undefined;
+
+export function usePullRequestRows({
+  threads,
+}: ExperimentalThreadRowMetadataDataInput): PullRequestRows {
+  const keys = useMemo(
+    () => [
+      ...new Set(
+        threads.flatMap((thread) => {
+          const environmentId = thread.environment?.id;
+          return environmentId == null ? [] : [environmentId];
+        }),
+      ),
+    ],
+    [threads],
+  );
+  return experimental_useRpcKeyedQuery({
     contract: pullRequestsReadContract,
     method: "pullRequests",
-    keys: environmentId === null ? [] : [environmentId],
+    keys,
     input: ROW_READ_INPUT,
-    enabled: environmentId !== null,
-  });
-  const row = environmentId === null ? undefined : query.data?.[environmentId];
+    enabled: keys.length > 0,
+  }).data;
+}
+
+export function PullRequestRowMetadata({
+  thread,
+  data,
+}: ExperimentalThreadRowMetadataProps<PullRequestRows>) {
+  const environmentId = thread.environment?.id ?? null;
+  const row = environmentId === null ? undefined : data?.[environmentId];
   const pullRequest = row?.outcome === "available" ? row.pullRequest : null;
   return pullRequest === null ? null : (
     <PullRequestBadge pullRequest={pullRequest} />

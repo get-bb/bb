@@ -1,9 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
-import type {
-  ExperimentalThreadRowMetadataProps,
-  PluginSidebarThread,
-} from "@get-bb/plugin-sdk/app";
+import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { afterEach, describe, expect, it } from "vitest";
@@ -16,9 +13,12 @@ import {
 const app = await loadPluginApp(() => import("./app.js"));
 afterEach(cleanup);
 
-function thread(environmentId: string | null): PluginSidebarThread {
+function thread(
+  environmentId: string | null,
+  id = "thr_row",
+): PluginSidebarThread {
   return {
-    id: "thr_row",
+    id,
     projectId: "proj_row",
     title: "Row",
     titleFallback: null,
@@ -108,29 +108,36 @@ const passingChecks: PullRequest["checks"] = {
   pendingCount: 0,
 };
 
-const Item = app.threadRowMetadata[0]!.component;
-function Row(props: ExperimentalThreadRowMetadataProps) {
+const registration = app.threadRowMetadata[0]!;
+interface RowProps {
+  thread: PluginSidebarThread;
+  listed?: readonly PluginSidebarThread[];
+}
+function Row({ thread, listed = [thread] }: RowProps) {
+  const data = registration.useData?.({ threads: listed });
+  const Item = registration.component;
   return (
     <TooltipProvider delayDuration={0}>
-      <Item {...props} />
+      <Item thread={thread} data={data} />
     </TooltipProvider>
   );
 }
 
 function renderRow(
-  props: ExperimentalThreadRowMetadataProps,
+  props: RowProps,
   rows: Record<string, EnvironmentPullRequest>,
 ) {
-  return renderSlot<
-    ExperimentalThreadRowMetadataProps,
-    typeof pullRequestsReadContract
-  >({ component: Row }, props, {
+  return renderSlot<RowProps, typeof pullRequestsReadContract>(
+    { component: Row },
+    props,
+    {
     experimental_rpcContract: pullRequestsReadContract,
-    rpc: {
-      pullRequests: ({ keys }) =>
-        Object.fromEntries(keys.map((key) => [key, rows[key]!])),
+      rpc: {
+        pullRequests: ({ keys }) =>
+          Object.fromEntries(keys.map((key) => [key, rows[key]!])),
+      },
     },
-  });
+  );
 }
 
 describe("pull request row metadata", () => {
@@ -153,6 +160,28 @@ describe("pull request row metadata", () => {
         method: "pullRequests",
         input: { keys: ["env_row"], maxAgeMs: PULL_REQUESTS_ANY_AGE_MS },
       },
+    ]);
+  });
+
+  it("reads every listed thread's environment once, in one request", async () => {
+    const view = renderRow(
+      {
+        thread: thread("env_row"),
+        listed: [
+          thread("env_row"),
+          thread("env_other", "thr_other"),
+          thread("env_row", "thr_same_env"),
+          thread(null, "thr_no_env"),
+        ],
+      },
+      {
+        env_row: { outcome: "available", pullRequest: pullRequest() },
+        env_other: { outcome: "absent" },
+      },
+    );
+    await view.findByRole("img", { name: /Pull request #6143/ });
+    expect(view.inspection.rpcCalls).toMatchObject([
+      { method: "pullRequests", input: { keys: ["env_other", "env_row"] } },
     ]);
   });
 

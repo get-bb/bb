@@ -317,7 +317,7 @@ export interface CollectedPluginAppRegistrations {
   threadHeaderActions: LegacyThreadHeaderActionRegistration[];
   threadContextSegments: ExperimentalThreadContextSegmentRegistration[];
   threadInfoRows: ExperimentalThreadInfoRowRegistration[];
-  threadRowMetadata: ExperimentalThreadRowMetadataRegistration[];
+  threadRowMetadata: ExperimentalThreadRowMetadataRegistration<unknown>[];
   threadInfoSections: ExperimentalThreadInfoSectionRegistration[];
   threadActions: PluginThreadActionRegistration<unknown>[];
   browserToolbarActions: ExperimentalPluginBrowserToolbarActionRegistration[];
@@ -955,9 +955,17 @@ export function collectPluginAppRegistrations(
         const kind = "slots.experimental_threadRowMetadata";
         const id = requireSlotId(kind, registration?.id);
         requireUniqueId(kind, seenIds.threadRowMetadata, id);
+        if (
+          registration.useData !== undefined &&
+          typeof registration.useData !== "function"
+        )
+          throw new Error(`${kind}: "useData" must be a function`);
         collected.threadRowMetadata.push({
           id,
           ...requireOptionalOrder(kind, registration.order),
+          ...(registration.useData !== undefined
+            ? { useData: registration.useData }
+            : {}),
           component: requireComponent(kind, registration.component),
         });
       },

@@ -9,29 +9,41 @@ items with `experimental_ThreadRowMetadata` (see "bb's row metadata on your
 row"). The GitHub PR Status plugin's pull request badge is one.
 
 ```tsx
-app.slots.experimental_threadRowMetadata({
+type Deploys = Record<string, Deploy> | undefined;
+app.slots.experimental_threadRowMetadata<Deploys>({
   id: "deploy",
   order: 10,
+  useData: useDeploys,
   component: DeployBadge,
 });
-function DeployBadge({ thread }: ExperimentalThreadRowMetadataProps) {
-  const key = thread.environment?.id;
-  const { data } = experimental_useRpcKeyedQuery({
+function useDeploys({ threads }: ExperimentalThreadRowMetadataDataInput) {
+  const keys = threads.flatMap((thread) =>
+    thread.environment?.id ? [thread.environment.id] : [],
+  );
+  return experimental_useRpcKeyedQuery({
     contract,
     method: "deploys",
-    keys: key ? [key] : [],
+    keys,
     input: { maxAgeMs: 60_000 },
-    enabled: key !== undefined,
-  });
-  const deploy = key ? data?.[key] : undefined;
+    enabled: keys.length > 0,
+  }).data;
+}
+function DeployBadge({
+  thread,
+  data,
+}: ExperimentalThreadRowMetadataProps<Deploys>) {
+  const deploy = thread.environment?.id ? data?.[thread.environment.id] : undefined;
   return deploy ? <DeployGlyph deploy={deploy} /> : null;
 }
 ```
 
-Components receive `{ thread }`. While any list draws a metadata line, bb also
-mounts each component, hidden, for every active sidebar thread, so data is
-loaded before a row renders and rows keep their height as they scroll into
-view; render the same way either way. Return null to show nothing. Read through `experimental_useRpcKeyedQuery` so every
+`useData` is a React hook bb calls once for the whole app while any list draws
+a metadata line, never per row. It receives every thread a list may show:
+the active sidebar threads, including rows a windowed list has not rendered,
+plus any other thread whose line is mounted. Load them in one batch there.
+Components receive `{ thread, data }` and only draw; with `useData` they first
+render once it has returned, so a row that renders already has its data and
+keeps its height as it scrolls into view. Return null to show nothing. Read through `experimental_useRpcKeyedQuery` so every
 row's read lands in one keyed request; a read that accepts saved data (such as
 `maxAgeMs`) draws without waiting. Keep the item to an icon and a few characters with a
 tooltip; items share the line left to right, the line clips at the row's edge,

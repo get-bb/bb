@@ -1711,9 +1711,24 @@ export interface PluginSidebarThreadActions {
  * thread's row in a thread list: bb's sidebar and any list that draws
  * {@link PluginSdkApp.experimental_ThreadRowMetadata}.
  */
-export interface ExperimentalThreadRowMetadataProps {
+export interface ExperimentalThreadRowMetadataProps<Data = undefined> {
   /** The row's thread, the same value the list renders. */
   thread: PluginSidebarThread;
+  /** What `useData` last returned; undefined when the registration has none. */
+  data: Data;
+}
+
+/** What a row metadata registration's `useData` receives. */
+export interface ExperimentalThreadRowMetadataDataInput {
+  /**
+   * Every thread a list may draw a metadata line for: bb's active sidebar
+   * threads in sidebar order, then any other thread whose line is mounted
+   * (such as an archived row), deduplicated. Threads whose rows are not
+   * rendered, like a windowed list's rows off screen, are included: load
+   * them all in one batch so a row has its data, and its final height, when
+   * it renders.
+   */
+  threads: readonly PluginSidebarThread[];
 }
 
 /**
@@ -1722,18 +1737,20 @@ export interface ExperimentalThreadRowMetadataProps {
  * row's edge. bb's sidebar draws the line only while the `threadRowMetadata`
  * experiment is on and the user turns on Organize → Rows → Metadata, and only
  * on rows where an item shows something.
- * While any list draws a metadata line, bb also mounts the component,
- * hidden, for every active thread in the sidebar, so its data is loaded
- * before a row renders and rows keep their height as they scroll into view.
- * Render the same way either way, and read with
- * `experimental_useRpcKeyedQuery` so every thread shares one batched request.
+ * Load the line's data in `useData`, a React hook bb calls once for the
+ * whole app while any list draws a metadata line, never per row; it
+ * receives every thread a list may show, so read them in one batch (for
+ * example one `experimental_useRpcKeyedQuery` over their keys). The
+ * component is then a pure render of its thread and `data`; with `useData`
+ * it first renders once `useData` has returned. A row that renders already
+ * has its data, so rows keep their height as they scroll into view.
  * It hides the line while the row is renamed or customized and keeps it
  * visible on hover. Render null to show nothing for a thread. Keep
  * it to an icon and a few characters with a tooltip; clicks on it open the
  * thread like the rest of the row. A crash removes only this item for that
  * row.
  */
-export interface ExperimentalThreadRowMetadataRegistration {
+export interface ExperimentalThreadRowMetadataRegistration<Data = undefined> {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
   id: string;
   /**
@@ -1741,7 +1758,8 @@ export interface ExperimentalThreadRowMetadataRegistration {
    * first item starts the line.
    */
   order?: number;
-  component: ComponentType<ExperimentalThreadRowMetadataProps>;
+  useData?(input: ExperimentalThreadRowMetadataDataInput): Data;
+  component: ComponentType<ExperimentalThreadRowMetadataProps<Data>>;
 }
 
 /** Props for {@link PluginSdkApp.experimental_ThreadRowMetadata}. */
@@ -3540,8 +3558,8 @@ export interface PluginAppSlots {
    * {@link ExperimentalThreadRowMetadataRegistration}). Experimental: see
    * docs/api_to_audit.md.
    */
-  experimental_threadRowMetadata(
-    registration: ExperimentalThreadRowMetadataRegistration,
+  experimental_threadRowMetadata<Data = undefined>(
+    registration: ExperimentalThreadRowMetadataRegistration<Data>,
   ): void;
   /**
    * Add a row to the thread Info tab's details block (see
