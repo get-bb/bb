@@ -13,13 +13,13 @@ import {
   MergeBaseInfoRow,
 } from "./ui/info/GitInfoRows.js";
 import { CommitsInfoSection } from "./ui/info/CommitsInfoSection.js";
-import {
-  UncommittedChangesInfoSection,
-} from "./ui/info/UncommittedChangesInfoSection.js";
+import { UncommittedChangesInfoSection } from "./ui/info/UncommittedChangesInfoSection.js";
 import {
   changedFilesSegmentPart,
   useChangedFilesSegmentVisible,
 } from "./ui/segment/ChangedFilesSegment.js";
+import { commitThreadAction } from "./ui/commit/commit-action.js";
+import { CommitDialogOverlay } from "./ui/commit/CommitDialog.js";
 
 const TOGGLE_DIFF_COMMAND_ID = "toggle-diff";
 
@@ -89,5 +89,10 @@ export default definePluginApp((app) => {
     action: changedFilesSegmentPart("action"),
     details: changedFilesSegmentPart("details"),
     useVisible: useChangedFilesSegmentVisible,
+  });
+  app.slots.experimental_threadAction(commitThreadAction);
+  app.slots.experimental_appOverlay({
+    id: "commit-dialog",
+    component: CommitDialogOverlay,
   });
 });

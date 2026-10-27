@@ -61,7 +61,6 @@ function toLifecycleErrorOperation(
 
   switch (value) {
     case "archive_thread":
-    case "commit":
     case "create_thread":
     case "edit_message":
     case "load_diff":

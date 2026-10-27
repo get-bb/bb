@@ -400,6 +400,7 @@ describe("plugin app runtime shim", () => {
       const component = () => experimental_useSidebarThreadPullRequest("thread").pullRequest;
       export default definePluginApp((app) => {
         app.slots.threadPanelAction({ id: "legacy", title: "Legacy", component });
+        app.slots.experimental_threadHeaderAction({ id: "chip", title: "Chip", component });
         app.slots.navPanel({ id: "board", title: "Board", icon: "Info", path: "board", component, fixedTabs: [{ id: "fixed", title: "Fixed", icon: "Info", component }] });
       });`,
     );
@@ -413,10 +414,14 @@ describe("plugin app runtime shim", () => {
     expect(await readFile(result.jsPath, "utf8")).toContain(
       "threadPanelAction",
     );
-    expect(warnings).toHaveLength(3);
+    expect(await readFile(result.jsPath, "utf8")).toContain(
+      "experimental_threadHeaderAction",
+    );
+    expect(warnings).toHaveLength(4);
     expect(warnings.join("\n")).toContain(
       "experimental_useSidebarThreadPullRequest",
     );
+    expect(warnings.join("\n")).toContain('placement: "header"');
     expect(warnings.join("\n")).toContain("experimental_useRpcKeyedQuery");
     expect(warnings.join("\n")).toContain('availability: "action"');
     expect(warnings.join("\n")).toContain('availability: "fixed"');
@@ -470,7 +475,7 @@ describe("plugin app runtime shim", () => {
     ]);
     expect(server.migrationWarnings).toEqual([
       expect.stringContaining(
-        'server.ts: environments.status is retired from the bb SDK typings',
+        "server.ts: environments.status is retired from the bb SDK typings",
       ),
     ]);
   });
@@ -503,7 +508,7 @@ describe("plugin app runtime shim", () => {
         'import { FileDiff } from "@pierre/diffs/react";',
         'import clsx from "clsx";',
         "export default function App() {",
-        "  return <FileDiff fileDiff={parsePatchFiles(\"\")[0]} className={clsx(\"a\")} />;",
+        '  return <FileDiff fileDiff={parsePatchFiles("")[0]} className={clsx("a")} />;',
         "}",
         "",
       ].join("\n"),

@@ -1,9 +1,7 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { gitStatusErrorMessage } from "@bb/shared-ui/git-status-display";
 import type { GitStatusRow, WorkspaceStatus } from "./contract.js";
-import type {
-  WorkspaceResolutionFailure,
-} from "bb-environment-provider-host/git-types";
+import type { WorkspaceResolutionFailure } from "bb-environment-provider-host/git-types";
 
 export interface GitStatusState {
   result: GitStatusRow | undefined;
@@ -24,8 +22,44 @@ export type GitStatusKeyedQuery = (args: {
   refetchKeys(keys: readonly string[]): Promise<void>;
 };
 
+type LastAvailableWorkspaces = Map<string, WorkspaceStatus>;
+
+function rememberWorkspace(
+  lastAvailable: LastAvailableWorkspaces,
+  environmentId: string,
+  result: GitStatusRow,
+): void {
+  if (result.outcome === "available") {
+    lastAvailable.set(environmentId, result.workspace);
+  } else if (result.outcome !== "failed") {
+    lastAvailable.delete(environmentId);
+  }
+}
+
+function resultErrorMessage(
+  result: GitStatusRow | undefined,
+  queryError: Error | null,
+): string | null {
+  return result?.outcome === "failed"
+    ? result.message
+    : gitStatusErrorMessage(queryError);
+}
+
+function resolveWorkspace(
+  lastAvailable: LastAvailableWorkspaces,
+  environmentId: string,
+  result: GitStatusRow | undefined,
+  errorMessage: string | null,
+): WorkspaceStatus | undefined {
+  return result?.outcome === "available"
+    ? result.workspace
+    : errorMessage !== null
+      ? lastAvailable.get(environmentId)
+      : undefined;
+}
+
 export function createGitStatusHook(useStatusQuery: GitStatusKeyedQuery) {
-  const lastAvailable = new Map<string, WorkspaceStatus>();
+  const lastAvailable: LastAvailableWorkspaces = new Map();
   return function useGitStatus(environmentId: string | null): GitStatusState {
     const query = useStatusQuery({
       keys: environmentId === null ? [] : [environmentId],
@@ -39,22 +73,13 @@ export function createGitStatusHook(useStatusQuery: GitStatusKeyedQuery) {
     }, [environmentId, refetchKeys]);
     useEffect(() => {
       if (environmentId === null || result === undefined) return;
-      if (result.outcome === "available") {
-        lastAvailable.set(environmentId, result.workspace);
-      } else if (result.outcome !== "failed") {
-        lastAvailable.delete(environmentId);
-      }
+      rememberWorkspace(lastAvailable, environmentId, result);
     }, [environmentId, result]);
-    const errorMessage =
-      result?.outcome === "failed"
-        ? result.message
-        : gitStatusErrorMessage(query.error);
+    const errorMessage = resultErrorMessage(result, query.error);
     const workspace =
-      result?.outcome === "available"
-        ? result.workspace
-        : errorMessage !== null && environmentId !== null
-          ? lastAvailable.get(environmentId)
-          : undefined;
+      environmentId === null
+        ? undefined
+        : resolveWorkspace(lastAvailable, environmentId, result, errorMessage);
     return {
       result,
       workspace,
@@ -63,5 +88,40 @@ export function createGitStatusHook(useStatusQuery: GitStatusKeyedQuery) {
       isLoading: environmentId !== null && query.isLoading,
       retry,
     };
+  };
+}
+
+export function createGitWorkspacesHook(useStatusQuery: GitStatusKeyedQuery) {
+  const lastAvailable: LastAvailableWorkspaces = new Map();
+  return function useGitWorkspaces(
+    environmentIds: readonly string[],
+  ): ReadonlyMap<string, WorkspaceStatus> {
+    const query = useStatusQuery({
+      keys: [...environmentIds],
+      enabled: environmentIds.length > 0,
+    });
+    const { data, error } = query;
+    useEffect(() => {
+      for (const environmentId of environmentIds) {
+        const result = data?.[environmentId];
+        if (result !== undefined) {
+          rememberWorkspace(lastAvailable, environmentId, result);
+        }
+      }
+    }, [data, environmentIds]);
+    return useMemo(() => {
+      const workspaces = new Map<string, WorkspaceStatus>();
+      for (const environmentId of environmentIds) {
+        const result = data?.[environmentId];
+        const workspace = resolveWorkspace(
+          lastAvailable,
+          environmentId,
+          result,
+          resultErrorMessage(result, error),
+        );
+        if (workspace !== undefined) workspaces.set(environmentId, workspace);
+      }
+      return workspaces;
+    }, [data, environmentIds, error]);
   };
 }

@@ -61,7 +61,6 @@ import {
 import { ThreadProviderContext } from "@/components/thread/thread-provider-context";
 import {
   defaultAppSettings,
-  resolveEnvironmentMergeBaseBranch,
   type ThreadListEntry,
   type ThreadWithRuntime,
 } from "@bb/domain";
@@ -74,10 +73,7 @@ import {
   usePluginDetailPanelState,
 } from "@/components/plugin/plugin-detail-navigation";
 import { useForkThreadFromMessage } from "@/hooks/useForkThreadFromMessage";
-import {
-  useRequestEnvironmentAction,
-  useUpdateEnvironment,
-} from "../../hooks/mutations/environment-mutations";
+import { useUpdateEnvironment } from "../../hooks/mutations/environment-mutations";
 import { useUpdateThread } from "../../hooks/mutations/thread-state-mutations";
 import {
   useEditThreadMessage,
@@ -99,7 +95,6 @@ import { useThreadStorageLocation } from "../../hooks/queries/thread-panel-queri
 import { isTransientReadError } from "@/hooks/queries/query-helpers";
 import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
 import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
-import { ThreadGitActionDialog } from "@/components/dialogs/ThreadGitActionDialog";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { RouteLoadingSkeleton } from "@/components/ui/route-loading-skeleton";
 import { ThreadTimelineLoadingSkeleton } from "@/components/thread/timeline/ThreadTimelineLoadingSkeleton";
@@ -141,18 +136,12 @@ import {
 } from "@/lib/environment-workspace-display";
 import { useSystemEnvironmentProviders } from "@/hooks/queries/environment-provider-queries";
 import { useSystemMachineProviders } from "@/hooks/queries/machine-provider-queries";
-import {
-  formatWorkspaceCheckoutDisplay,
-} from "@bb/shared-ui/lib/workspace-checkout-display";
+import { formatWorkspaceCheckoutDisplay } from "@bb/shared-ui/lib/workspace-checkout-display";
 import {
   getAbsoluteDirname,
   isAbsoluteFilePathWithinRoot,
   resolveAbsoluteFilePath,
 } from "@bb/shared-ui/lib/absolute-file-path";
-import { getGitStatusDisplay } from "@bb/shared-ui/git-status-display";
-import {
-  selectWorkspaceChangedFilesSection,
-} from "@bb/shared-ui/workspace-change-summary";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { hasThreadProvisioningFailure } from "@/lib/thread-provisioning-failure";
 import { showMutationErrorToast } from "@/lib/mutation-errors";
@@ -235,7 +224,6 @@ import type {
   SecondaryPanelFixedTab,
   SecondaryPanelRenderableTab,
 } from "@/components/secondary-panel/ThreadSecondaryPanel";
-import { useThreadGitActions } from "./useThreadGitActions";
 import { useThreadDetailThread } from "./useThreadDetailThread";
 import {
   buildTerminalSyncedSecondaryFileTabs,
@@ -763,7 +751,6 @@ function ThreadDetailViewInternal(
   });
   const sendMessage = useSendThreadMessage();
   const editMessage = useEditThreadMessage();
-  const requestEnvironmentAction = useRequestEnvironmentAction();
   const updateEnvironment = useUpdateEnvironment();
   const updateThread = useUpdateThread({
     errorMessage: "Failed to assign parent thread.",
@@ -1476,12 +1463,7 @@ function ThreadDetailViewInternal(
     }
     return desktopInfo.onCloseWindowRequest(handleCloseWindowRequest);
   }, [handleCloseWindowRequest, isFocused]);
-  const gitWorkspace = useGitWorkspaceStatus(threadEnvironmentId);
-  const workspaceStatus = gitWorkspace.workspace;
-  const workingTreeChangedFilesSection = useMemo(() => {
-    const section = selectWorkspaceChangedFilesSection(workspaceStatus);
-    return section === null || section.kind === "committed" ? null : section;
-  }, [workspaceStatus]);
+  const workspaceStatus = useGitWorkspaceStatus(threadEnvironmentId).workspace;
   const { isLocalDaemonHost } = useHostDaemon();
   const threadEnvironmentIsLocal = environment
     ? isLocalDaemonHost(environment.hostId)
@@ -1622,12 +1604,6 @@ function ThreadDetailViewInternal(
       return { ...childThreadsSection, pendingInteractions };
     }, [childThreadsSection, childPendingInteractions]);
   const isThreadTimelinePending = timelineLoading && timelineRows.length === 0;
-  const gitActions = useThreadGitActions({
-    environment,
-    requestEnvironmentAction,
-    thread,
-    workspaceStatus,
-  });
   const parentThreadId = thread?.parentThreadId;
   const parentThreadDisplayName =
     parentThread?.title && parentThread.title.trim().length > 0
@@ -2022,26 +1998,12 @@ function ThreadDetailViewInternal(
     isThreadOnReusableEnvironment && projectId && thread.environmentId !== null
       ? createThreadInEnvironment
       : undefined;
-  const effectiveMergeBaseBranch =
-    workspaceStatus?.mergeBase?.mergeBaseBranch ??
-    resolveEnvironmentMergeBaseBranch(environment);
-  const threadBranchName = workspaceStatus?.branch.currentBranch ?? undefined;
   const threadCheckoutDisplay = workspaceStatus
     ? formatWorkspaceCheckoutDisplay({ checkout: workspaceStatus.checkout })
     : undefined;
-  const isWorkspaceDeleted = environment?.status === "destroyed";
   const threadEnvironmentGoneStatus =
     hostLifecycle ??
     (environment?.status === "destroyed" ? environment.status : null);
-  const threadGitStatusDisplay = getGitStatusDisplay(workspaceStatus, {
-    mergeBaseBranch: effectiveMergeBaseBranch,
-    showBranchComparison: Boolean(
-      effectiveMergeBaseBranch || workspaceStatus?.branch.defaultBranch,
-    ),
-    errorMessage: gitWorkspace.errorMessage,
-    workspaceUnavailable: gitWorkspace.failure,
-    workspaceDeleted: isWorkspaceDeleted,
-  });
   const threadTitle = getThreadDisplayTitle(thread);
   const responsiveWorkspaceActions: PluginThreadActionsInlineItem[] =
     workspaceOpenPath && preferredDirectoryTarget
@@ -2076,32 +2038,12 @@ function ThreadDetailViewInternal(
       : [];
   const showGitChanges =
     systemConfigQuery.data?.generalSettings.showGitChanges ?? false;
-  const threadHeaderGitActions =
-    executionUnavailable || !showGitChanges
-      ? []
-      : gitActions.threadHeaderGitActions;
-  const responsiveGitActions: PluginThreadActionsInlineItem[] =
-    threadHeaderGitActions.map((action) => ({
-      key: `git/${action.label}`,
-      group: THREAD_HEADER_ACTIONS_GROUP,
-      action: {
-        icon: "GitBranch",
-        label: action.label,
-        run: () => {
-          gitActions.threadGitActionDialog.onOpen(action.target);
-        },
-      },
-    }));
   const threadActionTarget = toThreadActionTarget(
     thread,
     isThreadOnReusableEnvironment && thread.environmentId !== null
       ? { id: thread.environmentId, path: environment.path }
       : null,
   );
-  const responsiveHeaderActions = [
-    ...responsiveWorkspaceActions,
-    ...responsiveGitActions,
-  ];
   const workspaceOpenButton =
     workspaceOpenPath && preferredDirectoryTarget ? (
       <ThreadWorkspaceOpenButton
@@ -2127,6 +2069,7 @@ function ThreadDetailViewInternal(
     <ThreadDetailHeader
       actionsMenu={({
         includeResponsiveActions,
+        headerActions,
         requestRename,
         onCloseAutoFocus,
       }) => (
@@ -2156,14 +2099,26 @@ function ThreadDetailViewInternal(
               />
             </Button>
           )}
-          inline={includeResponsiveActions ? responsiveHeaderActions : []}
+          inline={
+            includeResponsiveActions
+              ? [
+                  ...responsiveWorkspaceActions,
+                  ...headerActions.map(
+                    ({ key, action }): PluginThreadActionsInlineItem => ({
+                      key,
+                      group: THREAD_HEADER_ACTIONS_GROUP,
+                      action: { ...action, run: () => action.run() },
+                    }),
+                  ),
+                ]
+              : []
+          }
           requestRename={requestRename}
           onCloseAutoFocus={onCloseAutoFocus}
         />
       )}
       isSecondaryPanelOpen={isSecondaryPanelOpen}
       onClosePane={onRequestClose ?? undefined}
-      onOpenThreadGitAction={gitActions.threadGitActionDialog.onOpen}
       onToggleSecondaryPanel={toggleSecondaryPanel}
       pluginActions={
         <PluginThreadHeaderActions
@@ -2171,8 +2126,7 @@ function ThreadDetailViewInternal(
           projectId={thread.projectId}
         />
       }
-      threadHeaderGitActions={threadHeaderGitActions}
-      threadId={thread.id}
+      thread={threadActionTarget}
       threadTitle={threadTitle}
       workspaceOpenButton={workspaceOpenButton}
     />
@@ -2625,20 +2579,6 @@ function ThreadDetailViewInternal(
               workspaceRootPath: environment?.path ?? undefined,
             }}
           />
-          {threadEnvironmentId !== null ? (
-            <ThreadGitActionDialog
-              target={gitActions.threadGitActionDialog.target}
-              branchName={threadBranchName}
-              gitStatusDisplay={threadGitStatusDisplay}
-              changedFilesSection={workingTreeChangedFilesSection}
-              onOpenChange={(open) => {
-                if (!open) {
-                  gitActions.threadGitActionDialog.onClose();
-                }
-              }}
-              onCommit={gitActions.handleCommitThread}
-            />
-          ) : null}
         </AppNavigationHostProvider>
       </UrlOpenRoutingProvider>
     </MarkdownLocalFileContextMenuContext.Provider>

@@ -31,7 +31,6 @@ import type {
   PluginSidebarFooterActionRegistration,
   PluginSourceCodeRendererRegistration,
   ExperimentalThreadContextSegmentRegistration,
-  PluginThreadHeaderActionRegistration,
   ExperimentalThreadInfoRowRegistration,
   ExperimentalThreadInfoSectionRegistration,
   PluginThreadActionRegistration,
@@ -168,6 +167,18 @@ export interface LegacyThreadPanelActionRegistration {
   ): void | Promise<void>;
 }
 
+export interface LegacyThreadHeaderActionProps {
+  threadId: string;
+  projectId: string;
+  isCompactViewport: boolean;
+}
+
+export interface LegacyThreadHeaderActionRegistration {
+  id: string;
+  title: string;
+  component: ComponentType<LegacyThreadHeaderActionProps>;
+}
+
 export type LegacyNavPanelRegistration = PluginNavPanelRegistration & {
   fixedTabs?: readonly PluginNavPanelFixedTabRegistration[];
 };
@@ -302,7 +313,7 @@ export interface CollectedPluginAppRegistrations {
   experimentalSidebarFooterItems: CollectedExperimentalSidebarFooterItem[];
   threadLists: PluginThreadListRegistration[];
   experimentalSidebarNavigations: CollectedSidebarNavigationRegistration[];
-  threadHeaderActions: PluginThreadHeaderActionRegistration[];
+  threadHeaderActions: LegacyThreadHeaderActionRegistration[];
   threadContextSegments: ExperimentalThreadContextSegmentRegistration[];
   threadInfoRows: ExperimentalThreadInfoRowRegistration[];
   threadInfoSections: ExperimentalThreadInfoSectionRegistration[];
@@ -642,6 +653,19 @@ export function collectPluginAppRegistrations(
       }
     },
 
+    experimental_threadHeaderAction(
+      registration: LegacyThreadHeaderActionRegistration,
+    ) {
+      const kind = "slots.experimental_threadHeaderAction";
+      const id = requireSlotId(kind, registration?.id);
+      requireUniqueId(kind, seenIds.threadHeaderAction, id);
+      collected.threadHeaderActions.push({
+        id,
+        title: requireNonEmptyString(kind, "title", registration.title),
+        component: requireComponent(kind, registration.component),
+      });
+    },
+
     experimental_sidebarHeader(registration: LegacySidebarHeaderRegistration) {
       legacySidebarHeaders.push(
         collectTitledComponent(
@@ -885,16 +909,6 @@ export function collectPluginAppRegistrations(
           ...(headerComponent !== undefined ? { headerComponent } : {}),
         });
       },
-      experimental_threadHeaderAction(registration) {
-        const kind = "slots.experimental_threadHeaderAction";
-        const id = requireSlotId(kind, registration?.id);
-        requireUniqueId(kind, seenIds.threadHeaderAction, id);
-        collected.threadHeaderActions.push({
-          id,
-          title: requireNonEmptyString(kind, "title", registration.title),
-          component: requireComponent(kind, registration.component),
-        });
-      },
       experimental_threadContextSegment(registration) {
         const kind = "slots.experimental_threadContextSegment";
         const id = requireSlotId(kind, registration?.id);
@@ -976,12 +990,20 @@ export function collectPluginAppRegistrations(
             `${kind}: "experimental_bulkItem" must be a function`,
           );
         }
+        if (
+          registration.placement !== undefined &&
+          registration.placement !== "menu" &&
+          registration.placement !== "header"
+        ) {
+          throw new Error(`${kind}: "placement" must be "menu" or "header"`);
+        }
         collected.threadActions.push({
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
           icon: requireNonEmptyString(kind, "icon", registration.icon),
           group: requireNonEmptyString(kind, "group", registration.group),
           ...requireOptionalOrder(kind, registration.order),
+          placement: registration.placement ?? "menu",
           ...(registration.useData !== undefined
             ? { useData: registration.useData }
             : {}),

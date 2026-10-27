@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { useDebounceValue } from "usehooks-ts";
 import {
   createGitStatusHook,
+  createGitWorkspacesHook,
   type GitStatusKeyedQuery,
 } from "../status-state.js";
 import { gitRpcContract } from "../rpc-contract.js";
@@ -17,6 +18,8 @@ const useGitStatusQuery: GitStatusKeyedQuery = (args) =>
   useRpcKeyedQuery({ contract: gitRpcContract, method: "status", ...args });
 
 export const useGitStatus = createGitStatusHook(useGitStatusQuery);
+
+export const useGitWorkspaces = createGitWorkspacesHook(useGitStatusQuery);
 
 const workspacePaths = new Map<string, string | null>();
 

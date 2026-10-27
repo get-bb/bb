@@ -219,6 +219,11 @@ export function runtimeShimPlugin(pluginSdkAppModuleUrl?: string): Plugin {
               text: `navPanel.fixedTabs is retired from SDK typings. Register each tab with app.slots.experimental_tab({ context: { kind: "nav-panel", panelId }, availability: "fixed", id, title, icon, component }). Existing bundles remain supported. ${migration}`,
             });
           }
+          if (/\.\s*experimental_threadHeaderAction\b/u.test(source)) {
+            warnings.push({
+              text: `experimental_threadHeaderAction is retired from SDK typings. Register a thread action with placement "header" instead: app.slots.experimental_threadAction({ id, title, icon, group, placement: "header", item }). Existing plugins remain supported. See bb-plugin-authoring, frontend-registration.md#a-button-in-the-thread-header.`,
+            });
+          }
           for (const text of retiredSdkMemberWarnings(source)) {
             warnings.push({ text });
           }
@@ -606,7 +611,11 @@ export async function buildPluginApp(
       stagedMetaPath,
       JSON.stringify(
         {
-          ...createPluginArtifactMeta({ packageName, pluginVersion, bbVersion }),
+          ...createPluginArtifactMeta({
+            packageName,
+            pluginVersion,
+            bbVersion,
+          }),
           runtimeSlots,
         },
         null,

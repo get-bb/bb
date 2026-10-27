@@ -38,6 +38,7 @@ import {
   resetThreadActionRegistryForTest,
   useThreadActionEntries,
   useThreadActionRegistrationInfos,
+  useThreadHeaderActionEntries,
 } from "@/lib/thread-actions/thread-action-registry";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import {
@@ -102,6 +103,20 @@ const pluginGroupAction: PluginThreadActionRegistration = {
     label: "Notifications",
     icon: "Notification",
     run: pluginGroupRun,
+  }),
+};
+
+const headerAction: PluginThreadActionRegistration = {
+  id: "commit",
+  title: "Commit",
+  icon: "GitBranch",
+  group: "0_header",
+  placement: "header",
+  item: () => ({ label: "Commit", icon: "GitBranch", run: vi.fn() }),
+  experimental_bulkItem: () => ({
+    label: "Commit all",
+    icon: "GitBranch",
+    run: vi.fn(),
   }),
 };
 
@@ -266,7 +281,12 @@ function renderSurface(
   setPluginSlotRegistrations(
     "fixture",
     makePluginRegistrationSet({
-      threadActions: [moveAction, pluginGroupAction, ...threadActions],
+      threadActions: [
+        moveAction,
+        pluginGroupAction,
+        headerAction,
+        ...threadActions,
+      ],
     }),
   );
   return render(
@@ -1001,6 +1021,48 @@ describe("thread action data input", () => {
     expect(seen).toEqual([[], ["thr_a", "thr_b", "thr_c"]]);
   });
 
+  it("passes a header action only the threads whose header is shown", async () => {
+    const seen: (readonly string[])[] = [];
+    const headerRecorder: PluginThreadActionRegistration<null> = {
+      id: "header-recorder",
+      title: "Header recorder",
+      icon: "GitBranch",
+      group: "git",
+      placement: "header",
+      useData: ({ threadIds }) => {
+        if (seen.at(-1) !== threadIds) seen.push(threadIds);
+        return null;
+      },
+      item: () => null,
+    };
+    setPluginSlotRegistrations(
+      "fixture",
+      makePluginRegistrationSet({ threadActions: [headerRecorder] }),
+    );
+    function Header({ id }: { id: string }) {
+      useThreadHeaderActionEntries(
+        threadListEntryActionTarget({ ...baseThread, id }),
+      );
+      return null;
+    }
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <ThreadActionCollectors
+            coreRegistrations={[]}
+            requestRename={defaultRequestRename}
+          />
+          <Row id="thr_row_a" />
+          <Row id="thr_row_b" />
+          <Header id="thr_open" />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(seen.at(-1)).toEqual(["thr_open"]));
+    await settle();
+    expect(seen).toEqual([[], ["thr_open"]]);
+  });
+
   it("counts no ids from a hidden surface until it is shown", async () => {
     const { seen, Surface } = renderRecorder();
     const ids = Array.from({ length: 250 }, (_, index) => `thr_${index}`);
@@ -1064,7 +1126,12 @@ describe.each([
     setPluginSlotRegistrations(
       "fixture",
       makePluginRegistrationSet({
-        threadActions: [moveAction, pluginGroupAction, levelAction],
+        threadActions: [
+          moveAction,
+          pluginGroupAction,
+          headerAction,
+          levelAction,
+        ],
       }),
     );
     return render(
@@ -1219,4 +1286,46 @@ describe.each([
       expect(onEscapeKeyDown).toHaveBeenCalled();
     },
   );
+});
+
+describe("header thread actions", () => {
+  function HeaderLabels() {
+    return (
+      <ol>
+        {useThreadHeaderActionEntries(
+          threadListEntryActionTarget(baseThread),
+        ).map((entry) => (
+          <li key={entry.key}>{entry.action.label}</li>
+        ))}
+      </ol>
+    );
+  }
+
+  it("evaluates only header registrations and leaves out ones with choices", async () => {
+    const [surface] = SURFACES;
+    if (surface === undefined) throw new Error("no surface");
+    renderSurface(
+      { ...surface, render: () => <HeaderLabels /> },
+      { thread: baseThread },
+      {
+        threadActions: [
+          {
+            ...headerAction,
+            id: "pick-branch",
+            item: () => ({
+              label: "Pick branch",
+              icon: "GitBranch",
+              choices: { items: [{ id: "main", label: "main" }] },
+              run: vi.fn(),
+            }),
+          },
+        ],
+      },
+    );
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole("listitem").map((item) => item.textContent),
+      ).toEqual(["Commit"]),
+    );
+  });
 });

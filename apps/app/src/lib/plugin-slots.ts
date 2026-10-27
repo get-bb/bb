@@ -21,7 +21,6 @@ import type {
   PluginSettingsSectionRegistration,
   PluginSidebarFooterActionRegistration,
   PluginSourceCodeRendererRegistration,
-  PluginThreadHeaderActionRegistration,
   ExperimentalThreadContextSegmentRegistration,
   ExperimentalThreadInfoRowRegistration,
   ExperimentalThreadInfoSectionRegistration,
@@ -33,6 +32,7 @@ import type {
 import {
   type CollectedPluginCommandRegistration,
   type LegacyThreadPanelActionRegistration,
+  type LegacyThreadHeaderActionRegistration,
   type LegacyNavPanelRegistration,
   adaptSidebarFooterAction,
   getCollectedSidebarFooterItems,
@@ -57,7 +57,7 @@ export interface PluginRegistrationSet {
   experimentalSidebarFooterItems?: readonly CollectedExperimentalSidebarFooterItem[];
   threadLists?: readonly PluginThreadListRegistration[];
   experimentalSidebarNavigations?: readonly CollectedSidebarNavigationRegistration[];
-  threadHeaderActions?: readonly PluginThreadHeaderActionRegistration[];
+  threadHeaderActions?: readonly LegacyThreadHeaderActionRegistration[];
   threadContextSegments?: readonly ExperimentalThreadContextSegmentRegistration[];
   threadInfoRows?: readonly ExperimentalThreadInfoRowRegistration[];
   threadInfoSections?: readonly ExperimentalThreadInfoSectionRegistration[];
@@ -125,7 +125,7 @@ export interface PluginThreadListSlot
 export interface ExperimentalSidebarNavigationSlot
   extends CollectedSidebarNavigationRegistration, PluginSlotBase {}
 interface PluginThreadHeaderActionSlot
-  extends PluginThreadHeaderActionRegistration, PluginSlotBase {}
+  extends LegacyThreadHeaderActionRegistration, PluginSlotBase {}
 export interface PluginThreadContextSegmentSlot
   extends ExperimentalThreadContextSegmentRegistration, PluginSlotBase {}
 export interface PluginThreadInfoRowSlot

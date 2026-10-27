@@ -10,6 +10,10 @@ import {
 } from "react";
 import { Button } from "@bb/shared-ui/button";
 import { useAtomValue } from "jotai";
+import type {
+  PluginThreadActionEntry,
+  PluginThreadActionTarget,
+} from "@get-bb/plugin-sdk";
 import { COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { Icon } from "@bb/shared-ui/icon";
 import { SplitButton } from "@/components/ui/split-button.js";
@@ -18,7 +22,6 @@ import {
   HEADER_ICON_BUTTON_CLASS,
   HEADER_PANE_ACTION_ICON_BUTTON_CLASS,
 } from "@/components/layout/AppPageHeader";
-import type { ThreadGitActionDialogTarget } from "@/components/dialogs/ThreadGitActionDialog";
 import {
   getBbDesktopInfo,
   MACOS_TITLE_BAR_TRAILING_TOGGLE_CLASS,
@@ -34,7 +37,10 @@ import {
 import { useSidebarRename } from "@/components/sidebar/SidebarInlineRename";
 import { useThreadActions } from "@/components/thread/ThreadActionsProvider";
 import { ThreadTitle } from "@/components/thread/ThreadTitleMentions";
-import { useDefaultRequestRename } from "@/lib/thread-actions/thread-action-registry";
+import {
+  useDefaultRequestRename,
+  useThreadHeaderActionEntries,
+} from "@/lib/thread-actions/thread-action-registry";
 import { SecondaryPanelHostLayoutContext } from "@/components/secondary-panel/SecondaryPanelHostLayoutContext";
 import {
   RIGHT_PANEL_TOGGLE_ICON_NAME,
@@ -51,7 +57,6 @@ import {
 } from "@bb/shared-ui/context-selection";
 import { usePaneContext } from "./PaneContext";
 import { PaneMaximizeButton } from "./PaneMaximizeButton";
-import type { ThreadHeaderGitAction } from "./useThreadGitActions";
 
 const THREAD_HEADER_ACTION_BUTTON_CLASS = cn(
   COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS,
@@ -61,6 +66,7 @@ const NARROW_SPLIT_HEADER_MAX_WIDTH = 560;
 
 export interface ThreadDetailHeaderActionsMenuArgs {
   includeResponsiveActions: boolean;
+  headerActions: readonly PluginThreadActionEntry[];
   requestRename: (threadId: string) => void;
   onCloseAutoFocus: (event: Event) => void;
 }
@@ -69,11 +75,9 @@ interface ThreadDetailHeaderProps {
   actionsMenu: ((args: ThreadDetailHeaderActionsMenuArgs) => ReactNode) | null;
   isSecondaryPanelOpen: boolean;
   onClosePane?: () => void;
-  onOpenThreadGitAction: (target: ThreadGitActionDialogTarget) => void;
   onToggleSecondaryPanel: () => void;
   pluginActions?: ReactNode;
-  threadHeaderGitActions: ThreadHeaderGitAction[];
-  threadId: string;
+  thread: PluginThreadActionTarget;
   threadTitle: string;
   workspaceOpenButton?: ReactNode;
 }
@@ -82,17 +86,17 @@ export function ThreadDetailHeader({
   actionsMenu,
   isSecondaryPanelOpen,
   onClosePane,
-  onOpenThreadGitAction,
   onToggleSecondaryPanel,
   pluginActions,
-  threadHeaderGitActions,
-  threadId,
+  thread,
   threadTitle,
   workspaceOpenButton,
 }: ThreadDetailHeaderProps) {
   const isCompactViewport = useIsCompactViewport();
   const isPointerCoarse = usePointerCoarse();
-  const [primaryAction, ...secondaryActions] = threadHeaderGitActions;
+  const threadId = thread.id;
+  const headerActions = useThreadHeaderActionEntries(thread);
+  const [primaryAction, ...secondaryActions] = headerActions;
   const { renameThreadAsync } = useThreadActions();
   const handleRename = useCallback(
     (nextTitle: string) => renameThreadAsync(threadId, nextTitle),
@@ -227,6 +231,7 @@ export function ThreadDetailHeader({
         >
           {actionsMenu({
             includeResponsiveActions: usesResponsiveActionOverflow,
+            headerActions,
             requestRename: requestRenameFromMenu,
             onCloseAutoFocus: handleActionsMenuCloseAutoFocus,
           })}
@@ -252,13 +257,14 @@ export function ThreadDetailHeader({
             {secondaryActions.length > 0 ? (
               <SplitButton
                 className={THREAD_HEADER_ACTION_BUTTON_CLASS}
+                disabled={primaryAction.action.disabled}
                 primaryAction={{
-                  label: primaryAction.label,
-                  onSelect: () => onOpenThreadGitAction(primaryAction.target),
+                  label: primaryAction.action.label,
+                  onSelect: () => void primaryAction.action.run(),
                 }}
-                secondaryActions={secondaryActions.map((action) => ({
+                secondaryActions={secondaryActions.map(({ action }) => ({
                   label: action.label,
-                  onSelect: () => onOpenThreadGitAction(action.target),
+                  onSelect: () => void action.run(),
                 }))}
               />
             ) : (
@@ -267,9 +273,10 @@ export function ThreadDetailHeader({
                 variant="outline"
                 size="sm"
                 className={THREAD_HEADER_ACTION_BUTTON_CLASS}
-                onClick={() => onOpenThreadGitAction(primaryAction.target)}
+                disabled={primaryAction.action.disabled}
+                onClick={() => void primaryAction.action.run()}
               >
-                {primaryAction.label}
+                {primaryAction.action.label}
               </Button>
             )}
           </span>

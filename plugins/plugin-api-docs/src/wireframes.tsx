@@ -1018,7 +1018,7 @@ export function AppShellWireframe({
         <>
           <MeasuredBadge
             id="thread-header"
-            label="Plugin thread-header control, left end of the action row"
+            label="Plugin header buttons, after the workspace's Open button"
             anchor='[data-guide-region="thread-header"]'
             at="above"
           />
@@ -1163,7 +1163,7 @@ function AppShellWireframeBody({
             <span className="flex-1" />
             <Mark
               id="thread-header"
-              label="Plugin thread-header control, left end of the action row"
+              label="Plugin header buttons, after the workspace's Open button"
               className="flex h-6.5 items-center gap-1 px-2"
               showChip={false}
             >

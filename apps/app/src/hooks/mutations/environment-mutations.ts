@@ -1,12 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { Environment } from "@bb/domain";
-import type {
-  EnvironmentActionResponse,
-  UpdateEnvironmentRequest,
-} from "@bb/server-contract";
+import type { UpdateEnvironmentRequest } from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
-import type { RequestEnvironmentActionMutationRequest } from "./mutation-request-types";
-import { invalidateEnvironmentActionQueries } from "../cache-owners/environment-cache-effects";
 import {
   beginEnvironmentNameUpdateTransaction,
   completeEnvironmentNameUpdateTransaction,
@@ -16,32 +11,6 @@ import {
 type UpdateEnvironmentMutationRequest = {
   id: string;
 } & UpdateEnvironmentRequest;
-
-export function useRequestEnvironmentAction() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    meta: {
-      errorMessage: "Failed to run environment action.",
-      showErrorToast: false,
-    },
-    mutationFn: ({
-      id,
-      ...request
-    }: RequestEnvironmentActionMutationRequest): Promise<EnvironmentActionResponse> => {
-      switch (request.action) {
-        case "commit":
-          return sdk.environments.commit({ environmentId: id });
-      }
-    },
-    onSuccess: (_response, variables) => {
-      invalidateEnvironmentActionQueries({
-        environmentId: variables.id,
-        queryClient,
-      });
-    },
-  });
-}
 
 export function useUpdateEnvironment() {
   const queryClient = useQueryClient();
@@ -92,4 +61,3 @@ export function useUpdateEnvironment() {
     },
   });
 }
-

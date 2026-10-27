@@ -204,17 +204,16 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
       },
       {
         id: "thread-header",
-        title: "Thread header controls",
+        title: "Thread header buttons",
         summary:
-          "Add a control to the header of an open thread. With this, a plugin can:",
+          'Add a button to the header of an open thread: a thread action with placement "header". With this, a plugin can:',
         bullets: [
-          "Show live state for the thread on screen, not just a static button",
-          "Sit in the same row as bb's own header controls",
+          "Show a labelled button after the workspace's Open button, only while it applies to the thread",
+          "Fold into the thread menu on phones and in narrow split panes",
+          "Load data only for the threads whose header is on screen",
         ],
-        apiSymbols: [
-          "PluginThreadHeaderActionRegistration",
-          "PluginThreadHeaderActionProps",
-        ],
+        apiSymbols: ["PluginThreadActionPlacement"],
+        firstParty: ["Git"],
         experimental: true,
       },
       {
@@ -445,7 +444,14 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginThreadActionItemInput.experimental_panel",
           "PluginNewThreadPanelActionContext.experimental_panel",
         ],
-        firstParty: ["Docs", "Git", "GitHub", "Side chat", "Tasks", "Workflows"],
+        firstParty: [
+          "Docs",
+          "Git",
+          "GitHub",
+          "Side chat",
+          "Tasks",
+          "Workflows",
+        ],
       },
       {
         id: "file-opener",

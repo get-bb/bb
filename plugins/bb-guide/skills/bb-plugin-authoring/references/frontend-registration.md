@@ -146,30 +146,37 @@ export default definePluginApp((app) => {
 });
 ```
 
-### A control in the thread header
+### A button in the thread header
 
-`app.slots.experimental_threadHeaderAction` renders a component in the thread
-header's action row. Use it for live plugin state.
+A thread action with `placement: "header"` is a button in the open thread's
+header instead of a menu entry. It shows after the workspace's Open button
+with its `label` (several share one split button). On phones and in narrow
+split panes it folds into the header's thread menu, as a row at the top. It
+never appears in other menus, the quick-action picker, or
+`experimental_useThreadActions`. Its `useData` receives only the threads
+whose header is on screen. Return null from `item` whenever the button does
+not apply. Header buttons do not show `choices`. bb's Git plugin registers
+Commit this way.
 
 ```tsx
-app.slots.experimental_threadHeaderAction({
-  id: "subagents",
-  title: "Subagents",
-  component: ({ threadId, projectId, isCompactViewport }) => { ... },
+app.slots.experimental_threadAction({
+  id: "deploy",
+  title: "Deploy",
+  icon: "Rocket",
+  group: "deploy",
+  placement: "header",
+  useData: ({ threadIds }) => useDeployable(threadIds),
+  item: ({ thread, data }) =>
+    data.has(thread.id)
+      ? { label: "Deploy", icon: "Rocket", run: () => openDeployDialog(thread.id) }
+      : null,
 });
 ```
 
-The row is a 48px chrome row with 28px controls. Render one inline control.
-Put taller content in a portalled popover. The host limits the layout box, but
-it does not clip painted overflow. `title`
-names the host's wrapper region — your icon-only button still needs its own
-accessible name. A split layout renders one header
-per pane, so your component mounts once per visible thread — keep per-thread
-state in the component, never in a module-level singleton.
-
-A common pairing with a replaced sidebar: hide child threads from the list and
-surface them here instead, filtering `experimental_useSidebarThreads()` by
-`parentThreadId === threadId`.
+`app.slots.experimental_threadHeaderAction` is retired. Plugins that still
+call it keep rendering a component at the left end of the header row, and
+`bb plugin build` warns. Move a plain button to a header thread action; move
+live state to the Info tab or a context segment.
 
 ### Rows and sections in the thread Info tab
 

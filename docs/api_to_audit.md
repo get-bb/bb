@@ -2628,41 +2628,6 @@ Docs: `frontend-registration.md`.
    actions. Audit empty machine sections, machine removal, rename updates, and
    loading behavior for `experimental_hosts`.
 
-## `app.slots.experimental_threadHeaderAction` (`@get-bb/plugin-sdk/app`)
-
-**Kept experimental (2026-08-22).** There are no consumers, and item 1 (merging
-with `bb.ui.registerThreadAction`) is cheapest to decide before the first one.
-
-Renders a plugin component in the thread header's action row, once per pane
-with that pane's `threadId`, for controls that draw live state. A crash
-removes only that pane's control.
-
-Docs: `frontend-registration.md`.
-
-**Audit before stabilizing.**
-
-1. **Two APIs, one region.** `bb.ui.registerThreadAction` and this slot share a
-   row. Confirm the ordering rule between them, and whether the two should
-   merge behind one registration.
-2. **Budget.** The row is short and already holds five host controls. Decide a
-   cap, or an overflow behavior, before three plugins each add one.
-3. **Compact viewport.** `isCompactViewport` asks every plugin to collapse
-   itself. Confirm that beats a host-owned overflow menu.
-4. **Per-pane mounting.** Confirm plugins handle mounting once per pane, and
-   that a popover opened in one pane cannot leak into another.
-5. **Height discipline.** The host clamps the control's layout box
-   (`max-h-7 max-w-64`) but deliberately does not clip overflow, because
-   clipping also hides an anchored popover. A plugin can therefore still paint
-   outside the row. Decide whether that trade is right, or whether the host
-   should require a portal.
-6. **Other headers.** Decide whether the compose screen, plugin panels, and the
-   workspace header need the same slot, or stay host-only.
-7. **Crash isolation.** Each pane's mount has its own crashed-instance key, so
-   one pane's crash does not disable another's copy; the thread-list slot
-   deliberately does not, so a crash there disables it everywhere. Confirm
-   that split, and decide whether other multi-mount slots need the same
-   treatment.
-
 ## `app.slots.experimental_threadInfoRow` / `app.slots.experimental_threadInfoSection` / `experimental_THREAD_INFO_ROW_GROUPS` / `experimental_THREAD_INFO_SECTION_GROUPS` / `experimental_InfoSection` / `experimental_DetailRow` / `experimental_InfoList` / `experimental_InfoListRow` (`@get-bb/plugin-sdk/app`)
 
 A registration is `{ id, group, order?, component }`. The component receives
@@ -2718,9 +2683,9 @@ Docs: `frontend-registration.md`, `frontend-components.md`.
    `[data-info-section]`, so a section that renders without
    `experimental_InfoSection` gets no separator. Confirm that is acceptable.
 
-## `app.slots.experimental_threadAction` / `PluginThreadActionRegistration.experimental_bulkItem` / `experimental_useThreadActions` / `experimental_useThreadActionRegistrations` / `experimental_ThreadActionsMenu` / `experimental_ThreadActionsContextMenu` (with `experimental_bulkThreads`) / `experimental_THREAD_ACTION_GROUPS` (`@get-bb/plugin-sdk/app`)
+## `app.slots.experimental_threadAction` / `PluginThreadActionRegistration.experimental_bulkItem` / `PluginThreadActionRegistration.placement` / `experimental_useThreadActions` / `experimental_useThreadActionRegistrations` / `experimental_ThreadActionsMenu` / `experimental_ThreadActionsContextMenu` (with `experimental_bulkThreads`) / `experimental_THREAD_ACTION_GROUPS` (`@get-bb/plugin-sdk/app`)
 
-A registration is `{ id, title, icon, group, order?, useData?, item }`.
+A registration is `{ id, title, icon, group, order?, placement?, useData?, item }`.
 `useData` runs once per registration for the whole app and receives
 `{ threadIds }`, every thread a visible surface evaluates actions for,
 debounced (32 ms quiet, 100 ms max). `item` is a pure function of
@@ -2730,6 +2695,17 @@ contained. Registrations sort by `group`, `order`, then registration order
 for every menu and the quick-action picker. Thread-list registers Move to
 section, and push-notifications registers Notifications. The SDK test fake
 throws when a menu `trigger` drops its props and ref.
+
+`placement` is `"menu"` (the default) or `"header"`. A header action is
+left out of every menu, selection menu, `experimental_useThreadActions`, and
+the quick-action picker. `ThreadDetailHeader` evaluates header actions through
+`useThreadHeaderActionEntries` and draws them after the workspace's Open
+button: one as an outline button, several as a split button. At compact width
+and in split panes narrower than 560 px they become rows at the top of the
+header's thread menu, after Open. An action that returns `choices` is left out
+of the header. A header registration's `useData` receives only the threads
+whose header is on screen, so per-thread reads scale with open panes, not
+sidebar rows. The Git plugin's Commit is the only header action.
 
 `experimental_bulkItem` is an optional pure function of
 `{ threads, data, sdk, navigate }` (two or more selected threads in list
@@ -2780,7 +2756,12 @@ Docs: `frontend-registration.md`.
 4. **Inline items.** `inline` exists for surface-specific entries that are not
    about a thread. Confirm it should stay a component prop rather than a
    registration.
-5. **Bulk shape.** Decide whether `experimental_bulkItem` should
+5. **Header placement.** Header buttons honor `label` and `disabled` only;
+   `detail`, `variant`, and `choices` show nowhere on the button. Decide
+   whether header actions need choices (a split-button menu) or an icon-only
+   form before more plugins add one, and how many fit before the row needs
+   its own overflow.
+6. **Bulk shape.** Decide whether `experimental_bulkItem` should
    stay a second function or `item` should take a target that is one thread
    or several, whether selection menus need a dropdown or compact-drawer
    variant beyond right-click and long-press, and whether a bulk item
@@ -3721,6 +3702,28 @@ The GitHub PR Status plugin's keyed `pullRequests` read is the first producer: i
 
 Stabilize after exercising producer cancellation, reload, reconnect and byte limits across additional consumers. In the app, core and plugin surfaces subscribe through the same `WebSocketManager` (`apps/app/src/lib/ws.ts`). The SDK has no watched-read API yet.
 
+## Retired `app.slots.experimental_threadHeaderAction` slot
+
+`app.slots.experimental_threadHeaderAction` and its
+`PluginThreadHeaderActionRegistration` and `PluginThreadHeaderActionProps`
+types are gone from `@get-bb/plugin-sdk/app`, the Plugin Guide and the
+authoring docs. Its replacement is a thread action with
+`placement: "header"` (see the `experimental_threadAction` entry), the path
+the Git plugin's Commit button uses. The collector keeps the method as a
+legacy slot alias (`legacySlotAliases` in
+`packages/plugin-sdk/src/internal/plugin-app-registration-collector.ts`,
+typed by the internal `LegacyThreadHeaderActionRegistration`), so existing
+plugins, including ones that check `typeof app.slots.experimental_threadHeaderAction === "function"`
+first, still register, and `PluginThreadHeaderActions` still renders them in
+the header row before the workspace button, once per pane with
+`{ threadId, projectId, isCompactViewport }`, as before. `bb-plugin-build`
+warns on any `.experimental_threadHeaderAction` reference with the
+replacement call: `bb plugin build` and `bb plugin dev` print it, and the
+server writes it to the plugin's log when it builds the plugin. Callers are
+marketplace plugins written against the old SDK: 105 plugins in the
+October 2026 marketplace scan (account-pool-balanced, advisor, agent-graph, agent-reload, agent-roles, app-preview, asciimoji, auto-compact, autoresearch, backlog, bookmarks, bots-sidebar, branch-pr, browser-copy, burn, calm, chief, claude-account-switcher, claude-design, claude-switcher, code-review, copilot-aic-usage, crew, delegation, desktop, diff-explorer, diff-review, diff-tree, dockside, ds4, fast-archive, file-explorer, file-gateway, file-tree, finder, firstmate, floating-notes, follow-thinking, followups, game-studio, genui, git-history, gitbutler, gtd-sidebar, hands-free, harness, herald, hmm-floating-terminal, ios-simulator, jb-flow, kata, kitchen-sink, linear, loom, model-connections, new-issue, office-viewer, omp-subagents, oxi-projects, pi-services, plan-tab, plannotator, pokecut-theme, pokemon-catcher, presentations, productive, project-colors, project-files, project-folders, recap, references, retitle, rewind, run-commands, saved-prompts, session-log, sessions-switcher, sidebar, sidebar-focus, slack, stelow, subscriptions, superhuman, t3sidebar, tab-manager, tabs, taskboard, tasks-plus, thread-briefs, thread-inbox, thread-namer, thread-overview, timer, tokenomics, treelanes, triage, ultragoal, vantage, vcs-widget, video-markup, visual-workflows, whiteboard, wikilinks, workbench-explorer, xlsx-preview). Remove the alias, the slot store
+entry and `PluginThreadHeaderActions` only after those plugins have migrated.
+
 ## Retired `experimental_useSidebarThreadPullRequest` runtime member
 
 `experimental_useSidebarThreadPullRequest(threadId)` and its `PluginSidebarPullRequest` and `PluginSidebarThreadPullRequestState` types are gone from `@get-bb/plugin-sdk/app`, the Plugin Guide and the authoring docs. Published bundles resolve `@get-bb/plugin-sdk/app` exports by name on `globalThis.__bbPluginRuntime.pluginSdkApp`, so the app installs `retiredPluginSdkAppMembers` (`apps/app/src/lib/plugin-sdk-app-impl.tsx`) next to the implementation. The member keeps its old shape, reads the GitHub PR Status plugin's `pullRequests` row for the thread's environment through `useRetiredSidebarEnvironmentPullRequest` (`apps/app/src/lib/retired-sidebar-pull-request.ts`), main's hook kept for it: a cached row refetches on mount and a stale row on page show. It returns `{ isLoading: false, pullRequest: null }` when the plugin is disabled or the read fails. The GitHub PR Status plugin's own segment and Info row use the plugin's copy of that hook. Both copies announce each refetch they start with `PULL_REQUESTS_REFETCH_EVENT` on `window` and recheck staleness before a page-show refetch, so a row shown by both is read once. The name leaves only the typings. `bb-plugin-build` keeps it in the `@get-bb/plugin-sdk/app` runtime shim's export list (`RETIRED_PLUGIN_SDK_APP_EXPORTS` in `packages/plugin-build/src/build-plugin-app.ts`), so plugins that still import it build and run, because git-sourced marketplace plugins are built by bb at install and update and path and builtin plugins rebuild when the SDK version changes. An import of it is a build warning carrying the replacement call: `bb plugin build` and `bb plugin dev` print it, and the server writes it to the plugin's log and the server log when it builds the plugin. Callers are marketplace plugins written against the old SDK (t3sidebar, dockside, gtd-sidebar, thread-inbox, radar-sidebar, bb-sidebar, sidebar-plus, cursor-sidebar, switchboard, vantage, jb-flow, tinted-threads among them). Remove the runtime member and the shim entry only after those plugins have migrated.
@@ -3742,15 +3745,16 @@ own value, so plugins built against the old constant keep working.
 - **Core callers:** `useAppPanelController` and `createAppPanelController` in `apps/app/src/lib/app-fixed-tab-navigation.tsx` are the one implementation; `ThreadDetailView`, `PluginPanelRightPanelHost` and `RootComposeView` build it from their destinations and route bb's own controls through it: the Git plugin's Mod+D command is `toggleTab` on its Diff tab through `ctx.experimental_panel`, `panel.toggle` and the header/page toggle close through `close()` (opening restores the last tab), Info, the fixed-tab strip and Diff file/commit opens use `openTab`, and the panel close/collapse buttons, `panel.close` and the window-close request use `close()`. Plugin calls map through `createPluginPanelController` in `apps/app/src/lib/plugin-panel-controller.ts`. Contract tests: `app-fixed-tab-navigation.test.ts` and the surface tests that run the shared table.
 - **Retired members (2026-10-26):** removed from public typings, the Plugin Guide and the authoring docs; runtime shims call the controller and `bb plugin build` warns with the replacement call (`packages/plugin-build/src/retired-sdk-members.ts`).
 
-  | Retired | Replacement |
-  | --- | --- |
-  | `ctx.openPanel(options?)` on every launcher context | `ctx.experimental_panel.openTab({ tab: { id, context: { kind: "thread" }, availability: "action" }, params, title })` |
-  | `useBbNavigate().openThreadPanel({ actionId, params?, title? })` | `experimental_useAppPanel().openTab({ tab: { id: actionId, context: { kind: "thread" }, availability: "action" }, params, title })` |
-  | `experimental_useAppPanel().experimental_openTab({ surface, ...options })` | `experimental_useAppPanel().openTab(options)` |
-  | `experimental_useAppPanel().openFixedTab({ surface, tab: { panelId?, id }, target? })` | `experimental_useAppPanel().openTab({ tab: { id, context, availability: "fixed" }, target })` |
-  | testing `renderSlot` options `openThreadPanel`, `experimental_openTab`, `experimental_openFixedTab`; logs `experimental_tabOpenCalls`, `experimental_fixedTabOpenCalls` and the `openThreadPanel` `NavigateCall` | option `experimental_panel: Partial<ExperimentalPanelController>`; log `experimental_panelCalls` |
+  | Retired                                                                                                                                                                                                          | Replacement                                                                                                                         |
+  | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+  | `ctx.openPanel(options?)` on every launcher context                                                                                                                                                              | `ctx.experimental_panel.openTab({ tab: { id, context: { kind: "thread" }, availability: "action" }, params, title })`               |
+  | `useBbNavigate().openThreadPanel({ actionId, params?, title? })`                                                                                                                                                 | `experimental_useAppPanel().openTab({ tab: { id: actionId, context: { kind: "thread" }, availability: "action" }, params, title })` |
+  | `experimental_useAppPanel().experimental_openTab({ surface, ...options })`                                                                                                                                       | `experimental_useAppPanel().openTab(options)`                                                                                       |
+  | `experimental_useAppPanel().openFixedTab({ surface, tab: { panelId?, id }, target? })`                                                                                                                           | `experimental_useAppPanel().openTab({ tab: { id, context, availability: "fixed" }, target })`                                       |
+  | testing `renderSlot` options `openThreadPanel`, `experimental_openTab`, `experimental_openFixedTab`; logs `experimental_tabOpenCalls`, `experimental_fixedTabOpenCalls` and the `openThreadPanel` `NavigateCall` | option `experimental_panel: Partial<ExperimentalPanelController>`; log `experimental_panelCalls`                                    |
 
   One behaviour narrows: an action tab's or New-thread action's own `ctx.openPanel()` now resolves through the launching surface's registered tabs instead of opening its action directly, so it declines if the action was hidden or unregistered while `run` awaited. The other retired members already resolved against registered tabs. Survey of the 342 bb-community source repositories (shallow clones, 2026-10-26, production sources): `openPanel(` 102 call sites in 47 repos, `openThreadPanel(` 111 in 55, `experimental_openTab(` 3 in 2, `openFixedTab(` 11 in 8. Three repos self-open after an `await` in `run` (bb-plugin-crew, bb-wterm-terminal-plugin, bb-plugin-feed), all through the legacy `threadPanelAction`, which has no `useVisible`; the one tab with `useVisible` (shuttle) self-opens synchronously from its visible launcher. No caller relies on opening an unregistered or hidden action. In-repo callers (side-chat, tasks, workflows, docs, the ThreadChat demo) moved to the controller.
+
 - **Stabilization:** audit focus resolution for commands and thread actions across split panes and plugin pages, `toggleTab` against compact drawers and plugin-detail overlays, `close()` acceptance when the panel is already closed, and whether a nav-panel action reference should resolve on thread surfaces. Remove the retired shims after published callers migrate, then rename project-wide and remove this entry.
 
 ## Unified tabs (`experimental_tab`)
