@@ -248,6 +248,49 @@ describe("CompactLongPressMenu", () => {
     expect(onProjectOpenChange).toHaveBeenCalledWith(true);
   });
 
+  it("lets only the innermost menu open when the menus come from separately bundled copies", async () => {
+    vi.useFakeTimers();
+    const pluginBundleSpecifier =
+      "@bb/shared-ui/compact-long-press-menu?plugin-bundle";
+    const pluginBundleCopy: typeof import("@bb/shared-ui/compact-long-press-menu") =
+      await import(pluginBundleSpecifier);
+    expect(pluginBundleCopy.CompactLongPressMenu).not.toBe(
+      CompactLongPressMenu,
+    );
+    const ProjectMenu = pluginBundleCopy.CompactLongPressMenu;
+    const onProjectOpenChange = vi.fn();
+    const onThreadOpenChange = vi.fn();
+    render(
+      <CompactViewportOverrideProvider isCompactViewport>
+        <ProjectMenu
+          label="Project actions"
+          onOpenChange={onProjectOpenChange}
+          items={<DropdownMenuItem>Rename project</DropdownMenuItem>}
+        >
+          <div>
+            <span>Project</span>
+            <CompactLongPressMenu
+              label="Thread actions"
+              onOpenChange={onThreadOpenChange}
+              items={<DropdownMenuItem>Rename thread</DropdownMenuItem>}
+            >
+              <a href="#thread" data-testid="row">
+                Thread row
+              </a>
+            </CompactLongPressMenu>
+          </div>
+        </ProjectMenu>
+      </CompactViewportOverrideProvider>,
+    );
+
+    touchPointerDown(screen.getByTestId("row"));
+    act(() => {
+      vi.advanceTimersByTime(LONG_PRESS_MS);
+    });
+    expect(onThreadOpenChange).toHaveBeenCalledWith(true);
+    expect(onProjectOpenChange).not.toHaveBeenCalled();
+  });
+
   it("opens from a right-click on a narrow window without the native menu", () => {
     const { row, onOpenChange } = renderRow();
     const event = new MouseEvent("contextmenu", {
