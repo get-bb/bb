@@ -48,20 +48,18 @@ vi.mock("@/views/thread-detail/PaneContext", () => ({
   useOptionalPaneContext: () => pane,
 }));
 
-const PI_APP_MODULE = resolve(
-  __dirname,
-  "../../../../../plugins/provider-pi/app.tsx",
-);
-
-async function loadPiPendingInteractions(): Promise<
-  NonNullable<PluginRegistrationSet["pendingInteractions"]>
-> {
+async function loadPendingInteractions(
+  pluginDir: string,
+): Promise<NonNullable<PluginRegistrationSet["pendingInteractions"]>> {
   installPluginRuntime();
   const module: { default?: unknown } = await import(
-    /* @vite-ignore */ PI_APP_MODULE
+    /* @vite-ignore */ resolve(
+      __dirname,
+      `../../../../../plugins/${pluginDir}/app.tsx`,
+    )
   );
   if (!isPluginAppDefinition(module.default)) {
-    throw new Error("provider-pi's app.tsx exports no plugin app definition");
+    throw new Error(`${pluginDir}'s app.tsx exports no plugin app definition`);
   }
   return collectPluginAppRegistrations(module.default).pendingInteractions;
 }
@@ -270,7 +268,7 @@ describe("PluginPendingInteractionComposer", () => {
   it("submits a numbered pi selection through the shared question form", async () => {
     setPluginSlotRegistrations(
       "provider-pi",
-      registrations(await loadPiPendingInteractions()),
+      registrations(await loadPendingInteractions("provider-pi")),
     );
     const data = {
       requestId: "ui-1",
@@ -570,6 +568,203 @@ describe("PluginPendingInteractionComposer", () => {
     ).toBeDefined();
     expect(screen.getByRole("button", { name: "Stop turn" })).toBeDefined();
     expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
+  });
+
+  describe("Secrets form", () => {
+    const secretRequest = {
+      pluginId: "secrets",
+      rendererId: "secret-request",
+      title: "Add secrets",
+      data: {
+        purpose: "The droplet monitor needs an OpenRouter key for summaries.",
+        destination: {
+          kind: "dotenv",
+          path: "/home/agent/projects/droplet-monitor/.env",
+        },
+        fields: [
+          { name: "OPENROUTER_API_KEY", description: "OpenRouter API key" },
+        ],
+      },
+    };
+
+    function expectFlatTypeScale() {
+      const textElements = [
+        ...(document.querySelector("form")?.querySelectorAll("*") ?? []),
+      ].filter((element) =>
+        [...element.childNodes].some(
+          (node) =>
+            node.nodeType === Node.TEXT_NODE && node.textContent?.trim(),
+        ),
+      );
+      expect(textElements.length).toBeGreaterThan(0);
+      for (const element of textElements) {
+        expect(element.className).not.toMatch(
+          /(^|\s)(font-mono|font-semibold|font-normal|text-sm)(\s|$)/,
+        );
+      }
+    }
+
+    function folderText(folder: string): HTMLElement {
+      return screen.getByText(
+        (_, element) =>
+          element?.getAttribute("dir") === "rtl" &&
+          element.textContent?.replace(/[\u200e\u2066\u2069]/g, "") === folder,
+      );
+    }
+
+    async function renderSecretsForm(
+      close: (() => void) | null,
+      path = secretRequest.data.destination.path,
+    ) {
+      setPluginSlotRegistrations(
+        "secrets",
+        registrations(await loadPendingInteractions("secrets")),
+      );
+      markPluginFrontendsSettled();
+      const composer = (
+        <PluginPendingInteractionComposer
+          collapsedByDefault={false}
+          interaction={interaction}
+          request={{
+            ...secretRequest,
+            data: {
+              ...secretRequest.data,
+              destination: { kind: "dotenv", path },
+            },
+          }}
+          origin="plugin"
+        />
+      );
+      renderComposer(
+        close === null ? (
+          composer
+        ) : (
+          <InlinePendingInteractionContext.Provider
+            value={{ promptShownAbove: "Add secrets", close }}
+          >
+            {composer}
+          </InlinePendingInteractionContext.Provider>
+        ),
+      );
+    }
+
+    it("collapses long copy to single lines inside the child threads banner", async () => {
+      const cancel = vi.spyOn(sdk.threads.interactions, "cancel");
+      const close = vi.fn();
+      await renderSecretsForm(close);
+      expect(screen.getByText("OpenRouter API key").getAttribute("title")).toBe(
+        "OpenRouter API key",
+      );
+      const destination = screen.getByRole("button", {
+        name: `Saves to ${secretRequest.data.destination.path}`,
+      });
+      expect(destination.getAttribute("aria-expanded")).toBe("false");
+      const fileName = screen.getByText(".env");
+      expect(fileName.className.split(" ")).toEqual(
+        expect.arrayContaining(["shrink-0", "font-medium"]),
+      );
+      expect(fileName.parentElement).toBe(destination);
+      expect(fileName.className.split(" ")).toEqual(
+        expect.arrayContaining(["shrink-0"]),
+      );
+      expect(
+        destination.textContent?.replace(/[\u200e\u2066\u2069]/g, ""),
+      ).toBe("Saves to.envin~/projects/droplet-monitor");
+      expect(folderText("~/projects/droplet-monitor").dir).toBe("rtl");
+      expect(screen.queryByText(/Writes to/)).toBeNull();
+      fireEvent.click(destination);
+      expect(destination.getAttribute("aria-expanded")).toBe("true");
+      expect(
+        destination.textContent?.replace(/[\u200e\u2066\u2069]/g, ""),
+      ).toBe(`Saves to${secretRequest.data.destination.path}`);
+      const input = screen.getByLabelText("OPENROUTER_API_KEY");
+      expect(input.className.split(" ")).toEqual(
+        expect.arrayContaining([
+          "h-9",
+          "max-md:pointer-coarse:h-9",
+          "max-md:pointer-coarse:text-base",
+        ]),
+      );
+      const footer = screen.getByRole("button", {
+        name: "Add secrets",
+      }).parentElement;
+      expect(footer?.contains(destination)).toBe(false);
+      expect(
+        destination.compareDocumentPosition(input) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(footer?.className.split(" ")).toEqual(
+        expect.arrayContaining(["sticky", "max-md:pointer-coarse:mt-2.5"]),
+      );
+      expectFlatTypeScale();
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+      expect(close).toHaveBeenCalledOnce();
+      expect(cancel).not.toHaveBeenCalled();
+    });
+
+    it("keeps a long file name's extension apart and reserves a folder tail", async () => {
+      const path =
+        "/home/agent/projects/droplet-monitor/credentials/droplet-monitor-production-service.env.local";
+      await renderSecretsForm(vi.fn(), path);
+      const destination = screen.getByRole("button", {
+        name: `Saves to ${path}`,
+      });
+      const [stem, extension] = [
+        "droplet-monitor-production-service",
+        ".env.local",
+      ].map((text) => screen.getByText(text));
+      for (const part of [stem, extension]) {
+        expect(part.className.split(" ")).toContain("shrink-0");
+        expect(part.parentElement).toBe(destination);
+      }
+      const folder = folderText("~/projects/droplet-monitor/credentials");
+      expect(folder.dir).toBe("rtl");
+      expect(folder.parentElement?.className.split(" ")).toEqual(
+        expect.arrayContaining(["basis-0", "max-w-max", "min-w-[3ch]"]),
+      );
+    });
+
+    it("keeps the thread's own page on the question card scale and cancels there", async () => {
+      const cancel = vi
+        .spyOn(sdk.threads.interactions, "cancel")
+        .mockReturnValue(new Promise(() => {}));
+      await renderSecretsForm(null);
+      expect(
+        screen.getByText("OpenRouter API key").getAttribute("title"),
+      ).toBeNull();
+      const destination = screen.getByRole("button", {
+        name: `Saves to ${secretRequest.data.destination.path}`,
+      });
+      expect(destination.textContent).toContain(".env");
+      expect(
+        destination.textContent?.replace(/[\u200e\u2066\u2069]/g, ""),
+      ).toBe("Saves to.envin~/projects/droplet-monitor");
+      expect(folderText("~/projects/droplet-monitor").dir).toBe("rtl");
+      const inputClasses = screen
+        .getByLabelText("OPENROUTER_API_KEY")
+        .className.split(" ");
+      expect(inputClasses).toEqual(
+        expect.arrayContaining(["h-9", "max-md:pointer-coarse:h-10"]),
+      );
+      const submit = document.querySelector('form button[type="submit"]');
+      expect(submit?.className.split(" ")).not.toContain("w-full");
+      const footer = submit?.parentElement;
+      expect(footer?.contains(destination)).toBe(false);
+      expect(
+        destination.compareDocumentPosition(
+          screen.getByLabelText("OPENROUTER_API_KEY"),
+        ) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      const actions = footer?.className.split(" ") ?? [];
+      expect(actions).toContain("sticky");
+      expect(actions).not.toContain("flex-col-reverse");
+      expectFlatTypeScale();
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+      expect(cancel).toHaveBeenCalledWith({
+        interactionId: interaction.id,
+        threadId: interaction.threadId,
+      });
+    });
   });
 
   it("keeps cancel available when the renderer crashes", () => {

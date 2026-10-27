@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   definePluginApp,
   type PluginPendingInteractionProps,
@@ -6,6 +6,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { cn, formatHomePathForDisplay } from "@/lib/utils";
+import { useQuestionFormHost } from "@/components/ui/question-form-host";
+import File01Icon from "@hugeicons/core-free-icons/File01Icon";
 import Loading03Icon from "@hugeicons/core-free-icons/Loading03Icon";
 import ViewIcon from "@hugeicons/core-free-icons/ViewIcon";
 import ViewOffSlashIcon from "@hugeicons/core-free-icons/ViewOffSlashIcon";
@@ -16,6 +19,172 @@ import {
   secretRequestResponseSchema,
 } from "./src/secret-request.js";
 import { reconcileDotenv } from "./src/dotenv.js";
+import {
+  displayPath,
+  fitStem,
+  graphemeCount,
+  graphemes,
+  rightmostSpan,
+  splitDestination,
+} from "./src/destination-label.js";
+
+function SecretDestination({
+  path,
+  className,
+}: {
+  path: string;
+  className: string | undefined;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [fittedStem, setFittedStem] = useState<string | null>(null);
+  const [folderMinimum, setFolderMinimum] = useState<number | null>(null);
+  const rowRef = useRef<HTMLButtonElement>(null);
+  const stemRef = useRef<HTMLSpanElement>(null);
+  const folderRef = useRef<HTMLSpanElement>(null);
+  const measureRef = useRef<HTMLSpanElement>(null);
+  const destination = splitDestination(path);
+  const folder =
+    destination.folder === null
+      ? null
+      : formatHomePathForDisplay(destination.folder);
+
+  useLayoutEffect(() => {
+    const row = rowRef.current;
+    const stem = stemRef.current;
+    const measure = measureRef.current;
+    if (expanded || !row || !stem || !measure) return;
+    const fit = () => {
+      const rowWidth = row.getBoundingClientRect().width;
+      if (rowWidth === 0) {
+        setFittedStem(null);
+        return;
+      }
+      const textWidth = (text: string, weight: string) => {
+        measure.style.fontWeight = weight;
+        measure.textContent = text;
+        return measure.getBoundingClientRect().width;
+      };
+      const rowStyle = getComputedStyle(row);
+      let used =
+        parseFloat(rowStyle.paddingLeft) +
+        parseFloat(rowStyle.paddingRight) +
+        parseFloat(rowStyle.borderLeftWidth) +
+        parseFloat(rowStyle.borderRightWidth);
+      let tailWidth: number | null = null;
+      for (const child of Array.from(row.children)) {
+        if (child === stem || child === measure) continue;
+        const style = getComputedStyle(child);
+        const margins =
+          parseFloat(style.marginLeft) + parseFloat(style.marginRight);
+        if (child === folderRef.current && folder !== null) {
+          const text = child.firstElementChild?.firstChild;
+          if (graphemeCount(folder) > 3 && text instanceof Text) {
+            const range = document.createRange();
+            let offset = 0;
+            const boxes = graphemes(text.data).map((grapheme) => {
+              range.setStart(text, offset);
+              offset += grapheme.length;
+              range.setEnd(text, offset);
+              return range.getBoundingClientRect();
+            });
+            const tail = rightmostSpan(boxes, 2);
+            if (tail !== null) {
+              tailWidth = Math.ceil(textWidth("…", style.fontWeight) + tail);
+            }
+          }
+          used += margins + (tailWidth ?? child.getBoundingClientRect().width);
+        } else {
+          used += margins + child.getBoundingClientRect().width;
+        }
+      }
+      const available = rowWidth - used;
+      if (!Number.isFinite(available)) {
+        setFittedStem(null);
+        return;
+      }
+      setFolderMinimum(tailWidth);
+      const stemWeight = getComputedStyle(stem).fontWeight;
+      setFittedStem(
+        fitStem(destination.stem, available, (text) =>
+          textWidth(text, stemWeight),
+        ),
+      );
+    };
+    fit();
+    void document.fonts?.ready.then(fit);
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(fit);
+    observer.observe(row);
+    return () => observer.disconnect();
+  }, [destination.stem, expanded, folder]);
+
+  return (
+    <button
+      ref={rowRef}
+      type="button"
+      aria-expanded={expanded}
+      aria-label={`Saves to ${path}`}
+      title={path}
+      onClick={() => setExpanded((value) => !value)}
+      className={cn(
+        "relative flex w-full min-w-0 items-center rounded text-left text-xs text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+        className,
+      )}
+    >
+      <HugeiconsIcon
+        icon={File01Icon}
+        className="mr-1.5 size-3.5 shrink-0"
+        aria-hidden="true"
+      />
+      <span className="mr-1.5 shrink-0">Saves to</span>
+      {expanded ? (
+        <span className="max-h-12 min-w-0 overflow-y-auto break-all text-foreground">
+          {displayPath(path)}
+        </span>
+      ) : (
+        <>
+          <span
+            ref={stemRef}
+            className="shrink-0 whitespace-pre font-medium text-foreground"
+          >
+            {fittedStem ?? destination.stem}
+          </span>
+          {destination.extension ? (
+            <span className="shrink-0 whitespace-pre font-medium text-foreground">
+              {destination.extension}
+            </span>
+          ) : null}
+          {folder === null ? null : (
+            <>
+              <span className="mx-1.5 shrink-0">in</span>
+              <span
+                ref={folderRef}
+                style={
+                  folderMinimum === null
+                    ? undefined
+                    : { minWidth: folderMinimum }
+                }
+                className={cn(
+                  "flex max-w-max grow basis-0 overflow-hidden",
+                  graphemeCount(folder) > 3 ? "min-w-[3ch]" : "min-w-max",
+                )}
+              >
+                <span dir="rtl" className="block w-min max-w-full truncate">
+                  {displayPath(folder)}
+                </span>
+              </span>
+            </>
+          )}
+          <span
+            ref={measureRef}
+            aria-hidden="true"
+            className="pointer-events-none invisible absolute left-0 top-0 whitespace-pre"
+          />
+        </>
+      )}
+    </button>
+  );
+}
 
 function SecretRequestInteraction({
   interaction,
@@ -33,11 +202,13 @@ function SecretRequestInteraction({
   >(null);
   const busy = pendingAction !== null;
   const [formError, setFormError] = useState<string | null>(null);
+  const { density, closeInline } = useQuestionFormHost();
+  const compact = density === "compact";
 
   if (!parsed.success) {
     return (
       <div className="space-y-3">
-        <p className="text-sm text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           This secret request is invalid.
         </p>
         <Button
@@ -75,6 +246,10 @@ function SecretRequestInteraction({
     }
   };
   const cancelRequest = async () => {
+    if (closeInline) {
+      closeInline();
+      return;
+    }
     setPendingAction("cancel");
     try {
       await cancel();
@@ -83,44 +258,71 @@ function SecretRequestInteraction({
     }
   };
 
+  const textInset = compact ? "px-2.5" : undefined;
+
   return (
     <form
-      className="@container/secrets space-y-4"
+      className="flex min-w-0 flex-col"
       onSubmit={(event) => {
         event.preventDefault();
         void submitValues();
       }}
     >
-      <div className="space-y-2">
-        {payload.purpose ? (
-          <p className="text-pretty text-sm leading-relaxed text-foreground">
-            {payload.purpose}
-          </p>
-        ) : null}
-        <p className="min-w-0 text-xs text-muted-foreground">
-          Secrets will be written directly to{" "}
-          <code className="break-all rounded bg-surface-raised px-1.5 py-0.5 font-mono text-foreground">
-            {payload.destination.path}
-          </code>
+      {payload.purpose ? (
+        <p
+          title={compact ? payload.purpose : undefined}
+          className={cn(
+            "text-pretty text-xs text-foreground",
+            compact && "line-clamp-2",
+            textInset,
+          )}
+        >
+          {payload.purpose}
         </p>
-      </div>
+      ) : null}
+      <SecretDestination
+        path={payload.destination.path}
+        className={cn(
+          textInset,
+          payload.purpose && (compact ? "mt-2" : "mt-3"),
+        )}
+      />
 
-      <div className="space-y-3.5">
+      <div
+        className={cn(
+          compact
+            ? "space-y-3 max-md:pointer-coarse:space-y-2.5"
+            : "space-y-3.5",
+          compact ? "mt-4 max-md:pointer-coarse:mt-3" : "mt-5",
+        )}
+      >
         {payload.fields.map((field) => {
           const inputId = `secret-${interaction.id}-${field.name}`;
           const isRevealed = revealed[field.name] ?? false;
           return (
             <div key={field.name} className="min-w-0 space-y-1.5">
-              <div className="space-y-0.5">
+              <div
+                className={
+                  compact
+                    ? "flex min-w-0 flex-wrap items-baseline gap-x-2 px-2.5"
+                    : "space-y-0.5"
+                }
+              >
                 <Label
                   htmlFor={inputId}
-                  className="font-mono text-xs font-semibold text-foreground"
+                  className="min-w-0 break-all text-xs font-medium text-foreground"
                   translate="no"
                 >
                   {field.name}
                 </Label>
                 {field.description ? (
-                  <p className="text-xs leading-snug text-muted-foreground">
+                  <p
+                    title={compact ? field.description : undefined}
+                    className={cn(
+                      "text-xs text-muted-foreground",
+                      compact && "min-w-0 grow basis-24 truncate",
+                    )}
+                  >
                     {field.description}
                   </p>
                 ) : null}
@@ -143,7 +345,10 @@ function SecretRequestInteraction({
                     }))
                   }
                   disabled={busy}
-                  className="bg-card pr-11 font-mono"
+                  className={cn(
+                    "bg-card pr-10 text-xs",
+                    compact && "max-md:pointer-coarse:h-9",
+                  )}
                 />
                 <Button
                   type="button"
@@ -174,30 +379,31 @@ function SecretRequestInteraction({
 
       {formError ? (
         <p
-          className="rounded-md border border-surface-destructive-border bg-surface-destructive px-2 py-1 text-xs text-destructive-text"
+          className="mt-3 rounded-md border border-surface-destructive-border bg-surface-destructive px-2 py-1 text-xs text-destructive-text"
           aria-live="polite"
         >
           {formError}
         </p>
       ) : null}
 
-      <div className="sticky -bottom-3 -mb-3 z-10 flex flex-col-reverse gap-2 border-t border-border/70 bg-surface-recessed-solid pb-3 pt-4 @min-[24rem]/secrets:flex-row @min-[24rem]/secrets:items-center @min-[24rem]/secrets:justify-end">
+      <div
+        className={cn(
+          "flex items-center justify-between gap-2",
+          compact
+            ? "sticky -bottom-1 z-10 -mb-1 mt-3 bg-popover pb-1 max-md:pointer-coarse:mt-2.5"
+            : "sticky -bottom-3 z-10 -mb-3 mt-4 border-t border-border/70 bg-surface-recessed-solid pb-3 pt-3",
+        )}
+      >
         <Button
           type="button"
           variant="ghost"
           size="sm"
-          className="w-full @min-[24rem]/secrets:w-auto"
           disabled={busy}
           onClick={() => void cancelRequest()}
         >
           Cancel
         </Button>
-        <Button
-          type="submit"
-          size="sm"
-          className="w-full @min-[24rem]/secrets:w-auto"
-          disabled={busy}
-        >
+        <Button type="submit" size="sm" disabled={busy}>
           {pendingAction === "submit" ? (
             <HugeiconsIcon
               icon={Loading03Icon}

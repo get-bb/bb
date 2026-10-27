@@ -66,14 +66,20 @@ export function sharedUiRuntimeModuleFor(
   importer: string,
 ): string | null {
   if (!SHARED_UI_SOURCE_IMPORTER.test(importer)) return null;
-  const resolved = resolve(dirname(importer), importPath)
+  return sharedUiRuntimeModuleAt(resolve(dirname(importer), importPath));
+}
+
+function sharedUiRuntimeModuleAt(resolvedPath: string): string | null {
+  const normalized = resolvedPath
     .replace(/\\/g, "/")
     .replace(/\.(?:tsx?|jsx?)$/, "");
   for (const [suffix, specifier] of SHARED_UI_RUNTIME_MODULES) {
-    if (resolved.endsWith(suffix)) return specifier;
+    if (normalized.endsWith(suffix)) return specifier;
   }
   return null;
 }
+
+const SHARED_UI_ALIAS_RESOLVE = Symbol("shared-ui-alias-resolve");
 
 let freshFacadeImportSequence = 0;
 
@@ -257,11 +263,29 @@ export function runtimeShimPlugin(pluginSdkAppModuleUrl?: string): Plugin {
           filter:
             /(^|\/)(icon|question-form-host|voice-input-textarea)(\.[jt]sx?)?$/,
         },
-        (args) => {
-          if (args.namespace !== "file" || !args.path.startsWith(".")) {
+        async (args) => {
+          if (
+            args.namespace !== "file" ||
+            args.pluginData === SHARED_UI_ALIAS_RESOLVE
+          ) {
             return undefined;
           }
-          const specifier = sharedUiRuntimeModuleFor(args.path, args.importer);
+          let specifier: string | null;
+          if (args.path.startsWith(".")) {
+            specifier = sharedUiRuntimeModuleFor(args.path, args.importer);
+          } else {
+            const resolved = await build.resolve(args.path, {
+              kind: args.kind,
+              importer: args.importer,
+              resolveDir: args.resolveDir,
+              pluginData: SHARED_UI_ALIAS_RESOLVE,
+            });
+            specifier =
+              resolved.errors.length === 0 &&
+              SHARED_UI_SOURCE_IMPORTER.test(resolved.path)
+                ? sharedUiRuntimeModuleAt(resolved.path)
+                : null;
+          }
           return specifier === null
             ? undefined
             : { path: specifier, namespace: SHIM_NAMESPACE };
