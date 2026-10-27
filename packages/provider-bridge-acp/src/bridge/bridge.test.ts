@@ -3335,6 +3335,12 @@ describe("acp bridge", () => {
         (event) => event.clientRequestId,
       ),
     ).toEqual([CLIENT_REQUEST_ID, "creq_abcdefghjm", "creq_abcdefghjn"]);
+    expect(threadEventsOfType("turn/started")).toHaveLength(1);
+    expect(
+      threadEventsOfType("turn/completed").filter(
+        (event) => event.status === "interrupted",
+      ),
+    ).toEqual([]);
   });
 
   it("reports a permission-changing steer whose replacement fails to start", async () => {
@@ -3371,6 +3377,9 @@ describe("acp bridge", () => {
     );
     expect(agentMessageTexts()).toEqual([]);
     expect(threadEventsOfType("turn/input/accepted")).toHaveLength(1);
+    expect(
+      threadEventsOfType("turn/completed").map((event) => event.status),
+    ).toEqual(["failed"]);
   });
 
   it("denies client fs writes outside the workspace in accept-edits mode", async () => {
