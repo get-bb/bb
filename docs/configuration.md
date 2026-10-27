@@ -300,10 +300,10 @@ the terminal and pastes the primary selection independently of this setting.
 Unsupported browsers never substitute unrelated regular clipboard contents.
 
 Older clients that omit `keepHistoryAfterContextClear`,
-`summarizeShellCommands`, or `earlyAdopter` preserve the saved value. Show Git
-changes and Commit button is a [Git plugin setting](#git-and-github-pr-status-plugins),
-and the general-settings API rejects an update that still sends
-`showGitChanges`. For older SDK callers, the
+`summarizeShellCommands`, or `earlyAdopter` preserve the saved value. The
+former Show Git changes and Commit button switch is now
+[plugin settings](#git-and-github-pr-status-plugins), and the general-settings
+API rejects an update that still sends `showGitChanges`. For older SDK callers, the
 general-settings API still accepts and returns `showUnhandledProviderEvents` as
 a deprecated alias of `showDiagnosticEvents`, and an existing value is
 preserved; when a read-modify-write payload contains conflicting values, the one
@@ -1115,22 +1115,30 @@ reconnects. See the
 
 ### Git and GitHub PR Status plugins
 
-The builtin Git plugin's `showGitChanges` (default `true`) is Show Git changes
-and Commit button on its plugin page. `false` hides the untracked, uncommitted,
-and committed file summary and expanded file list above every thread composer,
-and the Commit action in the thread header and overflow menu. The builtin
-GitHub PR Status plugin's `showPullRequest` (default `true`) is Show pull
-request above the composer on its plugin page. `false` hides the pull request
-status, Mark ready and merge actions above every thread composer; the Info
-tab's Pull request row stays. Thread relationships and workspace warnings stay
-visible either way.
+The builtin Git plugin's settings page has two switches:
+
+- `showGitChanges` (default `true`), Show Git changes above the composer.
+  `false` hides the untracked, uncommitted, and committed file summary,
+  expanded file list, and merge-base picker above every thread composer.
+- `showCommitButton` (default `false`), Show Commit button. `true` shows the
+  Commit action in the thread header and overflow menu when the workspace has
+  uncommitted changes.
+
+The builtin GitHub PR Status plugin's `showPullRequest` (default `true`) is
+Show pull request above the composer on its plugin page. `false` hides the pull
+request status, Mark ready and merge actions above every thread composer; the
+Info tab's Pull request row stays. Thread relationships and workspace warnings
+stay visible either way.
 
 ```bash
 bb plugin config bb--git set showGitChanges false
+bb plugin config bb--git set showCommitButton true
 bb plugin config bb--github-pr-status set showPullRequest false
 ```
 
-Upgrading copies the Settings → General switch's saved value into both.
+Upgrading copies the former Settings → General switch's saved value into
+`showGitChanges` and `showPullRequest`. The Commit button starts off for
+everyone.
 
 ### Ask User Question plugin
 

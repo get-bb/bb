@@ -102,7 +102,7 @@ function Probe({ onItem }: { onItem(item: ItemFor): void }) {
 
 function renderAction({
   workspace = DIRTY,
-  settings = { showGitChanges: true },
+  settings = { showCommitButton: true },
 }: {
   workspace?: WorkspaceStatus;
   settings?: Record<string, boolean>;
@@ -156,8 +156,8 @@ describe("commit header action", () => {
     expect(dirty.item({ environment: { id: "env-2", path: "/x" } })).toBeNull();
   });
 
-  it("hides Commit while the Show Git changes setting is off", async () => {
-    const action = renderAction({ settings: { showGitChanges: false } });
+  it("hides Commit while the Show Commit button setting is off", async () => {
+    const action = renderAction({ settings: { showCommitButton: false } });
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(action.item()).toBeNull();
   });

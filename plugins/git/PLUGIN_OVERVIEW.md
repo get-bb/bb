@@ -18,4 +18,4 @@ Use the CLI from any thread:
 - `bb git diff <environment-id> --target all` prints the diff.
 - `bb git viewed mark <environment-id> --path <path>` marks a file Viewed.
 
-Turn off Show Git changes and Commit button on this page to hide the changed-files segment and the Commit button.
+On this page, Show Git changes above the composer hides or shows the changed-files segment, and Show Commit button (off by default) adds Commit to the thread header.

@@ -5,14 +5,14 @@ import {
   type PluginThreadActionDataInput,
   type PluginThreadActionRegistration,
 } from "@get-bb/plugin-sdk/app";
-import { useGitWorkspaces, useShowGitChanges } from "../queries.js";
+import { useGitWorkspaces, useShowCommitButton } from "../queries.js";
 import {
   closeCommitDialogUnlessShown,
   openCommitDialog,
 } from "./commit-store.js";
 
 export interface CommitActionData {
-  showGitChanges: boolean;
+  showCommitButton: boolean;
   environmentIdsWithChanges: ReadonlySet<string>;
 }
 
@@ -72,7 +72,7 @@ function useCommitActionData({
   threadIds,
 }: PluginThreadActionDataInput): CommitActionData {
   const sdk = useSdk();
-  const showGitChanges = useShowGitChanges();
+  const showCommitButton = useShowCommitButton();
   const threadEnvironmentIds = useThreadEnvironmentIds(sdk, threadIds);
   const environmentIds = useMemo(
     () => [
@@ -85,13 +85,13 @@ function useCommitActionData({
     ],
     [threadEnvironmentIds, threadIds],
   );
-  const workspaces = useGitWorkspaces(showGitChanges ? environmentIds : []);
+  const workspaces = useGitWorkspaces(showCommitButton ? environmentIds : []);
   useEffect(() => {
     closeCommitDialogUnlessShown(threadIds);
   }, [threadIds]);
   return useMemo(
     () => ({
-      showGitChanges,
+      showCommitButton,
       environmentIdsWithChanges: new Set(
         [...workspaces]
           .filter(
@@ -100,7 +100,7 @@ function useCommitActionData({
           .map(([environmentId]) => environmentId),
       ),
     }),
-    [showGitChanges, workspaces],
+    [showCommitButton, workspaces],
   );
 }
 
@@ -115,7 +115,7 @@ export const commitThreadAction: PluginThreadActionRegistration<CommitActionData
     item: ({ thread, data }) => {
       const environment = thread.environment;
       if (
-        !data.showGitChanges ||
+        !data.showCommitButton ||
         thread.archivedAt !== null ||
         environment === null ||
         !data.environmentIdsWithChanges.has(environment.id)

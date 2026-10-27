@@ -15,6 +15,7 @@ import {
 import { gitRpcContract } from "../rpc-contract.js";
 import {
   GIT_SHOW_CHANGES_SETTING,
+  GIT_SHOW_COMMIT_BUTTON_SETTING,
   type WorkspaceDiffTarget,
 } from "../contract.js";
 
@@ -27,6 +28,10 @@ export const useGitWorkspaces = createGitWorkspacesHook(useGitStatusQuery);
 
 export function useShowGitChanges(): boolean {
   return useSettings().values?.[GIT_SHOW_CHANGES_SETTING] === true;
+}
+
+export function useShowCommitButton(): boolean {
+  return useSettings().values?.[GIT_SHOW_COMMIT_BUTTON_SETTING] === true;
 }
 
 const workspacePaths = new Map<string, string | null>();
