@@ -159,24 +159,13 @@ not apply. Header buttons do not show `choices`. bb's Git plugin registers
 Commit this way.
 
 ```tsx
-app.slots.experimental_threadAction({
-  id: "deploy",
-  title: "Deploy",
-  icon: "Rocket",
-  group: "deploy",
-  placement: "header",
+app.slots.experimental_threadAction({ id: "deploy", title: "Deploy", icon: "Rocket", group: "deploy", placement: "header",
   useData: ({ threadIds }) => useDeployable(threadIds),
-  item: ({ thread, data }) =>
-    data.has(thread.id)
-      ? { label: "Deploy", icon: "Rocket", run: () => openDeployDialog(thread.id) }
-      : null,
-});
+  item: ({ thread, data }) => data.has(thread.id) ? { label: "Deploy", icon: "Rocket", run: () => openDeploy(thread.id) } : null });
 ```
 
-`app.slots.experimental_threadHeaderAction` is retired. Plugins that still
-call it keep rendering a component at the left end of the header row, and
-`bb plugin build` warns. Move a plain button to a header thread action; move
-live state to the Info tab or a context segment.
+`app.slots.experimental_threadHeaderAction` is retired: existing callers keep
+rendering and `bb plugin build` warns. Use a header thread action instead.
 
 ### Rows and sections in the thread Info tab
 

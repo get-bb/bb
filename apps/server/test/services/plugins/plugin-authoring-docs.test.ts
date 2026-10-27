@@ -35,7 +35,6 @@ import {
   type PluginSettingsSectionProps,
   type PluginSidebarFooterActionProps,
   type PluginSourceCodeRendererProps,
-  type PluginThreadHeaderActionProps,
   type ExperimentalThreadContextSegmentProps,
   type ExperimentalThreadInfoProps,
   type PluginThreadActionItemInput,
@@ -284,7 +283,6 @@ type SlotPropsByName = {
   sidebarFooterAction: PluginSidebarFooterActionProps;
   experimental_threadList: PluginThreadListProps;
   experimental_sidebarNavigation: ExperimentalSidebarNavigationProps;
-  experimental_threadHeaderAction: PluginThreadHeaderActionProps;
   experimental_threadContextSegment: ExperimentalThreadContextSegmentProps;
   experimental_threadInfoRow: ExperimentalThreadInfoProps;
   experimental_threadInfoSection: ExperimentalThreadInfoProps;
@@ -373,11 +371,6 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "isCompactViewport",
     "onNavigate",
     "searchQuery",
-  ],
-  experimental_threadHeaderAction: [
-    "threadId",
-    "projectId",
-    "isCompactViewport",
   ],
   experimental_threadContextSegment: [
     "threadId",
