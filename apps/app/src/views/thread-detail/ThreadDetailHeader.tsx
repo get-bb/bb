@@ -209,13 +209,19 @@ export function ThreadDetailHeader({
               !isFocused &&
               dimsInactiveSplits &&
               CONTEXT_INACTIVE_TEXT_CLASS,
-            usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
+            usesDesktopChrome &&
+              (isEditing || !isTopRow) &&
+              MACOS_WINDOW_NO_DRAG_CLASS,
             beginPaneDrag && !isEditing && "cursor-grab touch-none select-none",
           )}
           onDoubleClick={handleTitleDoubleClick}
           onPointerDown={beginPaneDrag ? handleTitlePointerDown : undefined}
         >
-          {isEditing ? editor : <ThreadTitle title={threadTitle} />}
+          {isEditing ? (
+            editor
+          ) : usesDesktopChrome && isTopRow ? null : (
+            <ThreadTitle title={threadTitle} />
+          )}
         </p>
       </div>
       {actionsMenu == null ? null : (

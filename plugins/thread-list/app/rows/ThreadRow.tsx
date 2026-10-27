@@ -73,7 +73,6 @@ import { SidebarStickyTier } from "../ui/sidebar.js";
 import {
   SIDEBAR_HOVER_ACTIONS_CLASS,
   SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
-  SIDEBAR_HOVER_ACTIONS_INSET_CLASS,
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "@/components/ui/sidebar-hover-actions";
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
@@ -530,6 +529,10 @@ function ThreadRowComponent({
     pluginThreadRowStatus,
   );
   const trailingIndicatorKind = trailingIndicatorResolution.indicatorKind;
+  const hasTrailingIndicator =
+    miniMap !== null ||
+    trailingIndicatorKind !== "none" ||
+    trailingIndicatorResolution.rowStatusIsVisible;
   const splitIndicatorIsWorking = hasThreadListWorkingActivity(
     trailingIndicatorState,
     pluginThreadRowStatus?.tone === "running",
@@ -633,9 +636,8 @@ function ThreadRowComponent({
           !shortcut &&
             !isEditing &&
             !isCustomizingActions &&
-            (reserveActionSpace
-              ? "pr-(--bb-sidebar-hover-actions-inset) [@media(hover:none)]:pr-0"
-              : SIDEBAR_HOVER_ACTIONS_INSET_CLASS),
+            reserveActionSpace &&
+            "pr-(--bb-sidebar-hover-actions-inset) [@media(hover:none)]:pr-0",
         )}
         style={getHoverActionsInsetStyle(quickActions.length)}
       >
@@ -823,6 +825,7 @@ function ThreadRowComponent({
               className={cn(
                 "relative shrink-0",
                 COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+                !hasTrailingIndicator && "w-0 max-md:pointer-coarse:w-0",
               )}
             >
               <span

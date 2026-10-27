@@ -627,7 +627,7 @@ describe("ThreadRow", () => {
     ).not.toBeNull();
   });
 
-  it("shows the configured row actions in order and reserves their width", async () => {
+  it("shows configured row actions in order and runs them", async () => {
     getDefaultStore().set(preferenceValueAtom("rowActions"), [
       "bb--core/pin",
       "bb--core/copyLink",
@@ -641,11 +641,6 @@ describe("ThreadRow", () => {
         button.getAttribute("aria-label"),
       ),
     ).toEqual(["Pin", "Copy link", "Archive", "Thread actions"]);
-    expect(
-      document
-        .querySelector<HTMLElement>(".bb-sidebar-hover-actions-inset")
-        ?.style.getPropertyValue("--bb-sidebar-hover-actions-inset"),
-    ).toBe("calc(var(--spacing) * 22.5)");
     fireEvent.click(screen.getByRole("button", { name: "Pin" }));
     await waitFor(() =>
       expect(ran).toEqual([{ key: "bb--core/pin", threadId: "thr_test" }]),
@@ -665,11 +660,6 @@ describe("ThreadRow", () => {
       screen.queryByRole("button", { name: "Move to section" }),
     ).toBeNull();
     expect(screen.getByRole("button", { name: "Archive" })).toBeTruthy();
-    expect(
-      document
-        .querySelector<HTMLElement>(".bb-sidebar-hover-actions-inset")
-        ?.style.getPropertyValue("--bb-sidebar-hover-actions-inset"),
-    ).toBe("calc(var(--spacing) * 7.5)");
   });
 
   it("shows only the actions menu when every row action is turned off", () => {
@@ -677,28 +667,27 @@ describe("ThreadRow", () => {
     renderThreadRow();
     expect(screen.queryByRole("button", { name: "Archive" })).toBeNull();
     expect(screen.getByRole("button", { name: "Thread actions" })).toBeTruthy();
-    expect(
-      document
-        .querySelector<HTMLElement>(".bb-sidebar-hover-actions-inset")
-        ?.style.getPropertyValue("--bb-sidebar-hover-actions-inset"),
-    ).toBe("calc(var(--spacing) * 0)");
   });
 
   it.each([
     [[]],
     [["bb--core/pin", "bb--core/copyLink", "bb--core/archive"]],
   ] as const)(
-    "reserves one action for an archived row whatever the row actions (%j)",
+    "keeps archived actions fixed for rowActions=%j",
     (rowActions) => {
       getDefaultStore().set(preferenceValueAtom("rowActions"), [...rowActions]);
       renderThreadRow({
         thread: createThread({ archivedAt: 1, isArchived: true }),
       });
+      const row = screen
+        .getByRole("link", { name: "Open Thread" })
+        .closest("[data-sidebar-rename-row]");
       expect(
-        document
-          .querySelector<HTMLElement>(".bb-sidebar-hover-actions-inset")
-          ?.style.getPropertyValue("--bb-sidebar-hover-actions-inset"),
-      ).toBe("calc(var(--spacing) * 7.5)");
+        Array.from(
+          row?.querySelectorAll<HTMLButtonElement>("button") ?? [],
+          (button) => button.getAttribute("aria-label"),
+        ),
+      ).toEqual(["Thread actions", "Unarchive"]);
     },
   );
 

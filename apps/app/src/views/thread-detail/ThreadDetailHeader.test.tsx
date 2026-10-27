@@ -572,39 +572,56 @@ describe("ThreadDetailHeader", () => {
     ).toHaveProperty("value", "Other thread");
   });
 
-  it("keeps the header title out of the macOS window-drag region so double click renames", async () => {
-    window.bbDesktop = createBbDesktopApi({
-      lastCheckedAt: null,
-      latestVersion: null,
-      pendingVersion: null,
-      platform: "macos",
-      updateAvailable: false,
-      updateDownloaded: false,
-      version: "0.0.0-test",
-    });
-    render(
-      <PaneContext.Provider value={PANE_CONTEXT}>
-        <ThreadDetailHeader
-          actionsMenu={null}
-          isSecondaryPanelOpen={false}
-          onOpenThreadGitAction={vi.fn()}
-          onToggleSecondaryPanel={vi.fn()}
-          threadHeaderGitActions={[]}
-          threadId={THREAD_ID}
-          threadTitle="Focused thread"
-        />
-      </PaneContext.Provider>,
-    );
+  it.each([
+    { isTopRow: true, platform: "macos", titleVisible: false },
+    { isTopRow: false, platform: "macos", titleVisible: true },
+    { isTopRow: true, platform: "windows", titleVisible: true },
+  ] as const)(
+    "shows the title=$titleVisible for platform=$platform topRow=$isTopRow",
+    async ({ isTopRow, platform, titleVisible }) => {
+      window.bbDesktop = createBbDesktopApi({
+        lastCheckedAt: null,
+        latestVersion: null,
+        pendingVersion: null,
+        platform,
+        updateAvailable: false,
+        updateDownloaded: false,
+        version: "0.0.0-test",
+      });
+      const { menuArgs } = renderWithMenuArgs(true, isTopRow);
+      expect(screen.queryByText("Focused thread") !== null).toBe(titleVisible);
+      expect(
+        screen.getByRole("button", { name: "Show right panel" }),
+      ).not.toBeNull();
 
-    const title = screen.getByText("Focused thread").closest("p");
-    expect(title?.className).toContain("[-webkit-app-region:no-drag]");
-
-    fireEvent.doubleClick(screen.getByText("Focused thread"));
-    const input = await screen.findByRole("textbox", { name: "Thread name" });
-    expect(input.closest("p")?.className).toContain(
-      "[-webkit-app-region:no-drag]",
-    );
-  });
+      if (!titleVisible) {
+        menuArgs.current?.requestRename(THREAD_ID);
+        menuArgs.current?.onCloseAutoFocus(
+          new Event("focusout", { cancelable: true }),
+        );
+        expect(
+          await screen.findByRole("textbox", { name: "Thread name" }),
+        ).toHaveProperty("value", "Focused thread");
+      } else {
+        const title = screen.getByText("Focused thread");
+        if (platform === "macos") {
+          expect(title.closest("p")?.className).toContain(
+            "[-webkit-app-region:no-drag]",
+          );
+        }
+        fireEvent.doubleClick(title);
+        const input = await screen.findByRole("textbox", {
+          name: "Thread name",
+        });
+        expect(input).toHaveProperty("value", "Focused thread");
+        if (platform === "macos") {
+          expect(input.closest("p")?.className).toContain(
+            "[-webkit-app-region:no-drag]",
+          );
+        }
+      }
+    },
+  );
 
   it("places the window toggle's reserved slot over the title-bar toggle so its whole box stays clickable", () => {
     window.bbDesktop = createBbDesktopApi({
@@ -677,7 +694,10 @@ describe("ThreadDetailHeader", () => {
     expect(beginPaneDrag).not.toHaveBeenCalled();
   });
 
-  function renderWithMenuArgs(focused = true) {
+  function renderWithMenuArgs(
+    focused = true,
+    isTopRow = PANE_CONTEXT.isTopRow,
+  ) {
     const menuArgs: { current: ThreadDetailHeaderActionsMenuArgs | null } = {
       current: null,
     };
@@ -688,7 +708,9 @@ describe("ThreadDetailHeader", () => {
           coreRegistrations={[]}
           requestRename={requestRenameDialog}
         />
-        <PaneContext.Provider value={{ ...PANE_CONTEXT, isFocused: focused }}>
+        <PaneContext.Provider
+          value={{ ...PANE_CONTEXT, isFocused: focused, isTopRow }}
+        >
           <ThreadDetailHeader
             actionsMenu={(args) => {
               menuArgs.current = args;
