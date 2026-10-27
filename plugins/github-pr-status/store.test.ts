@@ -108,6 +108,33 @@ describe("shared pull request refresh", () => {
     expect(load).toHaveBeenCalledTimes(2);
   });
 
+  it("publishes a change found by one viewer's read to every viewer of that environment", async () => {
+    vi.useFakeTimers();
+    const failing = pullRequest({
+      checks: {
+        state: "failing",
+        totalCount: 2,
+        passedCount: 1,
+        failedCount: 1,
+        pendingCount: 0,
+      },
+      attention: "checks_failed",
+    });
+    const { store, load, publish } = setup([available(failing)]);
+    await store.read("a", { viewer: true });
+    store.watch("a", new AbortController().signal);
+    await flush();
+    await vi.advanceTimersByTimeAsync(60_000);
+    load.mockResolvedValue(available(pullRequest()));
+    await expect(store.read("a", { viewer: true })).resolves.toEqual(
+      available(pullRequest()),
+    );
+    expect(publish).toHaveBeenCalledExactlyOnceWith(["a"]);
+    await store.read("a", { viewer: true });
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(publish).toHaveBeenCalledOnce();
+  });
+
   it("serves restored snapshots immediately, keeps the due time, and writes nothing for identical content", async () => {
     vi.useFakeTimers();
     const first = setup([available(pending)]);
