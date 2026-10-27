@@ -927,3 +927,40 @@ it("does not show a row read that started before the write once a later batch re
     }),
   );
 });
+
+it("keeps rows of keys nobody holds when a restarted observer refreshes the held keys", async () => {
+  const client = setup();
+  const reads: string[][] = [];
+  const owner = createTaggedKeyedQueryOwner({
+    client,
+    queryKey: ["held"],
+    scope: CORE_TAG_SCOPE,
+    collection,
+    read: async (keys) => {
+      reads.push([...keys]);
+      return {
+        result: Object.fromEntries(keys.map((key) => [key, 1])),
+        tags: [],
+        keyTags: {},
+      };
+    },
+  });
+  let stop = owner.subscribe(["a", "b"], () => {});
+  await vi.waitFor(() => expect(reads).toHaveLength(1));
+  stop();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  stop = owner.subscribe(["c"], () => {});
+  await vi.waitFor(() => expect(reads).toHaveLength(2));
+  stop();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  disposers.push(owner.subscribe(["a"], () => {}));
+  await vi.waitFor(() =>
+    expect(owner.observer.getCurrentResult().isFetching).toBe(false),
+  );
+  expect(owner.observer.getCurrentResult().data?.result).toMatchObject({
+    a: 1,
+    b: 1,
+    c: 1,
+  });
+  expect(reads.slice(0, 2)).toEqual([["a", "b"], ["c"]]);
+});

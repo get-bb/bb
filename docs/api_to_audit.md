@@ -1495,8 +1495,8 @@ Callers: the Git plugin's host `status`, `diff`, `files`, `patches` and
 `branches` (base marked `workspace.status`, `workspace.diff`,
 `workspace.diffFiles`, `workspace.diffPatch` and `host.list_branch_options`
 retryable; its `fileSide` reads through `bb.sdk.files.read`, which still uses
-the retryable `host.read_file`), and the GitHub PR Status plugin's
-`view` (core marked `workspace.pull_request` retryable; `act` is not).
+the retryable `host.read_file`), and the GitHub PR Status plugin's batched
+`views` read (core marked `workspace.pull_request` retryable; `act` is not).
 
 Docs: `backend-foundation.md`.
 
@@ -2609,9 +2609,9 @@ Docs: `frontend-registration.md`.
    `hostId` ride on router state; confirm that stays the right transport, and
    audit the `hostId` selection semantics.
 7. **Pull requests on a row.** `experimental_useSidebarThreadPullRequest` was
-   removed; rows read the GitHub PR Status plugin's keyed `pullRequests`
-   method. See "Retired `experimental_useSidebarThreadPullRequest` runtime
-   member".
+   removed; rows render `experimental_ThreadRowMetadata` for bb's badge or read
+   the GitHub PR Status plugin's keyed `pullRequests` method. See
+   "Retired `experimental_useSidebarThreadPullRequest` runtime member".
 8. **`experimental_useSidebarThreadSplit`.** Gives a custom row the built-in
    drag-to-split gesture, with every layout rule owned by the host. Confirm a
    list with its own pointer-drag (reorder, swipe) still composes with the
@@ -2682,6 +2682,71 @@ Docs: `frontend-registration.md`, `frontend-components.md`.
 4. **Separators.** The Info tab draws section separators on every
    `[data-info-section]`, so a section that renders without
    `experimental_InfoSection` gets no separator. Confirm that is acceptable.
+
+## `app.slots.experimental_threadRowMetadata` / `experimental_ThreadRowMetadata` (`@get-bb/plugin-sdk/app`)
+
+A registration is `{ id, order?, component }`. The component receives
+`{ thread, isLive }` (`thread` is the row's `PluginSidebarThread`) and renders
+a small item on that thread's metadata line, under the title.
+`experimental_ThreadRowMetadata({ thread })` renders every registration for one
+row, sorted by `order` (unset last) then registration order, each in its own
+crash boundary keyed by thread, left to right in one line container that fills
+its parent, clips at the row's edge and is hidden while empty. It renders
+nothing when no plugin registers an item.
+
+Visibility is the host's (`apps/app/src/lib/thread-row-visibility.ts`). An item
+mounts once its row is live; an item that has drawn something mounts with its
+row from then on, so cached data draws in the row's first frame, and rows
+scrolled past mount nothing. Every mounted line keeps each registering
+plugin's stylesheet loaded, so scrolling through rows whose items are not
+mounted does not unload and reload it (each costs a whole-document restyle).
+The container shows while any item draws something (a MutationObserver keeps a
+`data-has-items` attribute current). One
+viewport IntersectionObserver
+watches each row (the items container's parent element). When rows enter or
+leave the screen after 200 ms with no such change (page load, a revealed list,
+the first step of a scroll), every on-screen row turns live and every
+off-screen row stops at once. Otherwise `isLive` changes at the next pause:
+200 ms after the last row entered or left the screen, in one batch, so
+continuous scrolling re-renders no items. Hiding the page clears it at once.
+Items gate network reads on `isLive`, so a scroll pause costs one keyed request
+and rows scrolled past read nothing; the first step of a scroll costs one
+more for the rows it brings on screen. The GitHub PR Status badge reads with
+`input: { maxAgeMs }`, so saved rows answer at once and refresh in the
+background.
+
+**Core callers.** bb's sidebar (`plugins/thread-list`, `ThreadRow.tsx`) renders
+`experimental_ThreadRowMetadata` on a line under each row's title, the same call a
+plugin-built list makes, only while the user turns on Organize → Rows →
+Metadata (`showRowMetadata`, off by default). The row grows to two lines only
+while an item draws something, the line is hidden while the row is renamed or
+customized, and clicks on it go through the row's own click handling. The
+GitHub PR Status plugin registers the first item: the current-branch pull
+request's state icon in the state's color and its muted `#number`, plus a yellow
+dot while an open or draft PR's checks run or a red cross when they fail or the
+PR has conflicts (passing checks show nothing), read through `experimental_useRpcKeyedQuery` with
+`enabled: isLive`. No core row indicator moved into the slot: the status
+glyph, split mini-map, shortcut pill and hover actions share the row's fixed
+trailing box, the cross-project icon depends on the row's position in the
+list, and the provider icon and child chevron sit elsewhere. Contract tests: `ThreadRowMetadata.test.tsx`,
+`plugins/github-pr-status/app.test.tsx`.
+
+Docs: `frontend-registration.md`, `frontend-pull-requests.md`.
+
+**Audit before stabilizing.**
+
+1. **Props.** Items get the list's thread snapshot. Decide whether row context
+   (selected, depth, compact, collapsed children) belongs in the props, since
+   core's own indicators that depend on it stayed out of the slot.
+2. **Width.** Items share one line and the line clips at the row's edge, so a
+   late item can disappear. Decide whether items need a width cap, a
+   priority, or a per-item toggle once several plugins contribute.
+3. **Visibility contract.** `isLive` is advisory: the host does not block a
+   read from an item that is not live, and a row that leaves the screen stays
+   live until the next scroll pause. Decide whether the SDK should enforce it.
+4. **Settle delay.** Uncached rows wait 200 ms after scrolling stops; rows
+   that appear in a still list go live at once. Confirm the delay with users
+   on slow and fast scrollers.
 
 ## `app.slots.experimental_threadAction` / `PluginThreadActionRegistration.experimental_bulkItem` / `PluginThreadActionRegistration.placement` / `experimental_useThreadActions` / `experimental_useThreadActionRegistrations` / `experimental_ThreadActionsMenu` / `experimental_ThreadActionsContextMenu` (with `experimental_bulkThreads`) / `experimental_THREAD_ACTION_GROUPS` (`@get-bb/plugin-sdk/app`)
 
@@ -3650,7 +3715,7 @@ field introduces no separate backend or headless side effect.
 
 ## Plugin contract live reads and writes
 
-- `experimental_useRpcQuery`, `experimental_useRpcKeyedQuery`, `experimental_useRpcMutation`, and `experimental_useRpcRefresh` use the core `@bb/query-tags` cache mechanism per client. Query state keeps previous data during refresh errors; consumers show an inline Retry using `refetch`. Successful reads clear the error. Keyed calls accept `{ keys }` and return a record containing every requested key; consumers share one observer per plugin/method and requests batch up to 200 keys. A pure `select` projection retains unchanged JSON subobjects across key and fetch-state changes, so default rows do not republish unchanged notification levels.
+- `experimental_useRpcQuery`, `experimental_useRpcKeyedQuery`, `experimental_useRpcMutation`, and `experimental_useRpcRefresh` use the core `@bb/query-tags` cache mechanism per client. Query state keeps previous data during refresh errors; consumers show an inline Retry using `refetch`. Successful reads clear the error. Keyed calls accept `{ keys }` and return a record containing every requested key; consumers share one observer per plugin/method (and per `input`, the method's other fields, which every batched read of that hook's keys sends) and requests batch up to 200 keys. Each hook watches a key once while it holds it, so a changing key list subscribes only added keys and releases only removed ones (main re-subscribed every key on each change: 3,100 subscribe and 3,100 unsubscribe frames while scrolling a 70-thread sidebar). A keyed `refetch` refreshes only the calling hook's keys, batched with other hooks refreshing in the same tick. A pure `select` projection retains unchanged JSON subobjects across key and fetch-state changes, so default rows do not republish unchanged notification levels.
 - `ExperimentalRpcMutationState.pendingInputs` contains every in-flight input for that hook instance until the server acknowledges its write. Background rereads are excluded. `isPending` remains true while any input is pending. Core `useTaggedMutation` exposes the same state from TanStack's mutation cache. Stabilization requires hook-instance isolation, concurrent targets, failure cleanup, and pending feedback surviving row moves between groups.
 - `ExperimentalRpcMutationOptions.optimistic(input, cache)` predicts loaded cached values before the write. `cache.update(method, input, updater)` targets a plain read, and `cache.updateKey(method, key, updater)` targets one keyed row. `cache` is an `ExperimentalRpcOptimisticCache`. Pure updaters receive the currently visible value and return its prediction. An absent plain read is skipped; a keyed row that loads while the write is pending shows the prediction. Predictions are shared by every reader on that client. The core route mutation accepts the same core optimistic descriptors and uses the same `@bb/query-tags` implementation. Ui-preferences already updates its shared Jotai atoms optimistically, which remains unchanged.
 - Predictions remain over incoming reads until confirmed matched reads arrive, independently of mutation pending state. A rejected write rolls back its layer and surfaces the mutation error. An accepted write whose refresh fails keeps its prediction with the read error and Retry; a successful refresh replaces it. Later predictions and confirmed values are protected from older mutation settles and rollbacks. Inverted completion retains the later confirmed value until a subsequent fresh read can replace it. Keyed rows live in the `@bb/query-tags` keyed store: a row prediction is never written into the stored row, and an accepted one stays until a read of that row that started after acceptance replaces it. Stabilization includes overlapping writes, external invalidation, refresh failures, plain/keyed targets and completion without stale flicker.
@@ -3726,7 +3791,7 @@ entry and `PluginThreadHeaderActions` only after those plugins have migrated.
 
 ## Retired `experimental_useSidebarThreadPullRequest` runtime member
 
-`experimental_useSidebarThreadPullRequest(threadId)` and its `PluginSidebarPullRequest` and `PluginSidebarThreadPullRequestState` types are gone from `@get-bb/plugin-sdk/app`, the Plugin Guide and the authoring docs. Published bundles resolve `@get-bb/plugin-sdk/app` exports by name on `globalThis.__bbPluginRuntime.pluginSdkApp`, so the app installs `retiredPluginSdkAppMembers` (`apps/app/src/lib/plugin-sdk-app-impl.tsx`) next to the implementation. The member keeps its old shape, reads the GitHub PR Status plugin's `pullRequests` row for the thread's environment through `useRetiredSidebarEnvironmentPullRequest` (`apps/app/src/lib/retired-sidebar-pull-request.ts`), main's hook kept for it: a cached row refetches on mount and a stale row on page show. It returns `{ isLoading: false, pullRequest: null }` when the plugin is disabled or the read fails. The GitHub PR Status plugin's own segment and Info row use the plugin's copy of that hook. Both copies announce each refetch they start with `PULL_REQUESTS_REFETCH_EVENT` on `window` and recheck staleness before a page-show refetch, so a row shown by both is read once. The name leaves only the typings. `bb-plugin-build` keeps it in the `@get-bb/plugin-sdk/app` runtime shim's export list (`RETIRED_PLUGIN_SDK_APP_EXPORTS` in `packages/plugin-build/src/build-plugin-app.ts`), so plugins that still import it build and run, because git-sourced marketplace plugins are built by bb at install and update and path and builtin plugins rebuild when the SDK version changes. An import of it is a build warning carrying the replacement call: `bb plugin build` and `bb plugin dev` print it, and the server writes it to the plugin's log and the server log when it builds the plugin. Callers are marketplace plugins written against the old SDK (t3sidebar, dockside, gtd-sidebar, thread-inbox, radar-sidebar, bb-sidebar, sidebar-plus, cursor-sidebar, switchboard, vantage, jb-flow, tinted-threads among them). Remove the runtime member and the shim entry only after those plugins have migrated.
+`experimental_useSidebarThreadPullRequest(threadId)` and its `PluginSidebarPullRequest` and `PluginSidebarThreadPullRequestState` types are gone from `@get-bb/plugin-sdk/app`, the Plugin Guide and the authoring docs. Published bundles resolve `@get-bb/plugin-sdk/app` exports by name on `globalThis.__bbPluginRuntime.pluginSdkApp`, so the app installs `retiredPluginSdkAppMembers` (`apps/app/src/lib/plugin-sdk-app-impl.tsx`) next to the implementation. The member keeps its old shape, reads the GitHub PR Status plugin's `pullRequests` row for the thread's environment through `useRetiredSidebarEnvironmentPullRequest` (`apps/app/src/lib/retired-sidebar-pull-request.ts`), main's hook kept for it: a cached row refetches on mount and a stale row on page show. It returns `{ isLoading: false, pullRequest: null }` when the plugin is disabled or the read fails. The GitHub PR Status plugin's own segment and Info row use the plugin's copy of that hook. Both copies announce each refetch they start with `PULL_REQUESTS_REFETCH_EVENT` on `window` and recheck staleness before a page-show refetch, so a row shown by both is read once. The name leaves only the typings. `bb-plugin-build` keeps it in the `@get-bb/plugin-sdk/app` runtime shim's export list (`RETIRED_PLUGIN_SDK_APP_EXPORTS` in `packages/plugin-build/src/build-plugin-app.ts`), so plugins that still import it build and run, because git-sourced marketplace plugins are built by bb at install and update and path and builtin plugins rebuild when the SDK version changes. An import of it is a build warning carrying the replacement call: `bb plugin build` and `bb plugin dev` print it, and the server writes it to the plugin's log and the server log when it builds the plugin. Callers are marketplace plugins written against the old SDK (t3sidebar, dockside, gtd-sidebar, thread-inbox, radar-sidebar, bb-sidebar, sidebar-plus, cursor-sidebar, switchboard, vantage, jb-flow, tinted-threads among them). Their migration path is `experimental_ThreadRowMetadata` in the row, which draws the GitHub PR Status badge as bb's sidebar does; the build warning names it. Remove the runtime member and the shim entry only after those plugins have migrated.
 
 ## Retired environment git reads (`bb.sdk.environments.status`, `diff`, `diffFiles`, `diffPatch`, `diffFile`, `diffBranches`)
 

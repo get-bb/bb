@@ -317,6 +317,9 @@ export const ThreadTitle = runtimeComponent("ThreadTitle");
 export const experimental_ThreadStatusGlyph = runtimeComponent(
   "experimental_ThreadStatusGlyph",
 );
+export const experimental_ThreadRowMetadata = runtimeComponent(
+  "experimental_ThreadRowMetadata",
+);
 export const useEnvironmentProviders = runtimeFunction(
   "useEnvironmentProviders",
 );

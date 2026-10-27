@@ -37,6 +37,7 @@ import {
   type PluginSourceCodeRendererProps,
   type ExperimentalThreadContextSegmentProps,
   type ExperimentalThreadInfoProps,
+  type ExperimentalThreadRowMetadataProps,
   type PluginThreadActionItemInput,
   type ExperimentalPluginBrowserToolbarActionProps,
   type PluginThreadListProps,
@@ -284,6 +285,7 @@ type SlotPropsByName = {
   experimental_threadList: PluginThreadListProps;
   experimental_sidebarNavigation: ExperimentalSidebarNavigationProps;
   experimental_threadContextSegment: ExperimentalThreadContextSegmentProps;
+  experimental_threadRowMetadata: ExperimentalThreadRowMetadataProps;
   experimental_threadInfoRow: ExperimentalThreadInfoProps;
   experimental_threadInfoSection: ExperimentalThreadInfoProps;
   experimental_threadAction: PluginThreadActionItemInput<unknown>;
@@ -382,6 +384,7 @@ const FRONTEND_SLOT_PROP_FIELDS = {
   ],
   experimental_threadInfoRow: ["threadId", "projectId", "environment"],
   experimental_threadInfoSection: ["threadId", "projectId", "environment"],
+  experimental_threadRowMetadata: ["thread", "isLive"],
   experimental_threadAction: [
     "thread",
     "data",

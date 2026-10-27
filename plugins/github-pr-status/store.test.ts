@@ -401,3 +401,139 @@ describe("shared pull request refresh", () => {
     expect(load).toHaveBeenCalledTimes(3);
   });
 });
+
+describe("aligned refresh ticks", () => {
+  function pendingAt(number: number): PullRequest {
+    return {
+      ...pending,
+      number,
+      url: `https://github.com/acme/bb/pull/${number}`,
+    };
+  }
+
+  it("refreshes every watched pending PR in the same tick once they are due within half an interval", async () => {
+    vi.useFakeTimers();
+    const prs = new Map([
+      ["a", pendingAt(1)],
+      ["b", pendingAt(2)],
+      ["c", pendingAt(3)],
+    ]);
+    const { store, load } = setup([]);
+    load.mockImplementation(async (id: string) => available(prs.get(id)!));
+    const signals = [...prs.keys()].map(() => new AbortController());
+    await store.read("a", { viewer: true });
+    store.watch("a", signals[0]!.signal);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await store.read("b", { viewer: true });
+    store.watch("b", signals[1]!.signal);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await store.read("c", { viewer: true });
+    store.watch("c", signals[2]!.signal);
+    await flush();
+    load.mockClear();
+    const ticks = new Map<number, string[]>();
+    load.mockImplementation(async (id: string) => {
+      ticks.set(Date.now(), [...(ticks.get(Date.now()) ?? []), id].sort());
+      return available(prs.get(id)!);
+    });
+    await vi.advanceTimersByTimeAsync(ACTIVE_CHECK_MS * 4);
+    expect([...ticks.values()].slice(-3)).toEqual([
+      ["a", "b", "c"],
+      ["a", "b", "c"],
+      ["a", "b", "c"],
+    ]);
+    for (const signal of signals) signal.abort();
+  });
+
+  it("publishes PRs that change in the same tick together", async () => {
+    vi.useFakeTimers();
+    const prs = new Map([
+      ["a", pendingAt(1)],
+      ["b", pendingAt(2)],
+    ]);
+    const { store, load, publish } = setup([]);
+    load.mockImplementation(async (id: string) => available(prs.get(id)!));
+    const signals = [new AbortController(), new AbortController()];
+    for (const [index, id] of ["a", "b"].entries()) {
+      await store.read(id, { viewer: true });
+      store.watch(id, signals[index]!.signal);
+    }
+    await flush();
+    prs.set("a", { ...pendingAt(1), checks: { ...pullRequest().checks } });
+    prs.set("b", { ...pendingAt(2), checks: { ...pullRequest().checks } });
+    await vi.advanceTimersByTimeAsync(ACTIVE_CHECK_MS);
+    expect(publish).toHaveBeenCalledExactlyOnceWith(["a", "b"]);
+    for (const signal of signals) signal.abort();
+  });
+
+  it.each([
+    ["open", 20_000, pullRequest(), 0],
+    ["open", 31_000, pullRequest(), 1],
+    [
+      "merged",
+      50 * 60_000,
+      pullRequest({ state: "merged", attention: "merged" }),
+      0,
+    ],
+    [
+      "merged",
+      61 * 60_000,
+      pullRequest({ state: "merged", attention: "merged" }),
+      1,
+    ],
+  ])(
+    "re-reads a %s PR that comes back into view only when it is stale (%i ms old)",
+    async (_state, age, pr, loads) => {
+      vi.useFakeTimers();
+      const { store, load } = setup([available(pr)]);
+      await store.read("a", { viewer: true });
+      await vi.advanceTimersByTimeAsync(age);
+      load.mockClear();
+      const signal = new AbortController();
+      store.watch("a", signal.signal);
+      await vi.advanceTimersByTimeAsync(20);
+      expect(load).toHaveBeenCalledTimes(loads);
+      signal.abort();
+    },
+  );
+});
+
+describe("reads with a maximum age", () => {
+  it("answers from saved data within the age and refreshes it in the background", async () => {
+    vi.useFakeTimers();
+    const { store, load, publish } = setup([available(pullRequest())]);
+    await store.read("a", { viewer: true });
+    const signal = new AbortController();
+    store.watch("a", signal.signal);
+    await vi.advanceTimersByTimeAsync(62 * 60_000);
+    load.mockClear();
+    let release!: () => void;
+    load.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve(available(pullRequest({ title: "Renamed" })));
+        }),
+    );
+    const served = await store.read("a", {
+      viewer: true,
+      maxAgeMs: Number.MAX_SAFE_INTEGER,
+    });
+    expect(served).toMatchObject({ pullRequest: { title: "Watch the PR" } });
+    expect(load).toHaveBeenCalledTimes(1);
+    release();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(publish).toHaveBeenCalledWith(["a"]);
+    signal.abort();
+  });
+
+  it("waits for a fresh row when saved data is older than the age", async () => {
+    vi.useFakeTimers();
+    const { store, load } = setup([available(pullRequest())]);
+    await store.read("a", { viewer: true });
+    await vi.advanceTimersByTimeAsync(60_000);
+    load.mockResolvedValue(available(pullRequest({ title: "Renamed" })));
+    await expect(
+      store.read("a", { viewer: true, maxAgeMs: 30_000 }),
+    ).resolves.toMatchObject({ pullRequest: { title: "Renamed" } });
+  });
+});

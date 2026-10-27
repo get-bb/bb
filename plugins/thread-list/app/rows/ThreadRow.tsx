@@ -41,6 +41,7 @@ import {
   experimental_ThreadActionsContextMenu as ThreadActionsContextMenu,
   experimental_ThreadActionsMenu as ThreadActionsMenu,
   experimental_ThreadStatusGlyph as ThreadStatusGlyph,
+  experimental_ThreadRowMetadata as ThreadRowMetadata,
   experimental_THREAD_ACTION_GROUPS,
   experimental_useThreadActions,
   experimental_useSidebarThreadSplit,
@@ -66,6 +67,7 @@ import {
 import { useSidebarProjectName } from "../model/use-sidebar-data.js";
 import {
   sidebarShowProviderIconsAtom,
+  sidebarShowRowMetadataAtom,
   threadRowActionsAtom,
 } from "../preferences/atoms.js";
 import { ShortcutPill } from "@/components/ui/shortcut-pill";
@@ -391,6 +393,7 @@ function ThreadRowComponent({
   const multiSelection = useMultiSelectionContaining(thread.id);
   const selectionMenu = useThreadSelectionMenu(multiSelection);
   const showProviderIcons = useAtomValue(sidebarShowProviderIconsAtom);
+  const showRowMetadata = useAtomValue(sidebarShowRowMetadataAtom);
   const providers = useContext(SidebarProvidersContext);
   const provider = showProviderIcons
     ? providers.find((candidate) => candidate.id === thread.providerId)
@@ -558,6 +561,8 @@ function ThreadRowComponent({
     options.isCompact
       ? COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS
       : COARSE_POINTER_ROW_HEIGHT_CLASS,
+    showRowMetadata &&
+      "h-auto min-h-[var(--bb-sidebar-row-height)] max-md:pointer-coarse:h-auto max-md:pointer-coarse:min-h-[var(--bb-sidebar-row-height-coarse)]",
     showActive
       ? SIDEBAR_ROW_SELECTED_STATE_CLASS
       : SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
@@ -595,7 +600,12 @@ function ThreadRowComponent({
     (event) => {
       if (event.target !== event.currentTarget) {
         if (!(event.target instanceof Element)) return;
-        if (!event.target.closest("[data-sidebar-thread-trailing]")) return;
+        if (
+          !event.target.closest(
+            "[data-sidebar-thread-trailing], [data-thread-row-metadata]",
+          )
+        )
+          return;
         if (event.target.closest("a, button")) return;
       }
       if (selectionStore.handleClick(thread.id, event, event.currentTarget)) {
@@ -628,6 +638,7 @@ function ThreadRowComponent({
       <span
         className={cn(
           "relative flex min-w-0 flex-1 items-center gap-1.5 self-stretch",
+          showRowMetadata && "flex-wrap content-center gap-y-0 py-1",
           !isActionsOpen &&
             "group-data-[sidebar-touch-armed=true]/thread-row:hidden",
           !shortcut &&
@@ -759,6 +770,16 @@ function ThreadRowComponent({
             revealOnHover={!isParentCollapsed}
           />
         ) : null}
+        {!showRowMetadata || isEditing || isCustomizingActions ? null : (
+          <span
+            className={cn(
+              "flex min-w-0 basis-full",
+              provider !== undefined && "pl-[1.375rem]",
+            )}
+          >
+            <ThreadRowMetadata thread={thread} />
+          </span>
+        )}
       </span>
       {rowDragBindings && !rowDragBindings.disabled && !isActionsOpen ? (
         <SidebarThreadDragChip
@@ -771,6 +792,8 @@ function ThreadRowComponent({
         data-sidebar-thread-trailing=""
         className={cn(
           "flex shrink-0 items-center gap-0.5",
+          showRowMetadata &&
+            "min-h-[var(--bb-sidebar-row-height)] self-start max-md:pointer-coarse:min-h-[var(--bb-sidebar-row-height-coarse)]",
           !isActionsOpen &&
             "group-data-[sidebar-touch-armed=true]/thread-row:hidden",
           (isEditing || isCustomizingActions) && "hidden",

@@ -32,6 +32,7 @@ import type {
   PluginSourceCodeRendererRegistration,
   ExperimentalThreadContextSegmentRegistration,
   ExperimentalThreadInfoRowRegistration,
+  ExperimentalThreadRowMetadataRegistration,
   ExperimentalThreadInfoSectionRegistration,
   PluginThreadActionRegistration,
   ExperimentalPluginBrowserToolbarActionRegistration,
@@ -316,6 +317,7 @@ export interface CollectedPluginAppRegistrations {
   threadHeaderActions: LegacyThreadHeaderActionRegistration[];
   threadContextSegments: ExperimentalThreadContextSegmentRegistration[];
   threadInfoRows: ExperimentalThreadInfoRowRegistration[];
+  threadRowMetadata: ExperimentalThreadRowMetadataRegistration[];
   threadInfoSections: ExperimentalThreadInfoSectionRegistration[];
   threadActions: PluginThreadActionRegistration<unknown>[];
   browserToolbarActions: ExperimentalPluginBrowserToolbarActionRegistration[];
@@ -455,6 +457,7 @@ export function collectPluginAppRegistrations(
     threadHeaderActions: [],
     threadContextSegments: [],
     threadInfoRows: [],
+    threadRowMetadata: [],
     threadInfoSections: [],
     threadActions: [],
     browserToolbarActions: [],
@@ -491,6 +494,7 @@ export function collectPluginAppRegistrations(
     threadHeaderAction: new Set<string>(),
     threadContextSegment: new Set<string>(),
     threadInfoRow: new Set<string>(),
+    threadRowMetadata: new Set<string>(),
     threadInfoSection: new Set<string>(),
     threadAction: new Set<string>(),
     browserToolbarAction: new Set<string>(),
@@ -945,6 +949,16 @@ export function collectPluginAppRegistrations(
           ...(registration.useVisible !== undefined
             ? { useVisible: registration.useVisible }
             : {}),
+        });
+      },
+      experimental_threadRowMetadata(registration) {
+        const kind = "slots.experimental_threadRowMetadata";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.threadRowMetadata, id);
+        collected.threadRowMetadata.push({
+          id,
+          ...requireOptionalOrder(kind, registration.order),
+          component: requireComponent(kind, registration.component),
         });
       },
       experimental_threadInfoRow(registration) {

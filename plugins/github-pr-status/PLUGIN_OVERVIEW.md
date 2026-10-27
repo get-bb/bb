@@ -1,10 +1,11 @@
-See the GitHub pull request for each thread's branch where you already work: the composer banner, the Info panel and sidebar plugins that show PR badges. Mark it ready, convert it back to a draft or merge it without leaving bb.
+See the GitHub pull request for each thread's branch where you already work: a badge on every sidebar row, the composer banner and the Info panel. Mark it ready, convert it back to a draft or merge it without leaving bb.
 
 ## What you get
 
+- A badge under each sidebar thread's title with the pull request's state icon and number, followed by a yellow dot while checks run or a red cross when they fail or it has conflicts; hover it for the title and check counts. Turn it on with Organize → Rows → Metadata.
 - One rolled-up status per pull request: checks, review, conflicts, merge queue and auto-merge.
 - Ready for review, Convert to draft and Merge (merge, squash or rebase).
-- Live updates while you watch: pending checks are re-checked every 30 seconds and other open or draft PRs every 5 minutes, and views refresh only when something changed.
+- Live updates while you watch: pending checks on screen are re-checked every 30 seconds and other open or draft PRs every 5 minutes, in one batched GitHub request per machine; rows off screen are not read, and views refresh only when something changed.
 
 ## How it works
 

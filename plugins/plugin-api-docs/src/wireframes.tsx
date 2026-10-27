@@ -473,10 +473,14 @@ function TrafficLights() {
   );
 }
 
-const SIDEBAR_THREADS: readonly { title: string; glyph?: "spin" | "dot" }[] = [
+const SIDEBAR_THREADS: readonly {
+  title: string;
+  glyph?: "spin" | "dot";
+  pullRequest?: boolean;
+}[] = [
   { title: "Fix flaky checkout tests", glyph: "spin" },
   { title: "Refactor settings page" },
-  { title: "Ship dark mode", glyph: "dot" },
+  { title: "Ship dark mode", glyph: "dot", pullRequest: true },
 ];
 
 const FOOTER_ITEM_RENDERERS: Record<string, () => ReactNode> = {
@@ -560,9 +564,28 @@ const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
       {SIDEBAR_THREADS.map((thread) => (
         <span
           key={thread.title}
-          className="flex h-6.5 items-center gap-2 rounded-md px-2"
+          className={cn(
+            "flex items-center gap-2 rounded-md px-2",
+            thread.pullRequest ? "py-1" : "h-6.5",
+          )}
         >
-          <span className="min-w-0 flex-1 truncate">{thread.title}</span>
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="truncate">{thread.title}</span>
+            {thread.pullRequest ? (
+              <Mark
+                id="thread-row-metadata"
+                label="A pull request badge a plugin added to the row's metadata line"
+                chip="side"
+                className="z-[2] flex h-4 w-28 items-center gap-1 text-xs tabular-nums text-success"
+              >
+                <MiniIcon icon="GitPullRequestArrow" className="size-3" />
+                <span className="font-mono text-muted-foreground">#412</span>
+                <span className="flex size-3 items-center justify-center">
+                  <span className="size-1.5 rounded-full bg-attention" />
+                </span>
+              </Mark>
+            ) : null}
+          </span>
           {thread.glyph === "spin" ? (
             <Mark
               id="thread-row-status"

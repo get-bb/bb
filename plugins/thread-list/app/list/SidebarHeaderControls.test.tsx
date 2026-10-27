@@ -21,6 +21,7 @@ import {
   sidebarEnvironmentGroupingAtom,
   sidebarSortDirectionAtom,
   sidebarShowProviderIconsAtom,
+  sidebarShowRowMetadataAtom,
 } from "../preferences/atoms.js";
 import type { OrganizationMode } from "../../shared/preferences.js";
 
@@ -48,6 +49,7 @@ function setup(
   store.set(sidebarSortDirectionAtom, "default");
   store.set(sidebarEnvironmentGroupingAtom, "auto");
   store.set(sidebarShowProviderIconsAtom, false);
+  store.set(sidebarShowRowMetadataAtom, false);
   const newThread = vi.fn();
   const newSection = vi.fn();
   render(
@@ -269,6 +271,19 @@ describe("sidebar header controls", () => {
     expect(toggle.getAttribute("aria-checked")).toBe("false");
     fireEvent.click(toggle);
     expect(store.get(sidebarShowProviderIconsAtom)).toBe(true);
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("toggles row metadata in the Organize Rows group", async () => {
+    const { store } = setup();
+    await openMenu();
+    await openSubmenu("Organize");
+    const toggle = await screen.findByRole("menuitemcheckbox", {
+      name: "Metadata",
+    });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(toggle);
+    expect(store.get(sidebarShowRowMetadataAtom)).toBe(true);
     expect(toggle.getAttribute("aria-checked")).toBe("true");
   });
 

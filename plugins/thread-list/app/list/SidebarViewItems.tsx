@@ -23,6 +23,7 @@ import {
   sidebarEnvironmentGroupingAtom,
   sidebarGroupByReadStatusAtom,
   sidebarShowProviderIconsAtom,
+  sidebarShowRowMetadataAtom,
 } from "../preferences/atoms.js";
 
 const SIDEBAR_ORGANIZE_OPTIONS = [
@@ -146,6 +147,9 @@ function SidebarViewItems({ page }: { page: SidebarViewPage }) {
   const [showProviderIcons, setShowProviderIcons] = useAtom(
     sidebarShowProviderIconsAtom,
   );
+  const [showRowMetadata, setShowRowMetadata] = useAtom(
+    sidebarShowRowMetadataAtom,
+  );
   const selectedSort = sort === "none" ? "updated" : sort;
   if (page === "filter") {
     return (
@@ -248,6 +252,19 @@ function SidebarViewItems({ page }: { page: SidebarViewPage }) {
             Provider icons
             <span className="ml-auto inline-flex size-4 shrink-0 items-center justify-center">
               {showProviderIcons && <Icon name="Check" className="size-4" />}
+            </span>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            role="menuitemcheckbox"
+            aria-checked={showRowMetadata}
+            onSelect={(event) => {
+              event.preventDefault();
+              setShowRowMetadata(!showRowMetadata);
+            }}
+          >
+            Metadata
+            <span className="ml-auto inline-flex size-4 shrink-0 items-center justify-center">
+              {showRowMetadata && <Icon name="Check" className="size-4" />}
             </span>
           </DropdownMenuItem>
         </DropdownMenuGroup>

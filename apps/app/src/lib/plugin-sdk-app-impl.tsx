@@ -119,6 +119,7 @@ import {
 import { InfoListRow } from "@bb/shared-ui/info-list-row";
 import { DetailRow } from "@/components/ui/detail-card";
 import { useTabVisible } from "@/components/secondary-panel/tab-visibility";
+import { ThreadRowMetadata } from "@/components/plugin/ThreadRowMetadata";
 
 function PluginInfoListRow({
   onSelect,
@@ -195,6 +196,7 @@ export const pluginSdkAppImplementation = {
   experimental_SourceCode: LazyPluginSourceCode,
   experimental_Diff: LazyPluginDiff,
   experimental_InfoSection: InfoSection,
+  experimental_ThreadRowMetadata: ThreadRowMetadata,
   experimental_DetailRow: DetailRow,
   experimental_InfoList: InfoList,
   experimental_InfoListRow: PluginInfoListRow,

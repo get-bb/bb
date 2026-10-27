@@ -399,3 +399,252 @@ it("retains plain and keyed watched reads until their consumers disable them", a
     client.clear();
   }
 });
+
+it("watches each keyed row once while held, releasing only keys that leave", async () => {
+  const client = new QueryClient();
+  const active = new Map<string, number>();
+  const watch = vi.fn(
+    (_plugin: string, _method: string, read: { key: string } | object) => {
+      const key = "key" in read ? read.key : "";
+      active.set(key, (active.get(key) ?? 0) + 1);
+      return () => {
+        active.set(key, (active.get(key) ?? 0) - 1);
+      };
+    },
+  );
+  const host = {
+    pluginId: "demo",
+    queryClient: client,
+    subscribe: () => () => {},
+    watch,
+    call: async (_plugin: string, _method: string, input: unknown) =>
+      Object.fromEntries(
+        (input as { keys: string[] }).keys.map((key) => [key, 1]),
+      ),
+  };
+  const contract = defineRpcContract({
+    rows: {
+      input: z.object({ keys: z.array(z.string()) }),
+      output: z.record(z.string(), z.number()),
+    },
+  });
+  const hooks = createRpcQueryHooks(() => host);
+  const probe = renderHook(
+    ({ keys }) =>
+      hooks.experimental_useRpcKeyedQuery({ contract, method: "rows", keys }),
+    { initialProps: { keys: ["a", "b", "c"] } },
+  );
+  try {
+    await waitFor(() => expect(watch).toHaveBeenCalledTimes(3));
+    probe.rerender({ keys: ["b", "c", "d"] });
+    probe.rerender({ keys: ["c", "d", "e"] });
+    expect(
+      watch.mock.calls.map(([, , read]) => ("key" in read ? read.key : null)),
+    ).toEqual(["a", "b", "c", "d", "e"]);
+    expect(Object.fromEntries(active)).toEqual({
+      a: 0,
+      b: 0,
+      c: 1,
+      d: 1,
+      e: 1,
+    });
+    probe.unmount();
+    expect(Object.fromEntries(active)).toEqual({
+      a: 0,
+      b: 0,
+      c: 0,
+      d: 0,
+      e: 0,
+    });
+  } finally {
+    client.clear();
+  }
+});
+
+it("refetches only the calling hook's keys, batching hooks that refetch together", async () => {
+  const client = new QueryClient();
+  const reads: string[][] = [];
+  const host = {
+    pluginId: "demo",
+    queryClient: client,
+    subscribe: () => () => {},
+    call: async (_plugin: string, _method: string, input: unknown) => {
+      const { keys } = input as { keys: string[] };
+      reads.push([...keys].sort());
+      return Object.fromEntries(keys.map((key) => [key, 1]));
+    },
+  };
+  const contract = defineRpcContract({
+    rows: {
+      input: z.object({ keys: z.array(z.string()) }),
+      output: z.record(z.string(), z.number()),
+    },
+  });
+  const hooks = createRpcQueryHooks(() => host);
+  const probe = renderHook(() => ({
+    rows: hooks.experimental_useRpcKeyedQuery({
+      contract,
+      method: "rows",
+      keys: ["a", "b", "c", "d"],
+    }),
+    first: hooks.experimental_useRpcKeyedQuery({
+      contract,
+      method: "rows",
+      keys: ["a"],
+    }),
+    second: hooks.experimental_useRpcKeyedQuery({
+      contract,
+      method: "rows",
+      keys: ["c"],
+    }),
+  }));
+  try {
+    await waitFor(() => expect(reads).toEqual([["a", "b", "c", "d"]]));
+    await act(async () => {
+      await Promise.all([
+        probe.result.current.first.refetch(),
+        probe.result.current.second.refetch(),
+      ]);
+    });
+    expect(reads).toEqual([
+      ["a", "b", "c", "d"],
+      ["a", "c"],
+    ]);
+  } finally {
+    probe.unmount();
+    client.clear();
+  }
+});
+
+it("keeps a keyed hook's refetch stable while its keys change", async () => {
+  const client = new QueryClient();
+  const host = {
+    pluginId: "demo",
+    queryClient: client,
+    subscribe: () => () => {},
+    call: async (_plugin: string, _method: string, input: unknown) =>
+      Object.fromEntries(
+        (input as { keys: string[] }).keys.map((key) => [key, 1]),
+      ),
+  };
+  const contract = defineRpcContract({
+    rows: {
+      input: z.object({ keys: z.array(z.string()) }),
+      output: z.record(z.string(), z.number()),
+    },
+  });
+  const hooks = createRpcQueryHooks(() => host);
+  const probe = renderHook(
+    ({ keys }) =>
+      hooks.experimental_useRpcKeyedQuery({ contract, method: "rows", keys }),
+    { initialProps: { keys: ["a"] } },
+  );
+  try {
+    const first = probe.result.current.refetch;
+    probe.rerender({ keys: ["a", "b"] });
+    expect(probe.result.current.refetch).toBe(first);
+  } finally {
+    probe.unmount();
+    client.clear();
+  }
+});
+
+it("keeps cached rows on screen while a keyed hook is disabled and re-enables without a re-read", async () => {
+  const client = new QueryClient();
+  const reads: string[][] = [];
+  const host = {
+    pluginId: "demo",
+    queryClient: client,
+    subscribe: () => () => {},
+    call: async (_plugin: string, _method: string, input: unknown) => {
+      const { keys } = input as { keys: string[] };
+      reads.push(keys);
+      return Object.fromEntries(keys.map((key) => [key, 1]));
+    },
+  };
+  const contract = defineRpcContract({
+    rows: {
+      input: z.object({ keys: z.array(z.string()) }),
+      output: z.record(z.string(), z.number()),
+    },
+  });
+  const hooks = createRpcQueryHooks(() => host);
+  const probe = renderHook(
+    ({ enabled }) =>
+      hooks.experimental_useRpcKeyedQuery({
+        contract,
+        method: "rows",
+        keys: ["a"],
+        enabled,
+      }),
+    { initialProps: { enabled: true } },
+  );
+  try {
+    await waitFor(() => expect(probe.result.current.data).toEqual({ a: 1 }));
+    probe.rerender({ enabled: false });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(probe.result.current.data).toEqual({ a: 1 });
+    probe.rerender({ enabled: true });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(reads).toEqual([["a"]]);
+  } finally {
+    probe.unmount();
+    client.clear();
+  }
+});
+
+it("sends a keyed hook's input with its keys and caches it apart from hooks without it", async () => {
+  const client = new QueryClient();
+  const reads: unknown[] = [];
+  const host = {
+    pluginId: "demo",
+    queryClient: client,
+    subscribe: () => () => {},
+    call: async (_plugin: string, _method: string, input: unknown) => {
+      reads.push(input);
+      const { keys, maxAgeMs } = input as { keys: string[]; maxAgeMs?: number };
+      return Object.fromEntries(
+        keys.map((key) => [key, maxAgeMs === undefined ? 1 : 2]),
+      );
+    },
+  };
+  const contract = defineRpcContract({
+    rows: {
+      input: z.object({
+        keys: z.array(z.string()),
+        maxAgeMs: z.number().optional(),
+      }),
+      output: z.record(z.string(), z.number()),
+    },
+  });
+  const hooks = createRpcQueryHooks(() => host);
+  const probe = renderHook(() => ({
+    plain: hooks.experimental_useRpcKeyedQuery({
+      contract,
+      method: "rows",
+      keys: ["a"],
+    }),
+    cached: hooks.experimental_useRpcKeyedQuery({
+      contract,
+      method: "rows",
+      keys: ["a", "b"],
+      input: { maxAgeMs: 5 },
+    }),
+  }));
+  try {
+    await waitFor(() => {
+      expect(probe.result.current.plain.data).toEqual({ a: 1 });
+      expect(probe.result.current.cached.data).toEqual({ a: 2, b: 2 });
+    });
+    expect(reads).toEqual(
+      expect.arrayContaining([
+        { keys: ["a"] },
+        { maxAgeMs: 5, keys: ["a", "b"] },
+      ]),
+    );
+    expect(reads).toHaveLength(2);
+  } finally {
+    probe.unmount();
+    client.clear();
+  }
+});

@@ -1,7 +1,11 @@
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getPullRequestByUrl } from "./git-host.js";
+import {
+  getPullRequestByUrl,
+  prepareUrlRead,
+  readPullRequests,
+} from "./git-host.js";
 import { installFakeGh, makeTempDir } from "../test/fake-gh.js";
 
 function raw(number: number) {
@@ -176,12 +180,12 @@ describe("host GraphQL batching", () => {
     expect(queries[2]).not.toContain("isInMergeQueue");
   });
 
-  it("caps each document at 25 PRs", async () => {
+  it("caps each document at 100 PR URLs", async () => {
     const gh = await installFakeGh({
       "api graphql": {
         stdout: JSON.stringify({
           data: Object.fromEntries(
-            Array.from({ length: 25 }, (_, index) => [
+            Array.from({ length: 100 }, (_, index) => [
               `p${index}`,
               raw(index + 1),
             ]),
@@ -191,11 +195,37 @@ describe("host GraphQL batching", () => {
     });
     const cwd = await makeTempDir("bb-pr-cap-");
     const results = await Promise.all(
-      Array.from({ length: 26 }, (_, index) =>
+      Array.from({ length: 101 }, (_, index) =>
         getPullRequestByUrl(raw(index + 1).url, cwd),
       ),
     );
     expect(results.every((result) => result.outcome === "found")).toBe(true);
     expect(await gh.readCalls()).toHaveLength(2);
+  });
+
+  it("starts reads prepared at different times together, in one document", async () => {
+    const gh = await installFakeGh({
+      "api graphql": {
+        stdout: JSON.stringify({
+          data: { p0: raw(1), p1: raw(2), p2: raw(3) },
+        }),
+      },
+    });
+    const cwd = await makeTempDir("bb-pr-prepared-");
+    const later = (delay: number, url: string) =>
+      new Promise<void>((resolve) => setTimeout(resolve, delay)).then(() =>
+        prepareUrlRead(url, cwd),
+      );
+    const results = await readPullRequests([
+      prepareUrlRead(raw(1).url, cwd),
+      later(30, raw(2).url),
+      later(60, raw(3).url),
+    ]);
+    expect(results.map((result) => result.outcome)).toEqual([
+      "found",
+      "found",
+      "found",
+    ]);
+    expect(await gh.readCalls()).toHaveLength(1);
   });
 });

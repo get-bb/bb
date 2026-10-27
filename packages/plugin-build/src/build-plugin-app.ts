@@ -157,7 +157,7 @@ const SHIM_NAMESPACE = "bb-plugin-runtime-shim";
 
 const RETIRED_PLUGIN_SDK_APP_EXPORTS: Readonly<Record<string, string>> = {
   experimental_useSidebarThreadPullRequest:
-    'Read pull requests from the GitHub PR Status plugin instead: experimental_useRpcKeyedQuery({ pluginId: "bb--github-pr-status", contract, method: "pullRequests", keys: [thread.environment.id] }). See "Migrating from experimental_useSidebarThreadPullRequest" in the bb-plugin-authoring skill.',
+    'Render <experimental_ThreadRowMetadata thread={thread} /> in the row to draw bb\'s pull request badge, or read pull requests from the GitHub PR Status plugin: experimental_useRpcKeyedQuery({ pluginId: "bb--github-pr-status", contract, method: "pullRequests", keys: [thread.environment.id] }). See "Migrating from experimental_useSidebarThreadPullRequest" in the bb-plugin-authoring skill.',
 };
 
 const NAMED_IMPORT_PATTERN =

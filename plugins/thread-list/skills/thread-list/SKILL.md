@@ -6,7 +6,7 @@ description: "Inspect or change the sidebar thread list's layout preferences: or
 # Thread list preferences
 
 The Thread list plugin owns the sidebar's layout state. Read it with
-`bb thread-list prefs list --json`; keys are `showProviderIcons`, `threadLifecycles`, `organizationMode`,
+`bb thread-list prefs list --json`; keys are `showProviderIcons`, `showRowMetadata`, `threadLifecycles`, `organizationMode`,
 `environmentGrouping`, `groupByReadStatus`, `chronologicalSort`, `sortDirection`, `sectionOrder`,
 `manualSectionOrder`, `machineSectionOrder`, `hiddenGroups` (including the
 built-in `threads` group), `rowActions`,
@@ -80,6 +80,12 @@ Organize → Rows → Provider icons toggles the icon before each thread title.
 `showProviderIcons` defaults to `true`; use
 `bb thread-list prefs set showProviderIcons false` to hide them. Unknown
 provider ids have no icon.
+
+Organize → Rows → Metadata adds a line under each thread's title where plugins
+draw metadata, such as GitHub PR Status's pull request number. Rows grow to
+two lines only when a plugin shows something for them. `showRowMetadata`
+defaults to `false`; use `bb thread-list prefs set showRowMetadata true` to
+turn it on.
 
 Organize → Groups → By read status lists threads that show the unread dot above
 the rest, keeping the selected sort within each group. `groupByReadStatus`

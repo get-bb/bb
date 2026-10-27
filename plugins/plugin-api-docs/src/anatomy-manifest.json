@@ -273,6 +273,39 @@
         }
       ]
     },
+    "thread-row-metadata": {
+      "groupId": "app-shell",
+      "fidelity": "anchor",
+      "responsiveStrategy": "scale-together",
+      "requiredStates": ["anchor"],
+      "labels": {
+        "anchor": ["Ship dark mode"]
+      },
+      "fixtureClassAnchors": ["size-3", "tabular-nums", "bg-attention"],
+      "sources": [
+        {
+          "path": "apps/app/src/components/plugin/ThreadRowMetadata.tsx",
+          "anchors": [
+            "data-thread-row-metadata=\"\"",
+            "slotKind=\"threadRowMetadata\"",
+            "crashFallback={null}",
+            "min-w-0 flex-1"
+          ]
+        },
+        {
+          "path": "plugins/thread-list/app/rows/ThreadRow.tsx",
+          "anchors": ["<ThreadRowMetadata thread={thread} />", "showRowMetadata"]
+        },
+        {
+          "path": "plugins/github-pr-status/app.tsx",
+          "anchors": ["app.slots.experimental_threadRowMetadata"]
+        },
+        {
+          "path": "plugins/github-pr-status/ui/PullRequestRowMetadata.tsx",
+          "anchors": ["enabled: isLive && environmentId !== null"]
+        }
+      ]
+    },
     "thread-info": {
       "groupId": "app-shell",
       "fidelity": "anchor",

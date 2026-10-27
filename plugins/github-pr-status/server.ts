@@ -7,15 +7,17 @@ import {
 } from "@get-bb/plugin-sdk";
 import { assemblePullRequest } from "./assemble.js";
 import {
-  environmentPullRequestTag,
+  HOST_VIEWS_MAX_READS,
   githubPrStatusHostContract,
   githubPrStatusRpcContract,
   SHOW_PULL_REQUEST_SETTING,
   type EnvironmentPullRequest,
   type HostPullRequestAction,
+  type HostPullRequestLookup,
   type PullRequest,
 } from "./contract.js";
 import { createPullRequestPersistence } from "./persistence.js";
+import { environmentPullRequestTag } from "./read-contract.js";
 import { createPullRequestStore } from "./store.js";
 
 const JSON_OPTION = {
@@ -30,6 +32,9 @@ const ENVIRONMENT_POSITIONAL = [
     required: true,
   },
 ] as const;
+
+const LOAD_BATCH_QUIET_MS = 50;
+const LOAD_BATCH_MAX_MS = 250;
 
 const REFRESHING_ENVIRONMENT_CHANGES: ReadonlySet<string> = new Set([
   "environment-created",
@@ -183,22 +188,33 @@ export default function githubPrStatusPlugin(bb: BbPluginApi): void {
     }
   }
 
-  async function loadPullRequest(
+  type ViewRead = { path: string; url: string | null; refresh: boolean };
+  type PreparedLoad =
+    | { kind: "done"; result: EnvironmentPullRequest }
+    | { kind: "view"; hostId: string; read: ViewRead };
+
+  async function prepareLoad(
     environmentId: string,
     url: string | null,
     refresh: boolean,
-  ): Promise<EnvironmentPullRequest> {
+  ): Promise<PreparedLoad> {
     let environment: Environment | null;
     try {
       environment = await getEnvironment(environmentId);
     } catch (error) {
-      return { outcome: "unavailable", message: errorMessage(error) };
+      return {
+        kind: "done",
+        result: { outcome: "unavailable", message: errorMessage(error) },
+      };
     }
     if (environment === null || !environment.isGitRepo) {
-      return { outcome: "absent" };
+      return { kind: "done", result: { outcome: "absent" } };
     }
     if (environment.status !== "ready" || environment.path === null) {
-      return { outcome: "unavailable", message: "Environment is not ready" };
+      return {
+        kind: "done",
+        result: { outcome: "unavailable", message: "Environment is not ready" },
+      };
     }
     try {
       const machine = await bb.sdk.hosts.get({ hostId: environment.hostId });
@@ -207,8 +223,11 @@ export default function githubPrStatusPlugin(bb: BbPluginApi): void {
         machine.lifecycle.phase !== "active"
       )
         return {
-          outcome: "unavailable",
-          message: `${machine.name} isn't available. Start the machine and try again.`,
+          kind: "done",
+          result: {
+            outcome: "unavailable",
+            message: `${machine.name} isn't available. Start the machine and try again.`,
+          },
         };
       const refs = await host.call(
         "upstream",
@@ -224,25 +243,134 @@ export default function githubPrStatusPlugin(bb: BbPluginApi): void {
         url = null;
       lookedUpBranches.set(environmentId, refs.branchName);
       upstreams.set(environmentId, refs.oid);
-      const lookup = await host.call(
-        "view",
-        { path: environment.path, url, refresh },
-        { hostId: environment.hostId },
-      );
-      switch (lookup.outcome) {
-        case "found":
-          return {
-            outcome: "available",
-            pullRequest: assemblePullRequest(lookup.pullRequest),
-          };
-        case "none":
-          return { outcome: "absent" };
-        case "unavailable":
-          return lookup;
-      }
+      return {
+        kind: "view",
+        hostId: environment.hostId,
+        read: { path: environment.path, url, refresh },
+      };
     } catch (error) {
-      return { outcome: "unavailable", message: errorMessage(error) };
+      return {
+        kind: "done",
+        result: { outcome: "unavailable", message: errorMessage(error) },
+      };
     }
+  }
+
+  function toEnvironmentPullRequest(
+    lookup: HostPullRequestLookup,
+  ): EnvironmentPullRequest {
+    switch (lookup.outcome) {
+      case "found":
+        return {
+          outcome: "available",
+          pullRequest: assemblePullRequest(lookup.pullRequest),
+        };
+      case "none":
+        return { outcome: "absent" };
+      case "unavailable":
+        return lookup;
+    }
+  }
+
+  type QueuedLoad = {
+    environmentId: string;
+    url: string | null;
+    refresh: boolean;
+    resolve(result: EnvironmentPullRequest): void;
+  };
+  let queuedLoads: QueuedLoad[] = [];
+  let loadsStartedAt = 0;
+  let loadTimer: ReturnType<typeof setTimeout> | undefined;
+
+  async function viewOnHost(
+    hostId: string,
+    batch: readonly { read: ViewRead; load: QueuedLoad }[],
+  ): Promise<void> {
+    try {
+      const lookups = await host.call(
+        "views",
+        { reads: batch.map((entry) => entry.read) },
+        { hostId },
+      );
+      batch.forEach((entry, index) => {
+        const lookup = lookups[index];
+        entry.load.resolve(
+          lookup === undefined
+            ? {
+                outcome: "unavailable",
+                message: "The machine returned no pull request result",
+              }
+            : toEnvironmentPullRequest(lookup),
+        );
+      });
+    } catch (error) {
+      for (const entry of batch)
+        entry.load.resolve({
+          outcome: "unavailable",
+          message: errorMessage(error),
+        });
+    }
+  }
+
+  async function runLoads(loads: readonly QueuedLoad[]): Promise<void> {
+    const prepared = await Promise.all(
+      loads.map((load) =>
+        prepareLoad(load.environmentId, load.url, load.refresh),
+      ),
+    );
+    const views = new Map<string, { read: ViewRead; load: QueuedLoad }[]>();
+    prepared.forEach((entry, index) => {
+      const load = loads[index]!;
+      if (entry.kind === "done") {
+        load.resolve(entry.result);
+        return;
+      }
+      const group = views.get(entry.hostId) ?? [];
+      group.push({ read: entry.read, load });
+      views.set(entry.hostId, group);
+    });
+    await Promise.all(
+      [...views].flatMap(([hostId, entries]) =>
+        Array.from(
+          { length: Math.ceil(entries.length / HOST_VIEWS_MAX_READS) },
+          (_, chunk) =>
+            viewOnHost(
+              hostId,
+              entries.slice(
+                chunk * HOST_VIEWS_MAX_READS,
+                (chunk + 1) * HOST_VIEWS_MAX_READS,
+              ),
+            ),
+        ),
+      ),
+    );
+  }
+
+  function runQueuedLoads(): void {
+    clearTimeout(loadTimer);
+    loadTimer = undefined;
+    const loads = queuedLoads;
+    queuedLoads = [];
+    void runLoads(loads);
+  }
+
+  function loadPullRequest(
+    environmentId: string,
+    url: string | null,
+    refresh: boolean,
+  ): Promise<EnvironmentPullRequest> {
+    return new Promise((resolve) => {
+      if (queuedLoads.length === 0) loadsStartedAt = Date.now();
+      queuedLoads.push({ environmentId, url, refresh, resolve });
+      clearTimeout(loadTimer);
+      loadTimer = setTimeout(
+        runQueuedLoads,
+        Math.min(
+          LOAD_BATCH_QUIET_MS,
+          Math.max(0, loadsStartedAt + LOAD_BATCH_MAX_MS - Date.now()),
+        ),
+      );
+    });
   }
 
   const store = createPullRequestStore({
@@ -261,7 +389,10 @@ export default function githubPrStatusPlugin(bb: BbPluginApi): void {
     },
   });
 
-  bb.onDispose(() => store.dispose());
+  bb.onDispose(() => {
+    store.dispose();
+    clearTimeout(loadTimer);
+  });
   bb.events.on("experimental_environment.removed", ({ removal }) => {
     store.remove(removal.environmentId);
     lookedUpBranches.delete(removal.environmentId);
@@ -408,11 +539,12 @@ export default function githubPrStatusPlugin(bb: BbPluginApi): void {
   bb.rpc.register(
     githubPrStatusRpcContract,
     {
-      async pullRequests({ keys }, context) {
+      async pullRequests({ keys, maxAgeMs }, context) {
         const viewer = context.experimental_caller.kind === "client";
         const results = await Promise.all(
           keys.map(
-            async (key) => [key, await store.read(key, { viewer })] as const,
+            async (key) =>
+              [key, await store.read(key, { viewer, maxAgeMs })] as const,
           ),
         );
         return Object.fromEntries(results);

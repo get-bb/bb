@@ -128,6 +128,25 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         experimental: true,
       },
       {
+        id: "thread-row-metadata",
+        title: "Thread row metadata",
+        summary:
+          "Add a small badge on the metadata line under each thread's title in the sidebar. With this, a plugin can:",
+        bullets: [
+          "Show per-thread state at a glance, like a pull request's number and its checks",
+          "Read only rows on screen once scrolling pauses, in one batched request, and draw cached data at once",
+          "Appear on plugin-built thread lists too, and on bb's rows once Metadata is turned on",
+        ],
+        apiSymbols: [
+          "ExperimentalThreadRowMetadataRegistration",
+          "ExperimentalThreadRowMetadataProps",
+          "experimental_ThreadRowMetadata",
+          "ExperimentalThreadRowMetadataLineProps",
+        ],
+        firstParty: ["GitHub PR Status"],
+        experimental: true,
+      },
+      {
         id: "thread-list",
         title: "The thread list",
         summary:
@@ -168,6 +187,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginThreadTitleProps",
           "experimental_ThreadStatusGlyph",
           "PluginThreadStatusGlyphProps",
+          "experimental_ThreadRowMetadata",
           "useEnvironmentProviders",
           "PluginEnvironmentProvidersState",
           "useSdk",

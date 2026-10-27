@@ -230,10 +230,10 @@ experimental_Original }` — draws the sidebar navigation. Registration:
   navigation is active. Read items and host actions
   with `experimental_useSidebarNavigation()`. Exclusive; see
   frontend-sidebar-navigation.md. Experimental: see `docs/api_to_audit.md`.
-- `experimental_threadList`, `experimental_threadInfoRow`,
-  `experimental_threadInfoSection`, `experimental_threadAction` (menu entries
-  and header buttons), and `experimental_browserToolbarAction` are covered in
-  frontend-registration.md.
+- `experimental_threadList`, `experimental_threadRowMetadata`,
+  `experimental_threadInfoRow`, `experimental_threadInfoSection`,
+  `experimental_threadAction` (menu entries and header buttons), and
+  `experimental_browserToolbarAction` are covered in frontend-registration.md.
 - `fileOpener` → `{ path: string, source, experimental_lineRange?, Original }` — register as a viewer/editor
   for file extensions: `{ id, title, extensions: ["md"], component }`.
   Matching files use the first applicable opener in deterministic slot order

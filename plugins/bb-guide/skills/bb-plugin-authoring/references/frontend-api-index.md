@@ -91,6 +91,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `useSidebarThreadShortcut`
 - `ThreadTitle`
 - `experimental_ThreadStatusGlyph`
+- `experimental_ThreadRowMetadata`
 - `useEnvironmentProviders`
 - `useSdk`
 - `experimental_useProviders`
@@ -141,6 +142,8 @@ Read the installed SDK declarations for the exact current signatures.
 - `ExperimentalThreadContextSegmentInput`
 - `ExperimentalThreadContextSegmentProps`
 - `ExperimentalThreadContextSegmentReference`
+- `ExperimentalThreadRowMetadataProps`
+- `ExperimentalThreadRowMetadataLineProps`
 - `ExperimentalInfoSectionProps`
 - `ExperimentalDetailRowProps`
 - `ExperimentalInfoListProps`
@@ -210,6 +213,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginBrowserBbSdk`
 - `ExperimentalThreadContextSegmentRegistration`
 - `ExperimentalThreadInfoRowRegistration`
+- `ExperimentalThreadRowMetadataRegistration`
 - `ExperimentalThreadInfoSectionRegistration`
 - `PluginThreadActionTarget`
 - `PluginThreadActionChoice`

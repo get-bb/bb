@@ -117,6 +117,8 @@ import {
   type PluginThreadActionsContextMenuProps,
   type PluginThreadActionsMenuProps,
   type PluginThreadStatusGlyphProps,
+  type ExperimentalThreadRowMetadataLineProps,
+  type ExperimentalThreadRowMetadataRegistration,
   type PluginThreadActionsOptions,
   type PluginThreadActionTarget,
   type ExperimentalPluginBrowserToolbarActionRegistration,
@@ -553,6 +555,14 @@ function TestThreadStatusGlyph({
       data-size={size}
     />
   );
+}
+
+/**
+ * `experimental_ThreadRowMetadata` marks where a row renders other plugins' row
+ * items; the test runtime knows no other plugins, so it renders a marker.
+ */
+function TestThreadRowMetadata({ thread }: ExperimentalThreadRowMetadataLineProps) {
+  return <span data-thread-row-metadata={thread.id} />;
 }
 
 function SlotLifecycleGuard({
@@ -1892,6 +1902,7 @@ const testPluginSdkApp = {
   },
   ThreadTitle: TestThreadTitle,
   experimental_ThreadStatusGlyph: TestThreadStatusGlyph,
+  experimental_ThreadRowMetadata: TestThreadRowMetadata,
   useEnvironmentProviders(): PluginEnvironmentProvidersState {
     return useSlotEnv("useEnvironmentProviders").environmentProviders;
   },
@@ -1991,6 +2002,7 @@ export interface CapturedPluginApp {
   threadHeaderActions: import("../internal/plugin-app-registration-collector.js").LegacyThreadHeaderActionRegistration[];
   threadContextSegments: ExperimentalThreadContextSegmentRegistration[];
   threadInfoRows: ExperimentalThreadInfoRowRegistration[];
+  threadRowMetadata: ExperimentalThreadRowMetadataRegistration[];
   threadInfoSections: ExperimentalThreadInfoSectionRegistration[];
   threadActions: PluginThreadActionRegistration<unknown>[];
   browserToolbarActions: ExperimentalPluginBrowserToolbarActionRegistration[];

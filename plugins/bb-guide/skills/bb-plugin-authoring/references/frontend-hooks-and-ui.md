@@ -394,9 +394,10 @@ mutation input so every replay uses the same values.
 
 All live hooks take `{ contract, method, ... }` and infer their types without
 explicit generic arguments. Plain queries add `input`; mutations add optional
-`optimistic`. Use `experimental_useRpcKeyedQuery({ contract, method, keys, select? })` for
+`optimistic`. Use `experimental_useRpcKeyedQuery({ contract, method, keys, input?, select? })` for
 contract-inferred rows and selection results. Keyed methods accept `{ keys }`
-and return a record containing every requested key. Tags are plain strings;
+and return a record containing every requested key; `input` carries the
+method's other optional fields and keeps a separate cache per value. Tags are plain strings;
 reads and writes use matching strings to declare their dependencies.
 
 `data` retains the last successful value and optimistic predictions during
