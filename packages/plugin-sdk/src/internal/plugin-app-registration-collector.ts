@@ -1003,7 +1003,9 @@ export function collectPluginAppRegistrations(
           icon: requireNonEmptyString(kind, "icon", registration.icon),
           group: requireNonEmptyString(kind, "group", registration.group),
           ...requireOptionalOrder(kind, registration.order),
-          placement: registration.placement ?? "menu",
+          ...(registration.placement !== undefined
+            ? { placement: registration.placement }
+            : {}),
           ...(registration.useData !== undefined
             ? { useData: registration.useData }
             : {}),

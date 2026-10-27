@@ -38,6 +38,7 @@ export interface ThreadActionRegistrationRecord {
   key: string;
   instanceKey: string;
   pluginId: string;
+  placement: PluginThreadActionPlacement;
   registration: PluginThreadActionRegistration<unknown>;
 }
 
@@ -273,7 +274,7 @@ function ThreadActionCollector({
   const threadIds = useSyncExternalStore(
     subscribeThreadIds,
     getSubscribedThreadIds,
-  )[record.registration.placement ?? "menu"];
+  )[record.placement];
   const data = record.registration.useData?.({ threadIds });
   const sdk = useSdk();
   const [panel] = useState(() =>
@@ -335,7 +336,10 @@ function useThreadActionRecords(
         right.index,
       ),
     )
-    .map(({ record }) => record);
+    .map(({ record }) => ({
+      ...record,
+      placement: record.registration.placement ?? "menu",
+    }));
 }
 
 export function ThreadActionCollectors({
@@ -453,7 +457,7 @@ function hasPlacement(
   record: ThreadActionRegistrationRecord,
   placement: PluginThreadActionPlacement,
 ): boolean {
-  return (record.registration.placement ?? "menu") === placement;
+  return record.placement === placement;
 }
 
 function evaluateThreadActions(

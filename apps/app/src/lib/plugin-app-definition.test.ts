@@ -93,7 +93,6 @@ describe("collectPluginAppRegistrations — experimental_threadAction", () => {
         icon: "Notification",
         group: "3_settings",
         order: 5,
-        placement: "menu",
         useData,
         item,
         experimental_bulkItem,
