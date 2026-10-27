@@ -61,6 +61,8 @@ const PARENT_SYSTEM_MESSAGE_SOURCE = "tell";
 
 class ParentSystemMessageStateChangedError extends Error {}
 
+export class ParentSystemMessageCompactionActiveError extends Error {}
+
 export interface ParentSystemMessageTaxonomy {
   systemMessageKind: SystemMessageKind;
   systemMessageSubject: SystemMessageSubject | null;
@@ -238,6 +240,9 @@ function queueActiveParentSystemMessageInTransaction(
   }
   if (currentThread.status !== "active") {
     throw new ParentSystemMessageStateChangedError();
+  }
+  if (isManualCompactionActive({ db: tx }, currentThread)) {
+    throw new ParentSystemMessageCompactionActiveError();
   }
 
   const expectedSteerTurnId = getActiveTurnId({ db: tx }, args.thread.id);
@@ -461,7 +466,7 @@ export async function queueParentSystemMessage(
       parentThread.id,
     );
   let hostUnavailable = false;
-  if (!hasPendingInteraction && !isManualCompactionActive(deps, parentThread)) {
+  if (!hasPendingInteraction) {
     try {
       return await deliverParentSystemMessage(deps, {
         input: args.input,
@@ -473,6 +478,7 @@ export async function queueParentSystemMessage(
       hostUnavailable = isHostUnavailableApiError(error);
       if (
         !(error instanceof ThreadContextClearInProgressError) &&
+        !(error instanceof ParentSystemMessageCompactionActiveError) &&
         !hostUnavailable
       ) {
         throw error;
