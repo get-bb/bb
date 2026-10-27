@@ -1,4 +1,4 @@
-Get a notification when an agent asks a question, finishes a turn, or stops on an error. Choose mobile, web, and desktop delivery independently in Settings → Push notifications.
+Get a notification when an agent asks a question, finishes a turn, or stops on an error. Other plugins and the CLI can send their own notifications through the same channels. Choose mobile, web, and desktop delivery independently in Settings → Push notifications.
 
 ## Delivery
 
@@ -30,10 +30,11 @@ Channel switches apply to this server and save immediately. Browser permission i
 - `bb push-notifications remove <id> [--json]`: remove a mobile device.
 - `bb push-notifications status [--json]`: switches, defaults, relay, device count, and last mobile send.
 - `bb push-notifications test <web|desktop> [--json]`: broadcast a test to connected clients of that type. Fails if the channel is disabled.
+- `bb push-notifications send --title <text> [--body <text>] [--thread <thread>] [--json]`: send a notification to every enabled channel and print the ones it reached. Title is cut to 80 characters, body to 180. `--thread` makes a click open that thread. Fails with `not_delivered` when nothing was delivered.
 - `bb push-notifications thread <thread> [--level inherit|all|input-only|muted] [--json]`: print the resolved level and source; `--level` sets it.
 - `bb plugin config push-notifications set <mobileEnabled|webEnabled|desktopEnabled> <true|false>`: change a channel.
 - `bb plugin config push-notifications set <defaultLevel|childLevel> <level>`: change a default.
 
 Every command takes `--help`. A failure with `--json` prints `{ "ok": false, "error": { "code", "message" } }` on stdout and the readable text on stderr.
 
-Agents can use the SDK's plugin settings API for the same switches and `sdk.plugins.callRpc` with method `notifications.test` (`{ channel }`), `threadNotifications.list` (`{ threadIds }`, up to 200), or `threadNotifications.set` (`{ threadId, level }`). Permission requests still require a click in the target client.
+Agents can use the SDK's plugin settings API for the same switches and `sdk.plugins.callRpc` with method `notifications.test` (`{ channel }`), `notifications.send` (`{ title, body?, threadId? }`, returns `{ ok: true, channels }` with the `web`, `desktop`, and `mobile` channels it reached; the calling plugin's id travels as `source` in the mobile push data), `threadNotifications.list` (`{ threadIds }`, up to 200), or `threadNotifications.set` (`{ threadId, level }`). Permission requests still require a click in the target client.
