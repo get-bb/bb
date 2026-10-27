@@ -972,6 +972,7 @@ function ThreadSecondaryPanelContent({
       aria-hidden={!isOpen}
       inert={!isOpen}
       onFocusCapture={handlePanelFocusCapture}
+      data-surface-tone="sidebar"
       style={
         !renderAsDrawer && !isSecondaryPanelResizing
           ? {

@@ -931,6 +931,24 @@
   .bb-icon-stroke {
     stroke-width: var(--icon-stroke-width);
   }
+
+  [data-surface-tone="sidebar"] {
+    --surface-recessed-solid: color-mix(
+      in oklab,
+      var(--ink) 6%,
+      var(--sidebar)
+    );
+    --surface-recessed-soft-solid: color-mix(
+      in oklch,
+      var(--ink) 4.2%,
+      var(--sidebar)
+    );
+    --surface-raised-solid: color-mix(
+      in oklab,
+      var(--ink) 2.5%,
+      var(--sidebar)
+    );
+  }
 }
 
 /*
