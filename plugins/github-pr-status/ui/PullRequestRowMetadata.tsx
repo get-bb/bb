@@ -96,7 +96,7 @@ export function PullRequestBadge({
       role="img"
       aria-label={label}
       data-pull-request-badge={pullRequest.state}
-      className="flex shrink-0 items-center gap-1 text-2xs tabular-nums"
+      className="flex shrink-0 items-center gap-1 text-xs leading-3.5 tabular-nums"
       onPointerEnter={hovered ? undefined : () => setHovered(true)}
     >
       <Icon
