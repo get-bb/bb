@@ -20,7 +20,8 @@
   },
   "exports": {
     "./contract": "./contract.ts",
-    "./read-contract": "./read-contract.ts"
+    "./read-contract": "./read-contract.ts",
+    "./refetch-on-show": "./ui/refetch-on-show.ts"
   },
   "keywords": [
     "bb-plugin"

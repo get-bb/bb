@@ -539,12 +539,11 @@ export default function githubPrStatusPlugin(bb: BbPluginApi): void {
   bb.rpc.register(
     githubPrStatusRpcContract,
     {
-      async pullRequests({ keys, maxAgeMs }, context) {
+      async pullRequests({ keys }, context) {
         const viewer = context.experimental_caller.kind === "client";
         const results = await Promise.all(
           keys.map(
-            async (key) =>
-              [key, await store.read(key, { viewer, maxAgeMs })] as const,
+            async (key) => [key, await store.read(key, { viewer })] as const,
           ),
         );
         return Object.fromEntries(results);

@@ -24,7 +24,6 @@ function useDeploys({ threads }: ExperimentalThreadRowMetadataDataInput) {
     contract,
     method: "deploys",
     keys,
-    input: { maxAgeMs: 60_000 },
     enabled: keys.length > 0,
   }).data;
 }
@@ -44,8 +43,8 @@ plus any other thread whose line is mounted. Load them in one batch there.
 Components receive `{ thread, data }` and only draw; with `useData` they first
 render once it has returned, so a row that renders already has its data and
 keeps its height as it scrolls into view. Return null to show nothing. Read through `experimental_useRpcKeyedQuery` so every
-row's read lands in one keyed request; a read that accepts saved data (such as
-`maxAgeMs`) draws without waiting. Keep the item to an icon and a few characters with a
+row's read lands in one keyed request; a server that answers from what it has
+and refreshes in the background lets rows draw without waiting. Keep the item to an icon and a few characters with a
 tooltip; items share the line left to right, the line clips at the row's edge,
 it is hidden while the row is renamed or customized, and a click on it opens
 the thread. Items sort by `order` (unset last), then
@@ -59,8 +58,3 @@ with the row's `thread` on its own line under the title, in a flex parent as
 wide as the line. It renders nothing when no plugin contributes an item. Clicks on an item reach
 your row's own handlers; forward them to your row link if the row is not
 itself the link. frontend-pull-requests.md shows a full row.
-
-`input` sends the method's other fields with every batched read of the hook's
-keys; hooks with different `input` keep separate caches. A row read that
-accepts saved data (as the GitHub PR Status read's `maxAgeMs` does) draws
-without waiting and refreshes in the background.

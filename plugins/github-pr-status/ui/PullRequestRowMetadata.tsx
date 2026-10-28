@@ -13,16 +13,14 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { EnvironmentPullRequest, PullRequest } from "../contract";
-import {
-  PULL_REQUESTS_ANY_AGE_MS,
-  pullRequestsReadContract,
-} from "../read-contract";
+import { pullRequestsReadContract } from "../read-contract";
 import {
   PULL_REQUEST_STATE_DISPLAY,
   describePullRequestStatus,
   getPullRequestGithubCheckStatus,
   type GithubCheckStatus,
 } from "./display";
+import { useRefetchOnShowAndFocus } from "./refetch-on-show";
 
 function checkCounts(pullRequest: PullRequest): string | null {
   const { totalCount, passedCount, failedCount, pendingCount } =
@@ -117,8 +115,6 @@ export function PullRequestBadge({
   );
 }
 
-const ROW_READ_INPUT = { maxAgeMs: PULL_REQUESTS_ANY_AGE_MS };
-
 type PullRequestRows = Record<string, EnvironmentPullRequest> | undefined;
 
 export function usePullRequestRows({
@@ -135,13 +131,18 @@ export function usePullRequestRows({
     ],
     [threads],
   );
-  return experimental_useRpcKeyedQuery({
+  const query = experimental_useRpcKeyedQuery({
     contract: pullRequestsReadContract,
     method: "pullRequests",
     keys,
-    input: ROW_READ_INPUT,
     enabled: keys.length > 0,
-  }).data;
+  });
+  useRefetchOnShowAndFocus(
+    keys.length > 0 ? "thread-row-metadata" : null,
+    query.data !== undefined && Object.keys(query.data).length > 0,
+    query.refetch,
+  );
+  return query.data;
 }
 
 export function PullRequestRowMetadata({

@@ -5,10 +5,7 @@ import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { afterEach, describe, expect, it } from "vitest";
 import type { EnvironmentPullRequest, PullRequest } from "./contract.js";
-import {
-  PULL_REQUESTS_ANY_AGE_MS,
-  pullRequestsReadContract,
-} from "./read-contract.js";
+import { pullRequestsReadContract } from "./read-contract.js";
 
 const app = await loadPluginApp(() => import("./app.js"));
 afterEach(cleanup);
@@ -131,7 +128,7 @@ function renderRow(
     { component: Row },
     props,
     {
-    experimental_rpcContract: pullRequestsReadContract,
+      experimental_rpcContract: pullRequestsReadContract,
       rpc: {
         pullRequests: ({ keys }) =>
           Object.fromEntries(keys.map((key) => [key, rows[key]!])),
@@ -141,7 +138,7 @@ function renderRow(
 }
 
 describe("pull request row metadata", () => {
-  it("reads the row's saved PR at any age and draws its state and checks", async () => {
+  it("reads the row's PR and draws its state and checks", async () => {
     const pr = pullRequest();
     const rows: Record<string, EnvironmentPullRequest> = {
       env_row: {
@@ -158,9 +155,29 @@ describe("pull request row metadata", () => {
     expect(view.inspection.rpcCalls).toMatchObject([
       {
         method: "pullRequests",
-        input: { keys: ["env_row"], maxAgeMs: PULL_REQUESTS_ANY_AGE_MS },
+        input: { keys: ["env_row"] },
       },
     ]);
+  });
+
+  it("reads every listed row again in one request when the page shows", async () => {
+    const view = renderRow(
+      {
+        thread: thread("env_row"),
+        listed: [thread("env_row"), thread("env_other", "thr_other")],
+      },
+      {
+        env_row: { outcome: "available", pullRequest: pullRequest() },
+        env_other: { outcome: "absent" },
+      },
+    );
+    await view.findByRole("img", { name: /Pull request #6143/ });
+    document.dispatchEvent(new Event("visibilitychange"));
+    await waitFor(() => expect(view.inspection.rpcCalls).toHaveLength(2));
+    expect(view.inspection.rpcCalls[1]).toMatchObject({
+      method: "pullRequests",
+      input: { keys: ["env_other", "env_row"] },
+    });
   });
 
   it("reads every listed thread's environment once, in one request", async () => {
@@ -192,22 +209,25 @@ describe("pull request row metadata", () => {
       { outcome: "unavailable", message: "asleep" },
     ],
   ])("draws nothing when %s", async (_case, row) => {
-    const view = renderRow(
-      { thread: thread("env_row") },
-      { env_row: row },
-    );
+    const view = renderRow({ thread: thread("env_row") }, { env_row: row });
     await waitFor(() => expect(view.inspection.rpcCalls).toHaveLength(1));
     expect(view.queryByRole("img")).toBeNull();
   });
 
   it.each<[Partial<PullRequest>, string]>([
     [{ checks: passingChecks }, "open, checks passing"],
-    [{ checks: { ...passingChecks, state: "failing" } }, "open, checks failing"],
+    [
+      { checks: { ...passingChecks, state: "failing" } },
+      "open, checks failing",
+    ],
     [{ attention: "conflicts" }, "open, conflicts, checks running"],
     [{ checks: { ...passingChecks, state: "no_checks" } }, "open"],
-    [{ state: "draft", checks: { ...passingChecks, state: "failing" } }, "draft, checks failing"],
+    [
+      { state: "draft", checks: { ...passingChecks, state: "failing" } },
+      "draft, checks failing",
+    ],
     [{ state: "merged", attention: "merged" }, "merged"],
-])("labels %o as %s", async (overrides, expected) => {
+  ])("labels %o as %s", async (overrides, expected) => {
     const view = renderRow(
       { thread: thread("env_row") },
       {
@@ -233,7 +253,9 @@ describe("pull request row metadata", () => {
           },
         },
       );
-      const badge = await view.findByRole("img", { name: /Pull request #6143/ });
+      const badge = await view.findByRole("img", {
+        name: /Pull request #6143/,
+      });
       const count = badge.childNodes.length;
       view.unmount();
       return count;

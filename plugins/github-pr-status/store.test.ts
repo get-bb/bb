@@ -108,7 +108,7 @@ describe("shared pull request refresh", () => {
     expect(load).toHaveBeenCalledTimes(2);
   });
 
-  it("publishes a change found by one viewer's read to every viewer of that environment", async () => {
+  it("publishes a change found by one viewer's background refresh to every viewer of that environment", async () => {
     vi.useFakeTimers();
     const failing = pullRequest({
       checks: {
@@ -127,10 +127,13 @@ describe("shared pull request refresh", () => {
     await vi.advanceTimersByTimeAsync(60_000);
     load.mockResolvedValue(available(pullRequest()));
     await expect(store.read("a", { viewer: true })).resolves.toEqual(
+      available(failing),
+    );
+    await flush();
+    expect(publish).toHaveBeenCalledExactlyOnceWith(["a"]);
+    await expect(store.read("a", { viewer: true })).resolves.toEqual(
       available(pullRequest()),
     );
-    expect(publish).toHaveBeenCalledExactlyOnceWith(["a"]);
-    await store.read("a", { viewer: true });
     expect(load).toHaveBeenCalledTimes(2);
     expect(publish).toHaveBeenCalledOnce();
   });
@@ -143,8 +146,10 @@ describe("shared pull request refresh", () => {
       .database()
       .prepare("SELECT total_changes() AS n")
       .get();
-    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(ACTIVE_CHECK_MS);
     await first.store.read("a", { viewer: true });
+    await flush();
+    expect(first.load).toHaveBeenCalledTimes(2);
     expect(
       first.owner.bb.storage
         .database()
@@ -152,6 +157,7 @@ describe("shared pull request refresh", () => {
         .get(),
     ).toEqual(changes);
     first.store.dispose();
+    await vi.advanceTimersByTimeAsync(ACTIVE_CHECK_MS);
     const restored = setup([available(pending)], first.owner);
     let finish!: (value: EnvironmentPullRequest) => void;
     restored.load.mockImplementation(
@@ -498,14 +504,14 @@ describe("aligned refresh ticks", () => {
   );
 });
 
-describe("reads with a maximum age", () => {
-  it("answers from saved data within the age and refreshes it in the background", async () => {
+describe("read freshness", () => {
+  it("answers an app read from memory at once and refreshes a stale row in the background", async () => {
     vi.useFakeTimers();
     const { store, load, publish } = setup([available(pullRequest())]);
     await store.read("a", { viewer: true });
     const signal = new AbortController();
     store.watch("a", signal.signal);
-    await vi.advanceTimersByTimeAsync(62 * 60_000);
+    await vi.advanceTimersByTimeAsync(60_000);
     load.mockClear();
     let release!: () => void;
     load.mockImplementationOnce(
@@ -514,11 +520,9 @@ describe("reads with a maximum age", () => {
           release = () => resolve(available(pullRequest({ title: "Renamed" })));
         }),
     );
-    const served = await store.read("a", {
-      viewer: true,
-      maxAgeMs: Number.MAX_SAFE_INTEGER,
+    await expect(store.read("a", { viewer: true })).resolves.toMatchObject({
+      pullRequest: { title: "Watch the PR" },
     });
-    expect(served).toMatchObject({ pullRequest: { title: "Watch the PR" } });
     expect(load).toHaveBeenCalledTimes(1);
     release();
     await vi.advanceTimersByTimeAsync(0);
@@ -526,14 +530,47 @@ describe("reads with a maximum age", () => {
     signal.abort();
   });
 
-  it("waits for a fresh row when saved data is older than the age", async () => {
+  it.each([
+    ["an open", pullRequest(), 29_000, 31_000],
+    ["a merged", pullRequest({ state: "merged" }), 59 * 60_000, 61 * 60_000],
+    ["a closed", pullRequest({ state: "closed" }), 59 * 60_000, 61 * 60_000],
+  ])(
+    "lets app reads reuse %s PR until it is stale",
+    async (_, value, fresh, stale) => {
+      vi.useFakeTimers();
+      const { store, load } = setup([available(value)]);
+      await store.read("a", { viewer: true });
+      load.mockClear();
+      await vi.advanceTimersByTimeAsync(fresh);
+      await store.read("a", { viewer: true });
+      expect(load).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(stale - fresh);
+      await store.read("a", { viewer: true });
+      expect(load).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("makes an app read wait when there is no row yet", async () => {
+    vi.useFakeTimers();
+    const { store, load } = setup([available(pullRequest())]);
+    await expect(store.read("a", { viewer: true })).resolves.toMatchObject({
+      outcome: "available",
+    });
+    expect(load).toHaveBeenCalledTimes(1);
+  });
+
+  it("makes a one-shot read wait for a row older than ten seconds", async () => {
     vi.useFakeTimers();
     const { store, load } = setup([available(pullRequest())]);
     await store.read("a", { viewer: true });
-    await vi.advanceTimersByTimeAsync(60_000);
+    load.mockClear();
+    await vi.advanceTimersByTimeAsync(9_000);
+    await store.read("a", { viewer: false });
+    expect(load).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(2_000);
     load.mockResolvedValue(available(pullRequest({ title: "Renamed" })));
-    await expect(
-      store.read("a", { viewer: true, maxAgeMs: 30_000 }),
-    ).resolves.toMatchObject({ pullRequest: { title: "Renamed" } });
+    await expect(store.read("a", { viewer: false })).resolves.toMatchObject({
+      pullRequest: { title: "Renamed" },
+    });
   });
 });

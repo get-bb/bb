@@ -5121,12 +5121,6 @@ export interface PluginSdkApp {
     pluginId?: string;
     method: Method;
     keys: readonly string[];
-    /**
-     * The method's other input fields, sent with every batched read of these
-     * keys. Hooks with different `input` keep separate caches for the same
-     * keys, so pass a stable value.
-     */
-    input?: Omit<StandardSchemaV1InferInput<Contract[Method]["input"]>, "keys">;
     enabled?: boolean;
     /** Pure projection; the selection type is inferred from its return value. */
     select?(

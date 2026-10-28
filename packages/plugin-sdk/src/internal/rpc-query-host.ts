@@ -62,50 +62,19 @@ const rpcQueryKey = (pluginId: string, method: string, input: JsonValue) => [
   method,
   input,
 ];
-const keyedQueryKey = (
-  pluginId: string,
-  method: string,
-  input: JsonValue | null,
-) =>
-  rpcQueryKey(
-    pluginId,
-    method,
-    input === null ? { keyed: true } : { keyed: true, input },
-  );
+const keyedQueryKey = (pluginId: string, method: string) =>
+  rpcQueryKey(pluginId, method, { keyed: true });
 const keyListSchema = z.array(z.string());
 const jsonRecordSchema = z.record(z.string(), jsonValueSchema);
 const keyedCollections = new Map<string, KeyedCollection<unknown>>();
-const keyedCollectionsByMethod = new Map<
-  string,
-  Set<KeyedCollection<unknown>>
->();
-function keyedCollection(
-  pluginId: string,
-  method: string,
-  inputIdentity: string | null = null,
-) {
-  const name = JSON.stringify(
-    inputIdentity === null
-      ? [pluginId, method]
-      : [pluginId, method, inputIdentity],
-  );
+function keyedCollection(pluginId: string, method: string) {
+  const name = JSON.stringify([pluginId, method]);
   let collection = keyedCollections.get(name);
   if (!collection) {
     collection = new KeyedCollection(name);
     keyedCollections.set(name, collection);
-    const methodName = JSON.stringify([pluginId, method]);
-    const forMethod = keyedCollectionsByMethod.get(methodName) ?? new Set();
-    forMethod.add(collection);
-    keyedCollectionsByMethod.set(methodName, forMethod);
   }
   return collection;
-}
-function keyedCollectionsFor(pluginId: string, method: string) {
-  return [
-    ...(keyedCollectionsByMethod.get(JSON.stringify([pluginId, method])) ?? [
-      keyedCollection(pluginId, method),
-    ]),
-  ];
 }
 function parsedUpdate<Value>(update: (current: Value) => unknown) {
   return (current: unknown) => jsonValueSchema.parse(update(current as Value));
@@ -125,10 +94,13 @@ function optimisticCache<Contract extends PluginRpcContract>(
       );
     },
     updateKey(method, key, update) {
-      for (const collection of keyedCollectionsFor(pluginId, method))
-        updates.push(
-          optimisticKeyedUpdate(collection, key, parsedUpdate(update)),
-        );
+      updates.push(
+        optimisticKeyedUpdate(
+          keyedCollection(pluginId, method),
+          key,
+          parsedUpdate(update),
+        ),
+      );
     },
   };
 }
@@ -256,7 +228,6 @@ export function createRpcQueryHooks(useHost: () => RpcQueryHost) {
     pluginId?: string;
     method: Method;
     keys: readonly string[];
-    input?: Omit<StandardSchemaV1InferInput<Contract[Method]["input"]>, "keys">;
     enabled?: boolean;
     select?(
       data: Record<string, ExperimentalRpcKeyedValue<Contract[Method]>>,
@@ -279,39 +250,21 @@ export function createRpcQueryHooks(useHost: () => RpcQueryHost) {
       cache = new Map();
       owners.set(host.queryClient, cache);
     }
-    const { input: rawInput } = options;
-    const { extra, inputIdentity } = useMemo(() => {
-      const parsed =
-        rawInput === undefined ? null : jsonRecordSchema.parse(rawInput);
-      return {
-        extra: parsed,
-        inputIdentity:
-          parsed === null || Object.keys(parsed).length === 0
-            ? null
-            : canonicalPluginReadInput(parsed),
-      };
-    }, [rawInput]);
-    const id = JSON.stringify([pluginId, options.method, inputIdentity]);
+    const id = JSON.stringify([pluginId, options.method]);
     let owner = cache.get(id);
     if (!owner) {
-      const fields: Record<string, JsonValue> =
-        inputIdentity === null ? {} : { ...extra };
       owner = createTaggedKeyedQueryOwner({
         client: host.queryClient,
-        queryKey: keyedQueryKey(
-          pluginId,
-          options.method,
-          inputIdentity === null ? null : fields,
-        ),
+        queryKey: keyedQueryKey(pluginId, options.method),
         scope: pluginTagScope(pluginId),
-        collection: keyedCollection(pluginId, options.method, inputIdentity),
+        collection: keyedCollection(pluginId, options.method),
         read: async (keys) => {
           const response = await callRpc(
             host,
             pluginId,
             options.contract,
             options.method,
-            { ...fields, keys: [...keys] },
+            { keys: [...keys] },
           );
           return {
             ...response,
@@ -392,9 +345,7 @@ export function createRpcQueryHooks(useHost: () => RpcQueryHost) {
     }, [current]);
     const refetchKeys = useCallback(
       async (requested: readonly string[]) => {
-        await current.refresh(
-          requested.filter((key) => keys.includes(key)),
-        );
+        await current.refresh(requested.filter((key) => keys.includes(key)));
       },
       [current, keys],
     );

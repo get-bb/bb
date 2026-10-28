@@ -6,8 +6,6 @@ import {
 } from "./read-contract.js";
 
 export const SHOW_PULL_REQUEST_SETTING = "showPullRequest";
-export const PULL_REQUESTS_REFETCH_EVENT =
-  "bb--github-pr-status:pull-requests-refetch";
 export const HOST_VIEWS_MAX_READS = 200;
 
 const checkStatusSchema = z.enum([
@@ -214,11 +212,10 @@ const actionOutputSchema = z.object({ message: z.string() }).strict();
 export const githubPrStatusRpcContract = defineRpcContract({
   pullRequests: {
     experimental_description:
-      "The GitHub pull request for each environment's current branch, keyed by environment id. maxAgeMs lets saved rows up to that age answer at once while they refresh in the background.",
+      "The GitHub pull request for each environment's current branch, keyed by environment id.",
     input: z
       .object({
         keys: z.array(z.string().min(1)).min(1).max(PULL_REQUESTS_MAX_KEYS),
-        maxAgeMs: z.number().int().nonnegative().optional(),
       })
       .strict(),
     output: z.record(z.string(), environmentPullRequestSchema),
