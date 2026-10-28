@@ -84,6 +84,7 @@ import {
 import {
   createPluginApi,
   isNeedsConfigurationError,
+  PluginContextStaleError,
   type BbPluginApi,
   type PluginApiHandle,
   type PluginThreadEventName,
@@ -349,6 +350,7 @@ const SERVICE_RESTART_MAX_MS = 60_000;
 const SERVICE_HEALTHY_RESET_MS = 5 * 60_000;
 
 interface ServiceInstance {
+  kind: "service";
   id: string;
   service: ServiceRuntime;
   controller: AbortController;
@@ -529,7 +531,23 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     return undefined;
   }
 
-  const serviceContext = new AsyncLocalStorage<ServiceInstance>();
+  const serviceContext = new AsyncLocalStorage<
+    | ServiceInstance
+    | { kind: "handler"; id: string; plugin: LoadedPlugin; label: string }
+  >();
+  const reportedStaleErrors = new WeakSet<PluginContextStaleError>();
+
+  function containStaleContextError(error: unknown): boolean {
+    if (!(error instanceof PluginContextStaleError)) return false;
+    if (!reportedStaleErrors.has(error)) {
+      reportedStaleErrors.add(error);
+      logger.warn(
+        { err: error },
+        `[plugin:${error.pluginId}] ${error.message}`,
+      );
+    }
+    return true;
+  }
 
   function runService(id: string, service: ServiceRuntime): void {
     const controller = new AbortController();
@@ -537,6 +555,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     service.state = "running";
     service.startedAt = Date.now();
     const instance: ServiceInstance = {
+      kind: "service",
       id,
       service,
       controller,
@@ -563,8 +582,25 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   }
 
   function handleUncaughtException(error: unknown): boolean {
+    if (containStaleContextError(error)) return true;
     const instance = serviceContext.getStore();
     if (instance === undefined) return false;
+    if (instance.kind === "handler") {
+      const { id, plugin, label } = instance;
+      const message = error instanceof Error ? error.message : String(error);
+      logger.warn(
+        { err: error },
+        `[plugin:${id}] ${label} raised an uncaught error: ${message}`,
+      );
+      if (loaded.get(id) === plugin) {
+        setStatus(
+          id,
+          "degraded",
+          `${label} raised an uncaught error: ${message}`,
+        );
+      }
+      return true;
+    }
     const { id, service, controller } = instance;
     const name = service.record.name;
     const message = error instanceof Error ? error.message : String(error);
@@ -831,6 +867,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   ): Promise<
     { ok: true; value: T } | { ok: false; error: string; cause: unknown }
   > {
+    const plugin = loaded.get(id);
     const stats = statsFor(id);
     const startedAt = performance.now();
     let settle!: () => void;
@@ -846,14 +883,23 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     try {
       return {
         ok: true,
-        value: await runEventLoopWork(`plugin:${id} ${label}`, run),
+        value: await runEventLoopWork(`plugin:${id} ${label}`, () =>
+          plugin === undefined
+            ? run()
+            : serviceContext.run({ kind: "handler", id, plugin, label }, run),
+        ),
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       stats.errorCount += 1;
-      logger.warn(`[plugin:${id}] ${label} failed: ${message}`);
-      if (statuses.get(id)?.status === "running") {
-        setStatus(id, "running", `${label} failed: ${message}`);
+      if (!containStaleContextError(error)) {
+        logger.warn(`[plugin:${id}] ${label} failed: ${message}`);
+        if (
+          loaded.get(id) === plugin &&
+          statuses.get(id)?.status === "running"
+        ) {
+          setStatus(id, "running", `${label} failed: ${message}`);
+        }
       }
       return { ok: false, error: message, cause: error };
     } finally {

@@ -526,13 +526,15 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     });
   }
 
-  process.on("uncaughtException", (error: unknown) => {
+  const handleUncaughtError = (error: unknown): void => {
     if (pluginService.handleUncaughtException(error)) return;
     const message =
       error instanceof Error ? (error.stack ?? error.message) : String(error);
     process.stderr.write(`${message}\n`);
     process.exit(1);
-  });
+  };
+  process.on("uncaughtException", handleUncaughtError);
+  process.on("unhandledRejection", handleUncaughtError);
 
   process.once("SIGINT", () => {
     void runShutdown().finally(() => process.exit(0));
