@@ -144,6 +144,7 @@ function createRuntime(): FakeDispatchRuntime {
       return { providerThreadId: "provider-thread-1" };
     }),
     runTurn: vi.fn(async () => undefined),
+    configureSkillRoots: vi.fn(async () => undefined),
     steerTurn: vi.fn(async () => ({ status: "steered" as const })),
     stopThread: vi.fn(async (args: { threadId: string }) => {
       activeTurnsByThreadId.delete(args.threadId);
@@ -2262,7 +2263,7 @@ describe("dispatchCommand", () => {
     ]);
   });
 
-  it("injects the current skill snapshot when spawning beside an active sibling", async () => {
+  it("reconfigures the current skill snapshot when spawning beside an active sibling", async () => {
     const fixture = await setupBusySkillCatalogEnvironment({
       activeThreadId: "sibling-thread",
     });
@@ -2331,17 +2332,17 @@ describe("dispatchCommand", () => {
         "utf8",
       ),
     ).resolves.toContain("second-token");
-    expect(fixture.runtime.startThread).toHaveBeenCalledWith(
-      expect.objectContaining({ skillRoots: currentCatalog.skillRoots }),
+    expect(fixture.runtime.configureSkillRoots).toHaveBeenCalledWith(
+      currentCatalog.skillRoots,
     );
     expect(fixture.createRuntimeSpy).toHaveBeenCalledTimes(1);
     expect(fixture.runtime.shutdown).not.toHaveBeenCalled();
     expect(fixture.manager.get("env-1")?.skillCatalogHash).toBe(
-      fixture.originalCatalogHash,
+      currentCatalog.catalogHash,
     );
   });
 
-  it("reuses a busy runtime when turn.submit carries a changed skill catalog", async () => {
+  it("reconfigures a busy runtime's skills when turn.submit carries a changed skill catalog", async () => {
     const fixture = await setupBusySkillCatalogEnvironment({
       activeThreadId: "thread-1",
     });
@@ -2398,9 +2399,10 @@ describe("dispatchCommand", () => {
     expect(result).toEqual({ trace: { spans: [] } });
     expect(fixture.runtime.runTurn).toHaveBeenCalledTimes(1);
     expect(fixture.runtime.resumeThread).not.toHaveBeenCalled();
+    expect(fixture.runtime.configureSkillRoots).toHaveBeenCalledTimes(1);
     expect(fixture.createRuntimeSpy).toHaveBeenCalledTimes(1);
     expect(fixture.runtime.shutdown).not.toHaveBeenCalled();
-    expect(fixture.manager.get("env-1")?.skillCatalogHash).toBe(
+    expect(fixture.manager.get("env-1")?.skillCatalogHash).not.toBe(
       fixture.originalCatalogHash,
     );
   });

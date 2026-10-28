@@ -222,6 +222,19 @@ if (script?.launchLogPath) {
 }
 
 const archiveStatePath = script?.archiveStatePath ?? null;
+const observationLogPath = script?.observationLogPath ?? null;
+
+function recordObservation(entry) {
+  if (observationLogPath === null) {
+    return;
+  }
+  appendFileSync(
+    observationLogPath,
+    `${JSON.stringify({ pid: process.pid, ...entry })}\n`,
+  );
+}
+
+recordObservation({ kind: "launch", env: { ...process.env } });
 
 let renameEmptyRolloutFailuresLeft = script?.renameEmptyRolloutFailures ?? 0;
 const archivedThreadIds = new Set();
@@ -484,6 +497,11 @@ async function handleRequest(message) {
       }
       threadCounter += 1;
       const threadId = `codex-fx-${processInstanceId}-${threadCounter}`;
+      recordObservation({
+        kind: "thread",
+        codexThreadId: threadId,
+        dynamicTools: params.dynamicTools ?? [],
+      });
       notify("thread/started", { thread: { id: threadId } });
       respond(id, { thread: { id: threadId } });
       return;
@@ -515,6 +533,7 @@ async function handleRequest(message) {
       if (String(params.threadId).startsWith("usage-replay-")) {
         replayLastTurnUsage(params.threadId);
       }
+      recordObservation({ kind: "resume", codexThreadId: params.threadId });
       respond(id, {
         thread: {
           id: params.threadId,

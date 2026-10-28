@@ -3766,6 +3766,7 @@ async function handleRequest(
           steerMode: "queue",
           skills: { configure: true },
           commands: { list: false },
+          sessionConfig: { dynamicTools: "resume", skills: "resume" },
         },
       };
       sendResult(request.id, result);

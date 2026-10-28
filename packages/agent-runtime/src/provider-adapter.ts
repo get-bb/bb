@@ -88,6 +88,7 @@ export type AdapterCommand =
       input: PromptInput[];
       clientRequestId: ClientTurnRequestId;
       options: ProviderExecutionContext;
+      dynamicTools?: DynamicTool[];
     }
   | {
       type: "turn/steer";

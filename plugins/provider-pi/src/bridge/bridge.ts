@@ -522,6 +522,7 @@ async function handleRequest(
           steerMode: "inject",
           skills: { configure: true },
           commands: { list: false },
+          sessionConfig: { dynamicTools: "resume", skills: "resume" },
         },
       };
       sendResult(request.id, result);

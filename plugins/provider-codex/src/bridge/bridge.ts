@@ -427,6 +427,7 @@ interface CodexSessionConstruction {
   cwd: string;
   instructionMode: "append" | "replace";
   dynamicTools: DynamicTool[] | undefined;
+  envVars: Readonly<Record<string, string>> | undefined;
 }
 
 interface ResponseOpenedTurn {
@@ -579,20 +580,17 @@ function constructionSignature(
   cwd: string,
   sessionOptions: CodexSessionOptions,
 ): string {
-  const poolBaseUrl = sessionOptions.envVars?.[CODEX_POOL_BASE_URL_ENV];
-  const poolToken = sessionOptions.envVars?.[CODEX_POOL_AUTH_TOKEN_ENV];
+  const envEntries = Object.entries(sessionOptions.envVars ?? {}).sort(
+    ([left], [right]) => left.localeCompare(right),
+  );
   return JSON.stringify({
     cwd,
     reasoningLevel: sessionOptions.reasoningLevel ?? null,
     memoryEnabled: sessionOptions.memoryEnabled ?? null,
     providerSubagentsEnabled: sessionOptions.providerSubagentsEnabled ?? null,
-    poolRoute:
-      poolBaseUrl === undefined || poolToken === undefined
-        ? null
-        : {
-            baseUrl: poolBaseUrl,
-            tokenHash: createHash("sha256").update(poolToken).digest("hex"),
-          },
+    envHash: createHash("sha256")
+      .update(JSON.stringify(envEntries))
+      .digest("hex"),
   });
 }
 
@@ -967,8 +965,15 @@ function handleChildExit(
   }
 }
 
+function buildSessionAppServerEnv(
+  envVars: Readonly<Record<string, string>> | undefined,
+): NodeJS.ProcessEnv {
+  return { ...buildAppServerEnv(undefined), ...envVars };
+}
+
 function spawnChildConnection(callbacks: {
   envVars?: Readonly<Record<string, string>>;
+  sessionEnv?: boolean;
   recordThreadId: string | null;
   onNotification: (method: string, params: unknown) => void;
   onRequest: (
@@ -978,9 +983,16 @@ function spawnChildConnection(callbacks: {
   ) => void;
   onExit: (info: CodexAppServerExitInfo) => void;
 }): CodexAppServerConnection {
-  const env = buildAppServerEnv(callbacks.envVars);
+  const env =
+    callbacks.sessionEnv === true
+      ? buildSessionAppServerEnv(callbacks.envVars)
+      : buildAppServerEnv(callbacks.envVars);
   const launch = resolveAppServerLaunch(appServerLaunchEnv(callbacks.envVars));
-  const { envVars: _envVars, ...connectionCallbacks } = callbacks;
+  const {
+    envVars: _envVars,
+    sessionEnv: _sessionEnv,
+    ...connectionCallbacks
+  } = callbacks;
   return createCodexAppServerConnection({
     command: launch.command,
     args: launch.args,
@@ -1227,6 +1239,7 @@ async function constructThreadSession(
       cwd: args.cwd,
       instructionMode: args.instructionMode,
       dynamicTools: args.dynamicTools,
+      envVars: decoded.sessionOptions.envVars,
     },
     constructionSignature: constructionSignature(
       args.cwd,
@@ -1281,6 +1294,7 @@ async function constructThreadSession(
   let notifications = Promise.resolve();
   const connection = spawnChildConnection({
     envVars: decoded.sessionOptions.envVars,
+    sessionEnv: true,
     recordThreadId: args.threadId,
     onNotification: (method, params) => {
       notifications = notifications
@@ -1578,6 +1592,7 @@ function handleInitialize(id: string | number): void {
       steerMode: "inject",
       skills: { configure: true },
       commands: { list: false },
+      sessionConfig: { dynamicTools: "fixed", skills: "live" },
     },
   };
   sendResult(id, result);
@@ -1665,10 +1680,14 @@ async function requireLiveSessionForTurn(
   }
 
   const decoded = decodeCodexOptions(params.options);
-  const signature = constructionSignature(
-    session.construction.cwd,
-    decoded.sessionOptions,
-  );
+  const turnEnvVars = decoded.sessionOptions.envVars;
+  const signature = constructionSignature(session.construction.cwd, {
+    ...decoded.sessionOptions,
+    envVars:
+      turnEnvVars !== undefined && Object.keys(turnEnvVars).length > 0
+        ? turnEnvVars
+        : session.construction.envVars,
+  });
   if (session.connection === null || session.connection.exited) {
     session = await rebuildThreadSession(
       session,

@@ -222,6 +222,7 @@ function createFakeRuntime(): AgentRuntime {
       providerThreadId: "provider-thread",
     })),
     runTurn: vi.fn(async () => undefined),
+    configureSkillRoots: vi.fn(async () => undefined),
     steerTurn: vi.fn(async () => steerTurnResult),
     stopThread: vi.fn(async () => ({ providerCheckpointId: null })),
     clearThreadGoal: vi.fn(async () => ({ cleared: true })),

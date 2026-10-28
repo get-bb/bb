@@ -34,9 +34,30 @@ export interface ConformanceSessionFixture {
   interruptiblePromptInput?: PromptInput[];
   options?: Record<string, unknown>;
   icons?: { pluginId: string; names: readonly string[] };
+  probe?: ConformanceSessionProbe;
 }
 
-interface ScenarioContext {
+export interface ConformanceObservedTool {
+  name: string;
+  description: string;
+}
+
+export interface ConformanceAgentObservation {
+  env: Readonly<Record<string, string | undefined>>;
+  tools: readonly ConformanceObservedTool[];
+}
+
+export interface ConformanceSessionProbe {
+  observe(args: {
+    threadId: string;
+    providerThreadId: string;
+  }):
+    | ConformanceAgentObservation
+    | null
+    | Promise<ConformanceAgentObservation | null>;
+}
+
+export interface ScenarioContext {
   client: ConformanceClient;
   fixture: ConformanceSessionFixture;
   resolveProviderTurnId: (
@@ -117,11 +138,11 @@ async function checkIdentityAnnounced(
   return pass(args.id, args.title);
 }
 
-function pass(id: string, title: string): ConformanceCheckResult {
+export function pass(id: string, title: string): ConformanceCheckResult {
   return { id, title, status: "pass", detail: "" };
 }
 
-function fail(
+export function fail(
   id: string,
   title: string,
   detail: string,
@@ -129,7 +150,7 @@ function fail(
   return { id, title, status: "fail", detail };
 }
 
-function skipped(
+export function skipped(
   id: string,
   title: string,
   detail: string,
@@ -137,7 +158,7 @@ function skipped(
   return { id, title, status: "skipped", detail };
 }
 
-function defaultOptions(
+export function defaultOptions(
   fixture: ConformanceSessionFixture,
 ): Record<string, unknown> {
   return (
@@ -150,7 +171,7 @@ function defaultOptions(
   );
 }
 
-function threadEvents(
+export function threadEvents(
   context: ScenarioContext,
   threadId: string,
 ): ThreadEvent[] {
@@ -369,7 +390,17 @@ export async function runRpcHygieneScenarios(
 export interface HandshakeScenarioOutcome {
   results: ConformanceCheckResult[];
   capabilities: BridgeCapabilities | null;
+  sessionConfigDeclared: boolean;
 }
+
+const declaredSessionConfigSchema = z.object({
+  capabilities: z.object({
+    sessionConfig: z.object({
+      dynamicTools: z.string(),
+      skills: z.string(),
+    }),
+  }),
+});
 
 export async function runHandshakeScenario(
   client: ConformanceClient,
@@ -385,6 +416,7 @@ export async function runHandshakeScenario(
   const failed = (detail: string): HandshakeScenarioOutcome => ({
     results: [fail("handshake/initialize", title, detail)],
     capabilities: null,
+    sessionConfigDeclared: false,
   });
   if (response === null) {
     return failed("no response");
@@ -435,6 +467,9 @@ export async function runHandshakeScenario(
       })),
     ],
     capabilities: parsed.data.capabilities,
+    sessionConfigDeclared: declaredSessionConfigSchema.safeParse(
+      response.result,
+    ).success,
   };
 }
 

@@ -5,6 +5,7 @@ import { ClaudeContextUsageCollector } from "./context-usage.js";
 import { readIsolatedClaudeContextUsage } from "./context-usage-probe.js";
 
 import {
+  type DynamicTool,
   type PendingInteractionGrantedPermissionProfile,
   type PendingInteractionPayload,
   type PermissionEscalation,
@@ -37,6 +38,7 @@ import { isDeepStrictEqual } from "node:util";
 import {
   type CanUseTool,
   type HookCallback,
+  type McpSdkServerConfigWithInstance,
   type PermissionResult,
   type SDKMessage,
 } from "@anthropic-ai/claude-agent-sdk";
@@ -109,7 +111,7 @@ import {
 } from "./skill-plugins.js";
 import {
   buildBridgeMcpServer,
-  getAllowedToolNames,
+  BB_BRIDGE_ALLOWED_TOOLS_RULE,
   type ToolCallForwarder,
 } from "./tool-proxy-mcp.js";
 import { BB_BRIDGE_MCP_SERVER_NAME } from "../tool-classification.js";
@@ -1162,13 +1164,9 @@ function createThreadSession(attachment: ThreadAttachment): ThreadSession {
     cwd: attachment.sessionConstructionConfig.sessionOptions.cwd,
     sandboxEnabled: attachment.sessionOptions.sandbox?.enabled === true,
   });
-  translator.configureInjectedTools(
-    (attachment.sessionConstructionConfig.dynamicTools ?? []).map((tool) => ({
-      name: tool.name,
-      ...(tool.presentation === undefined
-        ? {}
-        : { presentation: tool.presentation }),
-    })),
+  configureTranslatorInjectedTools(
+    translator,
+    attachment.sessionConstructionConfig.dynamicTools ?? [],
   );
   const threadSession: ThreadSession = {
     commandListGeneration: 0,
@@ -2274,6 +2272,7 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
           steerMode: "inject",
           skills: { configure: true },
           commands: { list: true },
+          sessionConfig: { dynamicTools: "live", skills: "resume" },
         },
       };
       sendResult(request.id, result);
@@ -2377,6 +2376,60 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
   }
 }
 
+function buildDynamicToolServers(
+  dynamicTools: DynamicTool[],
+  threadIdRef: ThreadIdRef,
+): Record<string, McpSdkServerConfigWithInstance> {
+  return dynamicTools.length === 0
+    ? {}
+    : {
+        [BB_BRIDGE_MCP_SERVER_NAME]: buildBridgeMcpServer(
+          dynamicTools,
+          createForwardToolCall(() => threadIdRef.current),
+        ),
+      };
+}
+
+function configureTranslatorInjectedTools(
+  translator: ClaudeDeltaTranslator,
+  dynamicTools: DynamicTool[],
+): void {
+  translator.configureInjectedTools(
+    dynamicTools.map((tool) => ({
+      name: tool.name,
+      ...(tool.presentation === undefined
+        ? {}
+        : { presentation: tool.presentation }),
+    })),
+  );
+}
+
+async function applyDynamicTools(
+  threadId: string,
+  dynamicTools: DynamicTool[] | undefined,
+): Promise<void> {
+  const attachment = threadAttachments.get(threadId);
+  if (
+    dynamicTools === undefined ||
+    attachment === undefined ||
+    isDeepStrictEqual(
+      attachment.sessionConstructionConfig.dynamicTools ?? [],
+      dynamicTools,
+    )
+  ) {
+    return;
+  }
+  const servers = buildDynamicToolServers(dynamicTools, attachment.threadIdRef);
+  attachment.sessionConstructionConfig.dynamicTools = dynamicTools;
+  attachment.sessionOptions.mcpServers = servers;
+  const resident = attachment.residentSession;
+  if (resident === null || resident.closing || resident.streamEnded) {
+    return;
+  }
+  configureTranslatorInjectedTools(resident.translator, dynamicTools);
+  await resident.session.setMcpServers(servers);
+}
+
 function attachThreadSession(
   id: string | number,
   params: SessionConstructionParams,
@@ -2390,14 +2443,11 @@ function attachThreadSession(
     sessionOptions.sessionId = providerThreadId;
   }
   sessionOptions.canUseTool = createCanUseTool(threadIdRef);
-  if (params.dynamicTools && params.dynamicTools.length > 0) {
-    const mcpServer = buildBridgeMcpServer(
-      params.dynamicTools,
-      createForwardToolCall(() => threadIdRef.current),
-    );
-    sessionOptions.mcpServers = { [BB_BRIDGE_MCP_SERVER_NAME]: mcpServer };
-    sessionOptions.allowedTools = getAllowedToolNames(params.dynamicTools);
-  }
+  sessionOptions.mcpServers = buildDynamicToolServers(
+    params.dynamicTools ?? [],
+    threadIdRef,
+  );
+  sessionOptions.allowedTools = [BB_BRIDGE_ALLOWED_TOOLS_RULE];
 
   const attachment = createThreadAttachment({
     liveSettings: toInitialLiveSessionSettings(params),
@@ -2639,6 +2689,16 @@ async function handleTurnStart(
   id: string | number,
   params: CanonicalTurnStartParams,
 ): Promise<void> {
+  try {
+    await applyDynamicTools(params.threadId, params.dynamicTools);
+  } catch (error) {
+    sendError(
+      id,
+      BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
+      error instanceof Error ? error.message : String(error),
+    );
+    return;
+  }
   await runTurnInput(
     id,
     claudeTurnStartParamsSchema.parse(

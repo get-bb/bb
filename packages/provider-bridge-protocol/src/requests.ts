@@ -35,7 +35,6 @@ const sessionConstructionFields = {
   cwd: z.string().min(1),
   options: bridgeExecutionOptionsSchema,
   dynamicTools: z.array(dynamicToolSchema).optional(),
-  disallowedTools: z.array(z.string().min(1)).optional(),
   instructionMode: instructionModeSchema,
 };
 
@@ -112,7 +111,12 @@ const turnInputFields = {
   options: bridgeExecutionOptionsSchema,
 };
 
-export const turnStartParamsSchema = z.object(turnInputFields).passthrough();
+export const turnStartParamsSchema = z
+  .object({
+    ...turnInputFields,
+    dynamicTools: z.array(dynamicToolSchema).optional(),
+  })
+  .passthrough();
 
 export const turnSteerParamsSchema = z
   .object({

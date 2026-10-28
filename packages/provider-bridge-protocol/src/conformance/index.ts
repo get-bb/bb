@@ -4,8 +4,12 @@ import {
   runHandshakeScenario,
   runRpcHygieneScenarios,
   runSessionLifecycleScenarios,
+  type ConformanceAgentObservation,
+  type ConformanceObservedTool,
   type ConformanceSessionFixture,
+  type ConformanceSessionProbe,
 } from "./scenarios.js";
+import { runSessionConfigScenarios } from "./session-config.js";
 export {
   checkItemOpensBeforeDelta,
   checkPresentationIconsDeclared,
@@ -26,9 +30,12 @@ export { CONFORMANCE_ASSEMBLED_EVENT_METHOD } from "./types.js";
 
 export type {
   BridgeConformanceTransport,
+  ConformanceAgentObservation,
   ConformanceCheckResult,
+  ConformanceObservedTool,
   ConformanceReport,
   ConformanceSessionFixture,
+  ConformanceSessionProbe,
 };
 
 export interface RunBridgeConformanceOptions {
@@ -59,6 +66,14 @@ export async function runBridgeConformance(
       resolveProviderTurnId: (threadId, bbTurnId) =>
         collector.assembler.getProviderTurnId(threadId, bbTurnId),
       fork: handshake.capabilities?.fork ?? "none",
+    })),
+  );
+  results.push(
+    ...(await runSessionConfigScenarios({
+      client,
+      fixture: options.session,
+      capabilities: handshake.capabilities,
+      sessionConfigDeclared: handshake.sessionConfigDeclared,
     })),
   );
 

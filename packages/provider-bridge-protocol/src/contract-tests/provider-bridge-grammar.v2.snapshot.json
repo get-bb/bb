@@ -307,7 +307,8 @@
     "grammarVersions": "default",
     "steerMode": "default",
     "skills": "default",
-    "commands": "default"
+    "commands": "default",
+    "sessionConfig": "default"
   },
   "recoveryNotification": {
     "threadId": "optional",

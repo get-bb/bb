@@ -711,6 +711,60 @@ describe("thread command dispatch", () => {
     expect(harness.runtimeState.ranTurnInput?.[0]?.type).toBe("localFile");
   });
 
+  it("hands a live thread's turn the tools the server resolved for it", async () => {
+    const harness = createHarness({ workspacePath: "/tmp/env-live-tools" });
+    const threadId = "thread-live-tools";
+    harness.threadControls.setProviderSession(threadId, {
+      providerId: "fake",
+      providerThreadId: "provider-live-tools",
+    });
+    const dynamicTools = [
+      {
+        name: "plugin_probe",
+        description: "Reloaded plugin tool",
+        inputSchema: { type: "object", properties: {} },
+      },
+    ];
+
+    await dispatchCommand(
+      {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+        type: "turn.submit",
+        environmentId: "env-live-tools",
+        threadId,
+        requestId: nextClientRequestId(),
+        input: [{ type: "text", text: "use the new tool", mentions: [] }],
+        options: {
+          model: "gpt-5",
+          serviceTier: "default",
+          reasoningLevel: "medium",
+          providerOptions: {},
+          permissionMode: "full",
+          permissionScope: "full",
+          approvalReviewer: null,
+          permissionEscalation: null,
+        },
+        resumeContext: {
+          bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+          workspaceContext: { workspacePath: "/tmp/env-live-tools" },
+          projectId: "project-live-tools",
+          providerId: "fake",
+          providerThreadId: "provider-live-tools",
+          instructions: "Be a helpful coding agent.",
+          dynamicTools,
+          contributedEnv: [],
+          injectedSkillSources: [],
+          instructionMode: "append",
+        },
+        target: { mode: "start" },
+      },
+      harness.dispatchOptions(),
+    );
+
+    expect(harness.runtimeState.resumedThreadId).toBeUndefined();
+    expect(harness.runtimeState.ranTurnDynamicTools).toEqual(dynamicTools);
+  });
+
   it("leaves runtime-readable attachment paths unstaged", async () => {
     const threadStorageRootPath = await makeTempDir("bb-no-stage-attachments-");
     const harness = createHarness();

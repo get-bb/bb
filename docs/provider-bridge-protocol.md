@@ -56,7 +56,8 @@ pass through. Bridges version with their plugin, not with the daemon.
 
 Handshake capabilities are **session-behavior facts** (`sessionRestore`,
 `threadArchive`, `threadRename`, `threadGoalClear`, `fork`,
-`approvalEnforcedBy`, `grammarVersions`, `steerMode`, `skills`). They are
+`approvalEnforcedBy`, `grammarVersions`, `steerMode`, `skills`,
+`sessionConfig`). They are
 reported by the code that implements them, so they cannot drift from
 behavior. The runtime never sends a capability-gated method to a bridge that
 did not advertise it. A handshake fact may only _narrow_ what the provider's
@@ -77,6 +78,21 @@ for the next prompt boundary). It is recorded, but nothing in the runtime,
 server, or clients acts on it yet: the runtime sends `turn/steer` either way,
 and a steer whose turn is gone is dropped on the bridge's `staleTurn` recovery
 hint whatever the mode.
+
+`sessionConfig: { dynamicTools, skills }` declares how a running session takes
+a changed value of each field: `live` (the bridge applies it to the running
+session: `dynamicTools` on `turn/start`, skill roots on `skills/configure`),
+`resume` (the default; `thread/resume` for the live thread with the new value
+rebuilds its session), or `fixed` (the provider keeps the start-time value).
+The runtime keeps the value each session was built with and diffs it against
+the server's value on every `turn/start`: unchanged sends nothing; `live`
+sends the new `dynamicTools` on that `turn/start`; `resume` resumes the
+session first (a session that is not restorable is treated as `fixed`);
+`fixed` keeps the session and emits one `provider/warning` per distinct
+change. `turn/steer` never reconciles. Conformance rule
+`config/session-config-declared` requires the declaration, and with a
+fixture `probe` the `config/*` rules check the env, tools at start, and
+tool additions, changes and removals on the agent the fake provider ran.
 
 The sessionless `provider/health`, `provider/usage`,
 `provider/installation/status`, and `provider/installation/run` methods are
@@ -316,9 +332,12 @@ the delta's presentation); `extension.state` becomes the thread-scoped
 is one shape for every provider: `path` is an absolute skills directory, one
 subdirectory per listed skill (`<path>/<name>/SKILL.md`). The bridge maps it
 to its provider's own layout. The runtime sends it **only to a bridge whose
-handshake declares `skills: { configure: true }`**, once per process, before
-the first thread command; a bridge that declares nothing never receives it
-and runs without injected skills, so a bridge that answers unknown methods
+handshake declares `skills: { configure: true }`**, when the process starts,
+before the first thread command, and again to every running process whenever
+the environment's skill catalog changes (the provider process is never
+replaced for a skill change; see `sessionConfig.skills`). A bridge that
+declares nothing never receives it and runs without injected skills, so a
+bridge that answers unknown methods
 with `METHOD_NOT_FOUND` still starts threads. The runtime never probes.
 Conformance rule `skills/configure-declared` pins both directions: declared →
 the request must succeed; undeclared → the request must be refused.

@@ -76,27 +76,6 @@ interface EnsureCompatibleEntryArgs {
   targetThreadId?: string;
 }
 
-interface ReplaceEntryForSkillCatalogArgs {
-  entry: RuntimeEntry;
-  skillConfig: RuntimeSkillConfig;
-  targetThreadId?: string;
-}
-
-interface SkillCatalogConflictErrorArgs {
-  environmentId: string;
-  activeCatalogHash: string | null;
-  requestedCatalogHash: string;
-}
-
-export class SkillCatalogConflictError extends Error {
-  constructor(args: SkillCatalogConflictErrorArgs) {
-    super(
-      `Daemon bug: a command targeting no thread carried injected skill sources into busy environment ${args.environmentId} (active catalog ${args.activeCatalogHash ?? "none"}, requested ${args.requestedCatalogHash})`,
-    );
-    this.name = "SkillCatalogConflictError";
-  }
-}
-
 function formatProviderProcessExitStatus(
   info: AgentRuntimeProcessExitInfo,
 ): string {
@@ -679,27 +658,6 @@ export class RuntimeManager {
     }
   }
 
-  private async replaceEntryForSkillCatalog(
-    args: ReplaceEntryForSkillCatalogArgs,
-  ): Promise<void> {
-    if (
-      this.entryHasActiveRuntimeWork(args.entry) ||
-      this.hasInFlightThreadCommand(args.entry, args.targetThreadId)
-    ) {
-      throw new SkillCatalogConflictError({
-        environmentId: args.entry.environmentId,
-        activeCatalogHash: args.entry.skillCatalogHash,
-        requestedCatalogHash: args.skillConfig.catalogHash,
-      });
-    }
-
-    this.entries.delete(args.entry.environmentId);
-    await args.entry.runtime.shutdown();
-    await this.cleanupUnusedInjectedSkillStagingDirs([
-      args.skillConfig.catalogHash,
-    ]);
-  }
-
   private async ensureCompatibleEntry(
     args: EnsureCompatibleEntryArgs,
   ): Promise<RuntimeEntry | null> {
@@ -725,27 +683,18 @@ export class RuntimeManager {
       return args.entry;
     }
 
-    if (
-      args.targetThreadId !== undefined &&
-      (this.entryHasActiveRuntimeWork(args.entry) ||
-        this.hasInFlightThreadCommand(args.entry, args.targetThreadId))
-    ) {
-      args.entry.retainedSkillCatalogHashes.add(args.skillConfig.catalogHash);
-      return {
-        ...args.entry,
-        skillCatalogHash: args.skillConfig.catalogHash,
-        skillRoots: args.skillConfig.skillRoots,
-      };
-    }
-
-    await this.replaceEntryForSkillCatalog({
-      entry: args.entry,
-      skillConfig: args.skillConfig,
-      ...(args.targetThreadId !== undefined
-        ? { targetThreadId: args.targetThreadId }
-        : {}),
-    });
-    return null;
+    const previousCatalogHash = args.entry.skillCatalogHash;
+    args.entry.retainedSkillCatalogHashes = new Set([
+      ...(previousCatalogHash === null ? [] : [previousCatalogHash]),
+      args.skillConfig.catalogHash,
+    ]);
+    await args.entry.runtime.configureSkillRoots(args.skillConfig.skillRoots);
+    args.entry.skillCatalogHash = args.skillConfig.catalogHash;
+    args.entry.skillRoots = args.skillConfig.skillRoots;
+    await this.cleanupUnusedInjectedSkillStagingDirs([
+      args.skillConfig.catalogHash,
+    ]);
+    return args.entry;
   }
 
   async invalidateProviderMaintenanceRuntime(): Promise<void> {

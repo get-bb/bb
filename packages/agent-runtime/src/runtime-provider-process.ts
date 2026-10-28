@@ -71,13 +71,12 @@ interface RuntimeProviderProcessManagerArgs {
   onProcessExit: AgentRuntimeOptions["onProcessExit"];
   onProviderThreadDetached: (threadId: string) => void;
   onStderr: AgentRuntimeOptions["onStderr"];
-  skillRoots: readonly AgentRuntimeSkillRoot[];
+  getSkillRoots: () => readonly AgentRuntimeSkillRoot[];
   workspacePath: string;
 }
 
 interface EnsureRuntimeProviderArgs {
   bridgeLaunch: AgentRuntimeBridgeLaunch;
-  skillRoots?: readonly AgentRuntimeSkillRoot[];
   processKey: string;
   providerId: string;
 }
@@ -211,21 +210,9 @@ export class RuntimeProviderProcessManager {
           }
         }
 
-        const skillRoots = args.skillRoots ?? this.args.skillRoots;
+        const skillRoots = this.args.getSkillRoots();
         if (skillRoots.length > 0) {
-          const skillRootsCmd = adapter.buildCommandPlan({
-            type: "skills/configure",
-            skillRoots,
-          });
-          if (skillRootsCmd.kind === "request") {
-            await sendJsonRpcRequest({
-              child: providerProcess.child,
-              message: skillRootsCmd,
-              pending: providerProcess.pending,
-              getNextId: this.args.getNextRequestId,
-              resultSchema: ignoredJsonRpcResultSchema,
-            });
-          }
+          await this.sendSkillRoots(providerProcess, skillRoots);
         }
       } catch (startupError) {
         if (this.shuttingDown) return;
@@ -269,6 +256,37 @@ export class RuntimeProviderProcessManager {
     for (const processKey of staleKeys) {
       await this.shutdownProvider({ processKey, providerId: args.providerId });
     }
+  }
+
+  private async sendSkillRoots(
+    providerProcess: RuntimeProviderProcess,
+    skillRoots: readonly AgentRuntimeSkillRoot[],
+  ): Promise<void> {
+    const plan = providerProcess.adapter.buildCommandPlan({
+      type: "skills/configure",
+      skillRoots,
+    });
+    if (plan.kind !== "request") {
+      return;
+    }
+    await sendJsonRpcRequest({
+      child: providerProcess.child,
+      message: plan,
+      pending: providerProcess.pending,
+      getNextId: this.args.getNextRequestId,
+      resultSchema: ignoredJsonRpcResultSchema,
+    });
+  }
+
+  async configureSkillRoots(
+    skillRoots: readonly AgentRuntimeSkillRoot[],
+  ): Promise<void> {
+    await Promise.all([...this.providerStarting.values()]);
+    await Promise.all(
+      [...this.processes.values()]
+        .filter((proc) => !hasChildProcessExited(proc.child))
+        .map((proc) => this.sendSkillRoots(proc, skillRoots)),
+    );
   }
 
   requireProviderProcess(

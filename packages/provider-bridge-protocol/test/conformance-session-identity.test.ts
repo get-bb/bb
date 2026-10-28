@@ -50,7 +50,10 @@ function startWithoutIdentityTransport(): BridgeConformanceTransport {
           reply(message.id, {
             result: {
               protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
-              capabilities: { grammarVersions: ASSEMBLER_GRAMMAR_VERSIONS },
+              capabilities: {
+                grammarVersions: ASSEMBLER_GRAMMAR_VERSIONS,
+                sessionConfig: { dynamicTools: "resume", skills: "resume" },
+              },
             },
           });
           return;
@@ -157,6 +160,7 @@ function stubBridge(options: StubBridgeOptions): StubBridge {
                 capabilities: {
                   grammarVersions: ASSEMBLER_GRAMMAR_VERSIONS,
                   fork: options.fork,
+                  sessionConfig: { dynamicTools: "resume", skills: "resume" },
                 },
               },
             });

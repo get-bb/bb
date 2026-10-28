@@ -65,11 +65,7 @@ export function buildBridgeMcpServer(
   return { type: "sdk", name: BB_BRIDGE_MCP_SERVER_NAME, instance };
 }
 
-export function getAllowedToolNames(dynamicTools: DynamicTool[]): string[] {
-  return dynamicTools.map(
-    (def) => `mcp__${BB_BRIDGE_MCP_SERVER_NAME}__${def.name}`,
-  );
-}
+export const BB_BRIDGE_ALLOWED_TOOLS_RULE = `mcp__${BB_BRIDGE_MCP_SERVER_NAME}`;
 
 function normalizeInputSchema(
   inputSchema: unknown,

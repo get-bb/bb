@@ -62,6 +62,7 @@ it("passes the canonical protocol suite", async () => {
     "commands/list-declared": "pass",
     "presentation/icon-namespaced-declared": "pass",
     "turn/settles-without-activity": "pass",
+    "config/session-config-declared": "pass",
   });
   expect(report.passed).toBe(true);
 }, 30_000);

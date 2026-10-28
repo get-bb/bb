@@ -77,6 +77,10 @@ export interface ScriptedEchoLaunchScript {
   identifyProcess?: boolean;
   failStopForThreadIds?: string[];
   emitIdentityOnSigterm?: boolean;
+  sessionConfig?: {
+    dynamicTools: "live" | "resume" | "fixed";
+    skills: "live" | "resume" | "fixed";
+  };
 }
 
 export interface CreateScriptedEchoLaunchOptions {

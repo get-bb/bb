@@ -203,7 +203,6 @@ async function resumeThreadRuntimeIfMissing(
   );
   await entry.runtime.resumeThread({
     bridgeLaunch,
-    skillRoots: entry.skillRoots,
     environmentId: command.environmentId,
     threadId: command.threadId,
     projectId: resumeContext.projectId,
@@ -243,8 +242,7 @@ export async function startThread(
     );
     const result = await entry.runtime.startThread({
       bridgeLaunch,
-      skillRoots: entry.skillRoots,
-      environmentId: command.environmentId,
+        environmentId: command.environmentId,
       threadId: command.threadId,
       projectId: command.projectId,
       providerId: command.providerId,
@@ -275,7 +273,6 @@ export async function prepareThreadRewind(
   );
   return entry.runtime.prepareThreadRewind({
     bridgeLaunch,
-    skillRoots: entry.skillRoots,
     environmentId: command.environmentId,
     threadId: command.threadId,
     leaseId: command.leaseId,
@@ -346,6 +343,7 @@ async function runSubmittedTurn(
     options: command.options,
     contributedEnv: command.resumeContext.contributedEnv,
     instructions: command.resumeContext.instructions,
+    dynamicTools: command.resumeContext.dynamicTools,
   });
 }
 

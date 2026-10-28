@@ -21,6 +21,25 @@ export function negotiateGrammarVersion(
 export const bridgeSteerModeSchema = z.enum(["inject", "queue"]);
 export type BridgeSteerMode = z.infer<typeof bridgeSteerModeSchema>;
 
+export const bridgeSessionConfigApplySchema = z.enum([
+  "live",
+  "resume",
+  "fixed",
+]);
+export type BridgeSessionConfigApply = z.infer<
+  typeof bridgeSessionConfigApplySchema
+>;
+
+export const bridgeSessionConfigCapabilitiesSchema = z
+  .object({
+    dynamicTools: bridgeSessionConfigApplySchema.default("resume"),
+    skills: bridgeSessionConfigApplySchema.default("resume"),
+  })
+  .passthrough();
+export type BridgeSessionConfigCapabilities = z.infer<
+  typeof bridgeSessionConfigCapabilitiesSchema
+>;
+
 export const bridgeCapabilitiesSchema = z
   .object({
     sessionRestore: z.boolean().default(false),
@@ -40,6 +59,10 @@ export const bridgeCapabilitiesSchema = z
     commands: z
       .object({ list: z.boolean().default(false) })
       .default({ list: false }),
+    sessionConfig: bridgeSessionConfigCapabilitiesSchema.default({
+      dynamicTools: "resume",
+      skills: "resume",
+    }),
   })
   .passthrough();
 

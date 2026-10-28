@@ -171,7 +171,7 @@ describe("createAgentRuntime process lifecycle", () => {
       onProviderThreadDetached: (threadId) =>
         identityRegistry.clearThread(threadId),
       onStderr: args.onStderr,
-      skillRoots: [],
+      getSkillRoots: () => [],
       workspacePath: args.workspacePath,
     });
   }

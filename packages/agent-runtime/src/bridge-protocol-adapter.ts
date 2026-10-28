@@ -58,6 +58,7 @@ export interface BridgeProtocolAdapter {
   id: string;
   capabilities: BridgeEnforcedCapabilities;
   readonly approvalEnforcedBy: "runtime" | "provider";
+  readonly sessionConfig: BridgeCapabilities["sessionConfig"];
   process: { command: string; args: string[]; env?: Record<string, string> };
   buildCommandPlan(command: AdapterCommand): ProviderCommandPlan;
   buildPostInitializeRequests(): readonly ProviderPostInitializeRequest[];
@@ -205,6 +206,9 @@ export function createBridgeProtocolAdapter(
     get approvalEnforcedBy() {
       return handshake.approvalEnforcedBy;
     },
+    get sessionConfig() {
+      return handshake.sessionConfig;
+    },
     process: options.process,
 
     buildCommandPlan(command: AdapterCommand): ProviderCommandPlan {
@@ -343,6 +347,9 @@ export function createBridgeProtocolAdapter(
                 command.options,
                 options.staticProviderOptions,
               ),
+              ...(command.dynamicTools !== undefined
+                ? { dynamicTools: command.dynamicTools }
+                : {}),
             },
           };
         case "turn/steer":

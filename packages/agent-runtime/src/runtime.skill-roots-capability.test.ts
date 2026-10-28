@@ -105,7 +105,7 @@ describe("skills/configure handshake capability", () => {
     ).toThrow(/must use an absolute path: staged\/skills/);
   });
 
-  it("selects a bridge by the session's skill snapshot without replacing sibling sessions", async () => {
+  it("reconfigures the shared bridge's skills without replacing sibling sessions", async () => {
     const events: ThreadEvent[] = [];
     const record = createScriptedEchoRequestRecord();
     const originalRoots = [
@@ -140,14 +140,10 @@ describe("skills/configure handshake capability", () => {
       ...startArgs,
       threadId: "original",
     });
-    const currentArgs = { ...startArgs, skillRoots: currentRoots };
+    await runtime.configureSkillRoots(currentRoots);
     const current = await runtime.startThread({
-      ...currentArgs,
+      ...startArgs,
       threadId: "current",
-    });
-    const reused = await runtime.startThread({
-      ...currentArgs,
-      threadId: "reused",
     });
 
     expect(
@@ -156,11 +152,8 @@ describe("skills/configure handshake capability", () => {
         .filter((entry) => entry.method === "skills/configure")
         .map((entry) => entry.params),
     ).toEqual([{ roots: originalRoots }, { roots: currentRoots }]);
-    expect(current.providerThreadId.split("-")[1]).not.toBe(
+    expect(current.providerThreadId.split("-")[1]).toBe(
       original.providerThreadId.split("-")[1],
-    );
-    expect(reused.providerThreadId.split("-")[1]).toBe(
-      current.providerThreadId.split("-")[1],
     );
     await runtime.runTurn({
       clientRequestId: "creq_skcapab223",

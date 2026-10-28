@@ -203,6 +203,13 @@ export class SdkSession {
     await this.query?.applyFlagSettings(settings);
   }
 
+  async setMcpServers(
+    servers: Record<string, McpSdkServerConfigWithInstance>,
+  ): Promise<void> {
+    await this.query?.setMcpServers(servers);
+    this.options.mcpServers = servers;
+  }
+
   async supportedCommands(): Promise<SlashCommand[]> {
     return this.query ? this.query.supportedCommands() : [];
   }

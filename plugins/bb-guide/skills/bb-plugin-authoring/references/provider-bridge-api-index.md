@@ -358,6 +358,9 @@ Read the installed declarations for exact current signatures.
 - `ConformanceCheckResult`
 - `ConformanceReport`
 - `ConformanceSessionFixture`
+- `ConformanceAgentObservation`
+- `ConformanceObservedTool`
+- `ConformanceSessionProbe`
 - `CreateDeltaAssemblerOptions`
 - `CreateParityAssembler`
 - `DeltaAssembler`
