@@ -2596,6 +2596,10 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       return backgroundWorkState.hasOpenWork();
     },
 
+    listOpenBackgroundWork() {
+      return backgroundWorkState.listOpenWork();
+    },
+
     async shutdown() {
       clearInterval(turnStartWatchdogTimer);
       await Promise.all(

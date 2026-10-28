@@ -8,6 +8,8 @@ import {
 } from "@bb/db";
 import type {
   HostDaemonActiveThread,
+  HostDaemonInteractiveRequestKey,
+  HostDaemonOpenThreadWork,
   HostDaemonSessionCloseReason,
 } from "@bb/host-daemon-contract";
 import { HOST_RECONNECT_GRACE_MS, LEASE_TIMEOUT_MS } from "../constants.js";
@@ -21,6 +23,7 @@ import {
 } from "../services/threads/thread-lifecycle.js";
 import { buildThreadStatusChangeMetadataByThreadId } from "../services/threads/thread-runtime-display.js";
 import { settleDanglingBackgroundTasks } from "../services/threads/background-task-reconciliation.js";
+import { reconcileDaemonReportedOpenWork } from "../services/threads/open-work-reconciliation.js";
 import { interruptEnvironmentProvisioningForHost } from "../services/environments/environment-engine.js";
 
 const DAEMON_RESTARTED_PENDING_INTERACTION_REASON =
@@ -39,6 +42,7 @@ type LostHostWorkDeps = LoggedPendingInteractionWorkSessionDeps;
 
 interface HandleHostSessionOpenedArgs {
   activeThreads: HostDaemonActiveThread[];
+  openThreadWork: HostDaemonOpenThreadWork[];
   hostId: string;
   openedSession: HostDaemonSessionRow;
   previousSession: HostDaemonSessionRow | null;
@@ -65,7 +69,7 @@ interface HandleHostRemovedArgs {
 export async function handleHostSessionOpened(
   deps: HostSessionOpenedDeps,
   args: HandleHostSessionOpenedArgs,
-): Promise<void> {
+): Promise<{ endedInteractiveRequests: HostDaemonInteractiveRequestKey[] }> {
   deps.logger.info(
     {
       sessionId: args.openedSession.id,
@@ -118,6 +122,14 @@ export async function handleHostSessionOpened(
     sameDaemonInstance,
     undeliveredEventThreadIds: args.undeliveredEventThreadIds,
   });
+
+  return {
+    endedInteractiveRequests: reconcileDaemonReportedOpenWork(deps, {
+      hostId: args.hostId,
+      openThreadWork: args.openThreadWork,
+      undeliveredEventThreadIds: args.undeliveredEventThreadIds,
+    }),
+  };
 }
 
 export function handleDaemonSocketClosed(

@@ -42,6 +42,29 @@ export type HostDaemonActiveThread = z.infer<
   typeof hostDaemonActiveThreadSchema
 >;
 
+export const hostDaemonInteractiveRequestKeySchema = z
+  .object({
+    threadId: z.string().min(1),
+    providerId: z.string().min(1),
+    providerThreadId: z.string().min(1),
+    providerRequestId: z.string().min(1),
+  })
+  .strict();
+export type HostDaemonInteractiveRequestKey = z.infer<
+  typeof hostDaemonInteractiveRequestKeySchema
+>;
+
+export const hostDaemonOpenThreadWorkSchema = z
+  .object({
+    threadId: z.string().min(1),
+    backgroundItemIds: z.array(z.string().min(1)),
+    interactiveRequests: z.array(hostDaemonInteractiveRequestKeySchema),
+  })
+  .strict();
+export type HostDaemonOpenThreadWork = z.infer<
+  typeof hostDaemonOpenThreadWorkSchema
+>;
+
 const hostDaemonLoadedEnvironmentSchema = z.object({
   environmentId: z.string().min(1),
 });
@@ -166,6 +189,7 @@ export const hostDaemonSessionOpenRequestSchema = z
     localApiPort: z.number().int().min(1).max(65_535).nullable().default(null),
     protocolVersion: z.number().int().positive(),
     activeThreads: z.array(hostDaemonActiveThreadSchema),
+    openThreadWork: z.array(hostDaemonOpenThreadWorkSchema),
     undeliveredEventThreadIds: z.array(z.string().min(1)).default([]),
     loadedEnvironments: z.array(hostDaemonLoadedEnvironmentSchema).default([]),
   })
@@ -243,6 +267,7 @@ export const hostDaemonSessionOpenResponseSchema = z
       .array(hostDaemonPluginHostGenerationSchema)
       .default([]),
     retiredEnvironmentIds: z.array(z.string().min(1)).default([]),
+    endedInteractiveRequests: z.array(hostDaemonInteractiveRequestKeySchema),
   })
   .strict();
 export type HostDaemonSessionOpenResponse = z.infer<

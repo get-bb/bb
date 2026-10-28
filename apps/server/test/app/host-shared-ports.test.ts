@@ -449,6 +449,7 @@ describe("daemon session connect shares", () => {
           localApiPort: null,
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
           activeThreads: [],
+          openThreadWork: [],
         }),
       });
 
@@ -482,6 +483,7 @@ describe("daemon session connect shares", () => {
           localApiPort: null,
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
           activeThreads: [],
+          openThreadWork: [],
         }),
       });
       const session = hostDaemonSessionOpenResponseSchema.parse(
@@ -548,6 +550,7 @@ describe("daemon session connect shares", () => {
           localApiPort: null,
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
           activeThreads: [],
+          openThreadWork: [],
         }),
       });
       expect(response.status).toBe(201);
@@ -605,6 +608,7 @@ function openDaemonSession(harness: TestAppHarness, protocolVersion: number) {
       localApiPort: null,
       protocolVersion,
       activeThreads: [],
+      openThreadWork: [],
     }),
   });
 }

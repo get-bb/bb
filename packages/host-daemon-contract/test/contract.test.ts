@@ -1055,7 +1055,7 @@ describe("host-daemon command schemas", () => {
   });
 
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(257);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(259);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1072,7 +1072,9 @@ describe("host-daemon command schemas", () => {
     expect(contract.isCompatibleHostDaemonProtocolVersion(254)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(255)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(256)).toBe(false);
-    expect(contract.isCompatibleHostDaemonProtocolVersion(257)).toBe(true);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(257)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(258)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(259)).toBe(true);
     expect(contract.hostDaemonSupportsConnectNext(246)).toBe(false);
     expect(contract.hostDaemonSupportsConnectNext(247)).toBe(true);
     expect(contract.hostDaemonSupportsDesktopBrokerProof(247)).toBe(false);
@@ -2797,6 +2799,20 @@ describe("host-daemon session schemas", () => {
             threadId: "thr_123",
           },
         ],
+        openThreadWork: [
+          {
+            threadId: "thr_123",
+            backgroundItemIds: ["item_1"],
+            interactiveRequests: [
+              {
+                threadId: "thr_123",
+                providerId: "claude-code",
+                providerThreadId: "provider_thr_123",
+                providerRequestId: "request_1",
+              },
+            ],
+          },
+        ],
       }),
     ).toMatchObject({
       hostId: "host_123",
@@ -2815,6 +2831,7 @@ describe("host-daemon session schemas", () => {
         localApiPort: null,
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
         activeThreads: [],
+        openThreadWork: [],
         loadedEnvironments: [
           {
             environmentId: "env_123",
@@ -2858,6 +2875,7 @@ describe("host-daemon session schemas", () => {
         localApiPort: 38_887,
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION - 1,
         activeThreads: [],
+        openThreadWork: [],
       }),
     ).toMatchObject({
       protocolVersion: HOST_DAEMON_PROTOCOL_VERSION - 1,
@@ -2874,6 +2892,7 @@ describe("host-daemon session schemas", () => {
         localApiPort: 38_887,
         protocolVersion: 0,
         activeThreads: [],
+        openThreadWork: [],
       }),
     ).toThrow();
 
@@ -2888,6 +2907,7 @@ describe("host-daemon session schemas", () => {
           generation: 2,
           ports: [3000, 8080],
         },
+        endedInteractiveRequests: [],
       }),
     ).toMatchObject({
       sessionId: "session_123",
@@ -2910,6 +2930,7 @@ describe("host-daemon session schemas", () => {
         idleProviderSessionTimeoutMinutes: 30,
         heartbeatIntervalMs: 5_000,
         leaseTimeoutMs: 30_000,
+        endedInteractiveRequests: [],
       }).connectShares,
     ).toEqual({ generation: 0, ports: [] });
 
@@ -2920,6 +2941,7 @@ describe("host-daemon session schemas", () => {
         idleProviderSessionTimeoutMinutes: 30,
         heartbeatIntervalMs: 5_000,
         leaseTimeoutMs: 30_000,
+        endedInteractiveRequests: [],
       }).connectNext,
     ).toEqual({ generation: 0, config: null });
 

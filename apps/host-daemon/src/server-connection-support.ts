@@ -1,6 +1,7 @@
 import ReconnectingWebSocket from "partysocket/ws";
 import {
   type HostDaemonActiveThread,
+  type HostDaemonOpenThreadWork,
   type HostDaemonLoadedEnvironment,
   type HostDaemonConnectNextReplaceMessage,
   type HostDaemonConnectSharesReplaceMessage,
@@ -89,6 +90,7 @@ export interface ServerConnectionOptions {
     | HostDaemonActiveThread[]
     | Promise<HostDaemonActiveThread[]>;
   getUndeliveredEventThreadIds?: () => string[];
+  getOpenThreadWork?: () => HostDaemonOpenThreadWork[];
   getLoadedEnvironments?: () =>
     | HostDaemonLoadedEnvironment[]
     | Promise<HostDaemonLoadedEnvironment[]>;
