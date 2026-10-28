@@ -46,7 +46,7 @@ A quality and performance release: bb loads faster, sends far less over the wire
 
 ### Bug fixes
 
-- Fix the desktop "Show right panel" button sometimes not responding, and a Keychain prompt at startup with no saved credential.
+- Fix the desktop "Show right panel" button sometimes not responding.
 - Fix copying a file-path link, which now gives a plain path, and inline code, which now stays inline code.
 - Fix the voice waveform staying still with reduced motion on.
 - Fix failed plugin actions showing two error toasts.
