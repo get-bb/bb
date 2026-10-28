@@ -1543,7 +1543,7 @@ async function selectAcpNativeModel(args: {
       models?.currentModelId !== selection.modelId);
   if (shouldSetModel) {
     let configState: AcpConfigStateResult | null = null;
-    let setModel = true;
+    let setModel = !modelOption;
     if (modelOption) {
       try {
         configState = await session.connection.request({
@@ -1556,8 +1556,10 @@ async function selectAcpNativeModel(args: {
           resultSchema: z.union([acpConfigStateResultSchema, z.null()]),
           timeoutMs: ACP_SESSION_CONFIG_TIMEOUT_MS,
         });
-        setModel = false;
-      } catch {
+      } catch (error) {
+        if (!sessionModelsIncludeSelection) {
+          throw error;
+        }
         setModel = true;
       }
     }
