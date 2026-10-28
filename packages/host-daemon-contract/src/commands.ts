@@ -906,6 +906,7 @@ const providerListModelsCommandSchema = z.object({
   type: z.literal("provider.list_models"),
   providerId: z.string().min(1),
   bridgeLaunch: hostDaemonBridgeLaunchSchema,
+  selectedModel: z.string().min(1).optional(),
   cwd: z.string().min(1).optional(),
   contributedEnv: z.array(hostDaemonContributedEnvEntrySchema),
 });
@@ -1953,7 +1954,9 @@ type HostDaemonRetryableOnlineRpcCommandSchema =
 type HostDaemonResultSchemaMapForTransport<
   Transport extends HostDaemonCommandTransport,
 > = {
-  [Descriptor in HostDaemonCommandDescriptorForTransport<Transport> as Descriptor["type"]]: Descriptor["resultSchema"];
+  [
+    Descriptor in HostDaemonCommandDescriptorForTransport<Transport> as Descriptor["type"]
+  ]: Descriptor["resultSchema"];
 };
 
 type HostDaemonCommandResultSchemaMap =

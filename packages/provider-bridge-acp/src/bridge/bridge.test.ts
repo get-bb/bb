@@ -14,7 +14,11 @@ import { dirname, join, resolve, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { killProcessesReferencingPath } from "@bb/test-helpers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createStandaloneBuiltinCompactCommandInput } from "@bb/domain";
+import { z } from "zod";
+import {
+  availableModelSchema,
+  createStandaloneBuiltinCompactCommandInput,
+} from "@bb/domain";
 import type { DynamicTool, ReasoningLevel } from "@bb/domain";
 import {
   BRIDGE_JSON_RPC_ERRORS,
@@ -33,10 +37,12 @@ import type {
   CapturedBridgeJsonRpcOutput,
 } from "@bb/provider-bridge-protocol/testing";
 
-import { z } from "zod";
-
 import { handleLine } from "./bridge.js";
 import { ACP_BRIDGE_MCP_SERVER_NAME } from "./tool-proxy-mcp.js";
+
+const modelListResultSchema = z.object({
+  models: z.array(availableModelSchema),
+});
 
 const FAKE_AGENT_PATH = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -396,10 +402,15 @@ function contextWindowDeltasFor(
 }
 
 function sendModelList(
-  args: AgentLaunchArgs & { modelLines?: string; cwd?: string } = {},
+  args: AgentLaunchArgs & {
+    modelLines?: string;
+    cwd?: string;
+    selectedModel?: string;
+  } = {},
 ): number {
-  const { modelLines, cwd, ...launch } = args;
+  const { modelLines, cwd, selectedModel, ...launch } = args;
   return sendRequest("model/list", {
+    ...(selectedModel === undefined ? {} : { selectedModel }),
     ...(cwd === undefined ? {} : { cwd }),
     providerOptions: {
       ...(launch.dialectId ? { acpDialect: launch.dialectId } : {}),
@@ -846,7 +857,7 @@ describe("acp bridge", () => {
           displayName: "Fake Default",
           isDefault: true,
           defaultReasoningEffort: "medium",
-          supportedReasoningEfforts: [{ reasoningEffort: "medium" }],
+          supportedReasoningEfforts: [],
         },
         {
           id: "fake/strong",
@@ -883,18 +894,12 @@ describe("acp bridge", () => {
         {
           id: "fake/default",
           supportedServiceTiers: [],
-          supportedReasoningEfforts: [{ reasoningEffort: "medium" }],
+          supportedReasoningEfforts: [],
         },
         {
           id: "fake/strong",
           supportedServiceTiers: [],
-          supportedReasoningEfforts: [
-            {
-              reasoningEffort: "medium",
-              description:
-                "Reasoning effort is managed by the connected ACP agent.",
-            },
-          ],
+          supportedReasoningEfforts: [],
         },
         {
           id: "fake/gen-2",
@@ -1253,7 +1258,7 @@ describe("acp bridge", () => {
           displayName: "Fake Default",
           isDefault: true,
           defaultReasoningEffort: "medium",
-          supportedReasoningEfforts: [{ reasoningEffort: "medium" }],
+          supportedReasoningEfforts: [],
         },
         {
           id: "fake/strong",
@@ -1262,7 +1267,7 @@ describe("acp bridge", () => {
           displayName: "Fake Strong",
           isDefault: false,
           defaultReasoningEffort: "medium",
-          supportedReasoningEfforts: [{ reasoningEffort: "medium" }],
+          supportedReasoningEfforts: [],
         },
       ],
       selectedOnlyModels: [],
@@ -1353,6 +1358,134 @@ describe("acp bridge", () => {
       { reasoningEffort: "medium", description: "medium" },
       { reasoningEffort: "high", description: "high" },
     ]);
+  });
+
+  it("leaves unprobed models unknown when a large native catalog exceeds the discovery budget", async () => {
+    const requestLog = join(workspaceDir, "large-catalog.jsonl");
+    const id = sendModelList({
+      reasoningProbePriorityModelIds: ["fake/gen-833"],
+      envVars: {
+        FAKE_ACP_MODEL_CONFIG: "1",
+        FAKE_ACP_THOUGHT_LEVEL_CONFIG: "1",
+        FAKE_ACP_MODEL_COUNT: "836",
+        FAKE_ACP_INITIAL_MODEL: "fake/gen-835",
+        FAKE_ACP_MODEL_DELAY_MS: "150",
+        FAKE_ACP_REQUEST_LOG: requestLog,
+      },
+    });
+    const result = modelListResultSchema.parse(
+      (await waitForResponse(id)).result,
+    );
+    expect(result.models).toHaveLength(836);
+    expect(
+      result.models.find((model) => model.id === "fake/gen-834")
+        ?.supportedReasoningEfforts,
+    ).toEqual([]);
+    for (const id of ["fake/gen-833", "fake/gen-835"]) {
+      expect(
+        result.models
+          .find((model) => model.id === id)
+          ?.supportedReasoningEfforts.map((effort) => effort.reasoningEffort),
+      ).toEqual(["low", "medium", "high"]);
+    }
+    const probes = loggedAcpRequests(requestLog).filter(
+      (request) => request.method === "session/set_config_option",
+    );
+    expect(probes[0]?.params?.value).toBe("fake/gen-833");
+    expect(
+      probes.some((request) => request.params?.value === "fake/gen-835"),
+    ).toBe(false);
+    expect(probes.length).toBeLessThan(50);
+  }, 15_000);
+
+  it("discovers only the selected late model without rescanning a large catalog or requiring metadata", async () => {
+    const requestLog = join(workspaceDir, "selected-discovery.jsonl");
+    const result = modelListResultSchema.parse(
+      (
+        await waitForResponse(
+          sendModelList({
+            selectedModel: "fake/gen-834",
+            envVars: {
+              FAKE_ACP_MODEL_CONFIG: "1",
+              FAKE_ACP_THOUGHT_LEVEL_CONFIG: "1",
+              FAKE_ACP_MODEL_COUNT: "836",
+              FAKE_ACP_MODEL_DELAY_MS: "150",
+              FAKE_ACP_REQUEST_LOG: requestLog,
+            },
+          }),
+        )
+      ).result,
+    );
+    expect(
+      result.models
+        .find((model) => model.model === "fake/gen-834")
+        ?.supportedReasoningEfforts.map((effort) => effort.reasoningEffort),
+    ).toEqual(["low", "medium", "high"]);
+    expect(
+      loggedAcpRequests(requestLog)
+        .filter((request) => request.method === "session/set_config_option")
+        .map((request) => request.params?.value),
+    ).toEqual(["fake/gen-834"]);
+  });
+
+  it.each(["error", "timeout"])(
+    "keeps selected reasoning unknown after probe %s",
+    async (failure) => {
+      const requestLog = join(workspaceDir, `selected-${failure}.jsonl`);
+      const result = modelListResultSchema.parse(
+        (
+          await waitForResponse(
+            sendModelList({
+              selectedModel: "fake/strong",
+              envVars: {
+                FAKE_ACP_MODEL_CONFIG: "1",
+                FAKE_ACP_THOUGHT_LEVEL_CONFIG: "1",
+                FAKE_ACP_REQUEST_LOG: requestLog,
+                ...(failure === "error"
+                  ? { FAKE_ACP_SET_CONFIG_MODEL_ERROR_VALUE: "fake/strong" }
+                  : { FAKE_ACP_MODEL_DELAY_MS: "10000" }),
+              },
+            }),
+          )
+        ).result,
+      );
+      expect(
+        result.models.find((model) => model.model === "fake/strong")
+          ?.supportedReasoningEfforts,
+      ).toEqual([]);
+      expect(
+        loggedAcpRequests(requestLog)
+          .filter((request) => request.method === "session/set_config_option")
+          .map((request) => request.params?.value),
+      ).toEqual(["fake/strong"]);
+    },
+    15_000,
+  );
+
+  it("isolates individual model probe failures so later models still discover reasoning", async () => {
+    const result = modelListResultSchema.parse(
+      (
+        await waitForResponse(
+          sendModelList({
+            envVars: {
+              FAKE_ACP_MODEL_CONFIG: "1",
+              FAKE_ACP_THOUGHT_LEVEL_CONFIG: "1",
+              FAKE_ACP_MODEL_COUNT: "3",
+              FAKE_ACP_SET_CONFIG_MODEL_ERROR_VALUE: "fake/strong",
+            },
+          }),
+        )
+      ).result,
+    );
+    expect(
+      result.models.find((model) => model.model === "fake/strong")
+        ?.supportedReasoningEfforts,
+    ).toEqual([]);
+    expect(
+      result.models
+        .find((model) => model.model === "fake/gen-2")
+        ?.supportedReasoningEfforts.map((effort) => effort.reasoningEffort),
+    ).toEqual(["low", "medium", "high"]);
   });
 
   it("times out hung ACP-native discovery, kills the child, and reports the timeout", async () => {
@@ -2212,6 +2345,23 @@ describe("acp bridge", () => {
     expect(agentMessageTexts()).toContain("selected-effort:xhigh");
   });
 
+  it("leaves the live agent effort untouched when execution omits reasoning", async () => {
+    const requestLog = join(workspaceDir, "unknown-reasoning-session.jsonl");
+    await startThread({
+      model: "fake/strong",
+      envVars: {
+        FAKE_ACP_MODEL_CONFIG: "1",
+        FAKE_ACP_THOUGHT_LEVEL_CONFIG: "1",
+        FAKE_ACP_REQUEST_LOG: requestLog,
+      },
+    });
+    expect(
+      loggedAcpRequests(requestLog)
+        .filter((request) => request.method === "session/set_config_option")
+        .map((request) => request.params?.configId),
+    ).toEqual(["model"]);
+  });
+
   it("applies configured native reasoning when the ACP agent does not advertise thought_level", async () => {
     const { providerThreadId } = await startThread({
       envVars: {
@@ -2235,7 +2385,7 @@ describe("acp bridge", () => {
     expect(agentMessageTexts()).toContain("selected-effort:max");
   });
 
-  it("keeps ACP-native models without thought_level at the single managed level", async () => {
+  it("does not advertise reasoning for ACP-native models without thought_level", async () => {
     const modelListId = sendModelList({
       envVars: { FAKE_ACP_MODEL_CONFIG: "1" },
     });
@@ -2252,7 +2402,7 @@ describe("acp bridge", () => {
     expect(
       models.find((model) => model.id === "fake/strong")
         ?.supportedReasoningEfforts,
-    ).toEqual([{ reasoningEffort: "medium", description: expect.any(String) }]);
+    ).toEqual([]);
   });
 
   it("lists an ACP-native model's own thought levels when none of them are standard levels", async () => {

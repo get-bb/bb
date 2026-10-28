@@ -90,6 +90,7 @@ function render(element: ReactNode) {
 }
 
 const mocks = vi.hoisted(() => ({
+  unknownReasoning: false,
   promptBoxProps: [] as Array<Record<string, any>>,
   copyAttachments: vi.fn(),
   uploadAttachment: vi.fn(),
@@ -336,21 +337,25 @@ vi.mock("@/hooks/queries/system-queries", () => ({
                 displayName: "GPT-5.6",
                 isDefault: true,
                 sessionOptions: mocks.modelSessionOptions,
-                supportedReasoningEfforts: [
-                  { reasoningEffort: "low" },
-                  { reasoningEffort: "medium" },
-                  { reasoningEffort: "high" },
-                ],
+                supportedReasoningEfforts: mocks.unknownReasoning
+                  ? []
+                  : [
+                      { reasoningEffort: "low" },
+                      { reasoningEffort: "medium" },
+                      { reasoningEffort: "high" },
+                    ],
               },
               {
                 model: "gpt-5.6-sol",
                 displayName: "GPT-5.6 Sol",
                 isDefault: false,
                 sessionOptions: mocks.modelSessionOptions,
-                supportedReasoningEfforts: [
-                  { reasoningEffort: "medium" },
-                  { reasoningEffort: "high" },
-                ],
+                supportedReasoningEfforts: mocks.unknownReasoning
+                  ? []
+                  : [
+                      { reasoningEffort: "medium" },
+                      { reasoningEffort: "high" },
+                    ],
               },
             ],
             selectedOnlyModels: [],
@@ -690,6 +695,7 @@ describe("PluginNewThreadComposer seeding", () => {
     resetFixedPanelTabsStateForTest();
     mocks.closeTerminal.mockClear();
     mocks.modelSessionOptions = undefined;
+    mocks.unknownReasoning = false;
     mocks.promptBoxProps.length = 0;
     mocks.promptHistoryQueryOptions.length = 0;
     mocks.copyAttachments.mockReset();
@@ -931,6 +937,25 @@ describe("PluginNewThreadComposer seeding", () => {
     expect(window.localStorage.getItem("bb.promptbox.machine-proj_1-1")).toBe(
       "host_2",
     );
+  });
+
+  it("omits a seeded reasoning level when the model's levels are unknown", async () => {
+    mocks.unknownReasoning = true;
+    const submitted: NewThreadRequest[] = [];
+    renderComposer(
+      STORED_REQUEST,
+      (request) => {
+        submitted.push(request);
+      },
+      "unknown-reasoning",
+    );
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    await submit();
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0]?.reasoningLevel).toBeUndefined();
+    expect(submitted[0]?.executionInputSources?.reasoningLevel).toBeUndefined();
   });
 
   it("round-trips a stored request submitted untouched", async () => {

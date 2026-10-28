@@ -4618,7 +4618,8 @@ export interface NewThreadRequest {
   projectId: string;
   providerId: string;
   model: string;
-  reasoningLevel: ReasoningLevel;
+  /** Omitted when the selected model advertises no reasoning levels. */
+  reasoningLevel?: ReasoningLevel;
   permissionMode: PermissionMode;
   /** Omitted when the selected provider has no service tiers. */
   serviceTier?: ServiceTier;

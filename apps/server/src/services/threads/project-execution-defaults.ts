@@ -15,6 +15,7 @@ import type {
 } from "./thread-create-request.js";
 import {
   buildProviderThreadExecutionDefaults,
+  DEFAULT_REASONING_LEVEL,
   resolveCreateThreadExecutionDefaults,
 } from "./thread-default-policy.js";
 import { getLastExecutionOptions } from "./thread-events.js";
@@ -140,7 +141,8 @@ export function resolveProjectExecutionDefaultsForCreate(
               model: parent.execution.model,
             })),
           model: parent.execution.model,
-          reasoningLevel: parent.execution.reasoningLevel,
+          reasoningLevel:
+            parent.execution.reasoningLevel ?? DEFAULT_REASONING_LEVEL,
         }
       : resolution.executionDefaults;
 
@@ -164,7 +166,7 @@ export function rememberProjectExecutionDefaultsForCreate(
     projectId: args.request.projectId,
     providerId: args.request.providerId,
     model: args.execution.model,
-    reasoningLevel: args.execution.reasoningLevel,
+    reasoningLevel: args.execution.reasoningLevel ?? DEFAULT_REASONING_LEVEL,
     permissionMode: args.execution.permissionMode,
     serviceTier: args.execution.serviceTier,
   });

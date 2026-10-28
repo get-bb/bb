@@ -26,7 +26,7 @@ export interface SendQueuedMessageByIdRequest {
 interface ThreadExecutionSelection {
   model: string;
   permissionMode: PermissionMode;
-  reasoningLevel: ReasoningLevel;
+  reasoningLevel: ReasoningLevel | undefined;
   serviceTier: ServiceTier | undefined;
   supportsServiceTier: boolean;
   executionInputSources: ExistingThreadExecutionInputSources;
@@ -278,7 +278,9 @@ function buildSharedThreadExecutionRequestFields(
     ...(execution.supportsServiceTier && execution.serviceTier
       ? { serviceTier: execution.serviceTier }
       : {}),
-    reasoningLevel: execution.reasoningLevel,
+    ...(execution.reasoningLevel === undefined
+      ? {}
+      : { reasoningLevel: execution.reasoningLevel }),
     permissionMode: execution.permissionMode,
     executionInputSources: execution.executionInputSources,
   };

@@ -721,6 +721,10 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "thread.start.fork names a checkpoint only when the clone should stop at an earlier source turn; absent means clone the session tip.",
   "hostDaemonCommandSchema.inputGroups":
     "thread.start and turn.submit omit inputGroups for ordinary single user-message turns; presence preserves grouped user messages within one turn.",
+  "hostDaemonOnlineRpcCommandSchema.selectedModel":
+    "A selected model requests its reasoning choices without probing the whole catalog.",
+  "hostDaemonCommandSchema.options.reasoningLevel":
+    "Absent when the selected model advertises no selectable reasoning levels; preserve the agent setting.",
   "hostDaemonCommandSchema.options.promptMode":
     "thread runtime options carry a prompt mode only when the prompt entered one through the provider's declared composer action.",
   "hostDaemonCommandSchema.options.sessionOptions":
@@ -1055,7 +1059,7 @@ describe("host-daemon command schemas", () => {
   });
 
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(257);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(258);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1072,7 +1076,8 @@ describe("host-daemon command schemas", () => {
     expect(contract.isCompatibleHostDaemonProtocolVersion(254)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(255)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(256)).toBe(false);
-    expect(contract.isCompatibleHostDaemonProtocolVersion(257)).toBe(true);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(257)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(258)).toBe(true);
     expect(contract.hostDaemonSupportsConnectNext(246)).toBe(false);
     expect(contract.hostDaemonSupportsConnectNext(247)).toBe(true);
     expect(contract.hostDaemonSupportsDesktopBrokerProof(247)).toBe(false);

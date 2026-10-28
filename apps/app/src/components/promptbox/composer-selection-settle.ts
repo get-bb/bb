@@ -131,7 +131,7 @@ export function waitUntilComposerStateSettled<T extends CommittedComposerState>(
 export interface ExecutionSelectionState {
   selectedProviderId: string;
   selectedThreadModel: string;
-  reasoningLevel: ReasoningLevel;
+  reasoningLevel: ReasoningLevel | undefined;
   serviceTier: ServiceTier | undefined;
   supportsServiceTier: boolean;
   permissionMode: PermissionMode;

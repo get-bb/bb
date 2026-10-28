@@ -1,6 +1,9 @@
 import type { Thread } from "@bb/domain";
 
-type ForkableThread = Pick<Thread, "archivedAt" | "environmentId" | "providerId">;
+type ForkableThread = Pick<
+  Thread,
+  "archivedAt" | "environmentId" | "providerId"
+>;
 
 export function isThreadForkable(
   sourceThread: ForkableThread | null,

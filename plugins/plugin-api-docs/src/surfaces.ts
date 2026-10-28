@@ -1612,6 +1612,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Markdown",
           "MarkdownProps.experimental_document",
           "experimental_NewThreadComposer",
+          "NewThreadRequest.reasoningLevel",
           "experimental_VoiceInputTextarea",
           "ExperimentalVoiceInputTextareaProps",
           "experimental_ProviderModelPicker",

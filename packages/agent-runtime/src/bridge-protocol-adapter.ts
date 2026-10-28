@@ -216,6 +216,9 @@ export function createBridgeProtocolAdapter(
             params: {
               ...cwdAndStaticProviderOptions(command.cwd),
               envVars: command.envVars,
+              ...(command.selectedModel === undefined
+                ? {}
+                : { selectedModel: command.selectedModel }),
             },
           };
         case "commands/list":

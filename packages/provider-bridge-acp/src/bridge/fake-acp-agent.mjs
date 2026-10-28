@@ -197,7 +197,7 @@ const fakeModels = [
 let activePromptId = null;
 let stuckAfterCancel = false;
 let nextAgentRequestId = 1000;
-let selectedModel = "fake/default";
+let selectedModel = process.env.FAKE_ACP_INITIAL_MODEL ?? "fake/default";
 let selectedEffort = "none";
 let selectedFast = process.env.FAKE_ACP_INITIAL_FAST ?? "false";
 let clientSupportsParameterizedModels = false;
@@ -1118,6 +1118,12 @@ async function handleMessage(message) {
           });
           return;
         }
+        await new Promise((resolve) =>
+          setTimeout(
+            resolve,
+            Number(process.env.FAKE_ACP_MODEL_DELAY_MS ?? "0"),
+          ),
+        );
         selectedModel = value;
         send({
           jsonrpc: "2.0",

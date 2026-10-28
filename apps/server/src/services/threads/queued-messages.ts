@@ -262,7 +262,7 @@ export async function createQueuedMessageForThread(
           content: input,
           senderThreadId,
           model: execution.model,
-          reasoningLevel: execution.reasoningLevel,
+          reasoningLevel: execution.reasoningLevel ?? null,
           permissionMode: execution.permissionMode,
           serviceTier: execution.serviceTier,
           // An explicit "queue this" is a message waiting for the running turn
@@ -349,7 +349,13 @@ function sendQueuedMessagePayload(
     mode,
     model: queuedMessage.model,
     permissionMode: queuedMessage.permissionMode,
-    reasoningLevel: queuedMessage.reasoningLevel,
+    reasoningLevel: queuedMessage.reasoningLevel ?? undefined,
+    executionInputSources: {
+      model: "explicit",
+      reasoningLevel: "explicit",
+      permissionMode: "explicit",
+      serviceTier: "explicit",
+    },
     serviceTier: queuedMessage.serviceTier,
     ...(senderThreadId !== null ? { senderThreadId } : {}),
   };
