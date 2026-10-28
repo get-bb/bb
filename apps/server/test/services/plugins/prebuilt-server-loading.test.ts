@@ -11,8 +11,9 @@ import {
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { upsertInstalledPlugin, type DbConnection } from "@bb/db";
+import { buildPluginServer } from "@bb/plugin-build";
 import { createMigratedConnection } from "@bb/db/testing";
 import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION } from "@bb/domain";
 import type { Logger } from "@bb/logger";
@@ -24,7 +25,16 @@ import {
 import { testLogger } from "../../helpers/test-app.js";
 import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
 
+vi.mock("@bb/plugin-build", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@bb/plugin-build")>();
+  return { ...actual, buildPluginServer: vi.fn(actual.buildPluginServer) };
+});
+
 const logger = testLogger as unknown as Logger;
+
+async function settleTimestamps() {
+  await new Promise((resolve) => setTimeout(resolve, 50));
+}
 
 function gitPersistence(url: string, requestedRef: string) {
   return {
@@ -63,10 +73,8 @@ describe("prebuilt server bundle loading", () => {
   let workDir: string;
   let service: PluginService;
 
-  beforeEach(async () => {
-    db = createMigratedConnection();
-    workDir = await mkdtemp(join(tmpdir(), "bb-plugin-prebuilt-"));
-    service = createPluginService({
+  function createService() {
+    return createPluginService({
       aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
       db,
@@ -82,6 +90,12 @@ describe("prebuilt server bundle loading", () => {
       appVersion: "0.9.0",
       loadTimeoutMs: 2000,
     });
+  }
+
+  beforeEach(async () => {
+    db = createMigratedConnection();
+    workDir = await mkdtemp(join(tmpdir(), "bb-plugin-prebuilt-"));
+    service = createService();
   });
 
   afterEach(async () => {
@@ -163,6 +177,7 @@ export default function plugin() {
 }
 `,
     );
+    await settleTimestamps();
 
     const installed = await service.installPath(rootDir);
     expect(installed.status).toBe("running");
@@ -311,6 +326,43 @@ export default function plugin() {
     const entry = service.list().find((plugin) => plugin.id === "minordist");
     expect(entry?.status).toBe("error");
     expect(entry?.statusDetail).toContain("source must not load");
+  });
+
+  it("pre-1.0: builds an older-SDK prebuild's source once across bb starts", async () => {
+    const rootDir = await writePrebuiltPlugin("bb-plugin-olddist", {
+      sdkMajor: PLUGIN_SDK_MAJOR,
+      sdkVersion: `${PLUGIN_SDK_MAJOR}.999.0`,
+    });
+    await writeFile(
+      join(rootDir, "server.ts"),
+      `export default function plugin() {
+  globalThis.__oldDistSourceLoads = (globalThis.__oldDistSourceLoads ?? 0) + 1;
+}
+`,
+    );
+    await settleTimestamps();
+    upsertInstalledPlugin(db, {
+      ...gitPersistence("https://github.com/acme/bb-plugin-olddist", "v1"),
+      id: "olddist",
+      source: "git:github.com/acme/bb-plugin-olddist@v1",
+      rootDir,
+      version: "0.1.0",
+      enabled: true,
+      enabledFollowsDefault: false,
+    });
+    const state = globalThis as Record<string, unknown>;
+    const before = (state.__oldDistSourceLoads as number | undefined) ?? 0;
+    vi.mocked(buildPluginServer).mockClear();
+
+    await service.reload("olddist");
+    await service.stop();
+    service = createService();
+    await service.reload("olddist");
+
+    const entry = service.list().find((plugin) => plugin.id === "olddist");
+    expect(entry?.status).toBe("running");
+    expect(state.__oldDistSourceLoads).toBe(before + 2);
+    expect(buildPluginServer).toHaveBeenCalledTimes(1);
   });
 
   it("falls back to source when the dist meta's SDK major mismatches", async () => {
