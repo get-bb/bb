@@ -24,6 +24,7 @@ import type {
   ServiceTier,
   SessionOptionSelections,
   EnvironmentWorkspaceDisplayKind,
+  ThreadParentNotifications,
   ThreadQueuedWork,
   ThreadRuntimeDisplayStatus,
   ThreadStatus,
@@ -1293,6 +1294,11 @@ export interface PluginSidebarThread {
    * when its owner stops); null when the thread owns its own lifecycle.
    */
   lifecycleOwnerThreadId: string | null;
+  /**
+   * Which of this child's outcomes wake its parent: "auto" (every outcome),
+   * "stuck" (failures, interruptions, and blockers), or "off".
+   */
+  parentNotifications: ThreadParentNotifications;
   /** The thread this one was forked from; null unless `originKind` is "fork". */
   sourceThreadId: string | null;
   sectionId: string | null;
@@ -1972,6 +1978,8 @@ export interface PluginThreadActionTarget {
   id: string;
   projectId: string;
   parentThreadId: string | null;
+  /** Which of this child's outcomes wake its parent; see `PluginSidebarThread`. */
+  parentNotifications: ThreadParentNotifications;
   archivedAt: number | null;
   pinnedAt: number | null;
   sectionId: string | null;

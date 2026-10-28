@@ -101,6 +101,7 @@ const THREAD_TARGET: PluginThreadActionTarget = {
   id: THREAD_ID,
   projectId: "proj_header",
   parentThreadId: null,
+  parentNotifications: "auto",
   archivedAt: null,
   pinnedAt: null,
   sectionId: null,

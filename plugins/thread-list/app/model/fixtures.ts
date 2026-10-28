@@ -59,6 +59,7 @@ export function makeSidebarThread(
     titleFallback,
     displayTitle: defaultDisplayTitle(id, title, titleFallback),
     parentThreadId: null,
+    parentNotifications: "auto",
     lifecycleOwnerThreadId: null,
     sourceThreadId: null,
     sectionId: null,

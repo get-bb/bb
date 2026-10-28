@@ -3,15 +3,19 @@ import { useAtomValue } from "jotai";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   experimental_THREAD_ACTION_GROUPS as GROUPS,
+  type PluginThreadAction,
+  type PluginThreadActionItemInput,
   type PluginThreadActionRegistration,
   type PluginThreadActionTarget,
 } from "@get-bb/plugin-sdk";
+import { threadParentNotificationsSchema } from "@bb/domain";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { useThreadActions } from "@/components/thread/ThreadActionsProvider";
 import { useRouteState } from "@/hooks/useRouteState";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import { showMutationErrorToast } from "@/lib/mutation-errors";
 import { resolveThread } from "@/lib/cached-thread";
+import { PARENT_NOTIFICATIONS_OPTIONS } from "@/lib/parent-notifications";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { countPanes, listPanes } from "@/lib/split-layout";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
@@ -89,6 +93,63 @@ async function runForEach(
   if (failure !== undefined) {
     showMutationErrorToast({ error: failure.reason, fallbackMessage });
   }
+}
+
+function parentNotificationsAction(
+  threads: readonly PluginThreadActionTarget[],
+  children: readonly PluginThreadActionTarget[],
+  sdk: PluginThreadActionItemInput<unknown>["sdk"],
+): PluginThreadAction | null {
+  const [first] = children;
+  if (first === undefined) return null;
+  const shared = children.every(
+    (thread) => thread.parentNotifications === first.parentNotifications,
+  )
+    ? first.parentNotifications
+    : null;
+  return {
+    label: "Notify parent",
+    detail:
+      PARENT_NOTIFICATIONS_OPTIONS.find((option) => option.value === shared)
+        ?.label ?? "Mixed",
+    icon: "BellDot",
+    choices: {
+      ...(children.length < threads.length
+        ? {
+            hint: `Applies to ${describeThreadCount(children.length)} with a parent`,
+          }
+        : {}),
+      items: PARENT_NOTIFICATIONS_OPTIONS.map((option) => ({
+        id: option.value,
+        label: option.label,
+        selected: option.value === shared,
+      })),
+    },
+    run: async ({ value }) => {
+      const parentNotifications =
+        threadParentNotificationsSchema.safeParse(value);
+      if (!parentNotifications.success) return;
+      await runForEach(
+        children.filter(
+          (thread) => thread.parentNotifications !== parentNotifications.data,
+        ),
+        (thread) =>
+          sdk.threads.update({
+            threadId: thread.id,
+            parentNotifications: parentNotifications.data,
+          }),
+        children.length === 1
+          ? "Failed to change parent notifications."
+          : "Failed to change parent notifications for some threads.",
+      );
+    },
+  };
+}
+
+function childThreads(
+  threads: readonly PluginThreadActionTarget[],
+): PluginThreadActionTarget[] {
+  return threads.filter((thread) => thread.parentThreadId !== null);
 }
 
 interface LifecycleHandlers {
@@ -311,6 +372,17 @@ export const CORE_THREAD_ACTIONS: readonly PluginThreadActionRegistration<unknow
           },
         };
       },
+    }),
+    coreThreadAction({
+      id: "parentNotifications",
+      group: GROUPS.state,
+      order: 60,
+      title: "Notify parent",
+      icon: "BellDot",
+      item: ({ thread, sdk }) =>
+        parentNotificationsAction([thread], childThreads([thread]), sdk),
+      experimental_bulkItem: ({ threads, sdk }) =>
+        parentNotificationsAction(threads, childThreads(threads), sdk),
     }),
     coreThreadAction({
       id: "rename",

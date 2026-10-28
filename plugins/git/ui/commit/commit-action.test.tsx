@@ -69,6 +69,7 @@ function target(
     id: "thr-1",
     projectId: "proj-1",
     parentThreadId: null,
+    parentNotifications: "auto",
     archivedAt: null,
     pinnedAt: null,
     sectionId: null,

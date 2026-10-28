@@ -2809,8 +2809,10 @@ the reserved `bb--core` owner. The header menu (`ThreadDetailView` →
 `PaneThreadActionCommandHandler` read the same registry, and the thread list's
 row menus and quick actions use the SDK exports. The contract table in
 `ThreadActionsMenu.test.tsx` runs every menu surface against the same
-registrations. Core's Mark read, Pin, Archive and Delete registrations carry
-the bulk items; Archive and Delete call `ThreadActionsProvider`'s
+registrations. Core's Mark read, Pin, Notify parent, Archive and Delete
+registrations carry the bulk items; Notify parent reads the target's
+`parentNotifications` and updates only the selected threads that have a
+parent; Archive and Delete call `ThreadActionsProvider`'s
 `requestArchiveThreads` / `requestDeleteThreads`, which the single-thread
 `requestArchive` / `requestDelete` (and so every single-thread menu) also go
 through. Delete, for one thread or several, and archive for two or more plan

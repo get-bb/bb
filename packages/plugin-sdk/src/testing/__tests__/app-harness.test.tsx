@@ -2143,6 +2143,7 @@ describe("thread actions menu fake", () => {
     id: "thr_menu",
     projectId: "proj_menu",
     parentThreadId: null,
+    parentNotifications: "auto" as const,
     archivedAt: null,
     pinnedAt: null,
     sectionId: null,

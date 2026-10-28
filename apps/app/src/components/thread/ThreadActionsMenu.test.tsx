@@ -436,6 +436,7 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
         "---",
         "Unpin",
         "Mark read",
+        "Notify parent, Auto",
         "---",
         "Rename",
         "---",
@@ -451,6 +452,7 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
         "---",
         "Unpin",
         "Mark read",
+        "Notify parent, Auto",
         "---",
         "Rename",
         "---",
@@ -836,6 +838,7 @@ describe("thread action registrations", () => {
       "bb--core/newThreadInEnvironment",
       "bb--core/pin",
       "bb--core/read",
+      "bb--core/parentNotifications",
       "bb--core/rename",
       "fixture/move",
       "bb--core/archive",
@@ -1247,6 +1250,34 @@ describe.each([
       await screen.findByRole("menuitem", { name: "Clear selection" }),
     );
     expect(clearRun).toHaveBeenCalled();
+  });
+
+  it("sets Notify parent on the selected child threads only", async () => {
+    sdkThreads.update.mockResolvedValue(readThread);
+    renderSelection([
+      { ...readThread, parentThreadId: "thr_parent" },
+      {
+        ...unreadThread,
+        parentThreadId: "thr_parent",
+        parentNotifications: "off",
+      },
+      { ...baseThread, id: "thr_root" },
+    ]);
+    fireEvent.contextMenu(screen.getByText("Selection"));
+    const trigger = await screen.findByRole("menuitem", {
+      name: "Notify parent, Mixed",
+    });
+    if (compact) fireEvent.click(trigger);
+    else fireEvent.keyDown(trigger, { key: "ArrowRight" });
+    expect(
+      await screen.findByText("Applies to 2 threads with a parent"),
+    ).toBeTruthy();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Off" }));
+    await waitFor(() =>
+      expect(sdkThreads.update.mock.calls).toEqual([
+        [{ threadId: "thr_read", parentNotifications: "off" }],
+      ]),
+    );
   });
 
   it("offers Unarchive when every selected thread is archived", async () => {

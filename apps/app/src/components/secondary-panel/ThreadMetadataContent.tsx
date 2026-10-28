@@ -32,7 +32,6 @@ import type {
   Environment,
   Thread,
   ThreadListEntry,
-  ThreadParentNotifications,
 } from "@bb/domain";
 import {
   formatEnvironmentDisplay,
@@ -65,10 +64,8 @@ import {
   useUnarchiveThread,
   useUpdateThread,
 } from "../../hooks/mutations/thread-state-mutations";
-import {
-  OptionPicker,
-  type PickerOption,
-} from "@/components/pickers/OptionPicker";
+import { OptionPicker } from "@/components/pickers/OptionPicker";
+import { PARENT_NOTIFICATIONS_OPTIONS } from "@/lib/parent-notifications";
 import { buildParentSelectorOptions } from "@/views/thread-detail/threadParentSelectorOptions";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { ThreadTitle } from "@/components/thread/ThreadTitleMentions";
@@ -183,21 +180,6 @@ export function ParentSelectorRow({
     </DetailRow>
   );
 }
-
-const PARENT_NOTIFICATIONS_OPTIONS: readonly PickerOption<ThreadParentNotifications>[] =
-  [
-    {
-      value: "auto",
-      label: "Auto",
-      description: "Every finished turn, failure, and blocker",
-    },
-    {
-      value: "stuck",
-      label: "When stuck",
-      description: "Only failures, interruptions, and blockers",
-    },
-    { value: "off", label: "Off", description: "Never" },
-  ];
 
 interface ParentNotificationsRowProps {
   thread: Thread;

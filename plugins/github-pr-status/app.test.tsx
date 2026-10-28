@@ -21,6 +21,7 @@ function thread(
     titleFallback: null,
     displayTitle: "Row",
     parentThreadId: null,
+    parentNotifications: "auto",
     lifecycleOwnerThreadId: null,
     sourceThreadId: null,
     sectionId: null,
