@@ -2420,14 +2420,23 @@ async function applyDynamicTools(
     return;
   }
   const servers = buildDynamicToolServers(dynamicTools, attachment.threadIdRef);
+  const resident = attachment.residentSession;
+  if (resident !== null && !resident.closing && !resident.streamEnded) {
+    try {
+      await resident.session.replaceMcpServers(servers);
+      configureTranslatorInjectedTools(resident.translator, dynamicTools);
+    } catch (error) {
+      process.stderr.write(
+        `claude bridge: restarting the session to apply bb tools: ${error instanceof Error ? error.message : String(error)}\n`,
+      );
+      resident.restartBeforeNextTurn = {
+        reason: "Claude Code could not update bb tools on the running session",
+        showRuntimeNote: false,
+      };
+    }
+  }
   attachment.sessionConstructionConfig.dynamicTools = dynamicTools;
   attachment.sessionOptions.mcpServers = servers;
-  const resident = attachment.residentSession;
-  if (resident === null || resident.closing || resident.streamEnded) {
-    return;
-  }
-  configureTranslatorInjectedTools(resident.translator, dynamicTools);
-  await resident.session.replaceMcpServers(servers);
 }
 
 function attachThreadSession(

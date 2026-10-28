@@ -59,6 +59,7 @@ interface ScriptedClaudeSession {
 
 let scriptedTurnCounter = 0;
 let scriptedSessions: ScriptedClaudeSession[] = [];
+let rejectMcpServerUpdates = false;
 
 async function listSdkServerTools(
   servers: Record<string, McpServerConfig>,
@@ -214,6 +215,15 @@ function createScriptedClaudeQuery(call: ScriptedClaudeQueryCall) {
     initializationResult: vi.fn(async () => ({ commands: [] })),
     interrupt: vi.fn(async () => {}),
     setMcpServers: vi.fn(async (servers: Record<string, McpServerConfig>) => {
+      if (rejectMcpServerUpdates && Object.keys(servers).length > 0) {
+        return {
+          added: [],
+          removed: [],
+          errors: Object.fromEntries(
+            Object.keys(servers).map((name) => [name, "failed to connect"]),
+          ),
+        };
+      }
       const added = Object.keys(servers).filter(
         (name) => session.mcpServers[name] === undefined,
       );
@@ -243,6 +253,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   scriptedTurnCounter = 0;
   scriptedSessions = [];
+  rejectMcpServerUpdates = false;
   workspaceDir = mkdtempSync(join(tmpdir(), "bb-claude-conformance-ws-"));
   queryMock.mockImplementation((call: ScriptedClaudeQueryCall) =>
     createScriptedClaudeQuery(call),
@@ -312,4 +323,33 @@ it("passes the canonical protocol suite against the scripted claude session", as
   });
 
   expect(report.passed).toBe(true);
+}, 60_000);
+
+it("restarts the session with the new tools when Claude Code rejects a live MCP update", async () => {
+  rejectMcpServerUpdates = true;
+  const report = await runBridgeConformance({
+    transport: { send: handleLine, takeMessages: output.takeMessages },
+    providerId: "claude-code",
+    session: {
+      cwd: workspaceDir,
+      promptInput: [{ type: "text", text: "say hello", mentions: [] }],
+      probe: {
+        observe: ({ threadId }) => observeScriptedSession(threadId),
+      },
+    },
+    timeoutMs: 10_000,
+  });
+
+  expect(
+    Object.fromEntries(
+      report.results
+        .filter((result) => result.id.startsWith("config/tools-"))
+        .map((result) => [result.id, result.status]),
+    ),
+  ).toEqual({
+    "config/tools-at-start": "pass",
+    "config/tools-added-after-empty-start": "pass",
+    "config/tools-change-applies": "pass",
+    "config/tools-removed": "pass",
+  });
 }, 60_000);

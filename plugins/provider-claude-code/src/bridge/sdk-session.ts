@@ -206,9 +206,18 @@ export class SdkSession {
   async replaceMcpServers(
     servers: Record<string, McpSdkServerConfigWithInstance>,
   ): Promise<void> {
-    await this.query?.setMcpServers({});
-    if (Object.keys(servers).length > 0) {
-      await this.query?.setMcpServers(servers);
+    const query = this.query;
+    if (query) {
+      await query.setMcpServers({});
+      if (Object.keys(servers).length > 0) {
+        const { errors } = await query.setMcpServers(servers);
+        const failures = Object.entries(errors);
+        if (failures.length > 0) {
+          throw new Error(
+            `Claude Code could not start MCP servers: ${failures.map(([name, message]) => `${name}: ${message}`).join("; ")}`,
+          );
+        }
+      }
     }
     this.options.mcpServers = servers;
   }
