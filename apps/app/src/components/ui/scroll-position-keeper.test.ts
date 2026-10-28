@@ -2,6 +2,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { installFakeFlowLayout, setFakeHeight } from "@/test/fake-flow-layout";
+import { WINDOW_FIND_OPEN_EVENT } from "@/lib/window-find";
 import { ScrollPositionKeeper } from "./scroll-position-keeper";
 
 const VIEWPORT_HEIGHT = 500;
@@ -245,6 +246,58 @@ describe("ScrollPositionKeeper", () => {
       expect(timeline.layout.scrollTop).toBe(timeline.layout.maxScrollTop());
     },
   );
+
+  it("keeps an attached view at the end when it scrolls without input or a size change", () => {
+    const timeline = createTimeline(rowsOf(10), { attached: true });
+
+    timeline.layout.layoutScrollTo(timeline.layout.scrollTop - 300);
+
+    expect(timeline.keeper.isAttached()).toBe(true);
+    expect(timeline.layout.scrollTop).toBe(timeline.layout.maxScrollTop());
+    expect(timeline.keeper.hasUserScrolled()).toBe(false);
+  });
+
+  it("keeps a pending restore when the view scrolls without input before the row mounts", () => {
+    const rows = rowsOf(10);
+    const timeline = createTimeline(rows.slice(5), { attached: true });
+
+    timeline.keeper.restore({
+      rowId: "row-2",
+      offsetWithinRow: 0,
+      atBottom: false,
+    });
+    timeline.layout.layoutScrollTo(timeline.layout.scrollTop - 200);
+    timeline.setRows(rows);
+    timeline.layout.flushResizeObservers();
+
+    expect(timeline.topOf("row-2")).toBe(0);
+    expect(timeline.keeper.hasUserScrolled()).toBe(false);
+  });
+
+  it("follows a scroll without input while the window find bar is open, and keeps the end again once the window has focus", () => {
+    const timeline = createTimeline(rowsOf(10), { attached: true });
+
+    window.dispatchEvent(new Event(WINDOW_FIND_OPEN_EVENT));
+    timeline.layout.layoutScrollTo(400);
+    expect(timeline.keeper.isAttached()).toBe(false);
+    expect(timeline.layout.scrollTop).toBe(400);
+
+    timeline.keeper.scrollToBottom();
+    window.dispatchEvent(new Event("focus"));
+    timeline.layout.layoutScrollTo(400);
+    expect(timeline.keeper.isAttached()).toBe(true);
+    expect(timeline.layout.scrollTop).toBe(timeline.layout.maxScrollTop());
+  });
+
+  it("follows a focus move after Tab as the reader's scroll", () => {
+    const timeline = createTimeline(rowsOf(10), { attached: true });
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab" }));
+    timeline.layout.layoutScrollTo(400);
+
+    expect(timeline.keeper.isAttached()).toBe(false);
+    expect(timeline.layout.scrollTop).toBe(400);
+  });
 
   it("follows content that stays shrunk to the new end", () => {
     vi.useFakeTimers({

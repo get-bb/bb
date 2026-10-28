@@ -303,8 +303,9 @@ anchor. The position changes only when:
 - the view sits at the end while detached (see below).
 
 A scroll counts as the reader's during an input session: a wheel, a scroll key,
-a touch or pointer drag that scrolled, and the momentum that follows (up to
-three seconds after the finger lifts, on every platform). A touch ends on the
+Tab (focus moving to an offscreen control), a touch or pointer drag that
+scrolled, and the momentum that follows (up to three seconds after the finger
+lifts, on every platform). A touch ends on the
 last touch pointer's `pointerup`, caught on the window in the capture phase,
 or on `touchend`, whichever comes first. This means a tap on a control that
 removes itself, such as the send button, still ends the touch. A drag counts
@@ -313,9 +314,16 @@ end, as a send does, the input session ends and the touch baseline is reset,
 so the app's own jump is never counted as the reader's gesture. Any other
 scroll that comes with a change in the scroll extent, or in the content's
 height since the last ResizeObserver delivery, is layout, and the owner
-reconciles it back to the position. A scroll without input or size change,
-such as find in page or focus moving to an offscreen control, is navigation,
-and the position follows it.
+reconciles it back to the position. A scroll without input or size change
+never moves a view attached to the bottom, and never cancels a restore or
+landing that is waiting for its row: the owner reconciles it back, the same as
+layout. iOS WebKit moves the scroll position on its own, for example when
+inline elements are re-inserted, and these scrolls cannot be told apart from
+intended ones. A detached view follows such a scroll as navigation, such as
+find in page. While the desktop window find bar is open, from the
+`bb:window-find-open` event until the window regains focus, an attached view
+follows it too, so find works from the bottom. Browser find on the web gets no
+such signal, so from the bottom it is pulled back.
 
 The thread timeline holds a floor under its scroll extent. The first child of
 its scroll content is a spacer whose height equals the content's height at the
@@ -325,8 +333,8 @@ Content that collapses and regrows within one task, such as the composer
 footer or a row remounting while something forces a layout, therefore never
 lowers the extent, and the browser has nothing to clamp. Without the floor that
 clamp arrives as a scroll with no input and no size change once the content has
-regrown, which reads as navigation and detaches a view at the end. A shrink
-that lasts reaches the ResizeObserver, which lowers the floor before
+regrown, which a detached reader near the end would follow as navigation. A
+shrink that lasts reaches the ResizeObserver, which lowers the floor before
 reconciling. Tool output boxes have no floor.
 
 Attachment follows one rule: a detached view within 4 px of the end attaches,

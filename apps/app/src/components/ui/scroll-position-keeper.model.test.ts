@@ -358,6 +358,17 @@ function runSeed(seed: number): string[] {
     {
       weight: 2,
       make: () => {
+        const delta = random.int(-600, 600);
+        return {
+          kind: keeper.isAttached() ? "layout" : "navigation",
+          label: `scroll ${delta} without input`,
+          run: () => layout.layoutScrollTo(layout.scrollTop + delta),
+        };
+      },
+    },
+    {
+      weight: 2,
+      make: () => {
         const fraction = random.next();
         return {
           kind: "navigation",
