@@ -102,3 +102,53 @@ it("passes the canonical protocol suite against a scripted pi rpc child", async 
       .map((r) => r.id),
   ).toEqual([]);
 }, 60_000);
+
+const capabilitiesSchema = z
+  .object({
+    result: z
+      .object({ capabilities: z.object({}).passthrough() })
+      .passthrough(),
+  })
+  .passthrough();
+
+function withoutSessionConfigDeclaration(message: unknown): unknown {
+  const parsed = capabilitiesSchema.safeParse(message);
+  if (!parsed.success || !("sessionConfig" in parsed.data.result.capabilities)) {
+    return message;
+  }
+  const { sessionConfig: _sessionConfig, ...capabilities } =
+    parsed.data.result.capabilities;
+  return { ...parsed.data, result: { ...parsed.data.result, capabilities } };
+}
+
+it("checks an undeclared sessionConfig as the documented resume default", async () => {
+  const report = await runBridgeConformance({
+    transport: {
+      send: handleLine,
+      takeMessages: () =>
+        harness.takeMessages().map(withoutSessionConfigDeclaration),
+    },
+    providerId: "pi",
+    session: {
+      cwd: harness.workspaceDir,
+      promptInput: [{ type: "text", text: "say hello", mentions: [] }],
+      probe: { observe: ({ threadId }) => observeFakePi(threadId) },
+    },
+    timeoutMs: CONFORMANCE_WAIT_TIMEOUT_MS,
+  });
+
+  const configResults = Object.fromEntries(
+    report.results
+      .filter((result) => result.id.startsWith("config/"))
+      .map((result) => [result.id, result.status]),
+  );
+  expect(configResults).toEqual({
+    "config/env-reaches-agent": "pass",
+    "config/tools-at-start": "pass",
+    "config/tools-added-after-empty-start": "pass",
+    "config/tools-change-applies": "pass",
+    "config/tools-removed": "pass",
+    "config/skills-per-session": "pass",
+    "config/skills-change-isolated": "pass",
+  });
+}, 60_000);

@@ -73,7 +73,6 @@ export async function runBridgeConformance(
       client,
       fixture: options.session,
       capabilities: handshake.capabilities,
-      sessionConfigDeclared: handshake.sessionConfigDeclared,
     })),
   );
 

@@ -25,9 +25,6 @@ import {
 } from "./scenarios.js";
 import type { ConformanceCheckResult } from "./types.js";
 
-const DECLARED_ID = "config/session-config-declared";
-const DECLARED_TITLE =
-  "the handshake declares how each session-config field is applied";
 const ENV_ID = "config/env-reaches-agent";
 const ENV_TITLE =
   "options.envVars, thread identity included, reach the agent process";
@@ -71,7 +68,6 @@ interface SessionConfigScenarioArgs {
   client: ConformanceClient;
   fixture: ConformanceSessionFixture;
   capabilities: BridgeCapabilities | null;
-  sessionConfigDeclared: boolean;
 }
 
 interface SkillRoot {
@@ -108,15 +104,7 @@ function toolSummary(observation: ConformanceAgentObservation): string {
 export async function runSessionConfigScenarios(
   args: SessionConfigScenarioArgs,
 ): Promise<ConformanceCheckResult[]> {
-  const results: ConformanceCheckResult[] = [
-    args.sessionConfigDeclared
-      ? pass(DECLARED_ID, DECLARED_TITLE)
-      : fail(
-          DECLARED_ID,
-          DECLARED_TITLE,
-          'initialize must return capabilities.sessionConfig = { dynamicTools, skills }, each "live" (turn/start or skills/configure applies it to the running session), "resume" (thread/resume with the new value rebuilds the session) or "fixed" (the provider keeps the value it started with); the runtime assumes "resume" when it is missing',
-        ),
-  ];
+  const results: ConformanceCheckResult[] = [];
   const probe = args.fixture.probe;
   if (probe === undefined) {
     return results;

@@ -601,7 +601,6 @@ const handlers: Record<string, RequestHandler> = {
         fork: "none",
         approvalEnforcedBy: "runtime",
         steerMode: "queue",
-        sessionConfig: { dynamicTools: "resume", skills: "resume" },
       },
     });
   },

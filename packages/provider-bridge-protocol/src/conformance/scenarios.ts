@@ -391,17 +391,7 @@ export async function runRpcHygieneScenarios(
 export interface HandshakeScenarioOutcome {
   results: ConformanceCheckResult[];
   capabilities: BridgeCapabilities | null;
-  sessionConfigDeclared: boolean;
 }
-
-const declaredSessionConfigSchema = z.object({
-  capabilities: z.object({
-    sessionConfig: z.object({
-      dynamicTools: z.string(),
-      skills: z.string(),
-    }),
-  }),
-});
 
 export async function runHandshakeScenario(
   client: ConformanceClient,
@@ -417,7 +407,6 @@ export async function runHandshakeScenario(
   const failed = (detail: string): HandshakeScenarioOutcome => ({
     results: [fail("handshake/initialize", title, detail)],
     capabilities: null,
-    sessionConfigDeclared: false,
   });
   if (response === null) {
     return failed("no response");
@@ -468,9 +457,6 @@ export async function runHandshakeScenario(
       })),
     ],
     capabilities: parsed.data.capabilities,
-    sessionConfigDeclared: declaredSessionConfigSchema.safeParse(
-      response.result,
-    ).success,
   };
 }
 

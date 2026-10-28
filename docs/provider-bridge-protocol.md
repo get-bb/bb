@@ -82,17 +82,18 @@ hint whatever the mode.
 `sessionConfig: { dynamicTools, skills }` declares how a running session takes
 a changed value of each field: `live` (the bridge applies it to the running
 session: `dynamicTools` and `skillRoots` on `turn/start`), `resume` (the
-default; `thread/resume` for the live thread with the new value rebuilds its
-session), or `fixed` (the provider keeps the start-time value).
+default, also used when the bridge omits the declaration; `thread/resume` for
+the live thread with the new value rebuilds its session), or `fixed` (the
+provider keeps the start-time value).
 The runtime keeps the value each session was built with and diffs it against
 the server's value on every `turn/start`: unchanged sends nothing; `live`
 sends the new `dynamicTools` on that `turn/start`; `resume` resumes the
 session first (a session that is not restorable is treated as `fixed`);
 `fixed` keeps the session and emits one `provider/warning` per distinct
-change. `turn/steer` never reconciles. Conformance rule
-`config/session-config-declared` requires the declaration, and with a fixture
-`probe` the `config/*` rules check the env, tools at start, and tool
-additions, changes and removals on the agent the fake provider ran. A probe that reports `skills` also runs `config/skills-per-session`
+change. `turn/steer` never reconciles. With a fixture `probe`, the `config/*`
+rules check the env, tools at start, and tool additions, changes and removals
+on the agent the fake provider ran, using the declared mode or the `resume`
+default. A probe that reports `skills` also runs `config/skills-per-session`
 and `config/skills-change-isolated`: two threads started with different
 `skillRoots` each see only their own skills, and changing one thread's roots
 (or sending `skills/configure`) leaves the other's alone.
