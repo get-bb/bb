@@ -846,7 +846,7 @@ describe("acp bridge", () => {
           displayName: "Fake Default",
           isDefault: true,
           defaultReasoningEffort: "medium",
-          supportedReasoningEfforts: [{ reasoningEffort: "medium" }],
+          supportedReasoningEfforts: [],
         },
         {
           id: "fake/strong",
@@ -883,18 +883,12 @@ describe("acp bridge", () => {
         {
           id: "fake/default",
           supportedServiceTiers: [],
-          supportedReasoningEfforts: [{ reasoningEffort: "medium" }],
+          supportedReasoningEfforts: [],
         },
         {
           id: "fake/strong",
           supportedServiceTiers: [],
-          supportedReasoningEfforts: [
-            {
-              reasoningEffort: "medium",
-              description:
-                "Reasoning effort is managed by the connected ACP agent.",
-            },
-          ],
+          supportedReasoningEfforts: [],
         },
         {
           id: "fake/gen-2",
@@ -1253,7 +1247,7 @@ describe("acp bridge", () => {
           displayName: "Fake Default",
           isDefault: true,
           defaultReasoningEffort: "medium",
-          supportedReasoningEfforts: [{ reasoningEffort: "medium" }],
+          supportedReasoningEfforts: [],
         },
         {
           id: "fake/strong",
@@ -1262,7 +1256,7 @@ describe("acp bridge", () => {
           displayName: "Fake Strong",
           isDefault: false,
           defaultReasoningEffort: "medium",
-          supportedReasoningEfforts: [{ reasoningEffort: "medium" }],
+          supportedReasoningEfforts: [],
         },
       ],
       selectedOnlyModels: [],
@@ -2217,7 +2211,7 @@ describe("acp bridge", () => {
     expect(agentMessageTexts()).toContain("selected-effort:max");
   });
 
-  it("keeps ACP-native models without thought_level at the single managed level", async () => {
+  it("lists no reasoning levels for an ACP-native model without thought_level", async () => {
     const modelListId = sendModelList({
       envVars: { FAKE_ACP_MODEL_CONFIG: "1" },
     });
@@ -2234,7 +2228,7 @@ describe("acp bridge", () => {
     expect(
       models.find((model) => model.id === "fake/strong")
         ?.supportedReasoningEfforts,
-    ).toEqual([{ reasoningEffort: "medium", description: expect.any(String) }]);
+    ).toEqual([]);
   });
 
   it("lists an ACP-native model's own thought levels when none of them are standard levels", async () => {

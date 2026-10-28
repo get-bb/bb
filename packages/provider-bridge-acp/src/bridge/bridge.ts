@@ -152,7 +152,6 @@ import {
   type CursorMcpApproval,
 } from "./cursor-mcp-approval.js";
 import {
-  ACP_NATIVE_REASONING_EFFORTS,
   buildAgentModelCatalog,
   buildAcpNativeReasoningSupport,
   buildModelCatalogFromConfigOptions,
@@ -608,7 +607,7 @@ const ACP_DEFAULT_MODEL: AvailableModel = {
   model: ACP_DEFAULT_MODEL_ID,
   displayName: "Agent default",
   description: "Model selection is managed by the connected ACP agent.",
-  supportedReasoningEfforts: ACP_NATIVE_REASONING_EFFORTS,
+  supportedReasoningEfforts: [],
   defaultReasoningEffort: "medium",
   supportedServiceTiers: [],
   isDefault: true,
@@ -657,11 +656,7 @@ function applyReasoningCliToModel(
 }
 
 function modelHasOnlyAgentManagedReasoning(model: AvailableModel): boolean {
-  return (
-    model.supportedReasoningEfforts.length === 1 &&
-    model.supportedReasoningEfforts[0]?.reasoningEffort === "medium" &&
-    model.defaultReasoningEffort === "medium"
-  );
+  return model.supportedReasoningEfforts.length === 0;
 }
 
 function applyNativeReasoningHintToModel(
