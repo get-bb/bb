@@ -62,7 +62,8 @@ import {
   type SdkSessionOptions,
 } from "./sdk-session.js";
 import { MissingClaudeCliError } from "./missing-cli-error.js";
-import { claudeConfigDirectory, forkClaudeSession } from "./session-fork.js";
+import { claudeConfigDirectory } from "./config-directory.js";
+import { forkClaudeSession } from "./session-fork.js";
 import { createClaudeCodeBridgeModelListMemo } from "./model-list.js";
 import {
   PROVIDER_COMMANDS_STATE_KIND,
@@ -2518,6 +2519,7 @@ async function handleThreadFork(
     forkedProviderThreadId = await forkClaudeSession({
       configDirectory: claudeConfigDirectory(
         buildSessionEnv(readConfigEnvOverrides(params.config)),
+        params.cwd,
       ),
       sourceSessionId: params.sourceProviderThreadId,
       upToMessageId: params.sourceProviderCheckpointId,

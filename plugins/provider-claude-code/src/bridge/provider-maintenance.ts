@@ -22,12 +22,12 @@ import {
   experimental_resolveExecutablePath as resolveExecutablePath,
   experimental_versionFrom as versionFrom,
 } from "@get-bb/plugin-sdk/provider-bridge";
+import { claudeProfile, type ClaudeProfile } from "./config-directory.js";
 import { z } from "zod";
 
 const execFileAsync = experimental_execHostFile;
 const USAGE_FETCH_TIMEOUT_MS = 15_000;
 const CLAUDE_USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
-const CLAUDE_KEYCHAIN_SERVICE = "Claude Code-credentials";
 const CLAUDE_NPM_PACKAGE = "@anthropic-ai/claude-code";
 const CLAUDE_INSTALL_SCRIPT_URL = "https://claude.ai/install.sh";
 const CLAUDE_POWERSHELL_INSTALL_SCRIPT_URL = "https://claude.ai/install.ps1";
@@ -254,18 +254,24 @@ function buildClaudeProviderInstallationRun(
   };
 }
 
-async function readKeychainCredentials(): Promise<string | null> {
+function activeClaudeProfile(): ClaudeProfile {
+  return claudeProfile(process.env, process.cwd());
+}
+
+async function readKeychainCredentials(
+  service: string,
+): Promise<string | null> {
   if (process.platform !== "darwin") return null;
   const argumentSets = [
     [
       "find-generic-password",
       "-s",
-      CLAUDE_KEYCHAIN_SERVICE,
+      service,
       "-a",
       os.userInfo().username,
       "-w",
     ],
-    ["find-generic-password", "-s", CLAUDE_KEYCHAIN_SERVICE, "-w"],
+    ["find-generic-password", "-s", service, "-w"],
   ];
   for (const args of argumentSets) {
     try {
@@ -294,7 +300,10 @@ function parseCredentials(raw: string): ClaudeCredentials | null {
 }
 
 async function readCredentials(): Promise<ClaudeCredentials | null> {
-  const keychainCredentials = await readKeychainCredentials();
+  const profile = activeClaudeProfile();
+  const keychainCredentials = await readKeychainCredentials(
+    profile.keychainService,
+  );
   if (keychainCredentials !== null) {
     const parsed = parseCredentials(keychainCredentials);
     if (parsed !== null) return parsed;
@@ -302,7 +311,7 @@ async function readCredentials(): Promise<ClaudeCredentials | null> {
   try {
     return parseCredentials(
       await fs.readFile(
-        path.join(os.homedir(), ".claude", ".credentials.json"),
+        path.join(profile.configDirectory, ".credentials.json"),
         "utf8",
       ),
     );
@@ -314,9 +323,7 @@ async function readCredentials(): Promise<ClaudeCredentials | null> {
 async function readAccount() {
   try {
     const parsed = claudeAccountSchema.safeParse(
-      JSON.parse(
-        await fs.readFile(path.join(os.homedir(), ".claude.json"), "utf8"),
-      ),
+      JSON.parse(await fs.readFile(activeClaudeProfile().accountFile, "utf8")),
     );
     return parsed.success ? (parsed.data.oauthAccount ?? null) : null;
   } catch {

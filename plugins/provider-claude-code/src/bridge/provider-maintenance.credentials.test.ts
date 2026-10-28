@@ -1,5 +1,8 @@
+import { createHash } from "node:crypto";
+import path from "node:path";
 import {
   afterAll,
+  afterEach,
   beforeAll,
   beforeEach,
   describe,
@@ -11,28 +14,35 @@ import {
 const state = vi.hoisted(() => ({
   keychain: "",
   file: "",
+  keychainServices: [] as string[],
+  files: [] as string[],
 }));
 
 vi.mock("node:child_process", () => ({
   execFile: (
     _file: string,
-    _args: readonly string[],
+    args: readonly string[],
     _options: object,
     callback: (
       error: Error | null,
       result: { stdout: string; stderr: string },
     ) => void,
-  ) => callback(null, { stdout: state.keychain, stderr: "" }),
+  ) => {
+    state.keychainServices.push(args[args.indexOf("-s") + 1] ?? "");
+    callback(null, { stdout: state.keychain, stderr: "" });
+  },
 }));
 
 vi.mock("node:fs/promises", () => ({
   default: {
-    readFile: (file: string) =>
-      Promise.resolve(
+    readFile: (file: string) => {
+      state.files.push(file);
+      return Promise.resolve(
         file.endsWith(".credentials.json")
           ? state.file
           : JSON.stringify({ oauthAccount: { emailAddress: null } }),
-      ),
+      );
+    },
   },
 }));
 
@@ -62,6 +72,10 @@ afterAll(() => {
   vi.unstubAllGlobals();
 });
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 beforeEach(() => {
   const credentials = JSON.stringify({
     claudeAiOauth: {
@@ -73,6 +87,8 @@ beforeEach(() => {
   });
   state.file = credentials;
   state.keychain = Buffer.from(credentials, "utf8").toString("hex");
+  state.keychainServices = [];
+  state.files = [];
   vi.stubGlobal(
     "fetch",
     vi.fn().mockResolvedValue({
@@ -121,4 +137,30 @@ describe("Claude Code credential loading", () => {
       }),
     });
   });
+
+  it("reads only the profile CLAUDE_CONFIG_DIR selects", async () => {
+    const profile = path.resolve("/profiles/work");
+    vi.stubEnv("CLAUDE_CONFIG_DIR", profile);
+    state.keychain = "";
+
+    const result = await getClaudeProviderUsage();
+
+    expect(result).toEqual({
+      supported: true,
+      usage: expect.objectContaining({ status: "ok" }),
+    });
+    expect(new Set(state.keychainServices)).toEqual(
+      new Set(["Claude Code-credentials-" + profileHash(profile)]),
+    );
+    expect(state.files.sort()).toEqual(
+      [
+        path.join(profile, ".claude.json"),
+        path.join(profile, ".credentials.json"),
+      ].sort(),
+    );
+  });
 });
+
+function profileHash(configured: string): string {
+  return createHash("sha256").update(configured).digest("hex").slice(0, 8);
+}

@@ -403,9 +403,8 @@ async function buildClaudeCode(
   await writeClaudePluginInstall(paths, claudeDir);
 }
 
+const CLAUDE_HOME_SKILLS = ["home-claude-skill", "linked-home-skill"];
 const CLAUDE_USER_NAMES = [
-  "home-claude-skill",
-  "linked-home-skill",
   "home-lint",
   ...CLAUDE_PLUGIN_USER_SKILLS,
   ...CLAUDE_PLUGIN_USER_COMMANDS,
@@ -430,6 +429,7 @@ function claudeCodeVariant(
   claudeDirFor: (paths: FixturePaths) => string,
   env: (paths: FixturePaths) => FixtureEnv,
   extraUserNames: readonly string[],
+  unusedUserNames: readonly string[],
 ): FixtureVariant {
   return {
     providerId: "claude-code",
@@ -443,11 +443,11 @@ function claudeCodeVariant(
           ...CLAUDE_USER_NAMES,
           ...extraUserNames,
         ],
-        absent: CLAUDE_ABSENT,
+        absent: [...CLAUDE_ABSENT, ...unusedUserNames],
       },
       userOnly: {
         present: [...CLAUDE_USER_NAMES, ...extraUserNames],
-        absent: [...CLAUDE_ABSENT, ...CLAUDE_PROJECT_NAMES],
+        absent: [...CLAUDE_ABSENT, ...CLAUDE_PROJECT_NAMES, ...unusedUserNames],
       },
     },
   };
@@ -1352,12 +1352,19 @@ const defaultClaudeDir = (paths: FixturePaths): string =>
   path.join(paths.home, ".claude");
 
 export const FIXTURE_VARIANTS: readonly FixtureVariant[] = [
-  claudeCodeVariant("default", defaultClaudeDir, () => ({}), []),
+  claudeCodeVariant(
+    "default",
+    defaultClaudeDir,
+    () => ({}),
+    CLAUDE_HOME_SKILLS,
+    [],
+  ),
   claudeCodeVariant(
     "config-dir",
     (paths) => path.join(paths.root, "claude-config"),
     (paths) => ({ CLAUDE_CONFIG_DIR: path.join(paths.root, "claude-config") }),
     ["configdir-claude-skill"],
+    CLAUDE_HOME_SKILLS,
   ),
   codexVariant(
     "default",

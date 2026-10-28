@@ -5,17 +5,10 @@ import {
   type SessionStoreEntry,
 } from "@anthropic-ai/claude-agent-sdk";
 import { readdir, readFile, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { z } from "zod";
 
 const transcriptEntrySchema = z.looseObject({ type: z.string() });
-
-export function claudeConfigDirectory(env: NodeJS.ProcessEnv): string {
-  return env.CLAUDE_CONFIG_DIR
-    ? resolve(env.CLAUDE_CONFIG_DIR)
-    : join(homedir(), ".claude");
-}
 
 export async function forkClaudeSession(args: {
   configDirectory: string;
