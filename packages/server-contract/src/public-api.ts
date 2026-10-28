@@ -1,9 +1,4 @@
 import {
-  uiPreferencesRoute,
-  updateUiPreferenceRoute,
-  resetUiPreferenceRoute,
-} from "./client-route-descriptors.js";
-import {
   machineEnvironmentSetSchema,
   machineEnvironmentDeleteSchema,
   type MachineEnvironmentSet,
@@ -420,6 +415,13 @@ import {
   type ServerMoveStatus,
   type ServerMoveStatusResponse,
 } from "./api/server-move.js";
+import {
+  updateUiPreferenceRequestSchema,
+  type PathUiPreferenceKey,
+  type UiPreferenceResponse,
+  type UiPreferencesResponse,
+  type UpdateUiPreferenceRequest,
+} from "./api/ui-preferences.js";
 import type { ApiError } from "./errors.js";
 
 type PathProjectSourceId = { param: { id: string; sourceId: string } };
@@ -1966,9 +1968,33 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<AppTheme>(),
     }),
-    uiPreferences: uiPreferencesRoute,
-    updateUiPreference: updateUiPreferenceRoute,
-    resetUiPreference: resetUiPreferenceRoute,
+    uiPreferences: defineRoute({
+      path: "/preferences/ui",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<UiPreferencesResponse>(),
+    }),
+    updateUiPreference: defineRoute({
+      path: "/preferences/ui/:key",
+      method: "put",
+      request: jsonRequest<PathUiPreferenceKey, UpdateUiPreferenceRequest>(
+        updateUiPreferenceRequestSchema,
+      ),
+      response: [
+        jsonResponse<UiPreferenceResponse>(),
+        jsonResponse<ApiError>({ status: 404 }),
+        jsonResponse<ApiError>({ status: 409 }),
+      ],
+    }),
+    resetUiPreference: defineRoute({
+      path: "/preferences/ui/:key",
+      method: "delete",
+      request: noRequest<PathUiPreferenceKey>(),
+      response: [
+        jsonResponse<UiPreferenceResponse>(),
+        jsonResponse<ApiError>({ status: 404 }),
+      ],
+    }),
     themes: defineRoute({
       path: "/settings/themes",
       method: "get",

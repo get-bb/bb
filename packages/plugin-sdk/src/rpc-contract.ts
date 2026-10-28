@@ -1,4 +1,4 @@
-import type { ContractTagDeclarations } from "@bb/domain";
+import type { ContractTagDeclarations } from "./internal/rpc-tags.js";
 
 /** A JSON-safe path segment reported by a Standard Schema validation issue. */
 export type PluginRpcIssuePathSegment = string | number;

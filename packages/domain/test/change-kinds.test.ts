@@ -85,7 +85,6 @@ const maximalChangedMessages: ChangedMessage[] = [
     entity: "system",
     changes: [...SYSTEM_CHANGE_KINDS],
   },
-  { type: "changed", entity: "tags", tags: ["ui-preferences"] },
   {
     type: "changed",
     entity: "plugin",

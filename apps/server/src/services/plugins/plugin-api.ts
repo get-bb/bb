@@ -1,5 +1,7 @@
-import { rpcInvalidationTags } from "@get-bb/plugin-sdk/internal/rpc-tags";
-import type { ContractTagDeclarations } from "@bb/domain";
+import {
+  rpcInvalidationTags,
+  type ContractTagDeclarations,
+} from "@get-bb/plugin-sdk/internal/rpc-tags";
 import {
   environmentCompositionSchema,
   validateServerAccessProviderDeclaration,

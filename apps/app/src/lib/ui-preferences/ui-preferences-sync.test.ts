@@ -8,6 +8,7 @@ import {
   type UiPreferenceValue,
 } from "@bb/domain";
 import type { UiPreferencesResponse } from "@bb/server-contract";
+import { invalidateUiPreferences } from "@/hooks/cache-owners/system-cache-effects";
 import { uiPreferencesQueryOptions } from "@/hooks/queries/system-queries";
 import { createSyncedPreferenceAtom } from "./synced-preference-atom";
 import {
@@ -64,12 +65,12 @@ function setCachedUiPreferences(
   client: QueryClient,
   response: UiPreferencesResponse,
 ): void {
-  client.setQueryData(uiPreferencesQueryOptions(client).queryKey, response);
+  client.setQueryData(uiPreferencesQueryOptions().queryKey, response);
 }
 function getCachedUiPreferences(
   client: QueryClient,
 ): UiPreferencesResponse | undefined {
-  return client.getQueryData(uiPreferencesQueryOptions(client).queryKey);
+  return client.getQueryData(uiPreferencesQueryOptions().queryKey);
 }
 
 function conflict(currentRevision: number): BbHttpError {
@@ -292,7 +293,7 @@ describe("ui preferences sync", () => {
     const { modeAtom, queryClient, store } = createHarness();
     mocks.list.mockResolvedValueOnce(serverResponse());
     const observer = new QueryObserver(queryClient, {
-      ...uiPreferencesQueryOptions(queryClient),
+      ...uiPreferencesQueryOptions(),
       retry: false,
     });
     const stop = observer.subscribe(() => {});
@@ -669,13 +670,14 @@ describe("ui preferences sync", () => {
     );
     const observer = new QueryObserver(
       queryClient,
-      uiPreferencesQueryOptions(queryClient),
+      uiPreferencesQueryOptions(),
     );
     const stop = observer.subscribe(() => {});
     try {
       store.set(orderAtom, ["chosen"]);
       await waitForUiPreferenceWrites();
       expect(hasPendingUiPreferenceWrite("sidebar.sectionOrder")).toBe(false);
+      invalidateUiPreferences({ queryClient });
       expect(mocks.list).toHaveBeenCalledTimes(1);
       expect(observer.getCurrentResult().isFetching).toBe(true);
       reconcileUiPreferences(previous);

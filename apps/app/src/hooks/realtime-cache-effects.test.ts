@@ -1,5 +1,4 @@
 import {
-  CORE_TAG_SCOPE,
   pluginTagScope,
   runTaggedRead,
   taggedQueryOptions,
@@ -40,6 +39,7 @@ import {
   threadTimelineQueryKeyPrefix,
   threadTimelineTurnSummaryDetailsQueryKey,
   pluginContributionsQueryKey,
+  uiPreferencesQueryKey,
 } from "./queries/query-keys";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { QueryObserver, type QueryClient } from "@tanstack/react-query";
@@ -168,9 +168,19 @@ function createRealtimeEffectsTestContext(
   };
 }
 
-describe("core tag realtime refresh", () => {
+function observeUiPreferences(client: QueryClient, read: () => number) {
+  const observer = new QueryObserver(client, {
+    queryKey: uiPreferencesQueryKey(),
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    queryFn: async () => read(),
+  });
+  return { observer, stop: observer.subscribe(() => {}) };
+}
+
+describe("ui preference realtime refresh", () => {
   it.each([true, false])(
-    "refreshes tagged data across visibility changes (visible: %s)",
+    "refreshes ui preferences across visibility changes (visible: %s)",
     async (visible) => {
       const client = createAppQueryClient();
       const visibility = createFakeVisibility();
@@ -179,17 +189,7 @@ describe("core tag realtime refresh", () => {
         visibility,
       });
       let value = 1;
-      const observer = new QueryObserver(client, {
-        queryKey: ["tagged"],
-        staleTime: Infinity,
-        ...taggedQueryOptions<number>(client, ["tagged"], {
-          scope: CORE_TAG_SCOPE,
-          tagsOf: () => ["preferences"],
-        }),
-        queryFn: ({ queryKey }) =>
-          runTaggedRead(client, queryKey, async () => value),
-      });
-      const stop = observer.subscribe(() => {});
+      const { observer, stop } = observeUiPreferences(client, () => value);
       try {
         await vi.waitFor(() =>
           expect(observer.getCurrentResult().data).toBe(1),
@@ -198,8 +198,8 @@ describe("core tag realtime refresh", () => {
         value = 2;
         effects.handleChanged({
           type: "changed",
-          entity: "tags",
-          tags: ["preferences"],
+          entity: "system",
+          changes: ["ui-preferences-changed"],
         });
         if (!visible) {
           expect(observer.getCurrentResult().data).toBe(1);
@@ -215,6 +215,33 @@ describe("core tag realtime refresh", () => {
       }
     },
   );
+
+  it("re-reads ui preferences after a reconnect but not on the first connect", async () => {
+    const client = createAppQueryClient();
+    const effects = createRealtimeCacheEffects({
+      queryClient: client,
+      visibility: createFakeVisibility(),
+    });
+    let value = 1;
+    const { observer, stop } = observeUiPreferences(client, () => value);
+    try {
+      await vi.waitFor(() => expect(observer.getCurrentResult().data).toBe(1));
+      value = 2;
+      effects.handleConnected({ reconnected: false });
+      await Promise.resolve();
+      expect(observer.getCurrentResult().data).toBe(1);
+
+      effects.handleConnected({
+        reconnected: true,
+        disconnectedAt: Date.now() - 1_000,
+      });
+      await vi.waitFor(() => expect(observer.getCurrentResult().data).toBe(2));
+    } finally {
+      stop();
+      effects.dispose();
+      client.clear();
+    }
+  });
 });
 
 const WORKING_TREE = { kind: "working-tree" } as const;
@@ -292,47 +319,6 @@ describe("resuming released watches", () => {
     } finally {
       for (const read of Object.values(reads)) read.stop();
       effects.dispose();
-    }
-  });
-});
-
-describe("core tag reconnect refresh", () => {
-  it("re-reads core tagged data after a reconnect but not on the first connect", async () => {
-    const client = createAppQueryClient();
-    const effects = createRealtimeCacheEffects({
-      queryClient: client,
-      visibility: createFakeVisibility(),
-    });
-    let value = 1;
-    const queryKey = ["core-tagged-read"];
-    const observer = new QueryObserver(client, {
-      queryKey,
-      staleTime: Infinity,
-      refetchOnWindowFocus: false,
-      ...taggedQueryOptions<number>(client, queryKey, {
-        scope: CORE_TAG_SCOPE,
-        tagsOf: () => ["core-tagged-read"],
-      }),
-      queryFn: ({ queryKey: key }) =>
-        runTaggedRead(client, key, async () => value),
-    });
-    const stop = observer.subscribe(() => {});
-    try {
-      await vi.waitFor(() => expect(observer.getCurrentResult().data).toBe(1));
-      value = 2;
-      effects.handleConnected({ reconnected: false });
-      await Promise.resolve();
-      expect(observer.getCurrentResult().data).toBe(1);
-
-      effects.handleConnected({
-        reconnected: true,
-        disconnectedAt: Date.now() - 1_000,
-      });
-      await vi.waitFor(() => expect(observer.getCurrentResult().data).toBe(2));
-    } finally {
-      stop();
-      effects.dispose();
-      client.clear();
     }
   });
 });

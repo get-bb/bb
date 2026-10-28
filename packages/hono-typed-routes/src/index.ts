@@ -5,9 +5,6 @@ export type {
   JsonRouteRequest,
   RouteResponseDescriptor,
   RouteDefinition,
-  RouteTagDeclarations,
-  RouteTagInput,
-  RouteSuccessOutput,
 } from "./route-descriptor.js";
 export {
   binaryResponse,

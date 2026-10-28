@@ -381,7 +381,7 @@ describe("public ui preferences", () => {
 
   it("writes with revision checks, broadcasts, and rejects stale writes", async () => {
     await withTestHarness(async (harness) => {
-      const notifyTags = vi.spyOn(harness.hub, "notifyTags");
+      const notifySystem = vi.spyOn(harness.hub, "notifySystem");
 
       const first = await putPreference(harness, "sidebar.organizationMode", {
         expectedRevision: 0,
@@ -393,7 +393,7 @@ describe("public ui preferences", () => {
         revision: 1,
         value: "machine",
       });
-      expect(notifyTags).toHaveBeenCalledWith(["ui-preferences"]);
+      expect(notifySystem).toHaveBeenCalledWith(["ui-preferences-changed"]);
 
       const stale = await putPreference(harness, "sidebar.organizationMode", {
         expectedRevision: 0,
@@ -405,7 +405,7 @@ describe("public ui preferences", () => {
         details: { currentRevision: 1 },
         message: "UI preference changed on another client",
       });
-      expect(notifyTags).toHaveBeenCalledTimes(1);
+      expect(notifySystem).toHaveBeenCalledTimes(1);
 
       const listed = (await readJson(await listPreferences(harness))) as {
         preferences: Record<string, { revision: number; value: unknown }>;
@@ -467,6 +467,7 @@ describe("public ui preferences", () => {
 
   it("resets to the default while advancing the revision", async () => {
     await withTestHarness(async (harness) => {
+      const notifySystem = vi.spyOn(harness.hub, "notifySystem");
       await putPreference(harness, "sidebar.sectionOrder", {
         expectedRevision: 0,
         value: ["threads", "pinned", "projects"],
@@ -478,6 +479,7 @@ describe("public ui preferences", () => {
         revision: 2,
         value: ["pinned", "projects", "threads"],
       });
+      expect(notifySystem).toHaveBeenCalledTimes(2);
 
       const stale = await putPreference(harness, "sidebar.sectionOrder", {
         expectedRevision: 1,

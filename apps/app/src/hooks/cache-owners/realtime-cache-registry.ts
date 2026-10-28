@@ -57,6 +57,7 @@ import {
   sidebarNavigationQueryKey,
   systemAiServicesQueryKey,
   systemConfigQueryKey,
+  uiPreferencesQueryKey,
   allSystemProvidersQueryKeyPrefix,
   threadDefaultExecutionOptionsQueryKey,
   threadQueryKey,
@@ -560,6 +561,9 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
   },
   "environment-availability-changed": {
     dirty: [dirtyEnvironmentProviderQueries],
+  },
+  "ui-preferences-changed": {
+    dirty: [() => [uiPreferencesQueryKey()]],
   },
   "server-move-changed": {
     dirty: [dirtyServerMoveStatusQueries],

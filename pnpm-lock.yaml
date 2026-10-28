@@ -2217,9 +2217,6 @@ importers:
 
   packages/hono-typed-routes:
     dependencies:
-      '@bb/domain':
-        specifier: workspace:*
-        version: link:../domain
       hono:
         specifier: ^4.7.0
         version: 4.11.9

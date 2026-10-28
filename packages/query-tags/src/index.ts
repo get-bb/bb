@@ -78,8 +78,6 @@ export function useTaggedQuery<
   return result;
 }
 
-export const CORE_TAG_SCOPE = "core";
-
 export interface TaggedQueryRegistration<Data> {
   scope: string;
   tagsOf(data: Data): readonly string[];
@@ -201,43 +199,23 @@ export async function invalidateTags(
   ]);
 }
 
-export interface TaggedMutationOptions {
-  client: QueryClient;
-  optimistic: readonly OptimisticUpdate[];
-}
-
 async function executeTaggedMutation<Result>(
   invalidate: ((tags: readonly string[]) => Promise<void>) | undefined,
   call: () => Promise<TaggedMutationOutcome<Result>>,
-  prediction: ReturnType<typeof beginOptimisticMutation> | undefined,
+  prediction: ReturnType<typeof beginOptimisticMutation>,
 ): Promise<Result> {
   const { result, invalidated } = await call();
-  prediction?.accept(result);
+  prediction.accept(result);
   const refresh = async () => {
     try {
       if (invalidate !== undefined && invalidated.length > 0)
         await invalidate(invalidated);
     } finally {
-      prediction?.settle();
+      prediction.settle();
     }
   };
   void refresh().catch(() => {});
   return result;
-}
-
-export async function runTaggedMutation<Result>(
-  invalidate: (tags: readonly string[]) => Promise<void>,
-  call: () => Promise<TaggedMutationOutcome<Result>>,
-  options?: TaggedMutationOptions,
-): Promise<Result> {
-  const prediction =
-    options && beginOptimisticMutation(options.client, options.optimistic);
-  try {
-    return await executeTaggedMutation(invalidate, call, prediction);
-  } catch (error) {
-    prediction?.rollback();
-    throw error;
-  }
 }
 
 export const pluginTagScope = (pluginId: string): string =>

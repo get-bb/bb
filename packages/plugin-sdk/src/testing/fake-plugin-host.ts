@@ -1,10 +1,10 @@
 import { experimental_PluginRpcCallError } from "../rpc-contract.js";
-import { rpcInvalidationTags, rpcResponseTags } from "../internal/rpc-tags.js";
 import {
+  rpcInvalidationTags,
+  rpcResponseTags,
   type ContractTagDeclarations,
-  deepFreezePluginMetadata,
-  validatePluginMetadata,
-} from "@bb/domain";
+} from "../internal/rpc-tags.js";
+import { deepFreezePluginMetadata, validatePluginMetadata } from "@bb/domain";
 import {
   environmentCompositionSchema,
   validateServerAccessProviderDeclaration,

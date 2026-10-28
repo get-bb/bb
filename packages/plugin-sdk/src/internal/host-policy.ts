@@ -1,4 +1,4 @@
-import type { ContractTagDeclarations } from "@bb/domain";
+import type { ContractTagDeclarations } from "./rpc-tags.js";
 import { createHash } from "node:crypto";
 import type Database from "better-sqlite3";
 import { z } from "zod";
@@ -2825,9 +2825,10 @@ export function runPluginStorageMigrations(
     database.exec("ALTER TABLE _bb_migrations ADD COLUMN statement_hash TEXT");
   }
   const rows = database
-    .prepare<[], { id: number; statement_hash: string | null }>(
-      "SELECT id, statement_hash FROM _bb_migrations ORDER BY id",
-    )
+    .prepare<
+      [],
+      { id: number; statement_hash: string | null }
+    >("SELECT id, statement_hash FROM _bb_migrations ORDER BY id")
     .all();
   const applied = new Map<number, string | null>();
   for (const row of rows) applied.set(row.id, row.statement_hash);
