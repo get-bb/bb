@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import path from "node:path";
 import { expect, it } from "vitest";
@@ -17,5 +18,17 @@ it("keeps the default profile's account file and Keychain item", () => {
     configDirectory: path.join(homedir(), ".claude"),
     accountFile: path.join(homedir(), ".claude.json"),
     keychainService: "Claude Code-credentials",
+  });
+});
+
+it("uses the moved profile's account file and Keychain item", () => {
+  const configured = path.resolve("/profiles/work");
+  expect(claudeProfile({ CLAUDE_CONFIG_DIR: configured }, cwd)).toEqual({
+    configDirectory: configured,
+    accountFile: path.join(configured, ".claude.json"),
+    keychainService: `Claude Code-credentials-${createHash("sha256")
+      .update(configured)
+      .digest("hex")
+      .slice(0, 8)}`,
   });
 });

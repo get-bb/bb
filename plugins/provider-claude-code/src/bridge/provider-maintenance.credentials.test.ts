@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import path from "node:path";
 import {
   afterAll,
@@ -14,23 +13,19 @@ import {
 const state = vi.hoisted(() => ({
   keychain: "",
   file: "",
-  keychainServices: [] as string[],
   files: [] as string[],
 }));
 
 vi.mock("node:child_process", () => ({
   execFile: (
     _file: string,
-    args: readonly string[],
+    _args: readonly string[],
     _options: object,
     callback: (
       error: Error | null,
       result: { stdout: string; stderr: string },
     ) => void,
-  ) => {
-    state.keychainServices.push(args[args.indexOf("-s") + 1] ?? "");
-    callback(null, { stdout: state.keychain, stderr: "" });
-  },
+  ) => callback(null, { stdout: state.keychain, stderr: "" }),
 }));
 
 vi.mock("node:fs/promises", () => ({
@@ -87,7 +82,6 @@ beforeEach(() => {
   });
   state.file = credentials;
   state.keychain = Buffer.from(credentials, "utf8").toString("hex");
-  state.keychainServices = [];
   state.files = [];
   vi.stubGlobal(
     "fetch",
@@ -149,9 +143,6 @@ describe("Claude Code credential loading", () => {
       supported: true,
       usage: expect.objectContaining({ status: "ok" }),
     });
-    expect(new Set(state.keychainServices)).toEqual(
-      new Set(["Claude Code-credentials-" + profileHash(profile)]),
-    );
     expect(state.files.sort()).toEqual(
       [
         path.join(profile, ".claude.json"),
@@ -160,7 +151,3 @@ describe("Claude Code credential loading", () => {
     );
   });
 });
-
-function profileHash(configured: string): string {
-  return createHash("sha256").update(configured).digest("hex").slice(0, 8);
-}
