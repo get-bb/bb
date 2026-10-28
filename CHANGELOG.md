@@ -56,6 +56,7 @@ These are on for early adopters. Turn on **Become an early adopter** in Settings
 - Fix the voice waveform staying still with reduced motion on.
 - Fix failed plugin actions showing two error toasts.
 - Fix the composer resetting when the window resizes across the compact breakpoint.
+- Fix find in page snapping back while a scrolled-up thread is streaming, and the timeline's scroll height being wrong after its hidden pane is shown again.
 - On mobile, fix long-pressing a sidebar thread opening more than its menu, double taps starting a rename, closing a header menu moving the timeline, and sidebar and Thread Info icon alignment and safe-area padding.
 
 ### Plugins
