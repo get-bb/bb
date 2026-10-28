@@ -22,7 +22,10 @@ import {
 
 import {
   invalidateSessionCookie,
+  LOOKUP_FALLBACK_AFTER_MS,
+  LOOKUP_FALLBACK_WINDOW_MS,
   LOOKUP_JOIN_TIMEOUT_MS,
+  LOOKUP_RETRY_DELAY_MS,
   MACHINE_LAST_SEEN_WRITE_INTERVAL_MS,
   markMachineSeen,
   resolveLabel,
@@ -577,6 +580,26 @@ function countingDb(target: typeof db): {
   return { db: proxied, counts };
 }
 
+function failingDb(
+  target: typeof db,
+  failures: number,
+): { db: typeof db; counts: { select: number } } {
+  const counts = { select: 0 };
+  const proxied = new Proxy(target, {
+    get(t, prop) {
+      if (prop === "select") {
+        counts.select += 1;
+        if (counts.select <= failures) {
+          throw new Error("D1_ERROR: D1 DB is overloaded.");
+        }
+      }
+      const value = Reflect.get(t, prop);
+      return typeof value === "function" ? value.bind(t) : value;
+    },
+  });
+  return { db: proxied, counts };
+}
+
 function stalledDb(target: typeof db): typeof db {
   const query: object = new Proxy(() => {}, {
     get: (_query, prop) =>
@@ -694,47 +717,94 @@ describe("gate lookup caches", () => {
     expect(resolved.every((r) => r?.userId === "acct-burst-label")).toBe(true);
   });
 
-  it("shares a failed lookup with the requests waiting on it", async () => {
+  it("retries a failed lookup once for a whole burst and shares the final failure", async () => {
     seedLabel("burst-failure");
-    let selects = 0;
-    const pending: ((error: Error) => void)[] = [];
-    const failing = new Proxy(db, {
-      get(t, prop) {
-        if (prop === "select") {
-          selects += 1;
-          const failure = new Promise<never>((_resolve, reject) => {
-            pending.push(reject);
-          });
-          const query: object = new Proxy(() => {}, {
-            get: (_query, key) =>
-              key === "then"
-                ? undefined
-                : key === "get"
-                  ? () => failure
-                  : () => query,
-          });
-          return () => query;
-        }
-        const value = Reflect.get(t, prop);
-        return typeof value === "function" ? value.bind(t) : value;
-      },
-    });
+    vi.useFakeTimers();
+    const failing = failingDb(db, Infinity);
 
     const burst = Array.from({ length: 5 }, () =>
-      resolveLabel("burst-failure", failing).then(
+      resolveLabel("burst-failure", failing.db).then(
         () => "resolved",
         (error: Error) => error.message,
       ),
     );
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    for (const reject of pending) {
-      reject(new Error("D1_ERROR: D1 DB is overloaded."));
-    }
+    await vi.advanceTimersByTimeAsync(LOOKUP_RETRY_DELAY_MS);
 
     expect(await Promise.all(burst)).toEqual(
       Array.from({ length: 5 }, () => "D1_ERROR: D1 DB is overloaded."),
     );
-    expect(selects).toBe(1);
+    expect(failing.counts.select).toBe(2);
+  });
+
+  it("absorbs a D1 failure by retrying once before answering", async () => {
+    seedLabel("blip-label");
+    vi.useFakeTimers();
+    const flaky = failingDb(db, 1);
+
+    const resolved = resolveLabel("blip-label", flaky.db);
+    await vi.advanceTimersByTimeAsync(LOOKUP_RETRY_DELAY_MS);
+
+    await expect(resolved).resolves.toMatchObject({
+      userId: "acct-blip-label",
+    });
+    expect(flaky.counts.select).toBe(2);
+  });
+
+  it("answers an expired label from its last value when D1 fails, without retrying", async () => {
+    seedLabel("fallback-label");
+    vi.useFakeTimers();
+    await resolveLabel("fallback-label", db);
+    vi.setSystemTime(Date.now() + 61_000);
+    const failing = failingDb(db, Infinity);
+
+    await expect(
+      resolveLabel("fallback-label", failing.db),
+    ).resolves.toMatchObject({ userId: "acct-fallback-label" });
+    expect(failing.counts.select).toBe(1);
+  });
+
+  it("answers an expired label from its last value when D1 stalls", async () => {
+    seedLabel("stalled-fallback");
+    vi.useFakeTimers();
+    await resolveLabel("stalled-fallback", db);
+    vi.setSystemTime(Date.now() + 61_000);
+
+    const resolved = resolveLabel("stalled-fallback", stalledDb(db));
+    await vi.advanceTimersByTimeAsync(LOOKUP_FALLBACK_AFTER_MS);
+
+    await expect(resolved).resolves.toMatchObject({
+      userId: "acct-stalled-fallback",
+    });
+  });
+
+  it("stops answering from the last value once the fallback window passes", async () => {
+    seedLabel("lapsed-fallback");
+    vi.useFakeTimers();
+    await resolveLabel("lapsed-fallback", db);
+    vi.setSystemTime(Date.now() + 60_000 + LOOKUP_FALLBACK_WINDOW_MS);
+
+    const resolved = resolveLabel(
+      "lapsed-fallback",
+      failingDb(db, Infinity).db,
+    ).catch((error: Error) => error.message);
+    await vi.advanceTimersByTimeAsync(LOOKUP_RETRY_DELAY_MS);
+
+    expect(await resolved).toBe("D1_ERROR: D1 DB is overloaded.");
+  });
+
+  it("never answers a fresh read from the last value", async () => {
+    seedLabel("fresh-fallback");
+    vi.useFakeTimers();
+    await resolveLabel("fresh-fallback", db);
+
+    const resolved = resolveLabel(
+      "fresh-fallback",
+      failingDb(db, Infinity).db,
+      { fresh: true },
+    ).catch((error: Error) => error.message);
+    await vi.advanceTimersByTimeAsync(LOOKUP_RETRY_DELAY_MS);
+
+    expect(await resolved).toBe("D1_ERROR: D1 DB is overloaded.");
   });
 
   it("replaces a lookup that never settles with a single new one", async () => {
@@ -843,37 +913,46 @@ describe("gate lookup caches", () => {
     expect(counted.counts.select).toBe(1);
   });
 
-  it("does not cache a failed lookup: the next request retries D1", async () => {
-    seedUser("acct-flight-retry");
-    seedServer({
-      id: "srv-flight-retry",
-      userId: "acct-flight-retry",
-      name: "default",
-      subdomain: "flight-retry",
-    });
-    let failNext = true;
-    const failingOnce = new Proxy(db, {
-      get(t, prop) {
-        if (prop === "select" && failNext) {
-          failNext = false;
-          throw new Error("d1 hiccup");
-        }
-        const value = Reflect.get(t, prop);
-        return typeof value === "function" ? value.bind(t) : value;
-      },
-    });
-
-    await expect(resolveLabel("flight-retry", failingOnce)).rejects.toThrow(
-      "d1 hiccup",
+  it("fails closed for an expired session when D1 fails", async () => {
+    const secret = "fail-closed-secret";
+    const cookieValue = await seedSignedSession(
+      "acct-fail-closed",
+      secret,
+      Date.now() + CONNECT_SESSION_EXPIRES_IN_SECONDS * 1000,
     );
+    vi.useFakeTimers({ toFake: ["Date"] });
+    await verifySessionCookieDetails(cookieValue, secret, db);
+    vi.setSystemTime(Date.now() + 61_000);
+
     await expect(
-      resolveLabel("flight-retry", failingOnce),
-    ).resolves.toMatchObject({ kind: "server", userId: "acct-flight-retry" });
+      verifySessionCookieDetails(
+        cookieValue,
+        secret,
+        failingDb(db, Infinity).db,
+      ),
+    ).rejects.toThrow("overloaded");
+  });
+
+  it("does not cache a lookup that failed its retry", async () => {
+    seedLabel("flight-retry");
+    vi.useFakeTimers();
+    const flaky = failingDb(db, 2);
+
+    const first = resolveLabel("flight-retry", flaky.db).catch(
+      (error: Error) => error.message,
+    );
+    await vi.advanceTimersByTimeAsync(LOOKUP_RETRY_DELAY_MS);
+
+    expect(await first).toBe("D1_ERROR: D1 DB is overloaded.");
+    await expect(resolveLabel("flight-retry", flaky.db)).resolves.toMatchObject(
+      { kind: "server", userId: "acct-flight-retry" },
+    );
   });
 });
 
 describe("machine credential presence", () => {
   it("verifies the owning machine and throttles lastSeenAt writes", async () => {
+    const presence = { machineId: "machine-presence", lastSeenAt: null };
     seedUser("acct-machine");
     const credential = `bbcm_${crypto.randomUUID()}`;
     const credentialHash = await sha256Hex(credential);
@@ -891,8 +970,9 @@ describe("machine credential presence", () => {
     ).resolves.toEqual({
       machineId: "machine-presence",
       userId: "acct-machine",
+      lastSeenAt: null,
     });
-    expect(await markMachineSeen("machine-presence", db, 10_000)).toBe(true);
+    expect(await markMachineSeen(presence, db, 10_000)).toBe(true);
     expect(
       db
         .select()
@@ -904,7 +984,7 @@ describe("machine credential presence", () => {
 
     expect(
       await markMachineSeen(
-        "machine-presence",
+        presence,
         db,
         10_000 + MACHINE_LAST_SEEN_WRITE_INTERVAL_MS - 1,
       ),
@@ -920,9 +1000,43 @@ describe("machine credential presence", () => {
 
     expect(
       await markMachineSeen(
-        "machine-presence",
+        presence,
         db,
         10_000 + MACHINE_LAST_SEEN_WRITE_INTERVAL_MS,
+      ),
+    ).toBe(true);
+  });
+});
+
+describe("machine last-seen writes", () => {
+  it("skips the write while the stored lastSeenAt is recent", async () => {
+    seedUser("acct-recent");
+    db.insert(machine)
+      .values({
+        id: "machine-recent",
+        userId: "acct-recent",
+        credentialHash: "recent-hash",
+        lastSeenAt: new Date(50_000),
+        createdAt: new Date(0),
+      })
+      .run();
+    const verified = {
+      machineId: "machine-recent",
+      lastSeenAt: new Date(50_000),
+    };
+
+    expect(
+      await markMachineSeen(
+        verified,
+        db,
+        50_000 + MACHINE_LAST_SEEN_WRITE_INTERVAL_MS - 1,
+      ),
+    ).toBe(false);
+    expect(
+      await markMachineSeen(
+        verified,
+        db,
+        50_000 + MACHINE_LAST_SEEN_WRITE_INTERVAL_MS,
       ),
     ).toBe(true);
   });
@@ -961,6 +1075,7 @@ describe("machine credential cache", () => {
     expect(verified).toEqual({
       machineId: "machine-repeat",
       userId: "acct-machine-repeat",
+      lastSeenAt: null,
     });
   });
 
@@ -974,6 +1089,7 @@ describe("machine credential cache", () => {
     ).resolves.toEqual({
       machineId: "machine-stalled",
       userId: "acct-machine-stalled",
+      lastSeenAt: null,
     });
   });
 
@@ -997,39 +1113,43 @@ describe("machine credential cache", () => {
     expect(await verifyMachineCredentialDetails(credential, db)).toEqual({
       machineId: "machine-revoked",
       userId: "acct-machine-revoked",
+      lastSeenAt: null,
     });
 
     db.update(machine)
       .set({ revokedAt: new Date() })
       .where(eq(machine.id, "machine-revoked"))
       .run();
-    vi.setSystemTime(1_000_000 + 19_999);
+    vi.setSystemTime(1_000_000 + 59_999);
     expect(await verifyMachineCredentialDetails(credential, db)).not.toBe(null);
 
-    vi.setSystemTime(1_000_000 + 20_000);
+    vi.setSystemTime(1_000_000 + 60_000);
     expect(await verifyMachineCredentialDetails(credential, db)).toBe(null);
   });
 
-  it("does not cache a failed D1 lookup", async () => {
-    const credential = await seedMachine("machine-flaky");
-    let failNext = true;
-    const flaky = new Proxy(db, {
-      get(target, prop) {
-        if (prop === "select" && failNext) {
-          failNext = false;
-          throw new Error("D1_ERROR: D1 DB is overloaded.");
-        }
-        const value = Reflect.get(target, prop);
-        return typeof value === "function" ? value.bind(target) : value;
-      },
-    });
+  it("fails closed for an expired credential when D1 fails", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(1_000_000);
+    const credential = await seedMachine("machine-fail-closed");
+    await verifyMachineCredentialDetails(credential, db);
+    vi.setSystemTime(1_000_000 + 60_000);
 
     await expect(
-      verifyMachineCredentialDetails(credential, flaky),
+      verifyMachineCredentialDetails(credential, failingDb(db, Infinity).db),
     ).rejects.toThrow("overloaded");
-    expect(await verifyMachineCredentialDetails(credential, flaky)).toEqual({
+  });
+
+  it("retries a failed D1 lookup once before answering", async () => {
+    const credential = await seedMachine("machine-flaky");
+    const flaky = failingDb(db, 1);
+
+    await expect(
+      verifyMachineCredentialDetails(credential, flaky.db),
+    ).resolves.toEqual({
       machineId: "machine-flaky",
       userId: "acct-machine-flaky",
+      lastSeenAt: null,
     });
+    expect(flaky.counts.select).toBe(2);
   });
 });
