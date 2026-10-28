@@ -20,6 +20,7 @@ import {
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
+import { twMerge } from "tailwind-merge";
 import { beforeAll, afterEach, describe, expect, it, vi } from "vitest";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { ThreadTimelineNavigationProvider } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
@@ -265,6 +266,61 @@ describe("plugin SDK navigation components", () => {
       },
       location: null,
     });
+  });
+});
+
+function splitVariants(className: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let index = 0; index < className.length; index += 1) {
+    const char = className[index];
+    if (char === "[" || char === "(") depth += 1;
+    else if (char === "]" || char === ")") depth -= 1;
+    else if (char === ":" && depth === 0) {
+      parts.push(className.slice(start, index));
+      start = index + 1;
+    }
+  }
+  parts.push(className.slice(start));
+  return parts;
+}
+
+function utilitiesOverriddenByVariants(root: Element): string[] {
+  return [root, ...root.querySelectorAll("*")].flatMap((element) => {
+    const classes = [...element.classList];
+    const unconditional = classes.filter(
+      (name) => splitVariants(name).length === 1,
+    );
+    return classes.flatMap((variantClass) => {
+      const parts = splitVariants(variantClass);
+      if (parts.length === 1) return [];
+      const utility = parts[parts.length - 1];
+      return unconditional
+        .filter(
+          (name) => !twMerge(`${name} ${utility}`).split(" ").includes(name),
+        )
+        .map((name) => `${name} + ${variantClass}`);
+    });
+  });
+}
+
+describe("plugin SDK detail rows", () => {
+  it("never pair a base utility with a variant a plugin's later copy of that utility would override", () => {
+    const DetailRow = pluginSdkAppImplementation.experimental_DetailRow;
+    const { container } = render(
+      <dl>
+        <DetailRow icon="GitBranch" label="Branch">
+          main
+        </DetailRow>
+        <DetailRow label="Git status" align="start">
+          Even with main
+        </DetailRow>
+      </dl>,
+    );
+
+    expect(container.querySelector("dt svg")).not.toBeNull();
+    expect(utilitiesOverriddenByVariants(container)).toEqual([]);
   });
 });
 

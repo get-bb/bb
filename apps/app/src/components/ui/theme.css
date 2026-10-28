@@ -130,8 +130,13 @@
   --text-2xs--line-height: 0.875rem;
 }
 
+:root {
+  --bb-detail-row-icon-size: calc(var(--spacing) * 3);
+}
+
 @media (max-width: 767px) and (pointer: coarse) {
   :root {
+    --bb-detail-row-icon-size: calc(var(--spacing) * 4);
     --text-2xs: 0.6875rem;
     --text-2xs--line-height: 0.9375rem;
     --text-xs: 0.875rem;
