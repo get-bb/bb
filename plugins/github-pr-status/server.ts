@@ -548,6 +548,10 @@ export default function githubPrStatusPlugin(bb: BbPluginApi): void {
         );
         return Object.fromEntries(results);
       },
+      async refresh({ environmentId }) {
+        await store.reread(environmentId);
+        return { ok: true } as const;
+      },
       markReady: ({ environmentId }) => markReady(environmentId),
       markDraft: ({ environmentId }) => markDraft(environmentId),
       merge: ({ environmentId, method }) => merge(environmentId, method),

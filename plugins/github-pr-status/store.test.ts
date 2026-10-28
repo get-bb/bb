@@ -559,6 +559,19 @@ describe("read freshness", () => {
     expect(load).toHaveBeenCalledTimes(1);
   });
 
+  it("re-reads a fresh row from GitHub on request and resolves once it is current", async () => {
+    vi.useFakeTimers();
+    const { store, load } = setup([available(pullRequest())]);
+    await store.read("a", { viewer: true });
+    load.mockResolvedValue(available(pullRequest({ title: "Renamed" })));
+    await store.reread("a");
+    expect(load).toHaveBeenCalledTimes(2);
+    await expect(store.read("a", { viewer: true })).resolves.toMatchObject({
+      pullRequest: { title: "Renamed" },
+    });
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
   it("makes a one-shot read wait for a row older than ten seconds", async () => {
     vi.useFakeTimers();
     const { store, load } = setup([available(pullRequest())]);

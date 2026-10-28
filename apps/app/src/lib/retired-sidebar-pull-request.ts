@@ -38,11 +38,11 @@ export function useRetiredSidebarEnvironmentPullRequest(
     enabled,
   });
   const row = environmentId ? query.data?.[environmentId] : undefined;
-  useRefetchOnShowAndFocus(
-    enabled && environmentId ? environmentId : null,
-    row !== undefined,
-    query.refetch,
-  );
+  useRefetchOnShowAndFocus({
+    shown: enabled && environmentId ? environmentId : null,
+    loaded: row !== undefined,
+    refetch: query.refetch,
+  });
 
   return {
     isLoading: enabled && query.error === null && row === undefined,

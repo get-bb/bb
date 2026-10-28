@@ -296,6 +296,11 @@ export function createPullRequestStore(options: {
         else void load(environmentId, url, discover);
       }
     },
+    async reread(environmentId: string) {
+      const cached = lookups.get(environmentId);
+      if (cached) cached.fetchedAt = Number.NEGATIVE_INFINITY;
+      await read(environmentId, { viewer: false });
+    },
     pushed(environmentId: string) {
       const url = currentUrl(environmentId);
       if (url === null) return;

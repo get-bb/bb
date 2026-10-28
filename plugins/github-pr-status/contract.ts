@@ -221,6 +221,15 @@ export const githubPrStatusRpcContract = defineRpcContract({
     output: z.record(z.string(), environmentPullRequestSchema),
     keyTags: (key) => [environmentPullRequestTag(key)],
   },
+  refresh: {
+    experimental_description:
+      "Re-check the environment's pull request on GitHub now, whatever the age of the saved row, and resolve once the row is current.",
+    input: environmentActionInputSchema,
+    output: z.object({ ok: z.literal(true) }).strict(),
+    invalidates: ({ environmentId }) => [
+      environmentPullRequestTag(environmentId),
+    ],
+  },
   markReady: {
     experimental_description:
       "Mark the environment's draft pull request ready for review.",

@@ -18,9 +18,7 @@ import {
 
 const sdk = vi.hoisted(() => ({
   rows: {} as Record<string, EnvironmentPullRequest>,
-  settings: { showPullRequest: true } as
-    | Record<string, boolean>
-    | undefined,
+  settings: { showPullRequest: true } as Record<string, boolean> | undefined,
   mutate: vi.fn(async () => ({ message: "Merged" })),
   isPending: false,
 }));

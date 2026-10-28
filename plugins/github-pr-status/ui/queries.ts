@@ -28,11 +28,20 @@ export function useEnvironmentPullRequest(
     enabled,
   });
   const row = environmentId ? query.data?.[environmentId] : undefined;
-  useRefetchOnShowAndFocus(
-    enabled && environmentId ? environmentId : null,
-    row !== undefined,
-    query.refetch,
-  );
+  const refresh = useRpcMutation({
+    contract: githubPrStatusRpcContract,
+    method: "refresh",
+  });
+  const shown = enabled && environmentId ? environmentId : null;
+  useRefetchOnShowAndFocus({
+    shown,
+    loaded: row !== undefined,
+    refetch: query.refetch,
+    refreshOnShow: () => {
+      if (shown !== null)
+        refresh.mutate({ environmentId: shown }).catch(() => {});
+    },
+  });
 
   return {
     isLoading: enabled && query.error === null && row === undefined,

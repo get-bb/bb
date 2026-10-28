@@ -137,11 +137,11 @@ export function usePullRequestRows({
     keys,
     enabled: keys.length > 0,
   });
-  useRefetchOnShowAndFocus(
-    keys.length > 0 ? "thread-row-metadata" : null,
-    query.data !== undefined && Object.keys(query.data).length > 0,
-    query.refetch,
-  );
+  useRefetchOnShowAndFocus({
+    shown: keys.length > 0 ? "thread-row-metadata" : null,
+    loaded: query.data !== undefined && Object.keys(query.data).length > 0,
+    refetch: query.refetch,
+  });
   return query.data;
 }
 
