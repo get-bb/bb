@@ -104,7 +104,10 @@ import {
   appInstallEnv,
   type AppInstall,
 } from "@bb/config/app-install";
-import { CLI_LAUNCHER_ENV_NAME } from "@bb/config/cli-command";
+import {
+  CLI_LAUNCHER_ENV_NAME,
+  CLI_REEXEC_ENV_NAME,
+} from "@bb/config/cli-command";
 import { z } from "zod";
 import { resolveAppInstall } from "./app-install.js";
 import {
@@ -2750,16 +2753,24 @@ export function resolveBundledCliLaunch(args: ResolveBundledCliLaunchArgs): {
 export async function runBundledCliCommand(
   args: RunBundledCliCommandArgs,
 ): Promise<number> {
+  const cliOverride =
+    args.env[CLI_REEXEC_ENV_NAME] === "1"
+      ? null
+      : (toOptionalString(args.env.BB_CLI) ?? null);
   const launch = resolveBundledCliLaunch({
     args: args.args,
     bundledCliPath: join(args.context.daemonBundleDir, "bb"),
-    cliOverride: toOptionalString(args.env.BB_CLI) ?? null,
+    cliOverride,
     nodePath: process.execPath,
     platform: process.platform,
   });
+  const env = createCliEnv({ context: args.context, env: args.env });
+  if (cliOverride !== null) {
+    env[CLI_REEXEC_ENV_NAME] = "1";
+  }
   const childProcess = spawn(launch.command, launch.args, {
     cwd: process.cwd(),
-    env: createCliEnv({ context: args.context, env: args.env }),
+    env,
     stdio: "inherit",
   });
 

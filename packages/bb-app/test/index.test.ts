@@ -880,6 +880,40 @@ describe("bb-app launcher", () => {
     );
   });
 
+  it("runs the bundled CLI when a BB_CLI launcher re-enters the bb entry", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-cli-reentry-"));
+    const daemonBundleDir = join(dataDir, "host-daemon");
+    mkdirSync(daemonBundleDir);
+    writeFileSync(
+      join(daemonBundleDir, "bb"),
+      "require('node:fs').writeFileSync(process.argv[2], 'bundled')",
+    );
+    const context = { ...createTestStartContext(), dataDir, daemonBundleDir };
+    const launcherEnvPath = join(dataDir, "launcher-env.json");
+
+    expect(
+      await runBundledCliCommand({
+        args: [
+          "-e",
+          "require('node:fs').writeFileSync(process.argv[1], JSON.stringify(process.env))",
+          launcherEnvPath,
+        ],
+        context,
+        env: { BB_CLI: process.execPath },
+      }),
+    ).toBe(0);
+
+    const outputPath = join(dataDir, "reentry.txt");
+    const reentryExitCode = await runBundledCliCommand({
+      args: [outputPath],
+      context,
+      env: JSON.parse(readFileSync(launcherEnvPath, "utf8")),
+    });
+
+    expect(reentryExitCode).toBe(0);
+    expect(readFileSync(outputPath, "utf8")).toBe("bundled");
+  });
+
   it("uses a supplied join code without requesting a loopback enroll key", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "bb-app-remote-join-"));
     const context = { ...createTestStartContext(), dataDir };
