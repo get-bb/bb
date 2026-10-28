@@ -301,7 +301,7 @@ export {
   findStoredEventRow,
   getActiveStoredTurnId,
   isStoredTurnMainRunIdle,
-  isStoredTurnProviderCompaction,
+  isStoredTurnProviderCompactionRunning,
   hasRootStoredTurnStarted,
   hasStoredSpawnAgentToolCall,
   hasStoredTerminalClientTurnRequestEvent,

@@ -166,6 +166,8 @@ if (requestedModel !== undefined && !ignoreRequestedModel) {
 let thinkingLevel = flag("--thinking") ?? "medium";
 let isStreaming = false;
 let isCompacting = false;
+let compactOnSettle = null;
+let announceCompaction = null;
 let leafCounter = 0;
 let leafId = null;
 let turnCounter = 0;
@@ -371,6 +373,9 @@ async function runExtensionTool(name, toolArgs) {
 async function runPrompt(text) {
   isStreaming = true;
   turnCounter += 1;
+  if (text === "/compact-on-settle" || text === "/compact-on-settle-late") {
+    compactOnSettle = text;
+  }
   await emitExtensionEvent("agent_start");
   event({ type: "agent_start" });
   event({ type: "turn_start" });
@@ -647,8 +652,36 @@ async function runPrompt(text) {
   isStreaming = false;
 }
 
+async function waitForCompactionRelease() {
+  const releasePath = process.env.FAKE_PI_COMPACTION_RELEASE_FILE;
+  while (releasePath !== undefined && !existsSync(releasePath)) {
+    await sleep(10);
+  }
+}
+
+function startExtensionCompaction(mode) {
+  isCompacting = true;
+  const announce = () => {
+    announceCompaction = null;
+    event({ type: "compaction_start", reason: "manual" });
+  };
+  if (mode === "/compact-on-settle") announce();
+  else announceCompaction = announce;
+  void waitForCompactionRelease().then(() => {
+    announceCompaction?.();
+    event({ type: "compaction_end", reason: "manual", aborted: false });
+    isCompacting = false;
+    leafCounter += 1;
+    leafId = `leaf-${leafCounter}`;
+  });
+}
+
 async function emitSettlement() {
   if (!supportsSettlement) return;
+  if (compactOnSettle !== null) {
+    startExtensionCompaction(compactOnSettle);
+    compactOnSettle = null;
+  }
   if (process.env.FAKE_PI_FINAL_LEAF) leafId = process.env.FAKE_PI_FINAL_LEAF;
   const payload =
     process.env.FAKE_PI_SETTLED_ABORTED === undefined
@@ -748,6 +781,15 @@ async function handle(command) {
     case "prompt": {
       if (promptDumpPath) {
         writeFileSync(promptDumpPath, JSON.stringify(command), "utf8");
+      }
+      if (isCompacting) {
+        respondError(
+          id,
+          "prompt",
+          "Cannot submit a prompt while compaction is in progress. Wait for compaction to finish and retry.",
+        );
+        announceCompaction?.();
+        return;
       }
       if (isStreaming && command.streamingBehavior === "steer") {
         steering.push(command.message);

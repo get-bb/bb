@@ -1312,11 +1312,6 @@ export interface IsStoredTurnMainRunIdleArgs {
   turnId: string;
 }
 
-export interface IsStoredTurnProviderCompactionArgs {
-  threadId: string;
-  turnId: string;
-}
-
 export interface ThreadTurnKey {
   threadId: string;
   turnId: string;
@@ -3705,27 +3700,29 @@ export function isStoredTurnMainRunIdle(
   return latest?.idle === 1;
 }
 
-export function isStoredTurnProviderCompaction(
+export function isStoredTurnProviderCompactionRunning(
   db: DbQueryConnection,
-  args: IsStoredTurnProviderCompactionArgs,
+  args: ThreadTurnKey,
 ): boolean {
   const inTurn = and(
     eq(events.threadId, args.threadId),
     eq(events.turnId, args.turnId),
   );
-  const compaction = db
-    .select({ sequence: events.sequence })
+  const latestCompaction = db
+    .select({ type: events.type })
     .from(events)
     .where(
       and(
         inTurn,
-        eq(events.type, "item/started"),
+        inArray(events.type, ["item/started", "item/completed"]),
         eq(events.itemKind, "contextCompaction"),
+        isNull(events.parentToolCallId),
       ),
     )
+    .orderBy(desc(events.sequence))
     .limit(1)
     .get();
-  if (!compaction) {
+  if (latestCompaction?.type !== "item/started") {
     return false;
   }
   const acceptedInput = db

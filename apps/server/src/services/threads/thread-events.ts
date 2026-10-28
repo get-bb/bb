@@ -3,7 +3,7 @@ import {
   createEventId,
   getActiveStoredTurnId,
   isStoredTurnMainRunIdle,
-  isStoredTurnProviderCompaction,
+  isStoredTurnProviderCompactionRunning,
   getLastStoredProviderThreadId,
   getLastStoredTurnRequestEvent,
   getStoredProviderSession,
@@ -874,7 +874,7 @@ export function isManualCompactionActive(
   const activeTurnId = getActiveStoredTurnId(deps.db, thread.id);
   if (
     activeTurnId !== null &&
-    isStoredTurnProviderCompaction(deps.db, {
+    isStoredTurnProviderCompactionRunning(deps.db, {
       threadId: thread.id,
       turnId: activeTurnId,
     })
