@@ -113,7 +113,10 @@ const capabilitiesSchema = z
 
 function withoutSessionConfigDeclaration(message: unknown): unknown {
   const parsed = capabilitiesSchema.safeParse(message);
-  if (!parsed.success || !("sessionConfig" in parsed.data.result.capabilities)) {
+  if (
+    !parsed.success ||
+    !("sessionConfig" in parsed.data.result.capabilities)
+  ) {
     return message;
   }
   const { sessionConfig: _sessionConfig, ...capabilities } =

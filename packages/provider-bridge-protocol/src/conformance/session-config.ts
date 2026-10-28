@@ -8,10 +8,7 @@ import {
   type BridgeCapabilities,
   type BridgeSessionConfigApply,
 } from "../index.js";
-import {
-  ConformanceClient,
-  nextConformanceClientRequestId,
-} from "./client.js";
+import { ConformanceClient, nextConformanceClientRequestId } from "./client.js";
 import {
   defaultOptions,
   fail,
@@ -29,7 +26,8 @@ const ENV_ID = "config/env-reaches-agent";
 const ENV_TITLE =
   "options.envVars, thread identity included, reach the agent process";
 const TOOLS_AT_START_ID = "config/tools-at-start";
-const TOOLS_AT_START_TITLE = "dynamicTools given at thread/start reach the agent";
+const TOOLS_AT_START_TITLE =
+  "dynamicTools given at thread/start reach the agent";
 const TOOLS_ADDED_ID = "config/tools-added-after-empty-start";
 const TOOLS_ADDED_TITLE =
   "tools added after a thread started with none reach the agent";
@@ -117,10 +115,7 @@ export async function runSessionConfigScenarios(
 
   const empty = await runner.start("thr_conformance_config_empty", []);
   if (empty === null) {
-    return [
-      ...results,
-      ...skipAll(`thread/start failed: ${runner.lastError}`),
-    ];
+    return [...results, ...skipAll(`thread/start failed: ${runner.lastError}`)];
   }
   const emptyObserved = await runner.observe(empty);
   results.push(
@@ -338,7 +333,13 @@ async function runSkillIsolationScenarios(
       );
       return results;
     }
-    if (!(await runner.applyChange({ thread: second, mode, skillRoots: [roots.c] }))) {
+    if (
+      !(await runner.applyChange({
+        thread: second,
+        mode,
+        skillRoots: [roots.c],
+      }))
+    ) {
       results.push(
         fail(
           SKILLS_CHANGE_ISOLATED_ID,

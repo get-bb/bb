@@ -79,6 +79,7 @@ export interface ScriptedEchoLaunchScript {
   failStopForThreadIds?: string[];
   emitIdentityOnSigterm?: boolean;
   sessionSkills?: boolean;
+  skillsConfigure?: boolean;
   failResume?: boolean;
   sessionConfig?: {
     dynamicTools: "live" | "resume" | "fixed";

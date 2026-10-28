@@ -61,11 +61,14 @@ function observeFakeAppServer(
     .split("\n")
     .filter((line) => line.length > 0)
     .map((line) => fakeObservationSchema.parse(JSON.parse(line)));
-  const serving = records.slice().reverse().find(
-    (record) =>
-      (record.kind === "thread" || record.kind === "resume") &&
-      record.codexThreadId === providerThreadId,
-  );
+  const serving = records
+    .slice()
+    .reverse()
+    .find(
+      (record) =>
+        (record.kind === "thread" || record.kind === "resume") &&
+        record.codexThreadId === providerThreadId,
+    );
   const started = records.find(
     (record) =>
       record.kind === "thread" && record.codexThreadId === providerThreadId,

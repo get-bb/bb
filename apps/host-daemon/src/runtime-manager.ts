@@ -107,7 +107,6 @@ export interface RuntimeEntry {
   environmentId: string;
   runtime: AgentRuntime;
   shellEnvGeneration: number;
-  stagedSkillRootsByThreadId: Map<string, RuntimeSkillConfig>;
   workspace: HostWorkspace;
   path: string;
   terminals: Set<string>;
@@ -247,6 +246,10 @@ export class RuntimeManager {
     Promise<RuntimeEntry>
   >();
   private readonly pendingCatalogHashes = new Map<string, string>();
+  private readonly stagedSkillConfigsByEnvironmentId = new Map<
+    string,
+    Map<string, RuntimeSkillConfig>
+  >();
   private readonly pendingEnvironmentProvisions = new Map<
     string,
     PendingEnvironmentProvision
@@ -459,6 +462,7 @@ export class RuntimeManager {
           const count = activeCommands.get(threadId) ?? 0;
           if (count <= 1) {
             activeCommands.delete(threadId);
+            this.forgetStagedSkillConfig(environmentId, threadId);
           } else {
             activeCommands.set(threadId, count - 1);
           }
@@ -631,24 +635,12 @@ export class RuntimeManager {
     if (!this.options.dataDir) {
       return;
     }
-    const dataDir = this.options.dataDir;
     try {
       await cleanupInjectedSkillStagingDirs({
-        dataDir,
+        dataDir: this.options.dataDir,
         keepCatalogHashes: [
           ...pendingCatalogHashes,
-          ...this.pendingCatalogHashes.values(),
-          ...[...this.entries.values()].flatMap((entry) => [
-            ...stagedSkillCatalogHashes({
-              dataDir,
-              skillRoots: entry.runtime.listSkillRootsInUse(),
-            }),
-            ...[...entry.stagedSkillRootsByThreadId]
-              .filter(([threadId]) =>
-                this.entryHasInFlightThreadCommand(entry, threadId),
-              )
-              .map(([, skillConfig]) => skillConfig.catalogHash),
-          ]),
+          ...this.catalogHashesInUse(this.options.dataDir),
         ],
         logger: this.getInjectedSkillsLogger(),
       });
@@ -684,24 +676,68 @@ export class RuntimeManager {
     return args.entry;
   }
 
-  private async recordStagedSkillRoots(args: {
-    entry: RuntimeEntry;
+  private catalogHashesInUse(dataDir: string): string[] {
+    return [
+      ...this.pendingCatalogHashes.values(),
+      ...[...this.stagedSkillConfigsByEnvironmentId.values()].flatMap(
+        (configs) => [...configs.values()].map((config) => config.catalogHash),
+      ),
+      ...[...this.entries.values()].flatMap((entry) =>
+        stagedSkillCatalogHashes({
+          dataDir,
+          skillRoots: entry.runtime.listSkillRootsInUse(),
+        }),
+      ),
+    ];
+  }
+
+  private recordStagedSkillConfig(args: {
+    environmentId: string;
     skillConfig: RuntimeSkillConfig | null;
     targetThreadId: string | undefined;
-  }): Promise<RuntimeEntry> {
-    if (args.skillConfig === null) {
-      return args.entry;
+  }): boolean {
+    if (args.skillConfig === null || args.targetThreadId === undefined) {
+      return false;
     }
-    if (args.targetThreadId !== undefined) {
-      args.entry.stagedSkillRootsByThreadId.set(
-        args.targetThreadId,
-        args.skillConfig,
+    const catalogIsNew =
+      this.options.dataDir !== undefined &&
+      this.options.dataDir !== null &&
+      !this.catalogHashesInUse(this.options.dataDir).includes(
+        args.skillConfig.catalogHash,
       );
+    const configs =
+      this.stagedSkillConfigsByEnvironmentId.get(args.environmentId) ??
+      new Map<string, RuntimeSkillConfig>();
+    configs.set(args.targetThreadId, args.skillConfig);
+    this.stagedSkillConfigsByEnvironmentId.set(args.environmentId, configs);
+    return catalogIsNew;
+  }
+
+  private forgetStagedSkillConfig(environmentId: string, threadId: string) {
+    const configs = this.stagedSkillConfigsByEnvironmentId.get(environmentId);
+    configs?.delete(threadId);
+    if (configs?.size === 0) {
+      this.stagedSkillConfigsByEnvironmentId.delete(environmentId);
     }
-    await this.cleanupUnusedInjectedSkillStagingDirs([
-      args.skillConfig.catalogHash,
-    ]);
-    return args.entry;
+  }
+
+  private async cleanupAfterNewCatalog(
+    entry: RuntimeEntry,
+    stagedNewCatalog: boolean,
+  ): Promise<RuntimeEntry> {
+    if (stagedNewCatalog) {
+      await this.cleanupUnusedInjectedSkillStagingDirs([]);
+    }
+    return entry;
+  }
+
+  stagedSkillConfig(
+    environmentId: string,
+    threadId: string,
+  ): RuntimeSkillConfig | undefined {
+    return this.stagedSkillConfigsByEnvironmentId
+      .get(environmentId)
+      ?.get(threadId);
   }
 
   async invalidateProviderMaintenanceRuntime(): Promise<void> {
@@ -860,6 +896,11 @@ export class RuntimeManager {
     args: EnsureEnvironmentArgs,
   ): Promise<RuntimeEntry> {
     const skillConfig = await this.resolveRuntimeSkillConfig(args);
+    const stagedNewCatalog = this.recordStagedSkillConfig({
+      environmentId: args.environmentId,
+      skillConfig,
+      targetThreadId: args.targetThreadId,
+    });
     const existing = this.entries.get(args.environmentId);
     if (existing) {
       const compatible = await this.ensureCompatibleEntry({
@@ -870,11 +911,7 @@ export class RuntimeManager {
           : {}),
       });
       if (compatible) {
-        return this.recordStagedSkillRoots({
-          entry: compatible,
-          skillConfig,
-          targetThreadId: args.targetThreadId,
-        });
+        return this.cleanupAfterNewCatalog(compatible, stagedNewCatalog);
       }
     }
 
@@ -889,11 +926,7 @@ export class RuntimeManager {
           : {}),
       });
       if (compatible) {
-        return this.recordStagedSkillRoots({
-          entry: compatible,
-          skillConfig,
-          targetThreadId: args.targetThreadId,
-        });
+        return this.cleanupAfterNewCatalog(compatible, stagedNewCatalog);
       }
     }
 
@@ -928,11 +961,7 @@ export class RuntimeManager {
       );
     }
 
-    return this.recordStagedSkillRoots({
-      entry: await creation,
-      skillConfig,
-      targetThreadId: args.targetThreadId,
-    });
+    return this.cleanupAfterNewCatalog(await creation, stagedNewCatalog);
   }
 
   async refreshEnvironmentWorkspace(
@@ -1258,7 +1287,6 @@ export class RuntimeManager {
       environmentId: args.environmentId,
       runtime,
       shellEnvGeneration,
-      stagedSkillRootsByThreadId: new Map(),
       terminals: new Set<string>(),
       workspace,
       path: workspace.path,

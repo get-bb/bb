@@ -211,10 +211,15 @@ export function stagedSkillCatalogHashes(args: {
 }): string[] {
   const stagingRootPath = resolveStagingRootPath(args.dataDir);
   return args.skillRoots.flatMap((root) => {
-    const stageRootPath = path.dirname(root.path);
-    return path.dirname(stageRootPath) === stagingRootPath
-      ? [path.basename(stageRootPath)]
-      : [];
+    const [catalogHash] = path
+      .relative(stagingRootPath, root.path)
+      .split(path.sep);
+    return catalogHash === undefined ||
+      catalogHash === "" ||
+      catalogHash === ".." ||
+      path.isAbsolute(catalogHash)
+      ? []
+      : [catalogHash];
   });
 }
 

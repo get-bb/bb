@@ -215,7 +215,7 @@ export class RuntimeProviderProcessManager {
         }
 
         const skillRoots = args.skillRoots ?? [];
-        if (skillRoots.length > 0 && !adapter.sessionSkills) {
+        if (skillRoots.length > 0 && adapter.skillScope === "process") {
           await this.sendSkillRoots(providerProcess, skillRoots);
         }
       } catch (startupError) {

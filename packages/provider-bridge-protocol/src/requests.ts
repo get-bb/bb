@@ -52,6 +52,7 @@ const sessionConstructionFields = {
   cwd: z.string().min(1),
   options: bridgeExecutionOptionsSchema,
   dynamicTools: z.array(dynamicToolSchema).optional(),
+  disallowedTools: z.array(z.string().min(1)).optional(),
   skillRoots: z.array(skillsConfigureRootSchema).optional(),
   instructionMode: instructionModeSchema,
 };
@@ -143,8 +144,6 @@ export const turnSteerParamsSchema = z
     expectedTurnId: z.string().min(1),
   })
   .passthrough();
-
-
 
 export const skillsConfigureParamsSchema = z
   .object({

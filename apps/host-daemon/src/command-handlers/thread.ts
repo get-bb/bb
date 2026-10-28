@@ -215,16 +215,22 @@ async function resumeThreadRuntimeIfMissing(
     options: command.options,
     instructions: resumeContext.instructions,
     dynamicTools: resumeContext.dynamicTools,
-    ...stagedSkillRoots(entry, command.threadId),
+    ...stagedSkillRoots(options, command.environmentId, command.threadId),
     instructionMode: resumeContext.instructionMode,
   });
 }
 
+type StagedSkillRoots = { skillRoots?: readonly AgentRuntimeSkillRoot[] };
+
 function stagedSkillRoots(
-  entry: RuntimeEntry,
+  options: CommandDispatchOptions,
+  environmentId: string,
   threadId: string,
-): { skillRoots?: readonly AgentRuntimeSkillRoot[] } {
-  const staged = entry.stagedSkillRootsByThreadId.get(threadId);
+): StagedSkillRoots {
+  const staged = options.runtimeManager.stagedSkillConfig(
+    environmentId,
+    threadId,
+  );
   return staged === undefined ? {} : { skillRoots: staged.skillRoots };
 }
 
@@ -254,7 +260,7 @@ export async function startThread(
     );
     const result = await entry.runtime.startThread({
       bridgeLaunch,
-        environmentId: command.environmentId,
+      environmentId: command.environmentId,
       threadId: command.threadId,
       projectId: command.projectId,
       providerId: command.providerId,
@@ -264,7 +270,7 @@ export async function startThread(
       options: command.options,
       instructions: command.instructions,
       dynamicTools: command.dynamicTools,
-      ...stagedSkillRoots(entry, command.threadId),
+      ...stagedSkillRoots(options, command.environmentId, command.threadId),
       instructionMode: command.instructionMode,
       ...(command.fork ? { fork: command.fork } : {}),
     });
@@ -297,7 +303,7 @@ export async function prepareThreadRewind(
     options: command.options,
     instructions: command.instructions,
     dynamicTools: command.dynamicTools,
-    ...stagedSkillRoots(entry, command.threadId),
+    ...stagedSkillRoots(options, command.environmentId, command.threadId),
     instructionMode: command.instructionMode,
   });
 }
@@ -349,6 +355,7 @@ export async function ensureThreadRuntime(
 async function runSubmittedTurn(
   command: TurnSubmitCommand,
   entry: RuntimeEntry,
+  skillRoots: StagedSkillRoots,
 ): Promise<void> {
   await entry.runtime.runTurn({
     threadId: command.threadId,
@@ -358,13 +365,14 @@ async function runSubmittedTurn(
     contributedEnv: command.resumeContext.contributedEnv,
     instructions: command.resumeContext.instructions,
     dynamicTools: command.resumeContext.dynamicTools,
-    ...stagedSkillRoots(entry, command.threadId),
+    ...skillRoots,
   });
 }
 
 async function steerSubmittedTurn(
   command: TurnSubmitCommand,
   entry: RuntimeEntry,
+  skillRoots: StagedSkillRoots,
   expectedTurnId: string,
 ): Promise<void> {
   let targetTurnId = expectedTurnId;
@@ -389,7 +397,7 @@ async function steerSubmittedTurn(
     }
     const liveTurnId = await resolveLiveSubmittedTurnTarget(command, entry);
     if (liveTurnId === null) {
-      return runSubmittedTurn(command, entry);
+      return runSubmittedTurn(command, entry, skillRoots);
     }
     if (liveTurnId === targetTurnId) {
       break;
@@ -458,12 +466,13 @@ async function resolveSubmittedTurnTarget(
 async function deliverSubmittedTurn(
   command: TurnSubmitCommand,
   entry: RuntimeEntry,
+  skillRoots: StagedSkillRoots,
 ): Promise<void> {
   const resolvedTurnId = await resolveSubmittedTurnTarget(command, entry);
   if (command.target.mode === "start" || resolvedTurnId === null) {
-    return runSubmittedTurn(command, entry);
+    return runSubmittedTurn(command, entry, skillRoots);
   }
-  return steerSubmittedTurn(command, entry, resolvedTurnId);
+  return steerSubmittedTurn(command, entry, skillRoots, resolvedTurnId);
 }
 
 export async function submitTurn(
@@ -488,7 +497,11 @@ export async function submitTurn(
       entry,
       options,
     });
-    await deliverSubmittedTurn(stagedCommand, entry);
+    await deliverSubmittedTurn(
+      stagedCommand,
+      entry,
+      stagedSkillRoots(options, command.environmentId, command.threadId),
+    );
   } catch (error) {
     await cleanupAfterPostStagingFailure(staged.cleanup);
     throw error;

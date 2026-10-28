@@ -85,7 +85,7 @@ async function setupBusySkillCatalogEnvironment(args: {
     createRuntime: createRuntimeSpy,
     provisionWorkspace: async () => createWorkspace(),
   });
-  const entry = await manager.ensureEnvironment({
+  await manager.ensureEnvironment({
     environmentId: "env-1",
     injectedSkillSources: [source],
     targetThreadId: args.activeThreadId,
@@ -98,7 +98,7 @@ async function setupBusySkillCatalogEnvironment(args: {
     dataDir,
     manager,
     originalCatalogHash:
-      entry.stagedSkillRootsByThreadId.get(args.activeThreadId)?.catalogHash ??
+      manager.stagedSkillConfig("env-1", args.activeThreadId)?.catalogHash ??
       null,
     runtime,
     source,

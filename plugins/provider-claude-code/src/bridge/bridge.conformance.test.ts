@@ -86,9 +86,10 @@ async function listSdkServerTools(
 }
 
 async function observeScriptedSession(threadId: string) {
-  const session = scriptedSessions.slice().reverse().find(
-    (candidate) => candidate.env["BB_THREAD_ID"] === threadId,
-  );
+  const session = scriptedSessions
+    .slice()
+    .reverse()
+    .find((candidate) => candidate.env["BB_THREAD_ID"] === threadId);
   if (session === undefined) return null;
   return {
     env: session.env,

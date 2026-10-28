@@ -101,6 +101,7 @@ export const scriptedEchoOptionsSchema = z
     failStopForThreadIds: z.array(z.string().min(1)).optional(),
     emitIdentityOnSigterm: z.boolean().optional(),
     sessionSkills: z.boolean().optional(),
+    skillsConfigure: z.boolean().optional(),
     failResume: z.boolean().optional(),
     sessionConfig: z
       .object({
@@ -912,7 +913,7 @@ const handlers: Record<string, RequestHandler> = {
         grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
         steerMode: "inject",
         skills: {
-          configure: true,
+          configure: processOptions.skillsConfigure ?? true,
           perSession: processOptions.sessionSkills === true,
         },
         sessionConfig: processOptions.sessionConfig ?? {

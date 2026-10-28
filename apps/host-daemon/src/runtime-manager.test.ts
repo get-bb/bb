@@ -18,9 +18,7 @@ import {
 } from "@bb/host-workspace";
 import { createDeferredPromise, initRepo, makeTempDir } from "@bb/test-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  RuntimeManager,
-} from "./runtime-manager.js";
+import { RuntimeManager } from "./runtime-manager.js";
 import { createRuntimeShellEnvCache } from "./runtime-shell-env-cache.js";
 
 type GetCurrentBranchArgs = Parameters<HostWorkspace["getCurrentBranch"]>;
@@ -443,14 +441,14 @@ describe("RuntimeManager", () => {
       },
     });
 
-    const entry = await manager.ensureEnvironment({
+    await manager.ensureEnvironment({
       environmentId: "env-skills",
       injectedSkillSources: [source],
       targetThreadId: "thread-1",
       workspacePath: "/tmp/env-1",
     });
 
-    const staged = entry.stagedSkillRootsByThreadId.get("thread-1");
+    const staged = manager.stagedSkillConfig("env-skills", "thread-1");
     expect(staged?.catalogHash).toMatch(/^[a-f0-9]{64}$/u);
     expect(staged?.skillRoots).toEqual([
       {
@@ -471,6 +469,39 @@ describe("RuntimeManager", () => {
       },
     ]);
     expect(runtimeOptions.current?.skillRoots).toBeUndefined();
+  });
+
+  it("forgets a thread's staged catalog when its last in-flight command finishes", async () => {
+    const dataDir = await makeTempDir("bb-runtime-manager-skills-forget-");
+    const source = await writeInjectedSkillSource({
+      dataDir,
+      name: "release-notes",
+      token: "first-token",
+    });
+    const manager = new RuntimeManager({
+      dataDir,
+      provisionWorkspace: createProvisionWorkspaceMock("/tmp/env-1"),
+      createRuntime: vi.fn(() => createFakeRuntime()),
+    });
+    const releaseFirst = await manager.retainEnvironmentForThreadCommand(
+      "env-skills",
+      "thread-1",
+    );
+    const releaseSecond = await manager.retainEnvironmentForThreadCommand(
+      "env-skills",
+      "thread-1",
+    );
+    await manager.ensureEnvironment({
+      environmentId: "env-skills",
+      injectedSkillSources: [source],
+      targetThreadId: "thread-1",
+      workspacePath: "/tmp/env-1",
+    });
+
+    releaseFirst();
+    expect(manager.stagedSkillConfig("env-skills", "thread-1")).toBeDefined();
+    releaseSecond();
+    expect(manager.stagedSkillConfig("env-skills", "thread-1")).toBeUndefined();
   });
 
   it("keeps one runtime when threads stage different skill catalogs", async () => {
@@ -510,9 +541,9 @@ describe("RuntimeManager", () => {
 
     expect(secondEntry).toBe(firstEntry);
     expect(
-      secondEntry.stagedSkillRootsByThreadId.get("thread-2")?.catalogHash,
+      manager.stagedSkillConfig("env-skills", "thread-2")?.catalogHash,
     ).not.toBe(
-      secondEntry.stagedSkillRootsByThreadId.get("thread-1")?.catalogHash,
+      manager.stagedSkillConfig("env-skills", "thread-1")?.catalogHash,
     );
     expect(createRuntime).toHaveBeenCalledTimes(1);
     expect(runtime.shutdown).not.toHaveBeenCalled();
@@ -608,7 +639,7 @@ describe("RuntimeManager", () => {
         targetThreadId: threadId,
         workspacePath: "/tmp/env-1",
       });
-      const staged = entry.stagedSkillRootsByThreadId.get(threadId);
+      const staged = manager.stagedSkillConfig("env-skills", threadId);
       if (staged === undefined) throw new Error("no staged catalog");
       return { entry, staged };
     };
@@ -669,13 +700,13 @@ describe("RuntimeManager", () => {
       "thread-1",
     );
     try {
-      const entry = await manager.ensureEnvironment({
+      await manager.ensureEnvironment({
         environmentId: "env-skills",
         injectedSkillSources: [source],
         targetThreadId: "thread-1",
         workspacePath: "/tmp/env-1",
       });
-      const inFlight = entry.stagedSkillRootsByThreadId.get("thread-1");
+      const inFlight = manager.stagedSkillConfig("env-skills", "thread-1");
       await writeInjectedSkillSource({
         dataDir,
         name: "release-notes",
@@ -737,14 +768,16 @@ describe("RuntimeManager", () => {
       name: "other-notes",
       token: "env-b-first",
     });
-    const firstBHash = (
-      await manager.ensureEnvironment({
-        environmentId: "env-b",
-        injectedSkillSources: [sourceB],
-        targetThreadId: "thread-b",
-        workspacePath: "/tmp/env-b",
-      })
-    ).stagedSkillRootsByThreadId.get("thread-b")?.catalogHash;
+    await manager.ensureEnvironment({
+      environmentId: "env-b",
+      injectedSkillSources: [sourceB],
+      targetThreadId: "thread-b",
+      workspacePath: "/tmp/env-b",
+    });
+    const firstBHash = manager.stagedSkillConfig(
+      "env-b",
+      "thread-b",
+    )?.catalogHash;
     for (const token of ["env-b-second", "env-b-third"]) {
       await writeInjectedSkillSource({ dataDir, name: "other-notes", token });
       await manager.ensureEnvironment({
@@ -755,14 +788,15 @@ describe("RuntimeManager", () => {
       });
     }
     expect(
-      manager.get("env-b")?.stagedSkillRootsByThreadId.get("thread-b")
-        ?.catalogHash,
+      manager.stagedSkillConfig("env-b", "thread-b")?.catalogHash,
     ).not.toBe(firstBHash);
 
     releaseProvision.resolve();
-    const entryA = await envA;
-    const catalogAHash =
-      entryA.stagedSkillRootsByThreadId.get("thread-a")?.catalogHash;
+    await envA;
+    const catalogAHash = manager.stagedSkillConfig(
+      "env-a",
+      "thread-a",
+    )?.catalogHash;
     expect(catalogAHash).toMatch(/^[a-f0-9]{64}$/u);
     const stagingRoot = path.join(dataDir, "runtime", "global-skills");
     const catalogAStat = await fs.stat(
@@ -817,9 +851,9 @@ describe("RuntimeManager", () => {
     expect(createRuntime).toHaveBeenCalledTimes(1);
     expect(firstEntry.runtime.shutdown).not.toHaveBeenCalled();
     expect(
-      secondEntry.stagedSkillRootsByThreadId.get("thread-1")?.catalogHash,
+      manager.stagedSkillConfig("env-skills", "thread-1")?.catalogHash,
     ).not.toBe(
-      secondEntry.stagedSkillRootsByThreadId.get("other-thread")?.catalogHash,
+      manager.stagedSkillConfig("env-skills", "other-thread")?.catalogHash,
     );
   });
 
@@ -852,7 +886,7 @@ describe("RuntimeManager", () => {
     });
 
     expect(threadEntry.runtime).toBe(terminalEntry.runtime);
-    expect(threadEntry.stagedSkillRootsByThreadId.has("thread-1")).toBe(true);
+    expect(manager.stagedSkillConfig("env-skills", "thread-1")).toBeDefined();
     expect(threadEntry.terminals).toBe(terminalEntry.terminals);
     expect(createRuntime).toHaveBeenCalledTimes(1);
     expect(terminalEntry.runtime.shutdown).not.toHaveBeenCalled();

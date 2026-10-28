@@ -55,6 +55,7 @@ describe("session config reconciliation", () => {
     mode: { dynamicTools: ApplyMode; skills: ApplyMode };
     skillRoots?: AgentRuntimeSkillRoot[];
     sessionSkills?: boolean;
+    skillsConfigure?: boolean;
     sessionRestorable?: boolean;
     failResume?: boolean;
     initialThreads?: [string, AgentRuntimeSkillRoot[]][];
@@ -89,6 +90,9 @@ describe("session config reconciliation", () => {
           ...scriptedEchoProcessEnv({
             sessionConfig: args.mode,
             sessionSkills: args.sessionSkills ?? true,
+            ...(args.skillsConfigure === false
+              ? { skillsConfigure: false }
+              : {}),
             ...(args.failResume === true ? { failResume: true } : {}),
           }),
         },
@@ -390,6 +394,73 @@ describe("session config reconciliation", () => {
           JSON.stringify(left).localeCompare(JSON.stringify(right)),
         ),
     ).toEqual([{ roots: rootsA }, { roots: rootsB }]);
+  });
+
+  it("shares one process between concurrent first starts with different catalogs on a per-session bridge", async () => {
+    const rootsA = [skillRoot("a")];
+    const rootsB = [skillRoot("b")];
+    const { processLog, record } = await startRuntime({
+      mode: { dynamicTools: "resume", skills: "resume" },
+      initialThreads: [
+        ["t1", rootsA],
+        ["t2", rootsB],
+      ],
+    });
+
+    expect(spawns(processLog)).toHaveLength(1);
+    expect(requests(record, "skills/configure")).toEqual([]);
+    expect(
+      requests(record, "thread/start")
+        .map((entry) => [entry.params?.threadId, entry.params?.skillRoots])
+        .sort(),
+    ).toEqual([
+      ["t1", rootsA],
+      ["t2", rootsB],
+    ]);
+  });
+
+  it("ignores skill changes on a bridge that cannot configure skills", async () => {
+    const rootsA = [skillRoot("a")];
+    const rootsB = [skillRoot("b")];
+    const { events, processLog, record, start, turnOn } = await startRuntime({
+      mode: { dynamicTools: "resume", skills: "resume" },
+      skillRoots: rootsA,
+      sessionSkills: false,
+      skillsConfigure: false,
+    });
+
+    await start("t2", rootsB);
+    await turnOn("t1", "after skills changed", { skillRoots: rootsB });
+
+    expect(spawns(processLog)).toHaveLength(1);
+    expect(requests(record, "skills/configure")).toEqual([]);
+    expect(requests(record, "thread/resume")).toEqual([]);
+    expect(configWarnings(events)).toEqual([]);
+  });
+
+  it("serves sessionless requests on a bridge without per-session skills when the runtime has default skill roots", async () => {
+    const roots = [skillRoot("a")];
+    const record = createScriptedEchoRequestRecord();
+    const runtime = withBridgeLaunch(
+      createAgentRuntime({
+        workspacePath,
+        env: {
+          ...record.env,
+          ...scriptedEchoProcessEnv({ sessionSkills: false }),
+        },
+        skillRoots: roots,
+        onEvent: () => {},
+        onToolCall: async () => ({ contentItems: [], success: true }),
+      }),
+      createScriptedEchoLaunch(),
+    );
+    runtimes.push(runtime);
+
+    await runtime.ensureProvider({ providerId: "fake" });
+
+    await expect(runtime.listModels({ providerId: "fake" })).resolves.toEqual(
+      expect.objectContaining({ models: expect.any(Array) }),
+    );
   });
 
   it("restores a thread with its own skill roots after a restart recommendation", async () => {
