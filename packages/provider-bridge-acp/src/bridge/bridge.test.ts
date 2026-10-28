@@ -5207,7 +5207,7 @@ describe("acp bridge: questions the agent asks", () => {
     );
   });
 
-  it("declines a form it cannot show and says why", async () => {
+  it("answers a form it cannot show with an error that tells the agent why (#6266)", async () => {
     const { providerThreadId } = await startThread();
     const turnId = sendTurnRequest("turn/start", providerThreadId, {
       input: [{ type: "text", text: "ask-form-too-large", mentions: [] }],
@@ -5215,11 +5215,13 @@ describe("acp bridge: questions the agent asks", () => {
     await waitForResponse(turnId);
     await waitForTurnCompleted();
 
-    expect(agentMessageTexts()).toContain('elicitation:{"action":"decline"}');
+    expect(agentMessageTexts()).toContain(
+      'elicitation:{"error":"Error: bb cannot show this form: bb shows at most 4 questions; this form has 5"}',
+    );
     expect(threadEventsOfType("provider/warning").at(-1)).toMatchObject({
       summary: "The agent asked a question bb could not show",
       details:
-        "The request was declined because the form has 5 fields and bb shows at most 4.",
+        "bb told the agent it cannot show the form because bb shows at most 4 questions; this form has 5.",
     });
     expect(
       output.messages.filter(

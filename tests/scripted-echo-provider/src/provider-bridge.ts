@@ -396,6 +396,7 @@ function userQuestionPayload(requestId: JsonRpcId): PendingInteractionPayload {
           },
         ],
         allowFreeText: true,
+        required: true,
       },
     ],
   };

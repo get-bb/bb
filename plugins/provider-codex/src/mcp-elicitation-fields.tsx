@@ -4,7 +4,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import type { CodexMcpFormField } from "./mcp-elicitation.js";
+import type { InternalDoNotUseElicitationFormField } from "@get-bb/plugin-sdk/provider-bridge/elicitation-form";
 
 export type CodexMcpFormDraftValue = string | boolean | string[];
 
@@ -15,7 +15,7 @@ export function CodexMcpElicitationField({
   disabled,
   onChange,
 }: {
-  field: CodexMcpFormField;
+  field: InternalDoNotUseElicitationFormField;
   value: CodexMcpFormDraftValue | undefined;
   error: string | undefined;
   disabled: boolean;

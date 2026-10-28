@@ -18,6 +18,11 @@
       "types": "./src/bridge-kit/index.ts",
       "default": "./src/bridge-kit/index.ts"
     },
+    "./bridge-kit/elicitation-form": {
+      "source": "./src/bridge-kit/elicitation-form.ts",
+      "types": "./src/bridge-kit/elicitation-form.ts",
+      "default": "./src/bridge-kit/elicitation-form.ts"
+    },
     "./conformance": {
       "source": "./src/conformance/index.ts",
       "types": "./src/conformance/index.ts",

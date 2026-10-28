@@ -476,3 +476,136 @@ describe("Computer Use elicitation responses", () => {
     ).toThrowError(ProviderResponseEncodeError);
   });
 });
+
+const envelope = {
+  threadId: "thread-1",
+  turnId: null,
+  serverName: "survey",
+  message: "Tell us your preferences",
+  mode: "form",
+  requestedSchema: {
+    type: "object",
+    properties: {
+      name: { type: "string", minLength: 1 },
+      count: { type: "integer", minimum: 0, maximum: 10 },
+    },
+    required: ["name", "count"],
+  },
+  _meta: null,
+};
+const valid = { name: "Reader", count: 0 };
+
+describe("MCP form elicitations", () => {
+  it("keeps an unrepresentable form visible with decline and cancel only", () => {
+    const result = normalizeCodexMcpElicitation({
+      ...envelope,
+      requestedSchema: {
+        type: "object",
+        properties: { nested: { type: "object", properties: {} } },
+      },
+    }).elicitation;
+    expect(result).toMatchObject({
+      kind: "unsupported",
+      reason: "This form uses fields or constraints BB cannot display.",
+    });
+    expect(() =>
+      buildCodexMcpElicitationResponse(result, {
+        action: "accept",
+        content: {},
+      }),
+    ).toThrow(/only be declined or cancelled/);
+  });
+});
+
+describe("general elicitation modes", () => {
+  it.each(["form", "openai/form", "openaiForm"])(
+    "answers the standard subset in %s mode",
+    (mode) => {
+      const result = normalizeCodexMcpElicitation({ ...envelope, mode });
+      expect(result.elicitation).toMatchObject({
+        kind: "form",
+        serverName: "survey",
+        message: envelope.message,
+      });
+      expect(
+        buildCodexMcpElicitationResponse(result.elicitation, {
+          action: "accept",
+          content: valid,
+        }),
+      ).toEqual({ action: "accept", content: valid, _meta: null });
+      expect(() =>
+        buildCodexMcpElicitationResponse(result.elicitation, {
+          action: "accept",
+          content: { ...valid, count: 11 },
+        }),
+      ).toThrow(/count/);
+      expect(() =>
+        buildCodexMcpElicitationResponse(result.elicitation, {
+          action: "accept",
+          persist: "always",
+        }),
+      ).toThrow(/form values/);
+    },
+  );
+
+  it("preserves URL identity and produces acceptance without local form data", () => {
+    const result = normalizeCodexMcpElicitation({
+      ...envelope,
+      mode: "url",
+      url: "https://example.com/consent",
+      elicitationId: "consent-1",
+    }).elicitation;
+    expect(result).toEqual({
+      kind: "url",
+      serverName: "survey",
+      message: envelope.message,
+      url: "https://example.com/consent",
+      elicitationId: "consent-1",
+    });
+    expect(
+      buildCodexMcpElicitationResponse(result, { action: "accept" }),
+    ).toEqual({ action: "accept", content: null, _meta: null });
+    expect(() =>
+      buildCodexMcpElicitationResponse(result, {
+        action: "accept",
+        content: {},
+      }),
+    ).toThrow(/does not include/);
+  });
+
+  it.each([
+    "javascript:alert(1)",
+    "file:///etc/passwd",
+    "ftp://example.com",
+    "not a URL",
+  ])("does not expose unsafe URL %s", (url) => {
+    expect(
+      normalizeCodexMcpElicitation({
+        ...envelope,
+        mode: "url",
+        url,
+        elicitationId: "consent-1",
+      }).elicitation,
+    ).toMatchObject({
+      kind: "unsupported",
+      reason: expect.not.stringContaining("invalid_format"),
+    });
+  });
+
+  it("keeps future modes visible with decline and cancel", () => {
+    const result = normalizeCodexMcpElicitation({
+      ...envelope,
+      mode: "future-mode",
+    }).elicitation;
+    expect(result).toMatchObject({
+      kind: "unsupported",
+      nativeMode: "future-mode",
+    });
+    expect(
+      buildCodexMcpElicitationResponse(result, { action: "decline" }),
+    ).toEqual({ action: "decline", content: null, _meta: null });
+    expect(
+      buildCodexMcpElicitationResponse(result, { action: "cancel" }),
+    ).toEqual({ action: "cancel", content: null, _meta: null });
+  });
+});

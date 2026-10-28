@@ -11,7 +11,7 @@ const fieldBase = {
   required: z.boolean(),
 };
 
-export const codexMcpFormFieldSchema = z.discriminatedUnion("kind", [
+export const elicitationFormFieldSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     ...fieldBase,
     kind: z.literal("string"),
@@ -47,7 +47,7 @@ export const codexMcpFormFieldSchema = z.discriminatedUnion("kind", [
     maxItems: z.number().int().nonnegative().nullable(),
   }),
 ]);
-export type CodexMcpFormField = z.infer<typeof codexMcpFormFieldSchema>;
+export type ElicitationFormField = z.infer<typeof elicitationFormFieldSchema>;
 
 const safeDictionarySchema = z
   .unknown()
@@ -59,13 +59,15 @@ const safeDictionarySchema = z
     { message: 'The field name "__proto__" is not supported.' },
   );
 
-export const codexMcpFormContentSchema = safeDictionarySchema.pipe(
+export const elicitationFormContentSchema = safeDictionarySchema.pipe(
   z.record(
     z.string(),
     z.union([z.string(), z.number(), z.boolean(), z.array(z.string())]),
   ),
 );
-export type CodexMcpFormContent = z.infer<typeof codexMcpFormContentSchema>;
+export type ElicitationFormContent = z.infer<
+  typeof elicitationFormContentSchema
+>;
 
 const nativeBase = {
   title: z.string().optional(),
@@ -133,8 +135,8 @@ const nativeFormSchema = z.strictObject({
 });
 
 function validateFieldValue(
-  field: CodexMcpFormField,
-  value: CodexMcpFormContent[string],
+  field: ElicitationFormField,
+  value: ElicitationFormContent[string],
 ): string | null {
   switch (field.kind) {
     case "string": {
@@ -197,17 +199,17 @@ function validateFieldValue(
   }
 }
 
-export function validateCodexMcpFormContent(
-  fields: CodexMcpFormField[],
+export function validateElicitationFormContent(
+  fields: ElicitationFormField[],
   content: unknown,
 ):
-  | { success: true; data: CodexMcpFormContent }
+  | { success: true; data: ElicitationFormContent }
   | {
       success: false;
       errors: Record<string, string>;
       formError: string | null;
     } {
-  const parsed = codexMcpFormContentSchema.safeParse(content);
+  const parsed = elicitationFormContentSchema.safeParse(content);
   if (!parsed.success) {
     const issues = parsed.error.issues;
     const fieldErrors = issues.flatMap((issue) =>
@@ -243,7 +245,9 @@ export function validateCodexMcpFormContent(
     : { success: false, errors: Object.fromEntries(errors), formError };
 }
 
-export function normalizeCodexMcpForm(schema: unknown): CodexMcpFormField[] {
+export function normalizeElicitationForm(
+  schema: unknown,
+): ElicitationFormField[] {
   const parsed = nativeFormSchema.parse(schema);
   const required = new Set(parsed.required ?? []);
   for (const name of required) {
@@ -251,7 +255,7 @@ export function normalizeCodexMcpForm(schema: unknown): CodexMcpFormField[] {
       throw new Error(`Required field "${name}" is not declared.`);
   }
   const fields = Object.entries(parsed.properties).map(
-    ([name, field]): CodexMcpFormField => {
+    ([name, field]): ElicitationFormField => {
       const base = {
         name,
         title: field.title ?? (name || "Value"),

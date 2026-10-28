@@ -1171,6 +1171,38 @@ can close (then `HOST_DAEMON_COMPATIBLE_PROTOCOL_VERSIONS` goes back to the
 current version only). Decide whether the Cloudflare machine tunnel should
 move onto the same frpc runner once next replaces it.
 
+## `@get-bb/plugin-sdk/provider-bridge/elicitation-form`
+
+Internal to bb's own Codex provider plugin (`plugins/provider-codex`): the `internal_DO_NOT_USE_` prefix marks members that are not part of the plugin API, are not offered to third-party plugins, and may change or disappear in any release.
+
+The subpath re-exports bb's one translator for MCP-style `requestedSchema`
+forms, `packages/provider-bridge-protocol/src/bridge-kit/elicitation-form.ts`,
+which bb's ACP bridge (`packages/provider-bridge-acp/src/elicitation.ts`)
+imports directly. `internal_DO_NOT_USE_normalizeElicitationForm(schema)` reads
+the flat MCP field set (string with length and format, number, integer,
+boolean, single and multi enums) into typed fields carrying `required`,
+defaults and bounds, and throws when bb cannot show the form.
+`internal_DO_NOT_USE_validateElicitationFormContent(fields, content)` checks
+an answer against those fields. `internal_DO_NOT_USE_elicitationFormFieldSchema`,
+`internal_DO_NOT_USE_elicitationFormContentSchema` and the
+`InternalDoNotUseElicitationFormField` / `InternalDoNotUseElicitationFormContent`
+types describe the same values. The subpath has no Node imports, so the Codex
+app bundle validates drafts with the same code its host uses to normalize the
+request and check the response. It is a published subpath rather than an
+`internal/` one because Codex is a forkable plugin
+([forkable-plugins.md](forkable-plugins.md)), which may import only published
+entry points; `@get-bb/plugin-sdk/provider-bridge` itself pulls in Node
+modules and cannot load in an app bundle.
+
+Callers: the Codex plugin's host (`src/mcp-elicitation.ts`), its app
+(`app.tsx`, `src/mcp-elicitation-fields.tsx`), and, through the source module,
+the ACP bridge kit.
+
+**Audit before stabilizing.** Decide whether third-party bridges that receive
+MCP-style forms should get this translator, and if so, whether the ACP
+planner's question folding (`<name>__other` / `<name>_other` companions) and
+question limit belong in the public surface too.
+
 ## Bridge record mode (`experimental_recordProviderChildIo` and `experimental_isProviderBridgeRecording`)
 
 **Kept experimental (2026-08-22).** The recording entry shape is a de-facto

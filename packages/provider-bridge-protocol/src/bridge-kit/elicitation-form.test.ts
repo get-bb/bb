@@ -1,12 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  normalizeCodexMcpForm,
-  validateCodexMcpFormContent,
-} from "./mcp-elicitation-form.js";
-import {
-  buildCodexMcpElicitationResponse,
-  normalizeCodexMcpElicitation,
-} from "./mcp-elicitation.js";
+  normalizeElicitationForm,
+  validateElicitationFormContent,
+} from "./elicitation-form.js";
 
 const schema = {
   type: "object",
@@ -47,7 +43,7 @@ const schema = {
   },
   required: ["name", "count", "subscribed", "color", "tags"],
 };
-const fields = normalizeCodexMcpForm(schema);
+const fields = normalizeElicitationForm(schema);
 const valid = {
   name: "Reader",
   count: 0,
@@ -55,17 +51,8 @@ const valid = {
   color: "red",
   tags: ["a"],
 };
-const envelope = {
-  threadId: "thread-1",
-  turnId: null,
-  serverName: "survey",
-  message: "Tell us your preferences",
-  mode: "form",
-  requestedSchema: schema,
-  _meta: null,
-};
 
-describe("MCP form normalization and validation", () => {
+describe("elicitation form normalization and validation", () => {
   it("normalizes every native flat field variant and preserves false and zero defaults", () => {
     expect(fields.map((field) => field.kind)).toEqual([
       "string",
@@ -102,14 +89,14 @@ describe("MCP form normalization and validation", () => {
       minItems: null,
       maxItems: null,
     });
-    expect(validateCodexMcpFormContent(fields, valid)).toEqual({
+    expect(validateElicitationFormContent(fields, valid)).toEqual({
       success: true,
       data: valid,
     });
   });
 
   it("validates required presence without filling absent defaults or coercing values", () => {
-    expect(validateCodexMcpFormContent(fields, {})).toMatchObject({
+    expect(validateElicitationFormContent(fields, {})).toMatchObject({
       success: false,
       errors: {
         count: "This field is required.",
@@ -118,13 +105,13 @@ describe("MCP form normalization and validation", () => {
       formError: null,
     });
     expect(
-      validateCodexMcpFormContent(fields, { ...valid, count: "0" }),
+      validateElicitationFormContent(fields, { ...valid, count: "0" }),
     ).toMatchObject({
       success: false,
       errors: { count: "Enter a finite number." },
     });
     expect(
-      validateCodexMcpFormContent(fields, { ...valid, subscribed: "false" }),
+      validateElicitationFormContent(fields, { ...valid, subscribed: "false" }),
     ).toMatchObject({
       success: false,
       errors: { subscribed: "Choose Yes or No." },
@@ -143,7 +130,7 @@ describe("MCP form normalization and validation", () => {
     ["tags", ["a", "b", "a"], "only once"],
     ["tags", ["unknown"], "offered options"],
   ])("checks %s value %j", (name, value, error) => {
-    const parsed = validateCodexMcpFormContent(fields, {
+    const parsed = validateElicitationFormContent(fields, {
       ...valid,
       [String(name)]: value,
     });
@@ -152,7 +139,7 @@ describe("MCP form normalization and validation", () => {
   });
 
   it("does not count duplicate selections toward the minimum", () => {
-    const selected = normalizeCodexMcpForm({
+    const selected = normalizeElicitationForm({
       type: "object",
       properties: {
         tags: {
@@ -163,7 +150,7 @@ describe("MCP form normalization and validation", () => {
       },
     });
     expect(
-      validateCodexMcpFormContent(selected, { tags: ["a", "a"] }),
+      validateElicitationFormContent(selected, { tags: ["a", "a"] }),
     ).toMatchObject({
       success: false,
       errors: { tags: "Choose each option only once." },
@@ -176,30 +163,30 @@ describe("MCP form normalization and validation", () => {
     ["date", "2024-02-29", "2025-02-29"],
     ["date-time", "2026-09-04T12:30:00+01:00", "2026-09-04T12:30:00"],
   ])("validates %s format", (format, accepted, rejected) => {
-    const formatted = normalizeCodexMcpForm({
+    const formatted = normalizeElicitationForm({
       type: "object",
       properties: { value: { type: "string", format } },
     });
     expect(
-      validateCodexMcpFormContent(formatted, { value: accepted }).success,
+      validateElicitationFormContent(formatted, { value: accepted }).success,
     ).toBe(true);
     expect(
-      validateCodexMcpFormContent(formatted, { value: rejected }).success,
+      validateElicitationFormContent(formatted, { value: rejected }).success,
     ).toBe(false);
   });
 
   it("counts Unicode characters rather than UTF-16 units", () => {
-    const text = normalizeCodexMcpForm({
+    const text = normalizeElicitationForm({
       type: "object",
       properties: { value: { type: "string", maxLength: 1 } },
     });
-    expect(validateCodexMcpFormContent(text, { value: "😀" }).success).toBe(
+    expect(validateElicitationFormContent(text, { value: "😀" }).success).toBe(
       true,
     );
   });
 
   it("keeps empty and inherited property names distinct from form-wide errors", () => {
-    const named = normalizeCodexMcpForm({
+    const named = normalizeElicitationForm({
       type: "object",
       properties: Object.fromEntries([
         ["", { type: "boolean" }],
@@ -207,7 +194,7 @@ describe("MCP form normalization and validation", () => {
       ]),
       required: ["", "constructor"],
     });
-    expect(validateCodexMcpFormContent(named, {})).toEqual({
+    expect(validateElicitationFormContent(named, {})).toEqual({
       success: false,
       errors: Object.fromEntries([
         ["", "This field is required."],
@@ -219,12 +206,12 @@ describe("MCP form normalization and validation", () => {
       ["", false],
       ["constructor", "own value"],
     ]);
-    expect(validateCodexMcpFormContent(named, content)).toEqual({
+    expect(validateElicitationFormContent(named, content)).toEqual({
       success: true,
       data: content,
     });
     expect(
-      validateCodexMcpFormContent(named, { ...content, extra: true }),
+      validateElicitationFormContent(named, { ...content, extra: true }),
     ).toMatchObject({
       success: false,
       errors: {},
@@ -234,13 +221,13 @@ describe("MCP form normalization and validation", () => {
 
   it("rejects prototype keys instead of silently dropping them", () => {
     expect(() =>
-      normalizeCodexMcpForm({
+      normalizeElicitationForm({
         type: "object",
         properties: Object.fromEntries([["__proto__", { type: "string" }]]),
       }),
     ).toThrow(/__proto__/);
     expect(
-      validateCodexMcpFormContent(
+      validateElicitationFormContent(
         [],
         Object.fromEntries([["__proto__", "value"]]),
       ).success,
@@ -286,109 +273,6 @@ describe("MCP form normalization and validation", () => {
       },
     },
   ])("rejects unrepresentable schema %j", (requestedSchema) => {
-    const result = normalizeCodexMcpElicitation({
-      ...envelope,
-      requestedSchema,
-    }).elicitation;
-    expect(result.kind).toBe("unsupported");
-    expect(() =>
-      buildCodexMcpElicitationResponse(result, {
-        action: "accept",
-        content: {},
-      }),
-    ).toThrow(/only be declined or cancelled/);
-  });
-});
-
-describe("general elicitation modes", () => {
-  it.each(["form", "openai/form", "openaiForm"])(
-    "answers the standard subset in %s mode",
-    (mode) => {
-      const result = normalizeCodexMcpElicitation({ ...envelope, mode });
-      expect(result.elicitation).toMatchObject({
-        kind: "form",
-        serverName: "survey",
-        message: envelope.message,
-      });
-      expect(
-        buildCodexMcpElicitationResponse(result.elicitation, {
-          action: "accept",
-          content: valid,
-        }),
-      ).toEqual({ action: "accept", content: valid, _meta: null });
-      expect(() =>
-        buildCodexMcpElicitationResponse(result.elicitation, {
-          action: "accept",
-          content: { ...valid, count: 11 },
-        }),
-      ).toThrow(/count/);
-      expect(() =>
-        buildCodexMcpElicitationResponse(result.elicitation, {
-          action: "accept",
-          persist: "always",
-        }),
-      ).toThrow(/form values/);
-    },
-  );
-
-  it("preserves URL identity and produces acceptance without local form data", () => {
-    const result = normalizeCodexMcpElicitation({
-      ...envelope,
-      mode: "url",
-      url: "https://example.com/consent",
-      elicitationId: "consent-1",
-    }).elicitation;
-    expect(result).toEqual({
-      kind: "url",
-      serverName: "survey",
-      message: envelope.message,
-      url: "https://example.com/consent",
-      elicitationId: "consent-1",
-    });
-    expect(
-      buildCodexMcpElicitationResponse(result, { action: "accept" }),
-    ).toEqual({ action: "accept", content: null, _meta: null });
-    expect(() =>
-      buildCodexMcpElicitationResponse(result, {
-        action: "accept",
-        content: {},
-      }),
-    ).toThrow(/does not include/);
-  });
-
-  it.each([
-    "javascript:alert(1)",
-    "file:///etc/passwd",
-    "ftp://example.com",
-    "not a URL",
-  ])("does not expose unsafe URL %s", (url) => {
-    expect(
-      normalizeCodexMcpElicitation({
-        ...envelope,
-        mode: "url",
-        url,
-        elicitationId: "consent-1",
-      }).elicitation,
-    ).toMatchObject({
-      kind: "unsupported",
-      reason: expect.not.stringContaining("invalid_format"),
-    });
-  });
-
-  it("keeps future modes visible with decline and cancel", () => {
-    const result = normalizeCodexMcpElicitation({
-      ...envelope,
-      mode: "future-mode",
-    }).elicitation;
-    expect(result).toMatchObject({
-      kind: "unsupported",
-      nativeMode: "future-mode",
-    });
-    expect(
-      buildCodexMcpElicitationResponse(result, { action: "decline" }),
-    ).toEqual({ action: "decline", content: null, _meta: null });
-    expect(
-      buildCodexMcpElicitationResponse(result, { action: "cancel" }),
-    ).toEqual({ action: "cancel", content: null, _meta: null });
+    expect(() => normalizeElicitationForm(requestedSchema)).toThrow();
   });
 });

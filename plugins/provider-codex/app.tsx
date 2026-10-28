@@ -5,6 +5,7 @@ import {
   useBbNavigate,
   type PluginPendingInteractionProps,
 } from "@get-bb/plugin-sdk/app";
+import { internal_DO_NOT_USE_validateElicitationFormContent } from "@get-bb/plugin-sdk/provider-bridge/elicitation-form";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { QuestionForm } from "@/components/ui/question-form";
@@ -16,7 +17,6 @@ import {
 import { computerUseIcon } from "./src/computer-use-icon.js";
 import {
   codexMcpElicitationSchema,
-  validateCodexMcpFormContent,
   type CodexMcpElicitationResponse,
 } from "./src/mcp-elicitation.js";
 import {
@@ -152,7 +152,10 @@ function CodexMcpElicitation({
         },
       ),
     );
-    const result = validateCodexMcpFormContent(payload.fields, content);
+    const result = internal_DO_NOT_USE_validateElicitationFormContent(
+      payload.fields,
+      content,
+    );
     if (!result.success) {
       setSubmission({ status: "ready" });
       setFormErrors({

@@ -1,17 +1,11 @@
 import { z } from "zod";
 import {
-  codexMcpFormContentSchema,
-  codexMcpFormFieldSchema,
-  normalizeCodexMcpForm,
-  validateCodexMcpFormContent,
-  type CodexMcpFormContent,
-} from "./mcp-elicitation-form.js";
-
-export {
-  validateCodexMcpFormContent,
-  type CodexMcpFormContent,
-  type CodexMcpFormField,
-} from "./mcp-elicitation-form.js";
+  internal_DO_NOT_USE_elicitationFormContentSchema,
+  internal_DO_NOT_USE_elicitationFormFieldSchema,
+  internal_DO_NOT_USE_normalizeElicitationForm,
+  internal_DO_NOT_USE_validateElicitationFormContent,
+  type InternalDoNotUseElicitationFormContent,
+} from "@get-bb/plugin-sdk/provider-bridge/elicitation-form";
 
 export const CODEX_MCP_ELICITATION_KIND = "provider-codex/mcp-elicitation";
 
@@ -92,7 +86,7 @@ export const codexMcpElicitationSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     ...common,
     kind: z.literal("form"),
-    fields: z.array(codexMcpFormFieldSchema),
+    fields: z.array(internal_DO_NOT_USE_elicitationFormFieldSchema),
   }),
   z.strictObject({
     ...common,
@@ -119,7 +113,7 @@ export const codexMcpElicitationResponseSchema = z.union([
   persistedAcceptResponseSchema,
   z.strictObject({
     action: z.literal("accept"),
-    content: codexMcpFormContentSchema,
+    content: internal_DO_NOT_USE_elicitationFormContentSchema,
   }),
   z.strictObject({ action: z.literal("accept") }),
   declinedResponseSchema,
@@ -292,7 +286,9 @@ export function normalizeCodexMcpElicitation(input: unknown): {
       elicitation = {
         ...base,
         kind: "form",
-        fields: normalizeCodexMcpForm(params.requestedSchema),
+        fields: internal_DO_NOT_USE_normalizeElicitationForm(
+          params.requestedSchema,
+        ),
       };
     } else if (params.mode === "url") {
       elicitation = {
@@ -335,7 +331,7 @@ export const CODEX_MCP_ELICITATION_CANCEL_RESPONSE = {
 export type CodexNativeMcpElicitationResponse =
   | {
       action: "accept";
-      content: CodexMcpFormContent | null;
+      content: InternalDoNotUseElicitationFormContent | null;
       _meta: { persist: "session" | "always" } | null;
     }
   | { action: "decline" | "cancel"; content: null; _meta: null };
@@ -379,7 +375,7 @@ export function buildCodexMcpElicitationResponse(
     case "form": {
       if (!("content" in response))
         throw new Error("Form acceptance requires the requested form values.");
-      const parsed = validateCodexMcpFormContent(
+      const parsed = internal_DO_NOT_USE_validateElicitationFormContent(
         elicitation.fields,
         response.content,
       );

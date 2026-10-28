@@ -25,6 +25,7 @@ import { usePointerCoarse } from "./hooks/use-pointer-coarse";
 import { cn } from "../../lib/utils";
 import {
   answerStateFor,
+  areRequiredQuestionsAnswered,
   buildQuestionAnswers,
   isQuestionAnswered,
   resolveQuestionShortcutChoice,
@@ -270,7 +271,15 @@ function QuestionInputBlock({
           {question.prompt}
         </div>
       ) : null}
-      <div className={cn("space-y-0.5", showPrompt ? "mt-1" : undefined)}>
+      {question.required ? null : (
+        <div className="text-xs text-muted-foreground">Optional</div>
+      )}
+      <div
+        className={cn(
+          "space-y-0.5",
+          showPrompt || !question.required ? "mt-1" : undefined,
+        )}
+      >
         {options.map((option: QuestionOption, index) => {
           const checked = state.selected.includes(option.value);
           return (
@@ -361,13 +370,9 @@ export function QuestionForm({
   const currentQuestion = questions[currentIndex] ?? null;
   const isFirst = currentIndex === 0;
   const isLast = currentIndex === totalQuestions - 1;
-  const allAnswered = useMemo(
-    () =>
-      totalQuestions > 0 &&
-      questions.every((question) =>
-        isQuestionAnswered(question, answerStateFor(formState, question)),
-      ),
-    [formState, questions, totalQuestions],
+  const canSubmit = useMemo(
+    () => areRequiredQuestionsAnswered(questions, formState),
+    [formState, questions],
   );
 
   const updateQuestionState = useCallback(
@@ -414,7 +419,7 @@ export function QuestionForm({
   };
 
   const submitAnswer = async (): Promise<void> => {
-    if (disabled || voiceBusy || !allAnswered) return;
+    if (disabled || voiceBusy || !canSubmit) return;
     try {
       await onSubmit(buildQuestionAnswers(questions, formState));
       setSettledAction("submit");
@@ -556,7 +561,7 @@ export function QuestionForm({
             type="button"
             size="sm"
             className={compactButtonClass}
-            disabled={disabled || voiceBusy || (isLast && !allAnswered)}
+            disabled={disabled || voiceBusy || (isLast && !canSubmit)}
             onClick={handleAdvance}
           >
             {inputDisabled || settledAction === "submit" ? (

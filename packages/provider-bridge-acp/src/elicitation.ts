@@ -7,11 +7,17 @@ import {
   type UserQuestionPendingInteractionPayload,
   type UserQuestionPendingInteractionResolution,
 } from "@bb/domain";
+import {
+  normalizeElicitationForm,
+  validateElicitationFormContent,
+  type ElicitationFormContent,
+  type ElicitationFormField,
+} from "@bb/provider-bridge-protocol/bridge-kit/elicitation-form";
+import { ZodError } from "zod";
 import { isJsonObject, readString } from "./session/decode.js";
-import type { AcpJsonObject } from "./session/session-types.js";
 
 export type AcpElicitationResponse =
-  | { action: "accept"; content: Record<string, unknown> }
+  | { action: "accept"; content: ElicitationFormContent }
   | { action: "decline" }
   | { action: "cancel" };
 
@@ -25,200 +31,192 @@ export type AcpElicitationPlan =
     }
   | { kind: "unsupported"; reason: string };
 
-interface AcpElicitationChoice {
-  value: string;
-  label: string;
+type ChoiceField = Extract<
+  ElicitationFormField,
+  { kind: "enum" | "multi_enum" }
+>;
+type TextField = Extract<ElicitationFormField, { kind: "string" }>;
+type FormValue = ElicitationFormContent[string];
+
+interface OtherCompanion {
+  field: TextField;
+  choice: string | null;
 }
 
-type AcpElicitationField =
-  | { kind: "choice"; choices: AcpElicitationChoice[] }
-  | { kind: "typedChoice"; choices: AcpElicitationChoice[] }
-  | { kind: "multiChoice"; choices: AcpElicitationChoice[] }
-  | { kind: "boolean" }
-  | { kind: "text" }
-  | { kind: "number"; integer: boolean };
-
-interface PlannedField {
-  name: string;
-  field: AcpElicitationField;
+interface PlannedQuestion {
+  field: ElicitationFormField;
+  other: OtherCompanion | null;
+  typedChoice: boolean;
   question: PendingInteractionUserQuestionQuestion;
 }
 
 const CONFIRM_QUESTION_ID = "confirm";
 const CONFIRM_ACCEPT_VALUE = "accept";
 const CONFIRM_DECLINE_VALUE = "decline";
+const OTHER_FIELD_SUFFIXES = ["__other", "_other"];
+const OTHER_CHOICE = /^other\b/i;
 
-function readChoices(schema: AcpJsonObject): AcpElicitationChoice[] | null {
-  const titled = schema["oneOf"] ?? schema["anyOf"];
-  if (Array.isArray(titled)) {
-    const choices: AcpElicitationChoice[] = [];
-    for (const entry of titled) {
-      if (!isJsonObject(entry) || typeof entry["const"] !== "string") {
-        return null;
-      }
-      choices.push({
-        value: entry["const"],
-        label: readString(entry, "title") ?? entry["const"],
-      });
+function otherCompanionFor(
+  field: ChoiceField,
+  fieldsByName: ReadonlyMap<string, ElicitationFormField>,
+): OtherCompanion | null {
+  for (const suffix of OTHER_FIELD_SUFFIXES) {
+    const companion = fieldsByName.get(`${field.name}${suffix}`);
+    if (
+      companion?.kind === "string" &&
+      companion.format === null &&
+      !companion.required
+    ) {
+      const choice = field.options.find(
+        (option) =>
+          OTHER_CHOICE.test(option.value) || OTHER_CHOICE.test(option.label),
+      );
+      return { field: companion, choice: choice?.value ?? null };
     }
-    return choices.length > 0 ? choices : null;
   }
-  const values = schema["enum"];
-  if (!Array.isArray(values)) {
-    return null;
-  }
-  const names = Array.isArray(schema["enumNames"]) ? schema["enumNames"] : [];
-  const choices: AcpElicitationChoice[] = [];
-  values.forEach((value, index) => {
-    if (typeof value !== "string" || value.trim() === "") {
-      return;
-    }
-    const name = names[index];
-    choices.push({
-      value,
-      label: typeof name === "string" && name.trim() !== "" ? name : value,
-    });
-  });
-  return choices.length > 0 ? choices : null;
+  return null;
 }
 
-function planField(schema: AcpJsonObject): AcpElicitationField | null {
-  const type = readString(schema, "type");
-  if (type === "array") {
-    const items = schema["items"];
-    const choices = isJsonObject(items) ? readChoices(items) : null;
-    return choices && choices.length <= USER_QUESTION_MAX_OPTIONS
-      ? { kind: "multiChoice", choices }
-      : null;
-  }
-  const choices = readChoices(schema);
-  if (choices) {
-    return choices.length <= USER_QUESTION_MAX_OPTIONS
-      ? { kind: "choice", choices }
-      : { kind: "typedChoice", choices };
-  }
-  switch (type) {
-    case "boolean":
-      return { kind: "boolean" };
-    case "string":
-      return { kind: "text" };
-    case "number":
-      return { kind: "number", integer: false };
-    case "integer":
-      return { kind: "number", integer: true };
-    default:
-      return null;
-  }
-}
-
-function questionFor(
-  name: string,
-  schema: AcpJsonObject,
-  field: AcpElicitationField,
+function promptFor(
+  field: ElicitationFormField,
+  label: string,
+  hint: string | null,
   message: string | undefined,
-): PendingInteractionUserQuestionQuestion {
-  const label = readString(schema, "title")?.trim() || name;
-  const description = readString(schema, "description")?.trim();
-  const lines = [
+): string {
+  const description = field.description?.trim();
+  return [
     ...(message ? [message, ""] : []),
     label,
     ...(description ? [description] : []),
-    ...(field.kind === "typedChoice"
-      ? [`One of: ${field.choices.map((choice) => choice.label).join(", ")}`]
-      : []),
-    ...(field.kind === "number"
-      ? [field.integer ? "Enter a whole number." : "Enter a number."]
-      : []),
-  ];
-  const base = {
-    id: name,
-    prompt: lines.join("\n"),
-    shortLabel: label,
-  };
+    ...(hint ? [hint] : []),
+  ].join("\n");
+}
+
+function planQuestion(
+  field: ElicitationFormField,
+  other: OtherCompanion | null,
+  message: string | undefined,
+): PlannedQuestion | string {
+  const label = field.title.trim() || field.name;
+  const base = { id: field.name, shortLabel: label, required: field.required };
+  const ask = (
+    hint: string | null,
+    shape: Pick<
+      PendingInteractionUserQuestionQuestion,
+      "multiSelect" | "options" | "allowFreeText"
+    >,
+    typedChoice = false,
+  ): PlannedQuestion => ({
+    field,
+    other,
+    typedChoice,
+    question: {
+      ...base,
+      prompt: promptFor(field, label, hint, message),
+      ...shape,
+    },
+  });
   switch (field.kind) {
-    case "choice":
-      return {
-        ...base,
-        multiSelect: false,
-        options: field.choices,
-        allowFreeText: false,
-      };
-    case "multiChoice":
-      return {
-        ...base,
-        multiSelect: true,
-        options: field.choices,
-        allowFreeText: false,
-      };
+    case "enum":
+    case "multi_enum": {
+      const options = field.options.filter(
+        (option) => other === null || option.value !== other.choice,
+      );
+      const multiSelect = field.kind === "multi_enum";
+      if (options.length <= USER_QUESTION_MAX_OPTIONS) {
+        return ask(null, {
+          multiSelect,
+          options,
+          allowFreeText: other !== null,
+        });
+      }
+      if (multiSelect) {
+        return `bb cannot show the field "${field.name}": it offers more than ${USER_QUESTION_MAX_OPTIONS} choices`;
+      }
+      return ask(
+        `One of: ${options.map((option) => option.label).join(", ")}`,
+        { multiSelect: false, allowFreeText: true },
+        true,
+      );
+    }
     case "boolean":
-      return {
-        ...base,
+      return ask(null, {
         multiSelect: false,
         options: [
           { value: "true", label: "Yes" },
           { value: "false", label: "No" },
         ],
         allowFreeText: false,
-      };
-    case "typedChoice":
-    case "text":
+      });
+    case "string":
+      return ask(null, { multiSelect: false, allowFreeText: true });
     case "number":
-      return { ...base, multiSelect: false, allowFreeText: true };
+    case "integer":
+      return ask(
+        field.kind === "integer" ? "Enter a whole number." : "Enter a number.",
+        { multiSelect: false, allowFreeText: true },
+      );
   }
 }
 
-function decodeAnswer(
-  field: AcpElicitationField,
+function matchTypedChoice(field: ChoiceField, typed: string): string | null {
+  const wanted = typed.toLowerCase();
+  return (
+    field.options.find(
+      (option) =>
+        option.value.toLowerCase() === wanted ||
+        option.label.toLowerCase() === wanted,
+    )?.value ?? null
+  );
+}
+
+function contentFor(
+  planned: PlannedQuestion,
   answer: PendingInteractionUserAnswer | undefined,
-): { value: unknown } | null {
-  if (!answer) {
-    return null;
-  }
-  const typed = answer.freeText?.trim();
+): Record<string, FormValue> {
+  const { field, other } = planned;
+  const selected = answer?.selected ?? [];
+  const typed = answer?.freeText?.trim() || null;
+  const content: Record<string, FormValue> = {};
   switch (field.kind) {
-    case "choice": {
-      const selected = answer.selected[0];
-      return field.choices.some((choice) => choice.value === selected)
-        ? { value: selected }
-        : null;
-    }
-    case "multiChoice": {
-      const allowed = new Set(field.choices.map((choice) => choice.value));
-      return answer.selected.every((value) => allowed.has(value))
-        ? { value: [...answer.selected] }
-        : null;
-    }
-    case "boolean": {
-      const selected = answer.selected[0];
-      return selected === "true" || selected === "false"
-        ? { value: selected === "true" }
-        : null;
-    }
-    case "typedChoice": {
-      if (!typed) {
-        return null;
+    case "enum": {
+      const matched =
+        selected[0] === undefined && typed !== null && planned.typedChoice
+          ? matchTypedChoice(field, typed)
+          : null;
+      const value =
+        selected[0] ??
+        matched ??
+        (typed === null ? null : other === null ? typed : other.choice);
+      if (value !== null) content[field.name] = value;
+      if (other !== null && typed !== null && matched === null) {
+        content[other.field.name] = typed;
       }
-      const wanted = typed.toLowerCase();
-      const match = field.choices.find(
-        (choice) =>
-          choice.value.toLowerCase() === wanted ||
-          choice.label.toLowerCase() === wanted,
-      );
-      return match ? { value: match.value } : null;
+      return content;
     }
-    case "text":
-      return typed ? { value: typed } : null;
-    case "number": {
-      if (!typed) {
-        return null;
+    case "multi_enum": {
+      const values =
+        typed !== null && other?.choice
+          ? [...selected, other.choice]
+          : [...selected];
+      if (values.length > 0) content[field.name] = values;
+      if (typed !== null && other !== null) content[other.field.name] = typed;
+      return content;
+    }
+    case "boolean":
+      if (selected[0] !== undefined) {
+        content[field.name] = selected[0] === "true";
       }
+      return content;
+    case "string":
+      if (typed !== null) content[field.name] = typed;
+      return content;
+    case "number":
+    case "integer": {
+      if (typed === null) return content;
       const parsed = Number(typed);
-      if (!Number.isFinite(parsed)) {
-        return null;
-      }
-      return field.integer && !Number.isInteger(parsed)
-        ? null
-        : { value: parsed };
+      content[field.name] = Number.isFinite(parsed) ? parsed : typed;
+      return content;
     }
   }
 }
@@ -236,6 +234,7 @@ function planConfirmation(message: string | undefined): AcpElicitationPlan {
           { value: CONFIRM_DECLINE_VALUE, label: "Decline" },
         ],
         allowFreeText: false,
+        required: true,
       },
     ],
   };
@@ -251,6 +250,18 @@ function planConfirmation(message: string | undefined): AcpElicitationPlan {
   };
 }
 
+function unreadableFormReason(error: unknown): string {
+  if (error instanceof ZodError) {
+    const [scope, name] = error.issues[0]?.path ?? [];
+    return scope === "properties" && typeof name === "string"
+      ? `bb cannot show the field "${name}"`
+      : "bb cannot read the form's schema";
+  }
+  return error instanceof Error
+    ? `the form is invalid: ${error.message.replace(/\.$/u, "")}`
+    : "bb cannot read the form's schema";
+}
+
 export function planAcpElicitation(params: unknown): AcpElicitationPlan {
   if (!isJsonObject(params)) {
     return { kind: "unsupported", reason: "the request was malformed" };
@@ -263,38 +274,49 @@ export function planAcpElicitation(params: unknown): AcpElicitationPlan {
     };
   }
   const message = readString(params, "message")?.trim() || undefined;
-  const schema = params["requestedSchema"];
-  const properties = isJsonObject(schema) ? schema["properties"] : undefined;
-  const entries = isJsonObject(properties) ? Object.entries(properties) : [];
-  if (entries.length === 0) {
+  if (params["requestedSchema"] === undefined) {
     return planConfirmation(message);
   }
-  if (entries.length > USER_QUESTION_MAX_QUESTIONS) {
+  let fields: ElicitationFormField[];
+  try {
+    fields = normalizeElicitationForm(params["requestedSchema"]);
+  } catch (error) {
+    return { kind: "unsupported", reason: unreadableFormReason(error) };
+  }
+  if (fields.length === 0) {
+    return planConfirmation(message);
+  }
+
+  const fieldsByName = new Map(fields.map((field) => [field.name, field]));
+  const companions = new Map<string, OtherCompanion>();
+  const foldedNames = new Set<string>();
+  for (const field of fields) {
+    if (field.kind !== "enum" && field.kind !== "multi_enum") continue;
+    const other = otherCompanionFor(field, fieldsByName);
+    if (other !== null && !foldedNames.has(other.field.name)) {
+      companions.set(field.name, other);
+      foldedNames.add(other.field.name);
+    }
+  }
+  const shown = fields.filter((field) => !foldedNames.has(field.name));
+  if (shown.length > USER_QUESTION_MAX_QUESTIONS) {
     return {
       kind: "unsupported",
-      reason: `the form has ${entries.length} fields and bb shows at most ${USER_QUESTION_MAX_QUESTIONS}`,
+      reason: `bb shows at most ${USER_QUESTION_MAX_QUESTIONS} questions; this form has ${shown.length}`,
     };
   }
 
-  const planned: PlannedField[] = [];
-  for (const [name, fieldSchema] of entries) {
-    const field = isJsonObject(fieldSchema) ? planField(fieldSchema) : null;
-    if (name.trim() === "" || !isJsonObject(fieldSchema) || !field) {
-      return {
-        kind: "unsupported",
-        reason: `bb cannot show the field "${name}"`,
-      };
-    }
-    planned.push({
-      name,
+  const planned: PlannedQuestion[] = [];
+  for (const field of shown) {
+    const entry = planQuestion(
       field,
-      question: questionFor(
-        name,
-        fieldSchema,
-        field,
-        planned.length === 0 ? message : undefined,
-      ),
-    });
+      companions.get(field.name) ?? null,
+      planned.length === 0 ? message : undefined,
+    );
+    if (typeof entry === "string") {
+      return { kind: "unsupported", reason: entry };
+    }
+    planned.push(entry);
   }
 
   const payload = userQuestionPendingInteractionPayloadSchema.safeParse({
@@ -308,18 +330,17 @@ export function planAcpElicitation(params: unknown): AcpElicitationPlan {
     kind: "questions",
     payload: payload.data,
     toResponse(resolution) {
-      const content: Record<string, unknown> = {};
+      const content: Record<string, FormValue> = {};
       for (const entry of planned) {
-        const decoded = decodeAnswer(
-          entry.field,
-          resolution.answers[entry.name],
+        Object.assign(
+          content,
+          contentFor(entry, resolution.answers[entry.field.name]),
         );
-        if (!decoded) {
-          return { action: "decline" };
-        }
-        content[entry.name] = decoded.value;
       }
-      return { action: "accept", content };
+      const validated = validateElicitationFormContent(fields, content);
+      return validated.success
+        ? { action: "accept", content: validated.data }
+        : { action: "decline" };
     },
   };
 }
