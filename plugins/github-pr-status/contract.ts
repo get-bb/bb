@@ -226,27 +226,18 @@ export const githubPrStatusRpcContract = defineRpcContract({
       "Re-check the environment's pull request on GitHub now, whatever the age of the saved row, and resolve once the row is current.",
     input: environmentActionInputSchema,
     output: z.object({ ok: z.literal(true) }).strict(),
-    invalidates: ({ environmentId }) => [
-      environmentPullRequestTag(environmentId),
-    ],
   },
   markReady: {
     experimental_description:
       "Mark the environment's draft pull request ready for review.",
     input: environmentActionInputSchema,
     output: actionOutputSchema,
-    invalidates: ({ environmentId }) => [
-      environmentPullRequestTag(environmentId),
-    ],
   },
   markDraft: {
     experimental_description:
       "Convert the environment's open pull request back to a draft.",
     input: environmentActionInputSchema,
     output: actionOutputSchema,
-    invalidates: ({ environmentId }) => [
-      environmentPullRequestTag(environmentId),
-    ],
   },
   merge: {
     experimental_description:
@@ -255,9 +246,6 @@ export const githubPrStatusRpcContract = defineRpcContract({
       .extend({ method: pullRequestMergeMethodSchema })
       .strict(),
     output: actionOutputSchema,
-    invalidates: ({ environmentId }) => [
-      environmentPullRequestTag(environmentId),
-    ],
   },
 });
 

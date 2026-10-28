@@ -109,7 +109,6 @@ it.each(["success", "write-failure", "read-failure", "refusal"] as const)(
       save: {
         input: z.number(),
         output: z.number(),
-        invalidates: () => ["row:a"],
       },
     });
     let release!: () => void;
@@ -118,11 +117,6 @@ it.each(["success", "write-failure", "read-failure", "refusal"] as const)(
     });
     let server = 1;
     let offline = false;
-    let holdReads = false;
-    let releaseReads!: () => void;
-    const reads = new Promise<void>((resolve) => {
-      releaseReads = resolve;
-    });
     const seen: number[] = [];
     function Reader({ name }: { name: string }) {
       const detail = experimental_useRpcQuery({
@@ -189,12 +183,10 @@ it.each(["success", "write-failure", "read-failure", "refusal"] as const)(
         experimental_rpcContract: contract,
         rpc: {
           detail: async () => {
-            if (holdReads) await reads;
             if (offline) throw new Error("read offline");
             return server;
           },
           rows: async ({ keys }) => {
-            if (holdReads) await reads;
             if (offline) throw new Error("read offline");
             return Object.fromEntries(keys.map((key) => [key, server]));
           },
@@ -207,7 +199,6 @@ it.each(["success", "write-failure", "read-failure", "refusal"] as const)(
                 message: "Changed elsewhere",
               });
             server = 3;
-            holdReads = outcome === "success";
             offline = outcome === "read-failure";
             return server;
           },
@@ -221,19 +212,14 @@ it.each(["success", "write-failure", "read-failure", "refusal"] as const)(
     expect(slot.getByText("two:2/2")).toBeTruthy();
     await slot.experimental_invalidateRpc(["row:a"]);
     expect(slot.getByText("one:2/2")).toBeTruthy();
-    if (outcome === "read-failure") vi.useFakeTimers();
     await act(async () => {
       release();
-      if (outcome === "read-failure") await vi.advanceTimersByTimeAsync(10_000);
     });
-    vi.useRealTimers();
     if (outcome === "success") {
       await slot.findByText("acknowledged:idle:0");
       expect(slot.getByText("one:2/2")).toBeTruthy();
       expect(slot.getByText("two:2/2")).toBeTruthy();
-      await act(async () => {
-        releaseReads();
-      });
+      await slot.experimental_invalidateRpc(["row:a"]);
       await slot.findByText("one:3/3");
       expect(seen.every((value) => value === 2 || value === 3)).toBe(true);
       expect(slot.getByText("two:3/3")).toBeTruthy();
@@ -248,6 +234,8 @@ it.each(["success", "write-failure", "read-failure", "refusal"] as const)(
       expect(slot.getByText("one:1/1")).toBeTruthy();
       expect(slot.getByText("two:1/1")).toBeTruthy();
     } else {
+      await slot.findByText("acknowledged:idle:0");
+      await slot.experimental_invalidateRpc(["row:a"]);
       await slot.findByText("read offline", {}, { timeout: 10_000 });
       expect(slot.getByText("one:2/2")).toBeTruthy();
       expect(slot.getByText("two:2/2")).toBeTruthy();

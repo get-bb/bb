@@ -396,8 +396,10 @@ All live hooks take `{ contract, method, ... }` and infer their types without
 explicit generic arguments. Plain queries add `input`; mutations add optional
 `optimistic`. Use `experimental_useRpcKeyedQuery({ contract, method, keys, select? })` for
 contract-inferred rows and selection results. Keyed methods accept `{ keys }`
-and return a record containing every requested key. Tags are plain strings;
-reads and writes use matching strings to declare their dependencies.
+and return a record containing every requested key. Tags are plain strings:
+reads declare them, and the server marks them stale with
+`bb.rpc.experimental_invalidate` where the data changes (see "Tags and
+invalidation" below).
 
 `data` retains the last successful value and optimistic predictions during
 refreshes and refresh errors. Plain reads start undefined; keyed selections
@@ -423,3 +425,42 @@ Its `code` is required; use a fallback when switching because error codes may
 grow. Unknown server codes become `unknown_error` with the original `serverCode`.
 Client failures use `transport_error` or `invalid_response`. The CLI preserves
 unrecognized codes in text and JSON output.
+
+## Tags and invalidation
+
+A read declares what it depends on with `tags(input, output)`, or
+`keyTags(key, value)` for each row of a keyed read. Writes declare nothing.
+Call `bb.rpc.experimental_invalidate(tags)` in the server code that changes
+the data, after the change, so a write from the app, the CLI, an agent tool
+or background work refreshes every matching read in every client once.
+`bb.rpc.experimental_invalidateAll()` refreshes all of the plugin's reads,
+including untagged ones.
+
+```ts
+const rpcContract = defineRpcContract({
+  item: {
+    input: z.object({ id: z.string() }).strict(),
+    output: itemSchema,
+    tags: ({ id }) => [`item:${id}`],
+  },
+  rename: {
+    input: z.object({ id: z.string(), title: z.string() }).strict(),
+    output: itemSchema,
+  },
+});
+
+async function rename(bb: BbPluginApi, id: string, title: string) {
+  const item = await saveTitle(id, title);
+  bb.rpc.experimental_invalidate([`item:${id}`]);
+  return item;
+}
+```
+
+Register `rename` as the RPC handler and call the same function from the CLI
+command and agent tool. When core already reports the change, invalidate from
+that event instead, as the Git plugin does for Viewed marks on
+`environment:changed`; invalidating in both places refreshes twice.
+
+Contract `invalidates(input, output)` is retired. It fired only when the write
+came through that RPC method. Existing plugins keep working, and
+`bb plugin build` warns with this replacement.

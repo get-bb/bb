@@ -3716,14 +3716,14 @@ field introduces no separate backend or headless side effect.
 - `ExperimentalRpcMutationState.pendingInputs` contains every in-flight input for that hook instance until the server acknowledges its write. Background rereads are excluded. `isPending` remains true while any input is pending. Core `useTaggedMutation` exposes the same state from TanStack's mutation cache. Stabilization requires hook-instance isolation, concurrent targets, failure cleanup, and pending feedback surviving row moves between groups.
 - `ExperimentalRpcMutationOptions.optimistic(input, cache)` predicts loaded cached values before the write. `cache.update(method, input, updater)` targets a plain read, and `cache.updateKey(method, key, updater)` targets one keyed row. `cache` is an `ExperimentalRpcOptimisticCache`. Pure updaters receive the currently visible value and return its prediction. An absent plain read is skipped; a keyed row that loads while the write is pending shows the prediction. Predictions are shared by every reader on that client. The core route mutation accepts the same core optimistic descriptors and uses the same `@bb/query-tags` implementation. Ui-preferences already updates its shared Jotai atoms optimistically, which remains unchanged.
 - Predictions remain over incoming reads until confirmed matched reads arrive, independently of mutation pending state. A rejected write rolls back its layer and surfaces the mutation error. An accepted write whose refresh fails keeps its prediction with the read error and Retry; a successful refresh replaces it. Later predictions and confirmed values are protected from older mutation settles and rollbacks. Inverted completion retains the later confirmed value until a subsequent fresh read can replace it. Keyed rows live in the `@bb/query-tags` keyed store: a row prediction is never written into the stored row, and an accepted one stays until a read of that row that started after acceptance replaces it. Stabilization includes overlapping writes, external invalidation, refresh failures, plain/keyed targets and completion without stale flicker.
-- `defineRpcContract` accepts the core `ContractTagDeclarations`: `tags(input, output)`, `keyTags(key, value)`, and `invalidates(input, output)` receive validated values. Tags are in the RPC envelope; successful writes broadcast their invalidated tags and return `invalidated`. Tagged mutations resolve at write acknowledgement while matching active reads refresh in the background.
+- `defineRpcContract` accepts `tags(input, output)` and `keyTags(key, value)` from the core `ContractTagDeclarations`; both receive validated values, and the tags travel in the RPC envelope. Writes declare nothing: the server calls `bb.rpc.experimental_invalidate` where the data changes, so a write from the app, the CLI, an agent tool or background work refreshes matching reads once. Tagged mutations resolve at write acknowledgement while matching active reads refresh in the background. Contract `invalidates` is retired (see its Retired entry).
 - `bb.rpc.experimental_invalidate(tags)` requires nonempty tags; `experimental_invalidateAll()` refreshes all reads of that plugin, including untagged reads. Load, reload, disable and reconnect refresh plugin reads through the same cache path. Plugin changed messages are scoped to `{ kind: "plugin", pluginId }` subscribers; reconnect batches subscriptions and unknown targets are ignored.
 - Core uses the same tagged reads, invalidation and mutation implementation for UI preferences. Core keeps each thread once, in the same `@bb/query-tags` keyed store as plugin keyed rows, and derives thread detail, every thread list, search and sidebar navigation from it as keyed views. Every core thread write (pin and unpin through one batcher, read state, rename, section and parent moves, archive, unarchive, delete, stop, send status, environment rename) predicts on the entity with `optimisticKeyedUpdate` through `beginOptimisticMutation`, the path `cache.updateKey` uses, and confirms at the server's acknowledgement. One contract table (`@bb/query-tags/testing`) runs against core thread entities and plugin keyed rows; the pin hooks add `useTaggedMutation` with `meta.errorMessage` for core's error toast. Push-notifications thread levels are the first plugin caller; delivery retains `useRealtime`. The GitHub PR Status plugin's composer segment and Info row call `experimental_useRpcKeyedQuery` and `experimental_useRpcMutation` from their own slots. The retired sidebar pull request member calls the keyed read with an explicit `pluginId: "bb--github-pr-status"` outside any plugin slot, the call another plugin makes; the hooks require `pluginId` only when no plugin slot provides one. Stabilization requires additional plugin callers and validation of scoped tags, failures, reconnects, batching and sidebar observer counts. Cache seeding remains outside this API.
 
 ## Typed RPC refusals (`experimental_PluginRpcRefusal`)
 
 - Handlers throw `new experimental_PluginRpcRefusal({ code, message, issues? })` from `@get-bb/plugin-sdk`. Codes map to HTTP statuses: `forbidden` 403, `not_found` 404, `conflict` 409, `invalid` 422. Issues use `PluginRpcValidationIssue[]`. The existing `{ ok: false, error: { code, message, issues? } }` envelope carries the refusal to app hooks, SDK calls and CLI errors.
-- Refusals count as invocations, but do not increment handler errors or change plugin status detail. Ordinary throws remain `handler_error` / 500. Refused writes publish no invalidations and reject so shared optimistic updates roll back.
+- Refusals count as invocations, but do not increment handler errors or change plugin status detail. Ordinary throws remain `handler_error` / 500. Refused writes reject so shared optimistic updates roll back.
 - Core caller: bb-account's connect-only credential RPC handlers use the same runtime, HTTP route and caller contract as third-party plugins. The fake host and `renderSlot` accept the same thrown refusal.
 - Stabilize after validating caller-gated refusals and optional issue propagation across HTTP, app queries/mutations, SDK watches and CLI, including rollback and crash accounting. Watching is added by the next stack PR; its `onError` receives the SDK error carrying the refusal code.
 
@@ -3785,6 +3785,41 @@ server writes it to the plugin's log when it builds the plugin. Callers are
 marketplace plugins written against the old SDK: 105 plugins in the
 October 2026 marketplace scan (account-pool-balanced, advisor, agent-graph, agent-reload, agent-roles, app-preview, asciimoji, auto-compact, autoresearch, backlog, bookmarks, bots-sidebar, branch-pr, browser-copy, burn, calm, chief, claude-account-switcher, claude-design, claude-switcher, code-review, copilot-aic-usage, crew, delegation, desktop, diff-explorer, diff-review, diff-tree, dockside, ds4, fast-archive, file-explorer, file-gateway, file-tree, finder, firstmate, floating-notes, follow-thinking, followups, game-studio, genui, git-history, gitbutler, gtd-sidebar, hands-free, harness, herald, hmm-floating-terminal, ios-simulator, jb-flow, kata, kitchen-sink, linear, loom, model-connections, new-issue, office-viewer, omp-subagents, oxi-projects, pi-services, plan-tab, plannotator, pokecut-theme, pokemon-catcher, presentations, productive, project-colors, project-files, project-folders, recap, references, retitle, rewind, run-commands, saved-prompts, session-log, sessions-switcher, sidebar, sidebar-focus, slack, stelow, subscriptions, superhuman, t3sidebar, tab-manager, tabs, taskboard, tasks-plus, thread-briefs, thread-inbox, thread-namer, thread-overview, timer, tokenomics, treelanes, triage, ultragoal, vantage, vcs-widget, video-markup, visual-workflows, whiteboard, wikilinks, workbench-explorer, xlsx-preview). Remove the alias, the slot store
 entry and `PluginThreadHeaderActions` only after those plugins have migrated.
+
+## Retired RPC contract `invalidates`
+
+`invalidates(input, output)` on `defineRpcContract` methods is gone from
+`PluginRpcMethodContract` in `@get-bb/plugin-sdk`, the Plugin Guide and the
+authoring docs. It fired only when a write went through that RPC method, so a
+plugin whose CLI commands, agent tools or background work change the same
+data also had to call `bb.rpc.experimental_invalidate` there, and an app-made
+write then refreshed twice. The replacement is that one call, made in the
+server code that changes the data. The first-party callers already did: the
+Git plugin's `markViewed`, `clearViewed` and `setMergeBase` refresh through
+core's `diff-viewed-changed` and `metadata-changed` environment events, the
+GitHub PR Status plugin's `refresh`, `markReady`, `markDraft` and `merge`
+through its pull request store's `publish` when the row changes, and the push
+notification plugin's `threadNotifications.set` through `publishSubtree`, and
+the Workflows plugin's `workflowStopRun` through `service.stop`, which
+`bb workflows stop` shares; their declarations are deleted. The runtime still reads the field:
+`readRpcMethodContract` in `packages/plugin-sdk/src/internal/host-policy.ts`
+keeps it in the method's declarations, `invokeRpcHandler` broadcasts the tags
+after a successful call, and `rpcResponseTags` returns them as `invalidated`
+so the calling client refreshes them, as before. `bb-plugin-build` warns when
+a server source file inside the plugin's own directory declares
+`invalidates` (`retiredRpcInvalidatesWarnings` in
+`packages/plugin-build/src/retired-sdk-members.ts`), with the replacement
+call: `bb plugin build` and `bb plugin dev` print it, and the server writes it
+to the plugin's log when it builds the plugin. Core HTTP routes keep
+`invalidates` on their `defineRoute` descriptors (`@bb/hono-typed-routes`);
+only plugin RPC contracts drop it. Callers are marketplace plugins written
+against the old SDK, from the 2026-10-28 scan of the 364 git repositories and
+14 npm packages behind the community marketplace's 469 entries:
+kalindudc/bb-marketplace's loom (`src/rpc-tags.ts`), shuttle and vantage
+(`src/contract.ts`), and smsunarto/bb-plugins' gtd-sidebar
+(`lib/rpc-contract.ts`) and kitchen-sink. Remove the runtime path and the
+field from `ContractTagDeclarations` consumers in the plugin SDK only after
+those plugins have migrated.
 
 ## Retired `experimental_useSidebarThreadPullRequest` runtime member
 

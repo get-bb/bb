@@ -5066,10 +5066,10 @@ export interface ExperimentalRpcMutationOptions<
 }
 
 /**
- * One mutation hook's state. `mutate` calls the RPC, invalidates the
- * response's `invalidated` tags on this client immediately, and resolves when
- * the server acknowledges the write. Matched reads refresh in the background. `error` holds the last failure
- * until the next `mutate` or `reset`.
+ * One mutation hook's state. `mutate` calls the RPC and resolves when the
+ * server acknowledges the write. Reads refresh in the background when the
+ * server marks their tags stale with `bb.rpc.experimental_invalidate`.
+ * `error` holds the last failure until the next `mutate` or `reset`.
  */
 export interface ExperimentalRpcMutationState<
   Method extends PluginRpcMethodContract,

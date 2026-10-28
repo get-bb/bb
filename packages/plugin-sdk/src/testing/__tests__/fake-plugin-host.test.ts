@@ -655,14 +655,10 @@ describe("rpc", () => {
     });
   });
 
-  it("preserves typed refusals and does not invalidate refused writes", async () => {
+  it("preserves typed refusals", async () => {
     const { bb, harness } = createFakePluginHost();
     const contract = defineRpcContract({
-      save: {
-        input: z.null(),
-        output: z.null(),
-        invalidates: () => ["private"],
-      },
+      save: { input: z.null(), output: z.null() },
     });
     bb.rpc.register(contract, {
       save: () => {
@@ -678,7 +674,6 @@ describe("rpc", () => {
       message: "Private",
       issues: [{ message: "Caller denied" }],
     });
-    expect(harness.experimental_rpcInvalidations).toEqual([]);
   });
 
   it("rejects invalid and duplicate registrations", () => {

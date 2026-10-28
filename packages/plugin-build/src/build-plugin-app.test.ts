@@ -481,6 +481,60 @@ describe("plugin app runtime shim", () => {
     ]);
   });
 
+  it("builds a server whose RPC contract still declares invalidates and warns only for the plugin's own files", async () => {
+    const shared = await mkdtemp(join(tmpdir(), "bb-plugin-shared-routes-"));
+    const dir = await mkdtemp(join(tmpdir(), "bb-plugin-retired-invalidates-"));
+    tempDirs.push(shared, dir);
+    await writeFile(
+      join(shared, "routes.ts"),
+      `export const route = { invalidates: () => ["core"] };\n`,
+    );
+    await writeFile(
+      join(dir, "package.json"),
+      JSON.stringify({
+        name: "bb-plugin-retired-invalidates-fixture",
+        version: "0.0.0",
+        bb: {
+          name: "Retired invalidates",
+          description: "Published API compatibility",
+          branding: { icon: "Info" },
+          server: "./server.ts",
+        },
+      }),
+    );
+    await writeFile(
+      join(dir, "tags.ts"),
+      `export const TAGS = {
+        save: { invalidates: ({ id }: { id: string }) => ["item:" + id] },
+        clear: {
+          invalidates(input: { id: string }): string[] {
+            return ["item:" + input.id];
+          },
+        },
+      };\n`,
+    );
+    await writeFile(
+      join(dir, "server.ts"),
+      `import { TAGS } from "./tags";
+      import { route } from ${JSON.stringify(join(shared, "routes.ts"))};
+      export default function plugin(bb: any) {
+        bb.log.info(JSON.stringify(Object.keys(TAGS)), route);
+      }\n`,
+    );
+    const server = await buildPluginServer(
+      dir,
+      "0.9.0-test",
+      await testToolchain(),
+    );
+
+    expect(await readFile(server.jsPath, "utf8")).toContain("invalidates");
+    expect(server.migrationWarnings).toEqual([
+      expect.stringMatching(
+        /\/tags\.ts: invalidates on RPC contract methods is retired .*bb\.rpc\.experimental_invalidate\(tags\)/u,
+      ),
+    ]);
+  });
+
   it("records in app.meta.json the runtime slots the bundle imports", async () => {
     const dir = await mkdtemp(join(tmpdir(), "bb-plugin-runtime-slots-"));
     tempDirs.push(dir);

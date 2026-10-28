@@ -351,6 +351,7 @@ export async function buildPluginServer(
     migrationWarnings = await retiredSdkMemberWarningsForInputs(
       bundle.metafile,
       process.cwd(),
+      sourceRoot,
     );
     await writeFile(
       stagedMetaPath,

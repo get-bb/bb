@@ -78,7 +78,6 @@ export const workflowUiRpcContract = defineRpcContract({
     output: z.object({ run: workflowRunViewSchema.nullable() }).strict(),
   },
   workflowStopRun: {
-    invalidates: ({ threadId }) => [`runs:${threadId}`],
     input: z
       .object({
         threadId: z.string().trim().min(1),

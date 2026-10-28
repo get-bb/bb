@@ -104,7 +104,6 @@ export const pushNotificationsRpcContract = defineRpcContract({
     keyTags: (key) => [`thread:${key}`],
   },
   "threadNotifications.set": {
-    invalidates: ({ threadId }) => [`thread:${threadId}`],
     input: z
       .object({
         threadId: z.string().min(1),

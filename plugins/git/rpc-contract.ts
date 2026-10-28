@@ -152,7 +152,6 @@ export const gitRpcContract = defineRpcContract({
       })
       .strict(),
     output: z.object({ ok: z.literal(true) }).strict(),
-    invalidates: ({ environmentId }) => [gitViewedTag(environmentId)],
   },
   clearViewed: {
     experimental_description:
@@ -164,7 +163,6 @@ export const gitRpcContract = defineRpcContract({
       })
       .strict(),
     output: z.object({ ok: z.literal(true) }).strict(),
-    invalidates: ({ environmentId }) => [gitViewedTag(environmentId)],
   },
   setMergeBase: {
     experimental_description:
@@ -187,7 +185,6 @@ export const gitRpcContract = defineRpcContract({
         })
         .strict(),
     ]),
-    invalidates: ({ environmentId }) => [gitStatusTag(environmentId)],
   },
   refresh: {
     experimental_description:
