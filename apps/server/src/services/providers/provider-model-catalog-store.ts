@@ -38,8 +38,7 @@ import {
 
 export const PROVIDER_MODEL_CATALOG_PUSH_COALESCE_MS = 250;
 export const PROVIDER_MODEL_CATALOG_MEMORY_ENTRY_LIMIT = 256;
-const FRESH_MS = 10 * 60_000;
-const VALIDATION_MIN_AGE_MS = 60_000;
+const FRESH_MS = 60_000;
 const FAILURE_TTL_MS = 30_000;
 const FAILURE_DETAIL_MAX_LENGTH = 300;
 const PREWARM_MIN_AGE_MS = 4 * 60 * 60_000;
@@ -254,12 +253,10 @@ function evaluate(
   const { failure, servable } = currentState(entry, fingerprint);
   const active = failure !== null && now - failure.failedAt < FAILURE_TTL_MS;
   if (servable !== null) {
-    const age = now - servable.fetchedAt;
+    const stale = !refreshed && !active && now - servable.fetchedAt >= FRESH_MS;
     if (
+      stale &&
       access.kind === "validation" &&
-      !refreshed &&
-      !active &&
-      age >= VALIDATION_MIN_AGE_MS &&
       lacksRequiredModel(servable, access.requiredModel)
     ) {
       return { kind: "wait" };
@@ -271,7 +268,7 @@ function evaluate(
         models: servable.models,
         selectedOnlyModels: servable.selectedOnlyModels,
       },
-      backgroundRefresh: !refreshed && !active && age >= FRESH_MS,
+      backgroundRefresh: stale,
     };
   }
   if (refreshed) {

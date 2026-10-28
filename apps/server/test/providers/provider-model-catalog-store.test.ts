@@ -194,7 +194,7 @@ describe("provider model catalog store", () => {
       await host.read("codex");
       const held = createDeferredPromise<HostRpcHandlerResult>();
       host.setAnswer(() => held.promise);
-      host.clock.now += 10 * MINUTE;
+      host.clock.now += MINUTE;
       await host.read("codex");
       await vi.waitFor(() => expect(host.listRequests()).toHaveLength(2));
       await host.store.remember(harness.deps, {
@@ -349,7 +349,11 @@ describe("provider model catalog store", () => {
       const pushes = capturePushes(harness);
       const held = createDeferredPromise<HostRpcHandlerResult>();
 
-      host.clock.now += 10 * MINUTE;
+      host.clock.now += MINUTE - 1;
+      await host.read("claude-code");
+      expect(host.listRequests()).toHaveLength(1);
+
+      host.clock.now += 1;
       host.setAnswer(() => held.promise);
       const [first, second] = await Promise.all([
         host.read("claude-code"),
@@ -367,7 +371,7 @@ describe("provider model catalog store", () => {
       await settleTimers();
       expect(pushes).toEqual([host.hostId]);
 
-      host.clock.now += 10 * MINUTE;
+      host.clock.now += MINUTE;
       host.setAnswer(() => catalogAnswer(modelList("claude-next")));
       await host.read("claude-code");
       await vi.waitFor(() => {
@@ -450,7 +454,7 @@ describe("provider model catalog store", () => {
           host.setAnswer(() => answer);
         }
 
-        host.clock.now += 10 * MINUTE;
+        host.clock.now += MINUTE;
         await host.read("claude-code");
         await vi.waitFor(() => {
           expect(logLines(SETTLED)).toHaveLength(2);
@@ -506,7 +510,7 @@ describe("provider model catalog store", () => {
       expect(host.listRequests("codex")).toHaveLength(2);
       held.resolve(errorAnswer("command_timeout"));
 
-      host.clock.now += 10 * MINUTE;
+      host.clock.now += MINUTE;
       codexAnswer = () => errorAnswer("auth_required");
       expect(modelIds(await host.read("codex"))).toEqual(["gpt-ready"]);
       await vi.waitFor(() => {

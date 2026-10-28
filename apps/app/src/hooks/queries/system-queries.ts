@@ -425,23 +425,28 @@ function systemExecutionOptionsQueryOptions({
 
 export function prefetchSystemExecutionOptions(
   queryClient: QueryClient,
-  args: { routing: SystemProvidersQuery; providerIds: readonly string[] },
+  args: { routing: SystemProvidersQuery; providerId: string },
 ): void {
-  for (const providerId of args.providerIds) {
-    void queryClient.prefetchQuery(
-      systemExecutionOptionsQueryOptions({
-        environmentId: args.routing.environmentId ?? null,
-        hostId: args.routing.hostId ?? null,
-        providerId,
-        projectId: null,
-        writeLastKnown: false,
-      }),
-    );
-  }
+  void queryClient.prefetchQuery(
+    systemExecutionOptionsQueryOptions({
+      environmentId: args.routing.environmentId ?? null,
+      hostId: args.routing.hostId ?? null,
+      providerId: args.providerId,
+      projectId: null,
+      writeLastKnown: false,
+    }),
+  );
 }
 
 export function liveSystemExecutionOptionsQueryOptions(
   args: UseSystemExecutionOptionsArgs = {},
+) {
+  return executionOptionsWithPlaceholderQueryOptions(args, true);
+}
+
+function executionOptionsWithPlaceholderQueryOptions(
+  args: UseSystemExecutionOptionsArgs,
+  writeLastKnown: boolean,
 ) {
   const environmentId = args.environmentId ?? null;
   const hostId = args.hostId ?? null;
@@ -465,7 +470,7 @@ export function liveSystemExecutionOptionsQueryOptions(
       hostId,
       providerId,
       projectId,
-      writeLastKnown: true,
+      writeLastKnown,
     }),
     enabled: args.enabled ?? true,
     placeholderData: (previousData, previousQuery) =>
@@ -489,6 +494,15 @@ export function useSystemExecutionOptions(
   useSystemRealtimeSubscription({ enabled });
   useHostListRealtimeSubscription({ enabled });
   return useQuery(liveSystemExecutionOptionsQueryOptions(args));
+}
+
+export function useProviderPreviewExecutionOptions(
+  args: UseSystemExecutionOptionsArgs,
+) {
+  const enabled = args.enabled ?? true;
+  useSystemRealtimeSubscription({ enabled });
+  useHostListRealtimeSubscription({ enabled });
+  return useQuery(executionOptionsWithPlaceholderQueryOptions(args, false));
 }
 
 export function systemConfigQueryOptions() {
