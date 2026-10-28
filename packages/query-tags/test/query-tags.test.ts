@@ -547,6 +547,33 @@ it("loads new subscribers without rereading other rows during a keyed invalidati
   });
 });
 
+it("loads a key subscribed after a keyless read has taken its keys", async () => {
+  const client = setup();
+  const read = vi.fn(async (keys: readonly string[]) => ({
+    result: Object.fromEntries(keys.map((key) => [key, 1])),
+    tags: [],
+    keyTags: {},
+  }));
+  const owner = createTaggedKeyedQueryOwner({
+    client,
+    queryKey: ["late-key"],
+    scope: CORE_TAG_SCOPE,
+    collection,
+    read,
+  });
+  disposers.push(owner.subscribe([], () => {}));
+  await new Promise<void>((resolve) =>
+    queueMicrotask(() => {
+      disposers.push(owner.subscribe(["a"], () => {}));
+      resolve();
+    }),
+  );
+  await vi.waitFor(() =>
+    expect(owner.observer.getCurrentResult().data?.result).toEqual({ a: 1 }),
+  );
+  expect(read.mock.calls.map(([keys]) => keys)).toEqual([["a"]]);
+});
+
 describe("optimistic tagged mutations", () => {
   const outcome = () => ({ result: "saved", invalidated: ["item:a"] });
   function prediction(client: QueryClient, value: number) {

@@ -379,9 +379,13 @@ export function createTaggedKeyedQueryOwner<Value>(options: {
   let missingOnly = false;
   let refreshAll = false;
   const dirtyKeys = new Set<string>();
-  const collectSubscribedKeys = () =>
+  const takeSubscribedKeys = (take: (subscribed: string[]) => string[]) =>
     new Promise<string[]>((resolve) => {
-      queueMicrotask(() => resolve([...keys.keys()]));
+      queueMicrotask(() => {
+        readingKeys = new Set(take([...keys.keys()]));
+        collecting = false;
+        resolve([...readingKeys]);
+      });
     });
   const observer = new QueryObserver<KeyedData<Value>>(client, {
     queryKey,
@@ -414,27 +418,28 @@ export function createTaggedKeyedQueryOwner<Value>(options: {
       let refreshedAll = false;
       return runTaggedRead(client, queryKey, async () => {
         collecting = true;
-        const subscribed = await collectSubscribedKeys();
-        collecting = false;
-        const all = refreshAll || refresh;
-        refresh = false;
-        const dirty = new Set(dirtyKeys);
-        refreshedAll ||= all;
-        if (all)
-          for (const key of Object.keys(previous?.result ?? {}))
-            dirtyKeys.add(key);
-        refreshAll = false;
-        const requested = subscribed.filter(
-          (key) =>
-            all ||
-            dirty.has(key) ||
-            !Object.hasOwn(previous?.result ?? {}, key),
-        );
-        for (const key of requested) {
-          refreshedKeys.add(key);
-          dirtyKeys.delete(key);
-        }
-        readingKeys = new Set(requested);
+        let all = false;
+        const requested = await takeSubscribedKeys((subscribed) => {
+          all = refreshAll || refresh;
+          refresh = false;
+          const dirty = new Set(dirtyKeys);
+          refreshedAll ||= all;
+          if (all)
+            for (const key of Object.keys(previous?.result ?? {}))
+              dirtyKeys.add(key);
+          refreshAll = false;
+          const taken = subscribed.filter(
+            (key) =>
+              all ||
+              dirty.has(key) ||
+              !Object.hasOwn(previous?.result ?? {}, key),
+          );
+          for (const key of taken) {
+            refreshedKeys.add(key);
+            dirtyKeys.delete(key);
+          }
+          return taken;
+        });
         const started = tick();
         try {
           const results = await Promise.all(
@@ -525,10 +530,7 @@ export function createTaggedKeyedQueryOwner<Value>(options: {
       }
       if (added && pending.length > 0) {
         if (observer.getCurrentResult().isFetching) {
-          if (
-            readingKeys.size > 0 &&
-            pending.some((key) => !readingKeys.has(key))
-          )
+          if (!collecting && pending.some((key) => !readingKeys.has(key)))
             restartTaggedRead(observer.getCurrentQuery());
         } else {
           missingOnly = true;
