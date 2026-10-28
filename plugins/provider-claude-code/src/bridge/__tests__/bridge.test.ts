@@ -120,6 +120,7 @@ interface ClaudeQueryCallOptions {
   sandbox?: BridgeSessionOptions["sandbox"];
   settings?: BridgeSessionOptions["settings"];
   sessionId?: string;
+  disallowedTools?: string[];
   settingSources?: string[];
   stderr?: (data: string) => void;
 }
@@ -4587,7 +4588,7 @@ describe("bridge", () => {
     }
   });
 
-  it("applies turn model, reasoning, memory, workflow, and subagent settings live", async () => {
+  it("applies turn model, reasoning, memory, and workflow settings live", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];
     queryMock.mockImplementation(() => {
@@ -4642,7 +4643,7 @@ describe("bridge", () => {
           providerOptions: {
             workflowsEnabled: true,
             memoryEnabled: false,
-            providerSubagentsEnabled: false,
+            providerSubagentsEnabled: true,
           },
         },
       });
@@ -4660,29 +4661,6 @@ describe("bridge", () => {
         fastMode: true,
       });
 
-      for (const toolName of ["Agent", "Task"]) {
-        const toolUseId = `tool-disabled-${toolName.toLowerCase()}`;
-        const disabledSubagentOutputs = await invokeBridgeHooks(
-          hooks.PreToolUse,
-          {
-            hook_event_name: "PreToolUse",
-            tool_name: toolName,
-            tool_input: {},
-            tool_use_id: toolUseId,
-            session_id: "session-1",
-            transcript_path: "/tmp/transcript.jsonl",
-            cwd: "/tmp/worktree",
-          },
-          toolUseId,
-        );
-        expect(disabledSubagentOutputs).toContainEqual(
-          expect.objectContaining({
-            hookSpecificOutput: expect.objectContaining({
-              permissionDecision: "deny",
-            }),
-          }),
-        );
-      }
       const enabledWorkflowOutputs = await invokeBridgeHooks(
         hooks.PreToolUse,
         {
@@ -4735,26 +4713,6 @@ describe("bridge", () => {
         ultracode: false,
         fastMode: false,
       });
-      const enabledSubagentOutputs = await invokeBridgeHooks(
-        hooks.PreToolUse,
-        {
-          hook_event_name: "PreToolUse",
-          tool_name: "Agent",
-          tool_input: {},
-          tool_use_id: "tool-enabled-agent",
-          session_id: "session-1",
-          transcript_path: "/tmp/transcript.jsonl",
-          cwd: "/tmp/worktree",
-        },
-        "tool-enabled-agent",
-      );
-      expect(enabledSubagentOutputs).not.toContainEqual(
-        expect.objectContaining({
-          hookSpecificOutput: expect.objectContaining({
-            permissionDecision: "deny",
-          }),
-        }),
-      );
       const disabledWorkflowOutputs = await invokeBridgeHooks(
         hooks.PreToolUse,
         {
@@ -4785,6 +4743,57 @@ describe("bridge", () => {
       await bridge.flushWork();
       query.finish();
       await bridge.waitForResponse(4);
+    } finally {
+      queries.forEach((query) => query.finish());
+      bridge.restore();
+    }
+  });
+
+  it("removes Claude Code's subagent tools when bb disables them and restarts when the setting flips", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+    const options = (providerSubagentsEnabled: boolean) => ({
+      permissionMode: "accept-edits",
+      permissionScope: "workspace",
+      approvalReviewer: "user",
+      permissionEscalation: "ask",
+      instructions: "test",
+      providerOptions: { providerSubagentsEnabled },
+    });
+
+    try {
+      const threadId = "thread-subagents-disabled";
+      bridge.sendRequest(1, "thread/start", {
+        threadId,
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        options: options(false),
+      });
+      await bridge.waitForResponse(1);
+
+      expect(getLatestQueryCall().options.disallowedTools).toEqual([
+        "Agent",
+        "Task",
+      ]);
+
+      bridge.sendRequest(2, "turn/start", {
+        threadId,
+        providerThreadId: threadId,
+        input: [{ type: "text", text: "Subagents are allowed again" }],
+        clientRequestId: "creq_abcdefghjk",
+        options: options(true),
+      });
+      await vi.waitFor(() => expect(queries).toHaveLength(2));
+      await readNextPrompt(getLatestQueryCall());
+      await bridge.waitForResponse(2);
+
+      expect(queries[0]?.close).toHaveBeenCalled();
+      expect(getLatestQueryCall().options.disallowedTools).toBeUndefined();
     } finally {
       queries.forEach((query) => query.finish());
       bridge.restore();
