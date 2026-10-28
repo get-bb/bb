@@ -1149,18 +1149,23 @@ export function ThreadDetailPromptArea({
     if (!hasConcreteDefaultExecutionOptions) {
       return null;
     }
+    const sources = { ...executionInputSources };
+    if (reasoningOptions.length === 0) {
+      delete sources.reasoningLevel;
+    }
     return {
       model: effectiveSelectedModel,
       supportsServiceTier,
       serviceTier,
-      reasoningLevel,
+      reasoningLevel: reasoningOptions.length > 0 ? reasoningLevel : undefined,
       permissionMode,
-      executionInputSources,
+      executionInputSources: sources,
     };
   }, [
     effectiveSelectedModel,
     executionInputSources,
     hasConcreteDefaultExecutionOptions,
+    reasoningOptions,
     permissionMode,
     reasoningLevel,
     serviceTier,
@@ -1177,7 +1182,8 @@ export function ThreadDetailPromptArea({
         execution: {
           providerId: selectedProviderId,
           model: effectiveSelectedModel,
-          reasoningLevel,
+          reasoningLevel:
+            reasoningOptions.length > 0 ? reasoningLevel : undefined,
           serviceTier,
           supportsServiceTier,
           permissionMode,
@@ -1220,6 +1226,7 @@ export function ThreadDetailPromptArea({
       permissionMode,
       promptDraft,
       reasoningLevel,
+      reasoningOptions,
       selectedProviderId,
       serviceTier,
       setBottomAttachmentError,

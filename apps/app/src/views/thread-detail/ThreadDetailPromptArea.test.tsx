@@ -219,6 +219,7 @@ beforeEach(() => {
   });
   mocks.defaultExecutionOptions = null;
   mocks.executionInputSources = {};
+  mocks.unknownReasoning = false;
   mocks.pluginComposerHost = null;
   mocks.composerSubmit = null;
   mocks.composerModifierSubmit = null;
@@ -488,6 +489,30 @@ describe("ThreadDetailPromptArea", () => {
       mocks.composerModifierSubmit?.({ sendAt: 1234567890 }),
     ).rejects.toThrow("There is no new message to schedule or attach data to.");
     expect(mocks.sendQueuedMessageMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("omits reasoning from follow-ups when the selected model's levels are unknown", async () => {
+    mocks.unknownReasoning = true;
+    mocks.executionInputSources = { reasoningLevel: "explicit" };
+    mocks.defaultExecutionOptions = {
+      model: "gpt-5",
+      permissionMode: "auto",
+      reasoningLevel: "medium",
+      serviceTier: "default",
+      source: "client/turn/requested",
+    };
+    mocks.promptDraft.text = "Continue";
+    renderPromptArea();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Capture plugin host" }),
+    );
+    await act(async () => {
+      await mocks.composerSubmit?.();
+    });
+    expect(mocks.sendMessageMutateAsync).toHaveBeenCalledOnce();
+    const request = mocks.sendMessageMutateAsync.mock.calls[0]?.[0];
+    expect(request.reasoningLevel).toBeUndefined();
+    expect(request.executionInputSources.reasoningLevel).toBeUndefined();
   });
 
   it("preserves plugin submission data through a follow-up composer", async () => {
