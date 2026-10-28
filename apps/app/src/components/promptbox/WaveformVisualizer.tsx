@@ -1,5 +1,4 @@
 import { useEffect, useRef } from "react";
-import { usePrefersReducedMotion } from "@bb/shared-ui/hooks/use-media-query";
 import { cn } from "@bb/shared-ui/lib/utils";
 
 interface WaveformVisualizerProps {
@@ -24,7 +23,6 @@ export function WaveformVisualizer({
 }: WaveformVisualizerProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const barsRef = useRef<number[]>([]);
-  const prefersReducedMotion = usePrefersReducedMotion();
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -138,13 +136,9 @@ export function WaveformVisualizer({
         const rms = Math.sqrt(sumSquares / timeData.length);
         const boosted = Math.max(0, rms - NOISE_FLOOR) * AMPLITUDE_GAIN;
         const amp = Math.min(1, boosted ** AMPLITUDE_GAMMA);
-        if (prefersReducedMotion) {
-          barsRef.current = Array.from({ length: barCount }, () => amp);
-        } else {
-          const bars = barsRef.current;
-          bars.push(amp);
-          if (bars.length > barCount) bars.shift();
-        }
+        const bars = barsRef.current;
+        bars.push(amp);
+        if (bars.length > barCount) bars.shift();
         draw();
       }
       frame++;
@@ -162,7 +156,7 @@ export function WaveformVisualizer({
       analysisTrack.stop();
       void audioCtx.close();
     };
-  }, [stream, active, prefersReducedMotion]);
+  }, [stream, active]);
 
   return (
     <canvas

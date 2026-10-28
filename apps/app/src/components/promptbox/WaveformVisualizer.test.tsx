@@ -86,10 +86,9 @@ function setupAudio(reducedMotion: boolean) {
           for (const callback of pending) callback(0);
         }
       });
-      return lineTo.mock.calls.map(([horizontal, bottom], index) => ({
-        horizontal,
-        height: bottom - moveTo.mock.calls[index][1],
-      }));
+      return lineTo.mock.calls.map(
+        ([, bottom], index) => bottom - moveTo.mock.calls[index][1],
+      );
     },
   };
 }
@@ -104,21 +103,11 @@ describe("WaveformVisualizer", () => {
       const quiet = audio.drawSample(128);
       const loud = audio.drawSample(160);
       expect(loud.length).toBeGreaterThan(0);
-      expect(loud[0].height).toBeGreaterThan(quiet[0].height);
+      expect(loud[0]).toBeGreaterThan(quiet[0]);
 
       const silent = audio.drawSample(128);
-      expect(silent[0].height).toBeLessThan(loud[0].height);
-      if (reducedMotion) {
-        expect(loud.every((bar) => bar.height === loud[0].height)).toBe(true);
-        expect(silent.every((bar) => bar.height === silent[0].height)).toBe(
-          true,
-        );
-        expect(loud.map((bar) => bar.horizontal)).toEqual(
-          quiet.map((bar) => bar.horizontal),
-        );
-      } else {
-        expect(silent[1].height).toBe(loud[0].height);
-      }
+      expect(silent[0]).toBeLessThan(loud[0]);
+      expect(silent[1]).toBe(loud[0]);
 
       view.unmount();
       expect(audio.frames.size).toBe(0);
@@ -127,12 +116,9 @@ describe("WaveformVisualizer", () => {
     },
   );
 
-  it.each([false, true])(
-    "keeps inactive input static with reduced motion %s",
-    (reducedMotion) => {
-      const audio = setupAudio(reducedMotion);
-      render(<WaveformVisualizer active={false} stream={audio.stream} />);
-      expect(audio.frames.size).toBe(0);
-    },
-  );
+  it("keeps inactive input static", () => {
+    const audio = setupAudio(false);
+    render(<WaveformVisualizer active={false} stream={audio.stream} />);
+    expect(audio.frames.size).toBe(0);
+  });
 });
