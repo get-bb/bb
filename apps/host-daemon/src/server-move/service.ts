@@ -8,7 +8,6 @@ import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { readBbAppRuntimeFile } from "@bb/config/app-runtime-file";
-import { resolveCodexHome } from "@bb/config/codex-home";
 import { isLoopbackHostname } from "@bb/config/loopback";
 import { createNodeVerifiedProcessOps } from "@bb/config/verified-process-stop";
 import type { ServerMoveStepId } from "@bb/domain";
@@ -353,7 +352,16 @@ export class ServerMoveService {
         ? true
         : this.options.checkPortAvailable(command.port),
       this.options.checkGhAuthenticated(shellEnv),
-      pathExists(join(resolveCodexHome(homeDir, shellEnv), "auth.json")),
+      Promise.all(
+        command.credentialFiles.map((file) => {
+          if (!isAbsolute(file))
+            throw new CommandDispatchError(
+              "invalid_path",
+              "Provider credential paths must be absolute",
+            );
+          return pathExists(file);
+        }),
+      ).then((present) => present.some(Boolean)),
       Promise.all(
         command.paths.map(
           async (path) =>

@@ -75,12 +75,12 @@ function installed(
 
 async function resolve(
   workspace: string | null = cwd,
-  env: Record<string, string | undefined> = {},
+  configDir: string = claudeDir,
 ): Promise<ExperimentalClaudePluginRoots> {
   const roots = await experimental_resolveClaudePluginRoots({
     cwd: workspace,
     homeDir,
-    env,
+    claudeDir: configDir,
   });
   const parsed = experimental_nativeRootsResolveOutputSchema.safeParse({
     skills: roots.skills,
@@ -99,23 +99,12 @@ function commandPaths(roots: ExperimentalVendorPluginRoots): string[] {
 }
 
 describe("experimental_resolveClaudePluginRoots", () => {
-  it("reads the registry from ~/.claude or any CLAUDE_CONFIG_DIR form, and answers nothing without one", async () => {
-    for (const [env, expected] of [
-      [{}, claudeDir],
-      [{ CLAUDE_CONFIG_DIR: "  " }, path.join(homeDir, "  ")],
-      [
-        { CLAUDE_CONFIG_DIR: "custom-claude" },
-        path.join(homeDir, "custom-claude"),
-      ],
-      [{ CLAUDE_CONFIG_DIR: "~/moved" }, path.join(homeDir, "~/moved")],
-      [
-        { CLAUDE_CONFIG_DIR: path.join(tempRoot, "elsewhere", "..", "abs") },
-        path.join(tempRoot, "abs"),
-      ],
-    ] as const) {
-      const roots = await resolve(null, env);
-      expect(roots).toEqual({ claudeDir: expected, skills: [], commands: [] });
-    }
+  it("reads only the provider-selected config directory, and answers nothing without a registry", async () => {
+    expect(await resolve(null)).toEqual({
+      claudeDir,
+      skills: [],
+      commands: [],
+    });
 
     const movedDir = path.join(cwd, "custom-claude");
     const pluginRoot = path.join(homeDir, "moved-plugin");
@@ -133,7 +122,7 @@ describe("experimental_resolveClaudePluginRoots", () => {
     await writePlugin(path.join(claudeDir, "stale"), { name: "stale-plugin" });
     await mkdir(path.join(claudeDir, "stale", "skills"), { recursive: true });
 
-    const roots = await resolve(cwd, { CLAUDE_CONFIG_DIR: "custom-claude" });
+    const roots = await resolve(cwd, movedDir);
     expect(roots.claudeDir).toBe(movedDir);
     expect(roots.skills).toEqual([
       {

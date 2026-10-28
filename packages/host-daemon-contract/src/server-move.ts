@@ -30,6 +30,7 @@ export const serverMoveCommandSchemas = {
   "server_move.inspect": z
     .object({
       type: z.literal("server_move.inspect"),
+      credentialFiles: z.array(z.string().min(1)).max(32),
       paths: z.array(z.string().min(1)).max(200),
       port: portSchema,
     })

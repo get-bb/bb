@@ -652,6 +652,13 @@
       "dependsOn": ["//#ensure-native-modules", "topo"],
       "inputs": [
         "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/plugins/provider-pi/src/**",
+        "$TURBO_ROOT$/plugins/provider-acp/src/**",
+        "$TURBO_ROOT$/packages/provider-bridge-acp/src/**",
+        "$TURBO_ROOT$/apps/host-daemon/src/**",
+        "$TURBO_ROOT$/apps/server/src/**",
+        "$TURBO_ROOT$/packages/config/src/**",
+        "$TURBO_ROOT$/packages/process-utils/src/**",
         "$TURBO_ROOT$/vitest*.ts",
         "$TURBO_ROOT$/plugins/provider-codex/src/**",
         "$TURBO_ROOT$/plugins/provider-codex/package.json",

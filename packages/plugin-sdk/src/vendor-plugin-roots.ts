@@ -20,7 +20,6 @@
  * outside the repository, so its links are not. Command components never
  * follow a link, whatever the origin.
  */
-import { resolveClaudeConfigDir } from "@bb/process-utils";
 import type { Dirent } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -86,15 +85,13 @@ export interface ExperimentalClaudePluginRootsArgs {
   cwd: string | null;
   /** The host user's home directory. */
   homeDir: string;
-  /** The host environment; only `CLAUDE_CONFIG_DIR` is read. */
-  env: Readonly<Record<string, string | undefined>>;
+  /** Absolute config directory selected by the provider plugin. */
+  claudeDir: string;
 }
 
 export interface ExperimentalClaudePluginRoots extends ExperimentalVendorPluginRoots {
   /**
-   * The Claude config directory the registry was read from:
-   * `CLAUDE_CONFIG_DIR` (absolute or relative to the workspace cwd), else `~/.claude`. A resolver that also lists the directory's
-   * own `skills` and `commands` takes it from here, so both agree.
+   * The caller-selected Claude config directory the registry was read from.
    */
   claudeDir: string;
 }
@@ -749,7 +746,7 @@ export async function experimental_resolveClaudePluginRoots(
   args: ExperimentalClaudePluginRootsArgs,
 ): Promise<ExperimentalClaudePluginRoots> {
   const dirs: ResolvedClaudeDirs = {
-    claudeDir: resolveClaudeConfigDir(args),
+    claudeDir: args.claudeDir,
     cwd: args.cwd === null ? null : path.resolve(args.cwd),
     homeDir: args.homeDir,
   };

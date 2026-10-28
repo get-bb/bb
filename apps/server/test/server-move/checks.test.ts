@@ -404,8 +404,13 @@ describe("server move checks", () => {
         request: request(),
       });
 
-      expect(target.requests[0]?.command).toEqual({
+      expect(
+        target.requests.find(
+          (request) => request.command.type === "server_move.inspect",
+        )?.command,
+      ).toEqual({
         type: "server_move.inspect",
+        credentialFiles: [`/provider/${NEW}/credentials.json`],
         paths: ["/home/me/code/local-plugin"],
         port: 39_101,
       });
@@ -744,7 +749,11 @@ describe("server move checks", () => {
           request: request(),
         });
 
-        expect(target.requests[0]?.command).toMatchObject({
+        expect(
+          target.requests.find(
+            (request) => request.command.type === "server_move.inspect",
+          )?.command,
+        ).toMatchObject({
           paths: ["~/tool-cache", "/opt/tools"],
         });
         expect(itemIds(direct.response.items)).toEqual([

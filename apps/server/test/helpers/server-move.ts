@@ -115,9 +115,27 @@ export function registerFakeDaemon(
         return;
       }
       daemon.requests.push(message);
-      args.events.push(`${args.hostId}:${message.command.type}`);
+      const providerPathsCall =
+        message.command.type === "plugin.host.call" &&
+        message.command.method === "resolveProviderPaths";
+      if (!providerPathsCall)
+        args.events.push(`${args.hostId}:${message.command.type}`);
       void Promise.resolve()
-        .then(() => args.handle(message))
+        .then(() =>
+          providerPathsCall
+            ? {
+                ok: true as const,
+                result: {
+                  output: {
+                    skillInstallRoots: [],
+                    credentialFiles: [
+                      `/provider/${args.hostId}/credentials.json`,
+                    ],
+                  },
+                },
+              }
+            : args.handle(message),
+        )
         .catch((error: unknown): FakeDaemonReply => ({
           ok: false,
           errorCode: "test_rpc_error",

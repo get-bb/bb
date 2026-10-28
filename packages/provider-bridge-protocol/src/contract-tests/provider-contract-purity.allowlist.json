@@ -1,10 +1,6 @@
 {
-  "$comment": "Provider contract and provider-home resolution purity. Only shared provider-home resolvers read configuration-home variables or assemble home-relative provider config paths. Exceptions describe provider-specific behavior that is not config-home resolution. New violations and stale exemptions fail.",
+  "$comment": "Provider contract and provider-home resolution purity. Only resolvers in the owning provider plugins read configuration-home variables or assemble home-relative provider config paths. Exceptions name approved compatibility copies and fixed legacy paths independent of config-home resolution. New violations and stale exemptions fail.",
   "entries": [
-    {
-      "path": "plugins/provider-claude-code/src/bridge/provider-maintenance.ts:CLAUDE_CONFIG_DIR:1",
-      "removedBy": "Retain while Claude Keychain service suffixes hash the raw configured value, not the resolved absolute folder. This read selects credentials; the folder still uses the shared resolver."
-    },
     {
       "path": "plugins/provider-claude-code/src/bridge/session-options.ts:home/.claude:1",
       "removedBy": "Remove when support for the legacy ~/.claude/local/claude executable installation ends. The binary location is independent of CLAUDE_CONFIG_DIR."
@@ -14,8 +10,12 @@
       "removedBy": "Retain while Grok scans the fixed ~/.claude/plugins compatibility registry independently of the Claude profile. Changing this path would change Grok discovery behavior."
     },
     {
-      "path": "plugins/provider-acp/src/native-roots/omp.ts:PI_CODING_AGENT_DIR:1",
-      "removedBy": "Retain while omp uses PI_CODING_AGENT_DIR with its own ~/.omp/agent default and profile precedence. This resolves omp configuration; its Pi compatibility root uses the shared Pi resolver."
+      "path": "plugins/provider-acp/src/native-roots/claude-config-home.ts:CLAUDE_CONFIG_DIR:1",
+      "removedBy": "Retain while ACP Grok/OMP compatibility discovery reads Claude profiles. ACP is forkable and cannot import the owning Claude plugin; this is its sole local compatibility copy."
+    },
+    {
+      "path": "plugins/provider-acp/src/native-roots/claude-config-home.ts:home/.claude:1",
+      "removedBy": "Retain while ACP Grok/OMP compatibility discovery reads Claude profiles. ACP is forkable and cannot import the owning Claude plugin; this is its sole local compatibility copy."
     }
   ]
 }

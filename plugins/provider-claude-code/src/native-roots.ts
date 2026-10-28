@@ -1,9 +1,12 @@
+import {
+  resolveClaudeConfigDir,
+  type ProviderHomeContext,
+} from "./config-home.js";
 import path from "node:path";
 import type { PluginProviderDeclaration } from "@get-bb/plugin-sdk";
 import {
   experimental_filterResolvedNativeRoots,
   experimental_resolveClaudePluginRoots,
-  type ExperimentalClaudePluginRootsArgs,
   type ExperimentalVendorPluginRoots,
 } from "@get-bb/plugin-sdk/host";
 
@@ -33,9 +36,12 @@ const CLAUDE_PLUGIN_MANIFEST_MARKER = ".claude-plugin/plugin.json";
 type ClaudeResolvedRoot = ExperimentalVendorPluginRoots["skills"][number];
 
 export async function resolveClaudeNativeRoots(
-  args: ExperimentalClaudePluginRootsArgs,
+  args: ProviderHomeContext,
 ): Promise<ExperimentalVendorPluginRoots> {
-  const plugins = await experimental_resolveClaudePluginRoots(args);
+  const plugins = await experimental_resolveClaudePluginRoots({
+    ...args,
+    claudeDir: resolveClaudeConfigDir(args),
+  });
   const userSkillsRoot: ClaudeResolvedRoot = {
     path: path.join(plugins.claudeDir, "skills"),
     origin: "user",

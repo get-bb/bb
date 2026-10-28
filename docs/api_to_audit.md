@@ -899,7 +899,7 @@ in the answer) so a plugin cannot forget to call the helper, and whether
 `dropped[].reason` is a contract a resolver's test may pin or free text for
 the log.
 
-## Vendor plugin roots (`experimental_resolveClaudePluginRoots`, `experimental_resolveVendorPluginRoots` and `internal_DO_NOT_USE_resolveClaudeConfigDir`, `@get-bb/plugin-sdk/host`)
+## Vendor plugin roots (`experimental_resolveClaudePluginRoots`, `experimental_resolveVendorPluginRoots`, `@get-bb/plugin-sdk/host`)
 
 `experimental_resolveVendorPluginRoots({ plugins, layout })` walks vendor
 plugin directories into native roots with `namePrefix: "<plugin>:"`.
@@ -908,12 +908,7 @@ then its manifest `skills` and `commands` entries. `layout: "grok"` reads only
 the manifest entries, each recursive.
 `experimental_resolveClaudePluginRoots({ cwd, homeDir, env })` reads Claude
 Code's installed-plugin registry and enablement settings and runs the walk.
-Its answer also carries `claudeDir`, computed by
-`internal_DO_NOT_USE_resolveClaudeConfigDir({ cwd, homeDir, env })`: `CLAUDE_CONFIG_DIR`
-when set (literal path, relative to cwd, NFC-normalized), else
-`~/.claude`. Core's Claude Code provider uses that one resolver for native
-roots, its usage and health check (credentials, account file, Keychain
-service), session forks and skill filtering. Two shared rules apply. User-origin
+The caller supplies `claudeDir`, already resolved by the owning provider plugin. The SDK only walks files under that directory; it does not choose a provider home. Two shared rules apply. User-origin
 plugins follow skill symlinks, project-origin plugins do not, and command
 components never follow links. Within an answer each path appears once per
 side, and the first root to claim it wins.
@@ -3979,17 +3974,8 @@ replacement. Settle the shared process-local instance lifecycle across SDK
 bundle versions and whether `bundledNpmCli` belongs on the public surface before
 removing the prefix.
 
-## Internal provider home resolvers (`@get-bb/plugin-sdk/host`)
+## Internal provider host paths (`internal_DO_NOT_USE_providerPathsHostContract`, `@get-bb/plugin-sdk/host`)
 
-`internal_DO_NOT_USE_resolveClaudeConfigDir`, `internal_DO_NOT_USE_resolveCodexHome`, and `internal_DO_NOT_USE_resolvePiAgentDir` are first-party plumbing, not public plugin API. They take `{ cwd, homeDir, env }` and share process-utils' provider-home implementations without ambient environment reads.
+First-party host RPC `resolveProviderPaths({})` returns absolute `skillInstallRoots` and `credentialFiles`. The owning plugin resolves these from its process environment; core never constructs provider folders. The only implementing plugins are provider-claude-code and provider-codex. The only core callers are global CLI skill install/status (Claude writable roots) and server-move preflight (Codex credential files). Core passes these returned paths to the daemon for file operations. Server-move continues to probe credentials and warn; it does not copy them.
 
-The only SDK callers are:
-
-- `provider-claude-code`: session forks, skill filtering, and credential maintenance use the Claude helper.
-- `provider-codex`: native-root listing and Codex auth use the Codex helper.
-- `provider-pi`: native-root listing uses the Pi helper.
-- `provider-acp`: omp native-root discovery uses the Codex and Pi helpers.
-
-The SDK's Claude vendor-plugin registry reader and daemon global-skill install/status call the same process-utils Claude implementation directly. A null cwd uses homeDir for host-wide discovery. Claude uses literal, NFC-normalized paths; Codex defaults on blank values; Pi expands tilde. Relative paths use cwd.
-
-Keep these internal while their only consumers are bb's providers. Recheck path semantics against supported provider versions before changing them; any public promotion requires a separate API review and documented external use case.
+The contract is internal plumbing, not a public resolver API. Keep path rules in each provider's config-home module. ACP keeps local Claude/Codex/Pi compatibility copies because it is forkable and cannot import another workspace plugin. The developer archive script retains its own Codex rule. Before considering a public path contract, establish external demand and define writable-root and credential-file semantics for third-party providers.

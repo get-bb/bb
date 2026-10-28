@@ -66,14 +66,30 @@ describe("install cli skills", () => {
           hostId: host.id,
           sessionId: session.id,
           handle: (request) => {
+            if (request.command.type === "plugin.host.call") {
+              expect(request.command).toMatchObject({
+                pluginId: "provider-claude-code",
+                method: "resolveProviderPaths",
+                contributedEnv: [
+                  expect.objectContaining({
+                    name: "CLAUDE_CONFIG_DIR",
+                    value: "/configured/claude",
+                  }),
+                ],
+              });
+              return {
+                ok: true,
+                result: {
+                  output: {
+                    skillInstallRoots: ["/plugin-selected/skills"],
+                    credentialFiles: [],
+                  },
+                },
+              };
+            }
             expect(request.command).toMatchObject({
               type: "host.install_global_skills",
-              contributedEnv: [
-                expect.objectContaining({
-                  name: "CLAUDE_CONFIG_DIR",
-                  value: "/configured/claude",
-                }),
-              ],
+              providerRoots: ["/plugin-selected/skills"],
               skills: [{ name: "bb-cli", entryPath: "SKILL.md" }],
             });
             return {
@@ -100,7 +116,7 @@ describe("install cli skills", () => {
         ["host-studio", true],
       ]);
       for (const responder of responders) {
-        expect(responder.requests).toHaveLength(1);
+        expect(responder.requests).toHaveLength(2);
       }
     });
   });
@@ -113,12 +129,22 @@ describe("install cli skills", () => {
       registerHostRpcResponder(harness, {
         hostId: laptop.host.id,
         sessionId: laptop.session.id,
-        handle: () => ({
-          ok: true,
-          result: {
-            installations: [{ name: "bb-cli", path: "/home/u/.agents/skills" }],
-          },
-        }),
+        handle: (request) =>
+          request.command.type === "plugin.host.call"
+            ? {
+                ok: true,
+                result: {
+                  output: { skillInstallRoots: [], credentialFiles: [] },
+                },
+              }
+            : {
+                ok: true,
+                result: {
+                  installations: [
+                    { name: "bb-cli", path: "/home/u/.agents/skills" },
+                  ],
+                },
+              },
       });
       registerHostRpcResponder(harness, {
         hostId: studio.host.id,
@@ -184,14 +210,30 @@ describe("install cli skills", () => {
           hostId: host.id,
           sessionId: session.id,
           handle: (request) => {
+            if (request.command.type === "plugin.host.call") {
+              expect(request.command).toMatchObject({
+                pluginId: "provider-claude-code",
+                method: "resolveProviderPaths",
+                contributedEnv: [
+                  expect.objectContaining({
+                    name: "CLAUDE_CONFIG_DIR",
+                    value: "/configured/claude",
+                  }),
+                ],
+              });
+              return {
+                ok: true,
+                result: {
+                  output: {
+                    skillInstallRoots: ["/plugin-selected/skills"],
+                    credentialFiles: [],
+                  },
+                },
+              };
+            }
             expect(request.command).toMatchObject({
               type: "host.global_skills_status",
-              contributedEnv: [
-                expect.objectContaining({
-                  name: "CLAUDE_CONFIG_DIR",
-                  value: "/configured/claude",
-                }),
-              ],
+              providerRoots: ["/plugin-selected/skills"],
               names: ["bb-cli"],
             });
             return {

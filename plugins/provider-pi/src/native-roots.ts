@@ -1,9 +1,9 @@
+import { resolvePiAgentDir } from "./config-home.js";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { PluginProviderDeclaration } from "@get-bb/plugin-sdk";
 import {
   experimental_filterResolvedNativeRoots,
-  internal_DO_NOT_USE_resolvePiAgentDir,
   type ExperimentalNativeRootsResolveAnswer,
 } from "@get-bb/plugin-sdk/host";
 import { z } from "zod";
@@ -49,7 +49,7 @@ function isPlainSkillSource(value: string): boolean {
 export async function resolvePiNativeRoots(
   args: ResolvePiNativeRootsArgs,
 ): Promise<ExperimentalNativeRootsResolveAnswer> {
-  const agentDir = internal_DO_NOT_USE_resolvePiAgentDir(args);
+  const agentDir = resolvePiAgentDir(args);
   const roots = new Set<string>([path.resolve(agentDir, "skills")]);
   let settings: z.infer<typeof piSettingsSchema> | null = null;
   try {

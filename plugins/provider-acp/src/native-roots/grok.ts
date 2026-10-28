@@ -1,3 +1,4 @@
+import { resolveClaudeConfigDir } from "./claude-config-home.js";
 import path from "node:path";
 import {
   experimental_resolveClaudePluginRoots,
@@ -326,7 +327,12 @@ export const resolveGrokNativeRoots: AcpNativeRootsResolver = async (args) => {
       ...(await resolveGrokConfiguredSkillRoots(args, config)),
       ...(await resolveGrokPluginSkillRoots(args, config)),
       ...(claudeCompat
-        ? (await experimental_resolveClaudePluginRoots(args)).skills
+        ? (
+            await experimental_resolveClaudePluginRoots({
+              ...args,
+              claudeDir: resolveClaudeConfigDir(args),
+            })
+          ).skills
         : []),
     ],
   };

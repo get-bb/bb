@@ -127,7 +127,12 @@ it("does not wake a suspended machine for migration RPCs", async () =>
       suspendedAt: 1,
     });
     const commands: HostDaemonRpcCommand[] = [
-      { type: "server_move.inspect", paths: [], port: 38886 },
+      {
+        type: "server_move.inspect",
+        credentialFiles: [],
+        paths: [],
+        port: 38886,
+      },
       {
         type: "server_move.probe",
         url: "https://test.example.com",

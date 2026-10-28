@@ -1,3 +1,6 @@
+import path from "node:path";
+import { internal_DO_NOT_USE_providerPathsHostContract } from "@get-bb/plugin-sdk/host";
+import { resolveCodexHome } from "./config-home.js";
 import os from "node:os";
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import {
@@ -23,6 +26,7 @@ export { experimental_providerBridge } from "./bridge/bridge.js";
 const codexHostContract = defineRpcContract({
   ...codexAiHostContract,
   ...experimental_nativeRootsHostContract,
+  ...internal_DO_NOT_USE_providerPathsHostContract,
 });
 
 async function textResult(work: Promise<string>): Promise<CodexAiTextResult> {
@@ -36,6 +40,17 @@ async function textResult(work: Promise<string>): Promise<CodexAiTextResult> {
 export default experimental_defineHostEntry({
   contract: codexHostContract,
   handlers: {
+    resolveProviderPaths: () => {
+      const configDir = resolveCodexHome({
+        cwd: process.cwd(),
+        homeDir: os.homedir(),
+        env: process.env,
+      });
+      return {
+        skillInstallRoots: [path.join(configDir, "skills")],
+        credentialFiles: [path.join(configDir, "auth.json")],
+      };
+    },
     resolveNativeRoots: (
       input,
     ): Promise<ExperimentalNativeRootsResolveAnswer> =>

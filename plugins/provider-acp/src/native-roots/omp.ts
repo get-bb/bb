@@ -1,9 +1,6 @@
+import { resolveClaudeConfigDir } from "./claude-config-home.js";
 import path from "node:path";
-import {
-  experimental_resolveClaudePluginRoots,
-  internal_DO_NOT_USE_resolveCodexHome,
-  internal_DO_NOT_USE_resolvePiAgentDir,
-} from "@get-bb/plugin-sdk/host";
+import { experimental_resolveClaudePluginRoots } from "@get-bb/plugin-sdk/host";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 import { resolveOpenCodeConfigDir } from "./opencode.js";
@@ -137,15 +134,34 @@ export const resolveOmpNativeRoots: AcpNativeRootsResolver = async (args) => {
     skills: [
       userRoot(path.join(agentDir, "skills")),
       userRoot(path.join(agentDir, "managed-skills")),
-      userRoot(
-        path.join(internal_DO_NOT_USE_resolvePiAgentDir(args), "skills"),
-      ),
-      userRoot(path.join(internal_DO_NOT_USE_resolveCodexHome(args), "skills")),
+      userRoot(path.join(resolvePiAgentDir(args), "skills")),
+      userRoot(path.join(resolveCodexHome(args), "skills")),
       userRoot(
         path.join(resolveOpenCodeConfigDir(args.homeDir, args.env), "skills"),
       ),
       ...(await resolveOmpConfiguredSkillRoots(args)),
-      ...(await experimental_resolveClaudePluginRoots(args)).skills,
+      ...(
+        await experimental_resolveClaudePluginRoots({
+          ...args,
+          claudeDir: resolveClaudeConfigDir(args),
+        })
+      ).skills,
     ],
   };
 };
+
+function resolveCodexHome(args: AcpNativeRootsResolverArgs): string {
+  return path.resolve(
+    args.cwd ?? args.homeDir,
+    args.env.CODEX_HOME?.trim() || path.join(args.homeDir, ".codex"),
+  );
+}
+
+function resolvePiAgentDir(args: AcpNativeRootsResolverArgs): string {
+  const configured = args.env.PI_CODING_AGENT_DIR?.trim();
+  if (!configured) return path.join(args.homeDir, ".pi", "agent");
+  if (configured === "~") return args.homeDir;
+  if (configured.startsWith("~/"))
+    return path.join(args.homeDir, configured.slice(2));
+  return path.resolve(args.cwd ?? args.homeDir, configured);
+}

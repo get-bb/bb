@@ -1,3 +1,4 @@
+import { resolveProviderPaths } from "../providers/provider-paths.js";
 import { resolve, sep } from "node:path";
 import semver from "semver";
 import { formatServerDataSize } from "@bb/domain";
@@ -305,6 +306,13 @@ async function inspectHost(
     timeoutMs: environment.inspectTimeoutMs,
     command: {
       type: "server_move.inspect",
+      credentialFiles: (
+        await resolveProviderPaths(environment.deps, {
+          providerId: "codex",
+          hostId,
+          timeoutMs: environment.inspectTimeoutMs,
+        })
+      ).credentialFiles,
       paths,
       port: environment.targetServerPort(),
     },

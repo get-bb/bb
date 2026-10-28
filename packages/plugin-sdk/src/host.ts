@@ -60,8 +60,4 @@ export type {
   VcsProcessPriority as ExperimentalVcsProcessPriority,
 } from "@bb/process-utils";
 
-export {
-  resolveClaudeConfigDir as internal_DO_NOT_USE_resolveClaudeConfigDir,
-  resolveCodexHome as internal_DO_NOT_USE_resolveCodexHome,
-  resolvePiAgentDir as internal_DO_NOT_USE_resolvePiAgentDir,
-} from "@bb/process-utils";
+export { internal_DO_NOT_USE_providerPathsHostContract } from "./provider-paths-contract.js";

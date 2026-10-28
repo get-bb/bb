@@ -4,7 +4,6 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import type { ChildProcessByStdio } from "node:child_process";
-import { resolveCodexHome } from "@bb/config/codex-home";
 import { runMainIfEntrypoint } from "../lib/script-entry.js";
 import {
   bold,
@@ -811,3 +810,12 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
 }
 
 runMainIfEntrypoint(import.meta.url, main);
+
+type CodexHomeEnvironment = Readonly<Record<string, string | undefined>>;
+
+function resolveCodexHome(
+  homeDir: string,
+  env: CodexHomeEnvironment = process.env,
+): string {
+  return env.CODEX_HOME?.trim() || join(homeDir, ".codex");
+}

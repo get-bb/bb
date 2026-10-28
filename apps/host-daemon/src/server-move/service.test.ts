@@ -308,7 +308,12 @@ describe("ServerMoveService in launcher-managed moved mode", () => {
     });
 
     const inspect = (port: number) =>
-      fixture.service.inspect({ type: "server_move.inspect", paths: [], port });
+      fixture.service.inspect({
+        type: "server_move.inspect",
+        credentialFiles: [],
+        paths: [],
+        port,
+      });
 
     expect((await inspect(38_886)).portAvailable).toBe(true);
     expect((await inspect(39_886)).portAvailable).toBe(false);
@@ -360,6 +365,7 @@ describe("ServerMoveService in launcher-managed moved mode", () => {
 
       const result = await fixture.service.inspect({
         type: "server_move.inspect",
+        credentialFiles: [],
         paths: [],
         port: 38_886,
       });
@@ -448,6 +454,7 @@ describe("ServerMoveService own data dir guards", () => {
     const inspect = () =>
       fixture.service.inspect({
         type: "server_move.inspect",
+        credentialFiles: [],
         paths: [],
         port: 38_886,
       });
@@ -471,6 +478,7 @@ describe("ServerMoveService own data dir guards", () => {
     const inspect = () =>
       fixture.service.inspect({
         type: "server_move.inspect",
+        credentialFiles: [],
         paths: [],
         port: 38_886,
       });
@@ -530,6 +538,7 @@ describe("ServerMoveService own data dir guards", () => {
 
     const inspected = await fixture.service.inspect({
       type: "server_move.inspect",
+      credentialFiles: [],
       paths: [],
       port: 38_886,
     });
@@ -578,6 +587,7 @@ describe("ServerMoveService own data dir guards", () => {
 
     const inspected = await fixture.service.inspect({
       type: "server_move.inspect",
+      credentialFiles: [],
       paths: [],
       port: 38_886,
     });
@@ -664,6 +674,7 @@ describe("ServerMoveService own data dir guards", () => {
 
     const inspected = await fixture.service.inspect({
       type: "server_move.inspect",
+      credentialFiles: [],
       paths: [],
       port: 38_886,
     });
@@ -697,6 +708,7 @@ describe("ServerMoveService own data dir guards", () => {
 
     const result = await fixture.service.inspect({
       type: "server_move.inspect",
+      credentialFiles: [],
       paths: [],
       port: 38_886,
     });
@@ -808,11 +820,15 @@ describe("ServerMoveService.inspect and probe", () => {
       env: { BB_SERVER_MOVE_SERVICE_MANAGER: "none", BB_APP_VERSION: "1.2.3" },
     });
     await writeFileWithDirs(join(fixture.homeDir, ".bb", "bb.db"), "12345");
-    await writeFileWithDirs(join(fixture.homeDir, ".codex", "auth.json"), "{}");
+    await writeFileWithDirs(
+      join(fixture.root, "plugin-selected-auth.json"),
+      "{}",
+    );
     await writeFileWithDirs(join(fixture.homeDir, "tools", "bin", "gh"), "");
 
     const result = await fixture.service.inspect({
       type: "server_move.inspect",
+      credentialFiles: [join(fixture.root, "plugin-selected-auth.json")],
       paths: [
         fixture.dataDir,
         join(fixture.root, "missing"),

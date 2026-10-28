@@ -16,10 +16,3 @@ export * from "./vcs-process-scheduler.js";
 export * from "./host-toolchain.js";
 export * from "./host-process.js";
 export { inheritedNodeNetworkArgs, nodeNetworkArgs } from "./node-network.js";
-
-export {
-  resolveClaudeConfigDir,
-  resolveCodexHome,
-  resolvePiAgentDir,
-  type ProviderHomeContext,
-} from "./provider-homes.js";

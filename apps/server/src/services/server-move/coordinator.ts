@@ -588,6 +588,7 @@ export function createServerMoveCoordinator(
         timeoutMs: timings.inspectTimeoutMs,
         command: {
           type: "server_move.inspect",
+          credentialFiles: [],
           paths: [],
           port: environment.targetServerPort(),
         },

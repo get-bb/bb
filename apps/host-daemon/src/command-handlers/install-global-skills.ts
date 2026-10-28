@@ -2,8 +2,6 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { resolveClaudeConfigDir } from "@bb/process-utils";
-import { operationEnvironment } from "../operation-environment.js";
 import type { HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
 import {
   CommandDispatchError,
@@ -19,7 +17,6 @@ import {
 import type { SkillTreeTransport } from "../skill-trees.js";
 
 interface InstallGlobalSkillsOptions {
-  env: NodeJS.ProcessEnv;
   dataDir: string;
   skillTreeTransport?: SkillTreeTransport;
   homeDir?: string;
@@ -27,27 +24,24 @@ interface InstallGlobalSkillsOptions {
 }
 
 interface GlobalSkillsStatusOptions {
-  env: NodeJS.ProcessEnv;
   homeDir?: string;
 }
 
 function globalSkillPaths(
   homeDir: string,
   name: string,
-  env: NodeJS.ProcessEnv,
-  contributedEnv: CommandOf<"host.global_skills_status">["contributedEnv"],
+  providerRoots: readonly string[],
 ): string[] {
-  const claudeDir = resolveClaudeConfigDir({
-    homeDir,
-    cwd: process.cwd(),
-    env: operationEnvironment(contributedEnv, env),
-  });
   return [
-    ...new Set([
-      path.join(homeDir, ".agents", "skills", name),
-      path.join(claudeDir, "skills", name),
-    ]),
-  ];
+    ...new Set([path.join(homeDir, ".agents", "skills"), ...providerRoots]),
+  ].map((root) => {
+    if (!path.isAbsolute(root))
+      throw new CommandDispatchError(
+        "invalid_path",
+        "Provider skill roots must be absolute",
+      );
+    return path.join(root, name);
+  });
 }
 
 export async function readGlobalSkillsStatus(
@@ -57,7 +51,7 @@ export async function readGlobalSkillsStatus(
   const homeDir = options.homeDir ?? os.homedir();
   const entries = await Promise.all(
     command.names.flatMap((name) =>
-      globalSkillPaths(homeDir, name, options.env, command.contributedEnv).map(
+      globalSkillPaths(homeDir, name, command.providerRoots).map(
         async (skillDirectoryPath) => ({
           name,
           path: skillDirectoryPath,
@@ -132,8 +126,7 @@ export async function installGlobalSkills(
     for (const destinationPath of globalSkillPaths(
       homeDir,
       skill.name,
-      options.env,
-      command.contributedEnv,
+      command.providerRoots,
     )) {
       await replaceSkillDirectory({
         destinationPath,

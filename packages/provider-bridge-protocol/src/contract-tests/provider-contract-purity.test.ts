@@ -105,7 +105,7 @@ describe("guardrail G2: the provider contract names no provider", () => {
 
     expect(
       unexpected,
-      "Provider home variables and home-relative provider paths must be resolved by the shared provider-home resolvers. Provider-named contract keys belong in providerOptions.",
+      "Provider home variables and home-relative provider paths must be resolved by the resolvers in the owning provider plugins. Provider-named contract keys belong in providerOptions.",
     ).toEqual([]);
     expect(
       unused,
@@ -122,6 +122,11 @@ function collectProviderHomeResolutions(): string[] {
     "plugins/provider-pi/src",
     "plugins/provider-acp/src",
     "packages/provider-bridge-acp/src",
+    "apps/host-daemon/src",
+    "apps/server/src",
+    "packages/config/src",
+    "packages/plugin-sdk/src",
+    "packages/process-utils/src",
   ];
   const offenders: string[] = [];
   for (const directory of directories) {
@@ -135,6 +140,15 @@ function collectProviderHomeResolutions(): string[] {
       )
         continue;
       const file = `${directory}/${relative}`;
+      if (
+        [
+          "plugins/provider-claude-code/src/config-home.ts",
+          "plugins/provider-codex/src/config-home.ts",
+          "plugins/provider-pi/src/config-home.ts",
+          "plugins/provider-acp/src/native-roots/omp.ts",
+        ].includes(file)
+      )
+        continue;
       const source = ts.createSourceFile(
         file,
         readFileSync(path.join(root, file), "utf8"),

@@ -51,22 +51,13 @@ describe("install global skills", () => {
         homeDir,
         custom ? "custom-claude" : ".claude",
       );
-      const contributedEnv = custom
-        ? [
-            {
-              name: "CLAUDE_CONFIG_DIR",
-              value: claudeDir,
-              source: { core: "machine-environment" as const },
-              reason: "configured profile",
-            },
-          ]
-        : [];
+      const providerRoots = [path.join(claudeDir, "skills")];
       const payload = createTreePayload("bb-cli", "first body");
 
       const result = await installGlobalSkills(
         {
           type: "host.install_global_skills",
-          contributedEnv,
+          providerRoots,
           skills: [
             {
               name: "bb-cli",
@@ -78,7 +69,6 @@ describe("install global skills", () => {
         {
           dataDir,
           homeDir,
-          env: {},
           logger,
           skillTreeTransport: payload.skillTreeTransport,
         },
@@ -92,9 +82,9 @@ describe("install global skills", () => {
         {
           type: "host.global_skills_status",
           names: ["bb-cli"],
-          contributedEnv,
+          providerRoots,
         },
-        { homeDir, env: {} },
+        { homeDir },
       );
       expect(status.entries).toEqual(
         result.installations.map((entry) => ({
@@ -130,7 +120,7 @@ describe("install global skills", () => {
     await installGlobalSkills(
       {
         type: "host.install_global_skills",
-        contributedEnv: [],
+        providerRoots: [path.join(homeDir, ".claude", "skills")],
         skills: [
           { name: "bb-cli", treeHash: payload.treeHash, entryPath: "SKILL.md" },
         ],
@@ -138,7 +128,6 @@ describe("install global skills", () => {
       {
         dataDir,
         homeDir,
-        env: {},
         logger,
         skillTreeTransport: payload.skillTreeTransport,
       },
@@ -172,7 +161,7 @@ describe("install global skills", () => {
       installGlobalSkills(
         {
           type: "host.install_global_skills",
-          contributedEnv: [],
+          providerRoots: [path.join(homeDir, ".claude", "skills")],
           skills: [
             {
               name: "bb-cli",
@@ -181,7 +170,7 @@ describe("install global skills", () => {
             },
           ],
         },
-        { dataDir, homeDir, env: {}, logger, skillTreeTransport },
+        { dataDir, homeDir, logger, skillTreeTransport },
       ),
     ).rejects.toThrow("offline");
 
@@ -198,20 +187,19 @@ describe("install global skills", () => {
       const payload = createTreePayload("bb-cli", "installed body");
       const command = {
         type: "host.install_global_skills" as const,
-        contributedEnv: [],
+        providerRoots: [path.join(homeDir, ".claude", "skills")],
         skills: [
           { name: "bb-cli", treeHash: payload.treeHash, entryPath: "SKILL.md" },
         ],
       };
       const statusCommand = {
         type: "host.global_skills_status" as const,
-        contributedEnv: [],
+        providerRoots: [path.join(homeDir, ".claude", "skills")],
         names: ["bb-cli"],
       };
 
       const before = await readGlobalSkillsStatus(statusCommand, {
         homeDir,
-        env: {},
       });
       expect(before.entries.map((entry) => entry.treeHash)).toEqual([
         null,
@@ -221,14 +209,12 @@ describe("install global skills", () => {
       await installGlobalSkills(command, {
         dataDir,
         homeDir,
-        env: {},
         logger,
         skillTreeTransport: payload.skillTreeTransport,
       });
 
       const after = await readGlobalSkillsStatus(statusCommand, {
         homeDir,
-        env: {},
       });
       expect(after.entries.map((entry) => entry.treeHash)).toEqual([
         payload.treeHash,
@@ -241,7 +227,6 @@ describe("install global skills", () => {
       );
       const drifted = await readGlobalSkillsStatus(statusCommand, {
         homeDir,
-        env: {},
       });
       expect(drifted.entries[1]?.treeHash).not.toBe(payload.treeHash);
       expect(drifted.entries[0]?.treeHash).toBe(payload.treeHash);

@@ -33,7 +33,7 @@ import {
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
-import { internal_DO_NOT_USE_resolveClaudeConfigDir } from "@get-bb/plugin-sdk/host";
+import { resolveClaudeConfigDir } from "../config-home.js";
 import { join as joinPath, resolve as resolvePath } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import {
@@ -2517,7 +2517,7 @@ async function handleThreadFork(
   let forkedProviderThreadId: string;
   try {
     forkedProviderThreadId = await forkClaudeSession({
-      configDirectory: internal_DO_NOT_USE_resolveClaudeConfigDir({
+      configDirectory: resolveClaudeConfigDir({
         cwd: params.cwd,
         homeDir: homedir(),
         env: buildSessionEnv(readConfigEnvOverrides(params.config)),
@@ -2545,7 +2545,7 @@ async function toClaudeSessionParams(
             roots: configuredSkillRoots,
             cwd: params.cwd,
             pluginsRoot: requireSkillPluginsRoot(),
-            claudeDir: internal_DO_NOT_USE_resolveClaudeConfigDir({
+            claudeDir: resolveClaudeConfigDir({
               cwd: params.cwd,
               homeDir: homedir(),
               env: buildSessionEnv(params.options.envVars ?? {}),

@@ -1,4 +1,4 @@
-import { resolveHostEnvironment } from "../hosts/host-environment.js";
+import { resolveProviderPaths } from "../providers/provider-paths.js";
 import { listHosts, listNonDestroyedHostsByIds } from "@bb/db";
 import type {
   CliSkillMachineStatus,
@@ -114,10 +114,13 @@ export async function readGlobalCliSkillStatus(
           timeoutMs: STATUS_TIMEOUT_MS,
           command: {
             type: "host.global_skills_status",
-            contributedEnv: await resolveHostEnvironment(deps, {
-              hostId: host.id,
-              projectId: null,
-            }),
+            providerRoots: (
+              await resolveProviderPaths(deps, {
+                providerId: "claude-code",
+                hostId: host.id,
+                timeoutMs: STATUS_TIMEOUT_MS,
+              })
+            ).skillInstallRoots,
             names: skills.map((skill) => skill.name),
           },
         });
@@ -179,10 +182,13 @@ export async function installGlobalCliSkills(
           command: {
             type: "host.install_global_skills",
             skills,
-            contributedEnv: await resolveHostEnvironment(deps, {
-              hostId: host.id,
-              projectId: null,
-            }),
+            providerRoots: (
+              await resolveProviderPaths(deps, {
+                providerId: "claude-code",
+                hostId: host.id,
+                timeoutMs: COMMAND_TIMEOUT_MS,
+              })
+            ).skillInstallRoots,
           },
         });
         return {
