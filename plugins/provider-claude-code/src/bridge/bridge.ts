@@ -93,10 +93,12 @@ import {
 import {
   buildChromeExtraArgs,
   buildClaudeFeatureEnv,
+  buildDisallowedTools,
   buildReadonlyDenialMessage,
   buildMutableFlagSettings,
   buildSessionOptions,
   buildWorkspaceWriteDenialMessage,
+  CLAUDE_PROVIDER_SUBAGENT_TOOL_NAMES,
   toSdkEffort,
   type BuildSessionOptionsArgs,
   type PermissionEscalationWorkContext,
@@ -169,7 +171,6 @@ const promptInputItemSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
-const CLAUDE_PROVIDER_SUBAGENT_TOOL_NAMES = new Set(["Agent", "Task"]);
 const CLAUDE_WORKFLOW_TOOL_NAME = "Workflow";
 
 interface BridgeEventNotification {
@@ -300,6 +301,7 @@ interface SessionConstructionConfig {
     BuildSessionOptionsArgs,
     | "memoryEnabled"
     | "model"
+    | "providerSubagentsEnabled"
     | "reasoningLevel"
     | "serviceTier"
     | "workflowsEnabled"
@@ -450,6 +452,31 @@ function applyChromeSetting(
   if (attachment.residentSession) {
     attachment.residentSession.restartBeforeNextTurn = {
       reason: CLAUDE_CHROME_SETTING_RESTART_REASON,
+      showRuntimeNote: false,
+    };
+  }
+}
+
+function applyProviderSubagentsSetting(
+  attachment: ThreadAttachment,
+  enabled: boolean | undefined,
+): void {
+  if (enabled === undefined) {
+    return;
+  }
+  const disallowedTools = buildDisallowedTools(enabled);
+  if (
+    isDeepStrictEqual(
+      attachment.sessionOptions.disallowedTools,
+      disallowedTools,
+    )
+  ) {
+    return;
+  }
+  attachment.sessionOptions.disallowedTools = disallowedTools;
+  if (attachment.residentSession) {
+    attachment.residentSession.restartBeforeNextTurn ??= {
+      reason: "Claude Code subagents setting changed",
       showRuntimeNote: false,
     };
   }
@@ -2417,6 +2444,10 @@ async function handleThreadResume(
     )
   ) {
     const liveSettings = toInitialLiveSessionSettings(params);
+    applyProviderSubagentsSetting(
+      existing,
+      liveSettings.providerSubagentsEnabled,
+    );
     if (existingSession) {
       await applyLiveSessionSettings(
         existingSession,
@@ -2529,6 +2560,7 @@ async function runTurnInput(
     applyChromeSetting(attachment, params.chromeEnabled);
     applyContextWindowSetting(attachment, params.disable1MContext);
     applyArtifactSetting(attachment, params.artifactsEnabled);
+    applyProviderSubagentsSetting(attachment, params.providerSubagentsEnabled);
   }
 
   let permissionRestartRequired = false;
