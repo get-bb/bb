@@ -729,62 +729,71 @@ function ThreadRowComponent({
           className="absolute inset-0 rounded-md outline-none"
         />
         <span
-          className={cn(
-            "pointer-events-none relative flex min-w-0 items-center self-stretch",
-            ((crossProjectLabel === null && (!parentOptions || !hasChildren)) ||
-              isEditing) &&
-              "flex-1",
-          )}
+          className={
+            showRowMetadata
+              ? "flex min-w-0 basis-full items-center gap-1.5 self-stretch"
+              : "contents"
+          }
         >
-          {showRowMetadata ? null : providerIcon}
-          {isEditing ? (
-            <span className="pointer-events-auto relative z-10 min-w-0 flex-1 overflow-visible">
-              {editor}
-            </span>
-          ) : (
-            <span
-              className={cn(
-                "bb-thread-title",
-                crossProjectLabel !== null && "min-w-0 truncate",
-              )}
-              title={labelTitle}
-              onDoubleClick={startTitleEditing}
-            >
-              <ThreadTitle threadId={thread.id} />
-            </span>
-          )}
-        </span>
-        {crossProjectLabel !== null ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span
-                data-sidebar-thread-cross-project=""
-                role="img"
-                aria-label={crossProjectLabel}
-                className="relative z-[31] flex size-5 shrink-0 items-center justify-center text-muted-foreground"
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  rowLinkRef.current?.click();
-                }}
-              >
-                <Icon name="FolderExport" className="size-3.5" aria-hidden />
+          <span
+            className={cn(
+              "pointer-events-none relative flex min-w-0 items-center self-stretch",
+              ((crossProjectLabel === null &&
+                (!parentOptions || !hasChildren)) ||
+                isEditing) &&
+                "flex-1",
+            )}
+          >
+            {showRowMetadata ? null : providerIcon}
+            {isEditing ? (
+              <span className="pointer-events-auto relative z-10 min-w-0 flex-1 overflow-visible">
+                {editor}
               </span>
-            </TooltipTrigger>
-            <TooltipContent side="top">{crossProjectLabel}</TooltipContent>
-          </Tooltip>
-        ) : null}
-        {parentOptions && hasChildren ? (
-          <SidebarChildToggleChevron
-            disabled={isEditing}
-            className={isEditing ? "hidden" : undefined}
-            isCollapsed={isParentCollapsed}
-            expandLabel={`Expand ${labelTitle} threads`}
-            collapseLabel={`Collapse ${labelTitle} threads`}
-            onToggle={() => parentOptions.onToggleCollapsed(thread.id)}
-            revealOnHover={!isParentCollapsed}
-          />
-        ) : null}
+            ) : (
+              <span
+                className={cn(
+                  "bb-thread-title",
+                  crossProjectLabel !== null && "min-w-0 truncate",
+                )}
+                title={labelTitle}
+                onDoubleClick={startTitleEditing}
+              >
+                <ThreadTitle threadId={thread.id} />
+              </span>
+            )}
+          </span>
+          {crossProjectLabel !== null ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  data-sidebar-thread-cross-project=""
+                  role="img"
+                  aria-label={crossProjectLabel}
+                  className="relative z-[31] flex size-5 shrink-0 items-center justify-center text-muted-foreground"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    rowLinkRef.current?.click();
+                  }}
+                >
+                  <Icon name="FolderExport" className="size-3.5" aria-hidden />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="top">{crossProjectLabel}</TooltipContent>
+            </Tooltip>
+          ) : null}
+          {parentOptions && hasChildren ? (
+            <SidebarChildToggleChevron
+              disabled={isEditing}
+              className={isEditing ? "hidden" : undefined}
+              isCollapsed={isParentCollapsed}
+              expandLabel={`Expand ${labelTitle} threads`}
+              collapseLabel={`Collapse ${labelTitle} threads`}
+              onToggle={() => parentOptions.onToggleCollapsed(thread.id)}
+              revealOnHover={!isParentCollapsed}
+            />
+          ) : null}
+        </span>
         {!showRowMetadata || isEditing || isCustomizingActions ? null : (
           <span className="flex min-w-0 basis-full">
             <ThreadRowMetadata thread={thread} />

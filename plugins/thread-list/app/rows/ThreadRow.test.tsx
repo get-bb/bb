@@ -1090,9 +1090,7 @@ describe("ThreadRow", () => {
     expect(marker?.getAttribute("aria-label")).toBe("In project Web App");
     expect(marker?.querySelector('[data-icon="FolderExport"]')).not.toBeNull();
     expect(
-      marker?.parentElement?.previousElementSibling?.querySelector(
-        ".bb-thread-title",
-      ),
+      marker?.parentElement?.querySelector(".bb-thread-title"),
     ).not.toBeNull();
     expect(
       marker?.closest("[data-sidebar-thread-trailing-indicator]"),
