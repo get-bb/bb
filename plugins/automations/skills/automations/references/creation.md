@@ -11,8 +11,8 @@ Agent mode flags:
 
 ```text
 --prompt <prompt>              Prompt to run when due
---provider <id>                Provider ID
---model <model>                Model ID
+--provider <id>                Optional provider override
+--model <model>                Optional model override
 --reasoning <level>            Level id the model lists, such as low, medium, or high
 --service-tier <tier>          Literal tier id the provider lists, including none
 --clear-service-tier           Clear the tier; cannot combine with --service-tier
@@ -22,6 +22,15 @@ Agent mode flags:
 --new-environment <kind>       Create a new environment (worktree)
 --base-branch <branch>         Base branch for new managed worktrees
 ```
+
+For `bb automation create --prompt "..."`, omitted provider/model values come
+from the calling thread (`BB_THREAD_ID`), then the project's remembered
+new-thread choices. Without remembered choices, bb uses the user's default
+provider (or the first available provider) and its catalog default model.
+Explicit flags win. Changing only `--provider` uses a default model for that
+provider, never the calling thread's model from a different provider.
+Defaults are saved when the automation is created. Partial `update` commands
+keep the automation's existing execution values for omitted flags.
 
 When `--permission-mode` is omitted, the plugin chooses Approve for me
 (`auto`) when the provider supports it and otherwise uses Full Access

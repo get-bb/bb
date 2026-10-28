@@ -30,6 +30,13 @@ Creating:
 bb automation create --project <id> --name "..." [schedule flags] [mode flags]
 ```
 
+Agent creation needs `--prompt`; `--provider` and `--model` are optional.
+Inside a thread (`BB_THREAD_ID`), omitted values inherit that thread's provider
+and current model. Otherwise they use the project's remembered new-thread
+choices, then the user's default provider and its catalog default model.
+Pass explicit flags to select different execution; a model is inherited only
+when its provider matches.
+
 For creation flags and mode-specific defaults, read
 [references/creation.md](references/creation.md).
 
