@@ -644,7 +644,8 @@ function ThreadRowComponent({
       <span
         className={cn(
           "relative flex min-w-0 flex-1 items-center gap-1.5 self-stretch",
-          showRowMetadata && "flex-wrap content-center gap-y-0 py-1",
+          showRowMetadata &&
+            "flex-wrap content-center gap-y-0 py-1 has-[[data-thread-row-metadata][data-has-items]]:py-1.25 has-[[data-thread-row-metadata][data-has-items]]:[&_.bb-thread-title]:leading-4",
           !isActionsOpen &&
             "group-data-[sidebar-touch-armed=true]/thread-row:hidden",
           !shortcut &&
@@ -790,7 +791,7 @@ function ThreadRowComponent({
         {!showRowMetadata || isEditing || isCustomizingActions ? null : (
           <span
             className={cn(
-              "flex min-w-0 basis-full",
+              "mt-px flex min-w-0 basis-full",
               provider !== undefined && "pl-6",
             )}
           >
