@@ -44,7 +44,7 @@ export function SendToComputerButton({
       onClick={() => void send()}
     >
       <HugeiconsIcon icon={LaptopIcon} className="btn-ic" />
-      Send to my computer
+      Send download link
       <span
         className={status === "idle" ? "cmd-toast" : "cmd-toast show"}
         aria-hidden="true"
