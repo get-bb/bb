@@ -12,11 +12,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import type {
-  EnvironmentPullRequest,
-  PullRequest,
-  PullRequestState,
-} from "../contract";
+import type { EnvironmentPullRequest, PullRequest } from "../contract";
 import { pullRequestsReadContract } from "../read-contract";
 import {
   PULL_REQUEST_STATE_DISPLAY,
@@ -38,13 +34,6 @@ function checkCounts(pullRequest: PullRequest): string | null {
     .filter((part) => part !== null)
     .join(", ");
 }
-
-const BADGE_ICON_CLASS: Record<PullRequestState, string> = {
-  open: "text-success-foreground",
-  draft: "text-muted-foreground",
-  merged: "text-pr-merged",
-  closed: "text-destructive-text",
-};
 
 const CHECKS_LABEL: Record<GithubCheckStatus, string> = {
   success: "checks passing",
@@ -101,7 +90,7 @@ export function PullRequestBadge({
     >
       <Icon
         name={state.icon}
-        className={cn("size-3.5 shrink-0", BADGE_ICON_CLASS[pullRequest.state])}
+        className={cn("size-3.5 shrink-0", state.className)}
       />
       <span className="text-subtle-foreground">#{pullRequest.number}</span>
       {glyph === null ? null : <AttentionGlyph kind={glyph} />}
