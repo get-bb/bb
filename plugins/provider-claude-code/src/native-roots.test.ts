@@ -1,9 +1,14 @@
+import os from "node:os";
+import fs from "node:fs/promises";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { ExperimentalVendorPluginRoots } from "@get-bb/plugin-sdk/host";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { resolveClaudeNativeRoots } from "./native-roots.js";
+import {
+  CLAUDE_NATIVE_ROOTS_DECLARATION,
+  resolveClaudeNativeRoots,
+} from "./native-roots.js";
 
 interface Fixture {
   cwd: string;
@@ -260,5 +265,47 @@ describe("resolveClaudeNativeRoots contract filtering", () => {
         ).toBe(true);
       }
     }
+  });
+});
+
+describe("user skill roots under a relocated CLAUDE_CONFIG_DIR", () => {
+  async function listedUserSkillRoots(
+    homeDir: string,
+    env: Readonly<Record<string, string | undefined>>,
+  ): Promise<string[]> {
+    const declared = (
+      CLAUDE_NATIVE_ROOTS_DECLARATION.experimental_nativeSkillRoots?.user ?? []
+    ).map((root) =>
+      path.join(homeDir, typeof root === "string" ? root : root.path),
+    );
+    const resolved = await resolveClaudeNativeRoots({
+      homeDir,
+      env,
+      cwd: null,
+    });
+    return [
+      ...declared,
+      ...(resolved.skills ?? [])
+        .filter((root) => root.origin === "user")
+        .map((root) => root.path),
+    ];
+  }
+
+  it("lists the relocated home's skills and not the default home's", async () => {
+    const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "bb-home-"));
+    const relocated = path.join(homeDir, "relocated");
+    const listed = await listedUserSkillRoots(homeDir, {
+      CLAUDE_CONFIG_DIR: relocated,
+    });
+    expect(listed).toContain(path.join(relocated, "skills"));
+    expect(listed).not.toContain(path.join(homeDir, ".claude", "skills"));
+  });
+
+  it("lists the default home's skills exactly once when CLAUDE_CONFIG_DIR is unset", async () => {
+    const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "bb-home-"));
+    const listed = await listedUserSkillRoots(homeDir, {});
+    expect(
+      listed.filter((root) => root === path.join(homeDir, ".claude", "skills")),
+    ).toHaveLength(1);
   });
 });

@@ -53,13 +53,6 @@
         "argumentHint": null
       },
       {
-        "name": "home-codex-skill",
-        "source": "skill",
-        "origin": "user",
-        "description": "home-codex-skill skill",
-        "argumentHint": null
-      },
-      {
         "name": "linked-agents-skill",
         "source": "skill",
         "origin": "user",
@@ -146,13 +139,6 @@
         "linked": false
       },
       {
-        "name": "home-codex-skill",
-        "description": "home-codex-skill skill",
-        "filePath": "<home>/.codex/skills/home-codex-skill/SKILL.md",
-        "rootKind": "provider-user",
-        "linked": false
-      },
-      {
         "name": "linked-agents-skill",
         "description": "linked-agents-skill skill",
         "filePath": "<home>/.agents/skills/linked-agents-skill/SKILL.md",
@@ -227,13 +213,6 @@
         "argumentHint": null
       },
       {
-        "name": "home-codex-skill",
-        "source": "skill",
-        "origin": "user",
-        "description": "home-codex-skill skill",
-        "argumentHint": null
-      },
-      {
         "name": "linked-agents-skill",
         "source": "skill",
         "origin": "user",
@@ -288,13 +267,6 @@
         "name": "home-agents-skill",
         "description": "home-agents-skill skill",
         "filePath": "<home>/.agents/skills/home-agents-skill/SKILL.md",
-        "rootKind": "provider-user",
-        "linked": false
-      },
-      {
-        "name": "home-codex-skill",
-        "description": "home-codex-skill skill",
-        "filePath": "<home>/.codex/skills/home-codex-skill/SKILL.md",
         "rootKind": "provider-user",
         "linked": false
       },

@@ -12,10 +12,7 @@ export const PI_NATIVE_ROOTS_DECLARATION: Pick<
   "experimental_nativeSkillRoots" | "experimental_resolvesNativeRoots"
 > = {
   experimental_nativeSkillRoots: {
-    user: [
-      { path: ".pi/agent/skills", recursive: true },
-      { path: ".agents/skills", recursive: true },
-    ],
+    user: [{ path: ".agents/skills", recursive: true }],
     project: [
       { path: ".pi/skills", recursive: true },
       { path: ".agents/skills", recursive: true, ancestors: true },
@@ -60,10 +57,7 @@ export async function resolvePiNativeRoots(
   args: ResolvePiNativeRootsArgs,
 ): Promise<ExperimentalNativeRootsResolveAnswer> {
   const agentDir = resolvePiAgentDir(args);
-  const roots = new Set<string>();
-  if (agentDir !== path.join(args.homeDir, ...DEFAULT_AGENT_DIR_SEGMENTS)) {
-    roots.add(path.resolve(agentDir, "skills"));
-  }
+  const roots = new Set<string>([path.resolve(agentDir, "skills")]);
   let settings: z.infer<typeof piSettingsSchema> | null = null;
   try {
     settings = piSettingsSchema.parse(

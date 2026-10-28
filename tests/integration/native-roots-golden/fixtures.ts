@@ -425,12 +425,23 @@ const CLAUDE_ABSENT = [
   ...CLAUDE_PLUGIN_ABSENT,
 ];
 
+const CLAUDE_DEFAULT_HOME_SKILLS = ["home-claude-skill", "linked-home-skill"];
+
 function claudeCodeVariant(
   variant: string,
   claudeDirFor: (paths: FixturePaths) => string,
   env: (paths: FixturePaths) => FixtureEnv,
   extraUserNames: readonly string[],
 ): FixtureVariant {
+  const relocated = variant !== "default";
+  const userNames = relocated
+    ? CLAUDE_USER_NAMES.filter(
+        (name) => !CLAUDE_DEFAULT_HOME_SKILLS.includes(name),
+      )
+    : CLAUDE_USER_NAMES;
+  const absent = relocated
+    ? [...CLAUDE_ABSENT, ...CLAUDE_DEFAULT_HOME_SKILLS]
+    : CLAUDE_ABSENT;
   return {
     providerId: "claude-code",
     variant,
@@ -438,16 +449,12 @@ function claudeCodeVariant(
     build: (paths) => buildClaudeCode(paths, claudeDirFor(paths)),
     expected: {
       workspace: {
-        present: [
-          ...CLAUDE_PROJECT_NAMES,
-          ...CLAUDE_USER_NAMES,
-          ...extraUserNames,
-        ],
-        absent: CLAUDE_ABSENT,
+        present: [...CLAUDE_PROJECT_NAMES, ...userNames, ...extraUserNames],
+        absent,
       },
       userOnly: {
-        present: [...CLAUDE_USER_NAMES, ...extraUserNames],
-        absent: [...CLAUDE_ABSENT, ...CLAUDE_PROJECT_NAMES],
+        present: [...userNames, ...extraUserNames],
+        absent: [...absent, ...CLAUDE_PROJECT_NAMES],
       },
     },
   };
@@ -566,6 +573,13 @@ function codexVariant(
   env: (paths: FixturePaths) => FixtureEnv,
   extraUserNames: readonly string[],
 ): FixtureVariant {
+  const relocated = variant !== "default";
+  const userNames = relocated
+    ? CODEX_USER_NAMES.filter((name) => name !== "home-codex-skill")
+    : CODEX_USER_NAMES;
+  const absent = relocated
+    ? [...CODEX_ABSENT, "home-codex-skill"]
+    : CODEX_ABSENT;
   return {
     providerId: "codex",
     variant,
@@ -573,16 +587,12 @@ function codexVariant(
     build: (paths) => buildCodex(paths, codexHomeFor(paths)),
     expected: {
       workspace: {
-        present: [
-          ...CODEX_PROJECT_NAMES,
-          ...CODEX_USER_NAMES,
-          ...extraUserNames,
-        ],
-        absent: CODEX_ABSENT,
+        present: [...CODEX_PROJECT_NAMES, ...userNames, ...extraUserNames],
+        absent,
       },
       userOnly: {
-        present: [...CODEX_USER_NAMES, ...extraUserNames],
-        absent: [...CODEX_ABSENT, ...CODEX_PROJECT_NAMES],
+        present: [...userNames, ...extraUserNames],
+        absent: [...absent, ...CODEX_PROJECT_NAMES],
       },
     },
   };

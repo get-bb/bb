@@ -33,7 +33,8 @@ Pi's skill layout is the plugin's fact, so bb lists pi's skills beside its
 own and core holds no pi policy. The registration declares the documented
 directories (`experimental_nativeSkillRoots`):
 
-- `user`: `.pi/agent/skills` and `.agents/skills` under the host's home.
+- `user`: `.agents/skills` under the host's home; the resolver adds the agent
+  dir's `skills` (`$PI_CODING_AGENT_DIR` or `~/.pi/agent`).
 - `project`: `.pi/skills` and `.agents/skills` under the workspace.
 
 The directories only a host knows are the host entry's answer

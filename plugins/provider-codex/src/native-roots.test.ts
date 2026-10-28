@@ -1,3 +1,4 @@
+import fs from "node:fs/promises";
 import {
   mkdir,
   mkdtemp,
@@ -10,6 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { experimental_nativeRootsResolveOutputSchema } from "@get-bb/plugin-sdk/host";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CODEX_NATIVE_ROOTS_DECLARATION } from "./native-roots.js";
 import {
   readCodexEnabledPluginSettingsFromToml,
   resolveCodexNativeRoots,
@@ -411,5 +413,43 @@ describe("resolveCodexNativeRoots contract filtering", () => {
         true,
       );
     }
+  });
+});
+
+describe("user skill roots under a relocated CODEX_HOME", () => {
+  async function listedUserSkillRoots(
+    homeDir: string,
+    env: Readonly<Record<string, string | undefined>>,
+  ): Promise<string[]> {
+    const declared = (
+      CODEX_NATIVE_ROOTS_DECLARATION.experimental_nativeSkillRoots?.user ?? []
+    ).map((root) =>
+      path.join(homeDir, typeof root === "string" ? root : root.path),
+    );
+    const resolved = await resolveCodexNativeRoots({ homeDir, env });
+    return [
+      ...declared,
+      ...(resolved.skills ?? [])
+        .filter((root) => root.origin === "user")
+        .map((root) => root.path),
+    ];
+  }
+
+  it("lists the relocated home's skills and not the default home's", async () => {
+    const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "bb-home-"));
+    const relocated = path.join(homeDir, "relocated");
+    const listed = await listedUserSkillRoots(homeDir, {
+      CODEX_HOME: relocated,
+    });
+    expect(listed).toContain(path.join(relocated, "skills"));
+    expect(listed).not.toContain(path.join(homeDir, ".codex", "skills"));
+  });
+
+  it("lists the default home's skills exactly once when CODEX_HOME is unset", async () => {
+    const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "bb-home-"));
+    const listed = await listedUserSkillRoots(homeDir, {});
+    expect(
+      listed.filter((root) => root === path.join(homeDir, ".codex", "skills")),
+    ).toHaveLength(1);
   });
 });

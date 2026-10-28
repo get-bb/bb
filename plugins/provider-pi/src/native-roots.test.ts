@@ -1,9 +1,15 @@
+import path from "node:path";
+import os from "node:os";
+import fs from "node:fs/promises";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { experimental_nativeRootsResolveOutputSchema } from "@get-bb/plugin-sdk/host";
-import { afterEach, beforeEach, expect, it } from "vitest";
-import { resolvePiNativeRoots } from "./native-roots.js";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  PI_NATIVE_ROOTS_DECLARATION,
+  resolvePiNativeRoots,
+} from "./native-roots.js";
 
 let homeDir: string;
 
@@ -37,11 +43,12 @@ async function resolvedSkillPaths(
   return parsed.skills.map((root) => root.path);
 }
 
-it("answers empty without a settings file or with an unreadable one", async () => {
-  await expect(resolvedSkillPaths({})).resolves.toEqual([]);
+it("answers only the agent dir's skills without a settings file or with an unreadable one", async () => {
+  const agentSkills = join(homeDir, ".pi", "agent", "skills");
+  await expect(resolvedSkillPaths({})).resolves.toEqual([agentSkills]);
   mkdirSync(join(homeDir, ".pi", "agent"), { recursive: true });
   writeFileSync(join(homeDir, ".pi", "agent", "settings.json"), "{not json");
-  await expect(resolvedSkillPaths({})).resolves.toEqual([]);
+  await expect(resolvedSkillPaths({})).resolves.toEqual([agentSkills]);
 });
 
 it("resolves plain skill entries against home, the agent dir, or as given, and drops the rest", async () => {
@@ -64,6 +71,7 @@ it("resolves plain skill entries against home, the agent dir, or as given, and d
     [
       resolve("/opt/team-skills"),
       join(homeDir, ".pi", "agent", "local-skills"),
+      join(homeDir, ".pi", "agent", "skills"),
       join(homeDir, "shared", "skills"),
     ].sort(),
   );
@@ -95,8 +103,49 @@ it("never answers a root the contract would refuse", async () => {
       resolve("/etc/skills"),
       resolve("/opt/skills"),
       join(homeDir, ".pi", "agent", "escape"),
+      join(homeDir, ".pi", "agent", "skills"),
       resolve("/srv/skills"),
       join(homeDir, "team-skills"),
     ].sort(),
   );
+});
+
+describe("user skill roots under a relocated PI_CODING_AGENT_DIR", () => {
+  async function listedUserSkillRoots(
+    homeDir: string,
+    env: Readonly<Record<string, string | undefined>>,
+  ): Promise<string[]> {
+    const declared = (
+      PI_NATIVE_ROOTS_DECLARATION.experimental_nativeSkillRoots?.user ?? []
+    ).map((root) =>
+      path.join(homeDir, typeof root === "string" ? root : root.path),
+    );
+    const resolved = await resolvePiNativeRoots({ homeDir, env });
+    return [
+      ...declared,
+      ...(resolved.skills ?? [])
+        .filter((root) => root.origin === "user")
+        .map((root) => root.path),
+    ];
+  }
+
+  it("lists the relocated home's skills and not the default home's", async () => {
+    const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "bb-home-"));
+    const relocated = path.join(homeDir, "relocated");
+    const listed = await listedUserSkillRoots(homeDir, {
+      PI_CODING_AGENT_DIR: relocated,
+    });
+    expect(listed).toContain(path.join(relocated, "skills"));
+    expect(listed).not.toContain(path.join(homeDir, ".pi/agent", "skills"));
+  });
+
+  it("lists the default home's skills exactly once when PI_CODING_AGENT_DIR is unset", async () => {
+    const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "bb-home-"));
+    const listed = await listedUserSkillRoots(homeDir, {});
+    expect(
+      listed.filter(
+        (root) => root === path.join(homeDir, ".pi/agent", "skills"),
+      ),
+    ).toHaveLength(1);
+  });
 });

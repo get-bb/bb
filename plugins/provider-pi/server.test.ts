@@ -22,13 +22,10 @@ describe("the pi plugin's environment passthrough", () => {
 });
 
 describe("the pi plugin's skill roots", () => {
-  it("declares pi's directories as recursive, walks ancestors for .agents/skills only, and resolves the rest per host", () => {
+  it("declares pi's directories as recursive, walks ancestors for .agents/skills only, and resolves the agent dir per host", () => {
     const declaration = registeredDeclaration();
     expect(declaration.experimental_nativeSkillRoots).toMatchObject({
-      user: [
-        { path: ".pi/agent/skills", recursive: true },
-        { path: ".agents/skills", recursive: true },
-      ],
+      user: [{ path: ".agents/skills", recursive: true }],
       project: [
         { path: ".pi/skills", recursive: true, ancestors: false },
         { path: ".agents/skills", recursive: true, ancestors: true },
