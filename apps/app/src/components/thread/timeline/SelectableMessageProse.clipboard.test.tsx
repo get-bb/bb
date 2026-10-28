@@ -154,6 +154,36 @@ it("preserves inline ancestors around partial selections without copying unselec
   );
 });
 
+it.each([
+  ["Rename my_old_var in config_loader.py", true],
+  ["Open C:\\Users\\me\\notes.txt", true],
+  ["Check x < y and y > z, then read arr[0]", true],
+  ["Rename über_straße", true],
+  ["_leading_ and snake_case_", false],
+  ["2*3*4 and `tick`", false],
+  ["<div> and <https://example.com>", false],
+  ["> not a quote", false],
+  ["[label]: https://example.com", false],
+  ["[text](not a link) and [x][y]", false],
+  ["a\\*b and a trailing backslash\\", false],
+])(
+  "copies prose %j as Markdown that renders back to the same text",
+  (prose, unchanged) => {
+    const { container } = render(
+      <SelectableMessageProse>
+        <p>{prose}</p>
+      </SelectableMessageProse>,
+    );
+    const range = document.createRange();
+    range.selectNodeContents(container.querySelector("p")!);
+    const copied = copyRange(range).data.get("text/plain")!;
+    if (unchanged) expect(copied).toBe(prose);
+    cleanup();
+    const rendered = render(<MarkdownPreview content={copied} />);
+    expect(rendered.container.textContent).toBe(prose);
+  },
+);
+
 it("preserves nested lists, blockquotes, task lists and fences containing backticks", () => {
   const { container } = render(
     <SelectableMessageProse>

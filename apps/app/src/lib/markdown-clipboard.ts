@@ -130,8 +130,34 @@ function safeUrl(value: string): string {
     : value;
 }
 
+const wordCharacter = /[\p{L}\p{N}]/u;
+
+const needsEscape: Record<
+  string,
+  (before: string, after: string, lineStart: boolean) => boolean
+> = {
+  "\\": (_before, after) => after === "" || /[!-/:-@[-`{-~]/.test(after),
+  "`": () => true,
+  "*": () => true,
+  _: (before, after) =>
+    !(wordCharacter.test(before) && wordCharacter.test(after)),
+  "[": (_before, _after, lineStart) => lineStart,
+  "]": (_before, after) => /[([:]/.test(after),
+  "<": (_before, after) => /[A-Za-z/!?]/.test(after),
+  ">": (_before, _after, lineStart) => lineStart,
+};
+
 function escapeText(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/([`*_[\]<>])/g, "\\$1");
+  return value.replace(/[\\`*_[\]<>]/g, (char, index: number) => {
+    const before = value[index - 1] ?? "";
+    return needsEscape[char]!(
+      before,
+      value[index + 1] ?? "",
+      index === 0 || before === "\n",
+    )
+      ? `\\${char}`
+      : char;
+  });
 }
 
 function codeSpan(value: string): string {
