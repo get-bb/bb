@@ -402,6 +402,8 @@ Read the installed declarations for exact current signatures.
 - `experimental_readProcessIdentity`
 - `experimental_resolveClaudePluginRoots`
 - `experimental_resolveClaudeConfigDir`
+- `experimental_resolveCodexHome`
+- `experimental_resolvePiAgentDir`
 - `experimental_resolveVendorPluginRoots`
 - `experimental_runVcsProcess`
 - `experimental_sanitizeInheritedChildProcessEnv`

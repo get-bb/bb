@@ -29,7 +29,7 @@ function writeSettings(agentDir: string, settings: unknown): void {
 async function resolvedSkillPaths(
   env: Readonly<Record<string, string | undefined>>,
 ): Promise<string[]> {
-  const answer = await resolvePiNativeRoots({ homeDir, env });
+  const answer = await resolvePiNativeRoots({ cwd: null, homeDir, env });
   const parsed = experimental_nativeRootsResolveOutputSchema.parse(answer);
   expect(parsed.commands).toEqual([]);
   for (const root of parsed.skills) {
@@ -120,7 +120,7 @@ describe("user skill roots under a relocated PI_CODING_AGENT_DIR", () => {
     ).map((root) =>
       path.join(homeDir, typeof root === "string" ? root : root.path),
     );
-    const resolved = await resolvePiNativeRoots({ homeDir, env });
+    const resolved = await resolvePiNativeRoots({ cwd: null, homeDir, env });
     return [
       ...declared,
       ...(resolved.skills ?? [])

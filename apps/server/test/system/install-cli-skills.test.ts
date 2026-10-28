@@ -1,3 +1,4 @@
+import { setMachineEnvironmentVariable } from "../../src/services/machines/environment-storage.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -52,6 +53,12 @@ describe("install cli skills", () => {
   it("installs the built-in bb-cli tree on every requested machine", async () => {
     await withTestHarness(async (harness) => {
       await writeBuiltinCliSkill(harness);
+      await setMachineEnvironmentVariable(
+        harness.deps.db,
+        harness.deps.config.dataDir,
+        { name: "CLAUDE_CONFIG_DIR", value: "/configured/claude", note: null },
+        null,
+      );
       const laptop = seedHostSession(harness.deps, { id: "host-laptop" });
       const studio = seedHostSession(harness.deps, { id: "host-studio" });
       const responders = [laptop, studio].map(({ host, session }) =>
@@ -61,6 +68,12 @@ describe("install cli skills", () => {
           handle: (request) => {
             expect(request.command).toMatchObject({
               type: "host.install_global_skills",
+              contributedEnv: [
+                expect.objectContaining({
+                  name: "CLAUDE_CONFIG_DIR",
+                  value: "/configured/claude",
+                }),
+              ],
               skills: [{ name: "bb-cli", entryPath: "SKILL.md" }],
             });
             return {
@@ -151,6 +164,12 @@ describe("install cli skills", () => {
   it("maps each machine's reported hashes to a product status", async () => {
     await withTestHarness(async (harness) => {
       await writeBuiltinCliSkill(harness);
+      await setMachineEnvironmentVariable(
+        harness.deps.db,
+        harness.deps.config.dataDir,
+        { name: "CLAUDE_CONFIG_DIR", value: "/configured/claude", note: null },
+        null,
+      );
       const current = seedHostSession(harness.deps, { id: "host-current" });
       const stale = seedHostSession(harness.deps, { id: "host-stale" });
       const empty = seedHostSession(harness.deps, { id: "host-empty" });
@@ -167,6 +186,12 @@ describe("install cli skills", () => {
           handle: (request) => {
             expect(request.command).toMatchObject({
               type: "host.global_skills_status",
+              contributedEnv: [
+                expect.objectContaining({
+                  name: "CLAUDE_CONFIG_DIR",
+                  value: "/configured/claude",
+                }),
+              ],
               names: ["bb-cli"],
             });
             return {

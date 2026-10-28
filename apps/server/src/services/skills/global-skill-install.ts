@@ -1,3 +1,4 @@
+import { resolveHostEnvironment } from "../hosts/host-environment.js";
 import { listHosts, listNonDestroyedHostsByIds } from "@bb/db";
 import type {
   CliSkillMachineStatus,
@@ -113,6 +114,10 @@ export async function readGlobalCliSkillStatus(
           timeoutMs: STATUS_TIMEOUT_MS,
           command: {
             type: "host.global_skills_status",
+            contributedEnv: await resolveHostEnvironment(deps, {
+              hostId: host.id,
+              projectId: null,
+            }),
             names: skills.map((skill) => skill.name),
           },
         });
@@ -171,7 +176,14 @@ export async function installGlobalCliSkills(
         const result = await callHostOnlineRpcForWork(deps, {
           hostId: host.id,
           timeoutMs: COMMAND_TIMEOUT_MS,
-          command: { type: "host.install_global_skills", skills },
+          command: {
+            type: "host.install_global_skills",
+            skills,
+            contributedEnv: await resolveHostEnvironment(deps, {
+              hostId: host.id,
+              projectId: null,
+            }),
+          },
         });
         return {
           ok: true as const,

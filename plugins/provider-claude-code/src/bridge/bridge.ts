@@ -2518,6 +2518,7 @@ async function handleThreadFork(
   try {
     forkedProviderThreadId = await forkClaudeSession({
       configDirectory: experimental_resolveClaudeConfigDir({
+        cwd: params.cwd,
         homeDir: homedir(),
         env: buildSessionEnv(readConfigEnvOverrides(params.config)),
       }),
@@ -2545,6 +2546,7 @@ async function toClaudeSessionParams(
             cwd: params.cwd,
             pluginsRoot: requireSkillPluginsRoot(),
             claudeDir: experimental_resolveClaudeConfigDir({
+              cwd: params.cwd,
               homeDir: homedir(),
               env: buildSessionEnv(params.options.envVars ?? {}),
             }),

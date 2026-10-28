@@ -869,6 +869,7 @@ export type HostInstallGlobalSkill = z.infer<
 const hostInstallGlobalSkillsCommandSchema = z
   .object({
     type: z.literal("host.install_global_skills"),
+    contributedEnv: z.array(hostDaemonContributedEnvEntrySchema),
     skills: z.array(hostInstallGlobalSkillSchema).min(1).max(64),
   })
   .strict();
@@ -876,6 +877,7 @@ const hostInstallGlobalSkillsCommandSchema = z
 const hostGlobalSkillsStatusCommandSchema = z
   .object({
     type: z.literal("host.global_skills_status"),
+    contributedEnv: z.array(hostDaemonContributedEnvEntrySchema),
     names: z
       .array(z.string().max(64).regex(INJECTED_SKILL_NAME_PATTERN))
       .min(1)
@@ -1953,7 +1955,9 @@ type HostDaemonRetryableOnlineRpcCommandSchema =
 type HostDaemonResultSchemaMapForTransport<
   Transport extends HostDaemonCommandTransport,
 > = {
-  [Descriptor in HostDaemonCommandDescriptorForTransport<Transport> as Descriptor["type"]]: Descriptor["resultSchema"];
+  [
+    Descriptor in HostDaemonCommandDescriptorForTransport<Transport> as Descriptor["type"]
+  ]: Descriptor["resultSchema"];
 };
 
 type HostDaemonCommandResultSchemaMap =

@@ -36,8 +36,14 @@ async function textResult(work: Promise<string>): Promise<CodexAiTextResult> {
 export default experimental_defineHostEntry({
   contract: codexHostContract,
   handlers: {
-    resolveNativeRoots: (): Promise<ExperimentalNativeRootsResolveAnswer> =>
-      resolveCodexNativeRoots({ homeDir: os.homedir(), env: process.env }),
+    resolveNativeRoots: (
+      input,
+    ): Promise<ExperimentalNativeRootsResolveAnswer> =>
+      resolveCodexNativeRoots({
+        cwd: input.cwd,
+        homeDir: os.homedir(),
+        env: process.env,
+      }),
     "codex.ai.complete": (input, context) =>
       textResult(completeCodexInference(input, context.signal)),
     "codex.ai.transcribe": (input, context) =>

@@ -9,7 +9,7 @@ import {
   type ExperimentalVendorPlugin,
 } from "@get-bb/plugin-sdk/host";
 import { z } from "zod";
-import { resolveCodexHome } from "./codex-home.js";
+import { experimental_resolveCodexHome } from "@get-bb/plugin-sdk/host";
 
 export const CODEX_NATIVE_ROOTS_DECLARATION: Pick<
   PluginProviderDeclaration,
@@ -27,6 +27,7 @@ export type CodexResolvedSkillRoot = NonNullable<
 >[number];
 
 export interface ResolveCodexNativeRootsArgs {
+  cwd: string | null;
   homeDir: string;
   env: Readonly<Record<string, string | undefined>>;
 }
@@ -53,7 +54,7 @@ interface PluginCacheCandidate {
 export async function resolveCodexNativeRoots(
   args: ResolveCodexNativeRootsArgs,
 ): Promise<ExperimentalNativeRootsResolveAnswer> {
-  const codexHome = resolveCodexHome(args.homeDir, args.env);
+  const codexHome = experimental_resolveCodexHome(args);
   const skillsRootPath = path.join(codexHome, "skills");
   const skills: CodexResolvedSkillRoot[] = [
     { path: skillsRootPath, origin: "user", shape: "skills" },

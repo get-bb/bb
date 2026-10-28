@@ -1430,3 +1430,9 @@ update message. Web browsers control their own handoff and may show a second
 prompt; BB cannot reliably detect missing apps in a browser. Executable web
 schemes, local-file launch schemes, and reserved editor-action schemes remain
 blocked.
+
+Provider configuration folders are resolved with the environment of the provider process, including project environment overrides for project skill and command listing. `CLAUDE_CONFIG_DIR` is a literal NFC-normalized path: relative paths use the workspace cwd, and `~` is not expanded. An unset value defaults to `~/.claude`; an empty value selects cwd. `CODEX_HOME` defaults to `~/.codex` when blank, and relative paths use cwd. `PI_CODING_AGENT_DIR` defaults to `~/.pi/agent` when blank, expands `~`, and resolves other relative paths against cwd. Host-wide discovery without a workspace uses the host home directory as cwd.
+
+Global bb CLI skill installation and status use the machine environment's `CLAUDE_CONFIG_DIR` alongside `~/.agents/skills`. Relative global-install paths use the daemon cwd. Existing copies in a previous profile are left in place. Claude health and usage read credentials and account information from the active profile and select its matching macOS Keychain service.
+
+Codex app-server children receive the session environment, including `BB_THREAD_ID`, `BB_PROJECT_ID`, `BB_ENVIRONMENT_ID`, and `BB_THREAD_STORAGE`, so configured MCP servers and lifecycle hooks can inherit that identity. Inherited daemon `BB_*` variables remain stripped. Changing the session environment rebuilds its app-server before the next turn.

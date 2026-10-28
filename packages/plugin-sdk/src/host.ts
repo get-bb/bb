@@ -27,7 +27,6 @@ export {
   type ExperimentalNativeRootsResolveOutput,
 } from "./native-roots-contract.js";
 export {
-  experimental_resolveClaudeConfigDir,
   experimental_resolveClaudePluginRoots,
   experimental_resolveVendorPluginRoots,
   type ExperimentalClaudePluginRoots,
@@ -59,4 +58,10 @@ export { runVcsProcess as experimental_runVcsProcess } from "@bb/process-utils";
 export type {
   VcsProcessOptions as ExperimentalVcsProcessOptions,
   VcsProcessPriority as ExperimentalVcsProcessPriority,
+} from "@bb/process-utils";
+
+export {
+  resolveClaudeConfigDir as experimental_resolveClaudeConfigDir,
+  resolveCodexHome as experimental_resolveCodexHome,
+  resolvePiAgentDir as experimental_resolvePiAgentDir,
 } from "@bb/process-utils";

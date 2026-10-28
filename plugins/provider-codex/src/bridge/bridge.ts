@@ -389,27 +389,16 @@ export function resolveAppServerLaunch(env: NodeJS.ProcessEnv = process.env): {
 function appServerLaunchEnv(
   envVars: Readonly<Record<string, string>> | undefined,
 ): NodeJS.ProcessEnv {
-  const poolBaseUrl = envVars?.[CODEX_POOL_BASE_URL_ENV];
-  const poolAuthToken = envVars?.[CODEX_POOL_AUTH_TOKEN_ENV];
-  return {
-    ...process.env,
-    ...(poolBaseUrl === undefined
-      ? {}
-      : { [CODEX_POOL_BASE_URL_ENV]: poolBaseUrl }),
-    ...(poolAuthToken === undefined
-      ? {}
-      : { [CODEX_POOL_AUTH_TOKEN_ENV]: poolAuthToken }),
-  };
+  return { ...process.env, ...envVars };
 }
 
 function buildAppServerEnv(
   envVars: Readonly<Record<string, string>> | undefined,
 ): NodeJS.ProcessEnv {
-  return withoutBridgeRuntimeEnv(
-    sanitizeInheritedChildProcessEnv({
-      env: appServerLaunchEnv(envVars),
-    }),
-  );
+  return withoutBridgeRuntimeEnv({
+    ...sanitizeInheritedChildProcessEnv({ env: process.env }),
+    ...envVars,
+  });
 }
 
 function isCodexSpawnFailure(error: unknown): boolean {
@@ -424,6 +413,7 @@ function describeCodexLaunchError(error: unknown): string {
 }
 
 interface CodexSessionConstruction {
+  envVars: Readonly<Record<string, string>> | undefined;
   cwd: string;
   instructionMode: "append" | "replace";
   dynamicTools: DynamicTool[] | undefined;
@@ -579,20 +569,20 @@ function constructionSignature(
   cwd: string,
   sessionOptions: CodexSessionOptions,
 ): string {
-  const poolBaseUrl = sessionOptions.envVars?.[CODEX_POOL_BASE_URL_ENV];
-  const poolToken = sessionOptions.envVars?.[CODEX_POOL_AUTH_TOKEN_ENV];
   return JSON.stringify({
     cwd,
     reasoningLevel: sessionOptions.reasoningLevel ?? null,
     memoryEnabled: sessionOptions.memoryEnabled ?? null,
     providerSubagentsEnabled: sessionOptions.providerSubagentsEnabled ?? null,
-    poolRoute:
-      poolBaseUrl === undefined || poolToken === undefined
-        ? null
-        : {
-            baseUrl: poolBaseUrl,
-            tokenHash: createHash("sha256").update(poolToken).digest("hex"),
-          },
+    envHash: createHash("sha256")
+      .update(
+        JSON.stringify(
+          Object.entries(sessionOptions.envVars ?? {}).sort(([a], [b]) =>
+            a.localeCompare(b),
+          ),
+        ),
+      )
+      .digest("hex"),
   });
 }
 
@@ -1224,6 +1214,7 @@ async function constructThreadSession(
     connection: null,
     translator,
     construction: {
+      envVars: decoded.sessionOptions.envVars,
       cwd: args.cwd,
       instructionMode: args.instructionMode,
       dynamicTools: args.dynamicTools,
@@ -1664,7 +1655,11 @@ async function requireLiveSessionForTurn(
     throw new Error(`No active codex session for thread "${params.threadId}"`);
   }
 
-  const decoded = decodeCodexOptions(params.options);
+  const options = {
+    ...params.options,
+    envVars: { ...session.construction.envVars, ...params.options.envVars },
+  };
+  const decoded = decodeCodexOptions(options);
   const signature = constructionSignature(
     session.construction.cwd,
     decoded.sessionOptions,
@@ -1672,19 +1667,19 @@ async function requireLiveSessionForTurn(
   if (session.connection === null || session.connection.exited) {
     session = await rebuildThreadSession(
       session,
-      params.options,
+      options,
       "codex app-server exited; the session was restored from its rollout.",
     );
   } else if (session.rebuildBeforeNextTurnReason !== null) {
     session = await rebuildThreadSession(
       session,
-      params.options,
+      options,
       session.rebuildBeforeNextTurnReason,
     );
   } else if (signature !== session.constructionSignature) {
     session = await rebuildThreadSession(
       session,
-      params.options,
+      options,
       "Execution settings changed; the codex session was rebuilt to apply them.",
     );
   }

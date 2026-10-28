@@ -76,3 +76,5 @@ only on threads that already use them.
 
 Use the core CLI skill for command syntax and official Codex guidance for
 upstream product behavior.
+
+Provider roots use `CODEX_HOME` from the configured process environment. Project skill listing includes project environment overrides. See the agent-configuration guide for global skill installation.

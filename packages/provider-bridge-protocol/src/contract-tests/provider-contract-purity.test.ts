@@ -1,4 +1,6 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import path from "node:path";
+import ts from "typescript";
 import { fileURLToPath } from "node:url";
 import {
   pendingInteractionPayloadSchema,
@@ -91,7 +93,7 @@ describe("guardrail G2: the provider contract names no provider", () => {
 
   it("flags every provider-named key and keeps the allowlist honest", () => {
     const allowlist = loadAllowlist();
-    const offenders: string[] = [];
+    const offenders: string[] = collectAmbientBridgeReads();
     for (const [name, schema] of SCANNED_SCHEMAS) {
       for (const path of collectZodKeyPaths(schema, name)) {
         const key = path.slice(path.lastIndexOf(".") + 1);
@@ -103,11 +105,103 @@ describe("guardrail G2: the provider contract names no provider", () => {
 
     expect(
       unexpected,
-      "new provider-named keys on the provider-agnostic contract — move the knob into providerOptions or declare it generically; see docs/provider-plugin-api.md",
+      "New provider-named contract keys or ambient bridge reads. Resolve provider homes through the shared resolver with the configured process environment; thread environment into other consumers instead of reading process.env or os.homedir.",
     ).toEqual([]);
     expect(
       unused,
-      "allowlist entries that no longer match a key — delete them from provider-contract-purity.allowlist.json",
+      "allowlist entries that no longer match a key or ambient read — delete them from provider-contract-purity.allowlist.json",
     ).toEqual([]);
   });
 });
+
+function collectAmbientBridgeReads(): string[] {
+  const root = fileURLToPath(new URL("../../../../", import.meta.url));
+  const directories = [
+    "plugins/provider-claude-code/src/bridge",
+    "plugins/provider-codex/src/bridge",
+    "plugins/provider-pi/src/bridge",
+    "packages/provider-bridge-acp/src",
+  ];
+  const offenders: string[] = [];
+  for (const directory of directories) {
+    for (const relative of readdirSync(path.join(root, directory), {
+      recursive: true,
+      encoding: "utf8",
+    })) {
+      if (
+        !relative.endsWith(".ts") ||
+        /(?:__tests__|test-support|fake-|\.test\.)/u.test(relative)
+      )
+        continue;
+      const file = `${directory}/${relative}`;
+      const source = ts.createSourceFile(
+        file,
+        readFileSync(path.join(root, file), "utf8"),
+        ts.ScriptTarget.Latest,
+        true,
+      );
+      const osImports = new Set<string>();
+      const homeImports = new Set<string>();
+      for (const statement of source.statements) {
+        if (
+          !ts.isImportDeclaration(statement) ||
+          !ts.isStringLiteral(statement.moduleSpecifier) ||
+          !["node:os", "os"].includes(statement.moduleSpecifier.text)
+        )
+          continue;
+        const clause = statement.importClause;
+        if (clause?.name) osImports.add(clause.name.text);
+        const bindings = clause?.namedBindings;
+        if (bindings && ts.isNamespaceImport(bindings))
+          osImports.add(bindings.name.text);
+        if (bindings && ts.isNamedImports(bindings)) {
+          for (const binding of bindings.elements) {
+            if ((binding.propertyName ?? binding.name).text === "homedir")
+              homeImports.add(binding.name.text);
+          }
+        }
+      }
+      const counts = new Map<string, number>();
+      const visit = (node: ts.Node): void => {
+        let read: string | null = null;
+        if (
+          ts.isPropertyAccessExpression(node) ||
+          ts.isElementAccessExpression(node)
+        ) {
+          const owner = node.expression;
+          const member = ts.isPropertyAccessExpression(node)
+            ? node.name.text
+            : ts.isStringLiteral(node.argumentExpression)
+              ? node.argumentExpression.text
+              : null;
+          if (
+            ts.isIdentifier(owner) &&
+            owner.text === "process" &&
+            member === "env"
+          )
+            read = "process.env";
+          if (
+            ts.isIdentifier(owner) &&
+            osImports.has(owner.text) &&
+            member === "homedir"
+          )
+            read = "os.homedir";
+        }
+        if (
+          ts.isCallExpression(node) &&
+          ts.isIdentifier(node.expression) &&
+          homeImports.has(node.expression.text)
+        )
+          read = "os.homedir";
+        if (read !== null) {
+          const count = (counts.get(read) ?? 0) + 1;
+          counts.set(read, count);
+          offenders.push(`${file}:${read}:${count}`);
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(source);
+    }
+  }
+  return offenders;
+}

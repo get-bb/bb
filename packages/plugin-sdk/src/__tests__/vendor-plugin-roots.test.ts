@@ -102,12 +102,12 @@ describe("experimental_resolveClaudePluginRoots", () => {
   it("reads the registry from ~/.claude or any CLAUDE_CONFIG_DIR form, and answers nothing without one", async () => {
     for (const [env, expected] of [
       [{}, claudeDir],
-      [{ CLAUDE_CONFIG_DIR: "  " }, claudeDir],
+      [{ CLAUDE_CONFIG_DIR: "  " }, path.join(homeDir, "  ")],
       [
         { CLAUDE_CONFIG_DIR: "custom-claude" },
         path.join(homeDir, "custom-claude"),
       ],
-      [{ CLAUDE_CONFIG_DIR: "~/moved" }, path.join(homeDir, "moved")],
+      [{ CLAUDE_CONFIG_DIR: "~/moved" }, path.join(homeDir, "~/moved")],
       [
         { CLAUDE_CONFIG_DIR: path.join(tempRoot, "elsewhere", "..", "abs") },
         path.join(tempRoot, "abs"),
@@ -117,7 +117,7 @@ describe("experimental_resolveClaudePluginRoots", () => {
       expect(roots).toEqual({ claudeDir: expected, skills: [], commands: [] });
     }
 
-    const movedDir = path.join(homeDir, "custom-claude");
+    const movedDir = path.join(cwd, "custom-claude");
     const pluginRoot = path.join(homeDir, "moved-plugin");
     await installed(
       { "moved-plugin@market": [{ scope: "user", installPath: pluginRoot }] },

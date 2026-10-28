@@ -20,6 +20,7 @@
  * outside the repository, so its links are not. Command components never
  * follow a link, whatever the origin.
  */
+import { resolveClaudeConfigDir as experimental_resolveClaudeConfigDir } from "@bb/process-utils";
 import type { Dirent } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -92,8 +93,7 @@ export interface ExperimentalClaudePluginRootsArgs {
 export interface ExperimentalClaudePluginRoots extends ExperimentalVendorPluginRoots {
   /**
    * The Claude config directory the registry was read from:
-   * `CLAUDE_CONFIG_DIR` (absolute, `~`-relative, or relative to the home
-   * directory), else `~/.claude`. A resolver that also lists the directory's
+   * `CLAUDE_CONFIG_DIR` (absolute or relative to the workspace cwd), else `~/.claude`. A resolver that also lists the directory's
    * own `skills` and `commands` takes it from here, so both agree.
    */
   claudeDir: string;
@@ -426,21 +426,6 @@ function resolveStoredPath(homeDir: string, storedPath: string): string {
     return path.join(homeDir, storedPath.slice(2));
   }
   return path.resolve(homeDir, storedPath);
-}
-
-/**
- * The Claude Code configuration directory for a home and environment:
- * `CLAUDE_CONFIG_DIR` when set and non-blank (absolute, `~`-relative, or
- * relative to the home directory), else `~/.claude`.
- */
-export function experimental_resolveClaudeConfigDir(args: {
-  homeDir: string;
-  env: Readonly<Record<string, string | undefined>>;
-}): string {
-  const configured = args.env.CLAUDE_CONFIG_DIR?.trim();
-  return configured
-    ? resolveStoredPath(args.homeDir, configured)
-    : path.join(args.homeDir, CLAUDE_DIR_NAME);
 }
 
 /** A vendor file that is missing, unparseable, or not the expected shape reads as absent. */

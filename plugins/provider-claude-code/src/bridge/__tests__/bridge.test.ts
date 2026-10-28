@@ -1281,7 +1281,7 @@ describe("bridge", () => {
     try {
       bridge.sendRequest(1, "thread/fork", {
         threadId: "forked-thread-1",
-        cwd: "/tmp/worktree",
+        cwd: root,
         instructionMode: "append",
         sourceProviderThreadId: sourceSessionId,
         sourceProviderCheckpointId: messageIds[1],
@@ -1291,7 +1291,7 @@ describe("bridge", () => {
           approvalReviewer: "user",
           permissionEscalation: "ask",
           instructions: "test",
-          envVars: { CLAUDE_CONFIG_DIR: projectConfigDir },
+          envVars: { CLAUDE_CONFIG_DIR: "project-config" },
           providerOptions: {
             workflowsEnabled: false,
           },

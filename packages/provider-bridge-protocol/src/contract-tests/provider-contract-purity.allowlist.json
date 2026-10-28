@@ -1,4 +1,245 @@
 {
-  "$comment": "Guardrail G2 (provider-contract-purity.test.ts). Every key on the provider-agnostic contract that still names a provider (codex, claude, pi, acp, cursor). Each entry names the workstream that deletes it; the test fails when a NEW provider-named key appears and when an entry here no longer matches anything, so the list can only shrink. Do not add entries without a removal plan. Empty since WS2a replaced `claudeCodePermissionMode` with the provider-agnostic `promptMode` execution option.",
-  "entries": []
+  "$comment": "Provider contract and bridge environment purity. Entries grandfather provider-named contract keys and legacy ambient bridge reads, with a removal plan. The test rejects new reads or keys and stale exemptions. Provider homes use the shared pure resolvers with the environment of the configured process.",
+  "entries": [
+    {
+      "path": "plugins/provider-claude-code/src/bridge/bridge.ts:process.env:1",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "plugins/provider-claude-code/src/bridge/bridge.ts:os.homedir:1",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "plugins/provider-claude-code/src/bridge/bridge.ts:os.homedir:2",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "plugins/provider-claude-code/src/bridge/model-list.ts:process.env:1",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "plugins/provider-claude-code/src/bridge/provider-commands.ts:process.env:1",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "plugins/provider-claude-code/src/bridge/provider-maintenance.ts:process.env:1",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "plugins/provider-claude-code/src/bridge/provider-maintenance.ts:process.env:2",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "plugins/provider-claude-code/src/bridge/provider-maintenance.ts:os.homedir:1",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "plugins/provider-claude-code/src/bridge/provider-maintenance.ts:process.env:3",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "plugins/provider-claude-code/src/bridge/provider-maintenance.ts:os.homedir:2",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "plugins/provider-claude-code/src/bridge/sdk-session.ts:process.env:1",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "plugins/provider-codex/src/bridge/bridge.ts:process.env:1",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "plugins/provider-codex/src/bridge/bridge.ts:process.env:2",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "plugins/provider-codex/src/bridge/bridge.ts:process.env:3",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "plugins/provider-pi/src/bridge/bridge.ts:process.env:1",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "plugins/provider-pi/src/bridge/bridge.ts:process.env:2",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "plugins/provider-pi/src/bridge/bridge.ts:process.env:3",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "plugins/provider-pi/src/bridge/bridge.ts:process.env:4",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "plugins/provider-pi/src/bridge/bridge.ts:process.env:5",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "plugins/provider-pi/src/bridge/bridge.ts:process.env:6",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "plugins/provider-pi/src/bridge/bridge.ts:process.env:7",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "plugins/provider-pi/src/bridge/bridge.ts:process.env:8",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "plugins/provider-pi/src/bridge/bridge.ts:process.env:9",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "plugins/provider-pi/src/bridge/bridge.ts:process.env:10",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "plugins/provider-pi/src/bridge/catalog.ts:process.env:1",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "plugins/provider-pi/src/bridge/provider-maintenance.ts:os.homedir:1",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "plugins/provider-pi/src/bridge/provider-maintenance.ts:process.env:1",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "plugins/provider-pi/src/bridge/provider-maintenance.ts:process.env:2",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "plugins/provider-pi/src/bridge/provider-maintenance.ts:process.env:3",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "plugins/provider-pi/src/bridge/provider-maintenance.ts:process.env:4",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "plugins/provider-pi/src/bridge/rpc-child.ts:process.env:1",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "plugins/provider-pi/src/bridge/rpc-child.ts:process.env:2",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "plugins/provider-pi/src/bridge/rpc-session.ts:process.env:1",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "plugins/provider-pi/src/bridge/session-paths.ts:os.homedir:1",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "packages/provider-bridge-acp/src/probe.ts:process.env:1",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "packages/provider-bridge-acp/src/bridge/bridge.ts:process.env:1",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "packages/provider-bridge-acp/src/bridge/bridge.ts:process.env:2",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "packages/provider-bridge-acp/src/bridge/bridge.ts:process.env:3",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "packages/provider-bridge-acp/src/bridge/bridge.ts:process.env:4",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "packages/provider-bridge-acp/src/bridge/bridge.ts:process.env:5",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "packages/provider-bridge-acp/src/bridge/bridge.ts:process.env:6",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "packages/provider-bridge-acp/src/bridge/cursor-mcp-approval.ts:os.homedir:1",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "packages/provider-bridge-acp/src/bridge/opencode-usage.ts:os.homedir:1",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "packages/provider-bridge-acp/src/bridge/provider-maintenance.ts:process.env:1",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "packages/provider-bridge-acp/src/bridge/provider-maintenance.ts:os.homedir:1",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "packages/provider-bridge-acp/src/bridge/provider-maintenance.ts:os.homedir:2",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "packages/provider-bridge-acp/src/bridge/provider-maintenance.ts:process.env:2",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "packages/provider-bridge-acp/src/bridge/provider-maintenance.ts:os.homedir:3",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "packages/provider-bridge-acp/src/bridge/provider-maintenance.ts:process.env:3",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "packages/provider-bridge-acp/src/bridge/provider-maintenance.ts:os.homedir:4",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "packages/provider-bridge-acp/src/bridge/provider-maintenance.ts:os.homedir:5",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "packages/provider-bridge-acp/src/bridge/provider-maintenance.ts:process.env:4",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "packages/provider-bridge-acp/src/bridge/provider-maintenance.ts:os.homedir:6",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "packages/provider-bridge-acp/src/bridge/provider-maintenance.ts:process.env:5",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "packages/provider-bridge-acp/src/bridge/tool-proxy-mcp.ts:process.env:1",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "packages/provider-bridge-acp/src/bridge/tool-proxy-mcp.ts:process.env:2",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "packages/provider-bridge-acp/src/bridge/tool-proxy-mcp.ts:process.env:3",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "packages/provider-bridge-acp/src/bridge/tool-proxy-mcp.ts:process.env:4",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "packages/provider-bridge-acp/src/bridge/tool-proxy-mcp.ts:process.env:5",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    },
+    {
+      "path": "packages/provider-bridge-acp/src/bridge/tool-proxy-mcp.ts:process.env:6",
+      "removedBy": "Provider environment follow-up: inject process context into legacy launch, maintenance, and runtime-control consumers."
+    }
+  ]
 }

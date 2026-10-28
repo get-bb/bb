@@ -52,35 +52,44 @@ afterEach(async () => {
   rmSync(workspaceDir, { recursive: true, force: true });
 });
 
-it("keeps the constructed session for a turn whose options carry no envVars", async () => {
-  harness.sendRequest(1, "thread/start", {
-    threadId: THREAD_ID,
-    cwd: workspaceDir,
-    instructionMode: "append",
-    options: {
-      ...FULL_ACCESS_SESSION_OPTIONS,
-      envVars: { PATH: "/usr/bin:/bin" },
-    },
-  });
-  const started = await harness.waitForResponse(1);
-  const { providerThreadId } = z
-    .object({ providerThreadId: z.string() })
-    .parse(started.result);
+it.each([undefined, {}])(
+  "keeps the constructed session for a turn with no environment overrides (%s)",
+  async (envVars) => {
+    harness.sendRequest(1, "thread/start", {
+      threadId: THREAD_ID,
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: {
+        ...FULL_ACCESS_SESSION_OPTIONS,
+        envVars: { PATH: "/usr/bin:/bin" },
+      },
+    });
+    const started = await harness.waitForResponse(1);
+    const { providerThreadId } = z
+      .object({ providerThreadId: z.string() })
+      .parse(started.result);
 
-  harness.sendRequest(2, "turn/start", {
-    threadId: THREAD_ID,
-    providerThreadId,
-    clientRequestId: "creq_signature2",
-    input: [{ type: "text", text: "say hello", mentions: [] }],
-    options: { ...FULL_ACCESS_SESSION_OPTIONS },
-  });
-  const turn = await harness.waitForResponse(2);
+    harness.sendRequest(2, "turn/start", {
+      threadId: THREAD_ID,
+      providerThreadId,
+      clientRequestId: "creq_signature2",
+      input: [{ type: "text", text: "say hello", mentions: [] }],
+      options: {
+        ...FULL_ACCESS_SESSION_OPTIONS,
+        ...(envVars === undefined ? {} : { envVars }),
+      },
+    });
+    const turn = await harness.waitForResponse(2);
 
-  expect(turn.error).toBeUndefined();
-  expect(
-    harness.messages.filter((message) => message.method === "session/replaced"),
-  ).toEqual([]);
-}, 30_000);
+    expect(turn.error).toBeUndefined();
+    expect(
+      harness.messages.filter(
+        (message) => message.method === "session/replaced",
+      ),
+    ).toEqual([]);
+  },
+  30_000,
+);
 
 it("keeps an auto-reviewed session when only escalation intent changes", async () => {
   harness.sendRequest(1, "thread/start", {
@@ -380,4 +389,60 @@ it("applies follow-up permission changes in both directions without replacing th
   expect(
     recordedRequests().filter((request) => request.method === "initialize"),
   ).toHaveLength(1);
+}, 30_000);
+
+it("launches and rebuilds with the session environment while keeping inherited bb identity private", async () => {
+  const launchLogPath = join(workspaceDir, "launch.jsonl");
+  const envVars = {
+    CODEX_HOME: join(workspaceDir, "codex"),
+    BB_THREAD_ID: THREAD_ID,
+    BB_PROJECT_ID: "proj_config",
+    BB_ENVIRONMENT_ID: "env_config",
+    BB_THREAD_STORAGE: join(workspaceDir, "storage"),
+  };
+  vi.stubEnv("BB_PRIVATE_PARENT", "private");
+  vi.stubEnv("BB_THREAD_ID", "parent");
+  writeFileSync(
+    scriptPath,
+    JSON.stringify({
+      launchLogPath,
+      launchEnvKeys: [...Object.keys(envVars), "BB_PRIVATE_PARENT"],
+    }),
+  );
+  harness.sendRequest(1, "thread/start", {
+    threadId: THREAD_ID,
+    cwd: workspaceDir,
+    instructionMode: "append",
+    options: { ...FULL_ACCESS_SESSION_OPTIONS, envVars },
+  });
+  const started = await harness.waitForResponse(1);
+  expect(started.error).toBeUndefined();
+  const { providerThreadId } = z
+    .object({ providerThreadId: z.string() })
+    .parse(started.result);
+  const changedEnv = {
+    ...envVars,
+    CODEX_HOME: join(workspaceDir, "other-codex"),
+  };
+  harness.sendRequest(2, "turn/start", {
+    threadId: THREAD_ID,
+    providerThreadId,
+    clientRequestId: "creq_envchange2",
+    input: [{ type: "text", text: "hello", mentions: [] }],
+    options: { ...FULL_ACCESS_SESSION_OPTIONS, envVars: changedEnv },
+  });
+  expect((await harness.waitForResponse(2)).error).toBeUndefined();
+  const launches = readFileSync(launchLogPath, "utf8")
+    .trim()
+    .split("\n")
+    .map(
+      (line) =>
+        z
+          .object({ env: z.record(z.string(), z.string().nullable()) })
+          .parse(JSON.parse(line)).env,
+    );
+  expect(launches).toEqual([
+    { ...envVars, BB_PRIVATE_PARENT: null },
+    { ...changedEnv, BB_PRIVATE_PARENT: null },
+  ]);
 }, 30_000);

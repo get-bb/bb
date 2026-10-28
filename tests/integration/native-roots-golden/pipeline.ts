@@ -78,13 +78,13 @@ function providerSource(providerId: string): ProviderNativeRootSource {
   if (providerId === "codex") {
     return {
       declaration: CODEX_NATIVE_ROOTS_DECLARATION,
-      resolve: (_cwd, homeDir) => resolveCodexNativeRoots({ homeDir, env }),
+      resolve: (cwd, homeDir) => resolveCodexNativeRoots({ cwd, homeDir, env }),
     };
   }
   if (providerId === "pi") {
     return {
       declaration: PI_NATIVE_ROOTS_DECLARATION,
-      resolve: (_cwd, homeDir) => resolvePiNativeRoots({ homeDir, env }),
+      resolve: (cwd, homeDir) => resolvePiNativeRoots({ cwd, homeDir, env }),
     };
   }
   const agent = KNOWN_ACP_AGENTS.find(

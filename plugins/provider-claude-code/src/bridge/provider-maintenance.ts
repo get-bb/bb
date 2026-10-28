@@ -262,9 +262,10 @@ interface ClaudeProfile {
 }
 
 function claudeProfile(): ClaudeProfile {
-  const configured = process.env.CLAUDE_CONFIG_DIR?.trim();
+  const configured = process.env.CLAUDE_CONFIG_DIR;
   return {
     configDir: experimental_resolveClaudeConfigDir({
+      cwd: process.cwd(),
       homeDir: os.homedir(),
       env: process.env,
     }),
@@ -293,7 +294,14 @@ async function readKeychainCredentials(
   if (process.platform !== "darwin") return null;
   const service = keychainService(profile);
   const argumentSets = [
-    ["find-generic-password", "-s", service, "-a", os.userInfo().username, "-w"],
+    [
+      "find-generic-password",
+      "-s",
+      service,
+      "-a",
+      os.userInfo().username,
+      "-w",
+    ],
     ["find-generic-password", "-s", service, "-w"],
   ];
   for (const args of argumentSets) {

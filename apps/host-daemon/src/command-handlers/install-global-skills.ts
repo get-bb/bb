@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { resolveClaudeConfigDir } from "@bb/process-utils";
+import { operationEnvironment } from "../operation-environment.js";
 import type { HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
 import {
   CommandDispatchError,
@@ -16,12 +18,8 @@ import {
 } from "../injected-skills.js";
 import type { SkillTreeTransport } from "../skill-trees.js";
 
-const GLOBAL_SKILL_ROOT_SEGMENTS: readonly (readonly string[])[] = [
-  [".agents", "skills"],
-  [".claude", "skills"],
-];
-
 interface InstallGlobalSkillsOptions {
+  env: NodeJS.ProcessEnv;
   dataDir: string;
   skillTreeTransport?: SkillTreeTransport;
   homeDir?: string;
@@ -29,13 +27,27 @@ interface InstallGlobalSkillsOptions {
 }
 
 interface GlobalSkillsStatusOptions {
+  env: NodeJS.ProcessEnv;
   homeDir?: string;
 }
 
-function globalSkillPaths(homeDir: string, name: string): string[] {
-  return GLOBAL_SKILL_ROOT_SEGMENTS.map((segments) =>
-    path.join(homeDir, ...segments, name),
-  );
+function globalSkillPaths(
+  homeDir: string,
+  name: string,
+  env: NodeJS.ProcessEnv,
+  contributedEnv: CommandOf<"host.global_skills_status">["contributedEnv"],
+): string[] {
+  const claudeDir = resolveClaudeConfigDir({
+    homeDir,
+    cwd: process.cwd(),
+    env: operationEnvironment(contributedEnv, env),
+  });
+  return [
+    ...new Set([
+      path.join(homeDir, ".agents", "skills", name),
+      path.join(claudeDir, "skills", name),
+    ]),
+  ];
 }
 
 export async function readGlobalSkillsStatus(
@@ -45,14 +57,16 @@ export async function readGlobalSkillsStatus(
   const homeDir = options.homeDir ?? os.homedir();
   const entries = await Promise.all(
     command.names.flatMap((name) =>
-      globalSkillPaths(homeDir, name).map(async (skillDirectoryPath) => ({
-        name,
-        path: skillDirectoryPath,
-        treeHash: await hashInstalledSkillDirectory({
+      globalSkillPaths(homeDir, name, options.env, command.contributedEnv).map(
+        async (skillDirectoryPath) => ({
           name,
-          skillDirectoryPath,
+          path: skillDirectoryPath,
+          treeHash: await hashInstalledSkillDirectory({
+            name,
+            skillDirectoryPath,
+          }),
         }),
-      })),
+      ),
     ),
   );
   return { entries };
@@ -115,7 +129,12 @@ export async function installGlobalSkills(
         `Skill entry path escapes its tree: ${skill.entryPath}`,
       );
     }
-    for (const destinationPath of globalSkillPaths(homeDir, skill.name)) {
+    for (const destinationPath of globalSkillPaths(
+      homeDir,
+      skill.name,
+      options.env,
+      command.contributedEnv,
+    )) {
       await replaceSkillDirectory({
         destinationPath,
         name: skill.name,

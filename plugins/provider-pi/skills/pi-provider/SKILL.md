@@ -11,3 +11,5 @@ commands. Inspect the thread first and use live command help for arguments.
 Provider confirmation determines whether the operation completed.
 
 Use the target host's provider catalog for available models and execution options.
+
+Provider roots use `PI_CODING_AGENT_DIR` from the configured process environment. Project skill listing includes project environment overrides. See the agent-configuration guide for global skill installation.

@@ -604,9 +604,15 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "host.read_workspace_agent_context": readWorkspaceAgentContext,
   "host.delete_skill": deleteHostSkill,
   "host.write_skill": writeHostSkill,
-  "host.install_global_skills": installGlobalSkills,
-  "host.global_skills_status": async (command) =>
-    readGlobalSkillsStatus(command, {}),
+  "host.install_global_skills": (command, options) =>
+    installGlobalSkills(command, {
+      ...options,
+      env: { ...process.env, ...options.runtimeManager.getShellEnv() },
+    }),
+  "host.global_skills_status": async (command, options) =>
+    readGlobalSkillsStatus(command, {
+      env: { ...process.env, ...options.runtimeManager.getShellEnv() },
+    }),
   "host.inspect_git_source": inspectHostGitSource,
   "host.list_branch_options": listHostBranchOptions,
   "host.read_file": readHostFile,

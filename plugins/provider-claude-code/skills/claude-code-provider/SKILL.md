@@ -72,3 +72,5 @@ Automatic context breakdowns run in a separate, non-persisted fork of the saved
 conversation. Reporting never sends prompts or control requests to the live
 Claude session. A timeout, replacement, or thread stop closes the reporter;
 the live conversation does not wait for reporting or restart because of it.
+
+Provider roots use `CLAUDE_CONFIG_DIR` from the configured process environment. Project skill listing includes project environment overrides. See the agent-configuration guide for global skill installation.

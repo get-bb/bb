@@ -99,7 +99,7 @@ describe("resolveClaudeNativeRoots", () => {
 
   it("reads the user directories and the plugin registry from CLAUDE_CONFIG_DIR", async () => {
     const fixture = await makeFixture();
-    const movedDir = path.join(fixture.homeDir, "custom-claude");
+    const movedDir = path.join(fixture.cwd, "custom-claude");
     const pluginRoot = path.join(fixture.homeDir, "moved-plugin");
     await writeJson(path.join(movedDir, "plugins", "installed_plugins.json"), {
       version: 2,

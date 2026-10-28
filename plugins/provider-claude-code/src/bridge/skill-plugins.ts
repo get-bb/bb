@@ -190,4 +190,3 @@ export async function filterClaudeSkillRoots(args: {
   }
   return filtered;
 }
-

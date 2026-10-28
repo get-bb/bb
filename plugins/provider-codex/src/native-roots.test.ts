@@ -63,7 +63,7 @@ function cachedPluginRoot(
 async function resolveSkills(
   env: Readonly<Record<string, string | undefined>> = { CODEX_HOME: codexHome },
 ): Promise<CodexResolvedSkillRoot[]> {
-  const answer = await resolveCodexNativeRoots({ homeDir, env });
+  const answer = await resolveCodexNativeRoots({ cwd: null, homeDir, env });
   expect(answer.commands).toBeUndefined();
   expect(
     experimental_nativeRootsResolveOutputSchema.safeParse(answer).success,
@@ -426,7 +426,7 @@ describe("user skill roots under a relocated CODEX_HOME", () => {
     ).map((root) =>
       path.join(homeDir, typeof root === "string" ? root : root.path),
     );
-    const resolved = await resolveCodexNativeRoots({ homeDir, env });
+    const resolved = await resolveCodexNativeRoots({ cwd: null, homeDir, env });
     return [
       ...declared,
       ...(resolved.skills ?? [])

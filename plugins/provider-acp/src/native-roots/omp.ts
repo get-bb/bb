@@ -1,5 +1,9 @@
 import path from "node:path";
-import { experimental_resolveClaudePluginRoots } from "@get-bb/plugin-sdk/host";
+import {
+  experimental_resolveClaudePluginRoots,
+  experimental_resolveCodexHome,
+  experimental_resolvePiAgentDir,
+} from "@get-bb/plugin-sdk/host";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 import { resolveOpenCodeConfigDir } from "./opencode.js";
@@ -21,7 +25,6 @@ import {
 } from "./shared.js";
 
 const OMP_DIR_NAME = ".omp";
-const PI_DIR_NAME = ".pi";
 const OMP_PROFILE_NAME_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 
 const ompSkillConfigSchema = z
@@ -32,25 +35,6 @@ const ompSkillConfigSchema = z
       .optional(),
   })
   .passthrough();
-
-function resolveCodexHome(
-  homeDir: string,
-  env: AcpNativeRootsEnvironment,
-): string {
-  return env.CODEX_HOME?.trim() || path.join(homeDir, ".codex");
-}
-
-function resolvePiAgentDir(
-  homeDir: string,
-  env: AcpNativeRootsEnvironment,
-): string {
-  return resolveConfiguredHomeDirectory(
-    homeDir,
-    env.PI_CODING_AGENT_DIR,
-    PI_DIR_NAME,
-    "agent",
-  );
-}
 
 export function resolveOmpAgentDir(
   homeDir: string,
@@ -153,8 +137,8 @@ export const resolveOmpNativeRoots: AcpNativeRootsResolver = async (args) => {
     skills: [
       userRoot(path.join(agentDir, "skills")),
       userRoot(path.join(agentDir, "managed-skills")),
-      userRoot(path.join(resolvePiAgentDir(args.homeDir, args.env), "skills")),
-      userRoot(path.join(resolveCodexHome(args.homeDir, args.env), "skills")),
+      userRoot(path.join(experimental_resolvePiAgentDir(args), "skills")),
+      userRoot(path.join(experimental_resolveCodexHome(args), "skills")),
       userRoot(
         path.join(resolveOpenCodeConfigDir(args.homeDir, args.env), "skills"),
       ),

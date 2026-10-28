@@ -1415,6 +1415,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "experimental_nativeRootsHostContract",
           "experimental_filterResolvedNativeRoots",
           "experimental_resolveClaudeConfigDir",
+          "experimental_resolveCodexHome",
+          "experimental_resolvePiAgentDir",
           "experimental_resolveClaudePluginRoots",
           "experimental_resolveVendorPluginRoots",
           "experimental_createBridgeJsonRpcTestHarness",
