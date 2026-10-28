@@ -1,3 +1,5 @@
+import { availableModelFixture } from "../helpers/available-models.js";
+import { seedModelCatalog } from "../helpers/provider-model-catalogs.js";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -1080,10 +1082,21 @@ describe("public thread fork route", () => {
 
   it("inherits the source's recorded model, reasoning level, and service tier", async () => {
     await withTestHarness(async (harness) => {
-      const { sourceThread } = seedForkSource(harness, {
+      const { sourceThread, host } = seedForkSource(harness, {
         model: "gpt-5-mini",
         reasoningLevel: "high",
         serviceTier: "fast",
+      });
+
+      await seedModelCatalog(harness, {
+        hostId: host.id,
+        providerId: sourceThread.providerId,
+        models: [
+          availableModelFixture({
+            model: "gpt-5-mini",
+            reasoningLevels: ["high"],
+          }),
+        ],
       });
 
       const response = await postFork(harness, {

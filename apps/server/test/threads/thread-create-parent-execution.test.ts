@@ -1,4 +1,7 @@
 import { setDisabledProviderIds, upsertProjectExecutionDefaults } from "@bb/db";
+import type { ReasoningLevel } from "@bb/domain";
+import { availableModelFixture } from "../helpers/available-models.js";
+import { seedModelCatalog } from "../helpers/provider-model-catalogs.js";
 import { describe, expect, it } from "vitest";
 import type { ThreadCreateServiceRequestInput } from "../../src/services/threads/thread-create-request.js";
 import { createThreadFromRequest } from "../../src/services/threads/thread-create.js";
@@ -125,7 +128,11 @@ describe("child creation execution defaults", () => {
       ThreadCreateServiceRequestInput,
       "providerId" | "model" | "reasoningLevel" | "executionInputSources"
     >;
-    expected: { providerId: string; model: string; reasoningLevel: string };
+    expected: {
+      providerId: string;
+      model: string;
+      reasoningLevel: ReasoningLevel;
+    };
   }[];
 
   it.each(cases)(
@@ -171,6 +178,16 @@ describe("child creation execution defaults", () => {
         });
         setDisabledProviderIds(harness.db, disabledProviderIds);
 
+        await seedModelCatalog(harness, {
+          hostId: host.id,
+          providerId: expected.providerId,
+          models: [
+            availableModelFixture({
+              model: expected.model,
+              reasoningLevels: [expected.reasoningLevel],
+            }),
+          ],
+        });
         const child = await createThreadFromRequest(harness.deps, {
           projectId: project.id,
           parentThreadId: parent.id,

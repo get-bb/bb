@@ -51,7 +51,11 @@ it.each([
         info: provider,
       });
       const models = [
-        availableModelFixture({ model: "unknown", reasoningLevels: [] }),
+        {
+          ...availableModelFixture({ model: "unknown", reasoningLevels: [] }),
+          reasoningDiscovery: "unknown" as const,
+        },
+        availableModelFixture({ model: "no-reasoning", reasoningLevels: [] }),
         availableModelFixture({ model: "medium", reasoningLevels: ["medium"] }),
         availableModelFixture({
           model: "high",
@@ -107,21 +111,18 @@ it.each([
       ] of [
         [environment, "unknown", undefined, undefined],
         [environment, "selected-only", undefined, undefined],
-        [environment, "unknown", "high", "high"],
-        [environment, "unknown", "high", "high", "explicit"],
+        [environment, "unknown", "high", undefined],
+        [environment, "unknown", "high", undefined, "explicit"],
         [environment, "unknown", "medium", undefined, "client-preference"],
-        [environment, "unknown", "medium", "medium"],
-        [environment, "selected-only", "high", "high"],
+        [environment, "unknown", "medium", undefined],
+        [environment, "selected-only", "high", undefined],
         [environment, "medium", "medium", "medium"],
         [environment, "high", "high", "high"],
-        [environment, "uncatalogued", "high", "high"],
-        [
-          otherWorkspace,
-          "unknown",
-          undefined,
-          catalogScope === "workspace" ? "medium" : undefined,
-        ],
-        [otherHostEnvironment, "unknown", undefined, "medium"],
+        [environment, "uncatalogued", "high", undefined],
+        [environment, "no-reasoning", "high", undefined],
+        [environment, "medium", "high", undefined],
+        [otherWorkspace, "unknown", undefined, undefined],
+        [otherHostEnvironment, "unknown", undefined, undefined],
         [otherHostEnvironment, "unknown", undefined, undefined, "explicit"],
       ] as const) {
         const thread = seedThread(harness.deps, {
@@ -146,6 +147,10 @@ it.each([
           },
           { threadId: thread.id },
         );
+        expect(
+          execution.reasoningLevel,
+          "public execution retains the preference",
+        ).toBe(reasoningLevel ?? "medium");
         const start = await buildThreadStartCommand(harness.deps, {
           environment: commandEnvironment,
           execution,

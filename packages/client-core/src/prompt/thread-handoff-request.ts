@@ -39,7 +39,7 @@ const THREAD_HANDOFF_FOLLOW_UP_SEPARATOR = "\n\n";
 export interface ThreadHandoffExecutionSelection {
   providerId: string;
   model: string;
-  reasoningLevel: ReasoningLevel | undefined;
+  reasoningLevel: ReasoningLevel;
   serviceTier: ServiceTier | undefined;
   supportsServiceTier: boolean;
   permissionMode: PermissionMode;
@@ -144,9 +144,7 @@ export function buildThreadHandoffCreateRequest({
     executionInputSources: {
       providerId: "explicit",
       model: "explicit",
-      ...(execution.reasoningLevel === undefined
-        ? {}
-        : { reasoningLevel: "explicit" as const }),
+      reasoningLevel: "explicit",
       permissionMode: "explicit",
       ...(execution.supportsServiceTier && execution.serviceTier
         ? { serviceTier: "explicit" as const }
@@ -157,9 +155,7 @@ export function buildThreadHandoffCreateRequest({
     permissionMode: execution.permissionMode,
     projectId: seed.projectId,
     providerId: execution.providerId,
-    ...(execution.reasoningLevel === undefined
-      ? {}
-      : { reasoningLevel: execution.reasoningLevel }),
+    reasoningLevel: execution.reasoningLevel,
     ...(execution.supportsServiceTier && execution.serviceTier
       ? { serviceTier: execution.serviceTier }
       : {}),

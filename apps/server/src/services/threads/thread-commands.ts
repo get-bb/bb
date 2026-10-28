@@ -86,7 +86,11 @@ export interface ThreadStartCommandArgs {
 interface PreparedTurnSubmitCommandBuildArgs {
   deps: Pick<
     AppDeps,
-    "config" | "db" | "providerRegistry" | "pluginHostArtifacts"
+    | "config"
+    | "db"
+    | "providerRegistry"
+    | "pluginHostArtifacts"
+    | "lifecycleDedupers"
   >;
   environmentId: string;
   hostId: string;
@@ -122,7 +126,11 @@ export type PreparedTurnSubmitCommandPayload = Omit<
 >;
 
 interface RuntimeExecutionOptionsArgs {
-  deps: Pick<AppDeps, "db" | "providerRegistry">;
+  deps: Pick<
+    AppDeps,
+    "db" | "providerRegistry" | "pluginHostArtifacts" | "lifecycleDedupers"
+  >;
+  workspacePath: string;
   execution: ResolvedThreadExecutionOptions;
   hostId: string;
   input: PromptInput[];
@@ -191,9 +199,9 @@ function resolvePromptMode(
     : undefined;
 }
 
-function toRuntimeExecutionOptions(
+async function toRuntimeExecutionOptions(
   args: RuntimeExecutionOptionsArgs,
-): RuntimeThreadExecutionOptions {
+): Promise<RuntimeThreadExecutionOptions> {
   const permissionMode = clampPermissionModeToHost(args.deps, {
     hostId: args.hostId,
     permissionMode: args.execution.permissionMode,
@@ -215,10 +223,27 @@ function toRuntimeExecutionOptions(
     args.deps.db,
     args.threadId,
   );
+  const model =
+    await args.deps.lifecycleDedupers.providerModelCatalogs.getCachedModel(
+      args.deps,
+      {
+        hostId: args.hostId,
+        providerId: args.providerId,
+        cwd: args.workspacePath,
+        model: args.execution.model,
+      },
+    );
+  const reasoningLevel =
+    model?.reasoningDiscovery === "known" &&
+    model.supportedReasoningEfforts.some(
+      (effort) => effort.reasoningEffort === args.execution.reasoningLevel,
+    )
+      ? args.execution.reasoningLevel
+      : undefined;
   const base = {
     model: args.execution.model,
     serviceTier: args.execution.serviceTier,
-    reasoningLevel: args.execution.reasoningLevel,
+    ...(reasoningLevel === undefined ? {} : { reasoningLevel }),
     ...(promptMode !== undefined ? { promptMode } : {}),
     ...(Object.keys(sessionOptions).length > 0 ? { sessionOptions } : {}),
     providerOptions,
@@ -251,14 +276,7 @@ function toRuntimeExecutionOptions(
 }
 
 export async function buildExecutionOptions(
-  deps: Pick<
-    AppDeps,
-    | "db"
-    | "hub"
-    | "providerRegistry"
-    | "pluginHostArtifacts"
-    | "lifecycleDedupers"
-  >,
+  deps: Pick<AppDeps, "db" | "hub" | "providerRegistry">,
   request: ExecutionOptionsRequest,
   args: BuildExecutionOptionsArgs,
 ): Promise<ResolvedThreadExecutionOptions> {
@@ -300,10 +318,11 @@ export async function buildThreadStartCommand(
     ...(args.inputGroups !== undefined
       ? { inputGroups: args.inputGroups }
       : {}),
-    options: toRuntimeExecutionOptions({
+    options: await toRuntimeExecutionOptions({
       ...args,
       deps,
       hostId: args.environment.hostId,
+      workspacePath: runtimeContext.workspacePath,
       input: args.input,
       threadId: args.thread.id,
     }),
@@ -317,9 +336,9 @@ export async function buildThreadStartCommand(
   };
 }
 
-function buildPreparedTurnSubmitCommandPayload(
+async function buildPreparedTurnSubmitCommandPayload(
   args: PreparedTurnSubmitCommandBuildArgs,
-): PreparedTurnSubmitCommandPayload {
+): Promise<PreparedTurnSubmitCommandPayload> {
   const bridgeLaunch = requireBridgeLaunchForProviderId(
     args.deps,
     args.runtimeContext.providerId,
@@ -333,11 +352,12 @@ function buildPreparedTurnSubmitCommandPayload(
     ...(args.inputGroups !== undefined
       ? { inputGroups: args.inputGroups }
       : {}),
-    options: toRuntimeExecutionOptions({
+    options: await toRuntimeExecutionOptions({
       ...args,
       input: args.input,
       projectId: args.runtimeContext.projectId,
       providerId: args.runtimeContext.providerId,
+      workspacePath: args.runtimeContext.workspacePath,
     }),
     target: args.target,
     resumeContext: {

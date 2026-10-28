@@ -146,7 +146,6 @@ function retryInput(
  */
 function retryExecution(failed: FailedTurnRecord): {
   model: string;
-  executionInputSources: SendMessageRequest["executionInputSources"];
   reasoningLevel: SendMessageRequest["reasoningLevel"];
   serviceTier: SendMessageRequest["serviceTier"];
   permissionMode?: PermissionMode;
@@ -158,12 +157,6 @@ function retryExecution(failed: FailedTurnRecord): {
   return {
     model: execution.model,
     reasoningLevel: execution.reasoningLevel,
-    executionInputSources: {
-      model: "explicit",
-      reasoningLevel: "explicit",
-      permissionMode: "explicit",
-      serviceTier: "explicit",
-    },
     serviceTier: execution.serviceTier,
     ...(permissionMode === undefined ? {} : { permissionMode }),
   };

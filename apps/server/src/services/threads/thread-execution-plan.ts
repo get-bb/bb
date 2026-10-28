@@ -1,6 +1,5 @@
 import {
   getAppSettings,
-  getEnvironment,
   getProjectExecutionDefaults,
   getQueuedThreadStartMessage,
   getThread,
@@ -44,7 +43,7 @@ interface ExecutionPlanFieldInput<TValue> {
 interface ExistingThreadExecutionInput {
   model?: ExecutionPlanFieldInput<string>;
   permissionMode?: ExecutionPlanFieldInput<PermissionMode>;
-  reasoningLevel?: ExecutionPlanFieldInput<ReasoningLevel | undefined>;
+  reasoningLevel?: ExecutionPlanFieldInput<ReasoningLevel>;
   serviceTier?: ExecutionPlanFieldInput<ServiceTier>;
 }
 
@@ -71,11 +70,6 @@ interface ResolveExistingThreadExecutionPlanArgs {
   threadId: string;
 }
 
-type ExecutionPlanDeps = Pick<
-  AppDeps,
-  "db" | "providerRegistry" | "pluginHostArtifacts" | "lifecycleDedupers"
->;
-
 interface ExistingThreadExecutionPlan {
   resolvedExecution: ResolvedThreadExecutionOptions;
 }
@@ -93,7 +87,7 @@ function getStoredThreadExecutionOptions(
   const queued = toThreadQueuedMessage(queuedStart);
   return {
     model: queued.model,
-    reasoningLevel: queued.reasoningLevel ?? undefined,
+    reasoningLevel: queued.reasoningLevel,
     permissionMode: queued.permissionMode,
     serviceTier: queued.serviceTier,
     source: "client/turn/requested",
@@ -214,13 +208,10 @@ export function buildExistingThreadExecutionInput(
     request.serviceTier,
     resolveRequestInputSource(sources, "serviceTier"),
   );
-  const reasoningLevel =
-    sources?.reasoningLevel === "explicit"
-      ? { source: "explicit" as const, value: request.reasoningLevel }
-      : toRequestInputField(
-          request.reasoningLevel,
-          resolveRequestInputSource(sources, "reasoningLevel"),
-        );
+  const reasoningLevel = toRequestInputField(
+    request.reasoningLevel,
+    resolveRequestInputSource(sources, "reasoningLevel"),
+  );
   const permissionMode = toRequestInputField(
     request.permissionMode,
     resolveRequestInputSource(sources, "permissionMode"),
@@ -327,7 +318,7 @@ function resolveFieldWithDefault<TValue>(
 }
 
 export async function resolveExistingThreadExecutionPlan(
-  deps: ExecutionPlanDeps,
+  deps: Pick<AppDeps, "db" | "providerRegistry">,
   args: ResolveExistingThreadExecutionPlanArgs,
 ): Promise<ExistingThreadExecutionPlan> {
   const thread = getThread(deps.db, args.threadId);
@@ -387,43 +378,20 @@ export async function resolveExistingThreadExecutionPlan(
     permissionMode,
   );
 
-  const environment =
-    thread.environmentId === null
-      ? null
-      : getEnvironment(deps.db, thread.environmentId);
-  const hostId = args.hostId === undefined ? environment?.hostId : args.hostId;
-  const catalogModel =
-    hostId == null
-      ? null
-      : await deps.lifecycleDedupers.providerModelCatalogs.getCachedModel(
-          deps,
-          {
-            hostId,
-            providerId: thread.providerId,
-            cwd: environment?.path ?? null,
-            model,
-          },
-        );
-  const reasoningLevel =
-    args.input.reasoningLevel?.source === "explicit"
-      ? args.input.reasoningLevel.value
-      : catalogModel?.supportedReasoningEfforts.length === 0
-        ? (thread.reasoningLevelOverride ?? lastExecution?.reasoningLevel)
-        : resolveFieldWithDefault<ReasoningLevel>(
-            [
-              args.input.reasoningLevel?.value,
-              thread.reasoningLevelOverride ?? undefined,
-              lastExecution?.reasoningLevel,
-              projectExecution?.reasoningLevel,
-            ],
-            DEFAULT_REASONING_LEVEL,
-          );
-  if (reasoningLevel !== undefined)
-    validateProviderReasoningLevel(
-      deps.providerRegistry,
-      thread.providerId,
-      reasoningLevel,
-    );
+  const reasoningLevel = resolveFieldWithDefault<ReasoningLevel>(
+    [
+      args.input.reasoningLevel?.value,
+      thread.reasoningLevelOverride ?? undefined,
+      lastExecution?.reasoningLevel,
+      projectExecution?.reasoningLevel,
+    ],
+    DEFAULT_REASONING_LEVEL,
+  );
+  validateProviderReasoningLevel(
+    deps.providerRegistry,
+    thread.providerId,
+    reasoningLevel,
+  );
 
   const serviceTier = getAppSettings(deps.db).allowFastServiceTier
     ? resolveProviderServiceTier(deps.providerRegistry, {
@@ -446,7 +414,7 @@ export async function resolveExistingThreadExecutionPlan(
 }
 
 export async function tryResolveExistingThreadExecutionPlan(
-  deps: ExecutionPlanDeps,
+  deps: Pick<AppDeps, "db" | "providerRegistry">,
   args: ResolveExistingThreadExecutionPlanArgs,
 ): Promise<ExistingThreadExecutionPlan | null> {
   try {

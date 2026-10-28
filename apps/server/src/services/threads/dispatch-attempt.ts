@@ -557,7 +557,7 @@ async function runDispatchAttempt(
       requestedExecution: {
         providerId: thread.providerId,
         model: execution.model,
-        reasoningLevel: execution.reasoningLevel ?? null,
+        reasoningLevel: execution.reasoningLevel,
         serviceTier: execution.serviceTier,
         permissionMode: execution.permissionMode,
       },

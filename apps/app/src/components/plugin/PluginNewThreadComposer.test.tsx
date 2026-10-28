@@ -941,7 +941,7 @@ describe("PluginNewThreadComposer seeding", () => {
     );
   });
 
-  it("omits a seeded reasoning level when the model's levels are unknown", async () => {
+  it("preserves the seeded reasoning preference when the model's levels are unknown", async () => {
     mocks.unknownReasoning = true;
     const submitted: NewThreadRequest[] = [];
     renderComposer(
@@ -956,8 +956,10 @@ describe("PluginNewThreadComposer seeding", () => {
     });
     await submit();
     expect(submitted).toHaveLength(1);
-    expect(submitted[0]?.reasoningLevel).toBeUndefined();
-    expect(submitted[0]?.executionInputSources?.reasoningLevel).toBeUndefined();
+    expect(submitted[0]?.reasoningLevel).toBe(STORED_REQUEST.reasoningLevel);
+    expect(submitted[0]?.executionInputSources?.reasoningLevel).toBe(
+      STORED_REQUEST.executionInputSources?.reasoningLevel,
+    );
   });
 
   it("round-trips a stored request submitted untouched", async () => {

@@ -95,9 +95,9 @@ models within a five-second budget, trying configured priority models first.
 Selecting an unprobed model starts a separate discovery session that probes only
 that model, with a five-second timeout. Results are cached by model. While
 loading, or after failure or an unrecognized response, BB shows no reasoning
-selector and leaves the agent reasoning setting unchanged unless the caller
-explicitly supplies a reasoning level. CLI `--reasoning-level` and SDK
-`reasoningLevel` requests are honored even when reasoning discovery is incomplete.
+selector and leaves the agent reasoning setting unchanged. CLI and SDK reasoning
+preferences remain stored, but are sent to the provider only when the cached
+model catalog confirms that the selected level is supported.
 Failed probes have
 a 30-second server retry cooldown. Individual probe failures do not stop bulk
 discovery of other models. An empty
@@ -162,4 +162,4 @@ restart is needed.
 - `supportsManualCompaction` (default `false`) shows `/compact` only for agents
   that accept an explicit compaction request.
 
-Model catalogs report `reasoningDiscovery` as `unknown` or `known`. A known empty `supportedReasoningEfforts` list confirms that the model has no selectable levels; only unknown models need focused discovery. An omitted execution reasoning value (or null on a queued message) leaves the provider default unchanged.
+Model catalogs report `reasoningDiscovery` as `unknown` or `known`. A known empty `supportedReasoningEfforts` list confirms that the model has no selectable levels; only unknown models need focused discovery. BB keeps a required reasoning preference in execution defaults and queued messages. At the provider command boundary, it omits unsupported or unknown reasoning settings, leaving the provider default unchanged.

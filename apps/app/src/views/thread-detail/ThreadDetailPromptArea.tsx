@@ -1149,23 +1149,18 @@ export function ThreadDetailPromptArea({
     if (!hasConcreteDefaultExecutionOptions) {
       return null;
     }
-    const sources = { ...executionInputSources };
-    if (reasoningOptions.length === 0) {
-      delete sources.reasoningLevel;
-    }
     return {
       model: effectiveSelectedModel,
       supportsServiceTier,
       serviceTier,
-      reasoningLevel: reasoningOptions.length > 0 ? reasoningLevel : undefined,
+      reasoningLevel,
       permissionMode,
-      executionInputSources: sources,
+      executionInputSources,
     };
   }, [
     effectiveSelectedModel,
     executionInputSources,
     hasConcreteDefaultExecutionOptions,
-    reasoningOptions,
     permissionMode,
     reasoningLevel,
     serviceTier,
@@ -1182,8 +1177,7 @@ export function ThreadDetailPromptArea({
         execution: {
           providerId: selectedProviderId,
           model: effectiveSelectedModel,
-          reasoningLevel:
-            reasoningOptions.length > 0 ? reasoningLevel : undefined,
+          reasoningLevel,
           serviceTier,
           supportsServiceTier,
           permissionMode,
@@ -1226,7 +1220,6 @@ export function ThreadDetailPromptArea({
       permissionMode,
       promptDraft,
       reasoningLevel,
-      reasoningOptions,
       selectedProviderId,
       serviceTier,
       setBottomAttachmentError,
@@ -1641,9 +1634,7 @@ export function ThreadDetailPromptArea({
       },
       reasoning: {
         ...compactExecutionConfig.reasoning,
-        value:
-          inlineEditingQueuedMessage.reasoningLevel ??
-          compactExecutionConfig.reasoning.value,
+        value: inlineEditingQueuedMessage.reasoningLevel,
       },
     };
   }, [compactExecutionConfig, inlineEditingQueuedMessage]);
@@ -1769,8 +1760,7 @@ export function ThreadDetailPromptArea({
         ? readExecutionSelection({
             selectedProviderId: thread.providerId,
             selectedThreadModel: inlineEditingQueuedMessage.model,
-            reasoningLevel:
-              inlineEditingQueuedMessage.reasoningLevel ?? undefined,
+            reasoningLevel: inlineEditingQueuedMessage.reasoningLevel,
             serviceTier: inlineEditingQueuedMessage.serviceTier,
             supportsServiceTier,
             permissionMode: inlineEditingQueuedMessage.permissionMode,

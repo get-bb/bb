@@ -508,7 +508,7 @@ export async function queueParentSystemMessage(
     origin: null,
     originPluginId: null,
     model: execution.model,
-    reasoningLevel: execution.reasoningLevel ?? null,
+    reasoningLevel: execution.reasoningLevel,
     permissionMode: execution.permissionMode,
     serviceTier: execution.serviceTier,
     waitingOn: host

@@ -491,7 +491,7 @@ describe("ThreadDetailPromptArea", () => {
     expect(mocks.sendQueuedMessageMutateAsync).not.toHaveBeenCalled();
   });
 
-  it("omits reasoning from follow-ups when the selected model's levels are unknown", async () => {
+  it("preserves the reasoning preference on follow-ups when the selected model's levels are unknown", async () => {
     mocks.unknownReasoning = true;
     mocks.executionInputSources = { reasoningLevel: "explicit" };
     mocks.defaultExecutionOptions = {
@@ -511,8 +511,8 @@ describe("ThreadDetailPromptArea", () => {
     });
     expect(mocks.sendMessageMutateAsync).toHaveBeenCalledOnce();
     const request = mocks.sendMessageMutateAsync.mock.calls[0]?.[0];
-    expect(request.reasoningLevel).toBeUndefined();
-    expect(request.executionInputSources.reasoningLevel).toBeUndefined();
+    expect(request.reasoningLevel).toBe("medium");
+    expect(request.executionInputSources.reasoningLevel).toBe("explicit");
   });
 
   it("preserves plugin submission data through a follow-up composer", async () => {

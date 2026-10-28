@@ -65,7 +65,7 @@ export const threadQueuedMessageSchema = z.object({
   threadId: z.string(),
   content: z.array(promptInputSchema).min(1),
   model: z.string().min(1),
-  reasoningLevel: reasoningLevelSchema.nullable(),
+  reasoningLevel: reasoningLevelSchema,
   permissionMode: permissionModeSchema,
   serviceTier: serviceTierSchema,
   groupWithNext: z.boolean(),

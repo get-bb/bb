@@ -249,7 +249,7 @@ export interface NewThreadComposerState {
   setProviderModelReasoning: (selection: {
     providerId: string;
     model: string;
-    reasoningLevel: ReasoningLevel | undefined;
+    reasoningLevel: ReasoningLevel;
   }) => void;
   setPermissionMode: (value: PermissionMode) => void;
   setServiceTier: (value: ServiceTier | undefined) => void;
@@ -1665,14 +1665,11 @@ export function NewThreadComposer({
         ...executionInputSources,
         ...seededExecutionInputSources,
       };
-      if (reasoningOptions.length === 0) {
-        delete sources.reasoningLevel;
-      }
       const request: NewThreadComposerSubmission = {
         projectId,
         providerId: selectedProviderId,
         model: selectedThreadModel,
-        ...(reasoningOptions.length > 0 ? { reasoningLevel } : {}),
+        reasoningLevel,
         permissionMode,
         ...(supportsServiceTier && serviceTier ? { serviceTier } : {}),
         ...(Object.keys(sessionOptionSelections).length > 0
@@ -1727,7 +1724,6 @@ export function NewThreadComposer({
       promptDraft,
       reasoningLevel,
       seededExecutionInputSources,
-      reasoningOptions,
       submissionReadinessReason,
       submissionEnvironment,
       selectedProviderId,
