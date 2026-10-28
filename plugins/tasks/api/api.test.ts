@@ -9,9 +9,11 @@ import { registerAttachments } from "../attachments";
 import { attachmentDownloadUrl } from "../shared/attachments";
 import { tasksRpcContract } from "../shared/contract";
 import {
+  TASK_META_TAG,
   attachmentsChangedTags,
   commentsTag,
   taskChangedTags,
+  taskTag,
 } from "../shared/tags";
 import { createComment, createStore, registerTasksApi } from ".";
 
@@ -918,8 +920,11 @@ describe("Tasks RPC domain API", () => {
       ).resolves.toEqual({ deleted: true });
       expect(store.tasks.getTask(child.id)?.parentTaskId).toBeNull();
       expect(harness.experimental_rpcInvalidations).toEqual([
-        taskChangedTags({ id: parent.id, projectId: project.id }),
-        taskChangedTags({ id: child.id, projectId: project.id }),
+        [
+          ...taskChangedTags({ id: parent.id, projectId: project.id }),
+          taskTag(child.id),
+          TASK_META_TAG,
+        ],
       ]);
     } finally {
       await harness.dispose();

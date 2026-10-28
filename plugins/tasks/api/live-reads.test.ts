@@ -244,6 +244,36 @@ describe("Tasks live reads", () => {
     expect(Object.keys(delegationRpcContract)).toContain("taskThreadsAttach");
   });
 
+  it("refreshes card metadata when a subtask becomes a top-level task", async () => {
+    const { harness, project, store, task, refreshes } = setup();
+    const child = () =>
+      store.tasks.createTask({
+        projectId: project.id,
+        title: "Child",
+        parentTaskId: task.id,
+      });
+    const cards: [string, unknown] = [
+      "listTaskCardMeta",
+      { projectId: project.id },
+    ];
+
+    const promoted = child();
+    expect(
+      await refreshes(cards, () =>
+        harness.callRpc("updateTask", {
+          taskId: promoted.id,
+          parentTaskId: null,
+        }),
+      ),
+    ).toBe(true);
+    child();
+    expect(
+      await refreshes(cards, () =>
+        harness.callRpc("deleteTask", { taskId: task.id }),
+      ),
+    ).toBe(true);
+  });
+
   it("refreshes keyed project labels and labelled tasks", async () => {
     const { harness, label, project, refreshes } = setup();
 

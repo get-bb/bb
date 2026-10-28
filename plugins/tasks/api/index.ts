@@ -807,10 +807,15 @@ export function registerHandlers(
           };
         });
 
-        invalidateTaskChanged(bb, result.task);
-        if (result.systemCommentsWritten > 0) {
-          invalidateComments(bb, result.task.id);
-        }
+        invalidate(bb, [
+          ...taskChangedTags(result.task),
+          ...(result.task.parentTaskId === current.parentTaskId
+            ? []
+            : [TASK_META_TAG]),
+          ...(result.systemCommentsWritten > 0
+            ? [commentsTag(result.task.id)]
+            : []),
+        ]);
         return { ok: true, task: result.task };
       } catch (error) {
         if (error instanceof TasksDomainFailure) return taskFailure(error);
@@ -824,8 +829,11 @@ export function registerHandlers(
       const deleted = store.tasks.deleteTask(input.taskId);
       if (deleted && task) {
         await removeAttachmentBlobs(bb, store.tasks, attachments);
-        invalidateTaskChanged(bb, task);
-        for (const subtask of subtasks) invalidateTaskChanged(bb, subtask);
+        invalidate(bb, [
+          ...taskChangedTags(task),
+          ...subtasks.flatMap(taskChangedTags),
+          ...(subtasks.length > 0 ? [TASK_META_TAG] : []),
+        ]);
       }
       return { deleted };
     },
