@@ -294,8 +294,7 @@ export class ScrollPositionKeeper {
     let observer: ResizeObserver | undefined;
     if (typeof ResizeObserver !== "undefined") {
       observer = new ResizeObserver(() => {
-        this.syncFloor();
-        this.reconcile();
+        this.remeasure();
       });
       observer.observe(scrollElement);
       const content = this.options.getContentElement();
@@ -521,6 +520,11 @@ export class ScrollPositionKeeper {
     if (this.deferred !== 0) this.scheduleDeferredWrite();
     this.attachIfAtEnd(scrollElement);
     this.notifyLists();
+  }
+
+  remeasure(): void {
+    this.syncFloor();
+    this.reconcile();
   }
 
   reconcile(urgent = true): void {
