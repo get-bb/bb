@@ -899,7 +899,7 @@ in the answer) so a plugin cannot forget to call the helper, and whether
 `dropped[].reason` is a contract a resolver's test may pin or free text for
 the log.
 
-## Vendor plugin roots (`experimental_resolveClaudePluginRoots` and `experimental_resolveVendorPluginRoots`, `@get-bb/plugin-sdk/host`)
+## Vendor plugin roots (`experimental_resolveClaudePluginRoots`, `experimental_resolveVendorPluginRoots` and `experimental_resolveClaudeConfigDir`, `@get-bb/plugin-sdk/host`)
 
 `experimental_resolveVendorPluginRoots({ plugins, layout })` walks vendor
 plugin directories into native roots with `namePrefix: "<plugin>:"`.
@@ -908,7 +908,12 @@ then its manifest `skills` and `commands` entries. `layout: "grok"` reads only
 the manifest entries, each recursive.
 `experimental_resolveClaudePluginRoots({ cwd, homeDir, env })` reads Claude
 Code's installed-plugin registry and enablement settings and runs the walk.
-Its answer also carries `claudeDir`. Two shared rules apply. User-origin
+Its answer also carries `claudeDir`, computed by
+`experimental_resolveClaudeConfigDir({ homeDir, env })`: `CLAUDE_CONFIG_DIR`
+when set and non-blank (absolute, `~`-relative or home-relative), else
+`~/.claude`. Core's Claude Code provider uses that one resolver for native
+roots, its usage and health check (credentials, account file, Keychain
+service), session forks and skill filtering. Two shared rules apply. User-origin
 plugins follow skill symlinks, project-origin plugins do not, and command
 components never follow links. Within an answer each path appears once per
 side, and the first root to claim it wins.

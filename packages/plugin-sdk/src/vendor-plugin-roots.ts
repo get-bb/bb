@@ -428,14 +428,19 @@ function resolveStoredPath(homeDir: string, storedPath: string): string {
   return path.resolve(homeDir, storedPath);
 }
 
-function resolveClaudeConfigDir(
-  homeDir: string,
-  env: Readonly<Record<string, string | undefined>>,
-): string {
-  const configured = env.CLAUDE_CONFIG_DIR?.trim();
+/**
+ * The Claude Code configuration directory for a home and environment:
+ * `CLAUDE_CONFIG_DIR` when set and non-blank (absolute, `~`-relative, or
+ * relative to the home directory), else `~/.claude`.
+ */
+export function experimental_resolveClaudeConfigDir(args: {
+  homeDir: string;
+  env: Readonly<Record<string, string | undefined>>;
+}): string {
+  const configured = args.env.CLAUDE_CONFIG_DIR?.trim();
   return configured
-    ? resolveStoredPath(homeDir, configured)
-    : path.join(homeDir, CLAUDE_DIR_NAME);
+    ? resolveStoredPath(args.homeDir, configured)
+    : path.join(args.homeDir, CLAUDE_DIR_NAME);
 }
 
 /** A vendor file that is missing, unparseable, or not the expected shape reads as absent. */
@@ -759,7 +764,7 @@ export async function experimental_resolveClaudePluginRoots(
   args: ExperimentalClaudePluginRootsArgs,
 ): Promise<ExperimentalClaudePluginRoots> {
   const dirs: ResolvedClaudeDirs = {
-    claudeDir: resolveClaudeConfigDir(args.homeDir, args.env),
+    claudeDir: experimental_resolveClaudeConfigDir(args),
     cwd: args.cwd === null ? null : path.resolve(args.cwd),
     homeDir: args.homeDir,
   };

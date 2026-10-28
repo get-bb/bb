@@ -32,6 +32,8 @@ import {
   experimental_defineProviderBridge,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { randomUUID } from "node:crypto";
+import { homedir } from "node:os";
+import { experimental_resolveClaudeConfigDir } from "@get-bb/plugin-sdk/host";
 import { join as joinPath, resolve as resolvePath } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import {
@@ -62,7 +64,7 @@ import {
   type SdkSessionOptions,
 } from "./sdk-session.js";
 import { MissingClaudeCliError } from "./missing-cli-error.js";
-import { claudeConfigDirectory, forkClaudeSession } from "./session-fork.js";
+import { forkClaudeSession } from "./session-fork.js";
 import { createClaudeCodeBridgeModelListMemo } from "./model-list.js";
 import {
   PROVIDER_COMMANDS_STATE_KIND,
@@ -105,7 +107,6 @@ import {
   createClaudeSkillPluginsRoot,
   ensureClaudeSkillPlugin,
   filterClaudeSkillRoots,
-  claudeSkillsConfigDirectory,
 } from "./skill-plugins.js";
 import {
   buildBridgeMcpServer,
@@ -2516,9 +2517,10 @@ async function handleThreadFork(
   let forkedProviderThreadId: string;
   try {
     forkedProviderThreadId = await forkClaudeSession({
-      configDirectory: claudeConfigDirectory(
-        buildSessionEnv(readConfigEnvOverrides(params.config)),
-      ),
+      configDirectory: experimental_resolveClaudeConfigDir({
+        homeDir: homedir(),
+        env: buildSessionEnv(readConfigEnvOverrides(params.config)),
+      }),
       sourceSessionId: params.sourceProviderThreadId,
       upToMessageId: params.sourceProviderCheckpointId,
     });
@@ -2542,7 +2544,10 @@ async function toClaudeSessionParams(
             roots: configuredSkillRoots,
             cwd: params.cwd,
             pluginsRoot: requireSkillPluginsRoot(),
-            claudeDir: claudeSkillsConfigDirectory(),
+            claudeDir: experimental_resolveClaudeConfigDir({
+              homeDir: homedir(),
+              env: buildSessionEnv(params.options.envVars ?? {}),
+            }),
           }),
         );
   return buildClaudeSessionParams({

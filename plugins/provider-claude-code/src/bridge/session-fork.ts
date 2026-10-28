@@ -11,12 +11,6 @@ import { z } from "zod";
 
 const transcriptEntrySchema = z.looseObject({ type: z.string() });
 
-export function claudeConfigDirectory(env: NodeJS.ProcessEnv): string {
-  return env.CLAUDE_CONFIG_DIR
-    ? resolve(env.CLAUDE_CONFIG_DIR)
-    : join(homedir(), ".claude");
-}
-
 export async function forkClaudeSession(args: {
   configDirectory: string;
   sourceSessionId: string;

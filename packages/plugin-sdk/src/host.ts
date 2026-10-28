@@ -27,6 +27,7 @@ export {
   type ExperimentalNativeRootsResolveOutput,
 } from "./native-roots-contract.js";
 export {
+  experimental_resolveClaudeConfigDir,
   experimental_resolveClaudePluginRoots,
   experimental_resolveVendorPluginRoots,
   type ExperimentalClaudePluginRoots,

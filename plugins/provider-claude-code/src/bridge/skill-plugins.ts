@@ -191,8 +191,3 @@ export async function filterClaudeSkillRoots(args: {
   return filtered;
 }
 
-export function claudeSkillsConfigDirectory(): string {
-  return process.env.CLAUDE_CONFIG_DIR
-    ? resolve(process.env.CLAUDE_CONFIG_DIR)
-    : join(homedir(), ".claude");
-}

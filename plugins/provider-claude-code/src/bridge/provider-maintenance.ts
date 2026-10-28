@@ -1,4 +1,5 @@
 import { experimental_execHostFile } from "@get-bb/plugin-sdk/process";
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -22,6 +23,7 @@ import {
   experimental_resolveExecutablePath as resolveExecutablePath,
   experimental_versionFrom as versionFrom,
 } from "@get-bb/plugin-sdk/provider-bridge";
+import { experimental_resolveClaudeConfigDir } from "@get-bb/plugin-sdk/host";
 import { z } from "zod";
 
 const execFileAsync = experimental_execHostFile;
@@ -254,18 +256,45 @@ function buildClaudeProviderInstallationRun(
   };
 }
 
-async function readKeychainCredentials(): Promise<string | null> {
+interface ClaudeProfile {
+  configDir: string;
+  configured: string | null;
+}
+
+function claudeProfile(): ClaudeProfile {
+  const configured = process.env.CLAUDE_CONFIG_DIR?.trim();
+  return {
+    configDir: experimental_resolveClaudeConfigDir({
+      homeDir: os.homedir(),
+      env: process.env,
+    }),
+    configured: configured ? configured : null,
+  };
+}
+
+function keychainService(profile: ClaudeProfile): string {
+  return profile.configured === null
+    ? CLAUDE_KEYCHAIN_SERVICE
+    : `${CLAUDE_KEYCHAIN_SERVICE}-${createHash("sha256")
+        .update(profile.configured.normalize("NFC"))
+        .digest("hex")
+        .slice(0, 8)}`;
+}
+
+function accountFilePath(profile: ClaudeProfile): string {
+  return profile.configured === null
+    ? path.join(os.homedir(), ".claude.json")
+    : path.join(profile.configDir, ".claude.json");
+}
+
+async function readKeychainCredentials(
+  profile: ClaudeProfile,
+): Promise<string | null> {
   if (process.platform !== "darwin") return null;
+  const service = keychainService(profile);
   const argumentSets = [
-    [
-      "find-generic-password",
-      "-s",
-      CLAUDE_KEYCHAIN_SERVICE,
-      "-a",
-      os.userInfo().username,
-      "-w",
-    ],
-    ["find-generic-password", "-s", CLAUDE_KEYCHAIN_SERVICE, "-w"],
+    ["find-generic-password", "-s", service, "-a", os.userInfo().username, "-w"],
+    ["find-generic-password", "-s", service, "-w"],
   ];
   for (const args of argumentSets) {
     try {
@@ -294,7 +323,8 @@ function parseCredentials(raw: string): ClaudeCredentials | null {
 }
 
 async function readCredentials(): Promise<ClaudeCredentials | null> {
-  const keychainCredentials = await readKeychainCredentials();
+  const profile = claudeProfile();
+  const keychainCredentials = await readKeychainCredentials(profile);
   if (keychainCredentials !== null) {
     const parsed = parseCredentials(keychainCredentials);
     if (parsed !== null) return parsed;
@@ -302,7 +332,7 @@ async function readCredentials(): Promise<ClaudeCredentials | null> {
   try {
     return parseCredentials(
       await fs.readFile(
-        path.join(os.homedir(), ".claude", ".credentials.json"),
+        path.join(profile.configDir, ".credentials.json"),
         "utf8",
       ),
     );
@@ -314,9 +344,7 @@ async function readCredentials(): Promise<ClaudeCredentials | null> {
 async function readAccount() {
   try {
     const parsed = claudeAccountSchema.safeParse(
-      JSON.parse(
-        await fs.readFile(path.join(os.homedir(), ".claude.json"), "utf8"),
-      ),
+      JSON.parse(await fs.readFile(accountFilePath(claudeProfile()), "utf8")),
     );
     return parsed.success ? (parsed.data.oauthAccount ?? null) : null;
   } catch {

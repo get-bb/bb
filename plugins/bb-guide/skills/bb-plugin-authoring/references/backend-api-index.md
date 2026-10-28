@@ -401,6 +401,7 @@ Read the installed declarations for exact current signatures.
 - `experimental_nativeRootsResolveOutputSchema`
 - `experimental_readProcessIdentity`
 - `experimental_resolveClaudePluginRoots`
+- `experimental_resolveClaudeConfigDir`
 - `experimental_resolveVendorPluginRoots`
 - `experimental_runVcsProcess`
 - `experimental_sanitizeInheritedChildProcessEnv`
