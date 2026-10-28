@@ -87,7 +87,6 @@ import {
   resolveTelemetryInitiator,
 } from "./telemetry-initiator.js";
 import { assertThreadHostAcceptsWork } from "./thread-host-admission.js";
-import { settleLiveTurnRequest, trackLiveTurnRequest } from "./input-ledger.js";
 
 type SendThreadMessageMode = SendMessageRequest["mode"];
 type TextPromptInput = Extract<PromptInput, { type: "text" }>;
@@ -176,6 +175,14 @@ interface AppendAndQueueSendThreadMessageArgs {
 interface AppendAndQueueSendThreadMessageResult {
   activeThread: Thread | null;
   request: AppendedClientTurnRequestWithNotification;
+}
+
+function submitOutcomeForError(error: Error): "refused" | "unknown" {
+  return error instanceof ApiError &&
+    (error.body.code === "host_unavailable" ||
+      error.body.code === "command_timeout")
+    ? "unknown"
+    : "refused";
 }
 
 export function ensureThreadIsNotAwaitingUserInteraction(
@@ -548,6 +555,7 @@ async function sendThreadMessageWithoutContextClear(
   const deferredFirstTurnContext = resolveDeferredFirstTurnContext(
     deps.db,
     thread.id,
+    deps.lifecycleDedupers.turnRequestDelivery,
   );
   ({ input, inputGroups } = prependDeferredFirstTurnContext(
     { input, ...(inputGroups !== undefined ? { inputGroups } : {}) },
@@ -560,6 +568,7 @@ async function sendThreadMessageWithoutContextClear(
     args.beforeAppendInTransaction?.({ requestId, tx });
     if (deferredFirstTurnContext) {
       requireDeferredFirstTurnContextCurrent(tx, {
+        delivery: deps.lifecycleDedupers.turnRequestDelivery,
         requestSequence: deferredFirstTurnContext.requestSequence,
         threadId: thread.id,
       });
@@ -756,7 +765,10 @@ async function sendThreadMessageWithoutContextClear(
       queuedRequest.request.notificationChanges,
       queuedRequest.request.notificationMetadata,
     );
-    trackLiveTurnRequest(requestId);
+    deps.lifecycleDedupers.turnRequestDelivery.submitted({
+      requestId,
+      threadId: thread.id,
+    });
     const onHistoryReplacementSettled =
       args.historyReplacement?.onCommandSettled;
     startLiveHostCommand(deps, {
@@ -764,11 +776,14 @@ async function sendThreadMessageWithoutContextClear(
       hostId: readyEnvironment.hostId,
       timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
       onSettled: async () => {
-        settleLiveTurnRequest({ requestId, threadId: thread.id }, "sent");
+        deps.lifecycleDedupers.turnRequestDelivery.settled(requestId, "sent");
         await onHistoryReplacementSettled?.();
       },
       onError: ({ error }) => {
-        settleLiveTurnRequest({ requestId, threadId: thread.id }, "refused");
+        deps.lifecycleDedupers.turnRequestDelivery.settled(
+          requestId,
+          submitOutcomeForError(error),
+        );
         deps.logger.warn(
           { err: error, threadId: thread.id },
           "Live ready turn command failed",
@@ -840,15 +855,21 @@ async function sendThreadMessageWithoutContextClear(
     queuedRequest.request.notificationChanges,
     queuedRequest.request.notificationMetadata,
   );
-  trackLiveTurnRequest(requestId);
+  deps.lifecycleDedupers.turnRequestDelivery.submitted({
+    requestId,
+    threadId: thread.id,
+  });
   startLiveHostCommand(deps, {
     command,
     hostId: readyEnvironment.hostId,
     timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
     onSettled: () =>
-      settleLiveTurnRequest({ requestId, threadId: thread.id }, "sent"),
+      deps.lifecycleDedupers.turnRequestDelivery.settled(requestId, "sent"),
     onError: ({ error }) => {
-      settleLiveTurnRequest({ requestId, threadId: thread.id }, "refused");
+      deps.lifecycleDedupers.turnRequestDelivery.settled(
+        requestId,
+        submitOutcomeForError(error),
+      );
       deps.logger.warn(
         { err: error, threadId: thread.id },
         "Live turn submit command failed",

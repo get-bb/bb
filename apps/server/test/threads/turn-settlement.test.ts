@@ -1,5 +1,5 @@
 import { getActiveStoredTurnId, getThread, listEvents } from "@bb/db";
-import { threadScope, type ThreadEvent } from "@bb/domain";
+import { threadScope, turnScope, type ThreadEvent } from "@bb/domain";
 import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
 import { describe, expect, it } from "vitest";
 import {
@@ -108,6 +108,45 @@ describe("run exit closes its turn", () => {
       expect(JSON.parse(completed[0]!.data)).toMatchObject({
         status: "failed",
       });
+    });
+  });
+});
+
+describe("batched turn boundaries", () => {
+  it("keeps the next turn open when its start arrives in the same batch as the previous completion", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedRunFixture(harness, { status: "active", value: 4 });
+      seedTurnStarted(harness.deps, {
+        environmentId: fixture.environment.id,
+        providerThreadId: fixture.providerThreadId,
+        threadId: fixture.thread.id,
+        turnId: "turn-a",
+      });
+
+      await postDaemonEvents(harness, {
+        sessionId: fixture.sessionId,
+        threadId: fixture.thread.id,
+        events: [
+          {
+            type: "turn/completed",
+            threadId: fixture.thread.id,
+            providerThreadId: fixture.providerThreadId,
+            scope: turnScope("turn-a"),
+            status: "completed",
+          },
+          {
+            type: "turn/started",
+            threadId: fixture.thread.id,
+            providerThreadId: fixture.providerThreadId,
+            scope: turnScope("turn-b"),
+          },
+        ],
+      });
+
+      expect(getThread(harness.db, fixture.thread.id)?.status).toBe("active");
+      expect(getActiveStoredTurnId(harness.db, fixture.thread.id)).toBe(
+        "turn-b",
+      );
     });
   });
 });

@@ -113,7 +113,24 @@ export async function handleHostSessionOpened(
         reason: "host-daemon-restarted",
       });
       settleDanglingBackgroundTasks(deps, { hostId: args.hostId });
+      deps.lifecycleDedupers.turnRequestDelivery.daemonReportedIdle(
+        new Set(listHostThreadIds(deps.db, { hostId: args.hostId })),
+      );
     }
+  }
+
+  if (sameDaemonInstance) {
+    const stillRunning = new Set([
+      ...args.activeThreads.map((thread) => thread.threadId),
+      ...args.undeliveredEventThreadIds,
+    ]);
+    deps.lifecycleDedupers.turnRequestDelivery.daemonReportedIdle(
+      new Set(
+        listHostThreadIds(deps.db, { hostId: args.hostId }).filter(
+          (threadId) => !stillRunning.has(threadId),
+        ),
+      ),
+    );
   }
 
   await reconcileDaemonReportedThreads(deps, {

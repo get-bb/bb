@@ -76,6 +76,7 @@ function interruptQuestionsTheProviderNoLongerAsks(
     hostId: args.hostId,
   }).filter(
     (interaction) =>
+      interaction.status === "pending" &&
       !args.unsettledThreadIds.has(interaction.threadId) &&
       !args.reportedKeys.has(providerRequestKey(interaction)),
   );

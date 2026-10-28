@@ -31,6 +31,7 @@ import {
 } from "../helpers/pending-interactions.js";
 import { advanceUntilSettled } from "../helpers/fake-timers.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import { setPendingInteractionResolving } from "@bb/db";
 import {
   SERVER_MOVE_FROZEN_RETRY_MS,
   setServerMoveFrozen,
@@ -922,6 +923,27 @@ describe("pending interaction lifecycle", () => {
         });
 
         expect(readStatus(harness, interaction.id)).toBe("interrupted");
+      });
+    });
+
+    it("keeps an answered question whose delivery ack was lost", async () => {
+      await withTestHarness(async (harness) => {
+        const { host, interaction, session } = seedQuestion(harness);
+        setPendingInteractionResolving(harness.db, {
+          id: interaction.id,
+          resolution: JSON.stringify({ answers: {} }),
+        });
+
+        await handleHostSessionOpened(harness.deps, {
+          activeThreads: [],
+          openThreadWork: [],
+          undeliveredEventThreadIds: [],
+          hostId: host.id,
+          openedSession: seedSession(harness.deps, host.id),
+          previousSession: session,
+        });
+
+        expect(readStatus(harness, interaction.id)).toBe("resolving");
       });
     });
 

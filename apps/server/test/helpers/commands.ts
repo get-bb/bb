@@ -506,6 +506,11 @@ export function listPendingQueuedCommands(
   );
 }
 
+export function forgetQueuedCommand(queued: QueuedCommand): void {
+  if (queued.rpcRequest)
+    removePendingHostRpcRequest(queued.rpcRequest.requestId);
+}
+
 export async function waitForQueuedCommand(
   harness: TestAppHarness,
   predicate: (queued: QueuedCommand) => boolean,

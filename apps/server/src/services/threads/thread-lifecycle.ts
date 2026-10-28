@@ -1,7 +1,6 @@
 import { advanceEnvironmentProvisioning } from "../environments/environment-engine.js";
 import { COMPETING_TURN_ERROR_CODE } from "@bb/host-daemon-contract";
 import {
-  endAcceptanceGraceForThread,
   isSupersededTurnRequest,
   returnSubmittedInputsInTransaction,
 } from "./input-ledger.js";
@@ -364,7 +363,7 @@ interface SettleTurnSubmitCommandResultArgs {
 
 interface SettleThreadStopCommandResultArgs {
   command: ThreadStopCommand;
-  deps: FinalizeStoppedThreadTransactionDeps;
+  deps: SettleThreadStopTransactionDeps;
   execution: HostDaemonCommandExecutionRecord;
   report: ThreadStopCommandResultReport;
 }
@@ -483,6 +482,10 @@ interface ThreadLifecycleTransactionDeps extends ThreadLifecycleReadDeps {
 
 interface FinalizeStoppedThreadTransactionDeps extends ThreadLifecycleTransactionDeps {
   pendingInteractions: AppDeps["pendingInteractions"];
+}
+
+interface SettleThreadStopTransactionDeps extends FinalizeStoppedThreadTransactionDeps {
+  lifecycleDedupers: AppDeps["lifecycleDedupers"];
 }
 
 interface ApplyActiveTurnInterruptionArgs {
@@ -1093,6 +1096,9 @@ export function settleThreadStopCommandResult(
     };
   }
 
+  args.deps.lifecycleDedupers.turnRequestDelivery.pendingStartsDropped(
+    new Set([args.command.threadId]),
+  );
   finalizeStoppedThreadInTransaction(args.deps, {
     ...(args.report.result.providerCheckpointId !== null
       ? { providerCheckpointId: args.report.result.providerCheckpointId }
@@ -1378,10 +1384,49 @@ function requestThreadStop(
 
 export const TURN_START_DEADLINE_MS = 10 * 60_000;
 
+function stopPendingStartsOfSettledThreads(
+  deps: CommandResultSideEffectsDeps,
+  now: number,
+): void {
+  const threadIds =
+    deps.lifecycleDedupers.turnRequestDelivery.threadsAwaitingAcceptanceSince(
+      now - TURN_START_DEADLINE_MS,
+    );
+  for (const threadId of threadIds) {
+    const thread = getThread(deps.db, threadId);
+    if (
+      thread === null ||
+      (thread.status !== "idle" && thread.status !== "error") ||
+      thread.environmentId === null
+    ) {
+      continue;
+    }
+    const environment = getEnvironment(deps.db, thread.environmentId);
+    if (
+      environment === null ||
+      !deps.hub.hasDaemonForHost(environment.hostId)
+    ) {
+      continue;
+    }
+    if (!inFlightThreadRpcGuard.claim(thread.id, "thread.stop")) continue;
+    deps.logger.warn(
+      { threadId: thread.id },
+      "Stopping a turn start the provider never confirmed",
+    );
+    dispatchThreadStopCommand(deps, {
+      environmentId: environment.id,
+      hostId: environment.hostId,
+      interruptionReason: "manual-stop",
+      threadId: thread.id,
+    });
+  }
+}
+
 export function stopRunsWhoseTurnNeverStarted(
   deps: CommandResultSideEffectsDeps,
   now: number,
 ): void {
+  stopPendingStartsOfSettledThreads(deps, now);
   const activeThreads = deps.db
     .select({
       environmentId: environments.id,
@@ -2132,7 +2177,6 @@ export function finalizeStoppedThreadInTransaction(
     }
   }
 
-  endAcceptanceGraceForThread(args.threadId);
   const finalizedThread = getThread(deps.db, args.threadId);
   if (!finalizedThread) {
     return;

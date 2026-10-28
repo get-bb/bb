@@ -371,7 +371,12 @@ async function runOperationDispatch(
       });
       if (preflight.requestId !== null) {
         settleSupersededFailedTurnInputsInTransaction(
-          { db: preflight.tx, hub: deps.hub, logger: deps.logger },
+          {
+            db: preflight.tx,
+            delivery: deps.lifecycleDedupers.turnRequestDelivery,
+            hub: deps.hub,
+            logger: deps.logger,
+          },
           {
             requestId: preflight.requestId,
             retryOfRequestId: null,
@@ -778,7 +783,12 @@ async function runDispatchAttempt(
           return;
         }
         settleSupersededFailedTurnInputsInTransaction(
-          { db: tx, hub: deps.hub, logger: deps.logger },
+          {
+            db: tx,
+            delivery: deps.lifecycleDedupers.turnRequestDelivery,
+            hub: deps.hub,
+            logger: deps.logger,
+          },
           {
             requestId,
             retryOfRequestId: args.retryOf?.requestId ?? null,

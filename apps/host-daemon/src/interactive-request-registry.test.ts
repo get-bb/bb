@@ -59,6 +59,39 @@ function createRegistry(args: CreateRegistryArgs): InteractiveRequestRegistry {
 }
 
 describe("InteractiveRequestRegistry", () => {
+  it("ends a wait whose registration is still in flight without an unhandled rejection", async () => {
+    const request = createCommandApprovalRequest();
+    const registration =
+      createDeferredPromise<HostDaemonInteractiveRequestResponse>();
+    const registry = createRegistry({
+      registerRequest: () => registration.promise,
+    });
+    const pending = registry.registerAndWait(request);
+
+    registry.endRequests(
+      [
+        {
+          threadId: request.threadId,
+          providerId: request.providerId,
+          providerThreadId: request.providerThreadId,
+          providerRequestId: request.providerRequestId,
+        },
+      ],
+      "closed on the server",
+    );
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    registration.resolve({
+      outcome: "created",
+      interactionId: "pint_in_flight",
+      status: "pending",
+    });
+
+    await expect(pending).rejects.toMatchObject({
+      code: "interactive_request_ended",
+    });
+    expect(registry.listOpenRequests()).toEqual([]);
+  });
+
   it("reports open waits and ends the ones the server closed", async () => {
     const request = createCommandApprovalRequest();
     const other = createCommandApprovalRequest({

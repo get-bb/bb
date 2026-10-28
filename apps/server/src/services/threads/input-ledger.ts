@@ -23,6 +23,7 @@ import type { AppDeps, ServerLogger } from "../../types.js";
 import type { QueuedDispatchMessage } from "./queue-waits.js";
 import { loadFailedTurn, retryChain } from "./turn-failed.js";
 import { resolveDeferredFirstTurnContext } from "./deferred-first-turn-context.js";
+import type { TurnRequestDelivery } from "./turn-request-delivery.js";
 
 export const SUBMITTED_INPUT_SETTLE_MS = 60_000;
 
@@ -35,55 +36,13 @@ type InputLedgerTransactionDeps = {
   logger: ServerLogger;
 };
 
+type InputLedgerDeliveryDeps = InputLedgerTransactionDeps & {
+  delivery: TurnRequestDelivery;
+};
+
 interface SubmittedInputRequest {
   requestId: string;
   threadId: string;
-}
-
-const liveTurnRequestIds = new Set<string>();
-const acceptanceGraceByRequestId = new Map<
-  string,
-  { threadId: string; until: number }
->();
-
-export function trackLiveTurnRequest(requestId: ClientTurnRequestId): void {
-  liveTurnRequestIds.add(requestId);
-}
-
-export function settleLiveTurnRequest(
-  args: { requestId: ClientTurnRequestId; threadId: string },
-  outcome: "refused" | "sent",
-): void {
-  if (!liveTurnRequestIds.delete(args.requestId) || outcome === "refused") {
-    return;
-  }
-  acceptanceGraceByRequestId.set(args.requestId, {
-    threadId: args.threadId,
-    until: Date.now() + SUBMITTED_INPUT_SETTLE_MS,
-  });
-}
-
-export function endAcceptanceGraceForThread(threadId: string): void {
-  for (const [requestId, grace] of acceptanceGraceByRequestId) {
-    if (grace.threadId === threadId) {
-      acceptanceGraceByRequestId.delete(requestId);
-    }
-  }
-}
-
-export function isTurnRequestLive(requestId: string): boolean {
-  if (liveTurnRequestIds.has(requestId)) return true;
-  const grace = acceptanceGraceByRequestId.get(requestId);
-  if (grace === undefined) return false;
-  if (grace.until > Date.now()) return true;
-  acceptanceGraceByRequestId.delete(requestId);
-  return false;
-}
-
-function pruneExpiredAcceptanceGrace(now: number): void {
-  for (const [requestId, grace] of acceptanceGraceByRequestId) {
-    if (grace.until <= now) acceptanceGraceByRequestId.delete(requestId);
-  }
 }
 
 export function submitClaimedInputsInTransaction(
@@ -127,15 +86,16 @@ export function submitInlineInputInTransaction(
 }
 
 export function acceptSubmittedInputsInTransaction(
-  deps: { db: DbTransaction; logger: ServerLogger },
+  deps: InputLedgerDeliveryDeps,
   args: SubmittedInputRequest,
 ): void {
-  acceptanceGraceByRequestId.delete(args.requestId);
-  const accepted = deleteSubmittedQueuedThreadMessagesInTransaction(
-    deps.db,
-    args,
-  );
+  deps.delivery.accepted(args.requestId);
+  const accepted = [
+    ...deleteSubmittedQueuedThreadMessagesInTransaction(deps.db, args),
+    ...deleteReturnedQueuedThreadMessagesInTransaction(deps.db, args),
+  ];
   if (accepted.length === 0) return;
+  deps.hub.notifyThread(args.threadId, ["queue-changed"]);
   deps.logger.info(
     {
       queuedMessageIds: accepted.map((row) => row.id),
@@ -176,7 +136,7 @@ export function returnSubmittedInputsInTransaction(
 }
 
 export function settleSupersededFailedTurnInputsInTransaction(
-  deps: InputLedgerTransactionDeps,
+  deps: InputLedgerDeliveryDeps,
   args: {
     requestId: ClientTurnRequestId;
     retryOfRequestId: string | null;
@@ -195,7 +155,8 @@ export function settleSupersededFailedTurnInputsInTransaction(
     retryChain(failed.request).originalRequestId === args.retryOfRequestId;
   if (
     !retriesFailedTurn &&
-    resolveDeferredFirstTurnContext(deps.db, args.threadId) !== null
+    resolveDeferredFirstTurnContext(deps.db, args.threadId, deps.delivery) !==
+      null
   ) {
     const carried = moveSubmittedQueuedThreadMessagesInTransaction(deps.db, {
       ...request,
@@ -215,7 +176,7 @@ export function settleSupersededFailedTurnInputsInTransaction(
       );
     }
   }
-  if (isTurnRequestLive(failed.request.requestId)) return;
+  if (deps.delivery.mayStillBeAccepted(failed.request.requestId)) return;
   if (retriesFailedTurn) {
     const replaced = [
       ...deleteSubmittedQueuedThreadMessagesInTransaction(deps.db, request),
@@ -270,13 +231,13 @@ const RUNNING_THREAD_STATUSES: readonly ThreadStatus[] = [
 ];
 
 export function returnUnsettledSubmittedInputs(
-  deps: Pick<AppDeps, "db" | "hub" | "logger">,
+  deps: Pick<AppDeps, "db" | "hub" | "lifecycleDedupers" | "logger">,
   now: number,
 ): number {
-  pruneExpiredAcceptanceGrace(now);
+  const delivery = deps.lifecycleDedupers.turnRequestDelivery;
   const candidates = listSubmittedQueuedThreadMessageRequests(deps.db, {
     submittedBefore: now - SUBMITTED_INPUT_SETTLE_MS,
-  }).filter((request) => !isTurnRequestLive(request.requestId));
+  }).filter((request) => !delivery.mayStillBeAccepted(request.requestId));
   let returned = 0;
   for (const request of candidates) {
     returned += returnSubmittedInputsIfThreadSettled(deps, request);

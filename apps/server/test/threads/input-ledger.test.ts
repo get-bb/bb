@@ -1,4 +1,5 @@
 import {
+  getLatestSessionForHost,
   getThread,
   listQueuedThreadMessages,
   queuedThreadMessages,
@@ -13,6 +14,7 @@ import {
   SUBMITTED_INPUT_SETTLE_MS,
 } from "../../src/services/threads/input-ledger.js";
 import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
+import { handleHostSessionOpened } from "../../src/internal/session-owner-side-effects.js";
 import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
 import { retryFailedTurn } from "../../src/services/threads/turn-retry.js";
 import { retryTurnRequestSchema } from "@bb/server-contract";
@@ -28,6 +30,7 @@ import {
   seedEnvironment,
   seedHostSession,
   seedProjectWithSource,
+  seedSession,
   seedThread,
   seedThreadRuntimeState,
   seedTurnStarted,
@@ -70,6 +73,24 @@ function seedLedgerFixture(
     threadId: thread.id,
   });
   return { environment, providerThreadId, sessionId: session.id, thread };
+}
+
+async function reportDaemonIdle(
+  harness: TestAppHarness,
+  fixture: LedgerFixture,
+): Promise<void> {
+  const hostId = fixture.environment.hostId;
+  const previousSession = getLatestSessionForHost(harness.db, { hostId });
+  const openedSession = seedSession(harness.deps, hostId);
+  fixture.sessionId = openedSession.id;
+  await handleHostSessionOpened(harness.deps, {
+    activeThreads: [],
+    openThreadWork: [],
+    undeliveredEventThreadIds: [],
+    hostId,
+    openedSession,
+    previousSession,
+  });
 }
 
 async function postDaemonEvents(
@@ -356,12 +377,11 @@ describe("input ledger", () => {
       await reportQueuedCommandSuccess(harness, submit, {
         trace: { spans: [] },
       });
-      for (const type of ["stop.requested", "stop.settled"] as const) {
-        applyLoggedThreadLifecycleEvent(harness.deps, {
-          threadId: fixture.thread.id,
-          event: { type },
-        });
-      }
+      applyLoggedThreadLifecycleEvent(harness.deps, {
+        threadId: fixture.thread.id,
+        event: { type: "stop.requested" },
+      });
+      await reportDaemonIdle(harness, fixture);
       expect(getThread(harness.db, fixture.thread.id)?.status).toBe("idle");
 
       returnUnsettledSubmittedInputs(harness.deps, Date.now());
@@ -379,6 +399,64 @@ describe("input ledger", () => {
           state: "failed_exhausted",
         },
       ]);
+    });
+  });
+
+  it("keeps a steer whose fallback start is slow, and drops a returned copy once it is accepted", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedLedgerFixture(harness, {
+        status: "active",
+        value: 8,
+      });
+      seedTurnStarted(harness.deps, {
+        environmentId: fixture.environment.id,
+        providerThreadId: fixture.providerThreadId,
+        threadId: fixture.thread.id,
+        turnId: "turn-a",
+      });
+      const submit = await send(harness, fixture, {
+        mode: "steer",
+        text: "slow fallback",
+      });
+      await postDaemonEvents(harness, fixture, [
+        turnCompleted(fixture, "turn-a"),
+      ]);
+      await reportQueuedCommandSuccess(harness, submit, {
+        trace: { spans: [] },
+      });
+      expect(getThread(harness.db, fixture.thread.id)?.status).toBe("idle");
+
+      returnUnsettledSubmittedInputs(
+        harness.deps,
+        Date.now() + SUBMITTED_INPUT_SETTLE_MS + 1,
+      );
+      expect(queuedTexts(harness, fixture.thread.id)).toEqual([]);
+
+      await reportDaemonIdle(harness, fixture);
+      returnUnsettledSubmittedInputs(
+        harness.deps,
+        Date.now() + SUBMITTED_INPUT_SETTLE_MS + 1,
+      );
+      expect(queuedTexts(harness, fixture.thread.id)).toEqual([
+        JSON.stringify(textInput("slow fallback")),
+      ]);
+
+      await postDaemonEvents(harness, fixture, [
+        {
+          type: "turn/started",
+          threadId: fixture.thread.id,
+          providerThreadId: fixture.providerThreadId,
+          scope: turnScope("turn-b"),
+        },
+        {
+          type: "turn/input/accepted",
+          threadId: fixture.thread.id,
+          providerThreadId: fixture.providerThreadId,
+          scope: turnScope("turn-b"),
+          clientRequestId: submit.command.requestId,
+        },
+      ]);
+      expect(ledgerRows(harness, fixture.thread.id)).toEqual([]);
     });
   });
 });

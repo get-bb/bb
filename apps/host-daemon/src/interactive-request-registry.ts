@@ -125,6 +125,7 @@ export class InteractiveRequestRegistry {
         rejectEntry = reject;
       },
     );
+    promise.catch(() => undefined);
     const entry: PendingInteractiveRequestEntry = {
       interactionId: null,
       promise,
@@ -136,6 +137,9 @@ export class InteractiveRequestRegistry {
 
     try {
       const response = await this.options.registerRequest(request);
+      if (this.pendingEntries.get(key) !== entry) {
+        return promise;
+      }
       if (response.outcome === "rejected") {
         this.pendingEntries.delete(key);
         entry.reject(
@@ -157,7 +161,9 @@ export class InteractiveRequestRegistry {
         );
       }
     } catch (error) {
-      this.pendingEntries.delete(key);
+      if (this.pendingEntries.get(key) === entry) {
+        this.pendingEntries.delete(key);
+      }
       const registrationError = normalizeCaughtError(error);
       this.options.onRegistrationFailure?.({
         error: registrationError,

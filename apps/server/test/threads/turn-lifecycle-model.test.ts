@@ -1,46 +1,64 @@
 import {
   getActiveStoredTurnId,
+  getLatestSessionForHost,
   getThread,
   getUnstartedLatestStartTurnRequest,
   listEvents,
+  pendingInteractions,
   queuedThreadMessages,
 } from "@bb/db";
 import { turnScope, type ThreadEvent } from "@bb/domain";
-import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
+import {
+  groupHostDaemonEvents,
+  type HostDaemonInteractiveRequestKey,
+} from "@bb/host-daemon-contract";
 import { retryTurnRequestSchema } from "@bb/server-contract";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../src/errors.js";
-import {
-  returnUnsettledSubmittedInputs,
-  SUBMITTED_INPUT_SETTLE_MS,
-} from "../../src/services/threads/input-ledger.js";
+import { handleHostSessionOpened } from "../../src/internal/session-owner-side-effects.js";
+import { returnUnsettledSubmittedInputs } from "../../src/services/threads/input-ledger.js";
 import { runQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
 import {
   stopRunsWhoseTurnNeverStarted,
   TURN_START_DEADLINE_MS,
 } from "../../src/services/threads/thread-lifecycle.js";
 import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
+import { TurnRequestDelivery } from "../../src/services/threads/turn-request-delivery.js";
 import { retryFailedTurn } from "../../src/services/threads/turn-retry.js";
+import { onDaemonSocketOpen } from "../../src/ws/daemon-protocol.js";
 import {
+  forgetQueuedCommand,
   internalAuthHeaders,
   listPendingQueuedCommands,
+  registerTestHostRpcCapture,
   reportQueuedCommandError,
   reportQueuedCommandSuccess,
   type QueuedCommand,
 } from "../helpers/commands.js";
+import {
+  createAllowOnceResolution,
+  createCommandApprovalPayload,
+} from "../helpers/pending-interactions.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
   seedEnvironment,
   seedHostSession,
   seedProjectWithSource,
+  seedSession,
   seedThread,
   seedThreadRuntimeState,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
-const SEEDS = 100;
-const STEPS = 36;
+const SEEDS = [
+  ...Array.from({ length: 100 }, (_, index) => index + 1),
+  196,
+  205,
+  225,
+  230,
+];
+const STEPS = 40;
 
 type Operation =
   | "send"
@@ -48,8 +66,15 @@ type Operation =
   | "reject-submit"
   | "start-turn"
   | "complete-turn"
+  | "complete-turn-with-fallback-start"
   | "fail-turn"
   | "answer-stop"
+  | "ask"
+  | "answer-question"
+  | "deliver-answer"
+  | "reconnect"
+  | "reconnect-new-instance"
+  | "restart-server"
   | "tick"
   | "retry";
 
@@ -61,8 +86,15 @@ const OPERATIONS: readonly Operation[] = [
   "reject-submit",
   "start-turn",
   "complete-turn",
+  "complete-turn-with-fallback-start",
   "fail-turn",
   "answer-stop",
+  "ask",
+  "answer-question",
+  "deliver-answer",
+  "reconnect",
+  "reconnect-new-instance",
+  "restart-server",
   "tick",
   "retry",
 ];
@@ -78,22 +110,28 @@ function createRandom(seed: number): () => number {
 }
 
 interface Provider {
-  pendingStartAt: number;
+  deliveredInteractionIds: Set<string>;
+  instance: number;
   pendingStartRequestId: string | null;
+  questions: Map<string, string>;
+  questionCount: number;
   turnId: string | null;
   turns: number;
 }
 
 interface Fixture {
   harness: TestAppHarness;
+  hostId: string;
+  providerId: string;
   providerThreadId: string;
   sessionId: string;
   threadId: string;
 }
 
 async function settle(): Promise<void> {
-  for (let round = 0; round < 8; round += 1) {
+  for (let round = 0; round < 12; round += 1) {
     await new Promise<void>((resolve) => setImmediate(resolve));
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
   }
 }
 
@@ -124,6 +162,8 @@ function seedFixture(harness: TestAppHarness, seed: number): Fixture {
   });
   return {
     harness,
+    hostId: host.id,
+    providerId: thread.providerId,
     providerThreadId,
     sessionId: session.id,
     threadId: thread.id,
@@ -134,11 +174,14 @@ async function postEvents(
   fixture: Fixture,
   events: ThreadEvent[],
 ): Promise<void> {
+  if (events.length === 0) return;
   const response = await fixture.harness.app.request(
     "/internal/session/events",
     {
       method: "POST",
-      headers: internalAuthHeaders(fixture.harness),
+      headers: internalAuthHeaders(fixture.harness, {
+        hostId: fixture.hostId,
+      }),
       body: JSON.stringify({
         sessionId: fixture.sessionId,
         eventGroups: groupHostDaemonEvents(
@@ -164,9 +207,34 @@ function inputAccepted(
   };
 }
 
+function turnStarted(fixture: Fixture, turnId: string): ThreadEvent {
+  return {
+    type: "turn/started",
+    threadId: fixture.threadId,
+    providerThreadId: fixture.providerThreadId,
+    scope: turnScope(turnId),
+  };
+}
+
+function turnCompleted(
+  fixture: Fixture,
+  turnId: string,
+  status: "completed" | "failed" | "interrupted",
+): ThreadEvent {
+  return {
+    type: "turn/completed",
+    threadId: fixture.threadId,
+    providerThreadId: fixture.providerThreadId,
+    scope: turnScope(turnId),
+    status,
+  };
+}
+
+type LaneCommandType = "interactive.resolve" | "thread.stop" | "turn.submit";
+
 function pendingCommands(
   fixture: Fixture,
-  type: "thread.stop" | "turn.submit",
+  type: LaneCommandType,
 ): QueuedCommand[] {
   return listPendingQueuedCommands(fixture.harness).filter(
     ({ command }) =>
@@ -176,43 +244,60 @@ function pendingCommands(
   );
 }
 
-async function answerSubmit(
+function nextLaneCommand(
+  fixture: Fixture,
+  type: LaneCommandType,
+): QueuedCommand | undefined {
+  const next = listPendingQueuedCommands(fixture.harness).find(
+    ({ command }) =>
+      (command.type === "interactive.resolve" ||
+        command.type === "thread.stop" ||
+        command.type === "turn.submit") &&
+      command.threadId === fixture.threadId,
+  );
+  return next?.command.type === type ? next : undefined;
+}
+
+function runSubmitOnDaemon(
   fixture: Fixture,
   provider: Provider,
   queued: QueuedCommand,
-): Promise<void> {
+): { events: ThreadEvent[]; refusal: string | null } {
   const { command } = queued;
   if (command.type !== "turn.submit") throw new Error("Expected turn.submit");
   const busy =
     provider.turnId !== null || provider.pendingStartRequestId !== null;
   if (command.target.mode === "start" || provider.turnId === null) {
-    if (busy) {
-      await reportQueuedCommandError(fixture.harness, queued, {
-        errorCode: "competing_turn",
-        errorMessage: "Refusing to start a competing turn",
-      });
-      return;
-    }
+    if (busy) return { events: [], refusal: "competing_turn" };
     provider.pendingStartRequestId = command.requestId;
-    provider.pendingStartAt = Date.now();
-    await reportQueuedCommandSuccess(fixture.harness, queued, {
-      trace: { spans: [] },
-    });
-    return;
+    return { events: [], refusal: null };
   }
   if (
     command.target.expectedTurnId !== null &&
     command.target.expectedTurnId !== provider.turnId
   ) {
+    return { events: [], refusal: "stale_turn" };
+  }
+  return {
+    events: [inputAccepted(fixture, command.requestId, provider.turnId)],
+    refusal: null,
+  };
+}
+
+async function answerSubmit(
+  fixture: Fixture,
+  provider: Provider,
+  queued: QueuedCommand,
+): Promise<void> {
+  const outcome = runSubmitOnDaemon(fixture, provider, queued);
+  if (outcome.refusal !== null) {
     await reportQueuedCommandError(fixture.harness, queued, {
-      errorCode: "stale_turn",
-      errorMessage: "Expected a different active turn",
+      errorCode: outcome.refusal,
+      errorMessage: "refused by the fake daemon",
     });
     return;
   }
-  await postEvents(fixture, [
-    inputAccepted(fixture, command.requestId, provider.turnId),
-  ]);
+  await postEvents(fixture, outcome.events);
   await reportQueuedCommandSuccess(fixture.harness, queued, {
     trace: { spans: [] },
   });
@@ -220,18 +305,13 @@ async function answerSubmit(
 
 async function startTurn(fixture: Fixture, provider: Provider): Promise<void> {
   const requestId = provider.pendingStartRequestId;
-  if (requestId === null) return;
+  if (requestId === null || provider.turnId !== null) return;
   provider.turns += 1;
   const turnId = `turn-${provider.turns}`;
   provider.pendingStartRequestId = null;
   provider.turnId = turnId;
   await postEvents(fixture, [
-    {
-      type: "turn/started",
-      threadId: fixture.threadId,
-      providerThreadId: fixture.providerThreadId,
-      scope: turnScope(turnId),
-    },
+    turnStarted(fixture, turnId),
     inputAccepted(fixture, requestId, turnId),
   ]);
 }
@@ -243,16 +323,38 @@ async function completeTurn(
 ): Promise<void> {
   const turnId = provider.turnId;
   if (turnId === null) return;
+  if (status !== "interrupted" && provider.questions.size > 0) return;
   provider.turnId = null;
+  provider.questions.clear();
+  await postEvents(fixture, [turnCompleted(fixture, turnId, status)]);
+}
+
+async function completeTurnWithFallbackStart(
+  fixture: Fixture,
+  provider: Provider,
+): Promise<void> {
+  const turnId = provider.turnId;
+  const steer = nextLaneCommand(fixture, "turn.submit");
+  if (
+    turnId === null ||
+    steer === undefined ||
+    steer.command.type !== "turn.submit" ||
+    steer.command.target.mode === "start" ||
+    provider.questions.size > 0
+  ) {
+    return;
+  }
+  provider.turns += 1;
+  const nextTurnId = `turn-${provider.turns}`;
+  provider.turnId = nextTurnId;
   await postEvents(fixture, [
-    {
-      type: "turn/completed",
-      threadId: fixture.threadId,
-      providerThreadId: fixture.providerThreadId,
-      scope: turnScope(turnId),
-      status,
-    },
+    turnCompleted(fixture, turnId, "completed"),
+    turnStarted(fixture, nextTurnId),
+    inputAccepted(fixture, steer.command.requestId, nextTurnId),
   ]);
+  await reportQueuedCommandSuccess(fixture.harness, steer, {
+    trace: { spans: [] },
+  });
 }
 
 async function answerStop(
@@ -265,6 +367,226 @@ async function answerStop(
   await reportQueuedCommandSuccess(fixture.harness, queued, {
     providerCheckpointId: null,
   });
+}
+
+function ask(fixture: Fixture, provider: Provider): void {
+  if (provider.turnId === null) return;
+  provider.questionCount += 1;
+  const providerRequestId = `question-${provider.questionCount}`;
+  const outcome =
+    fixture.harness.deps.pendingInteractions.registerPendingInteraction({
+      interaction: {
+        threadId: fixture.threadId,
+        turnId: provider.turnId,
+        providerId: fixture.providerId,
+        providerThreadId: fixture.providerThreadId,
+        providerRequestId,
+        payload: createCommandApprovalPayload(),
+      },
+    });
+  if (outcome.outcome !== "rejected") {
+    provider.questions.set(providerRequestId, outcome.interaction.id);
+  }
+}
+
+function serverInteractions(fixture: Fixture) {
+  return fixture.harness.db
+    .select()
+    .from(pendingInteractions)
+    .where(
+      and(
+        eq(pendingInteractions.threadId, fixture.threadId),
+        eq(pendingInteractions.originKind, "provider"),
+      ),
+    )
+    .all();
+}
+
+function answerQuestion(fixture: Fixture, pick: <T>(items: readonly T[]) => T) {
+  const open = serverInteractions(fixture).filter(
+    (interaction) => interaction.status === "pending",
+  );
+  if (open.length === 0) return;
+  try {
+    fixture.harness.deps.pendingInteractions.resolvePendingInteraction({
+      threadId: fixture.threadId,
+      interactionId: pick(open).id,
+      resolution: createAllowOnceResolution(),
+    });
+  } catch (error) {
+    if (!(error instanceof ApiError)) throw error;
+  }
+}
+
+function deliverAnswerOnDaemon(
+  provider: Provider,
+  queued: QueuedCommand,
+): boolean {
+  const { command } = queued;
+  if (command.type !== "interactive.resolve") return false;
+  if (!provider.questions.has(command.providerRequestId)) return false;
+  provider.questions.delete(command.providerRequestId);
+  provider.deliveredInteractionIds.add(command.interactionId);
+  return true;
+}
+
+async function deliverAnswer(
+  fixture: Fixture,
+  provider: Provider,
+  queued: QueuedCommand,
+): Promise<void> {
+  if (deliverAnswerOnDaemon(provider, queued)) {
+    await reportQueuedCommandSuccess(fixture.harness, queued, {});
+    return;
+  }
+  await reportQueuedCommandError(fixture.harness, queued, {
+    errorCode: "stale_interactive_request",
+    errorMessage: "no longer awaiting a provider response",
+  });
+}
+
+function forgetServerWaiter(fixture: Fixture, queued: QueuedCommand): void {
+  const hub = fixture.harness.hub as unknown as {
+    hostOnlineRpcWaiters: Map<string, unknown>;
+  };
+  if (queued.rpcRequest) {
+    hub.hostOnlineRpcWaiters.delete(queued.rpcRequest.requestId);
+  }
+}
+
+async function runPendingCommandsOnDaemon(
+  fixture: Fixture,
+  provider: Provider,
+  args: { received: () => boolean; serverRestarted: boolean },
+): Promise<void> {
+  for (const queued of listPendingQueuedCommands(fixture.harness)) {
+    if (!("threadId" in queued.command)) continue;
+    if (queued.command.threadId !== fixture.threadId) continue;
+    if (args.serverRestarted && queued.command.type === "thread.stop") {
+      provider.pendingStartRequestId = null;
+      await completeTurn(fixture, provider, "interrupted");
+      await reportQueuedCommandError(fixture.harness, queued, {
+        errorCode: "command_timeout",
+        errorMessage: "the server restarted before the stop result",
+      });
+      continue;
+    }
+    forgetQueuedCommand(queued);
+    if (args.serverRestarted) forgetServerWaiter(fixture, queued);
+    if (!args.received()) continue;
+    if (queued.command.type === "turn.submit") {
+      await postEvents(
+        fixture,
+        runSubmitOnDaemon(fixture, provider, queued).events,
+      );
+    } else if (queued.command.type === "thread.stop") {
+      provider.pendingStartRequestId = null;
+      await completeTurn(fixture, provider, "interrupted");
+    } else {
+      deliverAnswerOnDaemon(provider, queued);
+    }
+  }
+}
+
+function openThreadWork(fixture: Fixture, provider: Provider) {
+  const interactiveRequests: HostDaemonInteractiveRequestKey[] = [
+    ...provider.questions.keys(),
+  ].map((providerRequestId) => ({
+    threadId: fixture.threadId,
+    providerId: fixture.providerId,
+    providerThreadId: fixture.providerThreadId,
+    providerRequestId,
+  }));
+  return interactiveRequests.length === 0
+    ? []
+    : [
+        {
+          threadId: fixture.threadId,
+          backgroundItemIds: [],
+          interactiveRequests,
+        },
+      ];
+}
+
+async function reopenSession(
+  fixture: Fixture,
+  provider: Provider,
+): Promise<void> {
+  const { deps } = fixture.harness;
+  const previous = getLatestSessionForHost(deps.db, { hostId: fixture.hostId });
+  const opened = seedSession(deps, fixture.hostId, {
+    instanceId: `instance-${provider.instance}`,
+  });
+  fixture.sessionId = opened.id;
+  const { endedInteractiveRequests } = await handleHostSessionOpened(deps, {
+    activeThreads:
+      provider.turnId !== null || provider.pendingStartRequestId !== null
+        ? [{ threadId: fixture.threadId }]
+        : [],
+    openThreadWork: openThreadWork(fixture, provider),
+    undeliveredEventThreadIds: [],
+    hostId: fixture.hostId,
+    openedSession: opened,
+    previousSession: previous,
+  });
+  for (const ended of endedInteractiveRequests) {
+    provider.questions.delete(ended.providerRequestId);
+  }
+  const socket = registerTestHostRpcCapture(deps, {
+    hostId: fixture.hostId,
+    sessionId: opened.id,
+  });
+  onDaemonSocketOpen(deps, {
+    hostId: fixture.hostId,
+    sessionId: opened.id,
+    socket,
+  });
+}
+
+function checkQuestionsAfterReconnect(
+  fixture: Fixture,
+  provider: Provider,
+  context: string,
+): void {
+  const byId = new Map(
+    serverInteractions(fixture).map((interaction) => [
+      interaction.id,
+      interaction,
+    ]),
+  );
+  for (const interactionId of provider.questions.values()) {
+    expect(
+      byId.get(interactionId)?.status,
+      `${context}: provider still waits on a closed question`,
+    ).toMatch(/^(pending|resolving)$/u);
+  }
+  const waiting = new Set(provider.questions.values());
+  for (const interaction of byId.values()) {
+    if (interaction.status !== "pending") continue;
+    expect(
+      waiting.has(interaction.id),
+      `${context}: question ${interaction.id} is pending but the provider no longer asks it`,
+    ).toBe(true);
+  }
+}
+
+function checkDeliveredAnswers(
+  fixture: Fixture,
+  provider: Provider,
+  context: string,
+): void {
+  const byId = new Map(
+    serverInteractions(fixture).map((interaction) => [
+      interaction.id,
+      interaction.status,
+    ]),
+  );
+  for (const interactionId of provider.deliveredInteractionIds) {
+    expect(
+      byId.get(interactionId),
+      `${context}: delivered answer ${interactionId} was discarded`,
+    ).toMatch(/^(resolving|resolved)$/u);
+  }
 }
 
 async function runSweeps(fixture: Fixture, now: number): Promise<void> {
@@ -391,30 +713,31 @@ function checkTurnBound(fixture: Fixture, now: number, context: string): void {
   ).toBe(true);
 }
 
-function advanceClock(provider: Provider, ms: number): void {
-  vi.setSystemTime(Date.now() + ms);
-  if (
-    provider.pendingStartRequestId !== null &&
-    Date.now() - provider.pendingStartAt >= SUBMITTED_INPUT_SETTLE_MS
-  ) {
-    provider.pendingStartRequestId = null;
-  }
-}
-
 async function quiesce(fixture: Fixture, provider: Provider): Promise<void> {
-  for (let round = 0; round < 40; round += 1) {
-    const stops = pendingCommands(fixture, "thread.stop");
-    const submits = pendingCommands(fixture, "turn.submit");
-    if (stops[0]) {
-      await answerStop(fixture, provider, stops[0]);
-    } else if (submits[0]) {
-      await answerSubmit(fixture, provider, submits[0]);
-    } else if (provider.pendingStartRequestId !== null) {
+  for (let round = 0; round < 60; round += 1) {
+    const stop = nextLaneCommand(fixture, "thread.stop");
+    const submit = nextLaneCommand(fixture, "turn.submit");
+    const resolve = nextLaneCommand(fixture, "interactive.resolve");
+    const question = serverInteractions(fixture).find(
+      (interaction) => interaction.status === "pending",
+    );
+    if (stop) {
+      await answerStop(fixture, provider, stop);
+    } else if (resolve) {
+      await deliverAnswer(fixture, provider, resolve);
+    } else if (submit) {
+      await answerSubmit(fixture, provider, submit);
+    } else if (question) {
+      answerQuestion(fixture, (items) => items[0]!);
+    } else if (
+      provider.pendingStartRequestId !== null &&
+      provider.turnId === null
+    ) {
       await startTurn(fixture, provider);
-    } else if (provider.turnId !== null) {
+    } else if (provider.turnId !== null && provider.questions.size === 0) {
       await completeTurn(fixture, provider, "completed");
     } else {
-      advanceClock(provider, TURN_START_DEADLINE_MS);
+      vi.setSystemTime(Date.now() + TURN_START_DEADLINE_MS);
       await runSweeps(fixture, Date.now());
     }
     await settle();
@@ -428,8 +751,11 @@ async function runWalk(seed: number): Promise<void> {
       items[Math.floor(random() * items.length)]!;
     const fixture = seedFixture(harness, seed);
     const provider: Provider = {
-      pendingStartAt: 0,
+      deliveredInteractionIds: new Set(),
+      instance: 1,
       pendingStartRequestId: null,
+      questions: new Map(),
+      questionCount: 0,
       turnId: null,
       turns: 0,
     };
@@ -437,6 +763,7 @@ async function runWalk(seed: number): Promise<void> {
     const trace: string[] = [];
 
     for (let step = 0; step < STEPS; step += 1) {
+      vi.setSystemTime(Date.now() + 1);
       const operation = pick(OPERATIONS);
       trace.push(operation);
       const context = `seed ${seed} step ${step} [${trace.join(" ")}]`;
@@ -460,12 +787,12 @@ async function runWalk(seed: number): Promise<void> {
           break;
         }
         case "answer-submit": {
-          const submit = pendingCommands(fixture, "turn.submit")[0];
+          const submit = nextLaneCommand(fixture, "turn.submit");
           if (submit) await answerSubmit(fixture, provider, submit);
           break;
         }
         case "reject-submit": {
-          const submit = pendingCommands(fixture, "turn.submit")[0];
+          const submit = nextLaneCommand(fixture, "turn.submit");
           if (submit) {
             await reportQueuedCommandError(harness, submit, {
               errorCode: pick(["provider_error", "host_unavailable"]),
@@ -480,18 +807,65 @@ async function runWalk(seed: number): Promise<void> {
         case "complete-turn":
           await completeTurn(fixture, provider, "completed");
           break;
+        case "complete-turn-with-fallback-start":
+          await completeTurnWithFallbackStart(fixture, provider);
+          break;
         case "fail-turn":
           await completeTurn(fixture, provider, "failed");
           break;
         case "answer-stop": {
-          const stop = pendingCommands(fixture, "thread.stop")[0];
+          const stop = nextLaneCommand(fixture, "thread.stop");
           if (stop) await answerStop(fixture, provider, stop);
           break;
         }
+        case "ask":
+          ask(fixture, provider);
+          break;
+        case "answer-question":
+          answerQuestion(fixture, pick);
+          break;
+        case "deliver-answer": {
+          const resolve = nextLaneCommand(fixture, "interactive.resolve");
+          if (resolve) await deliverAnswer(fixture, provider, resolve);
+          break;
+        }
+        case "reconnect":
+          await runPendingCommandsOnDaemon(fixture, provider, {
+            received: () => random() < 0.5,
+            serverRestarted: false,
+          });
+          await reopenSession(fixture, provider);
+          await settle();
+          checkQuestionsAfterReconnect(fixture, provider, context);
+          break;
+        case "reconnect-new-instance":
+          await runPendingCommandsOnDaemon(fixture, provider, {
+            received: () => false,
+            serverRestarted: false,
+          });
+          provider.instance += 1;
+          provider.turnId = null;
+          provider.pendingStartRequestId = null;
+          provider.questions.clear();
+          await reopenSession(fixture, provider);
+          await settle();
+          checkQuestionsAfterReconnect(fixture, provider, context);
+          break;
+        case "restart-server": {
+          harness.deps.lifecycleDedupers.turnRequestDelivery =
+            new TurnRequestDelivery();
+          await runPendingCommandsOnDaemon(fixture, provider, {
+            received: () => true,
+            serverRestarted: true,
+          });
+          await reopenSession(fixture, provider);
+          await settle();
+          checkQuestionsAfterReconnect(fixture, provider, context);
+          break;
+        }
         case "tick": {
-          advanceClock(
-            provider,
-            Math.floor(random() * TURN_START_DEADLINE_MS * 1.5),
+          vi.setSystemTime(
+            Date.now() + Math.floor(random() * TURN_START_DEADLINE_MS * 1.5),
           );
           const now = Date.now();
           await runSweeps(fixture, now);
@@ -514,11 +888,13 @@ async function runWalk(seed: number): Promise<void> {
       }
       await settle();
       checkInvariants(fixture, inputs, context);
+      checkDeliveredAnswers(fixture, provider, context);
     }
 
     await quiesce(fixture, provider);
     const context = `seed ${seed} quiescent [${trace.join(" ")}]`;
     checkInvariants(fixture, inputs, context);
+    checkDeliveredAnswers(fixture, provider, context);
     const thread = getThread(harness.db, fixture.threadId)!;
     expect(["idle", "error"], `${context}: thread still running`).toContain(
       thread.status,
@@ -541,7 +917,7 @@ async function runWalk(seed: number): Promise<void> {
 }
 
 describe("turn lifecycle model", () => {
-  it.each(Array.from({ length: SEEDS }, (_, index) => index + 1))(
+  it.each(SEEDS)(
     "keeps every input and settles every run (seed %i)",
     async (seed) => {
       vi.useFakeTimers({ toFake: ["Date"] });

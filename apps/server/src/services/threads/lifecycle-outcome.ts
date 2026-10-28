@@ -1,5 +1,6 @@
 import {
   getThread,
+  applyThreadLifecycleEvent,
   applyThreadLifecycleEventInTransaction,
   type ApplyThreadLifecycleEventArgs,
   type ApplyThreadLifecycleEventOutcome,
@@ -71,28 +72,11 @@ function logUnappliedThreadLifecycleEvent(
   );
 }
 
-function turnStatusForRunExit(
-  event: ApplyThreadLifecycleEventArgs["event"],
-): "completed" | "failed" | "interrupted" | null {
-  switch (event.type) {
-    case "run.succeeded":
-      return "completed";
-    case "run.failed":
-      return "failed";
-    case "stop.settled":
-      return "interrupted";
-    default:
-      return null;
-  }
-}
-
-function closeOpenTurnOnRunExitInTransaction(
+export function closeOpenTurnInTransaction(
   deps: ApplyLoggedThreadLifecycleEventTransactionDeps,
-  args: ApplyThreadLifecycleEventArgs,
-  thread: Thread,
+  args: { status: "failed" | "interrupted"; thread: Thread },
 ): void {
-  const status = turnStatusForRunExit(args.event);
-  if (status === null) return;
+  const { thread } = args;
   const turnId = getActiveTurnId(deps, thread.id);
   if (turnId === null) return;
   const providerThreadId = getLastProviderThreadId(deps, thread.id);
@@ -102,22 +86,12 @@ function closeOpenTurnOnRunExitInTransaction(
     providerThreadId,
     type: "turn/completed",
     scope: turnScope(turnId),
-    data: { providerThreadId, status },
+    data: { providerThreadId, status: args.status },
   });
   deps.logger.info(
-    { threadId: thread.id, turnId, status },
-    "Closed a turn left open when its run ended",
+    { threadId: thread.id, turnId, status: args.status },
+    "Closed a turn whose provider ended without completing it",
   );
-}
-
-function applyThreadLifecycleEventClosingTurnInTransaction(
-  deps: ApplyLoggedThreadLifecycleEventTransactionDeps,
-  args: ApplyThreadLifecycleEventArgs,
-): ApplyThreadLifecycleEventOutcome {
-  const outcome = applyThreadLifecycleEventInTransaction(deps.db, args);
-  if (!outcome.applied) return outcome;
-  closeOpenTurnOnRunExitInTransaction(deps, args, outcome.thread);
-  return outcome;
 }
 
 export function applyLoggedThreadLifecycleEvent(
@@ -125,14 +99,7 @@ export function applyLoggedThreadLifecycleEvent(
   args: ApplyThreadLifecycleEventArgs,
 ): ApplyThreadLifecycleEventOutcome {
   const previousStatus = getThread(deps.db, args.threadId)?.status;
-  const outcome = deps.db.transaction(
-    (tx) =>
-      applyThreadLifecycleEventClosingTurnInTransaction(
-        { db: tx, logger: deps.logger },
-        args,
-      ),
-    { behavior: "immediate" },
-  );
+  const outcome = applyThreadLifecycleEvent(deps.db, args);
   if (outcome.applied && previousStatus !== undefined) {
     recordFinishedTurn(deps.db, args.threadId, args.event, previousStatus);
   }
@@ -154,7 +121,7 @@ export function applyLoggedThreadLifecycleEventInTransaction(
   args: ApplyThreadLifecycleEventArgs,
 ): ApplyThreadLifecycleEventOutcome {
   const previousStatus = getThread(deps.db, args.threadId)?.status;
-  const outcome = applyThreadLifecycleEventClosingTurnInTransaction(deps, args);
+  const outcome = applyThreadLifecycleEventInTransaction(deps.db, args);
   if (outcome.applied && previousStatus !== undefined) {
     recordFinishedTurn(deps.db, args.threadId, args.event, previousStatus);
   }

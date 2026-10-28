@@ -10,9 +10,11 @@ import {
   PROVIDER_MODEL_CATALOG_PUSH_COALESCE_MS,
   type ProviderModelCatalogStore,
 } from "./services/providers/provider-model-catalog-store.js";
+import { TurnRequestDelivery } from "./services/threads/turn-request-delivery.js";
 
 export interface LifecycleDedupers {
   providerModelCatalogs: ProviderModelCatalogStore;
+  turnRequestDelivery: TurnRequestDelivery;
   queuedMessageDispatch: AsyncDeduper<string, void>;
   threadProvisionAdvance: AsyncRerunner<string>;
 }
@@ -26,5 +28,6 @@ export function createLifecycleDedupers(): LifecycleDedupers {
     }),
     queuedMessageDispatch: createAsyncDeduper<string, void>(),
     threadProvisionAdvance: createAsyncRerunner<string>(),
+    turnRequestDelivery: new TurnRequestDelivery(),
   };
 }
