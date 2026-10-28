@@ -19,7 +19,7 @@ A quality and performance release: bb loads faster, sends far less over the wire
 
 - **The composer is ready sooner:** threads fetch the composer's data and runtime alongside the page instead of after it, and code only some plugins use no longer delays the composer and sidebar. After a reload, the open panel tab's plugin loads first.
 - **Commands without the wait:** slash command and skill lists come from a cache instead of waiting on the machine for each new thread.
-- **Much smaller live updates:** a running thread sends only what changed, about 1–2 KB instead of 11–42 KB per update, and opening a thread no longer resends the whole timeline, which was often 400–500 KB. Early adopters also get compressed live updates, about 4x smaller over remote access.
+- **Much smaller live updates:** a running thread sends only what changed, about 1–2 KB instead of 11–42 KB per update, and opening a thread no longer resends the whole timeline, which was often 400–500 KB. Early adopters also get compressed live updates, about 4x smaller.
 - **Less CPU on busy Macs:** bb watches only the threads you're viewing instead of every thread's files, so macOS file watching stays quiet on machines running many agents.
 - **Less memory and bandwidth:** editing a skill resends only the files that changed instead of the whole folder, a 34 MiB attachment peaks at under 2 MiB of memory instead of 65 MiB, and updates and plugin downloads stream to disk.
 - **Snappier UI:** opening or closing a plugin page no longer restyles the whole app, and the Open menu answers instantly instead of rescanning your apps each time.
@@ -40,7 +40,7 @@ These are on for early adopters. Turn on **Become an early adopter** in Settings
 
 - **Select multiple sidebar threads:** Shift-click or Cmd/Ctrl+Shift-click threads to archive, delete, or set notifications for all of them, or drag them together into a section, under a thread, into Pinned, or into the composer as mentions.
 - **App links:** links such as `linear://` and `slack://` open in their apps, after asking first.
-- **Compressed live updates:** live updates are about 4x smaller over remote access.
+- **Compressed live updates:** live updates are about 4x smaller.
 - **NEW divider before final assistant message:** a thread that finished while you were away opens at its answer instead of its first tool call.
 
 ### Other improvements
