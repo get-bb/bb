@@ -1,9 +1,4 @@
 import { describe, expect, it } from "vitest";
-import {
-  GENERIC_ACP_DIALECT,
-  OMP_ACP_DIALECT,
-  resolveAcpDialect,
-} from "./dialect.js";
 import { planAcpElicitation } from "./elicitation.js";
 
 function form(
@@ -27,10 +22,9 @@ function questions(plan: ReturnType<typeof planAcpElicitation>) {
 }
 
 describe("planAcpElicitation", () => {
-  it("does not treat a Droid option's English label as the Other sentinel", () => {
+  it("does not treat an option's English label as the Other sentinel", () => {
     const plan = questions(
       planAcpElicitation(
-        resolveAcpDialect({ dialectId: "droid", command: "node" }),
         form({
           choice: {
             type: "string",
@@ -43,9 +37,15 @@ describe("planAcpElicitation", () => {
         }),
       ),
     );
-    expect(plan.payload.questions.map((question) => question.id)).toEqual([
-      "choice",
-      "choice_other",
+    expect(plan.payload.questions).toMatchObject([
+      {
+        id: "choice",
+        options: [
+          { value: "a", label: "A" },
+          { value: "other-team", label: "Other team" },
+        ],
+        allowFreeText: true,
+      },
     ]);
     expect(
       plan.toResponse({
@@ -53,40 +53,78 @@ describe("planAcpElicitation", () => {
         answers: { choice: { selected: ["other-team"] } },
       }),
     ).toEqual({ action: "accept", content: { choice: "other-team" } });
+    expect(
+      plan.toResponse({
+        kind: "user_answer",
+        answers: { choice: { selected: [], freeText: "Platform" } },
+      }),
+    ).toEqual({ action: "accept", content: { choice_other: "Platform" } });
   });
 
-  it.each([
-    ["acp", "__other"],
-    ["acp", "_other"],
-    ["omp", "_other"],
-    ["droid", "__other"],
-    ["unknown", "__other"],
-  ])(
-    "preserves separate fields for dialect %s and suffix %s",
-    (dialectId, suffix) => {
+  it.each(["__other", "_other"])(
+    "folds a %s companion into its choice whatever agent sent the form",
+    (suffix) => {
       const companion = `choice${suffix}`;
       const plan = questions(
         planAcpElicitation(
-          resolveAcpDialect({ dialectId, command: "omp" }),
           form({
             choice: { type: "string", enum: ["a", "other"] },
             [companion]: { type: "string", title: "Other" },
           }),
         ),
       );
-      expect(plan.payload.questions.map((question) => question.id)).toEqual([
-        "choice",
-        companion,
+      expect(plan.payload.questions).toMatchObject([
+        {
+          id: "choice",
+          options: [{ value: "a", label: "a" }],
+          allowFreeText: true,
+        },
       ]);
-      expect(plan.payload.questions[0]).toMatchObject({ allowFreeText: false });
       expect(
         plan.toResponse({
           kind: "user_answer",
-          answers: { choice: { selected: ["a"] } },
+          answers: { choice: { selected: [], freeText: "b" } },
         }),
-      ).toEqual({ action: "accept", content: { choice: "a" } });
+      ).toEqual({
+        action: "accept",
+        content: { choice: "other", [companion]: "b" },
+      });
     },
   );
+
+  it.each([
+    [
+      "the choice is required and has no other value",
+      { type: "string", enum: ["a", "b"] },
+      { type: "string" },
+    ],
+    [
+      "the companion is required",
+      { type: "string", enum: ["a", "other"] },
+      { type: "string" },
+    ],
+    [
+      "the companion has a format",
+      { type: "string", enum: ["a", "other"] },
+      { type: "string", format: "email" },
+    ],
+  ])("keeps the companion separate when %s", (reason, choice, companion) => {
+    const plan = questions(
+      planAcpElicitation(
+        form(
+          { choice, choice_other: companion },
+          "Pick a plan",
+          reason === "the companion is required"
+            ? ["choice", "choice_other"]
+            : ["choice"],
+        ),
+      ),
+    );
+    expect(plan.payload.questions.map((question) => question.id)).toEqual([
+      "choice",
+      "choice_other",
+    ]);
+  });
 
   it.each(["oneOf", "anyOf"])(
     "preserves %s choices with untitled options for single and multiple selection",
@@ -96,7 +134,6 @@ describe("planAcpElicitation", () => {
       };
       const plan = questions(
         planAcpElicitation(
-          GENERIC_ACP_DIALECT,
           form({
             single: { type: "string", ...choices },
             multiple: { type: "array", items: choices },
@@ -133,7 +170,6 @@ describe("planAcpElicitation", () => {
   it("turns each field kind into a question and decodes the answers back to typed content", () => {
     const plan = questions(
       planAcpElicitation(
-        GENERIC_ACP_DIALECT,
         form(
           {
             strategy: {
@@ -229,30 +265,70 @@ describe("planAcpElicitation", () => {
     });
   });
 
-  it("declines when an answer does not fit its field", () => {
+  it("passes answers through for the agent to check instead of declining them", () => {
     const plan = questions(
       planAcpElicitation(
-        GENERIC_ACP_DIALECT,
-        form({ retries: { type: "integer" } }, "Pick a plan", ["retries"]),
+        form(
+          {
+            retries: { type: "integer", minimum: 1, maximum: 5 },
+            email: { type: "string", format: "email" },
+          },
+          "Pick a plan",
+          ["retries", "email"],
+        ),
       ),
     );
-    for (const freeText of ["many", "2.5"]) {
+    for (const [freeText, retries] of [
+      ["many", "many"],
+      ["2.5", 2.5],
+      ["9", 9],
+    ] as const) {
       expect(
         plan.toResponse({
           kind: "user_answer",
-          answers: { retries: { selected: [], freeText } },
+          answers: {
+            retries: { selected: [], freeText },
+            email: { selected: [], freeText: "not an email" },
+          },
         }),
-      ).toEqual({ action: "decline" });
+      ).toEqual({
+        action: "accept",
+        content: { retries, email: "not an email" },
+      });
     }
-    expect(plan.toResponse({ kind: "user_answer", answers: {} })).toEqual({
-      action: "decline",
-    });
+  });
+
+  it("states a field's constraints in its prompt", () => {
+    const plan = questions(
+      planAcpElicitation(
+        form({
+          retries: { type: "integer", minimum: 1, maximum: 5 },
+          ratio: { type: "number", minimum: 0 },
+          email: { type: "string", format: "email", maxLength: 40 },
+          targets: {
+            type: "array",
+            minItems: 1,
+            maxItems: 2,
+            items: { type: "string", enum: ["web", "cli", "ios"] },
+          },
+        }),
+      ),
+    );
+    expect(
+      plan.payload.questions.map((question) =>
+        question.prompt.split("\n").at(-1),
+      ),
+    ).toEqual([
+      "Enter a whole number, between 1 and 5.",
+      "Enter a number, at least 0.",
+      "Enter an email address. Use at most 40 characters.",
+      "Choose between 1 and 2.",
+    ]);
   });
 
   it("asks for a typed answer when a choice has more options than the card can list, and matches it by value or label", () => {
     const plan = questions(
       planAcpElicitation(
-        GENERIC_ACP_DIALECT,
         form({
           branch: {
             type: "string",
@@ -279,13 +355,11 @@ describe("planAcpElicitation", () => {
         kind: "user_answer",
         answers: { branch: { selected: [], freeText: "staging" } },
       }),
-    ).toEqual({ action: "decline" });
+    ).toEqual({ action: "accept", content: { branch: "staging" } });
   });
 
   it("shows a form without fields as accept or decline", () => {
-    const plan = questions(
-      planAcpElicitation(GENERIC_ACP_DIALECT, form({}, "Deploy now?")),
-    );
+    const plan = questions(planAcpElicitation(form({}, "Deploy now?")));
     expect(plan.payload.questions).toMatchObject([
       {
         prompt: "Deploy now?",
@@ -308,7 +382,7 @@ describe("planAcpElicitation", () => {
 
   it("folds an omp choice and its __other text field into one question with free text (#6031)", () => {
     const plan = questions(
-      planAcpElicitation(OMP_ACP_DIALECT, {
+      planAcpElicitation({
         sessionId: "s1",
         mode: "form",
         message: "Answer 1 question",
@@ -364,7 +438,6 @@ describe("planAcpElicitation", () => {
   it("folds an omp multi-select and its __other text field, returning both picks and typed text", () => {
     const plan = questions(
       planAcpElicitation(
-        OMP_ACP_DIALECT,
         form({
           q0: {
             type: "array",
@@ -413,19 +486,16 @@ describe("planAcpElicitation", () => {
       },
     });
     const plan = questions(
-      planAcpElicitation(
-        resolveAcpDialect({ dialectId: "droid", command: "node" }),
-        {
-          sessionId: "s1",
-          mode: "form",
-          message: "Droid needs your answers to continue.",
-          requestedSchema: {
-            type: "object",
-            required: ["question_1"],
-            properties: droidQuestion(1),
-          },
+      planAcpElicitation({
+        sessionId: "s1",
+        mode: "form",
+        message: "Droid needs your answers to continue.",
+        requestedSchema: {
+          type: "object",
+          required: ["question_1"],
+          properties: droidQuestion(1),
         },
-      ),
+      }),
     );
     expect(plan.payload.questions).toEqual([
       {
@@ -457,29 +527,23 @@ describe("planAcpElicitation", () => {
       action: "accept",
       content: { question_1: "other", question_1_other: "Green" },
     });
-    expect(plan.toResponse({ kind: "user_answer", answers: {} })).toEqual({
-      action: "decline",
-    });
 
     const fourQuestions = questions(
-      planAcpElicitation(
-        resolveAcpDialect({ dialectId: "droid", command: "node" }),
-        {
-          sessionId: "s1",
-          mode: "form",
-          message: "Droid needs your answers to continue.",
-          requestedSchema: {
-            type: "object",
-            required: ["question_1", "question_2", "question_3", "question_4"],
-            properties: {
-              ...droidQuestion(1),
-              ...droidQuestion(2),
-              ...droidQuestion(3),
-              ...droidQuestion(4),
-            },
+      planAcpElicitation({
+        sessionId: "s1",
+        mode: "form",
+        message: "Droid needs your answers to continue.",
+        requestedSchema: {
+          type: "object",
+          required: ["question_1", "question_2", "question_3", "question_4"],
+          properties: {
+            ...droidQuestion(1),
+            ...droidQuestion(2),
+            ...droidQuestion(3),
+            ...droidQuestion(4),
           },
         },
-      ),
+      }),
     );
     expect(
       fourQuestions.payload.questions.map((question) => question.id),
@@ -488,7 +552,7 @@ describe("planAcpElicitation", () => {
 
   it("lets optional fields be left blank and leaves them out of the content (#6131)", () => {
     const plan = questions(
-      planAcpElicitation(GENERIC_ACP_DIALECT, {
+      planAcpElicitation({
         sessionId: "s1",
         mode: "form",
         message: "Pick a plan",
@@ -519,12 +583,6 @@ describe("planAcpElicitation", () => {
         answers: { strategy: { selected: ["safe"] }, notes: { selected: [] } },
       }),
     ).toEqual({ action: "accept", content: { strategy: "safe" } });
-    expect(
-      plan.toResponse({
-        kind: "user_answer",
-        answers: { notes: { selected: [], freeText: "hi" } },
-      }),
-    ).toEqual({ action: "decline" });
   });
 
   it("counts questions after folding against the limit and names both counts (#6266)", () => {
@@ -546,10 +604,9 @@ describe("planAcpElicitation", () => {
         ]).flat(),
       );
     expect(
-      questions(planAcpElicitation(OMP_ACP_DIALECT, form(omp(4)))).payload
-        .questions,
+      questions(planAcpElicitation(form(omp(4)))).payload.questions,
     ).toHaveLength(4);
-    expect(planAcpElicitation(OMP_ACP_DIALECT, form(omp(6)))).toEqual({
+    expect(planAcpElicitation(form(omp(6)))).toEqual({
       kind: "unsupported",
       reason: "bb shows at most 4 questions; this form has 6",
     });
@@ -557,7 +614,7 @@ describe("planAcpElicitation", () => {
 
   it("ignores schema keywords it does not render, as omp's option descriptions and text patterns", () => {
     const plan = questions(
-      planAcpElicitation(OMP_ACP_DIALECT, {
+      planAcpElicitation({
         sessionId: "s1",
         mode: "form",
         message: "Answer 2 questions",
@@ -597,7 +654,7 @@ describe("planAcpElicitation", () => {
 
   it("refuses forms it cannot show, with the reason", () => {
     expect(
-      planAcpElicitation(GENERIC_ACP_DIALECT, {
+      planAcpElicitation({
         mode: "url",
         url: "https://example.com",
       }),
@@ -607,7 +664,6 @@ describe("planAcpElicitation", () => {
     });
     expect(
       planAcpElicitation(
-        GENERIC_ACP_DIALECT,
         form(
           Object.fromEntries(
             ["a", "b", "c", "d", "e"].map((name) => [name, { type: "string" }]),
@@ -618,12 +674,7 @@ describe("planAcpElicitation", () => {
       kind: "unsupported",
       reason: "bb shows at most 4 questions; this form has 5",
     });
-    expect(
-      planAcpElicitation(
-        GENERIC_ACP_DIALECT,
-        form({ nested: { type: "object" } }),
-      ),
-    ).toEqual({
+    expect(planAcpElicitation(form({ nested: { type: "object" } }))).toEqual({
       kind: "unsupported",
       reason: 'bb cannot show the field "nested"',
     });

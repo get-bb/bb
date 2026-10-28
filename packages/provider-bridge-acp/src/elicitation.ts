@@ -9,12 +9,10 @@ import {
 } from "@bb/domain";
 import {
   normalizeElicitationForm,
-  validateElicitationFormContent,
   type ElicitationFormContent,
   type ElicitationFormField,
 } from "@bb/provider-bridge-protocol/bridge-kit/elicitation-form";
 import { ZodError } from "zod";
-import type { AcpDialect } from "./dialect.js";
 import { isJsonObject, readString } from "./session/decode.js";
 
 export type AcpElicitationResponse =
@@ -55,26 +53,72 @@ const CONFIRM_QUESTION_ID = "confirm";
 const CONFIRM_ACCEPT_VALUE = "accept";
 const CONFIRM_DECLINE_VALUE = "decline";
 
+const OTHER_COMPANION_SUFFIXES = ["__other", "_other"] as const;
+const OTHER_CHOICE_VALUE = "other";
+
 function otherCompanionFor(
-  dialect: AcpDialect,
   field: ChoiceField,
   fieldsByName: ReadonlyMap<string, ElicitationFormField>,
 ): OtherCompanion | null {
-  const suffix =
-    dialect.id === "omp" ? "__other" : dialect.id === "droid" ? "_other" : null;
-  if (suffix === null) return null;
-  const companion = fieldsByName.get(`${field.name}${suffix}`);
-  if (
-    companion?.kind !== "string" ||
-    companion.format !== null ||
-    companion.required
-  ) {
-    return null;
-  }
-  if (dialect.id === "omp") return { field: companion, choice: null };
-  return field.options.some((option) => option.value === "other")
-    ? { field: companion, choice: "other" }
+  const choice = field.options.some(
+    (option) => option.value === OTHER_CHOICE_VALUE,
+  )
+    ? OTHER_CHOICE_VALUE
     : null;
+  if (field.required && choice === null) return null;
+  for (const suffix of OTHER_COMPANION_SUFFIXES) {
+    const companion = fieldsByName.get(`${field.name}${suffix}`);
+    if (
+      companion?.kind === "string" &&
+      companion.format === null &&
+      !companion.required
+    ) {
+      return { field: companion, choice };
+    }
+  }
+  return null;
+}
+
+function boundsPhrase(min: number | null, max: number | null): string | null {
+  if (min !== null && max !== null) {
+    return min === max ? `exactly ${min}` : `between ${min} and ${max}`;
+  }
+  if (min !== null) return `at least ${min}`;
+  if (max !== null) return `at most ${max}`;
+  return null;
+}
+
+const FORMAT_HINTS = {
+  email: "Enter an email address.",
+  uri: "Enter a URL.",
+  date: "Enter a date as YYYY-MM-DD.",
+  "date-time": "Enter a date and time such as 2026-01-31T09:00:00Z.",
+} as const;
+
+function constraintHint(field: ElicitationFormField): string | null {
+  switch (field.kind) {
+    case "string": {
+      const length = boundsPhrase(field.minLength, field.maxLength);
+      const hints = [
+        ...(field.format === null ? [] : [FORMAT_HINTS[field.format]]),
+        ...(length === null ? [] : [`Use ${length} characters.`]),
+      ];
+      return hints.length > 0 ? hints.join(" ") : null;
+    }
+    case "number":
+    case "integer": {
+      const kind = field.kind === "integer" ? "a whole number" : "a number";
+      const range = boundsPhrase(field.minimum, field.maximum);
+      return range === null ? `Enter ${kind}.` : `Enter ${kind}, ${range}.`;
+    }
+    case "multi_enum": {
+      const count = boundsPhrase(field.minItems, field.maxItems);
+      return count === null ? null : `Choose ${count}.`;
+    }
+    case "enum":
+    case "boolean":
+      return null;
+  }
 }
 
 function promptFor(
@@ -124,7 +168,7 @@ function planQuestion(
       );
       const multiSelect = field.kind === "multi_enum";
       if (options.length <= USER_QUESTION_MAX_OPTIONS) {
-        return ask(null, {
+        return ask(constraintHint(field), {
           multiSelect,
           options,
           allowFreeText: other !== null,
@@ -149,13 +193,12 @@ function planQuestion(
         allowFreeText: false,
       });
     case "string":
-      return ask(null, { multiSelect: false, allowFreeText: true });
     case "number":
     case "integer":
-      return ask(
-        field.kind === "integer" ? "Enter a whole number." : "Enter a number.",
-        { multiSelect: false, allowFreeText: true },
-      );
+      return ask(constraintHint(field), {
+        multiSelect: false,
+        allowFreeText: true,
+      });
   }
 }
 
@@ -262,10 +305,7 @@ function unreadableFormReason(error: unknown): string {
     : "bb cannot read the form's schema";
 }
 
-export function planAcpElicitation(
-  dialect: AcpDialect,
-  params: unknown,
-): AcpElicitationPlan {
+export function planAcpElicitation(params: unknown): AcpElicitationPlan {
   if (!isJsonObject(params)) {
     return { kind: "unsupported", reason: "the request was malformed" };
   }
@@ -295,7 +335,7 @@ export function planAcpElicitation(
   const foldedNames = new Set<string>();
   for (const field of fields) {
     if (field.kind !== "enum" && field.kind !== "multi_enum") continue;
-    const other = otherCompanionFor(dialect, field, fieldsByName);
+    const other = otherCompanionFor(field, fieldsByName);
     if (other !== null && !foldedNames.has(other.field.name)) {
       companions.set(field.name, other);
       foldedNames.add(other.field.name);
@@ -340,10 +380,7 @@ export function planAcpElicitation(
           contentFor(entry, resolution.answers[entry.field.name]),
         );
       }
-      const validated = validateElicitationFormContent(fields, content);
-      return validated.success
-        ? { action: "accept", content: validated.data }
-        : { action: "decline" };
+      return { action: "accept", content };
     },
   };
 }

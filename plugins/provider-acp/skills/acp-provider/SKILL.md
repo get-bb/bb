@@ -136,11 +136,8 @@ restart is needed.
   launch-time reasoning flags, `nativeReasoning` for ACP
   `session/set_config_option` reasoning, and `permissionCli` for
   permission-mode launch flags.
-- `dialect` (`cursor`, `opencode`, `omp`, `droid`, or `grok`) selects the vendor
-  conventions bb reads. Only `omp` folds optional `__other` question fields;
-  only `droid` folds optional `_other` fields paired with an `other` choice.
-  Set `dialect: "droid"` explicitly for Droid registrations, including wrappers.
-  Generic ACP preserves these as separate optional fields.
+- `dialect` (`cursor`, `opencode`, `omp`, or `grok`) selects the vendor side
+  channels bb reads.
 - `nativeSkillRoots` adds native skills to the composer: a `user` list resolved
   from the target host's home directory and a `project` list resolved from the
   workspace, each a relative path without dot segments.

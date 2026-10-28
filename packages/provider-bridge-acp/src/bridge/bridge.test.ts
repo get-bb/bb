@@ -5146,15 +5146,10 @@ describe("acp bridge: busy agents, restored sessions and stop reasons", () => {
 });
 
 describe("acp bridge: questions the agent asks", () => {
-  it.each([
-    { dialectId: "omp", convention: "omp", ids: ["choice"] },
-    { dialectId: "droid", convention: "droid", ids: ["choice"] },
-    { dialectId: "acp", convention: "omp", ids: ["choice", "choice__other"] },
-    { dialectId: "acp", convention: "droid", ids: ["choice", "choice_other"] },
-  ])(
-    "uses the session's $dialectId dialect for $convention form fields",
-    async ({ dialectId, convention, ids }) => {
-      const { providerThreadId } = await startThread({ dialectId });
+  it.each(["omp", "droid"])(
+    "folds the %s Other companion in a generic ACP session",
+    async (convention) => {
+      const { providerThreadId } = await startThread();
       const turnId = sendTurnRequest("turn/start", providerThreadId, {
         input: [
           { type: "text", text: `ask-form-other-${convention}`, mentions: [] },
@@ -5171,7 +5166,7 @@ describe("acp bridge: questions the agent asks", () => {
         "forwarded question",
       );
       expect(forwarded.params).toMatchObject({
-        payload: { questions: ids.map((id) => ({ id })) },
+        payload: { questions: [{ id: "choice" }] },
       });
       handleLine(
         JSON.stringify({
