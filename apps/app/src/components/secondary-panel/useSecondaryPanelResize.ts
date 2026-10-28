@@ -6,6 +6,7 @@ import {
   useRef,
 } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
+import { RESET } from "jotai/utils";
 import type { ImperativePanelHandle } from "react-resizable-panels";
 import {
   SecondaryPanelWidthPercentAtomContext,
@@ -33,8 +34,10 @@ export function useSecondaryPanelResize({
   const secondaryPanelRef = useRef<HTMLElement>(null!);
   const secondaryResizablePanelRef = useRef<ImperativePanelHandle | null>(null);
   const lastSecondaryPanelSizeRef = useRef(persistedWidthPercent);
+  const didPointerResizeRef = useRef(false);
   const handleSecondaryPanelPointerResize = useCallback(
     (leadingFraction: number) => {
+      didPointerResizeRef.current = true;
       secondaryResizablePanelRef.current?.resize((1 - leadingFraction) * 100);
     },
     [],
@@ -42,15 +45,26 @@ export function useSecondaryPanelResize({
   const handleSecondaryPanelDragging = useCallback(
     (isDragging: boolean) => {
       setIsResizing(isDragging);
-      if (!isDragging && lastSecondaryPanelSizeRef.current > 0) {
+      if (isDragging) {
+        didPointerResizeRef.current = false;
+        return;
+      }
+      if (
+        didPointerResizeRef.current &&
+        lastSecondaryPanelSizeRef.current > 0
+      ) {
         setPersistedWidthPercent(lastSecondaryPanelSizeRef.current);
       }
     },
     [setIsResizing, setPersistedWidthPercent],
   );
+  const handleSecondaryPanelReset = useCallback(() => {
+    setPersistedWidthPercent(RESET);
+  }, [setPersistedWidthPercent]);
   const resizeHitTargetRef = usePanelResizeSnap({
     onResize: handleSecondaryPanelPointerResize,
     onDragging: handleSecondaryPanelDragging,
+    onReset: handleSecondaryPanelReset,
   });
 
   const prevOpenRef = useRef(isSecondaryPanelOpen);
@@ -92,7 +106,12 @@ export function useSecondaryPanelResize({
       secondaryPanelRef.current?.closest<HTMLElement>("[data-panel]");
     const size = Number.parseFloat(panel?.style.flexGrow ?? "");
     if (Number.isFinite(size)) handleSecondaryPanelResize(size);
-  }, [handleSecondaryPanelResize, isSecondaryPanelOpen, panelId, renderAsDrawer]);
+  }, [
+    handleSecondaryPanelResize,
+    isSecondaryPanelOpen,
+    panelId,
+    renderAsDrawer,
+  ]);
 
   return {
     handleSecondaryPanelResize,

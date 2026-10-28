@@ -138,11 +138,6 @@ export function SecondaryPanelLayout({
   const horizontalPanelGroupRef = useRef<ImperativePanelGroupHandle | null>(
     null,
   );
-  const persistedSecondaryWidthRef = useRef(persistedSecondaryWidthPercent);
-  useEffect(() => {
-    persistedSecondaryWidthRef.current = persistedSecondaryWidthPercent;
-  }, [persistedSecondaryWidthPercent]);
-
   useLayoutEffect(() => {
     const group = horizontalPanelGroupRef.current;
     if (group === null || renderAsDrawer) {
@@ -161,9 +156,11 @@ export function SecondaryPanelLayout({
       return;
     }
 
-    const secondaryWidth = persistedSecondaryWidthRef.current;
-    group.setLayout([FULL_PANEL_SIZE_PERCENT - secondaryWidth, secondaryWidth]);
-  }, [isMainCollapsed, open, renderAsDrawer]);
+    group.setLayout([
+      FULL_PANEL_SIZE_PERCENT - persistedSecondaryWidthPercent,
+      persistedSecondaryWidthPercent,
+    ]);
+  }, [isMainCollapsed, open, persistedSecondaryWidthPercent, renderAsDrawer]);
 
   const [isCompactDrawerContentSettled, setIsCompactDrawerContentSettled] =
     useState(false);

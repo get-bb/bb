@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
+import { RESET } from "jotai/utils";
 import {
   Panel,
   PanelGroup,
@@ -185,6 +186,7 @@ export function SplitWorkspaceSecondaryPanelHost({
   const emptyPanelHitTargetRef = usePanelResizeSnap({
     onResize: handleEmptyPanelPointerResize,
     onDragging: handleEmptyPanelDragging,
+    onReset: () => setPanelWidthPercent(RESET),
   });
   const handleEmptyPanelCollapse = () => {
     if (lastEmptyPanelSizeRef.current <= 0) return;

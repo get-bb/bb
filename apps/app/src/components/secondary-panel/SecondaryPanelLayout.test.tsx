@@ -9,6 +9,7 @@ import {
   screen,
 } from "@testing-library/react";
 import { createStore, Provider, useSetAtom } from "jotai";
+import { RESET } from "jotai/utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
@@ -25,6 +26,7 @@ import {
 import { panelGroupState } from "@/test/react-resizable-panels-stub";
 import {
   getPluginPageSecondaryPanelWidthPercentAtom,
+  getThreadSecondaryPanelWidthPercentAtom,
   SecondaryPanelWidthPercentAtomContext,
   secondaryPanelWidthPercentAtom,
   type SecondaryPanelWidthPercentAtom,
@@ -456,6 +458,62 @@ describe("SecondaryPanelLayout", () => {
         pluginId: "other-plugin",
       }),
     ).not.toBe(pluginPageWidthAtom);
+  });
+
+  it("gives each thread its own width that falls back to the last width set", () => {
+    const firstThreadWidthAtom =
+      getThreadSecondaryPanelWidthPercentAtom("thr_first");
+    const secondThreadWidthAtom =
+      getThreadSecondaryPanelWidthPercentAtom("thr_second");
+    function PanelWidthProbe() {
+      const setWidthPercent = useSetAtom(
+        useContext(SecondaryPanelWidthPercentAtomContext),
+      );
+      return (
+        <>
+          <button type="button" onClick={() => setWidthPercent(30)}>
+            Narrow
+          </button>
+          <button type="button" onClick={() => setWidthPercent(60)}>
+            Wide
+          </button>
+          <button type="button" onClick={() => setWidthPercent(RESET)}>
+            Reset
+          </button>
+        </>
+      );
+    }
+
+    const view = renderLayout({
+      isCompactViewport: false,
+      open: true,
+      panelGroupKey: "thread-detail",
+      renderPanel: () => <PanelWidthProbe />,
+      resetKey: "thr_first",
+      widthPercentAtom: firstThreadWidthAtom,
+    });
+    expect(panelGroupState.setLayout).toHaveBeenLastCalledWith([60, 40]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Narrow" }));
+    expect(panelGroupState.setLayout).toHaveBeenLastCalledWith([70, 30]);
+
+    view.rerenderWith({
+      resetKey: "thr_second",
+      widthPercentAtom: secondThreadWidthAtom,
+    });
+    expect(panelGroupState.setLayout).toHaveBeenLastCalledWith([70, 30]);
+    fireEvent.click(screen.getByRole("button", { name: "Wide" }));
+    expect(panelGroupState.setLayout).toHaveBeenLastCalledWith([40, 60]);
+
+    view.rerenderWith({
+      resetKey: "thr_first",
+      widthPercentAtom: firstThreadWidthAtom,
+    });
+    expect(panelGroupState.setLayout).toHaveBeenLastCalledWith([70, 30]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Reset" }));
+    expect(panelGroupState.setLayout).toHaveBeenLastCalledWith([40, 60]);
+    expect(view.store.get(secondThreadWidthAtom)).toBe(60);
   });
 
   it("publishes one hosted panel model and gates native content on pane focus", () => {
