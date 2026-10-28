@@ -30,11 +30,29 @@ export const BRIDGE_REQUEST_METHODS = {
   skillsConfigure: "skills/configure",
 } as const;
 
+export const skillsConfigureRootSchema = z
+  .object({
+    id: z.string().min(1),
+    path: z.string().min(1),
+    skills: z.array(
+      z
+        .object({
+          name: z.string().min(1),
+          description: z.string(),
+        })
+        .passthrough(),
+    ),
+  })
+  .passthrough();
+
+export type SkillsConfigureRoot = z.infer<typeof skillsConfigureRootSchema>;
+
 const sessionConstructionFields = {
   threadId: z.string().min(1),
   cwd: z.string().min(1),
   options: bridgeExecutionOptionsSchema,
   dynamicTools: z.array(dynamicToolSchema).optional(),
+  skillRoots: z.array(skillsConfigureRootSchema).optional(),
   instructionMode: instructionModeSchema,
 };
 
@@ -115,6 +133,7 @@ export const turnStartParamsSchema = z
   .object({
     ...turnInputFields,
     dynamicTools: z.array(dynamicToolSchema).optional(),
+    skillRoots: z.array(skillsConfigureRootSchema).optional(),
   })
   .passthrough();
 
@@ -125,22 +144,7 @@ export const turnSteerParamsSchema = z
   })
   .passthrough();
 
-export const skillsConfigureRootSchema = z
-  .object({
-    id: z.string().min(1),
-    path: z.string().min(1),
-    skills: z.array(
-      z
-        .object({
-          name: z.string().min(1),
-          description: z.string(),
-        })
-        .passthrough(),
-    ),
-  })
-  .passthrough();
 
-export type SkillsConfigureRoot = z.infer<typeof skillsConfigureRootSchema>;
 
 export const skillsConfigureParamsSchema = z
   .object({

@@ -117,11 +117,13 @@ export interface AgentRuntimeBridgeLaunch {
 
 export interface EnsureProviderArgs {
   bridgeLaunch: AgentRuntimeBridgeLaunch;
+  skillRoots?: readonly AgentRuntimeSkillRoot[];
   providerId: string;
 }
 
 export interface StartThreadArgs {
   bridgeLaunch: AgentRuntimeBridgeLaunch;
+  skillRoots?: readonly AgentRuntimeSkillRoot[];
   environmentId: string;
   threadId: string;
   projectId: string;
@@ -145,6 +147,7 @@ export interface StartThreadResult {
 
 interface PrepareThreadRewindArgs {
   bridgeLaunch: AgentRuntimeBridgeLaunch;
+  skillRoots?: readonly AgentRuntimeSkillRoot[];
   environmentId: string;
   threadId: string;
   leaseId: string;
@@ -169,6 +172,7 @@ interface DiscardThreadRewindArgs {
 
 export interface ResumeThreadArgs {
   bridgeLaunch: AgentRuntimeBridgeLaunch;
+  skillRoots?: readonly AgentRuntimeSkillRoot[];
   environmentId: string;
   threadId: string;
   projectId?: string;
@@ -193,6 +197,7 @@ export interface RunTurnArgs {
   contributedEnv?: readonly AgentRuntimeContributedEnvEntry[];
   instructions?: string;
   dynamicTools?: DynamicTool[];
+  skillRoots?: readonly AgentRuntimeSkillRoot[];
 }
 
 export interface SteerTurnArgs {
@@ -315,7 +320,7 @@ export interface AgentRuntime {
 
   runTurn(args: RunTurnArgs): Promise<void>;
 
-  configureSkillRoots(roots: readonly AgentRuntimeSkillRoot[]): Promise<void>;
+  listSkillRootsInUse(): readonly AgentRuntimeSkillRoot[];
 
   steerTurn(args: SteerTurnArgs): Promise<SteerTurnResult>;
 

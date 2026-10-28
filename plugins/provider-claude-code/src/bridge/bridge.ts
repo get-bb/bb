@@ -2270,7 +2270,7 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
           approvalEnforcedBy: "provider",
           grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
           steerMode: "inject",
-          skills: { configure: true },
+          skills: { configure: true, perSession: true },
           commands: { list: true },
           sessionConfig: { dynamicTools: "live", skills: "resume" },
         },
@@ -2584,12 +2584,13 @@ async function handleThreadFork(
 async function toClaudeSessionParams(
   params: z.infer<typeof canonicalThreadStartParamsSchema>,
 ): Promise<Record<string, unknown>> {
+  const sessionSkillRoots = params.skillRoots ?? configuredSkillRoots;
   const roots =
-    configuredSkillRoots === null
+    sessionSkillRoots === null
       ? undefined
       : assembleSkillPlugins(
           await filterClaudeSkillRoots({
-            roots: configuredSkillRoots,
+            roots: sessionSkillRoots,
             cwd: params.cwd,
             pluginsRoot: requireSkillPluginsRoot(),
             claudeDir: claudeSkillsConfigDirectory(),

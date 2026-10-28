@@ -37,17 +37,42 @@ const fakeSessionObservationSchema = z.object({
   ),
 });
 
+const fakePromptObservationSchema = z.object({
+  sessionId: z.string(),
+  prompt: z.string(),
+});
+
+const fakeObservationSchema = z.union([
+  fakePromptObservationSchema,
+  fakeSessionObservationSchema,
+]);
+
+const BB_SKILL_LINE = /^- ([^:]+): .* \(SKILL\.md: /u;
+
 function observeFakeAgent(
   observationLogPath: string,
   providerThreadId: string,
 ): ConformanceAgentObservation | null {
   if (!existsSync(observationLogPath)) return null;
-  const session = readFileSync(observationLogPath, "utf8")
+  const records = readFileSync(observationLogPath, "utf8")
     .split("\n")
     .filter((line) => line.length > 0)
-    .map((line) => fakeSessionObservationSchema.parse(JSON.parse(line)))
-    .slice().reverse().find((record) => record.sessionId === providerThreadId);
-  if (session === undefined) return null;
+    .map((line) => fakeObservationSchema.parse(JSON.parse(line)))
+    .filter((record) => record.sessionId === providerThreadId)
+    .reverse();
+  const session = records.find((record) => "env" in record);
+  if (session === undefined || !("env" in session)) return null;
+  const instructed = records.find(
+    (record) =>
+      "prompt" in record && record.prompt.includes("<system_instructions>"),
+  );
+  const skills =
+    instructed !== undefined && "prompt" in instructed
+      ? instructed.prompt.split("\n").flatMap((line) => {
+          const match = BB_SKILL_LINE.exec(line);
+          return match?.[1] === undefined ? [] : [match[1]];
+        })
+      : [];
   const tools = session.mcpServers.flatMap((server) => {
     const encoded = server.env?.find(
       (entry) => entry.name === "BB_ACP_DYNAMIC_TOOLS",
@@ -58,6 +83,7 @@ function observeFakeAgent(
   });
   return {
     env: session.env,
+    skills,
     tools: tools.map((tool) => ({
       name: tool.name,
       description: tool.description,
@@ -136,7 +162,8 @@ it("passes the canonical protocol suite against the fake agent", async () => {
     "turn/settles-without-activity": "pass",
     "session/threads-independent": "pass",
     "stop/interrupt-settles-before-result": "pass",
-    "config/session-config-declared": "pass",
+    "config/skills-per-session": "pass",
+    "config/skills-change-isolated": "skipped",
     "config/env-reaches-agent": "pass",
     "config/tools-at-start": "pass",
     "config/tools-added-after-empty-start": "pass",
@@ -144,5 +171,9 @@ it("passes the canonical protocol suite against the fake agent", async () => {
     "config/tools-removed": "pass",
   });
 
-  expect(report.passed).toBe(true);
+  expect(
+    report.results
+      .filter((result) => result.status !== "pass")
+      .map((result) => result.id),
+  ).toEqual(["config/skills-change-isolated"]);
 }, 60_000);

@@ -428,6 +428,7 @@ interface CodexSessionConstruction {
   instructionMode: "append" | "replace";
   dynamicTools: DynamicTool[] | undefined;
   envVars: Readonly<Record<string, string>> | undefined;
+  skillExtraRoots: string[] | null;
 }
 
 interface ResponseOpenedTurn {
@@ -1006,6 +1007,7 @@ const ignoredChildResultSchema = z.unknown();
 
 async function initializeChild(
   connection: CodexAppServerConnection,
+  skillExtraRoots: string[] | null,
 ): Promise<void> {
   await connection.request({
     method: "initialize",
@@ -1013,14 +1015,37 @@ async function initializeChild(
     resultSchema: ignoredChildResultSchema,
     timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
   });
-  if (configuredSkillExtraRoots !== null) {
-    await connection.request({
-      method: "skills/extraRoots/set",
-      params: { extraRoots: configuredSkillExtraRoots },
-      resultSchema: ignoredChildResultSchema,
-      timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
-    });
+  if (skillExtraRoots !== null) {
+    await setSkillExtraRoots(connection, skillExtraRoots);
   }
+}
+
+async function setSkillExtraRoots(
+  connection: CodexAppServerConnection,
+  extraRoots: string[],
+): Promise<void> {
+  await connection.request({
+    method: "skills/extraRoots/set",
+    params: { extraRoots },
+    resultSchema: ignoredChildResultSchema,
+    timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+  });
+}
+
+async function applySessionSkillRoots(
+  session: CodexBridgeSession,
+  connection: CodexAppServerConnection,
+  skillRoots: TurnStartParamsShape["skillRoots"],
+): Promise<void> {
+  if (skillRoots === undefined) {
+    return;
+  }
+  const extraRoots = skillRoots.map((root) => root.path);
+  if (isDeepStrictEqual(session.construction.skillExtraRoots, extraRoots)) {
+    return;
+  }
+  await setSkillExtraRoots(connection, extraRoots);
+  session.construction.skillExtraRoots = extraRoots;
 }
 
 const codexThreadIdentityResultSchema = z
@@ -1201,6 +1226,7 @@ interface ConstructThreadSessionArgs {
   options: BridgeExecutionOptions;
   instructionMode: "append" | "replace";
   dynamicTools?: DynamicTool[];
+  skillExtraRoots: string[] | null;
   request: CodexSessionConstructionRequest;
 }
 
@@ -1240,6 +1266,7 @@ async function constructThreadSession(
       instructionMode: args.instructionMode,
       dynamicTools: args.dynamicTools,
       envVars: decoded.sessionOptions.envVars,
+      skillExtraRoots: args.skillExtraRoots,
     },
     constructionSignature: constructionSignature(
       args.cwd,
@@ -1319,7 +1346,7 @@ async function constructThreadSession(
   session.connection = connection;
 
   try {
-    await initializeChild(connection);
+    await initializeChild(connection, args.skillExtraRoots);
 
     const preparedGitRoots = translator.prepareWorkspaceWriteGitRoots({
       command: {
@@ -1514,6 +1541,7 @@ async function rebuildThreadSession(
       ...(session.construction.dynamicTools !== undefined
         ? { dynamicTools: session.construction.dynamicTools }
         : {}),
+      skillExtraRoots: session.construction.skillExtraRoots,
       request: { kind: "resume", providerThreadId: codexThreadId },
     });
   } catch (error) {
@@ -1549,7 +1577,7 @@ async function withMaintenanceChild<T>(
   });
   maintenanceConnections.add(connection);
   try {
-    await initializeChild(connection);
+    await initializeChild(connection, configuredSkillExtraRoots);
     return await fn(connection);
   } finally {
     maintenanceConnections.delete(connection);
@@ -1590,7 +1618,7 @@ function handleInitialize(id: string | number): void {
       approvalEnforcedBy: "runtime",
       grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
       steerMode: "inject",
-      skills: { configure: true },
+      skills: { configure: true, perSession: true },
       commands: { list: false },
       sessionConfig: { dynamicTools: "fixed", skills: "live" },
     },
@@ -1655,6 +1683,10 @@ async function handleThreadConstruction(
       ...(params.dynamicTools !== undefined
         ? { dynamicTools: params.dynamicTools }
         : {}),
+      skillExtraRoots:
+        params.skillRoots === undefined
+          ? configuredSkillExtraRoots
+          : params.skillRoots.map((root) => root.path),
       request,
     });
     sendResult(id, {
@@ -1988,6 +2020,11 @@ async function handleTurnStart(
   let live: LiveSessionForTurn;
   try {
     live = await requireLiveSessionForTurn(params);
+    await applySessionSkillRoots(
+      live.session,
+      live.connection,
+      params.skillRoots,
+    );
   } catch (error) {
     rejectWithCodexError(id, error);
     return;
@@ -2402,35 +2439,12 @@ async function sendMaintenanceRequestWithRetries(
   await sendOnce();
 }
 
-async function handleSkillsConfigure(
+function handleSkillsConfigure(
   id: string | number,
   params: z.infer<typeof skillsConfigureParamsSchema>,
-): Promise<void> {
+): void {
   configuredSkillExtraRoots = params.roots.map((root) => root.path);
-  try {
-    for (const session of sessionsByBbThreadId.values()) {
-      if (
-        session.closing ||
-        session.connection === null ||
-        session.connection.exited
-      ) {
-        continue;
-      }
-      await session.connection.request({
-        method: "skills/extraRoots/set",
-        params: { extraRoots: configuredSkillExtraRoots },
-        resultSchema: ignoredChildResultSchema,
-        timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
-      });
-    }
-    sendResult(id, { ok: true });
-  } catch (error) {
-    sendError(
-      id,
-      BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
-      error instanceof Error ? error.message : String(error),
-    );
-  }
+  sendResult(id, { ok: true });
 }
 
 async function handleRequest(
@@ -2548,7 +2562,7 @@ async function handleRequest(
       });
       break;
     case "skills/configure":
-      await handleSkillsConfigure(request.id, request.params);
+      handleSkillsConfigure(request.id, request.params);
       break;
   }
 }

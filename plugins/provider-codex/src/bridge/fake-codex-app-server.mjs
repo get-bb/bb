@@ -488,6 +488,7 @@ async function handleRequest(message) {
       respond(id, script?.skillsList ?? { data: [] });
       return;
     case "skills/extraRoots/set":
+      recordObservation({ kind: "extraRoots", extraRoots: params.extraRoots });
       respond(id, {});
       return;
     case "thread/start": {

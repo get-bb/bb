@@ -88,6 +88,7 @@ async function setupBusySkillCatalogEnvironment(args: {
   const entry = await manager.ensureEnvironment({
     environmentId: "env-1",
     injectedSkillSources: [source],
+    targetThreadId: args.activeThreadId,
     workspacePath: WORKSPACE_PATH,
   });
   runtime.setActiveTurn(args.activeThreadId, "turn-busy-1");
@@ -96,7 +97,9 @@ async function setupBusySkillCatalogEnvironment(args: {
     createRuntimeSpy,
     dataDir,
     manager,
-    originalCatalogHash: entry.skillCatalogHash,
+    originalCatalogHash:
+      entry.stagedSkillRootsByThreadId.get(args.activeThreadId)?.catalogHash ??
+      null,
     runtime,
     source,
   };
@@ -144,7 +147,7 @@ function createRuntime(): FakeDispatchRuntime {
       return { providerThreadId: "provider-thread-1" };
     }),
     runTurn: vi.fn(async () => undefined),
-    configureSkillRoots: vi.fn(async () => undefined),
+    listSkillRootsInUse: () => [],
     steerTurn: vi.fn(async () => ({ status: "steered" as const })),
     stopThread: vi.fn(async (args: { threadId: string }) => {
       activeTurnsByThreadId.delete(args.threadId);
@@ -2263,7 +2266,7 @@ describe("dispatchCommand", () => {
     ]);
   });
 
-  it("reconfigures the current skill snapshot when spawning beside an active sibling", async () => {
+  it("starts a thread beside an active sibling with its own current skill catalog", async () => {
     const fixture = await setupBusySkillCatalogEnvironment({
       activeThreadId: "sibling-thread",
     });
@@ -2332,17 +2335,19 @@ describe("dispatchCommand", () => {
         "utf8",
       ),
     ).resolves.toContain("second-token");
-    expect(fixture.runtime.configureSkillRoots).toHaveBeenCalledWith(
-      currentCatalog.skillRoots,
+    expect(fixture.runtime.startThread).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: "thread-1",
+        skillRoots: currentCatalog.skillRoots,
+      }),
     );
+    expect(fixture.runtime.runTurn).not.toHaveBeenCalled();
+    expect(fixture.runtime.resumeThread).not.toHaveBeenCalled();
     expect(fixture.createRuntimeSpy).toHaveBeenCalledTimes(1);
     expect(fixture.runtime.shutdown).not.toHaveBeenCalled();
-    expect(fixture.manager.get("env-1")?.skillCatalogHash).toBe(
-      currentCatalog.catalogHash,
-    );
   });
 
-  it("reconfigures a busy runtime's skills when turn.submit carries a changed skill catalog", async () => {
+  it("sends turn.submit's changed skill catalog with that thread's turn", async () => {
     const fixture = await setupBusySkillCatalogEnvironment({
       activeThreadId: "thread-1",
     });
@@ -2397,14 +2402,22 @@ describe("dispatchCommand", () => {
     });
 
     expect(result).toEqual({ trace: { spans: [] } });
+    const currentCatalog = await stageInjectedSkillSources({
+      workspacePath: fixture.dataDir,
+      dataDir: fixture.dataDir,
+      injectedSkillSources: [fixture.source],
+    });
+    expect(currentCatalog.catalogHash).not.toBe(fixture.originalCatalogHash);
     expect(fixture.runtime.runTurn).toHaveBeenCalledTimes(1);
+    expect(fixture.runtime.runTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: "thread-1",
+        skillRoots: currentCatalog.skillRoots,
+      }),
+    );
     expect(fixture.runtime.resumeThread).not.toHaveBeenCalled();
-    expect(fixture.runtime.configureSkillRoots).toHaveBeenCalledTimes(1);
     expect(fixture.createRuntimeSpy).toHaveBeenCalledTimes(1);
     expect(fixture.runtime.shutdown).not.toHaveBeenCalled();
-    expect(fixture.manager.get("env-1")?.skillCatalogHash).not.toBe(
-      fixture.originalCatalogHash,
-    );
   });
 
   it("routes provider health and usage to the targeted bridge runtime", async () => {

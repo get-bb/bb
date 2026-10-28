@@ -1,6 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { AgentRuntimeBridgeLaunch } from "@bb/agent-runtime";
+import type {
+  AgentRuntimeBridgeLaunch,
+  AgentRuntimeSkillRoot,
+} from "@bb/agent-runtime";
 import { flattenPromptInputGroups } from "@bb/domain";
 import { killProcessesWithCwdUnder } from "@bb/process-utils";
 import {
@@ -212,8 +215,17 @@ async function resumeThreadRuntimeIfMissing(
     options: command.options,
     instructions: resumeContext.instructions,
     dynamicTools: resumeContext.dynamicTools,
+    ...stagedSkillRoots(entry, command.threadId),
     instructionMode: resumeContext.instructionMode,
   });
+}
+
+function stagedSkillRoots(
+  entry: RuntimeEntry,
+  threadId: string,
+): { skillRoots?: readonly AgentRuntimeSkillRoot[] } {
+  const staged = entry.stagedSkillRootsByThreadId.get(threadId);
+  return staged === undefined ? {} : { skillRoots: staged.skillRoots };
 }
 
 export async function startThread(
@@ -252,6 +264,7 @@ export async function startThread(
       options: command.options,
       instructions: command.instructions,
       dynamicTools: command.dynamicTools,
+      ...stagedSkillRoots(entry, command.threadId),
       instructionMode: command.instructionMode,
       ...(command.fork ? { fork: command.fork } : {}),
     });
@@ -284,6 +297,7 @@ export async function prepareThreadRewind(
     options: command.options,
     instructions: command.instructions,
     dynamicTools: command.dynamicTools,
+    ...stagedSkillRoots(entry, command.threadId),
     instructionMode: command.instructionMode,
   });
 }
@@ -344,6 +358,7 @@ async function runSubmittedTurn(
     contributedEnv: command.resumeContext.contributedEnv,
     instructions: command.resumeContext.instructions,
     dynamicTools: command.resumeContext.dynamicTools,
+    ...stagedSkillRoots(entry, command.threadId),
   });
 }
 

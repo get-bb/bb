@@ -81,18 +81,21 @@ hint whatever the mode.
 
 `sessionConfig: { dynamicTools, skills }` declares how a running session takes
 a changed value of each field: `live` (the bridge applies it to the running
-session: `dynamicTools` on `turn/start`, skill roots on `skills/configure`),
-`resume` (the default; `thread/resume` for the live thread with the new value
-rebuilds its session), or `fixed` (the provider keeps the start-time value).
+session: `dynamicTools` and `skillRoots` on `turn/start`), `resume` (the
+default; `thread/resume` for the live thread with the new value rebuilds its
+session), or `fixed` (the provider keeps the start-time value).
 The runtime keeps the value each session was built with and diffs it against
 the server's value on every `turn/start`: unchanged sends nothing; `live`
 sends the new `dynamicTools` on that `turn/start`; `resume` resumes the
 session first (a session that is not restorable is treated as `fixed`);
 `fixed` keeps the session and emits one `provider/warning` per distinct
 change. `turn/steer` never reconciles. Conformance rule
-`config/session-config-declared` requires the declaration, and with a
-fixture `probe` the `config/*` rules check the env, tools at start, and
-tool additions, changes and removals on the agent the fake provider ran.
+`config/session-config-declared` requires the declaration, and with a fixture
+`probe` the `config/*` rules check the env, tools at start, and tool
+additions, changes and removals on the agent the fake provider ran. A probe that reports `skills` also runs `config/skills-per-session`
+and `config/skills-change-isolated`: two threads started with different
+`skillRoots` each see only their own skills, and changing one thread's roots
+(or sending `skills/configure`) leaves the other's alone.
 
 The sessionless `provider/health`, `provider/usage`,
 `provider/installation/status`, and `provider/installation/run` methods are
@@ -331,14 +334,19 @@ the delta's presentation); `extension.state` becomes the thread-scoped
 `skills/configure { roots: [{ id, path, skills: [{ name, description }] }] }`
 is one shape for every provider: `path` is an absolute skills directory, one
 subdirectory per listed skill (`<path>/<name>/SKILL.md`). The bridge maps it
-to its provider's own layout. The runtime sends it **only to a bridge whose
-handshake declares `skills: { configure: true }`**, when the process starts,
-before the first thread command, and again to every running process whenever
-the environment's skill catalog changes (the provider process is never
-replaced for a skill change; see `sessionConfig.skills`). A bridge that
-declares nothing never receives it and runs without injected skills, so a
-bridge that answers unknown methods
-with `METHOD_NOT_FOUND` still starts threads. The runtime never probes.
+to its provider's own layout. Threads in one environment can use different
+skill catalogs, so a bridge that declares `skills: { configure: true,
+perSession: true }` takes roots per session: `thread/start`,
+`thread/resume` and `thread/fork` carry the thread's `skillRoots`, a live
+`turn/start` carries changed ones, and `skills/configure` only sets the
+default for sessions constructed without `skillRoots` (it never changes a
+running session). A bridge that declares `configure` without `perSession`
+receives `skills/configure` once, when its process starts, and the runtime
+runs one process per skill catalog for it, moving a thread to the process for
+its new catalog by resuming it there. A bridge that declares nothing never
+receives skill roots and runs without injected skills, so a bridge that
+answers unknown methods with `METHOD_NOT_FOUND` still starts threads. The
+runtime never probes.
 Conformance rule `skills/configure-declared` pins both directions: declared →
 the request must succeed; undeclared → the request must be refused.
 

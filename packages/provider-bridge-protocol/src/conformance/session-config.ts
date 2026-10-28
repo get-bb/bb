@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { DynamicTool } from "@bb/domain";
 import {
   BRIDGE_REQUEST_METHODS,
@@ -38,6 +41,12 @@ const TOOLS_CHANGED_TITLE =
   "a changed tool definition replaces the one the agent had";
 const TOOLS_REMOVED_ID = "config/tools-removed";
 const TOOLS_REMOVED_TITLE = "a removed tool is no longer offered to the agent";
+const SKILLS_PER_SESSION_ID = "config/skills-per-session";
+const SKILLS_PER_SESSION_TITLE =
+  "each session loads the skillRoots it was constructed with, not a sibling's";
+const SKILLS_CHANGE_ISOLATED_ID = "config/skills-change-isolated";
+const SKILLS_CHANGE_ISOLATED_TITLE =
+  "a thread's changed skillRoots reach it and leave its sibling's skills alone";
 
 const PROBE_ENV_NAME = "BB_CONFORMANCE_PROBE";
 const PROBE_ENV_VALUE = "session-config";
@@ -65,6 +74,12 @@ interface SessionConfigScenarioArgs {
   sessionConfigDeclared: boolean;
 }
 
+interface SkillRoot {
+  id: string;
+  path: string;
+  skills: { name: string; description: string }[];
+}
+
 interface ProbedThread {
   threadId: string;
   providerThreadId: string;
@@ -76,6 +91,8 @@ const ALL_IDS: readonly (readonly [string, string])[] = [
   [TOOLS_ADDED_ID, TOOLS_ADDED_TITLE],
   [TOOLS_CHANGED_ID, TOOLS_CHANGED_TITLE],
   [TOOLS_REMOVED_ID, TOOLS_REMOVED_TITLE],
+  [SKILLS_PER_SESSION_ID, SKILLS_PER_SESSION_TITLE],
+  [SKILLS_CHANGE_ISOLATED_ID, SKILLS_CHANGE_ISOLATED_TITLE],
 ];
 
 function skipAll(detail: string): ConformanceCheckResult[] {
@@ -217,7 +234,164 @@ export async function runSessionConfigScenarios(
   if (tooled !== null) {
     await runner.release(tooled);
   }
+  results.push(
+    ...(await runSkillIsolationScenarios(runner, args.capabilities)),
+  );
   return results;
+}
+
+function writeSkillRoot(id: string, skillName: string): SkillRoot {
+  const path = mkdtempSync(join(tmpdir(), "bb-conformance-skills-"));
+  mkdirSync(join(path, skillName));
+  const description = `conformance skill ${skillName}`;
+  writeFileSync(
+    join(path, skillName, "SKILL.md"),
+    `---\nname: ${skillName}\ndescription: ${description}\n---\nReply with ${skillName}.\n`,
+  );
+  return { id, path, skills: [{ name: skillName, description }] };
+}
+
+function hasOnly(
+  observed: ConformanceAgentObservation,
+  present: string,
+  absent: readonly string[],
+): boolean {
+  const skills = observed.skills ?? [];
+  return (
+    skills.includes(present) && !absent.some((name) => skills.includes(name))
+  );
+}
+
+async function runSkillIsolationScenarios(
+  runner: SessionConfigRunner,
+  capabilities: BridgeCapabilities,
+): Promise<ConformanceCheckResult[]> {
+  const skipBoth = (detail: string): ConformanceCheckResult[] => [
+    skipped(SKILLS_PER_SESSION_ID, SKILLS_PER_SESSION_TITLE, detail),
+    skipped(SKILLS_CHANGE_ISOLATED_ID, SKILLS_CHANGE_ISOLATED_TITLE, detail),
+  ];
+  if (!capabilities.skills.configure || !capabilities.skills.perSession) {
+    return skipBoth(
+      "the bridge does not declare skills.configure and skills.perSession; the runtime gives each skill catalog its own bridge process instead",
+    );
+  }
+  const roots = {
+    a: writeSkillRoot("conformance-skills-a", "conformance-skill-a"),
+    b: writeSkillRoot("conformance-skills-b", "conformance-skill-b"),
+    c: writeSkillRoot("conformance-skills-c", "conformance-skill-c"),
+    d: writeSkillRoot("conformance-skills-d", "conformance-skill-d"),
+  };
+  const names = {
+    a: "conformance-skill-a",
+    b: "conformance-skill-b",
+    c: "conformance-skill-c",
+    d: "conformance-skill-d",
+  };
+  const results: ConformanceCheckResult[] = [];
+  const first = await runner.start("thr_conformance_skills_a", [], [roots.a]);
+  const second =
+    first === null
+      ? null
+      : await runner.start("thr_conformance_skills_b", [], [roots.b]);
+  try {
+    if (first === null || second === null) {
+      return skipBoth(`thread/start failed: ${runner.lastError}`);
+    }
+    const firstObserved = await runner.observe(first);
+    const secondObserved = await runner.observe(second);
+    if (firstObserved === null || secondObserved === null) {
+      return [
+        fail(
+          SKILLS_PER_SESSION_ID,
+          SKILLS_PER_SESSION_TITLE,
+          "the probe observed no agent session",
+        ),
+        skipped(
+          SKILLS_CHANGE_ISOLATED_ID,
+          SKILLS_CHANGE_ISOLATED_TITLE,
+          "the probe observed no agent session",
+        ),
+      ];
+    }
+    if (
+      firstObserved.skills === undefined ||
+      secondObserved.skills === undefined
+    ) {
+      return skipBoth("the fixture probe does not observe skills");
+    }
+    results.push(
+      hasOnly(firstObserved, names.a, [names.b]) &&
+        hasOnly(secondObserved, names.b, [names.a])
+        ? pass(SKILLS_PER_SESSION_ID, SKILLS_PER_SESSION_TITLE)
+        : fail(
+            SKILLS_PER_SESSION_ID,
+            SKILLS_PER_SESSION_TITLE,
+            `a thread started with ${names.a} saw ${JSON.stringify(firstObserved.skills)}; one started with ${names.b} saw ${JSON.stringify(secondObserved.skills)}`,
+          ),
+    );
+    const mode = capabilities.sessionConfig.skills;
+    if (mode === "fixed") {
+      results.push(
+        skipped(
+          SKILLS_CHANGE_ISOLATED_ID,
+          SKILLS_CHANGE_ISOLATED_TITLE,
+          'the bridge declares sessionConfig.skills "fixed": the runtime keeps a session\'s start-time skills and warns instead',
+        ),
+      );
+      return results;
+    }
+    if (!(await runner.configureSkills([roots.d]))) {
+      results.push(
+        fail(
+          SKILLS_CHANGE_ISOLATED_ID,
+          SKILLS_CHANGE_ISOLATED_TITLE,
+          runner.lastError,
+        ),
+      );
+      return results;
+    }
+    if (!(await runner.applyChange({ thread: second, mode, skillRoots: [roots.c] }))) {
+      results.push(
+        fail(
+          SKILLS_CHANGE_ISOLATED_ID,
+          SKILLS_CHANGE_ISOLATED_TITLE,
+          runner.lastError,
+        ),
+      );
+      return results;
+    }
+    if (!(await runner.turn(first))) {
+      results.push(
+        fail(
+          SKILLS_CHANGE_ISOLATED_ID,
+          SKILLS_CHANGE_ISOLATED_TITLE,
+          runner.lastError,
+        ),
+      );
+      return results;
+    }
+    const firstAfter = await runner.observe(first);
+    const secondAfter = await runner.observe(second);
+    results.push(
+      firstAfter !== null &&
+        secondAfter !== null &&
+        hasOnly(firstAfter, names.a, [names.b, names.c, names.d]) &&
+        hasOnly(secondAfter, names.c, [names.a, names.b, names.d])
+        ? pass(SKILLS_CHANGE_ISOLATED_ID, SKILLS_CHANGE_ISOLATED_TITLE)
+        : fail(
+            SKILLS_CHANGE_ISOLATED_ID,
+            SKILLS_CHANGE_ISOLATED_TITLE,
+            `after skills/configure with ${names.d} and changing the second thread to ${names.c} by ${mode === "live" ? "turn/start" : "thread/resume"}, the first thread saw ${JSON.stringify(firstAfter?.skills ?? null)} and the second ${JSON.stringify(secondAfter?.skills ?? null)}`,
+          ),
+    );
+    return results;
+  } finally {
+    if (first !== null) await runner.release(first);
+    if (second !== null) await runner.release(second);
+    for (const root of Object.values(roots)) {
+      rmSync(root.path, { recursive: true, force: true });
+    }
+  }
 }
 
 class SessionConfigRunner {
@@ -279,6 +453,7 @@ class SessionConfigRunner {
   async start(
     threadId: string,
     dynamicTools: DynamicTool[],
+    skillRoots?: SkillRoot[],
   ): Promise<ProbedThread | null> {
     const providerThreadId = await this.construct(
       BRIDGE_REQUEST_METHODS.threadStart,
@@ -287,6 +462,7 @@ class SessionConfigRunner {
         cwd: this.fixture.cwd,
         options: this.options(threadId),
         dynamicTools,
+        ...(skillRoots !== undefined ? { skillRoots } : {}),
         instructionMode: "append",
       },
     );
@@ -294,12 +470,63 @@ class SessionConfigRunner {
       return null;
     }
     const thread = { threadId, providerThreadId };
-    return (await this.runTurn(thread, undefined)) ? thread : null;
+    return (await this.runTurn(thread, {})) ? thread : null;
+  }
+
+  async turn(thread: ProbedThread): Promise<boolean> {
+    return this.runTurn(thread, {});
+  }
+
+  async configureSkills(roots: SkillRoot[]): Promise<boolean> {
+    const id = this.client.request(BRIDGE_REQUEST_METHODS.skillsConfigure, {
+      roots,
+    });
+    const response = await this.client.waitForResponse(id);
+    if (response === null || response.error !== undefined) {
+      this.lastError =
+        response === null
+          ? "skills/configure was not answered"
+          : `skills/configure failed: ${JSON.stringify(response.error)}`;
+      return false;
+    }
+    return true;
+  }
+
+  async applyChange(args: {
+    thread: ProbedThread;
+    mode: Exclude<BridgeSessionConfigApply, "fixed">;
+    dynamicTools?: DynamicTool[];
+    skillRoots?: SkillRoot[];
+  }): Promise<boolean> {
+    const change = {
+      ...(args.dynamicTools !== undefined
+        ? { dynamicTools: args.dynamicTools }
+        : {}),
+      ...(args.skillRoots !== undefined ? { skillRoots: args.skillRoots } : {}),
+    };
+    if (args.mode === "resume") {
+      const providerThreadId = await this.construct(
+        BRIDGE_REQUEST_METHODS.threadResume,
+        {
+          threadId: args.thread.threadId,
+          cwd: this.fixture.cwd,
+          providerThreadId: args.thread.providerThreadId,
+          options: this.options(args.thread.threadId),
+          ...change,
+          instructionMode: "append",
+        },
+      );
+      if (providerThreadId === null) {
+        return false;
+      }
+      args.thread.providerThreadId = providerThreadId;
+    }
+    return this.runTurn(args.thread, args.mode === "live" ? change : {});
   }
 
   private async runTurn(
     thread: ProbedThread,
-    dynamicTools: DynamicTool[] | undefined,
+    change: { dynamicTools?: DynamicTool[]; skillRoots?: SkillRoot[] },
   ): Promise<boolean> {
     const completedBefore = this.completedTurns(thread.threadId);
     const id = this.client.request(BRIDGE_REQUEST_METHODS.turnStart, {
@@ -308,7 +535,7 @@ class SessionConfigRunner {
       input: this.fixture.promptInput,
       clientRequestId: nextConformanceClientRequestId(),
       options: this.options(thread.threadId),
-      ...(dynamicTools !== undefined ? { dynamicTools } : {}),
+      ...change,
     });
     const response = await this.client.waitForResponse(id);
     if (response === null || response.error !== undefined) {
@@ -348,27 +575,11 @@ class SessionConfigRunner {
     tools: DynamicTool[];
     expect: (observed: ConformanceAgentObservation) => boolean;
   }): Promise<ConformanceCheckResult> {
-    if (args.mode === "resume") {
-      const providerThreadId = await this.construct(
-        BRIDGE_REQUEST_METHODS.threadResume,
-        {
-          threadId: args.thread.threadId,
-          cwd: this.fixture.cwd,
-          providerThreadId: args.thread.providerThreadId,
-          options: this.options(args.thread.threadId),
-          dynamicTools: args.tools,
-          instructionMode: "append",
-        },
-      );
-      if (providerThreadId === null) {
-        return fail(args.id, args.title, this.lastError);
-      }
-      args.thread.providerThreadId = providerThreadId;
-    }
-    const ran = await this.runTurn(
-      args.thread,
-      args.mode === "live" ? args.tools : undefined,
-    );
+    const ran = await this.applyChange({
+      thread: args.thread,
+      mode: args.mode,
+      dynamicTools: args.tools,
+    });
     if (!ran) {
       return fail(args.id, args.title, this.lastError);
     }

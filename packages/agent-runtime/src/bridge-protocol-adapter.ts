@@ -59,6 +59,7 @@ export interface BridgeProtocolAdapter {
   capabilities: BridgeEnforcedCapabilities;
   readonly approvalEnforcedBy: "runtime" | "provider";
   readonly sessionConfig: BridgeCapabilities["sessionConfig"];
+  readonly sessionSkills: boolean;
   process: { command: string; args: string[]; env?: Record<string, string> };
   buildCommandPlan(command: AdapterCommand): ProviderCommandPlan;
   buildPostInitializeRequests(): readonly ProviderPostInitializeRequest[];
@@ -196,6 +197,7 @@ export function createBridgeProtocolAdapter(
       ...(command.dynamicTools !== undefined
         ? { dynamicTools: command.dynamicTools }
         : {}),
+      ...(adapter.sessionSkills ? { skillRoots: command.skillRoots } : {}),
       instructionMode: command.instructionMode,
     };
   }
@@ -208,6 +210,9 @@ export function createBridgeProtocolAdapter(
     },
     get sessionConfig() {
       return handshake.sessionConfig;
+    },
+    get sessionSkills() {
+      return handshake.skills.configure && handshake.skills.perSession;
     },
     process: options.process,
 
@@ -349,6 +354,9 @@ export function createBridgeProtocolAdapter(
               ),
               ...(command.dynamicTools !== undefined
                 ? { dynamicTools: command.dynamicTools }
+                : {}),
+              ...(command.skillRoots !== undefined
+                ? { skillRoots: command.skillRoots }
                 : {}),
             },
           };

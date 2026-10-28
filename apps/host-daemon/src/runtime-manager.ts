@@ -37,6 +37,7 @@ import {
   cleanupInjectedSkillStagingDirs,
   EMPTY_SKILL_CATALOG_HASH,
   stageInjectedSkillSources,
+  stagedSkillCatalogHashes,
   type InjectedSkillsLogger,
 } from "./injected-skills.js";
 import {
@@ -67,7 +68,6 @@ interface CreateEntryArgs extends Omit<
   "injectedSkillSources" | "targetThreadId"
 > {
   provisionSignal: AbortSignal;
-  skillConfig: RuntimeSkillConfig | null;
 }
 
 interface EnsureCompatibleEntryArgs {
@@ -107,9 +107,7 @@ export interface RuntimeEntry {
   environmentId: string;
   runtime: AgentRuntime;
   shellEnvGeneration: number;
-  skillCatalogHash: string | null;
-  skillRoots: readonly AgentRuntimeSkillRoot[];
-  retainedSkillCatalogHashes: Set<string>;
+  stagedSkillRootsByThreadId: Map<string, RuntimeSkillConfig>;
   workspace: HostWorkspace;
   path: string;
   terminals: Set<string>;
@@ -633,14 +631,23 @@ export class RuntimeManager {
     if (!this.options.dataDir) {
       return;
     }
+    const dataDir = this.options.dataDir;
     try {
       await cleanupInjectedSkillStagingDirs({
-        dataDir: this.options.dataDir,
+        dataDir,
         keepCatalogHashes: [
           ...pendingCatalogHashes,
           ...this.pendingCatalogHashes.values(),
           ...[...this.entries.values()].flatMap((entry) => [
-            ...entry.retainedSkillCatalogHashes,
+            ...stagedSkillCatalogHashes({
+              dataDir,
+              skillRoots: entry.runtime.listSkillRootsInUse(),
+            }),
+            ...[...entry.stagedSkillRootsByThreadId]
+              .filter(([threadId]) =>
+                this.entryHasInFlightThreadCommand(entry, threadId),
+              )
+              .map(([, skillConfig]) => skillConfig.catalogHash),
           ]),
         ],
         logger: this.getInjectedSkillsLogger(),
@@ -674,23 +681,23 @@ export class RuntimeManager {
       return null;
     }
 
-    if (
-      args.skillConfig === null ||
-      args.entry.skillCatalogHash === args.skillConfig.catalogHash ||
-      (args.entry.skillCatalogHash === null &&
-        args.skillConfig.skillRoots.length === 0)
-    ) {
+    return args.entry;
+  }
+
+  private async recordStagedSkillRoots(args: {
+    entry: RuntimeEntry;
+    skillConfig: RuntimeSkillConfig | null;
+    targetThreadId: string | undefined;
+  }): Promise<RuntimeEntry> {
+    if (args.skillConfig === null) {
       return args.entry;
     }
-
-    const previousCatalogHash = args.entry.skillCatalogHash;
-    args.entry.retainedSkillCatalogHashes = new Set([
-      ...(previousCatalogHash === null ? [] : [previousCatalogHash]),
-      args.skillConfig.catalogHash,
-    ]);
-    await args.entry.runtime.configureSkillRoots(args.skillConfig.skillRoots);
-    args.entry.skillCatalogHash = args.skillConfig.catalogHash;
-    args.entry.skillRoots = args.skillConfig.skillRoots;
+    if (args.targetThreadId !== undefined) {
+      args.entry.stagedSkillRootsByThreadId.set(
+        args.targetThreadId,
+        args.skillConfig,
+      );
+    }
     await this.cleanupUnusedInjectedSkillStagingDirs([
       args.skillConfig.catalogHash,
     ]);
@@ -863,7 +870,11 @@ export class RuntimeManager {
           : {}),
       });
       if (compatible) {
-        return compatible;
+        return this.recordStagedSkillRoots({
+          entry: compatible,
+          skillConfig,
+          targetThreadId: args.targetThreadId,
+        });
       }
     }
 
@@ -878,7 +889,11 @@ export class RuntimeManager {
           : {}),
       });
       if (compatible) {
-        return compatible;
+        return this.recordStagedSkillRoots({
+          entry: compatible,
+          skillConfig,
+          targetThreadId: args.targetThreadId,
+        });
       }
     }
 
@@ -890,7 +905,6 @@ export class RuntimeManager {
         this.createEntry({
           ...args,
           provisionSignal: pendingProvision.abortController.signal,
-          skillConfig,
         }),
       )
       .then((entry) => {
@@ -914,7 +928,11 @@ export class RuntimeManager {
       );
     }
 
-    return creation;
+    return this.recordStagedSkillRoots({
+      entry: await creation,
+      skillConfig,
+      targetThreadId: args.targetThreadId,
+    });
   }
 
   async refreshEnvironmentWorkspace(
@@ -1184,7 +1202,6 @@ export class RuntimeManager {
     runtime = this.createRuntime({
       workspacePath: workspace.path,
       additionalWorkspaceWriteRoots,
-      ...(args.skillConfig ? { skillRoots: args.skillConfig.skillRoots } : {}),
       ...(providerProcessEnv ? { env: providerProcessEnv } : {}),
       shellEnv,
       threadStorageRootPath: this.options.threadStorageRootPath ?? undefined,
@@ -1241,11 +1258,7 @@ export class RuntimeManager {
       environmentId: args.environmentId,
       runtime,
       shellEnvGeneration,
-      skillCatalogHash: args.skillConfig?.catalogHash ?? null,
-      skillRoots: args.skillConfig?.skillRoots ?? [],
-      retainedSkillCatalogHashes: new Set(
-        args.skillConfig ? [args.skillConfig.catalogHash] : [],
-      ),
+      stagedSkillRootsByThreadId: new Map(),
       terminals: new Set<string>(),
       workspace,
       path: workspace.path,

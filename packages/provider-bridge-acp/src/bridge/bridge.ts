@@ -27,6 +27,7 @@ import {
 import type {
   BridgeExecutionOptions,
   InitializeResult,
+  SkillsConfigureRoot,
   ThreadDelta,
 } from "@bb/provider-bridge-protocol";
 import {
@@ -350,6 +351,17 @@ function sendRuntimeRequest(
 }
 
 let configuredSkillRoots: AcpSkillRoot[] | null = null;
+
+function toAcpSkillRoot(root: SkillsConfigureRoot): AcpSkillRoot {
+  return {
+    id: root.id,
+    skillDirectoryRootPath: root.path,
+    skills: root.skills.map((skill) => ({
+      name: skill.name,
+      description: skill.description,
+    })),
+  };
+}
 
 function sendThreadDeltas(
   threadId: string,
@@ -1721,7 +1733,7 @@ function textWithBbSkillCommandsSpelledOut(
   item: Extract<PromptInput, { type: "text" }>,
 ): string {
   const bbSkillNames = new Set(
-    (configuredSkillRoots ?? []).flatMap((root) =>
+    session.construction.skillRoots.flatMap((root) =>
       root.skills.map((skill) => skill.name),
     ),
   );
@@ -3764,9 +3776,9 @@ async function handleRequest(
           approvalEnforcedBy: "runtime",
           grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
           steerMode: "queue",
-          skills: { configure: true },
+          skills: { configure: true, perSession: true },
           commands: { list: false },
-          sessionConfig: { dynamicTools: "resume", skills: "resume" },
+          sessionConfig: { dynamicTools: "resume", skills: "fixed" },
         },
       };
       sendResult(request.id, result);
@@ -3863,7 +3875,10 @@ async function handleRequest(
         dynamicTools: params.dynamicTools,
         options: {
           ...params.options,
-          skillRoots: configuredSkillRoots ?? undefined,
+          skillRoots:
+            params.skillRoots?.map(toAcpSkillRoot) ??
+            configuredSkillRoots ??
+            undefined,
         },
         parameterizedModelPicker: modelPicker.parameterizedModelPicker,
         launchSpec,
@@ -3989,14 +4004,7 @@ async function handleRequest(
       return;
 
     case "skills/configure":
-      configuredSkillRoots = request.params.roots.map((root) => ({
-        id: root.id,
-        skillDirectoryRootPath: root.path,
-        skills: root.skills.map((skill) => ({
-          name: skill.name,
-          description: skill.description,
-        })),
-      }));
+      configuredSkillRoots = request.params.roots.map(toAcpSkillRoot);
       sendResult(request.id, { ok: true });
       return;
   }

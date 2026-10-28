@@ -100,6 +100,7 @@ export const scriptedEchoOptionsSchema = z
     uniqueProviderThreadIds: z.boolean().optional(),
     failStopForThreadIds: z.array(z.string().min(1)).optional(),
     emitIdentityOnSigterm: z.boolean().optional(),
+    sessionSkills: z.boolean().optional(),
     sessionConfig: z
       .object({
         dynamicTools: z.enum(["live", "resume", "fixed"]),
@@ -909,7 +910,10 @@ const handlers: Record<string, RequestHandler> = {
         approvalEnforcedBy: processOptions.approvalEnforcedBy ?? "runtime",
         grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
         steerMode: "inject",
-        skills: { configure: true },
+        skills: {
+          configure: true,
+          perSession: processOptions.sessionSkills === true,
+        },
         sessionConfig: processOptions.sessionConfig ?? {
           dynamicTools: "resume",
           skills: "resume",

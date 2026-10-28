@@ -205,6 +205,19 @@ function resolveStagingRootPath(dataDir: string): string {
   return path.join(dataDir, ...STAGING_ROOT_SEGMENTS);
 }
 
+export function stagedSkillCatalogHashes(args: {
+  dataDir: string;
+  skillRoots: readonly AgentRuntimeSkillRoot[];
+}): string[] {
+  const stagingRootPath = resolveStagingRootPath(args.dataDir);
+  return args.skillRoots.flatMap((root) => {
+    const stageRootPath = path.dirname(root.path);
+    return path.dirname(stageRootPath) === stagingRootPath
+      ? [path.basename(stageRootPath)]
+      : [];
+  });
+}
+
 function resolveStageRootPath(dataDir: string, catalogHash: string): string {
   return path.join(resolveStagingRootPath(dataDir), catalogHash);
 }

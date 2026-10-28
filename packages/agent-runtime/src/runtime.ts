@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
@@ -141,6 +142,7 @@ function requireAbsoluteSkillRoots(
 interface ResolveProviderProcessKeyArgs {
   bridgeLaunch: AgentRuntimeBridgeLaunch;
   providerId: string;
+  skillRoots?: readonly AgentRuntimeSkillRoot[];
 }
 
 interface ArchiveOrUnarchiveThreadArgs {
@@ -270,7 +272,9 @@ function resolveThreadStoragePath(
 export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   const additionalWorkspaceWriteRoots =
     options.additionalWorkspaceWriteRoots ?? [];
-  let skillRoots = requireAbsoluteSkillRoots(options.skillRoots ?? []);
+  const defaultSkillRoots = requireAbsoluteSkillRoots(options.skillRoots ?? []);
+  const sessionSkillsByBaseKey = new Map<string, boolean>();
+  const processKeyByCatalogKey = new Map<string, string>();
   let nextRequestId = 1;
   const threadIdentityRegistry = new RuntimeThreadIdentityRegistry();
   const threadRuntimeConfigs = new Map<string, ThreadRuntimeConfig>();
@@ -360,14 +364,19 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       threadEventGrammar.clearThread(threadId);
     },
     onStderr: options.onStderr,
-    getSkillRoots: () => skillRoots,
     workspacePath: options.workspacePath,
   });
 
   function resolveProviderProcessKey(
     args: ResolveProviderProcessKeyArgs,
   ): string {
-    return `${args.providerId}#bridge:${bridgeLaunchProcessKey(args.bridgeLaunch)}`;
+    const baseKey = `${args.providerId}#bridge:${bridgeLaunchProcessKey(args.bridgeLaunch)}`;
+    const roots = requireAbsoluteSkillRoots(args.skillRoots ?? []);
+    if (roots.length === 0 || sessionSkillsByBaseKey.get(baseKey) !== false) {
+      return baseKey;
+    }
+    const catalogKey = `${baseKey}#skills:${createHash("sha256").update(JSON.stringify(roots)).digest("hex")}`;
+    return processKeyByCatalogKey.get(catalogKey) ?? catalogKey;
   }
 
   function requireProviderProcessForThread(threadId: string): ProviderProcess {
@@ -1510,54 +1519,94 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     });
   }
 
+  interface ReconciledSessionConfig {
+    dynamicTools: DynamicTool[] | undefined;
+    skillRoots: readonly AgentRuntimeSkillRoot[] | undefined;
+  }
+
   async function reconcileThreadSessionConfig(args: {
     threadId: string;
     dynamicTools: DynamicTool[] | undefined;
+    skillRoots: readonly AgentRuntimeSkillRoot[] | undefined;
     contributedEnv: readonly AgentRuntimeContributedEnvEntry[] | undefined;
     instructions: string | undefined;
     options: AgentRuntimeExecutionOptions;
-  }): Promise<DynamicTool[] | undefined> {
+  }): Promise<ReconciledSessionConfig> {
+    const unchanged = { dynamicTools: undefined, skillRoots: undefined };
     const config = threadRuntimeConfigs.get(args.threadId);
     if (config === undefined) {
-      return undefined;
+      return unchanged;
     }
-    const declared = requireProviderProcessForThread(args.threadId).adapter
-      .sessionConfig;
+    const proc = requireProviderProcessForThread(args.threadId);
+    const declared = proc.adapter.sessionConfig;
     const applies = (mode: BridgeSessionConfigApply): BridgeSessionConfigApply =>
       mode === "resume" && !config.sessionRestorable ? "fixed" : mode;
     const nextTools = args.dynamicTools;
     const toolsChanged =
       nextTools !== undefined &&
       !isDeepStrictEqual(config.dynamicTools ?? [], nextTools);
-    const skillsChanged = !isDeepStrictEqual(config.skillRoots, skillRoots);
+    const nextSkills =
+      args.skillRoots === undefined
+        ? undefined
+        : requireAbsoluteSkillRoots(args.skillRoots);
+    const skillsChanged =
+      nextSkills !== undefined &&
+      !isDeepStrictEqual(config.skillRoots, nextSkills);
     const toolsMode = applies(declared.dynamicTools);
+    const skillsMode = proc.adapter.sessionSkills
+      ? applies(declared.skills)
+      : "resume";
     const resumeForTools = toolsChanged && toolsMode === "resume";
-    const resumeForSkills = skillsChanged && applies(declared.skills) === "resume";
+    const resumeForSkills = skillsChanged && skillsMode === "resume";
     if (toolsChanged && toolsMode === "fixed") {
       warnFixedDynamicTools({ threadId: args.threadId, dynamicTools: nextTools });
     }
-    if (resumeForTools || resumeForSkills) {
-      const instructions = args.instructions ?? config.instructions;
-      const resumedTools = resumeForTools ? nextTools : config.dynamicTools;
-      await resumeThreadSession({
-        bridgeLaunch: config.bridgeLaunch,
-        environmentId: config.environmentId,
-        threadId: args.threadId,
-        ...(config.projectId !== undefined
-          ? { projectId: config.projectId }
-          : {}),
-        providerThreadId: requireProviderThreadId(args.threadId),
-        providerId: config.providerId,
-        contributedEnv: args.contributedEnv ?? config.contributedEnv,
-        options: args.options,
-        ...(instructions !== undefined ? { instructions } : {}),
-        ...(resumedTools !== undefined ? { dynamicTools: resumedTools } : {}),
-        instructionMode: config.instructionMode,
-      });
-    } else if (skillsChanged) {
-      setThreadRuntimeConfig(args.threadId, { ...config, skillRoots });
+    const liveTools =
+      toolsChanged && toolsMode === "live" ? nextTools : undefined;
+    const liveSkills =
+      skillsChanged && skillsMode === "live" ? nextSkills : undefined;
+    if (!resumeForTools && !resumeForSkills) {
+      return { dynamicTools: liveTools, skillRoots: liveSkills };
     }
-    return toolsChanged && toolsMode === "live" ? nextTools : undefined;
+    const resumedTools = resumeForTools ? nextTools : config.dynamicTools;
+    const resumedSkills =
+      resumeForSkills && nextSkills !== undefined
+        ? nextSkills
+        : config.skillRoots;
+    const providerThreadId = requireProviderThreadId(args.threadId);
+    const nextProcessKey = resolveProviderProcessKey({
+      bridgeLaunch: config.bridgeLaunch,
+      providerId: config.providerId,
+      skillRoots: resumedSkills,
+    });
+    if (nextProcessKey !== config.processKey) {
+      await releaseThreadOnBridgeBestEffort({ proc, threadId: args.threadId });
+      forgetThreadRuntimeStateForProviderState(proc.identity, args.threadId);
+    }
+    const instructions = args.instructions ?? config.instructions;
+    await resumeThreadSession({
+      bridgeLaunch: config.bridgeLaunch,
+      skillRoots: resumedSkills,
+      environmentId: config.environmentId,
+      threadId: args.threadId,
+      ...(config.projectId !== undefined
+        ? { projectId: config.projectId }
+        : {}),
+      providerThreadId,
+      providerId: config.providerId,
+      contributedEnv: args.contributedEnv ?? config.contributedEnv,
+      options: args.options,
+      ...(instructions !== undefined ? { instructions } : {}),
+      ...(resumedTools !== undefined ? { dynamicTools: resumedTools } : {}),
+      instructionMode: config.instructionMode,
+    });
+    if (nextProcessKey !== config.processKey) {
+      await releaseIdleProviderProcess(proc);
+    }
+    return {
+      dynamicTools: resumeForTools ? undefined : liveTools,
+      skillRoots: resumeForSkills ? undefined : liveSkills,
+    };
   }
 
   async function resumeThreadSession({
@@ -1567,6 +1616,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     providerThreadId,
     providerId,
     bridgeLaunch,
+    skillRoots = defaultSkillRoots,
     contributedEnv = [],
     options: execOpts,
     instructions,
@@ -1576,10 +1626,12 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     const processKey = resolveProviderProcessKey({
       bridgeLaunch,
       providerId,
+      skillRoots,
     });
     await runtime.ensureProvider({
       providerId,
       bridgeLaunch,
+      skillRoots,
     });
 
     const proc = providerProcesses.requireProviderProcess({
@@ -1646,6 +1698,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         instructions,
       }),
       dynamicTools,
+      skillRoots,
       instructionMode,
     };
     const plan = proc.adapter.buildCommandPlan(adapterCommand);
@@ -1697,15 +1750,32 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     async ensureProvider({
       providerId,
       bridgeLaunch,
+      skillRoots = defaultSkillRoots,
     }) {
+      const processKey = resolveProviderProcessKey({
+        bridgeLaunch,
+        providerId,
+        skillRoots,
+      });
       await providerProcesses.ensureProvider({
-        processKey: resolveProviderProcessKey({
-          bridgeLaunch,
-          providerId,
-        }),
+        processKey,
         providerId,
         bridgeLaunch,
+        skillRoots,
       });
+      const adapter = providerProcesses.requireProviderProcess({
+        processKey,
+        providerId,
+      }).adapter;
+      const baseKey = resolveProviderProcessKey({ bridgeLaunch, providerId });
+      const learned = !sessionSkillsByBaseKey.has(baseKey);
+      sessionSkillsByBaseKey.set(baseKey, adapter.sessionSkills);
+      if (learned && !adapter.sessionSkills && processKey === baseKey) {
+        processKeyByCatalogKey.set(
+          resolveProviderProcessKey({ bridgeLaunch, providerId, skillRoots }),
+          baseKey,
+        );
+      }
     },
 
     async startThread({
@@ -1714,6 +1784,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       projectId,
       providerId,
       bridgeLaunch,
+      skillRoots = defaultSkillRoots,
       contributedEnv = [],
       clientRequestId,
       input,
@@ -1729,10 +1800,12 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           const processKey = resolveProviderProcessKey({
             bridgeLaunch,
             providerId,
+            skillRoots,
           });
           await runtime.ensureProvider({
             providerId,
             bridgeLaunch,
+            skillRoots,
           });
 
           const proc = providerProcesses.requireProviderProcess({
@@ -1790,6 +1863,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
                   : {}),
                 options: providerExecutionContext,
                 dynamicTools,
+                skillRoots,
                 instructionMode,
               }
             : {
@@ -1798,6 +1872,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
                 cwd: options.workspacePath,
                 options: providerExecutionContext,
                 dynamicTools,
+                skillRoots,
                 instructionMode,
               };
           let resolved: string;
@@ -1872,6 +1947,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       sourceProviderThreadId,
       retainThroughProviderCheckpoint,
       bridgeLaunch,
+      skillRoots = defaultSkillRoots,
       options: execOpts,
       instructions,
       dynamicTools,
@@ -1890,10 +1966,12 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           const processKey = resolveProviderProcessKey({
             bridgeLaunch,
             providerId,
+            skillRoots,
           });
           await runtime.ensureProvider({
             providerId,
             bridgeLaunch,
+            skillRoots,
           });
           const proc = providerProcesses.requireProviderProcess({
             processKey,
@@ -1938,6 +2016,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
                 instructions,
               }),
               dynamicTools,
+              skillRoots,
               instructionMode,
             };
             const command = requireProviderRequestPlan({
@@ -2046,6 +2125,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       contributedEnv,
       instructions,
       dynamicTools,
+      skillRoots,
     }) {
       return runThreadOperation({
         threadId,
@@ -2058,9 +2138,10 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             options: execOpts,
             instructions,
           });
-          const liveDynamicTools = await reconcileThreadSessionConfig({
+          const live = await reconcileThreadSessionConfig({
             threadId,
             dynamicTools,
+            skillRoots,
             contributedEnv,
             instructions,
             options: execOpts,
@@ -2104,8 +2185,11 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
               execOpts,
               instructions,
             }),
-            ...(liveDynamicTools !== undefined
-              ? { dynamicTools: liveDynamicTools }
+            ...(live.dynamicTools !== undefined
+              ? { dynamicTools: live.dynamicTools }
+              : {}),
+            ...(live.skillRoots !== undefined
+              ? { skillRoots: live.skillRoots }
               : {}),
           };
           const cmd = requireProviderRequestPlan({
@@ -2135,8 +2219,11 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
               contributedEnv: resolvedContributedEnv,
               envVars: resolvedEnvironment.envVars,
               options: execOpts,
-              ...(liveDynamicTools !== undefined
-                ? { dynamicTools: liveDynamicTools }
+              ...(live.dynamicTools !== undefined
+                ? { dynamicTools: live.dynamicTools }
+                : {}),
+              ...(live.skillRoots !== undefined
+                ? { skillRoots: live.skillRoots }
                 : {}),
             });
             if (environmentChanged) {
@@ -2156,9 +2243,13 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       });
     },
 
-    async configureSkillRoots(roots) {
-      skillRoots = requireAbsoluteSkillRoots(roots);
-      await providerProcesses.configureSkillRoots(skillRoots);
+    listSkillRootsInUse() {
+      return [
+        ...defaultSkillRoots,
+        ...[...threadRuntimeConfigs.values()].flatMap(
+          (config) => config.skillRoots,
+        ),
+      ];
     },
 
     async steerTurn({

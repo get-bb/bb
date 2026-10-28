@@ -1,4 +1,11 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -39,6 +46,11 @@ const fakeObservationSchema = z.discriminatedUnion("kind", [
     pid: z.number(),
     codexThreadId: z.string(),
   }),
+  z.object({
+    kind: z.literal("extraRoots"),
+    pid: z.number(),
+    extraRoots: z.array(z.string()),
+  }),
 ]);
 
 function observeFakeAppServer(
@@ -51,7 +63,8 @@ function observeFakeAppServer(
     .map((line) => fakeObservationSchema.parse(JSON.parse(line)));
   const serving = records.slice().reverse().find(
     (record) =>
-      record.kind !== "launch" && record.codexThreadId === providerThreadId,
+      (record.kind === "thread" || record.kind === "resume") &&
+      record.codexThreadId === providerThreadId,
   );
   const started = records.find(
     (record) =>
@@ -61,8 +74,20 @@ function observeFakeAppServer(
     (record) => record.kind === "launch" && record.pid === serving?.pid,
   );
   if (serving === undefined || started?.kind !== "thread") return null;
+  const extraRoots = records
+    .slice()
+    .reverse()
+    .find(
+      (record) => record.kind === "extraRoots" && record.pid === serving.pid,
+    );
   return {
     env: launch?.kind === "launch" ? launch.env : {},
+    skills:
+      extraRoots?.kind === "extraRoots"
+        ? extraRoots.extraRoots.flatMap((root) =>
+            existsSync(root) ? readdirSync(root) : [],
+          )
+        : [],
     tools: started.dynamicTools.map((tool) => ({
       name: tool.name,
       description: tool.description,
@@ -138,7 +163,8 @@ it("passes the canonical protocol suite against supervised fake app-server child
     "recovery/session-archived": "pass",
     "session/threads-independent": "pass",
     "stop/interrupt-settles-before-result": "pass",
-    "config/session-config-declared": "pass",
+    "config/skills-per-session": "pass",
+    "config/skills-change-isolated": "pass",
     "config/env-reaches-agent": "pass",
     "config/tools-at-start": "pass",
     "config/tools-added-after-empty-start": "skipped",

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -45,6 +45,7 @@ interface ScriptedClaudeQueryCall {
     env?: Record<string, string | undefined>;
     forkSession?: boolean;
     mcpServers?: Record<string, McpServerConfig>;
+    plugins?: { type: "local"; path: string }[];
     resume?: string;
     sessionId?: string;
   };
@@ -53,6 +54,7 @@ interface ScriptedClaudeQueryCall {
 interface ScriptedClaudeSession {
   env: Record<string, string | undefined>;
   mcpServers: Record<string, McpServerConfig>;
+  plugins: { type: "local"; path: string }[];
 }
 
 let scriptedTurnCounter = 0;
@@ -90,6 +92,11 @@ async function observeScriptedSession(threadId: string) {
   return {
     env: session.env,
     tools: await listSdkServerTools(session.mcpServers),
+    skills: session.plugins.flatMap((plugin) =>
+      existsSync(join(plugin.path, "skills"))
+        ? readdirSync(join(plugin.path, "skills"))
+        : [],
+    ),
   };
 }
 
@@ -99,6 +106,7 @@ function createScriptedClaudeQuery(call: ScriptedClaudeQueryCall) {
   const session: ScriptedClaudeSession = {
     env: call.options.env ?? {},
     mcpServers: call.options.mcpServers ?? {},
+    plugins: call.options.plugins ?? [],
   };
   if (call.options.forkSession !== true) {
     scriptedSessions.push(session);
@@ -294,7 +302,8 @@ it("passes the canonical protocol suite against the scripted claude session", as
     "session/fork-identity": "pass",
     "session/fork-identity-announced": "pass",
     "turn/settles-without-activity": "pass",
-    "config/session-config-declared": "pass",
+    "config/skills-per-session": "pass",
+    "config/skills-change-isolated": "pass",
     "config/env-reaches-agent": "pass",
     "config/tools-at-start": "pass",
     "config/tools-added-after-empty-start": "pass",

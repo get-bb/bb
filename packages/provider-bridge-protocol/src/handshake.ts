@@ -54,8 +54,11 @@ export const bridgeCapabilitiesSchema = z
     ]),
     steerMode: bridgeSteerModeSchema.default("queue"),
     skills: z
-      .object({ configure: z.boolean().default(false) })
-      .default({ configure: false }),
+      .object({
+        configure: z.boolean().default(false),
+        perSession: z.boolean().default(false),
+      })
+      .default({ configure: false, perSession: false }),
     commands: z
       .object({ list: z.boolean().default(false) })
       .default({ list: false }),

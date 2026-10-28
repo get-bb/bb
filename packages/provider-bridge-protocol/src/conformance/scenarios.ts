@@ -45,6 +45,7 @@ export interface ConformanceObservedTool {
 export interface ConformanceAgentObservation {
   env: Readonly<Record<string, string | undefined>>;
   tools: readonly ConformanceObservedTool[];
+  skills?: readonly string[];
 }
 
 export interface ConformanceSessionProbe {

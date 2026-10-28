@@ -208,7 +208,7 @@ describe("codex app-server", () => {
 
 for (const providerId of ["codex", "claude-code"]) {
   describe(`${providerId} skills`, () => {
-    it("reaches a running thread with a skill added between turns", async () => {
+    it("reaches a running thread with a skill added between turns, and not its sibling", async () => {
       const skillsRoot = mkdtempSync(join(tmpdir(), "bb-integ-skills-"));
       const skillDir = join(skillsRoot, "bb-probe-skill");
       mkdirSync(skillDir, { recursive: true });
@@ -219,18 +219,21 @@ for (const providerId of ["codex", "claude-code"]) {
       const ctx = createTestRuntime(providerId);
       try {
         const threadId = newThreadId();
+        const siblingId = newThreadId();
         const options = await resolveRuntimeOptions({
           ctx,
           providerId,
           preset: "full",
         });
-        await ctx.runtime.startThread({
-          environmentId: "env-1",
-          threadId,
-          projectId: "test-project",
-          providerId,
-          options,
-        });
+        for (const id of [threadId, siblingId]) {
+          await ctx.runtime.startThread({
+            environmentId: "env-1",
+            threadId: id,
+            projectId: "test-project",
+            providerId,
+            options,
+          });
+        }
         await ctx.runtime.runTurn({
           clientRequestId: "creq_sessncfge2",
           threadId,
@@ -245,21 +248,21 @@ for (const providerId of ["codex", "claude-code"]) {
           timeoutMs: 120_000,
         });
 
-        await ctx.runtime.configureSkillRoots([
-          {
-            id: "probe",
-            path: skillsRoot,
-            skills: [
-              {
-                name: "bb-probe-skill",
-                description: "Answers with the probe code word.",
-              },
-            ],
-          },
-        ]);
         await ctx.runtime.runTurn({
           clientRequestId: "creq_sessncfgf2",
           threadId,
+          skillRoots: [
+            {
+              id: "probe",
+              path: skillsRoot,
+              skills: [
+                {
+                  name: "bb-probe-skill",
+                  description: "Answers with the probe code word.",
+                },
+              ],
+            },
+          ],
           input: [
             promptTextInput({
               text: "Use the bb-probe-skill skill now and reply exactly as it instructs.",
@@ -278,6 +281,29 @@ for (const providerId of ["codex", "claude-code"]) {
         expect(
           getAgentText(getEventsForThread(ctx.events, threadId)),
         ).toContain("PERSIMMON-42");
+
+        await ctx.runtime.runTurn({
+          clientRequestId: "creq_sessncfgg2",
+          threadId: siblingId,
+          input: [
+            promptTextInput({
+              text: "If you have a skill named bb-probe-skill, use it now and reply exactly as it instructs. Otherwise reply with the single word NO_SUCH_SKILL. Do not search the filesystem.",
+            }),
+          ],
+          options,
+        });
+        await waitForThreadTurnCompletedCount({
+          ctx,
+          threadId: siblingId,
+          count: 1,
+          label: "sibling turn",
+          timeoutMs: 180_000,
+        });
+        const siblingText = getAgentText(
+          getEventsForThread(ctx.events, siblingId),
+        );
+        console.info(`${providerId} sibling: ${siblingText}`);
+        expect(siblingText).not.toContain("PERSIMMON-42");
       } finally {
         await ctx.runtime.shutdown();
         cleanup(ctx);

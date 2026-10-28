@@ -248,7 +248,8 @@ semantics in [provider-bridge-protocol.md](provider-bridge-protocol.md),
   fork: "none" | "tip" | "checkpoint",
   approvalEnforcedBy: "runtime" | "provider",
   steerMode: "inject" | "queue", // declared and recorded; nothing acts on it yet
-  skills: { configure: boolean }, // the bridge handles skills/configure
+  skills: { configure: boolean, perSession: boolean }, // skills/configure; per-session skillRoots
+  sessionConfig: { dynamicTools, skills }, // "live" | "resume" (default) | "fixed"
 }
 ```
 

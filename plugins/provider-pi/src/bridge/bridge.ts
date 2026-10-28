@@ -520,7 +520,7 @@ async function handleRequest(
           approvalEnforcedBy: "runtime",
           grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
           steerMode: "inject",
-          skills: { configure: true },
+          skills: { configure: true, perSession: true },
           commands: { list: false },
           sessionConfig: { dynamicTools: "resume", skills: "resume" },
         },
@@ -603,7 +603,10 @@ function toPiSessionParams(
     options: params.options,
     instructionMode: params.instructionMode,
     dynamicTools: params.dynamicTools,
-    additionalSkillPaths: configuredSkillPaths ?? undefined,
+    additionalSkillPaths:
+      params.skillRoots?.map((root) => root.path) ??
+      configuredSkillPaths ??
+      undefined,
   });
 }
 

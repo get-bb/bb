@@ -259,7 +259,9 @@ function createFakeRuntime(): AgentRuntime {
       return { providerThreadId: "provider-thread-app-test" };
     },
     async runTurn() {},
-    async configureSkillRoots() {},
+    listSkillRootsInUse() {
+      return [];
+    },
     async steerTurn() {
       return { status: "steered" };
     },

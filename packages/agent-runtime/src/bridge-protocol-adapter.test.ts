@@ -191,6 +191,7 @@ describe("handshake gating", () => {
 describe("fork narrowing", () => {
   const forkCommand = {
     type: "thread/fork",
+    skillRoots: [],
     threadId: "thr_2",
     cwd: "/w",
     sourceProviderThreadId: "p_1",

@@ -205,6 +205,7 @@ describe("provider registry", () => {
 
     const startPlan = provider.buildCommandPlan({
       type: "thread/start",
+      skillRoots: [],
       threadId: "thread-1",
       cwd: "/workspace",
       options: {
@@ -264,6 +265,7 @@ describe("provider registry", () => {
     });
     const plan = provider.buildCommandPlan({
       type: "thread/start",
+      skillRoots: [],
       threadId: "thread-1",
       cwd: "/workspace",
       options: {

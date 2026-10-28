@@ -60,6 +60,7 @@ export type AdapterCommand =
       cwd: string;
       options: ProviderExecutionContext;
       dynamicTools?: DynamicTool[];
+      skillRoots: readonly AgentRuntimeSkillRoot[];
       instructionMode: InstructionMode;
     }
   | {
@@ -69,6 +70,7 @@ export type AdapterCommand =
       providerThreadId: string;
       options: ProviderExecutionContext;
       dynamicTools?: DynamicTool[];
+      skillRoots: readonly AgentRuntimeSkillRoot[];
       instructionMode: InstructionMode;
     }
   | {
@@ -79,6 +81,7 @@ export type AdapterCommand =
       sourceProviderCheckpointId?: string;
       options: ProviderExecutionContext;
       dynamicTools?: DynamicTool[];
+      skillRoots: readonly AgentRuntimeSkillRoot[];
       instructionMode: InstructionMode;
     }
   | {
@@ -89,6 +92,7 @@ export type AdapterCommand =
       clientRequestId: ClientTurnRequestId;
       options: ProviderExecutionContext;
       dynamicTools?: DynamicTool[];
+      skillRoots?: readonly AgentRuntimeSkillRoot[];
     }
   | {
       type: "turn/steer";

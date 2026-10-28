@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { z } from "zod";
@@ -17,17 +17,26 @@ let observationLogPath: string;
 const fakePiObservationSchema = z.object({
   env: z.record(z.string(), z.string()),
   tools: z.array(z.object({ name: z.string(), description: z.string() })),
+  skillPaths: z.array(z.string()),
 });
 
 function observeFakePi(threadId: string) {
   if (!existsSync(observationLogPath)) return null;
-  return (
-    readFileSync(observationLogPath, "utf8")
-      .split("\n")
-      .filter((line) => line.length > 0)
-      .map((line) => fakePiObservationSchema.parse(JSON.parse(line)))
-      .slice().reverse().find((record) => record.env["BB_THREAD_ID"] === threadId) ?? null
-  );
+  const record = readFileSync(observationLogPath, "utf8")
+    .split("\n")
+    .filter((line) => line.length > 0)
+    .map((line) => fakePiObservationSchema.parse(JSON.parse(line)))
+    .slice()
+    .reverse()
+    .find((candidate) => candidate.env["BB_THREAD_ID"] === threadId);
+  if (record === undefined) return null;
+  return {
+    env: record.env,
+    tools: record.tools,
+    skills: record.skillPaths.flatMap((path) =>
+      existsSync(path) ? readdirSync(path) : [],
+    ),
+  };
 }
 
 beforeEach(async () => {
@@ -79,7 +88,8 @@ it("passes the canonical protocol suite against a scripted pi rpc child", async 
     "session/fork-identity-announced": "pass",
     "session/threads-independent": "pass",
     "stop/interrupt-settles-before-result": "pass",
-    "config/session-config-declared": "pass",
+    "config/skills-per-session": "pass",
+    "config/skills-change-isolated": "pass",
     "config/env-reaches-agent": "pass",
     "config/tools-at-start": "pass",
     "config/tools-added-after-empty-start": "pass",

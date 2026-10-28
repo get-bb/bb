@@ -788,6 +788,9 @@ async function handle(command) {
               name: tool.name,
               description: tool.description,
             })),
+            skillPaths: args.flatMap((arg, index) =>
+              args[index - 1] === "--skill" ? [arg] : [],
+            ),
           })}\n`,
         );
       }

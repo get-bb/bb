@@ -71,12 +71,12 @@ interface RuntimeProviderProcessManagerArgs {
   onProcessExit: AgentRuntimeOptions["onProcessExit"];
   onProviderThreadDetached: (threadId: string) => void;
   onStderr: AgentRuntimeOptions["onStderr"];
-  getSkillRoots: () => readonly AgentRuntimeSkillRoot[];
   workspacePath: string;
 }
 
 interface EnsureRuntimeProviderArgs {
   bridgeLaunch: AgentRuntimeBridgeLaunch;
+  skillRoots?: readonly AgentRuntimeSkillRoot[];
   processKey: string;
   providerId: string;
 }
@@ -210,8 +210,8 @@ export class RuntimeProviderProcessManager {
           }
         }
 
-        const skillRoots = this.args.getSkillRoots();
-        if (skillRoots.length > 0) {
+        const skillRoots = args.skillRoots ?? [];
+        if (skillRoots.length > 0 && !adapter.sessionSkills) {
           await this.sendSkillRoots(providerProcess, skillRoots);
         }
       } catch (startupError) {
@@ -276,17 +276,6 @@ export class RuntimeProviderProcessManager {
       getNextId: this.args.getNextRequestId,
       resultSchema: ignoredJsonRpcResultSchema,
     });
-  }
-
-  async configureSkillRoots(
-    skillRoots: readonly AgentRuntimeSkillRoot[],
-  ): Promise<void> {
-    await Promise.all([...this.providerStarting.values()]);
-    await Promise.all(
-      [...this.processes.values()]
-        .filter((proc) => !hasChildProcessExited(proc.child))
-        .map((proc) => this.sendSkillRoots(proc, skillRoots)),
-    );
   }
 
   requireProviderProcess(

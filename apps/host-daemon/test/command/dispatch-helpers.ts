@@ -257,7 +257,9 @@ export function createFakeRuntime() {
       });
       return { providerThreadId };
     },
-    async configureSkillRoots() {},
+    listSkillRootsInUse() {
+      return [];
+    },
     async runTurn(args) {
       const firstInput = args.input[0];
       state.ranTurnText =

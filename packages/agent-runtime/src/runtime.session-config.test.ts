@@ -53,12 +53,25 @@ describe("session config reconciliation", () => {
   async function startRuntime(args: {
     mode: { dynamicTools: ApplyMode; skills: ApplyMode };
     skillRoots?: AgentRuntimeSkillRoot[];
+    sessionSkills?: boolean;
   }): Promise<{
     events: ThreadEvent[];
     processLog: ReturnType<typeof createScriptedEchoProcessLog>;
     record: ScriptedEchoRequestRecord;
     runtime: LaunchBoundAgentRuntime;
+    start: (
+      threadId: string,
+      skillRoots: AgentRuntimeSkillRoot[],
+    ) => Promise<void>;
     turn: (text: string, dynamicTools: DynamicTool[]) => Promise<void>;
+    turnOn: (
+      threadId: string,
+      text: string,
+      config: {
+        dynamicTools?: DynamicTool[];
+        skillRoots?: AgentRuntimeSkillRoot[];
+      },
+    ) => Promise<void>;
   }> {
     const events: ThreadEvent[] = [];
     const record = createScriptedEchoRequestRecord();
@@ -69,45 +82,62 @@ describe("session config reconciliation", () => {
         env: {
           ...record.env,
           ...processLog.env,
-          ...scriptedEchoProcessEnv({ sessionConfig: args.mode }),
+          ...scriptedEchoProcessEnv({
+            sessionConfig: args.mode,
+            sessionSkills: args.sessionSkills ?? true,
+          }),
         },
-        skillRoots: args.skillRoots ?? [],
         onEvent: (event) => events.push(event),
         onToolCall: async () => ({ contentItems: [], success: true }),
       }),
-      createScriptedEchoLaunch({ scripted: { sessionRestorable: true } }),
+      createScriptedEchoLaunch({
+        scripted: { sessionRestorable: true, uniqueProviderThreadIds: true },
+      }),
     );
     runtimes.push(runtime);
-    await runtime.startThread({
-      environmentId: "env-1",
-      projectId: "p1",
-      providerId: "fake",
-      threadId: "t1",
-      options: fullRuntimeOptions,
-      dynamicTools: [ALPHA],
-    });
+    const start = async (
+      threadId: string,
+      skillRoots: AgentRuntimeSkillRoot[],
+    ): Promise<void> => {
+      await runtime.startThread({
+        environmentId: "env-1",
+        projectId: "p1",
+        providerId: "fake",
+        threadId,
+        options: fullRuntimeOptions,
+        dynamicTools: [ALPHA],
+        skillRoots,
+      });
+    };
+    await start("t1", args.skillRoots ?? []);
     let turnCount = 0;
-    const turn = async (
+    const turnOn = async (
+      threadId: string,
       text: string,
-      dynamicTools: DynamicTool[],
+      config: {
+        dynamicTools?: DynamicTool[];
+        skillRoots?: AgentRuntimeSkillRoot[];
+      },
     ): Promise<void> => {
       turnCount += 1;
       await runtime.runTurn({
         clientRequestId: `creq_sessncfg${"abcdefghjk"[turnCount]}2`,
-        threadId: "t1",
+        threadId,
         input: [promptTextInput({ text })],
         options: fullRuntimeOptions,
-        dynamicTools,
+        ...config,
       });
       await waitForThreadAgentMessageText({
         events,
         providerId: "fake",
         runtime,
         text,
-        threadId: "t1",
+        threadId,
       });
     };
-    return { events, processLog, record, runtime, turn };
+    const turn = (text: string, dynamicTools: DynamicTool[]) =>
+      turnOn("t1", text, { dynamicTools });
+    return { events, processLog, record, runtime, start, turn, turnOn };
   }
 
   function requests(record: ScriptedEchoRequestRecord, method: string) {
@@ -144,7 +174,9 @@ describe("session config reconciliation", () => {
     const methods = record
       .read()
       .map((entry) => entry.method)
-      .filter((method) => method === "thread/resume" || method === "turn/start");
+      .filter(
+        (method) => method === "thread/resume" || method === "turn/start",
+      );
     expect(methods).toEqual(["thread/resume", "turn/start", "turn/start"]);
   });
 
@@ -168,41 +200,102 @@ describe("session config reconciliation", () => {
     ).toHaveLength(1);
   });
 
-  it("reconfigures skills on the running bridge without replacing its process", async () => {
-    const original = skillRoot("original");
-    const changed = skillRoot("changed");
-    const { processLog, record, runtime, turn } = await startRuntime({
+  function spawns(processLog: ReturnType<typeof createScriptedEchoProcessLog>) {
+    return processLog.read().filter((step) => step.startsWith("spawn:"));
+  }
+
+  it("gives each thread on a shared bridge its own skill roots", async () => {
+    const rootsA = [skillRoot("a")];
+    const rootsB = [skillRoot("b")];
+    const { processLog, record, runtime, start } = await startRuntime({
       mode: { dynamicTools: "resume", skills: "live" },
-      skillRoots: [original],
+      skillRoots: rootsA,
     });
 
-    await runtime.configureSkillRoots([changed]);
-    await turn("after skills changed", [ALPHA]);
+    await start("t2", rootsB);
+
+    expect(
+      requests(record, "thread/start").map((entry) => [
+        entry.params?.threadId,
+        entry.params?.skillRoots,
+      ]),
+    ).toEqual([
+      ["t1", rootsA],
+      ["t2", rootsB],
+    ]);
+    expect(requests(record, "skills/configure")).toEqual([]);
+    expect(spawns(processLog)).toHaveLength(1);
+    expect(runtime.listSkillRootsInUse()).toEqual([...rootsA, ...rootsB]);
+  });
+
+  it("applies one thread's changed skills live without touching its sibling", async () => {
+    const rootsA = [skillRoot("a")];
+    const rootsB = [skillRoot("b")];
+    const rootsC = [skillRoot("c")];
+    const { processLog, record, runtime, start, turnOn } = await startRuntime({
+      mode: { dynamicTools: "resume", skills: "live" },
+      skillRoots: rootsA,
+    });
+    await start("t2", rootsB);
+
+    await turnOn("t1", "after skills changed", { skillRoots: rootsC });
+    await turnOn("t2", "sibling turn", { skillRoots: rootsB });
+
+    expect(
+      requests(record, "turn/start").map((entry) => [
+        entry.params?.threadId,
+        entry.params?.skillRoots,
+      ]),
+    ).toEqual([
+      ["t1", rootsC],
+      ["t2", undefined],
+    ]);
+    expect(requests(record, "thread/resume")).toEqual([]);
+    expect(spawns(processLog)).toHaveLength(1);
+    expect(runtime.listSkillRootsInUse()).toEqual([...rootsC, ...rootsB]);
+  });
+
+  it("resumes only the thread whose skills changed on a resume bridge", async () => {
+    const rootsA = [skillRoot("a")];
+    const rootsB = [skillRoot("b")];
+    const rootsC = [skillRoot("c")];
+    const { processLog, record, start, turnOn } = await startRuntime({
+      mode: { dynamicTools: "resume", skills: "resume" },
+      skillRoots: rootsA,
+    });
+    await start("t2", rootsB);
+
+    await turnOn("t1", "after skills changed", { skillRoots: rootsC });
+    await turnOn("t2", "sibling turn", { skillRoots: rootsB });
+
+    expect(
+      requests(record, "thread/resume").map((entry) => [
+        entry.params?.threadId,
+        entry.params?.skillRoots,
+      ]),
+    ).toEqual([["t1", rootsC]]);
+    expect(spawns(processLog)).toHaveLength(1);
+  });
+
+  it("keeps a bridge without per-session skills on one process per skill catalog", async () => {
+    const rootsA = [skillRoot("a")];
+    const rootsB = [skillRoot("b")];
+    const { processLog, record, runtime, start, turnOn } = await startRuntime({
+      mode: { dynamicTools: "resume", skills: "resume" },
+      skillRoots: rootsA,
+      sessionSkills: false,
+    });
+
+    await start("t2", rootsB);
+    await turnOn("t1", "moved to the second catalog", { skillRoots: rootsB });
 
     expect(
       requests(record, "skills/configure").map((entry) => entry.params),
-    ).toEqual([{ roots: [original] }, { roots: [changed] }]);
-    expect(requests(record, "thread/resume")).toEqual([]);
+    ).toEqual([{ roots: rootsA }, { roots: rootsB }]);
     expect(
-      processLog.read().filter((step) => step.startsWith("spawn:")),
-    ).toHaveLength(1);
-  });
-
-  it("resumes only the thread's session when skills change on a resume bridge", async () => {
-    const original = skillRoot("original");
-    const changed = skillRoot("changed");
-    const { processLog, record, runtime, turn } = await startRuntime({
-      mode: { dynamicTools: "resume", skills: "resume" },
-      skillRoots: [original],
-    });
-
-    await runtime.configureSkillRoots([changed]);
-    await turn("after skills changed", [ALPHA]);
-    await turn("again", [ALPHA]);
-
-    expect(requests(record, "thread/resume")).toHaveLength(1);
-    expect(
-      processLog.read().filter((step) => step.startsWith("spawn:")),
-    ).toHaveLength(1);
+      requests(record, "thread/start").map((entry) => entry.params?.skillRoots),
+    ).toEqual([undefined, undefined]);
+    expect(spawns(processLog)).toHaveLength(2);
+    expect(runtime.listSkillRootsInUse()).toEqual([...rootsB, ...rootsB]);
   });
 });
