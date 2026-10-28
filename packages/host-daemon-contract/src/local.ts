@@ -206,6 +206,7 @@ const providerCliStatusSchema = z.object({
   npmPackageName: z.string().min(1).nullable(),
   npmGlobalPackageVersion: z.string().min(1).nullable(),
   installAction: providerCliInstallActionSchema.nullable(),
+  missingPrerequisite: z.enum(["nodejs"]).nullable().optional(),
   needsUpdate: z.boolean(),
   versionUnsupported: z.boolean(),
 });

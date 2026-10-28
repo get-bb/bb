@@ -1055,11 +1055,11 @@ describe("host-daemon command schemas", () => {
   });
 
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(256);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(257);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
-  it("accepts only daemons that report skill canonical paths and content identities", () => {
+  it("accepts only daemons that report provider install prerequisites", () => {
     expect(contract.isCompatibleHostDaemonProtocolVersion(245)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(246)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(247)).toBe(false);
@@ -1071,7 +1071,8 @@ describe("host-daemon command schemas", () => {
     expect(contract.isCompatibleHostDaemonProtocolVersion(253)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(254)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(255)).toBe(false);
-    expect(contract.isCompatibleHostDaemonProtocolVersion(256)).toBe(true);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(256)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(257)).toBe(true);
     expect(contract.hostDaemonSupportsConnectNext(246)).toBe(false);
     expect(contract.hostDaemonSupportsConnectNext(247)).toBe(true);
     expect(contract.hostDaemonSupportsDesktopBrokerProof(247)).toBe(false);

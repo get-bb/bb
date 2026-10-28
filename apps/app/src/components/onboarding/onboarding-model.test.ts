@@ -90,6 +90,19 @@ describe("resolveAgentSetupState", () => {
     ).toEqual({ status: "ready", detail: null });
   });
 
+  it("asks for Node.js when the machine reports npm is missing", () => {
+    expect(
+      resolveAgentSetupState({
+        health: health({ status: "not_installed" }),
+        cliStatus: cliStatus({
+          installAction: null,
+          missingPrerequisite: "nodejs",
+        }),
+        ...idle,
+      }),
+    ).toEqual({ status: "needsNodejs" });
+  });
+
   it("offers install only when the machine reports an install action", () => {
     expect(
       resolveAgentSetupState({

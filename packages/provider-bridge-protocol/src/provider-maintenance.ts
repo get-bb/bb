@@ -133,6 +133,11 @@ export type ProviderInstallationAction = z.infer<
   typeof providerInstallationActionSchema
 >;
 
+export const providerInstallationPrerequisiteSchema = z.enum(["nodejs"]);
+export type ProviderInstallationPrerequisite = z.infer<
+  typeof providerInstallationPrerequisiteSchema
+>;
+
 export const providerInstallationSourceSchema = z.enum([
   "notInstalled",
   "npmGlobal",
@@ -154,6 +159,9 @@ export const providerInstallationStatusSchema = z
     npmPackageName: z.string().min(1).nullable(),
     npmGlobalPackageVersion: z.string().min(1).nullable(),
     installAction: providerInstallationActionSchema.nullable(),
+    missingPrerequisite: providerInstallationPrerequisiteSchema
+      .nullable()
+      .optional(),
     needsUpdate: z.boolean(),
     versionUnsupported: z.boolean(),
   })

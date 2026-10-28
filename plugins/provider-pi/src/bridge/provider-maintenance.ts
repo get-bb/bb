@@ -13,6 +13,7 @@ import {
   experimental_installationVerification as installationVerification,
   experimental_npmGlobalInstallCommand as npmGlobalInstallCommand,
   experimental_npmGlobalInstallSource as npmGlobalInstallSource,
+  experimental_npmCommand as npmCommand,
   experimental_npmLatestVersion as npmLatestVersion,
   experimental_probeNpmGlobalPackage as probeNpmGlobalPackage,
   experimental_resolveExecutablePath as resolveExecutablePath,
@@ -169,6 +170,12 @@ export function describePiVersionProbeFailure(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+async function missingNpmPrerequisite(): Promise<"nodejs" | null> {
+  return (await commandOutput(npmCommand(), ["--version"])) === null
+    ? "nodejs"
+    : null;
+}
+
 export async function getPiProviderInstallationStatus(
   checkUpdates = true,
 ): Promise<ProviderInstallationStatus> {
@@ -184,6 +191,9 @@ export async function getPiProviderInstallationStatus(
     ]);
   const currentVersion = probe.version;
   const installed = resolvedExecutable !== null || currentVersion !== null;
+  const missingPrerequisite = installed
+    ? null
+    : await missingNpmPrerequisite();
   const needsUpdate =
     installed &&
     currentVersion !== null &&
@@ -194,7 +204,9 @@ export async function getPiProviderInstallationStatus(
     currentVersion !== null &&
     compareVersions(currentVersion, PI_MINIMUM_SUPPORTED_VERSION) < 0;
   const actionKind = !installed
-    ? "install"
+    ? missingPrerequisite === null
+      ? "install"
+      : null
     : needsUpdate || versionUnsupported
       ? "update"
       : null;
@@ -223,6 +235,7 @@ export async function getPiProviderInstallationStatus(
     npmPackageName: PI_NPM_PACKAGE,
     npmGlobalPackageVersion: npmGlobal.npmGlobalPackageVersion,
     installAction,
+    missingPrerequisite,
     needsUpdate,
     versionUnsupported,
   };

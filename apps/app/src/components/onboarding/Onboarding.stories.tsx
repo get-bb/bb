@@ -298,6 +298,7 @@ function AgentFrame({
   onInstall = noop,
   onViewInstallLog = noop,
   onCancelSignIn = noop,
+  onGetNodejs = noop,
   onRecheck = noop,
   ...chrome
 }: StepChromeProps & {
@@ -309,6 +310,7 @@ function AgentFrame({
   onInstall?: (id: string) => void;
   onViewInstallLog?: (id: string) => void;
   onCancelSignIn?: (id: string) => void;
+  onGetNodejs?: () => void;
   onRecheck?: () => void;
 }) {
   const ready = anyReady(states);
@@ -337,6 +339,7 @@ function AgentFrame({
         onInstall={onInstall}
         onViewInstallLog={onViewInstallLog}
         onCancelSignIn={onCancelSignIn}
+        onGetNodejs={onGetNodejs}
         onRecheck={onRecheck}
       />
     </OnboardingLayout>
@@ -791,6 +794,20 @@ export function Step1AgentStates() {
               "claude-code": SIGNED_OUT,
               codex: SIGNED_OUT,
               pi: { status: "signingIn" },
+            }}
+          />
+        </StoryWindow>
+      </Captioned>
+      <Captioned
+        label="Node.js missing"
+        hint="Pi installs with npm. Without Node.js, its row links to the Node.js download instead of offering an install that can't run."
+      >
+        <StoryWindow>
+          <AgentFrame
+            states={{
+              "claude-code": INSTALL,
+              codex: INSTALL,
+              pi: { status: "needsNodejs" },
             }}
           />
         </StoryWindow>

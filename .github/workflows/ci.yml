@@ -180,7 +180,7 @@ jobs:
 
   windows-app-smoke:
     needs: plan
-    if: ${{ fromJSON(needs.plan.outputs.selection).packaging }}
+    if: ${{ fromJSON(needs.plan.outputs.selection).packaging || fromJSON(needs.plan.outputs.selection).providers }}
     name: Windows app smoke (Node 22.x)
     runs-on: blacksmith-4vcpu-windows-2025
     timeout-minutes: 40
@@ -239,6 +239,21 @@ jobs:
       - name: Build bb-app and boot it
         shell: bash
         run: pnpm exec turbo run smoke:boot --filter=bb-app --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only
+
+      - name: Install Codex without Node.js through setup
+        shell: bash
+        env:
+          CODEX_INSTALL_RESULTS: ${{ github.workspace }}/codex-install-results
+        run: pnpm exec turbo run smoke:codex-install --filter=bb-app --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only
+
+      - name: Upload Codex first-run evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: codex-install-without-node-windows
+          path: codex-install-results/
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Restore npm package downloads
         id: npm-downloads

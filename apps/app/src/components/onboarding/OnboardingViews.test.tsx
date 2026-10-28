@@ -14,6 +14,7 @@ function renderAgents(agents: OnboardingAgent[]) {
     onInstall: vi.fn(),
     onViewInstallLog: vi.fn(),
     onCancelSignIn: vi.fn(),
+    onGetNodejs: vi.fn(),
     onRecheck: vi.fn(),
   };
   render(<AgentStep machineName="bee" agents={agents} {...handlers} />);
@@ -53,5 +54,17 @@ describe("AgentStep", () => {
     fireEvent.click(screen.getByRole("button", { name: "View log" }));
 
     expect(handlers.onViewInstallLog).toHaveBeenCalledExactlyOnceWith("codex");
+  });
+
+  it("sends an agent that needs Node.js to the download instead of an install that cannot run", () => {
+    const handlers = renderAgents([agent("pi", { status: "needsNodejs" })]);
+
+    expect(screen.getByText("Needs Node.js to install")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Install/ })).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Get Node.js (opens nodejs.org)" }),
+    );
+
+    expect(handlers.onGetNodejs).toHaveBeenCalledOnce();
   });
 });

@@ -233,6 +233,17 @@
       ],
       "outputs": ["app/**", "dist/**", "host-daemon/**", "server/**"]
     },
+    "bb-app#smoke:codex-install": {
+      "dependsOn": ["bb-app#build"],
+      "cache": false,
+      "passThroughEnv": [
+        "GITHUB_ACTIONS",
+        "GITHUB_SHA",
+        "GITHUB_STEP_SUMMARY",
+        "CODEX_INSTALL_RESULTS",
+        "OS"
+      ]
+    },
     "bb-app#build:host": {
       "dependsOn": ["@bb/host-daemon#build"],
       "inputs": [

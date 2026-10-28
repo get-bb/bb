@@ -76,6 +76,7 @@ import {
 } from "./OnboardingViews";
 import {
   CONNECT_PLUGIN_ID,
+  NODEJS_DOWNLOAD_URL,
   ONBOARDING_PLUGINS,
   ONBOARDING_PLUGIN_MARKETPLACE,
   connectAccessUrl,
@@ -500,6 +501,7 @@ function AgentStepContainer({
         onInstall={startInstall}
         onViewInstallLog={viewInstallLog}
         onCancelSignIn={() => endSignIn()}
+        onGetNodejs={() => openUrlInExternalBrowser(NODEJS_DOWNLOAD_URL)}
         onRecheck={() => {
           void refetchStates();
           void cliStatusQuery.refetch();
