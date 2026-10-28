@@ -2,14 +2,15 @@
 
 ## 0.47.2
 
-Find in the terminal, select several threads at once, live Docs, and Git and pull request controls that now come from plugins. These notes cover everything since 0.47.0, including 0.47.1.
+Find in the terminal, a timeline that stays at the bottom, side chat with the full thread view, live Docs, and a faster composer. These notes cover everything since 0.47.0, including 0.47.1.
 
 ### Highlights
 
 - **Terminal find and file links:** search the scrollback with Cmd+F on macOS or Ctrl+Shift+F elsewhere. File paths such as `src/main.ts:12:3` open in bb's file viewer, and every terminal link now opens with Cmd/Ctrl+click, so a stray click no longer opens anything.
-- **Select several sidebar threads (Experimental):** Shift-click or Cmd/Ctrl+Shift-click threads, then archive, delete, or set notifications for all of them, or drag them together into a section, under a thread, into Pinned, or into the composer as mentions.
+- **The timeline stays at the bottom:** collapsing a tool call, resizing, restoring a thread, or an idle scroll no longer leaves you just above the latest message with the jump-to-bottom button showing.
+- **Side chat has the full thread view:** side chat and plugin thread chats can answer interactions, edit and fork messages, show context usage, and show the cards above the composer, like the main thread view.
 - **Live Docs:** changes from another window, an agent, `bb docs write`, or an external editor appear as they happen. If one lands while you're typing, choose **Keep mine** or **Use theirs** in place. Editing a note's heading no longer renames its file.
-- **Git and pull requests as plugins:** the Diff tab, the Info tab's git rows, the changed-files and pull request segments above the composer, and the Commit button now come from the bundled Git and GitHub PR Status plugins, so plugins can replace them.
+- **Faster and lighter:** the composer is ready sooner, project command lists no longer wait up to two seconds for the machine, live timeline updates are much smaller, and on macOS bb no longer keeps `fseventsd` busy on machines running many agents.
 
 ### Changed defaults
 
@@ -29,18 +30,13 @@ Find in the terminal, select several threads at once, live Docs, and Git and pul
 
 ### App
 
-- Side chat and plugin thread chats now have everything the main thread view has: interactions, editing and forking messages, context usage, and the cards above the composer.
 - Zoom and pan images in the lightbox.
 - The right sidebar remembers its width for each thread and plugin page.
-- Storage & retention finds and removes worktrees created outside bb (also `bb storage-retention remove-external-worktrees`), removes worktrees in the background with progress on each row, and can remove several development entries at once.
-- The timeline stays at the bottom through collapses, resizes, restores and idle scrolls.
+- Storage & retention (Experimental) finds and removes worktrees created outside bb (also `bb storage-retention remove-external-worktrees`), removes worktrees in the background with progress on each row, and can remove several development entries at once.
 - On desktop, right-click a link to **Open in Browser**.
 
 ### Performance
 
-- The composer is ready sooner on new and existing threads, and project command lists no longer wait up to two seconds for the machine.
-- Live timeline updates are much smaller.
-- On macOS, bb watches only the thread folders you're viewing, which stops `fseventsd` from using most of a CPU core on busy machines.
 - Skills sync only the files that changed, and attachments and updates stream to machines instead of loading into memory.
 
 ### Experiments
@@ -64,6 +60,7 @@ Find in the terminal, select several threads at once, live Docs, and Git and pul
 
 ### Plugins
 
+- **Git and pull requests as plugins:** the Diff tab, the Info tab's git rows, the changed-files and pull request segments above the composer, and the Commit button now come from the bundled Git and GitHub PR Status plugins, so plugins can replace them.
 - **New surfaces:** `app.slots.experimental_threadRowMetadata` for sidebar row metadata, thread actions with `placement: "header"`, `@get-bb/plugin-sdk/process` for launching host processes the way bb does, `experimental_useCanOpenFileExternally`, file previews at a git revision, Add to chat on `experimental_Diff` and `experimental_SourceCode` inside threads, and retryable host RPCs.
 - **For plugin authors upgrading:** one panel controller (`experimental_useAppPanel()` and `ctx.experimental_panel`) replaces `ctx.openPanel`, `openThreadPanel`, `experimental_openTab` and `openFixedTab`, and header thread actions replace `app.slots.experimental_threadHeaderAction`. The old members keep working, and the plugin build warns with the replacement.
 - Plugin stylesheets load and unload without restyling the whole page, and shared renderer code loads only for plugins that use it.
