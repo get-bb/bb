@@ -31,6 +31,7 @@ import { Button } from "@bb/shared-ui/button";
 import { Checkbox } from "@bb/shared-ui/checkbox";
 import { FilePathLink } from "@bb/shared-ui/file-path-link";
 import type { DiffPatchState } from "./diff-data.js";
+import { estimateCardBodyHeight } from "./diffFilesStore.js";
 import { cn } from "@bb/shared-ui/lib/utils";
 
 function formatDiffEntryLabel(entry: DiffFileEntry): string {
@@ -566,7 +567,11 @@ function DiffFileCardBody({
       );
     }
 
-    return <DiffLoadingSkeleton />;
+    return (
+      <div style={{ minHeight: estimateCardBodyHeight(entry) }}>
+        <DiffLoadingSkeleton />
+      </div>
+    );
   }
 
   return (
@@ -609,7 +614,6 @@ function DiffFileCardRenderedBody({
     changeKind: entry.changeKind,
     onRequestFileContents,
     patchText,
-    renderBeforeVisible: false,
   });
   return (
     <>
@@ -618,6 +622,7 @@ function DiffFileCardRenderedBody({
         presentation={presentation}
         svgDisplayMode={svgDisplayMode}
         reservesCollapseGutter
+        defersOffscreenRendering={false}
       />
       {truncated ? (
         <div className={DIFF_FILE_CARD_NOTICE_CLASS}>
