@@ -469,8 +469,11 @@ export const OPENCODE_ACP_DIALECT: AcpDialect = {
   presentModel: presentProviderPrefixedModel,
 };
 
+const DROID_ACP_DIALECT: AcpDialect = { id: "droid" };
+
 const BUILT_IN_DIALECTS: readonly AcpDialect[] = [
   GENERIC_ACP_DIALECT,
+  DROID_ACP_DIALECT,
   CURSOR_ACP_DIALECT,
   GROK_ACP_DIALECT,
   OMP_ACP_DIALECT,

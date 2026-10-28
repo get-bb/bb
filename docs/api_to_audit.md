@@ -795,7 +795,7 @@ bridge parses.
 `experimental_registerAcpDialect` adds a dialect. A plugin calls it at module
 load in its `bb.host` artifact with an `AcpDialect` and names the id as
 `acpDialect` in its registration. Empty and built-in ids (`acp`, `cursor`,
-`grok`, `omp`, `opencode`) throw, re-registering an id replaces it, and an
+`grok`, `omp`, `opencode`, `droid`) throw, re-registering an id replaces it, and an
 unregistered id resolves to the generic dialect. bb's own dialects resolve
 through the same registry (`resolveAcpDialect`).
 

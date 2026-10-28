@@ -737,18 +737,25 @@ async function handlePrompt(message) {
     });
     notifyUpdate(messageChunk("commands advertised"));
   } else if (text.includes("ask-form")) {
-    const properties = text.includes("ask-form-too-large")
-      ? Object.fromEntries(
-          ["a", "b", "c", "d", "e"].map((name) => [name, { type: "string" }]),
-        )
-      : {
-          strategy: {
+    const properties = text.includes("ask-form-other")
+      ? {
+          choice: { type: "string", enum: ["a", "other"] },
+          [text.includes("droid") ? "choice_other" : "choice__other"]: {
             type: "string",
-            title: "Strategy",
-            enum: ["conservative", "balanced"],
           },
-          dryRun: { type: "boolean", title: "Dry run" },
-        };
+        }
+      : text.includes("ask-form-too-large")
+        ? Object.fromEntries(
+            ["a", "b", "c", "d", "e"].map((name) => [name, { type: "string" }]),
+          )
+        : {
+            strategy: {
+              type: "string",
+              title: "Strategy",
+              enum: ["conservative", "balanced"],
+            },
+            dryRun: { type: "boolean", title: "Dry run" },
+          };
     const result = await requestClient("elicitation/create", {
       sessionId: activeSessionId,
       mode: "form",

@@ -5146,6 +5146,50 @@ describe("acp bridge: busy agents, restored sessions and stop reasons", () => {
 });
 
 describe("acp bridge: questions the agent asks", () => {
+  it.each([
+    { dialectId: "omp", convention: "omp", ids: ["choice"] },
+    { dialectId: "droid", convention: "droid", ids: ["choice"] },
+    { dialectId: "acp", convention: "omp", ids: ["choice", "choice__other"] },
+    { dialectId: "acp", convention: "droid", ids: ["choice", "choice_other"] },
+  ])(
+    "uses the session's $dialectId dialect for $convention form fields",
+    async ({ dialectId, convention, ids }) => {
+      const { providerThreadId } = await startThread({ dialectId });
+      const turnId = sendTurnRequest("turn/start", providerThreadId, {
+        input: [
+          { type: "text", text: `ask-form-other-${convention}`, mentions: [] },
+        ],
+      });
+      await waitForResponse(turnId);
+      const forwarded = await waitFor(
+        () =>
+          output.messages.find(
+            (message) =>
+              message.method === "interaction/request" &&
+              message.id !== undefined,
+          ),
+        "forwarded question",
+      );
+      expect(forwarded.params).toMatchObject({
+        payload: { questions: ids.map((id) => ({ id })) },
+      });
+      handleLine(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: forwarded.id,
+          result: {
+            kind: "user_answer",
+            answers: { choice: { selected: ["a"] } },
+          },
+        }),
+      );
+      await waitForTurnCompleted();
+      expect(agentMessageTexts()).toContain(
+        'elicitation:{"action":"accept","content":{"choice":"a"}}',
+      );
+    },
+  );
+
   it("tells the agent it can ask form questions", async () => {
     const requestLog = join(workspaceDir, "requests.log");
     await startThread({ envVars: { FAKE_ACP_REQUEST_LOG: requestLog } });

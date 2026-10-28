@@ -70,7 +70,7 @@ describe("registerAcpDialect", () => {
 
   it("refuses an empty id and every id the bridge ships", () => {
     expect(() => registerAcpDialect({ id: " " })).toThrow("non-empty id");
-    for (const id of ["acp", "cursor", "grok", "omp", "opencode"]) {
+    for (const id of ["acp", "cursor", "grok", "omp", "opencode", "droid"]) {
       expect(() => registerAcpDialect({ id })).toThrow(
         `ACP dialect id "${id}" is reserved by a built-in dialect.`,
       );

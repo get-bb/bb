@@ -1381,6 +1381,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Test it against bb's conformance suite and recorded sessions, without a running bb",
         ],
         reference: [
+          'ACP Other-field folding uses the resolved session dialect: omp folds optional __other companions; droid folds optional _other companions paired with the exact choice value other. Register Droid with providerOptions.acpDialect: "droid" (custom ACP agents use dialect: "droid"). Generic ACP preserves the fields separately. No provider is inferred from the form shape.',
+
           "Use @get-bb/plugin-sdk/process for hostToolchain executable and environment discovery, or spawnHostProcess, forkHostProcess and execHostFile (all experimental_ exports). Core uses these same launch paths; ENOENT or exit 127 starts a background discovery refresh without replaying side effects, and launches never wait for discovery. Explicit cwd and env are preserved, Windows shims are quoted, and workers recover a replaced Node runtime only when its native-module ABI matches. Node launches that carry --use-env-proxy keep it only when the child's HTTP(S)_PROXY values are http(s) URLs, and then bypass the proxy for loopback.",
         ],
         apiSymbols: [

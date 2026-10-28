@@ -1895,7 +1895,7 @@ function handleElicitationRequest(
     responder.result({ action: "cancel" });
     return;
   }
-  const plan = planAcpElicitation(params);
+  const plan = planAcpElicitation(session.dialect, params);
   if (plan.kind === "unsupported") {
     emitForSession(session, ACP_WARNING_METHOD, {
       threadId: session.bbThreadId,

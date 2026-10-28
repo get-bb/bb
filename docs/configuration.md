@@ -588,7 +588,13 @@ selection), `reasoningCli` (launch-time reasoning flags), `nativeReasoning`
 `{"path": ..., "recursive": true, "ancestors": true}`), `permissionCli`
 (permission-mode launch flags), `supportsManualCompaction` (bb hides
 `/compact` otherwise), `providerUsage`, and `dialect` (`cursor`, `opencode`,
-`omp`, or `grok`).
+`omp`, `droid`, or `grok`).
+
+Question-form Other companions are dialect-specific: `omp` folds optional
+`__other` text fields, and `droid` folds optional `_other` text fields only when
+the choice includes the exact value `other`. Set `dialect: "droid"` explicitly
+for Droid, including wrapped launches. Other ACP dialects keep these fields
+separate and allow optional fields to remain unanswered.
 
 Changes apply immediately, with no restart. A custom agent's command is local
 code execution and only works with a co-located daemon. The `customAcpAgents`

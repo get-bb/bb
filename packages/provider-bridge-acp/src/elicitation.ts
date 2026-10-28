@@ -14,6 +14,7 @@ import {
   type ElicitationFormField,
 } from "@bb/provider-bridge-protocol/bridge-kit/elicitation-form";
 import { ZodError } from "zod";
+import type { AcpDialect } from "./dialect.js";
 import { isJsonObject, readString } from "./session/decode.js";
 
 export type AcpElicitationResponse =
@@ -53,28 +54,27 @@ interface PlannedQuestion {
 const CONFIRM_QUESTION_ID = "confirm";
 const CONFIRM_ACCEPT_VALUE = "accept";
 const CONFIRM_DECLINE_VALUE = "decline";
-const OTHER_FIELD_SUFFIXES = ["__other", "_other"];
-const OTHER_CHOICE = /^other\b/i;
 
 function otherCompanionFor(
+  dialect: AcpDialect,
   field: ChoiceField,
   fieldsByName: ReadonlyMap<string, ElicitationFormField>,
 ): OtherCompanion | null {
-  for (const suffix of OTHER_FIELD_SUFFIXES) {
-    const companion = fieldsByName.get(`${field.name}${suffix}`);
-    if (
-      companion?.kind === "string" &&
-      companion.format === null &&
-      !companion.required
-    ) {
-      const choice = field.options.find(
-        (option) =>
-          OTHER_CHOICE.test(option.value) || OTHER_CHOICE.test(option.label),
-      );
-      return { field: companion, choice: choice?.value ?? null };
-    }
+  const suffix =
+    dialect.id === "omp" ? "__other" : dialect.id === "droid" ? "_other" : null;
+  if (suffix === null) return null;
+  const companion = fieldsByName.get(`${field.name}${suffix}`);
+  if (
+    companion?.kind !== "string" ||
+    companion.format !== null ||
+    companion.required
+  ) {
+    return null;
   }
-  return null;
+  if (dialect.id === "omp") return { field: companion, choice: null };
+  return field.options.some((option) => option.value === "other")
+    ? { field: companion, choice: "other" }
+    : null;
 }
 
 function promptFor(
@@ -262,7 +262,10 @@ function unreadableFormReason(error: unknown): string {
     : "bb cannot read the form's schema";
 }
 
-export function planAcpElicitation(params: unknown): AcpElicitationPlan {
+export function planAcpElicitation(
+  dialect: AcpDialect,
+  params: unknown,
+): AcpElicitationPlan {
   if (!isJsonObject(params)) {
     return { kind: "unsupported", reason: "the request was malformed" };
   }
@@ -292,7 +295,7 @@ export function planAcpElicitation(params: unknown): AcpElicitationPlan {
   const foldedNames = new Set<string>();
   for (const field of fields) {
     if (field.kind !== "enum" && field.kind !== "multi_enum") continue;
-    const other = otherCompanionFor(field, fieldsByName);
+    const other = otherCompanionFor(dialect, field, fieldsByName);
     if (other !== null && !foldedNames.has(other.field.name)) {
       companions.set(field.name, other);
       foldedNames.add(other.field.name);
