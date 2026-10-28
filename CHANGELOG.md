@@ -4,16 +4,7 @@
 
 A quality and performance release: bb loads faster, sends far less over the wire, uses less CPU and memory on your machines, and fixes a long list of rough edges. These notes cover everything since 0.47.0, including 0.47.1.
 
-### Faster
-
-- **The composer is ready sooner:** threads fetch the composer's data and runtime alongside the page instead of after it, and code only some plugins use no longer delays the composer and sidebar. After a reload, the open panel tab's plugin loads first.
-- **Commands without the wait:** slash command and skill lists come from a cache instead of waiting 1–2 seconds for the machine on each new thread.
-- **Much smaller live updates:** a running thread sends only what changed, about 1–2 KB instead of 11–42 KB per update, and opening a thread no longer resends the whole timeline, which was often 400–500 KB. Early adopters also get compressed live updates, about 4x smaller over remote access.
-- **Less CPU on busy Macs:** bb watches only the threads you're viewing instead of every thread's files, so macOS file watching stays quiet on machines running many agents.
-- **Less memory and bandwidth:** editing a skill resends only the files that changed instead of the whole folder, a 34 MiB attachment peaks at under 2 MiB of memory instead of 65 MiB, and updates and plugin downloads stream to disk.
-- **Snappier UI:** opening or closing a plugin page no longer restyles the whole app, which makes it about twice as fast, and the Open menu answers in milliseconds instead of starting 55 processes for each request.
-
-### More reliable
+### Reliability
 
 - **The timeline stays at the bottom:** collapsing a tool call, resizing, restoring a thread, or an idle scroll no longer leaves you just above the latest message with the jump-to-bottom button showing.
 - **Queued messages get delivered:** messages queued after you press Stop are sent instead of held, a queued message can no longer jump ahead of one that's still sending, and messages and child-thread notices that arrive while a thread compacts wait instead of failing.
@@ -24,35 +15,44 @@ A quality and performance release: bb loads faster, sends far less over the wire
 - **Git:** diffs work when the default branch exists only on the remote, and `bb thread spawn --base-branch <name>` starts from `origin/<name>` when your local branch is behind, falling back to the last fetched copy when the fetch fails.
 - **Agents:** Pi completes each assistant message on time, Claude Code threads fork when `CLAUDE_CONFIG_DIR` is set as a project variable, ACP agents keep file-write approvals on the tool call's row and accept messages sent while a permission change restarts them, skills are listed once even when several folders provide them, symlinked skill folders work, and large skills no longer stop threads from starting.
 
-### Changed defaults
+### Performance
+
+- **The composer is ready sooner:** threads fetch the composer's data and runtime alongside the page instead of after it, and code only some plugins use no longer delays the composer and sidebar. After a reload, the open panel tab's plugin loads first.
+- **Commands without the wait:** slash command and skill lists come from a cache instead of waiting on the machine for each new thread.
+- **Much smaller live updates:** a running thread sends only what changed, about 1–2 KB instead of 11–42 KB per update, and opening a thread no longer resends the whole timeline, which was often 400–500 KB. Early adopters also get compressed live updates, about 4x smaller over remote access.
+- **Less CPU on busy Macs:** bb watches only the threads you're viewing instead of every thread's files, so macOS file watching stays quiet on machines running many agents.
+- **Less memory and bandwidth:** editing a skill resends only the files that changed instead of the whole folder, a 34 MiB attachment peaks at under 2 MiB of memory instead of 65 MiB, and updates and plugin downloads stream to disk.
+- **Snappier UI:** opening or closing a plugin page no longer restyles the whole app, and the Open menu answers instantly instead of rescanning your apps each time.
+
+### Usability
 
 - **The Commit button is hidden by default.** Turn on **Show Commit button** in the Git plugin's settings, or run `bb plugin config bb--git set showCommitButton true`. The old "Show Git changes and Commit button" setting is now **Show Git changes above the composer** (Git) and **Show pull request above the composer** (GitHub PR Status), and your saved choice carries over to both.
 - **Claude Code's Full Access approves everything again**, as it did before 0.47.0. Turn on the new **Approvals in Full Access** setting to keep being asked about `permissions.ask` rules, hooks that answer "ask", and Claude Code's own safety checks.
-
-### Also in this release
-
 - Search the terminal's scrollback with Cmd+F on macOS or Ctrl+Shift+F elsewhere, and Cmd/Ctrl+click file paths such as `src/main.ts:12:3` to open them. Terminal links now need Cmd/Ctrl+click.
 - Side chat and plugin thread chats match the main thread view: interactions, editing and forking messages, context usage, and the cards above the composer.
-- Docs shows changes from other windows, agents and `bb docs write` as they happen, and editing a note's heading no longer renames its file.
 - Zoom and pan images in the lightbox, and the right sidebar remembers its width for each thread and plugin page.
 - On desktop, right-click a link to **Open in Browser**.
 - Mark read and Pin can be bound to keyboard shortcuts.
-- Codex receives the skills you pick as skills, ACP agents receive extra writable folders, omp and opencode models show which service runs them, and Codex's Ultrafast tier has its own icon.
-- Storage & retention (Experimental) finds and removes worktrees created outside bb, also with `bb storage-retention remove-external-worktrees`, and removes worktrees in the background.
 
-### Experiments
+### New experiments
 
 - **Early adopter:** this release adds four experiments that are on for early adopters: **Select multiple sidebar threads**; **App links**, which opens links such as `linear://` and `slack://` in their apps after asking; **Compressed live updates**, about 4x smaller for remote access; and **NEW divider before final assistant message**, which opens a finished thread at its answer instead of its first tool call.
 - **Thread row metadata**, off for everyone, lets plugins add a second line to sidebar rows. The GitHub PR Status plugin uses it to show each thread's pull request and checks.
 
-### Fixes and improvements
+### Other improvements
+
+- Docs shows changes from other windows, agents and `bb docs write` as they happen, and editing a note's heading no longer renames its file.
+- Codex receives the skills you pick as skills, ACP agents receive extra writable folders, omp and opencode models show which service runs them, and Codex's Ultrafast tier has its own icon.
+- Storage & retention (Experimental) finds and removes worktrees created outside bb, also with `bb storage-retention remove-external-worktrees`, and removes worktrees in the background.
+
+### Bug fixes
 
 - Fix the desktop "Show right panel" button sometimes not responding, and a Keychain prompt at startup with no saved credential.
-- Copying a file-path link gives a plain path, and inline code stays inline code.
-- The voice waveform moves with reduced motion on.
-- Failed plugin actions show one error toast instead of two.
-- On mobile, long-pressing a sidebar thread opens only its menu, double taps no longer start a rename, and closing a header menu no longer moves the timeline. Fix sidebar and Thread Info icon alignment and safe-area padding.
-- Resizing across the compact breakpoint no longer resets the composer.
+- Fix copying a file-path link, which now gives a plain path, and inline code, which now stays inline code.
+- Fix the voice waveform staying still with reduced motion on.
+- Fix failed plugin actions showing two error toasts.
+- Fix the composer resetting when the window resizes across the compact breakpoint.
+- On mobile, fix long-pressing a sidebar thread opening more than its menu, double taps starting a rename, closing a header menu moving the timeline, and sidebar and Thread Info icon alignment and safe-area padding.
 
 ### Plugins
 
