@@ -2466,6 +2466,9 @@ it("never clears thread storage that holds a workspace an environment still uses
       `contains the workspace ${path.join(root, "thr_owner", "repair")}`,
     );
 
+    await expect
+      .poll(() => worker.experimental_getRetainedWorkerLeaseCount())
+      .toBe(0);
     await host.harness.callRpc("scanAll", null);
     await expect
       .poll(
