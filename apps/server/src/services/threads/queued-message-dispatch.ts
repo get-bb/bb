@@ -411,6 +411,17 @@ async function runEditReleasedDispatch(
   await runThreadReadyDispatch(deps, row.threadId);
 }
 
+export async function attemptQueuedMessageNow(
+  deps: QueueDispatchDeps,
+  row: QueuedMessageDispatchRef,
+): Promise<void> {
+  await attemptAutomaticQueuedMessage(deps, row, {
+    now: Date.now(),
+    respectRequeuePacing: false,
+    retryingFailure: false,
+  });
+}
+
 async function attemptAutomaticQueuedMessage(
   deps: QueueDispatchDeps,
   row: QueuedMessageDispatchRef,

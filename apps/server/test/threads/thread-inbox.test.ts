@@ -1,6 +1,16 @@
-import { listEvents, listQueuedThreadMessages } from "@bb/db";
 import {
+  getQueuedThreadMessage,
+  listEvents,
+  listQueuedThreadMessages,
+  setQueuedThreadMessageGroupBoundary,
+  setThreadExecutionOverride,
+  updateQueuedThreadMessage,
+} from "@bb/db";
+import {
+  THREAD_CONTEXT_CLEAR_OPERATION,
   turnRequestEventDataSchema,
+  turnScope,
+  type PromptInput,
   type TurnRequestEventData,
 } from "@bb/domain";
 import type {
@@ -14,18 +24,29 @@ import {
   type PluginHookRegistration,
 } from "../../src/services/plugins/plugin-hook-registry.js";
 import { queueChildThreadTurnNotificationBestEffort } from "../../src/services/threads/child-thread-notifications.js";
+import { queueChildThreadNeedsAttentionNotificationBestEffort } from "../../src/services/threads/child-thread-notifications.js";
 import { queueParentSystemMessage } from "../../src/services/threads/parent-system-messages.js";
+import {
+  createQueuedMessageForThread,
+  releaseStaleQueuedMessageDispatchClaims,
+  sendNextQueuedMessageIfPresent,
+} from "../../src/services/threads/queued-messages.js";
 import { runQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
 import { createThreadFromRequest } from "../../src/services/threads/thread-create.js";
 import { toThreadQueuedMessage } from "../../src/services/threads/thread-queued-messages.js";
 import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
 import { listQueuedThreadCommands } from "../helpers/commands.js";
+import {
+  EMPTY_WORKSPACE_AGENT_CONTEXT,
+  registerHostRpcResponder,
+} from "../helpers/host-rpc.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
   seedEnvironment,
   seedHostSession,
   seedProjectWithSource,
   seedThread,
+  seedEvent,
   seedThreadRuntimeState,
   seedTurnStarted,
 } from "../helpers/seed.js";
@@ -40,7 +61,10 @@ type HookRegistry = {
 function installDispatchHook(
   handler: (
     context: MessageDispatchHookContext,
-  ) => { action: "proceed" } | { action: "wait"; reason: string },
+  ) =>
+    | { action: "proceed" }
+    | { action: "wait"; reason: string }
+    | Promise<{ action: "proceed" }>,
 ): void {
   const registry: HookRegistry = {
     "message.dispatch": [{ pluginId: "inbox-test", handler }],
@@ -60,7 +84,9 @@ function seedRunnableThread(
   harness: TestAppHarness,
   args: { hostId: string; status: "idle" | "active"; title?: string },
 ) {
-  const { host } = seedHostSession(harness.deps, { id: args.hostId });
+  const { host, session } = seedHostSession(harness.deps, {
+    id: args.hostId,
+  });
   const { project } = seedProjectWithSource(harness.deps, {
     hostId: host.id,
     path: WORKSPACE_PATH,
@@ -89,7 +115,7 @@ function seedRunnableThread(
       providerThreadId: `provider-${args.hostId}`,
     });
   }
-  return { environment, host, project, thread };
+  return { environment, host, project, session, thread };
 }
 
 function turnRequests(
@@ -383,6 +409,370 @@ describe("idempotency keys", () => {
       expect(first.delivery).toBe("queued");
       expect(second).toEqual(first);
       expect(queuedRows(harness, thread.id)).toHaveLength(1);
+    });
+  });
+});
+
+const CLEAR_INPUT: PromptInput[] = [
+  {
+    type: "text",
+    text: "/clear",
+    mentions: [
+      {
+        start: 0,
+        end: "/clear".length,
+        resource: {
+          kind: "command",
+          trigger: "/",
+          name: "clear",
+          source: "command",
+          origin: "builtin",
+          label: "clear",
+          argumentHint: null,
+        },
+      },
+    ],
+  },
+];
+
+function contextClearCount(harness: TestAppHarness, threadId: string): number {
+  return listEvents(harness.db, { threadId }).filter(
+    (event) =>
+      event.type === "system/operation" &&
+      JSON.parse(event.data).operation === THREAD_CONTEXT_CLEAR_OPERATION,
+  ).length;
+}
+
+function respondToHost(
+  harness: TestAppHarness,
+  fixture: ReturnType<typeof seedRunnableThread>,
+) {
+  return registerHostRpcResponder(harness, {
+    hostId: fixture.host.id,
+    sessionId: fixture.session.id,
+    handle: async ({ command }) => ({
+      ok: true,
+      result:
+        command.type === "thread.stop"
+          ? { providerCheckpointId: null }
+          : command.type === "host.read_workspace_agent_context"
+            ? EMPTY_WORKSPACE_AGENT_CONTEXT
+            : { trace: { spans: [] } },
+    }),
+  });
+}
+
+describe("context clear through the inbox", () => {
+  it("consumes a queued /clear row so claim recovery cannot run it again", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedRunnableThread(harness, {
+        hostId: "host-queued-clear",
+        status: "idle",
+      });
+      respondToHost(harness, fixture);
+      const queued = await createQueuedMessageForThread(harness.deps, {
+        thread: fixture.thread,
+        payload: { input: CLEAR_INPUT },
+      });
+
+      await sendNextQueuedMessageIfPresent(harness.deps, {
+        threadId: fixture.thread.id,
+      });
+      releaseStaleQueuedMessageDispatchClaims(
+        harness.deps,
+        Date.now() + 60 * 60 * 1000,
+      );
+      await sendNextQueuedMessageIfPresent(harness.deps, {
+        threadId: fixture.thread.id,
+      });
+
+      expect(getQueuedThreadMessage(harness.db, queued.id)).toBeNull();
+      expect(contextClearCount(harness, fixture.thread.id)).toBe(1);
+    });
+  });
+
+  it("clears once for a repeated idempotency key", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedRunnableThread(harness, {
+        hostId: "host-idempotent-clear",
+        status: "idle",
+      });
+      respondToHost(harness, fixture);
+      const send = () =>
+        acceptThreadSendRequest(harness.deps, {
+          payload: {
+            idempotencyKey: "clear-1",
+            input: CLEAR_INPUT,
+            mode: "auto",
+          },
+          thread: fixture.thread,
+        });
+
+      await send();
+      await send();
+
+      expect(contextClearCount(harness, fixture.thread.id)).toBe(1);
+    });
+  });
+});
+
+describe("notice durability", () => {
+  it("keeps a notice whose dispatch hook throws, for the retry sweep", async () => {
+    await withTestHarness(async (harness) => {
+      installDispatchHook(() => {
+        throw new Error("limiter crashed");
+      });
+      const { project, thread: parent } = seedRunnableThread(harness, {
+        hostId: "host-notice-hook-throws",
+        status: "idle",
+      });
+      const child = seedThread(harness.deps, {
+        parentThreadId: parent.id,
+        projectId: project.id,
+        title: "Blocked child",
+      });
+      const before = turnRequests(harness, parent.id).length;
+
+      await queueChildThreadNeedsAttentionNotificationBestEffort(harness.deps, {
+        blockerSummary: null,
+        childThread: child,
+        parentThreadId: parent.id,
+      });
+
+      expect(turnRequests(harness, parent.id)).toHaveLength(before);
+      expect(queuedRows(harness, parent.id)).toEqual([
+        expect.objectContaining({
+          initiator: "system",
+          state: "failed_retrying",
+        }),
+      ]);
+    });
+  });
+
+  it("delivers a notice whose parent finished provisioning while the hook ran", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, project } = seedRunnableThread(harness, {
+        hostId: "host-notice-race",
+        status: "idle",
+      });
+      const parent = seedThread(harness.deps, {
+        projectId: project.id,
+        status: "pending",
+      });
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: null,
+        providerThreadId: "provider-notice-race",
+        threadId: parent.id,
+      });
+      let calls = 0;
+      installDispatchHook(async () => {
+        calls += 1;
+        if (calls === 1) {
+          harness.db.$client
+            .prepare(
+              "UPDATE threads SET status = 'idle', environment_id = ? WHERE id = ?",
+            )
+            .run(environment.id, parent.id);
+          await runQueuedMessageDispatch(harness.deps, {
+            kind: "workspace-ready",
+            threadId: parent.id,
+          });
+        }
+        return { action: "proceed" };
+      });
+
+      await queueParentSystemMessage(harness.deps, {
+        input: textInput("Child completed"),
+        parentThreadId: parent.id,
+        systemMessageKind: "child-completed",
+        systemMessageSubject: null,
+      });
+      setPluginHookProvider(undefined);
+      await runQueuedMessageDispatch(harness.deps, {
+        kind: "thread-ready",
+        threadId: parent.id,
+      });
+
+      expect(queuedRows(harness, parent.id)).toEqual([]);
+      expect(
+        turnRequests(harness, parent.id).filter(
+          (request) => request.initiator === "system",
+        ),
+      ).toHaveLength(1);
+    });
+  });
+
+  it("resolves the parent's execution options when a queued notice is delivered", async () => {
+    await withTestHarness(async (harness) => {
+      let holding = true;
+      installDispatchHook(() =>
+        holding ? { action: "wait", reason: "Hold" } : { action: "proceed" },
+      );
+      const { thread: parent } = seedRunnableThread(harness, {
+        hostId: "host-notice-execution",
+        status: "idle",
+      });
+      await queueParentSystemMessage(harness.deps, {
+        input: textInput("Child completed"),
+        parentThreadId: parent.id,
+        systemMessageKind: "child-completed",
+        systemMessageSubject: null,
+      });
+      setThreadExecutionOverride(harness.db, {
+        threadId: parent.id,
+        reasoningLevelOverride: "xhigh",
+      });
+      holding = false;
+
+      await runQueuedMessageDispatch(harness.deps, {
+        kind: "plugin-unregistered",
+        pluginId: "inbox-test",
+      });
+
+      const notice = turnRequests(harness, parent.id).find(
+        (request) => request.initiator === "system",
+      );
+      expect(notice?.execution.reasoningLevel).toBe("xhigh");
+    });
+  });
+});
+
+describe("coalesced notices", () => {
+  it("start a new row once the earlier window has expired", async () => {
+    await withTestHarness(async (harness) => {
+      const { project, thread: parent } = seedRunnableThread(harness, {
+        hostId: "host-expired-window",
+        status: "idle",
+      });
+      const child = seedThread(harness.deps, {
+        parentThreadId: parent.id,
+        projectId: project.id,
+      });
+      const notify = (turnStatus: "completed" | "failed") =>
+        queueChildThreadTurnNotificationBestEffort(harness.deps, {
+          childThread: child,
+          parentThreadId: parent.id,
+          turnStatus,
+        });
+      await notify("completed");
+      harness.db.$client
+        .prepare(
+          "UPDATE queued_thread_messages SET send_at = ? WHERE thread_id = ?",
+        )
+        .run(Date.now() - 1_000, parent.id);
+
+      await notify("failed");
+
+      expect(
+        listQueuedThreadMessages(harness.db, parent.id).map(
+          (row) => JSON.parse(row.systemNotice ?? "null")?.kind,
+        ),
+      ).toEqual(["child-completed", "child-failed"]);
+    });
+  });
+
+  it("leave an edited row alone when the next outcome arrives", async () => {
+    await withTestHarness(async (harness) => {
+      const { project, thread: parent } = seedRunnableThread(harness, {
+        hostId: "host-edited-notice",
+        status: "idle",
+      });
+      const [first, second] = ["First", "Second"].map((title) =>
+        seedThread(harness.deps, {
+          parentThreadId: parent.id,
+          projectId: project.id,
+          title,
+        }),
+      );
+      await queueChildThreadTurnNotificationBestEffort(harness.deps, {
+        childThread: first!,
+        parentThreadId: parent.id,
+        turnStatus: "completed",
+      });
+      const [row] = listQueuedThreadMessages(harness.db, parent.id);
+      updateQueuedThreadMessage(harness.db, harness.hub, {
+        content: textInput("Edited by hand"),
+        expectedUpdatedAt: row!.updatedAt,
+        id: row!.id,
+        threadId: parent.id,
+      });
+
+      await queueChildThreadTurnNotificationBestEffort(harness.deps, {
+        childThread: second!,
+        parentThreadId: parent.id,
+        turnStatus: "completed",
+      });
+
+      const rows = queuedRows(harness, parent.id);
+      expect(rows).toHaveLength(2);
+      expect(rows[0]?.content).toEqual(textInput("Edited by hand"));
+    });
+  });
+});
+
+describe("delivery mode intent", () => {
+  it("keeps queue mode for a message sent while only background work runs", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedRunnableThread(harness, {
+        hostId: "host-background-queue",
+        status: "active",
+      });
+      const mainRun = (sequence: number, state: "idle" | "running") =>
+        seedEvent(harness.deps, {
+          threadId: thread.id,
+          environmentId: environment.id,
+          providerThreadId: "provider-host-background-queue",
+          sequence,
+          type: "turn/mainRun/updated",
+          scope: turnScope("turn-host-background-queue"),
+          data: { state },
+        });
+      mainRun(10, "idle");
+      const sendAt = Date.now() + 60_000;
+      await acceptThreadSendRequest(harness.deps, {
+        payload: { input: textInput("Later"), mode: "queue-if-active", sendAt },
+        thread,
+      });
+      mainRun(11, "running");
+
+      await runQueuedMessageDispatch(harness.deps, {
+        kind: "time-reached",
+        now: sendAt + 1,
+      });
+
+      expect(
+        listQueuedThreadCommands(harness, "turn.submit", thread.id),
+      ).toHaveLength(0);
+      expect(queuedRows(harness, thread.id)).toEqual([
+        expect.objectContaining({ waitingOn: { kind: "thread-busy" } }),
+      ]);
+    });
+  });
+
+  it("refuses to group a steering row with a queued one", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedRunnableThread(harness, {
+        hostId: "host-mixed-group",
+        status: "active",
+      });
+      const sendAt = Date.now() + 60_000;
+      for (const mode of ["steer", "queue-if-active"] as const) {
+        await acceptThreadSendRequest(harness.deps, {
+          payload: { input: textInput(mode), mode, sendAt },
+          thread,
+        });
+      }
+      const rows = listQueuedThreadMessages(harness.db, thread.id);
+
+      const result = setQueuedThreadMessageGroupBoundary({
+        db: harness.db,
+        notifier: harness.hub,
+        threadId: thread.id,
+        expectedGroupedPrefixQueuedMessageIds: rows.map((row) => row.id),
+        groupBoundaryQueuedMessageId: rows[1]!.id,
+      });
+
+      expect(result.kind).toBe("invalid_delivery_mode");
     });
   });
 });

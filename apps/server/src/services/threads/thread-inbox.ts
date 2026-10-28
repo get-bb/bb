@@ -112,6 +112,7 @@ export function postCoalescedSystemNotice<State>(
     (tx) => {
       const pending = getPendingCoalescedQueuedThreadMessage(tx, {
         coalesceKey: args.coalesceKey,
+        now: Date.now(),
         threadId: args.threadId,
       });
       const next = args.merge(

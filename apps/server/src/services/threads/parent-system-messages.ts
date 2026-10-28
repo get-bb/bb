@@ -1,20 +1,17 @@
-import { getHost, getThread } from "@bb/db";
+import { createQueuedThreadMessageInTransaction, getThread } from "@bb/db";
 import type {
   PromptInput,
   PromptMentionResource,
-  QueuedMessageSystemNotice,
   PromptTextMention,
   SystemMessageKind,
+  Thread,
   SystemMessageSubject,
 } from "@bb/domain";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
-import { requireThreadEnvironment } from "../lib/entity-lookup.js";
 import { buildExecutionOptions } from "./thread-commands.js";
-import { isHostUnavailableApiError } from "../hosts/online-rpc.js";
-import { ThreadContextClearInProgressError } from "./thread-context-mutation-guard.js";
-import { requestQueuedMessageDispatch } from "./queued-message-dispatch.js";
-import { attemptDispatch } from "./dispatch-attempt.js";
-import { recordQueuedMessageWait } from "./queue-waits.js";
+import { attemptQueuedMessageNow } from "./queued-message-dispatch.js";
+import { emitPluginMessageQueued } from "../plugins/plugin-thread-events.js";
+import { toThreadQueuedMessage } from "./thread-queued-messages.js";
 
 export interface ParentSystemMessageTaxonomy {
   systemMessageKind: SystemMessageKind;
@@ -153,89 +150,46 @@ export async function queueParentSystemMessage(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: QueueParentSystemMessageArgs,
 ): Promise<boolean> {
-  const parentThread = getThread(deps.db, args.parentThreadId);
-  if (
-    !parentThread ||
-    parentThread.archivedAt !== null ||
-    parentThread.deletedAt !== null
-  ) {
+  if (!isWritableParent(getThread(deps.db, args.parentThreadId))) {
     return false;
   }
-  const systemNotice: QueuedMessageSystemNotice = {
-    kind: args.systemMessageKind,
-    subject: args.systemMessageSubject,
-  };
-  try {
-    await attemptDispatch(deps, {
-      thread: parentThread,
-      payload: { input: args.input, mode: "auto" },
-      source: { kind: "inline" },
-      queuePayload: { kind: "inline" },
-      pluginSubmission: null,
-      systemNotice,
-      origin: null,
-      originPluginId: null,
-      startedOnBehalfOf: null,
-      trigger: "auto-dispatch",
-    });
-    return true;
-  } catch (error) {
-    const currentThread = getThread(deps.db, parentThread.id);
-    if (
-      currentThread === null ||
-      currentThread.archivedAt !== null ||
-      currentThread.deletedAt !== null
-    ) {
-      return false;
-    }
-    const hostUnavailable = isHostUnavailableApiError(error);
-    if (
-      !(error instanceof ThreadContextClearInProgressError) &&
-      !hostUnavailable
-    ) {
-      throw error;
-    }
-    const host = hostUnavailable
-      ? getHost(
-          deps.db,
-          requireThreadEnvironment(deps.db, parentThread.id).environment.hostId,
-        )
-      : null;
-    if (hostUnavailable && !host) {
-      throw new Error(
-        "Parent host disappeared while queueing a system message",
-      );
-    }
-    recordQueuedMessageWait(deps, {
-      thread: parentThread,
-      message: {
-        input: args.input,
-        execution: await buildExecutionOptions(
-          deps,
-          {},
-          { threadId: parentThread.id },
-        ),
+  const execution = await buildExecutionOptions(
+    deps,
+    {},
+    { threadId: args.parentThreadId },
+  );
+  const row = deps.db.transaction(
+    (tx) => {
+      if (!isWritableParent(getThread(tx, args.parentThreadId))) return null;
+      return createQueuedThreadMessageInTransaction(tx, {
+        threadId: args.parentThreadId,
+        content: args.input,
         senderThreadId: null,
-        origin: null,
-        originPluginId: null,
-        requestedBy: null,
+        model: execution.model,
+        reasoningLevel: execution.reasoningLevel,
+        permissionMode: execution.permissionMode,
+        serviceTier: execution.serviceTier,
+        waitingOn: null,
+        sendAt: null,
         payload: { kind: "inline" },
-        systemNotice,
+        systemNotice: {
+          kind: args.systemMessageKind,
+          subject: args.systemMessageSubject,
+        },
         deliveryMode: "steer",
-        idempotencyKey: null,
-      },
-      waitingOn: host
-        ? { kind: "host-offline", hostName: host.name }
-        : { kind: "thread-busy" },
-      sendAt: null,
-      claimed: null,
-    });
-    if (!hostUnavailable) {
-      requestQueuedMessageDispatch(deps, {
-        kind: "thread-ready",
-        threadId: parentThread.id,
       });
-    }
-    return true;
-  }
+    },
+    { behavior: "immediate" },
+  );
+  if (row === null) return false;
+  emitPluginMessageQueued(toThreadQueuedMessage(row));
+  deps.hub.notifyThread(args.parentThreadId, ["queue-changed"]);
+  await attemptQueuedMessageNow(deps, row);
+  return true;
+}
+
+function isWritableParent(thread: Thread | null): thread is Thread {
+  return (
+    thread !== null && thread.archivedAt === null && thread.deletedAt === null
+  );
 }

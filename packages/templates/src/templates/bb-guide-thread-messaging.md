@@ -40,7 +40,8 @@ Messaging:
   that failed while it was deferred, and delivers when the thread is retried.
   A queued message keeps its mode while it waits: a `--mode queue` message that
   comes due (or is released by a plugin) while a turn runs waits for that turn
-  to end instead of steering into it.
+  to end instead of steering into it, and a steering message and one waiting
+  for the turn cannot be grouped.
 
   --idempotency-key makes a tell safe to repeat, for example after a timeout:
   the thread accepts one message per key, and repeating it with the same key

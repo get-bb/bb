@@ -6,6 +6,7 @@ import {
   desc,
   eq,
   exists,
+  gt,
   inArray,
   isNotNull,
   isNull,
@@ -339,6 +340,10 @@ export interface QueuedThreadMessageGroupBoundaryInvalidExecutionOptions {
   kind: "invalid_execution_options";
 }
 
+export interface QueuedThreadMessageGroupBoundaryInvalidDeliveryMode {
+  kind: "invalid_delivery_mode";
+}
+
 export interface QueuedThreadMessageGroupBoundaryStaleOrder {
   kind: "stale_neighbor";
 }
@@ -351,7 +356,8 @@ export type ReorderQueuedThreadMessageResult =
   | ReorderQueuedThreadMessageStaleNeighbor
   | ReorderQueuedThreadMessageInvalidNeighborOrder
   | QueuedThreadMessageGroupBoundaryInvalidSender
-  | QueuedThreadMessageGroupBoundaryInvalidExecutionOptions;
+  | QueuedThreadMessageGroupBoundaryInvalidExecutionOptions
+  | QueuedThreadMessageGroupBoundaryInvalidDeliveryMode;
 
 export type SetQueuedThreadMessageGroupBoundaryResult =
   | QueuedThreadMessageGroupBoundarySuccess
@@ -359,6 +365,7 @@ export type SetQueuedThreadMessageGroupBoundaryResult =
   | QueuedThreadMessageGroupBoundaryNotFound
   | QueuedThreadMessageGroupBoundaryInvalidSender
   | QueuedThreadMessageGroupBoundaryInvalidExecutionOptions
+  | QueuedThreadMessageGroupBoundaryInvalidDeliveryMode
   | QueuedThreadMessageGroupBoundaryStaleOrder
   | ReorderQueuedThreadMessageClaimed;
 
@@ -513,6 +520,7 @@ function queuedMessageGroupingEnvelopeMatches(
   return (
     firstQueuedMessage !== null &&
     queuedMessage.senderThreadId === firstQueuedMessage.senderThreadId &&
+    queuedMessage.deliveryMode === firstQueuedMessage.deliveryMode &&
     queuedMessage.model === firstQueuedMessage.model &&
     queuedMessage.reasoningLevel === firstQueuedMessage.reasoningLevel &&
     queuedMessage.permissionMode === firstQueuedMessage.permissionMode &&
@@ -730,6 +738,14 @@ function applyQueuedThreadMessageGroupBoundary(
     if (hasMixedSender) {
       return { kind: "invalid_sender" };
     }
+    if (
+      groupedMessages.some(
+        (queuedMessage) =>
+          queuedMessage.deliveryMode !== firstQueuedMessage?.deliveryMode,
+      )
+    ) {
+      return { kind: "invalid_delivery_mode" };
+    }
     const hasMixedExecutionOptions = groupedMessages.some(
       (queuedMessage) =>
         !queuedMessageGroupingEnvelopeMatches(
@@ -872,7 +888,7 @@ export function createQueuedThreadMessageInTransaction(
 
 export function getPendingCoalescedQueuedThreadMessage(
   db: DbQueryConnection,
-  args: { coalesceKey: string; threadId: string },
+  args: { coalesceKey: string; now: number; threadId: string },
 ): QueuedThreadMessageRow | null {
   return (
     db
@@ -883,6 +899,7 @@ export function getPendingCoalescedQueuedThreadMessage(
           eq(queuedThreadMessages.threadId, args.threadId),
           eq(queuedThreadMessages.coalesceKey, args.coalesceKey),
           eq(queuedThreadMessages.state, "scheduled"),
+          gt(queuedThreadMessages.sendAt, args.now),
           sql`json_extract(${queuedThreadMessages.waitingOn}, '$.kind') = 'time'`,
         ),
       )
@@ -963,6 +980,8 @@ export function updateQueuedThreadMessage(
         .update(queuedThreadMessages)
         .set({
           content: JSON.stringify(input.content),
+          coalesceKey: null,
+          coalesceState: null,
           editHeldUntil: null,
           updatedAt: Math.max(Date.now(), existing.updatedAt + 1),
         })
@@ -1469,6 +1488,9 @@ export function reorderQueuedThreadMessage({
             if (groupResult.kind === "invalid_execution_options") {
               return { kind: "invalid_execution_options" };
             }
+            if (groupResult.kind === "invalid_delivery_mode") {
+              return { kind: "invalid_delivery_mode" };
+            }
             if (groupResult.kind === "updated") {
               return {
                 kind: "reordered",
@@ -1529,6 +1551,11 @@ export function reorderQueuedThreadMessage({
           if (groupResult.kind === "invalid_execution_options") {
             throw new ReorderQueuedThreadMessageRollback({
               kind: "invalid_execution_options",
+            });
+          }
+          if (groupResult.kind === "invalid_delivery_mode") {
+            throw new ReorderQueuedThreadMessageRollback({
+              kind: "invalid_delivery_mode",
             });
           }
           if (groupResult.kind === "updated") {

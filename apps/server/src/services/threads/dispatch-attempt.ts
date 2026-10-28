@@ -18,6 +18,7 @@ import {
   promptInputSchema,
   type PromptInput,
   type QueuedMessagePayload,
+  type QueuedMessageDeliveryMode,
   type QueuedMessageSystemNotice,
   type QueuedMessageWaitingOn,
   type ResolvedThreadExecutionOptions,
@@ -323,7 +324,10 @@ export async function attemptDispatch(
   args: DispatchAttemptArgs,
 ): Promise<DispatchAttemptOutcome> {
   const idempotencyKey = args.payload.idempotencyKey ?? null;
-  if (idempotencyKey === null) return runDispatchAttempt(deps, args, false);
+  const deliveryMode = deliveryModeForSendMode(args.payload.mode);
+  if (idempotencyKey === null) {
+    return runDispatchAttempt(deps, args, { deliveryMode, reattempted: false });
+  }
   const accepted = () =>
     findAcceptedInboxOutcome(deps, {
       idempotencyKey,
@@ -332,7 +336,10 @@ export async function attemptDispatch(
   const prior = accepted();
   if (prior !== null) return prior;
   try {
-    return await runDispatchAttempt(deps, args, false);
+    return await runDispatchAttempt(deps, args, {
+      deliveryMode,
+      reattempted: false,
+    });
   } catch (error) {
     if (!(error instanceof InboxMessageAlreadyAcceptedError)) throw error;
     return accepted() ?? { kind: "dispatched" };
@@ -344,14 +351,20 @@ async function runOperationDispatch(
   args: DispatchAttemptArgs,
   source: Extract<DispatchAttemptSource, { kind: "operation" }>,
 ): Promise<DispatchAttemptOutcome> {
+  const idempotencyKey = args.payload.idempotencyKey ?? null;
   await sendThreadMessage(deps, {
     environment: source.environment,
     payload: args.payload,
     thread: args.thread,
     trigger: args.trigger,
-    ...(source.beforeAppendInTransaction !== undefined
-      ? { beforeAppendInTransaction: source.beforeAppendInTransaction }
-      : {}),
+    beforeAppendInTransaction: ({ tx }) => {
+      recordInboxReceiptInTransaction(tx, {
+        idempotencyKey,
+        queuedMessageId: null,
+        threadId: args.thread.id,
+      });
+      source.beforeAppendInTransaction?.({ tx });
+    },
     ...(source.historyReplacement !== undefined
       ? { historyReplacement: source.historyReplacement }
       : {}),
@@ -359,10 +372,15 @@ async function runOperationDispatch(
   return { kind: "dispatched" };
 }
 
+interface DispatchAttemptRun {
+  deliveryMode: QueuedMessageDeliveryMode;
+  reattempted: boolean;
+}
+
 async function runDispatchAttempt(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: DispatchAttemptArgs,
-  reattempted: boolean,
+  run: DispatchAttemptRun,
 ): Promise<DispatchAttemptOutcome> {
   const { thread } = args;
   let { payload } = args;
@@ -459,7 +477,7 @@ async function runDispatchAttempt(
     requestedBy: args.startedOnBehalfOf,
     payload: args.queuePayload,
     systemNotice,
-    deliveryMode: deliveryModeForSendMode(payload.mode),
+    deliveryMode: run.deliveryMode,
     idempotencyKey,
   };
 
@@ -503,11 +521,6 @@ async function runDispatchAttempt(
       return;
     }
 
-    if (systemNotice !== null && thread.environmentId === null) {
-      continued.outcome = waitOn({ kind: "provisioning" }, null);
-      return;
-    }
-
     if (thread.status === "stopping") {
       continued.outcome = waitOn({ kind: "stopping" }, null);
       return;
@@ -519,10 +532,16 @@ async function runDispatchAttempt(
     }
     if (
       currentThread.status !== thread.status ||
+      currentThread.environmentId !== thread.environmentId ||
       currentThread.archivedAt !== thread.archivedAt ||
       currentThread.deletedAt !== thread.deletedAt
     ) {
       continued.reattemptThread = currentThread;
+      return;
+    }
+
+    if (systemNotice !== null && thread.environmentId === null) {
+      continued.outcome = waitOn({ kind: "provisioning" }, null);
       return;
     }
 
@@ -686,7 +705,7 @@ async function runDispatchAttempt(
       deps,
       args,
       continued.reattemptThread,
-      reattempted,
+      run,
     );
   }
 
@@ -702,7 +721,7 @@ async function runDispatchAttempt(
       // for a thread that is gone. Reporting a dispatch here would tell the
       // caller their message went when it went nowhere.
       const current = getThread(deps.db, thread.id);
-      return reattemptDispatchForThreadChange(deps, args, current, reattempted);
+      return reattemptDispatchForThreadChange(deps, args, current, run);
     }
     await launchAdmittedThread(deps, admission);
     return { kind: "dispatched" };
@@ -744,7 +763,7 @@ async function runDispatchAttempt(
       deps,
       args,
       getThread(deps.db, thread.id),
-      reattempted,
+      run,
     );
   }
   if (claimed !== null) {
@@ -759,19 +778,23 @@ function reattemptDispatchForThreadChange(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: DispatchAttemptArgs,
   thread: Thread | null,
-  reattempted: boolean,
+  run: DispatchAttemptRun,
 ): Promise<DispatchAttemptOutcome> {
   if (thread === null) {
     throw new ApiError(404, "thread_not_found", "Thread not found");
   }
-  if (reattempted) {
+  if (run.reattempted) {
     throw new ApiError(
       500,
       "internal_error",
       `Thread ${thread.id} changed twice under one dispatch attempt`,
     );
   }
-  return runDispatchAttempt(deps, { ...args, thread }, true);
+  return runDispatchAttempt(
+    deps,
+    { ...args, thread },
+    { ...run, reattempted: true },
+  );
 }
 
 /**

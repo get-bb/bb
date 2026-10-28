@@ -426,14 +426,17 @@ async function sendClaimedQueuedMessageForThread(
     args.mode === "auto" && !args.sendNow
       ? sendModeForDeliveryMode(lead.deliveryMode)
       : args.mode;
+  const systemNotice = parseStoredQueuedThreadMessageSystemNotice(lead);
   const outcome = await attemptDispatch(deps, {
     thread: args.thread,
     payload: {
-      ...sendQueuedMessagePayload(
-        { ...queuedMessage, content: input },
-        mode,
-        lead.senderThreadId,
-      ),
+      ...(systemNotice === null
+        ? sendQueuedMessagePayload(
+            { ...queuedMessage, content: input },
+            mode,
+            lead.senderThreadId,
+          )
+        : { input, mode }),
       ...(inputGroups.length > 1 ? { inputGroups } : {}),
     },
     source: {
@@ -444,7 +447,7 @@ async function sendClaimedQueuedMessageForThread(
     },
     queuePayload: queuedMessage.payload,
     pluginSubmission: null,
-    systemNotice: parseStoredQueuedThreadMessageSystemNotice(lead),
+    systemNotice,
     ...(queuedMessage.payload.kind === "retry"
       ? {
           retryOf: {
