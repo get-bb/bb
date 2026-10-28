@@ -27,6 +27,7 @@ import { isFsErrorWithCode } from "../lib/fs-errors.js";
 import {
   buildPluginServer,
   PLUGIN_TOOLCHAIN_PINS,
+  pluginBuildCodeDigest,
   type PluginBuildToolchain,
 } from "@bb/plugin-build";
 
@@ -301,10 +302,13 @@ async function snapshotBuildInputs(
   );
 }
 
-function pluginServerConfigKey(args: CachedPluginServerArgs): string {
+async function pluginServerConfigKey(
+  args: CachedPluginServerArgs,
+): Promise<string> {
   return sha256(
     JSON.stringify({
       formatVersion: PLUGIN_SERVER_RUNTIME_FORMAT_VERSION,
+      buildCode: await pluginBuildCodeDigest(),
       pluginId: args.pluginId,
       rootDir: args.rootDir,
       serverEntry: args.validatedConfig.serverEntry,
@@ -408,7 +412,7 @@ function cachedResult(
 export async function buildCachedPluginServer(
   args: CachedPluginServerArgs,
 ): Promise<CachedPluginServer> {
-  const configKey = pluginServerConfigKey(args);
+  const configKey = await pluginServerConfigKey(args);
   const pluginCacheDir = join(
     args.dataDir,
     "plugins",
@@ -444,7 +448,7 @@ export async function buildCachedPluginServer(
       args.rootDir,
       built.inputs,
       builtSinceMs,
-    );
+    ).catch(() => null);
     const artifact = {
       artifactDigest: await hashFile(built.jsPath),
       warnings: built.migrationWarnings,

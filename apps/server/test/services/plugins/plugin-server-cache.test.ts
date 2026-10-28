@@ -4,19 +4,38 @@ import {
   mkdtemp,
   readFile,
   readdir,
+  realpath,
   rm,
   utimes,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { resolvePluginBuildToolchain } from "@bb/plugin-build";
+import {
+  buildPluginServer,
+  pluginBuildCodeDigest,
+  resolvePluginBuildToolchain,
+} from "@bb/plugin-build";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildCachedPluginServer } from "../../../src/services/plugins/plugin-server-cache.js";
 
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
   return { ...actual, createReadStream: vi.fn(actual.createReadStream) };
+});
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return { ...actual, realpath: vi.fn(actual.realpath) };
+});
+
+vi.mock("@bb/plugin-build", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@bb/plugin-build")>();
+  return {
+    ...actual,
+    buildPluginServer: vi.fn(actual.buildPluginServer),
+    pluginBuildCodeDigest: vi.fn(actual.pluginBuildCodeDigest),
+  };
 });
 
 type PluginFiles = Record<string, string>;
@@ -26,6 +45,8 @@ describe("plugin server cache", () => {
 
   afterEach(async () => {
     vi.mocked(createReadStream).mockClear();
+    vi.mocked(realpath).mockRestore();
+    vi.mocked(buildPluginServer).mockRestore();
     await Promise.all(
       tempDirs
         .splice(0)
@@ -223,6 +244,53 @@ describe("plugin server cache", () => {
     await writeFile(valuePath, 'export const value = "from-new";\n');
     await utimes(valuePath, pinnedMtime, pinnedMtime);
     expect((await plugin.load()).source).toContain("from-new");
+    expect(plugin.builds()).toBe(2);
+  });
+
+  it("rebuilds when bb's plugin build code changes", async () => {
+    const plugin = await createPlugin({
+      "package.json": '{"name":"bb-plugin-cache-fixture","type":"module"}\n',
+      "server.ts": 'export default () => "server";\n',
+    });
+
+    await plugin.load();
+    await plugin.load();
+    expect(plugin.builds()).toBe(1);
+
+    vi.mocked(pluginBuildCodeDigest).mockResolvedValueOnce(
+      "changed-build-code",
+    );
+    await plugin.load();
+    expect(plugin.builds()).toBe(2);
+  });
+
+  it("keeps a successful build whose inputs cannot be recorded", async () => {
+    const plugin = await createPlugin({
+      "package.json": '{"name":"bb-plugin-cache-fixture","type":"module"}\n',
+      "server.ts": 'export default () => "unrecorded";\n',
+    });
+    const actualRealpath = vi.mocked(realpath).getMockImplementation();
+    const actualBuild = vi.mocked(buildPluginServer).getMockImplementation();
+    if (actualRealpath === undefined || actualBuild === undefined) {
+      throw new Error("expected wrapped fs and build functions");
+    }
+    let built = false;
+    vi.mocked(buildPluginServer).mockImplementationOnce(async (...args) => {
+      const result = await actualBuild(...args);
+      built = true;
+      return result;
+    });
+    vi.mocked(realpath).mockImplementation(async (path, options) => {
+      if (built && path === plugin.rootDir) {
+        built = false;
+        throw Object.assign(new Error("permission denied"), { code: "EACCES" });
+      }
+      return actualRealpath(path, options);
+    });
+
+    expect((await plugin.load()).source).toContain("unrecorded");
+    await plugin.load();
+    await plugin.load();
     expect(plugin.builds()).toBe(2);
   });
 
