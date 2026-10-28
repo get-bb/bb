@@ -46,6 +46,6 @@ export const earlyAdopterExperiments: Experiments = {
   sidebarMultiSelect: true,
   threadRowMetadata: false,
   timelinePush: true,
-  unreadDividerAtAnswer: false,
+  unreadDividerAtAnswer: true,
   websocketCompression: true,
 };

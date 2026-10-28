@@ -200,12 +200,13 @@ a line under each thread title where plugins show details such as the pull
 request number.
 `unreadDividerAtAnswer` places the NEW divider of an unread thread before the
 final assistant message of a turn that finished while you were away, instead of
-before its first tool call.
+before its first tool call. It defaults on for early adopters.
 `websocketCompression` compresses large realtime messages (such as timeline
 pushes) on the app's live connection; it applies when the app reconnects.
 `bb settings general earlyAdopter on` (Settings → Experiments → Become an early
 adopter) turns on the experiments marked Early adopter, currently
-`applicationLinks`, `timelinePush`, `compactExpiredCache`, `sidebarMultiSelect`, and `websocketCompression`; an experiment you set yourself keeps
+`applicationLinks`, `timelinePush`, `compactExpiredCache`, `sidebarMultiSelect`,
+`unreadDividerAtAnswer`, and `websocketCompression`; an experiment you set yourself keeps
 your value.
 
 Launcher settings

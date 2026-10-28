@@ -864,7 +864,7 @@ The `earlyAdopter` general setting (the Become an early adopter banner on
 Settings → Experiments, `bb settings general earlyAdopter on`) switches the
 shipped default to the early adopter default: experiments marked Early adopter
 (currently `applicationLinks`, `timelinePush`, `compactExpiredCache`,
-`sidebarMultiSelect`, and `websocketCompression`) turn on, and the rest stay
+`sidebarMultiSelect`, `unreadDividerAtAnswer`, and `websocketCompression`) turn on, and the rest stay
 off. An experiment you set yourself keeps your value either way.
 `/system/config` and `sdk.system.config()` return the resolved values in
 `experiments`.
@@ -924,7 +924,7 @@ off. An experiment you set yourself keeps your value either way.
   client refetching the latest window after every update. A missed push falls
   back to the delta request used when it is off. Open views follow a toggle
   live.
-- `unreadDividerAtAnswer` moves the NEW divider in an unread thread from the
+- `unreadDividerAtAnswer` (on for early adopters) moves the NEW divider in an unread thread from the
   first row after your read point to the answer of a turn that finished while
   you were away: the turn's final assistant message, or the error that ended
   it. The turn's tool calls and in-between notes stay above the divider. A
