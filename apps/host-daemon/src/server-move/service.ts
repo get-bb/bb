@@ -352,16 +352,9 @@ export class ServerMoveService {
         ? true
         : this.options.checkPortAvailable(command.port),
       this.options.checkGhAuthenticated(shellEnv),
-      Promise.all(
-        command.credentialFiles.map((file) => {
-          if (!isAbsolute(file))
-            throw new CommandDispatchError(
-              "invalid_path",
-              "Provider credential paths must be absolute",
-            );
-          return pathExists(file);
-        }),
-      ).then((present) => present.some(Boolean)),
+      Promise.all(command.credentialFiles.map(pathExists)).then((present) =>
+        present.some(Boolean),
+      ),
       Promise.all(
         command.paths.map(
           async (path) =>

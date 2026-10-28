@@ -16,12 +16,12 @@ export default experimental_defineHostEntry({
         env: input.env,
         cwd: context.experimental_paths.tempDir,
       }),
-    resolveNativeRoots: (input) =>
+    resolveNativeRoots: (input, context) =>
       resolveAcpNativeRoots({
         agentId: input.providerId,
         cwd: input.cwd,
         homeDir: os.homedir(),
-        env: process.env,
+        env: context.experimental_env,
       }),
   },
 });

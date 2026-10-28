@@ -145,8 +145,8 @@ await harness.experimental_dispose();
 
 This harness applies the real contract schemas, request and lifecycle
 cancellation, JSON round-trips, and the 8 MiB result limit. Supply
-`experimental_paths` and an `experimental_watch` adapter when the entry needs
-them. Inspect validated signals, the retained-worker lease count, and the
+`experimental_paths`, `experimental_env` (defaults to `process.env`) and an
+`experimental_watch` adapter when the entry needs them. Inspect validated signals, the retained-worker lease count, and the
 lifecycle signal. Disposal aborts calls and watches before it runs the entry
 dispose hook. Worker startup, crashes, artifact verification, and reconnect
 behavior belong in daemon integration tests, not this in-process harness.

@@ -301,17 +301,17 @@ async function inspectHost(
   hostId: string,
   paths: string[],
 ): Promise<ServerMoveInspectResult> {
-  return callHostOnlineRpc(environment.deps, {
+  const deadline = Date.now() + environment.inspectTimeoutMs;
+  const { credentialFiles } = await resolveProviderPaths(environment.deps, {
     hostId,
     timeoutMs: environment.inspectTimeoutMs,
+  });
+  return callHostOnlineRpc(environment.deps, {
+    hostId,
+    timeoutMs: Math.max(1, deadline - Date.now()),
     command: {
       type: "server_move.inspect",
-      credentialFiles: (
-        await resolveProviderPaths(environment.deps, {
-          hostId,
-          timeoutMs: environment.inspectTimeoutMs,
-        })
-      ).credentialFiles,
+      credentialFiles,
       paths,
       port: environment.targetServerPort(),
     },

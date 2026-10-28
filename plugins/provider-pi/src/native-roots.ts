@@ -1,4 +1,4 @@
-import { resolvePiAgentDir } from "./config-home.js";
+import { resolvePiAgentDir, resolveStoredPath } from "./config-home.js";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { PluginProviderDeclaration } from "@get-bb/plugin-sdk";
@@ -30,16 +30,6 @@ export interface ResolvePiNativeRootsArgs {
   cwd: string | null;
   homeDir: string;
   env: Readonly<Record<string, string | undefined>>;
-}
-
-function resolveStoredPath(
-  homeDir: string,
-  value: string,
-  baseDir: string,
-): string {
-  if (value === "~") return homeDir;
-  if (value.startsWith("~/")) return path.join(homeDir, value.slice(2));
-  return path.isAbsolute(value) ? value : path.resolve(baseDir, value);
 }
 
 function isPlainSkillSource(value: string): boolean {

@@ -1412,7 +1412,7 @@ Docs: `frontend-hooks-and-ui.md`.
 4. Decide whether a nav panel should also declare a default terminal scope so
    the native "+ Terminal" button follows the page's worktree.
 
-## Host plugin foundation (`bb.hosts.experimental_client`, `ExperimentalHostClient.experimental_onWorkerExit`, `ExperimentalHostClient.experimental_onSignal`, `ExperimentalHostRpcContext.experimental_retainWorker`, `experimental_defineHostEntry`, `experimental_killProcessesWithCwdUnder`, `experimental_readProcessIdentity`, and `experimental_createHostEntryHarness`)
+## Host plugin foundation (`bb.hosts.experimental_client`, `ExperimentalHostClient.experimental_onWorkerExit`, `ExperimentalHostClient.experimental_onSignal`, `ExperimentalHostRpcContext.experimental_retainWorker`, `ExperimentalHostRpcContext.experimental_env`, `experimental_defineHostEntry`, `experimental_killProcessesWithCwdUnder`, `experimental_readProcessIdentity`, and `experimental_createHostEntryHarness`)
 
 **Kept experimental (2026-08-22).** Signals and watches have no consumer
 (decide whether to delete them or keep them experimental separately from
@@ -1427,7 +1427,11 @@ A plugin declares one `bb.host` Node entry with
 server, and calls methods on an explicit enrolled host through
 `bb.hosts.experimental_client`. The client can observe unexpected worker exits
 and ephemeral host signals. Handlers can hold retention leases, and idle
-workers are evicted after five minutes. `experimental_killProcessesWithCwdUnder`
+workers are evicted after five minutes. `context.experimental_env` is the
+complete environment of one call (machine plus project contributions);
+`process.env` only carries the first of any overlapping calls' environments.
+Core's provider resolvers (Claude Code, Codex, Pi and ACP native roots and
+provider paths, and Codex helper inference) read it. `experimental_killProcessesWithCwdUnder`
 reaps processes working under any of the given directories before they are
 deleted (the SDK still accepts the pre-0.6.27 `{ directory }` shape at
 runtime), and `experimental_readProcessIdentity(pid)` returns
@@ -1472,7 +1476,8 @@ Docs: `backend-foundation.md`, `testing.md`.
    retaining only the most recently materialized artifact digest per plugin is
    sufficient.
 9. **Environment.** Confirm executable discovery through normalized `PATH`
-   and stripping all daemon-owned `BB_*` variables.
+   and stripping all daemon-owned `BB_*` variables. Decide whether
+   `experimental_env` should replace the shared `process.env` scope entirely.
 10. **Trust and dependencies.** V1 host plugins are trusted Node programs that
     may use `child_process`, filesystem, and network APIs. Decide whether later
     permissions, native artifacts, or an explicit dependency installer can be
@@ -3976,6 +3981,6 @@ removing the prefix.
 
 ## Internal provider host paths (`internal_DO_NOT_USE_providerPathsHostContract`, `@get-bb/plugin-sdk/host`)
 
-First-party host RPC `resolveProviderPaths({})` returns absolute `skillInstallRoots` and `credentialFiles`. The owning plugin resolves these from its process environment; core never constructs provider folders. The only implementing plugins are provider-claude-code and provider-codex. The only core callers are global CLI skill install/status and server-move preflight. Both enumerate registered providers that declare `internal_DO_NOT_USE_resolvesProviderPaths`, call each plugin once, and deduplicate its returned paths. The declaration defaults to false at validation. Only provider-claude-code and provider-codex set it: today Claude contributes install roots and Codex contributes credential files, with the other list empty. Core passes these returned paths to the daemon for file operations. Server-move continues to probe credentials and warn; it does not copy them.
+First-party host RPC `resolveProviderPaths({})` returns absolute `skillInstallRoots` and `credentialFiles`. The owning plugin resolves these from the call's `experimental_env`, and returns nothing for a folder configured relative to each session's cwd; core never constructs provider folders. The only implementing plugins are provider-claude-code and provider-codex. The only core callers are global CLI skill install/status and server-move preflight. Both enumerate registered providers that declare `internal_DO_NOT_USE_resolvesProviderPaths`, call each plugin once, and deduplicate its returned paths. A plugin that fails or times out contributes no paths and is logged; the rest still apply. Install wakes a suspended machine before asking. The declaration defaults to false at validation. Only provider-claude-code and provider-codex set it: today Claude contributes install roots and Codex contributes credential files, with the other list empty. Core passes these returned paths to the daemon for file operations. Server-move continues to probe credentials and warn; it does not copy them.
 
 The contract is internal plumbing, not a public resolver API. Keep path rules in each provider's config-home module. ACP keeps local Claude/Codex/Pi compatibility copies because it is forkable and cannot import another workspace plugin. The developer archive script retains its own Codex rule. Before considering a public path contract, establish external demand and define writable-root and credential-file semantics for third-party providers.

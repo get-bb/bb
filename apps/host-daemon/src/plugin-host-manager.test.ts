@@ -41,6 +41,7 @@ export default {
   contract: {
     environment: { input: anySchema, output: anySchema },
     releaseEnvironment: { input: anySchema, output: anySchema },
+    callEnvironment: { input: anySchema, output: anySchema },
     secretProbe: { input: anySchema, output: anySchema },
     echo: { input: anySchema, output: anySchema },
     wait: { input: anySchema, output: anySchema },
@@ -85,6 +86,12 @@ export default {
         if (context.signal.aborted) finish();
       });
       return { before: before ?? null, after: process.env.GATE_VALUE ?? null, token: process.env.GH_TOKEN ?? null };
+    },
+    callEnvironment(_input, context) {
+      return {
+        process: process.env.GATE_VALUE ?? null,
+        call: context.experimental_env.GATE_VALUE ?? null,
+      };
     },
     releaseEnvironment(input) {
       const finish = heldEnvironments.get(input.id);
@@ -426,6 +433,26 @@ describe("PluginHostManager", () => {
         }
       },
     );
+
+    it("hands an overlapping call its own environment in the call context", async () => {
+      const { manager, command, waitForStart } = await fixture();
+      const held = manager.call({
+        ...command("a", "first"),
+        input: { id: "a", hold: true },
+      });
+      await waitForStart("a");
+      await expect(
+        manager.call({ ...command("b", "second"), method: "callEnvironment" }),
+      ).resolves.toMatchObject({
+        output: { process: "first", call: "second" },
+      });
+      await manager.call(
+        callCommand({ method: "releaseEnvironment", input: { id: "a" } }),
+      );
+      await expect(held).resolves.toMatchObject({
+        output: { before: "first", after: "first" },
+      });
+    });
 
     it.each([0, 1_500])(
       "keeps the first values until every overlapping call finishes with %ims startup",

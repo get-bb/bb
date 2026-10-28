@@ -48,7 +48,7 @@ function fetchCodexUsage(headers: Headers): Promise<Response> {
 }
 
 async function readCredentials(): Promise<CodexAuthCredentials | null> {
-  const auth = await readCodexAuthFile();
+  const auth = await readCodexAuthFile(process.env);
   switch (auth.state) {
     case "ok":
       return auth.credentials;

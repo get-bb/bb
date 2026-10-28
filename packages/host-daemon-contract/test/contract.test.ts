@@ -28,6 +28,7 @@ import {
   hostDaemonInteractiveRequestResponseSchema,
   hostDaemonInteractiveRequestSchema,
   hostDaemonOnlineRpcCommandSchema,
+  hostDaemonRpcCommandSchema,
   type HostDaemonOnlineRpcCommandType,
   type HostDaemonRpcCommandType,
   hostDaemonOnlineRpcResponseMessageSchema,
@@ -1052,6 +1053,28 @@ describe("host-daemon command schemas", () => {
         reason: "superseded",
       }).success,
     ).toBe(false);
+  });
+
+  it("rejects provider folders that are not absolute on any host platform", () => {
+    const accepts = (paths: string[]) => [
+      hostDaemonRpcCommandSchema.safeParse({
+        type: "host.global_skills_status",
+        providerRoots: paths,
+        names: ["bb-cli"],
+      }).success,
+      hostDaemonRpcCommandSchema.safeParse({
+        type: "server_move.inspect",
+        credentialFiles: paths,
+        paths: [],
+        port: 38886,
+      }).success,
+    ];
+    expect(
+      accepts(["/home/me/.claude/skills", "C:\\Users\\me\\.codex"]),
+    ).toEqual([true, true]);
+    for (const path of ["", "profile/skills", "~/.claude/skills"]) {
+      expect(accepts([path])).toEqual([false, false]);
+    }
   });
 
   it("uses the current host-daemon protocol version", () => {

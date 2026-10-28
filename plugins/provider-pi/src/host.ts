@@ -10,11 +10,11 @@ export { experimental_providerBridge } from "./bridge/bridge.js";
 export default experimental_defineHostEntry({
   contract: experimental_nativeRootsHostContract,
   handlers: {
-    resolveNativeRoots: (input) =>
+    resolveNativeRoots: (input, context) =>
       resolvePiNativeRoots({
         cwd: input.cwd,
         homeDir: homedir(),
-        env: process.env,
+        env: context.experimental_env,
       }),
   },
 });

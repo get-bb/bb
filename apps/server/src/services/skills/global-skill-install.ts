@@ -16,11 +16,16 @@ import {
   callHostOnlineRpc,
   callHostOnlineRpcForWork,
 } from "../hosts/online-rpc.js";
+import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
 import { resolveServerOwnedSkillCatalogEntries } from "./injected-skills.js";
 
 const GLOBAL_CLI_SKILL_NAMES: readonly string[] = ["bb-cli"];
 
 const STATUS_TIMEOUT_MS = 5_000;
+
+function remainingMs(deadline: number): number {
+  return Math.max(1, deadline - Date.now());
+}
 
 export function listInstallableMachineIds(
   deps: GlobalSkillInstallDeps,
@@ -109,17 +114,17 @@ export async function readGlobalCliSkillStatus(
         return { ...base, status: "unknown" as const };
       }
       try {
-        const result = await callHostOnlineRpc(deps, {
+        const deadline = Date.now() + STATUS_TIMEOUT_MS;
+        const { skillInstallRoots } = await resolveProviderPaths(deps, {
           hostId: host.id,
           timeoutMs: STATUS_TIMEOUT_MS,
+        });
+        const result = await callHostOnlineRpc(deps, {
+          hostId: host.id,
+          timeoutMs: remainingMs(deadline),
           command: {
             type: "host.global_skills_status",
-            providerRoots: (
-              await resolveProviderPaths(deps, {
-                hostId: host.id,
-                timeoutMs: STATUS_TIMEOUT_MS,
-              })
-            ).skillInstallRoots,
+            providerRoots: skillInstallRoots,
             names: skills.map((skill) => skill.name),
           },
         });
@@ -175,18 +180,19 @@ export async function installGlobalCliSkills(
   const results = await Promise.all(
     hosts.map(async (host) => {
       try {
-        const result = await callHostOnlineRpcForWork(deps, {
+        await ensureHostSessionReadyForWork(deps, { hostId: host.id });
+        const deadline = Date.now() + COMMAND_TIMEOUT_MS;
+        const { skillInstallRoots } = await resolveProviderPaths(deps, {
           hostId: host.id,
           timeoutMs: COMMAND_TIMEOUT_MS,
+        });
+        const result = await callHostOnlineRpcForWork(deps, {
+          hostId: host.id,
+          timeoutMs: remainingMs(deadline),
           command: {
             type: "host.install_global_skills",
             skills,
-            providerRoots: (
-              await resolveProviderPaths(deps, {
-                hostId: host.id,
-                timeoutMs: COMMAND_TIMEOUT_MS,
-              })
-            ).skillInstallRoots,
+            providerRoots: skillInstallRoots,
           },
         });
         return {

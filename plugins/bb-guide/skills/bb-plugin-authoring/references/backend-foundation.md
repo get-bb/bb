@@ -255,6 +255,10 @@ shutdown. Close timers, sockets, and child processes from the lifecycle signal
 and `dispose`.
 `context.experimental_paths.dataDir` is persistent and scoped to this plugin on
 the targeted daemon; `tempDir` is deleted with the worker process.
+`context.experimental_env` is this call's complete environment, including any
+project contributions. Overlapping calls share `process.env`, which holds the
+first call's values, so read `experimental_env` when the answer depends on the
+caller.
 `context.experimental_watch(options, listener)` uses the daemon's native file
 watcher. Deliveries are coalesced and serialized while the listener is busy;
 on `rescan-required`, reread current state instead of trusting prior events.

@@ -1,6 +1,6 @@
 import path from "node:path";
 import { internal_DO_NOT_USE_providerPathsHostContract } from "@get-bb/plugin-sdk/host";
-import { resolveCodexHome } from "./config-home.js";
+import { resolveSharedCodexHome } from "./config-home.js";
 import os from "node:os";
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import {
@@ -40,32 +40,37 @@ async function textResult(work: Promise<string>): Promise<CodexAiTextResult> {
 export default experimental_defineHostEntry({
   contract: codexHostContract,
   handlers: {
-    resolveProviderPaths: () => {
-      const configDir = resolveCodexHome({
-        cwd: process.cwd(),
+    resolveProviderPaths: (_input, context) => {
+      const codexHome = resolveSharedCodexHome({
         homeDir: os.homedir(),
-        env: process.env,
+        env: context.experimental_env,
       });
       return {
         skillInstallRoots: [],
-        credentialFiles: [path.join(configDir, "auth.json")],
+        credentialFiles:
+          codexHome === null ? [] : [path.join(codexHome, "auth.json")],
       };
     },
     resolveNativeRoots: (
       input,
+      context,
     ): Promise<ExperimentalNativeRootsResolveAnswer> =>
       resolveCodexNativeRoots({
         cwd: input.cwd,
         homeDir: os.homedir(),
-        env: process.env,
+        env: context.experimental_env,
       }),
     "codex.ai.complete": (input, context) =>
-      textResult(completeCodexInference(input, context.signal)),
+      textResult(
+        completeCodexInference(input, context.signal, context.experimental_env),
+      ),
     "codex.ai.transcribe": (input, context) =>
-      textResult(transcribeCodexVoice(input, context.signal)),
-    "codex.ai.status": async (): Promise<CodexAiStatus> => {
+      textResult(
+        transcribeCodexVoice(input, context.signal, context.experimental_env),
+      ),
+    "codex.ai.status": async (_input, context): Promise<CodexAiStatus> => {
       try {
-        await readCodexAuthCredentials();
+        await readCodexAuthCredentials(context.experimental_env);
         return { ready: true };
       } catch (error) {
         return {

@@ -12,3 +12,12 @@ export function resolveCodexHome(args: ProviderHomeContext): string {
     args.env.CODEX_HOME?.trim() || path.join(args.homeDir, ".codex"),
   );
 }
+
+export function resolveSharedCodexHome(args: {
+  homeDir: string;
+  env: Readonly<Record<string, string | undefined>>;
+}): string | null {
+  const configured = args.env.CODEX_HOME?.trim();
+  if (configured && !path.isAbsolute(configured)) return null;
+  return resolveCodexHome({ ...args, cwd: null });
+}

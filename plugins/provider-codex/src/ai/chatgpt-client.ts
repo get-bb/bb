@@ -12,6 +12,7 @@ import {
   toJsonObject,
   type CodexAuthCredentials,
   type CodexChatGptAuthCredentials,
+  type CodexEnvironment,
   type CodexOpenAiApiKeyCredentials,
 } from "./codex-auth.js";
 import { AiServiceFailure } from "./failure.js";
@@ -767,9 +768,10 @@ async function fetchResponses(args: ResponsesFetchArgs): Promise<Response> {
 export async function completeCodexInference(
   command: InferenceCompleteCommand,
   signal: AbortSignal,
+  env: CodexEnvironment,
 ): Promise<string> {
   const deadline = createCodexRequestDeadline(command.timeoutMs, signal);
-  const auth = await readCodexAuthCredentials();
+  const auth = await readCodexAuthCredentials(env);
   const request = buildCodexResponsesRequest(command);
   const response = await fetchResponses({ auth, command, deadline, request });
 
@@ -882,9 +884,10 @@ async function fetchTranscription(
 export async function transcribeCodexVoice(
   command: VoiceTranscribeCommand,
   signal: AbortSignal,
+  env: CodexEnvironment,
 ): Promise<string> {
   const deadline = createCodexRequestDeadline(command.timeoutMs, signal);
-  const auth = await readCodexAuthCredentials();
+  const auth = await readCodexAuthCredentials(env);
   const response = await fetchTranscription({ auth, command, deadline });
 
   if (!response.ok) {

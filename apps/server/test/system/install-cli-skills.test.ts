@@ -1,7 +1,8 @@
 import { setMachineEnvironmentVariable } from "../../src/services/machines/environment-storage.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { getHost, updateHost } from "@bb/db";
 import {
   systemCliSkillsStatusResponseSchema,
   systemInstallCliSkillsResponseSchema,
@@ -11,6 +12,8 @@ import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { seedHost, seedHostSession } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 import { resolveServerOwnedSkillCatalogEntries } from "../../src/services/skills/injected-skills.js";
+import { setPluginMachineProviderBridge } from "../../src/services/plugins/plugin-machine-provider-registry.js";
+import { installMachineProvider } from "../helpers/machine-provider.js";
 
 async function writeBuiltinCliSkill(harness: TestAppHarness): Promise<void> {
   const skillDirectory = join(
@@ -50,6 +53,111 @@ function installRequest(hostIds: string[]): Request {
 }
 
 describe("install cli skills", () => {
+  afterEach(() => {
+    setPluginMachineProviderBridge(undefined);
+  });
+
+  it("installs into the answering plugins' folders when another provider plugin fails", async () => {
+    await withTestHarness(async (harness) => {
+      await writeBuiltinCliSkill(harness);
+      const laptop = seedHostSession(harness.deps, { id: "host-laptop" });
+      const responder = registerHostRpcResponder(harness, {
+        hostId: laptop.host.id,
+        sessionId: laptop.session.id,
+        handle: (request) => {
+          if (request.command.type !== "plugin.host.call") {
+            return {
+              ok: true,
+              result: {
+                installations: [
+                  { name: "bb-cli", path: "/configured/claude/skills" },
+                ],
+              },
+            };
+          }
+          return request.command.pluginId === "provider-claude-code"
+            ? {
+                ok: true,
+                result: {
+                  output: {
+                    skillInstallRoots: ["/configured/claude/skills"],
+                    credentialFiles: [],
+                  },
+                },
+              }
+            : {
+                ok: false,
+                errorCode: "plugin_host_failed",
+                errorMessage: "worker crashed",
+              };
+        },
+      });
+
+      const response = await harness.app.request(
+        installRequest([laptop.host.id]),
+      );
+      const body = systemInstallCliSkillsResponseSchema.parse(
+        await readJson(response),
+      );
+      expect(body.results).toMatchObject([{ hostId: "host-laptop", ok: true }]);
+      expect(
+        responder.requests.find(
+          (request) => request.command.type === "host.install_global_skills",
+        )?.command,
+      ).toMatchObject({ providerRoots: ["/configured/claude/skills"] });
+    });
+  });
+
+  it("wakes a suspended machine before asking its provider plugins for folders", async () => {
+    await withTestHarness(async (harness) => {
+      await writeBuiltinCliSkill(harness);
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-suspended",
+      });
+      const resume = vi.fn(async () => ({ resource: { id: "restored" } }));
+      installMachineProvider({
+        resume,
+        suspend: async () => ({ resource: { id: "saved" } }),
+      });
+      updateHost(harness.db, harness.hub, host.id, {
+        machineProviderId: "test-machine",
+        phase: "suspended",
+        resource: { id: "saved" },
+        suspendedAt: 1,
+      });
+      registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) =>
+          request.command.type === "plugin.host.call"
+            ? {
+                ok: true,
+                result: {
+                  output: { skillInstallRoots: [], credentialFiles: [] },
+                },
+              }
+            : {
+                ok: true,
+                result: {
+                  installations: [
+                    { name: "bb-cli", path: "/home/u/.agents/skills" },
+                  ],
+                },
+              },
+      });
+
+      const response = await harness.app.request(installRequest([host.id]));
+      const body = systemInstallCliSkillsResponseSchema.parse(
+        await readJson(response),
+      );
+      expect(body.results).toMatchObject([
+        { hostId: "host-suspended", ok: true },
+      ]);
+      expect(resume).toHaveBeenCalledOnce();
+      expect(getHost(harness.db, host.id)?.phase).toBe("active");
+    });
+  });
+
   it("installs the built-in bb-cli tree on every requested machine", async () => {
     await withTestHarness(async (harness) => {
       await writeBuiltinCliSkill(harness);

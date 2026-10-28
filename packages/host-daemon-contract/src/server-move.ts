@@ -1,4 +1,8 @@
-import { lastServerMoveSchema, serverMoveStepIdSchema } from "@bb/domain";
+import {
+  isAbsoluteHostPath,
+  lastServerMoveSchema,
+  serverMoveStepIdSchema,
+} from "@bb/domain";
 import { z } from "zod";
 import { hostPlatformSchema } from "./local.js";
 
@@ -30,7 +34,11 @@ export const serverMoveCommandSchemas = {
   "server_move.inspect": z
     .object({
       type: z.literal("server_move.inspect"),
-      credentialFiles: z.array(z.string().min(1)).max(32),
+      credentialFiles: z
+        .array(
+          z.string().refine(isAbsoluteHostPath, "Expected an absolute path"),
+        )
+        .max(32),
       paths: z.array(z.string().min(1)).max(200),
       port: portSchema,
     })

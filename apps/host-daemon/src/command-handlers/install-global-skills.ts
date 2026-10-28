@@ -34,14 +34,7 @@ function globalSkillPaths(
 ): string[] {
   return [
     ...new Set([path.join(homeDir, ".agents", "skills"), ...providerRoots]),
-  ].map((root) => {
-    if (!path.isAbsolute(root))
-      throw new CommandDispatchError(
-        "invalid_path",
-        "Provider skill roots must be absolute",
-      );
-    return path.join(root, name);
-  });
+  ].map((root) => path.join(root, name));
 }
 
 export async function readGlobalSkillsStatus(

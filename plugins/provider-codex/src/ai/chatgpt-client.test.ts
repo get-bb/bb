@@ -256,6 +256,7 @@ describe("Codex ChatGPT client", () => {
         timeoutMs: 10000,
       },
       new AbortController().signal,
+      process.env,
     );
 
     expect(result).toBe("Short title");
@@ -298,6 +299,7 @@ describe("Codex ChatGPT client", () => {
         timeoutMs: 10000,
       },
       new AbortController().signal,
+      process.env,
     );
 
     expect(result).toBe("OpenAI title");
@@ -355,6 +357,7 @@ describe("Codex ChatGPT client", () => {
             timeoutMs: 10_000,
           },
           new AbortController().signal,
+          process.env,
         ),
       ).resolves.toBe(finalText || "Partial result");
       expect(completedResponse.wasCanceled()).toBe(true);
@@ -382,6 +385,7 @@ describe("Codex ChatGPT client", () => {
             timeoutMs: 10_000,
           },
           new AbortController().signal,
+          process.env,
         ),
       ).rejects.toMatchObject({ detailCode: "codex_response_invalid" });
       expect(completedResponse.wasCanceled()).toBe(true);
@@ -417,6 +421,7 @@ describe("Codex ChatGPT client", () => {
           timeoutMs: 10_000,
         },
         new AbortController().signal,
+        process.env,
       ),
     ).rejects.toMatchObject({
       detailCode: "codex_service_unavailable",
@@ -451,6 +456,7 @@ describe("Codex ChatGPT client", () => {
           timeoutMs: 10_000,
         },
         new AbortController().signal,
+        process.env,
       ),
     ).rejects.toMatchObject({
       detailCode: "codex_service_unavailable",
@@ -488,6 +494,7 @@ describe("Codex ChatGPT client", () => {
         timeoutMs: 10000,
       },
       new AbortController().signal,
+      process.env,
     );
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -523,6 +530,7 @@ describe("Codex ChatGPT client", () => {
           timeoutMs: 10000,
         },
         new AbortController().signal,
+        process.env,
       ),
     ).rejects.toMatchObject({
       detailCode: "codex_response_too_large",
@@ -546,6 +554,7 @@ describe("Codex ChatGPT client", () => {
           timeoutMs: 20,
         },
         new AbortController().signal,
+        process.env,
       ),
     ).rejects.toMatchObject({
       detailCode: "codex_request_timeout",
@@ -569,6 +578,7 @@ describe("Codex ChatGPT client", () => {
         timeoutMs: 10_000,
       },
       controller.signal,
+      process.env,
     );
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     controller.abort();
@@ -604,6 +614,7 @@ describe("Codex ChatGPT client", () => {
         timeoutMs: 10_000,
       },
       controller.signal,
+      process.env,
     );
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     controller.abort();
@@ -639,6 +650,7 @@ describe("Codex ChatGPT client", () => {
           timeoutMs: 60,
         },
         new AbortController().signal,
+        process.env,
       ),
     ).rejects.toMatchObject({
       detailCode: "codex_request_timeout",
@@ -667,6 +679,7 @@ describe("Codex ChatGPT client", () => {
           timeoutMs: 10000,
         },
         new AbortController().signal,
+        process.env,
       );
     } catch (error) {
       if (!(error instanceof Error)) {
@@ -719,6 +732,7 @@ describe("Codex ChatGPT client", () => {
         timeoutMs: 30000,
       },
       new AbortController().signal,
+      process.env,
     );
 
     expect(result).toBe("hello world");
@@ -769,6 +783,7 @@ describe("Codex ChatGPT client", () => {
           timeoutMs: 30000,
         },
         new AbortController().signal,
+        process.env,
       );
     } catch (error) {
       if (!(error instanceof Error)) {
@@ -815,6 +830,7 @@ describe("Codex ChatGPT client", () => {
           timeoutMs: 30000,
         },
         new AbortController().signal,
+        process.env,
       ),
     ).rejects.toMatchObject({
       detailCode: "codex_request_failed",
@@ -846,6 +862,7 @@ describe("Codex ChatGPT client", () => {
         timeoutMs: 30000,
       },
       new AbortController().signal,
+      process.env,
     );
 
     expect(result).toBe("hello openai");
@@ -896,6 +913,7 @@ describe("Codex ChatGPT client", () => {
           timeoutMs: 30000,
         },
         new AbortController().signal,
+        process.env,
       ),
     ).rejects.toMatchObject({
       detailCode: "codex_rate_limited",
@@ -933,6 +951,7 @@ describe("Codex ChatGPT client", () => {
           timeoutMs: 30000,
         },
         new AbortController().signal,
+        process.env,
       ),
     ).rejects.toMatchObject({
       detailCode: "codex_response_too_large",

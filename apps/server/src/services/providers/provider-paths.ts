@@ -2,6 +2,8 @@ import { internal_DO_NOT_USE_providerPathsHostContract } from "@get-bb/plugin-sd
 import type { WorkSessionDeps } from "../../types.js";
 import { callPluginHostRpc } from "../plugins/plugin-host-rpc.js";
 
+const NO_PROVIDER_PATHS = { skillInstallRoots: [], credentialFiles: [] };
+
 export async function resolveProviderPaths(
   deps: WorkSessionDeps,
   args: { hostId: string; timeoutMs: number },
@@ -15,20 +17,27 @@ export async function resolveProviderPaths(
   const answers = await Promise.all(
     [...pluginIds].map(async (pluginId) => {
       const artifact = deps.pluginHostArtifacts.get(pluginId);
-      if (!artifact)
-        throw new Error(`Provider plugin ${pluginId} has no host artifact`);
-      return internal_DO_NOT_USE_providerPathsHostContract.resolveProviderPaths.output.parse(
-        await callPluginHostRpc(deps, {
-          pluginId,
-          contract: internal_DO_NOT_USE_providerPathsHostContract,
-          method: "resolveProviderPaths",
-          input: {},
-          hostId: args.hostId,
-          projectId: null,
-          timeoutMs: args.timeoutMs,
-          artifact,
-        }),
-      );
+      try {
+        if (!artifact) throw new Error("The plugin has no live host artifact");
+        return internal_DO_NOT_USE_providerPathsHostContract.resolveProviderPaths.output.parse(
+          await callPluginHostRpc(deps, {
+            pluginId,
+            contract: internal_DO_NOT_USE_providerPathsHostContract,
+            method: "resolveProviderPaths",
+            input: {},
+            hostId: args.hostId,
+            projectId: null,
+            timeoutMs: args.timeoutMs,
+            artifact,
+          }),
+        );
+      } catch (error) {
+        deps.logger.warn(
+          { pluginId, hostId: args.hostId, err: error },
+          `Plugin "${pluginId}" failed to resolve provider paths; leaving its paths out`,
+        );
+        return NO_PROVIDER_PATHS;
+      }
     }),
   );
   return {

@@ -51,6 +51,7 @@ it("returns a transcript when the endpoint responds after 64 seconds", async () 
       text: await transcribeCodexVoice(
         codexAiTranscribeInputSchema.parse(call.input),
         call.signal ?? new AbortController().signal,
+        process.env,
       ),
     }),
   });

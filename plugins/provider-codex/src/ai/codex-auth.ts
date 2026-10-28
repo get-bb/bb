@@ -44,15 +44,17 @@ export type CodexAuthFile =
   | { state: "unusable"; authPath: string; reason: CodexAuthUnusableReason }
   | { state: "ok"; authPath: string; credentials: CodexAuthCredentials };
 
+export type CodexEnvironment = Readonly<Record<string, string | undefined>>;
+
 type ClassifiedAuthJson =
   | { state: "unusable"; reason: CodexAuthUnusableReason }
   | { state: "ok"; credentials: CodexAuthCredentials };
 
-function codexAuthPath(): string {
+function codexAuthPath(env: CodexEnvironment): string {
   return path.join(
     resolveCodexHome({
       homeDir: os.homedir(),
-      env: process.env,
+      env,
       cwd: process.cwd(),
     }),
     CODEX_AUTH_FILE_NAME,
@@ -168,8 +170,10 @@ function classifyAuthJson(value: JsonValue): ClassifiedAuthJson {
   };
 }
 
-export async function readCodexAuthFile(): Promise<CodexAuthFile> {
-  const authPath = codexAuthPath();
+export async function readCodexAuthFile(
+  env: CodexEnvironment,
+): Promise<CodexAuthFile> {
+  const authPath = codexAuthPath(env);
   let raw: string;
   try {
     raw = await fs.readFile(authPath, "utf8");
@@ -201,8 +205,10 @@ const UNUSABLE_AUTH_MESSAGES: Record<
     "Codex auth tokens do not include a ChatGPT account id. Run codex login on this host.",
 };
 
-export async function readCodexAuthCredentials(): Promise<CodexAuthCredentials> {
-  const auth = await readCodexAuthFile();
+export async function readCodexAuthCredentials(
+  env: CodexEnvironment,
+): Promise<CodexAuthCredentials> {
+  const auth = await readCodexAuthFile(env);
   switch (auth.state) {
     case "ok":
       return auth.credentials;

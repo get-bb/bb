@@ -1,6 +1,6 @@
 import path from "node:path";
 import { internal_DO_NOT_USE_providerPathsHostContract } from "@get-bb/plugin-sdk/host";
-import { resolveClaudeConfigDir } from "./config-home.js";
+import { resolveSharedClaudeConfigDir } from "./config-home.js";
 import os from "node:os";
 import {
   experimental_defineHostEntry,
@@ -16,22 +16,22 @@ export default experimental_defineHostEntry({
     ...internal_DO_NOT_USE_providerPathsHostContract,
   },
   handlers: {
-    resolveProviderPaths: () => {
-      const configDir = resolveClaudeConfigDir({
-        cwd: process.cwd(),
+    resolveProviderPaths: (_input, context) => {
+      const configDir = resolveSharedClaudeConfigDir({
         homeDir: os.homedir(),
-        env: process.env,
+        env: context.experimental_env,
       });
       return {
-        skillInstallRoots: [path.join(configDir, "skills")],
+        skillInstallRoots:
+          configDir === null ? [] : [path.join(configDir, "skills")],
         credentialFiles: [],
       };
     },
-    resolveNativeRoots: (input) =>
+    resolveNativeRoots: (input, context) =>
       resolveClaudeNativeRoots({
         cwd: input.cwd,
         homeDir: os.homedir(),
-        env: process.env,
+        env: context.experimental_env,
       }),
   },
 });

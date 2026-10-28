@@ -35,6 +35,8 @@ export interface ExperimentalCreateHostEntryHarnessOptions {
     readonly dataDir: string;
     readonly tempDir: string;
   };
+  /** Environment handed to every call. Defaults to `process.env`. */
+  readonly experimental_env?: Readonly<Record<string, string>>;
   readonly experimental_watch?: (
     options: ExperimentalHostWatchOptions,
     listener: ExperimentalHostWatchListener,
@@ -153,6 +155,13 @@ export function experimental_createHostEntryHarness<
           signal: controller.signal,
           lifecycle: { signal: lifecycleController.signal },
           experimental_paths: paths,
+          experimental_env:
+            harnessOptions.experimental_env ??
+            Object.fromEntries(
+              Object.entries(process.env).filter(
+                (entry): entry is [string, string] => entry[1] !== undefined,
+              ),
+            ),
           async experimental_emitSignal(signalName, payload) {
             const descriptor = entry.experimental_signals?.[signalName];
             if (descriptor === undefined) {

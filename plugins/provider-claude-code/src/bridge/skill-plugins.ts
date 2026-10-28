@@ -10,8 +10,8 @@ import {
 } from "node:fs";
 import { experimental_scanSkillFiles as scanSkillFiles } from "@get-bb/plugin-sdk/provider-bridge";
 import { access } from "node:fs/promises";
-import { tmpdir, homedir } from "node:os";
-import { join, dirname, resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { join, dirname } from "node:path";
 
 export interface ClaudeSkillPluginRoot {
   id: string;

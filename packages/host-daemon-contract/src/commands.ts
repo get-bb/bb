@@ -33,6 +33,7 @@ import {
   gitBranchNameSchema,
   gitBranchOptionsSchema,
   gitSourceInspectionSchema,
+  isAbsoluteHostPath,
 } from "@bb/domain";
 import { z } from "zod";
 import {
@@ -869,7 +870,9 @@ export type HostInstallGlobalSkill = z.infer<
 const hostInstallGlobalSkillsCommandSchema = z
   .object({
     type: z.literal("host.install_global_skills"),
-    providerRoots: z.array(z.string().min(1)).max(32),
+    providerRoots: z
+      .array(z.string().refine(isAbsoluteHostPath, "Expected an absolute path"))
+      .max(32),
     skills: z.array(hostInstallGlobalSkillSchema).min(1).max(64),
   })
   .strict();
@@ -877,7 +880,9 @@ const hostInstallGlobalSkillsCommandSchema = z
 const hostGlobalSkillsStatusCommandSchema = z
   .object({
     type: z.literal("host.global_skills_status"),
-    providerRoots: z.array(z.string().min(1)).max(32),
+    providerRoots: z
+      .array(z.string().refine(isAbsoluteHostPath, "Expected an absolute path"))
+      .max(32),
     names: z
       .array(z.string().max(64).regex(INJECTED_SKILL_NAME_PATTERN))
       .min(1)
@@ -1955,9 +1960,7 @@ type HostDaemonRetryableOnlineRpcCommandSchema =
 type HostDaemonResultSchemaMapForTransport<
   Transport extends HostDaemonCommandTransport,
 > = {
-  [
-    Descriptor in HostDaemonCommandDescriptorForTransport<Transport> as Descriptor["type"]
-  ]: Descriptor["resultSchema"];
+  [Descriptor in HostDaemonCommandDescriptorForTransport<Transport> as Descriptor["type"]]: Descriptor["resultSchema"];
 };
 
 type HostDaemonCommandResultSchemaMap =

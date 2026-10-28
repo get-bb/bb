@@ -14,6 +14,15 @@ export function resolveClaudeConfigDir(args: ProviderHomeContext): string {
   );
 }
 
+export function resolveSharedClaudeConfigDir(args: {
+  homeDir: string;
+  env: Readonly<Record<string, string | undefined>>;
+}): string | null {
+  const configured = args.env.CLAUDE_CONFIG_DIR;
+  if (configured !== undefined && !path.isAbsolute(configured)) return null;
+  return resolveClaudeConfigDir({ ...args, cwd: null });
+}
+
 export function resolveClaudeProfile(args: ProviderHomeContext): {
   configDir: string;
   configured: string | null;
