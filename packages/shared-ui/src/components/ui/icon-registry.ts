@@ -123,6 +123,7 @@ export const EXTENDED_ICON_NAMES = [
   "TextWrap",
   "TimeSchedule",
   "UserRound",
+  "UserWarning01",
   "ZoomIn",
   "ZoomOut",
 ] as const;

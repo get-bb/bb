@@ -101,6 +101,7 @@ const USAGE: Partial<Record<IconName, string>> = {
     "Child thread badges, running child threads, and thread assignment events",
   UserRound: "Thread mentions, thread links, and the Parent card and row",
   UserRoundPlus: "Subagent timeline rows",
+  UserWarning01: "Notify parent: the thread info row and thread action",
   Workflow: "Workflow card indicator in the prompt stack",
   X: "Close dialogs/drawers, clear search input, remove attachment, close metadata panel",
   Zap: "Fast-mode indicator in model picker trigger, Fast-mode toggle row",
