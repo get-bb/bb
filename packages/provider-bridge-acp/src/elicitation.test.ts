@@ -22,6 +22,47 @@ function questions(plan: ReturnType<typeof planAcpElicitation>) {
 }
 
 describe("planAcpElicitation", () => {
+  it.each(["oneOf", "anyOf"])(
+    "preserves %s choices with untitled options for single and multiple selection",
+    (keyword) => {
+      const choices = {
+        [keyword]: [{ const: "a" }, { const: "b", title: "B" }],
+      };
+      const plan = questions(
+        planAcpElicitation(
+          form({
+            single: { type: "string", ...choices },
+            multiple: { type: "array", items: choices },
+          }),
+        ),
+      );
+      expect(
+        plan.payload.questions.map((question) => question.options),
+      ).toEqual([
+        [
+          { value: "a", label: "a" },
+          { value: "b", label: "B" },
+        ],
+        [
+          { value: "a", label: "a" },
+          { value: "b", label: "B" },
+        ],
+      ]);
+      expect(
+        plan.toResponse({
+          kind: "user_answer",
+          answers: {
+            single: { selected: ["a"] },
+            multiple: { selected: ["a", "b"] },
+          },
+        }),
+      ).toEqual({
+        action: "accept",
+        content: { single: "a", multiple: ["a", "b"] },
+      });
+    },
+  );
+
   it("turns each field kind into a question and decodes the answers back to typed content", () => {
     const plan = questions(
       planAcpElicitation(
@@ -466,7 +507,10 @@ describe("planAcpElicitation", () => {
     expect(
       plan.toResponse({
         kind: "user_answer",
-        answers: { q0: { selected: ["alpha"] }, q1: { selected: [], freeText: "BB-1" } },
+        answers: {
+          q0: { selected: ["alpha"] },
+          q1: { selected: [], freeText: "BB-1" },
+        },
       }),
     ).toEqual({ action: "accept", content: { q0: "alpha", q1: "BB-1" } });
   });

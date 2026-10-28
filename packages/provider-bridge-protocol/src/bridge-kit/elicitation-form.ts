@@ -73,10 +73,9 @@ const nativeBase = {
   title: z.string().optional(),
   description: z.string().optional(),
 };
-const nativeOptionSchema = z.object({
-  const: z.string(),
-  title: z.string(),
-});
+const nativeOptionSchema = z
+  .object({ const: z.string(), title: z.string().optional() })
+  .transform((option) => ({ ...option, title: option.title ?? option.const }));
 const nativeOptionsSchema = z.array(nativeOptionSchema).min(1);
 const nativeEnumSchema = z.array(z.string()).min(1);
 const nativeFieldSchema = z.union([
@@ -93,6 +92,14 @@ const nativeFieldSchema = z.union([
     oneOf: nativeOptionsSchema,
     default: z.string().optional(),
   }),
+  z
+    .object({
+      ...nativeBase,
+      type: z.literal("string"),
+      anyOf: nativeOptionsSchema,
+      default: z.string().optional(),
+    })
+    .transform(({ anyOf, ...field }) => ({ ...field, oneOf: anyOf })),
   z.object({
     ...nativeBase,
     type: z.literal("string"),
@@ -121,6 +128,9 @@ const nativeFieldSchema = z.union([
     items: z.union([
       z.object({ type: z.literal("string"), enum: nativeEnumSchema }),
       z.object({ anyOf: nativeOptionsSchema }),
+      z
+        .object({ oneOf: nativeOptionsSchema })
+        .transform(({ oneOf }) => ({ anyOf: oneOf })),
     ]),
     default: z.array(z.string()).optional(),
   }),
