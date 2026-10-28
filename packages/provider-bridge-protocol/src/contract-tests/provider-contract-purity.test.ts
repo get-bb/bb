@@ -139,7 +139,7 @@ function collectProviderHomeResolutions(): string[] {
         /(?:__tests__|test-support|fake-|\.test\.)/u.test(relative)
       )
         continue;
-      const file = `${directory}/${relative}`;
+      const file = `${directory}/${relative.replaceAll("\\", "/")}`;
       if (
         [
           "plugins/provider-claude-code/src/config-home.ts",

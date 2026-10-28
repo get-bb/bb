@@ -1,5 +1,6 @@
 import {
   afterAll,
+  afterEach,
   beforeAll,
   beforeEach,
   describe,
@@ -15,30 +16,16 @@ const state = vi.hoisted(() => ({
   filesByPath: null as Record<string, string> | null,
 }));
 
-vi.mock("node:child_process", async () => {
-  const { EventEmitter } = await import("node:events");
-  return {
-    execFile: (
-      _file: string,
-      args: readonly string[],
-      _options: object,
-      callback: (error: Error | null, stdout: string, stderr: string) => void,
-    ) => {
-      const stored =
-        state.keychainByService === null
-          ? state.keychain
-          : state.keychainByService[args[args.indexOf("-s") + 1] ?? ""];
-      queueMicrotask(() => {
-        if (stored === undefined) {
-          callback(new Error("item not found"), "", "");
-        } else {
-          callback(null, stored, "");
-        }
-      });
-      return new EventEmitter();
-    },
-  };
-});
+vi.mock("@get-bb/plugin-sdk/process", () => ({
+  experimental_execHostFile: async (_file: string, args: readonly string[]) => {
+    const stored =
+      state.keychainByService === null
+        ? state.keychain
+        : state.keychainByService[args[args.indexOf("-s") + 1] ?? ""];
+    if (stored === undefined) throw new Error("item not found");
+    return { stdout: stored, stderr: "" };
+  },
+}));
 
 vi.mock("node:fs/promises", () => ({
   default: {
@@ -87,10 +74,14 @@ afterAll(() => {
   vi.unstubAllGlobals();
 });
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 beforeEach(() => {
   state.keychainByService = null;
   state.filesByPath = null;
-  vi.unstubAllEnvs();
+  vi.stubEnv("CLAUDE_CONFIG_DIR", undefined);
   const credentials = JSON.stringify({
     claudeAiOauth: {
       accessToken: "test-access-token",
@@ -162,7 +153,7 @@ describe("Claude Code credentials under CLAUDE_CONFIG_DIR", () => {
       },
     });
   }
-  const profile = "/profiles/personal";
+  const profile = path.resolve(os.tmpdir(), "profiles", "personal");
   const profileService = `Claude Code-credentials-${createHash("sha256").update(profile).digest("hex").slice(0, 8)}`;
   const expired = oauth("stale-default-token", 1);
   const valid = oauth("profile-token", null);
