@@ -168,6 +168,12 @@ const automationAgentExecutionSchema = z
   })
   .strict();
 
+const automationScriptTimeoutMsSchema = z
+  .number()
+  .int()
+  .positive()
+  .max(AUTOMATION_SCRIPT_TIMEOUT_MAX_MS);
+
 const automationScriptExecutionFields = {
   mode: z.literal("script"),
   script: z.string().min(1).max(AUTOMATION_SCRIPT_MAX_LENGTH).optional(),
@@ -177,12 +183,9 @@ const automationScriptExecutionFields = {
     .max(AUTOMATION_SCRIPT_FILE_MAX_LENGTH)
     .optional(),
   interpreter: automationScriptInterpreterSchema.optional(),
-  timeoutMs: z
-    .number()
-    .int()
-    .positive()
-    .max(AUTOMATION_SCRIPT_TIMEOUT_MAX_MS)
-    .default(AUTOMATION_SCRIPT_TIMEOUT_DEFAULT_MS),
+  timeoutMs: automationScriptTimeoutMsSchema.default(
+    AUTOMATION_SCRIPT_TIMEOUT_DEFAULT_MS,
+  ),
   env: z.record(z.string(), z.string()).optional(),
 };
 
@@ -316,9 +319,31 @@ export type AgentExecutionUpdate = z.infer<typeof agentExecutionUpdateSchema>;
 
 const scriptExecutionUpdateSchema = z
   .object({
-    workingDirectory: automationScriptWorkingDirectorySchema,
+    script: automationScriptExecutionFields.script,
+    scriptFile: automationScriptExecutionFields.scriptFile,
+    interpreter: automationScriptExecutionFields.interpreter,
+    timeoutMs: automationScriptTimeoutMsSchema.optional(),
+    env: automationScriptExecutionFields.env,
+    workingDirectory: automationScriptWorkingDirectorySchema.optional(),
   })
-  .strict();
+  .strict()
+  .refine(
+    (value) =>
+      value.script !== undefined ||
+      value.interpreter !== undefined ||
+      value.timeoutMs !== undefined ||
+      value.env !== undefined ||
+      value.workingDirectory !== undefined,
+    { message: "at least one script execution field is required" },
+  )
+  .refine(
+    (value) => value.scriptFile === undefined || value.script !== undefined,
+    {
+      message: "scriptFile names new script content and requires script",
+      path: ["scriptFile"],
+    },
+  );
+export type ScriptExecutionUpdate = z.infer<typeof scriptExecutionUpdateSchema>;
 
 export const automationResponseSchema = z
   .object({

@@ -15,7 +15,8 @@ The plugin stores a private copy under
 `<data dir>/plugins/automations/scripts/<automationId>/`. Runs use this copy.
 Source edits do not apply until an update copies the file again.
 
-The create and update commands print the exact refresh command. The create,
+The create and update commands print the exact refresh command; it keeps the
+interpreter, timeout, variables, and working directory. The create,
 update, and show commands print the stored path on the `Script:` line. JSON
 output returns it as `execution.storedScriptPath`.
 
@@ -37,7 +38,7 @@ source on the server's co-located host. Personal scripts and projects without
 such a source default to `automation-storage`. Automations stored before this
 field existed also decode as `automation-storage`, so an upgrade does not
 silently change their relative
-paths. Replacing an existing script preserves its current policy unless the
+paths. Updating an existing script preserves its current policy unless the
 update includes `--working-directory`; changing an agent automation to script
 uses the same source-aware default.
 

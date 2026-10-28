@@ -439,6 +439,71 @@ describe("automations server plugin harness", () => {
       env: { CHANNEL: "qa" },
     });
 
+    const readScript = async () =>
+      automationDetailResponseSchema.parse(
+        await harness.callRpc("automations_get", {
+          projectId: PROJECT_ID,
+          automationId: created.id,
+        }),
+      ).execution;
+    const contentOnlyResult = await harness.runCli([
+      "update",
+      created.id,
+      "--project",
+      PROJECT_ID,
+      "--script",
+      "echo refreshed",
+    ]);
+    expect(contentOnlyResult.exitCode).toBe(0);
+    expect(await readScript()).toMatchObject({
+      script: "echo refreshed",
+      interpreter: "bash",
+      workingDirectory: { type: "project" },
+      timeoutMs: 12_000,
+      env: { CHANNEL: "qa" },
+    });
+
+    const envOnlyResult = await harness.runCli([
+      "update",
+      created.id,
+      "--project",
+      PROJECT_ID,
+      "--env-json",
+      '{"CHANNEL":"prod"}',
+    ]);
+    expect(envOnlyResult.exitCode).toBe(0);
+    expect(await readScript()).toMatchObject({
+      script: "echo refreshed",
+      timeoutMs: 12_000,
+      env: { CHANNEL: "prod" },
+    });
+
+    const clearEnvResult = await harness.runCli([
+      "update",
+      created.id,
+      "--project",
+      PROJECT_ID,
+      "--env-json",
+      "{}",
+    ]);
+    expect(clearEnvResult.exitCode).toBe(0);
+    expect(await readScript()).not.toHaveProperty("env");
+
+    const mixedResult = await harness.runCli([
+      "update",
+      created.id,
+      "--project",
+      PROJECT_ID,
+      "--model",
+      "gpt-5",
+      "--timeout",
+      "5000",
+    ]);
+    expect(mixedResult.exitCode).toBe(1);
+    expect(mixedResult.stderr).toContain(
+      "Cannot combine agent execution flags with script flags",
+    );
+
     const errorResult = await harness.runCli([
       "create",
       "--project",
