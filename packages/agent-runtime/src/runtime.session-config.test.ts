@@ -54,6 +54,8 @@ describe("session config reconciliation", () => {
     mode: { dynamicTools: ApplyMode; skills: ApplyMode };
     skillRoots?: AgentRuntimeSkillRoot[];
     sessionSkills?: boolean;
+    sessionRestorable?: boolean;
+    initialThreads?: [string, AgentRuntimeSkillRoot[]][];
   }): Promise<{
     events: ThreadEvent[];
     processLog: ReturnType<typeof createScriptedEchoProcessLog>;
@@ -91,7 +93,10 @@ describe("session config reconciliation", () => {
         onToolCall: async () => ({ contentItems: [], success: true }),
       }),
       createScriptedEchoLaunch({
-        scripted: { sessionRestorable: true, uniqueProviderThreadIds: true },
+        scripted: {
+          sessionRestorable: args.sessionRestorable ?? true,
+          uniqueProviderThreadIds: true,
+        },
       }),
     );
     runtimes.push(runtime);
@@ -109,7 +114,11 @@ describe("session config reconciliation", () => {
         skillRoots,
       });
     };
-    await start("t1", args.skillRoots ?? []);
+    await Promise.all(
+      (args.initialThreads ?? [["t1", args.skillRoots ?? []]]).map(
+        ([threadId, roots]) => start(threadId, roots),
+      ),
+    );
     let turnCount = 0;
     const turnOn = async (
       threadId: string,
@@ -297,5 +306,86 @@ describe("session config reconciliation", () => {
     ).toEqual([undefined, undefined]);
     expect(spawns(processLog)).toHaveLength(2);
     expect(runtime.listSkillRootsInUse()).toEqual([...rootsB, ...rootsB]);
+  });
+
+  function configWarnings(events: ThreadEvent[]) {
+    return events.filter(
+      (event) =>
+        event.type === "provider/warning" && event.category === "config",
+    );
+  }
+
+  it("keeps a fixed bridge's start-time skills and warns once", async () => {
+    const rootsA = [skillRoot("a")];
+    const rootsB = [skillRoot("b")];
+    const { events, record, turnOn } = await startRuntime({
+      mode: { dynamicTools: "resume", skills: "fixed" },
+      skillRoots: rootsA,
+    });
+
+    await turnOn("t1", "first", { skillRoots: rootsB });
+    await turnOn("t1", "second", { skillRoots: rootsB });
+
+    expect(requests(record, "thread/resume")).toEqual([]);
+    expect(
+      requests(record, "turn/start").map((entry) => entry.params?.skillRoots),
+    ).toEqual([undefined, undefined]);
+    expect(configWarnings(events)).toHaveLength(1);
+  });
+
+  it("keeps an unrestorable session on its catalog's process and warns instead of resuming it", async () => {
+    const rootsA = [skillRoot("a")];
+    const rootsB = [skillRoot("b")];
+    const { events, processLog, record, turnOn } = await startRuntime({
+      mode: { dynamicTools: "resume", skills: "resume" },
+      skillRoots: rootsA,
+      sessionSkills: false,
+      sessionRestorable: false,
+    });
+
+    await turnOn("t1", "after skills changed", { skillRoots: rootsB });
+
+    expect(requests(record, "thread/stop")).toEqual([]);
+    expect(requests(record, "thread/resume")).toEqual([]);
+    expect(spawns(processLog)).toHaveLength(1);
+    expect(configWarnings(events)).toHaveLength(1);
+  });
+
+  it("starts a thread without skills on its own process after one with skills on a bridge without per-session skills", async () => {
+    const rootsA = [skillRoot("a")];
+    const { processLog, record, start } = await startRuntime({
+      mode: { dynamicTools: "resume", skills: "resume" },
+      skillRoots: rootsA,
+      sessionSkills: false,
+    });
+
+    await start("t2", []);
+
+    expect(spawns(processLog)).toHaveLength(2);
+    expect(
+      requests(record, "skills/configure").map((entry) => entry.params),
+    ).toEqual([{ roots: rootsA }]);
+  });
+
+  it("gives concurrent starts with different catalogs separate processes on a bridge without per-session skills", async () => {
+    const rootsA = [skillRoot("a")];
+    const rootsB = [skillRoot("b")];
+    const { processLog, record } = await startRuntime({
+      mode: { dynamicTools: "resume", skills: "resume" },
+      sessionSkills: false,
+      initialThreads: [
+        ["t1", rootsA],
+        ["t2", rootsB],
+      ],
+    });
+
+    expect(spawns(processLog)).toHaveLength(2);
+    expect(
+      requests(record, "skills/configure")
+        .map((entry) => entry.params)
+        .sort((left, right) =>
+          JSON.stringify(left).localeCompare(JSON.stringify(right)),
+        ),
+    ).toEqual([{ roots: rootsA }, { roots: rootsB }]);
   });
 });

@@ -343,8 +343,10 @@ perSession: true }` takes roots per session: `thread/start`,
 default for sessions constructed without `skillRoots` (it never changes a
 running session). A bridge that declares `configure` without `perSession`
 receives `skills/configure` once, when its process starts, and the runtime
-runs one process per skill catalog for it, moving a thread to the process for
-its new catalog by resuming it there. A bridge that declares nothing never
+runs one process per skill catalog for it (a thread without skills uses the
+process with none), moving a thread to the process for its new catalog by
+resuming it there; a session that is not restorable keeps its catalog, with
+one warning. A bridge that declares nothing never
 receives skill roots and runs without injected skills, so a bridge that
 answers unknown methods with `METHOD_NOT_FOUND` still starts threads. The
 runtime never probes.

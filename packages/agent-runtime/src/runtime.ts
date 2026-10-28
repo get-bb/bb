@@ -273,12 +273,12 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   const additionalWorkspaceWriteRoots =
     options.additionalWorkspaceWriteRoots ?? [];
   const defaultSkillRoots = requireAbsoluteSkillRoots(options.skillRoots ?? []);
-  const sessionSkillsByBaseKey = new Map<string, boolean>();
-  const processKeyByCatalogKey = new Map<string, string>();
+  const perSessionSkillProcessKeyByBaseKey = new Map<string, string>();
   let nextRequestId = 1;
   const threadIdentityRegistry = new RuntimeThreadIdentityRegistry();
   const threadRuntimeConfigs = new Map<string, ThreadRuntimeConfig>();
   const fixedToolWarningByThreadId = new Map<string, string>();
+  const fixedSkillWarningByThreadId = new Map<string, string>();
   const rateLimitedRetryDelaysMs =
     options.rateLimitRetry?.delaysMs ?? DEFAULT_RATE_LIMITED_RETRY_DELAYS_MS;
   const threadCreationRequestTimeoutMs =
@@ -367,16 +367,26 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     workspacePath: options.workspacePath,
   });
 
+  function providerBaseProcessKey(args: {
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
+    providerId: string;
+  }): string {
+    return `${args.providerId}#bridge:${bridgeLaunchProcessKey(args.bridgeLaunch)}`;
+  }
+
   function resolveProviderProcessKey(
     args: ResolveProviderProcessKeyArgs,
   ): string {
-    const baseKey = `${args.providerId}#bridge:${bridgeLaunchProcessKey(args.bridgeLaunch)}`;
+    const baseKey = providerBaseProcessKey(args);
     const roots = requireAbsoluteSkillRoots(args.skillRoots ?? []);
-    if (roots.length === 0 || sessionSkillsByBaseKey.get(baseKey) !== false) {
+    const perSessionProcessKey = perSessionSkillProcessKeyByBaseKey.get(baseKey);
+    if (perSessionProcessKey !== undefined) {
+      return perSessionProcessKey;
+    }
+    if (roots.length === 0) {
       return baseKey;
     }
-    const catalogKey = `${baseKey}#skills:${createHash("sha256").update(JSON.stringify(roots)).digest("hex")}`;
-    return processKeyByCatalogKey.get(catalogKey) ?? catalogKey;
+    return `${baseKey}#skills:${createHash("sha256").update(JSON.stringify(roots)).digest("hex")}`;
   }
 
   function requireProviderProcessForThread(threadId: string): ProviderProcess {
@@ -742,6 +752,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
 
   function clearThreadRuntimeConfig(threadId: string): void {
     fixedToolWarningByThreadId.delete(threadId);
+    fixedSkillWarningByThreadId.delete(threadId);
     threadsAwaitingBridgeRestart.delete(threadId);
     threadsRetryingBridgeRestartOnIdle.delete(threadId);
     idleProviderSessionSinceMsByThreadId.delete(threadId);
@@ -1519,6 +1530,27 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     });
   }
 
+  function warnFixedSkillRoots(args: {
+    threadId: string;
+    skillRoots: readonly AgentRuntimeSkillRoot[];
+  }): void {
+    const digest = JSON.stringify(args.skillRoots);
+    if (fixedSkillWarningByThreadId.get(args.threadId) === digest) {
+      return;
+    }
+    fixedSkillWarningByThreadId.set(args.threadId, digest);
+    options.onEvent({
+      type: "provider/warning",
+      threadId: args.threadId,
+      providerThreadId: requireProviderThreadId(args.threadId),
+      category: "config",
+      summary: "This thread keeps the skills it started with",
+      details:
+        "Skills changed after this thread's session started, and its provider cannot change a running session's skills. Start a new thread to use the current skills.",
+      scope: { kind: "thread" },
+    });
+  }
+
   interface ReconciledSessionConfig {
     dynamicTools: DynamicTool[] | undefined;
     skillRoots: readonly AgentRuntimeSkillRoot[] | undefined;
@@ -1553,13 +1585,16 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       nextSkills !== undefined &&
       !isDeepStrictEqual(config.skillRoots, nextSkills);
     const toolsMode = applies(declared.dynamicTools);
-    const skillsMode = proc.adapter.sessionSkills
-      ? applies(declared.skills)
-      : "resume";
+    const skillsMode = applies(
+      proc.adapter.sessionSkills ? declared.skills : "resume",
+    );
     const resumeForTools = toolsChanged && toolsMode === "resume";
     const resumeForSkills = skillsChanged && skillsMode === "resume";
     if (toolsChanged && toolsMode === "fixed") {
       warnFixedDynamicTools({ threadId: args.threadId, dynamicTools: nextTools });
+    }
+    if (skillsChanged && skillsMode === "fixed") {
+      warnFixedSkillRoots({ threadId: args.threadId, skillRoots: nextSkills });
     }
     const liveTools =
       toolsChanged && toolsMode === "live" ? nextTools : undefined;
@@ -1767,14 +1802,12 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         processKey,
         providerId,
       }).adapter;
-      const baseKey = resolveProviderProcessKey({ bridgeLaunch, providerId });
-      const learned = !sessionSkillsByBaseKey.has(baseKey);
-      sessionSkillsByBaseKey.set(baseKey, adapter.sessionSkills);
-      if (learned && !adapter.sessionSkills && processKey === baseKey) {
-        processKeyByCatalogKey.set(
-          resolveProviderProcessKey({ bridgeLaunch, providerId, skillRoots }),
-          baseKey,
-        );
+      const baseKey = providerBaseProcessKey({ bridgeLaunch, providerId });
+      if (
+        adapter.sessionSkills &&
+        !perSessionSkillProcessKeyByBaseKey.has(baseKey)
+      ) {
+        perSessionSkillProcessKeyByBaseKey.set(baseKey, processKey);
       }
     },
 

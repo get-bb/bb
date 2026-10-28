@@ -79,6 +79,13 @@ const CODEX_SCRIPT: ScriptedEchoLaunchScript = {
 };
 
 const MANAGER_BRIDGE_LAUNCH = createScriptedEchoLaunch();
+const SUPERSEDING_BRIDGE_LAUNCH = {
+  ...MANAGER_BRIDGE_LAUNCH,
+  source: {
+    ...MANAGER_BRIDGE_LAUNCH.source,
+    digest: `b${MANAGER_BRIDGE_LAUNCH.source.digest.slice(1)}`,
+  },
+};
 const MANAGER_PROVIDER = {
   bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
   processKey: "fake",
@@ -260,7 +267,7 @@ describe("createAgentRuntime process lifecycle", () => {
     });
 
     await manager.ensureProvider({
-      bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
+      bridgeLaunch: SUPERSEDING_BRIDGE_LAUNCH,
       processKey: freshKey,
       providerId: "fake",
     });
@@ -278,6 +285,32 @@ describe("createAgentRuntime process lifecycle", () => {
         providerId: "fake",
       }).child.killed,
     ).toBe(false);
+
+    await manager.shutdown();
+  });
+
+  it("keeps a threadless process of the same bridge launch for another skill catalog", async () => {
+    const manager = createProviderProcessManager({
+      onProcessExit: vi.fn(),
+      workspacePath: tmpDir,
+    });
+
+    await manager.ensureProvider({
+      bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
+      processKey: "fake#bridge:aaaaaaaaaaaaaaaa#skills:a",
+      providerId: "fake",
+    });
+    const firstCatalog = manager.requireProviderProcess({
+      processKey: "fake#bridge:aaaaaaaaaaaaaaaa#skills:a",
+      providerId: "fake",
+    });
+    await manager.ensureProvider({
+      bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
+      processKey: "fake#bridge:aaaaaaaaaaaaaaaa#skills:b",
+      providerId: "fake",
+    });
+
+    expect(processIsAlive(firstCatalog.child.pid ?? 0)).toBe(true);
 
     await manager.shutdown();
   });
