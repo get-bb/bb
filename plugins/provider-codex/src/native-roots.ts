@@ -13,13 +13,16 @@ import { resolveCodexHome } from "./config-home.js";
 
 export const CODEX_NATIVE_ROOTS_DECLARATION: Pick<
   PluginProviderDeclaration,
-  "experimental_nativeSkillRoots" | "experimental_resolvesNativeRoots"
+  | "experimental_nativeSkillRoots"
+  | "experimental_resolvesNativeRoots"
+  | "internal_DO_NOT_USE_resolvesProviderPaths"
 > = {
   experimental_nativeSkillRoots: {
     user: [".agents/skills"],
     project: [".codex/skills", { path: ".agents/skills", ancestors: true }],
   },
   experimental_resolvesNativeRoots: true,
+  internal_DO_NOT_USE_resolvesProviderPaths: true,
 };
 
 export type CodexResolvedSkillRoot = NonNullable<

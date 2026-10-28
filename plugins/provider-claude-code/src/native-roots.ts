@@ -15,6 +15,7 @@ export const CLAUDE_NATIVE_ROOTS_DECLARATION: Pick<
   | "experimental_nativeSkillRoots"
   | "experimental_nativeCommandRoots"
   | "experimental_resolvesNativeRoots"
+  | "internal_DO_NOT_USE_resolvesProviderPaths"
 > = {
   experimental_nativeSkillRoots: {
     project: [
@@ -29,6 +30,7 @@ export const CLAUDE_NATIVE_ROOTS_DECLARATION: Pick<
     project: [".claude/commands"],
   },
   experimental_resolvesNativeRoots: true,
+  internal_DO_NOT_USE_resolvesProviderPaths: true,
 };
 
 const CLAUDE_PLUGIN_MANIFEST_MARKER = ".claude-plugin/plugin.json";

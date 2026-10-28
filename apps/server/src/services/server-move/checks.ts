@@ -308,7 +308,6 @@ async function inspectHost(
       type: "server_move.inspect",
       credentialFiles: (
         await resolveProviderPaths(environment.deps, {
-          providerId: "codex",
           hostId,
           timeoutMs: environment.inspectTimeoutMs,
         })

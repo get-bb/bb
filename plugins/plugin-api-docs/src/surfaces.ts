@@ -1414,6 +1414,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "AcpDialect",
           "experimental_nativeRootsHostContract",
           "internal_DO_NOT_USE_providerPathsHostContract",
+          "PluginProviderDeclaration.internal_DO_NOT_USE_resolvesProviderPaths",
           "experimental_filterResolvedNativeRoots",
           "experimental_resolveClaudePluginRoots",
           "experimental_resolveVendorPluginRoots",

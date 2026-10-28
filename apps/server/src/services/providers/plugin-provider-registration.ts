@@ -232,6 +232,8 @@ export function buildPluginProviderRegistration(args: {
       declaration.experimental_nativeCommandRoots ??
       EMPTY_PROVIDER_NATIVE_ROOTS,
     resolvesNativeRoots: declaration.experimental_resolvesNativeRoots,
+    resolvesProviderPaths:
+      declaration.internal_DO_NOT_USE_resolvesProviderPaths,
     deriveProviderOptions: (context) =>
       deriveValidatedProviderOptions({
         declaration,

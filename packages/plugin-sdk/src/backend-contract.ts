@@ -1637,6 +1637,8 @@ export interface PluginProviderDeclaration {
    * project-scoped entries, which a global declaration cannot carry.
    */
   experimental_resolvesNativeRoots?: boolean;
+  /** First-party provider implements the internal provider host-path data contract. */
+  internal_DO_NOT_USE_resolvesProviderPaths?: boolean;
   /**
    * Derive this provider's opaque per-command options. Called synchronously
    * by the server for every session and turn command on a thread of this

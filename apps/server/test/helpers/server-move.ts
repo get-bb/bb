@@ -130,6 +130,7 @@ export function registerFakeDaemon(
                     skillInstallRoots: [],
                     credentialFiles: [
                       `/provider/${args.hostId}/credentials.json`,
+                      `/provider/${args.hostId}/${message.command.type === "plugin.host.call" ? message.command.pluginId : ""}/credentials.json`,
                     ],
                   },
                 },

@@ -47,7 +47,7 @@ export default experimental_defineHostEntry({
         env: process.env,
       });
       return {
-        skillInstallRoots: [path.join(configDir, "skills")],
+        skillInstallRoots: [],
         credentialFiles: [path.join(configDir, "auth.json")],
       };
     },

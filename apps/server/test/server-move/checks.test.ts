@@ -410,7 +410,11 @@ describe("server move checks", () => {
         )?.command,
       ).toEqual({
         type: "server_move.inspect",
-        credentialFiles: [`/provider/${NEW}/credentials.json`],
+        credentialFiles: [
+          `/provider/${NEW}/credentials.json`,
+          `/provider/${NEW}/provider-codex/credentials.json`,
+          `/provider/${NEW}/provider-claude-code/credentials.json`,
+        ],
         paths: ["/home/me/code/local-plugin"],
         port: 39_101,
       });

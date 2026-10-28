@@ -116,7 +116,6 @@ export async function readGlobalCliSkillStatus(
             type: "host.global_skills_status",
             providerRoots: (
               await resolveProviderPaths(deps, {
-                providerId: "claude-code",
                 hostId: host.id,
                 timeoutMs: STATUS_TIMEOUT_MS,
               })
@@ -184,7 +183,6 @@ export async function installGlobalCliSkills(
             skills,
             providerRoots: (
               await resolveProviderPaths(deps, {
-                providerId: "claude-code",
                 hostId: host.id,
                 timeoutMs: COMMAND_TIMEOUT_MS,
               })

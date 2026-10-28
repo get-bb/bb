@@ -398,6 +398,7 @@ Read the installed declarations for exact current signatures.
 - `experimental_killProcessesWithCwdUnder`
 - `experimental_nativeRootsHostContract`
 - `internal_DO_NOT_USE_providerPathsHostContract`
+- `PluginProviderDeclaration.internal_DO_NOT_USE_resolvesProviderPaths`
 - `experimental_nativeRootsResolveInputSchema`
 - `experimental_nativeRootsResolveOutputSchema`
 - `experimental_readProcessIdentity`

@@ -53,6 +53,21 @@ describe("install cli skills", () => {
   it("installs the built-in bb-cli tree on every requested machine", async () => {
     await withTestHarness(async (harness) => {
       await writeBuiltinCliSkill(harness);
+      const template = harness.deps.providerRegistry
+        .list()
+        .find((provider) => provider.resolvesProviderPaths);
+      if (!template) throw new Error("Missing provider template");
+      const artifact = harness.deps.pluginHostArtifacts.get(template.pluginId);
+      if (!artifact) throw new Error("Missing host artifact");
+      harness.deps.pluginHostArtifacts.set("custom-path-provider", artifact);
+      for (const id of ["custom-path-one", "custom-path-two"]) {
+        harness.deps.providerRegistry.register({
+          ...template,
+          pluginId: "custom-path-provider",
+          info: { ...template.info, id },
+        });
+      }
+
       await setMachineEnvironmentVariable(
         harness.deps.db,
         harness.deps.config.dataDir,
@@ -68,7 +83,6 @@ describe("install cli skills", () => {
           handle: (request) => {
             if (request.command.type === "plugin.host.call") {
               expect(request.command).toMatchObject({
-                pluginId: "provider-claude-code",
                 method: "resolveProviderPaths",
                 contributedEnv: [
                   expect.objectContaining({
@@ -81,7 +95,10 @@ describe("install cli skills", () => {
                 ok: true,
                 result: {
                   output: {
-                    skillInstallRoots: ["/plugin-selected/skills"],
+                    skillInstallRoots: [
+                      `/plugin-selected/${request.command.pluginId}/skills`,
+                      "/plugin-selected/shared",
+                    ],
                     credentialFiles: [],
                   },
                 },
@@ -89,7 +106,11 @@ describe("install cli skills", () => {
             }
             expect(request.command).toMatchObject({
               type: "host.install_global_skills",
-              providerRoots: ["/plugin-selected/skills"],
+              providerRoots: expect.arrayContaining([
+                "/plugin-selected/provider-codex/skills",
+                "/plugin-selected/provider-claude-code/skills",
+                "/plugin-selected/shared",
+              ]),
               skills: [{ name: "bb-cli", entryPath: "SKILL.md" }],
             });
             return {
@@ -116,7 +137,18 @@ describe("install cli skills", () => {
         ["host-studio", true],
       ]);
       for (const responder of responders) {
-        expect(responder.requests).toHaveLength(2);
+        expect(responder.requests).toHaveLength(4);
+        const install = responder.requests.find(
+          (request) => request.command.type === "host.install_global_skills",
+        );
+        expect(install?.command).toMatchObject({
+          providerRoots: expect.arrayContaining([
+            "/plugin-selected/custom-path-provider/skills",
+          ]),
+        });
+        if (install?.command.type !== "host.install_global_skills")
+          throw new Error("Missing installation");
+        expect(install.command.providerRoots).toHaveLength(4);
       }
     });
   });
@@ -212,7 +244,6 @@ describe("install cli skills", () => {
           handle: (request) => {
             if (request.command.type === "plugin.host.call") {
               expect(request.command).toMatchObject({
-                pluginId: "provider-claude-code",
                 method: "resolveProviderPaths",
                 contributedEnv: [
                   expect.objectContaining({
@@ -225,7 +256,10 @@ describe("install cli skills", () => {
                 ok: true,
                 result: {
                   output: {
-                    skillInstallRoots: ["/plugin-selected/skills"],
+                    skillInstallRoots: [
+                      `/plugin-selected/${request.command.pluginId}/skills`,
+                      "/plugin-selected/shared",
+                    ],
                     credentialFiles: [],
                   },
                 },
@@ -233,7 +267,11 @@ describe("install cli skills", () => {
             }
             expect(request.command).toMatchObject({
               type: "host.global_skills_status",
-              providerRoots: ["/plugin-selected/skills"],
+              providerRoots: expect.arrayContaining([
+                "/plugin-selected/provider-codex/skills",
+                "/plugin-selected/provider-claude-code/skills",
+                "/plugin-selected/shared",
+              ]),
               names: ["bb-cli"],
             });
             return {

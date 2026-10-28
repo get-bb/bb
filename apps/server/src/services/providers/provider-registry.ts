@@ -47,6 +47,7 @@ export interface ProviderRegistration {
   nativeSkillRoots: ProviderNativeRoots;
   nativeCommandRoots: ProviderNativeRoots;
   resolvesNativeRoots: boolean;
+  resolvesProviderPaths: boolean;
   deriveProviderOptions: (
     context: Omit<PluginProviderOptionsContext, "settings">,
   ) => Readonly<Record<string, JsonValue>>;

@@ -221,6 +221,7 @@ describe("provider declaration target-state fields", () => {
     });
     expect(normalized.experimental_nativeCommandRoots).toBeUndefined();
     expect(normalized.experimental_resolvesNativeRoots).toBe(false);
+    expect(normalized.internal_DO_NOT_USE_resolvesProviderPaths).toBe(false);
   });
 
   it("normalizes root entries with options and validates command roots by the same rules", () => {
@@ -234,6 +235,7 @@ describe("provider declaration target-state fields", () => {
         },
         experimental_nativeCommandRoots: { project: [".claude/commands"] },
         experimental_resolvesNativeRoots: true,
+        internal_DO_NOT_USE_resolvesProviderPaths: true,
       }),
     );
     expect(normalized.experimental_nativeSkillRoots).toEqual({
@@ -266,6 +268,7 @@ describe("provider declaration target-state fields", () => {
       user: [],
     });
     expect(normalized.experimental_resolvesNativeRoots).toBe(true);
+    expect(normalized.internal_DO_NOT_USE_resolvesProviderPaths).toBe(true);
 
     expect(() =>
       validatePluginProviderDeclaration(
@@ -299,6 +302,13 @@ describe("provider declaration target-state fields", () => {
         declaration({ experimental_resolvesNativeRoots: "yes" as never }),
       ),
     ).toThrow(/experimental_resolvesNativeRoots must be a boolean/u);
+    expect(() =>
+      validatePluginProviderDeclaration(
+        declaration({
+          internal_DO_NOT_USE_resolvesProviderPaths: "yes" as never,
+        }),
+      ),
+    ).toThrow(/internal_DO_NOT_USE_resolvesProviderPaths must be a boolean/u);
   });
 
   it("refuses the removed host-absolute side", () => {
@@ -388,10 +398,12 @@ describe("provider declaration fields renamed in SDK 0.4.16", () => {
         experimental_nativeSkillRoots: { project: ["skills"] },
         experimental_nativeCommandRoots: { project: ["commands"] },
         experimental_resolvesNativeRoots: true,
+        internal_DO_NOT_USE_resolvesProviderPaths: true,
       }),
     );
     expect(normalized.experimental_bridgeOptions).toEqual({ tier: "fast" });
     expect(normalized.experimental_resolvesNativeRoots).toBe(true);
+    expect(normalized.internal_DO_NOT_USE_resolvesProviderPaths).toBe(true);
   });
 
   it.each([
