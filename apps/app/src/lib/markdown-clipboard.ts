@@ -24,6 +24,7 @@ const requiredChildren: Record<string, string> = {
 };
 
 const mathElements = ".katex-display, .katex, .katex-error";
+const inlineFormatElements = "code, a, strong, b, em, i, del, s";
 
 function mathRoot(node: Node): Element | null {
   const element = node instanceof Element ? node : node.parentElement;
@@ -302,25 +303,17 @@ function keepsAncestor(
 export function selectionClipboard(
   selected: Range,
   root: Element,
-  codeFormat: "plain" | "markdown",
+  spanFormat: "text" | "markdown",
 ): { text: string; html: string } {
   const range = expandRangeToMath(trimRangeToContent(selected));
-  const start =
-    range.startContainer instanceof Element
-      ? range.startContainer
-      : range.startContainer.parentElement;
-  const end =
-    range.endContainer instanceof Element
-      ? range.endContainer
-      : range.endContainer.parentElement;
-  const code = start?.closest(
-    codeFormat === "plain" ? "pre, code, [data-clipboard-inline-code]" : "pre",
-  );
   let contents: Node = range.cloneContents();
   const common =
     range.commonAncestorContainer instanceof Element
       ? range.commonAncestorContainer
       : range.commonAncestorContainer.parentElement;
+  const span = common?.closest(
+    spanFormat === "text" ? `pre, ${inlineFormatElements}` : "pre",
+  );
   const wrapped: Element[] = [];
   let ancestor = common;
   while (
@@ -371,7 +364,7 @@ export function selectionClipboard(
   for (const [link, original] of copiedOriginals("a"))
     if (original && isBareUrl(original)) link.setAttribute("data-bare-url", "");
   const text =
-    code && end && code.contains(end)
+    span && root.contains(span) && !container.querySelector(mathElements)
       ? range.toString()
       : childrenMarkdown(container).trim();
   replaceMathWithMathMl(container);

@@ -233,7 +233,7 @@ export function SecondaryPanelSelectionActions({
         !node.contains(range.endContainer)
       )
         return;
-      const payload = selectionClipboard(range, node, "plain");
+      const payload = selectionClipboard(range, node, "text");
       if (!payload.text) return;
       event.clipboardData.setData("text/plain", payload.text);
       event.clipboardData.setData("text/html", payload.html);

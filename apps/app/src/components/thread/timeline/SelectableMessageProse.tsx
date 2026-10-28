@@ -561,7 +561,7 @@ function handleSharedCopy(event: ClipboardEvent): void {
       return selectionClipboard(
         clipped,
         instance.node,
-        instances.length === 1 ? "plain" : "markdown",
+        instances.length === 1 ? "text" : "markdown",
       );
     });
     const payload = {
@@ -582,7 +582,7 @@ function handleSharedCopy(event: ClipboardEvent): void {
         range,
       );
       if (clipped) {
-        const payload = selectionClipboard(clipped, instance.node, "plain");
+        const payload = selectionClipboard(clipped, instance.node, "text");
         event.clipboardData.setData("text/plain", payload.text);
         event.clipboardData.setData("text/html", payload.html);
         event.preventDefault();
