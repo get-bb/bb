@@ -7,7 +7,7 @@ A quality and performance release: bb loads faster, sends far less over the wire
 ### Reliability
 
 - **The timeline stays at the bottom:** collapsing a tool call, resizing, restoring a thread, or an idle scroll no longer leaves you just above the latest message with the jump-to-bottom button showing.
-- **Queued messages get delivered:** messages queued after you press Stop are sent instead of held, a queued message can no longer jump ahead of one that's still sending, and messages and child-thread notices that arrive while a thread compacts wait instead of failing.
+- **Message queue edge cases:** messages queued after you press Stop are sent instead of held, a queued message can no longer jump ahead of one that's still sending, and messages and child-thread notices that arrive while a thread compacts wait instead of failing.
 - **No more stale state:** sidebar spinners stop when a thread stops, pull request status updates in every open view (including draft PRs and reloaded thread pages), collapsed sidebar groups stay collapsed when background threads become unread, and switching threads keeps cached plugin data.
 - **bb finds your tools:** tools installed with mise, asdf, Volta or Homebrew are found when bb runs as a service or from the Dock, plugins can run `bb`, and bb's own processes use your shell's proxy settings and the system's certificates.
 - **Safer files and updates:** file saves on machines are atomic, so a crash or full disk can't leave a half-written file, and updates and plugin downloads are checksum-verified.
