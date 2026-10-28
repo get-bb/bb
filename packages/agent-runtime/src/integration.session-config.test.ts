@@ -1,8 +1,10 @@
 import {
   copyFileSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -143,7 +145,10 @@ process.stdin.on("data", (chunk) => {
 describe("codex app-server", () => {
   it("launches MCP servers with the thread identity and the project's CODEX_HOME", async () => {
     const codexHome = mkdtempSync(join(tmpdir(), "bb-integ-codex-home-"));
-    copyFileSync(join(homedir(), ".codex", "auth.json"), join(codexHome, "auth.json"));
+    copyFileSync(
+      join(homedir(), ".codex", "auth.json"),
+      join(codexHome, "auth.json"),
+    );
     const probePath = join(codexHome, "mcp-env-probe.cjs");
     const probeOut = join(codexHome, "mcp-env.jsonl");
     writeFileSync(probePath, MCP_ENV_PROBE);
@@ -200,3 +205,84 @@ describe("codex app-server", () => {
     }
   }, 300_000);
 });
+
+for (const providerId of ["codex", "claude-code"]) {
+  describe(`${providerId} skills`, () => {
+    it("reaches a running thread with a skill added between turns", async () => {
+      const skillsRoot = mkdtempSync(join(tmpdir(), "bb-integ-skills-"));
+      const skillDir = join(skillsRoot, "bb-probe-skill");
+      mkdirSync(skillDir, { recursive: true });
+      writeFileSync(
+        join(skillDir, "SKILL.md"),
+        "---\nname: bb-probe-skill\ndescription: Answers with the probe code word.\n---\nWhen this skill is used, reply with exactly the code word PERSIMMON-42 and nothing else.\n",
+      );
+      const ctx = createTestRuntime(providerId);
+      try {
+        const threadId = newThreadId();
+        const options = await resolveRuntimeOptions({
+          ctx,
+          providerId,
+          preset: "full",
+        });
+        await ctx.runtime.startThread({
+          environmentId: "env-1",
+          threadId,
+          projectId: "test-project",
+          providerId,
+          options,
+        });
+        await ctx.runtime.runTurn({
+          clientRequestId: "creq_sessncfge2",
+          threadId,
+          input: [promptTextInput({ text: "Reply with the single word OK." })],
+          options,
+        });
+        await waitForThreadTurnCompletedCount({
+          ctx,
+          threadId,
+          count: 1,
+          label: "first turn",
+          timeoutMs: 120_000,
+        });
+
+        await ctx.runtime.configureSkillRoots([
+          {
+            id: "probe",
+            path: skillsRoot,
+            skills: [
+              {
+                name: "bb-probe-skill",
+                description: "Answers with the probe code word.",
+              },
+            ],
+          },
+        ]);
+        await ctx.runtime.runTurn({
+          clientRequestId: "creq_sessncfgf2",
+          threadId,
+          input: [
+            promptTextInput({
+              text: "Use the bb-probe-skill skill now and reply exactly as it instructs.",
+            }),
+          ],
+          options,
+        });
+        await waitForThreadTurnCompletedCount({
+          ctx,
+          threadId,
+          count: 2,
+          label: "second turn",
+          timeoutMs: 180_000,
+        });
+
+        expect(
+          getAgentText(getEventsForThread(ctx.events, threadId)),
+        ).toContain("PERSIMMON-42");
+      } finally {
+        await ctx.runtime.shutdown();
+        cleanup(ctx);
+        rmSync(skillsRoot, { recursive: true, force: true });
+      }
+    }, 400_000);
+  });
+}
