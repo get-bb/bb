@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import { act, cleanup, createEvent, fireEvent, render, waitFor } from "@testing-library/react";
 import { DndContext, useDraggable } from "@dnd-kit/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useSidebarReorderDnd } from "@/components/ui/use-sidebar-reorder-dnd";
@@ -58,6 +58,37 @@ describe("SidebarTouchSensor", () => {
     expect(row.hasAttribute("data-sidebar-touch-armed")).toBe(false);
     fireEvent.touchEnd(row, { touches: [] });
     expect(onDragEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports the end of a drag released in the same task that started it", async () => {
+    const onDragStart = vi.fn();
+    const onDragEnd = vi.fn();
+    function Harness() {
+      const { dndContextProps } = useSidebarReorderDnd({
+        onDragStart,
+        onDragEnd,
+        touchSensor: SidebarTouchSensor,
+      });
+      return <DndContext {...dndContextProps}><DraggableRow /></DndContext>;
+    }
+    const { getByText } = render(<Harness />);
+    const row = getByText("Thread");
+
+    fireEvent.touchStart(row, { touches: [{ identifier: 1, clientX: 10, clientY: 10 }] });
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 550)));
+    const actEnvironment = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+    Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", false);
+    try {
+      row.dispatchEvent(createEvent.touchMove(row, { touches: [{ identifier: 1, clientX: 40, clientY: 10 }] }));
+      row.dispatchEvent(createEvent.touchEnd(row, { touches: [], changedTouches: [{ identifier: 1, clientX: 40, clientY: 10 }] }));
+    } finally {
+      Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", actEnvironment);
+    }
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+
+    expect(onDragStart).toHaveBeenCalledTimes(1);
+    expect(onDragEnd).toHaveBeenCalledTimes(1);
+    expect(document.body.dataset.sidebarDragging).toBeUndefined();
   });
 
   it("claims touchmoves once armed so native scroll and drawer swipes cannot run alongside the drag", async () => {

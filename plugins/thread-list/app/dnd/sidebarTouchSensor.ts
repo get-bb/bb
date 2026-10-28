@@ -3,6 +3,7 @@ import {
   type SensorProps,
   type TouchSensorOptions,
 } from "@dnd-kit/core";
+import { flushSync } from "react-dom";
 
 const TOUCH_HOLD_DELAY_MS = 500;
 const TOUCH_DRAG_DISTANCE_PX = 12;
@@ -75,7 +76,7 @@ export class SidebarTouchSensor {
       if (distance <= TOUCH_DRAG_DISTANCE_PX) return;
       this.dragging = true;
       this.activator?.removeAttribute("data-sidebar-touch-armed");
-      this.props.onStart(this.initialCoordinates);
+      flushSync(() => this.props.onStart(this.initialCoordinates));
     }
     this.props.onMove(coordinates);
   };
