@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.47.2
+## 0.48.0
 
 A quality and performance release: bb loads faster, sends far less over the wire, uses less CPU and memory on your machines, and fixes a long list of rough edges. These notes cover everything since 0.47.0, including 0.47.1.
 
