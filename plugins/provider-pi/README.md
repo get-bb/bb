@@ -15,6 +15,10 @@ What lives here:
 - `src/delta-translation.ts` — pi's session events become bb's thread deltas.
 - `src/bridge/provider-maintenance.ts` — the install gate (`pi --version`
   ≥ 0.84.0) and the npm install/update actions.
+- `src/bridge/bundled-runtime.ts` — when the host has no `npm`, Install runs
+  bb's bundled npm on the runtime the bridge runs on (`process.execPath`, in
+  Node mode under Electron) into `<bridge-data>/pi-npm-global`. A `pi` on
+  `PATH` still wins; otherwise that copy launches on the same runtime.
 - `src/bridge/extension-ui.ts` — pi extension dialogs reach the user:
   `ctx.ui.select/confirm/input/editor` inside a pi extension arrive as pi RPC
   `extension_ui_request` lines, the bridge forwards each dialog as a

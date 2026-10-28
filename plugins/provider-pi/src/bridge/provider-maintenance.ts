@@ -19,7 +19,16 @@ import {
   experimental_resolveExecutablePath as resolveExecutablePath,
   experimental_versionFrom as versionFrom,
 } from "@get-bb/plugin-sdk/provider-bridge";
-import { resolvePiLaunch, resolvePiProcessLaunch } from "./rpc-child.js";
+import {
+  bundledPiInstallCommand,
+  bundledPiLatestVersion,
+} from "./bundled-runtime.js";
+import {
+  piProcessEnv,
+  resolveBundledPiInUse,
+  resolvePiLaunch,
+  resolvePiProcessLaunch,
+} from "./rpc-child.js";
 
 const execFileAsync = experimental_execHostFile;
 export const PI_MINIMUM_SUPPORTED_VERSION = "0.84.0";
@@ -138,6 +147,7 @@ export async function probePiVersion(): Promise<PiVersionProbe> {
       launch.command,
       [...launch.args, "--version"],
       {
+        env: piProcessEnv(launch, process.env),
         timeout: VERSION_PROBE_TIMEOUT_MS,
       },
     ));
@@ -170,30 +180,46 @@ export function describePiVersionProbeFailure(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-async function missingNpmPrerequisite(): Promise<"nodejs" | null> {
-  return (await commandOutput(npmCommand(), ["--version"])) === null
-    ? "nodejs"
-    : null;
+async function systemNpmAvailable(): Promise<boolean> {
+  return (await commandOutput(npmCommand(), ["--version"])) !== null;
 }
 
-export async function getPiProviderInstallationStatus(
-  checkUpdates = true,
-): Promise<ProviderInstallationStatus> {
+async function piInstallCommand(args: {
+  executablePath: string | null;
+  bundledCli: string | null;
+}): Promise<ProviderInstallationCommand | null> {
+  if (args.bundledCli !== null) {
+    return bundledPiInstallCommand() ?? npmGlobalInstallCommand(PI_NPM_PACKAGE);
+  }
+  if (args.executablePath !== null) {
+    return piGlobalInstallCommand(args.executablePath);
+  }
+  return (await systemNpmAvailable())
+    ? npmGlobalInstallCommand(PI_NPM_PACKAGE)
+    : bundledPiInstallCommand();
+}
+
+async function resolvePiInstallationState(checkUpdates: boolean): Promise<{
+  status: ProviderInstallationStatus;
+  command: ProviderInstallationCommand | null;
+}> {
   const launch = resolvePiLaunch(process.env);
+  const bundledCli = resolveBundledPiInUse(process.env);
   const [resolvedExecutable, probe, latestVersion, npmGlobal] =
     await Promise.all([
-      resolveExecutablePath(launch.command),
+      bundledCli ?? resolveExecutablePath(launch.command),
       probePiVersion(),
-      checkUpdates ? npmLatestVersion(PI_NPM_PACKAGE) : null,
       checkUpdates
+        ? bundledCli === null
+          ? npmLatestVersion(PI_NPM_PACKAGE)
+          : bundledPiLatestVersion()
+        : null,
+      checkUpdates && bundledCli === null
         ? probeNpmGlobalPackage(PI_NPM_PACKAGE)
         : { npmBin: null, npmGlobalPackageVersion: null },
     ]);
   const currentVersion = probe.version;
   const installed = resolvedExecutable !== null || currentVersion !== null;
-  const missingPrerequisite = installed
-    ? null
-    : await missingNpmPrerequisite();
   const needsUpdate =
     installed &&
     currentVersion !== null &&
@@ -203,49 +229,63 @@ export async function getPiProviderInstallationStatus(
     installed &&
     currentVersion !== null &&
     compareVersions(currentVersion, PI_MINIMUM_SUPPORTED_VERSION) < 0;
-  const actionKind = !installed
-    ? missingPrerequisite === null
-      ? "install"
-      : null
+  const wantedAction = !installed
+    ? "install"
     : needsUpdate || versionUnsupported
       ? "update"
       : null;
+  const command =
+    wantedAction === null || (installed && !checkUpdates)
+      ? null
+      : await piInstallCommand({
+          executablePath: resolvedExecutable,
+          bundledCli,
+        });
+  const missingPrerequisite = !installed && command === null ? "nodejs" : null;
   const installAction: ProviderInstallationStatus["installAction"] =
-    actionKind === null || !checkUpdates
+    wantedAction === null || command === null || !checkUpdates
       ? null
       : {
-          kind: actionKind,
-          label: actionKind === "install" ? "Install" : "Update",
-          command: (await piGlobalInstallCommand(resolvedExecutable))
-            .displayCommand,
+          kind: wantedAction,
+          label: wantedAction === "install" ? "Install" : "Update",
+          command: command.displayCommand,
         };
 
   return {
-    executableName: "pi",
-    executablePath: resolvedExecutable,
-    installed,
-    installSource: npmGlobalInstallSource({
-      installed,
+    command,
+    status: {
+      executableName: "pi",
       executablePath: resolvedExecutable,
-      npmBin: npmGlobal.npmBin,
-    }),
-    currentVersion,
-    latestVersion,
-    minimumSupportedVersion: PI_MINIMUM_SUPPORTED_VERSION,
-    npmPackageName: PI_NPM_PACKAGE,
-    npmGlobalPackageVersion: npmGlobal.npmGlobalPackageVersion,
-    installAction,
-    missingPrerequisite,
-    needsUpdate,
-    versionUnsupported,
+      installed,
+      installSource: npmGlobalInstallSource({
+        installed,
+        executablePath: resolvedExecutable,
+        npmBin: npmGlobal.npmBin,
+      }),
+      currentVersion,
+      latestVersion,
+      minimumSupportedVersion: PI_MINIMUM_SUPPORTED_VERSION,
+      npmPackageName: PI_NPM_PACKAGE,
+      npmGlobalPackageVersion: npmGlobal.npmGlobalPackageVersion,
+      installAction,
+      missingPrerequisite,
+      needsUpdate,
+      versionUnsupported,
+    },
   };
+}
+
+export async function getPiProviderInstallationStatus(
+  checkUpdates = true,
+): Promise<ProviderInstallationStatus> {
+  return (await resolvePiInstallationState(checkUpdates)).status;
 }
 
 export async function getPiProviderInstallationRun(
   action: "install" | "update",
 ): Promise<ProviderInstallationRunResult> {
-  const status = await getPiProviderInstallationStatus();
-  if (status.installAction?.kind !== action) {
+  const { status, command } = await resolvePiInstallationState(true);
+  if (status.installAction?.kind !== action || command === null) {
     return {
       available: false,
       message: `Pi ${action} is no longer available on this host.`,
@@ -253,7 +293,7 @@ export async function getPiProviderInstallationRun(
   }
   return {
     available: true,
-    command: await piGlobalInstallCommand(status.executablePath),
+    command,
     verification: installationVerification(status, action),
   };
 }
@@ -299,7 +339,10 @@ const INSTALL_GUIDANCE = `Install ${PI_NPM_PACKAGE} ${PI_MINIMUM_SUPPORTED_VERSI
 
 async function probePiInstallGate(): Promise<PiInstallGate> {
   const launch = resolvePiLaunch(process.env);
-  if ((await resolveExecutablePath(launch.command)) === null) {
+  if (
+    resolveBundledPiInUse(process.env) === null &&
+    (await resolveExecutablePath(launch.command)) === null
+  ) {
     return {
       ok: false,
       status: "not_installed",
@@ -339,7 +382,7 @@ const installGateMemo = new Map<
 >();
 
 export function getPiInstallGate(): Promise<PiInstallGate> {
-  const launch = resolvePiLaunch(process.env);
+  const launch = resolvePiProcessLaunch(process.env);
   const key = JSON.stringify([launch.command, launch.args]);
   const now = Date.now();
   const cached = installGateMemo.get(key);

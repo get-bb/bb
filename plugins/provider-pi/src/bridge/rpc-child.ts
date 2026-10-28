@@ -10,6 +10,13 @@ import {
   withoutBridgeRuntimeEnv,
 } from "@get-bb/plugin-sdk/provider-bridge";
 
+import { whichCommandSync } from "which-command";
+import {
+  bbRuntimeEnv,
+  bundledPiLaunch,
+  isBundledPiLaunch,
+  resolveBundledPiCli,
+} from "./bundled-runtime.js";
 import { resolveWindowsPiProcessLaunch } from "./windows-pi-launch.js";
 
 export const PI_BRIDGE_COMMAND_ENV = "BB_PI_BRIDGE_COMMAND";
@@ -88,13 +95,50 @@ export function resolvePiLaunch(env: NodeJS.ProcessEnv): {
   return { command, args: parsed };
 }
 
+function envValue(env: NodeJS.ProcessEnv, name: string): string | undefined {
+  const key = Object.keys(env)
+    .sort()
+    .find((candidate) => candidate.toUpperCase() === name);
+  return key === undefined ? undefined : env[key];
+}
+
+function piIsOnPath(env: NodeJS.ProcessEnv, cwd: string): boolean {
+  return (
+    whichCommandSync("pi", {
+      cwd,
+      path: envValue(env, "PATH") ?? "",
+      pathExt: envValue(env, "PATHEXT") ?? ".COM;.EXE;.BAT;.CMD",
+    }) !== undefined
+  );
+}
+
+export function resolveBundledPiInUse(
+  configEnv: NodeJS.ProcessEnv,
+  childEnv: NodeJS.ProcessEnv = configEnv,
+  cwd = process.cwd(),
+): string | null {
+  if (configEnv[PI_BRIDGE_COMMAND_ENV]) return null;
+  const cli = resolveBundledPiCli();
+  if (cli === null || piIsOnPath(childEnv, cwd)) return null;
+  return cli;
+}
+
 export function resolvePiProcessLaunch(
   configEnv: NodeJS.ProcessEnv,
   childEnv: NodeJS.ProcessEnv = configEnv,
   cwd = process.cwd(),
 ): { command: string; args: string[] } {
+  const bundledCli = resolveBundledPiInUse(configEnv, childEnv, cwd);
+  if (bundledCli !== null) return bundledPiLaunch(bundledCli);
   const launch = resolvePiLaunch(configEnv);
   return resolveWindowsPiProcessLaunch(launch, childEnv, cwd);
+}
+
+export function piProcessEnv(
+  launch: { command: string; args: string[] },
+  env: NodeJS.ProcessEnv,
+): NodeJS.ProcessEnv {
+  return isBundledPiLaunch(launch) ? bbRuntimeEnv(env) : env;
 }
 
 export function buildPiChildEnv(
@@ -134,7 +178,7 @@ export class PiRpcChild {
       command: launch.command,
       args: [...launch.args, ...args.args],
       cwd: args.cwd,
-      env: args.env,
+      env: piProcessEnv(launch, args.env),
       stdio: ["pipe", "pipe", "pipe", "pipe", "pipe"],
     });
     experimental_recordProviderChildIo(this.child, {

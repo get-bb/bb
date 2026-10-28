@@ -47,6 +47,10 @@ import {
   type PiSessionParams,
 } from "../session-params.js";
 import { piSessionNeedsRelocation } from "./session-cwd.js";
+import {
+  configurePiBundledRuntime,
+  resolveBundledNpmCliFrom,
+} from "./bundled-runtime.js";
 import { BB_PI_EXTENSION_SOURCE } from "./bb-pi-extension.js";
 import {
   createExtensionUiCoordinator,
@@ -1239,6 +1243,10 @@ export async function experimental_closeAllForTests(): Promise<void> {
 export const experimental_providerBridge = experimental_defineProviderBridge({
   handleLine,
   start: (context) => {
+    configurePiBundledRuntime({
+      dataDir: context.dataDir,
+      npmCli: resolveBundledNpmCliFrom(process.argv[1]),
+    });
     scratchDir = join(context.tempDir, "pi");
     scratchDirIsPrivate = false;
     mkdirSync(scratchDir, { recursive: true });

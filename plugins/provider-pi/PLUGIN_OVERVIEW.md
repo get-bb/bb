@@ -13,6 +13,6 @@ The plugin starts `pi` in RPC mode on the host and loads a small bb extension in
 
 ## Requirements
 
-- Install the Pi coding agent on the host machine: `npm install -g @earendil-works/pi-coding-agent`. Version 0.84.0 or newer is required.
+- Install the Pi coding agent on the host machine: `npm install -g @earendil-works/pi-coding-agent`. Version 0.84.0 or newer is required. On a machine without npm, Setup's Install puts Pi in bb's own data directory using the Node.js runtime bundled with bb; no admin rights are needed.
 - Sign in with `pi` on that machine.
 - Optional: set `BB_PI_BRIDGE_COMMAND` and `BB_PI_BRIDGE_ARGS` on the host to use a Pi executable that is not on `PATH`.
