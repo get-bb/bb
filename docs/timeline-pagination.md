@@ -360,11 +360,15 @@ Every layout change is reconciled before paint. Triggers are ResizeObservers on
 the root, its content, and every mounted row, plus each windowed list's layout
 effect after a commit. Within one reconciliation:
 
-1. A scroll the owner did not make is folded into the position as the reader's
-   movement, before the layout is read. Changes that landed in the same forced
-   layout are therefore not mistaken for scrolling. They are reconciled against
-   the moved position first. Only then, if the anchor has left the viewport,
-   the owner picks a new anchor where the reader now is.
+1. A scroll the owner did not make is folded into the position before the
+   layout is read, even when its scroll event has not arrived yet. During an
+   input session it is the reader's movement: changes that landed in the same
+   forced layout are reconciled against the moved position, and only if the
+   anchor has left the viewport does the owner pick a new anchor where the
+   reader now is. Outside one, a view that follows navigation (see above)
+   takes its position from where the scroll left it, so a re-render between
+   find in page and its scroll event does not undo the jump. A clamp onto the
+   end of shrunken content is layout, not navigation.
 2. Windowed lists render the rows around a row key, never around a raw
    `scrollTop`. A prepend keeps the same rows mounted, and the owner's anchor
    row is always mounted.
@@ -386,7 +390,8 @@ mount, the owner takes its position from them.
 Lists of 20 or more items are windowed everywhere except iOS WebKit (Safari and
 the mobile app's WKWebView), where every row stays mounted. Every row also
 mounts while the scroll root has no height, for example in a hidden pane, and
-windowing resumes once it has one. Rows stay in normal flow between spacers whose
+windowing resumes once it has one, with spacers sized from the heights measured
+meanwhile, so the scroll extent stays exact. Rows stay in normal flow between spacers whose
 heights come from the measurements the thread retains, so rows never overlap
 and a row resize needs no positioning pass. The thread retains the 2,000 most
 recent measurements; a spacer keeps the height it last rendered for a row whose

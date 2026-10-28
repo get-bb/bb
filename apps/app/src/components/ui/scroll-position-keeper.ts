@@ -542,13 +542,30 @@ export class ScrollPositionKeeper {
     if (widthChanged) this.keepAnchorVisible(scrollElement);
     this.reconciledWidth = width;
     const previous = this.ownScrollTop;
-    if (
+    const movement =
+      previous !== null && Math.abs(scrollTop - previous) >= MIN_WRITE_PX
+        ? scrollTop - previous
+        : 0;
+    const clampedToEnd =
       previous !== null &&
-      Math.abs(scrollTop - previous) >= MIN_WRITE_PX &&
+      previous > max + 0.5 &&
+      Math.abs(scrollTop - max) < 1;
+    const navigated =
+      movement !== 0 &&
+      !this.isInputSession() &&
+      this.followsUnexplainedScroll() &&
+      !clampedToEnd;
+    if (navigated) {
+      this.userScrolled = true;
+      this.pendingRestore = null;
+      this.scrollMovedAt = window.performance.now();
+      this.setPosition(this.capture(scrollElement) ?? FREE);
+    } else if (
+      movement !== 0 &&
       this.position.kind === "anchor" &&
       this.isInputSession()
     ) {
-      this.position.offset -= scrollTop - previous;
+      this.position.offset -= movement;
       this.scrollMovedAt = window.performance.now();
     }
     this.ownScrollTop = scrollTop;
@@ -585,7 +602,7 @@ export class ScrollPositionKeeper {
         this.scheduleClampSettle();
       }
     }
-    if (restored) this.attachIfAtEnd(scrollElement);
+    if (restored || navigated) this.attachIfAtEnd(scrollElement);
     else this.scheduleAttachAtEnd(scrollElement);
     if (notify) this.notifyLists(urgent);
   }

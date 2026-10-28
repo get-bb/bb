@@ -285,6 +285,8 @@ export function installFakeFlowLayout({
       observerSnapshot = heights;
       try {
         measureContentHeight(heights);
+        const scrollElement = resolveScrollElement();
+        if (scrollElement !== null) heights.set(scrollElement, viewportHeight);
         for (const observer of [...observers]) {
           const entries: ResizeObserverEntry[] = [];
           for (const target of observer.targets) {

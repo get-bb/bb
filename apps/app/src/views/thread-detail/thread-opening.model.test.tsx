@@ -13,7 +13,7 @@ import { ThreadTimelineSurface } from "@/components/thread/timeline/ThreadTimeli
 import { useThreadTimelineController } from "@/components/thread/timeline/useThreadTimelineController";
 import { sdk } from "@/lib/sdk";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
-import { threadListQueryKey } from "@/hooks/queries/query-keys";
+import { threadListQueryKey, threadQueryKey } from "@/hooks/queries/query-keys";
 import { installFakeFlowLayout } from "@/test/fake-flow-layout";
 import {
   makeThreadResponse,
@@ -126,6 +126,30 @@ function Host({ shown }: { shown: boolean }) {
 }
 
 let restoreLayout: (() => void) | null = null;
+
+function getScrollElement() {
+  return document.querySelector<HTMLElement>("[data-page-scroll-viewport]");
+}
+
+function installOpeningLayout(
+  viewportHeight: number,
+  heightOfRow: (id: string) => number,
+) {
+  const layout = installFakeFlowLayout({
+    heightOf: (element) => {
+      if (element.hasAttribute("data-scroll-landmark-id")) return 24;
+      const rowId = element.getAttribute("data-timeline-row-id");
+      if (rowId === null) return null;
+      return element.parentElement?.closest("[data-timeline-row-id]")
+        ? null
+        : heightOfRow(rowId);
+    },
+    scrollElement: getScrollElement,
+    viewportHeight,
+  });
+  restoreLayout = layout.restore;
+  return layout;
+}
 
 beforeEach(() => {
   vi.useFakeTimers({
@@ -291,21 +315,7 @@ async function runSeed(seed: number): Promise<void> {
     }),
   );
 
-  const getScrollElement = () =>
-    document.querySelector<HTMLElement>("[data-page-scroll-viewport]");
-  const layout = installFakeFlowLayout({
-    heightOf: (element) => {
-      if (element.hasAttribute("data-scroll-landmark-id")) return 24;
-      const rowId = element.getAttribute("data-timeline-row-id");
-      if (rowId === null) return null;
-      return element.parentElement?.closest("[data-timeline-row-id]")
-        ? null
-        : heightOfRow(rowId);
-    },
-    scrollElement: getScrollElement,
-    viewportHeight,
-  });
-  restoreLayout = layout.restore;
+  const layout = installOpeningLayout(viewportHeight, heightOfRow);
 
   const log: string[] = [
     `seed ${seed} ${compact ? "phone" : "desktop"} viewport=${viewportHeight} segments=${segmentCount}`,
@@ -553,4 +563,84 @@ describe("thread opening model", () => {
       }
     },
   );
+
+  it("keeps a read thread at the end when a live reply adds NEW above the view", async () => {
+    const rows = Array.from({ length: 12 }, (_, index) =>
+      conversationRow({
+        id: `msg-${index + 1}`,
+        role: "assistant",
+        seq: index + 1,
+        createdAt: (index + 1) * 1_000,
+        startedAt: (index + 1) * 1_000,
+        text: `reply ${index + 1}`,
+        threadId: THREAD_ID,
+        turnId: `turn-${index + 1}`,
+      }),
+    );
+    const readThread = makeThreadResponse({
+      id: THREAD_ID,
+      lastReadAt: 6_500,
+      latestAttentionAt: 6_500,
+      status: "idle",
+    });
+    vi.mocked(sdk.threads.get).mockResolvedValue(readThread);
+    vi.mocked(sdk.threads.timeline).mockResolvedValue(
+      makeThreadTimelineResponse({ rows, maxSeq: rows.length }),
+    );
+    vi.mocked(sdk.threads.markRead).mockResolvedValue({
+      ...readThread,
+      lastReadAt: 12_000,
+      latestAttentionAt: 12_000,
+    });
+    const layout = installOpeningLayout(600, () => 150);
+    const { wrapper: Wrapper, queryClient } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <Wrapper>
+          <OpenedThread />
+        </Wrapper>
+      </MemoryRouter>,
+    );
+    const settle = async () => {
+      for (let index = 0; index < 3; index += 1) {
+        await act(async () => {
+          layout.flushResizeObservers();
+          await vi.advanceTimersByTimeAsync(50);
+        });
+      }
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(4_000);
+        layout.flushResizeObservers();
+      });
+    };
+    const divider = () =>
+      document.querySelector<HTMLElement>(
+        "[data-testid=thread-unread-divider]",
+      );
+    const attached = () =>
+      document.querySelector("[data-scroll-attached]") !== null;
+    await settle();
+    expect(divider()).toBeNull();
+    expect(layout.scrollTop).toBeGreaterThan(0);
+    expect(layout.maxScrollTop() - layout.scrollTop).toBeLessThanOrEqual(
+      THRESHOLD_PX,
+    );
+    expect(attached()).toBe(true);
+
+    await act(async () => {
+      queryClient.setQueryData(threadQueryKey(THREAD_ID), {
+        ...readThread,
+        latestAttentionAt: 12_000,
+      });
+    });
+    await settle();
+
+    const shown = divider();
+    expect(shown).not.toBeNull();
+    expect(shown!.getBoundingClientRect().top).toBeLessThan(0);
+    expect(layout.maxScrollTop() - layout.scrollTop).toBeLessThanOrEqual(
+      THRESHOLD_PX,
+    );
+    expect(attached()).toBe(true);
+  });
 });

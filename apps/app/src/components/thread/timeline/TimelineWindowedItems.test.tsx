@@ -59,7 +59,9 @@ function setup({
       ),
     initiallyAttached: attached,
   });
-  let disconnect = rootPending ? () => undefined : keeper.connect(scrollElement);
+  let disconnect = rootPending
+    ? () => undefined
+    : keeper.connect(scrollElement);
   cleanups.push(layout.restore, () => disconnect());
   const connectRoot = () => {
     rootReady = true;
@@ -111,8 +113,13 @@ function setup({
       const top = topOf(key);
       return top < VIEWPORT_HEIGHT && top + heightOf(key) > 0;
     });
+  const extent = () => layout.maxScrollTop() + VIEWPORT_HEIGHT;
+  const totalHeight = (itemKeys: string[]) =>
+    itemKeys.reduce((sum, key) => sum + heightOf(key), 0) +
+    8 * (itemKeys.length - 1);
   return {
     connectRoot,
+    extent,
     heightOf,
     keeper,
     layout,
@@ -120,6 +127,7 @@ function setup({
     measurements,
     mounted,
     topOf,
+    totalHeight,
     view,
     visibleKeys,
   };
@@ -227,16 +235,23 @@ describe("TimelineWindowedItems", () => {
     expect(harness.visibleKeys().length).toBeGreaterThan(3);
   });
 
-  it("renders every row while the scrollport has no usable geometry, and windows once it does", () => {
+  it("renders every row while the scrollport has no usable geometry, then windows once it does with spacers sized from the heights it measured", () => {
     const harness = setup({ attached: false, viewportHeight: 0 });
-    render(harness.view(keys(300)), { container: harness.list });
+    const itemKeys = keys(300);
+    render(harness.view(itemKeys), { container: harness.list });
     expect(harness.mounted().length).toBe(300);
 
     harness.layout.setViewportHeight(VIEWPORT_HEIGHT);
     act(() => harness.keeper.reconcile());
+    act(() => harness.layout.flushResizeObservers());
 
     expect(harness.mounted().length).toBeLessThan(50);
     expect(harness.visibleKeys().length).toBeGreaterThan(3);
+    expect(harness.extent()).toBe(harness.totalHeight(itemKeys));
+    for (let step = 0; step < 11; step += 1) {
+      act(() => harness.layout.userScrollTo(harness.layout.scrollTop + 200));
+    }
+    expect(harness.extent()).toBe(harness.totalHeight(itemKeys));
   });
 
   it("starts at the end of the list when pinned to the bottom", () => {
@@ -329,12 +344,55 @@ describe("TimelineWindowedItems", () => {
     expect(harness.mounted().length).toBe(300);
   });
 
-  it("mounts a bounded window of a long history", () => {
+  it("mounts a bounded window of a long history and replaces it when the reader scrolls away", () => {
     const harness = setup({ attached: true });
-    render(harness.view(keys(1_000)), { container: harness.list });
+    const itemKeys = keys(1_000);
+    render(harness.view(itemKeys), { container: harness.list });
 
     expect(harness.mounted().length).toBeLessThan(40);
     expect(harness.layout.scrollTop).toBe(harness.layout.maxScrollTop());
+
+    act(() => harness.layout.userScrollTo(6_000));
+
+    expect(harness.mounted()).not.toContain(itemKeys.at(-1));
+    expect(harness.mounted().length).toBeLessThan(40);
+    expect(harness.visibleKeys().length).toBeGreaterThan(3);
+  });
+
+  it("shows the rows at a target the keeper scrolls to before any scroll event arrives", () => {
+    const harness = setup({ attached: true });
+    render(harness.view(keys(400)), { container: harness.list });
+    expect(harness.mounted()).not.toContain("row-0");
+
+    act(() => harness.keeper.scrollTo(0, "instant"));
+
+    expect(harness.layout.scrollTop).toBe(0);
+    expect(harness.topOf("row-0")).toBe(0);
+    const visible = harness.visibleKeys();
+    const last = visible.at(-1) ?? "";
+    expect(harness.topOf(last) + harness.heightOf(last)).toBeGreaterThanOrEqual(
+      VIEWPORT_HEIGHT,
+    );
+  });
+
+  it("re-measures a row that remounts taller than the thread remembered, so the scroll extent stays exact after it unmounts again", () => {
+    const harness = setup({ attached: true });
+    const itemKeys = keys(200);
+    for (const key of itemKeys)
+      harness.measurements.set(key, harness.heightOf(key));
+    harness.measurements.set("row-100", harness.heightOf("row-100") - 30);
+    render(harness.view(itemKeys), { container: harness.list });
+    expect(harness.mounted()).not.toContain("row-100");
+
+    act(() =>
+      harness.layout.userScrollTo(harness.totalHeight(itemKeys.slice(0, 100))),
+    );
+    act(() => harness.layout.flushResizeObservers());
+    expect(harness.visibleKeys()).toContain("row-100");
+    act(() => harness.layout.userScrollTo(harness.layout.maxScrollTop()));
+
+    expect(harness.mounted()).not.toContain("row-100");
+    expect(harness.extent()).toBe(harness.totalHeight(itemKeys));
   });
 
   it("keeps forced and interacted rows mounted outside the window", () => {
