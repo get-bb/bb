@@ -14,9 +14,13 @@ function registeredDeclaration() {
 }
 
 describe("the pi plugin's environment passthrough", () => {
-  it("declares the bridge command override variables so a host-set value reaches the bridge", () => {
+  it("declares the bridge command override and agent dir variables so a daemon-set value reaches the bridge", () => {
     expect(registeredDeclaration().env).toEqual({
-      passthrough: ["BB_PI_BRIDGE_COMMAND", "BB_PI_BRIDGE_ARGS"],
+      passthrough: [
+        "BB_PI_BRIDGE_COMMAND",
+        "BB_PI_BRIDGE_ARGS",
+        "PI_CODING_AGENT_DIR",
+      ],
     });
   });
 });
