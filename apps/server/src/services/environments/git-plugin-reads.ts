@@ -60,11 +60,12 @@ async function callGitPlugin(
     throw new ApiError(409, "git_plugin_unavailable", unavailableMessage(lookup));
   }
   const outcome = await plugins.invokeRpcHandler(
-    GIT_PLUGIN_ID,
+    lookup.owner,
     method,
     lookup.value,
     input,
     { kind: "client" },
+    null,
   );
   if (!outcome.ok) {
     throw new ApiError(
@@ -105,11 +106,12 @@ export async function refreshGitState(
   const lookup = plugins.getRpcHandler(GIT_PLUGIN_ID, "refresh");
   if (lookup.outcome !== "found") return;
   await plugins.invokeRpcHandler(
-    GIT_PLUGIN_ID,
+    lookup.owner,
     "refresh",
     lookup.value,
     { environmentId },
     { kind: "client" },
+    null,
   );
 }
 

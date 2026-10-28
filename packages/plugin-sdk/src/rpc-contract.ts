@@ -287,6 +287,13 @@ export type ExperimentalPluginRpcCaller =
 /** Second argument of every rpc handler. */
 export interface ExperimentalPluginRpcHandlerContext {
   readonly experimental_caller: ExperimentalPluginRpcCaller;
+  /**
+   * Aborts when the caller stops waiting (its HTTP request disconnects) or
+   * when this plugin instance is reloaded, disabled or removed. A disposing
+   * instance's callers still waiting when the dispose drain ends are
+   * released with an error, so work finished after that reaches nobody.
+   */
+  readonly experimental_signal: AbortSignal;
 }
 
 export type PluginRpcHandlers<Contract extends PluginRpcContract> = {

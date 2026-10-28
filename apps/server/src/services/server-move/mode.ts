@@ -47,11 +47,12 @@ export async function resolveServerMoveMode(
     };
   }
   const result = await plugins.invokeRpcHandler(
-    connectPlugin.id,
+    handler.owner,
     "status",
     handler.value,
     null,
     { kind: "client" },
+    null,
   );
   if (!result.ok) {
     return { mode: "unavailable", message: result.error.message };

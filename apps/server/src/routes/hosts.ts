@@ -114,11 +114,12 @@ async function revokeConnectMachineCredential(
       throw new Error(`connect plugin revoke handler is ${handler.outcome}`);
     }
     const result = await plugins.invokeRpcHandler(
-      connectPlugin.id,
+      handler.owner,
       "revokeMachine",
       handler.value,
       { machineId },
       { kind: "client" },
+      null,
     );
     if (!result.ok) throw new Error(result.error.message);
   } catch (error) {

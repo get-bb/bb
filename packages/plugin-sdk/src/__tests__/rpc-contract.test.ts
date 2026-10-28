@@ -166,6 +166,7 @@ describe("schema-driven rpc contract", () => {
     expect(
       contextHandlers.ping(null, {
         experimental_caller: { kind: "plugin", pluginId: "other" },
+        experimental_signal: new AbortController().signal,
       }),
     ).toEqual({ ok: true });
   });

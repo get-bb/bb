@@ -298,6 +298,27 @@ plugins' memory make the token a meaningful boundary for third-party plugins.
 bb account relies on it to keep `/api/connect/` requests, credential reads,
 refused-credential reports, and credential adoption to the connect plugin.
 
+## RPC cancellation (`ExperimentalPluginRpcHandlerContext.experimental_signal`)
+
+Every `bb.rpc.register` handler receives an `experimental_signal` that aborts
+when the HTTP request disconnects (including a `bb.sdk.plugins.callRpc` caller
+giving up after its 75 s timeout) or when the plugin instance that registered
+the handler is reloaded, disabled or removed. Callers of a disposing instance
+still waiting when the dispose drain ends are released with an error; the
+handler keeps running until it observes the signal, and later use of its API
+handle throws a contained stale-handle error.
+
+Core path: the same per-instance lifetime drives CLI `ctx.signal` and the
+release of disposed instances' route, RPC, CLI and event-handler callers.
+bb's own RPC callers (connect revoke and status, git reads) pass no request
+signal and get only the lifetime part.
+
+Docs: `backend-sdk.md`, `backend-ui-lifecycle.md`.
+
+Before stabilizing, audit whether HTTP route and thread event handlers need
+the same signal in a typed context, and whether a deadline (not only
+cancellation) belongs in the context.
+
 ## `bb.http.experimental_websocket`
 
 Registers an exact-path WebSocket upgrade in the plugin's

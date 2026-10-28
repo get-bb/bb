@@ -120,6 +120,13 @@ handOver(input, { experimental_caller: caller }) {
 },
 ```
 
+The context's `experimental_signal` aborts when the caller stops waiting
+(its HTTP request disconnects) or when this plugin generation is reloaded,
+disabled or removed. Pass it to long work and stop when it aborts.
+`bb.sdk.plugins.callRpc` gives up after 75 seconds, which disconnects the
+request and aborts the handler's signal; build longer operations as a job the
+caller polls.
+
 ### Thread plugin metadata
 
 Each plugin can keep a JSON-object namespace on a thread. Seed your namespace

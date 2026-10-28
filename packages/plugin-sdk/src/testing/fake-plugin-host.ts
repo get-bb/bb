@@ -405,12 +405,17 @@ export interface FakePluginBehaviorDrivers {
    * with the same message/code/issues the frontend client surfaces. The
    * handler sees `options.experimental_caller` as its caller, `{ kind:
    * "client" }` by default; pass `{ kind: "plugin", pluginId }` to act as
-   * another plugin calling through `bb.sdk.plugins.callRpc`.
+   * another plugin calling through `bb.sdk.plugins.callRpc`. The handler's
+   * `experimental_signal` aborts when `options.signal` aborts or the fake
+   * host is disposed.
    */
   callRpc(
     method: string,
     input?: unknown,
-    options?: { experimental_caller?: ExperimentalPluginRpcCaller },
+    options?: {
+      experimental_caller?: ExperimentalPluginRpcCaller;
+      signal?: AbortSignal;
+    },
   ): Promise<unknown>;
   /**
    * Start a client watch of one read, as the first client of a watched read
@@ -1669,9 +1674,11 @@ function createFakePluginHostInternal(
     },
   };
 
+  const hostLifetime = new AbortController();
   async function disposeHost(cleanupStorage: boolean): Promise<void> {
     if (disposed) return;
     disposed = true;
+    hostLifetime.abort();
     for (const [id, pending] of pendingInteractions) {
       clearTimeout(pending.timer);
       pendingInteractions.delete(id);
@@ -1951,6 +1958,10 @@ function createFakePluginHostInternal(
           experimental_caller: options.experimental_caller ?? {
             kind: "client",
           },
+          experimental_signal:
+            options.signal === undefined
+              ? hostLifetime.signal
+              : AbortSignal.any([options.signal, hostLifetime.signal]),
         });
       } catch (error) {
         const refusal = readPluginRpcRefusal(error);
