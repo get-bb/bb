@@ -56,6 +56,7 @@ describe("session config reconciliation", () => {
     skillRoots?: AgentRuntimeSkillRoot[];
     sessionSkills?: boolean;
     sessionRestorable?: boolean;
+    failResume?: boolean;
     initialThreads?: [string, AgentRuntimeSkillRoot[]][];
   }): Promise<{
     events: ThreadEvent[];
@@ -88,6 +89,7 @@ describe("session config reconciliation", () => {
           ...scriptedEchoProcessEnv({
             sessionConfig: args.mode,
             sessionSkills: args.sessionSkills ?? true,
+            ...(args.failResume === true ? { failResume: true } : {}),
           }),
         },
         onEvent: (event) => events.push(event),
@@ -414,5 +416,50 @@ describe("session config reconciliation", () => {
     expect(requests(record, "thread/resume")[0]?.params?.skillRoots).toEqual(
       rootsA,
     );
+  });
+
+  it("shuts down every threadless process when moving threads to new catalogs fails", async () => {
+    const roots = ["a", "b", "c", "d"].map((id) => [skillRoot(id)]);
+    const { processLog, runtime } = await startRuntime({
+      mode: { dynamicTools: "resume", skills: "resume" },
+      sessionSkills: false,
+      failResume: true,
+      initialThreads: [
+        ["t1", roots[0]!],
+        ["t2", roots[1]!],
+        ["t3", roots[2]!],
+      ],
+    });
+
+    for (const threadId of ["t1", "t2", "t3"]) {
+      await expect(
+        runtime.runTurn({
+          clientRequestId: `creq_sessncfg${threadId === "t1" ? "m" : threadId === "t2" ? "n" : "p"}2`,
+          threadId,
+          input: [promptTextInput({ text: "after skills changed" })],
+          options: fullRuntimeOptions,
+          skillRoots: roots[3]!,
+        }),
+      ).rejects.toThrow();
+    }
+
+    const livePids = () =>
+      spawns(processLog)
+        .map((step) => Number(step.slice("spawn:".length)))
+        .filter((pid) => {
+          try {
+            process.kill(pid, 0);
+            return true;
+          } catch {
+            return false;
+          }
+        });
+    await waitForRuntimeState({
+      describeFailure: () => `live bridge pids: ${livePids().join(",")}`,
+      label: "every threadless bridge process exited",
+      predicate: () => livePids().length === 0,
+      runtime,
+      timeoutMs: 5_000,
+    });
   });
 });

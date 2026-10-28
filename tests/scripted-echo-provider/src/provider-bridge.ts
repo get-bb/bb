@@ -101,6 +101,7 @@ export const scriptedEchoOptionsSchema = z
     failStopForThreadIds: z.array(z.string().min(1)).optional(),
     emitIdentityOnSigterm: z.boolean().optional(),
     sessionSkills: z.boolean().optional(),
+    failResume: z.boolean().optional(),
     sessionConfig: z
       .object({
         dynamicTools: z.enum(["live", "resume", "fixed"]),
@@ -1032,6 +1033,10 @@ const handlers: Record<string, RequestHandler> = {
     }
     const options = scriptedOptionsFor(parsed.data.options.providerOptions);
     if (rejectIfArchived(id, options, parsed.data.providerThreadId)) {
+      return;
+    }
+    if (options.failResume === true) {
+      io.sendError(id, -32000, "scripted thread/resume failure");
       return;
     }
     afterStartDelay(options, () => {

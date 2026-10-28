@@ -379,7 +379,8 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   ): string {
     const baseKey = providerBaseProcessKey(args);
     const roots = requireAbsoluteSkillRoots(args.skillRoots ?? []);
-    const perSessionProcessKey = perSessionSkillProcessKeyByBaseKey.get(baseKey);
+    const perSessionProcessKey =
+      perSessionSkillProcessKeyByBaseKey.get(baseKey);
     if (perSessionProcessKey !== undefined) {
       return perSessionProcessKey;
     }
@@ -1572,7 +1573,9 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     }
     const proc = requireProviderProcessForThread(args.threadId);
     const declared = proc.adapter.sessionConfig;
-    const applies = (mode: BridgeSessionConfigApply): BridgeSessionConfigApply =>
+    const applies = (
+      mode: BridgeSessionConfigApply,
+    ): BridgeSessionConfigApply =>
       mode === "resume" && !config.sessionRestorable ? "fixed" : mode;
     const nextTools = args.dynamicTools;
     const toolsChanged =
@@ -1592,7 +1595,10 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     const resumeForTools = toolsChanged && toolsMode === "resume";
     const resumeForSkills = skillsChanged && skillsMode === "resume";
     if (toolsChanged && toolsMode === "fixed") {
-      warnFixedDynamicTools({ threadId: args.threadId, dynamicTools: nextTools });
+      warnFixedDynamicTools({
+        threadId: args.threadId,
+        dynamicTools: nextTools,
+      });
     }
     if (skillsChanged && skillsMode === "fixed") {
       warnFixedSkillRoots({ threadId: args.threadId, skillRoots: nextSkills });
@@ -1615,28 +1621,42 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       providerId: config.providerId,
       skillRoots: resumedSkills,
     });
-    if (nextProcessKey !== config.processKey) {
+    const movesProcess = nextProcessKey !== config.processKey;
+    if (movesProcess) {
       await releaseThreadOnBridgeBestEffort({ proc, threadId: args.threadId });
       forgetThreadRuntimeStateForProviderState(proc.identity, args.threadId);
     }
     const instructions = args.instructions ?? config.instructions;
-    await resumeThreadSession({
-      bridgeLaunch: config.bridgeLaunch,
-      skillRoots: resumedSkills,
-      environmentId: config.environmentId,
-      threadId: args.threadId,
-      ...(config.projectId !== undefined
-        ? { projectId: config.projectId }
-        : {}),
-      providerThreadId,
-      providerId: config.providerId,
-      contributedEnv: args.contributedEnv ?? config.contributedEnv,
-      options: args.options,
-      ...(instructions !== undefined ? { instructions } : {}),
-      ...(resumedTools !== undefined ? { dynamicTools: resumedTools } : {}),
-      instructionMode: config.instructionMode,
-    });
-    if (nextProcessKey !== config.processKey) {
+    try {
+      await resumeThreadSession({
+        bridgeLaunch: config.bridgeLaunch,
+        skillRoots: resumedSkills,
+        environmentId: config.environmentId,
+        threadId: args.threadId,
+        ...(config.projectId !== undefined
+          ? { projectId: config.projectId }
+          : {}),
+        providerThreadId,
+        providerId: config.providerId,
+        contributedEnv: args.contributedEnv ?? config.contributedEnv,
+        options: args.options,
+        ...(instructions !== undefined ? { instructions } : {}),
+        ...(resumedTools !== undefined ? { dynamicTools: resumedTools } : {}),
+        instructionMode: config.instructionMode,
+      });
+    } catch (error) {
+      if (movesProcess) {
+        try {
+          await releaseIdleProviderProcess(proc);
+        } catch (shutdownError) {
+          options.onStderr?.(
+            `Failed to retire the provider after thread "${args.threadId}" could not move to its new skill catalog: ${shutdownError instanceof Error ? shutdownError.message : String(shutdownError)}`,
+          );
+        }
+      }
+      throw error;
+    }
+    if (movesProcess) {
       await releaseIdleProviderProcess(proc);
     }
     return {
@@ -1726,8 +1746,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       type: "thread/resume",
       threadId,
       cwd: options.workspacePath,
-      providerThreadId:
-        providerThreadId ?? requireProviderThreadId(threadId),
+      providerThreadId: providerThreadId ?? requireProviderThreadId(threadId),
       options: toProviderExecutionContext({
         envVars: resolvedEnvironment.envVars,
         execOpts,
@@ -1761,11 +1780,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           threadId,
         },
       });
-      recordProviderThreadIdentity(
-        proc,
-        threadId,
-        result.providerThreadId,
-      );
+      recordProviderThreadIdentity(proc, threadId, result.providerThreadId);
       updateSessionRestoreCapability(threadId, result.sessionRestorable);
       resolved = result.providerThreadId;
       emitResolvedProviderEnvironment({
