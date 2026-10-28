@@ -94,6 +94,7 @@ interface FakeRuntimeState {
   archivedThreadId: string | undefined;
   ranTurnClientRequestId: ClientTurnRequestId | undefined;
   ranTurnInput: PromptInput[] | undefined;
+  ranTurnDynamicTools: DynamicTool[] | undefined;
   ranTurnText: string | undefined;
   renamedTitle: string | undefined;
   resumedBridgeLaunch: AgentRuntimeBridgeLaunch | undefined;
@@ -169,6 +170,7 @@ export function createFakeRuntime() {
     archivedThreadId: undefined,
     ranTurnClientRequestId: undefined,
     ranTurnInput: undefined,
+    ranTurnDynamicTools: undefined,
     ranTurnText: undefined,
     renamedTitle: undefined,
     resumedBridgeLaunch: undefined,
@@ -255,12 +257,16 @@ export function createFakeRuntime() {
       });
       return { providerThreadId };
     },
+    listSkillRootsInUse() {
+      return [];
+    },
     async runTurn(args) {
       const firstInput = args.input[0];
       state.ranTurnText =
         firstInput?.type === "text" ? firstInput.text : undefined;
       state.ranTurnClientRequestId = args.clientRequestId;
       state.ranTurnInput = args.input;
+      state.ranTurnDynamicTools = args.dynamicTools;
       activeTurnsByThreadId.set(args.threadId, `turn-${nextTurnNumber++}`);
     },
     async steerTurn(args) {

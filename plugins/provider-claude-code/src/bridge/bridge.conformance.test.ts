@@ -1,17 +1,23 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type {
+  McpServerConfig,
   SDKMessage,
   SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import {
   experimental_captureBridgeJsonRpcOutput as captureBridgeJsonRpcOutput,
   experimental_formatConformanceReport as formatConformanceReport,
   experimental_runBridgeConformance as runBridgeConformance,
 } from "@get-bb/plugin-sdk/provider-bridge/testing";
-import type { CapturedBridgeJsonRpcOutput } from "@get-bb/plugin-sdk/provider-bridge/testing";
+import type {
+  CapturedBridgeJsonRpcOutput,
+  ConformanceAgentObservation,
+} from "@get-bb/plugin-sdk/provider-bridge/testing";
 
 const { forkSessionMock, queryMock } = vi.hoisted(() => ({
   forkSessionMock: vi.fn(),
@@ -35,14 +41,78 @@ function asSdkMessage(message: Record<string, unknown>): SDKMessage {
 
 interface ScriptedClaudeQueryCall {
   prompt: AsyncIterable<SDKUserMessage>;
-  options: { resume?: string; sessionId?: string };
+  options: {
+    env?: Record<string, string | undefined>;
+    forkSession?: boolean;
+    mcpServers?: Record<string, McpServerConfig>;
+    plugins?: { type: "local"; path: string }[];
+    resume?: string;
+    sessionId?: string;
+  };
+}
+
+interface ScriptedClaudeSession {
+  env: Record<string, string | undefined>;
+  mcpServers: Record<string, McpServerConfig>;
+  plugins: { type: "local"; path: string }[];
 }
 
 let scriptedTurnCounter = 0;
+let scriptedSessions: ScriptedClaudeSession[] = [];
+let rejectMcpServerUpdates = false;
+
+async function listSdkServerTools(
+  servers: Record<string, McpServerConfig>,
+): Promise<ConformanceAgentObservation["tools"]> {
+  const tools: { name: string; description: string }[] = [];
+  for (const server of Object.values(servers)) {
+    if (server.type !== "sdk") continue;
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+    await server.instance.connect(serverTransport);
+    const client = new Client({ name: "conformance-probe", version: "1" });
+    await client.connect(clientTransport);
+    const listed = await client.listTools();
+    tools.push(
+      ...listed.tools.map((tool) => ({
+        name: tool.name,
+        description: tool.description ?? "",
+      })),
+    );
+    await client.close();
+    await server.instance.close();
+  }
+  return tools;
+}
+
+async function observeScriptedSession(threadId: string) {
+  const session = scriptedSessions
+    .slice()
+    .reverse()
+    .find((candidate) => candidate.env["BB_THREAD_ID"] === threadId);
+  if (session === undefined) return null;
+  return {
+    env: session.env,
+    tools: await listSdkServerTools(session.mcpServers),
+    skills: session.plugins.flatMap((plugin) =>
+      existsSync(join(plugin.path, "skills"))
+        ? readdirSync(join(plugin.path, "skills"))
+        : [],
+    ),
+  };
+}
 
 function createScriptedClaudeQuery(call: ScriptedClaudeQueryCall) {
   const sessionId =
     call.options.resume ?? call.options.sessionId ?? "scripted-session";
+  const session: ScriptedClaudeSession = {
+    env: call.options.env ?? {},
+    mcpServers: call.options.mcpServers ?? {},
+    plugins: call.options.plugins ?? [],
+  };
+  if (call.options.forkSession !== true) {
+    scriptedSessions.push(session);
+  }
   const outputQueue: SDKMessage[] = [];
   let closed = false;
   let notify: (() => void) | null = null;
@@ -145,6 +215,30 @@ function createScriptedClaudeQuery(call: ScriptedClaudeQueryCall) {
     }),
     initializationResult: vi.fn(async () => ({ commands: [] })),
     interrupt: vi.fn(async () => {}),
+    setMcpServers: vi.fn(async (servers: Record<string, McpServerConfig>) => {
+      if (rejectMcpServerUpdates && Object.keys(servers).length > 0) {
+        return {
+          added: [],
+          removed: [],
+          errors: Object.fromEntries(
+            Object.keys(servers).map((name) => [name, "failed to connect"]),
+          ),
+        };
+      }
+      const added = Object.keys(servers).filter(
+        (name) => session.mcpServers[name] === undefined,
+      );
+      const removed = Object.keys(session.mcpServers).filter(
+        (name) => servers[name] === undefined,
+      );
+      session.mcpServers = Object.fromEntries(
+        Object.entries(servers).map(([name, config]) => [
+          name,
+          session.mcpServers[name] ?? config,
+        ]),
+      );
+      return { added, removed, errors: {} };
+    }),
     setModel: vi.fn(async () => {}),
     setPermissionMode: vi.fn(async () => {}),
     [Symbol.asyncIterator]() {
@@ -159,6 +253,8 @@ let workspaceDir: string;
 beforeEach(() => {
   vi.clearAllMocks();
   scriptedTurnCounter = 0;
+  scriptedSessions = [];
+  rejectMcpServerUpdates = false;
   workspaceDir = mkdtempSync(join(tmpdir(), "bb-claude-conformance-ws-"));
   queryMock.mockImplementation((call: ScriptedClaudeQueryCall) =>
     createScriptedClaudeQuery(call),
@@ -184,6 +280,9 @@ it("passes the canonical protocol suite against the scripted claude session", as
       zeroWorkPromptInput: [
         { type: "text", text: ZERO_WORK_PROMPT_TEXT, mentions: [] },
       ],
+      probe: {
+        observe: ({ threadId }) => observeScriptedSession(threadId),
+      },
     },
     timeoutMs: 10_000,
   });
@@ -215,7 +314,43 @@ it("passes the canonical protocol suite against the scripted claude session", as
     "session/fork-identity": "pass",
     "session/fork-identity-announced": "pass",
     "turn/settles-without-activity": "pass",
+    "config/skills-per-session": "pass",
+    "config/skills-change-isolated": "pass",
+    "config/env-reaches-agent": "pass",
+    "config/tools-at-start": "pass",
+    "config/tools-added-after-empty-start": "pass",
+    "config/tools-change-applies": "pass",
+    "config/tools-removed": "pass",
   });
 
   expect(report.passed).toBe(true);
+}, 60_000);
+
+it("restarts the session with the new tools when Claude Code rejects a live MCP update", async () => {
+  rejectMcpServerUpdates = true;
+  const report = await runBridgeConformance({
+    transport: { send: handleLine, takeMessages: output.takeMessages },
+    providerId: "claude-code",
+    session: {
+      cwd: workspaceDir,
+      promptInput: [{ type: "text", text: "say hello", mentions: [] }],
+      probe: {
+        observe: ({ threadId }) => observeScriptedSession(threadId),
+      },
+    },
+    timeoutMs: 10_000,
+  });
+
+  expect(
+    Object.fromEntries(
+      report.results
+        .filter((result) => result.id.startsWith("config/tools-"))
+        .map((result) => [result.id, result.status]),
+    ),
+  ).toEqual({
+    "config/tools-at-start": "pass",
+    "config/tools-added-after-empty-start": "pass",
+    "config/tools-change-applies": "pass",
+    "config/tools-removed": "pass",
+  });
 }, 60_000);

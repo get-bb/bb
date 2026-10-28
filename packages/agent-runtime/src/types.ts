@@ -196,6 +196,8 @@ export interface RunTurnArgs {
   options: AgentRuntimeExecutionOptions;
   contributedEnv?: readonly AgentRuntimeContributedEnvEntry[];
   instructions?: string;
+  dynamicTools?: DynamicTool[];
+  skillRoots?: readonly AgentRuntimeSkillRoot[];
 }
 
 export interface SteerTurnArgs {
@@ -317,6 +319,8 @@ export interface AgentRuntime {
   resumeThread(args: ResumeThreadArgs): Promise<ResumeThreadResult>;
 
   runTurn(args: RunTurnArgs): Promise<void>;
+
+  listSkillRootsInUse(): readonly AgentRuntimeSkillRoot[];
 
   steerTurn(args: SteerTurnArgs): Promise<SteerTurnResult>;
 

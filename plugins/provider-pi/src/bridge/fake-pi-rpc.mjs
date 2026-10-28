@@ -779,6 +779,21 @@ async function handle(command) {
       });
       return;
     case "prompt": {
+      if (process.env.FAKE_PI_OBSERVATION_LOG) {
+        appendFileSync(
+          process.env.FAKE_PI_OBSERVATION_LOG,
+          `${JSON.stringify({
+            env: { ...process.env },
+            tools: [...extensionTools.values()].map((tool) => ({
+              name: tool.name,
+              description: tool.description,
+            })),
+            skillPaths: args.flatMap((arg, index) =>
+              args[index - 1] === "--skill" ? [arg] : [],
+            ),
+          })}\n`,
+        );
+      }
       if (promptDumpPath) {
         writeFileSync(promptDumpPath, JSON.stringify(command), "utf8");
       }

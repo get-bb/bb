@@ -1,4 +1,7 @@
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { z } from "zod";
 import {
   experimental_formatConformanceReport as formatConformanceReport,
   experimental_runBridgeConformance as runBridgeConformance,
@@ -9,12 +12,40 @@ import { type FakePiBridgeHarness, startFakePiBridge } from "./test-support.js";
 const CONFORMANCE_WAIT_TIMEOUT_MS = 30_000;
 
 let harness: FakePiBridgeHarness;
+let observationLogPath: string;
+
+const fakePiObservationSchema = z.object({
+  env: z.record(z.string(), z.string()),
+  tools: z.array(z.object({ name: z.string(), description: z.string() })),
+  skillPaths: z.array(z.string()),
+});
+
+function observeFakePi(threadId: string) {
+  if (!existsSync(observationLogPath)) return null;
+  const record = readFileSync(observationLogPath, "utf8")
+    .split("\n")
+    .filter((line) => line.length > 0)
+    .map((line) => fakePiObservationSchema.parse(JSON.parse(line)))
+    .slice()
+    .reverse()
+    .find((candidate) => candidate.env["BB_THREAD_ID"] === threadId);
+  if (record === undefined) return null;
+  return {
+    env: record.env,
+    tools: record.tools,
+    skills: record.skillPaths.flatMap((path) =>
+      existsSync(path) ? readdirSync(path) : [],
+    ),
+  };
+}
 
 beforeEach(async () => {
   harness = await startFakePiBridge({
     prefix: "bb-pi-conformance-ws-",
     initialize: false,
   });
+  observationLogPath = join(harness.workspaceDir, "fake-pi-observations.jsonl");
+  vi.stubEnv("FAKE_PI_OBSERVATION_LOG", observationLogPath);
 });
 
 afterEach(async () => {
@@ -29,6 +60,7 @@ it("passes the canonical protocol suite against a scripted pi rpc child", async 
       cwd: harness.workspaceDir,
       promptInput: [{ type: "text", text: "say hello", mentions: [] }],
       interruptiblePromptInput: [{ type: "text", text: "/hold", mentions: [] }],
+      probe: { observe: ({ threadId }) => observeFakePi(threadId) },
     },
     timeoutMs: CONFORMANCE_WAIT_TIMEOUT_MS,
   });
@@ -56,10 +88,70 @@ it("passes the canonical protocol suite against a scripted pi rpc child", async 
     "session/fork-identity-announced": "pass",
     "session/threads-independent": "pass",
     "stop/interrupt-settles-before-result": "pass",
+    "config/skills-per-session": "pass",
+    "config/skills-change-isolated": "pass",
+    "config/env-reaches-agent": "pass",
+    "config/tools-at-start": "pass",
+    "config/tools-added-after-empty-start": "pass",
+    "config/tools-change-applies": "pass",
+    "config/tools-removed": "pass",
   });
   expect(
     report.results
       .filter((result) => result.status !== "pass")
       .map((r) => r.id),
   ).toEqual([]);
+}, 60_000);
+
+const capabilitiesSchema = z
+  .object({
+    result: z
+      .object({ capabilities: z.object({}).passthrough() })
+      .passthrough(),
+  })
+  .passthrough();
+
+function withoutSessionConfigDeclaration(message: unknown): unknown {
+  const parsed = capabilitiesSchema.safeParse(message);
+  if (
+    !parsed.success ||
+    !("sessionConfig" in parsed.data.result.capabilities)
+  ) {
+    return message;
+  }
+  const { sessionConfig: _sessionConfig, ...capabilities } =
+    parsed.data.result.capabilities;
+  return { ...parsed.data, result: { ...parsed.data.result, capabilities } };
+}
+
+it("checks an undeclared sessionConfig as the documented resume default", async () => {
+  const report = await runBridgeConformance({
+    transport: {
+      send: handleLine,
+      takeMessages: () =>
+        harness.takeMessages().map(withoutSessionConfigDeclaration),
+    },
+    providerId: "pi",
+    session: {
+      cwd: harness.workspaceDir,
+      promptInput: [{ type: "text", text: "say hello", mentions: [] }],
+      probe: { observe: ({ threadId }) => observeFakePi(threadId) },
+    },
+    timeoutMs: CONFORMANCE_WAIT_TIMEOUT_MS,
+  });
+
+  const configResults = Object.fromEntries(
+    report.results
+      .filter((result) => result.id.startsWith("config/"))
+      .map((result) => [result.id, result.status]),
+  );
+  expect(configResults).toEqual({
+    "config/env-reaches-agent": "pass",
+    "config/tools-at-start": "pass",
+    "config/tools-added-after-empty-start": "pass",
+    "config/tools-change-applies": "pass",
+    "config/tools-removed": "pass",
+    "config/skills-per-session": "pass",
+    "config/skills-change-isolated": "pass",
+  });
 }, 60_000);

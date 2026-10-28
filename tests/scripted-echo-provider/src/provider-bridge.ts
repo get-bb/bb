@@ -100,6 +100,15 @@ export const scriptedEchoOptionsSchema = z
     uniqueProviderThreadIds: z.boolean().optional(),
     failStopForThreadIds: z.array(z.string().min(1)).optional(),
     emitIdentityOnSigterm: z.boolean().optional(),
+    sessionSkills: z.boolean().optional(),
+    skillsConfigure: z.boolean().optional(),
+    failResume: z.boolean().optional(),
+    sessionConfig: z
+      .object({
+        dynamicTools: z.enum(["live", "resume", "fixed"]),
+        skills: z.enum(["live", "resume", "fixed"]),
+      })
+      .optional(),
   })
   .strict();
 export type ScriptedEchoOptions = z.infer<typeof scriptedEchoOptionsSchema>;
@@ -903,7 +912,14 @@ const handlers: Record<string, RequestHandler> = {
         approvalEnforcedBy: processOptions.approvalEnforcedBy ?? "runtime",
         grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
         steerMode: "inject",
-        skills: { configure: true },
+        skills: {
+          configure: processOptions.skillsConfigure ?? true,
+          perSession: processOptions.sessionSkills === true,
+        },
+        sessionConfig: processOptions.sessionConfig ?? {
+          dynamicTools: "resume",
+          skills: "resume",
+        },
       },
     });
   },
@@ -1018,6 +1034,10 @@ const handlers: Record<string, RequestHandler> = {
     }
     const options = scriptedOptionsFor(parsed.data.options.providerOptions);
     if (rejectIfArchived(id, options, parsed.data.providerThreadId)) {
+      return;
+    }
+    if (options.failResume === true) {
+      io.sendError(id, -32000, "scripted thread/resume failure");
       return;
     }
     afterStartDelay(options, () => {

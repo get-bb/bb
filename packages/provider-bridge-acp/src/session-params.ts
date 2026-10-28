@@ -79,6 +79,7 @@ export interface AcpSessionParams {
   envVars?: Record<string, string>;
   instructions?: string;
   dynamicTools?: readonly DynamicTool[];
+  skillRoots: readonly AcpSkillRoot[];
 }
 
 function sanitizeAcpSkillDescription(description: string): string {
@@ -340,5 +341,6 @@ export function buildAcpSessionParams(
     ...(args.dynamicTools && args.dynamicTools.length > 0
       ? { dynamicTools: args.dynamicTools }
       : {}),
+    skillRoots: options.skillRoots ?? [],
   };
 }

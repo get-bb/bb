@@ -47,6 +47,9 @@
  *                            → mirror Cursor compatibility-vs-parameterized
  *                              model/config-option responses
  * - FAKE_ACP_REQUEST_LOG     → append each client request as JSON
+ * - FAKE_ACP_OBSERVATION_LOG → append the process env and MCP servers of
+ *                              every session/new, session/load, session/resume,
+ *                              and the text of every session/prompt
  * - FAKE_ACP_MODEL_COUNT=<n> → pad the catalog to n reasoning-capable models
  *                              (exercises large-catalog reasoning discovery)
  * - FAKE_ACP_AUTH_METHODS    → comma-separated auth method ids to advertise;
@@ -523,6 +526,16 @@ function captureMcpServers(message) {
   currentMcpServers = Array.isArray(message.params?.mcpServers)
     ? message.params.mcpServers
     : [];
+  if (process.env.FAKE_ACP_OBSERVATION_LOG) {
+    appendFileSync(
+      process.env.FAKE_ACP_OBSERVATION_LOG,
+      `${JSON.stringify({
+        sessionId: message.params?.sessionId ?? sessionId,
+        env: { ...process.env },
+        mcpServers: currentMcpServers,
+      })}\n`,
+    );
+  }
 }
 
 async function handlePrompt(message) {
@@ -541,6 +554,12 @@ async function handlePrompt(message) {
     appendFileSync(
       process.env.FAKE_ACP_PROMPT_LOG,
       `${JSON.stringify(text)}\n`,
+    );
+  }
+  if (process.env.FAKE_ACP_OBSERVATION_LOG) {
+    appendFileSync(
+      process.env.FAKE_ACP_OBSERVATION_LOG,
+      `${JSON.stringify({ sessionId: message.params?.sessionId, prompt: text })}\n`,
     );
   }
 

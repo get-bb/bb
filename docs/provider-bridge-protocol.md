@@ -56,7 +56,8 @@ pass through. Bridges version with their plugin, not with the daemon.
 
 Handshake capabilities are **session-behavior facts** (`sessionRestore`,
 `threadArchive`, `threadRename`, `threadGoalClear`, `fork`,
-`approvalEnforcedBy`, `grammarVersions`, `steerMode`, `skills`). They are
+`approvalEnforcedBy`, `grammarVersions`, `steerMode`, `skills`,
+`sessionConfig`). They are
 reported by the code that implements them, so they cannot drift from
 behavior. The runtime never sends a capability-gated method to a bridge that
 did not advertise it. A handshake fact may only _narrow_ what the provider's
@@ -77,6 +78,25 @@ for the next prompt boundary). It is recorded, but nothing in the runtime,
 server, or clients acts on it yet: the runtime sends `turn/steer` either way,
 and a steer whose turn is gone is dropped on the bridge's `staleTurn` recovery
 hint whatever the mode.
+
+`sessionConfig: { dynamicTools, skills }` declares how a running session takes
+a changed value of each field: `live` (the bridge applies it to the running
+session: `dynamicTools` and `skillRoots` on `turn/start`), `resume` (the
+default, also used when the bridge omits the declaration; `thread/resume` for
+the live thread with the new value rebuilds its session), or `fixed` (the
+provider keeps the start-time value).
+The runtime keeps the value each session was built with and diffs it against
+the server's value on every `turn/start`: unchanged sends nothing; `live`
+sends the new `dynamicTools` on that `turn/start`; `resume` resumes the
+session first (a session that is not restorable is treated as `fixed`);
+`fixed` keeps the session and emits one `provider/warning` per distinct
+change. `turn/steer` never reconciles. With a fixture `probe`, the `config/*`
+rules check the env, tools at start, and tool additions, changes and removals
+on the agent the fake provider ran, using the declared mode or the `resume`
+default. A probe that reports `skills` also runs `config/skills-per-session`
+and `config/skills-change-isolated`: two threads started with different
+`skillRoots` each see only their own skills, and changing one thread's roots
+(or sending `skills/configure`) leaves the other's alone.
 
 The sessionless `provider/health`, `provider/usage`,
 `provider/installation/status`, and `provider/installation/run` methods are
@@ -315,11 +335,21 @@ the delta's presentation); `extension.state` becomes the thread-scoped
 `skills/configure { roots: [{ id, path, skills: [{ name, description }] }] }`
 is one shape for every provider: `path` is an absolute skills directory, one
 subdirectory per listed skill (`<path>/<name>/SKILL.md`). The bridge maps it
-to its provider's own layout. The runtime sends it **only to a bridge whose
-handshake declares `skills: { configure: true }`**, once per process, before
-the first thread command; a bridge that declares nothing never receives it
-and runs without injected skills, so a bridge that answers unknown methods
-with `METHOD_NOT_FOUND` still starts threads. The runtime never probes.
+to its provider's own layout. Threads in one environment can use different
+skill catalogs, so a bridge that declares `skills: { configure: true,
+perSession: true }` takes roots per session: `thread/start`,
+`thread/resume` and `thread/fork` carry the thread's `skillRoots`, a live
+`turn/start` carries changed ones, and `skills/configure` only sets the
+default for sessions constructed without `skillRoots` (it never changes a
+running session). A bridge that declares `configure` without `perSession`
+receives `skills/configure` once, when its process starts, and the runtime
+runs one process per skill catalog for it (a thread without skills uses the
+process with none), moving a thread to the process for its new catalog by
+resuming it there; a session that is not restorable keeps its catalog, with
+one warning. A bridge that declares nothing never
+receives skill roots and runs without injected skills, so a bridge that
+answers unknown methods with `METHOD_NOT_FOUND` still starts threads. The
+runtime never probes.
 Conformance rule `skills/configure-declared` pins both directions: declared →
 the request must succeed; undeclared → the request must be refused.
 

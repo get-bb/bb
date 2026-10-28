@@ -5,6 +5,7 @@ import { ClaudeContextUsageCollector } from "./context-usage.js";
 import { readIsolatedClaudeContextUsage } from "./context-usage-probe.js";
 
 import {
+  type DynamicTool,
   type PendingInteractionGrantedPermissionProfile,
   type PendingInteractionPayload,
   type PermissionEscalation,
@@ -37,6 +38,7 @@ import { isDeepStrictEqual } from "node:util";
 import {
   type CanUseTool,
   type HookCallback,
+  type McpSdkServerConfigWithInstance,
   type PermissionResult,
   type SDKMessage,
 } from "@anthropic-ai/claude-agent-sdk";
@@ -109,7 +111,7 @@ import {
 } from "./skill-plugins.js";
 import {
   buildBridgeMcpServer,
-  getAllowedToolNames,
+  BB_BRIDGE_ALLOWED_TOOLS_RULE,
   type ToolCallForwarder,
 } from "./tool-proxy-mcp.js";
 import { BB_BRIDGE_MCP_SERVER_NAME } from "../tool-classification.js";
@@ -1162,13 +1164,9 @@ function createThreadSession(attachment: ThreadAttachment): ThreadSession {
     cwd: attachment.sessionConstructionConfig.sessionOptions.cwd,
     sandboxEnabled: attachment.sessionOptions.sandbox?.enabled === true,
   });
-  translator.configureInjectedTools(
-    (attachment.sessionConstructionConfig.dynamicTools ?? []).map((tool) => ({
-      name: tool.name,
-      ...(tool.presentation === undefined
-        ? {}
-        : { presentation: tool.presentation }),
-    })),
+  configureTranslatorInjectedTools(
+    translator,
+    attachment.sessionConstructionConfig.dynamicTools ?? [],
   );
   const threadSession: ThreadSession = {
     commandListGeneration: 0,
@@ -2272,8 +2270,9 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
           approvalEnforcedBy: "provider",
           grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
           steerMode: "inject",
-          skills: { configure: true },
+          skills: { configure: true, perSession: true },
           commands: { list: true },
+          sessionConfig: { dynamicTools: "live", skills: "resume" },
         },
       };
       sendResult(request.id, result);
@@ -2377,6 +2376,69 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
   }
 }
 
+function buildDynamicToolServers(
+  dynamicTools: DynamicTool[],
+  threadIdRef: ThreadIdRef,
+): Record<string, McpSdkServerConfigWithInstance> {
+  return dynamicTools.length === 0
+    ? {}
+    : {
+        [BB_BRIDGE_MCP_SERVER_NAME]: buildBridgeMcpServer(
+          dynamicTools,
+          createForwardToolCall(() => threadIdRef.current),
+        ),
+      };
+}
+
+function configureTranslatorInjectedTools(
+  translator: ClaudeDeltaTranslator,
+  dynamicTools: DynamicTool[],
+): void {
+  translator.configureInjectedTools(
+    dynamicTools.map((tool) => ({
+      name: tool.name,
+      ...(tool.presentation === undefined
+        ? {}
+        : { presentation: tool.presentation }),
+    })),
+  );
+}
+
+async function applyDynamicTools(
+  threadId: string,
+  dynamicTools: DynamicTool[] | undefined,
+): Promise<void> {
+  const attachment = threadAttachments.get(threadId);
+  if (
+    dynamicTools === undefined ||
+    attachment === undefined ||
+    isDeepStrictEqual(
+      attachment.sessionConstructionConfig.dynamicTools ?? [],
+      dynamicTools,
+    )
+  ) {
+    return;
+  }
+  const servers = buildDynamicToolServers(dynamicTools, attachment.threadIdRef);
+  const resident = attachment.residentSession;
+  if (resident !== null && !resident.closing && !resident.streamEnded) {
+    try {
+      await resident.session.replaceMcpServers(servers);
+      configureTranslatorInjectedTools(resident.translator, dynamicTools);
+    } catch (error) {
+      process.stderr.write(
+        `claude bridge: restarting the session to apply bb tools: ${error instanceof Error ? error.message : String(error)}\n`,
+      );
+      resident.restartBeforeNextTurn = {
+        reason: "Claude Code could not update bb tools on the running session",
+        showRuntimeNote: false,
+      };
+    }
+  }
+  attachment.sessionConstructionConfig.dynamicTools = dynamicTools;
+  attachment.sessionOptions.mcpServers = servers;
+}
+
 function attachThreadSession(
   id: string | number,
   params: SessionConstructionParams,
@@ -2390,14 +2452,11 @@ function attachThreadSession(
     sessionOptions.sessionId = providerThreadId;
   }
   sessionOptions.canUseTool = createCanUseTool(threadIdRef);
-  if (params.dynamicTools && params.dynamicTools.length > 0) {
-    const mcpServer = buildBridgeMcpServer(
-      params.dynamicTools,
-      createForwardToolCall(() => threadIdRef.current),
-    );
-    sessionOptions.mcpServers = { [BB_BRIDGE_MCP_SERVER_NAME]: mcpServer };
-    sessionOptions.allowedTools = getAllowedToolNames(params.dynamicTools);
-  }
+  sessionOptions.mcpServers = buildDynamicToolServers(
+    params.dynamicTools ?? [],
+    threadIdRef,
+  );
+  sessionOptions.allowedTools = [BB_BRIDGE_ALLOWED_TOOLS_RULE];
 
   const attachment = createThreadAttachment({
     liveSettings: toInitialLiveSessionSettings(params),
@@ -2534,12 +2593,13 @@ async function handleThreadFork(
 async function toClaudeSessionParams(
   params: z.infer<typeof canonicalThreadStartParamsSchema>,
 ): Promise<Record<string, unknown>> {
+  const sessionSkillRoots = params.skillRoots ?? configuredSkillRoots;
   const roots =
-    configuredSkillRoots === null
+    sessionSkillRoots === null
       ? undefined
       : assembleSkillPlugins(
           await filterClaudeSkillRoots({
-            roots: configuredSkillRoots,
+            roots: sessionSkillRoots,
             cwd: params.cwd,
             pluginsRoot: requireSkillPluginsRoot(),
             claudeDir: claudeSkillsConfigDirectory(),
@@ -2639,6 +2699,16 @@ async function handleTurnStart(
   id: string | number,
   params: CanonicalTurnStartParams,
 ): Promise<void> {
+  try {
+    await applyDynamicTools(params.threadId, params.dynamicTools);
+  } catch (error) {
+    sendError(
+      id,
+      BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
+      error instanceof Error ? error.message : String(error),
+    );
+    return;
+  }
   await runTurnInput(
     id,
     claudeTurnStartParamsSchema.parse(

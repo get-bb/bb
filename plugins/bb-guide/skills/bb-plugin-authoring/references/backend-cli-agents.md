@@ -221,10 +221,17 @@ the plugin's branding glyph.
 `configure` and `contributeInstructions` are synchronous, may each be
 registered once per factory execution, and run whenever BB resolves a
 thread's configuration (`thread.start` and `turn.submit`), so keep them fast.
-Prefer `skills/` for standing knowledge. Resolved tools and instructions take
-effect only when the provider session is next constructed; BB never
-hot-mutates a running session. A busy environment keeps its current staged
-skill catalog until a safe relaunch. Side chats also run both callbacks.
+Prefer `skills/` for standing knowledge. A changed tool or skill selection
+reaches an existing thread at its next turn, the way the provider's bridge
+declares in its `sessionConfig` capability: Claude Code applies tools to the
+running session, ACP agents and Pi resume the session with them, and Codex
+keeps the tools a thread started with and shows a warning. Codex applies
+skill changes to running sessions and Claude Code and Pi resume; ACP agents
+keep the skills a session started with (they are part of its first prompt)
+and show a warning. Each thread's selection
+applies to that thread only, even when threads share an environment. A running
+turn is never interrupted. Instructions still take effect only when the provider session is
+next constructed. Side chats also run both callbacks.
 
 `configure`'s context has required, plain-data `thread`, `project`,
 `environment`, `host`, and `provider` objects. The `provider` object includes

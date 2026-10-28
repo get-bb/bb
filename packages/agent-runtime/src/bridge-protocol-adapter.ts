@@ -54,10 +54,14 @@ export type DeferredThreadEventsListener = (
   events: ThreadEvent[],
 ) => void;
 
+export type BridgeSkillScope = "none" | "session" | "process";
+
 export interface BridgeProtocolAdapter {
   id: string;
   capabilities: BridgeEnforcedCapabilities;
   readonly approvalEnforcedBy: "runtime" | "provider";
+  readonly sessionConfig: BridgeCapabilities["sessionConfig"];
+  readonly skillScope: BridgeSkillScope;
   process: { command: string; args: string[]; env?: Record<string, string> };
   buildCommandPlan(command: AdapterCommand): ProviderCommandPlan;
   buildPostInitializeRequests(): readonly ProviderPostInitializeRequest[];
@@ -195,6 +199,9 @@ export function createBridgeProtocolAdapter(
       ...(command.dynamicTools !== undefined
         ? { dynamicTools: command.dynamicTools }
         : {}),
+      ...(adapter.skillScope === "session"
+        ? { skillRoots: command.skillRoots }
+        : {}),
       instructionMode: command.instructionMode,
     };
   }
@@ -204,6 +211,15 @@ export function createBridgeProtocolAdapter(
     capabilities,
     get approvalEnforcedBy() {
       return handshake.approvalEnforcedBy;
+    },
+    get sessionConfig() {
+      return handshake.sessionConfig;
+    },
+    get skillScope() {
+      if (!handshake.skills.configure) {
+        return "none";
+      }
+      return handshake.skills.perSession ? "session" : "process";
     },
     process: options.process,
 
@@ -343,6 +359,12 @@ export function createBridgeProtocolAdapter(
                 command.options,
                 options.staticProviderOptions,
               ),
+              ...(command.dynamicTools !== undefined
+                ? { dynamicTools: command.dynamicTools }
+                : {}),
+              ...(command.skillRoots !== undefined
+                ? { skillRoots: command.skillRoots }
+                : {}),
             },
           };
         case "turn/steer":

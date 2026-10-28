@@ -36,9 +36,12 @@ export {
 } from "@bb/provider-bridge-protocol/conformance";
 export type {
   BridgeConformanceTransport,
+  ConformanceAgentObservation,
   ConformanceCheckResult,
+  ConformanceObservedTool,
   ConformanceReport,
   ConformanceSessionFixture,
+  ConformanceSessionProbe,
   RunBridgeConformanceOptions,
 } from "@bb/provider-bridge-protocol/conformance";
 

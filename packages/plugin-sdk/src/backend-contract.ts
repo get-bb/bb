@@ -1663,12 +1663,14 @@ export interface PluginAgents {
    * factory execution. A throw, malformed result, duplicate id, unknown id,
    * or more than 256 tool/skill ids fails closed for this plugin only.
    *
-   * Tools take effect when the provider session is next started or resumed;
-   * an already-running session is not hot-mutated. Instructions follow the
-   * same boundary: a live provider session keeps the instructions it was
+   * A changed tool or skill selection reaches an existing thread at its next
+   * turn, the way its provider bridge declares: applied to the running
+   * session, applied by resuming the session, or kept from session start
+   * with a visible warning when the provider cannot change it (Codex tools).
+   * A turn already running is never interrupted. Instructions keep the older
+   * boundary: a live provider session keeps the instructions it was
    * constructed with, and a changed selection applies when the session is
-   * next constructed. Skill changes follow BB's environment runtime policy:
-   * a busy runtime keeps its current catalog until a safe relaunch. Side chats
+   * next constructed. Side chats
    * are ordinary plugin-owned forks here — read `origin` to detect them — and
    * their returned tool, skill, and dynamic-instruction selections apply at the
    * same boundaries.
@@ -1682,9 +1684,9 @@ export interface PluginAgents {
    * Register a native dynamic tool (design §4.4). `parameters` is either a
    * zod schema (validated per call; execute receives the parsed value) or a
    * plain JSON-schema object (no validation; execute receives the raw
-   * arguments as `unknown`). Tool-set changes apply on the NEXT session
-   * start — a tool registered mid-session is not hot-added to running
-   * provider sessions. A second registration of the same name within this
+   * arguments as `unknown`). A tool registered or changed while threads run
+   * reaches each of them at its next turn, as described for `configure`. A
+   * second registration of the same name within this
    * plugin is rejected; a name already registered by another plugin is
    * rejected and surfaced as this plugin's status detail. Recursive local
    * JSON Schema `$ref` chains are rejected because some model providers reject

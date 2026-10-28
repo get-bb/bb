@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import {
   normalizeProviderThreadNameEvent,
@@ -7,6 +8,7 @@ import {
 } from "@bb/domain";
 import type { DynamicTool, InstructionMode, ThreadEvent } from "@bb/domain";
 import type { AdapterCommand } from "./provider-adapter.js";
+import type { BridgeSkillScope } from "./bridge-protocol-adapter.js";
 import {
   BRIDGE_JSON_RPC_ERRORS,
   commandListResultSchema,
@@ -16,6 +18,7 @@ import {
   providerUsageResultSchema,
   ThreadEventGrammar,
   threadIdentityResultSchema,
+  type BridgeSessionConfigApply,
 } from "@bb/provider-bridge-protocol";
 import {
   JsonRpcResponseError,
@@ -65,6 +68,8 @@ import type {
   AgentRuntimeOptions,
   AgentRuntimeSkillRoot,
   ReapedIdleProviderSession,
+  ResumeThreadArgs,
+  ResumeThreadResult,
 } from "./types.js";
 import {
   resolveContributedEnvironment,
@@ -122,10 +127,28 @@ interface FindReapableIdleProviderSessionArgs {
   threadId: string;
 }
 
-interface ResolveProviderProcessKeyArgs {
+function requireAbsoluteSkillRoots(
+  roots: readonly AgentRuntimeSkillRoot[],
+): readonly AgentRuntimeSkillRoot[] {
+  for (const root of roots) {
+    if (!path.isAbsolute(root.path)) {
+      throw new Error(
+        `Agent runtime skill root "${root.id}" must use an absolute path: ${root.path}`,
+      );
+    }
+  }
+  return roots;
+}
+
+interface BridgeSkillsProcess {
+  skillScope: BridgeSkillScope;
+  sharedProcessKey: string;
+}
+
+interface EnsureProviderProcessArgs {
   bridgeLaunch: AgentRuntimeBridgeLaunch;
-  skillRoots?: readonly AgentRuntimeSkillRoot[];
   providerId: string;
+  skillRoots?: readonly AgentRuntimeSkillRoot[];
 }
 
 interface ArchiveOrUnarchiveThreadArgs {
@@ -255,17 +278,17 @@ function resolveThreadStoragePath(
 export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   const additionalWorkspaceWriteRoots =
     options.additionalWorkspaceWriteRoots ?? [];
-  const skillRoots = options.skillRoots ?? [];
-  for (const skillRoot of skillRoots) {
-    if (!path.isAbsolute(skillRoot.path)) {
-      throw new Error(
-        `Agent runtime skill root "${skillRoot.id}" must use an absolute path: ${skillRoot.path}`,
-      );
-    }
-  }
+  const defaultSkillRoots = requireAbsoluteSkillRoots(options.skillRoots ?? []);
+  const bridgeSkillsByBaseKey = new Map<string, BridgeSkillsProcess>();
+  const firstProviderStartByBaseKey = new Map<
+    string,
+    Promise<ProviderProcess>
+  >();
   let nextRequestId = 1;
   const threadIdentityRegistry = new RuntimeThreadIdentityRegistry();
   const threadRuntimeConfigs = new Map<string, ThreadRuntimeConfig>();
+  const fixedToolWarningByThreadId = new Map<string, string>();
+  const fixedSkillWarningByThreadId = new Map<string, string>();
   const rateLimitedRetryDelaysMs =
     options.rateLimitRetry?.delaysMs ?? DEFAULT_RATE_LIMITED_RETRY_DELAYS_MS;
   const threadCreationRequestTimeoutMs =
@@ -351,26 +374,83 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       threadEventGrammar.clearThread(threadId);
     },
     onStderr: options.onStderr,
-    skillRoots,
     workspacePath: options.workspacePath,
   });
 
-  function resolveProviderProcessKey(
-    args: ResolveProviderProcessKeyArgs,
+  function providerBaseProcessKey(args: {
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
+    providerId: string;
+  }): string {
+    return `${args.providerId}#bridge:${bridgeLaunchProcessKey(args.bridgeLaunch)}`;
+  }
+
+  function skillCatalogProcessKey(
+    baseKey: string,
+    skillRoots: readonly AgentRuntimeSkillRoot[],
   ): string {
-    const roots = args.skillRoots ?? skillRoots;
-    for (const root of roots) {
-      if (!path.isAbsolute(root.path)) {
-        throw new Error(
-          `Agent runtime skill root "${root.id}" must use an absolute path: ${root.path}`,
-        );
-      }
+    if (skillRoots.length === 0) {
+      return baseKey;
     }
-    const catalogKey =
-      roots.length === 0
-        ? ""
-        : `#skills:${createHash("sha256").update(JSON.stringify(roots)).digest("hex")}`;
-    return `${args.providerId}#bridge:${bridgeLaunchProcessKey(args.bridgeLaunch)}${catalogKey}`;
+    return `${baseKey}#skills:${createHash("sha256").update(JSON.stringify(skillRoots)).digest("hex")}`;
+  }
+
+  function providerProcessKey(args: {
+    baseKey: string;
+    bridgeSkills: BridgeSkillsProcess;
+    skillRoots: readonly AgentRuntimeSkillRoot[];
+  }): string {
+    return args.bridgeSkills.skillScope === "process"
+      ? skillCatalogProcessKey(args.baseKey, args.skillRoots)
+      : args.bridgeSkills.sharedProcessKey;
+  }
+
+  async function startProviderProcess(args: {
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
+    processKey: string;
+    providerId: string;
+    skillRoots: readonly AgentRuntimeSkillRoot[];
+  }): Promise<ProviderProcess> {
+    await providerProcesses.ensureProvider(args);
+    return providerProcesses.requireProviderProcess(args);
+  }
+
+  async function ensureProviderProcess(
+    args: EnsureProviderProcessArgs,
+  ): Promise<ProviderProcess> {
+    const skillRoots = requireAbsoluteSkillRoots(args.skillRoots ?? []);
+    const baseKey = providerBaseProcessKey(args);
+    for (;;) {
+      const bridgeSkills = bridgeSkillsByBaseKey.get(baseKey);
+      if (bridgeSkills !== undefined) {
+        return startProviderProcess({
+          ...args,
+          processKey: providerProcessKey({ baseKey, bridgeSkills, skillRoots }),
+          skillRoots,
+        });
+      }
+      const firstStart = firstProviderStartByBaseKey.get(baseKey);
+      if (firstStart === undefined) {
+        break;
+      }
+      await firstStart.catch(() => undefined);
+    }
+    const firstStart = startProviderProcess({
+      ...args,
+      processKey: skillCatalogProcessKey(baseKey, skillRoots),
+      skillRoots,
+    })
+      .then((proc) => {
+        bridgeSkillsByBaseKey.set(baseKey, {
+          skillScope: proc.adapter.skillScope,
+          sharedProcessKey: proc.processKey,
+        });
+        return proc;
+      })
+      .finally(() => {
+        firstProviderStartByBaseKey.delete(baseKey);
+      });
+    firstProviderStartByBaseKey.set(baseKey, firstStart);
+    return firstStart;
   }
 
   function requireProviderProcessForThread(threadId: string): ProviderProcess {
@@ -735,6 +815,8 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   }
 
   function clearThreadRuntimeConfig(threadId: string): void {
+    fixedToolWarningByThreadId.delete(threadId);
+    fixedSkillWarningByThreadId.delete(threadId);
     threadsAwaitingBridgeRestart.delete(threadId);
     threadsRetryingBridgeRestartOnIdle.delete(threadId);
     idleProviderSessionSinceMsByThreadId.delete(threadId);
@@ -1102,18 +1184,10 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         `Cannot ${commandType} thread "${threadId}" on "${providerId}": the thread has no live session and the request carried no bridge launch`,
       );
     }
-    const processKey =
-      threadConfig?.processKey ??
-      resolveProviderProcessKey({ bridgeLaunch, providerId });
-    await providerProcesses.ensureProvider({
-      processKey,
+    const proc = await ensureProviderProcess({
       providerId,
       bridgeLaunch,
-      skillRoots: threadConfig?.skillRoots,
-    });
-    const proc = providerProcesses.requireProviderProcess({
-      processKey,
-      providerId,
+      skillRoots: threadConfig?.skillRoots ?? [],
     });
     if (!proc.adapter.capabilities.supportsThreadArchive) {
       throw new Error(
@@ -1493,22 +1567,291 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     }
   }
 
+  function warnFixedDynamicTools(args: {
+    threadId: string;
+    dynamicTools: readonly DynamicTool[];
+  }): void {
+    const digest = JSON.stringify(args.dynamicTools);
+    if (fixedToolWarningByThreadId.get(args.threadId) === digest) {
+      return;
+    }
+    fixedToolWarningByThreadId.set(args.threadId, digest);
+    options.onEvent({
+      type: "provider/warning",
+      threadId: args.threadId,
+      providerThreadId: requireProviderThreadId(args.threadId),
+      category: "config",
+      summary: "This thread keeps the tools it started with",
+      details:
+        "Plugin tools changed after this thread's session started, and its provider cannot change a running session's tools. Start a new thread to use the current tools.",
+      scope: { kind: "thread" },
+    });
+  }
+
+  function warnFixedSkillRoots(args: {
+    threadId: string;
+    skillRoots: readonly AgentRuntimeSkillRoot[];
+  }): void {
+    const digest = JSON.stringify(args.skillRoots);
+    if (fixedSkillWarningByThreadId.get(args.threadId) === digest) {
+      return;
+    }
+    fixedSkillWarningByThreadId.set(args.threadId, digest);
+    options.onEvent({
+      type: "provider/warning",
+      threadId: args.threadId,
+      providerThreadId: requireProviderThreadId(args.threadId),
+      category: "config",
+      summary: "This thread keeps the skills it started with",
+      details:
+        "Skills changed after this thread's session started, and its provider cannot change a running session's skills. Start a new thread to use the current skills.",
+      scope: { kind: "thread" },
+    });
+  }
+
+  interface ReconciledSessionConfig {
+    dynamicTools: DynamicTool[] | undefined;
+    skillRoots: readonly AgentRuntimeSkillRoot[] | undefined;
+  }
+
+  async function reconcileThreadSessionConfig(args: {
+    threadId: string;
+    dynamicTools: DynamicTool[] | undefined;
+    skillRoots: readonly AgentRuntimeSkillRoot[] | undefined;
+    contributedEnv: readonly AgentRuntimeContributedEnvEntry[] | undefined;
+    instructions: string | undefined;
+    options: AgentRuntimeExecutionOptions;
+  }): Promise<ReconciledSessionConfig> {
+    const unchanged = { dynamicTools: undefined, skillRoots: undefined };
+    const config = threadRuntimeConfigs.get(args.threadId);
+    if (config === undefined) {
+      return unchanged;
+    }
+    const proc = requireProviderProcessForThread(args.threadId);
+    const declared = proc.adapter.sessionConfig;
+    const applies = (
+      mode: BridgeSessionConfigApply,
+    ): BridgeSessionConfigApply =>
+      mode === "resume" && !config.sessionRestorable ? "fixed" : mode;
+    const nextTools = args.dynamicTools;
+    const toolsChanged =
+      nextTools !== undefined &&
+      !isDeepStrictEqual(config.dynamicTools ?? [], nextTools);
+    const nextSkills =
+      args.skillRoots === undefined
+        ? undefined
+        : requireAbsoluteSkillRoots(args.skillRoots);
+    const skillScope = proc.adapter.skillScope;
+    const skillsChanged =
+      skillScope !== "none" &&
+      nextSkills !== undefined &&
+      !isDeepStrictEqual(config.skillRoots, nextSkills);
+    const toolsMode = applies(declared.dynamicTools);
+    const skillsMode = applies(
+      skillScope === "session" ? declared.skills : "resume",
+    );
+    const resumeForTools = toolsChanged && toolsMode === "resume";
+    const resumeForSkills = skillsChanged && skillsMode === "resume";
+    if (toolsChanged && toolsMode === "fixed") {
+      warnFixedDynamicTools({
+        threadId: args.threadId,
+        dynamicTools: nextTools,
+      });
+    }
+    if (skillsChanged && skillsMode === "fixed") {
+      warnFixedSkillRoots({ threadId: args.threadId, skillRoots: nextSkills });
+    }
+    const liveTools =
+      toolsChanged && toolsMode === "live" ? nextTools : undefined;
+    const liveSkills =
+      skillsChanged && skillsMode === "live" ? nextSkills : undefined;
+    if (!resumeForTools && !resumeForSkills) {
+      return { dynamicTools: liveTools, skillRoots: liveSkills };
+    }
+    const resumedTools = resumeForTools ? nextTools : config.dynamicTools;
+    const resumedSkills =
+      resumeForSkills && nextSkills !== undefined
+        ? nextSkills
+        : config.skillRoots;
+    const providerThreadId = requireProviderThreadId(args.threadId);
+    const nextProcessKey =
+      skillScope === "process"
+        ? skillCatalogProcessKey(providerBaseProcessKey(config), resumedSkills)
+        : config.processKey;
+    const movesProcess = nextProcessKey !== config.processKey;
+    if (movesProcess) {
+      await releaseThreadOnBridgeBestEffort({ proc, threadId: args.threadId });
+      forgetThreadRuntimeStateForProviderState(proc.identity, args.threadId);
+    }
+    const instructions = args.instructions ?? config.instructions;
+    try {
+      await resumeThreadSession({
+        bridgeLaunch: config.bridgeLaunch,
+        skillRoots: resumedSkills,
+        environmentId: config.environmentId,
+        threadId: args.threadId,
+        ...(config.projectId !== undefined
+          ? { projectId: config.projectId }
+          : {}),
+        providerThreadId,
+        providerId: config.providerId,
+        contributedEnv: args.contributedEnv ?? config.contributedEnv,
+        options: args.options,
+        ...(instructions !== undefined ? { instructions } : {}),
+        ...(resumedTools !== undefined ? { dynamicTools: resumedTools } : {}),
+        instructionMode: config.instructionMode,
+      });
+    } catch (error) {
+      if (movesProcess) {
+        try {
+          await releaseIdleProviderProcess(proc);
+        } catch (shutdownError) {
+          options.onStderr?.(
+            `Failed to retire the provider after thread "${args.threadId}" could not move to its new skill catalog: ${shutdownError instanceof Error ? shutdownError.message : String(shutdownError)}`,
+          );
+        }
+      }
+      throw error;
+    }
+    if (movesProcess) {
+      await releaseIdleProviderProcess(proc);
+    }
+    return {
+      dynamicTools: resumeForTools ? undefined : liveTools,
+      skillRoots: resumeForSkills ? undefined : liveSkills,
+    };
+  }
+
+  async function resumeThreadSession({
+    environmentId,
+    threadId,
+    projectId,
+    providerThreadId,
+    providerId,
+    bridgeLaunch,
+    skillRoots = defaultSkillRoots,
+    contributedEnv = [],
+    options: execOpts,
+    instructions,
+    dynamicTools,
+    instructionMode = "append",
+  }: ResumeThreadArgs): Promise<ResumeThreadResult> {
+    const proc = await ensureProviderProcess({
+      providerId,
+      bridgeLaunch,
+      skillRoots,
+    });
+    const processKey = proc.processKey;
+    assertProviderSupportsExecutionOptions({
+      adapter: proc.adapter,
+      options: execOpts,
+      providerId,
+    });
+    if (providerThreadId !== undefined) {
+      const ownerThreadId =
+        threadIdentityRegistry.resolveBbThreadIdForProviderThread({
+          providerState: proc.identity,
+          providerThreadId,
+        });
+      if (ownerThreadId !== undefined && ownerThreadId !== threadId) {
+        throw new Error(
+          `Cannot resume thread "${threadId}" on "${providerId}": provider thread "${providerThreadId}" is already hosted by thread "${ownerThreadId}"`,
+        );
+      }
+    }
+    const resolvedEnvironment = resolveRuntimeThreadEnvironment({
+      contributedEnv,
+      environmentId,
+      projectId,
+      threadId,
+    });
+    threadIdentityRegistry.registerThreadProvider({
+      providerId,
+      providerState: proc.identity,
+      threadId,
+    });
+    setThreadRuntimeConfig(threadId, {
+      bridgeLaunch,
+      skillRoots,
+      contributedEnv,
+      dynamicTools,
+      environmentId,
+      envVars: resolvedEnvironment.envVars,
+      instructionMode,
+      instructions,
+      options: execOpts,
+      processKey,
+      projectId,
+      providerId,
+      sessionRestorable: false,
+    });
+
+    if (providerThreadId) {
+      recordProviderThreadIdentity(proc, threadId, providerThreadId);
+    }
+
+    const adapterCommand: AdapterCommand = {
+      type: "thread/resume",
+      threadId,
+      cwd: options.workspacePath,
+      providerThreadId: providerThreadId ?? requireProviderThreadId(threadId),
+      options: toProviderExecutionContext({
+        envVars: resolvedEnvironment.envVars,
+        execOpts,
+        instructions,
+      }),
+      dynamicTools,
+      skillRoots,
+      instructionMode,
+    };
+    const plan = proc.adapter.buildCommandPlan(adapterCommand);
+    if (plan.kind === "noop") {
+      emitResolvedProviderEnvironment({
+        droppedContributions: resolvedEnvironment.droppedContributions,
+        entries: resolvedEnvironment.entries,
+        providerThreadId: adapterCommand.providerThreadId,
+        threadId,
+      });
+      return { providerThreadId: adapterCommand.providerThreadId };
+    }
+
+    let resolved: string;
+    try {
+      const result = await sendCommand({
+        proc,
+        message: plan,
+        resultSchema: threadIdentityResultSchema,
+        timeoutMs: threadCreationRequestTimeoutMs,
+        recovery: {
+          providerId,
+          providerThreadId: adapterCommand.providerThreadId,
+          threadId,
+        },
+      });
+      recordProviderThreadIdentity(proc, threadId, result.providerThreadId);
+      updateSessionRestoreCapability(threadId, result.sessionRestorable);
+      resolved = result.providerThreadId;
+      emitResolvedProviderEnvironment({
+        droppedContributions: resolvedEnvironment.droppedContributions,
+        entries: resolvedEnvironment.entries,
+        providerThreadId: resolved,
+        threadId,
+      });
+    } catch (resumeError) {
+      await abandonFailedSessionConstruction({ proc, threadId });
+      throw resumeError;
+    }
+    markHostedProviderSessionIdle(threadId);
+    return { providerThreadId: resolved };
+  }
+
   const runtime: AgentRuntime = {
     async ensureProvider({
       providerId,
       bridgeLaunch,
-      skillRoots: sessionSkillRoots = skillRoots,
+      skillRoots = defaultSkillRoots,
     }) {
-      await providerProcesses.ensureProvider({
-        processKey: resolveProviderProcessKey({
-          bridgeLaunch,
-          providerId,
-          skillRoots: sessionSkillRoots,
-        }),
-        providerId,
-        bridgeLaunch,
-        skillRoots: sessionSkillRoots,
-      });
+      await ensureProviderProcess({ providerId, bridgeLaunch, skillRoots });
     },
 
     async startThread({
@@ -1517,7 +1860,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       projectId,
       providerId,
       bridgeLaunch,
-      skillRoots: sessionSkillRoots = skillRoots,
+      skillRoots = defaultSkillRoots,
       contributedEnv = [],
       clientRequestId,
       input,
@@ -1530,21 +1873,12 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       return runThreadOperation({
         threadId,
         work: async () => {
-          const processKey = resolveProviderProcessKey({
-            bridgeLaunch,
-            providerId,
-            skillRoots: sessionSkillRoots,
-          });
-          await runtime.ensureProvider({
+          const proc = await ensureProviderProcess({
             providerId,
             bridgeLaunch,
-            skillRoots: sessionSkillRoots,
+            skillRoots,
           });
-
-          const proc = providerProcesses.requireProviderProcess({
-            processKey,
-            providerId,
-          });
+          const processKey = proc.processKey;
           assertProviderSupportsExecutionOptions({
             adapter: proc.adapter,
             options: execOpts,
@@ -1563,7 +1897,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           });
           setThreadRuntimeConfig(threadId, {
             bridgeLaunch,
-            skillRoots: sessionSkillRoots,
+            skillRoots,
             contributedEnv,
             dynamicTools,
             environmentId,
@@ -1596,6 +1930,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
                   : {}),
                 options: providerExecutionContext,
                 dynamicTools,
+                skillRoots,
                 instructionMode,
               }
             : {
@@ -1604,6 +1939,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
                 cwd: options.workspacePath,
                 options: providerExecutionContext,
                 dynamicTools,
+                skillRoots,
                 instructionMode,
               };
           let resolved: string;
@@ -1678,7 +2014,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       sourceProviderThreadId,
       retainThroughProviderCheckpoint,
       bridgeLaunch,
-      skillRoots: sessionSkillRoots = skillRoots,
+      skillRoots = defaultSkillRoots,
       options: execOpts,
       instructions,
       dynamicTools,
@@ -1694,20 +2030,12 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       const preparation = runThreadOperation({
         threadId,
         work: async () => {
-          const processKey = resolveProviderProcessKey({
-            bridgeLaunch,
-            providerId,
-            skillRoots: sessionSkillRoots,
-          });
-          await runtime.ensureProvider({
+          const proc = await ensureProviderProcess({
             providerId,
             bridgeLaunch,
-            skillRoots: sessionSkillRoots,
+            skillRoots,
           });
-          const proc = providerProcesses.requireProviderProcess({
-            processKey,
-            providerId,
-          });
+          const processKey = proc.processKey;
           if (!proc.adapter.capabilities.supportsFork) {
             throw new Error(
               `Preparing a thread rewind is not supported by ${providerId}`,
@@ -1747,6 +2075,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
                 instructions,
               }),
               dynamicTools,
+              skillRoots,
               instructionMode,
             };
             const command = requireProviderRequestPlan({
@@ -1840,144 +2169,10 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       await discardStagedThreadRewind(leaseId);
     },
 
-    async resumeThread({
-      environmentId,
-      threadId,
-      projectId,
-      providerThreadId,
-      providerId,
-      bridgeLaunch,
-      skillRoots: sessionSkillRoots = skillRoots,
-      contributedEnv = [],
-      options: execOpts,
-      instructions,
-      dynamicTools,
-      instructionMode = "append",
-    }) {
+    async resumeThread(args) {
       return runThreadOperation({
-        threadId,
-        work: async () => {
-          const processKey = resolveProviderProcessKey({
-            bridgeLaunch,
-            providerId,
-            skillRoots: sessionSkillRoots,
-          });
-          await runtime.ensureProvider({
-            providerId,
-            bridgeLaunch,
-            skillRoots: sessionSkillRoots,
-          });
-
-          const proc = providerProcesses.requireProviderProcess({
-            processKey,
-            providerId,
-          });
-          assertProviderSupportsExecutionOptions({
-            adapter: proc.adapter,
-            options: execOpts,
-            providerId,
-          });
-          if (providerThreadId !== undefined) {
-            const ownerThreadId =
-              threadIdentityRegistry.resolveBbThreadIdForProviderThread({
-                providerState: proc.identity,
-                providerThreadId,
-              });
-            if (ownerThreadId !== undefined && ownerThreadId !== threadId) {
-              throw new Error(
-                `Cannot resume thread "${threadId}" on "${providerId}": provider thread "${providerThreadId}" is already hosted by thread "${ownerThreadId}"`,
-              );
-            }
-          }
-          const resolvedEnvironment = resolveRuntimeThreadEnvironment({
-            contributedEnv,
-            environmentId,
-            projectId,
-            threadId,
-          });
-          threadIdentityRegistry.registerThreadProvider({
-            providerId,
-            providerState: proc.identity,
-            threadId,
-          });
-          setThreadRuntimeConfig(threadId, {
-            bridgeLaunch,
-            skillRoots: sessionSkillRoots,
-            contributedEnv,
-            dynamicTools,
-            environmentId,
-            envVars: resolvedEnvironment.envVars,
-            instructionMode,
-            instructions,
-            options: execOpts,
-            processKey,
-            projectId,
-            providerId,
-            sessionRestorable: false,
-          });
-
-          if (providerThreadId) {
-            recordProviderThreadIdentity(proc, threadId, providerThreadId);
-          }
-
-          const adapterCommand: AdapterCommand = {
-            type: "thread/resume",
-            threadId,
-            cwd: options.workspacePath,
-            providerThreadId:
-              providerThreadId ?? requireProviderThreadId(threadId),
-            options: toProviderExecutionContext({
-              envVars: resolvedEnvironment.envVars,
-              execOpts,
-              instructions,
-            }),
-            dynamicTools,
-            instructionMode,
-          };
-          const plan = proc.adapter.buildCommandPlan(adapterCommand);
-          if (plan.kind === "noop") {
-            emitResolvedProviderEnvironment({
-              droppedContributions: resolvedEnvironment.droppedContributions,
-              entries: resolvedEnvironment.entries,
-              providerThreadId: adapterCommand.providerThreadId,
-              threadId,
-            });
-            return { providerThreadId: adapterCommand.providerThreadId };
-          }
-
-          let resolved: string;
-          try {
-            const result = await sendCommand({
-              proc,
-              message: plan,
-              resultSchema: threadIdentityResultSchema,
-              timeoutMs: threadCreationRequestTimeoutMs,
-              recovery: {
-                providerId,
-                providerThreadId: adapterCommand.providerThreadId,
-                threadId,
-              },
-            });
-            recordProviderThreadIdentity(
-              proc,
-              threadId,
-              result.providerThreadId,
-            );
-            updateSessionRestoreCapability(threadId, result.sessionRestorable);
-            resolved = result.providerThreadId;
-            emitResolvedProviderEnvironment({
-              droppedContributions: resolvedEnvironment.droppedContributions,
-              entries: resolvedEnvironment.entries,
-              providerThreadId: resolved,
-              threadId,
-            });
-          } catch (resumeError) {
-            await abandonFailedSessionConstruction({ proc, threadId });
-            throw resumeError;
-          }
-          markHostedProviderSessionIdle(threadId);
-          return { providerThreadId: resolved };
-        },
+        threadId: args.threadId,
+        work: () => resumeThreadSession(args),
       });
     },
 
@@ -1988,6 +2183,8 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       options: execOpts,
       contributedEnv,
       instructions,
+      dynamicTools,
+      skillRoots,
     }) {
       return runThreadOperation({
         threadId,
@@ -1999,6 +2196,14 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             threadId,
             options: execOpts,
             instructions,
+          });
+          const live = await reconcileThreadSessionConfig({
+            threadId,
+            dynamicTools,
+            skillRoots,
+            contributedEnv,
+            instructions,
+            options: execOpts,
           });
           const proc = requireProviderProcessForThread(threadId);
           assertProviderSupportsExecutionOptions({
@@ -2039,6 +2244,12 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
               execOpts,
               instructions,
             }),
+            ...(live.dynamicTools !== undefined
+              ? { dynamicTools: live.dynamicTools }
+              : {}),
+            ...(live.skillRoots !== undefined
+              ? { skillRoots: live.skillRoots }
+              : {}),
           };
           const cmd = requireProviderRequestPlan({
             commandType: adapterCommand.type,
@@ -2067,6 +2278,12 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
               contributedEnv: resolvedContributedEnv,
               envVars: resolvedEnvironment.envVars,
               options: execOpts,
+              ...(live.dynamicTools !== undefined
+                ? { dynamicTools: live.dynamicTools }
+                : {}),
+              ...(live.skillRoots !== undefined
+                ? { skillRoots: live.skillRoots }
+                : {}),
             });
             if (environmentChanged) {
               emitResolvedProviderEnvironment({
@@ -2083,6 +2300,15 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           }
         },
       });
+    },
+
+    listSkillRootsInUse() {
+      return [
+        ...defaultSkillRoots,
+        ...[...threadRuntimeConfigs.values()].flatMap(
+          (config) => config.skillRoots,
+        ),
+      ];
     },
 
     async steerTurn({
@@ -2371,11 +2597,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     },
 
     async listModels({ providerId, bridgeLaunch, cwd, contributedEnv = [] }) {
-      await runtime.ensureProvider({ providerId, bridgeLaunch });
-      const proc = providerProcesses.requireProviderProcess({
-        processKey: resolveProviderProcessKey({ bridgeLaunch, providerId }),
-        providerId,
-      });
+      const proc = await ensureProviderProcess({ providerId, bridgeLaunch });
       const command = requireProviderRequestPlan({
         commandType: "model/list",
         plan: proc.adapter.buildCommandPlan({
@@ -2397,11 +2619,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     },
 
     async listCommands({ providerId, bridgeLaunch, cwd }) {
-      await runtime.ensureProvider({ providerId, bridgeLaunch });
-      const proc = providerProcesses.requireProviderProcess({
-        processKey: resolveProviderProcessKey({ bridgeLaunch, providerId }),
-        providerId,
-      });
+      const proc = await ensureProviderProcess({ providerId, bridgeLaunch });
       const plan = proc.adapter.buildCommandPlan({
         type: "commands/list",
         cwd,
@@ -2417,11 +2635,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     },
 
     async providerHealth({ providerId, bridgeLaunch, cwd }) {
-      await runtime.ensureProvider({ providerId, bridgeLaunch });
-      const proc = providerProcesses.requireProviderProcess({
-        processKey: resolveProviderProcessKey({ bridgeLaunch, providerId }),
-        providerId,
-      });
+      const proc = await ensureProviderProcess({ providerId, bridgeLaunch });
       const plan = proc.adapter.buildCommandPlan({
         type: "provider/health",
         ...(cwd !== undefined ? { cwd } : {}),
@@ -2437,11 +2651,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     },
 
     async providerUsage({ providerId, bridgeLaunch, cwd }) {
-      await runtime.ensureProvider({ providerId, bridgeLaunch });
-      const proc = providerProcesses.requireProviderProcess({
-        processKey: resolveProviderProcessKey({ bridgeLaunch, providerId }),
-        providerId,
-      });
+      const proc = await ensureProviderProcess({ providerId, bridgeLaunch });
       const plan = proc.adapter.buildCommandPlan({
         type: "provider/usage",
         ...(cwd !== undefined ? { cwd } : {}),
@@ -2463,11 +2673,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       requirement,
       checkUpdates = true,
     }) {
-      await runtime.ensureProvider({ providerId, bridgeLaunch });
-      const proc = providerProcesses.requireProviderProcess({
-        processKey: resolveProviderProcessKey({ bridgeLaunch, providerId }),
-        providerId,
-      });
+      const proc = await ensureProviderProcess({ providerId, bridgeLaunch });
       const plan = requireProviderRequestPlan({
         commandType: "provider/installation/status",
         plan: proc.adapter.buildCommandPlan({
@@ -2486,11 +2692,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     },
 
     async providerInstallationRun({ providerId, bridgeLaunch, cwd, action }) {
-      await runtime.ensureProvider({ providerId, bridgeLaunch });
-      const proc = providerProcesses.requireProviderProcess({
-        processKey: resolveProviderProcessKey({ bridgeLaunch, providerId }),
-        providerId,
-      });
+      const proc = await ensureProviderProcess({ providerId, bridgeLaunch });
       const plan = requireProviderRequestPlan({
         commandType: "provider/installation/run",
         plan: proc.adapter.buildCommandPlan({

@@ -75,8 +75,16 @@ export interface ScriptedEchoLaunchScript {
   recoveryThreadIdHint?: string;
   approvalEnforcedBy?: "runtime" | "provider";
   identifyProcess?: boolean;
+  uniqueProviderThreadIds?: boolean;
   failStopForThreadIds?: string[];
   emitIdentityOnSigterm?: boolean;
+  sessionSkills?: boolean;
+  skillsConfigure?: boolean;
+  failResume?: boolean;
+  sessionConfig?: {
+    dynamicTools: "live" | "resume" | "fixed";
+    skills: "live" | "resume" | "fixed";
+  };
 }
 
 export interface CreateScriptedEchoLaunchOptions {

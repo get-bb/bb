@@ -9,6 +9,7 @@ import {
 } from "@bb/process-utils";
 import type { BridgeProtocolAdapter } from "./bridge-protocol-adapter.js";
 import type { CreateBridgeAdapterOptions } from "./provider-adapter.js";
+import { bridgeLaunchProcessKey } from "./bridge-launch-process-key.js";
 import { createProviderForId } from "./provider-registry.js";
 import {
   ignoredJsonRpcResultSchema,
@@ -27,6 +28,7 @@ import type {
 
 export interface RuntimeProviderProcess extends ManagedProcess {
   adapter: BridgeProtocolAdapter;
+  bridgeLaunchKey: string;
   expectedShutdownExpectations: number;
   exitFinalized: Promise<void>;
   identity: RuntimeProviderIdentityState;
@@ -71,7 +73,6 @@ interface RuntimeProviderProcessManagerArgs {
   onProcessExit: AgentRuntimeOptions["onProcessExit"];
   onProviderThreadDetached: (threadId: string) => void;
   onStderr: AgentRuntimeOptions["onStderr"];
-  skillRoots: readonly AgentRuntimeSkillRoot[];
   workspacePath: string;
 }
 
@@ -107,6 +108,7 @@ interface TerminateProviderProcessArgs {
 
 interface SpawnProviderArgs {
   adapter: BridgeProtocolAdapter;
+  bridgeLaunchKey: string;
   processKey: string;
   providerId: string;
 }
@@ -180,6 +182,7 @@ export class RuntimeProviderProcessManager {
       const adapter = this.getAdapter(args.providerId, args.bridgeLaunch);
       const providerProcess = this.spawnProvider({
         adapter,
+        bridgeLaunchKey: bridgeLaunchProcessKey(args.bridgeLaunch),
         processKey: args.processKey,
         providerId: args.providerId,
       });
@@ -211,21 +214,9 @@ export class RuntimeProviderProcessManager {
           }
         }
 
-        const skillRoots = args.skillRoots ?? this.args.skillRoots;
-        if (skillRoots.length > 0) {
-          const skillRootsCmd = adapter.buildCommandPlan({
-            type: "skills/configure",
-            skillRoots,
-          });
-          if (skillRootsCmd.kind === "request") {
-            await sendJsonRpcRequest({
-              child: providerProcess.child,
-              message: skillRootsCmd,
-              pending: providerProcess.pending,
-              getNextId: this.args.getNextRequestId,
-              resultSchema: ignoredJsonRpcResultSchema,
-            });
-          }
+        const skillRoots = args.skillRoots ?? [];
+        if (skillRoots.length > 0 && adapter.skillScope === "process") {
+          await this.sendSkillRoots(providerProcess, skillRoots);
         }
       } catch (startupError) {
         if (this.shuttingDown) return;
@@ -257,11 +248,13 @@ export class RuntimeProviderProcessManager {
     args: EnsureRuntimeProviderArgs,
   ): Promise<void> {
     this.currentProcessKeyByProviderId.set(args.providerId, args.processKey);
+    const bridgeLaunchKey = bridgeLaunchProcessKey(args.bridgeLaunch);
     const staleKeys = [...this.processes.entries()]
       .filter(
         ([processKey, providerProcess]) =>
           processKey !== args.processKey &&
           providerProcess.providerId === args.providerId &&
+          providerProcess.bridgeLaunchKey !== bridgeLaunchKey &&
           providerProcess.identity.threadIds.size === 0,
       )
       .map(([processKey]) => processKey);
@@ -269,6 +262,26 @@ export class RuntimeProviderProcessManager {
     for (const processKey of staleKeys) {
       await this.shutdownProvider({ processKey, providerId: args.providerId });
     }
+  }
+
+  private async sendSkillRoots(
+    providerProcess: RuntimeProviderProcess,
+    skillRoots: readonly AgentRuntimeSkillRoot[],
+  ): Promise<void> {
+    const plan = providerProcess.adapter.buildCommandPlan({
+      type: "skills/configure",
+      skillRoots,
+    });
+    if (plan.kind !== "request") {
+      return;
+    }
+    await sendJsonRpcRequest({
+      child: providerProcess.child,
+      message: plan,
+      pending: providerProcess.pending,
+      getNextId: this.args.getNextRequestId,
+      resultSchema: ignoredJsonRpcResultSchema,
+    });
   }
 
   requireProviderProcess(
@@ -396,6 +409,7 @@ export class RuntimeProviderProcessManager {
     const providerProcess: RuntimeProviderProcess = {
       ...managed,
       adapter: args.adapter,
+      bridgeLaunchKey: args.bridgeLaunchKey,
       expectedShutdownExpectations: 0,
       exitFinalized,
       interactiveRequestScope: randomUUID(),
