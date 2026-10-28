@@ -9,7 +9,7 @@ import {
   type ExperimentalVendorPlugin,
 } from "@get-bb/plugin-sdk/host";
 import { z } from "zod";
-import { experimental_resolveCodexHome } from "@get-bb/plugin-sdk/host";
+import { internal_DO_NOT_USE_resolveCodexHome } from "@get-bb/plugin-sdk/host";
 
 export const CODEX_NATIVE_ROOTS_DECLARATION: Pick<
   PluginProviderDeclaration,
@@ -54,7 +54,7 @@ interface PluginCacheCandidate {
 export async function resolveCodexNativeRoots(
   args: ResolveCodexNativeRootsArgs,
 ): Promise<ExperimentalNativeRootsResolveAnswer> {
-  const codexHome = experimental_resolveCodexHome(args);
+  const codexHome = internal_DO_NOT_USE_resolveCodexHome(args);
   const skillsRootPath = path.join(codexHome, "skills");
   const skills: CodexResolvedSkillRoot[] = [
     { path: skillsRootPath, origin: "user", shape: "skills" },

@@ -23,7 +23,7 @@ import {
   experimental_resolveExecutablePath as resolveExecutablePath,
   experimental_versionFrom as versionFrom,
 } from "@get-bb/plugin-sdk/provider-bridge";
-import { experimental_resolveClaudeConfigDir } from "@get-bb/plugin-sdk/host";
+import { internal_DO_NOT_USE_resolveClaudeConfigDir } from "@get-bb/plugin-sdk/host";
 import { z } from "zod";
 
 const execFileAsync = experimental_execHostFile;
@@ -264,7 +264,7 @@ interface ClaudeProfile {
 function claudeProfile(): ClaudeProfile {
   const configured = process.env.CLAUDE_CONFIG_DIR;
   return {
-    configDir: experimental_resolveClaudeConfigDir({
+    configDir: internal_DO_NOT_USE_resolveClaudeConfigDir({
       cwd: process.cwd(),
       homeDir: os.homedir(),
       env: process.env,

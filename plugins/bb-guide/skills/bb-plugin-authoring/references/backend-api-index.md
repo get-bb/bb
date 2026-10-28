@@ -401,9 +401,9 @@ Read the installed declarations for exact current signatures.
 - `experimental_nativeRootsResolveOutputSchema`
 - `experimental_readProcessIdentity`
 - `experimental_resolveClaudePluginRoots`
-- `experimental_resolveClaudeConfigDir`
-- `experimental_resolveCodexHome`
-- `experimental_resolvePiAgentDir`
+- `internal_DO_NOT_USE_resolveClaudeConfigDir`
+- `internal_DO_NOT_USE_resolveCodexHome`
+- `internal_DO_NOT_USE_resolvePiAgentDir`
 - `experimental_resolveVendorPluginRoots`
 - `experimental_runVcsProcess`
 - `experimental_sanitizeInheritedChildProcessEnv`

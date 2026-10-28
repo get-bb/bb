@@ -6,7 +6,7 @@ import {
   jsonValueSchema,
   type JsonObject,
 } from "@get-bb/plugin-sdk/provider-bridge";
-import { experimental_resolveCodexHome } from "@get-bb/plugin-sdk/host";
+import { internal_DO_NOT_USE_resolveCodexHome } from "@get-bb/plugin-sdk/host";
 import { AiServiceFailure } from "./failure.js";
 
 const CODEX_AUTH_FILE_NAME = "auth.json";
@@ -50,7 +50,7 @@ type ClassifiedAuthJson =
 
 function codexAuthPath(): string {
   return path.join(
-    experimental_resolveCodexHome({
+    internal_DO_NOT_USE_resolveCodexHome({
       homeDir: os.homedir(),
       env: process.env,
       cwd: process.cwd(),

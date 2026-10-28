@@ -20,7 +20,7 @@
  * outside the repository, so its links are not. Command components never
  * follow a link, whatever the origin.
  */
-import { resolveClaudeConfigDir as experimental_resolveClaudeConfigDir } from "@bb/process-utils";
+import { resolveClaudeConfigDir } from "@bb/process-utils";
 import type { Dirent } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -749,7 +749,7 @@ export async function experimental_resolveClaudePluginRoots(
   args: ExperimentalClaudePluginRootsArgs,
 ): Promise<ExperimentalClaudePluginRoots> {
   const dirs: ResolvedClaudeDirs = {
-    claudeDir: experimental_resolveClaudeConfigDir(args),
+    claudeDir: resolveClaudeConfigDir(args),
     cwd: args.cwd === null ? null : path.resolve(args.cwd),
     homeDir: args.homeDir,
   };

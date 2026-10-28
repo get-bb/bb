@@ -1,8 +1,8 @@
 import path from "node:path";
 import {
   experimental_resolveClaudePluginRoots,
-  experimental_resolveCodexHome,
-  experimental_resolvePiAgentDir,
+  internal_DO_NOT_USE_resolveCodexHome,
+  internal_DO_NOT_USE_resolvePiAgentDir,
 } from "@get-bb/plugin-sdk/host";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
@@ -137,8 +137,10 @@ export const resolveOmpNativeRoots: AcpNativeRootsResolver = async (args) => {
     skills: [
       userRoot(path.join(agentDir, "skills")),
       userRoot(path.join(agentDir, "managed-skills")),
-      userRoot(path.join(experimental_resolvePiAgentDir(args), "skills")),
-      userRoot(path.join(experimental_resolveCodexHome(args), "skills")),
+      userRoot(
+        path.join(internal_DO_NOT_USE_resolvePiAgentDir(args), "skills"),
+      ),
+      userRoot(path.join(internal_DO_NOT_USE_resolveCodexHome(args), "skills")),
       userRoot(
         path.join(resolveOpenCodeConfigDir(args.homeDir, args.env), "skills"),
       ),

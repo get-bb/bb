@@ -61,7 +61,7 @@ export type {
 } from "@bb/process-utils";
 
 export {
-  resolveClaudeConfigDir as experimental_resolveClaudeConfigDir,
-  resolveCodexHome as experimental_resolveCodexHome,
-  resolvePiAgentDir as experimental_resolvePiAgentDir,
+  resolveClaudeConfigDir as internal_DO_NOT_USE_resolveClaudeConfigDir,
+  resolveCodexHome as internal_DO_NOT_USE_resolveCodexHome,
+  resolvePiAgentDir as internal_DO_NOT_USE_resolvePiAgentDir,
 } from "@bb/process-utils";

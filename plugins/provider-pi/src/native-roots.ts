@@ -3,7 +3,7 @@ import path from "node:path";
 import type { PluginProviderDeclaration } from "@get-bb/plugin-sdk";
 import {
   experimental_filterResolvedNativeRoots,
-  experimental_resolvePiAgentDir,
+  internal_DO_NOT_USE_resolvePiAgentDir,
   type ExperimentalNativeRootsResolveAnswer,
 } from "@get-bb/plugin-sdk/host";
 import { z } from "zod";
@@ -49,7 +49,7 @@ function isPlainSkillSource(value: string): boolean {
 export async function resolvePiNativeRoots(
   args: ResolvePiNativeRootsArgs,
 ): Promise<ExperimentalNativeRootsResolveAnswer> {
-  const agentDir = experimental_resolvePiAgentDir(args);
+  const agentDir = internal_DO_NOT_USE_resolvePiAgentDir(args);
   const roots = new Set<string>([path.resolve(agentDir, "skills")]);
   let settings: z.infer<typeof piSettingsSchema> | null = null;
   try {

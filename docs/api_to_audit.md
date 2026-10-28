@@ -899,7 +899,7 @@ in the answer) so a plugin cannot forget to call the helper, and whether
 `dropped[].reason` is a contract a resolver's test may pin or free text for
 the log.
 
-## Vendor plugin roots (`experimental_resolveClaudePluginRoots`, `experimental_resolveVendorPluginRoots` and `experimental_resolveClaudeConfigDir`, `@get-bb/plugin-sdk/host`)
+## Vendor plugin roots (`experimental_resolveClaudePluginRoots`, `experimental_resolveVendorPluginRoots` and `internal_DO_NOT_USE_resolveClaudeConfigDir`, `@get-bb/plugin-sdk/host`)
 
 `experimental_resolveVendorPluginRoots({ plugins, layout })` walks vendor
 plugin directories into native roots with `namePrefix: "<plugin>:"`.
@@ -909,7 +909,7 @@ the manifest entries, each recursive.
 `experimental_resolveClaudePluginRoots({ cwd, homeDir, env })` reads Claude
 Code's installed-plugin registry and enablement settings and runs the walk.
 Its answer also carries `claudeDir`, computed by
-`experimental_resolveClaudeConfigDir({ cwd, homeDir, env })`: `CLAUDE_CONFIG_DIR`
+`internal_DO_NOT_USE_resolveClaudeConfigDir({ cwd, homeDir, env })`: `CLAUDE_CONFIG_DIR`
 when set (literal path, relative to cwd, NFC-normalized), else
 `~/.claude`. Core's Claude Code provider uses that one resolver for native
 roots, its usage and health check (credentials, account file, Keychain
@@ -3979,8 +3979,17 @@ replacement. Settle the shared process-local instance lifecycle across SDK
 bundle versions and whether `bundledNpmCli` belongs on the public surface before
 removing the prefix.
 
-## Provider home resolvers (`experimental_resolveCodexHome`, `experimental_resolvePiAgentDir`, `@get-bb/plugin-sdk/host`)
+## Internal provider home resolvers (`@get-bb/plugin-sdk/host`)
 
-Both take `{ cwd, homeDir, env }` and resolve the home for the process being configured, without reading ambient state. A null cwd uses homeDir for host-wide discovery. Codex uses nonblank `CODEX_HOME` or `~/.codex`; Pi uses nonblank `PI_CODING_AGENT_DIR` or `~/.pi/agent` and expands `~`. Relative paths use cwd. Core native-root listing, Codex auth, and ACP omp discovery use these same resolvers. Claude's corresponding resolver is also used by daemon global-skill install/status.
+`internal_DO_NOT_USE_resolveClaudeConfigDir`, `internal_DO_NOT_USE_resolveCodexHome`, and `internal_DO_NOT_USE_resolvePiAgentDir` are first-party plumbing, not public plugin API. They take `{ cwd, homeDir, env }` and share process-utils' provider-home implementations without ambient environment reads.
 
-**Audit before stabilizing.** Verify these semantics against supported provider versions and agree on host-wide discovery's cwd fallback. Keep the resolver as the single implementation shared by core and plugins.
+The only SDK callers are:
+
+- `provider-claude-code`: session forks, skill filtering, and credential maintenance use the Claude helper.
+- `provider-codex`: native-root listing and Codex auth use the Codex helper.
+- `provider-pi`: native-root listing uses the Pi helper.
+- `provider-acp`: omp native-root discovery uses the Codex and Pi helpers.
+
+The SDK's Claude vendor-plugin registry reader and daemon global-skill install/status call the same process-utils Claude implementation directly. A null cwd uses homeDir for host-wide discovery. Claude uses literal, NFC-normalized paths; Codex defaults on blank values; Pi expands tilde. Relative paths use cwd.
+
+Keep these internal while their only consumers are bb's providers. Recheck path semantics against supported provider versions before changing them; any public promotion requires a separate API review and documented external use case.
