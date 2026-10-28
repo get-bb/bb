@@ -30,6 +30,7 @@ export const availableModelSchema = z.object({
   displayName: z.string(),
   routeProviderId: z.string().min(1).optional(),
   description: z.string(),
+  reasoningDiscovery: z.enum(["unknown", "known"]).default("unknown"),
   supportedReasoningEfforts: z.array(modelReasoningEffortSchema),
   defaultReasoningEffort: reasoningLevelSchema,
   supportedServiceTiers: z.array(modelServiceTierSchema).optional(),

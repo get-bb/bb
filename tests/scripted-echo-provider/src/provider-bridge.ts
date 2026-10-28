@@ -875,6 +875,7 @@ const MODEL_LIST = {
       model: "fake-model",
       displayName: "Fake Model",
       description: "Fake model for integration and runtime tests",
+      reasoningDiscovery: "known",
       supportedReasoningEfforts: [
         { reasoningEffort: "medium", description: "Medium" },
       ],

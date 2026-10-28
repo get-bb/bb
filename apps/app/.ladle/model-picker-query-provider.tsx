@@ -114,6 +114,7 @@ function makeAvailableModels({
         ? { routeProviderId: model.routeProviderId }
         : {}),
       description: "",
+      reasoningDiscovery: "known",
       supportedReasoningEfforts: makeSupportedReasoningEfforts(modelReasoning),
       defaultReasoningEffort,
       isDefault: markFirstDefault && index === 0,

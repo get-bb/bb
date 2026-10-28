@@ -1422,6 +1422,14 @@ describe("acp bridge", () => {
         ?.supportedReasoningEfforts.map((effort) => effort.reasoningEffort),
     ).toEqual(["low", "medium", "high"]);
     expect(
+      result.models.find((model) => model.model === "fake/gen-834")
+        ?.reasoningDiscovery,
+    ).toBe("known");
+    expect(
+      result.models.find((model) => model.model === "fake/gen-835")
+        ?.reasoningDiscovery,
+    ).toBe("unknown");
+    expect(
       loggedAcpRequests(requestLog)
         .filter((request) => request.method === "session/set_config_option")
         .map((request) => request.params?.value),
@@ -2385,24 +2393,17 @@ describe("acp bridge", () => {
     expect(agentMessageTexts()).toContain("selected-effort:max");
   });
 
-  it("does not advertise reasoning for ACP-native models without thought_level", async () => {
-    const modelListId = sendModelList({
-      envVars: { FAKE_ACP_MODEL_CONFIG: "1" },
+  it("confirms ACP-native models without thought_level have no selectable reasoning", async () => {
+    const response = await waitForResponse(
+      sendModelList({
+        envVars: { FAKE_ACP_MODEL_CONFIG: "1" },
+      }),
+    );
+    const { models } = modelListResultSchema.parse(response.result);
+    expect(models.find((model) => model.id === "fake/strong")).toMatchObject({
+      reasoningDiscovery: "known",
+      supportedReasoningEfforts: [],
     });
-
-    const response = await waitForResponse(modelListId);
-    const models = (
-      response.result as {
-        models: {
-          id: string;
-          supportedReasoningEfforts: { reasoningEffort: string }[];
-        }[];
-      }
-    ).models;
-    expect(
-      models.find((model) => model.id === "fake/strong")
-        ?.supportedReasoningEfforts,
-    ).toEqual([]);
   });
 
   it("lists an ACP-native model's own thought levels when none of them are standard levels", async () => {

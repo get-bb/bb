@@ -356,6 +356,7 @@ function buildCustomModel(
     model: customModel.model,
     displayName: customModel.displayName ?? customModel.model,
     description: "Custom model from config.json",
+    reasoningDiscovery: "known",
     supportedReasoningEfforts: reasoningEffortsForLevels(
       getSupportedReasoningLevelsForProvider(registry, customModel.providerId),
     ),

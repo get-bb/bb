@@ -570,8 +570,7 @@ export function createProviderModelCatalogStore(options: {
       ...(good?.models ?? []),
       ...(good?.selectedOnlyModels ?? []),
     ].find((model) => model.model === selectedModel);
-    if (model === undefined || model.supportedReasoningEfforts.length > 0)
-      return;
+    if (model === undefined || model.reasoningDiscovery === "known") return;
     const existing = entry.selectedModels.get(selectedModel);
     if (
       existing?.fingerprint === fingerprint &&
@@ -621,7 +620,7 @@ export function createProviderModelCatalogStore(options: {
         ].find((candidate) => candidate.model === selectedModel);
         if (
           discovered === undefined ||
-          discovered.supportedReasoningEfforts.length === 0
+          discovered.reasoningDiscovery !== "known"
         )
           return;
         const update = (models: AvailableModel[]) =>
@@ -629,6 +628,7 @@ export function createProviderModelCatalogStore(options: {
             candidate.model === selectedModel
               ? {
                   ...candidate,
+                  reasoningDiscovery: discovered.reasoningDiscovery,
                   supportedReasoningEfforts:
                     discovered.supportedReasoningEfforts,
                   defaultReasoningEffort: discovered.defaultReasoningEffort,

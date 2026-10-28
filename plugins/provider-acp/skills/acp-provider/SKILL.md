@@ -161,3 +161,5 @@ restart is needed.
   workspace, each a relative path without dot segments.
 - `supportsManualCompaction` (default `false`) shows `/compact` only for agents
   that accept an explicit compaction request.
+
+Model catalogs report `reasoningDiscovery` as `unknown` or `known`. A known empty `supportedReasoningEfforts` list confirms that the model has no selectable levels; only unknown models need focused discovery. An omitted execution reasoning value (or null on a queued message) leaves the provider default unchanged.

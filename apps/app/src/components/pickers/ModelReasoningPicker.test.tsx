@@ -133,6 +133,7 @@ function availableModel({
     model: value,
     displayName: label,
     description: "",
+    reasoningDiscovery: "known" as const,
     supportedReasoningEfforts: [
       { reasoningEffort: "medium", description: "Medium" },
     ],
@@ -937,6 +938,7 @@ describe("ModelReasoningPicker", () => {
               label: "Claude Opus 4.7",
               isDefault: true,
             }),
+            reasoningDiscovery: "known" as const,
             supportedReasoningEfforts: [
               { reasoningEffort: "medium", description: "Medium" },
               { reasoningEffort: "high", description: "High" },

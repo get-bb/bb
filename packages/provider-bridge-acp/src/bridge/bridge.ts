@@ -607,6 +607,7 @@ const ACP_DEFAULT_MODEL: AvailableModel = {
   model: ACP_DEFAULT_MODEL_ID,
   displayName: "Agent default",
   description: "Model selection is managed by the connected ACP agent.",
+  reasoningDiscovery: "unknown",
   supportedReasoningEfforts: [],
   defaultReasoningEffort: "medium",
   supportedServiceTiers: [],
@@ -623,7 +624,12 @@ function reasoningSupportFromCli(
     | Pick<AcpBridgeReasoningCli, "supportedLevels" | "defaultLevel">
     | undefined,
 ):
-  | Pick<AvailableModel, "supportedReasoningEfforts" | "defaultReasoningEffort">
+  | Pick<
+      AvailableModel,
+      | "reasoningDiscovery"
+      | "supportedReasoningEfforts"
+      | "defaultReasoningEffort"
+    >
   | undefined {
   if (reasoningCli === undefined) {
     return undefined;
@@ -637,6 +643,7 @@ function reasoningSupportFromCli(
         ? "medium"
         : supportedLevels[0];
   return {
+    reasoningDiscovery: "known",
     supportedReasoningEfforts: reasoningEffortsForLevels(supportedLevels),
     defaultReasoningEffort,
   };

@@ -571,7 +571,7 @@ export function useThreadCreationOptions(
 
   const needsSelectedModelDiscovery =
     modelCatalogIsVerified &&
-    baseCatalogSelection.activeModel?.supportedReasoningEfforts.length === 0;
+    baseCatalogSelection.activeModel?.reasoningDiscovery === "unknown";
   const selectedModelQuery = useSystemExecutionOptions({
     enabled: executionOptionsQueryEnabled && needsSelectedModelDiscovery,
     ...executionOptionsRouting,

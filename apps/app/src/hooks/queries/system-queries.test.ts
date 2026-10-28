@@ -388,6 +388,7 @@ describe("useSystemExecutionOptions", () => {
     model: "gpt-5.6-sol",
     displayName: "GPT-5.6 Sol",
     description: "",
+    reasoningDiscovery: "known" as const,
     supportedReasoningEfforts: [],
     defaultReasoningEffort: "medium",
     isDefault: true,

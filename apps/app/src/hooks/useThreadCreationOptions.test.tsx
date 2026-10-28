@@ -155,6 +155,7 @@ function executionOptionsResponse(): SystemExecutionOptionsResponse {
         model: "global-model",
         displayName: "Global Model",
         description: "",
+        reasoningDiscovery: "known" as const,
         supportedReasoningEfforts: [
           { reasoningEffort: "medium", description: "" },
           { reasoningEffort: "high", description: "" },
@@ -167,6 +168,7 @@ function executionOptionsResponse(): SystemExecutionOptionsResponse {
         model: "project-model",
         displayName: "Project Model",
         description: "",
+        reasoningDiscovery: "known" as const,
         supportedReasoningEfforts: [
           { reasoningEffort: "medium", description: "" },
           { reasoningEffort: "high", description: "" },
@@ -195,6 +197,7 @@ function providerExecutionOptionsResponse(
         model: `${modelPrefix}-default`,
         displayName: `${modelPrefix} default`,
         description: "",
+        reasoningDiscovery: "known" as const,
         supportedReasoningEfforts: [
           { reasoningEffort: "low", description: "" },
           { reasoningEffort: "medium", description: "" },
@@ -208,6 +211,7 @@ function providerExecutionOptionsResponse(
         model: `${modelPrefix}-remembered`,
         displayName: `${modelPrefix} remembered`,
         description: "",
+        reasoningDiscovery: "known" as const,
         supportedReasoningEfforts: [
           { reasoningEffort: "medium", description: "" },
           { reasoningEffort: "high", description: "" },
@@ -270,6 +274,7 @@ function claudeExecutionOptionsResponse(): SystemExecutionOptionsResponse {
         model: "claude-opus-4-8[1m]",
         displayName: "Opus 4.8 (1M)",
         description: "",
+        reasoningDiscovery: "known" as const,
         supportedReasoningEfforts: [
           { reasoningEffort: "medium", description: "" },
           { reasoningEffort: "high", description: "" },
@@ -282,6 +287,7 @@ function claudeExecutionOptionsResponse(): SystemExecutionOptionsResponse {
         model: "claude-sonnet-5",
         displayName: "Sonnet 5",
         description: "",
+        reasoningDiscovery: "known" as const,
         supportedReasoningEfforts: [
           { reasoningEffort: "medium", description: "" },
           { reasoningEffort: "high", description: "" },
@@ -356,6 +362,7 @@ describe("useThreadCreationOptions", () => {
       ...catalog,
       models: catalog.models.map((model) => ({
         ...model,
+        reasoningDiscovery: "unknown" as const,
         supportedReasoningEfforts: [],
       })),
     };
@@ -397,6 +404,7 @@ describe("useThreadCreationOptions", () => {
       ...catalog,
       models: catalog.models.map((model) => ({
         ...model,
+        reasoningDiscovery: "unknown" as const,
         supportedReasoningEfforts: [],
       })),
     };
@@ -562,6 +570,7 @@ describe("useThreadCreationOptions", () => {
           model: "wide-model",
           displayName: "Wide Model",
           description: "",
+          reasoningDiscovery: "known" as const,
           supportedReasoningEfforts: [
             { reasoningEffort: "low", description: "" },
             { reasoningEffort: "medium", description: "" },
@@ -577,6 +586,7 @@ describe("useThreadCreationOptions", () => {
           model: "short-model",
           displayName: "Short Model",
           description: "",
+          reasoningDiscovery: "known" as const,
           supportedReasoningEfforts: [
             { reasoningEffort: "low", description: "" },
             { reasoningEffort: "medium", description: "" },

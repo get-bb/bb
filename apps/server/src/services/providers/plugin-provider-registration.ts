@@ -101,6 +101,7 @@ export function projectFallbackModels(
     model: model.id,
     displayName: model.displayName,
     description: model.description,
+    reasoningDiscovery: "known",
     supportedReasoningEfforts: model.supportedReasoningEfforts.map(
       (effort) => ({
         reasoningEffort: effort.reasoningEffort,

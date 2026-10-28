@@ -337,6 +337,7 @@ vi.mock("@/hooks/queries/system-queries", () => ({
                 displayName: "GPT-5.6",
                 isDefault: true,
                 sessionOptions: mocks.modelSessionOptions,
+                reasoningDiscovery: "known" as const,
                 supportedReasoningEfforts: mocks.unknownReasoning
                   ? []
                   : [
@@ -350,6 +351,7 @@ vi.mock("@/hooks/queries/system-queries", () => ({
                 displayName: "GPT-5.6 Sol",
                 isDefault: false,
                 sessionOptions: mocks.modelSessionOptions,
+                reasoningDiscovery: "known" as const,
                 supportedReasoningEfforts: mocks.unknownReasoning
                   ? []
                   : [

@@ -214,6 +214,7 @@ describe("provider model catalog store", () => {
       const host = setupCatalogHost(harness, { id: "host-selected-race" });
       const unknown = modelList("a", "b").map((model) => ({
         ...model,
+        reasoningDiscovery: "unknown" as const,
         supportedReasoningEfforts: [],
       }));
       const a = createDeferredPromise<HostRpcHandlerResult>();
@@ -283,6 +284,30 @@ describe("provider model catalog store", () => {
     });
   });
 
+  it("retains confirmed empty reasoning without probing it again after the failure cooldown", async () => {
+    await withTestHarness(async (harness) => {
+      const host = setupCatalogHost(harness, { id: "host-known-empty" });
+      const models = (reasoningDiscovery: "unknown" | "known") =>
+        modelList("a").map((model) => ({
+          ...model,
+          reasoningDiscovery,
+          supportedReasoningEfforts: [],
+        }));
+      host.setAnswer((command) =>
+        catalogAnswer(models(command.selectedModel ? "known" : "unknown")),
+      );
+      await host.read("codex");
+      const result = await host.read("codex", undefined, "a");
+      expect(result.models[0]).toMatchObject({
+        reasoningDiscovery: "known",
+        supportedReasoningEfforts: [],
+      });
+      host.clock.now += 31 * SECOND;
+      await host.read("codex", undefined, "a");
+      expect(host.listRequests()).toHaveLength(2);
+    });
+  });
+
   it("does not replace a live session catalog with an older selected-model probe", async () => {
     await withTestHarness(async (harness) => {
       const host = setupCatalogHost(harness, {
@@ -290,6 +315,7 @@ describe("provider model catalog store", () => {
       });
       const unknown = modelList("a").map((model) => ({
         ...model,
+        reasoningDiscovery: "unknown" as const,
         supportedReasoningEfforts: [],
       }));
       const probe = createDeferredPromise<HostRpcHandlerResult>();
@@ -326,6 +352,7 @@ describe("provider model catalog store", () => {
         const host = setupCatalogHost(harness, { id: "host-selected-failure" });
         const unknown = modelList("a").map((model) => ({
           ...model,
+          reasoningDiscovery: "unknown" as const,
           supportedReasoningEfforts: [],
         }));
         host.setAnswer((command) =>
