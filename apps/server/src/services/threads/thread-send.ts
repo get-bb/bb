@@ -87,6 +87,10 @@ import {
   resolveTelemetryInitiator,
 } from "./telemetry-initiator.js";
 import { assertThreadHostAcceptsWork } from "./thread-host-admission.js";
+import {
+  trackLiveTurnRequest,
+  untrackLiveTurnRequest,
+} from "./input-ledger.js";
 
 type SendThreadMessageMode = SendMessageRequest["mode"];
 type TextPromptInput = Extract<PromptInput, { type: "text" }>;
@@ -131,6 +135,7 @@ interface BuildAgentThreadMessageTextArgs {
 }
 
 interface SendThreadMessageTransactionPreflightArgs {
+  requestId: ClientTurnRequestId | null;
   tx: DbTransaction;
 }
 
@@ -429,7 +434,7 @@ function appendAndQueueSendThreadMessageInTransaction({
   const request = db.transaction(
     (tx) => {
       assertThreadHostAcceptsWork(tx, thread);
-      beforeAppendInTransaction?.({ tx });
+      beforeAppendInTransaction?.({ requestId, tx });
       const appended =
         appendPreparedClientTurnRequestedEventWithNotificationInTransaction(
           tx,
@@ -487,7 +492,10 @@ export async function sendThreadMessage(
   if (isStandaloneBuiltinClearCommand(args.payload.input)) {
     await clearThreadContext(deps, {
       ...(args.beforeAppendInTransaction !== undefined
-        ? { beforeCommitInTransaction: args.beforeAppendInTransaction }
+        ? {
+            beforeCommitInTransaction: ({ tx }) =>
+              args.beforeAppendInTransaction?.({ requestId: null, tx }),
+          }
         : {}),
       environment: args.environment,
       thread: args.thread,
@@ -549,9 +557,10 @@ async function sendThreadMessageWithoutContextClear(
     deferredFirstTurnContext,
   ));
   const beforeAppendInTransaction: SendThreadMessageTransactionPreflight = ({
+    requestId,
     tx,
   }) => {
-    args.beforeAppendInTransaction?.({ tx });
+    args.beforeAppendInTransaction?.({ requestId, tx });
     if (deferredFirstTurnContext) {
       requireDeferredFirstTurnContextCurrent(tx, {
         requestSequence: deferredFirstTurnContext.requestSequence,
@@ -710,8 +719,8 @@ async function sendThreadMessageWithoutContextClear(
       : await prepareReadyThreadTurnCommand(deps, commandArgs);
     const queuedRequest = appendAndQueueSendThreadMessageInTransaction({
       ...(args.retryOf !== undefined ? { retryOf: args.retryOf } : {}),
-      beforeAppendInTransaction: ({ tx }) => {
-        beforeAppendInTransaction({ tx });
+      beforeAppendInTransaction: (preflight) => {
+        beforeAppendInTransaction(preflight);
         ensureThreadCanStartRequest(thread);
       },
       db: deps.db,
@@ -750,13 +759,17 @@ async function sendThreadMessageWithoutContextClear(
       queuedRequest.request.notificationChanges,
       queuedRequest.request.notificationMetadata,
     );
+    trackLiveTurnRequest(requestId);
+    const onHistoryReplacementSettled =
+      args.historyReplacement?.onCommandSettled;
     startLiveHostCommand(deps, {
       command: command.command,
       hostId: readyEnvironment.hostId,
       timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
-      ...(args.historyReplacement?.onCommandSettled !== undefined
-        ? { onSettled: args.historyReplacement.onCommandSettled }
-        : {}),
+      onSettled: async () => {
+        untrackLiveTurnRequest(requestId);
+        await onHistoryReplacementSettled?.();
+      },
       onError: ({ error }) => {
         deps.logger.warn(
           { err: error, threadId: thread.id },
@@ -829,10 +842,12 @@ async function sendThreadMessageWithoutContextClear(
     queuedRequest.request.notificationChanges,
     queuedRequest.request.notificationMetadata,
   );
+  trackLiveTurnRequest(requestId);
   startLiveHostCommand(deps, {
     command,
     hostId: readyEnvironment.hostId,
     timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
+    onSettled: () => untrackLiveTurnRequest(requestId),
     onError: ({ error }) => {
       deps.logger.warn(
         { err: error, threadId: thread.id },

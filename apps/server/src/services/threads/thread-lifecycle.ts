@@ -1,4 +1,9 @@
 import { advanceEnvironmentProvisioning } from "../environments/environment-engine.js";
+import { COMPETING_TURN_ERROR_CODE } from "@bb/host-daemon-contract";
+import {
+  acceptSubmittedInputsInTransaction,
+  returnSubmittedInputsInTransaction,
+} from "./input-ledger.js";
 import { revokeThreadDesktopBrowserControl } from "../desktop-browsers.js";
 import {
   providerEnvironmentHasPendingWork,
@@ -35,7 +40,6 @@ import {
   type DbTransaction,
 } from "@bb/db";
 import { assertNever } from "@bb/core-ui";
-import { COMPETING_TURN_ERROR_CODE } from "@bb/host-daemon-contract";
 import {
   type ProvisioningTranscriptEntry,
   type SystemThreadInterruptedReason,
@@ -802,6 +806,18 @@ function recordEmptyThreadStartProviderSessionInTransaction(
   });
 }
 
+function isRejectionReturnedToQueue(
+  deps: ThreadCommandResultSettlementDeps,
+  command: TurnSubmitCommand,
+  report: ThreadFailureResultReport,
+): boolean {
+  const turnRunning = getActiveTurnId(deps, command.threadId) !== null;
+  if (command.target.mode === "start") {
+    return turnRunning && report.errorCode === COMPETING_TURN_ERROR_CODE;
+  }
+  return turnRunning || hasExpectedTurnCompletedEvent(deps, command);
+}
+
 function settleThreadCommandFailure(
   args: SettleThreadCommandFailureArgs,
 ): CommandResultSideEffectsResult {
@@ -831,15 +847,16 @@ function settleThreadCommandFailure(
         message: args.report.errorMessage,
       },
     });
-    if (
-      args.report.errorCode === COMPETING_TURN_ERROR_CODE &&
-      getActiveTurnId(args.deps, thread.id) !== null
-    ) {
-      return emptyCommandResultSideEffects();
+    if (isRejectionReturnedToQueue(args.deps, args.command, args.report)) {
+      returnSubmittedInputsInTransaction(args.deps, {
+        reason: args.report.errorCode,
+        requestId: args.command.requestId,
+        threadId: thread.id,
+      });
+      return {
+        postCommitActions: [requestThreadReadyDrainAction(thread.id)],
+      };
     }
-  }
-  if (hasExpectedTurnCompletedEvent(args.deps, args.command)) {
-    return emptyCommandResultSideEffects();
   }
   appendSystemErrorEventInTransaction(args.deps, {
     threadId: thread.id,
@@ -959,6 +976,12 @@ export function settleTurnSubmitCommandResult(
       report: args.report,
     });
   }
+  if (args.command.target.mode !== "start") {
+    acceptSubmittedInputsInTransaction(args.deps, {
+      requestId: args.command.requestId,
+      threadId: args.command.threadId,
+    });
+  }
   return emptyCommandResultSideEffects();
 }
 
@@ -1057,9 +1080,7 @@ export function settleThreadStopCommandResult(
       threadId: args.command.threadId,
     });
     return {
-      postCommitActions: [
-        drainQueuedMessagesAfterStopAction(args.command.threadId),
-      ],
+      postCommitActions: [requestThreadReadyDrainAction(args.command.threadId)],
     };
   }
 
@@ -1079,7 +1100,7 @@ export function settleThreadStopCommandResult(
           });
         },
       },
-      drainQueuedMessagesAfterStopAction(args.command.threadId),
+      requestThreadReadyDrainAction(args.command.threadId),
     ],
   };
 }
@@ -1164,7 +1185,7 @@ export function requestThreadStorageDeletion(
  * become dispatchable, and nothing else would tell the queue about it before
  * the next recovery sweep.
  */
-function drainQueuedMessagesAfterStopAction(
+function requestThreadReadyDrainAction(
   threadId: string,
 ): CommandResultPostCommitAction {
   return {

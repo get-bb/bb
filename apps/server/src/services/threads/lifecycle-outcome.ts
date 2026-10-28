@@ -1,6 +1,5 @@
 import {
   getThread,
-  applyThreadLifecycleEvent,
   applyThreadLifecycleEventInTransaction,
   type ApplyThreadLifecycleEventArgs,
   type ApplyThreadLifecycleEventOutcome,
@@ -16,6 +15,7 @@ import {
 } from "../plugins/plugin-thread-events.js";
 import type { ProviderRegistryService } from "../providers/provider-registry.js";
 import { buildThreadStatusChangeMetadata } from "./thread-runtime-display.js";
+import { handOffFailedTurnInputsInTransaction } from "./input-ledger.js";
 
 /**
  * `run.failed` is the only event that lands a thread in `error`, so an applied
@@ -66,12 +66,30 @@ function logUnappliedThreadLifecycleEvent(
   );
 }
 
+function applyThreadLifecycleEventWithInputsInTransaction(
+  deps: ApplyLoggedThreadLifecycleEventTransactionDeps,
+  args: ApplyThreadLifecycleEventArgs,
+): ApplyThreadLifecycleEventOutcome {
+  const outcome = applyThreadLifecycleEventInTransaction(deps.db, args);
+  if (outcome.applied && args.event.type === "run.failed") {
+    handOffFailedTurnInputsInTransaction(deps, { threadId: args.threadId });
+  }
+  return outcome;
+}
+
 export function applyLoggedThreadLifecycleEvent(
   deps: ApplyLoggedThreadLifecycleEventDeps,
   args: ApplyThreadLifecycleEventArgs,
 ): ApplyThreadLifecycleEventOutcome {
   const previousStatus = getThread(deps.db, args.threadId)?.status;
-  const outcome = applyThreadLifecycleEvent(deps.db, args);
+  const outcome = deps.db.transaction(
+    (tx) =>
+      applyThreadLifecycleEventWithInputsInTransaction(
+        { db: tx, logger: deps.logger },
+        args,
+      ),
+    { behavior: "immediate" },
+  );
   if (outcome.applied && previousStatus !== undefined) {
     recordFinishedTurn(deps.db, args.threadId, args.event, previousStatus);
   }
@@ -93,7 +111,7 @@ export function applyLoggedThreadLifecycleEventInTransaction(
   args: ApplyThreadLifecycleEventArgs,
 ): ApplyThreadLifecycleEventOutcome {
   const previousStatus = getThread(deps.db, args.threadId)?.status;
-  const outcome = applyThreadLifecycleEventInTransaction(deps.db, args);
+  const outcome = applyThreadLifecycleEventWithInputsInTransaction(deps, args);
   if (outcome.applied && previousStatus !== undefined) {
     recordFinishedTurn(deps.db, args.threadId, args.event, previousStatus);
   }

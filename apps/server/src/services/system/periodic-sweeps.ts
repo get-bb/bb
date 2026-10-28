@@ -3,6 +3,7 @@ import {
   THREAD_PRUNING_SWEEP_LIMITS,
   type ThreadPruningSweepLimits,
 } from "./thread-pruning-sweep.js";
+import { returnUnsettledSubmittedInputs } from "../threads/input-ledger.js";
 import {
   PROJECT_ATTACHMENT_BACKFILL_LIMITS,
   runProjectAttachmentBackfill,
@@ -575,6 +576,14 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     category: "orphan-cleanup",
     name: "thread-provisioning-orphan-cleanup",
     run: runThreadProvisioningOrphanCleanupSweep,
+  },
+  {
+    cadenceMs: 0,
+    category: "durable-intent-retry",
+    name: "unsettled-submitted-input-return",
+    run: (deps, now) => {
+      returnUnsettledSubmittedInputs(deps, now);
+    },
   },
   {
     cadenceMs: 0,

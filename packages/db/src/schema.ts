@@ -12,7 +12,7 @@ import { sql } from "drizzle-orm";
 import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 import {
   queuedMessageDeliveryModeValues,
-  queuedMessageStateValues,
+  queuedMessageRowStateValues,
 } from "@bb/domain/queued-message-lifecycle";
 import { threadStatusValues } from "@bb/domain/thread-status";
 import { startedOnBehalfOfInitiatorValues } from "@bb/domain/started-on-behalf-of";
@@ -1017,7 +1017,8 @@ export const queuedThreadMessages = sqliteTable(
     groupWithNext: integer("group_with_next", { mode: "boolean" })
       .notNull()
       .default(false),
-    state: text("state", { enum: queuedMessageStateValues }).notNull(),
+    state: text("state", { enum: queuedMessageRowStateValues }).notNull(),
+    submittedRequestId: text("submitted_request_id"),
     sendAt: integer("send_at"),
     waitingOn: text("waiting_on"),
     waitHolder: text("wait_holder").$type<QueuedMessageWaitHolder>(),
@@ -1069,12 +1070,16 @@ export const queuedThreadMessages = sqliteTable(
     index("queued_thread_messages_coalesce_idx")
       .on(table.threadId, table.coalesceKey)
       .where(sql`${table.coalesceKey} IS NOT NULL`),
+    index("queued_thread_messages_submitted_request_idx")
+      .on(table.threadId, table.submittedRequestId)
+      .where(sql`${table.submittedRequestId} IS NOT NULL`),
     index("queued_thread_messages_wait_holder_idx")
       .on(table.waitHolder, table.id)
       .where(sql`${table.waitHolder} IS NOT NULL`),
     check(
       "queued_thread_messages_state_check",
       sql`CASE ${table.state}
+        WHEN 'submitted' THEN ${table.claimedAt} IS NULL AND ${table.failureReason} IS NULL AND ${table.sendAt} IS NULL AND ${table.waitingOn} IS NULL
         WHEN 'claimed' THEN ${table.claimedAt} IS NOT NULL
         WHEN 'failed_retrying' THEN ${table.claimedAt} IS NULL AND ${table.failureReason} IS NOT NULL AND ${table.nextAttemptAt} IS NOT NULL
         WHEN 'failed_exhausted' THEN ${table.claimedAt} IS NULL AND ${table.failureReason} IS NOT NULL AND ${table.nextAttemptAt} IS NULL
@@ -1083,6 +1088,10 @@ export const queuedThreadMessages = sqliteTable(
         WHEN 'queued' THEN ${table.claimedAt} IS NULL AND ${table.failureReason} IS NULL AND ${table.sendAt} IS NULL AND ${table.waitingOn} IS NULL
         ELSE 0
       END`,
+    ),
+    check(
+      "queued_thread_messages_submitted_check",
+      sql`(${table.submittedRequestId} IS NOT NULL) = (${table.state} = 'submitted')`,
     ),
     check(
       "queued_thread_messages_claim_check",

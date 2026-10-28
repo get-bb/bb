@@ -16,7 +16,7 @@ import {
   type ThreadTurnInitiator,
   type TurnRequestTarget,
 } from "@bb/domain";
-import type { StartedOnBehalfOf } from "@bb/domain";
+import type { ClientTurnRequestId, StartedOnBehalfOf } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import { requestQueuedMessageDispatch } from "./queued-message-dispatch.js";
 import {
@@ -68,7 +68,10 @@ interface RequestThreadProvisionArgs {
 }
 
 interface RequestThreadTargetReprovisionArgs {
-  beforeRequestAppendInTransaction?: (args: { tx: DbTransaction }) => void;
+  beforeRequestAppendInTransaction?: (args: {
+    requestId: ClientTurnRequestId;
+    tx: DbTransaction;
+  }) => void;
   environment: EnvironmentRow;
   execution: ResolvedThreadExecutionOptions;
   input: PromptInput[];
@@ -434,7 +437,7 @@ function appendReprovisionTurnRequest(
   const requestId = createClientTurnRequestId();
   const request = deps.db.transaction(
     (tx) => {
-      args.beforeRequestAppendInTransaction?.({ tx });
+      args.beforeRequestAppendInTransaction?.({ requestId, tx });
       const request =
         appendPreparedClientTurnRequestedEventWithNotificationInTransaction(
           tx,

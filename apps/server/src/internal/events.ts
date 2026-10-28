@@ -1,4 +1,5 @@
 import { performance } from "node:perf_hooks";
+import { acceptSubmittedInputsInTransaction } from "../services/threads/input-ledger.js";
 import { Buffer } from "node:buffer";
 import { and, desc, eq, gt, lt, sql } from "drizzle-orm";
 import {
@@ -1207,7 +1208,20 @@ export function registerInternalEventRoutes(app: Hono, deps: AppDeps): void {
       let appendResult: AppendDaemonEventsResult;
       try {
         appendResult = deps.db.transaction(
-          (tx) => appendDaemonEventsInTransaction(tx, eventInputs),
+          (tx) => {
+            const appended = appendDaemonEventsInTransaction(tx, eventInputs);
+            for (const entry of postableEvents) {
+              if (entry.event.type !== "turn/input/accepted") continue;
+              acceptSubmittedInputsInTransaction(
+                { db: tx, logger: deps.logger },
+                {
+                  requestId: entry.event.clientRequestId,
+                  threadId: entry.threadId,
+                },
+              );
+            }
+            return appended;
+          },
           { behavior: "immediate" },
         );
       } catch (error) {

@@ -447,7 +447,9 @@ export {
   clearQueuedThreadMessageWaitingOn,
   createQueuedThreadMessage,
   createQueuedThreadMessageInTransaction,
+  createSubmittedQueuedThreadMessageInTransaction,
   deleteQueuedRetriesForThreadEventSuffixInTransaction,
+  deleteSubmittedQueuedThreadMessagesInTransaction,
   deleteClaimedQueuedThreadMessageBatchInTransaction,
   deleteQueuedThreadMessage,
   getPendingCoalescedQueuedThreadMessage,
@@ -468,11 +470,15 @@ export {
   listQueuedThreadMessagesByWaitHolder,
   listQueuedThreadMessagesWaitingOnKind,
   listRetryableFailedQueuedThreadMessages,
+  listSubmittedQueuedThreadMessageRequests,
+  listSubmittedQueuedThreadMessages,
   listThreadIdsWithHostOfflineQueueWaits,
   releaseQueuedMessageClaim,
   releaseQueuedThreadMessageEditHold,
   requeueClaimedQueuedThreadMessages,
+  returnSubmittedQueuedThreadMessagesInTransaction,
   setQueuedThreadMessageFailureReason,
+  submitClaimedQueuedThreadMessageBatchInTransaction,
   setQueuedThreadMessageWaitingOn,
   releaseStaleQueuedMessageClaims,
   reorderQueuedThreadMessage,
@@ -493,6 +499,7 @@ export type {
   QueuedThreadMessageRow,
   ReorderQueuedThreadMessageResult,
   SetQueuedThreadMessageGroupBoundaryResult,
+  SubmittedQueuedThreadMessageRequest,
 } from "./queued-thread-messages.js";
 
 export {

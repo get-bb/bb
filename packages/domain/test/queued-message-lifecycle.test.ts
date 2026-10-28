@@ -2,12 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   evaluateQueuedMessageTransition,
   QUEUED_MESSAGE_LIFECYCLE,
+  queuedMessageRowStateValues,
   queuedMessageStateFor,
-  queuedMessageStateValues,
   type QueuedMessageStateFacts,
 } from "../src/queued-message-lifecycle.js";
 
 const factNames = [
+  "submitted",
   "claimed",
   "failed",
   "retryBooked",
@@ -18,6 +19,7 @@ const factNames = [
 function everyFactCombination(): QueuedMessageStateFacts[] {
   return Array.from({ length: 2 ** factNames.length }, (_, bits) => {
     const facts: QueuedMessageStateFacts = {
+      submitted: false,
       claimed: false,
       failed: false,
       retryBooked: false,
@@ -32,19 +34,21 @@ function everyFactCombination(): QueuedMessageStateFacts[] {
 }
 
 describe("queuedMessageStateFor", () => {
-  it("lets the claim win, then the failure, then the schedule, then the wait", () => {
+  it("lets the submission win, then the claim, then the failure, then the schedule, then the wait", () => {
     for (const facts of everyFactCombination()) {
-      const expected = facts.claimed
-        ? "claimed"
-        : facts.failed
-          ? facts.retryBooked
-            ? "failed_retrying"
-            : "failed_exhausted"
-          : facts.scheduled
-            ? "scheduled"
-            : facts.waiting
-              ? "waiting"
-              : "queued";
+      const expected = facts.submitted
+        ? "submitted"
+        : facts.claimed
+          ? "claimed"
+          : facts.failed
+            ? facts.retryBooked
+              ? "failed_retrying"
+              : "failed_exhausted"
+            : facts.scheduled
+              ? "scheduled"
+              : facts.waiting
+                ? "waiting"
+                : "queued";
       expect(queuedMessageStateFor(facts)).toBe(expected);
     }
   });
@@ -53,13 +57,14 @@ describe("queuedMessageStateFor", () => {
 describe("QUEUED_MESSAGE_LIFECYCLE", () => {
   it("has a row for every state and for creation", () => {
     expect(Object.keys(QUEUED_MESSAGE_LIFECYCLE).sort()).toEqual(
-      ["new", ...queuedMessageStateValues].sort(),
+      ["new", ...queuedMessageRowStateValues].sort(),
     );
   });
 
   it("only leaves a claim by releasing it or re-queueing it", () => {
     expect(Object.keys(QUEUED_MESSAGE_LIFECYCLE.claimed).sort()).toEqual([
       "claim.released",
+      "input.submitted",
       "wait.recorded",
     ]);
     expect(
@@ -111,5 +116,18 @@ describe("QUEUED_MESSAGE_LIFECYCLE", () => {
         }),
       ).toHaveProperty("illegal");
     }
+  });
+
+  it("leaves a submission only by returning it to the queue", () => {
+    expect(Object.keys(QUEUED_MESSAGE_LIFECYCLE.submitted)).toEqual([
+      "input.returned",
+    ]);
+    expect(
+      evaluateQueuedMessageTransition({
+        from: "submitted",
+        event: "input.returned",
+        to: "queued",
+      }),
+    ).toHaveProperty("illegal");
   });
 });

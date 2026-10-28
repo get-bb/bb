@@ -6,6 +6,7 @@ import {
   listStoredTurnInputAcceptedRowsByClientRequestIds,
   listStoredTurnRejectedRowsByClientRequestIds,
   type DbConnection,
+  type DbQueryConnection,
   type StoredThreadEventDataRow,
 } from "@bb/db";
 import {
@@ -59,7 +60,7 @@ export interface FailedTurnRecord {
  * where there is nothing to announce and nothing for a retry to re-submit.
  */
 export function loadFailedTurn(
-  db: DbConnection,
+  db: DbQueryConnection,
   threadId: string,
 ): FailedTurnRecord | null {
   const row = getLastStoredTurnRequestEvent(db, threadId);
