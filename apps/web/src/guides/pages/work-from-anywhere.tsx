@@ -271,6 +271,31 @@ export const guide: Guide = {
       ),
     },
     {
+      question: "Can I connect the Linux desktop app directly to a remote server?",
+      answer: (
+        <ol>
+          <li>
+            Make sure Tailscale is connected on both computers and the remote bb
+            server is reachable over your tailnet. If the server only listens
+            locally, publish it on the server computer with Tailscale Serve:
+            <br />
+            <code>tailscale serve --bg --https=443 http://127.0.0.1:38886</code>
+          </li>
+          <li>
+            In the Linux desktop app, press <strong>Alt</strong> if the
+            application menu is hidden. Choose <strong>bb → Desktop Settings → Server → Add Server…</strong>,
+            then enter the server's URL. For Tailscale Serve, use the printed
+            HTTPS address, such as <code>https://server.tailnet.ts.net</code>.
+          </li>
+          <li>
+            Save the server and select it from the Server menu. This connects
+            the desktop app directly; you do not need to set up bb connect or
+            enroll the app through a local server.
+          </li>
+        </ol>
+      ),
+    },
+    {
       question: "Which of my computers is the server?",
       answer: (
         <p>

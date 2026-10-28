@@ -127,10 +127,16 @@ settings are in [configuration.md](configuration.md).
 
 ## Point the desktop app at another bb
 
-The desktop app's Server menu lists "This Mac", every bb connect server on the
-account, and a custom URL. When you select a remote server, the app stops
-starting a bb server on this Mac. It starts one again only when you select
-"This Mac".
+The desktop app's Server menu lists "This Mac" ("This Computer" on Linux),
+every bb connect server on the account, and custom URLs. Choose **Add Server…**
+to enter an HTTP(S) URL directly; on Linux, press **Alt** if the application
+menu is hidden, then choose **bb → Desktop Settings → Server → Add Server…**.
+For a Tailscale-only server that listens on loopback, run Tailscale Serve on
+the server machine as described above and enter its HTTPS URL. This direct URL
+route does not require bb connect or local-server enrollment.
+
+When you select a remote server, the app stops starting a bb server on this
+computer. It starts one again only when you select the built-in computer.
 
 To reach bb connect without a local server, the app enrolls itself once as a
 connect machine. That step needs the local server, so the first switch to a

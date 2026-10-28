@@ -470,7 +470,11 @@ recovery path for those cases.
 
 Use **bb → Desktop Settings → Server → Add Server…** to save and switch to
 another machine's HTTP(S) bb server URL. **Window → Server** opens the same
-menu. Both native dialogs accept an optional friendly name (up to 64 characters).
+menu. On Linux, the Electron application menu may be hidden by the desktop
+shell or window manager; press **Alt** to reveal it. For a Tailscale-only
+server that listens on loopback, run `tailscale serve --bg --https=443
+http://127.0.0.1:38886` on the server machine, then enter the HTTPS URL Tailscale
+prints. Both native dialogs accept an optional friendly name (up to 64 characters).
 The menu shows that name, or the URL hostname and port when unnamed. Saved URLs
 remain in the menu across restarts; adding an existing URL
 selects it without creating a duplicate. **This Mac** on macOS or **This
