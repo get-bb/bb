@@ -1435,6 +1435,4 @@ Provider configuration folders are resolved with the environment of the provider
 
 Global bb CLI skill installation and status ask the Claude provider plugin for its writable skill roots, using the machine environment, alongside `~/.agents/skills`. Relative global-install paths use the daemon cwd. Existing copies in a previous profile are left in place. Claude health and usage read credentials and account information from the active profile and select its matching macOS Keychain service.
 
-Codex app-server children receive the session environment, including `BB_THREAD_ID`, `BB_PROJECT_ID`, `BB_ENVIRONMENT_ID`, and `BB_THREAD_STORAGE`, so configured MCP servers and lifecycle hooks can inherit that identity. Inherited daemon `BB_*` variables remain stripped. Changing the session environment rebuilds its app-server before the next turn.
-
 Provider home rules live in the owning provider plugin. Server-move asks the Codex plugin which credential files to check on each machine; it warns about missing credentials without copying them.
