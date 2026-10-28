@@ -1089,6 +1089,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     const resumeInstructions = args.instructions ?? currentConfig.instructions;
     await runtime.resumeThread({
       bridgeLaunch: currentConfig.bridgeLaunch,
+      skillRoots: currentConfig.skillRoots,
       environmentId: currentConfig.environmentId,
       threadId: args.threadId,
       ...(currentConfig.projectId !== undefined

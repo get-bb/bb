@@ -10,6 +10,7 @@ import {
   createScriptedEchoRequestRecord,
   fullRuntimeOptions,
   scriptedEchoProcessEnv,
+  waitForRuntimeState,
   waitForThreadAgentMessageText,
   withBridgeLaunch,
   type LaunchBoundAgentRuntime,
@@ -387,5 +388,31 @@ describe("session config reconciliation", () => {
           JSON.stringify(left).localeCompare(JSON.stringify(right)),
         ),
     ).toEqual([{ roots: rootsA }, { roots: rootsB }]);
+  });
+
+  it("restores a thread with its own skill roots after a restart recommendation", async () => {
+    const rootsA = [skillRoot("a")];
+    const { record, runtime } = await startRuntime({
+      mode: { dynamicTools: "resume", skills: "resume" },
+      skillRoots: rootsA,
+    });
+
+    await runtime.runTurn({
+      clientRequestId: "creq_sessncfgz2",
+      threadId: "t1",
+      input: [promptTextInput({ text: "recover:restartRecommended" })],
+      options: fullRuntimeOptions,
+    });
+    await waitForRuntimeState({
+      describeFailure: () => JSON.stringify(requests(record, "thread/resume")),
+      label: "the thread was resumed after the restart recommendation",
+      predicate: () => requests(record, "thread/resume").length === 1,
+      runtime,
+      timeoutMs: 5_000,
+    });
+
+    expect(requests(record, "thread/resume")[0]?.params?.skillRoots).toEqual(
+      rootsA,
+    );
   });
 });
