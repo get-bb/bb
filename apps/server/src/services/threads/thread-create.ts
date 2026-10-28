@@ -13,6 +13,7 @@ import {
   type ThreadVisibility,
 } from "@bb/domain";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
+import { assertProviderAcceptsPromptActions } from "../providers/provider-plan-command.js";
 import { ApiError } from "../../errors.js";
 import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
 import { buildExecutionOptions } from "./thread-commands.js";
@@ -689,6 +690,10 @@ export async function createThreadFromRequest(
     parentThread,
     projectId: requestInput.projectId,
     providerId: requestInput.providerId,
+  });
+  assertProviderAcceptsPromptActions(deps.providerRegistry, {
+    input: requestInput.input,
+    providerId,
   });
   const {
     originKind: _requestedOriginKind,

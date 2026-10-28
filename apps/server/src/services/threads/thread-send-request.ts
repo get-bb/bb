@@ -14,6 +14,7 @@ import { requireThreadCommandEnvironment } from "./thread-command-environment.js
 import { sendThreadMessage } from "./thread-send.js";
 import { assertThreadHostAcceptsWork } from "./thread-host-admission.js";
 import { runWithTurnTrace } from "../system/turn-trace.js";
+import { assertProviderAcceptsPromptActions } from "../providers/provider-plan-command.js";
 
 interface AcceptThreadSendRequestArgs {
   payload: SendMessageRequest;
@@ -25,6 +26,10 @@ export async function acceptThreadSendRequest(
   args: AcceptThreadSendRequestArgs,
 ): Promise<SendMessageResponse> {
   assertThreadHostAcceptsWork(deps.db, args.thread);
+  assertProviderAcceptsPromptActions(deps.providerRegistry, {
+    input: args.payload.input,
+    providerId: args.thread.providerId,
+  });
   const { compactFirst, ...request } = args.payload;
   if (isStandaloneBuiltinClearCommand(request.input)) {
     if (compactFirst) throwInvalidCompactFirst("cannot clear the context");
