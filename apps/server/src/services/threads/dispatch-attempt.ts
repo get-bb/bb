@@ -568,7 +568,12 @@ async function runDispatchAttempt(
       return;
     }
 
-    if (thread.status === "active" && attempt === "start-turn") {
+    if (
+      thread.status === "active" &&
+      (attempt === "start-turn" ||
+        (run.deliveryMode === "queue" &&
+          !isActiveTurnMainRunIdle(deps, currentThread)))
+    ) {
       continued.outcome = waitOn({ kind: "thread-busy" }, null);
       return;
     }

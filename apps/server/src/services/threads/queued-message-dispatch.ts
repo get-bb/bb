@@ -7,6 +7,7 @@ import {
   getThread,
   listDueScheduledQueuedThreadMessages,
   listIdleThreadsWithQueuedMessages,
+  listReadySystemNoticesOnBusyThreads,
   listQueuedThreadMessagePluginWaitRefs,
   listQueuedThreadMessagesByWaitHolder,
   listQueuedThreadMessagesWaitingOnKind,
@@ -563,6 +564,13 @@ async function runFailedRetryDispatch(
 async function runIdleThreadRecovery(deps: QueueDispatchDeps): Promise<void> {
   for (const candidate of listIdleThreadsWithQueuedMessages(deps.db)) {
     await runThreadReadyDispatch(deps, candidate.threadId);
+  }
+  for (const row of listReadySystemNoticesOnBusyThreads(deps.db)) {
+    await attemptAutomaticQueuedMessage(deps, row, {
+      now: Date.now(),
+      respectRequeuePacing: true,
+      retryingFailure: false,
+    });
   }
 }
 

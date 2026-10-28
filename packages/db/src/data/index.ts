@@ -460,6 +460,7 @@ export {
   isThreadQueueAutoSendPaused,
   listDueScheduledQueuedThreadMessages,
   listIdleThreadsWithQueuedMessages,
+  listReadySystemNoticesOnBusyThreads,
   listQueuedThreadMessageCountsByThreadIds,
   listQueuedThreadMessagePluginWaitRefs,
   listQueuedThreadMessages,

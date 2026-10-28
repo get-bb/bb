@@ -1202,6 +1202,28 @@ function notOrdinaryTurnEndQueuedThreadMessage() {
   );
 }
 
+export function listReadySystemNoticesOnBusyThreads(
+  db: DbQueryConnection,
+): QueuedThreadMessageRow[] {
+  return db
+    .select({ row: queuedThreadMessages })
+    .from(queuedThreadMessages)
+    .innerJoin(threads, eq(threads.id, queuedThreadMessages.threadId))
+    .where(
+      and(
+        eq(queuedThreadMessages.state, "queued"),
+        isNotNull(queuedThreadMessages.systemNotice),
+        isNull(queuedThreadMessages.waitingOn),
+        notInArray(threads.status, ["idle", "pending"]),
+        isNull(threads.archivedAt),
+        isNull(threads.deletedAt),
+      ),
+    )
+    .orderBy(asc(queuedThreadMessages.createdAt), asc(queuedThreadMessages.id))
+    .all()
+    .map(({ row }) => row);
+}
+
 /**
  * Threads a drain could move right now.
  *

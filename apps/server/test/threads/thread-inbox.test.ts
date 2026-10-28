@@ -1,4 +1,5 @@
 import {
+  claimQueuedThreadMessageGroup,
   getQueuedThreadMessage,
   listEvents,
   listQueuedThreadMessages,
@@ -28,6 +29,7 @@ import { queueChildThreadNeedsAttentionNotificationBestEffort } from "../../src/
 import { queueParentSystemMessage } from "../../src/services/threads/parent-system-messages.js";
 import {
   createQueuedMessageForThread,
+  releaseOrphanedQueuedMessageDispatchClaims,
   releaseStaleQueuedMessageDispatchClaims,
   sendNextQueuedMessageIfPresent,
 } from "../../src/services/threads/queued-messages.js";
@@ -773,6 +775,83 @@ describe("delivery mode intent", () => {
       });
 
       expect(result.kind).toBe("invalid_delivery_mode");
+    });
+  });
+});
+
+describe("second review gaps", () => {
+  it("recovers a notice whose first attempt never ran on a parent that stays active", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread: parent } = seedRunnableThread(harness, {
+        hostId: "host-notice-recovery",
+        status: "active",
+      });
+      const blocker = await createQueuedMessageForThread(harness.deps, {
+        thread: parent,
+        payload: { input: textInput("Behind the turn") },
+      });
+      claimQueuedThreadMessageGroup(harness.db, harness.hub, blocker.id, {
+        kind: "explicit-send",
+      });
+
+      await queueParentSystemMessage(harness.deps, {
+        input: textInput("Child completed"),
+        parentThreadId: parent.id,
+        systemMessageKind: "child-completed",
+        systemMessageSubject: null,
+      });
+      releaseOrphanedQueuedMessageDispatchClaims(harness.deps, Date.now());
+      await runQueuedMessageDispatch(harness.deps, {
+        kind: "idle-recovery",
+        now: Date.now(),
+      });
+
+      expect(
+        turnRequests(harness, parent.id).filter(
+          (request) => request.initiator === "system",
+        ),
+      ).toHaveLength(1);
+    });
+  });
+
+  it("keeps a queue-mode row waiting when the main run resumes during the hook", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedRunnableThread(harness, {
+        hostId: "host-resume-during-hook",
+        status: "active",
+      });
+      const mainRun = (sequence: number, state: "idle" | "running") =>
+        seedEvent(harness.deps, {
+          threadId: thread.id,
+          environmentId: environment.id,
+          providerThreadId: "provider-host-resume-during-hook",
+          sequence,
+          type: "turn/mainRun/updated",
+          scope: turnScope("turn-host-resume-during-hook"),
+          data: { state },
+        });
+      mainRun(10, "idle");
+      const sendAt = Date.now() + 60_000;
+      await acceptThreadSendRequest(harness.deps, {
+        payload: { input: textInput("Later"), mode: "queue-if-active", sendAt },
+        thread,
+      });
+      installDispatchHook(async () => {
+        mainRun(11, "running");
+        return { action: "proceed" };
+      });
+
+      await runQueuedMessageDispatch(harness.deps, {
+        kind: "time-reached",
+        now: sendAt + 1,
+      });
+
+      expect(
+        listQueuedThreadCommands(harness, "turn.submit", thread.id),
+      ).toHaveLength(0);
+      expect(queuedRows(harness, thread.id)).toEqual([
+        expect.objectContaining({ waitingOn: { kind: "thread-busy" } }),
+      ]);
     });
   });
 });
