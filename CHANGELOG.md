@@ -36,7 +36,12 @@ A quality and performance release: bb loads faster, sends far less over the wire
 
 ### New experiments
 
-- **Early adopter:** this release adds four experiments that are on for early adopters: **Select multiple sidebar threads**; **App links**, which opens links such as `linear://` and `slack://` in their apps after asking; **Compressed live updates**, about 4x smaller for remote access; and **NEW divider before final assistant message**, which opens a finished thread at its answer instead of its first tool call.
+These are on for early adopters. Turn on **Become an early adopter** in Settings → Experiments to get them, or turn each one on by itself.
+
+- **Select multiple sidebar threads:** Shift-click or Cmd/Ctrl+Shift-click threads to archive, delete, or set notifications for all of them, or drag them together into a section, under a thread, into Pinned, or into the composer as mentions.
+- **App links:** links such as `linear://` and `slack://` open in their apps, after asking first.
+- **Compressed live updates:** live updates are about 4x smaller over remote access.
+- **NEW divider before final assistant message:** a thread that finished while you were away opens at its answer instead of its first tool call.
 
 ### Other improvements
 
