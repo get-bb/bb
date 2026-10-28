@@ -69,6 +69,7 @@ export async function callPluginHostRpc(
     method: string;
     input: unknown;
     hostId: string;
+    projectId: string | null;
     signal?: AbortSignal;
     timeoutMs?: number;
     artifact: PluginHostArtifactSnapshot;
@@ -106,7 +107,7 @@ export async function callPluginHostRpc(
       type: "plugin.host.call" as const,
       contributedEnv: await resolveHostEnvironment(deps, {
         hostId: args.hostId,
-        projectId: null,
+        projectId: args.projectId,
       }),
       pluginId: args.pluginId,
       generation: args.artifact.generation,

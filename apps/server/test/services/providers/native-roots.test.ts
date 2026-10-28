@@ -17,7 +17,8 @@ import {
   type HostRpcHandlerResult,
 } from "../../helpers/host-rpc.js";
 import { stubHostArtifact } from "../../helpers/provider-registry.js";
-import { seedHostSession } from "../../helpers/seed.js";
+import { seedHostSession, seedProjectWithSource } from "../../helpers/seed.js";
+import { setMachineEnvironmentVariable } from "../../../src/services/machines/environment-storage.js";
 import {
   testLogger,
   withTestHarness,
@@ -132,6 +133,7 @@ describe("resolveProviderNativeRootSet", () => {
         const first = await resolveProviderNativeRootSet(harness.deps, {
           registration: reg,
           hostId: "host-a",
+          projectId: null,
           cwd: "/work/one",
           timeoutMs: 4_500,
         });
@@ -163,6 +165,7 @@ describe("resolveProviderNativeRootSet", () => {
         await resolveProviderNativeRootSet(harness.deps, {
           registration: reg,
           hostId: "host-a",
+          projectId: null,
           cwd: "/work/one",
           timeoutMs: COMMAND_TIMEOUT_MS,
         });
@@ -171,18 +174,21 @@ describe("resolveProviderNativeRootSet", () => {
         await resolveProviderNativeRootSet(harness.deps, {
           registration: reg,
           hostId: "host-a",
+          projectId: null,
           cwd: "/work/two",
           timeoutMs: COMMAND_TIMEOUT_MS,
         });
         await resolveProviderNativeRootSet(harness.deps, {
           registration: reg,
           hostId: "host-a",
+          projectId: null,
           cwd: null,
           timeoutMs: COMMAND_TIMEOUT_MS,
         });
         await resolveProviderNativeRootSet(harness.deps, {
           registration: reg,
           hostId: "host-b",
+          projectId: null,
           cwd: "/work/one",
           timeoutMs: COMMAND_TIMEOUT_MS,
         });
@@ -203,6 +209,7 @@ describe("resolveProviderNativeRootSet", () => {
         await resolveProviderNativeRootSet(harness.deps, {
           registration: reg,
           hostId: "host-a",
+          projectId: null,
           cwd: "/work/one",
           timeoutMs: COMMAND_TIMEOUT_MS,
         });
@@ -226,6 +233,7 @@ describe("resolveProviderNativeRootSet", () => {
           resolveProviderNativeRootSet(harness.deps, {
             registration: reg,
             hostId: "host-a",
+            projectId: null,
             cwd: "/work/one",
             timeoutMs: COMMAND_TIMEOUT_MS,
           });
@@ -274,6 +282,7 @@ describe("resolveProviderNativeRootSet", () => {
           resolveProviderNativeRootSet(harness.deps, {
             registration: reg,
             hostId: "host-a",
+            projectId: null,
             cwd: "/work/one",
             timeoutMs: COMMAND_TIMEOUT_MS,
           }),
@@ -299,6 +308,7 @@ describe("resolveProviderNativeRootSet", () => {
         resolveProviderNativeRootSet(harness.deps, {
           registration: reg,
           hostId: "host-a",
+          projectId: null,
           cwd: "/work/one",
           timeoutMs: COMMAND_TIMEOUT_MS,
         });
@@ -346,6 +356,7 @@ describe("resolveProviderNativeRootSet", () => {
           resolveProviderNativeRootSet(deps, {
             registration: reg,
             hostId: "host-a",
+            projectId: null,
             cwd,
             timeoutMs: COMMAND_TIMEOUT_MS,
           });
@@ -403,6 +414,7 @@ describe("resolveProviderNativeRootSet", () => {
         const withoutArtifact = await resolveProviderNativeRootSet(deps, {
           registration: registration(harness, "resolving"),
           hostId: "host-a",
+          projectId: null,
           cwd: "/work/one",
           timeoutMs: COMMAND_TIMEOUT_MS,
         });
@@ -413,6 +425,7 @@ describe("resolveProviderNativeRootSet", () => {
         const declaredOnly = await resolveProviderNativeRootSet(deps, {
           registration: registration(harness, "declared"),
           hostId: "host-a",
+          projectId: null,
           cwd: "/work/one",
           timeoutMs: COMMAND_TIMEOUT_MS,
         });
@@ -435,6 +448,55 @@ describe("resolveProviderNativeRootSet", () => {
         expect(stub.calls).toEqual([]);
       },
     );
+  });
+});
+
+describe("native roots resolved for a project", () => {
+  it("resolves with the project's machine environment and caches per project", async () => {
+    await withTestHarness({ extraProviders: [RESOLVING] }, async (harness) => {
+      harness.deps.pluginHostArtifacts.set(
+        PLUGIN_ID,
+        stubHostArtifact(PLUGIN_ID),
+      );
+      const stub = registerResolverHost(harness, "host-a");
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: "host-a",
+      });
+      await setMachineEnvironmentVariable(
+        harness.deps.db,
+        harness.deps.config.dataDir,
+        { name: "CLAUDE_CONFIG_DIR", value: "/home/me/claude-alt", note: null },
+        project.id,
+      );
+      const resolve = (projectId: string | null) =>
+        resolveProviderNativeRootSet(harness.deps, {
+          registration: registration(harness, "resolving"),
+          hostId: "host-a",
+          projectId,
+          cwd: "/work/one",
+          timeoutMs: 4_500,
+        });
+
+      await resolve(project.id);
+      await resolve(null);
+
+      const contributed = stub.calls.map((call) =>
+        call.command.type === "plugin.host.call"
+          ? call.command.contributedEnv.filter(
+              (entry) => entry.name === "CLAUDE_CONFIG_DIR",
+            )
+          : [],
+      );
+      expect(contributed).toEqual([
+        [
+          expect.objectContaining({
+            name: "CLAUDE_CONFIG_DIR",
+            value: "/home/me/claude-alt",
+          }),
+        ],
+        [],
+      ]);
+    });
   });
 });
 

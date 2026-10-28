@@ -109,6 +109,7 @@ function seedMachineWithWorkspace(
         await callPluginHostRpc(harness.deps, {
           pluginId: "gone-worktree-plugin",
           hostId: target.host.id,
+          projectId: null,
           contract: { remove: { input: z.object({}), output: z.object({}) } },
           method: "remove",
           input: {},

@@ -239,6 +239,7 @@ async function projectSkillIndex(
             type: "host.list_skills",
             registration,
             hostId: args.workspace.hostId,
+            projectId: args.workspace.projectId,
             cwd: args.workspace.cwd,
           });
           return { provider: registration.info.id, skills: result.skills };

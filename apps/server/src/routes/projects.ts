@@ -755,6 +755,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         type: "host.list_commands",
         registration,
         hostId: workspace.hostId,
+        projectId: workspace.projectId,
         cwd: workspace.cwd,
       });
     };

@@ -229,6 +229,7 @@ it.each([
             await callPluginHostRpc(harness.deps, {
               pluginId: "review-worktree-plugin",
               hostId: target.host.id,
+              projectId: null,
               contract: {
                 remove: { input: z.object({}), output: z.object({}) },
               },

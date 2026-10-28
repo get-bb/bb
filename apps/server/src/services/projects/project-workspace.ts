@@ -93,6 +93,7 @@ export function resolveProjectWorkspaceTarget(
 
 export interface ProjectCommandWorkspace {
   hostId: string;
+  projectId: string;
   cwd: string | null;
 }
 
@@ -108,10 +109,15 @@ export function resolveProjectCommandWorkspace(
     });
     assertUsableHostId(deps, { hostId: environment.hostId });
     if (environment.status === "ready" && environment.path !== null) {
-      return { hostId: environment.hostId, cwd: environment.path };
+      return {
+        hostId: environment.hostId,
+        projectId: args.projectId,
+        cwd: environment.path,
+      };
     }
     return {
       hostId: environment.hostId,
+      projectId: args.projectId,
       cwd:
         resolveProjectSourceOnHost(deps, {
           hostId: environment.hostId,
@@ -124,6 +130,7 @@ export function resolveProjectCommandWorkspace(
   assertUsableHostId(deps, { hostId });
   return {
     hostId,
+    projectId: args.projectId,
     cwd:
       resolveProjectSourceOnHost(deps, {
         hostId,

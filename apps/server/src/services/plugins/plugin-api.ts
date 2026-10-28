@@ -556,6 +556,7 @@ export function createPluginApi(options: {
     method: string;
     input: unknown;
     hostId: string;
+    projectId: null;
     signal?: AbortSignal;
     timeoutMs?: number;
   }) => Promise<unknown>;
@@ -1129,6 +1130,7 @@ export function createPluginApi(options: {
             method,
             input,
             hostId: callOptions.hostId,
+            projectId: null,
             ...(callOptions.signal === undefined
               ? {}
               : { signal: callOptions.signal }),
