@@ -169,7 +169,11 @@ const promptInputItemSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
-const CLAUDE_PROVIDER_SUBAGENT_TOOL_NAMES = new Set(["Agent", "Task"]);
+const CLAUDE_PROVIDER_SUBAGENT_TOOL_NAMES = new Set([
+  "Agent",
+  "Task",
+  "ListAgents",
+]);
 
 function subagentDisallowedTools(
   providerSubagentsEnabled: boolean,
@@ -1339,6 +1343,20 @@ function buildSessionTrackingHooks(
           input.tool_use_id,
           permissionEscalation,
         );
+      }
+      if (
+        !threadSession.attachment.liveSettings.providerSubagentsEnabled &&
+        CLAUDE_PROVIDER_SUBAGENT_TOOL_NAMES.has(input.tool_name)
+      ) {
+        return {
+          continue: true,
+          hookSpecificOutput: {
+            hookEventName: "PreToolUse",
+            permissionDecision: "deny",
+            permissionDecisionReason:
+              "bb has disabled Claude Code native subagents; use bb delegation instead.",
+          },
+        };
       }
       if (
         !threadSession.attachment.liveSettings.workflowsEnabled &&

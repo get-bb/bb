@@ -4749,56 +4749,122 @@ describe("bridge", () => {
     }
   });
 
-  it("removes Claude Code's subagent tools when bb disables them and restarts when the setting flips", async () => {
-    const bridge = createBridgeJsonRpcTestHarness(handleLine);
-    const queries: ControlledClaudeQuery[] = [];
-    queryMock.mockImplementation(() => {
-      const query = createControlledClaudeQuery();
-      queries.push(query);
-      return query;
-    });
-    const options = (providerSubagentsEnabled: boolean) => ({
-      permissionMode: "accept-edits",
-      permissionScope: "workspace",
-      approvalReviewer: "user",
-      permissionEscalation: "ask",
-      instructions: "test",
-      providerOptions: { providerSubagentsEnabled },
-    });
-
-    try {
-      const threadId = "thread-subagents-disabled";
-      bridge.sendRequest(1, "thread/start", {
-        threadId,
-        cwd: "/tmp/worktree",
-        instructionMode: "append",
-        options: options(false),
+  it.each([false, true])(
+    "updates subagent tools across turns while preserving the conversation (initially enabled: %s)",
+    async (initiallyEnabled) => {
+      const bridge = createBridgeJsonRpcTestHarness(handleLine);
+      const queries: ControlledClaudeQuery[] = [];
+      queryMock.mockImplementation(() => {
+        const query = createControlledClaudeQuery();
+        queries.push(query);
+        return query;
       });
-      await bridge.waitForResponse(1);
-
-      expect(getLatestQueryCall().options.disallowedTools).toEqual([
-        "Agent",
-        "Task",
-      ]);
-
-      bridge.sendRequest(2, "turn/start", {
-        threadId,
-        providerThreadId: threadId,
-        input: [{ type: "text", text: "Subagents are allowed again" }],
-        clientRequestId: "creq_abcdefghjk",
-        options: options(true),
+      const options = (providerSubagentsEnabled: boolean) => ({
+        permissionMode: "accept-edits",
+        permissionScope: "workspace",
+        approvalReviewer: "user",
+        permissionEscalation: "ask",
+        instructions: "test",
+        providerOptions: { providerSubagentsEnabled },
       });
-      await vi.waitFor(() => expect(queries).toHaveLength(2));
-      await readNextPrompt(getLatestQueryCall());
-      await bridge.waitForResponse(2);
+      const expectedTools = (enabled: boolean) =>
+        enabled ? undefined : ["Agent", "Task", "ListAgents"];
 
-      expect(queries[0]?.close).toHaveBeenCalled();
-      expect(getLatestQueryCall().options.disallowedTools).toBeUndefined();
-    } finally {
-      queries.forEach((query) => query.finish());
-      bridge.restore();
-    }
-  });
+      try {
+        const threadId = "thread-subagents-disabled";
+        const providerThreadId = "claude-subagent-conversation";
+        bridge.sendRequest(1, "thread/start", {
+          threadId,
+          cwd: "/tmp/worktree",
+          instructionMode: "append",
+          options: options(initiallyEnabled),
+        });
+        await bridge.waitForResponse(1);
+        expect(getLatestQueryCall().options.disallowedTools).toEqual(
+          expectedTools(initiallyEnabled),
+        );
+
+        for (const [index, enabled] of [
+          initiallyEnabled,
+          !initiallyEnabled,
+          initiallyEnabled,
+        ].entries()) {
+          const requestId = index + 2;
+          bridge.sendRequest(requestId, "turn/start", {
+            threadId,
+            providerThreadId,
+            input: [
+              {
+                type: "text",
+                text: "Continue with the current subagent setting",
+              },
+            ],
+            clientRequestId: "creq_abcdefghjk",
+            options: options(enabled),
+          });
+          await vi.waitFor(() => expect(queries).toHaveLength(index + 1));
+          await readNextPrompt(getLatestQueryCall());
+          await bridge.waitForResponse(requestId);
+          expect(getLatestQueryCall().options.disallowedTools).toEqual(
+            expectedTools(enabled),
+          );
+          if (index > 0) {
+            expect(queries[index - 1]?.close).toHaveBeenCalled();
+            expect(getLatestQueryCall().options.resume).toBe(providerThreadId);
+          } else {
+            expect(queries[0]?.close).not.toHaveBeenCalled();
+          }
+          const hookEnabled = index === 0 ? !enabled : enabled;
+          if (index === 0) {
+            bridge.sendRequest(10, "turn/steer", {
+              ...canonicalTurnParams({
+                threadId,
+                providerThreadId,
+                expectedTurnId: "active-turn",
+                input: [
+                  { type: "text", text: "Change subagents during this turn" },
+                ],
+              }),
+              options: options(hookEnabled),
+            });
+            await readNextPrompt(getLatestQueryCall());
+            await bridge.waitForResponse(10);
+            expect(queries).toHaveLength(1);
+            expect(queries[0]?.close).not.toHaveBeenCalled();
+          }
+          const hooks = getLatestQueryCall().options.hooks;
+          if (!hooks) throw new Error("Expected tracking hooks");
+          for (const toolName of ["Agent", "Task", "ListAgents"]) {
+            const outputs = await invokeBridgeHooks(
+              hooks.PreToolUse,
+              {
+                hook_event_name: "PreToolUse",
+                tool_name: toolName,
+                tool_input: {},
+                tool_use_id: "subagent-probe",
+                session_id: providerThreadId,
+                transcript_path: "/tmp/transcript.jsonl",
+                cwd: "/tmp/worktree",
+              },
+              "subagent-probe",
+            );
+            const denial = expect.objectContaining({
+              hookSpecificOutput: expect.objectContaining({
+                permissionDecision: "deny",
+              }),
+            });
+            if (hookEnabled) expect(outputs).not.toContainEqual(denial);
+            else expect(outputs).toContainEqual(denial);
+          }
+          queries[index]?.emit(createSuccessfulResultMessage(providerThreadId));
+          await bridge.flushWork();
+        }
+      } finally {
+        queries.forEach((query) => query.finish());
+        bridge.restore();
+      }
+    },
+  );
 
   it("keeps background subagents on their parent tool escalation when canUseTool omits agent metadata", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
