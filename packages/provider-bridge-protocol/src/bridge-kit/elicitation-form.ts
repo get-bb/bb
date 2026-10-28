@@ -73,27 +73,27 @@ const nativeBase = {
   title: z.string().optional(),
   description: z.string().optional(),
 };
-const nativeOptionSchema = z.strictObject({
+const nativeOptionSchema = z.object({
   const: z.string(),
   title: z.string(),
 });
 const nativeOptionsSchema = z.array(nativeOptionSchema).min(1);
 const nativeEnumSchema = z.array(z.string()).min(1);
 const nativeFieldSchema = z.union([
-  z.strictObject({
+  z.object({
     ...nativeBase,
     type: z.literal("string"),
     enum: nativeEnumSchema,
     enumNames: z.array(z.string()).optional(),
     default: z.string().optional(),
   }),
-  z.strictObject({
+  z.object({
     ...nativeBase,
     type: z.literal("string"),
     oneOf: nativeOptionsSchema,
     default: z.string().optional(),
   }),
-  z.strictObject({
+  z.object({
     ...nativeBase,
     type: z.literal("string"),
     minLength: z.number().int().nonnegative().optional(),
@@ -101,31 +101,31 @@ const nativeFieldSchema = z.union([
     format: stringFormatSchema.optional(),
     default: z.string().optional(),
   }),
-  z.strictObject({
+  z.object({
     ...nativeBase,
     type: z.enum(["number", "integer"]),
     minimum: z.number().optional(),
     maximum: z.number().optional(),
     default: z.number().optional(),
   }),
-  z.strictObject({
+  z.object({
     ...nativeBase,
     type: z.literal("boolean"),
     default: z.boolean().optional(),
   }),
-  z.strictObject({
+  z.object({
     ...nativeBase,
     type: z.literal("array"),
     minItems: z.number().int().nonnegative().optional(),
     maxItems: z.number().int().nonnegative().optional(),
     items: z.union([
-      z.strictObject({ type: z.literal("string"), enum: nativeEnumSchema }),
-      z.strictObject({ anyOf: nativeOptionsSchema }),
+      z.object({ type: z.literal("string"), enum: nativeEnumSchema }),
+      z.object({ anyOf: nativeOptionsSchema }),
     ]),
     default: z.array(z.string()).optional(),
   }),
 ]);
-const nativeFormSchema = z.strictObject({
+const nativeFormSchema = z.object({
   $schema: z.string().optional(),
   type: z.literal("object"),
   properties: safeDictionarySchema.pipe(

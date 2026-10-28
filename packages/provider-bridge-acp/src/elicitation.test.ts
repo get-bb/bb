@@ -434,6 +434,43 @@ describe("planAcpElicitation", () => {
     });
   });
 
+  it("ignores schema keywords it does not render, as omp's option descriptions and text patterns", () => {
+    const plan = questions(
+      planAcpElicitation({
+        sessionId: "s1",
+        mode: "form",
+        message: "Answer 2 questions",
+        requestedSchema: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            q0: {
+              type: "string",
+              title: "Which branch?",
+              description: "Pick one",
+              oneOf: [
+                { const: "alpha", title: "alpha", description: "the first" },
+                { const: "beta", title: "beta" },
+              ],
+            },
+            q0__other: { type: "string", title: "Other (type your own)" },
+            q1: { type: "string", title: "Ticket", pattern: "^[A-Z]+-[0-9]+$" },
+          },
+        },
+      }),
+    );
+    expect(plan.payload.questions.map((question) => question.id)).toEqual([
+      "q0",
+      "q1",
+    ]);
+    expect(
+      plan.toResponse({
+        kind: "user_answer",
+        answers: { q0: { selected: ["alpha"] }, q1: { selected: [], freeText: "BB-1" } },
+      }),
+    ).toEqual({ action: "accept", content: { q0: "alpha", q1: "BB-1" } });
+  });
+
   it("refuses forms it cannot show, with the reason", () => {
     expect(
       planAcpElicitation({ mode: "url", url: "https://example.com" }),
