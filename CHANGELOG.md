@@ -27,7 +27,7 @@ A quality and performance release: bb loads faster, sends far less over the wire
 ### Usability
 
 - **Claude Code's Full Access approves everything again**, as it did before 0.47.0. Turn on the new **Approvals in Full Access** setting to keep being asked about `permissions.ask` rules, hooks that answer "ask", and Claude Code's own safety checks.
-- Search the terminal's scrollback with Cmd+F on macOS or Ctrl+Shift+F elsewhere, and Cmd/Ctrl+click file paths such as `src/main.ts:12:3` to open them. Terminal links now need Cmd/Ctrl+click.
+- Search the terminal's scrollback with Cmd+F on macOS or Ctrl+Shift+F elsewhere, and Cmd/Ctrl+click file paths such as `src/main.ts:12:3` to open them. Web links in the terminal now also open with Cmd/Ctrl+click instead of a plain click, so a stray click no longer opens them.
 - Zoom and pan images in the lightbox, and the right sidebar remembers its width for each thread and plugin page.
 - On desktop, right-click a link to **Open in Browser**.
 - Mark read and Pin can be bound to keyboard shortcuts.
