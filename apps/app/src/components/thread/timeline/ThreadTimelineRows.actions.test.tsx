@@ -842,12 +842,18 @@ describe("ThreadTimelineRows actions", () => {
     expect(markup).not.toContain('aria-label="Add to chat"');
   });
 
-  it.each(["mixed", "code", "partial-link", "boundary-spill"] as const)(
+  it.each([
+    "mixed",
+    "code",
+    "inline-code",
+    "partial-link",
+    "boundary-spill",
+  ] as const)(
     "adds a %s selection to chat with its Markdown preserved",
     async (mode) => {
       const onSelectionAddToChat = vi.fn();
       const markdown =
-        "- **First** [docs](https://example.com)\n- Second\n\n```ts\nconst x = 1;\n\nconst y = 2;\n```";
+        "- **First** [docs](https://example.com)\n- Second\n\n```ts\nconst x = 1;\n\nconst y = 2;\n```\n\n`pnpm --version`";
       const { container } = renderWithRouter(
         <ThreadTimelineRows
           timelineRows={[
@@ -864,6 +870,9 @@ describe("ThreadTimelineRows actions", () => {
       if (mode === "code") {
         range.selectNodeContents(prose.querySelector("pre code")!);
         expected = "const x = 1;\n\nconst y = 2;";
+      } else if (mode === "inline-code") {
+        range.selectNodeContents(prose.querySelector("p > code")!);
+        expected = "`pnpm --version`";
       } else if (mode === "partial-link") {
         const text = prose.querySelector("a")!.firstChild!;
         range.setStart(text, 1);

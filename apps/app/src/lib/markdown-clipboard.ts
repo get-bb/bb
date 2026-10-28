@@ -276,6 +276,7 @@ function keepsAncestor(
 export function selectionClipboard(
   selected: Range,
   root: Element,
+  codeFormat: "plain" | "markdown",
 ): { text: string; html: string } {
   const range = expandRangeToMath(trimRangeToContent(selected));
   const start =
@@ -286,7 +287,9 @@ export function selectionClipboard(
     range.endContainer instanceof Element
       ? range.endContainer
       : range.endContainer.parentElement;
-  const pre = start?.closest("pre");
+  const code = start?.closest(
+    codeFormat === "plain" ? "pre, code, [data-clipboard-inline-code]" : "pre",
+  );
   let contents: Node = range.cloneContents();
   const common =
     range.commonAncestorContainer instanceof Element
@@ -342,7 +345,7 @@ export function selectionClipboard(
   for (const [link, original] of copiedOriginals("a"))
     if (original && isBareUrl(original)) link.setAttribute("data-bare-url", "");
   const text =
-    pre && end && pre.contains(end)
+    code && end && code.contains(end)
       ? range.toString()
       : childrenMarkdown(container).trim();
   replaceMathWithMathMl(container);

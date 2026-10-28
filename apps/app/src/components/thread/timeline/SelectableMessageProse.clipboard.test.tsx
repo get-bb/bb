@@ -47,6 +47,37 @@ function copyRange(range: Range) {
   return { data, accepted };
 }
 
+it.each(["text", "element", "paragraph", "partial", "message"] as const)(
+  "copies an inline code %s selection without code delimiters unless mixed with prose",
+  (mode) => {
+    const content = "**Check:**\n\n`pnpm --version`";
+    const { container } = render(
+      <SelectableMessageProse>
+        <MarkdownPreview content={content} />
+      </SelectableMessageProse>,
+    );
+    const code = container.querySelector("code")!;
+    const range = document.createRange();
+    let expected = "pnpm --version";
+    if (mode === "message") {
+      range.selectNodeContents(container.firstElementChild!);
+      expected = content;
+    } else if (mode === "paragraph") {
+      range.selectNodeContents(code.closest("p")!);
+    } else if (mode === "element") {
+      range.selectNode(code);
+    } else {
+      range.setStart(code.firstChild!, mode === "partial" ? 5 : 0);
+      range.setEnd(code.firstChild!, code.textContent!.length);
+      if (mode === "partial") expected = "--version";
+    }
+    const { data, accepted } = copyRange(range);
+    expect(accepted).toBe(false);
+    expect(data.get("text/plain")).toBe(expected);
+    expect(data.get("text/html")).toContain("<code>");
+  },
+);
+
 it.each([
   ["src/export_notes.ts", "file:///workspace/src/export_notes.ts"],
   [
@@ -84,7 +115,7 @@ it.each([
 
     window.getSelection()!.removeAllRanges();
     range.selectNodeContents(container.querySelector("a")!);
-    expect(copyRange(range).data.get("text/plain")).toBe(`\`${reference}\``);
+    expect(copyRange(range).data.get("text/plain")).toBe(reference);
   },
 );
 
@@ -142,33 +173,42 @@ it("preserves nested lists, blockquotes, task lists and fences containing backti
   expect(text).toContain("````md\n```ts\n\nhello\n```\n````");
 });
 
-it("copies across messages but leaves unrelated and editable selections to the browser", () => {
-  const { container } = render(
-    <>
-      <SelectableMessageProse>
-        <p>
-          <strong>One</strong>
-        </p>
-      </SelectableMessageProse>
-      <div>Message timestamp</div>
-      <SelectableMessageProse>
-        <p>
-          <em>Two</em>
-        </p>
-      </SelectableMessageProse>
-      <div contentEditable suppressContentEditableWarning>
-        Draft
-      </div>
-    </>,
-  );
-  const range = document.createRange();
-  range.setStartBefore(container.querySelector("strong")!);
-  range.setEndAfter(container.querySelector("em")!);
-  expect(copyRange(range).data.get("text/plain")).toBe("**One**\n\n*Two*");
-  window.getSelection()!.removeAllRanges();
-  range.selectNodeContents(container.querySelector("[contenteditable]")!);
-  expect(copyRange(range).data.size).toBe(0);
-});
+it.each(["strong", "code"] as const)(
+  "copies %s across messages but leaves unrelated and editable selections to the browser",
+  (tag) => {
+    const { container } = render(
+      <>
+        <SelectableMessageProse>
+          <p>
+            {tag === "code" ? (
+              <code>pnpm --version</code>
+            ) : (
+              <strong>One</strong>
+            )}
+          </p>
+        </SelectableMessageProse>
+        <div>Message timestamp</div>
+        <SelectableMessageProse>
+          <p>
+            <em>Two</em>
+          </p>
+        </SelectableMessageProse>
+        <div contentEditable suppressContentEditableWarning>
+          Draft
+        </div>
+      </>,
+    );
+    const range = document.createRange();
+    range.setStartBefore(container.querySelector(tag)!);
+    range.setEndAfter(container.querySelector("em")!);
+    expect(copyRange(range).data.get("text/plain")).toBe(
+      `${tag === "code" ? "`pnpm --version`" : "**One**"}\n\n*Two*`,
+    );
+    window.getSelection()!.removeAllRanges();
+    range.selectNodeContents(container.querySelector("[contenteditable]")!);
+    expect(copyRange(range).data.size).toBe(0);
+  },
+);
 
 it("copies a whitespace boundary spill as markdown without changing the live selection", () => {
   const { container } = render(
