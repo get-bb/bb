@@ -60,6 +60,7 @@ import {
   hasLiveThreadStartInFlight,
   requestThreadStopForCurrentState,
   requestThreadStorageDeletion,
+  stopRunsWhoseTurnNeverStarted,
 } from "../threads/thread-lifecycle.js";
 import {
   archiveUndoGraceKeepsTerminals,
@@ -576,6 +577,14 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     category: "orphan-cleanup",
     name: "thread-provisioning-orphan-cleanup",
     run: runThreadProvisioningOrphanCleanupSweep,
+  },
+  {
+    cadenceMs: 0,
+    category: "orphan-cleanup",
+    name: "turn-start-deadline",
+    run: (deps, now) => {
+      stopRunsWhoseTurnNeverStarted(deps, now);
+    },
   },
   {
     cadenceMs: 0,

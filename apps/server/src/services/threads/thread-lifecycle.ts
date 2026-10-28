@@ -29,6 +29,7 @@ import {
   getHost,
   getLatestThreadInterruptedReason,
   getThread,
+  getUnstartedLatestStartTurnRequest,
   hasStoredTerminalClientTurnRequestEvent,
   listThreadIdsStoppedSinceLastTurnStart,
   listThreadIdsWithLatestHostDaemonRestartInterruption,
@@ -1365,6 +1366,60 @@ function requestThreadStop(
   }
 
   dispatchThreadStopCommand(deps, args);
+}
+
+export const TURN_START_DEADLINE_MS = 10 * 60_000;
+
+export function stopRunsWhoseTurnNeverStarted(
+  deps: CommandResultSideEffectsDeps,
+  now: number,
+): void {
+  const activeThreads = deps.db
+    .select({
+      environmentId: environments.id,
+      hostId: environments.hostId,
+      threadId: threads.id,
+    })
+    .from(threads)
+    .innerJoin(environments, eq(threads.environmentId, environments.id))
+    .where(and(eq(threads.status, "active"), isNull(threads.deletedAt)))
+    .all();
+  for (const thread of activeThreads) {
+    if (!deps.hub.hasDaemonForHost(thread.hostId)) continue;
+    const request = getUnstartedLatestStartTurnRequest(
+      deps.db,
+      thread.threadId,
+    );
+    if (request === null || now - request.createdAt < TURN_START_DEADLINE_MS) {
+      continue;
+    }
+    deps.logger.warn(
+      { requestSequence: request.sequence, threadId: thread.threadId },
+      "Stopping a run whose turn never started",
+    );
+    const notificationBuffer = new NotificationBuffer();
+    deps.db.transaction(
+      (tx) =>
+        appendSystemErrorEventInTransaction(
+          { db: tx, hub: notificationBuffer },
+          {
+            threadId: thread.threadId,
+            environmentId: thread.environmentId,
+            code: "provider_turn_start_deadline",
+            message: `The provider did not start the turn within ${TURN_START_DEADLINE_MS / 60_000} minutes, so bb stopped it. Retry the turn to send it again.`,
+            scope: threadScope(),
+          },
+        ),
+      { behavior: "immediate" },
+    );
+    notificationBuffer.flushInto(deps.hub);
+    requestThreadStop(deps, {
+      environmentId: thread.environmentId,
+      hostId: thread.hostId,
+      interruptionReason: "provider-turn-idle",
+      threadId: thread.threadId,
+    });
+  }
 }
 
 function markThreadStopRequested(

@@ -16,6 +16,12 @@ import {
 import type { ProviderRegistryService } from "../providers/provider-registry.js";
 import { buildThreadStatusChangeMetadata } from "./thread-runtime-display.js";
 import { handOffFailedTurnInputsInTransaction } from "./input-ledger.js";
+import {
+  appendThreadEventInTransaction,
+  getActiveTurnId,
+  getLastProviderThreadId,
+} from "./thread-events.js";
+import { turnScope, type Thread } from "@bb/domain";
 
 /**
  * `run.failed` is the only event that lands a thread in `error`, so an applied
@@ -66,12 +72,53 @@ function logUnappliedThreadLifecycleEvent(
   );
 }
 
+function turnStatusForRunExit(
+  event: ApplyThreadLifecycleEventArgs["event"],
+): "completed" | "failed" | "interrupted" | null {
+  switch (event.type) {
+    case "run.succeeded":
+      return "completed";
+    case "run.failed":
+      return "failed";
+    case "stop.settled":
+      return "interrupted";
+    default:
+      return null;
+  }
+}
+
+function closeOpenTurnOnRunExitInTransaction(
+  deps: ApplyLoggedThreadLifecycleEventTransactionDeps,
+  args: ApplyThreadLifecycleEventArgs,
+  thread: Thread,
+): void {
+  const status = turnStatusForRunExit(args.event);
+  if (status === null) return;
+  const turnId = getActiveTurnId(deps, thread.id);
+  if (turnId === null) return;
+  const providerThreadId = getLastProviderThreadId(deps, thread.id);
+  appendThreadEventInTransaction(deps.db, {
+    threadId: thread.id,
+    environmentId: thread.environmentId,
+    providerThreadId,
+    type: "turn/completed",
+    scope: turnScope(turnId),
+    data: { providerThreadId, status },
+  });
+  deps.logger.info(
+    { threadId: thread.id, turnId, status },
+    "Closed a turn left open when its run ended",
+  );
+}
+
 function applyThreadLifecycleEventWithInputsInTransaction(
   deps: ApplyLoggedThreadLifecycleEventTransactionDeps,
   args: ApplyThreadLifecycleEventArgs,
 ): ApplyThreadLifecycleEventOutcome {
   const outcome = applyThreadLifecycleEventInTransaction(deps.db, args);
-  if (outcome.applied && args.event.type === "run.failed") {
+  if (!outcome.applied) return outcome;
+  closeOpenTurnOnRunExitInTransaction(deps, args, outcome.thread);
+  if (args.event.type === "run.failed") {
     handOffFailedTurnInputsInTransaction(deps, { threadId: args.threadId });
   }
   return outcome;

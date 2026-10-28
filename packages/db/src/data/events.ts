@@ -4237,6 +4237,45 @@ export function listThreadIdsWithLatestHostDaemonRestartInterruption(
     .map((row) => row.threadId);
 }
 
+export interface UnstartedTurnRequest {
+  createdAt: number;
+  sequence: number;
+}
+
+export function getUnstartedLatestStartTurnRequest(
+  db: DbQueryConnection,
+  threadId: string,
+): UnstartedTurnRequest | null {
+  const request = db
+    .select({ createdAt: events.createdAt, sequence: events.sequence })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, threadId),
+        eq(events.type, "client/turn/requested"),
+        sql`json_extract(${events.data}, '$.target.kind') IN ('new-turn', 'thread-start')`,
+      ),
+    )
+    .orderBy(desc(events.sequence))
+    .limit(1)
+    .get();
+  if (request === undefined) return null;
+  const started = db
+    .select({ sequence: events.sequence })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, threadId),
+        eq(events.type, "turn/started"),
+        isRootTurnStartedEventData,
+        gt(events.sequence, request.sequence),
+      ),
+    )
+    .limit(1)
+    .get();
+  return started === undefined ? request : null;
+}
+
 export function getLastStoredTurnRequestEvent(
   db: DbQueryConnection,
   threadId: string,

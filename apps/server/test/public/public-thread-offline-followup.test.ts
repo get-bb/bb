@@ -219,7 +219,7 @@ describe("offline host follow-ups", () => {
       });
       expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
       expect(listEvents(harness.db, { threadId: thread.id })).toHaveLength(
-        eventCountBeforeSend + 1,
+        eventCountBeforeSend + (testCase.status === "active" ? 2 : 1),
       );
     });
   });
