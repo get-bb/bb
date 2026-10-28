@@ -88,6 +88,7 @@ import { toThreadQueuedMessage } from "./thread-queued-messages.js";
 import { isPreStartThreadStatus } from "./thread-status.js";
 import { queueInputForStartingTurn } from "./thread-turn-starting.js";
 import {
+  settleSupersededFailedTurnInputsInTransaction,
   submitClaimedInputsInTransaction,
   submitInlineInputInTransaction,
 } from "./input-ledger.js";
@@ -368,6 +369,16 @@ async function runOperationDispatch(
         queuedMessageId: null,
         threadId: args.thread.id,
       });
+      if (preflight.requestId !== null) {
+        settleSupersededFailedTurnInputsInTransaction(
+          { db: preflight.tx, hub: deps.hub, logger: deps.logger },
+          {
+            requestId: preflight.requestId,
+            retryOfRequestId: null,
+            threadId: args.thread.id,
+          },
+        );
+      }
       source.beforeAppendInTransaction?.(preflight);
     },
     ...(source.historyReplacement !== undefined
@@ -766,6 +777,14 @@ async function runDispatchAttempt(
           }
           return;
         }
+        settleSupersededFailedTurnInputsInTransaction(
+          { db: tx, hub: deps.hub, logger: deps.logger },
+          {
+            requestId,
+            retryOfRequestId: args.retryOf?.requestId ?? null,
+            threadId: thread.id,
+          },
+        );
         if (claimed === null) {
           submitInlineInputInTransaction(tx, {
             message: queuedMessage,

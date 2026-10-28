@@ -87,10 +87,7 @@ import {
   resolveTelemetryInitiator,
 } from "./telemetry-initiator.js";
 import { assertThreadHostAcceptsWork } from "./thread-host-admission.js";
-import {
-  trackLiveTurnRequest,
-  untrackLiveTurnRequest,
-} from "./input-ledger.js";
+import { settleLiveTurnRequest, trackLiveTurnRequest } from "./input-ledger.js";
 
 type SendThreadMessageMode = SendMessageRequest["mode"];
 type TextPromptInput = Extract<PromptInput, { type: "text" }>;
@@ -767,10 +764,11 @@ async function sendThreadMessageWithoutContextClear(
       hostId: readyEnvironment.hostId,
       timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
       onSettled: async () => {
-        untrackLiveTurnRequest(requestId);
+        settleLiveTurnRequest({ requestId, threadId: thread.id }, "sent");
         await onHistoryReplacementSettled?.();
       },
       onError: ({ error }) => {
+        settleLiveTurnRequest({ requestId, threadId: thread.id }, "refused");
         deps.logger.warn(
           { err: error, threadId: thread.id },
           "Live ready turn command failed",
@@ -847,8 +845,10 @@ async function sendThreadMessageWithoutContextClear(
     command,
     hostId: readyEnvironment.hostId,
     timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
-    onSettled: () => untrackLiveTurnRequest(requestId),
+    onSettled: () =>
+      settleLiveTurnRequest({ requestId, threadId: thread.id }, "sent"),
     onError: ({ error }) => {
+      settleLiveTurnRequest({ requestId, threadId: thread.id }, "refused");
       deps.logger.warn(
         { err: error, threadId: thread.id },
         "Live turn submit command failed",

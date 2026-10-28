@@ -1,5 +1,6 @@
 import { performance } from "node:perf_hooks";
 import { acceptSubmittedInputsInTransaction } from "../services/threads/input-ledger.js";
+import { stopTurnStartedAfterItsRunEnded } from "../services/threads/thread-lifecycle.js";
 import { Buffer } from "node:buffer";
 import { and, desc, eq, gt, lt, sql } from "drizzle-orm";
 import {
@@ -431,6 +432,12 @@ async function applyEventEffects(
             turnId,
           })
         ) {
+          if (isRootTurnStartedEvent(event)) {
+            stopTurnStartedAfterItsRunEnded(deps, {
+              threadId: entry.threadId,
+              turnId,
+            });
+          }
           continue;
         }
         if (!isRootTurnStartedEvent(event)) {

@@ -1,20 +1,33 @@
 import {
   createSubmittedQueuedThreadMessageInTransaction,
+  deleteReturnedQueuedThreadMessagesInTransaction,
   deleteSubmittedQueuedThreadMessagesInTransaction,
   getThread,
   listSubmittedQueuedThreadMessageRequests,
+  listSubmittedQueuedThreadMessages,
+  moveSubmittedQueuedThreadMessagesInTransaction,
   returnSubmittedQueuedThreadMessagesInTransaction,
   submitClaimedQueuedThreadMessageBatchInTransaction,
   type ClaimedQueuedThreadMessageRow,
+  type QueuedThreadMessageRow,
   type DbConnection,
   type DbTransaction,
 } from "@bb/db";
-import type { ClientTurnRequestId, ThreadStatus } from "@bb/domain";
+import {
+  promptInputSchema,
+  type ClientTurnRequestId,
+  type ThreadStatus,
+} from "@bb/domain";
+import { z } from "zod";
 import type { AppDeps, ServerLogger } from "../../types.js";
 import type { QueuedDispatchMessage } from "./queue-waits.js";
-import { loadFailedTurn } from "./turn-failed.js";
+import { loadFailedTurn, retryChain } from "./turn-failed.js";
+import { resolveDeferredFirstTurnContext } from "./deferred-first-turn-context.js";
 
 export const SUBMITTED_INPUT_SETTLE_MS = 60_000;
+
+const UNSENT_INPUT_REASON =
+  "Not sent: the provider did not accept this message before its turn ended.";
 
 type InputLedgerTransactionDeps = {
   db: DbTransaction;
@@ -28,13 +41,49 @@ interface SubmittedInputRequest {
 }
 
 const liveTurnRequestIds = new Set<string>();
+const acceptanceGraceByRequestId = new Map<
+  string,
+  { threadId: string; until: number }
+>();
 
 export function trackLiveTurnRequest(requestId: ClientTurnRequestId): void {
   liveTurnRequestIds.add(requestId);
 }
 
-export function untrackLiveTurnRequest(requestId: ClientTurnRequestId): void {
-  liveTurnRequestIds.delete(requestId);
+export function settleLiveTurnRequest(
+  args: { requestId: ClientTurnRequestId; threadId: string },
+  outcome: "refused" | "sent",
+): void {
+  if (!liveTurnRequestIds.delete(args.requestId) || outcome === "refused") {
+    return;
+  }
+  acceptanceGraceByRequestId.set(args.requestId, {
+    threadId: args.threadId,
+    until: Date.now() + SUBMITTED_INPUT_SETTLE_MS,
+  });
+}
+
+export function endAcceptanceGraceForThread(threadId: string): void {
+  for (const [requestId, grace] of acceptanceGraceByRequestId) {
+    if (grace.threadId === threadId) {
+      acceptanceGraceByRequestId.delete(requestId);
+    }
+  }
+}
+
+export function isTurnRequestLive(requestId: string): boolean {
+  if (liveTurnRequestIds.has(requestId)) return true;
+  const grace = acceptanceGraceByRequestId.get(requestId);
+  if (grace === undefined) return false;
+  if (grace.until > Date.now()) return true;
+  acceptanceGraceByRequestId.delete(requestId);
+  return false;
+}
+
+function pruneExpiredAcceptanceGrace(now: number): void {
+  for (const [requestId, grace] of acceptanceGraceByRequestId) {
+    if (grace.until <= now) acceptanceGraceByRequestId.delete(requestId);
+  }
 }
 
 export function submitClaimedInputsInTransaction(
@@ -81,6 +130,7 @@ export function acceptSubmittedInputsInTransaction(
   deps: { db: DbTransaction; logger: ServerLogger },
   args: SubmittedInputRequest,
 ): void {
+  acceptanceGraceByRequestId.delete(args.requestId);
   const accepted = deleteSubmittedQueuedThreadMessagesInTransaction(
     deps.db,
     args,
@@ -98,12 +148,18 @@ export function acceptSubmittedInputsInTransaction(
 
 export function returnSubmittedInputsInTransaction(
   deps: InputLedgerTransactionDeps,
-  args: SubmittedInputRequest & { reason: string },
+  args: SubmittedInputRequest & {
+    reason: string;
+    returnAs: "queued" | "unsent";
+  },
 ): number {
   const returned = returnSubmittedQueuedThreadMessagesInTransaction(deps.db, {
     requestId: args.requestId,
     threadId: args.threadId,
-    waitingOn: { kind: "thread-busy" },
+    outcome:
+      args.returnAs === "queued"
+        ? { kind: "waiting", waitingOn: { kind: "thread-busy" } }
+        : { kind: "failed", failureReason: UNSENT_INPUT_REASON },
   });
   if (returned.length === 0) return 0;
   deps.logger.info(
@@ -119,24 +175,91 @@ export function returnSubmittedInputsInTransaction(
   return returned.length;
 }
 
-export function handOffFailedTurnInputsInTransaction(
-  deps: { db: DbTransaction; logger: ServerLogger },
-  args: { threadId: string },
+export function settleSupersededFailedTurnInputsInTransaction(
+  deps: InputLedgerTransactionDeps,
+  args: {
+    requestId: ClientTurnRequestId;
+    retryOfRequestId: string | null;
+    threadId: string;
+  },
 ): void {
+  if (getThread(deps.db, args.threadId)?.status !== "error") return;
   const failed = loadFailedTurn(deps.db, args.threadId);
   if (failed === null) return;
-  const handedOff = deleteSubmittedQueuedThreadMessagesInTransaction(deps.db, {
+  const request = {
     requestId: failed.request.requestId,
     threadId: args.threadId,
+  };
+  const retriesFailedTurn =
+    args.retryOfRequestId !== null &&
+    retryChain(failed.request).originalRequestId === args.retryOfRequestId;
+  if (
+    !retriesFailedTurn &&
+    resolveDeferredFirstTurnContext(deps.db, args.threadId) !== null
+  ) {
+    const carried = moveSubmittedQueuedThreadMessagesInTransaction(deps.db, {
+      ...request,
+      ids: listSubmittedQueuedThreadMessages(deps.db, request)
+        .filter(isAgentOnlyRow)
+        .map((row) => row.id),
+      toRequestId: args.requestId,
+    });
+    if (carried.length > 0) {
+      deps.logger.info(
+        {
+          ...request,
+          queuedMessageIds: carried.map((row) => row.id),
+          toRequestId: args.requestId,
+        },
+        "The next request carries the failed turn's undelivered input",
+      );
+    }
+  }
+  if (isTurnRequestLive(failed.request.requestId)) return;
+  if (retriesFailedTurn) {
+    const replaced = [
+      ...deleteSubmittedQueuedThreadMessagesInTransaction(deps.db, request),
+      ...deleteReturnedQueuedThreadMessagesInTransaction(deps.db, request),
+    ];
+    if (replaced.length > 0) {
+      deps.logger.info(
+        { ...request, queuedMessageIds: replaced.map((row) => row.id) },
+        "A replacement request carries the failed turn's submitted input",
+      );
+    }
+    return;
+  }
+  returnSubmittedInputsInTransaction(deps, {
+    ...request,
+    reason: "failed-turn-superseded",
+    returnAs: "unsent",
   });
-  if (handedOff.length === 0) return;
-  deps.logger.info(
-    {
-      queuedMessageIds: handedOff.map((row) => row.id),
-      requestId: failed.request.requestId,
-      threadId: args.threadId,
-    },
-    "Submitted input is now owned by the failed turn",
+}
+
+export function isSupersededTurnRequest(
+  db: DbTransaction,
+  request: SubmittedInputRequest,
+): boolean {
+  const latest = loadFailedTurn(db, request.threadId);
+  return latest !== null && latest.request.requestId !== request.requestId;
+}
+
+const storedPromptInputSchema = z.array(promptInputSchema);
+
+function isAgentOnlyRow(row: QueuedThreadMessageRow): boolean {
+  return storedPromptInputSchema
+    .parse(JSON.parse(row.content))
+    .every((item) => item.visibility === "agent-only");
+}
+
+function isRetryableFailedTurnRequest(
+  db: DbTransaction,
+  request: SubmittedInputRequest,
+): boolean {
+  return (
+    getThread(db, request.threadId)?.status === "error" &&
+    loadFailedTurn(db, request.threadId)?.request.requestId ===
+      request.requestId
   );
 }
 
@@ -150,9 +273,10 @@ export function returnUnsettledSubmittedInputs(
   deps: Pick<AppDeps, "db" | "hub" | "logger">,
   now: number,
 ): number {
+  pruneExpiredAcceptanceGrace(now);
   const candidates = listSubmittedQueuedThreadMessageRequests(deps.db, {
     submittedBefore: now - SUBMITTED_INPUT_SETTLE_MS,
-  }).filter((request) => !liveTurnRequestIds.has(request.requestId));
+  }).filter((request) => !isTurnRequestLive(request.requestId));
   let returned = 0;
   for (const request of candidates) {
     returned += returnSubmittedInputsIfThreadSettled(deps, request);
@@ -166,12 +290,16 @@ function returnSubmittedInputsIfThreadSettled(
 ): number {
   return transaction(deps.db, (tx) => {
     const thread = getThread(tx, request.threadId);
-    if (thread === null || RUNNING_THREAD_STATUSES.includes(thread.status)) {
+    if (
+      thread === null ||
+      RUNNING_THREAD_STATUSES.includes(thread.status) ||
+      isRetryableFailedTurnRequest(tx, request)
+    ) {
       return 0;
     }
     return returnSubmittedInputsInTransaction(
       { db: tx, hub: deps.hub, logger: deps.logger },
-      { ...request, reason: "unsettled-after-run" },
+      { ...request, reason: "unsettled-after-run", returnAs: "unsent" },
     );
   });
 }

@@ -1,7 +1,8 @@
 import { advanceEnvironmentProvisioning } from "../environments/environment-engine.js";
 import { COMPETING_TURN_ERROR_CODE } from "@bb/host-daemon-contract";
 import {
-  acceptSubmittedInputsInTransaction,
+  endAcceptanceGraceForThread,
+  isSupersededTurnRequest,
   returnSubmittedInputsInTransaction,
 } from "./input-ledger.js";
 import { revokeThreadDesktopBrowserControl } from "../desktop-browsers.js";
@@ -852,12 +853,25 @@ function settleThreadCommandFailure(
       returnSubmittedInputsInTransaction(args.deps, {
         reason: args.report.errorCode,
         requestId: args.command.requestId,
+        returnAs: "queued",
         threadId: thread.id,
       });
       return {
         postCommitActions: [requestThreadReadyDrainAction(thread.id)],
       };
     }
+  }
+  const request = {
+    requestId: args.command.requestId,
+    threadId: thread.id,
+  };
+  if (isSupersededTurnRequest(args.deps.db, request)) {
+    returnSubmittedInputsInTransaction(args.deps, {
+      ...request,
+      reason: args.report.errorCode,
+      returnAs: "unsent",
+    });
+    return emptyCommandResultSideEffects();
   }
   appendSystemErrorEventInTransaction(args.deps, {
     threadId: thread.id,
@@ -975,12 +989,6 @@ export function settleTurnSubmitCommandResult(
       command: args.command,
       deps: args.deps,
       report: args.report,
-    });
-  }
-  if (args.command.target.mode !== "start") {
-    acceptSubmittedInputsInTransaction(args.deps, {
-      requestId: args.command.requestId,
-      threadId: args.command.threadId,
     });
   }
   return emptyCommandResultSideEffects();
@@ -1467,6 +1475,50 @@ function dispatchThreadStopCommand(
     .finally(() => {
       inFlightThreadRpcGuard.release(args.threadId, "thread.stop");
     });
+}
+
+export function stopTurnStartedAfterItsRunEnded(
+  deps: CommandResultSideEffectsDeps,
+  args: { threadId: string; turnId: string },
+): void {
+  const thread = getThread(deps.db, args.threadId);
+  if (
+    thread === null ||
+    (thread.status !== "idle" && thread.status !== "error") ||
+    thread.environmentId === null
+  ) {
+    return;
+  }
+  const environment = getEnvironment(deps.db, thread.environmentId);
+  if (environment === null) return;
+  const providerThreadId = getLastProviderThreadId(deps, thread.id);
+  const sequence = deps.db.transaction(
+    (tx) =>
+      appendThreadEventInTransaction(tx, {
+        threadId: thread.id,
+        environmentId: thread.environmentId,
+        providerThreadId,
+        type: "turn/completed",
+        scope: turnScope(args.turnId),
+        data: { providerThreadId, status: "interrupted" },
+      }),
+    { behavior: "immediate" },
+  );
+  deps.hub.notifyThread(thread.id, ["events-appended"], {
+    timelineSequence: sequence,
+    eventTypes: ["turn/completed"],
+  });
+  deps.logger.warn(
+    { threadId: thread.id, turnId: args.turnId },
+    "Stopping a turn that started after its run was stopped",
+  );
+  if (!inFlightThreadRpcGuard.claim(thread.id, "thread.stop")) return;
+  dispatchThreadStopCommand(deps, {
+    environmentId: environment.id,
+    hostId: environment.hostId,
+    interruptionReason: "manual-stop",
+    threadId: thread.id,
+  });
 }
 
 function requestPreStartThreadStop(
@@ -2080,6 +2132,7 @@ export function finalizeStoppedThreadInTransaction(
     }
   }
 
+  endAcceptanceGraceForThread(args.threadId);
   const finalizedThread = getThread(deps.db, args.threadId);
   if (!finalizedThread) {
     return;

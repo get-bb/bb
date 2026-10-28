@@ -14,6 +14,7 @@ import type {
 import { ApiError } from "../../errors.js";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { attemptDispatch } from "./dispatch-attempt.js";
+import { isTurnRequestLive } from "./input-ledger.js";
 import {
   loadFailedTurn,
   retryChain,
@@ -191,6 +192,13 @@ export async function retryFailedTurn(
     thread,
     turnRequestId: request.turnRequestId,
   });
+  if (isTurnRequestLive(failed.request.requestId)) {
+    throw new ApiError(
+      409,
+      "retry_already_queued",
+      `Turn ${failed.request.requestId} on thread ${thread.id} is still being delivered to the provider.`,
+    );
+  }
   const chain = retryChain(failed.request);
   const originalRequestId = chain.originalRequestId;
   const inFlightKey = `${thread.id}:${originalRequestId}`;

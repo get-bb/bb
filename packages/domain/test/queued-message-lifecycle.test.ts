@@ -118,7 +118,7 @@ describe("QUEUED_MESSAGE_LIFECYCLE", () => {
     }
   });
 
-  it("leaves a submission only by returning it to the queue", () => {
+  it("returns a submission only to a wait or as an unsent failure", () => {
     expect(Object.keys(QUEUED_MESSAGE_LIFECYCLE.submitted)).toEqual([
       "input.returned",
     ]);

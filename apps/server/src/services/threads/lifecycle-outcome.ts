@@ -15,7 +15,6 @@ import {
 } from "../plugins/plugin-thread-events.js";
 import type { ProviderRegistryService } from "../providers/provider-registry.js";
 import { buildThreadStatusChangeMetadata } from "./thread-runtime-display.js";
-import { handOffFailedTurnInputsInTransaction } from "./input-ledger.js";
 import {
   appendThreadEventInTransaction,
   getActiveTurnId,
@@ -111,16 +110,13 @@ function closeOpenTurnOnRunExitInTransaction(
   );
 }
 
-function applyThreadLifecycleEventWithInputsInTransaction(
+function applyThreadLifecycleEventClosingTurnInTransaction(
   deps: ApplyLoggedThreadLifecycleEventTransactionDeps,
   args: ApplyThreadLifecycleEventArgs,
 ): ApplyThreadLifecycleEventOutcome {
   const outcome = applyThreadLifecycleEventInTransaction(deps.db, args);
   if (!outcome.applied) return outcome;
   closeOpenTurnOnRunExitInTransaction(deps, args, outcome.thread);
-  if (args.event.type === "run.failed") {
-    handOffFailedTurnInputsInTransaction(deps, { threadId: args.threadId });
-  }
   return outcome;
 }
 
@@ -131,7 +127,7 @@ export function applyLoggedThreadLifecycleEvent(
   const previousStatus = getThread(deps.db, args.threadId)?.status;
   const outcome = deps.db.transaction(
     (tx) =>
-      applyThreadLifecycleEventWithInputsInTransaction(
+      applyThreadLifecycleEventClosingTurnInTransaction(
         { db: tx, logger: deps.logger },
         args,
       ),
@@ -158,7 +154,7 @@ export function applyLoggedThreadLifecycleEventInTransaction(
   args: ApplyThreadLifecycleEventArgs,
 ): ApplyThreadLifecycleEventOutcome {
   const previousStatus = getThread(deps.db, args.threadId)?.status;
-  const outcome = applyThreadLifecycleEventWithInputsInTransaction(deps, args);
+  const outcome = applyThreadLifecycleEventClosingTurnInTransaction(deps, args);
   if (outcome.applied && previousStatus !== undefined) {
     recordFinishedTurn(deps.db, args.threadId, args.event, previousStatus);
   }

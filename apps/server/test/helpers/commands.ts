@@ -498,6 +498,14 @@ function isCapturedRpcForHarness(
   );
 }
 
+export function listPendingQueuedCommands(
+  harness: TestAppHarness,
+): QueuedCommand[] {
+  return pendingHostRpcRequests.filter((queued) =>
+    isCapturedRpcForHarness(harness, queued),
+  );
+}
+
 export async function waitForQueuedCommand(
   harness: TestAppHarness,
   predicate: (queued: QueuedCommand) => boolean,

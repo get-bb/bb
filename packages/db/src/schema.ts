@@ -1019,6 +1019,7 @@ export const queuedThreadMessages = sqliteTable(
       .default(false),
     state: text("state", { enum: queuedMessageRowStateValues }).notNull(),
     submittedRequestId: text("submitted_request_id"),
+    returnedRequestId: text("returned_request_id"),
     sendAt: integer("send_at"),
     waitingOn: text("waiting_on"),
     waitHolder: text("wait_holder").$type<QueuedMessageWaitHolder>(),

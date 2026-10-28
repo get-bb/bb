@@ -14,6 +14,8 @@ import {
 } from "../../src/services/threads/input-ledger.js";
 import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
 import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
+import { retryFailedTurn } from "../../src/services/threads/turn-retry.js";
+import { retryTurnRequestSchema } from "@bb/server-contract";
 import {
   internalAuthHeaders,
   reportQueuedCommandError,
@@ -288,7 +290,7 @@ describe("input ledger", () => {
     });
   });
 
-  it("leaves a refused start to the failed turn instead of queueing it too", async () => {
+  it("keeps a refused start with its failed turn until a newer message replaces it", async () => {
     await withTestHarness(async (harness) => {
       const fixture = seedLedgerFixture(harness, { status: "idle", value: 5 });
       const submit = await send(harness, fixture, {
@@ -302,7 +304,45 @@ describe("input ledger", () => {
       });
 
       expect(getThread(harness.db, fixture.thread.id)?.status).toBe("error");
-      expect(ledgerRows(harness, fixture.thread.id)).toEqual([]);
+      expect(ledgerRows(harness, fixture.thread.id)).toMatchObject([
+        { state: "submitted", submittedRequestId: submit.command.requestId },
+      ]);
+
+      await send(harness, fixture, { mode: "auto", text: "something else" });
+
+      expect(
+        listQueuedThreadMessages(harness.db, fixture.thread.id),
+      ).toMatchObject([
+        {
+          content: JSON.stringify(textInput("fails the run")),
+          state: "failed_exhausted",
+        },
+      ]);
+    });
+  });
+
+  it("lets a retry carry a refused start without queueing it again", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedLedgerFixture(harness, { status: "idle", value: 7 });
+      const submit = await send(harness, fixture, {
+        mode: "auto",
+        text: "retry me",
+      });
+      await reportQueuedCommandError(harness, submit, {
+        errorCode: "provider_error",
+        errorMessage: "session is gone",
+      });
+
+      await retryFailedTurn(harness.deps, {
+        thread: getThread(harness.db, fixture.thread.id)!,
+        request: retryTurnRequestSchema.parse({}),
+      });
+
+      const retried = await waitForTurnSubmit(harness, fixture, "retry me");
+      expect(retried.command.requestId).not.toBe(submit.command.requestId);
+      expect(ledgerRows(harness, fixture.thread.id)).toMatchObject([
+        { state: "submitted", submittedRequestId: retried.command.requestId },
+      ]);
     });
   });
 
@@ -336,7 +376,7 @@ describe("input ledger", () => {
       ).toMatchObject([
         {
           content: JSON.stringify(textInput("never started")),
-          state: "waiting",
+          state: "failed_exhausted",
         },
       ]);
     });

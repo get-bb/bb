@@ -7,6 +7,7 @@ import type { DbQueryConnection } from "@bb/db";
 import type { PromptInput } from "@bb/domain";
 import { ApiError } from "../../errors.js";
 import { parseStoredTurnRequestEvent } from "./thread-events.js";
+import { isTurnRequestLive } from "./input-ledger.js";
 
 export interface DeferredFirstTurnContext {
   input: PromptInput[];
@@ -58,6 +59,7 @@ export function resolveDeferredFirstTurnContext(
   if (
     context === null ||
     (!isSeedRequest && !isUndeliveredRetry) ||
+    (isUndeliveredRetry && isTurnRequestLive(request.requestId)) ||
     findStoredEventRow(db, {
       afterSequence: row.sequence,
       threadId,

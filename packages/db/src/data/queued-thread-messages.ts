@@ -127,6 +127,7 @@ type QueuedMessageStateColumns = Pick<
   QueuedThreadMessageRow,
   | "claimToken"
   | "claimedAt"
+  | "returnedRequestId"
   | "submittedRequestId"
   | "failureCount"
   | "failureReason"
@@ -151,7 +152,7 @@ type QueuedMessageTransition =
       retryDelaysMs: readonly number[];
     }
   | { event: "input.submitted"; requestId: string }
-  | { event: "input.returned"; waitingOn: QueuedMessageWaitingOn };
+  | { event: "input.returned"; outcome: SubmittedQueuedMessageReturn };
 
 interface TransitionQueuedMessageArgs {
   now: number;
@@ -204,12 +205,22 @@ function queuedMessageTransitionPatch(
         nextAttemptAt: null,
       };
     case "input.returned":
-      return {
-        submittedRequestId: null,
-        waitingOn: JSON.stringify(transition.waitingOn),
-        waitHolder: waitHolderFor(transition.waitingOn),
-        sendAt: null,
-      };
+      return transition.outcome.kind === "waiting"
+        ? {
+            submittedRequestId: null,
+            returnedRequestId: row.submittedRequestId,
+            waitingOn: JSON.stringify(transition.outcome.waitingOn),
+            waitHolder: waitHolderFor(transition.outcome.waitingOn),
+            sendAt: null,
+          }
+        : {
+            submittedRequestId: null,
+            returnedRequestId: row.submittedRequestId,
+            failureReason: transition.outcome.failureReason,
+            failureCount: 1,
+            nextAttemptAt: null,
+            sendAt: null,
+          };
   }
 }
 
@@ -858,6 +869,7 @@ function insertQueuedThreadMessageInTransaction(
       claimToken: null,
       claimedAt: null,
       submittedRequestId: placement.submittedRequestId,
+      returnedRequestId: null,
       failureCount: 0,
       failureReason: null,
       nextAttemptAt: null,
@@ -883,6 +895,7 @@ function insertQueuedThreadMessageInTransaction(
       serviceTier: input.serviceTier,
       state,
       submittedRequestId: placement.submittedRequestId,
+      returnedRequestId: null,
       waitingOn,
       waitHolder:
         input.waitingOn === null ? null : waitHolderFor(input.waitingOn),
@@ -2386,6 +2399,7 @@ export function hasQueuedRetryOfTurnRequest(
             queuedThreadMessages.retryOfTurnRequestId,
             args.retryOfTurnRequestId,
           ),
+          sql`${queuedThreadMessages.state} <> 'submitted'`,
         ),
       )
       .limit(1)
@@ -2570,10 +2584,14 @@ export function deleteSubmittedQueuedThreadMessagesInTransaction(
     .all();
 }
 
+export type SubmittedQueuedMessageReturn =
+  | { kind: "waiting"; waitingOn: QueuedMessageWaitingOn }
+  | { kind: "failed"; failureReason: string };
+
 export function returnSubmittedQueuedThreadMessagesInTransaction(
   db: DbTransaction,
   args: SubmittedQueuedThreadMessageRequestArgs & {
-    waitingOn: QueuedMessageWaitingOn;
+    outcome: SubmittedQueuedMessageReturn;
   },
 ): QueuedThreadMessageRow[] {
   const now = Date.now();
@@ -2581,7 +2599,7 @@ export function returnSubmittedQueuedThreadMessagesInTransaction(
     const returned = transitionQueuedMessage(db, {
       now,
       row,
-      transition: { event: "input.returned", waitingOn: args.waitingOn },
+      transition: { event: "input.returned", outcome: args.outcome },
     });
     return returned === null ? [] : [returned];
   });
@@ -2611,3 +2629,48 @@ export function listSubmittedQueuedThreadMessageRequests(
     .all();
 }
 
+export function moveSubmittedQueuedThreadMessagesInTransaction(
+  db: DbTransaction,
+  args: SubmittedQueuedThreadMessageRequestArgs & {
+    ids: readonly string[];
+    toRequestId: string;
+  },
+): QueuedThreadMessageRow[] {
+  if (args.ids.length === 0) return [];
+  return db
+    .update(queuedThreadMessages)
+    .set({ submittedRequestId: args.toRequestId, updatedAt: Date.now() })
+    .where(
+      and(
+        eq(queuedThreadMessages.threadId, args.threadId),
+        eq(queuedThreadMessages.submittedRequestId, args.requestId),
+        inArray(queuedThreadMessages.id, [...args.ids]),
+      ),
+    )
+    .returning()
+    .all();
+}
+
+export function deleteReturnedQueuedThreadMessagesInTransaction(
+  db: DbTransaction,
+  args: SubmittedQueuedThreadMessageRequestArgs,
+): QueuedThreadMessageRow[] {
+  const rows = db
+    .select()
+    .from(queuedThreadMessages)
+    .where(
+      and(
+        eq(queuedThreadMessages.threadId, args.threadId),
+        eq(queuedThreadMessages.returnedRequestId, args.requestId),
+        notInArray(queuedThreadMessages.state, ["claimed", "submitted"]),
+      ),
+    )
+    .all();
+  for (const row of rows) {
+    clearPreviousQueuedMessageGroupEdgeInTransaction(db, row);
+    db.delete(queuedThreadMessages)
+      .where(eq(queuedThreadMessages.id, row.id))
+      .run();
+  }
+  return rows;
+}

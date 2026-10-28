@@ -16,6 +16,7 @@ CREATE TABLE `__new_queued_thread_messages` (
 	`group_with_next` integer DEFAULT false NOT NULL,
 	`state` text NOT NULL,
 	`submitted_request_id` text,
+	`returned_request_id` text,
 	`send_at` integer,
 	`waiting_on` text,
 	`wait_holder` text,
@@ -54,7 +55,7 @@ CREATE TABLE `__new_queued_thread_messages` (
 	CONSTRAINT "queued_thread_messages_wait_holder_check" CHECK("wait_holder" IS (CASE WHEN json_extract("waiting_on", '$.kind') = 'plugin' THEN 'plugin:' || json_extract("waiting_on", '$.pluginId') END))
 );
 --> statement-breakpoint
-INSERT INTO `__new_queued_thread_messages`("id", "system_notice", "thread_id", "content", "sender_thread_id", "origin", "origin_plugin_id", "requested_by_initiator", "requested_by_thread_id", "model", "reasoning_level", "permission_mode", "service_tier", "group_with_next", "state", "submitted_request_id", "send_at", "waiting_on", "wait_holder", "failure_reason", "failure_count", "next_attempt_at", "payload_kind", "retry_of_turn_request_id", "retry_attempt", "retry_reason", "delivery_mode", "coalesce_key", "coalesce_state", "claimed_at", "claim_token", "edit_held_until", "sort_key", "created_at", "updated_at") SELECT "id", "system_notice", "thread_id", "content", "sender_thread_id", "origin", "origin_plugin_id", "requested_by_initiator", "requested_by_thread_id", "model", "reasoning_level", "permission_mode", "service_tier", "group_with_next", "state", NULL, "send_at", "waiting_on", "wait_holder", "failure_reason", "failure_count", "next_attempt_at", "payload_kind", "retry_of_turn_request_id", "retry_attempt", "retry_reason", "delivery_mode", "coalesce_key", "coalesce_state", "claimed_at", "claim_token", "edit_held_until", "sort_key", "created_at", "updated_at" FROM `queued_thread_messages`;--> statement-breakpoint
+INSERT INTO `__new_queued_thread_messages`("id", "system_notice", "thread_id", "content", "sender_thread_id", "origin", "origin_plugin_id", "requested_by_initiator", "requested_by_thread_id", "model", "reasoning_level", "permission_mode", "service_tier", "group_with_next", "state", "submitted_request_id", "returned_request_id", "send_at", "waiting_on", "wait_holder", "failure_reason", "failure_count", "next_attempt_at", "payload_kind", "retry_of_turn_request_id", "retry_attempt", "retry_reason", "delivery_mode", "coalesce_key", "coalesce_state", "claimed_at", "claim_token", "edit_held_until", "sort_key", "created_at", "updated_at") SELECT "id", "system_notice", "thread_id", "content", "sender_thread_id", "origin", "origin_plugin_id", "requested_by_initiator", "requested_by_thread_id", "model", "reasoning_level", "permission_mode", "service_tier", "group_with_next", "state", NULL, NULL, "send_at", "waiting_on", "wait_holder", "failure_reason", "failure_count", "next_attempt_at", "payload_kind", "retry_of_turn_request_id", "retry_attempt", "retry_reason", "delivery_mode", "coalesce_key", "coalesce_state", "claimed_at", "claim_token", "edit_held_until", "sort_key", "created_at", "updated_at" FROM `queued_thread_messages`;--> statement-breakpoint
 DROP TABLE `queued_thread_messages`;--> statement-breakpoint
 ALTER TABLE `__new_queued_thread_messages` RENAME TO `queued_thread_messages`;--> statement-breakpoint
 PRAGMA foreign_keys=ON;--> statement-breakpoint

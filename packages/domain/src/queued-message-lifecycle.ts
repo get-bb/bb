@@ -102,7 +102,7 @@ export const QUEUED_MESSAGE_LIFECYCLE: Record<
     "input.submitted": ["submitted"],
   },
   submitted: {
-    "input.returned": ["waiting"],
+    "input.returned": ["waiting", "failed_exhausted"],
   },
 };
 
