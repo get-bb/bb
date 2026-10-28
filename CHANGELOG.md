@@ -2,7 +2,7 @@
 
 ## 0.48.0
 
-A quality and performance release: bb loads faster, sends far less over the wire, uses less CPU and memory on your machines, and fixes a long list of rough edges. These notes also cover 0.47.1, which shipped without notes.
+A quality and performance release: bb loads faster, sends far less over the wire, uses less CPU and memory on your machines, and fixes a long list of rough edges.
 
 ### Reliability
 
