@@ -26,18 +26,17 @@ A quality and performance release: bb loads faster, sends far less over the wire
 
 ### Usability
 
-- **The Commit button is hidden by default.** Turn on **Show Commit button** in the Git plugin's settings, or run `bb plugin config bb--git set showCommitButton true`. The old "Show Git changes and Commit button" setting is now **Show Git changes above the composer** (Git) and **Show pull request above the composer** (GitHub PR Status), and your saved choice carries over to both.
 - **Claude Code's Full Access approves everything again**, as it did before 0.47.0. Turn on the new **Approvals in Full Access** setting to keep being asked about `permissions.ask` rules, hooks that answer "ask", and Claude Code's own safety checks.
 - Search the terminal's scrollback with Cmd+F on macOS or Ctrl+Shift+F elsewhere, and Cmd/Ctrl+click file paths such as `src/main.ts:12:3` to open them. Terminal links now need Cmd/Ctrl+click.
-- Side chat and plugin thread chats match the main thread view: interactions, editing and forking messages, context usage, and the cards above the composer.
 - Zoom and pan images in the lightbox, and the right sidebar remembers its width for each thread and plugin page.
 - On desktop, right-click a link to **Open in Browser**.
 - Mark read and Pin can be bound to keyboard shortcuts.
+- **The Commit button is hidden by default.** Turn on **Show Commit button** in the Git plugin's settings, or run `bb plugin config bb--git set showCommitButton true`. The old "Show Git changes and Commit button" setting is now **Show Git changes above the composer** (Git) and **Show pull request above the composer** (GitHub PR Status), and your saved choice carries over to both.
+- Side chat and plugin thread chats match the main thread view: interactions, editing and forking messages, context usage, and the cards above the composer.
 
 ### New experiments
 
 - **Early adopter:** this release adds four experiments that are on for early adopters: **Select multiple sidebar threads**; **App links**, which opens links such as `linear://` and `slack://` in their apps after asking; **Compressed live updates**, about 4x smaller for remote access; and **NEW divider before final assistant message**, which opens a finished thread at its answer instead of its first tool call.
-- **Thread row metadata**, off for everyone, lets plugins add a second line to sidebar rows. The GitHub PR Status plugin uses it to show each thread's pull request and checks.
 
 ### Other improvements
 
