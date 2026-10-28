@@ -68,6 +68,7 @@ function makeDeps(
     warn: vi.fn(),
     priorityPluginIds: () => [],
     beginSlotBatch: () => () => {},
+    flushSlotBatch: () => {},
     ...overrides,
   };
 }

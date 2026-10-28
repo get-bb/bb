@@ -61,6 +61,7 @@ import {
 } from "./plugin-sdk-app-impl";
 import {
   beginPluginSlotBatch,
+  flushPluginSlotChanges,
   removePluginSlotRegistrations,
   setBuiltinPluginIds,
   setPluginSlotRegistrations,
@@ -410,9 +411,11 @@ export interface PluginFrontendReconcileDeps {
   ) => void;
   removeRegistrations: (pluginId: string) => void;
   beginSlotBatch: () => () => void;
+  flushSlotBatch: () => void;
   warn: (message: string) => void;
   priorityPluginIds: () => readonly string[];
   mountTimeoutMs?: number;
+  cssReadyTimeoutMs?: number;
   diagnosticsChanged?: () => void;
 }
 
@@ -432,6 +435,7 @@ interface ActivePluginFrontendGeneration {
 }
 
 const DEFAULT_CONTENT_SCRIPT_MOUNT_TIMEOUT_MS = 10_000;
+const DEFAULT_CSS_READY_TIMEOUT_MS = 15_000;
 
 class ContentScriptMountError extends Error {
   constructor(
@@ -610,6 +614,33 @@ async function mountWithTimeout(
         })
         .catch(() => {});
     }
+  }
+}
+
+async function applyCssBeforePublish(
+  pluginId: string,
+  url: string | null,
+  deps: PluginFrontendReconcileDeps,
+): Promise<void> {
+  const applied = Promise.resolve(deps.applyCss(pluginId, url));
+  if (url === null) {
+    await applied;
+    return;
+  }
+  const timeoutMs = deps.cssReadyTimeoutMs ?? DEFAULT_CSS_READY_TIMEOUT_MS;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<void>((resolve) => {
+    timeoutId = setTimeout(() => {
+      deps.warn(
+        `[plugin:${pluginId}] stylesheet ${url} did not load within ${timeoutMs}ms; publishing the frontend without it`,
+      );
+      resolve();
+    }, timeoutMs);
+  });
+  try {
+    await Promise.race([applied, timedOut]);
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
   }
 }
 
@@ -869,7 +900,8 @@ async function reconcileCandidate(
 
   const generation = (state.generationByPluginId.get(pluginId) ?? 0) + 1;
   state.generationByPluginId.set(pluginId, generation);
-  await deps.applyCss(pluginId, candidate.bundle.cssUrl);
+  await applyCssBeforePublish(pluginId, candidate.bundle.cssUrl, deps);
+  const replacesActiveGeneration = state.activeGenerations.has(pluginId);
   const cssRelease =
     collected.contentScripts.length > 0 ? deps.retainCss(pluginId) : null;
   const disposeFailures = await deactivateCommittedGeneration(
@@ -924,6 +956,7 @@ async function reconcileCandidate(
 
   state.activeGenerations.set(pluginId, activationResult.activation);
   deps.setRegistrations(pluginId, collected);
+  if (replacesActiveGeneration) deps.flushSlotBatch();
   state.records.set(pluginId, record);
   state.appliedHashes.set(pluginId, candidate.bundle.hash);
   publishDiagnostic(state, deps, {
@@ -1038,6 +1071,7 @@ const browserReconcileDeps: PluginFrontendReconcileDeps = {
   removeRegistrations: removePluginSlotRegistrations,
   beginSlotBatch: () =>
     beginPluginSlotBatch({ maxHoldMs: PLUGIN_SLOT_BATCH_MAX_HOLD_MS }),
+  flushSlotBatch: flushPluginSlotChanges,
   warn: (message) => console.warn(message),
   diagnosticsChanged: publishBrowserDiagnostics,
 };

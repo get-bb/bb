@@ -543,6 +543,10 @@ export function beginPluginSlotBatch(options: {
   };
 }
 
+export function flushPluginSlotChanges(): void {
+  flushChange();
+}
+
 export function setPluginSlotRegistrations(
   pluginId: string,
   registrations: PluginRegistrationSet,
