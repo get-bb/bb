@@ -43,6 +43,7 @@ interface ScriptedClaudeQueryCall {
   prompt: AsyncIterable<SDKUserMessage>;
   options: {
     env?: Record<string, string | undefined>;
+    forkSession?: boolean;
     mcpServers?: Record<string, McpServerConfig>;
     resume?: string;
     sessionId?: string;
@@ -99,7 +100,9 @@ function createScriptedClaudeQuery(call: ScriptedClaudeQueryCall) {
     env: call.options.env ?? {},
     mcpServers: call.options.mcpServers ?? {},
   };
-  scriptedSessions.push(session);
+  if (call.options.forkSession !== true) {
+    scriptedSessions.push(session);
+  }
   const outputQueue: SDKMessage[] = [];
   let closed = false;
   let notify: (() => void) | null = null;
@@ -203,8 +206,19 @@ function createScriptedClaudeQuery(call: ScriptedClaudeQueryCall) {
     initializationResult: vi.fn(async () => ({ commands: [] })),
     interrupt: vi.fn(async () => {}),
     setMcpServers: vi.fn(async (servers: Record<string, McpServerConfig>) => {
-      session.mcpServers = servers;
-      return { added: Object.keys(servers), removed: [], errors: {} };
+      const added = Object.keys(servers).filter(
+        (name) => session.mcpServers[name] === undefined,
+      );
+      const removed = Object.keys(session.mcpServers).filter(
+        (name) => servers[name] === undefined,
+      );
+      session.mcpServers = Object.fromEntries(
+        Object.entries(servers).map(([name, config]) => [
+          name,
+          session.mcpServers[name] ?? config,
+        ]),
+      );
+      return { added, removed, errors: {} };
     }),
     setModel: vi.fn(async () => {}),
     setPermissionMode: vi.fn(async () => {}),

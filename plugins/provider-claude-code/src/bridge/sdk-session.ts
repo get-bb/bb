@@ -203,10 +203,13 @@ export class SdkSession {
     await this.query?.applyFlagSettings(settings);
   }
 
-  async setMcpServers(
+  async replaceMcpServers(
     servers: Record<string, McpSdkServerConfigWithInstance>,
   ): Promise<void> {
-    await this.query?.setMcpServers(servers);
+    await this.query?.setMcpServers({});
+    if (Object.keys(servers).length > 0) {
+      await this.query?.setMcpServers(servers);
+    }
     this.options.mcpServers = servers;
   }
 

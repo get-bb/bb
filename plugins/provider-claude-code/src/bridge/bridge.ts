@@ -2427,7 +2427,7 @@ async function applyDynamicTools(
     return;
   }
   configureTranslatorInjectedTools(resident.translator, dynamicTools);
-  await resident.session.setMcpServers(servers);
+  await resident.session.replaceMcpServers(servers);
 }
 
 function attachThreadSession(
