@@ -127,7 +127,9 @@ lines.on("line", (line) => {
     case "session/set_model": {
       const sessionId = params?.sessionId;
       const modelId =
-        method === "session/set_config_option" ? params?.value : params?.modelId;
+        method === "session/set_config_option"
+          ? params?.value
+          : params?.modelId;
       if (typeof sessionId !== "string" || !loadedSessions.has(sessionId)) {
         write({
           id,
