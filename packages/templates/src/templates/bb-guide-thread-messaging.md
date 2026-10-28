@@ -40,8 +40,9 @@ Messaging:
 
   --plan sends the same structured /plan command the composer's plan action
   sends, so the agent proposes a plan for approval before executing (Claude
-  Code and Codex threads). Plain "/plan ..." text is not recognized; it reaches
-  the provider as literal text. Approve or deny the proposed plan with
+  Code and Codex threads). Providers without a declared plan action reject
+  --plan with an error for both spawn and tell. Plain "/plan ..." text is not
+  recognized; it reaches the provider as literal text. Approve or deny the proposed plan with
   `bb thread interactions`; `bb thread cancel-plan` leaves Plan mode early.
   SDK callers build the same input with
   `createBuiltinPlanCommandTextInput(text)` from `@bb/sdk` and pass it as

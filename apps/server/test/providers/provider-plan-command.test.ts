@@ -41,7 +41,12 @@ function registryWith(): ReturnType<typeof createProviderRegistryService> {
     registry.register(
       minimalProviderRegistration({
         pluginId: `provider-${id}`,
-        info: { ...BASE_INFO, id, displayName, composerActions: [...composerActions] },
+        info: {
+          ...BASE_INFO,
+          id,
+          displayName,
+          composerActions: [...composerActions],
+        },
         serverCapabilities: {
           supportsManualCompaction: false,
           reasoningLevels: ["medium"],

@@ -691,10 +691,6 @@ export async function createThreadFromRequest(
     projectId: requestInput.projectId,
     providerId: requestInput.providerId,
   });
-  assertProviderAcceptsPromptActions(deps.providerRegistry, {
-    input: requestInput.input,
-    providerId,
-  });
   const {
     originKind: _requestedOriginKind,
     parentThreadId: _requestedParentThreadId,
@@ -800,6 +796,10 @@ export async function createThreadFromRequest(
   ) {
     request.providerId = catalogExecutionDefaults.providerId;
   }
+  assertProviderAcceptsPromptActions(deps.providerRegistry, {
+    input: request.input,
+    providerId: request.providerId,
+  });
   const resolvedExecutionDefaults = await resolveSessionOptionExecutionDefaults(
     deps,
     {
