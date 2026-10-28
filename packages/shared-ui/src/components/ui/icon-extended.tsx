@@ -72,6 +72,7 @@ import ListViewIcon from "@hugeicons/core-free-icons/ListViewIcon";
 import LockIcon from "@hugeicons/core-free-icons/LockIcon";
 import Mail02Icon from "@hugeicons/core-free-icons/Mail02Icon";
 import MailOpen01Icon from "@hugeicons/core-free-icons/MailOpen01Icon";
+import Megaphone02Icon from "@hugeicons/core-free-icons/Megaphone02Icon";
 import Menu02Icon from "@hugeicons/core-free-icons/Menu02Icon";
 import MessageAdd02Icon from "@hugeicons/core-free-icons/MessageAdd02Icon";
 import Mic02Icon from "@hugeicons/core-free-icons/Mic02Icon";
@@ -109,7 +110,6 @@ import TimeScheduleIcon from "@hugeicons/core-free-icons/TimeScheduleIcon";
 import Unarchive03Icon from "@hugeicons/core-free-icons/Unarchive03Icon";
 import UserIcon from "@hugeicons/core-free-icons/UserIcon";
 import UserMultiple02Icon from "@hugeicons/core-free-icons/UserMultiple02Icon";
-import UserWarning01Icon from "@hugeicons/core-free-icons/UserWarning01Icon";
 import ViewIcon from "@hugeicons/core-free-icons/ViewIcon";
 import ViewOffIcon from "@hugeicons/core-free-icons/ViewOffIcon";
 import ZoomInAreaIcon from "@hugeicons/core-free-icons/ZoomInAreaIcon";
@@ -310,6 +310,7 @@ export const EXTENDED_ICON_MAP: ExtendedIconMap = {
   Mail: Mail02Icon,
   MailOpen: MailOpen01Icon,
   Maximize2: ExpandIcon,
+  Megaphone02: Megaphone02Icon,
   Mic: Mic02Icon,
   Minus: MinusSignIcon,
   Minimize2: CollapseIcon,
@@ -347,7 +348,6 @@ export const EXTENDED_ICON_MAP: ExtendedIconMap = {
   TextWrap: TextWrapIcon,
   TimeSchedule: TimeScheduleIcon,
   UserRound: UserIcon,
-  UserWarning01: UserWarning01Icon,
   ZoomIn: ZoomInAreaIcon,
   ZoomOut: ZoomOutAreaIcon,
 };

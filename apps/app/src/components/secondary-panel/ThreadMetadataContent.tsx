@@ -193,7 +193,7 @@ export function ParentNotificationsRow({
   });
   if (thread.parentThreadId === null) return null;
   return (
-    <DetailRow icon="UserWarning01" label="Notify parent">
+    <DetailRow icon="Megaphone02" label="Notify parent">
       <OptionPicker
         label="Notify parent"
         value={thread.parentNotifications}

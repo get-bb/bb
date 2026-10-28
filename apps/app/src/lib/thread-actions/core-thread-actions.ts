@@ -112,7 +112,7 @@ function parentNotificationsAction(
     detail:
       PARENT_NOTIFICATIONS_OPTIONS.find((option) => option.value === shared)
         ?.label ?? "Mixed",
-    icon: "UserWarning01",
+    icon: "Megaphone02",
     choices: {
       ...(children.length < threads.length
         ? {
@@ -378,7 +378,7 @@ export const CORE_THREAD_ACTIONS: readonly PluginThreadActionRegistration<unknow
       group: GROUPS.state,
       order: 60,
       title: "Notify parent",
-      icon: "UserWarning01",
+      icon: "Megaphone02",
       item: ({ thread, sdk }) =>
         parentNotificationsAction([thread], childThreads([thread]), sdk),
       experimental_bulkItem: ({ threads, sdk }) =>
