@@ -9,10 +9,9 @@ A quality and performance release: bb loads faster, sends far less over the wire
 - **The composer is ready sooner:** threads fetch the composer's data and runtime alongside the page instead of after it, and code only some plugins use no longer delays the composer and sidebar. After a reload, the open panel tab's plugin loads first.
 - **Commands without the wait:** slash command and skill lists come from a cache instead of waiting 1–2 seconds for the machine on each new thread.
 - **Much smaller live updates:** a running thread sends only what changed, about 1–2 KB instead of 11–42 KB per update, and opening a thread no longer resends the whole timeline, which was often 400–500 KB. Early adopters also get compressed live updates, about 4x smaller over remote access.
-- **Less CPU on busy Macs:** bb watches only the threads you're viewing, so `fseventsd` no longer sits at 80–90% CPU on machines running many agents.
+- **Less CPU on busy Macs:** bb watches only the threads you're viewing instead of every thread's files, so macOS file watching stays quiet on machines running many agents.
 - **Less memory and bandwidth:** editing a skill resends only the files that changed instead of the whole folder, a 34 MiB attachment peaks at under 2 MiB of memory instead of 65 MiB, and updates and plugin downloads stream to disk.
 - **Snappier UI:** opening or closing a plugin page no longer restyles the whole app, which makes it about twice as fast, and the Open menu answers in milliseconds instead of starting 55 processes for each request.
-- bb connect next keeps connections ready, so requests skip an extra round trip.
 
 ### More reliable
 
