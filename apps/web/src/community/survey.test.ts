@@ -13,6 +13,7 @@ const contact = {
   community: ["Get help when I'm stuck"],
   city: ["Austin, USA"],
   meetup: ["Maybe"],
+  research_call: ["Yes"],
 };
 
 describe("community survey submission rules", () => {

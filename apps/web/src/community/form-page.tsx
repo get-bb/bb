@@ -17,7 +17,7 @@ import {
   SURVEY_PURPOSE,
   CITY_HELP,
   COMMUNITY_MAX,
-  MEETUP_NOTE,
+  QUESTION_NOTES,
   EMAIL_NOTE,
   NOT_WORKING_ROLES,
   surveyQuestions,
@@ -244,8 +244,8 @@ function Survey({
                 }
               />
             )}
-            {question.name === "meetup" && (
-              <p className="community-note">{MEETUP_NOTE}</p>
+            {QUESTION_NOTES[question.name] && (
+              <p className="community-note">{QUESTION_NOTES[question.name]}</p>
             )}
             {errors[`${question.name}_other`] && (
               <p

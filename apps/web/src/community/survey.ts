@@ -152,10 +152,24 @@ export const surveyQuestions: readonly Question[] = [
     options: ["Yes, and I'd help organize it", "Yes, I'd come", "Maybe", "No"],
     placeholder: "",
   },
+  {
+    name: "research_call",
+    label:
+      "Would you be open to a short call to walk us through how you use bb?",
+    type: "radio",
+    options: ["Yes", "No"],
+    placeholder: "",
+  },
 ];
 
+export const RESEARCH_CALL_NOTE =
+  "We'll email you to find a time. We'd love to hear your feedback and share tips.";
 export const MEETUP_NOTE =
   "If you help organize, we'll help with budget, merch and more.";
+export const QUESTION_NOTES: Record<string, string> = {
+  meetup: MEETUP_NOTE,
+  research_call: RESEARCH_CALL_NOTE,
+};
 export const EMAIL_NOTE = "We won't send you any marketing emails.";
 
 export type FormValues = Record<string, string[]>;

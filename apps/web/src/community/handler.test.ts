@@ -39,6 +39,7 @@ const requiredFields = {
   community: "Get help when I'm stuck",
   city: "Austin",
   meetup: "Maybe",
+  research_call: "Yes",
 };
 const requiredAnswers = Object.fromEntries(
   Object.entries(requiredFields).map(([key, value]) => [key, [value]]),
