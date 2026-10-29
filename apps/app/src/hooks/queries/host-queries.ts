@@ -107,7 +107,7 @@ export function useHostDiscoveredRepos(
               recordOutcome?.("succeeded");
               return result;
             } catch (error) {
-              recordOutcome?.("failed");
+              if (!signal.aborted) recordOutcome?.("failed");
               throw error;
             }
           },
