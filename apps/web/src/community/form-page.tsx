@@ -141,7 +141,7 @@ function Survey({
                 {(question.name === "discovery"
                   ? shuffled(question.options, 2)
                   : question.name === "community"
-                    ? shuffled(question.options, 0)
+                    ? shuffled(question.options, 1)
                     : question.options
                 ).map((option) => (
                   <label key={option} className="community-option">
@@ -235,9 +235,6 @@ function Survey({
           </p>
         )}
       </div>
-      <p className="community-help">
-        We won't add you to a marketing list or share it.
-      </p>
     </>
   );
 }

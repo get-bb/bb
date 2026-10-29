@@ -39,6 +39,16 @@ describe("community survey submission rules", () => {
       validateSurvey({ ...contact, discovery: ["Other"] }).discovery_other,
     ).toBeTruthy();
     expect(
+      validateSurvey({ ...contact, community: ["Other"] }).community_other,
+    ).toBeTruthy();
+    expect(
+      validateSurvey({
+        ...contact,
+        community: ["Other"],
+        community_other: ["Hackathons"],
+      }),
+    ).toEqual({});
+    expect(
       validateSurvey({ ...contact, email: ["invalid"] }).email,
     ).toBeTruthy();
     expect(

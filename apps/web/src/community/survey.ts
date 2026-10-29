@@ -110,6 +110,7 @@ export const surveyQuestions: readonly Question[] = [
       "Get help when I'm stuck",
       "Build things with other members",
       "Hear what's coming and have a say in it",
+      "Other",
     ],
     placeholder: "",
   },
@@ -135,6 +136,7 @@ export const surveyFields = [
   ...surveyQuestions.map((question) => question.name),
   "discovery_other",
   "role_other",
+  "community_other",
   "email",
 ];
 
@@ -170,6 +172,7 @@ export function validateSurvey(values: FormValues): FormErrors {
   for (const name of [
     "discovery_other",
     "role_other",
+    "community_other",
     "email",
   ]) {
     const selected = values[name] ?? [];

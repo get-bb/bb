@@ -55,17 +55,18 @@ describe("survey page", () => {
       const choices = [
         ...community.matchAll(/name="community" value="([^"]+)"/g),
       ].map((match) => match[1]);
-      expect(choices).toHaveLength(6);
-      expect(choices).not.toContain("Other");
+      expect(choices).toHaveLength(7);
+      expect(choices.at(-1)).toBe("Other");
       expect(choices[0]).toBe("See how other people use bb");
       expect(community).toContain(
         "What would you most want from the bb community?</span> (pick up to 3)",
       );
-      expect(community).not.toContain('name="community_other"');
+      expect(community).toContain('name="community_other"');
+      expect(html).not.toContain("marketing list");
       expect(
         surveyQuestions.find((question) => question.name === "community")
           ?.options,
-      ).toHaveLength(6);
+      ).toHaveLength(7);
     } finally {
       vi.unstubAllGlobals();
     }
