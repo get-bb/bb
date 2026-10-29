@@ -3033,9 +3033,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 .footer {
   display: grid;
-  grid-template-columns: 0.65fr 0.95fr 1.2fr 1.2fr 0.7fr;
-  grid-template-rows: auto auto auto 1fr;
-  gap: 0 32px;
+  grid-template-columns: 0.4fr 0.95fr 1.2fr 1.2fr 0.75fr 0.85fr;
+  gap: 40px 32px;
   padding: 56px 0 64px;
   border-top: 1px solid var(--border-soft);
   color: var(--subtle);
@@ -3055,13 +3054,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   font-weight: 500;
 }
 
-.footer > .footer-column:not(.footer-legal) {
-  grid-row: 1 / -1;
-}
-
 .footer-mark {
-  grid-column: 1;
-  grid-row: 1;
   display: block;
   width: 30px;
   height: 30px;
@@ -3069,10 +3062,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .footer-publisher {
-  grid-column: 1;
-  grid-row: 3;
-  max-width: 170px;
-  margin-top: 14px;
+  grid-column: 1 / -1;
   font-size: 12.5px;
   line-height: 1.5;
   color: var(--dim);
@@ -3082,27 +3072,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   display: block;
   width: 16px;
   height: 16px;
-}
-
-.footer-legal {
-  grid-column: 1;
-  grid-row: 2;
-  margin-top: 10px;
-  font-size: 13.5px;
-  line-height: 1.5;
-}
-
-.footer .footer-legal .footer-title {
-  display: none;
-}
-
-.footer .footer-legal ul {
-  gap: 6px;
-  margin-top: 0;
-}
-
-.footer-legal a {
-  white-space: nowrap;
 }
 
 .footer-title {
@@ -3124,41 +3093,11 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 @media (max-width: 860px) {
   .footer {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-rows: none;
     gap: 32px 24px;
-  }
-
-  .footer > .footer-column:not(.footer-legal) {
-    grid-row: auto;
   }
 
   .footer-mark {
     grid-column: 1 / -1;
-    grid-row: auto;
-  }
-
-  .footer-legal {
-    grid-column: auto;
-    grid-row: auto;
-    margin-top: 0;
-    font-size: inherit;
-    line-height: inherit;
-  }
-
-  .footer .footer-legal .footer-title {
-    display: block;
-  }
-
-  .footer .footer-legal ul {
-    gap: 9px;
-    margin-top: 12px;
-  }
-
-  .footer-publisher {
-    grid-column: 1 / -1;
-    grid-row: auto;
-    max-width: none;
-    margin-top: 0;
   }
 }
 
