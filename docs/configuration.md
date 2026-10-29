@@ -942,8 +942,8 @@ off. An experiment you set yourself keeps your value either way.
   their context row, and a new thread's composer is unchanged.
   A header button opens the card or pins it: a pinned card sits beside the
   transcript in a wide pane and moves the transcript aside in a medium one,
-  and a narrow pane opens it over the transcript. Phones keep the context
-  row above the composer and show no card. Plugins read it with
+  and a narrow pane or window opens it over the transcript. Phones keep the
+  context row above the composer and show no card. Plugins read it with
   `experimental_useExperiment("threadDetailsCard")`.
 - `threadRowMetadata` adds Metadata to the built-in thread list's Organize →
   Rows menu. With it checked (`showRowMetadata`), plugins draw details such as

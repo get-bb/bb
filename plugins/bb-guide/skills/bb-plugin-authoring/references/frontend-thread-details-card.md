@@ -15,8 +15,8 @@ bb owns the card, placement, and header button: each split pane has its own
 card, and it stays put while messages scroll. In a wide pane the card sits
 beside the transcript, and a medium pane moves the transcript aside to fit it;
 there the header button pins or unpins it (`threadDetailsCard.pinned`,
-default on). A narrow pane opens it from the header button as a popover. Phones
-show no card; there the context segments above the composer get
+default on). A narrow pane or window opens it from the header button as a popover.
+Phones (a narrow touch screen) show no card; there the context segments above the composer get
 `threadDetailsCard: false` and keep showing. Components receive `{ threadId, projectId, environment }`
 and render `experimental_ThreadDetailsCardRow` rows, or null to show nothing; a
 crash removes only that row or section.

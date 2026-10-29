@@ -2831,10 +2831,11 @@ otherwise. While `threadDetailsCard.pinned` (a synced UI preference, default
 true) is on, gutter and shift show the card in the pane and shift pads the
 transcript; the header button (`ThreadDetailsCardHeaderButton`) toggles the
 pin. In overlay the header button opens the same content in the shared
-Popover. Compact viewports (phones) get no card: `ThreadDetailView` disables
-the provider there, so the composer keeps its context row. A narrow pane on a
-desktop, such as one beside the right panel or in a split, keeps the card in
-its popover.
+Popover, which is the shared bottom drawer in a compact viewport. Phones (a
+compact viewport with a coarse pointer, the rule `MessageActionBar` uses) get
+no card: `ThreadDetailView` disables the provider there, so the composer keeps
+its context row. A narrow pane on a desktop, whether beside the right panel, in
+a split, or in a narrow window, keeps the card in its popover.
 
 **Core callers.** bb's parent row (thread group) is `CORE_THREAD_DETAILS_ROWS`
 and its Child threads section (related group) is
@@ -2852,8 +2853,8 @@ shows on touch screens.
 
 The composer banner moves only what the card shows. Context segments receive
 `threadDetailsCard`, true when the pane shows the card (a thread page with the
-experiment on, outside compact viewports; false in side chats, plugin thread
-chats, and on phones). bb's parent
+experiment on, except on phones; false in side chats, plugin thread chats,
+and on phones). bb's parent
 segment, the Git changed-files segment, and the PR segment hide when it is
 true; third-party segments keep showing until their authors migrate. Contract
 tests: `PluginThreadDetailsCard.test.tsx` and
