@@ -1,9 +1,13 @@
+import { and, desc, eq, inArray } from "drizzle-orm";
+import { readPrimaryHostIdFromDataDir } from "../hosts/primary-host.js";
 import {
   afterCommit,
   claimInstallTurnNumber,
   getLatestStoredThreadEventOfTypes,
   getThread,
+  events,
   type DbQueryConnection,
+  type DbConnection,
 } from "@bb/db";
 import {
   systemErrorEventDataSchema,
@@ -17,7 +21,10 @@ import { buildTurnFailedEvent } from "../threads/turn-failed.js";
 import type { TurnErrorCategory, TurnFinishedOutcome } from "./telemetry.js";
 import { reportedProviderId } from "./provider-telemetry.js";
 
-type TurnTelemetryDeps = Pick<AppDeps, "db" | "logger" | "telemetry">;
+type TurnTelemetryDeps = Pick<
+  AppDeps,
+  "db" | "logger" | "telemetry" | "config"
+>;
 
 const SYSTEM_ERROR_CATEGORIES: Readonly<Record<string, TurnErrorCategory>> = {
   provider_process_exited: "process_exited",
@@ -118,21 +125,27 @@ export function recordFinishedTurn(
   previousStatus: ThreadStatus,
 ): void {
   const deps = turnTelemetryDeps;
-  if (!deps?.telemetry.isEnabled()) return;
+  if (!deps) return;
   const outcome = turnFinishedOutcome(event, previousStatus);
   if (outcome === null) return;
+  if (!deps.telemetry.isEnabled()) {
+    afterCommit(db, () => executionTargets.get(deps.db)?.delete(threadId));
+    return;
+  }
   try {
     const thread = getThread(db, threadId);
     if (!thread) return;
     const properties = {
       outcome,
       provider: reportedProviderId(thread.providerId),
+      execution_location: executionLocation(deps, db, threadId, previousStatus),
       error_category:
         outcome === "failed"
           ? failureCategory(deps.db, threadId)
           : ("none" as const),
     };
     afterCommit(db, () => {
+      executionTargets.get(deps.db)?.delete(threadId);
       if (!deps.telemetry.isEnabled()) return;
       deps.telemetry.capture({
         name: "turn_finished",
@@ -148,4 +161,63 @@ export function recordFinishedTurn(
   } catch (error) {
     deps.logger.debug({ err: error }, "Turn telemetry failed");
   }
+}
+
+type ExecutionLocation = "server_machine" | "additional_machine" | "unknown";
+const executionTargets = new WeakMap<
+  DbConnection,
+  Map<string, { turnId: string; location: ExecutionLocation }>
+>();
+
+export function recordExecutionTarget(
+  deps: Pick<AppDeps, "config" | "db">,
+  threadId: string,
+  turnId: string,
+  hostId: string,
+): void {
+  let targets = executionTargets.get(deps.db);
+  if (!targets) {
+    targets = new Map();
+    executionTargets.set(deps.db, targets);
+  }
+  if (targets.get(threadId)?.turnId === turnId) return;
+  const primary = readPrimaryHostIdFromDataDir({
+    dataDir: deps.config.dataDir,
+  });
+  targets.set(threadId, {
+    turnId,
+    location:
+      primary === null
+        ? "unknown"
+        : hostId === primary
+          ? "server_machine"
+          : "additional_machine",
+  });
+}
+
+export function executionLocation(
+  deps: Pick<AppDeps, "db">,
+  db: DbQueryConnection,
+  threadId: string,
+  previousStatus: ThreadStatus,
+): ExecutionLocation {
+  if (previousStatus !== "active" && previousStatus !== "stopping")
+    return "unknown";
+  const started = db
+    .select({ type: events.type, turnId: events.turnId })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, threadId),
+        inArray(events.type, ["turn/started", "client/turn/requested"]),
+      ),
+    )
+    .orderBy(desc(events.sequence))
+    .limit(1)
+    .get();
+  if (started?.type !== "turn/started") return "unknown";
+  const target = executionTargets.get(deps.db)?.get(threadId);
+  return target && target.turnId === started.turnId
+    ? target.location
+    : "unknown";
 }

@@ -1,3 +1,7 @@
+import {
+  connectDeviceSetupPropertiesSchema,
+  type ConnectDeviceSetupProperties,
+} from "@bb/server-contract";
 import { experimental_PluginRpcCallError } from "../rpc-contract.js";
 import {
   rpcInvalidationTags,
@@ -357,6 +361,7 @@ export interface FakePluginInspectionState {
   readonly recheckCount: number;
   /** Recorded `bb.sdk` calls + stub control. */
   readonly sdk: FakeSdkHarness;
+  readonly internal_DO_NOT_USE_deviceSetupEvents: readonly ConnectDeviceSetupProperties[];
   readonly registrations: FakePluginRegistrations;
   /** Every `bb.server.internal_DO_NOT_USE_openTunnelIngress` handle, in order. */
   readonly internal_DO_NOT_USE_tunnelIngresses: readonly InternalDoNotUseFakeTunnelIngress[];
@@ -1621,7 +1626,18 @@ function createFakePluginHostInternal(
     },
   };
 
+  const deviceSetupEvents: ConnectDeviceSetupProperties[] = [];
   const bb: BbPluginApi = {
+    internal_DO_NOT_USE_recordDeviceSetup(properties) {
+      assertLive();
+      if (pluginId !== "connect")
+        throw new Error(
+          "Device setup reporting is restricted to builtin Connect",
+        );
+      deviceSetupEvents.push(
+        connectDeviceSetupPropertiesSchema.parse(properties),
+      );
+    },
     pluginId,
     log,
     settings,
@@ -1715,6 +1731,7 @@ function createFakePluginHostInternal(
   }
 
   const harness: FakePluginHarness = {
+    internal_DO_NOT_USE_deviceSetupEvents: deviceSetupEvents,
     get behavior() {
       return this;
     },

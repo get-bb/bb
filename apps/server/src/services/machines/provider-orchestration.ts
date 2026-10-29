@@ -1,3 +1,7 @@
+import {
+  beginMachineEnrollment,
+  recordMachineSetupResult,
+} from "../system/device-telemetry.js";
 import { withHostCleanup } from "../hosts/cleanup-context.js";
 import { readPrimaryHostIdFromDataDir } from "../hosts/primary-host.js";
 import { requestQueuedMachineReadiness } from "../threads/queued-message-dispatch.js";
@@ -289,6 +293,7 @@ async function runCreate(
   try {
     const result = await invokeCreate(record, host, deps, signal);
     if (result.status === "failed") {
+      recordMachineSetupResult(deps, host.id, "failed");
       const current = getHost(deps.db, host.id);
       if (createOwns(current, host)) {
         updateHost(deps.db, deps.hub, host.id, {
@@ -334,6 +339,7 @@ async function runCreate(
     const current = getHost(deps.db, host.id);
     if (signal.aborted && current?.phase === "removing") return;
     if (createOwns(current, host)) {
+      recordMachineSetupResult(deps, host.id, "unknown");
       updateHost(deps.db, deps.hub, host.id, {
         phase: "removing",
         removeRetryAt: Date.now() + MACHINE_CREATE_FAILURE_CLEANUP_GRACE_MS,
@@ -559,6 +565,7 @@ export function askMachineLaunch(
       .run();
     deps.hub.notifyHost(id, ["host-connected"]);
     row = getHost(deps.db, id)!;
+    beginMachineEnrollment(deps, id);
     startCreate(deps, args.record, row);
   } else if (row.phase === "creating") {
     startCreate(deps, args.record, row);
@@ -1073,6 +1080,8 @@ export function requestMachineRemoval(deps: Deps, hostId: string): boolean {
     teardownStatus: null,
     statusMessage: null,
   });
+  if (row.phase === "creating")
+    recordMachineSetupResult(deps, hostId, "cancelled");
   deps.hub.notifyHost(hostId, ["host-disconnected"]);
   return true;
 }

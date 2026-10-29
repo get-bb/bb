@@ -1,3 +1,4 @@
+import { createConnectDeviceSetupRecorder } from "./plugin-device-setup-telemetry.js";
 import {
   realtimeSubscriptionTargetKey,
   type PluginReadSubscriptionTarget,
@@ -1751,6 +1752,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     const stopping = new AbortController();
     const handle = createPluginApi({
       pluginId: row.id,
+      recordDeviceSetup: createConnectDeviceSetupRecorder(deps.telemetry, row),
       logger: deps.logger,
       db: deps.db,
       dataDir: deps.dataDir,

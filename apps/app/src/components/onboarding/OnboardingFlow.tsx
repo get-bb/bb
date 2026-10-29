@@ -895,12 +895,14 @@ function PluginsStepContainer({
 }
 
 function DevicesStepContainer({
+  entry,
   chrome,
   hostId,
   onBack,
   onFinish,
   onLeave,
 }: {
+  entry: OnboardingEntry;
   chrome: StepChrome;
   hostId: string | null;
   onBack: () => void;
@@ -933,15 +935,46 @@ function DevicesStepContainer({
     >
       <DevicesStep
         connect={connectAccessUrl(configQuery.data?.serverAccess)}
-        connectSetup={<PluginSettingsSections pluginId={CONNECT_PLUGIN_ID} />}
+        connectSetup={
+          <div data-device-setup-source={entry}>
+            <PluginSettingsSections pluginId={CONNECT_PLUGIN_ID} />
+          </div>
+        }
         connectSetupOpen={connectSetupOpen}
         otherMachineCount={otherMachineCount}
         mobileLinks={mobileAppDownloads}
-        onToggleConnectSetup={() => setConnectSetupOpen((open) => !open)}
+        onToggleConnectSetup={() => {
+          if (!connectSetupOpen)
+            recordTelemetryEvent({
+              name: "device_setup",
+              properties: {
+                target: "browser_access",
+                action: "setup_opened",
+                outcome: "observed",
+                source: entry,
+                error_category: null,
+              },
+            });
+          setConnectSetupOpen(!connectSetupOpen);
+        }}
+        onDownloadMobile={(platform) =>
+          recordTelemetryEvent({
+            name: "device_setup",
+            properties: {
+              target: "mobile",
+              action: "download_clicked",
+              outcome: "observed",
+              source: entry,
+              error_category: null,
+              platform,
+            },
+          })
+        }
         onCopyConnectUrl={(url) => void copyToClipboardWithToast(url)}
         onAddMachine={() => setAddMachineOpen(true)}
       />
       <AddMachineDialog
+        telemetrySource={entry}
         open={addMachineOpen}
         onOpenChange={setAddMachineOpen}
       />
@@ -1118,6 +1151,7 @@ export function OnboardingFlow({
     case "devices":
       return (
         <DevicesStepContainer
+          entry={entry}
           chrome={chrome}
           hostId={hostId}
           onBack={goTo(-1)}

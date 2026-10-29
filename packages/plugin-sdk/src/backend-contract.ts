@@ -32,6 +32,7 @@ import type {
 } from "@bb/sdk";
 import type {
   ExecutionInputFieldSource,
+  ConnectDeviceSetupProperties,
   ThreadResponse,
   TerminalSession,
 } from "@bb/server-contract";
@@ -2225,6 +2226,10 @@ export type PluginBbSdk = Omit<BbSdk, "threads"> & {
  * against.
  */
 export interface BbPluginApi {
+  /** Internal Connect lifecycle reporting; only the loaded builtin Connect owner is authorized. */
+  internal_DO_NOT_USE_recordDeviceSetup(
+    properties: ConnectDeviceSetupProperties,
+  ): void;
   /** The plugin's own id (namespaces storage, routes, commands). */
   readonly pluginId: string;
   /** Leveled, plugin-scoped logger. */

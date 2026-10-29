@@ -4172,3 +4172,55 @@ precedence, bounded discovery failure, and module-ABI preservation after Node
 replacement. Settle the shared process-local instance lifecycle across SDK
 bundle versions and whether `bundledNpmCli` belongs on the public surface before
 removing the prefix.
+
+## Device setup measurement extension
+
+The existing client telemetry endpoint accepts only `device_setup` opening
+observations and iOS/Android download interest. Confirmed browser and machine
+milestones are server-only and rejected on that endpoint. Target/action/outcome combinations and nullable bounded error categories
+are validated together. Names, addresses, host IDs and credentials are excluded.
+Core uses the SDK event endpoint only for UI interest. Connect lifecycle and
+server enrollment owners use the opt-out-controlled service through trusted
+backend paths.
+
+`hosts.experimental_create` accepts optional bounded `telemetrySource`; older
+requests default to unknown at the route boundary. Core onboarding, settings and
+the existing machine CLI use this shared operation. No telemetry-injection CLI
+or daemon wire change is introduced. Source survives asynchronous creation in
+local lifecycle ownership; after a server restart, missing source is unknown.
+Credential acceptance and an authenticated daemon WebSocket becoming usable
+are separate milestones; reconnects do not create new enrollment milestones.
+
+Existing accepted-work events add `access_route`. Signed Connect ingress markers
+establish connect, trusted non-loopback sockets establish direct, and loopback
+requests remain unknown because legacy tunnels also use loopback. Headers alone
+never establish either route. Authenticated application connection is observed
+once per server runtime, excluding tunnel transport and anonymous requests.
+`turn_finished.execution_location` uses a bounded local snapshot recorded when
+the server accepts a root turn-start event from its authenticated daemon session.
+Neither the current thread target nor a later mutable environment row establishes
+that target. The snapshot is matched to the stored turn and discarded after a
+committed finish. Missing snapshots after restart, pre-start failure, or missing
+server-machine identity remain unknown.
+Mobile surface remains a client report, not installation or pairing proof.
+
+Stabilization requires exact-build received-event QA for real setup/use, source
+continuity, duplicate readiness/reconnects, old requests, privacy rejection and
+opt-out/resume. Missing observations remain unknown. Fake lifecycle fixtures do
+not prove real enrollment, remote connection, or physical mobile installation.
+
+## `BbPluginApi.internal_DO_NOT_USE_recordDeviceSetup`
+
+Internal backend plumbing used only by the builtin Connect plugin's actual
+remote-access switch and tunnel lifecycle. Its API handle must be live; the
+loaded owner must have Connect's builtin ID, provenance, source kind and source
+name. A private or catalog plugin reusing its name receives no reporter.
+Strict validation permits only browser `enable_requested`, `service_ready` and
+`setup_result` with valid outcomes, bounded source/error categories and no extra
+fields. It cannot report machine milestones or authenticated client connection.
+Core's existing Connect controls, CLI and lifecycle use this same path; the
+server's trusted ingress and enrollment owners report their own milestones.
+The general telemetry HTTP endpoint cannot invoke it. Opt-out is checked at
+capture. Plugin Guide lists the member; it is not a public analytics API.
+Stabilization requires adversarial source-name collision, stale-handle,
+malformed payload, forged client event and opt-out/resume coverage.

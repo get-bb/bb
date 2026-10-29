@@ -1,3 +1,4 @@
+import { recordMachineCredentials } from "../services/system/device-telemetry.js";
 import { upsertHost } from "@bb/db";
 import { isLoopbackAddress } from "@bb/config/loopback";
 import {
@@ -92,6 +93,7 @@ export function registerInternalHostRoutes(app: Hono, deps: AppDeps): void {
       if (!enrollment) {
         throw new ApiError(401, "unauthorized", "Unauthorized");
       }
+      recordMachineCredentials(deps, enrollment.metadata.hostId);
       upsertHost(deps.db, deps.hub, {
         ...(connectMachineId !== undefined ? { connectMachineId } : {}),
         id: enrollment.metadata.hostId,

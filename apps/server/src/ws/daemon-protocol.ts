@@ -1,3 +1,4 @@
+import { recordMachineReady } from "../services/system/device-telemetry.js";
 import { reportEnvironmentHookProgress } from "../services/environments/environment-hooks.js";
 import { syncDesktopBrowserTabs } from "../services/desktop-browsers.js";
 import { heartbeatSession } from "@bb/db";
@@ -107,6 +108,7 @@ export function onDaemonSocketOpen(
     "Daemon WebSocket opened",
   );
   deps.hub.registerDaemon(args.sessionId, args.hostId, args.socket);
+  recordMachineReady(deps, args.hostId);
   handleDaemonSocketOpened(deps, { hostId: args.hostId });
   deps.sharedPorts.pushCurrentSharedPortsForHost(args.hostId);
   deps.sharedPorts.pushCurrentNextTunnelForHost(args.hostId);

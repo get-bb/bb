@@ -1526,13 +1526,14 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Retry failed environment cleanup with recover: true after inspecting processes using the workspace",
         ],
         reference: [
-          "Core setup telemetry uses system.experimental_recordTelemetryEvent: strict anonymous guide-operation observations (agent install/update, project scan/import, plugin install/enable), with first_run/replay, bounded outcomes and categories, and counts only for imports. Missing job results stay unknown; queued is not success. Existing events and usage-data opt-out are preserved. No raw errors, paths, names or new tracking IDs are accepted; this is not a general plugin analytics API.",
+          "Core setup telemetry uses system.experimental_recordTelemetryEvent: strict anonymous guide-operation observations (agent install/update, project scan/import, plugin install/enable), with first_run/replay, bounded outcomes and categories, and counts only for imports. Missing job results stay unknown; queued is not success. Existing events and usage-data opt-out are preserved. No raw errors, paths, names or new tracking IDs are accepted; The public device event endpoint permits only setup opening and mobile download interest; BbPluginApi.internal_DO_NOT_USE_recordDeviceSetup is restricted to the loaded builtin Connect backend for validated enable/readiness/result milestones. Device setup distinguishes browser readiness, machine enrollment and first ready connection, and mobile download interest. Existing work events report trusted access route and recorded execution location; mobile surface remains client-reported. hosts.experimental_create accepts bounded optional telemetrySource attribution (unknown for older clients). No identifiers are exported. This is not a general plugin analytics API.",
         ],
         apiSymbols: [
           "BbPluginApi",
           "PluginServerApi",
           "PluginBbSdk.hosts.get",
           "PluginBbSdk.system.experimental_recordTelemetryEvent",
+          "BbPluginApi.internal_DO_NOT_USE_recordDeviceSetup",
           "PluginBbSdk.hosts.experimental_discoverRepos",
           "PluginBbSdk.experimental_promptHistory.list",
           "PluginBbSdk.environments.experimental_cleanup",

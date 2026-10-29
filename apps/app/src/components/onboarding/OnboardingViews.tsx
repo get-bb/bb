@@ -905,6 +905,7 @@ interface DevicesStepProps {
   otherMachineCount: number;
   mobileLinks: { ios: string; android: string };
   onToggleConnectSetup: () => void;
+  onDownloadMobile?: (platform: "ios" | "android") => void;
   onCopyConnectUrl: (url: string) => void;
   onAddMachine: () => void;
 }
@@ -916,6 +917,7 @@ export function DevicesStep({
   otherMachineCount,
   mobileLinks,
   onToggleConnectSetup,
+  onDownloadMobile,
   onCopyConnectUrl,
   onAddMachine,
 }: DevicesStepProps) {
@@ -972,12 +974,22 @@ export function DevicesStep({
         action={
           <span className="flex items-center gap-2">
             <Button size="sm" variant="outline" asChild>
-              <a href={mobileLinks.ios} target="_blank" rel="noreferrer">
+              <a
+                href={mobileLinks.ios}
+                target="_blank"
+                rel="noreferrer"
+                onClick={() => onDownloadMobile?.("ios")}
+              >
                 iOS
               </a>
             </Button>
             <Button size="sm" variant="outline" asChild>
-              <a href={mobileLinks.android} target="_blank" rel="noreferrer">
+              <a
+                href={mobileLinks.android}
+                target="_blank"
+                rel="noreferrer"
+                onClick={() => onDownloadMobile?.("android")}
+              >
                 Android
               </a>
             </Button>
