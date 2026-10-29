@@ -1,3 +1,4 @@
+import { noWorkSuggestionAttribution } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import {
   buildThreadHandoffCreateRequest,
@@ -167,6 +168,7 @@ describe("buildThreadHandoffCreateRequest", () => {
     });
 
     expect(request).toEqual({
+      suggestionAttribution: noWorkSuggestionAttribution(),
       environment: { type: "reuse", environmentId: "env_source" },
       executionInputSources: {
         providerId: "explicit",

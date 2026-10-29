@@ -1,5 +1,6 @@
-import { noWorkSuggestionAttribution } from "@bb/server-contract";
 // @vitest-environment jsdom
+
+import { noWorkSuggestionAttribution } from "@bb/server-contract";
 
 import { useContext, useEffect, useState, type ReactNode } from "react";
 import { Provider } from "jotai";
@@ -664,7 +665,6 @@ function registerCheckoutInputsControl(): void {
 }
 
 const STORED_REQUEST: NewThreadRequest = {
-  suggestionAttribution: noWorkSuggestionAttribution(),
   projectId: "proj_1",
   providerId: "claude-code",
   model: "gpt-5.6-sol",
@@ -985,7 +985,10 @@ describe("PluginNewThreadComposer seeding", () => {
     await submit();
 
     expect(submitted).toHaveLength(1);
-    expect(submitted[0]).toEqual(STORED_REQUEST);
+    expect(submitted[0]).toEqual({
+      ...STORED_REQUEST,
+      suggestionAttribution: noWorkSuggestionAttribution(),
+    });
     await waitFor(() => {
       expect(latestPromptBoxProps().value).toBe("");
     });
@@ -1164,6 +1167,7 @@ describe("PluginNewThreadComposer seeding", () => {
     expect(submitted).toEqual([
       {
         ...STORED_REQUEST,
+        suggestionAttribution: noWorkSuggestionAttribution(),
         input: [{ type: "text", text: "Background transcript", mentions: [] }],
       },
     ]);
@@ -1350,6 +1354,7 @@ describe("PluginNewThreadComposer seeding", () => {
     expect(submitted).toHaveLength(1);
     expect(submitted[0]).toEqual({
       ...otherRecord,
+      suggestionAttribution: noWorkSuggestionAttribution(),
       environment: {
         type: "provider",
         environmentProviderId: "project-checkout",
@@ -1384,7 +1389,10 @@ describe("PluginNewThreadComposer seeding", () => {
     await submit();
 
     expect(submitted).toHaveLength(1);
-    expect(submitted[0]).toEqual(otherProjectRecord);
+    expect(submitted[0]).toEqual({
+      ...otherProjectRecord,
+      suggestionAttribution: noWorkSuggestionAttribution(),
+    });
   });
 
   it("does not resurrect the seeded inputs after the user leaves and returns to the environment", async () => {
