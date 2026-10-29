@@ -147,6 +147,10 @@
   outline: 2px solid var(--ink);
   outline-offset: 3px;
 }
+.community-required {
+  color: var(--del);
+  font-weight: 400;
+}
 .community-error {
   color: var(--del);
   font-size: 0.875rem;

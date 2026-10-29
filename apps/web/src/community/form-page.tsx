@@ -132,6 +132,9 @@ function Survey({
                 (question.name === "community"
                   ? ` (pick up to ${COMMUNITY_MAX})`
                   : " (pick any)")}
+              <span className="community-required" aria-hidden>
+                {" *"}
+              </span>
             </legend>
             {question.name === "city" && (
               <p className="community-help">{CITY_HELP}</p>
@@ -215,6 +218,9 @@ function Survey({
       <label className="community-meetup" htmlFor="email">
         <strong>Last step.</strong> Your email, so we can send your stickers and
         share the results with you.
+        <span className="community-required" aria-hidden>
+          {" *"}
+        </span>
       </label>
       <div className="community-email" id="question-email">
         <div className="community-email-row">
@@ -361,6 +367,14 @@ export function formPage({
                       : "you've helped people in the discord, built cool stuff, and told friends about bb. we notice, and it means a lot. so we made some merch and want you to have some first."}
                   </p>
                   {kind === "survey" && <p>{SURVEY_PURPOSE}</p>}
+                  {kind === "survey" && (
+                    <p className="community-help">
+                      <span className="community-required" aria-hidden>
+                        *
+                      </span>{" "}
+                      Required
+                    </p>
+                  )}
                   {kind === "merch" && <p>— brsbl &amp; the bb team</p>}
                 </div>
                 {(message || Object.keys(errors).length > 0) && (
