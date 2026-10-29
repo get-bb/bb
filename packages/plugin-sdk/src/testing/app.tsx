@@ -564,7 +564,9 @@ function TestThreadStatusGlyph({
  * `experimental_ThreadRowMetadata` marks where a row renders other plugins' row
  * items; the test runtime knows no other plugins, so it renders a marker.
  */
-function TestThreadRowMetadata({ thread }: ExperimentalThreadRowMetadataLineProps) {
+function TestThreadRowMetadata({
+  thread,
+}: ExperimentalThreadRowMetadataLineProps) {
   return <span data-thread-row-metadata={thread.id} />;
 }
 
@@ -3242,7 +3244,9 @@ export function renderSlot<
     pluginId: options.pluginId ?? "test-plugin",
     questionFormHost: {
       shortcuts: new Map(),
+      actionShortcuts: new Map(),
       registerChoiceHandler: () => () => {},
+      registerActionHandler: () => () => {},
     },
     navigate,
     navigateCalls,

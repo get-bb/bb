@@ -2133,7 +2133,15 @@ Docs: `frontend-hooks-and-ui.md`.
 
 Returns the remappable answer shortcuts bb binds while a pending interaction is
 open, keyed by option index, and `registerChoiceHandler` for a chosen index.
-Outside a pending interaction the map is empty and handlers never run.
+`actionShortcuts` and `registerActionHandler` do the same for the form actions
+`submit`, `previous`, `next`, and `cancel` (`question.submit`,
+`question.previous`, `question.next`, `question.cancel`); action shortcuts also
+fire from text fields inside an element marked `data-question-form`. Core's
+card uses `actionShortcuts` only for `aria-keyshortcuts` and shows no action
+shortcut labels.
+Core's own question card (`@bb/shared-ui/question-form`, rendered by
+`UserQuestionAnswerForm`) reads the same host through `ThreadQuestionFormHost`.
+Outside a pending interaction the maps are empty and handlers never run.
 
 Docs: `frontend-hooks-and-ui.md`.
 
@@ -2143,7 +2151,10 @@ Docs: `frontend-hooks-and-ui.md`.
    `PluginPendingInteractionProps` instead of a hook any component can call.
 2. **Scope.** Only pending interactions bind the shortcuts. Confirm no other
    surface (a message action form, a panel) should get them.
-3. **Consumer count.** Two first-party consumers (Ask User Question, pi's
+3. **Focus marker.** Action shortcuts reach a form's text fields only through
+   the `data-question-form` attribute. Decide whether a ref or wrapper
+   component should replace the attribute before the prefix drops.
+4. **Consumer count.** Two first-party consumers (Ask User Question, pi's
    extension dialogs). Confirm a third-party form needs it before the prefix
    drops.
 

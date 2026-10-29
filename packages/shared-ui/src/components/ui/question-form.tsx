@@ -5,6 +5,7 @@ import type {
 } from "./question-form-state";
 import {
   useQuestionFormHost,
+  type QuestionFormAction,
   type QuestionFormHost,
   type QuestionShortcut,
 } from "./question-form-host";
@@ -288,7 +289,7 @@ interface QuestionInputBlockProps {
   onToggleOption: (optionValue: string) => void;
   onSelectOther: () => void;
   onFreeTextChange: (value: string) => void;
-  onShortcutSubmit: () => void;
+  onFreeTextSubmit: () => void;
   onVoiceInputActiveChange: (active: boolean) => void;
   shortcuts: ReadonlyMap<string, QuestionShortcut>;
 }
@@ -302,7 +303,7 @@ function QuestionInputBlock({
   onToggleOption,
   onSelectOther,
   onFreeTextChange,
-  onShortcutSubmit,
+  onFreeTextSubmit,
   onVoiceInputActiveChange,
   shortcuts,
 }: QuestionInputBlockProps) {
@@ -324,14 +325,18 @@ function QuestionInputBlock({
     event: KeyboardEvent<HTMLTextAreaElement>,
   ): void => {
     if (
+      isPointerCoarse ||
       event.nativeEvent.isComposing ||
       event.key !== "Enter" ||
-      (!event.metaKey && !event.ctrlKey)
+      event.shiftKey ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.altKey
     ) {
       return;
     }
     event.preventDefault();
-    onShortcutSubmit();
+    onFreeTextSubmit();
   };
 
   return (
@@ -434,7 +439,9 @@ export function QuestionForm({
     promptShownAbove,
     closeInline,
     shortcuts,
+    actionShortcuts,
     registerChoiceHandler,
+    registerActionHandler,
   } = useQuestionFormHost();
 
   const totalQuestions = questions.length;
@@ -445,6 +452,9 @@ export function QuestionForm({
     () => areRequiredQuestionsAnswered(questions, formState),
     [formState, questions],
   );
+  const navigationDisabled = disabled || voiceBusy;
+  const cancelBlocked =
+    closeInline === null && (cancelDisabled || settledAction !== null);
 
   const updateQuestionState = useCallback(
     (
@@ -499,13 +509,59 @@ export function QuestionForm({
   };
 
   const handleAdvance = (): void => {
-    if (disabled || voiceBusy) return;
+    if (navigationDisabled) return;
     if (isLast) {
       void submitAnswer();
       return;
     }
     setCurrentIndex((index) => Math.min(index + 1, totalQuestions - 1));
   };
+
+  const handleBack = (): void => {
+    setCurrentIndex((index) => Math.max(index - 1, 0));
+  };
+
+  const handleCancel = async (): Promise<void> => {
+    if (closeInline) {
+      closeInline();
+      return;
+    }
+    try {
+      await onCancel();
+      setSettledAction("cancel");
+      clearDraft();
+    } catch {}
+  };
+
+  const runAction = (action: QuestionFormAction): boolean => {
+    if (action === "cancel") {
+      if (cancelBlocked) return false;
+      void handleCancel();
+      return true;
+    }
+    if (navigationDisabled) return false;
+    if (action === "submit") {
+      if (isLast && !canSubmit) return false;
+      handleAdvance();
+    } else if (action === "previous") {
+      if (isFirst) return false;
+      handleBack();
+    } else {
+      if (isLast) return false;
+      setCurrentIndex(currentIndex + 1);
+    }
+    formRef.current?.focus();
+    return true;
+  };
+  const runActionRef = useRef(runAction);
+  useLayoutEffect(() => {
+    runActionRef.current = runAction;
+  });
+
+  useEffect(
+    () => registerActionHandler((action) => runActionRef.current(action)),
+    [registerActionHandler],
+  );
 
   useEffect(() => {
     if (disabled || voiceBusy || currentQuestion === null) return;
@@ -536,6 +592,7 @@ export function QuestionForm({
     <div
       ref={formRef}
       tabIndex={-1}
+      data-question-form
       onKeyDown={(event) => {
         if (
           event.target !== event.currentTarget ||
@@ -556,7 +613,7 @@ export function QuestionForm({
     >
       {totalQuestions > 1 ? (
         <QuestionTabs
-          disabled={disabled || voiceBusy}
+          disabled={navigationDisabled}
           currentIndex={currentIndex}
           formState={formState}
           onSelect={setCurrentIndex}
@@ -583,7 +640,7 @@ export function QuestionForm({
             handleFreeTextChange(currentQuestion, value)
           }
           onVoiceInputActiveChange={setVoiceBusy}
-          onShortcutSubmit={handleAdvance}
+          onFreeTextSubmit={() => runAction("submit")}
           shortcuts={shortcuts}
         />
       </div>
@@ -598,20 +655,9 @@ export function QuestionForm({
           size="sm"
           variant="ghost"
           className={compactButtonClass}
-          disabled={
-            closeInline === null && (cancelDisabled || settledAction !== null)
-          }
-          onClick={async () => {
-            if (closeInline) {
-              closeInline();
-              return;
-            }
-            try {
-              await onCancel();
-              setSettledAction("cancel");
-              clearDraft();
-            } catch {}
-          }}
+          aria-keyshortcuts={actionShortcuts.get("cancel")?.ariaKeyshortcuts}
+          disabled={cancelBlocked}
+          onClick={handleCancel}
         >
           Cancel
         </Button>
@@ -622,8 +668,11 @@ export function QuestionForm({
               size="sm"
               variant="outline"
               className={compactButtonClass}
-              disabled={disabled || voiceBusy}
-              onClick={() => setCurrentIndex((index) => Math.max(index - 1, 0))}
+              aria-keyshortcuts={
+                actionShortcuts.get("previous")?.ariaKeyshortcuts
+              }
+              disabled={navigationDisabled}
+              onClick={handleBack}
             >
               Back
             </Button>
@@ -632,7 +681,8 @@ export function QuestionForm({
             type="button"
             size="sm"
             className={compactButtonClass}
-            disabled={disabled || voiceBusy || (isLast && !canSubmit)}
+            aria-keyshortcuts={actionShortcuts.get("submit")?.ariaKeyshortcuts}
+            disabled={navigationDisabled || (isLast && !canSubmit)}
             onClick={handleAdvance}
           >
             {inputDisabled || settledAction === "submit" ? (

@@ -257,6 +257,13 @@ on desktop and `Control+Shift+[` / `Control+Shift+]` on the web.
 unbound and act on the focused pane's open thread; Mark read and Pin toggle
 like the matching thread menu item.
 
+An open question card binds `question.select.1`–`9` (`1`–`9`),
+`question.submit` (`Mod+Enter`: Next, or Submit on the last question),
+`question.previous` / `question.next` (`ArrowLeft` / `ArrowRight` with focus
+in the card), and `question.cancel` (`Mod+.`). They skip text fields outside
+the card. In the card's answer field, `Enter` goes to the next question or
+submits and `Shift+Enter` adds a line.
+
 An override can be scoped with `--platform`; without it, it applies on all
 platforms. A platform-specific override takes precedence over a general one,
 including when disabled. Scoped `set` and `reset` keep other platforms'
