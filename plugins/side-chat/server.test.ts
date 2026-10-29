@@ -166,6 +166,26 @@ describe("createSideChat rpc", () => {
     expect(fork).toHaveBeenCalledTimes(1);
   });
 
+  it("surfaces an anchor inside a running turn instead of forking an older checkpoint", async () => {
+    const turnIncomplete = Object.assign(
+      new Error(
+        "HTTP 400: Cannot fork at sequence 3: the turn containing it has not completed",
+      ),
+      { code: "fork_source_turn_incomplete" },
+    );
+    const fork = vi.fn().mockRejectedValue(turnIncomplete);
+    const { harness } = await loadPlugin({ fork });
+
+    await expect(
+      harness.callRpc("createSideChat", {
+        sourceThreadId: "thr_src",
+        sourceSeqEnd: 3,
+        anchorText: "progress note",
+      }),
+    ).rejects.toThrow("has not completed");
+    expect(fork).toHaveBeenCalledTimes(1);
+  });
+
   it("does not fall back on message text alone — only the structured code triggers it", async () => {
     const messageOnly = new Error(
       "HTTP 400: Cannot fork: source has no active session to clone",
