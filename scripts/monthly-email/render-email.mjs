@@ -12,6 +12,8 @@ const RULE = "#e8e8e8";
 const LINK = "#3e70a8";
 const LOGO =
   "https://resend-attachments.s3.amazonaws.com/UZJcR58lQtl_aNPB-xAt6v/5870abe2-345a-41e6-9a2b-3ee29cea34ad";
+export const MAX_HTML_BYTES = 80_000;
+export const WARN_HTML_BYTES = 60_000;
 const USAGE =
   "Usage: node scripts/monthly-email/render-email.mjs issues/<yyyy-mm>.json [--images-base <url> | --hosted issues/<yyyy-mm>/hosted.json] [--out <file>]";
 
@@ -123,6 +125,24 @@ You're getting this because you signed up for bb or Terragon updates.<br><a href
 </table></td></tr></table></body></html>`;
 }
 
+export function htmlSizeProblem(html) {
+  const bytes = Buffer.byteLength(html);
+  const size = `${Math.round(bytes / 1000)} KB`;
+  if (bytes > MAX_HTML_BYTES) {
+    return {
+      fatal: true,
+      message: `The HTML is ${size}, over the ${MAX_HTML_BYTES / 1000} KB limit. Gmail clips emails near 102 KB and hides the rest, including the unsubscribe link. Cut items or themes.`,
+    };
+  }
+  if (bytes > WARN_HTML_BYTES) {
+    return {
+      fatal: false,
+      message: `The HTML is ${size}. Gmail clips emails near 102 KB, and Resend's tracking links add to the size, so keep it under ${MAX_HTML_BYTES / 1000} KB.`,
+    };
+  }
+  return null;
+}
+
 function parseArgs(argv) {
   const args = { spec: null, imagesBase: null, hosted: null, out: null };
   for (let index = 0; index < argv.length; index += 1) {
@@ -163,8 +183,12 @@ async function main() {
       );
     }
   }
+  const html = renderEmail(spec, { imagesBase, hosted });
+  const sizeProblem = htmlSizeProblem(html);
+  if (sizeProblem?.fatal) throw new Error(sizeProblem.message);
+  if (sizeProblem) console.warn(sizeProblem.message);
   const out = args.out ?? join(dirname(args.spec), `${name}.html`);
-  writeFileSync(out, renderEmail(spec, { imagesBase, hosted }));
+  writeFileSync(out, html);
   console.log(out);
 }
 

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { basename, dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { renderEmail } from "./render-email.mjs";
+import { htmlSizeProblem, renderEmail } from "./render-email.mjs";
 
 const USAGE =
   "Usage: node scripts/monthly-email/check-resend.mjs issues/<yyyy-mm>.send.html issues/<yyyy-mm>.resend.html [issues/<yyyy-mm>.json issues/<yyyy-mm>.resend-fields.json]";
@@ -54,6 +54,7 @@ export function compareResend(ours, theirs, spec, fields, hosted) {
     ],
     ["unsubscribe placeholder", theirs.includes("RESEND_UNSUBSCRIBE_URL")],
     ["body centered at 592px", theirs.includes("max-width:592px;align:center")],
+    ["under the size limit", !htmlSizeProblem(theirs)?.fatal],
   ];
   if (spec && fields) {
     checks.push(
@@ -87,6 +88,8 @@ function main() {
     fieldsPath ? JSON.parse(read(fieldsPath)) : undefined,
     hostedPath ? JSON.parse(read(hostedPath)) : undefined,
   );
+  const sizeProblem = htmlSizeProblem(read(theirsPath));
+  if (sizeProblem) console.warn(sizeProblem.message);
   for (const [name, ok] of checks)
     console.log(`${ok ? "ok  " : "FAIL"} ${name}`);
   process.exitCode = checks.every(([, ok]) => ok) ? 0 : 1;
