@@ -10,11 +10,18 @@ import { z } from "zod";
 import { BB_DESKTOP_SET_ATTENTION_THREADS_CHANNEL } from "./desktop-window-command-ipc.js";
 
 const threadIdsSchema = z.array(z.string().min(1).max(256)).max(10000);
+const attentionThreadsSchema = z.object({
+  pendingThreadIds: threadIdsSchema,
+  unreadThreadIds: threadIdsSchema,
+});
 
 export function registerDesktopAttentionIpc(
   applicationWindowWebContentsIds: ReadonlySet<number>,
 ): void {
-  const reports = new Map<number, { origin: string; ids: string[] }>();
+  const reports = new Map<
+    number,
+    { origin: string; pending: string[]; unread: string[] }
+  >();
   const tracked = new Set<number>();
   let overlayImage: NativeImage | undefined;
 
@@ -43,20 +50,30 @@ export function registerDesktopAttentionIpc(
   }
 
   function updateBadge() {
-    const ids = new Set<string>();
+    const pending = new Set<string>();
+    const unread = new Set<string>();
     for (const report of reports.values()) {
-      for (const id of report.ids) ids.add(`${report.origin}/${id}`);
+      for (const id of report.pending) pending.add(`${report.origin}/${id}`);
+      for (const id of report.unread) unread.add(`${report.origin}/${id}`);
     }
-    const count = ids.size;
+    const pendingCount = pending.size;
+    const hasUnread = [...unread].some((key) => !pending.has(key));
     if (process.platform === "win32") {
-      const overlay = count > 0 ? overlayIcon() : null;
+      const overlay = pendingCount > 0 || hasUnread ? overlayIcon() : null;
+      const description =
+        pendingCount > 0
+          ? `${pendingCount} ${pendingCount === 1 ? "thread needs" : "threads need"} your input`
+          : hasUnread
+            ? "Unread threads"
+            : "";
       for (const window of windows())
-        window.setOverlayIcon(
-          overlay,
-          count > 0 ? `${count} threads need attention` : "",
-        );
+        window.setOverlayIcon(overlay, description);
+    } else if (process.platform === "darwin") {
+      app.dock?.setBadge(
+        pendingCount > 0 ? String(pendingCount) : hasUnread ? "•" : "",
+      );
     } else {
-      app.setBadgeCount(count);
+      app.setBadgeCount(pendingCount);
     }
   }
 
@@ -74,7 +91,7 @@ export function registerDesktopAttentionIpc(
     BB_DESKTOP_SET_ATTENTION_THREADS_CHANNEL,
     (event, payload: unknown) => {
       if (!senderWindow(event)) return;
-      const parsed = threadIdsSchema.safeParse(payload);
+      const parsed = attentionThreadsSchema.safeParse(payload);
       if (!parsed.success) return;
       let origin: string;
       try {
@@ -83,7 +100,11 @@ export function registerDesktopAttentionIpc(
         return;
       }
       const id = event.sender.id;
-      reports.set(id, { origin, ids: parsed.data });
+      reports.set(id, {
+        origin,
+        pending: parsed.data.pendingThreadIds,
+        unread: parsed.data.unreadThreadIds,
+      });
       if (!tracked.has(id)) {
         tracked.add(id);
         event.sender.on(

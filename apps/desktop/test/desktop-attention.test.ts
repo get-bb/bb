@@ -21,7 +21,7 @@ const mock = vi.hoisted(() => {
           this.handlers.set(name, callback);
         }
       })(),
-      { setBadgeCount: vi.fn() },
+      { dock: { setBadge: vi.fn() }, setBadgeCount: vi.fn() },
     ),
     handlers: new Map<string, (event: unknown, payload?: unknown) => void>(),
     windows,
@@ -74,47 +74,64 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+function attention(pendingThreadIds: string[], unreadThreadIds: string[]) {
+  return { pendingThreadIds, unreadThreadIds };
+}
+
 it.each(["darwin", "linux", "win32"] as const)(
-  "maintains a deduplicated badge across windows, servers, navigation and close on %s",
+  "counts pending threads and dots unread ones across windows, servers, navigation, crash and close on %s",
   (platform) => {
     vi.spyOn(process, "platform", "get").mockReturnValue(platform);
-    const count = () =>
+    const badge = () =>
       platform === "win32"
         ? mock.windows[0]!.setOverlayIcon.mock.lastCall?.[1]
-        : mock.app.setBadgeCount.mock.lastCall?.[0];
-    const expected = (n: number) =>
-      platform === "win32" ? (n > 0 ? `${n} threads need attention` : "") : n;
-    report(0, ["a", "b"]);
-    report(1, ["a"]);
-    expect(count()).toBe(expected(2));
-    report(2, ["a"]);
-    expect(count()).toBe(expected(3));
-    report(0, [-1]);
-    report(0, [], false);
-    expect(count()).toBe(expected(3));
+        : platform === "darwin"
+          ? mock.app.dock.setBadge.mock.lastCall?.[0]
+          : mock.app.setBadgeCount.mock.lastCall?.[0];
+    const expected = (pending: number, unread: boolean) => {
+      if (platform === "linux") return pending;
+      if (platform === "darwin")
+        return pending > 0 ? String(pending) : unread ? "•" : "";
+      if (pending === 1) return "1 thread needs your input";
+      if (pending > 1) return `${pending} threads need your input`;
+      return unread ? "Unread threads" : "";
+    };
+    report(0, attention(["a"], []));
+    report(1, attention([], ["a"]));
+    expect(badge()).toBe(expected(1, false));
+    report(1, attention(["a"], ["b"]));
+    report(2, attention(["a"], []));
+    expect(badge()).toBe(expected(2, true));
+    report(0, ["a", "b", "c"]);
+    report(0, attention([""], []));
+    report(0, attention([], []), false);
+    expect(badge()).toBe(expected(2, true));
     const frame = {};
     mock.handlers.get(BB_DESKTOP_SET_ATTENTION_THREADS_CHANNEL)?.(
       { sender: { id: 99, mainFrame: frame }, senderFrame: frame },
-      ["untrusted"],
+      attention(["untrusted"], []),
     );
-    expect(count()).toBe(expected(3));
-    mock.windows[0]!.webContents.emit(
+    expect(badge()).toBe(expected(2, true));
+    mock.windows[1]!.webContents.emit(
       "did-start-navigation",
       {},
       "http://other",
       false,
       true,
     );
-    expect(count()).toBe(expected(2));
-    mock.windows[1]!.webContents.emit("destroyed");
-    expect(count()).toBe(expected(1));
+    report(0, attention([], ["b"]));
+    expect(badge()).toBe(expected(1, true));
     mock.windows[2]!.webContents.emit("render-process-gone");
-    expect(count()).toBe(expected(0));
-    report(2, ["new"]);
-    expect(count()).toBe(expected(1));
-    report(2, []);
-    expect(count()).toBe(expected(0));
+    expect(badge()).toBe(expected(0, true));
+    if (platform === "win32")
+      expect(mock.windows[0]!.setOverlayIcon.mock.lastCall?.[0]).not.toBeNull();
+    mock.windows[0]!.webContents.emit("destroyed");
+    expect(badge()).toBe(expected(0, false));
     if (platform === "win32")
       expect(mock.windows[0]!.setOverlayIcon.mock.lastCall?.[0]).toBeNull();
+    report(2, attention([], ["new"]));
+    expect(badge()).toBe(expected(0, true));
+    report(2, attention([], []));
+    expect(badge()).toBe(expected(0, false));
   },
 );

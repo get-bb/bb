@@ -475,8 +475,8 @@ const bbDesktopApi: BbDesktopApi = {
   getInfo() {
     return invokeDesktopInfo(BB_DESKTOP_GET_INFO_CHANNEL);
   },
-  setAttentionThreads(threadIds) {
-    ipcRenderer.send(BB_DESKTOP_SET_ATTENTION_THREADS_CHANNEL, threadIds);
+  setAttentionThreads(threads) {
+    ipcRenderer.send(BB_DESKTOP_SET_ATTENTION_THREADS_CHANNEL, threads);
   },
   focusWindow() {
     ipcRenderer.send(BB_DESKTOP_FOCUS_WINDOW_CHANNEL);

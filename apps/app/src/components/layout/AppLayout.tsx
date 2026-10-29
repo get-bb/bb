@@ -108,7 +108,7 @@ import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
 import { useFaviconBadge } from "@/lib/favicon-color-preference";
 import {
-  desktopAttentionThreadIds,
+  desktopAttentionThreads,
   shouldShowFaviconAttentionDot,
 } from "./faviconAttentionDot";
 import { AppLayoutSidebar } from "./AppLayoutSidebar";
@@ -724,10 +724,17 @@ function AppLayoutContent({ children }: AppLayoutProps) {
   useFaviconBadge(faviconBadge);
   useEffect(() => {
     window.bbDesktop?.setAttentionThreads?.(
-      desktopAttentionThreadIds(sidebarThreads),
+      desktopAttentionThreads(sidebarThreads),
     );
   }, [sidebarThreads]);
-  useEffect(() => () => window.bbDesktop?.setAttentionThreads?.([]), []);
+  useEffect(
+    () => () =>
+      window.bbDesktop?.setAttentionThreads?.({
+        pendingThreadIds: [],
+        unreadThreadIds: [],
+      }),
+    [],
+  );
 
   const handleResizeMouseDown = useCallback(
     (event: SidebarResizeMouseEvent) => {

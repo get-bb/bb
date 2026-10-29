@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  desktopAttentionThreadIds,
+  desktopAttentionThreads,
   shouldShowFaviconAttentionDot,
 } from "./faviconAttentionDot";
 
@@ -185,9 +185,9 @@ describe("shouldShowFaviconAttentionDot", () => {
   });
 });
 
-it("counts unread and pending threads once, excluding hidden and background threads that need no attention", () => {
+it("reports pending threads separately from threads that are only unread, excluding hidden threads", () => {
   expect(
-    desktopAttentionThreadIds([
+    desktopAttentionThreads([
       makeSidebarThread({ id: "unread" }),
       makeSidebarThread({
         id: "pending",
@@ -202,5 +202,8 @@ it("counts unread and pending threads once, excluding hidden and background thre
         hasPendingInteraction: true,
       }),
     ]),
-  ).toEqual(["unread", "pending", "both"]);
+  ).toEqual({
+    pendingThreadIds: ["pending", "both"],
+    unreadThreadIds: ["unread"],
+  });
 });

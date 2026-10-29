@@ -653,7 +653,10 @@ it("synchronizes desktop attention when sidebar state changes and clears its rep
   ];
   const view = renderLayout();
   await waitFor(() =>
-    expect(setAttentionThreads).toHaveBeenLastCalledWith(["unread"]),
+    expect(setAttentionThreads).toHaveBeenLastCalledWith({
+      pendingThreadIds: [],
+      unreadThreadIds: ["unread"],
+    }),
   );
   sidebarThreadsMock.threads = [
     makeThreadListEntry({
@@ -665,8 +668,14 @@ it("synchronizes desktop attention when sidebar state changes and clears its rep
   ];
   fireEvent.click(screen.getByRole("link", { name: SETTINGS_ROUTE }));
   await waitFor(() =>
-    expect(setAttentionThreads).toHaveBeenLastCalledWith(["pending"]),
+    expect(setAttentionThreads).toHaveBeenLastCalledWith({
+      pendingThreadIds: ["pending"],
+      unreadThreadIds: [],
+    }),
   );
   view.unmount();
-  expect(setAttentionThreads).toHaveBeenLastCalledWith([]);
+  expect(setAttentionThreads).toHaveBeenLastCalledWith({
+    pendingThreadIds: [],
+    unreadThreadIds: [],
+  });
 });

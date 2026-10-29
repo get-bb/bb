@@ -65,14 +65,18 @@ export function shouldShowFaviconAttentionDot({
   );
 }
 
-export function desktopAttentionThreadIds(
+export function desktopAttentionThreads(
   sidebarThreads: readonly FaviconSidebarThread[],
-): string[] {
-  return sidebarThreads
-    .filter(
-      (thread) =>
-        isSidebarProjectThread(thread) &&
-        (thread.hasPendingInteraction || !isThreadRead(thread)),
-    )
-    .map((thread) => thread.id);
+): { pendingThreadIds: string[]; unreadThreadIds: string[] } {
+  return {
+    pendingThreadIds: sidebarThreads
+      .filter(isPendingSidebarThread)
+      .map((thread) => thread.id),
+    unreadThreadIds: sidebarThreads
+      .filter(
+        (thread) =>
+          !isPendingSidebarThread(thread) && isUnreadSidebarThread(thread),
+      )
+      .map((thread) => thread.id),
+  };
 }
