@@ -2532,6 +2532,54 @@ it("never clears thread storage that holds a workspace an environment still uses
   }
 });
 
+it("refreshes the storage page only for host changes it shows", async () => {
+  const subscriptions = new Set<
+    Parameters<BbPluginApi["sdk"]["subscribe"]>[0]
+  >();
+  const host = createFakePluginHost({
+    pluginId: "storage-retention",
+    sdk: {
+      subscribe: (subscription) => {
+        subscriptions.add(subscription);
+        return () => subscriptions.delete(subscription);
+      },
+    },
+  });
+  try {
+    plugin(host.bb);
+    host.harness.behavior.runService("development-storage-recovery");
+    const emit = (
+      changes: Parameters<
+        Extract<
+          Parameters<BbPluginApi["sdk"]["subscribe"]>[0],
+          { event: "host:changed" }
+        >["callback"]
+      >[0]["changes"],
+    ) => {
+      for (const subscription of subscriptions)
+        if (subscription.event === "host:changed")
+          subscription.callback({
+            type: "changed",
+            entity: "host",
+            id: "host_test",
+            changes,
+          });
+    };
+    const refreshes = () =>
+      host.harness.inspection.realtimeSignals.filter(
+        (signal) => signal.channel === "changed",
+      ).length;
+    emit(["provider-model-catalog-changed", "provider-commands-changed"]);
+    expect(refreshes()).toBe(0);
+    emit(["host-connected"]);
+    expect(refreshes()).toBe(1);
+    emit(["host-disconnected"]);
+    expect(refreshes()).toBe(2);
+  } finally {
+    await host.harness.lifecycle.dispose();
+  }
+});
+
 it("automatically removes missing-checkout data only when enabled and online, retrying failures and keeping existing or unidentified sources", async () => {
   const fakeHome = await directory();
   const root = path.join(fakeHome, ".bb-dev");
