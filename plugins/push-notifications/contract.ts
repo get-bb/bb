@@ -75,6 +75,15 @@ export type SendNotificationOutput = z.infer<
   typeof sendNotificationOutputSchema
 >;
 
+export const sendNotificationRpcContract = defineRpcContract({
+  "notifications.send": {
+    experimental_description:
+      "Send a notification to every enabled channel: connected web and desktop clients and registered mobile devices. Title and body are cut to 80 and 180 characters. With threadId, a click opens that thread. Returns the channels it reached; an empty list means nothing was delivered.",
+    input: sendNotificationInputSchema,
+    output: sendNotificationOutputSchema,
+  },
+});
+
 export const THREAD_NOTIFICATIONS_LIST_MAX_IDS = 200;
 
 const emptyInputSchema = z.object({}).strict();
@@ -86,10 +95,6 @@ export const pushNotificationsRpcContract = defineRpcContract({
   "notifications.test": {
     input: z.object({ channel: clientChannelSchema }).strict(),
     output: z.object({ ok: z.literal(true) }).strict(),
-  },
-  "notifications.send": {
-    input: sendNotificationInputSchema,
-    output: sendNotificationOutputSchema,
   },
   "pushSubscriptions.list": {
     input: emptyInputSchema,

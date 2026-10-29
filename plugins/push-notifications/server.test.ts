@@ -865,6 +865,23 @@ describe("web and desktop delivery", () => {
 });
 
 describe("sending notifications", () => {
+  it("publishes only notifications.send for other plugins to discover", async () => {
+    const host = await setup();
+    try {
+      const published =
+        host.harness.registrations.experimental_publishedRpcMethods;
+      expect(published.map((entry) => entry.method)).toEqual([
+        "notifications.send",
+      ]);
+      expect(published[0]?.inputSchema).toMatchObject({
+        required: ["title"],
+        additionalProperties: false,
+      });
+    } finally {
+      await host.cleanup();
+    }
+  });
+
   it("delivers a threadless message from another plugin to every channel", async () => {
     const host = await setup({ appUrl: "https://bb.example.test" });
     try {
@@ -901,7 +918,6 @@ describe("sending notifications", () => {
       expect(message?.data).toEqual({
         kind: "message",
         serverUrl: "https://bb.example.test",
-        source: "attention",
       });
       expect(
         host.harness.logEntries.some((entry) =>

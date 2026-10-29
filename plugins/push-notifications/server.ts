@@ -17,6 +17,7 @@ import {
   NOTIFICATION_TITLE_MAX_LENGTH,
   pushNotificationsRpcContract,
   sendNotificationInputSchema,
+  sendNotificationRpcContract,
   type ClientNotification,
   type DeliveryChannel,
   type PushSubscriptionSummary,
@@ -253,12 +254,23 @@ export function createPushNotificationsPlugin(
       return { ok: true as const };
     }
 
+    bb.rpc.register(
+      sendNotificationRpcContract,
+      {
+        "notifications.send": async (input, context) => ({
+          ok: true as const,
+          channels: await sender.send(input, context.experimental_caller),
+        }),
+      },
+      {
+        experimental_discoverable: true,
+        experimental_description:
+          "Notifications on bb's mobile, web and desktop channels.",
+      },
+    );
+
     bb.rpc.register(pushNotificationsRpcContract, {
       "notifications.test": ({ channel }) => sendTest(channel),
-      "notifications.send": async (input, context) => ({
-        ok: true as const,
-        channels: await sender.send(input, context.experimental_caller),
-      }),
       "pushSubscriptions.list": async () => ({
         subscriptions: await subscriptions.listSummaries(),
       }),

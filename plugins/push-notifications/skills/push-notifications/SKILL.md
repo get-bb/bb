@@ -64,8 +64,8 @@ const { channels } = await bb.sdk.plugins.callRpc({
 ```
 
 `body` and `threadId` are optional. An empty `channels` means nothing was
-delivered. Mobile pushes carry the
-calling plugin's id as `source`.
+delivered. `bb plugin rpc inspect push-notifications notifications.send`
+prints the published input and output schemas.
 
 Inspect `status` before changing a channel, and change only the requested
 channel or device.

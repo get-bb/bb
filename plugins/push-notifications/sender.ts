@@ -89,7 +89,6 @@ interface PushNotificationData {
   kind: PushNotificationKind | typeof SENT_NOTIFICATION_KIND;
   projectId?: string;
   serverUrl?: string;
-  source?: string;
   threadId?: string;
 }
 
@@ -108,7 +107,6 @@ interface OutgoingNotification {
   body: string;
   kind: PushNotificationData["kind"];
   thread: { id: string; projectId: string } | null;
-  caller: ExperimentalPluginRpcCaller | null;
 }
 
 export interface ExpoPushMessage {
@@ -387,7 +385,6 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
       body: preview || FALLBACK_BODIES[resolved.kind],
       kind: resolved.kind,
       thread,
-      caller: null,
     });
   }
 
@@ -422,9 +419,6 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
             threadId: notification.thread.id,
           }),
       ...(serverUrl === null ? {} : { serverUrl }),
-      ...(notification.caller?.kind === "plugin"
-        ? { source: notification.caller.pluginId }
-        : {}),
     };
     const deliveries: Delivery[] = rows.map((subscription) => ({
       subscription,
@@ -480,7 +474,6 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
       body: input.body,
       kind: SENT_NOTIFICATION_KIND,
       thread,
-      caller,
     });
     const tracked = delivery.then(
       () => undefined,
