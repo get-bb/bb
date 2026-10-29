@@ -109,7 +109,7 @@ describe("device lifecycle measurement", () => {
       updateThread(deps.db, deps.hub, thread.id, { environmentId: next.id });
       deps.db
         .update(environments)
-        .set({ hostId: primary.id })
+        .set({ hostId: primary.id, path: "/fixture/moved-execution-target" })
         .where(eq(environments.id, first.id))
         .run();
       expect(executionLocation(deps, deps.db, thread.id, "active")).toBe(
