@@ -117,6 +117,7 @@ type PreviousRecord =
     }
   | { kind: "unreadable"; owner: ResourceOwner | null };
 
+const READ_IDENTITY_AT_STOP_ONLY = process.platform === "win32";
 const HOOK_OUTCOME_RETENTION_MS = 30 * 24 * 60 * 60_000;
 
 export function provisionSetupOperationId(environmentId: string): string {
@@ -189,9 +190,10 @@ export class DaemonResource {
     if (this.closed) return;
     this.addProcess(process);
     this.save();
-    void this.readIdentities().then(() => {
-      if (!this.closed) this.save();
-    });
+    if (!READ_IDENTITY_AT_STOP_ONLY)
+      void this.readIdentities().then(() => {
+        if (!this.closed) this.save();
+      });
     void process.exited.then(() => this.processExited(process.pid));
   };
 
@@ -199,7 +201,10 @@ export class DaemonResource {
     if (this.closed) return;
     this.addProcess(process);
     const timer = setTimeout(() => {
-      void this.readIdentities().then(() => {
+      const read = READ_IDENTITY_AT_STOP_ONLY
+        ? Promise.resolve()
+        : this.readIdentities();
+      void read.then(() => {
         if (this.processes.has(process.pid) && !this.closed) this.save();
       });
     }, ADOPTED_PROCESS_RECORD_DELAY_MS);
@@ -259,7 +264,7 @@ export class DaemonResource {
 
   async captureTree(): Promise<void> {
     if (this.processes.size === 0 || this.closed) return;
-    if (process.platform === "win32") return;
+    if (READ_IDENTITY_AT_STOP_ONLY) return;
     await this.readIdentities();
     const roots = [...this.processes.values()];
     let members;

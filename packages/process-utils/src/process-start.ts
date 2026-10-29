@@ -201,8 +201,6 @@ export async function probeProcessStart(
     : { state: "gone" };
 }
 
-const WINDOWS_PROBE_BATCH_MS = 50;
-
 let windowsBatch: Map<number, ((probe: ProcessStartProbe) => void)[]> | null =
   null;
 
@@ -211,7 +209,7 @@ function probeWindowsStartBatched(pid: number): Promise<ProcessStartProbe> {
     if (windowsBatch === null) {
       const batch = new Map<number, ((probe: ProcessStartProbe) => void)[]>();
       windowsBatch = batch;
-      setTimeout(() => {
+      queueMicrotask(() => {
         windowsBatch = null;
         void probeWindowsStarts([...batch.keys()]).then((probes) => {
           for (const [batchPid, waiters] of batch) {
@@ -219,7 +217,7 @@ function probeWindowsStartBatched(pid: number): Promise<ProcessStartProbe> {
             for (const waiter of waiters) waiter(probe);
           }
         });
-      }, WINDOWS_PROBE_BATCH_MS).unref();
+      });
     }
     const waiters = windowsBatch.get(pid);
     if (waiters === undefined) windowsBatch.set(pid, [resolve]);
