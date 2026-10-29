@@ -207,7 +207,7 @@ const ACTION_ROW_POSITION_CLASS =
   "absolute top-0 flex w-max items-center gap-2 data-[menu-open]:[&_button]:opacity-100 data-[menu-open]:[&_[data-message-action-metadata]]:opacity-100";
 const ACTION_ROW_CLASS = "flex max-w-full items-center gap-2 overflow-hidden";
 
-const BUBBLE_ALIGN_INSET_CLASS = "pr-[13px] max-md:pointer-coarse:pr-[11px]";
+export const BUBBLE_ALIGN_INSET_CLASS = "pr-[13px] max-md:pointer-coarse:pr-[11px]";
 const BUBBLE_ALIGN_OFFSET_CLASS =
   "right-[13px] max-md:pointer-coarse:right-[11px]";
 const PROSE_ALIGN_INSET_CLASS = "-ml-1 max-md:pointer-coarse:-ml-1.5";

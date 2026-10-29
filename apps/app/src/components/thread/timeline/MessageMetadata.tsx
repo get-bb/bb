@@ -8,6 +8,7 @@ import type { PluginMessageMetadataSlot } from "@/lib/plugin-slots.js";
 import { PluginSlotMount } from "../../plugin/PluginSlotMount.js";
 import {
   ACTION_ROW_METADATA_CLASS,
+  BUBBLE_ALIGN_INSET_CLASS,
   PROSE_COLUMN_INSET_CLASS,
 } from "./MessageActionBar.js";
 
@@ -56,7 +57,7 @@ export const MessageMetadata = memo(function MessageMetadata({
           : cn(
               "flex w-full flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground",
               role === "user"
-                ? "justify-end"
+                ? cn("justify-end", BUBBLE_ALIGN_INSET_CLASS)
                 : cn("justify-start", PROSE_COLUMN_INSET_CLASS),
               placement === "above" && "has-[>*>*]:mb-1",
             )
