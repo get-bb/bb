@@ -1,6 +1,7 @@
 import type {
   PluginCatalogResolvedSource,
   PluginInstallJob,
+  PluginMeasurementSource,
 } from "@bb/server-contract";
 import {
   queryOptions,
@@ -51,6 +52,7 @@ export function startCatalogPluginInstall(
     entryId: string;
     marketplace?: string;
     confirmedSource?: PluginCatalogResolvedSource;
+    measurementSource?: PluginMeasurementSource;
   },
 ): Promise<PluginInstallJob> {
   return createPluginsClient(fetchImpl).catalog.startInstall(args);

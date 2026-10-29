@@ -1,3 +1,4 @@
+import { capturePluginStateChanged } from "./plugin-measurement.js";
 import { findProviderEnvironmentContainingPath } from "@bb/db";
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
@@ -405,6 +406,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
         }
         throw error;
       }
+      capturePluginStateChanged(deps, manifest.id, existing);
       if (movedFrom !== undefined) {
         if (!sameDirectory(movedFrom.rootDir, args.rootDir)) {
           forgetMutableRoot(movedFrom.rootDir);

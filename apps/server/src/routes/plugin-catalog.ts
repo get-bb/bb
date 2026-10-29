@@ -1,3 +1,4 @@
+import { runWithPluginMeasurementSource } from "../services/plugins/plugin-measurement.js";
 import {
   pluginCatalogInstallRequestSchema,
   pluginMarketplaceAddRequestSchema,
@@ -22,7 +23,14 @@ function entrySelector(
     entryId,
     ...(marketplace === undefined ? {} : { marketplace }),
   });
-  return parsed.success ? parsed.data : null;
+  return parsed.success
+    ? {
+        entryId: parsed.data.entryId,
+        ...(parsed.data.marketplace === undefined
+          ? {}
+          : { marketplace: parsed.data.marketplace }),
+      }
+    : null;
 }
 
 export function registerPluginCatalogRoutes(
@@ -98,7 +106,7 @@ export function registerPluginCatalogRoutes(
     } catch (error) {
       return context.json({ error: errorMessage(error) }, 422);
     }
-    const input = body.data;
+    const { measurementSource, ...input } = body.data;
     const job = installJobs.start({
       target: {
         kind: "catalog",
@@ -106,7 +114,10 @@ export function registerPluginCatalogRoutes(
         marketplace: entry.marketplace,
       },
       displayName: entry.displayName,
-      run: () => catalog.install(input),
+      run: () =>
+        runWithPluginMeasurementSource(measurementSource, () =>
+          catalog.install(input),
+        ),
     });
     return respondWithInstallJob(context, installJobs, job, (error) => ({
       error,

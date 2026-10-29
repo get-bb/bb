@@ -112,6 +112,7 @@ async function setup() {
     makeHostResponse({ id: "local-host", name: "Lab workstation" }),
     makeHostResponse({ id: "desktop-host", name: "Lab desktop" }),
   ]);
+  const recordUse = vi.spyOn(host.bb, "internal_DO_NOT_USE_recordPluginUse");
   await plugin(host.bb);
   async function open(tabId?: string) {
     const result = await host.harness.behavior.callRpc("open", {
@@ -134,7 +135,15 @@ async function setup() {
       .map(([input]) => (input as { tabId: string }).tabId)
       .sort();
   }
-  return { ...host, worker, open, setTabs, closedTabIds, tabChangeListeners };
+  return {
+    ...host,
+    recordUse,
+    worker,
+    open,
+    setTabs,
+    closedTabIds,
+    tabChangeListeners,
+  };
 }
 
 describe("server session ownership", () => {
@@ -955,4 +964,48 @@ describe("server live preview", () => {
       await h.harness.lifecycle.dispose();
     }
   });
+});
+
+it("counts explicit runs without treating page lists or screenshots as runs", async () => {
+  const h = await setup();
+  try {
+    const session = await h.open();
+    const target = { threadId: "thread-test", sessionId: session.id };
+    await h.harness.callRpc("pages", target);
+    await h.harness.callRpc("screenshot", { ...target, page: "page-1" });
+    expect(h.recordUse).not.toHaveBeenCalled();
+    await h.harness.callRpc("run", {
+      ...target,
+      script: "1 + 1",
+      timeoutMs: 30000,
+    });
+    expect(h.recordUse.mock.calls.map(([event]) => event)).toEqual([
+      { action: "browser_run", outcome: "invoked" },
+      { action: "browser_run", outcome: "succeeded" },
+    ]);
+    h.worker.mockResolvedValueOnce({
+      text: "private error",
+      images: [],
+      exitCode: 1,
+    });
+    await h.harness.callRpc("run", {
+      ...target,
+      script: "throw 1",
+      timeoutMs: 30000,
+    });
+    expect(h.recordUse).toHaveBeenLastCalledWith({
+      action: "browser_run",
+      outcome: "failed",
+    });
+    h.worker.mockRejectedValueOnce(new Error("transport lost"));
+    await expect(
+      h.harness.callRpc("run", { ...target, script: "2", timeoutMs: 30000 }),
+    ).rejects.toThrow("transport lost");
+    expect(h.recordUse).toHaveBeenLastCalledWith({
+      action: "browser_run",
+      outcome: "unknown",
+    });
+  } finally {
+    await h.harness.lifecycle.dispose();
+  }
 });

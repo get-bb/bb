@@ -468,7 +468,26 @@ export default async function browserAutomationPlugin(bb: BbPluginApi) {
         );
         return records;
       },
-      run: (input) => run(input, signal),
+      async run(input) {
+        bb.internal_DO_NOT_USE_recordPluginUse({
+          action: "browser_run",
+          outcome: "invoked",
+        });
+        try {
+          const result = await run(input, signal);
+          bb.internal_DO_NOT_USE_recordPluginUse({
+            action: "browser_run",
+            outcome: result.exitCode === 0 ? "succeeded" : "failed",
+          });
+          return result;
+        } catch (error) {
+          bb.internal_DO_NOT_USE_recordPluginUse({
+            action: "browser_run",
+            outcome: "unknown",
+          });
+          throw error;
+        }
+      },
       pages: (input) =>
         run(
           { ...input, script: "await browser.listPages()", timeoutMs: 30_000 },

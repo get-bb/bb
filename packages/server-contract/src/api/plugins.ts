@@ -1,3 +1,4 @@
+import { pluginMeasurementSourceSchema } from "./system-plugin-telemetry.js";
 import {
   jsonValueSchema,
   pluginCatalogCategoryIdSchema,
@@ -277,8 +278,15 @@ export const ROOT_PLUGIN_SOURCE_SELECTION: PluginSourceSelection = {
   kind: "root",
 };
 
+export const pluginStateMeasurementRequestSchema = z
+  .object({
+    measurementSource: pluginMeasurementSourceSchema.default("unknown"),
+  })
+  .strict();
+
 export const pluginInstallRequestSchema = z
   .object({
+    measurementSource: pluginMeasurementSourceSchema.default("unknown"),
     source: z.string().min(1),
     selection: pluginSourceSelectionSchema.default(
       ROOT_PLUGIN_SOURCE_SELECTION,
@@ -298,6 +306,7 @@ export const pluginMarketplaceNameSchema = z
 
 export const pluginCatalogInstallRequestSchema = z
   .object({
+    measurementSource: pluginMeasurementSourceSchema.default("unknown"),
     entryId: z.string().min(1),
     marketplace: pluginMarketplaceNameSchema.optional(),
     confirmedSource: z.lazy(() => pluginCatalogResolvedSourceSchema).optional(),

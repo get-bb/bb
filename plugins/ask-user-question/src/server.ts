@@ -99,12 +99,22 @@ export default function plugin(bb: BbPluginApi) {
           { signal: ctx.signal },
         );
       } catch (error) {
+        bb.internal_DO_NOT_USE_recordPluginUse({
+          action: "question_answered",
+          outcome: "unknown",
+          initiator: "agent",
+        });
         return errorResult(
           `The question could not be shown (${error instanceof Error ? error.message : String(error)}). Continue with your best judgement.`,
         );
       }
 
       if (result.outcome === "cancelled") {
+        bb.internal_DO_NOT_USE_recordPluginUse({
+          action: "question_answered",
+          outcome: result.reason === "user" ? "cancelled" : "unknown",
+          initiator: "agent",
+        });
         return errorResult(
           result.reason === "timeout"
             ? buildTimeoutMessage(Date.now() - askedAt)
@@ -114,16 +124,31 @@ export default function plugin(bb: BbPluginApi) {
 
       const parsed = interactionResponseSchema.safeParse(result.value);
       if (!parsed.success) {
+        bb.internal_DO_NOT_USE_recordPluginUse({
+          action: "question_answered",
+          outcome: "failed",
+          initiator: "agent",
+        });
         return errorResult(
           "The answer could not be read. Ask the question again in your reply instead.",
         );
       }
       const toolResult = buildToolResult(payload, parsed.data);
       if (Object.keys(toolResult.answers).length === 0) {
+        bb.internal_DO_NOT_USE_recordPluginUse({
+          action: "question_answered",
+          outcome: "failed",
+          initiator: "agent",
+        });
         return errorResult(
           "The user submitted no answers. Proceed with your best judgement, or ask again in your reply.",
         );
       }
+      bb.internal_DO_NOT_USE_recordPluginUse({
+        action: "question_answered",
+        outcome: "succeeded",
+        initiator: "agent",
+      });
       return JSON.stringify(toolResult);
     },
   });

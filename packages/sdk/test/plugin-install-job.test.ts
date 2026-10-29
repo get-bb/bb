@@ -66,6 +66,46 @@ function serverWithJobStates(states: readonly object[]) {
 }
 
 describe("plugin installs through server jobs", () => {
+  it("preserves bounded measurement sources and leaves legacy request bodies unchanged", async () => {
+    const requests: unknown[] = [];
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        runtime: "node",
+        fetch: async (input, init) => {
+          requests.push(JSON.parse(String(init?.body)));
+          return new Response(
+            JSON.stringify(
+              String(input).endsWith("/enable")
+                ? { ok: true, plugin }
+                : { ok: true, job: { ...job, state: "queued" } },
+            ),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        },
+      }),
+    });
+    await sdk.plugins.enable({ pluginId: "notes" });
+    await sdk.plugins.enable({
+      pluginId: "notes",
+      measurementSource: "replay",
+    });
+    await sdk.plugins.startInstall({
+      source: "npm:notes",
+      measurementSource: "settings",
+    });
+    await sdk.plugins.catalog.startInstall({
+      entryId: "notes",
+      measurementSource: "first_run",
+    });
+    expect(requests).toEqual([
+      {},
+      { measurementSource: "replay" },
+      { source: "npm:notes", measurementSource: "settings" },
+      { entryId: "notes", measurementSource: "first_run" },
+    ]);
+  });
+
   it("asks for a job and waits for it to install the plugin", async () => {
     const { sdk, requests } = serverWithJobStates([
       { state: "running" },

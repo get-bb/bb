@@ -119,6 +119,7 @@ function render(
     ({ id, title }: { id: string; title: string | null }) => ({ id, title }),
   );
   const markUsed = vi.fn(() => null);
+  const recordInsertion = vi.fn(() => null);
   const slot = renderSlot<object, typeof promptLibraryRpcContract>(
     popup,
     {},
@@ -129,10 +130,10 @@ function render(
         scope: options.scope ?? { kind: "thread", threadId: "thr_1" },
         text: options.draft ?? "",
       },
-      rpc: { search, star, unstar, markUsed, setTitle },
+      rpc: { search, star, unstar, markUsed, setTitle, recordInsertion },
     },
   );
-  return { slot, search, star, unstar, markUsed, setTitle };
+  return { slot, search, star, unstar, markUsed, setTitle, recordInsertion };
 }
 
 function searchBox(slot: ReturnType<typeof renderSlot>) {
@@ -275,12 +276,13 @@ describe("prompt library popup", () => {
   });
 
   it("inserts the highlighted prompt and records use of a starred one", async () => {
-    const { slot, markUsed } = render();
+    const { slot, markUsed, recordInsertion } = render();
     await slot.findByRole("option", { name: /starred prompt/ });
 
     fireEvent.keyDown(searchBox(slot), { key: "Enter" });
 
     expect(slot.composer.draft.text).toBe("starred prompt");
+    await waitFor(() => expect(recordInsertion).toHaveBeenCalledOnce());
     await waitFor(() =>
       expect(markUsed).toHaveBeenCalledWith({ id: "prompt_1" }),
     );
@@ -328,13 +330,14 @@ describe("prompt library popup", () => {
   );
 
   it("moves through starred and recent rows with the arrow keys", async () => {
-    const { slot, markUsed } = render();
+    const { slot, markUsed, recordInsertion } = render();
     await slot.findByText("recent prompt");
 
     fireEvent.keyDown(searchBox(slot), { key: "ArrowDown" });
     fireEvent.keyDown(searchBox(slot), { key: "Enter" });
 
     expect(slot.composer.draft.text).toBe("recent prompt");
+    await waitFor(() => expect(recordInsertion).toHaveBeenCalledOnce());
     expect(markUsed).not.toHaveBeenCalled();
   });
 

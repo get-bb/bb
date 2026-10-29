@@ -62,3 +62,27 @@ describe("starting plugin installs", () => {
     });
   });
 });
+
+it("preserves the guide source when queuing a catalog install", async () => {
+  const job = {
+    id: "job-source",
+    target: {
+      kind: "catalog",
+      entryId: "workflows",
+      marketplace: "bb-official",
+    },
+    displayName: "Workflows",
+    state: "queued",
+  };
+  const { fetchImpl, calls } = recordingFetch({ ok: true, job });
+  await startCatalogPluginInstall(fetchImpl, {
+    entryId: "workflows",
+    marketplace: "bb-official",
+    measurementSource: "replay",
+  });
+  expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({
+    entryId: "workflows",
+    marketplace: "bb-official",
+    measurementSource: "replay",
+  });
+});

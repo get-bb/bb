@@ -3830,6 +3830,19 @@ results, opt-out, old-client compatibility and version-scoped coverage.
 Stabilize after deciding whether third-party plugins may emit product events
 at all and, if so, how they are namespaced and rate limited.
 
+The same endpoint accepts bounded journey observations: visible baseline design
+and coarse window classes, explicit guide navigation, visible Agent readiness,
+project discovery and manual-folder outcomes, visible work surfaces, and typed
+setup blockers for nonempty drafts. `OnboardingFlow`, `WorkSurfaceObservation`
+and the actual discovery/folder action owners use this path. A blocker being
+shown does not mean a send was attempted. Loading, emptying a draft and closing
+a surface do not report a blocker as resolved. Missing readiness remains null.
+The guide-to-composer context is passed locally; it is not inferred from event
+timing. Only the baseline revision and null experiment fields are accepted;
+clients cannot fabricate randomized assignments. Existing guide events remain
+unchanged. Stabilization additionally requires visible/background presentation,
+navigation, asynchronous outcomes, blocker recovery and duplicate-observer tests.
+
 ## `PluginBbSdk.system.experimental_cliCommand`, `experimental_installCliCommand`, and `experimental_removeCliCommand`
 
 `experimental_cliCommand()` reports whether `bb` is on PATH on the server's
@@ -4224,3 +4237,29 @@ The general telemetry HTTP endpoint cannot invoke it. Opt-out is checked at
 capture. Plugin Guide lists the member; it is not a public analytics API.
 Stabilization requires adversarial source-name collision, stale-handle,
 malformed payload, forged client event and opt-out/resume coverage.
+
+## `BbPluginApi.internal_DO_NOT_USE_recordPluginUse`
+
+Internal measurement plumbing for Browser Automation, Workflows, Monaco,
+Prompt Library, Agent Annotations and Ask User Question only. Their existing
+execution or visible-action owners report bounded action/outcome pairs; core's
+shared plugin tool and CLI dispatch supplies invocation context and anonymous
+`other_action` observations for plugins outside the reviewed public allowlist.
+The server derives public keys from installed provenance, validates the action
+owner and outcome, and uses the existing opt-out-controlled telemetry service.
+No plugin identity is accepted from the report, and arguments, outputs, paths,
+private names and free-text properties are rejected. No generic RPC read or
+background startup counts as use. Client-only observations remain `observed`.
+This is deliberately internal and has no arbitrary telemetry CLI or client
+endpoint. Only these named first-party owners may call it; adding an owner or
+public key requires privacy review and tests. The existing setup-operation
+endpoint and `plugin_installed` event retain their previous meanings.
+
+Plugin install, catalog install, enable and disable SDK calls accept optional
+bounded `measurementSource` context. Omission preserves existing request bodies
+and becomes `unknown` at the server boundary. Catalog/source install jobs retain
+the context of the request that created that job, including when queued behind
+another source; coalesced requests do not relabel an existing job. These fields
+are collection attribution, not authentication or experiment assignment.
+`question_created` is recorded by the persisted input-request owner for the
+reviewed Ask User Question plugin, not optimistically before `requestInput`.

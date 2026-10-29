@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useMemo,
+  useRef,
   type ReactNode,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -34,6 +35,9 @@ interface QuickCreateProjectController {
   isAvailable: boolean;
   isCreating: boolean;
   openCreateDialog: () => void;
+  openCreateDialogWithResult: (
+    onResult: (result: "selected" | "failed") => void,
+  ) => void;
   platform: HostPlatform | null;
   hostId: string | null;
   hostName: string | null;
@@ -46,7 +50,10 @@ const quickCreateProjectContext =
   createContext<QuickCreateProjectController | null>(null);
 
 export function useQuickCreateProject(): QuickCreateProjectController {
-  const { mutate, isPending } = useCreateProject();
+  const { mutateAsync, isPending } = useCreateProject();
+  const resultObserver = useRef<
+    ((result: "selected" | "failed") => void) | undefined
+  >(undefined);
   const hostsQuery = useHosts();
   const hosts = useMemo(
     () => selectHosts(hostsQuery.data, "all"),
@@ -63,11 +70,9 @@ export function useQuickCreateProject(): QuickCreateProjectController {
       const name = deriveProjectNameFromPath(path).trim();
       if (!name) return;
 
-      mutate(
-        {
-          name,
-          source: { type: "local_path", hostId, path },
-        },
+      const onResult = resultObserver.current;
+      void mutateAsync(
+        { name, source: { type: "local_path", hostId, path } },
         {
           onSuccess: (project) => {
             closeDialog();
@@ -77,9 +82,12 @@ export function useQuickCreateProject(): QuickCreateProjectController {
             });
           },
         },
+      ).then(
+        () => onResult?.("selected"),
+        () => onResult?.("failed"),
       );
     },
-    [mutate, navigate, setRootComposeProjectId, shouldReplaceRoute],
+    [mutateAsync, navigate, setRootComposeProjectId, shouldReplaceRoute],
   );
 
   const controller = useLocalPathPicker({
@@ -87,15 +95,20 @@ export function useQuickCreateProject(): QuickCreateProjectController {
     submit,
   });
 
-  const openCreateDialog = useCallback(() => {
-    controller.openPathEntry({ kind: "create" });
-  }, [controller]);
+  const openCreateDialog = useCallback(
+    (onResult?: (result: "selected" | "failed") => void) => {
+      resultObserver.current = onResult;
+      controller.openPathEntry({ kind: "create" });
+    },
+    [controller],
+  );
 
   return useMemo(
     () => ({
       isAvailable: controller.isAvailable,
       isCreating: isPending,
-      openCreateDialog,
+      openCreateDialog: () => openCreateDialog(),
+      openCreateDialogWithResult: openCreateDialog,
       platform: controller.platform,
       hostId: controller.hostId,
       hostName: controller.hostName,

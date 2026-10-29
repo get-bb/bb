@@ -642,6 +642,10 @@ export function createWorkflowService(
       settingsJson: JSON.stringify(currentSettings),
       resumedFromRunId: input.resumedFromRunId,
     });
+    bb.internal_DO_NOT_USE_recordPluginUse({
+      action: "workflow_started",
+      outcome: "succeeded",
+    });
     wakeWorker();
     publishRunsChanged(created.originThreadId);
     return created;

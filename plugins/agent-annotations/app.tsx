@@ -136,6 +136,7 @@ export function AnnotateAction({
         ],
         { at: "end" },
       );
+      void rpc.call("recordInsertion").catch(() => {});
       composer.focus();
     },
     [composer, page, rpc],

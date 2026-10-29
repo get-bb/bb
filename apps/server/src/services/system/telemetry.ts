@@ -8,6 +8,7 @@ import type { AppSurface, RequestAppSurface } from "@bb/config/app-surface";
 import type {
   RecordTelemetryEventRequest,
   DeviceSetupEvent,
+  PluginMeasurementEvent,
 } from "@bb/server-contract";
 import type { ServerLogger } from "../../types.js";
 
@@ -85,7 +86,8 @@ export type TelemetryEvent =
       };
     }
   | DeviceSetupEvent
-  | RecordTelemetryEventRequest;
+  | RecordTelemetryEventRequest
+  | PluginMeasurementEvent;
 
 export interface TelemetryService {
   capture(event: TelemetryEvent): void;

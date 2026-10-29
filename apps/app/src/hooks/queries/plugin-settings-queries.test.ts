@@ -6,6 +6,7 @@ import { pluginListQueryKey } from "./query-keys";
 import {
   fetchInstalledPlugins,
   removePlugin,
+  setPluginEnabled,
   toPluginListItem,
 } from "./plugin-settings-queries";
 
@@ -287,3 +288,21 @@ describe("removePlugin", () => {
     ).rejects.toThrow("unknown plugin");
   });
 });
+
+it.each([true, false])(
+  "preserves the guide source for confirmed plugin enabled=%s requests",
+  async (enabled) => {
+    const requests: RequestInit[] = [];
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      if (init !== undefined) requests.push(init);
+      return new Response(JSON.stringify({ plugin: { ...ROW, enabled } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    };
+    await setPluginEnabled(fetchImpl, "workflows", enabled, "first_run");
+    expect(JSON.parse(String(requests[0]?.body))).toEqual({
+      measurementSource: "first_run",
+    });
+  },
+);

@@ -2,6 +2,7 @@ import {
   connectDeviceSetupPropertiesSchema,
   type ConnectDeviceSetupProperties,
 } from "@bb/server-contract";
+import { internalPluginUseReportSchema } from "@bb/server-contract";
 import { experimental_PluginRpcCallError } from "../rpc-contract.js";
 import {
   rpcInvalidationTags,
@@ -1637,6 +1638,10 @@ function createFakePluginHostInternal(
       deviceSetupEvents.push(
         connectDeviceSetupPropertiesSchema.parse(properties),
       );
+    },
+    internal_DO_NOT_USE_recordPluginUse(input) {
+      assertLive();
+      internalPluginUseReportSchema.parse(input);
     },
     pluginId,
     log,
