@@ -99,6 +99,35 @@ describe.skipIf(process.platform === "win32")("WorkspaceReads index copy", () =>
     expect(await sharedIndexes()).toEqual(before);
   });
 
+  it("reads status and diffs when git reports an index path under a .git file", async () => {
+    const repo = await initRepo(await makeTempDir("bb-index-copy-marker-"));
+    const gitDir = path.join(
+      await makeTempDir("bb-index-copy-gitdir-"),
+      "repo.git",
+    );
+    await fs.rename(path.join(repo, ".git"), gitDir);
+    await fs.writeFile(path.join(repo, ".git"), `gitdir: ${gitDir}\n`);
+    await fs.writeFile(path.join(repo, "README.md"), "edited\n");
+    const realGit = execFileSync("which", ["git"], { encoding: "utf8" }).trim();
+    const shimDir = await makeTempDir("bb-git-marker-index-");
+    await fs.writeFile(
+      path.join(shimDir, "git"),
+      `#!/bin/sh\ncase " $* " in *" rev-parse --git-path index "*) echo .git/index; exit 0;; esac\nexec "${realGit}" "$@"\n`,
+      { mode: 0o755 },
+    );
+    vi.stubEnv("PATH", `${shimDir}${path.delimiter}${process.env.PATH ?? ""}`);
+    const reads = new WorkspaceReads(repo, tmpdir());
+
+    const status = await reads.getStatus({
+      freshness: fresh(),
+      ...STATUS_BUDGET,
+    });
+    expect(status.workingTree.files.map((entry) => entry.path)).toEqual([
+      "README.md",
+    ]);
+    expect(await changedFiles(reads)).toEqual(["M README.md"]);
+  });
+
   it("re-reads an untracked file whose same-tick rewrite keeps its stat signature", async () => {
     const repo = await initRepo(await makeTempDir("bb-index-copy-tick-"));
     const file = path.join(repo, "notes.txt");
