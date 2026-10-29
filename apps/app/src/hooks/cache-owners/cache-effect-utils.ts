@@ -47,3 +47,16 @@ export function keepNewerByUpdatedAt<T extends { updatedAt: number }>(
     ? cached
     : incoming;
 }
+
+export function setQueryDataOverInFlightFetch<T>(
+  queryClient: QueryClient,
+  queryKey: QueryKey,
+  updater: Updater<T | undefined, T | undefined>,
+): void {
+  const fetchStatus =
+    queryClient.getQueryState(queryKey)?.fetchStatus ?? "idle";
+  queryClient.setQueryData<T>(queryKey, updater);
+  if (fetchStatus === "idle") return;
+  void queryClient.cancelQueries({ queryKey, exact: true });
+  void queryClient.invalidateQueries({ queryKey, exact: true });
+}
