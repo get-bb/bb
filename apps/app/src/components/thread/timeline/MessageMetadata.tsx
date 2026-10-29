@@ -6,7 +6,10 @@ import type {
 } from "@get-bb/plugin-sdk";
 import type { PluginMessageMetadataSlot } from "@/lib/plugin-slots.js";
 import { PluginSlotMount } from "../../plugin/PluginSlotMount.js";
-import { ACTION_ROW_METADATA_CLASS } from "./MessageActionBar.js";
+import {
+  ACTION_ROW_METADATA_CLASS,
+  PROSE_COLUMN_INSET_CLASS,
+} from "./MessageActionBar.js";
 
 export type MessageMetadataProps = {
   slots: readonly PluginMessageMetadataSlot[];
@@ -52,8 +55,10 @@ export const MessageMetadata = memo(function MessageMetadata({
           ? ACTION_ROW_METADATA_CLASS
           : cn(
               "flex w-full flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground",
-              role === "user" ? "justify-end" : "justify-start",
-              placement === "above" && "mb-1",
+              role === "user"
+                ? "justify-end"
+                : cn("justify-start", PROSE_COLUMN_INSET_CLASS),
+              placement === "above" && "has-[>*>*]:mb-1",
             )
       }
       aria-label="Message metadata"
@@ -61,7 +66,9 @@ export const MessageMetadata = memo(function MessageMetadata({
     >
       {contributions.map((slot) =>
         slot.pluginId === "core" ? (
-          <slot.component key={`core/${slot.id}`} message={message} />
+          <div key={`core/${slot.id}`} className="contents">
+            <slot.component message={message} />
+          </div>
         ) : (
           <PluginSlotMount
             key={`${slot.pluginId}/${slot.id}/${slot.generation}`}
