@@ -1116,7 +1116,12 @@ export class PluginHostManager {
   }
 
   private killWorker(worker: WorkerState): void {
-    void worker.resource.stopProcesses({ graceMs: 0 });
+    const { child, resource } = worker;
+    void resource.captureTree().then(() => {
+      if (child.exitCode === null && child.signalCode === null)
+        child.kill("SIGKILL");
+      return resource.stopProcesses({ graceMs: 0 });
+    });
   }
 
   private callKey(command: {
