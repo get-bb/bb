@@ -1498,18 +1498,21 @@ describe("ThreadRow", () => {
     expect(renderedIndicators()).toEqual(["background-agent"]);
   });
 
-  it("shows the unread dot over workflow and background work", () => {
-    renderThreadRow({
+  it("shows the unread dot over background work but not over a workflow", () => {
+    const background = renderThreadRow({
       thread: createThread({
-        activity: activity({
-          workflows: 1,
-          backgroundAgents: 1,
-          backgroundCommands: 1,
-        }),
+        activity: activity({ backgroundAgents: 1, backgroundCommands: 1 }),
       }),
     });
-
     expect(renderedIndicators()).toEqual(["unread-success"]);
+    background.unmount();
+
+    renderThreadRow({
+      thread: createThread({
+        activity: activity({ workflows: 1, backgroundCommands: 1 }),
+      }),
+    });
+    expect(renderedIndicators()).toEqual(["workflow"]);
   });
 
   it.each([

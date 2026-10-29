@@ -214,7 +214,6 @@ describe("thread-activity", () => {
     );
 
     it.each([
-      "isWorkflowActive",
       "isBackgroundAgentActive",
       "isBackgroundCommandActive",
     ] as const)("shows the unread success dot over concurrent %s", (flag) => {
@@ -225,6 +224,17 @@ describe("thread-activity", () => {
           [flag]: true,
         }),
       ).toBe("unread-success");
+    });
+
+    it("shows a running workflow over unread success and a failed queued send", () => {
+      expect(
+        resolveThreadListIndicator({
+          ...idleIndicatorState,
+          isWorkflowActive: true,
+          hasUnreadSuccess: true,
+          queuedWork: "failed",
+        }),
+      ).toBe("workflow");
     });
 
     it("keeps Plan and Goal independent and applies Plan precedence", () => {
