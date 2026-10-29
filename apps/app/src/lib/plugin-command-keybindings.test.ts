@@ -87,7 +87,7 @@ describe("plugin command keybindings", () => {
     ).toBe(true);
   });
 
-  it("keeps a plugin default that only collides inside a focus scope, and yields that scope", () => {
+  it("keeps Prompt Library's Ctrl+R next to the browser's focus-scoped Mod+R", () => {
     const ctrlR: AppShortcut = { key: "r", mod: false, meta: false, control: true, alt: false, shift: false };
     const reload: AppDefaultKeybinding = {
       command: "browser.reload",
@@ -95,13 +95,20 @@ describe("plugin command keybindings", () => {
       desktopOnly: true,
       when: { all: ["mainSurface", "browserFocus"], none: ["modalOpen"] },
     };
-    const defaults = [reload, binding("plugin:bb--prompt-library/open", ctrlR)];
-    const linux = resolvePluginCommandDefaults(defaults, [], true, "Linux", NO_BUNDLED);
-    expect(linux.conflicts.size).toBe(0);
-    expect(linux.defaults[1]?.shortcut).toEqual(ctrlR);
-    expect(linux.defaults[1]?.when.none).toEqual(["modalOpen", "browserFocus"]);
-    const mac = resolvePluginCommandDefaults(defaults, [], true, "MacIntel", NO_BUNDLED);
-    expect(mac.defaults[1]).toEqual(defaults[1]);
+    const searchPrompts: AppDefaultKeybinding = {
+      command: "plugin:bb--prompt-library/search-prompts",
+      shortcut: ctrlR,
+      desktopOnly: false,
+      when: {
+        all: ["mainSurface", "promptAvailable"],
+        none: ["modalOpen", "terminalFocus", "browserFocus"],
+      },
+    };
+    for (const platform of ["Linux", "Win32", "MacIntel"]) {
+      const result = resolvePluginCommandDefaults([reload, searchPrompts], [], true, platform, NO_BUNDLED);
+      expect(result.conflicts.size).toBe(0);
+      expect(result.defaults[1]).toEqual(searchPrompts);
+    }
   });
 
   it("ignores collisions whose contexts can never be active together", () => {
@@ -114,7 +121,7 @@ describe("plugin command keybindings", () => {
     expect(result.defaults[1]).toEqual(defaults[1]);
   });
 
-  it("still suppresses a default that collides outside any focus scope", () => {
+  it("still suppresses a default whose contexts can be active together", () => {
     const defaults = [
       { ...binding("thread.new"), when: { all: ["mainSurface", "editableFocus"], none: [] } },
       binding("plugin:first/open"),

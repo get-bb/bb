@@ -4,7 +4,6 @@ import {
   isMacKeyboardPlatform,
   keyboardPlatform,
   matchesAppShortcut,
-  type AppCommandContextKey,
   type AppDefaultKeybinding,
   type AppDefaultKeybindings,
   type AppKeybinding,
@@ -33,11 +32,6 @@ export function shortcutsConflict(
   );
 }
 
-const FOCUS_SCOPES: readonly AppCommandContextKey[] = [
-  "browserFocus",
-  "terminalFocus",
-];
-
 function contextsExclusive(
   left: AppDefaultKeybinding,
   right: AppKeybinding,
@@ -45,16 +39,6 @@ function contextsExclusive(
   return (
     left.when.none.some((context) => right.when.all.includes(context)) ||
     left.when.all.some((context) => right.when.none.includes(context))
-  );
-}
-
-function focusScopesToYield(
-  binding: AppDefaultKeybinding,
-  candidate: AppKeybinding,
-): AppCommandContextKey[] {
-  return candidate.when.all.filter(
-    (context) =>
-      FOCUS_SCOPES.includes(context) && !binding.when.all.includes(context),
   );
 }
 
@@ -99,23 +83,10 @@ export function resolvePluginCommandDefaults(
           bundledCommands.has(candidate.command)) &&
         shortcutsConflict(shortcut, candidate.shortcut, platform),
     );
-    const yielded = new Set<AppCommandContextKey>();
-    const blocking = collisions.filter((candidate) => {
-      if (contextsExclusive(binding, candidate)) return false;
-      const scopes = focusScopesToYield(binding, candidate);
-      for (const scope of scopes) yielded.add(scope);
-      return scopes.length === 0;
-    });
-    if (blocking.length === 0) {
-      if (yielded.size === 0) return binding;
-      return {
-        ...binding,
-        when: {
-          ...binding.when,
-          none: [...new Set([...binding.when.none, ...yielded])],
-        },
-      };
-    }
+    const blocking = collisions.filter(
+      (candidate) => !contextsExclusive(binding, candidate),
+    );
+    if (blocking.length === 0) return binding;
     conflicts.set(binding.command, [
       ...new Set(blocking.map((candidate) => candidate.command)),
     ]);
