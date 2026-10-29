@@ -7,8 +7,14 @@ description: "Diagnose BB-specific Codex session controls, MCP elicitation and C
 
 Codex supports structured plan requests, editing and rerunning eligible messages,
 and compaction through the corresponding core `bb thread` commands.
-`bb thread clear-goal <id>` clears its durable active Goal and waits for provider
-confirmation. Inspect the thread before recovery actions.
+Stopping a running Codex thread pauses its active Goal, as Codex's own client
+does, so later messages and clearing do not restart it. Send `/goal resume`
+to make a paused, blocked, or usage-limited Goal active again; Codex starts
+working on it in that message's turn. `/goal pause` and `/goal clear` pause or
+remove the Goal without starting a turn, and any other `/goal` text goes to
+Codex as a normal prompt. `bb thread clear-goal <id>` also removes the
+thread's Goal, whatever its status, and waits for provider confirmation.
+Inspect the thread before recovery actions.
 
 Codex questions from `request_user_input` pause the turn until answered.
 Questions from `request_user_input_async` do not pause it: the plugin opens a

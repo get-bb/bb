@@ -36,6 +36,7 @@ export function ThreadPromptModeCard({
       title="Plan"
       isExpanded={isExpanded}
       onToggle={onToggle}
+      isActive
       dismiss={
         onExitPlanMode
           ? {

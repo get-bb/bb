@@ -15,7 +15,7 @@ Lifecycle:
   bb thread compact [id]                   Request compaction of an idle or errored thread's context
   bb thread clear [id]                     Clear model context for an idle or failed thread
   bb thread cancel-plan [id]               Exit the provider's active Plan mode
-  bb thread clear-goal [id]                Clear the provider's active Goal
+  bb thread clear-goal [id]                Clear the provider's Goal
     --self                                 Target current thread
 
   cancel-plan and clear-goal wait for the provider to confirm.

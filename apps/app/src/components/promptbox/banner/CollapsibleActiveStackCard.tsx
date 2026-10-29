@@ -34,6 +34,7 @@ interface CollapsibleActiveStackCardProps {
   toggleAriaLabel: string;
   iconName: IconName;
   title: string;
+  isActive: boolean;
   isExpanded: boolean;
   onToggle: () => void;
   dismiss: {
@@ -52,11 +53,13 @@ export function CollapsibleActiveStackCard({
   toggleAriaLabel,
   iconName,
   title,
+  isActive,
   isExpanded,
   onToggle,
   dismiss,
   children,
 }: CollapsibleActiveStackCardProps) {
+  const activity = isActive ? "active" : "pending";
   const focus = useDisclosureFocusHandoff(isExpanded, onToggle);
   return (
     <PromptStackCard
@@ -84,12 +87,12 @@ export function CollapsibleActiveStackCard({
         >
           <Icon
             name={iconName}
-            className={activityIconClass("active", "size-3.5 shrink-0")}
+            className={activityIconClass(activity, "size-3.5 shrink-0")}
             aria-hidden="true"
           />
           <span
             className={activityTextClass(
-              "active",
+              activity,
               "min-w-0 flex-1 truncate text-left",
             )}
           >
