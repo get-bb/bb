@@ -3075,10 +3075,18 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .footer-brand .footer-legal {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
   margin-top: 10px;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.footer-brand .footer-legal .footer-title {
+  display: none;
+}
+
+.footer-brand .footer-legal ul {
+  gap: 6px;
+  margin-top: 0;
 }
 
 .footer-brand .footer-legal a {
@@ -3108,7 +3116,12 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   }
 
   .footer-brand {
+    display: contents;
+  }
+
+  .footer-mark {
     grid-column: 1 / -1;
+    order: -1;
   }
 
   .footer-brand p {
@@ -3116,10 +3129,25 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   }
 
   .footer-brand .footer-legal {
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 6px 18px;
-    margin-top: 14px;
+    order: 1;
+    margin-top: 0;
+    font-size: inherit;
+    line-height: inherit;
+  }
+
+  .footer-brand .footer-legal .footer-title {
+    display: block;
+  }
+
+  .footer-brand .footer-legal ul {
+    gap: 9px;
+    margin-top: 12px;
+  }
+
+  .footer .footer-brand .footer-publisher {
+    grid-column: 1 / -1;
+    order: 2;
+    margin-top: 0;
   }
 }
 

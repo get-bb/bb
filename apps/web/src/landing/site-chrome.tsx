@@ -279,13 +279,22 @@ export function SiteFooter({ current }: { current?: string }) {
     <footer className="footer">
       <div className="footer-brand">
         <span className="bb-mark footer-mark" aria-hidden="true" />
-        <p className="footer-legal">
-          <a href="/privacy">Privacy</a>
-          <a href="/brand">Brand assets</a>
-          <a href="https://github.com/get-bb/bb/blob/main/LICENSE">
-            Software License
-          </a>
-        </p>
+        <div className="footer-column footer-legal">
+          <h2 className="footer-title">Legal</h2>
+          <ul>
+            <li>
+              <a href="/privacy">Privacy</a>
+            </li>
+            <li>
+              <a href="/brand">Brand assets</a>
+            </li>
+            <li>
+              <a href="https://github.com/get-bb/bb/blob/main/LICENSE">
+                Software License
+              </a>
+            </li>
+          </ul>
+        </div>
         <p className="footer-publisher">
           © {new Date().getFullYear()} Terragon Labs, Inc.
         </p>
