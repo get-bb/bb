@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "e05aba98-2fea-468b-b02c-f112ba597649",
+  "id": "df4e64d2-2dfa-466c-b1c0-f7b6e3cad2e5",
   "prevId": "f353de93-3fc0-49c6-bf60-e58c324d76a9",
   "tables": {
     "account": {
@@ -448,6 +448,23 @@
           "value": "\"community_sticker_code\".\"slot\" BETWEEN 1 AND 250"
         }
       }
+    },
+    "community_survey_email": {
+      "name": "community_survey_email",
+      "columns": {
+        "email_hash": {
+          "name": "email_hash",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
     },
     "community_survey_response": {
       "name": "community_survey_response",

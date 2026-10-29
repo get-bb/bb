@@ -16,12 +16,20 @@ const contact = {
 };
 
 describe("community survey submission rules", () => {
-  it.each(["", "I don't use bb for work", "Just me", "2–4 people", "5 or more", "I'm not sure"])("conditions company size on %s", (work) => {
+  it.each([
+    "",
+    "I don't use bb for work",
+    "Just me",
+    "2–4 people",
+    "5 or more",
+    "I'm not sure",
+  ])("conditions company size on %s", (work) => {
     const values = { ...contact, work: work ? [work] : [], company_size: [] };
     const shown = Boolean(work && work !== "I don't use bb for work");
     expect(Boolean(validateSurvey(values).company_size)).toBe(shown);
-    expect(surveyAnswers({ ...values, company_size: ["201–999"] }).company_size)
-      .toEqual(shown ? ["201–999"] : undefined);
+    expect(
+      surveyAnswers({ ...values, company_size: ["201–999"] }).company_size,
+    ).toEqual(shown ? ["201–999"] : undefined);
   });
 
   it("requires every shown question and valid contact details", () => {
@@ -31,11 +39,16 @@ describe("community survey submission rules", () => {
     expect(missing.love).toBe("Please answer this question.");
     expect(missing.team_improve).toBeUndefined();
     expect(missing.team_adopt).toBeUndefined();
+    expect(validateSurvey({ ...contact, team_adopt: [] }).team_adopt).toBe(
+      "Please answer this question.",
+    );
     expect(
-      validateSurvey({ ...contact, team_adopt: [] }).team_adopt,
-    ).toBe("Please answer this question.");
-    expect(
-      validateSurvey({ ...contact, work: ["5 or more"], team_adopt: [], team_improve: ["Roles"] }),
+      validateSurvey({
+        ...contact,
+        work: ["5 or more"],
+        team_adopt: [],
+        team_improve: ["Roles"],
+      }),
     ).toEqual({});
     expect(
       validateSurvey({ ...contact, work: ["2–4 people"] }).team_improve,
@@ -67,11 +80,20 @@ describe("community survey submission rules", () => {
     ).toBeTruthy();
   });
   it("asks the meetup question as one attend-or-organize answer", () => {
-    for (const meetup of [["Yes, and I'd help organize it"], ["Yes, I'd come"], ["Maybe"], ["No"]]) {
+    for (const meetup of [
+      ["Yes, and I'd help organize it"],
+      ["Yes, I'd come"],
+      ["Maybe"],
+      ["No"],
+    ]) {
       expect(validateSurvey({ ...contact, meetup })).toEqual({});
     }
-    expect(validateSurvey({ ...contact, meetup: ["Yes, I'd come", "No"] }).meetup).toBeTruthy();
-    expect(validateSurvey({ ...contact, meetup: ["I'd come"] }).meetup).toBeTruthy();
+    expect(
+      validateSurvey({ ...contact, meetup: ["Yes, I'd come", "No"] }).meetup,
+    ).toBeTruthy();
+    expect(
+      validateSurvey({ ...contact, meetup: ["I'd come"] }).meetup,
+    ).toBeTruthy();
     expect(
       validateSurvey({ ...contact, role: ["Invented"] }).role,
     ).toBeTruthy();

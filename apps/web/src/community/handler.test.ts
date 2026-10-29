@@ -2,8 +2,8 @@ import { Miniflare } from "miniflare";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { sha256Hex } from "@bb/connect-db";
 import { applyConnectDbMigrationsToD1 } from "@bb/connect-db/testing";
-import { handleCommunityForm } from "./handler";
-import { SOLD_OUT } from "./survey";
+import { emailKey, handleCommunityForm, rateLimitKey } from "./handler";
+import { ALREADY_CLAIMED, SOLD_OUT } from "./survey";
 
 let runtime: Miniflare;
 let db: D1Database;
@@ -24,7 +24,9 @@ const requiredFields = {
   city: "Austin",
   meetup: "Maybe",
 };
-const requiredAnswers = Object.fromEntries(Object.entries(requiredFields).map(([key, value]) => [key, [value]]));
+const requiredAnswers = Object.fromEntries(
+  Object.entries(requiredFields).map(([key, value]) => [key, [value]]),
+);
 const submit = (
   id = crypto.randomUUID(),
   fields: Record<string, string> = {},
@@ -57,6 +59,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   await db.batch([
     db.prepare("DELETE FROM community_survey_response"),
+    db.prepare("DELETE FROM community_survey_email"),
     db.prepare("DELETE FROM community_sticker_code"),
   ]);
 });
@@ -97,7 +100,9 @@ describe("private community forms", () => {
   });
   it("allocates one hashed code per new submission without storing it with answers", async () => {
     const id = crypto.randomUUID();
-    const html = await (await submit(id, { community: "Get help when I'm stuck" })).text();
+    const html = await (
+      await submit(id, { community: "Get help when I'm stuck" })
+    ).text();
     const code = codeFrom(html)!;
     expect(code).toMatch(/^[a-f0-9]{32}$/);
     expect(
@@ -175,7 +180,9 @@ describe("private community forms", () => {
         method: "POST",
         headers: { Origin: origin },
         body: new URLSearchParams([
-          ...Object.entries(requiredFields).filter(([name]) => name !== "community"),
+          ...Object.entries(requiredFields).filter(
+            ([name]) => name !== "community",
+          ),
           ["submission_id", id],
           ["email", "ada@example.test"],
           ["community", "See how other people use bb"],
@@ -190,13 +197,14 @@ describe("private community forms", () => {
       .prepare("SELECT answers FROM community_survey_response WHERE id = ?")
       .bind(id)
       .first("answers");
-    expect(JSON.parse(String(answers))).toEqual(
-      ({
-        ...requiredAnswers,
-        community: ["See how other people use bb", "Build things with other bb users"],
-        email: ["ada@example.test"],
-      }),
-    );
+    expect(JSON.parse(String(answers))).toEqual({
+      ...requiredAnswers,
+      community: [
+        "See how other people use bb",
+        "Build things with other bb users",
+      ],
+      email: ["ada@example.test"],
+    });
   });
   it.each([
     "2–4 people",
@@ -212,7 +220,8 @@ describe("private community forms", () => {
       const adoptVisible = work === "Just me";
       const response = await submit(id, {
         work,
-        company_size: work === "I don't use bb for work" ? "ignored" : "201–999",
+        company_size:
+          work === "I don't use bb for work" ? "ignored" : "201–999",
         love: "Fast iteration",
         improve: "Better search",
         team_improve: teamVisible ? "Shared sessions" : "x".repeat(251),
@@ -226,7 +235,9 @@ describe("private community forms", () => {
       expect(JSON.parse(answers!)).toEqual({
         ...requiredAnswers,
         work: [work],
-        ...(work === "I don't use bb for work" ? {} : { company_size: ["201–999"] }),
+        ...(work === "I don't use bb for work"
+          ? {}
+          : { company_size: ["201–999"] }),
         love: ["Fast iteration"],
         improve: ["Better search"],
         ...(teamVisible ? { team_improve: ["Shared sessions"] } : {}),
@@ -240,25 +251,56 @@ describe("private community forms", () => {
     ["improve", "5 or more"],
     ["team_improve", "5 or more"],
     ["team_adopt", "Just me"],
-  ])(
-    "rejects overlong %s without saving",
-    async (field, work) => {
-      expect(
-        (
-          await submit(crypto.randomUUID(), {
-            work,
-            ...(work === "Just me" ? { team_adopt: "Admin approval" } : {}),
-            [field]: "x".repeat(251),
-          })
-        ).status,
-      ).toBe(400);
-      expect(
-        await db
-          .prepare("SELECT COUNT(*) AS n FROM community_survey_response")
-          .first("n"),
-      ).toBe(0);
-    },
-  );
+  ])("rejects overlong %s without saving", async (field, work) => {
+    expect(
+      (
+        await submit(crypto.randomUUID(), {
+          work,
+          ...(work === "Just me" ? { team_adopt: "Admin approval" } : {}),
+          [field]: "x".repeat(251),
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      await db
+        .prepare("SELECT COUNT(*) AS n FROM community_survey_response")
+        .first("n"),
+    ).toBe(0);
+  });
+  it("gives each email one sticker code and still saves repeat answers", async () => {
+    expect(codeFrom(await (await submit()).text())).toBeDefined();
+    for (const email of ["Ada@Example.test", " ada+again@example.test "]) {
+      const html = await (await submit(undefined, { email })).text();
+      expect(codeFrom(html)).toBeUndefined();
+      expect(html).toContain(ALREADY_CLAIMED);
+    }
+    expect(
+      codeFrom(
+        await (await submit(undefined, { email: "grace@example.test" })).text(),
+      ),
+    ).toBeDefined();
+    expect(
+      await db
+        .prepare("SELECT COUNT(*) AS n FROM community_survey_response")
+        .first("n"),
+    ).toBe(4);
+    expect(
+      await db
+        .prepare("SELECT COUNT(*) AS n FROM community_sticker_code")
+        .first("n"),
+    ).toBe(2);
+    expect(emailKey(" Ada+Tag@Example.TEST ")).toBe("ada@example.test");
+  });
+  it("rate limits IPv6 clients by their /64 network", () => {
+    expect(rateLimitKey("2001:db8:0:1::a")).toBe("2001:db8:0:1::/64");
+    expect(rateLimitKey("2001:0DB8:0000:0001:ffff:1:2:3")).toBe(
+      "2001:db8:0:1::/64",
+    );
+    expect(rateLimitKey("2001:db8::1")).toBe("2001:db8:0:0::/64");
+    expect(rateLimitKey("::ffff:192.0.2.1")).toBe("0:0:0:0::/64");
+    expect(rateLimitKey("192.0.2.1")).toBe("192.0.2.1");
+    expect(rateLimitKey(null)).toBe("local-preview");
+  });
   it("caps concurrent allocations at 250 and still accepts answers when sold out", async () => {
     await db
       .prepare(
@@ -266,7 +308,9 @@ describe("private community forms", () => {
       )
       .run();
     const responses = await Promise.all(
-      Array.from({ length: 4 }, async () => (await submit()).text()),
+      Array.from({ length: 4 }, async (_, index) =>
+        (await submit(undefined, { email: `ada${index}@example.test` })).text(),
+      ),
     );
     expect(responses.filter(codeFrom)).toHaveLength(1);
     expect(

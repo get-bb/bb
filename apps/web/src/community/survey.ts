@@ -20,6 +20,8 @@ export function questionVisible(name: string, values: FormValues): boolean {
 
 export const SOLD_OUT =
   "We've given out all the stickers for now. Thank you for answering.";
+export const ALREADY_CLAIMED =
+  "This email already has a sticker code. Thank you for answering again!";
 
 type Question = {
   name: string;
@@ -65,7 +67,8 @@ export const surveyQuestions: readonly Question[] = [
   },
   {
     name: "company_size",
-    label: "Approximately how many people work at your company or organization?",
+    label:
+      "Approximately how many people work at your company or organization?",
     type: "radio",
     options: ["1–50", "51–200", "201–999", "1,000 or more"],
     placeholder: "",

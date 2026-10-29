@@ -88,10 +88,29 @@ describe("survey page", () => {
     let work = "2–4 people";
     const textarea = { type: "textarea", value: "Shared sessions" };
     const adoptText = { type: "textarea", value: "" };
-    const sets: Record<string, { hidden: boolean; disabled: boolean; querySelectorAll: () => { type: string; value: string }[] }> = {
-      company_size: { hidden: false, disabled: false, querySelectorAll: () => [] },
-      team_improve: { hidden: false, disabled: false, querySelectorAll: () => [textarea] },
-      team_adopt: { hidden: true, disabled: true, querySelectorAll: () => [adoptText] },
+    const sets: Record<
+      string,
+      {
+        hidden: boolean;
+        disabled: boolean;
+        querySelectorAll: () => { type: string; value: string }[];
+      }
+    > = {
+      company_size: {
+        hidden: false,
+        disabled: false,
+        querySelectorAll: () => [],
+      },
+      team_improve: {
+        hidden: false,
+        disabled: false,
+        querySelectorAll: () => [textarea],
+      },
+      team_adopt: {
+        hidden: true,
+        disabled: true,
+        querySelectorAll: () => [adoptText],
+      },
     };
     const team = sets.team_improve!;
     const adopt = sets.team_adopt!;

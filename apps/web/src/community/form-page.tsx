@@ -12,6 +12,7 @@ import {
   SURVEY_DESCRIPTION,
   SURVEY_TITLE,
   SOLD_OUT,
+  ALREADY_CLAIMED,
   SURVEY_PURPOSE,
   CITY_HELP,
   COMMUNITY_MAX,
@@ -313,6 +314,7 @@ export function formPage({
   unavailable = false,
   stickerCode = null,
   duplicate = false,
+  alreadyClaimed = false,
   jotform = null,
 }: {
   kind: FormKind;
@@ -325,6 +327,7 @@ export function formPage({
   unavailable?: boolean;
   stickerCode?: string | null;
   duplicate?: boolean;
+  alreadyClaimed?: boolean;
   jotform?: string | null;
 }): Response {
   const nonce = crypto.randomUUID();
@@ -377,6 +380,8 @@ export function formPage({
                           </a>{" "}
                           (one-time code <code>{stickerCode}</code>)
                         </>
+                      ) : alreadyClaimed ? (
+                        ALREADY_CLAIMED
                       ) : (
                         SOLD_OUT
                       )}
@@ -411,7 +416,11 @@ export function formPage({
                     <h1 aria-label={title}>
                       Help shape the future of{" "}
                       <span className="community-nowrap">
-                        <span className="bb-mark community-heading-mark" aria-hidden />!
+                        <span
+                          className="bb-mark community-heading-mark"
+                          aria-hidden
+                        />
+                        !
                       </span>
                     </h1>
                   ) : (

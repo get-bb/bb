@@ -314,6 +314,10 @@ export const communitySurveyResponse = sqliteTable(
   },
 );
 
+export const communitySurveyEmail = sqliteTable("community_survey_email", {
+  emailHash: text("email_hash").primaryKey(),
+});
+
 export const communityStickerCode = sqliteTable(
   "community_sticker_code",
   {
@@ -328,6 +332,7 @@ export const communityStickerCode = sqliteTable(
 
 export const schema = {
   communitySurveyResponse,
+  communitySurveyEmail,
   communityStickerCode,
   user,
   session,

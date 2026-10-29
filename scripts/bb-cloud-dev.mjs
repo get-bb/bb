@@ -195,6 +195,7 @@ run([
   "--persist-to",
   STATE_DIR,
 ]);
+run(["exec", "turbo", "run", "generate:site-chrome", "--filter=@bb/web"]);
 
 const proxy = createCloudDevProxy();
 gateway = createServer((request, response) => {

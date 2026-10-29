@@ -45,6 +45,35 @@ async function getInvitation(
   }
 }
 
+export function emailKey(email: string): string {
+  const normalized = email.trim().toLowerCase();
+  const at = normalized.lastIndexOf("@");
+  return `${normalized.slice(0, at).split("+")[0]}${normalized.slice(at)}`;
+}
+
+export function rateLimitKey(ip: string | null): string {
+  if (!ip) return "local-preview";
+  if (!ip.includes(":")) return ip;
+  const [head = "", tail] = ip.toLowerCase().split("::");
+  const groups = (part: string) =>
+    part
+      ? part
+          .split(":")
+          .flatMap((group) => (group.includes(".") ? ["0", "0"] : [group]))
+      : [];
+  const before = groups(head);
+  const after = tail === undefined ? [] : groups(tail);
+  const full = [
+    ...before,
+    ...Array<string>(Math.max(0, 8 - before.length - after.length)).fill("0"),
+    ...after,
+  ];
+  return `${full
+    .slice(0, 4)
+    .map((group) => group.replace(/^0+(?=.)/, ""))
+    .join(":")}::/64`;
+}
+
 function jotformUrl(config: string | undefined, code: string): string | null {
   if (!config) return null;
   try {
@@ -144,7 +173,7 @@ export async function handleCommunityForm(
       message: "The form is temporarily unavailable. Please try again later.",
     });
   const limit = await env.COMMUNITY_FORM_RATE_LIMITER.limit({
-    key: request.headers.get("cf-connecting-ip") ?? "local-preview",
+    key: rateLimitKey(request.headers.get("cf-connecting-ip")),
   });
   if (!limit.success)
     return page({
@@ -179,11 +208,15 @@ export async function handleCommunityForm(
   if (Object.keys(errors).length) return page({ status: 400, values, errors });
   const code = crypto.randomUUID().replaceAll("-", "");
   const hash = await sha256Hex(code);
+  const emailHash = await sha256Hex(emailKey(values.email?.[0] ?? ""));
   try {
-    const [response, allocation] = await env.DB.batch([
+    const [response, email, allocation] = await env.DB.batch([
       env.DB.prepare(
         "INSERT INTO community_survey_response (id, created_at, answers) VALUES (?, ?, ?) ON CONFLICT(id) DO NOTHING",
       ).bind(id, Date.now(), JSON.stringify(surveyAnswers(values))),
+      env.DB.prepare(
+        "INSERT INTO community_survey_email (email_hash) SELECT ? WHERE changes() = 1 ON CONFLICT(email_hash) DO NOTHING",
+      ).bind(emailHash),
       env.DB.prepare(
         "WITH RECURSIVE slots(slot) AS (SELECT 1 UNION ALL SELECT slot + 1 FROM slots WHERE slot < 250) INSERT INTO community_sticker_code (slot, code_hash) SELECT slot, ? FROM slots WHERE changes() = 1 AND slot NOT IN (SELECT slot FROM community_sticker_code) ORDER BY random() LIMIT 1",
       ).bind(hash),
@@ -194,6 +227,7 @@ export async function handleCommunityForm(
       complete: true,
       values,
       stickerCode: allocation?.meta.changes ? code : null,
+      alreadyClaimed: !email?.meta.changes,
     });
   } catch {
     return page({
