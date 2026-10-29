@@ -158,6 +158,11 @@ interface ResolveWindowStateKeyArgs {
   requestedStateKey: WindowStateKey | null;
 }
 
+interface OpenedDesktopWindow {
+  browserWindow: DesktopBrowserWindow;
+  loaded: Promise<void>;
+}
+
 interface LoadUrlIntoWindowArgs {
   browserWindow: DesktopBrowserWindow;
   url: string;
@@ -294,9 +299,10 @@ export function createDesktopWindowFactory(
     }, 500);
   }
 
-  async function createWindow(
+  async function openWindow(
     createArgs: CreateDesktopWindowArgs,
-  ): Promise<DesktopBrowserWindow> {
+    scheduleShow: (show: () => void) => void,
+  ): Promise<OpenedDesktopWindow> {
     const stateKey = resolveWindowStateKey({
       activeWindows,
       createWindowStateKey: args.createWindowStateKey,
@@ -358,7 +364,9 @@ export function createDesktopWindowFactory(
       }
 
       browserWindow.once("ready-to-show", () => {
-        browserWindow.show();
+        scheduleShow(() => {
+          if (!browserWindow.isDestroyed()) browserWindow.show();
+        });
       });
       let closing = false;
       const saveOnChange = () => {
@@ -408,17 +416,30 @@ export function createDesktopWindowFactory(
       });
 
       args.onWindowCreated(browserWindow);
-      if (createArgs.initialUrl !== null) {
-        await loadUrlIntoWindow({
-          browserWindow,
-          url: createArgs.initialUrl,
-        });
-      }
 
-      return browserWindow;
+      return {
+        browserWindow,
+        loaded:
+          createArgs.initialUrl === null
+            ? Promise.resolve()
+            : loadUrlIntoWindow({
+                browserWindow,
+                url: createArgs.initialUrl,
+              }),
+      };
     } finally {
       pendingStateKeys.delete(stateKey);
     }
+  }
+
+  async function createWindow(
+    createArgs: CreateDesktopWindowArgs,
+  ): Promise<DesktopBrowserWindow> {
+    const { browserWindow, loaded } = await openWindow(createArgs, (show) =>
+      show(),
+    );
+    await loaded;
+    return browserWindow;
   }
 
   async function restoreSavedWindows(
@@ -436,16 +457,33 @@ export function createDesktopWindowFactory(
       ];
     }
 
-    const restoredWindows: DesktopBrowserWindow[] = [];
-    for (const entry of entries) {
-      restoredWindows.push(
-        await createWindow({
-          initialUrl: restoreArgs.initialUrl,
-          stateKey: entry.stateKey,
-        }),
-      );
+    const openedWindows: OpenedDesktopWindow[] = [];
+    let previousSettled: Promise<void> = Promise.resolve();
+    try {
+      for (const entry of entries) {
+        const showAfter = previousSettled;
+        let markSettled = () => {};
+        previousSettled = new Promise<void>((resolve) => {
+          markSettled = resolve;
+        });
+        const opened = await openWindow(
+          { initialUrl: restoreArgs.initialUrl, stateKey: entry.stateKey },
+          (show) => {
+            void showAfter.then(() => {
+              show();
+              markSettled();
+            });
+          },
+        );
+        opened.loaded.then(markSettled, markSettled);
+        openedWindows.push(opened);
+      }
+    } catch (error) {
+      for (const opened of openedWindows) opened.loaded.catch(() => {});
+      throw error;
     }
-    return restoredWindows;
+    await Promise.all(openedWindows.map((opened) => opened.loaded));
+    return openedWindows.map((opened) => opened.browserWindow);
   }
 
   async function loadUrl(args: LoadDesktopWindowsUrlArgs): Promise<void> {

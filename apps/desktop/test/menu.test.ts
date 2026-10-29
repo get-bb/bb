@@ -3,13 +3,21 @@ import type { BaseWindow, MenuItemConstructorOptions } from "electron";
 
 vi.mock("electron", () => ({
   app: { name: "bb" },
-  Menu: { sendActionToFirstResponder: vi.fn() },
+  Menu: {
+    buildFromTemplate: vi.fn((template: unknown) => ({
+      getMenuItemById: () => null,
+      template,
+    })),
+    sendActionToFirstResponder: vi.fn(),
+    setApplicationMenu: vi.fn(),
+  },
 }));
 
 import { Menu } from "electron";
 
 import {
   buildApplicationMenuTemplate,
+  installApplicationMenu,
   SET_SERVER_URL_MENU_LABEL,
   type InstallApplicationMenuArgs,
 } from "../src/menu.js";
@@ -533,3 +541,169 @@ it.each([
     }
   },
 );
+
+function legacyInstallApplicationMenu(args: InstallApplicationMenuArgs): void {
+  const menu = Menu.buildFromTemplate(buildApplicationMenuTemplate(args));
+  const onServerMenuWillShow = args.onServerMenuWillShow;
+  if (onServerMenuWillShow !== undefined) {
+    for (const id of ["bb-desktop-settings-server-menu", "bb-server-menu"]) {
+      menu.getMenuItemById(id)?.submenu?.on("menu-will-show", () => {
+        onServerMenuWillShow();
+      });
+    }
+  }
+  Menu.setApplicationMenu(menu);
+}
+
+function menuCallCounts() {
+  return {
+    built: vi.mocked(Menu.buildFromTemplate).mock.calls.length,
+    set: vi.mocked(Menu.setApplicationMenu).mock.calls.length,
+  };
+}
+
+function lastBuiltTemplate(): string {
+  const calls = vi.mocked(Menu.buildFromTemplate).mock.calls;
+  return JSON.stringify(calls[calls.length - 1]?.[0]);
+}
+
+function twoServers(activeId: string): InstallApplicationMenuArgs["servers"] {
+  return [
+    {
+      checked: activeId === "builtin",
+      id: "builtin",
+      name: BUILTIN_SERVER_NAME,
+    },
+    { checked: activeId === "custom:a", id: "custom:a", name: "A" },
+  ];
+}
+
+describe("installing the application menu", () => {
+  it("builds the same menu as before when nothing is skipped", () => {
+    const args = menuArgs(() => {}, { servers: twoServers("custom:a") });
+    vi.mocked(Menu.buildFromTemplate).mockClear();
+    vi.mocked(Menu.setApplicationMenu).mockClear();
+    legacyInstallApplicationMenu(args);
+    const legacyTemplate = lastBuiltTemplate();
+    const legacyCounts = menuCallCounts();
+
+    expect(installApplicationMenu(args)).toBe(true);
+
+    expect(lastBuiltTemplate()).toBe(legacyTemplate);
+    expect(menuCallCounts()).toEqual({
+      built: legacyCounts.built + 1,
+      set: legacyCounts.set + 1,
+    });
+  });
+
+  it("legacy rebuilds on every refresh; skipIfUnchanged rebuilds only when the menu inputs changed", () => {
+    const base = menuArgs(() => {}, { servers: twoServers("builtin") });
+    const sameInputsNewClosures = menuArgs(() => {}, {
+      createNewWindow: () => {},
+      openAbout: () => {},
+      servers: twoServers("builtin"),
+    });
+    const changedInputs: Array<Partial<InstallApplicationMenuArgs>> = [
+      { servers: twoServers("custom:a") },
+      {
+        servers: [
+          ...twoServers("builtin"),
+          { checked: false, id: "custom:b", name: "B" },
+        ],
+      },
+      { showBuiltinServer: false },
+      { connectServersSkipReason: "no-credential" },
+      { isMac: false },
+      {
+        accelerators: {
+          ...base.accelerators,
+          openNewTab: "CommandOrControl+T",
+        },
+      },
+    ];
+
+    vi.mocked(Menu.buildFromTemplate).mockClear();
+    vi.mocked(Menu.setApplicationMenu).mockClear();
+    legacyInstallApplicationMenu(base);
+    legacyInstallApplicationMenu(sameInputsNewClosures);
+    expect(menuCallCounts()).toEqual({ built: 2, set: 2 });
+
+    vi.mocked(Menu.buildFromTemplate).mockClear();
+    vi.mocked(Menu.setApplicationMenu).mockClear();
+    expect(installApplicationMenu(base)).toBe(true);
+    expect(
+      installApplicationMenu(sameInputsNewClosures, { skipIfUnchanged: true }),
+    ).toBe(false);
+    expect(menuCallCounts()).toEqual({ built: 1, set: 1 });
+
+    for (const change of changedInputs) {
+      expect(installApplicationMenu(base)).toBe(true);
+      expect(
+        installApplicationMenu(
+          menuArgs(() => {}, { ...base, ...change }),
+          {
+            skipIfUnchanged: true,
+          },
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it("always rebuilds when the caller does not ask to skip, so a menu click that changed native state is reset", () => {
+    const args = menuArgs(() => {});
+    expect(installApplicationMenu(args)).toBe(true);
+    vi.mocked(Menu.buildFromTemplate).mockClear();
+    expect(installApplicationMenu(args)).toBe(true);
+    expect(installApplicationMenu(args, { skipIfUnchanged: false })).toBe(true);
+    expect(menuCallCounts().built).toBe(2);
+  });
+
+  it("never skips a rebuild whose menu would look different (seeded random inputs)", () => {
+    let seed = 20260428;
+    const next = (): number => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 2 ** 32;
+    };
+    const pick = <T>(values: T[]): T =>
+      values[Math.floor(next() * values.length)]!;
+    const randomArgs = (): InstallApplicationMenuArgs => {
+      const serverCount = 1 + Math.floor(next() * 3);
+      const servers = Array.from({ length: serverCount }, (_, index) => ({
+        checked: false,
+        id: pick(["builtin", "connect:h", "custom:u"]) + index,
+        name: pick(["Local", "Work", "Home"]),
+      }));
+      servers[Math.floor(next() * serverCount)]!.checked = true;
+      return menuArgs(() => {}, {
+        accelerators: {
+          closeWindowOrSideTab: pick([undefined, "CommandOrControl+W"]),
+          createNewWindow: pick([undefined, "CommandOrControl+Shift+N"]),
+          openNewTab: pick([undefined, "CommandOrControl+T"]),
+          openNewThread: pick([undefined, "CommandOrControl+N"]),
+          openSettings: pick([undefined, "CommandOrControl+,"]),
+          reopenClosedTab: pick([undefined, "CommandOrControl+Shift+T"]),
+        },
+        connectServersSkipReason: pick([null, "no-credential", "unauthorized"]),
+        isMac: pick([true, false]),
+        servers,
+        showBuiltinServer: pick([true, false]),
+      });
+    };
+
+    let looksDifferent = 0;
+    for (let round = 0; round < 300; round++) {
+      const before = randomArgs();
+      const after = randomArgs();
+      installApplicationMenu(before);
+      const skipped = !installApplicationMenu(after, { skipIfUnchanged: true });
+      const sameMenu =
+        JSON.stringify(buildApplicationMenuTemplate(before)) ===
+        JSON.stringify(buildApplicationMenuTemplate(after));
+      if (!sameMenu) {
+        looksDifferent += 1;
+        expect(skipped).toBe(false);
+      }
+    }
+    expect(looksDifferent).toBeGreaterThan(100);
+  });
+});

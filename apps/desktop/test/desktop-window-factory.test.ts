@@ -17,10 +17,14 @@ import {
 } from "../src/desktop-window-factory.js";
 import type { DesktopContextMenuWebContents } from "../src/desktop-context-menu.js";
 import { BB_DESKTOP_ZOOM_CHANGED_CHANNEL } from "../src/desktop-update-ipc.js";
-import { readPersistedWindowStateFile } from "../src/window-state.js";
+import {
+  readPersistedWindowStateFile,
+  writePersistedWindowStateFile,
+} from "../src/window-state.js";
 import {
   MIN_WINDOW_HEIGHT,
   MIN_WINDOW_WIDTH,
+  PRIMARY_WINDOW_STATE_KEY,
   type WindowBounds,
   type WindowStateKey,
 } from "../src/types.js";
@@ -30,6 +34,8 @@ interface TempDir {
 }
 
 interface FakeDesktopWindowArgs {
+  loadGate?: Promise<void>;
+  onShow?: (window: FakeDesktopWindow) => void;
   options: BrowserWindowConstructorOptions;
 }
 
@@ -155,9 +161,13 @@ class FakeDesktopWindow implements DesktopBrowserWindow {
   private readonly listeners = new Map<string, Array<() => void>>();
   private readonly closedListeners: Array<() => void> = [];
   private readyToShowListener: (() => void) | null = null;
+  private readonly loadGate: Promise<void> | undefined;
+  private readonly onShow: ((window: FakeDesktopWindow) => void) | undefined;
 
   constructor(args: FakeDesktopWindowArgs) {
     this.options = args.options;
+    this.loadGate = args.loadGate;
+    this.onShow = args.onShow;
     this.backgroundColor = args.options.backgroundColor ?? "#ffffff";
     this.id = FakeDesktopWindow.nextWindowId;
     FakeDesktopWindow.nextWindowId += 1;
@@ -220,6 +230,7 @@ class FakeDesktopWindow implements DesktopBrowserWindow {
 
   async loadURL(url: string): Promise<void> {
     this.loadedUrls.push(url);
+    await this.loadGate;
     this.webContents.setZoomFactor(1);
     for (const listener of this.webContents.domReadyListeners) listener();
   }
@@ -272,23 +283,35 @@ class FakeDesktopWindow implements DesktopBrowserWindow {
 
   show(): void {
     this.shown = true;
+    this.onShow?.(this);
   }
 }
 
 interface FactoryHarness {
   createdWindows: FakeDesktopWindow[];
   factory: ReturnType<typeof createDesktopWindowFactory>;
+  shownWindows: FakeDesktopWindow[];
   userDataPath: string;
+}
+
+interface FactoryHarnessOptions {
+  loadGate?: (options: BrowserWindowConstructorOptions) => Promise<void>;
 }
 
 async function createFactoryHarness(
   overrides: Partial<Parameters<typeof createDesktopWindowFactory>[0]> = {},
+  harnessOptions: FactoryHarnessOptions = {},
 ): Promise<FactoryHarness> {
   const tempDir = await createTempDir();
   const createdWindows: FakeDesktopWindow[] = [];
+  const shownWindows: FakeDesktopWindow[] = [];
   const browserWindowCreator: DesktopBrowserWindowCreator = {
     create(options) {
-      const browserWindow = new FakeDesktopWindow({ options });
+      const browserWindow = new FakeDesktopWindow({
+        loadGate: harnessOptions.loadGate?.(options),
+        onShow: (window) => shownWindows.push(window),
+        options,
+      });
       createdWindows.push(browserWindow);
       return browserWindow;
     },
@@ -318,6 +341,7 @@ async function createFactoryHarness(
   return {
     createdWindows,
     factory,
+    shownWindows,
     userDataPath: overrides.userDataPath ?? tempDir.path,
   };
 }
@@ -712,4 +736,255 @@ describe("desktop window factory", () => {
       }
     },
   );
+});
+
+interface Deferred {
+  promise: Promise<void>;
+  reject(error: Error): void;
+  resolve(): void;
+}
+
+function createDeferred(): Deferred {
+  let resolve = () => {};
+  let reject = (_error: Error) => {};
+  const promise = new Promise<void>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, reject, resolve };
+}
+
+async function flushAsyncWork(): Promise<void> {
+  for (let turn = 0; turn < 5; turn++) {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+}
+
+async function seedSavedWindows(
+  userDataPath: string,
+  stateKeys: WindowStateKey[],
+): Promise<void> {
+  await writePersistedWindowStateFile({
+    file: {
+      windows: stateKeys.map((stateKey, index) => ({
+        bounds: { x: 100 * (index + 1), y: 50, width: 800, height: 600 },
+        isFullScreen: false,
+        isMaximized: false,
+        stateKey,
+      })),
+      zoomFactor: 1,
+    },
+    userDataPath,
+  });
+}
+
+async function legacyRestoreSavedWindows(
+  factory: FactoryHarness["factory"],
+  userDataPath: string,
+  initialUrl: string,
+): Promise<DesktopBrowserWindow[]> {
+  const { windows: entries } = await readPersistedWindowStateFile({
+    userDataPath,
+  });
+  if (entries.length === 0) {
+    return [
+      await factory.createWindow({
+        initialUrl,
+        stateKey: PRIMARY_WINDOW_STATE_KEY,
+      }),
+    ];
+  }
+
+  const restoredWindows: DesktopBrowserWindow[] = [];
+  for (const entry of entries) {
+    restoredWindows.push(
+      await factory.createWindow({ initialUrl, stateKey: entry.stateKey }),
+    );
+  }
+  return restoredWindows;
+}
+
+describe("restoring saved windows", () => {
+  const url = "http://127.0.0.1:38886";
+  const savedKeys: WindowStateKey[] = [
+    "main",
+    "window-first",
+    "window-second",
+    "window-third",
+  ];
+
+  async function restoreBoth(stateKeys: WindowStateKey[]) {
+    const legacy = await createFactoryHarness();
+    const next = await createFactoryHarness();
+    for (const harness of [legacy, next]) {
+      if (stateKeys.length > 0) {
+        await seedSavedWindows(harness.userDataPath, stateKeys);
+      }
+    }
+    const legacyWindows = await legacyRestoreSavedWindows(
+      legacy.factory,
+      legacy.userDataPath,
+      url,
+    );
+    const nextWindows = await next.factory.restoreSavedWindows({
+      initialUrl: url,
+    });
+    return { legacy, legacyWindows, next, nextWindows };
+  }
+
+  function describeWindows(
+    windows: DesktopBrowserWindow[],
+    harness: FactoryHarness,
+  ) {
+    return windows.map((browserWindow) => {
+      const fake = harness.createdWindows.find(
+        (candidate) => candidate.id === browserWindow.id,
+      )!;
+      return {
+        bounds: fake.getBounds(),
+        loadedUrls: fake.loadedUrls,
+        zoomFactor: fake.webContents.getZoomFactor(),
+      };
+    });
+  }
+
+  it.each([[[]], [["main"]], [["main", "window-first"]], [savedKeys]])(
+    "returns the same windows in the same order as the one-by-one version for saved keys %j",
+    async (stateKeys) => {
+      const { legacy, legacyWindows, next, nextWindows } =
+        await restoreBoth(stateKeys);
+
+      expect(nextWindows).toHaveLength(Math.max(stateKeys.length, 1));
+      expect(describeWindows(nextWindows, next)).toEqual(
+        describeWindows(legacyWindows, legacy),
+      );
+      await legacy.factory.persistOpenWindows();
+      await next.factory.persistOpenWindows();
+      expect(
+        await readPersistedWindowStateFile({ userDataPath: next.userDataPath }),
+      ).toEqual(
+        await readPersistedWindowStateFile({
+          userDataPath: legacy.userDataPath,
+        }),
+      );
+    },
+  );
+
+  it("legacy flow creates one window and waits for its page; the new flow starts every window at once", async () => {
+    const legacyGate = createDeferred();
+    const nextGate = createDeferred();
+    const legacy = await createFactoryHarness(
+      {},
+      { loadGate: () => legacyGate.promise },
+    );
+    const next = await createFactoryHarness(
+      {},
+      { loadGate: () => nextGate.promise },
+    );
+    await seedSavedWindows(legacy.userDataPath, savedKeys);
+    await seedSavedWindows(next.userDataPath, savedKeys);
+
+    const legacyRestore = legacyRestoreSavedWindows(
+      legacy.factory,
+      legacy.userDataPath,
+      url,
+    );
+    const nextRestore = next.factory.restoreSavedWindows({ initialUrl: url });
+    await expect
+      .poll(() => next.createdWindows.map((window) => window.loadedUrls.length))
+      .toEqual([1, 1, 1, 1]);
+    await flushAsyncWork();
+
+    expect(legacy.createdWindows).toHaveLength(1);
+    expect(next.createdWindows).toHaveLength(savedKeys.length);
+
+    legacyGate.resolve();
+    nextGate.resolve();
+    expect(await legacyRestore).toHaveLength(savedKeys.length);
+    expect(legacy.createdWindows).toHaveLength(savedKeys.length);
+    expect(await nextRestore).toHaveLength(savedKeys.length);
+  });
+
+  it("registers every restored window exactly once, before any page has loaded", async () => {
+    const gate = createDeferred();
+    const registerCalls: number[] = [];
+    const { createdWindows, factory, userDataPath } =
+      await createFactoryHarness(
+        {
+          onWindowCreated: (browserWindow) =>
+            registerCalls.push(browserWindow.webContents.id),
+        },
+        { loadGate: () => gate.promise },
+      );
+    await seedSavedWindows(userDataPath, savedKeys);
+
+    const restore = factory.restoreSavedWindows({ initialUrl: url });
+    await expect.poll(() => registerCalls.length).toBe(savedKeys.length);
+    await flushAsyncWork();
+    expect(createdWindows.every((window) => window.shown === false)).toBe(true);
+
+    gate.resolve();
+    await restore;
+    expect([...registerCalls].sort()).toEqual(
+      createdWindows.map((window) => window.webContents.id).sort(),
+    );
+    expect(new Set(registerCalls).size).toBe(savedKeys.length);
+  });
+
+  it("shows windows in saved order even when a later window is ready first", async () => {
+    const legacy = await createFactoryHarness();
+    await seedSavedWindows(legacy.userDataPath, savedKeys);
+    const legacyWindows = await legacyRestoreSavedWindows(
+      legacy.factory,
+      legacy.userDataPath,
+      url,
+    );
+    for (const window of legacy.createdWindows) window.emitReadyToShow();
+
+    const gate = createDeferred();
+    const next = await createFactoryHarness(
+      {},
+      { loadGate: () => gate.promise },
+    );
+    await seedSavedWindows(next.userDataPath, savedKeys);
+    const restore = next.factory.restoreSavedWindows({ initialUrl: url });
+    await expect.poll(() => next.createdWindows.length).toBe(savedKeys.length);
+    for (const window of [...next.createdWindows].reverse()) {
+      window.emitReadyToShow();
+    }
+    await flushAsyncWork();
+    gate.resolve();
+    const nextWindows = await restore;
+
+    expect(legacy.shownWindows.map((window) => window.id)).toEqual(
+      legacyWindows.map((window) => window.id),
+    );
+    expect(next.shownWindows.map((window) => window.id)).toEqual(
+      nextWindows.map((window) => window.id),
+    );
+  });
+
+  it("keeps showing the other windows when one window fails to load", async () => {
+    const failing = createDeferred();
+    const next = await createFactoryHarness(
+      {},
+      {
+        loadGate: (options) =>
+          options.x === 100 ? failing.promise : Promise.resolve(),
+      },
+    );
+    await seedSavedWindows(next.userDataPath, savedKeys);
+
+    const restore = next.factory.restoreSavedWindows({ initialUrl: url });
+    const outcome = restore.then(
+      () => "restored",
+      (error: Error) => error.message,
+    );
+    await expect.poll(() => next.createdWindows.length).toBe(savedKeys.length);
+    for (const window of next.createdWindows) window.emitReadyToShow();
+    failing.reject(new Error("net::ERR_FAILED"));
+
+    expect(await outcome).toBe("net::ERR_FAILED");
+    await expect.poll(() => next.shownWindows.length).toBe(savedKeys.length);
+  });
 });

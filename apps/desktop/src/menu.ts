@@ -356,7 +356,29 @@ export function buildApplicationMenuTemplate(
   ];
 }
 
-export function installApplicationMenu(args: InstallApplicationMenuArgs): void {
+interface InstallApplicationMenuOptions {
+  skipIfUnchanged?: boolean;
+}
+
+let installedApplicationMenuKey: string | null = null;
+
+function applicationMenuKey(args: InstallApplicationMenuArgs): string {
+  return JSON.stringify(
+    Object.entries(args)
+      .filter(([, value]) => typeof value !== "function")
+      .sort(([left], [right]) => left.localeCompare(right)),
+  );
+}
+
+export function installApplicationMenu(
+  args: InstallApplicationMenuArgs,
+  options: InstallApplicationMenuOptions = {},
+): boolean {
+  const key = applicationMenuKey(args);
+  if (options.skipIfUnchanged === true && key === installedApplicationMenuKey) {
+    return false;
+  }
+  installedApplicationMenuKey = key;
   const menu = Menu.buildFromTemplate(buildApplicationMenuTemplate(args));
   const onServerMenuWillShow = args.onServerMenuWillShow;
   if (onServerMenuWillShow !== undefined) {
@@ -367,4 +389,5 @@ export function installApplicationMenu(args: InstallApplicationMenuArgs): void {
     }
   }
   Menu.setApplicationMenu(menu);
+  return true;
 }

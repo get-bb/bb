@@ -93,6 +93,7 @@ import {
 import {
   createServerMenuItems,
   installApplicationMenu,
+  type InstallApplicationMenuArgs,
   type ServerMenuArgs,
 } from "./menu.js";
 import {
@@ -793,7 +794,7 @@ function buildServerMenuArgs(): ServerMenuArgs {
       if (serverTargetStore === null) return;
       void serverTargetStore
         .setShowBuiltinServer(!serverTargetStore.getShowBuiltinServer())
-        .then(refreshApplicationMenu)
+        .then(() => refreshApplicationMenu())
         .catch((error: unknown) => {
           desktopLogger.warn(
             `[desktop] could not save server visibility: ${error instanceof Error ? error.message : String(error)}`,
@@ -825,18 +826,8 @@ function popupServerMenu(browserWindow: BrowserWindow | null): void {
   );
 }
 
-function refreshApplicationMenu(): void {
-  const choices = listServerChoices();
-  for (const browserWindow of BrowserWindow.getAllWindows()) {
-    if (applicationWindowWebContentsIds.has(browserWindow.webContents.id)) {
-      sendToApplicationRenderer(
-        browserWindow,
-        BB_DESKTOP_SERVER_CHOICES_CHANGED_CHANNEL,
-        choices,
-      );
-    }
-  }
-  installApplicationMenu({
+function buildApplicationMenuArgs(): InstallApplicationMenuArgs {
+  return {
     ...buildServerMenuArgs(),
     accelerators: currentApplicationMenuAccelerators,
     isMac: process.platform === "darwin",
@@ -923,7 +914,25 @@ function refreshApplicationMenu(): void {
     onServerMenuWillShow() {
       connectServerSync?.onListRequested();
     },
-  });
+  };
+}
+
+function refreshApplicationMenu(
+  options: { skipIfUnchanged?: boolean } = {},
+): void {
+  if (!installApplicationMenu(buildApplicationMenuArgs(), options)) {
+    return;
+  }
+  const choices = listServerChoices();
+  for (const browserWindow of BrowserWindow.getAllWindows()) {
+    if (applicationWindowWebContentsIds.has(browserWindow.webContents.id)) {
+      sendToApplicationRenderer(
+        browserWindow,
+        BB_DESKTOP_SERVER_CHOICES_CHANGED_CHANNEL,
+        choices,
+      );
+    }
+  }
 }
 
 function setCurrentRuntime(runtime: DesktopRuntime | null): void {
@@ -1057,7 +1066,7 @@ async function refreshSystemConfig(
     currentApplicationMenuAccelerators = resolveApplicationMenuAccelerators(
       currentAppKeybindings,
     );
-    refreshApplicationMenu();
+    refreshApplicationMenu({ skipIfUnchanged: true });
   } catch (error) {
     if (token !== systemConfigRefreshToken) {
       return;
