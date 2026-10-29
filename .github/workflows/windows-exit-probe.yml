@@ -22,20 +22,10 @@ jobs:
         shell: bash
         run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter '!@bb/mobile'
       - name: Observe focused and normal-concurrency recovery
-        shell: pwsh
         env:
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
-        run: |
-          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP/exit-probe" | Out-Null
-          for ($iteration = 1; $iteration -le 20; $iteration++) {
-            pnpm exec turbo run test --filter=@bb/integration-tests --concurrency=1 --force -- fake/recovery/active-crash-recovery.test.ts --maxWorkers=1 --silent=false *> "$env:RUNNER_TEMP/exit-probe/focused-$iteration.log"
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          }
-          for ($iteration = 1; $iteration -le 5; $iteration++) {
-            pnpm exec turbo run test --filter=@bb/integration-tests --concurrency=1 --force -- --maxWorkers=4 --silent=false *> "$env:RUNNER_TEMP/exit-probe/package-$iteration.log"
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          }
+        run: node .github/scripts/windows-exit-probe.mjs
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
