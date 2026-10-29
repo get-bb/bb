@@ -458,6 +458,7 @@ Read the installed declarations for exact current signatures.
 - `createFakePluginHost`
 - `createFakeSdk`
 - `experimental_scanPublicSdkOnly`
+- `experimental_makePanelController`
 - `makeHostResponse`
 - `makeMessageDispatchHookContext`
 - `makePluginAgentConfigurationContext`
