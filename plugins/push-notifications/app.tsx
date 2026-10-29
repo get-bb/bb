@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   definePluginApp,
+  experimental_useExperiment,
   useBbNavigate,
   useBbContext,
   useRealtime,
@@ -22,7 +23,11 @@ function NotificationDelivery() {
   const navigate = useBbNavigate();
   const { values } = useSettings();
   const { threadId } = useBbContext();
-  const currentThreadId = useRef(threadId);
+  const skipFocused = experimental_useExperiment(
+    "skipFocusedThreadNotifications",
+  );
+  const focusedThreadId = skipFocused ? threadId : null;
+  const currentThreadId = useRef(focusedThreadId);
   const delivery = useRef<ReturnType<typeof createClientDelivery> | null>(null);
   useEffect(() => {
     const next = createClientDelivery(
@@ -36,9 +41,9 @@ function NotificationDelivery() {
     };
   }, [navigate]);
   useEffect(() => {
-    currentThreadId.current = threadId;
+    currentThreadId.current = focusedThreadId;
     delivery.current?.syncFocus();
-  }, [threadId]);
+  }, [focusedThreadId]);
   useRealtime(CLIENT_NOTIFICATION_CHANNEL, (payload) => {
     const channel = clientChannel();
     const enabled = channel !== null && values?.[`${channel}Enabled`] === true;
