@@ -18,12 +18,14 @@ vi.mock("@/hooks/mutations/settings-mutations", () => ({
 vi.mock("./OnboardingFlow", () => ({
   OnboardingFlow: ({
     initialStep,
+    entry,
     onClose,
   }: {
     initialStep: string;
+    entry: "first_run" | "replay";
     onClose: () => void;
   }) => (
-    <button type="button" onClick={onClose}>
+    <button type="button" data-entry={entry} onClick={onClose}>
       Setup guide at {initialStep}
     </button>
   ),
@@ -95,7 +97,9 @@ describe("OnboardingGate", () => {
   it("shows the guide again when the completion time is cleared after a close in the same session", async () => {
     configWith({ onboardingCompletedAt: null });
     const { view } = renderGate();
-    fireEvent.click(await screen.findByText("Setup guide at agent"));
+    const firstRun = await screen.findByText("Setup guide at agent");
+    expect(firstRun.getAttribute("data-entry")).toBe("first_run");
+    fireEvent.click(firstRun);
 
     configWith({ onboardingCompletedAt: COMPLETED_AT });
     view.rerender(
@@ -112,7 +116,9 @@ describe("OnboardingGate", () => {
       </OnboardingGate>,
     );
 
-    expect(await screen.findByText("Setup guide at agent")).toBeTruthy();
+    expect(
+      (await screen.findByText("Setup guide at agent")).getAttribute("data-entry"),
+    ).toBe("replay");
   });
 
   it("holds a first-time browser blank until settings load, but boots a returning browser straight into the app", () => {
