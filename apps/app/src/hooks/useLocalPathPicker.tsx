@@ -109,21 +109,33 @@ export function useLocalPathPicker({
 
   const openPicker = useCallback(
     (target: ProjectPathDialogTarget) => {
-      if (isPending || !hostId) return;
+      const targetHostId = target.kind === "update" ? target.hostId : hostId;
+      if (isPending || !targetHostId) return;
 
-      if (canUseNativeFolderPicker && clientHostId !== null) {
+      if (
+        canUseNativeFolderPicker &&
+        clientHostId !== null &&
+        targetHostId === hostId
+      ) {
         void (async () => {
           let selectedPath: string | null;
           try {
             selectedPath = (
-              await sdk.hosts.pickFolder({ hostId, clientHostId })
+              await sdk.hosts.pickFolder({
+                hostId: targetHostId,
+                clientHostId,
+              })
             ).path;
           } catch {
             projectPathDialog.onOpen(target);
             return;
           }
           if (!selectedPath) return;
-          submitPath(normalizeProjectPathInput(selectedPath), target, hostId);
+          submitPath(
+            normalizeProjectPathInput(selectedPath),
+            target,
+            targetHostId,
+          );
         })();
         return;
       }

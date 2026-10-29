@@ -130,6 +130,8 @@ describe("useLocalPathPicker", () => {
         projectId: "project_test",
         projectName: "Test project",
         currentPath: "/old/repo",
+        hostId: atum.id,
+        hostName: atum.name,
       });
     });
 
@@ -142,6 +144,28 @@ describe("useLocalPathPicker", () => {
         expect.objectContaining({ hostId: atum.id, path: "/home/me/repo" }),
       );
     });
+  });
+
+  it("browses another machine's checkout instead of opening the native picker", () => {
+    mocks.hosts = [atum, kunst];
+    const target = {
+      kind: "update" as const,
+      projectId: "project_test",
+      projectName: "Test project",
+      currentPath: "/srv/repo",
+      hostId: kunst.id,
+      hostName: kunst.name,
+    };
+    const { result } = renderHook(() =>
+      useLocalPathPicker({ isPending: false, submit: vi.fn() }),
+    );
+
+    act(() => {
+      result.current.openPicker(target);
+    });
+
+    expect(mocks.pickFolder).not.toHaveBeenCalled();
+    expect(result.current.projectPathDialog.target).toBe(target);
   });
 
   it("keeps manual path entry on the client when native picking is unavailable", () => {
