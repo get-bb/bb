@@ -39,6 +39,7 @@ let harness: ReturnType<typeof createBridgeJsonRpcTestHarness>;
 let workspaceDir = "";
 let processLogPath = "";
 let writerLockPath = "";
+let releaseHeldWriter: (() => void) | null = null;
 
 beforeEach(() => {
   workspaceDir = mkdtempSync(join(tmpdir(), "bb-codex-writer-lock-"));
@@ -58,6 +59,8 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  releaseHeldWriter?.();
+  releaseHeldWriter = null;
   vi.restoreAllMocks();
   await cleanupBridgeProcessTest({
     harness,
@@ -80,6 +83,7 @@ function deferred() {
 
 function holdWriterRelease() {
   const released = deferred();
+  releaseHeldWriter = released.resolve;
   const exited = deferred();
   const maintenanceExited = deferred();
   const createConnection = appServer.createCodexAppServerConnection;
