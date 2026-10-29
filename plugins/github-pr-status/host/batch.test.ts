@@ -251,12 +251,19 @@ describe("host GraphQL batching", () => {
       ["remote", "add", "origin", "https://github.com/acme/bb.git"],
       { cwd },
     );
+    const prepared = await prepareCurrentBranchRead({
+      cwd,
+      localBranch: "bb/branch-0",
+      refresh: false,
+    });
+    if (prepared.kind !== "batched" || prepared.target.kind !== "branch")
+      throw new Error("Expected a prepared branch lookup");
+    const target = prepared.target;
     const results = await readPullRequests(
       Array.from({ length: 25 }, (_, index) =>
-        prepareCurrentBranchRead({
-          cwd,
-          localBranch: `bb/branch-${index}`,
-          refresh: false,
+        Promise.resolve({
+          ...prepared,
+          target: { ...target, branch: `bb/branch-${index}` },
         }),
       ),
     );
