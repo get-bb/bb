@@ -242,9 +242,7 @@ function executeWithProcessGroup(args: {
     child.once("close", (code) => {
       clearTimeout(timeout);
       if (forceKill) clearTimeout(forceKill);
-      if (timedOut || outputLimitExceeded) {
-        signalProcessGroup(child, "SIGKILL");
-      }
+      signalProcessGroup(child, "SIGKILL");
       const suffix = outputLimitExceeded ? "\n[output truncated]\n" : "";
       const stderr = Buffer.concat(stderrChunks).toString("utf8");
       resolve({

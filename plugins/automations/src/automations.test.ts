@@ -2082,6 +2082,58 @@ async function isProcessRunning(pid: number): Promise<boolean> {
 }
 
 describe("script process containment", () => {
+  it.skipIf(process.platform === "win32").each([0, 7])(
+    "terminates an unreferenced worker after the script exits with code %i",
+    async (exitCode) => {
+      const pluginDataDir = await mkdtemp(join(tmpdir(), "bb-auto-worker-"));
+      const scriptDir = automationScriptDir(pluginDataDir, "auto_worker");
+      let workerPid: number | undefined;
+      try {
+        await mkdir(scriptDir, { recursive: true });
+        await writeFile(
+          join(scriptDir, "worker.mjs"),
+          [
+            'import { spawn } from "node:child_process";',
+            'const worker = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });',
+            "worker.unref();",
+            "console.log(JSON.stringify({ worker: worker.pid }));",
+            `process.exit(${exitCode});`,
+          ].join("\n"),
+        );
+        const result = await executeStoredScript({
+          pluginDataDir,
+          automationId: "auto_worker",
+          runId: "run_worker",
+          projectId: "proj_test",
+          scriptFile: "worker.mjs",
+          interpreter: "node",
+          timeoutMs: 30_000,
+          serverUrl: "http://127.0.0.1:1",
+          workingDir: scriptsRoot(pluginDataDir),
+        });
+        const workerMatch = result.output.match(/"worker":(\d+)/u);
+        expect(workerMatch).not.toBeNull();
+        const parsedWorkerPid = Number(workerMatch?.[1]);
+        workerPid = parsedWorkerPid;
+        expect(Number.isSafeInteger(parsedWorkerPid)).toBe(true);
+        expect(result.exitCode).toBe(exitCode);
+        expect(result.timedOut).toBe(false);
+        await expect
+          .poll(() => isProcessRunning(parsedWorkerPid), { timeout: 2_000 })
+          .toBe(false);
+      } finally {
+        if (workerPid !== undefined && Number.isSafeInteger(workerPid)) {
+          try {
+            process.kill(workerPid, "SIGKILL");
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+          }
+        }
+        await rm(pluginDataDir, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("terminates descendant processes when a script times out", async ({
     skip,
   }) => {

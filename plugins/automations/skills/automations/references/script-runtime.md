@@ -91,8 +91,9 @@ a `[bb] warning:` line. A later `bb` call then fails normally.
   the thread immediately. This path does not retry and does not use the failure
   count. The plugin treats a thread as unavailable when it is missing, deleted,
   archived, or cannot accept a run.
-- A timeout or output limit stops the process group. On Windows, it stops the
-  direct child.
+- Run completion, a timeout, or an output limit stops remaining processes in
+  the script's process group. Scripts cannot leave background work running in
+  that group after a run completes. On Windows, only the direct child is stopped.
 - Startup settles runs interrupted by a server restart or plugin reload.
   Script runs without a process become skipped.
 - Agent runs without a thread become skipped. Other agent runs follow their
