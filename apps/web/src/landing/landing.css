@@ -3114,6 +3114,13 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   .footer-brand p {
     max-width: none;
   }
+
+  .footer-brand .footer-legal {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+    margin-top: 14px;
+  }
 }
 
 @media (max-width: 820px) {
