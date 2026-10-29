@@ -4,19 +4,31 @@ import {
   type QueryKey,
 } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
-import type { PluginInstallJob, PluginUpdateJob } from "@bb/server-contract";
+import type {
+  PluginInstallJob,
+  PluginUpdateJob,
+  SystemAiServicesResponse,
+  SystemAppUpdateStatus,
+  SystemVersionResponse,
+} from "@bb/server-contract";
 import type { PluginSettingsView } from "../queries/plugin-settings-queries";
 import {
   pluginInstallJobsQueryKey,
   pluginSettingsViewQueryKey,
   pluginUpdateJobsQueryKey,
+  systemAiServicesQueryKey,
+  systemAppUpdateQueryKey,
+  systemVersionQueryKey,
 } from "../queries/query-keys";
+import { hydrateAppUpdateStatus } from "./app-update-cache-owner";
 import { setQueryDataOverInFlightFetch } from "./cache-effect-utils";
 import {
   applyPluginInstallJob,
   applyPluginSettingsView,
   applyPluginUpdateJob,
 } from "./plugin-cache-owner";
+import { writeCachedAiServices } from "./system-config-cache-owner";
+import { hydrateSystemVersionCache } from "./system-version-cache-owner";
 
 interface WriteCase {
   label: string;
@@ -73,6 +85,60 @@ const startedUpdate: PluginUpdateJob = {
   state: "queued",
 };
 
+function appUpdateStatus(
+  activity: SystemAppUpdateStatus["activity"],
+): SystemAppUpdateStatus {
+  return {
+    activity,
+    available: null,
+    blocked: null,
+    current: { commit: null, version: "1.0.0" },
+    lastResult: null,
+    runningThreadCount: 0,
+    support: { kind: "supported", mode: "npm" },
+  };
+}
+
+function systemVersion(latestVersion: string): SystemVersionResponse {
+  return {
+    currentCommit: null,
+    installKind: "npm",
+    currentVersion: "1.0.0",
+    latestVersion,
+    source: "npm",
+    updateAvailable: true,
+    isDevelopment: false,
+    upgradeCommand: "npm install -g @get-bb/bb",
+  };
+}
+
+function aiServices(
+  selection: SystemAiServicesResponse["selections"]["thread-title"],
+): SystemAiServicesResponse {
+  return {
+    selections: {
+      "thread-title": selection,
+      "commit-message": { mode: "automatic" },
+      voice: { mode: "automatic" },
+    },
+    services: [],
+  };
+}
+
+const applyingUpdate = appUpdateStatus({
+  output: [],
+  phase: "preparing",
+  startedAt: "2026-10-29T00:00:00.000Z",
+  step: "Downloading",
+  targetVersion: "1.1.0",
+});
+const forcedVersion = systemVersion("1.2.0");
+const selectedService = aiServices({
+  mode: "service",
+  pluginId: "bb-ai",
+  serviceId: "bb",
+});
+
 const cases: WriteCase[] = [
   writeCase({
     label: "plugin settings save reply",
@@ -109,6 +175,29 @@ const cases: WriteCase[] = [
     written: [startedUpdate],
     write: (queryClient) =>
       applyPluginUpdateJob({ queryClient, job: startedUpdate }),
+  }),
+  writeCase({
+    label: "app update apply reply",
+    queryKey: systemAppUpdateQueryKey(),
+    stale: appUpdateStatus({ phase: "idle" }),
+    written: applyingUpdate,
+    write: (queryClient) =>
+      hydrateAppUpdateStatus({ queryClient, status: applyingUpdate }),
+  }),
+  writeCase({
+    label: "forced version check",
+    queryKey: systemVersionQueryKey(),
+    stale: systemVersion("1.1.0"),
+    written: forcedVersion,
+    write: (queryClient) =>
+      hydrateSystemVersionCache({ queryClient, version: forcedVersion }),
+  }),
+  writeCase({
+    label: "AI service selection reply",
+    queryKey: systemAiServicesQueryKey(),
+    stale: aiServices({ mode: "automatic" }),
+    written: selectedService,
+    write: (queryClient) => writeCachedAiServices(queryClient, selectedService),
   }),
 ];
 
