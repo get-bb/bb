@@ -119,7 +119,8 @@ import {
 import { THREAD_INFO_FIXED_TAB_REFERENCE } from "@/components/secondary-panel/thread-info-fixed-tab-navigation";
 import { ThreadDetailHeader } from "./ThreadDetailHeader";
 import {
-  CORE_THREAD_CONTEXT_CARD_ENTRIES,
+  CORE_THREAD_CONTEXT_CARD_ROWS,
+  CORE_THREAD_CONTEXT_CARD_SECTIONS,
 } from "./ThreadContextCardCore";
 import {
   ThreadContextCardHeaderButton,
@@ -2143,7 +2144,8 @@ function ThreadDetailViewInternal(
               >
                 <ThreadContextCardProvider
                   enabled={threadContextCardEnabled}
-                  coreEntries={CORE_THREAD_CONTEXT_CARD_ENTRIES}
+                  coreRows={CORE_THREAD_CONTEXT_CARD_ROWS}
+                  coreSections={CORE_THREAD_CONTEXT_CARD_SECTIONS}
                   threadId={thread.id}
                   projectId={thread.projectId}
                   environment={

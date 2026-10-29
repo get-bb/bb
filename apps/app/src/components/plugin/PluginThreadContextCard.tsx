@@ -27,32 +27,34 @@ import {
 } from "@/lib/grouped-placement";
 import {
   usePluginSlots,
-  type PluginThreadContextCardSlot,
+  type PluginThreadContextCardRowSlot,
+  type PluginThreadContextCardSectionSlot,
 } from "@/lib/plugin-slots";
 import { createSyncedPreferenceAtom } from "@/lib/ui-preferences/synced-preference-atom";
 import { PluginSlotMount } from "./PluginSlotMount";
 
-export interface CoreThreadContextCardEntry {
+export interface CoreThreadContextCardRow {
   id: string;
-  title?: string;
   group: string;
   order: number;
   component: ComponentType<ExperimentalThreadContextCardProps>;
 }
 
-type ThreadContextCardEntry =
-  | { owner: "core"; slot: CoreThreadContextCardEntry }
-  | { owner: "plugin"; slot: PluginThreadContextCardSlot };
-
-type ThreadContextCardSectionEntry = ThreadContextCardEntry & {
-  slot: { title: string };
-};
-
-function isSectionEntry(
-  entry: ThreadContextCardEntry,
-): entry is ThreadContextCardSectionEntry {
-  return entry.slot.title !== undefined;
+export interface CoreThreadContextCardSection {
+  id: string;
+  title: string;
+  group: string;
+  order: number;
+  component: ComponentType<ExperimentalThreadContextCardProps>;
 }
+
+type ThreadContextCardRowEntry =
+  | { owner: "core"; slot: CoreThreadContextCardRow }
+  | { owner: "plugin"; slot: PluginThreadContextCardRowSlot };
+
+type ThreadContextCardSectionEntry =
+  | { owner: "core"; slot: CoreThreadContextCardSection }
+  | { owner: "plugin"; slot: PluginThreadContextCardSectionSlot };
 
 export type ThreadContextCardLayout = "gutter" | "shift" | "overlay";
 
@@ -77,7 +79,7 @@ const pinnedAtom = createSyncedPreferenceAtom("threadContextCard.pinned");
 
 interface ThreadContextCardPaneState {
   props: ExperimentalThreadContextCardProps;
-  rows: readonly ThreadContextCardEntry[];
+  rows: readonly ThreadContextCardRowEntry[];
   sections: readonly ThreadContextCardSectionEntry[];
   layout: ThreadContextCardLayout;
   setLayout(layout: ThreadContextCardLayout): void;
@@ -107,56 +109,71 @@ function sortByPlacement<Item>(
 
 export function ThreadContextCardProvider({
   enabled,
-  coreEntries,
+  coreRows,
+  coreSections,
   threadId,
   projectId,
   environment,
   children,
 }: ExperimentalThreadContextCardProps & {
   enabled: boolean;
-  coreEntries: readonly CoreThreadContextCardEntry[];
+  coreRows: readonly CoreThreadContextCardRow[];
+  coreSections: readonly CoreThreadContextCardSection[];
   children: ReactNode;
 }) {
-  const { threadContextCards } = usePluginSlots();
+  const { threadContextCardRows, threadContextCardSections } = usePluginSlots();
   const [layout, setLayout] = useState<ThreadContextCardLayout>("overlay");
   const [popoverOpen, setPopoverOpen] = useState(false);
   const environmentId = environment?.id ?? null;
-  const value = useMemo<ThreadContextCardPaneState>(() => {
-    const entries: ThreadContextCardEntry[] = enabled
-      ? sortByPlacement<ThreadContextCardEntry>(
-          [
-            ...coreEntries.map((slot) => ({ owner: "core" as const, slot })),
-            ...threadContextCards.map((slot) => ({
-              owner: "plugin" as const,
-              slot,
-            })),
-          ],
-          (entry) => entry.slot,
-        )
-      : [];
-    return {
+  const value = useMemo<ThreadContextCardPaneState>(
+    () => ({
       props: {
         threadId,
         projectId,
         environment: environmentId === null ? null : { id: environmentId },
       },
-      rows: entries.filter((entry) => !isSectionEntry(entry)),
-      sections: entries.filter(isSectionEntry),
+      rows: enabled
+        ? sortByPlacement<ThreadContextCardRowEntry>(
+            [
+              ...coreRows.map((slot) => ({ owner: "core" as const, slot })),
+              ...threadContextCardRows.map((slot) => ({
+                owner: "plugin" as const,
+                slot,
+              })),
+            ],
+            (entry) => entry.slot,
+          )
+        : [],
+      sections: enabled
+        ? sortByPlacement<ThreadContextCardSectionEntry>(
+            [
+              ...coreSections.map((slot) => ({ owner: "core" as const, slot })),
+              ...threadContextCardSections.map((slot) => ({
+                owner: "plugin" as const,
+                slot,
+              })),
+            ],
+            (entry) => entry.slot,
+          )
+        : [],
       layout,
       setLayout,
       popoverOpen,
       setPopoverOpen,
-    };
-  }, [
-    coreEntries,
-    enabled,
-    environmentId,
-    layout,
-    popoverOpen,
-    projectId,
-    threadContextCards,
-    threadId,
-  ]);
+    }),
+    [
+      coreRows,
+      coreSections,
+      enabled,
+      environmentId,
+      layout,
+      popoverOpen,
+      projectId,
+      threadContextCardRows,
+      threadContextCardSections,
+      threadId,
+    ],
+  );
   return (
     <ThreadContextCardPaneContext.Provider value={value}>
       {children}
@@ -225,7 +242,7 @@ function ThreadContextCardContent({
                 <PluginSlotMount
                   key={`${pluginId}/${id}/${generation}/${props.threadId}`}
                   pluginId={pluginId}
-                  slotKind="threadContextCard"
+                  slotKind="threadContextCardRow"
                   slotId={id}
                   instanceId={props.threadId}
                   crashResetKey={String(generation)}
@@ -262,7 +279,7 @@ function ThreadContextCardContent({
               ) : (
                 <PluginSlotMount
                   pluginId={entry.slot.pluginId}
-                  slotKind="threadContextCard"
+                  slotKind="threadContextCardSection"
                   slotId={entry.slot.id}
                   instanceId={props.threadId}
                   crashResetKey={String(entry.slot.generation)}

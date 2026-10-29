@@ -12,7 +12,10 @@ import { Icon } from "@bb/shared-ui/icon";
 import { InfoRowTime } from "@bb/shared-ui/info-list-row";
 import type { ThreadResponse } from "@bb/server-contract";
 import { ThreadContextCardRow } from "@/components/plugin/ThreadContextCardRow";
-import type { CoreThreadContextCardEntry } from "@/components/plugin/PluginThreadContextCard";
+import type {
+  CoreThreadContextCardRow,
+  CoreThreadContextCardSection,
+} from "@/components/plugin/PluginThreadContextCard";
 import { InfoList } from "@/components/secondary-panel/info/info-list";
 import { ThreadStatusGlyph } from "@/components/thread/ThreadStatusGlyph";
 import { ThreadTitle } from "@/components/thread/ThreadTitleMentions";
@@ -89,7 +92,7 @@ function ChildThreadsSection({ threadId }: ExperimentalThreadContextCardProps) {
   );
 }
 
-export const CORE_THREAD_CONTEXT_CARD_ENTRIES: readonly CoreThreadContextCardEntry[] =
+export const CORE_THREAD_CONTEXT_CARD_ROWS: readonly CoreThreadContextCardRow[] =
   [
     {
       id: "parent",
@@ -97,6 +100,10 @@ export const CORE_THREAD_CONTEXT_CARD_ENTRIES: readonly CoreThreadContextCardEnt
       order: 10,
       component: ParentRow,
     },
+  ];
+
+export const CORE_THREAD_CONTEXT_CARD_SECTIONS: readonly CoreThreadContextCardSection[] =
+  [
     {
       id: "childThreads",
       title: "Child threads",

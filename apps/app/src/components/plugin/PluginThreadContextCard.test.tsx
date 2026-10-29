@@ -26,7 +26,8 @@ import {
   resolveThreadContextCardLayout,
   useThreadContextKind,
   WithoutThreadContextCard,
-  type CoreThreadContextCardEntry,
+  type CoreThreadContextCardRow,
+  type CoreThreadContextCardSection,
 } from "./PluginThreadContextCard";
 
 function section(label: string) {
@@ -53,13 +54,16 @@ function Crashes(): never {
   throw new Error("plugin crashed");
 }
 
-const CORE: CoreThreadContextCardEntry[] = [
+const CORE: CoreThreadContextCardRow[] = [
   {
     id: "environment",
     group: "2_environment",
     order: 10,
     component: section("Core environment"),
   },
+];
+
+const CORE_SECTIONS: CoreThreadContextCardSection[] = [
   {
     id: "childThreads",
     title: "Child threads",
@@ -89,7 +93,8 @@ function renderPane({
             <ThreadContextCardProvider
               key={threadId}
               enabled={enabled}
-              coreEntries={CORE}
+              coreRows={CORE}
+              coreSections={CORE_SECTIONS}
               threadId={threadId}
               projectId="proj_1"
               environment={null}
@@ -133,7 +138,7 @@ describe("thread context card", () => {
     setPluginSlotRegistrations(
       "first",
       makePluginRegistrationSet({
-        threadContextCards: [
+        threadContextCardRows: [
           { id: "branch", group: "3_git", component: section("Branch") },
         ],
       }),
@@ -150,7 +155,7 @@ describe("thread context card", () => {
     setPluginSlotRegistrations(
       "first",
       makePluginRegistrationSet({
-        threadContextCards: [
+        threadContextCardRows: [
           { id: "pr", group: "4_pullRequest", component: section("PR") },
           {
             id: "tie",
@@ -158,6 +163,8 @@ describe("thread context card", () => {
             order: 10,
             component: section("Tie"),
           },
+        ],
+        threadContextCardSections: [
           {
             id: "deploys",
             title: "Deploys",
@@ -170,7 +177,7 @@ describe("thread context card", () => {
     setPluginSlotRegistrations(
       "second",
       makePluginRegistrationSet({
-        threadContextCards: [
+        threadContextCardRows: [
           { id: "git", group: "3_git", component: section("Git") },
         ],
       }),
@@ -198,7 +205,7 @@ describe("thread context card", () => {
     setPluginSlotRegistrations(
       "first",
       makePluginRegistrationSet({
-        threadContextCards: [
+        threadContextCardRows: [
           { id: "crash", group: "3_git", component: Crashes },
         ],
       }),
@@ -234,7 +241,7 @@ describe("thread context card", () => {
     setPluginSlotRegistrations(
       "first",
       makePluginRegistrationSet({
-        threadContextCards: [
+        threadContextCardRows: [
           { id: "diff", group: "3_git", component: OpenDiffRow },
         ],
       }),
@@ -264,7 +271,8 @@ describe("useThreadContextKind", () => {
     return (
       <ThreadContextCardProvider
         enabled={enabled}
-        coreEntries={CORE}
+        coreRows={CORE}
+        coreSections={CORE_SECTIONS}
         threadId="thr_1"
         projectId="proj_1"
         environment={null}

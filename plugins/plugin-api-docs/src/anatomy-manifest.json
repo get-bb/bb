@@ -173,7 +173,7 @@
           "path": "apps/app/src/components/plugin/PluginThreadContextCard.tsx",
           "anchors": [
             "data-thread-context-card=\"\"",
-            "slotKind=\"threadContextCard\"",
+            "slotKind=\"threadContextCardSection\"",
             "crashFallback={null}",
             "export function resolveThreadContextCardLayout",
             "rounded-2xl border border-border bg-popover p-2"
@@ -185,7 +185,7 @@
         },
         {
           "path": "apps/app/src/views/thread-detail/ThreadDetailView.tsx",
-          "anchors": ["<ThreadContextCardProvider", "<ThreadContextCardHeaderButton />", "CORE_THREAD_CONTEXT_CARD_ENTRIES"]
+          "anchors": ["<ThreadContextCardProvider", "<ThreadContextCardHeaderButton />", "CORE_THREAD_CONTEXT_CARD_ROWS"]
         },
         {
           "path": "apps/app/src/components/plugin/PluginThreadContextCard.test.tsx",

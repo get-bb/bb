@@ -323,9 +323,15 @@ function pluginAppSurfaceItems(
     ),
     ...namedSlotItems(
       pluginId,
-      slots.threadContextCards,
-      "thread-context-card",
-      "Adds a row or section to the thread context card.",
+      slots.threadContextCardRows,
+      "thread-context-card-row",
+      "Adds a row to the thread context card.",
+    ),
+    ...namedSlotItems(
+      pluginId,
+      slots.threadContextCardSections,
+      "thread-context-card-section",
+      "Adds a section to the thread context card.",
     ),
     ...namedSlotItems(
       pluginId,

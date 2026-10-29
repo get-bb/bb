@@ -27,7 +27,8 @@ import type {
   ExperimentalThreadInfoRowRegistration,
   ExperimentalThreadRowMetadataRegistration,
   ExperimentalThreadInfoSectionRegistration,
-  ExperimentalThreadContextCardRegistration,
+  ExperimentalThreadContextCardRowRegistration,
+  ExperimentalThreadContextCardSectionRegistration,
   PluginThreadActionRegistration,
   ExperimentalPluginBrowserToolbarActionRegistration,
   PluginThreadListRegistration,
@@ -66,7 +67,8 @@ export interface PluginRegistrationSet {
   threadInfoRows?: readonly ExperimentalThreadInfoRowRegistration[];
   threadRowMetadata?: readonly ExperimentalThreadRowMetadataRegistration<unknown>[];
   threadInfoSections?: readonly ExperimentalThreadInfoSectionRegistration[];
-  threadContextCards?: readonly ExperimentalThreadContextCardRegistration[];
+  threadContextCardRows?: readonly ExperimentalThreadContextCardRowRegistration[];
+  threadContextCardSections?: readonly ExperimentalThreadContextCardSectionRegistration[];
   threadActions?: readonly PluginThreadActionRegistration<unknown>[];
   browserToolbarActions?: readonly ExperimentalPluginBrowserToolbarActionRegistration[];
   fileOpeners: readonly PluginFileOpenerRegistration[];
@@ -142,8 +144,10 @@ export interface PluginThreadRowMetadataSlot
     PluginSlotBase {}
 export interface PluginThreadInfoSectionSlot
   extends ExperimentalThreadInfoSectionRegistration, PluginSlotBase {}
-export interface PluginThreadContextCardSlot
-  extends ExperimentalThreadContextCardRegistration, PluginSlotBase {}
+export interface PluginThreadContextCardRowSlot
+  extends ExperimentalThreadContextCardRowRegistration, PluginSlotBase {}
+export interface PluginThreadContextCardSectionSlot
+  extends ExperimentalThreadContextCardSectionRegistration, PluginSlotBase {}
 export interface PluginThreadActionSlot
   extends PluginThreadActionRegistration<unknown>, PluginSlotBase {}
 export interface PluginBrowserToolbarActionSlot
@@ -194,7 +198,8 @@ export interface PluginSlotSnapshot {
   threadInfoRows: readonly PluginThreadInfoRowSlot[];
   threadRowMetadata: readonly PluginThreadRowMetadataSlot[];
   threadInfoSections: readonly PluginThreadInfoSectionSlot[];
-  threadContextCards: readonly PluginThreadContextCardSlot[];
+  threadContextCardRows: readonly PluginThreadContextCardRowSlot[];
+  threadContextCardSections: readonly PluginThreadContextCardSectionSlot[];
   threadActions: readonly PluginThreadActionSlot[];
   browserToolbarActions: readonly PluginBrowserToolbarActionSlot[];
   fileOpeners: readonly PluginFileOpenerSlot[];
@@ -231,7 +236,8 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   threadInfoRows: [],
   threadRowMetadata: [],
   threadInfoSections: [],
-  threadContextCards: [],
+  threadContextCardRows: [],
+  threadContextCardSections: [],
   threadActions: [],
   browserToolbarActions: [],
   fileOpeners: [],
@@ -275,7 +281,8 @@ const SLOT_KINDS: readonly SlotKind[] = [
   "threadInfoRows",
   "threadRowMetadata",
   "threadInfoSections",
-  "threadContextCards",
+  "threadContextCardRows",
+  "threadContextCardSections",
   "threadActions",
   "browserToolbarActions",
   "fileOpeners",
@@ -367,7 +374,8 @@ function flattenRegistrations(
     threadInfoRows: stamp(set.threadInfoRows),
     threadRowMetadata: stamp(set.threadRowMetadata),
     threadInfoSections: stamp(set.threadInfoSections),
-    threadContextCards: stamp(set.threadContextCards),
+    threadContextCardRows: stamp(set.threadContextCardRows),
+    threadContextCardSections: stamp(set.threadContextCardSections),
     threadActions: stamp(set.threadActions),
     browserToolbarActions: stamp(set.browserToolbarActions),
     fileOpeners: stamp(set.fileOpeners),

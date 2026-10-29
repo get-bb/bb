@@ -212,7 +212,7 @@ usable environment), the visible `segments`
 as `{ key, pluginId }` in row order (`key` is `<pluginId>/<id>`; bb's own use
 `bb--core`), and `isExpanded`/`onToggle` (one segment is expanded at a time).
 `useVisible(input)` false leaves it out. A segment whose content is also a
-thread context card entry hides itself while
+thread context card row or section hides itself while
 `experimental_useThreadContextKind()` is `card`; see
 frontend-thread-context-card.md.
 

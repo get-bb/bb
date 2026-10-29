@@ -35,7 +35,8 @@ import type {
   ExperimentalThreadInfoRowRegistration,
   ExperimentalThreadRowMetadataRegistration,
   ExperimentalThreadInfoSectionRegistration,
-  ExperimentalThreadContextCardRegistration,
+  ExperimentalThreadContextCardRowRegistration,
+  ExperimentalThreadContextCardSectionRegistration,
   PluginThreadActionRegistration,
   ExperimentalPluginBrowserToolbarActionRegistration,
   ExperimentalSidebarHeaderProps,
@@ -321,7 +322,8 @@ export interface CollectedPluginAppRegistrations {
   threadInfoRows: ExperimentalThreadInfoRowRegistration[];
   threadRowMetadata: ExperimentalThreadRowMetadataRegistration<unknown>[];
   threadInfoSections: ExperimentalThreadInfoSectionRegistration[];
-  threadContextCards: ExperimentalThreadContextCardRegistration[];
+  threadContextCardRows: ExperimentalThreadContextCardRowRegistration[];
+  threadContextCardSections: ExperimentalThreadContextCardSectionRegistration[];
   threadActions: PluginThreadActionRegistration<unknown>[];
   browserToolbarActions: ExperimentalPluginBrowserToolbarActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
@@ -463,7 +465,8 @@ export function collectPluginAppRegistrations(
     threadInfoRows: [],
     threadRowMetadata: [],
     threadInfoSections: [],
-    threadContextCards: [],
+    threadContextCardRows: [],
+    threadContextCardSections: [],
     threadActions: [],
     browserToolbarActions: [],
     fileOpeners: [],
@@ -502,7 +505,8 @@ export function collectPluginAppRegistrations(
     threadInfoRow: new Set<string>(),
     threadRowMetadata: new Set<string>(),
     threadInfoSection: new Set<string>(),
-    threadContextCard: new Set<string>(),
+    threadContextCardRow: new Set<string>(),
+    threadContextCardSection: new Set<string>(),
     threadAction: new Set<string>(),
     browserToolbarAction: new Set<string>(),
     fileOpener: new Set<string>(),
@@ -999,17 +1003,24 @@ export function collectPluginAppRegistrations(
           component: requireComponent(kind, registration.component),
         });
       },
-      experimental_threadContextCard(registration) {
-        const kind = "slots.experimental_threadContextCard";
+      experimental_threadContextCardRow(registration) {
+        const kind = "slots.experimental_threadContextCardRow";
         const id = requireSlotId(kind, registration?.id);
-        requireUniqueId(kind, seenIds.threadContextCard, id);
-        collected.threadContextCards.push({
+        requireUniqueId(kind, seenIds.threadContextCardRow, id);
+        collected.threadContextCardRows.push({
           id,
-          ...(registration.title === undefined
-            ? {}
-            : {
-                title: requireNonEmptyString(kind, "title", registration.title),
-              }),
+          group: requireNonEmptyString(kind, "group", registration.group),
+          ...requireOptionalOrder(kind, registration.order),
+          component: requireComponent(kind, registration.component),
+        });
+      },
+      experimental_threadContextCardSection(registration) {
+        const kind = "slots.experimental_threadContextCardSection";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.threadContextCardSection, id);
+        collected.threadContextCardSections.push({
+          id,
+          title: requireNonEmptyString(kind, "title", registration.title),
           group: requireNonEmptyString(kind, "group", registration.group),
           ...requireOptionalOrder(kind, registration.order),
           component: requireComponent(kind, registration.component),

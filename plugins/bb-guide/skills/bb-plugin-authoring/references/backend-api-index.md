@@ -343,7 +343,8 @@ Read the installed declarations for exact current signatures.
 - `ExperimentalThreadInfoProps`
 - `ExperimentalThreadInfoRowRegistration`
 - `ExperimentalThreadInfoSectionRegistration`
-- `ExperimentalThreadContextCardRegistration`
+- `ExperimentalThreadContextCardRowRegistration`
+- `ExperimentalThreadContextCardSectionRegistration`
 - `ExperimentalThreadContextKind`
 - `ExperimentalThreadContextCardProps`
 - `ExperimentalThreadContextCardRowProps`

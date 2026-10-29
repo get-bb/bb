@@ -2802,7 +2802,7 @@ Docs: `frontend-registration.md`, `frontend-components.md`.
    `[data-info-section]`, so a section that renders without
    `experimental_InfoSection` gets no separator. Confirm that is acceptable.
 
-## `app.slots.experimental_threadContextCard` / `experimental_ThreadContextCardRow` / `experimental_useThreadContextKind` (`@get-bb/plugin-sdk/app`)
+## `app.slots.experimental_threadContextCardRow` / `app.slots.experimental_threadContextCardSection` / `experimental_ThreadContextCardRow` / `experimental_useThreadContextKind` (`@get-bb/plugin-sdk/app`)
 
 A thread pane shows its thread context one of two ways, its
 `ExperimentalThreadContextKind`: `banner`, the context row above the composer,
@@ -2815,10 +2815,10 @@ except on phones (a compact viewport with a coarse pointer, the rule
 `banner`: `ThreadScreen` wraps those presentations in
 `WithoutThreadContextCard`.
 
-A card registration is `{ id, title?, group, order?, component }`. Without
-`title` it is a row in the card's top block, the counterpart of
-`experimental_threadInfoRow`; with `title` it is a section below the rows, the
-counterpart of `experimental_threadInfoSection`. Components receive
+The card's counterparts of the Info tab's row and section slots. A row
+registration is `{ id, group, order?, component }` and draws in the card's top
+block; a section is `{ id, title, group, order?, component }` and draws below
+the rows. Components receive
 `{ threadId, projectId, environment }` (`environment` is `{ id }` from the
 thread, null only without one) and render `experimental_ThreadContextCardRow`
 rows (`{ icon?, leading?, label, trailing?, title?, disabled?, onClick?,
@@ -2828,11 +2828,11 @@ as a menu.
 `ThreadDetailView` wraps each thread page and split pane in
 `ThreadContextCardProvider`
 (`apps/app/src/components/plugin/PluginThreadContextCard.tsx`), enabled only
-where the pane's kind is `card`. Entries merge bb's with plugin registrations;
-rows and sections each sort by `group`, `order` (unset last), then
+where the pane's kind is `card`. Rows and sections each merge bb's with plugin
+registrations and sort by `group`, `order` (unset last), then
 registration order with core first on a tie. Rows share one block with no
 heading; sections follow, each under its title and a divider. Every plugin
-entry mounts in its own crash boundary keyed by thread, and CSS `:has` hides a
+row and section mounts in its own crash boundary keyed by thread, and CSS `:has` hides a
 block whose components render no element. `ThreadContextCard` sits in
 `ThreadScreen`'s scroll overlay, sibling to the scroll viewport, and measures
 the overlay: `gutter` when the card fits beside the 760px transcript column,
@@ -2846,17 +2846,18 @@ bottom drawer in a compact viewport. Unpinning or closing the popover does not
 change the pane's kind.
 
 Context segments render in both kinds, so a plugin that has not added a card
-entry keeps its segment above the composer. A segment whose content is also a
-card entry hides itself in `useVisible` while the kind is `card`.
+row or section keeps its segment above the composer. A segment whose content is also a
+card row or section hides itself in `useVisible` while the kind is `card`.
 
 **Core callers.** bb's parent row (thread group) and its Child threads section
-(related group) are `CORE_THREAD_CONTEXT_CARD_ENTRIES` in
+(related group) are `CORE_THREAD_CONTEXT_CARD_ROWS` and
+`CORE_THREAD_CONTEXT_CARD_SECTIONS` in
 `apps/app/src/views/thread-detail/ThreadContextCardCore.tsx`, drawn with
 `ThreadContextCardRow`, the component behind `experimental_ThreadContextCardRow`.
 bb's parent segment hides through `useThreadContextKind`, the function behind
 `experimental_useThreadContextKind`. The Git plugin registers its `changes`
-entry (full `+N −M` counts; it opens the Diff tab, where the merge base is
-picked) and GitHub PR Status its `pull-request` entry (the banner's own label,
+row (full `+N −M` counts; it opens the Diff tab, where the merge base is
+picked) and GitHub PR Status its `pull-request` row (the banner's own label,
 `PullRequestSummaryLabel`, after the GitHub icon that carries the checks,
 opening the pull request; its `…` menu opens GitHub, copies the link, merges,
 and marks it ready or draft, at the card's width, flush with its edges); both
@@ -2882,10 +2883,10 @@ Docs: `frontend-thread-context-card.md`, `frontend-registration.md`,
 4. **Row actions.** `action` takes any node; GitHub PR Status builds its own
    `…` menu from shared tokens. Decide whether bb ships the menu as a
    component, and whether menus should open beside the card instead of below.
-5. **Emptiness.** When every entry renders nothing for a thread, the card
+5. **Emptiness.** When every row and section renders nothing for a thread, the card
    shows an empty state ("Nothing to show yet") instead of hiding, so the
    header button and the transcript's position do not depend on the thread.
-6. **Groups.** Entries reuse the Info tab's groups. Confirm the two surfaces
+6. **Groups.** Rows and sections reuse the Info tab's groups. Confirm the two surfaces
    should share one group vocabulary.
 
 ## `app.slots.experimental_threadRowMetadata` / `experimental_ThreadRowMetadata` (`@get-bb/plugin-sdk/app`)

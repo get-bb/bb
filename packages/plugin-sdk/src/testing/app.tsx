@@ -108,7 +108,8 @@ import {
   type ExperimentalThreadContextSegmentRegistration,
   type ExperimentalThreadInfoRowRegistration,
   type ExperimentalThreadInfoSectionRegistration,
-  type ExperimentalThreadContextCardRegistration,
+  type ExperimentalThreadContextCardRowRegistration,
+  type ExperimentalThreadContextCardSectionRegistration,
   type ExperimentalThreadContextKind,
   type ExperimentalThreadContextCardRowProps,
   type ExperimentalInfoSectionProps,
@@ -2060,7 +2061,8 @@ export interface CapturedPluginApp {
   threadInfoRows: ExperimentalThreadInfoRowRegistration[];
   threadRowMetadata: ExperimentalThreadRowMetadataRegistration<unknown>[];
   threadInfoSections: ExperimentalThreadInfoSectionRegistration[];
-  threadContextCards: ExperimentalThreadContextCardRegistration[];
+  threadContextCardRows: ExperimentalThreadContextCardRowRegistration[];
+  threadContextCardSections: ExperimentalThreadContextCardSectionRegistration[];
   threadActions: PluginThreadActionRegistration<unknown>[];
   browserToolbarActions: ExperimentalPluginBrowserToolbarActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];

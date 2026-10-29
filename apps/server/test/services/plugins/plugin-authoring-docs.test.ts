@@ -290,7 +290,8 @@ type SlotPropsByName = {
   experimental_threadRowMetadata: ExperimentalThreadRowMetadataProps;
   experimental_threadInfoRow: ExperimentalThreadInfoProps;
   experimental_threadInfoSection: ExperimentalThreadInfoProps;
-  experimental_threadContextCard: ExperimentalThreadContextCardProps;
+  experimental_threadContextCardRow: ExperimentalThreadContextCardProps;
+  experimental_threadContextCardSection: ExperimentalThreadContextCardProps;
   experimental_threadAction: PluginThreadActionItemInput<unknown>;
   experimental_browserToolbarAction: ExperimentalPluginBrowserToolbarActionProps;
   fileOpener: PluginFileOpenerProps;
@@ -388,7 +389,12 @@ const FRONTEND_SLOT_PROP_FIELDS = {
   ],
   experimental_threadInfoRow: ["threadId", "projectId", "environment"],
   experimental_threadInfoSection: ["threadId", "projectId", "environment"],
-  experimental_threadContextCard: ["threadId", "projectId", "environment"],
+  experimental_threadContextCardRow: ["threadId", "projectId", "environment"],
+  experimental_threadContextCardSection: [
+    "threadId",
+    "projectId",
+    "environment",
+  ],
   experimental_threadRowMetadata: ["thread", "data"],
   experimental_threadAction: [
     "thread",

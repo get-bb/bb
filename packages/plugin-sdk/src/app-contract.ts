@@ -1927,7 +1927,10 @@ export interface ExperimentalThreadInfoSectionRegistration {
   component: ComponentType<ExperimentalThreadInfoProps>;
 }
 
-/** Props passed to an `experimental_threadContextCard` component. */
+/**
+ * Props passed to an `experimental_threadContextCardRow` or
+ * `experimental_threadContextCardSection` component.
+ */
 export interface ExperimentalThreadContextCardProps {
   /**
    * The thread shown in the pane. Every thread pane of a split layout has its
@@ -1951,30 +1954,45 @@ export interface ExperimentalThreadContextCardProps {
 export type ExperimentalThreadContextKind = "banner" | "card";
 
 /**
- * An entry in the thread context card at a thread pane's upper-right, below
- * the header, beside bb's own entries. Without `title` it is a row in the
- * card's top block, the counterpart of `experimental_threadInfoRow`; with
- * `title` it is a section below the rows, the counterpart of
- * `experimental_threadInfoSection`. Render one or more
+ * A row in the thread context card at a thread pane's upper-right, below the
+ * header, beside bb's own rows; the card's counterpart of
+ * `experimental_threadInfoRow`. Render one or more
  * `experimental_ThreadContextCardRow` elements, or null to show nothing for
- * this thread. bb draws the card and places it, and mounts entries only in
- * panes whose thread context kind is `card`. A crash removes only this entry
- * for that thread.
+ * this thread. bb draws the card and places it, and mounts rows only in panes
+ * whose thread context kind is `card`. A crash removes only this row for that
+ * thread.
  */
-export interface ExperimentalThreadContextCardRegistration {
+export interface ExperimentalThreadContextCardRowRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
   id: string;
   /**
-   * Heading bb draws above the entry, which makes it a section. bb draws a
-   * divider above a section and hides it while its component renders
-   * nothing.
-   */
-  title?: string;
-  /**
-   * Rows and sections each sort by `group` (string compare), then by `order`
-   * within a group (unset sorts last), then by registration order, with bb's
-   * own entries first on a tie. Entries use the Info tab's row groups,
+   * Rows sort by `group` (string compare), then by `order` within a group
+   * (unset sorts last), then by registration order, with bb's own rows first
+   * on a tie. Rows use the Info tab's groups,
    * {@link PluginSdkApp.experimental_THREAD_INFO_ROW_GROUPS}; any other
+   * string is a group of its own, placed where it sorts.
+   */
+  group: string;
+  order?: number;
+  component: ComponentType<ExperimentalThreadContextCardProps>;
+}
+
+/**
+ * A titled section of the thread context card, below its rows; the card's
+ * counterpart of `experimental_threadInfoSection`. bb draws the title and a
+ * divider above it, and hides the section while its component renders
+ * nothing. A crash removes only this section for that thread.
+ */
+export interface ExperimentalThreadContextCardSectionRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** Heading bb draws above the section's rows. */
+  title: string;
+  /**
+   * Sections sort by `group` (string compare), then by `order` within a group
+   * (unset sorts last), then by registration order, with bb's own sections
+   * first on a tie. Sections use the Info tab's groups,
+   * {@link PluginSdkApp.experimental_THREAD_INFO_SECTION_GROUPS}; any other
    * string is a group of its own, placed where it sorts.
    */
   group: string;
@@ -3730,12 +3748,20 @@ export interface PluginAppSlots {
     registration: ExperimentalThreadInfoSectionRegistration,
   ): void;
   /**
-   * Add a row or a titled section to the thread context card of every thread
-   * pane (see {@link ExperimentalThreadContextCardRegistration}).
-   * Experimental: see docs/api_to_audit.md.
+   * Add a row to the thread context card of every thread pane (see
+   * {@link ExperimentalThreadContextCardRowRegistration}). Experimental: see
+   * docs/api_to_audit.md.
    */
-  experimental_threadContextCard(
-    registration: ExperimentalThreadContextCardRegistration,
+  experimental_threadContextCardRow(
+    registration: ExperimentalThreadContextCardRowRegistration,
+  ): void;
+  /**
+   * Add a titled section to the thread context card of every thread pane (see
+   * {@link ExperimentalThreadContextCardSectionRegistration}). Experimental:
+   * see docs/api_to_audit.md.
+   */
+  experimental_threadContextCardSection(
+    registration: ExperimentalThreadContextCardSectionRegistration,
   ): void;
   /**
    * Add an action to every thread actions menu (see
@@ -5353,9 +5379,9 @@ export interface PluginSdkApp {
   /**
    * How the thread pane the calling component renders in shows its thread
    * context (see {@link ExperimentalThreadContextKind}); `banner` outside a
-   * thread pane. A context segment whose content is also an
-   * `experimental_threadContextCard` entry hides itself in `useVisible` while
-   * this is `card`; other segments keep showing above the composer.
+   * thread pane. A context segment whose content is also a thread context card
+   * row or section hides itself in `useVisible` while this is `card`; other
+   * segments keep showing above the composer.
    * Experimental: see docs/api_to_audit.md.
    */
   experimental_useThreadContextKind(): ExperimentalThreadContextKind;

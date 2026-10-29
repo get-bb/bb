@@ -91,7 +91,7 @@ export default definePluginApp((app) => {
     details: changedFilesSegmentPart("details"),
     useVisible: useChangedFilesSegmentVisible,
   });
-  app.slots.experimental_threadContextCard({
+  app.slots.experimental_threadContextCardRow({
     id: "changes",
     group: experimental_THREAD_INFO_ROW_GROUPS.git,
     order: 10,

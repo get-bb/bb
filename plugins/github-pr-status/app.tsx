@@ -26,7 +26,7 @@ export default definePluginApp((app) => {
     action: PullRequestSegmentAction,
     useVisible: usePullRequestSegmentVisible,
   });
-  app.slots.experimental_threadContextCard({
+  app.slots.experimental_threadContextCardRow({
     id: "pull-request",
     group: experimental_THREAD_INFO_ROW_GROUPS.pullRequest,
     order: 10,

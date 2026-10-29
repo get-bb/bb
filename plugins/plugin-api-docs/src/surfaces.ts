@@ -283,8 +283,10 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Leave the card, placement, and the header button to bb",
         ],
         apiSymbols: [
-          "PluginAppSlots.experimental_threadContextCard",
-          "ExperimentalThreadContextCardRegistration",
+          "PluginAppSlots.experimental_threadContextCardRow",
+          "PluginAppSlots.experimental_threadContextCardSection",
+          "ExperimentalThreadContextCardRowRegistration",
+          "ExperimentalThreadContextCardSectionRegistration",
           "ExperimentalThreadContextCardProps",
           "experimental_useThreadContextKind",
           "ExperimentalThreadContextKind",

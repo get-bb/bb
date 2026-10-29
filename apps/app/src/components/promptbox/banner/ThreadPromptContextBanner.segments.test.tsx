@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlotMount";
 import {
   ThreadContextCardProvider,
-  type CoreThreadContextCardEntry,
+  type CoreThreadContextCardRow,
 } from "@/components/plugin/PluginThreadContextCard";
 import {
   removePluginSlotRegistrations,
@@ -106,7 +106,7 @@ function registerPluginSegment({
   );
 }
 
-const CARD_ENTRIES: CoreThreadContextCardEntry[] = [
+const CARD_ROWS: CoreThreadContextCardRow[] = [
   { id: "row", group: "thread", order: 10, component: () => null },
 ];
 
@@ -130,7 +130,8 @@ function renderBanner({
       <GitSegmentFixtureProvider value={git}>
         <ThreadContextCardProvider
           enabled={threadContextKind === "card"}
-          coreEntries={CARD_ENTRIES}
+          coreRows={CARD_ROWS}
+          coreSections={[]}
           threadId="thr_1"
           projectId="proj_1"
           environment={{ id: "env_1" }}

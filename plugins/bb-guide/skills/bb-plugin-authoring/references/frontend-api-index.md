@@ -221,7 +221,8 @@ Read the installed SDK declarations for the exact current signatures.
 - `ExperimentalThreadInfoRowRegistration`
 - `ExperimentalThreadRowMetadataRegistration`
 - `ExperimentalThreadInfoSectionRegistration`
-- `ExperimentalThreadContextCardRegistration`
+- `ExperimentalThreadContextCardRowRegistration`
+- `ExperimentalThreadContextCardSectionRegistration`
 - `ExperimentalThreadContextKind`
 - `ExperimentalThreadContextCardProps`
 - `ExperimentalThreadContextCardRowProps`
