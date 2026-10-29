@@ -2,7 +2,7 @@ import { CAMPAIGN_PARAM_NAMES, CLICK_ID_PARAM_NAMES } from "./site";
 
 const SAVED_UTM_KEY = "bb:landing-utm";
 const DOWNLOAD_PATH = /^\/download\/(macos|windows|linux)$/;
-const CARRY_EVENTS = ["pointerdown", "click"] as const;
+const CARRY_EVENTS = ["pointerdown", "click", "auxclick"] as const;
 
 type UtmStorage = Pick<Storage, "getItem" | "setItem">;
 

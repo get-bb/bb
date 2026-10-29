@@ -1,5 +1,8 @@
+import { useRouterState } from "@tanstack/react-router";
 import type { PostHog } from "posthog-js";
 import { useEffect } from "react";
+import { withoutAdvertisingIds } from "./analytics-privacy";
+import type { DownloadIntent } from "./download-intent";
 import type { CtaPlacement } from "./site";
 
 type LandingEvent =
@@ -53,10 +56,15 @@ type LandingEvent =
 
 let client: PostHog | null = null;
 let loading = false;
-const pendingEvents: LandingEvent[] = [];
+const marketingPaths = new Set<string>();
+let lastPageviewUrl: string | null = null;
+const pendingEvents: { event: LandingEvent; url: string }[] = [];
 
 export function initAnalytics(): void {
-  if (loading || typeof window === "undefined") {
+  if (typeof window === "undefined") return;
+  marketingPaths.add(window.location.pathname);
+  trackMarketingPageview();
+  if (loading) {
     return;
   }
   const key = import.meta.env.VITE_POSTHOG_KEY;
@@ -64,30 +72,81 @@ export function initAnalytics(): void {
     return;
   }
   loading = true;
-  void import("posthog-js").then(({ default: posthog }) => {
-    posthog.init(key, {
-      api_host: import.meta.env.VITE_POSTHOG_HOST ?? "https://us.i.posthog.com",
-      autocapture: false,
-      capture_pageview: true,
-      capture_pageleave: true,
+  void import("posthog-js")
+    .then(({ default: posthog }) => {
+      posthog.init(key, {
+        api_host:
+          import.meta.env.VITE_POSTHOG_HOST ?? "https://us.i.posthog.com",
+        autocapture: false,
+        capture_pageview: false,
+        capture_pageleave: true,
+        before_send: (event) => {
+          if (!event || !marketingPaths.has(window.location.pathname))
+            return null;
+          if (
+            event &&
+            "globalPrivacyControl" in navigator &&
+            navigator.globalPrivacyControl === true
+          ) {
+            event.properties = withoutAdvertisingIds(event.properties);
+          }
+          return event;
+        },
+      });
+      client = posthog;
+      trackMarketingPageview();
+      for (const pending of pendingEvents.splice(0)) {
+        if (pending.url === window.location.href) {
+          client.capture(pending.event.name, pending.event.properties);
+        }
+      }
+    })
+    .catch(() => {
+      pendingEvents.length = 0;
     });
-    client = posthog;
-    for (const event of pendingEvents.splice(0)) {
-      client.capture(event.name, event.properties);
-    }
-  });
 }
 
 export function useInitAnalytics(): void {
+  const pathname = useRouterState({
+    select: (state) => state.location.pathname,
+  });
   useEffect(() => {
     initAnalytics();
-  }, []);
+  }, [pathname]);
+}
+
+export function trackMarketingPageview(): void {
+  if (!marketingPaths.has(window.location.pathname)) {
+    lastPageviewUrl = null;
+    pendingEvents.length = 0;
+    return;
+  }
+  const pageUrl = `${window.location.origin}${window.location.pathname}${window.location.search}`;
+  if (!client || lastPageviewUrl === pageUrl) return;
+  lastPageviewUrl = pageUrl;
+  try {
+    client.capture("$pageview", { $current_url: window.location.href });
+  } catch {
+    return;
+  }
 }
 
 export function trackLandingEvent(event: LandingEvent): void {
   if (client) {
     client.capture(event.name, event.properties);
   } else if (loading) {
-    pendingEvents.push(event);
+    pendingEvents.push({ event, url: window.location.href });
+  }
+}
+
+export function trackDownloadIntent(properties: DownloadIntent): void {
+  if (!marketingPaths.has(window.location.pathname)) return;
+  try {
+    client?.capture("landing_download_intent", properties, {
+      send_instantly: true,
+      transport: "sendBeacon",
+    });
+  } catch {
+    return;
   }
 }

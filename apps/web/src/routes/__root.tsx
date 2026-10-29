@@ -6,6 +6,11 @@ import {
 } from "@tanstack/react-router";
 import { useEffect } from "react";
 
+import {
+  trackMarketingPageview,
+  trackDownloadIntent,
+} from "../landing/analytics";
+import { listenForDownloadIntent } from "../landing/download-intent";
 import { carryUtmToDownloadLinks } from "../landing/download-utm";
 import { canonicalHref } from "../lib/canonical";
 import { THEME_INIT, watchSystemTheme } from "../lib/theme";
@@ -60,7 +65,18 @@ const JS_INIT = `document.documentElement.classList.add("js")`;
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   useEffect(() => watchSystemTheme(), []);
-  useEffect(() => carryUtmToDownloadLinks(), []);
+  useEffect(() => {
+    const stopUtm = carryUtmToDownloadLinks();
+    const stopIntent = listenForDownloadIntent(trackDownloadIntent);
+    return () => {
+      stopIntent();
+      stopUtm();
+    };
+  }, []);
+  const locationHref = useRouterState({
+    select: (state) => state.location.href,
+  });
+  useEffect(() => trackMarketingPageview(), [locationHref]);
   const canonical = useRouterState({
     select: (state) => canonicalHref(state.matches),
   });
