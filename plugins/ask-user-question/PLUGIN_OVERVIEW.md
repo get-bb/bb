@@ -3,7 +3,7 @@ Agents on providers without a native question tool can stop and ask you to choos
 ## What you get
 
 - A question card in the thread with two to four options per question. Each option has a label and a description.
-- Up to four questions in one card. A question can accept one answer or several answers.
+- Up to ten questions in one card. A question can accept one answer or several answers.
 - An "Other" field on every question for free-text input.
 - An optional preview under an option, for example a code snippet or a layout mockup.
 

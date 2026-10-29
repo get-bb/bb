@@ -509,12 +509,12 @@ describe("planAcpElicitation", () => {
 
   it("counts questions after folding against the limit (#6266, #6508)", () => {
     expect(
-      questions(planAcpElicitation(form(ompQuestions(4), "Pick", []))).payload
+      questions(planAcpElicitation(form(ompQuestions(10), "Pick", []))).payload
         .questions,
-    ).toHaveLength(4);
-    expect(planAcpElicitation(form(ompQuestions(5), "Pick", []))).toEqual({
+    ).toHaveLength(10);
+    expect(planAcpElicitation(form(ompQuestions(11), "Pick", []))).toEqual({
       kind: "unsupported",
-      reason: "bb shows at most 4 questions and this form has 5",
+      reason: "bb shows at most 10 questions and this form has 11",
     });
   });
 
@@ -529,13 +529,16 @@ describe("planAcpElicitation", () => {
       planAcpElicitation(
         form(
           Object.fromEntries(
-            ["a", "b", "c", "d", "e"].map((name) => [name, { type: "string" }]),
+            Array.from({ length: 11 }, (_, index) => [
+              `field${index}`,
+              { type: "string" },
+            ]),
           ),
         ),
       ),
     ).toEqual({
       kind: "unsupported",
-      reason: "bb shows at most 4 questions and this form has 5",
+      reason: "bb shows at most 10 questions and this form has 11",
     });
     expect(planAcpElicitation(form({ nested: { type: "object" } }))).toEqual({
       kind: "unsupported",

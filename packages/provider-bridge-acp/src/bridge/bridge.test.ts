@@ -5275,12 +5275,12 @@ describe("acp bridge: questions the agent asks", () => {
     await waitForTurnCompleted();
 
     expect(agentMessageTexts()).toContain(
-      'elicitation:{"error":"Error: bb cannot show this form: bb shows at most 4 questions and this form has 5"}',
+      'elicitation:{"error":"Error: bb cannot show this form: bb shows at most 10 questions and this form has 11"}',
     );
     expect(threadEventsOfType("provider/warning").at(-1)).toMatchObject({
       summary: "The agent asked a question bb could not show",
       details:
-        "bb answered the agent with an error because bb shows at most 4 questions and this form has 5.",
+        "bb answered the agent with an error because bb shows at most 10 questions and this form has 11.",
     });
     expect(
       output.messages.filter(

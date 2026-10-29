@@ -748,7 +748,10 @@ async function handlePrompt(message) {
         }
       : text.includes("ask-form-too-large")
         ? Object.fromEntries(
-            ["a", "b", "c", "d", "e"].map((name) => [name, { type: "string" }]),
+            Array.from({ length: 11 }, (_, index) => [
+              `field${index}`,
+              { type: "string" },
+            ]),
           )
         : {
             strategy: {
