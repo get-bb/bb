@@ -1,0 +1,46 @@
+name: Compare private Git workspace reads
+on:
+  push:
+    branches: [bb/benchmark-ci-git-reads]
+permissions:
+  contents: read
+jobs:
+  compare:
+    runs-on: blacksmith-4vcpu-windows-2025
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        order: [ABBA, BAAB]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22.x
+          package-manager-cache: false
+      - run: npm install --global pnpm@9.15.0 --ignore-scripts
+      - uses: ./.github/actions/windows-dependency-cache
+        timeout-minutes: 1
+        continue-on-error: true
+      - name: Install dependencies
+        shell: bash
+        run: |
+          filters=(--filter=bb-plugin-* --filter=!bb-plugin-provider-* --filter=!bb-plugin-tasks --filter=!bb-plugin-connect --filter=!bb-plugin-thread-list)
+          selection=$(pnpm list "${filters[@]}" --depth -1 --json)
+          packages=$(node -e 'for (const pkg of JSON.parse(process.argv[1])) console.log(pkg.name)' "$selection")
+          filters=(--filter bb --filter '@bb/app...' --filter '@bb/db...')
+          while IFS= read -r package; do
+            filters+=(--filter "$package...")
+          done <<< "$packages"
+          bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts "${filters[@]}"
+      - name: Compare the full Windows plugins-2 shard
+        env:
+          BENCHMARK_ORDER: ${{ matrix.order }}
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+        run: node .github/scripts/benchmark-ci-git-reads.mjs
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: git-reads-${{ matrix.order }}
+          path: ${{ runner.temp }}/git-reads-results/
