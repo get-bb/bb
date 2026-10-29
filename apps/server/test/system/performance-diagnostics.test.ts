@@ -29,9 +29,11 @@ describe("performance diagnostics gates", () => {
         hub,
         logger: {
           info: (_fields: unknown, message?: string) => {
+            console.error("PROFILE_LOG", Date.now(), message, _fields);
             messages.push(message ?? "");
           },
           warn: (_fields: unknown, message?: string) => {
+            console.error("PROFILE_WARN", Date.now(), message, _fields);
             messages.push(message ?? "");
           },
         },

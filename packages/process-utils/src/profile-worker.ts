@@ -53,7 +53,9 @@ async function runProfileWorker(): Promise<void> {
     port.postMessage({ fields, message, level, complete });
   };
   const start = async () => {
+    console.error("PROFILE_STAGE", Date.now(), "start", directory);
     await mkdir(directory, { recursive: true, mode: 0o700 });
+    console.error("PROFILE_STAGE", Date.now(), "mkdir", directory);
     await rm(pendingPath, { force: true });
     const files = await readdir(directory, { withFileTypes: true });
     for (const file of files) {
@@ -82,11 +84,16 @@ async function runProfileWorker(): Promise<void> {
       (a, b) => a.savedAt - b.savedAt || a.path.localeCompare(b.path),
     );
     await prune(0);
+    console.error("PROFILE_STAGE", Date.now(), "prune", directory);
     session.connectToMainThread();
+    console.error("PROFILE_STAGE", Date.now(), "connect", directory);
     await session.post("Profiler.enable");
+    console.error("PROFILE_STAGE", Date.now(), "enable", directory);
     await session.post("Profiler.setSamplingInterval", { interval: 1_000 });
+    console.error("PROFILE_STAGE", Date.now(), "interval", directory);
     title = `bb-performance-${randomUUID()}`;
     await begin(title);
+    console.error("PROFILE_STAGE", Date.now(), "begin", directory);
     startedAt = new Date().toISOString();
     respond(
       {

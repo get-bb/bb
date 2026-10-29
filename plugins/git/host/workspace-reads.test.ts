@@ -695,22 +695,35 @@ describe.concurrent("WorkspaceReads", () => {
   it("resolves remote-only merge bases across status and diff reads", async ({
     onTestFinished,
   }) => {
+    const probeStarted = performance.now();
+    const stage = (name: string) => console.error("REMOTE_BASE_STAGE", name, performance.now() - probeStarted);
+    stage("start");
+    onTestFinished(() => stage("finished"));
     const repoPath = await copyRepository(
       await makeTempDir(onTestFinished, "bb-workspace-remote-base-"),
     );
+    stage("copy");
     await runGit(["update-ref", "refs/remotes/origin/main", "main"], {
       cwd: repoPath,
     });
+    stage("update-ref");
     await runGit(
       ["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main"],
       { cwd: repoPath },
     );
+    stage("symbolic-ref");
     await runGit(["checkout", "-b", "feature"], { cwd: repoPath });
+    stage("checkout");
     await runGit(["branch", "-D", "main"], { cwd: repoPath });
+    stage("delete-main");
     await fs.writeFile(path.join(repoPath, "committed.txt"), "branch change\n");
+    stage("write");
     await runGit(["add", "."], { cwd: repoPath });
+    stage("add");
     await runGit(["commit", "-m", "Feature change"], { cwd: repoPath });
+    stage("commit");
     await fs.writeFile(path.join(repoPath, "README.md"), "pending change\n");
+    stage("fixture");
     const workspace = new WorkspaceReads(repoPath, tmpdir());
     const target = { type: "all", mergeBaseBranch: "main" } as const;
     const files = await workspace.diffFiles({
@@ -719,6 +732,7 @@ describe.concurrent("WorkspaceReads", () => {
       maxFiles: 100,
       ignoreWhitespace: false,
     });
+    stage("diff-files");
     expect(files.files.map((file) => file.path).sort()).toEqual([
       "README.md",
       "committed.txt",
@@ -736,15 +750,19 @@ describe.concurrent("WorkspaceReads", () => {
         target: { ...target, mergeBaseBranch: "origin/main" },
       }),
     );
+    stage("diff-reads");
     const status = await workspace.getStatus({
       freshness: fresh(),
       mergeBaseBranch: "main",
     });
+    stage("status");
     expect(status.mergeBase?.aheadCount).toBe(1);
     expect(status.mergeBase?.files.map((file) => file.path)).toEqual([
       "committed.txt",
     ]);
+    stage("assert-status");
     await runGit(["branch", "main", "HEAD"], { cwd: repoPath });
+    stage("local-ref");
     expect(
       (
         await workspace.getStatus({
@@ -753,6 +771,7 @@ describe.concurrent("WorkspaceReads", () => {
         })
       ).mergeBase?.aheadCount,
     ).toBe(0);
+    stage("done");
   });
 
   it("reports unresolved merge bases instead of empty diffs", async ({
