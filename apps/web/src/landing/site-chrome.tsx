@@ -277,28 +277,7 @@ export function SiteFooter({ current }: { current?: string }) {
   const comparisons = compareLinks();
   return (
     <footer className="footer">
-      <div className="footer-brand">
-        <span className="bb-mark footer-mark" aria-hidden="true" />
-        <div className="footer-column footer-legal">
-          <h2 className="footer-title">Legal</h2>
-          <ul>
-            <li>
-              <a href="/privacy">Privacy</a>
-            </li>
-            <li>
-              <a href="/brand">Brand assets</a>
-            </li>
-            <li>
-              <a href="https://github.com/get-bb/bb/blob/main/LICENSE">
-                Software License
-              </a>
-            </li>
-          </ul>
-        </div>
-        <p className="footer-publisher">
-          © {new Date().getFullYear()} Terragon Labs, Inc.
-        </p>
-      </div>
+      <span className="bb-mark footer-mark" aria-hidden="true" />
       <FooterColumn title="Product">
         <li>
           <DownloadLink placement="footer" platform={platform}>
@@ -349,6 +328,25 @@ export function SiteFooter({ current }: { current?: string }) {
           </XLink>
         </li>
       </FooterColumn>
+      <div className="footer-column footer-legal">
+        <h2 className="footer-title">Legal</h2>
+        <ul>
+          <li>
+            <a href="/privacy">Privacy</a>
+          </li>
+          <li>
+            <a href="/brand">Brand assets</a>
+          </li>
+          <li>
+            <a href="https://github.com/get-bb/bb/blob/main/LICENSE">
+              Software License
+            </a>
+          </li>
+        </ul>
+      </div>
+      <p className="footer-publisher">
+        © {new Date().getFullYear()} Terragon Labs, Inc.
+      </p>
     </footer>
   );
 }
