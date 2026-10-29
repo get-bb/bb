@@ -1679,7 +1679,13 @@ describe("acp bridge", () => {
           command: process.execPath,
           args: [
             "-e",
-            `require('node:fs').writeFileSync(${JSON.stringify(readyFile)}, String(process.pid)); setInterval(() => {}, 1000);`,
+            [
+              "const fs = require('node:fs');",
+              `const readyFile = ${JSON.stringify(readyFile)};`,
+              "fs.writeFileSync(readyFile + '.tmp', String(process.pid));",
+              "fs.renameSync(readyFile + '.tmp', readyFile);",
+              "setInterval(() => {}, 1000);",
+            ].join(" "),
           ],
         },
         modelListArgs: ["--"],

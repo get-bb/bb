@@ -111,7 +111,7 @@
 
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
-import { appendFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, renameSync, writeFileSync } from "node:fs";
 
 const failLoad = process.env.FAKE_ACP_FAIL_LOAD === "1";
 const loadSession = process.env.FAKE_ACP_LOAD_SESSION === "1" || failLoad;
@@ -241,7 +241,9 @@ if (process.env.FAKE_ACP_LINGERING_DESCENDANT_PID_FILE) {
 }
 
 if (process.env.FAKE_ACP_READY_FILE) {
-  writeFileSync(process.env.FAKE_ACP_READY_FILE, String(process.pid));
+  const readyFile = process.env.FAKE_ACP_READY_FILE;
+  writeFileSync(readyFile + ".tmp", String(process.pid));
+  renameSync(readyFile + ".tmp", readyFile);
 }
 
 if (process.env.FAKE_ACP_LAUNCH_LOG) {
