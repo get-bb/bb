@@ -11,6 +11,33 @@ import { forkablePluginPaths } from "./vite-forkable-plugin-paths.js";
 import { sharedUiEnvSeam } from "./vite-shared-ui-seam.js";
 
 class AppTestSequencer extends SharedWorkerSequencer {
+  override async shard(
+    files: TestSpecification[],
+  ): Promise<TestSpecification[]> {
+    const shard = this.ctx.config.shard;
+    if (process.platform !== "win32" || !shard) return super.shard(files);
+    return files
+      .map((spec) => ({
+        spec,
+        path: path
+          .relative(this.ctx.config.root, spec.moduleId)
+          .replaceAll("\\", "/"),
+      }))
+      .sort((a, b) => {
+        for (const [left, right] of [
+          [a.path, b.path],
+          [a.spec.project.name, b.spec.project.name],
+          [a.spec.pool, b.spec.pool],
+        ] as const) {
+          if (left < right) return -1;
+          if (left > right) return 1;
+        }
+        return 0;
+      })
+      .filter((_, position) => position % shard.count === shard.index - 1)
+      .map(({ spec }) => spec);
+  }
+
   override async sort(
     files: TestSpecification[],
   ): Promise<TestSpecification[]> {
