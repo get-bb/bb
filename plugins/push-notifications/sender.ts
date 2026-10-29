@@ -89,6 +89,7 @@ interface PushNotificationData {
   kind: PushNotificationKind | typeof SENT_NOTIFICATION_KIND;
   projectId?: string;
   serverUrl?: string;
+  subscriptionId: string;
   threadId?: string;
 }
 
@@ -410,7 +411,7 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
     const rows = await subscriptions.list();
     if (rows.length === 0) return channels;
     const serverUrl = bb.server.experimental_appUrl;
-    const data: PushNotificationData = {
+    const data = {
       kind: notification.kind,
       ...(notification.thread === null
         ? {}
@@ -426,7 +427,7 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
         to: subscription.expoPushToken,
         title,
         body,
-        data,
+        data: { ...data, subscriptionId: subscription.id },
         sound: "default",
         channelId: "threads",
         priority: "high",

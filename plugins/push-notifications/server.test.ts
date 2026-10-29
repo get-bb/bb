@@ -480,6 +480,9 @@ describe("push sender", () => {
         priority: "high",
       });
       expect(host.expo.requests[0]?.[0]?.data).not.toHaveProperty("serverUrl");
+      expect(
+        host.expo.requests[0]?.map((message) => message.data.subscriptionId),
+      ).toEqual(["subscription-1", "subscription-2"]);
       await vi.waitFor(async () => {
         const result = await host.harness.behavior.runCli(["status", "--json"]);
         expect(JSON.parse(result.stdout).lastSendOutcome).toMatchObject({
@@ -593,6 +596,7 @@ describe("push sender", () => {
 
       await vi.waitFor(() => expect(host.expo.requests).toHaveLength(1));
       expect(host.expo.requests[0]?.[0]?.data).toEqual({
+        subscriptionId: "subscription-1",
         kind: "turn-finished",
         projectId: "project-1",
         serverUrl: "https://bb.example.test",
@@ -916,6 +920,7 @@ describe("sending notifications", () => {
         channelId: "threads",
       });
       expect(message?.data).toEqual({
+        subscriptionId: "subscription-1",
         kind: "message",
         serverUrl: "https://bb.example.test",
       });
@@ -983,6 +988,7 @@ describe("sending notifications", () => {
         stdout: JSON.stringify({ ok: true, channels: ["mobile"] }),
       });
       expect(host.expo.requests.at(-1)?.[0]?.data).toEqual({
+        subscriptionId: "subscription-1",
         kind: "message",
       });
     } finally {
@@ -1015,6 +1021,7 @@ describe("sending notifications", () => {
         threadId: thread.id,
       });
       expect(host.expo.requests[0]?.[0]?.data).toEqual({
+        subscriptionId: "subscription-1",
         kind: "message",
         projectId: "project-7",
         threadId: thread.id,

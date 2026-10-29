@@ -67,5 +67,15 @@ const { channels } = await bb.sdk.plugins.callRpc({
 delivered. `bb plugin rpc inspect push-notifications notifications.send`
 prints the published input and output schemas.
 
+Every command takes `--help`. A failure with `--json` prints
+`{ "ok": false, "error": { "code", "message" } }` on stdout and the readable
+text on stderr.
+
+The SDK's plugin settings API changes the same settings. `sdk.plugins.callRpc`
+also takes `notifications.test` (`{ channel }`), `threadNotifications.list`
+(`{ threadIds }`, up to 200), and `threadNotifications.set`
+(`{ threadId, level }`). Permission requests still require a click in the
+target client.
+
 Inspect `status` before changing a channel, and change only the requested
 channel or device.
