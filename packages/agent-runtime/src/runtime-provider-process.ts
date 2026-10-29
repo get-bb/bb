@@ -388,6 +388,19 @@ export class RuntimeProviderProcessManager {
       env,
     });
     const { child } = managed;
+    const observerId = randomUUID();
+    const observe = (event: string, error?: unknown) => console.error("CI_CHILD", JSON.stringify({
+      event, observerId, parentPid: process.pid, pid: child.pid,
+      workspacePath: this.args.workspacePath, processKey: args.processKey,
+      providerId: args.providerId, time: Date.now(),
+      exitCode: child.exitCode, signalCode: child.signalCode,
+      error: error === undefined ? undefined : error instanceof Error ? error.stack : String(error),
+    }));
+    observe("created");
+    child.once("spawn", () => observe("spawn"));
+    child.once("exit", () => observe("exit"));
+    child.once("close", () => observe("close"));
+    child.once("error", (error) => observe("error", error));
     let finalizeExit: () => void = () => undefined;
     const exitFinalized = new Promise<void>((resolve) => {
       finalizeExit = resolve;
@@ -543,9 +556,14 @@ export class RuntimeProviderProcessManager {
   private async terminateProviderProcess(
     args: TerminateProviderProcessArgs,
   ): Promise<void> {
+    console.error("CI_STOP", JSON.stringify({ phase: "start", pid: args.providerProcess.child.pid, workspacePath: this.args.workspacePath, time: Date.now() }));
     const result = await args.providerProcess.stop({
       gracePeriodMs: args.timeoutMs ?? 5000,
+    }).catch((error) => {
+      console.error("CI_STOP", JSON.stringify({ phase: "error", pid: args.providerProcess.child.pid, workspacePath: this.args.workspacePath, time: Date.now(), error: error instanceof Error ? error.stack : String(error) }));
+      throw error;
     });
+    console.error("CI_STOP", JSON.stringify({ phase: "done", pid: args.providerProcess.child.pid, workspacePath: this.args.workspacePath, time: Date.now(), exitCode: args.providerProcess.child.exitCode, signalCode: args.providerProcess.child.signalCode, result }));
     if (result.treeTermination === "unverified") {
       this.args.onStderr?.(
         "Provider process exited, but descendant cleanup could not be confirmed",

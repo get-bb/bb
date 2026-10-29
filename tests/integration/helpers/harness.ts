@@ -480,6 +480,10 @@ export async function createIntegrationHarness(
     await waitForHostConnected(harness.api);
   }
 
+  function observeShutdown(phase: string, error?: unknown) {
+    console.error("CI_HARNESS", JSON.stringify({ phase, tmpRoot, time: Date.now(), parentPid: process.pid, error: error === undefined ? undefined : error instanceof Error ? error.stack : String(error) }));
+  }
+
   async function shutdownDaemon(
     reason = "integration-shutdown",
   ): Promise<void> {
@@ -488,7 +492,9 @@ export async function createIntegrationHarness(
     }
     const currentResources = daemonResources;
     daemonResources = null;
-    await currentResources.daemon.shutdown(reason, 0);
+    observeShutdown("shutdown-start");
+    await currentResources.daemon.shutdown(reason, 0).catch((error) => { observeShutdown("shutdown-error", error); throw error; });
+    observeShutdown("shutdown-done");
   }
 
   async function restartDaemon(reason = "integration-restart"): Promise<void> {
@@ -497,6 +503,7 @@ export async function createIntegrationHarness(
   }
 
   async function crashDaemon(): Promise<void> {
+    observeShutdown("crash-start");
     if (!daemonResources) {
       return;
     }
@@ -504,13 +511,14 @@ export async function createIntegrationHarness(
     daemonResources = null;
     await currentResources.daemonApp.connection
       .shutdown()
-      .catch(() => undefined);
-    await currentResources.daemonApp.localApi?.close().catch(() => undefined);
+      .catch((error) => observeShutdown("crash-connection-error", error));
+    await currentResources.daemonApp.localApi?.close().catch((error) => observeShutdown("crash-local-api-error", error));
     await currentResources.daemonApp.runtimeManager
       .shutdownAll()
-      .catch(() => undefined);
-    await currentResources.daemonApp.eventSink.dispose().catch(() => undefined);
-    await currentResources.releaseLock().catch(() => undefined);
+      .catch((error) => observeShutdown("crash-runtime-error", error));
+    await currentResources.daemonApp.eventSink.dispose().catch((error) => observeShutdown("crash-event-sink-error", error));
+    await currentResources.releaseLock().catch((error) => observeShutdown("crash-lock-error", error));
+    observeShutdown("crash-done");
   }
 
   async function cleanup(): Promise<void> {
@@ -519,10 +527,12 @@ export async function createIntegrationHarness(
     }
     cleanedUp = true;
 
-    await shutdownDaemon("integration-cleanup").catch(() => undefined);
-    await server?.close().catch(() => undefined);
+    await shutdownDaemon("integration-cleanup").catch((error) => observeShutdown("cleanup-shutdown-error", error));
+    await server?.close().catch((error) => observeShutdown("cleanup-server-error", error));
     await killProcessesReferencingPath(tmpRoot);
-    await removePathWithRetry(tmpRoot);
+    observeShutdown("remove-start");
+    await removePathWithRetry(tmpRoot).catch((error) => { observeShutdown("remove-error", error); throw error; });
+    observeShutdown("remove-done");
   }
 
   try {
