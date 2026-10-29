@@ -1,0 +1,64 @@
+# Graphics for the monthly email
+
+One or two images per theme, 560 CSS px wide, exported at 3×. Work in the issue's local `scripts/monthly-email/issues/<yyyy-mm>/design/` (gitignored): copy `scripts/monthly-email/design/design-base.css` there, copy Inter (`inter-latin-wght-normal.woff2` and `inter-latin-ext-wght-normal.woff2` from `apps/app/node_modules/@fontsource-variable/inter/files/`) into `fonts/` as `inter-latin.woff2` and `inter-latin-ext.woff2`, and put captures in `caps/`. Final PNGs go one level up.
+
+## Style
+
+- **Color:** bb's file-link blue, `oklch(0.55 0.1 250)`. The canvas is the soft blue radial gradient from `design-base.css`, with white cards and soft shadows.
+- **Font:** Inter, loaded by `design-base.css` from `fonts/`. Without it, headless Chrome on Linux silently falls back to DejaVu.
+- **Layout:** cards hug their contents and sit centered. Nothing is cut off, including text truncated with "…" inside a capture: shorten the sample data instead.
+- **Size:** keep images short. Prefer bigger, less detailed crops, and make small things bigger by wrapping into rows rather than shrinking them into one line. Put two small things side by side in one image, not in two tall images. A theme gets a second image only when an item needs its own picture. Not every item needs a graphic.
+- **Alternatives and context.** Show an alternative state as its own detached piece at full size, aligned to the main capture, never merged into one screen (October's customization graphic: the full-height left rail beside a window using labeled rows, built with `insets`). Show a component where it lives: the child threads banner sits on the Git changes bar and composer.
+- **Real product only:** no title cards and no text-only graphics. Show real bb surfaces or measured numbers; a diagram of an unmeasured idea reads as fake. Third-party apps (ChatGPT, Claude) may appear as simplified wireframes when the point is bb working with them, using bb's real tool names ("Control bb").
+- **Charts** are plain line or bar charts with labeled axes, before in grey and now in blue. The x-axis is what actually drives the cost (files written in threads you aren't viewing, not thread count). Measured values only.
+- **Annotations stay subtle:** 1 px outlines in `color-mix(in oklch, oklch(0.55 0.1 250) 75%, transparent)` on the element's measured edges, small white pill labels with blue text, and 1 px leader lines. Don't outline things that don't need it.
+- **Labels** use bb's names ("Labeled rows", "Commit button", "Diff tab", "Info tab git rows", "Git changes", "Composer"), and highlight exactly what the copy talks about, in the layout it describes.
+- **Stat cards:** a short headline holding the multiple once ("Switching threads got 6× faster"), then `~~before~~ → after` rows with plain metric names.
+- **New things:** in a lineup, tag what's new with a small blue "New" pill and give each item its status underneath (Alpha, TestFlight).
+
+## Patterns
+
+| Pattern                                                                                                             | Use for                                             |
+| ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| One real window, annotated from measured coordinates (`annotate-design.mjs`), with a detached alternative beside it | A theme spread across several surfaces              |
+| Device frames in two rows holding real desktop and mobile captures                                                  | Platforms                                           |
+| Two cards side by side: before → after numbers, and a measured line chart                                           | Performance, or two different features in one image |
+| One annotated panel                                                                                                 | A single feature                                    |
+| Two states of one component side by side, with an arrow and a pill label each, shown in place above the composer    | A feature with a before and after state             |
+| Simplified chat windows calling bb, an arrow to the started thread, and the real plugin card                        | Integrations                                        |
+| A list excerpt                                                                                                      | Registries and settings lists                       |
+
+## Capturing real UI
+
+1. **Run bb at the newest tag in the month, isolated.** One build is enough; for older items, check their components haven't changed with `git diff desktop-v<old> desktop-v<new> -- <dir>`. Make a worktree at `desktop-v<ver>`, then run `pnpm install`, `pnpm build` and `pnpm start:worktree`. That gives a fresh, empty data dir under `~/.bb-dev/<instance>` with its own ports. Pass `BB_SERVER_URL=http://127.0.0.1:<port>` on every bb call, and confirm `bb status` shows the test data dir before writing anything. Never capture a real user's bb.
+2. **Turn on what the graphic needs** first, for example `bb plugin enable bb--prompt-library` or `bb plugin config bb--git set showCommitButton true`. Say so to the reviewer if the graphic shows something on that's off by default.
+3. **Sample data without running agents.** Check each command's `--help` at the tag; flags change.
+   - Make a scratch git repo with a few uncommitted changes (October's was "acme-web"), then `bb project create` and one `bb thread spawn`. Stop the thread right away (`bb thread stop`), because a spawned agent uses a real provider account.
+   - Add more threads for the thread list with `bb thread fork <id>`, which copies history without running anything, and rename them with `bb thread update <id> --title`. Forks add a "Forks" section to the Info tab; hide it in the capture.
+   - Star prompts with `bb prompts star "<text>" --title "<title>"`.
+   - For states you can't stage safely (a child thread waiting with a question), render the real component in Ladle with realistic fixture data, in a local-only story (step 7).
+4. **Capture** with `bb browser-automation` (local headless):
+   - Set the viewport (`{width, height, deviceScaleFactor: 3}`) before loading, and capture with `page.screenshot({clip, captureBeyondViewport: false})`. Without `false`, the layout reflows.
+   - Measure elements with `getBoundingClientRect()` in the same session. Write the measurements to an annotations config, and generate the design with `node scripts/monthly-email/annotate-design.mjs <config.json> <out.html>`. The config holds `capture`, `page`, `elements` and `labels`, plus optional `insets` for a detached alternative.
+   - Runs fail after about 30 seconds in practice, and a failed run ends the session. Navigate in one run (don't await `goto`; sleep a few seconds), then capture in the next.
+   - Narrow crops stay readable at half width: open the right panel or shrink the viewport so the chat column narrows, or set a Ladle story's width to about 340 px.
+   - Popovers can close but stay in the DOM. Open, clean up and capture in one run.
+5. **Privacy.** Before capturing, hide or replace anything private: folder paths (set the text to "~/code/acme-web"), machine names, account emails and signed-in names (use made-up ones in a story), thread IDs, and the test thread's run log.
+6. **Lists.** To show a few rows of a long list, hide the other rows of the list container.
+7. **Components in Ladle.** Run `pnpm exec ladle serve --port <p> --host 127.0.0.1` from `apps/app` in the tag worktree. Story IDs are in `http://127.0.0.1:<p>/meta.json`; open `?story=<id>&mode=preview&theme=light`. If every story renders blank, `.ladle/plugin-sdk-app.ts` is missing exports that `src/lib/plugin-sdk-app-impl.ts` has; add them locally. Add local-only stories for realistic sample data and never commit them.
+8. **Mobile.** Load the thread at `{width: 390, height: 780, deviceScaleFactor: 2, isMobile: true}`; the mobile apps wrap the same web app.
+9. **Desktop-only surfaces** (the desktop browser tab, Agent Annotations) need the desktop app. On Linux, run it under Xvfb and capture over its debugging port. OS-level surfaces (a phone notification) can't be captured: show the bb setting that controls them, or leave the item without a graphic.
+
+## Measuring a number
+
+When a PR shows only a "before", or nothing measured at all, measure it. Reproduce the PR's mechanism in a small script against a scratch folder, run old against new, repeat each point, and keep the script and raw results in the issue's `design/bench/`. Delete the scratch folder afterwards, and say what was measured and on what hardware. October's, for example, measured macOS file-watching CPU for a watch over all thread storage against a single-thread watch, in about 3 minutes on a Mac.
+
+## Rendering
+
+- Serve the design folder over HTTP (for example `python3 -m http.server` in it). Then `node scripts/monthly-email/browser-scripts.mjs designs <base-url> <out-dir> <design-name…> > scripts/monthly-email/browser/render.js` writes a script that renders each `.c` canvas at 3× with the browser cache off. A stale cached `design-base.css` once dropped the Inter font.
+- Copy the final PNGs to `issues/<yyyy-mm>/`, and look at every one before using it.
+
+## Delivery
+
+- **Hosting:** Resend's image upload, as in the skill's "Resend" section.
+- **Cleanup:** stop the test bb, Ladle and the preview server, close browser sessions, delete Resend drafts used only for testing (never the image-upload draft), and delete the test data dir and worktree.

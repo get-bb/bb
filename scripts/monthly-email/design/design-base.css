@@ -1,0 +1,51 @@
+@font-face {
+  font-family: Inter;
+  font-weight: 100 900;
+  src: url(fonts/inter-latin.woff2) format("woff2-variations");
+  unicode-range:
+    U+0-FF, U+131, U+152-153, U+2BB-2BC, U+2C6, U+2DA, U+2DC, U+2000-206F,
+    U+20AC, U+2122, U+2190-2199, U+2212, U+2215;
+}
+@font-face {
+  font-family: Inter;
+  font-weight: 100 900;
+  src: url(fonts/inter-latin-ext.woff2) format("woff2-variations");
+  unicode-range:
+    U+100-2BA, U+2BD-2C5, U+2C7-2CC, U+2CE-2D7, U+2DD-2FF, U+1E00-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  font-family: Inter, system-ui, sans-serif;
+}
+:root {
+  --blue: oklch(0.55 0.1 250);
+  --blue-soft: color-mix(in oklch, oklch(0.55 0.1 250) 12%, white);
+  --blue-line: color-mix(in oklch, oklch(0.55 0.1 250) 45%, white);
+}
+.c {
+  width: 560px;
+  height: 320px;
+  position: relative;
+  overflow: hidden;
+  border-radius: 12px;
+  background: radial-gradient(
+    120% 90% at 85% 0%,
+    color-mix(in oklch, oklch(0.55 0.1 250) 16%, white) 0%,
+    color-mix(in oklch, oklch(0.55 0.1 250) 7%, white) 45%,
+    #f3f5f8 100%
+  );
+}
+.card {
+  position: absolute;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow:
+    0 1px 2px rgba(20, 40, 70, 0.06),
+    0 12px 32px rgba(20, 40, 70, 0.12);
+  overflow: hidden;
+}

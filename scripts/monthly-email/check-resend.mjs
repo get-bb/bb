@@ -1,0 +1,97 @@
+import { readFileSync } from "node:fs";
+import { basename, dirname, extname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { renderEmail } from "./render-email.mjs";
+
+const USAGE =
+  "Usage: node scripts/monthly-email/check-resend.mjs issues/<yyyy-mm>.send.html issues/<yyyy-mm>.resend.html [issues/<yyyy-mm>.json issues/<yyyy-mm>.resend-fields.json]";
+
+const ENTITIES = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  nbsp: " ",
+};
+
+function decodeEntities(text) {
+  return text.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (match, entity) => {
+    if (entity[0] !== "#") return ENTITIES[entity.toLowerCase()] ?? match;
+    const code =
+      entity[1].toLowerCase() === "x"
+        ? Number.parseInt(entity.slice(2), 16)
+        : Number.parseInt(entity.slice(1), 10);
+    return String.fromCodePoint(code);
+  });
+}
+
+export function visibleText(html) {
+  const withoutHead = html.replace(/<(style|head)[^>]*>[\s\S]*?<\/\1>/g, "");
+  return decodeEntities(withoutHead.replace(/<[^>]+>/g, " "))
+    .replaceAll(" ", "")
+    .replaceAll("͏", "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function attributeValues(html, pattern) {
+  return [...html.matchAll(pattern)].map((match) => match[1]);
+}
+
+export function compareResend(ours, theirs, spec, fields, hosted) {
+  const checks = [
+    ["visible text", visibleText(ours) === visibleText(theirs)],
+    [
+      "link targets",
+      JSON.stringify(attributeValues(ours, /href="([^"]+)"/g)) ===
+        JSON.stringify(attributeValues(theirs, /href="([^"]+)"/g)),
+    ],
+    [
+      "image sources",
+      JSON.stringify(attributeValues(ours, /<img[^>]*src="([^"]+)"/g)) ===
+        JSON.stringify(attributeValues(theirs, /<img[^>]*src="([^"]+)"/g)),
+    ],
+    ["unsubscribe placeholder", theirs.includes("RESEND_UNSUBSCRIBE_URL")],
+    ["body centered at 592px", theirs.includes("max-width:592px;align:center")],
+  ];
+  if (spec && fields) {
+    checks.push(
+      ["send HTML matches the spec", renderEmail(spec, { hosted }) === ours],
+      ["From", fields.from === spec.from],
+      ["Reply-To", fields.replyTo === spec.reply_to],
+      ["Subject", fields.subject === spec.subject],
+      ["preview line in preheader", visibleText(theirs).includes(spec.preview)],
+      ["draft name", fields.name === `What's new in bb · ${spec.month}`],
+    );
+  }
+  return checks;
+}
+
+function main() {
+  const [oursPath, theirsPath, specPath, fieldsPath] = process.argv.slice(2);
+  if (!oursPath || !theirsPath) throw new Error(USAGE);
+  const read = (path) => readFileSync(path, "utf8");
+  if (Boolean(specPath) !== Boolean(fieldsPath)) throw new Error(USAGE);
+  const hostedPath = specPath
+    ? join(
+        dirname(specPath),
+        basename(specPath, extname(specPath)),
+        "hosted.json",
+      )
+    : null;
+  const checks = compareResend(
+    read(oursPath),
+    read(theirsPath),
+    specPath ? JSON.parse(read(specPath)) : undefined,
+    fieldsPath ? JSON.parse(read(fieldsPath)) : undefined,
+    hostedPath ? JSON.parse(read(hostedPath)) : undefined,
+  );
+  for (const [name, ok] of checks)
+    console.log(`${ok ? "ok  " : "FAIL"} ${name}`);
+  process.exitCode = checks.every(([, ok]) => ok) ? 0 : 1;
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main();
+}
