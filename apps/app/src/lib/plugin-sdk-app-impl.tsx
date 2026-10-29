@@ -118,7 +118,11 @@ import {
 } from "@/components/secondary-panel/info/info-list";
 import { InfoListRow } from "@bb/shared-ui/info-list-row";
 import { DetailRow } from "@/components/ui/detail-card";
+import { ThreadContextCardRow } from "@/components/plugin/ThreadContextCardRow";
+import { useThreadContextKind } from "@/components/plugin/PluginThreadContextCard";
 import { useTabVisible } from "@/components/secondary-panel/tab-visibility";
+import { useServerChoices } from "@/hooks/useServerChoices";
+import { ThreadRowMetadata } from "@/components/plugin/ThreadRowMetadata";
 
 function PluginInfoListRow({
   onSelect,
@@ -150,6 +154,7 @@ export const pluginSdkAppImplementation = {
   useBbNavigate,
   experimental_useCanOpenFileExternally: usePluginCanOpenFileExternally,
   experimental_useTabVisible: useTabVisible,
+  experimental_useServers: useServerChoices,
   experimental_useAppPanel,
   experimental_useFixedTabTarget,
   useComposer,
@@ -195,7 +200,9 @@ export const pluginSdkAppImplementation = {
   experimental_SourceCode: LazyPluginSourceCode,
   experimental_Diff: LazyPluginDiff,
   experimental_InfoSection: InfoSection,
+  experimental_ThreadRowMetadata: ThreadRowMetadata,
   experimental_DetailRow: DetailRow,
+  experimental_ThreadContextCardRow: ThreadContextCardRow,
   experimental_InfoList: InfoList,
   experimental_InfoListRow: PluginInfoListRow,
   experimental_useSidebarThreads: useSidebarThreads,
@@ -212,6 +219,7 @@ export const pluginSdkAppImplementation = {
   experimental_THREAD_INFO_SECTION_GROUPS,
   experimental_useSidebarThreadSplit: useSidebarThreadSplit,
   experimental_useExperiment: useExperiment,
+  experimental_useThreadContextKind: useThreadContextKind,
   experimental_useSidebarNavigation: useSidebarNavigation,
   experimental_useSidebarNavigationSplit: useSidebarNavigationSplit,
   experimental_SidebarNavigationIcon: SidebarNavigationIcon,

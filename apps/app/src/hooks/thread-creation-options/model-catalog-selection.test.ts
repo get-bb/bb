@@ -14,6 +14,7 @@ function model(
     model: "atlas",
     displayName: "Atlas",
     description: "",
+    reasoningDiscovery: "known" as const,
     supportedReasoningEfforts: levels.map((level) => ({
       reasoningEffort: level,
       description: level,

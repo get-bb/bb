@@ -58,7 +58,8 @@ describe("client system notifications", () => {
 
   it.each([
     { platform: "linux", native: true },
-    { platform: "macos", native: false },
+    { platform: "macos", native: true },
+    { platform: "windows", native: true },
     { platform: "web", native: false },
     { platform: "older-linux", native: false },
   ])(

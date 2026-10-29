@@ -1,10 +1,13 @@
 import type { EnvironmentPullRequest, PullRequest } from "./contract.js";
 import type { PullRequestPersistence } from "./persistence.js";
 
-const CACHE_TTL_MS = 10_000;
-const ABSENT_CACHE_TTL_MS = 5 * 60_000;
+const READ_FRESH_MS = 10_000;
+const OPEN_STALE_MS = 30_000;
+const SETTLED_STALE_MS = 60 * 60_000;
+const ABSENT_STALE_MS = 5 * 60_000;
 const ACTIVE_CHECK_MS = 30_000;
 const QUIET_CHECK_MS = 5 * 60_000;
+const WATCH_READ_WINDOW_MS = 10;
 
 type Snapshot = { pullRequest: PullRequest; fetchedAt: number };
 type Lookup =
@@ -46,8 +49,10 @@ export function createPullRequestStore(options: {
   const inflight = new Map<string, Promise<void>>();
   const settling = new Map<string, number>();
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let watchReadTimer: ReturnType<typeof setTimeout> | undefined;
+  const watchReads = new Set<string>();
+  const unpublished = new Set<string>();
   const generations = new Map<string, number>();
-  const restored = new Set<string>();
   let disposed = false;
   for (const snapshot of options.persistence.snapshots())
     snapshots.set(snapshot.pullRequest.url, snapshot);
@@ -61,7 +66,6 @@ export function createPullRequestStore(options: {
           : { outcome: "available", url: link.url },
       fetchedAt: snapshot?.fetchedAt ?? link.discoveredAt,
     });
-    restored.add(link.environmentId);
   }
 
   function currentUrl(environmentId: string): string | null {
@@ -102,7 +106,15 @@ export function createPullRequestStore(options: {
         changed.push(environmentId);
       served.set(environmentId, content);
     }
-    if (changed.length > 0) options.publish(changed);
+    if (changed.length === 0) return;
+    if (unpublished.size === 0)
+      queueMicrotask(() => {
+        const environmentIds = [...unpublished];
+        unpublished.clear();
+        if (!disposed && environmentIds.length > 0)
+          options.publish(environmentIds);
+      });
+    for (const environmentId of changed) unpublished.add(environmentId);
   }
 
   function checks(): Map<string, Check> {
@@ -225,21 +237,30 @@ export function createPullRequestStore(options: {
     return task;
   }
 
+  function staleAfterMs(environmentId: string, entry: Entry): number {
+    if (entry.lookup.outcome === "absent") return ABSENT_STALE_MS;
+    const url = currentUrl(environmentId);
+    const state = url === null ? null : snapshots.get(url)?.pullRequest.state;
+    return state === "merged" || state === "closed"
+      ? SETTLED_STALE_MS
+      : OPEN_STALE_MS;
+  }
+
   async function read(
     environmentId: string,
     { viewer }: { viewer: boolean },
   ): Promise<EnvironmentPullRequest> {
     const cached = lookups.get(environmentId);
-    const immediate =
-      viewer && restored.has(environmentId) && cached !== undefined;
-    if (viewer) restored.delete(environmentId);
-    const ttl =
-      viewer && cached?.lookup.outcome === "absent"
-        ? ABSENT_CACHE_TTL_MS
-        : CACHE_TTL_MS;
-    if (cached === undefined || Date.now() - cached.fetchedAt >= ttl) {
+    const age =
+      cached === undefined
+        ? Number.POSITIVE_INFINITY
+        : Date.now() - cached.fetchedAt;
+    const stale =
+      cached === undefined ||
+      age >= (viewer ? staleAfterMs(environmentId, cached) : READ_FRESH_MS);
+    if (stale) {
       const loading = load(environmentId, currentUrl(environmentId));
-      if (!immediate) await loading;
+      if (cached === undefined || !viewer) await loading;
     }
     const result = resultFor(environmentId);
     if (viewer) served.set(environmentId, JSON.stringify(result));
@@ -263,7 +284,6 @@ export function createPullRequestStore(options: {
           (generations.get(environmentId) ?? 0) + 1,
         );
         lookups.delete(environmentId);
-        restored.delete(environmentId);
       } else {
         const cached = lookups.get(environmentId);
         if (cached) cached.fetchedAt = Number.NEGATIVE_INFINITY;
@@ -275,6 +295,11 @@ export function createPullRequestStore(options: {
           void pending.then(() => load(environmentId, url, discover));
         else void load(environmentId, url, discover);
       }
+    },
+    async reread(environmentId: string) {
+      const cached = lookups.get(environmentId);
+      if (cached) cached.fetchedAt = Number.NEGATIVE_INFINITY;
+      await read(environmentId, { viewer: false });
     },
     pushed(environmentId: string) {
       const url = currentUrl(environmentId);
@@ -292,7 +317,6 @@ export function createPullRequestStore(options: {
       const previous = JSON.stringify(resultFor(environmentId));
       generations.set(environmentId, (generations.get(environmentId) ?? 0) + 1);
       lookups.delete(environmentId);
-      restored.delete(environmentId);
       served.delete(environmentId);
       options.persistence.removeEnvironment(environmentId);
       if (
@@ -317,12 +341,20 @@ export function createPullRequestStore(options: {
         },
         { once: true },
       );
-      void read(environmentId, { viewer: false });
+      watchReads.add(environmentId);
+      watchReadTimer ??= setTimeout(() => {
+        watchReadTimer = undefined;
+        const environmentIds = [...watchReads];
+        watchReads.clear();
+        for (const id of environmentIds)
+          if (watches.has(id)) void read(id, { viewer: true });
+      }, WATCH_READ_WINDOW_MS);
     },
     dispose() {
       disposed = true;
       clearTimeout(timer);
       timer = undefined;
+      clearTimeout(watchReadTimer);
     },
   };
 }

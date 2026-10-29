@@ -131,7 +131,7 @@ export function registerProviderCommands(
     .option("--json", "Print machine-readable JSON output")
     .option(
       "--selected-model <model>",
-      "Include a selected-only model if it matches",
+      "Discover reasoning for this model and include it if selected-only",
     )
     .action(
       action(
@@ -156,6 +156,9 @@ export function registerProviderCommands(
               ? routing
               : { ...routing, projectId: opts.project }),
             ...(providerId ? { providerId } : {}),
+            ...(opts.selectedModel
+              ? { selectedModel: opts.selectedModel }
+              : {}),
           });
           const models = includeSelectedOnlyModel({
             models: executionOptions.models,

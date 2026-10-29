@@ -7,6 +7,7 @@ import * as pluginSdkApp from "@get-bb/plugin-sdk/app";
 import {
   type BbPluginApi,
   type ExperimentalAppOverlayProps,
+  type ExperimentalMessageMetadataProps,
   type PluginAppBuilder,
   type PluginAppSlots,
   type PluginContentScriptContext,
@@ -35,9 +36,10 @@ import {
   type PluginSettingsSectionProps,
   type PluginSidebarFooterActionProps,
   type PluginSourceCodeRendererProps,
-  type PluginThreadHeaderActionProps,
   type ExperimentalThreadContextSegmentProps,
   type ExperimentalThreadInfoProps,
+  type ExperimentalThreadContextCardProps,
+  type ExperimentalThreadRowMetadataProps,
   type PluginThreadActionItemInput,
   type ExperimentalPluginBrowserToolbarActionProps,
   type PluginThreadListProps,
@@ -284,10 +286,12 @@ type SlotPropsByName = {
   sidebarFooterAction: PluginSidebarFooterActionProps;
   experimental_threadList: PluginThreadListProps;
   experimental_sidebarNavigation: ExperimentalSidebarNavigationProps;
-  experimental_threadHeaderAction: PluginThreadHeaderActionProps;
   experimental_threadContextSegment: ExperimentalThreadContextSegmentProps;
+  experimental_threadRowMetadata: ExperimentalThreadRowMetadataProps;
   experimental_threadInfoRow: ExperimentalThreadInfoProps;
   experimental_threadInfoSection: ExperimentalThreadInfoProps;
+  experimental_threadContextCardRow: ExperimentalThreadContextCardProps;
+  experimental_threadContextCardSection: ExperimentalThreadContextCardProps;
   experimental_threadAction: PluginThreadActionItemInput<unknown>;
   experimental_browserToolbarAction: ExperimentalPluginBrowserToolbarActionProps;
   fileOpener: PluginFileOpenerProps;
@@ -297,6 +301,7 @@ type SlotPropsByName = {
   messageDirective: PluginMessageDirectiveProps;
   experimental_codeFenceRenderer: ExperimentalCodeFenceRendererProps;
   messageAction: PluginMessageActionContext;
+  experimental_messageMetadata: ExperimentalMessageMetadataProps;
   commandPaletteAction: PluginCommandContext;
   experimental_providerIcon: PluginProviderIconRegistration;
   experimental_timelineRenderer: PluginTimelineRendererProps;
@@ -374,11 +379,6 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "onNavigate",
     "searchQuery",
   ],
-  experimental_threadHeaderAction: [
-    "threadId",
-    "projectId",
-    "isCompactViewport",
-  ],
   experimental_threadContextSegment: [
     "threadId",
     "projectId",
@@ -389,6 +389,13 @@ const FRONTEND_SLOT_PROP_FIELDS = {
   ],
   experimental_threadInfoRow: ["threadId", "projectId", "environment"],
   experimental_threadInfoSection: ["threadId", "projectId", "environment"],
+  experimental_threadContextCardRow: ["threadId", "projectId", "environment"],
+  experimental_threadContextCardSection: [
+    "threadId",
+    "projectId",
+    "environment",
+  ],
+  experimental_threadRowMetadata: ["thread", "data"],
   experimental_threadAction: [
     "thread",
     "data",
@@ -430,6 +437,7 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "message",
     "Original",
   ],
+  experimental_messageMetadata: ["message"],
   messageAction: [
     "threadId",
     "message",

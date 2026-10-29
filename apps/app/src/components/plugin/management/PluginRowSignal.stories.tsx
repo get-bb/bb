@@ -24,7 +24,11 @@ const GIT_PLUGIN = makePluginListItem({
   catalogEntryId: "prompt-shaper",
   publisherLabel: "BB Community",
   sourceDisplay: "git · github.com/brsbl/bb-plugins",
-  updateState: { ...EMPTY_PLUGIN_UPDATE_STATE, availableVersion: FULL_HASH },
+  updateState: {
+    ...EMPTY_PLUGIN_UPDATE_STATE,
+    availableVersion: FULL_HASH,
+    availableLabel: FULL_HASH.slice(0, 7),
+  },
 });
 
 function StateRow({

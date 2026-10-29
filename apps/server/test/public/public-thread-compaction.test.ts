@@ -32,7 +32,11 @@ import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
 function seedCompactableThread(
   harness: TestAppHarness,
-  args: { providerId: string; providerThreadId: string },
+  args: {
+    providerId: string;
+    providerThreadId: string;
+    status?: "active" | "idle";
+  },
 ) {
   const { host, session } = seedHostSession(harness.deps);
   const { project } = seedProjectWithSource(harness.deps, {
@@ -46,7 +50,7 @@ function seedCompactableThread(
     environmentId: environment.id,
     projectId: project.id,
     providerId: args.providerId,
-    status: "idle",
+    status: args.status ?? "idle",
   });
   seedThreadRuntimeState(harness.deps, {
     environmentId: environment.id,
@@ -175,6 +179,210 @@ describe("public thread compaction", () => {
             providerThreadId: "provider-thread-acp",
           },
         });
+      });
+    },
+  );
+
+  it("queues sends while a provider-started compaction turn is active", async () => {
+    await withTestHarness(async (harness) => {
+      const providerThreadId = "provider-thread-extension-compaction";
+      const { host, session, thread } = seedCompactableThread(harness, {
+        providerId: "pi",
+        providerThreadId,
+        status: "active",
+      });
+      if (!thread.environmentId) {
+        throw new Error("Expected compactable thread environment");
+      }
+      const responder = registerSuccessfulTurnResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+      });
+      const compactionTurnId = "turn-extension-compaction";
+      seedTurnStarted(harness.deps, {
+        environmentId: thread.environmentId,
+        providerThreadId,
+        threadId: thread.id,
+        turnId: compactionTurnId,
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: thread.environmentId,
+        providerThreadId,
+        sequence:
+          getLatestThreadSequence(harness.db, { threadId: thread.id }) + 1,
+        type: "item/started",
+        scope: turnScope(compactionTurnId),
+        data: {
+          providerThreadId,
+          item: { type: "contextCompaction", id: "item-extension-compaction" },
+        },
+      });
+
+      const sendResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/send`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            mode: "steer",
+            input: [{ type: "text", text: "Sent during compaction" }],
+          }),
+        },
+      );
+      expect(sendResponse.status).toBe(200);
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(1);
+      expect(
+        responder.requests.filter(
+          ({ command }) => command.type === "turn.submit",
+        ),
+      ).toHaveLength(0);
+
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: thread.environmentId,
+        providerThreadId,
+        sequence:
+          getLatestThreadSequence(harness.db, { threadId: thread.id }) + 1,
+        type: "turn/completed",
+        scope: turnScope(compactionTurnId),
+        data: { providerThreadId, status: "completed" },
+      });
+      const completion = applyTurnCompletedEvent(harness.deps, {
+        threadId: thread.id,
+        providerThreadId,
+        type: "turn/completed",
+        scope: turnScope(compactionTurnId),
+        status: "completed",
+      });
+      expect(completion.nextStatus).toBe("idle");
+      expect(
+        await sendNextQueuedMessageIfPresent(harness.deps, {
+          threadId: thread.id,
+        }),
+      ).toBe(true);
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(0);
+      await expect
+        .poll(
+          () =>
+            responder.requests.filter(
+              ({ command }) => command.type === "turn.submit",
+            ).length,
+        )
+        .toBe(1);
+    });
+  });
+
+  it.each(["completed-item", "nested-item", "accepted-input"] as const)(
+    "steers sends into an active turn whose compaction is not provider-started and running (%s)",
+    async (scenario) => {
+      await withTestHarness(async (harness) => {
+        const providerThreadId = "provider-thread-compaction-control";
+        const { host, session, thread } = seedCompactableThread(harness, {
+          providerId: "pi",
+          providerThreadId,
+          status: scenario === "accepted-input" ? "idle" : "active",
+        });
+        if (!thread.environmentId) {
+          throw new Error("Expected compactable thread environment");
+        }
+        const responder = registerSuccessfulTurnResponder(harness, {
+          hostId: host.id,
+          sessionId: session.id,
+        });
+        const turnId = "turn-compaction-control";
+        if (scenario === "accepted-input") {
+          const startResponse = await harness.app.request(
+            `/api/v1/threads/${thread.id}/send`,
+            {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                mode: "start",
+                input: [{ type: "text", text: "Start ordinary work" }],
+              }),
+            },
+          );
+          expect(startResponse.status).toBe(200);
+          const startRequest = responder.requests.find(
+            ({ command }) => command.type === "turn.submit",
+          );
+          if (!startRequest || startRequest.command.type !== "turn.submit") {
+            throw new Error("Expected ordinary turn request");
+          }
+          seedAcceptedProviderTurn(harness, {
+            clientRequestId: startRequest.command.requestId,
+            environmentId: thread.environmentId,
+            providerThreadId,
+            threadId: thread.id,
+            turnId,
+          });
+        } else {
+          seedTurnStarted(harness.deps, {
+            environmentId: thread.environmentId,
+            providerThreadId,
+            threadId: thread.id,
+            turnId,
+          });
+        }
+        const compactionItem = {
+          threadId: thread.id,
+          environmentId: thread.environmentId,
+          providerThreadId,
+          scope: turnScope(turnId),
+          data: {
+            providerThreadId,
+            item: {
+              type: "contextCompaction" as const,
+              id: "item-compaction-control",
+              ...(scenario === "nested-item"
+                ? { parentToolCallId: "call-child-agent" }
+                : {}),
+            },
+          },
+        };
+        seedEvent(harness.deps, {
+          ...compactionItem,
+          sequence:
+            getLatestThreadSequence(harness.db, { threadId: thread.id }) + 1,
+          type: "item/started",
+        });
+        if (scenario === "completed-item") {
+          seedEvent(harness.deps, {
+            ...compactionItem,
+            sequence:
+              getLatestThreadSequence(harness.db, { threadId: thread.id }) + 1,
+            type: "item/completed",
+          });
+        }
+        const submissionsBefore = responder.requests.filter(
+          ({ command }) => command.type === "turn.submit",
+        ).length;
+
+        const sendResponse = await harness.app.request(
+          `/api/v1/threads/${thread.id}/send`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              mode: "steer",
+              input: [{ type: "text", text: "Keep working" }],
+            }),
+          },
+        );
+        expect(sendResponse.status).toBe(200);
+        await expect(readJson(sendResponse)).resolves.toMatchObject({
+          delivery: "sent",
+        });
+        expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(0);
+        await expect
+          .poll(
+            () =>
+              responder.requests.filter(
+                ({ command }) => command.type === "turn.submit",
+              ).length,
+          )
+          .toBe(submissionsBefore + 1);
       });
     },
   );

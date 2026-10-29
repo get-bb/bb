@@ -16,10 +16,6 @@ export function isReadablePluginVersion(version: string): boolean {
   return /^v?\d+\.\d+/u.test(version);
 }
 
-export function displayPluginVersion(version: string): string {
-  return /^[0-9a-f]{12,}$/iu.test(version) ? version.slice(0, 7) : version;
-}
-
 export const SUCCESS_TEXT_STYLE = {
   color: "color-mix(in oklab, var(--success) 80%, var(--ink))",
 } as const;
@@ -117,7 +113,9 @@ const PLUGIN_CATEGORY_ICONS: Record<string, string> = {
 export function pluginCatalogCategoryIconName(
   categoryId: string | undefined,
 ): string | undefined {
-  return categoryId === undefined ? undefined : PLUGIN_CATEGORY_ICONS[categoryId];
+  return categoryId === undefined
+    ? undefined
+    : PLUGIN_CATEGORY_ICONS[categoryId];
 }
 
 export function PluginCategoryIcon({

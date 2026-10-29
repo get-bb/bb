@@ -1,9 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import type {
   ExperimentalSidebarFooterDisclosureController,
+  PluginAppSlots,
   PluginSidebarFooterActionContext,
 } from "@get-bb/plugin-sdk";
-import { getCollectedSidebarFooterItems } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
+import {
+  getCollectedSidebarFooterItems,
+  type LegacyThreadHeaderActionRegistration,
+} from "@get-bb/plugin-sdk/internal/plugin-app-collector";
 import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
 import {
   collectPluginAppRegistrations,
@@ -96,6 +100,22 @@ describe("collectPluginAppRegistrations — experimental_threadAction", () => {
     ]);
   });
 
+  it("keeps a header placement", () => {
+    const definition = definePluginApp((app) => {
+      app.slots.experimental_threadAction({
+        id: "commit",
+        title: "Commit",
+        icon: "GitBranch",
+        group: "git",
+        placement: "header",
+        item,
+      });
+    });
+    expect(
+      collectPluginAppRegistrations(definition).threadActions[0]?.placement,
+    ).toBe("header");
+  });
+
   it("rejects two thread actions with the same id", () => {
     const definition = definePluginApp((app) => {
       app.slots.experimental_threadAction({
@@ -127,6 +147,11 @@ describe("collectPluginAppRegistrations — experimental_threadAction", () => {
     ["icon", { item, icon: "" }, "icon"],
     ["group", { item, group: "" }, "group"],
     ["order", { item, order: Number.NaN }, '"order" must be a finite number'],
+    [
+      "placement",
+      { item, placement: "toolbar" },
+      '"placement" must be "menu" or "header"',
+    ],
   ])("rejects a malformed %s", (_field, fields, message) => {
     const definition = definePluginApp((app) => {
       app.slots.experimental_threadAction({
@@ -143,10 +168,20 @@ describe("collectPluginAppRegistrations — experimental_threadAction", () => {
   });
 });
 
-describe("collectPluginAppRegistrations — experimental_threadHeaderAction", () => {
+interface LegacyHeaderActionSlots {
+  experimental_threadHeaderAction(
+    registration: LegacyThreadHeaderActionRegistration,
+  ): void;
+}
+
+function legacySlots(slots: PluginAppSlots): LegacyHeaderActionSlots {
+  return slots as unknown as LegacyHeaderActionSlots;
+}
+
+describe("collectPluginAppRegistrations — legacy experimental_threadHeaderAction", () => {
   it("collects a header action", () => {
     const definition = definePluginApp((app) => {
-      app.slots.experimental_threadHeaderAction({
+      legacySlots(app.slots).experimental_threadHeaderAction({
         id: "subagents",
         title: "Subagents",
         component: Component,
@@ -159,12 +194,12 @@ describe("collectPluginAppRegistrations — experimental_threadHeaderAction", ()
 
   it("rejects two header actions with the same id", () => {
     const definition = definePluginApp((app) => {
-      app.slots.experimental_threadHeaderAction({
+      legacySlots(app.slots).experimental_threadHeaderAction({
         id: "subagents",
         title: "One",
         component: Component,
       });
-      app.slots.experimental_threadHeaderAction({
+      legacySlots(app.slots).experimental_threadHeaderAction({
         id: "subagents",
         title: "Two",
         component: Component,
@@ -182,7 +217,7 @@ describe("collectPluginAppRegistrations — experimental_threadHeaderAction", ()
         title: "Inbox",
         component: Component,
       });
-      app.slots.experimental_threadHeaderAction({
+      legacySlots(app.slots).experimental_threadHeaderAction({
         id: "inbox",
         title: "Inbox",
         component: Component,
@@ -195,7 +230,7 @@ describe("collectPluginAppRegistrations — experimental_threadHeaderAction", ()
 
   it("rejects a missing title", () => {
     const definition = definePluginApp((app) => {
-      app.slots.experimental_threadHeaderAction({
+      legacySlots(app.slots).experimental_threadHeaderAction({
         id: "subagents",
         component: Component,
       } as never);
@@ -555,7 +590,7 @@ describe("collectPluginAppRegistrations", () => {
         description: "A thread list.",
         component: Component,
       });
-      app.slots.experimental_threadHeaderAction({
+      legacySlots(app.slots).experimental_threadHeaderAction({
         id: "thread-header",
         title: "Thread header",
         component: Component,

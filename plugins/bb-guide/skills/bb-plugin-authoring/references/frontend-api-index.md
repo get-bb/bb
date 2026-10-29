@@ -27,6 +27,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `experimental_DetailRow`
 - `experimental_InfoList`
 - `experimental_InfoListRow`
+- `experimental_ThreadContextCardRow`
 - `useRpc`
 - `experimental_useRpcQuery`
 - `experimental_useRpcKeyedQuery`
@@ -36,6 +37,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `useRealtimeConnectionState`
 - `useSettings`
 - `experimental_useExperiment`
+- `experimental_useThreadContextKind`
 - `useBbContext`
 - `experimental_usePluginId`
 - `experimental_useQuestionFormHost`
@@ -91,12 +93,14 @@ Read the installed SDK declarations for the exact current signatures.
 - `useSidebarThreadShortcut`
 - `ThreadTitle`
 - `experimental_ThreadStatusGlyph`
+- `experimental_ThreadRowMetadata`
 - `useEnvironmentProviders`
 - `useSdk`
 - `experimental_useProviders`
 - `experimental_useCodeTheme`
 - `experimental_getApplicationLinkApprovals`
 - `experimental_revokeApplicationLinkApproval`
+- `experimental_useServers`
 - `experimental_copyToClipboard`
 - `experimental_saveFile`
 
@@ -120,6 +124,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginNewThreadPanelProps`
 - `PluginPendingInteractionView`
 - `PluginPendingInteractionProps`
+- `ExperimentalQuestionFormAction`
 - `ExperimentalQuestionFormHost`
 - `ExperimentalQuestionShortcut`
 - `BranchPickerProps`
@@ -136,12 +141,13 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginSidebarFooterActionProps`
 - `ExperimentalSidebarFooterDisclosureProps`
 - `PluginThreadListProps`
-- `PluginThreadHeaderActionProps`
 - `ExperimentalThreadInfoProps`
 - `ExperimentalThreadEnvironment`
 - `ExperimentalThreadContextSegmentInput`
 - `ExperimentalThreadContextSegmentProps`
 - `ExperimentalThreadContextSegmentReference`
+- `ExperimentalThreadRowMetadataProps`
+- `ExperimentalThreadRowMetadataLineProps`
 - `ExperimentalInfoSectionProps`
 - `ExperimentalDetailRowProps`
 - `ExperimentalInfoListProps`
@@ -197,6 +203,8 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginCodeThemeTokenRule`
 - `PluginCodeThemeData`
 - `PluginCodeThemeState`
+- `ExperimentalServer`
+- `ExperimentalServers`
 - `ExperimentalClipboardContent`
 - `ExperimentalSaveFileRequest`
 - `ExperimentalSaveFileOutcome`
@@ -209,10 +217,15 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginEnvironmentProvidersState`
 - `PluginBoundThreadsArea`
 - `PluginBrowserBbSdk`
-- `PluginThreadHeaderActionRegistration`
 - `ExperimentalThreadContextSegmentRegistration`
 - `ExperimentalThreadInfoRowRegistration`
+- `ExperimentalThreadRowMetadataRegistration`
 - `ExperimentalThreadInfoSectionRegistration`
+- `ExperimentalThreadContextCardRowRegistration`
+- `ExperimentalThreadContextCardSectionRegistration`
+- `ExperimentalThreadContextKind`
+- `ExperimentalThreadContextCardProps`
+- `ExperimentalThreadContextCardRowProps`
 - `PluginThreadActionTarget`
 - `PluginThreadActionChoice`
 - `PluginThreadActionChoices`
@@ -222,6 +235,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginThreadActionItemInput`
 - `PluginThreadActionBulkItemInput`
 - `PluginThreadActionRegistration`
+- `PluginThreadActionPlacement`
 - `PluginBoundThreadAction`
 - `PluginThreadActionEntry`
 - `PluginThreadActionRegistrationInfo`
@@ -260,6 +274,10 @@ Read the installed SDK declarations for the exact current signatures.
 - `ThreadChatMessageReference`
 - `PluginMessageActionContext`
 - `PluginMessageActionRegistration`
+- `ExperimentalMessageMetadataContext`
+- `ExperimentalMessageMetadataPlacement`
+- `ExperimentalMessageMetadataProps`
+- `ExperimentalMessageMetadataRegistration`
 - `PluginAppCommands`
 - `PluginCommandContext`
 - `PluginCommandShortcut`

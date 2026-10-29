@@ -261,6 +261,11 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "Open a terminal in the secondary panel.",
       ),
       command(
+        "terminal.find",
+        "Find in terminal",
+        "Search the focused terminal scrollback.",
+      ),
+      command(
         "workspace.openPreferred",
         "Open in preferred app",
         "Open the workspace in the preferred editor or terminal.",
@@ -334,12 +339,34 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
   },
   {
     label: "Questions",
-    commands: QUESTION_SELECT_APP_COMMAND_IDS.map((id, index) =>
-      paletteHiddenCommand(
-        id,
-        `Choose answer ${index + 1}`,
-        `Choose visible answer ${index + 1} when bb asks a question.`,
+    commands: [
+      ...QUESTION_SELECT_APP_COMMAND_IDS.map((id, index) =>
+        paletteHiddenCommand(
+          id,
+          `Choose answer ${index + 1}`,
+          `Choose visible answer ${index + 1} when bb asks a question.`,
+        ),
       ),
-    ),
+      paletteHiddenCommand(
+        "question.submit",
+        "Submit answers or go to the next question",
+        "Press the question card's Next or Submit button.",
+      ),
+      paletteHiddenCommand(
+        "question.previous",
+        "Previous question",
+        "Show the previous question on a card with several questions.",
+      ),
+      paletteHiddenCommand(
+        "question.next",
+        "Next question",
+        "Show the next question without submitting.",
+      ),
+      paletteHiddenCommand(
+        "question.cancel",
+        "Cancel question",
+        "Press the question card's Cancel button.",
+      ),
+    ],
   },
 ];

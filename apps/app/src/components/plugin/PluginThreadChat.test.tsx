@@ -21,8 +21,7 @@ import { PluginSlotMount } from "./PluginSlotMount";
 beforeAll(() => LazyPluginThreadChat.preload());
 
 const mocks = vi.hoisted(() => ({
-  embeddedChatProps: [] as Array<Record<string, unknown>>,
-  timelinePanelProps: [] as Array<Record<string, unknown>>,
+  threadScreenProps: [] as Array<Record<string, unknown>>,
 }));
 
 vi.mock("@/lib/sdk", () => ({
@@ -53,18 +52,15 @@ vi.mock("@/hooks/useHostDaemon", () => ({
   useHostDaemon: () => ({ isLocalDaemonHost: () => true }),
 }));
 
-vi.mock("@/components/thread/embedded-chat", () => ({
-  EmbeddedThreadChat: (props: Record<string, unknown>) => {
-    mocks.embeddedChatProps.push(props);
-    return <div data-testid="embedded-thread-chat" />;
+vi.mock("@/views/thread-detail/ThreadScreen", () => ({
+  ThreadScreen: (props: Record<string, unknown>) => {
+    mocks.threadScreenProps.push(props);
+    return <div data-testid="thread-screen" />;
   },
 }));
 
 vi.mock("@/components/thread/timeline", () => ({
-  ThreadTimelinePanelContent: (props: Record<string, unknown>) => {
-    mocks.timelinePanelProps.push(props);
-    return <div data-testid="timeline-panel-content" />;
-  },
+  useThreadTimelineController: () => ({ timelineRows: [] }),
 }));
 
 const THREAD_FIXTURE = {
@@ -113,8 +109,7 @@ afterEach(() => {
 });
 
 beforeEach(() => {
-  mocks.embeddedChatProps = [];
-  mocks.timelinePanelProps = [];
+  mocks.threadScreenProps = [];
   vi.mocked(sdk.threads.get).mockResolvedValue(THREAD_FIXTURE as never);
 });
 
@@ -132,26 +127,24 @@ describe("PluginThreadChat", () => {
     );
 
     await waitFor(() =>
-      expect(screen.getByTestId("embedded-thread-chat")).toBeTruthy(),
+      expect(screen.getByTestId("thread-screen")).toBeTruthy(),
     );
     expect(sdk.threads.get).toHaveBeenCalledWith(
       expect.objectContaining({ threadId: "thr_demo" }),
     );
-    const props = mocks.embeddedChatProps.at(-1)!;
+    const props = mocks.threadScreenProps.at(-1)!;
     expect(props.projectId).toBe("proj_demo");
-    expect(props.providerId).toBe("provider_demo");
-    expect(props.variant).toBe("compact");
-    expect(props.measure).toBe("panel");
-    expect(props.surfaceTone).toBe("sidebar");
+    expect(props.thread).toEqual(
+      expect.objectContaining({ id: "thr_demo", providerId: "provider_demo" }),
+    );
+    expect(props.presentation).toEqual({
+      kind: "panel",
+      layout: "contained",
+      measure: "panel",
+      tone: "sidebar",
+    });
     expect(props.composer).toEqual(
-      expect.objectContaining({
-        permissionPolicy: "snapshot",
-        draftScope: {
-          kind: "thread",
-          projectId: "proj_demo",
-          threadId: "thr_demo",
-        },
-      }),
+      expect.objectContaining({ contextEnvironmentId: null, permissionPolicy: "snapshot" }),
     );
   });
 
@@ -167,9 +160,9 @@ describe("PluginThreadChat", () => {
     );
 
     await waitFor(() =>
-      expect(screen.getByTestId("embedded-thread-chat")).toBeTruthy(),
+      expect(screen.getByTestId("thread-screen")).toBeTruthy(),
     );
-    expect(mocks.embeddedChatProps.at(-1)!.composer).toEqual(
+    expect(mocks.threadScreenProps.at(-1)!.composer).toEqual(
       expect.objectContaining({ permissionPolicy: "editable" }),
     );
   });
@@ -198,15 +191,12 @@ describe("PluginThreadChat", () => {
     );
 
     await waitFor(() =>
-      expect(screen.getByTestId("embedded-thread-chat")).toBeTruthy(),
+      expect(screen.getByTestId("thread-screen")).toBeTruthy(),
     );
-    const props = mocks.embeddedChatProps.at(-1)!;
-    expect(props).toEqual(
-      expect.objectContaining({
-        onOpenLink,
-        onOpenLocalFileLink,
-        workspaceRootPath: "/workspace",
-      }),
+    const props = mocks.threadScreenProps.at(-1)!;
+    expect(props.workspaceRootPath).toBe("/workspace");
+    expect(props.timelineHost).toEqual(
+      expect.objectContaining({ onOpenLink, onOpenLocalFileLink }),
     );
 
     const embeddedResolveMentionLink = props.resolveMentionLink as (resource: {
@@ -241,12 +231,14 @@ describe("PluginThreadChat", () => {
     );
 
     await waitFor(() =>
-      expect(screen.getByTestId("timeline-panel-content")).toBeTruthy(),
+      expect(screen.getByTestId("thread-screen")).toBeTruthy(),
     );
-    expect(mocks.embeddedChatProps).toHaveLength(0);
-    expect(mocks.timelinePanelProps.at(-1)).toEqual(
-      expect.objectContaining({ threadId: "thr_demo" }),
-    );
+    const props = mocks.threadScreenProps.at(-1)!;
+    expect(props.composer).toBeNull();
+    expect(props.presentation).toEqual({
+      kind: "transcript",
+      layout: "contained",
+    });
   });
 
   it("forwards leadingContent and maps messageActions to consumer actions", async () => {
@@ -263,11 +255,15 @@ describe("PluginThreadChat", () => {
     );
 
     await waitFor(() =>
-      expect(screen.getByTestId("embedded-thread-chat")).toBeTruthy(),
+      expect(screen.getByTestId("thread-screen")).toBeTruthy(),
     );
-    const props = mocks.embeddedChatProps.at(-1)!;
-    expect(props.leadingContent).toBeTruthy();
-    const actions = props.consumerMessageActions as Array<
+    const timelineHost = mocks.threadScreenProps.at(-1)!.timelineHost as Record<
+      string,
+      unknown
+    >;
+    expect(timelineHost.leadingContent).toBeTruthy();
+    expect(timelineHost.includePluginMessageActions).toBe(false);
+    const actions = timelineHost.consumerMessageActions as Array<
       Record<string, unknown>
     >;
     expect(actions).toHaveLength(1);
@@ -295,13 +291,17 @@ describe("PluginThreadChat", () => {
     );
 
     await waitFor(() =>
-      expect(screen.getByTestId("embedded-thread-chat")).toBeTruthy(),
+      expect(screen.getByTestId("thread-screen")).toBeTruthy(),
     );
-    const props = mocks.embeddedChatProps.at(-1)!;
-    expect(props.measure).toBe("page");
-    expect(props.layout).toBe("document");
+    const props = mocks.threadScreenProps.at(-1)!;
+    expect(props.presentation).toEqual({
+      kind: "panel",
+      layout: "document",
+      measure: "page",
+      tone: "background",
+    });
     expect(props.composer).toEqual(
-      expect.objectContaining({ focusRequestKey: 3 }),
+      expect.objectContaining({ focusRequest: 3 }),
     );
   });
 });

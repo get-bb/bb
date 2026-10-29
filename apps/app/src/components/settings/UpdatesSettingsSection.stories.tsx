@@ -6,7 +6,11 @@ import {
 } from "@bb/host-daemon-contract";
 import type { ProviderCliIssue } from "@/components/provider-cli/provider-cli-install";
 import type { ProviderCliInstallFailure } from "@/components/provider-cli/provider-cli-install-store";
-import type { UpdateInventoryMachine } from "@/hooks/useUpdateInventory";
+import {
+  buildUpdateInventoryPlugins,
+  type UpdateInventoryMachine,
+} from "@/hooks/useUpdateInventory";
+import { makePluginListItem } from "@/test/fixtures/plugins";
 import {
   makeHost,
   makeProviderCliStatus,
@@ -17,6 +21,7 @@ import {
   BbUpdatesCard,
   ChangelogPreviewCard,
   MachineUpdateRow,
+  PluginUpdatesSection,
   ProviderCliUpdatesSection,
 } from "./UpdatesSettingsSection";
 
@@ -1182,6 +1187,112 @@ export function SectionVariations() {
           <ChangelogPreviewCard />
           <BbUpdatesCard>{serverRow}</BbUpdatesCard>
           <StoryProviderClis machines={[workstation]} />
+        </div>
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+const STORY_PLUGINS = buildUpdateInventoryPlugins([
+  makePluginListItem({
+    id: "github-pr-status",
+    name: "GitHub PR Status",
+    icon: "GitPullRequest",
+    source: "npm:@acme/github-pr-status@^1.2.0",
+    version: "1.2.0",
+    updateState: {
+      outcome: "update-available",
+      availableVersion: "1.4.1",
+      availableLabel: "1.4.1",
+    },
+  }),
+  makePluginListItem({
+    id: "linear",
+    name: "Linear",
+    icon: "Zap",
+    source: "git:github.com/acme/linear@^0.8.0",
+    version: "0.8.2",
+    updateState: {
+      outcome: "update-available",
+      availableVersion: "0.9.0",
+      availableLabel: "0.9.0",
+      lastFailure: {
+        version: "0.9.0",
+        label: "0.9.0",
+        at: STORY_NOW,
+        detail: "activation failed: settings schema rejected stored values",
+      },
+    },
+  }),
+  makePluginListItem({
+    id: "notes",
+    name: "Notes",
+    icon: "File",
+    source: "npm:@acme/notes@^2.0.0",
+    version: "2.3.0",
+    updateState: {
+      outcome: "incompatible",
+      blockedVersion: "3.0.0",
+      blockedLabel: "3.0.0",
+      blockedReasons: ["engines.bb requires >=0.40.0 (running 0.38.0)"],
+    },
+  }),
+  makePluginListItem({
+    id: "pinned",
+    name: "Pinned",
+    source: "npm:@acme/pinned@1.0.0",
+    updateState: { outcome: "pinned" },
+  }),
+]);
+
+export function PluginSectionVariations() {
+  return (
+    <StoryCard className="max-w-5xl" labelWidth="240px">
+      <h2 className="px-4 py-3 text-sm font-semibold">Plugins</h2>
+      <StoryRow
+        label="Updates"
+        hint="Update, a failed update with Retry, and an engines-blocked candidate."
+      >
+        <div className="w-full">
+          <PluginUpdatesSection
+            plugins={STORY_PLUGINS}
+            updatingPluginIds={NO_JOBS}
+            checking={false}
+            onStartUpdates={noop}
+          />
+        </div>
+      </StoryRow>
+      <StoryRow
+        label="Updating"
+        hint="Update all gives way to progress while the queue drains."
+      >
+        <div className="w-full">
+          <PluginUpdatesSection
+            plugins={STORY_PLUGINS}
+            updatingPluginIds={new Set(["github-pr-status", "linear"])}
+            checking={false}
+            onStartUpdates={noop}
+          />
+        </div>
+      </StoryRow>
+      <StoryRow label="Quiet" hint="Every tracking plugin is current.">
+        <div className="w-full">
+          <PluginUpdatesSection
+            plugins={{ trackedCount: 6, items: [] }}
+            updatingPluginIds={NO_JOBS}
+            checking={false}
+            onStartUpdates={noop}
+          />
+        </div>
+      </StoryRow>
+      <StoryRow label="Checking" hint="The page-load check is running.">
+        <div className="w-full">
+          <PluginUpdatesSection
+            plugins={{ trackedCount: 6, items: [] }}
+            updatingPluginIds={NO_JOBS}
+            checking
+            onStartUpdates={noop}
+          />
         </div>
       </StoryRow>
     </StoryCard>

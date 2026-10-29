@@ -1845,8 +1845,8 @@ describe("@bb/sdk", () => {
     const checked = {
       id: "notes",
       outcome: "update-available" as const,
-      installed: { version: "1.2.0", display: "1.2.0" },
-      candidate: { version: "1.3.0", display: "1.3.0" },
+      installed: { version: "1.2.0", label: "1.2.0", display: "1.2.0" },
+      candidate: { version: "1.3.0", label: "1.3.0", display: "1.3.0" },
     };
     const queue = createFetchQueue([
       { body: { plugins: [plugin] } },

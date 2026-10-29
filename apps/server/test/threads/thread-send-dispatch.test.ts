@@ -1074,6 +1074,7 @@ describe("startup queue waits", () => {
           },
           describeSubmission: null,
           timeoutMs: 10_000,
+          owner: { pluginId: "ask-user-question" },
         },
       );
       const [interaction] =

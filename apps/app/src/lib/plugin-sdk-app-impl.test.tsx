@@ -19,12 +19,15 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
+import { twMerge } from "tailwind-merge";
 import { beforeAll, afterEach, describe, expect, it, vi } from "vitest";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { ThreadTimelineNavigationProvider } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { pluginSdkAppImplementation } from "./plugin-sdk-app-impl";
 import { AppNavigationHostProvider } from "./app-navigation-host";
+import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
+import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
 
 beforeAll(() =>
   Promise.all([LazyMarkdownHtml.preload(), LazyPluginMarkdown.preload()]),
@@ -33,6 +36,59 @@ beforeAll(() =>
 afterEach(cleanup);
 
 describe("plugin SDK Markdown", () => {
+  it.each([
+    ["@thread:thr_1234567890", "/projects/proj_demo/threads/thr_1234567890"],
+    [
+      "@thread:thr_1234567890#msg=42",
+      "/projects/proj_demo/threads/thr_1234567890#msg=42",
+    ],
+  ])(
+    "renders %s as a titled, navigable thread mention",
+    async (mention, destination) => {
+      const Markdown = pluginSdkAppImplementation.Markdown;
+      function Location() {
+        const location = useLocation();
+        return (
+          <output>{location.pathname + location.search + location.hash}</output>
+        );
+      }
+
+      render(
+        <MemoryRouter>
+          <RouteNavigationProvider>
+            <ThreadTitleMentionResourcesProvider
+              sectionNamesById={new Map()}
+              projectNamesById={new Map()}
+              threadById={
+                new Map([
+                  [
+                    "thr_1234567890",
+                    {
+                      id: "thr_1234567890",
+                      projectId: "proj_demo",
+                      title: "Rendering regression",
+                      titleFallback: "Rendering regression",
+                    },
+                  ],
+                ])
+              }
+            >
+              <Markdown content={`Continue in ${mention}.`} />
+              <Location />
+            </ThreadTitleMentionResourcesProvider>
+          </RouteNavigationProvider>
+        </MemoryRouter>,
+      );
+
+      const link = await screen.findByRole("link", {
+        name: /Rendering regression/,
+      });
+      expect(link.getAttribute("href")).toBe(destination);
+      fireEvent.click(link);
+      expect(screen.getByRole("status").textContent).toBe(destination);
+    },
+  );
+
   it("uses the surrounding thread detail navigation for file and web links", async () => {
     const onOpenLink = vi.fn(() => false);
     const openUrl = vi.fn(() => true);
@@ -265,6 +321,61 @@ describe("plugin SDK navigation components", () => {
       },
       location: null,
     });
+  });
+});
+
+function splitVariants(className: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let index = 0; index < className.length; index += 1) {
+    const char = className[index];
+    if (char === "[" || char === "(") depth += 1;
+    else if (char === "]" || char === ")") depth -= 1;
+    else if (char === ":" && depth === 0) {
+      parts.push(className.slice(start, index));
+      start = index + 1;
+    }
+  }
+  parts.push(className.slice(start));
+  return parts;
+}
+
+function utilitiesOverriddenByVariants(root: Element): string[] {
+  return [root, ...root.querySelectorAll("*")].flatMap((element) => {
+    const classes = [...element.classList];
+    const unconditional = classes.filter(
+      (name) => splitVariants(name).length === 1,
+    );
+    return classes.flatMap((variantClass) => {
+      const parts = splitVariants(variantClass);
+      if (parts.length === 1) return [];
+      const utility = parts[parts.length - 1];
+      return unconditional
+        .filter(
+          (name) => !twMerge(`${name} ${utility}`).split(" ").includes(name),
+        )
+        .map((name) => `${name} + ${variantClass}`);
+    });
+  });
+}
+
+describe("plugin SDK detail rows", () => {
+  it("never pair a base utility with a variant a plugin's later copy of that utility would override", () => {
+    const DetailRow = pluginSdkAppImplementation.experimental_DetailRow;
+    const { container } = render(
+      <dl>
+        <DetailRow icon="GitBranch" label="Branch">
+          main
+        </DetailRow>
+        <DetailRow label="Git status" align="start">
+          Even with main
+        </DetailRow>
+      </dl>,
+    );
+
+    expect(container.querySelector("dt svg")).not.toBeNull();
+    expect(utilitiesOverriddenByVariants(container)).toEqual([]);
   });
 });
 

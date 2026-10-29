@@ -713,6 +713,7 @@ function userQuestionLifecycleEvent({
                 { value: "production", label: "Production" },
               ],
               allowFreeText: true,
+              required: true,
             },
           ],
         },

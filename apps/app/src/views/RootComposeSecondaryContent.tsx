@@ -5,6 +5,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { PluginHomepageSections } from "@/components/plugin/PluginHomepageSections";
 import { usePluginComposerHost } from "@/components/plugin/plugin-composer-host";
 import { SecondaryPanelLayout } from "@/components/secondary-panel/SecondaryPanelLayout";
+import { secondaryPanelWidthPercentAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { LazyThreadSecondaryPanel } from "@/components/secondary-panel/lazySecondaryPanelComponents";
 import {
   CHROME_ROW_HEIGHT_CLASS,
@@ -147,6 +148,7 @@ export function RootComposeSecondaryContent({
         mainPanelId="root-compose-main-panel"
         main={mainContent}
         composerHost={composerHost}
+        widthPercentAtom={secondaryPanelWidthPercentAtom}
         renderPanel={({
           presentation,
           canShowNativeBrowserView,

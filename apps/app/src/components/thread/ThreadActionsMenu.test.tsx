@@ -11,11 +11,12 @@ import {
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createStore, Provider } from "jotai";
-import type { ReactElement } from "react";
+import { useSyncExternalStore, type ReactElement } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   experimental_THREAD_ACTION_GROUPS,
+  type PluginThreadActionEntry,
   type PluginThreadActionRegistration,
   type PluginThreadActionsInlineItem,
 } from "@get-bb/plugin-sdk";
@@ -38,6 +39,7 @@ import {
   resetThreadActionRegistryForTest,
   useThreadActionEntries,
   useThreadActionRegistrationInfos,
+  useThreadHeaderActionEntries,
 } from "@/lib/thread-actions/thread-action-registry";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import {
@@ -61,6 +63,7 @@ const sdkThreads = vi.hoisted(() => ({
   unarchive: vi.fn(),
   update: vi.fn(),
   get: vi.fn(),
+  experimental_regenerateTitle: vi.fn(),
 }));
 const copyToClipboardWithToast = vi.hoisted(() => vi.fn(async () => true));
 
@@ -102,6 +105,20 @@ const pluginGroupAction: PluginThreadActionRegistration = {
     label: "Notifications",
     icon: "Notification",
     run: pluginGroupRun,
+  }),
+};
+
+const headerAction: PluginThreadActionRegistration = {
+  id: "commit",
+  title: "Commit",
+  icon: "GitBranch",
+  group: "0_header",
+  placement: "header",
+  item: () => ({ label: "Commit", icon: "GitBranch", run: vi.fn() }),
+  experimental_bulkItem: () => ({
+    label: "Commit all",
+    icon: "GitBranch",
+    run: vi.fn(),
   }),
 };
 
@@ -266,7 +283,12 @@ function renderSurface(
   setPluginSlotRegistrations(
     "fixture",
     makePluginRegistrationSet({
-      threadActions: [moveAction, pluginGroupAction, ...threadActions],
+      threadActions: [
+        moveAction,
+        pluginGroupAction,
+        headerAction,
+        ...threadActions,
+      ],
     }),
   );
   return render(
@@ -370,6 +392,7 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
         "Mark unread",
         "---",
         "Rename",
+        "Regenerate title",
         "Move to section",
         "---",
         "Customize actions",
@@ -387,6 +410,7 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
         "Mark unread",
         "---",
         "Rename",
+        "Regenerate title",
         "Move to section",
         "---",
         "Customize actions",
@@ -416,8 +440,10 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
         "---",
         "Unpin",
         "Mark read",
+        "Notify parent, Auto",
         "---",
         "Rename",
+        "Regenerate title",
         "---",
         "Customize actions",
         "---",
@@ -431,8 +457,10 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
         "---",
         "Unpin",
         "Mark read",
+        "Notify parent, Auto",
         "---",
         "Rename",
+        "Regenerate title",
         "---",
         "Customize actions",
         "---",
@@ -457,6 +485,7 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
         "Mark unread",
         "---",
         "Rename",
+        "Regenerate title",
         "Move to section",
         "---",
         "Customize actions",
@@ -474,6 +503,7 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
         "Mark unread",
         "---",
         "Rename",
+        "Regenerate title",
         "Move to section",
         "---",
         "Customize actions",
@@ -497,6 +527,7 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
         "Mark unread",
         "---",
         "Rename",
+        "Regenerate title",
         "Move to section",
         "---",
         "Customize actions",
@@ -514,6 +545,7 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
         "Mark unread",
         "---",
         "Rename",
+        "Regenerate title",
         "Move to section",
         "---",
         "Customize actions",
@@ -539,6 +571,7 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
         "Mark unread",
         "---",
         "Rename",
+        "Regenerate title",
         "Move to section",
         "---",
         "Customize actions",
@@ -556,6 +589,7 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
         "Mark unread",
         "---",
         "Rename",
+        "Regenerate title",
         "Move to section",
         "---",
         "Customize actions",
@@ -610,6 +644,10 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
 
   it("runs each action's effect", async () => {
     sdkThreads.pin.mockResolvedValue({ ...baseThread, pinnedAt: 9 });
+    sdkThreads.experimental_regenerateTitle.mockResolvedValue({
+      ...baseThread,
+      title: "Regenerated",
+    });
     sdkThreads.markUnread.mockResolvedValue({
       ...baseThread,
       lastReadAt: null,
@@ -637,6 +675,16 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
     fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
     expect(requestRename).toHaveBeenCalledWith(baseThread.id);
     expect(defaultRequestRename).not.toHaveBeenCalled();
+
+    await surface.open();
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Regenerate title" }),
+    );
+    await waitFor(() =>
+      expect(sdkThreads.experimental_regenerateTitle).toHaveBeenCalledWith({
+        threadId: baseThread.id,
+      }),
+    );
 
     await surface.open();
     fireEvent.click(await screen.findByRole("menuitem", { name: "Archive" }));
@@ -816,7 +864,9 @@ describe("thread action registrations", () => {
       "bb--core/newThreadInEnvironment",
       "bb--core/pin",
       "bb--core/read",
+      "bb--core/parentNotifications",
       "bb--core/rename",
+      "bb--core/regenerateTitle",
       "fixture/move",
       "bb--core/archive",
       "bb--core/delete",
@@ -1001,6 +1051,48 @@ describe("thread action data input", () => {
     expect(seen).toEqual([[], ["thr_a", "thr_b", "thr_c"]]);
   });
 
+  it("passes a header action only the threads whose header is shown", async () => {
+    const seen: (readonly string[])[] = [];
+    const headerRecorder: PluginThreadActionRegistration<null> = {
+      id: "header-recorder",
+      title: "Header recorder",
+      icon: "GitBranch",
+      group: "git",
+      placement: "header",
+      useData: ({ threadIds }) => {
+        if (seen.at(-1) !== threadIds) seen.push(threadIds);
+        return null;
+      },
+      item: () => null,
+    };
+    setPluginSlotRegistrations(
+      "fixture",
+      makePluginRegistrationSet({ threadActions: [headerRecorder] }),
+    );
+    function Header({ id }: { id: string }) {
+      useThreadHeaderActionEntries(
+        threadListEntryActionTarget({ ...baseThread, id }),
+      );
+      return null;
+    }
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <ThreadActionCollectors
+            coreRegistrations={[]}
+            requestRename={defaultRequestRename}
+          />
+          <Row id="thr_row_a" />
+          <Row id="thr_row_b" />
+          <Header id="thr_open" />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(seen.at(-1)).toEqual(["thr_open"]));
+    await settle();
+    expect(seen).toEqual([[], ["thr_open"]]);
+  });
+
   it("counts no ids from a hidden surface until it is shown", async () => {
     const { seen, Surface } = renderRecorder();
     const ids = Array.from({ length: 250 }, (_, index) => `thr_${index}`);
@@ -1064,7 +1156,12 @@ describe.each([
     setPluginSlotRegistrations(
       "fixture",
       makePluginRegistrationSet({
-        threadActions: [moveAction, pluginGroupAction, levelAction],
+        threadActions: [
+          moveAction,
+          pluginGroupAction,
+          headerAction,
+          levelAction,
+        ],
       }),
     );
     return render(
@@ -1182,6 +1279,34 @@ describe.each([
     expect(clearRun).toHaveBeenCalled();
   });
 
+  it("sets Notify parent on the selected child threads only", async () => {
+    sdkThreads.update.mockResolvedValue(readThread);
+    renderSelection([
+      { ...readThread, parentThreadId: "thr_parent" },
+      {
+        ...unreadThread,
+        parentThreadId: "thr_parent",
+        parentNotifications: "off",
+      },
+      { ...baseThread, id: "thr_root" },
+    ]);
+    fireEvent.contextMenu(screen.getByText("Selection"));
+    const trigger = await screen.findByRole("menuitem", {
+      name: "Notify parent, Mixed",
+    });
+    if (compact) fireEvent.click(trigger);
+    else fireEvent.keyDown(trigger, { key: "ArrowRight" });
+    expect(
+      await screen.findByText("Applies to 2 threads with a parent"),
+    ).toBeTruthy();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Off" }));
+    await waitFor(() =>
+      expect(sdkThreads.update.mock.calls).toEqual([
+        [{ threadId: "thr_read", parentNotifications: "off" }],
+      ]),
+    );
+  });
+
   it("offers Unarchive when every selected thread is archived", async () => {
     renderSelection([
       { ...readThread, archivedAt: 3 },
@@ -1219,4 +1344,156 @@ describe.each([
       expect(onEscapeKeyDown).toHaveBeenCalled();
     },
   );
+});
+
+describe("header thread actions", () => {
+  function HeaderLabels() {
+    return (
+      <ol>
+        {useThreadHeaderActionEntries(
+          threadListEntryActionTarget(baseThread),
+        ).map((entry) => (
+          <li key={entry.key}>{entry.action.label}</li>
+        ))}
+      </ol>
+    );
+  }
+
+  it("evaluates only header registrations and leaves out ones with choices", async () => {
+    const [surface] = SURFACES;
+    if (surface === undefined) throw new Error("no surface");
+    renderSurface(
+      { ...surface, render: () => <HeaderLabels /> },
+      { thread: baseThread },
+      {
+        threadActions: [
+          {
+            ...headerAction,
+            id: "pick-branch",
+            item: () => ({
+              label: "Pick branch",
+              icon: "GitBranch",
+              choices: { items: [{ id: "main", label: "main" }] },
+              run: vi.fn(),
+            }),
+          },
+        ],
+      },
+    );
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole("listitem").map((item) => item.textContent),
+      ).toEqual(["Commit"]),
+    );
+  });
+});
+
+describe("thread action rows", () => {
+  function createValueStore<T>(initial: T) {
+    let value = initial;
+    const listeners = new Set<() => void>();
+    return {
+      set(next: T) {
+        value = next;
+        for (const listener of listeners) listener();
+      },
+      use: () =>
+        useSyncExternalStore(
+          (listener) => {
+            listeners.add(listener);
+            return () => listeners.delete(listener);
+          },
+          () => value,
+        ),
+    };
+  }
+
+  it("redraws only the rows whose actions change and runs with the latest data", async () => {
+    const focus = createValueStore({ threadId: "thr_a", version: 1 });
+    const header = createValueStore(1);
+    const ran = vi.fn();
+    const focusAction: PluginThreadActionRegistration<{
+      threadId: string;
+      version: number;
+    }> = {
+      id: "focus",
+      title: "Focus",
+      icon: "Columns2",
+      group: "5_plugin",
+      useData: focus.use,
+      item: ({ thread, data }) => ({
+        label: data.threadId === thread.id ? "Focused" : "Focus",
+        icon: "Columns2",
+        run: () => ran(thread.id, data.version),
+      }),
+    };
+    const headerAction: PluginThreadActionRegistration<number> = {
+      id: "counter",
+      title: "Counter",
+      icon: "GitBranch",
+      group: "git",
+      placement: "header",
+      useData: header.use,
+      item: ({ data }) => ({
+        label: `Counter ${data}`,
+        icon: "GitBranch",
+        run: vi.fn(),
+      }),
+    };
+    setPluginSlotRegistrations(
+      "fixture",
+      makePluginRegistrationSet({ threadActions: [focusAction, headerAction] }),
+    );
+    const renders = new Map<string, number>();
+    const entries = new Map<string, readonly PluginThreadActionEntry[]>();
+    function Row({ id }: { id: string }) {
+      renders.set(id, (renders.get(id) ?? 0) + 1);
+      entries.set(
+        id,
+        useThreadActionEntries(
+          threadListEntryActionTarget({ ...baseThread, id }),
+          {},
+        ),
+      );
+      return null;
+    }
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <ThreadActionCollectors
+            coreRegistrations={[]}
+            requestRename={defaultRequestRename}
+          />
+          <Row id="thr_a" />
+          <Row id="thr_b" />
+          <Row id="thr_c" />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await waitFor(() =>
+      expect(entries.get("thr_a")?.map((entry) => entry.action.label)).toEqual([
+        "Focused",
+      ]),
+    );
+    const before = new Map(renders);
+    const redrawn = () =>
+      [...renders].flatMap(([id, count]) =>
+        count === before.get(id) ? [] : [id],
+      );
+
+    act(() => header.set(2));
+    act(() => focus.set({ threadId: "thr_a", version: 2 }));
+    expect(redrawn()).toEqual([]);
+
+    act(() => focus.set({ threadId: "thr_b", version: 3 }));
+    expect(redrawn()).toEqual(["thr_a", "thr_b"]);
+    expect(
+      ["thr_a", "thr_b", "thr_c"].map(
+        (id) => entries.get(id)?.[0]?.action.label,
+      ),
+    ).toEqual(["Focus", "Focused", "Focus"]);
+
+    await entries.get("thr_c")?.[0]?.action.run();
+    expect(ran).toHaveBeenCalledWith("thr_c", 3);
+  });
 });

@@ -134,9 +134,15 @@ interface RequestPluginInteractionArgs {
   describeSubmission: DescribePluginSubmission | null;
   timeoutMs: number;
   signal?: AbortSignal;
+  owner: PluginInteractionOwner;
+}
+
+export interface PluginInteractionOwner {
+  readonly pluginId: string;
 }
 
 interface PluginInteractionWaiter {
+  owner: PluginInteractionOwner;
   resolve: (result: PluginInteractionResult) => void;
   timer: ReturnType<typeof setTimeout>;
   removeAbortListener: () => void;
@@ -558,6 +564,7 @@ export class PendingInteractionLifecycle {
       };
       const timer = setTimeout(expire, args.timeoutMs);
       this.pluginWaiters.set(interaction.id, {
+        owner: args.owner,
         resolve,
         timer,
         removeAbortListener: () =>
@@ -711,6 +718,28 @@ export class PendingInteractionLifecycle {
       interruptPendingInteractionsForPlugin(this.deps.db, {
         pluginId,
         statusReason: "plugin-disposed",
+      }),
+    );
+  }
+
+  interruptOwnedPluginInteractions(
+    owner: PluginInteractionOwner,
+  ): PendingInteraction[] {
+    const ids = [...this.pluginWaiters]
+      .filter(([, waiter]) => waiter.owner === owner)
+      .map(([id]) => id);
+    return this.settleInterruptedRows(
+      ids.flatMap((id) => {
+        const updated = setPendingInteractionInterrupted(this.deps.db, {
+          id,
+          statusReason: "plugin-disposed",
+        });
+        if (updated) return [updated];
+        this.settlePluginWaiter(id, {
+          outcome: "cancelled",
+          reason: "plugin-disposed",
+        });
+        return [];
       }),
     );
   }

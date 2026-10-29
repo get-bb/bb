@@ -671,6 +671,16 @@ export interface ThreadsArea {
   experimental_listCascade(
     args: ThreadCascadeListArgs,
   ): Promise<ThreadCascadeListResult>;
+  /**
+   * Generate a new title from the thread's first task message, its latest user
+   * messages, and the agent's latest replies, in the task's language. The
+   * current title is kept when it still fits, when no title service is
+   * available, or when generation fails, and the call rejects with the reason
+   * on failure. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_regenerateTitle(
+    args: ThreadActionArgs,
+  ): Promise<ThreadMutationResult>;
   updatePluginMetadata(
     args: ThreadPluginMetadataUpdateArgs,
   ): Promise<ThreadPluginMetadataResult>;
@@ -1364,6 +1374,13 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
           },
           ...signalRequestArgs(input.signal),
         ),
+      );
+    },
+    async experimental_regenerateTitle(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"].title.regenerate.$post({
+          param: { id: input.threadId },
+        }),
       );
     },
     async experimental_listPluginMetadata(input) {

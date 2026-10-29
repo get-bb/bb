@@ -84,6 +84,12 @@ export const pageToShellMessageSchema = z.discriminatedUnion("type", [
     .strict(),
   z
     .object({
+      type: z.literal("switch-server"),
+      id: z.string().min(1).max(256),
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("request"),
       id: z.string().min(1).max(64),
       request: bridgeRequestSchema,

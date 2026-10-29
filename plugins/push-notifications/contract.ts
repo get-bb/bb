@@ -52,6 +52,38 @@ export const clientNotificationSchema = z
   .strict();
 export type ClientNotification = z.infer<typeof clientNotificationSchema>;
 
+export const NOTIFICATION_TITLE_MAX_LENGTH = 80;
+export const NOTIFICATION_BODY_MAX_LENGTH = 180;
+export const SEND_TEXT_MAX_LENGTH = 4_000;
+export const deliveryChannelSchema = z.enum(["web", "desktop", "mobile"]);
+export type DeliveryChannel = z.infer<typeof deliveryChannelSchema>;
+export const sendNotificationInputSchema = z
+  .object({
+    title: z.string().trim().min(1).max(SEND_TEXT_MAX_LENGTH),
+    body: z.string().trim().max(SEND_TEXT_MAX_LENGTH).default(""),
+    threadId: z.string().trim().min(1).optional(),
+  })
+  .strict();
+export const sendNotificationOutputSchema = z
+  .object({
+    ok: z.literal(true),
+    channels: z.array(deliveryChannelSchema),
+  })
+  .strict();
+export type SendNotificationInput = z.infer<typeof sendNotificationInputSchema>;
+export type SendNotificationOutput = z.infer<
+  typeof sendNotificationOutputSchema
+>;
+
+export const sendNotificationRpcContract = defineRpcContract({
+  "notifications.send": {
+    experimental_description:
+      "Send a notification to every enabled channel: connected web and desktop clients and registered mobile devices. Title and body are cut to 80 and 180 characters. With threadId, a click opens that thread. Returns the channels it reached; an empty list means nothing was delivered.",
+    input: sendNotificationInputSchema,
+    output: sendNotificationOutputSchema,
+  },
+});
+
 export const THREAD_NOTIFICATIONS_LIST_MAX_IDS = 200;
 
 const emptyInputSchema = z.object({}).strict();
@@ -104,7 +136,6 @@ export const pushNotificationsRpcContract = defineRpcContract({
     keyTags: (key) => [`thread:${key}`],
   },
   "threadNotifications.set": {
-    invalidates: ({ threadId }) => [`thread:${threadId}`],
     input: z
       .object({
         threadId: z.string().min(1),

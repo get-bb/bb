@@ -10,7 +10,7 @@ import { ResourceTabDescription } from "./toolbar";
 export interface ResourceCollectionMode<Mode extends string> {
   id: Mode;
   label: ReactNode;
-  count?: number;
+  count?: number | "pending";
   accessibleLabel?: string;
 }
 
@@ -52,7 +52,7 @@ export function ResourceCollectionPage<Mode extends string>({
         </div>
       </div>
       {hasModes || actions !== undefined ? (
-        <div className="md:pr-3">
+        <div className="@container/resource-collection-modes md:pr-3">
           <div
             className={cn(
               "flex flex-wrap items-center justify-between gap-2",
@@ -107,7 +107,14 @@ export function ResourceCollectionPage<Mode extends string>({
                     }}
                   >
                     {mode.label}
-                    {mode.count !== undefined ? (
+                    {mode.count === "pending" ? (
+                      <span
+                        className="invisible text-2xs text-subtle-foreground"
+                        aria-hidden
+                      >
+                        0
+                      </span>
+                    ) : mode.count !== undefined ? (
                       <span className="text-2xs text-subtle-foreground">
                         {mode.count}
                       </span>

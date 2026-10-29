@@ -60,6 +60,7 @@ export interface CommandDispatchOptions {
     providerId: string;
     bridgeLaunch: AgentRuntimeBridgeLaunch;
     cwd?: string;
+    selectedModel?: string;
     contributedEnv: readonly HostDaemonContributedEnvEntry[];
   }) => Promise<{
     models: AvailableModel[];

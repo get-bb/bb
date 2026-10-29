@@ -19,6 +19,7 @@ export interface ShellBridgeCallbacks {
   onReady(path: string): void;
   onPath(path: string): void;
   onOpenNative(screen: NativeScreen): void;
+  onSwitchServer(id: string): void;
 }
 
 export interface ShellBridge {
@@ -64,6 +65,9 @@ export function useShellBridge(
           return;
         case "open-native":
           callbacksRef.current.onOpenNative(message.screen);
+          return;
+        case "switch-server":
+          callbacksRef.current.onSwitchServer(message.id);
           return;
         case "open-external": {
           if (!isExternallyOpenable(message.url)) return;

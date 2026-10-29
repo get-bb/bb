@@ -130,8 +130,13 @@
   --text-2xs--line-height: 0.875rem;
 }
 
+:root {
+  --bb-detail-row-icon-size: calc(var(--spacing) * 3);
+}
+
 @media (max-width: 767px) and (pointer: coarse) {
   :root {
+    --bb-detail-row-icon-size: calc(var(--spacing) * 4);
     --text-2xs: 0.6875rem;
     --text-2xs--line-height: 0.9375rem;
     --text-xs: 0.875rem;
@@ -521,7 +526,7 @@
   --warning: oklch(0.7 0.16 50);
   --warning-text: oklch(0.55 0.14 50);
   --success: oklch(0.7 0.15 155);
-  --success-foreground: color-mix(in oklch, var(--success) 45%, var(--ink));
+  --success-foreground: oklch(0.53 0.14 155);
   --diff-added: oklch(0.4 0.13 163);
   --pr-merged: oklch(0.53 0.2 295);
   --brand-discord: oklch(0.5774 0.2091 273.85);
@@ -752,7 +757,7 @@
   --warning: oklch(0.75 0.16 50);
   --warning-text: oklch(0.75 0.16 50);
   --success: oklch(0.74 0.15 155);
-  --success-foreground: color-mix(in oklch, var(--success) 45%, var(--ink));
+  --success-foreground: var(--success);
   --diff-added: oklch(0.77 0.17 163);
   --diff-removed: oklch(0.72 0.19 22);
   --pr-merged: oklch(0.68 0.18 295);
@@ -930,6 +935,24 @@
 
   .bb-icon-stroke {
     stroke-width: var(--icon-stroke-width);
+  }
+
+  [data-surface-tone="sidebar"] {
+    --surface-recessed-solid: color-mix(
+      in oklab,
+      var(--ink) 6%,
+      var(--sidebar)
+    );
+    --surface-recessed-soft-solid: color-mix(
+      in oklch,
+      var(--ink) 4.2%,
+      var(--sidebar)
+    );
+    --surface-raised-solid: color-mix(
+      in oklab,
+      var(--ink) 2.5%,
+      var(--sidebar)
+    );
   }
 }
 

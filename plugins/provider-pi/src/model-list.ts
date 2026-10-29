@@ -58,6 +58,7 @@ function buildPiAvailableModel(model: PiCatalogModel): AvailableModel {
     displayName: model.name,
     routeProviderId: model.provider,
     description: describePiModel(model),
+    reasoningDiscovery: "known",
     supportedReasoningEfforts,
     defaultReasoningEffort,
     isDefault: false,

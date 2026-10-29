@@ -28,7 +28,8 @@ import {
 import { BottomAnchoredScrollBody } from "@/components/ui/bottom-anchored-scroll-body";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
-import { ThreadTimelinePanelContent } from "./ThreadTimelinePanelContent";
+import { ThreadTimelineSurface } from "./ThreadTimelineSurface";
+import { useThreadTimelineController } from "./useThreadTimelineController";
 
 export default {
   title: "thread/timeline/Scrollback",
@@ -338,10 +339,7 @@ function ScrollbackStory({
                   contentClassName="!px-2 !pb-3 !pt-4"
                   scrollAnchorThreadId={THREAD_ID}
                 >
-                  <ThreadTimelinePanelContent
-                    projectId={PROJECT_ID}
-                    threadId={THREAD_ID}
-                  />
+                  <ScrollbackTimeline />
                 </BottomAnchoredScrollBody>
               </div>
             </div>
@@ -349,6 +347,30 @@ function ScrollbackStory({
         </ThreadActionsProvider>
       </JotaiProvider>
     </QueryClientProvider>
+  );
+}
+
+function ScrollbackTimeline() {
+  const timeline = useThreadTimelineController({ threadId: THREAD_ID });
+  return (
+    <ThreadTimelineSurface
+      activeThinking={timeline.activeThinking}
+      contextBoundarySeq={timeline.contextBoundarySeq}
+      hasOlderTimelineRows={timeline.hasOlderTimelineRows}
+      isCatchingUpTimeline={timeline.isCatchingUpTimeline}
+      isLoadingOlderTimelineRows={timeline.isLoadingOlderTimelineRows}
+      isThreadTimelinePending={
+        timeline.timelineLoading && timeline.timelineRows.length === 0
+      }
+      timelineError={Boolean(timeline.timelineError)}
+      onLoadOlderRows={timeline.loadOlderTimelineRows}
+      projectId={PROJECT_ID}
+      showOngoingIndicator={false}
+      timelineRows={timeline.timelineRows}
+      threadId={THREAD_ID}
+      threadRuntimeDisplayStatus="idle"
+      workspaceRootPath={undefined}
+    />
   );
 }
 

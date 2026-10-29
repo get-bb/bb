@@ -170,8 +170,6 @@ interface AppearanceSettingsSectionProps {
 }
 
 interface GeneralSettingsSectionProps {
-  showGitChanges: boolean;
-  onShowGitChangesChange: (enabled: boolean) => void;
   confirmThreadArchive: boolean;
   onConfirmThreadArchiveChange: (enabled: boolean) => void;
   keepHistoryAfterContextClear: boolean;
@@ -861,8 +859,6 @@ export function AppearanceSettingsSection({
 }
 
 export function GeneralSettingsSection({
-  showGitChanges,
-  onShowGitChangesChange,
   confirmThreadArchive,
   onConfirmThreadArchiveChange,
   keepHistoryAfterContextClear,
@@ -899,18 +895,6 @@ export function GeneralSettingsSection({
               checked={navigateToThreadAfterCreate}
               onCheckedChange={onNavigateToThreadAfterCreateChange}
               aria-label={NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL}
-            />
-          </SettingsWithControl>
-
-          <SettingsWithControl
-            label="Show Git changes and Commit button"
-            description="Show Git and PR controls above the composer, and Commit in the header."
-          >
-            <Switch
-              checked={showGitChanges}
-              disabled={generalSettingsDisabled}
-              onCheckedChange={onShowGitChangesChange}
-              aria-label="Show Git changes and Commit button"
             />
           </SettingsWithControl>
 
@@ -1155,6 +1139,11 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "Collect CPU profiles and detailed performance logs while the server was launched with --perf-diagnostics. Turning this off stops collection; saved profiles remain.",
   },
+  pluginUpdates: {
+    label: "Plugin updates",
+    description:
+      "List plugins with updates on the Updates page, update them one by one or all at once, and count them in the sidebar updates badge.",
+  },
   serverMove: {
     label: "Server move",
     description:
@@ -1164,6 +1153,16 @@ const EXPERIMENT_DEFINITIONS: Record<
     label: "Select multiple sidebar threads",
     description:
       "In the built-in thread list sidebar, Cmd/Ctrl+Shift-click and Shift-click threads to select several, right-click for bulk actions, and drag them together into a section, under a thread, into Pinned, or into a composer as mentions.",
+  },
+  threadContextCard: {
+    label: "Thread context card",
+    description:
+      "Show a thread's changes, pull request, and parent and child threads in a card at the upper-right of each thread pane instead of above the composer. A header button opens or pins it; wide panes keep it beside the transcript.",
+  },
+  threadRowMetadata: {
+    label: "Thread row metadata",
+    description:
+      "Add Metadata to the built-in thread list's Organize → Rows menu. When it is checked, plugins can show details such as a thread's pull request on a second line under its title.",
   },
   timelinePush: {
     label: "Pushed timeline updates",
@@ -1444,12 +1443,6 @@ export function SettingsView() {
     content = (
       <>
         <GeneralSettingsSection
-          showGitChanges={generalSettings.showGitChanges}
-          onShowGitChangesChange={(enabled) =>
-            updateGeneralSettingsMutation.mutate({
-              showGitChanges: enabled,
-            })
-          }
           confirmThreadArchive={generalSettings.confirmThreadArchive}
           onConfirmThreadArchiveChange={(enabled) =>
             updateGeneralSettingsMutation.mutate({

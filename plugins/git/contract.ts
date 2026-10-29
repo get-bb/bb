@@ -143,6 +143,8 @@ export const workspaceStatusSchema = z.object({
 export type WorkspaceStatus = z.infer<typeof workspaceStatusSchema>;
 
 export const GIT_DIFF_TAB_ID = "diff";
+export const GIT_SHOW_CHANGES_SETTING = "showGitChanges";
+export const GIT_SHOW_COMMIT_BUTTON_SETTING = "showCommitButton";
 export const GIT_STATUS_MAX_KEYS = 200;
 export const GIT_PATCHES_MAX_KEYS = 50;
 export const GIT_VIEWED_MAX_PATHS = 500;

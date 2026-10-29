@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 import {
-  act,
   cleanup,
   fireEvent,
   screen,
@@ -78,24 +77,6 @@ function textResult(contents: string, name: string): DiffFileContentsResult {
   return { kind: "text", file: { name, contents } };
 }
 
-const intersectionCallbacks = new Set<IntersectionObserverCallback>();
-
-function revealCardBodies() {
-  act(() => {
-    for (const callback of intersectionCallbacks) {
-      callback(
-        [
-          {
-            isIntersecting: true,
-            intersectionRatio: 1,
-          } as IntersectionObserverEntry,
-        ],
-        { thresholds: [0] } as unknown as IntersectionObserver,
-      );
-    }
-  });
-}
-
 function stubPointer(kind: "coarse" | "fine") {
   vi.stubGlobal("matchMedia", (query: string): MediaQueryList => ({
     matches: kind === "coarse" && query === POINTER_COARSE_QUERY,
@@ -143,19 +124,13 @@ function renderModifiedCard(onRequestFileContents: RequestDiffFileContents) {
 
 describe("DiffFileCard context expansion", () => {
   beforeEach(() => {
-    intersectionCallbacks.clear();
     vi.stubGlobal(
       "IntersectionObserver",
       class IntersectionObserverMock {
         readonly thresholds = [0];
-        constructor(private readonly callback: IntersectionObserverCallback) {
-          intersectionCallbacks.add(this.callback);
-        }
         observe() {}
         unobserve() {}
-        disconnect() {
-          intersectionCallbacks.delete(this.callback);
-        }
+        disconnect() {}
       },
     );
   });
@@ -177,7 +152,6 @@ describe("DiffFileCard context expansion", () => {
     );
 
     renderModifiedCard(onRequestFileContents);
-    revealCardBodies();
 
     await findDiffView();
     const expandButton = await screen.findByRole("button", {
@@ -213,7 +187,6 @@ describe("DiffFileCard context expansion", () => {
     );
 
     renderModifiedCard(onRequestFileContents);
-    revealCardBodies();
 
     await waitFor(() => {
       expect(onRequestFileContents).toHaveBeenCalledTimes(2);
@@ -237,7 +210,6 @@ describe("DiffFileCard context expansion", () => {
     );
 
     renderModifiedCard(onRequestFileContents);
-    revealCardBodies();
 
     fireEvent.click(
       await screen.findByRole("button", { name: "Expand context" }),
@@ -275,7 +247,6 @@ describe("DiffFileCard context expansion", () => {
         onRequestFileContents,
       ),
     );
-    revealCardBodies();
 
     await findDiffView();
     await new Promise((resolve) => setTimeout(resolve, 300));

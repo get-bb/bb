@@ -10,6 +10,7 @@ import {
 } from "react";
 import type { ThreadRoutePathArgs } from "@/lib/route-paths";
 import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
+import type { SecondaryPanelWidthPercentAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import type { SplitSide } from "@/lib/split-layout";
 
 export interface PaneContextValue {
@@ -37,6 +38,7 @@ export interface PaneSecondaryPanelViewModel {
   panel: ReactNode;
   onToggle: () => void;
   transitionsReady: boolean;
+  widthPercentAtom: SecondaryPanelWidthPercentAtom;
 }
 
 export interface PaneSecondaryPanelRegistration {

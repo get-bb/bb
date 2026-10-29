@@ -108,7 +108,7 @@ describe("shared pull request refresh", () => {
     expect(load).toHaveBeenCalledTimes(2);
   });
 
-  it("publishes a change found by one viewer's read to every viewer of that environment", async () => {
+  it("publishes a change found by one viewer's background refresh to every viewer of that environment", async () => {
     vi.useFakeTimers();
     const failing = pullRequest({
       checks: {
@@ -127,10 +127,13 @@ describe("shared pull request refresh", () => {
     await vi.advanceTimersByTimeAsync(60_000);
     load.mockResolvedValue(available(pullRequest()));
     await expect(store.read("a", { viewer: true })).resolves.toEqual(
+      available(failing),
+    );
+    await flush();
+    expect(publish).toHaveBeenCalledExactlyOnceWith(["a"]);
+    await expect(store.read("a", { viewer: true })).resolves.toEqual(
       available(pullRequest()),
     );
-    expect(publish).toHaveBeenCalledExactlyOnceWith(["a"]);
-    await store.read("a", { viewer: true });
     expect(load).toHaveBeenCalledTimes(2);
     expect(publish).toHaveBeenCalledOnce();
   });
@@ -143,8 +146,10 @@ describe("shared pull request refresh", () => {
       .database()
       .prepare("SELECT total_changes() AS n")
       .get();
-    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(ACTIVE_CHECK_MS);
     await first.store.read("a", { viewer: true });
+    await flush();
+    expect(first.load).toHaveBeenCalledTimes(2);
     expect(
       first.owner.bb.storage
         .database()
@@ -152,6 +157,7 @@ describe("shared pull request refresh", () => {
         .get(),
     ).toEqual(changes);
     first.store.dispose();
+    await vi.advanceTimersByTimeAsync(ACTIVE_CHECK_MS);
     const restored = setup([available(pending)], first.owner);
     let finish!: (value: EnvironmentPullRequest) => void;
     restored.load.mockImplementation(
@@ -399,5 +405,185 @@ describe("shared pull request refresh", () => {
       available(pullRequest({ state: "merged" })),
     );
     expect(load).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("aligned refresh ticks", () => {
+  function pendingAt(number: number): PullRequest {
+    return {
+      ...pending,
+      number,
+      url: `https://github.com/acme/bb/pull/${number}`,
+    };
+  }
+
+  it("refreshes every watched pending PR in the same tick once they are due within half an interval", async () => {
+    vi.useFakeTimers();
+    const prs = new Map([
+      ["a", pendingAt(1)],
+      ["b", pendingAt(2)],
+      ["c", pendingAt(3)],
+    ]);
+    const { store, load } = setup([]);
+    load.mockImplementation(async (id: string) => available(prs.get(id)!));
+    const signals = [...prs.keys()].map(() => new AbortController());
+    await store.read("a", { viewer: true });
+    store.watch("a", signals[0]!.signal);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await store.read("b", { viewer: true });
+    store.watch("b", signals[1]!.signal);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await store.read("c", { viewer: true });
+    store.watch("c", signals[2]!.signal);
+    await flush();
+    load.mockClear();
+    const ticks = new Map<number, string[]>();
+    load.mockImplementation(async (id: string) => {
+      ticks.set(Date.now(), [...(ticks.get(Date.now()) ?? []), id].sort());
+      return available(prs.get(id)!);
+    });
+    await vi.advanceTimersByTimeAsync(ACTIVE_CHECK_MS * 4);
+    expect([...ticks.values()].slice(-3)).toEqual([
+      ["a", "b", "c"],
+      ["a", "b", "c"],
+      ["a", "b", "c"],
+    ]);
+    for (const signal of signals) signal.abort();
+  });
+
+  it("publishes PRs that change in the same tick together", async () => {
+    vi.useFakeTimers();
+    const prs = new Map([
+      ["a", pendingAt(1)],
+      ["b", pendingAt(2)],
+    ]);
+    const { store, load, publish } = setup([]);
+    load.mockImplementation(async (id: string) => available(prs.get(id)!));
+    const signals = [new AbortController(), new AbortController()];
+    for (const [index, id] of ["a", "b"].entries()) {
+      await store.read(id, { viewer: true });
+      store.watch(id, signals[index]!.signal);
+    }
+    await flush();
+    prs.set("a", { ...pendingAt(1), checks: { ...pullRequest().checks } });
+    prs.set("b", { ...pendingAt(2), checks: { ...pullRequest().checks } });
+    await vi.advanceTimersByTimeAsync(ACTIVE_CHECK_MS);
+    expect(publish).toHaveBeenCalledExactlyOnceWith(["a", "b"]);
+    for (const signal of signals) signal.abort();
+  });
+
+  it.each([
+    ["open", 20_000, pullRequest(), 0],
+    ["open", 31_000, pullRequest(), 1],
+    [
+      "merged",
+      50 * 60_000,
+      pullRequest({ state: "merged", attention: "merged" }),
+      0,
+    ],
+    [
+      "merged",
+      61 * 60_000,
+      pullRequest({ state: "merged", attention: "merged" }),
+      1,
+    ],
+  ])(
+    "re-reads a %s PR that comes back into view only when it is stale (%i ms old)",
+    async (_state, age, pr, loads) => {
+      vi.useFakeTimers();
+      const { store, load } = setup([available(pr)]);
+      await store.read("a", { viewer: true });
+      await vi.advanceTimersByTimeAsync(age);
+      load.mockClear();
+      const signal = new AbortController();
+      store.watch("a", signal.signal);
+      await vi.advanceTimersByTimeAsync(20);
+      expect(load).toHaveBeenCalledTimes(loads);
+      signal.abort();
+    },
+  );
+});
+
+describe("read freshness", () => {
+  it("answers an app read from memory at once and refreshes a stale row in the background", async () => {
+    vi.useFakeTimers();
+    const { store, load, publish } = setup([available(pullRequest())]);
+    await store.read("a", { viewer: true });
+    const signal = new AbortController();
+    store.watch("a", signal.signal);
+    await vi.advanceTimersByTimeAsync(60_000);
+    load.mockClear();
+    let release!: () => void;
+    load.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve(available(pullRequest({ title: "Renamed" })));
+        }),
+    );
+    await expect(store.read("a", { viewer: true })).resolves.toMatchObject({
+      pullRequest: { title: "Watch the PR" },
+    });
+    expect(load).toHaveBeenCalledTimes(1);
+    release();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(publish).toHaveBeenCalledWith(["a"]);
+    signal.abort();
+  });
+
+  it.each([
+    ["an open", pullRequest(), 29_000, 31_000],
+    ["a merged", pullRequest({ state: "merged" }), 59 * 60_000, 61 * 60_000],
+    ["a closed", pullRequest({ state: "closed" }), 59 * 60_000, 61 * 60_000],
+  ])(
+    "lets app reads reuse %s PR until it is stale",
+    async (_, value, fresh, stale) => {
+      vi.useFakeTimers();
+      const { store, load } = setup([available(value)]);
+      await store.read("a", { viewer: true });
+      load.mockClear();
+      await vi.advanceTimersByTimeAsync(fresh);
+      await store.read("a", { viewer: true });
+      expect(load).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(stale - fresh);
+      await store.read("a", { viewer: true });
+      expect(load).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("makes an app read wait when there is no row yet", async () => {
+    vi.useFakeTimers();
+    const { store, load } = setup([available(pullRequest())]);
+    await expect(store.read("a", { viewer: true })).resolves.toMatchObject({
+      outcome: "available",
+    });
+    expect(load).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-reads a fresh row from GitHub on request and resolves once it is current", async () => {
+    vi.useFakeTimers();
+    const { store, load } = setup([available(pullRequest())]);
+    await store.read("a", { viewer: true });
+    load.mockResolvedValue(available(pullRequest({ title: "Renamed" })));
+    await store.reread("a");
+    expect(load).toHaveBeenCalledTimes(2);
+    await expect(store.read("a", { viewer: true })).resolves.toMatchObject({
+      pullRequest: { title: "Renamed" },
+    });
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it("makes a one-shot read wait for a row older than ten seconds", async () => {
+    vi.useFakeTimers();
+    const { store, load } = setup([available(pullRequest())]);
+    await store.read("a", { viewer: true });
+    load.mockClear();
+    await vi.advanceTimersByTimeAsync(9_000);
+    await store.read("a", { viewer: false });
+    expect(load).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(2_000);
+    load.mockResolvedValue(available(pullRequest({ title: "Renamed" })));
+    await expect(store.read("a", { viewer: false })).resolves.toMatchObject({
+      pullRequest: { title: "Renamed" },
+    });
   });
 });

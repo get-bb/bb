@@ -3033,8 +3033,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 .footer {
   display: grid;
-  grid-template-columns: 0.65fr 0.95fr 1.2fr 1.2fr 0.7fr;
-  gap: 32px;
+  grid-template-columns: 0.4fr 0.95fr 1.2fr 1.2fr 0.75fr 0.85fr;
+  gap: 40px 32px;
   padding: 56px 0 64px;
   border-top: 1px solid var(--border-soft);
   color: var(--subtle);
@@ -3061,28 +3061,17 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   border-radius: 8px;
 }
 
-.footer-brand p {
-  max-width: 170px;
-  margin-top: 14px;
-  font-size: 13.5px;
+.footer-publisher {
+  grid-column: 1 / -1;
+  font-size: 12.5px;
   line-height: 1.5;
+  color: var(--dim);
 }
 
 .footer-x {
   display: block;
   width: 16px;
   height: 16px;
-}
-
-.footer-brand .footer-legal {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 10px;
-}
-
-.footer-brand .footer-legal a {
-  white-space: nowrap;
 }
 
 .footer-title {
@@ -3107,12 +3096,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     gap: 32px 24px;
   }
 
-  .footer-brand {
+  .footer-mark {
     grid-column: 1 / -1;
-  }
-
-  .footer-brand p {
-    max-width: none;
   }
 }
 
@@ -3472,10 +3457,4 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   .kid-li {
     animation: none;
   }
-}
-
-.footer-brand .footer-publisher {
-  margin-top: 14px;
-  font-size: 12.5px;
-  color: var(--dim);
 }

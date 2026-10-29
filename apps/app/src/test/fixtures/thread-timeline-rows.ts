@@ -1096,6 +1096,7 @@ export function questionRow({
         { value: "complete", label: "Complete" },
       ],
       allowFreeText: true,
+      required: true,
     },
   ],
   seq,

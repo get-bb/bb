@@ -103,7 +103,7 @@ import {
   useInlineQueuedMessageEditing,
   useQueuedMessageActions,
   type InlineQueuedMessageEditState,
-} from "@/components/thread/embedded-chat";
+} from "@/components/thread/composer";
 import {
   useCreateThread,
   useCancelThreadPlan,
@@ -160,6 +160,7 @@ import {
 } from "@bb/client-core";
 
 const ignoreReportedSubmitError = () => {};
+const ignorePermissionModeChange = () => {};
 
 export interface ThreadDetailSentMessageEdit {
   draft: PromptDraftState;
@@ -176,13 +177,17 @@ export interface ThreadDetailSentMessageEdit {
   ) => void;
 }
 
-const THREAD_DETAIL_COMPOSER_TEXTAREA_ID = "thread-detail-follow-up-composer";
 const NO_SESSION_OPTION_SELECTIONS: SessionOptionChoices = {};
 const EMPTY_QUEUED_MESSAGES: readonly ThreadQueuedMessage[] = [];
 const NO_INLINE_EDITOR_SELECTION: ExperimentalComposerSelection = {};
 
+export type ThreadComposerPermissionPolicy = "editable" | "snapshot";
+
 interface ThreadDetailPromptAreaProps {
   canRestoreEnvironment: boolean;
+  composerId: string;
+  isPrimaryComposer: boolean;
+  permissionPolicy: ThreadComposerPermissionPolicy;
   contextWindowUsage?: ThreadTimelineResponse["contextWindowUsage"];
   environmentCheckout?: WorkspaceCheckoutDisplay;
   environmentCompactLabel?: string;
@@ -213,7 +218,7 @@ interface ThreadDetailPromptAreaProps {
   sendMessage: SendMessageMutationLike;
   sentMessageEdit?: ThreadDetailSentMessageEdit;
   steerActiveThreadOnEnter: boolean;
-  composerFocusRequestNonce: number;
+  composerFocusRequestKey: string | number;
   thread: ThreadWithRuntime;
 }
 
@@ -387,6 +392,9 @@ async function runWhileFollowUpShortcutSending(
 
 export function ThreadDetailPromptArea({
   canRestoreEnvironment,
+  composerId,
+  isPrimaryComposer,
+  permissionPolicy,
   contextWindowUsage,
   environmentCheckout,
   environmentCompactLabel,
@@ -417,7 +425,7 @@ export function ThreadDetailPromptArea({
   sendMessage,
   sentMessageEdit,
   steerActiveThreadOnEnter,
-  composerFocusRequestNonce,
+  composerFocusRequestKey,
   thread,
 }: ThreadDetailPromptAreaProps) {
   const navigate = useImmediateRouteNavigate();
@@ -670,8 +678,8 @@ export function ThreadDetailPromptArea({
     setServiceTier,
     reasoningLevel,
     setReasoningLevel,
-    permissionMode,
-    setPermissionMode,
+    permissionMode: selectedPermissionMode,
+    setPermissionMode: setSelectedPermissionMode,
     activeModel,
     modelOptions,
     moreModelOptions,
@@ -701,6 +709,13 @@ export function ThreadDetailPromptArea({
     initialPermissionMode: defaultExecutionOptions?.permissionMode,
     initialEnvironmentSelectionValue: thread.environmentId ?? undefined,
   });
+  const isPermissionSnapshot = permissionPolicy === "snapshot";
+  const permissionMode = isPermissionSnapshot
+    ? (defaultExecutionOptions?.permissionMode ?? selectedPermissionMode)
+    : selectedPermissionMode;
+  const setPermissionMode = isPermissionSnapshot
+    ? ignorePermissionModeChange
+    : setSelectedPermissionMode;
   const fallbackIdentity = modelFallback
     ? `${thread.id}:${modelFallback.sourceSeq}`
     : null;
@@ -1386,7 +1401,7 @@ export function ThreadDetailPromptArea({
     [sendQueuedMessageById, shouldSteerWhenReady],
   );
 
-  const bottomFocusEndKey = `${composerFocusRequestNonce}:${bottomPluginFocusNonce}`;
+  const bottomFocusEndKey = `${composerFocusRequestKey}:${bottomPluginFocusNonce}`;
 
   const handleToggleBannerSegment = useCallback((key: string) => {
     setExpandedBannerSegment((previous) => (previous === key ? null : key));
@@ -1833,7 +1848,7 @@ export function ThreadDetailPromptArea({
         canModifierSubmit:
           activeComposerDraftInput.length > 0 && !isUpdateQueuedMessagePending,
         compactPromptPlaceholder,
-        composerId: `${THREAD_DETAIL_COMPOSER_TEXTAREA_ID}-queued-${queuedMessageId}`,
+        composerId: `${composerId}-queued-${queuedMessageId}`,
         draft: activeComposerDraft,
         editFocusNonce,
         execution: inlineExecutionConfig,
@@ -1862,6 +1877,7 @@ export function ThreadDetailPromptArea({
     activeComposerDraft,
     activeComposerDraftInput.length,
     compactPromptPlaceholder,
+    composerId,
     dismissInlineQueuedMessageEditor,
     editFocusNonce,
     handleAttachInlineFiles,
@@ -1974,7 +1990,7 @@ export function ThreadDetailPromptArea({
           },
           canModifierSubmit: canSubmitSentMessageEdit,
           compactPromptPlaceholder: "Edit message",
-          composerId: `${THREAD_DETAIL_COMPOSER_TEXTAREA_ID}-sent-${operationId}`,
+          composerId: `${composerId}-sent-${operationId}`,
           draft,
           editFocusNonce,
           execution: compactExecutionConfig,
@@ -2012,6 +2028,7 @@ export function ThreadDetailPromptArea({
     bottomPermissionConfig,
     canSubmitSentMessageEdit,
     compactExecutionConfig,
+    composerId,
     editFocusNonce,
     handleAttachSentMessageFiles,
     handleSentMessageEditSubmit,
@@ -2252,7 +2269,7 @@ export function ThreadDetailPromptArea({
 
   const bottomContent = (
     <FollowUpPromptBox
-      id={THREAD_DETAIL_COMPOSER_TEXTAREA_ID}
+      id={composerId}
       attachments={bottomAttachmentsConfig}
       stack={pendingInteractionNode ? pendingInteractionStack : promptStack}
       pendingInteraction={pendingInteractionNode}
@@ -2279,9 +2296,11 @@ export function ThreadDetailPromptArea({
       }
       execution={bottomExecutionConfig}
       permission={bottomPermissionConfig}
+      permissionReadOnly={isPermissionSnapshot}
       sessionOptionsControl={sessionOptionsControl}
       typeahead={typeaheadConfig}
       promptActions={promptActions}
+      isPrimaryComposer={isPrimaryComposer}
     />
   );
 

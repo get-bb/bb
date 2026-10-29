@@ -17,6 +17,7 @@ import {
 import type {
   Attachment,
   Comment,
+  TaskCardMeta,
   CreateAttachmentInput,
   CreateCommentInput,
   CreateFolderInput,
@@ -1747,6 +1748,49 @@ export function createTasksStore(db: PluginDatabase) {
       .map(taskThreadFromRow);
   }
 
+  function listTaskCardMeta(projectId: string | null): TaskCardMeta[] {
+    const projectClause =
+      projectId === null ? "" : "AND t.project_id = @projectId";
+    const parameters: Record<string, string> =
+      projectId === null ? {} : { projectId };
+    const cards = new Map<string, TaskCardMeta>();
+    const card = (taskId: string) => {
+      let entry = cards.get(taskId);
+      if (entry === undefined) {
+        entry = { taskId, attachmentCount: 0, activeThreads: [] };
+        cards.set(taskId, entry);
+      }
+      return entry;
+    };
+    const counts = db
+      .prepare<Record<string, string>, { task_id: string; count: number }>(
+        `
+        SELECT a.task_id AS task_id, COUNT(*) AS count
+        FROM attachments a
+        JOIN tasks t ON t.id = a.task_id
+        WHERE t.parent_task_id IS NULL ${projectClause}
+        GROUP BY a.task_id
+      `,
+      )
+      .all(parameters);
+    for (const row of counts) card(row.task_id).attachmentCount = row.count;
+    const threads = db
+      .prepare<Record<string, string>, TaskThreadRow>(
+        `
+        SELECT tt.* FROM task_threads tt
+        JOIN tasks t ON t.id = tt.task_id
+        WHERE t.parent_task_id IS NULL
+          AND tt.live_status IN ('starting', 'working')
+          ${projectClause}
+        ORDER BY tt.task_id, tt.attached_at DESC, tt.id DESC
+      `,
+      )
+      .all(parameters);
+    for (const row of threads)
+      card(row.task_id).activeThreads.push(taskThreadFromRow(row));
+    return [...cards.values()];
+  }
+
   function updateTaskThreadStatus(
     id: string,
     liveStatus: TaskThreadLiveStatus,
@@ -1944,6 +1988,7 @@ export function createTasksStore(db: PluginDatabase) {
     getTaskThreadByThreadId,
     listTaskThreadsByThreadId,
     listTaskThreads,
+    listTaskCardMeta,
     updateTaskThreadStatus,
     deleteTaskThread,
     createPreset,

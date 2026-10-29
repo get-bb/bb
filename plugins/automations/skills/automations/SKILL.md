@@ -42,7 +42,7 @@ Managing:
 bb automation list --project <id>
 bb automation list --target-thread <threadId>
 bb automation show <automationId> --project <id>
-bb automation update <automationId> --project <id> [--name <name>] [schedule flags] [complete execution flags | partial agent update flags]
+bb automation update <automationId> --project <id> [--name <name>] [schedule flags] [partial agent or script flags | complete execution flags]
 bb automation pause <automationId> --project <id>
 bb automation resume <automationId> --project <id>
 bb automation run <automationId> --project <id> [--idempotency-key <key>]

@@ -19,3 +19,31 @@ export const CONTEXT_CARD_TOGGLE_CLASS =
 
 export const CONTEXT_CARD_CHEVRON_CLASS =
   "size-3.5 shrink-0 text-subtle-foreground transition-transform duration-200";
+
+export const THREAD_CONTEXT_CARD_MENU_TRIGGER_CLASS =
+  "flex size-5 shrink-0 items-center justify-center rounded text-subtle-foreground transition-colors hover:bg-state-active hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-state-active data-[state=open]:text-foreground max-md:pointer-coarse:size-8 [&_[data-icon-root]]:size-3.5";
+
+export const THREAD_CONTEXT_CARD_MENU_CONTENT_CLASS = "md:w-72 md:min-w-72";
+
+const THREAD_CONTEXT_CARD_MENU_GAP_PX = 6;
+
+export interface ThreadContextCardMenuOffsets {
+  sideOffset: number;
+  alignOffset: number;
+}
+
+export function getThreadContextCardMenuOffsets(
+  trigger: Element,
+): ThreadContextCardMenuOffsets {
+  const card = trigger.closest("[data-thread-context-card]");
+  if (card === null) {
+    return { sideOffset: THREAD_CONTEXT_CARD_MENU_GAP_PX, alignOffset: 0 };
+  }
+  const cardRect = card.getBoundingClientRect();
+  const triggerRect = trigger.getBoundingClientRect();
+  return {
+    sideOffset:
+      cardRect.bottom - triggerRect.bottom + THREAD_CONTEXT_CARD_MENU_GAP_PX,
+    alignOffset: triggerRect.right - cardRect.right,
+  };
+}

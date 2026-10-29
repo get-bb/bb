@@ -9,6 +9,7 @@ function catalog(model: string) {
         model,
         displayName: model,
         description: "",
+        reasoningDiscovery: "known" as const,
         supportedReasoningEfforts: [],
         defaultReasoningEffort: "medium" as const,
         isDefault: true,

@@ -132,6 +132,11 @@ const composerWithoutModal = {
   none: ["modalOpen", "terminalFocus", "browserFocus"],
 } as const;
 
+const terminalWithoutModal = {
+  all: ["mainSurface", "terminalFocus"],
+  none: ["modalOpen"],
+} as const;
+
 const pickerOpenOnly = {
   all: ["mainSurface", "modelPickerOpen"],
   none: [],
@@ -145,6 +150,19 @@ const webMainWithoutModal = {
 const mainWithoutModalOrBrowser = {
   all: ["mainSurface"],
   none: ["modalOpen", "browserFocus"],
+} as const;
+
+const questionWithoutOtherEditable: readonly BindingOptions[] = [
+  {
+    all: ["mainSurface", "questionOpen"],
+    none: ["modalOpen", "editableFocus"],
+  },
+  { all: ["mainSurface", "questionFocus"], none: ["modalOpen"] },
+];
+
+const questionFocusWithoutEditable = {
+  all: ["mainSurface", "questionFocus"],
+  none: ["modalOpen", "editableFocus"],
 } as const;
 
 const splitWithoutModal = {
@@ -279,6 +297,24 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
     mainWithoutModal,
   ),
   binding(
+    "terminal.find",
+    "f",
+    { mod: true },
+    {
+      ...terminalWithoutModal,
+      all: [...terminalWithoutModal.all, "macPlatform"],
+    },
+  ),
+  binding(
+    "terminal.find",
+    "f",
+    { mod: true, shift: true },
+    {
+      ...terminalWithoutModal,
+      none: [...terminalWithoutModal.none, "macPlatform"],
+    },
+  ),
+  binding(
     "composer.focus",
     "c",
     { mod: true, shift: true },
@@ -375,7 +411,7 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
     {
       all: ["mainSurface", "browserFocus"],
       desktopOnly: true,
-      none: ["modalOpen"],
+      none: ["modalOpen", "terminalFocus"],
     },
   ),
   binding(
@@ -385,7 +421,7 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
     {
       all: ["mainSurface"],
       desktopOnly: true,
-      none: ["modalOpen", "browserFocus"],
+      none: ["modalOpen", "browserFocus", "terminalFocus"],
     },
   ),
   binding("workspace.openPreferred", "o", { mod: true }, mainWithoutModal),
@@ -400,6 +436,14 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
       },
     ),
   ),
+  ...questionWithoutOtherEditable.map((options) =>
+    binding("question.submit", "Enter", { mod: true }, options),
+  ),
+  ...questionWithoutOtherEditable.map((options) =>
+    binding("question.cancel", ".", { mod: true }, options),
+  ),
+  binding("question.previous", "ArrowLeft", {}, questionFocusWithoutEditable),
+  binding("question.next", "ArrowRight", {}, questionFocusWithoutEditable),
   binding(
     "window.new",
     "n",

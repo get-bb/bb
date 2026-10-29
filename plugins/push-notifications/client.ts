@@ -53,8 +53,6 @@ export function createClientDelivery(navigate: (threadId: string) => void) {
         "bbDesktop" in window &&
         typeof window.bbDesktop === "object" &&
         window.bbDesktop !== null &&
-        "platform" in window.bbDesktop &&
-        window.bbDesktop.platform === "linux" &&
         "focusWindow" in window.bbDesktop &&
         typeof window.bbDesktop.focusWindow === "function"
       ) {

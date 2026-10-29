@@ -120,6 +120,7 @@ interface ClaudeQueryCallOptions {
   sandbox?: BridgeSessionOptions["sandbox"];
   settings?: BridgeSessionOptions["settings"];
   sessionId?: string;
+  disallowedTools?: string[];
   settingSources?: string[];
   stderr?: (data: string) => void;
 }
@@ -2955,57 +2956,111 @@ describe("bridge", () => {
     },
   );
 
-  it("translates tagged dollar skill mentions without changing plain dollar text", async () => {
-    const bridge = createBridgeJsonRpcTestHarness(handleLine);
-    const queries: ControlledClaudeQuery[] = [];
-    queryMock.mockImplementation(() => {
-      const query = createControlledClaudeQuery();
-      queries.push(query);
-      return query;
-    });
+  function skillMention(start: number, trigger: "$" | "/", name: string) {
+    return {
+      start,
+      end: start + 1 + name.length,
+      resource: {
+        kind: "command",
+        trigger,
+        name,
+        source: "skill",
+        origin: "user",
+        label: name,
+        argumentHint: null,
+      },
+    };
+  }
 
-    try {
-      const threadId = "thread-dollar-skill";
-      await startBridgeThread({ bridge, threadId });
-      const call = getLatestQueryCall();
-      bridge.sendRequest(
-        2,
-        "turn/start",
-        canonicalTurnParams({
-          threadId,
-          input: [
-            {
-              type: "text",
-              text: "Use $review but keep $PATH and $review",
-              mentions: [
-                {
-                  start: 4,
-                  end: 11,
-                  resource: {
-                    kind: "command",
-                    trigger: "$",
-                    name: "review",
-                    source: "skill",
-                    origin: "user",
-                    label: "review",
-                    argumentHint: null,
-                  },
-                },
-              ],
-            },
+  it.each([
+    {
+      name: "an embedded dollar skill",
+      input: [
+        {
+          type: "text",
+          text: "Use $review but keep $PATH and $review",
+          mentions: [skillMention(4, "$", "review")],
+        },
+      ],
+      expected: "/review Use  but keep $PATH and $review",
+    },
+    {
+      name: "an embedded slash skill",
+      input: [
+        {
+          type: "text",
+          text: "Please use /review on this",
+          mentions: [skillMention(11, "/", "review")],
+        },
+      ],
+      expected: "/review Please use  on this",
+    },
+    {
+      name: "a leading dollar skill",
+      input: [
+        {
+          type: "text",
+          text: "$review the diff",
+          mentions: [skillMention(0, "$", "review")],
+        },
+      ],
+      expected: "/review the diff",
+    },
+    {
+      name: "a skill in a later input fragment",
+      input: [
+        { type: "text", text: "Inspect this fixture.", mentions: [] },
+        {
+          type: "text",
+          text: "$review",
+          mentions: [skillMention(0, "$", "review")],
+        },
+      ],
+      expected: "/review Inspect this fixture.\n",
+    },
+    {
+      name: "several selected skills",
+      input: [
+        {
+          type: "text",
+          text: "Run $lint then $review",
+          mentions: [
+            skillMention(4, "$", "lint"),
+            skillMention(15, "$", "review"),
           ],
-        }),
-      );
+        },
+      ],
+      expected: "Run /lint then /review",
+    },
+  ])(
+    "sends $name to Claude as a leading command only when it is the only selection",
+    async ({ input, expected }) => {
+      const bridge = createBridgeJsonRpcTestHarness(handleLine);
+      const queries: ControlledClaudeQuery[] = [];
+      queryMock.mockImplementation(() => {
+        const query = createControlledClaudeQuery();
+        queries.push(query);
+        return query;
+      });
 
-      expect(await readNextPromptText(call)).toBe(
-        "Use /review but keep $PATH and $review",
-      );
-      await bridge.waitForResponse(2);
-      await stopBridgeThread({ bridge, queries, threadId });
-    } finally {
-      bridge.restore();
-    }
-  });
+      try {
+        const threadId = "thread-selected-skill";
+        await startBridgeThread({ bridge, threadId });
+        const call = getLatestQueryCall();
+        bridge.sendRequest(
+          2,
+          "turn/start",
+          canonicalTurnParams({ threadId, input }),
+        );
+
+        expect(await readNextPromptText(call)).toBe(expected);
+        await bridge.waitForResponse(2);
+        await stopBridgeThread({ bridge, queries, threadId });
+      } finally {
+        bridge.restore();
+      }
+    },
+  );
 
   it("switches a live session into Plan mode when a later turn carries /plan", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
@@ -4587,7 +4642,7 @@ describe("bridge", () => {
     }
   });
 
-  it("applies turn model, reasoning, memory, workflow, and subagent settings live", async () => {
+  it("applies turn model, reasoning, memory, and workflow settings live", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];
     queryMock.mockImplementation(() => {
@@ -4642,7 +4697,7 @@ describe("bridge", () => {
           providerOptions: {
             workflowsEnabled: true,
             memoryEnabled: false,
-            providerSubagentsEnabled: false,
+            providerSubagentsEnabled: true,
           },
         },
       });
@@ -4660,29 +4715,6 @@ describe("bridge", () => {
         fastMode: true,
       });
 
-      for (const toolName of ["Agent", "Task"]) {
-        const toolUseId = `tool-disabled-${toolName.toLowerCase()}`;
-        const disabledSubagentOutputs = await invokeBridgeHooks(
-          hooks.PreToolUse,
-          {
-            hook_event_name: "PreToolUse",
-            tool_name: toolName,
-            tool_input: {},
-            tool_use_id: toolUseId,
-            session_id: "session-1",
-            transcript_path: "/tmp/transcript.jsonl",
-            cwd: "/tmp/worktree",
-          },
-          toolUseId,
-        );
-        expect(disabledSubagentOutputs).toContainEqual(
-          expect.objectContaining({
-            hookSpecificOutput: expect.objectContaining({
-              permissionDecision: "deny",
-            }),
-          }),
-        );
-      }
       const enabledWorkflowOutputs = await invokeBridgeHooks(
         hooks.PreToolUse,
         {
@@ -4735,26 +4767,6 @@ describe("bridge", () => {
         ultracode: false,
         fastMode: false,
       });
-      const enabledSubagentOutputs = await invokeBridgeHooks(
-        hooks.PreToolUse,
-        {
-          hook_event_name: "PreToolUse",
-          tool_name: "Agent",
-          tool_input: {},
-          tool_use_id: "tool-enabled-agent",
-          session_id: "session-1",
-          transcript_path: "/tmp/transcript.jsonl",
-          cwd: "/tmp/worktree",
-        },
-        "tool-enabled-agent",
-      );
-      expect(enabledSubagentOutputs).not.toContainEqual(
-        expect.objectContaining({
-          hookSpecificOutput: expect.objectContaining({
-            permissionDecision: "deny",
-          }),
-        }),
-      );
       const disabledWorkflowOutputs = await invokeBridgeHooks(
         hooks.PreToolUse,
         {
@@ -4790,6 +4802,123 @@ describe("bridge", () => {
       bridge.restore();
     }
   });
+
+  it.each([false, true])(
+    "updates subagent tools across turns while preserving the conversation (initially enabled: %s)",
+    async (initiallyEnabled) => {
+      const bridge = createBridgeJsonRpcTestHarness(handleLine);
+      const queries: ControlledClaudeQuery[] = [];
+      queryMock.mockImplementation(() => {
+        const query = createControlledClaudeQuery();
+        queries.push(query);
+        return query;
+      });
+      const options = (providerSubagentsEnabled: boolean) => ({
+        permissionMode: "accept-edits",
+        permissionScope: "workspace",
+        approvalReviewer: "user",
+        permissionEscalation: "ask",
+        instructions: "test",
+        providerOptions: { providerSubagentsEnabled },
+      });
+      const expectedTools = (enabled: boolean) =>
+        enabled ? undefined : ["Agent", "Task", "ListAgents"];
+
+      try {
+        const threadId = "thread-subagents-disabled";
+        const providerThreadId = "claude-subagent-conversation";
+        bridge.sendRequest(1, "thread/start", {
+          threadId,
+          cwd: "/tmp/worktree",
+          instructionMode: "append",
+          options: options(initiallyEnabled),
+        });
+        await bridge.waitForResponse(1);
+        expect(getLatestQueryCall().options.disallowedTools).toEqual(
+          expectedTools(initiallyEnabled),
+        );
+
+        for (const [index, enabled] of [
+          initiallyEnabled,
+          !initiallyEnabled,
+          initiallyEnabled,
+        ].entries()) {
+          const requestId = index + 2;
+          bridge.sendRequest(requestId, "turn/start", {
+            threadId,
+            providerThreadId,
+            input: [
+              {
+                type: "text",
+                text: "Continue with the current subagent setting",
+              },
+            ],
+            clientRequestId: "creq_abcdefghjk",
+            options: options(enabled),
+          });
+          await vi.waitFor(() => expect(queries).toHaveLength(index + 1));
+          await readNextPrompt(getLatestQueryCall());
+          await bridge.waitForResponse(requestId);
+          expect(getLatestQueryCall().options.disallowedTools).toEqual(
+            expectedTools(enabled),
+          );
+          if (index > 0) {
+            expect(queries[index - 1]?.close).toHaveBeenCalled();
+            expect(getLatestQueryCall().options.resume).toBe(providerThreadId);
+          } else {
+            expect(queries[0]?.close).not.toHaveBeenCalled();
+          }
+          const hookEnabled = index === 0 ? !enabled : enabled;
+          if (index === 0) {
+            bridge.sendRequest(10, "turn/steer", {
+              ...canonicalTurnParams({
+                threadId,
+                providerThreadId,
+                expectedTurnId: "active-turn",
+                input: [
+                  { type: "text", text: "Change subagents during this turn" },
+                ],
+              }),
+              options: options(hookEnabled),
+            });
+            await readNextPrompt(getLatestQueryCall());
+            await bridge.waitForResponse(10);
+            expect(queries).toHaveLength(1);
+            expect(queries[0]?.close).not.toHaveBeenCalled();
+          }
+          const hooks = getLatestQueryCall().options.hooks;
+          if (!hooks) throw new Error("Expected tracking hooks");
+          for (const toolName of ["Agent", "Task", "ListAgents"]) {
+            const outputs = await invokeBridgeHooks(
+              hooks.PreToolUse,
+              {
+                hook_event_name: "PreToolUse",
+                tool_name: toolName,
+                tool_input: {},
+                tool_use_id: "subagent-probe",
+                session_id: providerThreadId,
+                transcript_path: "/tmp/transcript.jsonl",
+                cwd: "/tmp/worktree",
+              },
+              "subagent-probe",
+            );
+            const denial = expect.objectContaining({
+              hookSpecificOutput: expect.objectContaining({
+                permissionDecision: "deny",
+              }),
+            });
+            if (hookEnabled) expect(outputs).not.toContainEqual(denial);
+            else expect(outputs).toContainEqual(denial);
+          }
+          queries[index]?.emit(createSuccessfulResultMessage(providerThreadId));
+          await bridge.flushWork();
+        }
+      } finally {
+        queries.forEach((query) => query.finish());
+        bridge.restore();
+      }
+    },
+  );
 
   it("keeps background subagents on their parent tool escalation when canUseTool omits agent metadata", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);

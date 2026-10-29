@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BB_DESKTOP_FOCUS_WINDOW_CHANNEL } from "../src/desktop-window-command-ipc.js";
 import { registerDesktopWindowFocusIpc } from "../src/desktop-window-focus.js";
 
@@ -15,6 +15,7 @@ const mock = vi.hoisted(() => {
     focus: vi.fn(),
   };
   return {
+    appFocus: vi.fn(),
     listeners,
     window,
     fromWebContents: vi.fn((_sender: { id: number }) => window),
@@ -30,6 +31,7 @@ const mock = vi.hoisted(() => {
 });
 
 vi.mock("electron", () => ({
+  app: { focus: mock.appFocus },
   BrowserWindow: { fromWebContents: mock.fromWebContents },
   ipcMain: { on: mock.on },
 }));
@@ -42,25 +44,40 @@ beforeEach(() => {
   registerDesktopWindowFocusIpc(new Set([42, 43]));
 });
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 function request(id: number) {
   mock.listeners.get(BB_DESKTOP_FOCUS_WINDOW_CHANNEL)?.({ sender: { id } });
 }
 
 describe("desktop notification window activation", () => {
-  it("restores and focuses the sending application window", () => {
-    mock.window.isMinimized.mockReturnValue(true);
-    request(42);
-    expect(mock.fromWebContents).toHaveBeenCalledWith({ id: 42 });
-    expect(mock.window.restore).toHaveBeenCalledOnce();
-    expect(mock.window.show).toHaveBeenCalledOnce();
-    expect(mock.window.focus).toHaveBeenCalledOnce();
-    expect(mock.window.restore.mock.invocationCallOrder[0]).toBeLessThan(
-      mock.window.show.mock.invocationCallOrder[0]!,
-    );
-    expect(mock.window.show.mock.invocationCallOrder[0]).toBeLessThan(
-      mock.window.focus.mock.invocationCallOrder[0]!,
-    );
-  });
+  it.each([
+    { platform: "darwin", stealsAppFocus: true },
+    { platform: "linux", stealsAppFocus: false },
+    { platform: "win32", stealsAppFocus: false },
+  ] as const)(
+    "restores and focuses the sending application window on $platform",
+    ({ platform, stealsAppFocus }) => {
+      vi.spyOn(process, "platform", "get").mockReturnValue(platform);
+      mock.window.isMinimized.mockReturnValue(true);
+      request(42);
+      expect(mock.fromWebContents).toHaveBeenCalledWith({ id: 42 });
+      expect(mock.window.restore).toHaveBeenCalledOnce();
+      expect(mock.window.show).toHaveBeenCalledOnce();
+      expect(mock.window.focus).toHaveBeenCalledOnce();
+      if (stealsAppFocus)
+        expect(mock.appFocus).toHaveBeenCalledWith({ steal: true });
+      else expect(mock.appFocus).not.toHaveBeenCalled();
+      expect(mock.window.restore.mock.invocationCallOrder[0]).toBeLessThan(
+        mock.window.show.mock.invocationCallOrder[0]!,
+      );
+      expect(mock.window.show.mock.invocationCallOrder[0]).toBeLessThan(
+        mock.window.focus.mock.invocationCallOrder[0]!,
+      );
+    },
+  );
 
   it("focuses only the second sender when multiple application windows are registered", () => {
     const secondWindow = {

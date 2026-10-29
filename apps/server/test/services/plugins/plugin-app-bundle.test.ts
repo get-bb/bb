@@ -1,3 +1,4 @@
+import { HOST_TAILWIND_VERSION } from "@bb/plugin-build/host-tailwind-version";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createServer, type Server } from "node:http";
@@ -58,7 +59,7 @@ const SERVER_SOURCE = `export default function plugin(bb: any) { bb.log.info("lo
 const APP_SOURCE = `export default function App() {\n  return <div className="line-clamp-2">hi</div>;\n}\n`;
 const COMPRESSIBLE_APP_SOURCE = `const payload = ${JSON.stringify(
   "compressible plugin bundle payload ".repeat(200),
-)};\nexport default function App() {\n  return <div className="line-clamp-2" data-payload={payload}>hi</div>;\n}\n`;
+)};\nexport default function App() {\n  return <div className="line-clamp-2 flex flex-col items-center gap-2 rounded-md border p-4 text-sm font-medium shadow-sm" data-payload={payload}>hi</div>;\n}\n`;
 
 async function writeAppPluginFixture(
   rootDir: string,
@@ -179,7 +180,14 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
     );
     expect((await brotliJsHead.arrayBuffer()).byteLength).toBe(0);
 
-    const css = await harness.app.request(`${BASE}${bundle.cssUrl}`);
+    const legacyCss = await harness.app.request(`${BASE}${bundle.cssUrl}`);
+    expect(await legacyCss.text()).toBe(
+      await readFile(join(rootDir, "dist", "app.css"), "utf8"),
+    );
+
+    const css = await harness.app.request(
+      `${BASE}${bundle.cssUrl}?host-tailwind=${HOST_TAILWIND_VERSION}`,
+    );
     expect(css.status).toBe(200);
     expect(css.headers.get("content-type")).toContain("text/css");
     const cssText = await css.text();
@@ -189,14 +197,41 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
     expect(cssText).toContain(`${scope} .line-clamp-2`);
     expect(cssText).toContain(`${scope}.line-clamp-2`);
     expect(cssText).not.toMatch(/@layer utilities\{\./);
+    const builtCss = await readFile(join(rootDir, "dist", "app.css"), "utf8");
+    expect(builtCss).toContain("@property --tw-shadow");
+    expect(builtCss).toContain(":root,:host{");
+    expect(cssText).not.toContain("@property");
+    expect(cssText).not.toContain(":root");
+    expect(cssText).toContain("var(--tw-shadow)");
 
-    const gzipCss = await harness.app.request(`${BASE}${bundle.cssUrl}`, {
-      headers: { "accept-encoding": "br;q=0, gzip;q=1" },
-    });
-    expect(gzipCss.headers.get("content-encoding")).toBe("gzip");
-    const gzipCssBytes = Buffer.from(await gzipCss.arrayBuffer());
-    expect(gzipCssBytes.length).toBeLessThan(Buffer.byteLength(cssText));
-    expect(gunzipSync(gzipCssBytes).toString()).toBe(cssText);
+    for (const url of [
+      `${BASE}${bundle.cssUrl}`,
+      `${BASE}/api/v1/plugins/appy/assets/app.css?h=${bundle.hash}`,
+    ]) {
+      for (const version of [
+        HOST_TAILWIND_VERSION,
+        null,
+        "mismatched-host",
+        HOST_TAILWIND_VERSION,
+      ]) {
+        const requestedUrl =
+          version === null
+            ? url
+            : `${url}${url.includes("?") ? "&" : "?"}host-tailwind=${version}`;
+        const response = await harness.app.request(requestedUrl, {
+          headers: { "accept-encoding": "br;q=0, gzip;q=1" },
+        });
+        expect(response.status).toBe(200);
+        expect(response.headers.get("content-encoding")).toBe("gzip");
+        expect(response.headers.get("cache-control")).toBe(
+          "public, max-age=31536000, immutable",
+        );
+        const compressed = Buffer.from(await response.arrayBuffer());
+        expect(gunzipSync(compressed).toString()).toBe(
+          version === HOST_TAILWIND_VERSION ? cssText : builtCss,
+        );
+      }
+    }
 
     const staleHash = await harness.app.request(
       `${BASE}/api/v1/plugins/appy/assets/app.js?h=deadbeefdeadbeef`,

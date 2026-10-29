@@ -912,6 +912,8 @@ export function ResourceCreateButton({
   menuActions = [],
   onCreate,
   compactWhenNarrow = false,
+  icon = "MessageCirclePlus",
+  shortLabel,
 }: {
   label: string;
   templates: readonly ResourceCreateTemplate[];
@@ -919,6 +921,8 @@ export function ResourceCreateButton({
   menuActions?: readonly ResourceCreateMenuAction[];
   onCreate: (prompt?: string) => void;
   compactWhenNarrow?: boolean;
+  icon?: IconName;
+  shortLabel?: string;
 }) {
   const groups: readonly ResourceCreateTemplateGroup[] = templateGroups ?? [
     { label: "Examples", templates },
@@ -931,8 +935,19 @@ export function ResourceCreateButton({
       className={cn("rounded-r-none", compactWhenNarrow && "pl-2 pr-1")}
       onClick={() => onCreate()}
     >
-      <Icon name="MessageCirclePlus" className="size-4" aria-hidden />
-      <span>{label}</span>
+      <Icon name={icon} className="size-4" aria-hidden />
+      {shortLabel ? (
+        <>
+          <span className="@max-[24rem]/resource-collection-modes:hidden">
+            {label}
+          </span>
+          <span className="hidden @max-[24rem]/resource-collection-modes:inline">
+            {shortLabel}
+          </span>
+        </>
+      ) : (
+        <span>{label}</span>
+      )}
     </Button>
   );
   return (

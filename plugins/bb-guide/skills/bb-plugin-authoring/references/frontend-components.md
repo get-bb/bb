@@ -160,6 +160,17 @@ className? }` —
   Usage is in frontend-registration.md. Experimental: see
   `docs/api_to_audit.md`.
 
+- `experimental_ThreadContextCardRow` — the thread context card's row, the one
+  bb's own rows use: `{ icon?, leading?, label, trailing?, title?, disabled?,
+  onClick?, action? }`. `icon` is any name `experimental_Icon` accepts and
+  `leading` draws any node in its place (an app or site icon), `trailing`
+  draws at the row's end (a count or `+4 −1`), `onClick` makes the label a
+  button, and `action` is a second control, such as a `…` that opens a menu,
+  shown in place of `trailing` while the row is hovered or focused (always on
+  touch screens). Usage is in
+  frontend-thread-context-card.md. Experimental: see
+  `docs/api_to_audit.md`.
+
 - `Markdown` — bb's chat-message markdown renderer (same typography,
   spacing, and code styling as timeline messages). Props:
   `{ content, className? }`. Use it wherever plugin UI quotes or previews

@@ -40,7 +40,7 @@ import type {
 } from "./types.js";
 import { turnRequestLabel } from "@bb/client-core";
 import { TurnRequestLabel } from "./TurnRequestLabel.js";
-import { formatShortMessageTime } from "./MessageActionBar.js";
+import { formatShortMessageTime, MessageTime } from "./message-time.js";
 import { useOverflowMeasurement } from "./conversation-message-overflow.js";
 import { PromptMentionPill } from "./ConversationMessageMentions.js";
 import { useThreadTitleDisplayText } from "@/components/thread/ThreadTitleMentions.js";
@@ -446,7 +446,6 @@ function GeneratedAutomationTitle({
   requestLabel,
   timestamp,
 }: GeneratedAutomationTitleProps) {
-  const sentAt = new Date(timestamp);
   return (
     <span className="inline-flex min-w-0 max-w-full items-center gap-1 whitespace-nowrap text-sm leading-5">
       {automationLink === null ? (
@@ -464,16 +463,11 @@ function GeneratedAutomationTitle({
       <span aria-hidden="true" className="shrink-0 text-subtle-foreground">
         ·
       </span>
-      <time
+      <MessageTime
+        timestamp={timestamp}
+        label={formatShortMessageTime(timestamp, new Date())}
         className="shrink-0 text-subtle-foreground"
-        dateTime={sentAt.toISOString()}
-        title={sentAt.toLocaleString(undefined, {
-          dateStyle: "full",
-          timeStyle: "long",
-        })}
-      >
-        {formatShortMessageTime(timestamp, new Date())}
-      </time>
+      />
       {requestLabel === null ? null : (
         <span className="shrink-0">{requestLabel}</span>
       )}

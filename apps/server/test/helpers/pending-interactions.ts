@@ -166,6 +166,7 @@ export function createUserQuestionPayload(
           { value: "production", label: "Production" },
         ],
         allowFreeText: options.allowFreeText ?? true,
+        required: true,
       },
     ],
   };

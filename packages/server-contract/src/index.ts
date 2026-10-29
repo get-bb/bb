@@ -23,5 +23,3 @@ export type {
 } from "@bb/domain";
 
 export * from "./api/machine-environment.js";
-
-export * from "./client-route-descriptors.js";

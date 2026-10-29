@@ -64,6 +64,13 @@ import { waitForHostConnected } from "./assertions.js";
 import { createIntegrationFetch } from "./fetch.js";
 import { isNodeError, removePathWithRetry } from "./remove-path.js";
 import { createTestGitRepo } from "./seed.js";
+import {
+  copyBuiltinHostBuildRecords,
+  INTEGRATION_APP_VERSION,
+  INTEGRATION_BUILTIN_PLUGINS,
+} from "./builtin-plugin-fixture.js";
+
+export { PROJECT_CHECKOUT_BUILTIN_PLUGIN } from "./builtin-plugin-fixture.js";
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -110,9 +117,6 @@ export interface IntegrationHarness {
   shutdownDaemon(reason?: string): Promise<void>;
   startDaemon(): Promise<void>;
 }
-
-export const PROJECT_CHECKOUT_BUILTIN_PLUGIN = "environment-project-checkout";
-const GIT_BUILTIN_PLUGIN = "git";
 
 interface CreateHarnessOptions {
   serverPort?: number;
@@ -182,6 +186,7 @@ async function startIntegrationServer(
 ): Promise<RunningTestServer> {
   const serverDataDir = path.join(tmpRoot, "server-data");
   await fs.mkdir(serverDataDir, { recursive: true });
+  await copyBuiltinHostBuildRecords(serverDataDir);
   const builtinSkillsRootPath = path.join(serverDataDir, "builtin-skills");
   await copyBuiltinSkills({
     skillsRootPath: resolveBuiltinSkillsRootPath(),
@@ -194,7 +199,7 @@ async function startIntegrationServer(
   const sharedPorts = new HostSharedPortCoordinator({ db, hub });
   const watchInterests = new WatchInterestCoordinator({ db, hub });
   const config: ServerRuntimeConfig = {
-    appVersion: "0.0.0-dev",
+    appVersion: INTEGRATION_APP_VERSION,
     builtinSkillsRootPath,
     customModels: [],
     dataDir: serverDataDir,
@@ -331,8 +336,7 @@ async function startIntegrationServer(
 
   pluginService.bindSdk({ baseUrl });
   const builtinPlugins = new Set([
-    PROJECT_CHECKOUT_BUILTIN_PLUGIN,
-    GIT_BUILTIN_PLUGIN,
+    ...INTEGRATION_BUILTIN_PLUGINS,
     ...(options.builtinPlugins ?? []),
   ]);
   for (const name of builtinPlugins) {

@@ -852,6 +852,38 @@ describe("mobile sidebar persistence", () => {
     });
   });
 
+  it("stays open when a drawer row gesture claims the swipe's touchmoves", () => {
+    vi.useFakeTimers();
+    render(
+      <CompactViewportOverrideProvider isCompactViewport>
+        <SidebarProvider>
+          <Sidebar>
+            <div data-testid="claimed-row">Dragged row</div>
+          </Sidebar>
+          <SidebarInset>
+            <SidebarTrigger />
+          </SidebarInset>
+        </SidebarProvider>
+      </CompactViewportOverrideProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
+    settleMobileToggle();
+    settleMobileRealization();
+
+    const panel = getMobilePanel();
+    const row = screen.getByTestId("claimed-row");
+    row.addEventListener("touchmove", (event) => event.preventDefault());
+
+    fireTouch(row, "touchstart", createTouch(220, 160));
+    fireTouch(row, "touchmove", createTouch(120, 164));
+    fireTouch(row, "touchmove", createTouch(40, 168));
+    fireTouchEnd(row, createTouch(40, 168));
+    settleMobileToggle();
+
+    expect(panel?.dataset.state).toBe("open");
+  });
+
   it("ignores a closing swipe from the right browser edge", () => {
     vi.useFakeTimers();
     renderCompactSidebarHarness();

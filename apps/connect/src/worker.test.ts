@@ -580,6 +580,7 @@ describe("machine gate auth", () => {
     mockVerifyMachine.mockResolvedValueOnce(null).mockResolvedValueOnce({
       machineId: "machine-other",
       userId: OTHER,
+      lastSeenAt: null,
     });
     const bogus = await worker.fetch(
       visitorRequest("sawyer.getbb.app", "/internal/session/open", {
@@ -604,6 +605,7 @@ describe("machine gate auth", () => {
     mockVerifyMachine.mockResolvedValue({
       machineId: "machine-owner",
       userId: OWNER,
+      lastSeenAt: null,
     });
     const { env, ctx, captured } = makeEnv(
       () =>
@@ -672,7 +674,7 @@ describe("machine gate auth", () => {
       ),
     ).toBe(true);
     expect(mockMarkMachineSeen).toHaveBeenCalledWith(
-      "machine-owner",
+      expect.objectContaining({ machineId: "machine-owner" }),
       expect.anything(),
     );
     expect(internal.headers.get("set-cookie")).toBe(
@@ -685,6 +687,7 @@ describe("machine gate auth", () => {
     mockVerifyMachine.mockResolvedValue({
       machineId: "machine-owner",
       userId: OWNER,
+      lastSeenAt: null,
     });
     const { env, ctx, captured } = makeEnv(() => new Response("origin"));
     const response = await worker.fetch(
@@ -703,6 +706,7 @@ describe("machine gate auth", () => {
     mockVerifyMachine.mockResolvedValue({
       machineId: "machine-owner",
       userId: OWNER,
+      lastSeenAt: null,
     });
     const { env, ctx, captured } = makeEnv(() => new Response("origin"));
     const response = await worker.fetch(
@@ -783,6 +787,7 @@ describe("gate replays through a tunnel object restart", () => {
     mockVerifyMachine.mockResolvedValue({
       machineId: "machine-owner",
       userId: OWNER,
+      lastSeenAt: null,
     });
   });
 
@@ -964,6 +969,7 @@ describe("gate request deadline", () => {
     mockVerifyMachine.mockResolvedValue({
       machineId: "machine-owner",
       userId: OWNER,
+      lastSeenAt: null,
     });
   });
 
@@ -2067,6 +2073,7 @@ describe("gate worker share hosts", () => {
     mockVerifyMachine.mockResolvedValue({
       machineId: "machine-owner",
       userId: OWNER,
+      lastSeenAt: null,
     });
     const { env, ctx, captured } = makeEnv(() => new Response("ok"));
     const res = await worker.fetch(

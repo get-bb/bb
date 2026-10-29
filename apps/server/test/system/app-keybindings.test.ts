@@ -65,6 +65,27 @@ describe("app keybindings", () => {
     },
   );
 
+  it.each(DEFAULT_KEYBINDING_CLIENTS)(
+    "binds terminal find to terminal focus without shell control keys: $name",
+    (client) => {
+      const bindings = applyAppKeybindingOverrides(
+        DEFAULT_APP_KEYBINDINGS,
+        [],
+      ).filter(
+        (binding) =>
+          binding.command === "terminal.find" &&
+          isAppKeybindingAvailableForClient(binding, client),
+      );
+      expect(bindings).toHaveLength(1);
+      expect(bindings[0]?.when.all).toContain("terminalFocus");
+      expect(bindings[0]?.shortcut).toMatchObject({
+        key: "f",
+        mod: true,
+        shift: !client.isMac,
+      });
+    },
+  );
+
   it("persists plugin bindings even before the plugin is loaded", async () => {
     await withTestHarness(async (harness) => {
       const overrides = [
@@ -192,6 +213,69 @@ describe("app keybindings", () => {
         ?.command,
     ).toBe("thread.previous");
   });
+
+  it.each(DEFAULT_KEYBINDING_CLIENTS)(
+    "runs question actions from the card's text field but not other text fields: $name",
+    (client) => {
+      const defaults = applyAppKeybindingOverrides(DEFAULT_APP_KEYBINDINGS, []);
+      const commandsFor = (
+        input: Parameters<typeof matchesAppShortcut>[0],
+        active: readonly string[],
+      ) =>
+        defaults
+          .filter(
+            (binding) =>
+              binding.command.startsWith("question.") &&
+              isAppKeybindingAvailableForClient(binding, client) &&
+              matchesAppShortcut(input, binding.shortcut, client.isMac) &&
+              binding.when.all.every((key) => active.includes(key)) &&
+              !binding.when.none.some((key) => active.includes(key)),
+          )
+          .map((binding) => binding.command);
+      const key = (key: string, mod: boolean) => ({
+        key,
+        code: key,
+        metaKey: mod && client.isMac,
+        ctrlKey: mod && !client.isMac,
+        altKey: false,
+        shiftKey: false,
+      });
+      const presses = [
+        key("Enter", true),
+        key(".", true),
+        key("ArrowLeft", false),
+        key("ArrowRight", false),
+      ];
+      const pressed = (active: readonly string[]) =>
+        presses.map((input) => commandsFor(input, active)[0] ?? null);
+
+      expect(pressed(["mainSurface", "questionOpen", "editableFocus"])).toEqual(
+        [null, null, null, null],
+      );
+      expect(
+        pressed([
+          "mainSurface",
+          "questionOpen",
+          "questionFocus",
+          "editableFocus",
+        ]),
+      ).toEqual(["question.submit", "question.cancel", null, null]);
+      expect(pressed(["mainSurface", "questionOpen", "questionFocus"])).toEqual(
+        [
+          "question.submit",
+          "question.cancel",
+          "question.previous",
+          "question.next",
+        ],
+      );
+      expect(pressed(["mainSurface", "questionOpen"])).toEqual([
+        "question.submit",
+        "question.cancel",
+        null,
+        null,
+      ]);
+    },
+  );
 
   it("limits overlapping default chords to intentional scoped navigation", () => {
     const assignedDefaults = applyAppKeybindingOverrides(
@@ -696,6 +780,7 @@ describe("app keybindings", () => {
       };
       const overrides = [
         { command: "thread.new" as const, shortcut },
+        { command: "terminal.find" as const, shortcut },
         { command: "modelPicker.toggle" as const, shortcut },
       ];
       const response = await harness.app.request("/api/v1/settings/keyboard", {
@@ -717,6 +802,26 @@ describe("app keybindings", () => {
       expect(
         config.keybindings.find((binding) => binding.command === "thread.new"),
       ).toMatchObject({ shortcut });
+      expect(
+        config.keybindings.filter(
+          (binding) => binding.command === "terminal.find",
+        ),
+      ).toEqual([
+        expect.objectContaining({
+          shortcut,
+          when: {
+            all: ["mainSurface", "terminalFocus", "macPlatform"],
+            none: ["modalOpen"],
+          },
+        }),
+        expect.objectContaining({
+          shortcut,
+          when: {
+            all: ["mainSurface", "terminalFocus"],
+            none: ["modalOpen", "macPlatform"],
+          },
+        }),
+      ]);
       expect(
         config.keybindings.filter(
           (binding) => binding.command === "modelPicker.toggle",

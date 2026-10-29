@@ -18,4 +18,4 @@ Use the CLI from any thread:
 - `bb git diff <environment-id> --target all` prints the diff.
 - `bb git viewed mark <environment-id> --path <path>` marks a file Viewed.
 
-The Commit button and dialog stay in core.
+On this page, Show Git changes above the composer hides or shows the changed-files segment, and Show Commit button (off by default) adds Commit to the thread header.

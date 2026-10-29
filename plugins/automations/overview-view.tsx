@@ -668,7 +668,7 @@ export function AutomationOverviewView({
         {
           id: "installed",
           label: "Installed",
-          count: entries?.length ?? undefined,
+          count: entries?.length ?? "pending",
         },
         { id: "browse", label: "Browse" },
       ]}
@@ -677,6 +677,8 @@ export function AutomationOverviewView({
       actions={
         <ResourceCreateButton
           label="New automation"
+          shortLabel="New"
+          icon="Repeat"
           templates={AUTOMATION_CREATE_TEMPLATES}
           onCreate={onCreateViaChat}
         />

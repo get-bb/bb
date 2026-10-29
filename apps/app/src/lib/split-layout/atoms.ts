@@ -6,7 +6,7 @@ import {
   type SyncStorage,
 } from "@/lib/browser-storage";
 import type { ThreadRoutePathArgs } from "@/lib/route-paths";
-import { findPane, listPanes, removePane } from "./ops";
+import { countPanes, findPane, listPanes, removePane } from "./ops";
 import {
   deserializeSplitLayout,
   serializeSplitLayout,
@@ -27,6 +27,11 @@ export const splitLayoutAtom = atomWithStorage<SplitLayout | null>(
   createSplitLayoutStorage(),
   { getOnInit: true },
 );
+
+export const multiPaneSplitLayoutAtom = atom((get) => {
+  const layout = get(splitLayoutAtom);
+  return layout !== null && countPanes(layout.root) > 1 ? layout : null;
+});
 
 export const MAXIMIZED_PANE_STORAGE_KEY = "bb.splitLayout.maximizedPaneId";
 

@@ -7,7 +7,7 @@ import gitApp from "./app.js";
 
 const app = await loadPluginApp(() => import("./app.js"));
 
-it("registers the Diff tab, Info rows and sections, and the composer segment", () => {
+it("registers the Diff tab, Info rows and sections, the composer segment, and the Commit header action", () => {
   expect(app.tabs).toMatchObject([
     {
       id: "diff",
@@ -15,8 +15,12 @@ it("registers the Diff tab, Info rows and sections, and the composer segment", (
       availability: "fixed",
     },
   ]);
-  expect(app.tabs[0]?.experimental_target?.validate({ kind: "file", path: "a.ts" })).toBe(true);
-  expect(app.tabs[0]?.experimental_target?.validate({ kind: "nope" })).toBe(false);
+  expect(
+    app.tabs[0]?.experimental_target?.validate({ kind: "file", path: "a.ts" }),
+  ).toBe(true);
+  expect(app.tabs[0]?.experimental_target?.validate({ kind: "nope" })).toBe(
+    false,
+  );
   expect(app.threadInfoRows.map((row) => row.id)).toEqual([
     "branch",
     "merge-base",
@@ -28,6 +32,12 @@ it("registers the Diff tab, Info rows and sections, and the composer segment", (
   ]);
   expect(app.threadContextSegments).toMatchObject([
     { id: "changed-files", group: "3_git", order: 10 },
+  ]);
+  expect(app.threadActions).toMatchObject([
+    { id: "commit", placement: "header", title: "Commit" },
+  ]);
+  expect(app.appOverlays.map((overlay) => overlay.id)).toEqual([
+    "commit-dialog",
   ]);
 });
 

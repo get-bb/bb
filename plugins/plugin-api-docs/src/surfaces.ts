@@ -128,6 +128,26 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         experimental: true,
       },
       {
+        id: "thread-row-metadata",
+        title: "Thread row metadata",
+        summary:
+          "Add a small badge on the metadata line under each thread's title in the sidebar. With this, a plugin can:",
+        bullets: [
+          "Show per-thread state at a glance, like a pull request's number and its checks",
+          "Load every listed thread in one hook, so rows have their final height before they scroll in",
+          "Appear on plugin-built thread lists too, and on bb's rows once Metadata is turned on",
+        ],
+        apiSymbols: [
+          "ExperimentalThreadRowMetadataRegistration",
+          "ExperimentalThreadRowMetadataProps",
+          "ExperimentalThreadRowMetadataDataInput",
+          "experimental_ThreadRowMetadata",
+          "ExperimentalThreadRowMetadataLineProps",
+        ],
+        firstParty: ["GitHub PR Status"],
+        experimental: true,
+      },
+      {
         id: "thread-list",
         title: "The thread list",
         summary:
@@ -168,6 +188,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginThreadTitleProps",
           "experimental_ThreadStatusGlyph",
           "PluginThreadStatusGlyphProps",
+          "experimental_ThreadRowMetadata",
           "useEnvironmentProviders",
           "PluginEnvironmentProvidersState",
           "useSdk",
@@ -186,6 +207,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Run an action, or open a small panel above the footer",
           "Show quick status, such as usage limits, without leaving the thread",
           "Follow the user's order and visibility choices in Appearance",
+          "Switch this device to another of its bb servers, in bb Desktop and the mobile app",
         ],
         apiSymbols: [
           "ExperimentalSidebarFooter",
@@ -198,23 +220,25 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "ExperimentalSidebarFooterDisclosureController",
           "PluginSidebarFooterActionRegistration",
           "PluginSidebarFooterActionProps",
+          "experimental_useServers",
+          "ExperimentalServers",
+          "ExperimentalServer",
         ],
         firstParty: ["Provider usage"],
         experimental: true,
       },
       {
         id: "thread-header",
-        title: "Thread header controls",
+        title: "Thread header buttons",
         summary:
-          "Add a control to the header of an open thread. With this, a plugin can:",
+          'Add a button to the header of an open thread: a thread action with placement "header". With this, a plugin can:',
         bullets: [
-          "Show live state for the thread on screen, not just a static button",
-          "Sit in the same row as bb's own header controls",
+          "Show a labelled button after the workspace's Open button, only while it applies to the thread",
+          "Fold into the thread menu on phones and in narrow split panes",
+          "Load data only for the threads whose header is on screen",
         ],
-        apiSymbols: [
-          "PluginThreadHeaderActionRegistration",
-          "PluginThreadHeaderActionProps",
-        ],
+        apiSymbols: ["PluginThreadActionPlacement"],
+        firstParty: ["Git"],
         experimental: true,
       },
       {
@@ -245,6 +269,31 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "experimental_THREAD_ACTION_GROUPS",
         ],
         firstParty: ["Push notifications", "Thread list"],
+        experimental: true,
+      },
+      {
+        id: "thread-context-card",
+        title: "Thread context card",
+        summary:
+          "Add a row or a titled section to the context card of every thread pane. With this, a plugin can:",
+        bullets: [
+          "Keep a pull request, change counts, or related threads in view while messages scroll",
+          "Sit among bb's own rows in the Info tab's groups, drawn with the same row",
+          "Hide a matching context segment while the pane shows the card",
+          "Leave the card, placement, and the header button to bb",
+        ],
+        apiSymbols: [
+          "PluginAppSlots.experimental_threadContextCardRow",
+          "PluginAppSlots.experimental_threadContextCardSection",
+          "ExperimentalThreadContextCardRowRegistration",
+          "ExperimentalThreadContextCardSectionRegistration",
+          "ExperimentalThreadContextCardProps",
+          "experimental_useThreadContextKind",
+          "ExperimentalThreadContextKind",
+          "experimental_ThreadContextCardRow",
+          "ExperimentalThreadContextCardRowProps",
+        ],
+        firstParty: ["Git", "GitHub PR Status"],
         experimental: true,
       },
       {
@@ -321,6 +370,25 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         firstParty: ["Side chat"],
       },
       {
+        id: "message-metadata",
+        title: "Message metadata",
+        summary:
+          "Add React metadata above conversation messages or in their hover action row. With this, a plugin can:",
+        bullets: [
+          "Show timestamps, status, or statistics beside chosen user and assistant messages",
+          "Read message identity, creation time, and turn details without receiving streaming text",
+          "Use React state and shared queries; mounted effects clean up when messages leave view",
+          "Rely on bb for placement, styling, ordering, plugin context, and isolated loading and errors",
+        ],
+        apiSymbols: [
+          "ExperimentalMessageMetadataRegistration",
+          "ExperimentalMessageMetadataContext",
+          "ExperimentalMessageMetadataProps",
+          "ExperimentalMessageMetadataPlacement",
+        ],
+        experimental: true,
+      },
+      {
         id: "pending-interaction",
         title: "In-thread forms",
         summary:
@@ -328,7 +396,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Replace the prompt box with your form, even after the turn has ended",
           "Return the answer or cancellation to the agent and keep a record in the thread",
-          "Show bb's answer shortcuts and respond when the person presses one",
+          "Show bb's answer shortcuts and respond to its answer, submit, switch, and cancel keys",
           "Dictate editable answers and wait for voice input before navigating or submitting",
         ],
         apiSymbols: [
@@ -338,6 +406,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginRowPresentation",
           "PluginPendingInteractionRegistration",
           "experimental_useQuestionFormHost",
+          "ExperimentalQuestionFormAction",
           "PluginPendingInteractionProps",
           "PluginPendingInteractionView",
         ],
@@ -689,6 +758,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Bring any CLI agent into bb, with its own models and icon",
           "Run every thread started with it through a bridge the plugin ships",
           "Report context usage, service tiers, and install status",
+          "Distinguish unknown reasoning from confirmed models with no selectable levels",
         ],
         apiSymbols: [
           "contextSnapshotSchema",
@@ -697,6 +767,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "ContextEntry",
           "PluginProviderDeclaration",
           "AvailableModel",
+          "AvailableModel.reasoningDiscovery",
           "ModelServiceTier",
           "providerInstallationStatusParamsSchema",
           "ProviderInstallationStatusParams",
@@ -1055,7 +1126,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "isLoading means an enabled read is fetching never-loaded data, including missing requested keys. isFetching includes background attempts; keyed views share their method's activity",
           "error is an experimental_PluginRpcCallError or null. Success clears it; retrying a first load clears its previous error while loading. refetch forces a read, waits through retries, and records failures in error without rejecting. Keyed reads also have refetchKeys(keys), which reads only those keys again and keeps every other row",
           "Reads stay fresh for two seconds without polling. Focus does not refetch while BB's realtime connection is healthy; while disconnected, focus/browser-online events recheck stale active reads. BB reconnect invalidates all plugin reads. Page hiding cancels active attempts and resume restarts those cancelled reads",
-          "Invalidations refresh immediately. Network/abort failures retry twice at 250 ms, HTTP failures never retry, and writes never retry automatically. Tags are plain strings shared between read dependencies and write invalidations",
+          "Invalidations refresh immediately. Network/abort failures retry twice at 250 ms, HTTP failures never retry, and writes never retry automatically. Tags are plain strings: reads declare them with tags or keyTags, and the server marks them stale with bb.rpc.experimental_invalidate where the data changes, so writes from the app, the CLI, agent tools and background work each refresh matching reads once",
           "mutate, isPending and pendingInputs settle at write acknowledgement; matched reads refresh in the background. Shared predictions stay until confirmed reads arrive, or roll back on write failure",
           "Optimistic updaters must be pure and replayable; generate IDs and timestamps before mutate",
           "RPC error codes may grow: switch on error.code with a fallback. Newer server codes become unknown_error with the original serverCode; transport_error and invalid_response cover client failures. CLI output preserves unknown codes",
@@ -1361,7 +1432,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Test it against bb's conformance suite and recorded sessions, without a running bb",
         ],
         reference: [
-          "Use @get-bb/plugin-sdk/process for hostToolchain executable and environment discovery, or spawnHostProcess, forkHostProcess and execHostFile (all experimental_ exports). Core uses these same launch paths; ENOENT or exit 127 starts a background discovery refresh without replaying side effects, and launches never wait for discovery. Explicit cwd and env are preserved, Windows shims are quoted, and workers recover a replaced Node runtime only when its native-module ABI matches.",
+          "Use @get-bb/plugin-sdk/process for hostToolchain executable and environment discovery, or spawnHostProcess, forkHostProcess and execHostFile (all experimental_ exports). Core uses these same launch paths; ENOENT or exit 127 starts a background discovery refresh without replaying side effects, and launches never wait for discovery. Explicit cwd and env are preserved, Windows shims are quoted, and workers recover a replaced Node runtime only when its native-module ABI matches. Node launches that carry --use-env-proxy keep it only when the child's HTTP(S)_PROXY values are http(s) URLs, and then bypass the proxy for loopback.",
         ],
         apiSymbols: [
           "experimental_defineProviderBridge",
@@ -1477,6 +1548,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginBbSdk.threads.queuedMessages.experimental_releaseEditHold",
           "PluginBbSdk.threads.experimental_listDescendants",
           "PluginBbSdk.threads.experimental_listCascade",
+          "PluginBbSdk.threads.experimental_regenerateTitle",
         ],
         firstParty: [
           "Account Pooler [Experimental]",

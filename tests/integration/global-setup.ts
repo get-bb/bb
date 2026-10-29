@@ -8,6 +8,7 @@ import {
   readPositivePidFile,
 } from "@bb/test-helpers";
 import { isNodeError, removePathWithRetry } from "./helpers/remove-path.js";
+import { setupBuiltinHostBuildRecords } from "./helpers/builtin-plugin-fixture.js";
 
 const INTEGRATION_TMP_PREFIX = "bb-integration-";
 const STALE_TMP_ROOT_AGE_MS = 60 * 60_000;
@@ -64,7 +65,7 @@ async function listIntegrationTmpRoots(): Promise<string[]> {
     .map((entry) => path.join(tmpdir(), entry.name));
 }
 
-export default async function globalSetup(): Promise<() => void> {
+export default async function globalSetup(): Promise<() => Promise<void>> {
   const now = Date.now();
   for (const tmpRoot of await listIntegrationTmpRoots()) {
     const metadata = await fs.stat(tmpRoot).catch(() => null);
@@ -81,5 +82,18 @@ export default async function globalSetup(): Promise<() => void> {
 
     await cleanupTmpRoot(tmpRoot).catch(() => undefined);
   }
-  return setupMigratedConnectionTemplate();
+  const cleanupDatabaseTemplate = setupMigratedConnectionTemplate();
+  try {
+    const cleanupBuiltinRecords = await setupBuiltinHostBuildRecords();
+    return async () => {
+      try {
+        cleanupDatabaseTemplate();
+      } finally {
+        await cleanupBuiltinRecords();
+      }
+    };
+  } catch (error) {
+    cleanupDatabaseTemplate();
+    throw error;
+  }
 }

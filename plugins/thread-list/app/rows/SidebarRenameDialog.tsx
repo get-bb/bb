@@ -8,18 +8,18 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { RenameDialog } from "@/components/ui/rename-dialog";
-import type {
-  RenameController,
-  RenameSession,
+import {
+  useRenameSession,
+  type RenameController,
+  type RenameSession,
 } from "@/components/ui/inline-rename";
 
 export function SidebarRenameDialog({
-  session,
   controller,
 }: {
-  session: RenameSession | null;
   controller: RenameController;
 }) {
+  const session = useRenameSession(controller);
   const open = session?.presentation === "dialog";
   return (
     <RenameDialog

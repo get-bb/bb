@@ -18,5 +18,11 @@ Default and named bases share one comparison: use the remote when local is
 equal or behind, and preserve local commits when ahead, diverged or unknown.
 Remote-only branches are usable too. Explicit remote names and fully qualified
 refs are honored exactly. Selected remote bases are fetched before creation.
-The resolved base is returned and stored with the environment; this does not
+When the plugin chose `origin/<name>` itself and that fetch fails for any
+reason other than cancellation, it creates the worktree from the last fetched
+`origin/<name>` and reports the failure and the commit it used in the
+provisioning progress. That ref already contains every local commit, because
+it is only chosen when local is equal or behind. An explicit `origin/<name>`
+still fails, and `refs/remotes/origin/<name>` uses the last fetched ref without
+fetching. The resolved base is returned and stored with the environment; this does not
 refresh existing worktrees before later agent turns.

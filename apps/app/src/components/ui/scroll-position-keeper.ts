@@ -1,3 +1,5 @@
+import { WINDOW_FIND_OPEN_EVENT } from "@/lib/window-find";
+
 export type ScrollHoldEdge = "top" | "bottom";
 
 export type ReadingPosition =
@@ -32,6 +34,7 @@ interface ScrollPositionKeeperOptions {
   bottomThresholdPx: number;
   deferWritesWhileScrolling: boolean;
   getContentElement: () => HTMLElement | null;
+  getFloorElement: () => HTMLElement | null;
   getFooterElement: () => HTMLElement | null;
   getScrollElement: () => HTMLElement | null;
   getTopLevelRows: (scrollElement: HTMLElement) => ArrayLike<HTMLElement>;
@@ -147,6 +150,8 @@ export class ScrollPositionKeeper {
   private settleTimeout: number | null = null;
   private clampFrame: number | null = null;
   private attachFrame: number | null = null;
+  private floorHeight = 0;
+  private windowFindOpen = false;
   private readonly lists = new Set<ScrollWindowList>();
   private readonly listeners = new Set<() => void>();
   private readonly positionListeners = new Set<() => void>();
@@ -201,15 +206,34 @@ export class ScrollPositionKeeper {
     scrollElement.style.overflowAnchor = "none";
     this.ownScrollTop = scrollElement.scrollTop;
     const onScroll = () => this.handleScroll();
-    const onTouchStart = () => {
+    const touchTargets = new Set<EventTarget>();
+    const releaseTouchTargets = () => {
+      for (const target of touchTargets) {
+        target.removeEventListener("touchend", onTouchEnd, PASSIVE_CAPTURE);
+        target.removeEventListener("touchcancel", onTouchEnd, PASSIVE_CAPTURE);
+      }
+      touchTargets.clear();
+    };
+    const onTouchStart = (event: TouchEvent) => {
       if (!this.touching) {
         this.gestureScrolled = false;
         this.touchStartScrollTop = scrollElement.scrollTop;
       }
       this.touching = true;
+      const target = event.target;
+      if (
+        target !== null &&
+        target !== scrollElement &&
+        !touchTargets.has(target)
+      ) {
+        target.addEventListener("touchend", onTouchEnd, PASSIVE_CAPTURE);
+        target.addEventListener("touchcancel", onTouchEnd, PASSIVE_CAPTURE);
+        touchTargets.add(target);
+      }
     };
     const activeTouchPointers = new Set<number>();
     const endTouch = () => {
+      releaseTouchTargets();
       if (!this.touching) return;
       activeTouchPointers.clear();
       this.touching = false;
@@ -223,8 +247,8 @@ export class ScrollPositionKeeper {
       }
       this.scheduleDeferredWrite();
     };
-    const onTouchEnd = (event: TouchEvent) => {
-      if (event.touches.length > 0) return;
+    const onTouchEnd = (event: Event) => {
+      if (event instanceof TouchEvent && event.touches.length > 0) return;
       endTouch();
     };
     const onPointerDown = (event: PointerEvent) => {
@@ -250,6 +274,10 @@ export class ScrollPositionKeeper {
       this.extendInput(WHEEL_SESSION_MS);
     };
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Tab") {
+        this.extendInput(KEY_SESSION_MS);
+        return;
+      }
       if (!SCROLL_KEYS.has(event.key) || isEditableTarget(event.target)) {
         return;
       }
@@ -263,6 +291,12 @@ export class ScrollPositionKeeper {
       }
       this.extendInput(KEY_SESSION_MS);
     };
+    const onWindowFindOpen = () => {
+      this.windowFindOpen = true;
+    };
+    const onWindowFocus = () => {
+      this.windowFindOpen = false;
+    };
     scrollElement.addEventListener("scroll", onScroll, { passive: true });
     scrollElement.addEventListener("wheel", onWheel, { passive: true });
     scrollElement.addEventListener("touchstart", onTouchStart, PASSIVE_CAPTURE);
@@ -274,9 +308,13 @@ export class ScrollPositionKeeper {
     window.addEventListener("pointerup", onPointerUp, true);
     window.addEventListener("pointercancel", onPointerUp, true);
     window.addEventListener("keydown", onKeyDown);
+    window.addEventListener(WINDOW_FIND_OPEN_EVENT, onWindowFindOpen);
+    window.addEventListener("focus", onWindowFocus);
     let observer: ResizeObserver | undefined;
     if (typeof ResizeObserver !== "undefined") {
-      observer = new ResizeObserver(() => this.reconcile());
+      observer = new ResizeObserver(() => {
+        this.remeasure();
+      });
       observer.observe(scrollElement);
       const content = this.options.getContentElement();
       if (content !== null) {
@@ -287,9 +325,12 @@ export class ScrollPositionKeeper {
         }
       }
     }
+    this.syncFloor();
     this.reconcile();
     return () => {
       observer?.disconnect();
+      releaseTouchTargets();
+      this.clearFloor();
       scrollElement.removeEventListener("scroll", onScroll);
       scrollElement.removeEventListener("wheel", onWheel);
       scrollElement.removeEventListener(
@@ -311,6 +352,9 @@ export class ScrollPositionKeeper {
       window.removeEventListener("pointerup", onPointerUp, true);
       window.removeEventListener("pointercancel", onPointerUp, true);
       window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener(WINDOW_FIND_OPEN_EVENT, onWindowFindOpen);
+      window.removeEventListener("focus", onWindowFocus);
+      this.windowFindOpen = false;
       this.touching = false;
       this.pointerDown = false;
       if (this.settleTimeout !== null) window.clearTimeout(this.settleTimeout);
@@ -452,7 +496,14 @@ export class ScrollPositionKeeper {
     }
     if (!this.isInputSession()) {
       const cachedMax = this.maxScrollTop;
-      if (Math.abs(this.refreshExtent(scrollElement) - cachedMax) >= 1) {
+      const extentChanged =
+        Math.abs(this.refreshExtent(scrollElement) - cachedMax) >= 1;
+      if (
+        extentChanged ||
+        this.isFloorStale() ||
+        !this.followsUnexplainedScroll()
+      ) {
+        this.syncFloor();
         this.ownScrollTop = scrollTop;
         this.apply(scrollElement, true);
         return;
@@ -491,6 +542,11 @@ export class ScrollPositionKeeper {
     this.notifyLists();
   }
 
+  remeasure(): void {
+    this.syncFloor();
+    this.reconcile();
+  }
+
   reconcile(urgent = true): void {
     const scrollElement = this.options.getScrollElement();
     if (scrollElement === null) return;
@@ -510,13 +566,30 @@ export class ScrollPositionKeeper {
     if (widthChanged) this.keepAnchorVisible(scrollElement);
     this.reconciledWidth = width;
     const previous = this.ownScrollTop;
-    if (
+    const movement =
+      previous !== null && Math.abs(scrollTop - previous) >= MIN_WRITE_PX
+        ? scrollTop - previous
+        : 0;
+    const clampedToEnd =
       previous !== null &&
-      Math.abs(scrollTop - previous) >= MIN_WRITE_PX &&
+      previous > max + 0.5 &&
+      Math.abs(scrollTop - max) < 1;
+    const navigated =
+      movement !== 0 &&
+      !this.isInputSession() &&
+      this.followsUnexplainedScroll() &&
+      !clampedToEnd;
+    if (navigated) {
+      this.userScrolled = true;
+      this.pendingRestore = null;
+      this.scrollMovedAt = window.performance.now();
+      this.setPosition(this.capture(scrollElement) ?? FREE);
+    } else if (
+      movement !== 0 &&
       this.position.kind === "anchor" &&
       this.isInputSession()
     ) {
-      this.position.offset -= scrollTop - previous;
+      this.position.offset -= movement;
       this.scrollMovedAt = window.performance.now();
     }
     this.ownScrollTop = scrollTop;
@@ -553,7 +626,7 @@ export class ScrollPositionKeeper {
         this.scheduleClampSettle();
       }
     }
-    if (restored) this.attachIfAtEnd(scrollElement);
+    if (restored || navigated) this.attachIfAtEnd(scrollElement);
     else this.scheduleAttachAtEnd(scrollElement);
     if (notify) this.notifyLists(urgent);
   }
@@ -785,6 +858,13 @@ export class ScrollPositionKeeper {
     this.attachIfAtEnd(scrollElement);
   }
 
+  private followsUnexplainedScroll(): boolean {
+    return (
+      this.windowFindOpen ||
+      (this.position.kind !== "bottom" && this.pendingRestore === null)
+    );
+  }
+
   private isAtEnd(scrollTop: number): boolean {
     return (
       this.maxScrollTop - (scrollTop + this.deferred) <=
@@ -903,6 +983,34 @@ export class ScrollPositionKeeper {
       this.refreshExtent(current);
       this.attachIfAtEnd(current);
     });
+  }
+
+  private naturalFloorHeight(): number | null {
+    const container = this.options.getFloorElement()?.parentElement;
+    if (container === null || container === undefined) return null;
+    return container.getBoundingClientRect().height;
+  }
+
+  private isFloorStale(): boolean {
+    const height = this.naturalFloorHeight();
+    return height !== null && Math.abs(height - this.floorHeight) >= 1;
+  }
+
+  private syncFloor(): void {
+    const floor = this.options.getFloorElement();
+    const height = this.naturalFloorHeight();
+    if (floor === null || height === null) return;
+    this.floorHeight = height;
+    floor.style.height = `${height}px`;
+    floor.style.marginBottom = `${-height}px`;
+  }
+
+  private clearFloor(): void {
+    const floor = this.options.getFloorElement();
+    this.floorHeight = 0;
+    if (floor === null) return;
+    floor.style.height = "";
+    floor.style.marginBottom = "";
   }
 
   private write(scrollElement: HTMLElement, target: number): void {

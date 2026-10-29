@@ -8,12 +8,14 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { Profiler } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { installTestPluginRuntime } from "@get-bb/plugin-sdk/testing/app";
 import { CompactViewportOverrideProvider } from "@/components/ui/hooks/use-compact-viewport";
 import {
   SidebarRenameProvider,
   useSidebarRename,
+  useSidebarRenameState,
 } from "./SidebarInlineRename.js";
 import { renameError } from "@/components/ui/inline-rename";
 
@@ -304,6 +306,45 @@ describe("sidebar inline rename", () => {
       ).not.toBeNull(),
     );
     expect(onSave).toHaveBeenCalledExactlyOnceWith("Finish first");
+  });
+
+  it("redraws only the renamed row while typing and keeps the list's rename state unchanged", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const commits = vi.fn();
+    const listStates: unknown[] = [];
+    function ListState() {
+      const state = useSidebarRenameState();
+      if (listStates.at(-1) !== state) listStates.push(state);
+      return null;
+    }
+    render(
+      <SidebarRenameProvider>
+        <ListState />
+        <Profiler id="first" onRender={commits}>
+          <RenameRow id="first" onSave={onSave} />
+        </Profiler>
+        <Profiler id="second" onRender={commits}>
+          <RenameRow id="second" onSave={onSave} />
+        </Profiler>
+      </SidebarRenameProvider>,
+    );
+    const input = await start("N");
+    commits.mockClear();
+    const statesBeforeTyping = listStates.length;
+    for (const value of ["Ne", "New", "New n"]) {
+      fireEvent.change(input, { target: { value } });
+    }
+    expect(commits.mock.calls.map(([id]) => id)).toEqual([
+      "first",
+      "first",
+      "first",
+    ]);
+    expect(listStates).toHaveLength(statesBeforeTyping);
+    expect(listStates.at(-1)).toEqual({
+      kind: "thread",
+      id: "first",
+      name: "Original name",
+    });
   });
 
   it("retains a draft through external updates and row remounts, then cancels to the current name", async () => {

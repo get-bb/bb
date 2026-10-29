@@ -37,7 +37,11 @@ export function resolveDiffFileCardInitialState({
   return { collapsed, viewedRevision: null };
 }
 
-const cardStatesByIdentity = new Map<string, Map<string, DiffFileCardUiState>>();
+const cardStatesByIdentity = new Map<
+  string,
+  ReadonlyMap<string, DiffFileCardUiState>
+>();
+const EMPTY_CARD_STATES: ReadonlyMap<string, DiffFileCardUiState> = new Map();
 const listeners = new Set<() => void>();
 
 function subscribe(listener: () => void): () => void {
@@ -58,36 +62,25 @@ export function readDiffFileCardState(
   return cardStatesByIdentity.get(diffIdentity)?.get(path) ?? null;
 }
 
-function storeDiffFileCardState(
-  diffIdentity: string,
-  path: string,
-  state: DiffFileCardUiState,
-): void {
-  let states = cardStatesByIdentity.get(diffIdentity);
-  if (states === undefined) {
-    states = new Map();
-    cardStatesByIdentity.set(diffIdentity, states);
-  }
-  states.set(path, state);
-}
-
 export function writeDiffFileCardStates(
   diffIdentity: string,
   updates: readonly (readonly [path: string, state: DiffFileCardUiState])[],
 ): void {
   if (updates.length === 0) return;
+  const states = new Map(cardStatesByIdentity.get(diffIdentity));
   for (const [path, state] of updates) {
-    storeDiffFileCardState(diffIdentity, path, state);
+    states.set(path, state);
   }
+  cardStatesByIdentity.set(diffIdentity, states);
   notify();
 }
 
-export function useDiffFileCardState(
+export function useDiffFileCardStates(
   diffIdentity: string,
-  path: string,
-): DiffFileCardUiState | null {
-  return useSyncExternalStore(subscribe, () =>
-    readDiffFileCardState(diffIdentity, path),
+): ReadonlyMap<string, DiffFileCardUiState> {
+  return useSyncExternalStore(
+    subscribe,
+    () => cardStatesByIdentity.get(diffIdentity) ?? EMPTY_CARD_STATES,
   );
 }
 
@@ -158,10 +151,21 @@ export function clearDiffFileCardStates(activeDiffIdentity: string): void {
   }
 }
 
-export const DIFF_CARD_HEADER_HEIGHT_PX = 40;
+export const DIFF_CARD_HEADER_HEIGHT_PX = 33;
 const DIFF_CARD_LINE_HEIGHT_PX = 18;
-const DIFF_CARD_BODY_PADDING_PX = 16;
-const DIFF_CARD_MAX_ESTIMATED_LINES = 80;
+const DIFF_CARD_BODY_PADDING_PX = 17;
+const DIFF_CARD_NOTICE_HEIGHT_PX = 41;
+
+export function estimateCardBodyHeight(entry: DiffFileEntry): number {
+  if (entry.loadMode !== "auto") {
+    return DIFF_CARD_NOTICE_HEIGHT_PX;
+  }
+  const changedLines = entry.additions + entry.deletions;
+  if (changedLines === 0) {
+    return 0;
+  }
+  return DIFF_CARD_BODY_PADDING_PX + changedLines * DIFF_CARD_LINE_HEIGHT_PX;
+}
 
 interface EstimateCardHeightArgs {
   entry: DiffFileEntry;
@@ -175,14 +179,5 @@ export function estimateCardHeight({
   if (collapsed) {
     return DIFF_CARD_HEADER_HEIGHT_PX;
   }
-  const changedLines = entry.additions + entry.deletions;
-  if (changedLines === 0) {
-    return DIFF_CARD_HEADER_HEIGHT_PX;
-  }
-  const renderedLines = Math.min(changedLines, DIFF_CARD_MAX_ESTIMATED_LINES);
-  return (
-    DIFF_CARD_HEADER_HEIGHT_PX +
-    DIFF_CARD_BODY_PADDING_PX +
-    renderedLines * DIFF_CARD_LINE_HEIGHT_PX
-  );
+  return DIFF_CARD_HEADER_HEIGHT_PX + estimateCardBodyHeight(entry);
 }

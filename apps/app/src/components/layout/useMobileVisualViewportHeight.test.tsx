@@ -23,22 +23,16 @@ class FakeVisualViewport extends EventTarget implements VisualViewport {
 }
 
 function VisualViewportShell({
-  enabled,
   shellKey = "initial",
   portaledShelf = false,
   restoreImmediatelyOnKeyboardDismissal = true,
 }: {
-  enabled: boolean;
   shellKey?: string;
   portaledShelf?: boolean;
   restoreImmediatelyOnKeyboardDismissal?: boolean;
 }) {
   const [shell, setShell] = useState<HTMLDivElement | null>(null);
-  useMobileVisualViewportHeight(
-    shell,
-    enabled,
-    restoreImmediatelyOnKeyboardDismissal,
-  );
+  useMobileVisualViewportHeight(shell, restoreImmediatelyOnKeyboardDismissal);
   return (
     <div>
       <div key={shellKey} ref={setShell} data-testid="shell">
@@ -147,9 +141,9 @@ describe("useMobileVisualViewportHeight", () => {
     visualViewport.height = 874;
     await withElementClientHeight(document.body, () => 874, async () => {
       await withFakeVisualViewport(visualViewport, async () => {
-        const { rerender, unmount } = render(<VisualViewportShell enabled />);
+        const { rerender, unmount } = render(<VisualViewportShell />);
         const previousShell = screen.getByTestId("shell");
-        rerender(<VisualViewportShell enabled shellKey="thread" />);
+        rerender(<VisualViewportShell shellKey="thread" />);
         const currentShell = screen.getByTestId("shell");
 
         act(() => {
@@ -182,7 +176,7 @@ describe("useMobileVisualViewportHeight", () => {
       async () => {
         await withFakeVisualViewport(visualViewport, async () => {
           const { unmount } = render(
-            <VisualViewportShell enabled portaledShelf />,
+            <VisualViewportShell portaledShelf />,
           );
           const shelf = await screen.findByTestId("secondary-panel-shelf");
 
@@ -206,7 +200,7 @@ describe("useMobileVisualViewportHeight", () => {
   it("keeps the app shell bottom aligned with visual viewport changes", async () => {
     const visualViewport = new FakeVisualViewport();
     await withFakeVisualViewport(visualViewport, async () => {
-      const { rerender } = render(<VisualViewportShell enabled />);
+      const { unmount } = render(<VisualViewportShell />);
       const shell = screen.getByTestId("shell");
       const viewportStyleRoot = document.body;
       expect(shell.style.top).toBe("20px");
@@ -224,7 +218,7 @@ describe("useMobileVisualViewportHeight", () => {
         viewportStyleRoot.style.getPropertyValue("--bb-shell-height"),
       ).toBe("300px");
 
-      rerender(<VisualViewportShell enabled={false} />);
+      unmount();
       expect(shell.style.top).toBe("");
       expect(shell.style.height).toBe("");
       expect(
@@ -248,7 +242,6 @@ describe("useMobileVisualViewportHeight", () => {
             withFakeVisualViewport(visualViewport, async () => {
               render(
                 <VisualViewportShell
-                  enabled
                   restoreImmediatelyOnKeyboardDismissal={false}
                 />,
               );
@@ -312,7 +305,7 @@ describe("useMobileVisualViewportHeight", () => {
     const visualViewport = new FakeVisualViewport();
     visualViewport.offsetTop = 0;
     await withFakeVisualViewport(visualViewport, async () => {
-      render(<VisualViewportShell enabled />);
+      render(<VisualViewportShell />);
       expect(window.scrollTo).not.toHaveBeenCalled();
 
       act(() => {
@@ -329,7 +322,7 @@ describe("useMobileVisualViewportHeight", () => {
     const visualViewport = new FakeVisualViewport();
     visualViewport.offsetTop = 0;
     await withFakeVisualViewport(visualViewport, async () => {
-      render(<VisualViewportShell enabled />);
+      render(<VisualViewportShell />);
       const shell = screen.getByTestId("shell");
       const editor = screen.getByTestId("editor");
 
@@ -357,7 +350,7 @@ describe("useMobileVisualViewportHeight", () => {
     const visualViewport = new FakeVisualViewport();
     visualViewport.offsetTop = 0;
     await withFakeVisualViewport(visualViewport, async () => {
-      render(<VisualViewportShell enabled />);
+      render(<VisualViewportShell />);
       const shell = screen.getByTestId("shell");
       const editor = screen.getByTestId("editor");
       const otherEditor = screen.getByTestId("other-editor");
@@ -380,7 +373,7 @@ describe("useMobileVisualViewportHeight", () => {
     const visualViewport = new FakeVisualViewport();
     visualViewport.offsetTop = 0;
     await withFakeVisualViewport(visualViewport, async () => {
-      render(<VisualViewportShell enabled />);
+      render(<VisualViewportShell />);
       const viewportStyleRoot = document.body;
       const editor = screen.getByTestId("editor");
       expect(
@@ -426,7 +419,7 @@ describe("useMobileVisualViewportHeight", () => {
     const visualViewport = new FakeVisualViewport();
     visualViewport.offsetTop = 0;
     await withFakeVisualViewport(visualViewport, async () => {
-      render(<VisualViewportShell enabled />);
+      render(<VisualViewportShell />);
       const viewportStyleRoot = document.body;
       act(() => {
         screen.getByTestId("editor").focus();
@@ -449,7 +442,7 @@ describe("useMobileVisualViewportHeight", () => {
     const visualViewport = new FakeVisualViewport();
     visualViewport.offsetTop = 0;
     await withFakeVisualViewport(visualViewport, async () => {
-      render(<VisualViewportShell enabled />);
+      render(<VisualViewportShell />);
       const shell = screen.getByTestId("shell");
 
       act(() => {
@@ -467,7 +460,7 @@ describe("useMobileVisualViewportHeight", () => {
     const visualViewport = new FakeVisualViewport();
     visualViewport.offsetTop = 0;
     await withFakeVisualViewport(visualViewport, async () => {
-      render(<VisualViewportShell enabled />);
+      render(<VisualViewportShell />);
       const shell = screen.getByTestId("shell");
       const viewportStyleRoot = document.body;
       expect(shell.style.height).toBe("500px");
@@ -503,7 +496,7 @@ describe("useMobileVisualViewportHeight", () => {
       },
       async () =>
         withFakeVisualViewport(visualViewport, async () => {
-          render(<VisualViewportShell enabled />);
+          render(<VisualViewportShell />);
           const shell = screen.getByTestId("shell");
           expect(shell.style.height).toBe("500px");
           const readsAfterMount = containingBlockReads;
@@ -538,7 +531,7 @@ describe("useMobileVisualViewportHeight", () => {
       () => 500,
       async () =>
         withFakeVisualViewport(visualViewport, async () => {
-          render(<VisualViewportShell enabled />);
+          render(<VisualViewportShell />);
           const shell = screen.getByTestId("shell");
           const editor = screen.getByTestId("editor");
           expect(shell.style.height).toBe("");
@@ -558,7 +551,7 @@ describe("useMobileVisualViewportHeight", () => {
       () => 500,
       async () =>
         withFakeVisualViewport(visualViewport, async () => {
-          render(<VisualViewportShell enabled />);
+          render(<VisualViewportShell />);
           const shell = screen.getByTestId("shell");
           const editor = screen.getByTestId("editor");
           expect(shell.style.height).toBe("");

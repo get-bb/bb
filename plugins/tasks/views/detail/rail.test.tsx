@@ -35,14 +35,9 @@ if (!window.matchMedia) {
 
 installTestPluginRuntime();
 const { PropertiesRail } = await import("./rail");
-const { TasksRefreshProvider } = await import("../../shell/refresh");
 
 function RailHarness(props: ComponentProps<typeof PropertiesRail>) {
-  return (
-    <TasksRefreshProvider>
-      <PropertiesRail {...props} />
-    </TasksRefreshProvider>
-  );
+  return <PropertiesRail {...props} />;
 }
 
 afterEach(cleanup);

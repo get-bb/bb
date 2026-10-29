@@ -19,6 +19,7 @@ import type { TypeaheadConfig } from "@/components/promptbox/ComposerBox";
 import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
 
 export const promptAreaMocks = {
+  unknownReasoning: false,
   cancelThreadPlanMutate: vi.fn(),
   clearThreadGoalMutate: vi.fn(),
   createThreadMutateAsync: vi.fn(),
@@ -609,7 +610,9 @@ vi.mock("@/hooks/useThreadCreationOptions", async () => {
           { value: "claude-code", label: "Claude Code" },
         ],
         reasoningLevel: "medium",
-        reasoningOptions: [],
+        reasoningOptions: promptAreaMocks.unknownReasoning
+          ? []
+          : [{ value: "medium", label: "Medium" }],
         selectedModel: explicitModel ?? (isClaude ? "claude-opus-5" : "gpt-5"),
         selectedProviderComposerActions: [],
         selectedProviderDisplayName: isClaude ? "Claude Code" : "Codex",

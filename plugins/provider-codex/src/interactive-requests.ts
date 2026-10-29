@@ -128,6 +128,7 @@ function buildCodexUserQuestionPayload(params: {
         description: option.description,
       })),
       allowFreeText: true,
+      required: true,
     })),
   });
   if (!payload.success) {

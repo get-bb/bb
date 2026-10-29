@@ -7,7 +7,7 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
-import { dirname, extname, join, relative, sep } from "node:path";
+import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { init as initModuleLexer, parse as parseModule } from "es-module-lexer";
 import { renameIntoPlace } from "./rename-into-place.js";
@@ -84,6 +84,7 @@ interface PluginServerBuildResult {
   mapPath: string;
   metaPath: string;
   migrationWarnings: string[];
+  inputs: string[];
 }
 
 export interface PluginServerBuildOptions {
@@ -156,6 +157,7 @@ export async function buildPluginServer(
 
   const stageDir = await mkdtemp(join(distDir, ".stage-"));
   let migrationWarnings: string[] = [];
+  let inputs: string[] = [];
   try {
     const stagedJsPath = join(stageDir, fileName);
     const stagedMetaPath = join(stageDir, "server.meta.json");
@@ -351,7 +353,11 @@ export async function buildPluginServer(
     migrationWarnings = await retiredSdkMemberWarningsForInputs(
       bundle.metafile,
       process.cwd(),
+      sourceRoot,
     );
+    inputs = Object.keys(bundle.metafile.inputs)
+      .filter((input) => !input.startsWith("(") && !/^[\w-]{2,}:/u.test(input))
+      .map((input) => resolve(process.cwd(), input));
     await writeFile(
       stagedMetaPath,
       JSON.stringify(
@@ -377,5 +383,5 @@ export async function buildPluginServer(
   } finally {
     await rm(stageDir, { recursive: true, force: true });
   }
-  return { jsPath, mapPath, metaPath, migrationWarnings };
+  return { jsPath, mapPath, metaPath, migrationWarnings, inputs };
 }

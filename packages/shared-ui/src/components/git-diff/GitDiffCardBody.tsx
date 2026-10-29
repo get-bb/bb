@@ -1,6 +1,5 @@
 import {
   type CSSProperties,
-  type RefCallback,
   useCallback,
   useEffect,
   useMemo,
@@ -9,7 +8,6 @@ import {
 } from "react";
 import type { FileContents } from "@pierre/diffs";
 import type { ExperimentalDiffFullFileContents } from "@get-bb/plugin-sdk";
-import { useIntersectionObserver } from "usehooks-ts";
 import { Button } from "../ui/button";
 import { DiffLoadingSkeleton } from "../ui/diff-loading-skeleton";
 import { usePointerCoarse } from "../ui/hooks/use-pointer-coarse";
@@ -49,6 +47,10 @@ export type GitDiffCardSvgDisplayMode = "preview" | "raw";
 
 const GIT_DIFF_CARD_BODY_STYLE: CSSProperties = {
   contain: "layout paint style",
+};
+
+const GIT_DIFF_CARD_BODY_DEFERRED_STYLE: CSSProperties = {
+  ...GIT_DIFF_CARD_BODY_STYLE,
   contentVisibility: "auto",
   containIntrinsicSize: "0 600px",
 };
@@ -223,18 +225,15 @@ interface UseGitDiffCardBodyArgs {
   changeKind: GitDiffFileChangeKind;
   onRequestFileContents: RequestDiffFileContents | undefined;
   patchText?: string;
-  renderBeforeVisible: boolean;
 }
 
 interface GitDiffCardBodyState {
-  bodySentinelRef: RefCallback<HTMLDivElement>;
   enrichment: DiffFileEnrichmentState;
   fileDiff: ParsedGitDiffFile;
   fileDiffLabel: string;
   isImageCard: boolean;
   isSvgPreviewCard: boolean;
   shouldGateDeletedDiff: boolean;
-  shouldRenderDiffView: boolean;
   loadDeletedDiff: () => void;
   imageSizeStat: DiffImageSizeStat | null;
   contextExpansion: DiffContextExpansionState;
@@ -247,7 +246,6 @@ export function useGitDiffCardBody({
   changeKind,
   onRequestFileContents,
   patchText,
-  renderBeforeVisible,
 }: UseGitDiffCardBodyArgs): GitDiffCardBodyState {
   const isDeletedFile = changeKind === "deleted";
   const isImageCard = isImagePreviewCard(fileDiff, onRequestFileContents);
@@ -260,11 +258,6 @@ export function useGitDiffCardBody({
     () => buildDiffFileContentPlan(fileDiff, changeKind, patchText),
     [fileDiff, changeKind, patchText],
   );
-  const { ref: bodySentinelRef, isIntersecting: isBodyVisible } =
-    useIntersectionObserver({
-      initialIsIntersecting: false,
-      rootMargin: "200px",
-    });
   const fetcherRef = useRef(onRequestFileContents);
   useEffect(() => {
     fetcherRef.current = onRequestFileContents;
@@ -273,8 +266,6 @@ export function useGitDiffCardBody({
     status: "idle",
   });
   const enrichmentStatusRef = useRef<DiffFileEnrichmentState["status"]>("idle");
-  const [hasBodyEnteredViewport, setHasBodyEnteredViewport] =
-    useState(renderBeforeVisible);
   const [hasLoadedDeletedDiff, setHasLoadedDeletedDiff] = useState(false);
   const [contextRequestVersion, setContextRequestVersion] = useState(0);
   const [isContextRequestedByUser, setIsContextRequestedByUser] =
@@ -287,14 +278,8 @@ export function useGitDiffCardBody({
     setContextRequestVersion(0);
     setIsContextRequestedByUser(false);
   }, [fileContentPlan.identity, isImageCard, isSvgCard]);
-  useEffect(() => {
-    if (isBodyVisible) {
-      setHasBodyEnteredViewport(true);
-    }
-  }, [isBodyVisible]);
   const shouldGateDeletedDiff =
     isDeletedFile && !isImageCard && !isSvgCard && !hasLoadedDeletedDiff;
-  const shouldRenderDiffView = hasBodyEnteredViewport && !shouldGateDeletedDiff;
   const needsContentsToRender = isImageCard || isSvgCard;
   const canExpandContext =
     !needsContentsToRender &&
@@ -303,12 +288,12 @@ export function useGitDiffCardBody({
     fileDiff.hunks.length > 0 &&
     canExpandContextForChangeKind(changeKind);
   const shouldFetchContents =
-    shouldRenderDiffView &&
+    !shouldGateDeletedDiff &&
     (needsContentsToRender || (canExpandContext && contextRequestVersion > 0));
   useEffect(() => {
     if (
       isPointerCoarse ||
-      !shouldRenderDiffView ||
+      shouldGateDeletedDiff ||
       !canExpandContext ||
       contextRequestVersion > 0
     ) {
@@ -321,7 +306,7 @@ export function useGitDiffCardBody({
     canExpandContext,
     contextRequestVersion,
     isPointerCoarse,
-    shouldRenderDiffView,
+    shouldGateDeletedDiff,
   ]);
   useEffect(() => {
     if (!shouldFetchContents || enrichmentStatusRef.current !== "idle") {
@@ -429,7 +414,6 @@ export function useGitDiffCardBody({
 
   const loadDeletedDiff = useCallback(() => {
     setHasLoadedDeletedDiff(true);
-    setHasBodyEnteredViewport(true);
   }, []);
 
   const imageSizeStat =
@@ -438,14 +422,12 @@ export function useGitDiffCardBody({
       : null;
 
   return {
-    bodySentinelRef,
     enrichment,
     fileDiff,
     fileDiffLabel,
     isImageCard,
     isSvgPreviewCard: isSvgCard,
     shouldGateDeletedDiff,
-    shouldRenderDiffView,
     loadDeletedDiff,
     imageSizeStat,
     contextExpansion,
@@ -724,6 +706,7 @@ interface GitDiffCardBodyProps {
   presentation: DiffPresentation;
   svgDisplayMode: GitDiffCardSvgDisplayMode;
   reservesCollapseGutter: boolean;
+  defersOffscreenRendering: boolean;
   onSelectionAddToChat?: (text: string) => void;
 }
 
@@ -732,17 +715,16 @@ export function GitDiffCardBody({
   presentation,
   svgDisplayMode,
   reservesCollapseGutter,
+  defersOffscreenRendering,
   onSelectionAddToChat,
 }: GitDiffCardBodyProps) {
   const {
-    bodySentinelRef,
     enrichment,
     fileDiff,
     fileDiffLabel,
     isImageCard,
     isSvgPreviewCard,
     shouldGateDeletedDiff,
-    shouldRenderDiffView,
     loadDeletedDiff,
     contextExpansion,
     fullFileContents,
@@ -751,9 +733,12 @@ export function GitDiffCardBody({
 
   return (
     <div
-      ref={bodySentinelRef}
       className="overflow-hidden rounded-b-lg bg-background"
-      style={GIT_DIFF_CARD_BODY_STYLE}
+      style={
+        defersOffscreenRendering
+          ? GIT_DIFF_CARD_BODY_DEFERRED_STYLE
+          : GIT_DIFF_CARD_BODY_STYLE
+      }
     >
       {shouldGateDeletedDiff ? (
         <div className="flex items-center py-3 pl-2 pr-3 text-xs text-muted-foreground">
@@ -773,8 +758,6 @@ export function GitDiffCardBody({
             </Button>
           </span>
         </div>
-      ) : !shouldRenderDiffView ? (
-        <DiffLoadingSkeleton />
       ) : isImageCard ? (
         <GitDiffCardImageBody
           enrichment={enrichment}

@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type ReactNode,
 } from "react";
 import type {
   TimelineConversationAttachments,
@@ -82,6 +83,7 @@ import { buildMarkdownMessageLinkRouting } from "@/components/ui/markdown-messag
 import { markStreamTrace } from "@/lib/stream-trace";
 
 interface ConversationMessageContentBaseProps {
+  actionMetadata?: ReactNode;
   attachments: TimelineConversationAttachments | null;
   onCopyLink?: () => void;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
@@ -153,6 +155,7 @@ type ConversationMessageContentProps =
   | ConversationMessageContentAssistantProps;
 
 interface UserConversationMessageProps {
+  actionMetadata?: ReactNode;
   addToChatAttachments: readonly PromptDraftAttachment[];
   attachmentItems: ConversationAttachmentItems;
   pluginActions?: readonly ThreadTimelinePluginMessageAction[];
@@ -181,6 +184,7 @@ interface UserConversationMessageProps {
 }
 
 interface AssistantConversationMessageProps extends AssistantMessageRowIdentity {
+  actionMetadata?: ReactNode;
   addToChatAttachments: readonly PromptDraftAttachment[];
   attachmentItems: ConversationAttachmentItems;
   pluginActions?: readonly ThreadTimelinePluginMessageAction[];
@@ -337,6 +341,7 @@ function buildAddToChatAttachments(
 }
 
 function UserConversationMessage({
+  actionMetadata,
   addToChatAttachments,
   attachmentItems,
   initiator,
@@ -494,6 +499,7 @@ function UserConversationMessage({
             onCopyLink={onCopyLink}
             onEdit={onEdit}
             pluginActions={pluginActions}
+            metadata={actionMetadata}
           />
         </div>
       </div>
@@ -502,6 +508,7 @@ function UserConversationMessage({
 }
 
 function AssistantConversationMessage({
+  actionMetadata,
   addToChatAttachments,
   attachmentItems,
   id,
@@ -681,6 +688,7 @@ function AssistantConversationMessage({
           onFork={onFork}
           disabled={forkDisabled}
           pluginActions={pluginActions}
+          metadata={actionMetadata}
         />
       ) : null}
     </div>
@@ -714,6 +722,7 @@ export function ConversationMessageContent(
   if (props.role === "user") {
     return (
       <UserConversationMessage
+        actionMetadata={props.actionMetadata}
         addToChatAttachments={addToChatAttachments}
         attachmentItems={attachmentItems}
         pluginActions={props.pluginActions}
@@ -745,6 +754,7 @@ export function ConversationMessageContent(
 
   return (
     <AssistantConversationMessage
+      actionMetadata={props.actionMetadata}
       addToChatAttachments={addToChatAttachments}
       attachmentItems={attachmentItems}
       id={props.id}

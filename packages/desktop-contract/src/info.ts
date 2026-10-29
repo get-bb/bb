@@ -65,6 +65,7 @@ export type BbDesktopCloseWindowRequestHandler = () => boolean;
 export interface BbDesktopApi extends BbDesktopInfo {
   browser: BbDesktopBrowserApi;
   getServerChoices?(): Promise<BbDesktopServerChoice[]>;
+  listServerChoices?(): Promise<BbDesktopServerChoice[]>;
   onServerChoicesChange?(
     listener: (choices: BbDesktopServerChoice[]) => void,
   ): () => void;

@@ -83,6 +83,7 @@ function pendingQuestion(threadId: string, prompt: string): PendingInteraction {
           prompt,
           multiSelect: false,
           allowFreeText: true,
+          required: true,
         },
       ],
     },
@@ -210,9 +211,13 @@ async function setup(options: SetupOptions = {}) {
 
   const service = fake.harness.behavior.runService("push-sender");
 
-  async function cleanup() {
+  async function stopService() {
     service.controller.abort();
     await service.done;
+  }
+
+  async function cleanup() {
+    await stopService();
     await fake.harness.lifecycle.dispose();
   }
 
@@ -268,6 +273,7 @@ async function setup(options: SetupOptions = {}) {
     listLevels,
     setLevel,
     setThread,
+    stopService,
     storedLevel,
     moveThread,
     threads,
@@ -474,6 +480,9 @@ describe("push sender", () => {
         priority: "high",
       });
       expect(host.expo.requests[0]?.[0]?.data).not.toHaveProperty("serverUrl");
+      expect(
+        host.expo.requests[0]?.map((message) => message.data.subscriptionId),
+      ).toEqual(["subscription-1", "subscription-2"]);
       await vi.waitFor(async () => {
         const result = await host.harness.behavior.runCli(["status", "--json"]);
         expect(JSON.parse(result.stdout).lastSendOutcome).toMatchObject({
@@ -587,6 +596,7 @@ describe("push sender", () => {
 
       await vi.waitFor(() => expect(host.expo.requests).toHaveLength(1));
       expect(host.expo.requests[0]?.[0]?.data).toEqual({
+        subscriptionId: "subscription-1",
         kind: "turn-finished",
         projectId: "project-1",
         serverUrl: "https://bb.example.test",
@@ -852,6 +862,218 @@ describe("web and desktop delivery", () => {
         host.harness.behavior.callRpc("notifications.test", { channel: "ios" }),
       ).rejects.toMatchObject({ code: "invalid_input" });
       expect(host.clientSignals()).toHaveLength(2);
+    } finally {
+      await host.cleanup();
+    }
+  });
+});
+
+describe("sending notifications", () => {
+  it("publishes only notifications.send for other plugins to discover", async () => {
+    const host = await setup();
+    try {
+      const published =
+        host.harness.registrations.experimental_publishedRpcMethods;
+      expect(published.map((entry) => entry.method)).toEqual([
+        "notifications.send",
+      ]);
+      expect(published[0]?.inputSchema).toMatchObject({
+        required: ["title"],
+        additionalProperties: false,
+      });
+    } finally {
+      await host.cleanup();
+    }
+  });
+
+  it("delivers a threadless message from another plugin to every channel", async () => {
+    const host = await setup({ appUrl: "https://bb.example.test" });
+    try {
+      await host.addSubscription();
+      const result = await host.harness.behavior.callRpc(
+        "notifications.send",
+        { title: `  ${"Urgent ".repeat(20)}`, body: "Production is down" },
+        { experimental_caller: { kind: "plugin", pluginId: "attention" } },
+      );
+
+      expect(result).toEqual({
+        ok: true,
+        channels: ["web", "desktop", "mobile"],
+      });
+      expect(host.clientSignals()).toEqual([
+        {
+          channel: "notification",
+          payload: expect.objectContaining({
+            title: expect.stringMatching(/^Urgent .*…$/u),
+            body: "Production is down",
+            threadId: null,
+            channels: ["web", "desktop"],
+          }),
+        },
+      ]);
+      expect(host.expo.requests).toHaveLength(1);
+      const message = host.expo.requests[0]?.[0];
+      expect(message?.title).toHaveLength(80);
+      expect(message).toMatchObject({
+        to: "ExponentPushToken[phone]",
+        body: "Production is down",
+        channelId: "threads",
+      });
+      expect(message?.data).toEqual({
+        subscriptionId: "subscription-1",
+        kind: "message",
+        serverUrl: "https://bb.example.test",
+      });
+      expect(
+        host.harness.logEntries.some((entry) =>
+          entry.message.includes("from plugin attention"),
+        ),
+      ).toBe(true);
+      const status = await host.harness.behavior.runCli(["status", "--json"]);
+      expect(JSON.parse(status.stdout).lastSendOutcome).toMatchObject({
+        status: "sent",
+        sentCount: 1,
+      });
+    } finally {
+      await host.cleanup();
+    }
+  });
+
+  it("reports only the channels that are on and the relay accepted", async () => {
+    const host = await setup();
+    try {
+      await host.addSubscription();
+      await host.harness.behavior.setSettings({ webEnabled: false });
+      host.expo.ticketErrors.set(
+        "ExponentPushToken[phone]",
+        "MessageRateExceeded",
+      );
+      await expect(
+        host.harness.behavior.callRpc("notifications.send", { title: "One" }),
+      ).resolves.toEqual({ ok: true, channels: ["desktop"] });
+      expect(host.expo.requests).toHaveLength(1);
+      expect(host.clientSignals().at(-1)?.payload).toMatchObject({
+        body: "",
+        channels: ["desktop"],
+      });
+
+      host.expo.ticketErrors.clear();
+      await host.harness.behavior.setSettings({
+        desktopEnabled: false,
+        mobileEnabled: false,
+      });
+      await expect(
+        host.harness.behavior.callRpc("notifications.send", { title: "Two" }),
+      ).resolves.toEqual({ ok: true, channels: [] });
+      expect(host.expo.requests).toHaveLength(1);
+      expect(host.clientSignals()).toHaveLength(1);
+
+      const cli = await host.harness.behavior.runCli([
+        "send",
+        "--title",
+        "Three",
+        "--json",
+      ]);
+      expect(cli.exitCode).toBe(1);
+      expect(JSON.parse(cli.stdout)).toMatchObject({
+        ok: false,
+        error: { code: "not_delivered" },
+      });
+
+      await host.harness.behavior.setSettings({ mobileEnabled: true });
+      await expect(
+        host.harness.behavior.runCli(["send", "--title", "Four", "--json"]),
+      ).resolves.toMatchObject({
+        exitCode: 0,
+        stdout: JSON.stringify({ ok: true, channels: ["mobile"] }),
+      });
+      expect(host.expo.requests.at(-1)?.[0]?.data).toEqual({
+        subscriptionId: "subscription-1",
+        kind: "message",
+      });
+    } finally {
+      await host.cleanup();
+    }
+  });
+
+  it("opens the given thread and rejects unknown or deleted ones", async () => {
+    const host = await setup();
+    try {
+      await host.addSubscription();
+      const thread = host.setThread({ projectId: "project-7" });
+      const deleted = host.setThread({ deletedAt: 5 });
+
+      const cli = await host.harness.behavior.runCli([
+        "send",
+        "--title",
+        "Review ready",
+        "--body",
+        "PR #12 needs you",
+        "--thread",
+        thread.id,
+      ]);
+      expect(cli).toMatchObject({
+        exitCode: 0,
+        stdout: "Sent to web, desktop, mobile",
+      });
+      expect(host.clientSignals().at(-1)?.payload).toMatchObject({
+        title: "Review ready",
+        threadId: thread.id,
+      });
+      expect(host.expo.requests[0]?.[0]?.data).toEqual({
+        subscriptionId: "subscription-1",
+        kind: "message",
+        projectId: "project-7",
+        threadId: thread.id,
+      });
+
+      for (const threadId of ["thread-missing", deleted.id]) {
+        await expect(
+          host.harness.behavior.callRpc("notifications.send", {
+            title: "Lost",
+            threadId,
+          }),
+        ).rejects.toMatchObject({
+          code: "handler_error",
+          message: `Thread not found: ${threadId}`,
+        });
+      }
+      const missing = await host.harness.behavior.runCli([
+        "send",
+        "--title",
+        "Lost",
+        "--thread",
+        "thread-missing",
+        "--json",
+      ]);
+      expect(JSON.parse(missing.stdout)).toMatchObject({
+        error: { code: "thread_not_found" },
+      });
+      expect(host.clientSignals()).toHaveLength(1);
+      expect(host.expo.requests).toHaveLength(1);
+    } finally {
+      await host.cleanup();
+    }
+  });
+
+  it("rejects blank titles and sends nothing once the sender stops", async () => {
+    const host = await setup();
+    try {
+      await expect(
+        host.harness.behavior.callRpc("notifications.send", { title: "   " }),
+      ).rejects.toMatchObject({ code: "invalid_input" });
+      const blank = await host.harness.behavior.runCli([
+        "send",
+        "--title",
+        " ",
+      ]);
+      expect(blank.exitCode).toBe(1);
+
+      await host.stopService();
+      await expect(
+        host.harness.behavior.callRpc("notifications.send", { title: "Late" }),
+      ).rejects.toThrow("Push notifications are not running");
+      expect(host.clientSignals()).toHaveLength(0);
     } finally {
       await host.cleanup();
     }

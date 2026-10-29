@@ -70,19 +70,30 @@ export function activityFeedEntries(
   }));
 }
 
+const selectComments = (result: { comments: DisplayComment[] }) =>
+  result.comments;
+const selectAttachments = (result: { attachments: Attachment[] }) =>
+  result.attachments;
+
 function useActivityFeed(taskId: string) {
-  return useTasksQuery<FeedEntry[]>(
-    async (rpc) => {
-      const [{ comments }, { attachments }] = await Promise.all([
-        rpc.call("listComments", { taskId }),
-        rpc.call("listAttachments", { commentsOfTaskId: taskId }),
-      ]);
-      return activityFeedEntries(comments, attachments);
-    },
-    ["comments:changed", "tasks:changed"],
-    [taskId],
-    { relevantTaskIds: [taskId] },
+  const comments = useTasksQuery("listComments", { taskId }, selectComments);
+  const attachments = useTasksQuery(
+    "listAttachments",
+    { commentsOfTaskId: taskId },
+    selectAttachments,
   );
+  const data = useMemo(
+    () =>
+      comments.data === undefined || attachments.data === undefined
+        ? undefined
+        : activityFeedEntries(comments.data, attachments.data),
+    [comments.data, attachments.data],
+  );
+  return {
+    data,
+    error: comments.error ?? attachments.error,
+    isLoading: comments.isLoading || attachments.isLoading,
+  };
 }
 
 type AgentNotificationTarget =

@@ -146,13 +146,13 @@ export function usePluginDetailPanelState(
         });
       }
       setDestinations(remaining);
-      if (activePluginId === pluginId) {
-        setActivePluginId(
-          remaining[Math.min(index, remaining.length - 1)]?.pluginId ?? null,
-        );
-      }
+      setActivePluginId((current) =>
+        current === pluginId
+          ? (remaining[Math.min(index, remaining.length - 1)]?.pluginId ?? null)
+          : current,
+      );
     },
-    [activePluginId, historyContextKey, orderedDestinations, tabOrder],
+    [historyContextKey, orderedDestinations, tabOrder],
   );
   usePublishPluginDetailOpener(open, isFocused);
   return useMemo(

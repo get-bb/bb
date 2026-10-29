@@ -57,6 +57,7 @@ import { formatPendingInteractionSummary } from "@bb/core-ui";
 import { InlinePendingInteractionContext } from "@/components/thread/pending-interactions/PendingInteractionShell";
 import { ThreadPendingInteractionBanners } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { useThreadContextKind } from "@/components/plugin/PluginThreadContextCard";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
   AnimatedBody,
@@ -963,7 +964,11 @@ const coreThreadContextSegments: readonly CoreThreadContextSegment[] =
         order: 10,
         summary: ParentThreadSummary,
         details: ParentThreadDetails,
-        useVisible: () => useCoreThreadContext().parentThread !== null,
+        useVisible: () => {
+          const { parentThread } = useCoreThreadContext();
+          const kind = useThreadContextKind();
+          return parentThread !== null && kind === "banner";
+        },
       });
     }),
   ).threadContextSegments.map((slot) => ({

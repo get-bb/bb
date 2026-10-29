@@ -24,7 +24,7 @@ import {
   readDiffFileCardState,
   resolveCardCollapsed,
   resolveDiffFileCardInitialState,
-  useDiffFileCardState,
+  useDiffFileCardStates,
   writeDiffFileCardStates,
 } from "./diffFilesStore.js";
 
@@ -113,6 +113,14 @@ export function DiffFilesPanel({
     [files, fileFilter, filters, viewedRevisionByPath],
   );
 
+  const cardStates = useDiffFileCardStates(diffIdentity);
+  const isCardCollapsed = (entry: DiffFileEntry) =>
+    resolveCardCollapsed(
+      cardStates.get(entry.path) ?? null,
+      entry,
+      files.length,
+    );
+
   const virtualizer = useVirtualizer({
     count: visibleFiles.length,
     getScrollElement: () => scrollRef.current,
@@ -121,13 +129,18 @@ export function DiffFilesPanel({
       if (!entry) {
         return 0;
       }
-      const collapsed = resolveDiffFileCardInitialState({
-        entry,
-        fileCount: files.length,
-      }).collapsed;
-      return estimateCardHeight({ entry, collapsed }) + DIFF_FILES_GAP_PX;
+      return (
+        estimateCardHeight({ entry, collapsed: isCardCollapsed(entry) }) +
+        DIFF_FILES_GAP_PX
+      );
     },
-    getItemKey: (index) => visibleFiles[index]?.path ?? index,
+    getItemKey: (index) => {
+      const entry = visibleFiles[index];
+      if (!entry) {
+        return index;
+      }
+      return `${isCardCollapsed(entry) ? "collapsed" : "expanded"}:${entry.path}`;
+    },
     overscan: DIFF_FILES_OVERSCAN,
   });
 
@@ -217,6 +230,7 @@ export function DiffFilesPanel({
                 entry={entry}
                 diffIdentity={diffIdentity}
                 fileCount={files.length}
+                collapsed={isCardCollapsed(entry)}
                 presentation={presentation}
                 ignoreWhitespace={ignoreWhitespace}
                 isViewed={
@@ -245,6 +259,7 @@ interface DiffFileRowProps {
   entry: DiffFileEntry;
   diffIdentity: string;
   fileCount: number;
+  collapsed: boolean;
   presentation: DiffPresentation;
   ignoreWhitespace: boolean;
   isViewed: boolean;
@@ -264,6 +279,7 @@ function DiffFileRow({
   entry,
   diffIdentity,
   fileCount,
+  collapsed,
   presentation,
   ignoreWhitespace,
   isViewed,
@@ -277,8 +293,6 @@ function DiffFileRow({
   onOpenFilePreview,
   onRequestFileContents,
 }: DiffFileRowProps) {
-  const cardState = useDiffFileCardState(diffIdentity, entry.path);
-  const collapsed = resolveCardCollapsed(cardState, entry, fileCount);
   const canOpenFileExternally = useCanOpenFileExternally({
     kind: "workspace",
     environmentId,

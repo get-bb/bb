@@ -571,6 +571,7 @@ describe("Docs nav panel", () => {
       documentResult("switch-second.md", "# Second\n\nSecond body", "sha-2"),
     );
     await slot.findByText("Second body");
+    await act(async () => undefined);
     expect(slot.queryByText("First body")).toBeNull();
     await waitFor(() =>
       expect(document.activeElement).toBe(

@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { isAbsolute, relative, resolve } from "node:path";
 import type { Metafile } from "esbuild";
 
 const GIT_READS_REPLACEMENT: Readonly<Record<string, string>> = {
@@ -64,6 +64,17 @@ function retiredPanelMemberWarnings(source: string): string[] {
   );
 }
 
+const RETIRED_RPC_INVALIDATES =
+  /(?:^|[{,\s])["']?invalidates["']?\s*(?::|\([^()]*\)\s*(?::[^{};]*)?\{)/u;
+
+export function retiredRpcInvalidatesWarnings(source: string): string[] {
+  return RETIRED_RPC_INVALIDATES.test(source)
+    ? [
+        "invalidates on RPC contract methods is retired from the bb SDK typings and keeps working only for existing plugins. Delete it and call bb.rpc.experimental_invalidate(tags) in the server code that changes the data, so writes from RPC, the CLI, agent tools and background work each refresh matching reads once. See bb-plugin-authoring, frontend-hooks-and-ui.md#tags-and-invalidation.",
+      ]
+    : [];
+}
+
 export function retiredSdkMemberWarnings(source: string): string[] {
   const found = new Set<string>();
   for (const pattern of [RETIRED_MEMBER_ACCESS, RETIRED_BRACKET_ACCESS]) {
@@ -89,6 +100,7 @@ export function retiredSdkMemberWarnings(source: string): string[] {
 export async function retiredSdkMemberWarningsForInputs(
   metafile: Metafile,
   absWorkingDir: string,
+  pluginRoot: string,
 ): Promise<string[]> {
   const warnings: string[] = [];
   for (const input of Object.keys(metafile.inputs)) {
@@ -101,7 +113,12 @@ export async function retiredSdkMemberWarningsForInputs(
     } catch {
       continue;
     }
-    for (const warning of retiredSdkMemberWarnings(source)) {
+    const fromRoot = relative(pluginRoot, path);
+    const ownSource = !fromRoot.startsWith("..") && !isAbsolute(fromRoot);
+    for (const warning of [
+      ...retiredSdkMemberWarnings(source),
+      ...(ownSource ? retiredRpcInvalidatesWarnings(source) : []),
+    ]) {
       warnings.push(`${input}: ${warning}`);
     }
   }

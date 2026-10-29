@@ -356,6 +356,7 @@ function buildCustomModel(
     model: customModel.model,
     displayName: customModel.displayName ?? customModel.model,
     description: "Custom model from config.json",
+    reasoningDiscovery: "known",
     supportedReasoningEfforts: reasoningEffortsForLevels(
       getSupportedReasoningLevelsForProvider(registry, customModel.providerId),
     ),
@@ -415,7 +416,10 @@ export function resolveSystemExecutionOptions(
   deps: LoggedWorkSessionDeps,
   query: SystemExecutionOptionsRequest,
 ): Promise<SystemExecutionOptionsResponse> {
-  return resolveExecutionOptions(deps, query, { kind: "picker" });
+  return resolveExecutionOptions(deps, query, {
+    kind: "picker",
+    selectedModel: query.selectedModel,
+  });
 }
 
 export function resolveSystemExecutionOptionsForValidation(

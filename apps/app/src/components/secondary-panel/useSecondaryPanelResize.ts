@@ -1,8 +1,15 @@
-import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+} from "react";
 import { useAtomValue, useSetAtom } from "jotai";
+import { RESET } from "jotai/utils";
 import type { ImperativePanelHandle } from "react-resizable-panels";
 import {
-  secondaryPanelWidthPercentAtom,
+  SecondaryPanelWidthPercentAtomContext,
   threadSecondaryPanelResizingAtom,
 } from "./threadSecondaryPanelAtoms";
 import { usePanelResizeSnap } from "./usePanelResizeSnap";
@@ -20,30 +27,54 @@ export function useSecondaryPanelResize({
   panelId,
   renderAsDrawer,
 }: UseSecondaryPanelResizeArgs) {
-  const persistedWidthPercent = useAtomValue(secondaryPanelWidthPercentAtom);
-  const setPersistedWidthPercent = useSetAtom(secondaryPanelWidthPercentAtom);
+  const widthPercentAtom = useContext(SecondaryPanelWidthPercentAtomContext);
+  const persistedWidthPercent = useAtomValue(widthPercentAtom);
+  const setPersistedWidthPercent = useSetAtom(widthPercentAtom);
   const setIsResizing = useSetAtom(threadSecondaryPanelResizingAtom);
   const secondaryPanelRef = useRef<HTMLElement>(null!);
   const secondaryResizablePanelRef = useRef<ImperativePanelHandle | null>(null);
   const lastSecondaryPanelSizeRef = useRef(persistedWidthPercent);
+  const didPointerResizeRef = useRef(false);
+  const isDraggingRef = useRef(false);
+  const applySwipeWidth = useCallback((size: number) => {
+    secondaryPanelRef.current?.style.setProperty(
+      "--secondary-swipe-width",
+      `${size}cqw`,
+    );
+  }, []);
   const handleSecondaryPanelPointerResize = useCallback(
     (leadingFraction: number) => {
+      didPointerResizeRef.current = true;
       secondaryResizablePanelRef.current?.resize((1 - leadingFraction) * 100);
     },
     [],
   );
   const handleSecondaryPanelDragging = useCallback(
     (isDragging: boolean) => {
-      setIsResizing(isDragging);
-      if (!isDragging && lastSecondaryPanelSizeRef.current > 0) {
+      isDraggingRef.current = isDragging;
+      if (isDragging) {
+        setIsResizing(true);
+        didPointerResizeRef.current = false;
+        return;
+      }
+      applySwipeWidth(lastSecondaryPanelSizeRef.current);
+      setIsResizing(false);
+      if (
+        didPointerResizeRef.current &&
+        lastSecondaryPanelSizeRef.current > 0
+      ) {
         setPersistedWidthPercent(lastSecondaryPanelSizeRef.current);
       }
     },
-    [setIsResizing, setPersistedWidthPercent],
+    [applySwipeWidth, setIsResizing, setPersistedWidthPercent],
   );
+  const handleSecondaryPanelReset = useCallback(() => {
+    setPersistedWidthPercent(RESET);
+  }, [setPersistedWidthPercent]);
   const resizeHitTargetRef = usePanelResizeSnap({
     onResize: handleSecondaryPanelPointerResize,
     onDragging: handleSecondaryPanelDragging,
+    onReset: handleSecondaryPanelReset,
   });
 
   const prevOpenRef = useRef(isSecondaryPanelOpen);
@@ -72,12 +103,9 @@ export function useSecondaryPanelResize({
       }
 
       lastSecondaryPanelSizeRef.current = size;
-      secondaryPanelRef.current?.style.setProperty(
-        "--secondary-swipe-width",
-        `${size}cqw`,
-      );
+      if (!isDraggingRef.current) applySwipeWidth(size);
     },
-    [],
+    [applySwipeWidth],
   );
 
   useLayoutEffect(() => {
@@ -85,7 +113,12 @@ export function useSecondaryPanelResize({
       secondaryPanelRef.current?.closest<HTMLElement>("[data-panel]");
     const size = Number.parseFloat(panel?.style.flexGrow ?? "");
     if (Number.isFinite(size)) handleSecondaryPanelResize(size);
-  }, [handleSecondaryPanelResize, isSecondaryPanelOpen, panelId, renderAsDrawer]);
+  }, [
+    handleSecondaryPanelResize,
+    isSecondaryPanelOpen,
+    panelId,
+    renderAsDrawer,
+  ]);
 
   return {
     handleSecondaryPanelResize,

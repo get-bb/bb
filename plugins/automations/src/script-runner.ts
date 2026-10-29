@@ -20,6 +20,10 @@ import {
 const execFileAsync = experimental_execHostFile;
 const SCRIPT_OUTPUT_MAX_BYTES = 1024 * 1024;
 const SCRIPT_FAILURE_DETAIL_MAX_CHARS = 200;
+const SCRIPT_TERMINATE_GRACE_MS = 1_000;
+const SCRIPT_STOP_WAIT_MS = 3_000;
+const SCRIPT_INTERRUPTED_REASON =
+  "interrupted: the automations plugin stopped before the script finished";
 
 let verifiedBbPath: string | null = null;
 
@@ -91,6 +95,40 @@ export interface ScriptRunResult {
   output: string;
   stderr: string;
   timedOut: boolean;
+  interrupted: boolean;
+}
+
+export interface ScriptRunScope {
+  readonly signal: AbortSignal;
+  track(run: Promise<void>): Promise<void>;
+  stop(): Promise<void>;
+}
+
+export function createScriptRunScope(): ScriptRunScope {
+  const controller = new AbortController();
+  const running = new Set<Promise<void>>();
+  return {
+    signal: controller.signal,
+    track(run) {
+      running.add(run);
+      const untrack = (): void => {
+        running.delete(run);
+      };
+      run.then(untrack, untrack);
+      return run;
+    },
+    async stop() {
+      controller.abort();
+      let waitTimer: NodeJS.Timeout | undefined;
+      await Promise.race([
+        Promise.allSettled(running),
+        new Promise<void>((resolve) => {
+          waitTimer = setTimeout(resolve, SCRIPT_STOP_WAIT_MS);
+        }),
+      ]);
+      clearTimeout(waitTimer);
+    },
+  };
 }
 
 interface ScriptRunOutcome {
@@ -127,6 +165,15 @@ function firstStderrLine(stderr: string): string | null {
 export function mapScriptResultToRun(
   result: ScriptRunResult,
 ): ScriptRunOutcome {
+  if (result.interrupted) {
+    return {
+      status: "skipped",
+      output: null,
+      exitCode: null,
+      error: null,
+      skipReason: SCRIPT_INTERRUPTED_REASON,
+    };
+  }
   if (result.timedOut) {
     return {
       status: "failed",
@@ -196,9 +243,20 @@ function executeWithProcessGroup(args: {
   cwd: string;
   timeoutMs: number;
   env: NodeJS.ProcessEnv;
+  signal: AbortSignal;
 }): Promise<ScriptRunResult> {
+  if (args.signal.aborted) {
+    return Promise.resolve({
+      exitCode: null,
+      output: "",
+      stderr: "",
+      timedOut: false,
+      interrupted: true,
+    });
+  }
   return new Promise((resolve) => {
     let timedOut = false;
+    let interrupted = false;
     let outputLimitExceeded = false;
     let outputBytes = 0;
     const stdoutChunks: Buffer[] = [];
@@ -217,7 +275,7 @@ function executeWithProcessGroup(args: {
       if (forceKill) return;
       forceKill = setTimeout(() => {
         signalProcessGroup(child, "SIGKILL");
-      }, 1_000);
+      }, SCRIPT_TERMINATE_GRACE_MS);
       forceKill.unref();
     };
     const capture = (target: Buffer[], chunk: Buffer | string): void => {
@@ -239,19 +297,25 @@ function executeWithProcessGroup(args: {
       capture(stderrChunks, `${error.message}\n`);
       terminateGroup();
     });
+    const interrupt = (): void => {
+      interrupted = true;
+      terminateGroup();
+    };
+    args.signal.addEventListener("abort", interrupt, { once: true });
     child.once("close", (code) => {
+      args.signal.removeEventListener("abort", interrupt);
       clearTimeout(timeout);
       if (forceKill) clearTimeout(forceKill);
-      if (timedOut || outputLimitExceeded) {
-        signalProcessGroup(child, "SIGKILL");
-      }
+      signalProcessGroup(child, "SIGKILL");
       const suffix = outputLimitExceeded ? "\n[output truncated]\n" : "";
       const stderr = Buffer.concat(stderrChunks).toString("utf8");
       resolve({
-        exitCode: timedOut ? null : outputLimitExceeded ? 1 : code,
+        exitCode:
+          timedOut || interrupted ? null : outputLimitExceeded ? 1 : code,
         output: `${Buffer.concat(stdoutChunks).toString("utf8")}${stderr}${suffix}`,
         stderr,
         timedOut,
+        interrupted,
       });
     });
     timeout = setTimeout(() => {
@@ -273,6 +337,7 @@ export async function executeStoredScript(args: {
   env?: Record<string, string>;
   serverUrl: string;
   workingDir: string;
+  signal: AbortSignal;
 }): Promise<ScriptRunResult> {
   const scriptPath = await resolveAutomationScriptPath({
     dataDir: args.pluginDataDir,
@@ -308,6 +373,7 @@ export async function executeStoredScript(args: {
     cwd,
     timeoutMs: Math.min(args.timeoutMs, AUTOMATION_SCRIPT_TIMEOUT_MAX_MS),
     env: scriptEnv,
+    signal: args.signal,
   });
   return { ...result, output: `${warning}${result.output}` };
 }

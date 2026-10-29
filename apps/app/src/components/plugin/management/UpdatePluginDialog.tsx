@@ -18,7 +18,6 @@ import { startPluginUpdate } from "@/hooks/queries/plugin-update-job-queries";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 import {
   DetailsDisclosure,
-  displayPluginVersion,
   formatAbsoluteDate,
   KeyValueGrid,
   RollbackNote,
@@ -76,11 +75,11 @@ function UpdatePluginDialogContent({
     },
   });
 
-  const fromLine = `Currently ${displayPluginVersion(plugin.version)}`;
+  const fromLine = `Currently ${plugin.version}`;
   const failure = state.lastFailure;
 
   if (failure !== null) {
-    const retryVersion = state.availableVersion;
+    const retryVersion = state.availableLabel;
     return (
       <>
         <DialogHeader>
@@ -99,8 +98,8 @@ function UpdatePluginDialogContent({
               aria-hidden
             />
             <span>
-              bb couldn&rsquo;t activate {displayPluginVersion(failure.version)}
-              . It restored {displayPluginVersion(plugin.version)} and its data.
+              bb couldn&rsquo;t activate {failure.label}. It restored{" "}
+              {plugin.version} and its data.
             </span>
           </div>
           {failure.detail.length > 0 ? (
@@ -117,7 +116,7 @@ function UpdatePluginDialogContent({
           <p className="text-xs text-muted-foreground">
             {retryVersion === null
               ? `The restored version can keep running. Try again when a compatible update becomes available.`
-              : `A compatible update to ${displayPluginVersion(retryVersion)} is still available. Retry when you’re ready.`}
+              : `A compatible update to ${retryVersion} is still available. Retry when you’re ready.`}
           </p>
         </div>
         <DialogFooter>
@@ -147,13 +146,13 @@ function UpdatePluginDialogContent({
     );
   }
 
-  if (state.availableVersion !== null) {
-    const candidate = state.availableVersion;
+  if (state.availableLabel !== null) {
+    const candidate = state.availableLabel;
     return (
       <>
         <DialogHeader>
           <DialogTitle>
-            Update {name} to {displayPluginVersion(candidate)}?
+            Update {name} to {candidate}?
           </DialogTitle>
           <DialogDescription>{fromLine}</DialogDescription>
         </DialogHeader>
@@ -173,10 +172,7 @@ function UpdatePluginDialogContent({
               ]}
             />
           </DetailsDisclosure>
-          <RollbackNote
-            fromVersion={displayPluginVersion(plugin.version)}
-            toVersion={displayPluginVersion(candidate)}
-          />
+          <RollbackNote fromVersion={plugin.version} toVersion={candidate} />
         </div>
         <DialogFooter>
           <Button
@@ -205,13 +201,13 @@ function UpdatePluginDialogContent({
     );
   }
 
-  if (state.blockedVersion !== null) {
-    const blocked = state.blockedVersion;
+  if (state.blockedLabel !== null) {
+    const blocked = state.blockedLabel;
     return (
       <>
         <DialogHeader>
           <DialogTitle>
-            Update {name} to {displayPluginVersion(blocked)}?
+            Update {name} to {blocked}?
           </DialogTitle>
           <DialogDescription>{fromLine}</DialogDescription>
         </DialogHeader>
@@ -222,10 +218,7 @@ function UpdatePluginDialogContent({
               className="size-4 shrink-0 text-warning"
               aria-hidden
             />
-            <span>
-              {displayPluginVersion(blocked)} isn&rsquo;t compatible with this
-              bb
-            </span>
+            <span>{blocked} isn&rsquo;t compatible with this bb</span>
           </div>
           <DetailsDisclosure summary="Details" defaultExpanded>
             <div className="space-y-1.5">

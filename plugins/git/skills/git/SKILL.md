@@ -39,6 +39,11 @@ bb git viewed list|mark|unmark|clear <environment-id> --target <target> ...
 - The old `bb environment status|diff|diff-files|diff-file|diff-patch|branches|diff-viewed`
   commands still run and print the `bb git` command that replaced them.
 
+`showGitChanges` (default true) shows the composer's changed-files segment;
+turn it off with `bb plugin config bb--git set showGitChanges false`.
+`showCommitButton` (default false) shows the thread header's Commit action;
+turn it on with `bb plugin config bb--git set showCommitButton true`.
+
 Other plugins read the same data through RPC. `status` is a keyed read: pass
 environment ids and get one row per id, refreshed after the workspace's files
 or refs change.

@@ -6340,3 +6340,53 @@ describe("thread URL clipboard paste", () => {
     },
   );
 });
+
+describe("ComposerBox pill word boundaries", () => {
+  const restoredText = "I am lost. /poteto-mode";
+  const skillMention: PromptTextMention = {
+    start: "I am lost. ".length,
+    end: restoredText.length,
+    resource: {
+      kind: "command",
+      trigger: "/",
+      name: "poteto-mode",
+      source: "skill",
+      origin: "user",
+      label: "poteto-mode",
+      argumentHint: null,
+    },
+  };
+
+  it("separates text typed right after a restored trailing pill", async () => {
+    const { changes, promptBoxRef } = renderPromptBox(restoredText, {
+      initialMentionRanges: [skillMention],
+    });
+    await focusPromptEnd(promptBoxRef);
+    const editor = (getPromptEditorElement() as TiptapEditorHTMLElement).editor;
+    if (!editor) throw new Error("Composer editor is missing");
+
+    await act(async () => {
+      editor.view.dispatch(editor.state.tr.insertText("Also testing"));
+    });
+
+    expect(changes.at(-1)).toEqual({
+      value: "I am lost. /poteto-mode Also testing",
+      mentions: [skillMention],
+    });
+  });
+
+  it("separates a voice transcript inserted after a trailing pill", async () => {
+    const { changes, promptBoxRef } = renderPromptBox(restoredText, {
+      initialMentionRanges: [skillMention],
+    });
+    await focusPromptEnd(promptBoxRef);
+
+    await act(async () =>
+      promptBoxRef.current?.voice?.deliverTranscript("Also testing", "insert"),
+    );
+
+    await waitFor(() =>
+      expect(latestValue(changes)).toBe("I am lost. /poteto-mode Also testing"),
+    );
+  });
+});

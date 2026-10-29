@@ -26,7 +26,8 @@ signatures (see "Looking up the exact API" in distribution.md).
   `storagePaths` `cancelPlan` `clearGoal` `defaultExecutionOptions`
   `restoreEnvironment` `getPluginMetadata` `updatePluginMetadata`
   `experimental_listPluginMetadata` `experimental_listAncestors`
-  `experimental_listDescendants` `experimental_listCascade`; sub-areas `events` (`list` `wait`),
+  `experimental_listDescendants` `experimental_listCascade`
+  `experimental_regenerateTitle`; sub-areas `events` (`list` `wait`),
   `interactions` (`get` `list` `cancel` `resolve` `respond`), `queue`
   (`list`), `queuedMessages` (`create` `list` `update` `delete` `send`
   `reorder` `setGroupBoundary` `experimental_holdForEdit`
@@ -90,6 +91,13 @@ Prefer your own `bb.settings` and `bb.storage` over `sdk.system` and
 `sdk.plugins` for your plugin's own configuration. The `system` and `plugins`
 areas write app-wide state that the user owns.
 
+`threads.experimental_regenerateTitle({ threadId })` replaces a thread's title
+with one the thread-title AI service writes from its first task message,
+latest user messages, and the agent's latest replies, in the task's language:
+the thread menu's Regenerate title action. The service may keep the current
+title when it still fits. It rejects and keeps the title when no title service
+is available or generation fails.
+
 ```ts
 const thread = await bb.sdk.threads.spawn({
   projectId,
@@ -119,6 +127,13 @@ handOver(input, { experimental_caller: caller }) {
   return handOver(input);
 },
 ```
+
+The context's `experimental_signal` aborts when the caller stops waiting
+(its HTTP request disconnects) or when this plugin generation is reloaded,
+disabled or removed. Pass it to long work and stop when it aborts.
+`bb.sdk.plugins.callRpc` gives up after 75 seconds, which disconnects the
+request and aborts the handler's signal; build longer operations as a job the
+caller polls.
 
 ### Thread plugin metadata
 

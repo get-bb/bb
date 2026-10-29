@@ -57,6 +57,7 @@ import {
   sidebarNavigationQueryKey,
   systemAiServicesQueryKey,
   systemConfigQueryKey,
+  uiPreferencesQueryKey,
   allSystemProvidersQueryKeyPrefix,
   threadDefaultExecutionOptionsQueryKey,
   threadQueryKey,
@@ -130,7 +131,6 @@ interface ThrottledActiveRefetchArgs {
   queryClient: QueryClient;
   queryKey: QueryKey;
 }
-
 
 const THREAD_LIST_STATUS_FALLBACK_REFETCH_MIN_INTERVAL_MS = 1_000;
 
@@ -275,20 +275,28 @@ function cancelTrailingActiveRefetch({
   }
 }
 
+function invalidateQueryKeyWithoutCancelingActiveFetch({
+  exact,
+  queryClient,
+  queryKey,
+}: ScheduleTrailingActiveRefetchArgs): void {
+  const hadActiveFetch = hasActiveFetchingQueries(queryClient, queryKey, exact);
+  queryClient.invalidateQueries({ exact, queryKey }, { cancelRefetch: false });
+  if (hadActiveFetch) {
+    scheduleTrailingActiveRefetch({ exact, queryClient, queryKey });
+  }
+}
+
 function invalidateQueryKeysWithoutCancelingActiveFetches({
   queryClient,
   queryKeys,
 }: TimelineInvalidationQueryKeysArgs): void {
   for (const queryKey of queryKeys) {
-    const hadActiveFetch = hasActiveFetchingQueries(
+    invalidateQueryKeyWithoutCancelingActiveFetch({
+      exact: false,
       queryClient,
       queryKey,
-      false,
-    );
-    queryClient.invalidateQueries({ queryKey }, { cancelRefetch: false });
-    if (hadActiveFetch) {
-      scheduleTrailingActiveRefetch({ exact: false, queryClient, queryKey });
-    }
+    });
   }
 }
 
@@ -554,6 +562,9 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
   "environment-availability-changed": {
     dirty: [dirtyEnvironmentProviderQueries],
   },
+  "ui-preferences-changed": {
+    dirty: [() => [uiPreferencesQueryKey()]],
+  },
   "server-move-changed": {
     dirty: [dirtyServerMoveStatusQueries],
   },
@@ -664,9 +675,10 @@ export function executeRealtimeDirtyHandlers<
     if (!queryKeys) {
       continue;
     }
-    for (const queryKey of queryKeys) {
-      context.queryClient.invalidateQueries({ queryKey });
-    }
+    invalidateQueryKeysWithoutCancelingActiveFetches({
+      queryClient: context.queryClient,
+      queryKeys,
+    });
   }
 }
 
@@ -734,7 +746,11 @@ function dirtyThreadListQueries({
     for (const queryKey of getCachedGlobalThreadListInvalidationQueryKeys({
       queryClient,
     })) {
-      queryClient.invalidateQueries({ exact: true, queryKey });
+      invalidateQueryKeyWithoutCancelingActiveFetch({
+        exact: true,
+        queryClient,
+        queryKey,
+      });
     }
   }
   return getThreadListInvalidationQueryKeys({ projectId, queryClient });
@@ -754,12 +770,18 @@ function dirtyActiveThreadListQueries({
       ]
     : getCachedThreadListQueryKeys(queryClient);
   for (const queryKey of listQueryKeys) {
-    queryClient.invalidateQueries({
+    if (isArchivedThreadListQueryKey(queryKey)) {
+      queryClient.invalidateQueries({
+        exact: true,
+        queryKey,
+        refetchType: "none",
+      });
+      continue;
+    }
+    invalidateQueryKeyWithoutCancelingActiveFetch({
       exact: true,
+      queryClient,
       queryKey,
-      ...(isArchivedThreadListQueryKey(queryKey)
-        ? { refetchType: "none" }
-        : {}),
     });
   }
   return [sidebarNavigationQueryKey(), threadSearchQueryKeyPrefix()];
@@ -1045,7 +1067,11 @@ function refreshThreadListStatusState(
     return;
   }
   for (const queryKey of getFetchingThreadListQueryKeys(queryClient)) {
-    queryClient.invalidateQueries({ exact: true, queryKey });
+    invalidateQueryKeyWithoutCancelingActiveFetch({
+      exact: true,
+      queryClient,
+      queryKey,
+    });
   }
   if (flushOnce("thread-search:status-changed")) {
     invalidateQueryKeysWithoutCancelingActiveFetches({

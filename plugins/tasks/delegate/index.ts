@@ -10,15 +10,15 @@ import type {
   TaskThreadLiveStatus,
 } from "../db";
 import {
-  publishCommentsChanged,
-  publishTasksChanged,
+  invalidateComments,
+  invalidateTaskChanged,
+  invalidateThreads,
   type TasksApiStore,
 } from "../api";
 import {
   presetPermissionModeSchema,
   presetReasoningLevelSchema,
   presetServiceTierSchema,
-  type ThreadsChangedEvent,
 } from "../shared/contract";
 import { errorMessage } from "../shared/errors";
 import { truncateToWidth } from "../shared/text-measure";
@@ -272,11 +272,6 @@ export function createSystemComment(
   });
 }
 
-export function publishThreadsChanged(bb: BbPluginApi, taskId: string): void {
-  const payload: ThreadsChangedEvent = { taskId };
-  bb.realtime.publish("threads:changed", payload);
-}
-
 type SdkThread = Awaited<ReturnType<BbPluginApi["sdk"]["threads"]["get"]>>;
 
 function taskThreadLiveStatus(thread: SdkThread): TaskThreadLiveStatus {
@@ -384,9 +379,9 @@ export function handlers(
         );
       }
 
-      publishThreadsChanged(bb, task.id);
-      publishTasksChanged(bb, task.id, task.projectId);
-      publishCommentsChanged(bb, task.id);
+      invalidateThreads(bb, task.id);
+      invalidateTaskChanged(bb, task);
+      invalidateComments(bb, task.id);
       return { threadId: thread.id };
     },
 
@@ -406,8 +401,8 @@ export function handlers(
         liveStatus: taskThreadLiveStatus(thread),
       });
 
-      publishThreadsChanged(bb, task.id);
-      publishTasksChanged(bb, task.id, task.projectId);
+      invalidateThreads(bb, task.id);
+      invalidateTaskChanged(bb, task);
       return { threadId: thread.id };
     },
 
@@ -424,8 +419,8 @@ export function handlers(
       }
       store.tasks.deleteTaskThread(taskThread.id);
 
-      publishThreadsChanged(bb, task.id);
-      publishTasksChanged(bb, task.id, task.projectId);
+      invalidateThreads(bb, task.id);
+      invalidateTaskChanged(bb, task);
       return { threadId: taskThread.threadId };
     },
   };

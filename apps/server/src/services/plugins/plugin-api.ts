@@ -1,5 +1,7 @@
-import { rpcInvalidationTags } from "@get-bb/plugin-sdk/internal/rpc-tags";
-import type { ContractTagDeclarations } from "@bb/domain";
+import {
+  rpcInvalidationTags,
+  type ContractTagDeclarations,
+} from "@get-bb/plugin-sdk/internal/rpc-tags";
 import {
   environmentCompositionSchema,
   validateServerAccessProviderDeclaration,
@@ -150,8 +152,8 @@ export type {
   PluginThreadEventPayloads,
 } from "@get-bb/plugin-sdk";
 
-class PluginContextStaleError extends Error {
-  constructor(pluginId: string) {
+export class PluginContextStaleError extends Error {
+  constructor(readonly pluginId: string) {
     super(
       `plugin "${pluginId}" used a stale API handle — it was reloaded or disabled; ` +
         `re-entry happens via a fresh factory call`,
@@ -656,8 +658,14 @@ export function createPluginApi(options: {
   const backgroundServices: PluginBackgroundServiceRecord[] = [];
   const schedules: PluginScheduleRecord[] = [];
 
+  let staleError: PluginContextStaleError | undefined;
+  function stale(): PluginContextStaleError {
+    staleError ??= new PluginContextStaleError(pluginId);
+    return staleError;
+  }
+
   function assertLive(): void {
-    if (invalidated) throw new PluginContextStaleError(pluginId);
+    if (invalidated) throw stale();
   }
 
   const prefix = `[plugin:${pluginId}]`;
@@ -1086,7 +1094,7 @@ export function createPluginApi(options: {
       };
       if (invalidated) {
         await lease.close();
-        throw new PluginContextStaleError(pluginId);
+        throw stale();
       }
       openTunnelIngresses.add(close);
       disposeHooks.push(close);

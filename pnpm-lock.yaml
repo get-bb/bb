@@ -276,6 +276,9 @@ importers:
       '@xterm/addon-fit':
         specifier: 0.12.0-beta.292
         version: 0.12.0-beta.292(@xterm/xterm@6.1.0-beta.292)
+      '@xterm/addon-search':
+        specifier: 0.17.0-beta.292
+        version: 0.17.0-beta.292(@xterm/xterm@6.1.0-beta.292)
       '@xterm/addon-unicode11':
         specifier: ^0.9.0
         version: 0.9.0
@@ -391,6 +394,9 @@ importers:
         specifier: 4.6.5
         version: 4.6.5
     devDependencies:
+      '@bb/plugin-build':
+        specifier: workspace:*
+        version: link:../../packages/plugin-build
       '@bb/plugin-registry':
         specifier: workspace:*
         version: link:../../packages/plugin-registry
@@ -1598,9 +1604,6 @@ importers:
 
   packages/agent-runtime:
     dependencies:
-      '@bb/config':
-        specifier: workspace:*
-        version: link:../config
       '@bb/domain':
         specifier: workspace:*
         version: link:../domain
@@ -2214,9 +2217,6 @@ importers:
 
   packages/hono-typed-routes:
     dependencies:
-      '@bb/domain':
-        specifier: workspace:*
-        version: link:../domain
       hono:
         specifier: ^4.7.0
         version: 4.11.9
@@ -4668,6 +4668,9 @@ importers:
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
+      '@testing-library/dom':
+        specifier: ^10.4.1
+        version: 10.4.1
       '@testing-library/react':
         specifier: ^16.3.2
         version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.7(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -5643,6 +5646,9 @@ importers:
       react-dom:
         specifier: ^19.0.0
         version: 19.3.0(react@19.3.0)
+      sonner:
+        specifier: ^1.7.4
+        version: 1.7.4(patch_hash=ywi4zh4oqnjpviiknloue4elvi)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       tsrs:
         specifier: 0.18.0-ts7.1.0-dev.20260929
         version: 0.18.0-ts7.1.0-dev.20260929
@@ -11532,6 +11538,11 @@ packages:
 
   '@xterm/addon-fit@0.12.0-beta.292':
     resolution: {integrity: sha512-SIuWR0KM2IpmumVqL4L43aOUeTEUeN82ItyrUFHGFtfj3veoAIbPapxJPj7O0tYngfiiHZqqm1+XsZp/Fc8LLA==}
+    peerDependencies:
+      '@xterm/xterm': ^6.1.0-beta.292
+
+  '@xterm/addon-search@0.17.0-beta.292':
+    resolution: {integrity: sha512-F12brJvBETblxh7NGu9RmHwcavcJJvd9RWjPID+WZg9mJcFucDjZTOSrWZyWRPCn/+8NWadsFAQynFFmBMo2Ng==}
     peerDependencies:
       '@xterm/xterm': ^6.1.0-beta.292
 
@@ -23875,6 +23886,10 @@ snapshots:
   '@xmldom/xmldom@0.8.15': {}
 
   '@xterm/addon-fit@0.12.0-beta.292(@xterm/xterm@6.1.0-beta.292)':
+    dependencies:
+      '@xterm/xterm': 6.1.0-beta.292
+
+  '@xterm/addon-search@0.17.0-beta.292(@xterm/xterm@6.1.0-beta.292)':
     dependencies:
       '@xterm/xterm': 6.1.0-beta.292
 

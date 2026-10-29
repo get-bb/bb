@@ -2,9 +2,11 @@ import {
   compareBridgeVersions,
   isBridgeUsable,
   NATIVE_BRIDGE_GLOBAL,
+  parseBridgeServers,
   parseNativeShellHandshake,
   parseShellToPageEvent,
   safeAreaInsetsSchema,
+  type BridgeServer,
   type NativeScreen,
   type NativeCapability,
   type NativeShellHandshake,
@@ -19,11 +21,13 @@ interface NativeBridgeGlobal {
   copyRichText?(text: string, html: string): Promise<unknown>;
   subscribe(listener: (event: unknown) => void): () => void;
   safeArea?: unknown;
+  servers?: unknown;
 }
 
 export interface NativeShell {
   handshake: NativeShellHandshake;
   safeArea(): SafeAreaInsets;
+  servers(): readonly BridgeServer[] | null;
   has(capability: NativeCapability): boolean;
   post(message: unknown): void;
   request(kind: string, payload: unknown): Promise<unknown>;
@@ -81,6 +85,7 @@ function buildNativeShell(): NativeShell | null {
       const live = safeAreaInsetsSchema.safeParse(bridge.safeArea);
       return live.success ? live.data : handshake.safeArea;
     },
+    servers: () => parseBridgeServers(bridge.servers),
     has: (capability) => capabilities.has(capability),
     post: (message) => bridge.post(message),
     request: (kind, payload) => bridge.request(kind, payload),

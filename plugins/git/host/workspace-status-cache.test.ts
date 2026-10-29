@@ -2,7 +2,7 @@ import { tmpdir } from "node:os";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
-import { initRepo, makeTempDir } from "@bb/test-helpers";
+import { createDeferredPromise, initRepo, makeTempDir } from "@bb/test-helpers";
 import { WorkspaceReads } from "./workspace-reads.js";
 import { runGit } from "bb-environment-provider-host/workspace-git";
 
@@ -408,6 +408,7 @@ it("finishes a timed-out squash check on the next refresh without rehashing comm
     typeof import("bb-environment-provider-host/workspace-git")
   >("bb-environment-provider-host/workspace-git");
   let interrupted = false;
+  const interruptedPatch = createDeferredPromise<void>();
   vi.mocked(runGit).mockImplementation((args, options) => {
     if (
       options.cwd === repo &&
@@ -417,6 +418,7 @@ it("finishes a timed-out squash check on the next refresh without rehashing comm
       !interrupted
     ) {
       interrupted = true;
+      interruptedPatch.resolve();
       return new Promise((_, reject) => {
         const onAbort = () => reject(new Error("Interrupted branch patch"));
         options.signal?.addEventListener("abort", onAbort, { once: true });
@@ -441,7 +443,11 @@ it("finishes a timed-out squash check on the next refresh without rehashing comm
       mergeBaseBranch: "main",
     });
   try {
-    expect((await read()).mergeBase).toMatchObject({
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const firstRead = read();
+    await interruptedPatch.promise;
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect((await firstRead).mergeBase).toMatchObject({
       squashMergeCheckComplete: false,
       aheadCount: 2,
     });
@@ -454,6 +460,7 @@ it("finishes a timed-out squash check on the next refresh without rehashing comm
     expect(concurrent.mergeBase).toEqual(resumed.mergeBase);
     expect([commitPatches(false), commitPatches(true)]).toEqual([1, 2]);
   } finally {
+    vi.useRealTimers();
     vi.mocked(runGit).mockImplementation(actual.runGit);
   }
 }, 15_000);

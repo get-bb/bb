@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { experimental_createBridgeJsonRpcTestHarness as createBridgeJsonRpcTestHarness } from "@get-bb/plugin-sdk/provider-bridge/testing";
+import * as appServer from "./app-server-connection.js";
 import { handleLine } from "./bridge.js";
 import {
   cleanupBridgeProcessTest,
@@ -38,6 +39,7 @@ let harness: ReturnType<typeof createBridgeJsonRpcTestHarness>;
 let workspaceDir = "";
 let processLogPath = "";
 let writerLockPath = "";
+let releaseHeldWriter: (() => void) | null = null;
 
 beforeEach(() => {
   workspaceDir = mkdtempSync(join(tmpdir(), "bb-codex-writer-lock-"));
@@ -57,6 +59,9 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  releaseHeldWriter?.();
+  releaseHeldWriter = null;
+  vi.restoreAllMocks();
   await cleanupBridgeProcessTest({
     harness,
     cleanupId: 995_001,
@@ -67,6 +72,46 @@ afterEach(async () => {
     unstubEnvs: vi.unstubAllEnvs,
   });
 });
+
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((complete) => {
+    resolve = complete;
+  });
+  return { promise, resolve };
+}
+
+function holdWriterRelease() {
+  const released = deferred();
+  releaseHeldWriter = released.resolve;
+  const exited = deferred();
+  const maintenanceExited = deferred();
+  const createConnection = appServer.createCodexAppServerConnection;
+  let first = true;
+  vi.spyOn(appServer, "createCodexAppServerConnection").mockImplementation(
+    (options) => {
+      const connection = createConnection(options);
+      const isWriter = first;
+      first = false;
+      const kill = connection.kill;
+      connection.kill = async () => {
+        await kill();
+        if (isWriter) {
+          exited.resolve();
+          await released.promise;
+        } else if (options.recordThreadId === null) {
+          maintenanceExited.resolve();
+        }
+      };
+      return connection;
+    },
+  );
+  return {
+    exited: exited.promise,
+    maintenanceExited: maintenanceExited.promise,
+    release: () => released.resolve(),
+  };
+}
 
 async function resumeThread(id: number): Promise<void> {
   harness.sendRequest(id, "thread/resume", {
@@ -111,59 +156,80 @@ it("finishes releasing the writer before acknowledging thread stop", async () =>
 }, 30_000);
 
 it("does not install a replacement after a concurrent release is acknowledged", async () => {
-  await resumeThread(1);
+  const writer = holdWriterRelease();
+  try {
+    await resumeThread(1);
 
-  harness.sendRequest(2, "turn/start", {
-    threadId: THREAD_ID,
-    providerThreadId: PROVIDER_THREAD_ID,
-    clientRequestId: "creq_abcdefghjk",
-    input: [{ type: "text", text: "hello", mentions: [] }],
-    options: changedSessionOptions,
-  });
-  await waitForAppServerProcessStep(processLogPath, "stdin-close");
+    harness.sendRequest(2, "turn/start", {
+      threadId: THREAD_ID,
+      providerThreadId: PROVIDER_THREAD_ID,
+      clientRequestId: "creq_abcdefghjk",
+      input: [{ type: "text", text: "hello", mentions: [] }],
+      options: changedSessionOptions,
+    });
+    await writer.exited;
 
-  harness.sendRequest(3, "thread/stop", {
-    threadId: THREAD_ID,
-    providerThreadId: PROVIDER_THREAD_ID,
-    intent: "release",
-    activeTurnId: null,
-  });
-  expect((await harness.waitForResponse(3)).error).toBeUndefined();
-  expect(existsSync(writerLockPath)).toBe(false);
+    harness.sendRequest(3, "thread/stop", {
+      threadId: THREAD_ID,
+      providerThreadId: PROVIDER_THREAD_ID,
+      intent: "release",
+      activeTurnId: null,
+    });
+    await harness.flushWork();
+    expect(harness.hasResponse(3)).toBe(false);
+    writer.release();
+    expect((await harness.waitForResponse(3)).error).toBeUndefined();
+    expect(existsSync(writerLockPath)).toBe(false);
 
-  const rebuiltTurn = await harness.waitForResponse(2);
-  expect(rebuiltTurn.error).toBeDefined();
-  expect(
-    harness.messages.filter((message) => message.method === "session/replaced"),
-  ).toHaveLength(0);
-  expect(spawnedAppServerPids(processLogPath)).toHaveLength(1);
+    const rebuiltTurn = await harness.waitForResponse(2);
+    expect(rebuiltTurn.error).toBeDefined();
+    expect(
+      harness.messages.filter(
+        (message) => message.method === "session/replaced",
+      ),
+    ).toHaveLength(0);
+    expect(spawnedAppServerPids(processLogPath)).toHaveLength(1);
+  } finally {
+    writer.release();
+  }
 }, 30_000);
 
 it("does not install a replacement after concurrent discard maintenance settles", async () => {
-  await resumeThread(1);
+  const writer = holdWriterRelease();
+  try {
+    await resumeThread(1);
 
-  harness.sendRequest(2, "turn/start", {
-    threadId: THREAD_ID,
-    providerThreadId: PROVIDER_THREAD_ID,
-    clientRequestId: "creq_abcdefghjk",
-    input: [{ type: "text", text: "hello", mentions: [] }],
-    options: changedSessionOptions,
-  });
-  await waitForAppServerProcessStep(processLogPath, "stdin-close");
+    harness.sendRequest(2, "turn/start", {
+      threadId: THREAD_ID,
+      providerThreadId: PROVIDER_THREAD_ID,
+      clientRequestId: "creq_abcdefghjk",
+      input: [{ type: "text", text: "hello", mentions: [] }],
+      options: changedSessionOptions,
+    });
+    await writer.exited;
 
-  harness.sendRequest(3, "thread/discard", {
-    threadId: THREAD_ID,
-    providerThreadId: PROVIDER_THREAD_ID,
-  });
-  expect((await harness.waitForResponse(3)).result).toEqual({ ok: true });
-  expect(existsSync(writerLockPath)).toBe(false);
+    harness.sendRequest(3, "thread/discard", {
+      threadId: THREAD_ID,
+      providerThreadId: PROVIDER_THREAD_ID,
+    });
+    await writer.maintenanceExited;
+    await harness.flushWork();
+    expect(harness.hasResponse(3)).toBe(false);
+    writer.release();
+    expect((await harness.waitForResponse(3)).result).toEqual({ ok: true });
+    expect(existsSync(writerLockPath)).toBe(false);
 
-  const rebuiltTurn = await harness.waitForResponse(2);
-  expect(rebuiltTurn.error).toBeDefined();
-  expect(
-    harness.messages.filter((message) => message.method === "session/replaced"),
-  ).toHaveLength(0);
-  expect(spawnedAppServerPids(processLogPath)).toHaveLength(2);
+    const rebuiltTurn = await harness.waitForResponse(2);
+    expect(rebuiltTurn.error).toBeDefined();
+    expect(
+      harness.messages.filter(
+        (message) => message.method === "session/replaced",
+      ),
+    ).toHaveLength(0);
+    expect(spawnedAppServerPids(processLogPath)).toHaveLength(2);
+  } finally {
+    writer.release();
+  }
 }, 30_000);
 
 it("retries a resume while another Codex process is releasing the writer", async () => {

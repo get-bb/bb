@@ -945,7 +945,11 @@ export class WorkspaceReads {
   private async acquireIndexCopy(): Promise<IndexCopy | null> {
     const realPath = await this.realIndexPath();
     const stats = await fs.stat(realPath).catch((error: unknown) => {
-      if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      if (
+        error instanceof Error &&
+        "code" in error &&
+        (error.code === "ENOENT" || error.code === "ENOTDIR")
+      ) {
         return null;
       }
       throw error;

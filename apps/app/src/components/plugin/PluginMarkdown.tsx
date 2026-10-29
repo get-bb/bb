@@ -1,12 +1,20 @@
 import { useCallback, useMemo } from "react";
 import type { MarkdownProps } from "@get-bb/plugin-sdk";
-import { MarkdownPreview } from "@/components/ui/markdown-preview";
+import {
+  MarkdownPreview,
+  type MarkdownThreadMentions,
+} from "@/components/ui/markdown-preview";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing";
 import { buildMarkdownDocumentLinkRouting } from "@/components/ui/markdown-document-link-routing";
 import { buildMarkdownMessageLinkRouting } from "@/components/ui/markdown-message-link-routing";
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 import { useThreadTimelineNavigation } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
+
+const PLUGIN_MARKDOWN_THREAD_MENTIONS: MarkdownThreadMentions = {
+  mentions: [],
+  preserveSoftBreaks: false,
+};
 
 export function PluginMarkdown({
   content,
@@ -51,6 +59,7 @@ export function PluginMarkdown({
       content={content}
       className={className}
       linkRouting={linkRouting}
+      threadMentions={PLUGIN_MARKDOWN_THREAD_MENTIONS}
     />
   );
 }

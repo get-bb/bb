@@ -8,6 +8,7 @@ export {
   PLUGIN_SERVER_EXTERNALS,
 } from "./build-plugin-server.js";
 export { buildPluginHost } from "./build-plugin-host.js";
+export { pluginBuildCodeDigest } from "./code-digest.js";
 export * from "./plugin-dev-loop.js";
 export {
   PLUGIN_TOOLCHAIN_PINS,
@@ -27,3 +28,4 @@ export {
 } from "./plugin-manifest.js";
 
 export { copyPluginRuntime } from "./prepare-plugin-runtime.js";
+export { dropHostProvidedTailwind } from "./scope-plugin-utilities.js";

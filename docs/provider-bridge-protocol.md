@@ -137,8 +137,11 @@ deltas and owns every timeline invariant:
   stream keys, parent refs, optional provider turn ids) and the assembler
   holds the bidirectional provider↔bb maps — both for scoping incoming
   deltas and for reverse-mapping bb ids on the command plane
-  (`turn/steer.expectedTurnId`, `thread/stop.activeTurnId`) and on
-  provider-native interaction requests (`providerNativeIds: true`). An
+  (`turn/steer.expectedTurnId`, `thread/stop.activeTurnId`). Bridges
+  send `interaction/request` and `item/tool/call` with the ids they put
+  on deltas: when the request names its `threadId`, the runtime maps its
+  `turnId`, approval subject `itemId`, and tool `callId` to the bb ids
+  minted for them, and passes through any id the assembler has not seen. An
   `interaction/request` carries an approval, a user question, or a
   plugin-defined request (`"<pluginId>/<name>"`); the resolution pairs with
   the payload kind ([provider-plugin-api.md](provider-plugin-api.md) §4).
@@ -272,7 +275,13 @@ The current grammar (`grammarVersions: [3, 3]`) includes:
   per-session settings other than model and reasoning level, each a `select`
   (`value`, `values`) or a `boolean`, with an optional `category` such as
   `mode` (the model picker, `bb thread options`; `mode` shows in the composer
-  footer). Latest snapshot wins: re-emit the whole list when it changes. The
+  footer). `bb/provider-model-catalog` carries
+  `{ models, selectedOnlyModels }` using the `model/list` result shape. A
+  bridge can publish the catalog its session just received, without another
+  discovery request. The server accepts it only for the current provider
+  thread identity, updates that provider's host/workspace catalog, and
+  invalidates connected model pickers immediately. Latest snapshot wins:
+  re-emit the whole list when it changes. The
   server alone writes `bb/session-option-selections` (choices the provider
   has not applied yet) and refuses it from a bridge.
 - **`sessionOptions`** (`{ [optionId]: string | boolean }`) on `thread/start`

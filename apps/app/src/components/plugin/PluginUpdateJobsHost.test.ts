@@ -44,7 +44,7 @@ it.each(["updated", "rolled-back"] as const)(
       state: "completed",
       result: {
         applied: outcome === "updated",
-        from: { version: "1", display: "1" },
+        from: { version: "1", label: "1", display: "1" },
         outcome,
       },
     };

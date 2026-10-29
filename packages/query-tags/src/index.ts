@@ -78,8 +78,6 @@ export function useTaggedQuery<
   return result;
 }
 
-export const CORE_TAG_SCOPE = "core";
-
 export interface TaggedQueryRegistration<Data> {
   scope: string;
   tagsOf(data: Data): readonly string[];
@@ -201,43 +199,23 @@ export async function invalidateTags(
   ]);
 }
 
-export interface TaggedMutationOptions {
-  client: QueryClient;
-  optimistic: readonly OptimisticUpdate[];
-}
-
 async function executeTaggedMutation<Result>(
   invalidate: ((tags: readonly string[]) => Promise<void>) | undefined,
   call: () => Promise<TaggedMutationOutcome<Result>>,
-  prediction: ReturnType<typeof beginOptimisticMutation> | undefined,
+  prediction: ReturnType<typeof beginOptimisticMutation>,
 ): Promise<Result> {
   const { result, invalidated } = await call();
-  prediction?.accept(result);
+  prediction.accept(result);
   const refresh = async () => {
     try {
       if (invalidate !== undefined && invalidated.length > 0)
         await invalidate(invalidated);
     } finally {
-      prediction?.settle();
+      prediction.settle();
     }
   };
   void refresh().catch(() => {});
   return result;
-}
-
-export async function runTaggedMutation<Result>(
-  invalidate: (tags: readonly string[]) => Promise<void>,
-  call: () => Promise<TaggedMutationOutcome<Result>>,
-  options?: TaggedMutationOptions,
-): Promise<Result> {
-  const prediction =
-    options && beginOptimisticMutation(options.client, options.optimistic);
-  try {
-    return await executeTaggedMutation(invalidate, call, prediction);
-  } catch (error) {
-    prediction?.rollback();
-    throw error;
-  }
 }
 
 export const pluginTagScope = (pluginId: string): string =>
@@ -375,12 +353,17 @@ export function createTaggedKeyedQueryOwner<Value>(options: {
   registerKeyedView(client, queryKey, keyedRowsView(collection));
   const keys = new Map<string, number>();
   let readingKeys = new Set<string>();
+  let collecting = false;
   let missingOnly = false;
   let refreshAll = false;
   const dirtyKeys = new Set<string>();
-  const collectSubscribedKeys = () =>
+  const takeSubscribedKeys = (take: (subscribed: string[]) => string[]) =>
     new Promise<string[]>((resolve) => {
-      queueMicrotask(() => resolve([...keys.keys()]));
+      queueMicrotask(() => {
+        readingKeys = new Set(take([...keys.keys()]));
+        collecting = false;
+        resolve([...readingKeys]);
+      });
     });
   const observer = new QueryObserver<KeyedData<Value>>(client, {
     queryKey,
@@ -412,26 +395,29 @@ export function createTaggedKeyedQueryOwner<Value>(options: {
       const refreshedKeys = new Set<string>();
       let refreshedAll = false;
       return runTaggedRead(client, queryKey, async () => {
-        const subscribed = await collectSubscribedKeys();
-        const all = refreshAll || refresh;
-        refresh = false;
-        const dirty = new Set(dirtyKeys);
-        refreshedAll ||= all;
-        if (all)
-          for (const key of Object.keys(previous?.result ?? {}))
-            dirtyKeys.add(key);
-        refreshAll = false;
-        const requested = subscribed.filter(
-          (key) =>
-            all ||
-            dirty.has(key) ||
-            !Object.hasOwn(previous?.result ?? {}, key),
-        );
-        for (const key of requested) {
-          refreshedKeys.add(key);
-          dirtyKeys.delete(key);
-        }
-        readingKeys = new Set(requested);
+        collecting = true;
+        let all = false;
+        const requested = await takeSubscribedKeys((subscribed) => {
+          all = refreshAll || refresh;
+          refresh = false;
+          const dirty = new Set(dirtyKeys);
+          refreshedAll ||= all;
+          if (all)
+            for (const key of Object.keys(previous?.result ?? {}))
+              dirtyKeys.add(key);
+          refreshAll = false;
+          const taken = subscribed.filter(
+            (key) =>
+              all ||
+              dirty.has(key) ||
+              !Object.hasOwn(previous?.result ?? {}, key),
+          );
+          for (const key of taken) {
+            refreshedKeys.add(key);
+            dirtyKeys.delete(key);
+          }
+          return taken;
+        });
         const started = tick();
         try {
           const results = await Promise.all(
@@ -487,13 +473,19 @@ export function createTaggedKeyedQueryOwner<Value>(options: {
   let stop: (() => void) | undefined;
   return {
     observer,
-    async refetchKeys(requested: readonly string[]): Promise<void> {
+    async refresh(requested: readonly string[]): Promise<void> {
       const subscribed = requested.filter((key) => keys.has(key));
       if (subscribed.length === 0) return;
-      for (const key of subscribed) dirtyKeys.add(key);
-      if (observer.getCurrentResult().isFetching) {
+      const fetching =
+        observer.getCurrentQuery().state.fetchStatus === "fetching";
+      const unread =
+        fetching && !collecting
+          ? subscribed.filter((key) => !readingKeys.has(key))
+          : subscribed;
+      if (unread.length === 0) return;
+      for (const key of unread) dirtyKeys.add(key);
+      if (fetching && !collecting)
         restartTaggedRead(observer.getCurrentQuery());
-      }
       await observer.refetch({ cancelRefetch: false });
     },
     subscribe(requested: readonly string[], listener: () => void) {
@@ -516,10 +508,7 @@ export function createTaggedKeyedQueryOwner<Value>(options: {
       }
       if (added && pending.length > 0) {
         if (observer.getCurrentResult().isFetching) {
-          if (
-            readingKeys.size > 0 &&
-            pending.some((key) => !readingKeys.has(key))
-          )
+          if (!collecting && pending.some((key) => !readingKeys.has(key)))
             restartTaggedRead(observer.getCurrentQuery());
         } else {
           missingOnly = true;

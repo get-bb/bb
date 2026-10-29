@@ -16,6 +16,7 @@ export type SettingsSearchCondition =
   | "filePreferences"
   | "localhostLinkRewrite"
   | "performanceDiagnostics"
+  | "pluginUpdates"
   | "sidebarNavigations"
   | "sourceCodeRenderers"
   | "threadLists";
@@ -41,10 +42,6 @@ export const SETTINGS_SEARCH_INDEX: Record<
       {
         title: "Navigate to threads on creation",
         keywords: ["new thread", "open", "background"],
-      },
-      {
-        title: "Show Git changes and Commit button",
-        keywords: ["pull request", "pr", "diff", "composer"],
       },
       {
         title: "Default thread followup behavior",
@@ -235,7 +232,14 @@ export const SETTINGS_SEARCH_INDEX: Record<
   },
   updates: {
     keywords: ["upgrade", "version", "release notes", "changelog"],
-    settings: [{ title: "Provider CLIs", keywords: ["agents", "upgrade"] }],
+    settings: [
+      { title: "Provider CLIs", keywords: ["agents", "upgrade"] },
+      {
+        title: "Plugins",
+        keywords: ["plugin updates", "outdated", "upgrade"],
+        when: "pluginUpdates",
+      },
+    ],
   },
   plugins: {
     keywords: ["extensions", "manage", "uninstall"],

@@ -5,6 +5,7 @@ export function createInertScrollPositionKeeper(): ScrollPositionKeeper {
     bottomThresholdPx: 4,
     deferWritesWhileScrolling: false,
     getContentElement: () => null,
+    getFloorElement: () => null,
     getFooterElement: () => null,
     getScrollElement: () => null,
     getTopLevelRows: () => [],

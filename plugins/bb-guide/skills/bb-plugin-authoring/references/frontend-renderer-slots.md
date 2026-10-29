@@ -195,6 +195,19 @@ message, Original }` — render fenced code blocks of chosen languages in
   frame, never in the bb page. Reference implementation:
   `plugins/inline-vis` (a ` ```inline-vis ` block holding an HTML page).
   Experimental: see `docs/api_to_audit.md`.
+- `experimental_messageMetadata` → React metadata beside realized user and assistant
+  messages in the main timeline and embedded `ThreadChat`. Registration:
+  `{ id, placement?: "above" | "actionRow", component }`; omitted placement
+  means above. `"actionRow"` renders in the message's action row, shows and hides
+  with the actions, and never narrows them; components decide their own device
+  policy (bb's own inline time hides itself on touch);
+  bb's own inline message time uses it. The component receives `{ message }` with
+  stable `id`, `threadId`, `createdAt`, `turnId`, and `role`; user messages also
+  have `initiator`. Filter by returning null. Contributions retain bb, then
+  plugin/registration order within each placement; each throw is contained
+  independently. Text streaming does not update this context, and windowed-out
+  rows unmount the component. See the Plugin Guide message metadata card for the
+  public contract and examples.
 - `messageAction` → an action on chat messages: an icon button in the
   per-message action bar (user and assistant messages) and an entry in the
   assistant-message text-selection menu. Slot actions are limited to the main

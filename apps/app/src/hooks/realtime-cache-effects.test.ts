@@ -1,5 +1,4 @@
 import {
-  CORE_TAG_SCOPE,
   pluginTagScope,
   runTaggedRead,
   taggedQueryOptions,
@@ -40,6 +39,7 @@ import {
   threadTimelineQueryKeyPrefix,
   threadTimelineTurnSummaryDetailsQueryKey,
   pluginContributionsQueryKey,
+  uiPreferencesQueryKey,
 } from "./queries/query-keys";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { QueryObserver, type QueryClient } from "@tanstack/react-query";
@@ -168,9 +168,19 @@ function createRealtimeEffectsTestContext(
   };
 }
 
-describe("core tag realtime refresh", () => {
+function observeUiPreferences(client: QueryClient, read: () => number) {
+  const observer = new QueryObserver(client, {
+    queryKey: uiPreferencesQueryKey(),
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    queryFn: async () => read(),
+  });
+  return { observer, stop: observer.subscribe(() => {}) };
+}
+
+describe("ui preference realtime refresh", () => {
   it.each([true, false])(
-    "refreshes tagged data across visibility changes (visible: %s)",
+    "refreshes ui preferences across visibility changes (visible: %s)",
     async (visible) => {
       const client = createAppQueryClient();
       const visibility = createFakeVisibility();
@@ -179,17 +189,7 @@ describe("core tag realtime refresh", () => {
         visibility,
       });
       let value = 1;
-      const observer = new QueryObserver(client, {
-        queryKey: ["tagged"],
-        staleTime: Infinity,
-        ...taggedQueryOptions<number>(client, ["tagged"], {
-          scope: CORE_TAG_SCOPE,
-          tagsOf: () => ["preferences"],
-        }),
-        queryFn: ({ queryKey }) =>
-          runTaggedRead(client, queryKey, async () => value),
-      });
-      const stop = observer.subscribe(() => {});
+      const { observer, stop } = observeUiPreferences(client, () => value);
       try {
         await vi.waitFor(() =>
           expect(observer.getCurrentResult().data).toBe(1),
@@ -198,8 +198,8 @@ describe("core tag realtime refresh", () => {
         value = 2;
         effects.handleChanged({
           type: "changed",
-          entity: "tags",
-          tags: ["preferences"],
+          entity: "system",
+          changes: ["ui-preferences-changed"],
         });
         if (!visible) {
           expect(observer.getCurrentResult().data).toBe(1);
@@ -215,6 +215,33 @@ describe("core tag realtime refresh", () => {
       }
     },
   );
+
+  it("re-reads ui preferences after a reconnect but not on the first connect", async () => {
+    const client = createAppQueryClient();
+    const effects = createRealtimeCacheEffects({
+      queryClient: client,
+      visibility: createFakeVisibility(),
+    });
+    let value = 1;
+    const { observer, stop } = observeUiPreferences(client, () => value);
+    try {
+      await vi.waitFor(() => expect(observer.getCurrentResult().data).toBe(1));
+      value = 2;
+      effects.handleConnected({ reconnected: false });
+      await Promise.resolve();
+      expect(observer.getCurrentResult().data).toBe(1);
+
+      effects.handleConnected({
+        reconnected: true,
+        disconnectedAt: Date.now() - 1_000,
+      });
+      await vi.waitFor(() => expect(observer.getCurrentResult().data).toBe(2));
+    } finally {
+      stop();
+      effects.dispose();
+      client.clear();
+    }
+  });
 });
 
 const WORKING_TREE = { kind: "working-tree" } as const;
@@ -249,7 +276,9 @@ describe("resuming released watches", () => {
       return { queryFn, stop: observer.subscribe(() => {}) };
     };
     const reads = {
-      environment: observe(environmentFilePreviewQueryKey("env-1", "README.md", WORKING_TREE)),
+      environment: observe(
+        environmentFilePreviewQueryKey("env-1", "README.md", WORKING_TREE),
+      ),
       threadEnvironment: observe(
         environmentFilePreviewQueryKey("env-thread", "README.md", WORKING_TREE),
       ),
@@ -290,47 +319,6 @@ describe("resuming released watches", () => {
     } finally {
       for (const read of Object.values(reads)) read.stop();
       effects.dispose();
-    }
-  });
-});
-
-describe("core tag reconnect refresh", () => {
-  it("re-reads core tagged data after a reconnect but not on the first connect", async () => {
-    const client = createAppQueryClient();
-    const effects = createRealtimeCacheEffects({
-      queryClient: client,
-      visibility: createFakeVisibility(),
-    });
-    let value = 1;
-    const queryKey = ["core-tagged-read"];
-    const observer = new QueryObserver(client, {
-      queryKey,
-      staleTime: Infinity,
-      refetchOnWindowFocus: false,
-      ...taggedQueryOptions<number>(client, queryKey, {
-        scope: CORE_TAG_SCOPE,
-        tagsOf: () => ["core-tagged-read"],
-      }),
-      queryFn: ({ queryKey: key }) =>
-        runTaggedRead(client, key, async () => value),
-    });
-    const stop = observer.subscribe(() => {});
-    try {
-      await vi.waitFor(() => expect(observer.getCurrentResult().data).toBe(1));
-      value = 2;
-      effects.handleConnected({ reconnected: false });
-      await Promise.resolve();
-      expect(observer.getCurrentResult().data).toBe(1);
-
-      effects.handleConnected({
-        reconnected: true,
-        disconnectedAt: Date.now() - 1_000,
-      });
-      await vi.waitFor(() => expect(observer.getCurrentResult().data).toBe(2));
-    } finally {
-      stop();
-      effects.dispose();
-      client.clear();
     }
   });
 });
@@ -2590,7 +2578,7 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
-  it("restarts a sidebar fetch already in flight so its stale snapshot cannot overwrite the patched status", async () => {
+  it("lets a sidebar fetch already in flight finish without its stale snapshot overwriting the patched status", async () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();
     const sidebarNavigationKey = sidebarNavigationQueryKey();
@@ -2610,12 +2598,14 @@ describe("createRealtimeCacheEffects", () => {
     };
     let activated = false;
     const responses: { activated: boolean; resolve: () => void }[] = [];
+    const signals: AbortSignal[] = [];
     const sidebarQueryFn = vi.fn(
-      () =>
+      ({ signal }: { signal: AbortSignal }) =>
         new Promise<{
           projects: { threads: (typeof idleRow)[] }[];
           personalProject: { threads: never[] };
         }>((resolve) => {
+          signals.push(signal);
           const snapshot = activated ? activeRow : idleRow;
           responses.push({
             activated,
@@ -2669,8 +2659,18 @@ describe("createRealtimeCacheEffects", () => {
     });
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(sidebarQueryFn).toHaveBeenCalledTimes(3);
+    expect(sidebarQueryFn).toHaveBeenCalledTimes(2);
+    expect(signals[1]?.aborted).toBe(false);
     staleResponse?.resolve();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(
+      queryClient.getQueryData<{
+        projects: { threads: (typeof idleRow)[] }[];
+      }>(sidebarNavigationKey)?.projects[0]?.threads[0]?.status,
+    ).toBe("active");
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(sidebarQueryFn).toHaveBeenCalledTimes(3);
     responses.shift()?.resolve();
     await vi.advanceTimersByTimeAsync(0);
 
@@ -2679,6 +2679,72 @@ describe("createRealtimeCacheEffects", () => {
         projects: { threads: (typeof idleRow)[] }[];
       }>(sidebarNavigationKey)?.projects[0]?.threads[0]?.status,
     ).toBe("active");
+
+    unsubscribe();
+    effects.dispose();
+  });
+
+  it("completes a slow sidebar read through a steady stream of status changes", async () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const sidebarNavigationKey = sidebarNavigationQueryKey();
+    const signals: AbortSignal[] = [];
+    const pending: (() => void)[] = [];
+    const sidebarQueryFn = vi.fn(
+      ({ signal }: { signal: AbortSignal }) =>
+        new Promise<{
+          projects: never[];
+          personalProject: { threads: never[] };
+        }>((resolve) => {
+          signals.push(signal);
+          pending.push(() =>
+            resolve({ projects: [], personalProject: { threads: [] } }),
+          );
+        }),
+    );
+    queryClient.setQueryData(sidebarNavigationKey, {
+      projects: [],
+      personalProject: { threads: [] },
+    });
+    const observer = new QueryObserver(queryClient, {
+      queryKey: sidebarNavigationKey,
+      queryFn: sidebarQueryFn,
+      staleTime: Infinity,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    void queryClient.invalidateQueries({ queryKey: sidebarNavigationKey });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sidebarQueryFn).toHaveBeenCalledTimes(1);
+
+    for (let index = 0; index < 10; index += 1) {
+      effects.handleChanged({
+        type: "changed",
+        entity: "thread",
+        id: `thr_${index}`,
+        metadata: {
+          projectId: "project-1",
+          statusChange: {
+            activity: NO_THREAD_ACTIVITY,
+            latestAttentionAt: 100,
+            runtime: { displayStatus: "active" },
+            status: "active",
+            updatedAt: 200 + index,
+          },
+        },
+        changes: ["status-changed"],
+      });
+      await vi.advanceTimersByTimeAsync(300);
+    }
+
+    expect(sidebarQueryFn).toHaveBeenCalledTimes(1);
+    expect(signals[0]?.aborted).toBe(false);
+    pending.shift()?.();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(sidebarQueryFn).toHaveBeenCalledTimes(2);
+    pending.shift()?.();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(sidebarQueryFn).toHaveBeenCalledTimes(2);
+    expect(observer.getCurrentResult().fetchStatus).toBe("idle");
 
     unsubscribe();
     effects.dispose();
@@ -3293,7 +3359,11 @@ describe("createRealtimeCacheEffects", () => {
       const { effects, queryClient } =
         createRealtimeEffectsTestContext(visibility);
       const timelineKey = threadTimelineQueryKey("thr_1");
-      const workStatusKey = environmentFilePreviewQueryKey("env-1", "README.md", WORKING_TREE);
+      const workStatusKey = environmentFilePreviewQueryKey(
+        "env-1",
+        "README.md",
+        WORKING_TREE,
+      );
       const projectsKey = projectsQueryKey();
       const configKey = systemConfigQueryKey();
       queryClient.setQueryData(timelineKey, { rows: [] });

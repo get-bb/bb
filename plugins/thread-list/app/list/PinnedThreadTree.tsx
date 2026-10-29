@@ -16,9 +16,10 @@ import {
 import { useSidebarReorderDnd } from "@/components/ui/use-sidebar-reorder-dnd";
 import { SidebarTouchSensor } from "../dnd/sidebarTouchSensor.js";
 import { useSidebarListShown } from "./useSidebarListShown.js";
-import type {
-  ProjectThreadItem,
-  ProjectThreadNode,
+import {
+  selectedThreadIdWithin,
+  type ProjectThreadItem,
+  type ProjectThreadNode,
 } from "../model/project-thread-groups.js";
 import {
   useNeighborReorderSortable,
@@ -169,7 +170,7 @@ const PinnedGroupedRootItems = memo(function PinnedGroupedRootItems({
         <PinnedEnvironmentThreadGroupRow
           key={`environment:${item.group.environmentId}`}
           group={item.group}
-          selectedThreadId={selectedThreadId}
+          selectedThreadId={selectedThreadIdWithin(item, selectedThreadId)}
           collapsedThreadIds={collapsedThreadIds}
           collapsedEnvironmentIds={collapsedEnvironmentIds}
           onProjectSelect={onProjectSelect}
@@ -181,7 +182,7 @@ const PinnedGroupedRootItems = memo(function PinnedGroupedRootItems({
     if (item.kind === "section") return null;
     const commonProps = {
       node: item.node,
-      selectedThreadId,
+      selectedThreadId: selectedThreadIdWithin(item, selectedThreadId),
       collapsedThreadIds,
       collapsedEnvironmentIds,
       onProjectSelect,
@@ -257,6 +258,10 @@ export const PinnedThreadTree = memo(function PinnedThreadTree({
     }
     return orderedNodes;
   }, [chronologicalDnd, rootNodes]);
+  const chronologicalPinnedItemIds = useMemo(
+    () => [...(chronologicalDnd?.pinnedItemIds ?? [])],
+    [chronologicalDnd?.pinnedItemIds],
+  );
   const hasEnvironmentGroups = rootItems.some(
     (item) => item.kind === "environment",
   );
@@ -279,7 +284,7 @@ export const PinnedThreadTree = memo(function PinnedThreadTree({
         onClickCapture={chronologicalDnd.onClickCapture}
       >
         <SortableContext
-          items={[...chronologicalDnd.pinnedItemIds]}
+          items={chronologicalPinnedItemIds}
           strategy={verticalListSortingStrategy}
         >
           {hasEnvironmentGroups ? (
@@ -301,7 +306,10 @@ export const PinnedThreadTree = memo(function PinnedThreadTree({
                 disabled={chronologicalDnd.pinnedReorderPending}
                 displace={false}
                 sectionDnd={chronologicalDnd}
-                selectedThreadId={selectedThreadId}
+                selectedThreadId={selectedThreadIdWithin(
+                  { kind: "thread", node },
+                  selectedThreadId,
+                )}
                 collapsedThreadIds={collapsedThreadIds}
                 collapsedEnvironmentIds={collapsedEnvironmentIds}
                 onProjectSelect={onProjectSelect}
@@ -343,7 +351,10 @@ export const PinnedThreadTree = memo(function PinnedThreadTree({
                 key={getPinnedRootNodeId(node)}
                 node={node}
                 disabled={standaloneReorderDisabled}
-                selectedThreadId={selectedThreadId}
+                selectedThreadId={selectedThreadIdWithin(
+                  { kind: "thread", node },
+                  selectedThreadId,
+                )}
                 collapsedThreadIds={collapsedThreadIds}
                 collapsedEnvironmentIds={collapsedEnvironmentIds}
                 onProjectSelect={onProjectSelect}
@@ -358,7 +369,10 @@ export const PinnedThreadTree = memo(function PinnedThreadTree({
           <PinnedRootItem
             key={getPinnedRootNodeId(node)}
             node={node}
-            selectedThreadId={selectedThreadId}
+            selectedThreadId={selectedThreadIdWithin(
+              { kind: "thread", node },
+              selectedThreadId,
+            )}
             collapsedThreadIds={collapsedThreadIds}
             collapsedEnvironmentIds={collapsedEnvironmentIds}
             onProjectSelect={onProjectSelect}

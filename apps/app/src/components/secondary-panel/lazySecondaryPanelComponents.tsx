@@ -1,5 +1,10 @@
 import { defineSplit, SplitLoadFailure } from "@/lib/define-split";
-import { useEffect, type ComponentProps, type ReactNode } from "react";
+import {
+  useContext,
+  useEffect,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
 import { useAtomValue } from "jotai";
 import { Panel } from "react-resizable-panels";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -11,7 +16,7 @@ import {
   CONVERSATION_COLLAPSED_PANEL_SIZE_PERCENT,
   useSecondaryPanelMinimum,
 } from "./secondaryPanelSizing";
-import { secondaryPanelWidthPercentAtom } from "./threadSecondaryPanelAtoms";
+import { SecondaryPanelWidthPercentAtomContext } from "./threadSecondaryPanelAtoms";
 
 type ThreadSecondaryPanelModule = typeof import("./ThreadSecondaryPanel");
 
@@ -29,7 +34,9 @@ function ThreadSecondaryPanelInlinePlaceholder({
   children,
 }: ThreadSecondaryPanelInlinePlaceholderProps) {
   const minimumSize = useSecondaryPanelMinimum();
-  const persistedWidthPercent = useAtomValue(secondaryPanelWidthPercentAtom);
+  const persistedWidthPercent = useAtomValue(
+    useContext(SecondaryPanelWidthPercentAtomContext),
+  );
   return (
     <Panel
       id={resizablePanelId}

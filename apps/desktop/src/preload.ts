@@ -264,6 +264,12 @@ function addListener<T>(listeners: Set<T>, listener: T): () => void {
   };
 }
 
+async function listServerChoices(): Promise<BbDesktopServerChoice[]> {
+  return bbDesktopServerChoicesSchema.parse(
+    await ipcRenderer.invoke(BB_DESKTOP_GET_SERVER_CHOICES_CHANNEL),
+  );
+}
+
 function forwardParsed<T>(
   channel: string,
   schema: z.ZodType<T>,
@@ -432,11 +438,8 @@ const bbBrowserApi: BbDesktopBrowserApi = {
 
 const bbDesktopApi: BbDesktopApi = {
   browser: bbBrowserApi,
-  async getServerChoices() {
-    return bbDesktopServerChoicesSchema.parse(
-      await ipcRenderer.invoke(BB_DESKTOP_GET_SERVER_CHOICES_CHANNEL),
-    );
-  },
+  getServerChoices: listServerChoices,
+  listServerChoices,
   onServerChoicesChange(listener) {
     return addListener(serverChoiceListeners, listener);
   },

@@ -1326,18 +1326,29 @@ it("finds worktrees created outside BB, removes only safe ones in bulk, and forc
   const worker = experimental_createHostEntryHarness(hostEntry);
   let removalGate: Promise<void> | null = null;
   let releaseRemoval = () => {};
+  let removalCompleted = (_paths: string[]) => {};
   const host = createFakePluginHost({
     pluginId: "storage-retention",
     experimental_hostEntry: true,
     experimental_callHostRpc: async (call) => {
       if (call.method === "homeDirectory") return "/missing-home";
-      if (call.method === "removeGitWorktrees") await removalGate;
+      if (call.method === "removeGitWorktrees") {
+        await removalGate;
+        const input = hostStorageContract.removeGitWorktrees.input.parse(
+          call.input,
+        );
+        const result = await worker.experimental_call(
+          "removeGitWorktrees",
+          input,
+        );
+        removalCompleted(input.paths);
+        return result;
+      }
       for (const method of [
         "measure",
         "capacity",
         "listGitWorktrees",
         "inspectGitWorktree",
-        "removeGitWorktrees",
       ] as const)
         if (call.method === method)
           return worker.experimental_call(
@@ -1522,7 +1533,18 @@ it("finds worktrees created outside BB, removes only safe ones in bulk, and forc
         await host.harness.callRpc("host", { hostId: "host_test" }),
       ).maintenance,
     ).toEqual({ state: "queued", kind: "externalWorktrees" });
+    const bulkRemoval = new Promise<void>((resolve) => {
+      removalCompleted = (paths) => {
+        if (
+          paths.length === 2 &&
+          paths.includes(detached) &&
+          paths.includes(locked)
+        )
+          resolve();
+      };
+    });
     releaseRemoval();
+    await bulkRemoval;
     await expect
       .poll(removals)
       .toEqual([
@@ -1584,7 +1606,13 @@ it("finds worktrees created outside BB, removes only safe ones in bulk, and forc
       path.join(queuedDirty, "new-work.txt"),
       "keep this work created while queued",
     );
+    const queuedDirtyRemoval = new Promise<void>((resolve) => {
+      removalCompleted = (paths) => {
+        if (paths.length === 1 && paths[0] === queuedDirty) resolve();
+      };
+    });
     releaseRemoval();
+    await queuedDirtyRemoval;
     await expect
       .poll(async () =>
         (await removals()).filter((entry) =>
@@ -2466,6 +2494,9 @@ it("never clears thread storage that holds a workspace an environment still uses
       `contains the workspace ${path.join(root, "thr_owner", "repair")}`,
     );
 
+    await expect
+      .poll(() => worker.experimental_getRetainedWorkerLeaseCount())
+      .toBe(0);
     await host.harness.callRpc("scanAll", null);
     await expect
       .poll(
@@ -2498,6 +2529,54 @@ it("never clears thread storage that holds a workspace an environment still uses
       .poll(() => worker.experimental_getRetainedWorkerLeaseCount())
       .toBe(0);
     await worker.experimental_dispose();
+  }
+});
+
+it("refreshes the storage page only for host changes it shows", async () => {
+  const subscriptions = new Set<
+    Parameters<BbPluginApi["sdk"]["subscribe"]>[0]
+  >();
+  const host = createFakePluginHost({
+    pluginId: "storage-retention",
+    sdk: {
+      subscribe: (subscription) => {
+        subscriptions.add(subscription);
+        return () => subscriptions.delete(subscription);
+      },
+    },
+  });
+  try {
+    plugin(host.bb);
+    host.harness.behavior.runService("development-storage-recovery");
+    const emit = (
+      changes: Parameters<
+        Extract<
+          Parameters<BbPluginApi["sdk"]["subscribe"]>[0],
+          { event: "host:changed" }
+        >["callback"]
+      >[0]["changes"],
+    ) => {
+      for (const subscription of subscriptions)
+        if (subscription.event === "host:changed")
+          subscription.callback({
+            type: "changed",
+            entity: "host",
+            id: "host_test",
+            changes,
+          });
+    };
+    const refreshes = () =>
+      host.harness.inspection.realtimeSignals.filter(
+        (signal) => signal.channel === "changed",
+      ).length;
+    emit(["provider-model-catalog-changed", "provider-commands-changed"]);
+    expect(refreshes()).toBe(0);
+    emit(["host-connected"]);
+    expect(refreshes()).toBe(1);
+    emit(["host-disconnected"]);
+    expect(refreshes()).toBe(2);
+  } finally {
+    await host.harness.lifecycle.dispose();
   }
 });
 

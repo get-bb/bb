@@ -106,7 +106,8 @@ import {
   shiftMentionsToTextRange,
 } from "@/components/thread/timeline/ConversationMessageMentions";
 import {
-  buildPromptMentionComponent,
+  PromptMentionElement,
+  PromptMentionsContext,
   remarkPromptMentions,
   substitutePromptMentions,
 } from "@/components/ui/markdown-prompt-mentions";
@@ -234,6 +235,7 @@ const QUEUED_MARKDOWN_COMPONENTS: Components = {
   thead: ({ children }) => <span>{children}</span>,
   tr: ({ children }) => <span>{children} </span>,
   ul: ({ children }) => <span>{children}</span>,
+  "bb-prompt-mention": PromptMentionElement,
 };
 
 function CompactQueuedMarkdownPreview({
@@ -254,25 +256,24 @@ function CompactQueuedMarkdownPreview({
       normalizePromptBlockquoteBoundaries(promptMentionSubstitution.content),
     [promptMentionSubstitution.content],
   );
-  const components = useMemo<Components>(
+  const promptMentions = useMemo(
     () => ({
-      ...QUEUED_MARKDOWN_COMPONENTS,
-      "bb-prompt-mention": buildPromptMentionComponent({
-        mentions: promptMentionSubstitution.mentions,
-        resolveMentionLink,
-      }),
+      mentions: promptMentionSubstitution.mentions,
+      resolveMentionLink,
     }),
     [promptMentionSubstitution.mentions, resolveMentionLink],
   );
 
   return (
     <span className={queuedMarkdownPreviewClass(compact)}>
-      <ReactMarkdown
-        components={components}
-        remarkPlugins={QUEUED_MARKDOWN_REMARK_PLUGINS}
-      >
-        {markdownContent}
-      </ReactMarkdown>
+      <PromptMentionsContext.Provider value={promptMentions}>
+        <ReactMarkdown
+          components={QUEUED_MARKDOWN_COMPONENTS}
+          remarkPlugins={QUEUED_MARKDOWN_REMARK_PLUGINS}
+        >
+          {markdownContent}
+        </ReactMarkdown>
+      </PromptMentionsContext.Provider>
     </span>
   );
 }

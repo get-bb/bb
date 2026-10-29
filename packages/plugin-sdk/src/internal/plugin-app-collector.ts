@@ -14,6 +14,7 @@ export {
   type CollectedPluginCommandRegistration,
   type CollectedPluginAppRegistrations,
   type LegacyThreadPanelActionRegistration,
+  type LegacyThreadHeaderActionRegistration,
   type LegacyNavPanelRegistration,
   type CollectedSidebarNavigationRegistration,
   collectPluginAppRegistrations,

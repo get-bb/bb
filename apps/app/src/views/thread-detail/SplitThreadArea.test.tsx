@@ -64,6 +64,10 @@ import {
   type PaneContextValue,
 } from "./PaneContext";
 import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
+import {
+  getPluginPageSecondaryPanelWidthPercentAtom,
+  secondaryPanelWidthPercentAtom,
+} from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { SplitThreadArea } from "./SplitThreadArea";
 import { applyThreadOpenToLayout } from "./splitThreadNavigation";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
@@ -196,6 +200,7 @@ function RootComposeFixture() {
       panel: <div data-testid="hosted-new-thread-panel" />,
       onToggle: () => setIsPanelOpen((open) => !open),
       transitionsReady: true,
+      widthPercentAtom: secondaryPanelWidthPercentAtom,
     }),
     [isPanelOpen],
   );
@@ -366,6 +371,10 @@ vi.mock("@/components/plugin/PluginPanelRightPanelHost", () => ({
         ),
         onToggle: () => setIsPanelOpen((open) => !open),
         transitionsReady: true,
+        widthPercentAtom: getPluginPageSecondaryPanelWidthPercentAtom({
+          panelPath,
+          pluginId,
+        }),
       }),
       [isPanelOpen, panelPath, pluginId],
     );
@@ -466,6 +475,7 @@ function ThreadPaneFixture({
       ),
       onToggle: () => setIsPanelOpen((open) => !open),
       transitionsReady: true,
+      widthPercentAtom: secondaryPanelWidthPercentAtom,
     }),
     [composerHost, isPanelOpen, threadId],
   );
@@ -2663,6 +2673,47 @@ describe("SplitThreadArea", () => {
       const header = (await screen.findByText(path)).closest("header");
       expect(header?.className).not.toContain("[app-region:drag]");
       expect(header?.className).not.toContain("[-webkit-app-region:drag]");
+    }
+  });
+
+  it("gives only bottom-row split panes the shell's bottom inset", async () => {
+    setPluginSlotRegistrations(
+      "test-plugin",
+      makePluginRegistrationSet({
+        navPanels: ["top-left", "bottom-left", "top-right", "bottom-right"].map(
+          (path) => ({
+            id: path,
+            title: path,
+            icon: "FileText",
+            path,
+            component: () => <div>{path} panel</div>,
+          }),
+        ),
+        threadPanelActions: [],
+        pendingInteractions: [],
+        sidebarFooterActions: [],
+        fileOpeners: [],
+      }),
+    );
+
+    renderSplitArea({
+      path: "/plugins/test-plugin/bottom-right",
+      layout: fourPanePluginLayout(),
+      routeContent: pluginContent("bottom-right"),
+    });
+
+    const paneClassName = async (path: string) =>
+      (await screen.findByText(`${path} panel`)).closest("[data-split-pane-id]")
+        ?.className;
+    for (const path of ["top-left", "top-right"]) {
+      expect(await paneClassName(path)).toContain(
+        "[--bb-content-bottom-inset:0px]",
+      );
+    }
+    for (const path of ["bottom-left", "bottom-right"]) {
+      expect(await paneClassName(path)).not.toContain(
+        "--bb-content-bottom-inset",
+      );
     }
   });
 

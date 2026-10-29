@@ -3,6 +3,7 @@ import { PICKER_MOBILE_CLASS_NAME } from "./picker-layout";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
   BRANCH_PICKER_CONTENT_CLASS_NAME,
+  BranchPickerNavigation,
   BranchPickerRow,
   BranchPickerSearch,
   BranchPickerSectionHeader,
@@ -10,7 +11,6 @@ import {
 import { Button } from "../ui/button";
 import { Icon } from "../ui/icon";
 import { LIST_HOVER_TRANSITION } from "../ui/motion";
-import { MenuHoverProvider } from "../ui/menu-item-hover";
 import {
   COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
   COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
@@ -239,7 +239,7 @@ export function BranchPicker({
     [filteredCombinedBranchOptions, isSearching, value],
   );
   const firstFilteredOption = filteredBranchOptions[0];
-  const enterSelection = value
+  const defaultHighlight = value
     ? (filteredBranchOptions.find((branch) => branch === value) ??
       firstFilteredOption)
     : firstFilteredOption;
@@ -354,12 +354,13 @@ export function BranchPicker({
           "max-md:min-h-0 max-md:flex-1 md:min-w-40",
         )}
       >
-        <MenuHoverProvider>
+        <BranchPickerNavigation
+          highlight={defaultHighlight}
+          query={deferredQuery}
+        >
           <BranchPickerSearch
             inputRef={inputRef}
             query={query}
-            enterSelection={enterSelection}
-            onEnterSelection={selectBranchAndClose}
             onQueryChange={setQuery}
           />
           <div
@@ -373,6 +374,7 @@ export function BranchPicker({
             {filteredBranchOptions.map((branch) => (
               <BranchPickerRow
                 key={branch}
+                value={branch}
                 icon="GitMerge"
                 selected={branch === value}
                 title={branch}
@@ -391,7 +393,7 @@ export function BranchPicker({
               )
             ) : null}
           </div>
-        </MenuHoverProvider>
+        </BranchPickerNavigation>
       </PopoverContent>
     </Popover>
   );

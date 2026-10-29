@@ -1,10 +1,7 @@
 import { renderHookStatically } from "@/test/render-hook-statically";
 import { describe, expect, it, vi } from "vitest";
 import type { ExperimentalLiveFileTarget } from "@get-bb/plugin-sdk";
-import {
-  usePanelFiles,
-  type PanelFileScope,
-} from "./usePanelFiles";
+import { usePanelFiles, type PanelFileScope } from "./usePanelFiles";
 import type { OpenSecondaryPanelTabRequest } from "./useThreadFileTabs";
 
 interface SurfaceCase {
@@ -53,7 +50,17 @@ const SURFACES: readonly SurfaceCase[] = [
     scope: { threadId: null, environmentId: "env_1", hostId: "host_1" },
     accepts: {
       ownWorkspace: true,
-      ownHost: false,
+      ownHost: true,
+      ownStorage: false,
+      otherWorkspace: false,
+    },
+  },
+  {
+    name: "New thread screen with a machine terminal",
+    scope: { threadId: null, environmentId: null, hostId: null },
+    accepts: {
+      ownWorkspace: false,
+      ownHost: true,
       ownStorage: false,
       otherWorkspace: false,
     },
@@ -106,13 +113,13 @@ describe.each(SURFACES)("panel files on the $name", (surface) => {
       ([request]) => request,
     );
     expect(apiRequest).toEqual(
-      surface.scope === null
+      surface.scope === null || surface.scope.threadId === null
         ? { ...coreRequest, hostId: OWN_HOST.hostId }
         : coreRequest,
     );
   });
 
-  it.each([
+  it.runIf(surface.accepts.ownWorkspace).each([
     ["HEAD", { kind: "head" }],
     ["abc1234", { kind: "merge-base", ref: "abc1234" }],
   ] as const)("opens the %s revision as a read-only preview", (ref, source) => {
