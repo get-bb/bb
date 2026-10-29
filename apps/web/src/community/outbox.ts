@@ -6,13 +6,6 @@ import type { FormValues } from "./survey";
 type OutboxEnv = Pick<Env, "DB" | "RESEND_API_KEY">;
 
 export const EMAIL_MAX_ATTEMPTS = 6;
-export const EMAIL_RETRY_DELAYS_MS = [
-  10 * 60_000,
-  30 * 60_000,
-  2 * 3_600_000,
-  6 * 3_600_000,
-  12 * 3_600_000,
-];
 const INLINE_DELAYS_MS = [0, 600];
 const RETRY_BATCH = 25;
 
@@ -44,15 +37,10 @@ async function record(
       .run();
     return;
   }
-  const exhausted = result === "failed" || attempts >= EMAIL_MAX_ATTEMPTS;
   await env.DB.prepare(
-    "UPDATE community_survey_email_outbox SET attempts = ?, next_attempt_at = ? WHERE id = ?",
+    "UPDATE community_survey_email_outbox SET attempts = ? WHERE id = ?",
   )
-    .bind(
-      exhausted ? EMAIL_MAX_ATTEMPTS : attempts,
-      now + (EMAIL_RETRY_DELAYS_MS[attempts - 1] ?? 0),
-      id,
-    )
+    .bind(result === "failed" ? EMAIL_MAX_ATTEMPTS : attempts, id)
     .run();
 }
 
@@ -66,9 +54,9 @@ export async function queueSurveyEmail(
   wait?: (ms: number) => Promise<void>,
 ): Promise<boolean> {
   await env.DB.prepare(
-    "INSERT INTO community_survey_email_outbox (id, to_email, claim_link, attempts, next_attempt_at) VALUES (?, ?, ?, 0, ?) ON CONFLICT(id) DO NOTHING",
+    "INSERT INTO community_survey_email_outbox (id, to_email, claim_link, attempts) VALUES (?, ?, ?, 0) ON CONFLICT(id) DO NOTHING",
   )
-    .bind(id, to, claimLink, now + EMAIL_RETRY_DELAYS_MS[0]!)
+    .bind(id, to, claimLink)
     .run();
   const result = await sendSurveyEmail(
     env.RESEND_API_KEY,
@@ -87,9 +75,9 @@ export async function retrySurveyEmails(
   now: number,
 ): Promise<void> {
   const due = await env.DB.prepare(
-    "SELECT o.id, o.to_email, o.claim_link, o.attempts, r.answers FROM community_survey_email_outbox o JOIN community_survey_response r ON r.id = o.id WHERE o.sent_at IS NULL AND o.attempts < ? AND o.next_attempt_at <= ? ORDER BY o.next_attempt_at LIMIT ?",
+    "SELECT o.id, o.to_email, o.claim_link, o.attempts, r.answers FROM community_survey_email_outbox o JOIN community_survey_response r ON r.id = o.id WHERE o.sent_at IS NULL AND o.attempts > 0 AND o.attempts < ? LIMIT ?",
   )
-    .bind(EMAIL_MAX_ATTEMPTS, now, RETRY_BATCH)
+    .bind(EMAIL_MAX_ATTEMPTS, RETRY_BATCH)
     .all();
   for (const raw of due.results) {
     const row = dueRow.safeParse(raw);

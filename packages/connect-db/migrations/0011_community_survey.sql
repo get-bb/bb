@@ -12,7 +12,6 @@ CREATE TABLE `community_survey_email_outbox` (
 	`to_email` text NOT NULL,
 	`claim_link` text,
 	`attempts` integer DEFAULT 0 NOT NULL,
-	`next_attempt_at` integer NOT NULL,
 	`sent_at` integer
 );
 --> statement-breakpoint

@@ -29,7 +29,7 @@
   "main": "./src/server-entry.ts",
   "workers_dev": false,
   "observability": { "enabled": true },
-  "triggers": { "crons": ["*/10 * * * *"] },
+  "triggers": { "crons": ["0 * * * *"] },
   "vars": {
     "BASE_DOMAIN": "vibecodethis.site",
     "APP_URL": "https://vibecodethis.site",
@@ -99,7 +99,7 @@
       "name": "bb-web",
       "workers_dev": true,
       "observability": { "enabled": true },
-      "triggers": { "crons": ["*/10 * * * *"] },
+      "triggers": { "crons": ["0 * * * *"] },
       // Override the inherited staging custom domain; prod domains attach at
       // cutover. Never leave this to inheritance — a prod deploy would steal
       // vibecodethis.site from bb-web-staging.

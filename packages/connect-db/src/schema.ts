@@ -320,7 +320,6 @@ export const communitySurveyEmailOutbox = sqliteTable(
     toEmail: text("to_email").notNull(),
     claimLink: text("claim_link"),
     attempts: integer("attempts").notNull().default(0),
-    nextAttemptAt: integer("next_attempt_at").notNull(),
     sentAt: integer("sent_at"),
   },
 );

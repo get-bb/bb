@@ -2,7 +2,6 @@ import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   COMMUNITY_MAX,
-  SURVEY_DESCRIPTION,
   questionVisible,
   surveyQuestions,
   type FormValues,
@@ -11,8 +10,6 @@ import {
 const RESEND_EMAILS_URL = "https://api.resend.com/emails";
 export const SURVEY_EMAIL_FROM = "bb <updates@mail.getbb.app>";
 export const SURVEY_EMAIL_SUBJECT = "Your bb survey answers";
-export const SURVEY_EMAIL_MARK =
-  "https://getbb.app/brand/bb-logo-flat-black.png";
 
 export function surveyEmailAnswers(
   answers: FormValues,
@@ -34,7 +31,7 @@ const DIM = "#5b5b5b";
 const BORDER = "#e3e3e3";
 const SELECTED = "#f3f3f3";
 const FONT =
-  "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+  "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 const SECTIONS: Record<string, string> = {
   discovery: "Getting to know you",
   love: "Your experience with bb",
@@ -175,7 +172,7 @@ export function surveyEmail(
       {
         key: "thanks",
         style: {
-          margin: claimLink ? "4px 0 20px" : "4px 0",
+          margin: claimLink ? "4px 0 18px" : "4px 0",
           fontSize: "17px",
           lineHeight: "1.6",
           textAlign: "center",
@@ -183,10 +180,6 @@ export function surveyEmail(
         },
       },
       h("strong", null, "Thanks for filling out the bb community survey!"),
-      h("br"),
-      claimLink
-        ? "Your stickers are ready to claim."
-        : "Your answers are below.",
     ),
     claimLink
       ? h(
@@ -197,14 +190,16 @@ export function surveyEmail(
             {
               href: claimLink,
               style: {
-                background: HEADING,
+                background: INK,
                 color: "#ffffff",
-                padding: "13px 24px",
-                borderRadius: "8px",
+                padding: "10px 20px",
+                borderRadius: "6px",
                 textDecoration: "none",
                 display: "inline-block",
-                fontSize: "16px",
-                fontWeight: 600,
+                fontFamily: FONT,
+                fontSize: "14.5px",
+                fontWeight: 500,
+                lineHeight: "1.5",
               },
             },
             "Claim my bb stickers",
@@ -213,37 +208,6 @@ export function surveyEmail(
       : h("span", { key: "none" }),
   ]);
   const survey = card([
-    h(
-      "h1",
-      {
-        key: "title",
-        style: {
-          margin: "8px 0 12px",
-          fontSize: "30px",
-          lineHeight: "1.2",
-          fontWeight: 700,
-          letterSpacing: "-0.02em",
-          color: HEADING,
-        },
-      },
-      "Help shape the future of ",
-      h("img", {
-        src: SURVEY_EMAIL_MARK,
-        alt: "bb",
-        width: 35,
-        height: 28,
-        style: { verticalAlign: "-3px", border: 0 },
-      }),
-      "!",
-    ),
-    h(
-      "p",
-      {
-        key: "intro",
-        style: { margin: "0 0 8px", fontSize: "16px", lineHeight: "1.7" },
-      },
-      SURVEY_DESCRIPTION,
-    ),
     ...visible.map((question, index) =>
       h(
         "div",
@@ -253,7 +217,7 @@ export function surveyEmail(
               "h2",
               {
                 style: {
-                  margin: "32px 0 0",
+                  margin: index === 0 ? "4px 0 0" : "32px 0 0",
                   fontSize: "21px",
                   fontWeight: 650,
                   color: HEADING,
@@ -325,7 +289,7 @@ export function surveyEmail(
     ),
     survey,
   );
-  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="margin:0;background:#f4f4f4">${renderToStaticMarkup(body)}</body></html>`;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"></head><body style="margin:0;background:#f4f4f4">${renderToStaticMarkup(body)}</body></html>`;
   const text = [
     "Thanks for filling out the bb community survey!",
     ...(claimLink ? [`Claim my bb stickers: ${claimLink}`] : []),

@@ -325,13 +325,12 @@ describe("private community forms", () => {
   const outbox = () =>
     db
       .prepare(
-        "SELECT to_email, claim_link, attempts, next_attempt_at, sent_at FROM community_survey_email_outbox",
+        "SELECT to_email, claim_link, attempts, sent_at FROM community_survey_email_outbox",
       )
       .all<{
         to_email: string;
         claim_link: string | null;
         attempts: number;
-        next_attempt_at: number;
         sent_at: number | null;
       }>()
       .then((result) => result.results);
@@ -360,7 +359,7 @@ describe("private community forms", () => {
       vi.unstubAllGlobals();
     }
   });
-  it("keeps the claim link in the outbox and retries later until the email sends", async () => {
+  it("keeps the claim link in the outbox and retries hourly until the email sends", async () => {
     let status = 503;
     const keys: (string | null)[] = [];
     vi.stubGlobal("fetch", async (_url: string, init: RequestInit) => {
@@ -374,19 +373,16 @@ describe("private community forms", () => {
       expect(queued?.sent_at).toBeNull();
       expect(queued?.attempts).toBe(1);
       expect(queued?.claim_link).toContain(`discount=${codeFrom(html)}`);
-      const due = queued!.next_attempt_at;
-      await retrySurveyEmails({ DB: db, RESEND_API_KEY: "key" }, due - 1);
-      expect((await outbox())[0]?.attempts).toBe(1);
-      await retrySurveyEmails({ DB: db, RESEND_API_KEY: "key" }, due);
+      await retrySurveyEmails({ DB: db, RESEND_API_KEY: "key" }, Date.now());
       expect((await outbox())[0]?.attempts).toBe(2);
       status = 200;
-      await retrySurveyEmails({ DB: db, RESEND_API_KEY: "key" }, due + 24 * 3_600_000);
+      await retrySurveyEmails({ DB: db, RESEND_API_KEY: "key" }, Date.now());
       const [sentRow] = await outbox();
       expect(sentRow?.sent_at).toBeTypeOf("number");
       expect(sentRow?.claim_link).toBeNull();
       expect(new Set(keys).size).toBe(1);
       const calls = keys.length;
-      await retrySurveyEmails({ DB: db, RESEND_API_KEY: "key" }, due + 48 * 3_600_000);
+      await retrySurveyEmails({ DB: db, RESEND_API_KEY: "key" }, Date.now());
       expect(keys).toHaveLength(calls);
     } finally {
       vi.unstubAllGlobals();
