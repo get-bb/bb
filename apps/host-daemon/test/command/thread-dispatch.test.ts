@@ -1890,6 +1890,7 @@ describe("thread command dispatch", () => {
     expect(harness.runtimeState.resumedThreadId).toBeUndefined();
     expect(harness.manager.listActiveThreads()).toEqual([
       {
+        activeTurnId: "turn-2",
         threadId: "thread-1",
       },
     ]);
@@ -1944,6 +1945,7 @@ describe("thread command dispatch", () => {
     expect(harness.runtimeState.steeredTurnId).toBe("turn-1");
     expect(harness.manager.listActiveThreads()).toEqual([
       {
+        activeTurnId: "turn-1",
         threadId: "thread-1",
       },
     ]);

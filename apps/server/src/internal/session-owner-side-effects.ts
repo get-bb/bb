@@ -20,6 +20,7 @@ import type {
 import {
   interruptActiveThreadsForHost,
   reconcileDaemonReportedThreads,
+  resendStopsAwaitingDaemon,
 } from "../services/threads/thread-lifecycle.js";
 import { buildThreadStatusChangeMetadataByThreadId } from "../services/threads/thread-runtime-display.js";
 import { settleDanglingBackgroundTasks } from "../services/threads/background-task-reconciliation.js";
@@ -134,7 +135,7 @@ export async function handleHostSessionOpened(
   }
 
   await reconcileDaemonReportedThreads(deps, {
-    activeThreadIds: args.activeThreads.map((thread) => thread.threadId),
+    activeThreads: args.activeThreads,
     hostId: args.hostId,
     sameDaemonInstance,
     undeliveredEventThreadIds: args.undeliveredEventThreadIds,
@@ -161,10 +162,12 @@ export function handleDaemonSocketClosed(
 }
 
 export function handleDaemonSocketOpened(
-  deps: Pick<AppDeps, "db" | "hub" | "providerRegistry">,
+  deps: LoggedPendingInteractionWorkSessionDeps,
   args: { hostId: string },
 ): void {
   notifyHostThreadRuntimeStatusChanged(deps, args.hostId);
+  deps.pendingInteractions.redeliverAnswersAwaitingDaemon(args.hostId);
+  resendStopsAwaitingDaemon(deps, args.hostId);
 }
 
 export function handleDaemonSessionSilent(

@@ -3,12 +3,15 @@ import {
   getLatestSessionForHost,
   getThread,
   listEvents,
+  openSession,
   pendingInteractions,
   queuedThreadMessages,
+  updateThread,
 } from "@bb/db";
-import { turnScope, type ThreadEvent } from "@bb/domain";
+import { threadScope, turnScope, type ThreadEvent } from "@bb/domain";
 import {
   groupHostDaemonEvents,
+  HOST_DAEMON_PROTOCOL_VERSION,
   type HostDaemonInteractiveRequestKey,
 } from "@bb/host-daemon-contract";
 import { retryTurnRequestSchema } from "@bb/server-contract";
@@ -46,7 +49,6 @@ import {
   seedEnvironment,
   seedHostSession,
   seedProjectWithSource,
-  seedSession,
   seedThread,
   seedThreadRuntimeState,
 } from "../helpers/seed.js";
@@ -68,6 +70,7 @@ const STEPS = 40;
 
 type Operation =
   | "send"
+  | "send-and-run"
   | "answer-submit"
   | "reject-submit"
   | "start-turn"
@@ -76,7 +79,12 @@ type Operation =
   | "fail-turn"
   | "user-stop"
   | "answer-stop"
+  | "answer-stop-hold-ack"
+  | "deliver-held-ack"
   | "time-out-stop"
+  | "start-background-task"
+  | "finish-background-task"
+  | "touch-metadata"
   | "ask"
   | "answer-question"
   | "deliver-answer"
@@ -89,6 +97,7 @@ type Operation =
 
 const OPERATIONS: readonly Operation[] = [
   "send",
+  "send-and-run",
   "send",
   "answer-submit",
   "answer-submit",
@@ -99,8 +108,16 @@ const OPERATIONS: readonly Operation[] = [
   "fail-turn",
   "user-stop",
   "answer-stop",
+  "answer-stop-hold-ack",
+  "answer-stop-hold-ack",
+  "deliver-held-ack",
   "time-out-stop",
+  "start-background-task",
+  "finish-background-task",
+  "touch-metadata",
   "ask",
+  "ask",
+  "answer-question",
   "answer-question",
   "deliver-answer",
   "reconnect",
@@ -123,16 +140,22 @@ function createRandom(seed: number): () => number {
 
 interface Provider {
   abandonedTurnId: string | null;
+  backgroundTasks: Map<string, string>;
   deliveredInteractionIds: Set<string>;
+  heldStopAcks: QueuedCommand[];
   instance: number;
+  messageCount: number;
   pendingStartRequestId: string | null;
   questions: Map<string, string>;
   questionCount: number;
+  settleableTaskIds: Set<string>;
+  taskCount: number;
   turnId: string | null;
   turns: number;
 }
 
 interface Fixture {
+  bufferedEvents: ThreadEvent[] | null;
   harness: TestAppHarness;
   hostId: string;
   providerId: string;
@@ -174,6 +197,7 @@ function seedFixture(harness: TestAppHarness, seed: number): Fixture {
     threadId: thread.id,
   });
   return {
+    bufferedEvents: null,
     harness,
     hostId: host.id,
     providerId: thread.providerId,
@@ -188,6 +212,10 @@ async function postEvents(
   events: ThreadEvent[],
 ): Promise<void> {
   if (events.length === 0) return;
+  if (fixture.bufferedEvents !== null) {
+    fixture.bufferedEvents.push(...events);
+    return;
+  }
   const response = await fixture.harness.app.request(
     "/internal/session/events",
     {
@@ -316,7 +344,11 @@ async function answerSubmit(
   });
 }
 
-async function startTurn(fixture: Fixture, provider: Provider): Promise<void> {
+async function startTurn(
+  fixture: Fixture,
+  provider: Provider,
+  options: { withBackgroundTask: boolean },
+): Promise<void> {
   const requestId = provider.pendingStartRequestId;
   if (requestId === null || provider.turnId !== null) return;
   provider.turns += 1;
@@ -327,6 +359,7 @@ async function startTurn(fixture: Fixture, provider: Provider): Promise<void> {
     turnStarted(fixture, turnId),
     inputAccepted(fixture, requestId, turnId),
   ]);
+  if (options.withBackgroundTask) await startBackgroundTask(fixture, provider);
 }
 
 async function completeTurn(
@@ -370,16 +403,80 @@ async function completeTurnWithFallbackStart(
   });
 }
 
+async function runStopOnDaemon(
+  fixture: Fixture,
+  provider: Provider,
+): Promise<void> {
+  provider.pendingStartRequestId = null;
+  provider.backgroundTasks.clear();
+  await completeTurn(fixture, provider, "interrupted");
+}
+
 async function answerStop(
   fixture: Fixture,
   provider: Provider,
   queued: QueuedCommand,
 ): Promise<void> {
-  provider.pendingStartRequestId = null;
-  await completeTurn(fixture, provider, "interrupted");
+  await runStopOnDaemon(fixture, provider);
   await reportQueuedCommandSuccess(fixture.harness, queued, {
     providerCheckpointId: null,
   });
+}
+
+function backgroundTaskItem(
+  itemId: string,
+  taskStatus: "completed" | "running",
+) {
+  return {
+    id: itemId,
+    type: "backgroundTask" as const,
+    taskType: "local_workflow",
+    description: "model background task",
+    status:
+      taskStatus === "running" ? ("pending" as const) : ("completed" as const),
+    taskStatus,
+    skipTranscript: false,
+    foreground: false,
+    workflowName: "model",
+    usage: { totalTokens: 0, toolUses: 0, durationMs: 0 },
+  };
+}
+
+async function startBackgroundTask(
+  fixture: Fixture,
+  provider: Provider,
+): Promise<void> {
+  if (provider.turnId === null) return;
+  provider.taskCount += 1;
+  const itemId = `task-${provider.taskCount}`;
+  provider.backgroundTasks.set(itemId, provider.turnId);
+  await postEvents(fixture, [
+    {
+      type: "item/started",
+      threadId: fixture.threadId,
+      providerThreadId: fixture.providerThreadId,
+      scope: turnScope(provider.turnId),
+      item: backgroundTaskItem(itemId, "running"),
+    },
+  ]);
+}
+
+async function finishBackgroundTask(
+  fixture: Fixture,
+  provider: Provider,
+): Promise<void> {
+  const itemId = provider.backgroundTasks.keys().next().value;
+  if (itemId === undefined) return;
+  provider.backgroundTasks.delete(itemId);
+  await postEvents(fixture, [
+    {
+      type: "item/backgroundTask/completed",
+      threadId: fixture.threadId,
+      providerThreadId: fixture.providerThreadId,
+      scope: threadScope(),
+      item: backgroundTaskItem(itemId, "completed"),
+    },
+  ]);
 }
 
 function ask(fixture: Fixture, provider: Provider): void {
@@ -474,8 +571,7 @@ async function runPendingCommandsOnDaemon(
         runSubmitOnDaemon(fixture, provider, queued).events,
       );
     } else if (queued.command.type === "thread.stop") {
-      provider.pendingStartRequestId = null;
-      await completeTurn(fixture, provider, "interrupted");
+      await runStopOnDaemon(fixture, provider);
     } else {
       deliverAnswerOnDaemon(provider, queued);
     }
@@ -491,12 +587,13 @@ function openThreadWork(fixture: Fixture, provider: Provider) {
     providerThreadId: fixture.providerThreadId,
     providerRequestId,
   }));
-  return interactiveRequests.length === 0
+  const backgroundItemIds = [...provider.backgroundTasks.keys()];
+  return interactiveRequests.length === 0 && backgroundItemIds.length === 0
     ? []
     : [
         {
           threadId: fixture.threadId,
-          backgroundItemIds: [],
+          backgroundItemIds,
           interactiveRequests,
         },
       ];
@@ -512,13 +609,44 @@ async function dropConnection(fixture: Fixture): Promise<void> {
 async function reopenSession(
   fixture: Fixture,
   provider: Provider,
+  options: { slowSocket: boolean },
 ): Promise<void> {
   const { deps } = fixture.harness;
   const previous = getLatestSessionForHost(deps.db, { hostId: fixture.hostId });
-  const opened = seedSession(deps, fixture.hostId, {
+  const opened = openSession(deps.db, {
+    hostId: fixture.hostId,
     instanceId: `instance-${provider.instance}`,
+    hostName: "Model Host",
+    dataDir: `/tmp/bb-host-data/${fixture.hostId}`,
+    protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+    heartbeatIntervalMs: 5_000,
+    leaseTimeoutMs: 30_000,
   });
+  deps.hub.recordDaemonSessionPlatform(opened.id, "darwin");
   fixture.sessionId = opened.id;
+  provider.heldStopAcks = [];
+  const buffered = fixture.bufferedEvents ?? [];
+  const socketWait = options.slowSocket
+    ? vi.spyOn(deps.hub, "waitForDaemonForHost").mockResolvedValue(false)
+    : null;
+  const { endedInteractiveRequests } = await handleHostSessionOpened(deps, {
+    activeThreads:
+      provider.turnId !== null || provider.pendingStartRequestId !== null
+        ? [{ activeTurnId: provider.turnId, threadId: fixture.threadId }]
+        : [],
+    openThreadWork: openThreadWork(fixture, provider),
+    undeliveredEventThreadIds: buffered.length > 0 ? [fixture.threadId] : [],
+    hostId: fixture.hostId,
+    openedSession: opened,
+    previousSession: previous,
+  });
+  for (const ended of endedInteractiveRequests) {
+    provider.questions.delete(ended.providerRequestId);
+  }
+  if (socketWait !== null) {
+    await settle();
+    socketWait.mockRestore();
+  }
   const socket = registerTestHostRpcCapture(deps, {
     hostId: fixture.hostId,
     sessionId: opened.id,
@@ -541,20 +669,51 @@ async function reopenSession(
     sessionId: opened.id,
     socket,
   });
-  const { endedInteractiveRequests } = await handleHostSessionOpened(deps, {
-    activeThreads:
-      provider.turnId !== null || provider.pendingStartRequestId !== null
-        ? [{ threadId: fixture.threadId }]
-        : [],
-    openThreadWork: openThreadWork(fixture, provider),
-    undeliveredEventThreadIds: [],
-    hostId: fixture.hostId,
-    openedSession: opened,
-    previousSession: previous,
-  });
-  for (const ended of endedInteractiveRequests) {
-    provider.questions.delete(ended.providerRequestId);
+  fixture.bufferedEvents = null;
+  await postEvents(fixture, buffered);
+}
+
+function checkBackgroundTasks(
+  fixture: Fixture,
+  provider: Provider,
+  context: string,
+): void {
+  const settled = new Set(
+    listEvents(fixture.harness.db, { threadId: fixture.threadId })
+      .filter((event) => event.type === "item/backgroundTask/completed")
+      .map((event) => event.itemId),
+  );
+  for (const itemId of provider.backgroundTasks.keys()) {
+    if (provider.settleableTaskIds.has(itemId)) continue;
+    expect(
+      settled.has(itemId),
+      `${context}: the server settled background task ${itemId} while the provider still runs it`,
+    ).toBe(false);
   }
+}
+
+function checkNoOldStopOverNewerRequest(
+  fixture: Fixture,
+  provider: Provider,
+  context: string,
+): void {
+  const requestId = provider.pendingStartRequestId;
+  if (requestId === null) return;
+  if (pendingCommands(fixture, "thread.stop").length === 0) return;
+  const events = listEvents(fixture.harness.db, { threadId: fixture.threadId });
+  const requestSequence = events.find(
+    (event) =>
+      event.type === "client/turn/requested" &&
+      (JSON.parse(event.data) as { requestId: string }).requestId === requestId,
+  )?.sequence;
+  const lastStopSequence = events
+    .filter((event) => event.type === "system/thread/interrupted")
+    .at(-1)?.sequence;
+  if (requestSequence === undefined || lastStopSequence === undefined) return;
+  expect(
+    requestSequence < lastStopSequence,
+    `${context}: an older stop was sent over the newer request ${requestId}`,
+  ).toBe(true);
 }
 
 function checkProviderWaitsOnlyOnOpenQuestions(
@@ -741,14 +900,36 @@ function checkTurnBound(fixture: Fixture, now: number, context: string): void {
   if (thread.status !== "active") return;
   const hasTurn =
     getActiveStoredTurnId(fixture.harness.db, fixture.threadId) !== null;
+  const turnEndedRecently = listEvents(fixture.harness.db, {
+    threadId: fixture.threadId,
+  }).some(
+    (event) =>
+      event.type === "turn/completed" &&
+      event.createdAt > now - TURN_START_DEADLINE_MS,
+  );
   expect(
-    hasTurn || now - thread.updatedAt < TURN_START_DEADLINE_MS,
+    hasTurn ||
+      turnEndedRecently ||
+      now - thread.statusChangedAt < TURN_START_DEADLINE_MS,
     `${context}: active thread has no turn and is past the start deadline`,
   ).toBe(true);
 }
 
-async function quiesce(fixture: Fixture, provider: Provider): Promise<void> {
+async function quiesce(
+  fixture: Fixture,
+  provider: Provider,
+  context: string,
+): Promise<void> {
   for (let round = 0; round < 60; round += 1) {
+    const heldAck = provider.heldStopAcks.shift();
+    if (heldAck !== undefined) {
+      await reportQueuedCommandSuccess(fixture.harness, heldAck, {
+        providerCheckpointId: null,
+      });
+      await settle();
+      checkBackgroundTasks(fixture, provider, context);
+      continue;
+    }
     const stop = nextLaneCommand(fixture, "thread.stop");
     const submit = nextLaneCommand(fixture, "turn.submit");
     const resolve = nextLaneCommand(fixture, "interactive.resolve");
@@ -767,7 +948,7 @@ async function quiesce(fixture: Fixture, provider: Provider): Promise<void> {
       provider.pendingStartRequestId !== null &&
       provider.turnId === null
     ) {
-      await startTurn(fixture, provider);
+      await startTurn(fixture, provider, { withBackgroundTask: false });
     } else if (provider.turnId !== null && provider.questions.size === 0) {
       await completeTurn(fixture, provider, "completed");
     } else {
@@ -775,6 +956,34 @@ async function quiesce(fixture: Fixture, provider: Provider): Promise<void> {
       await runSweeps(fixture, Date.now());
     }
     await settle();
+    checkBackgroundTasks(fixture, provider, context);
+  }
+}
+
+async function postProviderMessage(
+  fixture: Fixture,
+  provider: Provider,
+): Promise<void> {
+  if (provider.turnId === null) return;
+  provider.messageCount += 1;
+  await postEvents(fixture, [
+    {
+      type: "item/completed",
+      threadId: fixture.threadId,
+      providerThreadId: fixture.providerThreadId,
+      scope: turnScope(provider.turnId),
+      item: {
+        id: `message-${provider.messageCount}`,
+        type: "agentMessage",
+        text: "progress",
+      },
+    },
+  ]);
+}
+
+function markTasksSettleable(provider: Provider): void {
+  for (const itemId of provider.backgroundTasks.keys()) {
+    provider.settleableTaskIds.add(itemId);
   }
 }
 
@@ -787,17 +996,39 @@ async function runWalk(seed: number): Promise<void> {
     const restartedHarnesses: TestAppHarness[] = [];
     const provider: Provider = {
       abandonedTurnId: null,
+      backgroundTasks: new Map(),
       deliveredInteractionIds: new Set(),
+      heldStopAcks: [],
       instance: 1,
+      messageCount: 0,
       pendingStartRequestId: null,
       questions: new Map(),
       questionCount: 0,
+      settleableTaskIds: new Set(),
+      taskCount: 0,
       turnId: null,
       turns: 0,
     };
     const inputs: string[] = [];
     const trace: string[] = [];
-    await reopenSession(fixture, provider);
+    const send = async (step: number, sent: string[]): Promise<void> => {
+      const text = `<input-${seed}-${step}>`;
+      try {
+        await acceptThreadSendRequest(fixture.harness.deps, {
+          thread: getThread(fixture.harness.db, fixture.threadId)!,
+          payload: {
+            input: textInput(text),
+            mode: pick(["auto", "steer-if-active", "queue-if-active"]),
+          },
+        });
+        sent.push(text);
+      } catch (error) {
+        if (!(error instanceof ApiError) || error.status !== 409) {
+          throw error;
+        }
+      }
+    };
+    await reopenSession(fixture, provider, { slowSocket: false });
     try {
       for (let step = 0; step < STEPS; step += 1) {
         vi.setSystemTime(Date.now() + 1);
@@ -805,22 +1036,16 @@ async function runWalk(seed: number): Promise<void> {
         trace.push(operation);
         const context = `seed ${seed} step ${step} [${trace.join(" ")}]`;
         switch (operation) {
-          case "send": {
-            const text = `<input-${seed}-${step}>`;
-            try {
-              await acceptThreadSendRequest(fixture.harness.deps, {
-                thread: getThread(fixture.harness.db, fixture.threadId)!,
-                payload: {
-                  input: textInput(text),
-                  mode: pick(["auto", "steer-if-active", "queue-if-active"]),
-                },
-              });
-              inputs.push(text);
-            } catch (error) {
-              if (!(error instanceof ApiError) || error.status !== 409) {
-                throw error;
-              }
-            }
+          case "send":
+            await send(step, inputs);
+            break;
+          case "send-and-run": {
+            await send(step, inputs);
+            const submit = nextLaneCommand(fixture, "turn.submit");
+            if (submit) await answerSubmit(fixture, provider, submit);
+            await startTurn(fixture, provider, {
+              withBackgroundTask: random() < 0.3,
+            });
             break;
           }
           case "answer-submit": {
@@ -839,7 +1064,9 @@ async function runWalk(seed: number): Promise<void> {
             break;
           }
           case "start-turn":
-            await startTurn(fixture, provider);
+            await startTurn(fixture, provider, {
+              withBackgroundTask: random() < 0.3,
+            });
             break;
           case "complete-turn":
             await completeTurn(fixture, provider, "completed");
@@ -855,6 +1082,38 @@ async function runWalk(seed: number): Promise<void> {
             if (stop) await answerStop(fixture, provider, stop);
             break;
           }
+          case "answer-stop-hold-ack": {
+            const stop = nextLaneCommand(fixture, "thread.stop");
+            if (stop) {
+              forgetQueuedCommand(stop);
+              await runStopOnDaemon(fixture, provider);
+              provider.heldStopAcks.push(stop);
+            }
+            break;
+          }
+          case "deliver-held-ack": {
+            const ack = provider.heldStopAcks.shift();
+            if (ack) {
+              await reportQueuedCommandSuccess(fixture.harness, ack, {
+                providerCheckpointId: null,
+              });
+            }
+            break;
+          }
+          case "start-background-task":
+            await startBackgroundTask(fixture, provider);
+            break;
+          case "finish-background-task":
+            await finishBackgroundTask(fixture, provider);
+            break;
+          case "touch-metadata":
+            updateThread(
+              fixture.harness.db,
+              fixture.harness.deps.hub,
+              fixture.threadId,
+              pick([{ lastReadAt: Date.now() }, { title: `title ${step}` }]),
+            );
+            break;
           case "user-stop": {
             void Promise.resolve(
               fixture.harness.app.request(
@@ -868,6 +1127,7 @@ async function runWalk(seed: number): Promise<void> {
             const stop = nextLaneCommand(fixture, "thread.stop");
             if (stop) {
               provider.abandonedTurnId = provider.turnId;
+              markTasksSettleable(provider);
               await reportQueuedCommandError(fixture.harness, stop, {
                 errorCode: "command_timeout",
                 errorMessage: "the fake daemon's stop timed out",
@@ -886,15 +1146,26 @@ async function runWalk(seed: number): Promise<void> {
             if (resolve) await deliverAnswer(fixture, provider, resolve);
             break;
           }
-          case "reconnect":
+          case "reconnect": {
+            if (random() < 0.5) {
+              fixture.bufferedEvents = [];
+              await postProviderMessage(fixture, provider);
+            }
+            if (pendingCommands(fixture, "thread.stop").length > 0) {
+              markTasksSettleable(provider);
+            }
             await runPendingCommandsOnDaemon(fixture, provider, {
               received: () => random() < 0.5,
             });
             await dropConnection(fixture);
-            await reopenSession(fixture, provider);
+            await reopenSession(fixture, provider, {
+              slowSocket: random() < 0.3,
+            });
             await settle();
             checkQuestionsAfterReconnect(fixture, provider, context);
+            checkNoOldStopOverNewerRequest(fixture, provider, context);
             break;
+          }
           case "reconnect-new-instance":
             await runPendingCommandsOnDaemon(fixture, provider, {
               received: () => false,
@@ -904,24 +1175,38 @@ async function runWalk(seed: number): Promise<void> {
             provider.turnId = null;
             provider.pendingStartRequestId = null;
             provider.questions.clear();
-            await reopenSession(fixture, provider);
+            provider.backgroundTasks.clear();
+            await reopenSession(fixture, provider, {
+              slowSocket: random() < 0.3,
+            });
             await settle();
             checkQuestionsAfterReconnect(fixture, provider, context);
             break;
           case "reconnect-before-close": {
+            if (random() < 0.5) {
+              fixture.bufferedEvents = [];
+              await postProviderMessage(fixture, provider);
+            }
             await runPendingCommandsOnDaemon(fixture, provider, {
               received: () => random() < 0.5,
             });
             const previousSessionId = fixture.sessionId;
-            await reopenSession(fixture, provider);
+            await reopenSession(fixture, provider, {
+              slowSocket: random() < 0.3,
+            });
             handleDaemonSocketClosed(fixture.harness.deps, {
               sessionId: previousSessionId,
             });
             await settle();
             checkQuestionsAfterReconnect(fixture, provider, context);
+            checkNoOldStopOverNewerRequest(fixture, provider, context);
             break;
           }
           case "restart-server": {
+            if (random() < 0.5) {
+              fixture.bufferedEvents = [];
+              await postProviderMessage(fixture, provider);
+            }
             await runPendingCommandsOnDaemon(fixture, provider, {
               received: () => true,
             });
@@ -931,14 +1216,28 @@ async function runWalk(seed: number): Promise<void> {
             });
             restartedHarnesses.push(restarted);
             fixture.harness = restarted;
-            await reopenSession(fixture, provider);
+            await reopenSession(fixture, provider, {
+              slowSocket: random() < 0.3,
+            });
             await settle();
             checkQuestionsAfterReconnect(fixture, provider, context);
+            checkNoOldStopOverNewerRequest(fixture, provider, context);
             break;
           }
           case "tick": {
             vi.setSystemTime(
-              Date.now() + Math.floor(random() * TURN_START_DEADLINE_MS * 1.5),
+              Date.now() + Math.floor(random() * TURN_START_DEADLINE_MS * 0.9),
+            );
+            if (random() < 0.5) {
+              updateThread(
+                fixture.harness.db,
+                fixture.harness.deps.hub,
+                fixture.threadId,
+                { lastReadAt: Date.now() },
+              );
+            }
+            vi.setSystemTime(
+              Date.now() + Math.floor(random() * TURN_START_DEADLINE_MS * 0.9),
             );
             const now = Date.now();
             await runSweeps(fixture, now);
@@ -963,12 +1262,14 @@ async function runWalk(seed: number): Promise<void> {
         checkInvariants(fixture, provider, inputs, context);
         checkDeliveredAnswers(fixture, provider, context);
         checkProviderWaitsOnlyOnOpenQuestions(fixture, provider, context);
+        checkBackgroundTasks(fixture, provider, context);
       }
 
-      await quiesce(fixture, provider);
       const context = `seed ${seed} quiescent [${trace.join(" ")}]`;
+      await quiesce(fixture, provider, context);
       checkInvariants(fixture, provider, inputs, context);
       checkDeliveredAnswers(fixture, provider, context);
+      checkBackgroundTasks(fixture, provider, context);
       const thread = getThread(fixture.harness.db, fixture.threadId)!;
       expect(["idle", "error"], `${context}: thread still running`).toContain(
         thread.status,

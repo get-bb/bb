@@ -1,5 +1,6 @@
 import {
   createPendingInteraction,
+  hasStoredTurnCompleted,
   getActivePendingInteractionForThread,
   hasTurnBoundActivePendingInteractionForThread,
   getEnvironment,
@@ -336,6 +337,8 @@ function notifyInteractionChanged({
 export class PendingInteractionLifecycle {
   private readonly deps: CreateLifecycleDeps;
   private readonly pluginWaiters = new Map<string, PluginInteractionWaiter>();
+  private readonly answersAwaitingDaemon = new Set<string>();
+  private readonly redeliveredAnswers = new Set<string>();
   private pluginDirectory: PendingInteractionPluginDirectory | null = null;
   private started = false;
   private interactionSettledListener: ThreadInteractionSettledListener | null =
@@ -433,6 +436,17 @@ export class PendingInteractionLifecycle {
       return {
         outcome: "rejected",
         reason: `Thread ${interaction.threadId} belongs to provider ${thread.providerId}, not ${interaction.providerId}`,
+      };
+    }
+    if (
+      hasStoredTurnCompleted(this.deps.db, {
+        threadId: interaction.threadId,
+        turnId: interaction.turnId,
+      })
+    ) {
+      return {
+        outcome: "rejected",
+        reason: `Turn ${interaction.turnId} already ended`,
       };
     }
     const unsupportedReason = getUnsupportedPendingInteractionReason(
@@ -831,7 +845,20 @@ export class PendingInteractionLifecycle {
     args: SettleInteractiveResolveCommandResultArgs,
   ): void {
     if (!args.report.ok) {
-      if (args.report.errorCode === "host_unavailable") return;
+      if (args.report.errorCode === "host_unavailable") {
+        this.answersAwaitingDaemon.add(args.command.interactionId);
+        return;
+      }
+      if (
+        args.report.errorCode === "stale_interactive_request" &&
+        this.redeliveredAnswers.delete(args.command.interactionId)
+      ) {
+        this.completeResolvingInteractionInTransaction(args.deps, {
+          interactionId: args.command.interactionId,
+          resolution: args.command.resolution,
+        });
+        return;
+      }
       this.interruptPendingInteractionInTransaction(args.deps, {
         interactionId: args.command.interactionId,
         reason: args.report.errorMessage,
@@ -839,6 +866,7 @@ export class PendingInteractionLifecycle {
       return;
     }
 
+    this.redeliveredAnswers.delete(args.command.interactionId);
     const completed = this.completeResolvingInteractionInTransaction(
       args.deps,
       {
@@ -996,6 +1024,26 @@ export class PendingInteractionLifecycle {
     notifications.flushInto(this.deps.hub);
   }
 
+  redeliverAnswersAwaitingDaemon(hostId: string): void {
+    for (const interactionId of this.answersAwaitingDaemon) {
+      const row = getPendingInteraction(this.deps.db, interactionId);
+      if (row === null || row.status !== "resolving") {
+        this.answersAwaitingDaemon.delete(interactionId);
+        continue;
+      }
+      const environmentId =
+        getThread(this.deps.db, row.threadId)?.environmentId ?? null;
+      if (
+        environmentId === null ||
+        getEnvironment(this.deps.db, environmentId)?.hostId !== hostId
+      ) {
+        continue;
+      }
+      this.answersAwaitingDaemon.delete(interactionId);
+      this.redeliverResolvingInteraction(interactionId);
+    }
+  }
+
   redeliverResolvingInteraction(interactionId: string): void {
     const row = getPendingInteraction(this.deps.db, interactionId);
     if (row === null || row.status !== "resolving" || row.resolution === null) {
@@ -1009,6 +1057,7 @@ export class PendingInteractionLifecycle {
         ? null
         : getEnvironment(this.deps.db, environmentId);
     if (environment === null || interaction.resolution === null) return;
+    this.redeliveredAnswers.add(interactionId);
     this.startInteractiveResolveCommand(
       buildInteractiveResolveCommand({
         environmentId: environment.id,

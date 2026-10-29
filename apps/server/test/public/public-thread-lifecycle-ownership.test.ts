@@ -147,7 +147,7 @@ describe("lifecycle ownership deletion", () => {
         );
         await reconcileDaemonReportedThreads(harness.deps, {
           hostId: other.id,
-          activeThreadIds: [child.id],
+          activeThreads: [{ activeTurnId: null, threadId: child.id }],
           undeliveredEventThreadIds: [],
           sameDaemonInstance: false,
         });
@@ -437,7 +437,7 @@ it("keeps an owning project pending while cross-project host cleanup fails and c
     });
     await reconcileDaemonReportedThreads(harness.deps, {
       hostId: remote.id,
-      activeThreadIds: [child.id],
+      activeThreads: [{ activeTurnId: null, threadId: child.id }],
       undeliveredEventThreadIds: [],
       sameDaemonInstance: false,
     });

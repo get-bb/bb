@@ -1680,9 +1680,11 @@ describe("RuntimeManager", () => {
     runtime.setPendingTurnStart("thread-2", true);
     expect(manager.listActiveThreads()).toEqual([
       {
+        activeTurnId: "turn-1",
         threadId: "thread-1",
       },
       {
+        activeTurnId: null,
         threadId: "thread-2",
       },
     ]);

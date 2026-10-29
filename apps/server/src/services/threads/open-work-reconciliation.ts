@@ -56,15 +56,10 @@ export function reconcileDaemonReportedOpenWork(
     deps.db,
     { hostId: args.hostId },
   )) {
-    if (
-      interaction.status !== "resolving" ||
-      unsettledThreadIds.has(interaction.threadId)
-    ) {
-      continue;
-    }
+    if (interaction.status !== "resolving") continue;
     if (reportedKeys.has(providerRequestKey(interaction))) {
       deps.pendingInteractions.redeliverResolvingInteraction(interaction.id);
-    } else {
+    } else if (!unsettledThreadIds.has(interaction.threadId)) {
       deps.pendingInteractions.completeResolvingInteractionWithoutAck(
         interaction.id,
       );

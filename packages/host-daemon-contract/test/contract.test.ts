@@ -2796,6 +2796,7 @@ describe("host-daemon session schemas", () => {
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
         activeThreads: [
           {
+            activeTurnId: "turn_123",
             threadId: "thr_123",
           },
         ],
@@ -2858,6 +2859,7 @@ describe("host-daemon session schemas", () => {
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
         activeThreads: [
           {
+            activeTurnId: null,
             threadId: "",
           },
         ],

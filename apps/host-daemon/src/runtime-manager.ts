@@ -515,6 +515,7 @@ export class RuntimeManager {
     for (const entry of this.entries.values()) {
       for (const threadId of entry.runtime.getLiveThreadIds()) {
         activeThreads.push({
+          activeTurnId: entry.runtime.getActiveTurnId(threadId),
           threadId,
         });
       }

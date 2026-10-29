@@ -618,6 +618,7 @@ export const threads = sqliteTable(
     status: text("status", { enum: threadStatusValues })
       .notNull()
       .default("starting"),
+    statusChangedAt: integer("status_changed_at").notNull().default(0),
     startupContext: text("startup_context"),
     parentThreadId: text("parent_thread_id").references(
       (): AnySQLiteColumn => threads.id,

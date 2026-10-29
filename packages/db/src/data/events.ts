@@ -2610,6 +2610,26 @@ export function hasStoredTurnStarted(
   return row !== undefined;
 }
 
+export function hasStoredTurnCompleted(
+  db: DbQueryConnection,
+  args: HasStoredTurnStartedArgs,
+): boolean {
+  const row = db
+    .select({ sequence: events.sequence })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.type, "turn/completed"),
+        eq(events.turnId, args.turnId),
+      ),
+    )
+    .limit(1)
+    .get();
+
+  return row !== undefined;
+}
+
 export interface HasStoredTerminalClientTurnRequestEventArgs {
   requestId: ClientTurnRequestId;
   threadId: string;
@@ -4236,6 +4256,7 @@ export function listThreadIdsStoppedSinceLastTurnRequest(
                   FROM events AS rejected
                   WHERE rejected.thread_id = latest.thread_id
                     AND rejected.type = 'client/turn/rejected'
+                    AND json_extract(rejected.data, '$.reason') NOT IN ('host_unavailable', 'command_timeout')
                     AND json_extract(rejected.data, '$.requestId') =
                       json_extract(latest.data, '$.requestId')
                 )
