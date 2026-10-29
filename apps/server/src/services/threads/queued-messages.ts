@@ -296,9 +296,11 @@ function respectsManualStopPause(
 }
 
 function sendModeForDeliveryMode(
-  mode: QueuedMessageDeliveryMode,
+  group: readonly { deliveryMode: QueuedMessageDeliveryMode }[],
 ): SendMessageRequest["mode"] {
-  return mode === "queue" ? "queue-if-active" : "auto";
+  return group.some((row) => row.deliveryMode === "queue")
+    ? "queue-if-active"
+    : "auto";
 }
 
 function sendQueuedMessagePayload(
@@ -491,7 +493,7 @@ async function sendClaimedQueuedMessageForThread(
       ...sendQueuedMessagePayload(
         { ...queuedMessage, content: input },
         args.mode === "auto" && !args.sendNow
-          ? sendModeForDeliveryMode(lead.deliveryMode)
+          ? sendModeForDeliveryMode(args.queuedMessages)
           : args.mode,
         lead.senderThreadId,
       ),

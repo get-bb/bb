@@ -338,32 +338,50 @@ describe("delivery mode intent", () => {
     });
   });
 
-  it("refuses to group a steering row with a queued one", async () => {
-    await withTestHarness(async (harness) => {
-      const { thread } = seedRunnableThread(harness, {
-        hostId: "host-mixed-group",
-        status: "active",
-      });
-      const sendAt = Date.now() + 60_000;
-      for (const mode of ["steer", "queue-if-active"] as const) {
-        await acceptThreadSendRequest(harness.deps, {
-          payload: { input: textInput(mode), mode, sendAt },
-          thread,
+  it.each([
+    ["steer", "queue-if-active"],
+    ["queue-if-active", "steer"],
+  ] as const)(
+    "waits for the running turn with a group of a %s row and a %s row",
+    async (...modes) => {
+      await withTestHarness(async (harness) => {
+        const { thread } = seedRunnableThread(harness, {
+          hostId: `host-mixed-group-${modes[0]}`,
+          status: "active",
         });
-      }
-      const rows = listQueuedThreadMessages(harness.db, thread.id);
+        const sendAt = Date.now() + 60_000;
+        for (const mode of modes) {
+          await acceptThreadSendRequest(harness.deps, {
+            payload: { input: textInput(mode), mode, sendAt },
+            thread,
+          });
+        }
+        const rows = listQueuedThreadMessages(harness.db, thread.id);
+        expect(
+          setQueuedThreadMessageGroupBoundary({
+            db: harness.db,
+            notifier: harness.hub,
+            threadId: thread.id,
+            expectedGroupedPrefixQueuedMessageIds: rows.map((row) => row.id),
+            groupBoundaryQueuedMessageId: rows[1]!.id,
+          }).kind,
+        ).toBe("updated");
 
-      const result = setQueuedThreadMessageGroupBoundary({
-        db: harness.db,
-        notifier: harness.hub,
-        threadId: thread.id,
-        expectedGroupedPrefixQueuedMessageIds: rows.map((row) => row.id),
-        groupBoundaryQueuedMessageId: rows[1]!.id,
+        await runQueuedMessageDispatch(harness.deps, {
+          kind: "time-reached",
+          now: sendAt + 1,
+        });
+
+        expect(
+          listQueuedThreadCommands(harness, "turn.submit", thread.id),
+        ).toHaveLength(0);
+        expect(queuedRows(harness, thread.id)).toEqual([
+          expect.objectContaining({ waitingOn: { kind: "thread-busy" } }),
+          expect.objectContaining({ waitingOn: { kind: "thread-busy" } }),
+        ]);
       });
-
-      expect(result.kind).toBe("invalid_delivery_mode");
-    });
-  });
+    },
+  );
 });
 
 describe("queue intent after the dispatch hook", () => {
