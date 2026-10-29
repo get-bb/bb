@@ -1533,7 +1533,18 @@ it("finds worktrees created outside BB, removes only safe ones in bulk, and forc
         await host.harness.callRpc("host", { hostId: "host_test" }),
       ).maintenance,
     ).toEqual({ state: "queued", kind: "externalWorktrees" });
+    const bulkRemoval = new Promise<void>((resolve) => {
+      removalCompleted = (paths) => {
+        if (
+          paths.length === 2 &&
+          paths.includes(detached) &&
+          paths.includes(locked)
+        )
+          resolve();
+      };
+    });
     releaseRemoval();
+    await bulkRemoval;
     await expect
       .poll(removals)
       .toEqual([
