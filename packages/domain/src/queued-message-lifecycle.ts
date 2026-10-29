@@ -11,6 +11,13 @@ export const queuedMessageStateValues = [
 export const queuedMessageStateSchema = z.enum(queuedMessageStateValues);
 export type QueuedMessageState = z.infer<typeof queuedMessageStateSchema>;
 
+export const queuedMessageRowStateValues = [
+  ...queuedMessageStateValues,
+  "submitted",
+] as const;
+export type QueuedMessageRowState =
+  (typeof queuedMessageRowStateValues)[number];
+
 export const queuedMessageDeliveryModeValues = ["steer", "queue"] as const;
 export const queuedMessageDeliveryModeSchema = z.enum(
   queuedMessageDeliveryModeValues,
@@ -36,9 +43,11 @@ export type QueuedMessageLifecycleEventType =
   | "wait.cleared"
   | "dispatch.claimed"
   | "claim.released"
-  | "drain.failed";
+  | "drain.failed"
+  | "input.submitted"
+  | "input.returned";
 
-export type QueuedMessageLifecycleFrom = QueuedMessageState | "new";
+export type QueuedMessageLifecycleFrom = QueuedMessageRowState | "new";
 
 const RESTING_STATES = [
   "queued",
@@ -65,10 +74,13 @@ const UNFAILED_RESTING_TRANSITIONS = {
 export const QUEUED_MESSAGE_LIFECYCLE: Record<
   QueuedMessageLifecycleFrom,
   Partial<
-    Record<QueuedMessageLifecycleEventType, readonly QueuedMessageState[]>
+    Record<QueuedMessageLifecycleEventType, readonly QueuedMessageRowState[]>
   >
 > = {
-  new: { "queue.created": ["queued", "waiting", "scheduled"] },
+  new: {
+    "queue.created": ["queued", "waiting", "scheduled"],
+    "input.submitted": ["submitted"],
+  },
   queued: UNFAILED_RESTING_TRANSITIONS,
   scheduled: UNFAILED_RESTING_TRANSITIONS,
   waiting: UNFAILED_RESTING_TRANSITIONS,
@@ -87,10 +99,15 @@ export const QUEUED_MESSAGE_LIFECYCLE: Record<
   claimed: {
     "wait.recorded": WAIT_RECORDED_TARGETS,
     "claim.released": RESTING_STATES,
+    "input.submitted": ["submitted"],
+  },
+  submitted: {
+    "input.returned": ["waiting", "failed_exhausted"],
   },
 };
 
 export interface QueuedMessageStateFacts {
+  submitted: boolean;
   claimed: boolean;
   failed: boolean;
   retryBooked: boolean;
@@ -100,7 +117,8 @@ export interface QueuedMessageStateFacts {
 
 export function queuedMessageStateFor(
   facts: QueuedMessageStateFacts,
-): QueuedMessageState {
+): QueuedMessageRowState {
+  if (facts.submitted) return "submitted";
   if (facts.claimed) return "claimed";
   if (facts.failed) {
     return facts.retryBooked ? "failed_retrying" : "failed_exhausted";
@@ -110,7 +128,7 @@ export function queuedMessageStateFor(
 }
 
 export function isQueuedMessageFailedState(
-  state: QueuedMessageState,
+  state: QueuedMessageRowState,
 ): state is (typeof QUEUED_MESSAGE_FAILED_STATES)[number] {
   return state === "failed_retrying" || state === "failed_exhausted";
 }
@@ -118,11 +136,11 @@ export function isQueuedMessageFailedState(
 interface EvaluateQueuedMessageTransitionArgs {
   event: QueuedMessageLifecycleEventType;
   from: QueuedMessageLifecycleFrom;
-  to: QueuedMessageState;
+  to: QueuedMessageRowState;
 }
 
 type QueuedMessageTransitionEvaluation =
-  | { to: QueuedMessageState }
+  | { to: QueuedMessageRowState }
   | { illegal: string };
 
 export function evaluateQueuedMessageTransition(

@@ -191,6 +191,17 @@ export async function retryFailedTurn(
     thread,
     turnRequestId: request.turnRequestId,
   });
+  if (
+    deps.lifecycleDedupers.turnRequestDelivery.mayStillBeAccepted(
+      failed.request.requestId,
+    )
+  ) {
+    throw new ApiError(
+      409,
+      "retry_already_queued",
+      `Turn ${failed.request.requestId} on thread ${thread.id} is still being delivered to the provider.`,
+    );
+  }
   const chain = retryChain(failed.request);
   const originalRequestId = chain.originalRequestId;
   const inFlightKey = `${thread.id}:${originalRequestId}`;

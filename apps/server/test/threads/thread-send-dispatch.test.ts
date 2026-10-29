@@ -1933,7 +1933,7 @@ describe("competing turn refusals", () => {
     });
   });
 
-  it("still fails the run for other refusals while a root turn is stored", async () => {
+  it("still fails the run for other refusals while a root turn is stored, and stops that turn", async () => {
     await withTestHarness(async (harness) => {
       const fixture = seedProviderThreadFixture({
         harness,
@@ -1954,6 +1954,21 @@ describe("competing turn refusals", () => {
       });
 
       expect(getThread(harness.db, fixture.thread.id)?.status).toBe("error");
+      expect(
+        listEvents(harness.db, { threadId: fixture.thread.id })
+          .filter(
+            (event) =>
+              event.type === "turn/completed" &&
+              event.turnId === "turn-unrequested",
+          )
+          .map((event) => JSON.parse(event.data).status),
+      ).toEqual(["interrupted"]);
+      await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.stop" &&
+          command.threadId === fixture.thread.id,
+      );
     });
   });
 });

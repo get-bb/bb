@@ -16,6 +16,12 @@ import {
 } from "../plugins/plugin-thread-events.js";
 import type { ProviderRegistryService } from "../providers/provider-registry.js";
 import { buildThreadStatusChangeMetadata } from "./thread-runtime-display.js";
+import {
+  appendThreadEventInTransaction,
+  getActiveTurnId,
+  getLastProviderThreadId,
+} from "./thread-events.js";
+import { turnScope, type Thread } from "@bb/domain";
 
 /**
  * `run.failed` is the only event that lands a thread in `error`, so an applied
@@ -63,6 +69,28 @@ function logUnappliedThreadLifecycleEvent(
       threadId: args.threadId,
     },
     "Thread lifecycle event not applied",
+  );
+}
+
+export function closeOpenTurnInTransaction(
+  deps: ApplyLoggedThreadLifecycleEventTransactionDeps,
+  args: { status: "failed" | "interrupted"; thread: Thread },
+): void {
+  const { thread } = args;
+  const turnId = getActiveTurnId(deps, thread.id);
+  if (turnId === null) return;
+  const providerThreadId = getLastProviderThreadId(deps, thread.id);
+  appendThreadEventInTransaction(deps.db, {
+    threadId: thread.id,
+    environmentId: thread.environmentId,
+    providerThreadId,
+    type: "turn/completed",
+    scope: turnScope(turnId),
+    data: { providerThreadId, status: args.status },
+  });
+  deps.logger.info(
+    { threadId: thread.id, turnId, status: args.status },
+    "Closed a turn whose provider ended without completing it",
   );
 }
 

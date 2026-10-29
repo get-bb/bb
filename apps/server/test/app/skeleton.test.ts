@@ -219,6 +219,7 @@ describe("server skeleton", () => {
           localApiPort: null,
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
           activeThreads: [],
+          openThreadWork: [],
         }),
       });
 

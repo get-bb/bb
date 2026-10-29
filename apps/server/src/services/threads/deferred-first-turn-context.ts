@@ -7,6 +7,7 @@ import type { DbQueryConnection } from "@bb/db";
 import type { PromptInput } from "@bb/domain";
 import { ApiError } from "../../errors.js";
 import { parseStoredTurnRequestEvent } from "./thread-events.js";
+import type { TurnRequestDelivery } from "./turn-request-delivery.js";
 
 export interface DeferredFirstTurnContext {
   input: PromptInput[];
@@ -36,6 +37,7 @@ export function getLeadingAgentOnlyInput(input: PromptInput[]): PromptInput[] {
 export function resolveDeferredFirstTurnContext(
   db: DbQueryConnection,
   threadId: string,
+  delivery: TurnRequestDelivery,
 ): DeferredFirstTurnContext | null {
   const row = getLastStoredTurnRequestEvent(db, threadId);
   if (!row || row.type !== "client/turn/requested") {
@@ -58,6 +60,7 @@ export function resolveDeferredFirstTurnContext(
   if (
     context === null ||
     (!isSeedRequest && !isUndeliveredRetry) ||
+    (isUndeliveredRetry && delivery.mayStillBeAccepted(request.requestId)) ||
     findStoredEventRow(db, {
       afterSequence: row.sequence,
       threadId,
@@ -99,9 +102,17 @@ export function prependDeferredFirstTurnContext(
 
 export function requireDeferredFirstTurnContextCurrent(
   db: DbQueryConnection,
-  args: { requestSequence: number; threadId: string },
+  args: {
+    delivery: TurnRequestDelivery;
+    requestSequence: number;
+    threadId: string;
+  },
 ): void {
-  const current = resolveDeferredFirstTurnContext(db, args.threadId);
+  const current = resolveDeferredFirstTurnContext(
+    db,
+    args.threadId,
+    args.delivery,
+  );
   if (current?.requestSequence === args.requestSequence) {
     return;
   }

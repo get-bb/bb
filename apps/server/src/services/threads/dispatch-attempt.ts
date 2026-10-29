@@ -11,6 +11,7 @@ import {
   isThreadQueueAutoSendPaused,
   listRunningThreads,
   type ClaimedQueuedThreadMessageRow,
+  type DbTransaction,
   type RunningThreadRow,
 } from "@bb/db";
 import {
@@ -86,6 +87,11 @@ import {
 import { toThreadQueuedMessage } from "./thread-queued-messages.js";
 import { isPreStartThreadStatus } from "./thread-status.js";
 import { queueInputForStartingTurn } from "./thread-turn-starting.js";
+import {
+  settleSupersededFailedTurnInputsInTransaction,
+  submitClaimedInputsInTransaction,
+  submitInlineInputInTransaction,
+} from "./input-ledger.js";
 import {
   ensureThreadIsWritable,
   formatAgentThreadInput,
@@ -357,13 +363,28 @@ async function runOperationDispatch(
     payload: args.payload,
     thread: args.thread,
     trigger: args.trigger,
-    beforeAppendInTransaction: ({ tx }) => {
-      recordInboxReceiptInTransaction(tx, {
+    beforeAppendInTransaction: (preflight) => {
+      recordInboxReceiptInTransaction(preflight.tx, {
         idempotencyKey,
         queuedMessageId: null,
         threadId: args.thread.id,
       });
-      source.beforeAppendInTransaction?.({ tx });
+      if (preflight.requestId !== null) {
+        settleSupersededFailedTurnInputsInTransaction(
+          {
+            db: preflight.tx,
+            delivery: deps.lifecycleDedupers.turnRequestDelivery,
+            hub: deps.hub,
+            logger: deps.logger,
+          },
+          {
+            requestId: preflight.requestId,
+            retryOfRequestId: null,
+            threadId: args.thread.id,
+          },
+        );
+      }
+      source.beforeAppendInTransaction?.(preflight);
     },
     ...(source.historyReplacement !== undefined
       ? { historyReplacement: source.historyReplacement }
@@ -742,7 +763,7 @@ async function runDispatchAttempt(
       trigger: args.trigger,
       ...(systemNotice !== null ? { systemNotice } : {}),
       ...(args.retryOf !== undefined ? { retryOf: args.retryOf } : {}),
-      beforeAppendInTransaction: ({ tx }) => {
+      beforeAppendInTransaction: ({ requestId, tx }) => {
         if (getThread(tx, thread.id)?.status !== thread.status) {
           throw new DispatchThreadStatusChangedError();
         }
@@ -751,12 +772,45 @@ async function runDispatchAttempt(
           queuedMessageId: null,
           threadId: thread.id,
         });
-        if (claimed !== null) {
-          consumeClaimedRows(
-            claimed,
-            thread.id,
-            respectManualStopPause,
-          )({ tx });
+        if (requestId === null) {
+          if (claimed !== null) {
+            consumeClaimedRowsInTransaction(tx, {
+              claimed,
+              respectManualStopPause,
+              threadId: thread.id,
+            });
+          }
+          return;
+        }
+        settleSupersededFailedTurnInputsInTransaction(
+          {
+            db: tx,
+            delivery: deps.lifecycleDedupers.turnRequestDelivery,
+            hub: deps.hub,
+            logger: deps.logger,
+          },
+          {
+            requestId,
+            retryOfRequestId: args.retryOf?.requestId ?? null,
+            threadId: thread.id,
+          },
+        );
+        if (claimed === null) {
+          submitInlineInputInTransaction(tx, {
+            message: queuedMessage,
+            requestId,
+            threadId: thread.id,
+          });
+          return;
+        }
+        if (
+          respectManualStopPause &&
+          isThreadQueueAutoSendPaused(tx, thread.id)
+        ) {
+          throw createQueuedMessageAutoSendPausedError();
+        }
+        if (!submitClaimedInputsInTransaction(tx, { claimed, requestId })) {
+          throw createQueuedMessageClaimLostError();
         }
       },
     });
@@ -802,28 +856,27 @@ function reattemptDispatchForThreadChange(
   );
 }
 
-/**
- * Consumes the rows a drain claimed, inside the same transaction that appends
- * the turn request. This is the exactly-once guarantee: the claim CAS picked
- * one winner, and the delete makes the dispatch and the consumption atomic, so
- * a double drain dispatches once and the loser finds nothing to claim.
- */
-function consumeClaimedRows(
-  claimed: readonly ClaimedQueuedThreadMessageRow[],
-  threadId: string,
-  respectManualStopPause: boolean,
-): SendThreadMessageTransactionPreflight {
-  return ({ tx }) => {
-    if (respectManualStopPause && isThreadQueueAutoSendPaused(tx, threadId)) {
-      throw createQueuedMessageAutoSendPausedError();
-    }
-    const consumed = deleteClaimedQueuedThreadMessageBatchInTransaction(tx, {
-      queuedMessages: claimed,
-    });
-    if (!consumed) {
-      throw createQueuedMessageClaimLostError();
-    }
-  };
+function consumeClaimedRowsInTransaction(
+  tx: DbTransaction,
+  args: {
+    claimed: readonly ClaimedQueuedThreadMessageRow[];
+    respectManualStopPause: boolean;
+    threadId: string;
+  },
+): void {
+  if (
+    args.respectManualStopPause &&
+    isThreadQueueAutoSendPaused(tx, args.threadId)
+  ) {
+    throw createQueuedMessageAutoSendPausedError();
+  }
+  if (
+    !deleteClaimedQueuedThreadMessageBatchInTransaction(tx, {
+      queuedMessages: args.claimed,
+    })
+  ) {
+    throw createQueuedMessageClaimLostError();
+  }
 }
 
 interface AdmitPendingThreadArgs {
@@ -898,11 +951,11 @@ async function admitPendingThread(
         // so the row stays claimed for the caller to hand back rather than
         // being deleted under a message that never dispatched.
         if (args.claimed !== null && args.claimed.length > 0) {
-          consumeClaimedRows(
-            args.claimed,
-            args.thread.id,
-            args.respectManualStopPause,
-          )({ tx });
+          consumeClaimedRowsInTransaction(tx, {
+            claimed: args.claimed,
+            respectManualStopPause: args.respectManualStopPause,
+            threadId: args.thread.id,
+          });
         }
         recordInboxReceiptInTransaction(tx, {
           idempotencyKey: args.idempotencyKey,

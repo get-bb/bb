@@ -23,6 +23,7 @@ import type {
   ProviderUsageResult,
   SkillsConfigureRoot,
 } from "@bb/provider-bridge-protocol";
+import type { RuntimeOpenBackgroundWork } from "./runtime-background-work-state.js";
 
 export type AgentRuntimeShellEnvironment = Record<string, string>;
 
@@ -369,6 +370,8 @@ export interface AgentRuntime {
   getLiveThreadIds(): string[];
 
   hasOpenBackgroundWork(): boolean;
+
+  listOpenBackgroundWork(): RuntimeOpenBackgroundWork[];
 
   shutdown(): Promise<void>;
 }

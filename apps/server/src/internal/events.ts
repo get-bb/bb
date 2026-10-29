@@ -1,4 +1,6 @@
 import { performance } from "node:perf_hooks";
+import { acceptSubmittedInputsInTransaction } from "../services/threads/input-ledger.js";
+import { stopTurnThatOutlivedItsRun } from "../services/threads/thread-lifecycle.js";
 import { Buffer } from "node:buffer";
 import { and, desc, eq, gt, lt, sql } from "drizzle-orm";
 import {
@@ -60,7 +62,10 @@ import {
   isCommandTimeoutError,
   runtimeErrorLogFields,
 } from "../services/lib/error-log-fields.js";
-import { applyLoggedThreadLifecycleEvent } from "../services/threads/lifecycle-outcome.js";
+import {
+  applyLoggedThreadLifecycleEvent,
+  closeOpenTurnInTransaction,
+} from "../services/threads/lifecycle-outcome.js";
 import { dropSettledThreadSessionOptionSelections } from "../services/threads/thread-session-options.js";
 import { rememberSessionModelCatalog } from "../services/providers/session-model-catalog.js";
 import { applyTurnCompletedEvent } from "./turn-completed-events.js";
@@ -430,6 +435,12 @@ async function applyEventEffects(
             turnId,
           })
         ) {
+          if (isRootTurnStartedEvent(event)) {
+            stopTurnThatOutlivedItsRun(deps, {
+              threadId: entry.threadId,
+              turnId,
+            });
+          }
           continue;
         }
         if (!isRootTurnStartedEvent(event)) {
@@ -585,10 +596,21 @@ async function applyEventEffects(
           reason:
             "Provider process exited while awaiting user interaction; retry the thread to continue",
         });
+        deps.lifecycleDedupers.turnRequestDelivery.pendingStartsDropped(
+          new Set([entry.threadId]),
+        );
         const outcome = applyLoggedThreadLifecycleEvent(deps, {
           event: { type: "run.failed" },
           threadId: entry.threadId,
         });
+        deps.db.transaction(
+          (tx) =>
+            closeOpenTurnInTransaction(
+              { db: tx, logger: deps.logger },
+              { status: "failed", thread },
+            ),
+          { behavior: "immediate" },
+        );
         if (outcome.applied) {
           addParentTurnNotificationFollowUp({
             failedParentNotificationThreadIds,
@@ -1207,7 +1229,25 @@ export function registerInternalEventRoutes(app: Hono, deps: AppDeps): void {
       let appendResult: AppendDaemonEventsResult;
       try {
         appendResult = deps.db.transaction(
-          (tx) => appendDaemonEventsInTransaction(tx, eventInputs),
+          (tx) => {
+            const appended = appendDaemonEventsInTransaction(tx, eventInputs);
+            for (const entry of postableEvents) {
+              if (entry.event.type !== "turn/input/accepted") continue;
+              acceptSubmittedInputsInTransaction(
+                {
+                  db: tx,
+                  delivery: deps.lifecycleDedupers.turnRequestDelivery,
+                  hub: deps.hub,
+                  logger: deps.logger,
+                },
+                {
+                  requestId: entry.event.clientRequestId,
+                  threadId: entry.threadId,
+                },
+              );
+            }
+            return appended;
+          },
           { behavior: "immediate" },
         );
       } catch (error) {

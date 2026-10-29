@@ -344,6 +344,7 @@ describe("server move routes", () => {
           localApiPort: 38_888,
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
           activeThreads: [],
+          openThreadWork: [],
           loadedEnvironments: [],
         },
         daemonHeaders(WORKER),

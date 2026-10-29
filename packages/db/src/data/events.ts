@@ -414,8 +414,13 @@ export interface ListThreadIdsWithLatestHostDaemonRestartInterruptionArgs {
   threadIds: readonly string[];
 }
 
-export interface ListThreadIdsStoppedSinceLastTurnStartArgs {
+export interface ListThreadIdsStoppedSinceLastTurnRequestArgs {
   threadIds: readonly string[];
+}
+
+export interface HasTurnRequestSinceArgs {
+  since: number;
+  threadId: string;
 }
 
 export interface ListThreadTurnInterruptionEventStatesArgs {
@@ -2605,6 +2610,26 @@ export function hasStoredTurnStarted(
   return row !== undefined;
 }
 
+export function hasStoredTurnCompleted(
+  db: DbQueryConnection,
+  args: HasStoredTurnStartedArgs,
+): boolean {
+  const row = db
+    .select({ sequence: events.sequence })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.type, "turn/completed"),
+        eq(events.turnId, args.turnId),
+      ),
+    )
+    .limit(1)
+    .get();
+
+  return row !== undefined;
+}
+
 export interface HasStoredTerminalClientTurnRequestEventArgs {
   requestId: ClientTurnRequestId;
   threadId: string;
@@ -4182,9 +4207,29 @@ export function listThreadTurnInterruptionEventStates(
   });
 }
 
-export function listThreadIdsStoppedSinceLastTurnStart(
+export function hasTurnRequestSince(
+  db: DbConnection | DbTransaction,
+  args: HasTurnRequestSinceArgs,
+): boolean {
+  return (
+    db
+      .select({ id: events.id })
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          eq(events.type, "client/turn/requested"),
+          gte(events.createdAt, args.since),
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
+}
+
+export function listThreadIdsStoppedSinceLastTurnRequest(
   db: DbConnection,
-  args: ListThreadIdsStoppedSinceLastTurnStartArgs,
+  args: ListThreadIdsStoppedSinceLastTurnRequestArgs,
 ): string[] {
   if (args.threadIds.length === 0) {
     return [];
@@ -4197,12 +4242,26 @@ export function listThreadIdsStoppedSinceLastTurnStart(
       and(
         inArray(events.threadId, [...args.threadIds]),
         eq(events.type, "system/thread/interrupted"),
-        sql`json_extract(${events.data}, '$.reason') = 'manual-stop'`,
+        sql`json_extract(${events.data}, '$.reason') IN ('manual-stop', 'provider-turn-idle')`,
         sql`${events.sequence} = (
           SELECT MAX(latest.sequence)
           FROM events AS latest
           WHERE latest.thread_id = ${events.threadId}
-            AND latest.type IN ('turn/started', 'system/thread/interrupted')
+            AND (
+              latest.type = 'system/thread/interrupted'
+              OR (
+                latest.type = 'client/turn/requested'
+                AND NOT EXISTS (
+                  SELECT 1
+                  FROM events AS rejected
+                  WHERE rejected.thread_id = latest.thread_id
+                    AND rejected.type = 'client/turn/rejected'
+                    AND json_extract(rejected.data, '$.reason') NOT IN ('host_unavailable', 'command_timeout')
+                    AND json_extract(rejected.data, '$.requestId') =
+                      json_extract(latest.data, '$.requestId')
+                )
+              )
+            )
         )`,
       ),
     )

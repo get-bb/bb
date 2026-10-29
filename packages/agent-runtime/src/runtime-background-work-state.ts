@@ -1,5 +1,10 @@
 import type { ThreadEvent } from "@bb/domain";
 
+export interface RuntimeOpenBackgroundWork {
+  itemIds: string[];
+  threadId: string;
+}
+
 export class RuntimeBackgroundWorkState {
   private readonly openTaskIdsByThreadId = new Map<string, Set<string>>();
 
@@ -13,6 +18,13 @@ export class RuntimeBackgroundWorkState {
 
   hasOpenWork(): boolean {
     return this.openTaskIdsByThreadId.size > 0;
+  }
+
+  listOpenWork(): RuntimeOpenBackgroundWork[] {
+    return [...this.openTaskIdsByThreadId].map(([threadId, itemIds]) => ({
+      threadId,
+      itemIds: [...itemIds],
+    }));
   }
 
   hasOpenThreadWork(threadId: string): boolean {

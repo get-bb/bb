@@ -34,6 +34,10 @@ import {
   seedThread,
   seedThreadRuntimeState,
 } from "../helpers/seed.js";
+import {
+  reportQueuedCommandError,
+  waitForQueuedCommand,
+} from "../helpers/commands.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
 const WORKSPACE_PATH = "/tmp/turn-failed-project";
@@ -631,7 +635,17 @@ describe("retrying a failed turn", () => {
       });
       await sweepPastResume(harness);
 
-      failThread(harness, thread.id);
+      const retrySubmit = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "turn.submit" && command.threadId === thread.id,
+      );
+      await reportQueuedCommandError(harness, retrySubmit, {
+        errorCode: "rate_limited",
+        errorMessage: "Rate limited again",
+      });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(requireThread(harness, thread.id).status).toBe("error");
       const failedAgain = buildTurnFailedEvent(harness.db, thread.id);
       // The second failure is the RETRY's, so the policy sees attempt 2 and
       // the id of the attempt that just failed — core walks the chain back to

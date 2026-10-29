@@ -95,6 +95,7 @@ export async function installTestBuiltinPlugin(
 
 export type TestAppHarnessConfigOverrides = Partial<ServerRuntimeConfig> & {
   appUpdateService?: AppUpdateService;
+  db?: DbConnection;
   appVersionService?: AppVersionService;
   cliCommandService?: CliCommandService;
   terminalAttachTimeoutMs?: number;
@@ -171,11 +172,12 @@ export async function createTestAppHarness(
     liveCommandsClock,
     seedFirstPartyProviders = true,
     tunnelIngressNow: _tunnelIngressNow,
+    db: existingDb,
     ...configOverrides
   } = overrides;
   const logger = createTestLogger();
   const dataDir = await mkdtemp(join(tmpdir(), "bb-server-test-"));
-  const db = createTestDb();
+  const db = existingDb ?? createTestDb();
   setAppSettings(db, {
     ...getAppSettings(db),
     machineGitCredentialsEnabled: false,

@@ -4,6 +4,7 @@ import {
   hostDaemonSessions,
   listEvents,
   listQueuedThreadMessages,
+  threads,
 } from "@bb/db";
 import { eq } from "drizzle-orm";
 import { HOST_RECONNECT_GRACE_MS } from "../../src/constants.js";
@@ -16,7 +17,14 @@ import { threadScope, turnRequestEventDataSchema, turnScope } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { settleDanglingBackgroundTasks } from "../../src/services/threads/background-task-reconciliation.js";
 import { handleDaemonSocketClosed } from "../../src/internal/session-owner-side-effects.js";
-import { internalAuthHeaders } from "../helpers/commands.js";
+import { onDaemonSocketOpen } from "../../src/ws/daemon-protocol.js";
+import {
+  internalAuthHeaders,
+  listPendingQueuedCommands,
+  registerTestHostRpcCapture,
+  reportQueuedCommandError,
+  waitForQueuedCommand,
+} from "../helpers/commands.js";
 import {
   seedEnvironment,
   seedHost,
@@ -138,6 +146,7 @@ async function reopenSessionWithoutThreads(
       localApiPort: null,
       protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
       activeThreads: [],
+      openThreadWork: [],
     }),
   });
   expect(response.status).toBe(201);
@@ -347,6 +356,7 @@ describe("background-task lifecycle reconciliation triggers", () => {
           localApiPort: null,
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
           activeThreads: [],
+          openThreadWork: [],
         }),
       });
 
@@ -383,11 +393,55 @@ describe("background-task lifecycle reconciliation triggers", () => {
           localApiPort: null,
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
           activeThreads: [],
+          openThreadWork: [
+            {
+              threadId: thread.id,
+              backgroundItemIds: ["task:wf-1"],
+              interactiveRequests: [],
+            },
+          ],
         }),
       });
 
       expect(response.status).toBe(201);
       expect(listSettledBackgroundTaskItems(harness, thread.id)).toEqual([]);
+    });
+  });
+
+  it("settles a task the same daemon instance no longer runs when it reconnects", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session, thread } = seedOpenBackgroundTaskThread(harness);
+
+      closeSession(
+        harness.deps.db,
+        harness.deps.hub,
+        session.id,
+        "daemon-disconnect",
+      );
+
+      const response = await harness.app.request("/internal/session/open", {
+        method: "POST",
+        headers: internalAuthHeaders(harness, {
+          hostId: host.id,
+        }),
+        body: JSON.stringify({
+          hostId: host.id,
+          instanceId: "instance-1",
+          hostName: host.name,
+          hasMachineCredential: false,
+          platform: "darwin",
+          dataDir: "/tmp/host-daemon-task-settle-same-instance-gone",
+          localApiPort: null,
+          protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+          activeThreads: [],
+          openThreadWork: [],
+        }),
+      });
+
+      expect(response.status).toBe(201);
+      expect(listSettledBackgroundTaskItems(harness, thread.id)).toHaveLength(
+        1,
+      );
     });
   });
 
@@ -412,6 +466,13 @@ describe("background-task lifecycle reconciliation triggers", () => {
           localApiPort: null,
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
           activeThreads: [],
+          openThreadWork: [
+            {
+              threadId: thread.id,
+              backgroundItemIds: ["task:wf-1"],
+              interactiveRequests: [],
+            },
+          ],
         }),
       });
 
@@ -458,6 +519,7 @@ describe("background-task lifecycle reconciliation triggers", () => {
           localApiPort: null,
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
           activeThreads: [],
+          openThreadWork: [],
         }),
       });
 
@@ -525,7 +587,8 @@ describe("active thread disconnect reconciliation triggers", () => {
           dataDir: "/tmp/host-daemon-active-same-instance",
           localApiPort: null,
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
-          activeThreads: [{ threadId: thread.id }],
+          activeThreads: [{ activeTurnId: "turn-live-1", threadId: thread.id }],
+          openThreadWork: [],
         }),
       });
 
@@ -562,6 +625,7 @@ describe("active thread disconnect reconciliation triggers", () => {
             localApiPort: null,
             protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
             activeThreads: [],
+            openThreadWork: [],
           }),
         });
 
@@ -748,6 +812,7 @@ describe("active thread disconnect reconciliation triggers", () => {
           localApiPort: null,
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
           activeThreads: [],
+          openThreadWork: [],
           undeliveredEventThreadIds: [thread.id],
         }),
       });
@@ -836,7 +901,8 @@ describe("active thread disconnect reconciliation triggers", () => {
           dataDir: "/tmp/host-daemon-stop-after-reconnect",
           localApiPort: null,
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
-          activeThreads: [{ threadId: thread.id }],
+          activeThreads: [{ activeTurnId: "turn-live-1", threadId: thread.id }],
+          openThreadWork: [],
         }),
       });
       expect(response.status).toBe(201);
@@ -859,11 +925,234 @@ describe("active thread disconnect reconciliation triggers", () => {
     });
   });
 
-  it("revives rather than stops a thread that started a new turn after its last stop", async () => {
+  type AfterStopEvent =
+    | "definitive-rejection"
+    | "request"
+    | "turn-completed"
+    | "turn-started"
+    | "unknown-rejection";
+
+  function seedAfterStopEvent(
+    harness: TestAppHarness,
+    args: {
+      environmentId: string;
+      event: AfterStopEvent;
+      sequence: number;
+      threadId: string;
+    },
+  ): void {
+    const base = {
+      environmentId: args.environmentId,
+      sequence: args.sequence,
+      threadId: args.threadId,
+    };
+    switch (args.event) {
+      case "request":
+        seedStoredEvent(harness.deps, {
+          ...base,
+          type: "client/turn/requested",
+          scope: threadScope(),
+          data: {
+            direction: "outbound",
+            requestId: "creq_after_stop",
+            input: [{ type: "text", text: "Next task" }],
+            target: { kind: "new-turn" },
+            initiator: "user",
+            senderThreadId: null,
+            request: { method: "turn/start", params: {} },
+            source: "tell",
+          },
+        });
+        return;
+      case "unknown-rejection":
+      case "definitive-rejection":
+        seedStoredEvent(harness.deps, {
+          ...base,
+          type: "client/turn/rejected",
+          scope: threadScope(),
+          data: {
+            requestId: "creq_after_stop",
+            reason:
+              args.event === "unknown-rejection"
+                ? "host_unavailable"
+                : "provider_error",
+            message: "Refused",
+          },
+        });
+        return;
+      case "turn-started":
+        seedStoredEvent(harness.deps, {
+          ...base,
+          type: "turn/started",
+          scope: turnScope("turn-after-stop"),
+          providerThreadId: "provider-thread-after-stop",
+          data: { providerThreadId: "provider-thread-after-stop" },
+        });
+        return;
+      case "turn-completed":
+        seedStoredEvent(harness.deps, {
+          ...base,
+          type: "turn/completed",
+          scope: turnScope("turn-after-stop"),
+          providerThreadId: "provider-thread-after-stop",
+          data: {
+            providerThreadId: "provider-thread-after-stop",
+            status: "interrupted",
+          },
+        });
+        return;
+    }
+  }
+
+  async function reopenAfterStopFollowedBy(
+    harness: TestAppHarness,
+    args: {
+      activeTurnId: string | null;
+      afterStop: readonly AfterStopEvent[];
+      status: "error" | "idle";
+    },
+  ): Promise<{
+    environmentId: string;
+    nextSequence: number;
+    threadId: string;
+  }> {
+    const { environment, host, session, thread } = seedThreadFixture(harness, {
+      thread: { status: args.status },
+    });
+    seedStoredEvent(harness.deps, {
+      threadId: thread.id,
+      environmentId: environment.id,
+      sequence: 1,
+      type: "system/thread/interrupted",
+      scope: threadScope(),
+      data: { reason: "manual-stop" },
+    });
+    args.afterStop.forEach((event, index) =>
+      seedAfterStopEvent(harness, {
+        environmentId: environment.id,
+        event,
+        sequence: index + 2,
+        threadId: thread.id,
+      }),
+    );
+    handleDaemonSocketClosed(harness.deps, { sessionId: session.id });
+    harness.hub.cancelPendingDaemonDisconnect(session.id);
+
+    const response = await harness.app.request("/internal/session/open", {
+      method: "POST",
+      headers: internalAuthHeaders(harness, { hostId: host.id }),
+      body: JSON.stringify({
+        hostId: host.id,
+        instanceId: session.instanceId,
+        hostName: host.name,
+        hasMachineCredential: false,
+        platform: "darwin",
+        dataDir: "/tmp/host-daemon-reopen-after-stop",
+        localApiPort: null,
+        protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+        activeThreads: [
+          { activeTurnId: args.activeTurnId, threadId: thread.id },
+        ],
+        openThreadWork: [],
+      }),
+    });
+    expect(response.status).toBe(201);
+    const { sessionId } = (await response.json()) as { sessionId: string };
+    registerTestHostRpcCapture(harness, { hostId: host.id, sessionId });
+    return {
+      environmentId: environment.id,
+      nextSequence: args.afterStop.length + 2,
+      threadId: thread.id,
+    };
+  }
+
+  function threadStopCommands(harness: TestAppHarness, threadId: string) {
+    return listPendingQueuedCommands(harness).filter(
+      ({ command }) =>
+        command.type === "thread.stop" && command.threadId === threadId,
+    );
+  }
+
+  it.each([
+    {
+      activeTurnId: "turn-after-stop",
+      afterStop: ["request", "turn-started"],
+      case: "a new request started a turn",
+    },
+    {
+      activeTurnId: null,
+      afterStop: ["request", "unknown-rejection"],
+      case: "a new request may have reached the daemon before the connection dropped",
+    },
+  ] as const)(
+    "revives rather than stops a thread when $case after its last stop",
+    async ({ activeTurnId, afterStop }) => {
+      await withTestHarness(async (harness) => {
+        const { threadId } = await reopenAfterStopFollowedBy(harness, {
+          activeTurnId,
+          afterStop,
+          status: "idle",
+        });
+
+        expect(getThread(harness.deps.db, threadId)?.status).toBe("active");
+        expect(threadStopCommands(harness, threadId)).toEqual([]);
+      });
+    },
+  );
+
+  it.each([
+    {
+      activeTurnId: "turn-after-stop",
+      afterStop: ["turn-started"],
+      case: "the provider started a turn after the stop",
+      status: "idle",
+    },
+    {
+      activeTurnId: "turn-after-stop",
+      afterStop: ["turn-started"],
+      case: "the provider started a turn after the stop",
+      status: "error",
+    },
+    {
+      activeTurnId: null,
+      afterStop: ["request", "definitive-rejection"],
+      case: "the only later request was refused",
+      status: "error",
+    },
+    {
+      activeTurnId: "turn-after-stop",
+      afterStop: [
+        "turn-started",
+        "turn-completed",
+        "request",
+        "unknown-rejection",
+      ],
+      case: "the daemon still runs a turn the server already closed",
+      status: "error",
+    },
+  ] as const)(
+    "stops a $status thread again when $case",
+    async ({ activeTurnId, afterStop, status }) => {
+      await withTestHarness(async (harness) => {
+        const { threadId } = await reopenAfterStopFollowedBy(harness, {
+          activeTurnId,
+          afterStop,
+          status,
+        });
+
+        await vi.waitFor(() =>
+          expect(threadStopCommands(harness, threadId)).toHaveLength(1),
+        );
+        expect(getThread(harness.deps.db, threadId)?.status).toBe(status);
+      });
+    },
+  );
+
+  it("re-sends a stop that failed because the daemon's socket opened late", async () => {
     await withTestHarness(async (harness) => {
       const { environment, host, session, thread } = seedThreadFixture(
         harness,
-        { thread: { status: "idle" } },
+        { thread: { status: "error" } },
       );
       seedStoredEvent(harness.deps, {
         threadId: thread.id,
@@ -873,17 +1162,19 @@ describe("active thread disconnect reconciliation triggers", () => {
         scope: threadScope(),
         data: { reason: "manual-stop" },
       });
-      seedStoredEvent(harness.deps, {
-        threadId: thread.id,
-        environmentId: environment.id,
-        sequence: 2,
-        type: "turn/started",
-        scope: turnScope("turn-after-stop"),
-        providerThreadId: "provider-thread-after-stop",
-        data: { providerThreadId: "provider-thread-after-stop" },
-      });
+      (["turn-started", "turn-completed"] as const).forEach((event, index) =>
+        seedAfterStopEvent(harness, {
+          environmentId: environment.id,
+          event,
+          sequence: index + 2,
+          threadId: thread.id,
+        }),
+      );
       handleDaemonSocketClosed(harness.deps, { sessionId: session.id });
       harness.hub.cancelPendingDaemonDisconnect(session.id);
+      const socketWait = vi
+        .spyOn(harness.hub, "waitForDaemonForHost")
+        .mockResolvedValue(false);
 
       const response = await harness.app.request("/internal/session/open", {
         method: "POST",
@@ -894,15 +1185,93 @@ describe("active thread disconnect reconciliation triggers", () => {
           hostName: host.name,
           hasMachineCredential: false,
           platform: "darwin",
-          dataDir: "/tmp/host-daemon-revive-after-new-turn",
+          dataDir: "/tmp/host-daemon-slow-socket-stop",
           localApiPort: null,
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
-          activeThreads: [{ threadId: thread.id }],
+          activeThreads: [
+            { activeTurnId: "turn-after-stop", threadId: thread.id },
+          ],
+          openThreadWork: [],
+        }),
+      });
+      expect(response.status).toBe(201);
+      const { sessionId } = (await response.json()) as { sessionId: string };
+      await vi.waitFor(() => expect(socketWait).toHaveBeenCalled());
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      socketWait.mockRestore();
+      expect(threadStopCommands(harness, thread.id)).toEqual([]);
+
+      onDaemonSocketOpen(harness.deps, {
+        hostId: host.id,
+        sessionId,
+        socket: registerTestHostRpcCapture(harness, {
+          hostId: host.id,
+          sessionId,
         }),
       });
 
-      expect(response.status).toBe(201);
-      expect(getThread(harness.deps.db, thread.id)?.status).toBe("active");
+      await vi.waitFor(() =>
+        expect(threadStopCommands(harness, thread.id)).toHaveLength(1),
+      );
+    });
+  });
+
+  it("leaves a run the user started after a re-sent stop alone when that stop fails", async () => {
+    await withTestHarness(async (harness) => {
+      const { environmentId, nextSequence, threadId } =
+        await reopenAfterStopFollowedBy(harness, {
+          activeTurnId: "turn-after-stop",
+          afterStop: ["turn-started"],
+          status: "error",
+        });
+      const stop = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.stop" && command.threadId === threadId,
+      );
+      seedStoredEvent(harness.deps, {
+        threadId,
+        environmentId,
+        sequence: nextSequence,
+        type: "client/turn/requested",
+        scope: threadScope(),
+        data: {
+          direction: "outbound",
+          requestId: "creq_new_run",
+          input: [{ type: "text", text: "Start over" }],
+          target: { kind: "new-turn" },
+          initiator: "user",
+          senderThreadId: null,
+          request: { method: "turn/start", params: {} },
+          source: "tell",
+        },
+      });
+      seedStoredEvent(harness.deps, {
+        threadId,
+        environmentId,
+        sequence: nextSequence + 1,
+        type: "turn/started",
+        scope: turnScope("turn-new-run"),
+        providerThreadId: "provider-thread-after-stop",
+        data: { providerThreadId: "provider-thread-after-stop" },
+      });
+      harness.deps.db
+        .update(threads)
+        .set({ status: "active" })
+        .where(eq(threads.id, threadId))
+        .run();
+
+      await reportQueuedCommandError(harness, stop, {
+        errorCode: "command_timeout",
+        errorMessage: "Timed out waiting for command result",
+      });
+
+      expect(getThread(harness.deps.db, threadId)?.status).toBe("active");
+      expect(
+        listEvents(harness.deps.db, { threadId })
+          .filter((row) => row.turnId === "turn-new-run")
+          .map((row) => row.type),
+      ).toEqual(["turn/started"]);
     });
   });
 

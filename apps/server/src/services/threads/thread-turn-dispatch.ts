@@ -1,4 +1,5 @@
 import type {
+  ClientTurnRequestId,
   PromptInput,
   ResolvedThreadExecutionOptions,
   SystemMessageKind,
@@ -26,7 +27,10 @@ export interface ReadyThreadEnvironment extends EnvironmentRow {
 }
 
 interface DispatchTurnDuringReprovisionArgs {
-  beforeRequestAppendInTransaction?: (args: { tx: DbTransaction }) => void;
+  beforeRequestAppendInTransaction?: (args: {
+    requestId: ClientTurnRequestId;
+    tx: DbTransaction;
+  }) => void;
   deps: LoggedPendingInteractionWorkSessionDeps;
   environment: EnvironmentRow;
   execution: ResolvedThreadExecutionOptions;
@@ -70,8 +74,8 @@ export async function dispatchTurnDuringReprovision(
     args.environment.status !== "destroyed"
   ) {
     requestThreadTargetReprovision(args.deps, {
-      beforeRequestAppendInTransaction: ({ tx }) => {
-        args.beforeRequestAppendInTransaction?.({ tx });
+      beforeRequestAppendInTransaction: ({ requestId, tx }) => {
+        args.beforeRequestAppendInTransaction?.({ requestId, tx });
         const prepared = applyLoggedThreadLifecycleEventInTransaction(
           { db: tx, logger: args.deps.logger },
           { event: { type: "run.preparing" }, threadId: args.thread.id },

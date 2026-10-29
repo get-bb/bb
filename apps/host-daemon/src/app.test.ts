@@ -11,6 +11,7 @@ import {
 import {
   hostDaemonEventBatchRequestSchema,
   hostDaemonInteractiveInterruptRequestSchema,
+  type HostDaemonInteractiveRequestKey,
   type HostDaemonInteractiveRequestResponse,
   type HostDaemonContributedEnvEntry,
   type HostDaemonOnlineRpcCommand,
@@ -58,6 +59,7 @@ interface CreateFetchRecorderArgs {
   interruptResponses?: Array<() => Response>;
   retiredEnvironmentIds?: string[];
   sessionIds?: string[];
+  endedInteractiveRequestsOnReconnect?: HostDaemonInteractiveRequestKey[];
 }
 
 interface RuntimeOptionsRef {
@@ -141,6 +143,10 @@ function createFetchRecorder(
           heartbeatIntervalMs: 30000,
           leaseTimeoutMs: 90000,
           retiredEnvironmentIds: args.retiredEnvironmentIds ?? [],
+          endedInteractiveRequests:
+            sessionOpenCount > 1
+              ? (args.endedInteractiveRequestsOnReconnect ?? [])
+              : [],
         },
         { status: 201 },
       );
@@ -315,6 +321,9 @@ function createFakeRuntime(): AgentRuntime {
     },
     hasOpenBackgroundWork() {
       return false;
+    },
+    listOpenBackgroundWork() {
+      return [];
     },
     async shutdown() {},
   };
@@ -1076,6 +1085,70 @@ describe("createHostDaemonApp", () => {
         },
         "Server reported inactive daemon session; reconnecting",
       );
+    } finally {
+      await app.daemon.shutdown("test", 0);
+    }
+  });
+
+  it("reports an open provider question on reconnect and ends it when the server closed it", async () => {
+    const request = createCommandApprovalRequest();
+    const key = {
+      threadId: request.threadId,
+      providerId: request.providerId,
+      providerThreadId: request.providerThreadId,
+      providerRequestId: request.providerRequestId,
+    };
+    const { app, fetchRecorder, runtimeOptions } = await createAppFixture({
+      inactiveSessionOnFirstEventPost: true,
+      sessionIds: ["session-app-test-1", "session-app-test-2"],
+      endedInteractiveRequestsOnReconnect: [key],
+    });
+    try {
+      await app.connection.start();
+      await app.runtimeManager.ensureEnvironment({
+        environmentId: "env-app-ended-question",
+        workspacePath: await makeTempDir("bb-host-daemon-app-ended-"),
+      });
+      const options = runtimeOptions.current;
+      if (!options?.onInteractiveRequest) {
+        throw new Error("Expected runtime callbacks to be captured");
+      }
+      const pending = options.onInteractiveRequest(request);
+      const rejection = expect(pending).rejects.toMatchObject({
+        code: "interactive_request_ended",
+      });
+      await vi.waitFor(() => {
+        expect(
+          fetchRecorder.requests.filter(
+            (record) =>
+              record.pathname === "/internal/session/interactive-request",
+          ),
+        ).toHaveLength(1);
+      });
+
+      app.eventSink.emit({
+        threadId: request.threadId,
+        event: {
+          type: "turn/started",
+          threadId: request.threadId,
+          providerThreadId: request.providerThreadId,
+          scope: turnScope(request.turnId),
+        },
+      });
+
+      await rejection;
+      const reopened = fetchRecorder.requests
+        .filter((record) => record.pathname === "/internal/session/open")
+        .map((record) => JSON.parse(record.body ?? "{}"));
+      expect(reopened[1]).toMatchObject({
+        openThreadWork: [
+          {
+            threadId: request.threadId,
+            backgroundItemIds: [],
+            interactiveRequests: [key],
+          },
+        ],
+      });
     } finally {
       await app.daemon.shutdown("test", 0);
     }

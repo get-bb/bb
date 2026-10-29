@@ -3,6 +3,7 @@ import {
   THREAD_PRUNING_SWEEP_LIMITS,
   type ThreadPruningSweepLimits,
 } from "./thread-pruning-sweep.js";
+import { returnUnsettledSubmittedInputs } from "../threads/input-ledger.js";
 import {
   PROJECT_ATTACHMENT_BACKFILL_LIMITS,
   runProjectAttachmentBackfill,
@@ -59,6 +60,7 @@ import {
   hasLiveThreadStartInFlight,
   requestThreadStopForCurrentState,
   requestThreadStorageDeletion,
+  stopRunsWhoseTurnNeverStarted,
 } from "../threads/thread-lifecycle.js";
 import {
   archiveUndoGraceKeepsTerminals,
@@ -351,7 +353,7 @@ async function runThreadProvisioningOrphanCleanupSweep(
 
   for (const thread of provisioningThreads) {
     try {
-      if (hasLiveThreadStartInFlight(thread.id)) {
+      if (hasLiveThreadStartInFlight(deps, thread.id)) {
         continue;
       }
       await advanceThreadProvisioning(deps, {
@@ -575,6 +577,22 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     category: "orphan-cleanup",
     name: "thread-provisioning-orphan-cleanup",
     run: runThreadProvisioningOrphanCleanupSweep,
+  },
+  {
+    cadenceMs: 0,
+    category: "orphan-cleanup",
+    name: "turn-start-deadline",
+    run: (deps, now) => {
+      stopRunsWhoseTurnNeverStarted(deps, now);
+    },
+  },
+  {
+    cadenceMs: 0,
+    category: "durable-intent-retry",
+    name: "unsettled-submitted-input-return",
+    run: (deps, now) => {
+      returnUnsettledSubmittedInputs(deps, now);
+    },
   },
   {
     cadenceMs: 0,

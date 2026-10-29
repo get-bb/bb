@@ -348,6 +348,7 @@ export class ServerConnection {
         dataDir: this.options.dataDir,
         localApiPort: this.options.localApiPort,
         activeThreads: this.options.getActiveThreads?.() ?? [],
+        openThreadWork: this.options.getOpenThreadWork?.() ?? [],
         undeliveredEventThreadIds:
           this.options.getUndeliveredEventThreadIds?.() ?? [],
         loadedEnvironments: this.options.getLoadedEnvironments?.() ?? [],
@@ -623,6 +624,14 @@ export class ServerConnection {
 
     if (message.data.type === "session-close") {
       this.handleSessionCloseMessage(message.data.reason);
+      return;
+    }
+
+    if (message.data.type === "interactive-requests.end") {
+      this.options.onInteractiveRequestsEnded?.({
+        reason: message.data.reason,
+        requests: message.data.requests,
+      });
       return;
     }
 

@@ -223,6 +223,7 @@ function createFakeRuntime() {
       ]),
     ],
     hasOpenBackgroundWork: () => openBackgroundWork,
+    listOpenBackgroundWork: () => [],
     shutdown: vi.fn(async () => undefined),
     endActiveTurn: (threadId) => {
       activeTurnsByThreadId.delete(threadId);
@@ -1679,9 +1680,11 @@ describe("RuntimeManager", () => {
     runtime.setPendingTurnStart("thread-2", true);
     expect(manager.listActiveThreads()).toEqual([
       {
+        activeTurnId: "turn-1",
         threadId: "thread-1",
       },
       {
+        activeTurnId: null,
         threadId: "thread-2",
       },
     ]);

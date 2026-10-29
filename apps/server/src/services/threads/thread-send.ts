@@ -131,6 +131,7 @@ interface BuildAgentThreadMessageTextArgs {
 }
 
 interface SendThreadMessageTransactionPreflightArgs {
+  requestId: ClientTurnRequestId | null;
   tx: DbTransaction;
 }
 
@@ -174,6 +175,14 @@ interface AppendAndQueueSendThreadMessageArgs {
 interface AppendAndQueueSendThreadMessageResult {
   activeThread: Thread | null;
   request: AppendedClientTurnRequestWithNotification;
+}
+
+function submitOutcomeForError(error: Error): "refused" | "unknown" {
+  return error instanceof ApiError &&
+    (error.body.code === "host_unavailable" ||
+      error.body.code === "command_timeout")
+    ? "unknown"
+    : "refused";
 }
 
 export function ensureThreadIsNotAwaitingUserInteraction(
@@ -429,7 +438,7 @@ function appendAndQueueSendThreadMessageInTransaction({
   const request = db.transaction(
     (tx) => {
       assertThreadHostAcceptsWork(tx, thread);
-      beforeAppendInTransaction?.({ tx });
+      beforeAppendInTransaction?.({ requestId, tx });
       const appended =
         appendPreparedClientTurnRequestedEventWithNotificationInTransaction(
           tx,
@@ -487,7 +496,10 @@ export async function sendThreadMessage(
   if (isStandaloneBuiltinClearCommand(args.payload.input)) {
     await clearThreadContext(deps, {
       ...(args.beforeAppendInTransaction !== undefined
-        ? { beforeCommitInTransaction: args.beforeAppendInTransaction }
+        ? {
+            beforeCommitInTransaction: ({ tx }) =>
+              args.beforeAppendInTransaction?.({ requestId: null, tx }),
+          }
         : {}),
       environment: args.environment,
       thread: args.thread,
@@ -543,17 +555,20 @@ async function sendThreadMessageWithoutContextClear(
   const deferredFirstTurnContext = resolveDeferredFirstTurnContext(
     deps.db,
     thread.id,
+    deps.lifecycleDedupers.turnRequestDelivery,
   );
   ({ input, inputGroups } = prependDeferredFirstTurnContext(
     { input, ...(inputGroups !== undefined ? { inputGroups } : {}) },
     deferredFirstTurnContext,
   ));
   const beforeAppendInTransaction: SendThreadMessageTransactionPreflight = ({
+    requestId,
     tx,
   }) => {
-    args.beforeAppendInTransaction?.({ tx });
+    args.beforeAppendInTransaction?.({ requestId, tx });
     if (deferredFirstTurnContext) {
       requireDeferredFirstTurnContextCurrent(tx, {
+        delivery: deps.lifecycleDedupers.turnRequestDelivery,
         requestSequence: deferredFirstTurnContext.requestSequence,
         threadId: thread.id,
       });
@@ -710,8 +725,8 @@ async function sendThreadMessageWithoutContextClear(
       : await prepareReadyThreadTurnCommand(deps, commandArgs);
     const queuedRequest = appendAndQueueSendThreadMessageInTransaction({
       ...(args.retryOf !== undefined ? { retryOf: args.retryOf } : {}),
-      beforeAppendInTransaction: ({ tx }) => {
-        beforeAppendInTransaction({ tx });
+      beforeAppendInTransaction: (preflight) => {
+        beforeAppendInTransaction(preflight);
         ensureThreadCanStartRequest(thread);
       },
       db: deps.db,
@@ -750,14 +765,25 @@ async function sendThreadMessageWithoutContextClear(
       queuedRequest.request.notificationChanges,
       queuedRequest.request.notificationMetadata,
     );
+    deps.lifecycleDedupers.turnRequestDelivery.submitted({
+      requestId,
+      threadId: thread.id,
+    });
+    const onHistoryReplacementSettled =
+      args.historyReplacement?.onCommandSettled;
     startLiveHostCommand(deps, {
       command: command.command,
       hostId: readyEnvironment.hostId,
       timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
-      ...(args.historyReplacement?.onCommandSettled !== undefined
-        ? { onSettled: args.historyReplacement.onCommandSettled }
-        : {}),
+      onSettled: async () => {
+        deps.lifecycleDedupers.turnRequestDelivery.settled(requestId, "sent");
+        await onHistoryReplacementSettled?.();
+      },
       onError: ({ error }) => {
+        deps.lifecycleDedupers.turnRequestDelivery.settled(
+          requestId,
+          submitOutcomeForError(error),
+        );
         deps.logger.warn(
           { err: error, threadId: thread.id },
           "Live ready turn command failed",
@@ -829,11 +855,21 @@ async function sendThreadMessageWithoutContextClear(
     queuedRequest.request.notificationChanges,
     queuedRequest.request.notificationMetadata,
   );
+  deps.lifecycleDedupers.turnRequestDelivery.submitted({
+    requestId,
+    threadId: thread.id,
+  });
   startLiveHostCommand(deps, {
     command,
     hostId: readyEnvironment.hostId,
     timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
+    onSettled: () =>
+      deps.lifecycleDedupers.turnRequestDelivery.settled(requestId, "sent"),
     onError: ({ error }) => {
+      deps.lifecycleDedupers.turnRequestDelivery.settled(
+        requestId,
+        submitOutcomeForError(error),
+      );
       deps.logger.warn(
         { err: error, threadId: thread.id },
         "Live turn submit command failed",

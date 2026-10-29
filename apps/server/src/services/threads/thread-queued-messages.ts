@@ -9,7 +9,7 @@ import type {
   PromptInput,
   QueuedMessagePayload,
   QueuedMessagePayloadKind,
-  QueuedMessageState,
+  QueuedMessageRowState,
   QueuedMessageSystemNotice,
   QueuedMessageWaitingOn,
   StartedOnBehalfOf,
@@ -39,7 +39,7 @@ interface StoredQueuedThreadMessageRow {
   sendAt: number | null;
   serviceTier: string;
   senderThreadId: string | null;
-  state: QueuedMessageState;
+  state: QueuedMessageRowState;
   requestedByInitiator: StartedOnBehalfOfInitiator | null;
   requestedByThreadId: string | null;
   systemNotice: string | null;

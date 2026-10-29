@@ -990,6 +990,7 @@ it("resumes workspace setup when the same daemon reconnects", async () => {
         localApiPort: null,
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
         activeThreads: [],
+        openThreadWork: [],
       }),
     });
     expect(response.status).toBe(201);

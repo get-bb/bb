@@ -19,7 +19,11 @@ import { startHostDaemonHealthMonitor } from "./host-daemon-health-monitor.js";
 import { startLocalApiServer, type LocalApiServer } from "./local-api.js";
 import type { HostDaemonLocalApiConfig } from "./local-api-config.js";
 import type { HostDaemonLogger } from "./logger.js";
-import type { HostDaemonDaemonWsMessage } from "@bb/host-daemon-contract";
+import type {
+  HostDaemonDaemonWsMessage,
+  HostDaemonInteractiveRequestKey,
+  HostDaemonOpenThreadWork,
+} from "@bb/host-daemon-contract";
 import {
   RuntimeManager,
   type RuntimeManagerReapIdleProviderSessionsArgs,
@@ -55,7 +59,11 @@ import {
   createRuntimeShellEnvCache,
   type RuntimeShellEnvRefreshArgs,
 } from "./runtime-shell-env-cache.js";
-import type { AgentRuntime, AgentRuntimeOptions } from "@bb/agent-runtime";
+import type {
+  AgentRuntime,
+  AgentRuntimeOptions,
+  RuntimeOpenBackgroundWork,
+} from "@bb/agent-runtime";
 import { createProtocolSelfUpdater } from "./protocol-self-update.js";
 import {
   disposeParcelWatcherBackend,
@@ -77,6 +85,33 @@ const INTERACTIVE_INTERRUPT_RETRY_DELAY_MS = 1_000;
 const INTERACTIVE_INTERRUPT_MAX_RETRY_DELAY_MS = 60_000;
 const IDLE_PROVIDER_SESSION_REAP_INTERVAL_MS = 5 * 60 * 1000;
 const RUNTIME_SHELL_ENV_REFRESH_TTL_MS = 10_000;
+const ENDED_INTERACTIVE_REQUEST_REASON =
+  "The question was closed while the host was disconnected";
+
+function collectOpenThreadWork(args: {
+  backgroundWork: readonly RuntimeOpenBackgroundWork[];
+  interactiveRequests: readonly HostDaemonInteractiveRequestKey[];
+}): HostDaemonOpenThreadWork[] {
+  const byThreadId = new Map<string, HostDaemonOpenThreadWork>();
+  const threadWork = (threadId: string): HostDaemonOpenThreadWork => {
+    const existing = byThreadId.get(threadId);
+    if (existing) return existing;
+    const created: HostDaemonOpenThreadWork = {
+      threadId,
+      backgroundItemIds: [],
+      interactiveRequests: [],
+    };
+    byThreadId.set(threadId, created);
+    return created;
+  };
+  for (const work of args.backgroundWork) {
+    threadWork(work.threadId).backgroundItemIds.push(...work.itemIds);
+  }
+  for (const request of args.interactiveRequests) {
+    threadWork(request.threadId).interactiveRequests.push(request);
+  }
+  return [...byThreadId.values()];
+}
 
 interface IdleProviderSessionReaperTimer {
   clear(): void;
@@ -871,6 +906,8 @@ export async function createHostDaemonApp(
     }),
     onSelfUpdateInstalled: () => requestDaemonRestart(),
     onMachineShutdown: () => requestMachineShutdown(),
+    onInteractiveRequestsEnded: ({ reason, requests }) =>
+      interactiveRequestRegistry.endRequests(requests, reason),
     onServerMoved: (notice) => serverMove.handleServerMoved(notice),
     onMachineEnvironment: (environment) =>
       machineEnvironment.replace(environment.entries),
@@ -879,6 +916,11 @@ export async function createHostDaemonApp(
     createWebSocket: options.createWebSocket,
     getActiveThreads: () => runtimeManager.listActiveThreads(),
     getUndeliveredEventThreadIds: () => eventSink.listUndeliveredThreadIds(),
+    getOpenThreadWork: () =>
+      collectOpenThreadWork({
+        backgroundWork: runtimeManager.listOpenBackgroundWork(),
+        interactiveRequests: interactiveRequestRegistry.listOpenRequests(),
+      }),
     getLoadedEnvironments: () => runtimeManager.listLoadedEnvironments(),
     onHostRpcRequest: async (message) => {
       const response = await router.handleOnlineRpcRequest(message);
@@ -908,6 +950,19 @@ export async function createHostDaemonApp(
     onTerminalMessage: (message) => terminalManager.handleMessage(message),
     onSessionOpened: async (session) => {
       sessionState.value = session.sessionId;
+      if (session.endedInteractiveRequests.length > 0) {
+        interactiveRequestRegistry.endRequests(
+          session.endedInteractiveRequests,
+          ENDED_INTERACTIVE_REQUEST_REASON,
+        );
+        options.logger.info(
+          {
+            requests: session.endedInteractiveRequests,
+            sessionId: session.sessionId,
+          },
+          "Ended provider questions the server no longer waits on",
+        );
+      }
       connectTunnel.replaceAuthoritativeShareSet(session.connectShares);
       machineNextTunnel.replaceAuthoritative(session.connectNext);
       void machineNextTunnel.setPorts(connectTunnel.status().ports);
