@@ -1,10 +1,12 @@
+import type { TerminalSession } from "@bb/server-contract";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { PluginSettingsPage } from "@/components/plugin/PluginSettings";
 import {
   PLUGINS_BROWSE_PANEL_STATE_ID,
   takeLegacyPluginWorkspaceTabs,
 } from "@/components/plugin/plugin-workspace-state";
-import { usePluginDetailRenderableTab } from "@/components/plugin/plugin-detail-navigation";
+import { PluginDetailTabContent } from "@/components/plugin/plugin-detail-navigation";
+import { usePanelTabPresenter } from "@/components/secondary-panel/usePanelTabPresenter";
 import { useThreadFileTabs } from "@/components/secondary-panel/useThreadFileTabs";
 import {
   useFixedPanelTabsState,
@@ -473,6 +475,8 @@ export function PluginDetailPaneView({ pluginId }: { pluginId: string }) {
   );
 }
 
+const NO_TERMINALS: ReadonlyMap<string, TerminalSession> = new Map();
+
 export function PluginsView({ detailKey }: { detailKey?: string } = {}) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -615,17 +619,23 @@ export function PluginsView({ detailKey }: { detailKey?: string } = {}) {
   useEffect(() => {
     return getBbDesktopInfo()?.onCloseWindowRequest?.(closeActiveTab);
   }, [closeActiveTab]);
-  const renderPluginDetailTab = usePluginDetailRenderableTab(detailTabs);
+  const presentPanelTab = usePanelTabPresenter({
+    tabs: detailTabs,
+    terminalsById: NO_TERMINALS,
+    pluginActions: [],
+  });
   const panelTabs = useMemo<readonly SecondaryPanelRenderableTab[]>(
     () =>
-      detailTabs.map((tab) =>
-        renderPluginDetailTab({
-          tab,
-          onSelect: () => selectPlugin(tab.detailKey),
-          onClose: () => closeTab(tab.detailKey),
-        }),
-      ),
-    [closeTab, detailTabs, renderPluginDetailTab, selectPlugin],
+      detailTabs.map((tab) => ({
+        ...presentPanelTab(tab),
+        tab,
+        renderContent: () => (
+          <PluginDetailTabContent detailKey={tab.detailKey} />
+        ),
+        onSelect: () => selectPlugin(tab.detailKey),
+        onClose: () => closeTab(tab.detailKey),
+      })),
+    [closeTab, detailTabs, presentPanelTab, selectPlugin],
   );
   const activeTab =
     detailTabs.find((tab) => tab.detailKey === activePluginId) ?? null;

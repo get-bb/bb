@@ -1,4 +1,3 @@
-import { BrowserTabIcon } from "../secondary-panel/BrowserTabIcon";
 import {
   useCallback,
   useEffect,
@@ -25,7 +24,7 @@ import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { Icon } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
-import { PluginIcon, PluginItemIcon } from "@/components/plugin/PluginIcon";
+import { PluginItemIcon } from "@/components/plugin/PluginIcon";
 import { RIGHT_PANEL_TOGGLE_ICON_NAME } from "@/components/secondary-panel/panelToggleControlState";
 import { SecondaryPanelLayout } from "@/components/secondary-panel/SecondaryPanelLayout";
 import { getPluginPageSecondaryPanelWidthPercentAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
@@ -57,10 +56,7 @@ import {
   type TerminalFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
 import { createFileOpenerOriginalTab } from "./file-opener-tabs";
-import {
-  activateSecondaryPanelTabInState,
-  getEnvironmentFilePreviewSourceRef,
-} from "@bb/client-core";
+import { activateSecondaryPanelTabInState } from "@bb/client-core";
 import {
   terminalQueryScopeForTarget,
   useTerminals,
@@ -76,7 +72,6 @@ import {
   MACOS_TITLE_BAR_TRAILING_TOGGLE_CLASS,
 } from "@/lib/bb-desktop";
 import { useIsSidebarFramed } from "@/components/ui/sidebar.js";
-import { getBrowserUrlHost } from "@/lib/browser-url";
 import { UrlOpenRoutingProvider } from "@/lib/url-open-routing";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { AppNavigationHostProvider } from "@/lib/app-navigation-host";
@@ -95,7 +90,8 @@ import {
 import { getPluginPagePanelStateId } from "./plugin-page-panel-state";
 import { PluginPanelTabContent } from "./PluginPanelActions";
 import { PluginDetailRouteNavigationProvider } from "@/components/ui/app-route-anchor";
-import { usePluginDetailRenderableTab } from "./plugin-detail-navigation";
+import { PluginDetailTabContent } from "./plugin-detail-navigation";
+import { usePanelTabPresenter } from "@/components/secondary-panel/usePanelTabPresenter";
 
 const EMPTY_TERMINAL_HOSTS: readonly Host[] = [];
 const RIGHT_PANEL_TOGGLE_CLASS = `${COARSE_POINTER_HEADER_ICON_BUTTON_CLASS} ${CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS}`;
@@ -595,6 +591,8 @@ export function PluginPanelRightPanelHost({
   const renderPanelTabContent = useCallback(
     function renderTabContent(tab: SecondaryFileFixedPanelTab): ReactNode {
       switch (tab.kind) {
+        case "plugin-detail":
+          return <PluginDetailTabContent detailKey={tab.detailKey} />;
         case "browser":
           return null;
         case "terminal":
@@ -717,130 +715,47 @@ export function PluginPanelRightPanelHost({
       terminals,
     ],
   );
-  const renderPluginDetailTab = usePluginDetailRenderableTab(
-    orderedSecondaryFileTabs,
-  );
+  const presentPanelTab = usePanelTabPresenter({
+    tabs: orderedSecondaryFileTabs,
+    terminalsById,
+    pluginActions: pageActions,
+  });
   const panelTabs = useMemo<readonly SecondaryPanelRenderableTab[]>(
     () =>
       orderedSecondaryFileTabs.flatMap((tab): SecondaryPanelRenderableTab[] => {
-        if (tab.kind === "plugin-detail") {
-          return [
-            renderPluginDetailTab({
-              tab,
-              onSelect: () => {
-                activateTab(tab.id);
-                revealPanel();
-              },
-              onClose: () => closeTab(tab.id),
-            }),
-          ];
-        }
-        const shared = {
-          onSelect: () => {
-            activateTab(tab.id);
-            revealPanel();
+        if (tab.kind === "terminal" && tab.target === undefined) return [];
+        const presentation = presentPanelTab(tab);
+        return [
+          {
+            ...presentation,
+            contentFillsRegion:
+              presentation.contentFillsRegion ||
+              tab.kind === "terminal" ||
+              tab.kind === "plugin-panel",
+            tab,
+            renderContent: () => renderPanelTabContent(tab),
+            onSelect:
+              tab.kind === "terminal"
+                ? () => terminals.select(tab.terminalId, tab.target)
+                : () => {
+                    activateTab(tab.id);
+                    revealPanel();
+                  },
+            onClose:
+              tab.kind === "terminal"
+                ? () => terminals.close(tab.terminalId)
+                : () => closeTab(tab.id),
           },
-          renderContent: () => renderPanelTabContent(tab),
-          tab,
-        };
-        switch (tab.kind) {
-          case "browser": {
-            const label =
-              tab.title ??
-              (tab.url.length > 0 ? getBrowserUrlHost(tab.url) : "");
-            return [
-              {
-                ...shared,
-                label: label || "Browser",
-                leadingVisual: <BrowserTabIcon tabId={tab.id} />,
-                statusLabel: null,
-                onClose: () => closeTab(tab.id),
-              },
-            ];
-          }
-          case "terminal": {
-            if (tab.target === undefined) return [];
-            const session = terminalsById.get(tab.terminalId);
-            return [
-              {
-                ...shared,
-                contentFillsRegion: true,
-                label: session?.title ?? "Terminal",
-                leadingVisual: <Icon name="Terminal" className="size-3.5" />,
-                statusLabel:
-                  session === undefined || session.status === "running"
-                    ? null
-                    : session.status,
-                onSelect: () => terminals.select(tab.terminalId, tab.target),
-                onClose: () => terminals.close(tab.terminalId),
-              },
-            ];
-          }
-          case "new-tab":
-            return [
-              {
-                ...shared,
-                label: "New tab",
-                leadingVisual: <Icon name="NewTab" className="size-3.5" />,
-                statusLabel: null,
-                onClose: () => closeTab(tab.id),
-              },
-            ];
-          case "workspace-file-preview":
-          case "host-file-preview":
-          case "thread-storage-file-preview":
-            return [
-              {
-                ...shared,
-                isPinned:
-                  tab.kind === "thread-storage-file-preview" && tab.isPinned,
-                label: tab.path.split(/[\\/]/u).at(-1) ?? tab.path,
-                leadingVisual: <Icon name="File" className="size-3.5" />,
-                statusLabel:
-                  tab.kind === "workspace-file-preview"
-                    ? getEnvironmentFilePreviewSourceRef(tab.source)
-                    : null,
-                onClose: () => closeTab(tab.id),
-              },
-            ];
-          case "attachment-file-preview":
-            return [
-              {
-                ...shared,
-                label: tab.name,
-                leadingVisual: <Icon name="File" className="size-3.5" />,
-                statusLabel: null,
-                onClose: () => closeTab(tab.id),
-              },
-            ];
-          case "plugin-panel":
-            return [
-              {
-                ...shared,
-                contentFillsRegion: true,
-                label: tab.title,
-                leadingVisual: (
-                  <PluginIcon
-                    pluginId={tab.pluginId}
-                    icon={null}
-                    className="size-3.5"
-                  />
-                ),
-                statusLabel: null,
-                onClose: () => closeTab(tab.id),
-              },
-            ];
-        }
+        ];
       }),
     [
       activateTab,
       closeTab,
       orderedSecondaryFileTabs,
-      renderPluginDetailTab,
+      presentPanelTab,
       renderPanelTabContent,
       revealPanel,
       terminals,
-      terminalsById,
     ],
   );
 
