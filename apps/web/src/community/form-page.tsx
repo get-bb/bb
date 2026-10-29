@@ -366,37 +366,25 @@ export function formPage({
                 ) : (
                   <>
                     <p>
-                      <strong>Thanks!</strong>{" "}
-                      {claimLink
-                        ? "Your bb stickers are ready."
-                        : alreadyClaimed
-                          ? ALREADY_CLAIMED
-                          : claimOpen
-                            ? SOLD_OUT
-                            : CLAIM_NOT_OPEN}
+                      <strong>Thanks!</strong> We'll email you the results.
                     </p>
-                    {claimLink && (
-                      <>
-                        <p>
-                          <a
-                            className="btn btn-primary"
-                            href={claimLink}
-                            rel="noreferrer"
-                          >
-                            Claim my stickers
-                          </a>
-                        </p>
-                        <p>
-                          It opens a free checkout for your US mailing address.
-                          The link works once.
-                        </p>
-                      </>
-                    )}
                     <p>
-                      Outside the US? We'll post in Discord when we can ship to
-                      you.
+                      {claimLink ? (
+                        <a
+                          className="btn btn-primary"
+                          href={claimLink}
+                          rel="noreferrer"
+                        >
+                          Claim my bb stickers
+                        </a>
+                      ) : alreadyClaimed ? (
+                        ALREADY_CLAIMED
+                      ) : claimOpen ? (
+                        SOLD_OUT
+                      ) : (
+                        CLAIM_NOT_OPEN
+                      )}
                     </p>
-                    <p>We'll email you the results when they're in.</p>
                   </>
                 )}
               </section>

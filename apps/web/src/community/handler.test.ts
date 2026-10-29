@@ -178,7 +178,7 @@ describe("private community forms", () => {
   it("thanks respondents with stickers without requesting their name", async () => {
     const html = await (await submit()).text();
     expect(html).toContain("Thanks!");
-    expect(html).toContain("Claim my stickers");
+    expect(html).toContain("Claim my bb stickers");
     expect(html).not.toContain("hat and stickers");
     expect(codeFrom(html)).toBeTruthy();
   });
