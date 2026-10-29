@@ -212,22 +212,27 @@ function Survey({
           </fieldset>
         </Fragment>
       ))}
-      <p className="community-meetup">
+      <label className="community-meetup" htmlFor="email">
         <strong>Last step.</strong> Your email, so we can send your stickers and
         share the results with you.
-      </p>
-      <div className="community-field" id="question-email">
-        <label htmlFor="email">Email</label>
-        <input
-          type="email"
-          required
-          autoComplete="email"
-          name="email"
-          id="email"
-          maxLength={250}
-          defaultValue={values.email?.[0] ?? ""}
-          aria-describedby={errors.email ? "email-error" : undefined}
-        />
+      </label>
+      <div className="community-email" id="question-email">
+        <div className="community-email-row">
+          <input
+            type="email"
+            required
+            autoComplete="email"
+            name="email"
+            id="email"
+            placeholder="you@example.com"
+            maxLength={250}
+            defaultValue={values.email?.[0] ?? ""}
+            aria-describedby={errors.email ? "email-error" : undefined}
+          />
+          <button className="btn btn-primary" type="submit">
+            Send my answers
+          </button>
+        </div>
         {errors.email && (
           <p className="community-error" id="email-error">
             {errors.email}
@@ -383,11 +388,6 @@ export function formPage({
                   >
                     <input type="hidden" name="submission_id" value={id} />
                     <Survey values={values} errors={errors} />
-                    <div className="community-submit">
-                      <button className="btn primary" type="submit">
-                        Send my answers
-                      </button>
-                    </div>
                   </form>
                 ) : (
                   <section className="community-merch">

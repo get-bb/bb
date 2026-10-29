@@ -180,22 +180,6 @@
 .community-address > .community-help {
   margin-top: -12px;
 }
-.community-submit {
-  padding: 32px 0 8px;
-}
-.community-submit .btn {
-  width: 100%;
-  justify-content: center;
-  font: inherit;
-  cursor: pointer;
-}
-.community-submit .btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.community-submit > p {
-  text-align: center;
-}
 .community-thanks a {
   color: inherit;
   text-underline-offset: 3px;
@@ -232,8 +216,32 @@
 }
 
 .community-meetup {
+  display: block;
   margin: 32px 0 0;
   line-height: 1.7;
+}
+.community-email {
+  margin: 16px 0 0;
+  padding-bottom: 96px;
+}
+.community-email-row {
+  display: flex;
+  gap: 10px;
+}
+.community-email-row input[type="email"] {
+  flex: 1;
+  min-width: 0;
+}
+.community-email-row .btn {
+  flex-shrink: 0;
+  font: inherit;
+  font-weight: 500;
+  white-space: nowrap;
+}
+@media (max-width: 600px) {
+  .community-email-row {
+    flex-direction: column;
+  }
 }
 
 .community-section {
