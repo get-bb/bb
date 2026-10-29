@@ -1,8 +1,9 @@
 import { useCallback } from "react";
-import type {
-  HostFileTabState,
-  ThreadStorageFileTabState,
-  WorkspaceFileTabState,
+import {
+  getEnvironmentFilePreviewSourceAtRef,
+  type HostFileTabState,
+  type ThreadStorageFileTabState,
+  type WorkspaceFileTabState,
 } from "@bb/client-core";
 import type { AppFilePreviewIntent } from "@/lib/app-navigation-host";
 import {
@@ -67,23 +68,22 @@ function livePreviewRequest(
         tab: {
           lineRange,
           path: target.path,
-          source: { kind: "working-tree" },
+          source: getEnvironmentFilePreviewSourceAtRef(target.experimental_ref),
           statusLabel: null,
         },
       };
     case "host":
-      if (scope === null) {
+      if (scope === null || scope.threadId === null) {
+        if (scope?.hostId != null && target.hostId !== scope.hostId) {
+          return null;
+        }
         return {
           kind: "host-file-preview",
           hostId: target.hostId,
           tab: { lineRange, path: target.path },
         };
       }
-      if (
-        scope.threadId === null ||
-        scope.environmentId === null ||
-        target.hostId !== scope.hostId
-      ) {
+      if (scope.environmentId === null || target.hostId !== scope.hostId) {
         return null;
       }
       return {

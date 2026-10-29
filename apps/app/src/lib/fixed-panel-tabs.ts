@@ -6,8 +6,7 @@ import {
   useRef,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { atom } from "jotai";
-import { useAtomValue, useSetAtom, useStore } from "jotai";
+import { atom, useAtomValue, useSetAtom, useStore } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { atomFamily } from "jotai-family";
 import type { TerminalCreateTarget } from "@bb/server-contract";
@@ -21,7 +20,6 @@ import {
 } from "@bb/client-core";
 import {
   EMPTY_FIXED_PANEL_TABS_STATE,
-  createGitDiffFixedPanelTab,
   createTerminalFixedPanelTab,
   createThreadInfoFixedPanelTab,
   ensureOpenFixedPanelHasActiveTab,
@@ -33,7 +31,7 @@ import {
   type FixedPanelTabsState,
   type FixedPanelViewTab,
 } from "./fixed-panel-tabs-state";
-import { type ThreadSecondaryPanel } from "./thread-secondary-panel";
+import type { ThreadSecondaryPanel } from "./thread-secondary-panel";
 import {
   areThreadTabListsEquivalent,
   hasPendingThreadTabsWrite,
@@ -119,14 +117,7 @@ function getFixedPanelTabsStateAtom(threadId: string | null | undefined) {
     : disabledFixedPanelTabsStateAtom;
 }
 
-function buildSecondaryPanelTab(panel: ThreadSecondaryPanel): FixedPanelTab {
-  if (panel === "git-diff") return createGitDiffFixedPanelTab();
-  return createThreadInfoFixedPanelTab();
-}
-
-function getSecondaryPanelTabId(panel: ThreadSecondaryPanel): string {
-  return buildSecondaryPanelTab(panel).id;
-}
+const SECONDARY_PANEL_TAB: FixedPanelTab = createThreadInfoFixedPanelTab();
 
 export function upsertTerminalTab(
   tabs: readonly FixedPanelTab[],
@@ -198,12 +189,10 @@ export function replaceFixedRightTerminalTabInState(
 
 function ensureSecondaryPanelTab(
   tabs: readonly FixedPanelTab[],
-  panel: ThreadSecondaryPanel,
 ): readonly FixedPanelTab[] {
-  const tabId = getSecondaryPanelTabId(panel);
-  return tabs.some((tab) => tab.id === tabId)
+  return tabs.some((tab) => tab.id === SECONDARY_PANEL_TAB.id)
     ? tabs
-    : [...tabs, buildSecondaryPanelTab(panel)];
+    : [...tabs, SECONDARY_PANEL_TAB];
 }
 
 function hasSecondaryPanelTab(
@@ -231,9 +220,8 @@ function openFixedSecondaryPanelState(
     };
   }
 
-  const panel: ThreadSecondaryPanel = "thread-info";
-  const tabs = ensureSecondaryPanelTab(current.secondary.tabs, panel);
-  const activeTabId = getSecondaryPanelTabId(panel);
+  const tabs = ensureSecondaryPanelTab(current.secondary.tabs);
+  const activeTabId = SECONDARY_PANEL_TAB.id;
   return {
     ...current,
     secondary: {
@@ -483,10 +471,10 @@ export function useSetFixedSecondaryPanelTab(
 ): FixedPanelSecondaryPanelSetter {
   const updateState = useUpdateFixedPanelTabsState(panelStateId, syncThreadId);
   return useCallback(
-    (panel: ThreadSecondaryPanel) => {
+    () => {
       updateState((current) => {
-        const tabs = ensureSecondaryPanelTab(current.secondary.tabs, panel);
-        const activeTabId = getSecondaryPanelTabId(panel);
+        const tabs = ensureSecondaryPanelTab(current.secondary.tabs);
+        const activeTabId = SECONDARY_PANEL_TAB.id;
         if (
           tabs === current.secondary.tabs &&
           current.secondary.activeTabId === activeTabId &&

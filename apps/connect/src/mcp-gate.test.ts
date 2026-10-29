@@ -147,6 +147,7 @@ beforeEach(() => {
   vi.mocked(verifyMachineCredentialDetails).mockResolvedValue({
     machineId: "machine-owner",
     userId: OWNER,
+    lastSeenAt: null,
   });
 });
 

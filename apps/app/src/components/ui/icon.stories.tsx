@@ -72,6 +72,7 @@ const USAGE: Partial<Record<IconName, string>> = {
   Mail: "Mark unread thread action",
   MailOpen: "Mark read thread action",
   Maximize2: "Expand right panel, open Mermaid diagram dialog",
+  Megaphone02: "Notify parent: the thread info row and thread action",
   MessageSquarePlus: "“New chat” button in sidebar",
   Mic: "Voice toggle in prompt",
   Minimize2: "Restore conversation split",

@@ -8,8 +8,10 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { experimental_scanSkillFiles as scanSkillFiles } from "@get-bb/plugin-sdk/provider-bridge";
+import { access } from "node:fs/promises";
+import { tmpdir, homedir } from "node:os";
+import { join, dirname, resolve } from "node:path";
 
 export interface ClaudeSkillPluginRoot {
   id: string;
@@ -101,4 +103,96 @@ export function ensureClaudeSkillPlugin(args: {
 export function createClaudeSkillPluginsRoot(baseDir = tmpdir()): string {
   mkdirSync(baseDir, { recursive: true });
   return mkdtempSync(join(baseDir, "bb-claude-skill-plugins-"));
+}
+
+export async function filterClaudeSkillRoots(args: {
+  roots: readonly ClaudeSkillPluginRoot[];
+  cwd: string;
+  pluginsRoot: string;
+  claudeDir: string;
+}): Promise<ClaudeSkillPluginRoot[]> {
+  const nativeRoots = [join(args.claudeDir, "skills")];
+  let directory = args.cwd;
+  while (true) {
+    nativeRoots.push(join(directory, ".claude", "skills"));
+    if (
+      await access(join(directory, ".git")).then(
+        () => true,
+        () => false,
+      )
+    )
+      break;
+    const parent = dirname(directory);
+    if (parent === directory) break;
+    directory = parent;
+  }
+  const native = (
+    await Promise.all(
+      nativeRoots.map((root) =>
+        scanSkillFiles({
+          path: root,
+          shape: "skill",
+          boundaryPath: null,
+          skipIfManifest: ".claude-plugin/plugin.json",
+        }),
+      ),
+    )
+  ).flat();
+  const identity = (file: { name: string; contentSha256: string }) =>
+    `${file.name}\0${file.contentSha256}`;
+  const seen = new Set(native.map(identity));
+  const filtered: ClaudeSkillPluginRoot[] = [];
+  for (const root of args.roots) {
+    const files = await scanSkillFiles({
+      path: root.path,
+      shape: "skill",
+      boundaryPath: null,
+    });
+    const retained = files.filter((file) => {
+      if (seen.has(identity(file))) return false;
+      seen.add(identity(file));
+      return true;
+    });
+    if (retained.length === 0) continue;
+    if (retained.length === files.length) {
+      filtered.push(root);
+      continue;
+    }
+    const hash = createHash("sha256")
+      .update(
+        JSON.stringify(
+          retained.map((file) => [
+            file.name,
+            file.realPath,
+            file.contentSha256,
+          ]),
+        ),
+      )
+      .digest("hex");
+    const filteredPath = join(args.pluginsRoot, "filtered", hash);
+    mkdirSync(filteredPath, { recursive: true });
+    for (const file of retained) {
+      const linkPath = join(filteredPath, file.name);
+      try {
+        symlinkSync(dirname(file.realPath), linkPath, "dir");
+      } catch (error) {
+        if (
+          !(
+            error instanceof Error &&
+            "code" in error &&
+            error.code === "EEXIST"
+          )
+        )
+          throw error;
+      }
+    }
+    filtered.push({ id: root.id, path: filteredPath });
+  }
+  return filtered;
+}
+
+export function claudeSkillsConfigDirectory(): string {
+  return process.env.CLAUDE_CONFIG_DIR
+    ? resolve(process.env.CLAUDE_CONFIG_DIR)
+    : join(homedir(), ".claude");
 }

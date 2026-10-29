@@ -671,32 +671,17 @@ function FileIntentButtons() {
       <button
         type="button"
         onClick={() =>
-          navigation.openFixedTab({
-            surface: { kind: "current" },
+          navigation.panel.openTab({
             tab: {
               ownerId: getPluginFixedTabOwnerId("demo", "board"),
               tabId: "details",
             },
+            availability: "fixed",
             target: { kind: "record", recordId: "issue-42" },
           })
         }
       >
         Open targeted fixed tab
-      </button>
-      <button
-        type="button"
-        onClick={() =>
-          navigation.openFixedTab({
-            surface: { kind: "current" },
-            tab: {
-              ownerId: getPluginFixedTabOwnerId("demo", "board"),
-              tabId: "details",
-            },
-            target: { kind: "wrong" },
-          })
-        }
-      >
-        Open invalid fixed tab target
       </button>
     </>
   );
@@ -1192,12 +1177,6 @@ describe("PluginPanelRightPanelHost", () => {
     const store = createStore();
     const initialRender = renderHost("board", "", store);
     expect(await screen.findByTestId("navigation-content")).toBeTruthy();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Open invalid fixed tab target" }),
-    );
-    expect(screen.getByTestId("navigation-content")).toBeTruthy();
-    expect(screen.queryByTestId("targeted-details-content")).toBeNull();
 
     fireEvent.click(
       screen.getByRole("button", { name: "Open targeted fixed tab" }),

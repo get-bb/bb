@@ -8,6 +8,7 @@ import {
   MAX_ATTACHMENT_SIZE_BYTES,
 } from "../shared/attachments";
 import { registerAttachments } from ".";
+import { attachmentsChangedTags } from "../shared/tags";
 
 function setup(options?: Parameters<typeof registerAttachments>[2]) {
   const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
@@ -78,11 +79,8 @@ describe("task attachments", () => {
       expect(await readFile(join(root, attachment.blobPath), "utf8")).toBe(
         "png bytes",
       );
-      expect(harness.realtimeSignals).toEqual([
-        {
-          channel: "tasks:changed",
-          payload: { taskId: task.id, projectId: task.projectId },
-        },
+      expect(harness.experimental_rpcInvalidations).toEqual([
+        attachmentsChangedTags(task.id, null),
       ]);
     } finally {
       await harness.dispose();
@@ -317,15 +315,9 @@ describe("task attachments", () => {
       await expect(stat(blobDirectory)).rejects.toMatchObject({
         code: "ENOENT",
       });
-      expect(harness.realtimeSignals).toEqual([
-        {
-          channel: "tasks:changed",
-          payload: { taskId: task.id, projectId: task.projectId },
-        },
-        {
-          channel: "tasks:changed",
-          payload: { taskId: task.id, projectId: task.projectId },
-        },
+      expect(harness.experimental_rpcInvalidations).toEqual([
+        attachmentsChangedTags(task.id, null),
+        attachmentsChangedTags(task.id, null),
       ]);
     } finally {
       await harness.dispose();
@@ -347,7 +339,7 @@ describe("task attachments", () => {
       if (!attachment) throw new Error("attachment row was not created");
       const description = `![diagram](${attachmentDownloadUrl(attachmentId)})`;
       store.updateTask(task.id, { description });
-      const signalsBeforeDelete = harness.realtimeSignals.length;
+      const signalsBeforeDelete = harness.experimental_rpcInvalidations.length;
 
       const response = await harness.fetchHttp(
         "DELETE",
@@ -364,7 +356,9 @@ describe("task attachments", () => {
       await expect(
         readFile(join(root, attachment.blobPath), "utf8"),
       ).resolves.toBe("image");
-      expect(harness.realtimeSignals).toHaveLength(signalsBeforeDelete);
+      expect(harness.experimental_rpcInvalidations).toHaveLength(
+        signalsBeforeDelete,
+      );
     } finally {
       await harness.dispose();
     }
@@ -382,7 +376,7 @@ describe("task attachments", () => {
       store.updateTask(task.id, {
         description: `![diagram](${attachmentDownloadUrl(attachmentId)})`,
       });
-      const signalsBeforeDelete = harness.realtimeSignals.length;
+      const signalsBeforeDelete = harness.experimental_rpcInvalidations.length;
 
       const response = await harness.fetchHttp(
         "DELETE",
@@ -399,7 +393,9 @@ describe("task attachments", () => {
       await expect(
         readFile(join(root, attachment.blobPath), "utf8"),
       ).resolves.toBe("image");
-      expect(harness.realtimeSignals).toHaveLength(signalsBeforeDelete);
+      expect(harness.experimental_rpcInvalidations).toHaveLength(
+        signalsBeforeDelete,
+      );
 
       const confirmed = await harness.fetchHttp(
         "DELETE",
@@ -412,7 +408,9 @@ describe("task attachments", () => {
       await expect(
         stat(dirname(join(root, attachment.blobPath))),
       ).rejects.toMatchObject({ code: "ENOENT" });
-      expect(harness.realtimeSignals).toHaveLength(signalsBeforeDelete + 1);
+      expect(harness.experimental_rpcInvalidations).toHaveLength(
+        signalsBeforeDelete + 1,
+      );
     } finally {
       await harness.dispose();
     }

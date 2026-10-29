@@ -12,7 +12,9 @@ import {
   threads,
 } from "@bb/db";
 import {
-  threadTimelineResponseSchema,
+  applyThreadTimelineDelta,
+  isThreadTimelineDelta,
+  threadTimelineReadResponseSchema,
   type ThreadTimelineResponse,
 } from "@bb/server-contract";
 import {
@@ -53,15 +55,23 @@ function seed(harness: TestAppHarness, count: number) {
 async function getTimeline(
   harness: TestAppHarness,
   threadId: string,
-  afterSequence?: number,
+  held?: ThreadTimelineResponse,
 ): Promise<ThreadTimelineResponse> {
-  const query =
-    afterSequence === undefined ? "" : `?afterSequence=${afterSequence}`;
+  const query = held === undefined ? "" : `?afterTag=${held.tag}`;
   const response = await harness.app.request(
     `/api/v1/threads/${threadId}/timeline${query}`,
   );
   expect(response.status).toBe(200);
-  return threadTimelineResponseSchema.parse(await readJson(response));
+  const body = threadTimelineReadResponseSchema.parse(await readJson(response));
+  if (!isThreadTimelineDelta(body)) {
+    return body;
+  }
+  const applied =
+    held === undefined ? null : applyThreadTimelineDelta(held, body);
+  if (applied === null) {
+    throw new Error("timeline delta did not apply to the held window");
+  }
+  return applied;
 }
 
 function removedEvents(fields: unknown): boolean {
@@ -165,7 +175,7 @@ describe("thread pruning sweep", () => {
     });
   });
 
-  it("notifies one history compaction per thread and answers every earlier viewer with a full timeline", async () => {
+  it("notifies one history compaction per thread and brings every earlier viewer to the compacted timeline", async () => {
     await withTestHarness(async (harness) => {
       const thread = seed(harness, 2400);
       harness.db
@@ -202,12 +212,11 @@ describe("thread pruning sweep", () => {
       ]);
       expect(harness.db.select().from(events).all().length).toBeLessThan(2401);
       const cold = await getTimeline(harness, thread.id);
-      const firstViewer = await getTimeline(harness, thread.id, before.maxSeq);
-      const secondViewer = await getTimeline(harness, thread.id, before.maxSeq);
+      const firstViewer = await getTimeline(harness, thread.id, before);
+      const secondViewer = await getTimeline(harness, thread.id, before);
       for (const after of [firstViewer, secondViewer]) {
         expect(after.maxSeq).toBe(before.maxSeq);
-        expect(after.delta).toBeUndefined();
-        expect(after.rows).toEqual(cold.rows);
+        expect(after).toEqual(cold);
       }
       harness.db
         .insert(events)
@@ -224,11 +233,9 @@ describe("thread pruning sweep", () => {
           createdAt: 2,
         })
         .run();
-      const caughtUp = await getTimeline(harness, thread.id, before.maxSeq);
-      expect(caughtUp.delta).toBeUndefined();
+      const caughtUp = await getTimeline(harness, thread.id, before);
       expect(caughtUp.maxSeq).toBe(2402);
-      const next = await getTimeline(harness, thread.id, caughtUp.maxSeq);
-      expect(next.delta).toEqual({ upsertRows: [] });
+      expect(caughtUp).toEqual(await getTimeline(harness, thread.id));
       notify.mockRestore();
       debug.mockRestore();
     });

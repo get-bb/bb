@@ -185,7 +185,6 @@ describe("ThreadTimelineRows windowing", () => {
         getScrollElement: () => scrollElement,
         isAtBottom: false,
         scrollElementIntoView: vi.fn(),
-        scrollElementIntoViewClampedToMaxScroll: vi.fn(),
         scrollToBottom: vi.fn(),
       };
       const rows = Array.from({ length: count }, (_, index) =>
@@ -245,7 +244,6 @@ describe("ThreadTimelineRows windowing", () => {
       getScrollElement: () => scrollElement,
       isAtBottom: false,
       scrollElementIntoView,
-      scrollElementIntoViewClampedToMaxScroll: vi.fn(),
       scrollToBottom: vi.fn(),
     };
     const rows = Array.from({ length: 80 }, (_, index) => {
@@ -300,7 +298,6 @@ describe("ThreadTimelineRows windowing", () => {
       getScrollElement: () => scrollElement,
       isAtBottom: false,
       scrollElementIntoView,
-      scrollElementIntoViewClampedToMaxScroll: vi.fn(),
       scrollToBottom: vi.fn(),
     };
     const rows = Array.from({ length: 80 }, (_, index) =>

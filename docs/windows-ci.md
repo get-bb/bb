@@ -42,7 +42,8 @@ suite exactly once:
 
 - `server-1` to `server-3`: `@bb/server`, split by file into three Vitest
   shards.
-- `app-1` to `app-4`: `@bb/app`, split the same way into four.
+- `app-1` to `app-4`: `@bb/app`, split the same way into four, with four
+  Vitest workers per runner.
 - `plugins-1`: the provider plugins (`bb-plugin-provider-*`) and the three
   other slowest plugin suites: Tasks, Connect, and the thread list. This shard
   installs Bun, which the Pi plugin's runtime regression requires in CI.
@@ -56,12 +57,16 @@ suite exactly once:
   negative filters exclude the groups above and the nine host packages, so a
   new package lands here without a workflow change.
 
-The shards are sized so that each finishes with the slowest Linux job instead
-of after it; see [ci-performance.md](ci-performance.md#windows-test-shards).
+Shard timings depend on the selected packages and available build outputs;
+see [ci-performance.md](ci-performance.md#windows-test-shards).
 
 App shards install the app and database dependency closures. Server shards
 install the server, host daemon, app, and plugin dependency closures, including
-the plugins loaded dynamically by the server test harness. Plugin, host, build,
+the plugins loaded dynamically by the server test harness. `plugins-2` installs
+the root tools, selected plugin dependency closures, and app/database closures
+needed by generators and native preparation. Selection happens before expanding
+the positive dependency closures, so an excluded test package remains available
+when another selected package depends on it. Other plugin, host, build,
 and integration shards omit the mobile toolchain. The catch-all `packages-other`
 shard retains the full install when its selected tests include mobile; other
 affected PRs omit the mobile toolchain. Full main and manual runs keep mobile
@@ -109,12 +114,15 @@ pnpm exec turbo run test --filter=@bb/server --continue --output-logs=new-only
 ```
 
 Each shard uploads `.turbo/runs/*.json` as a
-`test-timings-windows-<shard>-<attempt>` artifact. With nothing restored from
-the Turbo cache, a shard finishes in about three to four minutes. Setup
-(checkout, cache restore, install) is one and a half to two minutes of that,
-against under one minute on Linux: unpacking the pnpm store and linking
-`node_modules` are slow on NTFS, and the runners have no antivirus scanner to
-turn off.
+`test-timings-windows-<shard>-<attempt>` artifact. The original shard-balancing
+measurements took about three to four minutes without Turbo hits, including
+one and a half to two minutes of setup. Current CI omits pnpm store archives:
+the October 24 comparison found that restoring and linking a scoped store
+was slower than a fresh install. CI now restores an exact dependency disk
+when available and otherwise installs normally. Main runs warm the disk
+independently; every consumer retains its frozen install. See the
+[dependency-cache measurements](ci-performance.md#windows-dependency-cache-measurements)
+for timings, verification, cache keys, and fallback behavior.
 
 ## Windows runner rules
 

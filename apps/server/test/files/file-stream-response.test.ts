@@ -302,7 +302,9 @@ describe.each(["local", "daemon"] as const)(
       const content = Buffer.alloc(1024 * 1024 + 3, 5);
       await prepare(content);
       const response = await respond();
-      expect(Buffer.from(await response.arrayBuffer())).toEqual(content);
+      expect(Buffer.from(await response.arrayBuffer()).equals(content)).toBe(
+        true,
+      );
       expect(opened[0]!.read.mock.calls.length).toBeGreaterThan(1);
       expect(opened[0]!.read.mock.lastCall?.[1]).toBe(3);
       expect(opened[0]!.close).toHaveBeenCalledTimes(1);

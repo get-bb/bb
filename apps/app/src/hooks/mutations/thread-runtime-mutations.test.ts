@@ -25,7 +25,6 @@ import {
   cancelThreadPlanMutationOptions,
   clearThreadGoalMutationOptions,
   createThreadMutationOptions,
-  createThreadQueuedMessageMutationOptions,
   deleteThreadQueuedMessageMutationOptions,
   editThreadMessageMutationOptions,
   sendThreadMessageMutationOptions,
@@ -43,7 +42,6 @@ vi.mock("@/lib/sdk", async (importOriginal) => {
         clearGoal: vi.fn(),
         editMessage: vi.fn(),
         queuedMessages: {
-          create: vi.fn(),
           delete: vi.fn(),
           list: vi.fn(),
           send: vi.fn(),
@@ -146,9 +144,6 @@ beforeEach(() => {
     delivery: "sent",
   });
   vi.mocked(sdk.threads.spawn).mockResolvedValue(makeThreadResponse());
-  vi.mocked(sdk.threads.queuedMessages.create).mockResolvedValue(
-    makeQueuedMessage(),
-  );
   vi.mocked(sdk.threads.queuedMessages.delete).mockResolvedValue({ ok: true });
   vi.mocked(sdk.threads.queuedMessages.list).mockResolvedValue([
     makeQueuedMessage(),
@@ -438,29 +433,6 @@ describe("thread runtime mutations", () => {
         threadTimelineQueryKey("thread-1"),
       )?.rows,
     ).toEqual([]);
-  });
-
-  it("forwards execution input sources and sender thread when queueing a message", async () => {
-    const queryClient = createTestQueryClient();
-    const mutation = new MutationObserver(
-      queryClient,
-      createThreadQueuedMessageMutationOptions(queryClient),
-    );
-
-    await mutation.mutate({
-      id: "thread-1",
-      input: [{ type: "text", text: "Queue this", mentions: [] }],
-      senderThreadId: "thread-source",
-      executionInputSources,
-    });
-
-    expect(sdk.threads.queuedMessages.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        executionInputSources,
-        senderThreadId: "thread-source",
-        threadId: "thread-1",
-      }),
-    );
   });
 
   it("keeps an optimistically deleted queued message removed when the server says it is already gone", async () => {

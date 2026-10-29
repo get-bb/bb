@@ -13,6 +13,7 @@ import {
   hostDaemonInteractiveInterruptRequestSchema,
   type HostDaemonInteractiveRequestResponse,
   type HostDaemonContributedEnvEntry,
+  type HostDaemonOnlineRpcCommand,
 } from "@bb/host-daemon-contract";
 import type { HostWatcher } from "@bb/host-watcher";
 import { createDeferredPromise, makeTempDir } from "@bb/test-helpers";
@@ -520,6 +521,7 @@ describe("createHostDaemonApp", () => {
       model: "cursor-model",
       displayName: "Cursor Model",
       description: "Test model",
+      reasoningDiscovery: "known" as const,
       supportedReasoningEfforts: [],
       defaultReasoningEffort: "medium" as const,
       isDefault: true,
@@ -626,6 +628,7 @@ describe("createHostDaemonApp", () => {
       model: "codex-model",
       displayName: "Codex Model",
       description: "Test model",
+      reasoningDiscovery: "known" as const,
       supportedReasoningEfforts: [],
       defaultReasoningEffort: "medium" as const,
       isDefault: true,
@@ -688,6 +691,224 @@ describe("createHostDaemonApp", () => {
         }),
       );
     } finally {
+      await app.daemon.shutdown("test", 0);
+    }
+  });
+
+  type MaintenanceRuntimeMethod =
+    | "listCommands"
+    | "listModels"
+    | "providerHealth"
+    | "providerInstallationRun"
+    | "providerInstallationStatus"
+    | "providerUsage";
+
+  const maintenanceShellEnvCases: Array<{
+    command: HostDaemonOnlineRpcCommand;
+    method: MaintenanceRuntimeMethod;
+    waitsForFreshShellEnv: boolean;
+  }> = [
+    {
+      command: {
+        type: "provider.list_commands",
+        providerId: "codex",
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+        cwd: "/tmp/worktree",
+      },
+      method: "listCommands",
+      waitsForFreshShellEnv: false,
+    },
+    {
+      command: {
+        type: "provider.usage",
+        providerId: "codex",
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+      },
+      method: "providerUsage",
+      waitsForFreshShellEnv: false,
+    },
+    {
+      command: {
+        type: "provider.list_models",
+        providerId: "codex",
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+        contributedEnv: [],
+      },
+      method: "listModels",
+      waitsForFreshShellEnv: true,
+    },
+    {
+      command: {
+        type: "provider.health",
+        providerId: "codex",
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+      },
+      method: "providerHealth",
+      waitsForFreshShellEnv: true,
+    },
+    {
+      command: {
+        type: "provider.installation.status",
+        providerId: "codex",
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+      },
+      method: "providerInstallationStatus",
+      waitsForFreshShellEnv: true,
+    },
+    {
+      command: {
+        type: "provider.installation.run",
+        providerId: "codex",
+        action: "install",
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+      },
+      method: "providerInstallationRun",
+      waitsForFreshShellEnv: true,
+    },
+  ];
+
+  async function createExpiredShellEnvApp(args: {
+    resolvedAtMs: number | null;
+  }) {
+    const dataDir = await makeTempDir("bb-host-daemon-app-expired-env-");
+    const runtimeOptions: RuntimeOptionsRef = { current: null };
+    const freshShellEnv = createDeferredPromise<Record<string, string>>();
+    const resolveRuntimeShellEnv = vi.fn(() => freshShellEnv.promise);
+    const runtime = createFakeRuntime();
+    const calls: MaintenanceRuntimeMethod[] = [];
+    const recordCall =
+      <TArgs extends unknown[], TResult>(
+        method: MaintenanceRuntimeMethod,
+        call: (...args: TArgs) => Promise<TResult>,
+      ) =>
+      (...callArgs: TArgs) => {
+        calls.push(method);
+        return call(...callArgs);
+      };
+    const recordingRuntime: AgentRuntime = {
+      ...runtime,
+      listCommands: recordCall("listCommands", runtime.listCommands),
+      listModels: recordCall("listModels", runtime.listModels),
+      providerHealth: recordCall("providerHealth", runtime.providerHealth),
+      providerUsage: recordCall("providerUsage", runtime.providerUsage),
+      providerInstallationStatus: recordCall(
+        "providerInstallationStatus",
+        runtime.providerInstallationStatus,
+      ),
+      providerInstallationRun: recordCall(
+        "providerInstallationRun",
+        runtime.providerInstallationRun,
+      ),
+    };
+    const app = await createHostDaemonApp({
+      dataDir,
+      serverUrl: "http://127.0.0.1:3334",
+      hostKey: "host-key-app-test",
+      hostId: "host-app-test",
+      hostName: "App Test Host",
+      instanceId: "instance-app-test",
+      logger: createLogger(),
+      releaseLock: async () => undefined,
+      localApiConfig: null,
+      runtimeShellEnv: { PATH: "/last-resolved/bin:/usr/bin" },
+      ...(args.resolvedAtMs === null
+        ? {}
+        : { runtimeShellEnvResolvedAtMs: args.resolvedAtMs }),
+      resolveRuntimeShellEnv,
+      nowMs: () => 60_000,
+      createRuntime: (options) => {
+        runtimeOptions.current = options;
+        return recordingRuntime;
+      },
+      fetchFn: createFetchRecorder().fetchFn,
+      createWebSocket: createOpeningWebSocket(),
+    });
+    return {
+      app,
+      calls,
+      freshShellEnv,
+      resolveRuntimeShellEnv,
+      runtimeOptions,
+    };
+  }
+
+  it.each(maintenanceShellEnvCases)(
+    "$command.type waits for a fresh shell env: $waitsForFreshShellEnv",
+    async ({ command, method, waitsForFreshShellEnv }) => {
+      const {
+        app,
+        calls,
+        freshShellEnv,
+        resolveRuntimeShellEnv,
+        runtimeOptions,
+      } = await createExpiredShellEnvApp({ resolvedAtMs: 1_000 });
+      try {
+        const response = app.router.handleOnlineRpcRequest({
+          type: "host-rpc.request",
+          requestId: `expired-env-${command.type}`,
+          command,
+        });
+        await vi.waitFor(() =>
+          expect(resolveRuntimeShellEnv).toHaveBeenCalledTimes(1),
+        );
+
+        if (waitsForFreshShellEnv) {
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          expect(calls).toEqual([]);
+          freshShellEnv.resolve({ PATH: "/fresh/bin:/usr/bin" });
+          await response;
+          expect(calls).toEqual([method]);
+          expect(runtimeOptions.current?.env).toEqual({
+            PATH: "/fresh/bin:/usr/bin",
+          });
+        } else {
+          await expect(response).resolves.toMatchObject({ ok: true });
+          expect(calls).toEqual([method]);
+          expect(runtimeOptions.current?.env).toEqual({
+            PATH: "/last-resolved/bin:/usr/bin",
+          });
+          freshShellEnv.resolve({ PATH: "/fresh/bin:/usr/bin" });
+        }
+      } finally {
+        freshShellEnv.resolve({ PATH: "/fresh/bin:/usr/bin" });
+        await app.daemon.shutdown("test", 0);
+      }
+    },
+  );
+
+  it("waits for the first shell env resolution before listing commands", async () => {
+    const {
+      app,
+      calls,
+      freshShellEnv,
+      resolveRuntimeShellEnv,
+      runtimeOptions,
+    } = await createExpiredShellEnvApp({ resolvedAtMs: null });
+    try {
+      const response = app.router.handleOnlineRpcRequest({
+        type: "host-rpc.request",
+        requestId: "first-env-list-commands",
+        command: {
+          type: "provider.list_commands",
+          providerId: "codex",
+          bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+          cwd: "/tmp/worktree",
+        },
+      });
+      await vi.waitFor(() =>
+        expect(resolveRuntimeShellEnv).toHaveBeenCalledTimes(1),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(calls).toEqual([]);
+
+      freshShellEnv.resolve({ PATH: "/fresh/bin:/usr/bin" });
+      await expect(response).resolves.toMatchObject({ ok: true });
+      expect(calls).toEqual(["listCommands"]);
+      expect(runtimeOptions.current?.env).toEqual({
+        PATH: "/fresh/bin:/usr/bin",
+      });
+    } finally {
+      freshShellEnv.resolve({ PATH: "/fresh/bin:/usr/bin" });
       await app.daemon.shutdown("test", 0);
     }
   });
@@ -878,7 +1099,7 @@ describe("createHostDaemonApp", () => {
     } satisfies AgentRuntime;
     const hostWatcher = {
       watchWorkspace: vi.fn(() => stopWatchingStatus),
-      watchThreadStorageRoot: vi.fn(() => () => undefined),
+      watchThreadStorage: vi.fn(() => () => undefined),
     } satisfies HostWatcher;
     const app = await createHostDaemonApp({
       dataDir,

@@ -84,3 +84,16 @@ For a dev server, prefer:
 
 Do not run long-lived servers as one-off foreground commands when the user will
 need to inspect logs, refresh the page, or stop the process later.
+
+In the app, Find in terminal (`terminal.find`; Cmd+F on macOS, Ctrl+Shift+F
+elsewhere) searches the focused terminal's scrollback; Enter and Shift+Enter
+move between matches, Match case toggles case sensitivity, and Escape closes
+find and returns focus. Rebind it in Settings → Keyboard or with
+`bb settings keyboard set terminal.find <shortcut>`; the SDK's
+`system.updateKeyboardSettings` accepts the same command ID.
+
+Terminal URLs and file paths open with Cmd+click on macOS, Ctrl+click
+elsewhere, or a tap on touch screens. Printed file paths, including `path:line`
+and `path:line:column`, open in bb's file viewer on the terminal's machine.
+Relative paths use the shell's OSC 7 working directory when reported, otherwise
+the session's initial directory. Quoted paths may contain spaces.

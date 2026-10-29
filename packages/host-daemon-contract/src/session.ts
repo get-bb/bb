@@ -1,4 +1,15 @@
-import { hostDaemonContributedEnvEntrySchema } from "./commands.js";
+import {
+  hostDaemonContributedEnvEntrySchema,
+  type HostDaemonOnlineRpcCommandType,
+  type HostDaemonSettledCommandType,
+  hostDaemonConnectTunnelIdentitySchema,
+  hostDaemonOnlineRpcResultSchemaByType,
+  hostDaemonCommandResultSchemaByType,
+  hostDaemonSettledCommandTypeSchema,
+  hostDaemonRpcCommandSchema,
+  hostDaemonRpcCommandTypeSchema,
+  workspaceContextSchema,
+} from "./commands.js";
 import { desktopBrowserChangedSchema } from "./desktop-browser.js";
 import {
   serverMovedMessageSchema,
@@ -20,19 +31,6 @@ import {
 } from "@bb/domain";
 import { z } from "zod";
 import type { Endpoint } from "@bb/hono-typed-routes";
-import type {
-  HostDaemonOnlineRpcCommandType,
-  HostDaemonSettledCommandType,
-} from "./commands.js";
-import {
-  hostDaemonConnectTunnelIdentitySchema,
-  hostDaemonOnlineRpcResultSchemaByType,
-  hostDaemonCommandResultSchemaByType,
-  hostDaemonSettledCommandTypeSchema,
-  hostDaemonRpcCommandSchema,
-  hostDaemonRpcCommandTypeSchema,
-  workspaceContextSchema,
-} from "./commands.js";
 import { hostPlatformSchema } from "./local.js";
 
 const HOST_DAEMON_WEBSOCKET_PROTOCOL = "bb-host-daemon.v1";
@@ -525,7 +523,6 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     onlineRpcResponseSuccessSchemaFor("host.inspect_git_source"),
     onlineRpcResponseSuccessSchemaFor("host.read_file"),
     onlineRpcResponseSuccessSchemaFor("host.read_file_chunk"),
-    onlineRpcResponseSuccessSchemaFor("host.read_file_relative"),
     onlineRpcResponseSuccessSchemaFor("host.write_file"),
     onlineRpcResponseSuccessSchemaFor("provider.list_models"),
     onlineRpcResponseSuccessSchemaFor("provider.list_commands"),
@@ -534,10 +531,6 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     onlineRpcResponseSuccessSchemaFor("provider.installation.run"),
     onlineRpcResponseSuccessSchemaFor("provider.usage"),
     onlineRpcResponseSuccessSchemaFor("host.discover_repos"),
-    onlineRpcResponseSuccessSchemaFor("workspace.status"),
-    onlineRpcResponseSuccessSchemaFor("workspace.diff"),
-    onlineRpcResponseSuccessSchemaFor("workspace.diffFiles"),
-    onlineRpcResponseSuccessSchemaFor("workspace.diffPatch"),
     onlineRpcResponseSuccessSchemaFor("server_move.inspect"),
     onlineRpcResponseSuccessSchemaFor("server_move.probe"),
     onlineRpcResponseSuccessSchemaFor("server_move.prepare"),
@@ -973,24 +966,47 @@ export type HostDaemonInteractiveInterruptResponse = z.infer<
   typeof hostDaemonInteractiveInterruptResponseSchema
 >;
 
-const hostDaemonSkillTreeEntrySchema = z
+const sha256HexSchema = z.string().regex(/^[a-f0-9]{64}$/u);
+const hostDaemonSkillTreeFileSchema = z
   .object({
     path: z.string().min(1),
     mode: z.number().int().min(0).max(0o777),
-    contentBase64: z.string(),
+    sizeBytes: z.number().int().min(0),
+    sha256: sha256HexSchema,
   })
   .strict();
-export const hostDaemonSkillTreeSchema = z
+export type HostDaemonSkillTreeFile = z.infer<
+  typeof hostDaemonSkillTreeFileSchema
+>;
+export const hostDaemonSkillTreeManifestSchema = z
   .object({
-    treeHash: z.string().regex(/^[a-f0-9]{64}$/u),
-    entries: z.array(hostDaemonSkillTreeEntrySchema),
+    treeHash: sha256HexSchema,
+    files: z.array(hostDaemonSkillTreeFileSchema),
   })
   .strict();
-export type HostDaemonSkillTree = z.infer<typeof hostDaemonSkillTreeSchema>;
+export type HostDaemonSkillTreeManifest = z.infer<
+  typeof hostDaemonSkillTreeManifestSchema
+>;
+export const hostDaemonSkillTreeContentRequestSchema = z
+  .object({
+    paths: z.array(z.string().min(1)).min(1),
+  })
+  .strict();
+export type HostDaemonSkillTreeContentRequest = z.infer<
+  typeof hostDaemonSkillTreeContentRequestSchema
+>;
 
 export type HostDaemonInternalSchema = {
   "/skills/tree/:hash": {
-    $get: Endpoint<Record<never, never>, HostDaemonSkillTree, 200>;
+    $get: Endpoint<Record<never, never>, HostDaemonSkillTreeManifest, 200>;
+  };
+  "/skills/tree/:hash/content": {
+    $post: Endpoint<
+      { json: HostDaemonSkillTreeContentRequest },
+      Uint8Array,
+      200,
+      "binary"
+    >;
   };
   "/plugins/:pluginId/host/:digest": {
     $get: Endpoint<Record<never, never>, Uint8Array, 200, "binary">;

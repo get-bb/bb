@@ -255,7 +255,9 @@ function createStartupFixture() {
   childProcessChannel.subscribe(onChild);
   return {
     children: () =>
-      children.filter((child) => child.spawnargs.includes(bridgePath)),
+      children.filter((child) =>
+        child.spawnargs.join(" ").includes(bridgePath),
+      ),
     releaseInitialize: () => writeFileSync(initializeGate, ""),
     releaseTurns: () => writeFileSync(turnGate, ""),
     run: (

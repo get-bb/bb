@@ -50,9 +50,25 @@ import {
 import { createInertScrollPositionKeeper } from "@/test/scroll-position-keeper";
 
 class ResizeObserverMock implements ResizeObserver {
-  constructor(private readonly callback: ResizeObserverCallback) {}
+  static readonly instances = new Set<ResizeObserverMock>();
+  private readonly targets = new Set<Element>();
+
+  constructor(private readonly callback: ResizeObserverCallback) {
+    ResizeObserverMock.instances.add(this);
+  }
+
+  static resizeAll() {
+    for (const observer of ResizeObserverMock.instances) {
+      for (const target of observer.targets) observer.deliver(target);
+    }
+  }
 
   observe: ResizeObserver["observe"] = (target) => {
+    this.targets.add(target);
+    this.deliver(target);
+  };
+
+  private deliver(target: Element) {
     const element = target as HTMLElement;
     const paddingX =
       (Number.parseFloat(element.style.paddingLeft) || 0) +
@@ -68,7 +84,7 @@ class ResizeObserverMock implements ResizeObserver {
       ],
       this,
     );
-  };
+  }
   unobserve: ResizeObserver["unobserve"] = vi.fn();
   disconnect: ResizeObserver["disconnect"] = vi.fn();
 }
@@ -312,6 +328,7 @@ function openTocPanel(): void {
 }
 
 beforeEach(() => {
+  ResizeObserverMock.instances.clear();
   vi.stubGlobal("ResizeObserver", ResizeObserverMock);
   vi.stubGlobal(
     "requestAnimationFrame",
@@ -329,7 +346,6 @@ beforeEach(() => {
     isAtBottom: false,
     scrollToBottom: vi.fn(),
     scrollElementIntoView,
-    scrollElementIntoViewClampedToMaxScroll: vi.fn(),
     positionKeeper: createInertScrollPositionKeeper(),
     holdContentPosition: vi.fn(),
   } as unknown as ReturnType<typeof useBottomAnchoredScroll>);
@@ -542,6 +558,34 @@ describe("ThreadTableOfContents", () => {
     );
 
     expect(lastOutlineOptions("user")).toEqual({ enabled: true });
+  });
+
+  it("keeps the rail mounted but hidden while the pane is too narrow", () => {
+    const rows = [
+      userConversationRow(1),
+      userConversationRow(2),
+      userConversationRow(3),
+    ];
+    const view = render(<TocHost hostWidth={1_200} timelineRows={rows} />);
+    const rail = screen.getByRole("button", {
+      name: "Thread table of contents",
+    });
+    const wrapper = rail.parentElement!;
+    expect(wrapper.hasAttribute("inert")).toBe(false);
+
+    view.rerender(<TocHost hostWidth={400} timelineRows={rows} />);
+    act(() => ResizeObserverMock.resizeAll());
+
+    expect(rail.isConnected).toBe(true);
+    expect(wrapper.classList.contains("hidden")).toBe(true);
+    expect(wrapper.hasAttribute("inert")).toBe(true);
+
+    view.rerender(<TocHost hostWidth={1_200} timelineRows={rows} />);
+    act(() => ResizeObserverMock.resizeAll());
+
+    expect(rail.isConnected).toBe(true);
+    expect(wrapper.classList.contains("hidden")).toBe(false);
+    expect(wrapper.hasAttribute("inert")).toBe(false);
   });
 
   it("shows after timeline rows arrive following an empty initial render", async () => {

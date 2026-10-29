@@ -1,3 +1,4 @@
+import { GIT_PLUGIN_ID } from "@bb/domain";
 import { z } from "zod";
 import {
   BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH,
@@ -29,6 +30,7 @@ export const FIXED_PANEL_TABS_IDLE_EXPIRY_MS = 14 * 24 * 60 * 60 * 1000;
 const SECONDARY_PANEL_TAB_ID_ENVIRONMENT_NONE = "none";
 const THREAD_INFO_TAB_ID = "thread-info:thread-info:none";
 const GIT_DIFF_TAB_ID = "git-diff:git-diff:none";
+const CORE_GIT_DIFF_TAB_ID = "plugin-fixed:core:diff";
 const NEW_TAB_TAB_ID = "new-tab:new-tab:none";
 
 const environmentFilePreviewSourceSchema: z.ZodType<EnvironmentFilePreviewSource> =
@@ -562,7 +564,10 @@ export function createThreadInfoFixedPanelTab(): PluginFixedPanelTab {
 }
 
 export function createGitDiffFixedPanelTab(): PluginFixedPanelTab {
-  return createPluginFixedPanelTab({ pluginId: "core", tabId: "diff" });
+  return createPluginFixedPanelTab({
+    pluginId: GIT_PLUGIN_ID,
+    tabId: "diff",
+  });
 }
 
 export function isGitDiffFixedPanelTab(
@@ -570,15 +575,32 @@ export function isGitDiffFixedPanelTab(
 ): boolean {
   return (
     tab?.kind === "plugin-fixed" &&
-    tab.pluginId === "core" &&
+    tab.pluginId === GIT_PLUGIN_ID &&
     tab.tabId === "diff"
   );
 }
 
 export function migrateLegacyFixedPanelTabId(id: string): string {
   if (id === THREAD_INFO_TAB_ID) return createThreadInfoFixedPanelTab().id;
-  if (id === GIT_DIFF_TAB_ID) return createGitDiffFixedPanelTab().id;
+  if (id === GIT_DIFF_TAB_ID || id === CORE_GIT_DIFF_TAB_ID) {
+    return createGitDiffFixedPanelTab().id;
+  }
   return id;
+}
+
+export function migrateLegacyFixedPanelTab<Tab extends FixedPanelTab>(
+  tab: Tab,
+): Tab | PluginFixedPanelTab {
+  if (tab.kind === "thread-info") return createThreadInfoFixedPanelTab();
+  if (
+    tab.kind === "git-diff" ||
+    (tab.kind === "plugin-fixed" &&
+      tab.pluginId === "core" &&
+      tab.tabId === "diff")
+  ) {
+    return createGitDiffFixedPanelTab();
+  }
+  return tab;
 }
 
 export function createPluginFixedPanelTab({
@@ -769,12 +791,12 @@ export function createTerminalFixedPanelTab({
   };
 }
 
-function normalizeFixedPanelTab(tab: FixedPanelTab): FixedPanelTab {
+function normalizeFixedPanelTab(legacyTab: FixedPanelTab): FixedPanelTab {
+  const tab = migrateLegacyFixedPanelTab(legacyTab);
   switch (tab.kind) {
     case "thread-info":
-      return createThreadInfoFixedPanelTab();
     case "git-diff":
-      return createGitDiffFixedPanelTab();
+      return tab;
     case "plugin-fixed": {
       const id = createPluginFixedPanelTab(tab).id;
       return tab.id === id ? tab : { ...tab, id };

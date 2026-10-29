@@ -219,7 +219,7 @@ describe("app keybindings", () => {
 
   it("requires every positive context and excludes every negative context", () => {
     const binding: AppKeybinding = {
-      command: "diff.toggle",
+      command: "terminal.open",
       desktopOnly: false,
       shortcut: MOD_N,
       when: {

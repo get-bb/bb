@@ -137,8 +137,11 @@ deltas and owns every timeline invariant:
   stream keys, parent refs, optional provider turn ids) and the assembler
   holds the bidirectional provider↔bb maps — both for scoping incoming
   deltas and for reverse-mapping bb ids on the command plane
-  (`turn/steer.expectedTurnId`, `thread/stop.activeTurnId`) and on
-  provider-native interaction requests (`providerNativeIds: true`). An
+  (`turn/steer.expectedTurnId`, `thread/stop.activeTurnId`). Bridges
+  send `interaction/request` and `item/tool/call` with the ids they put
+  on deltas: when the request names its `threadId`, the runtime maps its
+  `turnId`, approval subject `itemId`, and tool `callId` to the bb ids
+  minted for them, and passes through any id the assembler has not seen. An
   `interaction/request` carries an approval, a user question, or a
   plugin-defined request (`"<pluginId>/<name>"`); the resolution pairs with
   the payload kind ([provider-plugin-api.md](provider-plugin-api.md) §4).
@@ -272,7 +275,13 @@ The current grammar (`grammarVersions: [3, 3]`) includes:
   per-session settings other than model and reasoning level, each a `select`
   (`value`, `values`) or a `boolean`, with an optional `category` such as
   `mode` (the model picker, `bb thread options`; `mode` shows in the composer
-  footer). Latest snapshot wins: re-emit the whole list when it changes. The
+  footer). `bb/provider-model-catalog` carries
+  `{ models, selectedOnlyModels }` using the `model/list` result shape. A
+  bridge can publish the catalog its session just received, without another
+  discovery request. The server accepts it only for the current provider
+  thread identity, updates that provider's host/workspace catalog, and
+  invalidates connected model pickers immediately. Latest snapshot wins:
+  re-emit the whole list when it changes. The
   server alone writes `bb/session-option-selections` (choices the provider
   has not applied yet) and refuses it from a bridge.
 - **`sessionOptions`** (`{ [optionId]: string | boolean }`) on `thread/start`
@@ -333,6 +342,15 @@ with `cwd: null`. The host daemon probes from a dedicated empty
 `provider-command-catalog` directory under its data directory. The bridge still
 receives an absolute working directory, so global provider commands are available
 before a personal workspace exists. Selected projects use their workspace path.
+
+The server caches each answer per machine, provider, and working directory,
+because a cold answer waits on a login-shell refresh and a bridge start. For
+60 seconds the cached list is served as is. After that, a request still gets
+the cached list while the server asks again in the background. When the new
+answer differs, the server sends a `provider-commands-changed` host change so
+open composers refetch. A failed refresh keeps the previous list. The
+native-root scan and skill catalog are read on every request, so commands and
+skills added or edited on disk appear right away.
 
 ### Recovery hints
 
@@ -630,8 +648,10 @@ compares against that file when it exists. `pnpm parity --dump-dir <dir>`
 writes both legs' normalized event and row lists per cell.
 
 The conformance kit runs the same recordings as its recorded-traffic
-scenario set: `checkRecordedCellReplay` replays a bridge's cells and reports
+scenario set: `checkRecordedCellReplay` checks a bridge's replay results and reports
 `recorded/<cell>/{replays, events-schema-valid, grammar, turn-lifecycle,
 not-empty}` per cell. The pi, Claude Code, and Codex plugins' tests use only
 public dependencies, so `packages/provider-parity` replays their committed
-cells instead.
+cells instead. Its self-suite applies the recorded conformance checks to the
+same replay used for event and timeline parity, so each cell launches its
+bridge only once.

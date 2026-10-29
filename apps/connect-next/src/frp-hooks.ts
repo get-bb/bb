@@ -217,9 +217,14 @@ export function createFrpHooks(options: FrpHookOptions) {
           subdomain: proxy.subdomain,
         });
         const clientConnected = options.clientConnected;
-        if (clientConnected !== undefined) {
+        if (proxy.subdomain !== proxy.label && clientConnected !== undefined) {
           setTimeout(() => {
-            if (clientConnected(proxy.label)) {
+            if (
+              clientConnected(proxy.label) &&
+              ![...proxies.values()].some(
+                (current) => current.subdomain === proxy.subdomain,
+              )
+            ) {
               directory.removed(proxy.subdomain);
             }
           }, REMOVAL_SETTLE_MS).unref();

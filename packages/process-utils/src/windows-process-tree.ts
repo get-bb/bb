@@ -1,4 +1,5 @@
-import { execFile, type ChildProcess } from "node:child_process";
+import { execHostFileCallback as execFile } from "./host-process.js";
+import type { ChildProcess } from "node:child_process";
 import path from "node:path";
 import type { ProcessStopResult } from "./process-group.js";
 

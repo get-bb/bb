@@ -124,7 +124,8 @@ const SortablePinnedRootItem = memo(function SortablePinnedRootItem({
     displace,
   });
   const sortableStyle: CSSProperties =
-    props.sectionDnd?.activeThread?.id === getPinnedRootNodeId(node)
+    props.sectionDnd?.activeThread?.id === getPinnedRootNodeId(node) ||
+    props.sectionDnd?.draggedThreadIds?.has(getPinnedRootNodeId(node))
       ? { ...style, opacity: 0.35, pointerEvents: "none" }
       : style;
 

@@ -64,9 +64,20 @@ export function PushNotificationsHost() {
         hasThread: hasThreadOnServer,
       });
       if (!profile) {
-        toast.error("Could not open the thread", {
-          description: "None of your saved servers has it.",
-        });
+        if (target.threadId === null) {
+          toast.error("Could not open bb", {
+            description: "None of your saved servers sent this notification.",
+          });
+        } else {
+          toast.error("Could not open the thread", {
+            description: "None of your saved servers has it.",
+          });
+        }
+        return;
+      }
+      if (target.threadId === null) {
+        if (profile.id === activeProfileIdRef.current) return;
+        router.push(webViewShellHref({ profileId: profile.id }));
         return;
       }
       router.push(

@@ -15,7 +15,7 @@ export interface PluginMachineProviderBridge {
   listMachineProviders(): PluginMachineProviderRecord[];
   getMachineProvider(id: string): PluginMachineProviderRecord | undefined;
   invokeProvider<T>(
-    pluginId: string,
+    record: PluginMachineProviderRecord,
     label: string,
     run: () => Promise<T>,
   ): Promise<PluginHookInvocation<T>>;
@@ -45,7 +45,7 @@ export async function invokeMachineProvider<T>(
   label: string,
   run: () => Promise<T>,
 ): Promise<PluginHookInvocation<T>> {
-  return invokeBridgedProvider(bridge, record.pluginId, label, run);
+  return invokeBridgedProvider(bridge, record, label, run);
 }
 
 export function machineProviderDecisionTimeoutMs(): number {

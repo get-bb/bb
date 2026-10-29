@@ -33,18 +33,21 @@ function providerOptions(
 }
 
 describe("the Claude Code provider settings", () => {
-  it.each(["chromeEnabled", "disable1MContext", "artifactsEnabled"])(
-    "keeps %s off by default and derives an explicit opt-in",
-    (key) => {
-      const { declaration, host } = loadClaudeCodePlugin();
+  it.each([
+    "chromeEnabled",
+    "disable1MContext",
+    "artifactsEnabled",
+    "fullAccessApprovalsEnabled",
+  ])("keeps %s off by default and derives an explicit opt-in", (key) => {
+    const { declaration, host } = loadClaudeCodePlugin();
 
-      expect(host.harness.registrations.settingsDescriptors[key]).toMatchObject(
-        { type: "boolean", default: false },
-      );
-      expect(providerOptions(declaration, {})[key]).toBe(false);
-      expect(providerOptions(declaration, { [key]: true })[key]).toBe(true);
-    },
-  );
+    expect(host.harness.registrations.settingsDescriptors[key]).toMatchObject({
+      type: "boolean",
+      default: false,
+    });
+    expect(providerOptions(declaration, {})[key]).toBe(false);
+    expect(providerOptions(declaration, { [key]: true })[key]).toBe(true);
+  });
 
   it("keeps the Claude Code sandbox on by default and derives an explicit opt-out", () => {
     const { declaration, host } = loadClaudeCodePlugin();

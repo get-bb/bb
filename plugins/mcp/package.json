@@ -6,7 +6,7 @@
   "description": "Control bb from ChatGPT, Claude and other MCP clients.",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.4.102"
+    "bbPluginSdk": ">=0.6.86"
   },
   "bb": {
     "name": "MCP server",

@@ -61,14 +61,18 @@ import {
   serializeFixedPanelTabsState,
 } from "@/lib/fixed-panel-tabs-state";
 import { buildPluginPaletteActions } from "@/lib/command-palette/palette-plugin-actions";
-import { getActiveThreadPanelOpener } from "./plugin-thread-panel-navigation";
+import { getFocusedAppPanelController } from "@/lib/app-fixed-tab-navigation";
 import { PluginDetailPanelContext } from "./plugin-detail-navigation";
 import { openPluginDetailsInWorkspace } from "./plugin-detail-opener";
 import { PluginNewThreadComposer } from "./PluginNewThreadComposer";
 
 function PanedRootComposeView() {
   return (
-    <DefaultPaneContextProvider onRequestClose={null} navigateInPane={() => {}}>
+    <DefaultPaneContextProvider
+      paneId="main"
+      onRequestClose={null}
+      navigateInPane={() => {}}
+    >
       <RootComposeView />
     </DefaultPaneContextProvider>
   );
@@ -86,6 +90,7 @@ function render(element: ReactNode) {
 }
 
 const mocks = vi.hoisted(() => ({
+  unknownReasoning: false,
   promptBoxProps: [] as Array<Record<string, any>>,
   copyAttachments: vi.fn(),
   uploadAttachment: vi.fn(),
@@ -332,21 +337,27 @@ vi.mock("@/hooks/queries/system-queries", () => ({
                 displayName: "GPT-5.6",
                 isDefault: true,
                 sessionOptions: mocks.modelSessionOptions,
-                supportedReasoningEfforts: [
-                  { reasoningEffort: "low" },
-                  { reasoningEffort: "medium" },
-                  { reasoningEffort: "high" },
-                ],
+                reasoningDiscovery: "known" as const,
+                supportedReasoningEfforts: mocks.unknownReasoning
+                  ? []
+                  : [
+                      { reasoningEffort: "low" },
+                      { reasoningEffort: "medium" },
+                      { reasoningEffort: "high" },
+                    ],
               },
               {
                 model: "gpt-5.6-sol",
                 displayName: "GPT-5.6 Sol",
                 isDefault: false,
                 sessionOptions: mocks.modelSessionOptions,
-                supportedReasoningEfforts: [
-                  { reasoningEffort: "medium" },
-                  { reasoningEffort: "high" },
-                ],
+                reasoningDiscovery: "known" as const,
+                supportedReasoningEfforts: mocks.unknownReasoning
+                  ? []
+                  : [
+                      { reasoningEffort: "medium" },
+                      { reasoningEffort: "high" },
+                    ],
               },
             ],
             selectedOnlyModels: [],
@@ -686,6 +697,7 @@ describe("PluginNewThreadComposer seeding", () => {
     resetFixedPanelTabsStateForTest();
     mocks.closeTerminal.mockClear();
     mocks.modelSessionOptions = undefined;
+    mocks.unknownReasoning = false;
     mocks.promptBoxProps.length = 0;
     mocks.promptHistoryQueryOptions.length = 0;
     mocks.copyAttachments.mockReset();
@@ -926,6 +938,27 @@ describe("PluginNewThreadComposer seeding", () => {
     });
     expect(window.localStorage.getItem("bb.promptbox.machine-proj_1-1")).toBe(
       "host_2",
+    );
+  });
+
+  it("preserves the seeded reasoning preference when the model's levels are unknown", async () => {
+    mocks.unknownReasoning = true;
+    const submitted: NewThreadRequest[] = [];
+    renderComposer(
+      STORED_REQUEST,
+      (request) => {
+        submitted.push(request);
+      },
+      "unknown-reasoning",
+    );
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    await submit();
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0]?.reasoningLevel).toBe(STORED_REQUEST.reasoningLevel);
+    expect(submitted[0]?.executionInputSources?.reasoningLevel).toBe(
+      STORED_REQUEST.executionInputSources?.reasoningLevel,
     );
   });
 
@@ -1541,10 +1574,14 @@ describe("PluginNewThreadComposer seeding", () => {
           defaultShortcut: null,
           id: "inspect",
           title: "Inspect project",
-          run: ({ openPanel }) => {
+          run: ({ experimental_panel }) => {
             accepted.push(
-              openPanel({
-                actionId: "inspect-project",
+              experimental_panel.openTab({
+                tab: {
+                  id: "inspect-project",
+                  context: { kind: "thread" },
+                  availability: "action",
+                },
                 title: "Inspect current project",
                 params: { section: "changes" },
               }),
@@ -1554,7 +1591,7 @@ describe("PluginNewThreadComposer seeding", () => {
       ],
       threadId: null,
       projectId: null,
-      openThreadPanel: getActiveThreadPanelOpener(),
+      panel: getFocusedAppPanelController(),
     });
     await act(async () => {
       command.run();
@@ -1582,7 +1619,7 @@ describe("PluginNewThreadComposer seeding", () => {
     ]);
     expect(panel.secondary.activeTabId).toBe(panel.secondary.tabs[0].id);
     view.unmount();
-    expect(getActiveThreadPanelOpener()).toBeNull();
+    expect(getFocusedAppPanelController()).toBeNull();
   });
 
   it("renders the root composer with a loading project picker before the sidebar bootstrap settles", () => {

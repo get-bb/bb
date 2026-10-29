@@ -26,6 +26,10 @@ admitted, and permits remain held through termination cleanup.
 
 Workspace status uses status priority, diff panels and explicit mutations use
 interactive priority, and watcher setup, PR polling, fetches, and provisioning
-use background priority. The CLI and SDK reach the same workspace handlers.
-No daemon wire fields or user configuration changed. The Plugin Guide lists
+use background priority. Git status and diff reads run in the Git plugin's
+host entry, which has its own budget in the plugin host worker and keeps those
+priorities. The CLI and SDK reach the same reads through the Git plugin.
+The daemon's `workspace.status`, `workspace.diff`, `workspace.diffFiles` and
+`workspace.diffPatch` commands are gone (`HOST_DAEMON_PROTOCOL_VERSION` 252);
+no user configuration changed. The Plugin Guide lists
 `experimental_runVcsProcess` for plugins that spawn their own git/gh commands.

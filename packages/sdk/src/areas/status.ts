@@ -3,12 +3,13 @@ import type {
   ThreadStatus,
   ThreadTimelinePendingTodos,
 } from "@bb/domain";
-import type {
-  ProjectResponse,
-  ThreadListResponse,
-  ThreadResponse,
-  ThreadTimelineResponse,
-  ThreadWithIncludesResponse,
+import {
+  isThreadTimelineDelta,
+  type ProjectResponse,
+  type ThreadListResponse,
+  type ThreadResponse,
+  type ThreadTimelineResponse,
+  type ThreadWithIncludesResponse,
 } from "@bb/server-contract";
 import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 
@@ -105,7 +106,7 @@ export function createStatusArea(args: CreateSdkAreaArgs): StatusArea {
         thread === null
           ? null
           : await fetchSilent(async () => {
-              const timeline: StatusTimeline = await transport.readJson(
+              const timeline = await transport.readJson(
                 transport.api.v1.threads[":id"].timeline.$get(
                   {
                     param: { id: thread.id },
@@ -114,6 +115,9 @@ export function createStatusArea(args: CreateSdkAreaArgs): StatusArea {
                   ...signalRequestArgs(signal),
                 ),
               );
+              if (isThreadTimelineDelta(timeline)) {
+                throw new Error("Expected a full thread timeline window.");
+              }
               return timeline.pendingTodos;
             });
       const childThreads =

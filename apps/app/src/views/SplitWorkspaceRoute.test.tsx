@@ -1,13 +1,19 @@
 // @vitest-environment jsdom
 
 import { Suspense, useEffect } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PaneContent } from "@/lib/split-layout";
+import {
+  paneContentForPathname,
+  paneContentRoute,
+} from "./thread-detail/splitThreadNavigation";
 import SplitWorkspaceRoute from "./SplitWorkspaceRoute";
 
 const workspaceLifecycle = vi.hoisted(() => ({ mounts: 0, unmounts: 0 }));
+
+afterEach(cleanup);
 
 vi.mock("./thread-detail/SplitThreadArea", () => ({
   SplitThreadArea: ({ routeContent }: { routeContent: PaneContent }) => {
@@ -17,7 +23,17 @@ vi.mock("./thread-detail/SplitThreadArea", () => ({
         workspaceLifecycle.unmounts += 1;
       };
     }, []);
-    return <output data-testid="route-content">{routeContent.kind}</output>;
+    return (
+      <output
+        data-testid="route-content"
+        data-subpath={
+          routeContent.kind === "plugin-panel" ? routeContent.subPath : ""
+        }
+        data-route={paneContentRoute(routeContent)}
+      >
+        {routeContent.kind}
+      </output>
+    );
   },
 }));
 
@@ -92,4 +108,61 @@ describe("SplitWorkspaceRoute", () => {
       "github",
     );
   });
+});
+
+describe.each([
+  {
+    surface: "pane navigation",
+    readRoute(pathname: string) {
+      const content = paneContentForPathname(pathname);
+      if (content?.kind !== "plugin-panel") {
+        throw new Error("Expected a plugin panel");
+      }
+      return { subPath: content.subPath, route: paneContentRoute(content) };
+    },
+  },
+  {
+    surface: "workspace route",
+    readRoute(pathname: string) {
+      const view = render(
+        <MemoryRouter initialEntries={[pathname]}>
+          <SplitWorkspaceRoute />
+        </MemoryRouter>,
+      );
+      const output = view.getByTestId("route-content");
+      const result = {
+        subPath: output.getAttribute("data-subpath"),
+        route: output.getAttribute("data-route"),
+      };
+      view.unmount();
+      return result;
+    },
+  },
+])("plugin URL round trips through $surface", ({ readRoute }) => {
+  it.each([
+    { path: "items/key%3A42" },
+    { path: "items/key:42" },
+    { path: "items/discount%25" },
+    { path: "items/%D0%BF%D0%BB%D0%B0%D0%BD" },
+    { path: "items/key%252Fpart" },
+    { path: "items/key/part" },
+    { path: "items/key%2Fpart", subPath: "items/key/part" },
+    { path: "items/bad%ZZ" },
+    { path: "" },
+  ])(
+    "keeps /plugins/notes/board/$path stable across five rounds",
+    ({ path, subPath = path }) => {
+      const expected = `/plugins/notes/board${subPath ? `/${subPath}` : ""}`;
+      let pathname = `/plugins/notes/board${path ? `/${path}` : ""}`;
+      for (let round = 0; round < 5; round += 1) {
+        const parsed = readRoute(pathname);
+        expect(parsed.subPath).toBe(subPath);
+        expect(parsed.route).toBe(expected);
+        if (parsed.route === null) {
+          throw new Error("Expected a rebuilt plugin route");
+        }
+        pathname = parsed.route;
+      }
+    },
+  );
 });

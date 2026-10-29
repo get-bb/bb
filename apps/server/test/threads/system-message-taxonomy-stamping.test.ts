@@ -6,7 +6,7 @@ import {
   type SystemMessageSubject,
   type ThreadEventTurnStatus,
 } from "@bb/domain";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   queueChildThreadNeedsAttentionNotificationBestEffort,
   queueChildThreadTurnNotificationBestEffort,
@@ -73,29 +73,31 @@ async function waitForStampedSystemMessage(
   parentThreadId: string,
 ): Promise<StampedSystemMessage> {
   await flushChildThreadNotifications();
-  const rows = harness.db
-    .select()
-    .from(events)
-    .where(
-      and(
-        eq(events.threadId, parentThreadId),
-        eq(events.type, "client/turn/requested"),
-      ),
-    )
-    .orderBy(events.sequence)
-    .all();
-  for (const row of rows) {
-    const data = turnRequestEventDataSchema.parse(JSON.parse(row.data));
-    if (data.initiator === "system") {
-      return {
-        systemMessageKind: data.systemMessageKind ?? "unlabeled",
-        systemMessageSubject: data.systemMessageSubject ?? null,
-      };
+  return vi.waitFor(() => {
+    const rows = harness.db
+      .select()
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, parentThreadId),
+          eq(events.type, "client/turn/requested"),
+        ),
+      )
+      .orderBy(events.sequence)
+      .all();
+    for (const row of rows) {
+      const data = turnRequestEventDataSchema.parse(JSON.parse(row.data));
+      if (data.initiator === "system") {
+        return {
+          systemMessageKind: data.systemMessageKind ?? "unlabeled",
+          systemMessageSubject: data.systemMessageSubject ?? null,
+        };
+      }
     }
-  }
-  throw new Error(
-    "Expected a stamped system message after flushing notifications",
-  );
+    throw new Error(
+      "Expected a stamped system message after flushing notifications",
+    );
+  });
 }
 
 describe("Family B emit-site discriminator stamping", () => {

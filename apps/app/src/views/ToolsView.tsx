@@ -1,7 +1,9 @@
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import { useAtom } from "jotai";
+import { useAtom, useStore } from "jotai";
 import { PluginSettingsPage } from "@/components/plugin/PluginSettings";
 import { pluginWorkspaceAtom } from "@/components/plugin/plugin-workspace-state";
+import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
+import { getBbDesktopInfo } from "@/lib/bb-desktop";
 import { useSetPluginEnabled } from "@/components/plugin/useSetPluginEnabled";
 import {
   Suspense,
@@ -71,6 +73,7 @@ import {
   SecondaryPanelLayout,
   type SecondaryPanelRenderArgs,
 } from "@/components/secondary-panel/SecondaryPanelLayout";
+import { secondaryPanelWidthPercentAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { ThreadSecondaryPanel } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import type {
   SecondaryPanelRenderableTab,
@@ -466,6 +469,7 @@ export function PluginsView({ detailKey }: { detailKey?: string } = {}) {
   const focusReturnRef = useRef<HTMLButtonElement | null>(null);
   const [isPluginDetailFullPage, setIsPluginDetailFullPage] = useState(false);
   const [workspace, setWorkspace] = useAtom(pluginWorkspaceAtom);
+  const store = useStore();
   const isCompact = useIsCompactViewport();
   const activePluginId = detailKey ?? workspace.activePluginId;
   const isPanelOpen =
@@ -496,11 +500,17 @@ export function PluginsView({ detailKey }: { detailKey?: string } = {}) {
 
   const selectPlugin = useCallback(
     (nextDetailKey: string) => {
+      setWorkspace((current) => ({
+        tabs: current.tabs.includes(nextDetailKey)
+          ? current.tabs
+          : [...current.tabs, nextDetailKey],
+        activePluginId: nextDetailKey,
+      }));
       const params = new URLSearchParams(location.search);
       params.delete("configure");
       navigate(pluginDetailLocation(nextDetailKey, params.toString()));
     },
-    [location.search, navigate],
+    [location.search, navigate, setWorkspace],
   );
   const openPlugin = useCallback(
     (nextDetailKey: string, trigger: HTMLButtonElement) => {
@@ -525,18 +535,30 @@ export function PluginsView({ detailKey }: { detailKey?: string } = {}) {
   }, [location.search, navigate, restoreFocus, setWorkspace]);
   const closeTab = useCallback(
     (closedPluginId: string) => {
-      const tabs = openIds.filter((id) => id !== closedPluginId);
-      const closedIndex = openIds.indexOf(closedPluginId);
+      const current = store.get(pluginWorkspaceAtom);
+      const closedIndex = current.tabs.indexOf(closedPluginId);
+      if (closedIndex === -1) return;
+      const tabs = current.tabs.filter((id) => id !== closedPluginId);
       const next =
-        activePluginId === closedPluginId
+        current.activePluginId === closedPluginId
           ? (tabs[Math.min(closedIndex, tabs.length - 1)] ?? null)
-          : activePluginId;
+          : current.activePluginId;
       setWorkspace({ tabs, activePluginId: next });
+      if (current.activePluginId !== closedPluginId) return;
       if (next !== null) selectPlugin(next);
       else closePanel();
     },
-    [activePluginId, closePanel, openIds, selectPlugin, setWorkspace],
+    [closePanel, selectPlugin, setWorkspace, store],
   );
+  const closeActiveTab = useCallback(() => {
+    if (!isPanelOpen || activePluginId === null) return false;
+    closeTab(activePluginId);
+    return true;
+  }, [activePluginId, closeTab, isPanelOpen]);
+  useAppCommandHandler("panel.close", closeActiveTab);
+  useEffect(() => {
+    return getBbDesktopInfo()?.onCloseWindowRequest?.(closeActiveTab);
+  }, [closeActiveTab]);
   const reorderTab = useCallback<SecondaryPanelTabReorderHandler>(
     ({ activeTabId, overTabId }) => {
       const tabs = [...openIds];
@@ -611,7 +633,6 @@ export function PluginsView({ detailKey }: { detailKey?: string } = {}) {
     }: SecondaryPanelRenderArgs) => (
       <ThreadSecondaryPanel
         activeTab={activeTab}
-        canUseGitUi={false}
         metadataContent={null}
         tabs={panelTabs}
         fixedTabs={[]}
@@ -651,6 +672,7 @@ export function PluginsView({ detailKey }: { detailKey?: string } = {}) {
         }}
         renderPanel={renderPanel}
         composerHost={null}
+        widthPercentAtom={secondaryPanelWidthPercentAtom}
       />
     </div>
   );

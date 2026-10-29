@@ -12,6 +12,7 @@ const question: Question = {
     { value: "safe", label: "Safe" },
   ],
   allowFreeText: true,
+  required: true,
 };
 
 describe("resolveQuestionShortcutChoice", () => {

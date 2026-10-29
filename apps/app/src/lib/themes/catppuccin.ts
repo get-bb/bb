@@ -23,6 +23,7 @@ export const catppuccinThemeCss = `
   --warning-text: #b8730a;
   --attention: #fe640b;
   --success: #40a02b;
+  --success-foreground: #157e00;
   --diff-added: #40a02b;
   --diff-removed: #d20f39;
   --pr-merged: #8839ef;
@@ -69,6 +70,7 @@ export const catppuccinThemeCss = `
   --warning-text: #f9e2af;
   --attention: #fab387;
   --success: #a6e3a1;
+  --success-foreground: #a6e3a1;
   --diff-added: #a6e3a1;
   --diff-removed: #f38ba8;
   --pr-merged: #cba6f7;

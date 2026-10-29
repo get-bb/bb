@@ -8,7 +8,7 @@ import {
   hostDaemonInteractiveInterruptResponseSchema,
   hostDaemonInteractiveRequestResponseSchema,
   hostDaemonSessionOpenResponseSchema,
-  hostDaemonSkillTreeSchema,
+  hostDaemonSkillTreeManifestSchema,
   hostDaemonToolCallResponseSchema,
   type HostDaemonInteractiveInterruptResponse,
   type HostDaemonInteractiveRequestResponse,
@@ -24,7 +24,8 @@ import {
   type HostDaemonSessionOpenResponse,
   type HostDaemonToolCallRequest,
   type HostDaemonToolCallResponse,
-  type HostDaemonSkillTree,
+  type HostDaemonSkillTreeContentRequest,
+  type HostDaemonSkillTreeManifest,
 } from "@bb/host-daemon-contract";
 import { HOST_ARTIFACT_MAX_BYTES } from "@bb/host-daemon-contract/protocol";
 import type { PendingInteractionCreate, ToolCallRequest } from "@bb/domain";
@@ -203,12 +204,18 @@ export interface ServerClient {
   fetchProjectAttachment(
     args: FetchProjectAttachmentArgs,
   ): Promise<FetchedProjectAttachment>;
-  fetchSkillTree(treeHash: string): Promise<HostDaemonSkillTree>;
+  fetchSkillTreeManifest(
+    treeHash: string,
+  ): Promise<HostDaemonSkillTreeManifest>;
+  fetchSkillTreeContent(
+    treeHash: string,
+    paths: readonly string[],
+  ): Promise<AsyncIterable<Uint8Array>>;
   fetchPluginHostArtifact(args: {
     pluginId: string;
     digest: string;
     expectedByteLength: number;
-  }): Promise<Uint8Array>;
+  }): Promise<AsyncIterable<Uint8Array>>;
   postEvents(events: HostDaemonEventEnvelope[]): Promise<EventPostResult>;
   callTool(
     request: ToolCallRequest,
@@ -255,85 +262,29 @@ function parseContentLength(value: string | null): number | null {
   return parsed;
 }
 
-function validateProjectAttachmentPartialByteLength(
+function validateProjectAttachmentContentLength(
   args: FetchProjectAttachmentArgs,
-  byteLength: number,
+  contentLength: number,
 ): void {
   if (
     args.expectedSizeBytes !== undefined &&
-    byteLength > args.expectedSizeBytes
+    contentLength !== args.expectedSizeBytes
   ) {
     throw new Error(
-      `Project attachment size mismatch: expected ${args.expectedSizeBytes} bytes, received more than ${args.expectedSizeBytes}`,
+      `Project attachment size mismatch: expected ${args.expectedSizeBytes} bytes, received ${contentLength}`,
     );
   }
-  if (byteLength > args.maxBytes) {
+  if (contentLength > args.maxBytes) {
     throw new Error(
-      `Project attachment exceeds ${args.maxBytes} byte limit: received ${byteLength}`,
+      `Project attachment exceeds ${args.maxBytes} byte limit: received ${contentLength}`,
     );
   }
 }
 
-function validateProjectAttachmentFinalByteLength(
-  args: FetchProjectAttachmentArgs,
-  byteLength: number,
-): void {
-  if (
-    args.expectedSizeBytes !== undefined &&
-    byteLength !== args.expectedSizeBytes
-  ) {
-    throw new Error(
-      `Project attachment size mismatch: expected ${args.expectedSizeBytes} bytes, received ${byteLength}`,
-    );
-  }
-  validateProjectAttachmentPartialByteLength(args, byteLength);
-}
+async function* emptyBody(): AsyncGenerator<Uint8Array> {}
 
-async function readProjectAttachmentBytes(
-  response: Response,
-  args: FetchProjectAttachmentArgs,
-): Promise<Uint8Array> {
-  if (!response.body) {
-    validateProjectAttachmentFinalByteLength(args, 0);
-    return new Uint8Array();
-  }
-
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let totalBytes = 0;
-  while (true) {
-    const result = await reader.read();
-    if (result.done) {
-      break;
-    }
-    totalBytes += result.value.byteLength;
-    validateProjectAttachmentPartialByteLength(args, totalBytes);
-    chunks.push(result.value);
-  }
-
-  validateProjectAttachmentFinalByteLength(args, totalBytes);
-  const bytes = new Uint8Array(totalBytes);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return bytes;
-}
-
-function validateHostArtifactPartialByteLength(
-  expectedByteLength: number,
-  byteLength: number,
-  maxBytes: number,
-): void {
-  if (byteLength > maxBytes) {
-    throw new Error(`Host artifact exceeds the ${maxBytes} byte limit`);
-  }
-  if (byteLength > expectedByteLength) {
-    throw new Error(
-      `Host artifact length mismatch: expected ${expectedByteLength}, received more than ${expectedByteLength}`,
-    );
-  }
+function responseContent(response: Response): AsyncIterable<Uint8Array> {
+  return response.body ?? emptyBody();
 }
 
 function assertHostArtifactContentLength(
@@ -356,51 +307,6 @@ function assertHostArtifactContentLength(
       `Host artifact length mismatch: expected ${expectedByteLength}, received ${contentLength}`,
     );
   }
-}
-
-export async function readHostArtifactBytes(
-  response: Response,
-  expectedByteLength: number,
-  maxBytes = HOST_ARTIFACT_MAX_BYTES,
-): Promise<Uint8Array> {
-  if (!response.body) {
-    throw new Error(
-      `Host artifact length mismatch: expected ${expectedByteLength}, received 0`,
-    );
-  }
-
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let totalBytes = 0;
-  try {
-    while (true) {
-      const result = await reader.read();
-      if (result.done) break;
-      totalBytes += result.value.byteLength;
-      validateHostArtifactPartialByteLength(
-        expectedByteLength,
-        totalBytes,
-        maxBytes,
-      );
-      chunks.push(result.value);
-    }
-  } catch (error) {
-    await reader.cancel(error).catch(() => undefined);
-    throw error;
-  }
-
-  if (totalBytes !== expectedByteLength) {
-    throw new Error(
-      `Host artifact length mismatch: expected ${expectedByteLength}, received ${totalBytes}`,
-    );
-  }
-  const bytes = new Uint8Array(totalBytes);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return bytes;
 }
 
 export function createServerClient(
@@ -519,27 +425,48 @@ export function createServerClient(
         response.headers.get("content-length"),
       );
       if (contentLength !== null) {
-        validateProjectAttachmentFinalByteLength(args, contentLength);
+        try {
+          validateProjectAttachmentContentLength(args, contentLength);
+        } catch (error) {
+          await response.body?.cancel().catch(() => undefined);
+          throw error;
+        }
       }
 
-      const bytes = await readProjectAttachmentBytes(response, args);
-      return {
-        bytes,
-      };
+      return { content: responseContent(response) };
     },
 
-    async fetchSkillTree(treeHash: string): Promise<HostDaemonSkillTree> {
+    async fetchSkillTreeManifest(
+      treeHash: string,
+    ): Promise<HostDaemonSkillTreeManifest> {
       const response = await fetchFn(
         buildInternalUrl(`/skills/tree/${encodeURIComponent(treeHash)}`),
         { method: "GET", headers: headers() },
       );
       if (!response.ok) {
-        throw await createResponseError("fetch skill tree", response);
+        throw await createResponseError("fetch skill tree manifest", response);
       }
-      return hostDaemonSkillTreeSchema.parse(await response.json());
+      return hostDaemonSkillTreeManifestSchema.parse(await response.json());
     },
 
-    async fetchPluginHostArtifact(args): Promise<Uint8Array> {
+    async fetchSkillTreeContent(
+      treeHash: string,
+      paths: readonly string[],
+    ): Promise<AsyncIterable<Uint8Array>> {
+      const payload: HostDaemonSkillTreeContentRequest = { paths: [...paths] };
+      const response = await fetchFn(
+        buildInternalUrl(
+          `/skills/tree/${encodeURIComponent(treeHash)}/content`,
+        ),
+        { method: "POST", headers: headers(), body: JSON.stringify(payload) },
+      );
+      if (!response.ok) {
+        throw await createResponseError("fetch skill tree content", response);
+      }
+      return responseContent(response);
+    },
+
+    async fetchPluginHostArtifact(args): Promise<AsyncIterable<Uint8Array>> {
       if (args.expectedByteLength > HOST_ARTIFACT_MAX_BYTES) {
         throw new Error(
           `Host artifact exceeds the ${HOST_ARTIFACT_MAX_BYTES} byte limit`,
@@ -554,8 +481,13 @@ export function createServerClient(
       if (!response.ok) {
         throw await createResponseError("fetch plugin host artifact", response);
       }
-      assertHostArtifactContentLength(response, args.expectedByteLength);
-      return readHostArtifactBytes(response, args.expectedByteLength);
+      try {
+        assertHostArtifactContentLength(response, args.expectedByteLength);
+      } catch (error) {
+        await response.body?.cancel().catch(() => undefined);
+        throw error;
+      }
+      return responseContent(response);
     },
 
     async postEvents(

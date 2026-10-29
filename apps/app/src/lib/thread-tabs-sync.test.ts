@@ -1,22 +1,25 @@
 import { openSecondaryPanelTabInState } from "@bb/client-core";
-import type { ThreadTab } from "@bb/server-contract";
+import { threadTabsSchema, type ThreadTab } from "@bb/server-contract";
 import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 import { setCachedThreadTabs } from "@/hooks/cache-owners/thread-tabs-cache-owner";
 import {
   createBrowserFixedPanelTab,
   createEmptyFixedPanelTabsState,
+  createGitDiffFixedPanelTab,
   createNewTabFixedPanelTab,
   createTerminalFixedPanelTab,
   createThreadInfoFixedPanelTab,
   type FixedPanelTab,
+  createPluginPageFixedPanelTab,
 } from "./fixed-panel-tabs-state";
-import { createPluginPageFixedPanelTab } from "./fixed-panel-tabs-state";
 import {
   areThreadTabListsEquivalent,
+  hasPendingThreadTabsWrite,
   mergeThreadTabChanges,
   reconcileFixedPanelTabsState,
   resolveFixedPanelTabsHydration,
+  scheduleLocalThreadTabsMigration,
   scheduleThreadTabsPersistence,
 } from "./thread-tabs-sync";
 
@@ -44,18 +47,112 @@ function browserTab(
 }
 
 describe("thread tab synchronization", () => {
+  it.each([
+    ["git-diff", createGitDiffFixedPanelTab()],
+    ["thread-info", createThreadInfoFixedPanelTab()],
+  ] as const)(
+    "collapses %s aliases in either order while preserving neighboring tabs",
+    (kind, canonical) => {
+      const first = browserTab("first", "First");
+      const last = browserTab("last", "Last");
+      const legacy: ThreadTab = { id: `legacy:${kind}`, kind };
+      for (const aliases of [
+        [canonical, legacy],
+        [legacy, canonical],
+      ]) {
+        const saved = threadTabsSchema.parse([first, ...aliases, last]);
+        const merged = mergeThreadTabChanges(saved, [], []);
+        expect(merged).toEqual([first, canonical, last]);
+        expect(threadTabsSchema.safeParse(merged).success).toBe(true);
+        const restored = reconcileFixedPanelTabsState(
+          createEmptyFixedPanelTabsState(),
+          saved,
+        );
+        expect(restored.secondary.tabs).toEqual([first, canonical, last]);
+      }
+    },
+  );
+
+  it.each(["persist", "migrate"] as const)(
+    "%s writes mixed legacy and canonical tabs once without blocking later writes",
+    async (mode) => {
+      const queryClient = new QueryClient();
+      const threadId = `mixed-aliases-${mode}`;
+      const info = createThreadInfoFixedPanelTab();
+      const diff = createGitDiffFixedPanelTab();
+      const mixed: FixedPanelTab[] = [
+        info,
+        diff,
+        { id: "legacy:diff", kind: "git-diff" },
+        { id: "legacy:info", kind: "thread-info" },
+      ];
+      const revision = mode === "persist" ? 7 : 0;
+      setCachedThreadTabs(queryClient, threadId, {
+        revision,
+        tabs: mode === "persist" ? threadTabsSchema.parse(mixed) : [],
+      });
+      updateThreadTabs.mockResolvedValue({
+        revision: revision + 1,
+        tabs: [info, diff],
+      });
+      if (mode === "persist") {
+        scheduleThreadTabsPersistence({
+          queryClient,
+          threadId,
+          previousTabs: [info, diff],
+          tabs: [info, diff],
+        });
+      } else {
+        scheduleLocalThreadTabsMigration({
+          queryClient,
+          threadId,
+          tabs: mixed,
+        });
+      }
+      await vi.waitFor(() =>
+        expect(hasPendingThreadTabsWrite(queryClient, threadId)).toBe(false),
+      );
+      expect(updateThreadTabs).toHaveBeenCalledWith({
+        threadId,
+        expectedRevision: revision,
+        tabs: [info, diff],
+      });
+
+      const added = browserTab("added", "Added");
+      updateThreadTabs.mockResolvedValue({
+        revision: revision + 2,
+        tabs: [info, diff, added],
+      });
+      scheduleThreadTabsPersistence({
+        queryClient,
+        threadId,
+        previousTabs: [info, diff],
+        tabs: [info, diff, added],
+      });
+      await vi.waitFor(() =>
+        expect(hasPendingThreadTabsWrite(queryClient, threadId)).toBe(false),
+      );
+      expect(updateThreadTabs).toHaveBeenCalledWith({
+        threadId,
+        expectedRevision: revision + 1,
+        tabs: [info, diff, added],
+      });
+      queryClient.clear();
+    },
+  );
+
   it("converts server-saved Diff and Info tabs in place before reconciling selection", () => {
     const current = createEmptyFixedPanelTabsState({
       secondary: {
         tabs: [
           {
-            id: "plugin-fixed:core:diff",
+            id: "plugin-fixed:bb--git:diff",
             kind: "plugin-fixed",
-            pluginId: "core",
+            pluginId: "bb--git",
             tabId: "diff",
           },
         ],
-        activeTabId: "plugin-fixed:core:diff",
+        activeTabId: "plugin-fixed:bb--git:diff",
         isOpen: true,
       },
     });
@@ -67,13 +164,13 @@ describe("thread tab synchronization", () => {
     ]);
     expect(restored.secondary).toEqual({
       isOpen: true,
-      activeTabId: "plugin-fixed:core:diff",
+      activeTabId: "plugin-fixed:bb--git:diff",
       tabs: [
         terminal,
         {
-          id: "plugin-fixed:core:diff",
+          id: "plugin-fixed:bb--git:diff",
           kind: "plugin-fixed",
-          pluginId: "core",
+          pluginId: "bb--git",
           tabId: "diff",
         },
         {
@@ -84,6 +181,23 @@ describe("thread tab synchronization", () => {
         },
       ],
     });
+  });
+
+  it("keeps one Diff tab when the server saved both the core and the Git plugin ids", () => {
+    const gitDiff: ThreadTab = {
+      id: "plugin-fixed:bb--git:diff",
+      kind: "plugin-fixed",
+      pluginId: "bb--git",
+      tabId: "diff",
+    };
+    const coreDiff: ThreadTab = {
+      id: "plugin-fixed:core:diff",
+      kind: "plugin-fixed",
+      pluginId: "core",
+      tabId: "diff",
+    };
+    const merged = mergeThreadTabChanges([gitDiff, coreDiff], [], []);
+    expect(merged.map((tab) => tab.id)).toEqual(["plugin-fixed:bb--git:diff"]);
   });
 
   it("preserves remote additions and edits when removing a local tab", () => {

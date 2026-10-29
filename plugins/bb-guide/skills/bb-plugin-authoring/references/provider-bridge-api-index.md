@@ -10,6 +10,8 @@ Read the installed declarations for exact current signatures.
 - `ContextSnapshot`
 - `ContextCategory`
 - `ContextEntry`
+- `ExperimentalIndexedSkillFile`
+- `ExperimentalSkillScanRoot`
 
 - `BRIDGE_INBOUND_REQUEST_METHODS`
 - `PLUGIN_INTERACTION_MAX_TITLE_LENGTH`
@@ -100,7 +102,9 @@ Read the installed declarations for exact current signatures.
 - `experimental_readCliVersion`
 - `experimental_recordProviderChildIo`
 - `experimental_resolveExecutablePath`
+- `experimental_scanSkillFiles`
 - `experimental_searchPresentation`
+- `experimental_selectedSkillMentions`
 - `experimental_spawnPortableProcess`
 - `experimental_toolPresentation`
 - `experimental_versionFrom`

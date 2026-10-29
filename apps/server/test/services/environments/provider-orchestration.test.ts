@@ -1925,7 +1925,7 @@ it("skips environments blocked on a foreign plugin owner until that plugin provi
         return id === record.provider.id ? record : undefined;
       },
       invokeProvider: async <T>(
-        _id: string,
+        _record: typeof record,
         _label: string,
         run: () => Promise<T>,
       ) => ({ ok: true as const, value: await run() }),

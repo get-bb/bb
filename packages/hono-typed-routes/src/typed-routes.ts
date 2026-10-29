@@ -7,7 +7,6 @@ import type {
   RouteDefinition,
   RouteMethod,
   RouteParsedInput,
-  RouteTagDeclarations,
 } from "./route-descriptor.js";
 
 type EndpointInput<E> = E extends Endpoint<infer I, any, any, any> ? I : never;
@@ -57,7 +56,7 @@ type RuntimeInputSource = InputSource | "none" | "form";
 
 type TypedRegister<Schema, MKey extends MethodKey> = <
   Path extends string & keyof Schema,
-  E extends (MKey extends keyof Schema[Path] ? Schema[Path][MKey] : never),
+  E extends MKey extends keyof Schema[Path] ? Schema[Path][MKey] : never,
   Input extends RouteInputForMethod<MKey, EndpointInput<E>>,
 >(
   ...args: [Input] extends [never]
@@ -94,7 +93,6 @@ type TypedRegisterWithDescriptor<
 
 interface TypedRoutesOptions {
   onValidationError?: (message: string) => Error;
-  invalidateTags?: (tags: readonly string[]) => void;
 }
 
 type ValidationMessageFromZodError = (error: ZodError) => string;
@@ -166,51 +164,11 @@ export function typedRoutes<Schema>(
     }
   }
 
-  function publishInvalidations(
-    descriptor: RouteDefinition & RouteTagDeclarations,
-    handler: Function,
-  ): Function {
-    const invalidates = descriptor.invalidates?.bind(descriptor);
-    if (invalidates === undefined) return handler;
-    const invalidateTags = options?.invalidateTags;
-    if (invalidateTags === undefined)
-      throw new Error(
-        `${descriptor.method.toUpperCase()} ${descriptor.path} declares invalidates but typedRoutes has no invalidateTags option`,
-      );
-    return async (c: Context, input: unknown) => {
-      const response: Response = await handler(c, input);
-      if (
-        response.ok &&
-        response.headers.get("content-type")?.includes("application/json")
-      ) {
-        const output: unknown = await response.clone().json();
-        const tags = [
-          ...new Set(
-            invalidates(
-              {
-                params: c.req.param(),
-                input:
-                  descriptor.request.source === "json" ||
-                  descriptor.request.source === "query"
-                    ? input
-                    : undefined,
-              },
-              output,
-            ),
-          ),
-        ];
-        if (tags.length > 0) invalidateTags(tags);
-      }
-      return response;
-    };
-  }
-
   function registerDescriptor(
     method: HttpMethod,
-    descriptor: RouteDefinition & RouteTagDeclarations,
-    routeHandler: Function,
+    descriptor: RouteDefinition,
+    handler: Function,
   ): void {
-    const handler = publishInvalidations(descriptor, routeHandler);
     if (
       descriptor.request.source === "query" ||
       descriptor.request.source === "json"

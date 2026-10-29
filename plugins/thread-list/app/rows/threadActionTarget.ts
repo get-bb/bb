@@ -8,6 +8,7 @@ export function toThreadActionTarget(
     id: thread.id,
     projectId: thread.projectId,
     parentThreadId: thread.parentThreadId,
+    parentNotifications: thread.parentNotifications,
     archivedAt: thread.archivedAt,
     pinnedAt: thread.pinnedAt,
     sectionId: thread.sectionId,

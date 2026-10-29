@@ -6,16 +6,12 @@ import type {
   PullRequest,
 } from "bb-plugin-bb--github-pr-status/contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useEnvironmentPullRequest as usePluginEnvironmentPullRequest } from "../../../../plugins/github-pr-status/ui/queries";
-import {
-  isEnvironmentPullRequestStale,
-  useRetiredSidebarEnvironmentPullRequest,
-} from "./retired-sidebar-pull-request";
+import { useRetiredSidebarEnvironmentPullRequest } from "./retired-sidebar-pull-request";
 
 const keyedQuery = vi.hoisted(() => ({
   pluginEnabled: true,
   data: {} as Record<string, EnvironmentPullRequest>,
-  refetch: vi.fn(async () => {}),
+  refetch: vi.fn(async (_keys: readonly string[]) => {}),
 }));
 
 vi.mock("@tanstack/react-query", async (importOriginal) => ({
@@ -24,23 +20,23 @@ vi.mock("@tanstack/react-query", async (importOriginal) => ({
 }));
 
 vi.mock("@get-bb/plugin-sdk/app", () => ({
-  experimental_useRpcKeyedQuery: () => ({
+  experimental_useRpcKeyedQuery: (options: { keys: readonly string[] }) => ({
     data: keyedQuery.data,
     error: null,
     isLoading: false,
     isFetching: false,
-    refetch: keyedQuery.refetch,
+    refetch: () => keyedQuery.refetch(options.keys),
   }),
   experimental_useRpcMutation: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 vi.mock("@/lib/plugin-sdk-hooks", () => ({
-  experimental_useRpcKeyedQuery: () => ({
+  experimental_useRpcKeyedQuery: (options: { keys: readonly string[] }) => ({
     data: keyedQuery.data,
     error: null,
     isLoading: false,
     isFetching: false,
-    refetch: keyedQuery.refetch,
+    refetch: () => keyedQuery.refetch(options.keys),
   }),
   experimental_useRpcMutation: () => ({ mutate: vi.fn(), isPending: false }),
 }));
@@ -87,51 +83,21 @@ async function showPage(): Promise<void> {
 
 afterEach(() => {
   cleanup();
-  vi.useRealTimers();
   keyedQuery.refetch.mockClear();
   keyedQuery.data = {};
   keyedQuery.pluginEnabled = true;
 });
 
-describe("isEnvironmentPullRequestStale", () => {
-  it.each([
-    ["open", row("open"), 30_000, false],
-    ["open", row("open"), 30_001, true],
-    ["draft", row("draft"), 30_001, true],
-    ["absent", { outcome: "absent" } as const, 30_001, true],
-    [
-      "unavailable",
-      { outcome: "unavailable", message: "Host is suspended" } as const,
-      30_001,
-      true,
-    ],
-    ["merged", row("merged"), 30_001, false],
-    ["merged", row("merged"), 3_600_001, true],
-    ["closed", row("closed"), 3_600_000, false],
-    ["closed", row("closed"), 3_600_001, true],
-  ])(
-    "treats a %s row loaded %i ms ago as stale: %s",
-    (_, value, age, stale) => {
-      expect(isEnvironmentPullRequestStale(value, 0, age)).toBe(stale);
-    },
-  );
-});
-
 describe("useRetiredSidebarEnvironmentPullRequest refreshes", () => {
-  it("refetches a cached row on mount and when the page shows after 30 s", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
+  it("refetches a cached row on mount and each time the page shows again", async () => {
     keyedQuery.data = { "env-open": row("open") };
     renderHook(() => useRetiredSidebarEnvironmentPullRequest("env-open"));
     await settle();
     expect(keyedQuery.refetch).toHaveBeenCalledTimes(1);
 
-    vi.setSystemTime(Date.now() + 20_000);
     await showPage();
-    expect(keyedQuery.refetch).toHaveBeenCalledTimes(1);
-
-    vi.setSystemTime(Date.now() + 15_000);
     await showPage();
-    expect(keyedQuery.refetch).toHaveBeenCalledTimes(2);
+    expect(keyedQuery.refetch).toHaveBeenCalledTimes(3);
   });
 
   it("hides a previously cached PR when its plugin is disabled", () => {
@@ -144,50 +110,17 @@ describe("useRetiredSidebarEnvironmentPullRequest refreshes", () => {
     expect(result.current.isLoading).toBe(false);
   });
 
-  it("keeps a merged row for an hour before a visible page refetches it", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    keyedQuery.data = { "env-merged": row("merged") };
-    renderHook(() => useRetiredSidebarEnvironmentPullRequest("env-merged"));
-    await settle();
-    keyedQuery.refetch.mockClear();
-
-    vi.setSystemTime(Date.now() + 10 * 60_000);
-    await showPage();
-    expect(keyedQuery.refetch).not.toHaveBeenCalled();
-
-    vi.setSystemTime(Date.now() + 51 * 60_000);
-    await showPage();
-    expect(keyedQuery.refetch).toHaveBeenCalledTimes(1);
-  });
-
-  it("sends one refetch when many rows show at once", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
+  it("refetches each environment that shows", async () => {
     keyedQuery.data = { "env-a": row("open"), "env-b": row("open") };
     renderHook(() => {
       useRetiredSidebarEnvironmentPullRequest("env-a");
       useRetiredSidebarEnvironmentPullRequest("env-b");
     });
     await settle();
-    expect(keyedQuery.refetch).toHaveBeenCalledTimes(1);
+    expect(keyedQuery.refetch.mock.calls).toEqual([[["env-a"]], [["env-b"]]]);
 
-    vi.setSystemTime(Date.now() + 31_000);
     await showPage();
-    expect(keyedQuery.refetch).toHaveBeenCalledTimes(2);
-  });
-
-  it("reads once when the plugin's hook and this one show a stale row together", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    keyedQuery.data = { "env-shared": row("open") };
-    renderHook(() => {
-      usePluginEnvironmentPullRequest("env-shared");
-      useRetiredSidebarEnvironmentPullRequest("env-shared");
-    });
-    await settle();
-    keyedQuery.refetch.mockClear();
-
-    vi.setSystemTime(Date.now() + 31_000);
-    await showPage();
-    expect(keyedQuery.refetch).toHaveBeenCalledTimes(1);
+    expect(keyedQuery.refetch).toHaveBeenCalledTimes(4);
   });
 
   it("does not refetch on mount before the row has loaded", async () => {

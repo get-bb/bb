@@ -617,7 +617,7 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     });
   });
 
-  it("rpc: a method declaring tags returns only ok and result and still broadcasts its invalidation", async () => {
+  it("rpc: a built plugin still declaring the retired invalidates returns only ok and result and still broadcasts its tags", async () => {
     const changed = vi.spyOn(harness.hub, "notifyPluginChanged");
     const response = await rpc(harness, "tagged", { id: "x" });
     expect(response.status).toBe(200);

@@ -72,8 +72,10 @@ import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { PluginItemIcon } from "@/components/plugin/PluginIcon";
-import { usePluginNewThreadPanelActions } from "@/components/plugin/PluginPanelActions";
-import { PluginThreadPanelNavigationProvider } from "@/components/plugin/plugin-thread-panel-navigation";
+import {
+  createPanelActionDestination,
+  usePluginNewThreadPanelActions,
+} from "@/components/plugin/PluginPanelActions";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { useCreateThread } from "@/hooks/mutations/thread-runtime-mutations";
 import {
@@ -81,7 +83,6 @@ import {
   useTerminals,
 } from "@/hooks/queries/thread-terminal-queries";
 import { usePanelBrowser } from "@/components/secondary-panel/usePanelBrowser";
-import { usePanelPluginPanels } from "@/components/secondary-panel/usePanelPluginPanels";
 import { usePanelFiles } from "@/components/secondary-panel/usePanelFiles";
 import { usePanelTerminals } from "@/components/secondary-panel/usePanelTerminals";
 import { useEnvironment } from "@/hooks/queries/environment-queries";
@@ -117,11 +118,8 @@ import {
 } from "@/lib/fixed-panel-tabs";
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 import { UrlOpenRoutingProvider } from "@/lib/url-open-routing";
-import {
-  AppNavigationHostProvider,
-  type AppFixedTabOpenIntent,
-} from "@/lib/app-navigation-host";
-import { openAppFixedTabFromDestinations } from "@/lib/app-fixed-tab-navigation";
+import { AppNavigationHostProvider } from "@/lib/app-navigation-host";
+import { useAppPanelController } from "@/lib/app-fixed-tab-navigation";
 import { useRootComposeProjectId } from "@/lib/root-compose-selection";
 import {
   RootComposeSecondaryContent,
@@ -136,7 +134,10 @@ import {
   useThreadFileTabs,
   type FileSearchSelection,
 } from "@/components/secondary-panel/useThreadFileTabs";
-import { isSecondaryFileTab } from "@bb/client-core";
+import {
+  getEnvironmentFilePreviewSourceRef,
+  isSecondaryFileTab,
+} from "@bb/client-core";
 import { RightPanelFileTabIcon } from "@/components/secondary-panel/RightPanelFileTabIcon";
 import {
   buildTerminalSyncedSecondaryFileTabs,
@@ -872,10 +873,6 @@ function RootComposeSurface({
   });
   const openBrowser = panelBrowser.open;
   const openBrowserUrl = panelBrowser.openUrl;
-  const rootPluginPanelActions = usePluginNewThreadPanelActions({
-    openPluginPanel,
-    projectId: isProjectless ? null : projectId,
-  });
   const pendingTerminalIds = usePendingTerminalIds();
   const syncedOrderedSecondaryFileTabs = useMemo(
     () =>
@@ -941,9 +938,6 @@ function RootComposeSurface({
     drawerVisibility: secondaryPanelDrawerVisibility,
     isCompactViewport,
     isPersistedOpen: isPersistedSecondaryPanelOpen,
-    openPersistedCommitDiff: () => undefined,
-    openPersistedDiffFile: () => undefined,
-    openPersistedDiffPanel: () => undefined,
     openPersistedHostFile: panelFiles.openHostFile,
     openPersistedPanel: setRootSecondaryPanel,
     openPersistedStorageFile: panelFiles.openStorageFile,
@@ -951,17 +945,39 @@ function RootComposeSurface({
     togglePersistedPanel: toggleRootPersistedSecondaryPanel,
   });
   const dismissPluginDetails = pluginDetails.dismiss;
-  const handleOpenPluginPanel = usePanelPluginPanels({
-    actions: rootPanelNewThreadPanelActions,
-    isFocused: isFocusedPane,
-    openPluginPanel,
-    reveal: openCompactDrawer,
-    slot: "experimental_newThreadPanelAction",
-  });
   const closeSecondaryPanel = useCallback(() => {
     dismissPluginDetails();
     closeWorkspacePanel();
   }, [dismissPluginDetails, closeWorkspacePanel]);
+  const panelDestinations = useMemo(
+    () =>
+      rootPanelNewThreadPanelActions.map((action) =>
+        createPanelActionDestination({
+          action,
+          openPluginPanel: (args) => {
+            dismissPluginDetails();
+            openPluginPanel(args);
+            openCompactDrawer();
+          },
+        }),
+      ),
+    [
+      dismissPluginDetails,
+      openCompactDrawer,
+      openPluginPanel,
+      rootPanelNewThreadPanelActions,
+    ],
+  );
+  const panel = useAppPanelController({
+    activeTabId: isSecondaryPanelOpen ? activeFixedSecondaryTabId : null,
+    close: closeSecondaryPanel,
+    destinations: panelDestinations,
+    isFocused: isFocusedPane,
+  });
+  const rootPluginPanelActions = usePluginNewThreadPanelActions({
+    panel,
+    projectId: isProjectless ? null : projectId,
+  });
   const openAttachment = useCallback(
     (attachment: OpenAttachmentRequest) => {
       openTab({ kind: "attachment-file-preview", ...attachment });
@@ -1099,7 +1115,7 @@ function RootComposeSurface({
       pluginDetails.activePluginId === null &&
       activeFixedSecondaryTab?.kind === "new-tab"
     ) {
-      closeSecondaryPanel();
+      panel.close();
     } else {
       handleOpenNewTab();
     }
@@ -1107,11 +1123,11 @@ function RootComposeSurface({
   });
   const handleToggleSecondaryPanel = useCallback(() => {
     if (isSecondaryPanelOpen) {
-      closeSecondaryPanel();
+      panel.close();
       return;
     }
     handleOpenNewTab();
-  }, [closeSecondaryPanel, handleOpenNewTab, isSecondaryPanelOpen]);
+  }, [handleOpenNewTab, isSecondaryPanelOpen, panel]);
   const acceptsRootTerminal = useCallback(
     (session: TerminalSession) =>
       rootPanelTerminalTarget !== null &&
@@ -1131,11 +1147,10 @@ function RootComposeSurface({
   const appNavigationCapabilities = useMemo(
     () => ({
       openFilePreview: openLiveFilePreview,
-      openFixedTab: (intent: AppFixedTabOpenIntent) =>
-        openAppFixedTabFromDestinations([], intent),
+      panel,
       openTerminal: terminals.open,
     }),
-    [openLiveFilePreview, terminals.open],
+    [openLiveFilePreview, panel, terminals.open],
   );
   const handleCloseWindowRequest = useCallback(() => {
     if (pluginDetails.activePluginId !== null) {
@@ -1156,11 +1171,10 @@ function RootComposeSurface({
       }
       return true;
     }
-    closeSecondaryPanel();
-    return true;
+    return panel.close();
   }, [
     activeFixedSecondaryTab,
-    closeSecondaryPanel,
+    panel,
     closeTab,
     isSecondaryPanelOpen,
     pluginDetails,
@@ -1301,7 +1315,7 @@ function RootComposeSurface({
               ...shared,
               label: filenameOf(tab.path),
               leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
-              statusLabel: tab.statusLabel,
+              statusLabel: getEnvironmentFilePreviewSourceRef(tab.source),
               onSelect: () => handleActivateFileTab(tab.id),
             };
           case "host-file-preview":
@@ -1534,53 +1548,48 @@ function RootComposeSurface({
         <AttachmentOpenerContext.Provider value={openAttachment}>
           <UrlOpenRoutingProvider openInAppBrowser={openBrowser}>
             <AppNavigationHostProvider capabilities={appNavigationCapabilities}>
-              <PluginThreadPanelNavigationProvider
-                openThreadPanel={handleOpenPluginPanel}
+              <RootComposeSecondaryContent
+                contentClassName={
+                  ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS
+                }
+                isCompactHomeLayout={isCompactViewport}
+                compactScrollContent={
+                  <RootComposeMobileRecents
+                    highlightedThreadId={lastCreatedThreadId}
+                    projectNamesById={mobileRecentProjectNamesById}
+                    providersById={mobileRecentProvidersById}
+                    showCreatingRow={isSubmitting}
+                    threads={mobileRecentThreads}
+                  />
+                }
+                isSecondaryPanelOpen={isSecondaryPanelOpen}
+                onToggleSecondaryPanel={handleToggleSecondaryPanel}
+                secondaryPanel={{
+                  activeTab: activeFixedSecondaryTab,
+                  environmentId: rootPanelEnvironmentId ?? undefined,
+                  metadataContent: rootPanelMetadataContent,
+                  workspaceRootPath:
+                    rootPanelEnvironment?.path ??
+                    (rootPanelTerminalTarget?.kind === "host_path"
+                      ? (rootPanelTerminalTarget.cwd ?? undefined)
+                      : undefined),
+                  tabs: panelTabs,
+                  splitPanelStateId: ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
+                  renderBrowserDeck,
+                  isOpen: isSecondaryPanelOpen,
+                  fixedTabs: [],
+                  showConversationCollapseControl: false,
+                  onClose: panel.close,
+                  onCollapse: panel.close,
+                  onTabReorder: reorderTab,
+                  onOpenNewTab: handleOpenNewTab,
+                  onOpenFilePreview: handleOpenFilePreview,
+                  onSelectionAddToChat: handleRootPanelSelectionAddToChat,
+                  onPanelFocus: touchFixedPanelTabsState,
+                }}
               >
-                <RootComposeSecondaryContent
-                  contentClassName={
-                    ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS
-                  }
-                  isCompactHomeLayout={isCompactViewport}
-                  compactScrollContent={
-                    <RootComposeMobileRecents
-                      highlightedThreadId={lastCreatedThreadId}
-                      projectNamesById={mobileRecentProjectNamesById}
-                      providersById={mobileRecentProvidersById}
-                      showCreatingRow={isSubmitting}
-                      threads={mobileRecentThreads}
-                    />
-                  }
-                  isSecondaryPanelOpen={isSecondaryPanelOpen}
-                  onToggleSecondaryPanel={handleToggleSecondaryPanel}
-                  secondaryPanel={{
-                    activeTab: activeFixedSecondaryTab,
-                    canUseGitUi: false,
-                    environmentId: rootPanelEnvironmentId ?? undefined,
-                    metadataContent: rootPanelMetadataContent,
-                    workspaceRootPath:
-                      rootPanelEnvironment?.path ??
-                      (rootPanelTerminalTarget?.kind === "host_path"
-                        ? (rootPanelTerminalTarget.cwd ?? undefined)
-                        : undefined),
-                    tabs: panelTabs,
-                    splitPanelStateId: ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
-                    renderBrowserDeck,
-                    isOpen: isSecondaryPanelOpen,
-                    fixedTabs: [],
-                    showConversationCollapseControl: false,
-                    onClose: closeSecondaryPanel,
-                    onCollapse: closeSecondaryPanel,
-                    onTabReorder: reorderTab,
-                    onOpenNewTab: handleOpenNewTab,
-                    onOpenFilePreview: handleOpenFilePreview,
-                    onSelectionAddToChat: handleRootPanelSelectionAddToChat,
-                    onPanelFocus: touchFixedPanelTabsState,
-                  }}
-                >
-                  {promptBox}
-                </RootComposeSecondaryContent>
-              </PluginThreadPanelNavigationProvider>
+                {promptBox}
+              </RootComposeSecondaryContent>
             </AppNavigationHostProvider>
           </UrlOpenRoutingProvider>
         </AttachmentOpenerContext.Provider>

@@ -19,6 +19,7 @@ function candidate(pluginId: string, jsBytes: number): PluginFrontendCandidate {
       sdkMajor: 0,
       sdkVersion: "0.1.0",
       compatible: true,
+      runtimeSlots: [],
     },
   };
 }
@@ -67,6 +68,7 @@ function makeDeps(
     warn: vi.fn(),
     priorityPluginIds: () => [],
     beginSlotBatch: () => () => {},
+    flushSlotBatch: () => {},
     ...overrides,
   };
 }

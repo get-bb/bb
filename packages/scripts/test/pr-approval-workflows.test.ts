@@ -34,7 +34,7 @@ function run(script: string, env: Record<string, string>) {
 }
 
 function gateScript(): string {
-  return `gh() { printf '%s\\n' "$*"; }\n${stepScript("pr-gate.yml", "Check approval and maintainer edits, and close failing PRs")}`;
+  return `gh() { if [ "$1 $2" = "api graphql" ]; then printf '%s\\n' "\${LINKED_ISSUES:-0}"; else printf '%s\\n' "$*"; fi; }\nsleep() { :; }\n${stepScript("pr-gate.yml", "Check approval, maintainer edits, and linked issue, and close failing PRs")}`;
 }
 
 it("keeps trusted automation pull requests open", ({ skip }) => {
@@ -46,7 +46,9 @@ it("keeps trusted automation pull requests open", ({ skip }) => {
   const gate = (author: string) =>
     run(script, {
       PR_AUTHOR: author,
+      PR_AUTHOR_TYPE: "Bot",
       PR_ASSOCIATION: "NONE",
+      EVENT_ACTION: "opened",
       PR_NUMBER: "123",
       GITHUB_REPOSITORY: "get-bb/bb",
     });
@@ -75,7 +77,10 @@ it("closes personal fork pull requests that block maintainer edits", ({
   ) =>
     run(script, {
       PR_AUTHOR: "fork-author",
+      PR_AUTHOR_TYPE: "User",
       PR_ASSOCIATION: association,
+      EVENT_ACTION: "opened",
+      LINKED_ISSUES: "1",
       PR_NUMBER: "123",
       GITHUB_REPOSITORY: "get-bb/bb",
       HEAD_REPO: headRepo,
@@ -93,17 +98,81 @@ it("closes personal fork pull requests that block maintainer edits", ({
     expect(result.stdout).not.toContain("pr close");
   }
   const blocked = gate("MEMBER", "fork-author/bb", "User", "false");
-  expect(blocked.stdout).toContain('"Allow edits by maintainers" turned off');
+  expect(blocked.stdout).toContain(
+    '"Allow edits by maintainers" is turned off',
+  );
   expect(blocked.stdout).toContain("pr close");
   expect(blocked.stdout).not.toContain("--add-label needs-approval");
   const unapproved = gate("NONE", "fork-author/bb", "User", "true");
-  expect(unapproved.stdout).toContain("post a link to this PR");
+  expect(unapproved.stdout).toContain("Contributor approval");
+  expect(unapproved.stdout).not.toContain("Maintainer edits");
   expect(unapproved.stdout).toContain("pr close");
   const unapprovedBlocked = gate("NONE", "fork-author/bb", "User", "false");
   expect(unapprovedBlocked.stdout).toContain(
-    '"Allow edits by maintainers" turned off',
+    '"Allow edits by maintainers" is turned off',
   );
-  expect(unapprovedBlocked.stdout).toContain("post a link to the new PR");
+  expect(unapprovedBlocked.stdout).toContain("Contributor approval");
+});
+
+it("requires pull requests from outside the team to close an open issue", ({
+  skip,
+}) => {
+  skip(
+    process.platform === "win32",
+    "this workflow step runs in bash on Linux runners",
+  );
+  const script = gateScript();
+  const gate = (env: Record<string, string>) =>
+    run(script, {
+      PR_AUTHOR: "fork-author",
+      PR_AUTHOR_TYPE: "User",
+      PR_ASSOCIATION: "COLLABORATOR",
+      PR_NUMBER: "123",
+      PR_STATE: "open",
+      PR_NEEDS_ISSUE: "false",
+      EVENT_ACTION: "opened",
+      GITHUB_REPOSITORY: "get-bb/bb",
+      HEAD_REPO: "fork-author/bb",
+      HEAD_OWNER_TYPE: "User",
+      MAINTAINER_CAN_MODIFY: "true",
+      LINKED_ISSUES: "0",
+      ...env,
+    });
+  const unlinked = gate({});
+  expect(unlinked.stdout).toContain("Linked issue");
+  expect(unlinked.stdout).toContain("reopens on its own");
+  expect(unlinked.stdout).toContain("--add-label needs-issue");
+  expect(unlinked.stdout).toContain("pr close");
+  const linked = gate({ LINKED_ISSUES: "1" });
+  expect(linked.stdout).toContain("--remove-label needs-issue");
+  expect(linked.stdout).not.toContain("pr close");
+  const keptOpen: Record<string, string>[] = [
+    { PR_ASSOCIATION: "MEMBER" },
+    { PR_ASSOCIATION: "OWNER" },
+    { EVENT_ACTION: "synchronize" },
+  ];
+  for (const env of keptOpen) {
+    expect(gate(env).stdout).not.toContain("pr close");
+  }
+  const closedForIssue = {
+    EVENT_ACTION: "edited",
+    PR_STATE: "closed",
+    PR_NEEDS_ISSUE: "true",
+  };
+  expect(gate({ ...closedForIssue, LINKED_ISSUES: "1" }).stdout).toContain(
+    "pr reopen",
+  );
+  const leftAlone: Record<string, string>[] = [
+    closedForIssue,
+    { ...closedForIssue, LINKED_ISSUES: "1", PR_ASSOCIATION: "NONE" },
+    { ...closedForIssue, LINKED_ISSUES: "1", PR_NEEDS_ISSUE: "false" },
+    { EVENT_ACTION: "edited", LINKED_ISSUES: "0" },
+  ];
+  for (const env of leftAlone) {
+    const result = gate(env);
+    expect(result.stdout).not.toContain("pr reopen");
+    expect(result.stdout).not.toContain("pr close");
+  }
 });
 
 it("parses only complete GitHub user and bot approval commands", ({ skip }) => {

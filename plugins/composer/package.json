@@ -6,7 +6,7 @@
   "description": "bb's composer: the prompt box with rich text, @-mentions, slash commands, voice and attachments.",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.6.66"
+    "bbPluginSdk": ">=0.6.77"
   },
   "bb": {
     "name": "Composer",

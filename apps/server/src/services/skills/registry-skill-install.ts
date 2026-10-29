@@ -1,10 +1,9 @@
-import { spawn } from "node:child_process";
+import { spawnHostProcess as spawn, hostToolchain } from "@bb/process-utils";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { resolveDataDirSkillsRootPath } from "@bb/config/skill-storage-paths";
-import { resolveBundledNpxCli } from "@bb/plugin-build";
 import matter from "gray-matter";
 import { ApiError } from "../../errors.js";
 import { REGISTRY_SKILL_NAME_PATTERN } from "./registry-parse.js";
@@ -18,7 +17,6 @@ const SKILLS_INSTALL_TIMEOUT_MS = 120_000;
 const MAX_INSTALL_OUTPUT_BYTES = 1_000_000;
 const MAX_SKILL_FILES = 1_000;
 const MAX_SKILL_DIRECTORIES = 1_000;
-const MAX_SKILL_BYTES = 10 * 1024 * 1024;
 const MAX_SKILL_DEPTH = 24;
 const REGISTRY_SKILLS_CLI_VERSION = "1.5.19";
 
@@ -68,7 +66,7 @@ function registrySkillsCliInvocation(args: {
   return {
     command: process.execPath,
     args: [
-      resolveBundledNpxCli(),
+      hostToolchain.bundledNpmCli("npx"),
       "-y",
       `skills@${REGISTRY_SKILLS_CLI_VERSION}`,
       "add",
@@ -201,7 +199,6 @@ async function collectBoundedSkillTree(
   const entries: SkillTreeEntry[] = [];
   let fileCount = 0;
   let directoryCount = 0;
-  let totalBytes = 0;
 
   async function walk(currentPath: string, depth: number): Promise<void> {
     if (depth > MAX_SKILL_DEPTH) {
@@ -229,8 +226,7 @@ async function collectBoundedSkillTree(
         throw new Error("Skill tree contains a special file");
       }
       fileCount += 1;
-      totalBytes += stat.size;
-      if (fileCount > MAX_SKILL_FILES || totalBytes > MAX_SKILL_BYTES) {
+      if (fileCount > MAX_SKILL_FILES) {
         throw new Error("Skill tree exceeds installation limits");
       }
       entries.push({

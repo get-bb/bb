@@ -35,8 +35,22 @@ describe("parsePushNotificationData", () => {
     });
   });
 
-  it("rejects payloads without a thread id", () => {
+  it("reads a threadless payload that names its server", () => {
+    expect(
+      parsePushNotificationData({
+        kind: "message",
+        serverUrl: "https://sawyer.getbb.app",
+      }),
+    ).toEqual({
+      threadId: null,
+      projectId: null,
+      serverUrl: "https://sawyer.getbb.app",
+    });
+  });
+
+  it("rejects payloads with neither a thread id nor a server", () => {
     expect(parsePushNotificationData({ projectId: "p" })).toBeNull();
+    expect(parsePushNotificationData({ serverUrl: "not a url" })).toBeNull();
     expect(parsePushNotificationData("nope")).toBeNull();
     expect(parsePushNotificationData(undefined)).toBeNull();
   });
@@ -112,6 +126,24 @@ describe("resolvePushTargetProfile", () => {
       lan.serverUrl,
       sawyer.serverUrl,
     ]);
+  });
+
+  it("opens a threadless push only on the server it names", async () => {
+    const threadless = { ...target, threadId: null };
+    const hasThread = vi.fn(async () => true);
+    expect(
+      await resolvePushTargetProfile(
+        { ...threadless, serverUrl: "http://192.168.1.20:3000" },
+        { profiles: [sawyer, lan], activeProfileId: "p1", hasThread },
+      ),
+    ).toBe(lan);
+    expect(
+      await resolvePushTargetProfile(
+        { ...threadless, serverUrl: "https://unknown.example" },
+        { profiles: [sawyer], activeProfileId: "p1", hasThread },
+      ),
+    ).toBeNull();
+    expect(hasThread).not.toHaveBeenCalled();
   });
 
   it("gives up when no server has the thread", async () => {

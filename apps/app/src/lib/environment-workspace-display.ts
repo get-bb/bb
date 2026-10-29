@@ -207,7 +207,7 @@ interface EnvironmentSummaryChromeArgs extends EnvironmentWorkspaceLabelArgs {
   machineProviders: readonly MachineProviderPresentation[] | undefined;
 }
 
-interface EnvironmentSummaryChrome {
+export interface EnvironmentSummaryChrome {
   environmentLabel: string | undefined;
   environmentCompactLabel: string | undefined;
   environmentIcon: IconName | undefined;
@@ -231,9 +231,7 @@ export function getEnvironmentSummaryChrome({
     hostType: host?.type ?? null,
   });
   const summaryHost =
-    host !== null && summary?.label === host.name
-      ? host
-      : undefined;
+    host !== null && summary?.label === host.name ? host : undefined;
   return {
     environmentLabel: summary?.label,
     environmentCompactLabel: summary?.compactLabel,

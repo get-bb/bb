@@ -236,6 +236,111 @@ describe("WebSocketManager subscriptions", () => {
   });
 });
 
+describe("WebSocketManager thread timeline tags", () => {
+  const timelineTarget = {
+    kind: "thread-timeline",
+    threadId: "thr_1",
+    segmentLimit: null,
+    deferContent: true,
+  } as const;
+  const timelineKey = "thread-timeline:thr_1:default:deferred";
+
+  beforeEach(() => {
+    installOpenWebSocketConstructor();
+    fakeSocketState.instances.length = 0;
+  });
+
+  function timelineSignal(tag: string): string {
+    return JSON.stringify({
+      type: "thread-timeline",
+      target: timelineTarget,
+      afterSequence: null,
+      timeline: {
+        maxSeq: 2,
+        tag,
+        delta: { afterTag: "older", upsertRows: [], fields: {} },
+      },
+    });
+  }
+
+  it("subscribes without a tag, then sends the tag its GET returned", () => {
+    const { manager, socket } = createConnectedManager();
+    manager.subscribe(timelineTarget);
+    manager.syncThreadTimelineTag(timelineTarget, "fetched");
+    manager.syncThreadTimelineTag(timelineTarget, "fetched");
+
+    expect(readClientMessages(socket)).toEqual([
+      {
+        type: "subscribe",
+        target: timelineTarget,
+        timelineTags: { [timelineKey]: null },
+      },
+      {
+        type: "subscribe",
+        target: timelineTarget,
+        timelineTags: { [timelineKey]: "fetched" },
+      },
+    ]);
+  });
+
+  it("treats a pushed tag as known and resends the held tag on reconnect", () => {
+    const { manager, socket } = createConnectedManager();
+    manager.subscribe(timelineTarget);
+    manager.handleIncomingMessage(timelineSignal("pushed"));
+    manager.syncThreadTimelineTag(timelineTarget, "pushed");
+    socket.sentMessages.length = 0;
+
+    socket.close();
+    socket.open();
+
+    expect(readClientMessages(socket)).toEqual([
+      {
+        type: "subscribe",
+        targets: [timelineTarget],
+        timelineTags: { [timelineKey]: "pushed" },
+      },
+    ]);
+  });
+
+  it("forgets the tag once the last subscriber leaves", async () => {
+    const { manager, socket } = createConnectedManager();
+    manager.subscribe(timelineTarget);
+    manager.syncThreadTimelineTag(timelineTarget, "fetched");
+    manager.unsubscribe(timelineTarget);
+    await Promise.resolve();
+    socket.sentMessages.length = 0;
+
+    manager.subscribe(timelineTarget);
+
+    expect(readClientMessages(socket)).toEqual([
+      {
+        type: "subscribe",
+        target: timelineTarget,
+        timelineTags: { [timelineKey]: null },
+      },
+    ]);
+  });
+
+  it("does not keep the tag of a push that lands after the last subscriber left", async () => {
+    const { manager, socket } = createConnectedManager();
+    manager.subscribe(timelineTarget);
+    manager.unsubscribe(timelineTarget);
+    await Promise.resolve();
+    manager.handleIncomingMessage(timelineSignal("in-flight"));
+    socket.sentMessages.length = 0;
+
+    manager.subscribe(timelineTarget);
+
+    expect(readClientMessages(socket)).toEqual([
+      {
+        type: "subscribe",
+        target: timelineTarget,
+        timelineTags: { [timelineKey]: null },
+      },
+    ]);
+  });
+});
+
 describe("WebSocketManager thread-open signals", () => {
   const originalWebSocket = globalThis.WebSocket;
 

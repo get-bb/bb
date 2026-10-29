@@ -33,14 +33,20 @@ it("verifies a real process's command and start time before stopping it", async 
     killTimeoutMs: 2_000,
     verifyTokens: [token],
   };
-  await expect(
-    stopVerifiedProcess({ ...args, verifyTokens: ["wrong-token"] }),
-  ).resolves.toMatchObject({ kind: "unverified", reason: "command" });
-  expect(isProcessRunning(child.pid)).toBe(true);
-  await expect(
-    stopVerifiedProcess({ ...args, startedAt: "2000-01-01T00:00:00Z" }),
-  ).resolves.toMatchObject({ kind: "unverified", reason: "start-time" });
-  expect(isProcessRunning(child.pid)).toBe(true);
+  await Promise.all(
+    [
+      { overrides: { verifyTokens: ["wrong-token"] }, reason: "command" },
+      {
+        overrides: { startedAt: "2000-01-01T00:00:00Z" },
+        reason: "start-time",
+      },
+    ].map(async ({ overrides, reason }) => {
+      await expect(
+        stopVerifiedProcess({ ...args, ...overrides }),
+      ).resolves.toMatchObject({ kind: "unverified", reason });
+      expect(isProcessRunning(args.pid)).toBe(true);
+    }),
+  );
   await expect(stopVerifiedProcess(args)).resolves.toEqual({
     kind: "stopped",
     usedKill: false,

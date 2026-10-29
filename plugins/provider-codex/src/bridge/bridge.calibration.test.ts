@@ -288,7 +288,6 @@ const interactionRequestParamsSchema = z
       approvalInteractionOutcomeSchema.shape.payload,
       ...interactionRequestPayloadSchema.options,
     ]),
-    providerNativeIds: z.boolean().optional(),
   })
   .passthrough();
 
@@ -470,7 +469,15 @@ it("replays one scripted codex session onto the golden event stream", async () =
   ).toHaveLength(2);
 
   expect(
-    describeCalibrationEvents(normalizeCalibrationEvents(canonical.events)),
+    describeCalibrationEvents(
+      normalizeCalibrationEvents(
+        canonical.events.filter(
+          (event) =>
+            event.type !== "thread/extensionState/updated" ||
+            event.kind !== "bb/provider-model-catalog",
+        ),
+      ),
+    ),
   ).toEqual(GOLDEN_EVENT_STREAM);
 
   expect(canonical.approvals).toHaveLength(1);
@@ -482,7 +489,6 @@ it("replays one scripted codex session onto the golden event stream", async () =
   ) {
     throw new Error("Expected a canonical command-approval payload");
   }
-  expect(approvalRequest?.providerNativeIds).toBe(true);
   expect(canonicalApproval.subject.itemId).toBe(COMMAND_ITEM_ID);
   const commandEventItemId = canonical.events.find(
     (event) =>

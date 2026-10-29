@@ -1,15 +1,12 @@
+import path from "node:path";
 import type {
   HostWatcher,
-  WatchThreadStorageRootArgs,
+  WatchThreadStorageArgs,
   WatchWorkspaceArgs,
   WorkspaceWatchError,
 } from "@bb/host-watcher";
 import type { HostWorkspace } from "@bb/host-workspace";
-import {
-  createDeferredPromise,
-  makeWorkspaceMergeBase,
-  makeWorkspaceStatus,
-} from "@bb/test-helpers";
+import { createDeferredPromise } from "@bb/test-helpers";
 import { describe, expect, it, vi } from "vitest";
 import { WatchManager, type WatchManagerOptions } from "./watch-manager.js";
 
@@ -21,8 +18,8 @@ type GetSharedGitRefsFingerprintResult = Awaited<
 >["fingerprint"];
 type StopWatching = () => void | Promise<void>;
 type WatchWorkspaceImplementation = (args: WatchWorkspaceArgs) => StopWatching;
-type WatchThreadStorageRootImplementation = (
-  args: WatchThreadStorageRootArgs,
+type WatchThreadStorageImplementation = (
+  args: WatchThreadStorageArgs,
 ) => StopWatching;
 
 function createFakeWorkspace(path: string, isGitRepo = true) {
@@ -56,25 +53,6 @@ function createFakeWorkspace(path: string, isGitRepo = true) {
       return { fingerprint: sharedGitRefsFingerprint, defaultBranch: "main" };
     }),
     getAdditionalWorkspaceWriteRoots: vi.fn(async () => []),
-    getStatus: vi.fn(async () =>
-      makeWorkspaceStatus({
-        mergeBase: makeWorkspaceMergeBase(),
-      }),
-    ),
-    getDiff: vi.fn(async () => ({
-      diff: "",
-      truncated: false,
-      shortstat: "",
-      files: "",
-      mergeBaseRef: null,
-    })),
-    diffFiles: vi.fn(async () => ({
-      files: [],
-      shortstat: "",
-      mergeBaseRef: null,
-      truncated: false,
-    })),
-    diffPatch: vi.fn(async () => []),
     commit: vi.fn(async () => ({
       commitSha: "commit-1",
       commitSubject: "commit",
@@ -109,24 +87,24 @@ function createFakeWorkspace(path: string, isGitRepo = true) {
 
 function createFakeHostWatcher(
   args: {
-    watchThreadStorageRootImplementation?: WatchThreadStorageRootImplementation;
+    watchThreadStorageImplementation?: WatchThreadStorageImplementation;
     watchWorkspaceImplementation?: WatchWorkspaceImplementation;
   } = {},
 ) {
   const watchWorkspace = vi.fn<WatchWorkspaceImplementation>(
     args.watchWorkspaceImplementation ?? (() => () => undefined),
   );
-  const watchThreadStorageRoot = vi.fn<WatchThreadStorageRootImplementation>(
-    args.watchThreadStorageRootImplementation ?? (() => () => undefined),
+  const watchThreadStorage = vi.fn<WatchThreadStorageImplementation>(
+    args.watchThreadStorageImplementation ?? (() => () => undefined),
   );
   const hostWatcher = {
     watchWorkspace,
-    watchThreadStorageRoot,
+    watchThreadStorage,
   } satisfies HostWatcher;
 
   return {
     hostWatcher,
-    watchThreadStorageRoot,
+    watchThreadStorage,
     watchWorkspace,
   };
 }
@@ -998,13 +976,13 @@ describe("WatchManager", () => {
     });
   });
 
-  it("starts and stops the root thread-storage watcher from snapshots", async () => {
-    const stopWatchingPathChanges = vi.fn(() => undefined);
-    let watchThreadStorageRootArgs: WatchThreadStorageRootArgs | undefined;
-    const { hostWatcher, watchThreadStorageRoot } = createFakeHostWatcher({
-      watchThreadStorageRootImplementation: (args) => {
-        watchThreadStorageRootArgs = args;
-        return stopWatchingPathChanges;
+  it("watches each thread's storage directory and reports its current environment", async () => {
+    const stopWatching = vi.fn(() => undefined);
+    let watchThreadStorageArgs: WatchThreadStorageArgs | undefined;
+    const { hostWatcher, watchThreadStorage } = createFakeHostWatcher({
+      watchThreadStorageImplementation: (args) => {
+        watchThreadStorageArgs = args;
+        return stopWatching;
       },
     });
     const onThreadStorageChanged = vi.fn();
@@ -1024,31 +1002,46 @@ describe("WatchManager", () => {
         },
       ],
     });
-    watchThreadStorageRootArgs?.onChange({
-      kind: "thread-storage-changed",
-      environmentId: "env-storage",
-      threadId: "thread-1",
+    await manager.replaceWatchSet({
+      generation: 2,
+      workspaceTargets: [],
+      threadStorageTargets: [
+        {
+          environmentId: "env-moved",
+          threadId: "thread-1",
+        },
+      ],
     });
+    watchThreadStorageArgs?.onChange();
 
-    expect(watchThreadStorageRoot).toHaveBeenCalledTimes(1);
+    expect(watchThreadStorage).toHaveBeenCalledTimes(1);
+    expect(watchThreadStorageArgs?.threadStoragePath).toBe(
+      path.resolve("/tmp/bb-data/thread-storage", "thread-1"),
+    );
     expect(onThreadStorageChanged).toHaveBeenCalledWith({
-      environmentId: "env-storage",
+      environmentId: "env-moved",
       threadId: "thread-1",
     });
 
     await manager.replaceWatchSet({
-      generation: 2,
+      generation: 3,
       workspaceTargets: [],
       threadStorageTargets: [],
     });
+    watchThreadStorageArgs?.onChange();
 
-    expect(stopWatchingPathChanges).toHaveBeenCalledTimes(1);
+    expect(stopWatching).toHaveBeenCalledTimes(1);
+    expect(onThreadStorageChanged).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps the root thread-storage watcher while another target remains", async () => {
-    const stopWatchingPathChanges = vi.fn(() => undefined);
+  it("stops only the storage watcher of a removed thread", async () => {
+    const stopWatchingByPath = new Map<string, ReturnType<typeof vi.fn>>();
     const { hostWatcher } = createFakeHostWatcher({
-      watchThreadStorageRootImplementation: () => stopWatchingPathChanges,
+      watchThreadStorageImplementation: (args) => {
+        const stopWatching = vi.fn(() => undefined);
+        stopWatchingByPath.set(args.threadStoragePath, stopWatching);
+        return stopWatching;
+      },
     });
     const manager = new WatchManager({
       hostWatcher,
@@ -1080,14 +1073,36 @@ describe("WatchManager", () => {
       ],
     });
 
-    expect(stopWatchingPathChanges).not.toHaveBeenCalled();
+    expect(
+      stopWatchingByPath.get(
+        path.resolve("/tmp/bb-data/thread-storage", "thread-a"),
+      ),
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      stopWatchingByPath.get(
+        path.resolve("/tmp/bb-data/thread-storage", "thread-b"),
+      ),
+    ).not.toHaveBeenCalled();
+    expect(manager.threadStorageWatchTargetCount()).toBe(1);
+  });
 
-    await manager.replaceWatchSet({
-      generation: 3,
-      workspaceTargets: [],
-      threadStorageTargets: [],
+  it("never watches a path outside a single thread's storage directory", async () => {
+    const { hostWatcher, watchThreadStorage } = createFakeHostWatcher();
+    const manager = new WatchManager({
+      hostWatcher,
+      threadStorageRootPath: "/tmp/bb-data/thread-storage",
     });
 
-    expect(stopWatchingPathChanges).toHaveBeenCalledTimes(1);
+    await manager.replaceWatchSet({
+      generation: 1,
+      workspaceTargets: [],
+      threadStorageTargets: [
+        { environmentId: "env-a", threadId: "." },
+        { environmentId: "env-a", threadId: "../escape" },
+        { environmentId: "env-a", threadId: "nested/thread" },
+      ],
+    });
+
+    expect(watchThreadStorage).not.toHaveBeenCalled();
   });
 });

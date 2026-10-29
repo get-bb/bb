@@ -1,6 +1,8 @@
-import type { WorkspaceDiffTarget } from "@bb/domain";
-import type { ThreadListFilters, ThreadSearchFilters } from "@bb/client-core";
-import type { EnvironmentFilePreviewSource } from "@bb/client-core";
+import type {
+  ThreadListFilters,
+  ThreadSearchFilters,
+  EnvironmentFilePreviewSource,
+} from "@bb/client-core";
 import {
   DEFAULT_THREAD_STORAGE_FILE_LIST_OPTIONS,
   type ThreadStorageFileListOptions,
@@ -44,13 +46,6 @@ const THREAD_STORAGE_FILE_PREVIEW_QUERY_KEY = "threadStorageFilePreview";
 const THREAD_HOST_FILE_PREVIEW_QUERY_KEY = "threadHostFilePreview";
 const HOST_FILE_PREVIEW_QUERY_KEY = "hostFilePreview";
 const ENVIRONMENT_QUERY_KEY = "environment";
-export const ENVIRONMENT_WORK_STATUS_QUERY_KEY = "environmentWorkStatus";
-export const ENVIRONMENT_MERGE_BASE_BRANCHES_QUERY_KEY =
-  "environmentMergeBaseBranches";
-export const ENVIRONMENT_DIFF_FILES_QUERY_KEY = "environmentDiffFiles";
-const ENVIRONMENT_DIFF_PATCH_QUERY_KEY = "environmentDiffPatch";
-const ENVIRONMENT_DIFF_FILE_QUERY_KEY = "environmentDiffFile";
-const ENVIRONMENT_DIFF_VIEWED_QUERY_KEY = "environmentDiffViewed";
 const ENVIRONMENT_FILE_PREVIEW_QUERY_KEY = "environmentFilePreview";
 const ENVIRONMENT_PATHS_QUERY_KEY = "environmentPaths";
 export const THREAD_TIMELINE_QUERY_KEY = "threadTimeline";
@@ -322,32 +317,6 @@ type EnvironmentQueryKey = readonly [
   typeof ENVIRONMENT_QUERY_KEY,
   string | null | undefined,
 ];
-type EnvironmentWorkStatusQueryKeyRootPrefix = readonly [
-  typeof ENVIRONMENT_WORK_STATUS_QUERY_KEY,
-];
-export type EnvironmentWorkStatusQueryKey = readonly [
-  typeof ENVIRONMENT_WORK_STATUS_QUERY_KEY,
-  string | null | undefined,
-  string | null,
-];
-type EnvironmentWorkStatusQueryKeyPrefix = readonly [
-  typeof ENVIRONMENT_WORK_STATUS_QUERY_KEY,
-  string,
-];
-type EnvironmentMergeBaseBranchesQueryKeyRootPrefix = readonly [
-  typeof ENVIRONMENT_MERGE_BASE_BRANCHES_QUERY_KEY,
-];
-type EnvironmentMergeBaseBranchesQueryKey = readonly [
-  typeof ENVIRONMENT_MERGE_BASE_BRANCHES_QUERY_KEY,
-  string,
-  string,
-  number,
-  string,
-];
-type EnvironmentMergeBaseBranchesQueryKeyPrefix = readonly [
-  typeof ENVIRONMENT_MERGE_BASE_BRANCHES_QUERY_KEY,
-  string,
-];
 type ThreadTimelineQueryKey = readonly [
   typeof THREAD_TIMELINE_QUERY_KEY,
   string,
@@ -392,54 +361,6 @@ type ThreadTimelineTurnSummaryDetailsQueryKeyPrefix = readonly [
 ];
 type AllThreadTimelineTurnSummaryDetailsQueryKeyPrefix = readonly [
   typeof THREAD_TIMELINE_TURN_SUMMARY_DETAILS_QUERY_KEY,
-];
-type EnvironmentDiffFilesQueryKey = readonly [
-  typeof ENVIRONMENT_DIFF_FILES_QUERY_KEY,
-  string,
-  string | null,
-  string | null,
-  boolean,
-];
-type EnvironmentDiffFilesQueryKeyRootPrefix = readonly [
-  typeof ENVIRONMENT_DIFF_FILES_QUERY_KEY,
-];
-type EnvironmentDiffFilesQueryKeyPrefix = readonly [
-  typeof ENVIRONMENT_DIFF_FILES_QUERY_KEY,
-  string,
-];
-type EnvironmentDiffPatchQueryKey = readonly [
-  typeof ENVIRONMENT_DIFF_PATCH_QUERY_KEY,
-  string,
-  string | null,
-  string | null,
-  boolean,
-  string,
-];
-type EnvironmentDiffPatchQueryKeyRootPrefix = readonly [
-  typeof ENVIRONMENT_DIFF_PATCH_QUERY_KEY,
-];
-type EnvironmentDiffPatchQueryKeyPrefix = readonly [
-  typeof ENVIRONMENT_DIFF_PATCH_QUERY_KEY,
-  string,
-];
-type EnvironmentDiffViewedQueryKey = readonly [
-  typeof ENVIRONMENT_DIFF_VIEWED_QUERY_KEY,
-  string,
-  string | null,
-  string | null,
-  (readonly string[])?,
-];
-type EnvironmentDiffViewedQueryKeyPrefix = readonly [
-  typeof ENVIRONMENT_DIFF_VIEWED_QUERY_KEY,
-  string,
-];
-type EnvironmentDiffFileQueryKey = readonly [
-  typeof ENVIRONMENT_DIFF_FILE_QUERY_KEY,
-  string,
-  string,
-  string | null,
-  string,
-  "old" | "new",
 ];
 type EnvironmentFilePreviewQueryKey = readonly [
   typeof ENVIRONMENT_FILE_PREVIEW_QUERY_KEY,
@@ -513,6 +434,7 @@ type SystemExecutionOptionsQueryKey = readonly [
   string | null,
   string | null,
   string | null,
+  selectedModel?: string,
 ];
 type AllSystemExecutionOptionsQueryKeyPrefix = readonly [
   typeof SYSTEM_EXECUTION_OPTIONS_QUERY_KEY,
@@ -925,48 +847,6 @@ export function environmentQueryKey(
   return [ENVIRONMENT_QUERY_KEY, environmentId];
 }
 
-export function environmentWorkStatusQueryKey(
-  environmentId: string | null | undefined,
-  mergeBaseBranch: string | null,
-): EnvironmentWorkStatusQueryKey {
-  return [ENVIRONMENT_WORK_STATUS_QUERY_KEY, environmentId, mergeBaseBranch];
-}
-
-export function allEnvironmentWorkStatusQueryKeyPrefix(): EnvironmentWorkStatusQueryKeyRootPrefix {
-  return [ENVIRONMENT_WORK_STATUS_QUERY_KEY];
-}
-
-export function environmentWorkStatusQueryKeyPrefix(
-  environmentId: string,
-): EnvironmentWorkStatusQueryKeyPrefix {
-  return [ENVIRONMENT_WORK_STATUS_QUERY_KEY, environmentId];
-}
-
-export function environmentMergeBaseBranchesQueryKey(
-  environmentId: string,
-  query = "",
-  limit = 50,
-  selectedBranch = "",
-): EnvironmentMergeBaseBranchesQueryKey {
-  return [
-    ENVIRONMENT_MERGE_BASE_BRANCHES_QUERY_KEY,
-    environmentId,
-    query,
-    limit,
-    selectedBranch,
-  ];
-}
-
-export function allEnvironmentMergeBaseBranchesQueryKeyPrefix(): EnvironmentMergeBaseBranchesQueryKeyRootPrefix {
-  return [ENVIRONMENT_MERGE_BASE_BRANCHES_QUERY_KEY];
-}
-
-export function environmentMergeBaseBranchesQueryKeyPrefix(
-  environmentId: string,
-): EnvironmentMergeBaseBranchesQueryKeyPrefix {
-  return [ENVIRONMENT_MERGE_BASE_BRANCHES_QUERY_KEY, environmentId];
-}
-
 export function threadTimelineQueryKey(
   threadId: string,
 ): ThreadTimelineQueryKey {
@@ -1027,110 +907,6 @@ export function threadTimelineTurnSummaryDetailsQueryKeyPrefix(
 
 export function allThreadTimelineTurnSummaryDetailsQueryKeyPrefix(): AllThreadTimelineTurnSummaryDetailsQueryKeyPrefix {
   return [THREAD_TIMELINE_TURN_SUMMARY_DETAILS_QUERY_KEY];
-}
-
-export function environmentDiffTargetKey(
-  target: WorkspaceDiffTarget | null | undefined,
-): string | null {
-  switch (target?.type) {
-    case "commit":
-      return target.sha;
-    case "branch_committed":
-    case "all":
-      return target.mergeBaseBranch;
-    default:
-      return null;
-  }
-}
-
-export function environmentDiffFilesQueryKey(
-  environmentId: string,
-  targetType: string | null,
-  targetKey: string | null,
-  ignoreWhitespace: boolean,
-): EnvironmentDiffFilesQueryKey {
-  return [
-    ENVIRONMENT_DIFF_FILES_QUERY_KEY,
-    environmentId,
-    targetType,
-    targetKey,
-    ignoreWhitespace,
-  ];
-}
-
-export function allEnvironmentDiffFilesQueryKeyPrefix(): EnvironmentDiffFilesQueryKeyRootPrefix {
-  return [ENVIRONMENT_DIFF_FILES_QUERY_KEY];
-}
-
-export function environmentDiffFilesQueryKeyPrefix(
-  environmentId: string,
-): EnvironmentDiffFilesQueryKeyPrefix {
-  return [ENVIRONMENT_DIFF_FILES_QUERY_KEY, environmentId];
-}
-
-export function environmentDiffPatchQueryKey(
-  environmentId: string,
-  targetType: string | null,
-  targetKey: string | null,
-  ignoreWhitespace: boolean,
-  path: string,
-): EnvironmentDiffPatchQueryKey {
-  return [
-    ENVIRONMENT_DIFF_PATCH_QUERY_KEY,
-    environmentId,
-    targetType,
-    targetKey,
-    ignoreWhitespace,
-    path,
-  ];
-}
-
-export function allEnvironmentDiffPatchQueryKeyPrefix(): EnvironmentDiffPatchQueryKeyRootPrefix {
-  return [ENVIRONMENT_DIFF_PATCH_QUERY_KEY];
-}
-
-export function environmentDiffPatchQueryKeyPrefix(
-  environmentId: string,
-): EnvironmentDiffPatchQueryKeyPrefix {
-  return [ENVIRONMENT_DIFF_PATCH_QUERY_KEY, environmentId];
-}
-
-export function environmentDiffViewedQueryKey(
-  environmentId: string,
-  targetType: string | null,
-  targetKey: string | null,
-  paths?: readonly string[],
-): EnvironmentDiffViewedQueryKey {
-  const prefix = [
-    ENVIRONMENT_DIFF_VIEWED_QUERY_KEY,
-    environmentId,
-    targetType,
-    targetKey,
-  ] as const;
-  return paths === undefined ? prefix : [...prefix, paths];
-}
-
-export function environmentDiffViewedQueryKeyPrefix(
-  environmentId: string,
-): EnvironmentDiffViewedQueryKeyPrefix {
-  return [ENVIRONMENT_DIFF_VIEWED_QUERY_KEY, environmentId];
-}
-
-export function environmentDiffFileQueryKey(
-  environmentId: string,
-  targetType: string,
-  targetKey: string | null,
-  path: string,
-  side: "old" | "new",
-): EnvironmentDiffFileQueryKey {
-  return [
-    ENVIRONMENT_DIFF_FILE_QUERY_KEY,
-    environmentId,
-    targetType,
-    targetKey,
-    path,
-    side,
-  ];
 }
 
 export function environmentFilePreviewQueryKey(
@@ -1247,6 +1023,7 @@ interface SystemExecutionOptionsQueryKeyArgs {
   hostId: string | null;
   providerId: string | null;
   projectId?: string | null;
+  selectedModel?: string;
 }
 
 export function systemExecutionOptionsQueryKey({
@@ -1254,6 +1031,7 @@ export function systemExecutionOptionsQueryKey({
   hostId,
   providerId,
   projectId = null,
+  selectedModel,
 }: SystemExecutionOptionsQueryKeyArgs): SystemExecutionOptionsQueryKey {
   return [
     SYSTEM_EXECUTION_OPTIONS_QUERY_KEY,
@@ -1261,6 +1039,9 @@ export function systemExecutionOptionsQueryKey({
     hostId,
     providerId,
     projectId,
+    ...(selectedModel === undefined
+      ? ([] as const)
+      : ([selectedModel] as const)),
   ];
 }
 

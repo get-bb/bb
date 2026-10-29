@@ -35,7 +35,7 @@ interface LiveFileTargetLookups {
 }
 
 export function getLiveFileTargetLookups(
-  target: ExperimentalLiveFileTarget | null,
+  target: LiveFileRoot | null,
   enabled: boolean,
 ): LiveFileTargetLookups {
   const storageThreadId =
@@ -55,6 +55,67 @@ interface LookupState<TData> {
   isLoading: boolean;
 }
 
+export type LiveFileRoot =
+  | { kind: "workspace"; environmentId: string }
+  | { kind: "host"; hostId: string }
+  | { kind: "thread-storage"; threadId: string };
+
+type ResolvedLiveFileRoot =
+  | { status: "loading" }
+  | { status: "unavailable" }
+  | { status: "available"; hostId: string; rootPath: string | null };
+
+export function resolveLiveFileRoot({
+  root,
+  environmentQuery,
+  storageQuery,
+}: {
+  root: LiveFileRoot;
+  environmentQuery: LookupState<Environment>;
+  storageQuery: LookupState<ThreadStorageLocationResponse>;
+}): ResolvedLiveFileRoot {
+  if (root.kind === "host") {
+    return { status: "available", hostId: root.hostId, rootPath: null };
+  }
+  const query = root.kind === "workspace" ? environmentQuery : storageQuery;
+  if (query.isLoading) return { status: "loading" };
+  if (root.kind === "thread-storage") {
+    const location = storageQuery.data;
+    return location === undefined
+      ? { status: "unavailable" }
+      : {
+          status: "available",
+          hostId: location.hostId,
+          rootPath: location.storageRootPath,
+        };
+  }
+  const environment = environmentQuery.data;
+  return environment === undefined ||
+    environment.status !== "ready" ||
+    environment.hostLifecycle !== "active" ||
+    environment.path === null
+    ? { status: "unavailable" }
+    : {
+        status: "available",
+        hostId: environment.hostId,
+        rootPath: environment.path,
+      };
+}
+
+export function getLiveFileOpenContext({
+  hostId,
+  isLocalDaemonHost,
+  serverOrigin,
+}: {
+  hostId: string;
+  isLocalDaemonHost: (hostId: string) => boolean;
+  serverOrigin: string;
+}): OpenInTargetContext {
+  return isLocalDaemonHost(hostId)
+    ? { kind: "local" }
+    : { kind: "remote-ssh", hostId, serverOrigin };
+}
+
 export function resolveLiveFileTarget({
   target,
   enabled,
@@ -71,71 +132,57 @@ export function resolveLiveFileTarget({
   serverOrigin: string;
 }): ResolvedLiveFileTarget {
   if (!enabled || target === null) return { status: "unavailable" };
-  if (target.kind === "host") {
-    return {
-      status: "available",
-      absolutePath: target.path,
-      openContext: isLocalDaemonHost(target.hostId)
-        ? { kind: "local" }
-        : {
-            kind: "remote-ssh",
-            hostId: target.hostId,
-            serverOrigin,
-          },
-    };
-  }
-
-  if (target.kind === "thread-storage") {
-    if (storageQuery.isLoading) return { status: "loading" };
-    const location = storageQuery.data;
-    if (location === undefined) {
-      return { status: "unavailable" };
-    }
-    return {
-      status: "available",
-      absolutePath: buildAbsoluteHostPath(
-        location.storageRootPath,
-        target.path,
-      ),
-      openContext: isLocalDaemonHost(location.hostId)
-        ? { kind: "local" }
-        : {
-            kind: "remote-ssh",
-            hostId: location.hostId,
-            serverOrigin,
-          },
-    };
-  }
-
-  if (environmentQuery.isLoading) return { status: "loading" };
-  const environment = environmentQuery.data;
-  if (environment === undefined || environment.path === null) {
-    return { status: "unavailable" };
-  }
+  const root = resolveLiveFileRoot({
+    root: target,
+    environmentQuery,
+    storageQuery,
+  });
+  if (root.status !== "available") return root;
   return {
     status: "available",
-    absolutePath: buildAbsoluteHostPath(environment.path, target.path),
-    openContext: isLocalDaemonHost(environment.hostId)
-      ? { kind: "local" }
-      : {
-          kind: "remote-ssh",
-          hostId: environment.hostId,
-          serverOrigin,
-        },
+    absolutePath:
+      root.rootPath === null
+        ? target.path
+        : buildAbsoluteHostPath(root.rootPath, target.path),
+    openContext: getLiveFileOpenContext({
+      hostId: root.hostId,
+      isLocalDaemonHost,
+      serverOrigin,
+    }),
   };
 }
 
-export function useResolvedLiveFileTarget(
-  target: ExperimentalLiveFileTarget | null,
-  options: { enabled: boolean },
-): ResolvedLiveFileTarget {
-  const lookups = getLiveFileTargetLookups(target, options.enabled);
+function useLiveFileRootQueries(root: LiveFileRoot | null, enabled: boolean) {
+  const lookups = getLiveFileTargetLookups(root, enabled);
   const environmentQuery = useEnvironment(lookups.environmentId, {
     enabled: lookups.environmentEnabled,
   });
   const storageQuery = useThreadStorageLocation(lookups.storageThreadId, {
     enabled: lookups.storageEnabled,
   });
+  return { environmentQuery, storageQuery };
+}
+
+export function useResolvedLiveFileRoot(
+  root: LiveFileRoot | null,
+): ResolvedLiveFileRoot {
+  const { environmentQuery, storageQuery } = useLiveFileRootQueries(
+    root,
+    root !== null,
+  );
+  return root === null
+    ? { status: "unavailable" }
+    : resolveLiveFileRoot({ root, environmentQuery, storageQuery });
+}
+
+export function useResolvedLiveFileTarget(
+  target: ExperimentalLiveFileTarget | null,
+  options: { enabled: boolean },
+): ResolvedLiveFileTarget {
+  const { environmentQuery, storageQuery } = useLiveFileRootQueries(
+    target,
+    options.enabled,
+  );
   const { isLocalDaemonHost } = useHostDaemon();
 
   return useMemo(

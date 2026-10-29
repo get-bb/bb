@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  selectBbProjects,
   useFolders,
   useProjects,
   useTasksQuery,
@@ -66,10 +67,7 @@ export function NewProjectDialog({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const bbProjects = useTasksQuery(
-    async (rpc) => (await rpc.call("listBbProjects")).bbProjects,
-    [],
-  );
+  const bbProjects = useTasksQuery("listBbProjects", null, selectBbProjects);
   const bbProjectList = bbProjects.data ?? [];
 
   useEffect(() => {

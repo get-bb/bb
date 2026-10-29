@@ -57,11 +57,18 @@ vi.mock("@/app-shell", () => {
     mode: "connect",
     serverUrl: "https://bb.example.test",
   };
+  const otherProfile = {
+    ...profile,
+    handle: "other",
+    id: "profile-2",
+    label: "Other",
+    serverUrl: "https://other.example.test",
+  };
   return {
     useProfiles: () => ({
       activeProfile: profile,
       connection: null,
-      profiles: [profile],
+      profiles: [profile, otherProfile],
       status: "ready",
     }),
     useAppRevealed: () => true,
@@ -146,4 +153,30 @@ describe("PushNotificationsHost", () => {
       }),
     );
   });
+
+  it("switches to the server that sent a threadless push", async () => {
+    mocks.responseListener(threadlessPush("https://other.example.test"));
+    await vi.waitFor(() =>
+      expect(mocks.push).toHaveBeenCalledWith({
+        pathname: "/webview",
+        params: { profileId: "profile-2" },
+      }),
+    );
+  });
+
+  it("leaves the screen alone for a threadless push from the active server", async () => {
+    mocks.responseListener(threadlessPush("https://bb.example.test"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mocks.push).not.toHaveBeenCalled();
+  });
 });
+
+function threadlessPush(serverUrl: string): NotificationResponse {
+  return {
+    notification: {
+      request: {
+        content: { data: { kind: "message", serverUrl } },
+      },
+    },
+  };
+}

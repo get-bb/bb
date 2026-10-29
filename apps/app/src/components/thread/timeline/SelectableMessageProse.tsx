@@ -530,7 +530,9 @@ export function readSelectedMessageMarkdown(): string | null {
     node.contains(range.startContainer) && node.contains(range.endContainer)
       ? range
       : clippedRangeForWhitespaceBoundarySpill(node, range);
-  return clipped === null ? null : selectionClipboard(clipped, node).text;
+  return clipped === null
+    ? null
+    : selectionClipboard(clipped, node, "markdown").text;
 }
 
 function handleSharedCopy(event: ClipboardEvent): void {
@@ -556,7 +558,11 @@ function handleSharedCopy(event: ClipboardEvent): void {
         clipped.setStart(instance.node, 0);
       if (!instance.node.contains(range.endContainer))
         clipped.setEnd(instance.node, instance.node.childNodes.length);
-      return selectionClipboard(clipped, instance.node);
+      return selectionClipboard(
+        clipped,
+        instance.node,
+        instances.length === 1 ? "text" : "markdown",
+      );
     });
     const payload = {
       text: parts.map((part) => part.text).join("\n\n"),
@@ -576,7 +582,7 @@ function handleSharedCopy(event: ClipboardEvent): void {
         range,
       );
       if (clipped) {
-        const payload = selectionClipboard(clipped, instance.node);
+        const payload = selectionClipboard(clipped, instance.node, "text");
         event.clipboardData.setData("text/plain", payload.text);
         event.clipboardData.setData("text/html", payload.html);
         event.preventDefault();

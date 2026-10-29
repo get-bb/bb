@@ -59,6 +59,7 @@ function setup(secondarySize = 50, width = 800) {
   const group = createRef<ImperativePanelGroupHandle>();
   const onResize = vi.fn();
   const onDragging = vi.fn();
+  const onReset = vi.fn();
   function Harness() {
     const panel = useRef<ImperativePanelHandle>(null);
     const hitTargetRef = usePanelResizeSnap({
@@ -67,6 +68,7 @@ function setup(secondarySize = 50, width = 800) {
         panel.current?.resize((1 - fraction) * 100);
       },
       onDragging,
+      onReset,
     });
     return (
       <PanelGroup

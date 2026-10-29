@@ -47,6 +47,93 @@ function copyRange(range: Range) {
   return { data, accepted };
 }
 
+it.each(
+  (
+    [
+      ["code", "`pnpm --version`"],
+      ["strong", "**pnpm --version**"],
+      ["em", "*pnpm --version*"],
+      ["del", "~~pnpm --version~~"],
+      ["a", "[pnpm --version](https://example.com)"],
+    ] as const
+  ).flatMap(([tag, span]) =>
+    (["text", "element", "paragraph", "partial", "message"] as const).map(
+      (mode) => [tag, span, mode] as const,
+    ),
+  ),
+)(
+  "copies a %s span's %s %s selection as visible text unless mixed with prose",
+  (tag, span, mode) => {
+    const content = `Check:\n\n${span}`;
+    const { container } = render(
+      <SelectableMessageProse>
+        <MarkdownPreview content={content} />
+      </SelectableMessageProse>,
+    );
+    const element = container.querySelector(tag)!;
+    const text = element.firstChild!;
+    const range = document.createRange();
+    let expected = "pnpm --version";
+    if (mode === "message") {
+      range.selectNodeContents(container.firstElementChild!);
+      expected = content;
+    } else if (mode === "paragraph") {
+      range.selectNodeContents(element.closest("p")!);
+    } else if (mode === "element") {
+      range.selectNode(element);
+    } else {
+      range.setStart(text, mode === "partial" ? 5 : 0);
+      range.setEnd(text, text.textContent!.length);
+      if (mode === "partial") expected = "--version";
+    }
+    const { data, accepted } = copyRange(range);
+    expect(accepted).toBe(false);
+    expect(data.get("text/plain")).toBe(expected);
+    expect(data.get("text/html")).toContain(`<${tag}`);
+  },
+);
+
+it.each([
+  ["src/export_notes.ts", "file:///workspace/src/export_notes.ts"],
+  [
+    "src/отчёт_данные.ts",
+    "file:///workspace/src/%D0%BE%D1%82%D1%87%D1%91%D1%82_%D0%B4%D0%B0%D0%BD%D0%BD%D1%8B%D0%B5.ts",
+  ],
+  ["/workspace/src/export_notes.ts", "file:///workspace/src/export_notes.ts"],
+  [
+    "C:\\workspace\\src\\export_notes.ts",
+    "file:///C:/workspace/src/export_notes.ts",
+  ],
+])(
+  "copies auto-linked inline code %s as code while preserving authored links",
+  (reference, href) => {
+    const content = `**Changed**: \`${reference}\` and [Review](file:///workspace/review.md).`;
+    const { container } = render(
+      <SelectableMessageProse>
+        <MarkdownPreview
+          content={content}
+          linkRouting={{
+            localFile: {
+              absoluteLinks: { kind: "trusted-host" },
+              relativeLinks: { baseDir: "/workspace", rootPath: "/workspace" },
+              onOpenLink: () => true,
+            },
+          }}
+        />
+      </SelectableMessageProse>,
+    );
+    const range = document.createRange();
+    range.selectNodeContents(container.firstElementChild!);
+    const { data } = copyRange(range);
+    expect(data.get("text/html")).toContain(`<a href="${href}"`);
+    expect(data.get("text/plain")).toBe(content);
+
+    window.getSelection()!.removeAllRanges();
+    range.selectNodeContents(container.querySelector("a")!);
+    expect(copyRange(range).data.get("text/plain")).toBe(reference);
+  },
+);
+
 it("copies only the selected portion of a highlighted code block as bare code, preserving blank lines", () => {
   const { container } = render(
     <SelectableMessageProse>
@@ -61,7 +148,7 @@ it("copies only the selected portion of a highlighted code block as bare code, p
   );
 });
 
-it("preserves inline ancestors around partial selections without copying unselected text", () => {
+it("preserves inline ancestors around selections that extend past them without copying unselected text", () => {
   const { container } = render(
     <SelectableMessageProse>
       <p>
@@ -77,10 +164,43 @@ it("preserves inline ancestors around partial selections without copying unselec
   const range = document.createRange();
   range.setStart(text, 0);
   range.setEnd(text, 8);
+  expect(copyRange(range).data.get("text/plain")).toBe("selected");
+  window.getSelection()!.removeAllRanges();
+  range.setStart(container.querySelector("p")!.firstChild!, 3);
   expect(copyRange(range).data.get("text/plain")).toBe(
-    "[**selected**](https://example.com)",
+    "ore [**selected**](https://example.com)",
   );
 });
+
+it.each([
+  ["Rename my_old_var in config_loader.py", true],
+  ["Open C:\\Users\\me\\notes.txt", true],
+  ["Check x < y and y > z, then read arr[0]", true],
+  ["Rename über_straße", true],
+  ["_leading_ and snake_case_", false],
+  ["2*3*4 and `tick`", false],
+  ["<div> and <https://example.com>", false],
+  ["> not a quote", false],
+  ["[label]: https://example.com", false],
+  ["[text](not a link) and [x][y]", false],
+  ["a\\*b and a trailing backslash\\", false],
+])(
+  "copies prose %j as Markdown that renders back to the same text",
+  (prose, unchanged) => {
+    const { container } = render(
+      <SelectableMessageProse>
+        <p>{prose}</p>
+      </SelectableMessageProse>,
+    );
+    const range = document.createRange();
+    range.selectNodeContents(container.querySelector("p")!);
+    const copied = copyRange(range).data.get("text/plain")!;
+    if (unchanged) expect(copied).toBe(prose);
+    cleanup();
+    const rendered = render(<MarkdownPreview content={copied} />);
+    expect(rendered.container.textContent).toBe(prose);
+  },
+);
 
 it("preserves nested lists, blockquotes, task lists and fences containing backticks", () => {
   const { container } = render(
@@ -101,35 +221,44 @@ it("preserves nested lists, blockquotes, task lists and fences containing backti
   expect(text).toContain("````md\n```ts\n\nhello\n```\n````");
 });
 
-it("copies across messages but leaves unrelated and editable selections to the browser", () => {
-  const { container } = render(
-    <>
-      <SelectableMessageProse>
-        <p>
-          <strong>One</strong>
-        </p>
-      </SelectableMessageProse>
-      <div>Message timestamp</div>
-      <SelectableMessageProse>
-        <p>
-          <em>Two</em>
-        </p>
-      </SelectableMessageProse>
-      <div contentEditable suppressContentEditableWarning>
-        Draft
-      </div>
-    </>,
-  );
-  const range = document.createRange();
-  range.setStartBefore(container.querySelector("strong")!);
-  range.setEndAfter(container.querySelector("em")!);
-  expect(copyRange(range).data.get("text/plain")).toBe("**One**\n\n*Two*");
-  window.getSelection()!.removeAllRanges();
-  range.selectNodeContents(container.querySelector("[contenteditable]")!);
-  expect(copyRange(range).data.size).toBe(0);
-});
+it.each(["strong", "code"] as const)(
+  "copies %s across messages but leaves unrelated and editable selections to the browser",
+  (tag) => {
+    const { container } = render(
+      <>
+        <SelectableMessageProse>
+          <p>
+            {tag === "code" ? (
+              <code>pnpm --version</code>
+            ) : (
+              <strong>One</strong>
+            )}
+          </p>
+        </SelectableMessageProse>
+        <div>Message timestamp</div>
+        <SelectableMessageProse>
+          <p>
+            <em>Two</em>
+          </p>
+        </SelectableMessageProse>
+        <div contentEditable suppressContentEditableWarning>
+          Draft
+        </div>
+      </>,
+    );
+    const range = document.createRange();
+    range.setStartBefore(container.querySelector(tag)!);
+    range.setEndAfter(container.querySelector("em")!);
+    expect(copyRange(range).data.get("text/plain")).toBe(
+      `${tag === "code" ? "`pnpm --version`" : "**One**"}\n\n*Two*`,
+    );
+    window.getSelection()!.removeAllRanges();
+    range.selectNodeContents(container.querySelector("[contenteditable]")!);
+    expect(copyRange(range).data.size).toBe(0);
+  },
+);
 
-it("copies a whitespace boundary spill as markdown without changing the live selection", () => {
+it("copies a whitespace boundary spill without changing the live selection", () => {
   const { container } = render(
     <>
       <SelectableMessageProse>
@@ -144,7 +273,7 @@ it("copies a whitespace boundary spill as markdown without changing the live sel
   range.setStart(container.querySelector("strong")!.firstChild!, 0);
   range.setEnd(container.lastChild!, 1);
   const before = range.toString();
-  expect(copyRange(range).data.get("text/plain")).toBe("**Message**");
+  expect(copyRange(range).data.get("text/plain")).toBe("Message");
   expect(window.getSelection()!.toString()).toBe(before);
 });
 
@@ -209,6 +338,22 @@ it("copies rendered math as TeX text and MathML without KaTeX's duplicate layout
   expect(html.textContent).toBe("E=mc2 is big.\nα1<β");
 });
 
+it("copies math inside emphasis as TeX rather than KaTeX's duplicated layout text", async () => {
+  const { container } = render(
+    <SelectableMessageProse>
+      <MarkdownPreview content={"**Energy $$E = mc^2$$ is big**"} />
+    </SelectableMessageProse>,
+  );
+  await waitFor(() => {
+    expect(container.querySelector(".katex")).not.toBeNull();
+  });
+  const range = document.createRange();
+  range.selectNodeContents(container.querySelector("strong")!);
+  expect(copyRange(range).data.get("text/plain")).toBe(
+    "**Energy $$E = mc^2$$ is big**",
+  );
+});
+
 function renderBlocks() {
   return render(
     <SelectableMessageProse>
@@ -242,7 +387,7 @@ it.each([
     "inside heading emphasis",
     "bold",
     "bold",
-    "**bold**",
+    "bold",
     "<strong>bold</strong>",
   ],
   [
@@ -268,7 +413,7 @@ it.each([
     "Nested item",
     "Nested item",
   ],
-  ["in a quote", "emphasis", "emphasis", "*emphasis*", "<em>emphasis</em>"],
+  ["in a quote", "emphasis", "emphasis", "emphasis", "<em>emphasis</em>"],
   [
     "of a whole quoted paragraph",
     "Quoted",
@@ -343,7 +488,7 @@ it.each([
   ["part of a bare URL", "example.com/a_b", "example.com/a_b"],
   ["a www link", "www.example.net/x", "www.example.net/x"],
   ["an email link", "me@example.com", "me@example.com"],
-  ["a named link", "docs", "[docs](https://docs.example.com)"],
+  ["a named link", "docs", "docs"],
   ["a URL filling a list item", "https://github.com", "https://github.com"],
 ])("copies %s as pasteable text", (_, selected, text) => {
   const { container } = render(
@@ -358,4 +503,36 @@ it.each([
   const { data } = copyRange(selectText(container, selected));
   expect(data.get("text/plain")).toBe(text);
   expect(data.get("text/html")).toContain("<a href=");
+});
+
+it.each([
+  [
+    "/Users/michael/.bb/thread-storage/thr_v5h7wv4b4f/sanity-check.sh",
+    "file:///Users/michael/.bb/thread-storage/thr_v5h7wv4b4f/sanity-check.sh",
+    "sanity-check.sh",
+  ],
+  [
+    "/work space/my_script.sh",
+    "file:///work%20space/my_script.sh",
+    "my_script",
+  ],
+  [
+    "C:\\work space\\my_script.sh",
+    "file:///C:/work%20space/my_script.sh",
+    "my_script.sh",
+  ],
+])("copies file path %s without Markdown syntax", (path, href, part) => {
+  const { container } = render(
+    <SelectableMessageProse>
+      <p>
+        <a href={href}>{path}</a>
+      </p>
+    </SelectableMessageProse>,
+  );
+  for (const selected of [path, part]) {
+    window.getSelection()!.removeAllRanges();
+    const { data } = copyRange(selectText(container, selected));
+    expect(data.get("text/plain")).toBe(selected);
+    expect(data.get("text/html")).toContain(`<a href="${href}">`);
+  }
 });

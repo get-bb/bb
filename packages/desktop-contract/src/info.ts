@@ -65,6 +65,7 @@ export type BbDesktopCloseWindowRequestHandler = () => boolean;
 export interface BbDesktopApi extends BbDesktopInfo {
   browser: BbDesktopBrowserApi;
   getServerChoices?(): Promise<BbDesktopServerChoice[]>;
+  listServerChoices?(): Promise<BbDesktopServerChoice[]>;
   onServerChoicesChange?(
     listener: (choices: BbDesktopServerChoice[]) => void,
   ): () => void;
@@ -90,6 +91,7 @@ export interface BbDesktopApi extends BbDesktopInfo {
   openWindowFind?(request: BbDesktopWindowFindRequest): void;
   openDataDirectory?(): Promise<void>;
   openExternalUrl(url: string): void;
+  openApplicationUrl?(url: string): Promise<void>;
   openServerDaemonLogs?(): Promise<void>;
   reloadWindow?(): void;
   setSplitNavigationEnabled?(

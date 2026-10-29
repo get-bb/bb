@@ -3700,6 +3700,40 @@ export function isStoredTurnMainRunIdle(
   return latest?.idle === 1;
 }
 
+export function isStoredTurnProviderCompactionRunning(
+  db: DbQueryConnection,
+  args: ThreadTurnKey,
+): boolean {
+  const inTurn = and(
+    eq(events.threadId, args.threadId),
+    eq(events.turnId, args.turnId),
+  );
+  const latestCompaction = db
+    .select({ type: events.type })
+    .from(events)
+    .where(
+      and(
+        inTurn,
+        inArray(events.type, ["item/started", "item/completed"]),
+        eq(events.itemKind, "contextCompaction"),
+        isNull(events.parentToolCallId),
+      ),
+    )
+    .orderBy(desc(events.sequence))
+    .limit(1)
+    .get();
+  if (latestCompaction?.type !== "item/started") {
+    return false;
+  }
+  const acceptedInput = db
+    .select({ sequence: events.sequence })
+    .from(events)
+    .where(and(inTurn, eq(events.type, "turn/input/accepted")))
+    .limit(1)
+    .get();
+  return !acceptedInput;
+}
+
 export function getLatestCompletedThreadContextClearSequence(
   db: DbQueryConnection,
   args: GetLatestCompletedThreadContextClearSequenceArgs,

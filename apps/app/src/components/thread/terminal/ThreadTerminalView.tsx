@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type TouchEvent as ReactTouchEvent,
 } from "react";
@@ -15,6 +16,7 @@ import type {
   Terminal as XTermTerminal,
 } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
+import type { SearchAddon } from "@xterm/addon-search";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -51,6 +53,15 @@ import {
   importTerminalWebglAddon,
 } from "./terminal-modules";
 import { TerminalWebSocketTransport } from "@bb/client-core";
+import {
+  useAppCommandHandler,
+  useAppCommandRunner,
+} from "@/components/commands/AppCommandProvider";
+import { TerminalFindBar } from "./TerminalFindBar";
+import {
+  createTerminalFileLinkProvider,
+  parseTerminalReportedCwd,
+} from "./terminal-file-links";
 import { TerminalLinkOpenDialog } from "./TerminalLinkOpenDialog";
 import { TerminalMobileControls } from "./TerminalMobileControls";
 import {
@@ -64,6 +75,7 @@ import {
 } from "./terminal-mobile-input";
 import {
   createTerminalOsc8LinkHandler,
+  isTerminalLinkActivation,
   requestTerminalLinkOpen,
   type TerminalLinkTarget,
 } from "./terminal-links";
@@ -284,6 +296,7 @@ export function buildTerminalThemeFromCssColors(
     cursor: get("--foreground"),
     cursorAccent: get("--sidebar"),
     selectionBackground: get("--muted"),
+    selectionInactiveBackground: get("--muted"),
     black: get("--ansi-0"),
     red: get("--ansi-1"),
     green: get("--ansi-2"),
@@ -687,6 +700,10 @@ export function ThreadTerminalView({
       link: null,
       selectionText: "",
     });
+  const [searchAddon, setSearchAddon] = useState<SearchAddon | null>(null);
+  const [findFocusRequest, setFindFocusRequest] = useState<number | null>(null);
+  const findOpenRef = useRef(false);
+  const viewRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<XTermTerminal | null>(null);
   const hoveredTerminalLinkRef = useRef<TerminalLinkTarget | null>(null);
@@ -716,6 +733,11 @@ export function ThreadTerminalView({
   const preferredTheme = usePreferredTheme();
   const appThemeEpoch = useAppThemeEpoch();
   const appNavigation = useAppNavigationHost();
+  const appNavigationRef = useRef(appNavigation);
+  useEffect(() => {
+    appNavigationRef.current = appNavigation;
+  }, [appNavigation]);
+  const commandRunner = useAppCommandRunner();
   const handleOpenLinkByPreference = useCallback<MarkdownPreviewLinkHandler>(
     ({ href }) => appNavigation.openUrl({ url: href }),
     [appNavigation],
@@ -751,7 +773,7 @@ export function ThreadTerminalView({
         setActiveSelection(null);
         return;
       }
-      if (pointerIsDownRef.current) {
+      if (pointerIsDownRef.current || findOpenRef.current) {
         return;
       }
       const text = terminal.getSelection();
@@ -773,6 +795,44 @@ export function ThreadTerminalView({
     terminalRef.current?.clearSelection();
     setActiveSelection(null);
   }, []);
+
+  const isTerminalCommandAvailable = ({
+    target,
+  }: {
+    target: EventTarget | null;
+  }) =>
+    terminalRef.current !== null &&
+    (target === null ||
+      (target instanceof Node && viewRef.current?.contains(target) === true));
+  useAppCommandHandler(
+    "terminal.find",
+    () => {
+      findOpenRef.current = true;
+      setActiveSelection(null);
+      setFindFocusRequest((request) => (request ?? 0) + 1);
+      return true;
+    },
+    0,
+    isPanelOpen,
+    isTerminalCommandAvailable,
+  );
+  const closeFind = () => {
+    findOpenRef.current = false;
+    searchAddon?.clearDecorations();
+    clearTerminalSelection();
+    setFindFocusRequest(null);
+    terminalRef.current?.focus();
+  };
+  const handleTerminalCommandKeyDown = (event: ReactKeyboardEvent) => {
+    const command = commandRunner.getShortcutCommand(event.nativeEvent, [
+      "terminal.find",
+    ]);
+    if (command === null || !commandRunner.dispatch(command, event.target)) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+  };
 
   const updateHoveredTerminalLink = useCallback(
     (target: TerminalLinkTarget | null) => {
@@ -957,6 +1017,8 @@ export function ThreadTerminalView({
     setActiveSelection(null);
     updateHoveredTerminalLink(null);
     setPendingTerminalLink(null);
+    findOpenRef.current = false;
+    setFindFocusRequest(null);
     setContextMenuState({ link: null, selectionText: "" });
   }, [copySelectedText, session.id, updateHoveredTerminalLink]);
 
@@ -998,6 +1060,7 @@ export function ThreadTerminalView({
         { FitAddon: LoadedFitAddon },
         { WebLinksAddon },
         { Unicode11Addon },
+        { SearchAddon: LoadedSearchAddon },
       ] = await requiredModulesPromise;
       const webglAddonModule = await webglAddonModulePromise;
       if (disposed) {
@@ -1031,6 +1094,24 @@ export function ThreadTerminalView({
           paste: pasteFromClipboard,
         }),
       );
+      const loadedSearchAddon = new LoadedSearchAddon();
+      terminal.loadAddon(loadedSearchAddon);
+      setSearchAddon(loadedSearchAddon);
+      let reportedCwd: string | null = null;
+      terminal.parser.registerOscHandler(7, (data) => {
+        reportedCwd = parseTerminalReportedCwd(data) ?? reportedCwd;
+        return false;
+      });
+      terminal.registerLinkProvider(
+        createTerminalFileLinkProvider({
+          terminal,
+          getCwd: () => reportedCwd ?? sessionRef.current.initialCwd,
+          hostId: sessionRef.current.hostId,
+          openFile: (intent) => {
+            appNavigationRef.current.openFilePreview(intent);
+          },
+        }),
+      );
       fitAddon = new LoadedFitAddon();
       terminal.loadAddon(fitAddon);
       terminal.loadAddon(new Unicode11Addon());
@@ -1038,7 +1119,7 @@ export function ThreadTerminalView({
       terminal.loadAddon(
         new WebLinksAddon(
           (event, uri) => {
-            if (event.button !== 0) {
+            if (!isTerminalLinkActivation(event)) {
               return;
             }
             requestOpenTerminalLink({ source: "detected-url", uri });
@@ -1274,6 +1355,7 @@ export function ThreadTerminalView({
       transport?.dispose();
       terminal?.dispose();
       terminalRef.current = null;
+      setSearchAddon(null);
       scheduleFitRef.current = null;
     };
   }, [
@@ -1332,7 +1414,18 @@ export function ThreadTerminalView({
   const contextMenuLink = contextMenuState.link;
   const contextMenuSelectionText = contextMenuState.selectionText;
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div
+      ref={viewRef}
+      className="flex h-full min-h-0 flex-col"
+      onKeyDownCapture={handleTerminalCommandKeyDown}
+    >
+      {findFocusRequest !== null && searchAddon !== null ? (
+        <TerminalFindBar
+          addon={searchAddon}
+          focusRequest={findFocusRequest}
+          onClose={closeFind}
+        />
+      ) : null}
       <ContextMenu
         onOpenChange={(open) => {
           if (!open) {

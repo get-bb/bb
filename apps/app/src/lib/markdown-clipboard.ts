@@ -24,6 +24,7 @@ const requiredChildren: Record<string, string> = {
 };
 
 const mathElements = ".katex-display, .katex, .katex-error";
+const inlineFormatElements = "code, a, strong, b, em, i, del, s";
 
 function mathRoot(node: Node): Element | null {
   const element = node instanceof Element ? node : node.parentElement;
@@ -103,9 +104,23 @@ function replaceMathWithMathMl(container: Element): void {
 
 function isBareUrl(link: Element): boolean {
   const text = link.textContent?.trim() ?? "";
-  return [text, `http://${text}`, `https://${text}`, `mailto:${text}`].includes(
-    link.getAttribute("href") ?? "",
-  );
+  const href = link.getAttribute("href") ?? "";
+  if (
+    [text, `http://${text}`, `https://${text}`, `mailto:${text}`].includes(href)
+  )
+    return true;
+  if (!href.startsWith("file://")) return false;
+  try {
+    const url = new URL(href);
+    if (url.hostname || url.search || url.hash) return false;
+    const path = decodeURIComponent(url.pathname);
+    return (
+      text === path ||
+      (/^\/[a-z]:\//i.test(path) && text.replace(/\\/g, "/") === path.slice(1))
+    );
+  } catch {
+    return false;
+  }
 }
 
 function safeUrl(value: string): string {
@@ -116,8 +131,34 @@ function safeUrl(value: string): string {
     : value;
 }
 
+const wordCharacter = /[\p{L}\p{N}]/u;
+
+const needsEscape: Record<
+  string,
+  (before: string, after: string, lineStart: boolean) => boolean
+> = {
+  "\\": (_before, after) => after === "" || /[!-/:-@[-`{-~]/.test(after),
+  "`": () => true,
+  "*": () => true,
+  _: (before, after) =>
+    !(wordCharacter.test(before) && wordCharacter.test(after)),
+  "[": (_before, _after, lineStart) => lineStart,
+  "]": (_before, after) => /[([:]/.test(after),
+  "<": (_before, after) => /[A-Za-z/!?]/.test(after),
+  ">": (_before, _after, lineStart) => lineStart,
+};
+
 function escapeText(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/([`*_[\]<>])/g, "\\$1");
+  return value.replace(/[\\`*_[\]<>]/g, (char, index: number) => {
+    const before = value[index - 1] ?? "";
+    return needsEscape[char]!(
+      before,
+      value[index + 1] ?? "",
+      index === 0 || before === "\n",
+    )
+      ? `\\${char}`
+      : char;
+  });
 }
 
 function codeSpan(value: string): string {
@@ -220,6 +261,8 @@ function nodeMarkdown(node: Node): string {
   if (tag === "EM" || tag === "I") return `*${content}*`;
   if (tag === "DEL" || tag === "S") return `~~${content}~~`;
   if (tag === "A") {
+    if (node.hasAttribute("data-clipboard-inline-code"))
+      return codeSpan(node.textContent ?? "");
     if (node.hasAttribute("data-bare-url")) return node.textContent ?? "";
     const href = safeUrl(node.getAttribute("href") ?? "");
     return href
@@ -260,22 +303,17 @@ function keepsAncestor(
 export function selectionClipboard(
   selected: Range,
   root: Element,
+  spanFormat: "text" | "markdown",
 ): { text: string; html: string } {
   const range = expandRangeToMath(trimRangeToContent(selected));
-  const start =
-    range.startContainer instanceof Element
-      ? range.startContainer
-      : range.startContainer.parentElement;
-  const end =
-    range.endContainer instanceof Element
-      ? range.endContainer
-      : range.endContainer.parentElement;
-  const pre = start?.closest("pre");
   let contents: Node = range.cloneContents();
   const common =
     range.commonAncestorContainer instanceof Element
       ? range.commonAncestorContainer
       : range.commonAncestorContainer.parentElement;
+  const span = common?.closest(
+    spanFormat === "text" ? `pre, ${inlineFormatElements}` : "pre",
+  );
   const wrapped: Element[] = [];
   let ancestor = common;
   while (
@@ -326,7 +364,7 @@ export function selectionClipboard(
   for (const [link, original] of copiedOriginals("a"))
     if (original && isBareUrl(original)) link.setAttribute("data-bare-url", "");
   const text =
-    pre && end && pre.contains(end)
+    span && root.contains(span) && !container.querySelector(mathElements)
       ? range.toString()
       : childrenMarkdown(container).trim();
   replaceMathWithMathMl(container);

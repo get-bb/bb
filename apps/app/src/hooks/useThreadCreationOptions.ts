@@ -543,6 +543,47 @@ export function useThreadCreationOptions(
     [providers],
   );
 
+  const baseCatalogSelection = useMemo(
+    () =>
+      resolveModelCatalogSelection({
+        models: executionOptionsQuery.data?.models ?? [],
+        selectedOnlyModels:
+          executionOptionsQuery.data?.selectedOnlyModels ?? [],
+        selectedModel: rawSelectedModel,
+        preferredReasoningLevel,
+        sessionOptionSelections: requestedSessionOptionSelections,
+        provider: selectedProviderInfo,
+        catalogIsVerified: modelCatalogIsVerified,
+        formatModelLabel,
+      }),
+    [
+      executionOptionsQuery.data?.models,
+      executionOptionsQuery.data?.selectedOnlyModels,
+      modelCatalogIsVerified,
+      preferredReasoningLevel,
+      rawSelectedModel,
+      requestedSessionOptionSelections,
+      selectedProviderInfo,
+    ],
+  );
+
+  const needsSelectedModelDiscovery =
+    modelCatalogIsVerified &&
+    baseCatalogSelection.activeModel?.reasoningDiscovery === "unknown";
+  const selectedModelQuery = useSystemExecutionOptions({
+    enabled: executionOptionsQueryEnabled && needsSelectedModelDiscovery,
+    ...executionOptionsRouting,
+    providerId: effectiveProviderId,
+    projectId: executionOptionsProjectId,
+    selectedModel: baseCatalogSelection.selectedModel || undefined,
+  });
+  const selectedCatalog =
+    needsSelectedModelDiscovery &&
+    !selectedModelQuery.isPlaceholderData &&
+    selectedModelQuery.data?.modelLoadError === null
+      ? selectedModelQuery.data
+      : executionOptionsQuery.data;
+
   const activeProviderCapabilities = selectedProviderInfo?.capabilities;
   const selectedProviderComposerActions =
     selectedProviderInfo?.composerActions ?? EMPTY_COMPOSER_ACTIONS;
@@ -623,20 +664,22 @@ export function useThreadCreationOptions(
     isSessionOptionModelSwitch,
   } = useMemo(
     () =>
-      resolveModelCatalogSelection({
-        models: executionOptionsQuery.data?.models ?? [],
-        selectedOnlyModels:
-          executionOptionsQuery.data?.selectedOnlyModels ?? [],
-        selectedModel: rawSelectedModel,
-        preferredReasoningLevel,
-        sessionOptionSelections: requestedSessionOptionSelections,
-        provider: selectedProviderInfo,
-        catalogIsVerified: modelCatalogIsVerified,
-        formatModelLabel,
-      }),
+      selectedCatalog === executionOptionsQuery.data
+        ? baseCatalogSelection
+        : resolveModelCatalogSelection({
+            models: selectedCatalog?.models ?? [],
+            selectedOnlyModels: selectedCatalog?.selectedOnlyModels ?? [],
+            selectedModel: rawSelectedModel,
+            preferredReasoningLevel,
+            sessionOptionSelections: requestedSessionOptionSelections,
+            provider: selectedProviderInfo,
+            catalogIsVerified: modelCatalogIsVerified,
+            formatModelLabel,
+          }),
     [
-      executionOptionsQuery.data?.models,
-      executionOptionsQuery.data?.selectedOnlyModels,
+      baseCatalogSelection,
+      executionOptionsQuery.data,
+      selectedCatalog,
       modelCatalogIsVerified,
       preferredReasoningLevel,
       rawSelectedModel,

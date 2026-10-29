@@ -3,7 +3,6 @@ import {
   type ExperimentalThreadContextSegmentInput,
   type ExperimentalThreadContextSegmentProps,
 } from "@get-bb/plugin-sdk";
-import { CONTEXT_CARD_TOGGLE_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import {
   CORE_THREAD_CONTEXT_OWNER,
   ThreadContextSegmentMount,
@@ -39,13 +38,8 @@ import { NavLink } from "react-router-dom";
 import type {
   EnvironmentStatus,
   PendingInteraction,
-  GitBranchRefClassification,
   ThreadRuntimeDisplayStatus,
 } from "@bb/domain";
-import {
-  BranchPicker,
-  getMergeBaseBranchCandidateGroups,
-} from "@/components/pickers/BranchPicker";
 import {
   PromptStackCard,
   PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
@@ -59,28 +53,18 @@ import {
   activityRowClass,
   activityTextClass,
 } from "@bb/shared-ui/activity-row-styles";
-import { WorkspaceChangesList } from "@/components/thread/WorkspaceChangesList";
 import { formatPendingInteractionSummary } from "@bb/core-ui";
 import { InlinePendingInteractionContext } from "@/components/thread/pending-interactions/PendingInteractionShell";
 import { ThreadPendingInteractionBanners } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
-import {
-  formatChangeSummary,
-  renderChangeSummary,
-  toChangeTally,
-  type WorkspaceChangedFileSelection,
-  type WorkspaceChangedFilesSection,
-} from "@/components/workspace/workspace-change-summary";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
   AnimatedBody,
   AnimatedDisclosureBody,
-} from "@/components/promptbox/banner/AnimatedBody";
-import {
   PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
   PromptStackCollapseRow,
   PromptStackCountSlot,
-  PromptStackHoverChevron,
+  SectionToggleButton,
   useDisclosureFocusHandoff,
 } from "@bb/shared-ui/prompt-stack-disclosure";
 import {
@@ -93,23 +77,6 @@ import {
 } from "@/components/thread/ThreadTitleMentions";
 import { childThreadNoun } from "@/lib/child-thread-copy";
 import { SIDEBAR_WORKING_STATUS_COLOR_CLASS } from "@bb/shared-ui/sidebar-row-classes";
-
-export interface ContextBannerMergeBaseConfig {
-  branch: string;
-  branchRef?: GitBranchRefClassification | null;
-  options?: readonly string[];
-  remoteOptions?: readonly string[];
-  optionsLoading?: boolean;
-  onChange: (branch: string) => void;
-  onPickerOpenChange?: (open: boolean) => void;
-  onSearchQueryChange?: (query: string) => void;
-}
-
-export interface ThreadPromptGitSection {
-  changedFiles: WorkspaceChangedFilesSection;
-  mergeBase: ContextBannerMergeBaseConfig | null;
-  onPromptBannerFileClick: (selection: WorkspaceChangedFileSelection) => void;
-}
 
 export interface ThreadPromptParentThreadSection {
   parentThreadTitle: string;
@@ -158,8 +125,6 @@ export function isThreadDisplayStatusBannerActive(
 }
 
 export interface CoreThreadContext {
-  git: ThreadPromptGitSection | null;
-  gitPending: boolean;
   parentThread: ThreadPromptParentThreadSection | null;
 }
 
@@ -171,12 +136,6 @@ interface ThreadPromptContextBannerProps {
   expandedSegment: string | null;
   onToggleSegment: (key: string) => void;
 }
-
-const KIND_PREFIX: Record<WorkspaceChangedFilesSection["kind"], string> = {
-  uncommitted: "Uncommitted",
-  untracked: "Untracked",
-  committed: "Committed",
-};
 
 const ARCHIVED_THREAD_STATUS_LABEL = "Thread is archived";
 const ENVIRONMENT_GONE_STATUS_COPY: Record<
@@ -211,84 +170,11 @@ const SECTION_IDS = {
     toggle: "thread-prompt-banner-child-threads-toggle",
     body: "thread-prompt-banner-child-threads-body",
   },
-  git: {
-    toggle: "thread-prompt-banner-git-toggle",
-    body: "thread-prompt-banner-git-body",
-  },
   status: {
     toggle: "thread-prompt-banner-status-toggle",
     body: "thread-prompt-banner-status-body",
   },
 } as const;
-
-const SEGMENT_SHRINK_CLASS = "min-w-0 overflow-hidden";
-
-interface SectionToggleButtonProps {
-  buttonRef: RefObject<HTMLButtonElement | null>;
-  fillRow: boolean;
-  id: string;
-  controlsId: string;
-  ariaLabel?: string;
-  icon: ReactNode;
-  label: ReactNode;
-  compactLabel?: ReactNode;
-  hideLabelInCompact?: boolean;
-  isExpanded: boolean;
-  onToggle: () => void;
-}
-
-function SectionToggleButton({
-  buttonRef,
-  fillRow,
-  id,
-  controlsId,
-  ariaLabel,
-  icon,
-  label,
-  compactLabel,
-  hideLabelInCompact = true,
-  isExpanded,
-  onToggle,
-}: SectionToggleButtonProps) {
-  return (
-    <button
-      ref={buttonRef}
-      type="button"
-      id={id}
-      aria-expanded={isExpanded}
-      aria-controls={controlsId}
-      aria-label={ariaLabel}
-      onClick={onToggle}
-      className={cn(
-        CONTEXT_CARD_TOGGLE_CLASS,
-        PROMPT_STACK_INLAY_SEGMENT_CLASS,
-        SEGMENT_SHRINK_CLASS,
-        label !== null && label !== undefined ? "gap-1.5" : "gap-0",
-        fillRow && "flex-1 justify-start text-left",
-        PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
-        isExpanded ? "text-foreground" : "text-muted-foreground",
-      )}
-    >
-      {icon}
-      {label !== null && label !== undefined ? (
-        <span
-          className="min-w-0 truncate"
-          data-promptbox-hide-compact={hideLabelInCompact ? "" : undefined}
-        >
-          {label}
-        </span>
-      ) : null}
-      {hideLabelInCompact &&
-      compactLabel !== null &&
-      compactLabel !== undefined ? (
-        <span className="min-w-0 truncate" data-promptbox-compact-label="">
-          {compactLabel}
-        </span>
-      ) : null}
-      {fillRow ? <PromptStackHoverChevron isExpanded={isExpanded} /> : null}
-    </button>
-  );
-}
 
 const PARENT_SECTION_COPY: Record<
   ThreadPromptParentThreadSection["relationship"],
@@ -996,7 +882,6 @@ type DisclosureFocusHandoff = ReturnType<typeof useDisclosureFocusHandoff>;
 
 interface CoreThreadContextValue extends CoreThreadContext {
   parentFocus: DisclosureFocusHandoff;
-  gitFocus: DisclosureFocusHandoff;
 }
 
 const CoreThreadContextContext = createContext<CoreThreadContextValue | null>(
@@ -1045,110 +930,6 @@ function ParentThreadDetails({
   );
 }
 
-function ChangedFilesMergeBaseAction({
-  mergeBase,
-}: {
-  mergeBase: ContextBannerMergeBaseConfig;
-}) {
-  const candidates = getMergeBaseBranchCandidateGroups({
-    mergeBaseBranch: mergeBase.branch,
-    mergeBaseBranchRef: mergeBase.branchRef,
-    mergeBaseBranchOptions: mergeBase.options,
-    remoteMergeBaseBranchOptions: mergeBase.remoteOptions,
-  });
-  return (
-    <BannerActionSlot hideInCompact>
-      <Icon name="GitMerge" className="size-3.5 shrink-0" aria-hidden="true" />
-      <span className="shrink-0">Merge base</span>
-      <BranchPicker
-        value={mergeBase.branch}
-        options={candidates.options}
-        remoteOptions={candidates.remoteOptions}
-        variant="minimal"
-        emphasizeTriggerValue={false}
-        loading={mergeBase.optionsLoading}
-        onChange={mergeBase.onChange}
-        onOpenChange={mergeBase.onPickerOpenChange}
-        onSearchQueryChange={mergeBase.onSearchQueryChange}
-        className="max-w-[10rem]"
-        muted
-        popoverAlign="end"
-      />
-    </BannerActionSlot>
-  );
-}
-
-function ChangedFilesSummary({
-  segments,
-  isExpanded,
-}: ExperimentalThreadContextSegmentProps) {
-  const { git, gitFocus } = useCoreThreadContext();
-  if (git === null) return null;
-  const tally = toChangeTally(git.changedFiles.stats);
-  const prefix = KIND_PREFIX[git.changedFiles.kind];
-  return (
-    <SectionToggleButton
-      buttonRef={gitFocus.triggerRef}
-      fillRow
-      id={SECTION_IDS.git.toggle}
-      controlsId={SECTION_IDS.git.body}
-      icon={
-        <Icon
-          name="FileDiff"
-          className="size-3.5 shrink-0"
-          aria-hidden="true"
-        />
-      }
-      label={
-        <>
-          {prefix} · {renderChangeSummary(tally)}
-        </>
-      }
-      compactLabel={renderChangeSummary(tally)}
-      hideLabelInCompact={segments.length > 2}
-      ariaLabel={`Changed files: ${prefix}, ${formatChangeSummary(tally)}`}
-      isExpanded={isExpanded}
-      onToggle={gitFocus.onTriggerClick}
-    />
-  );
-}
-
-function ChangedFilesAction({
-  segments,
-}: ExperimentalThreadContextSegmentProps) {
-  const { git } = useCoreThreadContext();
-  return segments.length === 1 && git?.mergeBase ? (
-    <ChangedFilesMergeBaseAction mergeBase={git.mergeBase} />
-  ) : null;
-}
-
-function ChangedFilesDetails({
-  isExpanded,
-}: ExperimentalThreadContextSegmentProps) {
-  const { git, gitFocus } = useCoreThreadContext();
-  if (git === null) return null;
-  return (
-    <AnimatedDisclosureBody
-      collapsedBorder="reserve"
-      id={SECTION_IDS.git.body}
-      labelledBy={SECTION_IDS.git.toggle}
-      isExpanded={isExpanded}
-      collapseLabel="Collapse changed files"
-      collapseRef={gitFocus.collapseRef}
-      onCollapse={gitFocus.onCollapseClick}
-    >
-      <WorkspaceChangesList
-        files={git.changedFiles.files}
-        fileCount={git.changedFiles.stats.fileCount}
-        className="max-h-32 px-3 pb-2 pt-1"
-        onFileClick={(file) =>
-          git.onPromptBannerFileClick({ file, section: git.changedFiles })
-        }
-      />
-    </AnimatedDisclosureBody>
-  );
-}
-
 export function ThreadChildThreadsBanner({
   childThreads,
   isExpanded,
@@ -1184,16 +965,6 @@ const coreThreadContextSegments: readonly CoreThreadContextSegment[] =
         details: ParentThreadDetails,
         useVisible: () => useCoreThreadContext().parentThread !== null,
       });
-      app.slots.experimental_threadContextSegment({
-        id: "changed-files",
-        title: "Changed files",
-        group: SEGMENT_GROUPS.git,
-        order: 10,
-        summary: ChangedFilesSummary,
-        action: ChangedFilesAction,
-        details: ChangedFilesDetails,
-        useVisible: () => useCoreThreadContext().git !== null,
-      });
     }),
   ).threadContextSegments.map((slot) => ({
     ...slot,
@@ -1214,7 +985,6 @@ const PARENT_THREAD_ENTRY: ThreadContextSegmentEntry = {
   slot: PARENT_THREAD_SLOT,
 };
 const PARENT_THREAD_KEY = threadContextSegmentKey(PARENT_THREAD_SLOT);
-const CHANGED_FILES_KEY = threadContextSegmentKey(coreSlot("changed-files"));
 const STATUS_KEY = `${CORE_THREAD_CONTEXT_OWNER}/status`;
 const READ_ONLY_SEGMENTS = [
   { key: PARENT_THREAD_KEY, pluginId: CORE_THREAD_CONTEXT_OWNER },
@@ -1328,12 +1098,10 @@ function ReadOnlyContextBanner({
 
 function WritableContextBanner({
   input,
-  showRow,
   expandedSegment,
   onToggleSegment,
 }: {
   input: ExperimentalThreadContextSegmentInput;
-  showRow: boolean;
   expandedSegment: string | null;
   onToggleSegment: (key: string) => void;
 }) {
@@ -1365,7 +1133,7 @@ function WritableContextBanner({
   return (
     <>
       {observers}
-      {showRow && entries.length > 0 ? (
+      {entries.length > 0 ? (
         <PromptStackCard
           ariaLabel="Thread context before sending"
           className="overflow-hidden"
@@ -1401,11 +1169,7 @@ export function ThreadPromptContextBanner({
     expandedSegment === PARENT_THREAD_KEY,
     () => onToggleSegment(PARENT_THREAD_KEY),
   );
-  const gitFocus = useDisclosureFocusHandoff(
-    expandedSegment === CHANGED_FILES_KEY,
-    () => onToggleSegment(CHANGED_FILES_KEY),
-  );
-  const context: CoreThreadContextValue = { ...core, parentFocus, gitFocus };
+  const context: CoreThreadContextValue = { ...core, parentFocus };
   if (isReadOnly) {
     const environmentGoneCopy = environmentGoneSection
       ? ENVIRONMENT_GONE_STATUS_COPY[environmentGoneSection.status]
@@ -1447,7 +1211,6 @@ export function ThreadPromptContextBanner({
     <CoreThreadContextContext.Provider value={context}>
       <WritableContextBanner
         input={input}
-        showRow={!core.gitPending}
         expandedSegment={expandedSegment}
         onToggleSegment={onToggleSegment}
       />

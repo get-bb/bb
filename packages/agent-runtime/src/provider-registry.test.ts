@@ -108,6 +108,33 @@ describe("provider registry", () => {
     });
   });
 
+  it("starts bridge workers with only the daemon's Node network flags", () => {
+    const execArgv = process.execArgv;
+    process.execArgv = [
+      ...execArgv,
+      "--use-system-ca",
+      "--inspect",
+      "--use-env-proxy",
+    ];
+    try {
+      const provider = createProviderForId("pi", {
+        additionalWorkspaceWriteRoots: [],
+        bridgeBundleDir: "/tmp",
+        bridgeLaunch: PI_BRIDGE_LAUNCH,
+      });
+      expect(provider.process.args).toEqual([
+        "--use-system-ca",
+        "--use-env-proxy",
+        path.resolve("/tmp", "bb-provider-bridge-worker.mjs"),
+        "/data/provider-bridges/pi.mjs",
+        "provider-fixture",
+        "/data/plugins/provider-fixture/bridge-data",
+      ]);
+    } finally {
+      process.execArgv = execArgv;
+    }
+  });
+
   it("runs the bridge under the configured bridge node runtime", () => {
     const bridgeNodeEnv = { ELECTRON_RUN_AS_NODE: "1" };
     const provider = createProviderForId("pi", {

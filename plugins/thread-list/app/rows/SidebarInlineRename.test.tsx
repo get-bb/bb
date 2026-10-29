@@ -416,7 +416,7 @@ it.each([
   { compact: false, coarse: true },
   { compact: true, coarse: true },
 ])(
-  "chooses sidebar title double-click presentation for compact=$compact coarse=$coarse",
+  "only renames on double-click with a fine pointer for compact=$compact coarse=$coarse",
   async ({ compact, coarse }) => {
     pointerState.coarse = coarse;
     const onSave = vi.fn().mockResolvedValue(undefined);
@@ -428,12 +428,16 @@ it.each([
       </CompactViewportOverrideProvider>,
     );
     fireEvent.doubleClick(screen.getByText("Original name"));
+    if (coarse) {
+      expect(screen.queryByRole("textbox")).toBeNull();
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(onSave).not.toHaveBeenCalled();
+      return;
+    }
     const input = await screen.findByRole("textbox", { name: "first name" });
-    expect(input.closest('[role="dialog"]') !== null).toBe(coarse);
+    expect(input.closest('[role="dialog"]')).toBeNull();
     fireEvent.change(input, { target: { value: "Updated name" } });
-    if (coarse)
-      fireEvent.click(screen.getByRole("button", { name: "Rename thread" }));
-    else fireEvent.keyDown(input, { key: "Enter" });
+    fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() =>
       expect(onSave).toHaveBeenCalledExactlyOnceWith("Updated name"),
     );

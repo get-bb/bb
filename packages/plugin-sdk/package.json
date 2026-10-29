@@ -1,6 +1,6 @@
 {
   "name": "@get-bb/plugin-sdk",
-  "version": "0.6.75",
+  "version": "0.6.99",
   "homepage": "https://github.com/get-bb/bb#readme",
   "bugs": {
     "url": "https://github.com/get-bb/bb/issues"
@@ -139,15 +139,21 @@
       "types": "./bundled-types/bb-plugin-sdk-internal-rpc-query-host.d.ts",
       "import": "./dist/internal/rpc-query-host.js",
       "default": "./dist/internal/rpc-query-host.js"
+    },
+    "./process": {
+      "source": "./src/process.ts",
+      "types": "./bundled-types/bb-plugin-sdk-process.d.ts",
+      "import": "./dist/process.js",
+      "default": "./dist/process.js"
     }
   },
   "types": "./bundled-types/bb-plugin-sdk.d.ts",
   "scripts": {
     "build": "node scripts/build-runtime.mjs",
     "build:runtime": "node scripts/build-runtime.mjs",
-    "build:types": "node scripts/build-bundled-dts.mjs",
+    "build:types": "node --max-semi-space-size=128 --max-old-space-size=4096 scripts/build-bundled-dts.mjs",
     "clean": "rimraf bundled-types dist tsconfig.tsbuildinfo",
-    "prepack": "node scripts/build-bundled-dts.mjs && node scripts/build-runtime.mjs",
+    "prepack": "node --max-semi-space-size=128 --max-old-space-size=4096 scripts/build-bundled-dts.mjs && node scripts/build-runtime.mjs",
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsrs --noEmit"
   },
@@ -163,6 +169,7 @@
     "@bb/provider-bridge-protocol": "workspace:*",
     "@bb/sdk": "workspace:*",
     "@bb/server-contract": "workspace:*",
+    "@bb/skill-index": "workspace:*",
     "@bb/tsconfig": "workspace:*",
     "@testing-library/react": "^16.3.2",
     "@types/better-sqlite3": "^7.6.12",

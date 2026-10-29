@@ -14,7 +14,11 @@ import {
   type Db,
 } from "./data.js";
 import { publishAutomationChange } from "./realtime.js";
-import { executeStoredScript, mapScriptResultToRun } from "./script-runner.js";
+import {
+  executeStoredScript,
+  mapScriptResultToRun,
+  type ScriptRunScope,
+} from "./script-runner.js";
 import type { AutomationExecution } from "./rpc-types.js";
 import type {
   ProjectsSdk,
@@ -265,18 +269,29 @@ function closeRunForUnusableTargetThread(
   bb.log.error(`Automation ${args.automation.id} paused: ${error}`);
 }
 
-export async function executeScriptRun(
+interface ScriptRunArgs {
+  pluginDataDir: string;
+  automation: AutomationRow;
+  run: AutomationRunRow;
+  execution: Extract<AutomationExecution, { mode: "script" }>;
+  onFailure: RunFailureHandler;
+  serverUrl: string;
+  resolveWorkingDirectory: ScriptWorkingDirectoryResolver;
+  scriptRuns: ScriptRunScope;
+}
+
+export function executeScriptRun(
   bb: ScriptRunApi,
   db: Db,
-  args: {
-    pluginDataDir: string;
-    automation: AutomationRow;
-    run: AutomationRunRow;
-    execution: Extract<AutomationExecution, { mode: "script" }>;
-    onFailure: RunFailureHandler;
-    serverUrl: string;
-    resolveWorkingDirectory: ScriptWorkingDirectoryResolver;
-  },
+  args: ScriptRunArgs,
+): Promise<void> {
+  return args.scriptRuns.track(runScript(bb, db, args));
+}
+
+async function runScript(
+  bb: ScriptRunApi,
+  db: Db,
+  args: ScriptRunArgs,
 ): Promise<void> {
   try {
     const scriptFile = args.execution.scriptFile;
@@ -309,6 +324,7 @@ export async function executeScriptRun(
       env: args.execution.env,
       serverUrl: args.serverUrl,
       workingDir,
+      signal: args.scriptRuns.signal,
     });
     const mapped = mapScriptResultToRun(result);
     closeAutomationRun(db, {

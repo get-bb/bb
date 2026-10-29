@@ -12,7 +12,7 @@ Start a thread, pick Claude Code, and let it work in your repository from bb. Th
 ## Settings
 
 - `Claude Code memory`: let Claude Code read and write its auto-memory.
-- `Disable provider subagents`: hide the native Task tool so the agent delegates through bb.
+- `Disable provider subagents`: hide native Agent, Task, and ListAgents tools so the agent delegates through bb. Changes restart Claude before the next turn, preserving the conversation.
 - `Disable Workflow tool`: hide the native Workflow tool.
 - `Claude in Chrome`: start Claude Code with the browser tools.
 

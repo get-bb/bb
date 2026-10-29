@@ -187,6 +187,16 @@ export const experimental_useQuestionFormHost = runtimeFunction(
   "experimental_useQuestionFormHost",
 );
 export const useBbNavigate = runtimeFunction("useBbNavigate");
+export const experimental_useCanOpenFileExternally = runtimeFunction(
+  "experimental_useCanOpenFileExternally",
+);
+export const experimental_useTabVisible = runtimeFunction(
+  "experimental_useTabVisible",
+);
+// The viewing client's servers (experimental — see docs/api_to_audit.md).
+export const experimental_useServers = runtimeFunction(
+  "experimental_useServers",
+);
 export const experimental_useAppPanel = runtimeFunction(
   "experimental_useAppPanel",
 );
@@ -278,6 +288,9 @@ export {
   experimental_THREAD_INFO_ROW_GROUPS,
   experimental_THREAD_INFO_SECTION_GROUPS,
 } from "./thread-info-groups.js";
+export const experimental_useExperiment = runtimeFunction(
+  "experimental_useExperiment",
+);
 export const experimental_useSidebarThreadSplit = runtimeFunction(
   "experimental_useSidebarThreadSplit",
 );
@@ -308,6 +321,9 @@ export const ThreadTitle = runtimeComponent("ThreadTitle");
 export const experimental_ThreadStatusGlyph = runtimeComponent(
   "experimental_ThreadStatusGlyph",
 );
+export const experimental_ThreadRowMetadata = runtimeComponent(
+  "experimental_ThreadRowMetadata",
+);
 export const useEnvironmentProviders = runtimeFunction(
   "useEnvironmentProviders",
 );
@@ -328,3 +344,10 @@ export const experimental_copyToClipboard = runtimeFunction(
   "experimental_copyToClipboard",
 );
 export const experimental_saveFile = runtimeFunction("experimental_saveFile");
+
+export const experimental_getApplicationLinkApprovals = runtimeFunction(
+  "experimental_getApplicationLinkApprovals",
+);
+export const experimental_revokeApplicationLinkApproval = runtimeFunction(
+  "experimental_revokeApplicationLinkApproval",
+);

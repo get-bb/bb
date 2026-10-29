@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
+import { RESET } from "jotai/utils";
 import {
   Panel,
   PanelGroup,
@@ -78,7 +79,9 @@ export function SplitWorkspaceSecondaryPanelHost({
   const { ref: sizingRef, minimum: minimumSize } = useSecondaryPanelSizing(1);
   const model = usePaneSecondaryPanelModel(registry, focusedPaneId);
   const panelGroupRef = useRef<ImperativePanelGroupHandle | null>(null);
-  const panelWidthPercent = useAtomValue(secondaryPanelWidthPercentAtom);
+  const widthPercentAtom =
+    model?.widthPercentAtom ?? secondaryPanelWidthPercentAtom;
+  const panelWidthPercent = useAtomValue(widthPercentAtom);
   const shortcut = useAppCommandShortcut("panel.toggle");
 
   const [isPanelVisible, setIsPanelVisible] = useState<boolean | null>(null);
@@ -161,7 +164,7 @@ export function SplitWorkspaceSecondaryPanelHost({
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
   const isSidebarFramed = useIsSidebarFramed();
 
-  const setPanelWidthPercent = useSetAtom(secondaryPanelWidthPercentAtom);
+  const setPanelWidthPercent = useSetAtom(widthPercentAtom);
   const lastEmptyPanelSizeRef = useRef(0);
   const handleEmptyPanelPointerResize = useCallback(
     (leadingFraction: number) => {
@@ -183,6 +186,7 @@ export function SplitWorkspaceSecondaryPanelHost({
   const emptyPanelHitTargetRef = usePanelResizeSnap({
     onResize: handleEmptyPanelPointerResize,
     onDragging: handleEmptyPanelDragging,
+    onReset: () => setPanelWidthPercent(RESET),
   });
   const handleEmptyPanelCollapse = () => {
     if (lastEmptyPanelSizeRef.current <= 0) return;
@@ -263,8 +267,9 @@ export function SplitWorkspaceSecondaryPanelHost({
             }
             minSize={minimumSize.min * 100}
             order={1}
+            style={{ overflow: "clip" }}
             className={cn(
-              "min-w-0 overflow-clip transition-[flex-grow,flex-basis]",
+              "min-w-0 transition-[flex-grow,flex-basis]",
               PANEL_COLLAPSE_TRANSITION_CLASS,
             )}
           >
@@ -309,8 +314,9 @@ export function SplitWorkspaceSecondaryPanelHost({
                   onCollapse={handleEmptyPanelCollapse}
                   onResize={handleEmptyPanelResize}
                   order={2}
+                  style={{ overflow: "clip" }}
                   className={cn(
-                    "min-w-0 overflow-clip transition-[flex-grow,flex-basis]",
+                    "min-w-0 transition-[flex-grow,flex-basis]",
                     PANEL_COLLAPSE_TRANSITION_CLASS,
                   )}
                 >

@@ -18,7 +18,17 @@ const LONG_PRESS_TARGET_STYLE: CSSProperties = {
   WebkitTouchCallout: "none",
 };
 
-const claimedPressEvents = new WeakSet<Event>();
+const CLAIMED_PRESS_EVENT_KEY = Symbol.for(
+  "bb.compactLongPressMenu.claimedPressEvent",
+);
+
+function isClaimedPressEvent(event: Event): boolean {
+  return Reflect.get(event, CLAIMED_PRESS_EVENT_KEY) === true;
+}
+
+function claimPressEvent(event: Event) {
+  Reflect.set(event, CLAIMED_PRESS_EVENT_KEY, true);
+}
 
 interface CompactLongPressMenuProps {
   children: ReactNode;
@@ -95,10 +105,10 @@ export function CompactLongPressMenu({
       if (!event.isPrimary) {
         return;
       }
-      if (claimedPressEvents.has(event.nativeEvent)) {
+      if (isClaimedPressEvent(event.nativeEvent)) {
         return;
       }
-      claimedPressEvents.add(event.nativeEvent);
+      claimPressEvent(event.nativeEvent);
       clearPress();
       pressRef.current = {
         pointerId: event.pointerId,

@@ -83,6 +83,7 @@ function pendingQuestion(threadId: string, prompt: string): PendingInteraction {
           prompt,
           multiSelect: false,
           allowFreeText: true,
+          required: true,
         },
       ],
     },

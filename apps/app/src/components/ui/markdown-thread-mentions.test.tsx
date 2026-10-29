@@ -145,7 +145,6 @@ const ACTIVE_MESSAGE_DIRECTIVES: MarkdownMessageDirectives = {
     projectId: "proj_demo",
   },
   openWorkspaceFile: null,
-  openThreadPanel: null,
 };
 
 afterEach(() => {

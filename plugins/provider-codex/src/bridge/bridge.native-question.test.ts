@@ -100,7 +100,6 @@ it.each([
       );
       expect(request?.params).toMatchObject({
         threadId,
-        providerNativeIds: true,
         payload: {
           kind: "user_question",
           questions: [

@@ -9,15 +9,11 @@ export {
 } from "./provider-models.js";
 export { shellSingleQuote, waitForSetupMarkerCount } from "./setup-markers.js";
 export {
-  makeWorkspaceMergeBase,
-  makeWorkspaceStatus,
-  makeWorkspaceWorkingTree,
-} from "./workspace-status.js";
-export {
   listOpenFilePids,
   readPositivePidFile,
   resolveProjectEnvCandidates,
 } from "./process-fixtures.js";
+export { killProcessesReferencingPath } from "./process-sweep.js";
 export {
   corpusAvailable,
   listCorpusThreads,

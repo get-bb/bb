@@ -19,7 +19,6 @@ import { ManagePanel } from "../views/manage/manage-panel.js";
 import { EmptyState } from "../components/empty-state.js";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
-import { TasksRefreshProvider } from "./refresh.js";
 
 const BOARD_MIN_WIDTH = 448;
 
@@ -216,9 +215,5 @@ function TasksAppShellContent({ subPath }: PluginNavPanelProps) {
 }
 
 export function TasksAppShell(props: PluginNavPanelProps) {
-  return (
-    <TasksRefreshProvider>
-      <TasksAppShellContent {...props} />
-    </TasksRefreshProvider>
-  );
+  return <TasksAppShellContent {...props} />;
 }

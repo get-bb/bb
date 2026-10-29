@@ -80,24 +80,21 @@ function MinimalComposer() {
       textarea.setSelectionRange(textarea.value.length, textarea.value.length);
     },
     acceptsThreadDrop: () => !renderer.inputLocked,
-    insertDroppedThread(thread: ExperimentalDroppedThreadMention) {
-      const text = `@thread:${thread.threadId}`;
-      const at = composer.draft.text.length;
-      insert(
-        {
-          text,
-          mentions: [
-            {
-              kind: "thread",
-              threadId: thread.threadId,
-              label: thread.label,
-              from: 0,
-              to: text.length,
-            },
-          ],
-        },
-        at,
-      );
+    insertDroppedThreads(threads: readonly ExperimentalDroppedThreadMention[]) {
+      let text = "";
+      const mentions = threads.map((thread) => {
+        if (text.length > 0) text += " ";
+        const from = text.length;
+        text += `@thread:${thread.threadId}`;
+        return {
+          kind: "thread" as const,
+          threadId: thread.threadId,
+          label: thread.label,
+          from,
+          to: text.length,
+        };
+      });
+      insert({ text, mentions }, composer.draft.text.length);
     },
     openPopup(pluginId, popupId) {
       const popup = popups.find(

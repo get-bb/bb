@@ -19,6 +19,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createStore } from "../api";
 import plugin from "../server";
 import { registerTasksCli } from "./index";
+import { attachmentsChangedTags } from "../shared/tags";
 
 vi.mock("../attachments", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../attachments")>();
@@ -1769,7 +1770,7 @@ describe("bb tasks CLI", () => {
         isImage: false,
       });
 
-      const signalsBeforePng = harness.realtimeSignals.length;
+      const signalsBeforePng = harness.experimental_rpcInvalidations.length;
       const pngAttachment = JSON.parse(
         stdout(
           await harness.runCli([
@@ -1788,15 +1789,9 @@ describe("bb tasks CLI", () => {
         sizeBytes: 8,
         isImage: true,
       });
-      expect(harness.realtimeSignals.slice(signalsBeforePng)).toEqual([
-        {
-          channel: "tasks:changed",
-          payload: {
-            taskId: pngAttachment.taskId,
-            projectId: expect.any(String),
-          },
-        },
-      ]);
+      expect(
+        harness.experimental_rpcInvalidations.slice(signalsBeforePng),
+      ).toEqual([attachmentsChangedTags(pngAttachment.taskId, null)]);
 
       stdout(
         await harness.runCli([
@@ -1806,7 +1801,8 @@ describe("bb tasks CLI", () => {
           `![pixel](/api/v1/plugins/tasks/http/attachments/download?attachmentId=${pngAttachment.id})`,
         ]),
       );
-      const signalsBeforeReferencedRemove = harness.realtimeSignals.length;
+      const signalsBeforeReferencedRemove =
+        harness.experimental_rpcInvalidations.length;
       const referencedRemove = await harness.runCli([
         "attachment",
         "remove",
@@ -1816,7 +1812,7 @@ describe("bb tasks CLI", () => {
       expect(referencedRemove.stderr).toContain(
         "is used in the task description",
       );
-      expect(harness.realtimeSignals).toHaveLength(
+      expect(harness.experimental_rpcInvalidations).toHaveLength(
         signalsBeforeReferencedRemove,
       );
 

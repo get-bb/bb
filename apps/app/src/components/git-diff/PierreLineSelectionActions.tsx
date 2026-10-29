@@ -18,7 +18,7 @@ import {
   type SelectionAnchorSide,
 } from "@/components/thread/timeline/SelectableMessageProse.js";
 import { TimelineSelectionMenu } from "@/components/thread/timeline/TimelineSelectionMenu.js";
-import { getDiffShadowRoots } from "./git-diff-patch-text";
+import { getDiffShadowRoots } from "@bb/shared-ui/git-diff/patch-text";
 
 const LINE_SELECTION_MENU_INLINE_OFFSET_PX = 72;
 

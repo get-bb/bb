@@ -18,6 +18,7 @@ import {
 
 const sdk = vi.hoisted(() => ({
   rows: {} as Record<string, EnvironmentPullRequest>,
+  settings: { showPullRequest: true } as Record<string, boolean> | undefined,
   mutate: vi.fn(async () => ({ message: "Merged" })),
   isPending: false,
 }));
@@ -33,6 +34,7 @@ vi.mock("@get-bb/plugin-sdk/app", () => ({
     isPending: sdk.isPending,
   }),
   useBbNavigate: () => ({ openUrl: () => false }),
+  useSettings: () => ({ values: sdk.settings, isLoading: false }),
 }));
 
 vi.mock("sonner", () => ({
@@ -69,7 +71,7 @@ const SELF = {
   key: "bb--github-pr-status/pull-request",
   pluginId: "bb--github-pr-status",
 };
-const CHANGED_FILES = { key: "bb--core/changed-files", pluginId: "bb--core" };
+const CHANGED_FILES = { key: "bb--git/changed-files", pluginId: "bb--git" };
 const PARENT = { key: "bb--core/parent-thread", pluginId: "bb--core" };
 
 function show(pullRequest: PullRequest) {
@@ -101,6 +103,7 @@ function renderPart(
 afterEach(() => {
   cleanup();
   sdk.rows = {};
+  sdk.settings = { showPullRequest: true };
   sdk.isPending = false;
   sdk.mutate.mockClear();
   window.localStorage.clear();
@@ -128,6 +131,23 @@ describe("pull request context segment", () => {
       renderHook(() =>
         usePullRequestSegmentVisible({
           ...input,
+          environment: { id: "env_1" },
+        }),
+      ).result.current,
+    ).toBe(false);
+  });
+
+  it.each([
+    ["off", { showPullRequest: false }],
+    ["loading", undefined],
+  ])("hides while the Show pull request setting is %s", (_state, settings) => {
+    show(PULL_REQUEST);
+    sdk.settings = settings;
+    expect(
+      renderHook(() =>
+        usePullRequestSegmentVisible({
+          threadId: "thr_1",
+          projectId: "proj_1",
           environment: { id: "env_1" },
         }),
       ).result.current,

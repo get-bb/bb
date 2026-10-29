@@ -58,6 +58,7 @@ import {
   BB_DESKTOP_INFO_CHANGED_CHANNEL,
   BB_DESKTOP_INSTALL_UPDATE_CHANNEL,
   BB_DESKTOP_OPEN_EXTERNAL_URL_CHANNEL,
+  BB_DESKTOP_OPEN_APPLICATION_URL_CHANNEL,
   BB_DESKTOP_SET_THEME_CHANNEL,
   BB_DESKTOP_ZOOM_CHANGED_CHANNEL,
   BB_DESKTOP_ZOOM_COMMAND_CHANNEL,
@@ -263,6 +264,12 @@ function addListener<T>(listeners: Set<T>, listener: T): () => void {
   };
 }
 
+async function listServerChoices(): Promise<BbDesktopServerChoice[]> {
+  return bbDesktopServerChoicesSchema.parse(
+    await ipcRenderer.invoke(BB_DESKTOP_GET_SERVER_CHOICES_CHANNEL),
+  );
+}
+
 function forwardParsed<T>(
   channel: string,
   schema: z.ZodType<T>,
@@ -431,11 +438,8 @@ const bbBrowserApi: BbDesktopBrowserApi = {
 
 const bbDesktopApi: BbDesktopApi = {
   browser: bbBrowserApi,
-  async getServerChoices() {
-    return bbDesktopServerChoicesSchema.parse(
-      await ipcRenderer.invoke(BB_DESKTOP_GET_SERVER_CHOICES_CHANNEL),
-    );
-  },
+  getServerChoices: listServerChoices,
+  listServerChoices,
   onServerChoicesChange(listener) {
     return addListener(serverChoiceListeners, listener);
   },
@@ -509,6 +513,9 @@ const bbDesktopApi: BbDesktopApi = {
   },
   async openDataDirectory(): Promise<void> {
     await ipcRenderer.invoke(BB_DESKTOP_OPEN_DATA_DIRECTORY_CHANNEL);
+  },
+  async openApplicationUrl(url: string): Promise<void> {
+    await ipcRenderer.invoke(BB_DESKTOP_OPEN_APPLICATION_URL_CHANNEL, url);
   },
   openExternalUrl(url: string): void {
     ipcRenderer.send(BB_DESKTOP_OPEN_EXTERNAL_URL_CHANNEL, url);

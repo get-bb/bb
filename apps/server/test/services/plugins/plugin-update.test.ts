@@ -2,6 +2,7 @@ import { registerPluginUpdateJobRoutes } from "../../../src/routes/plugin-update
 import { pluginUpdateJobResponseSchema } from "@bb/server-contract";
 import { createPluginUpdateJobs } from "../../../src/services/plugins/plugin-update-jobs.js";
 import { execFile } from "node:child_process";
+import { cpSync } from "node:fs";
 import {
   mkdtemp,
   mkdir,
@@ -16,7 +17,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { Hono } from "hono";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import {
   getInstalledPlugin,
   getPluginKvValue,
@@ -321,6 +331,7 @@ describe("plugin update scheduling", () => {
 });
 
 describe("plugin update service and routes", () => {
+  let seedDir: string;
   let db: DbConnection;
   let workDir: string;
   let repo: string;
@@ -335,15 +346,51 @@ describe("plugin update service and routes", () => {
       }) => Promise<void>)
     | undefined;
 
+  beforeAll(async () => {
+    seedDir = await mkdtemp(join(tmpdir(), "bb-plugin-update-seeds-"));
+    const seedRepo = join(seedDir, "repo");
+    await mkdir(seedRepo, { recursive: true });
+    await git(seedRepo, ["init", "-q", "-b", "main"]);
+    await git(seedRepo, ["config", "user.email", "test@example.com"]);
+    await git(seedRepo, ["config", "user.name", "Test"]);
+    await commitPlugin(seedRepo, "1.0.0");
+
+    const tagged = join(seedDir, "tagged");
+    await mkdir(tagged, { recursive: true });
+    await git(tagged, ["init", "-q", "-b", "main"]);
+    await git(tagged, ["config", "user.email", "test@example.com"]);
+    await git(tagged, ["config", "user.name", "Test"]);
+    await writeFile(
+      join(tagged, "package.json"),
+      JSON.stringify({
+        name: "bb-plugin-tagged",
+        version: "1.0.0",
+        bb: {
+          name: "Tagged fixture",
+          description: "Tagged release fixture.",
+          branding: { icon: "Zap" },
+          server: "./server.ts",
+        },
+      }),
+    );
+    await writeFile(
+      join(tagged, "server.ts"),
+      `export default function plugin(bb: any) { bb.log.info("tagged"); }`,
+    );
+    await git(tagged, ["add", "-A"]);
+    await git(tagged, ["commit", "-qm", "1.0.0"]);
+    await git(tagged, ["tag", "v1.0.0"]);
+  });
+
+  afterAll(async () => {
+    await rm(seedDir, { recursive: true, force: true });
+  });
+
   beforeEach(async () => {
     db = createMigratedConnection();
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-update-"));
     repo = join(workDir, "repo");
-    await mkdir(repo, { recursive: true });
-    await git(repo, ["init", "-q", "-b", "main"]);
-    await git(repo, ["config", "user.email", "test@example.com"]);
-    await git(repo, ["config", "user.name", "Test"]);
-    await commitPlugin(repo, "1.0.0");
+    cpSync(join(seedDir, "repo"), repo, { recursive: true });
     afterArtifactPromoted = undefined;
     materializationCount = 0;
     service = createPluginService({
@@ -822,6 +869,7 @@ describe("plugin update service and routes", () => {
     vi.stubGlobal("__bbPluginStabilizationCrash", serviceCrash);
     await service.stop();
     service = createPluginService({
+      bundledPlugins: [],
       aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
       db,
@@ -926,6 +974,7 @@ describe("plugin update service and routes", () => {
     );
     await service.stop();
     service = createPluginService({
+      bundledPlugins: [],
       aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
       db,
@@ -966,6 +1015,7 @@ describe("plugin update service and routes", () => {
 
     await service.stop();
     service = createPluginService({
+      bundledPlugins: [],
       aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
       db,
@@ -1085,6 +1135,7 @@ describe("plugin update service and routes", () => {
     let clock = Date.now();
     const makeService = () =>
       createPluginService({
+        bundledPlugins: [],
         aiServices: createAiServiceRegistry(),
         telemetry: createNoopTelemetryService(),
         db,
@@ -1350,30 +1401,7 @@ describe("plugin update service and routes", () => {
   });
   async function taggedRepo(): Promise<string> {
     const tagged = join(workDir, "tagged");
-    await mkdir(tagged, { recursive: true });
-    await git(tagged, ["init", "-q", "-b", "main"]);
-    await git(tagged, ["config", "user.email", "test@example.com"]);
-    await git(tagged, ["config", "user.name", "Test"]);
-    await writeFile(
-      join(tagged, "package.json"),
-      JSON.stringify({
-        name: "bb-plugin-tagged",
-        version: "1.0.0",
-        bb: {
-          name: "Tagged fixture",
-          description: "Tagged release fixture.",
-          branding: { icon: "Zap" },
-          server: "./server.ts",
-        },
-      }),
-    );
-    await writeFile(
-      join(tagged, "server.ts"),
-      `export default function plugin(bb: any) { bb.log.info("tagged"); }`,
-    );
-    await git(tagged, ["add", "-A"]);
-    await git(tagged, ["commit", "-qm", "1.0.0"]);
-    await git(tagged, ["tag", "v1.0.0"]);
+    cpSync(join(seedDir, "tagged"), tagged, { recursive: true });
     return tagged;
   }
 

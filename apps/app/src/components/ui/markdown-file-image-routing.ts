@@ -3,7 +3,7 @@ import {
   getAbsoluteDirname,
   buildAbsoluteFilePath,
   normalizeAbsoluteFilePath,
-} from "@/lib/absolute-file-path";
+} from "@bb/shared-ui/lib/absolute-file-path";
 import {
   buildHostFileContentUrl,
   buildThreadHostFileContentUrl,

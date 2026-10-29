@@ -10,7 +10,14 @@ import { Button } from "@/components/ui/button";
 import { DelayedLoading } from "@/components/ui/delayed-loading";
 import { Icon } from "@/components/ui/icon";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useLabels, useListTasks, useTaskListMeta } from "./data.js";
+import {
+  matchesFilters,
+  useLabels,
+  useListTaskEdit,
+  useListTasks,
+  useTaskListMeta,
+  type TaskEdit,
+} from "./data.js";
 import {
   EMPTY_FILTERS,
   hasActiveFilters,
@@ -36,8 +43,6 @@ import {
   selectedLabelIds,
   STATUS_LABELS,
 } from "./lib.js";
-import { editedTasks, matchesFilters } from "./optimistic.js";
-import { useListTaskEdits } from "./use-task-edits.js";
 import { TaskRow } from "./row.js";
 import { rowWindows, useRowWindowViewport } from "./row-window.js";
 
@@ -127,7 +132,26 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
     labelIds,
   });
   const meta = useTaskListMeta(projectId);
-  const edits = useListTaskEdits(tasksQuery.data, (message) => push(message));
+  const taskEdit = useListTaskEdit(tasksQuery.reads);
+  const { mutate: mutateTask } = taskEdit;
+  const refreshTasks = tasksQuery.refresh;
+  const editTask = useCallback(
+    (task: Task, patch: TaskEdit) => {
+      mutateTask({ taskId: task.id, ...patch }).then(
+        (result) => {
+          if (result.ok) return;
+          push(result.error.message);
+          refreshTasks();
+        },
+        (error: unknown) => push(errorMessage(error)),
+      );
+    },
+    [mutateTask, push, refreshTasks],
+  );
+  const pendingTaskIds = useMemo(
+    () => new Set(taskEdit.pendingInputs.map((input) => input.taskId)),
+    [taskEdit.pendingInputs],
+  );
 
   const labelsById = useMemo(
     () => new Map((labels.data ?? []).map((label) => [label.id, label])),
@@ -166,7 +190,7 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
 
   const displayTasks = useMemo(() => {
     if (tasksQuery.data === undefined) return undefined;
-    return editedTasks(tasksQuery.data, edits.entries).filter((task) =>
+    return tasksQuery.data.filter((task) =>
       matchesFilters(
         task,
         filters.statuses,
@@ -174,13 +198,7 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
         labelIds ?? [],
       ),
     );
-  }, [
-    tasksQuery.data,
-    edits.entries,
-    filters.statuses,
-    filters.priorities,
-    labelIds,
-  ]);
+  }, [tasksQuery.data, filters.statuses, filters.priorities, labelIds]);
   const groups = useMemo(
     () => groupTasksByStatus(sortTasks(displayTasks ?? [], sort)),
     [displayTasks, sort],
@@ -309,9 +327,9 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
               projectLabels={labelsByProject.get(task.projectId) ?? NO_LABELS}
               projects={projects.data ?? []}
               onMoveToProject={moveToProject}
-              onEdit={edits.edit}
+              onEdit={editTask}
               onOpen={openTask}
-              pending={edits.pending.has(task.id)}
+              pending={pendingTaskIds.has(task.id)}
             />
           ))}
           {hiddenBelow > 0 ? (

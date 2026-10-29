@@ -73,7 +73,6 @@ vi.mock("@/components/ui/bottom-anchored-scroll-body.js", () => ({
     isAtBottom: true,
     scrollToBottom: () => {},
     scrollElementIntoView: () => {},
-    scrollElementIntoViewClampedToMaxScroll: () => {},
     positionKeeper: createInertScrollPositionKeeper(),
     holdContentPosition: () => {},
   }),
@@ -488,26 +487,30 @@ describe.each(COMPOSERS)("$name", (composer) => {
       expect(box.contains(document.activeElement)).toBe(true);
     });
 
-    it("turns a thread dropped from the sidebar into a thread mention", async () => {
+    it("turns threads dropped from the sidebar into thread mentions in order", async () => {
       const { store } = renderSurface(surface);
       const box = await composerBox();
       const form = box.querySelector("form")!;
       document.elementsFromPoint = () => [form];
-      const target = resolveThreadMentionDropTarget(1, 1, {
-        threadId: "thr_dropped",
-        label: "Dropped thread",
-      });
-      expect(target).not.toBeNull();
+      const target = resolveThreadMentionDropTarget(1, 1, [
+        { threadId: "thr_first", label: "First thread" },
+        { threadId: "thr_second", label: "Second thread" },
+      ]);
+      expect(target?.label).toBe("Mention 2 threads");
       act(() => target?.drop());
       await waitFor(() =>
-        expect(store.draft().mentions).toContainEqual(
-          expect.objectContaining({
-            resource: expect.objectContaining({
-              kind: "thread",
-              threadId: "thr_dropped",
-            }),
-          }),
-        ),
+        expect(
+          store
+            .draft()
+            .mentions.map((mention) =>
+              mention.resource.kind === "thread"
+                ? mention.resource.threadId
+                : null,
+            ),
+        ).toEqual(["thr_first", "thr_second"]),
+      );
+      expect(store.draft().text).toMatch(
+        /@thread:thr_first @thread:thr_second/,
       );
     });
 

@@ -29,7 +29,10 @@ import type {
   UpdateQueuedMessageRequest,
 } from "@bb/server-contract";
 import type { AppCreateThreadRequest } from "@bb/client-core";
-import { OPTIMISTIC_TIMELINE_ROW_ID_PREFIX } from "@bb/client-core";
+import {
+  OPTIMISTIC_TIMELINE_ROW_ID_PREFIX,
+  shouldQueueFollowUpMessage,
+} from "@bb/client-core";
 import { collectPromptAttachments } from "@/lib/prompt-attachments";
 import { prependPromptHistoryEntry } from "@/lib/prompt-history";
 import {
@@ -63,9 +66,10 @@ import {
   invalidateThreadQueueQueries,
   markThreadAcceptedMessageQueriesStale,
   invalidateThreadQueuedMessageSendQueries,
-  invalidateThreadListMembershipQueries,
+  invalidateThreadListQueries,
   refetchThreadListsAfterComposerThreadCreate,
 } from "./mutation-cache-effects";
+import { readThreadBack } from "./thread-read-back";
 
 interface ThreadIdCacheArgs {
   queryClient: QueryClient;
@@ -95,11 +99,6 @@ interface SendThreadMessageTransactionArgs {
 
 interface CreateQueuedMessageRequestWithThreadId extends CreateQueuedMessageRequest {
   id: string;
-}
-
-interface CreateQueuedMessageTransactionArgs {
-  queryClient: QueryClient;
-  request: CreateQueuedMessageRequestWithThreadId;
 }
 
 interface UpdateQueuedMessageRequestWithThreadId extends UpdateQueuedMessageRequest {
@@ -143,12 +142,6 @@ interface RollbackSendThreadMessageTransactionArgs {
   transaction: SendThreadMessageTransaction | undefined;
 }
 
-interface RollbackCreateQueuedMessageTransactionArgs {
-  queryClient: QueryClient;
-  request: CreateQueuedMessageRequestWithThreadId;
-  transaction: CreateQueuedMessageTransaction | undefined;
-}
-
 interface RollbackRemoveQueuedMessageTransactionArgs {
   queryClient: QueryClient;
   request: RemoveQueuedMessageRequest;
@@ -170,11 +163,10 @@ interface ApplySendThreadMessageSuccessArgs {
   transaction: SendThreadMessageTransaction | undefined;
 }
 
-interface QueuedMessageSuccessArgs {
+interface QueuedMessageResultArgs {
   queryClient: QueryClient;
   queuedMessage: ThreadQueuedMessage;
   threadId: string;
-  transaction: CreateQueuedMessageTransaction | undefined;
 }
 
 interface ReorderQueuedMessageRequest extends QueuedMessageReorderRequest {
@@ -264,7 +256,7 @@ export interface ReorderQueuedMessageTransaction {
   previousQueuedMessages: ThreadQueuedMessageListResponse | undefined;
 }
 
-export interface CreateQueuedMessageTransaction {
+interface OptimisticQueuedMessageInsertion {
   optimisticCreatedAt: number;
   optimisticQueuedMessageId: string;
 }
@@ -294,16 +286,6 @@ function buildAcceptedPromptHistoryEntry({
     id: `optimistic-prompt-history:${nanoid()}`,
     createdAt,
     input,
-  };
-}
-
-function buildQueuedPromptHistoryEntry(
-  queuedMessage: ThreadQueuedMessage,
-): PromptHistoryEntry {
-  return {
-    id: `queued-message:${queuedMessage.id}`,
-    createdAt: queuedMessage.createdAt,
-    input: queuedMessage.content,
   };
 }
 
@@ -431,7 +413,7 @@ function insertOptimisticQueuedMessage({
 }: {
   queryClient: QueryClient;
   request: CreateQueuedMessageRequestWithThreadId & { sendAt?: number };
-}): CreateQueuedMessageTransaction {
+}): OptimisticQueuedMessageInsertion {
   const queryKey = threadQueuedMessagesQueryKey(request.id);
   const optimisticCreatedAt = Date.now();
   const optimisticQueuedMessage = buildOptimisticQueuedMessage({
@@ -621,7 +603,9 @@ function requestWillOptimisticallyQueue(
 ): boolean {
   return (
     (request.sendAt !== undefined && request.sendAt > Date.now()) ||
-    (request.mode === "queue-if-active" && thread?.status === "active")
+    (request.mode === "queue-if-active" &&
+      thread !== undefined &&
+      shouldQueueFollowUpMessage(thread.runtime.displayStatus))
   );
 }
 
@@ -999,7 +983,7 @@ export function applySendThreadMessageSuccess({
         createdAt: optimisticCreatedAt,
         queryClient,
         threadId: request.id,
-      }).succeed();
+      }).confirm([], readThreadBack(queryClient));
       insertOptimisticTimelineRow(
         queryClient,
         request.id,
@@ -1018,7 +1002,8 @@ export function applySendThreadMessageSuccess({
     });
   }
 
-  if (transaction?.kind === "accepted-turn") transaction.prediction.succeed();
+  if (transaction?.kind === "accepted-turn")
+    transaction.prediction.confirm([], readThreadBack(queryClient));
   prependThreadPromptHistory(
     queryClient,
     request.id,
@@ -1035,77 +1020,6 @@ export function applySendThreadMessageSuccess({
     queryClient,
     threadId: request.id,
   });
-}
-
-export async function beginCreateQueuedMessageTransaction({
-  queryClient,
-  request,
-}: CreateQueuedMessageTransactionArgs): Promise<CreateQueuedMessageTransaction> {
-  await cancelOptimisticQueries(queryClient, {
-    queryKey: threadQueuedMessagesQueryKey(request.id),
-  });
-  return insertOptimisticQueuedMessage({ queryClient, request });
-}
-
-export function rollbackCreateQueuedMessageTransaction({
-  queryClient,
-  request,
-  transaction,
-}: RollbackCreateQueuedMessageTransactionArgs): void {
-  if (!transaction) {
-    return;
-  }
-  removeOptimisticQueuedMessage(
-    queryClient,
-    request.id,
-    transaction.optimisticQueuedMessageId,
-  );
-}
-
-export function applyQueuedMessageCreateResult({
-  queryClient,
-  queuedMessage,
-  threadId,
-  transaction,
-}: QueuedMessageSuccessArgs): void {
-  queryClient.setQueryData<ThreadQueuedMessageListResponse>(
-    threadQueuedMessagesQueryKey(threadId),
-    (currentQueuedMessages) => {
-      if (!currentQueuedMessages) {
-        return [queuedMessage];
-      }
-      if (
-        currentQueuedMessages.some(
-          (currentQueuedMessage) =>
-            currentQueuedMessage.id === queuedMessage.id,
-        )
-      ) {
-        return currentQueuedMessages;
-      }
-
-      const optimisticQueuedMessageId =
-        transaction?.optimisticQueuedMessageId ?? null;
-      if (optimisticQueuedMessageId !== null) {
-        const optimisticIndex = currentQueuedMessages.findIndex(
-          (currentQueuedMessage) =>
-            currentQueuedMessage.id === optimisticQueuedMessageId,
-        );
-        if (optimisticIndex !== -1) {
-          const nextQueuedMessages = [...currentQueuedMessages];
-          nextQueuedMessages[optimisticIndex] = queuedMessage;
-          return nextQueuedMessages;
-        }
-      }
-
-      return [...currentQueuedMessages, queuedMessage];
-    },
-  );
-  prependThreadPromptHistory(
-    queryClient,
-    threadId,
-    buildQueuedPromptHistoryEntry(queuedMessage),
-  );
-  invalidateThreadQueueQueries({ queryClient, threadId });
 }
 
 export async function beginUpdateQueuedMessageTransaction({
@@ -1170,7 +1084,7 @@ export function applyQueuedMessageUpdateResult({
   queryClient,
   queuedMessage,
   threadId,
-}: Omit<QueuedMessageSuccessArgs, "transaction">): void {
+}: QueuedMessageResultArgs): void {
   queryClient.setQueryData<ThreadQueuedMessageListResponse>(
     threadQueuedMessagesQueryKey(threadId),
     (currentQueuedMessages) =>
@@ -1343,7 +1257,7 @@ export function applyQueuedMessageSendResult({
       );
     }
     transaction?.prediction?.fail();
-  } else transaction?.prediction?.succeed();
+  } else transaction?.prediction?.confirm([], readThreadBack(queryClient));
   invalidateThreadQueuedMessageSendQueries({
     queryClient,
     threadId: request.id,
@@ -1463,9 +1377,11 @@ export function rollbackStopThreadTransaction({
 
 export function settleStopThreadTransaction({
   queryClient,
-  threadId,
   transaction,
-}: ThreadIdCacheArgs & { transaction?: StopThreadTransaction }): void {
-  transaction?.prediction.succeed();
-  invalidateThreadListMembershipQueries({ queryClient, threadId });
+}: {
+  queryClient: QueryClient;
+  transaction?: StopThreadTransaction | undefined;
+}): void {
+  transaction?.prediction.confirm([], readThreadBack(queryClient));
+  invalidateThreadListQueries({ queryClient });
 }

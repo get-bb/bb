@@ -5,20 +5,20 @@ export interface DroppedThreadMention {
   label: string;
 }
 
-const targets = new Map<
-  HTMLElement,
-  {
-    accepts: () => boolean;
-    insert: (thread: DroppedThreadMention, x: number, y: number) => void;
-  }
->();
+interface ThreadMentionDropTarget {
+  accepts: () => boolean;
+  insert: (
+    threads: readonly DroppedThreadMention[],
+    x: number,
+    y: number,
+  ) => void;
+}
+
+const targets = new Map<HTMLElement, ThreadMentionDropTarget>();
 
 export function registerThreadMentionDropTarget(
   element: HTMLElement,
-  target: {
-    accepts: () => boolean;
-    insert: (thread: DroppedThreadMention, x: number, y: number) => void;
-  },
+  target: ThreadMentionDropTarget,
 ): () => void {
   targets.set(element, target);
   return () => {
@@ -29,17 +29,20 @@ export function registerThreadMentionDropTarget(
 export function resolveThreadMentionDropTarget(
   x: number,
   y: number,
-  thread: DroppedThreadMention,
+  threads: readonly DroppedThreadMention[],
 ): AuxiliaryDropTarget | null {
   for (const hit of document.elementsFromPoint(x, y)) {
     for (const [element, target] of targets) {
       if (!element.contains(hit) || !target.accepts()) continue;
       return {
         element,
-        label: "Mention thread",
+        label:
+          threads.length === 1
+            ? "Mention thread"
+            : `Mention ${threads.length} threads`,
         drop: () => {
           if (element.isConnected && target.accepts())
-            target.insert(thread, x, y);
+            target.insert(threads, x, y);
         },
       };
     }

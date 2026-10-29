@@ -35,6 +35,7 @@ export function resolvePluginCommandDefaults(
   overrides: AppKeybindingOverrides,
   isDesktop: boolean,
   platform: string,
+  bundledCommands: ReadonlySet<KeyboardCommandId>,
 ): {
   defaults: AppDefaultKeybindings;
   conflicts: ReadonlyMap<KeyboardCommandId, readonly KeyboardCommandId[]>;
@@ -61,9 +62,13 @@ export function resolvePluginCommandDefaults(
     )
       return binding;
     const shortcut = binding.shortcut;
+    const bundled = bundledCommands.has(binding.command);
     const collisions = effective.filter(
       (candidate) =>
         candidate.command !== binding.command &&
+        (!bundled ||
+          !candidate.command.startsWith("plugin:") ||
+          bundledCommands.has(candidate.command)) &&
         shortcutsConflict(shortcut, candidate.shortcut, platform),
     );
     if (collisions.length === 0) return binding;

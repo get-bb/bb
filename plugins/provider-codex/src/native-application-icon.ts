@@ -1,11 +1,10 @@
-import { execFile } from "node:child_process";
+import { experimental_execHostFile } from "@get-bb/plugin-sdk/process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { promisify } from "node:util";
 import { sanitizeInheritedChildProcessEnv } from "@get-bb/plugin-sdk/provider-bridge";
 
-const execFileAsync = promisify(execFile);
+const execFileAsync = experimental_execHostFile;
 
 export async function resolveNativeApplicationIconDataUrl(
   bundleId: string,

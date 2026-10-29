@@ -29,7 +29,6 @@ function renderLoadingPanel({
     <PanelGroup direction="horizontal">
       <LazyThreadSecondaryPanel
         activeTab={null}
-        canUseGitUi={false}
         drawerFallback={null}
         fixedTabs={[]}
         isConversationCollapsed={isConversationCollapsed}

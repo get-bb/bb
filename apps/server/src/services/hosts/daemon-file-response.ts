@@ -6,10 +6,8 @@ import { ApiError } from "../../errors.js";
 const OCTET_STREAM_MIME_TYPE = "application/octet-stream";
 const REVALIDATE_CACHE_CONTROL = "private, no-cache";
 
-type HostReadFileResult = HostDaemonOnlineRpcResultByType["host.read_file"];
 export type DaemonFileReadResult =
-  | HostReadFileResult
-  | HostDaemonOnlineRpcResultByType["host.read_file_relative"];
+  HostDaemonOnlineRpcResultByType["host.read_file"];
 
 interface CreateDaemonFileContentResponseOptions {
   headers?: HeadersInit;
@@ -21,8 +19,8 @@ function daemonFileEntityTag(result: DaemonFileReadResult): string {
 }
 
 export function requireDaemonFileContentResult(
-  result: HostReadFileResult,
-): Exclude<HostReadFileResult, { notModified: true }> {
+  result: DaemonFileReadResult,
+): Exclude<DaemonFileReadResult, { notModified: true }> {
   if ("notModified" in result) {
     throw new Error("Unconditional daemon file read returned not modified");
   }

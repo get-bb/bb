@@ -21,3 +21,4 @@ export {
   resolveServerFileUrl,
   supportsNativeDownloads,
 } from "./shell-save-file";
+export { bridgeServersForProfiles, canSwitchToProfile } from "./shell-servers";

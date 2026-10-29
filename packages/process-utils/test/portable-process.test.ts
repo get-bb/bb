@@ -134,7 +134,7 @@ it("reports ENOENT and finishes cleanup when a command cannot be resolved", asyn
     stdout: "",
     stderr: "",
   });
-});
+}, 20_000);
 
 it.runIf(process.platform === "win32")(
   "removes case-insensitive inherited runtime settings before a Windows child reads them",

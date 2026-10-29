@@ -100,7 +100,6 @@ function legMessageDirectives(leg: PreviewLeg) {
       projectId: null,
     },
     openWorkspaceFile: null,
-    openThreadPanel: null,
   };
 }
 

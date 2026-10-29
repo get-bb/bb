@@ -34,6 +34,7 @@ export function useStickyBottomScroll<TElement extends HTMLElement>({
         bottomThresholdPx: STICKY_BOTTOM_THRESHOLD_PX,
         deferWritesWhileScrolling: isIOSWebKit(navigator),
         getContentElement: () => contentRef.current,
+        getFloorElement: () => null,
         getFooterElement: () => null,
         getScrollElement: () => scrollRef.current,
         getTopLevelRows,

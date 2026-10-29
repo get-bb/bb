@@ -125,15 +125,15 @@ const SHARED_FIXTURE_ANCHORS: readonly FixtureAnchor[] = [
 const VIEW_FIXTURE_ANCHORS: Record<string, readonly FixtureAnchor[]> = {
   thread: [
     {
-      file: "apps/app/src/views/thread-detail/ThreadTimelinePane.tsx",
+      file: "apps/app/src/views/thread-detail/ThreadScreen.tsx",
       mustContain: [
-        'variant="hosted-footer"',
+        'scrollBehavior="bottom-anchor"',
         "scrollOverlay=",
         "<ThreadTableOfContents",
-        "footer={footer}",
+        "footer={promptArea}",
       ],
       because:
-        "The thread projection keeps the real hosted-footer timeline, bottom composer, and held-open table of contents composition.",
+        "The thread projection keeps the real bottom-anchored timeline, bottom composer, and held-open table of contents composition.",
     },
     {
       file: "apps/app/src/components/thread/toc/ThreadTableOfContents.tsx",
@@ -148,9 +148,15 @@ const VIEW_FIXTURE_ANCHORS: Record<string, readonly FixtureAnchor[]> = {
     },
     {
       file: "apps/app/src/components/secondary-panel/ThreadMetadataContent.tsx",
-      mustContain: ['appearance="flat"', "<EnvironmentRow", "<BranchRow"],
+      mustContain: ['appearance="flat"', "<EnvironmentRow"],
       because:
-        "The open Info panel projects BB's flat metadata card and representative environment and branch rows.",
+        "The open Info panel projects BB's flat metadata card and a representative environment row.",
+    },
+    {
+      file: "plugins/git/ui/info/GitInfoRows.tsx",
+      mustContain: ['<DetailRow icon="GitBranch"'],
+      because:
+        "The open Info panel's branch row comes from the Git plugin.",
     },
     {
       file: "plugins/github-pr-status/ui/PullRequestInfoRow.tsx",
@@ -180,7 +186,7 @@ const VIEW_FIXTURE_ANCHORS: Record<string, readonly FixtureAnchor[]> = {
         "The New thread projection opens on the composer alone, aligned under the sidebar actions.",
     },
     {
-      file: "apps/app/src/views/RootComposeSecondaryContent.tsx",
+      file: "apps/app/src/views/RootComposeHome.tsx",
       mustContain: ['ROOT_COMPOSE_MAX_WIDTH_CLASS = "max-w-[760px]"'],
       because: "The New thread projection keeps BB's home column width.",
     },

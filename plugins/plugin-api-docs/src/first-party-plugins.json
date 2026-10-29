@@ -60,6 +60,11 @@
     "icon": "Github"
   },
   {
+    "id": "bb--git",
+    "name": "Git",
+    "icon": "GitBranch"
+  },
+  {
     "id": "bb--github-pr-status",
     "name": "GitHub PR Status",
     "icon": "GitPullRequest"

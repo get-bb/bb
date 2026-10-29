@@ -11,8 +11,13 @@ export const hostFileReadRequestSchema = z
     hostId: z.string().min(1).optional(),
     path: z.string().min(1),
     rootPath: z.string().min(1).optional(),
+    ref: z.string().min(1).optional(),
   })
-  .strict();
+  .strict()
+  .refine((request) => request.ref === undefined || request.rootPath !== undefined, {
+    message: "rootPath is required when ref is set",
+    path: ["rootPath"],
+  });
 export type HostFileReadRequest = z.infer<typeof hostFileReadRequestSchema>;
 
 export const hostFileWriteRequestSchema = z

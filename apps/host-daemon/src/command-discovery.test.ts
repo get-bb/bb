@@ -216,6 +216,32 @@ describe("discoverProviderCommands over declared roots", () => {
     });
   });
 
+  it("collapses identical skills under one name but keeps a same-content alias under another", async () => {
+    const fixture = await makeWorkspaceFixture();
+    const content = skillFile("deploy", "Deploy it");
+    await writeFileEnsuringDir(
+      path.join(fixture.homeDir, ".agent", "skills", "deploy", "SKILL.md"),
+      content,
+    );
+    await writeFileEnsuringDir(
+      path.join(fixture.cwd, ".agent", "skills", "deploy", "SKILL.md"),
+      content,
+    );
+    await symlink(
+      path.join(fixture.homeDir, ".agent", "skills", "deploy"),
+      path.join(fixture.homeDir, ".agent", "skills", "ship"),
+    );
+
+    const commands = await discover(fixture, fixture.cwd);
+
+    expect(
+      commands
+        .filter((command) => command.source === "skill")
+        .map((command) => command.name)
+        .sort(),
+    ).toEqual(["deploy", "ship"]);
+  });
+
   it("produces a name-only record for malformed frontmatter", async () => {
     const fixture = await makeWorkspaceFixture();
     await writeFileEnsuringDir(
@@ -409,13 +435,13 @@ describe("discoverProviderCommands over declared roots", () => {
     expect(byName(commands, "linked-dir:secret")).toBeUndefined();
   });
 
-  it("shares the entry-count cap across recursive roots", async () => {
+  it("gives each recursive root its own entry cap", async () => {
     const fixture = await makeWorkspaceFixture();
     const fullRoot = path.join(fixture.cwd, "full-root");
     const secondRoot = path.join(fixture.cwd, "second-root");
     await Promise.all(
-      Array.from({ length: 1_000 }, (_, index) =>
-        writeFileEnsuringDir(path.join(fullRoot, `entry-${index}.txt`), ""),
+      Array.from({ length: 1_005 }, (_, index) =>
+        mkdir(path.join(fullRoot, `directory-${index}`), { recursive: true }),
       ),
     );
     await writeFileEnsuringDir(
@@ -436,7 +462,7 @@ describe("discoverProviderCommands over declared roots", () => {
       }),
     );
 
-    expect(byName(commands, "late")).toBeUndefined();
+    expect(byName(commands, "late")).toBeDefined();
   });
 
   it("rejects a recursive project root linked outside the workspace", async () => {
@@ -1150,6 +1176,7 @@ describe("resolveDeclaredScanRoots", () => {
         skillIdentitySeed: `${PROVIDER_ID}:provider-user:${skillDirectory}`,
       },
       {
+        boundaryPath: fixture.cwd,
         filePath: skillFilePath,
         fallbackName: "notes",
         shape: "skill-file",

@@ -21,7 +21,9 @@ describe("SplitButton", () => {
             content: <span aria-hidden>F</span>,
           }}
           primaryTooltip="Open in Finder"
-          secondaryActions={[{ label: "VS Code", onSelect: onOpenOther }]}
+          secondaryActions={[
+            { id: "vscode", label: "VS Code", onSelect: onOpenOther },
+          ]}
           triggerLabel="Choose another app to open workspace"
           triggerTooltip="Choose another app"
           modal={false}
@@ -49,7 +51,9 @@ describe("SplitButton", () => {
     render(
       <SplitButton
         primaryAction={{ label: "Commit", onSelect: vi.fn() }}
-        secondaryActions={[{ label: "Amend commit", onSelect: vi.fn() }]}
+        secondaryActions={[
+          { id: "amend", label: "Amend commit", onSelect: vi.fn() },
+        ]}
         triggerLabel="More commit actions"
         disabled
       />,

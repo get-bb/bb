@@ -211,6 +211,7 @@ describe("plugin background services", () => {
       pendingInteractions: {
         requestPluginInteraction,
         interruptPluginInteractions,
+        interruptOwnedPluginInteractions: vi.fn(() => []),
         setPluginDirectory: () => {},
       },
       dataDir: join(workDir, "data-dispose-request"),

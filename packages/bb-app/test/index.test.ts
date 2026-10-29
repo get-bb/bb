@@ -1,3 +1,4 @@
+import { execHostFile, nodeNetworkArgs } from "@bb/process-utils";
 import { execFileSync, spawn } from "node:child_process";
 import {
   mkdirSync,
@@ -877,6 +878,40 @@ describe("bb-app launcher", () => {
     expect(readFileSync(outputPath, "utf8")).toBe(
       join("/tmp/bb-app-test/server/dist", "assets", "install-machine.sh"),
     );
+  });
+
+  it("runs the bundled CLI when a BB_CLI launcher re-enters the bb entry", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-cli-reentry-"));
+    const daemonBundleDir = join(dataDir, "host-daemon");
+    mkdirSync(daemonBundleDir);
+    writeFileSync(
+      join(daemonBundleDir, "bb"),
+      "require('node:fs').writeFileSync(process.argv[2], 'bundled')",
+    );
+    const context = { ...createTestStartContext(), dataDir, daemonBundleDir };
+    const launcherEnvPath = join(dataDir, "launcher-env.json");
+
+    expect(
+      await runBundledCliCommand({
+        args: [
+          "-e",
+          "require('node:fs').writeFileSync(process.argv[1], JSON.stringify(process.env))",
+          launcherEnvPath,
+        ],
+        context,
+        env: { BB_CLI: process.execPath },
+      }),
+    ).toBe(0);
+
+    const outputPath = join(dataDir, "reentry.txt");
+    const reentryExitCode = await runBundledCliCommand({
+      args: [outputPath],
+      context,
+      env: JSON.parse(readFileSync(launcherEnvPath, "utf8")),
+    });
+
+    expect(reentryExitCode).toBe(0);
+    expect(readFileSync(outputPath, "utf8")).toBe("bundled");
   });
 
   it("uses a supplied join code without requesting a loopback enroll key", async () => {
@@ -2199,4 +2234,104 @@ it("preserves machine identity and access headers through real config set and un
   } finally {
     rmSync(dataDir, { recursive: true, force: true });
   }
+});
+
+describe("managed process networking", () => {
+  it.each(["server", "daemon"] as const)(
+    "%s uses the environment proxy and keeps loopback direct",
+    async (kind) => {
+      if (!process.allowedNodeEnvironmentFlags.has("--use-env-proxy")) return;
+      const proxy = createServer();
+      proxy.on("connect", (_request, socket) => {
+        socket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
+        socket.once("data", () => {
+          socket.end(
+            "HTTP/1.1 200 OK\r\nContent-Length: 7\r\nConnection: close\r\n\r\nproxied",
+          );
+        });
+      });
+      const direct = createServer((_request, response) =>
+        response.end("direct"),
+      );
+      await Promise.all(
+        [proxy, direct].map(
+          (server) =>
+            new Promise<void>((resolve) =>
+              server.listen(0, "127.0.0.1", resolve),
+            ),
+        ),
+      );
+      const port = (server: ReturnType<typeof createServer>) => {
+        const address = server.address();
+        if (address === null || typeof address === "string")
+          throw new Error("Missing listener");
+        return address.port;
+      };
+      const env = {
+        HTTP_PROXY: `http://127.0.0.1:${port(proxy)}`,
+      };
+      const context = createTestStartContext();
+      const launchEnv =
+        kind === "server"
+          ? createServerEnv({
+              context,
+              env,
+              install: { kind: "npm" },
+              cliLauncherPath: null,
+            })
+          : createDaemonEnv({
+              context,
+              env,
+              serverUrl: "http://127.0.0.1:38886",
+            });
+      try {
+        const result = await execHostFile(
+          process.execPath,
+          [
+            ...nodeNetworkArgs(launchEnv),
+            "--input-type=module",
+            "-e",
+            `for (const url of process.argv.slice(1)) console.log(await (await fetch(url, { signal: AbortSignal.timeout(5000) })).text());`,
+            "http://bb-proxy-test.invalid/",
+            `http://127.0.0.1:${port(direct)}/`,
+          ],
+          { env: launchEnv, timeout: 10000 },
+        );
+        expect(result.stdout.trim().split("\n")).toEqual(["proxied", "direct"]);
+        expect(nodeNetworkArgs(launchEnv)).toEqual([
+          "--use-system-ca",
+          "--use-env-proxy",
+        ]);
+        expect(launchEnv.NODE_USE_ENV_PROXY).toBeUndefined();
+        expect(launchEnv.NODE_USE_SYSTEM_CA).toBeUndefined();
+      } finally {
+        proxy.closeAllConnections();
+        direct.closeAllConnections();
+        await Promise.all(
+          [proxy, direct].map(
+            (server) =>
+              new Promise<void>((resolve) => server.close(() => resolve())),
+          ),
+        );
+      }
+    },
+  );
+
+  it("preserves explicit network opt-outs and extra CA configuration", () => {
+    const env = createDaemonEnv({
+      context: createTestStartContext(),
+      serverUrl: "http://127.0.0.1:38886",
+      env: {
+        NODE_USE_ENV_PROXY: "0",
+        NODE_USE_SYSTEM_CA: "0",
+        NODE_EXTRA_CA_CERTS: "/company.pem",
+      },
+    });
+    expect(env).toMatchObject({
+      NODE_USE_ENV_PROXY: "0",
+      NODE_USE_SYSTEM_CA: "0",
+      NODE_EXTRA_CA_CERTS: "/company.pem",
+    });
+    expect(nodeNetworkArgs(env)).toEqual([]);
+  });
 });

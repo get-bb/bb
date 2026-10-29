@@ -497,6 +497,41 @@ describe("Rail", () => {
     expect(currentRailLabels()).toEqual(["Home"]);
   });
 
+  it("sends Home to a new thread after a cold load onto a plugin panel that registers late", () => {
+    resetPluginFrontendBootStateForTest();
+    const automationsPath = getPluginPanelRoutePath({
+      pluginId: AUTOMATIONS_PLUGIN_ID,
+      path: AUTOMATIONS_PLUGIN_PANEL_PATH,
+    });
+    renderRail(automationsPath);
+    expect(currentRailLabels()).toEqual([]);
+
+    act(() => {
+      setPluginSlotRegistrations(
+        AUTOMATIONS_PLUGIN_ID,
+        registrationSet({
+          navPanels: [
+            {
+              id: AUTOMATIONS_PLUGIN_PANEL_PATH,
+              title: "Automations",
+              icon: "Calendar",
+              path: AUTOMATIONS_PLUGIN_PANEL_PATH,
+              component: () => null,
+            },
+          ],
+        }),
+      );
+      markPluginFrontendsSettled();
+    });
+    expect(currentRailLabels()).toEqual(["Automations"]);
+
+    fireEvent.click(railButton("Skills"));
+    fireEvent.click(railButton("Home"));
+
+    expect(pathname()).toBe(getRootComposeRoutePath());
+    expect(currentRailLabels()).toEqual(["Home"]);
+  });
+
   it.each([{ metaKey: true }, { ctrlKey: true }])(
     "opens the new thread screen in a browser tab from Home with %j",
     (modifier) => {

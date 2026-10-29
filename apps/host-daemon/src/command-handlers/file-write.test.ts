@@ -288,7 +288,11 @@ describe("writeHostFile", () => {
     const target = path.join(dir, "note.md");
     await fs.writeFile(target, "v1");
 
-    const read = await readHostFile({ type: "host.read_file", path: target });
+    const read = await readHostFile({
+      type: "host.read_file",
+      path: target,
+      followRootSymlink: false,
+    });
     const result = await writeHostFile(
       writeCommand({
         path: target,
@@ -298,7 +302,11 @@ describe("writeHostFile", () => {
     );
 
     expect(result).toMatchObject({ outcome: "written" });
-    const reread = await readHostFile({ type: "host.read_file", path: target });
+    const reread = await readHostFile({
+      type: "host.read_file",
+      path: target,
+      followRootSymlink: false,
+    });
     expect(reread.content).toBe("v2");
     expect(reread.sha256).toBe(sha256("v2"));
   });

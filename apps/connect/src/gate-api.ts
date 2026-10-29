@@ -377,7 +377,7 @@ async function resolveOne(
     resolved !== null &&
     verifiedMachine.userId === resolved.userId
   ) {
-    ctx.waitUntil(markMachineSeen(verifiedMachine.machineId, db));
+    ctx.waitUntil(markMachineSeen(verifiedMachine, db));
   }
 
   return {
@@ -397,7 +397,13 @@ async function resolveOne(
       parsed.credential === null
         ? null
         : await linkCredentialMatches(resolved, parsed.credential),
-    machine: verifiedMachine,
+    machine:
+      verifiedMachine === null
+        ? null
+        : {
+            machineId: verifiedMachine.machineId,
+            userId: verifiedMachine.userId,
+          },
     oauth:
       parsed.oauth === null
         ? null

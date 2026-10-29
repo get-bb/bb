@@ -471,6 +471,9 @@ async function handleRequest(message) {
         respond(id, script?.configRead ?? { config: { model: null } });
       }
       return;
+    case "skills/list":
+      respond(id, script?.skillsList ?? { data: [] });
+      return;
     case "skills/extraRoots/set":
       respond(id, {});
       return;
@@ -780,7 +783,11 @@ async function handleRequest(message) {
       runCompaction(params.threadId);
       return;
     case "thread/goal/clear":
-      respond(id, {});
+      if (script?.goalClearError) {
+        respondError(id, -32600, script.goalClearError);
+      } else {
+        respond(id, script?.goalClearResult ?? { cleared: true });
+      }
       return;
     default:
       respondError(id, -32601, `Unknown method "${method}"`);

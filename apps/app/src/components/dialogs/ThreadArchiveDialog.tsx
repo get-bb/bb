@@ -12,23 +12,23 @@ import {
 import { formatChildThreadCount } from "@/lib/child-thread-copy";
 
 export interface ThreadArchiveDialogTarget {
-  thread: Thread;
+  threads: readonly Thread[];
   childThreadCount: number;
 }
 
-interface ThreadArchiveDialogProps {
-  target: ThreadArchiveDialogTarget | null;
+interface ThreadArchiveDialogProps<Target extends ThreadArchiveDialogTarget> {
+  target: Target | null;
   pending: boolean;
   onOpenChange: (open: boolean) => void;
-  onArchive: (target: ThreadArchiveDialogTarget) => void;
+  onArchive: (target: Target) => void;
 }
 
-export function ThreadArchiveDialog({
+export function ThreadArchiveDialog<Target extends ThreadArchiveDialogTarget>({
   target,
   pending,
   onOpenChange,
   onArchive,
-}: ThreadArchiveDialogProps) {
+}: ThreadArchiveDialogProps<Target>) {
   const contentRef = useRef<HTMLDivElement>(null);
 
   return (
@@ -55,24 +55,31 @@ export function ThreadArchiveDialog({
   );
 }
 
-interface ThreadArchiveDialogContentProps {
-  target: ThreadArchiveDialogTarget;
+interface ThreadArchiveDialogContentProps<
+  Target extends ThreadArchiveDialogTarget,
+> {
+  target: Target;
   pending: boolean;
   onOpenChange: (open: boolean) => void;
-  onArchive: (target: ThreadArchiveDialogTarget) => void;
+  onArchive: (target: Target) => void;
 }
 
-export function ThreadArchiveDialogContent({
+export function ThreadArchiveDialogContent<
+  Target extends ThreadArchiveDialogTarget,
+>({
   target,
   pending,
   onOpenChange,
   onArchive,
-}: ThreadArchiveDialogContentProps) {
-  const { childThreadCount } = target;
-  const active =
-    target.thread.status === "starting" ||
-    target.thread.status === "active" ||
-    target.thread.status === "stopping";
+}: ThreadArchiveDialogContentProps<Target>) {
+  const { childThreadCount, threads } = target;
+  const single = threads.length === 1;
+  const active = threads.some(
+    (thread) =>
+      thread.status === "starting" ||
+      thread.status === "active" ||
+      thread.status === "stopping",
+  );
 
   return (
     <form
@@ -85,10 +92,12 @@ export function ThreadArchiveDialogContent({
       }}
     >
       <DialogHeader>
-        <DialogTitle>Archive thread?</DialogTitle>
+        <DialogTitle>
+          {single ? "Archive thread?" : `Archive ${threads.length} threads?`}
+        </DialogTitle>
         <DialogDescription>
           {active ? "This will stop current work. " : null}
-          Its{" "}
+          {single ? "Its" : "Their"}{" "}
           <span className="font-semibold">
             {formatChildThreadCount(childThreadCount)}
           </span>{" "}

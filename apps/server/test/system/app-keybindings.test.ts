@@ -65,6 +65,27 @@ describe("app keybindings", () => {
     },
   );
 
+  it.each(DEFAULT_KEYBINDING_CLIENTS)(
+    "binds terminal find to terminal focus without shell control keys: $name",
+    (client) => {
+      const bindings = applyAppKeybindingOverrides(
+        DEFAULT_APP_KEYBINDINGS,
+        [],
+      ).filter(
+        (binding) =>
+          binding.command === "terminal.find" &&
+          isAppKeybindingAvailableForClient(binding, client),
+      );
+      expect(bindings).toHaveLength(1);
+      expect(bindings[0]?.when.all).toContain("terminalFocus");
+      expect(bindings[0]?.shortcut).toMatchObject({
+        key: "f",
+        mod: true,
+        shift: !client.isMac,
+      });
+    },
+  );
+
   it("persists plugin bindings even before the plugin is loaded", async () => {
     await withTestHarness(async (harness) => {
       const overrides = [
@@ -245,6 +266,8 @@ describe("app keybindings", () => {
       for (const command of [
         "thread.rename",
         "thread.archive",
+        "thread.markRead",
+        "thread.pin",
         "panel.fullScreen.toggle",
       ] as const) {
         expect(
@@ -694,6 +717,7 @@ describe("app keybindings", () => {
       };
       const overrides = [
         { command: "thread.new" as const, shortcut },
+        { command: "terminal.find" as const, shortcut },
         { command: "modelPicker.toggle" as const, shortcut },
       ];
       const response = await harness.app.request("/api/v1/settings/keyboard", {
@@ -715,6 +739,26 @@ describe("app keybindings", () => {
       expect(
         config.keybindings.find((binding) => binding.command === "thread.new"),
       ).toMatchObject({ shortcut });
+      expect(
+        config.keybindings.filter(
+          (binding) => binding.command === "terminal.find",
+        ),
+      ).toEqual([
+        expect.objectContaining({
+          shortcut,
+          when: {
+            all: ["mainSurface", "terminalFocus", "macPlatform"],
+            none: ["modalOpen"],
+          },
+        }),
+        expect.objectContaining({
+          shortcut,
+          when: {
+            all: ["mainSurface", "terminalFocus"],
+            none: ["modalOpen", "macPlatform"],
+          },
+        }),
+      ]);
       expect(
         config.keybindings.filter(
           (binding) => binding.command === "modelPicker.toggle",
@@ -810,6 +854,62 @@ describe("app keybindings", () => {
       });
       expect(response.status).toBe(400);
     });
+  });
+
+  it("moves a saved Diff toggle override to the Git plugin's command", async () => {
+    const shortcut = {
+      key: "g",
+      mod: true,
+      meta: false,
+      control: false,
+      alt: false,
+      shift: false,
+    };
+    await withTestHarness(async (harness) => {
+      harness.db.$client
+        .prepare(
+          `INSERT INTO app_settings_values (key, value, updated_at)
+           VALUES (?, ?, ?)
+           ON CONFLICT (key) DO UPDATE SET value = excluded.value`,
+        )
+        .run(
+          "keybindingOverrides",
+          JSON.stringify([{ command: "diff.toggle", shortcut }]),
+          Date.now(),
+        );
+
+      const response = await harness.app.request("/api/v1/system/config");
+      const config = systemConfigResponseSchema.parse(await readJson(response));
+      expect(config.keybindingOverrides).toEqual([
+        { command: "plugin:bb--git/toggle-diff", shortcut },
+      ]);
+
+      harness.db.$client
+        .prepare(
+          `INSERT INTO app_settings_values (key, value, updated_at)
+           VALUES (?, ?, ?)
+           ON CONFLICT (key) DO UPDATE SET value = excluded.value`,
+        )
+        .run(
+          "keybindingOverrides",
+          JSON.stringify([
+            { command: "diff.toggle", shortcut },
+            { command: "plugin:bb--git/toggle-diff", shortcut: null },
+          ]),
+          Date.now(),
+        );
+      const explicit = systemConfigResponseSchema.parse(
+        await readJson(await harness.app.request("/api/v1/system/config")),
+      );
+      expect(explicit.keybindingOverrides).toEqual([
+        { command: "plugin:bb--git/toggle-diff", shortcut: null },
+      ]);
+    });
+    expect(
+      appKeybindingOverridesSchema.safeParse([
+        { command: "diff.toggle", shortcut },
+      ]).success,
+    ).toBe(false);
   });
 
   it("falls back to defaults when stored overrides are corrupt", async () => {

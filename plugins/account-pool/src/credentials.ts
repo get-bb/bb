@@ -1,12 +1,11 @@
-import { execFile } from "node:child_process";
+import { experimental_execHostFile } from "@get-bb/plugin-sdk/process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { promisify } from "node:util";
 import type { JsonValue } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
-const execFileAsync = promisify(execFile);
+const execFileAsync = experimental_execHostFile;
 const KEYCHAIN_SERVICE = "Claude Code-credentials";
 
 const credentialsFileSchema = z

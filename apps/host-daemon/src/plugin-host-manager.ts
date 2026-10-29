@@ -1,5 +1,11 @@
+import {
+  forkHostProcess as fork,
+  createPluginProcessTempDir,
+  ensurePluginProcessDataDir,
+  sanitizeInheritedChildProcessEnv,
+} from "@bb/process-utils";
 import { operationEnvironment } from "./operation-environment.js";
-import { fork, type ChildProcess } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { isAbsolute } from "node:path";
@@ -12,13 +18,11 @@ import type {
 } from "@bb/host-daemon-contract";
 import type { HostPathWatchChange, HostWatcher } from "@bb/host-watcher";
 import { jsonValueSchema, type JsonValue } from "@bb/domain";
-import {
-  createPluginProcessTempDir,
-  ensurePluginProcessDataDir,
-  sanitizeInheritedChildProcessEnv,
-} from "@bb/process-utils";
 import type { HostDaemonLogger } from "./logger.js";
-import { ensureCachedPluginHostArtifact } from "./plugin-host-artifact-cache.js";
+import {
+  ensureCachedPluginHostArtifact,
+  type FetchPluginHostArtifact,
+} from "./plugin-host-artifact-cache.js";
 import { runInSerialLane } from "./serial-lane.js";
 
 type PluginHostCallCommand = Extract<
@@ -92,11 +96,7 @@ interface ActiveCallAdmission {
 interface PluginHostManagerOptions {
   dataDir: string;
   logger: Pick<HostDaemonLogger, "debug" | "info" | "warn">;
-  fetchArtifact: (args: {
-    pluginId: string;
-    digest: string;
-    expectedByteLength: number;
-  }) => Promise<Uint8Array>;
+  fetchArtifact: FetchPluginHostArtifact;
   onWorkerExit?: (args: { pluginId: string; generation: string }) => void;
   onSignal?: (args: {
     pluginId: string;

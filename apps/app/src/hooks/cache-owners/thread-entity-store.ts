@@ -1,7 +1,12 @@
-import type { QueryClient, QueryKey } from "@tanstack/react-query";
+import {
+  notifyManager,
+  type QueryClient,
+  type QueryKey,
+} from "@tanstack/react-query";
 import {
   KeyedCollection,
   beginOptimisticMutation,
+  confirmKeyedEntity,
   insertKeyedEntry,
   keyedEntities,
   optimisticKeyedUpdate,
@@ -366,6 +371,22 @@ export function patchThreadEntity(
   );
 }
 
+function confirmThreadRow(
+  client: QueryClient,
+  row: ThreadWithRuntime,
+): boolean {
+  return confirmKeyedEntity(client, THREAD_ENTITIES, row.id, (entity) =>
+    !isNewer(row.updatedAt, entity.thread.updatedAt, true)
+      ? undefined
+      : mergeEntity(
+          entity,
+          pick(row, THREAD_KEYS),
+          "detail",
+          entity.detail === null ? {} : pick(row, FACET_KEYS.detail),
+        ),
+  );
+}
+
 export function getThreadEntity(
   client: QueryClient,
   threadId: string,
@@ -437,6 +458,10 @@ export function insertThreadIntoSidebar(
 export interface ThreadEntityPrediction<Result = unknown> {
   threadIds: readonly string[];
   succeed(result?: Result): void;
+  confirm(
+    rows: readonly ThreadWithRuntime[],
+    readBack: (threadId: string) => Promise<unknown>,
+  ): void;
   fail(): void;
 }
 
@@ -472,6 +497,19 @@ export function beginThreadEntityPrediction<Result = unknown>(
     succeed(result) {
       prediction.accept(result);
       prediction.settle();
+    },
+    confirm(rows, readBack) {
+      notifyManager.batch(() => {
+        prediction.accept();
+        prediction.settle();
+        const confirmed = new Set(
+          rows
+            .filter((row) => confirmThreadRow(client, row))
+            .map((row) => row.id),
+        );
+        for (const threadId of threadIds)
+          if (!confirmed.has(threadId)) void readBack(threadId);
+      });
     },
     fail: prediction.rollback,
   };

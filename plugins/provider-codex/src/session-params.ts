@@ -1,3 +1,4 @@
+import { experimental_selectedSkillMentions as selectedSkillMentions } from "@get-bb/plugin-sdk/provider-bridge";
 import {
   jsonValueSchema,
   type PermissionEscalation,
@@ -561,8 +562,40 @@ function toCodexReasoningEffort(
   return codexEffort;
 }
 
-export function toCodexUserInput(input: PromptInput[]): CodexUserInput[] {
-  return input.map((chunk): CodexUserInput => {
+interface CodexCatalogSkill {
+  name: string;
+  path: string;
+}
+
+function codexSkillDirectoryName(skill: CodexCatalogSkill): string {
+  const directory = path.basename(path.dirname(skill.path));
+  const separator = skill.name.lastIndexOf(":");
+  return separator === -1
+    ? directory
+    : `${skill.name.slice(0, separator + 1)}${directory}`;
+}
+
+export function toCodexUserInput(
+  input: PromptInput[],
+  skills: readonly CodexCatalogSkill[] = [],
+): CodexUserInput[] {
+  const selected = new Map<string, CodexUserInput>();
+  for (const chunk of input) {
+    if (chunk.type !== "text") continue;
+    for (const mention of selectedSkillMentions(chunk)) {
+      const name = mention.resource.name;
+      const skill =
+        skills.find((entry) => entry.name === name) ??
+        skills.find((entry) => codexSkillDirectoryName(entry) === name);
+      if (skill === undefined) continue;
+      selected.set(skill.path, {
+        type: "skill",
+        name: skill.name,
+        path: skill.path,
+      });
+    }
+  }
+  const chunks = input.map((chunk): CodexUserInput => {
     switch (chunk.type) {
       case "text":
         return { type: "text", text: chunk.text, text_elements: [] };
@@ -580,6 +613,7 @@ export function toCodexUserInput(input: PromptInput[]): CodexUserInput[] {
         };
     }
   });
+  return [...chunks, ...selected.values()];
 }
 
 function buildShellEnvironmentPolicyConfig(

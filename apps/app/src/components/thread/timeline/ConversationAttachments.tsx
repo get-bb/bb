@@ -3,17 +3,15 @@ import { VideoThumbnail } from "@bb/shared-ui/video-thumbnail";
 import { useEffect, useState } from "react";
 import type { TimelineConversationAttachments } from "@bb/server-contract";
 import { fileNameFromPath } from "@bb/thread-view";
-import {
-  ImageLightbox,
-  getWrappedImageIndex,
-} from "../../ui/image-lightbox.js";
+import { ImageLightbox } from "../../ui/image-lightbox.js";
+import { getWrappedImageIndex } from "@bb/shared-ui/lib/image-preview";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   buildProjectAttachmentContentUrl,
   isAbsoluteLocalPath,
   isProjectAttachmentPath,
 } from "@/lib/file-content-urls";
-import { formatByteSize } from "@/lib/format-byte-size";
+import { formatByteSize } from "@bb/shared-ui/lib/format-byte-size";
 import { canSaveFileNatively, saveFile } from "@/lib/save-file";
 import { useAttachmentOpener } from "@/components/secondary-panel/AttachmentOpenerContext";
 import type {

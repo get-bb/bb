@@ -40,6 +40,11 @@ interface CallHostOnlineRpcArgs<TCommand extends HostDaemonRpcCommand> {
   timeoutMs: number;
 }
 
+type PluginHostCallCommand = Extract<
+  HostDaemonRpcCommand,
+  { type: "plugin.host.call" }
+>;
+
 interface CallHostRetryableOnlineRpcArgs<
   TCommand extends HostDaemonRetryableOnlineRpcCommand,
 > {
@@ -96,6 +101,22 @@ export async function callHostRetryableOnlineRpc(
   return callHostOnlineRpcWithRetry(deps, args, {
     retryOnTransportFailure: true,
     waitForTransportFailure: false,
+  });
+}
+
+export async function callHostRetryablePluginHostCall(
+  deps: WorkSessionDeps,
+  args: CallHostOnlineRpcArgs<PluginHostCallCommand> & {
+    retryCommand: (command: PluginHostCallCommand) => PluginHostCallCommand;
+  },
+): Promise<HostDaemonRpcResultForCommand<PluginHostCallCommand>> {
+  await waitForReconnectingDaemon(deps, args.hostId);
+  assertHostActiveForRead(deps, args);
+  const { retryCommand, ...callArgs } = args;
+  return callHostOnlineRpcWithRetry(deps, callArgs, {
+    retryOnTransportFailure: true,
+    waitForTransportFailure: false,
+    retryCommand,
   });
 }
 
@@ -225,12 +246,26 @@ async function callHostOnlineRpcWithRetry(
 ): Promise<HostDaemonOnlineRpcResultForCommand>;
 async function callHostOnlineRpcWithRetry(
   deps: WorkSessionDeps,
+  args: CallHostOnlineRpcArgs<PluginHostCallCommand>,
+  options: {
+    retryOnTransportFailure: true;
+    waitForTransportFailure: false;
+    retryCommand: (command: PluginHostCallCommand) => PluginHostCallCommand;
+  },
+): Promise<HostDaemonRpcResultForCommand<PluginHostCallCommand>>;
+async function callHostOnlineRpcWithRetry(
+  deps: WorkSessionDeps,
   args: CallHostOnlineRpcArgs<HostDaemonRpcCommand>,
   options: {
     retryOnTransportFailure: boolean;
     waitForTransportFailure: boolean;
+    retryCommand?: (command: PluginHostCallCommand) => PluginHostCallCommand;
   },
 ): Promise<HostDaemonRpcResultForCommand> {
+  const retryArgs = (): CallHostOnlineRpcArgs<HostDaemonRpcCommand> =>
+    options.retryCommand !== undefined && args.command.type === "plugin.host.call"
+      ? { ...args, command: options.retryCommand(args.command) }
+      : args;
   const timeoutRetryDeadline =
     options.retryOnTransportFailure && args.timeoutMs > 1
       ? Date.now() + args.timeoutMs
@@ -252,9 +287,11 @@ async function callHostOnlineRpcWithRetry(
     if (error instanceof HostOnlineRpcUnavailableError) {
       if (!options.waitForTransportFailure) throwOnlineRpcError(error);
       await waitForRetryableHostRpcTransport(deps, args);
-      return requestHostOnlineRpcResponse(deps, args).catch((retryError) => {
-        throwOnlineRpcError(retryError);
-      });
+      return requestHostOnlineRpcResponse(deps, retryArgs()).catch(
+        (retryError) => {
+          throwOnlineRpcError(retryError);
+        },
+      );
     }
     if (!(error instanceof HostOnlineRpcTimeoutError)) {
       throwOnlineRpcError(error);
@@ -265,7 +302,7 @@ async function callHostOnlineRpcWithRetry(
       throwOnlineRpcError(error);
     }
     return requestHostOnlineRpcResponse(deps, {
-      ...args,
+      ...retryArgs(),
       timeoutMs: retryTimeoutMs,
     }).catch((retryError) => {
       throwOnlineRpcError(retryError);

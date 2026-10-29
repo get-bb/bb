@@ -1,8 +1,13 @@
-import { execFile } from "node:child_process";
+import {
+  execHostFile,
+  hostToolchain,
+  execPortableFile,
+  pathExists,
+  sanitizeInheritedChildProcessEnv,
+} from "@bb/process-utils";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { promisify } from "node:util";
 import { z } from "zod";
 import {
   WORKSPACE_OPEN_TARGET_ICON_DATA_URL_MAX_LENGTH,
@@ -10,11 +15,6 @@ import {
   type WorkspaceOpenTargetIcon,
   type WorkspaceOpenTargetId,
 } from "@bb/host-daemon-contract";
-import {
-  execPortableFile,
-  pathExists,
-  sanitizeInheritedChildProcessEnv,
-} from "@bb/process-utils";
 import {
   BASIC_FILE_OPEN_CAPABILITIES,
   FILE_MANAGER_OPEN_CAPABILITIES,
@@ -77,7 +77,7 @@ export interface WorkspaceOpenTargetRuntimeOptions {
   shellPath?: string;
 }
 
-const execFileAsync = promisify(execFile);
+const execFileAsync = execHostFile;
 const DESKTOP_APP_TARGET_ID_PREFIX = "desktop-app:";
 const MAC_APP_TARGET_ID_PREFIX = "mac-app:";
 const MAC_FILE_APPLICATION_DISCOVERY_LIMIT = 5;
@@ -259,7 +259,7 @@ async function isCliTargetAvailable(
   const executable = getCliOpenExecutable(adapter);
   return executable === null
     ? false
-    : isExecutableAvailable(executable, runtime);
+    : runtime.hasExecutable(executable, runtime.env);
 }
 
 async function listCliWorkspaceOpenTargets(
@@ -282,11 +282,11 @@ async function getDefaultOpenExecutable(
   if (runtime.platform === "linux") {
     if (
       isWslRuntime(runtime) &&
-      (await isExecutableAvailable("wslview", runtime))
+      (await runtime.hasExecutable("wslview", runtime.env))
     ) {
       return "wslview";
     }
-    return (await isExecutableAvailable("xdg-open", runtime))
+    return (await runtime.hasExecutable("xdg-open", runtime.env))
       ? "xdg-open"
       : null;
   }
@@ -300,11 +300,11 @@ async function getFileManagerExecutable(
   if (runtime.platform === "linux") {
     if (
       isWslRuntime(runtime) &&
-      (await isExecutableAvailable("explorer.exe", runtime))
+      (await runtime.hasExecutable("explorer.exe", runtime.env))
     ) {
       return "explorer.exe";
     }
-    return (await isExecutableAvailable("xdg-open", runtime))
+    return (await runtime.hasExecutable("xdg-open", runtime.env))
       ? "xdg-open"
       : null;
   }
@@ -315,7 +315,7 @@ async function getFileManagerExecutable(
 async function getWindowsTerminalProgram(
   runtime: WorkspaceOpenTargetRuntime,
 ): Promise<WindowsTerminalProgram> {
-  return (await isExecutableAvailable("wt", runtime))
+  return (await runtime.hasExecutable("wt", runtime.env))
     ? "windows-terminal"
     : "powershell";
 }
@@ -360,7 +360,7 @@ async function getTerminalExecutable(
       : [];
 
   for (const candidate of candidates) {
-    if (await isExecutableAvailable(candidate, runtime)) {
+    if (await runtime.hasExecutable(candidate, runtime.env)) {
       return candidate;
     }
   }
@@ -587,6 +587,8 @@ export function createWorkspaceOpenTargetRuntime(
     ],
     env,
     execFile: defaultExecFile,
+    hasExecutable: async (command, env) =>
+      hostToolchain.resolve(command, { env }) !== null,
     platform: process.platform,
   };
 }
@@ -975,9 +977,8 @@ async function listKnownMacWorkspaceOpenTargets(
   return targets;
 }
 
-export async function listWorkspaceOpenTargetsWithRuntime(
+async function listBaseWorkspaceOpenTargets(
   runtime: WorkspaceOpenTargetRuntime,
-  options: ListWorkspaceOpenTargetsOptions = {},
 ): Promise<WorkspaceOpenTarget[]> {
   if (runtime.platform === "win32") {
     return [
@@ -998,8 +999,21 @@ export async function listWorkspaceOpenTargetsWithRuntime(
     ];
   }
 
-  const targets: WorkspaceOpenTarget[] = [];
-  const seenTargetIds = new Set<WorkspaceOpenTargetId>();
+  return listKnownMacWorkspaceOpenTargets(runtime);
+}
+
+export async function listWorkspaceOpenTargetsWithRuntime(
+  runtime: WorkspaceOpenTargetRuntime,
+  options: ListWorkspaceOpenTargetsOptions = {},
+): Promise<WorkspaceOpenTarget[]> {
+  const baseTargets =
+    options.baseTargets ?? (await listBaseWorkspaceOpenTargets(runtime));
+  if (runtime.platform !== "darwin" || options.path === undefined) {
+    return baseTargets;
+  }
+
+  const targets = [...baseTargets];
+  const seenTargetIds = new Set(baseTargets.map((target) => target.id));
   const pushTarget = (target: WorkspaceOpenTarget): void => {
     if (seenTargetIds.has(target.id)) {
       return;
@@ -1008,20 +1022,18 @@ export async function listWorkspaceOpenTargetsWithRuntime(
     targets.push(target);
   };
 
-  for (const target of await listKnownMacWorkspaceOpenTargets(runtime)) {
-    pushTarget(target);
-  }
-
-  const pathSpecificApplications =
-    options.path === undefined
-      ? []
-      : await listMacApplicationsForFilePath(options.path, runtime);
+  const pathSpecificApplications = await listMacApplicationsForFilePath(
+    options.path,
+    runtime,
+  );
   for (const application of pathSpecificApplications) {
     const adapter = findLaunchAdapterForMacApplication(application);
     if (adapter !== null) {
-      pushTarget(
-        await toWorkspaceOpenTarget(adapter, runtime, application.appPath),
-      );
+      if (!seenTargetIds.has(adapter.id)) {
+        pushTarget(
+          await toWorkspaceOpenTarget(adapter, runtime, application.appPath),
+        );
+      }
       continue;
     }
     if (application.bundleId !== null) {
@@ -1094,34 +1106,6 @@ function resolveTargetOpenPath(args: ResolveTargetOpenPathArgs): string {
   return args.existingPath.path;
 }
 
-async function isExecutableAvailable(
-  executable: string,
-  runtime: WorkspaceOpenTargetRuntime,
-): Promise<boolean> {
-  try {
-    await runtime.execFile(
-      runtime.platform === "win32" ? "where.exe" : "which",
-      [executable],
-      { env: runtime.env },
-    );
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function isServiceExecutableAvailable(
-  executable: string,
-  runtime: WorkspaceOpenTargetRuntime,
-): Promise<boolean> {
-  try {
-    await runtime.execFile("which", [executable]);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 function isMacServiceExecutable(executable: string): boolean {
   return executable === "open" || executable === "osascript";
 }
@@ -1165,8 +1149,8 @@ async function resolveMacCommandExecutable(
   for (const candidate of [command, ...(command.fallbackExecutables ?? [])]) {
     const serviceExecutable = isMacServiceExecutable(candidate.executable);
     const available = serviceExecutable
-      ? await isServiceExecutableAvailable(candidate.executable, runtime)
-      : await isExecutableAvailable(candidate.executable, runtime);
+      ? await runtime.hasExecutable(candidate.executable)
+      : await runtime.hasExecutable(candidate.executable, runtime.env);
     if (available) {
       return {
         file: candidate.executable,
@@ -1202,7 +1186,7 @@ async function resolveTerminalEditorCommand(
   }
 
   for (const candidate of TERMINAL_EDITOR_CANDIDATES) {
-    if (await isExecutableAvailable(candidate, runtime)) {
+    if (await runtime.hasExecutable(candidate, runtime.env)) {
       return candidate;
     }
   }
@@ -1216,7 +1200,7 @@ async function findUnavailableMacRemoteSshExecutable(
   runtime: WorkspaceOpenTargetRuntime,
 ): Promise<string | null> {
   for (const executable of command.requiredExecutables ?? []) {
-    if (!(await isExecutableAvailable(executable, runtime))) {
+    if (!(await runtime.hasExecutable(executable, runtime.env))) {
       return executable;
     }
   }
@@ -1319,9 +1303,7 @@ async function maybeResolveMacFileOpenInvocation(
     return null;
   }
 
-  if (
-    !(await isServiceExecutableAvailable(fileOpenCommand.executable, runtime))
-  ) {
+  if (!(await runtime.hasExecutable(fileOpenCommand.executable))) {
     return null;
   }
 
@@ -1367,7 +1349,7 @@ async function resolveXcodeXedPath(
   definition: LaunchAdapter,
   runtime: WorkspaceOpenTargetRuntime,
 ): Promise<string | null> {
-  if (await isExecutableAvailable("xed", runtime)) {
+  if (await runtime.hasExecutable("xed", runtime.env)) {
     return "xed";
   }
 
@@ -1729,7 +1711,10 @@ async function resolvePlatformTerminalRemoteSshOpenInvocation(
   runtime: WorkspaceOpenTargetRuntime,
 ): Promise<ExecFileInvocation> {
   const executable = await getTerminalExecutable(runtime);
-  if (executable === null || !(await isExecutableAvailable("ssh", runtime))) {
+  if (
+    executable === null ||
+    !(await runtime.hasExecutable("ssh", runtime.env))
+  ) {
     throw new WorkspaceOpenTargetError({
       code: "target_unavailable",
       message: "Terminal remote SSH opener is unavailable",

@@ -1,3 +1,4 @@
+import { experimental_selectedSkillMentions as selectedSkillMentions } from "@get-bb/plugin-sdk/provider-bridge";
 import { readFileSync } from "node:fs";
 import {
   mimeTypeFromExtension,
@@ -26,24 +27,13 @@ export function extractPiPromptInput(
   for (const item of input) {
     if (item.type === "text") {
       const chunkIndex = chunks.push(item.text) - 1;
-      for (const mention of item.mentions) {
-        const resource = mention.resource;
-        if (
-          resource.kind === "command" &&
-          resource.source === "skill" &&
-          (resource.trigger === "/" || resource.trigger === "$") &&
-          mention.start < mention.end &&
-          mention.end <= item.text.length &&
-          item.text.slice(mention.start, mention.end) ===
-            `${resource.trigger}${resource.name}`
-        ) {
-          skills.push({
-            chunkIndex,
-            end: mention.end,
-            name: resource.name,
-            start: mention.start,
-          });
-        }
+      for (const mention of selectedSkillMentions(item)) {
+        skills.push({
+          chunkIndex,
+          end: mention.end,
+          name: mention.resource.name,
+          start: mention.start,
+        });
       }
     } else if (item.type === "localImage") {
       try {

@@ -761,10 +761,11 @@ HEAD returns full-file headers without reading the body. To check partial reads,
 use `curl -D - -H 'Range: bytes=0-1023' '<attachment-url>' -o /tmp/attachment-part`.
 
 Skill detail reads and file listings resolve symlinked skill directories on
-their owning host. The server opts into `followRootSymlink` for
-`host.read_file_relative` and `host.list_files`; other callers pass `false`.
-Relative skill reads remain confined to the resolved directory and deny dotfiles,
-and listings skip nested symlinks. Linked skills remain read-only in bb.
+their owning host. The server opts into `followRootSymlink` for `host.read_file`
+and `host.list_files`; other callers pass `false`. The server rejects absolute,
+`..`, and dotfile skill paths before reading, the host confines reads to the
+resolved directory, and listings skip nested symlinks. Linked skills remain
+read-only in bb.
 
 ## Prepared Worktree Restarts
 
@@ -992,6 +993,41 @@ the last realtime refresh, then whether its recovery ran after the mutation
 callbacks. Cover this ordering with real Query and Mutation observers; an
 isolated rollback helper test does not exercise mutation settlement.
 
+## Shared Async Caches
+
+The server and daemon share `createAsyncTtlMemo` from `@bb/async-cache` for
+keyed asynchronous reads. It shares pending work, starts TTLs at completion,
+retries rejected reads, and prevents invalidated work from repopulating the
+cache. Callers own keys, lifetimes, invalidation, and stale-result policy;
+set `maxEntries` when keys can grow. Invalidation does not cancel existing
+readers or replace their results.
+
+The daemon also uses this helper for client configuration and shell-environment
+refresh. Client configuration keeps its one-second TTL and retries failed reads
+on the next request. Shell refresh preserves startup values and optional stale
+reads, shares even slow pending refreshes, and starts its ten-second TTL after
+the resolved environment is applied.
+
+## Workspace Open-Target Discovery
+
+The host daemon's `GET /workspace-open-targets` shares the installed-app list,
+including icons, between general and file-specific discovery. It stays fresh
+for 60 seconds after discovery completes. After expiry, requests return the
+previous list immediately and share one background refresh. The first request
+after daemon startup or an effective executable search `PATH` change waits for
+a fresh scan. The cache belongs to the local API server instance.
+
+Failed initial scans are retried on the next call. Failed background scans keep
+the previous list and retry on the next request. Discovery's existing per-app
+fallbacks can still produce a successful partial list, which is cached for the
+same TTL. Installing or removing an application appears after the next successful
+refresh; the request that triggers an expired refresh still sees the old list.
+
+Requests with a `path` query reuse that same base list, then check file existence
+and macOS file associations fresh. File-associated apps do not enter the shared
+list, and already-listed apps reuse their cached icons. File discovery still
+waits for its native association lookup and any additional apps' icon extraction.
+
 ## Environment Status Loading
 
 Merge-base status is cached per host daemon process at two levels, each a
@@ -1013,3 +1049,23 @@ separately, within 8 MiB of patch output and a 1-second deadline per attempt.
 When it cannot finish, `mergeBase.squashMergeCheckComplete` is false and the
 counts may include already squash-merged commits; the next refresh retries with
 the cached work. Daemons older than this field report `true`.
+
+## Plugin Stylesheet Version Skew
+
+Plugin CSS URLs in bundle metadata always identify the complete stylesheet.
+The app adds `host-tailwind=<HOST_TAILWIND_VERSION>` when prefetching,
+preloading, or attaching that stylesheet. The version is generated from the
+host's Tailwind registrations, fallback declarations, and theme values.
+Both plugin asset routes strip matching host-provided rules only when that
+query value matches the server's generated version. Missing or mismatched
+values receive the original CSS, so a tab retained across a server update
+keeps working with its old host styles. Compressed responses are cached
+separately for the original and stripped variants.
+
+To reproduce version skew, load the production main app in Chrome, restart
+the same isolated server on the branch without reloading the tab, and open
+Automations and Plugin Guide. Normal revision detection reloads the app automatically. To isolate a client
+that has not received that update status yet, retain the old immutable app
+assets and hold the update-status response at the old revision in a test
+proxy. Compare against a fresh tab and confirm the old tab's `performance.timeOrigin` and host stylesheet URL stay unchanged. Inspect
+Plugin Guide's `.font-bold` elements: they must still compute to weight 700.

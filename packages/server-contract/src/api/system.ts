@@ -109,6 +109,7 @@ export const systemExecutionOptionsQuerySchema = z
     ...systemProviderHostQueryFields,
     providerId: z.string().min(1),
     projectId: z.string().min(1),
+    selectedModel: z.string().min(1),
   })
   .partial()
   .superRefine(rejectMultipleWorkspaceSelectors)

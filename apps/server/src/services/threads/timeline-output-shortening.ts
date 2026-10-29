@@ -1,9 +1,6 @@
-import {
-  mapTimelineRowTree,
-  type ThreadTimelineResponse,
-  type TimelineRow,
-} from "@bb/server-contract";
+import { mapTimelineRowTree, type TimelineRow } from "@bb/server-contract";
 import { sliceUtf16HeadAndTail } from "@bb/text-utils";
+import type { ThreadTimelineWindow } from "./timeline.js";
 
 export const DEFAULT_MAX_INLINE_OUTPUT_CHARS = 32_000;
 
@@ -105,9 +102,9 @@ interface ShortenTimelineResponseOutputsOptions {
 }
 
 export function shortenTimelineResponseOutputs(
-  response: ThreadTimelineResponse,
+  response: ThreadTimelineWindow,
   { maxInlineOutputChars, preview }: ShortenTimelineResponseOutputsOptions,
-): ThreadTimelineResponse {
+): ThreadTimelineWindow {
   const shorten = (rows: TimelineRow[]) =>
     mapTimelineRowTree(rows, (row) => {
       const truncated = truncateRowOutputs(row, maxInlineOutputChars);

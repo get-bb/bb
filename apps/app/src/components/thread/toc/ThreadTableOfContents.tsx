@@ -717,132 +717,130 @@ export function ThreadTableOfContents({
         }
       }}
     >
-      {tocVisible ? (
-        <div className="relative">
-          <button
-            type="button"
-            aria-label="Thread table of contents"
-            aria-expanded={open}
-            aria-controls={`thread-toc-panel-${threadId}`}
-            onClick={() => setOpen(true)}
-            className="no-scrollbar flex max-h-[calc(100vh-7rem)] w-8 cursor-pointer flex-col items-center gap-2 overflow-y-auto py-2"
-          >
-            <span
-              aria-hidden
-              className="flex w-full flex-col items-center gap-2"
-            >
-              {railItems.map((item) => (
-                <span
-                  key={item.id}
-                  className={cn(
-                    "h-[3px] shrink-0 rounded-full transition-all duration-150",
-                    item.id === activeUserId
-                      ? "w-5 bg-foreground/30 group-hover/toc:bg-foreground/70"
-                      : "w-3 bg-foreground/5 group-hover/toc:bg-foreground/20",
-                  )}
-                />
-              ))}
-            </span>
-          </button>
+      <div
+        className={cn("relative", !tocVisible && "hidden")}
+        inert={!tocVisible}
+      >
+        <button
+          type="button"
+          aria-label="Thread table of contents"
+          aria-expanded={open}
+          aria-controls={`thread-toc-panel-${threadId}`}
+          onClick={() => setOpen(true)}
+          className="no-scrollbar flex max-h-[calc(100vh-7rem)] w-8 cursor-pointer flex-col items-center gap-2 overflow-y-auto py-2"
+        >
+          <span aria-hidden className="flex w-full flex-col items-center gap-2">
+            {railItems.map((item) => (
+              <span
+                key={item.id}
+                className={cn(
+                  "h-[3px] shrink-0 rounded-full transition-all duration-150",
+                  item.id === activeUserId
+                    ? "w-5 bg-foreground/30 group-hover/toc:bg-foreground/70"
+                    : "w-3 bg-foreground/5 group-hover/toc:bg-foreground/20",
+                )}
+              />
+            ))}
+          </span>
+        </button>
 
-          {open ? (
-            <div
-              id={`thread-toc-panel-${threadId}`}
-              className="pointer-events-auto absolute right-full top-0 w-[18.25rem] max-w-[calc(100vw-3rem)] pr-1"
-            >
-              <div className="rounded-lg border border-border bg-popover p-1 shadow-lg">
-                <div className="flex items-center gap-1 pb-1">
-                  {hasAgentMessages ? (
-                    <TocPanelTab
-                      label="Agent messages"
-                      active={activeTab === "agent"}
-                      onSelect={() => setTab("agent")}
-                    />
-                  ) : null}
+        {open ? (
+          <div
+            id={`thread-toc-panel-${threadId}`}
+            className="pointer-events-auto absolute right-full top-0 w-[18.25rem] max-w-[calc(100vw-3rem)] pr-1"
+          >
+            <div className="rounded-lg border border-border bg-popover p-1 shadow-lg">
+              <div className="flex items-center gap-1 pb-1">
+                {hasAgentMessages ? (
                   <TocPanelTab
-                    label="Your messages"
-                    active={activeTab === "user"}
-                    onSelect={() => setTab("user")}
+                    label="Agent messages"
+                    active={activeTab === "agent"}
+                    onSelect={() => setTab("agent")}
                   />
-                </div>
-                <div className="relative isolate">
+                ) : null}
+                <TocPanelTab
+                  label="Your messages"
+                  active={activeTab === "user"}
+                  onSelect={() => setTab("user")}
+                />
+              </div>
+              <div className="relative isolate">
+                <div
+                  ref={scrollRef}
+                  className="max-h-64 overflow-y-auto overflow-x-hidden"
+                >
                   <div
-                    ref={scrollRef}
-                    className="max-h-64 overflow-y-auto overflow-x-hidden"
-                  >
-                    <div
-                      ref={topSentinelRef}
-                      aria-hidden
-                      className="h-px w-full"
-                    />
-                    <ul className="flex flex-col">
-                      {items.map((item) => {
-                        const active = item.id === activeId;
-                        const pending = item.id === pendingJumpId;
-                        return (
-                          <li key={item.id}>
-                            <button
-                              ref={(node) => {
-                                if (node) itemEls.current.set(item.id, node);
-                                else itemEls.current.delete(item.id);
-                              }}
-                              type="button"
-                              aria-busy={pending}
-                              onClick={() => {
-                                void handleSelect(item.id);
-                              }}
+                    ref={topSentinelRef}
+                    aria-hidden
+                    className="h-px w-full"
+                  />
+                  <ul className="flex flex-col">
+                    {items.map((item) => {
+                      const active = item.id === activeId;
+                      const pending = item.id === pendingJumpId;
+                      return (
+                        <li key={item.id}>
+                          <button
+                            ref={(node) => {
+                              if (node) itemEls.current.set(item.id, node);
+                              else itemEls.current.delete(item.id);
+                            }}
+                            type="button"
+                            aria-busy={pending}
+                            onClick={() => {
+                              void handleSelect(item.id);
+                            }}
+                            className={cn(
+                              "flex w-full cursor-pointer rounded-md px-2 py-1.5 text-left transition-colors",
+                              active
+                                ? "bg-state-hover"
+                                : "hover:bg-state-hover",
+                            )}
+                          >
+                            <span
                               className={cn(
-                                "flex w-full cursor-pointer rounded-md px-2 py-1.5 text-left transition-colors",
+                                "text-xs leading-snug",
                                 active
-                                  ? "bg-state-hover"
-                                  : "hover:bg-state-hover",
+                                  ? "text-foreground"
+                                  : "text-muted-foreground",
+                                pending && "animate-pulse",
                               )}
                             >
-                              <span
-                                className={cn(
-                                  "text-xs leading-snug",
-                                  active
-                                    ? "text-foreground"
-                                    : "text-muted-foreground",
-                                  pending && "animate-pulse",
-                                )}
-                              >
-                                <TocItemPreview
-                                  item={item}
-                                  senderThreadMetadataById={
-                                    senderThreadMetadataById
-                                  }
-                                />
-                              </span>
-                            </button>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                    <div
-                      ref={bottomSentinelRef}
-                      aria-hidden
-                      className="h-px w-full"
-                    />
-                  </div>
-                  {aboveOverflow ? (
-                    <div
-                      aria-hidden
-                      className="pointer-events-none absolute inset-x-0 top-0 z-10 h-8 bg-gradient-to-b from-popover/90 via-popover/60 to-transparent"
-                    />
-                  ) : null}
-                  {belowOverflow ? (
-                    <div
-                      aria-hidden
-                      className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-8 bg-gradient-to-t from-popover/90 via-popover/60 to-transparent"
-                    />
-                  ) : null}
+                              <TocItemPreview
+                                item={item}
+                                senderThreadMetadataById={
+                                  senderThreadMetadataById
+                                }
+                              />
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <div
+                    ref={bottomSentinelRef}
+                    aria-hidden
+                    className="h-px w-full"
+                  />
                 </div>
+                {aboveOverflow ? (
+                  <div
+                    aria-hidden
+                    className="pointer-events-none absolute inset-x-0 top-0 z-10 h-8 bg-gradient-to-b from-popover/90 via-popover/60 to-transparent"
+                  />
+                ) : null}
+                {belowOverflow ? (
+                  <div
+                    aria-hidden
+                    className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-8 bg-gradient-to-t from-popover/90 via-popover/60 to-transparent"
+                  />
+                ) : null}
               </div>
             </div>
-          ) : null}
-        </div>
-      ) : null}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

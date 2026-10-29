@@ -7,6 +7,7 @@ Collaborate with agents on editing Markdown docs inline. Edit directly inside th
 - Full HTML pages and embedded HTML blocks render in a sandboxed frame. Keep interactive reports next to your notes.
 - A Markdown opener for `.md` files from file links. Make it the default under Settings.
 - `@` mentions. Type `@` in the composer to attach a document. The agent gets its current content at send time.
+- Open documents update live when an agent, the CLI, another window, or another editor changes them. If a change lands while you are typing, your text is kept and you choose to keep yours or take theirs.
 - Editable document cards in agent replies. Edit Markdown directly in the timeline or open the same document in a tab, with shared autosave.
 - Review agent proposals with live diffs. Edit the proposed text, accept or reject it, undo or redo, or ask the agent for changes through a document mention.
 - Copy the current draft from the header. Progress appears during saves and proposal actions, and recent documents stay visible when returning to a thread.

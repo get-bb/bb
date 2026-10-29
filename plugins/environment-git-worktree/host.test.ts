@@ -1,6 +1,7 @@
 import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import {
+  cp,
   mkdir,
   mkdtemp,
   readFile,
@@ -14,11 +15,32 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
 import { experimental_createHostEntryHarness } from "@get-bb/plugin-sdk/testing/host";
-import { afterEach, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  type TestContext,
+} from "vitest";
 import { createWorktreeHostEntry } from "./host.js";
 
 const execFileAsync = promisify(execFile);
-const temporaryRoots: string[] = [];
+let repositoryTemplate: string;
+
+beforeAll(async () => {
+  repositoryTemplate = await mkdtemp(join(tmpdir(), "bb-worktree-template-"));
+  await git(repositoryTemplate, "init", "--initial-branch=main");
+  await writeFile(join(repositoryTemplate, "README.md"), "hello\n");
+  await git(repositoryTemplate, "add", ".");
+  await git(repositoryTemplate, "commit", "-m", "initial");
+});
+
+afterAll(async () => {
+  if (repositoryTemplate) {
+    await rm(repositoryTemplate, { recursive: true, force: true });
+  }
+});
 
 function isPidAlive(pid: number): boolean {
   try {
@@ -43,31 +65,33 @@ async function git(cwd: string, ...args: string[]): Promise<string> {
   return result.stdout;
 }
 
-async function createSourceRepository(repositoryName = "repo"): Promise<{
+async function createSourceRepository(
+  onTestFinished: TestContext["onTestFinished"],
+  repositoryName = "repo",
+): Promise<{
   root: string;
   sourcePath: string;
   dataDir: string;
 }> {
   const root = await mkdtemp(join(tmpdir(), "bb-worktree-plugin-"));
-  temporaryRoots.push(root);
+  onTestFinished(() => rm(root, { recursive: true, force: true }));
   const sourcePath = join(root, repositoryName);
   const dataDir = join(root, "plugin-data");
   await mkdir(sourcePath, { recursive: true });
   await mkdir(dataDir, { recursive: true });
-  await git(sourcePath, "init", "--initial-branch=main");
-  await writeFile(join(sourcePath, "README.md"), "hello\n");
-  await git(sourcePath, "add", ".");
-  await git(sourcePath, "commit", "-m", "initial");
+  await cp(repositoryTemplate, sourcePath, { recursive: true });
   return { root, sourcePath, dataDir };
 }
 
-async function createDetachedSingleBranchRepository(): Promise<{
+async function createDetachedSingleBranchRepository(
+  onTestFinished: TestContext["onTestFinished"],
+): Promise<{
   root: string;
   sourcePath: string;
   dataDir: string;
 }> {
   const root = await mkdtemp(join(tmpdir(), "bb-worktree-plugin-detached-"));
-  temporaryRoots.push(root);
+  onTestFinished(() => rm(root, { recursive: true, force: true }));
   const originPath = join(root, "origin");
   const sourcePath = join(root, "repo");
   const dataDir = join(root, "plugin-data");
@@ -116,24 +140,280 @@ function progressText(harness: ReturnType<typeof createHarness>): string {
     .join("\n");
 }
 
-afterEach(async () => {
-  await Promise.all(
-    temporaryRoots
-      .splice(0)
-      .map((root) => rm(root, { recursive: true, force: true })),
+describe.concurrent("worktree host entry", () => {
+  it.for(["main", "release", "origin/main", "refs/heads/main"])(
+    "resolves and fetches a stale named base %s",
+    async (base, { onTestFinished }) => {
+      const { root, sourcePath, dataDir } =
+        await createSourceRepository(onTestFinished);
+      const clone = join(root, "clone");
+      await git(sourcePath, "branch", "release");
+      await git(root, "clone", sourcePath, clone);
+      const oldHead = (await git(clone, "rev-parse", "HEAD")).trim();
+      await git(clone, "branch", "release", "origin/release");
+      await writeFile(join(sourcePath, "README.md"), "remote advance\n");
+      await git(sourcePath, "commit", "-am", "advance remote");
+      await git(sourcePath, "branch", "-f", "release", "HEAD");
+      const remoteHead = (await git(sourcePath, "rev-parse", "HEAD")).trim();
+      const result = await createHarness(dataDir).experimental_call("create", {
+        ...createInput({
+          operationId: "stale-base",
+          sourcePath: clone,
+          pathKey: "stale-base",
+          branchName: "bb/child",
+        }),
+        baseBranch: { kind: "named", name: base },
+      });
+      expect(result.status).toBe("created");
+      if (result.status !== "created") throw new Error(result.message);
+      expect((await git(result.path, "rev-parse", "HEAD")).trim()).toBe(
+        base.startsWith("refs/heads/") ? oldHead : remoteHead,
+      );
+      expect((await git(clone, "rev-parse", "main")).trim()).toBe(oldHead);
+    },
   );
-});
 
-describe("worktree host entry", () => {
-  it.each([
+  it.for([
+    ["ahead", "main"],
+    ["diverged", "main"],
+    ["ahead", "release"],
+    ["diverged", "release"],
+    ["ahead", "origin/main"],
+    ["diverged", "refs/heads/main"],
+    ["ahead", "default"],
+    ["diverged", "default"],
+  ])(
+    "preserves local commits for %s with base %s",
+    async ([relation, base], { onTestFinished }) => {
+      const { root, sourcePath, dataDir } =
+        await createSourceRepository(onTestFinished);
+      const clone = join(root, "clone");
+      await git(sourcePath, "branch", "release");
+      await git(root, "clone", sourcePath, clone);
+      await writeFile(join(clone, "local.txt"), "local work\n");
+      await git(clone, "add", ".");
+      await git(clone, "commit", "-m", "local work");
+      await git(clone, "branch", "release");
+      const localHead = (await git(clone, "rev-parse", "HEAD")).trim();
+      if (relation === "diverged") {
+        await writeFile(join(sourcePath, "remote.txt"), "remote work\n");
+        await git(sourcePath, "add", ".");
+        await git(sourcePath, "commit", "-m", "remote work");
+        await git(sourcePath, "branch", "-f", "release", "HEAD");
+        await git(clone, "fetch", "origin");
+      }
+      const remoteHead = (await git(sourcePath, "rev-parse", "HEAD")).trim();
+      const harness = createHarness(dataDir);
+      try {
+        const result = await harness.experimental_call("create", {
+          ...createInput({
+            operationId: "local-work",
+            sourcePath: clone,
+            pathKey: "local-work",
+            branchName: "bb/child",
+          }),
+          baseBranch:
+            base === "default"
+              ? { kind: "default" }
+              : { kind: "named", name: base },
+        });
+        expect(result.status).toBe("created");
+        if (result.status !== "created") throw new Error(result.message);
+        expect((await git(result.path, "rev-parse", "HEAD")).trim()).toBe(
+          base === "origin/main" ? remoteHead : localHead,
+        );
+      } finally {
+        await harness.experimental_dispose();
+      }
+    },
+  );
+
+  it.for([
+    ["equal", "main"],
+    ["behind", "main"],
+    ["equal", "default"],
+    ["behind", "default"],
+    ["remote-only", "release"],
+  ])(
+    "uses the last fetched remote when the fetch fails for %s with base %s",
+    async ([relation, base], { onTestFinished }) => {
+      const { root, sourcePath, dataDir } =
+        await createSourceRepository(onTestFinished);
+      const clone = join(root, "clone");
+      await git(sourcePath, "branch", "release");
+      await git(root, "clone", sourcePath, clone);
+      const localHead = (await git(clone, "rev-parse", "HEAD")).trim();
+      if (relation === "behind" || relation === "remote-only") {
+        await writeFile(join(sourcePath, "README.md"), "remote advance\n");
+        await git(sourcePath, "commit", "-am", "advance remote");
+        await git(sourcePath, "branch", "-f", "release", "HEAD");
+        await git(clone, "fetch", "origin");
+      }
+      const lastFetched = base === "release" ? "origin/release" : "origin/main";
+      const lastFetchedHead = (
+        await git(clone, "rev-parse", lastFetched)
+      ).trim();
+      await git(clone, "remote", "set-url", "origin", join(root, "missing"));
+      const harness = createHarness(dataDir);
+      try {
+        const result = await harness.experimental_call("create", {
+          ...createInput({
+            operationId: "offline",
+            sourcePath: clone,
+            pathKey: "offline",
+            branchName: "bb/offline",
+          }),
+          baseBranch:
+            base === "default"
+              ? { kind: "default" }
+              : { kind: "named", name: base },
+        });
+        expect(result).toMatchObject({
+          status: "created",
+          baseBranch: lastFetched,
+        });
+        if (result.status !== "created") throw new Error(result.message);
+        expect((await git(result.path, "rev-parse", "HEAD")).trim()).toBe(
+          lastFetchedHead,
+        );
+        expect((await git(clone, "rev-parse", "main")).trim()).toBe(localHead);
+        const progress = progressText(harness);
+        expect(progress).toContain(`Failed to fetch ${lastFetched}`);
+        expect(progress).toContain(
+          `Using the last fetched ${lastFetched} (${lastFetchedHead.slice(0, 7)}`,
+        );
+      } finally {
+        await harness.experimental_dispose();
+      }
+    },
+  );
+
+  it.for(["main", "default"])(
+    "keeps a local base that is ahead without fetching for base %s",
+    async (base, { onTestFinished }) => {
+      const { root, sourcePath, dataDir } =
+        await createSourceRepository(onTestFinished);
+      const clone = join(root, "clone");
+      await git(root, "clone", sourcePath, clone);
+      await writeFile(join(clone, "local.txt"), "local work\n");
+      await git(clone, "add", ".");
+      await git(clone, "commit", "-m", "local work");
+      const localHead = (await git(clone, "rev-parse", "HEAD")).trim();
+      await git(clone, "remote", "set-url", "origin", join(root, "missing"));
+      const harness = createHarness(dataDir);
+      try {
+        const result = await harness.experimental_call("create", {
+          ...createInput({
+            operationId: "offline-ahead",
+            sourcePath: clone,
+            pathKey: "offline-ahead",
+            branchName: "bb/offline-ahead",
+          }),
+          baseBranch:
+            base === "default"
+              ? { kind: "default" }
+              : { kind: "named", name: base },
+        });
+        expect(result).toMatchObject({ status: "created", baseBranch: "main" });
+        if (result.status !== "created") throw new Error(result.message);
+        expect((await git(result.path, "rev-parse", "HEAD")).trim()).toBe(
+          localHead,
+        );
+        expect(progressText(harness)).not.toMatch(/fetch/iu);
+      } finally {
+        await harness.experimental_dispose();
+      }
+    },
+  );
+
+  it("fails when an explicit remote base cannot be fetched", async ({
+    onTestFinished,
+  }) => {
+    const { root, sourcePath, dataDir } =
+      await createSourceRepository(onTestFinished);
+    const clone = join(root, "clone");
+    await git(root, "clone", sourcePath, clone);
+    await git(clone, "remote", "set-url", "origin", join(root, "missing"));
+    const harness = createHarness(dataDir);
+    try {
+      const result = await harness.experimental_call("create", {
+        ...createInput({
+          operationId: "offline-explicit",
+          sourcePath: clone,
+          pathKey: "offline-explicit",
+          branchName: "bb/offline-explicit",
+        }),
+        baseBranch: { kind: "named", name: "origin/main" },
+      });
+      expect(result).toMatchObject({
+        status: "failed",
+        message: expect.stringContaining("git fetch"),
+      });
+      expect(progressText(harness)).not.toContain("Using the last fetched");
+      expect(
+        existsSync(join(dataDir, "worktrees", "offline-explicit", "clone")),
+      ).toBe(false);
+    } finally {
+      await harness.experimental_dispose();
+    }
+  });
+
+  it.skipIf(process.platform === "win32").sequential(
+    "cancels a create whose base fetch is still running",
+    async ({ onTestFinished }) => {
+      const { root, sourcePath, dataDir } =
+        await createSourceRepository(onTestFinished);
+      const clone = join(root, "clone");
+      await git(root, "clone", sourcePath, clone);
+      const sshPidPath = join(root, "ssh.pid");
+      const sshPath = join(root, "hanging-ssh");
+      await writeFile(
+        sshPath,
+        `#!/bin/sh\necho $$ > "${sshPidPath}"\nexec sleep 30\n`,
+        { mode: 0o755 },
+      );
+      await git(clone, "config", "core.sshCommand", sshPath);
+      await git(clone, "remote", "set-url", "origin", "ssh://bb.invalid/repo");
+      const harness = createHarness(dataDir);
+      const controller = new AbortController();
+      const created = harness
+        .experimental_call(
+          "create",
+          {
+            ...createInput({
+              operationId: "cancelled-fetch",
+              sourcePath: clone,
+              pathKey: "cancelled-fetch",
+              branchName: "bb/cancelled-fetch",
+            }),
+            baseBranch: { kind: "named", name: "main" },
+          },
+          { signal: controller.signal },
+        )
+        .catch((error: unknown) => error);
+      await expect
+        .poll(() => existsSync(sshPidPath), { timeout: 10_000 })
+        .toBe(true);
+      controller.abort();
+      expect(await created).toBeInstanceOf(Error);
+      expect(progressText(harness)).not.toContain("Using the last fetched");
+      expect(
+        existsSync(join(dataDir, "worktrees", "cancelled-fetch", "clone")),
+      ).toBe(false);
+      await harness.experimental_dispose();
+    },
+  );
+
+  it.for([
     { existingBranch: false, branchMode: "reset" },
     { existingBranch: false, branchMode: "reuse-existing" },
     { existingBranch: true, branchMode: "reuse-existing" },
     { existingBranch: true, branchMode: "reset" },
   ] as const)(
     "creates with a locked config (existing=$existingBranch, mode=$branchMode)",
-    async ({ existingBranch, branchMode }) => {
-      const { sourcePath, dataDir } = await createSourceRepository();
+    async ({ existingBranch, branchMode }, { onTestFinished }) => {
+      const { sourcePath, dataDir } =
+        await createSourceRepository(onTestFinished);
       await git(sourcePath, "remote", "add", "origin", sourcePath);
       await git(sourcePath, "fetch", "origin");
       await git(sourcePath, "config", "branch.autoSetupMerge", "always");
@@ -199,8 +479,11 @@ describe("worktree host entry", () => {
     },
   );
 
-  it("resolves adoption paths with trailing slashes and symlink aliases", async () => {
-    const { root, sourcePath, dataDir } = await createSourceRepository();
+  it("resolves adoption paths with trailing slashes and symlink aliases", async ({
+    onTestFinished,
+  }) => {
+    const { root, sourcePath, dataDir } =
+      await createSourceRepository(onTestFinished);
     const worktreePath = join(root, "feature");
     await git(sourcePath, "worktree", "add", "-b", "feature", worktreePath);
     const canonicalPath = await realpath(worktreePath);
@@ -218,8 +501,11 @@ describe("worktree host entry", () => {
     }
   });
 
-  it("refuses adoption aliases of the main checkout and managed worktrees", async () => {
-    const { root, sourcePath, dataDir } = await createSourceRepository();
+  it("refuses adoption aliases of the main checkout and managed worktrees", async ({
+    onTestFinished,
+  }) => {
+    const { root, sourcePath, dataDir } =
+      await createSourceRepository(onTestFinished);
     const worktreePath = join(dataDir, "worktrees", "managed");
     await git(sourcePath, "worktree", "add", "-b", "managed", worktreePath);
     const dataAlias = join(root, "data-alias");
@@ -241,8 +527,11 @@ describe("worktree host entry", () => {
     }
   });
 
-  it("preserves adoption failures for missing and prunable worktrees", async () => {
-    const { root, sourcePath, dataDir } = await createSourceRepository();
+  it("preserves adoption failures for missing and prunable worktrees", async ({
+    onTestFinished,
+  }) => {
+    const { root, sourcePath, dataDir } =
+      await createSourceRepository(onTestFinished);
     const worktreePath = join(root, "feature");
     await git(sourcePath, "worktree", "add", "-b", "feature", worktreePath);
     const canonicalPath = await realpath(worktreePath);
@@ -269,8 +558,11 @@ describe("worktree host entry", () => {
     });
   });
 
-  it("resolves the default label from the same refs used for creation", async () => {
-    const { sourcePath, dataDir } = await createSourceRepository();
+  it("resolves the default label from the same refs used for creation", async ({
+    onTestFinished,
+  }) => {
+    const { sourcePath, dataDir } =
+      await createSourceRepository(onTestFinished);
     const harness = createHarness(dataDir);
     expect(
       await harness.experimental_call("defaultBaseBranch", { sourcePath }),
@@ -292,7 +584,7 @@ describe("worktree host entry", () => {
     ).toEqual({ branch: "main" });
   });
 
-  it.each([
+  it.for([
     ["spaces", "Repo With Space", "Repo-With-Space-7373994537587106"],
     ["CJK", "資料庫", "repo-1b2c8c90d27707c4"],
     ["NFC", "café", "cafe-850f7dc43910ff89"],
@@ -300,9 +592,11 @@ describe("worktree host entry", () => {
     ["punctuation only", "!!!", "repo-e84c538e7fe25073"],
   ])(
     "creates and discovers cleanup paths for repository names with %s",
-    async (_label, repositoryName, expectedLeaf) => {
-      const { sourcePath, dataDir } =
-        await createSourceRepository(repositoryName);
+    async ([_label, repositoryName, expectedLeaf], { onTestFinished }) => {
+      const { sourcePath, dataDir } = await createSourceRepository(
+        onTestFinished,
+        repositoryName,
+      );
       const harness = createHarness(dataDir);
       const pathKey = "special-name";
       const result = await harness.experimental_call(
@@ -334,14 +628,17 @@ describe("worktree host entry", () => {
 
   it("creates a bounded worktree path for a long repository name", async ({
     skip,
+    onTestFinished,
   }) => {
     skip(
       process.platform === "win32",
       "Windows cannot start a process whose working directory is longer than MAX_PATH",
     );
     const repositoryName = "repository".repeat(24);
-    const { sourcePath, dataDir } =
-      await createSourceRepository(repositoryName);
+    const { sourcePath, dataDir } = await createSourceRepository(
+      onTestFinished,
+      repositoryName,
+    );
     const harness = createHarness(dataDir);
     const result = await harness.experimental_call(
       "create",
@@ -360,9 +657,13 @@ describe("worktree host entry", () => {
     await harness.experimental_dispose();
   });
 
-  it("provisions the same specially named repository concurrently", async () => {
-    const { sourcePath, dataDir } =
-      await createSourceRepository("Concurrent Repo");
+  it("provisions the same specially named repository concurrently", async ({
+    onTestFinished,
+  }) => {
+    const { sourcePath, dataDir } = await createSourceRepository(
+      onTestFinished,
+      "Concurrent Repo",
+    );
     const harness = createHarness(dataDir);
     const [first, second] = await Promise.all([
       harness.experimental_call(
@@ -395,10 +696,11 @@ describe("worktree host entry", () => {
     await harness.experimental_dispose();
   });
 
-  it.skipIf(process.platform === "win32")(
+  it.skipIf(process.platform === "win32").sequential(
     "settles a cancelled create promptly when Git's children are still running",
-    async () => {
-      const { root, sourcePath, dataDir } = await createSourceRepository();
+    async ({ onTestFinished }) => {
+      const { root, sourcePath, dataDir } =
+        await createSourceRepository(onTestFinished);
       const hookPidPath = join(root, "hook.pid");
       const hookPath = join(sourcePath, ".git", "hooks", "post-checkout");
       await writeFile(
@@ -433,8 +735,11 @@ describe("worktree host entry", () => {
     },
   );
 
-  it("creates a worktree on a named base under the path-key directory", async () => {
-    const { sourcePath, dataDir } = await createSourceRepository();
+  it("creates a worktree on a named base under the path-key directory", async ({
+    onTestFinished,
+  }) => {
+    const { sourcePath, dataDir } =
+      await createSourceRepository(onTestFinished);
     await git(sourcePath, "branch", "release");
     await git(sourcePath, "checkout", "release");
     await writeFile(join(sourcePath, "release.txt"), "release\n");
@@ -463,9 +768,11 @@ describe("worktree host entry", () => {
     await harness.experimental_dispose();
   });
 
-  it("creates on an explicit base from a detached single-branch checkout", async () => {
+  it("creates on an explicit base from a detached single-branch checkout", async ({
+    onTestFinished,
+  }) => {
     const { sourcePath, dataDir } =
-      await createDetachedSingleBranchRepository();
+      await createDetachedSingleBranchRepository(onTestFinished);
     const harness = createHarness(dataDir);
     const result = await harness.experimental_call("create", {
       operationId: "detached",
@@ -485,9 +792,13 @@ describe("worktree host entry", () => {
     await harness.experimental_dispose();
   });
 
-  it("re-runs create with the same path key without replacing a valid worktree", async () => {
-    const { sourcePath, dataDir } =
-      await createSourceRepository("Restartable Repo");
+  it("re-runs create with the same path key without replacing a valid worktree", async ({
+    onTestFinished,
+  }) => {
+    const { sourcePath, dataDir } = await createSourceRepository(
+      onTestFinished,
+      "Restartable Repo",
+    );
     const input = createInput({
       operationId: "first",
       sourcePath,
@@ -510,8 +821,11 @@ describe("worktree host entry", () => {
     await restartedHarness.experimental_dispose();
   });
 
-  it("completes a recovered worktree without running core setup", async () => {
-    const { root, sourcePath, dataDir } = await createSourceRepository();
+  it("completes a recovered worktree without running core setup", async ({
+    onTestFinished,
+  }) => {
+    const { root, sourcePath, dataDir } =
+      await createSourceRepository(onTestFinished);
     const setupMarker = join(root, "setup.marker");
     await writeFile(
       join(sourcePath, ".bb-env-setup.sh"),
@@ -550,8 +864,11 @@ describe("worktree host entry", () => {
     await harness.experimental_dispose();
   });
 
-  it("replaces an invalid target before recreating the expected branch", async () => {
-    const { sourcePath, dataDir } = await createSourceRepository();
+  it("replaces an invalid target before recreating the expected branch", async ({
+    onTestFinished,
+  }) => {
+    const { sourcePath, dataDir } =
+      await createSourceRepository(onTestFinished);
     const harness = createHarness(dataDir);
     const input = createInput({
       operationId: "first",
@@ -573,8 +890,9 @@ describe("worktree host entry", () => {
     await harness.experimental_dispose();
   });
 
-  it("leaves setup execution to core", async () => {
-    const { sourcePath, dataDir } = await createSourceRepository();
+  it("leaves setup execution to core", async ({ onTestFinished }) => {
+    const { sourcePath, dataDir } =
+      await createSourceRepository(onTestFinished);
     await writeFile(
       join(sourcePath, ".bb-env-setup.sh"),
       "#!/usr/bin/env bash\necho setup-line-one\necho setup-line-two\n",
@@ -604,8 +922,11 @@ describe("worktree host entry", () => {
     await harness.experimental_dispose();
   });
 
-  it("leaves a dirty earlier attempt alone when it holds the branch", async () => {
-    const { sourcePath, dataDir } = await createSourceRepository();
+  it("leaves a dirty earlier attempt alone when it holds the branch", async ({
+    onTestFinished,
+  }) => {
+    const { sourcePath, dataDir } =
+      await createSourceRepository(onTestFinished);
     const harness = createHarness(dataDir);
     const first = await harness.experimental_call(
       "create",
@@ -635,14 +956,16 @@ describe("worktree host entry", () => {
     await harness.experimental_dispose();
   });
 
-  it("leaves teardown to core, kills workspace processes, and prunes the path-key parent", async ({
+  it.sequential("leaves teardown to core, kills workspace processes, and prunes the path-key parent", async ({
     skip,
+    onTestFinished,
   }) => {
     skip(
       process.platform === "win32",
       "killProcessesWithCwdUnder does not enumerate process working directories on Windows",
     );
-    const { root, sourcePath, dataDir } = await createSourceRepository();
+    const { root, sourcePath, dataDir } =
+      await createSourceRepository(onTestFinished);
     await writeFile(
       join(sourcePath, ".bb-env-teardown.sh"),
       `#!/usr/bin/env bash\necho teardown-ran > ${join(root, "teardown.marker")}\necho tearing-down\n`,

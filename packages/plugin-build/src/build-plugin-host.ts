@@ -45,7 +45,7 @@ export function experimental_defineHostEntry(args) {
 `;
 
 const PLUGIN_SDK_ROOT_RUNTIME = `
-export const PLUGIN_CLI_OUTPUT_MAX_BYTES = 1024 * 1024;
+export const PLUGIN_CLI_OUTPUT_MAX_BYTES = 32 * 1024 * 1024;
 export function defineRpcContract(contract) { return contract; }
 ${PLUGIN_SDK_DEFINE_HOST_ENTRY_RUNTIME}`;
 

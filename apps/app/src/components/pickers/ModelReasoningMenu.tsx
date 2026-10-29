@@ -276,9 +276,12 @@ export function ModelReasoningMenu({
                       LIST_HOVER_TRANSITION,
                     )}
                   >
-                    {option.label === "Medium" || option.label === "Extra High" ? (
+                    {option.label === "Medium" ||
+                    option.label === "Extra High" ? (
                       <>
-                        <span className="max-[360px]:hidden">{option.label}</span>
+                        <span className="max-[360px]:hidden">
+                          {option.label}
+                        </span>
                         <span className="hidden max-[360px]:inline">
                           {option.label === "Medium" ? "Med" : "XHigh"}
                         </span>
@@ -303,7 +306,7 @@ export function ModelReasoningMenu({
               >
                 <span className="flex min-w-0 items-center gap-2">
                   <Icon
-                    name="Zap"
+                    name={singleServiceTier.icon ?? "Zap"}
                     className="size-4 fill-current text-muted-foreground"
                   />
                   <span>{singleServiceTierText}</span>

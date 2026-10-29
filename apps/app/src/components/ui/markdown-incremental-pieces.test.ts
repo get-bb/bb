@@ -176,12 +176,18 @@ function expectPiecesMatchWholeDocument(
   cache: MarkdownPieceCache,
   content: string,
   label: string,
+  expectedDocuments?: Map<string, RenderedMarkdownDocument>,
 ): void {
   const body = normalizeMathFences(content);
+  let expected = expectedDocuments?.get(body);
+  if (expected === undefined) {
+    expected = renderWholeDocument(body);
+    expectedDocuments?.set(body, expected);
+  }
   expect(
     renderPieces(cache, body),
     `${label}: ${JSON.stringify(body)}`,
-  ).toEqual(renderWholeDocument(body));
+  ).toEqual(expected);
 }
 
 function streamEveryCharacter(document: string, label: string): void {
@@ -530,6 +536,7 @@ describe("resolveMarkdownPieces", () => {
   it.each(STREAMING_MARKDOWN_FIXTURES)(
     "matches single documents for every streamed chunk of the $name fixture",
     ({ name, text }) => {
+      const expectedDocuments = new Map<string, RenderedMarkdownDocument>();
       const settledCache = createMarkdownPieceCache();
       const tailCache = createMarkdownPieceCache();
       const completedCache = createMarkdownPieceCache();
@@ -538,14 +545,39 @@ describe("resolveMarkdownPieces", () => {
         const split = splitStreamingMarkdown(streamed);
         const live = repairStreamingMarkdownTail(split?.tail ?? streamed);
         if (split === null) {
-          expectPiecesMatchWholeDocument(settledCache, live, name);
+          expectPiecesMatchWholeDocument(
+            settledCache,
+            live,
+            name,
+            expectedDocuments,
+          );
         } else {
-          expectPiecesMatchWholeDocument(settledCache, split.settled, name);
-          expectPiecesMatchWholeDocument(tailCache, live, name);
+          expectPiecesMatchWholeDocument(
+            settledCache,
+            split.settled,
+            name,
+            expectedDocuments,
+          );
+          expectPiecesMatchWholeDocument(
+            tailCache,
+            live,
+            name,
+            expectedDocuments,
+          );
         }
       }
-      expectPiecesMatchWholeDocument(settledCache, text, name);
-      expectPiecesMatchWholeDocument(completedCache, text, name);
+      expectPiecesMatchWholeDocument(
+        settledCache,
+        text,
+        name,
+        expectedDocuments,
+      );
+      expectPiecesMatchWholeDocument(
+        completedCache,
+        text,
+        name,
+        expectedDocuments,
+      );
     },
     60_000,
   );

@@ -681,7 +681,13 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
   );
 
   if (layout === null || currentContent === null) return null;
-  if (!splitWorkspaceActive) {
+  const firstPane = panes[0];
+  const singlePane =
+    panes.length === 1 && firstPane !== undefined ? firstPane : null;
+  const keepsSinglePane =
+    singlePane !== null &&
+    (currentContent.kind === "thread" || currentContent.kind === "new-thread");
+  if (!splitWorkspaceActive && !keepsSinglePane) {
     return (
       <StandalonePaneContent
         content={currentContent}
@@ -696,7 +702,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
     );
   }
 
-  const commandHandlers = (
+  const commandHandlers = splitWorkspaceActive ? (
     <SplitPaneCommandHandlers
       closePane={closePane}
       focusPane={(paneId) => {
@@ -709,23 +715,25 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
       panes={panes}
       toggleMaximizePane={toggleMaximizePane}
     />
-  );
+  ) : null;
 
-  const firstPane = panes[0];
-  if (panes.length === 1 && firstPane !== undefined) {
+  if (singlePane !== null) {
+    const singlePaneContent = splitWorkspaceActive
+      ? singlePane.content
+      : currentContent;
     return (
       <>
         {commandHandlers}
         <WorkspacePaneContent
-          content={firstPane.content}
-          paneId={firstPane.paneId}
+          content={singlePaneContent}
+          paneId={singlePane.paneId}
           isFocused
           isSplitPane={false}
           timelineEnabled
           secondaryPanelRegistry={null}
           reservesWindowPanelToggle={false}
           onClosePane={
-            firstPane.content.kind === "new-thread" ? null : closePane
+            singlePaneContent.kind === "new-thread" ? null : closePane
           }
           isMaximized={false}
           onToggleMaximizePane={null}
@@ -1143,6 +1151,7 @@ function StandalonePaneContent({
   if (content.kind === "thread" || content.kind === "new-thread") {
     return (
       <DefaultPaneContextProvider
+        paneId={paneId}
         onRequestClose={onRequestClose}
         navigateInPane={navigateInPane}
       >

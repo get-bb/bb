@@ -7,8 +7,10 @@ description: "Inspect an environment's GitHub pull request, mark it ready or dra
 
 The plugin finds the pull request for an environment's current branch by
 running `gh` in the environment's workspace on its machine, so forks, upstream
-remotes and the machine's own `gh` login apply. The composer banner, the Info
-panel and sidebar plugins read their PR status from it.
+remotes and the machine's own `gh` login apply. The sidebar row badge (the
+number in its state's color, shown when the `threadRowMetadata` experiment and Organize → Rows → Metadata are on), the composer banner, the Info panel and plugin-built
+sidebars read their PR status from it. Pending checks re-check about every 30
+seconds in one batched GitHub request per machine.
 
 ```sh
 bb pull-request show <environment-id> [--json]
@@ -28,10 +30,15 @@ bb pull-request merge <environment-id> [--method merge|squash|rebase] [--json]
   with a message naming the machine.
 - `gh` must be installed and logged in on that machine.
 
+The `showPullRequest` setting (default true) shows the pull request segment
+above the composer. Turn it off with
+`bb plugin config bb--github-pr-status set showPullRequest false`; the Info
+panel's Pull request row stays.
+
 Other plugins read the same data through RPC. `pullRequests` is a keyed read:
 pass up to 200 environment ids and get one row per id. While a client watches
-a row, the plugin re-checks it every 30 seconds when checks are pending,
-auto-merge is on, the PR is queued or mergeability is unknown, and about every 5 minutes for other open PRs. Merged and closed PRs do not poll. It also rechecks after a turn that ran `gh`, or discovers a PR after a turn on a branch without one. Environment status and branch changes refresh; ref changes read the local upstream OID and fetch only when it changes. App reads reuse a "no PR" result for 5 minutes; CLI and RPC reads look again after 10 seconds. After a restart the app shows saved snapshots immediately and refreshes overdue ones in the background; CLI and RPC reads wait for overdue data. Environments sharing a PR share its fetch and timer, and viewers refresh only when the row changes.
+a row, the plugin re-checks an open or draft PR every 30 seconds while any check is pending,
+auto-merge is on, the PR is queued or mergeability is unknown, and about every 5 minutes for other open or draft PRs. Merged and closed PRs do not poll. It also rechecks after a turn that ran `gh`, or discovers a PR after a turn on a branch without one. Environment status and branch changes refresh; ref changes read the local upstream OID and fetch only when it changes. App reads answer at once from what the plugin has and refresh a stale row in the background: open and draft PRs after 30 seconds, merged and closed PRs after an hour, a "no PR" result after 5 minutes. Opening a thread, including by loading the page on it, re-checks its PR on GitHub through `refresh`, whatever the row's age; other views ask again when they first show and each time the page shows again. CLI and RPC reads wait for a row older than 10 seconds. Call `refresh` with `{ environmentId }` to re-check a row on GitHub now; it resolves once the row is current. Saved rows survive a restart. Environments sharing a PR share its fetch and timer, and viewers refresh only when the row changes.
 
 ```ts
 experimental_useRpcKeyedQuery({

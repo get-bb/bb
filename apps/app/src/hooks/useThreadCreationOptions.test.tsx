@@ -13,6 +13,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import {
   hostsQueryKey,
   systemConfigQueryKey,
+  systemExecutionOptionsQueryKey,
   systemProvidersQueryKey,
 } from "./queries/query-keys";
 import { getProjectScopedStorageKey } from "@/lib/project-scoped-storage";
@@ -21,6 +22,7 @@ import {
   providerListCacheKey,
   writeCachedProviderList,
 } from "@/lib/provider-list-cache";
+import { createDeferredPromise } from "@bb/test-helpers";
 import { makeProviderInfo } from "@bb/test-helpers/domain-fixtures";
 import {
   modelCatalogCacheKey,
@@ -153,6 +155,7 @@ function executionOptionsResponse(): SystemExecutionOptionsResponse {
         model: "global-model",
         displayName: "Global Model",
         description: "",
+        reasoningDiscovery: "known" as const,
         supportedReasoningEfforts: [
           { reasoningEffort: "medium", description: "" },
           { reasoningEffort: "high", description: "" },
@@ -165,6 +168,7 @@ function executionOptionsResponse(): SystemExecutionOptionsResponse {
         model: "project-model",
         displayName: "Project Model",
         description: "",
+        reasoningDiscovery: "known" as const,
         supportedReasoningEfforts: [
           { reasoningEffort: "medium", description: "" },
           { reasoningEffort: "high", description: "" },
@@ -193,6 +197,7 @@ function providerExecutionOptionsResponse(
         model: `${modelPrefix}-default`,
         displayName: `${modelPrefix} default`,
         description: "",
+        reasoningDiscovery: "known" as const,
         supportedReasoningEfforts: [
           { reasoningEffort: "low", description: "" },
           { reasoningEffort: "medium", description: "" },
@@ -206,6 +211,7 @@ function providerExecutionOptionsResponse(
         model: `${modelPrefix}-remembered`,
         displayName: `${modelPrefix} remembered`,
         description: "",
+        reasoningDiscovery: "known" as const,
         supportedReasoningEfforts: [
           { reasoningEffort: "medium", description: "" },
           { reasoningEffort: "high", description: "" },
@@ -268,6 +274,7 @@ function claudeExecutionOptionsResponse(): SystemExecutionOptionsResponse {
         model: "claude-opus-4-8[1m]",
         displayName: "Opus 4.8 (1M)",
         description: "",
+        reasoningDiscovery: "known" as const,
         supportedReasoningEfforts: [
           { reasoningEffort: "medium", description: "" },
           { reasoningEffort: "high", description: "" },
@@ -280,6 +287,7 @@ function claudeExecutionOptionsResponse(): SystemExecutionOptionsResponse {
         model: "claude-sonnet-5",
         displayName: "Sonnet 5",
         description: "",
+        reasoningDiscovery: "known" as const,
         supportedReasoningEfforts: [
           { reasoningEffort: "medium", description: "" },
           { reasoningEffort: "high", description: "" },
@@ -327,6 +335,101 @@ afterEach(() => {
 });
 
 describe("useThreadCreationOptions", () => {
+  it("keeps an unprobed selection without reasoning choices until its actual ladder arrives", async () => {
+    const discovery = createDeferredPromise<SystemExecutionOptionsResponse>();
+    const catalog = executionOptionsResponse();
+    const unknown = {
+      ...catalog,
+      models: catalog.models.map((model) => ({
+        ...model,
+        reasoningDiscovery: "unknown" as const,
+        supportedReasoningEfforts: [],
+      })),
+    };
+    vi.mocked(sdk.system.executionOptions).mockImplementation((args) =>
+      args?.selectedModel === "global-model"
+        ? discovery.promise
+        : Promise.resolve(unknown),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () =>
+        useThreadCreationOptions({
+          scope: "component-local",
+          resetKey: "selected-model-discovery",
+          initialProviderId: GLOBAL_PROVIDER_ID,
+          initialModel: "global-model",
+          initialReasoningLevel: "medium",
+          initialPermissionMode: "full",
+        }),
+      { wrapper },
+    );
+    await waitFor(() =>
+      expect(sdk.system.executionOptions).toHaveBeenCalledWith(
+        expect.objectContaining({ selectedModel: "global-model" }),
+      ),
+    );
+    expect(result.current.selectedModel).toBe("global-model");
+    expect(result.current.reasoningOptions).toEqual([]);
+    await act(async () => discovery.resolve(catalog));
+    await waitFor(() =>
+      expect(result.current.reasoningOptions.length).toBeGreaterThan(0),
+    );
+    expect(result.current.selectedModel).toBe("global-model");
+  });
+
+  it("uses refreshed catalog reasoning after selected-model discovery returned no choices", async () => {
+    const catalog = executionOptionsResponse();
+    const unknown = {
+      ...catalog,
+      models: catalog.models.map((model) => ({
+        ...model,
+        reasoningDiscovery: "unknown" as const,
+        supportedReasoningEfforts: [],
+      })),
+    };
+    vi.mocked(sdk.system.executionOptions).mockResolvedValue(unknown);
+    const { wrapper, queryClient } = createQueryClientTestHarness();
+    const routing = {
+      environmentId: null,
+      hostId: null,
+      providerId: GLOBAL_PROVIDER_ID,
+    };
+    const { result } = renderHook(
+      () =>
+        useThreadCreationOptions({
+          scope: "component-local",
+          resetKey: "refreshed-model-discovery",
+          initialProviderId: GLOBAL_PROVIDER_ID,
+          initialModel: "global-model",
+          initialReasoningLevel: "medium",
+          initialPermissionMode: "full",
+        }),
+      { wrapper },
+    );
+    await waitFor(() =>
+      expect(
+        queryClient.getQueryState(
+          systemExecutionOptionsQueryKey({
+            ...routing,
+            selectedModel: "global-model",
+          }),
+        )?.status,
+      ).toBe("success"),
+    );
+    expect(result.current.reasoningOptions).toEqual([]);
+    await act(async () => {
+      queryClient.setQueryData(
+        systemExecutionOptionsQueryKey(routing),
+        catalog,
+      );
+    });
+    await waitFor(() =>
+      expect(result.current.reasoningOptions.length).toBeGreaterThan(0),
+    );
+    expect(result.current.selectedModel).toBe("global-model");
+  });
+
   it("keeps the selected remembered provider branded while models load", () => {
     window.localStorage.setItem("bb.promptbox.provider", "codex");
     writeCachedProviderList(
@@ -447,6 +550,7 @@ describe("useThreadCreationOptions", () => {
           model: "wide-model",
           displayName: "Wide Model",
           description: "",
+          reasoningDiscovery: "known" as const,
           supportedReasoningEfforts: [
             { reasoningEffort: "low", description: "" },
             { reasoningEffort: "medium", description: "" },
@@ -462,6 +566,7 @@ describe("useThreadCreationOptions", () => {
           model: "short-model",
           displayName: "Short Model",
           description: "",
+          reasoningDiscovery: "known" as const,
           supportedReasoningEfforts: [
             { reasoningEffort: "low", description: "" },
             { reasoningEffort: "medium", description: "" },

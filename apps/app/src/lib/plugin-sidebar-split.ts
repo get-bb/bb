@@ -5,12 +5,14 @@ import type {
   PluginSidebarSplitLayout,
   PluginSidebarSplitPane,
   PluginSidebarThreadSplit,
+  PluginSidebarThreadSplitOptions,
 } from "@get-bb/plugin-sdk";
 import { usePaneContentSplitIndicator } from "@/components/sidebar/paneContentSplitIndicator";
 import { useThreadRowSplitDrag } from "@/components/sidebar/useThreadRowSplitDrag";
 import { useThreadTitleDisplayText } from "@/components/thread/ThreadTitleMentions";
 import { getThreadDisplayTitle } from "./thread-title";
-import { useSidebarThreadEntry } from "./plugin-sidebar-hooks";
+import { useSidebarThreadEntries } from "./sidebar-thread-entries";
+import type { DroppedThreadMention } from "./thread-mention-drop";
 import {
   computePaneRects,
   countPanes,
@@ -60,16 +62,33 @@ const NO_SPLIT: PluginSidebarThreadSplit = {
 
 export function useSidebarThreadSplit(
   threadId: string,
+  options?: PluginSidebarThreadSplitOptions,
 ): PluginSidebarThreadSplit {
-  const entry = useSidebarThreadEntry(threadId);
+  const entries = useSidebarThreadEntries();
+  const entry = entries.get(threadId) ?? null;
   const projectId = entry?.projectId ?? "";
   const title = useThreadTitleDisplayText(
     entry ? getThreadDisplayTitle(entry) : "",
   );
+  const dragThreadIds = options?.dragThreadIds;
+  const mentionThreads = useMemo<
+    readonly DroppedThreadMention[] | undefined
+  >(() => {
+    if (dragThreadIds === undefined || dragThreadIds.length < 2) {
+      return undefined;
+    }
+    return dragThreadIds.flatMap((id) => {
+      const dragged = entries.get(id);
+      return dragged === undefined
+        ? []
+        : [{ threadId: id, label: getThreadDisplayTitle(dragged) }];
+    });
+  }, [dragThreadIds, entries]);
   const { onPointerDown } = useThreadRowSplitDrag({
     projectId,
     threadId,
     title,
+    mentionThreads,
   });
   const content = useMemo<PaneContent>(
     () => ({ kind: "thread", projectId, threadId }),

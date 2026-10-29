@@ -799,9 +799,11 @@ describe("requesting a drain", () => {
         vi.useRealTimers();
       }
 
-      for (const thread of threads) {
-        expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
-      }
+      await vi.waitFor(() => {
+        for (const thread of threads) {
+          expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
+        }
+      });
     });
   });
 

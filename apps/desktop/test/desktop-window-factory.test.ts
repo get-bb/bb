@@ -116,6 +116,10 @@ class FakeDesktopWindowWebContents implements DesktopWindowWebContents {
     }
   }
 
+  copyImageAt(): void {}
+
+  downloadURL(): void {}
+
   replaceMisspelling(text: string): void {
     this.replacedMisspellings.push(text);
   }
@@ -306,6 +310,7 @@ async function createFactoryHarness(
       return false;
     },
     openExternalUrl() {},
+    onWindowCreated() {},
     preloadPath: "/tmp/preload.cjs",
     userDataPath: tempDir.path,
     ...overrides,
@@ -334,6 +339,22 @@ describe("desktop window factory", () => {
     expect(window.windowButtonPositions).toEqual([
       { x: MACOS_TRAFFIC_LIGHT_INSET_PX, y },
     ]);
+  });
+
+  it("hands each window over before its first page loads, so the page's IPC is accepted", async () => {
+    const loadedWhenCreated: string[][] = [];
+    const { factory } = await createFactoryHarness({
+      onWindowCreated(browserWindow) {
+        if (!(browserWindow instanceof FakeDesktopWindow))
+          throw new Error("Expected a fake window");
+        loadedWhenCreated.push([...browserWindow.loadedUrls]);
+      },
+    });
+    await factory.createWindow({
+      initialUrl: "http://127.0.0.1:38886",
+      stateKey: null,
+    });
+    expect(loadedWhenCreated).toEqual([[]]);
   });
 
   it("does not register the zoom event for non-Mac windows", async () => {

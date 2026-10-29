@@ -1,31 +1,34 @@
+import {
+  GIT_PLUGIN_ID,
+  type WorkspaceDiffTarget,
+  resolveEnvironmentMergeBaseBranch,
+  type Environment,
+  type Thread,
+  type ThreadEventRow,
+  type ThreadTimelinePendingTodos,
+} from "@bb/domain";
+import {
+  type ThreadGitDiffResponse,
+  type WorkspaceStatus,
+  gitDiffResultSchema,
+  gitStatusResultSchema,
+} from "bb-plugin-bb--git/contract";
 import { prependOlderTimelineRows } from "@bb/client-core";
 import { Command } from "commander";
 import {
   formatThreadTimelineText,
   type ThreadTimelineTextFormat,
 } from "@bb/thread-view";
-import {
-  resolveEnvironmentMergeBaseBranch,
-  type Environment,
-  type Thread,
-  type ThreadEventRow,
-  type ThreadGitDiffResponse,
-  type ThreadTimelinePendingTodos,
-  type WorkspaceStatus,
-} from "@bb/domain";
 import { BbHttpError, type BbSdk } from "@bb/sdk";
 import {
   environmentPullRequestSchema,
-  GITHUB_PR_STATUS_PLUGIN_ID,
   type PullRequest,
 } from "bb-plugin-bb--github-pr-status/contract";
+import { GITHUB_PR_STATUS_PLUGIN_ID } from "bb-plugin-bb--github-pr-status/read-contract";
 import { z } from "zod";
-import type {
-  EnvironmentDiffQuery,
-  ThreadTimelineResponse,
-  TimelineConversationRow,
-} from "@bb/server-contract";
 import {
+  type ThreadTimelineResponse,
+  type TimelineConversationRow,
   THREAD_EVENT_LIST_PAGE_SIZE,
   THREAD_MESSAGE_CONTEXT_LIMIT,
 } from "@bb/server-contract";
@@ -114,9 +117,14 @@ async function fetchWorkStatus(args: {
   mergeBaseBranch: string;
   sdk: BbSdk;
 }): Promise<FetchedWorkStatus> {
-  const environmentStatus = await args.sdk.environments.status({
-    environmentId: args.environmentId,
-    mergeBaseBranch: args.mergeBaseBranch,
+  const environmentStatus = await args.sdk.plugins.callRpc({
+    pluginId: GIT_PLUGIN_ID,
+    method: "workspaceStatus",
+    input: {
+      environmentId: args.environmentId,
+      mergeBaseBranch: args.mergeBaseBranch,
+    },
+    outputSchema: gitStatusResultSchema,
   });
   if (environmentStatus.outcome === "available") {
     return { available: true, status: environmentStatus.workspace };
@@ -129,12 +137,14 @@ async function fetchWorkStatus(args: {
 
 async function fetchGitDiff(args: {
   environmentId: string;
-  query: EnvironmentDiffQuery;
+  target: WorkspaceDiffTarget;
   sdk: BbSdk;
 }): Promise<FetchedGitDiff> {
-  const environmentDiff = await args.sdk.environments.diff({
-    environmentId: args.environmentId,
-    ...args.query,
+  const environmentDiff = await args.sdk.plugins.callRpc({
+    pluginId: GIT_PLUGIN_ID,
+    method: "diff",
+    input: { environmentId: args.environmentId, target: args.target },
+    outputSchema: gitDiffResultSchema,
   });
   if (environmentDiff.outcome === "available") {
     return { available: true, diff: environmentDiff.diff };
@@ -297,18 +307,20 @@ export function registerShowCommand(
                 );
             }
           })();
-          const resolvedQuery: EnvironmentDiffQuery =
+          const target: WorkspaceDiffTarget =
             query.target === "branch_committed" || query.target === "all"
               ? {
-                  target: query.target,
+                  type: query.target,
                   mergeBaseBranch: await requireMergeBaseBranch(
                     query.mergeBaseBranch,
                   ),
                 }
-              : query;
+              : query.target === "commit"
+                ? { type: "commit", sha: query.sha }
+                : { type: "uncommitted" };
           fetchedGitDiff = await fetchGitDiff({
             environmentId: thread.environmentId,
-            query: resolvedQuery,
+            target,
             sdk,
           });
         }

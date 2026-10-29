@@ -588,7 +588,9 @@ const DraggableSectionThreadItemRow = memo(
       disabled: false,
       displace: false,
     });
-    const isActive = sectionDnd.activeItemId === itemId;
+    const isActive =
+      sectionDnd.activeItemId === itemId ||
+      (sectionDnd.draggedThreadIds?.has(itemId) ?? false);
 
     return (
       <ThreadTreeItemRow

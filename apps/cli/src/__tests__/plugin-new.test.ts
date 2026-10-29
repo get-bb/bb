@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PLUGIN_SDK_VERSION } from "@bb/domain";
 import { RESERVED_BB_CLI_COMMANDS } from "@bb/domain/plugin-cli";
+import { hostToolchain } from "@bb/process-utils";
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -196,7 +197,15 @@ describe.sequential("bb plugin new dependency install", () => {
   });
 
   it("falls back to the manual step when npm is not on PATH", async () => {
-    vi.stubEnv("PATH", join(workDir, "empty-bin"));
+    const command = hostToolchain.command.bind(hostToolchain);
+    vi.spyOn(hostToolchain, "command").mockImplementation(
+      (name, args, options) => {
+        const launch = command(name, args, options);
+        return name === "npm"
+          ? { ...launch, command: join(workDir, "empty-bin", "npm") }
+          : launch;
+      },
+    );
 
     await runPluginNew(["no-npm"]);
 

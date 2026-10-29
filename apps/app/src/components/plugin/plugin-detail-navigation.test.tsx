@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { arrayMove } from "@bb/client-core";
@@ -18,13 +24,13 @@ import {
 } from "@/components/secondary-panel/recentlyClosedPanelTabs";
 import { useThreadFileTabs } from "@/components/secondary-panel/useThreadFileTabs";
 import { resetFixedPanelTabsStateForTest } from "@/lib/fixed-panel-tabs";
+import { SecondaryPanelTabStrip } from "@/components/secondary-panel/SecondaryPanelTabStrip";
 
 const selectExisting = vi.fn();
 const closePanel = vi.fn();
 const existingTab = { id: "new-tab:existing", kind: "new-tab" as const };
 const baseProps: ThreadSecondaryPanelProps = {
   activeTab: existingTab,
-  canUseGitUi: false,
   metadataContent: null,
   tabs: [
     {
@@ -156,6 +162,30 @@ function Workspace({
   );
 }
 
+function BulkClosePanel() {
+  const props = usePluginDetailPanelProps({ ...baseProps, tabs: [] });
+  return (
+    <div data-testid="bulk-close" data-active={props.activeTab?.id}>
+      <SecondaryPanelTabStrip
+        activeTabId={props.activeTab?.id ?? null}
+        tabs={props.tabs}
+        onReorderTab={props.onTabReorder}
+        usesDesktopChrome={false}
+        isPanelOpen={props.isOpen}
+      />
+    </div>
+  );
+}
+
+function BulkCloseWorkspace() {
+  const details = usePluginDetailPanelState("bulk-close", true);
+  return (
+    <PluginDetailPanelContext.Provider value={details}>
+      <BulkClosePanel />
+    </PluginDetailPanelContext.Provider>
+  );
+}
+
 function HistoryWorkspace() {
   const tabs = useThreadFileTabs({
     panelStateId: "combined-history",
@@ -237,6 +267,30 @@ afterEach(() => {
 });
 
 describe("plugin details in the active workspace", () => {
+  it.each(["Close other tabs", "Close tabs to the right"])(
+    "%s preserves the selected survivor when the old active tab closes before another tab",
+    (action) => {
+      render(<BulkCloseWorkspace />);
+      for (const pluginId of ["docs", "tasks", "notes"]) {
+        act(() => openPluginDetailsInWorkspace({ pluginId, title: pluginId }));
+      }
+      fireEvent.click(screen.getByRole("button", { name: "tasks" }));
+      fireEvent.contextMenu(screen.getByRole("button", { name: "docs" }));
+      fireEvent.click(screen.getByRole("menuitem", { name: action }));
+
+      expect(screen.queryByRole("button", { name: "tasks" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "notes" })).toBeNull();
+      expect(screen.getByTestId("bulk-close").dataset.active).toBe(
+        "marketplace-plugin:docs",
+      );
+      expect(
+        screen
+          .getByRole("button", { name: "docs" })
+          .getAttribute("aria-pressed"),
+      ).toBe("true");
+    },
+  );
+
   it.each(["keyboard", "remount", "mixed"])(
     "preserves the combined order when restoring after %s close",
     (scenario) => {

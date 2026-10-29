@@ -1,4 +1,8 @@
-import { clientMessageSchema, type PongMessage } from "@bb/domain";
+import {
+  clientMessageSchema,
+  realtimeSubscriptionTargetKey,
+  type PongMessage,
+} from "@bb/domain";
 import { parseSocketMessage } from "./decode-payload.js";
 import type { NotificationHub } from "./hub.js";
 
@@ -30,7 +34,14 @@ export function onClientSocketMessage(
     case "subscribe":
       for (const target of parsed.targets ??
         (parsed.target ? [parsed.target] : [])) {
-        hub.subscribe(socket, target);
+        hub.subscribe(
+          socket,
+          target,
+          parsed.timelineTags === undefined
+            ? undefined
+            : (parsed.timelineTags[realtimeSubscriptionTargetKey(target)] ??
+                null),
+        );
       }
       break;
     case "unsubscribe":

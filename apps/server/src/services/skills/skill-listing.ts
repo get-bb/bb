@@ -1,8 +1,10 @@
+import { firstPerIdentity, skillRegistrationId } from "@bb/skill-index";
 import { Buffer } from "node:buffer";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { resolveDataDirSkillsRootPath } from "@bb/config/skill-storage-paths";
+import { replaceFile } from "@bb/file-transfer";
 import type { DiscoveredSkill, SkillRootKind } from "@bb/host-daemon-contract";
 import type {
   SkillProvider,
@@ -12,6 +14,10 @@ import type {
 import { editableSkillScopeSchema } from "@bb/server-contract";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
+import {
+  remapDaemonFileRouteError,
+  requireDaemonFileContentResult,
+} from "../hosts/daemon-file-response.js";
 import type { AppDeps } from "../../types.js";
 import {
   callHostOnlineRpcForWork,
@@ -30,6 +36,8 @@ import {
   providerHasNativeRootSurface,
   scanProviderNativeRoots,
 } from "../providers/native-roots.js";
+
+type IndexedSkillSummary = SkillSummary & { realPath: string };
 
 const SKILL_FILE_NAME = "SKILL.md";
 const SERVER_SKILL_FILE_LIMIT = 200;
@@ -50,6 +58,12 @@ function hostPathBasename(filePath: string): string {
   return /^[a-zA-Z]:[\\/]/u.test(filePath)
     ? path.win32.basename(filePath)
     : path.posix.basename(filePath);
+}
+
+function hostPathJoin(rootPath: string, segments: readonly string[]): string {
+  return /^[a-zA-Z]:[\\/]/u.test(rootPath)
+    ? path.win32.join(rootPath, ...segments)
+    : path.posix.join(rootPath, ...segments);
 }
 
 function isBundledProviderSkill(filePath: string): boolean {
@@ -122,14 +136,11 @@ function compareSkillSummaries(
 export function assembleSkillList(
   perProvider: readonly ProviderSkillDiscovery[],
 ): SkillSummary[] {
-  const byPath = new Map<string, SkillSummary>();
+  const registrations: SkillSummary[] = [];
   for (const { provider, skills } of perProvider) {
     for (const skill of skills) {
-      if (byPath.has(skill.filePath)) {
-        continue;
-      }
       const mapped = mapSkillScope(provider, skill.rootKind, skill.filePath);
-      byPath.set(skill.filePath, {
+      registrations.push({
         id: skill.id,
         name: skill.name,
         description: skill.description,
@@ -145,22 +156,20 @@ export function assembleSkillList(
       });
     }
   }
-  return [...byPath.values()].sort(compareSkillSummaries);
+  return firstPerIdentity(registrations, (skill) => skill.id).sort(
+    compareSkillSummaries,
+  );
 }
 
-function skillId(identitySeed: string, logicalPath: string): string {
-  return `skill_${createHash("sha256")
-    .update(`${identitySeed}\0${logicalPath}`)
-    .digest("hex")}`;
-}
-
-function listServerOwnedSkills(deps: AppDeps): SkillSummary[] {
-  return resolveServerOwnedSkillCatalogEntries({
-    builtinSkillsRootPath: null,
-    dataDir: deps.config.dataDir,
-    logger: deps.logger,
-    skillTreeRegistry: deps.skillTreeRegistry,
-  })
+async function listServerOwnedSkills(deps: AppDeps): Promise<SkillSummary[]> {
+  return (
+    await resolveServerOwnedSkillCatalogEntries({
+      builtinSkillsRootPath: null,
+      dataDir: deps.config.dataDir,
+      logger: deps.logger,
+      skillTreeRegistry: deps.skillTreeRegistry,
+    })
+  )
     .map(({ runtimeSource }): SkillSummary | null => {
       if (runtimeSource.kind !== "tree") return null;
       const rootPath = path.join(
@@ -169,7 +178,7 @@ function listServerOwnedSkills(deps: AppDeps): SkillSummary[] {
       );
       const logicalPath = `${runtimeSource.name}/${runtimeSource.entryPath}`;
       return {
-        id: skillId("bb-data-dir", logicalPath),
+        id: skillRegistrationId("bb-data-dir", logicalPath),
         name: runtimeSource.name,
         description: runtimeSource.description,
         provider: null,
@@ -184,8 +193,8 @@ function listServerOwnedSkills(deps: AppDeps): SkillSummary[] {
     .sort(compareSkillSummaries);
 }
 
-function listBbPluginSkills(deps: AppDeps): SkillSummary[] {
-  return resolveSkillCatalog(deps)
+async function listBbPluginSkills(deps: AppDeps): Promise<SkillSummary[]> {
+  return (await resolveSkillCatalog(deps))
     .map(({ provenance, runtimeSource }): SkillSummary | null => {
       if (provenance.kind !== "plugin" || runtimeSource.kind !== "tree") {
         return null;
@@ -194,7 +203,10 @@ function listBbPluginSkills(deps: AppDeps): SkillSummary[] {
       if (rootPath === undefined) return null;
       const logicalPath = `${runtimeSource.name}/${runtimeSource.entryPath}`;
       return {
-        id: skillId(`bb-plugin:${provenance.pluginId}`, logicalPath),
+        id: skillRegistrationId(
+          `bb-plugin:${provenance.pluginId}`,
+          logicalPath,
+        ),
         name: runtimeSource.name,
         description: runtimeSource.description,
         provider: null,
@@ -209,10 +221,13 @@ function listBbPluginSkills(deps: AppDeps): SkillSummary[] {
     .sort(compareSkillSummaries);
 }
 
-export async function listProjectSkills(
+async function projectSkillIndex(
   deps: AppDeps,
   args: { workspace: CommandWorkspace },
-): Promise<SkillSummary[]> {
+): Promise<{
+  registrations: IndexedSkillSummary[];
+  entries: IndexedSkillSummary[];
+}> {
   const skillProviders = deps.providerRegistry
     .list()
     .filter(providerHasNativeRootSurface);
@@ -235,12 +250,71 @@ export async function listProjectSkills(
       cwd: args.workspace.cwd,
     }),
   ]);
-  return [
+  const serverSkills = [
+    ...(await listServerOwnedSkills(deps)),
+    ...(await listBbPluginSkills(deps)),
+  ];
+  const identities = new Map(sharedSkills.identities);
+  for (const { skills } of perProvider) {
+    for (const skill of skills)
+      identities.set(skill.id, {
+        contentSha256: skill.contentSha256,
+        realPath: skill.realPath,
+      });
+  }
+  for (const skill of serverSkills) {
+    if (skill.manageable) {
+      const directory = path.dirname(skill.filePath);
+      const stats = await Promise.all(
+        [path.dirname(directory), directory, skill.filePath].map((entry) =>
+          fs.lstat(entry).catch(() => null),
+        ),
+      );
+      skill.manageable = stats.every(
+        (stat) => stat !== null && !stat.isSymbolicLink(),
+      );
+    }
+    const bytes = await fs.readFile(skill.filePath).catch(() => null);
+    const realPath = await fs.realpath(skill.filePath).catch(() => null);
+    if (bytes !== null && realPath !== null)
+      identities.set(skill.id, {
+        contentSha256: createHash("sha256").update(bytes).digest("hex"),
+        realPath,
+      });
+  }
+  const registrations = [
     ...assembleSkillList(perProvider),
     ...sharedSkills.summaries,
-    ...listServerOwnedSkills(deps),
-    ...listBbPluginSkills(deps),
-  ].sort(compareSkillSummaries);
+    ...serverSkills,
+  ]
+    .sort(
+      (left, right) =>
+        Number(left.provider !== null) - Number(right.provider !== null) ||
+        Number(left.scope.endsWith("project")) -
+          Number(right.scope.endsWith("project")) ||
+        compareSkillSummaries(left, right),
+    )
+    .map((skill) => ({
+      ...skill,
+      realPath: identities.get(skill.id)?.realPath ?? skill.filePath,
+    }));
+  return {
+    registrations,
+    entries: firstPerIdentity(
+      registrations,
+      (skill) =>
+        `${skill.name}\0${identities.get(skill.id)?.contentSha256 ?? skill.realPath}`,
+    ),
+  };
+}
+
+export async function listProjectSkills(
+  deps: AppDeps,
+  args: { workspace: CommandWorkspace },
+): Promise<SkillSummary[]> {
+  return (await projectSkillIndex(deps, args)).entries
+    .map(({ realPath: _realPath, ...summary }) => summary)
+    .sort(compareSkillSummaries);
 }
 
 function isServerOwnedSkill(deps: AppDeps, skill: SkillSummary): boolean {
@@ -350,6 +424,7 @@ async function listServerSkillFiles(
     }
   }
   await walk(rootPath);
+  if (!files.includes(SKILL_FILE_NAME)) files.push(SKILL_FILE_NAME);
   files.sort((left, right) => {
     if (left === SKILL_FILE_NAME) return -1;
     if (right === SKILL_FILE_NAME) return 1;
@@ -364,9 +439,9 @@ async function resolveProjectSkill(
     skillId: string;
     workspace: CommandWorkspace;
   },
-): Promise<SkillSummary> {
-  const skills = await listProjectSkills(deps, { workspace: args.workspace });
-  const match = skills.find((skill) => skill.id === args.skillId);
+): Promise<IndexedSkillSummary> {
+  const index = await projectSkillIndex(deps, { workspace: args.workspace });
+  const match = index.registrations.find((skill) => skill.id === args.skillId);
   if (!match) {
     throw new ApiError(404, "not_found", "Skill not found");
   }
@@ -398,13 +473,13 @@ export async function listProjectSkillFiles(
       excludeNames: [...DEFAULT_PATH_LIST_EXCLUDE_NAMES],
     },
   });
-  const files = result.files
-    .map((file) => file.path)
-    .sort((left, right) => {
-      if (left === "SKILL.md") return -1;
-      if (right === "SKILL.md") return 1;
-      return left.localeCompare(right);
-    });
+  const files = [
+    ...new Set([SKILL_FILE_NAME, ...result.files.map((file) => file.path)]),
+  ].sort((left, right) => {
+    if (left === "SKILL.md") return -1;
+    if (right === "SKILL.md") return 1;
+    return left.localeCompare(right);
+  });
   return { files, truncated: result.truncated };
 }
 
@@ -418,7 +493,10 @@ export async function readProjectSkill(
 ): Promise<{ content: string; revision: string }> {
   const skill = await resolveProjectSkill(deps, args);
   if (isServerOwnedSkill(deps, skill)) {
-    const filePath = await resolveServerSkillFile(skill, args.path);
+    const filePath =
+      args.path === SKILL_FILE_NAME
+        ? skill.realPath
+        : await resolveServerSkillFile(skill, args.path);
     const stat = await fs.stat(filePath);
     if (stat.size > SERVER_SKILL_CONTENT_LIMIT_BYTES) {
       throw new ApiError(413, "file_too_large", "Skill file is too large");
@@ -429,24 +507,29 @@ export async function readProjectSkill(
       revision: createHash("sha256").update(contents).digest("hex"),
     };
   }
-  const rootPath = hostPathDirname(skill.filePath);
+  const rootPath = hostPathDirname(
+    args.path === SKILL_FILE_NAME ? skill.realPath : skill.filePath,
+  );
   const result = await callHostRetryableOnlineRpc(deps, {
     hostId: args.workspace.hostId,
     timeoutMs: COMMAND_TIMEOUT_MS,
     command: {
-      type: "host.read_file_relative",
-      followRootSymlink: true,
+      type: "host.read_file",
+      path:
+        args.path === SKILL_FILE_NAME
+          ? skill.realPath
+          : hostPathJoin(rootPath, validateServerSkillRelativePath(args.path)),
       rootPath,
-      path: args.path,
-      dotfiles: "deny",
+      followRootSymlink: true,
     },
-  });
+  }).catch(remapDaemonFileRouteError);
+  const content = requireDaemonFileContentResult(result);
   return {
     content:
-      result.contentEncoding === "utf8"
-        ? result.content
-        : Buffer.from(result.content, "base64").toString("utf8"),
-    revision: result.sha256,
+      content.contentEncoding === "utf8"
+        ? content.content
+        : Buffer.from(content.content, "base64").toString("utf8"),
+    revision: content.sha256,
   };
 }
 
@@ -477,40 +560,15 @@ export async function writeProjectSkill(
   }
   if (editableScope.data === "bb-user" && isServerOwnedSkill(deps, skill)) {
     const skillFilePath = await resolveServerSkillFile(skill, SKILL_FILE_NAME);
-    const currentContents = await fs.readFile(skillFilePath);
-    const currentRevision = createHash("sha256")
-      .update(currentContents)
-      .digest("hex");
-    if (currentRevision !== args.revision) {
+    const result = await replaceFile({
+      contents: Buffer.from(args.content, "utf8"),
+      expectedSha256: args.revision,
+      path: skillFilePath,
+    });
+    if (result.outcome === "conflict") {
       throw new ApiError(409, "conflict", "Skill changed before it was saved");
     }
-    const currentMode = (await fs.stat(skillFilePath)).mode & 0o777;
-    const temporaryPath = `${skillFilePath}.bb-write-${randomUUID()}`;
-    try {
-      const handle = await fs.open(temporaryPath, "wx", currentMode);
-      try {
-        await handle.writeFile(args.content, "utf8");
-        await handle.sync();
-      } finally {
-        await handle.close();
-      }
-      const latestContents = await fs.readFile(skillFilePath);
-      const latestRevision = createHash("sha256")
-        .update(latestContents)
-        .digest("hex");
-      if (latestRevision !== args.revision) {
-        throw new ApiError(
-          409,
-          "conflict",
-          "Skill changed before it was saved",
-        );
-      }
-      await fs.rename(temporaryPath, skillFilePath);
-    } finally {
-      await fs.rm(temporaryPath, { force: true }).catch(() => undefined);
-    }
-    const revision = createHash("sha256").update(args.content).digest("hex");
-    return { filePath: skillFilePath, revision };
+    return { filePath: skillFilePath, revision: result.sha256 };
   }
   if (editableScope.data !== "bb-user" && editableScope.data !== "bb-project") {
     const result = await callHostOnlineRpcForWork(deps, {

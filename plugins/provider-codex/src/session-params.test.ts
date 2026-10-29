@@ -682,6 +682,65 @@ describe("toCodexDynamicTools", () => {
 });
 
 describe("toCodexUserInput", () => {
+  it.each(["/", "$"] as const)(
+    "delivers selected %s skills by path without interpreting unselected commands",
+    (trigger) => {
+      const input: PromptInput[] = [
+        {
+          type: "text",
+          text: `${trigger}teach /plan`,
+          mentions: [
+            {
+              start: 0,
+              end: 6,
+              resource: {
+                kind: "command",
+                trigger,
+                name: "teach",
+                source: "skill",
+                origin: "project",
+                label: "teach",
+                argumentHint: null,
+              },
+            },
+          ],
+        },
+      ];
+      expect(
+        toCodexUserInput(input, [
+          { name: "teach", path: "/workspace/.agents/skills/teach/SKILL.md" },
+        ]),
+      ).toEqual([
+        { type: "text", text: `${trigger}teach /plan`, text_elements: [] },
+        {
+          type: "skill",
+          name: "teach",
+          path: "/workspace/.agents/skills/teach/SKILL.md",
+        },
+      ]);
+      expect(
+        toCodexUserInput(input, [
+          {
+            name: "lesson-planner",
+            path: "/workspace/.agents/skills/teach/SKILL.md",
+          },
+        ]),
+      ).toContainEqual({
+        type: "skill",
+        name: "lesson-planner",
+        path: "/workspace/.agents/skills/teach/SKILL.md",
+      });
+      expect(toCodexUserInput(input, [])).toEqual([
+        { type: "text", text: `${trigger}teach /plan`, text_elements: [] },
+      ]);
+      expect(
+        toCodexUserInput([
+          { type: "text", text: "/teach /plan", mentions: [] },
+        ]),
+      ).toEqual([{ type: "text", text: "/teach /plan", text_elements: [] }]);
+    },
+  );
+
   it("maps every prompt input variant, rendering local files as text", () => {
     const input: PromptInput[] = [
       { type: "text", text: "hello", mentions: [] },

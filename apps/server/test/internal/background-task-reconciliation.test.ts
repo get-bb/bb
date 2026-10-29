@@ -695,13 +695,16 @@ describe("active thread disconnect reconciliation triggers", () => {
       await reopenSessionWithoutThreads(harness, session);
       await vi.advanceTimersByTimeAsync(2_000);
 
-      const parentNotices = listEvents(harness.deps.db, {
-        threadId: parent.id,
-      })
-        .filter((row) => row.type === "client/turn/requested")
-        .map((row) => turnRequestEventDataSchema.parse(JSON.parse(row.data)))
-        .filter((data) => data.initiator === "system");
-      expect(parentNotices).toHaveLength(1);
+      const parentNotices = await vi.waitFor(() => {
+        const notices = listEvents(harness.deps.db, {
+          threadId: parent.id,
+        })
+          .filter((row) => row.type === "client/turn/requested")
+          .map((row) => turnRequestEventDataSchema.parse(JSON.parse(row.data)))
+          .filter((data) => data.initiator === "system");
+        expect(notices).toHaveLength(1);
+        return notices;
+      });
       expect(parentNotices[0]).toMatchObject({
         systemMessageKind: "child-interrupted",
         systemMessageSubject: {

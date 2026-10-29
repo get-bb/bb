@@ -1,0 +1,46 @@
+name: Cache npm downloads
+description: Reuse package downloads while keeping consumer installations fresh.
+outputs:
+  path:
+    description: Directory containing the npm download caches.
+    value: ${{ steps.identity.outputs.path }}
+  key:
+    description: Exact dependency identity for the download snapshot.
+    value: ${{ steps.identity.outputs.key }}
+  cache-hit:
+    description: Whether an exact snapshot was restored.
+    value: ${{ steps.cache.outputs.cache-hit }}
+runs:
+  using: composite
+  steps:
+    - name: Identify npm downloads
+      id: identity
+      shell: node {0}
+      env:
+        DEPENDENCY_INPUTS: ${{ hashFiles('packages/bb-app/package.json', 'pnpm-lock.yaml', '.github/actions/cache-npm-downloads/**') }}
+      run: |
+        const { appendFileSync } = require('node:fs');
+        const { join } = require('node:path');
+        const cache = join(process.env.RUNNER_TEMP, 'bb-npm-downloads');
+        const key = `npm-downloads-v1-${process.platform}-${process.arch}-${process.version}-${process.env.DEPENDENCY_INPUTS}`;
+        appendFileSync(process.env.GITHUB_OUTPUT, `path=${cache}\nkey=${key}\n`);
+    - name: Restore npm downloads
+      id: cache
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      env:
+        SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
+      with:
+        path: |
+          ${{ steps.identity.outputs.path }}/_cacache
+          ${{ steps.identity.outputs.path }}/_prebuilds
+        key: ${{ steps.identity.outputs.key }}
+    - name: Use the restored or empty download cache
+      shell: node {0}
+      env:
+        DOWNLOAD_CACHE: ${{ steps.identity.outputs.path }}
+        CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
+      run: |
+        const { appendFileSync, rmSync } = require('node:fs');
+        const cache = process.env.DOWNLOAD_CACHE;
+        if (process.env.CACHE_HIT !== 'true') rmSync(cache, { recursive: true, force: true });
+        appendFileSync(process.env.GITHUB_ENV, `npm_config_cache=${cache}\n`);

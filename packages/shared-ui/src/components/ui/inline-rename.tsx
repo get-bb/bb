@@ -215,9 +215,10 @@ export function useInlineRename(
     });
   }, [args, start, ownerKey, coarse]);
   const startEditingFromDoubleClick = useCallback(() => {
+    if (coarse) return false;
     startEditing();
     return true;
-  }, [startEditing]);
+  }, [coarse, startEditing]);
 
   useEffect(() => {
     if (

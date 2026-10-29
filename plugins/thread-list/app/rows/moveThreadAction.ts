@@ -4,7 +4,9 @@ import { toast } from "sonner";
 import {
   experimental_THREAD_ACTION_GROUPS,
   experimental_useSidebarThreads,
+  type PluginBrowserBbSdk,
   type PluginThreadActionRegistration,
+  type PluginThreadActionTarget,
 } from "@get-bb/plugin-sdk/app";
 import {
   buildSidebarEntitySectionId,
@@ -22,12 +24,34 @@ export interface ThreadSectionMoveDestination {
 }
 
 const THREADS_CHOICE_ID = "threads";
+const ANCESTORS_BATCH_SIZE = 200;
+
+async function selectedRoots(
+  sdk: PluginBrowserBbSdk,
+  threads: readonly PluginThreadActionTarget[],
+): Promise<PluginThreadActionTarget[]> {
+  const threadIds = threads.map((thread) => thread.id);
+  const selected = new Set(threadIds);
+  const ancestorIds = new Map<string, readonly string[]>();
+  for (let index = 0; index < threadIds.length; index += ANCESTORS_BATCH_SIZE) {
+    const { threads: rows } = await sdk.threads.experimental_listAncestors({
+      threadIds: threadIds.slice(index, index + ANCESTORS_BATCH_SIZE),
+    });
+    for (const row of rows) ancestorIds.set(row.threadId, row.ancestorIds);
+  }
+  return threads.filter(
+    (thread) =>
+      !(ancestorIds.get(thread.id) ?? []).some((id) => selected.has(id)),
+  );
+}
 
 function choiceId(sectionId: string | null): string {
   return sectionId ?? THREADS_CHOICE_ID;
 }
 
-function useMoveDestinations(): readonly ThreadSectionMoveDestination[] | null {
+export function useMoveDestinations():
+  | readonly ThreadSectionMoveDestination[]
+  | null {
   usePreferencesSync();
   const mode = useAtomValue(sidebarOrganizationModeAtom);
   const storedOrder = useAtomValue(sidebarManualSectionOrderAtom);
@@ -118,6 +142,62 @@ export const moveThreadAction: PluginThreadActionRegistration<
         void sdk.threads.update({ threadId, sectionId }).catch(() => {
           toast.error("Failed to move thread.");
         });
+      },
+    };
+  },
+  experimental_bulkItem: ({ threads, data: destinations, sdk }) => {
+    if (destinations === null || destinations.length === 0) return null;
+    const isCurrent = (sectionId: string | null) =>
+      threads.every(
+        (thread) =>
+          thread.pinnedAt === null &&
+          thread.parentThreadId === null &&
+          thread.sectionId === sectionId,
+      );
+    return {
+      label: "Move to section",
+      icon: "SectionMove",
+      choices: {
+        items: destinations.map((destination) => ({
+          id: choiceId(destination.sectionId),
+          label: destination.label,
+          selected: isCurrent(destination.sectionId),
+          disabled: isCurrent(destination.sectionId),
+        })),
+      },
+      run: async ({ value }) => {
+        const destination = destinations.find(
+          (candidate) => choiceId(candidate.sectionId) === value,
+        );
+        if (destination === undefined) return;
+        const { sectionId } = destination;
+        const roots = await selectedRoots(sdk, threads).catch(() => null);
+        if (roots === null) {
+          toast.error("Failed to move threads.");
+          return;
+        }
+        const results = await Promise.allSettled(
+          roots.map(async (thread) => {
+            if (thread.pinnedAt !== null) {
+              await sdk.threads.unpin({ threadId: thread.id });
+            }
+            if (
+              thread.sectionId !== sectionId ||
+              thread.parentThreadId !== null
+            ) {
+              await sdk.threads.update({
+                threadId: thread.id,
+                sectionId,
+                ...(thread.parentThreadId === null
+                  ? {}
+                  : { parentThreadId: null }),
+              });
+            }
+          }),
+        );
+        if (results.some((result) => result.status === "rejected")) {
+          toast.error("Failed to move threads.");
+        }
       },
     };
   },

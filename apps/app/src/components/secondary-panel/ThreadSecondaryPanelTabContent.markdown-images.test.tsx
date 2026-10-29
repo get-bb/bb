@@ -45,7 +45,6 @@ vi.mock("@/hooks/queries/environment-queries", () => ({
   useEnvironment: () => ({
     data: { path: "/workspace", projectId: "proj_preview" },
   }),
-  useEnvironmentDiffFiles: vi.fn(),
   useEnvironmentFilePreview: (_environmentId: string, path: string) =>
     previewQuery(path),
 }));
@@ -95,7 +94,6 @@ describe("secondary-panel Markdown image routing", () => {
         isPanelOpen
         lineRange={null}
         source={{ kind: "working-tree" }}
-        statusLabel={null}
         threadId="thr_preview"
       />,
     );

@@ -1,8 +1,10 @@
-import { useMemo, type ReactNode } from "react";
-import type { OpenInTargetContext } from "@bb/host-daemon-contract";
+import type { ReactNode } from "react";
 import type { SidebarProject } from "@/hooks/queries/project-queries";
 import { findLocalPathProjectSourceForHost } from "@bb/domain";
-import type { PluginFileOpenerSource } from "@get-bb/plugin-sdk";
+import type {
+  ExperimentalLiveFileTarget,
+  PluginFileOpenerSource,
+} from "@get-bb/plugin-sdk";
 import type {
   PluginPanelFixedPanelTab,
   SecondaryFileFixedPanelTab,
@@ -11,6 +13,7 @@ import type { SecondaryPanelPaneRenderContext } from "@/components/secondary-pan
 import {
   LazyFilePreview,
   LazyHostFilePreviewTabContent,
+  LazyHostScopedFilePreviewTabContent,
   LazyNewTabPage,
   LazyProjectFilePreviewTabContent,
   LazyThreadStorageFilePreviewTabContent,
@@ -30,14 +33,10 @@ import {
 } from "@/components/plugin/file-opener-tabs";
 import { useEnvironment } from "@/hooks/queries/environment-queries";
 import { useThreadStorageLocation } from "@/hooks/queries/thread-panel-queries";
-import { useHostDaemon } from "@/hooks/useHostDaemon";
-import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
-import {
-  buildOpenInEditorHandler,
-  resolveEnvironmentOpenContext,
-} from "./thread-detail/threadWorkspaceOpenPath";
+import { useCanOpenFileExternally } from "@/hooks/useCanOpenFileExternally";
+import { useAppNavigationHost } from "@/lib/app-navigation-host";
 import { getFilePreviewLineRangeStart } from "@bb/client-core";
-import { resolveAbsoluteFilePath } from "@/lib/absolute-file-path";
+import { resolveAbsoluteFilePath } from "@bb/shared-ui/lib/absolute-file-path";
 import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 
@@ -93,20 +92,6 @@ interface RootComposeFilePreviewTabContentProps {
   rootPanelThreadId: string | null;
   rootProjectHostId: string | null;
   tab: FileOpenerOriginalTab;
-}
-
-function resolveHostOpenContext(args: {
-  hostId: string | null;
-  isLocal: boolean;
-  serverOrigin: string;
-}): OpenInTargetContext | null {
-  if (args.hostId === null) return null;
-  if (args.isLocal) return { kind: "local" };
-  return {
-    kind: "remote-ssh",
-    serverOrigin: args.serverOrigin,
-    hostId: args.hostId,
-  };
 }
 
 export function resolveRootComposeProjectFileRouting({
@@ -365,84 +350,69 @@ function RootComposeFilePreviewTabContent({
       : projectFilePreviewRouting.environmentId !== null
         ? (environment?.hostId ?? null)
         : projectSourceRoutingHostId;
-  const { isLocalDaemonHost } = useHostDaemon();
-  const serverOrigin = window.location.origin;
-  const environmentOpenContext = resolveEnvironmentOpenContext({
-    environment,
-    threadEnvironmentIsLocal: environment
-      ? isLocalDaemonHost(environment.hostId)
-      : false,
-    serverOrigin,
-  });
-  const projectOpenContext = resolveHostOpenContext({
-    hostId: projectPreviewHostId,
-    isLocal: isLocalDaemonHost(projectPreviewHostId),
-    serverOrigin,
-  });
-  const openContext =
-    tab.kind === "workspace-file-preview" && tab.environmentId === null
-      ? projectOpenContext
-      : environmentOpenContext;
-  const { canOpenPreferredFileTarget, openPathInPreferredFileTarget } =
-    useLocalOpenTargets({
-      enabled: openContext !== null,
-      ...(openContext ? { openContext } : {}),
-    });
   const workspaceRootPath = environment?.path ?? null;
-  const relativeFileRootPath =
-    tab.kind === "workspace-file-preview"
-      ? tab.environmentId === null
-        ? projectPreviewRootPath
-        : workspaceRootPath
+  const projectPreviewPath = resolveAbsoluteFilePath({
+    path: tab.path,
+    rootPath: projectPreviewRootPath,
+  });
+  const externalFileTarget: ExperimentalLiveFileTarget | null =
+    tab.kind === "host-file-preview"
+      ? environment
+        ? { kind: "host", hostId: environment.hostId, path: tab.path }
+        : null
       : tab.kind === "thread-storage-file-preview"
-        ? threadStorageRootPath
-        : null;
-  const openRelativeFileInEditor = useMemo(
-    () =>
-      buildOpenInEditorHandler({
-        rootPath: relativeFileRootPath,
-        canOpenPreferredTarget: canOpenPreferredFileTarget,
-        openInPreferredTarget: openPathInPreferredFileTarget,
-      }),
-    [
-      canOpenPreferredFileTarget,
-      openPathInPreferredFileTarget,
-      relativeFileRootPath,
-    ],
-  );
+        ? storageThreadId
+          ? {
+              kind: "thread-storage",
+              threadId: storageThreadId,
+              path: tab.path,
+            }
+          : null
+        : tab.environmentId !== null
+          ? environmentId
+            ? { kind: "workspace", environmentId, path: tab.path }
+            : null
+          : projectPreviewHostId !== null && projectPreviewPath !== null
+            ? {
+                kind: "host",
+                hostId: projectPreviewHostId,
+                path: projectPreviewPath,
+              }
+            : null;
+  const canOpenFileExternally = useCanOpenFileExternally(externalFileTarget);
+  const { openFileExternally } = useAppNavigationHost();
   const hostFileLineNumber = getFilePreviewLineRangeStart({
     lineRange: tab.kind === "host-file-preview" ? tab.lineRange : null,
   });
-  const openHostFileInEditor =
-    tab.kind === "host-file-preview" && canOpenPreferredFileTarget
-      ? (path: string) => {
-          void openPathInPreferredFileTarget({
-            lineNumber: hostFileLineNumber,
-            path,
+  const onOpenInEditor =
+    externalFileTarget !== null && canOpenFileExternally
+      ? () => {
+          openFileExternally({
+            target: externalFileTarget,
+            location:
+              hostFileLineNumber === null
+                ? null
+                : { kind: "line", line: hostFileLineNumber, column: null },
           });
         }
       : undefined;
-  const onOpenInEditor =
-    tab.kind === "host-file-preview"
-      ? openHostFileInEditor
-      : openRelativeFileInEditor;
 
   useAppCommandHandler("workspace.openPreferred", () => {
     if (!isFocused || onOpenInEditor === undefined) return false;
-    onOpenInEditor(tab.path);
+    onOpenInEditor();
     return true;
   });
 
   let original: ReactNode;
   switch (tab.kind) {
     case "workspace-file-preview": {
-      const copyPath = resolveAbsoluteFilePath({
-        path: tab.path,
-        rootPath:
-          tab.environmentId === null
-            ? projectPreviewRootPath
-            : workspaceRootPath,
-      });
+      const copyPath =
+        tab.environmentId === null
+          ? projectPreviewPath
+          : resolveAbsoluteFilePath({
+              path: tab.path,
+              rootPath: workspaceRootPath,
+            });
       original =
         tab.environmentId !== null ? (
           <LazyWorkspaceFilePreviewTabContent
@@ -454,7 +424,6 @@ function RootComposeFilePreviewTabContent({
             onOpenInEditor={onOpenInEditor}
             onSelectionAddToChat={onSelectionAddToChat}
             source={tab.source}
-            statusLabel={tab.statusLabel}
             threadId={imageThreadId}
           />
         ) : projectPreviewId !== null ? (
@@ -487,7 +456,15 @@ function RootComposeFilePreviewTabContent({
           ? (tab.threadId ?? rootPanelThreadId)
           : fileOpenerSource.threadId;
       original =
-        threadId && environmentId ? (
+        tab.hostId !== null ? (
+          <LazyHostScopedFilePreviewTabContent
+            activePath={tab.path}
+            hostId={tab.hostId}
+            isPanelOpen={isPanelOpen}
+            lineRange={tab.lineRange}
+            onOpenInEditor={onOpenInEditor}
+          />
+        ) : threadId && environmentId ? (
           <LazyHostFilePreviewTabContent
             activePath={tab.path}
             copyPath={tab.path}

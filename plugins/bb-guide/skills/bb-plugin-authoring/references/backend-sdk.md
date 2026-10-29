@@ -26,7 +26,7 @@ signatures (see "Looking up the exact API" in distribution.md).
   `storagePaths` `cancelPlan` `clearGoal` `defaultExecutionOptions`
   `restoreEnvironment` `getPluginMetadata` `updatePluginMetadata`
   `experimental_listPluginMetadata` `experimental_listAncestors`
-  `experimental_listDescendants`; sub-areas `events` (`list` `wait`),
+  `experimental_listDescendants` `experimental_listCascade`; sub-areas `events` (`list` `wait`),
   `interactions` (`get` `list` `cancel` `resolve` `respond`), `queue`
   (`list`), `queuedMessages` (`create` `list` `update` `delete` `send`
   `reorder` `setGroupBoundary` `experimental_holdForEdit`
@@ -39,9 +39,8 @@ signatures (see "Looking up the exact API" in distribution.md).
   `deleteMachineEnvironmentVariable`; sub-areas `attachments` (`upload` `read`
   `copy`), `sources` (`add` `update` `delete`)
 - `experimental_promptHistory`: `list`
-- `environments`: `list` `listProviders` `get` `update` `delete` `status`
-  `paths` `commit` `archiveThreads` `diff` `diffFile` `diffFiles`
-  `diffBranches` `diffPatch` `experimental_cleanup`
+- `environments`: `list` `listProviders` `get` `update` `delete` `paths`
+  `commit` `archiveThreads` `experimental_cleanup`
   `experimental_diffViewed` `experimental_markDiffViewed`
   `experimental_clearDiffViewed`
 - `hosts`: `list` `get` `update` `delete` `directory` `pathsExist`
@@ -121,6 +120,13 @@ handOver(input, { experimental_caller: caller }) {
 },
 ```
 
+The context's `experimental_signal` aborts when the caller stops waiting
+(its HTTP request disconnects) or when this plugin generation is reloaded,
+disabled or removed. Pass it to long work and stop when it aborts.
+`bb.sdk.plugins.callRpc` gives up after 75 seconds, which disconnects the
+request and aborts the handler's signal; build longer operations as a job the
+caller polls.
+
 ### Thread plugin metadata
 
 Each plugin can keep a JSON-object namespace on a thread. Seed your namespace
@@ -165,7 +171,11 @@ omits threads without it.
 ancestor ids from its parent up to the root, and
 `bb.sdk.threads.experimental_listDescendants({ threadIds })` every thread below
 it, children first (1–200 ids per call), leaving out archived and hidden ones
-unless you pass `includeArchived` or `includeHidden`. Pair them with
+unless you pass `includeArchived` or `includeHidden`.
+`bb.sdk.threads.experimental_listCascade({ threadIds, action })` returns, for
+`action` `"archive"` or `"delete"`, the visible threads that archiving or
+deleting each thread would also affect, following the same parent and
+lifecycle-owner links the action does. Pair them with
 `experimental_listPluginMetadata` to read a setting that a parent applies to its
 subtree. `bb.events.on("experimental_thread.parentChanged", handler)` fires after
 a thread moves to a new parent or loses its parent (a `threads.update` of
@@ -295,6 +305,12 @@ it the right save path even locally):
 ```ts
 const file = await bb.sdk.files.read({ path: "/home/me/notes/todo.md" });
 // → { content, contentEncoding, sha256, sizeBytes, modifiedAtMs?, ... }
+
+const atHead = await bb.sdk.files.read({
+  path: "/home/me/repo/src/app.ts",
+  rootPath: "/home/me/repo",
+  ref: "HEAD", // read the file at a git revision; requires rootPath
+});
 
 const saved = await bb.sdk.files.write({
   path: "/home/me/notes/todo.md",

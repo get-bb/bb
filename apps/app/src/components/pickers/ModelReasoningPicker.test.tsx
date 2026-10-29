@@ -25,6 +25,7 @@ import { systemExecutionOptionsQueryKey } from "@/hooks/queries/query-keys";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { setPluginAssetIcons } from "@bb/shared-ui/icon-registry";
 import {
   PaneContext,
   type PaneContextValue,
@@ -132,6 +133,7 @@ function availableModel({
     model: value,
     displayName: label,
     description: "",
+    reasoningDiscovery: "known" as const,
     supportedReasoningEfforts: [
       { reasoningEffort: "medium", description: "Medium" },
     ],
@@ -936,6 +938,7 @@ describe("ModelReasoningPicker", () => {
               label: "Claude Opus 4.7",
               isDefault: true,
             }),
+            reasoningDiscovery: "known" as const,
             supportedReasoningEfforts: [
               { reasoningEffort: "medium", description: "Medium" },
               { reasoningEffort: "high", description: "High" },
@@ -992,46 +995,36 @@ describe("ModelReasoningPicker", () => {
     expect(screen.getByRole("button", { name: "Exit handoff" })).not.toBeNull();
   });
 
-  it.each([
-    {
-      label: "fetches every sibling",
-      locked: false,
-      expected: ["cursor", "pi"],
-    },
-    { label: "fetches nothing", locked: true, expected: [] },
-  ])(
-    "$label on the routed host when opened with switching locked: $locked",
-    async ({ locked, expected }) => {
-      vi.mocked(sdk.system.executionOptions).mockImplementation(
-        () => new Promise<SystemExecutionOptionsResponse>(() => undefined),
-      );
-      renderPicker({
-        ...(locked ? { onSelectedProviderChange: null } : {}),
-        providerRouting: { hostId: "h1" },
-        pickerProviderOptions: [
-          { value: "codex", label: "Codex" },
-          { value: "cursor", label: "Cursor" },
-          { value: "pi", label: "Pi" },
-        ],
-      });
-      expect(sdk.system.executionOptions).not.toHaveBeenCalled();
+  it("loads no other provider on open and prefetches only the hovered tab on the routed host", async () => {
+    vi.mocked(sdk.system.executionOptions).mockImplementation(
+      () => new Promise<SystemExecutionOptionsResponse>(() => undefined),
+    );
+    renderPicker({
+      providerRouting: { hostId: "h1" },
+      pickerProviderOptions: [
+        { value: "codex", label: "Codex" },
+        { value: "cursor", label: "Cursor" },
+        { value: "pi", label: "Pi" },
+      ],
+    });
+    const requested = () =>
+      vi
+        .mocked(sdk.system.executionOptions)
+        .mock.calls.map(([args]) => `${args?.hostId}/${args?.providerId}`);
 
-      fireEvent.click(
-        screen.getByRole("button", { name: "Provider, model and reasoning" }),
-      );
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 20));
-      });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+    fireEvent.pointerEnter(screen.getByTitle("Codex"));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(screen.getByRole("dialog")).not.toBeNull();
+    expect(requested()).toEqual([]);
 
-      expect(screen.getByRole("dialog")).not.toBeNull();
-      expect(
-        vi
-          .mocked(sdk.system.executionOptions)
-          .mock.calls.map(([args]) => `${args?.hostId}/${args?.providerId}`)
-          .sort(),
-      ).toEqual(expected.map((providerId) => `h1/${providerId}`));
-    },
-  );
+    fireEvent.pointerEnter(screen.getByTitle("Pi"));
+    await vi.waitFor(() => expect(requested()).toEqual(["h1/pi"]));
+  });
 
   it("loads provider models on the compose-selected host", async () => {
     renderPicker({ providerRouting: { hostId: "host-remote" } });
@@ -1342,6 +1335,7 @@ describe("buildModelNavRows", () => {
 
 describe("ModelReasoningPicker service tiers", () => {
   beforeAll(() => ModelReasoningMenu.preload());
+  afterEach(() => setPluginAssetIcons(new Map()));
 
   const fast = { id: "fast", label: "Fast", description: "1.5x speed" };
   const ultrafast = { id: "ultrafast", label: "Ultrafast" };
@@ -1430,6 +1424,33 @@ describe("ModelReasoningPicker service tiers", () => {
     });
 
     expect(screen.getByTitle(/\(Ultrafast mode\)$/)).toBeTruthy();
+  });
+
+  it.each([
+    ["fast", "Zap"],
+    ["ultrafast", "provider-codex/ultrafast"],
+  ])("shows the %s tier's icon on the trigger", (tier, icon) => {
+    setPluginAssetIcons(
+      new Map([["provider-codex/ultrafast", "/icons/ultrafast.svg"]]),
+    );
+    renderPicker({
+      serviceTierOptions: [
+        fast,
+        { ...ultrafast, icon: "provider-codex/ultrafast" },
+      ],
+      serviceTierValue: tier,
+    });
+
+    const trigger = screen.getByRole("button", {
+      name: "Provider, model and reasoning",
+    });
+    const icons = [...trigger.querySelectorAll("[data-icon]")].map((node) =>
+      node.getAttribute("data-icon"),
+    );
+    expect(icons).toContain(icon);
+    expect(icons).not.toContain(
+      icon === "Zap" ? "provider-codex/ultrafast" : "Zap",
+    );
   });
 
   it("lists agent options below the models and reports each change", () => {

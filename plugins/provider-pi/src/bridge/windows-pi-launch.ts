@@ -1,6 +1,6 @@
 import { readFileSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
-import { whichCommandSync } from "which-command";
+import { experimental_hostToolchain as hostToolchain } from "@get-bb/plugin-sdk/process";
 import { z } from "zod";
 
 const piPackageSchema = z.object({
@@ -104,25 +104,11 @@ export function resolveWindowsPiProcessLaunch(
   cwd: string,
 ): { command: string; args: string[] } {
   if (process.platform !== "win32") return launch;
-  const keys = Object.keys(env).sort();
-  const options = {
-    cwd,
-    path: env[keys.find((key) => key.toUpperCase() === "PATH") ?? "PATH"] ?? "",
-    pathExt:
-      env[keys.find((key) => key.toUpperCase() === "PATHEXT") ?? "PATHEXT"] ??
-      ".COM;.EXE;.BAT;.CMD",
-  };
-  const executable = whichCommandSync(launch.command, options);
-  if (executable === undefined) return launch;
+  const executable = hostToolchain.resolve(launch.command, { env, cwd });
+  if (executable === null) return launch;
   const unwrapped = resolvePiNpmShim(
     executable,
-    whichCommandSync("node", {
-      ...options,
-      pathExt: options.pathExt
-        .split(path.delimiter)
-        .filter((extension) => extension.toLowerCase() !== ".js")
-        .join(path.delimiter),
-    }) ?? "node",
+    hostToolchain.resolve("node.exe", { env, cwd }) ?? "node",
   );
   return unwrapped === null
     ? launch

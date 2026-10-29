@@ -27,7 +27,6 @@ import {
   ComposerCommand,
   ComposerCommandOwnerProvider,
 } from "./composer-commands";
-import { useComposerCommandPrefetch } from "./composer-search";
 
 type PublishedEditor = Pick<
   ExperimentalComposerEditor,
@@ -160,17 +159,6 @@ export function ComposerRoot({
     };
   }, [menuOpen, menuRef, reportMenuLayout]);
 
-  const prefetchCommands = useComposerCommandPrefetch();
-  useEffect(() => {
-    const element = rootRef.current;
-    if (element === null) return;
-    if (element.contains(element.ownerDocument.activeElement)) {
-      prefetchCommands();
-    }
-    element.addEventListener("focusin", prefetchCommands);
-    return () => element.removeEventListener("focusin", prefetchCommands);
-  }, [prefetchCommands, rootRef]);
-
   useEffect(() => {
     const element = rootRef.current;
     if (element === null) return;
@@ -181,8 +169,8 @@ export function ComposerRoot({
       element.closest<HTMLElement>("[data-promptbox-shell]") ?? element;
     const unregisterDrop = registerThreadMentionDropTarget(dropTarget, {
       accepts: () => editorRef.current.acceptsThreadDrop(),
-      insert: (thread, x, y) =>
-        editorRef.current.insertDroppedThread(thread, x, y),
+      insert: (threads, x, y) =>
+        editorRef.current.insertDroppedThreads(threads, x, y),
     });
     return () => {
       unregisterFocus();

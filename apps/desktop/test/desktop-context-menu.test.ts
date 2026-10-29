@@ -7,7 +7,8 @@ import {
 } from "../src/desktop-context-menu.js";
 
 const popup = vi.fn();
-const { writeClipboardText } = vi.hoisted(() => ({
+const { openExternal, writeClipboardText } = vi.hoisted(() => ({
+  openExternal: vi.fn(),
   writeClipboardText: vi.fn(),
 }));
 
@@ -19,6 +20,9 @@ vi.mock("electron", () => ({
     buildFromTemplate(template: MenuItemConstructorOptions[]) {
       return { popup, template };
     },
+  },
+  shell: {
+    openExternal,
   },
 }));
 
@@ -51,9 +55,11 @@ const DEFAULT_MEDIA_FLAGS = {
 
 interface FakeWebContents extends Pick<
   DesktopContextMenuWebContents,
-  "replaceMisspelling" | "session"
+  "copyImageAt" | "downloadURL" | "replaceMisspelling" | "session"
 > {
   addedDictionaryWords: string[];
+  copiedImagePoints: Array<{ x: number; y: number }>;
+  downloadedUrls: string[];
   replacedMisspellings: string[];
   spellCheckerEnabledValues: boolean[];
 }
@@ -94,12 +100,22 @@ function createContextMenuParams(
 
 function createFakeWebContents(): FakeWebContents {
   const addedDictionaryWords: string[] = [];
+  const copiedImagePoints: Array<{ x: number; y: number }> = [];
+  const downloadedUrls: string[] = [];
   const replacedMisspellings: string[] = [];
   const spellCheckerEnabledValues: boolean[] = [];
   return {
     addedDictionaryWords,
+    copiedImagePoints,
+    downloadedUrls,
     replacedMisspellings,
     spellCheckerEnabledValues,
+    copyImageAt(x, y) {
+      copiedImagePoints.push({ x, y });
+    },
+    downloadURL(url) {
+      downloadedUrls.push(url);
+    },
     replaceMisspelling(text) {
       replacedMisspellings.push(text);
     },
@@ -194,24 +210,89 @@ describe("desktop context menu", () => {
     ]);
   });
 
-  it("copies a link target", () => {
-    const webContents = createFakeWebContents();
+  it("opens or copies a web link target", () => {
+    const url = "https://example.com/device";
     const template = buildDesktopContextMenuTemplate({
-      webContents,
+      webContents: createFakeWebContents(),
       params: createContextMenuParams({
-        linkURL: "https://example.com/device",
+        linkURL: url,
+        pageURL: "http://localhost:38886/threads/thr_1",
       }),
+    });
+
+    expect(template).toEqual([
+      { label: "Open in Browser", click: expect.any(Function) },
+      { label: "Copy Link", click: expect.any(Function) },
+    ]);
+
+    clickMenuItem(template[0]);
+    clickMenuItem(template[1]);
+
+    expect(openExternal).toHaveBeenCalledWith(url);
+    expect(writeClipboardText).toHaveBeenCalledWith(url);
+  });
+
+  it.each([
+    ["mailto:team@example.com", ""],
+    [
+      "http://localhost:38886/threads/thr_2",
+      "http://localhost:38886/threads/thr_1",
+    ],
+  ])("offers only Copy Link for non-web link %s", (linkURL, pageURL) => {
+    const template = buildDesktopContextMenuTemplate({
+      webContents: createFakeWebContents(),
+      params: createContextMenuParams({ linkURL, pageURL }),
     });
 
     expect(template).toEqual([
       { label: "Copy Link", click: expect.any(Function) },
     ]);
+  });
+
+  it("copies or saves the image under the pointer", () => {
+    const webContents = createFakeWebContents();
+    const srcURL = "blob:http://localhost:38886/3f0c";
+    const template = buildDesktopContextMenuTemplate({
+      webContents,
+      params: createContextMenuParams({
+        x: 120,
+        y: 48,
+        mediaType: "image",
+        srcURL,
+        hasImageContents: true,
+      }),
+    });
+
+    expect(template).toEqual([
+      { label: "Copy Image", enabled: true, click: expect.any(Function) },
+      { label: "Save Image As…", click: expect.any(Function) },
+    ]);
 
     clickMenuItem(template[0]);
+    clickMenuItem(template[1]);
 
-    expect(writeClipboardText).toHaveBeenCalledWith(
-      "https://example.com/device",
-    );
+    expect(webContents.copiedImagePoints).toEqual([{ x: 120, y: 48 }]);
+    expect(webContents.downloadedUrls).toEqual([srcURL]);
+  });
+
+  it("offers link and image actions for a linked image", () => {
+    const template = buildDesktopContextMenuTemplate({
+      webContents: createFakeWebContents(),
+      params: createContextMenuParams({
+        linkURL: "https://example.com/full.png",
+        mediaType: "image",
+        srcURL: "https://example.com/thumb.png",
+        hasImageContents: false,
+      }),
+    });
+
+    expect(template).toMatchObject([
+      { label: "Open in Browser" },
+      { label: "Copy Link" },
+      { type: "separator" },
+      { label: "Copy Image", enabled: false },
+      { label: "Save Image As…" },
+    ]);
   });
 
   it("groups selected-text actions together", () => {
@@ -250,6 +331,7 @@ describe("desktop context menu", () => {
     });
 
     expect(template).toMatchObject([
+      { label: "Open in Browser" },
       { label: "Copy Link" },
       { type: "separator" },
       { role: "copy", enabled: true },

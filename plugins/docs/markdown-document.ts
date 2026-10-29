@@ -71,3 +71,11 @@ export function parseMarkdownDocument(content: string): MarkdownDocument {
 
   return { frontmatter: "", body: content, title: null };
 }
+
+export function documentHeading(content: string): string | null {
+  const document = parseMarkdownDocument(content);
+  if (document.title) return document.title;
+  const first = document.body.split("\n").find((line) => line.trim());
+  const heading = first?.match(/^\s{0,3}#{1,6}[\t ]+(.+?)[\t ]*#*[\t ]*$/);
+  return heading?.[1] ?? null;
+}

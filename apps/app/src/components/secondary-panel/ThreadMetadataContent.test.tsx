@@ -20,12 +20,9 @@ import {
   makeHost,
   makeThread as makeThreadFixture,
 } from "@bb/test-helpers/domain-fixtures";
-import { makeWorkspaceMergeBase, makeWorkspaceStatus } from "@bb/test-helpers";
 import {
   EnvironmentProvisioningFailureRow,
   EnvironmentRow,
-  formatBranchComparison,
-  GitStatusRow,
 } from "./ThreadMetadataContent";
 
 const localHost = { locality: "local", identity: null } as const;
@@ -305,116 +302,5 @@ describe("EnvironmentProvisioningFailureRow", () => {
     expect(markup).toContain("Environment");
     expect(markup).toContain("Not created");
     expect(markup).toContain("provisioning failed");
-  });
-});
-
-describe("GitStatusRow", () => {
-  it("qualifies counts when squash detection is incomplete", () => {
-    const markup = renderToStaticMarkup(
-      <TooltipProvider>
-        <GitStatusRow
-          thread={makeThread()}
-          environment={null}
-          workspaceStatus={makeWorkspaceStatus({
-            mergeBase: makeWorkspaceMergeBase({
-              aheadCount: 3,
-              squashMergeCheckComplete: false,
-            }),
-          })}
-          workspaceStatusError={null}
-        />
-      </TooltipProvider>,
-    );
-    expect(markup).toContain("3 ahead of main");
-    expect(markup).toContain(
-      'aria-label="Squash-merge check incomplete; counts may include already-merged commits."',
-    );
-    expect(markup).not.toContain(">Squash-merge check incomplete");
-  });
-
-  it("shows no live git status for an archived attached checkout", () => {
-    const markup = renderToStaticMarkup(
-      <GitStatusRow
-        thread={makeThread({ archivedAt: 10, environmentId: "env_checkout" })}
-        environment={makeEnvironment({
-          id: "env_checkout",
-          environmentProviderId: "project-checkout",
-          managed: false,
-        })}
-        workspaceStatus={undefined}
-        workspaceStatusError={new Error("should not have queried")}
-      />,
-    );
-
-    expect(markup).toBe("");
-  });
-
-  it("compares the branch with the merge base the daemon reported", () => {
-    const render = (
-      mergeBase: ReturnType<typeof makeWorkspaceMergeBase> | null,
-    ) =>
-      renderToStaticMarkup(
-        <GitStatusRow
-          thread={makeThread()}
-          environment={null}
-          workspaceStatus={makeWorkspaceStatus({ mergeBase })}
-          workspaceStatusError={null}
-        />,
-      );
-
-    expect(
-      render(
-        makeWorkspaceMergeBase({ mergeBaseBranch: "release", aheadCount: 2 }),
-      ),
-    ).toContain("2 ahead of release");
-    expect(render(null)).toBe("");
-  });
-
-  it("keeps the last known comparison when a refresh fails and flags it as stale", () => {
-    const render = (workspaceStatusError: Error | null) =>
-      renderToStaticMarkup(
-        <TooltipProvider>
-          <GitStatusRow
-            thread={makeThread()}
-            environment={null}
-            workspaceStatus={makeWorkspaceStatus({
-              mergeBase: makeWorkspaceMergeBase({
-                mergeBaseBranch: "main",
-                aheadCount: 3,
-              }),
-            })}
-            workspaceStatusError={workspaceStatusError}
-          />
-        </TooltipProvider>,
-      );
-
-    const stale = render(new Error("bb connect hit a temporary problem"));
-    expect(stale).toContain("3 ahead of main");
-    expect(stale).toContain(
-      "Couldn&#x27;t refresh: Workspace status unavailable. Showing the last known status.",
-    );
-    expect(render(null)).not.toContain("Couldn&#x27;t refresh");
-  });
-
-  it("shows the failure when no status has loaded", () => {
-    const markup = renderToStaticMarkup(
-      <GitStatusRow
-        thread={makeThread()}
-        environment={null}
-        workspaceStatus={undefined}
-        workspaceStatusError={new Error("bb connect hit a temporary problem")}
-      />,
-    );
-
-    expect(markup).toContain("Workspace status unavailable");
-  });
-
-  it("phrases the branch comparison against its merge base", () => {
-    const compare = (aheadCount: number, behindCount: number) =>
-      formatBranchComparison({ aheadCount, behindCount, baseBranch: "main" });
-    expect(compare(0, 0)).toBe("Even with main");
-    expect(compare(6, 0)).toBe("6 ahead of main");
-    expect(compare(0, 3)).toBe("3 behind main");
-    expect(compare(4, 2)).toBe("4 ahead, 2 behind main");
   });
 });

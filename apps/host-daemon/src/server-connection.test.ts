@@ -96,7 +96,8 @@ function createServerClientFixture(args: CreateServerClientFixtureArgs = {}) {
   const serverClient = {
     openSession,
     fetchProjectAttachment: unused,
-    fetchSkillTree: unused,
+    fetchSkillTreeManifest: unused,
+    fetchSkillTreeContent: unused,
     fetchPluginHostArtifact: unused,
     postEvents: unused,
     callTool: unused,

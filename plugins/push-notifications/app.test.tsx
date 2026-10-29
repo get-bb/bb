@@ -58,7 +58,8 @@ describe("device notification settings", () => {
   });
 });
 
-const { useBbNavigate, useSdk } = await import("@get-bb/plugin-sdk/app");
+const { experimental_useAppPanel, useBbNavigate, useSdk } =
+  await import("@get-bb/plugin-sdk/app");
 const { notificationsThreadAction } = await import("./notificationsAction.js");
 
 function makeTarget(
@@ -68,6 +69,7 @@ function makeTarget(
     id: "thr_top",
     projectId: "proj_test",
     parentThreadId: null,
+    parentNotifications: "auto",
     archivedAt: null,
     pinnedAt: null,
     sectionId: null,
@@ -79,20 +81,39 @@ function makeTarget(
 }
 
 type ItemFor = (thread: PluginThreadActionTarget) => PluginThreadAction | null;
+type BulkItemFor = (
+  threads: readonly PluginThreadActionTarget[],
+) => PluginThreadAction | null;
 
 function Probe({
   threadIds,
   onItem,
 }: {
   threadIds: readonly string[];
-  onItem(item: ItemFor): void;
+  onItem(item: ItemFor, bulkItem: BulkItemFor): void;
 }) {
   const data = notificationsThreadAction.useData!({ threadIds });
   const sdk = useSdk();
   const navigate = useBbNavigate();
+  const experimental_panel = experimental_useAppPanel();
   useLayoutEffect(() => {
-    onItem((thread) =>
-      notificationsThreadAction.item({ thread, data, sdk, navigate }),
+    onItem(
+      (thread) =>
+        notificationsThreadAction.item({
+          thread,
+          data,
+          sdk,
+          navigate,
+          experimental_panel,
+        }),
+      (threads) =>
+        notificationsThreadAction.experimental_bulkItem?.({
+          threads,
+          data,
+          sdk,
+          navigate,
+          experimental_panel,
+        }) ?? null,
     );
   });
   return null;
@@ -103,8 +124,10 @@ function renderNotifications(
   threadIds: readonly string[],
 ) {
   let itemFor: ItemFor | null = null;
-  const onItem = (next: ItemFor) => {
+  let bulkItemFor: BulkItemFor | null = null;
+  const onItem = (next: ItemFor, nextBulk: BulkItemFor) => {
     itemFor = next;
+    bulkItemFor = nextBulk;
   };
   let current = stored;
   const listInput =
@@ -158,10 +181,14 @@ function renderNotifications(
             action.choices?.items.find((choice) => choice.selected)?.id ?? null,
         };
   };
+  const bulkItem = (targets: readonly Partial<PluginThreadActionTarget>[]) =>
+    bulkItemFor?.(targets.map(makeTarget)) ?? null;
   return {
     view,
     item,
+    bulkItem,
     summary,
+    stored: () => current,
     show(ids: readonly string[]) {
       view.rerender(<Probe threadIds={ids} onItem={onItem} />);
     },
@@ -172,6 +199,45 @@ function renderNotifications(
 }
 
 describe("thread notifications action", () => {
+  it("summarizes a selection and sets the level on every active selected thread", async () => {
+    const { bulkItem, stored } = renderNotifications(
+      {
+        thr_a: { own: "muted", ancestorCap: null },
+        thr_b: { own: "muted", ancestorCap: null },
+        thr_c: { own: "all", ancestorCap: null },
+      },
+      ["thr_a", "thr_b", "thr_c", "thr_d"],
+    );
+    const shared = [{ id: "thr_a" }, { id: "thr_b" }];
+    await waitFor(() => expect(bulkItem(shared)?.detail).toBe("Muted"));
+    expect(
+      bulkItem(shared)?.choices?.items.find((choice) => choice.selected)?.id,
+    ).toBe("muted");
+    const mixed = bulkItem([{ id: "thr_a" }, { id: "thr_c" }]);
+    expect(mixed?.detail).toBe("Mixed");
+    expect(mixed?.icon).toBe("BellDot");
+    expect(mixed?.choices?.items.some((choice) => choice.selected)).toBe(false);
+    expect(
+      bulkItem([
+        { id: "thr_a", archivedAt: 1 },
+        { id: "thr_b", archivedAt: 1 },
+      ]),
+    ).toBeNull();
+    await act(() =>
+      bulkItem([
+        { id: "thr_a" },
+        { id: "thr_c" },
+        { id: "thr_d", archivedAt: 1 },
+      ])!.run({ value: "input-only", requestRename: () => {} }),
+    );
+    expect(stored()).toMatchObject({
+      thr_a: { own: "input-only" },
+      thr_b: { own: "muted" },
+      thr_c: { own: "input-only" },
+    });
+    expect(stored()).not.toHaveProperty("thr_d");
+  });
+
   it("resolves each shown thread's level and hint", async () => {
     const { summary } = renderNotifications(
       {

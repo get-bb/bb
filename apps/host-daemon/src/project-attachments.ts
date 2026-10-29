@@ -7,7 +7,7 @@ export interface FetchProjectAttachmentArgs {
 }
 
 export interface FetchedProjectAttachment {
-  bytes: Uint8Array;
+  content: AsyncIterable<Uint8Array>;
 }
 
 export type FetchProjectAttachment = (

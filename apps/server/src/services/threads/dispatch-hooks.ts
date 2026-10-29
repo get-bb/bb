@@ -409,7 +409,7 @@ export async function runMessageDispatchHookPass(
 
     for (const hook of hooks) {
       const invocation = await provider.invokeHook(
-        hook.pluginId,
+        hook,
         "message.dispatch hook",
         () =>
           decideWithinBox(

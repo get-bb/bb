@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import { act, cleanup, createEvent, fireEvent, render, waitFor } from "@testing-library/react";
 import { DndContext, useDraggable } from "@dnd-kit/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useSidebarReorderDnd } from "@/components/ui/use-sidebar-reorder-dnd";
@@ -57,6 +57,85 @@ describe("SidebarTouchSensor", () => {
     await waitFor(() => expect(onDragStart).toHaveBeenCalledTimes(1));
     expect(row.hasAttribute("data-sidebar-touch-armed")).toBe(false);
     fireEvent.touchEnd(row, { touches: [] });
+    expect(onDragEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports the end of a drag released in the same task that started it", async () => {
+    const onDragStart = vi.fn();
+    const onDragEnd = vi.fn();
+    function Harness() {
+      const { dndContextProps } = useSidebarReorderDnd({
+        onDragStart,
+        onDragEnd,
+        touchSensor: SidebarTouchSensor,
+      });
+      return <DndContext {...dndContextProps}><DraggableRow /></DndContext>;
+    }
+    const { getByText } = render(<Harness />);
+    const row = getByText("Thread");
+
+    fireEvent.touchStart(row, { touches: [{ identifier: 1, clientX: 10, clientY: 10 }] });
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 550)));
+    const actEnvironment = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+    Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", false);
+    try {
+      row.dispatchEvent(createEvent.touchMove(row, { touches: [{ identifier: 1, clientX: 40, clientY: 10 }] }));
+      row.dispatchEvent(createEvent.touchEnd(row, { touches: [], changedTouches: [{ identifier: 1, clientX: 40, clientY: 10 }] }));
+    } finally {
+      Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", actEnvironment);
+    }
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+
+    expect(onDragStart).toHaveBeenCalledTimes(1);
+    expect(onDragEnd).toHaveBeenCalledTimes(1);
+    expect(document.body.dataset.sidebarDragging).toBeUndefined();
+  });
+
+  it("claims touchmoves once armed so native scroll and drawer swipes cannot run alongside the drag", async () => {
+    function Harness() {
+      const { dndContextProps } = useSidebarReorderDnd({
+        onDragEnd: vi.fn(),
+        touchSensor: SidebarTouchSensor,
+      });
+      return <DndContext {...dndContextProps}><DraggableRow /></DndContext>;
+    }
+    const { getByText } = render(<Harness />);
+    const row = getByText("Thread");
+
+    fireEvent.touchStart(row, { touches: [{ clientX: 10, clientY: 10 }] });
+    expect(fireEvent.touchMove(row, { touches: [{ clientX: 13, clientY: 10 }] })).toBe(true);
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 550)));
+    expect(fireEvent.touchMove(row, { touches: [{ clientX: 18, clientY: 10 }] })).toBe(false);
+    fireEvent.touchEnd(row, { touches: [] });
+  });
+
+  it("ends the drag when the touched row remounts mid-drag", async () => {
+    const onDragStart = vi.fn();
+    const onDragEnd = vi.fn();
+    function Harness({ rowKey }: { rowKey: string }) {
+      const { dndContextProps } = useSidebarReorderDnd({
+        onDragStart,
+        onDragEnd,
+        touchSensor: SidebarTouchSensor,
+      });
+      return <DndContext {...dndContextProps}><DraggableRow key={rowKey} /></DndContext>;
+    }
+    const { getByText, rerender } = render(<Harness rowKey="before" />);
+    const row = getByText("Thread");
+
+    fireEvent.touchStart(row, { touches: [{ clientX: 10, clientY: 10 }] });
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 550)));
+    fireEvent.touchMove(row, { touches: [{ clientX: 10, clientY: 40 }] });
+    await waitFor(() => expect(onDragStart).toHaveBeenCalledTimes(1));
+
+    rerender(<Harness rowKey="after" />);
+    expect(row.isConnected).toBe(false);
+    fireEvent.touchEnd(row, { touches: [] });
+    await waitFor(() => expect(onDragEnd).toHaveBeenCalledTimes(1));
+
+    const remounted = getByText("Thread");
+    fireEvent.touchStart(remounted, { touches: [{ clientX: 50, clientY: 50 }] });
+    fireEvent.touchEnd(remounted, { touches: [] });
     expect(onDragEnd).toHaveBeenCalledTimes(1);
   });
 

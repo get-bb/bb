@@ -9,8 +9,6 @@ import {
   type ReactNode,
   type UIEvent,
 } from "react";
-import { UncommittedChangesSection } from "./info/ChangesSection";
-import { CommitsSection } from "./info/CommitsSection";
 import {
   ForksSection,
   ChildThreadsSection,
@@ -32,13 +30,9 @@ import {
 import { Link } from "react-router-dom";
 import type {
   Environment,
-  GitBranchRefClassification,
   Thread,
   ThreadListEntry,
-  ThreadParentNotifications,
-  WorkspaceStatus,
 } from "@bb/domain";
-import type { WorkspaceResolutionFailure } from "@bb/host-daemon-contract";
 import {
   formatEnvironmentDisplay,
   type EnvironmentDisplayHostContext,
@@ -53,7 +47,6 @@ import { useSystemMachineProviders } from "@/hooks/queries/machine-provider-quer
 import { useHosts } from "@/hooks/queries/host-queries";
 import { useProjectDisplayName } from "@/hooks/queries/sidebar-navigation-query";
 import { MachineIcon } from "@/components/machines/MachineLabel";
-import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { Button } from "@bb/shared-ui/button";
 import { COARSE_POINTER_TEXT_SM_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { CopyableInlineLabel } from "@/components/ui/copy-button.js";
@@ -66,27 +59,13 @@ import {
 import { useCreateThreadInEnvironment } from "@/hooks/useCreateThreadInEnvironment";
 import { Icon } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
-import {
-  BranchPicker,
-  getMergeBaseBranchCandidateGroups,
-} from "@/components/pickers/BranchPicker";
 import { ThreadUnarchiveButton } from "@/components/thread/ThreadUnarchiveButton";
-import {
-  selectWorkspaceChangedFilesSections,
-  type WorkspaceChangedFileSelection,
-} from "@/components/workspace/workspace-change-summary";
-import {
-  getGitStatusDisplay,
-  SquashMergeInfo,
-} from "@/components/workspace/workspace-status";
 import {
   useUnarchiveThread,
   useUpdateThread,
 } from "../../hooks/mutations/thread-state-mutations";
-import {
-  OptionPicker,
-  type PickerOption,
-} from "@/components/pickers/OptionPicker";
+import { OptionPicker } from "@/components/pickers/OptionPicker";
+import { PARENT_NOTIFICATIONS_OPTIONS } from "@/lib/parent-notifications";
 import { buildParentSelectorOptions } from "@/views/thread-detail/threadParentSelectorOptions";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { ThreadTitle } from "@/components/thread/ThreadTitleMentions";
@@ -202,21 +181,6 @@ export function ParentSelectorRow({
   );
 }
 
-const PARENT_NOTIFICATIONS_OPTIONS: readonly PickerOption<ThreadParentNotifications>[] =
-  [
-    {
-      value: "auto",
-      label: "Auto",
-      description: "Every finished turn, failure, and blocker",
-    },
-    {
-      value: "stuck",
-      label: "When stuck",
-      description: "Only failures, interruptions, and blockers",
-    },
-    { value: "off", label: "Off", description: "Never" },
-  ];
-
 interface ParentNotificationsRowProps {
   thread: Thread;
 }
@@ -229,7 +193,7 @@ export function ParentNotificationsRow({
   });
   if (thread.parentThreadId === null) return null;
   return (
-    <DetailRow icon="BellDot" label="Notify parent">
+    <DetailRow icon="Megaphone02" label="Notify parent">
       <OptionPicker
         label="Notify parent"
         value={thread.parentNotifications}
@@ -456,273 +420,6 @@ function WorkspacePathValue({ path }: { path: string }) {
   );
 }
 
-interface BranchRowProps {
-  workspaceStatus: WorkspaceStatus | undefined;
-}
-
-export function BranchRow({ workspaceStatus }: BranchRowProps) {
-  const checkoutDisplay = workspaceStatus
-    ? formatWorkspaceCheckoutDisplay({ checkout: workspaceStatus.checkout })
-    : null;
-  if (checkoutDisplay === null) return null;
-  return (
-    <DetailRow icon="GitBranch" label={checkoutDisplay.rowLabel}>
-      {checkoutDisplay.copyValue !== null ? (
-        <span className="block truncate">
-          <CopyableInlineLabel
-            text={checkoutDisplay.copyValue}
-            label={checkoutDisplay.copyLabel ?? "Copy checkout value"}
-            title={checkoutDisplay.title}
-            successMessage={
-              checkoutDisplay.copySuccessMessage ?? "Value copied"
-            }
-            errorMessage={
-              checkoutDisplay.copyErrorMessage ?? "Failed to copy value"
-            }
-          >
-            {checkoutDisplay.label}
-          </CopyableInlineLabel>
-        </span>
-      ) : (
-        <span className="block truncate" title={checkoutDisplay.title}>
-          {checkoutDisplay.label}
-        </span>
-      )}
-    </DetailRow>
-  );
-}
-
-function resolveDisplayedMergeBaseBranch(
-  selectedMergeBaseBranch: string | undefined,
-  workspaceStatus: WorkspaceStatus | undefined,
-): string | undefined {
-  return (
-    selectedMergeBaseBranch ??
-    workspaceStatus?.mergeBase?.mergeBaseBranch ??
-    workspaceStatus?.branch.defaultBranch
-  );
-}
-
-function shouldShowWorkspaceStatus({
-  thread,
-  environment,
-  workspaceStatus,
-  workspaceStatusError,
-  workspaceUnavailable,
-}: Pick<
-  ThreadMetadataContentProps,
-  | "thread"
-  | "environment"
-  | "workspaceStatus"
-  | "workspaceStatusError"
-  | "workspaceUnavailable"
->): boolean {
-  return (
-    (Boolean(workspaceStatus) ||
-      Boolean(workspaceStatusError) ||
-      Boolean(workspaceUnavailable) ||
-      environment?.status === "destroyed") &&
-    !(thread.archivedAt != null && environment?.managed !== true)
-  );
-}
-
-interface MergeBaseRowProps {
-  workspaceStatus: WorkspaceStatus | undefined;
-  selectedMergeBaseBranch: string | undefined;
-  mergeBaseBranchRef?: GitBranchRefClassification | null;
-  mergeBaseBranchOptions: readonly string[] | undefined;
-  mergeBaseRemoteBranchOptions?: readonly string[];
-  isLoadingMergeBaseBranchOptions: boolean;
-  onMergeBaseBranchChange: (branch: string) => void;
-  onMergeBasePickerOpenChange?: (open: boolean) => void;
-  onMergeBaseBranchSearchQueryChange?: (query: string) => void;
-  defaultOpen?: boolean;
-}
-
-export function formatBranchComparison({
-  aheadCount,
-  behindCount,
-  baseBranch,
-}: {
-  aheadCount: number;
-  behindCount: number;
-  baseBranch: string;
-}): string {
-  if (aheadCount > 0 && behindCount > 0) {
-    return `${aheadCount} ahead, ${behindCount} behind ${baseBranch}`;
-  }
-  if (aheadCount > 0) return `${aheadCount} ahead of ${baseBranch}`;
-  if (behindCount > 0) return `${behindCount} behind ${baseBranch}`;
-  return `Even with ${baseBranch}`;
-}
-
-export function MergeBaseRow({
-  workspaceStatus,
-  selectedMergeBaseBranch,
-  mergeBaseBranchRef,
-  mergeBaseBranchOptions,
-  mergeBaseRemoteBranchOptions,
-  isLoadingMergeBaseBranchOptions,
-  onMergeBaseBranchChange,
-  onMergeBasePickerOpenChange,
-  onMergeBaseBranchSearchQueryChange,
-  defaultOpen,
-}: MergeBaseRowProps) {
-  const mergeBaseBranch = resolveDisplayedMergeBaseBranch(
-    selectedMergeBaseBranch,
-    workspaceStatus,
-  );
-  const mergeBaseCandidateGroups = useMemo(
-    () =>
-      getMergeBaseBranchCandidateGroups({
-        mergeBaseBranch,
-        mergeBaseBranchRef,
-        mergeBaseBranchOptions,
-        remoteMergeBaseBranchOptions: mergeBaseRemoteBranchOptions,
-      }),
-    [
-      mergeBaseBranch,
-      mergeBaseBranchOptions,
-      mergeBaseBranchRef,
-      mergeBaseRemoteBranchOptions,
-    ],
-  );
-  const mergeBaseCandidates = mergeBaseCandidateGroups.options;
-  const remoteMergeBaseCandidates = mergeBaseCandidateGroups.remoteOptions;
-  const isOnDefaultBranch =
-    workspaceStatus?.branch.currentBranch != null &&
-    workspaceStatus.branch.currentBranch ===
-      workspaceStatus.branch.defaultBranch;
-  const showMergeBase = Boolean(mergeBaseBranch) && !isOnDefaultBranch;
-  if (!showMergeBase) return null;
-  const canRequestMergeBaseOptions =
-    mergeBaseBranchOptions === undefined &&
-    onMergeBasePickerOpenChange !== undefined;
-  const canSelectMergeBase = Boolean(
-    mergeBaseBranch &&
-    (canRequestMergeBaseOptions ||
-      isLoadingMergeBaseBranchOptions ||
-      mergeBaseCandidates.length > 0 ||
-      remoteMergeBaseCandidates.length > 0),
-  );
-
-  return (
-    <DetailRow icon="GitMerge" label="Merge base">
-      {canSelectMergeBase && mergeBaseBranch ? (
-        <BranchPicker
-          value={mergeBaseBranch}
-          options={mergeBaseCandidates}
-          remoteOptions={remoteMergeBaseCandidates}
-          variant="minimal"
-          emphasizeTriggerValue={false}
-          loading={
-            isLoadingMergeBaseBranchOptions || canRequestMergeBaseOptions
-          }
-          onChange={onMergeBaseBranchChange}
-          onOpenChange={onMergeBasePickerOpenChange}
-          onSearchQueryChange={onMergeBaseBranchSearchQueryChange}
-          className="max-w-full"
-          defaultOpen={defaultOpen}
-        />
-      ) : (
-        <span className="min-w-0 truncate">{mergeBaseBranch}</span>
-      )}
-    </DetailRow>
-  );
-}
-
-interface GitStatusRowProps {
-  thread: Thread;
-  environment: Environment | null;
-  workspaceStatus: WorkspaceStatus | undefined;
-  workspaceStatusError: Error | null;
-  workspaceUnavailable?: WorkspaceResolutionFailure;
-}
-
-export function GitStatusRow({
-  thread,
-  environment,
-  workspaceStatus,
-  workspaceStatusError,
-  workspaceUnavailable,
-}: GitStatusRowProps) {
-  if (
-    !shouldShowWorkspaceStatus({
-      thread,
-      environment,
-      workspaceStatus,
-      workspaceStatusError,
-      workspaceUnavailable,
-    })
-  ) {
-    return null;
-  }
-  if (workspaceStatus) {
-    const mergeBase = workspaceStatus.mergeBase;
-    if (!mergeBase?.mergeBaseBranch) return null;
-    const refreshFailure = workspaceStatusError
-      ? `Couldn't refresh: ${getGitStatusDisplay(undefined, {
-          error: workspaceStatusError,
-        }).summary.replace(/\.$/, "")}. Showing the last known status.`
-      : null;
-    return (
-      <DetailRow icon="FileDiff" label="Git status">
-        <span className="flex min-w-0 items-center gap-1.5">
-          <span className="block min-w-0 truncate text-foreground">
-            {formatBranchComparison({
-              aheadCount: mergeBase.aheadCount,
-              behindCount: mergeBase.behindCount,
-              baseBranch: mergeBase.mergeBaseBranch,
-            })}
-          </span>
-          {refreshFailure ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span
-                  role="img"
-                  aria-label={refreshFailure}
-                  className="flex shrink-0 items-center"
-                >
-                  <Icon
-                    name="AlertTriangle"
-                    className="size-3 text-warning"
-                    aria-hidden
-                  />
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>{refreshFailure}</TooltipContent>
-            </Tooltip>
-          ) : null}
-          {!mergeBase.squashMergeCheckComplete ? <SquashMergeInfo /> : null}
-        </span>
-      </DetailRow>
-    );
-  }
-
-  const display = getGitStatusDisplay(undefined, {
-    error: workspaceStatusError,
-    workspaceUnavailable,
-    workspaceDeleted: environment?.status === "destroyed",
-  });
-  return (
-    <DetailRow icon="FileDiff" label="Git status" align="start">
-      <span className="flex min-w-0 items-center gap-1.5">
-        <Icon
-          name="AlertTriangle"
-          className="size-3 shrink-0 text-warning"
-          aria-hidden
-        />
-        <span
-          className="min-w-0 truncate text-foreground"
-          title={display.summary}
-        >
-          {display.summary.replace(/\.$/, "")}
-        </span>
-      </span>
-    </DetailRow>
-  );
-}
-
 interface ArchivedRowProps {
   thread: Thread;
 }
@@ -760,26 +457,12 @@ export interface ThreadMetadataContentProps {
   environment: Environment | null;
   environmentProvisioningFailure: boolean;
   environmentDisplayHost: EnvironmentDisplayHostContext;
-  workspaceStatus: WorkspaceStatus | undefined;
-  workspaceStatusError: Error | null;
-  workspaceUnavailable?: WorkspaceResolutionFailure;
   threadEnvironmentId: string | null;
-  selectedMergeBaseBranch: string | undefined;
-  mergeBaseBranchRef?: GitBranchRefClassification | null;
-  mergeBaseBranchOptions: readonly string[] | undefined;
-  mergeBaseRemoteBranchOptions?: readonly string[];
-  isLoadingMergeBaseBranchOptions: boolean;
   updateThreadPending: boolean;
   storage?: ThreadStorageSectionProps;
   onAssignParent: (parentThreadId: string | null) => void;
   onParentSelectorOpenChange: (open: boolean) => void;
   onRetryParentThreads: () => void;
-  onMergeBaseBranchChange: (branch: string) => void;
-  onMergeBasePickerOpenChange?: (open: boolean) => void;
-  onMergeBaseBranchSearchQueryChange?: (query: string) => void;
-  onChangedFileClick?: (selection: WorkspaceChangedFileSelection) => void;
-  onCommitClick?: (sha: string) => void;
-  onOpenChangedFile?: (path: string) => void;
 }
 
 export function hasAnyThreadMetadata(
@@ -787,40 +470,17 @@ export function hasAnyThreadMetadata(
     thread,
     environment,
     environmentProvisioningFailure,
-    workspaceStatus,
-    workspaceStatusError,
-    workspaceUnavailable,
   }: Pick<
     ThreadMetadataContentProps,
-    | "thread"
-    | "environment"
-    | "environmentProvisioningFailure"
-    | "workspaceStatus"
-    | "workspaceStatusError"
-    | "workspaceUnavailable"
+    "thread" | "environment" | "environmentProvisioningFailure"
   >,
   hasForks: boolean,
 ): boolean {
   const parentThreadId = thread.parentThreadId ?? undefined;
-  const showWorkspaceStatus = shouldShowWorkspaceStatus({
-    thread,
-    environment,
-    workspaceStatus,
-    workspaceStatusError,
-    workspaceUnavailable,
-  });
-  const branchName = workspaceStatus?.branch.currentBranch ?? null;
-  const workspaceChangedFilesSections =
-    selectWorkspaceChangedFilesSections(workspaceStatus);
-  const showThreadChangedFiles = workspaceChangedFilesSections.length > 0;
-
   return Boolean(
     parentThreadId ||
     environment ||
     environmentProvisioningFailure ||
-    branchName ||
-    showWorkspaceStatus ||
-    showThreadChangedFiles ||
     thread.archivedAt != null ||
     hasForks,
   );
@@ -883,11 +543,6 @@ function useThreadInfoHost(): ThreadMetadataContentProps {
   return host;
 }
 
-function useIsThreadInfoHostActive(): boolean {
-  const { environment } = useThreadInfoHost();
-  return environment === null || environment.hostLifecycle === "active";
-}
-
 function CoreParentRow() {
   const host = useThreadInfoHost();
   return (
@@ -940,46 +595,6 @@ function CoreWorkspacePathRow() {
   return <WorkspacePathRow environment={useThreadInfoHost().environment} />;
 }
 
-function CoreBranchRow() {
-  const host = useThreadInfoHost();
-  if (!useIsThreadInfoHostActive()) return null;
-  return <BranchRow workspaceStatus={host.workspaceStatus} />;
-}
-
-function CoreMergeBaseRow() {
-  const host = useThreadInfoHost();
-  if (!useIsThreadInfoHostActive()) return null;
-  return (
-    <MergeBaseRow
-      workspaceStatus={host.workspaceStatus}
-      selectedMergeBaseBranch={host.selectedMergeBaseBranch}
-      mergeBaseBranchRef={host.mergeBaseBranchRef}
-      mergeBaseBranchOptions={host.mergeBaseBranchOptions}
-      mergeBaseRemoteBranchOptions={host.mergeBaseRemoteBranchOptions}
-      isLoadingMergeBaseBranchOptions={host.isLoadingMergeBaseBranchOptions}
-      onMergeBaseBranchChange={host.onMergeBaseBranchChange}
-      onMergeBasePickerOpenChange={host.onMergeBasePickerOpenChange}
-      onMergeBaseBranchSearchQueryChange={
-        host.onMergeBaseBranchSearchQueryChange
-      }
-    />
-  );
-}
-
-function CoreGitStatusRow() {
-  const host = useThreadInfoHost();
-  if (!useIsThreadInfoHostActive()) return null;
-  return (
-    <GitStatusRow
-      thread={host.thread}
-      environment={host.environment}
-      workspaceStatus={host.workspaceStatus}
-      workspaceStatusError={host.workspaceStatusError}
-      workspaceUnavailable={host.workspaceUnavailable}
-    />
-  );
-}
-
 function CoreArchivedRow() {
   return <ArchivedRow thread={useThreadInfoHost().thread} />;
 }
@@ -990,31 +605,6 @@ function CoreChildThreadsSection() {
 
 function CoreForksSection() {
   return <ForksSection thread={useThreadInfoHost().thread} />;
-}
-
-function CoreCommitsSection() {
-  const host = useThreadInfoHost();
-  if (!useIsThreadInfoHostActive()) return null;
-  return (
-    <CommitsSection
-      workspaceStatus={host.workspaceStatus}
-      onCommitClick={host.onCommitClick}
-      onChangedFileClick={host.onChangedFileClick}
-      onOpenChangedFile={host.onOpenChangedFile}
-    />
-  );
-}
-
-function CoreUncommittedChangesSection() {
-  const host = useThreadInfoHost();
-  if (!useIsThreadInfoHostActive()) return null;
-  return (
-    <UncommittedChangesSection
-      workspaceStatus={host.workspaceStatus}
-      onChangedFileClick={host.onChangedFileClick}
-      onOpenChangedFile={host.onOpenChangedFile}
-    />
-  );
 }
 
 function CoreThreadStorageSection() {
@@ -1062,19 +652,6 @@ const CORE_THREAD_INFO_ROWS: readonly CoreThreadInfoRegistration[] = [
     order: 30,
     component: CoreWorkspacePathRow,
   },
-  { id: "branch", group: ROW_GROUPS.git, order: 10, component: CoreBranchRow },
-  {
-    id: "mergeBase",
-    group: ROW_GROUPS.git,
-    order: 20,
-    component: CoreMergeBaseRow,
-  },
-  {
-    id: "gitStatus",
-    group: ROW_GROUPS.git,
-    order: 30,
-    component: CoreGitStatusRow,
-  },
   {
     id: "archived",
     group: ROW_GROUPS.lifecycle,
@@ -1095,18 +672,6 @@ const CORE_THREAD_INFO_SECTIONS: readonly CoreThreadInfoRegistration[] = [
     group: SECTION_GROUPS.related,
     order: 20,
     component: CoreForksSection,
-  },
-  {
-    id: "commits",
-    group: SECTION_GROUPS.changes,
-    order: 10,
-    component: CoreCommitsSection,
-  },
-  {
-    id: "uncommittedChanges",
-    group: SECTION_GROUPS.changes,
-    order: 20,
-    component: CoreUncommittedChangesSection,
   },
   {
     id: "threadStorage",

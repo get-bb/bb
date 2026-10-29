@@ -1,19 +1,22 @@
-import type { Dirent } from "node:fs";
+import type { BigIntStats, Dirent } from "node:fs";
 import fs from "node:fs";
+import fsPromises from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
-import matter from "gray-matter";
+import { scanSkillFiles, SKILL_FILE_NAME } from "@bb/skill-index";
+import { parseSkillMetadata } from "@bb/skill-index/metadata";
 import { resolveDataDirSkillsRootPath } from "@bb/config/skill-storage-paths";
-import type { HostDaemonInjectedSkillSource } from "@bb/host-daemon-contract";
+import type {
+  HostDaemonInjectedSkillSource,
+  HostDaemonSkillTreeFile,
+} from "@bb/host-daemon-contract";
+import { hashSkillTreeFiles } from "@bb/host-daemon-contract/skill-tree";
 import { z } from "zod";
 import type { ServerLogger } from "../../types.js";
-import { isFsErrorWithCode } from "../lib/fs-errors.js";
 import { joinHostPathSegments } from "../lib/host-path.js";
 import { REGISTRY_SKILL_PROVENANCE_FILE_NAME } from "./registry-skill-provenance.js";
 
-const SKILL_FILE_NAME = "SKILL.md";
 const SKILL_NAME_PATTERN = /^(?!.*--)[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
-const SKILL_FRONTMATTER_DELIMITER = "---";
 
 const skillFrontmatterSchema = z
   .object({
@@ -48,17 +51,17 @@ interface PluginSkillRoot {
   rootPath: string;
 }
 
-export function discoverPluginSkillIds(
+export async function discoverPluginSkillIds(
   logger: ServerLogger,
   args: {
     pluginSkillRoots: readonly PluginSkillRoot[];
     skillTreeRegistry: SkillTreeRegistry;
   },
-): ReadonlyMap<string, readonly string[]> {
+): Promise<ReadonlyMap<string, readonly string[]>> {
   const idsByPlugin = new Map<string, Set<string>>();
   for (const { pluginId, rootPath } of args.pluginSkillRoots) {
     const ids = idsByPlugin.get(pluginId) ?? new Set<string>();
-    for (const source of readSkillsRoot({
+    for (const source of await readSkillsRoot({
       logger,
       skillTreeRegistry: args.skillTreeRegistry,
       skillsRootPath: rootPath,
@@ -103,27 +106,149 @@ export type SharedInjectedSkillSource = Extract<
   { kind: "host-path" }
 >;
 
-export interface SkillTreeEntry {
-  bytes: Buffer;
-  mode: number;
-  path: string;
+export interface SkillTreeFile extends HostDaemonSkillTreeFile {
+  sourcePath: string;
+  statKey: string;
 }
 
-interface SkillTreeManifest {
-  entries: readonly SkillTreeEntry[];
+export interface SkillTreeManifest {
+  files: readonly SkillTreeFile[];
+  rootPath: string;
   treeHash: string;
 }
 
-export class SkillTreeRegistry {
-  readonly #rootsByHash = new Map<string, string>();
+interface HashedFile {
+  sha256: string;
+  statKey: string;
+}
 
-  register(treeHash: string, sourceRootPath: string): void {
-    this.#rootsByHash.set(treeHash, sourceRootPath);
+const MAX_REGISTERED_SKILL_TREES = 4_096;
+const MAX_FILE_HASH_ATTEMPTS = 3;
+
+export class SkillTreeRegistry {
+  readonly #manifestsByHash = new Map<string, SkillTreeManifest>();
+  readonly #hashByRoot = new Map<string, string>();
+
+  async readTree(rootPath: string): Promise<SkillTreeManifest> {
+    const files = await this.#collectFiles(rootPath, rootPath);
+    const manifest: SkillTreeManifest = {
+      files,
+      rootPath,
+      treeHash: hashSkillTreeFiles(files),
+    };
+    this.#register(manifest);
+    return manifest;
+  }
+
+  manifest(treeHash: string): SkillTreeManifest | undefined {
+    return this.#manifestsByHash.get(treeHash);
   }
 
   resolve(treeHash: string): string | undefined {
-    return this.#rootsByHash.get(treeHash);
+    return this.#manifestsByHash.get(treeHash)?.rootPath;
   }
+
+  #register(manifest: SkillTreeManifest): void {
+    const previousHash = this.#hashByRoot.get(manifest.rootPath);
+    if (
+      previousHash !== undefined &&
+      previousHash !== manifest.treeHash &&
+      this.#manifestsByHash.get(previousHash)?.rootPath === manifest.rootPath
+    ) {
+      this.#manifestsByHash.delete(previousHash);
+    }
+    this.#hashByRoot.delete(manifest.rootPath);
+    this.#hashByRoot.set(manifest.rootPath, manifest.treeHash);
+    this.#manifestsByHash.delete(manifest.treeHash);
+    this.#manifestsByHash.set(manifest.treeHash, manifest);
+    for (const [oldestRoot, oldestHash] of this.#hashByRoot) {
+      if (this.#hashByRoot.size <= MAX_REGISTERED_SKILL_TREES) break;
+      this.#hashByRoot.delete(oldestRoot);
+      if (this.#manifestsByHash.get(oldestHash)?.rootPath === oldestRoot) {
+        this.#manifestsByHash.delete(oldestHash);
+      }
+    }
+  }
+
+  async #collectFiles(
+    rootPath: string,
+    currentPath: string,
+  ): Promise<SkillTreeFile[]> {
+    const files: SkillTreeFile[] = [];
+    for (const entry of (
+      await fsPromises.readdir(currentPath, { withFileTypes: true })
+    ).sort(sortDirentsByName)) {
+      if (
+        currentPath === rootPath &&
+        entry.name === REGISTRY_SKILL_PROVENANCE_FILE_NAME
+      ) {
+        continue;
+      }
+      const entryPath = path.join(currentPath, entry.name);
+      const linkStat = await fsPromises.lstat(entryPath);
+      if (
+        linkStat.isSymbolicLink() &&
+        !(currentPath === rootPath && entry.name === SKILL_FILE_NAME)
+      ) {
+        throw new Error(`Skill tree contains a symlink: ${entryPath}`);
+      }
+      const stat = linkStat.isSymbolicLink()
+        ? await fsPromises.stat(entryPath, { bigint: true })
+        : await fsPromises.lstat(entryPath, { bigint: true });
+      if (stat.isDirectory()) {
+        files.push(...(await this.#collectFiles(rootPath, entryPath)));
+        continue;
+      }
+      if (!stat.isFile()) {
+        throw new Error(`Skill tree entry is not a regular file: ${entryPath}`);
+      }
+      const { hashed, stat: hashedStat } = await this.#hashFile(
+        entryPath,
+        stat,
+      );
+      files.push({
+        ...hashed,
+        mode: Number(hashedStat.mode & 0o777n),
+        path: normalizeRelativePath(path.relative(rootPath, entryPath)),
+        sizeBytes: Number(hashedStat.size),
+        sourcePath: entryPath,
+      });
+    }
+    return files;
+  }
+
+  async #hashFile(
+    filePath: string,
+    initialStat: BigIntStats,
+  ): Promise<{ hashed: HashedFile; stat: BigIntStats }> {
+    let stat = initialStat;
+    for (let attempt = 1; ; attempt += 1) {
+      const statKey = fileStatKey(stat);
+      const sha256 = await sha256File(filePath);
+      const after = await fsPromises.stat(filePath, { bigint: true });
+      if (fileStatKey(after) === statKey) {
+        return { hashed: { sha256, statKey }, stat: after };
+      }
+      if (attempt >= MAX_FILE_HASH_ATTEMPTS) {
+        throw new Error(
+          `Skill tree file kept changing while hashed: ${filePath}`,
+        );
+      }
+      stat = after;
+    }
+  }
+}
+
+export function fileStatKey(stat: BigIntStats): string {
+  return [stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].join(":");
+}
+
+async function sha256File(filePath: string): Promise<string> {
+  const hash = createHash("sha256");
+  for await (const chunk of fs.createReadStream(filePath)) {
+    hash.update(chunk as Buffer);
+  }
+  return hash.digest("hex");
 }
 
 interface SkillCandidateSource {
@@ -146,13 +271,6 @@ interface SkillRootScanArgs extends SkillTreeCandidateSource {
   skillsRootPath: string;
 }
 
-interface SkillCandidateArgs extends SkillTreeCandidateSource {
-  candidatePath: string;
-  directoryName: string;
-  logger: ServerLogger;
-  skillTreeRegistry: SkillTreeRegistry;
-}
-
 interface InvalidSkillLogArgs extends SkillCandidateSource {
   candidatePath: string;
   logger: ServerLogger;
@@ -169,14 +287,6 @@ function compactZodIssues(issues: z.ZodIssue[]): string {
   return issues
     .map((issue) => `${issue.path.join(".") || "root"}: ${issue.message}`)
     .join("; ");
-}
-
-function hasSupportedFrontmatterDelimiter(content: string): boolean {
-  const trimmed = content.trimStart();
-  return (
-    trimmed.startsWith(`${SKILL_FRONTMATTER_DELIMITER}\n`) ||
-    trimmed.startsWith(`${SKILL_FRONTMATTER_DELIMITER}\r\n`)
-  );
 }
 
 function logInvalidSkill(args: InvalidSkillLogArgs): void {
@@ -215,212 +325,38 @@ function normalizeRelativePath(relativePath: string): string {
   return relativePath.split(path.sep).join("/");
 }
 
-function collectSkillTreeEntries(
-  rootPath: string,
-  currentPath = rootPath,
-): SkillTreeEntry[] {
-  const entries: SkillTreeEntry[] = [];
-  for (const entry of fs
-    .readdirSync(currentPath, { withFileTypes: true })
-    .sort(sortDirentsByName)) {
-    if (
-      currentPath === rootPath &&
-      entry.name === REGISTRY_SKILL_PROVENANCE_FILE_NAME
-    ) {
-      continue;
-    }
-    const entryPath = path.join(currentPath, entry.name);
-    const stat = fs.lstatSync(entryPath);
-    if (stat.isSymbolicLink()) {
-      throw new Error(`Skill tree contains a symlink: ${entryPath}`);
-    }
-    if (stat.isDirectory()) {
-      entries.push(...collectSkillTreeEntries(rootPath, entryPath));
-      continue;
-    }
-    if (!stat.isFile()) {
-      throw new Error(`Skill tree entry is not a regular file: ${entryPath}`);
-    }
-    entries.push({
-      bytes: fs.readFileSync(entryPath),
-      mode: stat.mode & 0o777,
-      path: normalizeRelativePath(path.relative(rootPath, entryPath)),
-    });
-  }
-  return entries;
-}
-
-export function hashSkillTreeEntries(
-  entries: readonly SkillTreeEntry[],
-): string {
-  const hash = createHash("sha256");
-  hash.update("bb-skill-tree-v1");
-  for (const entry of [...entries].sort((left, right) =>
-    compareStringsByCodePoint(left.path, right.path),
-  )) {
-    hash.update("\0file\0");
-    hash.update(entry.path);
-    hash.update("\0");
-    hash.update(entry.mode.toString(8));
-    hash.update("\0");
-    hash.update(String(entry.bytes.length));
-    hash.update("\0");
-    hash.update(entry.bytes);
-  }
-  return hash.digest("hex");
-}
-
-export function readSkillTreeManifest(rootPath: string): SkillTreeManifest {
-  const entries = collectSkillTreeEntries(rootPath);
-  return { entries, treeHash: hashSkillTreeEntries(entries) };
-}
-
 function sourceRootPath(source: HostDaemonInjectedSkillSource): string {
   return source.kind === "tree"
     ? `skill-tree:${source.treeHash}`
     : source.sourceRootPath;
 }
 
-function toSkillFilePath(candidatePath: string): string {
-  return path.join(candidatePath, SKILL_FILE_NAME);
-}
-
-function readSkillCandidate(
-  args: SkillCandidateArgs,
-): HostDaemonInjectedSkillSource | null {
-  const skillFilePath = toSkillFilePath(args.candidatePath);
-  let skillFileStat;
-  try {
-    skillFileStat = fs.lstatSync(skillFilePath);
-  } catch (error) {
-    if (error instanceof Error && isFsErrorWithCode(error, "ENOENT")) {
-      logInvalidSkill({
-        ...args,
-        reason: "Missing SKILL.md",
-      });
-      return null;
-    }
-    throw error;
-  }
-
-  if (skillFileStat.isSymbolicLink()) {
-    logInvalidSkill({
-      ...args,
-      reason: "SKILL.md is a symlink",
-    });
-    return null;
-  }
-  if (!skillFileStat.isFile()) {
-    logInvalidSkill({
-      ...args,
-      reason: "SKILL.md is not a regular file",
-    });
-    return null;
-  }
-
-  const content = fs.readFileSync(skillFilePath, "utf8");
-  if (!hasSupportedFrontmatterDelimiter(content)) {
-    logInvalidSkill({
-      ...args,
-      reason: "SKILL.md frontmatter must start with a plain --- delimiter",
-    });
-    return null;
-  }
-
-  let parsed;
-  try {
-    parsed = matter(content);
-  } catch (error) {
-    logInvalidSkill({
-      ...args,
-      reason:
-        error instanceof Error && error.message.trim().length > 0
-          ? error.message
-          : "Invalid SKILL.md frontmatter",
-    });
-    return null;
-  }
-
-  const frontmatter = skillFrontmatterSchema.safeParse(parsed.data);
-  if (!frontmatter.success) {
-    logInvalidSkill({
-      ...args,
-      reason: compactZodIssues(frontmatter.error.issues),
-    });
-    return null;
-  }
-
-  if (frontmatter.data.name !== args.directoryName) {
-    logInvalidSkill({
-      ...args,
-      reason: "Frontmatter name must match the skill directory name",
-    });
-    return null;
-  }
-
-  let manifest: SkillTreeManifest;
-  try {
-    manifest = readSkillTreeManifest(args.candidatePath);
-  } catch (error) {
-    logInvalidSkill({
-      ...args,
-      reason:
-        error instanceof Error ? error.message : "Unable to read skill tree",
-    });
-    return null;
-  }
-  args.skillTreeRegistry.register(manifest.treeHash, args.candidatePath);
-  return {
-    kind: "tree",
-    sourceType: args.sourceType,
-    name: frontmatter.data.name,
-    description: frontmatter.data.description,
-    treeHash: manifest.treeHash,
-    entryPath: SKILL_FILE_NAME,
-  };
-}
-
-export function resolveProjectSkillSourceFromContent(
+function validateSkillContent(
   logger: ServerLogger,
   args: {
     candidatePath: string;
     content: string;
     directoryName: string;
+    sourceType: SkillCandidateSource["sourceType"];
   },
-): ProjectInjectedSkillSource | null {
-  if (!hasSupportedFrontmatterDelimiter(args.content)) {
+): z.infer<typeof skillFrontmatterSchema> | null {
+  const metadata = parseSkillMetadata(args.content);
+  if (metadata.error !== null) {
     logInvalidSkill({
       candidatePath: args.candidatePath,
       logger,
-      reason: "SKILL.md frontmatter must start with a plain --- delimiter",
-      sourceType: "project",
+      reason: metadata.error,
+      sourceType: args.sourceType,
     });
     return null;
   }
-
-  let parsed;
-  try {
-    parsed = matter(args.content);
-  } catch (error) {
-    logInvalidSkill({
-      candidatePath: args.candidatePath,
-      logger,
-      reason:
-        error instanceof Error && error.message.trim().length > 0
-          ? error.message
-          : "Invalid SKILL.md frontmatter",
-      sourceType: "project",
-    });
-    return null;
-  }
-
-  const frontmatter = skillFrontmatterSchema.safeParse(parsed.data);
+  const frontmatter = skillFrontmatterSchema.safeParse(metadata);
   if (!frontmatter.success) {
     logInvalidSkill({
       candidatePath: args.candidatePath,
       logger,
       reason: compactZodIssues(frontmatter.error.issues),
-      sourceType: "project",
+      sourceType: args.sourceType,
     });
     return null;
   }
@@ -429,102 +365,80 @@ export function resolveProjectSkillSourceFromContent(
       candidatePath: args.candidatePath,
       logger,
       reason: "Frontmatter name must match the skill directory name",
-      sourceType: "project",
+      sourceType: args.sourceType,
     });
     return null;
   }
 
+  return frontmatter.data;
+}
+
+export function resolveProjectSkillSourceFromContent(
+  logger: ServerLogger,
+  args: { candidatePath: string; content: string; directoryName: string },
+): ProjectInjectedSkillSource | null {
+  const metadata = validateSkillContent(logger, {
+    ...args,
+    sourceType: "project",
+  });
+  if (metadata === null) return null;
   return {
     kind: "workspace-path",
     sourceType: "project",
-    name: frontmatter.data.name,
-    description: frontmatter.data.description,
+    name: metadata.name,
+    description: metadata.description,
     sourceRootPath: args.candidatePath,
     skillFilePath: joinHostPathSegments(args.candidatePath, SKILL_FILE_NAME),
   };
 }
 
-function readSkillsRoot(
+async function readSkillsRoot(
   args: SkillRootScanArgs,
-): HostDaemonInjectedSkillSource[] {
-  let rootStat;
-  try {
-    rootStat = fs.lstatSync(args.skillsRootPath);
-  } catch (error) {
-    if (error instanceof Error && isFsErrorWithCode(error, "ENOENT")) {
-      return [];
-    }
-    throw error;
-  }
-
-  if (rootStat.isSymbolicLink()) {
-    args.logger.warn(
-      {
-        skillsRootPath: args.skillsRootPath,
-        sourceType: args.sourceType,
-      },
-      "Skipping symlinked injected skills root",
-    );
-    return [];
-  }
-  if (!rootStat.isDirectory()) {
-    args.logger.warn(
-      {
-        skillsRootPath: args.skillsRootPath,
-        sourceType: args.sourceType,
-      },
-      "Skipping non-directory injected skills root",
-    );
-    return [];
-  }
-
-  const entries = fs
-    .readdirSync(args.skillsRootPath, {
-      withFileTypes: true,
-    })
-    .sort(sortDirentsByName);
+): Promise<HostDaemonInjectedSkillSource[]> {
   const sources: HostDaemonInjectedSkillSource[] = [];
-
-  for (const entry of entries) {
-    const candidatePath = path.join(args.skillsRootPath, entry.name);
-    if (entry.isSymbolicLink()) {
-      logInvalidSkill({
-        ...args,
-        candidatePath,
-        reason: "Skill directory is a symlink",
-      });
-      continue;
-    }
-    if (!entry.isDirectory()) {
-      logInvalidSkill({
-        ...args,
-        candidatePath,
-        reason: "Skill candidate is not a directory",
-      });
-      continue;
-    }
-    const source = readSkillCandidate({
+  const files = await scanSkillFiles({
+    path: args.skillsRootPath,
+    shape: "skill",
+    boundaryPath: null,
+  });
+  for (const file of files) {
+    const candidatePath = path.dirname(file.filePath);
+    const validated = validateSkillContent(args.logger, {
       candidatePath,
-      directoryName: entry.name,
-      logger: args.logger,
-      skillTreeRegistry: args.skillTreeRegistry,
+      content: file.content,
+      directoryName: file.name,
       sourceType: args.sourceType,
     });
-    if (source) {
-      sources.push(source);
+    if (validated === null) continue;
+    try {
+      const manifest = await args.skillTreeRegistry.readTree(candidatePath);
+      sources.push({
+        kind: "tree",
+        sourceType: args.sourceType,
+        name: validated.name,
+        description: validated.description,
+        treeHash: manifest.treeHash,
+        entryPath: SKILL_FILE_NAME,
+      });
+    } catch (error) {
+      logInvalidSkill({
+        ...args,
+        candidatePath,
+        reason:
+          error instanceof Error ? error.message : "Unable to read skill tree",
+      });
     }
   }
-
   return sources;
 }
 
-export function resolveServerOwnedSkillCatalogEntries(
+export async function resolveServerOwnedSkillCatalogEntries(
   args: ResolveServerOwnedSkillCatalogEntriesArgs,
-): ResolvedSkillCatalogEntry[] {
+): Promise<ResolvedSkillCatalogEntry[]> {
   const builtin = (
     args.builtinSkillsRootPath === null
       ? []
-      : readSkillsRoot({
+      : await readSkillsRoot({
           logger: args.logger,
           skillTreeRegistry: args.skillTreeRegistry,
           skillsRootPath: args.builtinSkillsRootPath,
@@ -534,12 +448,14 @@ export function resolveServerOwnedSkillCatalogEntries(
     provenance: { kind: "builtin" } as const,
     runtimeSource,
   }));
-  const user = readSkillsRoot({
-    logger: args.logger,
-    skillTreeRegistry: args.skillTreeRegistry,
-    skillsRootPath: resolveDataDirSkillsRootPath(args.dataDir),
-    sourceType: "data-dir",
-  }).map((runtimeSource) => ({
+  const user = (
+    await readSkillsRoot({
+      logger: args.logger,
+      skillTreeRegistry: args.skillTreeRegistry,
+      skillsRootPath: resolveDataDirSkillsRootPath(args.dataDir),
+      sourceType: "data-dir",
+    })
+  ).map((runtimeSource) => ({
     provenance: { kind: "user" } as const,
     runtimeSource,
   }));
@@ -605,10 +521,10 @@ function excludeCollisions(
   );
 }
 
-export function resolveSkillCatalogEntries(
+export async function resolveSkillCatalogEntries(
   logger: ServerLogger,
   args: ResolveInjectedSkillSourcesArgs,
-): ResolvedSkillCatalogEntry[] {
+): Promise<ResolvedSkillCatalogEntry[]> {
   const { skillTreeRegistry } = args;
   const projectSources = [...(args.projectSkillSources ?? [])];
   const sharedProjectSources = (args.sharedSkillSources ?? []).filter(
@@ -618,20 +534,21 @@ export function resolveSkillCatalogEntries(
     (source) => source.sourceType === "shared-user",
   );
 
-  const dataDirSources = readSkillsRoot({
+  const dataDirSources = await readSkillsRoot({
     logger,
     skillTreeRegistry,
     skillsRootPath: resolveDataDirSkillsRootPath(args.dataDir),
     sourceType: "data-dir",
   });
-  const inheritedSourceGroups = (args.additionalSkillsRootPaths ?? []).map(
-    (skillsRootPath) =>
+  const inheritedSourceGroups = await Promise.all(
+    (args.additionalSkillsRootPaths ?? []).map((skillsRootPath) =>
       readSkillsRoot({
         logger,
         skillTreeRegistry,
         skillsRootPath,
         sourceType: "data-dir",
       }),
+    ),
   );
 
   const configuredUserSources = [
@@ -653,20 +570,22 @@ export function resolveSkillCatalogEntries(
     ],
     configuredUserSources,
   );
-  const pluginSourceGroups = (args.pluginSkillRoots ?? []).map(
-    ({ pluginId, rootPath }) => ({
+  const pluginSourceGroups = await Promise.all(
+    (args.pluginSkillRoots ?? []).map(async ({ pluginId, rootPath }) => ({
       pluginId,
-      sources: readSkillsRoot({
-        logger,
-        skillTreeRegistry,
-        skillsRootPath: rootPath,
-        sourceType: "data-dir",
-      }).filter(
+      sources: (
+        await readSkillsRoot({
+          logger,
+          skillTreeRegistry,
+          skillsRootPath: rootPath,
+          sourceType: "data-dir",
+        })
+      ).filter(
         (source) =>
           !args.pluginSkillSelections?.has(pluginId) ||
           args.pluginSkillSelections.get(pluginId)?.has(source.name) === true,
       ),
-    }),
+    })),
   );
   const pluginSources = pluginSourceGroups.reduce<
     HostDaemonInjectedSkillSource[]

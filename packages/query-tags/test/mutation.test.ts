@@ -13,7 +13,6 @@ import { afterEach, expect, it, vi } from "vitest";
 import {
   useTaggedQuery,
   optimisticQueryUpdate,
-  runTaggedMutation,
   useTaggedMutation,
   type TaggedMutationOutcome,
 } from "../src/index.js";
@@ -110,84 +109,72 @@ it("reports only writes awaiting acknowledgement in each hook", async () => {
   client.clear();
 });
 
-it.each(["core", "plugin"] as const)(
-  "commits %s predictions with the input event without flushing ordinary query notifications",
-  (surface) => {
-    const client = new QueryClient({
-      defaultOptions: {
-        queries: { gcTime: Infinity },
-        mutations: { gcTime: Infinity },
-      },
+it("commits predictions with the input event without flushing ordinary query notifications", () => {
+  const client = new QueryClient({
+    defaultOptions: {
+      queries: { gcTime: Infinity },
+      mutations: { gcTime: Infinity },
+    },
+  });
+  client.setQueryData(["order"], ["Alpha", "Beta"]);
+  client.setQueryData(["ordinary"], "unchanged");
+  const write = new Promise<TaggedMutationOutcome<void>>(() => {});
+  const predict = () => [
+    optimisticQueryUpdate<string[]>(["order"], () => ["Beta", "Alpha"]),
+  ];
+  function Predicted() {
+    const query = useTaggedQuery<string[]>(
+      { queryKey: ["order"], enabled: false },
+      client,
+    );
+    return createElement("output", null, query.data?.join(","));
+  }
+  function Ordinary() {
+    const query = useQuery<string>(
+      { queryKey: ["ordinary"], enabled: false },
+      client,
+    );
+    return createElement("output", null, query.data);
+  }
+  function Control() {
+    const mutation = useTaggedMutation<void, void>({
+      client,
+      invalidate: async () => {},
+      call: () => write,
+      optimistic: predict,
     });
-    client.setQueryData(["order"], ["Alpha", "Beta"]);
-    client.setQueryData(["ordinary"], "unchanged");
-    const write = new Promise<TaggedMutationOutcome<void>>(() => {});
-    const predict = () => [
-      optimisticQueryUpdate<string[]>(["order"], () => ["Beta", "Alpha"]),
-    ];
-    function Predicted() {
-      const query = useTaggedQuery<string[]>(
-        { queryKey: ["order"], enabled: false },
-        client,
-      );
-      return createElement("output", null, query.data?.join(","));
-    }
-    function Ordinary() {
-      const query = useQuery<string>(
-        { queryKey: ["ordinary"], enabled: false },
-        client,
-      );
-      return createElement("output", null, query.data);
-    }
-    function Control() {
-      const mutation = useTaggedMutation<void, void>({
-        client,
-        invalidate: async () => {},
-        call: () => write,
-        optimistic: predict,
-      });
-      return createElement(
-        "button",
-        {
-          onClick: () => {
-            if (surface === "plugin") void mutation.mutate(undefined);
-            else
-              void runTaggedMutation(
-                async () => {},
-                () => write,
-                {
-                  client,
-                  optimistic: predict(),
-                },
-              );
-            client.setQueryData(["ordinary"], "scheduled");
-          },
+    return createElement(
+      "button",
+      {
+        onClick: () => {
+          void mutation.mutate(undefined);
+          client.setQueryData(["ordinary"], "scheduled");
         },
-        "Drop",
-      );
-    }
-    vi.useFakeTimers();
-    try {
-      const view = render(
-        createElement(
-          "div",
-          null,
-          createElement(Predicted),
-          createElement(Ordinary),
-          createElement(Control),
-        ),
-      );
-      fireEvent.click(view.getByText("Drop"));
-      expect(view.getByText("Beta,Alpha")).toBeTruthy();
-      expect(view.getByText("unchanged")).toBeTruthy();
-      act(() => {
-        vi.runOnlyPendingTimers();
-      });
-      expect(view.getByText("scheduled")).toBeTruthy();
-    } finally {
-      cleanup();
-      client.clear();
-      vi.useRealTimers();
-    }
-  },
-);
+      },
+      "Drop",
+    );
+  }
+  vi.useFakeTimers();
+  try {
+    const view = render(
+      createElement(
+        "div",
+        null,
+        createElement(Predicted),
+        createElement(Ordinary),
+        createElement(Control),
+      ),
+    );
+    fireEvent.click(view.getByText("Drop"));
+    expect(view.getByText("Beta,Alpha")).toBeTruthy();
+    expect(view.getByText("unchanged")).toBeTruthy();
+    act(() => {
+      vi.runOnlyPendingTimers();
+    });
+    expect(view.getByText("scheduled")).toBeTruthy();
+  } finally {
+    cleanup();
+    client.clear();
+    vi.useRealTimers();
+  }
+});

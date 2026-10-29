@@ -11,6 +11,7 @@ export interface Question {
   shortLabel: string;
   multiSelect: boolean;
   allowFreeText: boolean;
+  required: boolean;
   options: readonly QuestionOption[];
 }
 
@@ -96,12 +97,25 @@ export function buildQuestionAnswers(
 ): Record<string, QuestionAnswer> {
   const answers: Record<string, QuestionAnswer> = {};
   for (const question of questions) {
-    answers[question.id] = buildQuestionAnswer(
-      question,
-      answerStateFor(formState, question),
-    );
+    const state = answerStateFor(formState, question);
+    if (!question.required && !isQuestionAnswered(question, state)) continue;
+    answers[question.id] = buildQuestionAnswer(question, state);
   }
   return answers;
+}
+
+export function areRequiredQuestionsAnswered(
+  questions: readonly Question[],
+  formState: QuestionFormState,
+): boolean {
+  return (
+    questions.length > 0 &&
+    questions.every(
+      (question) =>
+        !question.required ||
+        isQuestionAnswered(question, answerStateFor(formState, question)),
+    )
+  );
 }
 
 export type QuestionShortcutChoice =

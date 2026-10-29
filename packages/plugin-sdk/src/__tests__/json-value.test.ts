@@ -1,25 +1,28 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import type {
-  BbNavigate,
   JsonValue,
-  ExperimentalThreadTabActionContext,
+  ExperimentalOpenTabOptions,
   ExperimentalThreadActionTabProps,
 } from "../index.js";
 import type { JsonValue as AppJsonValue } from "../app.js";
 
-type OpenPanelOptions = NonNullable<
-  Parameters<ExperimentalThreadTabActionContext["openPanel"]>[0]
+type ActionTabOptions = Extract<
+  ExperimentalOpenTabOptions,
+  { tab: { availability: "action" } }
 >;
-type NavigatePanelOptions = Parameters<BbNavigate["openThreadPanel"]>[0];
+type FixedTabOptions = Extract<
+  ExperimentalOpenTabOptions,
+  { tab: { availability: "fixed" } }
+>;
 
 describe("plugin SDK JsonValue contract", () => {
   it("types parameter writes as JsonValue and persisted reads as JsonValue or null", () => {
     expectTypeOf<AppJsonValue>().toEqualTypeOf<JsonValue>();
-    expectTypeOf<OpenPanelOptions["params"]>().toEqualTypeOf<
+    expectTypeOf<ActionTabOptions["params"]>().toEqualTypeOf<
       JsonValue | undefined
     >();
-    expectTypeOf<NavigatePanelOptions["params"]>().toEqualTypeOf<
+    expectTypeOf<FixedTabOptions["target"]>().toEqualTypeOf<
       JsonValue | undefined
     >();
     expectTypeOf<

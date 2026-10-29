@@ -1,10 +1,11 @@
 import type { ExperimentalFileOpenOptions } from "@get-bb/plugin-sdk";
+import { getEnvironmentFilePreviewSourceAtRef } from "@bb/client-core";
 import { normalizeExperimentalLiveFileTarget } from "@/lib/live-file-navigation";
 import {
   buildAbsoluteFilePath,
   isAbsoluteFilePathWithinRoot,
   normalizeAbsoluteFilePath,
-} from "@/lib/absolute-file-path";
+} from "@bb/shared-ui/lib/absolute-file-path";
 import {
   buildEnvironmentFileContentUrl,
   buildThreadStorageRawContentUrl,
@@ -49,7 +50,7 @@ export function buildMarkdownDocumentLinkRouting({
       target.kind === "workspace"
         ? buildEnvironmentFileContentUrl(
             target.environmentId,
-            { kind: "working-tree" },
+            getEnvironmentFilePreviewSourceAtRef(target.experimental_ref),
             path,
           )
         : buildThreadStorageRawContentUrl(threadId, path),

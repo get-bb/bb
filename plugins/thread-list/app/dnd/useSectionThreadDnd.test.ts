@@ -1207,3 +1207,116 @@ describe("worktree group section dragging", () => {
     });
   });
 });
+
+describe("multi-row selection drop decisions", () => {
+  it("moves every selected root and carries a selected parent's children with it", () => {
+    const lookup = createNestedLookup();
+    const sectionBKey = lookup.sectionParentKeyBySectionId.get("section:b");
+
+    expect(
+      resolveSectionThreadDropDecision(
+        lookup,
+        "child-a",
+        "section:b",
+        null,
+        null,
+        { selectedThreadIds: ["parent-a", "child-a", "loose"] },
+      ),
+    ).toEqual({
+      kind: "move",
+      toParentKey: sectionBKey,
+      ...dropChanges("child-a", {
+        threadIds: ["parent-a", "loose"],
+        updates: [
+          { threadId: "parent-a", sectionId: "b" },
+          { threadId: "loose", sectionId: "b" },
+        ],
+      }),
+    });
+  });
+
+  it("nests every selected root under the hovered row", () => {
+    expect(
+      resolveSectionThreadDropDecision(
+        createNestedLookup(),
+        "loose",
+        rowId("parent-a"),
+        null,
+        null,
+        { selectedThreadIds: ["loose", "other-project"] },
+      ),
+    ).toEqual({
+      kind: "nest",
+      parentThreadId: "parent-a",
+      ...dropChanges("loose", {
+        threadIds: ["loose", "other-project"],
+        updates: [
+          { threadId: "loose", parentThreadId: "parent-a", sectionId: "a" },
+          {
+            threadId: "other-project",
+            parentThreadId: "parent-a",
+            sectionId: "a",
+          },
+        ],
+      }),
+    });
+  });
+
+  it("rejects nesting the selection inside one of its own subtrees", () => {
+    expect(
+      resolveSectionThreadDropDecision(
+        createNestedLookup(),
+        "loose",
+        rowId("grandchild-a"),
+        null,
+        null,
+        { selectedThreadIds: ["parent-a", "loose"] },
+      ),
+    ).toEqual({
+      kind: "rejected",
+      activeId: "loose",
+      overThreadId: "grandchild-a",
+      reason: "own-subtree",
+    });
+  });
+
+  it("pins only the unpinned threads of a selection dropped on Pinned", () => {
+    expect(
+      resolveSectionThreadDropDecision(
+        createLookupWithPinnedThread(),
+        "loose",
+        "pinned",
+        null,
+        null,
+        { selectedThreadIds: ["pinned-2", "loose"] },
+      ),
+    ).toEqual({
+      kind: "pin",
+      ...dropChanges("loose", {
+        threadIds: ["pinned-2", "loose"],
+        pinThreadIds: ["loose"],
+      }),
+    });
+  });
+
+  it("drags only the row itself when it is not part of the selection", () => {
+    expect(
+      resolveSectionThreadDropDecision(
+        createNestedLookup(),
+        "loose",
+        rowId("parent-a"),
+        null,
+        null,
+        { selectedThreadIds: ["child-a", "other-project"] },
+      ),
+    ).toEqual({
+      kind: "nest",
+      parentThreadId: "parent-a",
+      ...dropChanges("loose", {
+        updates: [
+          { threadId: "loose", parentThreadId: "parent-a", sectionId: "a" },
+        ],
+      }),
+    });
+  });
+});

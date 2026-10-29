@@ -1,9 +1,9 @@
-import type {
-  ChangedMessage,
-  ClientMessage,
-  RealtimeSubscriptionTarget,
+import {
+  type ChangedMessage,
+  type ClientMessage,
+  type RealtimeSubscriptionTarget,
+  realtimeSubscriptionTargetKey,
 } from "@bb/domain";
-import { realtimeSubscriptionTargetKey } from "@bb/domain";
 import { serverMessageLenientSchema } from "@bb/server-contract";
 import { resolveRealtimeUrl } from "./realtime-url.js";
 import type {
@@ -397,7 +397,7 @@ export class BbRealtimeClient implements BbRealtime {
       this.handleSocketMessage(event);
     };
 
-    socket.onclose = () => {
+    const handleClosed = () => {
       if (this.socket !== socket) {
         return;
       }
@@ -441,8 +441,14 @@ export class BbRealtimeClient implements BbRealtime {
       }, reconnectDelayMs);
     };
 
+    socket.onclose = handleClosed;
+
+    let closeRequested = false;
     socket.onerror = () => {
+      if (closeRequested) return;
+      closeRequested = true;
       socket.close();
+      handleClosed();
     };
 
     return socketReadyPromise;

@@ -242,6 +242,7 @@ function installAutoLoadEnvironment() {
     bottomThresholdPx: 4,
     deferWritesWhileScrolling: false,
     getContentElement: () => null,
+    getFloorElement: () => null,
     getFooterElement: () => null,
     getScrollElement: () => scrollElement,
     getTopLevelRows: () => [],
@@ -253,7 +254,6 @@ function installAutoLoadEnvironment() {
     getScrollElement: () => scrollElement,
     isAtBottom: false,
     scrollElementIntoView: vi.fn(),
-    scrollElementIntoViewClampedToMaxScroll: vi.fn(),
     scrollToBottom: vi.fn(),
   };
   const emitIntersection = () => {
@@ -819,7 +819,7 @@ describe("useThreadTimelineController", () => {
       beforeAnchorId: olderPageRow.id,
       beforeAnchorSeq: "0",
     });
-    expect(timelineRequests[3]?.[0]).toMatchObject({ afterSequence: "1" });
+    expect(timelineRequests[3]?.[0]).toMatchObject({ afterTag: "timeline-1" });
     expect(result.current.isLoadingOlderTimelineRows).toBe(false);
     expect(result.current.hasOlderTimelineRows).toBe(true);
 

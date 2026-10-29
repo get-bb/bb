@@ -1,9 +1,9 @@
 import path from "node:path";
+import { getAbsoluteGitDir } from "./git.js";
 import {
-  getAbsoluteGitDir,
   getGitCommonDir,
   type GitProcessOptions,
-} from "./git.js";
+} from "bb-environment-provider-host/workspace-git";
 
 function isSamePathOrNestedUnder(
   childPath: string,

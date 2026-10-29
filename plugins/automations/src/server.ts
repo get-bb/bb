@@ -10,6 +10,7 @@ import {
   reconcileRunningAutomationRuns,
 } from "./run.js";
 import { registerAutomationCli } from "./cli.js";
+import { createScriptRunScope } from "./script-runner.js";
 import { createAutomationService } from "./service.js";
 import { sleep, sweepDueAutomations, SWEEP_INTERVAL_MS } from "./sweep.js";
 
@@ -22,12 +23,15 @@ export default async function plugin(bb: BbPluginApi) {
   bb.storage.migrate(db, migrations);
   const pluginDataDir = pluginDataDirFromDb(db);
   await ingestLegacyImport({ bb, db, pluginDataDir });
+  const scriptRuns = createScriptRunScope();
+  bb.onDispose(() => scriptRuns.stop());
 
   const service = createAutomationService({
     bb,
     db,
     pluginDataDir,
     serverUrl: resolveServerUrl(),
+    scriptRuns,
   });
 
   bb.rpc.register(automationRpcContract, createRpcHandlers(service));
@@ -68,6 +72,7 @@ export default async function plugin(bb: BbPluginApi) {
             pluginDataDir,
             serverUrl: resolveServerUrl(),
             serverHostId,
+            scriptRuns,
           });
         } catch (error) {
           bb.log.error(`Automation sweep failed: ${errorMessage(error)}`);

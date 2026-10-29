@@ -1,4 +1,5 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawnHostProcess as spawn } from "@bb/process-utils";
+import type { ChildProcess } from "node:child_process";
 import { mkdir, readdir, stat } from "node:fs/promises";
 import { watch, type FSWatcher } from "node:fs";
 import { join } from "node:path";
@@ -717,6 +718,9 @@ export function createLogTailer(args: CreateLogTailerArgs): LogTailer {
         component: state.component,
         logDir: args.logDir,
       });
+      if (stopped) {
+        return;
+      }
       if (currentFilePath === null) {
         if (state.currentFilePath !== null) {
           stopTailProcess({ state });

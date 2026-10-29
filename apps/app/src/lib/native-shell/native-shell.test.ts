@@ -7,7 +7,15 @@ import {
   type NativeShellHandshake,
 } from "@bb/mobile-bridge";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render } from "@testing-library/react";
+import { defaultExperiments } from "@bb/domain";
+import { appQueryClient } from "../app-query-client";
+import { systemConfigQueryKey } from "@/hooks/queries/query-keys";
+import {
+  openApplicationUrl,
+  resolveApplicationUrlConfirmation,
+} from "../application-url";
+import { appToast } from "@/components/ui/app-toast";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { createElement } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { NativeShellReporter } from "./NativeShellReporter";
@@ -61,6 +69,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  appQueryClient.removeQueries({ queryKey: systemConfigQueryKey() });
   Reflect.deleteProperty(window as unknown as Record<string, unknown>, "bb");
   Reflect.deleteProperty(
     window as unknown as Record<string, unknown>,
@@ -146,4 +155,52 @@ it("applies native bottom insets to portaled UI and updates them when the safe a
   expect(
     document.documentElement.style.getPropertyValue("--bb-safe-area-bottom"),
   ).toBe("");
+});
+
+describe("application link compatibility", () => {
+  it.each([2, 3])(
+    "uses an acknowledged native request only with bridge version 3 (version %s)",
+    async (bridgeVersion) => {
+      installShell({ bridgeVersion });
+      appQueryClient.setQueryData(systemConfigQueryKey(), {
+        experiments: { ...defaultExperiments, applicationLinks: true },
+      });
+      const error = vi
+        .spyOn(appToast, "error")
+        .mockImplementation(() => "toast");
+      openApplicationUrl("reflect://note/Project%20X");
+      expect(posted).toEqual([]);
+      resolveApplicationUrlConfirmation("open");
+      await act(async () => {});
+      if (bridgeVersion === 2) {
+        await waitFor(() =>
+          expect(error).toHaveBeenCalledWith("Couldn't open application link", {
+            description: "Update the BB mobile app to open application links.",
+          }),
+        );
+        expect(posted).toEqual([]);
+        return;
+      }
+      const parsed = parsePageToShellMessage(posted.at(-1));
+      if (!parsed.ok || parsed.message.type !== "request")
+        throw new Error("Missing native request");
+      expect(parsed.message.request).toEqual({
+        kind: "open-application",
+        payload: { url: "reflect://note/Project%20X" },
+      });
+      new Function(
+        "window",
+        buildBridgeEventScript({
+          type: "response",
+          id: parsed.message.id,
+          response: { ok: false, error: "App not installed" },
+        }),
+      )(window);
+      await waitFor(() =>
+        expect(error).toHaveBeenCalledWith("Couldn't open application link", {
+          description: "App not installed",
+        }),
+      );
+    },
+  );
 });

@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execHostFileCallback as execFile } from "@bb/process-utils";
 import { stat, statfs } from "node:fs/promises";
 import { createServer } from "node:net";
 import { isFileNotFoundError } from "./fs.js";

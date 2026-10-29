@@ -74,6 +74,7 @@ const singleSelect: InteractionPayload = {
       shortLabel: "Database",
       multiSelect: false,
       allowFreeText: true,
+      required: true,
       options: [
         {
           value: "q0o0",
@@ -392,6 +393,7 @@ describe("multi-select and multi-question flows", () => {
         shortLabel: "Extras",
         multiSelect: true,
         allowFreeText: true,
+        required: true,
         options: [
           { value: "q0o0", label: "Metrics", description: "Prometheus." },
           { value: "q0o1", label: "Tracing", description: "OTel." },
@@ -403,6 +405,7 @@ describe("multi-select and multi-question flows", () => {
         shortLabel: "Database",
         multiSelect: false,
         allowFreeText: true,
+        required: true,
         options: [
           { value: "q1o0", label: "Postgres", description: "Server." },
           { value: "q1o1", label: "SQLite", description: "Embedded." },
@@ -576,6 +579,39 @@ describe("multi-select and multi-question flows", () => {
     } satisfies InteractionResponse);
   });
 
+  it("submits once every required question is answered, leaving a blank optional one out (#6131)", () => {
+    const submit = vi.fn(async () => undefined);
+    const slot = render(
+      {
+        questions: [
+          multi.questions[1]!,
+          {
+            id: "notes",
+            prompt: "Anything else?",
+            shortLabel: "Notes",
+            multiSelect: false,
+            allowFreeText: true,
+            options: [],
+            required: false,
+          },
+        ],
+      },
+      { submit },
+    );
+
+    fireEvent.click(getButtonByText(slot, "Next"));
+    expect(slot.getByText("Optional")).toBeTruthy();
+    expect(getButtonByText(slot, "Submit answer").disabled).toBe(true);
+    fireEvent.click(getButtonByText(slot, "Back"));
+    fireEvent.click(getButtonByText(slot, "SQLite"));
+    fireEvent.click(getButtonByText(slot, "Next"));
+    fireEvent.click(getButtonByText(slot, "Submit answer"));
+
+    expect(submit).toHaveBeenCalledExactlyOnceWith({
+      answers: { q1: { selected: ["q1o1"] } },
+    });
+  });
+
   it("cancels the request instead of submitting", () => {
     const cancel = vi.fn(async () => undefined);
     const slot = render(multi, { cancel });
@@ -639,5 +675,136 @@ describe("question answer dictation", () => {
     expect(submit).not.toHaveBeenCalled();
     fireEvent.click(slot.getByRole("button", { name: "Cancel transcription" }));
     expect(idle.cancel).toHaveBeenCalledOnce();
+  });
+});
+
+describe("question tabs on a narrow card", () => {
+  const TAB_WIDTH = 60;
+  const VIEWPORT_WIDTH = 150;
+  const scrollLefts = new WeakMap<Element, number>();
+  const stubbed: Array<[keyof HTMLElement, PropertyDescriptor | undefined]> =
+    [];
+
+  function isViewport(element: Element): boolean {
+    return element.hasAttribute("data-question-tabs");
+  }
+
+  function tabIndex(element: Element): number | null {
+    const parent = element.parentElement;
+    if (!parent || !isViewport(parent)) return null;
+    return Array.from(parent.children).indexOf(element);
+  }
+
+  function stub(name: keyof HTMLElement, descriptor: PropertyDescriptor) {
+    stubbed.push([
+      name,
+      Object.getOwnPropertyDescriptor(HTMLElement.prototype, name),
+    ]);
+    Object.defineProperty(HTMLElement.prototype, name, {
+      configurable: true,
+      ...descriptor,
+    });
+  }
+
+  function stubGeometry(tabCount: number) {
+    const scrollWidth = tabCount * TAB_WIDTH;
+    const maxScrollLeft = Math.max(0, scrollWidth - VIEWPORT_WIDTH);
+    stub("clientWidth", {
+      get(this: HTMLElement) {
+        return isViewport(this) ? VIEWPORT_WIDTH : 0;
+      },
+    });
+    stub("scrollWidth", {
+      get(this: HTMLElement) {
+        return isViewport(this) ? Math.max(scrollWidth, VIEWPORT_WIDTH) : 0;
+      },
+    });
+    stub("offsetWidth", {
+      get(this: HTMLElement) {
+        return tabIndex(this) === null ? 0 : TAB_WIDTH;
+      },
+    });
+    stub("offsetLeft", {
+      get(this: HTMLElement) {
+        return (tabIndex(this) ?? 0) * TAB_WIDTH;
+      },
+    });
+    stub("scrollLeft", {
+      get(this: HTMLElement) {
+        return scrollLefts.get(this) ?? 0;
+      },
+      set(this: HTMLElement, value: number) {
+        scrollLefts.set(this, Math.min(Math.max(0, value), maxScrollLeft));
+      },
+    });
+  }
+
+  afterEach(() => {
+    for (const [name, descriptor] of stubbed.splice(0).reverse()) {
+      if (descriptor) {
+        Object.defineProperty(HTMLElement.prototype, name, descriptor);
+      } else {
+        Reflect.deleteProperty(HTMLElement.prototype, name);
+      }
+    }
+  });
+
+  function questionsFor(count: number): InteractionPayload {
+    return {
+      questions: Array.from({ length: count }, (_, index) => ({
+        id: `q${index}`,
+        prompt: `Question ${index + 1}?`,
+        shortLabel: `Q${index + 1}`,
+        multiSelect: false,
+        allowFreeText: false,
+        required: false,
+        options: [{ value: `q${index}o0`, label: "Yes" }],
+      })),
+    };
+  }
+
+  function fades(slot: ReturnType<typeof render>) {
+    const visible = (placement: string) =>
+      slot.container
+        .querySelector(`[data-overflow-fade="${placement}"]`)
+        ?.classList.contains("opacity-100") ?? false;
+    return { left: visible("left"), right: visible("right") };
+  }
+
+  function viewport(slot: ReturnType<typeof render>): HTMLElement {
+    const element = slot.container.querySelector("[data-question-tabs]");
+    if (!(element instanceof HTMLElement)) {
+      throw new Error("question tabs are not rendered");
+    }
+    return element;
+  }
+
+  it("scrolls the current question's tab clear of the fade and fades only the edges with tabs past them", () => {
+    stubGeometry(10);
+    const slot = render(questionsFor(10));
+    expect(viewport(slot).scrollLeft).toBe(0);
+    expect(fades(slot)).toEqual({ left: false, right: true });
+
+    fireEvent.click(getButtonByText(slot, "Q8"));
+    expect(viewport(slot).scrollLeft).toBe(8 * TAB_WIDTH + 24 - VIEWPORT_WIDTH);
+    expect(fades(slot)).toEqual({ left: true, right: true });
+
+    fireEvent.click(getButtonByText(slot, "Next"));
+    fireEvent.click(getButtonByText(slot, "Next"));
+    expect(slot.getByText("10 of 10")).toBeTruthy();
+    expect(viewport(slot).scrollLeft).toBe(10 * TAB_WIDTH - VIEWPORT_WIDTH);
+    expect(fades(slot)).toEqual({ left: true, right: false });
+
+    fireEvent.click(getButtonByText(slot, "Q1"));
+    expect(viewport(slot).scrollLeft).toBe(0);
+    expect(fades(slot)).toEqual({ left: false, right: true });
+  });
+
+  it("shows no fade when every tab fits", () => {
+    stubGeometry(2);
+    const slot = render(questionsFor(2));
+    fireEvent.click(getButtonByText(slot, "Next"));
+    expect(slot.getByText("2 of 2")).toBeTruthy();
+    expect(fades(slot)).toEqual({ left: false, right: false });
   });
 });

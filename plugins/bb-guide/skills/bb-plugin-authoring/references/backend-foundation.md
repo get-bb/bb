@@ -239,6 +239,11 @@ const unsubscribeChanged = host.experimental_onSignal(
 );
 ```
 
+Mark a contract method `experimental_retryable: true` when it only reads and is
+safe to run twice. If the daemon's response is lost, bb cancels the call and
+sends it once more, the retry core uses for its own read-only daemon commands.
+Leave it off for anything that changes state.
+
 Create the client and register signal handlers in the factory, but call host
 methods only after registration completes — from an RPC/event handler,
 background service, or timer. Candidate-time calls are rejected because that

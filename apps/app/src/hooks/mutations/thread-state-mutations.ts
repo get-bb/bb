@@ -47,17 +47,6 @@ interface UpdateThreadMutationOptions {
   showErrorToast?: boolean;
 }
 
-interface ArchiveThreadAndChildrenMutationRequest {
-  id: string;
-  childThreadsConfirmed: boolean;
-}
-
-export class ArchiveThreadConfirmationRequired extends Error {
-  constructor(readonly childThreadCount: number) {
-    super("Archiving child threads requires confirmation");
-  }
-}
-
 interface DeleteThreadMutationRequest {
   id: string;
   childThreadsConfirmed: boolean;
@@ -175,20 +164,10 @@ export function useArchiveThreadAndChildren() {
       lifecycleOperation: "archive_thread",
       showErrorToast: false,
     },
-    mutationFn: async ({
+    mutationFn: ({
       id,
-      childThreadsConfirmed,
-    }: ArchiveThreadAndChildrenMutationRequest): Promise<ThreadArchiveAllResponse> => {
-      if (!childThreadsConfirmed) {
-        const summary = await sdk.threads.childSummary({ threadId: id });
-        if (summary.unarchivedDescendantCount > 0) {
-          throw new ArchiveThreadConfirmationRequired(
-            summary.unarchivedDescendantCount,
-          );
-        }
-      }
-      return sdk.threads.archiveAll({ threadId: id });
-    },
+    }: ThreadMutationRequest): Promise<ThreadArchiveAllResponse> =>
+      sdk.threads.archiveAll({ threadId: id }),
     onMutate: async ({ id }): Promise<ArchiveThreadsTransaction> =>
       beginArchiveThreadAndChildrenTransaction({
         queryClient,

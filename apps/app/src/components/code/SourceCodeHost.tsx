@@ -1,6 +1,5 @@
 import { PluginReplacementSlot } from "@/components/plugin/PluginReplacementSlot";
-import { defineSplit } from "@/lib/define-split";
-import { SourceLoadingSkeleton } from "./code-loading-skeletons";
+import { BbSourceCodeSplit } from "./BbSourceCodeSplit";
 import { useSourceCodeRendererReplacement } from "./codeRendererProvider";
 import {
   DEFAULT_CODE_OVERFLOW,
@@ -8,13 +7,6 @@ import {
 } from "./code-rendering";
 
 const SOURCE_CODE_RENDERER_SLOT_KIND = "sourceCodeRenderer";
-
-export const BbSourceCodeSplit = defineSplit<BbSourceCodeProps>({
-  id: "bb-source-code",
-  load: () => import("./BbSourceCode").then((module) => module.default),
-  loading: () => <SourceLoadingSkeleton />,
-  tier: "intent",
-});
 
 interface SourceCodeHostProps extends Omit<
   BbSourceCodeProps,

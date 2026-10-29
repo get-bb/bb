@@ -5,6 +5,8 @@ on:
       - opened
       - synchronize
       - reopened
+      - edited
+      - labeled
 permissions:
   contents: read
   issues: write
@@ -21,17 +23,35 @@ jobs:
           ref: ${{ github.base_ref }}
           sparse-checkout: .github/APPROVED_CONTRIBUTORS
           sparse-checkout-cone-mode: false
-      - name: Check approval and maintainer edits, and close failing PRs
+      - name: Check approval, maintainer edits, and linked issue, and close failing PRs
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          EVENT_ACTION: ${{ github.event.action }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
           PR_ASSOCIATION: ${{ github.event.pull_request.author_association }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_STATE: ${{ github.event.pull_request.state }}
+          PR_NEEDS_ISSUE: ${{ contains(github.event.pull_request.labels.*.name, 'needs-issue') }}
+          PR_NEEDS_EDITS: ${{ contains(github.event.pull_request.labels.*.name, 'needs-maintainer-edits') }}
+          PR_SKIP_ISSUE: ${{ contains(github.event.pull_request.labels.*.name, 'skip-issue-check') }}
+          LABEL_NAME: ${{ github.event.label.name }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           HEAD_OWNER_TYPE: ${{ github.event.pull_request.head.repo.owner.type }}
           MAINTAINER_CAN_MODIFY: ${{ github.event.pull_request.maintainer_can_modify }}
+          CONTRIBUTING_URL: ${{ github.server_url }}/${{ github.repository }}/blob/${{ github.base_ref }}/CONTRIBUTING.md
           DISCORD_INVITE_URL: https://discord.gg/kvBU6tJhcJ
         run: |
+          recheck=""
+          if [ "$EVENT_ACTION" = "edited" ] || [ "$EVENT_ACTION" = "labeled" ]; then
+            recheck="yes"
+          fi
+          if [ "$EVENT_ACTION" = "labeled" ] && [ "$LABEL_NAME" != "skip-issue-check" ]; then
+            exit 0
+          fi
+          if [ -n "$recheck" ] && { [ "$PR_STATE" != "closed" ] || [ "$PR_NEEDS_ISSUE" != "true" ]; }; then
+            exit 0
+          fi
           trusted=""
           if [ "$PR_ASSOCIATION" = "OWNER" ] || [ "$PR_ASSOCIATION" = "MEMBER" ] || [ "$PR_ASSOCIATION" = "COLLABORATOR" ]; then
             trusted="yes"
@@ -51,27 +71,78 @@ jobs:
             done < ".github/APPROVED_CONTRIBUTORS"
           fi
           edits_off=""
-          if [ "$HEAD_REPO" != "$GITHUB_REPOSITORY" ] && [ "$HEAD_OWNER_TYPE" = "User" ] && [ "$MAINTAINER_CAN_MODIFY" != "true" ]; then
+          if [ -n "$recheck" ]; then
+            if [ "$PR_NEEDS_EDITS" = "true" ]; then
+              edits_off="yes"
+            fi
+          elif [ "$HEAD_REPO" != "$GITHUB_REPOSITORY" ] && [ "$HEAD_OWNER_TYPE" = "User" ] && [ "$MAINTAINER_CAN_MODIFY" != "true" ]; then
             edits_off="yes"
           fi
-          edits_note="This PR has \"Allow edits by maintainers\" turned off. Open a new PR from your fork with it turned on."
-          if [ -n "$trusted" ]; then
-            gh pr edit "$PR_NUMBER" --remove-label "needs-approval" --repo "$GITHUB_REPOSITORY" || true
-            if [ -z "$edits_off" ]; then
-              exit 0
+          issue_missing=""
+          if [ "$EVENT_ACTION" != "synchronize" ] && [ "$PR_AUTHOR_TYPE" != "Bot" ] && [ "$PR_ASSOCIATION" != "OWNER" ] && [ "$PR_ASSOCIATION" != "MEMBER" ] && [ "$HEAD_REPO" != "$GITHUB_REPOSITORY" ] && [ "$PR_SKIP_ISSUE" != "true" ]; then
+            issue_missing="yes"
+            attempts=1
+            if [ "$EVENT_ACTION" = "edited" ]; then
+              attempts=4
             fi
-            note="Thanks @$PR_AUTHOR for the PR. $edits_note This PR now closes on its own."
-            gh pr comment "$PR_NUMBER" --body "$note" --repo "$GITHUB_REPOSITORY"
-            gh pr close "$PR_NUMBER" --repo "$GITHUB_REPOSITORY"
+            for attempt in $(seq "$attempts"); do
+              linked="$(gh api graphql \
+                -f query='query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { closingIssuesReferences(first: 50) { nodes { state repository { nameWithOwner } } } } } }' \
+                -f owner="${GITHUB_REPOSITORY%/*}" -f name="${GITHUB_REPOSITORY#*/}" -F number="$PR_NUMBER" \
+                --jq "[.data.repository.pullRequest.closingIssuesReferences.nodes[] | select(.state == \"OPEN\" and .repository.nameWithOwner == \"$GITHUB_REPOSITORY\")] | length")"
+              if [ "$linked" -gt 0 ]; then
+                issue_missing=""
+                break
+              fi
+              if [ "$attempt" -lt "$attempts" ]; then
+                sleep 5
+              fi
+            done
+          fi
+          add_label() {
+            gh label create "$1" --description "$2" --color "$3" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || true
+            gh pr edit "$PR_NUMBER" --add-label "$1" --repo "$GITHUB_REPOSITORY" || true
+          }
+          remove_label() {
+            gh pr edit "$PR_NUMBER" --remove-label "$1" --repo "$GITHUB_REPOSITORY" || true
+          }
+          if [ -n "$recheck" ]; then
+            if [ -n "$trusted" ] && [ -z "$edits_off" ] && [ -z "$issue_missing" ]; then
+              remove_label "needs-issue"
+              gh pr reopen "$PR_NUMBER" --repo "$GITHUB_REPOSITORY"
+            fi
             exit 0
           fi
-          note="Thanks @$PR_AUTHOR for the PR. This repo approves new contributors before it reviews their PRs, so this PR now closes on its own. That is expected."
-          linked_pr="this PR"
-          if [ -n "$edits_off" ]; then
-            note="$note $edits_note"
-            linked_pr="the new PR"
+          if [ -n "$trusted" ]; then
+            remove_label "needs-approval"
           fi
-          note="$note Join the #contributors channel in Discord ($DISCORD_INVITE_URL), post a link to $linked_pr, and explain what it changes and why. A maintainer then adds you to the allow list and can reopen the PR."
-          gh pr comment "$PR_NUMBER" --body "$note" --repo "$GITHUB_REPOSITORY"
-          gh pr edit "$PR_NUMBER" --add-label "needs-approval" --repo "$GITHUB_REPOSITORY" || true
+          if [ -z "$issue_missing" ]; then
+            remove_label "needs-issue"
+          fi
+          if [ -n "$trusted" ] && [ -z "$edits_off" ] && [ -z "$issue_missing" ]; then
+            exit 0
+          fi
+          body="Thanks for the pull request, @$PR_AUTHOR. It was closed automatically because it does not meet the requirements below yet. This is an automated check, not a review of the change."
+          if [ -z "$trusted" ]; then
+            body="$body"$'\n\n'"**Contributor approval.** bb reviews pull requests only from approved contributors, and you are not on the list yet. Join the #contributors channel in Discord ($DISCORD_INVITE_URL), post a link to your pull request, and explain what it changes and why. A maintainer then adds you to the list and reopens the pull request."
+            add_label "needs-approval" "PR author is not on the approved contributor list" "d93f0b"
+          fi
+          if [ -n "$issue_missing" ]; then
+            item="**Linked issue.** Every pull request must close an open issue in this repository. The issue keeps the problem tracked even if this pull request closes or we take a different approach. Open an issue for the change, or find an existing one, and add \`Fixes #<number>\` to the pull request description. Feature requests and UI changes need a maintainer's sign-off on the issue first."
+            if [ -n "$edits_off" ]; then
+              item="$item Include it in the new pull request."
+            elif [ -n "$trusted" ]; then
+              item="$item This pull request reopens on its own once you save the description."
+            else
+              item="$item Link the issue before you ask for approval."
+            fi
+            body="$body"$'\n\n'"$item"
+            add_label "needs-issue" "PR does not close an open issue" "d93f0b"
+          fi
+          if [ -n "$edits_off" ]; then
+            add_label "needs-maintainer-edits" "PR was opened with maintainer edits turned off" "d93f0b"
+            body="$body"$'\n\n'"**Maintainer edits.** \"Allow edits by maintainers\" is turned off for this pull request. Open a new pull request from your fork with it turned on. This one stays closed."
+          fi
+          body="$body"$'\n\n'"See [CONTRIBUTING.md]($CONTRIBUTING_URL) for details."
+          gh pr comment "$PR_NUMBER" --body "$body" --repo "$GITHUB_REPOSITORY"
           gh pr close "$PR_NUMBER" --repo "$GITHUB_REPOSITORY"

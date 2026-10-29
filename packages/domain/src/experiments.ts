@@ -1,11 +1,16 @@
 import { z } from "zod";
 
 export const experimentKeys = [
+  "applicationLinks",
   "changelogPreview",
   "compactExpiredCache",
   "serverMove",
   "performanceDiagnostics",
+  "sidebarMultiSelect",
+  "threadRowMetadata",
   "timelinePush",
+  "unreadDividerAtAnswer",
+  "websocketCompression",
 ] as const;
 export const experimentKeySchema = z.enum(experimentKeys);
 export type ExperimentKey = z.infer<typeof experimentKeySchema>;
@@ -20,17 +25,27 @@ export const experimentUpdatesSchema = z.partialRecord(
 export type ExperimentUpdates = z.infer<typeof experimentUpdatesSchema>;
 
 export const defaultExperiments: Experiments = {
+  applicationLinks: false,
   changelogPreview: false,
   compactExpiredCache: false,
   serverMove: false,
   performanceDiagnostics: false,
+  sidebarMultiSelect: false,
+  threadRowMetadata: false,
   timelinePush: false,
+  unreadDividerAtAnswer: false,
+  websocketCompression: false,
 };
 
 export const earlyAdopterExperiments: Experiments = {
+  applicationLinks: true,
   changelogPreview: false,
   compactExpiredCache: true,
   serverMove: false,
   performanceDiagnostics: false,
+  sidebarMultiSelect: true,
+  threadRowMetadata: false,
   timelinePush: true,
+  unreadDividerAtAnswer: true,
+  websocketCompression: true,
 };

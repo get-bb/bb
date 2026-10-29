@@ -1,7 +1,3 @@
-import {
-  ThreadDiffFixedTabContent,
-  useThreadDiffVisible,
-} from "./git-diff/thread-diff-registration";
 import { createContext, useContext, type ReactNode } from "react";
 import {
   collectPluginAppRegistrations,
@@ -25,16 +21,6 @@ export const coreTabs = collectPluginAppRegistrations(
       icon: "Info",
       layout: "flush",
       component: ThreadInfoFixedTabContent,
-    });
-    app.slots.experimental_tab({
-      context: { kind: "thread" },
-      availability: "fixed",
-      id: "diff",
-      title: "Diff",
-      icon: "FileDiff",
-      layout: "flush",
-      component: ThreadDiffFixedTabContent,
-      useVisible: useThreadDiffVisible,
     });
   }),
 ).tabs.map((slot) => ({ ...slot, pluginId: "core", generation: 0 }));

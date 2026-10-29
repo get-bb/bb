@@ -6,8 +6,6 @@ export const PI_EXTENSION_UI_KIND = `${PI_PLUGIN_ID}/extension-ui`;
 
 export const PI_EXTENSION_UI_RENDERER_ID = "extension-ui";
 
-const PLUGIN_TITLE_MAX = 200;
-
 const dialogMethodSchema = z.enum(["select", "confirm", "input", "editor"]);
 
 const boundedText = (max: number) => z.string().max(max);
@@ -17,7 +15,7 @@ export const PI_EXTENSION_UI_MAX_OPTIONS = 64;
 const baseExtensionUiRequestSchema = z.object({
   id: z.union([z.string(), z.number()]),
   method: dialogMethodSchema,
-  title: boundedText(PLUGIN_TITLE_MAX).refine(
+  title: boundedText(8192).refine(
     (value) => value.trim().length > 0,
     "Extension UI title cannot be blank",
   ),
@@ -41,6 +39,7 @@ export type PiExtensionUiRequest = z.infer<typeof piExtensionUiRequestSchema>;
 
 export const piExtensionUiPayloadDataSchema = z.object({
   requestId: z.string().min(1),
+  fullTitle: z.string().min(1).optional(),
   ...baseExtensionUiRequestSchema.pick({
     method: true,
     options: true,

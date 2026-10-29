@@ -43,6 +43,7 @@ export const modelListParamsSchema = z
   .object({
     cwd: z.string().min(1).optional(),
     envVars: z.record(z.string(), z.string()).optional(),
+    selectedModel: z.string().min(1).optional(),
   })
   .passthrough();
 

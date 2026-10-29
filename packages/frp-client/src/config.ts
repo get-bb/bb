@@ -107,6 +107,8 @@ export async function createFrpcAdmin(): Promise<FrpcAdmin> {
   };
 }
 
+const WORK_CONNECTION_POOL_COUNT = 10;
+
 export interface FrpcConfigInput {
   server: TunnelServer;
   user: string;
@@ -136,6 +138,7 @@ export function buildFrpcConfig(input: FrpcConfigInput) {
         }),
     transport: {
       protocol: input.server.protocol,
+      poolCount: WORK_CONNECTION_POOL_COUNT,
       ...(input.server.protocol === "wss"
         ? {
             tls: {

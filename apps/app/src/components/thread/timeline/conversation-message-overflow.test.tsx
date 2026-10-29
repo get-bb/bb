@@ -124,7 +124,6 @@ describe("ConversationMessageOverflowToggle", () => {
       isAtBottom: true,
       scrollToBottom: vi.fn(),
       scrollElementIntoView: vi.fn(),
-      scrollElementIntoViewClampedToMaxScroll: vi.fn(),
       positionKeeper: createInertScrollPositionKeeper(),
       holdContentPosition,
     };

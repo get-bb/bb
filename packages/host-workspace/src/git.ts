@@ -1,103 +1,48 @@
-import { execFile, type ExecFileException } from "node:child_process";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
-import { promisify } from "node:util";
-import type {
-  DefaultBranchRelation,
-  GitCheckoutRef,
-  WorkspaceGitOperation,
-} from "@bb/domain";
+import type { ExecFileException } from "node:child_process";
+import { execHostFileBuffer, runVcsProcess } from "@bb/process-utils";
+import type { GitCheckoutRef, WorkspaceGitOperation } from "@bb/domain";
 import {
-  execPortableFile,
-  runVcsProcess,
-  spawnManagedProcess,
-  pathExists,
-  sanitizeInheritedChildProcessEnv,
-} from "@bb/process-utils";
+  createGitCommandFailedError,
+  detectGitSource,
+  ensureGitRepo,
+  type GitProcessOptions,
+  type GitTimeoutOptions,
+  parseOriginHeadBranchName,
+  type PorcelainEntry,
+  resolveGitProcessEnv,
+  resolvePreferredLocalDefaultBranch,
+  runGit,
+  trimOutput,
+  WorkspaceError,
+} from "bb-environment-provider-host/workspace-git";
 
-const execFileAsync = promisify(execFile);
-const DEFAULT_BUFFER_BYTES = 16 * 1024 * 1024;
+function toExecError(error: unknown): ExecFileException | undefined {
+  return error instanceof Error ? (error as ExecFileException) : undefined;
+}
 
-export class WorkspaceError extends Error {
-  readonly code: string;
-  constructor(code: string, message: string, options?: { cause?: unknown }) {
-    super(message, options);
-    this.code = code;
-    this.name = "WorkspaceError";
+function isMaxBufferExceededError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    error.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER"
+  );
+}
+
+async function pathExists(targetPath: string): Promise<boolean> {
+  try {
+    await fs.access(targetPath);
+    return true;
+  } catch {
+    return false;
   }
-}
-
-export interface GitProcessOptions {
-  shellPath?: string;
-}
-
-export interface RunGitOptions extends GitProcessOptions {
-  cwd: string;
-  timeoutMs?: number;
-  allowFailure?: boolean;
-  env?: NodeJS.ProcessEnv;
-  signal?: AbortSignal;
-  maxBufferBytes?: number;
-  allowTruncatedStdout?: boolean;
-  onStderr?: (chunk: string) => void;
-  input?: string;
-}
-
-interface ResolveGitProcessEnvArgs {
-  env: NodeJS.ProcessEnv | undefined;
-  shellPath: string | undefined;
-}
-
-interface GitTimeoutOptions extends GitProcessOptions {
-  timeoutMs?: number;
-}
-
-interface FetchRemoteBranchesResult {
-  status: "fetched" | "failed" | "skipped";
-}
-
-interface FetchRemoteBranchesOptions extends GitTimeoutOptions {
-  interactive: boolean;
-}
-
-interface DefaultBranchRefs {
-  defaultBranch: string | undefined;
-  defaultBranchRelation: DefaultBranchRelation | undefined;
-  originDefaultBranch: string | undefined;
-}
-
-interface BranchRefsWithDefaults {
-  branches: string[];
-  defaultBranch: string | undefined;
-  originDefaultBranch: string | undefined;
-  remoteBranches: string[];
-}
-
-export interface GitCommandResult {
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-}
-
-export type GitNullRecordFormat = "single" | "name-status" | "numstat" | "raw";
-
-export interface GitNullRecordLimitResult extends GitCommandResult {
-  recordCount: number;
-  recordLimitReached: boolean;
 }
 
 type ActiveWorkspaceGitOperationKind = Exclude<
   WorkspaceGitOperation["kind"],
   "none" | "unknown"
 >;
-
-interface PorcelainEntry {
-  path: string;
-  status: string;
-  indexStatus: string;
-  worktreeStatus: string;
-}
 
 interface WorkspaceGitOperationMarker {
   kind: ActiveWorkspaceGitOperationKind;
@@ -138,398 +83,12 @@ const GIT_QUOTED_PATH_ESCAPE_BYTES = new Map<string, number>([
   ["v", 11],
 ]);
 
-function toExecError(error: unknown): ExecFileException | undefined {
-  if (error instanceof Error) {
-    return error as ExecFileException;
-  }
-  return undefined;
-}
-
-function trimOutput(value: string): string {
-  return value.trim().replace(/\n+$/u, "");
-}
-
-function getExitCode(error: ExecFileException | undefined): number {
-  if (typeof error?.code === "number") {
-    return error.code;
-  }
-  return 1;
-}
-
-const WINDOWS_STARTUP_CRASH_ATTEMPTS = 3;
-const WINDOWS_STARTUP_CRASH_RETRY_DELAY_MS = 150;
-const STATUS_DLL_INIT_FAILED = 0xc0000142;
-
-function isWindowsStartupCrash(error: ExecFileException | undefined): boolean {
-  return (
-    error !== undefined &&
-    error.code === STATUS_DLL_INIT_FAILED &&
-    error.killed !== true &&
-    (error.signal ?? null) === null &&
-    error.stdout === "" &&
-    error.stderr === ""
-  );
-}
-
-function resolveGitProcessEnv(
-  args: ResolveGitProcessEnvArgs,
-): NodeJS.ProcessEnv {
-  return {
-    ...sanitizeInheritedChildProcessEnv({
-      env: process.env,
-      ...(args.shellPath !== undefined ? { shellPath: args.shellPath } : {}),
-    }),
-    ...args.env,
-  };
-}
-
-function isMaxBufferExceededError(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    "code" in error &&
-    error.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER"
-  );
-}
-
-function isStdoutMaxBufferExceededError(error: unknown): boolean {
-  return (
-    isMaxBufferExceededError(error) &&
-    error instanceof Error &&
-    error.message.includes("stdout maxBuffer")
-  );
-}
-
-function readCommandTimeoutMs(
-  error: ExecFileException | undefined,
-  timeoutMs: number | undefined,
-): number | null {
-  if (
-    typeof timeoutMs === "number" &&
-    error?.killed === true &&
-    error.signal === "SIGTERM"
-  ) {
-    return timeoutMs;
-  }
-  return null;
-}
-
 function isMissingGitBlobTargetError(stderr: string): boolean {
   return (
     /^fatal: path '.+' does not exist in '.+'$/u.test(stderr) ||
     /^fatal: invalid object name '.+'\.$/u.test(stderr) ||
     /^fatal: Not a valid object name .+$/u.test(stderr)
   );
-}
-
-function createGitCommandTimedOutError(
-  args: string[],
-  timeoutMs: number,
-  cause?: unknown,
-): WorkspaceError {
-  return new WorkspaceError(
-    "git_command_timeout",
-    `git ${args.join(" ")} timed out after ${timeoutMs}ms`,
-    { cause },
-  );
-}
-
-function createGitCommandCancelledError(
-  args: string[],
-  cause?: unknown,
-): WorkspaceError {
-  return new WorkspaceError(
-    "provision_cancelled",
-    `git ${args.join(" ")} was cancelled`,
-    { cause },
-  );
-}
-
-function createGitCommandFailedError(
-  args: string[],
-  stderr: string,
-  cause?: unknown,
-): WorkspaceError {
-  const detail = stderr ? `: ${stderr}` : "";
-  return new WorkspaceError(
-    "git_command_failed",
-    `git ${args.join(" ")} failed${detail}`,
-    { cause },
-  );
-}
-
-export async function runGit(
-  args: string[],
-  options: RunGitOptions,
-): Promise<GitCommandResult> {
-  if (options.signal?.aborted) {
-    throw createGitCommandCancelledError(args, options.signal.reason);
-  }
-  for (let attempt = 1; ; attempt += 1) {
-    try {
-      const processOptions = {
-        cwd: options.cwd,
-        env: resolveGitProcessEnv({
-          env: options.env,
-          shellPath: options.shellPath,
-        }),
-        maxBuffer: options.maxBufferBytes ?? DEFAULT_BUFFER_BYTES,
-        signal: options.signal,
-        timeout: options.timeoutMs,
-      } as const;
-      const result = await execPortableFile("git", args, {
-        ...processOptions,
-        input: options.input,
-        onStderr: options.onStderr,
-      });
-      return {
-        stdout: result.stdout,
-        stderr: result.stderr,
-        exitCode: 0,
-      };
-    } catch (error) {
-      if (options.signal?.aborted) {
-        throw createGitCommandCancelledError(args, error);
-      }
-      const execError = toExecError(error);
-      const timeoutMs = readCommandTimeoutMs(execError, options.timeoutMs);
-      if (timeoutMs !== null) {
-        throw createGitCommandTimedOutError(args, timeoutMs, error);
-      }
-      if (
-        options.allowTruncatedStdout === true &&
-        isStdoutMaxBufferExceededError(error)
-      ) {
-        return {
-          stdout: execError?.stdout ?? "",
-          stderr: execError?.stderr ?? "",
-          exitCode: 0,
-        };
-      }
-      if (
-        attempt < WINDOWS_STARTUP_CRASH_ATTEMPTS &&
-        isWindowsStartupCrash(execError)
-      ) {
-        await new Promise((resolve) =>
-          setTimeout(resolve, WINDOWS_STARTUP_CRASH_RETRY_DELAY_MS * attempt),
-        );
-        continue;
-      }
-      if (options.allowFailure) {
-        return {
-          stdout: execError?.stdout ?? "",
-          stderr: execError?.stderr ?? "",
-          exitCode: getExitCode(execError),
-        };
-      }
-
-      const stderr = trimOutput(execError?.stderr ?? "");
-      const detail = stderr ? `: ${stderr}` : "";
-      throw new WorkspaceError(
-        "git_command_failed",
-        `git ${args.join(" ")} failed${detail}`,
-        {
-          cause: error,
-        },
-      );
-    }
-  }
-}
-
-export async function runGitWithNullRecordLimit(
-  args: string[],
-  options: RunGitOptions,
-  recordFormat: GitNullRecordFormat,
-  maxRecords: number,
-): Promise<GitNullRecordLimitResult> {
-  if (!Number.isInteger(maxRecords) || maxRecords <= 0) {
-    throw new WorkspaceError(
-      "invalid_request",
-      "maxRecords must be a positive integer",
-    );
-  }
-  if (options.signal?.aborted) {
-    throw createGitCommandCancelledError(args, options.signal.reason);
-  }
-
-  try {
-    return await runVcsProcess(
-      "git",
-      args,
-      () =>
-        runGitWithNullRecordLimitAdmitted(
-          args,
-          options,
-          recordFormat,
-          maxRecords,
-        ),
-      { signal: options.signal },
-    );
-  } catch (error) {
-    if (options.signal?.aborted)
-      throw createGitCommandCancelledError(args, error);
-    throw error;
-  }
-}
-
-function runGitWithNullRecordLimitAdmitted(
-  args: string[],
-  options: RunGitOptions,
-  recordFormat: GitNullRecordFormat,
-  maxRecords: number,
-): Promise<GitNullRecordLimitResult> {
-  return new Promise((resolve, reject) => {
-    const managed = spawnManagedProcess({
-      command: "git",
-      args,
-      cwd: options.cwd,
-      env: resolveGitProcessEnv({
-        env: options.env,
-        shellPath: options.shellPath,
-      }),
-    });
-    const { child } = managed;
-    child.stdin.end();
-    const stdoutRecords: Buffer[] = [];
-    const stderrChunks: Buffer[] = [];
-    let pending = Buffer.alloc(0);
-    let currentRecord: Buffer[] = [];
-    let expectedTokens = recordFormat === "single" ? 1 : 0;
-    let recordCount = 0;
-    let recordLimitReached = false;
-    let aborted = false;
-    let timedOut = false;
-    let spawnError: Error | undefined;
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-
-    let stopping: Promise<void> | undefined;
-    const stopChild = (): void => {
-      stopping ??= managed.stop({ gracePeriodMs: 0 }).then(
-        () => undefined,
-        (error: unknown) => {
-          if (timeout !== undefined) clearTimeout(timeout);
-          options.signal?.removeEventListener("abort", onAbort);
-          child.stdin.destroy();
-          child.stderr.destroy();
-          reject(error);
-        },
-      );
-      child.stdout.destroy();
-    };
-    const onAbort = (): void => {
-      if (recordLimitReached) return;
-      aborted = true;
-      stopChild();
-    };
-
-    options.signal?.addEventListener("abort", onAbort, { once: true });
-    if (options.signal?.aborted) onAbort();
-    if (options.timeoutMs !== undefined) {
-      timeout = setTimeout(() => {
-        if (recordLimitReached) return;
-        timedOut = true;
-        stopChild();
-      }, options.timeoutMs);
-    }
-
-    child.stdout.on("data", (chunk: Buffer) => {
-      if (recordLimitReached) return;
-      const input =
-        pending.length === 0 ? chunk : Buffer.concat([pending, chunk]);
-      let tokenStart = 0;
-      for (let index = 0; index < input.length; index += 1) {
-        if (input[index] !== 0) continue;
-
-        const token = Buffer.from(input.subarray(tokenStart, index));
-        currentRecord.push(token);
-        if (currentRecord.length === 1) {
-          if (recordFormat === "name-status") {
-            const statusLetter = token[0];
-            expectedTokens = statusLetter === 82 || statusLetter === 67 ? 3 : 2;
-          } else if (recordFormat === "raw") {
-            const statusLetter = token[token.lastIndexOf(32) + 1];
-            expectedTokens = statusLetter === 82 || statusLetter === 67 ? 3 : 2;
-          } else if (recordFormat === "numstat") {
-            const firstTab = token.indexOf(9);
-            const secondTab = token.indexOf(9, firstTab + 1);
-            expectedTokens = secondTab === token.length - 1 ? 3 : 1;
-          }
-        }
-
-        if (currentRecord.length === expectedTokens) {
-          for (const recordToken of currentRecord) {
-            stdoutRecords.push(recordToken, Buffer.from([0]));
-          }
-          currentRecord = [];
-          expectedTokens = recordFormat === "single" ? 1 : 0;
-          recordCount += 1;
-          if (recordCount === maxRecords) {
-            recordLimitReached = true;
-            pending = Buffer.alloc(0);
-            stopChild();
-            return;
-          }
-        }
-        tokenStart = index + 1;
-      }
-      pending = Buffer.from(input.subarray(tokenStart));
-    });
-    child.stderr.on("data", (chunk: Buffer) => {
-      stderrChunks.push(chunk);
-    });
-    child.once("error", (error) => {
-      spawnError = error;
-    });
-    child.once("close", async (code) => {
-      try {
-        await stopping;
-      } catch (error) {
-        reject(error);
-        return;
-      }
-      if (timeout !== undefined) clearTimeout(timeout);
-      options.signal?.removeEventListener("abort", onAbort);
-
-      const stdout = Buffer.concat(stdoutRecords).toString("utf8");
-      const stderr = Buffer.concat(stderrChunks).toString("utf8");
-      if (recordLimitReached) {
-        resolve({
-          stdout,
-          stderr,
-          exitCode: 0,
-          recordCount,
-          recordLimitReached: true,
-        });
-        return;
-      }
-      if (aborted || options.signal?.aborted) {
-        reject(createGitCommandCancelledError(args, options.signal?.reason));
-        return;
-      }
-      if (timedOut && options.timeoutMs !== undefined) {
-        reject(createGitCommandTimedOutError(args, options.timeoutMs));
-        return;
-      }
-      if (spawnError !== undefined) {
-        reject(
-          createGitCommandFailedError(args, trimOutput(stderr), spawnError),
-        );
-        return;
-      }
-
-      const exitCode = code ?? 1;
-      if (exitCode === 0 || options.allowFailure === true) {
-        resolve({
-          stdout,
-          stderr,
-          exitCode,
-          recordCount,
-          recordLimitReached: false,
-        });
-        return;
-      }
-      reject(createGitCommandFailedError(args, trimOutput(stderr)));
-    });
-  });
 }
 
 export async function getAbsoluteGitDir(
@@ -550,33 +109,6 @@ export async function getAbsoluteGitDir(
   return path.resolve(gitDir);
 }
 
-export async function getGitCommonDir(
-  cwd: string,
-  options: GitProcessOptions & { signal?: AbortSignal } = {},
-): Promise<string> {
-  const result = await runGit(["rev-parse", "--git-common-dir"], {
-    cwd,
-    ...options,
-  });
-  const commonDir = result.stdout.trim();
-  if (!commonDir) {
-    throw new WorkspaceError(
-      "git_command_failed",
-      `git rev-parse --git-common-dir returned no path for ${cwd}`,
-    );
-  }
-  return path.resolve(cwd, commonDir);
-}
-
-export function parsePatchId(line: string | undefined): string | undefined {
-  const trimmed = line?.trim();
-  if (!trimmed) {
-    return undefined;
-  }
-  const [patchId] = trimmed.split(/\s+/);
-  return patchId || undefined;
-}
-
 async function findWorkspaceGitOperationMarker(
   gitDir: string,
 ): Promise<WorkspaceGitOperationMarker | undefined> {
@@ -589,8 +121,6 @@ async function findWorkspaceGitOperationMarker(
   }
   return undefined;
 }
-
-export type GitRepoKind = "work-tree" | "bare" | "none";
 
 export async function inspectGitRepository(
   cwd: string,
@@ -648,34 +178,6 @@ export async function inspectGitRepository(
   };
 }
 
-export async function detectGitRepoKind(
-  cwd: string,
-  options: GitTimeoutOptions = {},
-): Promise<GitRepoKind> {
-  const result = await runGit(
-    ["rev-parse", "--is-inside-work-tree", "--is-bare-repository"],
-    { cwd, ...options, allowFailure: true },
-  );
-  if (result.exitCode !== 0) {
-    return "none";
-  }
-  const [insideWorkTree, bare] = trimOutput(result.stdout).split("\n");
-  if (insideWorkTree === "true") {
-    return "work-tree";
-  }
-  if (bare === "true") {
-    return "bare";
-  }
-  return "none";
-}
-
-export async function detectGitRepo(
-  cwd: string,
-  options: GitTimeoutOptions = {},
-): Promise<boolean> {
-  return (await detectGitRepoKind(cwd, options)) === "work-tree";
-}
-
 export async function detectLinkedWorktree(
   cwd: string,
   options: GitTimeoutOptions = {},
@@ -689,27 +191,6 @@ export async function detectLinkedWorktree(
     return false;
   }
   return gitDirResult.stdout.trim().includes("/worktrees/");
-}
-
-export async function detectGitSource(
-  cwd: string,
-  options: GitTimeoutOptions = {},
-): Promise<boolean> {
-  return (await detectGitRepoKind(cwd, options)) !== "none";
-}
-
-export async function ensureGitRepo(
-  cwd: string,
-  options: GitTimeoutOptions = {},
-): Promise<void> {
-  if (await detectGitSource(cwd, options)) {
-    return;
-  }
-
-  throw new WorkspaceError(
-    "not_git_repo",
-    `Path is not a git repository: ${cwd}`,
-  );
 }
 
 async function readHeadSha(
@@ -727,27 +208,6 @@ async function readHeadSha(
 
   const sha = trimOutput(result.stdout);
   return sha || null;
-}
-
-export async function getCurrentBranch(
-  cwd: string,
-  options: GitTimeoutOptions = {},
-): Promise<string | undefined> {
-  if (!(await detectGitRepo(cwd, options))) {
-    return undefined;
-  }
-
-  const result = await runGit(["symbolic-ref", "--quiet", "--short", "HEAD"], {
-    cwd,
-    ...options,
-    allowFailure: true,
-  });
-  if (result.exitCode !== 0) {
-    return undefined;
-  }
-
-  const branchName = trimOutput(result.stdout);
-  return branchName || undefined;
 }
 
 export async function getCheckoutRef(
@@ -885,63 +345,6 @@ function parsePorcelainPath(rawPath: string): string {
   return parsePorcelainPathToken(rawPath, sourcePath.nextIndex + 4).value;
 }
 
-interface PorcelainV2Status {
-  entries: PorcelainEntry[];
-  headOid: string | null;
-  headBranch: string | null;
-}
-
-function porcelainV2StatusLetter(letter: string | undefined): string {
-  return letter === undefined || letter === "." ? " " : letter;
-}
-
-export function parsePorcelainV2StatusZ(output: string): PorcelainV2Status {
-  const records = output.split("\0");
-  const entries: PorcelainEntry[] = [];
-  let headOid: string | null = null;
-  let headBranch: string | null = null;
-  for (let index = 0; index < records.length; index += 1) {
-    const record = records[index];
-    if (!record) continue;
-    if (record.startsWith("# branch.oid ")) {
-      const oid = record.slice("# branch.oid ".length);
-      headOid = oid === "(initial)" ? null : oid;
-      continue;
-    }
-    if (record.startsWith("# branch.head ")) {
-      const head = record.slice("# branch.head ".length);
-      headBranch = head === "(detached)" ? null : head;
-      continue;
-    }
-    if (record.startsWith("#")) continue;
-    if (record.startsWith("? ")) {
-      entries.push({
-        path: record.slice(2),
-        status: "??",
-        indexStatus: "?",
-        worktreeStatus: "?",
-      });
-      continue;
-    }
-    const kind = record[0];
-    const fieldCount =
-      kind === "1" ? 8 : kind === "2" ? 9 : kind === "u" ? 10 : null;
-    if (fieldCount === null) continue;
-    const fields = record.split(" ");
-    const indexStatus = porcelainV2StatusLetter(fields[1]?.[0]);
-    const worktreeStatus = porcelainV2StatusLetter(fields[1]?.[1]);
-    const status = `${indexStatus}${worktreeStatus}`;
-    entries.push({
-      path: fields.slice(fieldCount).join(" "),
-      status: status.trim() || status,
-      indexStatus,
-      worktreeStatus,
-    });
-    if (kind === "2") index += 1;
-  }
-  return { entries, headOid, headBranch };
-}
-
 export function parsePorcelainEntries(statusOutput: string): PorcelainEntry[] {
   return statusOutput
     .split("\n")
@@ -1014,168 +417,6 @@ export async function getWorkspaceGitOperation(
   return buildActiveWorkspaceGitOperation(marker.kind, hasConflicts);
 }
 
-interface NameStatusEntry {
-  path: string;
-  status: string;
-}
-
-export interface NameStatusSourceEntry extends NameStatusEntry {
-  previousPath: string | null;
-}
-
-export function parseNameStatusSourceEntries(
-  output: string,
-): NameStatusSourceEntry[] {
-  const tokens = output.split("\0");
-  const entries: NameStatusSourceEntry[] = [];
-  let index = 0;
-  while (index < tokens.length) {
-    const statusToken = tokens[index];
-    if (!statusToken) {
-      index += 1;
-      continue;
-    }
-    const statusLetter = statusToken[0] ?? "";
-    const isRenameOrCopy = statusLetter === "R" || statusLetter === "C";
-    if (isRenameOrCopy) {
-      const oldPath = tokens[index + 1];
-      const newPath = tokens[index + 2];
-      if (newPath) {
-        entries.push({
-          path: newPath,
-          status: statusLetter,
-          previousPath: oldPath ?? null,
-        });
-      }
-      index += 3;
-    } else {
-      const pathToken = tokens[index + 1];
-      if (pathToken) {
-        entries.push({
-          path: pathToken,
-          status: statusLetter,
-          previousPath: null,
-        });
-      }
-      index += 2;
-    }
-  }
-  return entries;
-}
-
-export interface RawDiffEntry extends NameStatusSourceEntry {
-  oldMode: string;
-  newMode: string;
-  oldBlob: string;
-  newBlob: string;
-}
-
-export function parseRawDiffEntriesZ(output: string): RawDiffEntry[] {
-  const tokens = output.split("\0");
-  const entries: RawDiffEntry[] = [];
-  let index = 0;
-  while (index < tokens.length) {
-    const header = tokens[index];
-    if (!header?.startsWith(":")) {
-      index += 1;
-      continue;
-    }
-    const [oldMode, newMode, oldBlob, newBlob, status] = header
-      .slice(1)
-      .split(" ");
-    const statusLetter = status?.[0] ?? "";
-    const isRenameOrCopy = statusLetter === "R" || statusLetter === "C";
-    const previousPath = isRenameOrCopy ? (tokens[index + 1] ?? null) : null;
-    const path = tokens[index + (isRenameOrCopy ? 2 : 1)];
-    if (path && oldMode && newMode && oldBlob && newBlob) {
-      entries.push({
-        path,
-        previousPath,
-        status: statusLetter,
-        oldMode,
-        newMode,
-        oldBlob,
-        newBlob,
-      });
-    }
-    index += isRenameOrCopy ? 3 : 2;
-  }
-  return entries;
-}
-
-export function parseNameStatusEntries(output: string): NameStatusEntry[] {
-  return parseNameStatusSourceEntries(output).map(({ path, status }) => ({
-    path,
-    status,
-  }));
-}
-
-export function summarizeNumstat(output: string): {
-  changedFiles: number;
-  insertions: number;
-  deletions: number;
-} {
-  const lines = output.split("\n").filter(Boolean);
-
-  return lines.reduce(
-    (summary, line) => {
-      const [insertionsText, deletionsText] = line.split("\t");
-      const insertions = Number.parseInt(insertionsText ?? "", 10);
-      const deletions = Number.parseInt(deletionsText ?? "", 10);
-
-      return {
-        changedFiles: summary.changedFiles + 1,
-        insertions:
-          summary.insertions + (Number.isFinite(insertions) ? insertions : 0),
-        deletions:
-          summary.deletions + (Number.isFinite(deletions) ? deletions : 0),
-      };
-    },
-    { changedFiles: 0, insertions: 0, deletions: 0 },
-  );
-}
-
-export interface NumstatEntry {
-  path: string;
-  insertions: number | null;
-  deletions: number | null;
-}
-
-export function parseNumstatEntriesZ(output: string): NumstatEntry[] {
-  const entries: NumstatEntry[] = [];
-  let cursor = 0;
-  while (cursor < output.length) {
-    const firstTab = output.indexOf("\t", cursor);
-    if (firstTab < 0) break;
-    const secondTab = output.indexOf("\t", firstTab + 1);
-    if (secondTab < 0) break;
-    const insertions = parseNumstatCount(output.slice(cursor, firstTab));
-    const deletions = parseNumstatCount(output.slice(firstTab + 1, secondTab));
-
-    let path: string;
-    if (output[secondTab + 1] === "\0") {
-      const oldEnd = output.indexOf("\0", secondTab + 2);
-      if (oldEnd < 0) break;
-      const newEnd = output.indexOf("\0", oldEnd + 1);
-      if (newEnd < 0) break;
-      path = output.slice(oldEnd + 1, newEnd);
-      cursor = newEnd + 1;
-    } else {
-      const end = output.indexOf("\0", secondTab + 1);
-      if (end < 0) break;
-      path = output.slice(secondTab + 1, end);
-      cursor = end + 1;
-    }
-    entries.push({ path, insertions, deletions });
-  }
-  return entries;
-}
-
-function parseNumstatCount(text: string): number | null {
-  const value = Number.parseInt(text, 10);
-  return Number.isFinite(value) ? value : null;
-}
-
 export interface SharedGitRefsSnapshot {
   fingerprint: string;
   defaultBranch: string | null;
@@ -1228,323 +469,6 @@ export async function readSharedGitRefsSnapshot(
       resolvePreferredLocalDefaultBranch(localBranches, undefined) ??
       null,
   };
-}
-
-export async function readDefaultBranch(
-  cwd: string,
-  options: GitTimeoutOptions = {},
-): Promise<string | undefined> {
-  await ensureGitRepo(cwd, options);
-  return readRepoDefaultBranch(cwd, options);
-}
-
-export async function readRepoDefaultBranch(
-  cwd: string,
-  options: GitTimeoutOptions = {},
-): Promise<string | undefined> {
-  const originHeadBranch = await readOriginHeadBranchName(cwd, options);
-  if (originHeadBranch !== undefined) {
-    return originHeadBranch;
-  }
-  return resolvePreferredLocalDefaultBranch(
-    await readLocalBranches(cwd, options),
-    undefined,
-  );
-}
-
-async function readLocalBranches(
-  cwd: string,
-  options: GitTimeoutOptions = {},
-): Promise<string[]> {
-  const branches = await runGit(
-    ["for-each-ref", "--format=%(refname:short)", "refs/heads"],
-    { cwd, ...options },
-  );
-  return branches.stdout
-    .split("\n")
-    .map((value) => value.trim())
-    .filter(Boolean);
-}
-
-function resolvePreferredLocalDefaultBranch(
-  localBranches: readonly string[],
-  originDefaultBranchName: string | undefined,
-): string | undefined {
-  if (
-    originDefaultBranchName &&
-    localBranches.includes(originDefaultBranchName)
-  ) {
-    return originDefaultBranchName;
-  }
-  if (localBranches.includes("main")) {
-    return "main";
-  }
-  if (localBranches.includes("master")) {
-    return "master";
-  }
-  return localBranches[0];
-}
-
-function parseOriginHeadBranchName(output: string): string | undefined {
-  const remoteHead = trimOutput(output);
-  if (remoteHead.startsWith("refs/remotes/origin/")) {
-    return remoteHead.replace("refs/remotes/origin/", "");
-  }
-  return undefined;
-}
-
-async function readOriginHeadBranchName(
-  cwd: string,
-  options: GitTimeoutOptions = {},
-): Promise<string | undefined> {
-  const originHead = await runGit(
-    ["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"],
-    { cwd, ...options, allowFailure: true },
-  );
-  return parseOriginHeadBranchName(originHead.stdout);
-}
-
-export async function hasRef(
-  cwd: string,
-  ref: string,
-  options: GitTimeoutOptions = {},
-): Promise<boolean> {
-  await ensureGitRepo(cwd, options);
-  const result = await runGit(["show-ref", "--verify", "--quiet", ref], {
-    cwd,
-    ...options,
-    allowFailure: true,
-  });
-  return result.exitCode === 0;
-}
-
-async function readOriginDefaultBranch(
-  cwd: string,
-  localDefaultBranch: string | undefined,
-  options: GitTimeoutOptions = {},
-): Promise<string | undefined> {
-  const originHeadBranch = await readOriginHeadBranchName(cwd, options);
-  if (
-    originHeadBranch &&
-    (await hasRef(cwd, `refs/remotes/origin/${originHeadBranch}`, options))
-  ) {
-    return `origin/${originHeadBranch}`;
-  }
-
-  if (
-    localDefaultBranch &&
-    (await hasRef(cwd, `refs/remotes/origin/${localDefaultBranch}`, options))
-  ) {
-    return `origin/${localDefaultBranch}`;
-  }
-
-  return undefined;
-}
-
-async function revParseRef(
-  cwd: string,
-  ref: string,
-  options: GitTimeoutOptions = {},
-): Promise<string | undefined> {
-  const result = await runGit(["rev-parse", "--verify", `${ref}^{commit}`], {
-    cwd,
-    ...options,
-    allowFailure: true,
-  });
-  if (result.exitCode !== 0) {
-    return undefined;
-  }
-  return trimOutput(result.stdout) || undefined;
-}
-
-async function isAncestorRef(
-  cwd: string,
-  ancestorRef: string,
-  descendantRef: string,
-  options: GitTimeoutOptions = {},
-): Promise<boolean | undefined> {
-  const result = await runGit(
-    ["merge-base", "--is-ancestor", ancestorRef, descendantRef],
-    { cwd, ...options, allowFailure: true },
-  );
-  if (result.exitCode === 0) {
-    return true;
-  }
-  if (result.exitCode === 1) {
-    return false;
-  }
-  return undefined;
-}
-
-async function readDefaultBranchRelation(
-  cwd: string,
-  localDefaultBranch: string | undefined,
-  originDefaultBranch: string | undefined,
-  options: GitTimeoutOptions = {},
-): Promise<DefaultBranchRelation | undefined> {
-  if (!localDefaultBranch || !originDefaultBranch) {
-    return undefined;
-  }
-
-  const localRef = `refs/heads/${localDefaultBranch}`;
-  const originRef = `refs/remotes/${originDefaultBranch}`;
-  const [localSha, originSha] = await Promise.all([
-    revParseRef(cwd, localRef, options),
-    revParseRef(cwd, originRef, options),
-  ]);
-  if (!localSha || !originSha) {
-    return "unknown";
-  }
-  if (localSha === originSha) {
-    return "equal";
-  }
-
-  const localIsAncestor = await isAncestorRef(
-    cwd,
-    localRef,
-    originRef,
-    options,
-  );
-  if (localIsAncestor === true) {
-    return "local-behind";
-  }
-  if (localIsAncestor === undefined) {
-    return "unknown";
-  }
-
-  const originIsAncestor = await isAncestorRef(
-    cwd,
-    originRef,
-    localRef,
-    options,
-  );
-  if (originIsAncestor === true) {
-    return "local-ahead";
-  }
-  if (originIsAncestor === undefined) {
-    return "unknown";
-  }
-
-  return "diverged";
-}
-
-export async function readDefaultBranchRefs(
-  cwd: string,
-  options: GitTimeoutOptions = {},
-): Promise<DefaultBranchRefs> {
-  await ensureGitRepo(cwd, options);
-  const originHeadBranch = await readOriginHeadBranchName(cwd, options);
-  const localBranches = await readLocalBranches(cwd, options);
-  const defaultBranch = resolvePreferredLocalDefaultBranch(
-    localBranches,
-    originHeadBranch,
-  );
-  const originDefaultBranch = await readOriginDefaultBranch(
-    cwd,
-    defaultBranch,
-    options,
-  );
-  const defaultBranchRelation = await readDefaultBranchRelation(
-    cwd,
-    defaultBranch,
-    originDefaultBranch,
-    options,
-  );
-
-  return {
-    defaultBranch,
-    defaultBranchRelation,
-    originDefaultBranch,
-  };
-}
-
-async function fetchRemoteBranchesNonInteractively(
-  cwd: string,
-  options: GitTimeoutOptions,
-): Promise<FetchRemoteBranchesResult> {
-  try {
-    await execPortableFile("git", ["fetch", "--all", "--prune", "--quiet"], {
-      priority: "background",
-      cwd,
-      timeout: options.timeoutMs,
-      maxBuffer: DEFAULT_BUFFER_BYTES,
-      env: resolveGitProcessEnv({
-        shellPath: options.shellPath,
-        env: {
-          GIT_TERMINAL_PROMPT: "0",
-          GIT_ASKPASS: "false",
-          SSH_ASKPASS: "false",
-          SSH_ASKPASS_REQUIRE: "never",
-          GCM_INTERACTIVE: "never",
-        },
-      }),
-    });
-    return { status: "fetched" };
-  } catch {
-    return { status: "failed" };
-  }
-}
-
-export async function fetchRemoteBranches(
-  cwd: string,
-  { interactive, ...options }: FetchRemoteBranchesOptions,
-): Promise<FetchRemoteBranchesResult> {
-  await ensureGitRepo(cwd, options);
-
-  const remotes = await runGit(["remote"], {
-    cwd,
-    ...options,
-    allowFailure: true,
-  });
-  if (
-    remotes.exitCode !== 0 ||
-    remotes.stdout
-      .split("\n")
-      .map((remote) => remote.trim())
-      .filter(Boolean).length === 0
-  ) {
-    return { status: "skipped" };
-  }
-
-  if (!interactive) {
-    return fetchRemoteBranchesNonInteractively(cwd, options);
-  }
-
-  try {
-    const result = await runGit(["fetch", "--all", "--prune", "--quiet"], {
-      cwd,
-      ...options,
-      allowFailure: true,
-    });
-    return { status: result.exitCode === 0 ? "fetched" : "failed" };
-  } catch (error) {
-    if (
-      error instanceof WorkspaceError &&
-      error.code === "git_command_timeout"
-    ) {
-      return { status: "failed" };
-    }
-    throw error;
-  }
-}
-
-export async function readMergeBaseRef(
-  cwd: string,
-  ref: string,
-  options: GitTimeoutOptions = {},
-): Promise<string | undefined> {
-  await ensureGitRepo(cwd, options);
-  const result = await runGit(["merge-base", ref, "HEAD"], {
-    cwd,
-    ...options,
-    allowFailure: true,
-  });
-  if (result.exitCode !== 0) {
-    return undefined;
-  }
-
-  const mergeBaseRef = trimOutput(result.stdout);
-  return mergeBaseRef || undefined;
 }
 
 export async function revParse(
@@ -1640,9 +564,8 @@ export async function readGitBlob(
   try {
     const blobArgs = ["cat-file", "blob", target];
     const result = await runVcsProcess("git", blobArgs, () =>
-      execFileAsync("git", blobArgs, {
+      execHostFileBuffer("git", blobArgs, {
         cwd,
-        encoding: "buffer",
         env: resolveGitProcessEnv({
           env: undefined,
           shellPath: options.shellPath,
@@ -1671,62 +594,6 @@ export async function readGitBlob(
   }
 }
 
-export async function listBranches(
-  cwd: string,
-  options: GitProcessOptions = {},
-): Promise<string[]> {
-  await ensureGitRepo(cwd, options);
-  return readLocalBranches(cwd, options);
-}
-
-export async function listRemoteBranches(
-  cwd: string,
-  options: GitProcessOptions = {},
-): Promise<string[]> {
-  await ensureGitRepo(cwd, options);
-  const result = await runGit(
-    ["for-each-ref", "--format=%(refname:short)%09%(symref)", "refs/remotes"],
-    { cwd, ...options },
-  );
-  return result.stdout
-    .split("\n")
-    .map((line) => {
-      const [branch = "", symref = ""] = line.split("\t");
-      return { branch: branch.trim(), symref: symref.trim() };
-    })
-    .filter((ref) => ref.branch.length > 0 && ref.symref.length === 0)
-    .map((ref) => ref.branch);
-}
-
-export async function listBranchRefsWithDefaults(
-  cwd: string,
-  options: GitProcessOptions = {},
-): Promise<BranchRefsWithDefaults> {
-  const [branches, remoteBranches, originHeadBranch] = await Promise.all([
-    listBranches(cwd, options),
-    listRemoteBranches(cwd, options),
-    readOriginHeadBranchName(cwd, options),
-  ]);
-  const defaultBranch = resolvePreferredLocalDefaultBranch(
-    branches,
-    originHeadBranch,
-  );
-  const originDefaultBranch = [
-    originHeadBranch ? `origin/${originHeadBranch}` : undefined,
-    defaultBranch ? `origin/${defaultBranch}` : undefined,
-  ].find(
-    (branch): branch is string =>
-      branch !== undefined && remoteBranches.includes(branch),
-  );
-
-  return {
-    branches,
-    defaultBranch,
-    originDefaultBranch,
-    remoteBranches,
-  };
-}
-
 export async function hasUncommittedChanges(
   cwd: string,
   options: GitProcessOptions = {},
@@ -1742,8 +609,4 @@ export async function hasUncommittedChanges(
     { cwd, ...options },
   );
   return status.stdout.trim().length > 0;
-}
-
-export async function createTempDir(prefix: string): Promise<string> {
-  return fs.mkdtemp(path.join(os.tmpdir(), prefix));
 }

@@ -3,7 +3,6 @@ import type {
   BbRealtime as RootBbRealtime,
   BbSdk as RootBbSdk,
   BbRealtimeConnectionEvent as RootRealtimeConnection,
-  EnvironmentStatusResult as RootEnvironmentStatus,
   FileReadResult as RootFileRead,
   GuideRenderResult as RootGuideRender,
   HostGetResult as RootHostGet,
@@ -32,7 +31,6 @@ import type {
   BbSdk as BrowserBbSdk,
   BrowserBbSdk as BrowserRuntimeBbSdk,
   BbRealtimeConnectionEvent as BrowserRealtimeConnection,
-  EnvironmentStatusResult as BrowserEnvironmentStatus,
   FileReadResult as BrowserFileRead,
   GuideRenderResult as BrowserGuideRender,
   HostGetResult as BrowserHostGet,
@@ -55,11 +53,11 @@ import type {
   ThemeSetInput as BrowserThemeSetInput,
   ThreadSectionListResult as BrowserThreadSectionList,
   ThreadSpawnResult as BrowserThreadSpawn,
+  createBrowserBbSdk,
 } from "@bb/sdk/browser";
 import type {
   BbSdk as CoreBbSdk,
   BbRealtimeConnectionEvent as CoreRealtimeConnection,
-  EnvironmentStatusResult as CoreEnvironmentStatus,
   FileReadResult as CoreFileRead,
   GuideRenderResult as CoreGuideRender,
   HostGetResult as CoreHostGet,
@@ -86,7 +84,6 @@ import type {
 import type {
   BbSdk as NodeBbSdk,
   BbRealtimeConnectionEvent as NodeRealtimeConnection,
-  EnvironmentStatusResult as NodeEnvironmentStatus,
   FileReadResult as NodeFileRead,
   GuideRenderResult as NodeGuideRender,
   HostGetResult as NodeHostGet,
@@ -110,10 +107,8 @@ import type {
   ThreadSectionListResult as NodeThreadSectionList,
   ThreadSpawnResult as NodeThreadSpawn,
 } from "@bb/sdk/node";
-import type { createBrowserBbSdk } from "@bb/sdk/browser";
 
 interface RootSurface {
-  environmentStatus: RootEnvironmentStatus;
   fileRead: RootFileRead;
   guideRender: RootGuideRender;
   hostGet: RootHostGet;
@@ -140,7 +135,6 @@ interface RootSurface {
 }
 
 interface BrowserSurface {
-  environmentStatus: BrowserEnvironmentStatus;
   fileRead: BrowserFileRead;
   guideRender: BrowserGuideRender;
   hostGet: BrowserHostGet;
@@ -167,7 +161,6 @@ interface BrowserSurface {
 }
 
 interface CoreSurface {
-  environmentStatus: CoreEnvironmentStatus;
   fileRead: CoreFileRead;
   guideRender: CoreGuideRender;
   hostGet: CoreHostGet;
@@ -194,7 +187,6 @@ interface CoreSurface {
 }
 
 interface NodeSurface {
-  environmentStatus: NodeEnvironmentStatus;
   fileRead: NodeFileRead;
   guideRender: NodeGuideRender;
   hostGet: NodeHostGet;
@@ -252,14 +244,8 @@ type ExpectedEnvironmentsKey =
   | "delete"
   | "list"
   | "listProviders"
-  | "diff"
-  | "diffBranches"
-  | "diffFile"
-  | "diffFiles"
-  | "diffPatch"
   | "get"
   | "paths"
-  | "status"
   | "update";
 
 type ExpectedFilesKey =
@@ -407,6 +393,7 @@ type ExpectedThreadSectionsKey = "create" | "delete" | "list" | "update";
 type ExpectedThreadsKey =
   | "experimental_listAncestors"
   | "experimental_listDescendants"
+  | "experimental_listCascade"
   | "experimental_listPluginMetadata"
   | "getPluginMetadata"
   | "updatePluginMetadata"
