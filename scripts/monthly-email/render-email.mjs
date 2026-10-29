@@ -106,9 +106,6 @@ export function renderEmail(spec, { imagesBase = "", hosted } = {}) {
   const themes = spec.themes
     .map((theme) => themeRows(theme, ym, imagesBase, hosted))
     .join("\n");
-  const lead = cta.lead
-    ? `<p style="margin:0 0 18px 0;font-size:16px;line-height:25px;color:${INK};">${escapeHtml(cta.lead)}</p>`
-    : "";
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(spec.subject)}</title></head>
 <body style="margin:0;padding:0;background:#ffffff;">
 <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${preheader}</div>
@@ -119,7 +116,7 @@ export function renderEmail(spec, { imagesBase = "", hosted } = {}) {
 <tr><td><h1 style="margin:0;font-size:34px;line-height:40px;letter-spacing:-0.02em;color:${HEAD};font-weight:700;">What's new in bb</h1>
 <p style="margin:12px 0 0 0;font-size:17px;line-height:27px;color:${INK};">${escapeHtml(spec.opening)}</p></td></tr>
 ${themes}
-<tr><td align="center" style="padding:44px 0 0 0;">${lead}<table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="background:#333333;border-radius:8px;">
+<tr><td align="center" style="padding:44px 0 0 0;"><table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="background:#333333;border-radius:8px;">
 <a href="${changelog(ym, "cta")}" style="display:inline-block;padding:12px 20px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;">${escapeHtml(cta.text)}</a></td></tr></table>
 <p style="margin:12px 0 0 0;font-size:14px;color:#555555;">${escapeHtml(cta.download_prefix)} <a href="${download(ym)}" style="color:#555555;">${escapeHtml(cta.download_text)}</a></p></td></tr>
 <tr><td style="padding:44px 0 0 0;"><div style="border-top:1px solid ${RULE};padding-top:24px;font-size:13px;line-height:20px;color:${DIM};text-align:center;">
