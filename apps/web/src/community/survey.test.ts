@@ -9,6 +9,7 @@ const contact = {
   role: ["Student"],
   love: ["Plugins"],
   improve: ["Faster startup"],
+  team_adopt: ["Admin approval"],
   community: ["Get help when I'm stuck"],
   city: ["Austin, USA"],
   meetup: ["Maybe"],
@@ -29,6 +30,13 @@ describe("community survey submission rules", () => {
     expect(missing.email).toBe("Please enter your email.");
     expect(missing.love).toBe("Please answer this question.");
     expect(missing.team_improve).toBeUndefined();
+    expect(missing.team_adopt).toBeUndefined();
+    expect(
+      validateSurvey({ ...contact, team_adopt: [] }).team_adopt,
+    ).toBe("Please answer this question.");
+    expect(
+      validateSurvey({ ...contact, work: ["5 or more"], team_adopt: [], team_improve: ["Roles"] }),
+    ).toEqual({});
     expect(
       validateSurvey({ ...contact, work: ["2–4 people"] }).team_improve,
     ).toBe("Please answer this question.");
@@ -58,11 +66,11 @@ describe("community survey submission rules", () => {
       }).email,
     ).toBeTruthy();
   });
-  it("asks the organizing question as one Yes, Maybe or No answer", () => {
-    for (const meetup of [["Yes"], ["Maybe"], ["No"]]) {
+  it("asks the meetup question as one attend-or-organize answer", () => {
+    for (const meetup of [["Yes, and I'd help organize it"], ["Yes, I'd come"], ["Maybe"], ["No"]]) {
       expect(validateSurvey({ ...contact, meetup })).toEqual({});
     }
-    expect(validateSurvey({ ...contact, meetup: ["Yes", "No"] }).meetup).toBeTruthy();
+    expect(validateSurvey({ ...contact, meetup: ["Yes, I'd come", "No"] }).meetup).toBeTruthy();
     expect(validateSurvey({ ...contact, meetup: ["I'd come"] }).meetup).toBeTruthy();
     expect(
       validateSurvey({ ...contact, role: ["Invented"] }).role,

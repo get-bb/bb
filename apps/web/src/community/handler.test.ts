@@ -209,12 +209,14 @@ describe("private community forms", () => {
     async (work) => {
       const id = crypto.randomUUID();
       const teamVisible = work === "2–4 people" || work === "5 or more";
+      const adoptVisible = work === "Just me";
       const response = await submit(id, {
         work,
         company_size: work === "I don't use bb for work" ? "ignored" : "500–999",
         love: "Fast iteration",
         improve: "Better search",
         team_improve: teamVisible ? "Shared sessions" : "x".repeat(251),
+        team_adopt: adoptVisible ? "Admin approval" : "x".repeat(251),
       });
       expect(response.status).toBe(200);
       const answers = await db
@@ -228,17 +230,24 @@ describe("private community forms", () => {
         love: ["Fast iteration"],
         improve: ["Better search"],
         ...(teamVisible ? { team_improve: ["Shared sessions"] } : {}),
+        ...(adoptVisible ? { team_adopt: ["Admin approval"] } : {}),
         email: ["ada@example.test"],
       });
     },
   );
-  it.each(["love", "improve", "team_improve"])(
+  it.each([
+    ["love", "5 or more"],
+    ["improve", "5 or more"],
+    ["team_improve", "5 or more"],
+    ["team_adopt", "Just me"],
+  ])(
     "rejects overlong %s without saving",
-    async (field) => {
+    async (field, work) => {
       expect(
         (
           await submit(crypto.randomUUID(), {
-            work: "5 or more",
+            work,
+            ...(work === "Just me" ? { team_adopt: "Admin approval" } : {}),
             [field]: "x".repeat(251),
           })
         ).status,

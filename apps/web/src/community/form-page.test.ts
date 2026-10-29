@@ -84,20 +84,23 @@ describe("survey page", () => {
     };
     let otherChecked = true;
     let work = "2–4 people";
-    const textarea = { value: "Shared sessions" };
-    const team = {
-      hidden: false,
-      disabled: false,
-      querySelector: () => textarea,
+    const textarea = { type: "textarea", value: "Shared sessions" };
+    const adoptText = { type: "textarea", value: "" };
+    const sets: Record<string, { hidden: boolean; disabled: boolean; querySelectorAll: () => { type: string; value: string }[] }> = {
+      company_size: { hidden: false, disabled: false, querySelectorAll: () => [] },
+      team_improve: { hidden: false, disabled: false, querySelectorAll: () => [textarea] },
+      team_adopt: { hidden: true, disabled: true, querySelectorAll: () => [adoptText] },
     };
+    const team = sets.team_improve!;
+    const adopt = sets.team_adopt!;
     let update = () => {};
     const form = {
       elements: {
         namedItem: (name: string) => ({ value: name === "work" ? work : "" }),
       },
       querySelector: (selector: string) => {
-        if (selector === '[data-question="team_improve"]') return team;
-        if (selector === '[data-question="company_size"]') return { hidden: false, disabled: false, querySelectorAll: () => [] };
+        const set = /^\[data-question="(\w+)"\]$/.exec(selector)?.[1];
+        if (set && sets[set]) return sets[set];
         if (selector === "[data-meetup-label]") return { textContent: "" };
         expect(selector).toBe('[name="community"][value="Other"]:checked');
         return otherChecked ? { value: "Other" } : null;
@@ -113,16 +116,22 @@ describe("survey page", () => {
       matchMedia: () => ({ addEventListener: () => {} }),
     });
     expect(team.hidden).toBe(false);
+    expect(adopt.hidden).toBe(true);
     expect(textarea.value).toBe("Shared sessions");
     work = "Just me";
     update();
     expect(team.hidden).toBe(true);
     expect(team.disabled).toBe(true);
+    expect(adopt.hidden).toBe(false);
+    expect(adopt.disabled).toBe(false);
     expect(textarea.value).toBe("");
+    adoptText.value = "Admin approval";
     work = "5 or more";
     update();
     expect(team.hidden).toBe(false);
     expect(team.disabled).toBe(false);
+    expect(adopt.hidden).toBe(true);
+    expect(adoptText.value).toBe("");
     expect(textarea.value).toBe("");
     expect(otherInput.hidden).toBe(false);
     expect(otherInput.disabled).toBe(false);

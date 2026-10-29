@@ -4,13 +4,18 @@ export const SURVEY_TITLE = "Help shape the future of bb!";
 export const SURVEY_DESCRIPTION =
   "We're figuring out what's next for bb, from product changes to meetups and merch, and we'd love your input.";
 export const SURVEY_PURPOSE =
-  "This should take ~3 min. As a small thank you, we'll send you bb stickers free of charge. Thanks for building with us!";
+  "This should take ~3 min. As a small thank you, we'll send you bb stickers free of charge (US addresses for now). Thanks for building with us!";
 export const CITY_HELP = "So we know where to start meetups.";
 export const COMMUNITY_MAX = 3;
 export const TEAM_WORK_OPTIONS = ["2–4 people", "5 or more"];
-export function companySizeVisible(values: FormValues): boolean {
-  const work = values.work?.[0];
-  return Boolean(work && work !== "I don't use bb for work");
+export const SOLO_WORK_OPTIONS = ["Just me"];
+export function questionVisible(name: string, values: FormValues): boolean {
+  const work = values.work?.[0] ?? "";
+  if (name === "company_size")
+    return Boolean(work && work !== "I don't use bb for work");
+  if (name === "team_improve") return TEAM_WORK_OPTIONS.includes(work);
+  if (name === "team_adopt") return SOLO_WORK_OPTIONS.includes(work);
+  return true;
 }
 
 export const SOLD_OUT =
@@ -37,6 +42,9 @@ export const surveyQuestions: readonly Question[] = [
       "Hacker News",
       "Product Hunt",
       "A newsletter or blog post",
+      "Reddit",
+      "YouTube",
+      "An AI assistant (ChatGPT, Claude, etc.)",
       "I don't remember",
       "Other",
     ],
@@ -57,14 +65,14 @@ export const surveyQuestions: readonly Question[] = [
   },
   {
     name: "company_size",
-    label: "Approximately how many people work at your company?",
+    label: "Approximately how many people work at your company or organization?",
     type: "radio",
     options: ["Fewer than 200", "200–499", "500–999", "1,000 or more"],
     placeholder: "",
   },
   {
     name: "role",
-    label: "Which of these best describes your current job?",
+    label: "Which best describes your current role?",
     type: "radio",
     options: [
       "Developer or engineer",
@@ -74,13 +82,14 @@ export const surveyQuestions: readonly Question[] = [
       "Designer",
       "Data or business analyst",
       "Student",
+      "Not currently working",
       "Other",
     ],
     placeholder: "",
   },
   {
     name: "love",
-    label: "What do you love most about bb, and why?",
+    label: "What do you value most about bb, and why?",
     type: "textarea",
     options: [],
     placeholder: "",
@@ -95,6 +104,13 @@ export const surveyQuestions: readonly Question[] = [
   {
     name: "team_improve",
     label: "What would make bb better for your team at work?",
+    type: "textarea",
+    options: [],
+    placeholder: "",
+  },
+  {
+    name: "team_adopt",
+    label: "What would it take for others where you work to start using bb?",
     type: "textarea",
     options: [],
     placeholder: "",
@@ -123,9 +139,9 @@ export const surveyQuestions: readonly Question[] = [
   },
   {
     name: "meetup",
-    label: "Would you be interested in helping organize a bb meetup near you?",
+    label: "Would you come to a bb meetup near you?",
     type: "radio",
-    options: ["Yes", "Maybe", "No"],
+    options: ["Yes, and I'd help organize it", "Yes, I'd come", "Maybe", "No"],
     placeholder: "",
   },
 ];
@@ -143,7 +159,7 @@ export const surveyFields = [
 export function validateSurvey(values: FormValues): FormErrors {
   const errors: FormErrors = {};
   for (const question of surveyQuestions) {
-    if (question.name === "company_size" && !companySizeVisible(values)) continue;
+    if (!questionVisible(question.name, values)) continue;
     const selected = values[question.name] ?? [];
     if (question.type !== "checkbox" && selected.length > 1) {
       errors[question.name] = "Choose one answer.";
@@ -161,11 +177,7 @@ export function validateSurvey(values: FormValues): FormErrors {
       selected.length > COMMUNITY_MAX
     ) {
       errors.community = `Pick up to ${COMMUNITY_MAX}.`;
-    } else if (
-      (question.name !== "team_improve" ||
-        TEAM_WORK_OPTIONS.includes(values.work?.[0] ?? "")) &&
-      !selected.some((value) => value.trim())
-    ) {
+    } else if (!selected.some((value) => value.trim())) {
       errors[question.name] = "Please answer this question.";
     }
   }
@@ -195,12 +207,7 @@ export function validateSurvey(values: FormValues): FormErrors {
 export function surveyAnswers(values: FormValues): FormValues {
   const answers: FormValues = {};
   for (const name of surveyFields) {
-    if (name === "company_size" && !companySizeVisible(values)) continue;
-    if (
-      name === "team_improve" &&
-      !TEAM_WORK_OPTIONS.includes(values.work?.[0] ?? "")
-    )
-      continue;
+    if (!questionVisible(name, values)) continue;
     if (
       name.endsWith("_other") &&
       !values[name.slice(0, -6)]?.includes("Other")

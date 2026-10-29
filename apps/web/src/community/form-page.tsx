@@ -6,8 +6,9 @@ import siteChromeScript from "../generated/site-chrome.js?url";
 import { THEME_INIT } from "../lib/theme";
 import css from "./forms.css?url";
 import {
+  SOLO_WORK_OPTIONS,
   TEAM_WORK_OPTIONS,
-  companySizeVisible,
+  questionVisible,
   SURVEY_DESCRIPTION,
   SURVEY_TITLE,
   SOLD_OUT,
@@ -27,17 +28,24 @@ const scheme = matchMedia('(prefers-color-scheme: dark)');
 scheme.addEventListener('change', e => document.documentElement.classList.toggle('dark', e.matches));
 if (form) {
   const update = () => {
-    const team = form.querySelector('[data-question="team_improve"]');
-    team.hidden = !${JSON.stringify(TEAM_WORK_OPTIONS)}.includes(form.elements.namedItem('work').value);
-    team.disabled = team.hidden;
-    if (team.hidden) team.querySelector('textarea').value = '';
-    const company = form.querySelector('[data-question="company_size"]');
     const work = form.elements.namedItem('work').value;
-    company.hidden = !work || work === "I don't use bb for work";
-    company.disabled = company.hidden;
-    if (company.hidden) for (const input of company.querySelectorAll('input')) input.checked = false;
+    const shown = {
+      company_size: Boolean(work) && work !== "I don't use bb for work",
+      team_improve: ${JSON.stringify(TEAM_WORK_OPTIONS)}.includes(work),
+      team_adopt: ${JSON.stringify(SOLO_WORK_OPTIONS)}.includes(work),
+    };
+    for (const [name, visible] of Object.entries(shown)) {
+      const set = form.querySelector('[data-question="' + name + '"]');
+      set.hidden = !visible;
+      set.disabled = !visible;
+      if (visible) continue;
+      for (const input of set.querySelectorAll('input, textarea')) {
+        if (input.type === 'radio') input.checked = false;
+        else input.value = '';
+      }
+    }
     const city = form.elements.namedItem('city').value.trim();
-    form.querySelector('[data-meetup-label]').textContent = 'Would you be interested in helping organize a bb meetup ' + (city ? 'in ' + city : 'near you') + '?';
+    form.querySelector('[data-meetup-label]').textContent = 'Would you come to a bb meetup ' + (city ? 'in ' + city : 'near you') + '?';
     const picks = form.querySelectorAll('[name="community"]');
     const full = [...picks].filter(box => box.checked).length >= ${COMMUNITY_MAX};
     for (const box of picks) box.disabled = full && !box.checked;
@@ -105,16 +113,8 @@ function Survey({
           <fieldset
             id={`question-${question.name}`}
             data-question={question.name}
-            hidden={
-              (question.name === "company_size" && !companySizeVisible(values)) ||
-              (question.name === "team_improve" &&
-              !TEAM_WORK_OPTIONS.includes(values.work?.[0] ?? ""))
-            }
-            disabled={
-              (question.name === "company_size" && !companySizeVisible(values)) ||
-              (question.name === "team_improve" &&
-              !TEAM_WORK_OPTIONS.includes(values.work?.[0] ?? ""))
-            }
+            hidden={!questionVisible(question.name, values)}
+            disabled={!questionVisible(question.name, values)}
             aria-describedby={
               errors[question.name] ? `${question.name}-error` : undefined
             }
@@ -125,7 +125,7 @@ function Survey({
                 data-meetup-label={question.name === "meetup" ? "" : undefined}
               >
                 {question.name === "meetup" && city
-                  ? `Would you be interested in helping organize a bb meetup in ${city}?`
+                  ? `Would you come to a bb meetup in ${city}?`
                   : question.label}
               </span>
               {question.type === "checkbox" &&
@@ -165,10 +165,9 @@ function Survey({
                 rows={3}
                 maxLength={250}
                 defaultValue={
-                  question.name === "team_improve" &&
-                  !TEAM_WORK_OPTIONS.includes(values.work?.[0] ?? "")
-                    ? ""
-                    : (values[question.name]?.[0] ?? "")
+                  questionVisible(question.name, values)
+                    ? (values[question.name]?.[0] ?? "")
+                    : ""
                 }
               />
             ) : (

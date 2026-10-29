@@ -3,8 +3,7 @@ import { z } from "zod";
 import type { Env } from "../server/env";
 import { formPage, type FormKind } from "./form-page";
 import {
-  TEAM_WORK_OPTIONS,
-  companySizeVisible,
+  questionVisible,
   surveyFields,
   surveyAnswers,
   validateSurvey,
@@ -162,9 +161,8 @@ export async function handleCommunityForm(
         "We couldn't read that response. Please fill out the form again.",
     });
   }
-  if (!TEAM_WORK_OPTIONS.includes(values.work?.[0] ?? ""))
-    delete values.team_improve;
-  if (!companySizeVisible(values)) delete values.company_size;
+  for (const name of surveyFields)
+    if (!questionVisible(name, values)) delete values[name];
   const parsedId = z
     .uuid()
     .safeParse(
