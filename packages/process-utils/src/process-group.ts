@@ -9,12 +9,6 @@ interface KillProcessGroupArgs {
   signal: NodeJS.Signals;
 }
 
-interface StopProcessGroupLeaderFirstArgs {
-  child: ChildProcess;
-  timeoutMs: number;
-  killGraceMs: number;
-}
-
 export interface ProcessStopResult {
   treeTermination: "confirmed" | "unverified";
 }
@@ -60,76 +54,4 @@ export function isProcessGroupAlive(child: {
       error.code === "ESRCH"
     );
   }
-}
-
-function hasChildExited(child: ChildProcess): boolean {
-  return child.exitCode !== null || child.signalCode !== null;
-}
-
-const PROCESS_GROUP_EXIT_POLL_MS = 100;
-
-export function stopProcessGroupLeaderFirst(
-  args: StopProcessGroupLeaderFirstArgs,
-): Promise<ProcessStopResult> {
-  const { child, timeoutMs, killGraceMs } = args;
-  if (process.platform === "win32") return stopWindowsProcessTree(child);
-  if (hasChildExited(child) && !isProcessGroupAlive(child)) {
-    return Promise.resolve({ treeTermination: "confirmed" });
-  }
-  return new Promise<ProcessStopResult>((resolveStop) => {
-    let settled = false;
-    let hardTimer: NodeJS.Timeout | undefined;
-    let poll: NodeJS.Timeout | undefined;
-    const finish = (): void => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      child.off("exit", stopSurvivingMembers);
-      clearTimeout(softTimer);
-      if (hardTimer !== undefined) {
-        clearTimeout(hardTimer);
-      }
-      if (poll !== undefined) {
-        clearInterval(poll);
-      }
-      resolveStop({
-        treeTermination: groupGone() ? "confirmed" : "unverified",
-      });
-    };
-    const groupGone = (): boolean =>
-      hasChildExited(child) && !isProcessGroupAlive(child);
-    const softTimer = setTimeout(() => {
-      if (groupGone()) {
-        finish();
-        return;
-      }
-      killProcessGroup({ child, signal: "SIGKILL" });
-      if (killGraceMs <= 0) {
-        finish();
-        return;
-      }
-      hardTimer = setTimeout(finish, killGraceMs);
-    }, timeoutMs);
-
-    const stopSurvivingMembers = (): void => {
-      if (!isProcessGroupAlive(child)) {
-        finish();
-        return;
-      }
-      killProcessGroup({ child, signal: "SIGTERM" });
-      poll = setInterval(() => {
-        if (!isProcessGroupAlive(child)) {
-          finish();
-        }
-      }, PROCESS_GROUP_EXIT_POLL_MS);
-    };
-
-    if (hasChildExited(child)) {
-      stopSurvivingMembers();
-      return;
-    }
-    child.once("exit", stopSurvivingMembers);
-    child.kill("SIGTERM");
-  });
 }
