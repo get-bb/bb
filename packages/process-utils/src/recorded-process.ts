@@ -1,10 +1,5 @@
 import { performance } from "node:perf_hooks";
-import {
-  probeProcessStart,
-  readProcessTable,
-  type ProcessTableEntry,
-} from "./process-start.js";
-import { terminateWindowsProcessTrees } from "./windows-process-tree.js";
+import { readProcessTable, type ProcessTableEntry } from "./process-start.js";
 
 const STOP_POLL_MS = 100;
 const KILL_CONFIRM_MS = 1_000;
@@ -236,41 +231,10 @@ export async function stopProcessTree(
   }
 }
 
-function pidExists(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return !(
-      error instanceof Error &&
-      "code" in error &&
-      error.code === "ESRCH"
-    );
-  }
-}
-
-async function stopWindowsRoot(
-  root: RecordedProcess,
-): Promise<RecordedProcessStop> {
-  if (!pidExists(root.pid)) return "exited";
-  const before = await probeProcessStart(root.pid);
-  if (before.state === "gone") return "exited";
-  if (
-    before.state === "unknown" ||
-    root.startId === null ||
-    before.startId !== root.startId
-  )
-    return "unverified";
-  await terminateWindowsProcessTrees([root.pid]);
-  return pidExists(root.pid) ? "unverified" : "terminated";
-}
-
-async function stopWindowsRoots(
+function stopWindowsRoots(
   roots: readonly RecordedProcess[],
-): Promise<RecordedProcessStop> {
-  const results = await Promise.all(roots.map(stopWindowsRoot));
-  if (results.includes("unverified")) return "unverified";
-  return results.includes("terminated") ? "terminated" : "exited";
+): RecordedProcessStop {
+  return roots.some((root) => signalable(root.pid)) ? "unverified" : "exited";
 }
 
 export async function stopRecordedProcesses(

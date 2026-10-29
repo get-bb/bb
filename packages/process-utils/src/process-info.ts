@@ -1,60 +1,83 @@
 import { execHostFile } from "./host-process.js";
-import {
-  probeWindowsProcessIdentity,
-  type ProcessIdentity,
-  type ProcessIdentityProbe,
-} from "./process-start.js";
-
-export type { ProcessIdentity, ProcessIdentityProbe };
+import path from "node:path";
 
 const execFileAsync = execHostFile;
+
+export interface ProcessIdentity {
+  command: string | null;
+  startedAt: number | null;
+}
 
 export async function readProcessIdentity(
   pid: number,
 ): Promise<ProcessIdentity | null> {
-  const probe = await probeProcessIdentity(pid);
-  return probe.state === "running" ? probe.identity : null;
-}
-
-export async function probeProcessIdentity(
-  pid: number,
-): Promise<ProcessIdentityProbe> {
-  if (!Number.isSafeInteger(pid) || pid <= 0) return { state: "gone" };
-  if (process.platform === "win32") return probeWindowsProcessIdentity(pid);
-  let stdout: string;
+  if (!Number.isSafeInteger(pid) || pid <= 0) return null;
+  if (process.platform === "win32") return readWindowsProcess(pid);
   try {
-    ({ stdout } = await execFileAsync(
+    const { stdout } = await execFileAsync(
       "ps",
       ["-p", String(pid), "-o", "etime=", "-o", "command="],
       {
         timeout: 5_000,
         maxBuffer: 1024 * 1024,
       },
-    ));
-  } catch (error) {
-    return isEmptyPsResult(error) ? { state: "gone" } : { state: "unknown" };
-  }
-  const match = stdout.trim().match(/^(\S+)\s+([\s\S]+)$/u);
-  if (match === null) return { state: "gone" };
-  const elapsed = parseElapsedSeconds(match[1] ?? "");
-  return {
-    state: "running",
-    identity: {
+    );
+    const match = stdout.trim().match(/^(\S+)\s+([\s\S]+)$/u);
+    if (match === null) return null;
+    const elapsed = parseElapsedSeconds(match[1] ?? "");
+    return {
       command: match[2] ?? null,
       startedAt: elapsed === null ? null : Date.now() - elapsed * 1_000,
-    },
-  };
+    };
+  } catch {
+    return null;
+  }
 }
 
-function isEmptyPsResult(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    "code" in error &&
-    error.code === 1 &&
-    "stdout" in error &&
-    typeof error.stdout === "string" &&
-    error.stdout.trim() === ""
-  );
+async function readWindowsProcess(pid: number) {
+  try {
+    const pending = execFileAsync(
+      path.join(
+        process.env.SystemRoot ?? "C:\\Windows",
+        "System32",
+        "WindowsPowerShell",
+        "v1.0",
+        "powershell.exe",
+      ),
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        [
+          "$ErrorActionPreference = 'Stop'",
+          "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)",
+          `Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}' | ForEach-Object { @{ command = $_.CommandLine; startedAt = ([DateTimeOffset]$_.CreationDate).ToUnixTimeMilliseconds() } | ConvertTo-Json -Compress }`,
+        ].join("; "),
+      ],
+      {
+        encoding: "utf8",
+        windowsHide: true,
+        timeout: 30_000,
+        maxBuffer: 1024 * 1024,
+      },
+    );
+    pending.child.stdin?.end();
+    const { stdout } = await pending;
+    const value: unknown = JSON.parse(stdout);
+    if (
+      typeof value !== "object" ||
+      value === null ||
+      !("command" in value) ||
+      !("startedAt" in value) ||
+      (typeof value.command !== "string" && value.command !== null) ||
+      typeof value.startedAt !== "number" ||
+      !Number.isFinite(value.startedAt)
+    )
+      return null;
+    return { command: value.command, startedAt: value.startedAt };
+  } catch {
+    return null;
+  }
 }
 
 export function parseElapsedSeconds(rawElapsed: string): number | null {

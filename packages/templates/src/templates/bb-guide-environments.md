@@ -78,8 +78,9 @@ Making your repo work with bb:
   processes they launched. Processes a successful setup or teardown hook
   leaves running are kept. Closing a terminal hangs up its shell's process
   group only, so jobs you detached with nohup or disown keep running. On
-  startup the daemon stops whatever a previous instance left running, after
-  checking each process's start time so it never signals a reused PID. Provider maintenance work (model lists, health, usage,
+  macOS and Linux, the daemon stops on startup whatever a previous instance
+  left running, after checking each process's start time so it never signals
+  a reused PID. Provider maintenance work (model lists, health, usage,
   installs) stops its bridge when a request runs past its deadline, and 60
   seconds after the last request ends.
 

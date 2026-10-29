@@ -604,50 +604,6 @@ async function handleCall(
 
 process.once("disconnect", () => void dispose());
 if (!process.connected) void dispose();
-const CHILD_REPORT_DELAY_MS = 1_000;
-
-Reflect.set(
-  globalThis,
-  Symbol.for("bb.process-utils.host-process-owner"),
-  (child: {
-    pid: number;
-    processGroup: boolean;
-    label: string;
-    startId?: unknown;
-    exited: Promise<void>;
-  }) => {
-    const readStartId = child.startId;
-    if (typeof readStartId !== "function") return;
-    let exited = false;
-    let reported = false;
-    const report = (): void => {
-      void Promise.resolve(Reflect.apply(readStartId, child, [])).then(
-        (startId: unknown) => {
-          if (exited || typeof startId !== "string") return;
-          reported = true;
-          send({
-            type: "process-started",
-            pid: child.pid,
-            processGroup: child.processGroup,
-            label: child.label,
-            startId,
-          });
-        },
-        () => undefined,
-      );
-    };
-    const timer = child.processGroup
-      ? null
-      : setTimeout(report, CHILD_REPORT_DELAY_MS);
-    timer?.unref();
-    if (timer === null) report();
-    void child.exited.then(() => {
-      exited = true;
-      if (timer !== null) clearTimeout(timer);
-      if (reported) send({ type: "process-exited", pid: child.pid });
-    });
-  },
-);
 
 try {
   const imported = await import(pathToFileURL(artifactPath).href);

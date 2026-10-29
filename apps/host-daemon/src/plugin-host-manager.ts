@@ -68,7 +68,6 @@ interface WorkerState {
   resource: DaemonResource;
   releaseIdleHold: (() => void) | null;
   watches: Map<string, WorkerWatchState>;
-  childExits: Map<number, () => void>;
 }
 
 interface WorkerWatchState {
@@ -538,7 +537,6 @@ export class PluginHostManager {
       resource,
       releaseIdleHold: null,
       watches: new Map(),
-      childExits: new Map(),
     };
     idleWorker = worker;
     let unexpectedExitReported = false;
@@ -659,28 +657,6 @@ export class PluginHostManager {
       ) {
         worker.retainedLeaseIds.delete(record.leaseId);
         this.releaseIdleWorker(worker);
-        return;
-      }
-      if (
-        record.type === "process-started" &&
-        typeof record.pid === "number" &&
-        Number.isSafeInteger(record.pid) &&
-        record.pid > 1 &&
-        typeof record.processGroup === "boolean" &&
-        typeof record.label === "string" &&
-        typeof record.startId === "string" &&
-        record.startId.length > 0
-      ) {
-        this.adoptWorkerChild(worker, {
-          pid: record.pid,
-          processGroup: record.processGroup,
-          label: record.label,
-          startId: record.startId,
-        });
-        return;
-      }
-      if (record.type === "process-exited" && typeof record.pid === "number") {
-        worker.childExits.get(record.pid)?.();
         return;
       }
       if (record.type === "watch-start") {
@@ -1088,30 +1064,6 @@ export class PluginHostManager {
         return;
       }
       await this.stopWorker(worker, "host plugin worker became idle");
-    });
-  }
-
-  private adoptWorkerChild(
-    worker: WorkerState,
-    child: {
-      pid: number;
-      processGroup: boolean;
-      label: string;
-      startId: string;
-    },
-  ): void {
-    const exited = new Promise<void>((resolve) => {
-      worker.childExits.set(child.pid, resolve);
-    });
-    void worker.closed.then(() => worker.childExits.get(child.pid)?.());
-    worker.resource.trackProcess({
-      pid: child.pid,
-      processGroup: child.processGroup,
-      label: `${worker.pluginId}: ${child.label}`,
-      startId: async () => child.startId,
-      exited: exited.then(() => {
-        worker.childExits.delete(child.pid);
-      }),
     });
   }
 

@@ -87,17 +87,15 @@ retries it.
 
 Process identity has one rule. A record holds a pid and the OS's own start
 token for it (`probeProcessStart` in `@bb/process-utils`: boot id plus start
-ticks on Linux, `ps -o lstart` under `LC_ALL=C TZ=UTC0` on macOS, the CIM
-creation time on Windows), read by the same probe with the same pinned
-environment when recording and when acting, so time zones and wall clock
-changes do not matter. `lstart` has one-second precision, so on macOS a pid
-reused within the same second as the recorded process is indistinguishable
-from it. The process that spawned a child reads the token
-while it still holds the child unreaped, so a late report cannot pick up a
-reused pid. Plugin workers report a detached child with its token right away
-and a child in the worker's own process group once it has run for a second,
-so short commands cost nothing; a worker that crashes before reporting leaves
-those children unrecorded. A process is signalled only when its current token matches the record,
+ticks on Linux, `ps -o lstart` under `LC_ALL=C TZ=UTC0` on macOS), read by the
+same probe with the same pinned environment when recording and when acting, so
+time zones and wall clock changes do not matter. `lstart` has one-second
+precision, so on macOS a pid reused within the same second as the recorded
+process is indistinguishable from it. The daemon reads the token while it
+still holds the child unreaped, so it cannot pick up a reused pid. Windows has
+no token: a recorded process there is never signalled, and processes are
+stopped only through the handle of the process that started them, as before.
+A process is signalled only when its current token matches the record,
 along with the descendants and groups reached from a matched process. A record
 that cannot be matched (no token yet, an unreadable process, or a group whose
 leader is gone while members remain, or a live pid whose token differs from
@@ -120,17 +118,18 @@ through their resource, and their idle shutdown is the resource's `idle`
 deadline: calls, watches and retained leases hold a lease, and a deadline that
 finds the worker busy again re-arms instead of stopping it.
 
-Nothing starts without an owner. `@bb/process-utils` exports no raw spawn
-helpers; callers take them from `processesOwnedBy(owner)`, which records every
-child (pid and process group) with that owner, and lint bans `child_process`,
-`cross-spawn`, `execa` and `node-pty` value imports elsewhere. Long-lived daemon
-processes pass their ledger resource. `hostProcessOwner` means the process that
-runs the code: the daemon binds it to its `host-command` resource (children
-are written to disk only if still running after a second), and a host plugin
-worker binds it to IPC reports, with each child's start token, that the daemon
-records under the plugin's resource, so a crashed worker's detached children
-are stopped too. Worker cleanup starts at the worker's exit, not when its
-inherited pipes close.
+Nothing starts without an owner. Callers take spawn helpers from
+`processesOwnedBy(owner)`, which records every child (pid and process group)
+with that owner, and lint bans `child_process`, `cross-spawn`, `execa` and
+`node-pty` value imports elsewhere. Long-lived daemon processes pass their
+ledger resource. The plain spawn helpers record to `hostProcessOwner`, which
+the daemon binds to its `host-command` resource (children are written to disk
+only if still running after a second); in a host plugin worker it is unbound,
+and the worker's process group and tree stop cover what a plugin starts. A
+plugin's children are stopped when the daemon stops the worker (dispose, idle,
+reload, disable or a forced kill); those of a worker that crashed are not.
+Worker cleanup starts at the worker's exit, not when its inherited pipes
+close.
 
 ### Transport contracts
 

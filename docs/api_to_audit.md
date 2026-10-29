@@ -4137,11 +4137,11 @@ PATH npm with the Node that owns it, else the bundled npm; self-update uses it.
 package cannot be resolved next to the calling bundle. `experimental_spawnHostProcess`,
 `experimental_forkHostProcess`, `experimental_execHostFile`, and
 `experimental_execHostFileCallback` use it to launch processes and never wait for
-discovery. Every child they start belongs to the process running the plugin:
-in a host plugin worker the daemon records it under the plugin's resource and
-stops it, with its descendants, when the plugin is disposed, goes idle, crashes,
-or the daemon restarts. `experimental_spawnPortableProcess` and
-`experimental_spawnPortableOutputProcess` behave the same way. Missing executables and exit 127 start a background refresh; running
+discovery. In a host plugin worker, the daemon stops every child still
+running, with its descendants, when it stops the worker (dispose, idle, reload,
+disable, or a forced kill); children of a worker that crashed keep running.
+`experimental_spawnPortableProcess` and `experimental_spawnPortableOutputProcess`
+behave the same way. Missing executables and exit 127 start a background refresh; running
 commands are never replayed automatically. When a launch's leading Node
 options (or a fork's `execArgv`, which defaults to the parent's) carry
 `--use-env-proxy`, `command` and `experimental_forkHostProcess` drop the flag if
