@@ -57,7 +57,11 @@
       }
     },
     {
-      "files": ["apps/**/*.{ts,tsx}", "packages/**/*.{ts,tsx}"],
+      "files": [
+        "apps/**/*.{ts,tsx}",
+        "packages/**/*.{ts,tsx}",
+        "plugins/**/*.{ts,tsx}"
+      ],
       "rules": {
         "no-restricted-imports": [
           "error",
@@ -65,13 +69,28 @@
             "paths": [
               {
                 "name": "node:child_process",
-                "importNames": ["spawnSync", "execSync", "execFileSync"],
-                "message": "Use async child_process APIs instead of blocking sync variants."
+                "allowTypeImports": true,
+                "message": "Start processes through processesOwnedBy(owner) from @bb/process-utils so every process has an owner that stops it."
               },
               {
                 "name": "child_process",
-                "importNames": ["spawnSync", "execSync", "execFileSync"],
-                "message": "Use async child_process APIs instead of blocking sync variants."
+                "allowTypeImports": true,
+                "message": "Start processes through processesOwnedBy(owner) from @bb/process-utils so every process has an owner that stops it."
+              },
+              {
+                "name": "cross-spawn",
+                "allowTypeImports": true,
+                "message": "Start processes through processesOwnedBy(owner) from @bb/process-utils so every process has an owner that stops it."
+              },
+              {
+                "name": "execa",
+                "allowTypeImports": true,
+                "message": "Start processes through processesOwnedBy(owner) from @bb/process-utils so every process has an owner that stops it."
+              },
+              {
+                "name": "node-pty",
+                "allowTypeImports": true,
+                "message": "Start processes through processesOwnedBy(owner) from @bb/process-utils so every process has an owner that stops it. A PTY records its pid on its owner's resource."
               }
             ]
           }
@@ -94,29 +113,64 @@
               {
                 "name": "node:child_process",
                 "allowTypeImports": true,
-                "message": "Use @bb/process-utils managed processes or buffered commands so launch and termination share one owner."
+                "message": "Start processes through processesOwnedBy(owner) from @bb/process-utils so every process has an owner that stops it."
               },
               {
                 "name": "child_process",
                 "allowTypeImports": true,
-                "message": "Use @bb/process-utils managed processes or buffered commands so launch and termination share one owner."
+                "message": "Start processes through processesOwnedBy(owner) from @bb/process-utils so every process has an owner that stops it."
               },
               {
                 "name": "cross-spawn",
                 "allowTypeImports": true,
-                "message": "Use @bb/process-utils managed processes or buffered commands so launch and termination share one owner."
+                "message": "Start processes through processesOwnedBy(owner) from @bb/process-utils so every process has an owner that stops it."
+              },
+              {
+                "name": "execa",
+                "allowTypeImports": true,
+                "message": "Start processes through processesOwnedBy(owner) from @bb/process-utils so every process has an owner that stops it."
+              },
+              {
+                "name": "node-pty",
+                "allowTypeImports": true,
+                "message": "Start processes through processesOwnedBy(owner) from @bb/process-utils so every process has an owner that stops it. A PTY records its pid on its owner's resource."
               },
               {
                 "name": "@bb/process-utils",
-                "importNames": [
-                  "spawnPortableProcess",
-                  "spawnPortablePipedProcess",
-                  "spawnPortableOutputProcess",
-                  "supportsProcessGroups",
-                  "killProcessGroup",
-                  "stopProcessGroupLeaderFirst"
-                ],
-                "message": "Use spawnManagedProcess for owned subprocesses; it owns process-group setup and awaited termination."
+                "importNames": ["supportsProcessGroups", "killProcessGroup"],
+                "message": "Use spawnManagedProcess from processesOwnedBy(owner); it owns process-group setup and awaited termination."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "**/test/**",
+        "**/testing/**",
+        "**/__fixtures__/**",
+        "packages/process-utils/src/**/*.ts",
+        "packages/test-helpers/src/**/*.ts",
+        "packages/provider-parity/src/**/*.ts",
+        "apps/app/vite-react-compiler.ts",
+        "apps/host-daemon/src/server-move/test-fixture.ts",
+        "plugins/provider-pi/src/bridge/test-support.ts"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "node:child_process",
+                "importNames": ["spawnSync", "execSync", "execFileSync"],
+                "message": "Use async child_process APIs instead of blocking sync variants."
+              },
+              {
+                "name": "child_process",
+                "importNames": ["spawnSync", "execSync", "execFileSync"],
+                "message": "Use async child_process APIs instead of blocking sync variants."
               }
             ]
           }
@@ -128,6 +182,41 @@
       "rules": {
         "no-restricted-imports": "off",
         "bb/no-blocking-child-process-call": "off"
+      }
+    },
+    {
+      "files": [
+        "apps/host-daemon/src/terminals/terminal-manager.ts",
+        "apps/host-daemon/src/provider-installation.ts"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "node:child_process",
+                "allowTypeImports": true,
+                "message": "Start processes through processesOwnedBy(owner) from @bb/process-utils so every process has an owner that stops it."
+              },
+              {
+                "name": "child_process",
+                "allowTypeImports": true,
+                "message": "Start processes through processesOwnedBy(owner) from @bb/process-utils so every process has an owner that stops it."
+              },
+              {
+                "name": "cross-spawn",
+                "allowTypeImports": true,
+                "message": "Start processes through processesOwnedBy(owner) from @bb/process-utils so every process has an owner that stops it."
+              },
+              {
+                "name": "execa",
+                "allowTypeImports": true,
+                "message": "Start processes through processesOwnedBy(owner) from @bb/process-utils so every process has an owner that stops it."
+              }
+            ]
+          }
+        ]
       }
     },
     {
@@ -159,11 +248,36 @@
               },
               {
                 "name": "node:fs",
-                "message": "Server must not use node:fs. Use daemon commands for workspace access. (attachments.ts is the only exception — it manages server-local storage.)"
+                "message": "Server must not use node:fs. Use daemon commands for workspace access. (attachments.ts is the only exception \u2014 it manages server-local storage.)"
               },
               {
                 "name": "node:fs/promises",
-                "message": "Server must not use node:fs/promises. Use daemon commands for workspace access. (attachments.ts is the only exception — it manages server-local storage.)"
+                "message": "Server must not use node:fs/promises. Use daemon commands for workspace access. (attachments.ts is the only exception \u2014 it manages server-local storage.)"
+              },
+              {
+                "name": "node:child_process",
+                "allowTypeImports": true,
+                "message": "Start processes through processesOwnedBy(owner) from @bb/process-utils so every process has an owner that stops it."
+              },
+              {
+                "name": "child_process",
+                "allowTypeImports": true,
+                "message": "Start processes through processesOwnedBy(owner) from @bb/process-utils so every process has an owner that stops it."
+              },
+              {
+                "name": "cross-spawn",
+                "allowTypeImports": true,
+                "message": "Start processes through processesOwnedBy(owner) from @bb/process-utils so every process has an owner that stops it."
+              },
+              {
+                "name": "execa",
+                "allowTypeImports": true,
+                "message": "Start processes through processesOwnedBy(owner) from @bb/process-utils so every process has an owner that stops it."
+              },
+              {
+                "name": "node-pty",
+                "allowTypeImports": true,
+                "message": "Start processes through processesOwnedBy(owner) from @bb/process-utils so every process has an owner that stops it. A PTY records its pid on its owner's resource."
               }
             ]
           }

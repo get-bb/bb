@@ -17,6 +17,8 @@ import {
   createHostDaemonApp,
   loadHostIdentity,
   persistHostId,
+  ResourceLedger,
+  resourceLedgerDirectory,
   type HostDaemon,
   type HostDaemonApp,
 } from "@bb/host-daemon/test";
@@ -387,12 +389,20 @@ async function startHarnessDaemon(
       hostId: identity.hostId,
     });
     await persistHostId({ dataDir, hostId: identity.hostId });
+    const instanceId = randomUUID();
+    const resourceLedger = new ResourceLedger({
+      directory: resourceLedgerDirectory(dataDir),
+      instanceId,
+      logger: testLogger,
+    });
+    await resourceLedger.reconcile();
     const daemonApp = await createHostDaemonApp({
       dataDir,
+      resourceLedger,
       hostKey,
       hostId: identity.hostId,
       hostName: identity.hostName,
-      instanceId: randomUUID(),
+      instanceId,
       localApiConfig: null,
       logger: testLogger,
       releaseLock,

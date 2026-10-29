@@ -1,4 +1,8 @@
-import { spawnHostProcess as spawn } from "@bb/process-utils";
+import {
+  hostProcessOwner,
+  processesOwnedBy,
+  type ProcessOwner,
+} from "@bb/process-utils";
 import type { ChildProcess } from "node:child_process";
 import path from "node:path";
 import { createInterface } from "node:readline";
@@ -105,6 +109,7 @@ export interface FrpcSupervisorOptions {
   onStatusChange?(status: FrpcSupervisorStatus): void;
   timing?: Partial<FrpcTiming>;
   requestReload?: FrpcReloadRequest;
+  processOwner?: ProcessOwner;
 }
 
 interface Running {
@@ -361,7 +366,9 @@ export class FrpcSupervisor {
     binary: string,
     setup: Omit<Running, "child" | "startedAt" | "restartNow">,
   ): void {
-    const child = spawn(binary, ["-c", setup.configFile], {
+    const child = processesOwnedBy(
+      this.options.processOwner ?? hostProcessOwner,
+    ).spawnHostProcess(binary, ["-c", setup.configFile], {
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
     });

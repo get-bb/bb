@@ -46,7 +46,11 @@ import {
 } from "./provider-installation-gate.js";
 import type { SkillTreeTransport } from "./skill-trees.js";
 import { userExecutableProcessOptions } from "./user-executable-env.js";
-import { runSetupScript } from "./environment-lifecycle-script.js";
+import {
+  runEnvironmentHookOperation,
+  runSetupScript,
+} from "./environment-lifecycle-script.js";
+import type { DaemonResource, ResourceLedger } from "./resource-ledger.js";
 import { runInSerialLane } from "./serial-lane.js";
 import { WorkspaceError } from "bb-environment-provider-host/workspace-git";
 
@@ -55,6 +59,7 @@ type StopWatching = () => void | Promise<void>;
 const STOP_WATCHING: StopWatching = () => undefined;
 const PROVIDER_MAINTENANCE_WORKSPACE_DIR = "provider-maintenance-workspace";
 const PROVIDER_MAINTENANCE_IDLE_TIMEOUT_MS = 60_000;
+export const PROVIDER_MAINTENANCE_REQUEST_DEADLINE_MS = 5 * 60_000;
 const PROVIDER_PROCESS_EXIT_DETAIL_MAX_LENGTH = 4000;
 
 interface RuntimeSkillConfig {
@@ -127,6 +132,7 @@ function buildProviderProcessExitDetail(
 export interface RuntimeEntry {
   environmentId: string;
   runtime: AgentRuntime;
+  resource: DaemonResource;
   shellEnvGeneration: number;
   skillCatalogHash: string | null;
   skillRoots: readonly AgentRuntimeSkillRoot[];
@@ -144,7 +150,7 @@ interface InjectedSkillsChangedNotification {
 export interface EnsureEnvironmentArgs {
   environmentId: string;
   injectedSkillSources?: readonly HostDaemonInjectedSkillSource[];
-  setupScriptTimeoutMs?: number | null;
+  setup?: { operationId: string; timeoutMs: number } | null;
   setupContributedEnv?: readonly HostDaemonContributedEnvEntry[];
   targetThreadId?: string;
   workspacePath?: string;
@@ -177,6 +183,7 @@ export interface RuntimeManagerOptions {
     options: ProvisionWorkspaceArgs,
   ) => Promise<HostWorkspace>;
   providerMaintenanceIdleTimeoutMs?: number;
+  resourceLedger: ResourceLedger;
   shellEnv?: AgentRuntimeOptions["shellEnv"];
   applyMachineEnvironment?: (
     shell: NonNullable<AgentRuntimeOptions["shellEnv"]>,
@@ -228,6 +235,7 @@ interface PendingEnvironmentProvision {
 
 interface ProviderMaintenanceRuntimeSlot {
   runtime: Promise<AgentRuntime>;
+  resource: DaemonResource;
   activeRequests: number;
 }
 
@@ -307,12 +315,10 @@ export class RuntimeManager {
   private providerMaintenanceSlot: ProviderMaintenanceRuntimeSlot | null = null;
   private readonly retiredProviderMaintenanceSlots =
     new Set<ProviderMaintenanceRuntimeSlot>();
-  private providerMaintenanceIdleTimer: ReturnType<typeof setTimeout> | null =
-    null;
   readonly providerInstallationGate: ProviderInstallationGate;
   private stopWatchingDataDirSkillsRoot: StopWatching = STOP_WATCHING;
 
-  constructor(private readonly options: RuntimeManagerOptions = {}) {
+  constructor(private readonly options: RuntimeManagerOptions) {
     this.createRuntime = options.createRuntime ?? createAgentRuntime;
     this.hostWatcher = options.hostWatcher;
     this.provisionWorkspace = options.provisionWorkspace ?? provisionWorkspace;
@@ -331,6 +337,10 @@ export class RuntimeManager {
       roots.push(args.threadStorageRootPath);
     }
     return [...new Set(roots)];
+  }
+
+  get resourceLedger(): ResourceLedger {
+    return this.options.resourceLedger;
   }
 
   get(environmentId: string): RuntimeEntry | undefined {
@@ -709,7 +719,7 @@ export class RuntimeManager {
     }
 
     this.entries.delete(args.entry.environmentId);
-    await args.entry.runtime.shutdown();
+    await this.shutdownEntryRuntime(args.entry);
     await this.cleanupUnusedInjectedSkillStagingDirs([
       args.skillConfig.catalogHash,
     ]);
@@ -724,7 +734,7 @@ export class RuntimeManager {
       !this.hasInFlightThreadCommand(args.entry, args.targetThreadId)
     ) {
       this.entries.delete(args.entry.environmentId);
-      await args.entry.runtime.shutdown();
+      await this.shutdownEntryRuntime(args.entry);
       await this.cleanupUnusedInjectedSkillStagingDirs(
         args.skillConfig ? [args.skillConfig.catalogHash] : [],
       );
@@ -776,7 +786,6 @@ export class RuntimeManager {
   }
 
   private async retireProviderMaintenanceRuntime(): Promise<void> {
-    this.clearProviderMaintenanceIdleTimer();
     const slot = this.providerMaintenanceSlot;
     this.providerMaintenanceSlot = null;
     if (!slot) return;
@@ -791,11 +800,10 @@ export class RuntimeManager {
     slot: ProviderMaintenanceRuntimeSlot,
   ): Promise<void> {
     const runtime = await slot.runtime.catch(() => null);
-    await runtime?.shutdown();
+    await slot.resource.end(() => runtime?.shutdown());
   }
 
   private async shutdownAllProviderMaintenanceRuntimes(): Promise<void> {
-    this.clearProviderMaintenanceIdleTimer();
     const slots = [
       this.providerMaintenanceSlot,
       ...this.retiredProviderMaintenanceSlots,
@@ -807,43 +815,34 @@ export class RuntimeManager {
     );
   }
 
-  private clearProviderMaintenanceIdleTimer(): void {
-    if (this.providerMaintenanceIdleTimer === null) return;
-    clearTimeout(this.providerMaintenanceIdleTimer);
-    this.providerMaintenanceIdleTimer = null;
-  }
-
   private releaseIdleProviderMaintenanceSlot(
     slot: ProviderMaintenanceRuntimeSlot,
   ): void {
-    if (this.retiredProviderMaintenanceSlots.delete(slot)) {
-      void this.shutdownProviderMaintenanceSlot(slot).catch((error) => {
-        this.options.logger?.warn(
-          { err: error },
-          "Failed to shut down retired provider maintenance runtime",
-        );
-      });
-      return;
-    }
-    if (this.providerMaintenanceSlot !== slot) return;
+    if (!this.retiredProviderMaintenanceSlots.delete(slot)) return;
+    void this.shutdownProviderMaintenanceSlot(slot).catch((error) => {
+      this.options.logger?.warn(
+        { err: error },
+        "Failed to shut down retired provider maintenance runtime",
+      );
+    });
+  }
 
-    this.clearProviderMaintenanceIdleTimer();
-    const timeoutMs =
-      this.options.providerMaintenanceIdleTimeoutMs ??
-      PROVIDER_MAINTENANCE_IDLE_TIMEOUT_MS;
-    this.providerMaintenanceIdleTimer = setTimeout(() => {
-      this.providerMaintenanceIdleTimer = null;
-      if (this.providerMaintenanceSlot !== slot || slot.activeRequests > 0) {
-        return;
-      }
-      void this.retireProviderMaintenanceRuntime().catch((error) => {
-        this.options.logger?.warn(
-          { err: error },
-          "Failed to shut down idle provider maintenance runtime",
-        );
-      });
-    }, timeoutMs);
-    this.providerMaintenanceIdleTimer.unref();
+  private async expireProviderMaintenanceSlot(
+    slot: ProviderMaintenanceRuntimeSlot,
+  ): Promise<void> {
+    if (this.providerMaintenanceSlot === slot)
+      this.providerMaintenanceSlot = null;
+    this.retiredProviderMaintenanceSlots.delete(slot);
+    await this.shutdownProviderMaintenanceSlot(slot).catch((error) => {
+      this.options.logger?.warn(
+        { err: error },
+        "Failed to shut down idle provider maintenance runtime",
+      );
+    });
+  }
+
+  private async shutdownEntryRuntime(entry: RuntimeEntry): Promise<void> {
+    await entry.resource.end(() => entry.runtime.shutdown());
   }
 
   private async evictIdleRuntimeEntries(): Promise<void> {
@@ -855,7 +854,9 @@ export class RuntimeManager {
       this.entries.delete(entry.environmentId);
     }
 
-    await Promise.all(idleEntries.map((entry) => entry.runtime.shutdown()));
+    await Promise.all(
+      idleEntries.map((entry) => this.shutdownEntryRuntime(entry)),
+    );
     await this.cleanupUnusedInjectedSkillStagingDirs([]);
   }
 
@@ -866,6 +867,16 @@ export class RuntimeManager {
       return this.providerMaintenanceSlot;
     }
     const slot: ProviderMaintenanceRuntimeSlot = {
+      resource: this.options.resourceLedger.open({
+        owner: { kind: "provider-maintenance" },
+        deadline: {
+          kind: "idle",
+          idleMs:
+            this.options.providerMaintenanceIdleTimeoutMs ??
+            PROVIDER_MAINTENANCE_IDLE_TIMEOUT_MS,
+        },
+        onDeadline: () => this.expireProviderMaintenanceSlot(slot),
+      }),
       runtime: Promise.resolve().then(() =>
         this.createProviderMaintenanceRuntime(args, slot),
       ),
@@ -875,6 +886,7 @@ export class RuntimeManager {
       if (this.providerMaintenanceSlot === slot) {
         this.providerMaintenanceSlot = null;
       }
+      void slot.resource.close();
     });
     this.providerMaintenanceSlot = slot;
     return slot;
@@ -887,15 +899,19 @@ export class RuntimeManager {
   }
 
   async withProviderMaintenanceRuntime<TResult>(
-    args: { dataDir: string },
+    args: { dataDir: string; deadlineMs?: number },
     request: (runtime: AgentRuntime) => Promise<TResult>,
   ): Promise<TResult> {
-    this.clearProviderMaintenanceIdleTimer();
     const slot = this.currentProviderMaintenanceSlot(args);
     slot.activeRequests += 1;
+    const release = slot.resource.lease(
+      Date.now() +
+        (args.deadlineMs ?? PROVIDER_MAINTENANCE_REQUEST_DEADLINE_MS),
+    );
     try {
       return await request(await slot.runtime);
     } finally {
+      release();
       slot.activeRequests -= 1;
       if (slot.activeRequests === 0) {
         this.releaseIdleProviderMaintenanceSlot(slot);
@@ -1082,7 +1098,7 @@ export class RuntimeManager {
     }
 
     this.entries.delete(environmentId);
-    await entry.runtime.shutdown();
+    await this.shutdownEntryRuntime(entry);
     return entry;
   }
 
@@ -1113,7 +1129,7 @@ export class RuntimeManager {
     this.pendingEntries.clear();
 
     for (const entry of entries) {
-      await entry.runtime.shutdown();
+      await this.shutdownEntryRuntime(entry);
     }
     await this.shutdownAllProviderMaintenanceRuntimes();
     await this.stopWatchingDataDirSkillsRoot();
@@ -1188,6 +1204,7 @@ export class RuntimeManager {
       shellEnv,
       threadStorageRootPath: this.options.threadStorageRootPath ?? undefined,
       bridgeBundleDir: this.options.bridgeBundleDir,
+      processOwner: slot.resource,
       onEvent: (event) => {
         this.options.onStderr?.(
           `Dropping provider maintenance event ${event.type}; no environment owns provider-only maintenance commands.`,
@@ -1209,6 +1226,7 @@ export class RuntimeManager {
           runtime.listRunningProviders().length === 0
         ) {
           this.providerMaintenanceSlot = null;
+          void slot.resource.close();
         }
         this.options.onProcessExit?.(info);
       },
@@ -1227,14 +1245,25 @@ export class RuntimeManager {
       );
     }
 
-    if (args.setupScriptTimeoutMs != null) {
-      await runSetupScript({
+    const setup = args.setup;
+    if (setup != null) {
+      await runEnvironmentHookOperation({
+        ledger: this.options.resourceLedger,
+        operationId: setup.operationId,
+        kind: "setup",
         workspacePath: provision.path,
-        timeoutMs: args.setupScriptTimeoutMs,
-        contributedEnv: args.setupContributedEnv,
-        shellPath: this.getShellEnv().PATH,
+        timeoutMs: setup.timeoutMs,
         signal: args.provisionSignal,
-        onProgress: provision.onProgress,
+        run: (control) =>
+          runSetupScript({
+            workspacePath: provision.path,
+            timeoutMs: setup.timeoutMs,
+            contributedEnv: args.setupContributedEnv,
+            shellPath: this.getShellEnv().PATH,
+            signal: control.signal,
+            processOwner: control.processOwner,
+            onProgress: provision.onProgress,
+          }),
       });
     }
 
@@ -1249,6 +1278,10 @@ export class RuntimeManager {
       workspaceRoots: workspaceWriteRoots,
     });
     let runtime: AgentRuntime | null = null;
+    const resource = this.options.resourceLedger.open({
+      owner: { kind: "provider-runtime", environmentId: args.environmentId },
+      deadline: { kind: "owner" },
+    });
     const shellEnv = this.getShellEnv();
     const shellEnvGeneration = this.shellEnvGeneration;
     const providerProcessEnv = providerProcessEnvFromShellEnv(shellEnv);
@@ -1260,6 +1293,7 @@ export class RuntimeManager {
       shellEnv,
       threadStorageRootPath: this.options.threadStorageRootPath ?? undefined,
       bridgeBundleDir: this.options.bridgeBundleDir,
+      processOwner: resource,
       onEvent: (event) => {
         this.options.onEvent?.({
           environmentId: args.environmentId,
@@ -1303,6 +1337,7 @@ export class RuntimeManager {
           runtime.listRunningProviders().length === 0
         ) {
           this.entries.delete(args.environmentId);
+          void current.resource.close();
         }
         this.options.onProcessExit?.(info);
       },
@@ -1311,6 +1346,7 @@ export class RuntimeManager {
     return {
       environmentId: args.environmentId,
       runtime,
+      resource,
       shellEnvGeneration,
       skillCatalogHash: args.skillConfig?.catalogHash ?? null,
       skillRoots: args.skillConfig?.skillRoots ?? [],

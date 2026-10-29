@@ -252,7 +252,12 @@ generation is not active or fetchable yet.
 `context.signal` aborts one call. `context.lifecycle.signal` aborts the whole
 worker process on idle eviction, reload, disable, uninstall, or daemon
 shutdown. Close timers, sockets, and child processes from the lifecycle signal
-and `dispose`.
+and `dispose`. Whatever the worker still runs when it stops is stopped for it:
+the worker runs in its own process group, and the daemon stops that group and
+every descendant, including children started `detached` through
+`@get-bb/plugin-sdk/process` or `experimental_spawnPortableOutputProcess`,
+also after a crash or a daemon restart. A process meant to outlive the worker
+does not belong in a host entry.
 `context.experimental_paths.dataDir` is persistent and scoped to this plugin on
 the targeted daemon; `tempDir` is deleted with the worker process.
 `context.experimental_watch(options, listener)` uses the daemon's native file
