@@ -179,7 +179,7 @@ describe("private community forms", () => {
           ["submission_id", id],
           ["email", "ada@example.test"],
           ["community", "See how other people use bb"],
-          ["community", "Build things with other members"],
+          ["community", "Build things with other bb users"],
         ]),
       }),
       enabled(),
@@ -193,7 +193,7 @@ describe("private community forms", () => {
     expect(JSON.parse(String(answers))).toEqual(
       ({
         ...requiredAnswers,
-        community: ["See how other people use bb", "Build things with other members"],
+        community: ["See how other people use bb", "Build things with other bb users"],
         email: ["ada@example.test"],
       }),
     );
@@ -212,7 +212,7 @@ describe("private community forms", () => {
       const adoptVisible = work === "Just me";
       const response = await submit(id, {
         work,
-        company_size: work === "I don't use bb for work" ? "ignored" : "500–999",
+        company_size: work === "I don't use bb for work" ? "ignored" : "201–999",
         love: "Fast iteration",
         improve: "Better search",
         team_improve: teamVisible ? "Shared sessions" : "x".repeat(251),
@@ -226,7 +226,7 @@ describe("private community forms", () => {
       expect(JSON.parse(answers!)).toEqual({
         ...requiredAnswers,
         work: [work],
-        ...(work === "I don't use bb for work" ? {} : { company_size: ["500–999"] }),
+        ...(work === "I don't use bb for work" ? {} : { company_size: ["201–999"] }),
         love: ["Fast iteration"],
         improve: ["Better search"],
         ...(teamVisible ? { team_improve: ["Shared sessions"] } : {}),

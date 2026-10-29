@@ -5,7 +5,7 @@ const contact = {
   email: ["ada@example.test"],
   discovery: ["GitHub"],
   work: ["Just me"],
-  company_size: ["Fewer than 200"],
+  company_size: ["1–50"],
   role: ["Student"],
   love: ["Plugins"],
   improve: ["Faster startup"],
@@ -20,8 +20,8 @@ describe("community survey submission rules", () => {
     const values = { ...contact, work: work ? [work] : [], company_size: [] };
     const shown = Boolean(work && work !== "I don't use bb for work");
     expect(Boolean(validateSurvey(values).company_size)).toBe(shown);
-    expect(surveyAnswers({ ...values, company_size: ["500–999"] }).company_size)
-      .toEqual(shown ? ["500–999"] : undefined);
+    expect(surveyAnswers({ ...values, company_size: ["201–999"] }).company_size)
+      .toEqual(shown ? ["201–999"] : undefined);
   });
 
   it("requires every shown question and valid contact details", () => {
@@ -86,7 +86,7 @@ describe("community survey submission rules", () => {
         community: [
           "See how other people use bb",
           "Get help when I'm stuck",
-          "Build things with other members",
+          "Build things with other bb users",
         ],
       }),
     ).toEqual({});
@@ -96,7 +96,7 @@ describe("community survey submission rules", () => {
       [
         "See how other people use bb",
         "Get help when I'm stuck",
-        "Build things with other members",
+        "Build things with other bb users",
         "Meet other bb users, online or in person",
       ],
     ]) {

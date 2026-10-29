@@ -110,6 +110,18 @@
   background: var(--surface-recessed);
   border-color: var(--dim);
 }
+.community-option-hint {
+  display: block;
+  color: var(--dim);
+}
+.community-page .community-option input[data-other] {
+  flex: 1;
+  min-width: 0;
+  margin: -6px 0;
+  padding: 4px 8px;
+  font-size: inherit;
+  line-height: inherit;
+}
 .community-page input[type="radio"],
 .community-page input[type="checkbox"] {
   width: 16px;

@@ -15,6 +15,7 @@ import {
   SURVEY_PURPOSE,
   CITY_HELP,
   COMMUNITY_MAX,
+  OPTION_HINTS,
   surveyQuestions,
   type FormErrors,
   type FormValues,
@@ -87,6 +88,7 @@ if (form) {
       input.hidden = selected?.value !== 'Other';
       input.disabled = input.hidden;
       input.required = !input.hidden;
+      input.previousElementSibling.hidden = !input.hidden;
     }
     for (const set of form.querySelectorAll('fieldset[data-question]')) {
       const boxes = set.querySelectorAll('input[type="checkbox"]');
@@ -106,6 +108,7 @@ if (form) {
   });
   form.addEventListener('change', e => {
     update();
+    if (e.target.value === 'Other' && e.target.checked) e.target.parentElement.querySelector('[data-other]')?.focus();
   });
   form.addEventListener('input', update);
   update();
@@ -191,7 +194,36 @@ function Survey({
                       required={question.type === "radio"}
                       defaultChecked={values[question.name]?.includes(option)}
                     />
-                    <span>{option === "Other" ? "Other:" : option}</span>
+                    {option === "Other" ? (
+                      <>
+                        <span data-other-label>Other</span>
+                        <input
+                          type="text"
+                          name={`${question.name}_other`}
+                          data-other={question.name}
+                          aria-label={`${question.label} Other`}
+                          placeholder="Other"
+                          maxLength={250}
+                          defaultValue={
+                            values[`${question.name}_other`]?.[0] ?? ""
+                          }
+                          aria-describedby={
+                            errors[`${question.name}_other`]
+                              ? `${question.name}_other-error`
+                              : undefined
+                          }
+                        />
+                      </>
+                    ) : OPTION_HINTS[option] ? (
+                      <span>
+                        {option}
+                        <span className="community-option-hint">
+                          {OPTION_HINTS[option]}
+                        </span>
+                      </span>
+                    ) : (
+                      <span>{option}</span>
+                    )}
                   </label>
                 ))}
               </div>
@@ -218,21 +250,6 @@ function Survey({
                 required
                 maxLength={250}
                 defaultValue={values[question.name]?.[0] ?? ""}
-              />
-            )}
-            {question.options.includes("Other") && (
-              <input
-                type="text"
-                name={`${question.name}_other`}
-                data-other={question.name}
-                aria-label={`${question.label} Other`}
-                maxLength={250}
-                defaultValue={values[`${question.name}_other`]?.[0] ?? ""}
-                aria-describedby={
-                  errors[`${question.name}_other`]
-                    ? `${question.name}_other-error`
-                    : undefined
-                }
               />
             )}
             {errors[`${question.name}_other`] && (

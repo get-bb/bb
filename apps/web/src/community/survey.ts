@@ -67,7 +67,7 @@ export const surveyQuestions: readonly Question[] = [
     name: "company_size",
     label: "Approximately how many people work at your company or organization?",
     type: "radio",
-    options: ["Fewer than 200", "200–499", "500–999", "1,000 or more"],
+    options: ["1–50", "51–200", "201–999", "1,000 or more"],
     placeholder: "",
   },
   {
@@ -124,8 +124,8 @@ export const surveyQuestions: readonly Question[] = [
       "See how other people use bb",
       "Share what I've built and get feedback",
       "Get help when I'm stuck",
-      "Build things with other members",
-      "Hear what's coming and have a say in it",
+      "Build things with other bb users",
+      "Hear what's on the roadmap and have a say in it",
       "Other",
     ],
     placeholder: "",
@@ -145,6 +145,10 @@ export const surveyQuestions: readonly Question[] = [
     placeholder: "",
   },
 ];
+
+export const OPTION_HINTS: Record<string, string> = {
+  "Yes, and I'd help organize it": "We'll help with budget, merch and more.",
+};
 
 export type FormValues = Record<string, string[]>;
 export type FormErrors = Record<string, string>;

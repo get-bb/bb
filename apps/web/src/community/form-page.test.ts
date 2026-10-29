@@ -77,10 +77,12 @@ describe("survey page", () => {
     const script = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].at(
       -1,
     )![1]!;
+    const otherLabel = { hidden: false };
     const otherInput = {
       dataset: { other: "community" },
       hidden: false,
       disabled: false,
+      previousElementSibling: otherLabel,
     };
     let otherChecked = true;
     let work = "2–4 people";
@@ -136,9 +138,11 @@ describe("survey page", () => {
     expect(textarea.value).toBe("");
     expect(otherInput.hidden).toBe(false);
     expect(otherInput.disabled).toBe(false);
+    expect(otherLabel.hidden).toBe(true);
     otherChecked = false;
     update();
     expect(otherInput.hidden).toBe(true);
     expect(otherInput.disabled).toBe(true);
+    expect(otherLabel.hidden).toBe(false);
   });
 });
