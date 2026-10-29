@@ -74,6 +74,11 @@ export function initAnalytics(): void {
   loading = true;
   void import("posthog-js")
     .then(({ default: posthog }) => {
+      if (!marketingPaths.has(window.location.pathname)) {
+        loading = false;
+        pendingEvents.length = 0;
+        return;
+      }
       posthog.init(key, {
         api_host:
           import.meta.env.VITE_POSTHOG_HOST ?? "https://us.i.posthog.com",
