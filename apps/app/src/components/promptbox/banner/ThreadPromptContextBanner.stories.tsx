@@ -564,7 +564,6 @@ function ContextBannerPreview({
           input={{
             threadId: "thr_story",
             projectId: "proj_story",
-            threadDetailsCard: false,
             environment: null,
           }}
           core={{

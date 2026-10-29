@@ -29,6 +29,7 @@ Hooks:
   durable server state on subsequent transitions to `connected` (not the first
   connection) because plugin signals are ephemeral and are not replayed.
 - `experimental_useExperiment(key)` → whether a known bb experiment is enabled, following live changes; false while configuration loads or for unknown keys.
+- `experimental_useThreadContextKind()` → `"banner"` or `"card"`: how the calling component's thread pane shows its thread context; `banner` outside a thread pane. See frontend-thread-context-card.md.
 - `useSettings()` → `{ values, isLoading }` — effective non-secret values
   (secret settings are excluded; read them server-side only).
 - `useBbContext()` → `{ projectId, threadId }` from the current route.

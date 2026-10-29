@@ -159,7 +159,7 @@
         }
       ]
     },
-    "thread-details-card": {
+    "thread-context-card": {
       "groupId": "app-shell",
       "fidelity": "anchor",
       "responsiveStrategy": "scale-together",
@@ -170,25 +170,25 @@
       "fixtureClassAnchors": ["rounded-2xl", "bg-popover", "font-mono text-2xs"],
       "sources": [
         {
-          "path": "apps/app/src/components/plugin/PluginThreadDetailsCard.tsx",
+          "path": "apps/app/src/components/plugin/PluginThreadContextCard.tsx",
           "anchors": [
-            "data-thread-details-card=\"\"",
-            "slotKind=\"threadDetailsCardSection\"",
+            "data-thread-context-card=\"\"",
+            "slotKind=\"threadContextCard\"",
             "crashFallback={null}",
-            "export function resolveThreadDetailsCardLayout",
+            "export function resolveThreadContextCardLayout",
             "rounded-2xl border border-border bg-popover p-2"
           ]
         },
         {
           "path": "apps/app/src/views/thread-detail/ThreadScreen.tsx",
-          "anchors": ["<ThreadDetailsCard />"]
+          "anchors": ["<ThreadContextCard />"]
         },
         {
           "path": "apps/app/src/views/thread-detail/ThreadDetailView.tsx",
-          "anchors": ["<ThreadDetailsCardProvider", "<ThreadDetailsCardHeaderButton />", "CORE_THREAD_DETAILS_ROWS"]
+          "anchors": ["<ThreadContextCardProvider", "<ThreadContextCardHeaderButton />", "CORE_THREAD_CONTEXT_CARD_ENTRIES"]
         },
         {
-          "path": "apps/app/src/components/plugin/PluginThreadDetailsCard.test.tsx",
+          "path": "apps/app/src/components/plugin/PluginThreadContextCard.test.tsx",
           "anchors": [
             "orders rows by group, then order, core first on a tie, and puts titled sections below them",
             "mounts one scoped instance per pane and drops only a crashing section"

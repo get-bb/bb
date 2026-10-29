@@ -7,10 +7,10 @@ import {
   InfoList,
 } from "@/components/secondary-panel/info/info-list";
 import { ThreadStatusGlyph } from "@/components/thread/ThreadStatusGlyph";
-import { ThreadDetailsCardRow } from "./ThreadDetailsCardRow";
+import { ThreadContextCardRow } from "./ThreadContextCardRow";
 
 export default {
-  title: "Thread details card/Rows",
+  title: "Thread context card/Rows",
 };
 
 const noop = () => {};
@@ -59,21 +59,21 @@ export function Parent() {
   return (
     <Gallery title="Parent row (bb)">
       <Variant label="child thread">
-        <ThreadDetailsCardRow
+        <ThreadContextCardRow
           icon="UserRound"
           label="Parent: Plan the release"
           onClick={noop}
         />
       </Variant>
       <Variant label="fork">
-        <ThreadDetailsCardRow
+        <ThreadContextCardRow
           icon="Fork"
           label="Forked from: Fix flaky checkout tests"
           onClick={noop}
         />
       </Variant>
       <Variant label="long title">
-        <ThreadDetailsCardRow
+        <ThreadContextCardRow
           icon="UserRound"
           label="Parent: Investigate why the checkout retry metrics double count flaky tests on CI"
           onClick={noop}
@@ -91,7 +91,7 @@ function ChangesRow({
   deletions: number;
 }) {
   return (
-    <ThreadDetailsCardRow
+    <ThreadContextCardRow
       icon="FileDiff"
       label="Changes"
       trailing={
@@ -173,7 +173,7 @@ function ChildThreads({ items }: { items: StoryChild[] }) {
         limit={4}
         renderItem={(child) => (
           <li className="list-none">
-            <ThreadDetailsCardRow
+            <ThreadContextCardRow
               leading={
                 child.indicator === "none" ? (
                   <Icon name="ChildThread" aria-hidden />

@@ -1,9 +1,16 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+} from "@testing-library/react";
+import type { ReactNode } from "react";
 import { Provider as JotaiProvider, createStore } from "jotai";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ExperimentalThreadDetailsCardProps } from "@get-bb/plugin-sdk";
+import type { ExperimentalThreadContextCardProps } from "@get-bb/plugin-sdk";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlotMount";
 import {
@@ -11,18 +18,19 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
-import { ThreadDetailsCardRow } from "./ThreadDetailsCardRow";
+import { ThreadContextCardRow } from "./ThreadContextCardRow";
 import {
-  ThreadDetailsCard,
-  ThreadDetailsCardHeaderButton,
-  ThreadDetailsCardProvider,
-  resolveThreadDetailsCardLayout,
-  type CoreThreadDetailsCardRow,
-  type CoreThreadDetailsCardSection,
-} from "./PluginThreadDetailsCard";
+  ThreadContextCard,
+  ThreadContextCardHeaderButton,
+  ThreadContextCardProvider,
+  resolveThreadContextCardLayout,
+  useThreadContextKind,
+  WithoutThreadContextCard,
+  type CoreThreadContextCardEntry,
+} from "./PluginThreadContextCard";
 
 function section(label: string) {
-  return function Section({ threadId }: ExperimentalThreadDetailsCardProps) {
+  return function Section({ threadId }: ExperimentalThreadContextCardProps) {
     return (
       <p data-testid="section">
         {label} for {threadId}
@@ -33,7 +41,7 @@ function section(label: string) {
 
 function OpenDiffRow() {
   return (
-    <ThreadDetailsCardRow
+    <ThreadContextCardRow
       icon="FileDiff"
       label="Open diff"
       onClick={() => {}}
@@ -45,16 +53,13 @@ function Crashes(): never {
   throw new Error("plugin crashed");
 }
 
-const CORE: CoreThreadDetailsCardRow[] = [
+const CORE: CoreThreadContextCardEntry[] = [
   {
     id: "environment",
     group: "2_environment",
     order: 10,
     component: section("Core environment"),
   },
-];
-
-const CORE_SECTIONS: CoreThreadDetailsCardSection[] = [
   {
     id: "childThreads",
     title: "Child threads",
@@ -81,22 +86,21 @@ function renderPane({
       <TooltipProvider>
         <MemoryRouter>
           {threadIds.map((threadId) => (
-            <ThreadDetailsCardProvider
+            <ThreadContextCardProvider
               key={threadId}
               enabled={enabled}
-              coreRows={CORE}
-              coreSections={CORE_SECTIONS}
+              coreEntries={CORE}
               threadId={threadId}
               projectId="proj_1"
               environment={null}
             >
               <header>
-                <ThreadDetailsCardHeaderButton />
+                <ThreadContextCardHeaderButton />
               </header>
               <div data-scroll-overlay="">
-                <ThreadDetailsCard />
+                <ThreadContextCard />
               </div>
-            </ThreadDetailsCardProvider>
+            </ThreadContextCardProvider>
           ))}
         </MemoryRouter>
       </TooltipProvider>
@@ -112,7 +116,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("resolveThreadDetailsCardLayout", () => {
+describe("resolveThreadContextCardLayout", () => {
   it.each([
     [1384, "gutter"],
     [1383, "shift"],
@@ -120,23 +124,23 @@ describe("resolveThreadDetailsCardLayout", () => {
     [1071, "overlay"],
     [390, "overlay"],
   ] as const)("lays out a %ipx pane as %s", (width, layout) => {
-    expect(resolveThreadDetailsCardLayout(width)).toBe(layout);
+    expect(resolveThreadContextCardLayout(width)).toBe(layout);
   });
 });
 
-describe("thread details card", () => {
+describe("thread context card", () => {
   it("renders nothing while the experiment is off, even with plugin sections", () => {
     setPluginSlotRegistrations(
       "first",
       makePluginRegistrationSet({
-        threadDetailsCardRows: [
+        threadContextCards: [
           { id: "branch", group: "3_git", component: section("Branch") },
         ],
       }),
     );
     renderPane({ enabled: false });
 
-    expect(screen.queryByRole("group", { name: "Thread details" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Thread context" })).toBeNull();
     expect(
       screen.queryByRole("button", { name: /thread details/i }),
     ).toBeNull();
@@ -146,7 +150,7 @@ describe("thread details card", () => {
     setPluginSlotRegistrations(
       "first",
       makePluginRegistrationSet({
-        threadDetailsCardRows: [
+        threadContextCards: [
           { id: "pr", group: "4_pullRequest", component: section("PR") },
           {
             id: "tie",
@@ -154,8 +158,6 @@ describe("thread details card", () => {
             order: 10,
             component: section("Tie"),
           },
-        ],
-        threadDetailsCardSections: [
           {
             id: "deploys",
             title: "Deploys",
@@ -168,7 +170,7 @@ describe("thread details card", () => {
     setPluginSlotRegistrations(
       "second",
       makePluginRegistrationSet({
-        threadDetailsCardRows: [
+        threadContextCards: [
           { id: "git", group: "3_git", component: section("Git") },
         ],
       }),
@@ -196,7 +198,7 @@ describe("thread details card", () => {
     setPluginSlotRegistrations(
       "first",
       makePluginRegistrationSet({
-        threadDetailsCardRows: [
+        threadContextCards: [
           { id: "crash", group: "3_git", component: Crashes },
         ],
       }),
@@ -216,14 +218,14 @@ describe("thread details card", () => {
 
   it("toggles the pinned card from the header in a wide pane", () => {
     renderPane({ paneWidth: 1600 });
-    const toggle = screen.getByRole("button", { name: "Unpin thread details" });
-    expect(screen.getByRole("group", { name: "Thread details" })).toBeTruthy();
+    const toggle = screen.getByRole("button", { name: "Unpin thread context" });
+    expect(screen.getByRole("group", { name: "Thread context" })).toBeTruthy();
 
     fireEvent.click(toggle);
-    expect(screen.queryByRole("group", { name: "Thread details" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Thread context" })).toBeNull();
     expect(
       screen
-        .getByRole("button", { name: "Pin thread details" })
+        .getByRole("button", { name: "Pin thread context" })
         .getAttribute("aria-pressed"),
     ).toBe("false");
   });
@@ -232,21 +234,57 @@ describe("thread details card", () => {
     setPluginSlotRegistrations(
       "first",
       makePluginRegistrationSet({
-        threadDetailsCardRows: [
+        threadContextCards: [
           { id: "diff", group: "3_git", component: OpenDiffRow },
         ],
       }),
     );
     renderPane({ paneWidth: 900 });
-    expect(screen.queryByRole("group", { name: "Thread details" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Thread context" })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Thread details" }));
-    expect(screen.getByRole("group", { name: "Thread details" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Thread context" }));
+    expect(screen.getByRole("group", { name: "Thread context" })).toBeTruthy();
     expect(
       screen.getAllByTestId("section").map((node) => node.textContent),
     ).toEqual(["Core environment for thr_1", "Core children for thr_1"]);
 
     fireEvent.click(screen.getByRole("button", { name: "Open diff" }));
-    expect(screen.queryByRole("group", { name: "Thread details" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Thread context" })).toBeNull();
+  });
+});
+
+describe("useThreadContextKind", () => {
+  function kindIn(wrap: (children: ReactNode) => ReactNode) {
+    return renderHook(() => useThreadContextKind(), {
+      wrapper: ({ children }) => wrap(children),
+    }).result.current;
+  }
+
+  function pane(enabled: boolean, children: ReactNode) {
+    return (
+      <ThreadContextCardProvider
+        enabled={enabled}
+        coreEntries={CORE}
+        threadId="thr_1"
+        projectId="proj_1"
+        environment={null}
+      >
+        {children}
+      </ThreadContextCardProvider>
+    );
+  }
+
+  it.each([
+    ["a pane with the card", (c: ReactNode) => pane(true, c), "card"],
+    ["a pane with the card off", (c: ReactNode) => pane(false, c), "banner"],
+    [
+      "a thread nested in a card pane's panel",
+      (c: ReactNode) =>
+        pane(true, <WithoutThreadContextCard>{c}</WithoutThreadContextCard>),
+      "banner",
+    ],
+    ["no thread pane", (c: ReactNode) => c, "banner"],
+  ] as const)("reports the kind for %s", (_name, wrap, kind) => {
+    expect(kindIn(wrap)).toBe(kind);
   });
 });

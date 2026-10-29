@@ -157,8 +157,8 @@ export const experimental_DetailRow = runtimeComponent(
   "experimental_DetailRow",
 );
 export const experimental_InfoList = runtimeComponent("experimental_InfoList");
-export const experimental_ThreadDetailsCardRow = runtimeComponent(
-  "experimental_ThreadDetailsCardRow",
+export const experimental_ThreadContextCardRow = runtimeComponent(
+  "experimental_ThreadContextCardRow",
 );
 export const experimental_InfoListRow = runtimeComponent(
   "experimental_InfoListRow",
@@ -293,6 +293,9 @@ export {
 } from "./thread-info-groups.js";
 export const experimental_useExperiment = runtimeFunction(
   "experimental_useExperiment",
+);
+export const experimental_useThreadContextKind = runtimeFunction(
+  "experimental_useThreadContextKind",
 );
 export const experimental_useSidebarThreadSplit = runtimeFunction(
   "experimental_useSidebarThreadSplit",

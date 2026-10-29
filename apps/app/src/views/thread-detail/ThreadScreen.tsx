@@ -38,10 +38,10 @@ import type { HostConnectionNotice } from "@/components/thread/timeline/ThreadTi
 import { ThreadTimelinePanelLoadingSkeleton } from "@/components/thread/timeline/ThreadChatLoading";
 import { ThreadTableOfContents } from "@/components/thread/toc/ThreadTableOfContents";
 import {
-  ThreadDetailsCard,
-  useThreadDetailsCardContentInset,
-  useThreadDetailsCardShown,
-} from "@/components/plugin/PluginThreadDetailsCard";
+  ThreadContextCard,
+  useThreadContextCardContentInset,
+  WithoutThreadContextCard,
+} from "@/components/plugin/PluginThreadContextCard";
 import { BottomAnchoredScrollBody } from "@/components/ui/bottom-anchored-scroll-body";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { appToast } from "@/components/ui/app-toast";
@@ -455,9 +455,7 @@ export function ThreadScreen({
   workspaceRootPath,
 }: ThreadScreenProps) {
   const systemConfigQuery = useSystemConfig();
-  const detailsCardInset = useThreadDetailsCardContentInset();
-  const showsThreadDetailsCard =
-    useThreadDetailsCardShown() && presentation.kind === "page";
+  const contextCardInset = useThreadContextCardContentInset();
   const pendingInteractionsQuery = useThreadPendingInteractions(thread.id);
   const pendingInteractions = pendingInteractionsQuery.data ?? [];
   const hasPendingInteraction = pendingInteractions.length > 0;
@@ -599,7 +597,6 @@ export function ThreadScreen({
       activeWorkflows={timeline.activeWorkflows}
       activeBackgroundCommands={timeline.activeBackgroundCommands}
       parentThreadSection={parentThreadSection}
-      threadDetailsCard={showsThreadDetailsCard}
       childThreadsSection={childThreadsSection}
       contextEnvironmentId={composer.contextEnvironmentId}
       thread={thread}
@@ -617,7 +614,7 @@ export function ThreadScreen({
             key={thread.id}
             scrollBehavior="bottom-anchor"
             scrollAnchorThreadId={thread.id}
-            scrollContentInsetEndPx={detailsCardInset}
+            scrollContentInsetEndPx={contextCardInset}
             shellClassName="!mx-0 !mt-0 md:!mx-0 md:!mt-0"
             scrollAreaClassName="scroll-pt-4"
             contentClassName="gap-2 pt-4"
@@ -625,7 +622,7 @@ export function ThreadScreen({
             footer={promptArea}
             scrollOverlay={
               <>
-                <ThreadDetailsCard />
+                <ThreadContextCard />
                 <div className="pointer-events-auto my-auto">
                   <ThreadTableOfContents
                     contextBoundarySeq={timeline.contextBoundarySeq}
@@ -645,20 +642,26 @@ export function ThreadScreen({
       );
     case "panel":
       return (
-        <ThreadScreenPanelShell
-          presentation={presentation}
-          promptArea={promptArea}
-          surface={surface}
-          threadId={thread.id}
-        />
+        <WithoutThreadContextCard>
+          <ThreadScreenPanelShell
+            presentation={presentation}
+            promptArea={promptArea}
+            surface={surface}
+            threadId={thread.id}
+          />
+        </WithoutThreadContextCard>
       );
     case "transcript":
-      return presentation.layout === "contained" ? (
-        <div className="min-h-0 flex-1 overflow-y-auto bg-background px-2 pb-3 pt-3">
-          {surface}
-        </div>
-      ) : (
-        <div className="bg-background px-2 pb-3 pt-3">{surface}</div>
+      return (
+        <WithoutThreadContextCard>
+          {presentation.layout === "contained" ? (
+            <div className="min-h-0 flex-1 overflow-y-auto bg-background px-2 pb-3 pt-3">
+              {surface}
+            </div>
+          ) : (
+            <div className="bg-background px-2 pb-3 pt-3">{surface}</div>
+          )}
+        </WithoutThreadContextCard>
       );
   }
 }

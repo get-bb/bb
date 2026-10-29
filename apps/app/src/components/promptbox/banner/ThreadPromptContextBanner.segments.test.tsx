@@ -7,6 +7,10 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlotMount";
 import {
+  ThreadContextCardProvider,
+  type CoreThreadContextCardEntry,
+} from "@/components/plugin/PluginThreadContextCard";
+import {
   removePluginSlotRegistrations,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
@@ -102,37 +106,48 @@ function registerPluginSegment({
   );
 }
 
+const CARD_ENTRIES: CoreThreadContextCardEntry[] = [
+  { id: "row", group: "thread", order: 10, component: () => null },
+];
+
 function renderBanner({
   core = EMPTY_CORE,
   git = null,
   archived = false,
-  threadDetailsCard = false,
+  threadContextKind = "banner",
   expandedSegment = null,
   onToggleSegment = () => {},
 }: {
   core?: CoreThreadContext;
   git?: GitSegmentFixture | null;
   archived?: boolean;
-  threadDetailsCard?: boolean;
+  threadContextKind?: "banner" | "card";
   expandedSegment?: string | null;
   onToggleSegment?: (key: string) => void;
 } = {}) {
   return render(
     <MemoryRouter>
       <GitSegmentFixtureProvider value={git}>
-        <ThreadPromptContextBanner
-          input={{
-            threadId: "thr_1",
-            projectId: "proj_1",
-            threadDetailsCard,
-            environment: { id: "env_1" },
-          }}
-          core={core}
-          archivedSection={archived ? { archivedAt: 1 } : null}
-          environmentGoneSection={null}
-          expandedSegment={expandedSegment}
-          onToggleSegment={onToggleSegment}
-        />
+        <ThreadContextCardProvider
+          enabled={threadContextKind === "card"}
+          coreEntries={CARD_ENTRIES}
+          threadId="thr_1"
+          projectId="proj_1"
+          environment={{ id: "env_1" }}
+        >
+          <ThreadPromptContextBanner
+            input={{
+              threadId: "thr_1",
+              projectId: "proj_1",
+              environment: { id: "env_1" },
+            }}
+            core={core}
+            archivedSection={archived ? { archivedAt: 1 } : null}
+            environmentGoneSection={null}
+            expandedSegment={expandedSegment}
+            onToggleSegment={onToggleSegment}
+          />
+        </ThreadContextCardProvider>
       </GitSegmentFixtureProvider>
     </MemoryRouter>,
   );
@@ -155,11 +170,11 @@ afterEach(() => {
 });
 
 describe("thread context segments", () => {
-  it("leaves the parent thread to the thread details card when the view shows one", () => {
+  it("leaves the parent thread to the thread context card when the view shows one", () => {
     registerPluginSegment();
     renderBanner({
       core: { ...EMPTY_CORE, parentThread },
-      threadDetailsCard: true,
+      threadContextKind: "card",
     });
 
     expect(

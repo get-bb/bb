@@ -10,7 +10,7 @@ import {
   PullRequestActionButtons,
   PullRequestLink,
 } from "./PullRequestContextSegment";
-import { PullRequestDetailsCardRowView } from "./PullRequestDetailsCardRow";
+import { PullRequestContextCardRowView } from "./PullRequestContextCardRow";
 import { PullRequestRow } from "./PullRequestInfoRow";
 
 export default {
@@ -601,7 +601,7 @@ const CARD_HANDLERS = {
   onMerge: noop,
 };
 
-export function DetailsCardRow() {
+export function ContextCardRow() {
   return (
     <div className="flex flex-col gap-2 p-4">
       {CARD_PULL_REQUESTS.map(({ label, pullRequest }) => (
@@ -613,7 +613,7 @@ export function DetailsCardRow() {
             data-story-card=""
             className="w-72 shrink-0 rounded-2xl border border-border bg-popover p-2 text-popover-foreground"
           >
-            <PullRequestDetailsCardRowView
+            <PullRequestContextCardRowView
               pullRequest={pullRequest}
               handlers={CARD_HANDLERS}
             />

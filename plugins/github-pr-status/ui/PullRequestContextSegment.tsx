@@ -5,6 +5,7 @@ import {
   type ReactNode,
 } from "react";
 import {
+  experimental_useThreadContextKind,
   useBbNavigate,
   useSettings,
   type ExperimentalThreadContextSegmentInput,
@@ -67,9 +68,8 @@ function useThreadPullRequest(
 export function usePullRequestSegmentVisible(
   input: ExperimentalThreadContextSegmentInput,
 ): boolean {
-  const show =
-    useSettings().values?.[SHOW_PULL_REQUEST_SETTING] === true &&
-    !input.threadDetailsCard;
+  const enabled = useSettings().values?.[SHOW_PULL_REQUEST_SETTING] === true;
+  const show = enabled && experimental_useThreadContextKind() === "banner";
   return useThreadPullRequest(show ? input.environment : null) !== null;
 }
 

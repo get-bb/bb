@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, type ReactNode } from "react";
-import type {
-  ExperimentalThreadContextSegmentInput,
-  ExperimentalThreadContextSegmentProps,
+import {
+  experimental_useThreadContextKind,
+  type ExperimentalThreadContextSegmentInput,
+  type ExperimentalThreadContextSegmentProps,
 } from "@get-bb/plugin-sdk/app";
 import { BranchPicker } from "@bb/shared-ui/branch-picker";
 import { Icon } from "@bb/shared-ui/icon";
@@ -52,12 +53,11 @@ function useFocusHandoff(
 
 export function useChangedFilesSegmentVisible({
   environment,
-  threadDetailsCard,
 }: ExperimentalThreadContextSegmentInput): boolean {
+  const show = useShowGitChanges();
+  const kind = experimental_useThreadContextKind();
   const environmentId =
-    useShowGitChanges() && !threadDetailsCard
-      ? (environment?.id ?? null)
-      : null;
+    show && kind === "banner" ? (environment?.id ?? null) : null;
   const { workspace } = useGitStatus(environmentId);
   return (
     environmentId !== null &&

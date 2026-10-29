@@ -7,7 +7,7 @@ import {
   PullRequestSegmentSummary,
   usePullRequestSegmentVisible,
 } from "./ui/PullRequestContextSegment";
-import { PullRequestDetailsCardRow } from "./ui/PullRequestDetailsCardRow";
+import { PullRequestContextCardRow } from "./ui/PullRequestContextCardRow";
 import { PullRequestInfoRow } from "./ui/PullRequestInfoRow";
 import {
   PullRequestRowMetadata,
@@ -26,11 +26,11 @@ export default definePluginApp((app) => {
     action: PullRequestSegmentAction,
     useVisible: usePullRequestSegmentVisible,
   });
-  app.slots.experimental_threadDetailsCardRow({
+  app.slots.experimental_threadContextCard({
     id: "pull-request",
     group: experimental_THREAD_INFO_ROW_GROUPS.pullRequest,
     order: 10,
-    component: PullRequestDetailsCardRow,
+    component: PullRequestContextCardRow,
   });
   app.slots.experimental_threadInfoRow({
     id: "pull-request",

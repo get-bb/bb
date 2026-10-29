@@ -2,7 +2,7 @@ import { useNavigate } from "react-router-dom";
 import {
   experimental_THREAD_INFO_ROW_GROUPS,
   experimental_THREAD_INFO_SECTION_GROUPS,
-  type ExperimentalThreadDetailsCardProps,
+  type ExperimentalThreadContextCardProps,
 } from "@get-bb/plugin-sdk";
 import {
   resolveThreadListIndicator,
@@ -11,11 +11,8 @@ import {
 import { Icon } from "@bb/shared-ui/icon";
 import { InfoRowTime } from "@bb/shared-ui/info-list-row";
 import type { ThreadResponse } from "@bb/server-contract";
-import { ThreadDetailsCardRow } from "@/components/plugin/ThreadDetailsCardRow";
-import type {
-  CoreThreadDetailsCardRow,
-  CoreThreadDetailsCardSection,
-} from "@/components/plugin/PluginThreadDetailsCard";
+import { ThreadContextCardRow } from "@/components/plugin/ThreadContextCardRow";
+import type { CoreThreadContextCardEntry } from "@/components/plugin/PluginThreadContextCard";
 import { InfoList } from "@/components/secondary-panel/info/info-list";
 import { ThreadStatusGlyph } from "@/components/thread/ThreadStatusGlyph";
 import { ThreadTitle } from "@/components/thread/ThreadTitleMentions";
@@ -24,7 +21,7 @@ import { getThreadRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { useParentThreadSection } from "./useParentThreadSection";
 
-function ParentRow({ threadId }: ExperimentalThreadDetailsCardProps) {
+function ParentRow({ threadId }: ExperimentalThreadContextCardProps) {
   const { data: thread } = useThread(threadId);
   return thread === undefined ? null : <ParentThreadRow thread={thread} />;
 }
@@ -34,7 +31,7 @@ function ParentThreadRow({ thread }: { thread: ThreadResponse }) {
   const parent = useParentThreadSection(thread, true);
   if (parent === null) return null;
   return (
-    <ThreadDetailsCardRow
+    <ThreadContextCardRow
       icon={parent.relationship === "fork" ? "Fork" : "UserRound"}
       label={`${parent.relationship === "fork" ? "Forked from" : "Parent"}: ${parent.parentThreadTitle}`}
       title={parent.parentThreadTitle}
@@ -43,16 +40,7 @@ function ParentThreadRow({ thread }: { thread: ThreadResponse }) {
   );
 }
 
-export const CORE_THREAD_DETAILS_ROWS: readonly CoreThreadDetailsCardRow[] = [
-  {
-    id: "parent",
-    group: experimental_THREAD_INFO_ROW_GROUPS.thread,
-    order: 10,
-    component: ParentRow,
-  },
-];
-
-function ChildThreadsSection({ threadId }: ExperimentalThreadDetailsCardProps) {
+function ChildThreadsSection({ threadId }: ExperimentalThreadContextCardProps) {
   const navigate = useNavigate();
   const childThreadsQuery = useChildThreads({
     enabled: true,
@@ -74,7 +62,7 @@ function ChildThreadsSection({ threadId }: ExperimentalThreadDetailsCardProps) {
         );
         return (
           <li className="list-none">
-            <ThreadDetailsCardRow
+            <ThreadContextCardRow
               leading={
                 indicator === "none" ? (
                   <Icon name="ChildThread" aria-hidden />
@@ -101,8 +89,14 @@ function ChildThreadsSection({ threadId }: ExperimentalThreadDetailsCardProps) {
   );
 }
 
-export const CORE_THREAD_DETAILS_SECTIONS: readonly CoreThreadDetailsCardSection[] =
+export const CORE_THREAD_CONTEXT_CARD_ENTRIES: readonly CoreThreadContextCardEntry[] =
   [
+    {
+      id: "parent",
+      group: experimental_THREAD_INFO_ROW_GROUPS.thread,
+      order: 10,
+      component: ParentRow,
+    },
     {
       id: "childThreads",
       title: "Child threads",

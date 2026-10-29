@@ -21,6 +21,7 @@ const sdk = vi.hoisted(() => ({
   settings: { showPullRequest: true } as Record<string, boolean> | undefined,
   mutate: vi.fn(async () => ({ message: "Merged" })),
   isPending: false,
+  threadContextKind: "banner" as "banner" | "card",
 }));
 
 vi.mock("@get-bb/plugin-sdk/app", () => ({
@@ -35,6 +36,7 @@ vi.mock("@get-bb/plugin-sdk/app", () => ({
   }),
   useBbNavigate: () => ({ openUrl: () => false }),
   useSettings: () => ({ values: sdk.settings, isLoading: false }),
+  experimental_useThreadContextKind: () => sdk.threadContextKind,
 }));
 
 vi.mock("sonner", () => ({
@@ -93,7 +95,6 @@ function renderPart(
       threadId="thr_1"
       projectId="proj_1"
       environment={{ id: "env_1" }}
-      threadDetailsCard={false}
       segments={segments}
       isExpanded={false}
       onToggle={() => {}}
@@ -106,6 +107,7 @@ afterEach(() => {
   sdk.rows = {};
   sdk.settings = { showPullRequest: true };
   sdk.isPending = false;
+  sdk.threadContextKind = "banner";
   sdk.mutate.mockClear();
   window.localStorage.clear();
 });
@@ -113,11 +115,7 @@ afterEach(() => {
 describe("pull request context segment", () => {
   it("shows only when the thread's environment has a pull request", () => {
     show(PULL_REQUEST);
-    const input = {
-      threadId: "thr_1",
-      projectId: "proj_1",
-      threadDetailsCard: false,
-    };
+    const input = { threadId: "thr_1", projectId: "proj_1" };
     expect(
       renderHook(() =>
         usePullRequestSegmentVisible({
@@ -142,14 +140,14 @@ describe("pull request context segment", () => {
     ).toBe(false);
   });
 
-  it("hides while the thread details card holds the pull request", () => {
+  it("hides while the pane shows thread context in the card", () => {
     show(PULL_REQUEST);
+    sdk.threadContextKind = "card";
     expect(
       renderHook(() =>
         usePullRequestSegmentVisible({
           threadId: "thr_1",
           projectId: "proj_1",
-          threadDetailsCard: true,
           environment: { id: "env_1" },
         }),
       ).result.current,
@@ -168,7 +166,6 @@ describe("pull request context segment", () => {
           threadId: "thr_1",
           projectId: "proj_1",
           environment: { id: "env_1" },
-          threadDetailsCard: false,
         }),
       ).result.current,
     ).toBe(false);

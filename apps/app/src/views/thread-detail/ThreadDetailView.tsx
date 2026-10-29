@@ -119,13 +119,12 @@ import {
 import { THREAD_INFO_FIXED_TAB_REFERENCE } from "@/components/secondary-panel/thread-info-fixed-tab-navigation";
 import { ThreadDetailHeader } from "./ThreadDetailHeader";
 import {
-  CORE_THREAD_DETAILS_ROWS,
-  CORE_THREAD_DETAILS_SECTIONS,
-} from "./ThreadDetailsCardCore";
+  CORE_THREAD_CONTEXT_CARD_ENTRIES,
+} from "./ThreadContextCardCore";
 import {
-  ThreadDetailsCardHeaderButton,
-  ThreadDetailsCardProvider,
-} from "@/components/plugin/PluginThreadDetailsCard";
+  ThreadContextCardHeaderButton,
+  ThreadContextCardProvider,
+} from "@/components/plugin/PluginThreadContextCard";
 import { ThreadScreen, useThreadComposerAddToChat } from "./ThreadScreen";
 import { ThreadDetailSecondaryContent } from "./ThreadDetailSecondaryContent";
 import {
@@ -386,8 +385,8 @@ function ThreadDetailViewInternal(
   const systemConfigQuery = useSystemConfig();
   const isCompactViewport = useIsCompactViewport();
   const isPointerCoarse = usePointerCoarse();
-  const threadDetailsCardEnabled =
-    systemConfigQuery.data?.experiments.threadDetailsCard === true &&
+  const threadContextCardEnabled =
+    systemConfigQuery.data?.experiments.threadContextCard === true &&
     !(isCompactViewport && isPointerCoarse);
   const {
     hasThreadDetailBootstrapSettled,
@@ -1732,7 +1731,7 @@ function ThreadDetailViewInternal(
       }
       thread={threadActionTarget}
       threadTitle={threadTitle}
-      detailsCardButton={<ThreadDetailsCardHeaderButton />}
+      contextCardButton={<ThreadContextCardHeaderButton />}
       workspaceOpenButton={workspaceOpenButton}
     />
   );
@@ -2142,10 +2141,9 @@ function ThreadDetailViewInternal(
               <SelectionAddToChatContext.Provider
                 value={handleSelectionAddToChat}
               >
-                <ThreadDetailsCardProvider
-                  enabled={threadDetailsCardEnabled}
-                  coreRows={CORE_THREAD_DETAILS_ROWS}
-                  coreSections={CORE_THREAD_DETAILS_SECTIONS}
+                <ThreadContextCardProvider
+                  enabled={threadContextCardEnabled}
+                  coreEntries={CORE_THREAD_CONTEXT_CARD_ENTRIES}
                   threadId={thread.id}
                   projectId={thread.projectId}
                   environment={
@@ -2155,7 +2153,7 @@ function ThreadDetailViewInternal(
                   }
                 >
                   {threadDetailContent}
-                </ThreadDetailsCardProvider>
+                </ThreadContextCardProvider>
               </SelectionAddToChatContext.Provider>
             </AttachmentOpenerContext.Provider>
           </MarkdownLocalFileOpenTargetsContext.Provider>

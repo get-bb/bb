@@ -9,7 +9,10 @@ import {
   type ReactNode,
 } from "react";
 import { useAtom } from "jotai";
-import type { ExperimentalThreadDetailsCardProps } from "@get-bb/plugin-sdk";
+import type {
+  ExperimentalThreadContextCardProps,
+  ExperimentalThreadContextKind,
+} from "@get-bb/plugin-sdk";
 import { Button } from "@bb/shared-ui/button";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { Icon } from "@bb/shared-ui/icon";
@@ -24,68 +27,66 @@ import {
 } from "@/lib/grouped-placement";
 import {
   usePluginSlots,
-  type PluginThreadDetailsCardRowSlot,
-  type PluginThreadDetailsCardSectionSlot,
+  type PluginThreadContextCardSlot,
 } from "@/lib/plugin-slots";
 import { createSyncedPreferenceAtom } from "@/lib/ui-preferences/synced-preference-atom";
 import { PluginSlotMount } from "./PluginSlotMount";
 
-export interface CoreThreadDetailsCardRow {
+export interface CoreThreadContextCardEntry {
   id: string;
+  title?: string;
   group: string;
   order: number;
-  component: ComponentType<ExperimentalThreadDetailsCardProps>;
+  component: ComponentType<ExperimentalThreadContextCardProps>;
 }
 
-export interface CoreThreadDetailsCardSection {
-  id: string;
-  title: string;
-  group: string;
-  order: number;
-  component: ComponentType<ExperimentalThreadDetailsCardProps>;
+type ThreadContextCardEntry =
+  | { owner: "core"; slot: CoreThreadContextCardEntry }
+  | { owner: "plugin"; slot: PluginThreadContextCardSlot };
+
+type ThreadContextCardSectionEntry = ThreadContextCardEntry & {
+  slot: { title: string };
+};
+
+function isSectionEntry(
+  entry: ThreadContextCardEntry,
+): entry is ThreadContextCardSectionEntry {
+  return entry.slot.title !== undefined;
 }
 
-type ThreadDetailsCardSectionEntry =
-  | { owner: "core"; slot: CoreThreadDetailsCardSection }
-  | { owner: "plugin"; slot: PluginThreadDetailsCardSectionSlot };
-
-type ThreadDetailsCardRowEntry =
-  | { owner: "core"; slot: CoreThreadDetailsCardRow }
-  | { owner: "plugin"; slot: PluginThreadDetailsCardRowSlot };
-
-export type ThreadDetailsCardLayout = "gutter" | "shift" | "overlay";
+export type ThreadContextCardLayout = "gutter" | "shift" | "overlay";
 
 const TRANSCRIPT_MAX_WIDTH_PX = 760;
 const CARD_WIDTH_PX = 288;
-export const THREAD_DETAILS_CARD_RESERVED_WIDTH_PX = CARD_WIDTH_PX + 24;
+export const THREAD_CONTEXT_CARD_RESERVED_WIDTH_PX = CARD_WIDTH_PX + 24;
 
-export function resolveThreadDetailsCardLayout(
+export function resolveThreadContextCardLayout(
   paneWidth: number,
-): ThreadDetailsCardLayout {
+): ThreadContextCardLayout {
   const gutter = (paneWidth - TRANSCRIPT_MAX_WIDTH_PX) / 2;
-  if (gutter >= THREAD_DETAILS_CARD_RESERVED_WIDTH_PX) return "gutter";
+  if (gutter >= THREAD_CONTEXT_CARD_RESERVED_WIDTH_PX) return "gutter";
   if (
-    paneWidth - THREAD_DETAILS_CARD_RESERVED_WIDTH_PX >=
+    paneWidth - THREAD_CONTEXT_CARD_RESERVED_WIDTH_PX >=
     TRANSCRIPT_MAX_WIDTH_PX
   )
     return "shift";
   return "overlay";
 }
 
-const pinnedAtom = createSyncedPreferenceAtom("threadDetailsCard.pinned");
+const pinnedAtom = createSyncedPreferenceAtom("threadContextCard.pinned");
 
-interface ThreadDetailsCardPaneState {
-  props: ExperimentalThreadDetailsCardProps;
-  rows: readonly ThreadDetailsCardRowEntry[];
-  sections: readonly ThreadDetailsCardSectionEntry[];
-  layout: ThreadDetailsCardLayout;
-  setLayout(layout: ThreadDetailsCardLayout): void;
+interface ThreadContextCardPaneState {
+  props: ExperimentalThreadContextCardProps;
+  rows: readonly ThreadContextCardEntry[];
+  sections: readonly ThreadContextCardSectionEntry[];
+  layout: ThreadContextCardLayout;
+  setLayout(layout: ThreadContextCardLayout): void;
   popoverOpen: boolean;
   setPopoverOpen(open: boolean): void;
 }
 
-const ThreadDetailsCardPaneContext =
-  createContext<ThreadDetailsCardPaneState | null>(null);
+const ThreadContextCardPaneContext =
+  createContext<ThreadContextCardPaneState | null>(null);
 
 function sortByPlacement<Item>(
   items: readonly Item[],
@@ -104,119 +105,116 @@ function sortByPlacement<Item>(
     .map(({ item }) => item);
 }
 
-export function ThreadDetailsCardProvider({
+export function ThreadContextCardProvider({
   enabled,
-  coreRows,
-  coreSections,
+  coreEntries,
   threadId,
   projectId,
   environment,
   children,
-}: ExperimentalThreadDetailsCardProps & {
+}: ExperimentalThreadContextCardProps & {
   enabled: boolean;
-  coreRows: readonly CoreThreadDetailsCardRow[];
-  coreSections: readonly CoreThreadDetailsCardSection[];
+  coreEntries: readonly CoreThreadContextCardEntry[];
   children: ReactNode;
 }) {
-  const { threadDetailsCardRows, threadDetailsCardSections } = usePluginSlots();
-  const [layout, setLayout] = useState<ThreadDetailsCardLayout>("overlay");
+  const { threadContextCards } = usePluginSlots();
+  const [layout, setLayout] = useState<ThreadContextCardLayout>("overlay");
   const [popoverOpen, setPopoverOpen] = useState(false);
   const environmentId = environment?.id ?? null;
-  const value = useMemo<ThreadDetailsCardPaneState>(
-    () => ({
+  const value = useMemo<ThreadContextCardPaneState>(() => {
+    const entries: ThreadContextCardEntry[] = enabled
+      ? sortByPlacement<ThreadContextCardEntry>(
+          [
+            ...coreEntries.map((slot) => ({ owner: "core" as const, slot })),
+            ...threadContextCards.map((slot) => ({
+              owner: "plugin" as const,
+              slot,
+            })),
+          ],
+          (entry) => entry.slot,
+        )
+      : [];
+    return {
       props: {
         threadId,
         projectId,
         environment: environmentId === null ? null : { id: environmentId },
       },
-      rows: enabled
-        ? sortByPlacement<ThreadDetailsCardRowEntry>(
-            [
-              ...coreRows.map((slot) => ({ owner: "core" as const, slot })),
-              ...threadDetailsCardRows.map((slot) => ({
-                owner: "plugin" as const,
-                slot,
-              })),
-            ],
-            (entry) => entry.slot,
-          )
-        : [],
-      sections: enabled
-        ? sortByPlacement<ThreadDetailsCardSectionEntry>(
-            [
-              ...coreSections.map((slot) => ({ owner: "core" as const, slot })),
-              ...threadDetailsCardSections.map((slot) => ({
-                owner: "plugin" as const,
-                slot,
-              })),
-            ],
-            (entry) => entry.slot,
-          )
-        : [],
+      rows: entries.filter((entry) => !isSectionEntry(entry)),
+      sections: entries.filter(isSectionEntry),
       layout,
       setLayout,
       popoverOpen,
       setPopoverOpen,
-    }),
-    [
-      coreRows,
-      coreSections,
-      enabled,
-      environmentId,
-      layout,
-      popoverOpen,
-      projectId,
-      threadDetailsCardRows,
-      threadDetailsCardSections,
-      threadId,
-    ],
-  );
+    };
+  }, [
+    coreEntries,
+    enabled,
+    environmentId,
+    layout,
+    popoverOpen,
+    projectId,
+    threadContextCards,
+    threadId,
+  ]);
   return (
-    <ThreadDetailsCardPaneContext.Provider value={value}>
+    <ThreadContextCardPaneContext.Provider value={value}>
       {children}
-    </ThreadDetailsCardPaneContext.Provider>
+    </ThreadContextCardPaneContext.Provider>
   );
 }
 
-function usePaneState(): ThreadDetailsCardPaneState | null {
-  const state = useContext(ThreadDetailsCardPaneContext);
+export function WithoutThreadContextCard({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  return (
+    <ThreadContextCardPaneContext.Provider value={null}>
+      {children}
+    </ThreadContextCardPaneContext.Provider>
+  );
+}
+
+function usePaneState(): ThreadContextCardPaneState | null {
+  const state = useContext(ThreadContextCardPaneContext);
   return state !== null && state.rows.length + state.sections.length > 0
     ? state
     : null;
 }
 
-export function useThreadDetailsCardShown(): boolean {
-  return usePaneState() !== null;
+export function useThreadContextKind(): ExperimentalThreadContextKind {
+  return usePaneState() === null ? "banner" : "card";
 }
 
-export function useThreadDetailsCardContentInset(): number {
+export function useThreadContextCardContentInset(): number {
   const state = usePaneState();
   const [pinned] = useAtom(pinnedAtom);
   return state !== null && pinned && state.layout === "shift"
-    ? THREAD_DETAILS_CARD_RESERVED_WIDTH_PX
+    ? THREAD_CONTEXT_CARD_RESERVED_WIDTH_PX
     : 0;
 }
 
 const EMPTY_BLOCK_CLASS =
-  "[&:not(:has([data-thread-details-card-body]_:not([data-bb-plugin-root])))]:hidden";
+  "[&:not(:has([data-thread-context-card-body]_:not([data-bb-plugin-root])))]:hidden";
 
 const SECTION_DIVIDER_CLASS =
-  "[:is([data-thread-details-card-rows],[data-thread-details-card-section]):has([data-thread-details-card-body]_:not([data-bb-plugin-root]))~&]:mt-2 [:is([data-thread-details-card-rows],[data-thread-details-card-section]):has([data-thread-details-card-body]_:not([data-bb-plugin-root]))~&]:border-t [:is([data-thread-details-card-rows],[data-thread-details-card-section]):has([data-thread-details-card-body]_:not([data-bb-plugin-root]))~&]:border-border [:is([data-thread-details-card-rows],[data-thread-details-card-section]):has([data-thread-details-card-body]_:not([data-bb-plugin-root]))~&]:pt-2";
+  "[:is([data-thread-context-card-rows],[data-thread-context-card-section]):has([data-thread-context-card-body]_:not([data-bb-plugin-root]))~&]:mt-2 [:is([data-thread-context-card-rows],[data-thread-context-card-section]):has([data-thread-context-card-body]_:not([data-bb-plugin-root]))~&]:border-t [:is([data-thread-context-card-rows],[data-thread-context-card-section]):has([data-thread-context-card-body]_:not([data-bb-plugin-root]))~&]:border-border [:is([data-thread-context-card-rows],[data-thread-context-card-section]):has([data-thread-context-card-body]_:not([data-bb-plugin-root]))~&]:pt-2";
 
 const SHOW_EMPTY_STATE_CLASS =
-  "contents [&:not(:has([data-thread-details-card-body]_:not([data-bb-plugin-root])))>[data-thread-details-card-empty]]:flex";
+  "contents [&:not(:has([data-thread-context-card-body]_:not([data-bb-plugin-root])))>[data-thread-context-card-empty]]:flex";
 
-function ThreadDetailsCardContent({
+function ThreadContextCardContent({
   state,
 }: {
-  state: ThreadDetailsCardPaneState;
+  state: ThreadContextCardPaneState;
 }) {
   const { props } = state;
   return (
     <div className={SHOW_EMPTY_STATE_CLASS}>
       {state.rows.length > 0 ? (
-        <div data-thread-details-card-rows="" className={EMPTY_BLOCK_CLASS}>
-          <div data-thread-details-card-body="" className="contents">
+        <div data-thread-context-card-rows="" className={EMPTY_BLOCK_CLASS}>
+          <div data-thread-context-card-body="" className="contents">
             {state.rows.map((entry) => {
               const Component = entry.slot.component;
               if (entry.owner === "core") {
@@ -227,7 +225,7 @@ function ThreadDetailsCardContent({
                 <PluginSlotMount
                   key={`${pluginId}/${id}/${generation}/${props.threadId}`}
                   pluginId={pluginId}
-                  slotKind="threadDetailsCardRow"
+                  slotKind="threadContextCard"
                   slotId={id}
                   instanceId={props.threadId}
                   crashResetKey={String(generation)}
@@ -249,7 +247,7 @@ function ThreadDetailsCardContent({
         return (
           <section
             key={key}
-            data-thread-details-card-section=""
+            data-thread-context-card-section=""
             aria-label={entry.slot.title}
             className={cn(SECTION_DIVIDER_CLASS, EMPTY_BLOCK_CLASS)}
           >
@@ -258,13 +256,13 @@ function ThreadDetailsCardContent({
                 <span className="truncate">{entry.slot.title}</span>
               </h3>
             </div>
-            <div data-thread-details-card-body="" className="contents">
+            <div data-thread-context-card-body="" className="contents">
               {entry.owner === "core" ? (
                 <Component {...props} />
               ) : (
                 <PluginSlotMount
                   pluginId={entry.slot.pluginId}
-                  slotKind="threadDetailsCardSection"
+                  slotKind="threadContextCard"
                   slotId={entry.slot.id}
                   instanceId={props.threadId}
                   crashResetKey={String(entry.slot.generation)}
@@ -278,7 +276,7 @@ function ThreadDetailsCardContent({
         );
       })}
       <div
-        data-thread-details-card-empty=""
+        data-thread-context-card-empty=""
         className="hidden flex-col gap-0.5 px-2 py-1.5 text-xs"
       >
         <span className="text-muted-foreground">Nothing to show yet</span>
@@ -293,7 +291,7 @@ function ThreadDetailsCardContent({
 const CARD_CLASS =
   "overflow-y-auto overflow-x-hidden rounded-2xl border border-border bg-popover p-2 text-popover-foreground";
 
-export function ThreadDetailsCard() {
+export function ThreadContextCard() {
   const state = usePaneState();
   const [pinned] = useAtom(pinnedAtom);
   const probeRef = useRef<HTMLSpanElement>(null);
@@ -305,7 +303,7 @@ export function ThreadDetailsCard() {
     );
     if (!overlay || !setLayout) return;
     const measure = () =>
-      setLayout(resolveThreadDetailsCardLayout(overlay.clientWidth));
+      setLayout(resolveThreadContextCardLayout(overlay.clientWidth));
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(overlay);
@@ -319,14 +317,14 @@ export function ThreadDetailsCard() {
       {pinned && state.layout !== "overlay" ? (
         <div
           role="group"
-          aria-label="Thread details"
-          data-thread-details-card=""
+          aria-label="Thread context"
+          data-thread-context-card=""
           className={cn(
             "pointer-events-auto max-h-[min(36rem,calc(100%-1.5rem))] w-72 shrink-0",
             CARD_CLASS,
           )}
         >
-          <ThreadDetailsCardContent state={state} />
+          <ThreadContextCardContent state={state} />
         </div>
       ) : null}
     </>
@@ -339,12 +337,12 @@ const HEADER_BUTTON_CLASS = cn(
   "rounded-md p-0 aria-pressed:bg-transparent aria-pressed:text-subtle-foreground/75 aria-pressed:hover:bg-state-hover aria-pressed:hover:text-muted-foreground",
 );
 
-export function ThreadDetailsCardHeaderButton() {
+export function ThreadContextCardHeaderButton() {
   const state = usePaneState();
   const [pinned, setPinned] = useAtom(pinnedAtom);
   if (state === null) return null;
   if (state.layout !== "overlay") {
-    const label = pinned ? "Unpin thread details" : "Pin thread details";
+    const label = pinned ? "Unpin thread context" : "Pin thread context";
     return (
       <Tooltip>
         <TooltipTrigger asChild>
@@ -373,36 +371,36 @@ export function ThreadDetailsCardHeaderButton() {
               type="button"
               variant="ghost"
               size="icon"
-              aria-label="Thread details"
+              aria-label="Thread context"
               className={HEADER_BUTTON_CLASS}
             >
               <Icon name="LayoutList" />
             </Button>
           </PopoverTrigger>
         </TooltipTrigger>
-        <TooltipContent>Thread details</TooltipContent>
+        <TooltipContent>Thread context</TooltipContent>
       </Tooltip>
       <PopoverContent
         align="end"
-        mobileTitle="Thread details"
+        mobileTitle="Thread context"
         onOpenAutoFocus={(event) => event.preventDefault()}
         className="max-h-[min(36rem,calc(100dvh-6rem))] w-72 overflow-y-auto p-0"
       >
         <div
           role="group"
-          aria-label="Thread details"
-          data-thread-details-card=""
+          aria-label="Thread context"
+          data-thread-context-card=""
           className="overflow-hidden p-2"
           onClick={(event) => {
             if (
               event.target instanceof Element &&
-              event.target.closest("button[data-thread-details-card-row]")
+              event.target.closest("button[data-thread-context-card-row]")
             ) {
               state.setPopoverOpen(false);
             }
           }}
         >
-          <ThreadDetailsCardContent state={state} />
+          <ThreadContextCardContent state={state} />
         </div>
       </PopoverContent>
     </Popover>

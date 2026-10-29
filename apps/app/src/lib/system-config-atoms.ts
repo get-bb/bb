@@ -37,7 +37,7 @@ const unavailableSystemConfig: SystemConfigResponse = {
     performanceDiagnostics: false,
     pluginUpdates: false,
     sidebarMultiSelect: false,
-    threadDetailsCard: false,
+    threadContextCard: false,
     threadRowMetadata: false,
     timelinePush: false,
     unreadDividerAtAnswer: false,

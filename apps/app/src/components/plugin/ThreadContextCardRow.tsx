@@ -1,14 +1,14 @@
-import type { ExperimentalThreadDetailsCardRowProps } from "@get-bb/plugin-sdk";
+import type { ExperimentalThreadContextCardRowProps } from "@get-bb/plugin-sdk";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 
 const ACTION_REVEAL_CLASS =
-  "relative hover:[&_[data-thread-details-card-row-trailing]]:invisible has-[:focus-visible]:[&_[data-thread-details-card-row-trailing]]:invisible has-[[data-state=open]]:[&_[data-thread-details-card-row-trailing]]:invisible hover:[&_[data-thread-details-card-row-action]]:opacity-100 has-[:focus-visible]:[&_[data-thread-details-card-row-action]]:opacity-100 has-[[data-state=open]]:[&_[data-thread-details-card-row-action]]:opacity-100";
+  "relative hover:[&_[data-thread-context-card-row-trailing]]:invisible has-[:focus-visible]:[&_[data-thread-context-card-row-trailing]]:invisible has-[[data-state=open]]:[&_[data-thread-context-card-row-trailing]]:invisible hover:[&_[data-thread-context-card-row-action]]:opacity-100 has-[:focus-visible]:[&_[data-thread-context-card-row-action]]:opacity-100 has-[[data-state=open]]:[&_[data-thread-context-card-row-action]]:opacity-100";
 
 const MAIN_CLASS =
   "flex h-full min-w-0 flex-1 items-center gap-2 px-2 text-left text-xs";
 
-export function ThreadDetailsCardRow({
+export function ThreadContextCardRow({
   icon,
   leading,
   label,
@@ -17,7 +17,7 @@ export function ThreadDetailsCardRow({
   disabled,
   action,
   onClick,
-}: ExperimentalThreadDetailsCardRowProps) {
+}: ExperimentalThreadContextCardRowProps) {
   const content = (
     <>
       {leading !== undefined ? (
@@ -34,7 +34,7 @@ export function ThreadDetailsCardRow({
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {trailing === undefined ? null : (
         <span
-          data-thread-details-card-row-trailing=""
+          data-thread-context-card-row-trailing=""
           className="ml-auto flex shrink-0 items-center gap-1 text-xs tabular-nums text-muted-foreground"
         >
           {trailing}
@@ -45,7 +45,7 @@ export function ThreadDetailsCardRow({
   const interactive = onClick !== undefined && !disabled;
   return (
     <div
-      data-thread-details-card-row-frame=""
+      data-thread-context-card-row-frame=""
       className={cn(
         "flex h-6.5 w-full min-w-0 items-center rounded-md max-md:pointer-coarse:h-9",
         (interactive || action !== undefined) &&
@@ -56,7 +56,7 @@ export function ThreadDetailsCardRow({
       {onClick !== undefined ? (
         <button
           type="button"
-          data-thread-details-card-row=""
+          data-thread-context-card-row=""
           title={title}
           disabled={disabled}
           onClick={() => onClick()}
@@ -69,7 +69,7 @@ export function ThreadDetailsCardRow({
         </button>
       ) : (
         <div
-          data-thread-details-card-row=""
+          data-thread-context-card-row=""
           title={title}
           className={cn(MAIN_CLASS, "text-muted-foreground")}
         >
@@ -78,7 +78,7 @@ export function ThreadDetailsCardRow({
       )}
       {action === undefined ? null : (
         <span
-          data-thread-details-card-row-action=""
+          data-thread-context-card-row-action=""
           className="absolute inset-y-0 right-0 flex items-center px-1 opacity-0 pointer-coarse:static pointer-coarse:opacity-100"
         >
           {action}

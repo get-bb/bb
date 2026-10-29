@@ -1192,7 +1192,7 @@ function AppShellWireframeBody({
             >
               <PluginGlyph className="size-3.5" />
             </Mark>
-            {mobile ? <ThreadDetailsCardMark compact /> : null}
+            {mobile ? <ThreadContextCardMark compact /> : null}
             {mobile ? <MiniIcon icon="PanelRight" className="size-5" /> : null}
           </div>
 
@@ -1205,7 +1205,7 @@ function AppShellWireframeBody({
                 : "min-h-[510px] flex-1 space-y-7 overflow-hidden px-5 py-6",
             )}
           >
-            {mobile ? null : <ThreadDetailsCardMark compact={false} />}
+            {mobile ? null : <ThreadContextCardMark compact={false} />}
             <div className={cn("flex justify-end", !mobile && "mr-44")}>
               <span className="max-w-[70%] rounded-xl border border-border-seam bg-surface-recessed px-2.5 py-2 leading-snug text-foreground">
                 Fix the flaky checkout tests
@@ -1396,12 +1396,12 @@ function AppShellWireframeBody({
   );
 }
 
-function ThreadDetailsCardMark({ compact }: { compact: boolean }) {
-  const label = "Plugin sections in the thread details card";
+function ThreadContextCardMark({ compact }: { compact: boolean }) {
+  const label = "Plugin sections in the thread context card";
   if (compact) {
     return (
       <Mark
-        id="thread-details-card"
+        id="thread-context-card"
         label={label}
         chip="corner"
         className="flex size-7 items-center justify-center"
@@ -1412,7 +1412,7 @@ function ThreadDetailsCardMark({ compact }: { compact: boolean }) {
   }
   return (
     <Mark
-      id="thread-details-card"
+      id="thread-context-card"
       label={label}
       chip="corner-inset"
       className="absolute right-4 top-4 block w-40 rounded-2xl border border-border bg-popover p-1 text-foreground"

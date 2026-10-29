@@ -1,16 +1,16 @@
 import {
   experimental_copyToClipboard as copyToClipboard,
-  experimental_ThreadDetailsCardRow as ThreadDetailsCardRow,
+  experimental_ThreadContextCardRow as ThreadContextCardRow,
   useBbNavigate,
   useSettings,
-  type ExperimentalThreadDetailsCardProps,
+  type ExperimentalThreadContextCardProps,
 } from "@get-bb/plugin-sdk/app";
 import { useRef, useState } from "react";
 import {
-  getThreadDetailsCardMenuOffsets,
-  type ThreadDetailsCardMenuOffsets,
-  THREAD_DETAILS_CARD_MENU_CONTENT_CLASS,
-  THREAD_DETAILS_CARD_MENU_TRIGGER_CLASS,
+  getThreadContextCardMenuOffsets,
+  type ThreadContextCardMenuOffsets,
+  THREAD_CONTEXT_CARD_MENU_CONTENT_CLASS,
+  THREAD_CONTEXT_CARD_MENU_TRIGGER_CLASS,
 } from "@bb/shared-ui/chrome-style-tokens";
 import {
   DropdownMenu,
@@ -58,7 +58,7 @@ function PullRequestRowMenu({
   const canChangeStatus =
     pullRequest.state === "open" || pullRequest.state === "draft";
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const [offsets, setOffsets] = useState<ThreadDetailsCardMenuOffsets>({
+  const [offsets, setOffsets] = useState<ThreadContextCardMenuOffsets>({
     sideOffset: 0,
     alignOffset: 0,
   });
@@ -66,7 +66,7 @@ function PullRequestRowMenu({
     <DropdownMenu
       onOpenChange={(open) => {
         if (open && triggerRef.current !== null) {
-          setOffsets(getThreadDetailsCardMenuOffsets(triggerRef.current));
+          setOffsets(getThreadContextCardMenuOffsets(triggerRef.current));
         }
       }}
     >
@@ -75,7 +75,7 @@ function PullRequestRowMenu({
           ref={triggerRef}
           type="button"
           aria-label="Pull request actions"
-          className={THREAD_DETAILS_CARD_MENU_TRIGGER_CLASS}
+          className={THREAD_CONTEXT_CARD_MENU_TRIGGER_CLASS}
         >
           <Icon name="MoreHorizontal" />
         </button>
@@ -84,7 +84,7 @@ function PullRequestRowMenu({
         align="end"
         alignOffset={offsets.alignOffset}
         sideOffset={offsets.sideOffset}
-        className={THREAD_DETAILS_CARD_MENU_CONTENT_CLASS}
+        className={THREAD_CONTEXT_CARD_MENU_CONTENT_CLASS}
         mobileTitle={`PR #${pullRequest.number}`}
       >
         <DropdownMenuItem textValue="Open on GitHub" onSelect={handlers.onOpen}>
@@ -140,7 +140,7 @@ function PullRequestRowMenu({
   );
 }
 
-export function PullRequestDetailsCardRowView({
+export function PullRequestContextCardRowView({
   pullRequest,
   handlers,
 }: {
@@ -148,7 +148,7 @@ export function PullRequestDetailsCardRowView({
   handlers: PullRequestRowHandlers;
 }) {
   return (
-    <ThreadDetailsCardRow
+    <ThreadContextCardRow
       leading={
         <GithubFaviconIcon
           status={getPullRequestGithubCheckStatus(pullRequest)}
@@ -183,7 +183,7 @@ function PullRequestRow({
   const navigate = useBbNavigate();
   const actions = usePullRequestActions(environmentId);
   return (
-    <PullRequestDetailsCardRowView
+    <PullRequestContextCardRowView
       pullRequest={pullRequest}
       handlers={{
         isPending: actions.isPending,
@@ -201,9 +201,9 @@ function PullRequestRow({
   );
 }
 
-export function PullRequestDetailsCardRow({
+export function PullRequestContextCardRow({
   environment,
-}: ExperimentalThreadDetailsCardProps) {
+}: ExperimentalThreadContextCardProps) {
   const show = useSettings().values?.[SHOW_PULL_REQUEST_SETTING] === true;
   const environmentId = show ? (environment?.id ?? null) : null;
   const { pullRequest } = useEnvironmentPullRequest(environmentId);
