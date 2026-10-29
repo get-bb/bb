@@ -21,9 +21,7 @@ import {
 } from "@bb/query-tags";
 import {
   canonicalPluginReadInput,
-  jsonObjectSchema,
-  parseJsonValue,
-  tryParseJsonValue,
+  jsonValueSchema,
   type JsonValue,
 } from "@bb/domain";
 import { rpcResponseTags } from "./rpc-tags.js";
@@ -67,6 +65,7 @@ const rpcQueryKey = (pluginId: string, method: string, input: JsonValue) => [
 const keyedQueryKey = (pluginId: string, method: string) =>
   rpcQueryKey(pluginId, method, { keyed: true });
 const keyListSchema = z.array(z.string());
+const jsonRecordSchema = z.record(z.string(), jsonValueSchema);
 const keyedCollections = new Map<string, KeyedCollection<unknown>>();
 function keyedCollection(pluginId: string, method: string) {
   const name = JSON.stringify([pluginId, method]);
@@ -78,7 +77,7 @@ function keyedCollection(pluginId: string, method: string) {
   return collection;
 }
 function parsedUpdate<Value>(update: (current: Value) => unknown) {
-  return (current: unknown) => parseJsonValue(update(current as Value));
+  return (current: unknown) => jsonValueSchema.parse(update(current as Value));
 }
 function optimisticCache<Contract extends PluginRpcContract>(
   pluginId: string,
@@ -88,7 +87,7 @@ function optimisticCache<Contract extends PluginRpcContract>(
     update(method, input, update) {
       updates.push(
         optimisticQueryUpdate(
-          rpcQueryKey(pluginId, method, parseJsonValue(input ?? null)),
+          rpcQueryKey(pluginId, method, jsonValueSchema.parse(input ?? null)),
           parsedUpdate(update),
           ["result"],
         ),
@@ -112,9 +111,19 @@ async function callRpc(
   method: string,
   input: JsonValue,
 ): Promise<RpcResponse> {
-  const methodContract = Object.hasOwn(contract, method)
-    ? contract[method]
-    : undefined;
+  let raw: unknown;
+  try {
+    raw = await host.call(pluginId, method, input);
+  } catch (error) {
+    throw experimental_PluginRpcCallError.from(error);
+  }
+  const result = jsonValueSchema.safeParse(raw);
+  if (!result.success)
+    throw new experimental_PluginRpcCallError({
+      code: "invalid_response",
+      message: `Invalid RPC response for ${method}`,
+    });
+  const methodContract = contract[method];
   if (methodContract === undefined)
     throw new experimental_PluginRpcCallError({
       code: "unknown_method",
@@ -126,21 +135,9 @@ async function callRpc(
       code: "invalid_input",
       message: `rpc input validation failed for ${method}`,
     });
-  let raw: unknown;
-  try {
-    raw = await host.call(pluginId, method, input);
-  } catch (error) {
-    throw experimental_PluginRpcCallError.from(error);
-  }
-  const result = tryParseJsonValue(raw);
-  if (result === undefined)
-    throw new experimental_PluginRpcCallError({
-      code: "invalid_response",
-      message: `Invalid RPC response for ${method}`,
-    });
   return {
-    result,
-    ...rpcResponseTags(methodContract, parsedInput.value, result),
+    result: result.data,
+    ...rpcResponseTags(methodContract, parsedInput.value, result.data),
   };
 }
 
@@ -181,14 +178,14 @@ export function createRpcQueryHooks(useHost: () => RpcQueryHost) {
   ) => {
     const host = useHost();
     const pluginId = resolvePluginId(host, options.pluginId);
-    const input = parseJsonValue(options.input ?? null);
+    const input = jsonValueSchema.parse(options.input ?? null);
     const queryKey = rpcQueryKey(pluginId, options.method, input);
     useSubscription(host, pluginId, options.enabled ?? true);
     const watchIdentity = canonicalPluginReadInput(input);
     useEffect(() => {
       if (options.enabled === false) return;
       return host.watch?.(pluginId, options.method, {
-        input: parseJsonValue(JSON.parse(watchIdentity)),
+        input: jsonValueSchema.parse(JSON.parse(watchIdentity)),
       });
     }, [host, pluginId, options.method, watchIdentity, options.enabled]);
     const query = useTaggedQuery(
@@ -269,15 +266,9 @@ export function createRpcQueryHooks(useHost: () => RpcQueryHost) {
             options.method,
             { keys: [...keys] },
           );
-          const { result } = response;
           return {
             ...response,
-            result:
-              typeof result === "object" &&
-              result !== null &&
-              !Array.isArray(result)
-                ? result
-                : jsonObjectSchema.parse(result),
+            result: jsonRecordSchema.parse(response.result),
           };
         },
       });
@@ -384,7 +375,7 @@ export function createRpcQueryHooks(useHost: () => RpcQueryHost) {
           pluginId,
           options.contract,
           options.method,
-          parseJsonValue(input),
+          jsonValueSchema.parse(input),
         );
         return {
           ...response,
