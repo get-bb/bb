@@ -21,7 +21,7 @@ it("reports a Windows stop as unverified when the process cannot be inspected", 
 
   await expect(
     stopRecordedProcess(
-      { pid: 4242, processGroup: false, startId: "1761700000000" },
+      { pid: process.pid, processGroup: false, startId: "1761700000000" },
       { graceMs: 100 },
     ),
   ).resolves.toBe("unverified");

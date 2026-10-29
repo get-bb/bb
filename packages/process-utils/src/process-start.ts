@@ -167,13 +167,7 @@ export async function probeProcessStart(
   pid: number,
 ): Promise<ProcessStartProbe> {
   if (!Number.isSafeInteger(pid) || pid <= 0) return { state: "gone" };
-  if (process.platform === "win32") {
-    const probe = await probeWindowsProcessIdentity(pid);
-    if (probe.state !== "running") return probe;
-    return probe.identity.startedAt === null
-      ? { state: "unknown" }
-      : { state: "running", startId: String(probe.identity.startedAt) };
-  }
+  if (process.platform === "win32") return probeWindowsStartBatched(pid);
   if (process.platform === "linux") {
     let bootId: string;
     try {
@@ -205,6 +199,81 @@ export async function probeProcessStart(
     !(result.exitCode === 1 && result.stdout.trim() === "")
     ? { state: "unknown" }
     : { state: "gone" };
+}
+
+const WINDOWS_PROBE_BATCH_MS = 50;
+
+let windowsBatch: Map<number, ((probe: ProcessStartProbe) => void)[]> | null =
+  null;
+
+function probeWindowsStartBatched(pid: number): Promise<ProcessStartProbe> {
+  return new Promise((resolve) => {
+    if (windowsBatch === null) {
+      const batch = new Map<number, ((probe: ProcessStartProbe) => void)[]>();
+      windowsBatch = batch;
+      setTimeout(() => {
+        windowsBatch = null;
+        void probeWindowsStarts([...batch.keys()]).then((probes) => {
+          for (const [batchPid, waiters] of batch) {
+            const probe = probes.get(batchPid) ?? { state: "unknown" };
+            for (const waiter of waiters) waiter(probe);
+          }
+        });
+      }, WINDOWS_PROBE_BATCH_MS).unref();
+    }
+    const waiters = windowsBatch.get(pid);
+    if (waiters === undefined) windowsBatch.set(pid, [resolve]);
+    else waiters.push(resolve);
+  });
+}
+
+async function probeWindowsStarts(
+  pids: readonly number[],
+): Promise<Map<number, ProcessStartProbe>> {
+  const unknown = new Map<number, ProcessStartProbe>(
+    pids.map((pid) => [pid, { state: "unknown" }]),
+  );
+  const filter = pids.map((pid) => `ProcessId = ${pid}`).join(" OR ");
+  const result = await runCommand(
+    path.join(
+      process.env.SystemRoot ?? "C:\\Windows",
+      "System32",
+      "WindowsPowerShell",
+      "v1.0",
+      "powershell.exe",
+    ),
+    [
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      [
+        "$ErrorActionPreference = 'Stop'",
+        `$items = @(Get-CimInstance Win32_Process -Filter '${filter}' | ForEach-Object { @{ pid = $_.ProcessId; startedAt = ([DateTimeOffset]$_.CreationDate).ToUnixTimeMilliseconds() } })`,
+        "ConvertTo-Json -InputObject $items -Compress",
+      ].join("; "),
+    ],
+    { timeout: 30_000 },
+  );
+  if (result.failed) return unknown;
+  let value: unknown;
+  try {
+    value = result.stdout.trim() === "" ? [] : JSON.parse(result.stdout);
+  } catch {
+    return unknown;
+  }
+  if (!Array.isArray(value)) return unknown;
+  const probes = new Map<number, ProcessStartProbe>(
+    pids.map((pid) => [pid, { state: "gone" }]),
+  );
+  for (const entry of value) {
+    if (typeof entry !== "object" || entry === null) return unknown;
+    const pid: unknown = Reflect.get(entry, "pid");
+    const startedAt: unknown = Reflect.get(entry, "startedAt");
+    if (typeof pid !== "number" || typeof startedAt !== "number")
+      return unknown;
+    probes.set(pid, { state: "running", startId: String(startedAt) });
+  }
+  return probes;
 }
 
 export async function probeWindowsProcessIdentity(

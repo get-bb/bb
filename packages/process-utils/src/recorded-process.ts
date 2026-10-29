@@ -236,9 +236,23 @@ export async function stopProcessTree(
   }
 }
 
+function pidExists(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return !(
+      error instanceof Error &&
+      "code" in error &&
+      error.code === "ESRCH"
+    );
+  }
+}
+
 async function stopWindowsRoot(
   root: RecordedProcess,
 ): Promise<RecordedProcessStop> {
+  if (!pidExists(root.pid)) return "exited";
   const before = await probeProcessStart(root.pid);
   if (before.state === "gone") return "exited";
   if (
@@ -248,9 +262,7 @@ async function stopWindowsRoot(
   )
     return "unverified";
   await terminateWindowsProcessTrees([root.pid]);
-  return (await probeProcessStart(root.pid)).state === "gone"
-    ? "terminated"
-    : "unverified";
+  return pidExists(root.pid) ? "unverified" : "terminated";
 }
 
 async function stopWindowsRoots(

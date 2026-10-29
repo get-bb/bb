@@ -259,6 +259,7 @@ export class DaemonResource {
 
   async captureTree(): Promise<void> {
     if (this.processes.size === 0 || this.closed) return;
+    if (process.platform === "win32") return;
     await this.readIdentities();
     const roots = [...this.processes.values()];
     let members;
@@ -322,6 +323,7 @@ export class DaemonResource {
   }
 
   private async stopRemaining(end: ResourceEnd): Promise<ResourceEnd> {
+    this.forgetGoneProcesses();
     await this.readIdentities();
     const remaining = this.listProcesses();
     if (remaining.length === 0) return this.finish(end);
@@ -367,9 +369,20 @@ export class DaemonResource {
   async stopProcesses(
     args: { graceMs: number } = { graceMs: PROCESS_STOP_GRACE_MS },
   ): Promise<ResourceTermination> {
+    this.forgetGoneProcesses();
     await this.readIdentities();
     const result = await stopRecordedProcesses(this.listProcesses(), args);
     return result === "unverified" ? "unverified" : "confirmed";
+  }
+
+  private forgetGoneProcesses(): void {
+    for (const records of [this.processes, this.descendants]) {
+      for (const record of records.values()) {
+        if (processAlive(record)) continue;
+        records.delete(record.pid);
+        this.identityReaders.delete(record.pid);
+      }
+    }
   }
 
   forgetExitedProcesses(): void {
