@@ -3202,6 +3202,45 @@ export interface ThreadChatMessageReference {
   experimental_messageSeq: number;
 }
 
+/** Stable identity and creation time of one rendered conversation message. */
+export type ExperimentalMessageMetadataContext = Pick<
+  ThreadChatMessageReference,
+  "id" | "threadId"
+> & {
+  /** Unix time in milliseconds, supplied by BB's timeline. */
+  createdAt: number;
+  /** The containing turn, or null for a message outside a turn. */
+  turnId: string | null;
+} & (
+    | { role: "user"; initiator: "user" | "agent" | "system" }
+    | { role: "assistant" }
+  );
+
+/** Props for a metadata component mounted only beside realized messages. */
+export interface ExperimentalMessageMetadataProps {
+  message: ExperimentalMessageMetadataContext;
+}
+
+/**
+ * Where message metadata renders. `"above"` and `"below"` sit outside the
+ * message. `"actions"` sits in the message's hover action row on devices with
+ * a fine pointer: revealed with the actions, before them on user messages and
+ * after the overflow menu on assistant messages. It extends into the space
+ * beside the message rather than narrowing the actions.
+ */
+export type ExperimentalMessageMetadataPlacement =
+  | "above"
+  | "below"
+  | "actions";
+
+/** A React contribution beside a conversation message. */
+export interface ExperimentalMessageMetadataRegistration {
+  id: string;
+  /** Omitted means below. */
+  placement?: ExperimentalMessageMetadataPlacement;
+  component: ComponentType<ExperimentalMessageMetadataProps>;
+}
+
 /** Context handed to a `messageAction`'s `run`. */
 export interface PluginMessageActionContext {
   /** The thread whose timeline surfaced the action. */
@@ -3628,6 +3667,10 @@ export interface PluginAppSlots {
     registration: ExperimentalCodeFenceRendererRegistration,
   ): void;
   messageAction(registration: PluginMessageActionRegistration): void;
+  /** Register React message metadata. Experimental: see docs/api_to_audit.md. */
+  experimental_messageMetadata(
+    registration: ExperimentalMessageMetadataRegistration,
+  ): void;
   /**
    * @deprecated Use `app.commands.register` with the same registration.
    * Both entry points share the same command registry and ID namespace.

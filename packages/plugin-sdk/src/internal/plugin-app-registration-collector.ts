@@ -21,6 +21,7 @@ import type {
   PluginCommandRegistration,
   ExperimentalComposerCommandRegistration,
   PluginMessageActionRegistration,
+  ExperimentalMessageMetadataRegistration,
   PluginMessageDirectiveRegistration,
   PluginNavPanelRegistration,
   PluginNewThreadPanelActionRegistration,
@@ -328,6 +329,7 @@ export interface CollectedPluginAppRegistrations {
   messageDirectives: PluginMessageDirectiveRegistration[];
   codeFenceRenderers: ExperimentalCodeFenceRendererRegistration[];
   messageActions: PluginMessageActionRegistration[];
+  messageMetadata: ExperimentalMessageMetadataRegistration[];
   commandPaletteActions: CollectedPluginCommandRegistration[];
   providerIcons: CollectedPluginProviderIconRegistration[];
   icons: ExperimentalIconRegistration[];
@@ -468,6 +470,7 @@ export function collectPluginAppRegistrations(
     messageDirectives: [],
     codeFenceRenderers: [],
     messageActions: [],
+    messageMetadata: [],
     commandPaletteActions: [],
     providerIcons: [],
     icons: [],
@@ -506,6 +509,7 @@ export function collectPluginAppRegistrations(
     codeFenceRenderer: new Set<string>(),
     codeFenceLanguage: new Set<string>(),
     messageAction: new Set<string>(),
+    messageMetadata: new Set<string>(),
     command: new Set<string>(),
     providerIcon: new Set<string>(),
     timelineRenderer: new Set<string>(),
@@ -1160,6 +1164,26 @@ export function collectPluginAppRegistrations(
               }
             : {}),
           run: registration.run,
+        });
+      },
+      experimental_messageMetadata(registration) {
+        const kind = "slots.experimental_messageMetadata";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.messageMetadata, id);
+        const placement = registration.placement ?? "below";
+        if (
+          placement !== "above" &&
+          placement !== "below" &&
+          placement !== "actions"
+        ) {
+          throw new Error(
+            `${kind}: "placement" must be "above", "below", or "actions"`,
+          );
+        }
+        collected.messageMetadata.push({
+          id,
+          placement,
+          component: requireComponent(kind, registration.component),
         });
       },
       commandPaletteAction(registration) {

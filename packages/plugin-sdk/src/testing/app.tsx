@@ -61,6 +61,7 @@ import {
   type PluginFileOpenerRegistration,
   type PluginHomepageSectionRegistration,
   type PluginMessageActionRegistration,
+  type ExperimentalMessageMetadataRegistration,
   type PluginMessageDirectiveRegistration,
   type ExperimentalCodeFenceRendererRegistration,
   type PluginDiffRendererRegistration,
@@ -2013,6 +2014,7 @@ export interface CapturedPluginApp {
   messageDirectives: PluginMessageDirectiveRegistration[];
   codeFenceRenderers: ExperimentalCodeFenceRendererRegistration[];
   messageActions: PluginMessageActionRegistration[];
+  messageMetadata: ExperimentalMessageMetadataRegistration[];
   providerIcons: CollectedPluginProviderIconRegistration[];
   icons: ExperimentalIconRegistration[];
   timelineRenderers: PluginTimelineRendererRegistration[];

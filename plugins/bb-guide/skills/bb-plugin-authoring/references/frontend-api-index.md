@@ -263,6 +263,10 @@ Read the installed SDK declarations for the exact current signatures.
 - `ThreadChatMessageReference`
 - `PluginMessageActionContext`
 - `PluginMessageActionRegistration`
+- `ExperimentalMessageMetadataContext`
+- `ExperimentalMessageMetadataPlacement`
+- `ExperimentalMessageMetadataProps`
+- `ExperimentalMessageMetadataRegistration`
 - `PluginAppCommands`
 - `PluginCommandContext`
 - `PluginCommandShortcut`
