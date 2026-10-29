@@ -87,6 +87,43 @@ describe("plugin command keybindings", () => {
     ).toBe(true);
   });
 
+  it("keeps a plugin default that only collides inside a focus scope, and yields that scope", () => {
+    const ctrlR: AppShortcut = { key: "r", mod: false, meta: false, control: true, alt: false, shift: false };
+    const reload: AppDefaultKeybinding = {
+      command: "browser.reload",
+      shortcut: { ...ctrlR, control: false, mod: true },
+      desktopOnly: true,
+      when: { all: ["mainSurface", "browserFocus"], none: ["modalOpen"] },
+    };
+    const defaults = [reload, binding("plugin:bb--prompt-library/open", ctrlR)];
+    const linux = resolvePluginCommandDefaults(defaults, [], true, "Linux", NO_BUNDLED);
+    expect(linux.conflicts.size).toBe(0);
+    expect(linux.defaults[1]?.shortcut).toEqual(ctrlR);
+    expect(linux.defaults[1]?.when.none).toEqual(["modalOpen", "browserFocus"]);
+    const mac = resolvePluginCommandDefaults(defaults, [], true, "MacIntel", NO_BUNDLED);
+    expect(mac.defaults[1]).toEqual(defaults[1]);
+  });
+
+  it("ignores collisions whose contexts can never be active together", () => {
+    const defaults = [
+      { ...binding("thread.new"), when: { all: ["mainSurface", "terminalFocus"], none: [] } },
+      { ...binding("plugin:first/open"), when: { all: ["mainSurface"], none: ["terminalFocus"] } },
+    ] satisfies AppDefaultKeybinding[];
+    const result = resolvePluginCommandDefaults(defaults, [], false, "Linux", NO_BUNDLED);
+    expect(result.conflicts.size).toBe(0);
+    expect(result.defaults[1]).toEqual(defaults[1]);
+  });
+
+  it("still suppresses a default that collides outside any focus scope", () => {
+    const defaults = [
+      { ...binding("thread.new"), when: { all: ["mainSurface", "editableFocus"], none: [] } },
+      binding("plugin:first/open"),
+    ] satisfies AppDefaultKeybinding[];
+    const result = resolvePluginCommandDefaults(defaults, [], false, "Linux", NO_BUNDLED);
+    expect(result.defaults[1]?.shortcut).toBeNull();
+    expect(result.conflicts.get("plugin:first/open")).toEqual(["thread.new"]);
+  });
+
   it("lets explicit overrides win over other plugin defaults", () => {
     const defaults = [
       binding("plugin:first/open"),
