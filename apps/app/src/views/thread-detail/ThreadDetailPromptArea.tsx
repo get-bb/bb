@@ -29,7 +29,6 @@ import type {
   PromptInput,
   ThreadQueuedMessage,
   ThreadTimelineActivePromptMode,
-  ThreadTimelineGoal,
   ThreadTimelineModelFallback,
   ThreadTimelinePendingTodos,
   ThreadWithRuntime,
@@ -64,7 +63,6 @@ import {
   type ThreadPromptParentThreadSection,
   type ThreadPromptChildThreadsSection,
 } from "@/components/promptbox/banner/ThreadPromptContextBanner";
-import { ThreadGoalCard } from "@/components/promptbox/banner/ThreadGoalCard";
 import { ThreadTodoCard } from "@/components/promptbox/banner/ThreadTodoCard";
 import { ThreadPromptModeCard } from "@/components/promptbox/banner/ThreadPromptModeCard";
 import { ThreadWorkflowStack } from "@/components/promptbox/banner/ThreadWorkflowStack";
@@ -109,7 +107,6 @@ import {
 import {
   useCreateThread,
   useCancelThreadPlan,
-  useClearThreadGoal,
   useStopThread,
 } from "@/hooks/mutations/thread-runtime-mutations";
 import {
@@ -208,7 +205,6 @@ interface ThreadDetailPromptAreaProps {
   resolveMentionLink: PromptMentionLinkResolver;
   pendingTodos: ThreadTimelinePendingTodos | null;
   activePromptMode: ThreadTimelineActivePromptMode | null;
-  goal: ThreadTimelineGoal | null;
   providerCommands: readonly ProviderCommand[] | null;
   sessionOptions: readonly ThreadTimelineSessionOption[] | null;
   modelFallback: ThreadTimelineModelFallback | null;
@@ -417,7 +413,6 @@ export function ThreadDetailPromptArea({
   resolveMentionLink,
   pendingTodos,
   activePromptMode,
-  goal,
   providerCommands,
   sessionOptions,
   modelFallback,
@@ -505,7 +500,6 @@ export function ThreadDetailPromptArea({
   );
   const stopThread = useStopThread();
   const cancelThreadPlan = useCancelThreadPlan();
-  const clearThreadGoal = useClearThreadGoal();
   const unarchiveThread = useUnarchiveThread();
   const restoreThreadEnvironment = useRestoreThreadEnvironment();
   const createThread = useCreateThread();
@@ -605,9 +599,7 @@ export function ThreadDetailPromptArea({
     string | null
   >(null);
   const [isChildThreadsExpanded, setIsChildThreadsExpanded] = useState(false);
-  const [isGoalExpanded, setIsGoalExpanded] = useState(false);
   const [isTodoExpanded, setIsTodoExpanded] = useState(false);
-  const [isPromptModeExpanded, setIsPromptModeExpanded] = useState(false);
   const [expandedWorkflowIds, setExpandedWorkflowIds] = useState<
     ReadonlySet<string>
   >(() => new Set());
@@ -960,12 +952,10 @@ export function ThreadDetailPromptArea({
   const handleStopThread = useCallback(() => {
     stopThread.mutate(thread.id);
   }, [stopThread, thread.id]);
-  const handleCancelPlan = useCallback(() => {
-    cancelThreadPlan.mutate(thread.id);
-  }, [cancelThreadPlan, thread.id]);
-  const handleClearGoal = useCallback(() => {
-    clearThreadGoal.mutate(thread.id);
-  }, [clearThreadGoal, thread.id]);
+  const { mutateAsync: cancelThreadPlanAsync } = cancelThreadPlan;
+  const handleExitPlanMode = useCallback(async () => {
+    await cancelThreadPlanAsync(thread.id);
+  }, [cancelThreadPlanAsync, thread.id]);
   const submitMode = useMemo<FollowUpSubmitMode>(() => {
     if (isHandoffSelection && !isStopRequested) {
       if (effectiveSelectedModel.length > 0) {
@@ -1795,30 +1785,10 @@ export function ThreadDetailPromptArea({
     () => (
       <ThreadPromptModeCard
         activePromptMode={activePromptMode}
-        isExitPending={cancelThreadPlan.isPending}
-        isExpanded={isPromptModeExpanded}
-        onExitPlanMode={handleCancelPlan}
-        onToggle={() => setIsPromptModeExpanded((value) => !value)}
+        onExitPlanMode={handleExitPlanMode}
       />
     ),
-    [
-      activePromptMode,
-      cancelThreadPlan.isPending,
-      handleCancelPlan,
-      isPromptModeExpanded,
-    ],
-  );
-  const activeGoalCard = useMemo(
-    () => (
-      <ThreadGoalCard
-        goal={goal}
-        isClearPending={clearThreadGoal.isPending}
-        isExpanded={isGoalExpanded}
-        onClearGoal={handleClearGoal}
-        onToggle={() => setIsGoalExpanded((value) => !value)}
-      />
-    ),
-    [clearThreadGoal.isPending, goal, handleClearGoal, isGoalExpanded],
+    [activePromptMode, handleExitPlanMode],
   );
   const inlineEditSessionId = inlineEditingQueuedMessage?.editSessionId ?? null;
   const inlineEditQueuedMessageId =
@@ -2141,7 +2111,6 @@ export function ThreadDetailPromptArea({
           onToggle={() => setIsBackgroundCommandsExpanded((value) => !value)}
         />
         {shouldHideComposer ? null : activePromptModeCard}
-        {shouldHideComposer ? null : activeGoalCard}
         <ThreadTodoCard
           pendingTodos={
             thread.archivedAt === null && environmentGoneStatus === null
@@ -2269,7 +2238,6 @@ export function ThreadDetailPromptArea({
       isUnarchiveCurrentThreadPending,
       isQueueMutationPending,
       queuedMessageEditor,
-      activeGoalCard,
       activePromptModeCard,
       isTodoExpanded,
       activeWorkflows,
@@ -2322,17 +2290,14 @@ export function ThreadDetailPromptArea({
           onExpandedChange={setIsChildThreadsExpanded}
         />
         {activePromptMode ? activePromptModeCard : null}
-        {goal ? activeGoalCard : null}
       </>
     ),
     [
-      activeGoalCard,
       activePromptMode,
       activePromptModeCard,
       childThreadsBannerKey,
       childThreadsSection,
       isChildThreadsExpanded,
-      goal,
     ],
   );
 

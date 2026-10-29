@@ -109,7 +109,7 @@ interface ToThreadStatusChangeMetadataArgs {
 
 interface PromptBannerActivityState extends Pick<
   ThreadActivityState,
-  "activeGoalCount" | "activePlanModeCount"
+  "activePlanModeCount"
 > {
   activePlanTurnId: string | null;
 }
@@ -117,7 +117,6 @@ interface PromptBannerActivityState extends Pick<
 const EMPTY_THREAD_ACTIVITY: ThreadActivityState = {
   activeBackgroundAgentCount: 0,
   activeBackgroundCommandCount: 0,
-  activeGoalCount: 0,
   activePlanModeCount: 0,
   activeWorkflowCount: 0,
 };
@@ -369,10 +368,7 @@ function getThreadPromptBannerActivityState(
     providerId: thread.providerId,
     threadStatus: thread.status,
   });
-  const goal = extractThreadTimelineGoal(events);
-
   return {
-    activeGoalCount: goal?.status === "active" ? 1 : 0,
     activePlanModeCount: activePlanTurn === null ? 0 : 1,
     activePlanTurnId: activePlanTurn?.turnId ?? null,
   };
@@ -393,10 +389,6 @@ function listPromptBannerActivityCandidateRows(
   deps: ThreadPromptBannerDeps,
   threads: readonly Thread[],
 ): StoredEventRow[] {
-  const latestGoalRows = listLatestThreadStateEventRowsByThreadIds(deps.db, {
-    threadIds: threads.map((thread) => thread.id),
-    kind: LEGACY_CODEX_GOAL_EXTENSION_KIND,
-  });
   const openAcceptedRows = listOpenTurnInputAcceptedRowsByThreadIds(deps.db, {
     threadIds: threads
       .filter((thread) => canThreadShowActivePlanMode(deps, thread))
@@ -413,7 +405,7 @@ function listPromptBannerActivityCandidateRows(
     keys: requestKeys,
   });
 
-  return [...latestGoalRows, ...openAcceptedRows, ...requestRows].sort(
+  return [...openAcceptedRows, ...requestRows].sort(
     (left, right) =>
       left.threadId.localeCompare(right.threadId) ||
       left.sequence - right.sequence,
@@ -443,7 +435,7 @@ function buildThreadPromptBannerActivityByThreadId(
       thread,
       eventsByThreadId.get(thread.id) ?? [],
     );
-    if (activity.activeGoalCount > 0 || activity.activePlanModeCount > 0) {
+    if (activity.activePlanModeCount > 0) {
       result.set(thread.id, activity);
     }
   }
@@ -470,7 +462,6 @@ export function getThreadPromptBannerActivity(
     buildThreadPromptBannerActivityByThreadId(deps, [thread]).get(
       thread.id,
     ) ?? {
-      activeGoalCount: 0,
       activePlanModeCount: 0,
       activePlanTurnId: null,
     }
@@ -502,9 +493,6 @@ function buildThreadActivityStateByThreadId(
       activeBackgroundCommandCount:
         backgroundActivity?.activeBackgroundCommandCount ??
         EMPTY_THREAD_ACTIVITY.activeBackgroundCommandCount,
-      activeGoalCount:
-        promptBannerActivity?.activeGoalCount ??
-        EMPTY_THREAD_ACTIVITY.activeGoalCount,
       activePlanModeCount:
         promptBannerActivity?.activePlanModeCount ??
         EMPTY_THREAD_ACTIVITY.activePlanModeCount,

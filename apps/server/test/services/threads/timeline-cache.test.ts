@@ -33,6 +33,7 @@ function makeResponse(rowCount: number): ThreadTimelineResponse {
     activeWorkflows: [],
     activeBackgroundCommands: [],
     pendingTodos: null,
+    extensionStates: {},
     goal: null,
     providerCommands: null,
     sessionOptions: null,

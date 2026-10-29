@@ -108,7 +108,6 @@ function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
       activeBackgroundAgentCount: 0,
       activeBackgroundCommandCount: 0,
       activePlanModeCount: 1,
-      activeGoalCount: 1,
     },
     runtime: {
       displayStatus: "active",
@@ -122,7 +121,6 @@ const IDLE_ACTIVITY: ThreadListEntry["activity"] = {
   activeBackgroundAgentCount: 0,
   activeBackgroundCommandCount: 0,
   activePlanModeCount: 0,
-  activeGoalCount: 0,
 };
 
 function makeIdleThread(
@@ -386,7 +384,6 @@ describe("mobile recent thread rows", () => {
                 activeBackgroundAgentCount: 0,
                 activeBackgroundCommandCount: 0,
                 activePlanModeCount: 0,
-                activeGoalCount: 0,
               },
             }),
           ]}
@@ -415,7 +412,6 @@ describe("mobile recent thread rows", () => {
                 activeBackgroundAgentCount: 0,
                 activeBackgroundCommandCount: 0,
                 activePlanModeCount: 0,
-                activeGoalCount: 0,
               },
             }),
           ]}
@@ -451,7 +447,6 @@ describe("mobile recent thread rows", () => {
                   activeBackgroundAgentCount: 0,
                   activeBackgroundCommandCount: 0,
                   activePlanModeCount: 0,
-                  activeGoalCount: 0,
                 },
               }),
             ]}
@@ -484,7 +479,6 @@ describe("mobile recent thread rows", () => {
                 activeBackgroundAgentCount: 0,
                 activeBackgroundCommandCount: 0,
                 activePlanModeCount: 0,
-                activeGoalCount: 0,
               },
             }),
           ]}
@@ -604,7 +598,6 @@ describe("RootComposeMobileRecents", () => {
                 activeBackgroundAgentCount: 0,
                 activeBackgroundCommandCount: 0,
                 activePlanModeCount: 0,
-                activeGoalCount: 0,
               },
               runtime: {
                 displayStatus: "idle",

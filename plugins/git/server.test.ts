@@ -132,7 +132,6 @@ describe("Git plugin server", () => {
           activity: {
             activeBackgroundAgentCount: 0,
             activeBackgroundCommandCount: 0,
-            activeGoalCount: 0,
             activePlanModeCount: 0,
             activeWorkflowCount: 0,
           },
@@ -230,7 +229,10 @@ describe("Git plugin server", () => {
     const { fake } = await setup({
       "env-1": environment({ mergeBaseBranch: "release" }),
       "env-plain": environment({ id: "env-plain", isGitRepo: false }),
-      "env-starting": environment({ id: "env-starting", status: "provisioning" }),
+      "env-starting": environment({
+        id: "env-starting",
+        status: "provisioning",
+      }),
     });
 
     await expect(
@@ -333,7 +335,9 @@ describe("Git plugin server", () => {
         return {
           outcome: "available",
           value: {
-            patches: [{ path: first, patch: `patch ${first}`, truncated: false }],
+            patches: [
+              { path: first, patch: `patch ${first}`, truncated: false },
+            ],
             deferred: rest,
           },
         };
@@ -439,7 +443,9 @@ describe("Git plugin server", () => {
       environmentId: "env-1",
       mergeBaseBranch: makeWorkspaceStatus().branch.defaultBranch,
     });
-    expect(updates).toEqual([{ environmentId: "env-1", mergeBaseBranch: null }]);
+    expect(updates).toEqual([
+      { environmentId: "env-1", mergeBaseBranch: null },
+    ]);
   });
 });
 

@@ -209,6 +209,7 @@ export interface ThreadTimelineSurfaceOptions {
   maxInlineOutputChars: InlineOutputCharLimit;
   providerDisplayName?: string;
   planCommand?: ProviderComposerCommand | null;
+  extensionStateKinds?: readonly string[];
   summarizeShellCommands: boolean;
 }
 
@@ -957,8 +958,15 @@ function ensureLatestTimelineOpenBackgroundTaskStateRows(
 function listLatestTimelineHeadStateRows(
   db: DbConnection,
   threadId: string,
+  extensionStateKinds: readonly string[],
 ): StoredEventRow[] {
   return mergeStoredEventRowsById([
+    ...extensionStateKinds.flatMap((kind) =>
+      listLatestThreadStateEventRowsByThreadIds(db, {
+        threadIds: [threadId],
+        kind,
+      }),
+    ),
     ...listLatestThreadStateEventRowsByThreadIds(db, {
       threadIds: [threadId],
       kind: LEGACY_CODEX_GOAL_EXTENSION_KIND,
@@ -992,6 +1000,7 @@ function selectStandardTimelineEventRows(
   knownBudgetFloor: TimelineBudgetFloor | null,
   profile: ThreadTimelineBuildProfileAccumulator,
   source: TimelineSelectionRowSource,
+  extensionStateKinds: readonly string[],
 ): StandardTimelineEventRowSelection {
   const decode: StoredEventDecoder = (row) =>
     decodeStoredEventRowCached(db, row);
@@ -1218,7 +1227,11 @@ function selectStandardTimelineEventRows(
       headStateRows:
         page.kind === "latest"
           ? measureThreadTimelineStage(profile, "group-context-query", () =>
-              listLatestTimelineHeadStateRows(db, thread.id).filter(
+              listLatestTimelineHeadStateRows(
+                db,
+                thread.id,
+                extensionStateKinds,
+              ).filter(
                 (row) =>
                   row.sequence <= maxSeq && !visibleSequences.has(row.sequence),
               ),
@@ -1385,6 +1398,7 @@ function buildThreadTimelineInternal(
       knownBudgetFloor,
       profile,
       source,
+      options.extensionStateKinds ?? [],
     );
   const maxInlineOutputChars = options.maxInlineOutputChars;
   const active = thread.status === "active";
@@ -1398,6 +1412,7 @@ function buildThreadTimelineInternal(
           epochSequenceStart: historySequenceStart,
           eventBudget: options.eventBudget,
           excludeDiagnosticEvents: !includeDiagnosticOperations,
+          extensionStateKinds: options.extensionStateKinds ?? [],
           maxInlineOutputChars,
           maxSeq: snapshot.maxSeq,
           page: options.page,
@@ -1483,6 +1498,7 @@ function buildThreadTimelineInternal(
     isLatestPage: options.page.kind === "latest",
     providerDisplayName: options.providerDisplayName,
     planCommand: options.planCommand,
+    extensionStateKinds: options.extensionStateKinds,
     summarizeShellCommands: options.summarizeShellCommands,
     threadStatus: snapshot.status,
     threadName: surface.threadName,
@@ -1604,6 +1620,7 @@ function buildThreadTimelineInternal(
     activeBackgroundCommands:
       options.page.kind === "latest" ? timeline.activeBackgroundCommands : [],
     pendingTodos: timeline.pendingTodos,
+    extensionStates: timeline.extensionStates,
     goal: timeline.goal,
     providerCommands: timeline.providerCommands,
     sessionOptions: timeline.sessionOptions,

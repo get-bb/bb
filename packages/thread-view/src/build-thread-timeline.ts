@@ -20,6 +20,7 @@ import {
   readTerminalOutputLines,
   type ActiveThinking,
   type CompletedTurnDisplay,
+  type JsonValue,
   type Thread,
   type ThreadEventItemPresentation,
   type ThreadTimelineActivePromptMode,
@@ -69,6 +70,7 @@ import {
 } from "./active-prompt-mode-extraction.js";
 import { extractThreadTimelineGoal } from "./goal-snapshot-extraction.js";
 import {
+  extractThreadExtensionStates,
   extractThreadProviderCommands,
   extractThreadSessionOptions,
 } from "./provider-state-extraction.js";
@@ -83,6 +85,7 @@ interface ThreadTimelineFromEventsBaseOptions {
   providerId?: string;
   providerDisplayName?: string;
   planCommand?: PlanCommand | null;
+  extensionStateKinds?: readonly string[];
   summarizeShellCommands: boolean;
   threadStatus: Thread["status"];
   threadName: string;
@@ -141,6 +144,7 @@ export interface ThreadTimelineFromEventsResult {
   activeWorkflows: TimelineWorkflowWorkRow[];
   activeBackgroundCommands: TimelineWorkflowWorkRow[];
   contextWindowUsage: ThreadContextWindowUsage | null;
+  extensionStates: Record<string, JsonValue>;
   goal: ThreadTimelineGoal | null;
   modelFallback: ThreadTimelineModelFallback | null;
   pendingTodos: ThreadTimelinePendingTodos | null;
@@ -1255,6 +1259,12 @@ export function buildThreadTimelineFromEvents(
     contextWindowUsage: extractThreadContextWindowUsage(
       args.contextWindowEvents,
     ),
+    extensionStates: !args.options.isLatestPage
+      ? {}
+      : extractThreadExtensionStates(
+          stateEvents,
+          args.options.extensionStateKinds ?? [],
+        ),
     goal: !args.options.isLatestPage
       ? null
       : extractThreadTimelineGoal(stateEvents),
