@@ -934,6 +934,20 @@ describe("MarkdownPreview", () => {
     expect(container.querySelector(".katex-display")).toBeNull();
   });
 
+  it.each([
+    ["Half is $1/2$ here.", "1/2"],
+    ["Grows as $2^n$ steps.", "2^n"],
+    ["Rate $0.5x$ overall.", "0.5x"],
+    ["Exactly $0.25$ of it.", "0.25"],
+  ])("renders digit-led math in %j", async (content, tex) => {
+    const { container } = render(<MarkdownPreview content={content} />);
+
+    await waitFor(() =>
+      expect(container.querySelectorAll(".katex")).toHaveLength(1),
+    );
+    expect(container.querySelector("annotation")?.textContent).toBe(tex);
+  });
+
   it("keeps a dollar amount literal beside single-dollar math", async () => {
     const { container } = render(
       <MarkdownPreview content={"It costs $5 and $\\alpha$ more."} />,
@@ -1000,6 +1014,12 @@ describe("MarkdownPreview", () => {
     ["Pay $5, then $10.", "$5, then $10"],
     ["Between $20,000 and $30,000 a year.", "$20,000 and $30,000"],
     ["A $5/$10 split.", "$5/$10"],
+    [
+      "About $0.04 of calls, at 327,000 of 500,000 µ$ today.",
+      "$0.04 of calls, at 327,000 of 500,000 µ$ today",
+    ],
+    ["Costs $5; limit is 10 µ$ today.", "$5; limit is 10 µ$"],
+    ["Up to $1,200.50! Then x$ more.", "$1,200.50! Then x$"],
     ["Spaced $ x $ stays literal.", "$ x $"],
     ["Inline `$x$` code stays literal.", "$x$"],
   ])("leaves %j as literal text", (content, literal) => {
