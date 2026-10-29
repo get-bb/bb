@@ -198,8 +198,9 @@ message, Original }` — render fenced code blocks of chosen languages in
 - `experimental_messageMetadata` → React metadata beside realized user and assistant
   messages in the main timeline and embedded `ThreadChat`. Registration:
   `{ id, placement?: "above" | "actionRow", component }`; omitted placement
-  means above. `"actionRow"` renders in the message's hover action row on fine-pointer
-  devices, revealed with the actions and never narrowing them;
+  means above. `"actionRow"` renders in the message's action row, shows and hides
+  with the actions, and never narrows them; components decide their own device
+  policy (bb's own inline time hides itself on touch);
   bb's own inline message time uses it. The component receives `{ message }` with
   stable `id`, `threadId`, `createdAt`, `turnId`, and `role`; user messages also
   have `initiator`. Filter by returning null. Contributions retain bb, then

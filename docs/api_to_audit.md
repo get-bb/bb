@@ -195,11 +195,12 @@ React metadata beside realized user and assistant conversation messages,
 including windowing overscan and embedded ThreadChat timelines. `placement`
 accepts "above" or "actionRow"; omission defaults to "above". "above" renders
 over the message, aligned to its side. "actionRow" renders in the message's
-hover action row on fine-pointer devices: revealed with the actions on hover or
-focus, before them on user messages and after the overflow menu on assistant
-messages. It extends into the space beside the message rather than narrowing
-the actions, so a short message keeps the same inline actions. It is hidden on
-touch devices and on messages without an action row. The component
+action row and shows and hides with the actions: on hover or focus where the
+device can hover, and always where it cannot. It sits before the actions on
+user messages and after the overflow menu on assistant messages, and extends
+into the space beside the message rather than narrowing the actions. Device
+policy belongs to the component: bb's own inline time returns null on touch
+devices, which keep the time in the overflow menu footer. The component
 receives `{ message }` with `id`, `threadId`, `role`, exact `createdAt` in Unix
 milliseconds, and `turnId` (null outside a turn). User messages also expose
 `initiator: "user" | "agent" | "system"`; assistant messages do not. Message

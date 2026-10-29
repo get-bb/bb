@@ -187,15 +187,13 @@ export const MessageColumnWidthContext =
 
 const ACTION_BUTTON_CLASS =
   "inline-flex size-5 cursor-pointer items-center justify-center text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-40";
-const HOVER_REVEAL_ONLY_CLASS =
-  "opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100";
 const HOVER_REVEAL_CLASS = cn(
-  HOVER_REVEAL_ONLY_CLASS,
+  "opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100",
   HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS,
 );
 export const ACTION_ROW_METADATA_CLASS = cn(
-  "hidden items-center gap-2 whitespace-nowrap text-xs text-subtle-foreground pointer-fine:flex",
-  HOVER_REVEAL_ONLY_CLASS,
+  "hidden items-center gap-2 whitespace-nowrap text-xs text-subtle-foreground has-[>*>*]:flex",
+  HOVER_REVEAL_CLASS,
 );
 const MOBILE_INLINE_ACTION_CLASS =
   "max-md:pointer-coarse:size-7 max-md:pointer-coarse:[&_[data-icon-root]]:size-4";
@@ -207,7 +205,8 @@ const ACTION_ROW_POSITION_CLASS =
   "absolute top-0 flex w-max items-center gap-2 data-[menu-open]:[&_button]:opacity-100 data-[menu-open]:[&_[data-message-action-metadata]]:opacity-100";
 const ACTION_ROW_CLASS = "flex max-w-full items-center gap-2 overflow-hidden";
 
-export const BUBBLE_ALIGN_INSET_CLASS = "pr-[13px] max-md:pointer-coarse:pr-[11px]";
+export const BUBBLE_ALIGN_INSET_CLASS =
+  "pr-[13px] max-md:pointer-coarse:pr-[11px]";
 const BUBBLE_ALIGN_OFFSET_CLASS =
   "right-[13px] max-md:pointer-coarse:right-[11px]";
 const PROSE_ALIGN_INSET_CLASS = "-ml-1 max-md:pointer-coarse:-ml-1.5";

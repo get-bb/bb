@@ -3223,10 +3223,10 @@ export interface ExperimentalMessageMetadataProps {
 
 /**
  * Where message metadata renders. `"above"` sits over the message, aligned to
- * its side. `"actionRow"` sits in the message's hover action row on devices
- * with a fine pointer: revealed with the actions, before them on user messages
- * and after the overflow menu on assistant messages. It extends into the space
- * beside the message rather than narrowing the actions.
+ * its side. `"actionRow"` sits in the message's action row and shows and hides
+ * with the actions, before them on user messages and after the overflow menu
+ * on assistant messages. It extends into the space beside the message rather
+ * than narrowing the actions.
  */
 export type ExperimentalMessageMetadataPlacement = "above" | "actionRow";
 

@@ -1,4 +1,5 @@
 import type { ExperimentalMessageMetadataProps } from "@get-bb/plugin-sdk";
+import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import {
   collectPluginAppRegistrations,
   definePluginApp,
@@ -6,6 +7,8 @@ import {
 import { formatShortMessageTime, MessageTime } from "./message-time.js";
 
 function InlineMessageTime({ message }: ExperimentalMessageMetadataProps) {
+  const isPointerCoarse = usePointerCoarse();
+  if (isPointerCoarse) return null;
   return (
     <MessageTime
       timestamp={message.createdAt}
