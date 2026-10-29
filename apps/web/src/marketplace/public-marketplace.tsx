@@ -18,6 +18,9 @@ import {
 
 import { initAnalytics, trackLandingEvent } from "../landing/analytics.js";
 import { CommandButton } from "../landing/command-button.js";
+import { DownloadLink } from "../landing/cta.js";
+import { useDesktopPlatform } from "../landing/desktop-platform.js";
+import { DESKTOP_DOWNLOADS } from "../landing/site.js";
 import { SiteFooter, SiteNav } from "../landing/site-chrome.js";
 import {
   marketplaceInstallBadge,
@@ -970,6 +973,7 @@ export function PublicMarketplaceDetailPage({
   entry: MarketplaceV2Entry;
   stats: MarketplaceStats | null;
 }) {
+  const platform = useDesktopPlatform();
   useEffect(() => {
     initAnalytics();
     trackLandingEvent({
@@ -1059,13 +1063,14 @@ export function PublicMarketplaceDetailPage({
                   }}
                 />
               )}
-              <a
+              <DownloadLink
                 className="marketplace-detail-source marketplace-detail-download"
-                href="/download/macos"
+                platform={platform}
+                placement="local"
               >
-                Get it for macOS
+                Get it for {DESKTOP_DOWNLOADS[platform].label}
                 <HugeiconsIcon icon={LinkSquare02Icon} aria-hidden />
-              </a>
+              </DownloadLink>
             </div>
           </div>
         </header>
