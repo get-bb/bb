@@ -10,7 +10,7 @@ const test='plugins/github-pr-status/store.test.ts';
 let source=readFileSync(test,'utf8');
 const a=source.indexOf('  it("makes a one-shot read wait');
 const b=source.indexOf('\n  });',a);
-let body=source.slice(a,b).replace('    vi.useFakeTimers();','    const started = process.hrtime.bigint();\n    const mark = (stage: string) => console.error("FRESHNESS_STAGE", stage, Number(process.hrtime.bigint()-started)/1e6);\n    vi.useFakeTimers();');
+let body=source.slice(a,b).replace('    vi.useFakeTimers();','    const probeNow = process.hrtime.bigint;\n    const started = probeNow();\n    const mark = (stage: string) => console.error("FRESHNESS_STAGE", stage, Number(probeNow()-started)/1e6);\n    vi.useFakeTimers();');
 for(const [line,stage] of [['    const { store, load } = setup([available(pullRequest())]);','setup'],['    await store.read("a", { viewer: true });','initial'],['    await vi.advanceTimersByTimeAsync(9_000);','advance9'],['    await store.read("a", { viewer: false });','read9'],['    await vi.advanceTimersByTimeAsync(2_000);','advance2']]) body=body.replace(line,line+'\n    mark("'+stage+'");');
 body+='\n    mark("final");';
 writeFileSync(test,source.slice(0,a)+body+source.slice(b));
