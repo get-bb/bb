@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -1528,17 +1529,46 @@ export function useSectionThreadDnd({
     clearProjectedDrag();
   }, [clearDropDwell, clearProjectedDrag]);
 
+  const latestDragHandlers = useRef({
+    collisionDetection,
+    handleDragEnd,
+    handleDragStart,
+    handleDragMove,
+    handleDragOver,
+    handleDragCancel,
+  });
+  useLayoutEffect(() => {
+    latestDragHandlers.current = {
+      collisionDetection,
+      handleDragEnd,
+      handleDragStart,
+      handleDragMove,
+      handleDragOver,
+      handleDragCancel,
+    };
+  });
+  const [dragHandlers] = useState(() => {
+    const detectCollisions: CollisionDetection = (args) =>
+      latestDragHandlers.current.collisionDetection(args);
+    return {
+      collisionDetection: detectCollisions,
+      onDragEnd: (event: DragEndEvent) =>
+        latestDragHandlers.current.handleDragEnd(event),
+      onDragStart: (event: DragStartEvent) =>
+        latestDragHandlers.current.handleDragStart(event),
+      onDragMove: (event: DragMoveEvent) =>
+        latestDragHandlers.current.handleDragMove(event),
+      onDragOver: (event: DragOverEvent) =>
+        latestDragHandlers.current.handleDragOver(event),
+      onDragCancel: () => latestDragHandlers.current.handleDragCancel(),
+    };
+  });
   const { consumeClickSuppression, dndContextProps, onClickCapture } =
     useSidebarReorderDnd({
       touchSensor: SidebarTouchSensor,
       axis: "free",
-      collisionDetection,
       measuring: SECTION_THREAD_DROPPABLE_MEASURING,
-      onDragEnd: handleDragEnd,
-      onDragStart: handleDragStart,
-      onDragMove: handleDragMove,
-      onDragOver: handleDragOver,
-      onDragCancel: handleDragCancel,
+      ...dragHandlers,
     });
 
   const dropDecisionLanded =
@@ -1548,24 +1578,44 @@ export function useSectionThreadDnd({
     if (dropDecisionLanded) clearProjectedDrag();
   }, [clearProjectedDrag, dropDecisionLanded]);
 
-  if (!enabled) return null;
-  return {
-    activeItemId: dropDecisionLanded ? null : activeIdRef.current,
-    activeThread: dropDecisionLanded ? null : activeThread,
-    draggedThreadIds: dropDecisionLanded ? null : draggedThreadIds,
-    consumeClickSuppression,
-    dndContextProps,
-    itemIdsByParentKey: lookup.itemIdsByParentKey,
-    onClickCapture,
-    dragOverParentKey:
-      dropDecisionLanded || reorderTarget !== null ? null : dragOverParentKey,
-    unchangedParentKey:
-      dropDecisionLanded || reorderTarget !== null ? null : unchangedParentKey,
-    nestTarget: dropDecisionLanded ? null : rowDrop,
-    nestPreviewBeforeKey: null,
-    reorderTarget: dropDecisionLanded ? null : reorderTarget,
-    pinnedItemIds:
-      lookup.itemIdsByParentKey.get(PINNED_THREAD_PARENT_KEY) ?? [],
-    pinnedReorderPending,
-  };
+  const activeItemId = activeIdRef.current;
+  const state = useMemo<SectionThreadDndState>(
+    () => ({
+      activeItemId: dropDecisionLanded ? null : activeItemId,
+      activeThread: dropDecisionLanded ? null : activeThread,
+      draggedThreadIds: dropDecisionLanded ? null : draggedThreadIds,
+      consumeClickSuppression,
+      dndContextProps,
+      itemIdsByParentKey: lookup.itemIdsByParentKey,
+      onClickCapture,
+      dragOverParentKey:
+        dropDecisionLanded || reorderTarget !== null ? null : dragOverParentKey,
+      unchangedParentKey:
+        dropDecisionLanded || reorderTarget !== null
+          ? null
+          : unchangedParentKey,
+      nestTarget: dropDecisionLanded ? null : rowDrop,
+      nestPreviewBeforeKey: null,
+      reorderTarget: dropDecisionLanded ? null : reorderTarget,
+      pinnedItemIds:
+        lookup.itemIdsByParentKey.get(PINNED_THREAD_PARENT_KEY) ?? [],
+      pinnedReorderPending,
+    }),
+    [
+      activeItemId,
+      activeThread,
+      consumeClickSuppression,
+      dndContextProps,
+      draggedThreadIds,
+      dragOverParentKey,
+      dropDecisionLanded,
+      lookup,
+      onClickCapture,
+      pinnedReorderPending,
+      reorderTarget,
+      rowDrop,
+      unchangedParentKey,
+    ],
+  );
+  return enabled ? state : null;
 }

@@ -483,42 +483,80 @@ function evaluateThreadActions(
   });
 }
 
-function useRetainedThreadRegistry(
-  threadId: string,
+interface RetainedThreadActionEntries {
+  signature: string;
+  entries: readonly PluginThreadActionEntry[];
+  latest: Map<string, PluginBoundThreadAction>;
+}
+
+const retainedThreadActionEntries = new WeakMap<
+  object,
+  RetainedThreadActionEntries
+>();
+
+function retainThreadActionEntries(
+  owner: object,
+  evaluated: readonly PluginThreadActionEntry[],
+): readonly PluginThreadActionEntry[] {
+  const signature = JSON.stringify(evaluated);
+  let retained = retainedThreadActionEntries.get(owner);
+  if (retained === undefined || retained.signature !== signature) {
+    const latest = new Map<string, PluginBoundThreadAction>();
+    retained = {
+      signature,
+      latest,
+      entries: evaluated.map((entry) => ({
+        ...entry,
+        action: {
+          ...entry.action,
+          run: (value) => (latest.get(entry.key) ?? entry.action).run(value),
+        },
+      })),
+    };
+    retainedThreadActionEntries.set(owner, retained);
+  }
+  for (const entry of evaluated) retained.latest.set(entry.key, entry.action);
+  return retained.entries;
+}
+
+function useThreadEntries(
+  thread: PluginThreadActionTarget,
+  options: PluginThreadActionsOptions | undefined,
   placement: PluginThreadActionPlacement,
-): ThreadActionRegistrySnapshot {
-  const registry = useSyncExternalStore(subscribe, getSnapshot);
+): readonly PluginThreadActionEntry[] {
+  const [owner] = useState(() => ({}));
+  const entries = useSyncExternalStore(subscribe, () =>
+    retainThreadActionEntries(
+      owner,
+      evaluateThreadActions(
+        getSnapshot(),
+        { kind: "thread", thread },
+        options,
+        placement,
+      ).filter(
+        (entry) => placement === "menu" || entry.action.choices === undefined,
+      ),
+    ),
+  );
   const surfaceVisible = useContext(ThreadActionSurfaceVisibleContext);
   useEffect(
-    () => (surfaceVisible ? retainThreadId(threadId, placement) : undefined),
-    [placement, surfaceVisible, threadId],
+    () => (surfaceVisible ? retainThreadId(thread.id, placement) : undefined),
+    [placement, surfaceVisible, thread.id],
   );
-  return registry;
+  return entries;
 }
 
 export function useThreadActionEntries(
   thread: PluginThreadActionTarget,
   options?: PluginThreadActionsOptions,
 ): readonly PluginThreadActionEntry[] {
-  const registry = useRetainedThreadRegistry(thread.id, "menu");
-  return evaluateThreadActions(
-    registry,
-    { kind: "thread", thread },
-    options,
-    "menu",
-  );
+  return useThreadEntries(thread, options, "menu");
 }
 
 export function useThreadHeaderActionEntries(
   thread: PluginThreadActionTarget,
 ): readonly PluginThreadActionEntry[] {
-  const registry = useRetainedThreadRegistry(thread.id, "header");
-  return evaluateThreadActions(
-    registry,
-    { kind: "thread", thread },
-    undefined,
-    "header",
-  ).filter((entry) => entry.action.choices === undefined);
+  return useThreadEntries(thread, undefined, "header");
 }
 
 export function useThreadBulkActionEntries(

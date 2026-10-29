@@ -11,11 +11,12 @@ import {
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createStore, Provider } from "jotai";
-import type { ReactElement } from "react";
+import { useSyncExternalStore, type ReactElement } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   experimental_THREAD_ACTION_GROUPS,
+  type PluginThreadActionEntry,
   type PluginThreadActionRegistration,
   type PluginThreadActionsInlineItem,
 } from "@get-bb/plugin-sdk";
@@ -1358,5 +1359,115 @@ describe("header thread actions", () => {
         screen.getAllByRole("listitem").map((item) => item.textContent),
       ).toEqual(["Commit"]),
     );
+  });
+});
+
+describe("thread action rows", () => {
+  function createValueStore<T>(initial: T) {
+    let value = initial;
+    const listeners = new Set<() => void>();
+    return {
+      set(next: T) {
+        value = next;
+        for (const listener of listeners) listener();
+      },
+      use: () =>
+        useSyncExternalStore(
+          (listener) => {
+            listeners.add(listener);
+            return () => listeners.delete(listener);
+          },
+          () => value,
+        ),
+    };
+  }
+
+  it("redraws only the rows whose actions change and runs with the latest data", async () => {
+    const focus = createValueStore({ threadId: "thr_a", version: 1 });
+    const header = createValueStore(1);
+    const ran = vi.fn();
+    const focusAction: PluginThreadActionRegistration<{
+      threadId: string;
+      version: number;
+    }> = {
+      id: "focus",
+      title: "Focus",
+      icon: "Columns2",
+      group: "5_plugin",
+      useData: focus.use,
+      item: ({ thread, data }) => ({
+        label: data.threadId === thread.id ? "Focused" : "Focus",
+        icon: "Columns2",
+        run: () => ran(thread.id, data.version),
+      }),
+    };
+    const headerAction: PluginThreadActionRegistration<number> = {
+      id: "counter",
+      title: "Counter",
+      icon: "GitBranch",
+      group: "git",
+      placement: "header",
+      useData: header.use,
+      item: ({ data }) => ({
+        label: `Counter ${data}`,
+        icon: "GitBranch",
+        run: vi.fn(),
+      }),
+    };
+    setPluginSlotRegistrations(
+      "fixture",
+      makePluginRegistrationSet({ threadActions: [focusAction, headerAction] }),
+    );
+    const renders = new Map<string, number>();
+    const entries = new Map<string, readonly PluginThreadActionEntry[]>();
+    function Row({ id }: { id: string }) {
+      renders.set(id, (renders.get(id) ?? 0) + 1);
+      entries.set(
+        id,
+        useThreadActionEntries(
+          threadListEntryActionTarget({ ...baseThread, id }),
+          {},
+        ),
+      );
+      return null;
+    }
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <ThreadActionCollectors
+            coreRegistrations={[]}
+            requestRename={defaultRequestRename}
+          />
+          <Row id="thr_a" />
+          <Row id="thr_b" />
+          <Row id="thr_c" />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await waitFor(() =>
+      expect(entries.get("thr_a")?.map((entry) => entry.action.label)).toEqual([
+        "Focused",
+      ]),
+    );
+    const before = new Map(renders);
+    const redrawn = () =>
+      [...renders].flatMap(([id, count]) =>
+        count === before.get(id) ? [] : [id],
+      );
+
+    act(() => header.set(2));
+    act(() => focus.set({ threadId: "thr_a", version: 2 }));
+    expect(redrawn()).toEqual([]);
+
+    act(() => focus.set({ threadId: "thr_b", version: 3 }));
+    expect(redrawn()).toEqual(["thr_a", "thr_b"]);
+    expect(
+      ["thr_a", "thr_b", "thr_c"].map(
+        (id) => entries.get(id)?.[0]?.action.label,
+      ),
+    ).toEqual(["Focus", "Focused", "Focus"]);
+
+    await entries.get("thr_c")?.[0]?.action.run();
+    expect(ran).toHaveBeenCalledWith("thr_c", 3);
   });
 });
