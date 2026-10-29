@@ -1,6 +1,7 @@
 import { sha256Hex } from "@bb/connect-db";
 import { z } from "zod";
 import type { Env } from "../server/env";
+import { sendSurveyEmail, surveyEmail } from "./email";
 import { formPage, type FormKind } from "./form-page";
 import {
   questionVisible,
@@ -18,6 +19,7 @@ type CommunityEnv = Pick<
   | "COMMUNITY_JOTFORM_URL"
   | "COMMUNITY_STICKER_CLAIM_URL"
   | "COMMUNITY_FORM_RATE_LIMITER"
+  | "RESEND_API_KEY"
 >;
 
 const inviteHashesSchema = z.array(z.string().regex(/^[a-f0-9]{64}$/));
@@ -248,14 +250,24 @@ export async function handleCommunityForm(
     const allocated = z
       .object({ code: z.string() })
       .safeParse(allocation?.results[0]);
+    const claimLink = allocated.success
+      ? claimUrl(env.COMMUNITY_STICKER_CLAIM_URL, allocated.data.code, email)
+      : null;
+    const alreadyClaimed = !emailRow?.meta.changes;
+    const emailed =
+      !alreadyClaimed &&
+      (await sendSurveyEmail(
+        env.RESEND_API_KEY,
+        email,
+        surveyEmail(surveyAnswers(values), claimLink),
+      ));
     return page({
       complete: true,
       values,
-      claimLink: allocated.success
-        ? claimUrl(env.COMMUNITY_STICKER_CLAIM_URL, allocated.data.code, email)
-        : null,
+      claimLink,
       claimOpen,
-      alreadyClaimed: !emailRow?.meta.changes,
+      alreadyClaimed,
+      emailed,
     });
   } catch {
     return page({

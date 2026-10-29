@@ -42,6 +42,8 @@ The gift is two bb stickers, claimed through a Shopify store. `COMMUNITY_STICKER
 
 The thank-you page links to the claim URL with `discount=<code>` and `checkout[email]=<email>`, so checkout opens with the pack, the code applied, a $0 total and the email filled in. The link is shown once; reposting a saved submission shows a received-response message and cannot recover it because no response-to-code mapping exists.
 
+After a save that claims a new email, the worker sends that email one message through Resend (`RESEND_API_KEY`) from `updates@mail.getbb.app`: a copy of the answers and, when a code was claimed, the same claim button. A repeat email gets no message. When the send succeeds the thank-you page says “We've emailed you your results.”; otherwise it says “We'll email you the results.” A failed send never fails the submission.
+
 The store must not accept payments, so a cart without a code or with more than one pack cannot be completed. Shopify keeps each order's name and mailing address; fulfill orders from Shopify admin and mark them fulfilled there. bb never stores addresses.
 
 Survey responses contain a random submission ID, creation time and answers, including email. Email is used for stickers and results, never a marketing list. `community_gift_code` contains only a code and a claimed flag: no survey ID, answer, contact detail or timestamp. Do not add request-body logging, analytics, or a join between these datasets. Infrastructure may still handle request metadata; review logging before launch. IP addresses are used by the short-lived rate limiter, not stored with answers.

@@ -309,6 +309,7 @@ export function formPage({
   unavailable = false,
   claimLink = null,
   claimOpen = true,
+  emailed = false,
   duplicate = false,
   alreadyClaimed = false,
   jotform = null,
@@ -323,6 +324,7 @@ export function formPage({
   unavailable?: boolean;
   claimLink?: string | null;
   claimOpen?: boolean;
+  emailed?: boolean;
   duplicate?: boolean;
   alreadyClaimed?: boolean;
   jotform?: string | null;
@@ -366,7 +368,10 @@ export function formPage({
                 ) : (
                   <>
                     <p>
-                      <strong>Thanks!</strong> We'll email you the results.
+                      <strong>Thanks!</strong>{" "}
+                      {emailed
+                        ? "We've emailed you your results."
+                        : "We'll email you the results."}
                     </p>
                     <p>
                       {claimLink ? (

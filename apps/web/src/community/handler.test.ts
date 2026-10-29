@@ -1,5 +1,13 @@
 import { Miniflare } from "miniflare";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { sha256Hex } from "@bb/connect-db";
 import { applyConnectDbMigrationsToD1 } from "@bb/connect-db/testing";
 import { emailKey, handleCommunityForm, rateLimitKey } from "./handler";
@@ -295,6 +303,50 @@ describe("private community forms", () => {
     ).toBe(4);
     expect(await claimedCodes()).toBe(2);
     expect(emailKey(" Ada+Tag@Example.TEST ")).toBe("ada@example.test");
+  });
+  it("emails a new finisher their answers and claim link once", async () => {
+    const sent: { url: string; body: Record<string, unknown> }[] = [];
+    vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+      sent.push({ url, body: JSON.parse(String(init.body)) });
+      return new Response("{}", { status: 200 });
+    });
+    try {
+      const withKey = { ...enabled(), RESEND_API_KEY: "test-key" };
+      const post = (fields: Record<string, string>) =>
+        handleCommunityForm(
+          new Request(`${origin}/community/survey`, {
+            method: "POST",
+            headers: { Origin: origin },
+            body: new URLSearchParams({
+              ...requiredFields,
+              submission_id: crypto.randomUUID(),
+              email: "ada@example.test",
+              ...fields,
+            }),
+          }),
+          withKey,
+          "survey",
+        );
+      const html = await (await post({ improve: "<b>Faster</b>" })).text();
+      expect(html).toContain("emailed you your results");
+      expect(sent).toHaveLength(1);
+      expect(sent[0]!.url).toBe("https://api.resend.com/emails");
+      expect(sent[0]!.body.to).toEqual(["ada@example.test"]);
+      const body = String(sent[0]!.body.html);
+      expect(body).toContain("&lt;b&gt;Faster&lt;/b&gt;");
+      expect(body).toContain(`discount=${codeFrom(html)}`);
+      expect(String(sent[0]!.body.text)).toContain(
+        "Claim my bb stickers: https://test-shop.myshopify.com/cart/123:1?discount=",
+      );
+      await post({ email: "Ada+again@example.test" });
+      expect(sent).toHaveLength(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+  it("says results will be emailed when the email can't be sent", async () => {
+    const html = await (await submit()).text();
+    expect(html).toContain("email you the results");
   });
   it("rate limits IPv6 clients by their /64 network", () => {
     expect(rateLimitKey("2001:db8:0:1::a")).toBe("2001:db8:0:1::/64");
