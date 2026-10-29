@@ -4,7 +4,7 @@ export const SURVEY_TITLE = "Help shape the future of bb!";
 export const SURVEY_DESCRIPTION =
   "We're figuring out what's next for bb, from product changes to meetups and merch, and we'd love your input.";
 export const SURVEY_PURPOSE =
-  "This should take ~3 min. As a small thank you, we'll send you bb stickers free of charge (US addresses for now). Thanks for building with us!";
+  "This should take ~3 min. As a small thank you, we'll send you bb stickers free of charge (US-only for now). Thanks for building with us!";
 export const CITY_HELP = "So we know where to start meetups.";
 export const COMMUNITY_MAX = 3;
 export const TEAM_WORK_OPTIONS = ["2–4 people", "5 or more"];
