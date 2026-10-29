@@ -110,17 +110,14 @@
   background: var(--surface-recessed);
   border-color: var(--dim);
 }
-.community-option-hint {
-  display: block;
-  color: var(--dim);
+.community-page input[data-other] {
+  margin-top: 12px;
 }
-.community-page .community-option input[data-other] {
-  flex: 1;
-  min-width: 0;
-  margin: -6px 0;
-  padding: 4px 8px;
-  font-size: inherit;
-  line-height: inherit;
+.community-note {
+  margin: 10px 0 0;
+  color: var(--dim);
+  font-size: 0.8125rem;
+  line-height: 1.5;
 }
 .community-page input[type="radio"],
 .community-page input[type="checkbox"] {

@@ -77,15 +77,14 @@ describe("survey page", () => {
     const script = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].at(
       -1,
     )![1]!;
-    const otherLabel = { hidden: false };
     const otherInput = {
       dataset: { other: "community" },
       hidden: false,
       disabled: false,
-      previousElementSibling: otherLabel,
     };
     let otherChecked = true;
     let work = "2–4 people";
+    let role = "Designer";
     const textarea = { type: "textarea", value: "Shared sessions" };
     const adoptText = { type: "textarea", value: "" };
     const sets: Record<
@@ -96,6 +95,7 @@ describe("survey page", () => {
         querySelectorAll: () => { type: string; value: string }[];
       }
     > = {
+      work: { hidden: false, disabled: false, querySelectorAll: () => [] },
       company_size: {
         hidden: false,
         disabled: false,
@@ -117,7 +117,9 @@ describe("survey page", () => {
     let update = () => {};
     const form = {
       elements: {
-        namedItem: (name: string) => ({ value: name === "work" ? work : "" }),
+        namedItem: (name: string) => ({
+          value: name === "work" ? work : name === "role" ? role : "",
+        }),
         [Symbol.iterator]: () => [][Symbol.iterator](),
       },
       querySelector: (selector: string) => {
@@ -157,11 +159,14 @@ describe("survey page", () => {
     expect(textarea.value).toBe("");
     expect(otherInput.hidden).toBe(false);
     expect(otherInput.disabled).toBe(false);
-    expect(otherLabel.hidden).toBe(true);
     otherChecked = false;
     update();
     expect(otherInput.hidden).toBe(true);
     expect(otherInput.disabled).toBe(true);
-    expect(otherLabel.hidden).toBe(false);
+    role = "Student";
+    update();
+    expect(sets.work!.hidden).toBe(true);
+    expect(team.hidden).toBe(true);
+    expect(sets.company_size!.hidden).toBe(true);
   });
 });

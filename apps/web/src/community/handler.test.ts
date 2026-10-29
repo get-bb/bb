@@ -16,8 +16,8 @@ const enabled = () => ({
 });
 const requiredFields = {
   discovery: "GitHub",
+  role: "Developer or engineer",
   work: "I don't use bb for work",
-  role: "Student",
   love: "Plugins",
   improve: "Search",
   community: "Get help when I'm stuck",

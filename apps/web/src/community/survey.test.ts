@@ -6,7 +6,7 @@ const contact = {
   discovery: ["GitHub"],
   work: ["Just me"],
   company_size: ["1–50"],
-  role: ["Student"],
+  role: ["Developer or engineer"],
   love: ["Plugins"],
   improve: ["Faster startup"],
   team_adopt: ["Admin approval"],
@@ -16,6 +16,23 @@ const contact = {
 };
 
 describe("community survey submission rules", () => {
+  it.each(["Student", "Not currently working"])(
+    "skips work questions for %s",
+    (role) => {
+      const values = {
+        ...contact,
+        role: [role],
+        work: [],
+        company_size: [],
+        team_adopt: [],
+      };
+      expect(validateSurvey(values)).toEqual({});
+      const answers = surveyAnswers({ ...contact, role: [role] });
+      expect(answers.work).toBeUndefined();
+      expect(answers.company_size).toBeUndefined();
+      expect(answers.team_adopt).toBeUndefined();
+    },
+  );
   it.each([
     "",
     "I don't use bb for work",
@@ -131,7 +148,7 @@ describe("community survey submission rules", () => {
         ...contact,
         discovery: ["Other"],
         discovery_other: ["Example"],
-        role: ["Student"],
+        role: ["Developer or engineer"],
         community_other: ["Ignored"],
         role_other: ["Ignored"],
         submission_id: ["not-an-answer"],
@@ -142,7 +159,7 @@ describe("community survey submission rules", () => {
       ...contact,
       discovery: ["Other"],
       discovery_other: ["Example"],
-      role: ["Student"],
+      role: ["Developer or engineer"],
     });
   });
 });

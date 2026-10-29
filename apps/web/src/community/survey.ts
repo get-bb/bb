@@ -9,8 +9,11 @@ export const CITY_HELP = "So we know where to start meetups.";
 export const COMMUNITY_MAX = 3;
 export const TEAM_WORK_OPTIONS = ["2–4 people", "5 or more"];
 export const SOLO_WORK_OPTIONS = ["Just me"];
+export const NOT_WORKING_ROLES = ["Student", "Not currently working"];
 export function questionVisible(name: string, values: FormValues): boolean {
-  const work = values.work?.[0] ?? "";
+  const workShown = !NOT_WORKING_ROLES.includes(values.role?.[0] ?? "");
+  if (name === "work") return workShown;
+  const work = workShown ? (values.work?.[0] ?? "") : "";
   if (name === "company_size")
     return Boolean(work && work !== "I don't use bb for work");
   if (name === "team_improve") return TEAM_WORK_OPTIONS.includes(work);
@@ -53,6 +56,23 @@ export const surveyQuestions: readonly Question[] = [
     placeholder: "",
   },
   {
+    name: "role",
+    label: "Which best describes your current role?",
+    type: "radio",
+    options: [
+      "Developer or engineer",
+      "Engineering manager",
+      "Founder or executive",
+      "Product manager",
+      "Designer",
+      "Data or business analyst",
+      "Student",
+      "Not currently working",
+      "Other",
+    ],
+    placeholder: "",
+  },
+  {
     name: "work",
     label: "Including you, how many people use bb where you work?",
     type: "radio",
@@ -71,23 +91,6 @@ export const surveyQuestions: readonly Question[] = [
       "Approximately how many people work at your company or organization?",
     type: "radio",
     options: ["1–50", "51–200", "201–999", "1,000 or more"],
-    placeholder: "",
-  },
-  {
-    name: "role",
-    label: "Which best describes your current role?",
-    type: "radio",
-    options: [
-      "Developer or engineer",
-      "Engineering manager",
-      "Founder or executive",
-      "Product manager",
-      "Designer",
-      "Data or business analyst",
-      "Student",
-      "Not currently working",
-      "Other",
-    ],
     placeholder: "",
   },
   {
@@ -149,9 +152,9 @@ export const surveyQuestions: readonly Question[] = [
   },
 ];
 
-export const OPTION_HINTS: Record<string, string> = {
-  "Yes, and I'd help organize it": "We'll help with budget, merch and more.",
-};
+export const MEETUP_NOTE =
+  "If you help organize, we'll help with budget, merch and more.";
+export const EMAIL_NOTE = "We won't send you any marketing emails.";
 
 export type FormValues = Record<string, string[]>;
 export type FormErrors = Record<string, string>;

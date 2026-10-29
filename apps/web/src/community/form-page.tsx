@@ -16,7 +16,9 @@ import {
   SURVEY_PURPOSE,
   CITY_HELP,
   COMMUNITY_MAX,
-  OPTION_HINTS,
+  MEETUP_NOTE,
+  EMAIL_NOTE,
+  NOT_WORKING_ROLES,
   surveyQuestions,
   type FormErrors,
   type FormValues,
@@ -63,8 +65,10 @@ if (form) {
     } catch {}
   };
   const update = () => {
-    const work = form.elements.namedItem('work').value;
+    const workShown = !${JSON.stringify(NOT_WORKING_ROLES)}.includes(form.elements.namedItem('role').value);
+    const work = workShown ? form.elements.namedItem('work').value : '';
     const shown = {
+      work: workShown,
       company_size: Boolean(work) && work !== "I don't use bb for work",
       team_improve: ${JSON.stringify(TEAM_WORK_OPTIONS)}.includes(work),
       team_adopt: ${JSON.stringify(SOLO_WORK_OPTIONS)}.includes(work),
@@ -89,7 +93,6 @@ if (form) {
       input.hidden = selected?.value !== 'Other';
       input.disabled = input.hidden;
       input.required = !input.hidden;
-      input.previousElementSibling.hidden = !input.hidden;
     }
     for (const set of form.querySelectorAll('fieldset[data-question]')) {
       const boxes = set.querySelectorAll('input[type="checkbox"]');
@@ -109,7 +112,7 @@ if (form) {
   });
   form.addEventListener('change', e => {
     update();
-    if (e.target.value === 'Other' && e.target.checked) e.target.parentElement.querySelector('[data-other]')?.focus();
+    if (e.target.value === 'Other' && e.target.checked) form.querySelector('[data-other="' + e.target.name + '"]')?.focus();
   });
   form.addEventListener('input', update);
   update();
@@ -195,36 +198,7 @@ function Survey({
                       required={question.type === "radio"}
                       defaultChecked={values[question.name]?.includes(option)}
                     />
-                    {option === "Other" ? (
-                      <>
-                        <span data-other-label>Other</span>
-                        <input
-                          type="text"
-                          name={`${question.name}_other`}
-                          data-other={question.name}
-                          aria-label={`${question.label} Other`}
-                          placeholder="Other"
-                          maxLength={250}
-                          defaultValue={
-                            values[`${question.name}_other`]?.[0] ?? ""
-                          }
-                          aria-describedby={
-                            errors[`${question.name}_other`]
-                              ? `${question.name}_other-error`
-                              : undefined
-                          }
-                        />
-                      </>
-                    ) : OPTION_HINTS[option] ? (
-                      <span>
-                        {option}
-                        <span className="community-option-hint">
-                          {OPTION_HINTS[option]}
-                        </span>
-                      </span>
-                    ) : (
-                      <span>{option}</span>
-                    )}
+                    <span>{option}</span>
                   </label>
                 ))}
               </div>
@@ -252,6 +226,25 @@ function Survey({
                 maxLength={250}
                 defaultValue={values[question.name]?.[0] ?? ""}
               />
+            )}
+            {question.options.includes("Other") && (
+              <input
+                type="text"
+                name={`${question.name}_other`}
+                data-other={question.name}
+                aria-label={`${question.label} Other`}
+                placeholder="Please specify"
+                maxLength={250}
+                defaultValue={values[`${question.name}_other`]?.[0] ?? ""}
+                aria-describedby={
+                  errors[`${question.name}_other`]
+                    ? `${question.name}_other-error`
+                    : undefined
+                }
+              />
+            )}
+            {question.name === "meetup" && (
+              <p className="community-note">{MEETUP_NOTE}</p>
             )}
             {errors[`${question.name}_other`] && (
               <p
@@ -293,6 +286,7 @@ function Survey({
             Send my answers
           </button>
         </div>
+        <p className="community-note">{EMAIL_NOTE}</p>
         {errors.email && (
           <p className="community-error" id="email-error">
             {errors.email}

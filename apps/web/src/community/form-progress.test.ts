@@ -9,7 +9,9 @@ async function load(page: Response) {
   const html = await page.text();
   document.documentElement.innerHTML = html.replace(/^<!doctype html>/i, "");
   vi.stubGlobal("matchMedia", () => ({ addEventListener: () => {} }));
-  const script = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].at(-1)![1]!;
+  const script = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].at(
+    -1,
+  )![1]!;
   new Function(script)();
 }
 const field = (selector: string) =>
@@ -29,7 +31,9 @@ describe("survey progress", () => {
     other.value = "Researcher";
     other.dispatchEvent(new Event("input", { bubbles: true }));
     field('[name="email"]').value = "ada@example.test";
-    field('[name="email"]').dispatchEvent(new Event("input", { bubbles: true }));
+    field('[name="email"]').dispatchEvent(
+      new Event("input", { bubbles: true }),
+    );
     expect(JSON.parse(localStorage.getItem(key)!)).toMatchObject({
       work: ["Just me"],
       role: ["Other"],
@@ -49,7 +53,11 @@ describe("survey progress", () => {
   it("keeps server-returned answers over saved progress", async () => {
     localStorage.setItem(key, JSON.stringify({ city: ["Paris, France"] }));
     await load(
-      formPage({ kind: "survey", id: "retry", values: { city: ["Austin, USA"] } }),
+      formPage({
+        kind: "survey",
+        id: "retry",
+        values: { city: ["Austin, USA"] },
+      }),
     );
     expect(field('[name="city"]').value).toBe("Austin, USA");
   });

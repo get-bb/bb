@@ -18,13 +18,13 @@ The shared review preview keeps collection off and the form URL empty. Local syn
 
 ## Survey submission contract
 
-POST `application/x-www-form-urlencoded` to `/community/survey` with the `submission_id` UUID from the page. The question fields, in page order, are `discovery`, `work`, `company_size`, `role`, `love`, `improve`, `team_improve`, `team_adopt`, `community`, `city` and `meetup`; `survey.ts` owns their labels and choices. Questions are numbered in the browser, so hidden questions don't use a number.
+POST `application/x-www-form-urlencoded` to `/community/survey` with the `submission_id` UUID from the page. The question fields, in page order, are `discovery`, `role`, `work`, `company_size`, `love`, `improve`, `team_improve`, `team_adopt`, `community`, `city` and `meetup`; `survey.ts` owns their labels and choices. Questions are numbered in the browser, so hidden questions don't use a number.
 
 Every visible question is required. Radio answers accept one listed choice. `community` is a checkbox that accepts one to three listed choices, each repeating the field name; the browser disables the rest once three are picked. `meetup` is a radio. Text answers must not be blank.
 
-Three questions depend on `work`. `company_size` is shown for any answer except “I don't use bb for work”. `team_improve` is shown for “2–4 people” and “5 or more”. `team_adopt` is shown for “Just me”. A hidden question is cleared and disabled in the browser, and discarded before server validation and storage, so it is never required.
+`work` is hidden when `role` is “Student” or “Not currently working”, and so are the three questions that depend on it. `company_size` is shown for any `work` answer except “I don't use bb for work”. `team_improve` is shown for “2–4 people” and “5 or more”. `team_adopt` is shown for “Just me”. A hidden question is cleared and disabled in the browser, and discarded before server validation and storage, so it is never required.
 
-Q1 shuffles every choice except “I don't remember” and “Other”, which stay last in that order. The community question shuffles every choice except “Other”, which stays last. Other questions keep their listed order. Picking “Other” on `discovery`, `role` or `community` turns that row into a text box; its `discovery_other`, `role_other` or `community_other` text is then required, and otherwise discarded. The meetup label names the city once one is typed.
+Q1 shuffles every choice except “I don't remember” and “Other”, which stay last in that order. The community question shuffles every choice except “Other”, which stays last. Other questions keep their listed order. Picking “Other” on `discovery`, `role` or `community` shows a “Please specify” text box below the choices; its `discovery_other`, `role_other` or `community_other` text is then required, and otherwise discarded. The meetup label names the city once one is typed.
 
 `email` is required, accepts one valid address, and is stored with the answers in the private survey response. Text fields accept up to 250 characters. Removed questions and contact fields are rejected.
 
