@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import * as domain from "@bb/domain";
+import { makeThreadQueuedMessage } from "@bb/test-helpers/domain-fixtures";
 import {
   setupCommandOutputTestEnvironment,
   collectLogLines,
@@ -99,7 +100,15 @@ describe("bb thread wait command output", () => {
         updatedAt: 2,
       }),
     );
-    stubServerApi({ "v1.threads.:id.$get": get });
+    stubServerApi({
+      "v1.threads.:id.$get": get,
+      "v1.threads.:id.queued-messages.$get": vi.fn(async () => [
+        makeThreadQueuedMessage({
+          threadId: "thread-wait-error",
+          waitingOn: { kind: "thread-busy" },
+        }),
+      ]),
+    });
 
     await expect(
       runCommand(
@@ -112,6 +121,48 @@ describe("bb thread wait command output", () => {
       "Error: Thread thread-wait-error is in status error and will not reach idle by waiting alone. Inspect it with 'bb thread show thread-wait-error' and recover by sending a follow-up.",
     );
     expect(get).toHaveBeenCalledTimes(1);
+  });
+
+  it("bb thread wait --status idle keeps waiting on a failed thread that will resume on its own", async () => {
+    const statuses = ["error", "error", "active", "idle"] as const;
+    const get = vi.fn(async () =>
+      fixtures.makeThread({
+        id: "thread-wait-resume",
+        projectId: "proj-1",
+        providerId: "codex",
+        status: statuses[Math.min(get.mock.calls.length - 1, 3)] ?? "idle",
+        createdAt: 1,
+        updatedAt: 2,
+      }),
+    );
+    stubServerApi({
+      "v1.threads.:id.$get": get,
+      "v1.threads.:id.queued-messages.$get": vi.fn(async () => [
+        makeThreadQueuedMessage({
+          initiator: "system",
+          threadId: "thread-wait-resume",
+          sendAt: 1,
+          waitingOn: { kind: "time" },
+        }),
+      ]),
+    });
+
+    await runCommand(
+      [
+        "thread",
+        "wait",
+        "thread-wait-resume",
+        "--status",
+        "idle",
+        "--poll-interval",
+        "1",
+      ],
+      register,
+    );
+
+    expect(collectLogLines(vi.mocked(console.log))).toContain(
+      "Thread thread-wait-resume reached status idle.",
+    );
   });
 
   it("bb thread wait --event reports server errors instead of schema errors", async () => {

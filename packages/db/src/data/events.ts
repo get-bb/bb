@@ -2195,6 +2195,55 @@ export function getLatestThreadInterruptedReason(
   return systemThreadInterruptedReasonSchema.parse(row.reason);
 }
 
+export function getLatestThreadInterruption(
+  db: DbQueryConnection,
+  args: { threadId: string },
+): { reason: SystemThreadInterruptedReason; sequence: number } | null {
+  const row = db
+    .select({
+      reason: sql<string>`json_extract(${events.data}, '$.reason')`,
+      sequence: events.sequence,
+    })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.type, "system/thread/interrupted"),
+      ),
+    )
+    .orderBy(desc(events.sequence))
+    .limit(1)
+    .get();
+  if (!row) return null;
+  return {
+    reason: systemThreadInterruptedReasonSchema.parse(row.reason),
+    sequence: row.sequence,
+  };
+}
+
+export function listLatestTurnRequestSystemMessageKinds(
+  db: DbQueryConnection,
+  args: { limit: number; threadId: string },
+): (string | null)[] {
+  return db
+    .select({
+      kind: sql<
+        string | null
+      >`json_extract(${events.data}, '$.systemMessageKind')`,
+    })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.type, "client/turn/requested"),
+      ),
+    )
+    .orderBy(desc(events.sequence))
+    .limit(args.limit)
+    .all()
+    .map((row) => row.kind);
+}
+
 export function listStoredTurnStartedRowsByTurnIdsUpToSequence(
   db: DbConnection,
   args: ListStoredTurnStartedRowsByTurnIdsUpToSequenceArgs,
@@ -4397,6 +4446,42 @@ export function pruneTokenUsageEventsInTransaction(
     ...args,
     eventType: "thread/tokenUsage/updated",
   });
+}
+
+export function getRunningCommandItemData(
+  db: DbQueryConnection,
+  args: { threadId: string },
+): string | null {
+  const startedType = "item/started" satisfies ThreadEventType;
+  const completedType = "item/completed" satisfies ThreadEventType;
+  const finished = alias(events, "finished_command");
+  const row = db
+    .select({ data: events.data })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        sql`${events.itemKind} = 'commandExecution'`,
+        eq(events.type, startedType),
+        isNotNull(events.itemId),
+        notExists(
+          db
+            .select({ one: sql`1` })
+            .from(finished)
+            .where(
+              and(
+                eq(finished.threadId, events.threadId),
+                eq(finished.itemId, events.itemId),
+                eq(finished.type, completedType),
+              ),
+            ),
+        ),
+      ),
+    )
+    .orderBy(desc(events.sequence))
+    .limit(1)
+    .get();
+  return row?.data ?? null;
 }
 
 export function listOpenBackgroundTaskItemRowsForHost(

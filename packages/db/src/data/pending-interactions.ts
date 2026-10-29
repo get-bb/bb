@@ -399,3 +399,14 @@ export function interruptPendingInteractionsForThreadIds(
     threadIds: args.threadIds,
   });
 }
+
+export function listThreadIdsWithActivePendingInteractions(
+  db: PendingInteractionReadConnection,
+): string[] {
+  return db
+    .selectDistinct({ threadId: pendingInteractions.threadId })
+    .from(pendingInteractions)
+    .where(inArray(pendingInteractions.status, ["pending", "resolving"]))
+    .all()
+    .map((row) => row.threadId);
+}

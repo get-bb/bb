@@ -113,6 +113,10 @@ import { scheduleThreadProvisioningAdvance } from "./thread-provisioning.js";
 import { isPreStartThreadStatus } from "./thread-status.js";
 import { settleDanglingBackgroundTasksForStoppedThreadInTransaction } from "./background-task-reconciliation.js";
 import { abortPluginToolCallsForThreads } from "../plugins/plugin-tool-calls.js";
+import {
+  hasPendingRestartResume,
+  resumeTurnsCutByRestart,
+} from "./restart-resume.js";
 
 type ThreadStartCommand = Awaited<ReturnType<typeof buildThreadStartCommand>>;
 type ThreadStopCommand = ReturnType<typeof buildThreadStopCommand>;
@@ -1808,8 +1812,9 @@ function interruptActiveThreads(
             data: buildSystemErrorEventData({
               code: "thread_command_failed",
               message: failureMessage,
-              detail:
-                threadCommandFailureDetailForInterruption(effectiveReason),
+              detail: hasPendingRestartResume(tx, thread.threadId)
+                ? "bb will send this thread a message to continue."
+                : threadCommandFailureDetailForInterruption(effectiveReason),
             }),
           });
         }
@@ -1882,7 +1887,8 @@ function interruptActiveThreads(
     if (
       result.interruptedTurnId !== null &&
       thread &&
-      isParentNotifiableChildThread(thread, "interrupted")
+      isParentNotifiableChildThread(thread, "interrupted") &&
+      !hasPendingRestartResume(deps.db, thread.id)
     ) {
       void queueChildThreadTurnNotificationBestEffort(deps, {
         childThread: thread,
@@ -2158,6 +2164,11 @@ export async function reconcileDaemonReportedThreads(
     )
     .all();
 
+  await resumeTurnsCutByRestart(deps, {
+    hostId: args.hostId,
+    now: Date.now(),
+    threadIds: activeButMissing.map((thread) => thread.id),
+  });
   interruptActiveThreads(deps, {
     threads: activeButMissing.map((thread) => ({
       environmentId: thread.environmentId,

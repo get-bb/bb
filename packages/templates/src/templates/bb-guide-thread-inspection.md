@@ -109,6 +109,10 @@ Inspecting:
     --timeout <duration>                   Seconds, or a duration with a unit: 90s, 20m, 4h (default: 1200s / 20 min)
     --poll-interval <duration>             Milliseconds, or a duration with a unit
 
+  Waiting for idle on a thread in `error` exits 4 at once, unless the thread
+  has a message scheduled to send on its own, such as a retry or a resume after
+  a restart; then it keeps waiting.
+
 Opening threads and files in the app:
 
   In chat, reference a thread as @thread:thr_abc123, substituting its actual ID.

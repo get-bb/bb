@@ -105,6 +105,10 @@ import {
 } from "../lib/lifecycle-api-errors.js";
 import { resolvePromptAttachmentReferences } from "../projects/attachments.js";
 import { requestQueuedMessageDispatch } from "./queued-message-dispatch.js";
+import {
+  isStaleRestartResume,
+  readRestartResumeSubject,
+} from "./restart-resume.js";
 import { assertThreadHostAcceptsWork } from "./thread-host-admission.js";
 import {
   ThreadContextClearInProgressError,
@@ -649,6 +653,17 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
  * queue is where a blocked dispatch waits. Null when the row is an ordinary
  * message, which is every row but these.
  */
+function isStaleNotice(
+  deps: Pick<AppDeps, "db">,
+  threadId: string,
+  row: ClaimedQueuedMessage,
+): boolean {
+  const subject = readRestartResumeSubject(row);
+  return (
+    subject !== null && isStaleRestartResume(deps.db, { subject, threadId })
+  );
+}
+
 async function sendClaimedSystemNotice(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: SendClaimedQueuedMessageForThreadArgs,
@@ -661,12 +676,14 @@ async function sendClaimedSystemNotice(
     JSON.parse(lead.systemNotice),
   );
   const queuedMessage = toThreadQueuedMessage(lead);
-  const delivered = await deliverParentSystemMessage(deps, {
-    input: queuedMessage.content,
-    parentThread: args.thread,
-    systemMessageKind: notice.kind,
-    systemMessageSubject: notice.subject,
-  });
+  const delivered =
+    isStaleNotice(deps, args.thread.id, lead) ||
+    (await deliverParentSystemMessage(deps, {
+      input: queuedMessage.content,
+      parentThread: args.thread,
+      systemMessageKind: notice.kind,
+      systemMessageSubject: notice.subject,
+    }));
   if (!delivered) {
     // The thread changed under the drain. Leave the row claimed-and-released
     // by the caller's error path rather than consuming a notice nobody got.

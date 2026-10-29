@@ -33,6 +33,7 @@ const unavailableSystemConfig: SystemConfigResponse = {
     applicationLinks: false,
     changelogPreview: false,
     compactExpiredCache: false,
+    continueThreadsAfterRestarts: false,
     serverMove: false,
     performanceDiagnostics: false,
     pluginUpdates: false,

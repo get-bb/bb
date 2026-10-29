@@ -187,6 +187,10 @@ remote client's localStorage.
 release notes as a dismissible card on Settings → Updates. Experiments that
 gate a feature are documented with it: `serverMove` in `bb guide machines`,
 `performanceDiagnostics` under Server performance diagnostics below.
+`continueThreadsAfterRestarts` sends each thread a quit, crash, update, or
+machine restart interrupted one message naming what it was doing, so the agent
+checks it and carries on; bb drops it if the turn finished, the user stopped
+it, or the user sent something newer.
 `timelinePush` sends an open thread's timeline updates over the live
 connection as row deltas instead of reloading the latest window after each
 update. `compactExpiredCache` offers a Compact chip in the composer when an idle

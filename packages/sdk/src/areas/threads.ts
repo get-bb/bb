@@ -1120,6 +1120,14 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
     },
   };
+  const hasScheduledQueuedMessage = async (input: {
+    signal?: AbortSignal | undefined;
+    threadId: string;
+  }): Promise<boolean> =>
+    (await queuedMessages.list(input)).some(
+      (row) => row.waitingOn?.kind === "time" && row.failureReason === null,
+    );
+
   const queuedMessages: ThreadQueuedMessagesArea = {
     async create(input) {
       const { threadId, ...json } = input;
@@ -1722,7 +1730,13 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
               threadId: input.threadId,
             };
           }
-          if (isThreadWaitTargetUnreachable(thread.status, target)) {
+          if (
+            isThreadWaitTargetUnreachable(thread.status, target) &&
+            !(await hasScheduledQueuedMessage({
+              signal: input.signal,
+              threadId: input.threadId,
+            }))
+          ) {
             throw new ThreadWaitUnreachableError({
               currentStatus: thread.status,
               target,

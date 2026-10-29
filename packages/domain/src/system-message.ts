@@ -23,6 +23,7 @@ const systemMessageKindValues = [
   "child-outcome-batch",
   "tool-result-delivered",
   "environment-directory-updated",
+  "restart-resume",
   "unlabeled",
 ] as const;
 export const systemMessageKindSchema = z.enum(systemMessageKindValues);
@@ -70,6 +71,11 @@ export const systemMessageSubjectSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("directory"),
     path: z.string(),
+  }),
+  z.object({
+    kind: z.literal("restart"),
+    afterSequence: z.number().int(),
+    turnId: z.string().nullable(),
   }),
 ]);
 export type SystemMessageSubject = z.infer<typeof systemMessageSubjectSchema>;

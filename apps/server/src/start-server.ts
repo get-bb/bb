@@ -39,6 +39,10 @@ import {
   runPeriodicSweeps,
   runStartupRecoverySweep,
 } from "./services/system/periodic-sweeps.js";
+import {
+  recordResumesForShutdown,
+  releaseRestartResumes,
+} from "./services/threads/restart-resume.js";
 import { installProviderModelCatalogPrewarm } from "./services/providers/provider-model-catalog-prewarm.js";
 import {
   createProviderRegistryService,
@@ -420,6 +424,20 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     await runStartupRecoverySweep(sweepDeps).catch((error) => {
       logger.error({ err: error }, "Startup recovery sweep failed");
     });
+    try {
+      const resumed = releaseRestartResumes(sweepDeps, { now: Date.now() });
+      if (resumed.length > 0) {
+        logger.info(
+          { threadCount: resumed.length },
+          "Resuming threads a restart interrupted",
+        );
+      }
+    } catch (error) {
+      logger.error(
+        { err: error },
+        "Could not resume the threads a restart interrupted",
+      );
+    }
   }
 
   if (!isLoopbackHostname(serverConfig.BB_SERVER_BIND_HOST)) {
@@ -485,6 +503,14 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       return shutdownPromise;
     }
     shutdownPromise = (async () => {
+      await recordResumesForShutdown(sweepDeps, { now: Date.now() }).catch(
+        (error: unknown) => {
+          logger.warn(
+            { err: error },
+            "Could not record the threads this shutdown interrupts",
+          );
+        },
+      );
       hub.stopClientChangeNotifications();
       serverMove.dispose();
       appUpdate.dispose();
