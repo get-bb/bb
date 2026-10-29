@@ -118,6 +118,7 @@ import {
 } from "@/components/secondary-panel/info/info-list";
 import { InfoListRow } from "@bb/shared-ui/info-list-row";
 import { DetailRow } from "@/components/ui/detail-card";
+import { ThreadDetailsCardRow } from "@/components/plugin/ThreadDetailsCardRow";
 import { useTabVisible } from "@/components/secondary-panel/tab-visibility";
 import { useServerChoices } from "@/hooks/useServerChoices";
 import { ThreadRowMetadata } from "@/components/plugin/ThreadRowMetadata";
@@ -200,6 +201,7 @@ export const pluginSdkAppImplementation = {
   experimental_InfoSection: InfoSection,
   experimental_ThreadRowMetadata: ThreadRowMetadata,
   experimental_DetailRow: DetailRow,
+  experimental_ThreadDetailsCardRow: ThreadDetailsCardRow,
   experimental_InfoList: InfoList,
   experimental_InfoListRow: PluginInfoListRow,
   experimental_useSidebarThreads: useSidebarThreads,

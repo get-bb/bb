@@ -78,6 +78,7 @@ export const EXTENDED_ICON_NAMES = [
   "Keyboard",
   "Laptop",
   "Layers",
+  "LayoutList",
   "Limitation",
   "Link",
   "ListEnd",

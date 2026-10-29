@@ -106,12 +106,14 @@ function renderBanner({
   core = EMPTY_CORE,
   git = null,
   archived = false,
+  threadDetailsCard = false,
   expandedSegment = null,
   onToggleSegment = () => {},
 }: {
   core?: CoreThreadContext;
   git?: GitSegmentFixture | null;
   archived?: boolean;
+  threadDetailsCard?: boolean;
   expandedSegment?: string | null;
   onToggleSegment?: (key: string) => void;
 } = {}) {
@@ -122,6 +124,7 @@ function renderBanner({
           input={{
             threadId: "thr_1",
             projectId: "proj_1",
+            threadDetailsCard,
             environment: { id: "env_1" },
           }}
           core={core}
@@ -152,6 +155,19 @@ afterEach(() => {
 });
 
 describe("thread context segments", () => {
+  it("leaves the parent thread to the thread details card when the view shows one", () => {
+    registerPluginSegment();
+    renderBanner({
+      core: { ...EMPTY_CORE, parentThread },
+      threadDetailsCard: true,
+    });
+
+    expect(
+      screen.queryByRole("button", { name: "Parent Plan the release" }),
+    ).toBeNull();
+    expect(screen.getByText(/Plugin summary demo\/status/)).toBeTruthy();
+  });
+
   it("orders core and plugin segments together and shares the visible list", () => {
     registerPluginSegment();
     renderBanner({ core: { ...EMPTY_CORE, parentThread }, git });

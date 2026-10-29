@@ -43,9 +43,7 @@ import {
   useThreadTimelineController,
 } from "@/components/thread/timeline";
 import { ThreadProviderContext } from "@/components/thread/thread-provider-context";
-import {
-  type ThreadListEntry,
-} from "@bb/domain";
+import { type ThreadListEntry } from "@bb/domain";
 import type { TerminalSession } from "@bb/server-contract";
 import type { WorkspaceOpenTarget } from "@bb/host-daemon-contract";
 import { appToast } from "@/components/ui/app-toast";
@@ -120,6 +118,14 @@ import {
 } from "@/lib/route-paths";
 import { THREAD_INFO_FIXED_TAB_REFERENCE } from "@/components/secondary-panel/thread-info-fixed-tab-navigation";
 import { ThreadDetailHeader } from "./ThreadDetailHeader";
+import {
+  CORE_THREAD_DETAILS_ROWS,
+  CORE_THREAD_DETAILS_SECTIONS,
+} from "./ThreadDetailsCardCore";
+import {
+  ThreadDetailsCardHeaderButton,
+  ThreadDetailsCardProvider,
+} from "@/components/plugin/PluginThreadDetailsCard";
 import { ThreadScreen, useThreadComposerAddToChat } from "./ThreadScreen";
 import { ThreadDetailSecondaryContent } from "./ThreadDetailSecondaryContent";
 import {
@@ -377,6 +383,10 @@ function ThreadDetailViewInternal(
   const navigate = useImmediateRouteNavigate();
   useFixedPanelTabsStorageMaintenance();
   const systemConfigQuery = useSystemConfig();
+  const isCompactViewport = useIsCompactViewport();
+  const threadDetailsCardEnabled =
+    systemConfigQuery.data?.experiments.threadDetailsCard === true &&
+    !isCompactViewport;
   const {
     hasThreadDetailBootstrapSettled,
     threadDetailBootstrapQuery,
@@ -440,7 +450,7 @@ function ThreadDetailViewInternal(
     fixedPanelTabsState,
   });
   const activeFixedSecondaryTabId = activeFixedSecondaryTab?.id ?? null;
-  const renderSecondaryPanelAsDrawer = useIsCompactViewport();
+  const renderSecondaryPanelAsDrawer = isCompactViewport;
   const secondaryPanelDrawerVisibility =
     useThreadSecondaryPanelDrawerVisibility({
       isCompactViewport: renderSecondaryPanelAsDrawer,
@@ -1720,6 +1730,7 @@ function ThreadDetailViewInternal(
       }
       thread={threadActionTarget}
       threadTitle={threadTitle}
+      detailsCardButton={<ThreadDetailsCardHeaderButton />}
       workspaceOpenButton={workspaceOpenButton}
     />
   );
@@ -2129,7 +2140,20 @@ function ThreadDetailViewInternal(
               <SelectionAddToChatContext.Provider
                 value={handleSelectionAddToChat}
               >
-                {threadDetailContent}
+                <ThreadDetailsCardProvider
+                  enabled={threadDetailsCardEnabled}
+                  coreRows={CORE_THREAD_DETAILS_ROWS}
+                  coreSections={CORE_THREAD_DETAILS_SECTIONS}
+                  threadId={thread.id}
+                  projectId={thread.projectId}
+                  environment={
+                    thread.environmentId === null
+                      ? null
+                      : { id: thread.environmentId }
+                  }
+                >
+                  {threadDetailContent}
+                </ThreadDetailsCardProvider>
               </SelectionAddToChatContext.Provider>
             </AttachmentOpenerContext.Provider>
           </MarkdownLocalFileOpenTargetsContext.Provider>

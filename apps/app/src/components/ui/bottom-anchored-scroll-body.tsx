@@ -41,6 +41,7 @@ interface BottomAnchoredScrollBodyProps {
   children: ReactNode;
   footer: ReactNode;
   scrollOverlay?: ReactNode;
+  contentInsetEndPx?: number;
   scrollAreaClassName?: string;
   contentClassName?: string;
   maxWidthClassName: string;
@@ -98,6 +99,7 @@ export function BottomAnchoredScrollBody({
   maxWidthClassName,
   footer,
   scrollOverlay,
+  contentInsetEndPx,
   children,
   scrollAnchorThreadId,
 }: BottomAnchoredScrollBodyProps) {
@@ -339,6 +341,9 @@ export function BottomAnchoredScrollBody({
             <div
               ref={scrollContentRef}
               className="flex min-h-full min-w-0 flex-col"
+              style={
+                contentInsetEndPx ? { paddingInlineEnd: contentInsetEndPx } : undefined
+              }
             >
               <div
                 ref={scrollFloorRef}
@@ -371,9 +376,9 @@ export function BottomAnchoredScrollBody({
           {scrollOverlay ? (
             <div
               data-scroll-overlay=""
-              className="pointer-events-none z-30 col-start-1 row-start-1 flex min-h-0 min-w-0 items-center justify-end px-3 py-3"
+              className="pointer-events-none z-30 col-start-1 row-start-1 flex min-h-0 min-w-0 flex-col items-end px-3 py-3"
             >
-              <div className="pointer-events-auto">{scrollOverlay}</div>
+              {scrollOverlay}
             </div>
           ) : null}
         </div>

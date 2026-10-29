@@ -818,6 +818,7 @@ list|get|set|reset` or `sdk.system.uiPreferences` (see
 | `sidebar.visiblePluginPanels` | Navigation destinations shown, or `null` for every destination                                                                                         |
 | `sidebar.footerOrder`         | Footer action order                                                                                                                                    |
 | `sidebar.hiddenFooterItems`   | Footer actions moved into More                                                                                                                         |
+| `threadDetailsCard.pinned`   | `true` (default) keeps a thread pane's thread details card open beside the transcript when the pane is wide enough; `false` opens it only from the header |
 | `infoPanel.collapsedSections` | Collapsed thread Info panel sections (`commits`, `uncommittedChanges`, `childThreads`, `forks`, `threadStorage`, or `<pluginId>/<sectionId>`)          |
 
 A legacy `__builtin__` thread list selection resolves to the bundled plugin.
@@ -873,7 +874,8 @@ The `earlyAdopter` general setting (the Become an early adopter banner on
 Settings → Experiments, `bb settings general earlyAdopter on`) switches the
 shipped default to the early adopter default: experiments marked Early adopter
 (currently `applicationLinks`, `timelinePush`, `compactExpiredCache`,
-`pluginUpdates`, `sidebarMultiSelect`, `unreadDividerAtAnswer`, and
+`pluginUpdates`, `sidebarMultiSelect`, `threadDetailsCard`,
+`unreadDividerAtAnswer`, and
 `websocketCompression`) turn on, and the rest stay
 off. An experiment you set yourself keeps your value either way.
 `/system/config` and `sdk.system.config()` return the resolved values in
@@ -931,6 +933,18 @@ off. An experiment you set yourself keeps your value either way.
   them onto a composer as one mention per thread. Cmd/Ctrl-click still opens a
   thread in a split. Plugins read it with
   `experimental_useExperiment("sidebarMultiSelect")`.
+- `threadDetailsCard` (on for early adopters) moves a running thread's
+  details into the thread details card at the upper-right of its pane: bb's parent
+  thread and child threads, the Git plugin's changes, which open the Diff tab,
+  and GitHub PR Status's pull request. The context row above the
+  composer drops those segments and keeps other plugins' segments; the
+  project, environment, and branch stay below the composer, side chats keep
+  their context row, and a new thread's composer is unchanged.
+  A header button opens the card or pins it: a pinned card sits beside the
+  transcript in a wide pane and moves the transcript aside in a medium one,
+  and a narrow pane opens it over the transcript. Phones keep the context
+  row above the composer and show no card. Plugins read it with
+  `experimental_useExperiment("threadDetailsCard")`.
 - `threadRowMetadata` adds Metadata to the built-in thread list's Organize →
   Rows menu. With it checked (`showRowMetadata`), plugins draw details such as
   GitHub PR Status's pull request number on a line under each thread title.

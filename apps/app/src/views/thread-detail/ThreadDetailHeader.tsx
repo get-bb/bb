@@ -73,6 +73,7 @@ export interface ThreadDetailHeaderActionsMenuArgs {
 
 interface ThreadDetailHeaderProps {
   actionsMenu: ((args: ThreadDetailHeaderActionsMenuArgs) => ReactNode) | null;
+  detailsCardButton?: ReactNode;
   isSecondaryPanelOpen: boolean;
   onClosePane?: () => void;
   onToggleSecondaryPanel: () => void;
@@ -91,6 +92,7 @@ export function ThreadDetailHeader({
   thread,
   threadTitle,
   workspaceOpenButton,
+  detailsCardButton,
 }: ThreadDetailHeaderProps) {
   const isCompactViewport = useIsCompactViewport();
   const isPointerCoarse = usePointerCoarse();
@@ -306,6 +308,7 @@ export function ThreadDetailHeader({
             <Icon name="CloseThreadPane" />
           </Button>
         ) : null}
+        {detailsCardButton}
         {mountRightPanelToggle ? (
           <Button
             type="button"

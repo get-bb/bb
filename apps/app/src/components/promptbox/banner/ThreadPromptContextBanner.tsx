@@ -963,7 +963,8 @@ const coreThreadContextSegments: readonly CoreThreadContextSegment[] =
         order: 10,
         summary: ParentThreadSummary,
         details: ParentThreadDetails,
-        useVisible: () => useCoreThreadContext().parentThread !== null,
+        useVisible: ({ threadDetailsCard }) =>
+          useCoreThreadContext().parentThread !== null && !threadDetailsCard,
       });
     }),
   ).threadContextSegments.map((slot) => ({

@@ -157,6 +157,9 @@ export const experimental_DetailRow = runtimeComponent(
   "experimental_DetailRow",
 );
 export const experimental_InfoList = runtimeComponent("experimental_InfoList");
+export const experimental_ThreadDetailsCardRow = runtimeComponent(
+  "experimental_ThreadDetailsCardRow",
+);
 export const experimental_InfoListRow = runtimeComponent(
   "experimental_InfoListRow",
 );

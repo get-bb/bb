@@ -38,6 +38,7 @@ import {
   type PluginSourceCodeRendererProps,
   type ExperimentalThreadContextSegmentProps,
   type ExperimentalThreadInfoProps,
+  type ExperimentalThreadDetailsCardProps,
   type ExperimentalThreadRowMetadataProps,
   type PluginThreadActionItemInput,
   type ExperimentalPluginBrowserToolbarActionProps,
@@ -289,6 +290,8 @@ type SlotPropsByName = {
   experimental_threadRowMetadata: ExperimentalThreadRowMetadataProps;
   experimental_threadInfoRow: ExperimentalThreadInfoProps;
   experimental_threadInfoSection: ExperimentalThreadInfoProps;
+  experimental_threadDetailsCardRow: ExperimentalThreadDetailsCardProps;
+  experimental_threadDetailsCardSection: ExperimentalThreadDetailsCardProps;
   experimental_threadAction: PluginThreadActionItemInput<unknown>;
   experimental_browserToolbarAction: ExperimentalPluginBrowserToolbarActionProps;
   fileOpener: PluginFileOpenerProps;
@@ -380,12 +383,19 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "threadId",
     "projectId",
     "environment",
+    "threadDetailsCard",
     "segments",
     "isExpanded",
     "onToggle",
   ],
   experimental_threadInfoRow: ["threadId", "projectId", "environment"],
   experimental_threadInfoSection: ["threadId", "projectId", "environment"],
+  experimental_threadDetailsCardRow: ["threadId", "projectId", "environment"],
+  experimental_threadDetailsCardSection: [
+    "threadId",
+    "projectId",
+    "environment",
+  ],
   experimental_threadRowMetadata: ["thread", "data"],
   experimental_threadAction: [
     "thread",

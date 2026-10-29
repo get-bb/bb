@@ -56,7 +56,12 @@ function Banner({
         onExpandedChange={() => onToggleSection(CHILD_THREADS)}
       />
       <ThreadPromptContextBanner
-        input={{ threadId: "thr_1", projectId: "proj_1", environment: null }}
+        input={{
+          threadId: "thr_1",
+          projectId: "proj_1",
+          threadDetailsCard: false,
+          environment: null,
+        }}
         core={{ parentThread: parentThreadSection }}
         archivedSection={archivedSection}
         environmentGoneSection={environmentGoneSection}

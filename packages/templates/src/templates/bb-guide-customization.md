@@ -197,6 +197,9 @@ Cmd/Ctrl+Shift-click and Shift-click for bulk actions and drag; Cmd/Ctrl-click
 still opens a thread in a split.
 `pluginUpdates` lists plugin updates on Settings → Updates with Update and
 Update all, and counts them in the sidebar updates badge; see `bb guide plugins`.
+`threadDetailsCard` moves a running thread's changes, pull request, and parent
+and child threads into a card at the upper-right of its pane, opened or pinned from
+the header. It defaults on for early adopters.
 `threadRowMetadata` adds Organize → Rows → Metadata to the built-in thread list,
 a line under each thread title where plugins show details such as the pull
 request number.
@@ -208,8 +211,8 @@ pushes) on the app's live connection; it applies when the app reconnects.
 `bb settings general earlyAdopter on` (Settings → Experiments → Become an early
 adopter) turns on the experiments marked Early adopter, currently
 `applicationLinks`, `timelinePush`, `compactExpiredCache`, `pluginUpdates`,
-`sidebarMultiSelect`, `unreadDividerAtAnswer`, and `websocketCompression`; an
-experiment you set yourself keeps your value.
+`sidebarMultiSelect`, `threadDetailsCard`, `unreadDividerAtAnswer`, and
+`websocketCompression`; an experiment you set yourself keeps your value.
 
 Launcher settings
 
@@ -285,7 +288,8 @@ Sidebar preferences
 
 `bb settings ui` reads and writes server-side sidebar preferences shared by
 every window, device, and the CLI. The same registry stores which thread Info
-panel sections are collapsed (`infoPanel.collapsedSections`).
+panel sections are collapsed (`infoPanel.collapsedSections`) and whether a
+thread pane's thread details card stays pinned open (`threadDetailsCard.pinned`).
 
 bb settings ui list [--json]
 bb settings ui get <key> [--json]

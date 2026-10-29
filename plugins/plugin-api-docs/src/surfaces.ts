@@ -272,6 +272,26 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         experimental: true,
       },
       {
+        id: "thread-details-card",
+        title: "Thread details card",
+        summary:
+          "Add a row or a titled section to the details card of every thread pane. With this, a plugin can:",
+        bullets: [
+          "Keep a pull request, change counts, or related threads in view while messages scroll",
+          "Sit among bb's own rows in the Info tab's groups, drawn with the same row",
+          "Leave the card, placement, and the header button to bb",
+        ],
+        apiSymbols: [
+          "ExperimentalThreadDetailsCardRowRegistration",
+          "ExperimentalThreadDetailsCardSectionRegistration",
+          "ExperimentalThreadDetailsCardProps",
+          "experimental_ThreadDetailsCardRow",
+          "ExperimentalThreadDetailsCardRowProps",
+        ],
+        firstParty: ["Git", "GitHub PR Status"],
+        experimental: true,
+      },
+      {
         id: "timeline-renderers",
         title: "Timeline entry content",
         summary:

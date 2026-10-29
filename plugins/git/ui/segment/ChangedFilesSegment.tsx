@@ -52,8 +52,12 @@ function useFocusHandoff(
 
 export function useChangedFilesSegmentVisible({
   environment,
+  threadDetailsCard,
 }: ExperimentalThreadContextSegmentInput): boolean {
-  const environmentId = useShowGitChanges() ? (environment?.id ?? null) : null;
+  const environmentId =
+    useShowGitChanges() && !threadDetailsCard
+      ? (environment?.id ?? null)
+      : null;
   const { workspace } = useGitStatus(environmentId);
   return (
     environmentId !== null &&

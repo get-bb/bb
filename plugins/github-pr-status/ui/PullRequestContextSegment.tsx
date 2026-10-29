@@ -67,7 +67,9 @@ function useThreadPullRequest(
 export function usePullRequestSegmentVisible(
   input: ExperimentalThreadContextSegmentInput,
 ): boolean {
-  const show = useSettings().values?.[SHOW_PULL_REQUEST_SETTING] === true;
+  const show =
+    useSettings().values?.[SHOW_PULL_REQUEST_SETTING] === true &&
+    !input.threadDetailsCard;
   return useThreadPullRequest(show ? input.environment : null) !== null;
 }
 
@@ -98,7 +100,6 @@ export function PullRequestLink({
   const isAlone = segments.length === 1;
   const showLabel =
     isAlone || (segments.length === 2 && segments.some(isChangedFilesSegment));
-  const nextStep = getPullRequestNextStep(pullRequest);
   const handleClick = useOpenUrlClick(pullRequest.url);
   return (
     <a
@@ -118,34 +119,58 @@ export function PullRequestLink({
     >
       <PullRequestStatusPill pullRequest={pullRequest} className="h-4" />
       {showLabel ? (
-        <span
-          className="min-w-0 truncate"
-          data-promptbox-hide-compact={isAlone ? undefined : ""}
-        >
-          PR #{pullRequest.number}
-          {isAlone && pullRequest.state !== "open"
-            ? ` · ${PULL_REQUEST_STATE_DISPLAY[pullRequest.state].label}`
-            : ""}
-        </span>
-      ) : null}
-      {showLabel && nextStep && shouldShowAttentionLabel(pullRequest) ? (
-        <>
-          <span aria-hidden>·</span>
-          <PullRequestNextStepLabel nextStep={nextStep} />
-        </>
-      ) : null}
-      {showLabel && isPullRequestAutoMergeOn(pullRequest) ? (
-        <Icon
-          name="Zap"
-          aria-label="Auto-merge on"
-          className="size-3 shrink-0 text-subtle-foreground"
+        <PullRequestSummaryLabel
+          pullRequest={pullRequest}
+          showState={isAlone}
+          hideNumberWhenCompact={!isAlone}
         />
       ) : null}
     </a>
   );
 }
 
-const MERGE_ACTIONS: readonly {
+export function PullRequestSummaryLabel({
+  pullRequest,
+  showState,
+  hideNumberWhenCompact,
+}: {
+  pullRequest: PullRequest;
+  showState: boolean;
+  hideNumberWhenCompact: boolean;
+}) {
+  const nextStep = shouldShowAttentionLabel(pullRequest)
+    ? getPullRequestNextStep(pullRequest)
+    : null;
+  const showAutoMerge =
+    nextStep === null && isPullRequestAutoMergeOn(pullRequest);
+  return (
+    <>
+      <span
+        className="min-w-0 truncate"
+        data-promptbox-hide-compact={hideNumberWhenCompact ? "" : undefined}
+      >
+        PR #{pullRequest.number}
+        {showState && pullRequest.state !== "open"
+          ? ` · ${PULL_REQUEST_STATE_DISPLAY[pullRequest.state].label}`
+          : ""}
+      </span>
+      {nextStep ? (
+        <>
+          <span aria-hidden>·</span>
+          <PullRequestNextStepLabel nextStep={nextStep} />
+        </>
+      ) : null}
+      {showAutoMerge ? (
+        <>
+          <span aria-hidden>·</span>
+          <span className="shrink-0">Auto-merge</span>
+        </>
+      ) : null}
+    </>
+  );
+}
+
+export const MERGE_ACTIONS: readonly {
   method: PullRequestMergeMethod;
   label: string;
 }[] = [

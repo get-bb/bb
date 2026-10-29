@@ -32,7 +32,7 @@ describe("BottomAnchoredScrollBody grid", () => {
       /^<div class="([^"]*)"><div data-page-scroll-viewport="" class="([^"]*)">/,
     );
     const overlay = markup.match(
-      /<div data-scroll-overlay="" class="([^"]*)"><div class="pointer-events-auto"><nav>Overlay<\/nav><\/div><\/div><\/div>$/,
+      /<div data-scroll-overlay="" class="([^"]*)"><nav>Overlay<\/nav><\/div><\/div>$/,
     );
     const gridTokens = classTokens(grid?.[1]);
 

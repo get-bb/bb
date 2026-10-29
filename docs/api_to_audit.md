@@ -2802,6 +2802,87 @@ Docs: `frontend-registration.md`, `frontend-components.md`.
    `[data-info-section]`, so a section that renders without
    `experimental_InfoSection` gets no separator. Confirm that is acceptable.
 
+## `app.slots.experimental_threadDetailsCardRow` / `app.slots.experimental_threadDetailsCardSection` / `experimental_ThreadDetailsCardRow` (`@get-bb/plugin-sdk/app`)
+
+The thread details card's counterparts of the Info tab's row and section
+slots. A row registration is `{ id, group, order?, component }`; a section is
+`{ id, title, group, order?, component }`. Components receive
+`{ threadId, projectId, environment }` (`environment` is `{ id }` from the
+thread, null only without one) and render `experimental_ThreadDetailsCardRow`
+rows (`{ icon?, leading?, label, trailing?, title?, disabled?, onClick?,
+action? }`), or null; `action` is a second control beside the main one, such
+as a menu.
+The card renders only while the `threadDetailsCard` experiment is on.
+
+`ThreadDetailView` wraps each thread page and split pane in
+`ThreadDetailsCardProvider`
+(`apps/app/src/components/plugin/PluginThreadDetailsCard.tsx`). Rows merge
+bb's with plugin registrations and sort by `group`, `order` (unset last), then
+registration order with core first on a tie, using
+`experimental_THREAD_INFO_ROW_GROUPS`; they share one block with no heading.
+Plugin sections sort the same way below the rows, each under its title and a
+divider. Every plugin row and section mounts in its own crash boundary keyed
+by thread, and CSS `:has` hides a block, or the whole card, whose components
+render no element. `ThreadDetailsCard` sits in `ThreadScreen`'s scroll
+overlay, sibling to the scroll viewport, and measures the overlay: `gutter`
+when the card fits beside the 760px transcript column, `shift` when padding
+the scroll content by the card's width keeps the column whole, `overlay`
+otherwise. While `threadDetailsCard.pinned` (a synced UI preference, default
+true) is on, gutter and shift show the card in the pane and shift pads the
+transcript; the header button (`ThreadDetailsCardHeaderButton`) toggles the
+pin. In overlay the header button opens the same content in the shared
+Popover. Compact viewports (phones) get no card: `ThreadDetailView` disables
+the provider there, so the composer keeps its context row. A narrow pane on a
+desktop, such as one beside the right panel or in a split, keeps the card in
+its popover.
+
+**Core callers.** bb's parent row (thread group) is `CORE_THREAD_DETAILS_ROWS`
+and its Child threads section (related group) is
+`CORE_THREAD_DETAILS_SECTIONS`, both in
+`apps/app/src/views/thread-detail/ThreadDetailsCardCore.tsx` and drawn with
+`ThreadDetailsCardRow`, the component behind `experimental_ThreadDetailsCardRow`.
+The Git plugin registers its `changes` row (full `+N −M` counts; it opens the
+Diff tab, where the merge base is picked) and GitHub PR Status its `pull-request` row (the banner's
+own label, `PullRequestSummaryLabel`, after the GitHub icon that carries the
+checks, opening the pull request; its `…` menu
+opens GitHub, copies the link, merges, and marks it ready or draft, at the
+card's width, flush with its edges). A row's `action` replaces its `trailing`
+while the row is hovered or focused or the action's menu is open, and always
+shows on touch screens.
+
+The composer banner moves only what the card shows. Context segments receive
+`threadDetailsCard`, true when the pane shows the card (a thread page with the
+experiment on, outside compact viewports; false in side chats, plugin thread
+chats, and on phones). bb's parent
+segment, the Git changed-files segment, and the PR segment hide when it is
+true; third-party segments keep showing until their authors migrate. Contract
+tests: `PluginThreadDetailsCard.test.tsx` and
+`ThreadPromptContextBanner.segments.test.tsx`.
+
+Docs: `frontend-thread-details-card.md`, `frontend-registration.md` (segment
+input), `frontend-components.md`, `docs/configuration.md` (experiment and
+preference).
+
+**Audit before stabilizing.**
+
+1. **Context segments.** With the card shown, the context segment slot has no
+   first-party users. Decide whether to retire
+   `experimental_threadContextSegment` or keep it for composer-time context,
+   and whether `threadDetailsCard` stays on its input.
+2. **Shift.** Pinning or unpinning in a medium pane moves the transcript
+   sideways. Confirm that is acceptable or reserve the space permanently.
+3. **Row actions.** `action` takes any node; GitHub PR Status builds its own
+   `…` menu from shared tokens. Decide whether bb ships the menu as a
+   component, and whether menus should open beside the card instead of below.
+4. **Emptiness.** The header button shows whenever any row or section is
+   registered. When every one renders nothing for a thread, the card shows an
+   empty state ("Nothing to show yet") instead of hiding, so the button and
+   the transcript's position do not depend on the thread.
+5. **Groups.** Rows reuse the Info tab's groups. Confirm the two surfaces
+   should share one group vocabulary.
+6. **Other presentations.** Side chats and plugin thread chats render no card
+   and keep their composer segments.
+
 ## `app.slots.experimental_threadRowMetadata` / `experimental_ThreadRowMetadata` (`@get-bb/plugin-sdk/app`)
 
 A registration is `{ id, order?, useData?, component }`. `useData` is a React

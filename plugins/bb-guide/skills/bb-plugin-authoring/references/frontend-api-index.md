@@ -27,6 +27,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `experimental_DetailRow`
 - `experimental_InfoList`
 - `experimental_InfoListRow`
+- `experimental_ThreadDetailsCardRow`
 - `useRpc`
 - `experimental_useRpcQuery`
 - `experimental_useRpcKeyedQuery`
@@ -219,6 +220,10 @@ Read the installed SDK declarations for the exact current signatures.
 - `ExperimentalThreadInfoRowRegistration`
 - `ExperimentalThreadRowMetadataRegistration`
 - `ExperimentalThreadInfoSectionRegistration`
+- `ExperimentalThreadDetailsCardRowRegistration`
+- `ExperimentalThreadDetailsCardSectionRegistration`
+- `ExperimentalThreadDetailsCardProps`
+- `ExperimentalThreadDetailsCardRowProps`
 - `PluginThreadActionTarget`
 - `PluginThreadActionChoice`
 - `PluginThreadActionChoices`

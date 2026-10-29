@@ -62,6 +62,7 @@ import GridViewIcon from "@hugeicons/core-free-icons/GridViewIcon";
 import InternetIcon from "@hugeicons/core-free-icons/InternetIcon";
 import LaptopIcon from "@hugeicons/core-free-icons/LaptopIcon";
 import Layers01Icon from "@hugeicons/core-free-icons/Layers01Icon";
+import LayoutListIcon from "@hugeicons/core-free-icons/LayoutListIcon";
 import LayoutTwoColumnIcon from "@hugeicons/core-free-icons/Layout2ColumnIcon";
 import LayoutTwoRowIcon from "@hugeicons/core-free-icons/Layout2RowIcon";
 import LimitationIcon from "@hugeicons/core-free-icons/LimitationIcon";
@@ -302,6 +303,7 @@ export const EXTENDED_ICON_MAP: ExtendedIconMap = {
   Keyboard: KeyboardIcon,
   Laptop: LaptopIcon,
   Layers: Layers01Icon,
+  LayoutList: LayoutListIcon,
   Limitation: LimitationIcon,
   Link: Link02Icon,
   ListEnd: ListEndIcon,

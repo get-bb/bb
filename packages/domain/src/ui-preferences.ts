@@ -51,6 +51,7 @@ export const UI_PREFERENCE_KEYS = [
   "sidebar.threadListProvider",
   "composer.provider",
   "infoPanel.collapsedSections",
+  "threadDetailsCard.pinned",
 ] as const;
 export type UiPreferenceKey = (typeof UI_PREFERENCE_KEYS)[number];
 const uiPreferenceKeySchema = z.enum(UI_PREFERENCE_KEYS);
@@ -154,6 +155,11 @@ export const uiPreferenceDefinitions = {
     uiPreferenceStringSchema,
     "__automatic__",
     "Plugin that draws the composer's input box: a plugin key such as bb--composer/composer, or __automatic__ for the first composer from a plugin you installed, then the bundled Composer plugin. With no composer plugin enabled, no composer is shown.",
+  ),
+  "threadDetailsCard.pinned": defineUiPreference(
+    z.boolean(),
+    true,
+    "Whether a thread pane's thread details card stays open beside the transcript when the pane is wide enough; narrow panes always open it from the header.",
   ),
   "infoPanel.collapsedSections": defineUiPreference(
     uiPreferenceStringListSchema.transform((ids) => [

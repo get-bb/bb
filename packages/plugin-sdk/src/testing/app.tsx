@@ -108,6 +108,9 @@ import {
   type ExperimentalThreadContextSegmentRegistration,
   type ExperimentalThreadInfoRowRegistration,
   type ExperimentalThreadInfoSectionRegistration,
+  type ExperimentalThreadDetailsCardSectionRegistration,
+  type ExperimentalThreadDetailsCardRowRegistration,
+  type ExperimentalThreadDetailsCardRowProps,
   type ExperimentalInfoSectionProps,
   type ExperimentalDetailRowProps,
   type ExperimentalInfoListProps,
@@ -1523,6 +1526,46 @@ function TestDetailRow({ label, icon, children }: ExperimentalDetailRowProps) {
   );
 }
 
+function TestThreadDetailsCardRow(
+  props: ExperimentalThreadDetailsCardRowProps,
+) {
+  const { icon, leading, label, trailing, title, disabled, action } = props;
+  const content = (
+    <>
+      {leading}
+      {label}
+      {trailing}
+    </>
+  );
+  const main =
+    props.onClick !== undefined ? (
+      <button
+        type="button"
+        data-testid="bb-thread-details-card-row"
+        data-icon={icon}
+        title={title}
+        disabled={disabled}
+        onClick={() => props.onClick?.()}
+      >
+        {content}
+      </button>
+    ) : (
+      <div
+        data-testid="bb-thread-details-card-row"
+        data-icon={icon}
+        title={title}
+      >
+        {content}
+      </div>
+    );
+  return (
+    <>
+      {main}
+      {action}
+    </>
+  );
+}
+
 /** Stand-in for the Info tab list: every item, with the limit recorded. */
 function TestInfoList<Item>({
   items,
@@ -1767,6 +1810,7 @@ const testPluginSdkApp = {
   experimental_Diff: TestDiff,
   experimental_InfoSection: TestInfoSection,
   experimental_DetailRow: TestDetailRow,
+  experimental_ThreadDetailsCardRow: TestThreadDetailsCardRow,
   experimental_InfoList: TestInfoList,
   experimental_InfoListRow: TestInfoListRow,
   experimental_useSidebarThreads(): PluginSidebarThreadsState {
@@ -2012,6 +2056,8 @@ export interface CapturedPluginApp {
   threadInfoRows: ExperimentalThreadInfoRowRegistration[];
   threadRowMetadata: ExperimentalThreadRowMetadataRegistration<unknown>[];
   threadInfoSections: ExperimentalThreadInfoSectionRegistration[];
+  threadDetailsCardRows: ExperimentalThreadDetailsCardRowRegistration[];
+  threadDetailsCardSections: ExperimentalThreadDetailsCardSectionRegistration[];
   threadActions: PluginThreadActionRegistration<unknown>[];
   browserToolbarActions: ExperimentalPluginBrowserToolbarActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];

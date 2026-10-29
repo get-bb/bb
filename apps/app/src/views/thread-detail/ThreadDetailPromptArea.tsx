@@ -215,6 +215,7 @@ interface ThreadDetailPromptAreaProps {
   parentThreadSection: ThreadPromptParentThreadSection | null;
   childThreadsSection: ThreadPromptChildThreadsSection | null;
   contextEnvironmentId: string | null;
+  threadDetailsCard: boolean;
   sendMessage: SendMessageMutationLike;
   sentMessageEdit?: ThreadDetailSentMessageEdit;
   steerActiveThreadOnEnter: boolean;
@@ -422,6 +423,7 @@ export function ThreadDetailPromptArea({
   parentThreadSection,
   childThreadsSection,
   contextEnvironmentId,
+  threadDetailsCard,
   sendMessage,
   sentMessageEdit,
   steerActiveThreadOnEnter,
@@ -2119,6 +2121,7 @@ export function ThreadDetailPromptArea({
           input={{
             threadId: thread.id,
             projectId: thread.projectId,
+            threadDetailsCard,
             environment:
               contextEnvironmentId === null
                 ? null
@@ -2175,6 +2178,7 @@ export function ThreadDetailPromptArea({
       environmentHostId,
       expandedBannerSegment,
       contextEnvironmentId,
+      threadDetailsCard,
       thread.projectId,
       handleDeleteQueuedMessage,
       beginEditQueuedMessage,

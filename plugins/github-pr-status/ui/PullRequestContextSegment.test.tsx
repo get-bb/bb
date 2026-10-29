@@ -93,6 +93,7 @@ function renderPart(
       threadId="thr_1"
       projectId="proj_1"
       environment={{ id: "env_1" }}
+      threadDetailsCard={false}
       segments={segments}
       isExpanded={false}
       onToggle={() => {}}
@@ -112,7 +113,11 @@ afterEach(() => {
 describe("pull request context segment", () => {
   it("shows only when the thread's environment has a pull request", () => {
     show(PULL_REQUEST);
-    const input = { threadId: "thr_1", projectId: "proj_1" };
+    const input = {
+      threadId: "thr_1",
+      projectId: "proj_1",
+      threadDetailsCard: false,
+    };
     expect(
       renderHook(() =>
         usePullRequestSegmentVisible({
@@ -137,6 +142,20 @@ describe("pull request context segment", () => {
     ).toBe(false);
   });
 
+  it("hides while the thread details card holds the pull request", () => {
+    show(PULL_REQUEST);
+    expect(
+      renderHook(() =>
+        usePullRequestSegmentVisible({
+          threadId: "thr_1",
+          projectId: "proj_1",
+          threadDetailsCard: true,
+          environment: { id: "env_1" },
+        }),
+      ).result.current,
+    ).toBe(false);
+  });
+
   it.each([
     ["off", { showPullRequest: false }],
     ["loading", undefined],
@@ -149,6 +168,7 @@ describe("pull request context segment", () => {
           threadId: "thr_1",
           projectId: "proj_1",
           environment: { id: "env_1" },
+          threadDetailsCard: false,
         }),
       ).result.current,
     ).toBe(false);
@@ -193,9 +213,9 @@ describe("pull request context segment", () => {
   it.each([
     ["checks_pending", false, null],
     ["checks_failed", false, null],
-    ["checks_failed", true, null],
-    ["checks_pending", true, null],
-    ["ready_to_merge", true, null],
+    ["checks_failed", true, "Auto-merge"],
+    ["checks_pending", true, "Auto-merge"],
+    ["ready_to_merge", true, "Auto-merge"],
     ["queued", true, "Queued to merge"],
   ] as const)(
     "shows the next step and auto-merge for %s with auto-merge %s",
@@ -221,7 +241,9 @@ describe("pull request context segment", () => {
       } else {
         expect(markup).not.toContain('aria-hidden="true">·</span>');
       }
-      expect(markup.includes('aria-label="Auto-merge on"')).toBe(autoMerge);
+      expect(markup.includes(">Auto-merge</span>")).toBe(
+        label === "Auto-merge",
+      );
       expect(markup).toContain(
         attention === "checks_failed"
           ? 'class="fill-destructive"'

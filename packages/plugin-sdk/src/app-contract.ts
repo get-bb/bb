@@ -1838,6 +1838,11 @@ export interface ExperimentalThreadContextSegmentInput {
   threadId: string;
   projectId: string;
   /**
+   * Whether this thread view shows the thread details card. A plugin that
+   * shows the same content in a card row hides its segment while this is true.
+   */
+  threadDetailsCard: boolean;
+  /**
    * The thread's environment, or null when the thread has no environment,
    * its host is not active, or the environment is not a usable checkout.
    */
@@ -1925,6 +1930,93 @@ export interface ExperimentalThreadInfoSectionRegistration {
   group: string;
   order?: number;
   component: ComponentType<ExperimentalThreadInfoProps>;
+}
+
+/** Props passed to an `experimental_threadDetailsCardSection` component. */
+export interface ExperimentalThreadDetailsCardProps {
+  /**
+   * The thread shown in the pane. Every thread pane of a split layout has its
+   * own thread details card, so the component mounts once per visible thread; keep
+   * per-thread state in the component, never in a module-level singleton.
+   */
+  threadId: string;
+  projectId: string;
+  /**
+   * The thread's environment, taken from the thread; null only when the
+   * thread has no environment. Read its state (host, checkout, git) yourself.
+   */
+  environment: ExperimentalThreadEnvironment | null;
+}
+
+/**
+ * A row in the thread details card at a thread pane's upper-right, below the
+ * header, beside bb's own rows; the card's counterpart of
+ * `experimental_threadInfoRow`. Render one or more
+ * `experimental_ThreadDetailsCardRow` elements, or null to show nothing for this
+ * thread. bb draws the card and places it: it stays put while messages
+ * scroll, each split pane has its own, and narrow panes open it from the
+ * header. The card shows only while the `threadDetailsCard` experiment is
+ * on. A crash removes only this row for that thread.
+ */
+export interface ExperimentalThreadDetailsCardRowRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /**
+   * Rows sort by `group` (string compare), then by `order` within a group
+   * (unset sorts last), then by registration order, with bb's own rows first
+   * on a tie. Rows use the Info tab's groups,
+   * {@link PluginSdkApp.experimental_THREAD_INFO_ROW_GROUPS}; any other
+   * string is a group of its own, placed where it sorts.
+   */
+  group: string;
+  order?: number;
+  component: ComponentType<ExperimentalThreadDetailsCardProps>;
+}
+
+/**
+ * A titled section of the thread details card, below its rows; the card's
+ * counterpart of `experimental_threadInfoSection`. bb draws the title and a
+ * divider above it, and hides the section while its component renders
+ * nothing. A crash removes only this section for that thread.
+ */
+export interface ExperimentalThreadDetailsCardSectionRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** Heading bb draws above the section's rows. */
+  title: string;
+  /**
+   * Sections sort by `group` (string compare), then by `order` within a group
+   * (unset sorts last), then by registration order.
+   */
+  group: string;
+  order?: number;
+  component: ComponentType<ExperimentalThreadDetailsCardProps>;
+}
+
+/**
+ * Props of the host-owned `experimental_ThreadDetailsCardRow` component, the row
+ * bb's own card rows use: an icon, a label, an optional trailing value, and an
+ * optional second control. With `onClick` the label is a button.
+ */
+export interface ExperimentalThreadDetailsCardRowProps {
+  /** Icon drawn before the label, any name `experimental_Icon` accepts. */
+  icon?: BbIconName;
+  /** Drawn in the icon's place, such as an app or site icon; wins over `icon`. */
+  leading?: ReactNode;
+  label: ReactNode;
+  /** Drawn at the row's end, such as a count or `+4 −1`. */
+  trailing?: ReactNode;
+  /** Tooltip, and the accessible description when the label is truncated. */
+  title?: string;
+  disabled?: boolean;
+  /**
+   * A second control, such as a button that opens a menu. It takes the
+   * place of `trailing` while the row is hovered or focused or the control's
+   * menu is open, and always shows on touch screens.
+   */
+  action?: ReactNode;
+  /** Makes the label a button. */
+  onClick?(): void;
 }
 
 /**
@@ -3647,6 +3739,22 @@ export interface PluginAppSlots {
    */
   experimental_threadInfoSection(
     registration: ExperimentalThreadInfoSectionRegistration,
+  ): void;
+  /**
+   * Add a row to the thread details card of every thread pane (see
+   * {@link ExperimentalThreadDetailsCardRowRegistration}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_threadDetailsCardRow(
+    registration: ExperimentalThreadDetailsCardRowRegistration,
+  ): void;
+  /**
+   * Add a titled section to the thread details card of every thread pane (see
+   * {@link ExperimentalThreadDetailsCardSectionRegistration}). Experimental:
+   * see docs/api_to_audit.md.
+   */
+  experimental_threadDetailsCardSection(
+    registration: ExperimentalThreadDetailsCardSectionRegistration,
   ): void;
   /**
    * Add an action to every thread actions menu (see
@@ -5712,6 +5820,12 @@ export interface PluginSdkApp {
    * Experimental: see docs/api_to_audit.md.
    */
   experimental_DetailRow: ComponentType<ExperimentalDetailRowProps>;
+  /**
+   * The thread details card's row (see
+   * {@link ExperimentalThreadDetailsCardRowProps}), the one bb's own sections use.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_ThreadDetailsCardRow: ComponentType<ExperimentalThreadDetailsCardRowProps>;
   /**
    * The thread Info tab's list (see {@link ExperimentalInfoListProps}), the
    * one bb's own sections use. Experimental: see docs/api_to_audit.md.
