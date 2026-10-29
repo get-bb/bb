@@ -18,7 +18,6 @@ import {
   type ThreadFixedTabEntry,
 } from "@/components/plugin/PluginThreadFixedTabs";
 import { BrowserTabIcon } from "@/components/secondary-panel/BrowserTabIcon";
-import { getPanelTabHistoryKey } from "@/components/secondary-panel/recentlyClosedPanelTabs";
 import { queueSplitDownload } from "@/lib/split-prefetch";
 import {
   useCallback,
@@ -49,8 +48,8 @@ import type { WorkspaceOpenTarget } from "@bb/host-daemon-contract";
 import { appToast } from "@/components/ui/app-toast";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import {
-  PluginDetailPanelContext,
-  usePluginDetailPanelState,
+  usePluginDetailRenderableTab,
+  usePluginDetailTabOpener,
 } from "@/components/plugin/plugin-detail-navigation";
 import { useForkThreadFromMessage } from "@/hooks/useForkThreadFromMessage";
 import { useUpdateEnvironment } from "../../hooks/mutations/environment-mutations";
@@ -458,20 +457,10 @@ function ThreadDetailViewInternal(
       isCompactViewport: renderSecondaryPanelAsDrawer,
       threadId,
     });
-  const pluginDetails = usePluginDetailPanelState(
-    threadId,
-    isFocused,
-    getPanelTabHistoryKey({
-      environmentId: thread?.environmentId,
-      fileOwnerThreadId: threadId ?? null,
-      panelStateId: threadId ?? null,
-    }),
-  );
   const isWorkspacePanelOpen = renderSecondaryPanelAsDrawer
     ? secondaryPanelDrawerVisibility.isDrawerVisible
     : isPersistedSecondaryPanelOpen;
-  const isSecondaryPanelOpen =
-    isWorkspacePanelOpen || pluginDetails.activePluginId !== null;
+  const isSecondaryPanelOpen = isWorkspacePanelOpen;
   const touchFixedPanelTabsState = useTouchFixedPanelTabsState(
     threadId,
     threadId,
@@ -530,6 +519,7 @@ function ThreadDetailViewInternal(
     activateTab,
     closeTab,
     openTab,
+    openPluginDetail,
     openPluginPanel,
     orderedSecondaryFileTabs,
     reopenClosedTab,
@@ -544,6 +534,9 @@ function ThreadDetailViewInternal(
     storageFiles: threadStorageFiles,
     terminalSessions: terminalsListQuery.data?.sessions,
   });
+  const renderPluginDetailTab = usePluginDetailRenderableTab(
+    orderedSecondaryFileTabs,
+  );
   const panelBrowser = usePanelBrowser({
     available: isDesktopBrowserAvailable(),
     browserTabs,
@@ -795,14 +788,16 @@ function ThreadDetailViewInternal(
     openPersistedWorkspaceFile: panelFiles.openWorkspaceFile,
     togglePersistedPanel: toggleDefaultPersistedSecondaryPanel,
   });
-  const dismissPluginDetails = pluginDetails.dismiss;
-  const closeSecondaryPanel = useCallback(() => {
-    dismissPluginDetails();
-    closeWorkspacePanel();
-  }, [dismissPluginDetails, closeWorkspacePanel]);
+  const openPluginDetailTab = useCallback(
+    (detail: { detailKey: string; title: string }) => {
+      openPluginDetail(detail);
+      openCompactDrawer();
+    },
+    [openCompactDrawer, openPluginDetail],
+  );
+  usePluginDetailTabOpener(openPluginDetailTab, isFocused);
   const openRegisteredFixedTab = useCallback(
     (entry: ThreadFixedTabEntry) => {
-      dismissPluginDetails();
       clearActiveFileTabs();
       updateFixedPanelTabsState((current) => ({
         ...current,
@@ -817,12 +812,7 @@ function ThreadDetailViewInternal(
       }));
       openCompactDrawer();
     },
-    [
-      dismissPluginDetails,
-      clearActiveFileTabs,
-      updateFixedPanelTabsState,
-      openCompactDrawer,
-    ],
+    [clearActiveFileTabs, updateFixedPanelTabsState, openCompactDrawer],
   );
   const setFixedTabTarget = useSetFixedTabTarget();
   const panelDestinations = useMemo(
@@ -849,7 +839,6 @@ function ThreadDetailViewInternal(
         createPanelActionDestination({
           action,
           openPluginPanel: (args) => {
-            dismissPluginDetails();
             openPluginPanel(args);
             openCompactDrawer();
           },
@@ -857,7 +846,6 @@ function ThreadDetailViewInternal(
       ),
     ],
     [
-      dismissPluginDetails,
       threadFixedTabs.actions,
       threadFixedTabs.entries,
       openCompactDrawer,
@@ -869,7 +857,7 @@ function ThreadDetailViewInternal(
   );
   const panel = useAppPanelController({
     activeTabId: isSecondaryPanelOpen ? activeFixedSecondaryTabId : null,
-    close: closeSecondaryPanel,
+    close: closeWorkspacePanel,
     destinations: panelDestinations,
     isFocused,
   });
@@ -1045,17 +1033,13 @@ function ThreadDetailViewInternal(
     return true;
   });
   useAppCommandHandler("panel.reopenClosedTab", () => {
-    if (!isFocused || !reopenClosedTab(pluginDetails)) return false;
+    if (!isFocused || !reopenClosedTab()) return false;
     openCompactDrawer();
     return true;
   });
   useAppCommandHandler("file.quickOpen", () => {
     if (!isFocused) return false;
-    if (
-      isSecondaryPanelOpen &&
-      pluginDetails.activePluginId === null &&
-      activeFixedSecondaryTab?.kind === "new-tab"
-    ) {
+    if (isSecondaryPanelOpen && activeFixedSecondaryTab?.kind === "new-tab") {
       panel.close();
     } else {
       handleOpenNewTab();
@@ -1102,10 +1086,6 @@ function ThreadDetailViewInternal(
     [openLiveFilePreview, panel, terminals.open],
   );
   const handleCloseWindowRequest = useCallback(() => {
-    if (pluginDetails.activePluginId !== null) {
-      pluginDetails.close(pluginDetails.activePluginId);
-      return true;
-    }
     if (!isSecondaryPanelOpen) {
       return false;
     }
@@ -1126,7 +1106,6 @@ function ThreadDetailViewInternal(
     panel,
     closeTab,
     isSecondaryPanelOpen,
-    pluginDetails,
     terminals,
   ]);
   useAppCommandHandler("panel.toggle", () => {
@@ -1941,6 +1920,13 @@ function ThreadDetailViewInternal(
                 action.pluginId === tab.pluginId && action.id === tab.actionId,
             )
           : undefined;
+      if (tab.kind === "plugin-detail") {
+        return renderPluginDetailTab({
+          tab,
+          onSelect: () => handleActivateFileTab(tab.id),
+          onClose: () => closeTab(tab.id),
+        });
+      }
       const shared = {
         contentFillsRegion:
           tab.kind === "plugin-panel" &&
@@ -2136,30 +2122,28 @@ function ThreadDetailViewInternal(
     <>
       <PaneThreadActionCommandHandler thread={threadActionTarget} />
       <ThreadProviderContext.Provider value={threadProviderContextValue}>
-        <PluginDetailPanelContext.Provider value={pluginDetails}>
-          <MarkdownLocalFileOpenTargetsContext.Provider value={fileOpenTargets}>
-            <AttachmentOpenerContext.Provider value={openAttachment}>
-              <SelectionAddToChatContext.Provider
-                value={handleSelectionAddToChat}
+        <MarkdownLocalFileOpenTargetsContext.Provider value={fileOpenTargets}>
+          <AttachmentOpenerContext.Provider value={openAttachment}>
+            <SelectionAddToChatContext.Provider
+              value={handleSelectionAddToChat}
+            >
+              <ThreadContextCardProvider
+                enabled={threadContextCardEnabled}
+                coreRows={CORE_THREAD_CONTEXT_CARD_ROWS}
+                coreSections={CORE_THREAD_CONTEXT_CARD_SECTIONS}
+                threadId={thread.id}
+                projectId={thread.projectId}
+                environment={
+                  thread.environmentId === null
+                    ? null
+                    : { id: thread.environmentId }
+                }
               >
-                <ThreadContextCardProvider
-                  enabled={threadContextCardEnabled}
-                  coreRows={CORE_THREAD_CONTEXT_CARD_ROWS}
-                  coreSections={CORE_THREAD_CONTEXT_CARD_SECTIONS}
-                  threadId={thread.id}
-                  projectId={thread.projectId}
-                  environment={
-                    thread.environmentId === null
-                      ? null
-                      : { id: thread.environmentId }
-                  }
-                >
-                  {threadDetailContent}
-                </ThreadContextCardProvider>
-              </SelectionAddToChatContext.Provider>
-            </AttachmentOpenerContext.Provider>
-          </MarkdownLocalFileOpenTargetsContext.Provider>
-        </PluginDetailPanelContext.Provider>
+                {threadDetailContent}
+              </ThreadContextCardProvider>
+            </SelectionAddToChatContext.Provider>
+          </AttachmentOpenerContext.Provider>
+        </MarkdownLocalFileOpenTargetsContext.Provider>
       </ThreadProviderContext.Provider>
     </>
   );

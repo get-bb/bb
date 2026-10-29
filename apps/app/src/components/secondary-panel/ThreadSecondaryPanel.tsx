@@ -1,5 +1,4 @@
 import { ThreadInfoContentContext } from "@/components/secondary-panel/thread-info-registration";
-import { usePluginDetailPanelProps } from "@/components/plugin/plugin-detail-navigation";
 import {
   type CSSProperties,
   type FocusEvent,
@@ -52,7 +51,6 @@ import { SecondaryPanelTabStrip } from "./SecondaryPanelTabStrip";
 import { ImageTabLightboxProvider } from "./ImageTabLightboxContext";
 import { FilePreviewScrollPositionContext } from "./filePreviewScrollPositionContext";
 import type {
-  MarketplacePluginDetailPanelTab,
   SecondaryPanelPaneRenderContext,
   SecondaryPanelRenderableTab,
   SecondaryPanelTabReorderHandler,
@@ -188,7 +186,7 @@ export interface SecondaryPanelFixedTab {
 }
 
 export interface ThreadSecondaryPanelProps {
-  activeTab: SecondaryFixedPanelTab | MarketplacePluginDetailPanelTab | null;
+  activeTab: SecondaryFixedPanelTab | null;
   canNavigateTabs?: boolean;
   areFixedTabsReady?: boolean;
   environmentId?: string;
@@ -236,10 +234,9 @@ function panelTabPluginId(
 }
 
 export function ThreadSecondaryPanel(props: ThreadSecondaryPanelProps) {
-  const panelProps = usePluginDetailPanelProps(props);
   return (
     <ThreadInfoContentContext.Provider value={props.metadataContent}>
-      <ThreadSecondaryPanelContent {...panelProps} />
+      <ThreadSecondaryPanelContent {...props} />
     </ThreadInfoContentContext.Provider>
   );
 }

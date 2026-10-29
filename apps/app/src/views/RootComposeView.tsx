@@ -1,5 +1,4 @@
 import { BrowserTabIcon } from "@/components/secondary-panel/BrowserTabIcon";
-import { getPanelTabHistoryKey } from "@/components/secondary-panel/recentlyClosedPanelTabs";
 import { appendQuoteAndAttachmentsToDraft } from "@bb/client-core";
 import type { ComposerAttachment } from "@get-bb/plugin-sdk";
 import { createCoreComposerActions } from "@/lib/plugin-composer-handle";
@@ -161,8 +160,8 @@ import {
   usePaneContext,
 } from "./thread-detail/PaneContext";
 import {
-  PluginDetailPanelContext,
-  usePluginDetailPanelState,
+  usePluginDetailRenderableTab,
+  usePluginDetailTabOpener,
 } from "@/components/plugin/plugin-detail-navigation";
 import { RootComposePanelCommandHandlers } from "./RootComposePanelCommandHandlers";
 import {
@@ -719,19 +718,7 @@ function RootComposeSurface({
   const isWorkspacePanelOpen = isCompactViewport
     ? secondaryPanelDrawerVisibility.isDrawerVisible
     : isPersistedSecondaryPanelOpen;
-  const pluginDetails = usePluginDetailPanelState(
-    ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
-    isFocusedPane,
-    getPanelTabHistoryKey({
-      panelStateId: ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
-      environmentId: rootPanelEnvironmentId,
-      fileOwnerThreadId: rootPanelThreadId,
-      projectHostId: rootProjectHostId,
-      projectId: isProjectless ? null : projectId,
-    }),
-  );
-  const isSecondaryPanelOpen =
-    isWorkspacePanelOpen || pluginDetails.activePluginId !== null;
+  const isSecondaryPanelOpen = isWorkspacePanelOpen;
   const touchFixedPanelTabsState = useTouchFixedPanelTabsState(
     ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
     null,
@@ -845,6 +832,7 @@ function RootComposeSurface({
     browserTabs,
     activateTab,
     closeTab,
+    openPluginDetail,
     openPluginPanel,
     openTab,
     orderedSecondaryFileTabs,
@@ -864,6 +852,9 @@ function RootComposeSurface({
     storageFiles: rootThreadStorageFiles,
     terminalSessions: loadedTerminalSessions,
   });
+  const renderPluginDetailTab = usePluginDetailRenderableTab(
+    orderedSecondaryFileTabs,
+  );
   const panelBrowser = usePanelBrowser({
     available: isDesktopBrowserAvailable(),
     browserTabs,
@@ -944,33 +935,30 @@ function RootComposeSurface({
     openPersistedWorkspaceFile: panelFiles.openWorkspaceFile,
     togglePersistedPanel: toggleRootPersistedSecondaryPanel,
   });
-  const dismissPluginDetails = pluginDetails.dismiss;
-  const closeSecondaryPanel = useCallback(() => {
-    dismissPluginDetails();
-    closeWorkspacePanel();
-  }, [dismissPluginDetails, closeWorkspacePanel]);
+  const openPluginDetailTab = useCallback(
+    (detail: { detailKey: string; title: string }) => {
+      openPluginDetail(detail);
+      openCompactDrawer();
+    },
+    [openCompactDrawer, openPluginDetail],
+  );
+  usePluginDetailTabOpener(openPluginDetailTab, isFocusedPane);
   const panelDestinations = useMemo(
     () =>
       rootPanelNewThreadPanelActions.map((action) =>
         createPanelActionDestination({
           action,
           openPluginPanel: (args) => {
-            dismissPluginDetails();
             openPluginPanel(args);
             openCompactDrawer();
           },
         }),
       ),
-    [
-      dismissPluginDetails,
-      openCompactDrawer,
-      openPluginPanel,
-      rootPanelNewThreadPanelActions,
-    ],
+    [openCompactDrawer, openPluginPanel, rootPanelNewThreadPanelActions],
   );
   const panel = useAppPanelController({
     activeTabId: isSecondaryPanelOpen ? activeFixedSecondaryTabId : null,
-    close: closeSecondaryPanel,
+    close: closeWorkspacePanel,
     destinations: panelDestinations,
     isFocused: isFocusedPane,
   });
@@ -1104,17 +1092,13 @@ function RootComposeSurface({
     return true;
   });
   useAppCommandHandler("panel.reopenClosedTab", () => {
-    if (!isFocusedPane || !reopenClosedTab(pluginDetails)) return false;
+    if (!isFocusedPane || !reopenClosedTab()) return false;
     openCompactDrawer();
     return true;
   });
   useAppCommandHandler("file.quickOpen", () => {
     if (!isFocusedPane) return false;
-    if (
-      isSecondaryPanelOpen &&
-      pluginDetails.activePluginId === null &&
-      activeFixedSecondaryTab?.kind === "new-tab"
-    ) {
+    if (isSecondaryPanelOpen && activeFixedSecondaryTab?.kind === "new-tab") {
       panel.close();
     } else {
       handleOpenNewTab();
@@ -1153,10 +1137,6 @@ function RootComposeSurface({
     [openLiveFilePreview, panel, terminals.open],
   );
   const handleCloseWindowRequest = useCallback(() => {
-    if (pluginDetails.activePluginId !== null) {
-      pluginDetails.close(pluginDetails.activePluginId);
-      return true;
-    }
     if (!isSecondaryPanelOpen) {
       return false;
     }
@@ -1177,7 +1157,6 @@ function RootComposeSurface({
     panel,
     closeTab,
     isSecondaryPanelOpen,
-    pluginDetails,
     terminals,
   ]);
   const handleOpenPanelLink = useCallback<MarkdownPreviewLinkHandler>(
@@ -1254,6 +1233,13 @@ function RootComposeSurface({
     const filenameOf = (path: string) => path.split("/").at(-1) ?? path;
     const tabs = syncedOrderedSecondaryFileTabs.map(
       (tab): SecondaryPanelRenderableTab => {
+        if (tab.kind === "plugin-detail") {
+          return renderPluginDetailTab({
+            tab,
+            onSelect: () => handleActivateFileTab(tab.id),
+            onClose: () => closeTab(tab.id),
+          });
+        }
         const pluginAction =
           tab.kind === "plugin-panel"
             ? rootPanelNewThreadPanelActions.find(
@@ -1383,6 +1369,7 @@ function RootComposeSurface({
     syncedOrderedSecondaryFileTabs,
     terminals,
     terminalsById,
+    renderPluginDetailTab,
   ]);
   const rootPanelMetadataContent = useMemo(
     () => (
@@ -1535,7 +1522,7 @@ function RootComposeSurface({
   });
 
   return (
-    <PluginDetailPanelContext.Provider value={pluginDetails}>
+    <>
       <RootComposePanelCommandHandlers
         isFocused={isFocusedPane}
         isOpen={isSecondaryPanelOpen}
@@ -1594,6 +1581,6 @@ function RootComposeSurface({
           </UrlOpenRoutingProvider>
         </AttachmentOpenerContext.Provider>
       </PluginComposerHostProvider>
-    </PluginDetailPanelContext.Provider>
+    </>
   );
 }

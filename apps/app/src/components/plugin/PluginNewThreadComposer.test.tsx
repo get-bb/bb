@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { useContext, useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Provider } from "jotai";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
@@ -62,7 +62,7 @@ import {
 } from "@/lib/fixed-panel-tabs-state";
 import { buildPluginPaletteActions } from "@/lib/command-palette/palette-plugin-actions";
 import { getFocusedAppPanelController } from "@/lib/app-fixed-tab-navigation";
-import { PluginDetailPanelContext } from "./plugin-detail-navigation";
+import { useFixedPanelTabsState } from "@/lib/fixed-panel-tabs";
 import { openPluginDetailsInWorkspace } from "./plugin-detail-opener";
 import { PluginNewThreadComposer } from "./PluginNewThreadComposer";
 
@@ -115,10 +115,15 @@ vi.mock("@/views/RootComposePanelCommandHandlers", () => ({
   }: {
     onClose: () => boolean;
   }) => {
-    const details = useContext(PluginDetailPanelContext);
+    const { secondary } = useFixedPanelTabsState("root-compose", null);
+    const active = secondary.tabs.find(
+      (tab) => tab.id === secondary.activeTabId,
+    );
     return (
       <button
-        data-active-detail={details?.activePluginId ?? ""}
+        data-active-detail={
+          active?.kind === "plugin-detail" ? active.detailKey : ""
+        }
         onClick={onClose}
       >
         Close panel command

@@ -1,6 +1,5 @@
 import {
   useCallback,
-  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -40,7 +39,6 @@ import {
   isCompactSidebarDrawerShowing,
   subscribeCompactSidebarDrawerShowing,
 } from "@/components/ui/sidebar-mobile-drawer-visibility";
-import { PluginDetailPanelContext } from "@/components/plugin/plugin-detail-navigation";
 import {
   SecondaryPanelMinimumContext,
   useSecondaryPanelSizing,
@@ -102,16 +100,13 @@ export function SecondaryPanelLayout({
 }: SecondaryPanelLayoutProps) {
   const { ref: sizingRef, minimum: minimumSize } = useSecondaryPanelSizing();
   const paneContext = useOptionalPaneContext();
-  const pluginDetails = useContext(PluginDetailPanelContext);
   const renderPanel = useCallback(
     (args: SecondaryPanelRenderArgs) => (
       <SecondaryPanelWidthPercentAtomContext.Provider value={widthPercentAtom}>
-        <PluginDetailPanelContext.Provider value={pluginDetails}>
-          {renderWorkspacePanel(args)}
-        </PluginDetailPanelContext.Provider>
+        {renderWorkspacePanel(args)}
       </SecondaryPanelWidthPercentAtomContext.Provider>
     ),
-    [pluginDetails, renderWorkspacePanel, widthPercentAtom],
+    [renderWorkspacePanel, widthPercentAtom],
   );
   const secondaryPanelHost = paneContext?.secondaryPanelHost ?? null;
   const renderAsDrawer = useIsCompactViewport();

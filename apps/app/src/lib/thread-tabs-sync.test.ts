@@ -12,6 +12,7 @@ import {
   createThreadInfoFixedPanelTab,
   type FixedPanelTab,
   createPluginPageFixedPanelTab,
+  createPluginDetailFixedPanelTab,
 } from "./fixed-panel-tabs-state";
 import {
   areThreadTabListsEquivalent,
@@ -322,6 +323,31 @@ describe("thread tab synchronization", () => {
     });
 
     expect(areThreadTabListsEquivalent([pageTab], [])).toBe(true);
+  });
+
+  it("keeps local plugin detail tabs in place through a remote change without saving them", () => {
+    const first = browserTab("first", "First");
+    const second = browserTab("second", "Second");
+    const detail = createPluginDetailFixedPanelTab({
+      detailKey: "github",
+      title: "GitHub",
+    });
+    const current = createEmptyFixedPanelTabsState({
+      lastUsedAt: 123,
+      secondary: {
+        activeTabId: detail.id,
+        isOpen: true,
+        tabs: [first, detail],
+      },
+    });
+
+    const reconciled = reconcileFixedPanelTabsState(current, [first, second]);
+
+    expect(reconciled.secondary.tabs).toEqual([first, detail, second]);
+    expect(reconciled.secondary.activeTabId).toBe(detail.id);
+    expect(mergeThreadTabChanges([first], [first], [first, detail])).toEqual([
+      first,
+    ]);
   });
 });
 

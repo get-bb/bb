@@ -41,8 +41,12 @@ const MAX_WRITE_ATTEMPTS = 3;
 
 type PersistedThreadFixedPanelTab = Exclude<
   FixedPanelTab,
-  { kind: "plugin-page-fixed" }
+  { kind: "plugin-page-fixed" | "plugin-detail" }
 >;
+
+function isClientOnlyThreadTab(tab: FixedPanelTab): boolean {
+  return tab.kind === "plugin-page-fixed" || tab.kind === "plugin-detail";
+}
 
 function persistedThreadTabs(
   tabs: readonly (FixedPanelTab | ThreadTab)[],
@@ -51,7 +55,9 @@ function persistedThreadTabs(
   return tabs
     .filter(
       (tab): tab is PersistedThreadFixedPanelTab =>
-        tab.kind !== "side-chat" && tab.kind !== "plugin-page-fixed",
+        tab.kind !== "side-chat" &&
+        tab.kind !== "plugin-page-fixed" &&
+        tab.kind !== "plugin-detail",
     )
     .map(migrateLegacyFixedPanelTab)
     .filter((tab) => {
@@ -83,7 +89,12 @@ export function reconcileFixedPanelTabsState(
   if (areThreadTabListsEquivalent(current.secondary.tabs, serverTabs)) {
     return current;
   }
-  const tabs = persistedThreadTabs(serverTabs);
+  const tabs: FixedPanelTab[] = [...persistedThreadTabs(serverTabs)];
+  current.secondary.tabs.forEach((tab, index) => {
+    if (isClientOnlyThreadTab(tab) && !tabs.some(({ id }) => id === tab.id)) {
+      tabs.splice(Math.min(index, tabs.length), 0, tab);
+    }
+  });
   const retainedIds = new Set(tabs.map((tab) => tab.id));
   let reconciled = current;
   for (const tab of current.secondary.tabs) {
