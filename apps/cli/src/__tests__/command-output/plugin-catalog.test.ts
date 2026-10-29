@@ -256,7 +256,7 @@ describe("bb plugin catalog", () => {
     );
     expect(
       JSON.parse(String(vi.mocked(fetch).mock.calls[0]?.[1]?.body)),
-    ).toEqual({ source });
+    ).toEqual({ source, measurementSource: "cli" });
   });
 
   it("sends --plugin and --subdirectory as the install selection", async () => {
@@ -397,6 +397,7 @@ describe("bb plugin catalog", () => {
     );
     expect(JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body))).toEqual({
       entryId: "linear",
+      measurementSource: "cli",
     });
     expect(collectLogPayloads(vi.mocked(console.log)).join("\n")).toContain(
       "bundled with BB",
@@ -421,6 +422,7 @@ describe("bb plugin catalog", () => {
       entryId: "notes",
       marketplace: "acme-plugins",
       confirmedSource: thirdPartyPlan.resolvedSource,
+      measurementSource: "cli",
     });
     const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
     expect(output).toContain("Acme Plugins — a third-party marketplace");
