@@ -6,7 +6,7 @@ Mobile devices receive push messages through Expo, including when the app is clo
 
 Each thread has a level: `all` (questions, approvals, errors, finished turns), `input-only` (no finished turns), or `muted`. A thread uses its own level, else `childLevel` if it has a parent, else `defaultLevel`; every ancestor's own level caps it. Muting a parent mutes its whole subtree, but a parent never makes workers louder. The level applies on top of the suppressions below.
 
-Click a notification to open its thread, or bb when it has none; in the desktop app the click also restores and focuses the window. Events arriving together are combined, with pending questions taking priority. Read, archived, deleted, and hidden threads are suppressed. Tabs of the same origin deduplicate delivery.
+Click a notification to open its thread, or bb when it has none; in the desktop app the click also restores and focuses the window. A thread open in a focused window is not notified. Events arriving together are combined, with pending questions taking priority. Read, archived, deleted, and hidden threads are suppressed. Tabs of the same origin deduplicate delivery.
 
 ## Thread menu
 

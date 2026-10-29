@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   definePluginApp,
   useBbNavigate,
+  useBbContext,
   useRealtime,
   useRpc,
   useSettings,
@@ -20,15 +21,24 @@ import { notificationsThreadAction } from "./notificationsAction.js";
 function NotificationDelivery() {
   const navigate = useBbNavigate();
   const { values } = useSettings();
+  const { threadId } = useBbContext();
+  const currentThreadId = useRef(threadId);
   const delivery = useRef<ReturnType<typeof createClientDelivery> | null>(null);
   useEffect(() => {
-    const next = createClientDelivery((id) => navigate.toThread(id));
+    const next = createClientDelivery(
+      (id) => navigate.toThread(id),
+      () => currentThreadId.current,
+    );
     delivery.current = next;
     return () => {
       delivery.current = null;
       next.dispose();
     };
   }, [navigate]);
+  useEffect(() => {
+    currentThreadId.current = threadId;
+    delivery.current?.syncFocus();
+  }, [threadId]);
   useRealtime(CLIENT_NOTIFICATION_CHANNEL, (payload) => {
     const channel = clientChannel();
     const enabled = channel !== null && values?.[`${channel}Enabled`] === true;
