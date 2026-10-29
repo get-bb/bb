@@ -44,6 +44,7 @@ import { clampPermissionModeToHost } from "../hosts/permission-ceiling.js";
 import type { ProviderRegistryService } from "../providers/provider-registry.js";
 import { resolveProviderPlanCommand } from "../providers/provider-plan-command.js";
 import { workspaceContextFromPath } from "../environments/workspace-command-target.js";
+import { projectCheckoutPathOnHost } from "../projects/project-workspace.js";
 import {
   requireBridgeLaunchForProviderId,
   resolveBridgeLaunchForProviderId,
@@ -126,10 +127,7 @@ export type PreparedTurnSubmitCommandPayload = Omit<
 >;
 
 interface RuntimeExecutionOptionsArgs {
-  deps: Pick<
-    AppDeps,
-    "db" | "providerRegistry" | "pluginHostArtifacts" | "lifecycleDedupers"
-  >;
+  deps: Pick<AppDeps, "db" | "providerRegistry" | "lifecycleDedupers">;
   workspacePath: string;
   execution: ResolvedThreadExecutionOptions;
   hostId: string;
@@ -199,9 +197,9 @@ function resolvePromptMode(
     : undefined;
 }
 
-async function toRuntimeExecutionOptions(
+function toRuntimeExecutionOptions(
   args: RuntimeExecutionOptionsArgs,
-): Promise<RuntimeThreadExecutionOptions> {
+): RuntimeThreadExecutionOptions {
   const permissionMode = clampPermissionModeToHost(args.deps, {
     hostId: args.hostId,
     permissionMode: args.execution.permissionMode,
@@ -223,16 +221,23 @@ async function toRuntimeExecutionOptions(
     args.deps.db,
     args.threadId,
   );
-  const model =
-    await args.deps.lifecycleDedupers.providerModelCatalogs.getCachedModel(
-      args.deps,
-      {
-        hostId: args.hostId,
-        providerId: args.providerId,
-        cwd: args.workspacePath,
-        model: args.execution.model,
-      },
-    );
+  const checkoutPath = projectCheckoutPathOnHost(
+    args.deps,
+    args.projectId,
+    args.hostId,
+  );
+  const model = args.deps.lifecycleDedupers.providerModelCatalogs.getCachedModel(
+    args.deps,
+    {
+      hostId: args.hostId,
+      providerId: args.providerId,
+      workspacePaths:
+        checkoutPath === undefined
+          ? [args.workspacePath]
+          : [args.workspacePath, checkoutPath],
+      model: args.execution.model,
+    },
+  );
   const reasoningLevel =
     model === null ||
     model.supportedReasoningEfforts.some(
@@ -318,7 +323,7 @@ export async function buildThreadStartCommand(
     ...(args.inputGroups !== undefined
       ? { inputGroups: args.inputGroups }
       : {}),
-    options: await toRuntimeExecutionOptions({
+    options: toRuntimeExecutionOptions({
       ...args,
       deps,
       hostId: args.environment.hostId,
@@ -336,9 +341,9 @@ export async function buildThreadStartCommand(
   };
 }
 
-async function buildPreparedTurnSubmitCommandPayload(
+function buildPreparedTurnSubmitCommandPayload(
   args: PreparedTurnSubmitCommandBuildArgs,
-): Promise<PreparedTurnSubmitCommandPayload> {
+): PreparedTurnSubmitCommandPayload {
   const bridgeLaunch = requireBridgeLaunchForProviderId(
     args.deps,
     args.runtimeContext.providerId,
@@ -352,7 +357,7 @@ async function buildPreparedTurnSubmitCommandPayload(
     ...(args.inputGroups !== undefined
       ? { inputGroups: args.inputGroups }
       : {}),
-    options: await toRuntimeExecutionOptions({
+    options: toRuntimeExecutionOptions({
       ...args,
       input: args.input,
       projectId: args.runtimeContext.projectId,

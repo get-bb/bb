@@ -28,10 +28,11 @@ it.each([
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps);
       updateHost(harness.db, harness.hub, host.id, { type: hostType });
+      const workspacePath = "/tmp/reasoning-catalog";
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
+        path: workspacePath,
       });
-      const workspacePath = "/tmp/reasoning-catalog";
       const environment = seedEnvironment(harness.deps, {
         hostId: host.id,
         projectId: project.id,
@@ -129,12 +130,7 @@ it.each([
         [environment, "uncatalogued", "high", "high"],
         [environment, "no-reasoning", "high", undefined],
         [environment, "medium", "high", undefined],
-        [
-          otherWorkspace,
-          "unknown",
-          undefined,
-          catalogScope === "workspace" ? "medium" : undefined,
-        ],
+        [otherWorkspace, "unknown", undefined, undefined],
         [otherHostEnvironment, "unknown", undefined, "medium"],
         [otherHostEnvironment, "unknown", "high", "high", "explicit"],
       ] as const) {

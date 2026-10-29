@@ -98,8 +98,10 @@ loading, or after failure or an unrecognized response, BB shows no reasoning
 selector. Sending never waits for discovery: when a model's catalog entry does
 not list the thread's reasoning level, BB leaves reasoning out of the request and
 the agent keeps its own setting. CLI and SDK reasoning preferences stay stored.
-Failed probes have a 30-second server retry cooldown. Individual probe failures
-do not stop bulk discovery of other models. In `bb provider models
+Failed probes have a 30-second server retry cooldown; a probe the agent answers
+without levels is not repeated until the catalog is refreshed. Discovered levels
+survive later catalog refreshes. Individual probe failures do not stop bulk
+discovery of other models. In `bb provider models
 <provider-id> --json`, `reasoningDiscovery: "unknown"` means BB has not
 discovered the model's levels yet; `"known"` with an empty
 `supportedReasoningEfforts` means the model has no selectable levels, not that

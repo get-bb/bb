@@ -39,7 +39,9 @@ import {
   updateEnvironmentRequestSchema,
   unmanagedBranchSpecSchema,
 } from "../src/index.js";
-import type { WorkspaceResolutionFailure } from "@bb/host-daemon-contract/workspace";
+import type {
+  WorkspaceResolutionFailure,
+} from "@bb/host-daemon-contract/workspace";
 
 interface OptionalServerFieldGroup {
   fields: readonly string[];

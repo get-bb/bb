@@ -77,17 +77,14 @@ export interface ProviderModelCatalogStore {
     },
   ): Promise<void>;
   getCachedModel(
-    deps: Pick<
-      WorkSessionDeps,
-      "db" | "providerRegistry" | "pluginHostArtifacts"
-    >,
+    deps: Pick<WorkSessionDeps, "db" | "providerRegistry">,
     args: {
       hostId: string;
       providerId: string;
-      cwd: string | null;
+      workspacePaths: readonly string[];
       model: string;
     },
-  ): Promise<AvailableModel | null>;
+  ): AvailableModel | null;
   read(
     deps: WorkSessionDeps,
     args: {
@@ -223,6 +220,61 @@ function parseStoredModels(json: string): AvailableModel[] | null {
   }
 }
 
+function entryMapKey(key: ProviderModelCatalogRowKey): string {
+  return JSON.stringify([key.hostId, key.providerId, key.scopeKey]);
+}
+
+function keepDiscoveredReasoning(
+  discovered: readonly AvailableModel[],
+  models: AvailableModel[],
+): AvailableModel[] {
+  const known = new Map(
+    discovered
+      .filter((model) => model.reasoningDiscovery === "known")
+      .map((model) => [model.model, model] as const),
+  );
+  return models.map((model) => {
+    const source =
+      model.reasoningDiscovery === "unknown" ? known.get(model.model) : undefined;
+    return source === undefined
+      ? model
+      : {
+          ...model,
+          reasoningDiscovery: source.reasoningDiscovery,
+          supportedReasoningEfforts: source.supportedReasoningEfforts,
+          defaultReasoningEffort: source.defaultReasoningEffort,
+        };
+  });
+}
+
+function nextGood(
+  entry: CatalogEntry,
+  args: {
+    fingerprint: string;
+    models: AvailableModel[];
+    selectedOnlyModels: AvailableModel[];
+    fetchedAt: number;
+  },
+): CatalogGood {
+  const previous =
+    entry.good?.fingerprint === args.fingerprint
+      ? [...entry.good.models, ...entry.good.selectedOnlyModels]
+      : [];
+  const models = keepDiscoveredReasoning(previous, args.models);
+  const selectedOnlyModels = keepDiscoveredReasoning(
+    previous,
+    args.selectedOnlyModels,
+  );
+  return {
+    fingerprint: args.fingerprint,
+    models,
+    selectedOnlyModels,
+    modelsJson: JSON.stringify(models),
+    selectedOnlyModelsJson: JSON.stringify(selectedOnlyModels),
+    fetchedAt: args.fetchedAt,
+  };
+}
+
 function currentState(entry: CatalogEntry, fingerprint: string) {
   const good = entry.good?.fingerprint === fingerprint ? entry.good : null;
   const failure =
@@ -342,7 +394,7 @@ export function createProviderModelCatalogStore(options: {
     deps: Pick<WorkSessionDeps, "db">,
     key: ProviderModelCatalogRowKey,
   ): CatalogEntry {
-    const mapKey = JSON.stringify([key.hostId, key.providerId, key.scopeKey]);
+    const mapKey = entryMapKey(key);
     const existing = entries.get(mapKey);
     if (existing !== undefined) {
       entries.delete(mapKey);
@@ -456,14 +508,12 @@ export function createProviderModelCatalogStore(options: {
     let level: "info" | "warn" | "error" = "info";
     let fields: Record<string, unknown>;
     if (settlement.ok) {
-      entry.good = {
+      entry.good = nextGood(entry, {
         fingerprint: refresh.fingerprint,
         models: settlement.models,
         selectedOnlyModels: settlement.selectedOnlyModels,
-        modelsJson: JSON.stringify(settlement.models),
-        selectedOnlyModelsJson: JSON.stringify(settlement.selectedOnlyModels),
         fetchedAt: refresh.markedStale ? 0 : now,
-      };
+      });
       entry.failure = null;
       entry.unavailableDetail = null;
       persistGood(deps, entry.key, entry.good);
@@ -588,6 +638,7 @@ export function createProviderModelCatalogStore(options: {
     };
     entry.selectedModels.set(selectedModel, refresh);
     refresh.promise = (async () => {
+      let answered = false;
       try {
         const result = await callHostOnlineRpc(deps, {
           hostId: entry.key.hostId,
@@ -609,34 +660,29 @@ export function createProviderModelCatalogStore(options: {
           entry.good?.fingerprint !== fingerprint
         )
           return;
-        const currentModel = [
-          ...entry.good.models,
-          ...entry.good.selectedOnlyModels,
-        ].find((candidate) => candidate.model === selectedModel);
-        if (currentModel !== model) return;
+        answered = true;
         const discovered = [
           ...result.models,
           ...result.selectedOnlyModels,
+        ].filter(
+          (candidate) =>
+            candidate.model === selectedModel &&
+            candidate.reasoningDiscovery === "known",
+        );
+        const current = [
+          ...entry.good.models,
+          ...entry.good.selectedOnlyModels,
         ].find((candidate) => candidate.model === selectedModel);
         if (
-          discovered === undefined ||
-          discovered.reasoningDiscovery !== "known"
+          discovered.length === 0 ||
+          current?.reasoningDiscovery !== "unknown"
         )
           return;
-        const update = (models: AvailableModel[]) =>
-          models.map((candidate) =>
-            candidate.model === selectedModel
-              ? {
-                  ...candidate,
-                  reasoningDiscovery: discovered.reasoningDiscovery,
-                  supportedReasoningEfforts:
-                    discovered.supportedReasoningEfforts,
-                  defaultReasoningEffort: discovered.defaultReasoningEffort,
-                }
-              : candidate,
-          );
-        const models = update(entry.good.models);
-        const selectedOnlyModels = update(entry.good.selectedOnlyModels);
+        const models = keepDiscoveredReasoning(discovered, entry.good.models);
+        const selectedOnlyModels = keepDiscoveredReasoning(
+          discovered,
+          entry.good.selectedOnlyModels,
+        );
         entry.good = {
           ...entry.good,
           models,
@@ -656,43 +702,38 @@ export function createProviderModelCatalogStore(options: {
           "Selected model reasoning discovery failed",
         );
       } finally {
-        refresh.expiresAt = options.now() + FAILURE_TTL_MS;
+        refresh.expiresAt = answered
+          ? Infinity
+          : options.now() + FAILURE_TTL_MS;
       }
     })();
     return refresh.promise;
   }
 
   return {
-    async getCachedModel(deps, args) {
+    getCachedModel(deps, args) {
       const provider = deps.providerRegistry.get(args.providerId)?.info;
-      const bridgeLaunch = resolveBridgeLaunchForProviderId(
-        deps,
-        args.providerId,
-      );
-      if (provider === undefined || bridgeLaunch === null) return null;
-      const launch = await resolveCatalogLaunch({
-        hostId: args.hostId,
-        providerId: args.providerId,
-        bridgeLaunch,
-      });
-      const entry = loadEntry(deps, {
-        hostId: args.hostId,
-        providerId: args.providerId,
-        scopeKey:
-          args.cwd !== null &&
-          providerModelCatalogDependsOnWorkspace(
-            provider.capabilities.modelCatalogScope,
-          )
-            ? args.cwd
-            : "",
-      });
-      const { servable } = currentState(entry, launch.fingerprint);
-      return (
-        [
-          ...(servable?.models ?? []),
-          ...(servable?.selectedOnlyModels ?? []),
-        ].find((model) => model.model === args.model) ?? null
-      );
+      if (provider === undefined) return null;
+      const scopeKeys = providerModelCatalogDependsOnWorkspace(
+        provider.capabilities.modelCatalogScope,
+      )
+        ? args.workspacePaths
+        : [""];
+      for (const scopeKey of scopeKeys) {
+        const key = {
+          hostId: args.hostId,
+          providerId: args.providerId,
+          scopeKey,
+        };
+        const good =
+          entries.get(entryMapKey(key))?.good ?? loadStoredGood(deps, key);
+        const model = [
+          ...(good?.models ?? []),
+          ...(good?.selectedOnlyModels ?? []),
+        ].find((candidate) => candidate.model === args.model);
+        if (model !== undefined) return model;
+      }
+      return null;
     },
 
     async remember(deps, args) {
@@ -716,14 +757,12 @@ export function createProviderModelCatalogStore(options: {
       entry.refresh = null;
       entry.failure = null;
       entry.unavailableDetail = null;
-      entry.good = {
+      entry.good = nextGood(entry, {
         fingerprint: launch.fingerprint,
         models: args.models,
         selectedOnlyModels: args.selectedOnlyModels,
-        modelsJson: JSON.stringify(args.models),
-        selectedOnlyModelsJson: JSON.stringify(args.selectedOnlyModels),
         fetchedAt: options.now(),
-      };
+      });
       persistGood(deps, entry.key, entry.good);
       if (before !== pickerView(entry, launch.fingerprint)) {
         schedulePush(deps, args.hostId);

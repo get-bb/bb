@@ -1172,22 +1172,16 @@ async function loadSessionDiscoveredModels(
     onExit: () => {},
   });
 
-  const discoveryDeadline =
-    Date.now() + ACP_NATIVE_REASONING_DISCOVERY_TIMEOUT_MS;
-  const initialTimeoutMs =
-    selectedModel === undefined
-      ? MODEL_LIST_TIMEOUT_MS
-      : ACP_NATIVE_REASONING_DISCOVERY_TIMEOUT_MS;
   let timeout: ReturnType<typeof setTimeout> | undefined;
   const timeoutReached = new Promise<never>((_, reject) => {
     timeout = setTimeout(() => {
       connection.kill();
       reject(
         new Error(
-          `The agent did not answer within ${initialTimeoutMs / 1000} seconds while bb asked it for its models`,
+          `The agent did not answer within ${MODEL_LIST_TIMEOUT_MS / 1000} seconds while bb asked it for its models`,
         ),
       );
-    }, initialTimeoutMs);
+    }, MODEL_LIST_TIMEOUT_MS);
   });
 
   let discoveredCapabilities: AcpAgentCapabilities | null = null;
@@ -1245,10 +1239,6 @@ async function loadSessionDiscoveredModels(
       configOptions: newSession.configOptions,
       reasoningProbePriorityModelIds,
       selectedModel,
-      timeoutMs:
-        selectedModel === undefined
-          ? ACP_NATIVE_REASONING_DISCOVERY_TIMEOUT_MS
-          : Math.max(1, discoveryDeadline - Date.now()),
     });
     const models = buildModelCatalogFromConfigOptions(
       modelOption,
@@ -1293,7 +1283,6 @@ async function discoverAcpNativeModelSupport(args: {
   configOptions: readonly AcpConfigOption[] | undefined;
   reasoningProbePriorityModelIds: readonly string[];
   selectedModel: string | undefined;
-  timeoutMs: number;
 }): Promise<ReadonlyMap<string, AcpNativeModelSupport>> {
   const modelOptions = args.modelOption?.options ?? [];
   if (!args.modelOption || modelOptions.length === 0) {
@@ -1344,7 +1333,7 @@ async function discoverAcpNativeModelSupport(args: {
       timedOut = true;
       args.connection.kill();
       resolve(supportByModel);
-    }, args.timeoutMs);
+    }, ACP_NATIVE_REASONING_DISCOVERY_TIMEOUT_MS);
   });
 
   try {

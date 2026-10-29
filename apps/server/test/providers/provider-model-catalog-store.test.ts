@@ -308,6 +308,76 @@ describe("provider model catalog store", () => {
     });
   });
 
+  it("keeps discovered reasoning when a later full or live catalog reports the model unknown", async () => {
+    await withTestHarness(async (harness) => {
+      const host = setupCatalogHost(harness, { id: "host-keep-discovered" });
+      const unknown = modelList("a").map((model) => ({
+        ...model,
+        reasoningDiscovery: "unknown" as const,
+        supportedReasoningEfforts: [],
+      }));
+      host.setAnswer((command) =>
+        catalogAnswer(command.selectedModel ? modelList("a") : unknown),
+      );
+      await host.read("codex");
+      const discovered = (await host.read("codex", undefined, "a")).models[0];
+      expect(discovered?.reasoningDiscovery).toBe("known");
+      host.clock.now += 2 * MINUTE;
+      await host.read("codex");
+      await vi.waitFor(() => expect(host.listRequests()).toHaveLength(3));
+      await settleTimers();
+      expect((await host.read("codex")).models[0]).toEqual(discovered);
+      await host.store.remember(harness.deps, {
+        hostId: host.hostId,
+        provider: requireRegistration(harness, "codex").info,
+        cwd: null,
+        models: unknown,
+        selectedOnlyModels: [],
+      });
+      expect((await host.read("codex")).models[0]).toEqual(discovered);
+    });
+  });
+
+  it("applies a selected-model probe that settles after a concurrent full refresh", async () => {
+    await withTestHarness(async (harness) => {
+      const host = setupCatalogHost(harness, { id: "host-probe-refresh-race" });
+      const unknown = modelList("a").map((model) => ({
+        ...model,
+        reasoningDiscovery: "unknown" as const,
+        supportedReasoningEfforts: [],
+      }));
+      const probe = createDeferredPromise<HostRpcHandlerResult>();
+      host.setAnswer((command) =>
+        command.selectedModel ? probe.promise : catalogAnswer(unknown),
+      );
+      await host.read("codex");
+      host.clock.now += 2 * MINUTE;
+      const pending = host.read("codex", undefined, "a");
+      await vi.waitFor(() => expect(host.listRequests()).toHaveLength(3));
+      await settleTimers();
+      probe.resolve(catalogAnswer(modelList("a")));
+      expect((await pending).models[0]?.reasoningDiscovery).toBe("known");
+    });
+  });
+
+  it("does not probe a model again after the agent answered without its levels", async () => {
+    await withTestHarness(async (harness) => {
+      const host = setupCatalogHost(harness, { id: "host-answered-unknown" });
+      const unknown = modelList("a").map((model) => ({
+        ...model,
+        reasoningDiscovery: "unknown" as const,
+        supportedReasoningEfforts: [],
+      }));
+      host.setAnswer(() => catalogAnswer(unknown));
+      await host.read("codex");
+      await host.read("codex", undefined, "a");
+      expect(host.listRequests()).toHaveLength(2);
+      host.clock.now += 31 * SECOND;
+      await host.read("codex", undefined, "a");
+      expect(host.listRequests()).toHaveLength(2);
+    });
+  });
+
   it("does not replace a live session catalog with an older selected-model probe", async () => {
     await withTestHarness(async (harness) => {
       const host = setupCatalogHost(harness, {

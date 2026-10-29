@@ -664,19 +664,22 @@ export function useThreadCreationOptions(
     isSessionOptionModelSwitch,
   } = useMemo(
     () =>
-      resolveModelCatalogSelection({
-        models: selectedCatalog?.models ?? [],
-        selectedOnlyModels: selectedCatalog?.selectedOnlyModels ?? [],
-        selectedModel: rawSelectedModel,
-        preferredReasoningLevel,
-        sessionOptionSelections: requestedSessionOptionSelections,
-        provider: selectedProviderInfo,
-        catalogIsVerified: modelCatalogIsVerified,
-        formatModelLabel,
-      }),
+      selectedCatalog === executionOptionsQuery.data
+        ? baseCatalogSelection
+        : resolveModelCatalogSelection({
+            models: selectedCatalog?.models ?? [],
+            selectedOnlyModels: selectedCatalog?.selectedOnlyModels ?? [],
+            selectedModel: rawSelectedModel,
+            preferredReasoningLevel,
+            sessionOptionSelections: requestedSessionOptionSelections,
+            provider: selectedProviderInfo,
+            catalogIsVerified: modelCatalogIsVerified,
+            formatModelLabel,
+          }),
     [
-      selectedCatalog?.models,
-      selectedCatalog?.selectedOnlyModels,
+      baseCatalogSelection,
+      executionOptionsQuery.data,
+      selectedCatalog,
       modelCatalogIsVerified,
       preferredReasoningLevel,
       rawSelectedModel,
