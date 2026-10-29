@@ -49,18 +49,18 @@ afterEach(() => {
 
 describe("ThreadTimelineRows row isolation", () => {
   it.each(["user", "assistant"] as const)(
-    "places metadata on either side of a %s message without duplicating contributions",
+    "places metadata above a %s message and in its action row without duplicating contributions",
     (role) => {
       setPluginSlotRegistrations(
         "fixture",
         makePluginRegistrationSet({
           messageMetadata: [
+            { id: "time", component: () => <span>Timestamp</span> },
             {
-              id: "time",
-              placement: "above",
-              component: () => <span>Timestamp</span>,
+              id: "status",
+              placement: "actionRow",
+              component: () => <span>Status</span>,
             },
-            { id: "status", component: () => <span>Status</span> },
           ],
         }),
       );
@@ -93,6 +93,11 @@ describe("ThreadTimelineRows row isolation", () => {
       expect(
         body.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
+      expect(
+        screen
+          .getByRole("button", { name: "Message actions" })
+          .parentElement?.parentElement?.contains(status),
+      ).toBe(true);
       expect(screen.getAllByText("Timestamp")).toHaveLength(1);
       expect(screen.getAllByText("Status")).toHaveLength(1);
     },

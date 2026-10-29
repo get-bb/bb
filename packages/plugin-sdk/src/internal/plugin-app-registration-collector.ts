@@ -1170,14 +1170,10 @@ export function collectPluginAppRegistrations(
         const kind = "slots.experimental_messageMetadata";
         const id = requireSlotId(kind, registration?.id);
         requireUniqueId(kind, seenIds.messageMetadata, id);
-        const placement = registration.placement ?? "below";
-        if (
-          placement !== "above" &&
-          placement !== "below" &&
-          placement !== "actions"
-        ) {
+        const placement = registration.placement ?? "above";
+        if (placement !== "above" && placement !== "actionRow") {
           throw new Error(
-            `${kind}: "placement" must be "above", "below", or "actions"`,
+            `${kind}: "placement" must be "above" or "actionRow"`,
           );
         }
         collected.messageMetadata.push({

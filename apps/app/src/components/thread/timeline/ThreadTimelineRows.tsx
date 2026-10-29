@@ -1020,14 +1020,15 @@ const ConversationRowContent = memo(function ConversationRowContent({
           systemMessageKind={row.systemMessageKind}
           systemMessageSubject={row.systemMessageSubject}
           pluginActions={rowPluginActions}
-          actionMetadata={<MessageMetadata placement="actions" {...metadata} />}
+          actionMetadata={
+            <MessageMetadata placement="actionRow" {...metadata} />
+          }
           text={row.text}
           timestamp={row.startedAt}
           threadId={row.threadId}
           turnRequest={row.turnRequest}
           workspaceRootPath={workspaceRootPath}
         />
-        <MessageMetadata placement="below" {...metadata} />
       </>
     );
   }
@@ -1060,7 +1061,7 @@ const ConversationRowContent = memo(function ConversationRowContent({
         onOpenLink={onOpenLink}
         onOpenLocalFileLink={onOpenLocalFileLink}
         pluginActions={rowPluginActions}
-        actionMetadata={<MessageMetadata placement="actions" {...metadata} />}
+        actionMetadata={<MessageMetadata placement="actionRow" {...metadata} />}
         projectId={projectId}
         resolveUserAttachmentImageSrc={resolveUserAttachmentImageSrc}
         role="assistant"
@@ -1073,7 +1074,6 @@ const ConversationRowContent = memo(function ConversationRowContent({
         turnId={row.turnId}
         workspaceRootPath={workspaceRootPath}
       />
-      <MessageMetadata placement="below" {...metadata} />
     </>
   );
 });

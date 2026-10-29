@@ -18,7 +18,7 @@ export const coreMessageMetadata = collectPluginAppRegistrations(
   definePluginApp((app) => {
     app.slots.experimental_messageMetadata({
       id: "time",
-      placement: "actions",
+      placement: "actionRow",
       component: InlineMessageTime,
     });
   }),

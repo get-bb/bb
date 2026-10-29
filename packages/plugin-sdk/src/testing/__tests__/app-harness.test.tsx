@@ -1364,7 +1364,7 @@ describe("loadPluginApp", () => {
           });
         }),
       ),
-    ).rejects.toThrow('"placement" must be "above", "below", or "actions"');
+    ).rejects.toThrow('"placement" must be "above" or "actionRow"');
 
     await expect(
       loadPluginApp(

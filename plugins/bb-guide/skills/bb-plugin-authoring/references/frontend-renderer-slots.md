@@ -197,8 +197,8 @@ message, Original }` — render fenced code blocks of chosen languages in
   Experimental: see `docs/api_to_audit.md`.
 - `experimental_messageMetadata` → React metadata beside realized user and assistant
   messages in the main timeline and embedded `ThreadChat`. Registration:
-  `{ id, placement?: "above" | "below" | "actions", component }`; omitted placement
-  means below. `"actions"` renders in the message's hover action row on fine-pointer
+  `{ id, placement?: "above" | "actionRow", component }`; omitted placement
+  means above. `"actionRow"` renders in the message's hover action row on fine-pointer
   devices, revealed with the actions and never narrowing them;
   bb's own inline message time uses it. The component receives `{ message }` with
   stable `id`, `threadId`, `createdAt`, `turnId`, and `role`; user messages also

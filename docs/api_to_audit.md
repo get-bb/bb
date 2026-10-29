@@ -193,12 +193,13 @@ Requires SDK 0.6.98.
 `app.slots.experimental_messageMetadata({ id, placement?, component })` mounts
 React metadata beside realized user and assistant conversation messages,
 including windowing overscan and embedded ThreadChat timelines. `placement`
-accepts "above", "below", or "actions"; omission defaults to "below". "above"
-and "below" render outside the message. "actions" renders in the message's
+accepts "above" or "actionRow"; omission defaults to "above". "above" renders
+over the message, aligned to its side. "actionRow" renders in the message's
 hover action row on fine-pointer devices: revealed with the actions on hover or
 focus, before them on user messages and after the overflow menu on assistant
 messages. It extends into the space beside the message rather than narrowing
-the actions, so a short message keeps the same inline actions. It is hidden on touch devices and on messages without an action row. The component
+the actions, so a short message keeps the same inline actions. It is hidden on
+touch devices and on messages without an action row. The component
 receives `{ message }` with `id`, `threadId`, `role`, exact `createdAt` in Unix
 milliseconds, and `turnId` (null outside a turn). User messages also expose
 `initiator: "user" | "agent" | "system"`; assistant messages do not. Message
@@ -219,7 +220,7 @@ and time-based refreshes; BB adds no timer, text length limits, or server calls.
 
 Core caller: the inline message time in the hover action row
 (`apps/app/src/components/thread/timeline/core-message-metadata.tsx`) registers
-through this slot with `placement: "actions"` and renders through the same
+through this slot with `placement: "actionRow"` and renders through the same
 `MessageMetadata` host as plugin contributions.
 
 Before stabilizing, audit compact and embedded placement, variable-height

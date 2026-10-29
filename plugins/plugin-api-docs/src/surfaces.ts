@@ -344,7 +344,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         id: "message-metadata",
         title: "Message metadata",
         summary:
-          "Add React metadata above, below, or in the hover action row of conversation messages. With this, a plugin can:",
+          "Add React metadata above conversation messages or in their hover action row. With this, a plugin can:",
         bullets: [
           "Show timestamps, status, or statistics beside chosen user and assistant messages",
           "Read message identity, creation time, and turn details without receiving streaming text",

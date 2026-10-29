@@ -49,7 +49,7 @@ function metadata(
 ) {
   return (
     <MemoryRouter>
-      <MessageMetadata placement="below" slots={slots} {...props} />
+      <MessageMetadata placement="above" slots={slots} {...props} />
     </MemoryRouter>
   );
 }
