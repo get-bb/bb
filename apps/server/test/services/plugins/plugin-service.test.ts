@@ -1,3 +1,6 @@
+import { createDeferredPromise } from "@bb/test-helpers";
+import { createPluginInstallJobs } from "../../../src/services/plugins/plugin-install-jobs.js";
+import { runWithPluginMeasurementSource } from "../../../src/services/plugins/plugin-measurement.js";
 import {
   cp,
   mkdtemp,
@@ -150,6 +153,7 @@ describe("plugin service", () => {
       logger,
       telemetry: {
         ...createNoopTelemetryService(),
+        isEnabled: () => true,
         capture: (event) => captured.push(event),
       },
       dataDir: join(fixture.workDir, "data"),
@@ -850,7 +854,9 @@ describe("plugin service", () => {
     });
     const installed = await tracked.installPath(rootDir);
     expect(installed.status).toBe("running");
-    expect(captured).toEqual([
+    expect(
+      captured.filter((event) => event.name === "plugin_installed"),
+    ).toEqual([
       {
         name: "plugin_installed",
         properties: {
@@ -869,7 +875,149 @@ describe("plugin service", () => {
       "disabled",
     );
     expect((await tracked.setEnabled("tracked", true))?.status).toBe("running");
-    expect(captured).toHaveLength(1);
+    await tracked.setEnabled("tracked", true);
+    expect(
+      captured.filter((event) => event.name === "plugin_installed"),
+    ).toHaveLength(1);
+    expect(
+      captured
+        .filter((event) => event.name === "plugin_state_changed")
+        .map((event) => event.properties),
+    ).toEqual([
+      {
+        public_plugin: null,
+        plugin_source: "local",
+        source: "unknown",
+        previous_state: "absent",
+        state: "enabled",
+      },
+      {
+        public_plugin: null,
+        plugin_source: "local",
+        source: "unknown",
+        previous_state: "enabled",
+        state: "disabled",
+      },
+      {
+        public_plugin: null,
+        plugin_source: "local",
+        source: "unknown",
+        previous_state: "disabled",
+        state: "enabled",
+      },
+    ]);
+    await tracked.stop();
+  });
+
+  it("counts registered CLI and agent dispatch without counting initialization or reads", async () => {
+    const captured: TelemetryEvent[] = [];
+    const tracked = createTelemetryTrackedService(captured);
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-use-owner",
+      serverSource: `export default function plugin(bb) {
+        bb.cli.register({ name: "use-owner", summary: "Use fixture", run: () => ({ exitCode: 0, stdout: "done" }) });
+        bb.agents.registerTool({ name: "use_owner", description: "Use fixture", parameters: { type: "object", properties: {} }, execute: () => "done" });
+      }`,
+    });
+    await tracked.installPath(rootDir);
+    captured.length = 0;
+    tracked.list();
+    tracked.listAgentTools();
+    tracked.listCliContributions();
+    expect(captured).toEqual([]);
+    expect((await tracked.runCliCommand("use-owner", [], {})).exitCode).toBe(0);
+    const tool = tracked.findAgentTool("use_owner");
+    if (tool === undefined) throw new Error("Expected registered tool");
+    await tracked.invokeAgentTool({
+      ...tool,
+      input: {},
+      ctx: {
+        threadId: "fixture-thread",
+        projectId: "fixture-project",
+        signal: new AbortController().signal,
+      },
+    });
+    expect(
+      captured
+        .filter((event) => event.name === "plugin_use")
+        .map((event) => event.properties),
+    ).toEqual([
+      {
+        public_plugin: null,
+        plugin_source: "local",
+        initiator: "unknown",
+        action: "other_action",
+        outcome: "invoked",
+      },
+      {
+        public_plugin: null,
+        plugin_source: "local",
+        initiator: "agent",
+        action: "other_action",
+        outcome: "invoked",
+      },
+    ]);
+    await tracked.stop();
+  });
+
+  it("preserves each queued install source without borrowing the preceding job context", async () => {
+    const captured: TelemetryEvent[] = [];
+    const tracked = createTelemetryTrackedService(captured);
+    const jobs = createPluginInstallJobs({ notifyChanged: () => {} });
+    const release = createDeferredPromise<void>();
+    const firstPath = await writePlugin(workDir, {
+      name: "bb-plugin-first-source",
+      serverSource: "export default function plugin() {}",
+    });
+    const secondPath = await writePlugin(workDir, {
+      name: "bb-plugin-second-source",
+      serverSource: "export default function plugin() {}",
+    });
+    const thirdPath = await writePlugin(workDir, {
+      name: "bb-plugin-third-source",
+      serverSource: "export default function plugin() {}",
+    });
+    const target = (source: string) => ({
+      kind: "source" as const,
+      source,
+      selection: { kind: "root" as const },
+    });
+    const first = jobs.start({
+      target: target(firstPath),
+      displayName: "first",
+      run: () =>
+        runWithPluginMeasurementSource("first_run", async () => {
+          await release.promise;
+          return tracked.installPath(firstPath);
+        }),
+    });
+    const second = jobs.start({
+      target: target(secondPath),
+      displayName: "second",
+      run: () =>
+        runWithPluginMeasurementSource("replay", () =>
+          tracked.installPath(secondPath),
+        ),
+    });
+    const third = jobs.start({
+      target: target(thirdPath),
+      displayName: "third",
+      run: () =>
+        runWithPluginMeasurementSource("unknown", () =>
+          tracked.installPath(thirdPath),
+        ),
+    });
+    release.resolve();
+    await Promise.all([
+      jobs.settled(first.id),
+      jobs.settled(second.id),
+      jobs.settled(third.id),
+    ]);
+    expect(
+      captured
+        .filter((event) => event.name === "plugin_state_changed")
+        .map((event) => event.properties.source),
+    ).toEqual(["first_run", "replay", "unknown"]);
     await tracked.stop();
   });
 

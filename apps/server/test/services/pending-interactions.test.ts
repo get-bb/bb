@@ -74,10 +74,12 @@ function requestPluginInteraction(
     threadId: string;
     name?: string;
     signal?: AbortSignal;
+    onCreated?: () => void;
   },
 ) {
   return deps.pendingInteractions.requestPluginInteraction({
     pluginId: "secrets",
+    onCreated: args.onCreated,
     threadId: args.threadId,
     rendererId: "secret-request",
     title: "Add secrets",
@@ -97,6 +99,45 @@ function requestPluginInteraction(
 }
 
 describe("pending interaction lifecycle", () => {
+  it("reports creation only after persistence and never for aborted or rejected requests", async () => {
+    await withTestHarness(async (harness) => {
+      const thread = seedPluginInteractionThread(
+        harness.deps,
+        "creation-observation",
+      );
+      const created = vi.fn(() => {
+        expect(
+          harness.deps.pendingInteractions.listPendingThreadInteractions(
+            thread.id,
+          ),
+        ).toHaveLength(1);
+      });
+      expect(() =>
+        requestPluginInteraction(harness.deps, {
+          threadId: "missing",
+          onCreated: created,
+        }),
+      ).toThrow();
+      const controller = new AbortController();
+      controller.abort();
+      await requestPluginInteraction(harness.deps, {
+        threadId: thread.id,
+        signal: controller.signal,
+        onCreated: created,
+      });
+      expect(created).not.toHaveBeenCalled();
+      const active = new AbortController();
+      const pending = requestPluginInteraction(harness.deps, {
+        threadId: thread.id,
+        signal: active.signal,
+        onCreated: created,
+      });
+      expect(created).toHaveBeenCalledTimes(1);
+      active.abort();
+      await pending;
+      expect(created).toHaveBeenCalledTimes(1);
+    });
+  });
   it("announces each committed plugin prompt once without read duplicates", async () => {
     await withTestHarness(async (harness) => {
       const thread = seedPluginInteractionThread(harness.deps, "pending-event");

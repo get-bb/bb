@@ -1,3 +1,4 @@
+import { isReviewedPluginRecommendation } from "../services/plugins/plugin-measurement.js";
 import { createMobileAppReleaseService } from "../services/install/mobile-app-releases.js";
 import {
   setMachineEnvironmentVariable,
@@ -345,6 +346,17 @@ export function registerSystemRoutes(
   });
 
   post(routes.recordTelemetryEvent, (context, payload) => {
+    if (
+      payload.name === "plugin_recommendation" &&
+      payload.properties.public_plugin !== null &&
+      !isReviewedPluginRecommendation(deps.db, payload.properties.public_plugin)
+    ) {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        "Recommendation is not in the official reviewed catalog",
+      );
+    }
     deps.telemetry.capture(payload);
     return context.json({ ok: true });
   });

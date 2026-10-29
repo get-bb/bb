@@ -1,3 +1,7 @@
+import {
+  capturePluginStateChanged,
+  withPluginMeasurementInvocation,
+} from "./plugin-measurement.js";
 import { rpcResponseTags } from "@get-bb/plugin-sdk/internal/rpc-tags";
 import type {
   PluginRpcDiscoveryQuery,
@@ -1822,8 +1826,10 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           return true;
         };
 
-        if (getInstalledPlugin(deps.db, id) === undefined) return undefined;
+        const previous = getInstalledPlugin(deps.db, id);
+        if (previous === undefined) return undefined;
         if (!(await applyEnabled(id, enabled))) return undefined;
+        capturePluginStateChanged(deps, id, previous);
         await syncCliSkill();
         notifyPluginsChanged();
         return list().find((p) => p.id === id);
@@ -2234,7 +2240,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         plugin,
         `cli ${registration.name}`,
         async (signal) => {
-          const result = await registration.run(argv, { ...ctx, signal });
+          const result = await withPluginMeasurementInvocation(
+            deps,
+            id,
+            "unknown",
+            () => registration.run(argv, { ...ctx, signal }),
+          );
           if (typeof result?.exitCode !== "number") {
             throw new Error(
               "cli run() must return { exitCode: number, stdout?, stderr? }",
@@ -2477,7 +2488,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         owner,
         `tool ${record.name}`,
         async () => {
-          const result = await record.execute(parsed.value, ctx);
+          const result = await withPluginMeasurementInvocation(
+            deps,
+            pluginId,
+            "agent",
+            () => record.execute(parsed.value, ctx),
+          );
           return normalizeAgentToolResult(record.name, result);
         },
       );

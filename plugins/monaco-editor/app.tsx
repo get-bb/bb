@@ -318,6 +318,7 @@ function MonacoFileOpener({
         markEditorActive(active);
         editor.onDidFocusEditorWidget(() => markEditorActive(active));
         setStatus({ kind: "ready" });
+        void rpc.call("recordEditorOpened").catch(() => {});
 
         editor.onDidChangeModelContent(() => {
           if (

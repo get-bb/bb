@@ -1,3 +1,5 @@
+import { pluginRecommendationTelemetryEventSchema } from "./system-plugin-telemetry.js";
+export * from "./system-plugin-telemetry.js";
 import { rejectMultipleWorkspaceSelectors } from "./shared.js";
 import { z } from "zod";
 import {
@@ -341,6 +343,7 @@ const onboardingOperationTelemetryPropertiesSchema = z
   });
 
 export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
+  pluginRecommendationTelemetryEventSchema,
   z
     .object({
       name: z.literal("onboarding_operation"),

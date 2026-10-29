@@ -364,3 +364,57 @@ describe("asking a question", () => {
     expect(host.harness.pendingInteractions).toHaveLength(0);
   });
 });
+
+describe("question outcome measurement", () => {
+  it.each(["answered", "empty", "invalid", "dismissed", "timeout"] as const)(
+    "records %s from the validated terminal result",
+    async (scenario) => {
+      const host = createHost();
+      const recordUse = vi.spyOn(
+        host.bb,
+        "internal_DO_NOT_USE_recordPluginUse",
+      );
+      if (scenario === "timeout")
+        host.bb.ui.requestInput = async () => ({
+          outcome: "cancelled",
+          reason: "timeout",
+        });
+      const call = host.harness.callAgentTool(TOOL_NAME, { questions });
+      if (scenario !== "timeout") {
+        await vi.waitFor(() =>
+          expect(host.harness.pendingInteractions).toHaveLength(1),
+        );
+        const pending = host.harness.pendingInteractions[0];
+        if (pending === undefined) throw new Error("Missing interaction");
+        expect(recordUse).not.toHaveBeenCalled();
+        if (scenario === "dismissed")
+          host.harness.cancelInteraction(pending.id);
+        else
+          host.harness.submitInteraction(
+            pending.id,
+            scenario === "invalid"
+              ? { invalid: true }
+              : {
+                  answers: {
+                    q0: { selected: scenario === "answered" ? ["q0o1"] : [] },
+                  },
+                },
+          );
+      }
+      await call;
+      expect(recordUse).toHaveBeenCalledExactlyOnceWith({
+        action: "question_answered",
+        outcome:
+          scenario === "answered"
+            ? "succeeded"
+            : scenario === "dismissed"
+              ? "cancelled"
+              : scenario === "timeout"
+                ? "unknown"
+                : "failed",
+        initiator: "agent",
+      });
+      await host.harness.dispose();
+    },
+  );
+});

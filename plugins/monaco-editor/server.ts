@@ -27,6 +27,7 @@ const fileSchema = z
   .strict();
 
 export const rpcContract = defineRpcContract({
+  recordEditorOpened: { input: z.null(), output: z.null() },
   assets: {
     input: z.null(),
     output: z.object({ baseUrl: z.string(), expiresAtMs: z.number() }),
@@ -215,6 +216,14 @@ export default async function plugin(bb: BbPluginApi) {
   }
 
   bb.rpc.register(rpcContract, {
+    recordEditorOpened() {
+      bb.internal_DO_NOT_USE_recordPluginUse({
+        action: "editor_opened",
+        outcome: "observed",
+        initiator: "user",
+      });
+      return null;
+    },
     assets: () => assets(),
 
     async read({ path: filePath, source }) {
@@ -263,16 +272,33 @@ export default async function plugin(bb: BbPluginApi) {
     },
 
     async write({ path: filePath, source, content, expectedSha256 }) {
-      const target = await resolveTarget(source, filePath);
-      const result = await bb.sdk.files.write({
-        ...target,
-        content,
-        contentEncoding: "utf8",
-        expectedSha256,
-      });
-      return result.outcome === "written"
-        ? { outcome: "written" as const, sha256: result.sha256 }
-        : { outcome: "conflict" as const, currentSha256: result.currentSha256 };
+      try {
+        const target = await resolveTarget(source, filePath);
+        const result = await bb.sdk.files.write({
+          ...target,
+          content,
+          contentEncoding: "utf8",
+          expectedSha256,
+        });
+        bb.internal_DO_NOT_USE_recordPluginUse({
+          action: "file_saved",
+          outcome: result.outcome === "written" ? "succeeded" : "failed",
+          initiator: "user",
+        });
+        return result.outcome === "written"
+          ? { outcome: "written" as const, sha256: result.sha256 }
+          : {
+              outcome: "conflict" as const,
+              currentSha256: result.currentSha256,
+            };
+      } catch (error) {
+        bb.internal_DO_NOT_USE_recordPluginUse({
+          action: "file_saved",
+          outcome: "failed",
+          initiator: "user",
+        });
+        throw error;
+      }
     },
   });
 }

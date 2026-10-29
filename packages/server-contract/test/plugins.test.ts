@@ -31,7 +31,7 @@ describe("plugin contracts", () => {
       pluginCatalogInstallRequestSchema.parse({
         entryId: "notes",
       }),
-    ).toEqual({ entryId: "notes" });
+    ).toEqual({ entryId: "notes", measurementSource: "unknown" });
     expect(() =>
       pluginCatalogInstallRequestSchema.parse({
         entryId: "notes",

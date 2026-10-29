@@ -265,6 +265,21 @@ function expiredRunWithWorkers(
 }
 
 describe("workflow service policy integration", () => {
+  it("records a start only after validation and durable run creation", async () => {
+    const test = setup();
+    harnesses.push(test.harness);
+    const recordUse = vi.spyOn(test.bb, "internal_DO_NOT_USE_recordPluginUse");
+    await expect(test.start("not valid source")).rejects.toThrow();
+    expect(recordUse).not.toHaveBeenCalled();
+    const run = await test.start(source(`return "done";`));
+    expect(getRunRequired(test.db, run.id).status).toBe("queued");
+    expect(recordUse).toHaveBeenCalledExactlyOnceWith({
+      action: "workflow_started",
+      outcome: "succeeded",
+    });
+    test.service.get(run.id);
+    expect(recordUse).toHaveBeenCalledOnce();
+  });
   const harnesses: Array<ReturnType<typeof setup>["harness"]> = [];
 
   afterEach(async () => {

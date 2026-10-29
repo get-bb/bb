@@ -1526,10 +1526,12 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Retry failed environment cleanup with recover: true after inspecting processes using the workspace",
         ],
         reference: [
+          "Internal first-party plugin reporting uses internal_DO_NOT_USE_recordPluginUse for reviewed action/result pairs. The server binds identity to validated installed provenance and honors telemetry opt-out. UI observations remain observations; arbitrary plugin analytics, arguments, results and private identifiers are unsupported.",
           "Core setup telemetry uses system.experimental_recordTelemetryEvent: strict anonymous guide-operation observations (agent install/update, project scan/import, plugin install/enable), with first_run/replay, bounded outcomes and categories, and counts only for imports. Missing job results stay unknown; queued is not success. Existing events and usage-data opt-out are preserved. No raw errors, paths, names or new tracking IDs are accepted; this is not a general plugin analytics API.",
         ],
         apiSymbols: [
           "BbPluginApi",
+          "BbPluginApi.internal_DO_NOT_USE_recordPluginUse",
           "PluginServerApi",
           "PluginBbSdk.hosts.get",
           "PluginBbSdk.system.experimental_recordTelemetryEvent",

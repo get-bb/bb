@@ -24,6 +24,7 @@ import {
   type OnboardingStepId,
   type SignInGuide,
 } from "./onboarding-model";
+import { useVisibleObservation } from "./onboarding-journey-observation";
 import bbLogoUrl from "../../../../../assets/bb-logo.svg";
 
 const CONTENT_COLUMN_CLASS =
@@ -770,6 +771,7 @@ export function OnboardingPluginGridSkeleton({ count }: { count: number }) {
 }
 
 interface OnboardingPluginCardProps {
+  observeDisplay?: () => void;
   name: string;
   description: string;
   icon: { icon: string | null; iconUrl: string | null; iconTinted: boolean };
@@ -780,6 +782,7 @@ interface OnboardingPluginCardProps {
 }
 
 export function OnboardingPluginCard({
+  observeDisplay,
   name,
   description,
   icon,
@@ -788,6 +791,9 @@ export function OnboardingPluginCard({
   unavailableReason,
   onToggle,
 }: OnboardingPluginCardProps) {
+  const observationRef = useVisibleObservation<HTMLLabelElement>(() =>
+    observeDisplay?.(),
+  );
   const disabled = pending || unavailableReason !== null;
   return (
     <PluginCard
@@ -805,6 +811,7 @@ export function OnboardingPluginCard({
       }
       footerAction={
         <label
+          ref={observationRef}
           className={cn(
             "flex items-center gap-2",
             !disabled && "cursor-pointer",

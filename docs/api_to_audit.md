@@ -4172,3 +4172,29 @@ precedence, bounded discovery failure, and module-ABI preservation after Node
 replacement. Settle the shared process-local instance lifecycle across SDK
 bundle versions and whether `bundledNpmCli` belongs on the public surface before
 removing the prefix.
+
+## `BbPluginApi.internal_DO_NOT_USE_recordPluginUse`
+
+Internal measurement plumbing for Browser Automation, Workflows, Monaco,
+Prompt Library, Agent Annotations and Ask User Question only. Their existing
+execution or visible-action owners report bounded action/outcome pairs; core's
+shared plugin tool and CLI dispatch supplies invocation context and anonymous
+`other_action` observations for plugins outside the reviewed public allowlist.
+The server derives public keys from installed provenance, validates the action
+owner and outcome, and uses the existing opt-out-controlled telemetry service.
+No plugin identity is accepted from the report, and arguments, outputs, paths,
+private names and free-text properties are rejected. No generic RPC read or
+background startup counts as use. Client-only observations remain `observed`.
+This is deliberately internal and has no arbitrary telemetry CLI or client
+endpoint. Only these named first-party owners may call it; adding an owner or
+public key requires privacy review and tests. The existing setup-operation
+endpoint and `plugin_installed` event retain their previous meanings.
+
+Plugin install, catalog install, enable and disable SDK calls accept optional
+bounded `measurementSource` context. Omission preserves existing request bodies
+and becomes `unknown` at the server boundary. Catalog/source install jobs retain
+the context of the request that created that job, including when queued behind
+another source; coalesced requests do not relabel an existing job. These fields
+are collection attribution, not authentication or experiment assignment.
+`question_created` is recorded by the persisted input-request owner for the
+reviewed Ask User Question plugin, not optimistically before `requestInput`.

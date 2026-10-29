@@ -1,3 +1,4 @@
+import { internalPluginUseReportSchema } from "@bb/server-contract";
 import { experimental_PluginRpcCallError } from "../rpc-contract.js";
 import {
   rpcInvalidationTags,
@@ -1622,6 +1623,10 @@ function createFakePluginHostInternal(
   };
 
   const bb: BbPluginApi = {
+    internal_DO_NOT_USE_recordPluginUse(input) {
+      assertLive();
+      internalPluginUseReportSchema.parse(input);
+    },
     pluginId,
     log,
     settings,

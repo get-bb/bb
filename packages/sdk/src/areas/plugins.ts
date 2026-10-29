@@ -30,6 +30,8 @@ import {
   pluginCachePruneRequestSchema,
   pluginCachePruneResponseSchema,
   pluginInstallRequestSchema,
+  pluginStateMeasurementRequestSchema,
+  type PluginMeasurementSource,
   pluginRemoveResponseSchema,
   pluginSafeModeRequestSchema,
   pluginSafeModeResponseSchema,
@@ -117,12 +119,14 @@ export interface PluginIdArgs {
 }
 
 export interface PluginInstallArgs {
+  measurementSource?: PluginMeasurementSource;
   source: string;
   subdirectory?: string;
   plugin?: string;
 }
 
 export interface PluginCatalogInstallArgs {
+  measurementSource?: PluginMeasurementSource;
   entryId: string;
   marketplace?: string;
   confirmedSource?: PluginCatalogResolvedSource;
@@ -309,8 +313,12 @@ export interface PluginsArea {
   ): Promise<PluginCheckUpdatesResult>;
   catalog: PluginCatalogArea;
   marketplaces: PluginMarketplacesArea;
-  disable(args: PluginIdArgs): Promise<PluginDisableResult>;
-  enable(args: PluginIdArgs): Promise<PluginEnableResult>;
+  disable(
+    args: PluginIdArgs & { measurementSource?: PluginMeasurementSource },
+  ): Promise<PluginDisableResult>;
+  enable(
+    args: PluginIdArgs & { measurementSource?: PluginMeasurementSource },
+  ): Promise<PluginEnableResult>;
   getSettings(args: PluginGetSettingsArgs): Promise<PluginGetSettingsResult>;
   getSource(args: PluginGetSourceArgs): Promise<PluginGetSourceResult>;
   install(args: PluginInstallArgs): Promise<PluginInstallResult>;
@@ -486,22 +494,22 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
       selection === undefined
         ? { source: input.source }
         : { source: input.source, selection };
-    pluginInstallRequestSchema.parse(body);
-    return body;
+    const measuredBody =
+      input.measurementSource === undefined
+        ? body
+        : { ...body, measurementSource: input.measurementSource };
+    pluginInstallRequestSchema.parse(measuredBody);
+    return measuredBody;
   }
 
   const catalog: PluginCatalogArea = {
     async install(input) {
-      return installAndWait(
-        "/api/v1/plugin-catalog/install",
-        pluginCatalogInstallRequestSchema.parse(input),
-      );
+      pluginCatalogInstallRequestSchema.parse(input);
+      return installAndWait("/api/v1/plugin-catalog/install", input);
     },
     async startInstall(input) {
-      return startInstall(
-        "/api/v1/plugin-catalog/install",
-        pluginCatalogInstallRequestSchema.parse(input),
-      );
+      pluginCatalogInstallRequestSchema.parse(input);
+      return startInstall("/api/v1/plugin-catalog/install", input);
     },
     async installPlan(input) {
       const body = pluginCatalogInstallRequestSchema.parse(
@@ -661,18 +669,28 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
     catalog,
     marketplaces,
     async disable(input) {
+      const body =
+        input.measurementSource === undefined
+          ? {}
+          : { measurementSource: input.measurementSource };
+      pluginStateMeasurementRequestSchema.parse(body);
       const response = await requestParsed(
         pluginPath(input.pluginId, "/disable"),
         pluginInstallResponseSchema,
-        jsonInit("POST", {}),
+        jsonInit("POST", body),
       );
       return response.plugin;
     },
     async enable(input) {
+      const body =
+        input.measurementSource === undefined
+          ? {}
+          : { measurementSource: input.measurementSource };
+      pluginStateMeasurementRequestSchema.parse(body);
       const response = await requestParsed(
         pluginPath(input.pluginId, "/enable"),
         pluginInstallResponseSchema,
-        jsonInit("POST", {}),
+        jsonInit("POST", body),
       );
       return response.plugin;
     },

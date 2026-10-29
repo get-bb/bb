@@ -31,6 +31,8 @@ import type {
   ThreadPluginMetadataResult,
 } from "@bb/sdk";
 import type {
+  PluginUseObservation,
+  PluginUseInitiator,
   ExecutionInputFieldSource,
   ThreadResponse,
   TerminalSession,
@@ -2225,6 +2227,10 @@ export type PluginBbSdk = Omit<BbSdk, "threads"> & {
  * against.
  */
 export interface BbPluginApi {
+  /** Internal reporting for the six reviewed first-party plugin action owners; identity is resolved by the server. */
+  internal_DO_NOT_USE_recordPluginUse(
+    input: PluginUseObservation & { initiator?: PluginUseInitiator },
+  ): void;
   /** The plugin's own id (namespaces storage, routes, commands). */
   readonly pluginId: string;
   /** Leveled, plugin-scoped logger. */

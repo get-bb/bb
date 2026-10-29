@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginFileOpenerProps } from "@get-bb/plugin-sdk/app";
@@ -92,14 +98,17 @@ it("saves edits with the toolbar button and prevents duplicate pending saves", a
         finishSave = resolve;
       }),
   );
+  const recordEditorOpened = vi.fn(() => null);
   renderSlot(registration, base, {
     rpc: {
       assets: () => ({ baseUrl: "/assets", expiresAtMs: 99999 }),
       read: () => file,
       write,
+      recordEditorOpened,
     },
   });
   await waitFor(() => expect(create).toHaveBeenCalledOnce());
+  expect(recordEditorOpened).toHaveBeenCalledOnce();
   act(() => editor.onDidChangeModelContent.mock.calls[0]![0]());
   expect(write).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -273,7 +282,10 @@ it("does not offer an old file's draft when its disk reload finishes after navig
     .mockReturnValueOnce(file)
     .mockReturnValueOnce(pendingRead)
     .mockReturnValue(file);
-  const nextEditor = { ...editor, setValue: vi.fn<(content: string) => void>() };
+  const nextEditor = {
+    ...editor,
+    setValue: vi.fn<(content: string) => void>(),
+  };
   create.mockReturnValueOnce(editor).mockReturnValueOnce(nextEditor);
   const slot = renderSlot(registration, base, {
     rpc: {

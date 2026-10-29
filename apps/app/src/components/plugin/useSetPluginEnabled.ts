@@ -1,3 +1,4 @@
+import type { PluginMeasurementSource } from "@bb/server-contract";
 import { useCallback, useLayoutEffect, useRef } from "react";
 import { flushSync } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -26,8 +27,13 @@ export function useSetPluginEnabled() {
   }, [location]);
 
   return useCallback(
-    async (pluginId: string, enabled: boolean, onNavigate?: () => void) => {
-      await setPluginEnabled(fetch, pluginId, enabled);
+    async (
+      pluginId: string,
+      enabled: boolean,
+      onNavigate?: () => void,
+      measurementSource?: PluginMeasurementSource,
+    ) => {
+      await setPluginEnabled(fetch, pluginId, enabled, measurementSource);
       if (enabled) return;
       const current = store.get(splitLayoutAtom);
       let next = current;
