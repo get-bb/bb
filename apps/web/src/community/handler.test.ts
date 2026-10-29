@@ -335,17 +335,29 @@ describe("private community forms", () => {
       }>()
       .then((result) => result.results);
   it("emails a new finisher their answers and claim link once", async () => {
-    const sent: { url: string; headers: Headers; body: Record<string, unknown> }[] = [];
+    const sent: {
+      url: string;
+      headers: Headers;
+      body: Record<string, unknown>;
+    }[] = [];
     vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
-      sent.push({ url, headers: new Headers(init.headers), body: JSON.parse(String(init.body)) });
+      sent.push({
+        url,
+        headers: new Headers(init.headers),
+        body: JSON.parse(String(init.body)),
+      });
       return new Response("{}", { status: 200 });
     });
     try {
-      const html = await (await postWithKey({ improve: "<b>Faster</b>" })).text();
+      const html = await (
+        await postWithKey({ improve: "<b>Faster</b>" })
+      ).text();
       expect(html).toContain("emailed you your results");
       expect(sent).toHaveLength(1);
       expect(sent[0]!.url).toBe("https://api.resend.com/emails");
-      expect(sent[0]!.headers.get("idempotency-key")).toMatch(/^community-survey\//);
+      expect(sent[0]!.headers.get("idempotency-key")).toMatch(
+        /^community-survey\//,
+      );
       expect(sent[0]!.body.to).toEqual(["ada@example.test"]);
       const body = String(sent[0]!.body.html);
       expect(body).toContain("&lt;b&gt;Faster&lt;/b&gt;");
@@ -399,7 +411,10 @@ describe("private community forms", () => {
         calls++;
         return new Response("{}", { status: 200 });
       });
-      await retrySurveyEmails({ DB: db, RESEND_API_KEY: "key" }, Date.now() + 48 * 3_600_000);
+      await retrySurveyEmails(
+        { DB: db, RESEND_API_KEY: "key" },
+        Date.now() + 48 * 3_600_000,
+      );
       expect(calls).toBe(0);
     } finally {
       vi.unstubAllGlobals();
@@ -408,14 +423,22 @@ describe("private community forms", () => {
   it("retries a rate-limited send right away", async () => {
     let calls = 0;
     const waits: number[] = [];
-    vi.stubGlobal("fetch", async () =>
-      new Response("{}", { status: ++calls === 1 ? 429 : 200 }),
+    vi.stubGlobal(
+      "fetch",
+      async () => new Response("{}", { status: ++calls === 1 ? 429 : 200 }),
     );
     try {
       expect(
-        await sendSurveyEmail("key", "ada@example.test", surveyEmail({}, null), "k", [0, 600], async (ms) => {
-          waits.push(ms);
-        }),
+        await sendSurveyEmail(
+          "key",
+          "ada@example.test",
+          surveyEmail({}, null),
+          "k",
+          [0, 600],
+          async (ms) => {
+            waits.push(ms);
+          },
+        ),
       ).toBe("sent");
       expect(calls).toBe(2);
       expect(waits).toEqual([600]);

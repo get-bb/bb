@@ -51,6 +51,7 @@ function option(text: string, checked: boolean, multiple: boolean) {
   return h(
     "td",
     {
+      className: "bb-opt",
       width: "50%",
       valign: "top",
       style: {
@@ -97,6 +98,7 @@ function options(
         h(
           "td",
           {
+            className: "bb-gap",
             width: "12",
             style: {
               width: "12px",
@@ -107,13 +109,14 @@ function options(
           },
           "\u00a0",
         ),
-        cells[index + 1] ?? h("td", { width: "50%" }),
+        cells[index + 1] ?? h("td", { className: "bb-gap", width: "50%" }),
       ),
     );
   }
   return h(
     "table",
     {
+      className: "bb-opts",
       role: "presentation",
       width: "100%",
       cellPadding: 0,
@@ -289,7 +292,7 @@ export function surveyEmail(
     ),
     survey,
   );
-  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"></head><body style="margin:0;background:#f4f4f4">${renderToStaticMarkup(body)}</body></html>`;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"><style>@media (max-width:600px){table.bb-opts{border-spacing:0 !important}td.bb-opt{display:block !important;width:auto !important;margin:0 0 8px !important}td.bb-gap{display:none !important}}</style></head><body style="margin:0;background:#f4f4f4">${renderToStaticMarkup(body)}</body></html>`;
   const text = [
     "Thanks for filling out the bb community survey!",
     ...(claimLink ? [`Claim my bb stickers: ${claimLink}`] : []),
