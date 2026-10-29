@@ -1,3 +1,4 @@
+import type Database from "better-sqlite3";
 import { markThreadPruningWork } from "./thread-pruning-work.js";
 import { isBeforeLatestThreadEvent } from "./event-pruning-guards.js";
 import { acquireProjectAttachmentOwnership } from "./project-attachments.js";
@@ -3287,6 +3288,40 @@ function storedTimelineWindowDataColumn(
     : truncatedEventDataColumn(maxInlineOutputChars);
 }
 
+interface ByteBudgetFloorRow {
+  created_at: number;
+  data_bytes: number;
+  sequence: number;
+  turn_id: string | null;
+}
+
+type ByteBudgetFloorStatement = Database.Statement<
+  unknown[],
+  ByteBudgetFloorRow
+>;
+
+const byteBudgetFloorStatements = new WeakMap<
+  Database.Database,
+  Map<string, ByteBudgetFloorStatement>
+>();
+
+function prepareByteBudgetFloorStatement(
+  db: DbConnection,
+  sqlText: string,
+): ByteBudgetFloorStatement {
+  let statements = byteBudgetFloorStatements.get(db.$client);
+  if (!statements) {
+    statements = new Map();
+    byteBudgetFloorStatements.set(db.$client, statements);
+  }
+  let statement = statements.get(sqlText);
+  if (!statement) {
+    statement = db.$client.prepare<unknown[], ByteBudgetFloorRow>(sqlText);
+    statements.set(sqlText, statement);
+  }
+  return statement;
+}
+
 export function findStoredTimelineWindowByteBudgetFloor(
   db: DbConnection,
   args: FindStoredTimelineWindowByteBudgetFloorArgs,
@@ -3303,15 +3338,7 @@ export function findStoredTimelineWindowByteBudgetFloor(
     .where(and(...storedTimelineWindowConditions(args)))
     .orderBy(desc(events.sequence))
     .toSQL();
-  const statement = db.$client.prepare<
-    unknown[],
-    {
-      created_at: number;
-      data_bytes: number;
-      sequence: number;
-      turn_id: string | null;
-    }
-  >(query.sql);
+  const statement = prepareByteBudgetFloorStatement(db, query.sql);
   let includedDataBytes = 0;
   let sequenceStart: number | null = null;
   let result: StoredTimelineWindowByteBudgetFloor | null = null;

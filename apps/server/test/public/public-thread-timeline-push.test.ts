@@ -1,5 +1,6 @@
+import { performance } from "node:perf_hooks";
 import { eq } from "drizzle-orm";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { threads } from "@bb/db";
 import { turnScope, type ThreadTimelineSubscriptionTarget } from "@bb/domain";
 import {
@@ -14,6 +15,7 @@ import { realtimeSubscriptionTargetKey } from "@bb/domain";
 import { onClientSocketMessage } from "../../src/ws/client-protocol.js";
 import { readJson } from "../helpers/json.js";
 import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
+import { holdPerformanceClockStill } from "../helpers/still-performance-clock.js";
 import {
   seedEvent,
   seedThread,
@@ -74,8 +76,13 @@ function applySignal(
   return held === null ? null : applyThreadTimelineDelta(held, timeline);
 }
 
+beforeEach(() => {
+  holdPerformanceClockStill();
+});
+
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe("thread-timeline realtime push", () => {
@@ -727,6 +734,155 @@ describe("thread-timeline pushes for tag-aware subscriptions", () => {
       expect(applySignal(held, resumed!)).toEqual(
         await freshTimeline(harness, thread.id),
       );
+    });
+  });
+});
+
+describe("thread-timeline push pacing", () => {
+  const MAX_PAUSE_MS = 1_000;
+
+  function legacyPushPauseMs(buildMs: number): number {
+    return Math.min(MAX_PAUSE_MS, buildMs);
+  }
+
+  function expectedPushPauseMs(buildMs: number): number {
+    return Math.min(MAX_PAUSE_MS, 4 * buildMs);
+  }
+
+  function startPacedStream(harness: TestAppHarness) {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    let now = 50_000;
+    let buildMs = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    const hub = harness.deps.hub;
+    const sendSignal = hub.sendThreadTimelineSignal.bind(hub);
+    vi.spyOn(hub, "sendThreadTimelineSignal").mockImplementation(
+      (subscribers, signal) => {
+        now += buildMs;
+        return sendSignal(subscribers, signal);
+      },
+    );
+    const { environment, thread } = seedThreadFixture(harness, {
+      thread: { status: "active" },
+    });
+    let sequence = 0;
+    const append = () => {
+      sequence += 1;
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "p1",
+        scope: turnScope("turn-1"),
+        sequence,
+        type: sequence === 1 ? "turn/started" : "item/agentMessage/delta",
+        data:
+          sequence === 1 ? {} : { itemId: "a", delta: `line ${sequence}\n` },
+      });
+      hub.notifyThread(thread.id, ["events-appended"]);
+    };
+    const socket = createMockHubSocket();
+    hub.subscribe(socket, {
+      kind: "thread-timeline",
+      threadId: thread.id,
+      segmentLimit: null,
+      deferContent: false,
+    });
+    return {
+      append,
+      elapse(ms: number) {
+        now += ms;
+        vi.advanceTimersByTime(ms);
+      },
+      sentSignals: () => timelineSignals(socket.messages.splice(0)),
+      setBuildMs(ms: number) {
+        buildMs = ms;
+      },
+      thread,
+    };
+  }
+
+  it.each([
+    { buildMs: 5, pauseMs: 20 },
+    { buildMs: 100, pauseMs: 400 },
+    { buildMs: 249, pauseMs: 996 },
+  ])(
+    "holds the next push for four times a $buildMs ms build, not for the build time alone",
+    async ({ buildMs, pauseMs }) => {
+      await withTestHarness(async (harness) => {
+        const stream = startPacedStream(harness);
+        stream.append();
+        await freshTimeline(harness, stream.thread.id);
+        stream.setBuildMs(buildMs);
+        stream.append();
+        stream.elapse(0);
+        expect(stream.sentSignals()).toHaveLength(1);
+
+        stream.append();
+        expect(expectedPushPauseMs(buildMs)).toBe(pauseMs);
+        expect(legacyPushPauseMs(buildMs)).toBeLessThan(pauseMs);
+        stream.elapse(legacyPushPauseMs(buildMs));
+        expect(stream.sentSignals()).toHaveLength(0);
+        stream.elapse(pauseMs - legacyPushPauseMs(buildMs) - 1);
+        expect(stream.sentSignals()).toHaveLength(0);
+        stream.elapse(1);
+        expect(stream.sentSignals()).toHaveLength(1);
+      });
+    },
+  );
+
+  it("never holds a push longer than the cap, and does not hold it after an instant build", async () => {
+    await withTestHarness(async (harness) => {
+      const stream = startPacedStream(harness);
+      stream.append();
+      await freshTimeline(harness, stream.thread.id);
+
+      stream.setBuildMs(5_000);
+      stream.append();
+      stream.elapse(0);
+      expect(stream.sentSignals()).toHaveLength(1);
+      stream.append();
+      stream.elapse(MAX_PAUSE_MS - 1);
+      expect(stream.sentSignals()).toHaveLength(0);
+      stream.elapse(1);
+      expect(stream.sentSignals()).toHaveLength(1);
+
+      stream.append();
+      stream.elapse(MAX_PAUSE_MS - 1);
+      expect(stream.sentSignals()).toHaveLength(0);
+      stream.setBuildMs(0);
+      stream.elapse(1);
+      expect(stream.sentSignals()).toHaveLength(1);
+
+      stream.append();
+      stream.elapse(0);
+      expect(stream.sentSignals()).toHaveLength(1);
+    });
+  });
+
+  it("still sends the last update of a stream once the pause ends", async () => {
+    await withTestHarness(async (harness) => {
+      const stream = startPacedStream(harness);
+      stream.append();
+      let client = await freshTimeline(harness, stream.thread.id);
+      stream.setBuildMs(100);
+      stream.append();
+      stream.elapse(0);
+      const [first] = stream.sentSignals();
+      client = applySignal(client, first!)!;
+
+      for (let appended = 0; appended < 5; appended += 1) {
+        stream.append();
+        stream.elapse(60);
+      }
+      expect(stream.sentSignals()).toHaveLength(0);
+      stream.elapse(100);
+      const signals = stream.sentSignals();
+      expect(signals).toHaveLength(1);
+      expect(signals[0]).toMatchObject({ timeline: { maxSeq: 7 } });
+      client = applySignal(client, signals[0]!)!;
+      expect(client).toEqual(await freshTimeline(harness, stream.thread.id));
+      stream.elapse(MAX_PAUSE_MS);
+      expect(stream.sentSignals()).toHaveLength(0);
     });
   });
 });

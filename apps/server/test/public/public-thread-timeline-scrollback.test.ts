@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildLoadedTimelineState,
   mergeLoadedTimelineWithLatest,
@@ -25,8 +25,17 @@ import {
 } from "@bb/server-contract";
 import { readJson } from "../helpers/json.js";
 import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
+import { holdPerformanceClockStill } from "../helpers/still-performance-clock.js";
 import { seedEvent, seedThreadFixture } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+
+beforeEach(() => {
+  holdPerformanceClockStill();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 type SeedEventType = Parameters<typeof seedEvent>[1]["type"];
 

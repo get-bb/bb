@@ -38,7 +38,9 @@ import {
 export interface OperationProjectionState {
   messages: EventProjectionMessage[];
   fileEditsByCallId: Map<string, EventProjectionFileEditMessage[]>;
+  fileEditRowsStartIndexByCallId: Map<string, number>;
   fileEditStdoutBuffersByScopedCallKey: Map<string, VisibleTextBuffer>;
+  pendingFileEditOutputCallIdsByScopedCallKey: Map<string, string>;
   openCompactionsByKey: Map<string, EventProjectionOperationMessage>;
   finalizedCompactionKeys: Set<string>;
   provisioningOperationsByKey: Map<string, EventProjectionOperationMessage>;
@@ -70,7 +72,9 @@ export function createOperationProjectionState(
     pluginFormsByInteractionId: new Map(),
     threadOperationsById: new Map(),
     fileEditsByCallId: new Map(),
+    fileEditRowsStartIndexByCallId: new Map(),
     fileEditStdoutBuffersByScopedCallKey: new Map(),
+    pendingFileEditOutputCallIdsByScopedCallKey: new Map(),
   };
 }
 
@@ -410,26 +414,23 @@ function isTerminalFileEditStatus(
 export function flushPendingFileEditOutput(
   state: OperationProjectionState,
 ): void {
-  const flushedBufferByScopedCallKey = new Map<
-    string,
-    VisibleTextBuffer | null
-  >();
-  for (const [callId, fileEdits] of state.fileEditsByCallId.entries()) {
-    for (const fileEdit of fileEdits) {
-      const scopedCallKey = scopedFileEditCallKey(callId, fileEdit);
-      let flushedBuffer = flushedBufferByScopedCallKey.get(scopedCallKey);
-      if (flushedBuffer === undefined) {
-        const buffer =
-          state.fileEditStdoutBuffersByScopedCallKey.get(scopedCallKey);
-        flushedBuffer =
-          buffer && flushVisibleTextBuffer(buffer) ? buffer : null;
-        flushedBufferByScopedCallKey.set(scopedCallKey, flushedBuffer);
-      }
-      if (flushedBuffer !== null) {
-        fileEdit.stdout = getVisibleTextBufferText(flushedBuffer);
+  for (const [
+    scopedCallKey,
+    callId,
+  ] of state.pendingFileEditOutputCallIdsByScopedCallKey) {
+    const buffer =
+      state.fileEditStdoutBuffersByScopedCallKey.get(scopedCallKey);
+    if (!buffer || !flushVisibleTextBuffer(buffer)) {
+      continue;
+    }
+    const stdout = getVisibleTextBufferText(buffer);
+    for (const fileEdit of state.fileEditsByCallId.get(callId) ?? []) {
+      if (scopedFileEditCallKey(callId, fileEdit) === scopedCallKey) {
+        fileEdit.stdout = stdout;
       }
     }
   }
+  state.pendingFileEditOutputCallIdsByScopedCallKey.clear();
 }
 
 interface CreateFileEditMessageArgs {
@@ -638,11 +639,51 @@ function takeUnusedFileEditRowForMatchKey(
   return row;
 }
 
+function isFileEditRowsBlock(
+  messages: readonly EventProjectionMessage[],
+  callId: string,
+  start: number,
+  rowCount: number,
+): boolean {
+  if (start + rowCount > messages.length) {
+    return false;
+  }
+  for (let index = start; index < start + rowCount; index += 1) {
+    const message = messages[index];
+    if (message?.kind !== "file-edit" || message.callId !== callId) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function replaceFileEditMessagesForCall(
   state: OperationProjectionState,
   callId: string,
+  previousRowCount: number,
   nextRows: readonly EventProjectionFileEditMessage[],
 ): void {
+  if (previousRowCount === 0) {
+    state.fileEditRowsStartIndexByCallId.set(callId, state.messages.length);
+    state.messages.push(...nextRows);
+    return;
+  }
+
+  const knownStart = state.fileEditRowsStartIndexByCallId.get(callId);
+  if (
+    knownStart !== undefined &&
+    isFileEditRowsBlock(state.messages, callId, knownStart, previousRowCount)
+  ) {
+    if (nextRows.length === previousRowCount) {
+      for (const [offset, row] of nextRows.entries()) {
+        state.messages[knownStart + offset] = row;
+      }
+    } else {
+      state.messages.splice(knownStart, previousRowCount, ...nextRows);
+    }
+    return;
+  }
+
   const insertionIndex = state.messages.findIndex(
     (message) => message.kind === "file-edit" && message.callId === callId,
   );
@@ -650,8 +691,13 @@ function replaceFileEditMessagesForCall(
     (message) => message.kind !== "file-edit" || message.callId !== callId,
   );
   if (insertionIndex === -1) {
+    state.fileEditRowsStartIndexByCallId.set(
+      callId,
+      messagesWithoutCallRows.length,
+    );
     messagesWithoutCallRows.push(...nextRows);
   } else {
+    state.fileEditRowsStartIndexByCallId.set(callId, insertionIndex);
     messagesWithoutCallRows.splice(insertionIndex, 0, ...nextRows);
   }
   state.messages = messagesWithoutCallRows;
@@ -749,6 +795,15 @@ export function upsertFileEdit(
     flushVisibleTextBuffer(stdoutBuffer);
   }
 
+  if (stdoutBuffer.pendingLength > 0) {
+    state.pendingFileEditOutputCallIdsByScopedCallKey.set(
+      scopedCallKey,
+      partial.callId,
+    );
+  } else {
+    state.pendingFileEditOutputCallIdsByScopedCallKey.delete(scopedCallKey);
+  }
+
   const stdout = getVisibleTextBufferText(stdoutBuffer);
   const partialChanges = fileEditPartialChanges(partial);
   if (partialChanges && partialChanges.length > 0) {
@@ -799,7 +854,12 @@ export function upsertFileEdit(
     }
 
     const allRows = [...foreignRows, ...nextRows];
-    replaceFileEditMessagesForCall(state, partial.callId, allRows);
+    replaceFileEditMessagesForCall(
+      state,
+      partial.callId,
+      existingRows.length,
+      allRows,
+    );
     state.fileEditsByCallId.set(partial.callId, allRows);
     return;
   }
@@ -837,6 +897,12 @@ export function upsertFileEdit(
       stdout,
       threadId,
     });
+    if (existingRows.length === 0 && compatibleRows.length === 0) {
+      state.fileEditRowsStartIndexByCallId.set(
+        partial.callId,
+        state.messages.length,
+      );
+    }
     compatibleRows.push(message);
     state.messages.push(message);
   }

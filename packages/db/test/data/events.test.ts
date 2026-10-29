@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   LOCAL_AGENT_TASK_TYPE,
   LOCAL_BASH_TASK_TYPE,
@@ -57,7 +57,11 @@ import {
   listThreadTurnInterruptionEventStates,
   listLatestOpenBackgroundTaskStateRowsForThread,
 } from "../../src/data/events.js";
-import type { ListStoredEventRowsArgs } from "../../src/data/events.js";
+import type {
+  FindStoredTimelineWindowByteBudgetFloorArgs,
+  ListStoredEventRowsArgs,
+  StoredTimelineWindowByteBudgetFloor,
+} from "../../src/data/events.js";
 import {
   advanceThreadPruning,
   type ThreadPruningPolicy,
@@ -4894,6 +4898,356 @@ describe("timeline read-boundary output truncation", () => {
       threadId: thread.id,
     });
     expect(rows.at(-1)?.data).toBe(stored.at(-1)?.data);
+  });
+});
+
+describe("stored timeline byte-budget floor statement reuse", () => {
+  interface FloorScanRow {
+    created_at: number;
+    data_bytes: number;
+    sequence: number;
+    turn_id: string | null;
+  }
+
+  interface FloorQueryShape {
+    iterateSpy: { mockClear(): void; mock: { calls: unknown[][] } };
+    sqlText: string;
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function seededRandom(seed: number): () => number {
+    let state = seed;
+    return () => {
+      state = (state * 1_103_515_245 + 12_345) % 2_147_483_648;
+      return state / 2_147_483_648;
+    };
+  }
+
+  function seedFloorEvents(
+    db: DbConnection,
+    threadId: string,
+    count: number,
+    random: () => number,
+  ): void {
+    insertEvents(
+      db,
+      noopNotifier,
+      Array.from({ length: count }, (_, index): InsertEventInput => {
+        const sequence = index + 1;
+        if (sequence % 3 === 0) {
+          return {
+            threadId,
+            sequence,
+            type: "item/completed",
+            ...threadEventFields,
+            itemId: `cmd-${sequence}`,
+            itemKind: "commandExecution",
+            parentToolCallId: null,
+            data: JSON.stringify({
+              item: {
+                type: "commandExecution",
+                id: `cmd-${sequence}`,
+                command: "cat big",
+                cwd: "/tmp/test",
+                status: "completed",
+                approvalStatus: null,
+                exitCode: 0,
+                aggregatedOutput: "x".repeat(
+                  200 + Math.floor(random() * 2_500),
+                ),
+              },
+            }),
+          };
+        }
+        return {
+          threadId,
+          sequence,
+          type: "system/error",
+          ...threadEventFields,
+          itemId: null,
+          itemKind: null,
+          parentToolCallId: null,
+          data: JSON.stringify({
+            message: "y".repeat(20 + Math.floor(random() * 400)),
+          }),
+        };
+      }),
+    );
+  }
+
+  function legacyFindStoredTimelineWindowByteBudgetFloor(
+    db: DbConnection,
+    query: { params: unknown[]; sqlText: string },
+    maxDataBytes: number,
+  ): StoredTimelineWindowByteBudgetFloor {
+    const statement = db.$client.prepare<unknown[], FloorScanRow>(
+      query.sqlText,
+    );
+    let includedDataBytes = 0;
+    let sequenceStart: number | null = null;
+    let result: StoredTimelineWindowByteBudgetFloor | null = null;
+    let oversizedEvent: Extract<
+      StoredTimelineWindowByteBudgetFloor,
+      { kind: "single-event-too-large" }
+    > | null = null;
+
+    for (const row of statement.iterate(...query.params)) {
+      if (oversizedEvent !== null) {
+        oversizedEvent.hasOlderRows = true;
+        result = oversizedEvent;
+        break;
+      }
+      if (includedDataBytes + row.data_bytes > maxDataBytes) {
+        if (sequenceStart === null) {
+          oversizedEvent = {
+            createdAt: row.created_at,
+            eventDataBytes: row.data_bytes,
+            hasOlderRows: false,
+            kind: "single-event-too-large",
+            sequenceStart: row.sequence,
+            turnId: row.turn_id,
+          };
+          continue;
+        }
+        result = {
+          eventDataBytes: includedDataBytes,
+          kind: "floor",
+          sequenceStart,
+        };
+        break;
+      }
+      includedDataBytes += row.data_bytes;
+      sequenceStart = row.sequence;
+    }
+
+    if (result !== null) {
+      return result;
+    }
+    if (oversizedEvent !== null) {
+      return oversizedEvent;
+    }
+    return { eventDataBytes: includedDataBytes, kind: "fits" };
+  }
+
+  function captureFloorQueryShape(
+    db: DbConnection,
+    args: FindStoredTimelineWindowByteBudgetFloorArgs,
+  ): FloorQueryShape {
+    const prepareSpy = vi.spyOn(db.$client, "prepare");
+    findStoredTimelineWindowByteBudgetFloor(db, args);
+    const sqlText = prepareSpy.mock.calls[0]?.[0];
+    const statement = prepareSpy.mock.results[0]?.value;
+    prepareSpy.mockRestore();
+    if (sqlText === undefined || statement === undefined) {
+      throw new Error("expected the first call to prepare a statement");
+    }
+    return { iterateSpy: vi.spyOn(statement, "iterate"), sqlText };
+  }
+
+  function runBoth(
+    db: DbConnection,
+    shape: FloorQueryShape,
+    args: FindStoredTimelineWindowByteBudgetFloorArgs,
+  ) {
+    shape.iterateSpy.mockClear();
+    const next = findStoredTimelineWindowByteBudgetFloor(db, args);
+    const params = shape.iterateSpy.mock.calls.at(-1);
+    if (params === undefined) {
+      throw new Error("expected the call to iterate the captured statement");
+    }
+    const legacy = legacyFindStoredTimelineWindowByteBudgetFloor(
+      db,
+      { params, sqlText: shape.sqlText },
+      args.maxDataBytes,
+    );
+    return { legacy, next };
+  }
+
+  function floorShapes(
+    threadId: string,
+  ): FindStoredTimelineWindowByteBudgetFloorArgs[] {
+    return [
+      {
+        maxDataBytes: 0,
+        maxInlineOutputChars: null,
+        sequenceStart: 1,
+        threadId,
+      },
+      {
+        beforeSequence: 35,
+        excludeDiagnosticEvents: true,
+        excludedTypes: ["item/completed"],
+        maxDataBytes: 0,
+        maxInlineOutputChars: null,
+        sequenceStart: 5,
+        threadId,
+      },
+      {
+        maxDataBytes: 0,
+        maxInlineOutputChars: 1_000,
+        sequenceStart: 1,
+        threadId,
+      },
+    ];
+  }
+
+  it("answers like a freshly prepared statement across budgets and query shapes", () => {
+    const { db, thread } = setup();
+    const random = seededRandom(7);
+    seedFloorEvents(db, thread.id, 40, random);
+    const kindsSeen = new Set<string>();
+
+    for (const shapeArgs of floorShapes(thread.id)) {
+      const shape = captureFloorQueryShape(db, shapeArgs);
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        const args = {
+          ...shapeArgs,
+          maxDataBytes: Math.floor(random() * 40_000),
+        };
+        const { legacy, next } = runBoth(db, shape, args);
+        expect(next).toEqual(legacy);
+        expect(findStoredTimelineWindowByteBudgetFloor(db, args)).toEqual(
+          legacy,
+        );
+        kindsSeen.add(next.kind);
+      }
+    }
+    expect([...kindsSeen].sort()).toEqual([
+      "fits",
+      "floor",
+      "single-event-too-large",
+    ]);
+  });
+
+  it("prepares one statement per query shape instead of one per call", () => {
+    const callsPerShape = 20;
+    const shapeCount = floorShapes("thread").length;
+    const countFloorScanPrepares = (calls: readonly unknown[][]): number =>
+      calls.filter(
+        ([sqlText]) =>
+          typeof sqlText === "string" && sqlText.includes("data_bytes"),
+      ).length;
+
+    const reused = setup();
+    seedFloorEvents(reused.db, reused.thread.id, 40, seededRandom(11));
+    const reusedPrepareSpy = vi.spyOn(reused.db.$client, "prepare");
+    for (let call = 0; call < callsPerShape; call += 1) {
+      for (const shapeArgs of floorShapes(reused.thread.id)) {
+        findStoredTimelineWindowByteBudgetFloor(reused.db, {
+          ...shapeArgs,
+          maxDataBytes: 500 + call * 100,
+        });
+      }
+    }
+
+    const fresh = setup();
+    seedFloorEvents(fresh.db, fresh.thread.id, 40, seededRandom(11));
+    const shapes = floorShapes(fresh.thread.id).map((shapeArgs) =>
+      captureFloorQueryShape(fresh.db, shapeArgs),
+    );
+    const freshPrepareSpy = vi.spyOn(fresh.db.$client, "prepare");
+    for (let call = 0; call < callsPerShape; call += 1) {
+      for (const [index, shapeArgs] of floorShapes(
+        fresh.thread.id,
+      ).entries()) {
+        const shape = shapes[index];
+        if (!shape) {
+          throw new Error("expected a captured query shape");
+        }
+        runBoth(fresh.db, shape, {
+          ...shapeArgs,
+          maxDataBytes: 500 + call * 100,
+        });
+      }
+    }
+
+    expect(countFloorScanPrepares(reusedPrepareSpy.mock.calls)).toBe(
+      shapeCount,
+    );
+    expect(countFloorScanPrepares(freshPrepareSpy.mock.calls)).toBe(
+      callsPerShape * shapeCount,
+    );
+  });
+
+  it("keeps each connection's statements separate", () => {
+    const first = setup();
+    const second = setup();
+    seedFloorEvents(first.db, first.thread.id, 40, seededRandom(21));
+    seedFloorEvents(second.db, second.thread.id, 12, seededRandom(22));
+    const argsFor = (threadId: string) => ({
+      maxDataBytes: Number.MAX_SAFE_INTEGER,
+      maxInlineOutputChars: null,
+      sequenceStart: 1,
+      threadId,
+    });
+    const rowBytes = (db: DbConnection, threadId: string): number =>
+      listStoredTimelineWindowEventRows(db, {
+        maxInlineOutputChars: null,
+        sequenceStart: 1,
+        threadId,
+      }).reduce((total, row) => total + Buffer.byteLength(row.data), 0);
+
+    for (let round = 0; round < 3; round += 1) {
+      expect(
+        findStoredTimelineWindowByteBudgetFloor(
+          first.db,
+          argsFor(first.thread.id),
+        ),
+      ).toEqual({
+        eventDataBytes: rowBytes(first.db, first.thread.id),
+        kind: "fits",
+      });
+      expect(
+        findStoredTimelineWindowByteBudgetFloor(
+          second.db,
+          argsFor(second.thread.id),
+        ),
+      ).toEqual({
+        eventDataBytes: rowBytes(second.db, second.thread.id),
+        kind: "fits",
+      });
+    }
+    expect(rowBytes(first.db, first.thread.id)).not.toBe(
+      rowBytes(second.db, second.thread.id),
+    );
+  });
+
+  it("stays correct when early stops and new writes alternate", () => {
+    const { db, thread } = setup();
+    const random = seededRandom(31);
+    seedFloorEvents(db, thread.id, 20, random);
+    const baseArgs = {
+      maxInlineOutputChars: null,
+      sequenceStart: 1,
+      threadId: thread.id,
+    };
+    const shape = captureFloorQueryShape(db, { ...baseArgs, maxDataBytes: 1 });
+
+    for (let round = 0; round < 6; round += 1) {
+      for (const maxDataBytes of [1, 900, 5_000, 1_000_000]) {
+        const { legacy, next } = runBoth(db, shape, {
+          ...baseArgs,
+          maxDataBytes,
+        });
+        expect(next).toEqual(legacy);
+      }
+      insertEvents(db, noopNotifier, [
+        {
+          threadId: thread.id,
+          sequence: 21 + round,
+          type: "system/error",
+          ...threadEventFields,
+          itemId: null,
+          itemKind: null,
+          parentToolCallId: null,
+          data: JSON.stringify({ message: "z".repeat(50 + round * 40) }),
+        },
+      ]);
+    }
+    expect(getLatestThreadSequence(db, { threadId: thread.id })).toBe(26);
   });
 });
 

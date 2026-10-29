@@ -52,6 +52,7 @@ export interface ThreadTimelineWindowRequest {
 }
 
 const MAX_PUSH_PAUSE_MS = 1_000;
+const PUSH_PAUSE_BUILD_TIME_MULTIPLIER = 4;
 
 interface TimelinePush {
   signal: ThreadTimelineSignal;
@@ -318,7 +319,11 @@ export function createThreadTimelineWindows(
     }
     const finishedAt = performance.now();
     schedule.nextAllowedAt =
-      finishedAt + Math.min(MAX_PUSH_PAUSE_MS, finishedAt - startedAt);
+      finishedAt +
+      Math.min(
+        MAX_PUSH_PAUSE_MS,
+        PUSH_PAUSE_BUILD_TIME_MULTIPLIER * (finishedAt - startedAt),
+      );
   }
 
   function schedulePush(threadId: string): void {
