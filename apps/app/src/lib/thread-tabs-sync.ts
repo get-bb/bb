@@ -218,9 +218,15 @@ export function mergeThreadTabChanges(
   for (const [index, tab] of next.entries()) {
     if (previousById.has(tab.id)) continue;
     const existingIndex = merged.findIndex((item) => item.id === tab.id);
+    const followingIds = new Set(next.slice(index + 1).map((item) => item.id));
+    if (
+      existingIndex !== -1 &&
+      !merged.some((item) => followingIds.has(item.id))
+    ) {
+      continue;
+    }
     const existing =
       existingIndex === -1 ? undefined : merged.splice(existingIndex, 1)[0];
-    const followingIds = new Set(next.slice(index + 1).map((item) => item.id));
     const insertionIndex = merged.findIndex((item) =>
       followingIds.has(item.id),
     );

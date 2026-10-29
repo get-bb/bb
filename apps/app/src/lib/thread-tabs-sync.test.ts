@@ -228,6 +228,21 @@ describe("thread tab synchronization", () => {
     ).toEqual([terminal, neighbor]);
   });
 
+  it("keeps a server tab in place when a device that never loaded the list adds it", () => {
+    const info = createThreadInfoFixedPanelTab();
+    const diff = createGitDiffFixedPanelTab();
+    const terminal = createTerminalFixedPanelTab({ terminalId: "new" });
+    expect(mergeThreadTabChanges([info, diff], [], [info])).toEqual([
+      info,
+      diff,
+    ]);
+    expect(mergeThreadTabChanges([info, diff], [], [info, terminal])).toEqual([
+      info,
+      diff,
+      terminal,
+    ]);
+  });
+
   it("keeps the server's desktop window when saving a local page update", () => {
     const closedWindow = {
       hostId: "host-1",
