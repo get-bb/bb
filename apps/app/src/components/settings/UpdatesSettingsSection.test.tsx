@@ -33,6 +33,8 @@ import {
   resetProviderCliInstallStoreForTests,
 } from "@/components/provider-cli/provider-cli-install-store";
 import { appToast } from "@/components/ui/app-toast";
+import { makePluginListItem } from "@/test/fixtures/plugins";
+import { buildUpdateInventoryPlugins } from "@/hooks/useUpdateInventory";
 import { sdk } from "@/lib/sdk";
 import { useDesktopUpdateInfo } from "@/hooks/useDesktopUpdateInfo";
 import {
@@ -85,7 +87,8 @@ vi.mock("@/lib/ws", () => ({
   wsManager: { subscribe: vi.fn(), unsubscribe: vi.fn() },
 }));
 
-vi.mock("@/hooks/useUpdateInventory", () => ({
+vi.mock("@/hooks/useUpdateInventory", async (original) => ({
+  ...(await original<typeof import("@/hooks/useUpdateInventory")>()),
   useUpdateInventory: vi.fn(),
 }));
 
@@ -120,6 +123,16 @@ vi.mock("@/hooks/mutations/host-mutations", () => ({
 }));
 
 const startInstallMock = vi.fn();
+
+const startPluginUpdateMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@/hooks/queries/plugin-catalog-queries", () => ({
+  usePluginUpdateCheck: () => ({ isFetching: false }),
+}));
+
+vi.mock("@/hooks/queries/plugin-update-job-queries", () => ({
+  startPluginUpdate: startPluginUpdateMock,
+}));
 
 vi.mock("@/components/provider-cli/provider-cli-install", async (original) => {
   const actual =
@@ -273,6 +286,7 @@ function makeInventory(overrides: Partial<UpdateInventory>): UpdateInventory {
         isPrimary: true,
       }),
     ],
+    plugins: { trackedCount: 0, items: [] },
     pluginAttentionCount: 0,
     actionableCount: 0,
     hasAttention: false,
@@ -1828,6 +1842,108 @@ The canonical release summary.
     expect(startInstallMock).toHaveBeenNthCalledWith(2, {
       hostId: "host_2",
       issue: homelabIssue,
+    });
+  });
+
+  it("updates tracking plugins from the Plugins section and leaves blocked ones alone", async () => {
+    useWebApp();
+    startPluginUpdateMock.mockImplementation(async (pluginId: string) => ({
+      id: `job_${pluginId}`,
+      pluginId,
+      displayName: pluginId,
+      state: "queued",
+    }));
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({
+        plugins: buildUpdateInventoryPlugins([
+          makePluginListItem({
+            id: "notes",
+            name: "Notes",
+            source: "npm:@acme/notes@^1.0.0",
+            version: "1.0.0",
+            updateState: {
+              outcome: "update-available",
+              availableVersion: "1.2.0",
+            },
+          }),
+          makePluginListItem({
+            id: "linear",
+            name: "Linear",
+            source: "git:github.com/acme/linear@^0.8.0",
+            version: "0.8.0",
+            updateState: {
+              outcome: "update-available",
+              availableVersion: "0.8.4",
+            },
+          }),
+          makePluginListItem({
+            id: "legacy",
+            name: "Legacy",
+            source: "npm:@acme/legacy@^2.0.0",
+            version: "2.0.0",
+            updateState: {
+              outcome: "incompatible",
+              blockedVersion: "3.0.0",
+              blockedReasons: ["engines.bb requires >=9.0.0"],
+            },
+          }),
+        ]),
+      }),
+    );
+
+    renderSection();
+
+    const legacy = document.querySelector('[data-plugin-update-row="legacy"]');
+    expect(legacy?.textContent).toContain("3.0.0: engines.bb requires >=9.0.0");
+    expect(within(legacy as HTMLElement).queryByRole("button")).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Update available · Update Notes to 1.2.0",
+      }),
+    );
+    expect(startPluginUpdateMock).toHaveBeenCalledTimes(1);
+    expect(startPluginUpdateMock).toHaveBeenLastCalledWith("notes");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Update all 2 plugins" }),
+    );
+    expect(startPluginUpdateMock.mock.calls.slice(1)).toEqual([
+      ["linear"],
+      ["notes"],
+    ]);
+  });
+
+  it("toasts a plugin update the server refuses to start", async () => {
+    useWebApp();
+    startPluginUpdateMock.mockRejectedValue(
+      new Error("server move in progress"),
+    );
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({
+        plugins: buildUpdateInventoryPlugins([
+          makePluginListItem({
+            id: "notes",
+            name: "Notes",
+            source: "npm:@acme/notes@^1.0.0",
+            updateState: {
+              outcome: "update-available",
+              availableVersion: "1.2.0",
+            },
+          }),
+        ]),
+      }),
+    );
+
+    renderSection();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Update all 1 plugin" }),
+    );
+
+    await waitFor(() => {
+      expect(appToast.error).toHaveBeenCalledWith("Plugin update failed", {
+        description: "Notes — server move in progress",
+      });
     });
   });
 

@@ -231,7 +231,10 @@ export const SETTINGS_SEARCH_INDEX: Record<
   },
   updates: {
     keywords: ["upgrade", "version", "release notes", "changelog"],
-    settings: [{ title: "Provider CLIs", keywords: ["agents", "upgrade"] }],
+    settings: [
+      { title: "Provider CLIs", keywords: ["agents", "upgrade"] },
+      { title: "Plugins", keywords: ["plugin updates", "outdated", "upgrade"] },
+    ],
   },
   plugins: {
     keywords: ["extensions", "manage", "uninstall"],

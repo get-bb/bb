@@ -270,10 +270,13 @@ list. To publish a marketplace, see the bb-plugin-authoring skill.
 
 Updates and pinning
 
-Updates are manual: `bb plugin outdated` checks tracking sources and
-`bb plugin update` applies compatible candidates. Reinstalling an installed
-managed plugin is refused; use `bb plugin update`. A failed activation restores
-the previous version and leaves the failure visible.
+bb checks tracking sources every six hours and again when Settings → Updates
+opens. That page lists each compatible update with an Update button and Update
+all, and shows candidates blocked by engines.bb or engines.bbPluginSdk with the
+reason. Updates are never applied automatically: `bb plugin outdated` checks on
+demand and `bb plugin update` applies compatible candidates. Reinstalling an
+installed managed plugin is refused; use `bb plugin update`. A failed
+activation restores the previous version and leaves the failure visible.
 
 Exact npm versions, Git tags and commits, path sources, and bundled official
 plugins are pinned. npm ranges, dist-tags, and omitted specs, omitted Git refs

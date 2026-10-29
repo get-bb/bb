@@ -87,7 +87,15 @@ import { useRetryHostUpdate } from "@/hooks/mutations/host-mutations";
 import {
   useUpdateInventory,
   type UpdateInventoryMachine,
+  type UpdateInventoryPlugin,
+  type UpdateInventoryPlugins,
 } from "@/hooks/useUpdateInventory";
+import { usePluginUpdateCheck } from "@/hooks/queries/plugin-catalog-queries";
+import { startPluginUpdate } from "@/hooks/queries/plugin-update-job-queries";
+import { applyPluginUpdateJob } from "@/hooks/cache-owners/plugin-cache-owner";
+import { PluginIcon } from "@/components/plugin/PluginIcon";
+import { displayPluginVersion } from "@/components/plugin/management/plugin-ui";
+import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useDesktopUpdateInfo } from "@/hooks/useDesktopUpdateInfo";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
@@ -1977,6 +1985,175 @@ export function ProviderCliUpdatesSection({
   );
 }
 
+function pluginDisplayName(item: UpdateInventoryPlugin): string {
+  return item.plugin.name ?? item.plugin.id;
+}
+
+function blockedPluginReason(
+  item: Extract<UpdateInventoryPlugin, { kind: "blocked" }>,
+): string {
+  const version = displayPluginVersion(item.version);
+  return item.reasons.length === 0
+    ? `${version} isn’t compatible with this bb`
+    : `${version}: ${item.reasons.join("; ")}`;
+}
+
+function PluginUpdateRow({
+  item,
+  onStartUpdate,
+}: {
+  item: UpdateInventoryPlugin;
+  onStartUpdate: (pluginId: string) => void;
+}) {
+  const { plugin } = item;
+  const name = pluginDisplayName(item);
+  const failure =
+    item.kind === "update" ? plugin.updateState.lastFailure : null;
+  return (
+    <div
+      data-plugin-update-row={plugin.id}
+      className="grid min-h-12 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-2 text-sm"
+    >
+      <span className="flex min-w-0 items-start gap-3">
+        <span className="flex h-5 w-6 shrink-0 items-center justify-center">
+          <PluginIcon
+            pluginId={plugin.id}
+            icon={plugin.icon}
+            compactIconUrl={plugin.compactIconUrl}
+            className="size-4 text-muted-foreground"
+          />
+        </span>
+        <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <span className="min-w-0 truncate font-medium text-foreground">
+            {name}
+          </span>
+          <RowVersions
+            current={displayPluginVersion(plugin.version)}
+            latest={
+              item.kind === "update" ? displayPluginVersion(item.version) : null
+            }
+          />
+          {item.kind === "blocked" ? (
+            <span className="basis-full text-2xs break-words text-subtle-foreground">
+              {blockedPluginReason(item)}
+            </span>
+          ) : null}
+        </span>
+      </span>
+      <RowActions>
+        {item.kind === "blocked" ? (
+          <span className="text-2xs font-semibold text-subtle-foreground">
+            Blocked
+          </span>
+        ) : failure !== null ? (
+          <>
+            <FailureIndicator
+              reason={
+                failure.detail.length > 0
+                  ? failure.detail
+                  : `bb couldn’t activate ${displayPluginVersion(failure.version)} and restored ${displayPluginVersion(plugin.version)}.`
+              }
+            />
+            <RowStateControl
+              state="failed"
+              actionIcon={RETRY_ACTION_ICON as IconName}
+              actionLabel={`Retry ${name} update to ${displayPluginVersion(item.version)}`}
+              actionTooltip="Retry"
+              onClick={() => onStartUpdate(plugin.id)}
+            />
+          </>
+        ) : (
+          <RowStateControl
+            state="update-available"
+            actionLabel={`Update ${name} to ${displayPluginVersion(item.version)}`}
+            buttonLeading={
+              <Icon aria-hidden name={UPDATE_ACTION_ICON} className="size-3" />
+            }
+            buttonLabel="Update"
+            onClick={() => onStartUpdate(plugin.id)}
+          />
+        )}
+      </RowActions>
+    </div>
+  );
+}
+
+interface PluginUpdatesSectionProps {
+  plugins: UpdateInventoryPlugins;
+  checking: boolean;
+  onStartUpdates: (pluginIds: string[]) => void;
+}
+
+export function PluginUpdatesSection({
+  plugins,
+  checking,
+  onStartUpdates,
+}: PluginUpdatesSectionProps) {
+  if (plugins.trackedCount === 0) {
+    return null;
+  }
+  const startable = plugins.items
+    .filter((item) => item.kind === "update")
+    .map((item) => item.plugin.id);
+  const updateAllButton =
+    startable.length === 0 ? null : (
+      <div
+        role="toolbar"
+        aria-label="Bulk plugin update actions"
+        className="flex flex-wrap items-center justify-end gap-2"
+      >
+        <UpdateActionButton
+          label={`Update all ${startable.length} plugin${startable.length === 1 ? "" : "s"}`}
+          tooltipLabel="Update all"
+          icon={UPDATE_ACTION_ICON}
+          visibleLabel="Update all"
+          variant="default"
+          onClick={() => onStartUpdates(startable)}
+        />
+      </div>
+    );
+  return (
+    <div data-updates-domain="plugins">
+      <SettingsSection
+        action={updateAllButton}
+        actionPlacement="inline"
+        bodyClassName="overflow-hidden p-0"
+        title="Plugins"
+      >
+        {plugins.items.length === 0 ? (
+          <div
+            data-updates-summary
+            className="flex min-h-12 items-center gap-3 px-4 py-2 text-sm text-muted-foreground"
+          >
+            <span className="flex h-5 w-6 shrink-0 items-center justify-center">
+              <Icon
+                aria-hidden
+                name={checking ? "Loading" : "CircleCheck"}
+                className={cn("size-4 text-input", checking && "animate-spin")}
+              />
+            </span>
+            {checking
+              ? "Checking for updates…"
+              : plugins.trackedCount === 1
+                ? "Nothing to update for 1 plugin."
+                : `Nothing to update across ${plugins.trackedCount} plugins.`}
+          </div>
+        ) : (
+          <div className="divide-y divide-border">
+            {plugins.items.map((item) => (
+              <PluginUpdateRow
+                key={item.plugin.id}
+                item={item}
+                onStartUpdate={(pluginId) => onStartUpdates([pluginId])}
+              />
+            ))}
+          </div>
+        )}
+      </SettingsSection>
+    </div>
+  );
+}
+
 function desktopRowNeedsAttention(desktopInfo: BbDesktopInfo | null): boolean {
   if (desktopInfo === null) {
     return false;
@@ -2029,6 +2206,24 @@ export function UpdatesSettingsSection({
     number | null
   >(null);
   const appUpdate = appUpdateStatus.data;
+  const pluginUpdateCheck = usePluginUpdateCheck(null, { enabled: true });
+
+  function startPluginUpdates(pluginIds: readonly string[]): void {
+    for (const pluginId of pluginIds) {
+      const item = inventory.plugins.items.find(
+        (candidate) => candidate.plugin.id === pluginId,
+      );
+      const name = item === undefined ? pluginId : pluginDisplayName(item);
+      void startPluginUpdate(pluginId).then(
+        (job) => applyPluginUpdateJob({ queryClient, job }),
+        (error: unknown) => {
+          appToast.error("Plugin update failed", {
+            description: `${name} — ${pluginAdminErrorMessage(error)}`,
+          });
+        },
+      );
+    }
+  }
 
   function startAppUpdate(): void {
     const runningThreadCount = appUpdate?.runningThreadCount ?? 0;
@@ -2147,7 +2342,9 @@ export function UpdatesSettingsSection({
     <BbAppUpdateRows
       name="Server"
       systemVersion={inventory.systemVersion}
-      appUpdate={useServerUpdate || desktopInfo === null ? appUpdate : undefined}
+      appUpdate={
+        useServerUpdate || desktopInfo === null ? appUpdate : undefined
+      }
       applyPending={applyAppUpdate.isPending}
       desktopInfo={useServerUpdate ? null : desktopInfo}
       isDesktop={!useServerUpdate && isDesktop}
@@ -2220,6 +2417,11 @@ export function UpdatesSettingsSection({
         onRecheckClis={(hostId) => {
           void invalidateHostProviderCliStatus({ queryClient, hostId });
         }}
+      />
+      <PluginUpdatesSection
+        plugins={inventory.plugins}
+        checking={pluginUpdateCheck.isFetching}
+        onStartUpdates={startPluginUpdates}
       />
       <ConfirmDeleteDialog
         open={confirmingAppUpdateThreads !== null}
