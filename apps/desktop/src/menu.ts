@@ -356,44 +356,15 @@ export function buildApplicationMenuTemplate(
   ];
 }
 
-let installedApplicationMenu: {
-  args: InstallApplicationMenuArgs;
-  menu: Menu;
-  signature: string;
-} | null = null;
-
 export function installApplicationMenu(args: InstallApplicationMenuArgs): void {
-  const menuArgs: InstallApplicationMenuArgs = {
-    ...args,
-    onServerMenuWillShow: args.onServerMenuWillShow,
-    selectServer(serverId) {
-      installedApplicationMenu = null;
-      args.selectServer(serverId);
-    },
-    toggleBuiltinServer() {
-      installedApplicationMenu = null;
-      args.toggleBuiltinServer();
-    },
-  };
-  const template = buildApplicationMenuTemplate(menuArgs);
-  const signature = JSON.stringify([
-    template,
-    args.servers.map((server) => server.id),
-  ]);
-  if (
-    installedApplicationMenu !== null &&
-    installedApplicationMenu.menu === Menu.getApplicationMenu() &&
-    installedApplicationMenu.signature === signature
-  ) {
-    Object.assign(installedApplicationMenu.args, menuArgs);
-    return;
-  }
-  const menu = Menu.buildFromTemplate(template);
-  for (const id of SERVER_MENU_ITEM_IDS) {
-    menu.getMenuItemById(id)?.submenu?.on("menu-will-show", () => {
-      menuArgs.onServerMenuWillShow?.();
-    });
+  const menu = Menu.buildFromTemplate(buildApplicationMenuTemplate(args));
+  const onServerMenuWillShow = args.onServerMenuWillShow;
+  if (onServerMenuWillShow !== undefined) {
+    for (const id of SERVER_MENU_ITEM_IDS) {
+      menu.getMenuItemById(id)?.submenu?.on("menu-will-show", () => {
+        onServerMenuWillShow();
+      });
+    }
   }
   Menu.setApplicationMenu(menu);
-  installedApplicationMenu = { args: menuArgs, menu, signature };
 }

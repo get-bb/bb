@@ -1,30 +1,15 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { BaseWindow, MenuItemConstructorOptions } from "electron";
 
-vi.mock("electron", () => {
-  const buildFromTemplate = vi.fn((_template: MenuItemConstructorOptions[]) => {
-    const menuItem = { submenu: { on: vi.fn() } };
-    return { getMenuItemById: vi.fn(() => menuItem) };
-  });
-  let applicationMenu: ReturnType<typeof buildFromTemplate> | null = null;
-  return {
-    app: { name: "bb" },
-    Menu: {
-      buildFromTemplate,
-      getApplicationMenu: () => applicationMenu,
-      setApplicationMenu: vi.fn((menu: typeof applicationMenu) => {
-        applicationMenu = menu;
-      }),
-      sendActionToFirstResponder: vi.fn(),
-    },
-  };
-});
+vi.mock("electron", () => ({
+  app: { name: "bb" },
+  Menu: { sendActionToFirstResponder: vi.fn() },
+}));
 
 import { Menu } from "electron";
 
 import {
   buildApplicationMenuTemplate,
-  installApplicationMenu,
   SET_SERVER_URL_MENU_LABEL,
   type InstallApplicationMenuArgs,
 } from "../src/menu.js";
@@ -71,7 +56,7 @@ function menuArgs(
 }
 
 function findServerSubmenu(
-  template: Parameters<typeof Menu.buildFromTemplate>[0],
+  template: MenuItemConstructorOptions[],
 ): MenuItemConstructorOptions[] {
   const windowMenu = template.find((item) => item.label === "Window");
   const windowSubmenu = windowMenu?.submenu as MenuItemConstructorOptions[];
@@ -95,138 +80,6 @@ function findDesktopSettingsServerSubmenu(
 }
 
 describe("application menu", () => {
-  beforeEach(() => {
-    Menu.setApplicationMenu(null);
-    vi.clearAllMocks();
-  });
-
-  it("keeps an unchanged native menu while using the latest callbacks", () => {
-    const oldOpenNewTab = vi.fn();
-    const newOpenNewTab = vi.fn();
-    const oldSelectServer = vi.fn();
-    const newSelectServer = vi.fn();
-    const onServerMenuWillShow = vi.fn();
-    installApplicationMenu(
-      menuArgs(() => {}, {
-        openNewTab: oldOpenNewTab,
-        selectServer: oldSelectServer,
-      }),
-    );
-    const template = vi.mocked(Menu.buildFromTemplate).mock.calls[0]?.[0];
-    if (!template) throw new Error("Expected an installed template");
-    installApplicationMenu(
-      menuArgs(() => {}, {
-        openNewTab: newOpenNewTab,
-        selectServer: newSelectServer,
-        onServerMenuWillShow,
-      }),
-    );
-    expect(Menu.buildFromTemplate).toHaveBeenCalledTimes(1);
-    expect(Menu.setApplicationMenu).toHaveBeenCalledTimes(1);
-    const fileItems = template.find((item) => item.label === "File")
-      ?.submenu as MenuItemConstructorOptions[];
-    fileItems
-      .find((item) => item.label === "New Tab")
-      ?.click?.({} as never, undefined, {} as never);
-    expect(oldOpenNewTab).not.toHaveBeenCalled();
-    expect(newOpenNewTab).toHaveBeenCalledOnce();
-    const menu = vi.mocked(Menu.buildFromTemplate).mock.results[0]?.value;
-    const submenu = menu?.getMenuItemById("bb-server-menu")?.submenu;
-    if (!submenu) throw new Error("Expected a server submenu");
-    const listener = vi.mocked(submenu.on).mock.calls[0]?.[1];
-    if (!listener) throw new Error("Expected a server menu listener");
-    listener();
-    expect(onServerMenuWillShow).toHaveBeenCalledOnce();
-    installApplicationMenu(
-      menuArgs(() => {}, { selectServer: newSelectServer }),
-    );
-    listener();
-    expect(onServerMenuWillShow).toHaveBeenCalledOnce();
-    findServerSubmenu(template)[0]?.click?.(
-      {} as never,
-      undefined,
-      {} as never,
-    );
-    expect(oldSelectServer).not.toHaveBeenCalled();
-    expect(newSelectServer).toHaveBeenCalledWith("builtin");
-  });
-
-  it.each<Partial<InstallApplicationMenuArgs>>([
-    { isMac: false },
-    { showBuiltinServer: false },
-    { connectServersSkipReason: "unauthorized" },
-    { servers: [{ checked: false, id: "builtin", name: BUILTIN_SERVER_NAME }] },
-    {
-      servers: [
-        { checked: true, id: "custom:other", name: BUILTIN_SERVER_NAME },
-      ],
-    },
-    { servers: [{ checked: true, id: "builtin", name: "Renamed" }] },
-    { servers: [] },
-    {
-      accelerators: {
-        closeWindowOrSideTab: undefined,
-        createNewWindow: undefined,
-        openNewTab: "CommandOrControl+T",
-        openNewThread: undefined,
-        openSettings: undefined,
-        reopenClosedTab: undefined,
-      },
-    },
-  ])("replaces the native menu when its contents change: %j", (overrides) => {
-    installApplicationMenu(menuArgs(() => {}));
-    const previousMenu = Menu.getApplicationMenu();
-    installApplicationMenu(menuArgs(() => {}, overrides));
-    expect(Menu.getApplicationMenu()).not.toBe(previousMenu);
-    expect(Menu.setApplicationMenu).toHaveBeenCalledTimes(2);
-  });
-
-  it("reinstalls the menu if another owner removes it", () => {
-    installApplicationMenu(menuArgs(() => {}));
-    Menu.setApplicationMenu(null);
-    installApplicationMenu(menuArgs(() => {}));
-    expect(Menu.getApplicationMenu()).not.toBeNull();
-    expect(Menu.buildFromTemplate).toHaveBeenCalledTimes(2);
-  });
-
-  it("updates server routing even when the displayed label stays the same", () => {
-    const selectServer = vi.fn();
-    for (const id of ["custom:first", "custom:second"]) {
-      installApplicationMenu(
-        menuArgs(() => {}, {
-          selectServer,
-          servers: [{ checked: true, id, name: "Remote" }],
-        }),
-      );
-    }
-    const template = vi.mocked(Menu.buildFromTemplate).mock.calls[1]?.[0];
-    if (!template) throw new Error("Expected an updated server template");
-    findServerSubmenu(template)[0]?.click?.(
-      {} as never,
-      undefined,
-      {} as never,
-    );
-    expect(selectServer).toHaveBeenCalledWith("custom:second");
-  });
-
-  it.each(["This Mac", BUILTIN_SERVER_NAME])(
-    "restores native checked state after an unsuccessful selection: %s",
-    (label) => {
-      const args = menuArgs(() => {});
-      installApplicationMenu(args);
-      const template = vi.mocked(Menu.buildFromTemplate).mock.calls[0]?.[0];
-      if (!template) throw new Error("Expected an installed template");
-      const serverItems = findServerSubmenu(template);
-      const item = serverItems.find(
-        (item) => item.label === label || item.label === `Show ${label}`,
-      );
-      if (!item?.click) throw new Error("Expected a server action");
-      item.click({} as never, undefined, {} as never);
-      installApplicationMenu(args);
-      expect(Menu.buildFromTemplate).toHaveBeenCalledTimes(2);
-    },
-  );
-
   it.each([true, false])(
     "opens local logs independently of runtime ownership (isMac=%s)",
     (isMac) => {
