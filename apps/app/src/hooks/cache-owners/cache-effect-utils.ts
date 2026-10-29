@@ -38,3 +38,12 @@ export function patchCachedQueryData<T>(
     fetchedAt ? { updatedAt: fetchedAt } : undefined,
   );
 }
+
+export function keepNewerByUpdatedAt<T extends { updatedAt: number }>(
+  cached: T | undefined,
+  incoming: T,
+): T {
+  return cached !== undefined && cached.updatedAt > incoming.updatedAt
+    ? cached
+    : incoming;
+}
