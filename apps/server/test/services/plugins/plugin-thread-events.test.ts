@@ -340,6 +340,7 @@ describe("plugin thread lifecycle events", () => {
           {
             environmentId: environment.id,
             request: {
+              suggestionAttribution: unknownWorkSuggestionAttribution(),
               environment: { type: "reuse", environmentId: environment.id },
               input: [],
               origin: "plugin",

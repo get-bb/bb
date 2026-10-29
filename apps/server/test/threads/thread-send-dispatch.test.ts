@@ -295,6 +295,10 @@ describe("user message telemetry", () => {
         thread,
         payload: {
           input: textInput("An edited suggestion"),
+          model: "gpt-5",
+          permissionMode: "full",
+          reasoningLevel: "medium",
+          serviceTier: "default",
           mode: "auto",
           sendAt: Date.now() + 60_000,
           pluginSubmission: { pluginId: "fixture-action", data: null },
@@ -362,6 +366,10 @@ describe("user message telemetry", () => {
         thread,
         payload: {
           input: textInput("Background plugin work"),
+          model: "gpt-5",
+          permissionMode: "full",
+          reasoningLevel: "medium",
+          serviceTier: "default",
           originPluginId: "automations",
         },
       });
@@ -380,6 +388,8 @@ describe("user message telemetry", () => {
           thread,
           payload: {
             input: textInput("Rejected"),
+            compactFirst: true,
+            sendAt: Date.now() + 60_000,
             mode: "auto",
             senderThreadId: "missing-source-thread",
           },

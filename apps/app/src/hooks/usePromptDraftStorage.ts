@@ -193,7 +193,8 @@ function writePromptDraft(
   options: PromptDraftWriteOptions = { persist: "immediate" },
 ): void {
   if (!storageKey || typeof window === "undefined") return;
-  value = preserveEditedSuggestion(readPromptDraft(storageKey), value);
+  if (value.suggestion !== undefined)
+    value = preserveEditedSuggestion(readPromptDraft(storageKey), value);
 
   promptDraftCache.set(storageKey, {
     rawValue: null,

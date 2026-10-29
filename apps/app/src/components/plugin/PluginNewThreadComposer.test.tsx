@@ -1,3 +1,4 @@
+import { noWorkSuggestionAttribution } from "@bb/server-contract";
 // @vitest-environment jsdom
 
 import { useContext, useEffect, useState, type ReactNode } from "react";
@@ -174,13 +175,11 @@ vi.mock("@/lib/sdk", () => ({
   sdk: {
     projects: { attachments: { copy: mocks.copyAttachments } },
     system: {
-      experimental_onboardingContext: vi
-        .fn()
-        .mockResolvedValue({
-          design_revision: "baseline",
-          recommendation_revision: "baseline",
-          assignment: null,
-        }),
+      experimental_onboardingContext: vi.fn().mockResolvedValue({
+        design_revision: "baseline",
+        recommendation_revision: "baseline",
+        assignment: null,
+      }),
       experimental_recordTelemetryEvent: vi
         .fn()
         .mockRejectedValue(new Error("Telemetry unavailable")),
@@ -665,6 +664,7 @@ function registerCheckoutInputsControl(): void {
 }
 
 const STORED_REQUEST: NewThreadRequest = {
+  suggestionAttribution: noWorkSuggestionAttribution(),
   projectId: "proj_1",
   providerId: "claude-code",
   model: "gpt-5.6-sol",
