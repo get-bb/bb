@@ -107,6 +107,7 @@ export type SharedInjectedSkillSource = Extract<
 >;
 
 export interface SkillTreeFile extends HostDaemonSkillTreeFile {
+  hashReusable: boolean;
   sourcePath: string;
   statKey: string;
 }
@@ -118,12 +119,14 @@ export interface SkillTreeManifest {
 }
 
 interface HashedFile {
+  hashReusable: boolean;
   sha256: string;
   statKey: string;
 }
 
 const MAX_REGISTERED_SKILL_TREES = 4_096;
 const MAX_FILE_HASH_ATTEMPTS = 3;
+const HASH_REUSE_SETTLE_NS = 2_000_000_000n;
 
 export class SkillTreeRegistry {
   readonly #manifestsByHash = new Map<string, SkillTreeManifest>();
@@ -214,9 +217,14 @@ export class SkillTreeRegistry {
       }
       const previous = previousFiles.get(entryPath);
       const { hashed, stat: hashedStat } =
-        previous?.statKey === fileStatKey(stat)
+        previous?.hashReusable === true &&
+        previous.statKey === fileStatKey(stat)
           ? {
-              hashed: { sha256: previous.sha256, statKey: previous.statKey },
+              hashed: {
+                hashReusable: true,
+                sha256: previous.sha256,
+                statKey: previous.statKey,
+              },
               stat,
             }
           : await this.#hashFile(entryPath, stat);
@@ -238,10 +246,18 @@ export class SkillTreeRegistry {
     let stat = initialStat;
     for (let attempt = 1; ; attempt += 1) {
       const statKey = fileStatKey(stat);
+      const hashStartedNs = BigInt(Date.now()) * 1_000_000n;
       const sha256 = await sha256File(filePath);
       const after = await fsPromises.stat(filePath, { bigint: true });
       if (fileStatKey(after) === statKey) {
-        return { hashed: { sha256, statKey }, stat: after };
+        return {
+          hashed: {
+            hashReusable: after.ctimeNs + HASH_REUSE_SETTLE_NS < hashStartedNs,
+            sha256,
+            statKey,
+          },
+          stat: after,
+        };
       }
       if (attempt >= MAX_FILE_HASH_ATTEMPTS) {
         throw new Error(

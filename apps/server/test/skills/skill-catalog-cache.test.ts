@@ -39,17 +39,39 @@ async function freshTreeHash(rootPath: string): Promise<string> {
   return (await new SkillTreeRegistry().readTree(rootPath)).treeHash;
 }
 
+async function withSettledFiles<T>(run: () => Promise<T>): Promise<T> {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(Date.now() + 10_000);
+  try {
+    return await run();
+  } finally {
+    vi.useRealTimers();
+  }
+}
+
 describe("skill catalog freshness", () => {
-  it("reuses an unchanged tree without rereading file contents", async () => {
+  it("reuses settled unchanged files without rereading their contents", async () => {
     const catalog = await createCatalog();
     const reads = vi.spyOn(fs, "createReadStream");
     try {
-      const first = await catalog.resolve();
+      const first = await withSettledFiles(catalog.resolve);
       expect(first).toHaveLength(1);
       expect(reads).toHaveBeenCalledTimes(2);
       reads.mockClear();
       expect(await catalog.resolve()).toEqual(first);
       expect(reads).not.toHaveBeenCalled();
+    } finally {
+      reads.mockRestore();
+    }
+  });
+
+  it("rereads files changed too recently to trust their timestamps", async () => {
+    const catalog = await createCatalog();
+    const first = await catalog.resolve();
+    const reads = vi.spyOn(fs, "createReadStream");
+    try {
+      expect(await catalog.resolve()).toEqual(first);
+      expect(reads).toHaveBeenCalledTimes(2);
     } finally {
       reads.mockRestore();
     }
@@ -62,12 +84,12 @@ describe("skill catalog freshness", () => {
     ...(process.platform === "win32" ? [] : ["mode"]),
     "addition",
     "removal",
-  ])("rehashes after a file %s change", async (change) => {
+  ])("rehashes settled files after a %s change", async (change) => {
     const catalog = await createCatalog();
-    const [first] = await catalog.resolve();
+    const [first] = await withSettledFiles(catalog.resolve);
     const otherPath = path.join(catalog.rootPath, "references", "other.txt");
     if (change === "content") {
-      fs.writeFileSync(catalog.referencePath, "modified\n");
+      fs.writeFileSync(catalog.referencePath, "modified content\n");
       fs.utimesSync(catalog.referencePath, 100, 100);
     } else if (change === "replacement") {
       fs.writeFileSync(otherPath, "modified\n");
