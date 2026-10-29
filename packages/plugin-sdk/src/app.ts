@@ -153,6 +153,9 @@ export const experimental_Diff = runtimeComponent("experimental_Diff");
 export const experimental_InfoSection = runtimeComponent(
   "experimental_InfoSection",
 );
+export const experimental_CollapsibleStackCard = runtimeComponent(
+  "experimental_CollapsibleStackCard",
+);
 export const experimental_DetailRow = runtimeComponent(
   "experimental_DetailRow",
 );
@@ -302,6 +305,9 @@ export const experimental_useThreadContextKind = runtimeFunction(
 );
 export const experimental_usePanelTabs = runtimeFunction(
   "experimental_usePanelTabs",
+);
+export const experimental_useThreadExtensionState = runtimeFunction(
+  "experimental_useThreadExtensionState",
 );
 export const experimental_useSidebarThreadSplit = runtimeFunction(
   "experimental_useSidebarThreadSplit",

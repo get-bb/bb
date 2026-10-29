@@ -106,6 +106,7 @@ import {
   type PluginSidebarThreadsState,
   type PluginSourceCodeRendererRegistration,
   type ExperimentalThreadContextSegmentRegistration,
+  type ExperimentalCollapsibleStackCardProps,
   type ExperimentalThreadInfoRowRegistration,
   type ExperimentalThreadInfoSectionRegistration,
   type ExperimentalThreadContextCardRowRegistration,
@@ -372,6 +373,9 @@ interface SlotEnv {
   sidebarDraftThreadIds: ReadonlySet<string>;
   experiments: ReadonlySet<string>;
   threadContextKind: ExperimentalThreadContextKind;
+  threadExtensionStates: Readonly<
+    Record<string, Readonly<Record<string, unknown>>>
+  >;
   sidebarRowStatuses: ReadonlyMap<string, PluginSidebarThreadRowStatus>;
   sidebarShortcuts: ReadonlyMap<string, PluginSidebarThreadShortcut>;
   sidebarSplitLayout: PluginSidebarSplitLayout | null;
@@ -1522,6 +1526,33 @@ function TestInfoSection({
   );
 }
 
+/** Stand-in for bb's collapsible stack card; always shows its body. */
+function TestCollapsibleStackCard({
+  label,
+  title,
+  icon,
+  isActive,
+  dismiss,
+  children,
+}: ExperimentalCollapsibleStackCardProps) {
+  return (
+    <section
+      aria-label={label}
+      data-testid="bb-collapsible-stack-card"
+      data-icon={icon}
+      data-active={isActive ? "true" : "false"}
+    >
+      <h3>{title}</h3>
+      {dismiss === undefined ? null : (
+        <button type="button" onClick={() => void dismiss.onDismiss()}>
+          {dismiss.label}
+        </button>
+      )}
+      {children}
+    </section>
+  );
+}
+
 /** Stand-in for the Info tab label and value row. */
 function TestDetailRow({ label, icon, children }: ExperimentalDetailRowProps) {
   return (
@@ -1691,6 +1722,13 @@ const testPluginSdkApp = {
   experimental_useThreadContextKind(): ExperimentalThreadContextKind {
     return useSlotEnv("experimental_useThreadContextKind").threadContextKind;
   },
+  experimental_useThreadExtensionState(threadId, kind): unknown {
+    return (
+      useSlotEnv("experimental_useThreadExtensionState").threadExtensionStates[
+        threadId
+      ]?.[kind] ?? null
+    );
+  },
   useBbContext(): BbContext {
     return useSlotEnv("useBbContext").bbContext;
   },
@@ -1831,6 +1869,7 @@ const testPluginSdkApp = {
   experimental_SourceCode: TestSourceCode,
   experimental_Diff: TestDiff,
   experimental_InfoSection: TestInfoSection,
+  experimental_CollapsibleStackCard: TestCollapsibleStackCard,
   experimental_DetailRow: TestDetailRow,
   experimental_ThreadContextCardRow: TestThreadContextCardRow,
   experimental_PanelTabIcon: TestPanelTabIcon,
@@ -2362,6 +2401,14 @@ export interface RenderSlotOptions<
   experiments?: readonly string[];
   /** What `experimental_useThreadContextKind()` reports. Omitted → `banner`. */
   threadContextKind?: ExperimentalThreadContextKind;
+  /**
+   * What `experimental_useThreadExtensionState(threadId, kind)` reports,
+   * keyed by thread id and then by the kind's local name. Omitted → null for
+   * every thread and kind.
+   */
+  threadExtensionStates?: Readonly<
+    Record<string, Readonly<Record<string, unknown>>>
+  >;
   /**
    * Row statuses `useSidebarThreadRowStatus()` reports, keyed by thread id.
    * Omitted → every thread reports null.
@@ -3359,6 +3406,7 @@ export function renderSlot<
     sidebarDraftThreadIds,
     experiments: new Set(options.experiments ?? []),
     threadContextKind: options.threadContextKind ?? "banner",
+    threadExtensionStates: options.threadExtensionStates ?? {},
     sidebarRowStatuses,
     sidebarShortcuts,
     sidebarSplitLayout: options.sidebarSplitLayout ?? null,

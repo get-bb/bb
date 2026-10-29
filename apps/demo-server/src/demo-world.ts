@@ -551,6 +551,7 @@ export class DemoWorld {
       activeWorkflows: [],
       activeBackgroundCommands: [],
       pendingTodos: null,
+      extensionStates: {},
       goal: null,
       providerCommands: null,
       sessionOptions: null,

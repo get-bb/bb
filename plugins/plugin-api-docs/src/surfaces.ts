@@ -668,6 +668,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Warn or inform before someone sends, such as a rate limit or a retry",
           "Show only on new threads, open threads, or queued messages",
           "Add a segment to an open thread's context row, with details below it",
+          "Draw a collapsible card like bb's Plan card, with a dismiss button",
         ],
         apiSymbols: [
           "ComposerCustomization",
@@ -679,8 +680,16 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "ExperimentalThreadContextSegmentInput",
           "ExperimentalThreadContextSegmentReference",
           "ExperimentalThreadEnvironment",
+          "experimental_CollapsibleStackCard",
+          "ExperimentalCollapsibleStackCardProps",
+          "ExperimentalCollapsibleStackCardDismiss",
         ],
-        firstParty: ["Send later", "Workflows", "GitHub PR Status"],
+        firstParty: [
+          "Send later",
+          "Workflows",
+          "GitHub PR Status",
+          "Codex provider",
+        ],
       },
       {
         id: "composer-state",
@@ -1443,6 +1452,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         ],
         apiSymbols: [
           "experimental_defineProviderBridge",
+          "experimental_useThreadExtensionState",
           "experimental_scanSkillFiles",
           "experimental_selectedSkillMentions",
           "ExperimentalSkillScanRoot",

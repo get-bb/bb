@@ -14,6 +14,7 @@ import {
   buildAsyncQuestionFormQuestions,
 } from "./src/async-question-form.js";
 import { computerUseIcon } from "./src/computer-use-icon.js";
+import { CodexGoalBanner } from "./src/goal-card.js";
 import {
   codexMcpElicitationSchema,
   validateCodexMcpFormContent,
@@ -509,5 +510,10 @@ export default definePluginApp((app) => {
   app.slots.pendingInteraction({
     id: "mcp-elicitation",
     component: CodexMcpElicitation,
+  });
+  app.composer.customize({
+    id: "goal",
+    scopes: ["thread"],
+    banners: [{ id: "goal", chrome: "bare", component: CodexGoalBanner }],
   });
 });

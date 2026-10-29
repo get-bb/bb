@@ -22,7 +22,6 @@ function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
       activeBackgroundAgentCount: 0,
       activeBackgroundCommandCount: 0,
       activePlanModeCount: 1,
-      activeGoalCount: 1,
     },
     runtime: {
       displayStatus: "active",

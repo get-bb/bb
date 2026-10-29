@@ -61,7 +61,8 @@ bb.providers.register({
 Put the provider's own knobs in the plugin's `bb.settings.define` values and
 pass them to the bridge through `deriveProviderOptions`. Use
 `experimental_bridgeOptions` for immutable launch facts, `extensionKinds` for
-provider-specific item or state payloads, and `completedTurnDisplay: "flat"`
+provider-specific item or state payloads (your app reads the latest state with
+`experimental_useThreadExtensionState`), and `completedTurnDisplay: "flat"`
 when your agent narrates its work in text the user should keep reading. Each
 field's contract and limits are in `docs/provider-plugin-api.md` §1.
 

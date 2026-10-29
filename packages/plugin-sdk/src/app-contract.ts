@@ -1276,7 +1276,6 @@ export type PluginSidebarThreadIndicator =
   | "background-agent"
   | "background-command"
   | "plan-mode"
-  | "goal"
   | "runtime"
   | "queued-failed"
   | "draft"
@@ -1290,6 +1289,11 @@ export interface PluginSidebarThreadActivity {
   backgroundAgents: number;
   backgroundCommands: number;
   planMode: number;
+  /**
+   * @deprecated Always 0 since bb stopped tracking provider Goals in core. A
+   * provider plugin reads its own Goal state with
+   * {@link PluginSdkApp.experimental_useThreadExtensionState}.
+   */
   goals: number;
 }
 
@@ -1883,6 +1887,40 @@ export interface ExperimentalThreadContextSegmentRegistration {
    * it out of `segments`. Omit to always show.
    */
   useVisible?(input: ExperimentalThreadContextSegmentInput): boolean;
+}
+
+/**
+ * The dismiss button of an {@link ExperimentalCollapsibleStackCardProps}
+ * card, such as exiting Plan mode or clearing a Goal. The host disables it
+ * and shows a spinner until `onDismiss` settles, and shows an error toast
+ * built from the rejection, or `failureMessage` when the error has no message
+ * of its own.
+ */
+export interface ExperimentalCollapsibleStackCardDismiss {
+  /** Accessible name of the dismiss button, e.g. `"Clear Goal"`. */
+  label: string;
+  failureMessage: string;
+  onDismiss(): Promise<void>;
+}
+
+/**
+ * Props of the host-owned `experimental_CollapsibleStackCard`: bb's
+ * collapsible card for the stack above a thread's composer, the one bb's Plan
+ * mode card uses. The header shows `icon` and `title` and toggles `children`;
+ * the card starts collapsed.
+ */
+export interface ExperimentalCollapsibleStackCardProps {
+  /** Accessible name of the card and its toggle, e.g. `"Goal"`. */
+  label: string;
+  /** Header text, e.g. `"Goal paused"`. */
+  title: string;
+  icon: BbIconName;
+  /** True draws the header in bb's working style; false draws it muted. */
+  isActive: boolean;
+  /** Adds a dismiss button to the header; omit for none. */
+  dismiss?: ExperimentalCollapsibleStackCardDismiss;
+  /** Shown while the card is expanded. */
+  children: ReactNode;
 }
 
 /**
@@ -5451,6 +5489,15 @@ export interface PluginSdkApp {
    * Experimental: see docs/api_to_audit.md.
    */
   experimental_useThreadContextKind(): ExperimentalThreadContextKind;
+  /**
+   * The latest state the calling plugin's provider bridge emitted for one of
+   * its declared extension kinds on a thread (`kind` is the local name from
+   * `extensionKinds`, without the plugin id), or null when there is none or
+   * the last state was null. Follows live updates while bb shows the thread.
+   * The value is whatever passed the kind's `state` schema; parse it before
+   * use. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_useThreadExtensionState(threadId: string, kind: string): unknown;
   useBbContext(): BbContext;
   /**
    * The id of the plugin that owns the calling component: the same id
@@ -5904,6 +5951,13 @@ export interface PluginSdkApp {
    * remembers that per registration. Experimental: see docs/api_to_audit.md.
    */
   experimental_InfoSection: ComponentType<ExperimentalInfoSectionProps>;
+  /**
+   * bb's collapsible card for the stack above a thread's composer (see
+   * {@link ExperimentalCollapsibleStackCardProps}). Render it from a
+   * thread-scoped composer banner with `chrome: "bare"`. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_CollapsibleStackCard: ComponentType<ExperimentalCollapsibleStackCardProps>;
   /**
    * The thread Info tab's label and value row (see
    * {@link ExperimentalDetailRowProps}), the one bb's own rows use.

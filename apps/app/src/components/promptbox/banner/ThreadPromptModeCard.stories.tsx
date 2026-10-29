@@ -1,4 +1,3 @@
-import { useState } from "react";
 import type { ThreadTimelineActivePromptMode } from "@bb/domain";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 import { ResponsiveStage } from "./banner-story-stages";
@@ -10,20 +9,13 @@ export default {
 
 function ToggleablePromptModeCard({
   activePromptMode,
-  initiallyExpanded = false,
-  onExitPlanMode,
 }: {
   activePromptMode: ThreadTimelineActivePromptMode | null;
-  initiallyExpanded?: boolean;
-  onExitPlanMode?: () => void;
 }) {
-  const [expanded, setExpanded] = useState(initiallyExpanded);
   return (
     <ThreadPromptModeCard
       activePromptMode={activePromptMode}
-      isExpanded={expanded}
-      onExitPlanMode={onExitPlanMode}
-      onToggle={() => setExpanded((value) => !value)}
+      onExitPlanMode={async () => {}}
     />
   );
 }
@@ -42,11 +34,13 @@ export function Overview() {
               providerId: "claude-code",
               prompt: "inspect the failing command before making changes",
             }}
-            onExitPlanMode={() => {}}
           />
         </ResponsiveStage>
       </StoryRow>
-      <StoryRow label="expanded" hint="unfurled body shows full cleaned prompt">
+      <StoryRow
+        label="long prompt"
+        hint="click the header to unfurl the full prompt"
+      >
         <ResponsiveStage>
           <ToggleablePromptModeCard
             activePromptMode={{
@@ -55,8 +49,6 @@ export function Overview() {
               prompt:
                 "inspect the failing command before making changes. Check the relevant timeline state, compare the provider-specific behavior, and explain the safest implementation path before editing.",
             }}
-            initiallyExpanded
-            onExitPlanMode={() => {}}
           />
         </ResponsiveStage>
       </StoryRow>
@@ -68,17 +60,12 @@ export function Overview() {
               providerId: "codex",
               prompt: "review the merge conflicts and propose a fix plan",
             }}
-            onExitPlanMode={() => {}}
           />
         </ResponsiveStage>
       </StoryRow>
       <StoryRow label="inactive" hint="renders nothing without active mode">
         <ResponsiveStage>
-          <ThreadPromptModeCard
-            activePromptMode={null}
-            isExpanded={false}
-            onToggle={() => {}}
-          />
+          <ToggleablePromptModeCard activePromptMode={null} />
         </ResponsiveStage>
       </StoryRow>
     </StoryCard>

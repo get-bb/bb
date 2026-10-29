@@ -828,10 +828,10 @@ describe("ThreadRow", () => {
       }),
     },
     {
-      label: "goal + pending input",
+      label: "plan mode + pending input",
       thread: createThread({
         hasPendingInteraction: true,
-        activity: activity({ goals: 1 }),
+        activity: activity({ planMode: 1 }),
       }),
     },
     {
@@ -1271,7 +1271,9 @@ describe("ThreadRow", () => {
 
   it("draws other plugins' metadata only while Metadata is on", () => {
     const slot = renderThreadRow({ experiments: ["threadRowMetadata"] });
-    expect(slot.container.querySelector("[data-thread-row-metadata]")).toBeNull();
+    expect(
+      slot.container.querySelector("[data-thread-row-metadata]"),
+    ).toBeNull();
 
     act(() => getDefaultStore().set(sidebarShowRowMetadataAtom, true));
     expect(
@@ -1282,7 +1284,9 @@ describe("ThreadRow", () => {
   it("ignores the Metadata preference while its experiment is off", () => {
     getDefaultStore().set(sidebarShowRowMetadataAtom, true);
     const slot = renderThreadRow();
-    expect(slot.container.querySelector("[data-thread-row-metadata]")).toBeNull();
+    expect(
+      slot.container.querySelector("[data-thread-row-metadata]"),
+    ).toBeNull();
   });
 
   it("routes a click on other plugins' metadata like the rest of the row", () => {
@@ -1440,7 +1444,8 @@ describe("ThreadRow", () => {
     renderThreadRow({
       thread: createThread({
         activity: activity({ workflows: 1 }),
-        lastReadAt: 1, latestAttentionAt: 1,
+        lastReadAt: 1,
+        latestAttentionAt: 1,
       }),
     });
 
@@ -1457,14 +1462,14 @@ describe("ThreadRow", () => {
       indicator: "background-command",
     },
     { activityKey: "planMode" as const, indicator: "plan-mode" },
-    { activityKey: "goals" as const, indicator: "goal" },
   ])(
     "shows the $indicator indicator for $activityKey activity",
     ({ activityKey, indicator }) => {
       renderThreadRow({
         thread: createThread({
           activity: activity({ [activityKey]: 1 }),
-          lastReadAt: 1, latestAttentionAt: 1,
+          lastReadAt: 1,
+          latestAttentionAt: 1,
         }),
       });
 
@@ -1480,7 +1485,8 @@ describe("ThreadRow", () => {
           backgroundAgents: 1,
           backgroundCommands: 1,
         }),
-        lastReadAt: 1, latestAttentionAt: 1,
+        lastReadAt: 1,
+        latestAttentionAt: 1,
       }),
     });
 
@@ -1491,7 +1497,8 @@ describe("ThreadRow", () => {
     renderThreadRow({
       thread: createThread({
         activity: activity({ backgroundAgents: 1, backgroundCommands: 1 }),
-        lastReadAt: 1, latestAttentionAt: 1,
+        lastReadAt: 1,
+        latestAttentionAt: 1,
       }),
     });
 
@@ -1520,7 +1527,6 @@ describe("ThreadRow", () => {
     { flag: "backgroundAgent" as const, indicator: "background-agent" },
     { flag: "backgroundCommand" as const, indicator: "background-command" },
     { flag: "planMode" as const, indicator: "plan-mode" },
-    { flag: "goal" as const, indicator: "goal" },
   ])(
     "shows the $indicator indicator for collapsed parent rows with hidden child activity",
     ({ flag, indicator }) => {
@@ -1560,7 +1566,6 @@ describe("ThreadRow", () => {
           threadIds: ["thr_hidden_child"],
           working: true,
           planMode: true,
-          goal: true,
         },
         onToggleCollapsed: vi.fn(),
       },

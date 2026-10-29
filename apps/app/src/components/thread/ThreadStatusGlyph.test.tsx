@@ -24,7 +24,6 @@ describe("ThreadStatusGlyph", () => {
     ["background-agent", "Background agent running", "UserRoundPlus"],
     ["background-command", "Background command running", "Terminal"],
     ["plan-mode", "Plan mode active", "ListTodo"],
-    ["goal", "Goal active", "Target"],
     ["runtime", "Thread working", "Loading"],
     ["draft", "Thread has unsubmitted draft", "Edit"],
   ] satisfies [PluginSidebarThreadIndicator, string, string][])(
@@ -47,7 +46,9 @@ describe("ThreadStatusGlyph", () => {
     rerender(<ThreadStatusGlyph indicator="runtime" />);
     const runtime = screen.getByLabelText("Thread working");
     expect(Array.from(runtime.classList)).toContain("animate-spin");
-    expect(Array.from(runtime.classList)).toContain("motion-reduce:animate-none");
+    expect(Array.from(runtime.classList)).toContain(
+      "motion-reduce:animate-none",
+    );
   });
 
   it("draws unread success as a dot and nothing for none", () => {
@@ -75,9 +76,9 @@ describe("ThreadStatusGlyph", () => {
   it("draws the archive glyph for archived threads", () => {
     render(<ThreadStatusGlyph indicator="runtime" archived />);
 
-    expect(screen.getByLabelText("Archived thread").getAttribute("data-icon")).toBe(
-      "Archive",
-    );
+    expect(
+      screen.getByLabelText("Archived thread").getAttribute("data-icon"),
+    ).toBe("Archive");
   });
 
   it.each([

@@ -11,7 +11,6 @@ import type {
   Environment,
   PromptHistoryEntry,
   ResolvedThreadExecutionOptions,
-  ThreadListEntry,
   ThreadQueuedMessage,
   ThreadWithRuntime,
 } from "@bb/domain";
@@ -79,8 +78,6 @@ interface ThreadIdCacheArgs {
 interface PrefetchThreadQueuedMessagesArgs extends ThreadIdCacheArgs {
   load: (signal: AbortSignal) => Promise<ThreadQueuedMessageListResponse>;
 }
-
-type ThreadBannerActivityKind = "goal" | "plan";
 
 interface BeginCreateThreadTransactionArgs {
   queryClient: QueryClient;
@@ -734,21 +731,10 @@ function predictStopRequest({
   });
 }
 
-function clearThreadBannerActivity(
-  activity: ThreadListEntry["activity"],
-  kind: ThreadBannerActivityKind,
-): ThreadListEntry["activity"] {
-  return {
-    ...activity,
-    ...(kind === "plan" ? { activePlanModeCount: 0 } : { activeGoalCount: 0 }),
-  };
-}
-
-function applyAuthoritativeThreadBannerCancellation({
-  kind,
+export function applyThreadPlanCancellationResult({
   queryClient,
   threadId,
-}: ThreadIdCacheArgs & { kind: ThreadBannerActivityKind }): void {
+}: ThreadIdCacheArgs): void {
   for (const [
     queryKey,
     timeline,
@@ -760,25 +746,15 @@ function applyAuthoritativeThreadBannerCancellation({
     }
     queryClient.setQueryData<ThreadTimelineResponse>(queryKey, {
       ...timeline,
-      ...(kind === "plan" ? { activePromptMode: null } : { goal: null }),
+      activePromptMode: null,
     });
   }
 
   const activity = getThreadEntity(queryClient, threadId)?.list?.activity;
   if (activity !== undefined)
     patchThreadEntity(queryClient, threadId, {
-      activity: clearThreadBannerActivity(activity, kind),
+      activity: { ...activity, activePlanModeCount: 0 },
     });
-}
-
-export function applyThreadPlanCancellationResult(
-  args: ThreadIdCacheArgs,
-): void {
-  applyAuthoritativeThreadBannerCancellation({ ...args, kind: "plan" });
-}
-
-export function applyThreadGoalClearResult(args: ThreadIdCacheArgs): void {
-  applyAuthoritativeThreadBannerCancellation({ ...args, kind: "goal" });
 }
 
 export async function beginCreateThreadTransaction({

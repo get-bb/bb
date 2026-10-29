@@ -21,8 +21,9 @@ describe("toPluginSidebarThread", () => {
   it("resolves the display title through the same rules bb's row uses", () => {
     expect(toPluginSidebarThread(makeThread()).displayTitle).toBe("A thread");
     expect(
-      toPluginSidebarThread(makeThread({ title: null, titleFallback: "Fallback" }))
-        .displayTitle,
+      toPluginSidebarThread(
+        makeThread({ title: null, titleFallback: "Fallback" }),
+      ).displayTitle,
     ).toBe("Fallback");
     expect(
       toPluginSidebarThread(
@@ -52,7 +53,6 @@ describe("toPluginSidebarThread", () => {
           activeBackgroundAgentCount: 3,
           activeBackgroundCommandCount: 4,
           activePlanModeCount: 5,
-          activeGoalCount: 6,
         },
       }),
     );
@@ -61,7 +61,7 @@ describe("toPluginSidebarThread", () => {
       backgroundAgents: 3,
       backgroundCommands: 4,
       planMode: 5,
-      goals: 6,
+      goals: 0,
     });
   });
 
@@ -95,7 +95,6 @@ describe("toPluginSidebarThread", () => {
             activeBackgroundAgentCount: 0,
             activeBackgroundCommandCount: 0,
             activePlanModeCount: 0,
-            activeGoalCount: 0,
           },
         }),
       ).indicator,

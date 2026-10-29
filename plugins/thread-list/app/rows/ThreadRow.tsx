@@ -285,7 +285,6 @@ export function CollapsedThreadStatusGlyph({
     hasUnreadSuccess: activity.unread,
     isBackgroundAgentActive: activity.backgroundAgent,
     isBackgroundCommandActive: activity.backgroundCommand,
-    isGoalActive: activity.goal,
     queuedWork: "none",
     isPlanModeActive: activity.planMode,
     isRuntimeActive: activity.runtimeWorking,
@@ -521,8 +520,6 @@ function ThreadRowComponent({
     isBackgroundCommandActive:
       threadStatus.isBackgroundCommandActive ||
       (hasHiddenChildren && childActivity.backgroundCommand),
-    isGoalActive:
-      threadStatus.isGoalActive || (hasHiddenChildren && childActivity.goal),
     queuedWork: threadStatus.queuedWork,
     isPlanModeActive:
       threadStatus.isPlanModeActive ||

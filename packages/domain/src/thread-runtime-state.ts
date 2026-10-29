@@ -20,5 +20,4 @@ export const threadActivityStateSchema = z.object({
   activeBackgroundAgentCount: z.number().int().nonnegative(),
   activeBackgroundCommandCount: z.number().int().nonnegative(),
   activePlanModeCount: z.number().int().nonnegative(),
-  activeGoalCount: z.number().int().nonnegative(),
 });

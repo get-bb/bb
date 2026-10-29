@@ -182,18 +182,32 @@ function seedGoal(
 async function readBannerActivity(
   harness: TestAppHarness,
   fixture: BannerFixture,
-): Promise<{ activeGoalCount: number; activePlanModeCount: number }> {
+): Promise<{ activePlanModeCount: number }> {
   const response = await harness.app.request(
     `/api/v1/threads?projectId=${fixture.projectId}`,
   );
   expect(response.status).toBe(200);
   const threads = (await readJson(response)) as Array<{
     id: string;
-    activity: { activeGoalCount: number; activePlanModeCount: number };
+    activity: { activePlanModeCount: number };
   }>;
   const thread = threads.find((entry) => entry.id === fixture.threadId);
   if (!thread) throw new Error(`Missing thread ${fixture.threadId}`);
   return thread.activity;
+}
+
+async function readTimelineGoalStatus(
+  harness: TestAppHarness,
+  fixture: BannerFixture,
+): Promise<string | null> {
+  const response = await harness.app.request(
+    `/api/v1/threads/${fixture.threadId}/timeline`,
+  );
+  expect(response.status).toBe(200);
+  const timeline = (await readJson(response)) as {
+    goal: { status: string } | null;
+  };
+  return timeline.goal?.status ?? null;
 }
 
 describe("public thread banner actions", () => {
@@ -600,11 +614,34 @@ describe("public thread banner actions", () => {
         response.status,
         JSON.stringify(await readJson(response.clone())),
       ).toBe(200);
-      await expect(readBannerActivity(harness, fixture)).resolves.toMatchObject(
-        {
-          activeGoalCount: 0,
-        },
+      await expect(
+        readTimelineGoalStatus(harness, fixture),
+      ).resolves.toBeNull();
+    });
+  });
+
+  it("serves the Codex plugin's latest Goal state to its app through the timeline", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedBannerFixture(harness, { status: "idle" });
+      seedGoal(harness, fixture, "paused");
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${fixture.threadId}/timeline`,
       );
+
+      expect(response.status).toBe(200);
+      const timeline = (await readJson(response)) as {
+        extensionStates: Record<string, unknown>;
+      };
+      expect(timeline.extensionStates).toEqual({
+        "provider-codex/goal": {
+          objective: "Verify authoritative Goal cancellation",
+          status: "paused",
+          tokenBudget: null,
+          tokensUsed: 100,
+          timeUsedSeconds: 10,
+        },
+      });
     });
   });
 
@@ -673,10 +710,8 @@ describe("public thread banner actions", () => {
           ({ command }) => command.type === "thread.goal.clear",
         ),
       ).toBe(true);
-      await expect(readBannerActivity(harness, fixture)).resolves.toMatchObject(
-        {
-          activeGoalCount: 1,
-        },
+      await expect(readTimelineGoalStatus(harness, fixture)).resolves.toBe(
+        "active",
       );
     });
   });

@@ -58,10 +58,6 @@ function hasActivePlanModeActivity(thread: ThreadActivityStateShape): boolean {
   return thread.activity.planMode > 0;
 }
 
-function hasActiveGoalActivity(thread: ThreadActivityStateShape): boolean {
-  return thread.activity.goals > 0;
-}
-
 function isBusyThread(
   thread: ThreadRuntimeShape & ThreadActivityStateShape,
 ): boolean {
@@ -70,8 +66,7 @@ function isBusyThread(
     hasActiveWorkflowActivity(thread) ||
     hasActiveBackgroundAgentActivity(thread) ||
     hasActiveBackgroundCommandActivity(thread) ||
-    hasActivePlanModeActivity(thread) ||
-    hasActiveGoalActivity(thread)
+    hasActivePlanModeActivity(thread)
   );
 }
 
@@ -82,7 +77,6 @@ export interface ThreadListIndicatorState {
   hasUnreadSuccess: boolean;
   isBackgroundAgentActive: boolean;
   isBackgroundCommandActive: boolean;
-  isGoalActive: boolean;
   isPlanModeActive: boolean;
   isRuntimeActive: boolean;
   isWorkflowActive: boolean;
@@ -102,7 +96,6 @@ const THREAD_LIST_INDICATOR_LABELS: Record<
   "background-agent": "Background agent running",
   "background-command": "Background command running",
   "plan-mode": "Plan mode active",
-  goal: "Goal active",
   runtime: "Thread working",
   "queued-failed": "Queued message failed to send",
   "queued-waiting": "Thread has a message waiting to send",
@@ -151,7 +144,6 @@ export function hasThreadListWorkingActivity(
     state.isBackgroundAgentActive ||
     state.isBackgroundCommandActive ||
     state.isPlanModeActive ||
-    state.isGoalActive ||
     hasRunningPluginStatus
   );
 }
@@ -171,7 +163,6 @@ export function threadListIndicatorStateForThread(
     hasUnreadSuccess: unreadDone && thread.status !== "error",
     isBackgroundAgentActive: hasActiveBackgroundAgentActivity(thread),
     isBackgroundCommandActive: hasActiveBackgroundCommandActivity(thread),
-    isGoalActive: hasActiveGoalActivity(thread),
     queuedWork: thread.queuedWork,
     isPlanModeActive: hasActivePlanModeActivity(thread),
     isRuntimeActive: isRuntimeBusyThread(thread),
@@ -188,7 +179,6 @@ export function resolveThreadListIndicator(
   const hasActiveWork = hasThreadListWorkingActivity(state);
   if (state.hasUnsubmittedDraft && hasActiveWork) return "working-draft";
   if (state.isPlanModeActive) return "plan-mode";
-  if (state.isGoalActive) return "goal";
   if (state.isRuntimeActive) return "runtime";
   if (state.isWorkflowActive) return "workflow";
   if (state.queuedWork === "failed") return "queued-failed";
@@ -209,7 +199,6 @@ export interface CollapsedChildActivity {
   backgroundAgent: boolean;
   backgroundCommand: boolean;
   planMode: boolean;
-  goal: boolean;
   unread: boolean;
   unreadError: boolean;
 }
@@ -223,7 +212,6 @@ export const NO_COLLAPSED_CHILD_ACTIVITY: CollapsedChildActivity = {
   backgroundAgent: false,
   backgroundCommand: false,
   planMode: false,
-  goal: false,
   unread: false,
   unreadError: false,
 };
@@ -243,7 +231,6 @@ export function getCollapsedChildActivity(
   let backgroundAgent = false;
   let backgroundCommand = false;
   let planMode = false;
-  let goal = false;
   let unread = false;
   let unreadError = false;
   for (const thread of threads) {
@@ -264,7 +251,6 @@ export function getCollapsedChildActivity(
     if (hasActiveBackgroundAgentActivity(thread)) backgroundAgent = true;
     if (hasActiveBackgroundCommandActivity(thread)) backgroundCommand = true;
     if (hasActivePlanModeActivity(thread)) planMode = true;
-    if (hasActiveGoalActivity(thread)) goal = true;
   }
   return {
     threadIds,
@@ -275,7 +261,6 @@ export function getCollapsedChildActivity(
     backgroundAgent,
     backgroundCommand,
     planMode,
-    goal,
     unread,
     unreadError,
   };

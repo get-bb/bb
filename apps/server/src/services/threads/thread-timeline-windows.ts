@@ -153,6 +153,9 @@ export function createThreadTimelineWindows(
         deps.providerRegistry,
         thread.providerId,
       ),
+      extensionStateKinds: Object.entries(
+        deps.providerRegistry.get(thread.providerId)?.info.extensionKinds ?? {},
+      ).flatMap(([kind, declared]) => (declared.state ? [kind] : [])),
       providerDisplayName,
       summarizeShellCommands: settings.summarizeShellCommands,
     };

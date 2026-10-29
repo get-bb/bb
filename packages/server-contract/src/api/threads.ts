@@ -1221,6 +1221,7 @@ const threadTimelineWindowFieldsShape = {
   activeWorkflows: z.array(timelineWorkflowWorkRowSchema),
   activeBackgroundCommands: z.array(timelineWorkflowWorkRowSchema),
   pendingTodos: threadTimelinePendingTodosSchema.nullable(),
+  extensionStates: z.record(z.string(), jsonValueSchema),
   goal: threadTimelineGoalSchema.nullable(),
   providerCommands: z
     .array(providerCommandSchema.omit({ pluginId: true }))
@@ -1238,6 +1239,7 @@ export const THREAD_TIMELINE_WINDOW_FIELD_KEYS = [
   "activeWorkflows",
   "activeBackgroundCommands",
   "pendingTodos",
+  "extensionStates",
   "goal",
   "providerCommands",
   "sessionOptions",
