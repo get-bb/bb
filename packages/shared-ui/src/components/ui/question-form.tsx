@@ -20,6 +20,7 @@ import {
 } from "react";
 import { Button } from "./button";
 import { Icon } from "./icon";
+import { OverflowFade } from "./overflow-fade";
 import { VoiceInputTextarea } from "./voice-input-textarea";
 import { usePointerCoarse } from "./hooks/use-pointer-coarse";
 import { cn } from "../../lib/utils";
@@ -38,6 +39,8 @@ const OTHER_OPTION_LABEL = "Other…";
 const FREE_TEXT_MIN_HEIGHT = 84;
 const FREE_TEXT_MAX_HEIGHT = 158;
 const PREVIEW_MAX_HEIGHT = 220;
+const TAB_EDGE_EPSILON_PX = 1;
+const TAB_FADE_WIDTH_PX = 24;
 
 interface QuestionOptionRowProps {
   checked: boolean;
@@ -153,6 +156,11 @@ interface QuestionTabsProps {
   questions: readonly Question[];
 }
 
+interface TabOverflow {
+  start: boolean;
+  end: boolean;
+}
+
 function QuestionTabs({
   disabled,
   currentIndex,
@@ -160,46 +168,109 @@ function QuestionTabs({
   onSelect,
   questions,
 }: QuestionTabsProps) {
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const tabRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const [overflow, setOverflow] = useState<TabOverflow>({
+    start: false,
+    end: false,
+  });
+
+  const measure = useCallback(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const maxScrollLeft = viewport.scrollWidth - viewport.clientWidth;
+    const start = viewport.scrollLeft > TAB_EDGE_EPSILON_PX;
+    const end = viewport.scrollLeft < maxScrollLeft - TAB_EDGE_EPSILON_PX;
+    setOverflow((previous) =>
+      previous.start === start && previous.end === end
+        ? previous
+        : { start, end },
+    );
+  }, []);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [measure]);
+
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current;
+    const tab = tabRefs.current[currentIndex];
+    if (viewport && tab) {
+      const tabStart = tab.offsetLeft - TAB_FADE_WIDTH_PX;
+      const tabEnd = tab.offsetLeft + tab.offsetWidth + TAB_FADE_WIDTH_PX;
+      if (tabStart < viewport.scrollLeft) {
+        viewport.scrollLeft = Math.max(0, tabStart);
+      } else if (tabEnd > viewport.scrollLeft + viewport.clientWidth) {
+        viewport.scrollLeft = tabEnd - viewport.clientWidth;
+      }
+    }
+    measure();
+  }, [currentIndex, measure, questions.length]);
+
   return (
     <div className="mb-2 flex shrink-0 items-center gap-2">
-      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-        {questions.map((question, index) => {
-          const answered = isQuestionAnswered(
-            question,
-            answerStateFor(formState, question),
-          );
-          const isActive = index === currentIndex;
-          return (
-            <div
-              key={question.id}
-              className={cn(
-                "relative inline-flex h-7 shrink-0 items-center rounded-md",
-                isActive
-                  ? "bg-muted text-foreground"
-                  : "text-muted-foreground hover:bg-state-hover",
-              )}
-            >
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={() => onSelect(index)}
-                aria-pressed={isActive}
-                title={question.prompt}
-                className="flex h-full min-w-0 items-center rounded-md px-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      <div className="relative min-w-0 flex-1">
+        <OverflowFade
+          placement="left"
+          tone="surface-recessed"
+          className={cn("z-10", overflow.start ? "opacity-100" : "opacity-0")}
+        />
+        <OverflowFade
+          placement="right"
+          tone="surface-recessed"
+          className={cn("z-10", overflow.end ? "opacity-100" : "opacity-0")}
+        />
+        <div
+          ref={viewportRef}
+          onScroll={measure}
+          data-question-tabs
+          className="relative flex min-w-0 items-center gap-1 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          {questions.map((question, index) => {
+            const answered = isQuestionAnswered(
+              question,
+              answerStateFor(formState, question),
+            );
+            const isActive = index === currentIndex;
+            return (
+              <div
+                key={question.id}
+                ref={(element) => {
+                  tabRefs.current[index] = element;
+                }}
+                className={cn(
+                  "relative inline-flex h-7 shrink-0 items-center rounded-md",
+                  isActive
+                    ? "bg-muted text-foreground"
+                    : "text-muted-foreground hover:bg-state-hover",
+                )}
               >
-                <span
-                  className={cn(
-                    "truncate text-xs",
-                    answered ? "line-through" : undefined,
-                  )}
-                  style={{ maxWidth: "180px" }}
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => onSelect(index)}
+                  aria-pressed={isActive}
+                  title={question.prompt}
+                  className="flex h-full min-w-0 items-center rounded-md px-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
                 >
-                  {question.shortLabel}
-                </span>
-              </button>
-            </div>
-          );
-        })}
+                  <span
+                    className={cn(
+                      "truncate text-xs",
+                      answered ? "line-through" : undefined,
+                    )}
+                    style={{ maxWidth: "180px" }}
+                  >
+                    {question.shortLabel}
+                  </span>
+                </button>
+              </div>
+            );
+          })}
+        </div>
       </div>
       <span className="shrink-0 text-xs text-muted-foreground">
         {currentIndex + 1} of {questions.length}
