@@ -89,7 +89,7 @@ function Survey({
   const city = values.city?.[0]?.trim();
   return (
     <>
-      {surveyQuestions.map((question, index) => (
+      {surveyQuestions.map((question) => (
         <Fragment key={question.name}>
           {question.name === "discovery" && (
             <h2 className="community-section">Getting to know you</h2>
@@ -120,7 +120,7 @@ function Survey({
             }
           >
             <legend>
-              <span className="community-number">{index + 1}.</span>{" "}
+              <span className="community-number" />
               <span
                 data-meetup-label={question.name === "meetup" ? "" : undefined}
               >

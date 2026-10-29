@@ -71,6 +71,15 @@
 .community-page legend + * {
   clear: both;
 }
+.community-page form {
+  counter-reset: community-question;
+}
+.community-page fieldset[data-question] {
+  counter-increment: community-question;
+}
+.community-number::before {
+  content: counter(community-question) ". ";
+}
 .community-number {
   color: var(--dim);
   font-weight: 400;
