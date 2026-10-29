@@ -167,7 +167,6 @@ const PUBLIC_PLUGIN_SDK_EXPORT_NAMES = [
 );
 
 const BB_PLUGIN_API_KEYS = [
-  "internal_DO_NOT_USE_recordPluginUse",
   "pluginId",
   "log",
   "settings",
@@ -196,7 +195,7 @@ const BB_PLUGIN_API_KEYS = [
 
 type MissingApiKey = Exclude<
   keyof BbPluginApi,
-  (typeof BB_PLUGIN_API_KEYS)[number]
+  (typeof BB_PLUGIN_API_KEYS)[number] | `internal_DO_NOT_USE_${string}`
 >;
 const _assertAllApiKeysListed: MissingApiKey extends never ? true : never =
   true;
