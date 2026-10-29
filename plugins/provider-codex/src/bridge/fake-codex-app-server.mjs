@@ -786,12 +786,7 @@ async function handleRequest(message) {
       if (script?.goalClearError) {
         respondError(id, -32600, script.goalClearError);
       } else {
-        respond(
-          id,
-          Object.hasOwn(script ?? {}, "goalClearResult")
-            ? script.goalClearResult
-            : {},
-        );
+        respond(id, script?.goalClearResult ?? { cleared: true });
       }
       return;
     default:

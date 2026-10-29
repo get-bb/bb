@@ -2384,10 +2384,7 @@ async function handleThreadGoalClear(
       connection.request({
         method: "thread/goal/clear",
         params: { threadId: params.providerThreadId },
-        resultSchema: z
-          .object({ cleared: z.boolean().default(true) })
-          .nullish()
-          .transform((result) => ({ cleared: result?.cleared ?? true })),
+        resultSchema: z.object({ cleared: z.boolean() }),
         timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
       }),
     );

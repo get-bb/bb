@@ -27,10 +27,8 @@ afterEach(async () => {
 });
 
 it.each([
-  { name: "native true", nativeResult: { cleared: true }, cleared: true },
-  { name: "native false", nativeResult: { cleared: false }, cleared: false },
-  { name: "empty acknowledgement", nativeResult: {}, cleared: true },
-  { name: "null acknowledgement", nativeResult: null, cleared: true },
+  { name: "native true", nativeResult: { cleared: true } },
+  { name: "native false", nativeResult: { cleared: false } },
   { name: "native error", nativeError: "goal operation rejected" },
 ])(
   "returns the goal-clear contract for $name",
@@ -77,7 +75,7 @@ it.each([
       expect(response.error?.message).toContain(scenario.nativeError);
     } else {
       expect(response.error).toBeUndefined();
-      expect(response.result).toEqual({ cleared: scenario.cleared });
+      expect(response.result).toEqual(scenario.nativeResult);
     }
   },
   15_000,
