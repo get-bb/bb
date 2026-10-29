@@ -3,7 +3,7 @@ import {mkdirSync,openSync,closeSync,readFileSync,writeFileSync,existsSync} from
 import {join} from 'node:path';
 const output=join(process.env.RUNNER_TEMP,'custom-models');mkdirSync(output,{recursive:true});
 const file='tests/integration/fake/smoke/custom-models.test.ts';const before=readFileSync(file,'utf8');
-const after=before.replaceAll('"claude-code"','"fake"').replaceAll('claude-example-preview[1m]','fake-example-preview[1m]');
+const after=readFileSync(".github/scripts/custom-models-candidate.txt","utf8");
 const results=[];
 function run(name,focused) {
  const report=join(output,name+'.json');const fd=openSync(join(output,name+'.log'),'w');const start=Date.now();
