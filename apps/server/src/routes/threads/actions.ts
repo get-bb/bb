@@ -130,6 +130,12 @@ function toQueuedMessageOrderResponse(
         "invalid_request",
         "Queued messages with different execution options cannot be grouped",
       );
+    case "invalid_delivery_mode":
+      throw new ApiError(
+        409,
+        "invalid_request",
+        "A queued message that steers and one that waits for the turn cannot be grouped",
+      );
   }
 }
 
@@ -165,6 +171,12 @@ function toQueuedMessageGroupBoundaryResponse(
         409,
         "invalid_request",
         "Queued messages with different execution options cannot be grouped",
+      );
+    case "invalid_delivery_mode":
+      throw new ApiError(
+        409,
+        "invalid_request",
+        "A queued message that steers and one that waits for the turn cannot be grouped",
       );
   }
 }

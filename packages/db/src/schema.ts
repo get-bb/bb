@@ -10,7 +10,10 @@ import {
 } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
 import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
-import { queuedMessageStateValues } from "@bb/domain/queued-message-lifecycle";
+import {
+  queuedMessageDeliveryModeValues,
+  queuedMessageStateValues,
+} from "@bb/domain/queued-message-lifecycle";
 import { threadStatusValues } from "@bb/domain/thread-status";
 import { startedOnBehalfOfInitiatorValues } from "@bb/domain/started-on-behalf-of";
 import { threadCreateOriginValues } from "@bb/domain/thread-create-origin";
@@ -1028,6 +1031,11 @@ export const queuedThreadMessages = sqliteTable(
     retryOfTurnRequestId: text("retry_of_turn_request_id"),
     retryAttempt: integer("retry_attempt"),
     retryReason: text("retry_reason"),
+    deliveryMode: text("delivery_mode", {
+      enum: queuedMessageDeliveryModeValues,
+    })
+      .notNull()
+      .default("steer"),
     claimedAt: integer("claimed_at"),
     claimToken: text("claim_token"),
     editHeldUntil: integer("edit_held_until"),

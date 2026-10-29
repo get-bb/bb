@@ -1,4 +1,4 @@
-import { createEventId, getThread } from "@bb/db";
+import { createEventId, getThread, type DbTransaction } from "@bb/db";
 import {
   THREAD_CONTEXT_CLEAR_OPERATION,
   THREAD_CONTEXT_CLEARED_DETAIL,
@@ -17,6 +17,7 @@ import { requestQueuedMessageDispatch } from "./queued-message-dispatch.js";
 export async function clearThreadContext(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: {
+    beforeCommitInTransaction?: (args: { tx: DbTransaction }) => void;
     environment: Pick<Environment, "hostId" | "id">;
     thread: Thread;
   },
@@ -59,18 +60,22 @@ export async function clearThreadContext(
       );
     }
 
-    appendThreadEvent(deps, {
-      threadId: releasedThread.id,
-      environmentId: releasedThread.environmentId,
-      type: "system/operation",
-      scope: threadScope(),
-      data: {
-        operation: THREAD_CONTEXT_CLEAR_OPERATION,
-        operationId: createEventId(),
-        status: "completed",
-        message: THREAD_CONTEXT_CLEARED_DETAIL,
+    appendThreadEvent(
+      deps,
+      {
+        threadId: releasedThread.id,
+        environmentId: releasedThread.environmentId,
+        type: "system/operation",
+        scope: threadScope(),
+        data: {
+          operation: THREAD_CONTEXT_CLEAR_OPERATION,
+          operationId: createEventId(),
+          status: "completed",
+          message: THREAD_CONTEXT_CLEARED_DETAIL,
+        },
       },
-    });
+      args.beforeCommitInTransaction,
+    );
     deps.hub.notifyThread(
       releasedThread.id,
       ["history-rewritten", "status-changed"],

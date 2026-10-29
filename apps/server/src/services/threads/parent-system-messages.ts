@@ -285,6 +285,7 @@ async function queueActiveParentSystemMessage(
           kind: args.systemMessageKind,
           subject: args.systemMessageSubject,
         },
+        deliveryMode: "steer",
       },
       threadId: args.thread.id,
     });
