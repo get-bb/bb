@@ -81,7 +81,10 @@ export function readPluginSettingsValuesSync(
   const values: Record<string, PluginSettingValue | undefined> = {};
   for (const [key, descriptor] of Object.entries(args.descriptors)) {
     if (isSecret(descriptor)) continue;
-    values[key] = parseStoredSettingValue(descriptor, stored[key]);
+    values[key] = parseStoredSettingValue(
+      descriptor,
+      Object.hasOwn(stored, key) ? stored[key] : undefined,
+    );
   }
   return values;
 }
@@ -104,7 +107,9 @@ export async function writePluginSettingsUpdate(
 ): Promise<void> {
   const rowUpdates: Record<string, string | null> = {};
   for (const [key, value] of Object.entries(args.values)) {
-    const descriptor = args.descriptors[key];
+    const descriptor = Object.hasOwn(args.descriptors, key)
+      ? args.descriptors[key]
+      : undefined;
     if (!descriptor) continue;
     if (isSecret(descriptor)) {
       const path = secretFilePath(args.dataDir, args.pluginId, key);
