@@ -5,6 +5,7 @@ export interface Env {
   COMMUNITY_FORMS_ENABLED?: string;
   COMMUNITY_MERCH_INVITE_HASHES?: string;
   COMMUNITY_JOTFORM_URL?: string;
+  COMMUNITY_STICKER_CLAIM_URL?: string;
   COMMUNITY_FORM_RATE_LIMITER?: RateLimit;
   TUNNEL_DO: DurableObjectNamespace;
   LINK_START_RATE_LIMITER: RateLimit;

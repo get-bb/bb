@@ -13,6 +13,7 @@ import {
   SURVEY_TITLE,
   SOLD_OUT,
   ALREADY_CLAIMED,
+  CLAIM_NOT_OPEN,
   SURVEY_PURPOSE,
   CITY_HELP,
   COMMUNITY_MAX,
@@ -306,7 +307,8 @@ export function formPage({
   complete = false,
   status = 200,
   unavailable = false,
-  stickerCode = null,
+  claimLink = null,
+  claimOpen = true,
   duplicate = false,
   alreadyClaimed = false,
   jotform = null,
@@ -319,7 +321,8 @@ export function formPage({
   complete?: boolean;
   status?: number;
   unavailable?: boolean;
-  stickerCode?: string | null;
+  claimLink?: string | null;
+  claimOpen?: boolean;
   duplicate?: boolean;
   alreadyClaimed?: boolean;
   jotform?: string | null;
@@ -358,35 +361,36 @@ export function formPage({
                 {duplicate ? (
                   <p>
                     we already have your answers — thank you 🙏 if you saved
-                    your sticker code, you can still use its claim link.
+                    your sticker link, you can still use it.
                   </p>
                 ) : (
                   <>
                     <p>
                       <strong>Thanks!</strong>{" "}
-                      {stickerCode ? (
-                        <>
-                          Your bb stickers:{" "}
-                          <a
-                            href={`/community/merch?c=${encodeURIComponent(stickerCode)}`}
-                          >
-                            Claim them
-                          </a>{" "}
-                          (one-time code <code>{stickerCode}</code>)
-                        </>
-                      ) : alreadyClaimed ? (
-                        ALREADY_CLAIMED
-                      ) : (
-                        SOLD_OUT
-                      )}
+                      {claimLink
+                        ? "Your bb stickers are ready."
+                        : alreadyClaimed
+                          ? ALREADY_CLAIMED
+                          : claimOpen
+                            ? SOLD_OUT
+                            : CLAIM_NOT_OPEN}
                     </p>
-                    {stickerCode && (
-                      <p>
-                        It opens a short private form for your US mailing
-                        address. Only the person packing your envelope sees it,
-                        it isn't linked to your answers, and we delete it once
-                        your package ships.
-                      </p>
+                    {claimLink && (
+                      <>
+                        <p>
+                          <a
+                            className="btn btn-primary"
+                            href={claimLink}
+                            rel="noreferrer"
+                          >
+                            Claim my stickers
+                          </a>
+                        </p>
+                        <p>
+                          It opens a free checkout for your US mailing address.
+                          The link works once.
+                        </p>
+                      </>
                     )}
                     <p>
                       Outside the US? We'll post in Discord when we can ship to

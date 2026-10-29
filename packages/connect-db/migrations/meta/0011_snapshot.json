@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "df4e64d2-2dfa-466c-b1c0-f7b6e3cad2e5",
+  "id": "22108184-68a8-4727-a460-c16eb231b49e",
   "prevId": "f353de93-3fc0-49c6-bf60-e58c324d76a9",
   "tables": {
     "account": {
@@ -404,25 +404,18 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "community_sticker_code": {
-      "name": "community_sticker_code",
+    "community_gift_code": {
+      "name": "community_gift_code",
       "columns": {
-        "slot": {
-          "name": "slot",
-          "type": "integer",
+        "code": {
+          "name": "code",
+          "type": "text",
           "primaryKey": true,
           "notNull": true,
           "autoincrement": false
         },
-        "code_hash": {
-          "name": "code_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "shipped": {
-          "name": "shipped",
+        "claimed": {
+          "name": "claimed",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
@@ -430,24 +423,11 @@
           "default": false
         }
       },
-      "indexes": {
-        "community_sticker_code_code_hash_unique": {
-          "name": "community_sticker_code_code_hash_unique",
-          "columns": [
-            "code_hash"
-          ],
-          "isUnique": true
-        }
-      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {
-        "community_sticker_pool_cap": {
-          "name": "community_sticker_pool_cap",
-          "value": "\"community_sticker_code\".\"slot\" BETWEEN 1 AND 250"
-        }
-      }
+      "checkConstraints": {}
     },
     "community_survey_email": {
       "name": "community_survey_email",

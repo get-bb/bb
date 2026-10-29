@@ -1,6 +1,5 @@
 import { sql } from "drizzle-orm";
 import {
-  check,
   index,
   integer,
   primaryKey,
@@ -318,22 +317,15 @@ export const communitySurveyEmail = sqliteTable("community_survey_email", {
   emailHash: text("email_hash").primaryKey(),
 });
 
-export const communityStickerCode = sqliteTable(
-  "community_sticker_code",
-  {
-    slot: integer("slot").primaryKey(),
-    codeHash: text("code_hash").notNull().unique(),
-    shipped: integer("shipped", { mode: "boolean" }).notNull().default(false),
-  },
-  (table) => [
-    check("community_sticker_pool_cap", sql`${table.slot} BETWEEN 1 AND 250`),
-  ],
-);
+export const communityGiftCode = sqliteTable("community_gift_code", {
+  code: text("code").primaryKey(),
+  claimed: integer("claimed", { mode: "boolean" }).notNull().default(false),
+});
 
 export const schema = {
   communitySurveyResponse,
   communitySurveyEmail,
-  communityStickerCode,
+  communityGiftCode,
   user,
   session,
   account,

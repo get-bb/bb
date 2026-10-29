@@ -16,6 +16,7 @@ type CommunityEnv = Pick<
   | "COMMUNITY_FORMS_ENABLED"
   | "COMMUNITY_MERCH_INVITE_HASHES"
   | "COMMUNITY_JOTFORM_URL"
+  | "COMMUNITY_STICKER_CLAIM_URL"
   | "COMMUNITY_FORM_RATE_LIMITER"
 >;
 
@@ -29,12 +30,6 @@ async function getInvitation(
   const code = codes.length === 1 ? codes[0] : undefined;
   if (!code || !/^[a-zA-Z0-9_-]{16,128}$/.test(code)) return null;
   const hash = await sha256Hex(code);
-  const issued = await env.DB.prepare(
-    "SELECT code_hash FROM community_sticker_code WHERE code_hash = ? AND shipped = 0",
-  )
-    .bind(hash)
-    .first();
-  if (issued) return code;
   try {
     const hashes = inviteHashesSchema.safeParse(
       JSON.parse(env.COMMUNITY_MERCH_INVITE_HASHES ?? "[]"),
@@ -72,6 +67,32 @@ export function rateLimitKey(ip: string | null): string {
     .slice(0, 4)
     .map((group) => group.replace(/^0+(?=.)/, ""))
     .join(":")}::/64`;
+}
+
+export function claimUrl(
+  config: string | undefined,
+  code: string,
+  email: string,
+): string | null {
+  if (!config) return null;
+  try {
+    const url = new URL(config);
+    if (
+      url.protocol !== "https:" ||
+      !url.hostname.endsWith(".myshopify.com") ||
+      !/^\/cart\/\d+:1$/.test(url.pathname) ||
+      url.search ||
+      url.username ||
+      url.password ||
+      url.port
+    )
+      return null;
+    url.searchParams.set("discount", code);
+    url.searchParams.set("checkout[email]", email);
+    return url.href;
+  } catch {
+    return null;
+  }
 }
 
 function jotformUrl(config: string | undefined, code: string): string | null {
@@ -206,11 +227,12 @@ export async function handleCommunityForm(
   id = parsedId.data;
   const errors = validateSurvey(values);
   if (Object.keys(errors).length) return page({ status: 400, values, errors });
-  const code = crypto.randomUUID().replaceAll("-", "");
-  const hash = await sha256Hex(code);
-  const emailHash = await sha256Hex(emailKey(values.email?.[0] ?? ""));
+  const email = values.email?.[0] ?? "";
+  const emailHash = await sha256Hex(emailKey(email));
+  const claimOpen =
+    claimUrl(env.COMMUNITY_STICKER_CLAIM_URL, "code", email) !== null;
   try {
-    const [response, email, allocation] = await env.DB.batch([
+    const [response, emailRow, allocation] = await env.DB.batch([
       env.DB.prepare(
         "INSERT INTO community_survey_response (id, created_at, answers) VALUES (?, ?, ?) ON CONFLICT(id) DO NOTHING",
       ).bind(id, Date.now(), JSON.stringify(surveyAnswers(values))),
@@ -218,16 +240,22 @@ export async function handleCommunityForm(
         "INSERT INTO community_survey_email (email_hash) SELECT ? WHERE changes() = 1 ON CONFLICT(email_hash) DO NOTHING",
       ).bind(emailHash),
       env.DB.prepare(
-        "WITH RECURSIVE slots(slot) AS (SELECT 1 UNION ALL SELECT slot + 1 FROM slots WHERE slot < 250) INSERT INTO community_sticker_code (slot, code_hash) SELECT slot, ? FROM slots WHERE changes() = 1 AND slot NOT IN (SELECT slot FROM community_sticker_code) ORDER BY random() LIMIT 1",
-      ).bind(hash),
+        "UPDATE community_gift_code SET claimed = 1 WHERE code = (SELECT code FROM community_gift_code WHERE claimed = 0 ORDER BY random() LIMIT 1) AND changes() = 1 AND ? RETURNING code",
+      ).bind(claimOpen ? 1 : 0),
     ]);
     if (!response?.meta.changes)
       return page({ complete: true, duplicate: true });
+    const allocated = z
+      .object({ code: z.string() })
+      .safeParse(allocation?.results[0]);
     return page({
       complete: true,
       values,
-      stickerCode: allocation?.meta.changes ? code : null,
-      alreadyClaimed: !email?.meta.changes,
+      claimLink: allocated.success
+        ? claimUrl(env.COMMUNITY_STICKER_CLAIM_URL, allocated.data.code, email)
+        : null,
+      claimOpen,
+      alreadyClaimed: !emailRow?.meta.changes,
     });
   } catch {
     return page({

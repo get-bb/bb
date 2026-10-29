@@ -23,6 +23,8 @@ export function questionVisible(name: string, values: FormValues): boolean {
 
 export const SOLD_OUT =
   "We've given out all the stickers for now. Thank you for answering.";
+export const CLAIM_NOT_OPEN =
+  "Sticker claims aren't open yet. We'll post in Discord when they are.";
 export const ALREADY_CLAIMED =
   "This email already has a sticker code. Thank you for answering again!";
 

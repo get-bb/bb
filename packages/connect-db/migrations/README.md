@@ -101,6 +101,7 @@ the deploy workflows already do.
 Migration 0011 uses the normal schema-diff workflow. It adds three tables for
 the getbb.app community survey: `community_survey_response` (answers),
 `community_survey_email` (a SHA-256 of each normalized email, so one email
-gets at most one sticker code) and `community_sticker_code` (the capped pool
-of hashed codes). Nothing joins them. The change is additive and only the web
-worker reads or writes these tables.
+gets at most one sticker code) and `community_gift_code` (one-time Shopify
+discount codes, loaded out of band and marked claimed when handed out).
+Nothing joins them. The change is additive and only the web worker reads or
+writes these tables.
