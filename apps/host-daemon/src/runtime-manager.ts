@@ -226,9 +226,19 @@ interface PendingEnvironmentProvision {
   done: Promise<unknown>;
 }
 
-interface PendingProviderMaintenanceRuntime {
-  generation: number;
-  promise: Promise<AgentRuntime>;
+interface ProviderMaintenanceRuntimeSlot {
+  runtime: Promise<AgentRuntime>;
+  activeRequests: number;
+}
+
+const FNM_MULTISHELL_PATH_ENTRY = /([\\/]fnm_multishells[\\/])[^\\/]+/;
+
+function comparableShellEnvValue(key: string, value: string): string {
+  if (key !== "PATH") return value;
+  return value
+    .split(path.delimiter)
+    .map((entry) => entry.replace(FNM_MULTISHELL_PATH_ENTRY, "$1*"))
+    .join(path.delimiter);
 }
 
 function shellEnvEquals(
@@ -240,7 +250,14 @@ function shellEnvEquals(
   if (leftEntries.length !== rightEntries.length) {
     return false;
   }
-  return leftEntries.every(([key, value]) => right[key] === value);
+  return leftEntries.every(([key, value]) => {
+    const rightValue = right[key];
+    return (
+      rightValue !== undefined &&
+      comparableShellEnvValue(key, value) ===
+        comparableShellEnvValue(key, rightValue)
+    );
+  });
 }
 
 function providerProcessEnvFromShellEnv(
@@ -287,11 +304,9 @@ export class RuntimeManager {
     Map<string, Set<Promise<void>>>
   >();
   private readonly threadControlTails = new Map<string, Promise<void>>();
-  private providerMaintenanceRuntime: AgentRuntime | null = null;
-  private pendingProviderMaintenanceRuntime: PendingProviderMaintenanceRuntime | null =
-    null;
-  private providerMaintenanceRuntimeGeneration = 0;
-  private providerMaintenanceActiveRequests = 0;
+  private providerMaintenanceSlot: ProviderMaintenanceRuntimeSlot | null = null;
+  private readonly retiredProviderMaintenanceSlots =
+    new Set<ProviderMaintenanceRuntimeSlot>();
   private providerMaintenanceIdleTimer: ReturnType<typeof setTimeout> | null =
     null;
   readonly providerInstallationGate: ProviderInstallationGate;
@@ -570,7 +585,7 @@ export class RuntimeManager {
     this.baseShellEnv = { ...shellEnv };
     this.shellEnvGeneration += 1;
     this.providerInstallationGate.clear();
-    await this.shutdownProviderMaintenanceRuntime();
+    await this.retireProviderMaintenanceRuntime();
     await this.evictIdleRuntimeEntries();
   }
 
@@ -751,7 +766,7 @@ export class RuntimeManager {
   async invalidateProviderMaintenanceRuntime(): Promise<void> {
     this.providerInstallationGate.clear();
     try {
-      await this.shutdownProviderMaintenanceRuntime();
+      await this.retireProviderMaintenanceRuntime();
     } catch (error) {
       this.options.logger?.warn(
         { err: error },
@@ -760,29 +775,35 @@ export class RuntimeManager {
     }
   }
 
-  private async shutdownProviderMaintenanceRuntime(): Promise<void> {
+  private async retireProviderMaintenanceRuntime(): Promise<void> {
     this.clearProviderMaintenanceIdleTimer();
-    const existingRuntime = this.providerMaintenanceRuntime;
-    const pendingRuntime = this.pendingProviderMaintenanceRuntime;
-    this.providerMaintenanceRuntimeGeneration += 1;
-    this.providerMaintenanceRuntime = null;
-    if (this.pendingProviderMaintenanceRuntime === pendingRuntime) {
-      this.pendingProviderMaintenanceRuntime = null;
+    const slot = this.providerMaintenanceSlot;
+    this.providerMaintenanceSlot = null;
+    if (!slot) return;
+    if (slot.activeRequests > 0) {
+      this.retiredProviderMaintenanceSlots.add(slot);
+      return;
     }
+    await this.shutdownProviderMaintenanceSlot(slot);
+  }
 
-    const resolvedPendingRuntime = pendingRuntime
-      ? await pendingRuntime.promise.catch(() => null)
-      : null;
-    if (
-      resolvedPendingRuntime &&
-      this.providerMaintenanceRuntime === resolvedPendingRuntime
-    ) {
-      this.providerMaintenanceRuntime = null;
-    }
+  private async shutdownProviderMaintenanceSlot(
+    slot: ProviderMaintenanceRuntimeSlot,
+  ): Promise<void> {
+    const runtime = await slot.runtime.catch(() => null);
+    await runtime?.shutdown();
+  }
 
-    const runtimes = [...new Set([existingRuntime, resolvedPendingRuntime])];
+  private async shutdownAllProviderMaintenanceRuntimes(): Promise<void> {
+    this.clearProviderMaintenanceIdleTimer();
+    const slots = [
+      this.providerMaintenanceSlot,
+      ...this.retiredProviderMaintenanceSlots,
+    ].filter((slot) => slot !== null);
+    this.providerMaintenanceSlot = null;
+    this.retiredProviderMaintenanceSlots.clear();
     await Promise.all(
-      runtimes.map((runtime) => runtime?.shutdown() ?? Promise.resolve()),
+      slots.map((slot) => this.shutdownProviderMaintenanceSlot(slot)),
     );
   }
 
@@ -792,23 +813,30 @@ export class RuntimeManager {
     this.providerMaintenanceIdleTimer = null;
   }
 
-  private scheduleProviderMaintenanceIdleShutdown(): void {
-    this.clearProviderMaintenanceIdleTimer();
-    if (
-      this.providerMaintenanceActiveRequests > 0 ||
-      (this.providerMaintenanceRuntime === null &&
-        this.pendingProviderMaintenanceRuntime === null)
-    ) {
+  private releaseIdleProviderMaintenanceSlot(
+    slot: ProviderMaintenanceRuntimeSlot,
+  ): void {
+    if (this.retiredProviderMaintenanceSlots.delete(slot)) {
+      void this.shutdownProviderMaintenanceSlot(slot).catch((error) => {
+        this.options.logger?.warn(
+          { err: error },
+          "Failed to shut down retired provider maintenance runtime",
+        );
+      });
       return;
     }
+    if (this.providerMaintenanceSlot !== slot) return;
 
+    this.clearProviderMaintenanceIdleTimer();
     const timeoutMs =
       this.options.providerMaintenanceIdleTimeoutMs ??
       PROVIDER_MAINTENANCE_IDLE_TIMEOUT_MS;
     this.providerMaintenanceIdleTimer = setTimeout(() => {
       this.providerMaintenanceIdleTimer = null;
-      if (this.providerMaintenanceActiveRequests > 0) return;
-      void this.shutdownProviderMaintenanceRuntime().catch((error) => {
+      if (this.providerMaintenanceSlot !== slot || slot.activeRequests > 0) {
+        return;
+      }
+      void this.retireProviderMaintenanceRuntime().catch((error) => {
         this.options.logger?.warn(
           { err: error },
           "Failed to shut down idle provider maintenance runtime",
@@ -831,40 +859,31 @@ export class RuntimeManager {
     await this.cleanupUnusedInjectedSkillStagingDirs([]);
   }
 
+  private currentProviderMaintenanceSlot(args: {
+    dataDir: string;
+  }): ProviderMaintenanceRuntimeSlot {
+    if (this.providerMaintenanceSlot) {
+      return this.providerMaintenanceSlot;
+    }
+    const slot: ProviderMaintenanceRuntimeSlot = {
+      runtime: Promise.resolve().then(() =>
+        this.createProviderMaintenanceRuntime(args, slot),
+      ),
+      activeRequests: 0,
+    };
+    slot.runtime.catch(() => {
+      if (this.providerMaintenanceSlot === slot) {
+        this.providerMaintenanceSlot = null;
+      }
+    });
+    this.providerMaintenanceSlot = slot;
+    return slot;
+  }
+
   async ensureProviderMaintenanceRuntime(args: {
     dataDir: string;
   }): Promise<AgentRuntime> {
-    if (this.providerMaintenanceRuntime) {
-      return this.providerMaintenanceRuntime;
-    }
-    if (this.pendingProviderMaintenanceRuntime) {
-      return this.pendingProviderMaintenanceRuntime.promise;
-    }
-
-    const generation = this.providerMaintenanceRuntimeGeneration;
-    let pendingRuntime!: PendingProviderMaintenanceRuntime;
-    const promise = Promise.resolve()
-      .then(() => this.createProviderMaintenanceRuntime(args))
-      .then((runtime) => {
-        if (
-          this.pendingProviderMaintenanceRuntime === pendingRuntime &&
-          this.providerMaintenanceRuntimeGeneration === generation
-        ) {
-          this.providerMaintenanceRuntime = runtime;
-        }
-        return runtime;
-      })
-      .finally(() => {
-        if (this.pendingProviderMaintenanceRuntime === pendingRuntime) {
-          this.pendingProviderMaintenanceRuntime = null;
-        }
-      });
-    pendingRuntime = {
-      generation,
-      promise,
-    };
-    this.pendingProviderMaintenanceRuntime = pendingRuntime;
-    return promise;
+    return this.currentProviderMaintenanceSlot(args).runtime;
   }
 
   async withProviderMaintenanceRuntime<TResult>(
@@ -872,14 +891,14 @@ export class RuntimeManager {
     request: (runtime: AgentRuntime) => Promise<TResult>,
   ): Promise<TResult> {
     this.clearProviderMaintenanceIdleTimer();
-    this.providerMaintenanceActiveRequests += 1;
+    const slot = this.currentProviderMaintenanceSlot(args);
+    slot.activeRequests += 1;
     try {
-      const runtime = await this.ensureProviderMaintenanceRuntime(args);
-      return await request(runtime);
+      return await request(await slot.runtime);
     } finally {
-      this.providerMaintenanceActiveRequests -= 1;
-      if (this.providerMaintenanceActiveRequests === 0) {
-        this.scheduleProviderMaintenanceIdleShutdown();
+      slot.activeRequests -= 1;
+      if (slot.activeRequests === 0) {
+        this.releaseIdleProviderMaintenanceSlot(slot);
       }
     }
   }
@@ -1096,7 +1115,7 @@ export class RuntimeManager {
     for (const entry of entries) {
       await entry.runtime.shutdown();
     }
-    await this.shutdownProviderMaintenanceRuntime();
+    await this.shutdownAllProviderMaintenanceRuntimes();
     await this.stopWatchingDataDirSkillsRoot();
     this.stopWatchingDataDirSkillsRoot = STOP_WATCHING;
     await this.cleanupUnusedInjectedSkillStagingDirs([]);
@@ -1149,9 +1168,10 @@ export class RuntimeManager {
     return events;
   }
 
-  private async createProviderMaintenanceRuntime(args: {
-    dataDir: string;
-  }): Promise<AgentRuntime> {
+  private async createProviderMaintenanceRuntime(
+    args: { dataDir: string },
+    slot: ProviderMaintenanceRuntimeSlot,
+  ): Promise<AgentRuntime> {
     const workspacePath = path.join(
       args.dataDir,
       PROVIDER_MAINTENANCE_WORKSPACE_DIR,
@@ -1185,10 +1205,10 @@ export class RuntimeManager {
       onProcessExit: (info) => {
         if (
           runtime &&
-          this.providerMaintenanceRuntime === runtime &&
+          this.providerMaintenanceSlot === slot &&
           runtime.listRunningProviders().length === 0
         ) {
-          this.providerMaintenanceRuntime = null;
+          this.providerMaintenanceSlot = null;
         }
         this.options.onProcessExit?.(info);
       },
