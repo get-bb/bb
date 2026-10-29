@@ -235,10 +235,12 @@ export const BUILTIN_PLUGINS = [
     pluginId: "bb--composer",
     defaultEnabled: true,
   },
-].map((plugin): BundledPluginDefinition => ({
-  ...plugin,
-  autoInstall: true,
-}));
+].map(
+  (plugin): BundledPluginDefinition => ({
+    ...plugin,
+    autoInstall: true,
+  }),
+);
 
 export const OFFICIAL_PLUGINS = [
   {
@@ -276,10 +278,12 @@ export const OFFICIAL_PLUGINS = [
     pluginId: "theme-preview",
     defaultEnabled: true,
   },
-].map((plugin): BundledPluginDefinition => ({
-  ...plugin,
-  autoInstall: false,
-}));
+].map(
+  (plugin): BundledPluginDefinition => ({
+    ...plugin,
+    autoInstall: false,
+  }),
+);
 
 export const BUNDLED_PLUGINS: readonly BundledPluginDefinition[] = [
   ...BUILTIN_PLUGINS,

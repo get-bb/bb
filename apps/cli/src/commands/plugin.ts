@@ -459,7 +459,7 @@ const UPDATE_STATUS_LABELS: Record<PluginUpdateResult["outcome"], string> = {
 
 function blockedSummary(result: PluginUpdateResult): string {
   if (!result.blocked) return "—";
-  return `${result.blocked.version}: ${result.blocked.reasons.join("; ")}`;
+  return `${result.blocked.label}: ${result.blocked.reasons.join("; ")}`;
 }
 
 function updateDetail(result: PluginUpdateResult): string {

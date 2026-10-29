@@ -98,7 +98,6 @@ import {
 } from "@/hooks/queries/plugin-update-job-queries";
 import { applyPluginUpdateJob } from "@/hooks/cache-owners/plugin-cache-owner";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
-import { displayPluginVersion } from "@/components/plugin/management/plugin-ui";
 import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useDesktopUpdateInfo } from "@/hooks/useDesktopUpdateInfo";
@@ -2001,7 +2000,7 @@ function pluginDisplayName(item: UpdateInventoryPlugin): string {
 function blockedPluginReason(
   item: Extract<UpdateInventoryPlugin, { kind: "blocked" }>,
 ): string {
-  const version = displayPluginVersion(item.version);
+  const version = item.version;
   return item.reasons.length === 0
     ? `${version} isn’t compatible with this bb`
     : `${version}: ${item.reasons.join("; ")}`;
@@ -2039,10 +2038,8 @@ function PluginUpdateRow({
             {name}
           </span>
           <RowVersions
-            current={displayPluginVersion(plugin.version)}
-            latest={
-              item.kind === "update" ? displayPluginVersion(item.version) : null
-            }
+            current={plugin.version}
+            latest={item.kind === "update" ? item.version : null}
           />
           {item.kind === "blocked" ? (
             <span className="basis-full text-2xs break-words text-subtle-foreground">
@@ -2064,13 +2061,13 @@ function PluginUpdateRow({
               reason={
                 failure.detail.length > 0
                   ? failure.detail
-                  : `bb couldn’t activate ${displayPluginVersion(failure.version)} and restored ${displayPluginVersion(plugin.version)}.`
+                  : `bb couldn’t activate ${failure.label} and restored ${plugin.version}.`
               }
             />
             <RowStateControl
               state="failed"
               actionIcon={RETRY_ACTION_ICON as IconName}
-              actionLabel={`Retry ${name} update to ${displayPluginVersion(item.version)}`}
+              actionLabel={`Retry ${name} update to ${item.version}`}
               actionTooltip="Retry"
               onClick={() => onStartUpdate(plugin.id)}
             />
@@ -2078,7 +2075,7 @@ function PluginUpdateRow({
         ) : (
           <RowStateControl
             state="update-available"
-            actionLabel={`Update ${name} to ${displayPluginVersion(item.version)}`}
+            actionLabel={`Update ${name} to ${item.version}`}
             buttonLeading={
               <Icon aria-hidden name={UPDATE_ACTION_ICON} className="size-3" />
             }
@@ -2104,9 +2101,6 @@ export function PluginUpdatesSection({
   checking,
   onStartUpdates,
 }: PluginUpdatesSectionProps) {
-  if (plugins.trackedCount === 0) {
-    return null;
-  }
   const remainingJobs = updatingPluginIds.size;
   const startable = plugins.items
     .filter((item) => item.kind === "update")
@@ -2153,9 +2147,11 @@ export function PluginUpdatesSection({
             </span>
             {checking
               ? "Checking for updates…"
-              : plugins.trackedCount === 1
-                ? "Nothing to update for 1 plugin."
-                : `Nothing to update across ${plugins.trackedCount} plugins.`}
+              : plugins.trackedCount === 0
+                ? "No installed plugins track updates."
+                : plugins.trackedCount === 1
+                  ? "Nothing to update for 1 plugin."
+                  : `Nothing to update across ${plugins.trackedCount} plugins.`}
           </div>
         ) : (
           <div className="divide-y divide-border">

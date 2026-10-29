@@ -484,6 +484,7 @@ describe("PluginDetail official catalog lifecycle", () => {
       updateState: {
         ...EMPTY_PLUGIN_UPDATE_STATE,
         availableVersion: "1.5.0",
+        availableLabel: "1.5.0",
       },
     };
     render(
@@ -627,8 +628,10 @@ describe("PluginDetail official catalog lifecycle", () => {
       updateState: {
         ...EMPTY_PLUGIN_UPDATE_STATE,
         availableVersion: "1.5.0",
+        availableLabel: "1.5.0",
         lastFailure: {
           version: "1.5.0",
+          label: "1.5.0",
           at: null,
           detail: "The plugin failed to load.",
         },
@@ -641,6 +644,7 @@ describe("PluginDetail official catalog lifecycle", () => {
       updateState: {
         ...EMPTY_PLUGIN_UPDATE_STATE,
         blockedVersion: "2.0.0",
+        blockedLabel: "2.0.0",
         blockedReasons: ["Requires bb 0.20 or newer."],
       },
       expected: "Update blocked",
@@ -1941,10 +1945,13 @@ describe("PluginDetail banner precedence", () => {
     updateState: {
       ...EMPTY_PLUGIN_UPDATE_STATE,
       availableVersion: "1.5.0",
+      availableLabel: "1.5.0",
       blockedVersion: "2.0.0",
+      blockedLabel: "2.0.0",
       blockedReasons: ["Requires a newer bb."],
       lastFailure: {
         version: "1.4.5",
+        label: "1.4.5",
         at: null,
         detail: "The plugin failed to load after the update.",
       },

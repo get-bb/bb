@@ -19,12 +19,14 @@ it("deduplicates an active update, queues other updates, and proceeds after fail
       return waiting;
     },
   });
-  const next = vi.fn(async (): Promise<PluginApplyUpdateResult> => ({
-    applied: false,
-    from: { version: "1", display: "1" },
-    outcome: "rolled-back",
-    detail: "restored",
-  }));
+  const next = vi.fn(
+    async (): Promise<PluginApplyUpdateResult> => ({
+      applied: false,
+      from: { version: "1", label: "1", display: "1" },
+      outcome: "rolled-back",
+      detail: "restored",
+    }),
+  );
   const second = jobs.start({ pluginId: "two", displayName: "Two", run: next });
   const duplicate = jobs.start({
     pluginId: "one",

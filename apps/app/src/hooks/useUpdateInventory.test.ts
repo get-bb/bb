@@ -64,7 +64,11 @@ describe("buildUpdateInventoryPlugins", () => {
       id: "notes",
       name: "Notes",
       source: "npm:@acme/notes@^1.0.0",
-      updateState: { outcome: "update-available", availableVersion: "1.2.0" },
+      updateState: {
+        outcome: "update-available",
+        availableVersion: "1.2.0",
+        availableLabel: "1.2.0",
+      },
     });
     const blocked = makePluginListItem({
       id: "linear",
@@ -73,6 +77,7 @@ describe("buildUpdateInventoryPlugins", () => {
       updateState: {
         outcome: "incompatible",
         blockedVersion: "0.9.0",
+        blockedLabel: "0.9.0",
         blockedReasons: ["engines.bb requires >=2.0.0"],
       },
     });
@@ -84,18 +89,22 @@ describe("buildUpdateInventoryPlugins", () => {
     const pinned = makePluginListItem({
       id: "pinned",
       source: "npm:@acme/pinned@1.0.0",
-      updateState: { outcome: "pinned", blockedVersion: "2.0.0" },
+      updateState: {
+        outcome: "pinned",
+        blockedVersion: "2.0.0",
+        blockedLabel: "2.0.0",
+      },
     });
     const path = makePluginListItem({
       id: "local",
       source: "path:/plugins/local",
-      updateState: { availableVersion: "9.9.9" },
+      updateState: { availableVersion: "9.9.9", availableLabel: "9.9.9" },
     });
     const builtin = makePluginListItem({
       id: "git",
       source: "builtin:git",
       provenance: "builtin",
-      updateState: { availableVersion: "9.9.9" },
+      updateState: { availableVersion: "9.9.9", availableLabel: "9.9.9" },
     });
 
     expect(
@@ -127,7 +136,9 @@ describe("buildUpdateInventoryPlugins", () => {
       updateState: {
         outcome: "update-available",
         availableVersion: "1.2.0",
+        availableLabel: "1.2.0",
         blockedVersion: "1.3.0",
+        blockedLabel: "1.3.0",
         blockedReasons: ["engines.bbPluginSdk requires ^3.0.0"],
       },
     });

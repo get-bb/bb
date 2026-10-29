@@ -1200,7 +1200,11 @@ const STORY_PLUGINS = buildUpdateInventoryPlugins([
     icon: "GitPullRequest",
     source: "npm:@acme/github-pr-status@^1.2.0",
     version: "1.2.0",
-    updateState: { outcome: "update-available", availableVersion: "1.4.1" },
+    updateState: {
+      outcome: "update-available",
+      availableVersion: "1.4.1",
+      availableLabel: "1.4.1",
+    },
   }),
   makePluginListItem({
     id: "linear",
@@ -1211,8 +1215,10 @@ const STORY_PLUGINS = buildUpdateInventoryPlugins([
     updateState: {
       outcome: "update-available",
       availableVersion: "0.9.0",
+      availableLabel: "0.9.0",
       lastFailure: {
         version: "0.9.0",
+        label: "0.9.0",
         at: STORY_NOW,
         detail: "activation failed: settings schema rejected stored values",
       },
@@ -1227,6 +1233,7 @@ const STORY_PLUGINS = buildUpdateInventoryPlugins([
     updateState: {
       outcome: "incompatible",
       blockedVersion: "3.0.0",
+      blockedLabel: "3.0.0",
       blockedReasons: ["engines.bb requires >=0.40.0 (running 0.38.0)"],
     },
   }),

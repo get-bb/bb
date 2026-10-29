@@ -654,7 +654,7 @@ describe("plugin update service and routes", () => {
           id: "updater",
           outcome: "update-available",
           installed: { version: expect.stringMatching(/^[0-9a-f]{40}$/) },
-          candidate: { version: nextCommit },
+          candidate: { version: nextCommit, label: nextCommit.slice(0, 7) },
         },
       ],
     });
@@ -1424,12 +1424,17 @@ describe("plugin update service and routes", () => {
       {
         id: "tagged",
         outcome: "update-available",
+        installed: { label: "1.0.0" },
         candidate: {
           version: nextCommit,
+          label: "1.1.0",
           display: expect.stringContaining("@v1.1.0"),
         },
       },
     ]);
+    expect(
+      service.list().find((entry) => entry.id === "tagged")?.updateState,
+    ).toMatchObject({ availableVersion: nextCommit, availableLabel: "1.1.0" });
 
     const applied = await service.applyUpdate("tagged");
     expect(applied).toMatchObject({ ok: true, result: { applied: true } });
@@ -1441,6 +1446,56 @@ describe("plugin update service and routes", () => {
     expect(await service.checkForUpdates("tagged")).toMatchObject([
       { id: "tagged", outcome: "current" },
     ]);
+  });
+
+  it("names a rolled-back release by its tag version", async () => {
+    const tagged = await taggedRepo();
+    await service.install(`git:${tagged}@semver:^1.0.0`, { kind: "root" });
+    await writeFile(
+      join(tagged, "server.ts"),
+      'export default function plugin() { throw new Error("tagged activation failed"); }',
+    );
+    const brokenCommit = await releaseTag(tagged, "v1.1.0");
+
+    await expect(service.applyUpdate("tagged")).resolves.toMatchObject({
+      ok: true,
+      result: { applied: false, outcome: "rolled-back" },
+    });
+    expect(
+      service.list().find((entry) => entry.id === "tagged")?.updateState,
+    ).toMatchObject({
+      availableLabel: "1.1.0",
+      lastFailure: { version: brokenCommit, label: "1.1.0" },
+    });
+  });
+
+  it("labels update state saved before versions carried labels", async () => {
+    const tagged = await taggedRepo();
+    await service.install(`git:${tagged}@semver:^1.0.0`, { kind: "root" });
+    const nextCommit = await releaseTag(tagged, "v1.1.0");
+    const [checked] = await service.checkForUpdates("tagged");
+    if (checked?.candidate === undefined) {
+      throw new Error("expected an update candidate");
+    }
+    const { label: _installedLabel, ...installed } = checked.installed;
+    const { label: _candidateLabel, ...candidate } = checked.candidate;
+    db.$client
+      .prepare("UPDATE plugins SET update_status_detail = ? WHERE id = ?")
+      .run(JSON.stringify({ ...checked, installed, candidate }), "tagged");
+
+    expect(
+      service.listUpdateResults().find((entry) => entry.id === "tagged"),
+    ).toMatchObject({
+      installed: { label: checked.installed.version.slice(0, 7) },
+      candidate: { version: nextCommit, label: nextCommit.slice(0, 7) },
+    });
+    expect(
+      service.list().find((entry) => entry.id === "tagged")?.updateState,
+    ).toMatchObject({
+      outcome: "update-available",
+      availableVersion: nextCommit,
+      availableLabel: nextCommit.slice(0, 7),
+    });
   });
 
   it("refuses to resolve a release tag that was moved to another commit", async () => {

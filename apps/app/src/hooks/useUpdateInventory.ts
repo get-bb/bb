@@ -93,17 +93,16 @@ export function buildUpdateInventoryPlugins(
       plugin.updateState.outcome !== "pinned",
   );
   const items = tracked.flatMap((plugin): UpdateInventoryPlugin[] => {
-    const { availableVersion, blockedVersion, blockedReasons } =
-      plugin.updateState;
-    if (availableVersion !== null) {
-      return [{ kind: "update", plugin, version: availableVersion }];
+    const { availableLabel, blockedLabel, blockedReasons } = plugin.updateState;
+    if (availableLabel !== null) {
+      return [{ kind: "update", plugin, version: availableLabel }];
     }
-    if (blockedVersion !== null) {
+    if (blockedLabel !== null) {
       return [
         {
           kind: "blocked",
           plugin,
-          version: blockedVersion,
+          version: blockedLabel,
           reasons: blockedReasons,
         },
       ];

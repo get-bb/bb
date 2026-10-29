@@ -1872,6 +1872,7 @@ The canonical release summary.
             updateState: {
               outcome: "update-available",
               availableVersion: "1.2.0",
+              availableLabel: "1.2.0",
             },
           }),
           makePluginListItem({
@@ -1882,6 +1883,7 @@ The canonical release summary.
             updateState: {
               outcome: "update-available",
               availableVersion: "0.8.4",
+              availableLabel: "0.8.4",
             },
           }),
           makePluginListItem({
@@ -1892,6 +1894,7 @@ The canonical release summary.
             updateState: {
               outcome: "incompatible",
               blockedVersion: "3.0.0",
+              blockedLabel: "3.0.0",
               blockedReasons: ["engines.bb requires >=9.0.0"],
             },
           }),
@@ -1932,6 +1935,7 @@ The canonical release summary.
         updateState: {
           outcome: "update-available",
           availableVersion: "1.1.0",
+          availableLabel: "1.1.0",
         },
       });
     useUpdateInventoryMock.mockReturnValue(
@@ -2021,6 +2025,7 @@ The canonical release summary.
             updateState: {
               outcome: "update-available",
               availableVersion: "1.2.0",
+              availableLabel: "1.2.0",
             },
           }),
         ]),
