@@ -21,7 +21,7 @@ function setup(path: string, href: string) {
   const link = document.createElement("a");
   link.href = href;
   link.innerHTML = "<span>Download</span>";
-  document.body.append(link);
+  document.body.appendChild(link);
   link.addEventListener("click", (event) => event.preventDefault());
   link.addEventListener("auxclick", (event) => event.preventDefault());
   const activate = (type: string, button = 0) =>

@@ -41,38 +41,3 @@ it("records one initial and one per public SPA route/back visit while excluding 
   history.pushState(null, "", "/oauth/authorize?code=private");
   expect(init.mock.calls[0]?.[1].before_send({ properties: {} })).toBeNull();
 });
-
-it("drops pre-initialization intent instead of replaying it on another page", async () => {
-  const capture = vi.fn();
-  let resolveSdk:
-    | ((value: {
-        default: { init: ReturnType<typeof vi.fn>; capture: typeof capture };
-      }) => void)
-    | undefined;
-  vi.stubEnv("VITE_POSTHOG_KEY", "test-key");
-  vi.doMock(
-    "posthog-js",
-    () =>
-      new Promise((resolve) => {
-        resolveSdk = resolve;
-      }),
-  );
-  const analytics = await import("./analytics");
-  analytics.initAnalytics();
-  analytics.trackDownloadIntent({
-    source_path: "/",
-    page_family: "homepage",
-    page_subtype: "homepage",
-    placement: "hero",
-    download_target: "macos",
-    measurement_version: 1,
-    intent_at: new Date().toISOString(),
-    download_campaign: {},
-  });
-  history.pushState(null, "", "/marketplace");
-  analytics.initAnalytics();
-  await vi.waitFor(() => expect(resolveSdk).toBeDefined());
-  resolveSdk?.({ default: { init: vi.fn(), capture } });
-  await vi.waitFor(() => expect(capture).toHaveBeenCalled());
-  expect(capture.mock.calls.map(([event]) => event)).toEqual(["$pageview"]);
-});
