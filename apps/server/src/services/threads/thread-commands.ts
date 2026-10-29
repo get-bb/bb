@@ -234,7 +234,7 @@ async function toRuntimeExecutionOptions(
       },
     );
   const reasoningLevel =
-    model?.reasoningDiscovery === "known" &&
+    model === null ||
     model.supportedReasoningEfforts.some(
       (effort) => effort.reasoningEffort === args.execution.reasoningLevel,
     )

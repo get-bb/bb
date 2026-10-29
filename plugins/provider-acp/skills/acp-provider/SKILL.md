@@ -95,15 +95,15 @@ models within a five-second budget, trying configured priority models first.
 Selecting an unprobed model starts a separate discovery session that probes only
 that model, with a five-second timeout. Results are cached by model. While
 loading, or after failure or an unrecognized response, BB shows no reasoning
-selector and leaves the agent reasoning setting unchanged. CLI and SDK reasoning
-preferences remain stored, but are sent to the provider only when the cached
-model catalog confirms that the selected level is supported.
-Failed probes have
-a 30-second server retry cooldown. Individual probe failures do not stop bulk
-discovery of other models. An empty
-`supportedReasoningEfforts` in `bb provider models <provider-id> --json` means
-BB has no selectable reasoning levels for that model, not that the model cannot
-reason. Use `bb provider models <provider-id> --selected-model <model-id>
+selector. Sending never waits for discovery: when a model's catalog entry does
+not list the thread's reasoning level, BB leaves reasoning out of the request and
+the agent keeps its own setting. CLI and SDK reasoning preferences stay stored.
+Failed probes have a 30-second server retry cooldown. Individual probe failures
+do not stop bulk discovery of other models. In `bb provider models
+<provider-id> --json`, `reasoningDiscovery: "unknown"` means BB has not
+discovered the model's levels yet; `"known"` with an empty
+`supportedReasoningEfforts` means the model has no selectable levels, not that
+it cannot reason. Use `bb provider models <provider-id> --selected-model <model-id>
 --json` (SDK: `providers.models({ providerId, selectedModel })`) to request
 the same discovery without the picker. Refresh the catalog after changing the
 agent's default or priority models. This does not require omp's proposed `_meta.thoughtLevels` extension.
@@ -161,5 +161,3 @@ restart is needed.
   workspace, each a relative path without dot segments.
 - `supportsManualCompaction` (default `false`) shows `/compact` only for agents
   that accept an explicit compaction request.
-
-Model catalogs report `reasoningDiscovery` as `unknown` or `known`. A known empty `supportedReasoningEfforts` list confirms that the model has no selectable levels; only unknown models need focused discovery. BB keeps a required reasoning preference in execution defaults and queued messages. At the provider command boundary, it omits unsupported or unknown reasoning settings, leaving the provider default unchanged.

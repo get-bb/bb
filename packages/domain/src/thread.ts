@@ -50,6 +50,7 @@ export type ThreadRuntimeState = z.infer<typeof threadRuntimeStateSchema>;
 
 export type ThreadActivityState = z.infer<typeof threadActivityStateSchema>;
 
+
 export const threadQueuedMessageSchema = z.object({
   id: z.string(),
   origin: threadCreateOriginSchema.nullable(),

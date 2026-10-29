@@ -142,4 +142,10 @@ user and project paths use the same relative-path rules. bb indexes these roots
 as read-only sources. It then injects the selected skills into all providers.
 The bb user and project roots keep higher precedence than matching shared roots.
 
-Use --selected-model to discover an unprobed model's reasoning choices and include a selected-only model. Discovery runs without blocking execution; ACP probes only the requested model and caches the result. Model results include reasoningDiscovery: unknown means discovery is incomplete; known with an empty supportedReasoningEfforts list means no selectable reasoning levels. Confirmed empty results are cached without repeated probing. Older catalog payloads without this field are conservatively treated as unknown. Execution defaults and queued messages retain a required reasoning preference. BB sends it to the provider only when the cached model catalog confirms support; otherwise the provider setting is left unchanged, including for explicitly supplied preferences.
+Use --selected-model to discover an unprobed model's reasoning choices and
+include a selected-only model; ACP probes only that model and caches the result.
+Each model reports reasoningDiscovery: unknown means its choices have not been
+discovered yet, and known with an empty supportedReasoningEfforts list means it
+has no selectable reasoning levels. Sending never waits for discovery. When the
+cached catalog lists a model without the thread's reasoning level, BB leaves
+reasoning out of the provider request and the agent keeps its own setting.

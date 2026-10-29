@@ -335,26 +335,6 @@ afterEach(() => {
 });
 
 describe("useThreadCreationOptions", () => {
-  it("seeds a provider and model without turning missing reasoning into an explicit choice", async () => {
-    const { wrapper } = createQueryClientTestHarness();
-    const { result } = renderHook(
-      () => useThreadCreationOptions({ scope: "new-thread" }),
-      { wrapper },
-    );
-    await waitFor(() =>
-      expect(result.current.selectedProviderId).toBe(GLOBAL_PROVIDER_ID),
-    );
-    act(() =>
-      result.current.setProviderModelReasoning({
-        providerId: GLOBAL_PROVIDER_ID,
-        model: "global-model",
-        reasoningLevel: undefined,
-      }),
-    );
-    expect(result.current.selectedModel).toBe("global-model");
-    expect(result.current.executionInputSources.reasoningLevel).toBeUndefined();
-  });
-
   it("keeps an unprobed selection without reasoning choices until its actual ladder arrives", async () => {
     const discovery = createDeferredPromise<SystemExecutionOptionsResponse>();
     const catalog = executionOptionsResponse();

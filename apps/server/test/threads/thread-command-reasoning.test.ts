@@ -55,6 +55,13 @@ it.each([
           ...availableModelFixture({ model: "unknown", reasoningLevels: [] }),
           reasoningDiscovery: "unknown" as const,
         },
+        {
+          ...availableModelFixture({
+            model: "unprobed-with-levels",
+            reasoningLevels: ["medium", "high"],
+          }),
+          reasoningDiscovery: "unknown" as const,
+        },
         availableModelFixture({ model: "no-reasoning", reasoningLevels: [] }),
         availableModelFixture({ model: "medium", reasoningLevels: ["medium"] }),
         availableModelFixture({
@@ -118,12 +125,18 @@ it.each([
         [environment, "selected-only", "high", undefined],
         [environment, "medium", "medium", "medium"],
         [environment, "high", "high", "high"],
-        [environment, "uncatalogued", "high", undefined],
+        [environment, "unprobed-with-levels", "high", "high"],
+        [environment, "uncatalogued", "high", "high"],
         [environment, "no-reasoning", "high", undefined],
         [environment, "medium", "high", undefined],
-        [otherWorkspace, "unknown", undefined, undefined],
-        [otherHostEnvironment, "unknown", undefined, undefined],
-        [otherHostEnvironment, "unknown", undefined, undefined, "explicit"],
+        [
+          otherWorkspace,
+          "unknown",
+          undefined,
+          catalogScope === "workspace" ? "medium" : undefined,
+        ],
+        [otherHostEnvironment, "unknown", undefined, "medium"],
+        [otherHostEnvironment, "unknown", "high", "high", "explicit"],
       ] as const) {
         const thread = seedThread(harness.deps, {
           projectId: project.id,

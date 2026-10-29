@@ -106,10 +106,8 @@ interface ModelReasoningSelection {
   reasoningLevel: ReasoningLevel;
 }
 
-interface ProviderModelReasoningSelection {
+interface ProviderModelReasoningSelection extends ModelReasoningSelection {
   providerId: string;
-  model: string;
-  reasoningLevel: ReasoningLevel | undefined;
 }
 
 type ProviderModelReasoningSelectionSetter = (
@@ -880,11 +878,7 @@ export function useThreadCreationOptions(
     }: ProviderModelReasoningSelection) => {
       touchedThreadFieldsRef.current.add("selectedProviderId");
       touchedThreadFieldsRef.current.add("selectedModel");
-      if (nextReasoningLevel === undefined) {
-        touchedThreadFieldsRef.current.delete("reasoningLevel");
-      } else {
-        touchedThreadFieldsRef.current.add("reasoningLevel");
-      }
+      touchedThreadFieldsRef.current.add("reasoningLevel");
       if (usesStoredCreateSelections) {
         if (
           effectiveProviderId.length > 0 &&
@@ -919,7 +913,7 @@ export function useThreadCreationOptions(
         : {};
       localProviderSelectionsRef.current.set(providerId, {
         model,
-        reasoningLevel: nextReasoningLevel ?? reasoningLevel,
+        reasoningLevel: nextReasoningLevel,
       });
       setLocalProvidersUsingDefaults((current) => {
         if (!current.has(providerId)) return current;
@@ -932,7 +926,7 @@ export function useThreadCreationOptions(
         selectedProviderId: providerId,
         selectedModel: model,
         ...serviceTierSelection,
-        reasoningLevel: nextReasoningLevel ?? reasoningLevel,
+        reasoningLevel: nextReasoningLevel,
       }));
     },
     [
