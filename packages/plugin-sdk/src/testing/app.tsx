@@ -133,6 +133,7 @@ import {
   type ExperimentalFileLinkProps,
   type ExperimentalFileOpenOptions,
   type ExperimentalLiveFileTarget,
+  type ExperimentalServers,
   type ExperimentalFixedTabTargetState,
   type ExperimentalOpenTabOptions,
   type ExperimentalPanelController,
@@ -373,6 +374,7 @@ interface SlotEnv {
   codeTheme: PluginCodeThemeState;
   canOpenFileExternally: (target: ExperimentalLiveFileTarget) => boolean;
   tabVisible: boolean;
+  servers: ExperimentalServers | null;
   branchesState: BranchesState;
   checkoutState: CheckoutState;
 }
@@ -1784,6 +1786,9 @@ const testPluginSdkApp = {
   experimental_useTabVisible(): boolean {
     return useSlotEnv("experimental_useTabVisible").tabVisible;
   },
+  experimental_useServers(): ExperimentalServers | null {
+    return useSlotEnv("experimental_useServers").servers;
+  },
   experimental_copyToClipboard(
     content: ExperimentalClipboardContent,
   ): Promise<boolean> {
@@ -2356,6 +2361,12 @@ export interface RenderSlotOptions<
    * that is selected in an open panel.
    */
   tabVisible?: boolean;
+  /**
+   * Answer for `experimental_useServers()`. Omitted → null, as in a web
+   * browser. Pass `{ status, servers, switchTo }` to act as bb Desktop or the
+   * mobile app.
+   */
+  servers?: ExperimentalServers | null;
   /** Host acceptance for `useBbNavigate().experimental_openTerminal`. */
   openTerminal?: (
     options: Parameters<BbNavigate["experimental_openTerminal"]>[0],
@@ -3262,6 +3273,7 @@ export function renderSlot<
     codeTheme,
     canOpenFileExternally: options.canOpenFileExternally ?? (() => false),
     tabVisible: options.tabVisible ?? true,
+    servers: options.servers ?? null,
     branchesState: {
       branches: options.branchesState?.branches ?? [],
       remoteBranches: options.branchesState?.remoteBranches ?? [],

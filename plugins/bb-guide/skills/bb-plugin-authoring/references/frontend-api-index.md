@@ -98,6 +98,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `experimental_useCodeTheme`
 - `experimental_getApplicationLinkApprovals`
 - `experimental_revokeApplicationLinkApproval`
+- `experimental_useServers`
 - `experimental_copyToClipboard`
 - `experimental_saveFile`
 
@@ -199,6 +200,8 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginCodeThemeTokenRule`
 - `PluginCodeThemeData`
 - `PluginCodeThemeState`
+- `ExperimentalServer`
+- `ExperimentalServers`
 - `ExperimentalClipboardContent`
 - `ExperimentalSaveFileRequest`
 - `ExperimentalSaveFileOutcome`

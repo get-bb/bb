@@ -75,6 +75,14 @@ const electronMock = vi.hoisted(() => {
     isFullScreen: false,
   };
   const invokeCalls: string[] = [];
+  const localServerChoice = {
+    id: "builtin",
+    name: "Local",
+    origin: "http://127.0.0.1:38886",
+    kind: "local",
+    active: true,
+  };
+  const serverChoices = [localServerChoice];
   const listeners = new Map<string, IpcRendererListener>();
   const sendCalls: SendCall[] = [];
   let exposedApi: BbDesktopApi | null = null;
@@ -114,9 +122,7 @@ const electronMock = vi.hoisted(() => {
       invoke(channel: string): Promise<unknown> {
         invokeCalls.push(channel);
         if (channel === "bb-desktop:get-server-choices")
-          return Promise.resolve([
-            { id: "builtin", name: "Local", active: true },
-          ]);
+          return Promise.resolve(serverChoices);
         if (channel === "bb-desktop:browser:list-threads-with-tabs") {
           return Promise.resolve(["thread-1", "thread-2"]);
         }
@@ -181,26 +187,32 @@ describe("desktop preload browser API", () => {
     api = await loadPreload();
   }, 30_000);
 
+  it("lists the same servers for current and older pages", async () => {
+    const local = await api.listServerChoices?.();
+    expect(local).toHaveLength(1);
+    expect(await api.getServerChoices?.()).toEqual(local);
+  });
+
   it("validates server updates and unsubscribes while sending only opaque selection IDs", async () => {
-    expect(await api.getServerChoices?.()).toEqual([
-      { id: "builtin", name: "Local", active: true },
-    ]);
+    const remote = {
+      id: "remote",
+      name: "Remote",
+      origin: "https://remote.example",
+      kind: "custom",
+      active: false,
+    };
     const updates = vi.fn();
     const stop = api.onServerChoicesChange?.(updates);
     emitIpcPayload({
       channel: "bb-desktop:server-choices-changed",
-      payload: [
-        { id: "remote", name: "Remote", active: false, url: "private" },
-      ],
+      payload: [{ ...remote, url: "https://user:password@remote.example" }],
     });
     expect(updates).not.toHaveBeenCalled();
     emitIpcPayload({
       channel: "bb-desktop:server-choices-changed",
-      payload: [{ id: "remote", name: "Remote", active: false }],
+      payload: [remote],
     });
-    expect(updates).toHaveBeenCalledWith([
-      { id: "remote", name: "Remote", active: false },
-    ]);
+    expect(updates).toHaveBeenCalledWith([remote]);
     stop?.();
     emitIpcPayload({
       channel: "bb-desktop:server-choices-changed",

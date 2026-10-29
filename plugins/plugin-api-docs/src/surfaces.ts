@@ -207,6 +207,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Run an action, or open a small panel above the footer",
           "Show quick status, such as usage limits, without leaving the thread",
           "Follow the user's order and visibility choices in Appearance",
+          "Switch this device to another of its bb servers, in bb Desktop and the mobile app",
         ],
         apiSymbols: [
           "ExperimentalSidebarFooter",
@@ -219,6 +220,9 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "ExperimentalSidebarFooterDisclosureController",
           "PluginSidebarFooterActionRegistration",
           "PluginSidebarFooterActionProps",
+          "experimental_useServers",
+          "ExperimentalServers",
+          "ExperimentalServer",
         ],
         firstParty: ["Provider usage"],
         experimental: true,

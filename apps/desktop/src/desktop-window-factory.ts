@@ -120,6 +120,7 @@ interface CreateDesktopWindowFactoryArgs {
   isQuitting(): boolean;
   shouldUseDarkColors(): boolean;
   openExternalUrl(args: OpenExternalUrlArgs): void;
+  onWindowCreated(browserWindow: DesktopBrowserWindow): void;
   preloadPath: string;
   userDataPath: string;
 }
@@ -406,6 +407,7 @@ export function createDesktopWindowFactory(
         return { action: "deny" };
       });
 
+      args.onWindowCreated(browserWindow);
       if (createArgs.initialUrl !== null) {
         await loadUrlIntoWindow({
           browserWindow,
