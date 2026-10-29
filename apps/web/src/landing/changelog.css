@@ -25,6 +25,10 @@
   max-width: 540px;
 }
 
+.page-head .page-send {
+  margin-top: 22px;
+}
+
 .page-head .meta-row {
   margin-top: 22px;
   display: flex;

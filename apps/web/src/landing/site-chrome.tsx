@@ -291,7 +291,7 @@ export function SiteFooter({ current }: { current?: string }) {
         </p>
       </div>
       <FooterColumn title="Product">
-        <li>
+        <li className="desktop-only">
           <DownloadLink placement="footer" platform={platform}>
             Download
           </DownloadLink>

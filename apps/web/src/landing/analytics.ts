@@ -2,6 +2,12 @@ import type { PostHog } from "posthog-js";
 import { useEffect } from "react";
 import type { CtaPlacement } from "./site";
 
+export type SendToComputerOutcome =
+  | "shared"
+  | "cancelled"
+  | "copied"
+  | "copy_failed";
+
 type LandingEvent =
   | {
       name: "landing_github_clicked";
@@ -22,6 +28,10 @@ type LandingEvent =
   | {
       name: "landing_send_to_computer_clicked";
       properties: { placement: CtaPlacement };
+    }
+  | {
+      name: "landing_send_to_computer_result";
+      properties: { placement: CtaPlacement; outcome: SendToComputerOutcome };
     }
   | {
       name: "guide_prompt_copied";
