@@ -24,7 +24,6 @@ import {
   isDocumentVisible,
   subscribeToDocumentVisibility,
 } from "@/lib/document-visibility";
-import { sidebarNavigationQueryKey } from "./queries/query-keys";
 import {
   applyRealtimeThreadPatches,
   collectCachedThreadIdsForEnvironment,
@@ -32,6 +31,7 @@ import {
   disposeTrailingActiveRefetches,
   executeRealtimeDirtyHandlers,
   getCachedThreadEnvironmentId,
+  invalidateSidebarNavigation,
   REALTIME_ENVIRONMENT_CHANGE_REGISTRY,
   REALTIME_HOST_CHANGE_REGISTRY,
   REALTIME_PROJECT_CHANGE_REGISTRY,
@@ -419,10 +419,7 @@ export function createRealtimeCacheEffects({
       if (visibility.isDocumentVisible()) {
         return;
       }
-      void queryClient.invalidateQueries(
-        { exact: true, queryKey: sidebarNavigationQueryKey() },
-        { cancelRefetch: false },
-      );
+      invalidateSidebarNavigation(queryClient);
     },
   });
   const environmentInvalidator = createBufferedEnvironmentInvalidator({
