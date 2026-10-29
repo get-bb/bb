@@ -436,16 +436,14 @@ export function createDesktopWindowFactory(
       ];
     }
 
-    const restoredWindows: DesktopBrowserWindow[] = [];
-    for (const entry of entries) {
-      restoredWindows.push(
-        await createWindow({
+    return Promise.all(
+      entries.map((entry) =>
+        createWindow({
           initialUrl: restoreArgs.initialUrl,
           stateKey: entry.stateKey,
         }),
-      );
-    }
-    return restoredWindows;
+      ),
+    );
   }
 
   async function loadUrl(args: LoadDesktopWindowsUrlArgs): Promise<void> {
