@@ -14,7 +14,7 @@
     "storybook:build": "ladle build",
     "lint": "oxlint src vite.config.ts vite.dev.config.ts vite-bundle-stats.ts vite-font-preload.ts vite-split-prefetch.ts vite-forkable-plugin-paths.ts vite-shared-ui-seam.ts vite-react-compiler.ts",
     "typecheck": "tsrs --noEmit && tsrs --noEmit -p tsconfig.node.json",
-    "test": "node scripts/generate-pwa-icons.mjs --check && node --cpu-prof --cpu-prof-dir=../../profiles ../../node_modules/vitest/vitest.mjs run --config vitest.config.ts --execArgv=--cpu-prof --execArgv=--cpu-prof-dir=../../profiles",
+    "test": "node scripts/generate-pwa-icons.mjs --check && node --cpu-prof --cpu-prof-dir=../../profiles ../../node_modules/vitest/vitest.mjs run --config vitest.config.ts",
     "bench": "cross-env BB_SIDEBAR_BENCH=1 vitest run --config vitest.config.ts src/components/sidebar/sidebar.bench.test.tsx"
   },
   "dependencies": {

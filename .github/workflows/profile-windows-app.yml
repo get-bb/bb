@@ -21,6 +21,8 @@ jobs:
       - name: Install dependencies
         shell: bash
         run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter bb --filter '@bb/app...' --filter '@bb/db...'
+      - name: Instrument worker profiles
+        run: node .github/scripts/instrument-vitest-workers.mjs
       - name: Profile complete app-2 shard
         shell: cmd
         env:

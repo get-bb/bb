@@ -1,0 +1,22 @@
+import { readFileSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
+
+const require = createRequire(import.meta.url);
+const target = join(dirname(require.resolve("vitest/package.json")), "dist/chunks/init-forks.B4YYSIj4.js");
+let source = readFileSync(target, "utf8");
+const needle = "\t\t\tprocess.exit = processExit;";
+if (source.split(needle).length !== 2) throw new Error("Unexpected Vitest worker source");
+source = `import { Session } from 'node:inspector/promises';
+import { writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+const profileSession = new Session();
+profileSession.connect();
+await profileSession.post('Profiler.enable');
+await profileSession.post('Profiler.start');
+let profileIndex = 0;
+` + source.replace(needle, `const { profile } = await profileSession.post('Profiler.stop');
+writeFileSync(resolve('../../profiles', 'worker-' + process.pid + '-' + profileIndex++ + '.cpuprofile'), JSON.stringify(profile));
+await profileSession.post('Profiler.start');
+${needle}`);
+writeFileSync(target, source);
