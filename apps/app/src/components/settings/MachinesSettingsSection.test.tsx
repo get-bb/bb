@@ -45,7 +45,10 @@ vi.mock("@/lib/sdk", () => ({
       experimental_suspend: vi.fn(),
       update: vi.fn(),
     },
-    system: { config: vi.fn() },
+    system: {
+      config: vi.fn(),
+      experimental_recordTelemetryEvent: vi.fn(async () => ({ ok: true })),
+    },
     threads: {
       count: vi.fn(async () => ({ total: 0 })),
       list: vi.fn(async () => []),
