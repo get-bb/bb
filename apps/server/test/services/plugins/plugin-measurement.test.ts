@@ -112,6 +112,7 @@ describe("plugin measurement provenance", () => {
     const privateCopy = install("browser-automation", {
       provenance: { kind: "direct" },
       sourceIntent: { kind: "path", canonicalPath: "/private" },
+      exactResolution: { kind: "path" },
     });
     expect(resolvePluginMeasurementIdentity(deps(), privateCopy)).toEqual({
       public_plugin: null,
@@ -276,6 +277,7 @@ describe("intentional use", () => {
   it("only counts explicit dispatch for anonymous plugins and rejects reported spoofed identity", () => {
     install("private-name", {
       sourceIntent: { kind: "path", canonicalPath: "/private" },
+      exactResolution: { kind: "path" },
       provenance: { kind: "direct" },
     });
     reportPluginUse(deps(), "private-name", {
