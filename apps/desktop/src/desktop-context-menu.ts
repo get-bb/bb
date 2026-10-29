@@ -13,6 +13,8 @@ export interface DesktopContextMenuWebContents {
     eventName: "context-menu",
     listener: (event: Event, params: ContextMenuParams) => void,
   ): void;
+  copyImageAt(x: number, y: number): void;
+  downloadURL(url: string): void;
   replaceMisspelling(text: string): void;
   session: Pick<
     Session,
@@ -29,7 +31,7 @@ interface BuildDesktopContextMenuTemplateArgs {
   params: ContextMenuParams;
   webContents: Pick<
     DesktopContextMenuWebContents,
-    "replaceMisspelling" | "session"
+    "copyImageAt" | "downloadURL" | "replaceMisspelling" | "session"
   >;
 }
 
@@ -139,6 +141,25 @@ export function buildDesktopContextMenuTemplate({
         clipboard.writeText(params.linkURL);
       },
     });
+    pushSeparatorIfNeeded(template);
+  }
+
+  if (params.mediaType === "image" && params.srcURL.length > 0) {
+    template.push(
+      {
+        label: "Copy Image",
+        enabled: params.hasImageContents,
+        click: () => {
+          webContents.copyImageAt(params.x, params.y);
+        },
+      },
+      {
+        label: "Save Image As…",
+        click: () => {
+          webContents.downloadURL(params.srcURL);
+        },
+      },
+    );
     pushSeparatorIfNeeded(template);
   }
 
