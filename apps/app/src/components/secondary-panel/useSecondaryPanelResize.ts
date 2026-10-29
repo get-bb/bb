@@ -35,6 +35,13 @@ export function useSecondaryPanelResize({
   const secondaryResizablePanelRef = useRef<ImperativePanelHandle | null>(null);
   const lastSecondaryPanelSizeRef = useRef(persistedWidthPercent);
   const didPointerResizeRef = useRef(false);
+  const isDraggingRef = useRef(false);
+  const applySwipeWidth = useCallback((size: number) => {
+    secondaryPanelRef.current?.style.setProperty(
+      "--secondary-swipe-width",
+      `${size}cqw`,
+    );
+  }, []);
   const handleSecondaryPanelPointerResize = useCallback(
     (leadingFraction: number) => {
       didPointerResizeRef.current = true;
@@ -44,11 +51,14 @@ export function useSecondaryPanelResize({
   );
   const handleSecondaryPanelDragging = useCallback(
     (isDragging: boolean) => {
-      setIsResizing(isDragging);
+      isDraggingRef.current = isDragging;
       if (isDragging) {
+        setIsResizing(true);
         didPointerResizeRef.current = false;
         return;
       }
+      applySwipeWidth(lastSecondaryPanelSizeRef.current);
+      setIsResizing(false);
       if (
         didPointerResizeRef.current &&
         lastSecondaryPanelSizeRef.current > 0
@@ -56,7 +66,7 @@ export function useSecondaryPanelResize({
         setPersistedWidthPercent(lastSecondaryPanelSizeRef.current);
       }
     },
-    [setIsResizing, setPersistedWidthPercent],
+    [applySwipeWidth, setIsResizing, setPersistedWidthPercent],
   );
   const handleSecondaryPanelReset = useCallback(() => {
     setPersistedWidthPercent(RESET);
@@ -93,12 +103,9 @@ export function useSecondaryPanelResize({
       }
 
       lastSecondaryPanelSizeRef.current = size;
-      secondaryPanelRef.current?.style.setProperty(
-        "--secondary-swipe-width",
-        `${size}cqw`,
-      );
+      if (!isDraggingRef.current) applySwipeWidth(size);
     },
-    [],
+    [applySwipeWidth],
   );
 
   useLayoutEffect(() => {
