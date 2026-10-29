@@ -130,7 +130,14 @@ export class SkillTreeRegistry {
   readonly #hashByRoot = new Map<string, string>();
 
   async readTree(rootPath: string): Promise<SkillTreeManifest> {
-    const files = await this.#collectFiles(rootPath, rootPath);
+    const previousHash = this.#hashByRoot.get(rootPath);
+    const previousFiles = new Map(
+      (previousHash === undefined
+        ? []
+        : (this.#manifestsByHash.get(previousHash)?.files ?? [])
+      ).map((file) => [file.sourcePath, file]),
+    );
+    const files = await this.#collectFiles(rootPath, rootPath, previousFiles);
     const manifest: SkillTreeManifest = {
       files,
       rootPath,
@@ -173,6 +180,7 @@ export class SkillTreeRegistry {
   async #collectFiles(
     rootPath: string,
     currentPath: string,
+    previousFiles: ReadonlyMap<string, SkillTreeFile>,
   ): Promise<SkillTreeFile[]> {
     const files: SkillTreeFile[] = [];
     for (const entry of (
@@ -196,16 +204,22 @@ export class SkillTreeRegistry {
         ? await fsPromises.stat(entryPath, { bigint: true })
         : await fsPromises.lstat(entryPath, { bigint: true });
       if (stat.isDirectory()) {
-        files.push(...(await this.#collectFiles(rootPath, entryPath)));
+        files.push(
+          ...(await this.#collectFiles(rootPath, entryPath, previousFiles)),
+        );
         continue;
       }
       if (!stat.isFile()) {
         throw new Error(`Skill tree entry is not a regular file: ${entryPath}`);
       }
-      const { hashed, stat: hashedStat } = await this.#hashFile(
-        entryPath,
-        stat,
-      );
+      const previous = previousFiles.get(entryPath);
+      const { hashed, stat: hashedStat } =
+        previous?.statKey === fileStatKey(stat)
+          ? {
+              hashed: { sha256: previous.sha256, statKey: previous.statKey },
+              stat,
+            }
+          : await this.#hashFile(entryPath, stat);
       files.push({
         ...hashed,
         mode: Number(hashedStat.mode & 0o777n),
