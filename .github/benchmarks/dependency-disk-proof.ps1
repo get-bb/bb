@@ -116,7 +116,8 @@ function global:Set-Partition {
   Invoke-Operation 'mount'
   Assert-Inactive
   Mount-DiskImage -ImagePath $disk -NoDriveLetter | Out-Null
-  Get-DiskImage -ImagePath $disk | Get-Disk | Get-Partition -PartitionNumber 1 | Set-Partition -NewDriveLetter P
+  $mountedDisk = Get-DiskImage -ImagePath $disk | Get-Disk
+  Get-Partition -DiskNumber $mountedDisk.Number -PartitionNumber 1 | Set-Partition -NewDriveLetter P
   New-Item -ItemType Directory 'P:\virtual-store' | Out-Null
   Dismount-DiskImage -ImagePath $disk | Out-Null
   $collisionRoot = Join-Path $fixtureRoot 'collision'

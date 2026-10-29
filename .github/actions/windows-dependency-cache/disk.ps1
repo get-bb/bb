@@ -41,7 +41,8 @@ try {
     try {
       $image = Get-DiskImage -ImagePath $disk
       if (!$image.Attached) { throw 'Dependency image is not attached' }
-      $partition = $image | Get-Disk | Get-Partition -PartitionNumber 1
+      $mountedDisk = $image | Get-Disk
+      $partition = Get-Partition -DiskNumber $mountedDisk.Number -PartitionNumber 1
       if (!($partition | Get-Volume)) { throw 'Dependency volume is not ready' }
       $partition | Set-Partition -NewDriveLetter P
       break
