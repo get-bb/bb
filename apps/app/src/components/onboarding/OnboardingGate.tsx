@@ -31,12 +31,15 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   const configQuery = useSystemConfig();
   const updateSettings = useUpdateGeneralSettings();
   const [firstRunClosed, setFirstRunClosed] = useState(false);
-  const [seenBefore] = useState(readOnboardingSeen);
+  const [seenBefore, setSeenBefore] = useState(readOnboardingSeen);
 
   const settings = configQuery.data?.generalSettings;
   const completedAt = settings?.onboardingCompletedAt;
   useEffect(() => {
-    if (typeof completedAt === "string") rememberOnboardingSeen();
+    if (typeof completedAt === "string") {
+      rememberOnboardingSeen();
+      setSeenBefore(true);
+    }
   }, [completedAt]);
 
   if (firstRunClosed && typeof completedAt === "string") {
