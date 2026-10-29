@@ -261,6 +261,13 @@ export async function handleCommunityForm(
         email,
         surveyEmail(surveyAnswers(values), claimLink),
       ));
+    if (emailed)
+      await env.DB.prepare(
+        "UPDATE community_survey_response SET email_sent = 1 WHERE id = ?",
+      )
+        .bind(id)
+        .run()
+        .catch(() => undefined);
     return page({
       complete: true,
       values,

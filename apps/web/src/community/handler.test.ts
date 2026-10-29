@@ -10,6 +10,7 @@ import {
 } from "vitest";
 import { sha256Hex } from "@bb/connect-db";
 import { applyConnectDbMigrationsToD1 } from "@bb/connect-db/testing";
+import { sendSurveyEmail, surveyEmail } from "./email";
 import { emailKey, handleCommunityForm, rateLimitKey } from "./handler";
 import { ALREADY_CLAIMED, CLAIM_NOT_OPEN, SOLD_OUT } from "./survey";
 
@@ -338,8 +339,61 @@ describe("private community forms", () => {
       expect(String(sent[0]!.body.text)).toContain(
         "Claim my bb stickers: https://test-shop.myshopify.com/cart/123:1?discount=",
       );
+      expect(
+        await db
+          .prepare(
+            "SELECT COUNT(*) AS n FROM community_survey_response WHERE email_sent = 1",
+          )
+          .first("n"),
+      ).toBe(1);
       await post({ email: "Ada+again@example.test" });
       expect(sent).toHaveLength(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+  it("retries a rate-limited send and leaves failed sends marked unsent", async () => {
+    let calls = 0;
+    const waits: number[] = [];
+    vi.stubGlobal(
+      "fetch",
+      async () => new Response("{}", { status: ++calls === 1 ? 429 : 200 }),
+    );
+    try {
+      expect(
+        await sendSurveyEmail(
+          "key",
+          "ada@example.test",
+          surveyEmail({}, null),
+          async (ms) => {
+            waits.push(ms);
+          },
+        ),
+      ).toBe(true);
+      expect(calls).toBe(2);
+      expect(waits).toEqual([600]);
+      vi.stubGlobal("fetch", async () => new Response("{}", { status: 503 }));
+      const html = await (
+        await handleCommunityForm(
+          new Request(`${origin}/community/survey`, {
+            method: "POST",
+            headers: { Origin: origin },
+            body: new URLSearchParams({
+              ...requiredFields,
+              submission_id: crypto.randomUUID(),
+              email: "grace@example.test",
+            }),
+          }),
+          { ...enabled(), RESEND_API_KEY: "test-key" },
+          "survey",
+        )
+      ).text();
+      expect(html).toContain("email you the results");
+      expect(
+        await db
+          .prepare("SELECT email_sent FROM community_survey_response")
+          .first("email_sent"),
+      ).toBe(0);
     } finally {
       vi.unstubAllGlobals();
     }

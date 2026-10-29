@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "22108184-68a8-4727-a460-c16eb231b49e",
+  "id": "6b360b50-388a-4e6a-a47f-e049af43a1f4",
   "prevId": "f353de93-3fc0-49c6-bf60-e58c324d76a9",
   "tables": {
     "account": {
@@ -469,6 +469,14 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
+        },
+        "email_sent": {
+          "name": "email_sent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
         }
       },
       "indexes": {},

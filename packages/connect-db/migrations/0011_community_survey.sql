@@ -10,5 +10,6 @@ CREATE TABLE `community_survey_email` (
 CREATE TABLE `community_survey_response` (
 	`id` text PRIMARY KEY NOT NULL,
 	`created_at` integer NOT NULL,
-	`answers` text NOT NULL
+	`answers` text NOT NULL,
+	`email_sent` integer DEFAULT false NOT NULL
 );

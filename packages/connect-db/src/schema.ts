@@ -310,6 +310,9 @@ export const communitySurveyResponse = sqliteTable(
     id: text("id").primaryKey(),
     createdAt: integer("created_at").notNull(),
     answers: text("answers").notNull(),
+    emailSent: integer("email_sent", { mode: "boolean" })
+      .notNull()
+      .default(false),
   },
 );
 
