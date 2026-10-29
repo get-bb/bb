@@ -2795,6 +2795,13 @@ export function renderSlot<
       if (json === null) return false;
       return options.experimental_panel?.toggleTab?.(json) ?? false;
     },
+    getTabs() {
+      return (
+        options.experimental_panel?.getTabs?.() ??
+        options.experimental_panelTabs ??
+        NO_PANEL_TABS
+      );
+    },
     selectTab(key) {
       experimental_panelCalls.push({ method: "selectTab", key });
       return options.experimental_panel?.selectTab?.(key) ?? false;

@@ -336,6 +336,7 @@ export function describePanelControllerContract(
       const first = surface.action.panelTabId({ n: 1 });
       const second = surface.action.panelTabId({ n: 2 });
       expect(surface.tabs().selectedKey).toBe(second);
+      expect(surface.panel().getTabs()).toEqual(surface.tabs());
       expect(
         surface.tabs().tabs.find((tab) => tab.key === first),
       ).toMatchObject({

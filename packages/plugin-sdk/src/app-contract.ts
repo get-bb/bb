@@ -5063,6 +5063,12 @@ export interface ExperimentalPanelController {
   /** Select the tab and reveal the side panel. */
   openTab(options: ExperimentalOpenTabOptions): boolean;
   /**
+   * The tabs open in this controller's side panel right now, the list
+   * `experimental_usePanelTabs()` follows: for commands and other code that is
+   * not a component. Closed and empty without a side panel.
+   */
+  getTabs(): ExperimentalPanelTabs;
+  /**
    * Select any open tab, bb's or a plugin's, by its
    * {@link ExperimentalPanelTab.key} and reveal the side panel; false for a
    * key that is not open.

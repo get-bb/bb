@@ -51,6 +51,9 @@ it("toggles the Diff tab through the thread's panel with Mod+D", async () => {
   const panel = {
     openTab: vi.fn(() => true),
     toggleTab: vi.fn(() => true),
+    getTabs: vi.fn(() => ({ open: false, selectedKey: null, tabs: [] })),
+    selectTab: vi.fn(() => false),
+    closeTab: vi.fn(() => false),
     close: vi.fn(() => true),
   };
   expect(

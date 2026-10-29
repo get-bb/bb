@@ -26,6 +26,9 @@ function panelStub() {
   return {
     openTab: vi.fn(() => true),
     toggleTab: vi.fn(() => true),
+    getTabs: vi.fn(() => ({ open: false, selectedKey: null, tabs: [] })),
+    selectTab: vi.fn(() => false),
+    closeTab: vi.fn(() => false),
     close: vi.fn(() => true),
   };
 }

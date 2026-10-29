@@ -1,6 +1,7 @@
 import type {
   ExperimentalOpenTabOptions,
   ExperimentalPanelController,
+  ExperimentalPanelTabs,
   ExperimentalTabReference,
   JsonValue,
 } from "@get-bb/plugin-sdk";
@@ -10,6 +11,12 @@ import {
   type AppPanelController,
 } from "@/lib/app-fixed-tab-navigation";
 import type { AppTabOpenIntent } from "@/lib/app-navigation-host";
+
+const NO_PANEL_TABS: ExperimentalPanelTabs = {
+  open: false,
+  selectedKey: null,
+  tabs: [],
+};
 
 function toAppTabIntent(
   pluginId: string,
@@ -40,6 +47,7 @@ export function createPluginPanelController(
       getController()?.openTab(toAppTabIntent(pluginId, options)) ?? false,
     toggleTab: (options) =>
       getController()?.toggleTab(toAppTabIntent(pluginId, options)) ?? false,
+    getTabs: () => getController()?.getTabs() ?? NO_PANEL_TABS,
     selectTab: (key) => getController()?.selectTab(key) ?? false,
     closeTab: (key) => getController()?.closeTab(key) ?? false,
     close: () => getController()?.close() ?? false,
