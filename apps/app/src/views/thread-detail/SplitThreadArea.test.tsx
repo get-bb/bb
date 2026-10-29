@@ -2676,6 +2676,47 @@ describe("SplitThreadArea", () => {
     }
   });
 
+  it("gives only bottom-row split panes the shell's bottom inset", async () => {
+    setPluginSlotRegistrations(
+      "test-plugin",
+      makePluginRegistrationSet({
+        navPanels: ["top-left", "bottom-left", "top-right", "bottom-right"].map(
+          (path) => ({
+            id: path,
+            title: path,
+            icon: "FileText",
+            path,
+            component: () => <div>{path} panel</div>,
+          }),
+        ),
+        threadPanelActions: [],
+        pendingInteractions: [],
+        sidebarFooterActions: [],
+        fileOpeners: [],
+      }),
+    );
+
+    renderSplitArea({
+      path: "/plugins/test-plugin/bottom-right",
+      layout: fourPanePluginLayout(),
+      routeContent: pluginContent("bottom-right"),
+    });
+
+    const paneClassName = async (path: string) =>
+      (await screen.findByText(`${path} panel`)).closest("[data-split-pane-id]")
+        ?.className;
+    for (const path of ["top-left", "top-right"]) {
+      expect(await paneClassName(path)).toContain(
+        "[--bb-content-bottom-inset:0px]",
+      );
+    }
+    for (const path of ["bottom-left", "bottom-right"]) {
+      expect(await paneClassName(path)).not.toContain(
+        "--bb-content-bottom-inset",
+      );
+    }
+  });
+
   it("reserves collapsed window-left chrome only for the structural top-left plugin pane", async () => {
     const desktopInfo: BbDesktopInfo = {
       lastCheckedAt: null,

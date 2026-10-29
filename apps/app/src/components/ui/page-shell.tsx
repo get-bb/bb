@@ -25,16 +25,29 @@ interface PageShellProps extends PageShellBaseProps {
 
 interface FooterRenderOptions {
   maxWidthClassName: string;
+  bottomPaddingClassName: string;
   footerClassName?: string;
 }
 
 const SHELL_BLEED_CLASS =
   "-mx-4 -mt-4 flex h-full min-h-0 flex-1 flex-col overflow-hidden md:-mx-5 md:-mt-5";
+const STATIC_SHELL_BOTTOM_BLEED_CLASS =
+  "-mb-[calc(1rem+var(--bb-content-bottom-inset,0px))] md:-mb-[calc(1.25rem+var(--bb-content-bottom-inset,0px))]";
+const STATIC_CONTENT_BOTTOM_PADDING_CLASS =
+  "pb-[calc(2rem+var(--bb-content-bottom-inset,0px))] md:pb-[calc(2.25rem+var(--bb-content-bottom-inset,0px))]";
+const STATIC_FOOTER_BOTTOM_PADDING_CLASS =
+  "pb-[calc(1rem+max(1rem,var(--bb-content-bottom-inset,0px)))] md:pb-[calc(1.25rem+max(1rem,var(--bb-content-bottom-inset,0px)))]";
+const ANCHORED_FOOTER_BOTTOM_PADDING_CLASS =
+  "pb-[max(0px,calc(1rem-var(--bb-content-bottom-inset,0px)))]";
 const DEFAULT_MAX_WIDTH_CLASS = "max-w-[760px]";
 
 function renderStaticFooter(
   footer: ReactNode,
-  { maxWidthClassName, footerClassName }: FooterRenderOptions,
+  {
+    maxWidthClassName,
+    bottomPaddingClassName,
+    footerClassName,
+  }: FooterRenderOptions,
 ) {
   if (!footer) return null;
   return (
@@ -42,7 +55,8 @@ function renderStaticFooter(
       <OverflowFade placement="above" tone="background" />
       <div
         className={cn(
-          "mx-auto w-full px-4 pb-4",
+          "mx-auto w-full px-4",
+          bottomPaddingClassName,
           maxWidthClassName,
           footerClassName,
         )}
@@ -65,12 +79,12 @@ export function PageShell({
   scrollBehavior = "static",
   scrollAnchorThreadId,
 }: PageShellProps) {
-  const staticFooter = renderStaticFooter(footer, {
-    maxWidthClassName,
-    footerClassName,
-  });
-
   if (scrollBehavior === "bottom-anchor") {
+    const staticFooter = renderStaticFooter(footer, {
+      maxWidthClassName,
+      bottomPaddingClassName: ANCHORED_FOOTER_BOTTOM_PADDING_CLASS,
+      footerClassName,
+    });
     return (
       <div className={cn(SHELL_BLEED_CLASS, shellClassName)}>
         <BottomAnchoredScrollBody
@@ -87,8 +101,19 @@ export function PageShell({
     );
   }
 
+  const staticFooter = renderStaticFooter(footer, {
+    maxWidthClassName,
+    bottomPaddingClassName: STATIC_FOOTER_BOTTOM_PADDING_CLASS,
+    footerClassName,
+  });
   return (
-    <div className={cn(SHELL_BLEED_CLASS, shellClassName)}>
+    <div
+      className={cn(
+        SHELL_BLEED_CLASS,
+        STATIC_SHELL_BOTTOM_BLEED_CLASS,
+        shellClassName,
+      )}
+    >
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
         <TitleBarScrollFade tone="background" />
         <div
@@ -100,7 +125,8 @@ export function PageShell({
         >
           <div
             className={cn(
-              "mx-auto flex w-full flex-col px-4 pb-4 pt-2",
+              "mx-auto flex w-full flex-col px-4 pt-2",
+              staticFooter ? "pb-4" : STATIC_CONTENT_BOTTOM_PADDING_CLASS,
               maxWidthClassName,
               contentClassName,
             )}
