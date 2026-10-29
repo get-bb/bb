@@ -253,7 +253,7 @@ function Survey({
       ))}
       <label className="community-meetup" htmlFor="email">
         <strong>Last step.</strong> Your email, so we can send your stickers and
-        share the results with you.
+        share your results with you.
         <span className="community-required" aria-hidden>
           {" *"}
         </span>
@@ -394,7 +394,7 @@ export function formPage({
                     <h1 aria-label={title}>
                       Help shape the future of{" "}
                       <span className="community-nowrap">
-                        <span className="community-heading-mark" aria-hidden />!
+                        <span className="bb-mark community-heading-mark" aria-hidden />!
                       </span>
                     </h1>
                   ) : (

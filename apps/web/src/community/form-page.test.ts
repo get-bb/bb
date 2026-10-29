@@ -47,7 +47,7 @@ describe("survey page", () => {
       expect(html).not.toContain('name="name"');
       expect(html).toContain('type="email" required=""');
       expect(html).toContain(
-        "Your email, so we can send your stickers and share the results with you.",
+        "Your email, so we can send your stickers and share your results with you.",
       );
       const community = html
         .split('data-question="community"')[1]!

@@ -28,15 +28,14 @@
   color: var(--heading);
 }
 /* Inline vector wordmark sized to the heading, so it stays sharp at any size. */
+/* Same crop of the shared .bb-mark as the marketplace heading. */
 .community-heading-mark {
   display: inline-block;
-  width: 1em;
+  width: 0.95em;
   height: 0.8em;
-  background: url("/brand/bb-logo-shaded.svg") center / contain no-repeat;
+  background-size: 177.78% 210.99%;
+  background-position: 50% 50.5%;
   vertical-align: -0.025em;
-}
-.dark .community-heading-mark {
-  background-image: url("/brand/bb-logo-flat-white.svg");
 }
 .community-nowrap {
   white-space: nowrap;
