@@ -5,13 +5,16 @@ import { performance } from "node:perf_hooks";
 
 const output = join(process.env.RUNNER_TEMP, "git-reads-results");
 mkdirSync(output, { recursive: true });
-const file = "plugins/git/host/workspace-reads.test.ts";
-const candidate = readFileSync(file);
+const files = ["plugins/git/host/workspace-reads.test.ts", "plugins/git/host/workspace-diff.test.ts"];
+const candidate = files.map((file) => readFileSync(file));
 const baselineSha = "bdf62012ef370c0cf5d0a25a056d861cabb00320";
 const fetched = spawnSync("git", ["fetch", "--depth=1", "origin", baselineSha], { stdio: "inherit" });
 if (fetched.status !== 0) throw new Error("Baseline fetch failed");
-const baseline = spawnSync("git", ["show", `${baselineSha}:${file}`], { maxBuffer: 1024 * 1024 });
-if (baseline.status !== 0) throw new Error("Baseline read failed");
+const baseline = files.map((file) => {
+  const result = spawnSync("git", ["show", `${baselineSha}:${file}`], { maxBuffer: 1024 * 1024 });
+  if (result.status !== 0) throw new Error(`Baseline read failed: ${file}`);
+  return result.stdout;
+});
 const shard = JSON.parse(readFileSync("scripts/ci-test-shards.json", "utf8"))["windows-tests"].find((entry) => entry.shard === "plugins-2");
 const sequence = process.env.BENCHMARK_ORDER;
 if (sequence !== "ABBA" && sequence !== "BAAB") throw new Error("Unknown order");
@@ -19,7 +22,7 @@ const args = ["exec", "turbo", "run", "test", ...shard.filter.split(" "), "--for
 const results = [];
 try {
   for (const [index, variant] of [...sequence].entries()) {
-    writeFileSync(file, variant === "A" ? baseline.stdout : candidate);
+    files.forEach((file, i) => writeFileSync(file, (variant === "A" ? baseline : candidate)[i]));
     const fd = openSync(join(output, `${index}-${variant}.log`), "w");
     const started = performance.now();
     const result = spawnSync("pnpm", args, { shell: true, env: process.env, stdio: ["ignore", fd, fd] });
@@ -31,6 +34,6 @@ try {
     for (const summary of readdirSync(".turbo/runs")) copyFileSync(join(".turbo/runs", summary), join(output, `${index}-${variant}-${summary}`));
   }
 } finally {
-  writeFileSync(file, candidate);
+  files.forEach((file, i) => writeFileSync(file, candidate[i]));
 }
 if (results.some((result) => result.status !== 0)) process.exitCode = 1;
