@@ -114,6 +114,12 @@ function normalizeCallArgs(
   args: unknown[],
 ): unknown[] {
   switch (path) {
+    case "threads.queuedMessages.create": {
+      const [input, ...rest] = args;
+      return typeof input === "object" && input !== null
+        ? [{ ...input, originPluginId: pluginId }, ...rest]
+        : args;
+    }
     case "threads.spawn":
     case "threads.fork":
       return withThreadAttribution(pluginId, args);

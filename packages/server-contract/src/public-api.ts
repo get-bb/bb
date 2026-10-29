@@ -1,4 +1,9 @@
 import {
+  onboardingContextRequestSchema,
+  type OnboardingContextRequest,
+  type OnboardingContextResponse,
+} from "./api/system-onboarding-context.js";
+import {
   machineEnvironmentSetSchema,
   machineEnvironmentDeleteSchema,
   type MachineEnvironmentSet,
@@ -1937,6 +1942,14 @@ export const publicApiRoutes = {
         testAiServiceRequestSchema,
       ),
       response: jsonResponse<TestAiServiceResponse>(),
+    }),
+    onboardingContext: defineRoute({
+      path: "/system/onboarding/context",
+      method: "post",
+      request: jsonRequest<EmptyInput, OnboardingContextRequest>(
+        onboardingContextRequestSchema,
+      ),
+      response: jsonResponse<OnboardingContextResponse>(),
     }),
     recordTelemetryEvent: defineRoute({
       path: "/system/telemetry/events",

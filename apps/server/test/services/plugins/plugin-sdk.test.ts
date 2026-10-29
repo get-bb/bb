@@ -355,6 +355,29 @@ describe("plugin bb.sdk bind gate", () => {
     }
   });
 
+  it("binds queued submission origin to the calling plugin", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-queue-attribution",
+      serverSource: `export default function plugin() {}`,
+    });
+    await service.installPath(rootDir);
+    service.bindSdk({ baseUrl: "https://bb.example.test" });
+    const api = requireApi(service, "queue-attribution");
+    const requests: unknown[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
+      requests.push(JSON.parse(String(init?.body)));
+      return Response.json({ id: "qmsg_accepted" });
+    });
+    await api.sdk.threads.queuedMessages.create({
+      threadId: "thread-1",
+      input: [{ type: "text", text: "Queued work", mentions: [] }],
+      originPluginId: "forged-plugin",
+    });
+    expect(requests).toEqual([
+      expect.objectContaining({ originPluginId: "queue-attribution" }),
+    ]);
+  });
+
   it("serves the current public app URL without the SDK bind gate", async () => {
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-app-url",

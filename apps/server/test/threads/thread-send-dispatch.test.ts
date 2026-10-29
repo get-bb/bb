@@ -1,3 +1,5 @@
+import { unknownWorkSuggestionAttribution } from "@bb/server-contract";
+import { workTelemetryProperties } from "../../src/services/system/work-acceptance.js";
 import {
   archiveThread,
   getAppSettings,
@@ -285,6 +287,110 @@ describe("queued message auto-send notification", () => {
 });
 
 describe("user message telemetry", () => {
+  it("records queued acceptance with suggestion attribution once, preserving a core user through plugin submission", async () => {
+    await withTestHarness(async (harness) => {
+      const capture = installTelemetryCaptureSpy(harness);
+      const { thread } = seedColdIdleThreadFixture({ harness, value: 28 });
+      const result = await acceptThreadSendRequest(harness.deps, {
+        thread,
+        payload: {
+          input: textInput("An edited suggestion"),
+          mode: "auto",
+          sendAt: Date.now() + 60_000,
+          pluginSubmission: { pluginId: "fixture-action", data: null },
+          suggestionAttribution: {
+            origin: "agent_context",
+            surface: "continuation",
+            template_key: null,
+            content_revision: "baseline",
+            edit_state: "edited",
+          },
+        },
+      });
+      expect(result.delivery).toBe("queued");
+      expect(
+        capture.mock.calls.filter(([event]) => event.name === "work_accepted"),
+      ).toEqual([
+        [
+          {
+            name: "work_accepted",
+            properties: {
+              work_kind: "message",
+              work_initiator: "user",
+              suggestion_origin: "agent_context",
+              suggestion_surface: "continuation",
+              suggestion_template_key: null,
+              suggestion_content_revision: "baseline",
+              suggestion_edit_state: "edited",
+            },
+          },
+        ],
+      ]);
+      expect(
+        capture.mock.calls.filter(
+          ([event]) => event.name === "onboarding_suggestion",
+        ),
+      ).toHaveLength(1);
+      expect(
+        capture.mock.calls.filter(
+          ([event]) => event.name === "user_message_sent",
+        ),
+      ).toHaveLength(0);
+      if (result.delivery !== "queued")
+        throw new Error("Expected scheduled queue entry");
+      await sendQueuedMessageNow(harness.deps, {
+        threadId: thread.id,
+        queuedMessageId: result.queuedMessage.id,
+        mode: "auto",
+      });
+      expect(
+        capture.mock.calls.filter(([event]) => event.name === "work_accepted"),
+      ).toHaveLength(1);
+      expect(
+        capture.mock.calls.filter(
+          ([event]) => event.name === "onboarding_suggestion",
+        ),
+      ).toHaveLength(1);
+    });
+  });
+
+  it("keeps backend plugin queue work distinct and does not accept a failed send", async () => {
+    await withTestHarness(async (harness) => {
+      const capture = installTelemetryCaptureSpy(harness);
+      const { thread } = seedColdIdleThreadFixture({ harness, value: 29 });
+      await createQueuedMessageForThread(harness.deps, {
+        thread,
+        payload: {
+          input: textInput("Background plugin work"),
+          originPluginId: "automations",
+        },
+      });
+      expect(capture).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "work_accepted",
+          properties: expect.objectContaining({
+            work_initiator: "automation",
+            suggestion_origin: "unknown",
+          }),
+        }),
+      );
+      capture.mockClear();
+      await expect(
+        acceptThreadSendRequest(harness.deps, {
+          thread,
+          payload: {
+            input: textInput("Rejected"),
+            mode: "auto",
+            senderThreadId: "missing-source-thread",
+          },
+        }),
+      ).rejects.toBeDefined();
+      expect(
+        capture.mock.calls.filter(([event]) => event.name === "work_accepted"),
+      ).toEqual([]);
+    });
+  });
+
   it("captures direct user sends", async () => {
     await withTestHarness(async (harness) => {
       const capture = installTelemetryCaptureSpy(harness);
@@ -317,6 +423,10 @@ describe("user message telemetry", () => {
           is_child_thread: false,
           message_source: "thread_send",
           provider: "codex",
+          ...workTelemetryProperties(
+            "user",
+            unknownWorkSuggestionAttribution(),
+          ),
         },
       });
     });
@@ -356,6 +466,10 @@ describe("user message telemetry", () => {
           message_source: "thread_send",
           provider: "codex",
           initiator: "automation",
+          ...workTelemetryProperties(
+            "automation",
+            unknownWorkSuggestionAttribution(),
+          ),
         },
       });
     });

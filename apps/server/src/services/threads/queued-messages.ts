@@ -1,3 +1,9 @@
+import { unknownWorkSuggestionAttribution } from "@bb/server-contract";
+import {
+  captureAcceptedWork,
+  resolveAcceptedWorkInitiator,
+  workTelemetryProperties,
+} from "../system/work-acceptance.js";
 import {
   getLatestThreadSequence,
   claimNextQueuedThreadMessageGroup,
@@ -260,6 +266,8 @@ export async function createQueuedMessageForThread(
         const queuedMessage = createQueuedThreadMessageInTransaction(tx, {
           threadId: thread.id,
           content: input,
+          origin: payload.originPluginId === undefined ? null : "plugin",
+          originPluginId: payload.originPluginId ?? null,
           senderThreadId,
           model: execution.model,
           reasoningLevel: execution.reasoningLevel,
@@ -289,14 +297,32 @@ export async function createQueuedMessageForThread(
       { behavior: "immediate" },
     );
   deps.hub.notifyThread(thread.id, ["queue-changed"]);
+  const workInitiator =
+    payload.senderThreadId !== undefined && senderThreadId === null
+      ? "unknown"
+      : resolveAcceptedWorkInitiator({
+          initiator: senderThreadId === null ? "user" : "agent",
+          origin: payload.originPluginId === undefined ? null : "plugin",
+          originPluginId: payload.originPluginId ?? null,
+        });
   if (senderThreadId === null && payload.input.length > 0) {
     captureUserMessageSentTelemetry(deps, {
       isChildThread: thread.parentThreadId !== null,
       messageSource: "queued_message",
       providerId: thread.providerId,
       initiator: "user",
+      workProperties: workTelemetryProperties(
+        workInitiator,
+        payload.suggestionAttribution ?? unknownWorkSuggestionAttribution(),
+      ),
     });
   }
+  captureAcceptedWork(deps.telemetry, {
+    kind: "message",
+    initiator: workInitiator,
+    suggestion:
+      payload.suggestionAttribution ?? unknownWorkSuggestionAttribution(),
+  });
   if (
     (currentThread.status === "idle" && hasProviderSession) ||
     isActiveTurnMainRunIdle(deps, currentThread)

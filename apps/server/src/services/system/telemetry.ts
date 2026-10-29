@@ -1,3 +1,9 @@
+import type { OnboardingAssignmentTelemetryEvent } from "./onboarding-context.js";
+import {
+  unknownWorkTelemetryProperties,
+  type AcceptedWorkTelemetryEvent,
+  type WorkTelemetryProperties,
+} from "./work-acceptance.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { release } from "node:os";
 import type { AppInstall } from "@bb/config/app-install";
@@ -51,7 +57,7 @@ export type TelemetryEvent =
         is_child_thread: boolean;
         provider: string;
         initiator?: TelemetryInitiator;
-      };
+      } & Partial<WorkTelemetryProperties>;
     }
   | {
       name: "user_message_sent";
@@ -60,7 +66,7 @@ export type TelemetryEvent =
         message_source: "queued_message" | "thread_create" | "thread_send";
         provider: string;
         initiator?: TelemetryInitiator;
-      };
+      } & Partial<WorkTelemetryProperties>;
     }
   | {
       name: "plugin_installed";
@@ -71,7 +77,9 @@ export type TelemetryEvent =
         source_kind: "builtin" | "git" | "npm" | "path";
       };
     }
-  | RecordTelemetryEventRequest;
+  | RecordTelemetryEventRequest
+  | AcceptedWorkTelemetryEvent
+  | OnboardingAssignmentTelemetryEvent;
 
 export interface TelemetryService {
   capture(event: TelemetryEvent): void;
@@ -181,7 +189,12 @@ export async function createTelemetryService(
       if (!telemetryEnabled) return;
       const appSurface =
         telemetryAppSurfaceStorage.getStore() ?? args.appSurface;
-      const eventProperties = "properties" in event ? event.properties : {};
+      const eventProperties =
+        event.name === "thread_created" || event.name === "user_message_sent"
+          ? { ...unknownWorkTelemetryProperties(), ...event.properties }
+          : "properties" in event
+            ? event.properties
+            : {};
       const body = JSON.stringify({
         api_key: args.apiKey,
         distinct_id: distinctId,

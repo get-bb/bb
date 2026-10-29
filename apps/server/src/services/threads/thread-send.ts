@@ -1,3 +1,10 @@
+import { unknownWorkSuggestionAttribution } from "@bb/server-contract";
+import {
+  resolveAcceptedWorkInitiator,
+  workTelemetryProperties,
+  unknownWorkTelemetryProperties,
+  type WorkTelemetryProperties,
+} from "../system/work-acceptance.js";
 import {
   getEnvironment,
   getThread,
@@ -393,6 +400,7 @@ export function captureUserMessageSentTelemetry(
     messageSource: UserMessageSentProperties["message_source"];
     providerId: string;
     initiator: TelemetryInitiator;
+    workProperties?: WorkTelemetryProperties;
   },
 ): void {
   deps.telemetry.capture({
@@ -401,6 +409,7 @@ export function captureUserMessageSentTelemetry(
       is_child_thread: args.isChildThread,
       message_source: args.messageSource,
       provider: args.providerId,
+      ...(args.workProperties ?? unknownWorkTelemetryProperties()),
       ...initiatorTelemetryProperty(deps.config.featureFlags, args.initiator),
     },
   });
@@ -577,6 +586,18 @@ async function sendThreadMessageWithoutContextClear(
     originPluginId: args.payload.originPluginId ?? null,
     initiator,
   });
+  const workProperties = workTelemetryProperties(
+    args.payload.senderThreadId !== undefined &&
+      senderThreadId === null &&
+      initiator === "user"
+      ? "unknown"
+      : resolveAcceptedWorkInitiator({
+          origin: args.payload.originPluginId === undefined ? null : "plugin",
+          originPluginId: args.payload.originPluginId ?? null,
+          initiator,
+        }),
+    args.payload.suggestionAttribution ?? unknownWorkSuggestionAttribution(),
+  );
   const expectedSteerTurnId =
     mode === "auto" || mode === "steer"
       ? getActiveTurnId(deps, thread.id)
@@ -630,6 +651,7 @@ async function sendThreadMessageWithoutContextClear(
         messageSource: "thread_send",
         providerId: thread.providerId,
         initiator: telemetryInitiator,
+        workProperties,
       });
     }
     return;
@@ -756,6 +778,7 @@ async function sendThreadMessageWithoutContextClear(
         messageSource: "thread_send",
         providerId: thread.providerId,
         initiator: telemetryInitiator,
+        workProperties,
       });
     }
     return;
@@ -824,6 +847,7 @@ async function sendThreadMessageWithoutContextClear(
       messageSource: "thread_send",
       providerId: thread.providerId,
       initiator: telemetryInitiator,
+      workProperties,
     });
   }
 }

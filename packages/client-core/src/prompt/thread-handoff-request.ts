@@ -5,7 +5,11 @@ import type {
   ServiceTier,
 } from "@bb/domain";
 import type { AppCreateThreadRequest } from "../api-types.js";
-import { promptDraftToInput, type PromptDraftState } from "./prompt-draft.js";
+import {
+  promptDraftToInput,
+  promptDraftWorkAttribution,
+  type PromptDraftState,
+} from "./prompt-draft.js";
 
 export interface ThreadHandoffCreateSeed {
   environmentId: string | null;
@@ -151,6 +155,7 @@ export function buildThreadHandoffCreateRequest({
         : {}),
     },
     input,
+    suggestionAttribution: promptDraftWorkAttribution(draft),
     model: execution.model,
     permissionMode: execution.permissionMode,
     projectId: seed.projectId,

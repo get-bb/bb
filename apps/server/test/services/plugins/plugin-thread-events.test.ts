@@ -1,3 +1,4 @@
+import { unknownWorkSuggestionAttribution } from "@bb/server-contract";
 import { getLatestThreadSequence } from "@bb/db";
 import { emitPluginThreadEvents } from "../../../src/services/plugins/plugin-thread-events.js";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -291,6 +292,7 @@ describe("plugin thread lifecycle events", () => {
     try {
       const { environment, project } = seedThreadFixture(harness);
       const request: ThreadCreateServiceRequest = {
+        suggestionAttribution: unknownWorkSuggestionAttribution(),
         environment: { type: "reuse", environmentId: environment.id },
         input: [],
         origin: null,

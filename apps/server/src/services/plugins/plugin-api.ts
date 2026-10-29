@@ -405,6 +405,15 @@ function wrapSdkForPlugin(
       send(args) {
         return sdk.threads.send({ ...args, originPluginId: pluginId });
       },
+      queuedMessages: {
+        ...sdk.threads.queuedMessages,
+        create(args) {
+          return sdk.threads.queuedMessages.create({
+            ...args,
+            originPluginId: pluginId,
+          });
+        },
+      },
     },
   };
 }

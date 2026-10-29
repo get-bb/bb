@@ -1,3 +1,9 @@
+import { unknownWorkSuggestionAttribution } from "@bb/server-contract";
+import {
+  captureAcceptedWork,
+  resolveAcceptedWorkInitiator,
+} from "../system/work-acceptance.js";
+import { resolveMessageSenderThreadId } from "./thread-send.js";
 import {
   isStandaloneBuiltinClearCommand,
   isStandaloneBuiltinCompactCommand,
@@ -60,6 +66,10 @@ export async function acceptThreadSendRequest(
     ? { ...request, mode: "queue-if-active", compactFirst }
     : request;
 
+  const senderThreadId = resolveMessageSenderThreadId(deps, {
+    senderThreadId: payload.senderThreadId,
+    targetThread: args.thread,
+  });
   const outcome = await runWithTurnTrace(
     deps,
     { threadId: args.thread.id },
@@ -76,6 +86,19 @@ export async function acceptThreadSendRequest(
         trigger: "user",
       }),
   );
+  captureAcceptedWork(deps.telemetry, {
+    kind: "message",
+    initiator:
+      payload.senderThreadId !== undefined && senderThreadId === null
+        ? "unknown"
+        : resolveAcceptedWorkInitiator({
+            initiator: senderThreadId === null ? "user" : "agent",
+            origin: payload.originPluginId === undefined ? null : "plugin",
+            originPluginId: payload.originPluginId ?? null,
+          }),
+    suggestion:
+      payload.suggestionAttribution ?? unknownWorkSuggestionAttribution(),
+  });
   if (outcome.kind === "dispatched") {
     return { ok: true, delivery: "sent" };
   }

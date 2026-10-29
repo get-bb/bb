@@ -1,3 +1,5 @@
+import { unknownWorkSuggestionAttribution } from "@bb/server-contract";
+import { workTelemetryProperties } from "../../src/services/system/work-acceptance.js";
 import {
   createEnvironment,
   ensurePersonalProject,
@@ -97,6 +99,10 @@ describe("thread creation telemetry", () => {
           is_child_thread: false,
           message_source: "thread_create",
           provider: "codex",
+          ...workTelemetryProperties(
+            "user",
+            unknownWorkSuggestionAttribution(),
+          ),
         },
       });
     });
@@ -142,7 +148,14 @@ describe("thread creation initiator telemetry", () => {
       await createThreadFromRequest(harness.deps, request);
       expect(capture).toHaveBeenCalledWith({
         name: "thread_created",
-        properties: { is_child_thread: false, provider: "codex" },
+        properties: {
+          is_child_thread: false,
+          provider: "codex",
+          ...workTelemetryProperties(
+            "user",
+            unknownWorkSuggestionAttribution(),
+          ),
+        },
       });
 
       capture.mockClear();
@@ -157,6 +170,10 @@ describe("thread creation initiator telemetry", () => {
           is_child_thread: false,
           provider: "codex",
           initiator: "user",
+          ...workTelemetryProperties(
+            "user",
+            unknownWorkSuggestionAttribution(),
+          ),
         },
       });
       expect(capture).toHaveBeenCalledWith({
@@ -166,6 +183,10 @@ describe("thread creation initiator telemetry", () => {
           message_source: "thread_create",
           provider: "codex",
           initiator: "user",
+          ...workTelemetryProperties(
+            "user",
+            unknownWorkSuggestionAttribution(),
+          ),
         },
       });
     });
@@ -228,6 +249,10 @@ describe("thread creation initiator for CLI spawns from a thread", () => {
             is_child_thread: false,
             provider: "codex",
             initiator: expected,
+            ...workTelemetryProperties(
+              expected === "agent" ? "agent" : "unknown",
+              unknownWorkSuggestionAttribution(),
+            ),
           },
         });
       });

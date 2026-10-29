@@ -2796,12 +2796,12 @@ describe("public thread data routes", () => {
       });
       expect(capture).toHaveBeenCalledWith({
         name: "user_message_sent",
-        properties: {
+        properties: expect.objectContaining({
           initiator: "user",
           is_child_thread: false,
           message_source: "queued_message",
           provider: "codex",
-        },
+        }),
       });
       const queuedMessageBeforeUpdate = getQueuedThreadMessage(
         harness.db,

@@ -1526,6 +1526,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Retry failed environment cleanup with recover: true after inspecting processes using the workspace",
         ],
         reference: [
+          "Core onboarding comparison observers read experimental_onboardingContext for server-reviewed baseline revisions and dormant experiment support. No test is active. Future variants must obtain eligible assignment before deciding or displaying the tested policy; failed context reads leave comparison coverage missing.",
           "Core setup telemetry uses system.experimental_recordTelemetryEvent: strict anonymous guide-operation observations (agent install/update, project scan/import, plugin install/enable), with first_run/replay, bounded outcomes and categories, and counts only for imports. Journey observations cover visible baseline design/window classes, explicit navigation, Agent readiness, project discovery/manual-folder results, work surfaces and typed setup blockers. A shown blocker is not a send attempt; loading or closing does not mean recovery. Missing results stay unknown; queued is not success. Clients cannot report experiment assignments. Existing events and usage-data opt-out are preserved. No prompts, raw errors, paths, names or new tracking IDs are accepted; this is not a general plugin analytics API.",
         ],
         apiSymbols: [
@@ -1533,6 +1534,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginServerApi",
           "PluginBbSdk.hosts.get",
           "PluginBbSdk.system.experimental_recordTelemetryEvent",
+          "PluginBbSdk.system.experimental_onboardingContext",
           "PluginBbSdk.hosts.experimental_discoverRepos",
           "PluginBbSdk.experimental_promptHistory.list",
           "PluginBbSdk.environments.experimental_cleanup",

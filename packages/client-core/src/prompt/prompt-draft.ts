@@ -3,7 +3,12 @@ import {
   type PromptInput,
   type PromptTextMention,
 } from "@bb/domain";
-import { uploadedPromptAttachmentSchema } from "@bb/server-contract";
+import {
+  uploadedPromptAttachmentSchema,
+  workSuggestionAttributionSchema,
+  noWorkSuggestionAttribution,
+  type WorkSuggestionAttribution,
+} from "@bb/server-contract";
 import { z } from "zod";
 
 const draftAttachmentFields = uploadedPromptAttachmentSchema
@@ -37,9 +42,21 @@ export interface PromptDraftState {
   text: string;
   mentions: PromptTextMention[];
   attachments: PromptDraftAttachment[];
+  suggestion?: {
+    reference: string;
+    attribution: WorkSuggestionAttribution;
+  };
 }
 
 const promptDraftStorageSchema = z.object({
+  suggestion: z
+    .object({
+      reference: z.string().uuid(),
+      attribution: workSuggestionAttributionSchema,
+    })
+    .strict()
+    .optional()
+    .catch(undefined),
   text: z.string().default(""),
   mentions: z
     .array(z.unknown())
@@ -177,6 +194,7 @@ export function serializePromptDraftStorage(
   }
   return JSON.stringify({
     text,
+    ...(draft.suggestion === undefined ? {} : { suggestion: draft.suggestion }),
     ...(mentions.length > 0 ? { mentions } : {}),
     attachments,
   });
@@ -199,6 +217,7 @@ function canonicalPromptDraftJson(draft: PromptDraftState): string {
       text: draft.text,
       mentions: draft.mentions,
       attachments: draft.attachments,
+      suggestion: draft.suggestion,
     },
     sortObjectKeys,
   );
@@ -209,6 +228,62 @@ export function arePromptDraftStatesEqual(
   right: PromptDraftState,
 ): boolean {
   return canonicalPromptDraftJson(left) === canonicalPromptDraftJson(right);
+}
+
+export function promptDraftWorkAttribution(
+  draft: PromptDraftState,
+): WorkSuggestionAttribution {
+  return draft.suggestion?.attribution ?? noWorkSuggestionAttribution();
+}
+
+export function preserveEditedSuggestion(
+  previous: PromptDraftState,
+  next: PromptDraftState,
+): PromptDraftState {
+  if (
+    next.suggestion === undefined ||
+    next.suggestion.reference !== previous.suggestion?.reference ||
+    arePromptDraftStatesEqual(previous, next)
+  )
+    return next;
+  return {
+    ...next,
+    suggestion: {
+      ...next.suggestion,
+      attribution: {
+        ...next.suggestion.attribution,
+        edit_state:
+          next.suggestion.attribution.origin === "mixed" ? "unknown" : "edited",
+      },
+    },
+  };
+}
+
+export function withSuggestionDraftAttribution(
+  previous: PromptDraftState,
+  next: PromptDraftState,
+  attribution: WorkSuggestionAttribution,
+  reference: string,
+  mode: "replace" | "append",
+): PromptDraftState {
+  const combined =
+    mode === "append" &&
+    previous.suggestion !== undefined &&
+    previous.suggestion.reference !== reference;
+  return {
+    ...next,
+    suggestion: {
+      reference,
+      attribution: combined
+        ? {
+            ...attribution,
+            origin: "mixed",
+            template_key: null,
+            edit_state: "unknown",
+          }
+        : attribution,
+    },
+  };
 }
 
 function getFileNameFromPath(path: string): string {

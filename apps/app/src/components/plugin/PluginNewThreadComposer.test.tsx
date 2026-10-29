@@ -174,6 +174,13 @@ vi.mock("@/lib/sdk", () => ({
   sdk: {
     projects: { attachments: { copy: mocks.copyAttachments } },
     system: {
+      experimental_onboardingContext: vi
+        .fn()
+        .mockResolvedValue({
+          design_revision: "baseline",
+          recommendation_revision: "baseline",
+          assignment: null,
+        }),
       experimental_recordTelemetryEvent: vi
         .fn()
         .mockRejectedValue(new Error("Telemetry unavailable")),

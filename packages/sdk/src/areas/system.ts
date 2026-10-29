@@ -1,3 +1,9 @@
+import {
+  onboardingContextRequestSchema,
+  onboardingContextResponseSchema,
+  type OnboardingContextRequest,
+  type OnboardingContextResponse,
+} from "@bb/server-contract";
 import { mobileAppDownloads } from "@bb/domain";
 import type {
   MachineEnvironmentReplace,
@@ -180,6 +186,9 @@ export interface SystemArea {
   installCliSkills(
     args: SystemInstallCliSkillsArgs,
   ): Promise<SystemInstallCliSkillsResult>;
+  experimental_onboardingContext(
+    args: OnboardingContextRequest,
+  ): Promise<OnboardingContextResponse>;
   experimental_recordTelemetryEvent(
     args: SystemRecordTelemetryEventArgs,
   ): Promise<SystemRecordTelemetryEventResult>;
@@ -347,6 +356,15 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
     async installCliSkills(input) {
       return transport.readJson(
         transport.api.v1.system["cli-skills"].install.$post({ json: input }),
+      );
+    },
+    async experimental_onboardingContext(input) {
+      return onboardingContextResponseSchema.parse(
+        await transport.readJson(
+          transport.api.v1.system.onboarding.context.$post({
+            json: onboardingContextRequestSchema.parse(input),
+          }),
+        ),
       );
     },
     async experimental_recordTelemetryEvent(input) {

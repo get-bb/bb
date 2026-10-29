@@ -46,9 +46,12 @@ export const onboardingExperimentKeySchema = z.enum([
 export const onboardingComparisonPropertiesSchema = z
   .object({
     phase: z.literal("displayed"),
-    experiment_key: z.null(),
-    experiment_revision: z.null(),
-    variant: z.null(),
+    experiment_key: onboardingExperimentKeySchema.nullable(),
+    experiment_revision: z
+      .string()
+      .regex(/^[a-z0-9][a-z0-9_-]{0,63}$/u)
+      .nullable(),
+    variant: z.enum(["control", "candidate"]).nullable(),
     design_revision: z.literal("baseline"),
     recommendation_revision: z.literal("baseline"),
     source: onboardingTelemetrySourceSchema,
@@ -65,7 +68,22 @@ export const onboardingComparisonPropertiesSchema = z
     width_class: z.enum(["compact", "standard", "wide"]).nullable(),
     height_class: z.enum(["short", "regular"]).nullable(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    if (
+      value.experiment_key === null
+        ? value.experiment_revision !== null || value.variant !== null
+        : value.experiment_revision === null ||
+          value.variant === null ||
+          value.stage === null
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Exposure requires a complete server-issued assignment or no experiment",
+      });
+    }
+  });
 
 export const onboardingNavigationPropertiesSchema = z
   .object({

@@ -4185,3 +4185,44 @@ precedence, bounded discovery failure, and module-ABI preservation after Node
 replacement. Settle the shared process-local instance lifecycle across SDK
 bundle versions and whether `bundledNpmCli` belongs on the public surface before
 removing the prefix.
+
+## `PluginBbSdk.system.experimental_onboardingContext`
+
+Returns the server-reviewed design/recommendation revisions and the installation's
+assignment, if a reviewed named onboarding test has an implemented server
+eligibility rule. The core guide and work-surface comparison observers use this
+same endpoint. Production has no active definitions. Context failure leaves
+comparison coverage missing; it does not invent a baseline or prevent composing.
+A future variant owner must obtain eligible context before deciding its tested
+policy or rendering variant content; an observer after rendering is insufficient.
+
+Allocation is transactional in the existing installation settings table and stable
+across clients/restarts for one experiment revision. Assignment emits once, before
+context is returned; an assignment made while telemetry is disabled is not replayed
+on opt-in. There are no tracking IDs, cloud context uploads, arbitrary experiment
+registration APIs or enabled tests. Corrupt stored assignment remains unknown.
+Stabilization requires reviewed eligibility/variant integration, exact-head
+assignment/exposure QA and opt-out coverage. SDK context is collection plumbing;
+no arbitrary telemetry-injection CLI is provided.
+
+## Accepted-work measurement
+
+`work_accepted` is the version-scoped server admission outcome, separate from the
+historical broad `thread_created`/`user_message_sent` baseline. It records one
+original submitted thread/message, including queued and scheduled acceptance;
+queue drains, automatic retries, opening drafts and generation are not new
+accepted work. `onboarding_suggestion` with `send_accepted` is a mechanism
+observation of that same accepted work, never a second activation.
+
+Missing legacy suggestion metadata becomes unknown; current unsuggested drafts
+explicitly report none. The core send owner retains user initiation for a user
+submission with `pluginSubmission`. Backend plugin SDK sends/queue creation retain
+plugin or automation origin, and agent/system work retains its actor; suggestion
+metadata cannot upgrade a caller into a user. Arbitrary backend-plugin forwarding
+has no authenticated user-action chain and is not claimed as user work. These
+rules do not change the existing feature-gated `initiator` property's meanings.
+
+Legacy SDK creation without actor provenance is unknown. The existing no-context
+plugin spawn/fork origin override remains compatible; integrations that override
+origin to impersonate an app are outside the trustworthy actor boundary. Core UI
+submission is the supported path for attributing a user-clicked suggestion.

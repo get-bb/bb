@@ -6,7 +6,11 @@ import {
   isActiveTerminalSessionStatus,
   mobileAppDownloads,
 } from "@bb/domain";
-import type { TerminalOutputChunk, TerminalSession } from "@bb/server-contract";
+import type {
+  OnboardingContextResponse,
+  TerminalOutputChunk,
+  TerminalSession,
+} from "@bb/server-contract";
 import { useMediaQuery } from "@bb/shared-ui/hooks/use-media-query";
 import { AddMachineDialog } from "@/components/dialogs/AddMachineDialog";
 import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
@@ -1101,6 +1105,23 @@ export function OnboardingFlow({
   onClose: () => void;
 }) {
   const [step, setStep] = useState(initialStep);
+  const [measurementContext, setMeasurementContext] = useState<{
+    step: OnboardingStepId;
+    entry: OnboardingEntry;
+    value: OnboardingContextResponse;
+  } | null>(null);
+  useEffect(() => {
+    let current = true;
+    void sdk.system
+      .experimental_onboardingContext({ source: entry, stage: step })
+      .then((value) => {
+        if (current) setMeasurementContext({ step, entry, value });
+      })
+      .catch(() => undefined);
+    return () => {
+      current = false;
+    };
+  }, [entry, step]);
   const navigationProjects = useSidebarNavigation().data?.projects;
   const [projectIdsAtOpen, setProjectIdsAtOpen] =
     useState<ReadonlySet<string> | null>(null);
@@ -1195,6 +1216,12 @@ export function OnboardingFlow({
   const comparison = useRef(createVisibleTransitionObserver());
   const chrome: StepChrome = {
     observeDisplay: () => {
+      if (
+        measurementContext?.step !== step ||
+        measurementContext.entry !== entry
+      )
+        return;
+      const context = measurementContext.value;
       const width_class =
         window.innerWidth <= 640
           ? "compact"
@@ -1204,11 +1231,11 @@ export function OnboardingFlow({
       const height_class = window.innerHeight < 700 ? "short" : "regular";
       const properties = {
         phase: "displayed",
-        experiment_key: null,
-        experiment_revision: null,
-        variant: null,
-        design_revision: "baseline",
-        recommendation_revision: "baseline",
+        experiment_key: context.assignment?.experiment_key ?? null,
+        experiment_revision: context.assignment?.experiment_revision ?? null,
+        variant: context.assignment?.variant ?? null,
+        design_revision: context.design_revision,
+        recommendation_revision: context.recommendation_revision,
         source: entry,
         stage: step,
         width_class,

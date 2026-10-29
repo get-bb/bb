@@ -1,3 +1,5 @@
+import { captureAcceptedWork } from "../../src/services/system/work-acceptance.js";
+import { noWorkSuggestionAttribution } from "@bb/server-contract";
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -292,6 +294,11 @@ describe("telemetry service", () => {
       };
       const telemetry = await createTelemetryService(args);
       telemetry.capture({ name: "app_started" });
+      captureAcceptedWork(telemetry, {
+        kind: "thread",
+        initiator: "user",
+        suggestion: noWorkSuggestionAttribution(),
+      });
       expect(fetchMock).not.toHaveBeenCalled();
       setAppSettings(db, { ...getAppSettings(db), telemetryEnabled: true });
       telemetry.setEnabled(true);
@@ -305,6 +312,11 @@ describe("telemetry service", () => {
         telemetryEnabled: getAppSettings(db).telemetryEnabled,
       });
       restarted.capture({ name: "app_started" });
+      captureAcceptedWork(restarted, {
+        kind: "message",
+        initiator: "user",
+        suggestion: noWorkSuggestionAttribution(),
+      });
       expect(fetchMock).toHaveBeenCalledTimes(1);
     } finally {
       db.$client.close();

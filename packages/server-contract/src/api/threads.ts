@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { workSuggestionAttributionSchema } from "./system-suggestion-telemetry.js";
 import {
   activeThinkingSchema,
   callerExecutionInputSourceSchema,
@@ -130,6 +131,7 @@ export type ExistingThreadExecutionInputSources = z.infer<
 
 export const createThreadRequestSchema = z
   .object({
+    suggestionAttribution: workSuggestionAttributionSchema.optional(),
     projectId: z.string().min(1),
     providerId: z.string().min(1).optional(),
     origin: threadCreateOriginSchema,
@@ -280,6 +282,7 @@ export const forkThreadRequestSchema = z
 export type ForkThreadRequest = z.infer<typeof forkThreadRequestSchema>;
 
 const sendMessageRequestFieldsSchema = z.object({
+  suggestionAttribution: workSuggestionAttributionSchema.optional(),
   input: z.array(promptInputSchema).min(1),
   model: z.string().optional(),
   serviceTier: serviceTierSchema.optional(),
@@ -342,6 +345,7 @@ export type SendMessageResponse = z.infer<typeof sendMessageResponseSchema>;
 // already been dispatched, so there is nothing left to schedule.
 export const editMessageRequestSchema = sendMessageRequestFieldsSchema
   .omit({
+    suggestionAttribution: true,
     mode: true,
     sendAt: true,
     pluginSubmission: true,
@@ -423,6 +427,8 @@ export const sendQueuedMessageModeSchema = z.enum(["auto", "steer"]);
 export type SendQueuedMessageMode = z.infer<typeof sendQueuedMessageModeSchema>;
 
 export const createQueuedMessageRequestSchema = z.object({
+  suggestionAttribution: workSuggestionAttributionSchema.optional(),
+  originPluginId: pluginIdSchema.optional(),
   input: z.array(promptInputSchema).min(1),
   model: z.string().optional(),
   serviceTier: serviceTierSchema.optional(),
