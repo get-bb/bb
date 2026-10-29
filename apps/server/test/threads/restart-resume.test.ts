@@ -169,7 +169,7 @@ describe("continuing threads after a restart", () => {
       ).toEqual(["bb will send this thread a message to continue."]);
       const [resume] = listQueuedThreadMessages(harness.db, working.thread.id);
       expect(resume?.content).toContain(
-        "bb restarted, or the machine running this thread did, while you were running `pnpm test`. The restart interrupted it; the user did not reject it. It may have completed, partly completed, never run, or still be running",
+        "bb restarted, or the machine running this thread did, while you were running `pnpm test`. The restart interrupted it; the user did not reject it, even if your history shows it as interrupted or rejected by the user.",
       );
       expect(resume && waitingOnKind(resume)).toBe("time");
       expect(

@@ -144,7 +144,7 @@ function turnResumeText(args: {
           ? "while you were waiting for the user"
           : `while you were waiting for the user to approve \`${args.command}\``,
       check:
-        "The restart cancelled that request; the user did not answer it. Ask again if you still need it, and do not decide for them.",
+        "The restart cancelled that request; the user did not answer it, even if your history shows it as interrupted or rejected. Ask again if you still need it, and do not decide for them.",
     };
   }
   if (args.command === null) {
@@ -152,14 +152,14 @@ function turnResumeText(args: {
       restarted,
       interrupted: "while you were working",
       check:
-        "The restart interrupted your turn; the user did not. Check whether your last step finished or is still running, then continue the task without repeating work that already happened.",
+        "The restart interrupted your turn; the user did not, even if your history shows it as interrupted or rejected by the user. Check whether your last step finished or is still running, then continue the task without repeating work that already happened.",
     };
   }
   return {
     restarted,
     interrupted: `while you were running \`${args.command}\``,
     check:
-      "The restart interrupted it; the user did not reject it. It may have completed, partly completed, never run, or still be running, so check its effects before you continue, and rerun it only if that is safe.",
+      "The restart interrupted it; the user did not reject it, even if your history shows it as interrupted or rejected by the user. It may have completed, partly completed, never run, or still be running, so check its effects, then continue the task, rerunning it only if that is safe.",
   };
 }
 
