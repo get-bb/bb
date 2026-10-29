@@ -10,6 +10,8 @@ import { useRootComposeProjectId } from "@/lib/root-compose-selection";
 import { useOnboardingProjectImport } from "./useOnboardingProjectImport";
 
 const createProject = vi.hoisted(() => vi.fn());
+const recordTelemetryEvent = vi.hoisted(() => vi.fn());
+vi.mock("./onboarding-telemetry", () => ({ recordTelemetryEvent }));
 vi.mock("@/hooks/mutations/project-mutations", () => ({
   useCreateProject: () => ({ mutateAsync: createProject }),
 }));
@@ -43,6 +45,7 @@ beforeEach(() => {
   window.localStorage.clear();
   window.sessionStorage.clear();
   createProject.mockReset();
+  recordTelemetryEvent.mockClear();
   createProject.mockImplementation(async ({ name }: { name: string }) => ({
     id: `proj_${name}`,
   }));
@@ -54,6 +57,33 @@ afterEach(() => {
 });
 
 describe("onboarding project imports", () => {
+  it("records a failed first import without project or error details", async () => {
+    createProject.mockRejectedValueOnce(new Error("private path failed"));
+    const view = arrange("replay");
+    await act(() => view.result.current.importProjects("host_local", repos));
+    expect(
+      recordTelemetryEvent.mock.calls.map(([event]) => event.properties),
+    ).toEqual([
+      {
+        entry: "replay",
+        operation: "project_import",
+        outcome: "started",
+        error_category: null,
+        selected_count: 3,
+        succeeded_count: 0,
+      },
+      {
+        entry: "replay",
+        operation: "project_import",
+        outcome: "failed",
+        error_category: "request",
+        selected_count: 3,
+        succeeded_count: 0,
+      },
+    ]);
+    expect(view.onContinue).not.toHaveBeenCalled();
+  });
+
   it.each([
     [0, PERSONAL_PROJECT_ID],
     [1, "proj_atlas-web"],
@@ -67,6 +97,19 @@ describe("onboarding project imports", () => {
       );
       expect(view.result.current.selection[0]).toBe(expected);
       expect(view.onContinue).toHaveBeenCalledOnce();
+      if (count === 0) expect(recordTelemetryEvent).not.toHaveBeenCalled();
+      else
+        expect(recordTelemetryEvent).toHaveBeenLastCalledWith({
+          name: "onboarding_operation",
+          properties: {
+            entry: "first_run",
+            operation: "project_import",
+            outcome: "succeeded",
+            error_category: null,
+            selected_count: count,
+            succeeded_count: count,
+          },
+        });
     },
   );
 
@@ -116,6 +159,17 @@ describe("onboarding project imports", () => {
       if (interruption === "close") {
         expect(view.onContinue).not.toHaveBeenCalled();
         expect(createProject).toHaveBeenCalledOnce();
+        expect(recordTelemetryEvent).toHaveBeenLastCalledWith({
+          name: "onboarding_operation",
+          properties: {
+            entry: "first_run",
+            operation: "project_import",
+            outcome: "cancelled",
+            error_category: null,
+            selected_count: 3,
+            succeeded_count: 1,
+          },
+        });
       }
     },
   );
@@ -127,6 +181,17 @@ describe("onboarding project imports", () => {
     const view = arrange();
     await act(() => view.result.current.importProjects("host_local", repos));
     expect(view.result.current.selection[0]).toBe("proj_atlas-web");
+    expect(recordTelemetryEvent).toHaveBeenLastCalledWith({
+      name: "onboarding_operation",
+      properties: {
+        entry: "first_run",
+        operation: "project_import",
+        outcome: "partial",
+        error_category: "request",
+        selected_count: 3,
+        succeeded_count: 1,
+      },
+    });
     expect(view.onContinue).not.toHaveBeenCalled();
     await act(() =>
       view.result.current.importProjects("host_local", repos.slice(1)),

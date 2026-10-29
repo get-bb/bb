@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BbHttpError } from "@bb/sdk/browser";
 import { sdk } from "@/lib/sdk";
 import { appToast } from "@/components/ui/app-toast";
+import { recordTelemetryEvent } from "@/components/onboarding/onboarding-telemetry";
 import {
   allSystemExecutionOptionsQueryKeyPrefix,
   hostProviderCliStatusQueryKey,
@@ -30,6 +31,10 @@ vi.mock("@/components/dialogs/ProviderCliInstallLogDialog", () => ({
   ProviderCliInstallLogDialog: () => null,
 }));
 
+vi.mock("@/components/onboarding/onboarding-telemetry", () => ({
+  recordTelemetryEvent: vi.fn(),
+}));
+
 vi.mock("@/components/ui/app-toast", () => ({
   appToast: {
     dismiss: vi.fn(),
@@ -53,6 +58,7 @@ vi.mock("@/lib/sdk", () => {
 
 const installHostProviderCliMock = vi.mocked(sdk.hosts.installProviderCli);
 const appToastMock = vi.mocked(appToast);
+const telemetryMock = vi.mocked(recordTelemetryEvent);
 
 let pendingInstalls: DeferredInstall[] = [];
 let queryClient: QueryClient;
@@ -234,6 +240,7 @@ describe("provider CLI install store", () => {
       predicate: expect.any(Function),
     });
     expect(appToastMock.success).not.toHaveBeenCalled();
+    expect(telemetryMock).not.toHaveBeenCalled();
   });
 
   it("keeps draining the queue after every subscriber leaves", async () => {
@@ -423,5 +430,216 @@ describe("provider CLI install store", () => {
     expect(
       new TextEncoder().encode(newestFailure.logDialogState.log).byteLength,
     ).toBeLessThanOrEqual(PROVIDER_CLI_FAILURE_LOG_MAX_BYTES);
+  });
+});
+
+describe("onboarding agent operation telemetry", () => {
+  it.each([
+    {
+      label: "unsuccessful command completion",
+      events: [
+        {
+          type: "completed",
+          provider: "codex",
+          success: false,
+          exitCode: 1,
+          signal: null,
+        },
+      ],
+      outcome: "failed",
+      error_category: "command_exit",
+    },
+    {
+      label: "error without command completion",
+      events: [{ type: "error", provider: "codex", message: "private detail" }],
+      outcome: "unknown",
+      error_category: "unknown",
+    },
+    {
+      label: "empty response",
+      events: [],
+      outcome: "unknown",
+      error_category: "unknown",
+    },
+    {
+      label: "completion for another provider",
+      events: [
+        {
+          type: "completed",
+          provider: "claude-code",
+          success: true,
+          exitCode: 0,
+          signal: null,
+        },
+      ],
+      outcome: "unknown",
+      error_category: "unknown",
+    },
+  ] satisfies Array<{
+    label: string;
+    events: ProviderCliInstallEvent[];
+    outcome: "failed" | "unknown";
+    error_category: "command_exit" | "unknown";
+  }>)(
+    "distinguishes $label from confirmed success",
+    async ({ events, outcome, error_category }) => {
+      startProviderCliInstall({
+        hostId: "host_1",
+        issue: issueForProvider("codex"),
+        onboardingEntry: "first_run",
+      });
+      expect(telemetryMock.mock.invocationCallOrder[0]).toBeLessThan(
+        installHostProviderCliMock.mock.invocationCallOrder[0]!,
+      );
+      installAt(0).resolve(events);
+      await settle();
+      expect(telemetryMock.mock.calls).toEqual([
+        [
+          {
+            name: "onboarding_operation",
+            properties: {
+              entry: "first_run",
+              operation: "agent_update",
+              outcome: "started",
+              error_category: null,
+            },
+          },
+        ],
+        [
+          {
+            name: "onboarding_operation",
+            properties: {
+              entry: "first_run",
+              operation: "agent_update",
+              outcome,
+              error_category,
+            },
+          },
+        ],
+      ]);
+    },
+  );
+
+  it.each([
+    new TypeError("private network detail"),
+    new BbHttpError({
+      status: 503,
+      code: "unavailable",
+      message: "private server detail",
+      body: null,
+    }),
+    new BbHttpError({
+      status: 409,
+      code: "rejected",
+      message: "private request detail",
+      body: null,
+    }),
+  ])(
+    "records request rejection as unknown without transmitting details",
+    async (error) => {
+      startProviderCliInstall({
+        hostId: "host_1",
+        issue: issueForProvider("codex"),
+        onboardingEntry: "replay",
+      });
+      installAt(0).reject(error);
+      await settle();
+      expect(telemetryMock).toHaveBeenCalledTimes(2);
+      expect(telemetryMock).toHaveBeenLastCalledWith({
+        name: "onboarding_operation",
+        properties: {
+          entry: "replay",
+          operation: "agent_update",
+          outcome: "unknown",
+          error_category: "request",
+        },
+      });
+    },
+  );
+
+  it("preserves queued guide entry after unmount and ignores duplicate starts and completions", async () => {
+    const unsubscribe = subscribeProviderCliInstalls(() => {});
+    const update = issueForProvider("codex");
+    const installation = issueForProvider("claude-code");
+    installation.action = {
+      ...installation.action,
+      kind: "install",
+      label: "Install",
+    };
+    const updateJob = {
+      hostId: "host_1",
+      issue: update,
+      onboardingEntry: "first_run" as const,
+    };
+    const installJob = {
+      hostId: "host_1",
+      issue: installation,
+      onboardingEntry: "replay" as const,
+    };
+    startProviderCliInstall(updateJob);
+    startProviderCliInstall(updateJob);
+    startProviderCliInstall(installJob);
+    startProviderCliInstall(installJob);
+    unsubscribe();
+    expect(telemetryMock).toHaveBeenCalledTimes(1);
+    completeInstall(installAt(0), {
+      type: "completed",
+      provider: "codex",
+      success: true,
+      exitCode: 0,
+      signal: null,
+    });
+    await settle();
+    const completed: ProviderCliInstallEvent = {
+      type: "completed",
+      provider: "claude-code",
+      success: true,
+      exitCode: 0,
+      signal: null,
+    };
+    installAt(1).resolve([completed, completed]);
+    await settle();
+    expect(telemetryMock.mock.calls.map(([event]) => event)).toEqual([
+      {
+        name: "onboarding_operation",
+        properties: {
+          entry: "first_run",
+          operation: "agent_update",
+          outcome: "started",
+          error_category: null,
+        },
+      },
+      {
+        name: "onboarding_operation",
+        properties: {
+          entry: "first_run",
+          operation: "agent_update",
+          outcome: "succeeded",
+          error_category: null,
+        },
+      },
+      {
+        name: "onboarding_operation",
+        properties: {
+          entry: "replay",
+          operation: "agent_install",
+          outcome: "started",
+          error_category: null,
+        },
+      },
+      {
+        name: "onboarding_operation",
+        properties: {
+          entry: "replay",
+          operation: "agent_install",
+          outcome: "succeeded",
+          error_category: null,
+        },
+      },
+    ]);
+    startProviderCliInstall(installJob);
+    completeInstall(installAt(2), completed);
+    await settle();
+    expect(telemetryMock).toHaveBeenCalledTimes(6);
   });
 });

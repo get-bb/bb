@@ -222,7 +222,130 @@ const onboardingStepTelemetryPropertiesSchema = z
   })
   .strict();
 
+const onboardingOperationResultShape = {
+  entry: onboardingEntryTelemetrySchema,
+  error_category: z
+    .enum(["request", "command_exit", "job_failed", "unknown"])
+    .nullable(),
+};
+const onboardingOperationOutcomeSchema = z.enum([
+  "started",
+  "succeeded",
+  "failed",
+  "unknown",
+]);
+const onboardingOperationTelemetryPropertiesSchema = z
+  .discriminatedUnion("operation", [
+    z
+      .object({
+        ...onboardingOperationResultShape,
+        operation: z.literal("agent_install"),
+        outcome: onboardingOperationOutcomeSchema,
+      })
+      .strict(),
+    z
+      .object({
+        ...onboardingOperationResultShape,
+        operation: z.literal("agent_update"),
+        outcome: onboardingOperationOutcomeSchema,
+      })
+      .strict(),
+    z
+      .object({
+        ...onboardingOperationResultShape,
+        operation: z.literal("project_scan"),
+        outcome: onboardingOperationOutcomeSchema,
+      })
+      .strict(),
+    z
+      .object({
+        ...onboardingOperationResultShape,
+        operation: z.literal("project_import"),
+        outcome: z.enum([
+          "started",
+          "succeeded",
+          "partial",
+          "failed",
+          "cancelled",
+          "unknown",
+        ]),
+        selected_count: z.number().int().positive(),
+        succeeded_count: z.number().int().nonnegative(),
+      })
+      .strict(),
+    z
+      .object({
+        ...onboardingOperationResultShape,
+        operation: z.literal("plugin_install"),
+        outcome: z.enum([
+          "started",
+          "succeeded",
+          "failed",
+          "cancelled",
+          "unknown",
+        ]),
+      })
+      .strict(),
+    z
+      .object({
+        ...onboardingOperationResultShape,
+        operation: z.literal("plugin_enable"),
+        outcome: onboardingOperationOutcomeSchema,
+      })
+      .strict(),
+  ])
+  .superRefine((value, context) => {
+    const expectedFailureCategory =
+      value.operation === "agent_install" || value.operation === "agent_update"
+        ? "command_exit"
+        : value.operation === "plugin_install"
+          ? "job_failed"
+          : "request";
+    const validCategory =
+      value.outcome === "unknown"
+        ? value.error_category === "request" ||
+          value.error_category === "unknown"
+        : value.outcome === "failed" || value.outcome === "partial"
+          ? value.error_category === expectedFailureCategory
+          : value.error_category === null;
+    if (!validCategory) {
+      context.addIssue({
+        code: "custom",
+        path: ["error_category"],
+        message: "Error category must match the observed operation outcome",
+      });
+    }
+    if (value.operation !== "project_import") return;
+    const {
+      selected_count: selected,
+      succeeded_count: succeeded,
+      outcome,
+    } = value;
+    const validCounts =
+      succeeded <= selected &&
+      (outcome === "started" || outcome === "failed"
+        ? succeeded === 0
+        : outcome === "succeeded"
+          ? succeeded === selected
+          : outcome === "partial"
+            ? succeeded > 0 && succeeded < selected
+            : true);
+    if (!validCounts) {
+      context.addIssue({
+        code: "custom",
+        path: ["succeeded_count"],
+        message: "Import counts must match the observed batch outcome",
+      });
+    }
+  });
+
 export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
+  z
+    .object({
+      name: z.literal("onboarding_operation"),
+      properties: onboardingOperationTelemetryPropertiesSchema,
+    })
+    .strict(),
   z
     .object({
       name: z.literal("onboarding_agent_state"),

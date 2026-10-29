@@ -3562,6 +3562,20 @@ callers, all through `recordTelemetryEvent` in
 `apps/app/src/components/onboarding/onboarding-telemetry.ts`: the setup guide
 (`OnboardingFlow`) and `NewThreadComposer`'s `new_thread_submit` outcomes.
 
+`onboarding_operation` adds guide-initiated agent install/update, project
+scan/import, and plugin install/enable observations. Each strict payload has
+`entry`, `operation`, `outcome` and required nullable `error_category`; only
+import batches carry selected/succeeded counts. Partial results require an
+actual import error after some successes. Lost job observations are unknown,
+not failed, and queued jobs are not successes. Cancellation is limited to
+confirmed plugin cancellation or the import lifetime guard. The server rejects
+invalid outcome/category/count combinations and extra properties. Existing
+payloads and the server-wide opt-out retain their meanings. No raw errors,
+paths, plugin/account names, or new tracking identifiers are accepted. The
+existing endpoint serves core guide operations; no arbitrary telemetry CLI is
+added. Stabilization must verify terminal observation deduplication, missing
+results, opt-out, old-client compatibility and version-scoped coverage.
+
 Stabilize after deciding whether third-party plugins may emit product events
 at all and, if so, how they are namespaced and rate limited.
 
@@ -3742,15 +3756,16 @@ own value, so plugins built against the old constant keep working.
 - **Core callers:** `useAppPanelController` and `createAppPanelController` in `apps/app/src/lib/app-fixed-tab-navigation.tsx` are the one implementation; `ThreadDetailView`, `PluginPanelRightPanelHost` and `RootComposeView` build it from their destinations and route bb's own controls through it: the Git plugin's Mod+D command is `toggleTab` on its Diff tab through `ctx.experimental_panel`, `panel.toggle` and the header/page toggle close through `close()` (opening restores the last tab), Info, the fixed-tab strip and Diff file/commit opens use `openTab`, and the panel close/collapse buttons, `panel.close` and the window-close request use `close()`. Plugin calls map through `createPluginPanelController` in `apps/app/src/lib/plugin-panel-controller.ts`. Contract tests: `app-fixed-tab-navigation.test.ts` and the surface tests that run the shared table.
 - **Retired members (2026-10-26):** removed from public typings, the Plugin Guide and the authoring docs; runtime shims call the controller and `bb plugin build` warns with the replacement call (`packages/plugin-build/src/retired-sdk-members.ts`).
 
-  | Retired | Replacement |
-  | --- | --- |
-  | `ctx.openPanel(options?)` on every launcher context | `ctx.experimental_panel.openTab({ tab: { id, context: { kind: "thread" }, availability: "action" }, params, title })` |
-  | `useBbNavigate().openThreadPanel({ actionId, params?, title? })` | `experimental_useAppPanel().openTab({ tab: { id: actionId, context: { kind: "thread" }, availability: "action" }, params, title })` |
-  | `experimental_useAppPanel().experimental_openTab({ surface, ...options })` | `experimental_useAppPanel().openTab(options)` |
-  | `experimental_useAppPanel().openFixedTab({ surface, tab: { panelId?, id }, target? })` | `experimental_useAppPanel().openTab({ tab: { id, context, availability: "fixed" }, target })` |
-  | testing `renderSlot` options `openThreadPanel`, `experimental_openTab`, `experimental_openFixedTab`; logs `experimental_tabOpenCalls`, `experimental_fixedTabOpenCalls` and the `openThreadPanel` `NavigateCall` | option `experimental_panel: Partial<ExperimentalPanelController>`; log `experimental_panelCalls` |
+  | Retired                                                                                                                                                                                                          | Replacement                                                                                                                         |
+  | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+  | `ctx.openPanel(options?)` on every launcher context                                                                                                                                                              | `ctx.experimental_panel.openTab({ tab: { id, context: { kind: "thread" }, availability: "action" }, params, title })`               |
+  | `useBbNavigate().openThreadPanel({ actionId, params?, title? })`                                                                                                                                                 | `experimental_useAppPanel().openTab({ tab: { id: actionId, context: { kind: "thread" }, availability: "action" }, params, title })` |
+  | `experimental_useAppPanel().experimental_openTab({ surface, ...options })`                                                                                                                                       | `experimental_useAppPanel().openTab(options)`                                                                                       |
+  | `experimental_useAppPanel().openFixedTab({ surface, tab: { panelId?, id }, target? })`                                                                                                                           | `experimental_useAppPanel().openTab({ tab: { id, context, availability: "fixed" }, target })`                                       |
+  | testing `renderSlot` options `openThreadPanel`, `experimental_openTab`, `experimental_openFixedTab`; logs `experimental_tabOpenCalls`, `experimental_fixedTabOpenCalls` and the `openThreadPanel` `NavigateCall` | option `experimental_panel: Partial<ExperimentalPanelController>`; log `experimental_panelCalls`                                    |
 
   One behaviour narrows: an action tab's or New-thread action's own `ctx.openPanel()` now resolves through the launching surface's registered tabs instead of opening its action directly, so it declines if the action was hidden or unregistered while `run` awaited. The other retired members already resolved against registered tabs. Survey of the 342 bb-community source repositories (shallow clones, 2026-10-26, production sources): `openPanel(` 102 call sites in 47 repos, `openThreadPanel(` 111 in 55, `experimental_openTab(` 3 in 2, `openFixedTab(` 11 in 8. Three repos self-open after an `await` in `run` (bb-plugin-crew, bb-wterm-terminal-plugin, bb-plugin-feed), all through the legacy `threadPanelAction`, which has no `useVisible`; the one tab with `useVisible` (shuttle) self-opens synchronously from its visible launcher. No caller relies on opening an unregistered or hidden action. In-repo callers (side-chat, tasks, workflows, docs, the ThreadChat demo) moved to the controller.
+
 - **Stabilization:** audit focus resolution for commands and thread actions across split panes and plugin pages, `toggleTab` against compact drawers and plugin-detail overlays, `close()` acceptance when the panel is already closed, and whether a nav-panel action reference should resolve on thread surfaces. Remove the retired shims after published callers migrate, then rename project-wide and remove this entry.
 
 ## Unified tabs (`experimental_tab`)

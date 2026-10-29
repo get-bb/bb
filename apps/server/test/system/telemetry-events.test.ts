@@ -18,6 +18,26 @@ describe("client telemetry events", () => {
       harness.deps.telemetry = { ...harness.deps.telemetry, capture };
       const events = [
         {
+          name: "onboarding_operation",
+          properties: {
+            entry: "first_run",
+            operation: "project_import",
+            outcome: "partial",
+            error_category: "request",
+            selected_count: 3,
+            succeeded_count: 2,
+          },
+        },
+        {
+          name: "onboarding_operation",
+          properties: {
+            entry: "replay",
+            operation: "agent_install",
+            outcome: "unknown",
+            error_category: "request",
+          },
+        },
+        {
           name: "onboarding_step_skipped",
           properties: { step: "projects", entry: "first_run" },
         },
@@ -73,6 +93,27 @@ describe("client telemetry events", () => {
       expect(unknown.status).toBe(400);
       expect(extra.status).toBe(400);
       for (const event of [
+        {
+          name: "onboarding_operation",
+          properties: {
+            entry: "first_run",
+            operation: "project_import",
+            outcome: "succeeded",
+            error_category: null,
+            selected_count: 3,
+            succeeded_count: 2,
+          },
+        },
+        {
+          name: "onboarding_operation",
+          properties: {
+            entry: "first_run",
+            operation: "agent_install",
+            outcome: "failed",
+            error_category: "request",
+            command: "private command",
+          },
+        },
         {
           name: "onboarding_agent_state",
           properties: {

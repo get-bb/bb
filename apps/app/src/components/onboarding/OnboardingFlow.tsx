@@ -23,6 +23,10 @@ import {
 } from "@/components/provider-cli/provider-cli-install-store";
 import { ThreadTerminalView } from "@/components/thread/terminal/ThreadTerminalView";
 import { appToast } from "@/components/ui/app-toast";
+import {
+  observeOnboardingPluginInstall,
+  runOnboardingPluginAction,
+} from "./onboarding-plugin-telemetry";
 import { applyPluginInstallJob } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
   useHostDiscoveredRepos,
@@ -410,7 +414,7 @@ function AgentStepContainer({
     if (hostId === null || status === undefined) return;
     const issue = buildProviderCliIssue({ provider: providerId, status });
     if (issue === null || !hasProviderCliAction(issue)) return;
-    installRunner.startInstall({ hostId, issue });
+    installRunner.startInstall({ hostId, issue, onboardingEntry: entry });
   };
 
   const viewInstallLog = (providerId: string) => {
@@ -526,7 +530,37 @@ function ProjectsStepContainer({
   onContinue: () => void;
   onSkip: () => void;
 }) {
-  const reposQuery = useHostDiscoveredRepos(hostId);
+  const scanMounted = useRef(true);
+  useEffect(() => {
+    scanMounted.current = true;
+    return () => {
+      scanMounted.current = false;
+    };
+  }, []);
+  const reposQuery = useHostDiscoveredRepos(hostId, {
+    onRequest: () => {
+      if (!scanMounted.current) return () => {};
+      recordTelemetryEvent({
+        name: "onboarding_operation",
+        properties: {
+          entry,
+          operation: "project_scan",
+          outcome: "started",
+          error_category: null,
+        },
+      });
+      return (outcome) =>
+        recordTelemetryEvent({
+          name: "onboarding_operation",
+          properties: {
+            entry,
+            operation: "project_scan",
+            outcome,
+            error_category: outcome === "failed" ? "request" : null,
+          },
+        });
+    },
+  });
   const quickCreateProject = useQuickCreateProjectController();
   const navigationQuery = useSidebarNavigation();
   const [selection, setSelection] = useState<ReadonlySet<string> | null>(null);
@@ -693,10 +727,12 @@ function ProjectsStepContainer({
 }
 
 function PluginCardContainer({
+  onboardingEntry,
   entry,
   enabled,
   onChanged,
 }: {
+  onboardingEntry: OnboardingEntry;
   entry: PluginCatalogSearchEntry;
   enabled: boolean;
   onChanged: () => Promise<void>;
@@ -725,13 +761,27 @@ function PluginCardContainer({
     setWorking(true);
     try {
       if (next && !entry.installed) {
-        const job = await startCatalogPluginInstall(fetch, {
-          entryId: entry.entryId,
-          marketplace: entry.marketplace,
-        });
+        const job = await runOnboardingPluginAction(
+          onboardingEntry,
+          "plugin_install",
+          () =>
+            startCatalogPluginInstall(fetch, {
+              entryId: entry.entryId,
+              marketplace: entry.marketplace,
+            }),
+        );
+        observeOnboardingPluginInstall(queryClient, job, onboardingEntry);
         applyPluginInstallJob({ queryClient, job });
       } else {
-        await setPluginEnabled(entry.pluginId, next);
+        if (next) {
+          await runOnboardingPluginAction(
+            onboardingEntry,
+            "plugin_enable",
+            () => setPluginEnabled(entry.pluginId, true),
+          );
+        } else {
+          await setPluginEnabled(entry.pluginId, false);
+        }
       }
       await onChanged();
     } catch (error) {
@@ -768,11 +818,13 @@ function PluginCardContainer({
 }
 
 function PluginsStepContainer({
+  entry: onboardingEntry,
   chrome,
   onBack,
   onContinue,
   onSkip,
 }: {
+  entry: OnboardingEntry;
   chrome: StepChrome;
   onBack: () => void;
   onContinue: () => void;
@@ -823,6 +875,7 @@ function PluginsStepContainer({
         ) : (
           entries.map((entry) => (
             <PluginCardContainer
+              onboardingEntry={onboardingEntry}
               key={entry.entryId}
               entry={entry}
               enabled={
@@ -1055,6 +1108,7 @@ export function OnboardingFlow({
     case "plugins":
       return (
         <PluginsStepContainer
+          entry={entry}
           chrome={chrome}
           onBack={goTo(-1)}
           onContinue={advance("completed")}

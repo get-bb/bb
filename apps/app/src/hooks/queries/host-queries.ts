@@ -88,15 +88,29 @@ export function useHostCloneDefaultPath(
 
 export function useHostDiscoveredRepos(
   hostId: string | null,
-  options?: QueryOptions,
+  options?: QueryOptions & {
+    onRequest?: () => (outcome: "succeeded" | "failed") => void;
+  },
 ) {
   return useQuery<HostDiscoveredReposResponse>({
     queryKey: hostDiscoveredReposQueryKey(hostId),
     queryFn:
       hostId === null
         ? skipToken
-        : ({ signal }) =>
-            sdk.hosts.experimental_discoverRepos({ hostId, signal }),
+        : async ({ signal }) => {
+            const recordOutcome = options?.onRequest?.();
+            try {
+              const result = await sdk.hosts.experimental_discoverRepos({
+                hostId,
+                signal,
+              });
+              recordOutcome?.("succeeded");
+              return result;
+            } catch (error) {
+              recordOutcome?.("failed");
+              throw error;
+            }
+          },
     enabled: options?.enabled ?? true,
     staleTime: 5 * 60_000,
     retry: false,

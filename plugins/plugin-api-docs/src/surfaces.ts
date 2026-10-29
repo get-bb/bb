@@ -445,7 +445,14 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginThreadActionItemInput.experimental_panel",
           "PluginNewThreadPanelActionContext.experimental_panel",
         ],
-        firstParty: ["Docs", "Git", "GitHub", "Side chat", "Tasks", "Workflows"],
+        firstParty: [
+          "Docs",
+          "Git",
+          "GitHub",
+          "Side chat",
+          "Tasks",
+          "Workflows",
+        ],
       },
       {
         id: "file-opener",
@@ -1444,6 +1451,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Create threads attributed to the plugin, send messages, and manage projects and machines",
           "Start plugin updates in the background and follow their progress or rollback",
+          "Core setup telemetry uses system.experimental_recordTelemetryEvent: strict anonymous guide-operation observations (agent install/update, project scan/import, plugin install/enable), with first_run/replay, bounded outcomes and categories, and counts only for imports. Missing job results stay unknown; queued is not success. Existing events and usage-data opt-out are preserved. No raw errors, paths, names or new tracking IDs are accepted; this is not a general plugin analytics API.",
           "Read Viewed state for up to 500 file paths; mark and clear return acknowledgements",
           "Retry failed environment cleanup with recover: true after inspecting processes using the workspace",
         ],
@@ -1451,6 +1459,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "BbPluginApi",
           "PluginServerApi",
           "PluginBbSdk.hosts.get",
+          "PluginBbSdk.system.experimental_recordTelemetryEvent",
           "PluginBbSdk.hosts.experimental_discoverRepos",
           "PluginBbSdk.experimental_promptHistory.list",
           "PluginBbSdk.environments.experimental_cleanup",
