@@ -20,7 +20,14 @@ Run from the repository root.
 
 1. **Inventory.** List every Highlight as `title · version · the notes' sentence`. Many releases have no Highlights section; for those, the notable items are the bold-led bullets under "New features", "Built-in plugin updates" and topical sections ("Working with agents", "Browser tools"), plus the `changelog-metadata.ts` headline. Leave out Plugin API, CLI-only and Fixes sections unless a change is user-facing. A release's notes can also cover an earlier tag that shipped without notes ("These notes also cover 0.43.4"); credit those items to the release whose notes describe them. Note each item's status (Experimental, Alpha, off by default, "Enable it in …") so you don't overstate it, and keep the "Enable it in …" path.
 2. **Cluster by direction.** For each item, ask which VISION principle it moves forward, for example "agents can operate bb", "more of bb is built from plugins", "works wherever you are", "fast and understandable", or "flexible defaults". Don't cluster by screen, by user benefit or by release. A theme needs at least two items from the range. Keep as many themes as the period supports; October 2026's five releases made six. Items that advance no theme are left out, never put in a catch-all list; the release notes link covers them.
-3. **Order** by value to bb's existing users: the theme that does the most for them comes first. How a reader gets a feature (on by default, a setting, an install, alpha) is about access, not value, so it doesn't change the order. Multi-agent features can appear inside a theme but never lead.
+3. **Order** themes in four tiers, top to bottom:
+   1. **Core differentiators:** what sets bb apart from other agent tools, as `docs/VISION.md` describes it, such as customizing bb.
+   2. **Power-user features,** especially ones users asked for.
+   3. **Platform expansion:** bb on new devices, with new agents, or used from other apps.
+   4. **Everything else.**
+
+   How a reader gets a feature (on by default, a setting, an install, alpha) is about access, not value, so it doesn't change the order. Multi-agent features can appear inside a theme but never lead.
+
 4. **Write each theme:**
    - **Title:** what the reader can now do or get, in plain words, and true to the notes. Approved examples: "You can customize more of bb", "Use bb on more devices", "Faster when running a lot of agents concurrently", "Review and answer your agents faster", "Your agents can run bb for you", "Every ACP agent now works in bb". Rejected: "bb has strong defaults, not one blessed way of working" (abstract), "bb stays fast and understandable" (dull), "Keep track of every agent" (a tagline about table stakes), "Keep up with your agents' work" (buries the value).
    - **Items:** written in the voice below, each citing its version.
