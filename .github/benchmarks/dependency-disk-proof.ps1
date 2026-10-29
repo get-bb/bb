@@ -4,9 +4,7 @@ $fixtureRoot = Join-Path $env:RUNNER_TEMP 'dependency-proof'
 New-Item -ItemType Directory -Force $fixtureRoot | Out-Null
 $env:RUNNER_TEMP = $fixtureRoot
 $disk = Join-Path $fixtureRoot 'bb-dependencies.vhdx'
-$baseline = Join-Path $fixtureRoot 'baseline.ps1'
-git show bec24f2f8d:.github/actions/windows-dependency-cache/disk.ps1 | Set-Content $baseline
-if ($LASTEXITCODE -ne 0) { throw 'Could not read baseline script' }
+$baseline = Join-Path $env:GITHUB_WORKSPACE '.github/benchmarks/dependency-disk-baseline.ps1'
 $candidate = Join-Path $env:GITHUB_WORKSPACE '.github/actions/windows-dependency-cache/disk.ps1'
 $target = if ($Mode -eq 'baseline') { $baseline } else { $candidate }
 $env:GITHUB_ENV = Join-Path $fixtureRoot 'env.txt'
@@ -17,7 +15,7 @@ function Invoke-Operation([string]$Operation, [string]$Wrapper = '') {
   $timer = [System.Diagnostics.Stopwatch]::StartNew()
   if ($Wrapper) {
     $wrapperFile = Join-Path $fixtureRoot 'wrapper.ps1'
-    ($Wrapper + "`n& '$target' -Operation '$Operation'") | Set-Content $wrapperFile
+    ("Import-Module Storage`n" + $Wrapper + "`n& '$target' -Operation '$Operation'") | Set-Content $wrapperFile
     & pwsh -NoLogo -NoProfile -File $wrapperFile | Out-Host
   } else {
     & pwsh -NoLogo -NoProfile -File $target -Operation $Operation | Out-Host
