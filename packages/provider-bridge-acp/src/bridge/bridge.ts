@@ -1900,9 +1900,9 @@ function handleElicitationRequest(
     emitForSession(session, ACP_WARNING_METHOD, {
       threadId: session.bbThreadId,
       summary: "The agent asked a question bb could not show",
-      details: `The request was declined because ${plan.reason}.`,
+      details: `bb answered the agent with an error because ${plan.reason}.`,
     });
-    responder.result({ action: "decline" });
+    responder.error(-32602, `bb cannot show this form: ${plan.reason}`);
     return;
   }
   if (session.activePromptKind === null) {

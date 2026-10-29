@@ -737,23 +737,37 @@ async function handlePrompt(message) {
     });
     notifyUpdate(messageChunk("commands advertised"));
   } else if (text.includes("ask-form")) {
-    const properties = text.includes("ask-form-too-large")
-      ? Object.fromEntries(
-          ["a", "b", "c", "d", "e"].map((name) => [name, { type: "string" }]),
-        )
-      : {
-          strategy: {
+    const droid = text.includes("ask-form-other-droid");
+    const properties = text.includes("ask-form-other")
+      ? {
+          choice: {
             type: "string",
-            title: "Strategy",
-            enum: ["conservative", "balanced"],
+            enum: droid ? ["a", "b", "other"] : ["a", "b"],
           },
-          dryRun: { type: "boolean", title: "Dry run" },
-        };
+          [droid ? "choice_other" : "choice__other"]: { type: "string" },
+        }
+      : text.includes("ask-form-too-large")
+        ? Object.fromEntries(
+            ["a", "b", "c", "d", "e"].map((name) => [name, { type: "string" }]),
+          )
+        : {
+            strategy: {
+              type: "string",
+              title: "Strategy",
+              enum: ["conservative", "balanced"],
+            },
+            dryRun: { type: "boolean", title: "Dry run" },
+          };
+    const required = droid ? ["choice"] : Object.keys(properties);
     const result = await requestClient("elicitation/create", {
       sessionId: activeSessionId,
       mode: "form",
       message: "How should I proceed?",
-      requestedSchema: { type: "object", properties },
+      requestedSchema: {
+        type: "object",
+        properties,
+        ...(text.includes("ask-form-other-omp") ? {} : { required }),
+      },
     }).catch((error) => ({ error: String(error) }));
     if (requestLog) {
       appendFileSync(

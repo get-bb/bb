@@ -5207,7 +5207,66 @@ describe("acp bridge: questions the agent asks", () => {
     );
   });
 
-  it("declines a form it cannot show and says why", async () => {
+  it.each([
+    {
+      convention: "omp",
+      companion: "choice__other",
+      typedContent: { choice__other: "c" },
+    },
+    {
+      convention: "droid",
+      companion: "choice_other",
+      typedContent: { choice: "other", choice_other: "c" },
+    },
+  ])(
+    "folds the $convention Other companion into its choice (#6031, #6131)",
+    async ({ convention, companion, typedContent }) => {
+      const { providerThreadId } = await startThread();
+      const turnId = sendTurnRequest("turn/start", providerThreadId, {
+        input: [
+          { type: "text", text: `ask-form-other-${convention}`, mentions: [] },
+        ],
+      });
+      await waitForResponse(turnId);
+      const forwarded = await waitFor(
+        () =>
+          output.messages.find(
+            (message) =>
+              message.method === "interaction/request" &&
+              message.id !== undefined,
+          ),
+        "forwarded question",
+      );
+      expect(forwarded.params).toMatchObject({
+        payload: {
+          questions: [
+            {
+              id: "choice",
+              options: [{ value: "a" }, { value: "b" }],
+              allowFreeText: true,
+            },
+          ],
+        },
+      });
+      expect(JSON.stringify(forwarded.params)).not.toContain(companion);
+      handleLine(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: forwarded.id,
+          result: {
+            kind: "user_answer",
+            answers: { choice: { selected: [], freeText: "c" } },
+          },
+        }),
+      );
+      await waitForTurnCompleted();
+      expect(agentMessageTexts()).toContain(
+        `elicitation:${JSON.stringify({ action: "accept", content: typedContent })}`,
+      );
+    },
+  );
+
+  it("answers a form it cannot show with an error that says why (#6266)", async () => {
     const { providerThreadId } = await startThread();
     const turnId = sendTurnRequest("turn/start", providerThreadId, {
       input: [{ type: "text", text: "ask-form-too-large", mentions: [] }],
@@ -5215,11 +5274,13 @@ describe("acp bridge: questions the agent asks", () => {
     await waitForResponse(turnId);
     await waitForTurnCompleted();
 
-    expect(agentMessageTexts()).toContain('elicitation:{"action":"decline"}');
+    expect(agentMessageTexts()).toContain(
+      'elicitation:{"error":"Error: bb cannot show this form: bb shows at most 4 questions and this form has 5"}',
+    );
     expect(threadEventsOfType("provider/warning").at(-1)).toMatchObject({
       summary: "The agent asked a question bb could not show",
       details:
-        "The request was declined because the form has 5 fields and bb shows at most 4.",
+        "bb answered the agent with an error because bb shows at most 4 questions and this form has 5.",
     });
     expect(
       output.messages.filter(
