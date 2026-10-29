@@ -22,10 +22,12 @@ if ($Operation -eq 'detach') {
   exit 0
 }
 
+$mountAttempted = $false
 try {
   if (Test-Path 'P:\') { throw 'Drive P: is already occupied' }
+  if ($Operation -eq 'create' -and (Test-Path $disk)) { throw 'Dependency image already exists' }
+  $mountAttempted = $true
   if ($Operation -eq 'create') {
-    if (Test-Path $disk) { throw 'Dependency image already exists' }
     Invoke-DiskPart @(
       "create vdisk file=`"$disk`" maximum=16384 type=expandable",
       "select vdisk file=`"$disk`"",
@@ -64,7 +66,7 @@ try {
   'active=true' | Out-File -Append $env:GITHUB_OUTPUT
 } catch {
   Write-Host "::warning::Dependency disk unavailable; using a fresh install. $($_.Exception.Message)"
-  if ((Get-DiskImage -ImagePath $disk -ErrorAction SilentlyContinue).Attached) {
+  if ($mountAttempted -and (Get-DiskImage -ImagePath $disk -ErrorAction SilentlyContinue).Attached) {
     try { Dismount-Dependencies } catch { Write-Host "::warning::Could not detach unused dependency disk: $($_.Exception.Message)" }
   }
   'active=false' | Out-File -Append $env:GITHUB_OUTPUT
