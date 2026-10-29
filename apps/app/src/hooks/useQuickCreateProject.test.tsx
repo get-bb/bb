@@ -2,6 +2,8 @@
 
 import { act, cleanup, renderHook } from "@testing-library/react";
 import type { Host } from "@bb/domain";
+import { createDeferredPromise } from "@bb/test-helpers";
+import type { LocalPathSubmitParams } from "./useLocalPathPicker";
 import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useQuickCreateProject } from "./useQuickCreateProject";
@@ -9,7 +11,7 @@ import { useQuickCreateProject } from "./useQuickCreateProject";
 const mocks = vi.hoisted(() => ({
   hosts: [] as Host[] | undefined,
   isLoadingHosts: false,
-  mutate: vi.fn(),
+  mutateAsync: vi.fn(),
   navigate: vi.fn(),
   onClose: vi.fn(),
   onOpen: vi.fn(),
@@ -25,7 +27,10 @@ vi.mock("react-router-dom", () => ({
 }));
 
 vi.mock("@/hooks/mutations/project-mutations", () => ({
-  useCreateProject: () => ({ isPending: false, mutate: mocks.mutate }),
+  useCreateProject: () => ({
+    isPending: false,
+    mutateAsync: mocks.mutateAsync,
+  }),
 }));
 
 vi.mock("@/hooks/queries/host-queries", async (importOriginal) => ({
@@ -34,7 +39,11 @@ vi.mock("@/hooks/queries/host-queries", async (importOriginal) => ({
 }));
 
 vi.mock("@/hooks/useLocalPathPicker", () => ({
-  useLocalPathPicker: () => ({
+  useLocalPathPicker: ({
+    submit,
+  }: {
+    submit: (params: LocalPathSubmitParams) => void;
+  }) => ({
     isAvailable: true,
     hostId: "host_atum",
     hostName: "atum",
@@ -48,7 +57,11 @@ vi.mock("@/hooks/useLocalPathPicker", () => ({
       onOpenChange: mocks.onOpenChange,
       target: null,
     },
-    submitProjectPath: vi.fn(),
+    submitProjectPath: (
+      target: LocalPathSubmitParams["target"],
+      path: string,
+      hostId: string,
+    ) => submit({ target, path, hostId, closeDialog: mocks.onClose }),
   }),
 }));
 
@@ -105,5 +118,45 @@ describe("useQuickCreateProject", () => {
       "host_thoth",
       "host_sandbox",
     ]);
+  });
+});
+
+describe("manual folder observation", () => {
+  it("waits for the usable project and retains attribution after the observer unmounts", async () => {
+    const pending = createDeferredPromise<{ id: string }>();
+    mocks.mutateAsync.mockReturnValueOnce(pending.promise);
+    const onResult = vi.fn();
+    const view = renderHook(() => useQuickCreateProject());
+    act(() => view.result.current.openCreateDialogWithResult(onResult));
+    act(() =>
+      view.result.current.submitProjectPath(
+        { kind: "create" },
+        "/private/repo",
+        "host_atum",
+      ),
+    );
+    expect(onResult).not.toHaveBeenCalled();
+    view.unmount();
+    await act(async () => pending.resolve({ id: "project_created" }));
+    expect(onResult).toHaveBeenCalledExactlyOnceWith("selected");
+    expect(mocks.navigate).not.toHaveBeenCalled();
+  });
+
+  it("reports real mutation failures but does not infer cancellation from dialog closure", async () => {
+    mocks.mutateAsync.mockRejectedValueOnce(new Error("private path"));
+    const onResult = vi.fn();
+    const view = renderHook(() => useQuickCreateProject());
+    act(() => view.result.current.openCreateDialogWithResult(onResult));
+    act(() => view.result.current.projectPathDialog.onOpenChange(false));
+    expect(onResult).not.toHaveBeenCalled();
+    await act(async () =>
+      view.result.current.submitProjectPath(
+        { kind: "create" },
+        "/private/repo",
+        "host_atum",
+      ),
+    );
+    expect(onResult).toHaveBeenCalledExactlyOnceWith("failed");
+    expect(mocks.navigate).not.toHaveBeenCalled();
   });
 });

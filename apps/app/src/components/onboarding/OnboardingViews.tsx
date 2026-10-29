@@ -1,5 +1,5 @@
 import { ExpandableText } from "@bb/shared-ui/expandable-text";
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import type { ExperimentalProviderIconProps } from "@get-bb/plugin-sdk/app";
 import { Button } from "@bb/shared-ui/button";
 import { Checkbox } from "@bb/shared-ui/checkbox";
@@ -24,12 +24,17 @@ import {
   type OnboardingStepId,
   type SignInGuide,
 } from "./onboarding-model";
+import {
+  createVisibleTransitionObserver,
+  useVisibleObservation,
+} from "./onboarding-journey-observation";
 import bbLogoUrl from "../../../../../assets/bb-logo.svg";
 
 const CONTENT_COLUMN_CLASS =
   "mx-auto w-full max-w-[600px] px-4 @min-[36rem]/onboarding:px-6";
 
 interface OnboardingLayoutProps {
+  observeDisplay?: () => void;
   step: OnboardingStepId;
   compact?: boolean;
   reserveMacosTrafficLights?: boolean;
@@ -49,6 +54,7 @@ interface OnboardingLayoutProps {
 }
 
 export function OnboardingLayout({
+  observeDisplay,
   step,
   compact = false,
   reserveMacosTrafficLights = false,
@@ -66,9 +72,13 @@ export function OnboardingLayout({
   onSelectStep,
   onSkipAll,
 }: OnboardingLayoutProps) {
+  const observationRef = useVisibleObservation<HTMLDivElement>(() =>
+    observeDisplay?.(),
+  );
   const activeIndex = ONBOARDING_STEPS.findIndex((entry) => entry.id === step);
   return (
     <div
+      ref={observationRef}
       data-testid="onboarding"
       className="@container/onboarding flex min-h-0 flex-1 flex-col bg-background text-foreground"
     >
@@ -211,6 +221,10 @@ export interface OnboardingAgent {
   provider: ExperimentalProviderIconProps["provider"];
   state: AgentSetupState;
   expanded?: ReactNode;
+  observation?: {
+    key: string;
+    record: (trigger: "step_visible" | "state_changed") => void;
+  };
 }
 
 function agentSubline(state: AgentSetupState): string {
@@ -254,9 +268,15 @@ function AgentRow({
   onViewInstallLog,
   onCancelSignIn,
 }: AgentRowHandlers & { agent: OnboardingAgent }) {
+  const transition = useRef(createVisibleTransitionObserver());
+  const observationRef = useVisibleObservation<HTMLLIElement>(() => {
+    if (agent.observation === undefined) return;
+    const trigger = transition.current(agent.observation.key, true);
+    if (trigger !== null) agent.observation.record(trigger);
+  });
   const { state } = agent;
   return (
-    <li className="px-3 py-3" data-agent-id={agent.id}>
+    <li ref={observationRef} className="px-3 py-3" data-agent-id={agent.id}>
       <div
         className={cn(
           "items-center gap-3",

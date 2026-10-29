@@ -1526,7 +1526,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Retry failed environment cleanup with recover: true after inspecting processes using the workspace",
         ],
         reference: [
-          "Core setup telemetry uses system.experimental_recordTelemetryEvent: strict anonymous guide-operation observations (agent install/update, project scan/import, plugin install/enable), with first_run/replay, bounded outcomes and categories, and counts only for imports. Missing job results stay unknown; queued is not success. Existing events and usage-data opt-out are preserved. No raw errors, paths, names or new tracking IDs are accepted; this is not a general plugin analytics API.",
+          "Core setup telemetry uses system.experimental_recordTelemetryEvent: strict anonymous guide-operation observations (agent install/update, project scan/import, plugin install/enable), with first_run/replay, bounded outcomes and categories, and counts only for imports. Journey observations cover visible baseline design/window classes, explicit navigation, Agent readiness, project discovery/manual-folder results, work surfaces and typed setup blockers. A shown blocker is not a send attempt; loading or closing does not mean recovery. Missing results stay unknown; queued is not success. Clients cannot report experiment assignments. Existing events and usage-data opt-out are preserved. No prompts, raw errors, paths, names or new tracking IDs are accepted; this is not a general plugin analytics API.",
         ],
         apiSymbols: [
           "BbPluginApi",

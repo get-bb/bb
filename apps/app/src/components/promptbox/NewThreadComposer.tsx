@@ -1,3 +1,7 @@
+import {
+  WorkSurfaceObservation,
+  type NewThreadReadiness,
+} from "@/components/onboarding/WorkSurfaceObservation";
 import { createCoreComposerActions } from "@/lib/plugin-composer-handle";
 import {
   readPendingAttachmentUploads,
@@ -301,23 +305,33 @@ type LiveDraftNewThreadPromptBoxProps = Omit<
   attachments: Omit<NewThreadPromptBoxProps["attachments"], "items">;
   history: Omit<NewThreadPromptBoxProps["history"], "currentDraft">;
   promptDraft: PromptDraftController;
+  readiness: NewThreadReadiness;
 };
 
 function LiveDraftNewThreadPromptBox({
   attachments,
   history,
   promptDraft,
+  readiness,
   ...promptBoxProps
 }: LiveDraftNewThreadPromptBoxProps) {
   const draft = usePromptDraftSnapshot(promptDraft);
   return (
-    <NewThreadPromptBox
-      {...promptBoxProps}
-      value={draft.text}
-      mentionRanges={draft.mentions}
-      history={{ ...history, currentDraft: draft }}
-      attachments={{ ...attachments, items: draft.attachments }}
-    />
+    <WorkSurfaceObservation
+      surface="first_task"
+      identity={promptDraft.storageKey}
+      enabled={true}
+      hasDraft={!isPromptDraftEmpty(draft)}
+      readiness={readiness}
+    >
+      <NewThreadPromptBox
+        {...promptBoxProps}
+        value={draft.text}
+        mentionRanges={draft.mentions}
+        history={{ ...history, currentDraft: draft }}
+        attachments={{ ...attachments, items: draft.attachments }}
+      />
+    </WorkSurfaceObservation>
   );
 }
 
@@ -341,9 +355,10 @@ export interface ResolveNewThreadSubmitDisabledReasonArgs {
   selectedProviderId: string;
   selectedThreadModel: string;
   submissionEnvironmentUnavailable: boolean;
+  submissionMachineUnavailable: boolean;
 }
 
-export function resolveNewThreadSubmitDisabledReason({
+export function resolveNewThreadReadiness({
   environmentProviderInputsBlocker,
   environmentSetupRequiredReason,
   isCopyingAttachments,
@@ -358,20 +373,40 @@ export function resolveNewThreadSubmitDisabledReason({
   selectedProviderId,
   selectedThreadModel,
   submissionEnvironmentUnavailable,
-}: ResolveNewThreadSubmitDisabledReasonArgs): string | null {
-  if (isSubmitting) return "Starting thread...";
+  submissionMachineUnavailable,
+}: ResolveNewThreadSubmitDisabledReasonArgs): NewThreadReadiness {
+  if (isSubmitting) return { status: "pending", message: "Starting thread..." };
   if (isCopyingAttachments) {
-    return "Moving attachments to the selected project...";
+    return {
+      status: "pending",
+      message: "Moving attachments to the selected project...",
+    };
   }
-  if (isUploading) return "Uploading attachments...";
+  if (isUploading)
+    return { status: "pending", message: "Uploading attachments..." };
   if (projectDefaultsUnavailable) {
     return projectDefaultsStatus === "error"
-      ? "Could not load the project's execution defaults."
-      : "Loading the project's execution defaults...";
+      ? {
+          status: "blocked",
+          reason: "project_setup",
+          message: "Could not load the project's execution defaults.",
+        }
+      : {
+          status: "pending",
+          message: "Loading the project's execution defaults...",
+        };
   }
-  if (!selectedProviderId) return "Select a provider.";
+  if (!selectedProviderId)
+    return {
+      status: "blocked",
+      reason: "provider_selection",
+      message: "Select a provider.",
+    };
   if (isLoadingModels) {
-    return "Loading models from the selected machine...";
+    return {
+      status: "pending",
+      message: "Loading models from the selected machine...",
+    };
   }
 
   const fatalModelLoadError =
@@ -379,17 +414,56 @@ export function resolveNewThreadSubmitDisabledReason({
     modelLoadError?.code === "missing_executable" ||
     modelLoadError?.code === "auth_required";
   if (modelLoadError && (fatalModelLoadError || !selectedThreadModel)) {
-    return formatModelLoadErrorText({
-      error: modelLoadError,
-      providerLabel: providerDisplayName || selectedProviderId,
-    });
+    return {
+      status: "blocked",
+      reason:
+        modelLoadError.code === "missing_executable"
+          ? "agent_missing"
+          : modelLoadError.code === "auth_required"
+            ? "sign_in"
+            : "model_unavailable",
+      message: formatModelLoadErrorText({
+        error: modelLoadError,
+        providerLabel: providerDisplayName || selectedProviderId,
+      }),
+    };
   }
-  if (!selectedThreadModel) return "Select a model.";
-  if (environmentSetupRequiredReason) return environmentSetupRequiredReason;
-  if (environmentProviderInputsBlocker) return environmentProviderInputsBlocker;
-  if (submissionEnvironmentUnavailable) return "Select an environment.";
-  if (promptInputEmpty) return "Enter a prompt or attach a file.";
-  return null;
+  if (!selectedThreadModel)
+    return {
+      status: "blocked",
+      reason: "model_selection",
+      message: "Select a model.",
+    };
+  if (environmentSetupRequiredReason)
+    return {
+      status: "blocked",
+      reason: "project_setup",
+      message: environmentSetupRequiredReason,
+    };
+  if (environmentProviderInputsBlocker)
+    return {
+      status: "blocked",
+      reason: "project_setup",
+      message: environmentProviderInputsBlocker,
+    };
+  if (submissionEnvironmentUnavailable)
+    return {
+      status: "blocked",
+      reason: submissionMachineUnavailable
+        ? "machine_unavailable"
+        : "project_setup",
+      message: "Select an environment.",
+    };
+  if (promptInputEmpty)
+    return { status: "empty", message: "Enter a prompt or attach a file." };
+  return { status: "ready" };
+}
+
+export function resolveNewThreadSubmitDisabledReason(
+  args: ResolveNewThreadSubmitDisabledReasonArgs,
+): string | null {
+  const readiness = resolveNewThreadReadiness(args);
+  return readiness.status === "ready" ? null : readiness.message;
 }
 
 export function resolveNewThreadProjectDefaultsState({
@@ -1615,7 +1689,7 @@ export function NewThreadComposer({
     : (selectedEnvironment ??
       (selectionScope === "new-thread" ? seed?.environment : undefined) ??
       null);
-  const submissionReadinessReason = resolveNewThreadSubmitDisabledReason({
+  const submissionReadiness = resolveNewThreadReadiness({
     environmentProviderInputsBlocker:
       machineProviderInputs.blockedReason ?? environmentProviderInputsBlocker,
     environmentSetupRequiredReason:
@@ -1632,7 +1706,10 @@ export function NewThreadComposer({
     selectedProviderId,
     selectedThreadModel,
     submissionEnvironmentUnavailable: submissionEnvironment === null,
+    submissionMachineUnavailable: selectedProviderMachineUnavailable,
   });
+  const submissionReadinessReason =
+    submissionReadiness.status === "ready" ? null : submissionReadiness.message;
   const submitDisabledReason =
     submissionReadinessReason ??
     (promptInputEmpty ? "Enter a prompt or attach a file." : null);
@@ -1952,6 +2029,15 @@ export function NewThreadComposer({
       const disabledReason = options.blockedReason ?? submitDisabledReason;
       return (
         <LiveDraftNewThreadPromptBox
+          readiness={
+            options.blockedReason === undefined
+              ? submissionReadiness
+              : {
+                  status: "blocked",
+                  reason: "other",
+                  message: options.blockedReason,
+                }
+          }
           promptDraft={promptDraft}
           id={options.id}
           focusRequest={promptBoxFocusRequest}
@@ -2183,6 +2269,7 @@ export function NewThreadComposer({
       supportsPermissionModeSelection,
       supportsServiceTier,
       submitDisabledReason,
+      submissionReadiness,
       machineServerAccessReason,
       setupRequiredProvider,
       environmentSetupRequiredReason,
