@@ -126,6 +126,7 @@ describe("survey page", () => {
         const set = /^\[data-question="(\w+)"\]$/.exec(selector)?.[1];
         if (set && sets[set]) return sets[set];
         if (selector === "[data-meetup-label]") return { textContent: "" };
+        if (selector === 'button[type="submit"]') return { disabled: false };
         expect(selector).toBe('[name="community"][value="Other"]:checked');
         return otherChecked ? { value: "Other" } : null;
       },
@@ -138,6 +139,7 @@ describe("survey page", () => {
     runInNewContext(script, {
       document: { querySelector: () => form },
       matchMedia: () => ({ addEventListener: () => {} }),
+      window: { addEventListener: () => {} },
     });
     expect(team.hidden).toBe(false);
     expect(adopt.hidden).toBe(true);

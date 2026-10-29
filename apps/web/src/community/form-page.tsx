@@ -101,6 +101,7 @@ if (form) {
     }
     save();
   };
+  const submitButton = form.querySelector('button[type="submit"]');
   form.addEventListener('submit', e => {
     for (const set of form.querySelectorAll('fieldset[data-question]')) {
       const boxes = set.querySelectorAll('input[type="checkbox"]');
@@ -110,7 +111,9 @@ if (form) {
       e.preventDefault();
       return;
     }
+    submitButton.disabled = true;
   });
+  window.addEventListener('pageshow', () => { submitButton.disabled = false; });
   form.addEventListener('change', e => {
     update();
     if (e.target.value === 'Other' && e.target.checked) form.querySelector('[data-other="' + e.target.name + '"]')?.focus();
@@ -309,7 +312,7 @@ export function formPage({
   unavailable = false,
   claimLink = null,
   claimOpen = true,
-  emailed = false,
+  emailStatus = "none",
   duplicate = false,
   alreadyClaimed = false,
   jotform = null,
@@ -324,7 +327,7 @@ export function formPage({
   unavailable?: boolean;
   claimLink?: string | null;
   claimOpen?: boolean;
-  emailed?: boolean;
+  emailStatus?: "sent" | "queued" | "none";
   duplicate?: boolean;
   alreadyClaimed?: boolean;
   jotform?: string | null;
@@ -368,10 +371,12 @@ export function formPage({
                 ) : (
                   <>
                     <p>
-                      <strong>Thanks!</strong>{" "}
-                      {emailed
-                        ? "We've emailed you your results."
-                        : "We'll email you the results."}
+                      <strong>Thanks!</strong>
+                      {emailStatus === "sent"
+                        ? " We've emailed you your results."
+                        : emailStatus === "queued"
+                          ? " We'll email you your results shortly."
+                          : ""}
                     </p>
                     <p>
                       {claimLink ? (

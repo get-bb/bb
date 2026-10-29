@@ -5,9 +5,11 @@ import type { FormValues } from "./survey";
 
 type OutboxEnv = Pick<Env, "DB" | "RESEND_API_KEY">;
 
+export type EmailStatus = "sent" | "queued" | "none";
 export const EMAIL_MAX_ATTEMPTS = 6;
 const INLINE_DELAYS_MS = [0, 600];
 const RETRY_BATCH = 25;
+const ABANDONED_AFTER_MS = 10 * 60_000;
 
 const dueRow = z.object({
   id: z.string(),
@@ -52,7 +54,7 @@ export async function queueSurveyEmail(
   claimLink: string | null,
   now: number,
   wait?: (ms: number) => Promise<void>,
-): Promise<boolean> {
+): Promise<EmailStatus> {
   await env.DB.prepare(
     "INSERT INTO community_survey_email_outbox (id, to_email, claim_link, attempts) VALUES (?, ?, ?, 0) ON CONFLICT(id) DO NOTHING",
   )
@@ -67,7 +69,7 @@ export async function queueSurveyEmail(
     wait,
   );
   await record(env, id, 1, result, now);
-  return result === "sent";
+  return result === "failed" ? "none" : result === "sent" ? "sent" : "queued";
 }
 
 export async function retrySurveyEmails(
@@ -75,9 +77,9 @@ export async function retrySurveyEmails(
   now: number,
 ): Promise<void> {
   const due = await env.DB.prepare(
-    "SELECT o.id, o.to_email, o.claim_link, o.attempts, r.answers FROM community_survey_email_outbox o JOIN community_survey_response r ON r.id = o.id WHERE o.sent_at IS NULL AND o.attempts > 0 AND o.attempts < ? LIMIT ?",
+    "SELECT o.id, o.to_email, o.claim_link, o.attempts, r.answers FROM community_survey_email_outbox o JOIN community_survey_response r ON r.id = o.id WHERE o.sent_at IS NULL AND o.attempts < ? AND (o.attempts > 0 OR r.created_at < ?) ORDER BY r.created_at LIMIT ?",
   )
-    .bind(EMAIL_MAX_ATTEMPTS, RETRY_BATCH)
+    .bind(EMAIL_MAX_ATTEMPTS, now - ABANDONED_AFTER_MS, RETRY_BATCH)
     .all();
   for (const raw of due.results) {
     const row = dueRow.safeParse(raw);

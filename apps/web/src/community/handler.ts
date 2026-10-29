@@ -2,7 +2,7 @@ import { sha256Hex } from "@bb/connect-db";
 import { z } from "zod";
 import type { Env } from "../server/env";
 import { formPage, type FormKind } from "./form-page";
-import { queueSurveyEmail } from "./outbox";
+import { queueSurveyEmail, type EmailStatus } from "./outbox";
 import {
   questionVisible,
   surveyFields,
@@ -254,23 +254,23 @@ export async function handleCommunityForm(
       ? claimUrl(env.COMMUNITY_STICKER_CLAIM_URL, allocated.data.code, email)
       : null;
     const alreadyClaimed = !emailRow?.meta.changes;
-    const emailed =
-      !alreadyClaimed &&
-      (await queueSurveyEmail(
-        env,
-        id,
-        email,
-        surveyAnswers(values),
-        claimLink,
-        Date.now(),
-      ).catch(() => false));
+    const emailStatus = claimLink
+      ? await queueSurveyEmail(
+          env,
+          id,
+          email,
+          surveyAnswers(values),
+          claimLink,
+          Date.now(),
+        ).catch((): EmailStatus => "queued")
+      : "none";
     return page({
       complete: true,
       values,
       claimLink,
       claimOpen,
       alreadyClaimed,
-      emailed,
+      emailStatus,
     });
   } catch {
     return page({

@@ -381,7 +381,7 @@ describe("private community forms", () => {
     });
     try {
       const html = await (await postWithKey({})).text();
-      expect(html).toContain("email you the results");
+      expect(html).toContain("email you your results shortly");
       const [queued] = await outbox();
       expect(queued?.sent_at).toBeNull();
       expect(queued?.attempts).toBe(1);
@@ -397,6 +397,64 @@ describe("private community forms", () => {
       const calls = keys.length;
       await retrySurveyEmails({ DB: db, RESEND_API_KEY: "key" }, Date.now());
       expect(keys).toHaveLength(calls);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+  it("recovers an email whose request ended before it was recorded", async () => {
+    const id = crypto.randomUUID();
+    const created = Date.now() - 30 * 60_000;
+    await db.batch([
+      db
+        .prepare(
+          "INSERT INTO community_survey_response (id, created_at, answers) VALUES (?, ?, ?)",
+        )
+        .bind(id, created, JSON.stringify(requiredAnswers)),
+      db
+        .prepare(
+          "INSERT INTO community_survey_email_outbox (id, to_email, claim_link, attempts) VALUES (?, 'ada@example.test', 'https://test-shop.myshopify.com/cart/123:1?discount=CODE0001', 0)",
+        )
+        .bind(id),
+    ]);
+    let calls = 0;
+    vi.stubGlobal("fetch", async () => {
+      calls++;
+      return new Response("{}", { status: 200 });
+    });
+    try {
+      await retrySurveyEmails(
+        { DB: db, RESEND_API_KEY: "key" },
+        created + 5 * 60_000,
+      );
+      expect(calls).toBe(0);
+      await retrySurveyEmails(
+        { DB: db, RESEND_API_KEY: "key" },
+        created + 11 * 60_000,
+      );
+      expect(calls).toBe(1);
+      expect((await outbox())[0]?.sent_at).toBeTypeOf("number");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+  it("sends no email and promises none without a claimed code", async () => {
+    let calls = 0;
+    vi.stubGlobal("fetch", async () => {
+      calls++;
+      return new Response("{}", { status: 200 });
+    });
+    try {
+      await db.prepare("UPDATE community_gift_code SET claimed = 1").run();
+      const soldOut = await (await postWithKey({})).text();
+      const repeat = await (
+        await postWithKey({ email: "Ada+again@example.test" })
+      ).text();
+      for (const html of [soldOut, repeat]) {
+        expect(html).not.toContain("emailed you");
+        expect(html).not.toContain("email you your results");
+      }
+      expect(calls).toBe(0);
+      expect(await outbox()).toEqual([]);
     } finally {
       vi.unstubAllGlobals();
     }
@@ -449,7 +507,7 @@ describe("private community forms", () => {
   });
   it("says results will be emailed when the email can't be sent", async () => {
     const html = await (await submit()).text();
-    expect(html).toContain("email you the results");
+    expect(html).toContain("email you your results shortly");
   });
   it("rate limits IPv6 clients by their /64 network", () => {
     expect(rateLimitKey("2001:db8:0:1::a")).toBe("2001:db8:0:1::/64");

@@ -330,6 +330,8 @@ export async function sendSurveyEmail(
       });
       if (response.ok) return "sent";
       result =
+        response.status === 401 ||
+        response.status === 403 ||
         response.status === 429 ||
         response.status === 409 ||
         response.status >= 500
