@@ -80,6 +80,10 @@ describe("bb plugin enable", () => {
 
     await runCommand(["plugin", "enable", "boom"], register);
 
+    expect(vi.mocked(fetch).mock.calls[0]?.[1]?.body).toBe(
+      JSON.stringify({ measurementSource: "cli" }),
+    );
+
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
       "boom@0.0.1  disabled  (held by plugin safe mode)",
       "  source: path:/plugins/boom",

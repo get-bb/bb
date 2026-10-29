@@ -1171,8 +1171,14 @@ export function registerPluginCommands(
           if (!opts.wait) {
             const job =
               request.kind === "source"
-                ? await plugins.startInstall(request.args)
-                : await plugins.catalog.startInstall(request.args);
+                ? await plugins.startInstall({
+                    ...request.args,
+                    measurementSource: "cli",
+                  })
+                : await plugins.catalog.startInstall({
+                    ...request.args,
+                    measurementSource: "cli",
+                  });
             if (opts.json) {
               outputJson(opts, { ok: true as const, job });
               return;
@@ -1187,8 +1193,14 @@ export function registerPluginCommands(
           }
           const plugin =
             request.kind === "source"
-              ? await plugins.install(request.args)
-              : await plugins.catalog.install(request.args);
+              ? await plugins.install({
+                  ...request.args,
+                  measurementSource: "cli",
+                })
+              : await plugins.catalog.install({
+                  ...request.args,
+                  measurementSource: "cli",
+                });
           const result = { ok: true as const, plugin };
           if (opts.json) {
             outputJson(opts, result);
@@ -1797,6 +1809,7 @@ export function registerPluginCommands(
               getUrl(),
               `/${encodeURIComponent(id)}/${name}`,
               "POST",
+              { measurementSource: "cli" },
             ),
           );
           const failedPlugin =
