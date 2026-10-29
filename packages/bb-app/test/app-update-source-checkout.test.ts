@@ -29,20 +29,26 @@ afterEach(() => {
   for (const fixture of fixtures.splice(0)) fixture.cleanup();
 });
 
-async function createCheckout(): Promise<GitCheckoutFixture> {
+async function createCheckout(): Promise<
+  GitCheckoutFixture & { running: string }
+> {
   const fixture = await createGitCheckout(template);
   fixtures.push(fixture);
-  return fixture;
+  return {
+    ...fixture,
+    running: await git(fixture.checkout, "rev-parse", "HEAD"),
+  };
 }
 
 describe("source checkout inspection", { timeout: 30_000 }, () => {
   it("reports nothing to update when main matches origin/main", async () => {
-    const { checkout } = await createCheckout();
+    const { checkout, running } = await createCheckout();
 
     const check = await inspectSourceCheckout({
       fetch: true,
       repoRoot: checkout,
       runner: runCommand,
+      running,
     });
 
     expect(check.blocked).toBeNull();
@@ -51,7 +57,7 @@ describe("source checkout inspection", { timeout: 30_000 }, () => {
   });
 
   it("offers the fetched origin/main commit with its subjects and version", async () => {
-    const { checkout, upstream } = await createCheckout();
+    const { checkout, running, upstream } = await createCheckout();
     await publish(upstream, "1.1.0", "Add feature");
     const tip = await publish(upstream, "1.2.0", "Fix bug");
 
@@ -59,6 +65,7 @@ describe("source checkout inspection", { timeout: 30_000 }, () => {
       fetch: true,
       repoRoot: checkout,
       runner: runCommand,
+      running,
     });
 
     expect(check.blocked).toBeNull();
@@ -70,8 +77,47 @@ describe("source checkout inspection", { timeout: 30_000 }, () => {
     });
   });
 
+  it("counts incoming commits from the running commit after the checkout was pulled", async () => {
+    const { checkout, running, upstream } = await createCheckout();
+    await publish(upstream, "1.1.0", "Add feature");
+    await git(checkout, "pull", "-q", "--ff-only", "origin", "main");
+    const tip = await publish(upstream, "1.2.0", "Fix bug");
+
+    const check = await inspectSourceCheckout({
+      fetch: true,
+      repoRoot: checkout,
+      runner: runCommand,
+      running,
+    });
+
+    expect(check.blocked).toBeNull();
+    expect(check.incoming).toEqual({
+      commit: tip,
+      commitCount: 2,
+      subjects: ["Fix bug", "Add feature"],
+      version: "1.2.0",
+    });
+  });
+
+  it("offers origin/main when the checkout was pulled to it but bb still runs an older commit", async () => {
+    const { checkout, running, upstream } = await createCheckout();
+    const tip = await publish(upstream, "1.1.0", "Add feature");
+    await git(checkout, "pull", "-q", "--ff-only", "origin", "main");
+
+    const check = await inspectSourceCheckout({
+      fetch: true,
+      repoRoot: checkout,
+      runner: runCommand,
+      running,
+    });
+
+    expect(check.blocked).toBeNull();
+    expect(check.incoming?.commit).toBe(tip);
+    expect(check.incoming?.commitCount).toBe(1);
+  });
+
   it("blocks updates over uncommitted tracked changes but not untracked files", async () => {
-    const { checkout, upstream } = await createCheckout();
+    const { checkout, running, upstream } = await createCheckout();
     await publish(upstream, "1.1.0", "Add feature");
     writeRepoFile(checkout, "scratch.txt", "untracked");
 
@@ -79,6 +125,7 @@ describe("source checkout inspection", { timeout: 30_000 }, () => {
       fetch: true,
       repoRoot: checkout,
       runner: runCommand,
+      running,
     });
     expect(untracked.blocked).toBeNull();
 
@@ -87,13 +134,14 @@ describe("source checkout inspection", { timeout: 30_000 }, () => {
       fetch: false,
       repoRoot: checkout,
       runner: runCommand,
+      running,
     });
     expect(dirty.blocked?.reason).toBe("uncommitted-changes");
     expect(dirty.incoming?.commitCount).toBe(1);
   });
 
   it("blocks updates on a branch other than main", async () => {
-    const { checkout, upstream } = await createCheckout();
+    const { checkout, running, upstream } = await createCheckout();
     await publish(upstream, "1.1.0", "Add feature");
     await git(checkout, "checkout", "-q", "-b", "feature");
 
@@ -101,13 +149,14 @@ describe("source checkout inspection", { timeout: 30_000 }, () => {
       fetch: true,
       repoRoot: checkout,
       runner: runCommand,
+      running,
     });
 
     expect(check.blocked?.reason).toBe("not-on-main");
   });
 
   it("blocks updates when local main has commits origin/main lacks", async () => {
-    const { checkout, upstream } = await createCheckout();
+    const { checkout, running, upstream } = await createCheckout();
     await publish(upstream, "1.1.0", "Add feature");
     await commitVersion(checkout, "1.0.1", "Local work");
 
@@ -115,6 +164,7 @@ describe("source checkout inspection", { timeout: 30_000 }, () => {
       fetch: true,
       repoRoot: checkout,
       runner: runCommand,
+      running,
     });
 
     expect(check.blocked?.reason).toBe("diverged");
@@ -122,7 +172,7 @@ describe("source checkout inspection", { timeout: 30_000 }, () => {
   });
 
   it("reports a failed fetch instead of throwing", async () => {
-    const { checkout } = await createCheckout();
+    const { checkout, running } = await createCheckout();
     await git(
       checkout,
       "remote",
@@ -135,6 +185,7 @@ describe("source checkout inspection", { timeout: 30_000 }, () => {
       fetch: true,
       repoRoot: checkout,
       runner: runCommand,
+      running,
     });
 
     expect(check.blocked?.reason).toBe("fetch-failed");
@@ -145,23 +196,27 @@ describe("source checkout inspection", { timeout: 30_000 }, () => {
 describe("source checkout switching", { timeout: 30_000 }, () => {
   it("fast-forwards to the offered commit", async () => {
     const { checkout, upstream } = await createCheckout();
-    const from = await git(checkout, "rev-parse", "HEAD");
     const to = await publish(upstream, "1.1.0", "Add feature");
     await git(checkout, "fetch", "-q", "origin", "main");
 
-    await fastForwardSource({
-      from,
-      repoRoot: checkout,
-      runner: runCommand,
-      to,
-    });
+    await fastForwardSource({ repoRoot: checkout, runner: runCommand, to });
     expect(await git(checkout, "rev-parse", "HEAD")).toBe(to);
     expect(await git(checkout, "symbolic-ref", "--short", "HEAD")).toBe("main");
   });
 
-  it("refuses to fast-forward a checkout that moved after the request", async () => {
+  it("fast-forwards a checkout that was pulled partway to the offered commit", async () => {
     const { checkout, upstream } = await createCheckout();
-    const from = await git(checkout, "rev-parse", "HEAD");
+    await publish(upstream, "1.1.0", "Add feature");
+    await git(checkout, "pull", "-q", "--ff-only", "origin", "main");
+    const to = await publish(upstream, "1.2.0", "Fix bug");
+    await git(checkout, "fetch", "-q", "origin", "main");
+
+    await fastForwardSource({ repoRoot: checkout, runner: runCommand, to });
+    expect(await git(checkout, "rev-parse", "HEAD")).toBe(to);
+  });
+
+  it("refuses to fast-forward a checkout with commits the offered commit lacks", async () => {
+    const { checkout, upstream } = await createCheckout();
     const to = await publish(upstream, "1.1.0", "Add feature");
     await git(checkout, "fetch", "-q", "origin", "main");
     await git(
@@ -175,7 +230,7 @@ describe("source checkout switching", { timeout: 30_000 }, () => {
     );
 
     await expect(
-      fastForwardSource({ from, repoRoot: checkout, runner: runCommand, to }),
-    ).rejects.toThrow("moved");
+      fastForwardSource({ repoRoot: checkout, runner: runCommand, to }),
+    ).rejects.toThrow("does not contain");
   });
 });

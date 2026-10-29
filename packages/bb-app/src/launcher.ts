@@ -3996,14 +3996,6 @@ export async function runSourceAppUpdateShim(
       log(dim("●"), "Rebuilding bb");
       await args.prepareRuntime();
     },
-    readHead: async () =>
-      (
-        await runCheckedCommand(runCommand, "git rev-parse", {
-          args: ["rev-parse", "HEAD"],
-          command: "git",
-          cwd: args.repoRoot,
-        })
-      ).stdout.trim(),
     repoRoot: args.repoRoot,
     runner: runCommand,
     spawnLauncher: (mode) =>

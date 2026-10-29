@@ -190,7 +190,7 @@ export function createLauncherAppUpdateController(
         version: target.version,
       });
     }
-    if (args.repoRoot === null) {
+    if (args.repoRoot === null || args.current.kind !== "source") {
       throw new Error("This bb is not running from a source checkout.");
     }
     setStep("Checking origin/main");
@@ -198,6 +198,7 @@ export function createLauncherAppUpdateController(
       fetch: true,
       repoRoot: args.repoRoot,
       runner: args.runner,
+      running: args.current.commit,
       signal: abortController.signal,
     });
     if (check.blocked !== null) throw new Error(check.blocked.message);
@@ -295,13 +296,14 @@ export function createLauncherAppUpdateController(
   ): Promise<unknown> => {
     switch (request.type) {
       case "check-source": {
-        if (args.mode !== "source" || args.repoRoot === null) {
+        if (args.repoRoot === null || args.current.kind !== "source") {
           throw new Error("This bb is not running from a source checkout.");
         }
         return inspectSourceCheckout({
           fetch: true,
           repoRoot: args.repoRoot,
           runner: args.runner,
+          running: args.current.commit,
           signal: abortController.signal,
         });
       }
