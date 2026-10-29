@@ -19,7 +19,7 @@ A quality and performance release: bb loads faster, sends far less over the wire
 
 - **The composer is ready sooner:** threads fetch the composer's data and runtime alongside the page instead of after it, and code only some plugins use no longer delays the composer and sidebar. After a reload, the open panel tab's plugin loads first.
 - **Commands without the wait:** slash command and skill lists come from a cache instead of waiting on the machine for each new thread.
-- **Much smaller live updates:** a running thread sends only what changed, about 1–2 KB instead of 11–42 KB per update, and opening a thread no longer resends the whole timeline, which was often 400–500 KB. Early adopters also get compressed live updates, about 4x smaller.
+- **Much smaller live updates:** a running thread sends only what changed. With **Pushed timeline updates** (an early adopter experiment), each update is about 1–2 KB instead of 11–42 KB, and opening a thread no longer resends the whole timeline, which was often 400–500 KB. Early adopters also get compressed live updates, about 4x smaller.
 - **Less CPU on busy Macs:** bb watches only the threads you're viewing instead of every thread's files, so macOS file watching stays quiet on machines running many agents.
 - **Less memory and bandwidth:** editing a skill resends only the files that changed instead of the whole folder, a 34 MiB attachment peaks at under 2 MiB of memory instead of 65 MiB, and updates and plugin downloads stream to disk.
 - **Snappier UI:** opening or closing a plugin page no longer restyles the whole app, and the Open menu answers instantly instead of rescanning your apps each time.
@@ -144,11 +144,11 @@ Connect MCP clients to bb, install the bb CLI from Settings, search Settings, an
 
 ### Highlights
 
-- **MCP server (Experimental):** the new MCP plugin lets MCP clients find and run bb commands over bb Connect, with OAuth sign-in through your bb account. Off by default; enable it in Settings → Plugins and manage access with `bb mcp clients` and `bb mcp revoke`.
+- **MCP server (Experimental):** the new MCP plugin lets MCP clients find and run bb commands over bb Connect, with OAuth sign-in through your bb account. Off by default; enable it in Settings → Installed plugins and manage access with `bb mcp clients` and `bb mcp revoke`.
 - **Install the bb CLI:** Settings → General → Command line can add `bb` to your PATH, and remove it again, so you can use it outside bb. Also available as `bb settings cli-command install`.
 - **Search Settings:** find pages, individual settings, and plugin settings from the Settings sidebar. Press **/** to focus the search.
 - **Child threads at a glance:** one banner lists waiting and working child threads, and you can answer their questions right there. The Info panel also lists a thread's child threads.
-- **New ACP adapter (Experimental):** an opt-in rebuilt adapter adds agent options in the model picker, live slash commands, agent questions, and the official ACP registry (`bb acp add <agent-id>`). Enable "ACP providers (new adapter)" in Settings → Plugins.
+- **New ACP adapter (Experimental):** an opt-in rebuilt adapter adds agent options in the model picker, live slash commands, agent questions, and the official ACP registry (`bb acp add <agent-id>`). Enable "ACP providers [New adapter]" in Settings → Installed plugins.
 
 ### Improvements
 
@@ -180,7 +180,7 @@ A new navigation rail, better thread search, reusable prompts, and more control 
 
 - **Navigation rail:** Home, Plugins, Skills, Settings, and your chosen destinations now share one customizable rail, including inside the mobile sidebar.
 - **Find threads faster:** instant title and project matches, matching messages beneath their thread titles, and filter and sort controls in thread search.
-- **Prompt Library:** search previous prompts, preview them, star favorites, and insert them into your draft with **Ctrl+R**. Enable it in Settings → Plugins.
+- **Prompt Library:** search previous prompts, preview them, star favorites, and insert them into your draft with **Ctrl+R**. Enable it in Settings → Installed plugins.
 - **Per-thread notifications:** choose All activity, Needs input only, or Muted. Quieting a parent thread also limits notifications from its children.
 - **Storage & retention (Experimental):** inspect storage across machines, reclaim thread and development files, and opt into automatic archiving or deletion. Disabled by default; automatic cleanup is off until configured.
 
@@ -374,7 +374,7 @@ This release gives plugins new ways to create workspaces, manage machines, and c
 - **Message editing is out of experiments.** Editing messages is now available to everyone.
 - **Synced sidebar organization.** Sections, ordering, navigation preferences, and collapsed rows now sync through the server across devices. Move threads between sections from their menus.
 - **Projects settings.** Reorder projects by dragging and open a dedicated settings page for each project.
-- Import cookies from supported installed browsers through Settings → Browsers to reuse existing sign-ins in bb.
+- Import cookies from supported installed browsers through Settings → Browser to reuse existing sign-ins in bb.
 - Plugins and Skills now have separate workspaces. Installed plugins have row actions and detail tabs, and remain accessible from Settings.
 - Preview color palettes by hovering or moving through the choices in Settings → Appearance.
 - Reasoning choices use compact, wrapping controls and support Left and Right arrow keys.
