@@ -426,6 +426,13 @@ jobs:
         with:
           version: "1.3.14"
 
+      - name: Prepare plugin SDK runtime
+        if: ${{ matrix.shard == 'plugins-2' && contains(matrix.filter, '--filter=bb-plugin-*') }}
+        shell: cmd
+        run: |
+          if not defined TURBO_CACHE_DIR set TURBO_CACHE_DIR=.turbo/cache
+          pnpm exec turbo run build --filter=@get-bb/plugin-sdk --cache-dir="%TURBO_CACHE_DIR%" --output-logs=new-only --summarize --concurrency=2
+
       - name: Test on Windows
         shell: cmd
         env:
