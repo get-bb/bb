@@ -333,15 +333,6 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "Legacy callers omit suggestion attribution; the server records unknown. Current composer sends explicit none when no suggestion contributed.",
-    fields: [
-      "createThreadRequestSchema.suggestionAttribution",
-      "sendMessageRequestSchema.suggestionAttribution",
-      "createQueuedMessageRequestSchema.suggestionAttribution",
-    ],
-  },
-  {
-    reason:
       'originPluginId is present exactly when origin is "plugin" (enforced by refinement); omission means a non-plugin origin.',
     fields: ["createThreadRequestSchema.originPluginId"],
   },
@@ -440,10 +431,13 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "Thread creation, queued messages, and follow-up messages omit their sender unless the request originates from another thread or, for sends, a plugin.",
+      "Work requests omit sender/plugin provenance unless supplied by that origin. Legacy callers omit suggestion attribution and the server records unknown; current composers send explicit none when no suggestion contributed.",
     fields: [
       "createQueuedMessageRequestSchema.senderThreadId",
       "createQueuedMessageRequestSchema.originPluginId",
+      "createThreadRequestSchema.suggestionAttribution",
+      "sendMessageRequestSchema.suggestionAttribution",
+      "createQueuedMessageRequestSchema.suggestionAttribution",
       "sendMessageRequestSchema.senderThreadId",
       "createThreadRequestSchema.senderThreadId",
       "sendMessageRequestSchema.originPluginId",
