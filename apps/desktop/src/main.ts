@@ -2349,6 +2349,9 @@ async function finishQuit(): Promise<void> {
         `Could not save desktop window state: ${String(error)}`,
       ),
     );
+  for (const browserWindow of BrowserWindow.getAllWindows()) {
+    browserWindow.hide();
+  }
   await stopOwnedRuntime();
 }
 
