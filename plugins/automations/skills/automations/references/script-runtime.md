@@ -94,8 +94,13 @@ a `[bb] warning:` line. A later `bb` call then fails normally.
 - Run completion, a timeout, or an output limit stops remaining processes in
   the script's process group. Scripts cannot leave background work running in
   that group after a run completes. On Windows, only the direct child is stopped.
-- Startup settles runs interrupted by a server restart or plugin reload.
-  Script runs without a process become skipped.
+- Stopping bb or reloading, disabling, or updating the automations plugin sends
+  `SIGTERM` to each running script's process group, then `SIGKILL` after one
+  second. The run becomes skipped with an `interrupted` reason.
+- A process that starts its own session or process group, such as `setsid`,
+  `tmux`, or a daemon, leaves the script's group and is not stopped.
+- Startup settles runs left open by a crash or forced quit. Script runs without
+  a process become skipped.
 - Agent runs without a thread become skipped. Other agent runs follow their
   thread state.
 

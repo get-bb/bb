@@ -65,6 +65,7 @@ import {
   writeInlineAutomationScript,
 } from "./script-files.js";
 import { errorMessage, executeAgentRun, executeScriptRun } from "./run.js";
+import type { ScriptRunScope } from "./script-runner.js";
 import {
   createScriptWorkingDirectoryResolver,
   projectPathForHost,
@@ -606,8 +607,9 @@ export function createAutomationService(args: {
   db: Db;
   pluginDataDir: string;
   serverUrl: string;
+  scriptRuns: ScriptRunScope;
 }): AutomationService {
-  const { bb, db, pluginDataDir, serverUrl } = args;
+  const { bb, db, pluginDataDir, serverUrl, scriptRuns } = args;
 
   return {
     async overview() {
@@ -944,6 +946,7 @@ export function createAutomationService(args: {
                 execution,
                 onFailure: closeFailedRun,
                 serverUrl,
+                scriptRuns,
                 resolveWorkingDirectory: createScriptWorkingDirectoryResolver({
                   sdk: bb.sdk,
                   pluginDataDir,

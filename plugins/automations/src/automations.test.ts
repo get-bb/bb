@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import Database from "better-sqlite3";
 import type { PluginCliRegistration } from "@get-bb/plugin-sdk";
 import { describe, expect, it, vi } from "vitest";
+import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import {
   claimAutomationScheduledRun,
   closeAutomationRun,
@@ -38,6 +39,7 @@ import {
   validateOnceDefinition,
 } from "./schedule-helpers.js";
 import {
+  createScriptRunScope,
   executeStoredScript,
   isWakeAgentSuppressed,
   mapScriptResultToRun,
@@ -49,6 +51,12 @@ import { sweepDueAutomations } from "./sweep.js";
 import { createAutomationService } from "./service.js";
 import { registerAutomationCli } from "./cli.js";
 import { automationScriptDir, scriptsRoot } from "./script-files.js";
+import plugin from "./server.js";
+import {
+  automationDetailResponseSchema,
+  automationRunListResponseSchema,
+  automationRunRpcResponseSchema,
+} from "./rpc-types.js";
 
 const BASH_SCRIPT_RUNS_ARE_POSIX_ONLY =
   "script automations spawn `bash` by name, which Windows does not provide";
@@ -868,6 +876,7 @@ describe("automation data access", () => {
         pluginDataDir: "/tmp",
         serverUrl: "http://127.0.0.1:38886",
         serverHostId: "host_server",
+        scriptRuns: createScriptRunScope(),
         now: 1000,
       });
 
@@ -1018,6 +1027,7 @@ describe("automation service", () => {
       db,
       pluginDataDir,
       serverUrl: "http://127.0.0.1:38886",
+      scriptRuns: createScriptRunScope(),
     });
     try {
       const created = await service.create({
@@ -1136,6 +1146,7 @@ describe("automation service", () => {
       db,
       pluginDataDir,
       serverUrl: "http://127.0.0.1:38886",
+      scriptRuns: createScriptRunScope(),
     });
     serverHostId = "host_server";
     try {
@@ -1167,6 +1178,7 @@ describe("automation service", () => {
       db,
       pluginDataDir,
       serverUrl: "http://127.0.0.1:38886",
+      scriptRuns: createScriptRunScope(),
     });
     try {
       const created = await service.create({
@@ -1302,6 +1314,7 @@ describe("automation service", () => {
       db,
       pluginDataDir: "/tmp",
       serverUrl: "http://127.0.0.1:38886",
+      scriptRuns: createScriptRunScope(),
     });
 
     await expect(
@@ -1353,6 +1366,7 @@ describe("automation service", () => {
       db,
       pluginDataDir,
       serverUrl: "http://127.0.0.1:38886",
+      scriptRuns: createScriptRunScope(),
     });
 
     try {
@@ -1405,6 +1419,7 @@ describe("automation service", () => {
       db,
       pluginDataDir,
       serverUrl: "http://127.0.0.1:38886",
+      scriptRuns: createScriptRunScope(),
     });
 
     try {
@@ -1464,6 +1479,7 @@ describe("automation service", () => {
       db,
       pluginDataDir,
       serverUrl: "http://127.0.0.1:38886",
+      scriptRuns: createScriptRunScope(),
     });
 
     try {
@@ -1521,6 +1537,7 @@ describe("automation service", () => {
       db,
       pluginDataDir,
       serverUrl: "http://127.0.0.1:38886",
+      scriptRuns: createScriptRunScope(),
     });
 
     try {
@@ -1560,6 +1577,7 @@ describe("automation CLI --script-file", () => {
       db,
       pluginDataDir,
       serverUrl: "http://127.0.0.1:1",
+      scriptRuns: createScriptRunScope(),
     });
     const sdk = {
       ...serviceBb.sdk,
@@ -2110,6 +2128,7 @@ describe("script process containment", () => {
           timeoutMs: 30_000,
           serverUrl: "http://127.0.0.1:1",
           workingDir: scriptsRoot(pluginDataDir),
+          signal: new AbortController().signal,
         });
         const workerMatch = result.output.match(/"worker":(\d+)/u);
         expect(workerMatch).not.toBeNull();
@@ -2133,6 +2152,137 @@ describe("script process containment", () => {
       }
     },
   );
+
+  it("stops a running script and its descendants when the plugin unloads", async ({
+    skip,
+  }) => {
+    skip(process.platform === "win32", BASH_SCRIPT_RUNS_ARE_POSIX_ONLY);
+    const pidDir = await mkdtemp(join(tmpdir(), "bb-auto-unload-"));
+    const pidFile = join(pidDir, "pids");
+    const host = createFakePluginHost({
+      pluginId: "automations",
+      sdk: {
+        system: { config: async () => ({ primaryHostId: "host_fake" }) },
+        projects: {
+          async get({ projectId }) {
+            return {
+              id: projectId,
+              kind: "standard" as const,
+              name: "Test Project",
+              gitRemoteUrl: null,
+              createdAt: 1,
+              updatedAt: 1,
+              deletedAt: null,
+              sources: [],
+            };
+          },
+        },
+      },
+    });
+    await plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
+    let pids: number[] = [];
+    try {
+      const automation = automationDetailResponseSchema.parse(
+        await host.harness.callRpc("automations_create", {
+          projectId: "proj_test",
+          name: "Long script",
+          enabled: true,
+          trigger: { triggerType: "once", runAt: Date.now() + 60_000 },
+          execution: {
+            mode: "script",
+            script:
+              'sleep 300 >/dev/null 2>&1 &\necho "$$ $!" > "$PID_FILE"\nwait\n',
+            interpreter: "bash",
+            workingDirectory: { type: "automation-storage" },
+            env: { PID_FILE: pidFile },
+          },
+          origin: "human",
+        }),
+      );
+      const started = automationRunRpcResponseSchema.parse(
+        await host.harness.callRpc("automations_run", {
+          projectId: "proj_test",
+          automationId: automation.id,
+        }),
+      );
+      await vi.waitFor(
+        async () => {
+          pids = (await readFile(pidFile, "utf8"))
+            .trim()
+            .split(" ")
+            .map(Number)
+            .filter(Number.isSafeInteger);
+          expect(pids).toHaveLength(2);
+        },
+        { timeout: 5_000 },
+      );
+
+      const reloaded = await host.harness.reload(
+        plugin as unknown as Parameters<typeof host.harness.reload>[0],
+      );
+      const { runs } = automationRunListResponseSchema.parse(
+        await reloaded.harness.callRpc("automations_runs", {
+          projectId: "proj_test",
+          automationId: automation.id,
+        }),
+      );
+      expect(runs[0]).toMatchObject({
+        id: started.run.id,
+        status: "skipped",
+        skipReason:
+          "interrupted: the automations plugin stopped before the script finished",
+      });
+      for (const pid of pids) {
+        expect(await isProcessRunning(pid)).toBe(false);
+      }
+      await reloaded.harness.dispose();
+    } finally {
+      for (const pid of pids) {
+        try {
+          process.kill(pid, "SIGKILL");
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+        }
+      }
+      await rm(pidDir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not start a script after its run scope has stopped", async ({
+    skip,
+  }) => {
+    skip(process.platform === "win32", BASH_SCRIPT_RUNS_ARE_POSIX_ONLY);
+    const pluginDataDir = await mkdtemp(join(tmpdir(), "bb-auto-stopped-"));
+    const scriptDir = automationScriptDir(pluginDataDir, "auto_stopped");
+    const marker = join(pluginDataDir, "started");
+    await mkdir(scriptDir, { recursive: true });
+    await writeFile(join(scriptDir, "script.sh"), `touch "${marker}"\n`);
+    const scriptRuns = createScriptRunScope();
+    await scriptRuns.stop();
+    try {
+      const result = await executeStoredScript({
+        pluginDataDir,
+        automationId: "auto_stopped",
+        runId: "run_stopped",
+        projectId: "proj_test",
+        scriptFile: "script.sh",
+        interpreter: "bash",
+        timeoutMs: 10_000,
+        serverUrl: "http://127.0.0.1:38886",
+        workingDir: scriptsRoot(pluginDataDir),
+        signal: scriptRuns.signal,
+      });
+      expect(result).toMatchObject({ interrupted: true, exitCode: null });
+      expect(mapScriptResultToRun(result)).toMatchObject({
+        status: "skipped",
+        skipReason:
+          "interrupted: the automations plugin stopped before the script finished",
+      });
+      await expect(access(marker)).rejects.toThrow();
+    } finally {
+      await rm(pluginDataDir, { recursive: true, force: true });
+    }
+  });
 
   it("terminates descendant processes when a script times out", async ({
     skip,
@@ -2159,6 +2309,7 @@ describe("script process containment", () => {
         timeoutMs: 1_000,
         serverUrl: "http://127.0.0.1:38886",
         workingDir: scriptsRoot(pluginDataDir),
+        signal: new AbortController().signal,
       });
       const childPidMatch = result.output.match(/^child_pid=(\d+)$/mu);
       const childPid = Number.parseInt(childPidMatch?.[1] ?? "", 10);
@@ -2290,6 +2441,7 @@ describe("script project context", () => {
           });
         },
         serverUrl: "http://127.0.0.1:38886",
+        scriptRuns: createScriptRunScope(),
         resolveWorkingDirectory: createScriptWorkingDirectoryResolver({
           sdk: bb.sdk,
           pluginDataDir,
@@ -2321,6 +2473,7 @@ describe("script project context", () => {
         db,
         pluginDataDir,
         serverUrl: "http://127.0.0.1:38886",
+        scriptRuns: createScriptRunScope(),
       });
       const shown = await service.get({
         projectId: automation.projectId,
@@ -2532,6 +2685,7 @@ describe("script wake gate", () => {
         output: "",
         stderr: "",
         timedOut: false,
+        interrupted: false,
       }),
     ).toMatchObject({ status: "skipped", skipReason: "empty output" });
     expect(
@@ -2540,6 +2694,7 @@ describe("script wake gate", () => {
         output: 'nothing\n{"wakeAgent": false}',
         stderr: "",
         timedOut: false,
+        interrupted: false,
       }),
     ).toMatchObject({ status: "skipped", skipReason: "wakeAgent false" });
     expect(
@@ -2548,13 +2703,20 @@ describe("script wake gate", () => {
         output: "bad",
         stderr: "",
         timedOut: false,
+        interrupted: false,
       }),
     ).toMatchObject({ status: "failed", error: "Script exited with code 2" });
   });
 
   it("caps stderr failure details", () => {
     const stderr = `${"x".repeat(400)}\nsecond line\n`;
-    const result = { exitCode: 1, output: stderr, stderr, timedOut: false };
+    const result = {
+      exitCode: 1,
+      output: stderr,
+      stderr,
+      timedOut: false,
+      interrupted: false,
+    };
     expect(mapScriptResultToRun(result).error).toBe(
       `Script exited with code 1: ${"x".repeat(199)}…`,
     );
@@ -2562,7 +2724,13 @@ describe("script wake gate", () => {
 
   it("skips blank and carriage-return lines before the first stderr detail", () => {
     const stderr = "\r\n   \r\n\r\nreal failure\r\nlater line\r\n";
-    const result = { exitCode: 1, output: stderr, stderr, timedOut: false };
+    const result = {
+      exitCode: 1,
+      output: stderr,
+      stderr,
+      timedOut: false,
+      interrupted: false,
+    };
     expect(mapScriptResultToRun(result).error).toBe(
       "Script exited with code 1: real failure",
     );
@@ -2570,7 +2738,13 @@ describe("script wake gate", () => {
 
   it("omits the detail when stderr holds only line breaks", () => {
     const stderr = "\n".repeat(200_000);
-    const result = { exitCode: 1, output: "", stderr, timedOut: false };
+    const result = {
+      exitCode: 1,
+      output: "",
+      stderr,
+      timedOut: false,
+      interrupted: false,
+    };
     expect(mapScriptResultToRun(result).error).toBe(
       "Script exited with code 1",
     );
@@ -2578,7 +2752,13 @@ describe("script wake gate", () => {
 
   it("finds a trailing stderr detail after a large run of blank lines", () => {
     const stderr = `${"\n".repeat(200_000)}last gasp`;
-    const result = { exitCode: 1, output: "", stderr, timedOut: false };
+    const result = {
+      exitCode: 1,
+      output: "",
+      stderr,
+      timedOut: false,
+      interrupted: false,
+    };
     expect(mapScriptResultToRun(result).error).toBe(
       "Script exited with code 1: last gasp",
     );
@@ -2586,7 +2766,13 @@ describe("script wake gate", () => {
 
   it("removes terminal control sequences from stderr failure details", () => {
     const stderr = "\u001b]52;c;SGVsbG8=\u0007\u001b[31mdanger\u001b[0m\n";
-    const result = { exitCode: 1, output: stderr, stderr, timedOut: false };
+    const result = {
+      exitCode: 1,
+      output: stderr,
+      stderr,
+      timedOut: false,
+      interrupted: false,
+    };
     expect(mapScriptResultToRun(result).error).toBe(
       "Script exited with code 1: danger",
     );

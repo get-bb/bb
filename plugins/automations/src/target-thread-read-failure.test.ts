@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
+import { createScriptRunScope } from "./script-runner.js";
 import plugin from "./server.js";
 import { createAutomationService } from "./service.js";
 
@@ -78,6 +79,7 @@ function createService(host: Awaited<ReturnType<typeof createHost>>) {
     db: host.bb.storage.database(),
     pluginDataDir: "/tmp/bb-automations-read-failure-test",
     serverUrl: "http://127.0.0.1:38886",
+    scriptRuns: createScriptRunScope(),
   });
 }
 
