@@ -1,8 +1,8 @@
 import { sha256Hex } from "@bb/connect-db";
 import { z } from "zod";
 import type { Env } from "../server/env";
-import { sendSurveyEmail, surveyEmail } from "./email";
 import { formPage, type FormKind } from "./form-page";
+import { queueSurveyEmail } from "./outbox";
 import {
   questionVisible,
   surveyFields,
@@ -256,18 +256,14 @@ export async function handleCommunityForm(
     const alreadyClaimed = !emailRow?.meta.changes;
     const emailed =
       !alreadyClaimed &&
-      (await sendSurveyEmail(
-        env.RESEND_API_KEY,
+      (await queueSurveyEmail(
+        env,
+        id,
         email,
-        surveyEmail(surveyAnswers(values), claimLink),
-      ));
-    if (emailed)
-      await env.DB.prepare(
-        "UPDATE community_survey_response SET email_sent = 1 WHERE id = ?",
-      )
-        .bind(id)
-        .run()
-        .catch(() => undefined);
+        surveyAnswers(values),
+        claimLink,
+        Date.now(),
+      ).catch(() => false));
     return page({
       complete: true,
       values,

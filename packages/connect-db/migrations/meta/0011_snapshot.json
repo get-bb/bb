@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "6b360b50-388a-4e6a-a47f-e049af43a1f4",
+  "id": "c16123b4-4c3e-4f9c-945c-ff2deae1c069",
   "prevId": "f353de93-3fc0-49c6-bf60-e58c324d76a9",
   "tables": {
     "account": {
@@ -446,6 +446,59 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
+    "community_survey_email_outbox": {
+      "name": "community_survey_email_outbox",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "to_email": {
+          "name": "to_email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "claim_link": {
+          "name": "claim_link",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "next_attempt_at": {
+          "name": "next_attempt_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sent_at": {
+          "name": "sent_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
     "community_survey_response": {
       "name": "community_survey_response",
       "columns": {
@@ -469,14 +522,6 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
-        },
-        "email_sent": {
-          "name": "email_sent",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": false
         }
       },
       "indexes": {},

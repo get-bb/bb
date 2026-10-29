@@ -98,10 +98,12 @@ additive: old workers never read the columns. Both workers select whole
 `server` rows, so apply the migration before deploying either new worker, which
 the deploy workflows already do.
 
-Migration 0011 uses the normal schema-diff workflow. It adds three tables for
+Migration 0011 uses the normal schema-diff workflow. It adds four tables for
 the getbb.app community survey: `community_survey_response` (answers),
 `community_survey_email` (a SHA-256 of each normalized email, so one email
 gets at most one sticker code) and `community_gift_code` (one-time Shopify
-discount codes, loaded out of band and marked claimed when handed out).
-Nothing joins them. The change is additive and only the web worker reads or
+discount codes, loaded out of band and marked claimed when handed out) and
+`community_survey_email_outbox` (the confirmation email for each new finisher,
+kept until it sends so failed sends can be retried with the same claim link).
+Only the outbox refers to a response, by its ID. The change is additive and only the web worker reads or
 writes these tables.

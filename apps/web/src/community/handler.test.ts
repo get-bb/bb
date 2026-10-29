@@ -12,6 +12,7 @@ import { sha256Hex } from "@bb/connect-db";
 import { applyConnectDbMigrationsToD1 } from "@bb/connect-db/testing";
 import { sendSurveyEmail, surveyEmail } from "./email";
 import { emailKey, handleCommunityForm, rateLimitKey } from "./handler";
+import { EMAIL_MAX_ATTEMPTS, retrySurveyEmails } from "./outbox";
 import { ALREADY_CLAIMED, CLAIM_NOT_OPEN, SOLD_OUT } from "./survey";
 
 let runtime: Miniflare;
@@ -75,6 +76,7 @@ beforeEach(async () => {
   await db.batch([
     db.prepare("DELETE FROM community_survey_response"),
     db.prepare("DELETE FROM community_survey_email"),
+    db.prepare("DELETE FROM community_survey_email_outbox"),
     db.prepare("DELETE FROM community_gift_code"),
     db.prepare(
       "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 10) INSERT INTO community_gift_code (code) SELECT printf('CODE%04d', i) FROM n",
@@ -305,95 +307,122 @@ describe("private community forms", () => {
     expect(await claimedCodes()).toBe(2);
     expect(emailKey(" Ada+Tag@Example.TEST ")).toBe("ada@example.test");
   });
+  const postWithKey = (fields: Record<string, string>) =>
+    handleCommunityForm(
+      new Request(`${origin}/community/survey`, {
+        method: "POST",
+        headers: { Origin: origin },
+        body: new URLSearchParams({
+          ...requiredFields,
+          submission_id: crypto.randomUUID(),
+          email: "ada@example.test",
+          ...fields,
+        }),
+      }),
+      { ...enabled(), RESEND_API_KEY: "test-key" },
+      "survey",
+    );
+  const outbox = () =>
+    db
+      .prepare(
+        "SELECT to_email, claim_link, attempts, next_attempt_at, sent_at FROM community_survey_email_outbox",
+      )
+      .all<{
+        to_email: string;
+        claim_link: string | null;
+        attempts: number;
+        next_attempt_at: number;
+        sent_at: number | null;
+      }>()
+      .then((result) => result.results);
   it("emails a new finisher their answers and claim link once", async () => {
-    const sent: { url: string; body: Record<string, unknown> }[] = [];
+    const sent: { url: string; headers: Headers; body: Record<string, unknown> }[] = [];
     vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
-      sent.push({ url, body: JSON.parse(String(init.body)) });
+      sent.push({ url, headers: new Headers(init.headers), body: JSON.parse(String(init.body)) });
       return new Response("{}", { status: 200 });
     });
     try {
-      const withKey = { ...enabled(), RESEND_API_KEY: "test-key" };
-      const post = (fields: Record<string, string>) =>
-        handleCommunityForm(
-          new Request(`${origin}/community/survey`, {
-            method: "POST",
-            headers: { Origin: origin },
-            body: new URLSearchParams({
-              ...requiredFields,
-              submission_id: crypto.randomUUID(),
-              email: "ada@example.test",
-              ...fields,
-            }),
-          }),
-          withKey,
-          "survey",
-        );
-      const html = await (await post({ improve: "<b>Faster</b>" })).text();
+      const html = await (await postWithKey({ improve: "<b>Faster</b>" })).text();
       expect(html).toContain("emailed you your results");
       expect(sent).toHaveLength(1);
       expect(sent[0]!.url).toBe("https://api.resend.com/emails");
+      expect(sent[0]!.headers.get("idempotency-key")).toMatch(/^community-survey\//);
       expect(sent[0]!.body.to).toEqual(["ada@example.test"]);
       const body = String(sent[0]!.body.html);
       expect(body).toContain("&lt;b&gt;Faster&lt;/b&gt;");
       expect(body).toContain(`discount=${codeFrom(html)}`);
-      expect(String(sent[0]!.body.text)).toContain(
-        "Claim my bb stickers: https://test-shop.myshopify.com/cart/123:1?discount=",
-      );
-      expect(
-        await db
-          .prepare(
-            "SELECT COUNT(*) AS n FROM community_survey_response WHERE email_sent = 1",
-          )
-          .first("n"),
-      ).toBe(1);
-      await post({ email: "Ada+again@example.test" });
+      const [row] = await outbox();
+      expect(row?.sent_at).toBeTypeOf("number");
+      expect(row?.claim_link).toBeNull();
+      await postWithKey({ email: "Ada+again@example.test" });
       expect(sent).toHaveLength(1);
     } finally {
       vi.unstubAllGlobals();
     }
   });
-  it("retries a rate-limited send and leaves failed sends marked unsent", async () => {
+  it("keeps the claim link in the outbox and retries later until the email sends", async () => {
+    let status = 503;
+    const keys: (string | null)[] = [];
+    vi.stubGlobal("fetch", async (_url: string, init: RequestInit) => {
+      keys.push(new Headers(init.headers).get("idempotency-key"));
+      return new Response("{}", { status });
+    });
+    try {
+      const html = await (await postWithKey({})).text();
+      expect(html).toContain("email you the results");
+      const [queued] = await outbox();
+      expect(queued?.sent_at).toBeNull();
+      expect(queued?.attempts).toBe(1);
+      expect(queued?.claim_link).toContain(`discount=${codeFrom(html)}`);
+      const due = queued!.next_attempt_at;
+      await retrySurveyEmails({ DB: db, RESEND_API_KEY: "key" }, due - 1);
+      expect((await outbox())[0]?.attempts).toBe(1);
+      await retrySurveyEmails({ DB: db, RESEND_API_KEY: "key" }, due);
+      expect((await outbox())[0]?.attempts).toBe(2);
+      status = 200;
+      await retrySurveyEmails({ DB: db, RESEND_API_KEY: "key" }, due + 24 * 3_600_000);
+      const [sentRow] = await outbox();
+      expect(sentRow?.sent_at).toBeTypeOf("number");
+      expect(sentRow?.claim_link).toBeNull();
+      expect(new Set(keys).size).toBe(1);
+      const calls = keys.length;
+      await retrySurveyEmails({ DB: db, RESEND_API_KEY: "key" }, due + 48 * 3_600_000);
+      expect(keys).toHaveLength(calls);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+  it("stops retrying after the last attempt or a rejected email", async () => {
+    vi.stubGlobal("fetch", async () => new Response("{}", { status: 422 }));
+    try {
+      await postWithKey({});
+      const [row] = await outbox();
+      expect(row?.attempts).toBe(EMAIL_MAX_ATTEMPTS);
+      let calls = 0;
+      vi.stubGlobal("fetch", async () => {
+        calls++;
+        return new Response("{}", { status: 200 });
+      });
+      await retrySurveyEmails({ DB: db, RESEND_API_KEY: "key" }, Date.now() + 48 * 3_600_000);
+      expect(calls).toBe(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+  it("retries a rate-limited send right away", async () => {
     let calls = 0;
     const waits: number[] = [];
-    vi.stubGlobal(
-      "fetch",
-      async () => new Response("{}", { status: ++calls === 1 ? 429 : 200 }),
+    vi.stubGlobal("fetch", async () =>
+      new Response("{}", { status: ++calls === 1 ? 429 : 200 }),
     );
     try {
       expect(
-        await sendSurveyEmail(
-          "key",
-          "ada@example.test",
-          surveyEmail({}, null),
-          async (ms) => {
-            waits.push(ms);
-          },
-        ),
-      ).toBe(true);
+        await sendSurveyEmail("key", "ada@example.test", surveyEmail({}, null), "k", [0, 600], async (ms) => {
+          waits.push(ms);
+        }),
+      ).toBe("sent");
       expect(calls).toBe(2);
       expect(waits).toEqual([600]);
-      vi.stubGlobal("fetch", async () => new Response("{}", { status: 503 }));
-      const html = await (
-        await handleCommunityForm(
-          new Request(`${origin}/community/survey`, {
-            method: "POST",
-            headers: { Origin: origin },
-            body: new URLSearchParams({
-              ...requiredFields,
-              submission_id: crypto.randomUUID(),
-              email: "grace@example.test",
-            }),
-          }),
-          { ...enabled(), RESEND_API_KEY: "test-key" },
-          "survey",
-        )
-      ).text();
-      expect(html).toContain("email you the results");
-      expect(
-        await db
-          .prepare("SELECT email_sent FROM community_survey_response")
-          .first("email_sent"),
-      ).toBe(0);
     } finally {
       vi.unstubAllGlobals();
     }

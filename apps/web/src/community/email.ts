@@ -335,15 +335,20 @@ export function surveyEmail(
   return { subject: SURVEY_EMAIL_SUBJECT, html, text };
 }
 
+export type SendResult = "sent" | "retry" | "failed";
+
 export async function sendSurveyEmail(
   apiKey: string | undefined,
   to: string,
   email: { subject: string; html: string; text: string },
+  idempotencyKey: string,
+  delays: readonly number[] = [0],
   wait: (ms: number) => Promise<void> = (ms) =>
     new Promise((resolve) => setTimeout(resolve, ms)),
-): Promise<boolean> {
-  if (!apiKey) return false;
-  for (const delay of [0, 600, 1500]) {
+): Promise<SendResult> {
+  if (!apiKey) return "retry";
+  let result: SendResult = "retry";
+  for (const delay of delays) {
     if (delay) await wait(delay);
     try {
       const response = await fetch(RESEND_EMAILS_URL, {
@@ -351,13 +356,22 @@ export async function sendSurveyEmail(
         headers: {
           Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey,
         },
         body: JSON.stringify({ from: SURVEY_EMAIL_FROM, to: [to], ...email }),
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(4000),
       });
-      if (response.ok) return true;
-      if (response.status !== 429 && response.status < 500) return false;
-    } catch {}
+      if (response.ok) return "sent";
+      result =
+        response.status === 429 ||
+        response.status === 409 ||
+        response.status >= 500
+          ? "retry"
+          : "failed";
+      if (result === "failed") return result;
+    } catch {
+      result = "retry";
+    }
   }
-  return false;
+  return result;
 }

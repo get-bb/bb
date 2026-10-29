@@ -310,9 +310,18 @@ export const communitySurveyResponse = sqliteTable(
     id: text("id").primaryKey(),
     createdAt: integer("created_at").notNull(),
     answers: text("answers").notNull(),
-    emailSent: integer("email_sent", { mode: "boolean" })
-      .notNull()
-      .default(false),
+  },
+);
+
+export const communitySurveyEmailOutbox = sqliteTable(
+  "community_survey_email_outbox",
+  {
+    id: text("id").primaryKey(),
+    toEmail: text("to_email").notNull(),
+    claimLink: text("claim_link"),
+    attempts: integer("attempts").notNull().default(0),
+    nextAttemptAt: integer("next_attempt_at").notNull(),
+    sentAt: integer("sent_at"),
   },
 );
 
@@ -328,6 +337,7 @@ export const communityGiftCode = sqliteTable("community_gift_code", {
 export const schema = {
   communitySurveyResponse,
   communitySurveyEmail,
+  communitySurveyEmailOutbox,
   communityGiftCode,
   user,
   session,
