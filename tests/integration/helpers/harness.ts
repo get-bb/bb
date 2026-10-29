@@ -500,17 +500,35 @@ export async function createIntegrationHarness(
     if (!daemonResources) {
       return;
     }
+    console.error("CRASH_BEGIN", tmpRoot, Date.now());
     const currentResources = daemonResources;
     daemonResources = null;
     await currentResources.daemonApp.connection
       .shutdown()
-      .catch(() => undefined);
-    await currentResources.daemonApp.localApi?.close().catch(() => undefined);
+      .catch((error) =>
+        console.error("HARNESS_SHUTDOWN_ERROR", tmpRoot, error),
+      );
+    await currentResources.daemonApp.localApi
+      ?.close()
+      .catch((error) =>
+        console.error("HARNESS_SHUTDOWN_ERROR", tmpRoot, error),
+      );
     await currentResources.daemonApp.runtimeManager
       .shutdownAll()
-      .catch(() => undefined);
-    await currentResources.daemonApp.eventSink.dispose().catch(() => undefined);
-    await currentResources.releaseLock().catch(() => undefined);
+      .catch((error) =>
+        console.error("HARNESS_SHUTDOWN_ERROR", tmpRoot, error),
+      );
+    await currentResources.daemonApp.eventSink
+      .dispose()
+      .catch((error) =>
+        console.error("HARNESS_SHUTDOWN_ERROR", tmpRoot, error),
+      );
+    console.error("CRASH_RUNTIME_SHUTDOWN_DONE", tmpRoot, Date.now());
+    await currentResources
+      .releaseLock()
+      .catch((error) =>
+        console.error("HARNESS_SHUTDOWN_ERROR", tmpRoot, error),
+      );
   }
 
   async function cleanup(): Promise<void> {
@@ -519,9 +537,16 @@ export async function createIntegrationHarness(
     }
     cleanedUp = true;
 
-    await shutdownDaemon("integration-cleanup").catch(() => undefined);
-    await server?.close().catch(() => undefined);
+    await shutdownDaemon("integration-cleanup").catch((error) =>
+      console.error("HARNESS_SHUTDOWN_ERROR", tmpRoot, error),
+    );
+    await server
+      ?.close()
+      .catch((error) =>
+        console.error("HARNESS_SHUTDOWN_ERROR", tmpRoot, error),
+      );
     await killProcessesReferencingPath(tmpRoot);
+    console.error("REMOVE_BEGIN", tmpRoot, Date.now());
     await removePathWithRetry(tmpRoot);
   }
 

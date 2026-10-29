@@ -573,17 +573,30 @@ describe("read freshness", () => {
   });
 
   it("makes a one-shot read wait for a row older than ten seconds", async () => {
+    const started = process.hrtime.bigint();
+    const mark = (stage: string) =>
+      console.error(
+        "FRESHNESS_STAGE",
+        stage,
+        Number(process.hrtime.bigint() - started) / 1e6,
+      );
     vi.useFakeTimers();
     const { store, load } = setup([available(pullRequest())]);
+    mark("setup");
     await store.read("a", { viewer: true });
+    mark("initial");
     load.mockClear();
     await vi.advanceTimersByTimeAsync(9_000);
+    mark("advance9");
     await store.read("a", { viewer: false });
+    mark("read9");
     expect(load).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(2_000);
+    mark("advance2");
     load.mockResolvedValue(available(pullRequest({ title: "Renamed" })));
     await expect(store.read("a", { viewer: false })).resolves.toMatchObject({
       pullRequest: { title: "Renamed" },
     });
+    mark("final");
   });
 });

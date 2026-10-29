@@ -25,6 +25,30 @@ export function spawnManagedProcess(
     ...request,
     detached: supportsProcessGroups(),
   });
+  if (request.cwd?.includes("bb-integration-")) {
+    console.error("OWNED_CHILD", {
+      pid: child.pid,
+      cwd: request.cwd,
+      command: request.command,
+      time: Date.now(),
+    });
+    child.once("exit", (code, signal) =>
+      console.error("OWNED_EXIT", {
+        pid: child.pid,
+        code,
+        signal,
+        time: Date.now(),
+      }),
+    );
+    child.once("close", (code, signal) =>
+      console.error("OWNED_CLOSE", {
+        pid: child.pid,
+        code,
+        signal,
+        time: Date.now(),
+      }),
+    );
+  }
   return { child, stop: createProcessStop(child) };
 }
 

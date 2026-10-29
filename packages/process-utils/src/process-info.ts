@@ -1,5 +1,6 @@
 import { execHostFile } from "./host-process.js";
 import path from "node:path";
+import { inspect } from "node:util";
 
 const execFileAsync = execHostFile;
 
@@ -35,6 +36,8 @@ export async function readProcessIdentity(
 }
 
 async function readWindowsProcess(pid: number) {
+  const started = performance.now();
+  let output = "";
   try {
     const pending = execFileAsync(
       path.join(
@@ -63,6 +66,7 @@ async function readWindowsProcess(pid: number) {
     );
     pending.child.stdin?.end();
     const { stdout } = await pending;
+    output = stdout;
     const value: unknown = JSON.parse(stdout);
     if (
       typeof value !== "object" ||
@@ -72,10 +76,26 @@ async function readWindowsProcess(pid: number) {
       (typeof value.command !== "string" && value.command !== null) ||
       typeof value.startedAt !== "number" ||
       !Number.isFinite(value.startedAt)
-    )
+    ) {
+      console.error("IDENTITY_INVALID", {
+        pid,
+        elapsedMs: performance.now() - started,
+        value,
+      });
       return null;
+    }
+    console.error("IDENTITY_OK", {
+      pid,
+      elapsedMs: performance.now() - started,
+    });
     return { command: value.command, startedAt: value.startedAt };
-  } catch {
+  } catch (error) {
+    console.error("IDENTITY_FAILED", {
+      pid,
+      elapsedMs: performance.now() - started,
+      output,
+      error: inspect(error),
+    });
     return null;
   }
 }
