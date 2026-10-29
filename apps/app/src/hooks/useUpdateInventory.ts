@@ -65,7 +65,7 @@ export interface UpdateInventory {
   appUpdateAvailable: boolean;
   desktopUpdateReady: boolean;
   machines: UpdateInventoryMachine[];
-  plugins: UpdateInventoryPlugins;
+  plugins: UpdateInventoryPlugins | null;
   pluginAttentionCount: number;
   actionableCount: number;
   hasAttention: boolean;
@@ -146,9 +146,14 @@ export function useUpdateInventory(
   const pluginAttentionCount = pluginsNeedingAttention(
     installedPlugins ?? [],
   ).length;
+  const pluginUpdatesEnabled =
+    systemConfigQuery.data?.experiments.pluginUpdates === true;
   const plugins = useMemo(
-    () => buildUpdateInventoryPlugins(installedPlugins ?? []),
-    [installedPlugins],
+    () =>
+      pluginUpdatesEnabled
+        ? buildUpdateInventoryPlugins(installedPlugins ?? [])
+        : null,
+    [installedPlugins, pluginUpdatesEnabled],
   );
 
   const hosts = useMemo(() => hostsQuery.data ?? [], [hostsQuery.data]);
@@ -216,7 +221,7 @@ export function useUpdateInventory(
     ) +
     (appUpdateAvailable ? 1 : 0) +
     (desktopUpdateReady ? 1 : 0) +
-    plugins.items.filter((item) => item.kind === "update").length +
+    (plugins?.items.filter((item) => item.kind === "update").length ?? 0) +
     pluginAttentionCount;
 
   const desktopLastCheckedAt =

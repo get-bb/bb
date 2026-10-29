@@ -16,6 +16,7 @@ export type SettingsSearchCondition =
   | "filePreferences"
   | "localhostLinkRewrite"
   | "performanceDiagnostics"
+  | "pluginUpdates"
   | "sidebarNavigations"
   | "sourceCodeRenderers"
   | "threadLists";
@@ -233,7 +234,11 @@ export const SETTINGS_SEARCH_INDEX: Record<
     keywords: ["upgrade", "version", "release notes", "changelog"],
     settings: [
       { title: "Provider CLIs", keywords: ["agents", "upgrade"] },
-      { title: "Plugins", keywords: ["plugin updates", "outdated", "upgrade"] },
+      {
+        title: "Plugins",
+        keywords: ["plugin updates", "outdated", "upgrade"],
+        when: "pluginUpdates",
+      },
     ],
   },
   plugins: {

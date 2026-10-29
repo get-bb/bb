@@ -62,9 +62,9 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
     }
   }
   const staleProviders = [...staleProvidersByKey.values()];
-  const pluginUpdateCount = inventory.plugins.items.filter(
-    (item) => item.kind === "update",
-  ).length;
+  const pluginUpdateCount =
+    inventory.plugins?.items.filter((item) => item.kind === "update").length ??
+    0;
   const providerUpdateRunning = inventory.machines.some((machine) =>
     machine.issues.some(
       (issue) =>

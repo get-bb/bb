@@ -270,10 +270,12 @@ list. To publish a marketplace, see the bb-plugin-authoring skill.
 
 Updates and pinning
 
-bb checks tracking sources every six hours and again when Settings → Updates
-opens. That page lists each compatible update with an Update button and Update
-all, and shows candidates blocked by engines.bb or engines.bbPluginSdk with the
-reason. Updates are never applied automatically: `bb plugin outdated` checks on
+bb checks tracking sources every six hours. With the `pluginUpdates`
+experiment on (`bb settings experiment pluginUpdates true`, on for early
+adopters), Settings → Updates checks again when it opens, lists each compatible
+update with an Update button and Update all, shows candidates blocked by
+engines.bb or engines.bbPluginSdk with the reason, and the sidebar updates
+badge counts plugin updates. Updates are never applied automatically: `bb plugin outdated` checks on
 demand and `bb plugin update` applies compatible candidates. Reinstalling an
 installed managed plugin is refused; use `bb plugin update`. A failed
 activation restores the previous version and leaves the failure visible.

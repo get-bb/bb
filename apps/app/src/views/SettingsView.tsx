@@ -1139,6 +1139,11 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "Collect CPU profiles and detailed performance logs while the server was launched with --perf-diagnostics. Turning this off stops collection; saved profiles remain.",
   },
+  pluginUpdates: {
+    label: "Plugin updates",
+    description:
+      "List plugins with updates on the Updates page, update them one by one or all at once, and count them in the sidebar updates badge.",
+  },
   serverMove: {
     label: "Server move",
     description:

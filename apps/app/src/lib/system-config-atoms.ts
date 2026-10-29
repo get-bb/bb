@@ -35,6 +35,7 @@ const unavailableSystemConfig: SystemConfigResponse = {
     compactExpiredCache: false,
     serverMove: false,
     performanceDiagnostics: false,
+    pluginUpdates: false,
     sidebarMultiSelect: false,
     threadRowMetadata: false,
     timelinePush: false,

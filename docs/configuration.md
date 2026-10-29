@@ -873,7 +873,8 @@ The `earlyAdopter` general setting (the Become an early adopter banner on
 Settings → Experiments, `bb settings general earlyAdopter on`) switches the
 shipped default to the early adopter default: experiments marked Early adopter
 (currently `applicationLinks`, `timelinePush`, `compactExpiredCache`,
-`sidebarMultiSelect`, `unreadDividerAtAnswer`, and `websocketCompression`) turn on, and the rest stay
+`pluginUpdates`, `sidebarMultiSelect`, `unreadDividerAtAnswer`, and
+`websocketCompression`) turn on, and the rest stay
 off. An experiment you set yourself keeps your value either way.
 `/system/config` and `sdk.system.config()` return the resolved values in
 `experiments`.
@@ -907,6 +908,14 @@ off. An experiment you set yourself keeps your value either way.
   collection. The experiment itself applies live; turning it off restores
   normal logging and flushes the in-flight profile, keeping saved files. See
   [diagnostics](debugging-and-qa.md#opt-in-server-performance-diagnostics).
+- `pluginUpdates` (on for early adopters) adds a Plugins section to
+  Settings → Updates: one row per tracking plugin with an update (installed →
+  candidate version and an Update button), Update all for compatible updates,
+  and candidates blocked by `engines.bb` or `engines.bbPluginSdk` with the
+  reason. Opening the page re-checks tracking sources, and the sidebar updates
+  badge counts plugin updates. While it is off, the six-hourly background check,
+  `bb plugin outdated`, `bb plugin update`, and Settings → Installed plugins
+  work as before.
 - `sidebarMultiSelect` (on for early adopters) lets the built-in thread list
   select several threads: Cmd/Ctrl+Shift-click toggles a row (starting from the
   open thread), Shift-click selects the visible range from the last clicked row,

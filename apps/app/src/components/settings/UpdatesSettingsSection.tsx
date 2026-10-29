@@ -2222,7 +2222,9 @@ export function UpdatesSettingsSection({
     number | null
   >(null);
   const appUpdate = appUpdateStatus.data;
-  const pluginUpdateCheck = usePluginUpdateCheck(null, { enabled: true });
+  const pluginUpdateCheck = usePluginUpdateCheck(null, {
+    enabled: inventory.plugins !== null,
+  });
   const updatingPluginIds = new Set(
     (usePluginUpdateJobs().data ?? [])
       .filter(isActivePluginUpdateJob)
@@ -2231,7 +2233,7 @@ export function UpdatesSettingsSection({
 
   function startPluginUpdates(pluginIds: readonly string[]): void {
     for (const pluginId of pluginIds) {
-      const item = inventory.plugins.items.find(
+      const item = inventory.plugins?.items.find(
         (candidate) => candidate.plugin.id === pluginId,
       );
       const name = item === undefined ? pluginId : pluginDisplayName(item);
@@ -2439,12 +2441,14 @@ export function UpdatesSettingsSection({
           void invalidateHostProviderCliStatus({ queryClient, hostId });
         }}
       />
-      <PluginUpdatesSection
-        plugins={inventory.plugins}
-        updatingPluginIds={updatingPluginIds}
-        checking={pluginUpdateCheck.isFetching}
-        onStartUpdates={startPluginUpdates}
-      />
+      {inventory.plugins === null ? null : (
+        <PluginUpdatesSection
+          plugins={inventory.plugins}
+          updatingPluginIds={updatingPluginIds}
+          checking={pluginUpdateCheck.isFetching}
+          onStartUpdates={startPluginUpdates}
+        />
+      )}
       <ConfirmDeleteDialog
         open={confirmingAppUpdateThreads !== null}
         onOpenChange={(open) => {

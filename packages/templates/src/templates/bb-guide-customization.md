@@ -195,6 +195,8 @@ see `bb guide thread-messaging` for `--compact-first`.
 `sidebarMultiSelect` lets the built-in thread list sidebar select several threads with
 Cmd/Ctrl+Shift-click and Shift-click for bulk actions and drag; Cmd/Ctrl-click
 still opens a thread in a split.
+`pluginUpdates` lists plugin updates on Settings → Updates with Update and
+Update all, and counts them in the sidebar updates badge; see `bb guide plugins`.
 `threadRowMetadata` adds Organize → Rows → Metadata to the built-in thread list,
 a line under each thread title where plugins show details such as the pull
 request number.
@@ -205,9 +207,9 @@ before its first tool call. It defaults on for early adopters.
 pushes) on the app's live connection; it applies when the app reconnects.
 `bb settings general earlyAdopter on` (Settings → Experiments → Become an early
 adopter) turns on the experiments marked Early adopter, currently
-`applicationLinks`, `timelinePush`, `compactExpiredCache`, `sidebarMultiSelect`,
-`unreadDividerAtAnswer`, and `websocketCompression`; an experiment you set yourself keeps
-your value.
+`applicationLinks`, `timelinePush`, `compactExpiredCache`, `pluginUpdates`,
+`sidebarMultiSelect`, `unreadDividerAtAnswer`, and `websocketCompression`; an
+experiment you set yourself keeps your value.
 
 Launcher settings
 
