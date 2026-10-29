@@ -1,6 +1,7 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
   BRANCH_PICKER_CONTENT_CLASS_NAME,
+  BranchPickerNavigation,
   BranchPickerRow,
   BranchPickerSearch,
   BranchPickerSectionHeader,
@@ -12,7 +13,6 @@ import {
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { MenuHoverProvider } from "@bb/shared-ui/menu-item-hover";
 import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import {
   OPTION_BASE_CLASS_NAME,
@@ -34,6 +34,10 @@ import type { CheckoutBranchSelection } from "./contract.js";
 import { PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID } from "./provider-id.js";
 
 const CREATE_NEW_BRANCH_LABEL = "New branch";
+const CURRENT_ROW_VALUE = "intent:current";
+const NEW_BRANCH_ROW_VALUE = "intent:new";
+const CHECKOUT_ROW_VALUE = "intent:checkout";
+const USE_QUERY_ROW_VALUE = "use-query";
 const BRANCH_LABEL_PREFIXES = [
   "Current:",
   "Checkout:",
@@ -122,7 +126,8 @@ export function checkoutBlocker(state: CheckoutState): CheckoutBlocker | null {
     return {
       label: "Unknown",
       reason: "Checkout state is unavailable",
-      guidance: "Branch changes are unavailable because this checkout could not be inspected.",
+      guidance:
+        "Branch changes are unavailable because this checkout could not be inspected.",
     };
   }
   if (state.operation.kind !== "none") {
@@ -130,7 +135,8 @@ export function checkoutBlocker(state: CheckoutState): CheckoutBlocker | null {
       return {
         label: "Conflicts",
         reason: "Checkout blocked by unresolved conflicts",
-        guidance: "Resolve the conflicts and finish or abort the Git operation to change branches.",
+        guidance:
+          "Resolve the conflicts and finish or abort the Git operation to change branches.",
       };
     }
     const name = operationName(state);
@@ -144,21 +150,24 @@ export function checkoutBlocker(state: CheckoutState): CheckoutBlocker | null {
     return {
       label: "Dirty",
       reason: "Checkout blocked by uncommitted changes",
-      guidance: "Commit or stash the uncommitted changes in this checkout to create or switch branches.",
+      guidance:
+        "Commit or stash the uncommitted changes in this checkout to create or switch branches.",
     };
   }
   if (state.detached) {
     return {
       label: "Detached",
       reason: "Checkout blocked while HEAD is detached",
-      guidance: "Attach HEAD to a branch in this checkout to create or switch branches here.",
+      guidance:
+        "Attach HEAD to a branch in this checkout to create or switch branches here.",
     };
   }
   if (state.unborn) {
     return {
       label: "Empty repo",
       reason: "Checkout blocked before the first commit",
-      guidance: "Create the first commit in this checkout to create or switch branches.",
+      guidance:
+        "Create the first commit in this checkout to create or switch branches.",
     };
   }
   return null;
@@ -280,6 +289,10 @@ function BranchPickerText({
   );
 }
 
+function branchRowValue(branch: string): string {
+  return `branch:${branch}`;
+}
+
 function filterBranches(branches: readonly string[], query: string): string[] {
   const normalizedQuery = query.trim().toLowerCase();
   if (normalizedQuery.length === 0) return [...branches];
@@ -379,6 +392,12 @@ function CheckoutInputsControl({
     hostId === null ? "Default branch" : currentMenuLabel(checkout);
   const showBranchChooser = checkoutIntent !== "current";
   const showOptionsSearch = showBranchChooser && blocker === null;
+  const searchHighlight =
+    branchOptions[0] !== undefined
+      ? branchRowValue(branchOptions[0])
+      : hostId === null && query.trim()
+        ? USE_QUERY_ROW_VALUE
+        : undefined;
   const triggerLabel =
     inputs.branch?.kind === "existing"
       ? `Checkout: ${inputs.branch.name}`
@@ -474,15 +493,14 @@ function CheckoutInputsControl({
           showOptionsSearch && "md:min-w-40",
         )}
       >
-        <MenuHoverProvider>
+        <BranchPickerNavigation
+          highlight={searchHighlight}
+          query={deferredQuery}
+        >
           {showOptionsSearch ? (
             <BranchPickerSearch
               inputRef={inputRef}
               query={query}
-              enterSelection={
-                branchOptions[0] ?? (hostId === null ? query.trim() : undefined)
-              }
-              onEnterSelection={selectBranchAndClose}
               onQueryChange={setQuery}
               ariaLabel="Search branches"
             />
@@ -494,6 +512,7 @@ function CheckoutInputsControl({
           >
             <BranchPickerSectionHeader label="Start from:" sticky={false} />
             <BranchPickerRow
+              value={CURRENT_ROW_VALUE}
               icon="GitMerge"
               selected={checkoutIntent === "current"}
               title={currentOptionLabel}
@@ -510,6 +529,7 @@ function CheckoutInputsControl({
               />
             </BranchPickerRow>
             <BranchPickerRow
+              value={NEW_BRANCH_ROW_VALUE}
               disabled={blocker !== null}
               icon="Plus"
               selected={checkoutIntent === "new"}
@@ -529,6 +549,7 @@ function CheckoutInputsControl({
               />
             </BranchPickerRow>
             <BranchPickerRow
+              value={CHECKOUT_ROW_VALUE}
               disabled={blocker !== null}
               icon="GitMerge"
               selected={checkoutIntent === "checkout"}
@@ -538,7 +559,10 @@ function CheckoutInputsControl({
               <BranchPickerText label="Checkout" className="flex-1" wrap />
             </BranchPickerRow>
             {blocker !== null ? (
-              <p role="status" className="px-2 py-2 text-xs leading-snug text-muted-foreground">
+              <p
+                role="status"
+                className="px-2 py-2 text-xs leading-snug text-muted-foreground"
+              >
                 {blocker.guidance}
               </p>
             ) : null}
@@ -555,6 +579,7 @@ function CheckoutInputsControl({
                     {branchOptions.map((branch) => (
                       <BranchPickerRow
                         key={branch}
+                        value={branchRowValue(branch)}
                         icon="GitMerge"
                         selected={branch === selectedBranchName}
                         title={branch}
@@ -571,6 +596,7 @@ function CheckoutInputsControl({
                     query.trim() &&
                     !branchOptions.includes(query.trim()) ? (
                       <BranchPickerRow
+                        value={USE_QUERY_ROW_VALUE}
                         icon="GitMerge"
                         selected={false}
                         title={`Use ${query.trim()}`}
@@ -598,7 +624,7 @@ function CheckoutInputsControl({
               </>
             ) : null}
           </div>
-        </MenuHoverProvider>
+        </BranchPickerNavigation>
       </PopoverContent>
     </Popover>
   );
