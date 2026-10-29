@@ -226,6 +226,32 @@ const onboardingStepTelemetryPropertiesSchema = z
 export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
   z
     .object({
+      name: z.literal("playground_published"),
+      properties: z
+        .object({ kind: z.enum(["anatomy", "html", "native"]) })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("playground_clip_exported"),
+      properties: z
+        .object({
+          kind: z.enum(["anatomy", "html", "native"]),
+          format: z.enum(["mp4", "gif"]),
+          size: z.enum(["square", "landscape", "portrait"]),
+          duration_bucket: z.enum([
+            "under_15s",
+            "15_30s",
+            "30_60s",
+            "over_60s",
+          ]),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
       name: z.literal("onboarding_agent_state"),
       properties: z
         .object({
