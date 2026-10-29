@@ -439,6 +439,7 @@ function childQuestionFixture(
             prompt,
             multiSelect: false,
             allowFreeText: true,
+            required: true,
             options: options.map((option) => ({
               value: option.label.toLowerCase(),
               ...option,

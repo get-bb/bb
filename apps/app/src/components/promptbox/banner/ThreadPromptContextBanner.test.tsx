@@ -144,6 +144,7 @@ function childQuestion(
             prompt,
             multiSelect: false,
             allowFreeText: false,
+            required: true,
             options: [],
           },
         ],

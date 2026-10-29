@@ -134,6 +134,7 @@ function questionFor(
     id: name,
     prompt: lines.join("\n"),
     shortLabel: label,
+    required: true,
   };
   switch (field.kind) {
     case "choice":
@@ -236,6 +237,7 @@ function planConfirmation(message: string | undefined): AcpElicitationPlan {
           { value: CONFIRM_DECLINE_VALUE, label: "Decline" },
         ],
         allowFreeText: false,
+        required: true,
       },
     ],
   };

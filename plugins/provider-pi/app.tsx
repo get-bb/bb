@@ -84,6 +84,7 @@ function ExtensionUiInteraction({
             shortLabel: "Select",
             multiSelect: false,
             allowFreeText: false,
+            required: true,
             options: options.map((label, index) => ({
               value: `option-${index}`,
               label,

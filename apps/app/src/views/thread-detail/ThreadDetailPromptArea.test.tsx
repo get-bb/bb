@@ -123,6 +123,7 @@ function makePendingInteraction(): PendingInteraction {
           prompt: "Continue?",
           multiSelect: false,
           allowFreeText: true,
+          required: true,
         },
       ],
     },

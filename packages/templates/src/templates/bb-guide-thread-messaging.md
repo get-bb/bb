@@ -92,6 +92,7 @@ Interactions:
     --self                                 Target current thread (every subcommand)
     --json                                 Machine-readable output (every subcommand)
 
+  `answer` may skip questions that `show` marks Optional.
   `show` prints a plugin form's `Data` so you can shape the `--value` JSON.
   A provider's plugin-defined request cannot be cancelled; stop the thread to
   back out of it.

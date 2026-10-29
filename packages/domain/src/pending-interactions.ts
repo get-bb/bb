@@ -280,6 +280,7 @@ export const pendingInteractionUserQuestionQuestionSchema = z
       )
       .optional(),
     allowFreeText: z.boolean(),
+    required: z.boolean().default(true),
   })
   .superRefine((question, context) => {
     const optionValues = new Set<string>();

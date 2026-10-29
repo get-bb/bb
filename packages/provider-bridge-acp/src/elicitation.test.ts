@@ -55,6 +55,7 @@ describe("planAcpElicitation", () => {
           { value: "aggressive", label: "aggressive" },
         ],
         allowFreeText: false,
+        required: true,
       },
       {
         id: "targets",
@@ -66,6 +67,7 @@ describe("planAcpElicitation", () => {
           { value: "cli", label: "CLI" },
         ],
         allowFreeText: false,
+        required: true,
       },
       {
         id: "dryRun",
@@ -77,6 +79,7 @@ describe("planAcpElicitation", () => {
           { value: "false", label: "No" },
         ],
         allowFreeText: false,
+        required: true,
       },
       {
         id: "retries",
@@ -84,6 +87,7 @@ describe("planAcpElicitation", () => {
         shortLabel: "Retries",
         multiSelect: false,
         allowFreeText: true,
+        required: true,
       },
     ]);
 

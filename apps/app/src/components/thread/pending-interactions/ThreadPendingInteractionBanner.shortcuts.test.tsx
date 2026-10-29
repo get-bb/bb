@@ -65,6 +65,7 @@ const question: PendingInteraction = {
         shortLabel: "Path",
         multiSelect: false,
         allowFreeText: false,
+        required: true,
         options: [
           { value: "a", label: "A", description: "Option A" },
           { value: "b", label: "B", description: "Option B" },

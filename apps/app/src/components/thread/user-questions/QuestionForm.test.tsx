@@ -74,6 +74,7 @@ const singleSelect: InteractionPayload = {
       shortLabel: "Database",
       multiSelect: false,
       allowFreeText: true,
+      required: true,
       options: [
         {
           value: "q0o0",
@@ -392,6 +393,7 @@ describe("multi-select and multi-question flows", () => {
         shortLabel: "Extras",
         multiSelect: true,
         allowFreeText: true,
+        required: true,
         options: [
           { value: "q0o0", label: "Metrics", description: "Prometheus." },
           { value: "q0o1", label: "Tracing", description: "OTel." },
@@ -403,6 +405,7 @@ describe("multi-select and multi-question flows", () => {
         shortLabel: "Database",
         multiSelect: false,
         allowFreeText: true,
+        required: true,
         options: [
           { value: "q1o0", label: "Postgres", description: "Server." },
           { value: "q1o1", label: "SQLite", description: "Embedded." },
@@ -574,6 +577,39 @@ describe("multi-select and multi-question flows", () => {
         q1: { selected: ["q1o0"] },
       },
     } satisfies InteractionResponse);
+  });
+
+  it("submits once every required question is answered, leaving a blank optional one out (#6131)", () => {
+    const submit = vi.fn(async () => undefined);
+    const slot = render(
+      {
+        questions: [
+          multi.questions[1]!,
+          {
+            id: "notes",
+            prompt: "Anything else?",
+            shortLabel: "Notes",
+            multiSelect: false,
+            allowFreeText: true,
+            options: [],
+            required: false,
+          },
+        ],
+      },
+      { submit },
+    );
+
+    fireEvent.click(getButtonByText(slot, "Next"));
+    expect(slot.getByText("Optional")).toBeTruthy();
+    expect(getButtonByText(slot, "Submit answer").disabled).toBe(true);
+    fireEvent.click(getButtonByText(slot, "Back"));
+    fireEvent.click(getButtonByText(slot, "SQLite"));
+    fireEvent.click(getButtonByText(slot, "Next"));
+    fireEvent.click(getButtonByText(slot, "Submit answer"));
+
+    expect(submit).toHaveBeenCalledExactlyOnceWith({
+      answers: { q1: { selected: ["q1o1"] } },
+    });
   });
 
   it("cancels the request instead of submitting", () => {
