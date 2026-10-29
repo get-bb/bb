@@ -705,41 +705,40 @@ describe.concurrent("WorkspaceReads", () => {
       ["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main"],
       { cwd: repoPath },
     );
-    await runGit(["checkout", "-b", "feature"], { cwd: repoPath });
-    await runGit(["branch", "-D", "main"], { cwd: repoPath });
+    await runGit(["branch", "-m", "main", "feature"], { cwd: repoPath });
     await fs.writeFile(path.join(repoPath, "committed.txt"), "branch change\n");
     await runGit(["add", "."], { cwd: repoPath });
     await runGit(["commit", "-m", "Feature change"], { cwd: repoPath });
     await fs.writeFile(path.join(repoPath, "README.md"), "pending change\n");
     const workspace = new WorkspaceReads(repoPath, tmpdir());
     const target = { type: "all", mergeBaseBranch: "main" } as const;
-    const files = await workspace.diffFiles({
-      freshness: fresh(),
-      target,
-      maxFiles: 100,
-      ignoreWhitespace: false,
-    });
-    expect(files.files.map((file) => file.path).sort()).toEqual([
-      "README.md",
-      "committed.txt",
-    ]);
-    expect(
-      await workspace.getDiff({
+    const [files, diff, remoteDiff, status] = await Promise.all([
+      workspace.diffFiles({
+        freshness: fresh(),
+        target,
+        maxFiles: 100,
+        ignoreWhitespace: false,
+      }),
+      workspace.getDiff({
         ...UNLIMITED_DIFF,
         freshness: fresh(),
         target,
       }),
-    ).toEqual(
-      await workspace.getDiff({
+      workspace.getDiff({
         ...UNLIMITED_DIFF,
         freshness: fresh(),
         target: { ...target, mergeBaseBranch: "origin/main" },
       }),
-    );
-    const status = await workspace.getStatus({
-      freshness: fresh(),
-      mergeBaseBranch: "main",
-    });
+      workspace.getStatus({
+        freshness: fresh(),
+        mergeBaseBranch: "main",
+      }),
+    ]);
+    expect(files.files.map((file) => file.path).sort()).toEqual([
+      "README.md",
+      "committed.txt",
+    ]);
+    expect(diff).toEqual(remoteDiff);
     expect(status.mergeBase?.aheadCount).toBe(1);
     expect(status.mergeBase?.files.map((file) => file.path)).toEqual([
       "committed.txt",
