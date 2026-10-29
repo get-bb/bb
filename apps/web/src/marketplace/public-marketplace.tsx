@@ -18,6 +18,9 @@ import {
 
 import { initAnalytics, trackLandingEvent } from "../landing/analytics.js";
 import { CommandButton } from "../landing/command-button.js";
+import { DownloadLink } from "../landing/cta.js";
+import { useDesktopPlatform } from "../landing/desktop-platform.js";
+import { DESKTOP_DOWNLOADS } from "../landing/site.js";
 import { SiteFooter, SiteNav } from "../landing/site-chrome.js";
 import {
   marketplaceInstallBadge,
@@ -961,6 +964,37 @@ function MoreInCategory({
   );
 }
 
+function PlaygroundsInstall({ command }: { command: ReactNode }) {
+  const platform = useDesktopPlatform();
+  return (
+    <div className="marketplace-playgrounds-install">
+      <DownloadLink
+        placement="hero"
+        platform={platform}
+        className="btn btn-primary"
+      >
+        Download bb, then ask it to install Playgrounds
+      </DownloadLink>
+      <span className="marketplace-detail-source">
+        {DESKTOP_DOWNLOADS[platform].label}
+        {platform === "macos" ? " · Apple Silicon" : null}
+      </span>
+      <p className="marketplace-playgrounds-trust">
+        Plugins are full-access code, like npm packages. Before you install one,
+        read the code it installs, starting from the entry files in its
+        manifest, plus its dependencies. Or ask an agent to explain what it
+        does.
+      </p>
+      {command === null ? null : (
+        <details className="marketplace-playgrounds-command">
+          <summary>Install command</summary>
+          {command}
+        </details>
+      )}
+    </div>
+  );
+}
+
 export function PublicMarketplaceDetailPage({
   manifest,
   entry,
@@ -988,6 +1022,21 @@ export function PublicMarketplaceDetailPage({
       : setup.kind === "included"
         ? null
         : setup.command;
+  const commandButton =
+    installCommand === null ? null : (
+      <CommandButton
+        command={installCommand}
+        label={`Copy ${installCommand}`}
+        size="compact"
+        onCopy={(copied) => {
+          if (!copied) return;
+          trackLandingEvent({
+            name: "marketplace_install_command_copied",
+            properties: { plugin_id: entry.id },
+          });
+        }}
+      />
+    );
   const authorSiblings = moreFromMarketplaceAuthor(manifest, entry);
   const categoryEntries = moreInMarketplaceCategory(manifest, entry, stats);
 
@@ -1040,32 +1089,24 @@ export function PublicMarketplaceDetailPage({
                 {category}
               </MarketplaceLink>
               <InstallCount entry={entry} stats={stats} variant="detail" />
-
             </div>
           </div>
           <div className="marketplace-detail-install">
             <div className="marketplace-detail-actions">
-              {installCommand === null ? null : (
-                <CommandButton
-                  command={installCommand}
-                  label={`Copy ${installCommand}`}
-                  size="compact"
-                  onCopy={(copied) => {
-                    if (!copied) return;
-                    trackLandingEvent({
-                      name: "marketplace_install_command_copied",
-                      properties: { plugin_id: entry.id },
-                    });
-                  }}
-                />
+              {entry.id === "playgrounds" ? (
+                <PlaygroundsInstall command={commandButton} />
+              ) : (
+                <>
+                  {commandButton}
+                  <a
+                    className="marketplace-detail-source marketplace-detail-download"
+                    href="/download/macos"
+                  >
+                    Get it for macOS
+                    <HugeiconsIcon icon={LinkSquare02Icon} aria-hidden />
+                  </a>
+                </>
               )}
-              <a
-                className="marketplace-detail-source marketplace-detail-download"
-                href="/download/macos"
-              >
-                Get it for macOS
-                <HugeiconsIcon icon={LinkSquare02Icon} aria-hidden />
-              </a>
             </div>
           </div>
         </header>
@@ -1083,15 +1124,15 @@ export function PublicMarketplaceDetailPage({
               <hr className="marketplace-overview-rule" />
               <div className="marketplace-overview-heading">
                 <h2>Overview</h2>
-              <a
-                className="marketplace-detail-source"
-                href={repository}
-                target="_blank"
-                rel="noreferrer"
-              >
-                View source
-                <HugeiconsIcon icon={LinkSquare02Icon} aria-hidden />
-              </a>
+                <a
+                  className="marketplace-detail-source"
+                  href={repository}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  View source
+                  <HugeiconsIcon icon={LinkSquare02Icon} aria-hidden />
+                </a>
               </div>
               {entry.overview === undefined ? null : (
                 <MarketplaceOverview markdown={entry.overview} />

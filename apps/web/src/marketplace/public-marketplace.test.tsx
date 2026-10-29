@@ -243,6 +243,49 @@ describe("public marketplace route rendering", () => {
     expect(html).not.toContain("Updated");
   });
 
+  it.each(["playgrounds", "another-plugin"])(
+    "scopes the new-user install flow to the Playgrounds ID: %s",
+    (id) => {
+      const entry = {
+        ...MARKETPLACE_V2_FIXTURE.plugins[0],
+        id,
+        displayName: "Playgrounds",
+      };
+      const html = renderToStaticMarkup(
+        <PublicMarketplaceDetailPage
+          manifest={{ ...MARKETPLACE_V2_FIXTURE, plugins: [entry] }}
+          entry={entry}
+          stats={null}
+        />,
+      );
+      const detail = html.slice(
+        html.indexOf('class="marketplace-detail-install"'),
+      );
+      if (id === "playgrounds") {
+        expect(detail).toContain(
+          "Download bb, then ask it to install Playgrounds",
+        );
+        expect(detail).toContain('href="/download/macos?placement=hero"');
+        expect(detail).toContain("<summary>Install command</summary>");
+        expect(
+          detail.indexOf("<summary>Install command</summary>"),
+        ).toBeLessThan(
+          detail.indexOf('aria-label="Copy bb plugin install playgrounds"'),
+        );
+        expect(detail).toContain("Plugins are full-access code");
+      } else {
+        expect(detail).not.toContain(
+          "Download bb, then ask it to install Playgrounds",
+        );
+        expect(detail).not.toContain("<summary>Install command</summary>");
+        expect(detail).toContain(
+          'aria-label="Copy bb plugin install another-plugin"',
+        );
+        expect(detail).toContain("Get it for macOS");
+      }
+    },
+  );
+
   it("renders the overview text through the markdown allowlist", () => {
     const entry = {
       ...MARKETPLACE_V2_FIXTURE.plugins[1],
