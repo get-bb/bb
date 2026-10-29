@@ -13,7 +13,13 @@ import {
 } from "@bb/server-contract";
 import { ApiError } from "../../errors.js";
 import type { ServerLogger } from "../../types.js";
-import type { AppUpdateService } from "./app-update.js";
+import {
+  runningThreadsError,
+  threadsStartedMessage,
+  type AppUpdateService,
+  type AppUpdateServiceStatus,
+  type RunningThreadsPolicy,
+} from "./app-update.js";
 import type { DesktopUpdateChannel } from "./desktop-update-channel.js";
 
 const stateSchema = z
@@ -102,7 +108,7 @@ export function createDesktopAppUpdateService(args: {
     forceRefresh,
   }: {
     forceRefresh: boolean;
-  }): Promise<SystemAppUpdateStatus> => {
+  }): Promise<AppUpdateServiceStatus> => {
     await initialized;
     await refresh(forceRefresh);
     const version = info?.pendingVersion ?? info?.latestVersion ?? null;
@@ -175,7 +181,7 @@ export function createDesktopAppUpdateService(args: {
   };
   const runUpdate = async (
     version: string,
-    confirmed: boolean,
+    runningThreads: RunningThreadsPolicy,
   ): Promise<void> => {
     const result = {
       acknowledged: false,
@@ -191,10 +197,14 @@ export function createDesktopAppUpdateService(args: {
     try {
       await waitForDownload(version);
       const count = args.countRunningThreads();
-      if (count > 0 && !confirmed) {
-        throw new Error(
-          `${String(count)} thread${count === 1 ? "" : "s"} started while bb was downloading the update. Update again to restart.`,
-        );
+      if (runningThreads.kind === "wait" && runningThreads.shouldDefer(count)) {
+        activity = { phase: "idle" };
+        applying = false;
+        args.notifyChanged();
+        return;
+      }
+      if (count > 0 && runningThreads.kind === "refuse") {
+        throw new Error(threadsStartedMessage(count));
       }
       abort.signal.throwIfAborted();
       await mutateManagedJsonFile({
@@ -233,7 +243,7 @@ export function createDesktopAppUpdateService(args: {
 
   return {
     getStatus,
-    async apply({ confirmInterruptingThreads }) {
+    async apply({ runningThreads }) {
       if (applying)
         throw new ApiError(
           409,
@@ -257,14 +267,16 @@ export function createDesktopAppUpdateService(args: {
             "app_update_unavailable",
             "bb is already up to date.",
           );
-        if (status.runningThreadCount > 0 && !confirmInterruptingThreads) {
-          const count = status.runningThreadCount;
-          throw new ApiError(
-            409,
-            "threads_running",
-            `${String(count)} thread${count === 1 ? " is" : "s are"} running. Updating restarts bb and interrupts ${count === 1 ? "it" : "them"}.`,
-            { details: { runningThreadCount: count } },
-          );
+        if (runningThreads.kind === "wait") {
+          if (runningThreads.shouldDefer(status.runningThreadCount)) {
+            applying = false;
+            return status;
+          }
+        } else if (
+          runningThreads.kind === "refuse" &&
+          status.runningThreadCount > 0
+        ) {
+          throw runningThreadsError(status.runningThreadCount);
         }
         activity = {
           phase: "preparing",
@@ -274,18 +286,17 @@ export function createDesktopAppUpdateService(args: {
           targetVersion: status.available.version,
         };
         args.notifyChanged();
-        void runUpdate(
-          status.available.version,
-          confirmInterruptingThreads,
-        ).catch((error: unknown) => {
-          args.logger.error(
-            { error },
-            "Could not record the desktop update result",
-          );
-          applying = false;
-          activity = { phase: "idle" };
-          args.notifyChanged();
-        });
+        void runUpdate(status.available.version, runningThreads).catch(
+          (error: unknown) => {
+            args.logger.error(
+              { error },
+              "Could not record the desktop update result",
+            );
+            applying = false;
+            activity = { phase: "idle" };
+            args.notifyChanged();
+          },
+        );
         return getStatus({ forceRefresh: false });
       } catch (error) {
         applying = false;

@@ -2152,6 +2152,18 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<SystemAppUpdateStatus>(),
     }),
+    scheduleAppUpdate: defineRoute({
+      path: "/system/app-update/schedule",
+      method: "post",
+      request: noRequest<EmptyInput>(),
+      response: jsonResponse<SystemAppUpdateStatus>(),
+    }),
+    cancelScheduledAppUpdate: defineRoute({
+      path: "/system/app-update/schedule/cancel",
+      method: "post",
+      request: noRequest<EmptyInput>(),
+      response: jsonResponse<SystemAppUpdateStatus>(),
+    }),
     cliCommand: defineRoute({
       path: "/system/cli-command",
       method: "get",

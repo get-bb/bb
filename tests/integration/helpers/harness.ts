@@ -41,6 +41,7 @@ import {
 import { SkillTreeRegistry } from "../../../apps/server/src/services/skills/injected-skills.js";
 import { PluginHostArtifactRegistry } from "../../../apps/server/src/services/plugins/plugin-host-artifact-registry.js";
 import { createAppUpdateService } from "../../../apps/server/src/services/system/app-update.js";
+import { createScheduledAppUpdateService } from "../../../apps/server/src/services/system/app-update-schedule.js";
 import { createCliCommandService } from "../../../apps/server/src/services/system/cli-command.js";
 import { createAppVersionService } from "../../../apps/server/src/services/system/app-version.js";
 import { createProviderNativeRootsCache } from "../../../apps/server/src/services/providers/native-roots.js";
@@ -263,16 +264,25 @@ async function startIntegrationServer(
     config,
     logger: testLogger,
   });
-  const appUpdate = createAppUpdateService({
-    currentCommit: null,
-    appSurface: "web",
-    appVersion,
-    config,
-    countRunningThreads: () => listRunningThreads(db).length,
-    launcher: null,
+  const countRunningThreads = (): number => listRunningThreads(db).length;
+  const notifyAppUpdateChanged = (): void =>
+    hub.notifySystem(["app-update-changed"]);
+  const appUpdate = createScheduledAppUpdateService({
+    countRunningThreads,
+    inner: createAppUpdateService({
+      currentCommit: null,
+      appSurface: "web",
+      appVersion,
+      config,
+      countRunningThreads,
+      launcher: null,
+      logger: testLogger,
+      mode: null,
+      notifyChanged: notifyAppUpdateChanged,
+    }),
     logger: testLogger,
-    mode: null,
-    notifyChanged: () => hub.notifySystem(["app-update-changed"]),
+    notifyChanged: notifyAppUpdateChanged,
+    onChangedMessage: (listener) => hub.onChangedMessage(listener),
   });
   const serverDeps = {
     appUpdate,

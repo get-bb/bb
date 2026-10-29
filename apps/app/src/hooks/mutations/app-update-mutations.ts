@@ -9,6 +9,9 @@ import { sdk } from "@/lib/sdk";
 import { hydrateAppUpdateStatus } from "../cache-owners/app-update-cache-owner";
 
 const APPLY_APP_UPDATE_ERROR_MESSAGE = "Couldn't start the bb update.";
+const SCHEDULE_APP_UPDATE_ERROR_MESSAGE = "Couldn't schedule the bb update.";
+const CANCEL_SCHEDULED_APP_UPDATE_ERROR_MESSAGE =
+  "Couldn't cancel the scheduled bb update.";
 
 export function useApplyAppUpdate() {
   const queryClient = useQueryClient();
@@ -23,6 +26,40 @@ export function useApplyAppUpdate() {
           fallbackMessage: APPLY_APP_UPDATE_ERROR_MESSAGE,
         });
       }
+    },
+    onSuccess: (status) => {
+      hydrateAppUpdateStatus({ queryClient, status });
+    },
+  });
+}
+
+export function useScheduleAppUpdate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    meta: { showErrorToast: false },
+    mutationFn: () => sdk.system.experimental_scheduleAppUpdate(),
+    onError: (error) => {
+      showMutationErrorToast({
+        error,
+        fallbackMessage: SCHEDULE_APP_UPDATE_ERROR_MESSAGE,
+      });
+    },
+    onSuccess: (status) => {
+      hydrateAppUpdateStatus({ queryClient, status });
+    },
+  });
+}
+
+export function useCancelScheduledAppUpdate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    meta: { showErrorToast: false },
+    mutationFn: () => sdk.system.experimental_cancelScheduledAppUpdate(),
+    onError: (error) => {
+      showMutationErrorToast({
+        error,
+        fallbackMessage: CANCEL_SCHEDULED_APP_UPDATE_ERROR_MESSAGE,
+      });
     },
     onSuccess: (status) => {
       hydrateAppUpdateStatus({ queryClient, status });

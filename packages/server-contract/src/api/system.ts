@@ -494,6 +494,7 @@ export const systemAppUpdateStatusSchema = z.object({
   current: systemAppUpdateRevisionSchema,
   lastResult: systemAppUpdateResultSchema.nullable(),
   runningThreadCount: z.number().int().nonnegative(),
+  scheduled: z.object({ requestedAt: z.string() }).nullable(),
   support: systemAppUpdateSupportSchema,
 });
 export type SystemAppUpdateStatus = z.infer<typeof systemAppUpdateStatusSchema>;

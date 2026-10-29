@@ -53,6 +53,7 @@ const IN_APP_UPDATE: SystemAppUpdateStatus = {
   current: { commit: null, version: "0.38.0" },
   lastResult: null,
   runningThreadCount: 0,
+  scheduled: null,
   support: { kind: "supported", mode: "npm" },
 };
 
@@ -408,6 +409,31 @@ export function RowVariations() {
                 desktopInfo={null}
                 isDesktop={false}
                 onApplyAppUpdate={noop}
+                onRelaunchDesktop={null}
+                onRetryDesktop={null}
+                onShowAppUpdateResult={noop}
+              />
+            </BbUpdatesCard>
+          </div>
+        </StoryRow>
+
+        <StoryRow
+          label="In-app update waiting for threads"
+          hint="The update was scheduled for when threads finish; the server starts it once none are running."
+        >
+          <div className="w-full">
+            <BbUpdatesCard>
+              <BbAppUpdateRows
+                systemVersion={NPM_VERSION}
+                appUpdate={{
+                  ...IN_APP_UPDATE,
+                  runningThreadCount: 2,
+                  scheduled: { requestedAt: "2026-10-23T00:00:00.000Z" },
+                }}
+                desktopInfo={null}
+                isDesktop={false}
+                onApplyAppUpdate={noop}
+                onCancelScheduledAppUpdate={noop}
                 onRelaunchDesktop={null}
                 onRetryDesktop={null}
                 onShowAppUpdateResult={noop}

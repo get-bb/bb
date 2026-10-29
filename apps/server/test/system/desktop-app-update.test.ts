@@ -83,18 +83,18 @@ describe("desktop-hosted server updates", () => {
     });
     running.count = 2;
     await expect(
-      service.apply({ confirmInterruptingThreads: false }),
+      service.apply({ runningThreads: { kind: "refuse" } }),
     ).rejects.toMatchObject({
       body: { code: "threads_running", details: { runningThreadCount: 2 } },
     });
     expect(channel.requests).not.toContain("install");
 
-    await service.apply({ confirmInterruptingThreads: true });
+    await service.apply({ runningThreads: { kind: "interrupt" } });
     expect(
       (await service.getStatus({ forceRefresh: false })).activity.phase,
     ).toBe("preparing");
     await expect(
-      service.apply({ confirmInterruptingThreads: true }),
+      service.apply({ runningThreads: { kind: "interrupt" } }),
     ).rejects.toMatchObject({ body: { code: "app_update_in_progress" } });
     expect(channel.requests).not.toContain("install");
     channel.push({
@@ -128,7 +128,7 @@ describe("desktop-hosted server updates", () => {
 
   it("keeps the server running when a new thread starts during download", async () => {
     const { service, channel, running } = await fixture();
-    await service.apply({ confirmInterruptingThreads: false });
+    await service.apply({ runningThreads: { kind: "refuse" } });
     running.count = 1;
     channel.push({
       updateDownloaded: true,
@@ -146,9 +146,35 @@ describe("desktop-hosted server updates", () => {
     ).toBe("idle");
   });
 
+  it("hands a waiting update back without a failure when a thread starts during download", async () => {
+    const { service, channel, running } = await fixture();
+    const shouldDefer = vi.fn((count: number) => count > 0);
+    await service.apply({ runningThreads: { kind: "wait", shouldDefer } });
+    running.count = 1;
+    channel.push({
+      updateDownloaded: true,
+      pendingVersion: "1.1.0",
+      downloadState: "downloaded",
+    });
+
+    await vi.waitFor(() => expect(shouldDefer).toHaveBeenLastCalledWith(1));
+    expect(await service.getStatus({ forceRefresh: false })).toMatchObject({
+      activity: { phase: "idle" },
+      lastResult: null,
+    });
+    expect(channel.requests).not.toContain("install");
+
+    running.count = 0;
+    await service.apply({ runningThreads: { kind: "wait", shouldDefer } });
+    await vi.waitFor(() => expect(channel.requests).toContain("install"), {
+      timeout: 3_000,
+    });
+    expect(shouldDefer.mock.calls).toEqual([[0], [1], [0], [0]]);
+  });
+
   it("reports a failed download without restarting and allows another attempt", async () => {
     const { service, channel } = await fixture();
-    await service.apply({ confirmInterruptingThreads: false });
+    await service.apply({ runningThreads: { kind: "refuse" } });
     channel.push({ downloadState: "failed" });
     await vi.waitFor(async () =>
       expect(
@@ -158,7 +184,7 @@ describe("desktop-hosted server updates", () => {
     expect(channel.requests).not.toContain("install");
     channel.push({ downloadState: "downloading" });
     await expect(
-      service.apply({ confirmInterruptingThreads: false }),
+      service.apply({ runningThreads: { kind: "refuse" } }),
     ).resolves.toMatchObject({ activity: { phase: "preparing" } });
   });
 
@@ -173,7 +199,7 @@ describe("desktop-hosted server updates", () => {
       blocked: { reason: "fetch-failed" },
     });
     await expect(
-      service.apply({ confirmInterruptingThreads: false }),
+      service.apply({ runningThreads: { kind: "refuse" } }),
     ).rejects.toMatchObject({ body: { code: "app_update_blocked" } });
     expect(channel.requests).not.toContain("install");
 
@@ -184,7 +210,7 @@ describe("desktop-hosted server updates", () => {
       available: { version: "1.1.0" },
     });
     await expect(
-      service.apply({ confirmInterruptingThreads: false }),
+      service.apply({ runningThreads: { kind: "refuse" } }),
     ).resolves.toMatchObject({ activity: { phase: "preparing" } });
   });
 
@@ -195,7 +221,7 @@ describe("desktop-hosted server updates", () => {
       (await service.getStatus({ forceRefresh: false })).desktopUpdateSupported,
     ).toBeUndefined();
     await expect(
-      service.apply({ confirmInterruptingThreads: true }),
+      service.apply({ runningThreads: { kind: "interrupt" } }),
     ).rejects.toMatchObject({ body: { code: "app_update_unsupported" } });
     expect(channel.requests).not.toContain("install");
   });

@@ -34,6 +34,7 @@ import {
   createAppUpdateService,
   type AppUpdateService,
 } from "../../src/services/system/app-update.js";
+import { createScheduledAppUpdateService } from "../../src/services/system/app-update-schedule.js";
 import {
   createCliCommandService,
   type CliCommandService,
@@ -295,19 +296,28 @@ export async function createTestAppHarness(
       config,
       logger,
     });
-  const appUpdate =
-    appUpdateService ??
-    createAppUpdateService({
-      currentCommit: null,
-      appSurface: "web",
-      appVersion,
-      config,
-      countRunningThreads: () => listRunningThreads(db).length,
-      launcher: null,
-      logger,
-      mode: null,
-      notifyChanged: () => hub.notifySystem(["app-update-changed"]),
-    });
+  const countRunningThreads = (): number => listRunningThreads(db).length;
+  const notifyAppUpdateChanged = (): void =>
+    hub.notifySystem(["app-update-changed"]);
+  const appUpdate = createScheduledAppUpdateService({
+    countRunningThreads,
+    inner:
+      appUpdateService ??
+      createAppUpdateService({
+        currentCommit: null,
+        appSurface: "web",
+        appVersion,
+        config,
+        countRunningThreads,
+        launcher: null,
+        logger,
+        mode: null,
+        notifyChanged: notifyAppUpdateChanged,
+      }),
+    logger,
+    notifyChanged: notifyAppUpdateChanged,
+    onChangedMessage: (listener) => hub.onChangedMessage(listener),
+  });
   const deps: ServerAppDeps = {
     appUpdate,
     appVersion,

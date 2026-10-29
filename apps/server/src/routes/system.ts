@@ -721,6 +721,16 @@ export function registerSystemRoutes(
     );
   });
 
+  post(routes.scheduleAppUpdate, async (context) => {
+    assertAppUpdateAllowed(context);
+    return context.json(await deps.appUpdate.schedule());
+  });
+
+  post(routes.cancelScheduledAppUpdate, async (context) => {
+    assertAppUpdateAllowed(context);
+    return context.json(await deps.appUpdate.cancelScheduled());
+  });
+
   post(routes.acknowledgeAppUpdate, async (context, body) => {
     assertAppUpdateAllowed(context);
     return context.json(

@@ -133,9 +133,19 @@ CLI counterpart of Settings → Updates.
     --json                                Print the status as JSON
   bb updates app apply                    Download the update and restart bb into it
     --yes                                 Interrupt running threads without asking
+    --when-idle                           Wait for running threads to finish instead
+                                          of interrupting them
     --no-wait                             Return once the update starts
     --json                                Print the final status as JSON
+  bb updates app cancel                   Cancel an update scheduled with --when-idle
   bb updates app dismiss                  Mark the last update result as seen
+
+`bb updates app apply --when-idle` updates at once when no thread is running.
+Otherwise the server schedules the update and the command returns, so an agent
+can run it from its own thread; the server starts the update after every thread
+has stayed finished for a few seconds, and waits again if one starts during the
+download. The schedule lasts until bb restarts. Without `--when-idle` or `--yes`,
+apply asks before interrupting running threads and fails without a terminal.
 
 `bb updates app apply` also updates a server hosted by the desktop app, restarting
 that hosting app through its native updater. It never updates the desktop you

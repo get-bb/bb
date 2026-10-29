@@ -3735,6 +3735,34 @@ machine through the host daemon (enrolled machines get `~/.local/bin/bb` from
 `install-machine.sh` today), and after exercising real Windows and macOS
 installs.
 
+## `PluginBbSdk.system.experimental_scheduleAppUpdate` and `experimental_cancelScheduledAppUpdate`
+
+`experimental_scheduleAppUpdate()` updates bb once no thread is running
+(`starting` or `active`). With none running it starts the update at once, like
+`applyAppUpdate`; otherwise it returns the status with `scheduled:
+{ requestedAt }` and the server starts the update after running threads have
+stayed at zero for five seconds. A thread that starts while the update downloads
+puts it back to waiting instead of recording a failure: the server sends the
+launcher a `defer` decision, and the desktop service hands the download back.
+`scheduled` stays set while that update downloads; clients tell waiting from
+downloading by `activity.phase`. Scheduling again while one is pending returns
+it unchanged. Both refuse like `applyAppUpdate` when the update is unsupported,
+blocked, unavailable, or already running, and 403 for machine credentials.
+`experimental_cancelScheduledAppUpdate()` clears the schedule, and a scheduled
+update that is already downloading defers instead of restarting; it is a no-op
+without one. Applying by hand also clears it, and schedule, apply, and the
+scheduled start run one at a time. A scheduled start the server refuses ends the
+schedule with only a log line; the status's `blocked`, `support`, or `activity`
+shows why. The schedule lives in server memory and is lost when the server
+restarts. Core callers: Settings → Updates
+(the running-threads dialog's "Update when threads finish" and the row's Cancel)
+and `bb updates app apply --when-idle` / `bb updates app cancel`.
+
+Stabilize after deciding whether the schedule should persist across server
+restarts, whether threads waiting on a user decision should count as running,
+and whether the settle window should be configurable; then rename project-wide
+and remove this entry.
+
 ## `PluginBbSdk.hosts.experimental_discoverRepos`
 
 `hosts.experimental_discoverRepos({ hostId })` lists up to 10 git
