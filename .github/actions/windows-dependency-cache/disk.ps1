@@ -11,7 +11,7 @@ function Invoke-DiskPart([string[]]$Commands) {
 }
 
 function Dismount-Dependencies {
-  Invoke-DiskPart @("select vdisk file=`"$disk`"", 'detach vdisk')
+  Dismount-DiskImage -ImagePath $disk
   if ((Get-DiskImage -ImagePath $disk).Attached) {
     throw 'Dependency disk is still attached; refusing to cache it'
   }
@@ -22,28 +22,37 @@ if ($Operation -eq 'detach') {
   exit 0
 }
 
-$attached = $false
 try {
   if (Test-Path 'P:\') { throw 'Drive P: is already occupied' }
-  $commands = @()
   if ($Operation -eq 'create') {
     if (Test-Path $disk) { throw 'Dependency image already exists' }
-    $commands += "create vdisk file=`"$disk`" maximum=16384 type=expandable"
-  }
-  $commands += "select vdisk file=`"$disk`""
-  $commands += 'attach vdisk'
-  if ($Operation -eq 'create') {
-    $commands += 'create partition primary'
-    $commands += 'format fs=ntfs quick label=bb-dependencies'
+    Invoke-DiskPart @(
+      "create vdisk file=`"$disk`" maximum=16384 type=expandable",
+      "select vdisk file=`"$disk`"",
+      'attach vdisk',
+      'create partition primary',
+      'format fs=ntfs quick label=bb-dependencies'
+    )
   } else {
-    $commands += 'select partition 1'
+    Mount-DiskImage -ImagePath $disk -NoDriveLetter
   }
-  $commands += 'assign letter=P'
-  Invoke-DiskPart $commands
+  $assignment = [System.Diagnostics.Stopwatch]::StartNew()
+  while ($true) {
+    try {
+      $image = Get-DiskImage -ImagePath $disk
+      if (!$image.Attached) { throw 'Dependency image is not attached' }
+      $partition = $image | Get-Disk | Get-Partition -PartitionNumber 1
+      if (!($partition | Get-Volume)) { throw 'Dependency volume is not ready' }
+      $partition | Set-Partition -NewDriveLetter P
+      break
+    } catch {
+      if ($assignment.Elapsed.TotalSeconds -ge 10) { throw }
+      Start-Sleep -Milliseconds 200
+    }
+  }
   $image = Get-DiskImage -ImagePath $disk
-  $attached = $image.Attached
   $partition = Get-Partition -DriveLetter P
-  if (!$attached -or $partition.DiskNumber -ne ($image | Get-Disk).Number) {
+  if (!$image.Attached -or $partition.DiskNumber -ne ($image | Get-Disk).Number) {
     throw 'Drive P: does not belong to the dependency image'
   }
   if ($Operation -eq 'mount' -and (!(Test-Path 'P:\store') -or !(Test-Path 'P:\virtual-store'))) {
@@ -54,7 +63,7 @@ try {
   'active=true' | Out-File -Append $env:GITHUB_OUTPUT
 } catch {
   Write-Host "::warning::Dependency disk unavailable; using a fresh install. $($_.Exception.Message)"
-  if ($attached) {
+  if ((Get-DiskImage -ImagePath $disk -ErrorAction SilentlyContinue).Attached) {
     try { Dismount-Dependencies } catch { Write-Host "::warning::Could not detach unused dependency disk: $($_.Exception.Message)" }
   }
   'active=false' | Out-File -Append $env:GITHUB_OUTPUT
