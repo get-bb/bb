@@ -739,6 +739,13 @@ export const hostDaemonServerWsMessageSchema = z.discriminatedUnion("type", [
       type: z.literal("machine.shutdown"),
     })
     .strict(),
+  z
+    .object({
+      type: z.literal("interactive-requests.end"),
+      requests: z.array(hostDaemonInteractiveRequestKeySchema).min(1),
+      reason: z.string().min(1),
+    })
+    .strict(),
   serverMovedMessageSchema,
   z
     .object({

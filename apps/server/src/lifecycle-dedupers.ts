@@ -11,9 +11,11 @@ import {
   type ProviderModelCatalogStore,
 } from "./services/providers/provider-model-catalog-store.js";
 import { TurnRequestDelivery } from "./services/threads/turn-request-delivery.js";
+import { InFlightThreadRpcGuard } from "./services/threads/thread-rpc-guard.js";
 
 export interface LifecycleDedupers {
   providerModelCatalogs: ProviderModelCatalogStore;
+  threadRpcs: InFlightThreadRpcGuard;
   turnRequestDelivery: TurnRequestDelivery;
   queuedMessageDispatch: AsyncDeduper<string, void>;
   threadProvisionAdvance: AsyncRerunner<string>;
@@ -28,6 +30,7 @@ export function createLifecycleDedupers(): LifecycleDedupers {
     }),
     queuedMessageDispatch: createAsyncDeduper<string, void>(),
     threadProvisionAdvance: createAsyncRerunner<string>(),
+    threadRpcs: new InFlightThreadRpcGuard(),
     turnRequestDelivery: new TurnRequestDelivery(),
   };
 }

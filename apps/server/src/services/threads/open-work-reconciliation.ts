@@ -46,11 +46,30 @@ export function reconcileDaemonReportedOpenWork(
   const reportedRequests = args.openThreadWork.flatMap(
     (work) => work.interactiveRequests,
   );
+  const reportedKeys = new Set(reportedRequests.map(providerRequestKey));
   interruptQuestionsTheProviderNoLongerAsks(deps, {
     hostId: args.hostId,
-    reportedKeys: new Set(reportedRequests.map(providerRequestKey)),
+    reportedKeys,
     unsettledThreadIds,
   });
+  for (const interaction of listActiveProviderPendingInteractionsForHost(
+    deps.db,
+    { hostId: args.hostId },
+  )) {
+    if (
+      interaction.status !== "resolving" ||
+      unsettledThreadIds.has(interaction.threadId)
+    ) {
+      continue;
+    }
+    if (reportedKeys.has(providerRequestKey(interaction))) {
+      deps.pendingInteractions.redeliverResolvingInteraction(interaction.id);
+    } else {
+      deps.pendingInteractions.completeResolvingInteractionWithoutAck(
+        interaction.id,
+      );
+    }
+  }
   return reportedRequests.filter((request) => {
     const interaction = getPendingInteractionByProviderRequest(
       deps.db,

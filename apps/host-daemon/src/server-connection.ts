@@ -627,6 +627,14 @@ export class ServerConnection {
       return;
     }
 
+    if (message.data.type === "interactive-requests.end") {
+      this.options.onInteractiveRequestsEnded?.({
+        reason: message.data.reason,
+        requests: message.data.requests,
+      });
+      return;
+    }
+
     if (message.data.type === "machine.shutdown") {
       void Promise.resolve(this.options.onMachineShutdown?.()).catch(
         (error) => {

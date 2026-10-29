@@ -206,47 +206,55 @@ describe("input ledger", () => {
     });
   });
 
-  it("queues a start refused for a competing turn and sends it when that turn ends", async () => {
-    await withTestHarness(async (harness) => {
-      const fixture = seedLedgerFixture(harness, { status: "idle", value: 2 });
-      const submit = await send(harness, fixture, {
-        mode: "auto",
-        text: "refused for a competing turn",
-      });
-      seedTurnStarted(harness.deps, {
-        environmentId: fixture.environment.id,
-        providerThreadId: fixture.providerThreadId,
-        threadId: fixture.thread.id,
-        turnId: "turn-unrequested",
-      });
+  it.each(["competing_turn", "host_unavailable"])(
+    "queues a start refused with %s while another turn runs and sends it when that turn ends",
+    async (errorCode) => {
+      await withTestHarness(async (harness) => {
+        const fixture = seedLedgerFixture(harness, {
+          status: "idle",
+          value: 2,
+        });
+        const submit = await send(harness, fixture, {
+          mode: "auto",
+          text: "refused while another turn runs",
+        });
+        seedTurnStarted(harness.deps, {
+          environmentId: fixture.environment.id,
+          providerThreadId: fixture.providerThreadId,
+          threadId: fixture.thread.id,
+          turnId: "turn-unrequested",
+        });
 
-      await reportQueuedCommandError(harness, submit, {
-        errorCode: "competing_turn",
-        errorMessage: "Refusing to start a competing turn",
+        await reportQueuedCommandError(harness, submit, {
+          errorCode,
+          errorMessage: "Refusing to start a turn",
+        });
+
+        expect(getThread(harness.db, fixture.thread.id)?.status).toBe("active");
+        expect(
+          listQueuedThreadMessages(harness.db, fixture.thread.id),
+        ).toMatchObject([
+          {
+            content: JSON.stringify(
+              textInput("refused while another turn runs"),
+            ),
+            state: "waiting",
+          },
+        ]);
+
+        await postDaemonEvents(harness, fixture, [
+          turnCompleted(fixture, "turn-unrequested"),
+        ]);
+        const resent = await waitForTurnSubmit(
+          harness,
+          fixture,
+          "refused while another turn runs",
+        );
+        expect(resent.command.requestId).not.toBe(submit.command.requestId);
+        expect(queuedTexts(harness, fixture.thread.id)).toEqual([]);
       });
-
-      expect(getThread(harness.db, fixture.thread.id)?.status).toBe("active");
-      expect(
-        listQueuedThreadMessages(harness.db, fixture.thread.id),
-      ).toMatchObject([
-        {
-          content: JSON.stringify(textInput("refused for a competing turn")),
-          state: "waiting",
-        },
-      ]);
-
-      await postDaemonEvents(harness, fixture, [
-        turnCompleted(fixture, "turn-unrequested"),
-      ]);
-      const resent = await waitForTurnSubmit(
-        harness,
-        fixture,
-        "refused for a competing turn",
-      );
-      expect(resent.command.requestId).not.toBe(submit.command.requestId);
-      expect(queuedTexts(harness, fixture.thread.id)).toEqual([]);
-    });
-  });
+    },
+  );
 
   it("sends a steer that reached the daemon after its turn ended as the next turn", async () => {
     await withTestHarness(async (harness) => {

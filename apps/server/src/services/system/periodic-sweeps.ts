@@ -353,7 +353,7 @@ async function runThreadProvisioningOrphanCleanupSweep(
 
   for (const thread of provisioningThreads) {
     try {
-      if (hasLiveThreadStartInFlight(thread.id)) {
+      if (hasLiveThreadStartInFlight(deps, thread.id)) {
         continue;
       }
       await advanceThreadProvisioning(deps, {

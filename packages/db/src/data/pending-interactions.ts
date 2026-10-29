@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, or } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type { PendingInteractionStatus } from "@bb/domain";
 import type { DbConnection, DbTransaction } from "../connection.js";
@@ -360,7 +360,13 @@ function interruptPendingInteractionsBatched(
           and(
             ...args.extraConditions,
             inArray(pendingInteractions.threadId, threadIdsBatch),
-            inArray(pendingInteractions.status, ["pending", "resolving"]),
+            or(
+              eq(pendingInteractions.status, "pending"),
+              and(
+                eq(pendingInteractions.status, "resolving"),
+                eq(pendingInteractions.originKind, "plugin"),
+              ),
+            ),
           ),
         )
         .returning()

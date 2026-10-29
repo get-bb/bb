@@ -101,7 +101,7 @@ async function startLiveThreadStartRpc(
     ({ command }) =>
       command.type === "thread.start" && command.threadId === thread.id,
   );
-  expect(hasLiveThreadStartInFlight(thread.id)).toBe(true);
+  expect(hasLiveThreadStartInFlight(args.harness.deps, thread.id)).toBe(true);
   return { environment, startCommand, thread, owner };
 }
 

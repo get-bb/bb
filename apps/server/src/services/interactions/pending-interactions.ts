@@ -18,6 +18,7 @@ import {
   type DbNotifier,
   type DbTransaction,
 } from "@bb/db";
+import { NotificationBuffer } from "../lib/notification-buffer.js";
 import {
   isApprovalPendingInteractionPayload,
   isPluginPendingInteractionPayload,
@@ -830,6 +831,7 @@ export class PendingInteractionLifecycle {
     args: SettleInteractiveResolveCommandResultArgs,
   ): void {
     if (!args.report.ok) {
+      if (args.report.errorCode === "host_unavailable") return;
       this.interruptPendingInteractionInTransaction(args.deps, {
         interactionId: args.command.interactionId,
         reason: args.report.errorMessage,
@@ -950,23 +952,71 @@ export class PendingInteractionLifecycle {
     );
 
     if (updated) {
-      startLiveHostCommand(
-        { ...this.deps, pendingInteractions: this },
-        {
-          command,
-          hostId: environment.hostId,
-          timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
-          onError: ({ error }) => {
-            this.deps.logger.warn(
-              { err: error, interactionId: args.interaction.id },
-              "Live interactive resolve command failed",
-            );
-          },
-        },
-      );
+      this.startInteractiveResolveCommand(command, environment.hostId);
     }
 
     return updated;
+  }
+
+  private startInteractiveResolveCommand(
+    command: ReturnType<typeof buildInteractiveResolveCommand>,
+    hostId: string,
+  ): void {
+    startLiveHostCommand(
+      { ...this.deps, pendingInteractions: this },
+      {
+        command,
+        hostId,
+        timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
+        onError: ({ error }) => {
+          this.deps.logger.warn(
+            { err: error, interactionId: command.interactionId },
+            "Live interactive resolve command failed",
+          );
+        },
+      },
+    );
+  }
+
+  completeResolvingInteractionWithoutAck(interactionId: string): void {
+    const row = getPendingInteraction(this.deps.db, interactionId);
+    if (row === null || row.status !== "resolving") return;
+    const interaction = toPendingInteraction(row);
+    if (interaction.resolution === null) return;
+    const resolution = interaction.resolution;
+    const notifications = new NotificationBuffer();
+    this.deps.db.transaction(
+      (tx) =>
+        this.completeResolvingInteractionInTransaction(
+          { db: tx, hub: notifications },
+          { interactionId, resolution },
+        ),
+      { behavior: "immediate" },
+    );
+    notifications.flushInto(this.deps.hub);
+  }
+
+  redeliverResolvingInteraction(interactionId: string): void {
+    const row = getPendingInteraction(this.deps.db, interactionId);
+    if (row === null || row.status !== "resolving" || row.resolution === null) {
+      return;
+    }
+    const interaction = toPendingInteraction(row);
+    const environmentId =
+      getThread(this.deps.db, row.threadId)?.environmentId ?? null;
+    const environment =
+      environmentId === null
+        ? null
+        : getEnvironment(this.deps.db, environmentId);
+    if (environment === null || interaction.resolution === null) return;
+    this.startInteractiveResolveCommand(
+      buildInteractiveResolveCommand({
+        environmentId: environment.id,
+        interaction,
+        resolution: interaction.resolution,
+      }),
+      environment.hostId,
+    );
   }
 
   private requireInteraction(interactionId: string): PendingInteraction {
@@ -1009,9 +1059,43 @@ export class PendingInteractionLifecycle {
     return interaction;
   }
 
+  private endProviderWaitForInterruptedInteraction(
+    db: AppDeps["db"] | DbTransaction,
+    interaction: PendingInteraction,
+  ): void {
+    if (interaction.status !== "interrupted") return;
+    const row = getPendingInteraction(db, interaction.id);
+    if (
+      row === null ||
+      row.originKind !== "provider" ||
+      row.providerId === null ||
+      row.providerThreadId === null ||
+      row.providerRequestId === null
+    ) {
+      return;
+    }
+    const environmentId = getThread(db, row.threadId)?.environmentId ?? null;
+    const environment =
+      environmentId === null ? null : getEnvironment(db, environmentId);
+    if (environment === null) return;
+    this.deps.hub.sendDaemonMessage(environment.hostId, {
+      type: "interactive-requests.end",
+      requests: [
+        {
+          threadId: row.threadId,
+          providerId: row.providerId,
+          providerThreadId: row.providerThreadId,
+          providerRequestId: row.providerRequestId,
+        },
+      ],
+      reason: row.statusReason ?? "The question was closed",
+    });
+  }
+
   private settleInteractionTerminalState(
     interaction: PendingInteraction,
   ): void {
+    this.endProviderWaitForInterruptedInteraction(this.deps.db, interaction);
     appendPendingInteractionTimelineEvent(this.deps, interaction);
     notifyInteractionChanged({
       deps: this.deps,
@@ -1024,6 +1108,7 @@ export class PendingInteractionLifecycle {
     deps: PendingInteractionTransactionDeps,
     interaction: PendingInteraction,
   ): void {
+    this.endProviderWaitForInterruptedInteraction(deps.db, interaction);
     appendPendingInteractionTimelineEventInTransaction(deps, interaction);
     notifyInteractionChanged({
       deps,

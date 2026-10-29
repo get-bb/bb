@@ -37,6 +37,7 @@ interface SeedActiveThreadStopFixtureArgs {
 }
 
 interface WaitForStopRpcIdleArgs {
+  harness: TestAppHarness;
   threadId: string;
 }
 
@@ -68,7 +69,7 @@ function seedActiveThreadStopFixture(
 async function waitForStopRpcIdle(args: WaitForStopRpcIdleArgs): Promise<void> {
   const deadline = Date.now() + 1_000;
   while (Date.now() < deadline) {
-    if (!hasLiveThreadStopInFlight(args.threadId)) {
+    if (!hasLiveThreadStopInFlight(args.harness.deps, args.threadId)) {
       return;
     }
     await sleep(10);
@@ -153,7 +154,7 @@ describe("thread stop dispatch", () => {
         ({ command }) =>
           command.type === "thread.stop" && command.threadId === thread.id,
       );
-      expect(hasLiveThreadStopInFlight(thread.id)).toBe(true);
+      expect(hasLiveThreadStopInFlight(harness.deps, thread.id)).toBe(true);
       expect(getThread(harness.db, thread.id)).toMatchObject({
         status: "stopping",
       });
@@ -162,9 +163,9 @@ describe("thread stop dispatch", () => {
         errorCode: "test_thread_stop_failure",
         errorMessage: "Test live stop failure",
       });
-      await waitForStopRpcIdle({ threadId: thread.id });
+      await waitForStopRpcIdle({ harness, threadId: thread.id });
 
-      expect(hasLiveThreadStopInFlight(thread.id)).toBe(false);
+      expect(hasLiveThreadStopInFlight(harness.deps, thread.id)).toBe(false);
       expect(getThread(harness.db, thread.id)).toMatchObject({
         status: "stopping",
       });
@@ -196,7 +197,7 @@ describe("thread stop dispatch", () => {
         errorCode: "unknown_environment",
         errorMessage: "No runtime exists for environment env_missing_runtime",
       });
-      await waitForStopRpcIdle({ threadId: thread.id });
+      await waitForStopRpcIdle({ harness, threadId: thread.id });
 
       expect(getThread(harness.db, thread.id)).toMatchObject({
         status: "idle",
@@ -311,7 +312,7 @@ describe("thread stop dispatch", () => {
         ({ command }) =>
           command.type === "thread.stop" && command.threadId === thread.id,
       );
-      expect(hasLiveThreadStopInFlight(thread.id)).toBe(true);
+      expect(hasLiveThreadStopInFlight(harness.deps, thread.id)).toBe(true);
 
       requestThreadStopForCurrentState(harness.deps, thread, environment);
 
@@ -322,7 +323,7 @@ describe("thread stop dispatch", () => {
       await reportQueuedCommandSuccess(harness, firstStopCommand, {
         providerCheckpointId: null,
       });
-      await waitForStopRpcIdle({ threadId: thread.id });
+      await waitForStopRpcIdle({ harness, threadId: thread.id });
     });
   });
 });

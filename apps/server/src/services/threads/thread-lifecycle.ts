@@ -1,5 +1,5 @@
-import { advanceEnvironmentProvisioning } from "../environments/environment-engine.js";
 import { COMPETING_TURN_ERROR_CODE } from "@bb/host-daemon-contract";
+import { advanceEnvironmentProvisioning } from "../environments/environment-engine.js";
 import {
   isSupersededTurnRequest,
   returnSubmittedInputsInTransaction,
@@ -28,10 +28,11 @@ import {
   getEnvironment,
   getHost,
   getLatestThreadInterruptedReason,
+  getLatestSessionForHost,
   getThread,
-  getUnstartedLatestStartTurnRequest,
   hasStoredTerminalClientTurnRequestEvent,
-  listThreadIdsStoppedSinceLastTurnStart,
+  hasTurnRequestSince,
+  listThreadIdsStoppedSinceLastTurnRequest,
   listThreadIdsWithLatestHostDaemonRestartInterruption,
   listThreadTurnInterruptionEventStates,
   markThreadStorageDeleted,
@@ -179,59 +180,20 @@ const threadStopRequestDeduper = createAsyncDeduper<
 
 const MAX_EXPLICIT_THREAD_STOP_ROUNDS = 4;
 
-type InFlightThreadRpcKind =
-  | "thread.start"
-  | "thread.start.title-sync"
-  | "thread.stop"
-  | "thread.storage.delete"
-  | "thread.stop.release";
-
-class InFlightRpcGuard {
-  private readonly holders = new Map<string, number>();
-
-  private key(threadId: string, kind: InFlightThreadRpcKind): string {
-    return `${kind}:${threadId}`;
-  }
-
-  claim(threadId: string, kind: InFlightThreadRpcKind): boolean {
-    const key = this.key(threadId, kind);
-    if (this.holders.has(key)) {
-      return false;
-    }
-    this.holders.set(key, 1);
-    return true;
-  }
-
-  share(threadId: string, kind: InFlightThreadRpcKind): void {
-    const key = this.key(threadId, kind);
-    this.holders.set(key, (this.holders.get(key) ?? 0) + 1);
-  }
-
-  release(threadId: string, kind: InFlightThreadRpcKind): void {
-    const key = this.key(threadId, kind);
-    const count = this.holders.get(key);
-    if (count === undefined || count <= 1) {
-      this.holders.delete(key);
-      return;
-    }
-    this.holders.set(key, count - 1);
-  }
-
-  isHeld(threadId: string, kind: InFlightThreadRpcKind): boolean {
-    return this.holders.has(this.key(threadId, kind));
-  }
+export function hasLiveThreadStartInFlight(
+  deps: Pick<AppDeps, "lifecycleDedupers">,
+  threadId: string,
+): boolean {
+  return deps.lifecycleDedupers.threadRpcs.isHeld(threadId, "thread.start");
 }
 
-const inFlightThreadRpcGuard = new InFlightRpcGuard();
-
-export function hasLiveThreadStartInFlight(threadId: string): boolean {
-  return inFlightThreadRpcGuard.isHeld(threadId, "thread.start");
-}
-
-export function hasLiveThreadStopInFlight(threadId: string): boolean {
+export function hasLiveThreadStopInFlight(
+  deps: Pick<AppDeps, "lifecycleDedupers">,
+  threadId: string,
+): boolean {
   return (
-    inFlightThreadRpcGuard.isHeld(threadId, "thread.stop") ||
-    inFlightThreadRpcGuard.isHeld(threadId, "thread.stop.release")
+    deps.lifecycleDedupers.threadRpcs.isHeld(threadId, "thread.stop") ||
+    deps.lifecycleDedupers.threadRpcs.isHeld(threadId, "thread.stop.release")
   );
 }
 
@@ -349,7 +311,7 @@ interface SettleThreadCommandFailureArgs {
 
 interface SettleThreadStartCommandResultArgs {
   command: ThreadStartCommand;
-  deps: FinalizeStoppedThreadTransactionDeps;
+  deps: SettleThreadStopTransactionDeps;
   execution: HostDaemonCommandExecutionRecord;
   report: ThreadStartCommandResultReport;
 }
@@ -644,7 +606,7 @@ export function dispatchSettledArchivedThreadProviderArchiveCommand(
   if (!thread || thread.status === "active" || thread.status === "stopping") {
     return false;
   }
-  if (hasLiveThreadStartInFlight(thread.id)) {
+  if (hasLiveThreadStartInFlight(deps, thread.id)) {
     return false;
   }
 
@@ -818,7 +780,12 @@ function isRejectionReturnedToQueue(
 ): boolean {
   const turnRunning = getActiveTurnId(deps, command.threadId) !== null;
   if (command.target.mode === "start") {
-    return turnRunning && report.errorCode === COMPETING_TURN_ERROR_CODE;
+    return (
+      turnRunning &&
+      (report.errorCode === COMPETING_TURN_ERROR_CODE ||
+        report.errorCode === "host_unavailable" ||
+        report.errorCode === "command_timeout")
+    );
   }
   return turnRunning || hasExpectedTurnCompletedEvent(deps, command);
 }
@@ -890,6 +857,16 @@ function settleThreadCommandFailure(
   });
   if (outcome.applied) {
     args.deps.hub.notifyThread(thread.id, ["status-changed"]);
+    const openTurnId = getActiveTurnId(args.deps, thread.id);
+    if (openTurnId !== null) {
+      postCommitActions.push({
+        run: (deps) =>
+          stopTurnThatOutlivedItsRun(deps, {
+            threadId: thread.id,
+            turnId: openTurnId,
+          }),
+      });
+    }
   }
   if (isParentNotifiableChildThread(thread, "failed")) {
     const parentThreadId = thread.parentThreadId;
@@ -924,7 +901,10 @@ export function settleThreadStartCommandResult(
 
   const shouldSyncTitle =
     thread.title !== null &&
-    inFlightThreadRpcGuard.isHeld(thread.id, "thread.start.title-sync");
+    args.deps.lifecycleDedupers.threadRpcs.isHeld(
+      thread.id,
+      "thread.start.title-sync",
+    );
   clearThreadProvisionSchedule(thread.id);
   const currentThread = getThread(args.deps.db, args.command.threadId);
   if (currentThread && currentThread.deletedAt !== null) {
@@ -1076,11 +1056,27 @@ export function settleThreadStopCommandResult(
     return emptyCommandResultSideEffects();
   }
 
+  if (
+    hasTurnRequestSince(args.deps.db, {
+      since: args.execution.createdAt,
+      threadId: args.command.threadId,
+    })
+  ) {
+    return emptyCommandResultSideEffects();
+  }
+
   if (!args.report.ok) {
     if (
       args.report.errorCode !== "unknown_environment" &&
       args.report.errorCode !== "host_unavailable" &&
       args.report.errorCode !== "command_timeout"
+    ) {
+      return emptyCommandResultSideEffects();
+    }
+    if (
+      args.report.errorCode === "host_unavailable" &&
+      getLatestSessionForHost(args.deps.db, { hostId: args.execution.hostId })
+        ?.status === "active"
     ) {
       return emptyCommandResultSideEffects();
     }
@@ -1168,7 +1164,9 @@ export function requestThreadStorageDeletion(
     );
     return;
   }
-  if (!inFlightThreadRpcGuard.claim(thread.id, "thread.storage.delete")) {
+  if (
+    !deps.lifecycleDedupers.threadRpcs.claim(thread.id, "thread.storage.delete")
+  ) {
     return;
   }
   void runLiveHostCommand(deps, {
@@ -1186,7 +1184,10 @@ export function requestThreadStorageDeletion(
       );
     })
     .finally(() => {
-      inFlightThreadRpcGuard.release(thread.id, "thread.storage.delete");
+      deps.lifecycleDedupers.threadRpcs.release(
+        thread.id,
+        "thread.storage.delete",
+      );
     });
 }
 
@@ -1317,14 +1318,14 @@ async function requestThreadStartOnce(
   deps: CommandResultSideEffectsDeps,
   args: ThreadStartCommandArgs,
 ): Promise<void> {
-  if (hasLiveThreadStartInFlight(args.thread.id)) {
+  if (hasLiveThreadStartInFlight(deps, args.thread.id)) {
     return;
   }
 
   const command = await buildThreadStartCommand(deps, {
     ...args,
   });
-  if (hasLiveThreadStartInFlight(args.thread.id)) {
+  if (hasLiveThreadStartInFlight(deps, args.thread.id)) {
     return;
   }
 
@@ -1337,9 +1338,12 @@ async function requestThreadStartOnce(
     threadId: args.thread.id,
   });
   if (result.disposition === "started") {
-    inFlightThreadRpcGuard.claim(args.thread.id, "thread.start");
+    deps.lifecycleDedupers.threadRpcs.claim(args.thread.id, "thread.start");
     if (args.syncGeneratedTitle) {
-      inFlightThreadRpcGuard.claim(args.thread.id, "thread.start.title-sync");
+      deps.lifecycleDedupers.threadRpcs.claim(
+        args.thread.id,
+        "thread.start.title-sync",
+      );
     }
     void runLiveHostCommand(deps, {
       command,
@@ -1353,8 +1357,11 @@ async function requestThreadStartOnce(
         );
       })
       .finally(() => {
-        inFlightThreadRpcGuard.release(args.thread.id, "thread.start");
-        inFlightThreadRpcGuard.release(
+        deps.lifecycleDedupers.threadRpcs.release(
+          args.thread.id,
+          "thread.start",
+        );
+        deps.lifecycleDedupers.threadRpcs.release(
           args.thread.id,
           "thread.start.title-sync",
         );
@@ -1375,7 +1382,7 @@ function requestThreadStop(
       return;
     }
   }
-  if (!inFlightThreadRpcGuard.claim(args.threadId, "thread.stop")) {
+  if (!deps.lifecycleDedupers.threadRpcs.claim(args.threadId, "thread.stop")) {
     return;
   }
 
@@ -1383,6 +1390,33 @@ function requestThreadStop(
 }
 
 export const TURN_START_DEADLINE_MS = 10 * 60_000;
+
+function resendStopsThatNeverLanded(deps: CommandResultSideEffectsDeps): void {
+  const stoppingThreads = deps.db
+    .select({
+      environmentId: environments.id,
+      hostId: environments.hostId,
+      threadId: threads.id,
+    })
+    .from(threads)
+    .innerJoin(environments, eq(threads.environmentId, environments.id))
+    .where(and(eq(threads.status, "stopping"), isNull(threads.deletedAt)))
+    .all();
+  for (const thread of stoppingThreads) {
+    if (!deps.hub.hasDaemonForHost(thread.hostId)) continue;
+    if (
+      !deps.lifecycleDedupers.threadRpcs.claim(thread.threadId, "thread.stop")
+    ) {
+      continue;
+    }
+    dispatchThreadStopCommand(deps, {
+      environmentId: thread.environmentId,
+      hostId: thread.hostId,
+      interruptionReason: "manual-stop",
+      threadId: thread.threadId,
+    });
+  }
+}
 
 function stopPendingStartsOfSettledThreads(
   deps: CommandResultSideEffectsDeps,
@@ -1408,7 +1442,8 @@ function stopPendingStartsOfSettledThreads(
     ) {
       continue;
     }
-    if (!inFlightThreadRpcGuard.claim(thread.id, "thread.stop")) continue;
+    if (!deps.lifecycleDedupers.threadRpcs.claim(thread.id, "thread.stop"))
+      continue;
     deps.logger.warn(
       { threadId: thread.id },
       "Stopping a turn start the provider never confirmed",
@@ -1427,27 +1462,24 @@ export function stopRunsWhoseTurnNeverStarted(
   now: number,
 ): void {
   stopPendingStartsOfSettledThreads(deps, now);
+  resendStopsThatNeverLanded(deps);
   const activeThreads = deps.db
     .select({
       environmentId: environments.id,
       hostId: environments.hostId,
       threadId: threads.id,
+      updatedAt: threads.updatedAt,
     })
     .from(threads)
     .innerJoin(environments, eq(threads.environmentId, environments.id))
     .where(and(eq(threads.status, "active"), isNull(threads.deletedAt)))
     .all();
   for (const thread of activeThreads) {
+    if (now - thread.updatedAt < TURN_START_DEADLINE_MS) continue;
     if (!deps.hub.hasDaemonForHost(thread.hostId)) continue;
-    const request = getUnstartedLatestStartTurnRequest(
-      deps.db,
-      thread.threadId,
-    );
-    if (request === null || now - request.createdAt < TURN_START_DEADLINE_MS) {
-      continue;
-    }
+    if (getActiveTurnId(deps, thread.threadId) !== null) continue;
     deps.logger.warn(
-      { requestSequence: request.sequence, threadId: thread.threadId },
+      { threadId: thread.threadId },
       "Stopping a run whose turn never started",
     );
     const notificationBuffer = new NotificationBuffer();
@@ -1518,11 +1550,11 @@ function dispatchThreadStopCommand(
       );
     })
     .finally(() => {
-      inFlightThreadRpcGuard.release(args.threadId, "thread.stop");
+      deps.lifecycleDedupers.threadRpcs.release(args.threadId, "thread.stop");
     });
 }
 
-export function stopTurnStartedAfterItsRunEnded(
+export function stopTurnThatOutlivedItsRun(
   deps: CommandResultSideEffectsDeps,
   args: { threadId: string; turnId: string },
 ): void {
@@ -1555,9 +1587,10 @@ export function stopTurnStartedAfterItsRunEnded(
   });
   deps.logger.warn(
     { threadId: thread.id, turnId: args.turnId },
-    "Stopping a turn that started after its run was stopped",
+    "Stopping a turn that outlived its run",
   );
-  if (!inFlightThreadRpcGuard.claim(thread.id, "thread.stop")) return;
+  if (!deps.lifecycleDedupers.threadRpcs.claim(thread.id, "thread.stop"))
+    return;
   dispatchThreadStopCommand(deps, {
     environmentId: environment.id,
     hostId: environment.hostId,
@@ -1678,12 +1711,12 @@ function requestPreStartThreadStop(
 }
 
 function hasLiveThreadRuntime(
-  deps: ThreadLifecycleReadDeps,
+  deps: ThreadLifecycleReadDeps & Pick<AppDeps, "lifecycleDedupers">,
   thread: RequestThreadStopForCurrentStateThread,
 ): boolean {
   return (
     thread.status === "active" ||
-    hasLiveThreadStartInFlight(thread.id) ||
+    hasLiveThreadStartInFlight(deps, thread.id) ||
     (thread.status === "stopping" && getActiveTurnId(deps, thread.id) !== null)
   );
 }
@@ -1872,7 +1905,7 @@ async function runAwaitedThreadStopCommand(
   const { command } = args;
   const kind =
     command.intent === "release" ? "thread.stop.release" : "thread.stop";
-  inFlightThreadRpcGuard.share(command.threadId, kind);
+  deps.lifecycleDedupers.threadRpcs.share(command.threadId, kind);
   try {
     const result = await runLiveHostCommand(deps, {
       command,
@@ -1887,7 +1920,7 @@ async function runAwaitedThreadStopCommand(
     );
     return { failure: { error, intent: command.intent }, result: null };
   } finally {
-    inFlightThreadRpcGuard.release(command.threadId, kind);
+    deps.lifecycleDedupers.threadRpcs.release(command.threadId, kind);
   }
 }
 
@@ -2289,7 +2322,7 @@ export async function reconcileDaemonReportedThreads(
 
   if (args.activeThreadIds.length > 0) {
     const erroredThreads = deps.db
-      .select({ id: threads.id })
+      .select({ environmentId: environments.id, id: threads.id })
       .from(threads)
       .innerJoin(environments, eq(threads.environmentId, environments.id))
       .where(
@@ -2303,7 +2336,23 @@ export async function reconcileDaemonReportedThreads(
       )
       .all();
 
+    const stoppedErroredThreadIds = new Set(
+      listThreadIdsStoppedSinceLastTurnRequest(deps.db, {
+        threadIds: erroredThreads.map((thread) => thread.id),
+      }),
+    );
     for (const thread of erroredThreads) {
+      if (stoppedErroredThreadIds.has(thread.id)) {
+        if (deps.lifecycleDedupers.threadRpcs.claim(thread.id, "thread.stop")) {
+          dispatchThreadStopCommand(deps, {
+            environmentId: thread.environmentId,
+            hostId: args.hostId,
+            interruptionReason: "manual-stop",
+            threadId: thread.id,
+          });
+        }
+        continue;
+      }
       applyLoggedThreadLifecycleEvent(deps, {
         event: { type: "run.started" },
         threadId: thread.id,
@@ -2366,7 +2415,7 @@ export async function reconcileDaemonReportedThreads(
   );
 
   const stoppedWhileAwayThreadIds = new Set(
-    listThreadIdsStoppedSinceLastTurnStart(deps.db, {
+    listThreadIdsStoppedSinceLastTurnRequest(deps.db, {
       threadIds: inactiveButActive.map((thread) => thread.id),
     }),
   );
@@ -2376,7 +2425,7 @@ export async function reconcileDaemonReportedThreads(
       continue;
     }
     if (stoppedWhileAwayThreadIds.has(thread.id)) {
-      if (inFlightThreadRpcGuard.claim(thread.id, "thread.stop")) {
+      if (deps.lifecycleDedupers.threadRpcs.claim(thread.id, "thread.stop")) {
         dispatchThreadStopCommand(deps, {
           environmentId: thread.environmentId,
           hostId: args.hostId,

@@ -2,7 +2,6 @@ import {
   getActiveStoredTurnId,
   getLatestSessionForHost,
   getThread,
-  getUnstartedLatestStartTurnRequest,
   listEvents,
   pendingInteractions,
   queuedThreadMessages,
@@ -16,7 +15,10 @@ import { retryTurnRequestSchema } from "@bb/server-contract";
 import { and, eq } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../src/errors.js";
-import { handleHostSessionOpened } from "../../src/internal/session-owner-side-effects.js";
+import {
+  handleDaemonSocketClosed,
+  handleHostSessionOpened,
+} from "../../src/internal/session-owner-side-effects.js";
 import { returnUnsettledSubmittedInputs } from "../../src/services/threads/input-ledger.js";
 import { runQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
 import {
@@ -24,7 +26,6 @@ import {
   TURN_START_DEADLINE_MS,
 } from "../../src/services/threads/thread-lifecycle.js";
 import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
-import { TurnRequestDelivery } from "../../src/services/threads/turn-request-delivery.js";
 import { retryFailedTurn } from "../../src/services/threads/turn-retry.js";
 import { onDaemonSocketOpen } from "../../src/ws/daemon-protocol.js";
 import {
@@ -49,14 +50,19 @@ import {
   seedThread,
   seedThreadRuntimeState,
 } from "../helpers/seed.js";
-import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import {
+  createTestAppHarness,
+  withTestHarness,
+  type TestAppHarness,
+} from "../helpers/test-app.js";
 
 const SEEDS = [
   ...Array.from({ length: 100 }, (_, index) => index + 1),
-  196,
-  205,
-  225,
-  230,
+  128,
+  130,
+  156,
+  273,
+  761,
 ];
 const STEPS = 40;
 
@@ -68,12 +74,15 @@ type Operation =
   | "complete-turn"
   | "complete-turn-with-fallback-start"
   | "fail-turn"
+  | "user-stop"
   | "answer-stop"
+  | "time-out-stop"
   | "ask"
   | "answer-question"
   | "deliver-answer"
   | "reconnect"
   | "reconnect-new-instance"
+  | "reconnect-before-close"
   | "restart-server"
   | "tick"
   | "retry";
@@ -88,12 +97,15 @@ const OPERATIONS: readonly Operation[] = [
   "complete-turn",
   "complete-turn-with-fallback-start",
   "fail-turn",
+  "user-stop",
   "answer-stop",
+  "time-out-stop",
   "ask",
   "answer-question",
   "deliver-answer",
   "reconnect",
   "reconnect-new-instance",
+  "reconnect-before-close",
   "restart-server",
   "tick",
   "retry",
@@ -110,6 +122,7 @@ function createRandom(seed: number): () => number {
 }
 
 interface Provider {
+  abandonedTurnId: string | null;
   deliveredInteractionIds: Set<string>;
   instance: number;
   pendingStartRequestId: string | null;
@@ -445,34 +458,15 @@ async function deliverAnswer(
   });
 }
 
-function forgetServerWaiter(fixture: Fixture, queued: QueuedCommand): void {
-  const hub = fixture.harness.hub as unknown as {
-    hostOnlineRpcWaiters: Map<string, unknown>;
-  };
-  if (queued.rpcRequest) {
-    hub.hostOnlineRpcWaiters.delete(queued.rpcRequest.requestId);
-  }
-}
-
 async function runPendingCommandsOnDaemon(
   fixture: Fixture,
   provider: Provider,
-  args: { received: () => boolean; serverRestarted: boolean },
+  args: { received: () => boolean },
 ): Promise<void> {
   for (const queued of listPendingQueuedCommands(fixture.harness)) {
     if (!("threadId" in queued.command)) continue;
     if (queued.command.threadId !== fixture.threadId) continue;
-    if (args.serverRestarted && queued.command.type === "thread.stop") {
-      provider.pendingStartRequestId = null;
-      await completeTurn(fixture, provider, "interrupted");
-      await reportQueuedCommandError(fixture.harness, queued, {
-        errorCode: "command_timeout",
-        errorMessage: "the server restarted before the stop result",
-      });
-      continue;
-    }
     forgetQueuedCommand(queued);
-    if (args.serverRestarted) forgetServerWaiter(fixture, queued);
     if (!args.received()) continue;
     if (queued.command.type === "turn.submit") {
       await postEvents(
@@ -508,6 +502,13 @@ function openThreadWork(fixture: Fixture, provider: Provider) {
       ];
 }
 
+async function dropConnection(fixture: Fixture): Promise<void> {
+  handleDaemonSocketClosed(fixture.harness.deps, {
+    sessionId: fixture.sessionId,
+  });
+  await settle();
+}
+
 async function reopenSession(
   fixture: Fixture,
   provider: Provider,
@@ -518,6 +519,28 @@ async function reopenSession(
     instanceId: `instance-${provider.instance}`,
   });
   fixture.sessionId = opened.id;
+  const socket = registerTestHostRpcCapture(deps, {
+    hostId: fixture.hostId,
+    sessionId: opened.id,
+  });
+  const send = socket.send.bind(socket);
+  socket.send = (data: string) => {
+    const message = JSON.parse(data) as {
+      requests?: HostDaemonInteractiveRequestKey[];
+      type?: string;
+    };
+    if (message.type === "interactive-requests.end") {
+      for (const request of message.requests ?? []) {
+        provider.questions.delete(request.providerRequestId);
+      }
+    }
+    send(data);
+  };
+  onDaemonSocketOpen(deps, {
+    hostId: fixture.hostId,
+    sessionId: opened.id,
+    socket,
+  });
   const { endedInteractiveRequests } = await handleHostSessionOpened(deps, {
     activeThreads:
       provider.turnId !== null || provider.pendingStartRequestId !== null
@@ -532,15 +555,25 @@ async function reopenSession(
   for (const ended of endedInteractiveRequests) {
     provider.questions.delete(ended.providerRequestId);
   }
-  const socket = registerTestHostRpcCapture(deps, {
-    hostId: fixture.hostId,
-    sessionId: opened.id,
-  });
-  onDaemonSocketOpen(deps, {
-    hostId: fixture.hostId,
-    sessionId: opened.id,
-    socket,
-  });
+}
+
+function checkProviderWaitsOnlyOnOpenQuestions(
+  fixture: Fixture,
+  provider: Provider,
+  context: string,
+): void {
+  const statusById = new Map(
+    serverInteractions(fixture).map((interaction) => [
+      interaction.id,
+      interaction.status,
+    ]),
+  );
+  for (const interactionId of provider.questions.values()) {
+    expect(
+      statusById.get(interactionId),
+      `${context}: provider still waits on a closed question`,
+    ).toMatch(/^(pending|resolving)$/u);
+  }
 }
 
 function checkQuestionsAfterReconnect(
@@ -554,12 +587,6 @@ function checkQuestionsAfterReconnect(
       interaction,
     ]),
   );
-  for (const interactionId of provider.questions.values()) {
-    expect(
-      byId.get(interactionId)?.status,
-      `${context}: provider still waits on a closed question`,
-    ).toMatch(/^(pending|resolving)$/u);
-  }
   const waiting = new Set(provider.questions.values());
   for (const interaction of byId.values()) {
     if (interaction.status !== "pending") continue;
@@ -623,6 +650,7 @@ function readAcceptedRequestIds(fixture: Fixture): string[] {
 
 function checkInvariants(
   fixture: Fixture,
+  provider: Provider,
   inputs: readonly string[],
   context: string,
 ): void {
@@ -688,6 +716,18 @@ function checkInvariants(
     ).toBe(true);
   }
 
+  if (
+    thread.status === "active" &&
+    provider.turnId !== null &&
+    provider.turnId !== provider.abandonedTurnId &&
+    pendingCommands(fixture, "thread.stop").length === 0
+  ) {
+    expect(
+      getActiveStoredTurnId(db, fixture.threadId),
+      `${context}: the server's open turn is not the provider's running turn`,
+    ).toBe(provider.turnId);
+  }
+
   if (thread.status === "idle" || thread.status === "error") {
     expect(
       getActiveStoredTurnId(db, fixture.threadId),
@@ -699,16 +739,10 @@ function checkInvariants(
 function checkTurnBound(fixture: Fixture, now: number, context: string): void {
   const thread = getThread(fixture.harness.db, fixture.threadId)!;
   if (thread.status !== "active") return;
-  const unstarted = getUnstartedLatestStartTurnRequest(
-    fixture.harness.db,
-    fixture.threadId,
-  );
   const hasTurn =
     getActiveStoredTurnId(fixture.harness.db, fixture.threadId) !== null;
   expect(
-    hasTurn ||
-      (unstarted !== null &&
-        now - unstarted.createdAt < TURN_START_DEADLINE_MS),
+    hasTurn || now - thread.updatedAt < TURN_START_DEADLINE_MS,
     `${context}: active thread has no turn and is past the start deadline`,
   ).toBe(true);
 }
@@ -745,12 +779,14 @@ async function quiesce(fixture: Fixture, provider: Provider): Promise<void> {
 }
 
 async function runWalk(seed: number): Promise<void> {
-  await withTestHarness(async (harness) => {
+  await withTestHarness(async (initialHarness) => {
     const random = createRandom(seed);
     const pick = <T>(items: readonly T[]): T =>
       items[Math.floor(random() * items.length)]!;
-    const fixture = seedFixture(harness, seed);
+    const fixture = seedFixture(initialHarness, seed);
+    const restartedHarnesses: TestAppHarness[] = [];
     const provider: Provider = {
+      abandonedTurnId: null,
       deliveredInteractionIds: new Set(),
       instance: 1,
       pendingStartRequestId: null,
@@ -761,158 +797,199 @@ async function runWalk(seed: number): Promise<void> {
     };
     const inputs: string[] = [];
     const trace: string[] = [];
-
-    for (let step = 0; step < STEPS; step += 1) {
-      vi.setSystemTime(Date.now() + 1);
-      const operation = pick(OPERATIONS);
-      trace.push(operation);
-      const context = `seed ${seed} step ${step} [${trace.join(" ")}]`;
-      switch (operation) {
-        case "send": {
-          const text = `<input-${seed}-${step}>`;
-          try {
-            await acceptThreadSendRequest(harness.deps, {
-              thread: getThread(harness.db, fixture.threadId)!,
-              payload: {
-                input: textInput(text),
-                mode: pick(["auto", "steer-if-active", "queue-if-active"]),
-              },
-            });
-            inputs.push(text);
-          } catch (error) {
-            if (!(error instanceof ApiError) || error.status !== 409) {
-              throw error;
+    await reopenSession(fixture, provider);
+    try {
+      for (let step = 0; step < STEPS; step += 1) {
+        vi.setSystemTime(Date.now() + 1);
+        const operation = pick(OPERATIONS);
+        trace.push(operation);
+        const context = `seed ${seed} step ${step} [${trace.join(" ")}]`;
+        switch (operation) {
+          case "send": {
+            const text = `<input-${seed}-${step}>`;
+            try {
+              await acceptThreadSendRequest(fixture.harness.deps, {
+                thread: getThread(fixture.harness.db, fixture.threadId)!,
+                payload: {
+                  input: textInput(text),
+                  mode: pick(["auto", "steer-if-active", "queue-if-active"]),
+                },
+              });
+              inputs.push(text);
+            } catch (error) {
+              if (!(error instanceof ApiError) || error.status !== 409) {
+                throw error;
+              }
             }
+            break;
           }
-          break;
-        }
-        case "answer-submit": {
-          const submit = nextLaneCommand(fixture, "turn.submit");
-          if (submit) await answerSubmit(fixture, provider, submit);
-          break;
-        }
-        case "reject-submit": {
-          const submit = nextLaneCommand(fixture, "turn.submit");
-          if (submit) {
-            await reportQueuedCommandError(harness, submit, {
-              errorCode: pick(["provider_error", "host_unavailable"]),
-              errorMessage: "refused by the fake daemon",
+          case "answer-submit": {
+            const submit = nextLaneCommand(fixture, "turn.submit");
+            if (submit) await answerSubmit(fixture, provider, submit);
+            break;
+          }
+          case "reject-submit": {
+            const submit = nextLaneCommand(fixture, "turn.submit");
+            if (submit) {
+              await reportQueuedCommandError(fixture.harness, submit, {
+                errorCode: pick(["provider_error", "host_unavailable"]),
+                errorMessage: "refused by the fake daemon",
+              });
+            }
+            break;
+          }
+          case "start-turn":
+            await startTurn(fixture, provider);
+            break;
+          case "complete-turn":
+            await completeTurn(fixture, provider, "completed");
+            break;
+          case "complete-turn-with-fallback-start":
+            await completeTurnWithFallbackStart(fixture, provider);
+            break;
+          case "fail-turn":
+            await completeTurn(fixture, provider, "failed");
+            break;
+          case "answer-stop": {
+            const stop = nextLaneCommand(fixture, "thread.stop");
+            if (stop) await answerStop(fixture, provider, stop);
+            break;
+          }
+          case "user-stop": {
+            void Promise.resolve(
+              fixture.harness.app.request(
+                `/api/v1/threads/${fixture.threadId}/stop`,
+                { method: "POST" },
+              ),
+            ).catch(() => undefined);
+            break;
+          }
+          case "time-out-stop": {
+            const stop = nextLaneCommand(fixture, "thread.stop");
+            if (stop) {
+              provider.abandonedTurnId = provider.turnId;
+              await reportQueuedCommandError(fixture.harness, stop, {
+                errorCode: "command_timeout",
+                errorMessage: "the fake daemon's stop timed out",
+              });
+            }
+            break;
+          }
+          case "ask":
+            ask(fixture, provider);
+            break;
+          case "answer-question":
+            answerQuestion(fixture, pick);
+            break;
+          case "deliver-answer": {
+            const resolve = nextLaneCommand(fixture, "interactive.resolve");
+            if (resolve) await deliverAnswer(fixture, provider, resolve);
+            break;
+          }
+          case "reconnect":
+            await runPendingCommandsOnDaemon(fixture, provider, {
+              received: () => random() < 0.5,
             });
-          }
-          break;
-        }
-        case "start-turn":
-          await startTurn(fixture, provider);
-          break;
-        case "complete-turn":
-          await completeTurn(fixture, provider, "completed");
-          break;
-        case "complete-turn-with-fallback-start":
-          await completeTurnWithFallbackStart(fixture, provider);
-          break;
-        case "fail-turn":
-          await completeTurn(fixture, provider, "failed");
-          break;
-        case "answer-stop": {
-          const stop = nextLaneCommand(fixture, "thread.stop");
-          if (stop) await answerStop(fixture, provider, stop);
-          break;
-        }
-        case "ask":
-          ask(fixture, provider);
-          break;
-        case "answer-question":
-          answerQuestion(fixture, pick);
-          break;
-        case "deliver-answer": {
-          const resolve = nextLaneCommand(fixture, "interactive.resolve");
-          if (resolve) await deliverAnswer(fixture, provider, resolve);
-          break;
-        }
-        case "reconnect":
-          await runPendingCommandsOnDaemon(fixture, provider, {
-            received: () => random() < 0.5,
-            serverRestarted: false,
-          });
-          await reopenSession(fixture, provider);
-          await settle();
-          checkQuestionsAfterReconnect(fixture, provider, context);
-          break;
-        case "reconnect-new-instance":
-          await runPendingCommandsOnDaemon(fixture, provider, {
-            received: () => false,
-            serverRestarted: false,
-          });
-          provider.instance += 1;
-          provider.turnId = null;
-          provider.pendingStartRequestId = null;
-          provider.questions.clear();
-          await reopenSession(fixture, provider);
-          await settle();
-          checkQuestionsAfterReconnect(fixture, provider, context);
-          break;
-        case "restart-server": {
-          harness.deps.lifecycleDedupers.turnRequestDelivery =
-            new TurnRequestDelivery();
-          await runPendingCommandsOnDaemon(fixture, provider, {
-            received: () => true,
-            serverRestarted: true,
-          });
-          await reopenSession(fixture, provider);
-          await settle();
-          checkQuestionsAfterReconnect(fixture, provider, context);
-          break;
-        }
-        case "tick": {
-          vi.setSystemTime(
-            Date.now() + Math.floor(random() * TURN_START_DEADLINE_MS * 1.5),
-          );
-          const now = Date.now();
-          await runSweeps(fixture, now);
-          await settle();
-          checkTurnBound(fixture, now, context);
-          break;
-        }
-        case "retry": {
-          const thread = getThread(harness.db, fixture.threadId)!;
-          if (thread.status === "error") {
-            await retryFailedTurn(harness.deps, {
-              thread,
-              request: retryTurnRequestSchema.parse({}),
-            }).catch((error: unknown) => {
-              if (!(error instanceof ApiError)) throw error;
+            await dropConnection(fixture);
+            await reopenSession(fixture, provider);
+            await settle();
+            checkQuestionsAfterReconnect(fixture, provider, context);
+            break;
+          case "reconnect-new-instance":
+            await runPendingCommandsOnDaemon(fixture, provider, {
+              received: () => false,
             });
+            await dropConnection(fixture);
+            provider.instance += 1;
+            provider.turnId = null;
+            provider.pendingStartRequestId = null;
+            provider.questions.clear();
+            await reopenSession(fixture, provider);
+            await settle();
+            checkQuestionsAfterReconnect(fixture, provider, context);
+            break;
+          case "reconnect-before-close": {
+            await runPendingCommandsOnDaemon(fixture, provider, {
+              received: () => random() < 0.5,
+            });
+            const previousSessionId = fixture.sessionId;
+            await reopenSession(fixture, provider);
+            handleDaemonSocketClosed(fixture.harness.deps, {
+              sessionId: previousSessionId,
+            });
+            await settle();
+            checkQuestionsAfterReconnect(fixture, provider, context);
+            break;
           }
-          break;
+          case "restart-server": {
+            await runPendingCommandsOnDaemon(fixture, provider, {
+              received: () => true,
+            });
+            const restarted = await createTestAppHarness({
+              db: fixture.harness.db,
+              seedFirstPartyProviders: false,
+            });
+            restartedHarnesses.push(restarted);
+            fixture.harness = restarted;
+            await reopenSession(fixture, provider);
+            await settle();
+            checkQuestionsAfterReconnect(fixture, provider, context);
+            break;
+          }
+          case "tick": {
+            vi.setSystemTime(
+              Date.now() + Math.floor(random() * TURN_START_DEADLINE_MS * 1.5),
+            );
+            const now = Date.now();
+            await runSweeps(fixture, now);
+            await settle();
+            checkTurnBound(fixture, now, context);
+            break;
+          }
+          case "retry": {
+            const thread = getThread(fixture.harness.db, fixture.threadId)!;
+            if (thread.status === "error") {
+              await retryFailedTurn(fixture.harness.deps, {
+                thread,
+                request: retryTurnRequestSchema.parse({}),
+              }).catch((error: unknown) => {
+                if (!(error instanceof ApiError)) throw error;
+              });
+            }
+            break;
+          }
         }
+        await settle();
+        checkInvariants(fixture, provider, inputs, context);
+        checkDeliveredAnswers(fixture, provider, context);
+        checkProviderWaitsOnlyOnOpenQuestions(fixture, provider, context);
       }
-      await settle();
-      checkInvariants(fixture, inputs, context);
-      checkDeliveredAnswers(fixture, provider, context);
-    }
 
-    await quiesce(fixture, provider);
-    const context = `seed ${seed} quiescent [${trace.join(" ")}]`;
-    checkInvariants(fixture, inputs, context);
-    checkDeliveredAnswers(fixture, provider, context);
-    const thread = getThread(harness.db, fixture.threadId)!;
-    expect(["idle", "error"], `${context}: thread still running`).toContain(
-      thread.status,
-    );
-    const failedTurnRequestId =
-      thread.status === "error"
-        ? (readRequests(fixture).at(-1)?.requestId ?? null)
-        : null;
-    expect(
-      harness.db
-        .select()
-        .from(queuedThreadMessages)
-        .where(eq(queuedThreadMessages.state, "submitted"))
-        .all()
-        .filter((row) => row.submittedRequestId !== failedTurnRequestId),
-      `${context}: inputs left submitted outside a retryable failed turn`,
-    ).toEqual([]);
-    expect(pendingCommands(fixture, "turn.submit")).toEqual([]);
+      await quiesce(fixture, provider);
+      const context = `seed ${seed} quiescent [${trace.join(" ")}]`;
+      checkInvariants(fixture, provider, inputs, context);
+      checkDeliveredAnswers(fixture, provider, context);
+      const thread = getThread(fixture.harness.db, fixture.threadId)!;
+      expect(["idle", "error"], `${context}: thread still running`).toContain(
+        thread.status,
+      );
+      const failedTurnRequestId =
+        thread.status === "error"
+          ? (readRequests(fixture).at(-1)?.requestId ?? null)
+          : null;
+      expect(
+        fixture.harness.db
+          .select()
+          .from(queuedThreadMessages)
+          .where(eq(queuedThreadMessages.state, "submitted"))
+          .all()
+          .filter((row) => row.submittedRequestId !== failedTurnRequestId),
+        `${context}: inputs left submitted outside a retryable failed turn`,
+      ).toEqual([]);
+      expect(pendingCommands(fixture, "turn.submit")).toEqual([]);
+    } finally {
+      for (const restarted of restartedHarnesses) await restarted.cleanup();
+    }
   });
 }
 

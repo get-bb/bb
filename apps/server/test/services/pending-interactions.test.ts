@@ -31,6 +31,8 @@ import {
 } from "../helpers/pending-interactions.js";
 import { advanceUntilSettled } from "../helpers/fake-timers.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
+import { waitForQueuedCommand } from "../helpers/commands.js";
 import { setPendingInteractionResolving } from "@bb/db";
 import {
   SERVER_MOVE_FROZEN_RETRY_MS,
@@ -926,12 +928,36 @@ describe("pending interaction lifecycle", () => {
       });
     });
 
-    it("keeps an answered question whose delivery ack was lost", async () => {
+    it("tells the connected daemon to end the wait when the server closes a question", async () => {
+      await withTestHarness(async (harness) => {
+        const { host, session, thread } = seedQuestion(harness);
+        const socket = createMockHubSocket();
+        harness.deps.hub.registerDaemon(session.id, host.id, socket);
+
+        harness.deps.pendingInteractions.interruptPendingInteractionsForThreadIds(
+          { threadIds: [thread.id], reason: "answer could not be delivered" },
+        );
+
+        expect(
+          socket.messages
+            .map((message) => JSON.parse(message) as { type: string })
+            .filter((message) => message.type === "interactive-requests.end"),
+        ).toEqual([
+          {
+            type: "interactive-requests.end",
+            requests: [{ threadId: thread.id, ...request }],
+            reason: "answer could not be delivered",
+          },
+        ]);
+      });
+    });
+
+    it("completes an answered question whose delivery ack was lost", async () => {
       await withTestHarness(async (harness) => {
         const { host, interaction, session } = seedQuestion(harness);
         setPendingInteractionResolving(harness.db, {
           id: interaction.id,
-          resolution: JSON.stringify({ answers: {} }),
+          resolution: JSON.stringify(createUserAnswerResolution()),
         });
 
         await handleHostSessionOpened(harness.deps, {
@@ -943,7 +969,43 @@ describe("pending interaction lifecycle", () => {
           previousSession: session,
         });
 
+        expect(readStatus(harness, interaction.id)).toBe("resolved");
+      });
+    });
+
+    it("re-sends a saved answer the provider is still waiting for", async () => {
+      await withTestHarness(async (harness) => {
+        const { host, interaction, session, thread } = seedQuestion(harness);
+        setPendingInteractionResolving(harness.db, {
+          id: interaction.id,
+          resolution: JSON.stringify(createUserAnswerResolution()),
+        });
+
+        await handleHostSessionOpened(harness.deps, {
+          activeThreads: [],
+          openThreadWork: [
+            {
+              threadId: thread.id,
+              backgroundItemIds: [],
+              interactiveRequests: [{ threadId: thread.id, ...request }],
+            },
+          ],
+          undeliveredEventThreadIds: [],
+          hostId: host.id,
+          openedSession: seedSession(harness.deps, host.id),
+          previousSession: session,
+        });
+
         expect(readStatus(harness, interaction.id)).toBe("resolving");
+        const resend = await waitForQueuedCommand(
+          harness,
+          ({ command }) =>
+            command.type === "interactive.resolve" &&
+            command.interactionId === interaction.id,
+        );
+        expect(resend.command).toMatchObject({
+          resolution: createUserAnswerResolution(),
+        });
       });
     });
 

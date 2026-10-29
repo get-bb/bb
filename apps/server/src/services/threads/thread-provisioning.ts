@@ -490,7 +490,7 @@ async function advanceThreadProvisioningOnce(
   if (
     !thread ||
     thread.deletedAt !== null ||
-    hasLiveThreadStartInFlight(thread.id)
+    hasLiveThreadStartInFlight(deps, thread.id)
   ) {
     return;
   }
