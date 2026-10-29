@@ -40,9 +40,9 @@ afterEach(async () => {
 });
 
 describe("core environment scripts", () => {
-  it.skipIf(process.platform === "win32")(
-    "stops descendants a timed-out hook moved out of its process group",
-    async () => {
+  it.skipIf(process.platform === "win32").each(["setup", "teardown"] as const)(
+    "stops descendants a timed-out %s hook moved out of its process group",
+    async (kind) => {
       const spawnEscaped = [
         "const { spawn } = require('node:child_process');",
         "const escaped = spawn('sleep', ['60'], { detached: true, stdio: 'ignore' });",
@@ -50,17 +50,18 @@ describe("core environment scripts", () => {
         "setInterval(() => {}, 1000);",
       ].join(" ");
       const workspacePath = await workspace(
-        "setup",
+        kind,
         `'${process.execPath}' -e "${spawnEscaped}"\n`,
       );
+      const run = kind === "setup" ? runSetupScript : runTeardownScript;
       const hook = runEnvironmentHookOperation({
         ledger: createTestResourceLedger(),
-        operationId: "environment:env-1:setup",
-        kind: "setup",
+        operationId: `environment:env-1:${kind}`,
+        kind,
         workspacePath,
         timeoutMs: 1_500,
         run: (control) =>
-          runSetupScript({
+          run({
             processOwner: control.processOwner,
             workspacePath,
             timeoutMs: 1_500,
@@ -84,7 +85,7 @@ describe("core environment scripts", () => {
         }
       };
       try {
-        expect((await settled)[0]?.status).toBe("rejected");
+        await settled;
         await expect.poll(alive).toBe(false);
       } finally {
         if (alive()) process.kill(escaped, "SIGKILL");

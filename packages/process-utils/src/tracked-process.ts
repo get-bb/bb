@@ -35,13 +35,19 @@ export function trackedChildProcess(
   if (pid === undefined) return null;
   const hasExited = () => child.exitCode !== null || child.signalCode !== null;
   let startId: string | null = null;
+  let reading: Promise<string | null> | null = null;
   return {
     pid,
     processGroup: args.processGroup,
     label: args.label,
-    startId: async () => {
-      startId ??= await readChildStartId(pid, hasExited);
-      return startId;
+    startId: () => {
+      if (startId !== null) return Promise.resolve(startId);
+      reading ??= readChildStartId(pid, hasExited).then((read) => {
+        startId = read;
+        reading = null;
+        return read;
+      });
+      return reading;
     },
     exited: hasExited()
       ? Promise.resolve()

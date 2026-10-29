@@ -450,15 +450,29 @@ export async function runEnvironmentHookOperation(args: {
       at: Date.now() + args.timeoutMs + HOOK_DEADLINE_GRACE_MS,
     },
   });
+  let stopped = false;
+  const processOwner: LifecycleScriptOwner = {
+    trackProcess: resource.trackProcess,
+    captureTree: () => {
+      stopped = true;
+      return resource.captureTree();
+    },
+  };
   try {
     await args.run({
       signal:
         args.signal === undefined
           ? resource.signal
           : AbortSignal.any([args.signal, resource.signal]),
-      processOwner: resource,
+      processOwner,
     });
-    resource.leaveRunning();
+    if (stopped)
+      await resource.close({
+        status: "failed",
+        message: `${args.kind} hook was stopped before it finished`,
+        terminationUnverified: false,
+      });
+    else resource.leaveRunning();
   } catch (error) {
     await resource.close({
       status: "failed",

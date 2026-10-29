@@ -35,11 +35,16 @@ function runCommand(
   args: readonly string[],
   options: { env?: NodeJS.ProcessEnv; timeout: number },
 ): Promise<CommandResult> {
+  const cwd =
+    process.platform === "win32"
+      ? (process.env.SystemRoot ?? "C:\\Windows")
+      : "/";
   return new Promise((resolve) => {
     const child = execFile(
       command,
       args,
       {
+        cwd,
         encoding: "utf8",
         env: options.env,
         maxBuffer: 16 * 1024 * 1024,

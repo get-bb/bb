@@ -8,6 +8,7 @@ import type {
   HostDaemonCommandResult,
 } from "@bb/host-daemon-contract";
 import type { ProvisionWorkspaceArgs } from "@bb/host-workspace";
+import { provisionSetupOperationId } from "../resource-ledger.js";
 import {
   type CommandDispatchOptions,
   type CommandOf,
@@ -47,7 +48,7 @@ export async function provisionEnvironment(
         command.setupScriptTimeoutMs === null
           ? null
           : {
-              operationId: `provision:${command.environmentId}:setup`,
+              operationId: provisionSetupOperationId(command.environmentId),
               timeoutMs: command.setupScriptTimeoutMs,
             },
       setupContributedEnv: command.contributedEnv,

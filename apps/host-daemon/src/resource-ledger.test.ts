@@ -116,7 +116,14 @@ posixOnly("ResourceLedger", () => {
     await next.reconcile();
 
     expect(groupAlive(pid)).toBe(false);
-    expect(records(directory)).toEqual([]);
+    expect(
+      records(directory).flatMap(
+        (name) =>
+          JSON.parse(readFileSync(path.join(directory, name), "utf8"))
+            .processes,
+      ),
+    ).toEqual([]);
+    expect(records(directory)).toHaveLength(1);
     expect(
       next.previousOperationTermination("environment:env-1:key:teardown"),
     ).toBe("confirmed");

@@ -58,7 +58,7 @@ Every long-lived process the host daemon starts belongs to one resource in
 `apps/host-daemon/src/resource-ledger.ts`: provider bridges (per environment
 runtime and the maintenance runtime), setup and teardown hooks, host plugin
 workers, the connect-next frpc, the file watcher and short host commands. A
-resource has a typed owner (`hostDaemonResourceOwnerSchema`), a deadline (a
+resource has a daemon-local typed owner, a deadline (a
 fixed time, an idle timeout with per-request leases, or the owner's lifetime),
 and is written to `<dataDir>/host-daemon-resources/` before its first process
 starts. Lease changes only re-arm the in-memory deadline timer; they are not
@@ -66,9 +66,13 @@ written, because restart cleanup stops recorded processes whatever their
 deadline. The ledger enforces deadlines by calling the owner's stop and, after a
 grace, stopping the recorded process groups itself. On startup, before anything
 new runs, the daemon stops every process a previous instance recorded,
-verifying each start time so a reused PID is never signalled, and reports the
-outcomes in the first session open (`reconciledResources`). The server finishes
-hook operations whose processes are confirmed gone.
+verifying each start token so a reused PID is never signalled. Nothing new
+crosses the server/daemon wire: the server learns a hook's outcome through
+`environment.hook.cancel`, which answers `terminated` once the hook's
+processes are confirmed gone. A confirmed hook outcome stays on disk (for 30
+days) so a second restart before the server asks does not lose it. Provision
+setup is recorded under a daemon-local id; a cancel for the server's setup id
+of that environment (`environment:<id>:<instance key>:setup`) finds it.
 
 Ending a resource ends its whole process tree. `DaemonResource.end(stop)` first
 snapshots the tree under every recorded process (`snapshotProcessTree` in
@@ -103,8 +107,9 @@ no member left, counts as gone. Records this daemon version cannot read are
 kept and reported unverified. The same rule stops managed processes: their
 stop snapshots the child's tree while it still holds the child, signals the
 leader through its handle, and stops the rest by token; once the child has
-exited it signals nothing. Hook scripts capture
-their tree before a timeout or cancel kills them.
+exited it signals nothing. Hook scripts capture their tree before a timeout or
+cancel kills them, and a hook that had to be killed stops that tree when it
+ends, even a teardown whose failure is otherwise not fatal.
 Terminals are not recorded: closing one hangs up its shell's process group,
 as before, so jobs detached with nohup or disown keep running. Managed processes
 (`spawnManagedProcess`, used for provider bridges and ACP agents) sweep the

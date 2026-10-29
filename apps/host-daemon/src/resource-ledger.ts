@@ -5,6 +5,7 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
@@ -115,6 +116,26 @@ type PreviousRecord =
       record: z.infer<typeof resourceRecordSchema>;
     }
   | { kind: "unreadable"; owner: ResourceOwner | null };
+
+const HOOK_OUTCOME_RETENTION_MS = 30 * 24 * 60 * 60_000;
+
+export function provisionSetupOperationId(environmentId: string): string {
+  return `provision:${environmentId}:setup`;
+}
+
+function operationKeys(operationId: string): string[] {
+  const setup = /^environment:([^:]+):.*:setup$/u.exec(operationId);
+  return setup?.[1] === undefined
+    ? [operationId]
+    : [operationId, provisionSetupOperationId(setup[1])];
+}
+
+function ownsOperation(owner: ResourceOwner, operationId: string): boolean {
+  return (
+    owner.kind === "environment-hook" &&
+    operationKeys(operationId).includes(owner.operationId)
+  );
+}
 
 export function resourceLedgerDirectory(dataDir: string): string {
   return path.join(dataDir, RESOURCE_LEDGER_DIR);
@@ -414,26 +435,25 @@ export class ResourceLedger {
   }
 
   findOperation(operationId: string): DaemonResource | undefined {
-    return this.find(
-      (owner) =>
-        owner.kind === "environment-hook" && owner.operationId === operationId,
-    )[0];
+    return this.find((owner) => ownsOperation(owner, operationId))[0];
   }
 
   operationEnd(
     operationId: string,
   ): { owner: ResourceOwner; end: ResourceEnd } | null {
-    return this.endedOperations.get(operationId) ?? null;
+    for (const key of operationKeys(operationId)) {
+      const ended = this.endedOperations.get(key);
+      if (ended !== undefined) return ended;
+    }
+    return null;
   }
 
   previousOperationTermination(
     operationId: string,
   ): ResourceTermination | null {
     return (
-      this.previous.find(
-        (resource) =>
-          resource.owner.kind === "environment-hook" &&
-          resource.owner.operationId === operationId,
+      this.previous.find((resource) =>
+        ownsOperation(resource.owner, operationId),
       )?.termination ?? null
     );
   }
@@ -468,9 +488,12 @@ export class ResourceLedger {
         const survivors = results
           .filter(({ result }) => result === "unverified")
           .map(({ process }) => process);
-        if (survivors.length === 0) rmSync(file, { force: true });
-        else writeRecordFile(file, { ...record, processes: survivors });
         const owner = resourceOwnerSchema.safeParse(record.owner);
+        if (survivors.length > 0)
+          writeRecordFile(file, { ...record, processes: survivors });
+        else if (owner.success && owner.data.kind === "environment-hook")
+          keepHookOutcome(file, record);
+        else rmSync(file, { force: true });
         return {
           owner: owner.success ? owner.data : null,
           termination:
@@ -658,6 +681,18 @@ export class ResourceLedger {
       if (resource.listProcesses().length === 0) void resource.close();
     }
   }
+}
+
+function keepHookOutcome(
+  file: string,
+  record: { openedAt: number; processes: readonly unknown[] },
+): void {
+  if (record.processes.length > 0) {
+    writeRecordFile(file, { ...record, processes: [] });
+    return;
+  }
+  if (Date.now() - statSync(file).mtimeMs > HOOK_OUTCOME_RETENTION_MS)
+    rmSync(file, { force: true });
 }
 
 function writeRecordFile(file: string, record: unknown): void {

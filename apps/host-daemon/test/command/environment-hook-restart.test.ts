@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { makeTempDir } from "@bb/test-helpers";
 import { describe, expect, it } from "vitest";
@@ -18,6 +18,38 @@ function alive(pid: number): boolean {
   } catch {
     return false;
   }
+}
+
+async function waitForRecordedHook(
+  workspacePath: string,
+  ledgerDirectory: string,
+): Promise<number> {
+  let hookPid = 0;
+  await expect
+    .poll(async () => {
+      hookPid = Number(
+        await readFile(join(workspacePath, "hook.pid"), "utf8").catch(
+          () => "0",
+        ),
+      );
+      if (hookPid <= 0 || !alive(hookPid)) return false;
+      for (const name of await readdir(ledgerDirectory)) {
+        if (!name.endsWith(".json")) continue;
+        const record = JSON.parse(
+          await readFile(join(ledgerDirectory, name), "utf8"),
+        );
+        if (
+          record.processes.some(
+            (entry: { pid: number; startId: string | null }) =>
+              entry.pid === hookPid && entry.startId !== null,
+          )
+        )
+          return true;
+      }
+      return false;
+    })
+    .toBe(true);
+  return hookPid;
 }
 
 posixOnly("environment hooks across a daemon restart", () => {
@@ -75,6 +107,88 @@ posixOnly("environment hooks across a daemon restart", () => {
       dispatchOnlineRpcCommand(
         { type: "environment.hook.cancel", operationId },
         nextDaemon,
+        new AbortController().signal,
+      ),
+    ).resolves.toEqual({ status: "terminated" });
+  });
+
+  it("keeps a hook's confirmed outcome across a second restart", async () => {
+    const path = await makeTempDir("bb-hook-restart-twice-");
+    const ledgerDirectory = await makeTempDir("bb-hook-restart-twice-ledger-");
+    await writeFile(
+      join(path, ".bb-env-teardown.sh"),
+      "echo $$ > hook.pid\nexec sleep 120\n",
+    );
+    const operationId = "environment:env-1:key:teardown";
+    void dispatchOnlineRpcCommand(
+      {
+        type: "environment.hook.run",
+        contributedEnv: [],
+        resumeOnly: false,
+        operationId,
+        path,
+        kind: "teardown",
+        timeoutMs: 60_000,
+      },
+      createHarness({
+        resourceLedger: createTestResourceLedger(ledgerDirectory),
+      }).dispatchOptions({ dataDir: path }),
+      new AbortController().signal,
+    ).catch(() => undefined);
+    const hookPid = await waitForRecordedHook(path, ledgerDirectory);
+
+    await createTestResourceLedger(ledgerDirectory).reconcile();
+    expect(alive(hookPid)).toBe(false);
+    const afterSecondRestart = createTestResourceLedger(ledgerDirectory);
+    await afterSecondRestart.reconcile();
+
+    await expect(
+      dispatchOnlineRpcCommand(
+        { type: "environment.hook.cancel", operationId },
+        createHarness({
+          resourceLedger: afterSecondRestart,
+        }).dispatchOptions({ dataDir: path }),
+        new AbortController().signal,
+      ),
+    ).resolves.toEqual({ status: "terminated" });
+  });
+
+  it("answers the server's cancel for a provision setup the previous daemon left running", async () => {
+    const path = await makeTempDir("bb-provision-setup-restart-");
+    const ledgerDirectory = await makeTempDir("bb-provision-setup-ledger-");
+    await writeFile(
+      join(path, ".bb-env-setup.sh"),
+      "echo $$ > hook.pid\nexec sleep 120\n",
+    );
+    void dispatchCommand(
+      {
+        type: "environment.attach",
+        contributedEnv: [],
+        environmentId: "env-setup",
+        initiator: null,
+        path,
+        setupScriptTimeoutMs: 60_000,
+      },
+      createHarness({
+        workspacePath: path,
+        resourceLedger: createTestResourceLedger(ledgerDirectory),
+      }).dispatchOptions(),
+    ).catch(() => undefined);
+    const hookPid = await waitForRecordedHook(path, ledgerDirectory);
+
+    const ledger = createTestResourceLedger(ledgerDirectory);
+    await ledger.reconcile();
+    expect(alive(hookPid)).toBe(false);
+
+    await expect(
+      dispatchOnlineRpcCommand(
+        {
+          type: "environment.hook.cancel",
+          operationId: "environment:env-setup:instance:key:setup",
+        },
+        createHarness({ resourceLedger: ledger }).dispatchOptions({
+          dataDir: path,
+        }),
         new AbortController().signal,
       ),
     ).resolves.toEqual({ status: "terminated" });
