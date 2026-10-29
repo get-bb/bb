@@ -89,7 +89,10 @@ export function useHostCloneDefaultPath(
 export function useHostDiscoveredRepos(
   hostId: string | null,
   options?: QueryOptions & {
-    onRequest?: () => (outcome: "succeeded" | "failed") => void;
+    onRequest?: () => (
+      outcome: "succeeded" | "failed",
+      result: HostDiscoveredReposResponse | null,
+    ) => void;
   },
 ) {
   return useQuery<HostDiscoveredReposResponse>({
@@ -104,10 +107,10 @@ export function useHostDiscoveredRepos(
                 hostId,
                 signal,
               });
-              recordOutcome?.("succeeded");
+              recordOutcome?.("succeeded", result);
               return result;
             } catch (error) {
-              if (!signal.aborted) recordOutcome?.("failed");
+              if (!signal.aborted) recordOutcome?.("failed", null);
               throw error;
             }
           },

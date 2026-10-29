@@ -1,3 +1,4 @@
+import { WorkSurfaceObservation } from "@/components/onboarding/WorkSurfaceObservation";
 import {
   useCallback,
   useEffect,
@@ -200,7 +201,6 @@ export function useThreadComposerAddToChat(thread: {
     [isCompactViewport, promptDraft],
   );
 }
-
 
 function useChildThreadsSection(
   threadId: string,
@@ -516,7 +516,9 @@ export function ThreadScreen({
         isThreadTimelinePending={isThreadTimelinePending}
         timelineError={Boolean(timeline.timelineError)}
         loadingContent={
-          isPanelPresentation ? <ThreadTimelinePanelLoadingSkeleton /> : undefined
+          isPanelPresentation ? (
+            <ThreadTimelinePanelLoadingSkeleton />
+          ) : undefined
         }
         timelineErrorClassName={
           isPanelPresentation ? "mx-2 mt-4 text-destructive" : undefined
@@ -556,51 +558,63 @@ export function ThreadScreen({
 
   const chrome = composer?.environmentChrome;
   const promptArea = composer ? (
-    <ThreadDetailPromptArea
-      composerId={
-        presentation.kind === "page"
-          ? THREAD_DETAIL_COMPOSER_ID
-          : `${THREAD_DETAIL_COMPOSER_ID}-${instanceId}`
-      }
-      isPrimaryComposer={presentation.kind === "page"}
-      permissionPolicy={composer.permissionPolicy}
-      contextWindowUsage={timeline.contextWindowUsage}
-      environmentCheckout={composer.environmentCheckout}
-      environmentCompactLabel={chrome?.environmentCompactLabel}
-      environmentHost={chrome?.environmentHost}
-      environmentIcon={chrome?.environmentIcon}
-      environmentLabel={chrome?.environmentLabel}
-      environmentMachineProvider={chrome?.environmentMachineProvider}
-      environmentProviderName={chrome?.environmentProviderName}
-      canRestoreEnvironment={thread.canRestoreEnvironment}
-      environmentGoneStatus={resolveEnvironmentGoneStatus(environment)}
-      environmentHostId={environment?.hostId}
-      onCreateNewThreadInEnvironment={composer.onCreateNewThreadInEnvironment}
-      onOpenThreadInfo={composer.onOpenThreadInfo}
-      projectId={projectId}
-      resolveMentionLink={resolveMentionLink}
-      composerFocusRequestKey={composerFocusRequestKey}
-      sendMessage={sendMessage}
-      sentMessageEdit={sentMessageEdit}
-      steerActiveThreadOnEnter={
-        systemConfigQuery.data?.generalSettings.steerActiveThreadOnEnter ??
-        defaultAppSettings.steerActiveThreadOnEnter
-      }
-      pendingInteractions={pendingInteractions}
-      queuedMessageCount={thread.queuedMessageCount}
-      pendingTodos={timeline.pendingTodos}
-      activePromptMode={timeline.activePromptMode}
-      goal={timeline.goal}
-      providerCommands={timeline.providerCommands}
-      sessionOptions={timeline.sessionOptions}
-      modelFallback={timeline.modelFallback}
-      activeWorkflows={timeline.activeWorkflows}
-      activeBackgroundCommands={timeline.activeBackgroundCommands}
-      parentThreadSection={parentThreadSection}
-      childThreadsSection={childThreadsSection}
-      contextEnvironmentId={composer.contextEnvironmentId}
-      thread={thread}
-    />
+    <WorkSurfaceObservation
+      surface="continuation"
+      identity={thread.id}
+      enabled={timelineRows.some(
+        (row) =>
+          row.kind === "turn" ||
+          (row.kind === "conversation" && row.role === "user"),
+      )}
+      hasDraft={false}
+      readiness={{ status: "ready" }}
+    >
+      <ThreadDetailPromptArea
+        composerId={
+          presentation.kind === "page"
+            ? THREAD_DETAIL_COMPOSER_ID
+            : `${THREAD_DETAIL_COMPOSER_ID}-${instanceId}`
+        }
+        isPrimaryComposer={presentation.kind === "page"}
+        permissionPolicy={composer.permissionPolicy}
+        contextWindowUsage={timeline.contextWindowUsage}
+        environmentCheckout={composer.environmentCheckout}
+        environmentCompactLabel={chrome?.environmentCompactLabel}
+        environmentHost={chrome?.environmentHost}
+        environmentIcon={chrome?.environmentIcon}
+        environmentLabel={chrome?.environmentLabel}
+        environmentMachineProvider={chrome?.environmentMachineProvider}
+        environmentProviderName={chrome?.environmentProviderName}
+        canRestoreEnvironment={thread.canRestoreEnvironment}
+        environmentGoneStatus={resolveEnvironmentGoneStatus(environment)}
+        environmentHostId={environment?.hostId}
+        onCreateNewThreadInEnvironment={composer.onCreateNewThreadInEnvironment}
+        onOpenThreadInfo={composer.onOpenThreadInfo}
+        projectId={projectId}
+        resolveMentionLink={resolveMentionLink}
+        composerFocusRequestKey={composerFocusRequestKey}
+        sendMessage={sendMessage}
+        sentMessageEdit={sentMessageEdit}
+        steerActiveThreadOnEnter={
+          systemConfigQuery.data?.generalSettings.steerActiveThreadOnEnter ??
+          defaultAppSettings.steerActiveThreadOnEnter
+        }
+        pendingInteractions={pendingInteractions}
+        queuedMessageCount={thread.queuedMessageCount}
+        pendingTodos={timeline.pendingTodos}
+        activePromptMode={timeline.activePromptMode}
+        goal={timeline.goal}
+        providerCommands={timeline.providerCommands}
+        sessionOptions={timeline.sessionOptions}
+        modelFallback={timeline.modelFallback}
+        activeWorkflows={timeline.activeWorkflows}
+        activeBackgroundCommands={timeline.activeBackgroundCommands}
+        parentThreadSection={parentThreadSection}
+        childThreadsSection={childThreadsSection}
+        contextEnvironmentId={composer.contextEnvironmentId}
+        thread={thread}
+      />
+    </WorkSurfaceObservation>
   ) : null;
 
   switch (presentation.kind) {
@@ -665,7 +679,6 @@ export function ThreadScreen({
       );
   }
 }
-
 
 function ThreadScreenPanelShell({
   presentation,

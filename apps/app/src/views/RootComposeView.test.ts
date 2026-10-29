@@ -14,6 +14,7 @@ import type { ReuseThreadOption } from "@/components/pickers/ReuseEnvironmentPic
 import {
   resolveNewThreadProjectDefaultsState,
   resolveNewThreadSubmitDisabledReason,
+  resolveNewThreadReadiness,
   restorePromptDraftAfterOptionChange,
   type ResolveNewThreadSubmitDisabledReasonArgs,
 } from "@/components/promptbox/NewThreadComposer";
@@ -252,7 +253,54 @@ describe("resolveNewThreadSubmitDisabledReason", () => {
     selectedProviderId: "codex",
     selectedThreadModel: "gpt-5.6-sol",
     submissionEnvironmentUnavailable: false,
+    submissionMachineUnavailable: false,
   } satisfies ResolveNewThreadSubmitDisabledReasonArgs;
+
+  it.each([
+    ["missing_executable", "agent_missing"],
+    ["auth_required", "sign_in"],
+    ["provider_unavailable", "model_unavailable"],
+  ] as const)(
+    "maps typed model failure %s without inspecting its detail",
+    (code, reason) => {
+      expect(
+        resolveNewThreadReadiness({
+          ...readyState,
+          modelLoadError: {
+            providerId: "codex",
+            code,
+            detail: "private arbitrary content",
+          },
+        }),
+      ).toMatchObject({ status: "blocked", reason });
+    },
+  );
+
+  it("separates unresolved setup from actionable setup and excludes ordinary uploads", () => {
+    expect(
+      resolveNewThreadReadiness({ ...readyState, isUploading: true }),
+    ).toMatchObject({ status: "pending" });
+    expect(
+      resolveNewThreadReadiness({ ...readyState, isLoadingModels: true }),
+    ).toMatchObject({ status: "pending" });
+    expect(
+      resolveNewThreadReadiness({
+        ...readyState,
+        projectDefaultsUnavailable: true,
+        projectDefaultsStatus: "pending",
+      }),
+    ).toMatchObject({ status: "pending" });
+    expect(
+      resolveNewThreadReadiness({
+        ...readyState,
+        projectDefaultsUnavailable: true,
+        projectDefaultsStatus: "error",
+      }),
+    ).toMatchObject({ status: "blocked", reason: "project_setup" });
+    expect(
+      resolveNewThreadReadiness({ ...readyState, promptInputEmpty: true }),
+    ).toMatchObject({ status: "empty" });
+  });
 
   it("blocks the send while the selected environment needs setting up", () => {
     expect(

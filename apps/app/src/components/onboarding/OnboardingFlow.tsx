@@ -96,6 +96,13 @@ import {
   type OnboardingEntry,
 } from "./onboarding-telemetry";
 import { createPluginRecommendationObserver } from "./onboarding-recommendation-telemetry";
+import { recordOnboardingWorkEntry } from "./onboarding-work-context";
+import {
+  agentDiagnostic,
+  aggregateAgentReadiness,
+  createVisibleTransitionObserver,
+  onboardingNavigation,
+} from "./onboarding-journey-observation";
 import { useOnboardingProjectImport } from "./useOnboardingProjectImport";
 
 const SIGN_IN_POLL_INTERVAL_MS = 3_000;
@@ -220,6 +227,7 @@ function AgentSignInContainer({
 }
 
 interface StepChrome {
+  observeDisplay: () => void;
   compact: boolean;
   reserveMacosTrafficLights: boolean;
   onSelectStep: (step: OnboardingStepId) => void;
@@ -264,9 +272,11 @@ function AgentStepContainer({
   hostId,
   hostName,
   onContinue,
+  onSkip,
 }: {
   chrome: StepChrome;
   entry: OnboardingEntry;
+  onSkip: () => void;
   hostId: string | null;
   hostName: string | null;
   onContinue: () => void;
@@ -436,23 +446,41 @@ function AgentStepContainer({
           );
           const jobKey = providerCliJobKey(hostId, health.providerId);
           const signingIn = signIn?.providerId === health.providerId;
+          const setupState = resolveAgentSetupState({
+            health,
+            cliStatus: cliStatusQuery.data?.[health.providerId],
+            installing:
+              installRunner.runningJobKey === jobKey ||
+              installRunner.queuedJobKeys.has(jobKey),
+            installFailure: installRunner.failuresByJobKey.has(jobKey)
+              ? INSTALL_FAILED_MESSAGE
+              : null,
+            signingIn,
+            signInFailed: signInFailedProviderId === health.providerId,
+            installInfoPending: cliStatusQuery.isPending,
+          });
+          const diagnostic = {
+            source: entry,
+            ...agentDiagnostic(setupState),
+            provider: null,
+            any_agent_ready: aggregateAgentReadiness(
+              states,
+              statesQuery.isError,
+            ),
+          };
           return {
+            observation: {
+              key: JSON.stringify(diagnostic),
+              record: (trigger: "step_visible" | "state_changed") =>
+                recordTelemetryEvent({
+                  name: "onboarding_agent_diagnostic",
+                  properties: { ...diagnostic, trigger },
+                }),
+            },
             id: health.providerId,
             name: health.displayName,
             provider: info ?? { id: health.providerId, logoUrl: null },
-            state: resolveAgentSetupState({
-              health,
-              cliStatus: cliStatusQuery.data?.[health.providerId],
-              installing:
-                installRunner.runningJobKey === jobKey ||
-                installRunner.queuedJobKeys.has(jobKey),
-              installFailure: installRunner.failuresByJobKey.has(jobKey)
-                ? INSTALL_FAILED_MESSAGE
-                : null,
-              signingIn,
-              signInFailed: signInFailedProviderId === health.providerId,
-              installInfoPending: cliStatusQuery.isPending,
-            }),
+            state: setupState,
             expanded:
               signingIn && signIn !== null ? (
                 <AgentSignInContainer
@@ -495,8 +523,23 @@ function AgentStepContainer({
       primaryLabel="Continue"
       primaryDisabled={!agentReady}
       secondaryLabel={agentBlocked ? "Skip for now" : undefined}
-      onPrimary={onContinue}
-      onSecondary={onContinue}
+      onPrimary={() => {
+        recordTelemetryEvent({
+          name: "onboarding_agent_diagnostic",
+          properties: {
+            source: entry,
+            state: agentReady ? "ready" : "unknown",
+            trigger: "continue_attempt",
+            provider: null,
+            any_agent_ready: agentReady
+              ? true
+              : aggregateAgentReadiness(states, statesQuery.isError),
+            action_available: null,
+          },
+        });
+        onContinue();
+      }}
+      onSecondary={onSkip}
     >
       <AgentStep
         machineName={hostName}
@@ -531,6 +574,7 @@ function ProjectsStepContainer({
   onContinue: () => void;
   onSkip: () => void;
 }) {
+  const scanObservation = useRef(createVisibleTransitionObserver());
   const scanMounted = useRef(true);
   useEffect(() => {
     scanMounted.current = true;
@@ -550,7 +594,7 @@ function ProjectsStepContainer({
           error_category: null,
         },
       });
-      return (outcome) =>
+      return (outcome, response) => {
         recordTelemetryEvent({
           name: "onboarding_operation",
           properties: {
@@ -560,6 +604,29 @@ function ProjectsStepContainer({
             error_category: outcome === "failed" ? "request" : null,
           },
         });
+        const result =
+          outcome === "failed"
+            ? "failed"
+            : response === null
+              ? "unknown"
+              : response.repos.length === 0
+                ? "empty"
+                : "nonempty";
+        if (
+          scanObservation.current(JSON.stringify({ hostId, result }), true) !==
+          null
+        ) {
+          recordTelemetryEvent({
+            name: "onboarding_project_state",
+            properties: {
+              source: entry,
+              action: "scan_result",
+              result,
+              selection: "unknown",
+            },
+          });
+        }
+      };
     },
   });
   const quickCreateProject = useQuickCreateProjectController();
@@ -656,6 +723,52 @@ function ProjectsStepContainer({
     void importProjects(hostId, chosen);
   };
 
+  const projectSelection = selectedPaths.size === 0 ? "none" : "some";
+  useEffect(() => {
+    if (hostId === null || reposQuery.isPending || reposQuery.isFetching)
+      return;
+    const result = reposQuery.isError
+      ? "failed"
+      : (scannedRepos?.length ?? 0) === 0
+        ? "empty"
+        : "nonempty";
+    const key = JSON.stringify({ hostId, result });
+    if (scanObservation.current(key, true) === null) return;
+    recordTelemetryEvent({
+      name: "onboarding_project_state",
+      properties: {
+        source: entry,
+        action: "scan_result",
+        result,
+        selection: reposQuery.isError ? "unknown" : projectSelection,
+      },
+    });
+  }, [
+    entry,
+    hostId,
+    projectSelection,
+    reposQuery.isError,
+    reposQuery.isFetching,
+    reposQuery.isPending,
+    scannedRepos,
+  ]);
+  const changeSelection = (next: ReadonlySet<string>) => {
+    if (
+      next.size !== selectedPaths.size ||
+      [...next].some((path) => !selectedPaths.has(path))
+    ) {
+      recordTelemetryEvent({
+        name: "onboarding_project_state",
+        properties: {
+          source: entry,
+          action: "selection_changed",
+          result: "selected",
+          selection: next.size === 0 ? "none" : "some",
+        },
+      });
+    }
+    setSelection(next);
+  };
   const scanning = hostId === null || reposQuery.isPending || rescanning;
   return (
     <OnboardingLayout
@@ -695,10 +808,10 @@ function ProjectsStepContainer({
           const next = new Set(selectedPaths);
           if (next.has(path)) next.delete(path);
           else next.add(path);
-          setSelection(next);
+          changeSelection(next);
         }}
         onSelectAll={() =>
-          setSelection(
+          changeSelection(
             new Set(
               (discovered ?? [])
                 .filter((repo) => repo.projectId === null)
@@ -706,8 +819,30 @@ function ProjectsStepContainer({
             ),
           )
         }
-        onSelectNone={() => setSelection(new Set())}
-        onAddFolder={quickCreateProject.openCreateDialog}
+        onSelectNone={() => changeSelection(new Set())}
+        onAddFolder={() => {
+          if (quickCreateProject.isAvailable && !quickCreateProject.isCreating)
+            recordTelemetryEvent({
+              name: "onboarding_project_state",
+              properties: {
+                source: entry,
+                action: "folder_opened",
+                result: "unknown",
+                selection: projectSelection,
+              },
+            });
+          quickCreateProject.openCreateDialogWithResult((result) => {
+            recordTelemetryEvent({
+              name: "onboarding_project_state",
+              properties: {
+                source: entry,
+                action: "folder_result",
+                result,
+                selection: "unknown",
+              },
+            });
+          });
+        }}
         onRetry={() => {
           setRescanning(true);
           void refetchRepos().finally(() => setRescanning(false));
@@ -1090,34 +1225,95 @@ export function OnboardingFlow({
       name: "onboarding_finished",
       properties: { outcome, entry, last_step: step },
     });
+    recordOnboardingWorkEntry(outcome, entry);
     onClose();
   };
   const compact = useMediaQuery("(max-width: 640px)");
   const [desktopInfo] = useState(getBbDesktopInfo);
   const windowState = useDesktopWindowState();
+  const comparison = useRef(createVisibleTransitionObserver());
   const chrome: StepChrome = {
+    observeDisplay: () => {
+      const width_class =
+        window.innerWidth <= 640
+          ? "compact"
+          : window.innerWidth < 1200
+            ? "standard"
+            : "wide";
+      const height_class = window.innerHeight < 700 ? "short" : "regular";
+      const properties = {
+        phase: "displayed",
+        experiment_key: null,
+        experiment_revision: null,
+        variant: null,
+        design_revision: "baseline",
+        recommendation_revision: "baseline",
+        source: entry,
+        stage: step,
+        width_class,
+        height_class,
+      } as const;
+      if (comparison.current(JSON.stringify(properties), true) !== null)
+        recordTelemetryEvent({ name: "onboarding_comparison", properties });
+    },
     compact,
     reserveMacosTrafficLights: shouldReserveMacosTrafficLights({
       desktopInfo,
       windowState,
     }),
-    onSelectStep: setStep,
-    onSkipAll: () => close("skipped"),
+    onSelectStep: (next) => {
+      recordTelemetryEvent({
+        name: "onboarding_navigation",
+        properties: onboardingNavigation(entry, step, "select_step", next),
+      });
+      setStep(next);
+    },
+    onSkipAll: () => {
+      recordTelemetryEvent({
+        name: "onboarding_navigation",
+        properties: onboardingNavigation(entry, step, "skip_setup", null),
+      });
+      close("skipped");
+    },
   };
   const goTo = (offset: number) => () => {
     const next = STEP_ORDER[STEP_ORDER.indexOf(step) + offset];
-    if (next !== undefined) setStep(next);
+    if (next !== undefined) {
+      if (offset < 0)
+        recordTelemetryEvent({
+          name: "onboarding_navigation",
+          properties: onboardingNavigation(entry, step, "back", next),
+        });
+      setStep(next);
+    }
   };
-  const advance = (outcome: "completed" | "skipped") => () => {
-    recordTelemetryEvent({
-      name:
-        outcome === "completed"
-          ? "onboarding_step_completed"
-          : "onboarding_step_skipped",
-      properties: { step, entry },
-    });
-    goTo(1)();
-  };
+  const advance =
+    (
+      outcome: "completed" | "skipped",
+      action: "continue" | "skip_step" = outcome === "completed"
+        ? "continue"
+        : "skip_step",
+    ) =>
+    () => {
+      recordTelemetryEvent({
+        name: "onboarding_navigation",
+        properties: onboardingNavigation(
+          entry,
+          step,
+          action,
+          STEP_ORDER[STEP_ORDER.indexOf(step) + 1] ?? null,
+          step === "agent" && action === "skip_step",
+        ),
+      });
+      recordTelemetryEvent({
+        name:
+          outcome === "completed"
+            ? "onboarding_step_completed"
+            : "onboarding_step_skipped",
+        properties: { step, entry },
+      });
+      goTo(1)();
+    };
 
   switch (step) {
     case "agent":
@@ -1129,6 +1325,11 @@ export function OnboardingFlow({
           hostName={primaryHost?.name ?? null}
           onContinue={advance(
             hasReadyAgent(agentStates) ? "completed" : "skipped",
+            "continue",
+          )}
+          onSkip={advance(
+            hasReadyAgent(agentStates) ? "completed" : "skipped",
+            "skip_step",
           )}
         />
       );
@@ -1160,8 +1361,21 @@ export function OnboardingFlow({
           chrome={chrome}
           hostId={hostId}
           onBack={goTo(-1)}
-          onFinish={() => close("completed")}
-          onLeave={() => close("skipped")}
+          onFinish={() => {
+            recordTelemetryEvent({
+              name: "onboarding_navigation",
+              properties: onboardingNavigation(entry, step, "continue", null),
+            });
+            close("completed");
+          }}
+          onLeave={() => {
+            if (finishedRef.current) return;
+            recordTelemetryEvent({
+              name: "onboarding_navigation",
+              properties: onboardingNavigation(entry, step, "leave", null),
+            });
+            close("skipped");
+          }}
         />
       );
   }

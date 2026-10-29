@@ -42,6 +42,142 @@ describe("client telemetry events", () => {
     });
   });
 
+  it("accepts bounded journey observations and rejects fabricated assignments or private context", async () => {
+    await withTestHarness(async (harness) => {
+      const capture = vi.fn<TelemetryService["capture"]>();
+      harness.deps.telemetry = { ...harness.deps.telemetry, capture };
+      const events = [
+        {
+          name: "onboarding_comparison",
+          properties: {
+            phase: "displayed",
+            experiment_key: null,
+            experiment_revision: null,
+            variant: null,
+            design_revision: "baseline",
+            recommendation_revision: "baseline",
+            source: "first_run",
+            stage: "agent",
+            width_class: "compact",
+            height_class: "short",
+          },
+        },
+        {
+          name: "onboarding_navigation",
+          properties: {
+            source: "replay",
+            current_step: "agent",
+            action: "continue",
+            destination_step: "projects",
+            reason: "agent_not_ready",
+          },
+        },
+        {
+          name: "onboarding_agent_diagnostic",
+          properties: {
+            source: "first_run",
+            state: "unknown",
+            trigger: "step_visible",
+            provider: null,
+            any_agent_ready: null,
+            action_available: null,
+          },
+        },
+        {
+          name: "onboarding_project_state",
+          properties: {
+            source: "first_run",
+            action: "scan_result",
+            result: "empty",
+            selection: "none",
+          },
+        },
+        {
+          name: "new_thread_blocker",
+          properties: {
+            state: "shown",
+            reason: "sign_in",
+            source: "unknown",
+          },
+        },
+        {
+          name: "onboarding_work_surface",
+          properties: {
+            surface: "first_task",
+            action: "displayed",
+            entry: "skipped_guide",
+            content_revision: "baseline",
+          },
+        },
+      ];
+      for (const event of events) {
+        capture.mockClear();
+        expect((await post(harness, event)).status).toBe(200);
+        expect(capture).toHaveBeenCalledExactlyOnceWith(event);
+        capture.mockClear();
+        expect(
+          (
+            await post(harness, {
+              ...event,
+              properties: { ...event.properties, prompt: "private content" },
+            })
+          ).status,
+        ).toBe(400);
+        expect(capture).not.toHaveBeenCalled();
+      }
+      const comparison = events[0];
+      for (const forbidden of [
+        { phase: "assigned" },
+        {
+          experiment_key: "layout",
+          experiment_revision: "v1",
+          variant: "candidate",
+        },
+        { design_revision: "unreviewed" },
+        { width_class: 1440 },
+      ]) {
+        expect(
+          (
+            await post(harness, {
+              ...comparison,
+              properties: { ...comparison?.properties, ...forbidden },
+            })
+          ).status,
+        ).toBe(400);
+      }
+      for (const properties of [
+        {
+          source: "first_run",
+          action: "folder_opened",
+          result: "selected",
+          selection: "some",
+        },
+        {
+          source: "first_run",
+          action: "selection_changed",
+          result: "selected",
+          selection: "unknown",
+        },
+        {
+          source: "first_run",
+          action: "scan_result",
+          result: "cancelled",
+          selection: "none",
+        },
+      ]) {
+        expect(
+          (
+            await post(harness, {
+              name: "onboarding_project_state",
+              properties,
+            })
+          ).status,
+        ).toBe(400);
+      }
+      expect(capture).not.toHaveBeenCalled();
+    });
+  });
+
   it("forwards an accepted onboarding event to telemetry unchanged", async () => {
     await withTestHarness(async (harness) => {
       const capture = vi.fn<TelemetryService["capture"]>();
