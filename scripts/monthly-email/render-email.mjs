@@ -14,6 +14,8 @@ const LOGO =
   "https://resend-attachments.s3.amazonaws.com/UZJcR58lQtl_aNPB-xAt6v/5870abe2-345a-41e6-9a2b-3ee29cea34ad";
 export const MAX_HTML_BYTES = 80_000;
 export const WARN_HTML_BYTES = 60_000;
+export const MAX_SUBJECT_CHARS = 70;
+export const MAX_PREVIEW_CHARS = 90;
 const USAGE =
   "Usage: node scripts/monthly-email/render-email.mjs issues/<yyyy-mm>.json [--images-base <url> | --hosted issues/<yyyy-mm>/hosted.json] [--out <file>]";
 
@@ -125,6 +127,23 @@ You're getting this because you signed up for bb or Terragon updates.<br><a href
 </table></td></tr></table></body></html>`;
 }
 
+export function inboxLineProblems(spec) {
+  const problems = [];
+  const subject = [...spec.subject].length;
+  const preview = [...spec.preview].length;
+  if (subject > MAX_SUBJECT_CHARS) {
+    problems.push(
+      `The subject is ${subject} characters. Most email clients show ${MAX_SUBJECT_CHARS} or fewer, so shorten it.`,
+    );
+  }
+  if (preview > MAX_PREVIEW_CHARS) {
+    problems.push(
+      `The preview line is ${preview} characters. Most mobile email clients show 40 to ${MAX_PREVIEW_CHARS}, so shorten it.`,
+    );
+  }
+  return problems;
+}
+
 export function htmlSizeProblem(html) {
   const bytes = Buffer.byteLength(html);
   const size = `${Math.round(bytes / 1000)} KB`;
@@ -160,6 +179,8 @@ function parseArgs(argv) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const spec = JSON.parse(readFileSync(args.spec, "utf8"));
+  const inboxProblems = inboxLineProblems(spec);
+  if (inboxProblems.length) throw new Error(inboxProblems.join("\n"));
   const name = basename(args.spec, extname(args.spec));
   const imagesBase = args.imagesBase ?? `${name}/`;
   const hosted = args.hosted
