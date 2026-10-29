@@ -64,3 +64,15 @@ export function shouldShowFaviconAttentionDot({
       isPendingSidebarThread(candidate) || isUnreadSidebarThread(candidate),
   );
 }
+
+export function desktopAttentionThreadIds(
+  sidebarThreads: readonly FaviconSidebarThread[],
+): string[] {
+  return sidebarThreads
+    .filter(
+      (thread) =>
+        isSidebarProjectThread(thread) &&
+        (thread.hasPendingInteraction || !isThreadRead(thread)),
+    )
+    .map((thread) => thread.id);
+}
