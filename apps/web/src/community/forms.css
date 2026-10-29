@@ -200,6 +200,9 @@
   padding: 80px 0;
   min-height: 50vh;
 }
+.community-thanks[data-survey-complete] {
+  text-align: center;
+}
 @media (max-width: 600px) {
   .community-wrap {
     padding: 0;
