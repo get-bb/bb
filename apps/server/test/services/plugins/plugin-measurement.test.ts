@@ -5,7 +5,6 @@ import {
   upsertInstalledPlugin,
   upsertPluginMarketplace,
   type DbConnection,
-  type UpsertInstalledPluginInput,
 } from "@bb/db";
 import { createMigratedConnection } from "@bb/db/testing";
 import {
@@ -35,7 +34,7 @@ const deps = () => ({
 });
 function install(
   id = "browser-automation",
-  overrides: Partial<UpsertInstalledPluginInput> = {},
+  overrides: Partial<Parameters<typeof upsertInstalledPlugin>[1]> = {},
 ) {
   return upsertInstalledPlugin(db, {
     id,

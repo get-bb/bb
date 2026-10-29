@@ -167,6 +167,7 @@ const PUBLIC_PLUGIN_SDK_EXPORT_NAMES = [
 );
 
 const BB_PLUGIN_API_KEYS = [
+  "internal_DO_NOT_USE_recordPluginUse",
   "pluginId",
   "log",
   "settings",
@@ -259,9 +260,7 @@ const THREAD_EVENT_PAYLOAD_FIELDS = {
     "attemptNumber",
   ],
 } as const satisfies {
-  [
-    E in keyof PluginThreadEventPayloads
-  ]: readonly (keyof PluginThreadEventPayloads[E])[];
+  [E in keyof PluginThreadEventPayloads]: readonly (keyof PluginThreadEventPayloads[E])[];
 };
 
 type MissingThreadEventField = {
