@@ -1907,6 +1907,11 @@ The canonical release summary.
     const legacy = document.querySelector('[data-plugin-update-row="legacy"]');
     expect(legacy?.textContent).toContain("3.0.0: engines.bb requires >=9.0.0");
     expect(within(legacy as HTMLElement).queryByRole("button")).toBeNull();
+    expect(
+      within(legacy as HTMLElement)
+        .getByRole("link")
+        .getAttribute("href"),
+    ).toBe("/settings/plugins/legacy?view=installed");
 
     fireEvent.click(
       screen.getByRole("button", {

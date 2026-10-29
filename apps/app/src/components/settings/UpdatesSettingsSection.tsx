@@ -91,6 +91,8 @@ import {
   type UpdateInventoryPlugins,
 } from "@/hooks/useUpdateInventory";
 import { usePluginUpdateCheck } from "@/hooks/queries/plugin-catalog-queries";
+import { Link } from "react-router-dom";
+import { getPluginDetailRoutePath } from "@/lib/route-paths";
 import {
   isActivePluginUpdateJob,
   startPluginUpdate,
@@ -2024,7 +2026,13 @@ function PluginUpdateRow({
       data-plugin-update-row={plugin.id}
       className="grid min-h-12 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-2 text-sm"
     >
-      <span className="flex min-w-0 items-start gap-3">
+      <Link
+        to={getPluginDetailRoutePath({
+          pluginId: plugin.id,
+          view: "installed",
+        })}
+        className="flex min-w-0 items-start gap-3 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
         <span className="flex h-5 w-6 shrink-0 items-center justify-center">
           <PluginIcon
             pluginId={plugin.id}
@@ -2047,7 +2055,7 @@ function PluginUpdateRow({
             </span>
           ) : null}
         </span>
-      </span>
+      </Link>
       <RowActions>
         {updating ? (
           <RowStateControl live state="in-progress" />
