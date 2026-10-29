@@ -91,7 +91,11 @@ import {
   type UpdateInventoryPlugins,
 } from "@/hooks/useUpdateInventory";
 import { usePluginUpdateCheck } from "@/hooks/queries/plugin-catalog-queries";
-import { startPluginUpdate } from "@/hooks/queries/plugin-update-job-queries";
+import {
+  isActivePluginUpdateJob,
+  startPluginUpdate,
+  usePluginUpdateJobs,
+} from "@/hooks/queries/plugin-update-job-queries";
 import { applyPluginUpdateJob } from "@/hooks/cache-owners/plugin-cache-owner";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { displayPluginVersion } from "@/components/plugin/management/plugin-ui";
@@ -1774,6 +1778,36 @@ function quietFleetSummary(machines: readonly UpdateInventoryMachine[]): {
   };
 }
 
+function BulkUpdateProgress({ remainingJobs }: { remainingJobs: number }) {
+  const [batch, setBatch] = useState({ total: 0, remaining: 0 });
+  if (batch.remaining !== remainingJobs) {
+    setBatch({
+      total:
+        remainingJobs === 0
+          ? 0
+          : batch.remaining === 0
+            ? remainingJobs
+            : batch.total + Math.max(0, remainingJobs - batch.remaining),
+      remaining: remainingJobs,
+    });
+  }
+  if (remainingJobs === 0) {
+    return null;
+  }
+  return (
+    <span
+      role="status"
+      data-updates-progress
+      className="flex h-7 items-center gap-1.5 text-xs text-subtle-foreground"
+    >
+      <Icon aria-hidden name="Loading" className="size-3.5 animate-spin" />
+      {batch.total > 1 && batch.remaining === remainingJobs
+        ? `Updating ${batch.total - remainingJobs + 1} of ${batch.total}`
+        : "Updating"}
+    </span>
+  );
+}
+
 interface ProviderCliUpdatesSectionProps extends ProviderCliJobState {
   machines: readonly UpdateInventoryMachine[];
   now: number;
@@ -1807,18 +1841,6 @@ export function ProviderCliUpdatesSection({
   const jobs = { runningJobKey, queuedJobKeys, failuresByJobKey };
 
   const remainingJobs = (runningJobKey === null ? 0 : 1) + queuedJobKeys.size;
-  const [batch, setBatch] = useState({ total: 0, remaining: 0 });
-  if (batch.remaining !== remainingJobs) {
-    setBatch({
-      total:
-        remainingJobs === 0
-          ? 0
-          : batch.remaining === 0
-            ? remainingJobs
-            : batch.total + Math.max(0, remainingJobs - batch.remaining),
-      remaining: remainingJobs,
-    });
-  }
 
   const attention = machines.filter((machine) =>
     machineNeedsAttention(machine, now),
@@ -1851,19 +1873,6 @@ export function ProviderCliUpdatesSection({
         }}
       />
     ) : null;
-  const progress =
-    remainingJobs > 0 ? (
-      <span
-        role="status"
-        data-updates-progress
-        className="flex h-7 items-center gap-1.5 text-xs text-subtle-foreground"
-      >
-        <Icon aria-hidden name="Loading" className="size-3.5 animate-spin" />
-        {batch.total > 1 && batch.remaining === remainingJobs
-          ? `Updating ${batch.total - remainingJobs + 1} of ${batch.total}`
-          : "Updating"}
-      </span>
-    ) : null;
   const retryAllButton =
     stalledHostIds.length > BULK_RETRY_THRESHOLD ? (
       <UpdateActionButton
@@ -1877,13 +1886,13 @@ export function ProviderCliUpdatesSection({
       />
     ) : null;
   const bulkActions =
-    retryAllButton !== null || updateAllButton !== null || progress !== null ? (
+    retryAllButton !== null || updateAllButton !== null || remainingJobs > 0 ? (
       <div
         role="toolbar"
         aria-label="Bulk update actions"
         className="flex flex-wrap items-center justify-end gap-2"
       >
-        {progress}
+        <BulkUpdateProgress remainingJobs={remainingJobs} />
         {retryAllButton}
         {updateAllButton}
       </div>
@@ -2000,9 +2009,11 @@ function blockedPluginReason(
 
 function PluginUpdateRow({
   item,
+  updating,
   onStartUpdate,
 }: {
   item: UpdateInventoryPlugin;
+  updating: boolean;
   onStartUpdate: (pluginId: string) => void;
 }) {
   const { plugin } = item;
@@ -2041,7 +2052,9 @@ function PluginUpdateRow({
         </span>
       </span>
       <RowActions>
-        {item.kind === "blocked" ? (
+        {updating ? (
+          <RowStateControl live state="in-progress" />
+        ) : item.kind === "blocked" ? (
           <span className="text-2xs font-semibold text-subtle-foreground">
             Blocked
           </span>
@@ -2080,42 +2093,48 @@ function PluginUpdateRow({
 
 interface PluginUpdatesSectionProps {
   plugins: UpdateInventoryPlugins;
+  updatingPluginIds: ReadonlySet<string>;
   checking: boolean;
   onStartUpdates: (pluginIds: string[]) => void;
 }
 
 export function PluginUpdatesSection({
   plugins,
+  updatingPluginIds,
   checking,
   onStartUpdates,
 }: PluginUpdatesSectionProps) {
   if (plugins.trackedCount === 0) {
     return null;
   }
+  const remainingJobs = updatingPluginIds.size;
   const startable = plugins.items
     .filter((item) => item.kind === "update")
     .map((item) => item.plugin.id);
-  const updateAllButton =
-    startable.length === 0 ? null : (
+  const bulkActions =
+    remainingJobs === 0 && startable.length === 0 ? null : (
       <div
         role="toolbar"
         aria-label="Bulk plugin update actions"
         className="flex flex-wrap items-center justify-end gap-2"
       >
-        <UpdateActionButton
-          label={`Update all ${startable.length} plugin${startable.length === 1 ? "" : "s"}`}
-          tooltipLabel="Update all"
-          icon={UPDATE_ACTION_ICON}
-          visibleLabel="Update all"
-          variant="default"
-          onClick={() => onStartUpdates(startable)}
-        />
+        <BulkUpdateProgress remainingJobs={remainingJobs} />
+        {remainingJobs > 0 ? null : (
+          <UpdateActionButton
+            label={`Update all ${startable.length} plugin${startable.length === 1 ? "" : "s"}`}
+            tooltipLabel="Update all"
+            icon={UPDATE_ACTION_ICON}
+            visibleLabel="Update all"
+            variant="default"
+            onClick={() => onStartUpdates(startable)}
+          />
+        )}
       </div>
     );
   return (
     <div data-updates-domain="plugins">
       <SettingsSection
-        action={updateAllButton}
+        action={bulkActions}
         actionPlacement="inline"
         bodyClassName="overflow-hidden p-0"
         title="Plugins"
@@ -2144,6 +2163,7 @@ export function PluginUpdatesSection({
               <PluginUpdateRow
                 key={item.plugin.id}
                 item={item}
+                updating={updatingPluginIds.has(item.plugin.id)}
                 onStartUpdate={(pluginId) => onStartUpdates([pluginId])}
               />
             ))}
@@ -2207,6 +2227,11 @@ export function UpdatesSettingsSection({
   >(null);
   const appUpdate = appUpdateStatus.data;
   const pluginUpdateCheck = usePluginUpdateCheck(null, { enabled: true });
+  const updatingPluginIds = new Set(
+    (usePluginUpdateJobs().data ?? [])
+      .filter(isActivePluginUpdateJob)
+      .map((job) => job.pluginId),
+  );
 
   function startPluginUpdates(pluginIds: readonly string[]): void {
     for (const pluginId of pluginIds) {
@@ -2420,6 +2445,7 @@ export function UpdatesSettingsSection({
       />
       <PluginUpdatesSection
         plugins={inventory.plugins}
+        updatingPluginIds={updatingPluginIds}
         checking={pluginUpdateCheck.isFetching}
         onStartUpdates={startPluginUpdates}
       />

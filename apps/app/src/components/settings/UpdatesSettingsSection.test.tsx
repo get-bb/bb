@@ -125,13 +125,20 @@ vi.mock("@/hooks/mutations/host-mutations", () => ({
 const startInstallMock = vi.fn();
 
 const startPluginUpdateMock = vi.hoisted(() => vi.fn());
+const pluginUpdateJobs = vi.hoisted(() => ({
+  current: [] as import("@bb/server-contract").PluginUpdateJob[],
+}));
 
 vi.mock("@/hooks/queries/plugin-catalog-queries", () => ({
   usePluginUpdateCheck: () => ({ isFetching: false }),
 }));
 
-vi.mock("@/hooks/queries/plugin-update-job-queries", () => ({
+vi.mock("@/hooks/queries/plugin-update-job-queries", async (original) => ({
+  ...(await original<
+    typeof import("@/hooks/queries/plugin-update-job-queries")
+  >()),
   startPluginUpdate: startPluginUpdateMock,
+  usePluginUpdateJobs: () => ({ data: pluginUpdateJobs.current }),
 }));
 
 vi.mock("@/components/provider-cli/provider-cli-install", async (original) => {
@@ -359,6 +366,7 @@ function useWebApp(): void {
 
 beforeEach(() => {
   hostDaemon.localDaemonHostId = null;
+  pluginUpdateJobs.current = [];
   vi.mocked(sdk.system.appUpdate).mockResolvedValue(
     makeAppUpdateStatus({
       available: null,
@@ -1912,6 +1920,90 @@ The canonical release summary.
       ["linear"],
       ["notes"],
     ]);
+  });
+
+  it("tracks plugin update jobs on their rows and counts through the batch", () => {
+    useWebApp();
+    const plugin = (id: string) =>
+      makePluginListItem({
+        id,
+        name: id,
+        source: `npm:@acme/${id}@^1.0.0`,
+        updateState: {
+          outcome: "update-available",
+          availableVersion: "1.1.0",
+        },
+      });
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({
+        plugins: buildUpdateInventoryPlugins([
+          plugin("alpha"),
+          plugin("beta"),
+          plugin("gamma"),
+        ]),
+      }),
+    );
+    const job = (
+      pluginId: string,
+      state: "queued" | "running",
+    ): import("@bb/server-contract").PluginUpdateJob =>
+      state === "queued"
+        ? { id: `job_${pluginId}`, pluginId, displayName: pluginId, state }
+        : {
+            id: `job_${pluginId}`,
+            pluginId,
+            displayName: pluginId,
+            state,
+            phase: "preparing",
+          };
+    const queryClient = new QueryClient();
+    const tree = () => (
+      <MemoryRouter>
+        <TooltipProvider>
+          <QueryClientProvider client={queryClient}>
+            <UpdatesSettingsSection />
+          </QueryClientProvider>
+        </TooltipProvider>
+      </MemoryRouter>
+    );
+    const section = () =>
+      document.querySelector('[data-updates-domain="plugins"]') as HTMLElement;
+    const progress = () =>
+      section().querySelector("[data-updates-progress]")?.textContent ?? null;
+    const rowState = (id: string) =>
+      section()
+        .querySelector(`[data-plugin-update-row="${id}"] [data-update-state]`)
+        ?.getAttribute("data-update-state") ?? null;
+
+    pluginUpdateJobs.current = [
+      job("alpha", "running"),
+      job("beta", "queued"),
+      job("gamma", "queued"),
+    ];
+    const view = render(tree());
+    expect(progress()).toBe("Updating 1 of 3");
+    expect(rowState("alpha")).toBe("in-progress");
+    expect(rowState("gamma")).toBe("in-progress");
+    expect(
+      within(section()).queryByRole("button", { name: /Update all/u }),
+    ).toBeNull();
+
+    pluginUpdateJobs.current = [job("gamma", "running")];
+    view.rerender(tree());
+    expect(progress()).toBe("Updating 3 of 3");
+    expect(rowState("alpha")).toBeNull();
+    expect(
+      within(section()).getByRole("button", {
+        name: "Update available · Update alpha to 1.1.0",
+      }),
+    ).toBeDefined();
+
+    pluginUpdateJobs.current = [];
+    view.rerender(tree());
+    expect(progress()).toBeNull();
+    expect(
+      within(section()).getByRole("button", { name: "Update all 3 plugins" }),
+    ).toBeDefined();
   });
 
   it("toasts a plugin update the server refuses to start", async () => {

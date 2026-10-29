@@ -1249,6 +1249,20 @@ export function PluginSectionVariations() {
         <div className="w-full">
           <PluginUpdatesSection
             plugins={STORY_PLUGINS}
+            updatingPluginIds={NO_JOBS}
+            checking={false}
+            onStartUpdates={noop}
+          />
+        </div>
+      </StoryRow>
+      <StoryRow
+        label="Updating"
+        hint="Update all gives way to progress while the queue drains."
+      >
+        <div className="w-full">
+          <PluginUpdatesSection
+            plugins={STORY_PLUGINS}
+            updatingPluginIds={new Set(["github-pr-status", "linear"])}
             checking={false}
             onStartUpdates={noop}
           />
@@ -1258,6 +1272,7 @@ export function PluginSectionVariations() {
         <div className="w-full">
           <PluginUpdatesSection
             plugins={{ trackedCount: 6, items: [] }}
+            updatingPluginIds={NO_JOBS}
             checking={false}
             onStartUpdates={noop}
           />
@@ -1267,6 +1282,7 @@ export function PluginSectionVariations() {
         <div className="w-full">
           <PluginUpdatesSection
             plugins={{ trackedCount: 6, items: [] }}
+            updatingPluginIds={NO_JOBS}
             checking
             onStartUpdates={noop}
           />
