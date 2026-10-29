@@ -20,7 +20,10 @@ import {
   type HostDaemon,
   type HostDaemonApp,
 } from "@bb/host-daemon/test";
-import { createLifecycleDedupers } from "../../../apps/server/src/lifecycle-dedupers.js";
+import {
+  createLifecycleDedupers,
+  type LifecycleDedupers,
+} from "../../../apps/server/src/lifecycle-dedupers.js";
 import { createApp } from "../../../apps/server/src/server.js";
 import { createAiServiceRegistry } from "../../../apps/server/src/services/ai/ai-service-registry.js";
 import { PendingInteractionLifecycle } from "../../../apps/server/src/services/interactions/pending-interactions.js";
@@ -98,6 +101,7 @@ export interface RunningTestServer {
   config: ServerRuntimeConfig;
   db: DbConnection;
   hub: NotificationHub;
+  lifecycleDedupers: LifecycleDedupers;
   machineAuth: Awaited<ReturnType<typeof createMachineAuthService>>;
   providerRegistry: ProviderRegistryService;
 }
@@ -356,6 +360,7 @@ async function startIntegrationServer(
     config,
     db,
     hub,
+    lifecycleDedupers,
     machineAuth,
     providerRegistry,
     async close(): Promise<void> {

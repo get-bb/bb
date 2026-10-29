@@ -193,7 +193,9 @@ describe.sequential("fake provider smoke reuse integration", () => {
           });
 
           if (delayStartAcknowledgment) {
-            expect(hasLiveThreadStartInFlight(thread.id)).toBe(true);
+            expect(hasLiveThreadStartInFlight(harness.server, thread.id)).toBe(
+              true,
+            );
           }
           harness.db
             .update(environments)
