@@ -2,6 +2,7 @@ import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   COMMUNITY_MAX,
+  SURVEY_DESCRIPTION,
   questionVisible,
   surveyQuestions,
   type FormValues,
@@ -144,11 +145,10 @@ function textAnswer(value: string) {
   );
 }
 
-function card(children: ReturnType<typeof h>[], key?: string) {
+function card(children: ReturnType<typeof h>[]) {
   return h(
     "div",
     {
-      key,
       style: {
         background: "#ffffff",
         border: `1px solid ${BORDER}`,
@@ -169,48 +169,29 @@ export function surveyEmail(
   const visible = surveyQuestions.filter((question) =>
     questionVisible(question.name, answers),
   );
-  const header = card([
-    h(
-      "h1",
-      {
-        key: "title",
-        style: {
-          margin: "6px 0 12px",
-          fontSize: "30px",
-          lineHeight: "1.2",
-          fontWeight: 700,
-          letterSpacing: "-0.02em",
-          color: HEADING,
-          textAlign: "center",
-        },
-      },
-      "Help shape the future of ",
-      h("img", {
-        src: SURVEY_EMAIL_MARK,
-        alt: "bb",
-        width: 35,
-        height: 28,
-        style: { verticalAlign: "-3px", border: 0 },
-      }),
-      "!",
-    ),
+  const claim = card([
     h(
       "p",
       {
         key: "thanks",
         style: {
-          margin: claimLink ? "0 0 22px" : "0 0 8px",
-          fontSize: "16px",
+          margin: claimLink ? "4px 0 20px" : "4px 0",
+          fontSize: "17px",
           lineHeight: "1.6",
           textAlign: "center",
+          color: HEADING,
         },
       },
-      "Thanks for filling out the survey! Here are your answers.",
+      h("strong", null, "Thanks for filling out the bb community survey!"),
+      h("br"),
+      claimLink
+        ? "Your stickers are ready to claim."
+        : "Your answers are below.",
     ),
     claimLink
       ? h(
           "p",
-          { key: "claim", style: { margin: "0 0 8px", textAlign: "center" } },
+          { key: "claim", style: { margin: "0 0 4px", textAlign: "center" } },
           h(
             "a",
             {
@@ -231,20 +212,38 @@ export function surveyEmail(
         )
       : h("span", { key: "none" }),
   ]);
-  const body = h(
-    "div",
-    {
-      style: {
-        fontFamily: FONT,
-        color: INK,
-        fontSize: "15px",
-        lineHeight: "1.6",
-        maxWidth: "640px",
-        margin: "0 auto",
-        padding: "24px 12px",
+  const survey = card([
+    h(
+      "h1",
+      {
+        key: "title",
+        style: {
+          margin: "8px 0 12px",
+          fontSize: "30px",
+          lineHeight: "1.2",
+          fontWeight: 700,
+          letterSpacing: "-0.02em",
+          color: HEADING,
+        },
       },
-    },
-    header,
+      "Help shape the future of ",
+      h("img", {
+        src: SURVEY_EMAIL_MARK,
+        alt: "bb",
+        width: 35,
+        height: 28,
+        style: { verticalAlign: "-3px", border: 0 },
+      }),
+      "!",
+    ),
+    h(
+      "p",
+      {
+        key: "intro",
+        style: { margin: "0 0 8px", fontSize: "16px", lineHeight: "1.7" },
+      },
+      SURVEY_DESCRIPTION,
+    ),
     ...visible.map((question, index) =>
       h(
         "div",
@@ -254,8 +253,8 @@ export function surveyEmail(
               "h2",
               {
                 style: {
-                  margin: "28px 4px 12px",
-                  fontSize: "19px",
+                  margin: "32px 0 0",
+                  fontSize: "21px",
                   fontWeight: 650,
                   color: HEADING,
                 },
@@ -263,11 +262,18 @@ export function surveyEmail(
               SECTIONS[question.name],
             )
           : null,
-        card([
+        h(
+          "div",
+          {
+            style: {
+              padding: "22px 0",
+              borderBottom:
+                index === visible.length - 1 ? "0" : `1px solid ${BORDER}`,
+            },
+          },
           h(
             "p",
             {
-              key: "label",
               style: {
                 margin: "0 0 12px",
                 fontSize: "15px",
@@ -283,34 +289,48 @@ export function surveyEmail(
             label(question.name, question.label, answers),
           ),
           question.options.length
-            ? h("div", { key: "answer" }, options(question, answers))
-            : h(
-                "div",
-                { key: "answer" },
-                textAnswer(answers[question.name]?.[0] ?? ""),
-              ),
-        ]),
+            ? options(question, answers)
+            : textAnswer(answers[question.name]?.[0] ?? ""),
+        ),
       ),
     ),
+  ]);
+  const body = h(
+    "div",
+    {
+      style: {
+        fontFamily: FONT,
+        color: INK,
+        fontSize: "15px",
+        lineHeight: "1.6",
+        maxWidth: "640px",
+        margin: "0 auto",
+        padding: "24px 12px",
+      },
+    },
+    claim,
     h(
       "p",
       {
         style: {
-          margin: "24px 0 0",
-          textAlign: "center",
+          margin: "24px 4px 10px",
+          fontSize: "13px",
+          fontWeight: 600,
+          letterSpacing: "0.04em",
+          textTransform: "uppercase",
           color: DIM,
-          fontSize: "14px",
         },
       },
-      "Thanks for building with us! — bb",
+      "Your answers",
     ),
+    survey,
   );
   const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="margin:0;background:#f4f4f4">${renderToStaticMarkup(body)}</body></html>`;
   const text = [
-    "Thanks for filling out the bb community survey! Here are your answers.",
+    "Thanks for filling out the bb community survey!",
     ...(claimLink ? [`Claim my bb stickers: ${claimLink}`] : []),
+    "Your answers:",
     ...rows.map((row) => `${row.label}\n${row.answer}`),
-    "Thanks for building with us!\nbb",
   ].join("\n\n");
   return { subject: SURVEY_EMAIL_SUBJECT, html, text };
 }
