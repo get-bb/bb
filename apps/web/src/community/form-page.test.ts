@@ -97,6 +97,7 @@ describe("survey page", () => {
     const form = {
       elements: {
         namedItem: (name: string) => ({ value: name === "work" ? work : "" }),
+        [Symbol.iterator]: () => [][Symbol.iterator](),
       },
       querySelector: (selector: string) => {
         const set = /^\[data-question="(\w+)"\]$/.exec(selector)?.[1];

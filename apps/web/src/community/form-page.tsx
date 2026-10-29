@@ -26,7 +26,40 @@ const FORM_SCRIPT = `
 const form = document.querySelector('form');
 const scheme = matchMedia('(prefers-color-scheme: dark)');
 scheme.addEventListener('change', e => document.documentElement.classList.toggle('dark', e.matches));
+const progressKey = 'bb-community-survey';
+const storage = (() => {
+  try {
+    return localStorage;
+  } catch {
+    return null;
+  }
+})();
 if (form) {
+  const fields = () => [...form.elements].filter(el => el.name && el.type !== 'hidden' && el.type !== 'submit');
+  const isChoice = el => el.type === 'radio' || el.type === 'checkbox';
+  let saved = null;
+  try {
+    saved = JSON.parse(storage?.getItem(progressKey) ?? 'null');
+  } catch {}
+  const prefilled = fields().some(el => isChoice(el) ? el.checked : el.value);
+  if (saved && typeof saved === 'object' && !prefilled) {
+    for (const el of fields()) {
+      const value = saved[el.name];
+      if (!Array.isArray(value)) continue;
+      if (isChoice(el)) el.checked = value.includes(el.value);
+      else el.value = String(value[0] ?? '');
+    }
+  }
+  const save = () => {
+    const data = {};
+    for (const el of fields()) {
+      if (isChoice(el) && !el.checked) continue;
+      (data[el.name] ||= []).push(el.value);
+    }
+    try {
+      storage?.setItem(progressKey, JSON.stringify(data));
+    } catch {}
+  };
   const update = () => {
     const work = form.elements.namedItem('work').value;
     const shown = {
@@ -59,6 +92,7 @@ if (form) {
       const boxes = set.querySelectorAll('input[type="checkbox"]');
       if (boxes.length && [...boxes].some(box => box.checked)) boxes[0].setCustomValidity('');
     }
+    save();
   };
   form.addEventListener('submit', e => {
     for (const set of form.querySelectorAll('fieldset[data-question]')) {
@@ -75,6 +109,8 @@ if (form) {
   });
   form.addEventListener('input', update);
   update();
+} else if (document.querySelector('[data-survey-complete]')) {
+  storage?.removeItem(progressKey);
 }
 `;
 
@@ -301,7 +337,10 @@ export function formPage({
           </div>
           <main className="community-wrap">
             {complete ? (
-              <section className="community-thanks">
+              <section
+                className="community-thanks"
+                data-survey-complete={kind === "survey" ? "" : undefined}
+              >
                 {duplicate ? (
                   <p>
                     we already have your answers — thank you 🙏 if you saved
