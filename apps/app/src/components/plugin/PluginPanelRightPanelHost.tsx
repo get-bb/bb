@@ -239,10 +239,9 @@ export function PluginPanelRightPanelHost({
     setCompactDrawerOpen(false);
   }, [setCompactDrawerOpen]);
   const isCompactViewport = useIsCompactViewport();
-  const persistedPanelOpen = isCompactViewport
+  const isOpen = isCompactViewport
     ? isCompactDrawerOpen
     : panelState.secondary.isOpen;
-  const isOpen = persistedPanelOpen;
   const activeTab =
     panelState.secondary.tabs.find(
       (tab) => tab.id === panelState.secondary.activeTabId,
@@ -460,11 +459,10 @@ export function PluginPanelRightPanelHost({
       })),
     [pageActions, panel, pluginId, subPath, panelController],
   );
-  const revealPersistedPanel = revealPanel;
   const panelFiles = usePanelFiles({
     available: panel !== null,
     openTab,
-    reveal: revealPersistedPanel,
+    reveal: revealPanel,
     scope: null,
   });
   const openLiveFilePreview = panelFiles.openFilePreview;
@@ -479,7 +477,7 @@ export function PluginPanelRightPanelHost({
     isFocused,
     acceptsSession,
     tabsCarryTarget: true,
-    reveal: revealPersistedPanel,
+    reveal: revealPanel,
     onCloseLastTab: closeCompactDrawer,
   });
   const navigationCapabilities = useMemo(
@@ -531,7 +529,7 @@ export function PluginPanelRightPanelHost({
     browserTabs,
     isFocused,
     openTab,
-    reveal: revealPersistedPanel,
+    reveal: revealPanel,
   });
   const openBrowser = panelBrowser.open;
 
@@ -764,8 +762,6 @@ export function PluginPanelRightPanelHost({
     ],
   );
 
-  const tabs = panelTabs;
-
   const renderPanel = useCallback(
     ({
       presentation,
@@ -811,7 +807,7 @@ export function PluginPanelRightPanelHost({
           drawerFallback={drawerFallback}
           activeTab={activeTab}
           metadataContent={null}
-          tabs={tabs}
+          tabs={panelTabs}
           splitPanelStateId={panelStateId}
           onTabReorder={reorderTab}
           renderBrowserDeck={(activeBrowserTabId, pane) =>
@@ -852,7 +848,7 @@ export function PluginPanelRightPanelHost({
       openNewTab,
       panelStateId,
       reorderTab,
-      tabs,
+      panelTabs,
       updateBrowserTab,
     ],
   );

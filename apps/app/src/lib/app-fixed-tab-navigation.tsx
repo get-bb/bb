@@ -21,6 +21,7 @@ import type {
   AppFixedTabReference,
 } from "@/lib/app-navigation-host";
 import {
+  areExperimentalPanelTabsEqual,
   EMPTY_APP_PANEL_TABS_STATE,
   toExperimentalPanelTabs,
   type AppPanelTabsState,
@@ -48,7 +49,6 @@ interface AppPanelTabsStore {
 function createAppPanelTabsStore(): AppPanelTabsStore {
   let state = EMPTY_APP_PANEL_TABS_STATE;
   let snapshot = toExperimentalPanelTabs(state);
-  let snapshotJson = JSON.stringify(snapshot);
   const listeners = new Set<() => void>();
   const find = (key: string) =>
     state.entries.find((entry) => entry.key === key);
@@ -63,10 +63,8 @@ function createAppPanelTabsStore(): AppPanelTabsStore {
     publishTabs: (next) => {
       state = next;
       const nextSnapshot = toExperimentalPanelTabs(next);
-      const nextJson = JSON.stringify(nextSnapshot);
-      if (nextJson === snapshotJson) return;
+      if (areExperimentalPanelTabsEqual(snapshot, nextSnapshot)) return;
       snapshot = nextSnapshot;
-      snapshotJson = nextJson;
       for (const listener of listeners) listener();
     },
     selectTab: (key) => {

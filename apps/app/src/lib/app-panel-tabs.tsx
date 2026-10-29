@@ -157,6 +157,61 @@ export function buildAppPanelTabsState({
   };
 }
 
+function sameDetail(
+  left: ExperimentalPanelTabDetail,
+  right: ExperimentalPanelTabDetail,
+): boolean {
+  switch (left.kind) {
+    case "info":
+    case "new-tab":
+      return right.kind === left.kind;
+    case "file":
+      return right.kind === "file" && right.path === left.path;
+    case "browser":
+      return right.kind === "browser" && right.url === left.url;
+    case "terminal":
+      return right.kind === "terminal" && right.terminalId === left.terminalId;
+    case "plugin-details":
+      return (
+        right.kind === "plugin-details" && right.pluginId === left.pluginId
+      );
+    case "plugin":
+      return (
+        right.kind === "plugin" &&
+        right.pluginId === left.pluginId &&
+        right.tab.id === left.tab.id &&
+        right.tab.availability === left.tab.availability &&
+        right.tab.context.kind === left.tab.context.kind &&
+        (right.tab.context.kind !== "nav-panel" ||
+          left.tab.context.kind !== "nav-panel" ||
+          right.tab.context.panelId === left.tab.context.panelId) &&
+        JSON.stringify(right.params) === JSON.stringify(left.params)
+      );
+  }
+}
+
+export function areExperimentalPanelTabsEqual(
+  left: ExperimentalPanelTabs,
+  right: ExperimentalPanelTabs,
+): boolean {
+  return (
+    left.open === right.open &&
+    left.selectedKey === right.selectedKey &&
+    left.tabs.length === right.tabs.length &&
+    left.tabs.every((tab, index) => {
+      const other = right.tabs[index];
+      return (
+        other !== undefined &&
+        tab.key === other.key &&
+        tab.title === other.title &&
+        tab.status === other.status &&
+        tab.closable === other.closable &&
+        sameDetail(tab.detail, other.detail)
+      );
+    })
+  );
+}
+
 export function toExperimentalPanelTabs(
   state: AppPanelTabsState,
 ): ExperimentalPanelTabs {

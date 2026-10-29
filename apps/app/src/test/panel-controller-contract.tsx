@@ -357,6 +357,15 @@ export function describePanelControllerContract(
       expect(surface.tabs().tabs.map((tab) => tab.key)).not.toContain(first);
       expect(call(() => surface.panel().selectTab("missing"))).toBe(false);
       expect(call(() => surface.panel().closeTab("missing"))).toBe(false);
+
+      call(() => surface.panel().close());
+      expect(surface.snapshot().isOpen).toBe(false);
+      expect(call(() => surface.panel().selectTab(second))).toBe(true);
+      expect(surface.snapshot()).toMatchObject({
+        isOpen: true,
+        activeTabId: second,
+      });
+      expect(surface.tabs()).toMatchObject({ open: true, selectedKey: second });
     });
 
     it.runIf(supports.fixedTabs)(
