@@ -162,7 +162,7 @@ className? }` —
 
 - `experimental_ThreadContextCardRow` — the thread context card's row, the one
   bb's own rows use: `{ icon?, leading?, label, trailing?, title?, disabled?,
-  onClick?, action? }`. `icon` is any name `experimental_Icon` accepts and
+onClick?, action? }`. `icon` is any name `experimental_Icon` accepts and
   `leading` draws any node in its place (an app or site icon), `trailing`
   draws at the row's end (a count or `+4 −1`), `onClick` makes the label a
   button, and `action` is a second control, such as a `…` that opens a menu,
@@ -212,6 +212,9 @@ className? }` —
   harness records both calls in `navigateCalls` and gates them with the
   `openFilePreview` / `openFileExternally` behavior options; its
   `canOpenFileExternally` option answers the hook.
+- `experimental_PanelTabIcon` — `{ tabKey }`; the icon bb's tab strip draws
+  for an open side panel tab, from `experimental_usePanelTabs()`; see
+  frontend-panel-tabs.md.
 - `experimental_useAppPanel` — returns the current surface's
   `ExperimentalPanelController`; see
   [Panel controller](frontend-hooks-and-ui.md#panel-controller). Targeted

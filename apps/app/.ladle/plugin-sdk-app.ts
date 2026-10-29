@@ -9,6 +9,7 @@ export type * from "@get-bb/plugin-sdk";
 export const {
   experimental_ThreadStatusGlyph,
   experimental_ThreadContextCardRow,
+  experimental_PanelTabIcon,
   experimental_Icon,
   experimental_ProviderIcon,
   definePluginApp,
@@ -48,6 +49,7 @@ export const {
   experimental_useSidebarThreadSplit,
   experimental_useExperiment,
   experimental_useThreadContextKind,
+  experimental_usePanelTabs,
   useSidebarThreadDraft,
   useSidebarThreadDraftIds,
   useSidebarThreadRowStatus,

@@ -1,3 +1,4 @@
+import { AppPanelTabsPublisher } from "@/lib/app-panel-tabs";
 import { appendQuoteAndAttachmentsToDraft } from "@bb/client-core";
 import type { ComposerAttachment } from "@get-bb/plugin-sdk";
 import { createCoreComposerActions } from "@/lib/plugin-composer-handle";
@@ -54,6 +55,7 @@ import {
 } from "@/components/secondary-panel/panelToggleControlState";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import type {
+  SecondaryPanelFixedTab,
   SecondaryPanelPaneRenderContext,
   SecondaryPanelRenderableTab,
 } from "@/components/secondary-panel/ThreadSecondaryPanel";
@@ -178,6 +180,9 @@ function readSectionIdFromLocationState(state: unknown): string | null {
 type RootComposeSectionTarget =
   | { kind: "clear" }
   | { sectionId: string; kind: "set" };
+
+const THREAD_TAB_CONTEXT = { kind: "thread" } as const;
+const NO_FIXED_TABS: readonly SecondaryPanelFixedTab[] = [];
 
 export function readRootComposeSectionTargetFromLocationState(
   state: unknown,
@@ -1412,6 +1417,14 @@ function RootComposeSurface({
         <AttachmentOpenerContext.Provider value={openAttachment}>
           <UrlOpenRoutingProvider openInAppBrowser={openBrowser}>
             <AppNavigationHostProvider capabilities={appNavigationCapabilities}>
+              <AppPanelTabsPublisher
+                publish={panel.publishTabs}
+                activeTabId={activeFixedSecondaryTabId}
+                actionContext={THREAD_TAB_CONTEXT}
+                fixedTabs={NO_FIXED_TABS}
+                isOpen={isSecondaryPanelOpen}
+                tabs={panelTabs}
+              />
               <RootComposeSecondaryContent
                 contentClassName={
                   ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS
@@ -1441,7 +1454,7 @@ function RootComposeSurface({
                   splitPanelStateId: ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
                   renderBrowserDeck,
                   isOpen: isSecondaryPanelOpen,
-                  fixedTabs: [],
+                  fixedTabs: NO_FIXED_TABS,
                   showConversationCollapseControl: false,
                   onClose: panel.close,
                   onCollapse: panel.close,

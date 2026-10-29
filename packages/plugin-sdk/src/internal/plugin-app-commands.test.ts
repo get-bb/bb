@@ -77,6 +77,8 @@ describe("app.commands.register", () => {
         experimental_panel: {
           openTab: vi.fn(() => true),
           toggleTab: vi.fn(() => true),
+          selectTab: vi.fn(() => true),
+          closeTab: vi.fn(() => true),
           close: vi.fn(() => true),
         },
       };

@@ -5063,6 +5063,18 @@ export interface ExperimentalPanelController {
   /** Select the tab and reveal the side panel. */
   openTab(options: ExperimentalOpenTabOptions): boolean;
   /**
+   * Select any open tab, bb's or a plugin's, by its
+   * {@link ExperimentalPanelTab.key} and reveal the side panel; false for a
+   * key that is not open.
+   */
+  selectTab(key: string): boolean;
+  /**
+   * Close any open tab by its key, as its close button does; false for a key
+   * that is not open or a tab that cannot be closed. Closing a terminal's tab
+   * ends the terminal.
+   */
+  closeTab(key: string): boolean;
+  /**
    * Close the side panel if this tab is showing — a fixed tab selected with
    * the panel open (`target` is ignored), or the action tab instance with the
    * same `params` selected — otherwise `openTab(options)`.
@@ -5070,6 +5082,54 @@ export interface ExperimentalPanelController {
   toggleTab(options: ExperimentalOpenTabOptions): boolean;
   /** Close the side panel. */
   close(): boolean;
+}
+
+/** What an open side panel tab shows. */
+export type ExperimentalPanelTabDetail =
+  | { kind: "info" }
+  | { kind: "file"; path: string }
+  | { kind: "browser"; url: string }
+  | { kind: "terminal"; terminalId: string }
+  | { kind: "new-tab" }
+  | {
+      kind: "plugin";
+      pluginId: string;
+      tab: ExperimentalTabReference;
+      /** The action tab's params; null for fixed tabs and action tabs without. */
+      params: JsonValue | null;
+    }
+  | { kind: "plugin-details"; pluginId: string };
+
+/** One tab open in a surface's side panel. */
+export interface ExperimentalPanelTab {
+  /**
+   * Identifies the tab while it stays open; pass it to `selectTab`,
+   * `closeTab`, or `experimental_PanelTabIcon`. Do not store it: a reopened
+   * tab may get another key.
+   */
+  key: string;
+  /** The label bb's tab strip shows. */
+  title: string;
+  /** The strip's secondary label, such as a terminal's exit status. */
+  status: string | null;
+  /** False for tabs without a close button, such as Info and fixed tabs. */
+  closable: boolean;
+  detail: ExperimentalPanelTabDetail;
+}
+
+/** The tabs of one surface's side panel, in the order bb's tab strip shows them. */
+export interface ExperimentalPanelTabs {
+  /** Whether the side panel is showing. */
+  open: boolean;
+  /** The selected tab's key, or null when none is selected. */
+  selectedKey: string | null;
+  tabs: readonly ExperimentalPanelTab[];
+}
+
+/** Props of `experimental_PanelTabIcon`. */
+export interface ExperimentalPanelTabIconProps {
+  /** An {@link ExperimentalPanelTab.key}; renders nothing for a closed tab. */
+  tabKey: string;
 }
 
 /** Current app selection, derived from the route. */
@@ -5432,6 +5492,14 @@ export interface PluginSdkApp {
    * thread view, the plugin page, or the New thread screen.
    */
   experimental_useAppPanel(): ExperimentalPanelController;
+  /**
+   * The tabs open in the side panel of the surface the calling component
+   * renders in, following live changes: the same list bb's tab strip shows.
+   * Closed and empty on a surface without a side panel. Act on a tab with
+   * `experimental_useAppPanel().selectTab` or `closeTab`. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_usePanelTabs(): ExperimentalPanelTabs;
   /** Read or clear the owning tab's validated, session-scoped target. */
   experimental_useFixedTabTarget<Target extends JsonValue>(
     tab:
@@ -5843,6 +5911,12 @@ export interface PluginSdkApp {
    * Experimental: see docs/api_to_audit.md.
    */
   experimental_ThreadContextCardRow: ComponentType<ExperimentalThreadContextCardRowProps>;
+  /**
+   * The icon bb's tab strip draws for an open side panel tab (see
+   * {@link ExperimentalPanelTabIconProps}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_PanelTabIcon: ComponentType<ExperimentalPanelTabIconProps>;
   /**
    * The thread Info tab's list (see {@link ExperimentalInfoListProps}), the
    * one bb's own sections use. Experimental: see docs/api_to_audit.md.

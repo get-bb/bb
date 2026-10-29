@@ -353,6 +353,11 @@ panel.close();
   fixed tab selected with the panel open (the target is ignored), or the action
   tab instance with the same params selected — otherwise it calls `openTab`.
 - `close()` closes the side panel.
+- `selectTab(key)` and `closeTab(key)` act on any open tab, bb's or another
+  plugin's, by the `key` from `experimental_usePanelTabs()`. They run the same
+  select and close the tab strip runs, so closing a terminal's tab ends the
+  terminal; `closeTab` declines tabs without a close button. List the open
+  tabs with `experimental_usePanelTabs()`; see frontend-panel-tabs.md.
 - Each call returns true when the host accepted it and false when it declined:
   no side panel on this surface, a tab this plugin did not register for the
   surface, or a target or params that are not JSON or fail validation. On the

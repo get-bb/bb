@@ -40,6 +40,8 @@ export function createPluginPanelController(
       getController()?.openTab(toAppTabIntent(pluginId, options)) ?? false,
     toggleTab: (options) =>
       getController()?.toggleTab(toAppTabIntent(pluginId, options)) ?? false,
+    selectTab: (key) => getController()?.selectTab(key) ?? false,
+    closeTab: (key) => getController()?.closeTab(key) ?? false,
     close: () => getController()?.close() ?? false,
   };
 }

@@ -1,3 +1,10 @@
+import { AppPanelTabsPublisher } from "@/lib/app-panel-tabs";
+import { AppNavigationHostProvider } from "@/lib/app-navigation-host";
+import {
+  useAppPanelController,
+  type AppFixedTabDestination,
+} from "@/lib/app-fixed-tab-navigation";
+import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 import type { TerminalSession } from "@bb/server-contract";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { PluginSettingsPage } from "@/components/plugin/PluginSettings";
@@ -91,6 +98,7 @@ import {
 import { secondaryPanelWidthPercentAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { ThreadSecondaryPanel } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import type { SecondaryPanelRenderableTab } from "@/components/secondary-panel/secondaryPanelTab";
+import type { SecondaryPanelFixedTab } from "@/components/secondary-panel/ThreadSecondaryPanel";
 
 function ResourceBodyFallback() {
   return (
@@ -476,6 +484,9 @@ export function PluginDetailPaneView({ pluginId }: { pluginId: string }) {
 }
 
 const NO_TERMINALS: ReadonlyMap<string, TerminalSession> = new Map();
+const NO_PANEL_DESTINATIONS: readonly AppFixedTabDestination[] = [];
+const BROWSE_TAB_CONTEXT = { kind: "thread" } as const;
+const NO_FIXED_TABS: readonly SecondaryPanelFixedTab[] = [];
 
 export function PluginsView({ detailKey }: { detailKey?: string } = {}) {
   const location = useLocation();
@@ -639,6 +650,17 @@ export function PluginsView({ detailKey }: { detailKey?: string } = {}) {
   );
   const activeTab =
     detailTabs.find((tab) => tab.detailKey === activePluginId) ?? null;
+  const paneContext = useOptionalPaneContext();
+  const panelController = useAppPanelController({
+    activeTabId: isPanelOpen ? (activeTab?.id ?? null) : null,
+    close: closePanel,
+    destinations: NO_PANEL_DESTINATIONS,
+    isFocused: paneContext?.isFocused ?? true,
+  });
+  const navigationCapabilities = useMemo(
+    () => ({ panel: panelController }),
+    [panelController],
+  );
   const mainContent = (
     <div className="min-h-0 flex-1 overflow-hidden">
       <Suspense fallback={<ResourceBodyFallback />}>
@@ -676,27 +698,37 @@ export function PluginsView({ detailKey }: { detailKey?: string } = {}) {
   );
 
   return (
-    <div className="-mx-4 -mb-4 -mt-4 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:-mx-5 md:-mb-5 md:-mt-5">
-      <SecondaryPanelLayout
-        open={isPanelOpen}
-        onToggle={isPanelOpen ? closePanel : () => undefined}
-        onClose={closePanel}
-        panelGroupKey="extensions-plugin-details"
-        resetKey="extensions-plugin-details"
-        contentKey={activePluginId ?? "extensions-plugins"}
-        drawerLabel="Plugin details"
-        drawerFallback={<ResourceBodyFallback />}
-        mainPanelId="extensions-main-panel"
-        main={mainContent}
-        collapse={{
-          active: isPluginDetailFullPage,
-          onToggle: () => setIsPluginDetailFullPage((current) => !current),
-        }}
-        renderPanel={renderPanel}
-        composerHost={null}
-        widthPercentAtom={secondaryPanelWidthPercentAtom}
+    <AppNavigationHostProvider capabilities={navigationCapabilities}>
+      <AppPanelTabsPublisher
+        publish={panelController.publishTabs}
+        activeTabId={activeTab?.id ?? null}
+        actionContext={BROWSE_TAB_CONTEXT}
+        fixedTabs={NO_FIXED_TABS}
+        isOpen={isPanelOpen}
+        tabs={panelTabs}
       />
-    </div>
+      <div className="-mx-4 -mb-4 -mt-4 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:-mx-5 md:-mb-5 md:-mt-5">
+        <SecondaryPanelLayout
+          open={isPanelOpen}
+          onToggle={isPanelOpen ? closePanel : () => undefined}
+          onClose={closePanel}
+          panelGroupKey="extensions-plugin-details"
+          resetKey="extensions-plugin-details"
+          contentKey={activePluginId ?? "extensions-plugins"}
+          drawerLabel="Plugin details"
+          drawerFallback={<ResourceBodyFallback />}
+          mainPanelId="extensions-main-panel"
+          main={mainContent}
+          collapse={{
+            active: isPluginDetailFullPage,
+            onToggle: () => setIsPluginDetailFullPage((current) => !current),
+          }}
+          renderPanel={renderPanel}
+          composerHost={null}
+          widthPercentAtom={secondaryPanelWidthPercentAtom}
+        />
+      </div>
+    </AppNavigationHostProvider>
   );
 }
 

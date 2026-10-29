@@ -1,3 +1,4 @@
+import { AppPanelTabsPublisher } from "@/lib/app-panel-tabs";
 import {
   getThreadFixedTabOwnerId,
   useAppPanelController,
@@ -354,6 +355,8 @@ function RoutedThreadDetailView() {
 }
 
 queueSplitDownload("queued-messages-list");
+
+const THREAD_TAB_CONTEXT = { kind: "thread" } as const;
 
 export function ThreadDetailView(props: ThreadDetailViewProps) {
   if (props.surface === "pane") {
@@ -1933,6 +1936,14 @@ function ThreadDetailViewInternal(
       />
       <UrlOpenRoutingProvider openInAppBrowser={openBrowser}>
         <AppNavigationHostProvider capabilities={appNavigationCapabilities}>
+          <AppPanelTabsPublisher
+            publish={panel.publishTabs}
+            activeTabId={activeFixedSecondaryTabId}
+            actionContext={THREAD_TAB_CONTEXT}
+            fixedTabs={secondaryPanelFixedTabs}
+            isOpen={isSecondaryPanelOpen}
+            tabs={panelTabs}
+          />
           {threadFixedTabs.observers}
           <ThreadDetailSecondaryContent
             header={timelineHeader}

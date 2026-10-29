@@ -35,6 +35,10 @@ Read the installed declarations for exact current signatures.
 - `ExperimentalThreadTabProps`
 - `ExperimentalThreadTabActionContext`
 - `ExperimentalPanelController`
+- `ExperimentalPanelTab`
+- `ExperimentalPanelTabDetail`
+- `ExperimentalPanelTabs`
+- `ExperimentalPanelTabIconProps`
 - `ExperimentalDesktopBrowserAcquireInput`
 - `ExperimentalDesktopBrowserCreateInput`
 - `ExperimentalDesktopBrowserLease`

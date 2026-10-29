@@ -1,3 +1,4 @@
+import { AppPanelTabsPublisher } from "@/lib/app-panel-tabs";
 import {
   useCallback,
   useEffect,
@@ -425,6 +426,10 @@ export function PluginPanelRightPanelHost({
     }
     closePersistedPanel();
   }, [closeCompactDrawer, closePersistedPanel, isCompactViewport]);
+  const tabContext = useMemo(
+    () => ({ kind: "nav-panel" as const, panelId: panel?.id ?? panelPath }),
+    [panel?.id, panelPath],
+  );
   const panelController = useAppPanelController({
     activeTabId: isOpen ? (activeTab?.id ?? null) : null,
     close: hidePanel,
@@ -927,6 +932,14 @@ export function PluginPanelRightPanelHost({
   return (
     <UrlOpenRoutingProvider openInAppBrowser={openBrowser}>
       <AppNavigationHostProvider capabilities={navigationCapabilities}>
+        <AppPanelTabsPublisher
+          publish={panelController.publishTabs}
+          activeTabId={activeTab?.id ?? null}
+          actionContext={tabContext}
+          fixedTabs={fixedTabs}
+          isOpen={isOpen}
+          tabs={panelTabs}
+        />
         <PluginDetailRouteNavigationProvider
           onOpenPluginDetail={openPluginDetailTab}
         >

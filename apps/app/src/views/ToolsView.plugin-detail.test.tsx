@@ -58,6 +58,7 @@ import {
 } from "@/components/commands/AppCommandProvider";
 import { getFixedPanelTabsStateStorageKey } from "@bb/client-core";
 import { resetFixedPanelTabsStateForTest } from "@/lib/fixed-panel-tabs";
+import { getFocusedAppPanelController } from "@/lib/app-fixed-tab-navigation";
 import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
 import type { BbDesktopCloseWindowRequestHandler } from "@bb/desktop-contract";
 
@@ -285,6 +286,13 @@ describe("Plugins catalog close arbitration", () => {
       expect(
         window.localStorage.getItem("bb.plugins.workspace.tabs"),
       ).toBeNull();
+      expect(getFocusedAppPanelController()?.getTabs()).toMatchObject({
+        open: true,
+        tabs: [
+          { detail: { kind: "plugin-details", pluginId: "github" } },
+          { detail: { kind: "plugin-details", pluginId: "automations" } },
+        ],
+      });
       expect(requestClose()).toBe(true);
       expect(browseTabs()).toEqual({
         tabs: ["github"],

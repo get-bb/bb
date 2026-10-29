@@ -1480,6 +1480,8 @@ describe("loadPluginApp", () => {
     const experimental_panel = {
       openTab: () => true,
       toggleTab: () => true,
+      selectTab: () => false,
+      closeTab: () => false,
       close: () => true,
     };
     app.messageActions[0]!.run({

@@ -12,6 +12,7 @@ import { atom, useAtomValue, useStore } from "jotai";
 import { atomFamily } from "jotai-family";
 import type {
   ExperimentalFixedTabTargetContract,
+  ExperimentalPanelTabs,
   JsonValue,
 } from "@get-bb/plugin-sdk";
 import { jsonValueSchema } from "@bb/domain";
@@ -19,6 +20,11 @@ import type {
   AppTabOpenIntent,
   AppFixedTabReference,
 } from "@/lib/app-navigation-host";
+import {
+  EMPTY_APP_PANEL_TABS_STATE,
+  toExperimentalPanelTabs,
+  type AppPanelTabsState,
+} from "@/lib/app-panel-tabs";
 
 export interface AppFixedTabDestination {
   availability?: "fixed" | "action";
@@ -30,7 +36,56 @@ export interface AppFixedTabDestination {
   tab: AppFixedTabReference;
 }
 
-export interface AppPanelController {
+interface AppPanelTabsStore {
+  getTabs(): ExperimentalPanelTabs;
+  subscribeTabs(listener: () => void): () => void;
+  publishTabs(state: AppPanelTabsState): void;
+  selectTab(key: string): boolean;
+  closeTab(key: string): boolean;
+  renderTabIcon(key: string): ReactNode;
+}
+
+function createAppPanelTabsStore(): AppPanelTabsStore {
+  let state = EMPTY_APP_PANEL_TABS_STATE;
+  let snapshot = toExperimentalPanelTabs(state);
+  let snapshotJson = JSON.stringify(snapshot);
+  const listeners = new Set<() => void>();
+  const find = (key: string) =>
+    state.entries.find((entry) => entry.key === key);
+  return {
+    getTabs: () => snapshot,
+    subscribeTabs: (listener) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    publishTabs: (next) => {
+      state = next;
+      const nextSnapshot = toExperimentalPanelTabs(next);
+      const nextJson = JSON.stringify(nextSnapshot);
+      if (nextJson === snapshotJson) return;
+      snapshot = nextSnapshot;
+      snapshotJson = nextJson;
+      for (const listener of listeners) listener();
+    },
+    selectTab: (key) => {
+      const entry = find(key);
+      if (entry === undefined) return false;
+      entry.select();
+      return true;
+    },
+    closeTab: (key) => {
+      const entry = find(key);
+      if (entry === undefined || !entry.closable) return false;
+      entry.close();
+      return true;
+    },
+    renderTabIcon: (key) => find(key)?.icon ?? null,
+  };
+}
+
+export interface AppPanelController extends AppPanelTabsStore {
   openTab(intent: AppTabOpenIntent): boolean;
   toggleTab(intent: AppTabOpenIntent): boolean;
   close(): boolean;
@@ -58,6 +113,8 @@ export const UNAVAILABLE_APP_PANEL_CONTROLLER: AppPanelController = {
   openTab: rejectPanelIntent,
   toggleTab: rejectPanelIntent,
   close: rejectPanelIntent,
+  ...createAppPanelTabsStore(),
+  publishTabs: () => undefined,
 };
 
 function resolveAppTabIntent(
@@ -139,6 +196,7 @@ export function createAppPanelController(
     openTab: (intent) => openSurfaceTab(getSurface(), intent),
     toggleTab: (intent) => toggleSurfaceTab(getSurface(), intent),
     close: () => closeSurface(getSurface()),
+    ...createAppPanelTabsStore(),
   };
 }
 
@@ -156,6 +214,7 @@ export function useAppPanelController({
     openTab: (intent) => openSurfaceTab(surfaceRef.current, intent),
     toggleTab: (intent) => toggleSurfaceTab(surfaceRef.current, intent),
     close: () => closeSurface(surfaceRef.current),
+    ...createAppPanelTabsStore(),
   }));
   useEffect(() => {
     if (!isFocused) return;
