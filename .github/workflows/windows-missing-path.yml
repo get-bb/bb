@@ -1,0 +1,43 @@
+name: Verify Windows missing executable paths
+on:
+  push:
+    branches: [bb/probe-windows-missing-path]
+permissions:
+  contents: read
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [baseline, fixed]
+    runs-on: blacksmith-4vcpu-windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22.x
+          package-manager-cache: false
+      - run: npm install --global pnpm@9.15.0 --ignore-scripts
+      - uses: ./.github/actions/windows-dependency-cache
+        timeout-minutes: 1
+        continue-on-error: true
+      - name: Install dependencies
+        shell: bash
+        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter bb --filter '@bb/app...' --filter '@bb/db...' --filter '@bb/process-utils...' --filter '@bb/provider-bridge-acp...'
+      - name: Restore baseline production owner
+        if: matrix.variant == 'baseline'
+        run: git restore --source=6ca5882a298c6a2a65413aa6d263d83fa3857447 -- packages/process-utils/src/host-process.ts packages/process-utils/src/cross-spawn.d.ts
+      - name: Verify real Windows launches
+        env:
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+          PROBE_VARIANT: ${{ matrix.variant }}
+        run: node .github/scripts/windows-missing-path.mjs
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: missing-path-${{ matrix.variant }}
+          path: ${{ runner.temp }}/missing-path-results/
