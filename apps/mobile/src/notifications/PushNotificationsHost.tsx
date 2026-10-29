@@ -75,10 +75,21 @@ export function PushNotificationsHost() {
         }
         return;
       }
+      if (target.threadId === null) {
+        if (profile.id === activeProfileIdRef.current) return;
+        router.push(webViewShellHref({ profileId: profile.id }));
+        return;
+      }
       router.push(
         webViewShellHref({
           profileId: profile.id,
-          path: pushTargetPath(target),
+          path:
+            target.projectId === null
+              ? `/threads/${target.threadId}`
+              : getThreadRoutePath({
+                  projectId: target.projectId,
+                  threadId: target.threadId,
+                }),
         }),
       );
     },
@@ -150,15 +161,6 @@ export function PushNotificationsHost() {
       />
     </>
   );
-}
-
-function pushTargetPath(target: PushNotificationTarget): string {
-  if (target.threadId === null) return "/";
-  if (target.projectId === null) return `/threads/${target.threadId}`;
-  return getThreadRoutePath({
-    projectId: target.projectId,
-    threadId: target.threadId,
-  });
 }
 
 function FirstRunPrompt({
