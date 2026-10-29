@@ -20,6 +20,25 @@ export function isKeyboardFocusTarget(target: EventTarget | null): boolean {
   );
 }
 
+function repaintMovedEditableCaret(document: Document) {
+  const editable = document.activeElement;
+  if (!(editable instanceof HTMLElement) || !editable.isContentEditable) {
+    return;
+  }
+  const selection = document.getSelection();
+  if (
+    !selection ||
+    selection.rangeCount !== 1 ||
+    !selection.isCollapsed ||
+    !editable.contains(selection.anchorNode)
+  ) {
+    return;
+  }
+  const range = selection.getRangeAt(0).cloneRange();
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
 export function useMobileVisualViewportHeight(
   shell: AppShellElement | null,
   enabled: boolean,
@@ -36,9 +55,33 @@ export function useMobileVisualViewportHeight(
     let shellContainingBlockHeightStale = true;
     let viewportHeightBeforeKeyboard: number | null = null;
     let appliedKeyboardInset = false;
+    let caretRefreshFrame: number | null = null;
+    let disposed = false;
+    let typedSinceFocus = isKeyboardFocusTarget(document.activeElement);
+    const cancelCaretRefresh = () => {
+      if (caretRefreshFrame === null) return;
+      window.cancelAnimationFrame(caretRefreshFrame);
+      caretRefreshFrame = null;
+    };
+    const scheduleCaretRefresh = () => {
+      if (
+        disposed ||
+        typedSinceFocus ||
+        !isKeyboardFocusTarget(document.activeElement)
+      ) {
+        return;
+      }
+      cancelCaretRefresh();
+      caretRefreshFrame = window.requestAnimationFrame(() => {
+        caretRefreshFrame = null;
+        if (typedSinceFocus) return;
+        repaintMovedEditableCaret(document);
+      });
+    };
     const setKeyboardInset = (open: boolean) => {
       if (open === appliedKeyboardInset) return;
       appliedKeyboardInset = open;
+      scheduleCaretRefresh();
       if (open) {
         viewportStyleRoot.style.setProperty(
           SHELL_SAFE_AREA_BOTTOM_PROPERTY,
@@ -64,6 +107,7 @@ export function useMobileVisualViewportHeight(
     const clearViewportOverride = () => {
       if (appliedOverride === null) return;
       appliedOverride = null;
+      scheduleCaretRefresh();
       shell.style.removeProperty("top");
       shell.style.removeProperty("height");
       viewportStyleRoot.style.removeProperty("--bb-shell-height");
@@ -93,6 +137,7 @@ export function useMobileVisualViewportHeight(
 
       if (hasVisualViewportPan) {
         window.scrollTo(0, 0);
+        scheduleCaretRefresh();
       }
       const shellTop = getVisualViewportPageTop(visualViewport);
       if (
@@ -103,6 +148,7 @@ export function useMobileVisualViewportHeight(
         return;
       }
       appliedOverride = { top: shellTop, height: visualViewportHeight };
+      scheduleCaretRefresh();
       shell.style.top = `${shellTop}px`;
       shell.style.height = `${visualViewportHeight}px`;
       viewportStyleRoot.style.setProperty(
@@ -135,6 +181,7 @@ export function useMobileVisualViewportHeight(
       if (isKeyboardFocusTarget(event.relatedTarget)) return;
       viewportHeightBeforeKeyboard = null;
       setKeyboardInset(false);
+      cancelCaretRefresh();
       if (!restoreImmediatelyOnKeyboardDismissal) return;
       if (animationFrame !== null) {
         window.cancelAnimationFrame(animationFrame);
@@ -144,8 +191,14 @@ export function useMobileVisualViewportHeight(
     };
     const handleFocusIn = (event: FocusEvent) => {
       if (!isKeyboardFocusTarget(event.target)) return;
+      typedSinceFocus = false;
       viewportHeightBeforeKeyboard ??= visualViewport.height;
       scheduleContainingBlockUpdate();
+    };
+
+    const handleInput = () => {
+      typedSinceFocus = true;
+      cancelCaretRefresh();
     };
 
     updateHeight();
@@ -155,6 +208,8 @@ export function useMobileVisualViewportHeight(
     window.addEventListener("orientationchange", scheduleContainingBlockUpdate);
     document.addEventListener("focusout", handleFocusOut);
     document.addEventListener("focusin", handleFocusIn);
+    document.addEventListener("compositionstart", handleInput);
+    document.addEventListener("input", handleInput);
 
     return () => {
       visualViewport.removeEventListener("resize", scheduleUpdate);
@@ -166,9 +221,13 @@ export function useMobileVisualViewportHeight(
       );
       document.removeEventListener("focusout", handleFocusOut);
       document.removeEventListener("focusin", handleFocusIn);
+      document.removeEventListener("compositionstart", handleInput);
+      document.removeEventListener("input", handleInput);
       if (animationFrame !== null) {
         window.cancelAnimationFrame(animationFrame);
       }
+      disposed = true;
+      cancelCaretRefresh();
       setKeyboardInset(false);
       clearViewportOverride();
     };

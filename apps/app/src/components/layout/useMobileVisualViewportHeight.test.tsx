@@ -44,6 +44,9 @@ function VisualViewportShell({
       <div key={shellKey} ref={setShell} data-testid="shell">
         <textarea data-testid="editor" />
         <textarea data-testid="other-editor" />
+        <div data-testid="rich-editor" contentEditable tabIndex={0}>
+          <p>draft</p>
+        </div>
       </div>
       {portaledShelf ? (
         <CompactSecondaryPanelShelf
@@ -145,32 +148,38 @@ describe("useMobileVisualViewportHeight", () => {
     const visualViewport = new FakeVisualViewport();
     visualViewport.offsetTop = 0;
     visualViewport.height = 874;
-    await withElementClientHeight(document.body, () => 874, async () => {
-      await withFakeVisualViewport(visualViewport, async () => {
-        const { rerender, unmount } = render(<VisualViewportShell enabled />);
-        const previousShell = screen.getByTestId("shell");
-        rerender(<VisualViewportShell enabled shellKey="thread" />);
-        const currentShell = screen.getByTestId("shell");
+    await withElementClientHeight(
+      document.body,
+      () => 874,
+      async () => {
+        await withFakeVisualViewport(visualViewport, async () => {
+          const { rerender, unmount } = render(<VisualViewportShell enabled />);
+          const previousShell = screen.getByTestId("shell");
+          rerender(<VisualViewportShell enabled shellKey="thread" />);
+          const currentShell = screen.getByTestId("shell");
 
-        act(() => {
-          screen.getByTestId("editor").focus();
-          visualViewport.height = 539;
-          visualViewport.dispatchEvent(new Event("resize"));
-        });
-        await waitFor(() => expect(currentShell.style.height).toBe("539px"));
-        expect(previousShell.isConnected).toBe(false);
-        expect(previousShell.style.height).toBe("");
+          act(() => {
+            screen.getByTestId("editor").focus();
+            visualViewport.height = 539;
+            visualViewport.dispatchEvent(new Event("resize"));
+          });
+          await waitFor(() => expect(currentShell.style.height).toBe("539px"));
+          expect(previousShell.isConnected).toBe(false);
+          expect(previousShell.style.height).toBe("");
 
-        act(() => {
-          screen.getByTestId("editor").blur();
-          visualViewport.height = 874;
-          visualViewport.dispatchEvent(new Event("resize"));
+          act(() => {
+            screen.getByTestId("editor").blur();
+            visualViewport.height = 874;
+            visualViewport.dispatchEvent(new Event("resize"));
+          });
+          await waitFor(() => expect(currentShell.style.height).toBe(""));
+          unmount();
+          expect(
+            document.body.style.getPropertyValue("--bb-shell-height"),
+          ).toBe("");
         });
-        await waitFor(() => expect(currentShell.style.height).toBe(""));
-        unmount();
-        expect(document.body.style.getPropertyValue("--bb-shell-height")).toBe("");
-      });
-    });
+      },
+    );
   });
 
   it("publishes the corrected height where a body-portaled panel can inherit it", async () => {
@@ -419,6 +428,177 @@ describe("useMobileVisualViewportHeight", () => {
           SHELL_SAFE_AREA_BOTTOM_PROPERTY,
         ),
       ).toBe("");
+    });
+  });
+
+  it("repaints a rich editor's caret after the inset moves it", async () => {
+    const visualViewport = new FakeVisualViewport();
+    visualViewport.offsetTop = 0;
+    await withFakeVisualViewport(visualViewport, async () => {
+      render(<VisualViewportShell enabled />);
+      const editor = screen.getByTestId("rich-editor");
+      Object.defineProperty(editor, "isContentEditable", { value: true });
+      const text = editor.querySelector("p")!.firstChild!;
+      const selection = document.getSelection()!;
+      const openKeyboard = async () => {
+        act(() => {
+          editor.focus();
+          selection.collapse(text, 2);
+        });
+        await flushScheduledViewportPass();
+        reinstall.mockClear();
+        act(() => {
+          visualViewport.height = 500 - KEYBOARD_OPEN_MIN_SHRINK_PX;
+          visualViewport.dispatchEvent(new Event("resize"));
+        });
+        await flushScheduledViewportPass();
+      };
+      const reinstall = vi.spyOn(selection, "addRange");
+
+      await openKeyboard();
+      expect(reinstall).toHaveBeenCalledOnce();
+      expect(selection.anchorNode).toBe(text);
+      expect(selection.anchorOffset).toBe(2);
+      expect(selection.isCollapsed).toBe(true);
+      expect(document.activeElement).toBe(editor);
+
+      act(() => editor.blur());
+      visualViewport.height = 500;
+      await flushScheduledViewportPass();
+      await openKeyboard();
+      expect(reinstall).toHaveBeenCalledOnce();
+    });
+  });
+
+  it("repaints a rich editor's caret after undoing Safari's keyboard pan, until the first input", async () => {
+    const visualViewport = new FakeVisualViewport();
+    visualViewport.offsetTop = 0;
+    await withElementClientHeight(
+      document.body,
+      () => 500,
+      async () =>
+        withFakeVisualViewport(visualViewport, async () => {
+          render(<VisualViewportShell enabled />);
+          const editor = screen.getByTestId("rich-editor");
+          Object.defineProperty(editor, "isContentEditable", { value: true });
+          const text = editor.querySelector("p")!.firstChild!;
+          const selection = document.getSelection()!;
+          act(() => {
+            editor.focus();
+            selection.collapse(text, 1);
+          });
+          await flushScheduledViewportPass();
+          const reinstall = vi.spyOn(selection, "addRange");
+          const pan = async (offsetTop: number) => {
+            act(() => {
+              visualViewport.offsetTop = offsetTop;
+              visualViewport.dispatchEvent(new Event("scroll"));
+            });
+            await flushScheduledViewportPass();
+          };
+
+          await pan(340);
+          expect(window.scrollTo).toHaveBeenCalledWith(0, 0);
+          expect(reinstall).toHaveBeenCalledOnce();
+          expect(selection.anchorOffset).toBe(1);
+
+          reinstall.mockClear();
+          act(() => {
+            editor.dispatchEvent(new Event("input", { bubbles: true }));
+          });
+          await pan(300);
+          expect(reinstall).not.toHaveBeenCalled();
+        }),
+    );
+  });
+
+  it.each([
+    ["input", "input"],
+    ["composition", "compositionstart"],
+  ])(
+    "drops a pending caret repaint when %s starts before its frame",
+    async (_, eventType) => {
+      const visualViewport = new FakeVisualViewport();
+      visualViewport.offsetTop = 0;
+      await withFakeVisualViewport(visualViewport, async () => {
+        render(<VisualViewportShell enabled />);
+        const editor = screen.getByTestId("rich-editor");
+        Object.defineProperty(editor, "isContentEditable", { value: true });
+        const selection = document.getSelection()!;
+        act(() => {
+          editor.focus();
+          selection.collapse(editor.querySelector("p")!.firstChild!, 0);
+        });
+        await flushScheduledViewportPass();
+        const reinstall = vi.spyOn(selection, "addRange");
+        await act(async () => {
+          visualViewport.height = 500 - KEYBOARD_OPEN_MIN_SHRINK_PX;
+          visualViewport.dispatchEvent(new Event("resize"));
+          await new Promise<void>((resolve) => {
+            window.requestAnimationFrame(() => resolve());
+          });
+          editor.dispatchEvent(new Event(eventType, { bubbles: true }));
+        });
+        await flushScheduledViewportPass();
+        expect(reinstall).not.toHaveBeenCalled();
+      });
+    },
+  );
+
+  it("does not repaint the caret after the hook is disabled", async () => {
+    const visualViewport = new FakeVisualViewport();
+    visualViewport.offsetTop = 0;
+    await withElementClientHeight(
+      document.body,
+      () => 500,
+      async () =>
+        withFakeVisualViewport(visualViewport, async () => {
+          const { rerender } = render(<VisualViewportShell enabled />);
+          const editor = screen.getByTestId("rich-editor");
+          Object.defineProperty(editor, "isContentEditable", { value: true });
+          const selection = document.getSelection()!;
+          act(() => {
+            editor.focus();
+            selection.collapse(editor.querySelector("p")!.firstChild!, 0);
+          });
+          act(() => {
+            visualViewport.height = 300;
+            visualViewport.dispatchEvent(new Event("resize"));
+          });
+          await flushScheduledViewportPass();
+          expect(screen.getByTestId("shell").style.height).toBe("300px");
+          const reinstall = vi.spyOn(selection, "addRange");
+
+          rerender(<VisualViewportShell enabled={false} />);
+          await flushScheduledViewportPass();
+          expect(screen.getByTestId("shell").style.height).toBe("");
+          expect(reinstall).not.toHaveBeenCalled();
+        }),
+    );
+  });
+
+  it("leaves a rich editor's text selection alone when the inset moves it", async () => {
+    const visualViewport = new FakeVisualViewport();
+    visualViewport.offsetTop = 0;
+    await withFakeVisualViewport(visualViewport, async () => {
+      render(<VisualViewportShell enabled />);
+      const editor = screen.getByTestId("rich-editor");
+      Object.defineProperty(editor, "isContentEditable", { value: true });
+      const text = editor.querySelector("p")!.firstChild!;
+      const selection = document.getSelection()!;
+      act(() => {
+        editor.focus();
+        selection.setBaseAndExtent(text, 0, text, 3);
+      });
+      await flushScheduledViewportPass();
+      const reinstall = vi.spyOn(selection, "addRange");
+      act(() => {
+        visualViewport.height = 500 - KEYBOARD_OPEN_MIN_SHRINK_PX;
+        visualViewport.dispatchEvent(new Event("resize"));
+      });
+      await flushScheduledViewportPass();
+      expect(reinstall).not.toHaveBeenCalled();
+      expect(selection.toString()).toBe("dra");
     });
   });
 
