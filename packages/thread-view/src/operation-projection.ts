@@ -648,9 +648,15 @@ function replaceFileEditMessagesForCall(
     state.messages.push(...nextRows);
     return;
   }
+  const firstPreviousRow = previousRows[0];
   if (
+    firstPreviousRow &&
     previousRows.length === nextRows.length &&
-    previousRows.every((row, index) => row === nextRows[index])
+    previousRows.every(
+      (row, index) =>
+        row === nextRows[index] &&
+        haveCompatibleEventProjectionMessageScope(row, firstPreviousRow),
+    )
   ) {
     return;
   }
