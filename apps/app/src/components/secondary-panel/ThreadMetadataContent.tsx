@@ -617,22 +617,22 @@ const SECTION_GROUPS = experimental_THREAD_INFO_SECTION_GROUPS;
 
 const CORE_THREAD_INFO_ROWS: readonly CoreThreadInfoRegistration[] = [
   {
-    id: "parent",
+    id: "project",
     group: ROW_GROUPS.thread,
     order: 10,
+    component: CoreProjectRow,
+  },
+  {
+    id: "parent",
+    group: ROW_GROUPS.thread,
+    order: 20,
     component: CoreParentRow,
   },
   {
     id: "parentNotifications",
     group: ROW_GROUPS.thread,
-    order: 20,
-    component: CoreParentNotificationsRow,
-  },
-  {
-    id: "project",
-    group: ROW_GROUPS.thread,
     order: 30,
-    component: CoreProjectRow,
+    component: CoreParentNotificationsRow,
   },
   {
     id: "environment",
