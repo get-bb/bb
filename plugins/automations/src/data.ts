@@ -944,30 +944,6 @@ export function setAutomationRunThread(
   return getAutomationRun(db, args.runId);
 }
 
-export function markAutomationThread(
-  db: Db,
-  args: { threadId: string; automationId: string; runId: string; now: number },
-): void {
-  db.prepare(
-    `INSERT OR REPLACE INTO automation_thread_marks (
-       thread_id, automation_id, run_id, created_at
-     ) VALUES (?, ?, ?, ?)`,
-  ).run(args.threadId, args.automationId, args.runId, args.now);
-}
-
-export function isAutomationSpawnedThread(db: Db, threadId: string): boolean {
-  return (
-    db
-      .prepare(
-        `SELECT thread_id FROM automation_thread_marks WHERE thread_id = ? LIMIT 1`,
-      )
-      .get(threadId) !== undefined ||
-    db
-      .prepare(`SELECT id FROM automation_runs WHERE thread_id = ? LIMIT 1`)
-      .get(threadId) !== undefined
-  );
-}
-
 export function listRunningAutomationRuns(db: Db): AutomationRunRow[] {
   return db
     .prepare(

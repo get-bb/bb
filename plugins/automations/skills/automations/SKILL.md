@@ -12,7 +12,7 @@ script Run a stored server-side script and capture stdout/stderr/exit.
 
 Use the top-level `bb automation` command. The CLI routes it to this plugin.
 
-Pass `--project` explicitly for every automation command. Inside a thread, automations are stamped origin `agent` and record the creating thread automatically. Automation-spawned threads cannot create automations.
+Pass `--project` explicitly for every automation command. Inside a thread, automations are stamped origin `agent` and record the creating thread automatically. Threads created by automations, and threads currently executing an automation run, cannot create automations. A past scheduled prompt in an existing user thread does not prevent a later user-requested automation after that run settles. Historical runs and paused automations can remain intact.
 
 Personal supports automations with `--project proj_personal`. Use `bb project list --include-personal --json` to include it in discovery; an empty default project list does not mean Personal is unavailable.
 

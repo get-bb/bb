@@ -7,11 +7,11 @@ import {
   decodeAutomationRow,
   deleteAutomation,
   getAutomationForProject,
-  isAutomationSpawnedThread,
   listAllAutomations,
   listAutomationRuns,
   listAutomationsForProject,
   listAutomationsTargetingThread,
+  listRunningAutomationRunsByThread,
   setAutomationEnabled,
   toAutomationResponse,
   toAutomationRunResponse,
@@ -141,12 +141,29 @@ function computeNextRunAt(
   });
 }
 
-function assertNotRecursiveCreation(
+const creatorThreadSchema = z.object({
+  id: z.string(),
+  originPluginId: z.string().nullable(),
+});
+
+async function assertNotRecursiveCreation(
+  bb: ServiceApi,
   db: Db,
   createdByThreadId: string | undefined,
-): void {
+): Promise<void> {
   if (createdByThreadId === undefined) return;
-  if (isAutomationSpawnedThread(db, createdByThreadId)) {
+  if (listRunningAutomationRunsByThread(db, createdByThreadId).length > 0) {
+    throw new Error(
+      "Threads executing an automation run cannot create automations",
+    );
+  }
+  const thread = creatorThreadSchema.parse(
+    await bb.sdk.threads.get({ threadId: createdByThreadId }),
+  );
+  if (thread.id !== createdByThreadId) {
+    throw new Error("Automation creator thread identity changed");
+  }
+  if (thread.originPluginId === "automations") {
     throw new Error("Automation-spawned threads cannot create automations");
   }
 }
@@ -651,7 +668,7 @@ export function createAutomationService(args: {
       const project = await requireProjectAvailable(bb, payload.projectId);
       const now = Date.now();
       validateTrigger(payload.trigger, now);
-      assertNotRecursiveCreation(db, payload.createdByThreadId);
+      await assertNotRecursiveCreation(bb, db, payload.createdByThreadId);
       if (payload.execution.mode === "agent") {
         await resolvePermissionMode(
           bb,

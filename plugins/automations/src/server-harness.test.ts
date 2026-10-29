@@ -126,6 +126,7 @@ async function bootAutomationsPlugin(
       threads: {
         async get({ threadId }) {
           return {
+            ...makeThreadResponse({ id: threadId }),
             id: threadId,
             archivedAt: null,
             deletedAt: null,
@@ -761,6 +762,147 @@ describe("automations server plugin harness", () => {
 
     await harness.dispose();
   });
+
+  it.each(["agent", "script"] as const)(
+    "allows a user thread to create %s work after its heartbeat settles, preserving history",
+    async (mode) => {
+      const host = await bootAutomationsPlugin();
+      const { harness } = host;
+      try {
+        const heartbeat = await createAgentAutomation(harness, {
+          targetThreadId: THREAD_ID,
+        });
+        await harness.callRpc("automations_run", {
+          projectId: PROJECT_ID,
+          automationId: heartbeat.id,
+        });
+        await vi.waitFor(() => {
+          expect(harness.sdk.callsTo("threads.send")).toHaveLength(1);
+        });
+        const request = {
+          projectId: PROJECT_ID,
+          createdByThreadId: THREAD_ID,
+        };
+        await expect(
+          harness.callRpc("automations_create", {
+            ...request,
+            name: "Recursive work",
+            trigger: oneShotTrigger(),
+            execution:
+              mode === "agent"
+                ? agentExecution()
+                : { mode: "script", script: "echo ok", interpreter: "bash" },
+            origin: "agent",
+          }),
+        ).rejects.toThrow();
+        await harness.emitThreadEvent("thread.idle", {
+          thread: makeThreadResponse({ id: THREAD_ID }),
+          lastAssistantText: "Build delivered and heartbeat stopped",
+        });
+        await harness.callRpc("automations_pause", {
+          projectId: PROJECT_ID,
+          automationId: heartbeat.id,
+        });
+        host.bb.storage
+          .database()
+          .prepare(
+            "INSERT OR REPLACE INTO automation_thread_marks (thread_id, automation_id, run_id, created_at) VALUES (?, ?, ?, ?)",
+          )
+          .run(THREAD_ID, heartbeat.id, "legacy-run", 1);
+        const created = await harness.callRpc("automations_create", {
+          ...request,
+          name: "New closeout",
+          trigger: oneShotTrigger(),
+          execution:
+            mode === "agent"
+              ? agentExecution()
+              : { mode: "script", script: "echo ok", interpreter: "bash" },
+          origin: "agent",
+        });
+        expect(created).toMatchObject({
+          name: "New closeout",
+          createdByThreadId: THREAD_ID,
+        });
+        expect(
+          await harness.callRpc("automations_get", {
+            projectId: PROJECT_ID,
+            automationId: heartbeat.id,
+          }),
+        ).toMatchObject({ enabled: false });
+        expect(
+          await harness.callRpc("automations_runs", {
+            projectId: PROJECT_ID,
+            automationId: heartbeat.id,
+          }),
+        ).toMatchObject({
+          runs: [expect.objectContaining({ status: "succeeded" })],
+        });
+      } finally {
+        await harness.dispose();
+      }
+    },
+  );
+
+  it("rejects automation-created threads even without historical marks or runs", async () => {
+    const { harness } = await bootAutomationsPlugin();
+    try {
+      harness.sdk.stub("threads.get", async ({ threadId }) =>
+        makeThreadResponse({ id: threadId, originPluginId: "automations" }),
+      );
+      const request = {
+        projectId: PROJECT_ID,
+        createdByThreadId: "thr_spawned",
+      };
+      await expect(
+        harness.callRpc("automations_create", {
+          ...request,
+          name: "Recursive scheduler",
+          trigger: oneShotTrigger(),
+          execution: agentExecution(),
+          origin: "agent",
+        }),
+      ).rejects.toThrow("Automation-spawned threads cannot create automations");
+      expect(
+        await harness.callRpc("automations_list", { projectId: PROJECT_ID }),
+      ).toEqual([]);
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it.each(["unavailable", "mismatched", "missing-origin"] as const)(
+    "rejects creation when creator metadata is %s",
+    async (metadata) => {
+      const { harness } = await bootAutomationsPlugin();
+      try {
+        harness.sdk.stub("threads.get", async ({ threadId }) => {
+          if (metadata === "unavailable") {
+            throw new Error("Creator lookup unavailable");
+          }
+          const thread = makeThreadResponse({ id: threadId });
+          if (metadata === "mismatched") {
+            return { ...thread, id: "thr_wrong" };
+          }
+          return { ...thread, originPluginId: undefined };
+        });
+        await expect(
+          harness.callRpc("automations_create", {
+            projectId: PROJECT_ID,
+            createdByThreadId: THREAD_ID,
+            name: "Unknown creator",
+            trigger: oneShotTrigger(),
+            execution: agentExecution(),
+            origin: "agent",
+          }),
+        ).rejects.toThrow();
+        expect(
+          await harness.callRpc("automations_list", { projectId: PROJECT_ID }),
+        ).toEqual([]);
+      } finally {
+        await harness.dispose();
+      }
+    },
+  );
 
   it.each([
     {

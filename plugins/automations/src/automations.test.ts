@@ -13,7 +13,10 @@ import { tmpdir } from "node:os";
 import Database from "better-sqlite3";
 import type { PluginCliRegistration } from "@get-bb/plugin-sdk";
 import { describe, expect, it, vi } from "vitest";
-import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
+import {
+  createFakePluginHost,
+  makeThreadResponse,
+} from "@get-bb/plugin-sdk/testing";
 import {
   claimAutomationScheduledRun,
   closeAutomationRun,
@@ -228,9 +231,8 @@ function createAutomationServiceBb() {
           ] as never,
       },
       threads: {
-        get: async () => {
-          throw new Error("not expected");
-        },
+        get: async ({ threadId }: { threadId: string }) =>
+          makeThreadResponse({ id: threadId }),
         send: async () => {
           throw new Error("not expected");
         },
