@@ -4,6 +4,9 @@ import {
   captureTrustedRemoteAddress,
   getTrustedRemoteAddress,
   resolveRequestAppSurface,
+  resolveRequestAccessRoute,
+  isAuthenticatedConnectRequest,
+  markTunnelIngressRequest,
   TRUSTED_REMOTE_ADDRESS_CONTEXT_KEY,
 } from "../src/request-context.js";
 
@@ -70,5 +73,44 @@ describe("request context", () => {
     await expect(surfaceFor("mobile")).resolves.toBe("mobile");
     await expect(surfaceFor(undefined)).resolves.toBe("api");
     await expect(surfaceFor("tv")).resolves.toBe("api");
+  });
+});
+
+describe("trusted device access route", () => {
+  it("requires the local verified-ingress marker, not forged gate or surface headers", async () => {
+    const app = new Hono();
+    app.get("/", (context) => {
+      captureTrustedRemoteAddress(context);
+      return context.json({
+        route: resolveRequestAccessRoute(context),
+        authenticated: isAuthenticatedConnectRequest(context),
+      });
+    });
+    const request = () =>
+      new Request("http://example.test/", {
+        headers: { "x-bb-gate-auth": "session", "x-bb-app-surface": "mobile" },
+      });
+    const incoming = { socket: { remoteAddress: "127.0.0.1" } };
+    expect(await (await app.fetch(request(), { incoming })).json()).toEqual({
+      route: "unknown",
+      authenticated: false,
+    });
+    markTunnelIngressRequest(incoming);
+    expect(await (await app.fetch(request(), { incoming })).json()).toEqual({
+      route: "connect",
+      authenticated: true,
+    });
+    expect(
+      await (
+        await app.fetch(new Request("http://example.test/"), { incoming })
+      ).json(),
+    ).toEqual({ route: "connect", authenticated: false });
+    expect(
+      await (
+        await app.fetch(request(), {
+          incoming: { socket: { remoteAddress: "192.0.2.2" } },
+        })
+      ).json(),
+    ).toEqual({ route: "direct", authenticated: false });
   });
 });

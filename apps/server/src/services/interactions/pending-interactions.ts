@@ -125,6 +125,7 @@ type DescribePluginSubmission = NonNullable<
 >;
 
 interface RequestPluginInteractionArgs {
+  onCreated?: () => void;
   pluginId: string;
   threadId: string;
   rendererId: string;
@@ -540,6 +541,7 @@ export class PendingInteractionLifecycle {
       }),
     );
     const interaction = toPendingInteraction(row);
+    args.onCreated?.();
 
     const pending = new Promise<PluginInteractionResult>((resolve) => {
       const abort = () => {

@@ -1,3 +1,5 @@
+import { createConnectDeviceSetupRecorder } from "./plugin-device-setup-telemetry.js";
+import { reportPluginUse } from "./plugin-measurement.js";
 import {
   realtimeSubscriptionTargetKey,
   type PluginReadSubscriptionTarget,
@@ -1750,7 +1752,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     };
     const stopping = new AbortController();
     const handle = createPluginApi({
+      recordPluginUse: (input) => reportPluginUse(deps, row.id, input),
       pluginId: row.id,
+      recordDeviceSetup: createConnectDeviceSetupRecorder(deps.telemetry, row),
       logger: deps.logger,
       db: deps.db,
       dataDir: deps.dataDir,
@@ -1848,6 +1852,15 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           ...args,
           pluginId: row.id,
           owner: plugin,
+          ...(row.id === "ask-user-question"
+            ? {
+                onCreated: () =>
+                  reportPluginUse(deps, row.id, {
+                    action: "question_created",
+                    outcome: "succeeded",
+                  }),
+              }
+            : {}),
         });
       },
       ensureSharedPortTunnel: (hostId) => {

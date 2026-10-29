@@ -1,5 +1,6 @@
 import type {
   InstalledPlugin,
+  PluginMeasurementSource,
   PluginCachePruneResponse,
   PluginSafeModeUpdateResponse,
   PluginSettingDescriptor,
@@ -194,10 +195,11 @@ export async function setPluginEnabled(
   fetchImpl: FetchLike,
   pluginId: string,
   enabled: boolean,
+  measurementSource?: PluginMeasurementSource,
 ): Promise<void> {
   const plugins = createPluginsClient(fetchImpl);
-  if (enabled) await plugins.enable({ pluginId });
-  else await plugins.disable({ pluginId });
+  if (enabled) await plugins.enable({ pluginId, measurementSource });
+  else await plugins.disable({ pluginId, measurementSource });
 }
 
 export async function reloadPlugin(

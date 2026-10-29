@@ -11,11 +11,24 @@ import { DEFAULTS } from "@bb/config/defaults";
 import type { ServerConfig } from "@bb/config/server";
 import { readOrCreateSecretFile } from "@bb/secret-storage";
 import type { AppSurface, RequestAppSurface } from "@bb/config/app-surface";
-import type { RecordTelemetryEventRequest } from "@bb/server-contract";
+import type {
+  RecordTelemetryEventRequest,
+  DeviceSetupEvent,
+  PluginMeasurementEvent,
+} from "@bb/server-contract";
 import type { ServerLogger } from "../../types.js";
 
 const POSTHOG_INGESTION_URL = "https://us.i.posthog.com/capture/";
 const TELEMETRY_ID_FILE_NAME = "telemetry-id";
+
+export type TelemetryAccessRoute = "connect" | "direct" | "unknown";
+const accessRouteStorage = new AsyncLocalStorage<TelemetryAccessRoute>();
+export function runWithTelemetryAccessRoute<T>(
+  route: TelemetryAccessRoute,
+  callback: () => T,
+): T {
+  return accessRouteStorage.run(route, callback);
+}
 
 const telemetryAppSurfaceStorage = new AsyncLocalStorage<RequestAppSurface>();
 
@@ -47,6 +60,7 @@ export type TelemetryEvent =
         error_category: TurnErrorCategory;
         provider: string;
         install_turn_number: number;
+        execution_location: "server_machine" | "additional_machine" | "unknown";
       };
     }
   | { name: "app_started" }
@@ -79,7 +93,9 @@ export type TelemetryEvent =
     }
   | RecordTelemetryEventRequest
   | AcceptedWorkTelemetryEvent
-  | OnboardingAssignmentTelemetryEvent;
+  | OnboardingAssignmentTelemetryEvent
+  | DeviceSetupEvent
+  | PluginMeasurementEvent;
 
 export interface TelemetryService {
   capture(event: TelemetryEvent): void;
@@ -190,7 +206,9 @@ export async function createTelemetryService(
       const appSurface =
         telemetryAppSurfaceStorage.getStore() ?? args.appSurface;
       const eventProperties =
-        event.name === "thread_created" || event.name === "user_message_sent"
+        event.name === "thread_created" ||
+        event.name === "user_message_sent" ||
+        event.name === "work_accepted"
           ? { ...unknownWorkTelemetryProperties(), ...event.properties }
           : "properties" in event
             ? event.properties
@@ -202,6 +220,11 @@ export async function createTelemetryService(
         properties: {
           ...commonProperties,
           ...eventProperties,
+          ...(event.name === "thread_created" ||
+          event.name === "user_message_sent" ||
+          event.name === "work_accepted"
+            ? { access_route: accessRouteStorage.getStore() ?? "unknown" }
+            : {}),
           app_surface: appSurface,
         },
         timestamp: new Date().toISOString(),

@@ -1,3 +1,4 @@
+import { deviceSetupSourceSchema } from "./system-device-telemetry.js";
 import { z } from "zod";
 import {
   hostTypeSchema,
@@ -74,6 +75,7 @@ export type CreateHostJoinCodeRequest = z.infer<
 export const createMachineRequestSchema = z
   .object({
     machineProviderId: z.string().min(1),
+    telemetrySource: deviceSetupSourceSchema.optional(),
     inputs: jsonValueSchema.nullable(),
     key: z.string().min(1).optional(),
   })

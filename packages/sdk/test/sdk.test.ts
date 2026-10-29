@@ -181,6 +181,7 @@ describe("@bb/sdk", () => {
     expect(
       await sdk.hosts.experimental_create({
         machineProviderId: "digitalocean",
+        telemetrySource: "replay",
         inputs: {},
       }),
     ).toEqual(host);
@@ -188,6 +189,7 @@ describe("@bb/sdk", () => {
       {
         bodyText: JSON.stringify({
           machineProviderId: "digitalocean",
+          telemetrySource: "replay",
           inputs: {},
         }),
         method: "POST",

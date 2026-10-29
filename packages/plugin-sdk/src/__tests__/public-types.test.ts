@@ -16,6 +16,7 @@ import type {
 } from "../app-contract.js";
 
 type ExpectedBbPluginApiKey =
+  | "internal_DO_NOT_USE_recordPluginUse"
   | "agents"
   | "background"
   | "cli"
@@ -28,6 +29,7 @@ type ExpectedBbPluginApiKey =
   | "experimental_serverAccess"
   | "hosts"
   | "http"
+  | "internal_DO_NOT_USE_recordDeviceSetup"
   | "log"
   | "onDispose"
   | "pluginId"

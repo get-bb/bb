@@ -1,5 +1,12 @@
+import { deviceSourceSchema } from "./src/device-telemetry.js";
 import { ExpandableText } from "@bb/shared-ui/expandable-text";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import {
   definePluginApp,
   experimental_copyToClipboard,
@@ -1470,20 +1477,29 @@ function OffContent({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const turnOn = useCallback(() => {
-    setPending(true);
-    setError(null);
-    rpc.call("setRemoteAccess", { enabled: true }).then(
-      () => {
-        setPending(false);
-        onChanged();
-      },
-      (rpcError: unknown) => {
-        setPending(false);
-        setError(errorText(rpcError));
-      },
-    );
-  }, [rpc, onChanged]);
+  const turnOn = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      setPending(true);
+      setError(null);
+      const source =
+        deviceSourceSchema.safeParse(
+          event.currentTarget
+            .closest("[data-device-setup-source]")
+            ?.getAttribute("data-device-setup-source"),
+        ).data ?? "settings";
+      rpc.call("setRemoteAccess", { enabled: true, source }).then(
+        () => {
+          setPending(false);
+          onChanged();
+        },
+        (rpcError: unknown) => {
+          setPending(false);
+          setError(errorText(rpcError));
+        },
+      );
+    },
+    [rpc, onChanged],
+  );
 
   return (
     <div className="space-y-4">

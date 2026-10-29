@@ -84,3 +84,22 @@ export function resolveRequestAppSurface(context: Context): RequestAppSurface {
     APP_SURFACE_API
   );
 }
+
+export function resolveRequestAccessRoute(
+  context: Context,
+): "connect" | "direct" | "unknown" {
+  if (isTunnelIngressContext(context)) return "connect";
+  const remoteAddress = getTrustedRemoteAddress(context);
+  if (
+    remoteAddress === undefined ||
+    remoteAddress === "127.0.0.1" ||
+    remoteAddress === "::1" ||
+    remoteAddress === "::ffff:127.0.0.1"
+  )
+    return "unknown";
+  return "direct";
+}
+
+export function isAuthenticatedConnectRequest(context: Context): boolean {
+  return isTunnelIngressContext(context) && getGateAuthKind(context) !== null;
+}

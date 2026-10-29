@@ -498,7 +498,11 @@ function createStagedRegistrations<
 const PLUGIN_HOST_CALL_MAX_TIMEOUT_MS = 30 * 60_000;
 
 export function createPluginApi(options: {
+  recordPluginUse: BbPluginApi["internal_DO_NOT_USE_recordPluginUse"];
   pluginId: string;
+  recordDeviceSetup:
+    | BbPluginApi["internal_DO_NOT_USE_recordDeviceSetup"]
+    | null;
   logger: ServerLogger;
   db: DbConnection;
   dataDir: string;
@@ -1427,7 +1431,19 @@ export function createPluginApi(options: {
   };
 
   const api: BbPluginApi = {
+    internal_DO_NOT_USE_recordPluginUse(input) {
+      assertLive();
+      options.recordPluginUse(input);
+    },
     pluginId,
+    internal_DO_NOT_USE_recordDeviceSetup(properties) {
+      assertLive();
+      if (options.recordDeviceSetup === null)
+        throw new Error(
+          "Device setup reporting is restricted to builtin Connect",
+        );
+      options.recordDeviceSetup(properties);
+    },
     log,
     settings,
     storage,

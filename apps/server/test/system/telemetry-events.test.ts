@@ -1,3 +1,4 @@
+import { getPluginMarketplace, upsertPluginMarketplace } from "@bb/db";
 import { describe, expect, it, vi } from "vitest";
 import type { TelemetryService } from "../../src/services/system/telemetry.js";
 import { readJson } from "../helpers/json.js";
@@ -46,6 +47,35 @@ describe("client telemetry events", () => {
           height_class: "regular",
         },
       };
+      expect((await post(harness, event)).status).toBe(400);
+      expect(capture).not.toHaveBeenCalled();
+    });
+  });
+
+  it("accepts reviewed official recommendations and rejects a catalog identity collision", async () => {
+    await withTestHarness(async (harness) => {
+      const capture = vi.fn<TelemetryService["capture"]>();
+      harness.deps.telemetry = { ...harness.deps.telemetry, capture };
+      const event = {
+        name: "plugin_recommendation",
+        properties: {
+          action: "shown",
+          public_plugin: "prompt-library",
+          recommendation_revision: "baseline",
+          source: "first_run",
+          initial_state: "absent",
+          availability: "available",
+        },
+      };
+      expect((await post(harness, event)).status).toBe(200);
+      expect(capture).toHaveBeenCalledExactlyOnceWith(event);
+      capture.mockClear();
+      const official = getPluginMarketplace(harness.db, "bb-official");
+      if (official === undefined) throw new Error("Expected bundled catalog");
+      upsertPluginMarketplace(harness.db, {
+        ...official,
+        manifestUrl: "/private/catalog",
+      });
       expect((await post(harness, event)).status).toBe(400);
       expect(capture).not.toHaveBeenCalled();
     });

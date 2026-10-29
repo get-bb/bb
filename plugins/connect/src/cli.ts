@@ -231,11 +231,11 @@ export function registerConnectCli(args: {
             } catch (error) {
               const failure = pairError(error);
               if (failure.code === "profile_unavailable") {
-                await remoteAccess.set(true);
+                await remoteAccess.set(true, "cli");
               }
               throw failure;
             }
-            if (!status.enabled) status = await remoteAccess.set(true);
+            if (!status.enabled) status = await remoteAccess.set(true, "cli");
             if (input.options.json) {
               return { exitCode: 0, stdout: asJson(status) };
             }
@@ -269,7 +269,7 @@ export function registerConnectCli(args: {
           options: { json: JSON_OPTION },
           run: (input) =>
             attempt(async () => {
-              const status = await remoteAccess.set(false);
+              const status = await remoteAccess.set(false, "cli");
               return {
                 exitCode: 0,
                 stdout: input.options.json
@@ -283,7 +283,7 @@ export function registerConnectCli(args: {
           options: { json: JSON_OPTION },
           run: (input) =>
             attempt(async () => {
-              const status = await remoteAccess.set(true);
+              const status = await remoteAccess.set(true, "cli");
               if (input.options.json) {
                 return { exitCode: 0, stdout: asJson(status) };
               }

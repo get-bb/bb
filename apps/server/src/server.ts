@@ -1,3 +1,8 @@
+import {
+  resolveRequestAccessRoute,
+  isAuthenticatedConnectRequest,
+} from "./request-context.js";
+import { runWithTelemetryAccessRoute } from "./services/system/telemetry.js";
 import { createPluginUpdateJobs } from "./services/plugins/plugin-update-jobs.js";
 import { registerPluginUpdateJobRoutes } from "./routes/plugin-update-jobs.js";
 import {
@@ -531,7 +536,9 @@ export function createApp(
   });
   app.use("*", async (context, next) => {
     captureTrustedRemoteAddress(context);
-    return runWithTelemetryAppSurface(resolveRequestAppSurface(context), next);
+    return runWithTelemetryAccessRoute(resolveRequestAccessRoute(context), () =>
+      runWithTelemetryAppSurface(resolveRequestAppSurface(context), next),
+    );
   });
   app.use("*", async (context, next) => {
     const path = context.req.path;
@@ -990,6 +997,7 @@ export function createApp(
     }
   };
 
+  let observedRemoteConnection = false;
   app.get(
     "/ws",
     upgradeWebSocket((context) => {
@@ -998,7 +1006,26 @@ export function createApp(
         declineWebSocketCompression(context);
       }
       return {
-        onOpen: (_event, socket) => onClientSocketOpen(deps.hub, socket),
+        onOpen: (_event, socket) => {
+          onClientSocketOpen(deps.hub, socket);
+          if (
+            !observedRemoteConnection &&
+            deps.telemetry.isEnabled() &&
+            isAuthenticatedConnectRequest(context)
+          ) {
+            observedRemoteConnection = true;
+            deps.telemetry.capture({
+              name: "device_setup",
+              properties: {
+                target: "browser_access",
+                action: "remote_connected",
+                outcome: "observed",
+                source: "unknown",
+                error_category: null,
+              },
+            });
+          }
+        },
         onMessage: (event, socket) =>
           onClientSocketMessage(deps.hub, socket, event.data),
         onClose: (_event, socket) => onClientSocketClose(deps.hub, socket),

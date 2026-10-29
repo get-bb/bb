@@ -80,6 +80,34 @@ function registration() {
 }
 
 describe("AnnotateAction", () => {
+  it("does not count an annotation until persistence and composer insertion complete", async () => {
+    const fake = createFakePage();
+    let failSave = (_error: Error) => {};
+    const pending = new Promise<{ id: string }>((_resolve, reject) => {
+      failSave = reject;
+    });
+    const recordInsertion = vi.fn(() => null);
+    const save = vi.fn(() => pending);
+    const slot = renderSlot(
+      registration(),
+      {
+        threadId: "thr_1",
+        tabId: "browser:1",
+        url: "https://example.test/",
+        isCompactViewport: false,
+        experimental_page: fake.page,
+      },
+      { rpc: { save, recordInsertion } },
+    );
+    act(() => fake.emit({ type: "annotation", annotation: pageAnnotation }));
+    await waitFor(() => expect(save).toHaveBeenCalledOnce());
+    expect(recordInsertion).not.toHaveBeenCalled();
+    expect(slot.inspection.composer.draft.mentions).toEqual([]);
+    await act(async () => failSave(new Error("save failed")));
+    expect(recordInsertion).not.toHaveBeenCalled();
+    expect(slot.inspection.composer.draft.mentions).toEqual([]);
+  });
+
   it("activates from the toolbar and adds saved annotations to the prompt", async () => {
     const fake = createFakePage();
     const slot = renderSlot(
@@ -93,6 +121,7 @@ describe("AnnotateAction", () => {
       },
       {
         rpc: {
+          recordInsertion: () => null,
           save: () => ({ id: "ann_saved" }),
           update: () => ({ id: pageAnnotation.id }),
         },
@@ -135,6 +164,7 @@ describe("AnnotateAction", () => {
           ],
         },
       },
+      { method: "recordInsertion", input: null },
     ]);
     expect(fake.evaluate).toHaveBeenCalledWith(
       expect.stringContaining("__reactFiber$"),

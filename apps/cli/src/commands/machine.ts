@@ -266,6 +266,7 @@ export function registerMachineCommands(
           const sdk = createCliBbSdk(getUrl());
           controller.signal.throwIfAborted();
           let host = await sdk.hosts.experimental_create({
+            telemetrySource: "cli",
             machineProviderId,
             inputs,
             ...(key === undefined ? {} : { key }),

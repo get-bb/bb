@@ -10,6 +10,7 @@ import {
 const STORAGE_PREFIX = "annotation:";
 
 export const agentAnnotationsRpcContract = defineRpcContract({
+  recordInsertion: { input: z.null(), output: z.null() },
   update: {
     input: annotationUpdateSchema,
     output: z.object({ id: z.string() }).strict(),
@@ -22,6 +23,14 @@ export const agentAnnotationsRpcContract = defineRpcContract({
 
 export default async function plugin(bb: BbPluginApi) {
   bb.rpc.register(agentAnnotationsRpcContract, {
+    recordInsertion() {
+      bb.internal_DO_NOT_USE_recordPluginUse({
+        action: "annotation_inserted",
+        outcome: "observed",
+        initiator: "user",
+      });
+      return null;
+    },
     async update({ id, comment }) {
       const record = annotationRecordSchema.parse(
         await bb.storage.kv.get(`${STORAGE_PREFIX}${id}`),

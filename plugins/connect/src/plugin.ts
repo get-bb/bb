@@ -1,3 +1,4 @@
+import { createConnectSetupMeasurement } from "./device-telemetry.js";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { createAccountClient } from "./account-client.js";
 import { AccountLink } from "./account-link.js";
@@ -87,6 +88,9 @@ export function createConnectPlugin(options: ConnectPluginOptions = {}) {
       await shares.pruneHost(host.id);
     });
 
+    const measurement = createConnectSetupMeasurement((properties) => {
+      bb.internal_DO_NOT_USE_recordDeviceSetup(properties);
+    });
     const recheckServerAccess = createServerAccessRecheck(bb);
     tunnel = new ConnectTunnel({
       shares,
@@ -98,20 +102,31 @@ export function createConnectPlugin(options: ConnectPluginOptions = {}) {
       getLoopbackBaseUrl,
       log: bb.log,
       onStatusChange: (status) => {
+        measurement.observe(status);
         bb.realtime.publish(CONNECT_REALTIME_CHANNEL, status);
         recheckServerAccess(status);
       },
     });
     settings.onChange((next) => {
+      if (!currentSettings.remoteAccess && next.remoteAccess)
+        measurement.beginIfIdle("unknown");
       currentSettings = next;
       tunnel.setEnabled(next.remoteAccess);
     });
 
     const remoteAccess: RemoteAccessSwitch = {
-      async set(enabled) {
-        await settings.experimental_set({ remoteAccess: enabled });
-        tunnel.setEnabled(enabled);
-        return tunnel.refreshStatus();
+      async set(enabled, source = "unknown") {
+        if (enabled) measurement.begin(source);
+        try {
+          await settings.experimental_set({ remoteAccess: enabled });
+          tunnel.setEnabled(enabled);
+          const status = await tunnel.refreshStatus();
+          measurement.observe(status);
+          return status;
+        } catch (error) {
+          measurement.requestLost();
+          throw error;
+        }
       },
     };
 

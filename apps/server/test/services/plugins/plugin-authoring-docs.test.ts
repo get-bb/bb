@@ -195,7 +195,7 @@ const BB_PLUGIN_API_KEYS = [
 
 type MissingApiKey = Exclude<
   keyof BbPluginApi,
-  (typeof BB_PLUGIN_API_KEYS)[number]
+  (typeof BB_PLUGIN_API_KEYS)[number] | `internal_DO_NOT_USE_${string}`
 >;
 const _assertAllApiKeysListed: MissingApiKey extends never ? true : never =
   true;
@@ -259,9 +259,7 @@ const THREAD_EVENT_PAYLOAD_FIELDS = {
     "attemptNumber",
   ],
 } as const satisfies {
-  [
-    E in keyof PluginThreadEventPayloads
-  ]: readonly (keyof PluginThreadEventPayloads[E])[];
+  [E in keyof PluginThreadEventPayloads]: readonly (keyof PluginThreadEventPayloads[E])[];
 };
 
 type MissingThreadEventField = {

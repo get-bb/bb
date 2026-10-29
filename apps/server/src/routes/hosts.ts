@@ -1,3 +1,4 @@
+import { withDeviceSetupSource } from "../services/system/device-telemetry.js";
 import { joinHostPathSegments } from "../services/lib/host-path.js";
 import { serverAccess } from "../services/machines/server-access.js";
 import {
@@ -143,7 +144,12 @@ export function registerHostRoutes(
 
   post(routes.create, async (context, payload) => {
     assertHostManagementAllowed(context);
-    return context.json(await submitMachine(deps, payload), 201);
+    return context.json(
+      await withDeviceSetupSource(payload.telemetrySource ?? "unknown", () =>
+        submitMachine(deps, payload),
+      ),
+      201,
+    );
   });
 
   post(routes.createJoinCode, async (context) => {

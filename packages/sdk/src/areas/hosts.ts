@@ -163,6 +163,9 @@ export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
           {
             json: {
               machineProviderId: input.machineProviderId,
+              ...(input.telemetrySource === undefined
+                ? {}
+                : { telemetrySource: input.telemetrySource }),
               inputs: input.inputs,
               ...(input.key === undefined ? {} : { key: input.key }),
             },

@@ -31,7 +31,10 @@ import type {
   ThreadPluginMetadataResult,
 } from "@bb/sdk";
 import type {
+  PluginUseObservation,
+  PluginUseInitiator,
   ExecutionInputFieldSource,
+  ConnectDeviceSetupProperties,
   ThreadResponse,
   TerminalSession,
 } from "@bb/server-contract";
@@ -2225,6 +2228,14 @@ export type PluginBbSdk = Omit<BbSdk, "threads"> & {
  * against.
  */
 export interface BbPluginApi {
+  /** Internal Connect lifecycle reporting; only the loaded builtin Connect owner is authorized. */
+  internal_DO_NOT_USE_recordDeviceSetup(
+    properties: ConnectDeviceSetupProperties,
+  ): void;
+  /** Internal reporting for the six reviewed first-party plugin action owners; identity is resolved by the server. */
+  internal_DO_NOT_USE_recordPluginUse(
+    input: PluginUseObservation & { initiator?: PluginUseInitiator },
+  ): void;
   /** The plugin's own id (namespaces storage, routes, commands). */
   readonly pluginId: string;
   /** Leveled, plugin-scoped logger. */

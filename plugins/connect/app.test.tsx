@@ -751,7 +751,7 @@ describe("connect settings section", () => {
     await waitFor(() =>
       expect(slot.rpcCalls).toContainEqual({
         method: "setRemoteAccess",
-        input: { enabled: true },
+        input: { enabled: true, source: "settings" },
       }),
     );
   });

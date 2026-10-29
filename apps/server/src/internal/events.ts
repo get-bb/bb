@@ -1,3 +1,4 @@
+import { recordExecutionTarget } from "../services/system/turn-telemetry.js";
 import { performance } from "node:perf_hooks";
 import { Buffer } from "node:buffer";
 import { and, desc, eq, gt, lt, sql } from "drizzle-orm";
@@ -1249,6 +1250,23 @@ export function registerInternalEventRoutes(app: Hono, deps: AppDeps): void {
       observeTurnTraceEventBatch(turnTraceBatch);
       observeStreamTraceEventBatch(deps, turnTraceBatch);
 
+      for (const index of appendResult.insertedInputIndexes) {
+        const entry = postableEvents[index];
+        if (
+          entry?.event.type === "turn/started" &&
+          !entry.event.parentToolCallId
+        ) {
+          recordExecutionTarget(
+            deps,
+            entry.threadId,
+            requireThreadEventScopeTurnId({
+              type: entry.event.type,
+              scope: entry.event.scope,
+            }),
+            session.hostId,
+          );
+        }
+      }
       const followUps = await applyEventEffects(
         deps,
         resolveEventsToApply({

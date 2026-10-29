@@ -157,6 +157,7 @@ export const searchPromptsInputSchema = z
 export type SearchPromptsInput = z.infer<typeof searchPromptsInputSchema>;
 
 export const promptLibraryRpcContract = defineRpcContract({
+  recordInsertion: { input: z.null(), output: z.null() },
   search: {
     input: searchPromptsInputSchema,
     output: z

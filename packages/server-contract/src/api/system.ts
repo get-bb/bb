@@ -1,3 +1,14 @@
+import { deviceSetupTelemetrySchema } from "./system-device-telemetry.js";
+export {
+  deviceSetupSourceSchema,
+  connectDeviceSetupPropertiesSchema,
+  type DeviceSetupEvent,
+  type ConnectDeviceSetupProperties,
+  type DeviceSetupSource,
+  type DeviceSetupProperties,
+} from "./system-device-telemetry.js";
+import { pluginRecommendationTelemetryEventSchema } from "./system-plugin-telemetry.js";
+export * from "./system-plugin-telemetry.js";
 import { rejectMultipleWorkspaceSelectors } from "./shared.js";
 import { z } from "zod";
 import { onboardingJourneyTelemetrySchemas } from "./system-journey-telemetry.js";
@@ -345,6 +356,8 @@ const onboardingOperationTelemetryPropertiesSchema = z
   });
 
 export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
+  deviceSetupTelemetrySchema,
+  pluginRecommendationTelemetryEventSchema,
   ...onboardingJourneyTelemetrySchemas,
   ...onboardingSuggestionTelemetrySchemas,
   z

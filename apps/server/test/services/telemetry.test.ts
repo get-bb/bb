@@ -13,6 +13,7 @@ import {
   appInstallFromServerConfig,
   createTelemetryService,
   runWithTelemetryAppSurface,
+  runWithTelemetryAccessRoute,
 } from "../../src/services/system/telemetry.js";
 
 function createTestLogger() {
@@ -37,6 +38,58 @@ describe("telemetry service", () => {
   afterEach(async () => {
     vi.unstubAllGlobals();
     await rm(dataDir, { recursive: true, force: true });
+  });
+
+  it("keeps trusted request routes scoped across asynchronous captures and opt-out", async () => {
+    const telemetry = await createTelemetryService({
+      apiKey: "test",
+      appInstall: null,
+      appSurface: "web",
+      appVersion: "1.2.3",
+      dataDir,
+      telemetryEnabled: true,
+      enabled: true,
+      logger: createTestLogger(),
+    });
+    await runWithTelemetryAccessRoute("connect", async () => {
+      await Promise.resolve();
+      telemetry.capture({
+        name: "thread_created",
+        properties: { is_child_thread: false, provider: "codex" },
+      });
+    });
+    telemetry.capture({
+      name: "user_message_sent",
+      properties: {
+        is_child_thread: false,
+        provider: "codex",
+        message_source: "thread_send",
+      },
+    });
+    telemetry.setEnabled(false);
+    runWithTelemetryAccessRoute("direct", () =>
+      telemetry.capture({
+        name: "thread_created",
+        properties: { is_child_thread: false, provider: "codex" },
+      }),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(
+      JSON.parse(fetchMock.mock.calls[0][1].body).properties.access_route,
+    ).toBe("connect");
+    expect(
+      JSON.parse(fetchMock.mock.calls[1][1].body).properties.access_route,
+    ).toBe("unknown");
+    telemetry.setEnabled(true);
+    runWithTelemetryAccessRoute("direct", () =>
+      telemetry.capture({
+        name: "thread_created",
+        properties: { is_child_thread: false, provider: "codex" },
+      }),
+    );
+    expect(
+      JSON.parse(fetchMock.mock.calls[2][1].body).properties.access_route,
+    ).toBe("direct");
   });
 
   it("sends events with a stable anonymous install id", async () => {

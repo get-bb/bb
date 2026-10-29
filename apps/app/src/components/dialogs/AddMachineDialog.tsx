@@ -1,3 +1,5 @@
+import type { DeviceSetupSource } from "@bb/server-contract";
+import { recordTelemetryEvent } from "@/components/onboarding/onboarding-telemetry";
 import { nanoid } from "nanoid";
 import { MachineAccessControls } from "@/components/settings/MachineAccessSettings";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
@@ -27,11 +29,28 @@ const MANUAL_MACHINE_PROVIDER_ID = "manual";
 export function AddMachineDialog({
   open,
   onOpenChange,
+  telemetrySource = "settings",
 }: {
   open: boolean;
+  telemetrySource?: DeviceSetupSource;
   onOpenChange: (open: boolean) => void;
 }) {
   const hosts = useHosts();
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (open && !wasOpen.current)
+      recordTelemetryEvent({
+        name: "device_setup",
+        properties: {
+          target: "additional_machine",
+          action: "setup_opened",
+          outcome: "observed",
+          source: telemetrySource,
+          error_category: null,
+        },
+      });
+    wasOpen.current = open;
+  }, [open, telemetrySource]);
   const close = (next: boolean) => {
     if (!next) void hosts.refetch();
     onOpenChange(next);
@@ -39,7 +58,12 @@ export function AddMachineDialog({
   return (
     <Dialog open={open} onOpenChange={close} modal={false}>
       <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
-        {open && <AddMachineContent onOpenChange={close} />}
+        {open && (
+          <AddMachineContent
+            onOpenChange={close}
+            telemetrySource={telemetrySource}
+          />
+        )}
       </DialogContent>
     </Dialog>
   );
@@ -47,8 +71,10 @@ export function AddMachineDialog({
 
 export function AddMachineContent({
   onOpenChange,
+  telemetrySource = "settings",
 }: {
   onOpenChange: (open: boolean) => void;
+  telemetrySource?: DeviceSetupSource;
 }) {
   const config = useSystemConfig();
   const hosts = useHosts();
@@ -73,6 +99,7 @@ export function AddMachineContent({
     hosts.data?.find((host) => host.id === serverPrimaryHostId)?.name ?? null;
   return (
     <ManualMachineSetup
+      telemetrySource={telemetrySource}
       serverMachineName={serverMachineName}
       onOpenChange={onOpenChange}
     />
@@ -148,7 +175,9 @@ export interface EnrollmentCommand {
 export function ManualMachineSetup({
   serverMachineName,
   onOpenChange,
+  telemetrySource = "settings",
 }: {
+  telemetrySource?: DeviceSetupSource;
   serverMachineName: string | null;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -190,6 +219,7 @@ export function ManualMachineSetup({
         let host = await sdk.hosts.experimental_create({
           key: createKey.current,
           machineProviderId: MANUAL_MACHINE_PROVIDER_ID,
+          telemetrySource,
           inputs: null,
           wait: false,
           signal: controller.signal,

@@ -463,6 +463,7 @@ function PromptLibraryPopup() {
     } else {
       composer.insert(insertParts(prompt));
     }
+    void rpc.call("recordInsertion").catch(() => {});
     composer.experimental_closePopup();
   };
 

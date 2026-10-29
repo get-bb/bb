@@ -99,6 +99,7 @@ import {
   recordTelemetryEvent,
   type OnboardingEntry,
 } from "./onboarding-telemetry";
+import { createPluginRecommendationObserver } from "./onboarding-recommendation-telemetry";
 import { recordOnboardingWorkEntry } from "./onboarding-work-context";
 import {
   agentDiagnostic,
@@ -866,6 +867,7 @@ function ProjectsStepContainer({
 }
 
 function PluginCardContainer({
+  installedStateKnown,
   onboardingEntry,
   entry,
   enabled,
@@ -874,6 +876,7 @@ function PluginCardContainer({
   onboardingEntry: OnboardingEntry;
   entry: PluginCatalogSearchEntry;
   enabled: boolean;
+  installedStateKnown: boolean;
   onChanged: () => Promise<void>;
 }) {
   const queryClient = useQueryClient();
@@ -895,7 +898,27 @@ function PluginCardContainer({
     return () => window.clearTimeout(timer);
   }, [busy, settling]);
 
+  const recommendation = useRef(createPluginRecommendationObserver());
+  const recommendationContext = {
+    source: onboardingEntry,
+    marketplace: entry.marketplace,
+    entryId: entry.entryId,
+    initial_state: !entry.installed
+      ? "absent"
+      : !installedStateKnown
+        ? "unknown"
+        : enabled
+          ? "enabled"
+          : "disabled",
+    availability:
+      entry.installed || entry.compatible ? "available" : "unavailable",
+  } as const;
+
   const toggle = async (next: boolean) => {
+    recommendation.current(
+      next ? "selected" : "deselected",
+      recommendationContext,
+    );
     setTarget(next);
     setWorking(true);
     try {
@@ -907,6 +930,7 @@ function PluginCardContainer({
             startCatalogPluginInstall(fetch, {
               entryId: entry.entryId,
               marketplace: entry.marketplace,
+              measurementSource: onboardingEntry,
             }),
         );
         observeOnboardingPluginInstall(queryClient, job, onboardingEntry);
@@ -916,10 +940,21 @@ function PluginCardContainer({
           await runOnboardingPluginAction(
             onboardingEntry,
             "plugin_enable",
-            () => setPluginEnabled(entry.pluginId, true),
+            () =>
+              setPluginEnabled(
+                entry.pluginId,
+                true,
+                undefined,
+                onboardingEntry,
+              ),
           );
         } else {
-          await setPluginEnabled(entry.pluginId, false);
+          await setPluginEnabled(
+            entry.pluginId,
+            false,
+            undefined,
+            onboardingEntry,
+          );
         }
       }
       await onChanged();
@@ -937,6 +972,9 @@ function PluginCardContainer({
 
   return (
     <OnboardingPluginCard
+      observeDisplay={() =>
+        recommendation.current("shown", recommendationContext)
+      }
       name={entry.displayName}
       description={entry.description}
       icon={{
@@ -1015,6 +1053,7 @@ function PluginsStepContainer({
           entries.map((entry) => (
             <PluginCardContainer
               onboardingEntry={onboardingEntry}
+              installedStateKnown={installedPlugins !== undefined}
               key={entry.entryId}
               entry={entry}
               enabled={
@@ -1034,12 +1073,14 @@ function PluginsStepContainer({
 }
 
 function DevicesStepContainer({
+  entry,
   chrome,
   hostId,
   onBack,
   onFinish,
   onLeave,
 }: {
+  entry: OnboardingEntry;
   chrome: StepChrome;
   hostId: string | null;
   onBack: () => void;
@@ -1072,15 +1113,46 @@ function DevicesStepContainer({
     >
       <DevicesStep
         connect={connectAccessUrl(configQuery.data?.serverAccess)}
-        connectSetup={<PluginSettingsSections pluginId={CONNECT_PLUGIN_ID} />}
+        connectSetup={
+          <div data-device-setup-source={entry}>
+            <PluginSettingsSections pluginId={CONNECT_PLUGIN_ID} />
+          </div>
+        }
         connectSetupOpen={connectSetupOpen}
         otherMachineCount={otherMachineCount}
         mobileLinks={mobileAppDownloads}
-        onToggleConnectSetup={() => setConnectSetupOpen((open) => !open)}
+        onToggleConnectSetup={() => {
+          if (!connectSetupOpen)
+            recordTelemetryEvent({
+              name: "device_setup",
+              properties: {
+                target: "browser_access",
+                action: "setup_opened",
+                outcome: "observed",
+                source: entry,
+                error_category: null,
+              },
+            });
+          setConnectSetupOpen(!connectSetupOpen);
+        }}
+        onDownloadMobile={(platform) =>
+          recordTelemetryEvent({
+            name: "device_setup",
+            properties: {
+              target: "mobile",
+              action: "download_clicked",
+              outcome: "observed",
+              source: entry,
+              error_category: null,
+              platform,
+            },
+          })
+        }
         onCopyConnectUrl={(url) => void copyToClipboardWithToast(url)}
         onAddMachine={() => setAddMachineOpen(true)}
       />
       <AddMachineDialog
+        telemetrySource={entry}
         open={addMachineOpen}
         onOpenChange={setAddMachineOpen}
       />
@@ -1346,6 +1418,7 @@ export function OnboardingFlow({
     case "devices":
       return (
         <DevicesStepContainer
+          entry={entry}
           chrome={chrome}
           hostId={hostId}
           onBack={goTo(-1)}

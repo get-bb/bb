@@ -1,0 +1,201 @@
+import { z } from "zod";
+
+export const deviceSetupSourceSchema = z.enum([
+  "first_run",
+  "replay",
+  "settings",
+  "cli",
+  "during_first_thread",
+  "after_first_thread",
+  "other",
+  "unknown",
+]);
+export type DeviceSetupSource = z.infer<typeof deviceSetupSourceSchema>;
+
+const failure = z.discriminatedUnion("outcome", [
+  z.object({
+    outcome: z.literal("failed"),
+    error_category: z.enum([
+      "request",
+      "authentication",
+      "transport",
+      "enrollment",
+      "unknown",
+    ]),
+  }),
+  z.object({
+    outcome: z.literal("unknown"),
+    error_category: z.enum([
+      "request",
+      "authentication",
+      "transport",
+      "enrollment",
+      "unknown",
+    ]),
+  }),
+  z.object({ outcome: z.literal("cancelled"), error_category: z.null() }),
+]);
+const browser = z.enum([
+  "setup_opened",
+  "enable_requested",
+  "service_ready",
+  "remote_connected",
+  "setup_result",
+]);
+const machine = z.enum([
+  "setup_opened",
+  "enrollment_requested",
+  "credentials_accepted",
+  "machine_ready",
+  "setup_result",
+]);
+
+export const deviceSetupPropertiesSchema = z
+  .discriminatedUnion("target", [
+    z
+      .object({
+        target: z.literal("browser_access"),
+        action: browser,
+        outcome: z.enum([
+          "observed",
+          "started",
+          "succeeded",
+          "failed",
+          "cancelled",
+          "unknown",
+        ]),
+        source: deviceSetupSourceSchema,
+        error_category: z
+          .enum([
+            "request",
+            "authentication",
+            "transport",
+            "enrollment",
+            "unknown",
+          ])
+          .nullable(),
+      })
+      .strict(),
+    z
+      .object({
+        target: z.literal("additional_machine"),
+        action: machine,
+        outcome: z.enum([
+          "observed",
+          "started",
+          "succeeded",
+          "failed",
+          "cancelled",
+          "unknown",
+        ]),
+        source: deviceSetupSourceSchema,
+        error_category: z
+          .enum([
+            "request",
+            "authentication",
+            "transport",
+            "enrollment",
+            "unknown",
+          ])
+          .nullable(),
+      })
+      .strict(),
+    z
+      .object({
+        target: z.literal("mobile"),
+        action: z.literal("download_clicked"),
+        outcome: z.literal("observed"),
+        source: deviceSetupSourceSchema,
+        error_category: z.null(),
+        platform: z.enum(["ios", "android"]),
+      })
+      .strict(),
+  ])
+  .superRefine((value, context) => {
+    if (value.target === "mobile") return;
+    if (value.action === "setup_result") {
+      if (!failure.safeParse(value).success)
+        context.addIssue({ code: "custom", message: "Invalid setup result" });
+      return;
+    }
+    const expected =
+      value.action === "setup_opened" || value.action === "remote_connected"
+        ? "observed"
+        : value.action === "enable_requested" ||
+            value.action === "enrollment_requested"
+          ? "started"
+          : "succeeded";
+    if (value.outcome !== expected || value.error_category !== null) {
+      context.addIssue({
+        code: "custom",
+        message: "Invalid device milestone outcome",
+      });
+    }
+  });
+export type DeviceSetupProperties = z.infer<typeof deviceSetupPropertiesSchema>;
+export const serverDeviceSetupTelemetrySchema = z
+  .object({
+    name: z.literal("device_setup"),
+    properties: deviceSetupPropertiesSchema,
+  })
+  .strict();
+
+export type DeviceSetupEvent = z.infer<typeof serverDeviceSetupTelemetrySchema>;
+
+export const connectDeviceSetupPropertiesSchema = z
+  .object({
+    target: z.literal("browser_access"),
+    action: z.enum(["enable_requested", "service_ready", "setup_result"]),
+    outcome: z.enum(["started", "succeeded", "failed", "cancelled", "unknown"]),
+    source: deviceSetupSourceSchema,
+    error_category: z
+      .enum(["request", "authentication", "transport", "enrollment", "unknown"])
+      .nullable(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (!deviceSetupPropertiesSchema.safeParse(value).success)
+      context.addIssue({
+        code: "custom",
+        message: "Invalid Connect setup milestone",
+      });
+  });
+export type ConnectDeviceSetupProperties = z.infer<
+  typeof connectDeviceSetupPropertiesSchema
+>;
+
+export const deviceSetupTelemetrySchema = z
+  .object({
+    name: z.literal("device_setup"),
+    properties: z.discriminatedUnion("target", [
+      z
+        .object({
+          target: z.literal("browser_access"),
+          action: z.literal("setup_opened"),
+          outcome: z.literal("observed"),
+          source: deviceSetupSourceSchema,
+          error_category: z.null(),
+        })
+        .strict(),
+      z
+        .object({
+          target: z.literal("additional_machine"),
+          action: z.literal("setup_opened"),
+          outcome: z.literal("observed"),
+          source: deviceSetupSourceSchema,
+          error_category: z.null(),
+        })
+        .strict(),
+      z
+        .object({
+          target: z.literal("mobile"),
+          action: z.literal("download_clicked"),
+          outcome: z.literal("observed"),
+          source: deviceSetupSourceSchema,
+          error_category: z.null(),
+          platform: z.enum(["ios", "android"]),
+        })
+        .strict(),
+    ]),
+  })
+  .strict();
