@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { createStore } from "../api";
 import type { Comment, Project, Task } from "../db";
 import { delegationRpcContract } from "./contract";
-import { buildSeedPrompt, registerDelegation } from ".";
+import { buildSeedPrompt, registerDelegation, handlers } from ".";
 import {
   commentsTag,
   taskChangedTags,
@@ -37,6 +37,152 @@ function createTestPreset(
 }
 
 describe("task delegation", () => {
+  it("does not respawn when attaching the spawned thread fails to persist", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        threads: {
+          spawn: async () => ({ id: "thr_unattached" }),
+        },
+      },
+    });
+    const store = createStore(bb);
+    const project = store.tasks.createProject({
+      name: "Test",
+      prefix: "TEST",
+      color: "blue",
+      linkedBbProjectId: "proj_test",
+    });
+    const task = store.tasks.createTask({
+      projectId: project.id,
+      title: "Dispatch",
+    });
+    const preset = createTestPreset(store);
+    bb.storage
+      .database()
+      .exec(
+        "CREATE TRIGGER reject_attach BEFORE INSERT ON task_threads BEGIN SELECT RAISE(ABORT, 'Cannot persist attachment'); END",
+      );
+    const input = {
+      taskId: task.id,
+      presetId: preset.id,
+      attemptId: "attempt-one",
+    };
+    await expect(handlers(bb, store).delegate(input)).rejects.toThrow(
+      "Cannot persist attachment",
+    );
+    expect(store.tasks.listTaskThreads(task.id)).toHaveLength(0);
+    await expect(handlers(bb, store).delegate(input)).rejects.toThrow(
+      /outcome is unknown/i,
+    );
+    expect(harness.sdk.callsTo("threads.spawn")).toHaveLength(1);
+  });
+
+  it("releases preflight failures but retains ambiguous spawn failures across plugin reload", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        threads: {
+          spawn: async () => {
+            throw new Error("Connection lost");
+          },
+        },
+      },
+    });
+    const store = createStore(bb);
+    const project = store.tasks.createProject({
+      name: "Test",
+      prefix: "TEST",
+      color: "blue",
+    });
+    const task = store.tasks.createTask({
+      projectId: project.id,
+      title: "Dispatch",
+    });
+    const preset = createTestPreset(store);
+    const input = {
+      taskId: task.id,
+      presetId: preset.id,
+      attemptId: "attempt-one",
+    };
+    await expect(handlers(bb, store).delegate(input)).rejects.toThrow(
+      /not linked/i,
+    );
+    store.tasks.updateProject(project.id, { linkedBbProjectId: "proj_test" });
+    await expect(handlers(bb, store).delegate(input)).rejects.toThrow(
+      "Connection lost",
+    );
+    const replacement = await harness.reload((nextBb) =>
+      registerDelegation(nextBb, createStore(nextBb)),
+    );
+    await expect(
+      replacement.harness.callRpc("delegate", input),
+    ).rejects.toThrow(/outcome is unknown/i);
+    expect(harness.sdk.callsTo("threads.spawn")).toHaveLength(1);
+  });
+
+  it("coalesces a pending attempt, replays its result and permits a new attempt", async () => {
+    let finish!: (value: { id: string }) => void;
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        threads: {
+          spawn: () =>
+            new Promise<{ id: string }>((resolve) => {
+              finish = resolve;
+            }),
+          get: async () =>
+            makeThreadResponse({ id: "thr_once", status: "starting" }),
+        },
+      },
+    });
+    const store = createStore(bb);
+    const project = store.tasks.createProject({
+      name: "Test",
+      prefix: "TEST",
+      color: "blue",
+      linkedBbProjectId: "proj_test",
+    });
+    const task = store.tasks.createTask({
+      projectId: project.id,
+      title: "Dispatch",
+    });
+    const preset = createTestPreset(store);
+    registerDelegation(bb, store);
+    const input = {
+      taskId: task.id,
+      presetId: preset.id,
+      attemptId: "attempt-one",
+    };
+    const first = handlers(bb, store).delegate(input);
+    const second = handlers(bb, store).delegate(input);
+    await Promise.resolve();
+    expect(harness.sdk.callsTo("threads.spawn")).toHaveLength(1);
+    finish({ id: "thr_once" });
+    expect(await first).toEqual({ threadId: "thr_once" });
+    expect(await second).toEqual({ threadId: "thr_once" });
+    expect(await handlers(bb, createStore(bb)).delegate(input)).toEqual({
+      threadId: "thr_once",
+    });
+    await expect(
+      harness.callRpc("delegate", { ...input, extraInstructions: "Different" }),
+    ).rejects.toThrow(/different payload/i);
+    const next = handlers(bb, store).delegate({
+      ...input,
+      attemptId: "attempt-two",
+    });
+    await Promise.resolve();
+    expect(harness.sdk.callsTo("threads.spawn")).toHaveLength(2);
+    finish({ id: "thr_second" });
+    expect(await next).toEqual({ threadId: "thr_second" });
+    const replacement = await harness.reload((nextBb) =>
+      registerDelegation(nextBb, createStore(nextBb)),
+    );
+    expect(await replacement.harness.callRpc("delegate", input)).toEqual({
+      threadId: "thr_once",
+    });
+  });
+
   it("spawns from a preset, attaches the thread, advances status, comments, and invalidates", async () => {
     const { bb, harness } = createFakePluginHost({
       pluginId: "tasks",

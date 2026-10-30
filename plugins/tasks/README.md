@@ -130,6 +130,29 @@ use either to drop a thread that died or moved on to other work. The task
 page and `bb tasks threads` list live threads before completed or failed ones,
 newest first.
 
+### Dispatch retries
+
+The dispatch button ignores repeated clicks while a request is pending. A retry
+in the same mounted control reuses its attempt id until success; the next dispatch
+after success starts a new attempt. Remounting or changing task/preset starts a
+new attempt.
+
+CLI callers can supply `bb tasks dispatch KEY --preset NAME --attempt-id ID`.
+RPC callers can supply `attemptId` to `delegate`. Reuse the same id and payload
+after a lost response. Concurrent requests within the same plugin store share the
+result; completed attempts replay the same thread id, including after restart.
+An id reused with a different task, preset, or instructions is rejected. Omitting
+the id preserves independent dispatches for existing callers.
+
+Attempts are persisted before spawn and completed in the transaction that attaches
+the thread. Preflight failures release the id for retry. A failure after spawn
+starts, or a restart before completion is persisted, leaves an unknown outcome;
+the same id will not spawn again. Inspect threads before deliberately issuing a
+new id. This does not guarantee exactly-once thread creation across a crash or
+transport failure. Attempts have no automatic expiry and remain in the Tasks
+plugin database until that database is removed; there is no background retry or
+cleanup service. Distinct ids permit multiple agents on the same task.
+
 ## Task mentions
 
 Type `@` in the bb composer and select **Tasks** to search by task key or title.

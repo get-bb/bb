@@ -242,6 +242,13 @@ const MIGRATIONS = [
     ALTER TABLE presets DROP COLUMN service_tier;
     ALTER TABLE presets RENAME COLUMN service_tier_open TO service_tier;
   `,
+  `
+    CREATE TABLE delegation_attempts (
+      id TEXT PRIMARY KEY,
+      payload TEXT NOT NULL,
+      thread_id TEXT
+    );
+  `,
 ] as const;
 
 export function initializeTasksSchema(db: PluginDatabase): void {

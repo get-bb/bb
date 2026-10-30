@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { makeTask, rpcInput } from "../../test-fixtures.js";
@@ -226,4 +226,70 @@ describe("task detail pull request pills", () => {
       ).toBeTruthy();
     });
   });
+});
+
+const { DispatchControl } = await import("./threads");
+
+it("guards same-turn reentry, retains the attempt after a lost response, and renews after success", async () => {
+  const inputs: Array<Record<string, unknown>> = [];
+  const errors: string[] = [];
+  let finish!: (value: { threadId: string }) => void;
+  let fail!: (reason: Error) => void;
+  const slot = renderSlot(
+    { component: DispatchControl },
+    {
+      taskId: TASK_ID,
+      presets: [
+        {
+          id: "01HZZZZZZZZZZZZZZZZZZZZZE1",
+          name: "Test worker",
+          providerId: "test",
+          modelId: "test",
+          reasoningLevel: "medium",
+          serviceTier: null,
+          permissionMode: "accept-edits",
+          environmentKind: "project-default",
+          baseBranch: null,
+          machineId: null,
+          instructions: "",
+          builtin: false,
+          createdAt: "2026-07-15T00:00:00.000Z",
+        },
+      ],
+      onError: (message: string) => errors.push(message),
+    },
+    {
+      rpc: {
+        delegate: (raw: unknown) => {
+          inputs.push(rpcInput(raw));
+          return new Promise<{ threadId: string }>((resolve, reject) => {
+            finish = resolve;
+            fail = reject;
+          });
+        },
+      },
+    },
+  );
+  const button = slot.getByRole("button", { name: "Test worker" });
+  act(() => {
+    button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await waitFor(() => expect(inputs).toHaveLength(1));
+  expect(
+    slot.getByRole("button", { name: "Dispatching…" }).hasAttribute("disabled"),
+  ).toBe(true);
+  fireEvent.click(button);
+  expect(inputs).toHaveLength(1);
+  await act(async () => fail(new Error("Response lost")));
+  await waitFor(() => expect(errors).toContain("Response lost"));
+  fireEvent.click(slot.getByRole("button", { name: "Test worker" }));
+  await waitFor(() => expect(inputs).toHaveLength(2));
+  expect(inputs[0]?.attemptId).toEqual(expect.any(String));
+  expect(inputs[1]?.attemptId).toBe(inputs[0]?.attemptId);
+  await act(async () => finish({ threadId: "thr_once" }));
+  fireEvent.click(slot.getByRole("button", { name: "Test worker" }));
+  await waitFor(() => expect(inputs).toHaveLength(3));
+  expect(inputs[2]?.attemptId).not.toBe(inputs[0]?.attemptId);
+  await act(async () => finish({ threadId: "thr_new" }));
 });

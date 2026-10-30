@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { BbPluginApi, PluginRpcHandlers } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import type {
@@ -290,99 +291,171 @@ function taskThreadLiveStatus(thread: SdkThread): TaskThreadLiveStatus {
   }
 }
 
+const pendingDelegations = new WeakMap<
+  TasksApiStore,
+  Map<string, Promise<{ threadId: string }>>
+>();
+
 export function handlers(
   bb: BbPluginApi,
   store: TasksApiStore,
 ): PluginRpcHandlers<typeof delegationRpcContract> {
+  const db = bb.storage.database();
+  let pending = pendingDelegations.get(store);
+  if (!pending) {
+    pending = new Map();
+    pendingDelegations.set(store, pending);
+  }
+  const active = pending;
+  const readAttempt = db.prepare<
+    [string],
+    { payload: string; thread_id: string | null }
+  >("SELECT payload, thread_id FROM delegation_attempts WHERE id = ?");
+  const insertAttempt = db.prepare<[string, string]>(
+    "INSERT INTO delegation_attempts (id, payload) VALUES (?, ?)",
+  );
+  const deleteAttempt = db.prepare<[string]>(
+    "DELETE FROM delegation_attempts WHERE id = ?",
+  );
+  const completeAttempt = db.prepare<[string, string]>(
+    "UPDATE delegation_attempts SET thread_id = ? WHERE id = ?",
+  );
   return {
     async delegate(input) {
-      const task = requireTask(store.tasks, input.taskId);
-      const project = requireProject(store.tasks, task.projectId);
-      const linkedBbProjectId = requireLinkedBbProject(project);
-      const preset = requirePreset(store.tasks, input.presetId);
-      const comments = store.tasks.listComments(task.id);
-      const recentComments = comments.slice(-5);
-      const title = delegatedThreadTitle(task);
-      const execution = presetExecutionSchema.parse({
-        providerId: preset.providerId,
-        model: preset.modelId,
-        reasoningLevel: preset.reasoningLevel,
-        serviceTier: preset.serviceTier,
-        permissionMode: preset.permissionMode,
-      });
-      const prompt = buildSeedPrompt({
-        task,
-        project,
-        subtasks: store.tasks.listSubtasks(task.id),
-        attachments: collectAttachments(store.tasks, task.id, comments),
-        recentComments,
-        presetInstructions: preset.instructions,
-        extraInstructions: input.extraInstructions,
-      });
-
-      const environment = await presetSpawnEnvironment(bb, preset);
-      const thread = await bb.sdk.threads
-        .spawn({
-          projectId: linkedBbProjectId,
-          environment,
-          providerId: execution.providerId,
-          model: execution.model,
-          reasoningLevel: execution.reasoningLevel,
-          ...(execution.serviceTier === null
-            ? {}
-            : { serviceTier: execution.serviceTier }),
-          permissionMode: execution.permissionMode,
-          title,
-          prompt,
-        })
-        .catch((error: unknown) => mapSpawnTargetError(error, preset));
-
-      const taskThread = store.transaction(() => {
-        const attached = store.tasks.upsertTaskThread({
-          taskId: task.id,
-          threadId: thread.id,
-          presetName: preset.name,
-          title,
-          liveStatus: "starting",
+      const attemptId = input.attemptId;
+      const payload = createHash("sha256")
+        .update(
+          JSON.stringify([
+            input.taskId,
+            input.presetId,
+            input.extraInstructions ?? "",
+          ]),
+        )
+        .digest("hex");
+      if (attemptId !== undefined) {
+        const previous = readAttempt.get(attemptId);
+        if (previous) {
+          if (previous.payload !== payload)
+            throw new Error("Dispatch attempt has a different payload");
+          if (previous.thread_id !== null)
+            return { threadId: previous.thread_id };
+          const running = active.get(attemptId);
+          if (running) return running;
+          throw new Error(
+            "Dispatch outcome is unknown; inspect task threads before starting a new attempt",
+          );
+        }
+        insertAttempt.run(attemptId, payload);
+      }
+      let spawnStarted = false;
+      const run = async () => {
+        const task = requireTask(store.tasks, input.taskId);
+        const project = requireProject(store.tasks, task.projectId);
+        const linkedBbProjectId = requireLinkedBbProject(project);
+        const preset = requirePreset(store.tasks, input.presetId);
+        const comments = store.tasks.listComments(task.id);
+        const recentComments = comments.slice(-5);
+        const title = delegatedThreadTitle(task);
+        const execution = presetExecutionSchema.parse({
+          providerId: preset.providerId,
+          model: preset.modelId,
+          reasoningLevel: preset.reasoningLevel,
+          serviceTier: preset.serviceTier,
+          permissionMode: preset.permissionMode,
+        });
+        const prompt = buildSeedPrompt({
+          task,
+          project,
+          subtasks: store.tasks.listSubtasks(task.id),
+          attachments: collectAttachments(store.tasks, task.id, comments),
+          recentComments,
+          presetInstructions: preset.instructions,
+          extraInstructions: input.extraInstructions,
         });
 
-        if (task.status === "backlog" || task.status === "todo") {
-          store.tasks.updateTask(task.id, { status: "in_progress" });
+        const environment = await presetSpawnEnvironment(bb, preset);
+        spawnStarted = true;
+        const thread = await bb.sdk.threads
+          .spawn({
+            projectId: linkedBbProjectId,
+            environment,
+            providerId: execution.providerId,
+            model: execution.model,
+            reasoningLevel: execution.reasoningLevel,
+            ...(execution.serviceTier === null
+              ? {}
+              : { serviceTier: execution.serviceTier }),
+            permissionMode: execution.permissionMode,
+            title,
+            prompt,
+          })
+          .catch((error: unknown) => mapSpawnTargetError(error, preset));
+
+        const taskThread = store.transaction(() => {
+          const attached = store.tasks.upsertTaskThread({
+            taskId: task.id,
+            threadId: thread.id,
+            presetName: preset.name,
+            title,
+            liveStatus: "starting",
+          });
+
+          if (task.status === "backlog" || task.status === "todo") {
+            store.tasks.updateTask(task.id, { status: "in_progress" });
+            createSystemComment(store.tasks, {
+              taskId: task.id,
+              presetName: preset.name,
+              threadId: thread.id,
+              body: `Status changed to In Progress · dispatched to ${preset.name}`,
+            });
+          }
+
           createSystemComment(store.tasks, {
             taskId: task.id,
             presetName: preset.name,
             threadId: thread.id,
-            body: `Status changed to In Progress · dispatched to ${preset.name}`,
+            body: `Dispatched to ${preset.name}`,
           });
-        }
-
-        createSystemComment(store.tasks, {
-          taskId: task.id,
-          presetName: preset.name,
-          threadId: thread.id,
-          body: `Dispatched to ${preset.name}`,
+          if (attemptId !== undefined)
+            completeAttempt.run(thread.id, attemptId);
+          return attached;
         });
-        return attached;
-      });
 
-      try {
-        const currentThread = await bb.sdk.threads.get({ threadId: thread.id });
-        const currentLiveStatus = taskThreadLiveStatus(currentThread);
-        if (currentLiveStatus !== taskThread.liveStatus) {
-          store.tasks.updateTaskThreadStatus(taskThread.id, currentLiveStatus);
+        try {
+          const currentThread = await bb.sdk.threads.get({
+            threadId: thread.id,
+          });
+          const currentLiveStatus = taskThreadLiveStatus(currentThread);
+          if (currentLiveStatus !== taskThread.liveStatus) {
+            store.tasks.updateTaskThreadStatus(
+              taskThread.id,
+              currentLiveStatus,
+            );
+          }
+        } catch (error) {
+          bb.log.warn(
+            `Could not read delegated thread ${thread.id} after attach: ${errorMessage(
+              error,
+            )}`,
+          );
         }
-      } catch (error) {
-        bb.log.warn(
-          `Could not read delegated thread ${thread.id} after attach: ${errorMessage(
-            error,
-          )}`,
-        );
-      }
 
-      invalidateThreads(bb, task.id);
-      invalidateTaskChanged(bb, task);
-      invalidateComments(bb, task.id);
-      return { threadId: thread.id };
+        invalidateThreads(bb, task.id);
+        invalidateTaskChanged(bb, task);
+        invalidateComments(bb, task.id);
+        return { threadId: thread.id };
+      };
+      const result = run()
+        .catch((error: unknown) => {
+          if (attemptId !== undefined && !spawnStarted)
+            deleteAttempt.run(attemptId);
+          throw error;
+        })
+        .finally(() => {
+          if (attemptId !== undefined) active.delete(attemptId);
+        });
+      if (attemptId !== undefined) active.set(attemptId, result);
+      return result;
     },
 
     async taskThreadsAttach(input) {

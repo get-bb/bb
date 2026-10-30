@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { UrlLink, useBbNavigate, useRpc } from "@get-bb/plugin-sdk/app";
 import type { DelegationRpcContract } from "../../delegate/contract.js";
 import type {
@@ -161,16 +161,36 @@ export function DispatchControl({
   const rpc = useRpc<DelegationRpcContract>();
   const tasksRpc = useTasksRpc();
   const [dispatching, setDispatching] = useState(false);
+  const pendingDispatch = useRef(false);
+  const attempt = useRef<{
+    taskId: string;
+    presetId: string;
+    id: string;
+  } | null>(null);
   const [lastPresetId, setLastPresetId] = useState(loadLastPresetId);
   const [createDialogKey, setCreateDialogKey] = useState<number | null>(null);
 
   const dispatch = async (presetId: string) => {
+    if (pendingDispatch.current) return;
+    pendingDispatch.current = true;
+    if (
+      attempt.current?.taskId !== taskId ||
+      attempt.current.presetId !== presetId
+    ) {
+      attempt.current = { taskId, presetId, id: crypto.randomUUID() };
+    }
     setDispatching(true);
     try {
-      await rpc.call("delegate", { taskId, presetId });
+      await rpc.call("delegate", {
+        taskId,
+        presetId,
+        attemptId: attempt.current.id,
+      });
+      attempt.current = null;
     } catch (error) {
       onError(errorMessage(error));
     } finally {
+      pendingDispatch.current = false;
       setDispatching(false);
     }
   };

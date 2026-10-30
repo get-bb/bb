@@ -130,6 +130,14 @@ each renders its own card.
   missing required value is reported in one error. A failing command run with
   `--json` prints `{"ok":false,"error":{"code","message","hint"?}}` on stdout.
 
+For dispatch retries use `bb tasks dispatch ABC-12 --preset NAME --attempt-id ID`.
+Keep the same id, task, preset and instructions after a lost response; a completed
+attempt returns its original thread id. A different id deliberately starts another
+agent. Omitting the flag starts an independent dispatch. If the outcome is unknown,
+inspect task threads before starting another attempt; do not retry with a fresh id
+blindly. Attempts persist without automatic expiry. Preflight failures allow retry
+with the same id; a failure after spawn begins is retained as unknown.
+
 ## Invariants
 
 - Valid task statuses are `backlog`, `todo`, `in_progress`, `in_review`,

@@ -2079,6 +2079,52 @@ describe("bb tasks CLI", () => {
     await harness.dispose();
   });
 
+  it("passes dispatch attempt ids through CLI parsing and replays the original thread", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        threads: {
+          spawn: async () => ({ id: "thr_cli_once" }),
+          get: async () =>
+            makeThreadResponse({ id: "thr_cli_once", status: "starting" }),
+        },
+      },
+    });
+    await plugin(bb);
+    const store = createStore(bb);
+    const project = store.tasks.createProject({
+      name: "CLI",
+      prefix: "CLI",
+      color: "blue",
+      linkedBbProjectId: "proj_test",
+    });
+    store.tasks.createTask({ projectId: project.id, title: "Dispatch" });
+    const preset = store.tasks.createPreset({
+      name: "Worker",
+      providerId: "test",
+      modelId: "test",
+      reasoningLevel: "medium",
+      serviceTier: null,
+      permissionMode: "accept-edits",
+      environmentKind: "project-default",
+      baseBranch: null,
+      machineId: null,
+      instructions: "",
+      builtin: false,
+    });
+    const args = [
+      "dispatch",
+      "CLI-1",
+      "--preset",
+      preset.id,
+      "--attempt-id",
+      "cli-attempt",
+    ];
+    expect(stdout(await harness.runCli(args)).trim()).toBe("thr_cli_once");
+    expect(stdout(await harness.runCli(args)).trim()).toBe("thr_cli_once");
+    expect(harness.sdk.callsTo("threads.spawn")).toHaveLength(1);
+  });
+
   it("returns a friendly dispatch error when the task project is not linked", async () => {
     const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
     await plugin(bb);

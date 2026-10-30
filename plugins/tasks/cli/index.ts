@@ -2584,6 +2584,11 @@ export function registerTasksCli(
               description:
                 "Dispatch preset name or id; run bb tasks preset list to see them",
             },
+            "attempt-id": {
+              type: "string",
+              placeholder: "id",
+              description: "Reuse this id to retry the same dispatch safely",
+            },
             instructions: {
               type: "string",
               placeholder: "text",
@@ -2607,6 +2612,7 @@ export function registerTasksCli(
                   delegationRpcContract.delegate.input.parse({
                     taskId: task.id,
                     presetId: preset.id,
+                    attemptId: input.options["attempt-id"],
                     extraInstructions: input.options.instructions,
                   }),
                 ),
