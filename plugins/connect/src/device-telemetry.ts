@@ -6,8 +6,6 @@ export const deviceSourceSchema = z.enum([
   "replay",
   "settings",
   "cli",
-  "during_first_thread",
-  "after_first_thread",
   "other",
   "unknown",
 ]);
@@ -23,10 +21,8 @@ type Observation = {
 export function createConnectSetupMeasurement(
   capture: (properties: Observation) => void,
 ) {
-  let observedReady = false;
   let pending: { source: DeviceSource; unknown: boolean } | null = null;
   function begin(source: DeviceSource): void {
-    observedReady = false;
     pending = { source, unknown: false };
     capture({
       target: "browser_access",
@@ -43,23 +39,9 @@ export function createConnectSetupMeasurement(
     },
     observe(status: Pick<ConnectStatus, "state" | "enabled" | "lastError">) {
       const attempt = pending;
-      if (!status.enabled) observedReady = false;
-      if (!attempt) {
-        if (!observedReady && status.state === "connected" && status.enabled) {
-          observedReady = true;
-          capture({
-            target: "browser_access",
-            action: "service_ready",
-            outcome: "succeeded",
-            source: "unknown",
-            error_category: null,
-          });
-        }
-        return;
-      }
+      if (!attempt) return;
       if (status.state === "connected" && status.enabled) {
         pending = null;
-        observedReady = true;
         capture({
           target: "browser_access",
           action: "service_ready",

@@ -42,18 +42,19 @@ describe("Connect setup milestones", () => {
     ]);
     expect(JSON.stringify(capture.mock.calls)).not.toContain("private failure");
   });
-  it("does not invent an enable request for startup readiness", () => {
+  it("does not count startup or refreshed readiness as a setup success", () => {
     const capture = vi.fn();
     const measurement = createConnectSetupMeasurement(capture);
     measurement.observe({ state: "connected", enabled: true, lastError: null });
     measurement.observe({ state: "connected", enabled: true, lastError: null });
-    expect(capture).toHaveBeenCalledExactlyOnceWith({
-      target: "browser_access",
-      action: "service_ready",
-      outcome: "succeeded",
-      source: "unknown",
-      error_category: null,
-    });
+    expect(capture).not.toHaveBeenCalled();
+    measurement.beginIfIdle("unknown");
+    measurement.observe({ state: "connected", enabled: true, lastError: null });
+    measurement.observe({ state: "connected", enabled: true, lastError: null });
+    expect(capture.mock.calls.map(([event]) => event.action)).toEqual([
+      "enable_requested",
+      "service_ready",
+    ]);
   });
   it("treats request loss as unknown and actual disabling as cancellation", () => {
     const capture = vi.fn();

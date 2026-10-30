@@ -201,6 +201,7 @@ export function useThreadComposerAddToChat(thread: {
   );
 }
 
+
 function useChildThreadsSection(
   threadId: string,
   enabled: boolean,
@@ -515,9 +516,7 @@ export function ThreadScreen({
         isThreadTimelinePending={isThreadTimelinePending}
         timelineError={Boolean(timeline.timelineError)}
         loadingContent={
-          isPanelPresentation ? (
-            <ThreadTimelinePanelLoadingSkeleton />
-          ) : undefined
+          isPanelPresentation ? <ThreadTimelinePanelLoadingSkeleton /> : undefined
         }
         timelineErrorClassName={
           isPanelPresentation ? "mx-2 mt-4 text-destructive" : undefined
@@ -666,6 +665,7 @@ export function ThreadScreen({
       );
   }
 }
+
 
 function ThreadScreenPanelShell({
   presentation,
