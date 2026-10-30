@@ -66,29 +66,6 @@ export function annotateDesign(config) {
       line(center, lineStart, lineEnd),
     );
   }
-  let insets = "";
-  for (const inset of config.insets ?? []) {
-    const [x1, y1, x2, y2] = inset.crop;
-    const k = inset.scale;
-    const width = round((x2 - x1) * k);
-    const height = round((y2 - y1) * k);
-    const [imageWidth, imageHeight] = inset.page;
-    insets += `<div class="inset" style="left:${inset.left}px;top:${inset.top}px;width:${width}px;height:${height}px;border-radius:${inset.radius ?? 8}px;background:url(${inset.capture}) no-repeat;background-size:${round(imageWidth * k)}px ${round(imageHeight * k)}px;background-position:${round(-x1 * k)}px ${round(-y1 * k)}px"></div>\n`;
-    if (inset.label) {
-      const center = round(inset.left + width / 2);
-      const gap = inset.label_gap ?? 12;
-      const [labelTop, lineStart, lineEnd] =
-        inset.label_side === "above"
-          ? [14, 33, inset.top]
-          : [
-              round(inset.top + height + gap),
-              round(inset.top + height),
-              round(inset.top + height + gap),
-            ];
-      insets += `${label(inset.label, center, labelTop, inset.anchor)}${line(center, lineStart, lineEnd)}\n`;
-      bottom = Math.max(bottom, labelTop + 19);
-    }
-  }
   const height = Math.round(bottom + 7);
   const shotHeight = round(pageHeight * scale);
   return `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="design-base.css"><style>
@@ -97,10 +74,9 @@ export function annotateDesign(config) {
 .ring{position:absolute;border-radius:5px;box-shadow:0 0 0 1px color-mix(in oklch, oklch(0.55 0.1 250) 75%, transparent);}
 .lab{position:absolute;font-size:9.5px;font-weight:500;color:oklch(0.48 0.1 250);background:rgba(255,255,255,.92);border:1px solid color-mix(in oklch, oklch(0.55 0.1 250) 30%, white);border-radius:999px;padding:2px 7px;white-space:nowrap;box-shadow:0 1px 2px rgba(20,40,70,.06)}
 .ln{position:absolute;width:1px;background:color-mix(in oklch, oklch(0.55 0.1 250) 55%, transparent)}
-.inset{position:absolute;box-shadow:0 0 0 1px color-mix(in oklch, oklch(0.55 0.1 250) 75%, transparent),0 10px 26px rgba(20,40,70,.16)}
 </style></head><body><div class="c">
 <div class="shot"></div>
-${rings}${insets}${parts.join("")}
+${rings}${parts.join("")}
 </div></body></html>`;
 }
 
