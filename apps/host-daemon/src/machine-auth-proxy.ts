@@ -144,7 +144,19 @@ function proxyRequest(args: {
     args.target,
     args.serverHeaders,
   );
+  const abortUpstream = () => {
+    upstream.destroy();
+  };
+  args.request.once("aborted", abortUpstream);
+  args.response.once("close", () => {
+    if (!args.response.writableFinished) abortUpstream();
+  });
   upstream.once("response", (upstreamResponse) => {
+    if (args.response.destroyed) {
+      upstreamResponse.destroy();
+      upstream.destroy();
+      return;
+    }
     args.response.writeHead(
       upstreamResponse.statusCode ?? 502,
       upstreamResponse.statusMessage,
@@ -157,6 +169,7 @@ function proxyRequest(args: {
     upstreamResponse.pipe(args.response);
   });
   upstream.on("error", () => {
+    if (args.response.destroyed) return;
     if (args.response.headersSent) {
       args.response.destroy();
       return;

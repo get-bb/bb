@@ -32,6 +32,93 @@ afterEach(async () => {
 });
 
 describe("startMachineAuthProxy", () => {
+  it.each(["before headers", "during response", "during upload"])(
+    "closes upstream when the client disconnects %s",
+    async (phase) => {
+      let upstreamResponse: http.ServerResponse | undefined;
+      let upstreamSocket: net.Socket | undefined;
+      let resolveReady: () => void = () => undefined;
+      const ready = new Promise<void>((resolve) => {
+        resolveReady = resolve;
+      });
+      const upstream = http.createServer((request, response) => {
+        upstreamResponse = response;
+        upstreamSocket = request.socket;
+        if (phase === "during response") {
+          response.writeHead(200, { "content-length": 4 * 1024 * 1024 });
+          response.write(Buffer.alloc(128 * 1024));
+        } else if (phase === "during upload") {
+          request.once("data", resolveReady);
+        } else resolveReady();
+      });
+      const port = await listen(upstream);
+      const proxy = await startMachineAuthProxy({
+        serverUrl: `http://127.0.0.1:${port}`,
+        serverHeaders: { "x-bb-connect-machine": "test-machine" },
+      });
+      proxies.push(proxy);
+      const client = http.request(`${proxy.serverUrl}/models`, {
+        method: phase === "during upload" ? "POST" : "GET",
+        headers: phase === "during upload" ? { "content-length": 100_000 } : {},
+      });
+      client.on("error", () => undefined);
+      client.on("response", (response) => response.once("data", resolveReady));
+      if (phase === "during upload") client.write(Buffer.alloc(1024));
+      else client.end();
+      try {
+        await ready;
+        client.destroy();
+        await expect
+          .poll(() => upstreamSocket?.destroyed, { timeout: 1000 })
+          .toBe(true);
+        expect(() => upstreamResponse?.end("late response")).not.toThrow();
+      } finally {
+        client.destroy();
+        upstreamResponse?.destroy();
+        upstream.closeAllConnections();
+      }
+    },
+  );
+
+  it("preserves completed HTTP keepalive connections", async () => {
+    let connections = 0;
+    const upstream = http.createServer((_request, response) =>
+      response.end("complete"),
+    );
+    upstream.on("connection", () => {
+      connections += 1;
+    });
+    const port = await listen(upstream);
+    const proxy = await startMachineAuthProxy({
+      serverUrl: `http://127.0.0.1:${port}`,
+      serverHeaders: { "x-bb-connect-machine": "test-machine" },
+    });
+    proxies.push(proxy);
+    const agent = new http.Agent({ keepAlive: true, maxSockets: 1 });
+    try {
+      for (let index = 0; index < 2; index += 1) {
+        const body = await new Promise<string>((resolve, reject) => {
+          http
+            .get(`${proxy.serverUrl}/models`, { agent }, (response) => {
+              let text = "";
+              response.setEncoding("utf8");
+              response.on("data", (chunk) => {
+                text += chunk;
+              });
+              response.on("end", () => resolve(text));
+              response.on("error", reject);
+            })
+            .on("error", reject);
+        });
+        expect(body).toBe("complete");
+      }
+      expect(connections).toBe(1);
+    } finally {
+      agent.destroy();
+      upstream.closeAllConnections();
+    }
+  });
+
   it.each(["upstream", "client"])(
     "contains a %s connection reset after a WebSocket upgrade",
     async (resetSide) => {
