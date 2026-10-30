@@ -3021,20 +3021,13 @@ describe("SplitThreadArea", () => {
     expect(screen.queryAllByTestId(/^pane-/)).toHaveLength(1);
   });
 
-  it("closes the only thread into the new-thread page", async () => {
-    const store = renderSplitArea({
+  it("offers no close on the only thread", async () => {
+    renderSplitArea({
       path: threadPath("thr-a"),
       routeAwareContent: true,
     });
-    fireEvent.click(await screen.findByTestId("close-thr-a"));
 
-    await waitFor(() =>
-      expect(screen.getByTestId("location").textContent).toBe("/"),
-    );
-    expect(screen.getByTestId("root-compose-view")).toBeTruthy();
-    expect(listPanes(store.get(splitLayoutAtom)!.root)[0]?.content).toEqual(
-      newThreadContent,
-    );
+    await screen.findByTestId("pane-thr-a");
     expect(screen.queryByTestId("close-thr-a")).toBeNull();
   });
 
@@ -3228,7 +3221,7 @@ describe("SplitThreadArea compact breakpoint crossings", () => {
       isSplitPane: false,
       secondaryPanelHost: null,
       reservesWindowPanelToggle: false,
-      canClose: true,
+      canClose: false,
       isMaximized: false,
       canMaximize: false,
       canMove: false,
@@ -3346,7 +3339,7 @@ describe("SplitThreadArea compact breakpoint crossings", () => {
     );
     expect(paneMounts.get("thr-a")).toBe(1);
     expect(latestPaneContext("thr-a").paneId).toBe("pane-1");
-    expect(latestPaneContext("thr-a").onRequestClose).not.toBeNull();
+    expect(latestPaneContext("thr-a").onRequestClose).toBeNull();
   });
 
   it("keeps one new-thread composer mounted with focus and selection across crossings", async () => {

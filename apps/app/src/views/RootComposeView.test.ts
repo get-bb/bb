@@ -310,7 +310,8 @@ describe("resolveNewThreadReadiness", () => {
       }),
     ).toMatchObject({
       status: "blocked",
-      message: "Modal Sandbox is not configured: set tokenId, tokenSecret in the plugin's settings.",
+      message:
+        "Modal Sandbox is not configured: set tokenId, tokenSecret in the plugin's settings.",
     });
   });
 
