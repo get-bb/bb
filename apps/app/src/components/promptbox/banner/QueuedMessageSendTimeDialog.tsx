@@ -1,49 +1,32 @@
-import { useId, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import type { ThreadQueuedMessage } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@bb/shared-ui/dialog";
-import { Input } from "@bb/shared-ui/input";
-import { Label } from "@bb/shared-ui/label";
-import { formatScheduledTime } from "@/lib/relative-time";
+import { ScheduleTimeFields } from "@bb/shared-ui/schedule-time-fields";
+import {
+  CUSTOM_SCHEDULE_OPTION_ID,
+  DEFAULT_SCHEDULE_PRESET_ID,
+  customScheduleAt,
+  defaultCustomSchedule,
+  formatScheduleTime,
+  resolveScheduleOption,
+  type CustomScheduleFields,
+  type ScheduleOptionId,
+} from "@bb/shared-ui/lib/schedule-time";
+import { appToast } from "@/components/ui/app-toast";
+import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import type { QueuedMessageSendTimeRequest } from "@/components/promptbox/banner/LazyQueuedMessagesList";
 
 interface QueuedMessageSendTimeDialogProps {
   queuedMessage: ThreadQueuedMessage | null;
   onOpenChange: (open: boolean) => void;
-  onChangeSendTime: (request: QueuedMessageSendTimeRequest) => void;
-}
-
-function padded(value: number, length = 2): string {
-  return String(value).padStart(length, "0");
-}
-
-export function formatSendTimeInputValue(at: number): string {
-  const date = new Date(at);
-  return `${padded(date.getFullYear(), 4)}-${padded(date.getMonth() + 1)}-${padded(date.getDate())}T${padded(date.getHours())}:${padded(date.getMinutes())}`;
-}
-
-const SEND_TIME_INPUT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
-
-export function parseSendTimeInputValue(
-  value: string,
-  now: number,
-): { ok: true; at: number } | { ok: false; message: string } {
-  if (!SEND_TIME_INPUT_PATTERN.test(value)) {
-    return { ok: false, message: "Choose a date and time." };
-  }
-  const at = new Date(value).getTime();
-  if (!Number.isFinite(at)) {
-    return { ok: false, message: "Choose a real date and time." };
-  }
-  if (at <= now) return { ok: false, message: "Choose a future time." };
-  return { ok: true, at };
+  onChangeSendTime: (request: QueuedMessageSendTimeRequest) => Promise<void>;
 }
 
 export function QueuedMessageSendTimeDialog({
@@ -51,13 +34,21 @@ export function QueuedMessageSendTimeDialog({
   onOpenChange,
   onChangeSendTime,
 }: QueuedMessageSendTimeDialogProps) {
+  const [busy, setBusy] = useState(false);
   return (
-    <Dialog open={queuedMessage !== null} onOpenChange={onOpenChange}>
+    <Dialog
+      open={queuedMessage !== null}
+      onOpenChange={(open) => {
+        if (open || !busy) onOpenChange(open);
+      }}
+    >
       <DialogContent>
         {queuedMessage ? (
           <QueuedMessageSendTimeForm
             key={queuedMessage.id}
+            busy={busy}
             queuedMessage={queuedMessage}
+            onBusyChange={setBusy}
             onDone={() => onOpenChange(false)}
             onChangeSendTime={onChangeSendTime}
           />
@@ -67,44 +58,87 @@ export function QueuedMessageSendTimeDialog({
   );
 }
 
+function initialSelection(
+  sendAt: number | null,
+  now: number,
+): { optionId: ScheduleOptionId; custom: CustomScheduleFields } {
+  return sendAt !== null && sendAt > now
+    ? { optionId: CUSTOM_SCHEDULE_OPTION_ID, custom: customScheduleAt(sendAt) }
+    : {
+        optionId: DEFAULT_SCHEDULE_PRESET_ID,
+        custom: defaultCustomSchedule(now),
+      };
+}
+
 function QueuedMessageSendTimeForm({
+  busy,
   queuedMessage,
+  onBusyChange,
   onDone,
   onChangeSendTime,
 }: {
+  busy: boolean;
   queuedMessage: ThreadQueuedMessage;
+  onBusyChange: (busy: boolean) => void;
   onDone: () => void;
-  onChangeSendTime: (request: QueuedMessageSendTimeRequest) => void;
+  onChangeSendTime: (request: QueuedMessageSendTimeRequest) => Promise<void>;
 }) {
-  const inputId = useId();
-  const [openedAt] = useState(() => Date.now());
-  const [value, setValue] = useState(() =>
-    formatSendTimeInputValue(
-      queuedMessage.sendAt !== null && queuedMessage.sendAt > openedAt
-        ? queuedMessage.sendAt
-        : openedAt + 60 * 60 * 1000,
-    ),
+  const [now, setNow] = useState(() => Date.now());
+  const [selection, setSelection] = useState(() =>
+    initialSelection(queuedMessage.sendAt, now),
   );
   const [error, setError] = useState<string | null>(null);
-  const preview = parseSendTimeInputValue(value, openedAt);
+  const preview = resolveScheduleOption(
+    selection.optionId,
+    selection.custom,
+    now,
+  );
 
-  const submit = (sendAt: number | null) => {
-    onChangeSendTime({
-      expectedUpdatedAt: queuedMessage.updatedAt,
-      queuedMessageId: queuedMessage.id,
-      sendAt,
-    });
-    onDone();
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const save = async (sendAt: number | null) => {
+    onBusyChange(true);
+    setError(null);
+    try {
+      await onChangeSendTime({
+        expectedUpdatedAt: queuedMessage.updatedAt,
+        queuedMessageId: queuedMessage.id,
+        sendAt,
+      });
+      onDone();
+      appToast.success(
+        sendAt === null
+          ? "Send time removed"
+          : `Sending ${formatScheduleTime(sendAt, Date.now())}`,
+      );
+    } catch (saveError: unknown) {
+      setError(
+        getMutationErrorMessage({
+          error: saveError,
+          fallbackMessage: "Failed to change when the queued message sends",
+          lifecycleOperation: "update_queued_message",
+        }),
+      );
+    } finally {
+      onBusyChange(false);
+    }
   };
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const parsed = parseSendTimeInputValue(value, Date.now());
-    if (!parsed.ok) {
-      setError(parsed.message);
+    const resolved = resolveScheduleOption(
+      selection.optionId,
+      selection.custom,
+      Date.now(),
+    );
+    if (!resolved.ok) {
+      setError(resolved.message);
       return;
     }
-    submit(parsed.at);
+    void save(resolved.at);
   };
 
   return (
@@ -112,40 +146,47 @@ function QueuedMessageSendTimeForm({
       <DialogHeader>
         <DialogTitle>Change send time</DialogTitle>
         <DialogDescription>
-          Choose when this queued message should send.
+          Choose when this message should send.
         </DialogDescription>
       </DialogHeader>
-      <form className="space-y-4" onSubmit={handleSubmit}>
-        <div className="space-y-2">
-          <Label htmlFor={inputId}>Send at</Label>
-          <Input
-            id={inputId}
-            type="datetime-local"
-            value={value}
-            min={formatSendTimeInputValue(openedAt)}
-            onChange={(event) => {
-              setValue(event.target.value);
-              setError(null);
-            }}
-          />
-          {error !== null || !preview.ok ? (
-            <p className="text-sm text-destructive" role="alert">
-              {error ?? (preview.ok ? null : preview.message)}
-            </p>
-          ) : (
-            <p className="text-sm text-muted-foreground" aria-live="polite">
-              Sends {formatScheduledTime({ now: openedAt, timestamp: preview.at })}
-            </p>
-          )}
+      <form className="flex flex-col gap-4 text-sm" onSubmit={handleSubmit}>
+        <ScheduleTimeFields
+          custom={selection.custom}
+          disabled={busy}
+          error={error}
+          now={now}
+          onCustomChange={(custom) => {
+            setSelection((current) => ({ ...current, custom }));
+            setError(null);
+          }}
+          onOptionChange={(optionId) => {
+            setSelection((current) => ({ ...current, optionId }));
+            setError(null);
+          }}
+          optionId={selection.optionId}
+        />
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button
+            className="sm:mr-auto"
+            disabled={busy}
+            onClick={() => void save(null)}
+            type="button"
+            variant="ghost"
+          >
+            Remove send time
+          </Button>
+          <Button
+            disabled={busy}
+            onClick={onDone}
+            type="button"
+            variant="outline"
+          >
+            Cancel
+          </Button>
+          <Button disabled={busy || !preview.ok} type="submit">
+            {busy ? "Saving…" : "Save"}
+          </Button>
         </div>
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => submit(null)}>
-            Send when ready
-          </Button>
-          <Button type="submit" disabled={!preview.ok}>
-            Save
-          </Button>
-        </DialogFooter>
       </form>
     </>
   );

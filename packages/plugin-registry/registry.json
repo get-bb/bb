@@ -53,6 +53,7 @@
     "resizable",
     "resource-list",
     "resource-pagination",
+    "schedule-time-fields",
     "scroll-area",
     "select",
     "separator",

@@ -81,6 +81,7 @@ export default {
 };
 
 const noop = () => {};
+const noopAsync = async () => {};
 const STORY_BRANCH_NAME = "bb/design-system-polish";
 
 const baseExecution = makeExecutionControlsProps({
@@ -747,7 +748,7 @@ function Row({
         onReorder={noop}
         onSetGroupBoundary={noop}
         onEdit={handleEditQueuedMessage}
-        onChangeSendTime={noop}
+        onChangeSendTime={noopAsync}
         expanded={queueExpanded}
         onExpandedChange={setQueueExpanded}
         onDelete={(id) =>

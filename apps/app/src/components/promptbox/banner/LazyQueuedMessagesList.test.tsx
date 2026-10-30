@@ -36,6 +36,7 @@ afterEach(() => {
 });
 
 const noop = () => {};
+const noopAsync = async () => {};
 
 function Queue({
   queuedMessages,
@@ -58,7 +59,7 @@ function Queue({
       onReorder={noop}
       onSetGroupBoundary={noop}
       onEdit={noop}
-      onChangeSendTime={noop}
+      onChangeSendTime={noopAsync}
       onDelete={noop}
       expanded={expanded}
       onExpandedChange={setExpanded}

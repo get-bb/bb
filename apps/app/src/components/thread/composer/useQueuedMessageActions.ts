@@ -54,7 +54,7 @@ interface UseQueuedMessageActionsResult {
   handleSaveInlineQueuedMessage: () => Promise<void>;
   handleChangeQueuedMessageSendTime: (
     request: QueuedMessageSendTimeRequest,
-  ) => void;
+  ) => Promise<void>;
   handleDeleteQueuedMessage: (queuedMessageId: string) => void;
   handleReorderQueuedMessage: (request: QueuedMessageReorderRequest) => void;
   handleSetQueuedMessageGroupBoundary: (
@@ -221,21 +221,17 @@ export function useQueuedMessageActions({
   ]);
 
   const handleChangeQueuedMessageSendTime = useCallback(
-    ({ expectedUpdatedAt, queuedMessageId, sendAt }: QueuedMessageSendTimeRequest) => {
-      void updateQueuedMessage
-        .mutateAsync({
-          expectedUpdatedAt,
-          id: threadId,
-          queuedMessageId,
-          sendAt,
-        })
-        .catch((error) => {
-          showMutationErrorToast({
-            error,
-            fallbackMessage: "Failed to change when the queued message sends",
-            lifecycleOperation: "update_queued_message",
-          });
-        });
+    async ({
+      expectedUpdatedAt,
+      queuedMessageId,
+      sendAt,
+    }: QueuedMessageSendTimeRequest) => {
+      await updateQueuedMessage.mutateAsync({
+        expectedUpdatedAt,
+        id: threadId,
+        queuedMessageId,
+        sendAt,
+      });
     },
     [threadId, updateQueuedMessage],
   );
