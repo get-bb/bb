@@ -76,6 +76,7 @@ import {
   SubscribeSection,
 } from "../landing/cta";
 import { siteHeadLinks } from "../landing/page-head";
+import { Testimonials } from "../landing/testimonials";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
 import { ClaudeIcon } from "../landing/icons";
 import {
@@ -1259,6 +1260,8 @@ function LandingPage() {
           They run on your own machines, even a Linux box that never sleeps.
         </p>
       </Band>
+
+      <Testimonials />
 
       <section className="closer" data-reveal data-section="closer">
         <h2 className="sec-title">

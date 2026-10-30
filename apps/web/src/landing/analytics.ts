@@ -8,6 +8,7 @@ import {
 } from "../experiments/flags";
 import type { ArrivalSource } from "./arrival-source";
 import type { CtaPlacement } from "./site";
+import type { TestimonialSource } from "./testimonials";
 
 type LandingEvent =
   | {
@@ -33,6 +34,10 @@ type LandingEvent =
   | {
       name: "landing_section_viewed";
       properties: { section: string };
+    }
+  | {
+      name: "landing_testimonial_clicked";
+      properties: { source: TestimonialSource };
     }
   | {
       name: "landing_send_to_computer_clicked";
