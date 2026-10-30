@@ -792,7 +792,7 @@ function ThreadRowComponent({
             data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
             title={crossProjectLabel}
             className={cn(
-              "relative ml-auto max-w-[min(4rem,25%)] shrink-0 truncate pe-0.5 text-2xs font-normal text-muted-foreground italic",
+              "relative ml-auto max-w-[min(4rem,25%)] shrink-0 truncate text-2xs font-normal text-muted-foreground",
               overlayProjectLabel && SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
             )}
             onClick={(event) => {
