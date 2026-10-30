@@ -79,7 +79,15 @@ Spawning:
     --source-seq-end <seq>         Fork after the source turn containing this event sequence
 
   Execution defaults resolve from explicit flags, live parent execution, and
-  remembered project defaults. With no remembered model, bb uses the explicitly
+  remembered project defaults. A child of a live parent starts on the
+  provider, model, reasoning level, and service tier of the parent's latest
+  turn. Each flag replaces only its own field, so a --model without --provider
+  runs on the parent's provider: pass --provider with another provider's
+  model. A --provider other than the parent's, or a parent whose provider is
+  disabled or unavailable, skips the parent, and an --option the inherited
+  model cannot run with picks a model that can. The remembered project
+  defaults, the execution of the last thread started from the app without
+  reusing an environment, apply otherwise. With no remembered model, bb uses the explicitly
   requested provider or Codex and resolves its provider-reported default model
   on the target machine (or the first catalog model when none is marked). The product reasoning and permission defaults are
   medium and auto.

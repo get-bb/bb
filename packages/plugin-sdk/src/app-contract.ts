@@ -4862,8 +4862,12 @@ export interface NewThreadComposerProps {
    * Every seeded field is reported as caller-explicit in the submitted
    * request's `executionInputSources`. That is what makes the seed survive
    * `threads.spawn`: the server drops a requested `providerId`/`model` that
-   * carries no provenance source and re-derives it from the project's stored
-   * defaults, which would silently undo the seed.
+   * carries no provenance source and re-derives it from the parent thread's
+   * latest turn when the request has a `parentThreadId`, otherwise from the
+   * project's stored defaults, which would silently undo the seed. A field the
+   * user leaves untouched carries no source either, so a thread spawned with a
+   * `parentThreadId` starts on the parent's value for it, not the one the
+   * picker showed.
    */
   defaultProviderId?: string;
   /** Seeds the model picker. Same seed semantics as {@link defaultProviderId}. */

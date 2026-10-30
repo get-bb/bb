@@ -141,6 +141,7 @@ export function resolveProjectExecutionDefaultsForCreate(
             })),
           model: parent.execution.model,
           reasoningLevel: parent.execution.reasoningLevel,
+          serviceTier: parent.execution.serviceTier,
         }
       : resolution.executionDefaults;
 

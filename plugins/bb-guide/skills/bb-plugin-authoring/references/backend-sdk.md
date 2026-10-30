@@ -267,7 +267,9 @@ list, search, prompt-history, section, lifecycle, parent-operation, direct-open,
 and direct-ID behavior. A thread you spawn with a `parentThreadId` inherits the
 parent's visibility when you omit `visibility`, and a hidden child still
 reports its turns and blockers to its parent. This is an organization contract, not a security
-boundary: plugins are full-trust server code.
+boundary: plugins are full-trust server code. A child also starts on the
+provider, model, reasoning level, and service tier of the parent's latest turn
+for each one you omit, unless you pass another `providerId`.
 
 Hidden worker threads need explicit runtime cleanup. Stop each hidden thread
 promptly after its final result, including error paths. Stop releases an active,
