@@ -211,8 +211,9 @@ export function useCycle(
       setInView(true);
       return;
     }
-    const observer = new IntersectionObserver(([entry]) => {
-      setInView(entry?.isIntersecting ?? false);
+    const observer = new IntersectionObserver((entries) => {
+      const latest = entries[entries.length - 1];
+      if (latest) setInView(latest.isIntersecting);
     });
     observer.observe(target);
     return () => observer.disconnect();

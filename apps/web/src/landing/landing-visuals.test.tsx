@@ -26,6 +26,11 @@ class FakeObserver {
   show(isIntersecting: boolean) {
     act(() => this.callback([{ isIntersecting }]));
   }
+  showBatch(...states: boolean[]) {
+    act(() =>
+      this.callback(states.map((isIntersecting) => ({ isIntersecting }))),
+    );
+  }
 }
 
 function render(node: React.ReactNode) {
@@ -105,6 +110,23 @@ describe("useCycle", () => {
     observer.show(true);
     expect(cycleOf(host)).toBe(entered + 2);
     expect(host.textContent).toBe("holding");
+    unmount();
+  });
+
+  it("follows the latest entry when a fast scroll batches several", () => {
+    const { host, unmount } = render(<Watched />);
+    const observer = FakeObserver.instances[0]!;
+    const paused = () =>
+      host.querySelector("[data-cycle]")!.getAttribute("data-paused");
+
+    observer.showBatch(true, false);
+    expect(paused()).toBe("true");
+    act(() => vi.advanceTimersByTime(5000));
+    expect(cycleOf(host)).toBe(0);
+
+    observer.showBatch(false, true);
+    expect(paused()).toBe("false");
+    expect(cycleOf(host)).toBe(1);
     unmount();
   });
 
