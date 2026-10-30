@@ -833,6 +833,39 @@ function WindowDots() {
   );
 }
 
+function useFitWindow(ref: RefObject<HTMLElement | null>) {
+  useEffect(() => {
+    const node = ref.current;
+    const frame = node?.parentElement;
+    if (!node || !frame || typeof ResizeObserver === "undefined") return;
+    const fit = () => {
+      const windowStyle = getComputedStyle(node);
+      const frameStyle = getComputedStyle(frame);
+      const width = Number.parseFloat(
+        windowStyle.getPropertyValue("--bw-width"),
+      );
+      const visible = Number.parseFloat(
+        windowStyle.getPropertyValue("--bw-visible-width"),
+      );
+      const room =
+        frame.clientWidth -
+        Number.parseFloat(frameStyle.paddingLeft) -
+        Number.parseFloat(frameStyle.paddingRight);
+      if (!width || !visible || !room) return;
+      const scale = Math.min(1, room / visible);
+      node.style.setProperty("--bw-scale", String(scale));
+      node.style.setProperty(
+        "--bw-slice",
+        `${Math.min(width, room / scale)}px`,
+      );
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(frame);
+    return () => observer.disconnect();
+  }, [ref]);
+}
+
 function stageClass(base: string, leaving: boolean, paused: boolean) {
   return `${base}${leaving ? " leaving" : ""}${paused ? " fw-paused" : ""}`;
 }
@@ -1066,6 +1099,7 @@ function Spot({
 
 export function PluginMap() {
   const ref = useRef<HTMLDivElement>(null);
+  useFitWindow(ref);
   const { cycle, paused } = useCycle(2800, 400, ref);
   const lit = PLUGIN_SPOTS[cycle % PLUGIN_SPOTS.length].id;
   return (
@@ -1086,7 +1120,7 @@ export function PluginMap() {
               </span>
             }
           >
-            <div className="side-label">All Threads</div>
+            <div className="side-label">Threads</div>
             <ThreadRow title="Signups by plan" status="running" active />
             <Spot id="pr" lit={lit} className="bw-spot-rows">
               <ThreadRow
@@ -1259,6 +1293,7 @@ const DELEGATION_PING = "Review the diff needs your approval";
 
 export function DelegationTree() {
   const ref = useRef<HTMLDivElement>(null);
+  useFitWindow(ref);
   const { cycle, leaving, paused } = useCycle(14800, 700, ref);
   return (
     <div
@@ -1274,7 +1309,7 @@ export function DelegationTree() {
           key={cycle}
         >
           <Sidebar>
-            <div className="side-label">All Threads</div>
+            <div className="side-label">Threads</div>
             <ThreadRow title="Bump the SDK" icon={ClaudeIcon} status="done" />
             <ThreadRow
               title={DELEGATION_LEAD}
@@ -1373,6 +1408,7 @@ const START_PROMPT = "Hand this off to bb: fix the checkout bug";
 
 export function StartAnywhere() {
   const ref = useRef<HTMLDivElement>(null);
+  useFitWindow(ref);
   const { cycle, leaving, paused } = useCycle(11800, 700, ref);
   return (
     <div
