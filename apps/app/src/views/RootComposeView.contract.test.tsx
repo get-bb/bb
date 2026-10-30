@@ -186,6 +186,8 @@ vi.mock("@/components/dialogs/ProjectMachineSetupDialog", () => ({
   ProjectMachineSetupDialog: () => null,
 }));
 
+const NO_TABS = { open: false, selectedKey: null, tabs: [] };
+
 const actionTab = {
   id: "chat",
   context: { kind: "thread" },
@@ -264,6 +266,7 @@ describePanelControllerContract(
     return {
       panel: () => panel,
       snapshot: () => snapshotFromState(sink),
+      tabs: () => getFocusedAppPanelController()?.getTabs() ?? NO_TABS,
       renderedTarget: () => null,
       renderedTabVisible: () => null,
       command: (id) => appCommandHandlers.get(id)?.() !== false,

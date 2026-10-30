@@ -39,6 +39,10 @@ interface SidebarWindowedItemsProps {
 
 const EMPTY_KEY_SET: ReadonlySet<string> = new Set();
 
+function hasLayoutBox(rect: DOMRectReadOnly): boolean {
+  return rect.width > 0 || rect.height > 0;
+}
+
 function mergeRealizedKeys(
   previous: ReadonlySet<string>,
   {
@@ -246,7 +250,10 @@ export function SidebarWindowedItems({
             }
             if (entry.isIntersecting) {
               intended.set(key, true);
-            } else if (!alwaysMountedKeysRef.current.has(key)) {
+            } else if (
+              !alwaysMountedKeysRef.current.has(key) &&
+              hasLayoutBox(entry.boundingClientRect)
+            ) {
               intended.set(key, false);
               recordMeasuredHeight(key, entry.boundingClientRect.height);
             }

@@ -18,9 +18,7 @@ import {
   type SecondaryFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
 import { buildFileOpenerPanelTab } from "@/components/plugin/file-opener-tabs";
-import { usePluginDetailPanelState } from "@/components/plugin/plugin-detail-navigation";
 import { resetBrowserViewPersistence } from "./browserViewVisibilityCoordinator";
-import { getPanelTabHistoryKey } from "./recentlyClosedPanelTabs";
 import {
   resetRecentlyClosedPanelTabsForTest,
   useThreadFileTabs,
@@ -179,71 +177,51 @@ describe("useThreadFileTabs recently closed tabs", () => {
   it("restores mixed plugin-detail and content history across a remount", () => {
     const params = {
       panelStateId: "mixed-history",
-      syncThreadId: "thr_current",
+      syncThreadId: null,
       environmentId: "env_1",
       storageFiles: undefined,
       terminalSessions: undefined,
     };
-    const useMixedHistory = () => {
-      const details = usePluginDetailPanelState(
-        params.panelStateId,
-        true,
-        getPanelTabHistoryKey({
-          panelStateId: params.panelStateId,
-          environmentId: params.environmentId,
-          fileOwnerThreadId: params.syncThreadId,
-        }),
-      );
-      return { details, tabs: useThreadFileTabsWithActiveTab(params) };
-    };
-    const first = renderThreadHook(useMixedHistory);
+    const first = renderThreadHook(() =>
+      useThreadFileTabsWithActiveTab(params),
+    );
     let browserId = "";
     act(() => {
       browserId =
-        first.result.current.tabs.openTab({
+        first.result.current.openTab({
           kind: "browser",
           url: "https://older.example",
         })?.id ?? "";
     });
-    act(() => first.result.current.tabs.closeTab(browserId));
-    act(() =>
-      first.result.current.details.open({
-        pluginId: "secrets",
-        title: "Secrets",
-      }),
-    );
-    act(() =>
-      first.result.current.details.open({ pluginId: "docs", title: "Docs" }),
-    );
+    act(() => first.result.current.closeTab(browserId));
+    let secretsId = "";
+    let docsId = "";
     act(() => {
-      first.result.current.details.close("secrets");
-      first.result.current.details.close("docs");
+      secretsId = first.result.current.openPluginDetail({
+        detailKey: "secrets",
+        title: "Secrets",
+      }).id;
+      docsId = first.result.current.openPluginDetail({
+        detailKey: "docs",
+        title: "Docs",
+      }).id;
+    });
+    act(() => {
+      first.result.current.closeTab(secretsId);
+      first.result.current.closeTab(docsId);
     });
     first.unmount();
 
-    const { result } = renderThreadHook(useMixedHistory);
-    act(() =>
-      expect(result.current.tabs.reopenClosedTab(result.current.details)).toBe(
-        true,
-      ),
+    const { result } = renderThreadHook(() =>
+      useThreadFileTabsWithActiveTab(params),
     );
-    expect(result.current.details.activePluginId).toBe("docs");
-    act(() =>
-      expect(result.current.tabs.reopenClosedTab(result.current.details)).toBe(
-        true,
-      ),
-    );
-    expect(result.current.details.activePluginId).toBe("secrets");
-    act(() =>
-      expect(result.current.tabs.reopenClosedTab(result.current.details)).toBe(
-        true,
-      ),
-    );
-    expect(result.current.details.activePluginId).toBeNull();
-    expect(result.current.tabs.activeTab?.id).toBe(browserId);
-    expect(result.current.tabs.reopenClosedTab(result.current.details)).toBe(
-      false,
-    );
+    act(() => expect(result.current.reopenClosedTab()).toBe(true));
+    expect(result.current.activeTab?.id).toBe(docsId);
+    act(() => expect(result.current.reopenClosedTab()).toBe(true));
+    expect(result.current.activeTab?.id).toBe(secretsId);
+    act(() => expect(result.current.reopenClosedTab()).toBe(true));
+    expect(result.current.activeTab?.id).toBe(browserId);
+    expect(result.current.reopenClosedTab()).toBe(false);
   });
 
   it.each([

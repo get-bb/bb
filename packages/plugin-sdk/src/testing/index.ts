@@ -42,6 +42,7 @@ export {
   makeQueueEntry,
   makeThreadResponse,
   makeTurnFailedEvent,
+  makePanelController as experimental_makePanelController,
 } from "./fixtures.js";
 export {
   scanPublicSdkOnly as experimental_scanPublicSdkOnly,

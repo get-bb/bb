@@ -1,3 +1,4 @@
+import { experimental_makePanelController } from "@get-bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
 
@@ -23,11 +24,9 @@ function stubRpcFetch(handler: (method: string, input: unknown) => unknown) {
 }
 
 function panelStub() {
-  return {
+  return experimental_makePanelController({
     openTab: vi.fn(() => true),
-    toggleTab: vi.fn(() => true),
-    close: vi.fn(() => true),
-  };
+  });
 }
 
 const message = {
