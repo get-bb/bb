@@ -2,11 +2,18 @@ import { z } from "zod";
 import type { Env } from "../server/env";
 import {
   advanceClaim,
-  CLAIM_PENDING,
+  deliverClaim,
   saveResponse,
+  surveyEmailStatus,
   type ClaimsEnv,
+  type EmailStatus,
 } from "./claims";
-import { surveyFields, validateSurvey, type SurveyReply } from "./survey";
+import {
+  surveyAnswers,
+  surveyFields,
+  validateSurvey,
+  type SurveyReply,
+} from "./survey";
 
 type CommunityEnv = ClaimsEnv &
   Pick<Env, "COMMUNITY_FORMS_ENABLED" | "COMMUNITY_FORM_RATE_LIMITER">;
@@ -134,10 +141,26 @@ export async function handleSurveySubmission(
       ? await advanceClaim(env, saved.claim, now)
       : null;
     const claimLink = advanced?.ok ? advanced.claimLink : null;
-    const claimNote =
-      saved.note ?? (saved.claim && !claimLink ? CLAIM_PENDING : null);
+    const emailStatus: EmailStatus = saved.duplicate
+      ? await surveyEmailStatus(env, id).catch(() => "none" as const)
+      : saved.claim && claimLink
+        ? await deliverClaim(
+            env,
+            saved.claim,
+            surveyAnswers(values),
+            claimLink,
+            now,
+          ).catch(() => "queued" as const)
+        : saved.claim
+          ? "queued"
+          : "none";
     return reply({
-      result: { duplicate: saved.duplicate, claimLink, claimNote },
+      result: {
+        duplicate: saved.duplicate,
+        claimLink,
+        claimNote: saved.note,
+        emailStatus,
+      },
     });
   } catch {
     return reply(
