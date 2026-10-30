@@ -7,7 +7,7 @@ import {
 import type { TelemetryEvent } from "../../src/services/system/telemetry.js";
 
 describe("accepted work contract", () => {
-  it("keeps actors independent of wrappers without claiming backend plugin work is user work", () => {
+  it("uses existing plugin precedence and leaves unidentified SDK callers unknown", () => {
     expect(
       resolveAcceptedWorkInitiator({
         initiator: "user",
@@ -28,7 +28,7 @@ describe("accepted work contract", () => {
         origin: "plugin",
         originPluginId: "suggestions",
       }),
-    ).toBe("agent");
+    ).toBe("plugin");
     expect(
       resolveAcceptedWorkInitiator({
         initiator: "user",

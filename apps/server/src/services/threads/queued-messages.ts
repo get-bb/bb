@@ -264,8 +264,8 @@ export async function createQueuedMessageForThread(
         const queuedMessage = createQueuedThreadMessageInTransaction(tx, {
           threadId: thread.id,
           content: input,
-          origin: payload.originPluginId === undefined ? null : "plugin",
-          originPluginId: payload.originPluginId ?? null,
+          origin: null,
+          originPluginId: null,
           senderThreadId,
           model: execution.model,
           reasoningLevel: execution.reasoningLevel,

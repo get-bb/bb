@@ -1,17 +1,15 @@
 import type { ThreadCreateOrigin, ThreadTurnInitiator } from "@bb/domain";
-import type { TelemetryService } from "./telemetry.js";
+import { resolveTelemetryInitiator } from "../threads/telemetry-initiator.js";
+import type { TelemetryInitiator, TelemetryService } from "./telemetry.js";
 
-export type WorkInitiator =
-  | "user"
-  | "agent"
-  | "system"
-  | "plugin"
-  | "automation"
-  | "unknown";
+export type WorkInitiator = TelemetryInitiator | "unknown";
 
 export type AcceptedWorkTelemetryEvent = {
   name: "work_accepted";
-  properties: { work_kind: "thread" | "message"; work_initiator: WorkInitiator };
+  properties: {
+    work_kind: "thread" | "message";
+    work_initiator: WorkInitiator;
+  };
 };
 
 export function resolveAcceptedWorkInitiator(args: {
@@ -19,12 +17,8 @@ export function resolveAcceptedWorkInitiator(args: {
   origin: ThreadCreateOrigin | null;
   originPluginId: string | null;
 }): WorkInitiator {
-  if (args.initiator === "agent" || args.initiator === "system")
-    return args.initiator;
-  if (args.originPluginId === "automations") return "automation";
-  if (args.origin === "plugin" || args.originPluginId !== null) return "plugin";
-  if (args.origin === "sdk") return "unknown";
-  return args.initiator;
+  if (args.origin === "sdk" && args.initiator === "user") return "unknown";
+  return resolveTelemetryInitiator(args);
 }
 
 export function captureAcceptedWork(
