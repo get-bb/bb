@@ -192,9 +192,11 @@ function GuidesMenu({
 export function SiteNav({
   current,
   path,
+  downloadPage = false,
 }: {
   current?: SiteNavPage;
   path?: string;
+  downloadPage?: boolean;
 }) {
   const platform = useDesktopPlatform();
   return (
@@ -228,11 +230,17 @@ export function SiteNav({
         >
           <HugeiconsIcon icon={GithubIcon} />
         </GitHubLink>
-        <DesktopDownloadButton
-          placement="nav"
-          platform={platform}
-          className="btn btn-primary btn-sm nav-download"
-        />
+        {downloadPage ? (
+          <a className="btn btn-primary btn-sm nav-download" href="/download">
+            Download
+          </a>
+        ) : (
+          <DesktopDownloadButton
+            placement="nav"
+            platform={platform}
+            className="btn btn-primary btn-sm nav-download"
+          />
+        )}
       </div>
     </nav>
   );

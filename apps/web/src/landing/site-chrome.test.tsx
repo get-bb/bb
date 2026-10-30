@@ -33,6 +33,14 @@ describe("site navigation", () => {
     expect(html).not.toContain("Theme");
   });
 
+  it("can send the header button to the download page", () => {
+    const html = renderToStaticMarkup(<SiteNav downloadPage />);
+    expect(html).toContain(
+      '<a class="btn btn-primary btn-sm nav-download" href="/download">Download</a>',
+    );
+    expect(html).not.toContain("/download/macos");
+  });
+
   it("marks Building plugins current inside the Plugins menu", () => {
     const html = renderToStaticMarkup(<SiteNav current="plugin-guide" />);
     expect(html).toContain('<summary class="nav-current">Plugins');
