@@ -58,6 +58,11 @@ under `<bb-data-dir>/plugins/<id>/` (SQLite database, secrets, logs).
   bb plugin source <id> [--json] Requested and resolved source, subdirectory,
                                  semver range and resolved tag, engine ranges,
                                  install time, and recent activation history
+  bb plugin share <id> [--json]  Print the plugin's getbb.app page link, the
+                                 same one the app's Share button copies. Works
+                                 for installed and uninstalled BB Official and
+                                 BB Community plugins; exits 1 when the plugin
+                                 has no page (local, third-party, or unlisted)
   bb plugin enable|disable <id>  Load or unload an installed plugin. A
                                  builtin you never toggled follows bb's
                                  default; an explicit choice persists across

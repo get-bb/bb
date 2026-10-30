@@ -346,13 +346,21 @@ first-send events through `POST /api/v1/system/telemetry/events`
 `onboarding_sign_in`, `new_thread_submit` (started, accepted, or failed),
 `plugin_creation_started` (no properties; sent when you choose New plugin in
 the app or run `bb plugin new`, so it records intent, not a finished plugin),
-and `release_notes_opened` from Settings → Updates (`view` `inline` when the
-notes open under the bb row, `web` for the full notes on getbb.app).
+`release_notes_opened` from Settings → Updates (`view` `inline` when the
+notes open under the bb row, `web` for the full notes on getbb.app), and
+`plugin_link_shared` when you share a plugin's getbb.app page from its Share
+button, the ⋯ menu's Copy marketplace link, or `bb plugin share`
+(`share_method` `share_sheet`, `copy_link`, or `cli`; a cancelled share sheet
+sends nothing).
 `bb plugin new` sends `plugin_creation_started` with `app_surface` `api`, skips
 it inside a bb agent thread (so an agent acting on New plugin isn't counted
 twice), and skips it silently when no bb server answers within 2 seconds. The
 route accepts only these events with fixed enums and booleans, plus a
-`release_version` of digits and dots (such as `0.47.0`): no provider ids,
+`release_version` of digits and dots (such as `0.47.0`) and the
+`plugin_link_shared` `marketplace` and `entry_id` pair. The server checks that
+pair against the BB Official and BB Community catalogs, records the matched
+entry's `entry_id`, `marketplace`, and `plugin_id`, and nulls all three when the
+pair has no page, so typed-in text never reaches telemetry. No provider ids,
 account details, prompts, release-note text, project or file names, terminal
 output, error messages, or session ids. Sign-in `exited` means the command exited before
 readiness was observed, not that authentication succeeded; `new_thread_submit`

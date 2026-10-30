@@ -265,6 +265,28 @@ describe("plugin catalog service", () => {
     });
   });
 
+  it("links each listed BB Official and BB Community entry to its page", async () => {
+    const catalog = service();
+    const results = await catalog.search("");
+    const pageUrl = (entryId: string) =>
+      results.find((entry) => entry.entryId === entryId)?.marketplacePageUrl;
+    expect(pageUrl("docs")).toBe(
+      "https://getbb.app/marketplace/simple-notes?utm_source=bb&utm_medium=share",
+    );
+    expect(pageUrl("thread-hover-cards")).toBe(
+      "https://getbb.app/marketplace/thread-hover-cards?utm_source=bb&utm_medium=share",
+    );
+    expect(pageUrl("provider-codex")).toBeNull();
+    expect(pageUrl("account-pool")).toBeNull();
+    expect(catalog.marketplacePage("bb-official", "docs")).toMatchObject({
+      marketplace: "bb-official",
+      entryId: "simple-notes",
+      pluginId: "simple-notes",
+    });
+    expect(catalog.marketplacePage("bb-official", "provider-codex")).toBeNull();
+    expect(catalog.marketplacePage("bb-community", "docs")).toBeNull();
+  });
+
   it("matches queries against entry id, plugin id, manifest text, and tags", async () => {
     const catalog = service();
     expect(

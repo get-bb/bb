@@ -5,6 +5,7 @@ export * from "./thread/thread-activity.js";
 
 export * from "./codepoint-compare.js";
 export * from "./environment-providers.js";
+export * from "./plugins/plugin-share-target.js";
 export * from "./sidebar/sectionKeys.js";
 export * from "./sidebar/projectThreadGroups.js";
 export * from "./sidebar/machineThreadGroups.js";

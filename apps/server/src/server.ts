@@ -925,7 +925,7 @@ export function createApp(
   registerEnvironmentRoutes(publicApi, deps, pluginService);
   registerThreadRoutes(publicApi, deps);
   registerQueueRoutes(publicApi, deps);
-  registerSystemRoutes(publicApi, deps, pluginService);
+  registerSystemRoutes(publicApi, deps, pluginService, pluginCatalogService);
   registerUiPreferenceRoutes(publicApi, deps);
   const pluginInstallJobs = createPluginInstallJobs({
     notifyChanged: () => deps.hub.notifySystem(["plugin-install-jobs-changed"]),

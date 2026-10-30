@@ -5,7 +5,10 @@ import { DEFAULTS } from "@bb/config/defaults";
 import type { ServerConfig } from "@bb/config/server";
 import { readOrCreateSecretFile } from "@bb/secret-storage";
 import type { AppSurface, RequestAppSurface } from "@bb/config/app-surface";
-import type { RecordTelemetryEventRequest } from "@bb/server-contract";
+import type {
+  PluginShareMethod,
+  RecordTelemetryEventRequest,
+} from "@bb/server-contract";
 import type { ServerLogger } from "../../types.js";
 
 const POSTHOG_INGESTION_URL = "https://us.i.posthog.com/capture/";
@@ -73,7 +76,16 @@ export type TelemetryEvent =
         entry_id: string | null;
       };
     }
-  | RecordTelemetryEventRequest;
+  | {
+      name: "plugin_link_shared";
+      properties: {
+        plugin_id: string | null;
+        entry_id: string | null;
+        marketplace: string | null;
+        share_method: PluginShareMethod;
+      };
+    }
+  | Exclude<RecordTelemetryEventRequest, { name: "plugin_link_shared" }>;
 
 export interface TelemetryService {
   capture(event: TelemetryEvent): void;

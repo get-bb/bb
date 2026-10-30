@@ -3808,13 +3808,17 @@ rollback delivery, missing jobs after restart, and CLI/SDK parity.
 Posts one anonymous product event to `POST /api/v1/system/telemetry/events`,
 which forwards it to usage telemetry under the install's anonymous id and
 drops it when usage data sharing is off. The schema is a strict allow-list of
-setup-guide, new-thread-submit, plugin-creation-started, and release notes
-events; anything else is a 400. App callers, all through `recordTelemetryEvent`
-in `apps/app/src/components/onboarding/onboarding-telemetry.ts`: the setup guide
+setup-guide, new-thread-submit, plugin-creation-started, release notes, and
+plugin-link-shared events; anything else is a 400. `plugin_link_shared` carries
+a marketplace and entry id that the server replaces with the matched BB
+Official or BB Community entry, or nulls. App callers, all through
+`recordTelemetryEvent` in
+`apps/app/src/components/onboarding/onboarding-telemetry.ts`: the setup guide
 (`OnboardingFlow`), `NewThreadComposer`'s `new_thread_submit` outcomes,
-`PluginCreateButton`'s `plugin_creation_started`, and Settings → Updates'
-changelog (`release_notes_opened`, inline or on the web). `bb plugin new` sends
-`plugin_creation_started` through the same SDK method.
+`PluginCreateButton`'s `plugin_creation_started`, Settings → Updates'
+changelog (`release_notes_opened`, inline or on the web), and
+`PluginShareButton`'s `plugin_link_shared`. `bb plugin new` and
+`bb plugin share` send their events through the same SDK method.
 
 Stabilize after deciding whether third-party plugins may emit product events
 at all and, if so, how they are namespaced and rate limited.

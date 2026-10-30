@@ -49,6 +49,7 @@ function catalogEntry(
     installs: 10,
     compatible: true,
     incompatibleReason: null,
+    marketplacePageUrl: null,
     ...overrides,
   };
 }

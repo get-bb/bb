@@ -1,6 +1,14 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { SkillProvider } from "@bb/server-contract";
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQueryClient,
+} from "@tanstack/react-query";
+import type {
+  InstalledPlugin,
+  PluginInstallJob,
+  SkillProvider,
+} from "@bb/server-contract";
 import {
   ResourceInstallControl,
   ResourceListState,
@@ -8,9 +16,15 @@ import {
 } from "@bb/shared-ui/resource-list";
 import { Switch } from "@bb/shared-ui/switch";
 import { AddPluginDialog } from "@/components/plugin/management/AddPluginDialog";
+import { PluginCardGrid } from "@/components/plugin/management/PluginCard";
+import { PluginCatalogCard } from "@/components/plugin/management/PluginCatalogCard";
 import { PluginDetailReleaseControl } from "@/components/plugin/management/PluginUpdatesCard";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
-import { pluginSourceQueryKey } from "@/hooks/queries/query-keys";
+import {
+  pluginInstallJobsQueryKey,
+  pluginListQueryKey,
+  pluginSourceQueryKey,
+} from "@/hooks/queries/query-keys";
 import {
   EMPTY_PLUGIN_UPDATE_STATE,
   type PluginListItem,
@@ -33,6 +47,7 @@ import { BbLogo } from "@/components/ui/bb-logo";
 import { ProvenancePill } from "@/components/tools/ProvenancePill";
 import { SkillDetailView } from "@/components/tools/SkillDetailView";
 import {
+  makeInstalledPlugin,
   makePluginListItem,
   makePluginRegistrationSet,
 } from "@/test/fixtures/plugins";
@@ -42,6 +57,10 @@ export default {
 };
 
 const noop = () => {};
+
+function shareLink(entryId: string): string {
+  return `https://getbb.app/marketplace/${entryId}?utm_source=bb&utm_medium=share`;
+}
 
 function PluginStoryQueryBoundary({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => {
@@ -63,6 +82,7 @@ function PluginStoryQueryBoundary({ children }: { children: ReactNode }) {
       "github-update-failed",
       "github-compatibility-blocked",
       "enterprise-issue-tracker-synchronization",
+      ...SHARE_STORY_SOURCE_PLUGIN_IDS,
     ]) {
       client.setQueryData(pluginSourceQueryKey(pluginId), {
         requested: `npm:@bb-plugins/${pluginId}`,
@@ -74,6 +94,9 @@ function PluginStoryQueryBoundary({ children }: { children: ReactNode }) {
         history: [],
       });
     }
+    client.setQueryData(pluginInstallJobsQueryKey(), [
+      SHARE_STORY_INSTALL_JOB,
+    ]);
     return client;
   });
   return (
@@ -525,6 +548,7 @@ Sign in once with \`gh auth login\`. The plugin reuses your GitHub CLI session a
   installs: null,
   compatible: true,
   incompatibleReason: null,
+  marketplacePageUrl: shareLink("github"),
 } satisfies PluginCatalogSearchEntry;
 
 const COMPATIBILITY_BLOCKED_PLUGIN: PluginListItem = {
@@ -1053,7 +1077,9 @@ const CATALOG_PLUGIN = {
   id: "github-official",
   provenance: "catalog",
   catalogEntryId: "github",
+  catalogMarketplaceName: "bb-community",
   publisherLabel: "BB Community",
+  marketplacePageUrl: shareLink("github"),
 } satisfies PluginListItem;
 
 const pluginUninstallItems = [
@@ -1341,5 +1367,598 @@ export function ResourceControlStates() {
         </ControlTable>
       </main>
     </PluginStoryQueryBoundary>
+  );
+}
+
+const SHARE_STORY_SOURCE_PLUGIN_IDS = [
+  "agent-annotations",
+  "github-community-share",
+];
+
+const SHARE_STORY_INSTALL_JOB = {
+  id: "job-share-story",
+  target: {
+    kind: "catalog",
+    entryId: "bb--git",
+    marketplace: "bb-official",
+  },
+  displayName: "Git",
+  state: "running",
+} as const;
+
+const SHARE_CATALOG_ENTRY = {
+  ...UNINSTALLED_CATALOG_PLUGIN,
+  entryId: "agent-annotations",
+  pluginId: "agent-annotations",
+  displayName: "Agent Annotations",
+  description: "Comment on any agent output and send the notes back as a turn.",
+  overview:
+    "Select any part of an agent's reply, leave a note, and send every note back as one turn.",
+  icon: "Edit",
+  categoryId: "tasks-and-workflows",
+  category: "Tasks & Workflows",
+  source: "builtin:agent-annotations",
+  marketplacePageUrl: shareLink("agent-annotations"),
+} satisfies PluginCatalogSearchEntry;
+
+const SHARE_INSTALLING_ENTRY = {
+  ...SHARE_CATALOG_ENTRY,
+  entryId: "bb--git",
+  pluginId: "git",
+  displayName: "Git",
+  description: "Stage, commit, and review changes from the thread you are in.",
+  overview: "Stage, commit, and review changes without leaving the thread.",
+  icon: "GitBranch",
+  source: "builtin:git",
+  marketplacePageUrl: shareLink("bb--git"),
+} satisfies PluginCatalogSearchEntry;
+
+const SHARE_COMMUNITY_ENTRY = {
+  ...SHARE_CATALOG_ENTRY,
+  entryId: "linear-sync",
+  pluginId: "linear-sync",
+  displayName: "Linear Sync",
+  description: "Attach Linear issues to threads and update them as work lands.",
+  overview: "Attach Linear issues to threads and update them as work lands.",
+  icon: "Link",
+  source: "npm:linear-sync-bb",
+  marketplace: "bb-community",
+  marketplaceDisplayName: "BB Community",
+  publisherKey: "github:mira-dev",
+  publisherLabel: "mira-dev",
+  official: false,
+  author: {
+    name: "Mira",
+    github: "mira-dev",
+    url: "https://github.com/mira-dev",
+  },
+  installs: 1240,
+  marketplacePageUrl: shareLink("linear-sync"),
+} satisfies PluginCatalogSearchEntry;
+
+const SHARE_UNLISTED_ENTRY = {
+  ...SHARE_CATALOG_ENTRY,
+  entryId: "provider-codex",
+  pluginId: "provider-codex",
+  displayName: "Codex",
+  description: "Run threads with OpenAI Codex.",
+  overview: "Run threads with OpenAI Codex.",
+  icon: "Bot",
+  source: "builtin:provider-codex",
+  marketplacePageUrl: null,
+} satisfies PluginCatalogSearchEntry;
+
+const SHARE_OFFICIAL_INSTALLED: PluginListItem = {
+  ...PLUGIN,
+  id: "agent-annotations",
+  name: "Agent Annotations",
+  description: SHARE_CATALOG_ENTRY.description,
+  icon: "Edit",
+  source: "catalog:bb-official/agent-annotations",
+  provenance: "catalog",
+  catalogEntryId: "agent-annotations",
+  catalogMarketplaceName: "bb-official",
+  publisherLabel: "BB Official",
+  hasSettings: true,
+  marketplacePageUrl: shareLink("agent-annotations"),
+};
+
+const SHARE_BUILTIN_RENAMED: PluginListItem = {
+  ...BUNDLED_PLUGIN,
+  id: "simple-notes",
+  name: "Simple Notes",
+  description: "Keep markdown notes next to your threads.",
+  icon: "FileText",
+  source: "builtin:docs",
+  rootDir: "/managed/plugins/docs",
+  marketplacePageUrl: shareLink("simple-notes"),
+};
+
+const SHARE_BUILTIN_UNLISTED: PluginListItem = {
+  ...BUNDLED_PLUGIN,
+  id: "provider-codex",
+  name: "Codex",
+  description: "Run threads with OpenAI Codex.",
+  icon: "Bot",
+  source: "builtin:provider-codex",
+  rootDir: "/managed/plugins/provider-codex",
+  hasSettings: true,
+  marketplacePageUrl: null,
+};
+
+const SHARE_COMMUNITY_INSTALLED: PluginListItem = {
+  ...PLUGIN,
+  id: "github-community-share",
+  name: "Linear Sync",
+  description: SHARE_COMMUNITY_ENTRY.description,
+  icon: "Link",
+  source: "catalog:bb-community/linear-sync",
+  provenance: "catalog",
+  catalogEntryId: "linear-sync",
+  catalogMarketplaceName: "bb-community",
+  publisherLabel: "BB Community",
+  marketplacePageUrl: shareLink("linear-sync"),
+};
+
+const SHARE_FOLDER_PLUGIN: PluginListItem = {
+  ...PLUGIN,
+  id: "standup-notes",
+  name: "Standup Notes",
+  description: "Drafts a standup from yesterday's threads.",
+  icon: "FileText",
+  source: "path:/Users/you/code/standup-notes",
+  rootDir: "/Users/you/code/standup-notes",
+  sourceDisplay: "path · ~/code/standup-notes",
+  hasSettings: true,
+  marketplacePageUrl: null,
+};
+
+function ShareWidths({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <ShareFrame label="Desktop">{children}</ShareFrame>
+      <ShareFrame label="Phone · 390px" phone>
+        {children}
+      </ShareFrame>
+    </div>
+  );
+}
+
+function ShareFrame({
+  label,
+  phone = false,
+  children,
+}: {
+  label: string;
+  phone?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <p className="text-2xs font-medium text-subtle-foreground">{label}</p>
+      <div
+        className={
+          phone
+            ? "max-h-56 w-[390px] max-w-full overflow-hidden rounded-md border border-border bg-background px-4"
+            : "max-h-56 overflow-hidden rounded-md border border-border bg-background px-5"
+        }
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+export function PluginShareStates() {
+  return (
+    <PluginStoryQueryBoundary>
+      <Story
+        title="Plugin share states"
+        description="Share appears on every plugin that has a getbb.app page: before Install on catalog pages, and right after Settings on installed pages, with the enable switch keeping its spot just before ⋯. On desktop it copies the link and shows “Link copied”; on phones it opens the system share sheet. Plugins with no page show no Share. “Copy marketplace link” stays in the ⋯ menu."
+        renderedNote="The real header, at desktop and phone widths (page clipped below the header)"
+      >
+        <State
+          name="Catalog · Install"
+          note="Uninstalled BB Official plugin with a page. Share sits left of Install, so the primary acquisition action keeps the trailing edge."
+        >
+          <ShareWidths>
+            <CatalogPlugin entry={SHARE_CATALOG_ENTRY} />
+          </ShareWidths>
+        </State>
+
+        <State
+          name="Catalog · installing"
+          note="Install progress replaces Install in place. Share stays put, so the header doesn't shift while the install runs."
+        >
+          <ShareWidths>
+            <CatalogPlugin entry={SHARE_INSTALLING_ENTRY} />
+          </ShareWidths>
+        </State>
+
+        <State
+          name="Catalog · BB Community"
+          note="A community plugin with an install count. The byline names its author; Share and the ⋯ menu's Copy marketplace link both point at its page."
+        >
+          <ShareWidths>
+            <CatalogPlugin entry={SHARE_COMMUNITY_ENTRY} />
+          </ShareWidths>
+        </State>
+
+        <State
+          name="Catalog · install unavailable"
+          note="Install is disabled by a compatibility blocker. Sharing still works: the page exists even when this bb can't install it."
+        >
+          <ShareWidths>
+            <CatalogPlugin
+              entry={{
+                ...SHARE_CATALOG_ENTRY,
+                compatible: false,
+                incompatibleReason: "Requires bb 0.50 or newer.",
+              }}
+            />
+          </ShareWidths>
+        </State>
+
+        <State
+          name="Catalog · no page"
+          note="One of the nine unlisted official plugins (providers, environments, account-pool, plugin-api-tester). No Share, and no ⋯ menu because it has nothing to copy."
+        >
+          <ShareWidths>
+            <CatalogPlugin entry={SHARE_UNLISTED_ENTRY} />
+          </ShareWidths>
+        </State>
+
+        <State
+          name="Installed · BB Official"
+          note="Catalog install with settings. Order: Settings, Share, the enable switch, then ⋯ (Copy marketplace link, Uninstall)."
+        >
+          <ShareWidths>
+            <Plugin plugin={SHARE_OFFICIAL_INSTALLED} />
+          </ShareWidths>
+        </State>
+
+        <State
+          name="Installed · built-in, renamed"
+          note="Ships with bb, so Uninstall in ⋯ is disabled. Its built-in name (docs) differs from its plugin ID and page (simple-notes); the server-filled link points at the page."
+        >
+          <ShareWidths>
+            <Plugin plugin={SHARE_BUILTIN_RENAMED} />
+          </ShareWidths>
+        </State>
+
+        <State
+          name="Installed · BB Community"
+          note="Community catalog install without settings: Share, switch, ⋯."
+        >
+          <ShareWidths>
+            <Plugin plugin={SHARE_COMMUNITY_INSTALLED} />
+          </ShareWidths>
+        </State>
+
+        <State
+          name="Installed · no page"
+          note="An unlisted built-in plugin. No Share; the header keeps Settings, the switch, and ⋯ exactly as today."
+        >
+          <ShareWidths>
+            <Plugin plugin={SHARE_BUILTIN_UNLISTED} />
+          </ShareWidths>
+        </State>
+
+        <State
+          name="Folder install · stage 2"
+          note="Installed from a local folder. No Share in stage 2: a matching ID alone could be someone else's plugin. ⋯ has Edit and Remove from bb; Open source and Copy path stay in the Source section."
+        >
+          <ShareWidths>
+            <Plugin plugin={SHARE_FOLDER_PLUGIN} />
+          </ShareWidths>
+        </State>
+
+      </Story>
+    </PluginStoryQueryBoundary>
+  );
+}
+
+function cardEntry(
+  entryId: string,
+  displayName: string,
+  overrides: Partial<PluginCatalogSearchEntry> = {},
+): PluginCatalogSearchEntry {
+  return {
+    ...SHARE_CATALOG_ENTRY,
+    entryId,
+    pluginId: entryId,
+    displayName,
+    description: `${displayName} for bb.`,
+    source: `builtin:${entryId}`,
+    marketplacePageUrl: shareLink(entryId),
+    ...overrides,
+  };
+}
+
+function cardInstalledPlugin(
+  entry: PluginCatalogSearchEntry,
+  enabled: boolean,
+): InstalledPlugin {
+  return makeInstalledPlugin({
+    id: entry.pluginId,
+    name: entry.displayName,
+    description: entry.description,
+    source: entry.source,
+    rootDir: `/managed/plugins/${entry.pluginId}`,
+    provenance: entry.source.startsWith("builtin:") ? "builtin" : "catalog",
+    catalogEntryId: entry.entryId,
+    catalogMarketplaceName: entry.marketplace,
+    publisherLabel: entry.publisherLabel,
+    enabled,
+    status: enabled ? "running" : "disabled",
+  });
+}
+
+function cardJob(
+  entry: PluginCatalogSearchEntry,
+  state: "queued" | "running" | "cancelling",
+): PluginInstallJob {
+  return {
+    id: `job-${entry.entryId}`,
+    target: {
+      kind: "catalog",
+      entryId: entry.entryId,
+      marketplace: entry.marketplace,
+    },
+    displayName: entry.displayName,
+    state,
+  };
+}
+
+const CARD_INSTALL = cardEntry("card-install", "Agent Annotations");
+const CARD_INSTALL_COUNT = cardEntry("card-install-count", "Linear Sync", {
+  installs: 1240,
+  source: "npm:linear-sync-bb",
+});
+const CARD_QUEUED = cardEntry("card-queued", "Git");
+const CARD_RUNNING = cardEntry("card-running", "Browser Automation");
+const CARD_CANCELLING = cardEntry("card-cancelling", "Memory");
+const CARD_UNAVAILABLE = cardEntry("card-unavailable", "Tasks", {
+  compatible: false,
+  incompatibleReason: "Requires bb 0.50 or newer.",
+});
+const CARD_INSTALLED_ON = cardEntry("card-installed-on", "Workflows", {
+  installed: true,
+  source: "catalog:bb-official/card-installed-on",
+});
+const CARD_INSTALLED_OFF = cardEntry("card-installed-off", "Side Chat", {
+  installed: true,
+  source: "catalog:bb-official/card-installed-off",
+});
+const CARD_INCLUDED = cardEntry("card-included", "Navigation", {
+  installed: true,
+  installedByDefault: true,
+});
+const CARD_LIFECYCLE = cardEntry("card-lifecycle", "Theme Preview");
+
+const CARD_STATIC_JOBS: PluginInstallJob[] = [
+  cardJob(CARD_QUEUED, "queued"),
+  cardJob(CARD_RUNNING, "running"),
+  cardJob(CARD_CANCELLING, "cancelling"),
+];
+
+const CARD_STATIC_PLUGINS: InstalledPlugin[] = [
+  cardInstalledPlugin(CARD_INSTALLED_ON, true),
+  cardInstalledPlugin(CARD_INSTALLED_OFF, false),
+  cardInstalledPlugin(CARD_INCLUDED, true),
+];
+
+function readRequestUrl(input: RequestInfo | URL): string {
+  if (typeof input === "string") return input;
+  return input instanceof URL ? input.href : input.url;
+}
+
+function useStoryPluginToggleFetch() {
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const match =
+        /\/api\/v1\/plugins\/([^/?]+)\/(enable|disable)(?:\?|$)/.exec(
+          readRequestUrl(input),
+        );
+      if (match === null) return originalFetch.call(globalThis, input, init);
+      const pluginId = decodeURIComponent(match[1] ?? "");
+      const enabled = match[2] === "enable";
+      await new Promise((resolve) => window.setTimeout(resolve, 400));
+      const plugins =
+        queryClient.getQueryData<InstalledPlugin[]>(pluginListQueryKey(true)) ??
+        [];
+      const next = plugins.map((plugin) =>
+        plugin.id === pluginId
+          ? {
+              ...plugin,
+              enabled,
+              status: enabled ? ("running" as const) : ("disabled" as const),
+            }
+          : plugin,
+      );
+      queryClient.setQueryData(pluginListQueryKey(true), next);
+      const updated = next.find((plugin) => plugin.id === pluginId);
+      return new Response(JSON.stringify({ plugin: updated }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    };
+    return () => {
+      globalThis.fetch = originalFetch;
+    };
+  }, [queryClient]);
+}
+
+function CardStoryQueryBoundary({ children }: { children: ReactNode }) {
+  const [queryClient] = useState(() => {
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+          refetchOnMount: false,
+          refetchOnReconnect: false,
+          refetchOnWindowFocus: false,
+          staleTime: Number.POSITIVE_INFINITY,
+        },
+      },
+    });
+    client.setQueryData(pluginInstallJobsQueryKey(), CARD_STATIC_JOBS);
+    client.setQueryData(pluginListQueryKey(true), CARD_STATIC_PLUGINS);
+    return client;
+  });
+  return (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+}
+
+function StoryCard({ entry }: { entry: PluginCatalogSearchEntry }) {
+  return (
+    <div className="max-w-sm">
+      <PluginCardGrid>
+        <PluginCatalogCard
+          entry={entry}
+          onInstall={noop}
+          onUninstall={noop}
+          onOpenPlugin={noop}
+        />
+      </PluginCardGrid>
+    </div>
+  );
+}
+
+function CardLifecycle() {
+  const queryClient = useQueryClient();
+  const [entry, setEntry] = useState(CARD_LIFECYCLE);
+  useStoryPluginToggleFetch();
+
+  const setJobs = (jobs: PluginInstallJob[]) =>
+    queryClient.setQueryData(pluginInstallJobsQueryKey(), [
+      ...CARD_STATIC_JOBS,
+      ...jobs,
+    ]);
+
+  const install = () => {
+    setJobs([cardJob(entry, "queued")]);
+    window.setTimeout(() => setJobs([cardJob(entry, "running")]), 1_200);
+    window.setTimeout(() => {
+      setJobs([]);
+      queryClient.setQueryData(pluginListQueryKey(true), [
+        ...CARD_STATIC_PLUGINS,
+        cardInstalledPlugin(entry, true),
+      ]);
+      setEntry((current) => ({ ...current, installed: true }));
+    }, 3_600);
+  };
+
+  const reset = () => {
+    setJobs([]);
+    queryClient.setQueryData(pluginListQueryKey(true), CARD_STATIC_PLUGINS);
+    setEntry(CARD_LIFECYCLE);
+  };
+
+  return (
+    <div className="flex items-start gap-4">
+      <div className="max-w-sm flex-1">
+        <PluginCardGrid>
+          <PluginCatalogCard
+            entry={entry}
+            onInstall={install}
+            onUninstall={reset}
+            onOpenPlugin={noop}
+          />
+        </PluginCardGrid>
+      </div>
+      <button
+        type="button"
+        className="text-xs text-muted-foreground underline"
+        onClick={reset}
+      >
+        Reset
+      </button>
+    </div>
+  );
+}
+
+export function PluginCardInstallStates() {
+  return (
+    <CardStoryQueryBoundary>
+      <Story
+        title="Plugin card install states"
+        description="The Browse card's footer moves from Install, through install progress, to Installed with the enable switch beside it. Click Install on the first card to run the whole sequence; the switch then turns the plugin on and off."
+        renderedNote="The real Browse card"
+      >
+        <State
+          name="Lifecycle"
+          note="Install → Queued → Installing… → Installed with the switch on. Toggle the switch to disable and re-enable it. Reset (or clicking Installed) starts over."
+        >
+          <CardLifecycle />
+        </State>
+
+        <State
+          name="Install"
+          note="Uninstalled and installable. Subtle Install control in the footer."
+        >
+          <StoryCard entry={CARD_INSTALL} />
+        </State>
+
+        <State
+          name="Install · with count"
+          note="Community plugins show their install count inside the control."
+        >
+          <StoryCard entry={CARD_INSTALL_COUNT} />
+        </State>
+
+        <State
+          name="Queued"
+          note="Waiting for another install. Hover shows ✕; clicking cancels."
+        >
+          <StoryCard entry={CARD_QUEUED} />
+        </State>
+
+        <State
+          name="Installing"
+          note="Install running. Hover shows ✕; clicking cancels."
+        >
+          <StoryCard entry={CARD_RUNNING} />
+        </State>
+
+        <State
+          name="Cancelling"
+          note="Cancel requested; the control is inert until the job ends."
+        >
+          <StoryCard entry={CARD_CANCELLING} />
+        </State>
+
+        <State
+          name="Install unavailable"
+          note="This bb can't install it; the tooltip names the requirement."
+        >
+          <StoryCard entry={CARD_UNAVAILABLE} />
+        </State>
+
+        <State
+          name="Installed · on"
+          note="Installed control (hover to uninstall) with the enable switch on."
+        >
+          <StoryCard entry={CARD_INSTALLED_ON} />
+        </State>
+
+        <State
+          name="Installed · off"
+          note="Still installed, runtime disabled: the switch is off."
+        >
+          <StoryCard entry={CARD_INSTALLED_OFF} />
+        </State>
+
+        <State
+          name="Included with bb"
+          note="Ships with bb, so the Installed control can't uninstall; the switch still turns it off."
+        >
+          <StoryCard entry={CARD_INCLUDED} />
+        </State>
+      </Story>
+    </CardStoryQueryBoundary>
   );
 }
