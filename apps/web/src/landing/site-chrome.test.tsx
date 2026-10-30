@@ -38,6 +38,12 @@ describe("site navigation", () => {
     expect(renderToStaticMarkup(<SiteNav sticky />)).toMatch(
       /^<nav class="nav nav-sticky">/,
     );
+  it("can send the header button to the download page", () => {
+    const html = renderToStaticMarkup(<SiteNav downloadPage />);
+    expect(html).toContain(
+      '<a class="btn btn-primary btn-sm nav-download" href="/download">Download</a>',
+    );
+    expect(html).not.toContain("/download/macos");
   });
 
   it("marks Building plugins current inside the Plugins menu", () => {

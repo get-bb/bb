@@ -1402,6 +1402,8 @@ function LandingPage() {
   useExperimentExposure("homepage-aa", "all");
   const stickyHeader = useExperiment("homepage-sticky-header");
   useExperimentExposure("homepage-sticky-header", "desktop");
+  const headerDownload = useExperiment("homepage-header-download");
+  useExperimentExposure("homepage-header-download", "desktop");
   useScrollReveal();
   useSectionViews((section) => {
     if (BELOW_FOLD_SECTIONS[belowFold].includes(section)) exposeBelowFold();
@@ -1426,6 +1428,7 @@ function LandingPage() {
       data-qa-check={qaCheck === "test" ? qaCheck : undefined}
     >
       <SiteNav sticky={stickyHeader === "test"} />
+      <SiteNav downloadPage={headerDownload === "test"} />
 
       <header className="hero">
         <a className="updates-callout" href={LATEST_RELEASE_URL}>

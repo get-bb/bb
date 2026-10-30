@@ -197,6 +197,11 @@ export function SiteNav({
   current?: SiteNavPage;
   path?: string;
   sticky?: boolean;
+  downloadPage = false,
+}: {
+  current?: SiteNavPage;
+  path?: string;
+  downloadPage?: boolean;
 }) {
   const platform = useDesktopPlatform();
   return (
@@ -230,11 +235,17 @@ export function SiteNav({
         >
           <HugeiconsIcon icon={GithubIcon} />
         </GitHubLink>
-        <DesktopDownloadButton
-          placement="nav"
-          platform={platform}
-          className="btn btn-primary btn-sm nav-download"
-        />
+        {downloadPage ? (
+          <a className="btn btn-primary btn-sm nav-download" href="/download">
+            Download
+          </a>
+        ) : (
+          <DesktopDownloadButton
+            placement="nav"
+            platform={platform}
+            className="btn btn-primary btn-sm nav-download"
+          />
+        )}
       </div>
     </nav>
   );
