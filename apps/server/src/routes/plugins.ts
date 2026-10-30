@@ -797,57 +797,33 @@ export function registerPluginRoutes(
     return context.json(await plugins.setSafeMode(body.data.enabled));
   });
 
-  app.post("/plugins/:id/enable", async (context) => {
-    const raw = await context.req.text();
-    let input: unknown = {};
-    try {
-      if (raw.length > 0) input = JSON.parse(raw);
-    } catch {
-      return context.json(
-        { ok: false, error: "Invalid measurement source" },
-        400,
+  for (const action of ["enable", "disable"] as const) {
+    app.post(`/plugins/:id/${action}`, async (context) => {
+      const raw = await context.req.text();
+      let input: unknown = {};
+      try {
+        if (raw.length > 0) input = JSON.parse(raw);
+      } catch {
+        return context.json(
+          { ok: false, error: "Invalid measurement source" },
+          400,
+        );
+      }
+      const body = pluginStateMeasurementRequestSchema.safeParse(input);
+      if (!body.success)
+        return context.json(
+          { ok: false, error: "Invalid measurement source" },
+          400,
+        );
+      const plugin = await runWithPluginMeasurementSource(
+        body.data.measurementSource,
+        () => plugins.setEnabled(context.req.param("id"), action === "enable"),
       );
-    }
-    const body = pluginStateMeasurementRequestSchema.safeParse(input);
-    if (!body.success)
-      return context.json(
-        { ok: false, error: "Invalid measurement source" },
-        400,
-      );
-    const plugin = await runWithPluginMeasurementSource(
-      body.data.measurementSource,
-      () => plugins.setEnabled(context.req.param("id"), true),
-    );
-    if (!plugin)
-      return context.json({ ok: false, error: "unknown plugin" }, 404);
-    return context.json({ ok: true, plugin });
-  });
-
-  app.post("/plugins/:id/disable", async (context) => {
-    const raw = await context.req.text();
-    let input: unknown = {};
-    try {
-      if (raw.length > 0) input = JSON.parse(raw);
-    } catch {
-      return context.json(
-        { ok: false, error: "Invalid measurement source" },
-        400,
-      );
-    }
-    const body = pluginStateMeasurementRequestSchema.safeParse(input);
-    if (!body.success)
-      return context.json(
-        { ok: false, error: "Invalid measurement source" },
-        400,
-      );
-    const plugin = await runWithPluginMeasurementSource(
-      body.data.measurementSource,
-      () => plugins.setEnabled(context.req.param("id"), false),
-    );
-    if (!plugin)
-      return context.json({ ok: false, error: "unknown plugin" }, 404);
-    return context.json({ ok: true, plugin });
-  });
+      if (!plugin)
+        return context.json({ ok: false, error: "unknown plugin" }, 404);
+      return context.json({ ok: true, plugin });
+    });
+  }
 
   const NOT_RUNNING = {
     ok: false as const,
