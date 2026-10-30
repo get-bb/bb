@@ -237,6 +237,7 @@ describe("OpenPluginGuideButton", () => {
     );
     expect(installCall?.[1]?.method).toBe("POST");
     expect(JSON.parse(String(installCall?.[1]?.body))).toEqual({
+      measurementSource: "marketplace",
       entryId: "plugin-api-docs",
       marketplace: "bb-official",
     });

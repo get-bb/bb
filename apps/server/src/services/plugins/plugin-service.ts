@@ -1,5 +1,6 @@
 import {
   capturePluginStateChanged,
+  clearPluginRecommendationAttribution,
   reportPluginUse,
   withPluginMeasurementInvocation,
 } from "./plugin-measurement.js";
@@ -1287,6 +1288,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     forgetMutableRoot(row.rootDir);
     deletePluginSchedules(deps.db, row.id);
     deleteAllPluginSettings(deps.db, row.id);
+    clearPluginRecommendationAttribution(deps.db, row.id);
     await rm(pluginSecretsDir(deps.dataDir, row.id), {
       recursive: true,
       force: true,
@@ -2516,7 +2518,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
               return result;
             },
           );
-          return normalizeAgentToolResult(record.name, result);
+          return result;
         },
       );
       if (outcome.ok) return outcome.value;
