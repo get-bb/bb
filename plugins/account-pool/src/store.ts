@@ -548,27 +548,25 @@ function safeTokenEqual(left: string, right: string): boolean {
   );
 }
 
-const quotaRowSchema = z
-  .object({
-    account_id: z.string().uuid(),
-    five_hour_utilization: z.number().nullable(),
-    five_hour_reset_at: z.number().int().nullable(),
-    five_hour_status: z.string().nullable(),
-    seven_day_utilization: z.number().nullable(),
-    seven_day_reset_at: z.number().int().nullable(),
-    seven_day_status: z.string().nullable(),
-    representative_claim: z.string().nullable(),
-    family_overage_until_json: z.string(),
-    bucket_exhaustion_json: z.string(),
-    family_weekly_json: z.string(),
-    limit_windows_json: z.string(),
-    extra_usage_json: z.string(),
-    usage_restriction_json: z.string(),
-    observed_at: z.number().int().nullable(),
-    held_until: z.number().int().nullable(),
-    error: z.string().nullable(),
-  })
-  .strict();
+const quotaRowSchema = z.object({
+  account_id: z.string().uuid(),
+  five_hour_utilization: z.number().nullable(),
+  five_hour_reset_at: z.number().int().nullable(),
+  five_hour_status: z.string().nullable(),
+  seven_day_utilization: z.number().nullable(),
+  seven_day_reset_at: z.number().int().nullable(),
+  seven_day_status: z.string().nullable(),
+  representative_claim: z.string().nullable(),
+  family_overage_until_json: z.string(),
+  bucket_exhaustion_json: z.string(),
+  family_weekly_json: z.string(),
+  limit_windows_json: z.string(),
+  extra_usage_json: z.string(),
+  usage_restriction_json: z.string(),
+  observed_at: z.number().int().nullable(),
+  held_until: z.number().int().nullable(),
+  error: z.string().nullable(),
+});
 
 const EMPTY_QUOTA = {
   usageRestriction: null,

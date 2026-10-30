@@ -184,4 +184,19 @@ describe("QuotaStore", () => {
     ]);
     database.close();
   });
+
+  it("reads and writes quotas when a newer build has added a column", () => {
+    const database = new Database(":memory:");
+    for (const migration of QUOTA_MIGRATIONS) database.exec(migration);
+    database.exec(
+      "ALTER TABLE account_quota ADD COLUMN later_json TEXT NOT NULL DEFAULT '{}'",
+    );
+    const quotas = new QuotaStore(database);
+    const accountId = "11111111-1111-4111-8111-111111111111";
+
+    quotas.put({ ...quotas.get(accountId), sevenDayUtilization: 0.4 });
+
+    expect(quotas.get(accountId).sevenDayUtilization).toBe(0.4);
+    database.close();
+  });
 });
