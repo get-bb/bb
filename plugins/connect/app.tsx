@@ -1,4 +1,4 @@
-import type { DeviceSource } from "./src/device-telemetry.js";
+import type { DeviceSource, SetupAttempt } from "./src/device-telemetry.js";
 import { ExpandableText } from "@bb/shared-ui/expandable-text";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -419,14 +419,30 @@ function QuietCopyButton({ text, label }: { text: string; label: string }) {
   );
 }
 
+type SetupReporter = (outcome: SetupAttempt["outcome"]) => Promise<null>;
+
+function useSetupAttempt(source: DeviceSource) {
+  const rpc = useRpc<typeof connectRpcContract>();
+  return useCallback(async () => {
+    const id = crypto.randomUUID();
+    const report: SetupReporter = (outcome) =>
+      rpc.call("setupAttempt", { id, source, outcome }).catch(() => null);
+    await report("started");
+    return report;
+  }, [rpc, source]);
+}
+
 function PairForm({
   dashboardUrl,
   onPaired,
+  source,
 }: {
   dashboardUrl: string;
   onPaired: () => void;
+  source: DeviceSource;
 }) {
   const sdk = useSdk();
+  const beginSetup = useSetupAttempt(source);
   const [code, setCode] = useState("");
   const [pending, setPending] = useState(false);
   const [errorCode, setErrorCode] = useState<ConnectPairErrorCode | null>(null);
@@ -440,12 +456,19 @@ function PairForm({
       submittedRef.current = canonical;
       setPending(true);
       setErrorCode(null);
-      sdk.plugins
-        .callRpc({
-          pluginId: ACCOUNT_PLUGIN_ID,
-          method: "redeemCode",
-          input: { code: canonical, baseUrl: null },
-          outputSchema: accountStatusSchema,
+      beginSetup()
+        .then(async (report) => {
+          try {
+            return await sdk.plugins.callRpc({
+              pluginId: ACCOUNT_PLUGIN_ID,
+              method: "redeemCode",
+              input: { code: canonical, baseUrl: null },
+              outputSchema: accountStatusSchema,
+            });
+          } catch (error) {
+            void report("unknown");
+            throw error;
+          }
         })
         .then(
           () => {
@@ -460,7 +483,7 @@ function PairForm({
           },
         );
     },
-    [pending, sdk, onPaired],
+    [pending, sdk, onPaired, beginSetup],
   );
 
   const onChange = useCallback(
@@ -1097,33 +1120,55 @@ function TurnOffDialog({
   );
 }
 
-function useAccountLogin(onSignedIn: () => void) {
+function useAccountLogin(onSignedIn: () => void, source: DeviceSource) {
   const sdk = useSdk();
+  const beginSetup = useSetupAttempt(source);
+  const setup = useRef<SetupReporter | null>(null);
   const [login, setLogin] = useState<LoginView | null>(null);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const recordLoginResult = useCallback(
+    (view: LoginView | null, report = setup.current) => {
+      if (view?.state === "pending" || view?.state === "signed-in") return;
+      void report?.(
+        view === null
+          ? "unknown"
+          : view.state === "cancelled"
+            ? "cancelled"
+            : "failed",
+      );
+      if (setup.current === report) setup.current = null;
+    },
+    [],
+  );
+
   const start = useCallback(() => {
     setStarting(true);
     setError(null);
-    sdk.plugins
-      .callRpc({
-        pluginId: ACCOUNT_PLUGIN_ID,
-        method: "login.start",
-        input: { baseUrl: null },
-        outputSchema: loginViewSchema,
+    beginSetup()
+      .then((report) => {
+        setup.current = report;
+        return sdk.plugins.callRpc({
+          pluginId: ACCOUNT_PLUGIN_ID,
+          method: "login.start",
+          input: { baseUrl: null },
+          outputSchema: loginViewSchema,
+        });
       })
       .then(
         (view) => {
+          recordLoginResult(view);
           setStarting(false);
           setLogin(view);
         },
         (rpcError: unknown) => {
+          recordLoginResult(null);
           setStarting(false);
           setError(signInStartErrorText(rpcError));
         },
       );
-  }, [sdk]);
+  }, [sdk, beginSetup, recordLoginResult]);
 
   const pendingId = login?.state === "pending" ? login.id : null;
   useEffect(() => {
@@ -1143,6 +1188,7 @@ function useAccountLogin(onSignedIn: () => void) {
           (result) => {
             failures = 0;
             if (cancelled) return;
+            recordLoginResult(result.login);
             if (result.login !== null) setLogin(result.login);
             if (result.login?.state === "signed-in") onSignedIn();
           },
@@ -1159,9 +1205,11 @@ function useAccountLogin(onSignedIn: () => void) {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [onSignedIn, pendingId, sdk]);
+  }, [onSignedIn, pendingId, sdk, recordLoginResult]);
 
   const cancel = useCallback(() => {
+    const report = setup.current;
+    setup.current = null;
     if (pendingId !== null) {
       sdk.plugins
         .callRpc({
@@ -1171,19 +1219,28 @@ function useAccountLogin(onSignedIn: () => void) {
           outputSchema: loginPollOutputSchema.pick({ login: true }),
         })
         .then(
-          () => {},
-          () => {},
+          (result) => recordLoginResult(result.login, report),
+          () => recordLoginResult(null, report),
         );
     }
     setLogin(null);
     setError(null);
-  }, [pendingId, sdk]);
+  }, [pendingId, sdk, recordLoginResult]);
 
   return { login, starting, error, start, cancel };
 }
 
-function AccountSignInCard({ onSignedIn }: { onSignedIn: () => void }) {
-  const { login, starting, error, start, cancel } = useAccountLogin(onSignedIn);
+function AccountSignInCard({
+  onSignedIn,
+  source,
+}: {
+  onSignedIn: () => void;
+  source: DeviceSource;
+}) {
+  const { login, starting, error, start, cancel } = useAccountLogin(
+    onSignedIn,
+    source,
+  );
 
   if (login === null) {
     return (
@@ -1270,9 +1327,11 @@ function AccountSignInCard({ onSignedIn }: { onSignedIn: () => void }) {
 function NotPairedContent({
   dashboardUrl,
   onPaired,
+  source,
 }: {
   dashboardUrl: string;
   onPaired: () => void;
+  source: DeviceSource;
 }) {
   const dashboardHost = hostOf(dashboardUrl);
   const [codeOpen, setCodeOpen] = useState(false);
@@ -1288,7 +1347,7 @@ function NotPairedContent({
       </p>
 
       <div className="flex flex-col items-start gap-2 @min-[32rem]/connect-controls:flex-row @min-[32rem]/connect-controls:flex-wrap @min-[32rem]/connect-controls:items-center">
-        <AccountSignInCard onSignedIn={onPaired} />
+        <AccountSignInCard onSignedIn={onPaired} source={source} />
         <Button
           type="button"
           variant="ghost"
@@ -1300,7 +1359,11 @@ function NotPairedContent({
         </Button>
       </div>
       {codeOpen ? (
-        <PairForm dashboardUrl={dashboardUrl} onPaired={onPaired} />
+        <PairForm
+          dashboardUrl={dashboardUrl}
+          onPaired={onPaired}
+          source={source}
+        />
       ) : null}
 
       <p className="text-xs text-subtle-foreground">
@@ -1630,6 +1693,7 @@ function ConnectSettingsSection({
       ) : null}
       {!status.paired ? (
         <NotPairedContent
+          source={internal_DO_NOT_USE_setupSource}
           dashboardUrl={status.dashboardUrl}
           onPaired={refetch}
         />

@@ -1,4 +1,9 @@
-import { deviceSourceSchema, type DeviceSource } from "./device-telemetry.js";
+import {
+  deviceSourceSchema,
+  setupAttemptSchema,
+  type DeviceSource,
+  type SetupAttempt,
+} from "./device-telemetry.js";
 import { z } from "zod";
 import { defineRpcContract, type PluginRpcHandlers } from "@get-bb/plugin-sdk";
 import {
@@ -87,6 +92,7 @@ const machineCodeSchema: z.ZodType<MachineCode> = z
   .strict();
 
 export const connectRpcContract = defineRpcContract({
+  setupAttempt: { input: setupAttemptSchema, output: z.null() },
   status: { input: z.null(), output: connectStatusSchema },
   setRemoteAccess: {
     input: z
@@ -142,6 +148,7 @@ export interface RemoteAccessSwitch {
 }
 
 export function createRpcHandlers(args: {
+  setupAttempt: (input: SetupAttempt) => void;
   tunnel: ConnectTunnel;
   hosted: HostedConnectApi;
   hostResolver: ShareHostResolver;
@@ -159,6 +166,10 @@ export function createRpcHandlers(args: {
     return current;
   };
   return {
+    setupAttempt(input) {
+      args.setupAttempt(input);
+      return null;
+    },
     async status() {
       return tunnel.refreshStatus();
     },

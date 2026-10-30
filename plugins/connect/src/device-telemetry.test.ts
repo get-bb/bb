@@ -2,6 +2,48 @@ import { describe, expect, it, vi } from "vitest";
 import { createConnectSetupMeasurement } from "./device-telemetry.js";
 
 describe("Connect setup milestones", () => {
+  it("closes authentication attempts and ignores a previous attempt's late result", () => {
+    const capture = vi.fn();
+    const measurement = createConnectSetupMeasurement(capture);
+    const first = {
+      id: "00000000-0000-4000-8000-000000000001",
+      source: "first_run",
+    } as const;
+    const second = {
+      id: "00000000-0000-4000-8000-000000000002",
+      source: "settings",
+    } as const;
+    for (const outcome of ["cancelled", "failed", "unknown"] as const) {
+      measurement.attempt({ ...first, outcome: "started" });
+      measurement.attempt({ ...first, outcome });
+      measurement.observe({
+        state: "connected",
+        enabled: true,
+        lastError: null,
+      });
+    }
+    expect(capture.mock.calls.map(([event]) => event.outcome)).toEqual([
+      "started",
+      "cancelled",
+      "started",
+      "failed",
+      "started",
+      "unknown",
+    ]);
+    capture.mockClear();
+    measurement.attempt({ ...first, outcome: "started" });
+    measurement.attempt({ ...second, outcome: "started" });
+    measurement.attempt({ ...first, outcome: "cancelled" });
+    measurement.observe({ state: "connected", enabled: true, lastError: null });
+    measurement.observe({ state: "connected", enabled: true, lastError: null });
+    expect(
+      capture.mock.calls.map(([event]) => [event.outcome, event.surface]),
+    ).toEqual([
+      ["started", "onboarding"],
+      ["started", "settings"],
+      ["succeeded", "settings"],
+    ]);
+  });
   it("retains the initiating source through transport uncertainty and deduplicates reconnects", () => {
     const capture = vi.fn();
     const measurement = createConnectSetupMeasurement(capture);

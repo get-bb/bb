@@ -138,6 +138,10 @@ export function createConnectPlugin(options: ConnectPluginOptions = {}) {
     bb.rpc.register(
       connectRpcContract,
       createRpcHandlers({
+        setupAttempt: (input) => {
+          if (input.outcome !== "started" || currentSettings.remoteAccess)
+            measurement.attempt(input);
+        },
         tunnel,
         hosted,
         hostResolver,
