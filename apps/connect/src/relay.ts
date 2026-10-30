@@ -9,7 +9,6 @@ import {
 import type { GateProgress } from "./gate-deadline.js";
 import { requestBodyChunks } from "./request-body-chunks.js";
 import { relayedResponse } from "./response-encoding.js";
-import { responseHeadTimeoutMs } from "./response-head-timeout.js";
 
 const RELAY_DONE_CLOSE_CODE = 1000;
 const RELAY_PLACEHOLDER_STREAM_ID = 0;
@@ -102,6 +101,7 @@ function relayResponse(
   socket: WebSocket,
   request: Request,
   progress: GateProgress,
+  signal: AbortSignal,
 ): Promise<Response> {
   return new Promise<Response>((resolve) => {
     let headSettled = false;
@@ -111,14 +111,12 @@ function relayResponse(
     const finish = (reason: string) => {
       if (finished) return;
       finished = true;
-      clearTimeout(headTimeout);
       try {
         socket.close(RELAY_DONE_CLOSE_CODE, closeReason(reason));
       } catch {}
     };
     const settleHead = (response: Response) => {
       headSettled = true;
-      clearTimeout(headTimeout);
       resolve(response);
     };
     const fail = (status: number, message: string) => {
@@ -132,14 +130,13 @@ function relayResponse(
       }
       finish(message);
     };
-    const headTimeoutMs = responseHeadTimeoutMs(
-      request.method,
-      new URL(request.url),
-      request.headers,
-    );
-    const headTimeout = setTimeout(() => {
+    if (signal.aborted) {
       fail(504, "timed out waiting for the tunnel client");
-    }, headTimeoutMs);
+      return;
+    }
+    signal.addEventListener("abort", () => {
+      fail(504, "timed out waiting for the tunnel client");
+    });
 
     const onHead = (frame: Extract<Frame, { type: "resp-head" }>) => {
       if (headSettled) return;
@@ -224,6 +221,7 @@ export async function fetchThroughRelay(
   stub: RelayStub,
   request: Request,
   progress: GateProgress,
+  signal: AbortSignal,
 ): Promise<Response | null> {
   const upgraded = await stub.fetch(relayUpgradeRequest(request));
   const socket = upgraded.webSocket;
@@ -236,5 +234,5 @@ export async function fetchThroughRelay(
     } catch {}
     return null;
   }
-  return relayResponse(socket, request, progress);
+  return relayResponse(socket, request, progress, signal);
 }

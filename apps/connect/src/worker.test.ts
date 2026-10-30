@@ -202,7 +202,10 @@ import { verifyDesktopSessionCookie } from "./desktop-session.js";
 import { SECURE_DESKTOP_SESSION_COOKIE as DESKTOP_SESSION_COOKIE } from "./cloud-dev.js";
 import { handleAssignMachineLabel } from "./machine-label.js";
 import { serveWithCache } from "./cache.js";
-import { RESP_HEAD_TIMEOUT_MS } from "./response-head-timeout.js";
+import {
+  RESP_HEAD_MAX_WAIT_MS,
+  RESP_HEAD_TIMEOUT_MS,
+} from "./response-head-timeout.js";
 import { RELAY_HEADER } from "./protocol-headers.js";
 import worker, { relativeTime, wantsHtml } from "./worker.js";
 import {
@@ -1187,6 +1190,103 @@ describe("gate request deadline", () => {
 
     expect(response.status).toBe(504);
     expect(await response.text()).toContain("(stage: response-head)");
+  });
+
+  describe("a relayed request whose head outlasts the deadline", () => {
+    function relayedRequest(status: () => Response | Promise<Response>) {
+      const socket = new SilentRelaySocket();
+      const { env, ctx } = makeEnv((request) =>
+        isStatusCheck(request) ? status() : relayUpgrade(socket),
+      );
+      let settled = false;
+      const pending = worker
+        .fetch(
+          visitorRequest("sawyer.getbb.app", "/api/v1/threads", {
+            headers: machineHeaders,
+          }),
+          { ...env, WORKER_HELD_RESPONSES: "on" } as never,
+          ctx,
+        )
+        .then((response) => {
+          settled = true;
+          return response;
+        });
+      return { socket, env, ctx, pending, settled: () => settled };
+    }
+
+    function tunnelStatus(lastHeartbeatAgeMs: number) {
+      return () =>
+        Response.json(
+          { connected: true, lastHeartbeatAgeMs },
+          { headers: { "x-bb-tunnel-status": "1" } },
+        );
+    }
+
+    function deliver(socket: SilentRelaySocket, frame: Frame) {
+      const event = new Event("message");
+      Object.defineProperty(event, "data", { value: frameBuffer(frame) });
+      socket.dispatchEvent(event);
+    }
+
+    it("keeps waiting while the tunnel heartbeat is fresh", async () => {
+      const { socket, env, pending, settled } = relayedRequest(
+        tunnelStatus(5_000),
+      );
+      await vi.advanceTimersByTimeAsync(70_000);
+      expect(settled()).toBe(false);
+      deliver(socket, {
+        type: "resp-head",
+        streamId: 0,
+        status: 200,
+        headers: [["content-type", "text/plain"]],
+      });
+      deliver(socket, {
+        type: "body-chunk",
+        streamId: 0,
+        data: new TextEncoder().encode("ok"),
+      });
+      deliver(socket, { type: "body-end", streamId: 0 });
+      const response = await pending;
+      expect(response.status).toBe(200);
+      await expect(response.text()).resolves.toBe("ok");
+      expect(env.GATE_EVENTS.writeDataPoint).toHaveBeenCalledTimes(1);
+      expect(env.GATE_EVENTS.writeDataPoint).toHaveBeenCalledWith(
+        expect.objectContaining({
+          blobs: expect.arrayContaining(["slow", "response-head"]),
+          doubles: [RESP_HEAD_TIMEOUT_MS, 1, -1],
+        }),
+      );
+    });
+
+    it("answers 504 and closes the relay when the tunnel heartbeat is stale", async () => {
+      const { socket, pending } = relayedRequest(tunnelStatus(60_000));
+      await vi.advanceTimersByTimeAsync(RESP_HEAD_TIMEOUT_MS);
+      const response = await pending;
+      expect(response.status).toBe(504);
+      expect(await response.text()).toContain("(stage: response-head)");
+      expect(socket.closes).toEqual([1000]);
+    });
+
+    it("answers 504 when the tunnel object does not report its status", async () => {
+      const { pending, settled } = relayedRequest(
+        () => new Promise<Response>(() => {}),
+      );
+      await vi.advanceTimersByTimeAsync(RESP_HEAD_TIMEOUT_MS);
+      expect(settled()).toBe(false);
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect((await pending).status).toBe(504);
+    });
+
+    it("answers 504 at the ten minute cap even with a fresh heartbeat", async () => {
+      const { socket, pending, settled } = relayedRequest(tunnelStatus(5_000));
+      await vi.advanceTimersByTimeAsync(RESP_HEAD_MAX_WAIT_MS - 1_000);
+      expect(settled()).toBe(false);
+      await vi.advanceTimersByTimeAsync(1_000);
+      const response = await pending;
+      expect(response.status).toBe(504);
+      expect(await response.text()).toContain("(stage: response-head)");
+      expect(socket.closes).toEqual([1000]);
+    });
   });
 
   it.each(["HTTP", "WebSocket"])(
@@ -2535,81 +2635,6 @@ function openHttpStreamId(sent: Uint8Array[], index: number): number {
     throw new Error(`expected open-http at ${index}`);
   return frame.streamId;
 }
-
-describe("TunnelDO voice transcription response head", () => {
-  async function voicePost() {
-    const sent: Uint8Array[] = [];
-    const state = mockDoState({ protocolVersion: 1 });
-    const dob = new TunnelDO(state.api, makeDoEnv());
-    await state.restore;
-    const tunnel = fakeTunnelSocket(captureSent(sent));
-    state.addSocket(tunnel, ["tunnel"]);
-    let settled = false;
-    const pending = Promise.resolve(
-      dob.fetch(
-        new Request("https://do.internal/api/v1/system/voice-transcription", {
-          method: "POST",
-          body: "audio",
-        }),
-      ),
-    ).then((response) => {
-      settled = true;
-      return response;
-    });
-    return {
-      dob,
-      tunnel,
-      pending,
-      streamId: openHttpStreamId(sent, 0),
-      settled: () => settled,
-    };
-  }
-
-  it("relays a transcript whose head arrives after 85 seconds", async () => {
-    vi.useFakeTimers();
-    try {
-      const { dob, tunnel, pending, streamId, settled } = await voicePost();
-      await vi.advanceTimersByTimeAsync(85_000);
-      expect(settled()).toBe(false);
-      dob.webSocketMessage(
-        tunnel,
-        frameBuffer({
-          type: "resp-head",
-          streamId,
-          status: 200,
-          headers: [["content-type", "application/json"]],
-        }),
-      );
-      dob.webSocketMessage(
-        tunnel,
-        frameBuffer({
-          type: "body-chunk",
-          streamId,
-          data: new TextEncoder().encode('{"text":"a long note"}'),
-        }),
-      );
-      dob.webSocketMessage(tunnel, frameBuffer({ type: "body-end", streamId }));
-      const response = await pending;
-      expect(response.status).toBe(200);
-      await expect(response.json()).resolves.toEqual({ text: "a long note" });
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("answers 504 after 90 seconds without a head", async () => {
-    vi.useFakeTimers();
-    try {
-      const { pending, settled } = await voicePost();
-      await vi.advanceTimersByTimeAsync(89_999);
-      expect(settled()).toBe(false);
-      await vi.advanceTimersByTimeAsync(1);
-      expect((await pending).status).toBe(504);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-});
 
 describe("TunnelDO request body", () => {
   it("coalesces small body reads into full-size frames", async () => {

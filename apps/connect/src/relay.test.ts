@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   MAX_CHUNK_BYTES,
   decodeFrame,
@@ -12,9 +12,7 @@ import {
   RELAY_HAS_BODY_HEADER,
   RELAY_HEADER,
   RELAY_METHOD_HEADER,
-  TUNNEL_TARGET_HEADER,
 } from "./protocol-headers.js";
-import { RESP_HEAD_TIMEOUT_MS } from "./response-head-timeout.js";
 import {
   fetchThroughRelay,
   relayUpgradeRequest,
@@ -82,10 +80,6 @@ function newProgress(): GateProgress {
   return { stage: "routing", tunnelObjectAttempts: 0, routingKey: null };
 }
 
-afterEach(() => {
-  vi.useRealTimers();
-});
-
 describe("relay upgrade request", () => {
   it("carries the visitor request as a bodiless websocket upgrade", () => {
     const upgrade = relayUpgradeRequest(
@@ -152,6 +146,7 @@ describe("fetchThroughRelay", () => {
       stub,
       new Request("https://sawyer.getbb.app/api/v1/threads"),
       newProgress(),
+      new AbortController().signal,
     );
     await vi.waitFor(() => expect(socket.accepted).toBe(true));
     expect(socket.binaryType).toBe("arraybuffer");
@@ -196,6 +191,7 @@ describe("fetchThroughRelay", () => {
         headers: { "if-none-match": 'W/"abc"' },
       }),
       newProgress(),
+      new AbortController().signal,
     );
     await vi.waitFor(() => expect(socket.accepted).toBe(true));
     socket.deliver({
@@ -221,6 +217,7 @@ describe("fetchThroughRelay", () => {
         body: "hello body",
       }),
       newProgress(),
+      new AbortController().signal,
     );
     await vi.waitFor(() =>
       expect(socket.sent.map((frame) => frame.type)).toEqual([
@@ -257,6 +254,7 @@ describe("fetchThroughRelay", () => {
         duplex: "half",
       } as RequestInit),
       newProgress(),
+      new AbortController().signal,
     );
     await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("body-end"));
     const chunks = socket.sent.flatMap((frame) =>
@@ -270,116 +268,24 @@ describe("fetchThroughRelay", () => {
     expect(Buffer.concat(chunks).equals(bytes)).toBe(true);
   });
 
-  it("answers 504 when the tunnel client never sends a response head", async () => {
-    vi.useFakeTimers();
+  it("answers 504 and closes the relay when the gate gives up on the head", async () => {
     const socket = new FakeRelaySocket();
     const { stub } = upgradedWith(socket);
+    const gate = new AbortController();
     const pending = fetchThroughRelay(
       stub,
       new Request("https://sawyer.getbb.app/slow"),
       newProgress(),
+      gate.signal,
     );
-    await vi.advanceTimersByTimeAsync(RESP_HEAD_TIMEOUT_MS);
+    await vi.waitFor(() => expect(socket.accepted).toBe(true));
+    gate.abort();
     const response = await pending;
     expect(response?.status).toBe(504);
     await expect(response?.text()).resolves.toContain(
       "timed out waiting for the tunnel client",
     );
     expect(socket.closes).toHaveLength(1);
-  });
-
-  describe("voice transcription response head", () => {
-    function voiceRequest(
-      init: { method?: string; headers?: Record<string, string> } = {},
-    ) {
-      return new Request(
-        "https://sawyer.getbb.app/api/v1/system/voice-transcription",
-        {
-          method: init.method ?? "POST",
-          ...(init.method === "GET" ? {} : { body: "audio" }),
-          headers: init.headers ?? {},
-        },
-      );
-    }
-
-    it("relays a transcript whose head arrives after 85 seconds", async () => {
-      vi.useFakeTimers();
-      const socket = new FakeRelaySocket();
-      const { stub } = upgradedWith(socket);
-      let settled = false;
-      const pending = fetchThroughRelay(
-        stub,
-        voiceRequest(),
-        newProgress(),
-      ).then((response) => {
-        settled = true;
-        return response;
-      });
-      await vi.advanceTimersByTimeAsync(85_000);
-      expect(settled).toBe(false);
-      socket.deliver({
-        type: "resp-head",
-        streamId: STREAM_ID,
-        status: 200,
-        headers: [["content-type", "application/json"]],
-      });
-      socket.deliver({
-        type: "body-chunk",
-        streamId: STREAM_ID,
-        data: new TextEncoder().encode('{"text":"a long note"}'),
-      });
-      socket.deliver({ type: "body-end", streamId: STREAM_ID });
-      const response = await pending;
-      expect(response?.status).toBe(200);
-      await expect(response?.json()).resolves.toEqual({ text: "a long note" });
-    });
-
-    it("answers 504 and closes the relay after 90 seconds without a head", async () => {
-      vi.useFakeTimers();
-      const socket = new FakeRelaySocket();
-      const { stub } = upgradedWith(socket);
-      let settled = false;
-      const pending = fetchThroughRelay(
-        stub,
-        voiceRequest(),
-        newProgress(),
-      ).then((response) => {
-        settled = true;
-        return response;
-      });
-      await vi.advanceTimersByTimeAsync(89_999);
-      expect(settled).toBe(false);
-      await vi.advanceTimersByTimeAsync(1);
-      const response = await pending;
-      expect(response?.status).toBe(504);
-      await expect(response?.text()).resolves.toContain(
-        "timed out waiting for the tunnel client",
-      );
-      expect(socket.closes).toHaveLength(1);
-    });
-
-    it.each([
-      ["a GET of the voice path", voiceRequest({ method: "GET" })],
-      [
-        "a port share at the voice path",
-        voiceRequest({ headers: { [TUNNEL_TARGET_HEADER]: "8000" } }),
-      ],
-      [
-        "another upload",
-        new Request("https://sawyer.getbb.app/api/v1/upload", {
-          method: "POST",
-          body: "file",
-        }),
-      ],
-    ])("keeps the 30 second head deadline for %s", async (_name, request) => {
-      vi.useFakeTimers();
-      const socket = new FakeRelaySocket();
-      const { stub } = upgradedWith(socket);
-      const pending = fetchThroughRelay(stub, request, newProgress());
-      await vi.advanceTimersByTimeAsync(30_000);
-      const response = await pending;
-      expect(response?.status).toBe(504);
-    });
   });
 
   it("answers 502 when the tunnel drops before the response head", async () => {
@@ -389,6 +295,7 @@ describe("fetchThroughRelay", () => {
       stub,
       new Request("https://sawyer.getbb.app/pending"),
       newProgress(),
+      new AbortController().signal,
     );
     await vi.waitFor(() => expect(socket.accepted).toBe(true));
     socket.peerClose(1011, "tunnel reconnected mid-request");
@@ -406,6 +313,7 @@ describe("fetchThroughRelay", () => {
       stub,
       new Request("https://sawyer.getbb.app/broken"),
       newProgress(),
+      new AbortController().signal,
     );
     await vi.waitFor(() => expect(socket.accepted).toBe(true));
     socket.deliver({
@@ -428,6 +336,7 @@ describe("fetchThroughRelay", () => {
       stub,
       new Request("https://sawyer.getbb.app/mid-body"),
       newProgress(),
+      new AbortController().signal,
     );
     await vi.waitFor(() => expect(socket.accepted).toBe(true));
     socket.deliver({
@@ -448,6 +357,7 @@ describe("fetchThroughRelay", () => {
       stub,
       new Request("https://sawyer.getbb.app/stream"),
       newProgress(),
+      new AbortController().signal,
     );
     await vi.waitFor(() => expect(socket.accepted).toBe(true));
     socket.deliver({
@@ -470,6 +380,7 @@ describe("fetchThroughRelay", () => {
       stub,
       new Request("https://sawyer.getbb.app/weird"),
       newProgress(),
+      new AbortController().signal,
     );
     await vi.waitFor(() => expect(socket.accepted).toBe(true));
     socket.deliver({
@@ -491,6 +402,7 @@ describe("fetchThroughRelay", () => {
         stub,
         new Request("https://sawyer.getbb.app/"),
         newProgress(),
+        new AbortController().signal,
       ),
     ).resolves.toBe(offline);
   });
@@ -503,7 +415,12 @@ describe("fetchThroughRelay", () => {
       body: "kept",
     });
     await expect(
-      fetchThroughRelay(stub, request, newProgress()),
+      fetchThroughRelay(
+        stub,
+        request,
+        newProgress(),
+        new AbortController().signal,
+      ),
     ).resolves.toBeNull();
     expect(socket.closes).toEqual([
       { code: 1000, reason: "relay unsupported" },

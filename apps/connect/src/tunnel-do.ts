@@ -20,7 +20,7 @@ import {
 } from "@bb/tunnel-contract";
 import { requestBodyChunks } from "./request-body-chunks.js";
 import { relayedResponse } from "./response-encoding.js";
-import { responseHeadTimeoutMs } from "./response-head-timeout.js";
+import { RESP_HEAD_TIMEOUT_MS } from "./response-head-timeout.js";
 import {
   GATE_OWNER_HEADER,
   HOP_HEADERS,
@@ -597,12 +597,6 @@ export class TunnelDO {
     const streamId = this.nextStreamId++;
     const hasBody = request.body !== null;
 
-    const headTimeoutMs = responseHeadTimeoutMs(
-      request.method,
-      url,
-      request.headers,
-    );
-
     const responsePromise = new Promise<Response>((resolve) => {
       const timeout = setTimeout(() => {
         this.failHttpStream(
@@ -610,7 +604,7 @@ export class TunnelDO {
           504,
           "timed out waiting for the tunnel client",
         );
-      }, headTimeoutMs);
+      }, RESP_HEAD_TIMEOUT_MS);
       this.pendingHttp.set(streamId, {
         resolve,
         writer: null,
