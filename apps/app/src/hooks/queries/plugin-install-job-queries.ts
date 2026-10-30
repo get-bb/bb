@@ -29,7 +29,7 @@ export function isActivePluginInstallJob(
   );
 }
 
-const pluginInstallJobsQueryOptions = queryOptions({
+export const pluginInstallJobsQueryOptions = queryOptions({
   queryKey: pluginInstallJobsQueryKey(),
   queryFn: () => createPluginsClient(fetch).installJobs.list(),
 });
