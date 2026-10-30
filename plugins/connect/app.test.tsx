@@ -166,11 +166,12 @@ describe("connect settings section", () => {
         );
         if (typeof started?.input !== "object" || started.input === null)
           throw new Error("Missing setup attempt");
+        const startedInput = started.input;
         fireEvent.click(slot.getByRole("button", { name: "Cancel" }));
         await waitFor(() =>
           expect(slot.rpcCalls).toContainEqual({
             method: "setupAttempt",
-            input: { ...started.input, outcome: "cancelled" },
+            input: { ...startedInput, outcome: "cancelled" },
           }),
         );
       }
