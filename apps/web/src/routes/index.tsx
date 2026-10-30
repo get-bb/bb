@@ -67,6 +67,7 @@ import vscodeIcon from "../assets/vscode.png";
 import { parseChangelog } from "../../../../changelog-parser";
 import { DiscordLink, GitHubLink, SubscribeSection } from "../landing/cta";
 import { siteHeadLinks } from "../landing/page-head";
+import { Testimonials } from "../landing/testimonials";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
 import { ClaudeIcon } from "../landing/icons";
 import {
@@ -1332,6 +1333,8 @@ function LandingPage() {
           </GitHubLink>
         </div>
       </section>
+
+      <Testimonials />
 
       <section className="closer" data-reveal>
         <h2 className="sec-title">Put your agents to work.</h2>

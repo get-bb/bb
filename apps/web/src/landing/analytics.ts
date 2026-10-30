@@ -2,6 +2,7 @@ import type { PostHog } from "posthog-js";
 import { useEffect } from "react";
 import type { ArrivalSource } from "./arrival-source";
 import type { CtaPlacement } from "./site";
+import type { TestimonialSource } from "./testimonials";
 
 type LandingEvent =
   | {
@@ -19,6 +20,10 @@ type LandingEvent =
   | {
       name: "landing_cli_command_copied";
       properties: { placement: CtaPlacement; command: string };
+    }
+  | {
+      name: "landing_testimonial_clicked";
+      properties: { source: TestimonialSource };
     }
   | {
       name: "landing_send_to_computer_clicked";
