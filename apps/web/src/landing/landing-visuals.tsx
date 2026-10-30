@@ -3,13 +3,18 @@ import ArrowExpand01Icon from "@hugeicons/core-free-icons/ArrowExpand01Icon";
 import ArrowMoveDownLeftIcon from "@hugeicons/core-free-icons/ArrowMoveDownLeftIcon";
 import ArrowRight01Icon from "@hugeicons/core-free-icons/ArrowRight01Icon";
 import AttachmentIcon from "@hugeicons/core-free-icons/AttachmentIcon";
+import CheckmarkCircle02Icon from "@hugeicons/core-free-icons/CheckmarkCircle02Icon";
+import Clock01Icon from "@hugeicons/core-free-icons/Clock01Icon";
+import CommandLineIcon from "@hugeicons/core-free-icons/CommandLineIcon";
 import GitBranchIcon_ from "@hugeicons/core-free-icons/GitBranchIcon";
 import Loading03Icon from "@hugeicons/core-free-icons/Loading03Icon";
+import MessageQuestionIcon from "@hugeicons/core-free-icons/MessageQuestionIcon";
+import Plug02Icon from "@hugeicons/core-free-icons/Plug02Icon";
 import SidebarLeftIcon from "@hugeicons/core-free-icons/SidebarLeftIcon";
 import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useEffect, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { CSSProperties, ReactNode, RefObject } from "react";
 
 import { trackLandingEvent } from "./analytics";
 import { CommandButton } from "./command-button";
@@ -185,12 +190,44 @@ export function Band({
   );
 }
 
-export function useCycle(holdMs: number, fadeMs: number) {
+/**
+ * Drives a looping visual: `cycle` changes each loop (use it as a `key` to
+ * replay CSS animations) and `leaving` is true during the fade-out.
+ *
+ * With `ref`, the loop only runs while that element is on screen: it starts
+ * from the first frame when the element enters view and stops and resets when
+ * it leaves, and `paused` is true while it's offscreen. Without `ref`, it
+ * loops from mount, as before.
+ */
+export function useCycle(
+  holdMs: number,
+  fadeMs: number,
+  ref?: RefObject<Element | null>,
+) {
   const [cycle, setCycle] = useState(0);
   const [leaving, setLeaving] = useState(false);
+  const [inView, setInView] = useState(ref === undefined);
+  useEffect(() => {
+    if (!ref) return;
+    const target = ref.current;
+    if (!target || typeof IntersectionObserver === "undefined") {
+      setInView(true);
+      return;
+    }
+    const observer = new IntersectionObserver(([entry]) => {
+      setInView(entry?.isIntersecting ?? false);
+    });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [ref]);
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       return;
+    }
+    if (!inView) return;
+    if (ref) {
+      setCycle((c) => c + 1);
+      setLeaving(false);
     }
     let holdTimer = 0;
     let fadeTimer = 0;
@@ -209,8 +246,8 @@ export function useCycle(holdMs: number, fadeMs: number) {
       window.clearTimeout(holdTimer);
       window.clearTimeout(fadeTimer);
     };
-  }, [holdMs, fadeMs]);
-  return { cycle, leaving };
+  }, [holdMs, fadeMs, inView, ref]);
+  return { cycle, leaving, paused: !inView };
 }
 
 export function SpawnRow({
@@ -564,6 +601,166 @@ export function CustomizeBuild() {
                   </span>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Feature windows: small bb windows in the hero window's style ──────── */
+
+const PluginsIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={Plug02Icon} className={className} />
+);
+const ClockIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={Clock01Icon} className={className} />
+);
+const TerminalIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={CommandLineIcon} className={className} />
+);
+const DoneIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={CheckmarkCircle02Icon} className={className} />
+);
+const WaitingIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={MessageQuestionIcon} className={className} />
+);
+
+type ThreadState = "running" | "done" | "waiting";
+
+function StatusGlyph({ status }: { status: ThreadState }) {
+  if (status === "running") return <Spinner className="trun" />;
+  if (status === "done") return <DoneIcon className="tdone" />;
+  return <WaitingIcon className="twait" />;
+}
+
+/** A thread's status glyph; with `doneAt`, it turns from running to done. */
+function ThreadStatus({
+  status,
+  doneAt,
+}: {
+  status: ThreadState;
+  doneAt?: number;
+}) {
+  if (doneAt === undefined) {
+    return (
+      <span className="tstatus" aria-hidden>
+        <StatusGlyph status={status} />
+      </span>
+    );
+  }
+  return (
+    <span className="tstatus fw-swap" aria-hidden>
+      <span className="fw-swap-from" style={at(doneAt)}>
+        <StatusGlyph status="running" />
+      </span>
+      <span className="fw-swap-to" style={at(doneAt)}>
+        <StatusGlyph status="done" />
+      </span>
+    </span>
+  );
+}
+
+/** Animation delay, in seconds from the start of the loop. */
+function at(seconds: number): CSSProperties {
+  return { "--fw-at": `${seconds}s` } as CSSProperties;
+}
+
+function WindowDots() {
+  return (
+    <span className="mock-dots" aria-hidden>
+      <i />
+      <i />
+      <i />
+    </span>
+  );
+}
+
+function stageClass(base: string, leaving: boolean, paused: boolean) {
+  return `${base}${leaving ? " leaving" : ""}${paused ? " fw-paused" : ""}`;
+}
+
+// `--project` is required and the prompt is a flag
+// (apps/cli/src/commands/thread/spawn.ts); the command prints
+// "Thread spawned: <id>".
+const SPAWN_COMMAND = 'bb thread spawn --project web --prompt "Fix CI on main"';
+const SPAWN_OUTPUT = "Thread spawned: thr_7q2m9xk4";
+
+/**
+ * A CI step runs `bb thread spawn` and an Automations schedule fires; each
+ * lands as a new thread in the sidebar. Command at 0.6s, output at 1.5s, the
+ * CI thread at 2s and the scheduled thread at 4.6s, then a 5s hold.
+ */
+export function StartAnywhere() {
+  const ref = useRef<HTMLDivElement>(null);
+  const { cycle, leaving, paused } = useCycle(9600, 600, ref);
+  return (
+    <div
+      ref={ref}
+      className="fw-start"
+      role="img"
+      aria-label="A CI step runs bb thread spawn with the prompt Fix CI on main, and an Automations schedule, every weekday at 9:00, runs the Nightly changelog. Each lands as a new thread in the bb sidebar."
+    >
+      <div className={stageClass("fw-stage", leaving, paused)} key={cycle}>
+        <div className="fw-src">
+          <div className="fw-src-head">
+            <TerminalIcon className="fw-ic" />
+            <span>CI step</span>
+            <span className="fw-src-meta">main · checks failed</span>
+          </div>
+          <div className="fw-term">
+            <span className="fw-tline fw-tcmd" style={at(0.6)}>
+              <span className="fw-prompt">$</span> {SPAWN_COMMAND}
+            </span>
+            <span className="fw-tline fw-tout" style={at(1.5)}>
+              {SPAWN_OUTPUT}
+            </span>
+          </div>
+        </div>
+        <div className="fw-src fw-sched">
+          <ClockIcon className="fw-ic" />
+          <span className="fw-sched-text">
+            <span className="fw-sched-when">Every weekday 9:00</span>
+            <span className="fw-sched-sep"> · </span>
+            <span>Nightly changelog</span>
+          </span>
+          <span className="fw-tag">
+            <PluginsIcon className="fw-tag-ic" />
+            Automations
+          </span>
+        </div>
+        <div className="fw-win">
+          <div className="fw-band">
+            <WindowDots />
+            <PanelIcon className="fw-ic fw-band-end" />
+          </div>
+          <div className="fw-card fw-side fw-side-solo">
+            <div className="fw-label">Threads</div>
+            {/* New rows land at the top and push the rest down a row. */}
+            <div className="fw-rows">
+              <div className="fw-row fw-land" style={at(4.6)}>
+                <span className="fw-row-title">Nightly changelog</span>
+                <ThreadStatus status="running" />
+              </div>
+              <div className="fw-push" style={at(4.6)}>
+                <div className="fw-row fw-land" style={at(2)}>
+                  <span className="fw-row-title">Fix CI on main</span>
+                  <ThreadStatus status="running" />
+                </div>
+                <div className="fw-push" style={at(2)}>
+                  <div className="fw-row">
+                    <span className="fw-row-title">
+                      Refactor the timeline cache
+                    </span>
+                    <ThreadStatus status="waiting" />
+                  </div>
+                  <div className="fw-row">
+                    <span className="fw-row-title">Ship the CSV export</span>
+                    <ThreadStatus status="done" />
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

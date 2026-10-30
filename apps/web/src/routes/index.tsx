@@ -19,7 +19,6 @@ import MoreHorizontalIcon from "@hugeicons/core-free-icons/MoreHorizontalIcon";
 import PauseIcon from "@hugeicons/core-free-icons/PauseIcon";
 import PlayIcon from "@hugeicons/core-free-icons/PlayIcon";
 import PlusMinusSquare01Icon from "@hugeicons/core-free-icons/PlusMinusSquare01Icon";
-import SentIcon from "@hugeicons/core-free-icons/SentIcon";
 import Settings01Icon from "@hugeicons/core-free-icons/Settings01Icon";
 import SidebarLeftIcon from "@hugeicons/core-free-icons/SidebarLeftIcon";
 import SidebarRightIcon from "@hugeicons/core-free-icons/SidebarRightIcon";
@@ -63,7 +62,6 @@ import stitchFixLogo from "../assets/company-logos/stitch-fix.png";
 import tencentLogo from "../assets/company-logos/tencent.png";
 import vercelLogo from "../assets/company-logos/vercel.svg";
 import zooxLogo from "../assets/company-logos/zoox.png";
-import hermesAvatar from "../assets/hermes-avatar.jpg";
 import vscodeIcon from "../assets/vscode.png";
 import { parseChangelog } from "../../../../changelog-parser";
 import { DiscordLink, GitHubLink, SubscribeSection } from "../landing/cta";
@@ -76,7 +74,7 @@ import {
   ProviderChips,
   CustomizeBuild,
   SpawnSidebar,
-  useCycle,
+  StartAnywhere,
   useScrollReveal,
 } from "../landing/landing-visuals";
 import {
@@ -362,9 +360,6 @@ const CircleCheckIcon = ({ className }: IconProps) => (
 );
 const MessageQuestionGlyph = ({ className }: IconProps) => (
   <HugeiconsIcon icon={MessageQuestionIcon} className={className} />
-);
-const PaperPlane = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={SentIcon} className={className} />
 );
 const Paperclip = ({ className }: IconProps) => (
   <HugeiconsIcon icon={AttachmentIcon} className={className} />
@@ -1127,76 +1122,6 @@ function HeroAppMock() {
   );
 }
 
-function AgentChat() {
-  const { cycle, leaving } = useCycle(6000, 600);
-  return (
-    <div
-      className="tg"
-      aria-label="Texting the Crunch bot, which spawns a bb thread"
-    >
-      <div className="tg-bar">
-        <ChevronLeft className="tg-back" />
-        <span className="tg-contact">
-          <span className="tg-name">Sawyer&rsquo;s Hermes</span>
-          <span className="tg-sub">bot</span>
-        </span>
-        <span className="tg-av" aria-hidden>
-          <img src={hermesAvatar} alt="" />
-        </span>
-      </div>
-      <div className="tg-feed">
-        <div className={leaving ? "tg-msgs leaving" : "tg-msgs"} key={cycle}>
-          <div className="tg-msg tg-out" style={{ animationDelay: "0.3s" }}>
-            <span className="tg-bubble">
-              spawn a thread to fix the failing CI on main
-              <span className="tg-time">9:41</span>
-            </span>
-          </div>
-          <div className="tg-msg tg-in" style={{ animationDelay: "1.4s" }}>
-            <span className="tg-bubble">
-              On it. Spawning a worker thread.
-              <span className="tg-cmd mono">bb spawn "fix CI on main"</span>
-            </span>
-          </div>
-          <div className="tg-msg tg-in" style={{ animationDelay: "2.4s" }}>
-            <div className="tg-thread">
-              <div className="tg-thread-top">
-                <span aria-hidden="true" className="bb-mark tg-thread-mark" />
-                <span className="tg-thread-eyebrow">Worker thread</span>
-                <span className="tg-stat" aria-hidden>
-                  <span
-                    className="tg-stat-spawn"
-                    style={{ animationDelay: "3.5s" }}
-                  >
-                    <Spinner className="tg-spin" />
-                    spawning
-                  </span>
-                  <span
-                    className="tg-stat-run"
-                    style={{ animationDelay: "3.5s" }}
-                  >
-                    <span className="tg-rdot" />
-                    running
-                  </span>
-                </span>
-              </div>
-              <div className="tg-thread-title">Fix CI on main</div>
-              <div className="tg-thread-branch mono">bb/fix-ci-on-main</div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div className="tg-input">
-        <Paperclip className="tg-attach" />
-        <span className="tg-field">Message</span>
-        <span className="tg-send" aria-hidden>
-          <PaperPlane className="tg-send-ic" />
-        </span>
-      </div>
-    </div>
-  );
-}
-
 function LandingPage() {
   const [companyProofPaused, setCompanyProofPaused] = useState(false);
   const [companyProofInView, setCompanyProofInView] = useState(false);
@@ -1299,23 +1224,6 @@ function LandingPage() {
       </Band>
 
       <Band
-        title="Anything can kick off work."
-        section="kick-off"
-        visual={<AgentChat />}
-      >
-        <p>
-          The same CLI your agents use is open to any program you write: a shell
-          script, a cron job, or your own Hermes Agent or OpenClaw bot in
-          Telegram, Signal, or Slack. Each can spawn a thread that&rsquo;s
-          waiting in your sidebar when you are.
-        </p>
-        <p>
-          It runs on your machine, and is waiting for you when you&rsquo;re
-          back.
-        </p>
-      </Band>
-
-      <Band
         title="The gang's all here"
         flip
         section="gang"
@@ -1333,6 +1241,20 @@ function LandingPage() {
         <div className="providers">
           <ProviderChips />
         </div>
+      </Band>
+
+      <Band
+        title="Start work from anywhere."
+        flip
+        section="start-anywhere"
+        visual={<StartAnywhere />}
+      >
+        <p>
+          The <code>bb</code> command your agents use is yours too. A cron job,
+          a CI step, or a chat bot can run <code>bb thread spawn</code> and
+          start a thread, and Automations can run work on a schedule.
+          It&rsquo;s waiting in your sidebar when you&rsquo;re back.
+        </p>
       </Band>
 
       <section className="statement" data-reveal data-section="fork-it">
