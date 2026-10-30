@@ -103,6 +103,6 @@ Render Resend's built HTML full length in a Mac's bb browser, which has Inter an
 ## Sending
 
 - **Tracking first:** open and click tracking are on for mail.getbb.app in Resend, and the test email's links carry `utm_campaign=monthly_releases_<ym>` and show up in getbb.app's analytics.
-- **Audience:** everyone subscribed, once each. Resend's To list offers "All Contacts" and segments; check which covers everyone without duplicates, and confirm with the reviewer. Unsubscribes are honored.
+- **Audience:** everyone subscribed, once each. A Resend broadcast goes to exactly one segment, and segments are fixed lists, so the To field is one segment that combines every list the reviewer names. The website signup list keeps growing, so right before scheduling, add everyone in it to the combined segment (re-adding a contact is harmless), then check that the combined count equals the lists' union. Page through lists in the dashboard's contact view with bulk Edit → Add to segments; its pages can skip contacts that share an import time, so re-check every row's segment tags afterwards. Never re-import contacts by CSV, which can re-subscribe people who unsubscribed. Unsubscribes are honored.
 - **Test emails** go out only when the reviewer says, to the recipients they name. Test email takes addresses separated by commas or line breaks. Check every link in the received email.
 - **Schedule** after the reviewer's go-ahead on the test email: the first Thursday after the month ends, 16:00 UTC, unless they pick otherwise.
