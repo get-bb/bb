@@ -73,7 +73,7 @@ import {
   InstallOptions,
   ProviderChips,
   CustomizeBuild,
-  SpawnSidebar,
+  DelegationTree,
   StartAnywhere,
   useScrollReveal,
 } from "../landing/landing-visuals";
@@ -1224,23 +1224,15 @@ function LandingPage() {
       </Band>
 
       <Band
-        title="The gang's all here"
-        flip
-        section="gang"
-        visual={<SpawnSidebar />}
+        title="Agents that hand off work."
+        section="hand-off"
+        visual={<DelegationTree />}
       >
         <p>
-          Claude Code, Codex, Cursor, Pi, OpenCode, Grok, omp, and Hermes all
-          live in bb. Give a task to whichever fits, and have one agent spawn
-          and manage another, each in its own thread.
+          Any agent can start another, from any provider: Claude can hand Codex
+          the tests while it writes the fix. Each runs in its own thread you can
+          open, steer, or stop, and the parent hears back when it&rsquo;s done.
         </p>
-        <p>
-          Each runs on your own subscription: the provider plan you already pay
-          for, billed by them, not bb.
-        </p>
-        <div className="providers">
-          <ProviderChips />
-        </div>
       </Band>
 
       <Band

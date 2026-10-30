@@ -2402,6 +2402,222 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   }
 }
 
+/* ── Agents that hand off work: a parent thread and its children ──────── */
+
+.fw-ic-ink {
+  color: var(--ink);
+}
+
+.fw-handoff {
+  container-type: inline-size;
+}
+
+.fw-split {
+  display: flex;
+  margin: 0 8px 8px;
+  /* Reserve the final height so the loop never shifts the band. */
+  min-height: 310px;
+}
+
+.fw-handoff .fw-side {
+  width: 47%;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-right: 0;
+  border-radius: 8px 0 0 8px;
+}
+
+.fw-kids {
+  margin-left: 14px;
+  padding-left: 4px;
+  border-left: 1px solid var(--border);
+}
+
+.fw-kid {
+  --fw-row: 26px;
+  gap: 6px;
+  font-size: 12.5px;
+}
+
+.fw-kid-ic {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  color: var(--dim);
+}
+
+.fw-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-left-color: var(--fw-seam);
+  border-radius: 0 8px 8px 0;
+  background: var(--bg);
+}
+
+.fw-main-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  flex-shrink: 0;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--fw-seam);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.fw-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 4px;
+}
+
+.fw-say {
+  padding: 0 8px 2px;
+  line-height: 1.55;
+  color: var(--ink-strong);
+}
+
+.fw-work {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 1px 8px;
+  color: var(--dim);
+  white-space: nowrap;
+}
+
+.fw-step-ic {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--subtle);
+}
+
+.fw-work-verb {
+  flex-shrink: 0;
+}
+
+.fw-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 1px 6px 1px 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--surface-recessed) 50%, transparent);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink);
+}
+
+.fw-pill-ic {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.fw-pill-text {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.fw-note {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 8px 0;
+}
+
+.fw-note-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  line-height: 20px;
+  white-space: nowrap;
+}
+
+.fw-note-ic {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--ok);
+}
+
+.fw-note-subject {
+  overflow: hidden;
+  font-weight: 500;
+  color: var(--ink);
+  text-overflow: ellipsis;
+}
+
+.fw-note-verb {
+  flex-shrink: 0;
+  color: var(--dim);
+}
+
+.fw-note-body {
+  position: relative;
+  margin: 3px 0 2px;
+  padding-left: 20px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.fw-note-body::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 2px;
+  left: 6px;
+  width: 1px;
+  background: var(--fw-seam);
+}
+
+/* Narrow: stack the parent thread under the sidebar. */
+@container (max-width: 400px) {
+  .fw-split {
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .fw-handoff .fw-side {
+    width: auto;
+    border-right: 1px solid var(--border);
+    border-bottom: 0;
+    border-radius: 8px 8px 0 0;
+  }
+
+  .fw-main {
+    min-height: 292px;
+    border-left-color: var(--border);
+    border-top-color: var(--fw-seam);
+    border-radius: 0 0 8px 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fw-handoff .fw-land,
+  .fw-handoff .fw-swap-from,
+  .fw-handoff .fw-swap-to {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  .fw-handoff .fw-swap-from {
+    opacity: 0;
+  }
+}
+
 /* ── Band 3 visual: mobile bb app mock ──────────────────────────── */
 
 .mockup-wrap-customize {

@@ -3,6 +3,7 @@ import ArrowExpand01Icon from "@hugeicons/core-free-icons/ArrowExpand01Icon";
 import ArrowMoveDownLeftIcon from "@hugeicons/core-free-icons/ArrowMoveDownLeftIcon";
 import ArrowRight01Icon from "@hugeicons/core-free-icons/ArrowRight01Icon";
 import AttachmentIcon from "@hugeicons/core-free-icons/AttachmentIcon";
+import BubbleChatAddIcon from "@hugeicons/core-free-icons/BubbleChatAddIcon";
 import CheckmarkCircle02Icon from "@hugeicons/core-free-icons/CheckmarkCircle02Icon";
 import Clock01Icon from "@hugeicons/core-free-icons/Clock01Icon";
 import CommandLineIcon from "@hugeicons/core-free-icons/CommandLineIcon";
@@ -12,6 +13,7 @@ import MessageQuestionIcon from "@hugeicons/core-free-icons/MessageQuestionIcon"
 import Plug02Icon from "@hugeicons/core-free-icons/Plug02Icon";
 import SidebarLeftIcon from "@hugeicons/core-free-icons/SidebarLeftIcon";
 import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
+import UserAdd01Icon from "@hugeicons/core-free-icons/UserAdd01Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode, RefObject } from "react";
@@ -293,67 +295,6 @@ export function SpawnRow({
   );
 }
 
-export function SpawnSidebar() {
-  const { cycle, leaving } = useCycle(5600, 500);
-  return (
-    <div
-      className="spawnbar"
-      aria-label="bb spawns and manages a worker thread for each provider"
-    >
-      <div className="sb-head">
-        <span aria-hidden="true" className="bb-mark sb-mark" />
-        <span className="sb-title">Threads</span>
-        <span className="sb-active">5 active</span>
-      </div>
-      <div className={leaving ? "sb-list leaving" : "sb-list"} key={cycle}>
-        <SpawnRow
-          parent
-          icon={<ClaudeIcon className="sb-ic" />}
-          name="Claude Code"
-          task="Ship the release"
-          status="managing"
-          at={0.1}
-          doneAt={4}
-        />
-        <div className="sb-kids">
-          <SpawnRow
-            icon={<OpenAiIcon className="sb-ic" />}
-            name="Codex"
-            task="Port module to TS"
-            status="running"
-            at={0.6}
-            doneAt={2.3}
-          />
-          <SpawnRow
-            icon={<CursorIcon className="sb-ic" />}
-            name="Cursor"
-            task="Refactor the auth flow"
-            status="running"
-            at={1}
-            doneAt={3}
-          />
-          <SpawnRow
-            icon={<PiIcon className="sb-ic" />}
-            name="Pi"
-            task="Write release notes"
-            status="running"
-            at={1.4}
-            doneAt={3.7}
-          />
-          <SpawnRow
-            icon={<OpencodeIcon className="sb-ic" />}
-            name="OpenCode"
-            task="Add integration tests"
-            status="running"
-            at={1.8}
-            doneAt={3.4}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
 type IconProps = { className?: string };
 
 const PanelIcon = ({ className }: IconProps) => (
@@ -626,6 +567,12 @@ const DoneIcon = ({ className }: IconProps) => (
 const WaitingIcon = ({ className }: IconProps) => (
   <HugeiconsIcon icon={MessageQuestionIcon} className={className} />
 );
+const NewThreadIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={BubbleChatAddIcon} className={className} />
+);
+const SubagentIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={UserAdd01Icon} className={className} />
+);
 
 type ThreadState = "running" | "done" | "waiting";
 
@@ -679,6 +626,127 @@ function WindowDots() {
 
 function stageClass(base: string, leaving: boolean, paused: boolean) {
   return `${base}${leaving ? " leaving" : ""}${paused ? " fw-paused" : ""}`;
+}
+
+const HANDOFF_PARENT = "Fix checkout timeout";
+const HANDOFF_CHILDREN = [
+  {
+    icon: OpenAiIcon,
+    title: "Write the tests",
+    landsAt: 0.8,
+    doneAt: 4.6,
+    note: "6 tests added. All pass with the fix.",
+  },
+  {
+    icon: PiIcon,
+    title: "Changelog entry",
+    landsAt: 1.5,
+    doneAt: 7,
+    note: "Added under Fixes for 0.42.",
+  },
+  { icon: ClaudeIcon, title: "Review the fix", landsAt: 2.2 },
+] as const;
+
+/**
+ * A Claude thread starts Codex, Pi and Claude child threads; as each child
+ * finishes, its note lands in the parent. Children land at 0.8s, 1.5s and
+ * 2.2s, Codex finishes at 4.6s and Pi at 7s, then a 4s hold.
+ */
+export function DelegationTree() {
+  const ref = useRef<HTMLDivElement>(null);
+  const { cycle, leaving, paused } = useCycle(11000, 600, ref);
+  return (
+    <div
+      ref={ref}
+      className="fw-win fw-handoff"
+      role="img"
+      aria-label="bb sidebar: the Claude thread Fix checkout timeout starts three child threads, Codex writing the tests, Pi writing the changelog entry, and Claude reviewing the fix. When Codex and Pi finish, a finished note lands in the parent thread."
+    >
+      <div className="fw-band">
+        <WindowDots />
+        <PanelIcon className="fw-ic fw-band-end" />
+      </div>
+      <div className={stageClass("fw-split", leaving, paused)} key={cycle}>
+        <div className="fw-side">
+          <div className="fw-row">
+            <NewThreadIcon className="fw-ic fw-ic-ink" />
+            New thread
+          </div>
+          <div className="fw-label">Threads</div>
+          <div className="fw-row">
+            <span className="fw-row-title">Bump the SDK</span>
+            <ThreadStatus status="done" />
+          </div>
+          <div className="fw-row">
+            <span className="fw-row-title">Refactor auth</span>
+            <ThreadStatus status="waiting" />
+          </div>
+          <div className="fw-row is-active">
+            <span className="fw-row-title">{HANDOFF_PARENT}</span>
+            <ThreadStatus status="running" />
+          </div>
+          <div className="fw-kids">
+            {HANDOFF_CHILDREN.map((child) => (
+              <div
+                className="fw-row fw-kid fw-land"
+                key={child.title}
+                style={at(child.landsAt)}
+              >
+                <child.icon className="fw-kid-ic" />
+                <span className="fw-row-title">{child.title}</span>
+                <ThreadStatus
+                  status="running"
+                  doneAt={"doneAt" in child ? child.doneAt : undefined}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="fw-main">
+          <div className="fw-main-head">
+            <ClaudeIcon className="fw-kid-ic" />
+            <span className="fw-row-title">{HANDOFF_PARENT}</span>
+          </div>
+          <div className="fw-feed">
+            <div className="fw-say">
+              I&rsquo;ll write the fix. Handing off the tests and the
+              changelog.
+            </div>
+            {HANDOFF_CHILDREN.map((child) => (
+              <div
+                className="fw-work fw-land"
+                key={child.title}
+                style={at(child.landsAt)}
+              >
+                <SubagentIcon className="fw-step-ic" />
+                <span className="fw-work-verb">Started</span>
+                <span className="fw-pill">
+                  <child.icon className="fw-pill-ic" />
+                  <span className="fw-pill-text">{child.title}</span>
+                </span>
+              </div>
+            ))}
+            {HANDOFF_CHILDREN.map((child) =>
+              "note" in child ? (
+                <div
+                  className="fw-note fw-land"
+                  key={child.title}
+                  style={at(child.doneAt)}
+                >
+                  <span className="fw-note-head">
+                    <DoneIcon className="fw-note-ic" />
+                    <span className="fw-note-subject">{child.title}</span>
+                    <span className="fw-note-verb">finished</span>
+                  </span>
+                  <span className="fw-note-body">{child.note}</span>
+                </div>
+              ) : null,
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // `--project` is required and the prompt is a flag
