@@ -22,6 +22,7 @@ import { internalAuthHeaders } from "../helpers/commands.js";
 import {
   seedEnvironment,
   seedHostSession,
+  seedPrimaryHost,
   seedProjectWithSource,
   seedThread,
   seedThreadRuntimeState,
@@ -91,8 +92,9 @@ async function setup(
 
 describe("turn_finished telemetry", () => {
   it("reports a completed root turn once, as the install's first turn", async () => {
-    const { harness, session, thread, turnFinished } = await setup();
+    const { harness, host, session, thread, turnFinished } = await setup();
     try {
+      seedPrimaryHost(harness.deps, host.id);
       const response = await postEventBatch(harness, session.id, [
         {
           threadId: thread.id,
@@ -124,6 +126,7 @@ describe("turn_finished telemetry", () => {
               provider: "codex",
               error_category: "none",
               install_turn_number: 1,
+              execution_location: "server_machine",
             },
           },
         ]),
@@ -379,6 +382,7 @@ describe("turn_finished telemetry", () => {
             error_category: "none",
             provider: "codex",
             install_turn_number: 1,
+            execution_location: "unknown",
           },
         },
       ]);

@@ -882,12 +882,14 @@ function PluginsStepContainer({
 
 function DevicesStepContainer({
   chrome,
+  entry,
   hostId,
   onBack,
   onFinish,
   onLeave,
 }: {
   chrome: StepChrome;
+  entry: OnboardingEntry;
   hostId: string | null;
   onBack: () => void;
   onFinish: () => void;
@@ -906,6 +908,42 @@ function DevicesStepContainer({
   const otherMachineCount = (hostsQuery.data ?? []).filter(
     (host) => host.id !== hostId,
   ).length;
+  const connect = connectAccessUrl(configQuery.data?.serverAccess);
+  const connectedMachineCount = hostsQuery.data?.filter(
+    (host) => host.id !== hostId && host.status === "connected",
+  ).length;
+  const pendingSetup = useRef<{
+    remoteAccess: boolean;
+    machinesBefore: number | null;
+  }>({ remoteAccess: false, machinesBefore: null });
+  const recordDeviceSetup = useCallback(
+    (
+      operation: "remote_access" | "add_machine",
+      outcome: "started" | "succeeded",
+    ) =>
+      recordTelemetryEvent({
+        name: "onboarding_operation",
+        properties: { entry, step: "devices", operation, outcome },
+      }),
+    [entry],
+  );
+  useEffect(() => {
+    if (connect.status !== "on" || !pendingSetup.current.remoteAccess) return;
+    pendingSetup.current.remoteAccess = false;
+    recordDeviceSetup("remote_access", "succeeded");
+  }, [connect.status, recordDeviceSetup]);
+  useEffect(() => {
+    const before = pendingSetup.current.machinesBefore;
+    if (
+      before === null ||
+      connectedMachineCount === undefined ||
+      connectedMachineCount <= before
+    ) {
+      return;
+    }
+    pendingSetup.current.machinesBefore = null;
+    recordDeviceSetup("add_machine", "succeeded");
+  }, [connectedMachineCount, recordDeviceSetup]);
 
   return (
     <OnboardingLayout
@@ -918,14 +956,33 @@ function DevicesStepContainer({
       onBack={onBack}
     >
       <DevicesStep
-        connect={connectAccessUrl(configQuery.data?.serverAccess)}
+        connect={connect}
         connectSetup={<PluginSettingsSections pluginId={CONNECT_PLUGIN_ID} />}
         connectSetupOpen={connectSetupOpen}
         otherMachineCount={otherMachineCount}
         mobileLinks={mobileAppDownloads}
-        onToggleConnectSetup={() => setConnectSetupOpen((open) => !open)}
+        onToggleConnectSetup={() => {
+          if (
+            !connectSetupOpen &&
+            connect.status === "off" &&
+            !pendingSetup.current.remoteAccess
+          ) {
+            pendingSetup.current.remoteAccess = true;
+            recordDeviceSetup("remote_access", "started");
+          }
+          setConnectSetupOpen((open) => !open);
+        }}
         onCopyConnectUrl={(url) => void copyToClipboardWithToast(url)}
-        onAddMachine={() => setAddMachineOpen(true)}
+        onAddMachine={() => {
+          if (
+            connectedMachineCount !== undefined &&
+            pendingSetup.current.machinesBefore === null
+          ) {
+            pendingSetup.current.machinesBefore = connectedMachineCount;
+            recordDeviceSetup("add_machine", "started");
+          }
+          setAddMachineOpen(true);
+        }}
       />
       <AddMachineDialog
         open={addMachineOpen}
@@ -1132,6 +1189,7 @@ export function OnboardingFlow({
       return (
         <DevicesStepContainer
           chrome={chrome}
+          entry={entry}
           hostId={hostId}
           onBack={goTo(-1)}
           onFinish={() => close("completed")}

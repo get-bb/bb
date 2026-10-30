@@ -255,7 +255,14 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
         .object({
           entry: onboardingEntryTelemetrySchema,
           step: onboardingStepTelemetrySchema,
-          operation: z.enum(["install", "update", "scan", "import"]),
+          operation: z.enum([
+            "install",
+            "update",
+            "scan",
+            "import",
+            "remote_access",
+            "add_machine",
+          ]),
           outcome: z.enum(["started", "succeeded", "failed"]),
           resource_id: telemetryResourceIdSchema.optional(),
           item_count: z.number().int().nonnegative().optional(),

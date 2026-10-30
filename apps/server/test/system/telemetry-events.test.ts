@@ -60,6 +60,15 @@ describe("client telemetry events", () => {
           properties: { reason: "sign_in" },
         },
         {
+          name: "onboarding_operation",
+          properties: {
+            entry: "first_run",
+            step: "devices",
+            operation: "remote_access",
+            outcome: "succeeded",
+          },
+        },
+        {
           name: "recommendation",
           properties: {
             resource_type: "plugin",
