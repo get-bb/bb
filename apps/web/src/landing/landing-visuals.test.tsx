@@ -5,7 +5,11 @@ import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { StartAnywhere, useCycle } from "./landing-visuals";
+import { trackLandingEvent } from "./analytics";
+import { MarketplaceLink } from "./cta";
+import { PluginsSheet, StartAnywhere, useCycle } from "./landing-visuals";
+
+vi.mock("./analytics", () => ({ trackLandingEvent: vi.fn() }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
@@ -125,5 +129,47 @@ describe("StartAnywhere", () => {
     expect(html).toContain("Nightly changelog");
     expect(html).not.toMatch(/from CI|scheduled</i);
     expect(html).not.toMatch(/bb spawn/);
+  });
+});
+
+describe("PluginsSheet", () => {
+  it("shows the Plugins page with built-in and added plugins", () => {
+    const html = renderToStaticMarkup(<PluginsSheet />);
+    for (const name of [
+      "Sidebar",
+      "Composer",
+      "GitHub",
+      "Memory",
+      "Automations",
+      "Sentry",
+      "Linear issues",
+      "Status sidebar",
+    ]) {
+      expect(html).toContain(`>${name}<`);
+    }
+    expect(html).not.toContain("Settings");
+    expect(html).not.toContain("GitHub issues");
+  });
+});
+
+describe("MarketplaceLink", () => {
+  afterEach(() => {
+    vi.mocked(trackLandingEvent).mockClear();
+    document.body.replaceChildren();
+  });
+
+  it("opens the marketplace and reports its placement", () => {
+    const { host, unmount } = render(
+      <MarketplaceLink placement="customize">Browse plugins</MarketplaceLink>,
+    );
+    const link = host.querySelector("a")!;
+    expect(link.getAttribute("href")).toBe("/marketplace");
+    link.addEventListener("click", (event) => event.preventDefault());
+    act(() => link.click());
+    expect(trackLandingEvent).toHaveBeenCalledExactlyOnceWith({
+      name: "landing_marketplace_clicked",
+      properties: { placement: "customize" },
+    });
+    unmount();
   });
 });

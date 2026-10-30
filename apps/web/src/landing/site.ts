@@ -49,7 +49,15 @@ export const SUBSCRIBE_PATH = "/api/subscribe";
 export const CLI_COMMAND = "npx bb-app@latest";
 export const WINDOWS_DOWNLOAD_URL = "/download/windows";
 
-export type CtaPlacement = "nav" | "hero" | "local" | "closer" | "footer";
+// "local" was the old "Fork it" section's GitHub link; it stays so past
+// events still type-check against this list.
+export type CtaPlacement =
+  | "nav"
+  | "hero"
+  | "local"
+  | "customize"
+  | "closer"
+  | "footer";
 
 export const UTM_PARAM_NAMES = [
   "utm_source",

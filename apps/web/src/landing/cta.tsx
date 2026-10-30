@@ -140,6 +140,27 @@ export function GitHubLink(props: CtaLinkProps & { "aria-label"?: string }) {
   );
 }
 
+export function MarketplaceLink({
+  placement,
+  className,
+  children,
+}: CtaLinkProps) {
+  return (
+    <a
+      className={className}
+      href="/marketplace"
+      onClick={() =>
+        trackLandingEvent({
+          name: "landing_marketplace_clicked",
+          properties: { placement },
+        })
+      }
+    >
+      {children}
+    </a>
+  );
+}
+
 export function DiscordLink(props: CtaLinkProps) {
   return (
     <TrackedExternalLink

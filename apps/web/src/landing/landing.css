@@ -119,7 +119,7 @@
 html {
   overflow-x: clip;
   /* Reserve the scrollbar gutter on both sides so centered sections (hero,
-     statement, closer) stay centered in the viewport rather than nudged left
+     closer) stay centered in the viewport rather than nudged left
      by the vertical scrollbar's width. */
   scrollbar-gutter: stable both-edges;
 }
@@ -2402,6 +2402,122 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   }
 }
 
+/* ── Make it yours: bb's Plugins page ─────────────────────────────────── */
+
+.band-cta {
+  justify-content: flex-start;
+  margin-top: 28px;
+}
+
+.btn-with-ic {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fw-plugins {
+  container-type: inline-size;
+}
+
+.fw-crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-weight: 500;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.fw-sheet {
+  padding: 6px;
+}
+
+.fw-plugin {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 5px 8px;
+  border-radius: 6px;
+}
+
+.fw-plugin + .fw-plugin {
+  border-top: 1px solid var(--border-soft);
+  border-radius: 0;
+}
+
+.fw-plugin-frame {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: color-mix(in oklab, var(--surface-recessed) 60%, transparent);
+}
+
+.fw-plugin-ic {
+  width: 14px;
+  height: 14px;
+  color: var(--dim);
+}
+
+.fw-logo {
+  object-fit: contain;
+}
+
+.dark .fw-logo {
+  filter: invert(1);
+}
+
+.fw-plugin-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.fw-plugin-name {
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.fw-plugin-desc {
+  font-size: 11.5px;
+  color: var(--subtle);
+}
+
+/* The Plugins page's on switch, muted to the hero's palette. */
+.fw-switch {
+  position: relative;
+  width: 26px;
+  height: 15px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--ink) 78%, var(--bg));
+}
+
+.fw-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--bg);
+}
+
+@container (max-width: 360px) {
+  .fw-switch {
+    display: none;
+  }
+}
+
 /* ── Agents that hand off work: a parent thread and its children ──────── */
 
 .fw-ic-ink {
@@ -3090,24 +3206,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   background: var(--border);
 }
 
-/* ── Statement (Band 4) ─────────────────────────────────────────── */
-
-.statement {
-  border-top: 1px solid var(--border-soft);
-  padding: 84px 0;
-  text-align: center;
-}
-
-.statement .sec-title {
-  margin-bottom: 0;
-}
-
-.statement > p {
-  color: var(--dim);
-  max-width: 560px;
-  margin: 16px auto 0;
-}
-
 /* ── Section titles, closer, footer ─────────────────────────────── */
 
 .sec-title {
@@ -3421,16 +3519,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     --mock-visible-width: 560px;
     width: var(--mock-desktop-width);
     zoom: var(--mock-scale, 0.62);
-  }
-
-  /* Left-align the centered statement on mobile so it reads like the bands
-     above it instead of centered multi-line text on a narrow screen. */
-  .statement {
-    text-align: left;
-  }
-
-  .statement .cta-row {
-    justify-content: flex-start;
   }
 
   /* The full download CTA is repeated immediately below in the hero. Hide the

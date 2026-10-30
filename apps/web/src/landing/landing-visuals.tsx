@@ -7,6 +7,9 @@ import BubbleChatAddIcon from "@hugeicons/core-free-icons/BubbleChatAddIcon";
 import CheckmarkCircle02Icon from "@hugeicons/core-free-icons/CheckmarkCircle02Icon";
 import Clock01Icon from "@hugeicons/core-free-icons/Clock01Icon";
 import CommandLineIcon from "@hugeicons/core-free-icons/CommandLineIcon";
+import BrainIcon from "@hugeicons/core-free-icons/BrainIcon";
+import GithubIcon from "@hugeicons/core-free-icons/GithubIcon";
+import Message01Icon from "@hugeicons/core-free-icons/Message01Icon";
 import GitBranchIcon_ from "@hugeicons/core-free-icons/GitBranchIcon";
 import Loading03Icon from "@hugeicons/core-free-icons/Loading03Icon";
 import MessageQuestionIcon from "@hugeicons/core-free-icons/MessageQuestionIcon";
@@ -18,6 +21,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode, RefObject } from "react";
 
+import linearLogo from "../assets/company-logos/linear.svg";
 import { trackLandingEvent } from "./analytics";
 import { CommandButton } from "./command-button";
 import { DesktopDownloadButton, DownloadLink } from "./cta";
@@ -567,6 +571,30 @@ const DoneIcon = ({ className }: IconProps) => (
 const WaitingIcon = ({ className }: IconProps) => (
   <HugeiconsIcon icon={MessageQuestionIcon} className={className} />
 );
+const ComposerIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={Message01Icon} className={className} />
+);
+const GitHubMark = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={GithubIcon} className={className} />
+);
+const MemoryIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={BrainIcon} className={className} />
+);
+const LinearMark = ({ className }: IconProps) => (
+  <img src={linearLogo} alt="" className={`${className ?? ""} fw-logo`} />
+);
+const SentryMark = ({ className }: IconProps) => (
+  <svg
+    viewBox="0 0 24 24"
+    className={className}
+    aria-hidden
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+  >
+    <path d="M13.9 4.2a2.2 2.2 0 0 0-3.8 0L3.4 15.8a2.2 2.2 0 0 0 1.9 3.3h2.2a7.5 7.5 0 0 0-3.5-6.2M8.3 9.2a12.6 12.6 0 0 1 6 9.9h4.4a2.2 2.2 0 0 0 1.9-3.3l-6.7-11.6" />
+  </svg>
+);
 const NewThreadIcon = ({ className }: IconProps) => (
   <HugeiconsIcon icon={BubbleChatAddIcon} className={className} />
 );
@@ -626,6 +654,105 @@ function WindowDots() {
 
 function stageClass(base: string, leaving: boolean, paused: boolean) {
   return `${base}${leaving ? " leaving" : ""}${paused ? " fw-paused" : ""}`;
+}
+
+type PluginEntry = {
+  icon: (props: IconProps) => ReactNode;
+  name: string;
+  description: string;
+};
+
+const BUILT_IN_PLUGINS: PluginEntry[] = [
+  { icon: PanelIcon, name: "Sidebar", description: "Threads, sections, and pins" },
+  {
+    icon: ComposerIcon,
+    name: "Composer",
+    description: "Mentions, slash commands, voice",
+  },
+  { icon: GitHubMark, name: "GitHub", description: "Pull requests and checks" },
+  {
+    icon: MemoryIcon,
+    name: "Memory",
+    description: "Durable memory for every agent",
+  },
+  {
+    icon: ClockIcon,
+    name: "Automations",
+    description: "Scheduled and one-shot runs",
+  },
+];
+
+const YOUR_PLUGINS: PluginEntry[] = [
+  { icon: SentryMark, name: "Sentry", description: "Errors beside your threads" },
+  {
+    icon: LinearMark,
+    name: "Linear issues",
+    description: "Your issues in a side panel",
+  },
+  {
+    icon: PanelIcon,
+    name: "Status sidebar",
+    description: "Threads grouped by what needs you",
+  },
+];
+
+function PluginRow({
+  plugin,
+  badge,
+}: {
+  plugin: PluginEntry;
+  badge: string;
+}) {
+  return (
+    <div className="fw-plugin">
+      <span className="fw-plugin-frame">
+        <plugin.icon className="fw-plugin-ic" />
+      </span>
+      <span className="fw-plugin-text">
+        <span className="fw-plugin-name">{plugin.name}</span>
+        <span className="fw-plugin-desc">{plugin.description}</span>
+      </span>
+      <span className="fw-tag">{badge}</span>
+      <span className="fw-switch" />
+    </div>
+  );
+}
+
+/**
+ * bb's Plugins page: the built-in plugins beside ones you added. Static, so
+ * there is nothing to reduce for reduced motion.
+ */
+export function PluginsSheet() {
+  return (
+    <div
+      className="fw-win fw-plugins"
+      role="img"
+      aria-label="bb's Plugins page. Built-in plugins: Sidebar, Composer, GitHub, Memory and Automations. Plugins you added: Sentry, Linear issues and Status sidebar. All are switched on."
+    >
+      <div className="fw-band">
+        <WindowDots />
+        <span className="fw-crumb">
+          <PluginsIcon className="fw-ic fw-ic-ink" />
+          Plugins
+        </span>
+      </div>
+      <div className="fw-card fw-sheet">
+        <div className="fw-label">Built-in</div>
+        {BUILT_IN_PLUGINS.map((plugin) => (
+          <PluginRow key={plugin.name} plugin={plugin} badge="Built-in" />
+        ))}
+        <div className="fw-label">Yours</div>
+        {YOUR_PLUGINS.map((plugin) => (
+          <PluginRow key={plugin.name} plugin={plugin} badge="Yours" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** The GitHub mark, for buttons that link to the repo. */
+export function GitHubButtonMark() {
+  return <GitHubMark className="btn-ic" />;
 }
 
 const HANDOFF_PARENT = "Fix checkout timeout";
