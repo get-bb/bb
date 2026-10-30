@@ -1,4 +1,5 @@
 import { refreshProviderRetirement } from "../../services/environments/environment-engine.js";
+import { resolveRequestThreadOrigin } from "../../request-context.js";
 import {
   deleteQueuedThreadMessage,
   getEnvironment,
@@ -211,7 +212,13 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
   post(routes.send, async (context, payload) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     return context.json(
-      await acceptThreadSendRequest(deps, { payload, thread }),
+      await acceptThreadSendRequest(deps, {
+        payload: {
+          ...payload,
+          origin: resolveRequestThreadOrigin(context, payload.origin),
+        },
+        thread,
+      }),
     );
   });
 
@@ -238,7 +245,10 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
   post(routes.createQueuedMessage, async (context, payload) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     const queuedMessage = await createQueuedMessageForThread(deps, {
-      payload,
+      payload: {
+        ...payload,
+        origin: resolveRequestThreadOrigin(context, payload.origin),
+      },
       thread,
     });
     return context.json(queuedMessage, 201);

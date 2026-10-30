@@ -137,16 +137,20 @@ describe("public thread data routes", () => {
           );
           expect(response.status).toBe(route === "send" ? 200 : 201);
           expect(
-            capture.mock.calls.filter(([event]) => event.name === "work_accepted"),
+            capture.mock.calls.filter(
+              ([event]) => event.name === "work_accepted",
+            ),
           ).toEqual([
-            [{
-              name: "work_accepted",
-              properties: {
-                work_kind: "message",
-                work_initiator: initiator,
-                provider: thread.providerId,
+            [
+              {
+                name: "work_accepted",
+                properties: {
+                  work_kind: "message",
+                  work_initiator: initiator,
+                  provider: thread.providerId,
+                },
               },
-            }],
+            ],
           ]);
         }
       });

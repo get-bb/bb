@@ -202,6 +202,7 @@ describe("bb thread tell command output", () => {
     expect(post).toHaveBeenCalledWith({
       param: { id: "thread-queue-tell" },
       json: {
+        origin: "cli",
         input: [{ type: "text", text: "hello", mentions: [] }],
         mode: "queue-if-active",
       },
@@ -220,6 +221,7 @@ describe("bb thread tell command output", () => {
     expect(post).toHaveBeenCalledWith({
       param: { id: "thread-auto-tell" },
       json: {
+        origin: "cli",
         input: [{ type: "text", text: "hello", mentions: [] }],
         mode: "auto",
       },
@@ -251,6 +253,7 @@ describe("bb thread tell command output", () => {
     expect(post).toHaveBeenCalledWith({
       param: { id: "thread-execution-options" },
       json: {
+        origin: "cli",
         input: [{ type: "text", text: "hello", mentions: [] }],
         mode: "steer-if-active",
         model: "gpt-5.5",
@@ -281,6 +284,7 @@ describe("bb thread tell command output", () => {
     expect(post).toHaveBeenCalledWith({
       param: { id: "thread-plan" },
       json: {
+        origin: "cli",
         input: [
           {
             type: "text",
@@ -384,6 +388,7 @@ describe("bb thread tell command output", () => {
         expect(post).toHaveBeenCalledWith({
           param: { id: "thread-attachments" },
           json: {
+            origin: "cli",
             input: [
               { type: "text", text: "review these", mentions: [] },
               { type: "localFile", path: "existing-report.pdf" },
@@ -411,6 +416,7 @@ describe("bb thread tell command output", () => {
     expect(post).toHaveBeenCalledWith({
       param: { id: "thread-receiver" },
       json: {
+        origin: "sdk",
         input: [{ type: "text", text: "hello from sender", mentions: [] }],
         mode: "steer-if-active",
         senderThreadId: "thread-sender",
@@ -428,6 +434,7 @@ describe("bb thread tell command output", () => {
     expect(post).toHaveBeenCalledWith({
       param: { id: "thread-self" },
       json: {
+        origin: "sdk",
         input: [{ type: "text", text: "self note", mentions: [] }],
         mode: "steer-if-active",
       },

@@ -293,6 +293,7 @@ describe("user message telemetry", () => {
         thread,
         payload: {
           input: textInput("A queued user message"),
+          origin: "app",
           model: "gpt-5",
           permissionMode: "full",
           reasoningLevel: "medium",

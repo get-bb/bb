@@ -300,7 +300,10 @@ export async function createQueuedMessageForThread(
       ? "unknown"
       : resolveAcceptedWorkInitiator({
           initiator: senderThreadId === null ? "user" : "agent",
-          origin: payload.originPluginId === undefined ? null : "plugin",
+          origin:
+            payload.originPluginId === undefined
+              ? (payload.origin ?? "sdk")
+              : "plugin",
           originPluginId: payload.originPluginId ?? null,
         });
   if (senderThreadId === null && payload.input.length > 0) {

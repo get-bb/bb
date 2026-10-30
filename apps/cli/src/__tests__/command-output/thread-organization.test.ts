@@ -82,6 +82,7 @@ describe("bb thread organization commands", () => {
     expect(create).toHaveBeenCalledWith({
       param: { id: "thread-1" },
       json: {
+        origin: "cli",
         input: [{ type: "text", text: "next task", mentions: [] }],
       },
     });
@@ -114,6 +115,7 @@ describe("bb thread organization commands", () => {
     expect(create).toHaveBeenCalledExactlyOnceWith({
       param: { id: "thread-1" },
       json: {
+        origin: "cli",
         model: "gpt-5",
         input: [
           { type: "text", text: "review both", mentions: [] },
@@ -190,6 +192,7 @@ describe("bb thread organization commands", () => {
         expect(create).toHaveBeenCalledExactlyOnceWith({
           param: { id: "thread-1" },
           json: {
+            origin: "cli",
             input: [
               { type: "text", text: "review this", mentions: [] },
               { type, path: "durable-token" },

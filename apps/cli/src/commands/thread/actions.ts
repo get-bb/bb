@@ -713,6 +713,7 @@ async function postThreadMessage(
   let response: ThreadSendResult;
   try {
     response = await sdk.threads.send({
+      origin: resolveContextThreadId() ? "sdk" : "cli",
       threadId: args.threadId,
       input,
       mode:

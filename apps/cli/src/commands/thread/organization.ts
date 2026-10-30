@@ -15,6 +15,7 @@ import { describeQueueWait } from "./actions.js";
 import { formatQueueSendCountdown } from "./send-time.js";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
+import { resolveContextThreadId } from "../../context-env.js";
 import { requireTextInput, TEXT_FILE_HELP_SUFFIX } from "../../text-input.js";
 import {
   collectOption,
@@ -391,6 +392,7 @@ export function registerOrganizationCommands(
             sdk,
           });
           const result = await sdk.threads.queuedMessages.create({
+            origin: resolveContextThreadId() ? "sdk" : "cli",
             threadId,
             input,
             ...(opts.model ? { model: opts.model } : {}),

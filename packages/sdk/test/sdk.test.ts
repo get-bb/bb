@@ -1343,7 +1343,7 @@ describe("@bb/sdk", () => {
     });
   });
 
-  it("forwards every public permission mode through thread surfaces", async () => {
+  it("forwards permission modes and caller origins through thread surfaces", async () => {
     const queue = createFetchQueue([
       { body: { id: "thr_auto" }, status: 201 },
       { body: { ok: true, delivery: "sent" } },
@@ -1368,6 +1368,7 @@ describe("@bb/sdk", () => {
       prompt: "Approve for me",
     });
     await sdk.threads.send({
+      origin: "cli",
       threadId: "thr_auto",
       input: [{ type: "text", text: "Accept edits", mentions: [] }],
       mode: "start",
@@ -1379,6 +1380,7 @@ describe("@bb/sdk", () => {
       },
     });
     await sdk.threads.queuedMessages.create({
+      origin: "sdk",
       threadId: "thr_auto",
       input: [{ type: "text", text: "Full access", mentions: [] }],
       permissionMode: "full",
@@ -1390,13 +1392,14 @@ describe("@bb/sdk", () => {
       expect.objectContaining({ permissionMode: "auto" }),
       expect.objectContaining({
         permissionMode: "accept-edits",
+        origin: "cli",
         originPluginId: "automations",
         pluginSubmission: {
           pluginId: "example-plugin",
           data: { action: "hold" },
         },
       }),
-      expect.objectContaining({ permissionMode: "full" }),
+      expect.objectContaining({ permissionMode: "full", origin: "sdk" }),
     ]);
   });
 

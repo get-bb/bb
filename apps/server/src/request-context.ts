@@ -6,6 +6,7 @@ import {
   type RequestAppSurface,
 } from "@bb/config/app-surface";
 import type { Context } from "hono";
+import type { ThreadCreateOrigin } from "@bb/domain";
 
 export const TRUSTED_REMOTE_ADDRESS_CONTEXT_KEY = "bbTrustedRemoteAddress";
 const GATE_AUTH_HEADER_NAME = "x-bb-gate-auth";
@@ -82,6 +83,15 @@ export function resolveRequestAppSurface(context: Context): RequestAppSurface {
   return (
     parseRequestAppSurface(context.req.header(APP_SURFACE_HEADER_NAME)) ??
     APP_SURFACE_API
+  );
+}
+
+export function resolveRequestThreadOrigin(
+  context: Context,
+  origin: ThreadCreateOrigin | undefined,
+): ThreadCreateOrigin {
+  return (
+    origin ?? (resolveRequestAppSurface(context) === "api" ? "sdk" : "app")
   );
 }
 

@@ -807,6 +807,7 @@ function updateJson(args: ThreadUpdateArgs): UpdateThreadRequest {
 
 function sendJson(args: ThreadSendArgs): SendMessageRequest {
   return {
+    origin: args.origin,
     input: args.input,
     mode: args.mode,
     model: args.model,

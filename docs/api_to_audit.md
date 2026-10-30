@@ -4208,6 +4208,12 @@ legacy initiator values are not interchangeable with it. Queue-origin metadata
 on direct admission is used only for measurement, preserving queue dispatch
 policy and persisted origin values.
 
+Send and queue admission accept optional `origin` using the existing thread
+origin values. The route infers omitted origins from the app-surface header:
+web, desktop and mobile are app callers; unidentified API callers are SDK.
+CLI commands identify direct users; an agent context without a validated sender
+remains unknown. This metadata affects acceptance measurement only.
+
 ## Device setup measurement extension
 
 Device setup attempts emit `onboarding_operation` with `step: devices`,
