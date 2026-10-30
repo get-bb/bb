@@ -17,6 +17,7 @@ import type {
 import { COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { Icon } from "@bb/shared-ui/icon";
 import { SplitButton } from "@/components/ui/split-button.js";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import {
   AppPageHeader,
   HEADER_ICON_BUTTON_CLASS,
@@ -60,7 +61,8 @@ import { PaneMaximizeButton } from "./PaneMaximizeButton";
 
 const THREAD_HEADER_ACTION_BUTTON_CLASS = cn(
   COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS,
-  "border-border/70 bg-transparent font-normal hover:bg-state-hover",
+  "border-border/70 bg-transparent px-1 font-normal hover:bg-state-hover",
+  CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
 );
 const NARROW_SPLIT_HEADER_MAX_WIDTH = 560;
 
@@ -265,25 +267,46 @@ export function ThreadDetailHeader({
                   disabled: primaryAction.action.disabled,
                   label: primaryAction.action.label,
                   onSelect: () => void primaryAction.action.run(),
+                  content: <Icon name={primaryAction.action.icon} />,
                 }}
+                primaryTooltip={primaryAction.action.label}
                 secondaryActions={secondaryActions.map(({ key, action }) => ({
                   id: key,
                   disabled: action.disabled,
                   label: action.label,
                   onSelect: () => void action.run(),
+                  content: (
+                    <>
+                      <Icon name={action.icon} aria-hidden="true" />
+                      <span className="min-w-0 flex-1">{action.label}</span>
+                    </>
+                  ),
                 }))}
               />
             ) : (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className={THREAD_HEADER_ACTION_BUTTON_CLASS}
-                disabled={primaryAction.action.disabled}
-                onClick={() => void primaryAction.action.run()}
-              >
-                {primaryAction.action.label}
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className={cn(
+                        THREAD_HEADER_ACTION_BUTTON_CLASS,
+                        "aspect-square",
+                      )}
+                      aria-label={primaryAction.action.label}
+                      disabled={primaryAction.action.disabled}
+                      onClick={() => void primaryAction.action.run()}
+                    >
+                      <Icon name={primaryAction.action.icon} />
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {primaryAction.action.label}
+                </TooltipContent>
+              </Tooltip>
             )}
           </span>
         ) : null}

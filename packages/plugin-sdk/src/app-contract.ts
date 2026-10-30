@@ -2278,9 +2278,11 @@ export interface PluginThreadActionRegistration<Data = undefined> {
  * Where a thread action shows.
  *
  * - `"menu"`: every thread actions menu and the quick-action picker.
- * - `"header"`: only the open thread's header, as an outline button labelled
- *   with the action's `label`, after the workspace's Open button. Several
- *   header actions share one split button, the first as its main action. At
+ * - `"header"`: only the open thread's header, as an icon-only outline
+ *   button showing the action's `icon`, after the workspace's Open button.
+ *   The `label` is the button's accessible name and its tooltip. Several
+ *   header actions share one split button, the first as its main action and
+ *   the rest as menu rows with icon and label. At
  *   compact width and in narrow split panes the buttons fold into the
  *   header's thread menu as rows at its top, after Open. `group` and `order`
  *   sort header actions among themselves. Header actions never appear in

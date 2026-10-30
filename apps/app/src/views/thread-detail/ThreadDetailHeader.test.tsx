@@ -10,6 +10,8 @@ import {
 import type { ReactNode, Ref } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ThreadDetailHeader } from "./ThreadDetailHeader";
+import { focusWithKeyboard } from "@/test/keyboard-focus";
+import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { PaneContext, type PaneContextValue } from "./PaneContext";
 import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
@@ -130,8 +132,8 @@ function headerAction(
     group: "release",
     order,
     title: id,
-    icon: "Rocket",
-    item: () => ({ label: id, icon: "Rocket", disabled, run }),
+    icon: "GitMerge",
+    item: () => ({ label: id, icon: "GitMerge", disabled, run }),
   };
 }
 
@@ -354,7 +356,7 @@ describe("ThreadDetailHeader", () => {
     );
 
     expect(screen.queryByText("Open workspace")).toBeNull();
-    expect(screen.queryByText("Commit")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Commit" })).toBeNull();
     expect(screen.getByText("Thread menu")).not.toBeNull();
     expect(screen.getByText("Responsive menu actions")).not.toBeNull();
     expect(screen.getByText("menu: Commit")).not.toBeNull();
@@ -414,13 +416,43 @@ describe("ThreadDetailHeader", () => {
           />
         </PaneContext.Provider>
       </>,
+      { wrapper: TooltipProvider },
     );
 
     expect(screen.getByText("Open workspace")).not.toBeNull();
-    expect(screen.getByText("Commit")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Commit" })).not.toBeNull();
     expect(screen.getByText("Thread menu")).not.toBeNull();
     expect(screen.queryByText("Responsive menu actions")).toBeNull();
     expect(screen.queryByText("menu: Commit")).toBeNull();
+  });
+
+  it("shows a header action as its icon, with its label as the name and tooltip", async () => {
+    const run = vi.fn();
+    render(
+      <>
+        <HeaderActionCollectors
+          registrations={[headerAction("Deploy", 1, false, run)]}
+        />
+        <PaneContext.Provider value={PANE_CONTEXT}>
+          <ThreadDetailHeader
+            actionsMenu={null}
+            isSecondaryPanelOpen={false}
+            onToggleSecondaryPanel={vi.fn()}
+            thread={THREAD_TARGET}
+            threadTitle="One header action"
+          />
+        </PaneContext.Provider>
+      </>,
+      { wrapper: TooltipProvider },
+    );
+
+    const deploy = await screen.findByRole("button", { name: "Deploy" });
+    expect(deploy.textContent).toBe("");
+    expect(deploy.querySelector('[data-icon="GitMerge"]')).not.toBeNull();
+    focusWithKeyboard(deploy);
+    expect((await screen.findByRole("tooltip")).textContent).toBe("Deploy");
+    fireEvent.click(deploy);
+    expect(run).toHaveBeenCalledTimes(1);
   });
 
   it("keeps each of several header actions independently enabled in one split button", async () => {
@@ -444,6 +476,7 @@ describe("ThreadDetailHeader", () => {
           />
         </PaneContext.Provider>
       </>,
+      { wrapper: TooltipProvider },
     );
 
     const ship = await screen.findByRole("button", { name: "Ship" });
@@ -453,6 +486,10 @@ describe("ThreadDetailHeader", () => {
     fireEvent.pointerDown(more, { button: 0, ctrlKey: false });
     const items = screen.getAllByRole("menuitem");
     expect(items.map((item) => item.textContent)).toEqual(["Review", "Deploy"]);
+    expect(ship.querySelector('[data-icon="GitMerge"]')).not.toBeNull();
+    for (const item of items) {
+      expect(item.querySelector('[data-icon="GitMerge"]')).not.toBeNull();
+    }
     fireEvent.click(screen.getByRole("menuitem", { name: "Review" }));
     expect(runs.Review).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("menuitem", { name: "Deploy" }));

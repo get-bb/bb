@@ -150,13 +150,13 @@ export default definePluginApp((app) => {
 
 A thread action with `placement: "header"` is a button in the open thread's
 header instead of a menu entry. It shows after the workspace's Open button
-with its `label` (several share one split button). On phones and in narrow
+as its `icon`, with `label` as the tooltip and accessible name (several share
+one split button). Pick an icon that reads on its own. On phones and in narrow
 split panes it folds into the header's thread menu, as a row at the top. It
 never appears in other menus, the quick-action picker, or
-`experimental_useThreadActions`. Its `useData` receives only the threads
-whose header is on screen. Return null from `item` whenever the button does
-not apply. Header buttons do not show `choices`. bb's Git plugin registers
-Commit this way.
+`experimental_useThreadActions`. Its `useData` receives only the threads whose
+header is on screen. Return null from `item` whenever the button does not
+apply. Header buttons ignore `choices`. bb's Git plugin registers Commit this way.
 
 ```tsx
 app.slots.experimental_threadAction({ id: "deploy", title: "Deploy", icon: "Rocket", group: "deploy", placement: "header",

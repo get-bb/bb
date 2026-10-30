@@ -2968,7 +2968,10 @@ throws when a menu `trigger` drops its props and ref.
 left out of every menu, selection menu, `experimental_useThreadActions`, and
 the quick-action picker. `ThreadDetailHeader` evaluates header actions through
 `useThreadHeaderActionEntries` and draws them after the workspace's Open
-button: one as an outline button, several as a split button. At compact width
+button, icon first like Open: one as an icon-only outline button, several as
+a split button whose main half is the first action's icon and whose menu rows
+show icon and label. The `label` is each button's accessible name and its
+tooltip, shown on hover and keyboard focus even while disabled. At compact width
 and in split panes narrower than 560 px they become rows at the top of the
 header's thread menu, after Open. An action that returns `choices` is left out
 of the header. A header registration's `useData` receives only the threads
@@ -3026,11 +3029,11 @@ Docs: `frontend-registration.md`.
 4. **Inline items.** `inline` exists for surface-specific entries that are not
    about a thread. Confirm it should stay a component prop rather than a
    registration.
-5. **Header placement.** Header buttons honor `label` and `disabled` only;
-   `detail`, `variant`, and `choices` show nowhere on the button. Decide
-   whether header actions need choices (a split-button menu) or an icon-only
-   form before more plugins add one, and how many fit before the row needs
-   its own overflow.
+5. **Header placement.** Header buttons honor `icon`, `label` (as the
+   accessible name and tooltip) and `disabled` only; `detail`, `variant`, and
+   `choices` show nowhere on the button. Decide whether header actions need
+   choices (a split-button menu) before more plugins add one, and how many fit
+   before the row needs its own overflow.
 6. **Bulk shape.** Decide whether `experimental_bulkItem` should
    stay a second function or `item` should take a target that is one thread
    or several, whether selection menus need a dropdown or compact-drawer
