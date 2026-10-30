@@ -44,14 +44,6 @@ describe("client telemetry events", () => {
             source: "unknown",
           },
         },
-        {
-          name: "onboarding_work_surface",
-          properties: {
-            surface: "first_task",
-            action: "displayed",
-            entry: "skipped_guide",
-          },
-        },
       ];
       for (const event of events) {
         capture.mockClear();

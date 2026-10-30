@@ -95,7 +95,7 @@ import {
   recordTelemetryEvent,
   type OnboardingEntry,
 } from "./onboarding-telemetry";
-import { recordOnboardingWorkEntry } from "./onboarding-work-context";
+import { recordOnboardingWorkSource } from "./onboarding-work-context";
 import {
   agentDiagnostic,
   aggregateAgentReadiness,
@@ -1151,7 +1151,7 @@ export function OnboardingFlow({
       name: "onboarding_finished",
       properties: { outcome, entry, last_step: step },
     });
-    recordOnboardingWorkEntry(outcome, entry);
+    recordOnboardingWorkSource(entry);
     onClose();
   };
   const compact = useMediaQuery("(max-width: 640px)");
