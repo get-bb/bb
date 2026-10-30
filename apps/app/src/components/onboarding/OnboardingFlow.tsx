@@ -410,7 +410,7 @@ function AgentStepContainer({
     if (hostId === null || status === undefined) return;
     const issue = buildProviderCliIssue({ provider: providerId, status });
     if (issue === null || !hasProviderCliAction(issue)) return;
-    installRunner.startInstall({ hostId, issue });
+    installRunner.startInstall({ hostId, issue, onboardingEntry: entry });
   };
 
   const viewInstallLog = (providerId: string) => {
@@ -923,7 +923,34 @@ export function OnboardingFlow({
   }
   const primaryHost = usePrimaryHost();
   const hostId = primaryHost?.id ?? null;
-  useHostDiscoveredRepos(hostId);
+  const reposQuery = useHostDiscoveredRepos(hostId);
+  const { dataUpdatedAt, errorUpdatedAt } = reposQuery;
+  const foundCount = reposQuery.data?.repos.length;
+  useEffect(() => {
+    if (dataUpdatedAt === 0) return;
+    recordTelemetryEvent({
+      name: "onboarding_operation",
+      properties: {
+        entry,
+        step: "projects",
+        operation: "scan",
+        outcome: "succeeded",
+        item_count: foundCount,
+      },
+    });
+  }, [dataUpdatedAt, entry, foundCount]);
+  useEffect(() => {
+    if (errorUpdatedAt === 0) return;
+    recordTelemetryEvent({
+      name: "onboarding_operation",
+      properties: {
+        entry,
+        step: "projects",
+        operation: "scan",
+        outcome: "failed",
+      },
+    });
+  }, [entry, errorUpdatedAt]);
   const agentStatesQuery = useSystemProviderStates({
     enabled: hostId !== null,
     poll: false,

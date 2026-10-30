@@ -45,6 +45,27 @@ describe("client telemetry events", () => {
           name: "new_thread_submit",
           properties: { outcome: "failed" },
         },
+        {
+          name: "onboarding_operation",
+          properties: {
+            entry: "first_run",
+            step: "agent",
+            operation: "install",
+            outcome: "failed",
+            resource_id: "claude-code",
+          },
+        },
+        {
+          name: "onboarding_operation",
+          properties: {
+            entry: "replay",
+            step: "projects",
+            operation: "import",
+            outcome: "failed",
+            item_count: 3,
+            succeeded_count: 1,
+          },
+        },
         { name: "plugin_creation_started", properties: {} },
       ];
       for (const event of events) {
@@ -54,6 +75,30 @@ describe("client telemetry events", () => {
         await expect(readJson(response)).resolves.toEqual({ ok: true });
         expect(capture).toHaveBeenCalledExactlyOnceWith(event);
       }
+    });
+  });
+
+  it("reports a custom agent id as other", async () => {
+    await withTestHarness(async (harness) => {
+      const capture = vi.fn<TelemetryService["capture"]>();
+      harness.deps.telemetry = { ...harness.deps.telemetry, capture };
+      const properties = {
+        entry: "first_run",
+        step: "agent",
+        operation: "install",
+        outcome: "started",
+      } as const;
+
+      const response = await post(harness, {
+        name: "onboarding_operation",
+        properties: { ...properties, resource_id: "my-company-agent" },
+      });
+
+      expect(response.status).toBe(200);
+      expect(capture).toHaveBeenCalledExactlyOnceWith({
+        name: "onboarding_operation",
+        properties: { ...properties, resource_id: "other" },
+      });
     });
   });
 
@@ -154,6 +199,26 @@ describe("client telemetry events", () => {
         {
           name: "new_thread_submit",
           properties: { outcome: "failed", message: "private prompt" },
+        },
+        {
+          name: "onboarding_operation",
+          properties: {
+            entry: "first_run",
+            step: "projects",
+            operation: "scan",
+            outcome: "succeeded",
+            resource_id: "/Users/me/private-repo",
+          },
+        },
+        {
+          name: "onboarding_operation",
+          properties: {
+            entry: "first_run",
+            step: "agent",
+            operation: "install",
+            outcome: "failed",
+            error: "exit 1",
+          },
         },
         {
           name: "plugin_creation_started",

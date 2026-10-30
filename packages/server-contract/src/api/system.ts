@@ -231,6 +231,25 @@ const releaseVersionTelemetrySchema = z
 export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
   z
     .object({
+      name: z.literal("onboarding_operation"),
+      properties: z
+        .object({
+          entry: onboardingEntryTelemetrySchema,
+          step: onboardingStepTelemetrySchema,
+          operation: z.enum(["install", "update", "scan", "import"]),
+          outcome: z.enum(["started", "succeeded", "failed"]),
+          resource_id: z
+            .string()
+            .regex(/^[a-z0-9][a-z0-9_-]{0,127}$/)
+            .optional(),
+          item_count: z.number().int().nonnegative().optional(),
+          succeeded_count: z.number().int().nonnegative().optional(),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
       name: z.literal("onboarding_agent_state"),
       properties: z
         .object({

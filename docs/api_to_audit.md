@@ -3814,10 +3814,13 @@ drops it when usage data sharing is off. The schema is a strict allow-list of
 setup-guide, new-thread-submit, plugin-creation-started, and release notes
 events; anything else is a 400. App callers, all through `recordTelemetryEvent`
 in `apps/app/src/components/onboarding/onboarding-telemetry.ts`: the setup guide
-(`OnboardingFlow`), `NewThreadComposer`'s `new_thread_submit` outcomes,
+(`OnboardingFlow`, `useOnboardingProjectImport`, and agent installs it starts
+through `provider-cli-install-store`), `NewThreadComposer`'s `new_thread_submit` outcomes,
 `PluginCreateButton`'s `plugin_creation_started`, and Settings → Updates'
 changelog (`release_notes_opened`, inline or on the web). `bb plugin new` sends
 `plugin_creation_started` through the same SDK method.
+`onboarding_operation` reports a guide action's started, succeeded or failed
+outcome with only a public agent id or counts.
 
 Stabilize after deciding whether third-party plugins may emit product events
 at all and, if so, how they are namespaced and rate limited.

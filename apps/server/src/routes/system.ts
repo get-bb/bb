@@ -1,3 +1,4 @@
+import { reportedProviderId } from "../services/system/provider-telemetry.js";
 import { createMobileAppReleaseService } from "../services/install/mobile-app-releases.js";
 import {
   setMachineEnvironmentVariable,
@@ -345,7 +346,19 @@ export function registerSystemRoutes(
   });
 
   post(routes.recordTelemetryEvent, (context, payload) => {
-    deps.telemetry.capture(payload);
+    deps.telemetry.capture(
+      payload.name === "onboarding_operation" &&
+        payload.properties.step === "agent" &&
+        payload.properties.resource_id !== undefined
+        ? {
+            ...payload,
+            properties: {
+              ...payload.properties,
+              resource_id: reportedProviderId(payload.properties.resource_id),
+            },
+          }
+        : payload,
+    );
     return context.json({ ok: true });
   });
 

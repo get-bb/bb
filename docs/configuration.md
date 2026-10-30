@@ -337,10 +337,10 @@ lists what `bb project discover` and
 
 **Anonymous usage telemetry.** PostHog events carry a random install id, app
 version, install kind, platform, OS release, architecture, and Node version.
-The server sends `app_started`, `telemetry_disabled`, `thread_created`,
+The server sends events such as `app_started`, `telemetry_disabled`, `thread_created`,
 `user_message_sent`, `turn_finished`, and `plugin_installed`. The app reports setup-guide and
 first-send events through `POST /api/v1/system/telemetry/events`
-(`sdk.system.experimental_recordTelemetryEvent`): `onboarding_started`,
+(`sdk.system.experimental_recordTelemetryEvent`), such as `onboarding_started`,
 `onboarding_step_reached`, `onboarding_step_completed`,
 `onboarding_step_skipped`, `onboarding_finished`, `onboarding_agent_state`,
 `onboarding_sign_in`, `new_thread_submit` (started, accepted, or failed),
@@ -351,8 +351,8 @@ notes open under the bb row, `web` for the full notes on getbb.app).
 `bb plugin new` sends `plugin_creation_started` with `app_surface` `api`, skips
 it inside a bb agent thread (so an agent acting on New plugin isn't counted
 twice), and skips it silently when no bb server answers within 2 seconds. The
-route accepts only these events with fixed enums and booleans, plus a
-`release_version` of digits and dots (such as `0.47.0`): no provider ids,
+route accepts only allow-listed events and values, plus a
+`release_version` of digits and dots (such as `0.47.0`): no custom provider ids,
 account details, prompts, release-note text, project or file names, terminal
 output, error messages, or session ids. Sign-in `exited` means the command exited before
 readiness was observed, not that authentication succeeded; `new_thread_submit`
@@ -364,7 +364,7 @@ runs into an existing thread report `automation`. `bb thread spawn` run inside a
 sends that thread as `senderThreadId`; the new thread reports `agent` when the sender has a
 turn running, and `user` otherwise.
 
-`turn_finished` sends only `outcome` (`succeeded`, `failed`, or `stopped`),
+`turn_finished` sends `outcome` (`succeeded`, `failed`, or `stopped`),
 `error_category` (`none`, `auth`, `billing`, `rate_limit`, `limit_reached`,
 `provider_unavailable`, `start_failed`, `process_exited`, `host_lost`, or `other`),
 `provider` (a shipped built-in provider ID, otherwise `other`), and
