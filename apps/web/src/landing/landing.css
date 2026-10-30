@@ -151,6 +151,27 @@ body {
   animation: hdr-down 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
+/* Sticky header experiment (homepage-sticky-header): the header stays pinned
+   at every width. The full-bleed backdrop is a pseudo-element rather than a
+   clip or overflow on the nav, so nothing clips its dropdown menus. */
+.nav-sticky {
+  position: sticky;
+  top: 0;
+}
+
+.nav-sticky::before {
+  content: "";
+  position: absolute;
+  inset: 0 calc(50% - 50vw);
+  z-index: -1;
+  background: var(--bg);
+}
+
+/* Keep focused and hash-targeted elements clear of the pinned header. */
+html:has(.nav-sticky) {
+  scroll-padding-top: 88px;
+}
+
 /* The header drops in first, then the hero copy rises in below it. */
 @keyframes hdr-down {
   from {
@@ -3288,6 +3309,14 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 @media (max-width: 760px) {
   .nav-menu-panel:has(> .nav-sub.open) > :not(.nav-sub.open) {
     display: none;
+  }
+
+  /* A pinned header can't be scrolled past to reach the end of a long open
+     menu, so the panel scrolls instead. Submenus are inline at this width,
+     so the overflow clips nothing. */
+  .nav-sticky .nav-menu-panel {
+    max-height: calc(100dvh - 100px);
+    overflow-y: auto;
   }
 
   .nav-sub-panel {

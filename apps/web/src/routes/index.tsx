@@ -1207,6 +1207,8 @@ function LandingPage() {
   const companyProofRef = useRef<HTMLElement>(null);
   const qaCheck = useExperiment("homepage-qa-check");
   useExperimentExposure("homepage-qa-check", "all");
+  const stickyHeader = useExperiment("homepage-sticky-header");
+  useExperimentExposure("homepage-sticky-header", "desktop");
   useScrollReveal();
   useConstructMock();
   useFitMock();
@@ -1227,7 +1229,7 @@ function LandingPage() {
       className="wrap"
       data-qa-check={qaCheck === "test" ? qaCheck : undefined}
     >
-      <SiteNav />
+      <SiteNav sticky={stickyHeader === "test"} />
 
       <header className="hero">
         <a className="updates-callout" href={LATEST_RELEASE_URL}>

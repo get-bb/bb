@@ -33,6 +33,13 @@ describe("site navigation", () => {
     expect(html).not.toContain("Theme");
   });
 
+  it("pins the header only when asked", () => {
+    expect(renderToStaticMarkup(<SiteNav />)).toMatch(/^<nav class="nav">/);
+    expect(renderToStaticMarkup(<SiteNav sticky />)).toMatch(
+      /^<nav class="nav nav-sticky">/,
+    );
+  });
+
   it("marks Building plugins current inside the Plugins menu", () => {
     const html = renderToStaticMarkup(<SiteNav current="plugin-guide" />);
     expect(html).toContain('<summary class="nav-current">Plugins');
