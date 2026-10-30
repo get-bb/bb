@@ -113,7 +113,9 @@ Queued messages:
   bb thread queue list [<thread-id>] [--wait-holder plugin:<plugin-id>]
   bb thread queue create <thread-id> <message> [--file <path>] [--image <path>]
   bb thread queue update <thread-id> <message-id> [<message>] [--file <path>] [--image <path>]
-                         [--send-at <when> | --clear-send-at]
+                         [--send-at <when> | --clear-send-at] [--model <model>]
+                         [--reasoning-level <level>] [--permission-mode <mode>]
+                         [--service-tier <tier>]
                                            create and update also take --message-file <path>
   bb thread queue send <thread-id> <message-id> [--mode auto|steer]
   bb thread queue reorder <thread-id> <message-id> [--after <id>] [--before <id>]
@@ -156,6 +158,14 @@ Queued messages:
   SDK takes `sendAt` (epoch ms, or null to clear) on
   `threads.queuedMessages.update`, with or without `input`; a time that has
   passed is rejected.
+
+  `queue update --model`, `--reasoning-level`, `--permission-mode`, and
+  `--service-tier` change what the row will run with; flags you leave out keep
+  the row's current values, the same checks as a send apply (the machine's
+  permission ceiling, the provider's levels), and the message text is optional.
+  A row grouped with other rows is refused when its new options would no longer
+  match theirs; ungroup it first. The SDK takes the same four fields on
+  `threads.queuedMessages.update`.
 
   `queue send` dispatches a row now, bypassing every plugin wait and its own
   schedule — the invariants (a running turn, an unfinished workspace, an

@@ -440,10 +440,19 @@ export const updateQueuedMessageRequestSchema = z
     expectedUpdatedAt: z.number().int().nonnegative(),
     input: z.array(promptInputSchema).min(1).optional(),
     sendAt: z.number().int().nonnegative().nullable().optional(),
+    model: z.string().min(1).optional(),
+    reasoningLevel: reasoningLevelSchema.optional(),
+    permissionMode: permissionModeInputSchema.optional(),
+    serviceTier: serviceTierSchema.optional(),
   })
-  .refine((value) => value.input !== undefined || value.sendAt !== undefined, {
-    message: "Provide input, sendAt, or both",
-  });
+  .refine(
+    ({ expectedUpdatedAt: _expectedUpdatedAt, ...changes }) =>
+      Object.values(changes).some((value) => value !== undefined),
+    {
+      message:
+        "Provide at least one of input, sendAt, model, reasoningLevel, permissionMode, or serviceTier",
+    },
+  );
 export type UpdateQueuedMessageRequest = z.infer<
   typeof updateQueuedMessageRequestSchema
 >;

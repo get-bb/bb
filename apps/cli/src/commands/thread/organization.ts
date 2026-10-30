@@ -24,9 +24,17 @@ import {
   collectOption,
   confirmDestructiveAction,
   outputJson,
+  parseReasoningLevel,
   requireThreadIdOrSelf,
 } from "../helpers.js";
-import { buildPromptInputs, uploadClientAttachmentInputs } from "./helpers.js";
+import {
+  buildPromptInputs,
+  parsePermissionMode,
+  parseServiceTier,
+  PERMISSION_MODE_HELP,
+  SERVICE_TIER_HELP,
+  uploadClientAttachmentInputs,
+} from "./helpers.js";
 
 interface JsonOptions {
   json?: boolean;
@@ -64,7 +72,11 @@ interface QueueUpdateOptions extends JsonOptions {
   file?: string[];
   image?: string[];
   messageFile?: string;
+  model?: string;
+  permissionMode?: string;
+  reasoningLevel?: string;
   sendAt?: string;
+  serviceTier?: string;
 }
 
 interface QueueSendOptions extends JsonOptions {
@@ -411,7 +423,7 @@ export function registerOrganizationCommands(
   queue
     .command("update <threadId> <messageId> [message]")
     .description(
-      "Update a queued message's text, its send time, or both, in place",
+      "Update a queued message's text, send time, or execution options in place",
     )
     .option(
       "--message-file <path>",
@@ -437,6 +449,16 @@ export function registerOrganizationCommands(
       "--clear-send-at",
       "Remove its send time so it goes once nothing else holds it; the message text is optional",
     )
+    .option(
+      "--model <model>",
+      "Model ID to send it with; the message text is optional",
+    )
+    .option(
+      "--reasoning-level <level>",
+      "Reasoning level id the model lists: low, medium, high, xhigh, max, or a provider-specific id",
+    )
+    .option("--permission-mode <mode>", PERMISSION_MODE_HELP)
+    .option("--service-tier <tier>", SERVICE_TIER_HELP)
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(
@@ -457,6 +479,15 @@ export function registerOrganizationCommands(
               : opts.clearSendAt === true
                 ? null
                 : undefined;
+          const execution = {
+            model: opts.model,
+            permissionMode: parsePermissionMode(opts.permissionMode),
+            reasoningLevel: parseReasoningLevel(opts.reasoningLevel),
+            serviceTier: parseServiceTier(opts.serviceTier),
+          };
+          const changesExecution = Object.values(execution).some(
+            (value) => value !== undefined,
+          );
           const textInput = {
             file: opts.messageFile,
             fileLabel: "--message-file",
@@ -466,7 +497,7 @@ export function registerOrganizationCommands(
           const attachesFiles =
             (opts.file?.length ?? 0) > 0 || (opts.image?.length ?? 0) > 0;
           const message =
-            sendAt === undefined || attachesFiles
+            (sendAt === undefined && !changesExecution) || attachesFiles
               ? await requireTextInput(textInput)
               : await resolveTextInput(textInput);
           const sdk = createCliBbSdk(getUrl());
@@ -498,6 +529,18 @@ export function registerOrganizationCommands(
             expectedUpdatedAt: existing.updatedAt,
             ...(input === undefined ? {} : { input }),
             ...(sendAt === undefined ? {} : { sendAt }),
+            ...(execution.model === undefined
+              ? {}
+              : { model: execution.model }),
+            ...(execution.permissionMode === undefined
+              ? {}
+              : { permissionMode: execution.permissionMode }),
+            ...(execution.reasoningLevel === undefined
+              ? {}
+              : { reasoningLevel: execution.reasoningLevel }),
+            ...(execution.serviceTier === undefined
+              ? {}
+              : { serviceTier: execution.serviceTier }),
           });
           if (outputJson(opts, result)) return;
           console.log(

@@ -381,6 +381,42 @@ describe("bb thread organization commands", () => {
     },
   );
 
+  it("changes only the execution options, mapping workspace-write to accept-edits", async () => {
+    const list = vi.fn(async () => [{ id: "queued-1", updatedAt: 42 }]);
+    const update = vi.fn(async () => ({ id: "queued-1", sendAt: null }));
+    stubServerApi({
+      "v1.threads.:id.queued-messages.$get": list,
+      "v1.threads.:id.queued-messages.:queuedMessageId.$patch": update,
+    });
+
+    await runCommand(
+      [
+        "thread",
+        "queue",
+        "update",
+        "thread-1",
+        "queued-1",
+        "--model",
+        "gpt-5.1-codex",
+        "--reasoning-level",
+        "high",
+        "--permission-mode",
+        "workspace-write",
+      ],
+      register,
+    );
+
+    expect(update).toHaveBeenCalledWith({
+      param: { id: "thread-1", queuedMessageId: "queued-1" },
+      json: {
+        expectedUpdatedAt: 42,
+        model: "gpt-5.1-codex",
+        permissionMode: "accept-edits",
+        reasoningLevel: "high",
+      },
+    });
+  });
+
   it("rejects a send time that has passed before contacting the server", async () => {
     const update = vi.fn();
     stubServerApi({

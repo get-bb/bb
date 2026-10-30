@@ -1042,6 +1042,12 @@ export async function beginUpdateQueuedMessageTransaction({
           ? {
               ...queuedMessage,
               content: request.input ?? queuedMessage.content,
+              model: request.model ?? queuedMessage.model,
+              permissionMode:
+                request.permissionMode ?? queuedMessage.permissionMode,
+              reasoningLevel:
+                request.reasoningLevel ?? queuedMessage.reasoningLevel,
+              serviceTier: request.serviceTier ?? queuedMessage.serviceTier,
               updatedAt: optimisticUpdatedAt ?? queuedMessage.updatedAt,
             }
           : queuedMessage,
@@ -1071,6 +1077,10 @@ export function rollbackUpdateQueuedMessageTransaction({
             ? {
                 ...queuedMessage,
                 content: previousQueuedMessage.content,
+                model: previousQueuedMessage.model,
+                permissionMode: previousQueuedMessage.permissionMode,
+                reasoningLevel: previousQueuedMessage.reasoningLevel,
+                serviceTier: previousQueuedMessage.serviceTier,
                 updatedAt: previousQueuedMessage.updatedAt,
               }
             : queuedMessage,

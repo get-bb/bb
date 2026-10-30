@@ -97,8 +97,16 @@ export interface CreateQueuedThreadMessageInput {
   deliveryMode?: QueuedMessageDeliveryMode;
 }
 
+export interface QueuedThreadMessageExecution {
+  model: string;
+  reasoningLevel: string;
+  permissionMode: PermissionMode;
+  serviceTier: string;
+}
+
 export interface UpdateQueuedThreadMessageInput {
   content: PromptInput[] | null;
+  execution: QueuedThreadMessageExecution | null;
   reschedule: { sendAt: number | null } | null;
   expectedUpdatedAt: number;
   id: string;
@@ -362,7 +370,8 @@ export type UpdateQueuedThreadMessageResult =
     }
   | { kind: "not_found" }
   | { kind: "claimed" }
-  | { kind: "stale" };
+  | { kind: "stale" }
+  | QueuedThreadMessageGroupBoundaryInvalidExecutionOptions;
 
 export interface QueuedThreadMessageEditHoldArgs {
   id: string;
@@ -877,6 +886,22 @@ export function createQueuedThreadMessage(
   return row;
 }
 
+function executionFitsQueuedMessageGroup(
+  tx: DbTransaction,
+  row: QueuedThreadMessageRow,
+  execution: QueuedThreadMessageExecution,
+): boolean {
+  const group = partitionQueuedMessageGroups(
+    listQueuedThreadMessages(tx, row.threadId),
+  ).find((members) => members.some((member) => member.id === row.id));
+  const updated = { ...row, ...execution };
+  return (group ?? []).every(
+    (member) =>
+      member.id === row.id ||
+      queuedMessageGroupingEnvelopeMatches(updated, member),
+  );
+}
+
 function rescheduleTransition(
   row: QueuedThreadMessageRow,
   sendAt: number | null,
@@ -917,6 +942,12 @@ export function updateQueuedThreadMessage(
         return { kind: "stale" };
       }
 
+      if (
+        input.execution !== null &&
+        !executionFitsQueuedMessageGroup(tx, existing, input.execution)
+      ) {
+        return { kind: "invalid_execution_options" };
+      }
       const now = Date.now();
       const contentPatch =
         input.content === null
@@ -950,6 +981,7 @@ export function updateQueuedThreadMessage(
         .update(queuedThreadMessages)
         .set({
           ...contentPatch,
+          ...(input.execution ?? {}),
           ...schedulePatch,
           state,
           updatedAt: Math.max(now, existing.updatedAt + 1),

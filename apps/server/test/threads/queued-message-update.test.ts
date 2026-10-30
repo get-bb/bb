@@ -3,6 +3,7 @@ import {
   getQueuedThreadMessage,
   getThread,
   listEvents,
+  setQueuedThreadMessageGroupBoundary,
 } from "@bb/db";
 import {
   threadQueuedMessageSchema,
@@ -35,7 +36,7 @@ import {
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
-const WORKSPACE_PATH = "/tmp/queued-message-send-time";
+const WORKSPACE_PATH = "/tmp/queued-message-update";
 const HOUR_MS = 3_600_000;
 
 type HookRegistry = {
@@ -311,6 +312,99 @@ describe("changing when a queued message sends", () => {
       expect(getQueuedThreadMessage(harness.db, row.id)?.sendAt).toBe(
         sendAt + 60_000,
       );
+    });
+  });
+});
+
+function turnRequests(
+  harness: TestAppHarness,
+  threadId: string,
+): TurnRequestEventData[] {
+  return listEvents(harness.db, { threadId })
+    .filter((event) => event.type === "client/turn/requested")
+    .map((event) => turnRequestEventDataSchema.parse(JSON.parse(event.data)));
+}
+
+describe("changing a queued message's execution options", () => {
+  it("dispatches with the new options and keeps the ones left out", async () => {
+    await withTestHarness(async (harness) => {
+      const thread = seedIdleThread(harness, "host-execution-change");
+      const sendAt = Date.now() + HOUR_MS;
+      const row = await scheduleMessage(harness, thread.id, "Switch", sendAt);
+
+      const response = await updateQueuedMessage(harness, row, {
+        expectedUpdatedAt: row.updatedAt,
+        model: "gpt-5.1-codex",
+        reasoningLevel: "high",
+      });
+
+      expect(response.status).toBe(200);
+      const updated = threadQueuedMessageSchema.parse(await readJson(response));
+      expect(updated).toMatchObject({
+        content: row.content,
+        model: "gpt-5.1-codex",
+        permissionMode: row.permissionMode,
+        reasoningLevel: "high",
+        sendAt,
+        serviceTier: row.serviceTier,
+      });
+
+      await runQueuedMessageDispatch(harness.deps, {
+        kind: "time-reached",
+        now: sendAt + 1,
+      });
+      expect(turnRequests(harness, thread.id).at(-1)?.execution).toMatchObject(
+        { model: "gpt-5.1-codex", reasoningLevel: "high" },
+      );
+    });
+  });
+
+  it("refuses options that would split a grouped message from its group", async () => {
+    await withTestHarness(async (harness) => {
+      const thread = seedIdleThread(harness, "host-execution-grouped");
+      const sendAt = Date.now() + HOUR_MS;
+      const first = await scheduleMessage(harness, thread.id, "One", sendAt);
+      const second = await scheduleMessage(harness, thread.id, "Two", sendAt);
+      setQueuedThreadMessageGroupBoundary({
+        db: harness.db,
+        expectedGroupedPrefixQueuedMessageIds: [first.id, second.id],
+        groupBoundaryQueuedMessageId: second.id,
+        notifier: harness.hub,
+        threadId: thread.id,
+      });
+      const current = getQueuedThreadMessage(harness.db, second.id);
+
+      const response = await updateQueuedMessage(harness, second, {
+        expectedUpdatedAt: current?.updatedAt,
+        model: "gpt-5.1-codex",
+      });
+
+      expect(response.status).toBe(409);
+      expect(getQueuedThreadMessage(harness.db, second.id)?.model).toBe(
+        second.model,
+      );
+    });
+  });
+
+  it("answers a stale version with the stale conflict, not a validation error", async () => {
+    await withTestHarness(async (harness) => {
+      const thread = seedIdleThread(harness, "host-execution-stale");
+      const row = await scheduleMessage(
+        harness,
+        thread.id,
+        "Stale",
+        Date.now() + HOUR_MS,
+      );
+
+      const response = await updateQueuedMessage(harness, row, {
+        expectedUpdatedAt: row.updatedAt - 1,
+        model: "gpt-5.1-codex",
+      });
+
+      expect(response.status).toBe(409);
+      await expect(readJson(response)).resolves.toMatchObject({
+        message: "Queued message changed since editing began",
+      });
     });
   });
 });

@@ -50,6 +50,7 @@ import {
   holdQueuedMessageForEdit,
   releaseQueuedMessageEditHold,
   requestEditReleasedQueuedMessageDispatch,
+  resolveQueuedMessageExecutionChange,
   sendQueuedMessageNow,
 } from "../../services/threads/queued-messages.js";
 import { requestQueuedMessageDispatch } from "../../services/threads/queued-message-dispatch.js";
@@ -317,8 +318,15 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
             projectId: thread.projectId,
             hostId: threadTargetHostId(deps, thread),
           });
+    const execution = await resolveQueuedMessageExecutionChange(deps, {
+      expectedUpdatedAt: payload.expectedUpdatedAt,
+      queuedMessageId: context.req.param("queuedMessageId"),
+      request: payload,
+      thread,
+    });
     const result = updateQueuedThreadMessage(deps.db, deps.hub, {
       content,
+      execution,
       reschedule:
         payload.sendAt === undefined ? null : { sendAt: payload.sendAt },
       expectedUpdatedAt: payload.expectedUpdatedAt,
@@ -340,6 +348,13 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
         409,
         "invalid_request",
         "Queued message changed since editing began",
+      );
+    }
+    if (result.kind === "invalid_execution_options") {
+      throw new ApiError(
+        409,
+        "invalid_request",
+        "This queued message is grouped with messages that use different execution options; ungroup it first",
       );
     }
     const queuedMessage = toThreadQueuedMessage(result.queuedMessage);

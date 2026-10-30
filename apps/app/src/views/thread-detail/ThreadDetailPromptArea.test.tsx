@@ -889,6 +889,50 @@ describe("ThreadDetailPromptArea", () => {
     expect(screen.getByTestId("composer-location").textContent).toBe("bottom");
   });
 
+  it("saves the inline editor's model and permission picks onto the queued message only", async () => {
+    mocks.queuedMessages = [makeQueuedMessage()];
+
+    renderPromptArea();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit queued message 1" }),
+    );
+    const inlineEditor = within(
+      screen.getByTestId("inline-queued-message-editor"),
+    );
+    const queued = mocks.queuedMessages[0]!;
+    expect(inlineEditor.getByTestId("selected-model").textContent).toBe(
+      queued.model,
+    );
+
+    fireEvent.click(
+      inlineEditor.getByRole("button", { name: "Choose model gpt-5-mini" }),
+    );
+    fireEvent.click(
+      inlineEditor.getByRole("button", { name: "Choose permission full" }),
+    );
+    expect(inlineEditor.getByTestId("selected-model").textContent).toBe(
+      "gpt-5-mini",
+    );
+    expect(inlineEditor.getByTestId("selected-permission").textContent).toBe(
+      "full",
+    );
+    expect(mocks.setPermissionMode).not.toHaveBeenCalled();
+    fireEvent.click(
+      inlineEditor.getByRole("button", { name: "Submit composer" }),
+    );
+
+    await waitFor(() => {
+      expect(mocks.updateQueuedMessageMutateAsync).toHaveBeenCalledWith({
+        expectedUpdatedAt: 1,
+        id: "thr_1",
+        input: [{ type: "text", text: "Already queued", mentions: [] }],
+        model: "gpt-5-mini",
+        permissionMode: "full",
+        queuedMessageId: "qmsg_1",
+      });
+    });
+  });
+
   it("exposes the inline queued draft to plugins without dropping attachments", async () => {
     mocks.queuedMessages = [
       makeQueuedMessage({
@@ -1164,10 +1208,10 @@ describe("ThreadDetailPromptArea", () => {
       "full",
     );
     expect(inlineEditor.getByTestId("execution-read-only").textContent).toBe(
-      "true",
+      "false",
     );
     expect(inlineEditor.getByTestId("permission-read-only").textContent).toBe(
-      "true",
+      "false",
     );
     fireEvent.click(
       inlineEditor.getByRole("button", { name: "Capture plugin host" }),

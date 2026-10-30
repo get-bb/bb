@@ -1,6 +1,9 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { PromptInput, ThreadQueuedMessage } from "@bb/domain";
-import type { SendQueuedMessageMode } from "@bb/server-contract";
+import type {
+  SendQueuedMessageMode,
+  UpdateQueuedMessageRequest,
+} from "@bb/server-contract";
 import type {
   QueuedMessageGroupBoundaryRequest,
   QueuedMessageProcessingAction,
@@ -57,6 +60,27 @@ interface UseQueuedMessageActionsResult {
   handleSetQueuedMessageGroupBoundary: (
     request: QueuedMessageGroupBoundaryRequest,
   ) => void;
+}
+
+function changedExecutionFields(
+  edit: InlineQueuedMessageEditState,
+  queuedMessage: ThreadQueuedMessage | undefined,
+): Pick<
+  UpdateQueuedMessageRequest,
+  "model" | "permissionMode" | "reasoningLevel" | "serviceTier"
+> {
+  return {
+    ...(edit.model === queuedMessage?.model ? {} : { model: edit.model }),
+    ...(edit.permissionMode === queuedMessage?.permissionMode
+      ? {}
+      : { permissionMode: edit.permissionMode }),
+    ...(edit.reasoningLevel === queuedMessage?.reasoningLevel
+      ? {}
+      : { reasoningLevel: edit.reasoningLevel }),
+    ...(edit.serviceTier === queuedMessage?.serviceTier
+      ? {}
+      : { serviceTier: edit.serviceTier }),
+  };
 }
 
 export function useQueuedMessageActions({
@@ -159,6 +183,9 @@ export function useQueuedMessageActions({
     }
     const { expectedUpdatedAt, ownerThreadId, queuedMessageId } =
       inlineEditingQueuedMessage;
+    const queuedMessage = queuedMessagesRef.current.find(
+      (message) => message.id === queuedMessageId,
+    );
     setProcessingQueuedMessage({ id: queuedMessageId, action: "edit" });
     try {
       await updateQueuedMessage.mutateAsync({
@@ -166,6 +193,7 @@ export function useQueuedMessageActions({
         id: ownerThreadId,
         input: activeComposerDraftInput,
         queuedMessageId,
+        ...changedExecutionFields(inlineEditingQueuedMessage, queuedMessage),
       });
       onSaveSuccess?.();
       dismissInlineQueuedMessageEditor();
