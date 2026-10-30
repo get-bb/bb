@@ -1,6 +1,13 @@
 import { deviceSetupTelemetrySchema } from "./system-device-telemetry.js";
 export {
   deviceSetupSourceSchema,
+  deviceSetupEvent,
+  deviceTelemetryContext,
+  deviceStateTelemetrySchema,
+  deviceStatePropertiesSchema,
+  clientDeviceStatePropertiesSchema,
+  deviceSetupPropertiesSchema,
+  deviceOperationPropertiesSchema,
   connectDeviceSetupPropertiesSchema,
   type DeviceSetupEvent,
   type ConnectDeviceSetupProperties,

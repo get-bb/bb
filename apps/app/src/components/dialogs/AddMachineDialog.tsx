@@ -1,3 +1,4 @@
+import { deviceTelemetryContext } from "@bb/server-contract";
 import type { DeviceSetupSource } from "@bb/server-contract";
 import { recordTelemetryEvent } from "@/components/onboarding/onboarding-telemetry";
 import { nanoid } from "nanoid";
@@ -40,13 +41,13 @@ export function AddMachineDialog({
   useEffect(() => {
     if (open && !wasOpen.current)
       recordTelemetryEvent({
-        name: "device_setup",
+        name: "onboarding_step_state",
         properties: {
-          target: "additional_machine",
-          action: "setup_opened",
-          outcome: "observed",
-          source: telemetrySource,
-          error_category: null,
+          ...deviceTelemetryContext(telemetrySource),
+          step: "devices",
+          resource_type: "device",
+          resource_id: "additional_machine",
+          state: "setup_open",
         },
       });
     wasOpen.current = open;

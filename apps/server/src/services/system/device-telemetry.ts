@@ -1,3 +1,4 @@
+import { deviceSetupEvent } from "@bb/server-contract";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { getHost, getLatestSessionForHost, type DbConnection } from "@bb/db";
 import type {
@@ -5,7 +6,6 @@ import type {
   DeviceSetupProperties,
 } from "@bb/server-contract";
 import type { AppDeps } from "../../types.js";
-import { readPrimaryHostIdFromDataDir } from "../hosts/primary-host.js";
 
 type Deps = Pick<AppDeps, "db" | "telemetry" | "config">;
 const sourceContext = new AsyncLocalStorage<DeviceSetupSource>();
@@ -42,7 +42,7 @@ function emit(
   properties: DeviceSetupProperties,
 ): void {
   if (deps.telemetry.isEnabled())
-    deps.telemetry.capture({ name: "device_setup", properties });
+    deps.telemetry.capture(deviceSetupEvent(properties));
 }
 
 export function beginMachineEnrollment(deps: Deps, hostId: string): void {
@@ -73,21 +73,8 @@ export function recordMachineReady(deps: Deps, hostId: string): void {
   if (!current || current.destroyedAt !== null || current.phase === "removing")
     return;
   const states = pending(deps);
-  let state = states.get(hostId);
-  if (!state) {
-    const primary = readPrimaryHostIdFromDataDir({
-      dataDir: deps.config.dataDir,
-    });
-    if (current.lastSeenAt !== null || primary === null || primary === hostId)
-      return;
-    state = {
-      source: "unknown",
-      ready: false,
-      result: null,
-    };
-    states.set(hostId, state);
-  }
-  if (state.ready) return;
+  const state = states.get(hostId);
+  if (!state || state.ready) return;
   state.ready = true;
   emit(deps, {
     target: "additional_machine",

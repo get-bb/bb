@@ -4195,10 +4195,13 @@ removing the prefix.
 
 ## Device setup measurement extension
 
-The existing client telemetry endpoint accepts only `device_setup` opening
-observations and iOS/Android download interest. Confirmed browser and machine
-milestones are server-only and rejected on that endpoint. Target/action/outcome combinations and nullable bounded error categories
-are validated together. Names, addresses, host IDs and credentials are excluded.
+Device setup attempts emit `onboarding_operation` with `step: devices`,
+`resource_type: device`, a category-valued `resource_id`, operation and outcome.
+The client endpoint accepts only `onboarding_step_state` observations of setup
+opening and mobile download interest. Connections are server-owned state
+observations, not human work. Confirmed operations are server-only and rejected
+on that endpoint. Source is normalized into `surface` and nullable onboarding
+`entry`; resource/operation/outcome combinations and bounded errors are validated together. Names, addresses, host IDs and credentials are excluded.
 Core uses the SDK event endpoint only for UI interest. Connect lifecycle and
 server enrollment owners use the opt-out-controlled service through trusted
 backend paths. Browser service readiness closes a pending enable request only;
@@ -4209,8 +4212,8 @@ requests default to unknown at the route boundary. Core onboarding, settings and
 the existing machine CLI use this shared operation. No telemetry-injection CLI
 or daemon wire change is introduced. Source survives asynchronous creation in
 local lifecycle ownership; after a server restart, missing source is unknown.
-Readiness means an authenticated daemon WebSocket became usable; reconnects
-do not create new enrollment milestones.
+Readiness closes a pending enrollment only when an authenticated daemon WebSocket
+becomes usable; reconnects and arrivals without a pending attempt emit no setup success.
 
 Existing accepted-work events add `access_route`. Signed Connect ingress markers
 establish connect, trusted non-loopback sockets establish direct, and loopback

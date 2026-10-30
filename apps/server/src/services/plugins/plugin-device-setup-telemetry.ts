@@ -1,3 +1,4 @@
+import { deviceSetupEvent } from "@bb/server-contract";
 import type { InstalledPluginRow } from "@bb/db";
 import { connectDeviceSetupPropertiesSchema } from "@bb/server-contract";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
@@ -19,7 +20,6 @@ export function createConnectDeviceSetupRecorder(
     return null;
   return (input) => {
     const properties = connectDeviceSetupPropertiesSchema.parse(input);
-    if (telemetry.isEnabled())
-      telemetry.capture({ name: "device_setup", properties });
+    if (telemetry.isEnabled()) telemetry.capture(deviceSetupEvent(properties));
   };
 }

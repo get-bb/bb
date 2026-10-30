@@ -1,3 +1,4 @@
+import { deviceTelemetryContext } from "@bb/server-contract";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
@@ -1086,26 +1087,26 @@ function DevicesStepContainer({
         onToggleConnectSetup={() => {
           if (!connectSetupOpen)
             recordTelemetryEvent({
-              name: "device_setup",
+              name: "onboarding_step_state",
               properties: {
-                target: "browser_access",
-                action: "setup_opened",
-                outcome: "observed",
-                source: entry,
-                error_category: null,
+                ...deviceTelemetryContext(entry),
+                step: "devices",
+                resource_type: "device",
+                resource_id: "browser_access",
+                state: "setup_open",
               },
             });
           setConnectSetupOpen(!connectSetupOpen);
         }}
         onDownloadMobile={(platform) =>
           recordTelemetryEvent({
-            name: "device_setup",
+            name: "onboarding_step_state",
             properties: {
-              target: "mobile",
-              action: "download_clicked",
-              outcome: "observed",
-              source: entry,
-              error_category: null,
+              ...deviceTelemetryContext(entry),
+              step: "devices",
+              resource_type: "device",
+              resource_id: "mobile",
+              state: "download_requested",
               platform,
             },
           })

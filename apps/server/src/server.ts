@@ -1,3 +1,4 @@
+import { deviceSetupEvent } from "@bb/server-contract";
 import {
   resolveRequestAccessRoute,
   isAuthenticatedConnectRequest,
@@ -1014,16 +1015,15 @@ export function createApp(
             isAuthenticatedConnectRequest(context)
           ) {
             observedRemoteConnection = true;
-            deps.telemetry.capture({
-              name: "device_setup",
-              properties: {
+            deps.telemetry.capture(
+              deviceSetupEvent({
                 target: "browser_access",
                 action: "remote_connected",
                 outcome: "observed",
                 source: "unknown",
                 error_category: null,
-              },
-            });
+              }),
+            );
           }
         },
         onMessage: (event, socket) =>

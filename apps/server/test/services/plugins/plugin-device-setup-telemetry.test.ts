@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ConnectDeviceSetupProperties } from "@bb/server-contract";
+import {
+  deviceSetupEvent,
+  deviceSetupPropertiesSchema,
+  type ConnectDeviceSetupProperties,
+} from "@bb/server-contract";
 import { createConnectDeviceSetupRecorder } from "../../../src/services/plugins/plugin-device-setup-telemetry.js";
 import type { TelemetryService } from "../../../src/services/system/telemetry.js";
 import { createTestAppHarness } from "../../helpers/test-app.js";
@@ -48,10 +52,9 @@ describe("trusted Connect lifecycle reporting", () => {
     const report = createConnectDeviceSetupRecorder(telemetry, owner);
     if (!report) throw new Error("Missing trusted recorder");
     report(properties);
-    expect(capture).toHaveBeenCalledExactlyOnceWith({
-      name: "device_setup",
-      properties,
-    });
+    expect(capture).toHaveBeenCalledExactlyOnceWith(
+      deviceSetupEvent(properties),
+    );
     expect(() =>
       Reflect.apply(report, null, [{ ...properties, url: "private" }]),
     ).toThrow();
@@ -91,10 +94,9 @@ describe("trusted Connect lifecycle reporting", () => {
           {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              name: "device_setup",
-              properties: milestone,
-            }),
+            body: JSON.stringify(
+              deviceSetupEvent(deviceSetupPropertiesSchema.parse(milestone)),
+            ),
           },
         );
         expect(response.status).toBe(400);
@@ -105,14 +107,13 @@ describe("trusted Connect lifecycle reporting", () => {
         {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            name: "device_setup",
-            properties: {
+          body: JSON.stringify(
+            deviceSetupEvent({
               ...properties,
               action: "setup_opened",
               outcome: "observed",
-            },
-          }),
+            }),
+          ),
         },
       );
       expect(response.status).toBe(200);
