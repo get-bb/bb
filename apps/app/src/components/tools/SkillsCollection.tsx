@@ -19,6 +19,8 @@ import {
   ResourceToolbar,
 } from "@bb/shared-ui/resource-list";
 import { BbLogo } from "@/components/ui/bb-logo";
+import { PluginIcon } from "@/components/plugin/PluginIcon";
+import { usePluginCompactBranding } from "@/lib/plugin-logos";
 import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogContent,
@@ -124,15 +126,44 @@ export function ProviderLogo({
   );
 }
 
+function BbOrPluginLogo({
+  pluginId,
+  className,
+  bbLogoClassName,
+}: {
+  pluginId: string | null;
+  className: string;
+  bbLogoClassName: string;
+}) {
+  const branding = usePluginCompactBranding(pluginId ?? "");
+  if (
+    pluginId !== null &&
+    branding !== null &&
+    (branding.compactIconUrl !== null || branding.icon !== null)
+  ) {
+    return (
+      <PluginIcon
+        pluginId={pluginId}
+        icon={null}
+        fallbackIcon={null}
+        className={className}
+      />
+    );
+  }
+  return <BbLogo className={bbLogoClassName} />;
+}
+
 export function SkillProvenanceTooltip({
   prefix,
   providerId,
   provider,
+  pluginId = null,
   name,
 }: {
   prefix: string;
   providerId: SkillProvider | null;
   provider?: ProviderInfo | undefined;
+  pluginId?: string | null;
   name: string;
 }) {
   return (
@@ -144,7 +175,11 @@ export function SkillProvenanceTooltip({
         className="flex size-3.5 shrink-0 items-center justify-center"
       >
         {providerId === null ? (
-          <BbLogo className="size-3.5 brightness-0 invert" />
+          <BbOrPluginLogo
+            pluginId={pluginId}
+            className="size-3.5"
+            bbLogoClassName="size-3.5 brightness-0 invert"
+          />
         ) : (
           <ProviderLogo
             providerId={providerId}
@@ -174,7 +209,13 @@ function SkillLeading({
       />
     );
   }
-  return <BbLogo className="size-6" />;
+  return (
+    <BbOrPluginLogo
+      pluginId={skill.scope === "plugin" ? skill.pluginId : null}
+      className="size-6"
+      bbLogoClassName="size-6"
+    />
+  );
 }
 
 function skillDescription(
@@ -293,6 +334,7 @@ function SkillRow({
                       ? undefined
                       : providerRoster.get(skill.provider)
                   }
+                  pluginId={skill.pluginId}
                   name={`${providerPluginDisplayName(skill)} plugin.`}
                 />
               }
@@ -709,6 +751,7 @@ export function SkillDetailDialogView({
                         ? undefined
                         : providerRoster.get(skill.provider)
                     }
+                    pluginId={skill.pluginId}
                     name={`${providerPluginDisplayName(skill)} plugin.`}
                   />
                 ),

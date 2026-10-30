@@ -20,6 +20,10 @@ import { focusManager } from "@tanstack/react-query";
 import type { ProviderInfo } from "@bb/domain";
 import type { SkillSummary } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  resetPluginLogoStoreForTest,
+  setPluginLogoUrls,
+} from "@/lib/plugin-logos";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { makeProviderInfo } from "@bb/test-helpers/domain-fixtures";
 import { sdk } from "@/lib/sdk";
@@ -34,12 +38,14 @@ import {
 } from "../components/tools/SkillsBrowse";
 import {
   SkillDetailDialogView,
+  SkillProvenanceTooltip,
   SkillsOverview,
 } from "../components/tools/SkillsCollection";
 import { SkillsLibrary } from "../components/tools/SkillsLibrary";
 import { focusWithKeyboard } from "@/test/keyboard-focus";
 
 afterEach(() => {
+  resetPluginLogoStoreForTest();
   focusManager.setFocused(undefined);
   cleanup();
   vi.restoreAllMocks();
@@ -279,6 +285,140 @@ function NavigateButton({ to, label }: { to: string; label: string }) {
     </button>
   );
 }
+
+function setPluginBranding(
+  pluginId: string,
+  branding: { icon: string | null; compactIconUrl: string | null },
+) {
+  setPluginLogoUrls(
+    new Map([
+      [
+        pluginId,
+        {
+          displayName: pluginId,
+          logoUrl: null,
+          logoDarkUrl: null,
+          icons: new Map(),
+          ...branding,
+        },
+      ],
+    ]),
+  );
+}
+
+function makePluginSkill(pluginId: string): SkillSummary {
+  return makeSkill({
+    name: `${pluginId}:review`,
+    provider: null,
+    scope: "plugin",
+    pluginId,
+    manageable: false,
+  });
+}
+
+const BRAND_ICON_URL = "/api/v1/plugins/holonic/assets/icon?h=abc";
+
+describe("plugin skill icons", () => {
+  it("shows the plugin icon instead of the bb logo for a plugin skill", () => {
+    setPluginBranding("holonic", {
+      icon: null,
+      compactIconUrl: BRAND_ICON_URL,
+    });
+    const view = renderDom(
+      <SkillsOverview
+        providerRoster={DEFAULT_PROVIDER_ROSTER}
+        skills={[makePluginSkill("holonic")]}
+        isLoading={false}
+        hasError={false}
+        onCreateSkill={() => {}}
+        onSelectSkill={() => {}}
+      />,
+    );
+    expect(
+      view.container.querySelector(
+        `[data-plugin-icon-asset="${BRAND_ICON_URL}"]`,
+      ),
+    ).toBeTruthy();
+    expect(view.container.querySelector('img[src*="bb-logo"]')).toBeNull();
+  });
+
+  it("shows the bb logo for a plugin skill whose plugin has no icon", () => {
+    setPluginBranding("holonic", { icon: null, compactIconUrl: null });
+    const view = renderDom(
+      <SkillsOverview
+        providerRoster={DEFAULT_PROVIDER_ROSTER}
+        skills={[makePluginSkill("holonic"), makePluginSkill("unloaded")]}
+        isLoading={false}
+        hasError={false}
+        onCreateSkill={() => {}}
+        onSelectSkill={() => {}}
+      />,
+    );
+    expect(view.container.querySelectorAll('img[src*="bb-logo"]')).toHaveLength(
+      2,
+    );
+    expect(view.container.querySelector("[data-plugin-icon-asset]")).toBeNull();
+  });
+
+  it("keeps the bb logo for a bb-builtin skill even when its pluginId is a branded plugin", () => {
+    setPluginBranding("holonic", {
+      icon: null,
+      compactIconUrl: BRAND_ICON_URL,
+    });
+    const view = renderDom(
+      <SkillsOverview
+        providerRoster={DEFAULT_PROVIDER_ROSTER}
+        skills={[
+          makeSkill({
+            name: "official",
+            provider: null,
+            scope: "bb-builtin",
+            pluginId: "holonic",
+            manageable: false,
+          }),
+        ]}
+        isLoading={false}
+        hasError={false}
+        onCreateSkill={() => {}}
+        onSelectSkill={() => {}}
+      />,
+    );
+    expect(view.container.querySelector('img[src*="bb-logo"]')).toBeTruthy();
+    expect(view.container.querySelector("[data-plugin-icon-asset]")).toBeNull();
+  });
+
+  it("uses the plugin icon in the Included-with tooltip and the bb logo without one", () => {
+    setPluginBranding("holonic", {
+      icon: null,
+      compactIconUrl: BRAND_ICON_URL,
+    });
+    const branded = renderDom(
+      <SkillProvenanceTooltip
+        prefix="Included with"
+        providerId={null}
+        pluginId="holonic"
+        name="Holonic plugin."
+      />,
+    );
+    expect(
+      branded.container.querySelector(
+        `[data-plugin-icon-asset="${BRAND_ICON_URL}"]`,
+      ),
+    ).toBeTruthy();
+    expect(branded.container.querySelector('img[src*="bb-logo"]')).toBeNull();
+    const unbranded = renderDom(
+      <SkillProvenanceTooltip
+        prefix="Included with"
+        providerId={null}
+        pluginId="other"
+        name="Other plugin."
+      />,
+    );
+    expect(
+      unbranded.container.querySelector('img[src*="bb-logo"]'),
+    ).toBeTruthy();
+  });
+});
 
 describe("SkillsOverview", () => {
   it("shows skills from every provider by default with BB Official skills first", () => {
