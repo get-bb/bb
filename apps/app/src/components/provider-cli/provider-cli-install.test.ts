@@ -434,6 +434,18 @@ describe("provider CLI install store", () => {
 });
 
 describe("onboarding agent operation telemetry", () => {
+  function event(
+    entry: "first_run" | "replay",
+    operation: "agent_install" | "agent_update",
+    outcome: "started" | "succeeded" | "failed" | "unknown",
+    error_category: "command_exit" | "request" | "unknown" | null = null,
+  ) {
+    return {
+      name: "onboarding_operation",
+      properties: { entry, operation, outcome, error_category },
+    };
+  }
+
   it.each([
     {
       label: "unsuccessful command completion",
@@ -494,28 +506,8 @@ describe("onboarding agent operation telemetry", () => {
       installAt(0).resolve(events);
       await settle();
       expect(telemetryMock.mock.calls).toEqual([
-        [
-          {
-            name: "onboarding_operation",
-            properties: {
-              entry: "first_run",
-              operation: "agent_update",
-              outcome: "started",
-              error_category: null,
-            },
-          },
-        ],
-        [
-          {
-            name: "onboarding_operation",
-            properties: {
-              entry: "first_run",
-              operation: "agent_update",
-              outcome,
-              error_category,
-            },
-          },
-        ],
+        [event("first_run", "agent_update", "started")],
+        [event("first_run", "agent_update", outcome, error_category)],
       ]);
     },
   );
@@ -545,15 +537,9 @@ describe("onboarding agent operation telemetry", () => {
       installAt(0).reject(error);
       await settle();
       expect(telemetryMock).toHaveBeenCalledTimes(2);
-      expect(telemetryMock).toHaveBeenLastCalledWith({
-        name: "onboarding_operation",
-        properties: {
-          entry: "replay",
-          operation: "agent_update",
-          outcome: "unknown",
-          error_category: "request",
-        },
-      });
+      expect(telemetryMock).toHaveBeenLastCalledWith(
+        event("replay", "agent_update", "unknown", "request"),
+      );
     },
   );
 
@@ -600,42 +586,10 @@ describe("onboarding agent operation telemetry", () => {
     installAt(1).resolve([completed, completed]);
     await settle();
     expect(telemetryMock.mock.calls.map(([event]) => event)).toEqual([
-      {
-        name: "onboarding_operation",
-        properties: {
-          entry: "first_run",
-          operation: "agent_update",
-          outcome: "started",
-          error_category: null,
-        },
-      },
-      {
-        name: "onboarding_operation",
-        properties: {
-          entry: "first_run",
-          operation: "agent_update",
-          outcome: "succeeded",
-          error_category: null,
-        },
-      },
-      {
-        name: "onboarding_operation",
-        properties: {
-          entry: "replay",
-          operation: "agent_install",
-          outcome: "started",
-          error_category: null,
-        },
-      },
-      {
-        name: "onboarding_operation",
-        properties: {
-          entry: "replay",
-          operation: "agent_install",
-          outcome: "succeeded",
-          error_category: null,
-        },
-      },
+      event("first_run", "agent_update", "started"),
+      event("first_run", "agent_update", "succeeded"),
+      event("replay", "agent_install", "started"),
+      event("replay", "agent_install", "succeeded"),
     ]);
     startProviderCliInstall(installJob);
     completeInstall(installAt(2), completed);
