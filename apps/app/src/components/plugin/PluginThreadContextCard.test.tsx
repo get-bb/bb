@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -264,6 +265,34 @@ describe("thread context card", () => {
     expect(screen.getByLabelText("Inset").textContent).toBe("0");
 
     fireEvent.click(screen.getByRole("button", { name: "Thread context" }));
+    expect(
+      screen.getByRole("group", { name: "Thread context" }).textContent,
+    ).toContain("Nothing to show yet");
+  });
+
+  it("opens the empty state when pinning a card that turns out empty", () => {
+    setPluginSlotRegistrations(
+      "first",
+      makePluginRegistrationSet({
+        threadContextCardRows: [
+          { id: "diff", group: "3_git", component: OpenDiffRow },
+        ],
+      }),
+    );
+    renderPane({
+      paneWidth: 1600,
+      coreRows: CORE.map((row) => ({ ...row, component: Empty })),
+      coreSections: CORE_SECTIONS.map((entry) => ({
+        ...entry,
+        component: Empty,
+      })),
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Unpin thread context" }),
+    );
+    act(() => removePluginSlotRegistrations("first"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Pin thread context" }));
     expect(
       screen.getByRole("group", { name: "Thread context" }).textContent,
     ).toContain("Nothing to show yet");
