@@ -9,9 +9,6 @@ jobs:
   app:
     runs-on: blacksmith-4vcpu-windows-2025
     timeout-minutes: 30
-    env:
-      TEMP: ${{ runner.temp }}
-      TMP: ${{ runner.temp }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
@@ -20,7 +17,10 @@ jobs:
       - run: npm install --global pnpm@9.15.0 --ignore-scripts
       - run: pnpm install --frozen-lockfile --ignore-scripts --filter bb --filter '@bb/app...' --filter '@bb/db...'
       - run: pnpm exec turbo run test --filter=@bb/app -- src/views/thread-detail/thread-opening.model.test.tsx src/components/ui/markdown-incremental-pieces.test.ts
-      - run: node .github/diagnostics/app-benchmark.mjs
+      - env:
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+        run: node .github/diagnostics/app-benchmark.mjs
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:

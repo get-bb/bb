@@ -9,16 +9,16 @@ jobs:
   install:
     runs-on: blacksmith-4vcpu-windows-2025
     timeout-minutes: 45
-    env:
-      TEMP: ${{ runner.temp }}
-      TMP: ${{ runner.temp }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: 22.x
       - run: npm install --global pnpm@9.15.0 --ignore-scripts
-      - run: node .github/diagnostics/install-benchmark.mjs
+      - env:
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+        run: node .github/diagnostics/install-benchmark.mjs
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
