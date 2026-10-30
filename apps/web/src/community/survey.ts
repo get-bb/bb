@@ -1,9 +1,9 @@
 import { z } from "zod";
 
 export const COMMUNITY_MAX = 3;
-export const TEAM_WORK_OPTIONS = ["2–4 people", "5 or more"];
-export const SOLO_WORK_OPTIONS = ["Just me"];
-export const NOT_WORKING_ROLES = ["Student", "Not currently working"];
+const TEAM_WORK_OPTIONS = ["2–4 people", "5 or more"];
+const SOLO_WORK_OPTIONS = ["Just me"];
+const NOT_WORKING_ROLES = ["Student", "Not currently working"];
 export function questionVisible(name: string, values: FormValues): boolean {
   const workShown = !NOT_WORKING_ROLES.includes(values.role?.[0] ?? "");
   if (name === "work") return workShown;
