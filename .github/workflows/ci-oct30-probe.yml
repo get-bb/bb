@@ -18,10 +18,7 @@ jobs:
       - run: pnpm exec turbo run test --filter=bb-plugin-automations -- src/automations.test.ts -t 'stops a running script and its descendants'
       - run: |
           mkdir -p diagnostic-results
-          for i in $(seq 1 60); do
-            pnpm --filter bb-plugin-automations exec vitest run --config vitest.config.ts src/automations.test.ts -t 'stops a running script and its descendants' > "diagnostic-results/automation-$i.log" 2>&1
-            echo "$i $?" >> diagnostic-results/status.txt
-          done
+          seq 1 120 | xargs -P 4 -I '{}' bash -c 'pnpm --filter bb-plugin-automations exec vitest run --config vitest.config.ts src/automations.test.ts -t "stops a running script and its descendants" > diagnostic-results/automation-{}.log 2>&1; echo "{} $?" > diagnostic-results/status-{}.txt'
         shell: bash {0}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
