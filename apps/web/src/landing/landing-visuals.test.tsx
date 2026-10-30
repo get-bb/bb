@@ -147,70 +147,65 @@ describe("useCycle", () => {
 });
 
 describe("StartAnywhere", () => {
-  it("shows each way in and a sidebar grouped by machine", () => {
+  it("shows a ChatGPT handoff, a sidebar grouped by machine and the phone", () => {
     const html = renderToStaticMarkup(<StartAnywhere />);
-    expect(html).toContain(
-      "bb thread spawn --prompt &quot;Fix CI on main&quot;",
-    );
     for (const text of [
-      ">Grok<",
-      ">Claude<",
       ">ChatGPT<",
+      "Claude<",
+      "Grok<",
       "Hand this off to bb: fix the checkout bug",
       "Control bb",
-      "Fix flaky login test",
-      ">Working<",
-      "CI · main failed",
-      "Weekdays 9:00",
-      "Daily changelog",
-      "Bump dependencies",
-      ">linux-box<",
+      "linux-box",
       ">server<",
-      ">MacBook<",
+      "MacBook",
+      "Fix CI on main",
+      "Daily changelog",
+      "Reply to this thread",
     ]) {
       expect(html).toContain(text);
     }
-    expect(html).not.toMatch(/bb spawn|--project/);
+    expect(html.match(/class="mock bw-window"/g)).toHaveLength(1);
+    expect(html).not.toMatch(/bb spawn|fw-arrow|fw-auto/);
   });
 });
 
 describe("PluginMap", () => {
-  it("numbers four plugin regions of the bb window", () => {
+  it("shows plugin UI in place in one bb window", () => {
     const html = renderToStaticMarkup(<PluginMap />);
-    for (const label of [
-      "Your own pages",
-      "PR status on every thread",
-      "Charts in replies",
-      "Controls in the composer",
+    for (const text of [
+      "Checks passed",
+      "#482",
+      "Weekly signups",
+      "Send later",
+      "Pull requests",
+      "Checkout times out on slow networks",
     ]) {
-      expect(html).toContain(`<span>${label}</span>`);
+      expect(html).toContain(text);
     }
-    expect(html).toContain("#482");
-    expect(html).toContain("Send later · 9:00");
-    expect(html.match(/fw-map-region/g)).toHaveLength(4);
+    expect(html.match(/class="bw-spot-tag"/g)).toHaveLength(4);
+    expect(html.match(/class="mock bw-window"/g)).toHaveLength(1);
   });
 });
 
 describe("DelegationTree", () => {
-  it("shows one lead, three workers and a single ping", () => {
+  it("shows the lead, its three children, their updates and one ping", () => {
     const html = renderToStaticMarkup(<DelegationTree />);
     for (const text of [
       "Ship the checkout fix",
-      ">Lead<",
-      "Child thread updates",
       "Plan the fix",
       "Build it",
       "Review the diff",
-      ">Claude Code<",
-      ">Cursor<",
-      ">Codex<",
-      ">Grok Build<",
-      "answered by the lead",
+      "Claude Code",
+      "Cursor",
+      "Codex",
+      "Grok Build",
+      "Replied to <strong>Build it</strong>",
     ]) {
       expect(html).toContain(text);
     }
-    expect(html.match(/fw-ping-body/g)).toHaveLength(1);
-    expect(html).toContain("Review the diff · needs your approval");
+    expect(html.match(/Child thread updates/g)).toHaveLength(4);
+    expect(html.match(/class="bw-toast"/g)).toHaveLength(1);
+    expect(html).toContain("Review the diff needs your approval");
   });
 });
 

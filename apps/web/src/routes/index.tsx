@@ -1210,7 +1210,7 @@ function LandingPage() {
 
       <Band
         title="Make bb yours. No need to fork."
-        flip
+        stacked
         section="make-it-yours"
         visual={<PluginMap />}
       >
@@ -1226,6 +1226,7 @@ function LandingPage() {
 
       <Band
         title="Put an agent in charge."
+        stacked
         section="hand-off"
         visual={<DelegationTree />}
       >
@@ -1238,7 +1239,7 @@ function LandingPage() {
 
       <Band
         title="Start anywhere. Pick up anywhere."
-        flip
+        stacked
         section="start-anywhere"
         visual={<StartAnywhere />}
       >

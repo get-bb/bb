@@ -12,11 +12,17 @@ import Loading03Icon from "@hugeicons/core-free-icons/Loading03Icon";
 import MessageQuestionIcon from "@hugeicons/core-free-icons/MessageQuestionIcon";
 import SidebarLeftIcon from "@hugeicons/core-free-icons/SidebarLeftIcon";
 import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
-import Home01Icon from "@hugeicons/core-free-icons/Home01Icon";
 import LaptopIcon from "@hugeicons/core-free-icons/LaptopIcon";
-import Settings01Icon from "@hugeicons/core-free-icons/Settings01Icon";
 import SmartPhone01Icon from "@hugeicons/core-free-icons/SmartPhone01Icon";
-import ArrowDown02Icon from "@hugeicons/core-free-icons/ArrowDown02Icon";
+import ArrowLeft01Icon from "@hugeicons/core-free-icons/ArrowLeft01Icon";
+import MoreHorizontalIcon from "@hugeicons/core-free-icons/MoreHorizontalIcon";
+import BubbleChatAddIcon from "@hugeicons/core-free-icons/BubbleChatAddIcon";
+import SidebarRightIcon from "@hugeicons/core-free-icons/SidebarRightIcon";
+import GitPullRequestIcon from "@hugeicons/core-free-icons/GitPullRequestIcon";
+import RecordIcon from "@hugeicons/core-free-icons/RecordIcon";
+import Plug02Icon from "@hugeicons/core-free-icons/Plug02Icon";
+import UserAdd01Icon from "@hugeicons/core-free-icons/UserAdd01Icon";
+import Mic02Icon from "@hugeicons/core-free-icons/Mic02Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode, RefObject } from "react";
@@ -169,22 +175,23 @@ export function ProviderChips() {
 export function Band({
   title,
   flip,
+  stacked,
   section,
   visual,
   children,
 }: {
   title: ReactNode;
   flip?: boolean;
+  stacked?: boolean;
   section?: string;
   visual: ReactNode;
   children: ReactNode;
 }) {
+  const classes = ["band"];
+  if (flip) classes.push("band-flip");
+  if (stacked) classes.push("band-stacked");
   return (
-    <section
-      className={flip ? "band band-flip" : "band"}
-      data-reveal
-      data-section={section}
-    >
+    <section className={classes.join(" ")} data-reveal data-section={section}>
       <div className="band-grid">
         <div className="band-copy">
           <h2>{title}</h2>
@@ -546,9 +553,6 @@ export function CustomizeBuild() {
   );
 }
 
-const HomeGlyph = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={Home01Icon} className={className} />
-);
 const ClockIcon = ({ className }: IconProps) => (
   <HugeiconsIcon icon={Clock01Icon} className={className} />
 );
@@ -564,20 +568,44 @@ const WaitingIcon = ({ className }: IconProps) => (
 const GitHubMark = ({ className }: IconProps) => (
   <HugeiconsIcon icon={GithubIcon} className={className} />
 );
-const SettingsGlyph = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={Settings01Icon} className={className} />
-);
 const PhoneIcon = ({ className }: IconProps) => (
   <HugeiconsIcon icon={SmartPhone01Icon} className={className} />
 );
 const LaptopGlyph = ({ className }: IconProps) => (
   <HugeiconsIcon icon={LaptopIcon} className={className} />
 );
-const ArrowDownGlyph = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={ArrowDown02Icon} className={className} />
-);
 const CheckGlyph = ({ className }: IconProps) => (
   <HugeiconsIcon icon={Tick02Icon} className={className} />
+);
+const ChevronLeft = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={ArrowLeft01Icon} className={className} />
+);
+const MoreIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={MoreHorizontalIcon} className={className} />
+);
+const NewThreadIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={BubbleChatAddIcon} className={className} />
+);
+const PanelRightIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={SidebarRightIcon} className={className} />
+);
+const PullRequestIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={GitPullRequestIcon} className={className} />
+);
+const IssueIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={RecordIcon} className={className} />
+);
+const PluginIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={Plug02Icon} className={className} />
+);
+const SubagentIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={UserAdd01Icon} className={className} />
+);
+const MicIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={Mic02Icon} className={className} />
+);
+const BbGlyph = ({ className }: IconProps) => (
+  <span aria-hidden className={`bb-mark ${className ?? ""}`} />
 );
 
 type ThreadState = "running" | "done" | "waiting";
@@ -588,38 +616,52 @@ function StatusGlyph({ status }: { status: ThreadState }) {
   return <WaitingIcon className="twait" />;
 }
 
+type StatusStep = { status: ThreadState; at: number };
+
 function ThreadStatus({
   status,
-  next,
+  then = [],
 }: {
   status: ThreadState;
-  next?: { status: ThreadState; at: number };
+  then?: readonly StatusStep[];
 }) {
-  if (next === undefined) {
+  if (then.length === 0) {
     return (
       <span className="tstatus" aria-hidden>
         <StatusGlyph status={status} />
       </span>
     );
   }
+  const phases = [{ status, at: 0 }, ...then];
   return (
-    <span className="tstatus fw-swap" aria-hidden>
-      <span className="fw-swap-from" style={at(next.at)}>
-        <StatusGlyph status={status} />
-      </span>
-      <span className="fw-swap-to" style={at(next.at)}>
-        <StatusGlyph status={next.status} />
-      </span>
+    <span className="tstatus bw-phases" aria-hidden>
+      {phases.map((phase, index) => {
+        const next = phases[index + 1];
+        const role =
+          index === 0 ? "first" : next === undefined ? "last" : "mid";
+        return (
+          <span
+            key={index}
+            className={`bw-phase bw-phase-${role}`}
+            style={phaseStyle(phase.at, next?.at)}
+          >
+            <StatusGlyph status={phase.status} />
+          </span>
+        );
+      })}
     </span>
   );
 }
 
-function at(seconds: number): CSSProperties {
-  return { "--fw-at": `${seconds}s` } as CSSProperties;
+function phaseStyle(start: number, end?: number): CSSProperties {
+  return {
+    "--fw-at": `${start}s`,
+    "--fw-out": `${end ?? start}s`,
+  } as CSSProperties;
 }
 
-function between(start: number, end: number): CSSProperties {
-  return { "--fw-at": `${start}s`, "--fw-out": `${end}s` } as CSSProperties;
+function at(seconds: number): CSSProperties {
+  return { "--fw-at": `${seconds}s` } as CSSProperties;
 }
 
 function WindowDots() {
@@ -636,114 +678,332 @@ function stageClass(base: string, leaving: boolean, paused: boolean) {
   return `${base}${leaving ? " leaving" : ""}${paused ? " fw-paused" : ""}`;
 }
 
-const PLUGIN_MAP_REGIONS = [
-  "Your own pages",
-  "PR status on every thread",
-  "Charts in replies",
-  "Controls in the composer",
+function Reveal({
+  at: seconds,
+  className,
+  children,
+}: {
+  at: number;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={className ? `bw-reveal ${className}` : "bw-reveal"}
+      style={at(seconds)}
+    >
+      <div className="bw-reveal-inner">{children}</div>
+    </div>
+  );
+}
+
+function WindowBar({
+  title,
+  panelOpen = false,
+}: {
+  title: string;
+  panelOpen?: boolean;
+}) {
+  return (
+    <div className="mock-bar">
+      <div className="bar-left">
+        <WindowDots />
+        <span className="bar-menu" aria-hidden>
+          <PanelIcon className="ri bar-ic" />
+        </span>
+        <span className="bar-nav" aria-hidden>
+          <ChevronLeft className="ri" />
+          <ChevronRight className="ri" />
+        </span>
+      </div>
+      <div className="bar-main">
+        <span className="bar-title">{title}</span>
+        <MoreIcon className="bar-kebab" />
+        <span className="bar-actions" aria-hidden>
+          <span className="commit-btn">Commit</span>
+          <span className={panelOpen ? "bar-toggle active" : "bar-toggle"}>
+            <PanelRightIcon className="ri" />
+          </span>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function SideActions({ children }: { children?: ReactNode }) {
+  return (
+    <>
+      <div className="side-act">
+        <NewThreadIcon className="sa-ic" />
+        New thread
+      </div>
+      <div className="side-act">
+        <ClockIcon className="sa-ic" />
+        Automations
+      </div>
+      {children}
+    </>
+  );
+}
+
+type RowIcon = (props: IconProps) => ReactNode;
+
+function ThreadRow({
+  title,
+  status,
+  then,
+  icon: Icon,
+  active = false,
+  kid = false,
+  meta,
+}: {
+  title: string;
+  status?: ThreadState;
+  then?: readonly StatusStep[];
+  icon?: RowIcon;
+  active?: boolean;
+  kid?: boolean;
+  meta?: ReactNode;
+}) {
+  const classes = ["trow", "bw-row"];
+  if (active) classes.push("active");
+  if (kid) classes.push("trow-kid");
+  if (meta) classes.push("bw-row-meta");
+  return (
+    <div className={classes.join(" ")}>
+      {Icon ? <Icon className="bw-row-ic" /> : null}
+      <span className="bw-row-text">
+        <span className="trow-title">{title}</span>
+        {meta ? <span className="bw-meta">{meta}</span> : null}
+      </span>
+      {status ? <ThreadStatus status={status} then={then} /> : null}
+    </div>
+  );
+}
+
+function ComposerBox({
+  placeholder,
+  model,
+  modelIcon: ModelIcon,
+  banner,
+}: {
+  placeholder: string;
+  model: string;
+  modelIcon: RowIcon;
+  banner?: ReactNode;
+}) {
+  return (
+    <div className="composer">
+      {banner}
+      <div className="composer-box">
+        <div className="composer-top">
+          <span className="composer-input bw-placeholder">{placeholder}</span>
+          <Maximize2 className="cb-expand" />
+        </div>
+        <div className="composer-row">
+          <span className="model">
+            <ModelIcon className="model-ic" />
+            {model}
+            <ChevronDown className="chev-sm" />
+          </span>
+          <span className="composer-actions" aria-hidden>
+            <Paperclip className="composer-clip" />
+            <MicIcon className="composer-clip" />
+            <span className="send-btn">
+              <SendIcon className="send-ic" />
+            </span>
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const PLUGIN_SPOTS = [
+  { id: "issues", label: "GitHub · Issues panel" },
+  { id: "pr", label: "GitHub PR Status" },
+  { id: "chart", label: "Inline visualizations" },
+  { id: "banner", label: "Send later" },
 ] as const;
 
-const CHART_BARS = [38, 52, 46, 64, 72, 90];
+type PluginSpot = (typeof PLUGIN_SPOTS)[number]["id"];
 
-function MapChip({ n }: { n: number }) {
+const SIGNUP_WEEKS = [
+  { team: 34, pro: 40 },
+  { team: 40, pro: 42 },
+  { team: 38, pro: 46 },
+  { team: 52, pro: 47 },
+  { team: 61, pro: 50 },
+  { team: 72, pro: 52 },
+];
+
+const GITHUB_ISSUES = [
+  { n: 512, title: "Checkout times out on slow networks", label: "bug" },
+  { n: 508, title: "Export invoices as CSV", label: "feature" },
+  { n: 503, title: "Promo codes ignore the cart minimum", label: "bug" },
+  { n: 497, title: "Retry failed webhooks with backoff", label: "infra" },
+  { n: 491, title: "Dark mode for the billing page", label: "design" },
+];
+
+function Spot({
+  id,
+  lit,
+  className,
+  children,
+}: {
+  id: PluginSpot;
+  lit: PluginSpot;
+  className?: string;
+  children: ReactNode;
+}) {
+  const label = PLUGIN_SPOTS.find((spot) => spot.id === id)?.label;
+  const classes = ["bw-spot"];
+  if (className) classes.push(className);
+  if (id === lit) classes.push("is-lit");
   return (
-    <span className="fw-map-chip" aria-hidden>
-      {n}
-    </span>
+    <div className={classes.join(" ")}>
+      {children}
+      <span className="bw-spot-tag" aria-hidden>
+        <PluginIcon className="bw-spot-ic" />
+        {label}
+      </span>
+    </div>
   );
 }
 
 export function PluginMap() {
   const ref = useRef<HTMLDivElement>(null);
-  const { cycle, paused } = useCycle(2400, 300, ref);
-  const lit = cycle % PLUGIN_MAP_REGIONS.length;
-  const region = (index: number, base: string) =>
-    `${base} fw-map-region${index === lit ? " is-lit" : ""}`;
+  const { cycle, paused } = useCycle(2800, 400, ref);
+  const lit = PLUGIN_SPOTS[cycle % PLUGIN_SPOTS.length].id;
   return (
     <div
       ref={ref}
-      className={`fw-map${paused ? " fw-paused" : ""}`}
+      className={`bw bw-plugins${paused ? " fw-paused" : ""}`}
       role="img"
-      aria-label="A map of the bb window showing what plugins add: 1, a GitHub page with a badge in the navigation rail. 2, pull request 482 with passing checks on a thread row. 3, a bar chart inside an agent reply. 4, a Send later banner in the composer."
+      aria-label="The bb app with plugin UI in place: a GitHub Issues panel open on the right, pull request status under thread titles in the sidebar, a chart of weekly signups inside an agent reply, and a Send later banner above the composer."
     >
-      <div className="fw-win fw-map-win">
-        <div className="fw-band">
-          <WindowDots />
-        </div>
-        <div className="fw-map-body">
-          <div className="fw-map-rail">
-            <span className="fw-map-rail-btn is-current">
-              <HomeGlyph className="fw-ic fw-ic-ink" />
-            </span>
-            <span className={region(0, "fw-map-rail-btn")}>
-              <GitHubMark className="fw-ic fw-ic-ink" />
-              <span className="fw-map-badge" />
-              <MapChip n={1} />
-            </span>
-            <span className="fw-map-rail-btn">
-              <ClockIcon className="fw-ic" />
-            </span>
-            <span className="fw-map-rail-fill" />
-            <span className="fw-map-rail-btn">
-              <SettingsGlyph className="fw-ic" />
-            </span>
-          </div>
-          <div className="fw-map-side">
-            <div className="fw-label">Threads</div>
-            <div className="fw-row is-active">
-              <span className="fw-row-title">Signups</span>
-              <ThreadStatus status="running" />
-            </div>
-            <div className={region(1, "fw-map-pr")}>
-              <span className="fw-row-title">Checkout fix</span>
-              <span className="fw-map-meta">
-                #482
-                <CheckGlyph className="fw-map-check" />
-                checks
-              </span>
-              <MapChip n={2} />
-            </div>
-            <div className="fw-row">
-              <span className="fw-row-title">SDK bump</span>
-              <ThreadStatus status="done" />
-            </div>
-          </div>
-          <div className="fw-map-main">
-            <div className="fw-map-say">Signups by week</div>
-            <div className={region(2, "fw-map-chart")}>
-              {CHART_BARS.map((height, index) => (
-                <span
-                  key={index}
-                  className="fw-map-bar"
-                  style={{ height: `${height}%` }}
-                />
-              ))}
-              <MapChip n={3} />
-            </div>
-            <div className="fw-map-composer">
-              <div className={region(3, "fw-map-banner")}>
-                <ClockIcon className="fw-ic" />
-                <span className="fw-row-title">Send later · 9:00</span>
-                <MapChip n={4} />
+      <div className="mock bw-window">
+        <WindowBar title="Signups by plan" panelOpen />
+        <div className="mock-body bw-body">
+          <aside className="side">
+            <SideActions>
+              <div className="side-act">
+                <GitHubMark className="sa-ic" />
+                GitHub
+                <span className="bw-count">5</span>
               </div>
-              <div className="fw-map-input">Ask anything</div>
+            </SideActions>
+            <div className="side-label">All Threads</div>
+            <ThreadRow title="Signups by plan" status="running" active />
+            <Spot id="pr" lit={lit} className="bw-spot-rows">
+              <ThreadRow
+                title="Fix the checkout bug"
+                status="done"
+                meta={
+                  <>
+                    <PullRequestIcon className="bw-meta-ic" />
+                    #482
+                    <CheckGlyph className="bw-meta-ic bw-ok" />
+                    Checks passed
+                  </>
+                }
+              />
+              <ThreadRow
+                title="Bump the SDK"
+                status="done"
+                meta={
+                  <>
+                    <PullRequestIcon className="bw-meta-ic" />
+                    #479 · Merged
+                  </>
+                }
+              />
+            </Spot>
+            <ThreadRow title="Refactor auth" status="waiting" />
+            <ThreadRow title="Weekly changelog" status="done" />
+          </aside>
+          <div className="main">
+            <div className="feed bw-feed">
+              <div className="msg-user">
+                Chart weekly signups by plan for the last six weeks.
+              </div>
+              <div className="msg-step">
+                <ChevronRight className="step-chev" />
+                Queried <code>analytics.signups</code>
+              </div>
+              <div className="msg-say">
+                Signups are up 38% in six weeks, and Team drove most of it.
+              </div>
+              <Spot id="chart" lit={lit} className="bw-chart">
+                <div className="bw-chart-head">
+                  <span>Weekly signups</span>
+                  <span className="bw-legend">
+                    <i className="bw-key bw-key-team" />
+                    Team
+                    <i className="bw-key bw-key-pro" />
+                    Pro
+                  </span>
+                </div>
+                <div className="bw-bars">
+                  {SIGNUP_WEEKS.map((week, index) => (
+                    <span key={index} className="bw-bar-col">
+                      <span
+                        className="bw-bar bw-bar-team"
+                        style={{ height: `${week.team * 0.8}%` }}
+                      />
+                      <span
+                        className="bw-bar bw-bar-pro"
+                        style={{ height: `${week.pro * 0.4}%` }}
+                      />
+                    </span>
+                  ))}
+                </div>
+              </Spot>
             </div>
+            <ComposerBox
+              placeholder="Ask for a follow-up"
+              model="Opus 4.8"
+              modelIcon={ClaudeIcon}
+              banner={
+                <Spot id="banner" lit={lit} className="pr-bar bw-banner">
+                  <ClockIcon className="pr-ic" />
+                  <span className="pr-strong">Send later</span>
+                  <span className="pr-dim">· Tomorrow at 9:00 AM</span>
+                  <span className="bw-banner-edit">Edit</span>
+                </Spot>
+              }
+            />
           </div>
+          <Spot id="issues" lit={lit} className="diff-panel bw-panel">
+            <div className="diff-head">
+              <GitHubMark className="diff-ic" />
+              <span className="diff-title">GitHub</span>
+            </div>
+            <div className="bw-tabs">
+              <span className="bw-tab is-on">
+                Issues <span className="bw-tab-n">12</span>
+              </span>
+              <span className="bw-tab">
+                Pull requests <span className="bw-tab-n">4</span>
+              </span>
+            </div>
+            <div className="bw-issues">
+              {GITHUB_ISSUES.map((issue) => (
+                <div key={issue.n} className="bw-issue">
+                  <IssueIcon className="bw-issue-ic" />
+                  <span className="bw-issue-text">
+                    <span className="bw-issue-title">{issue.title}</span>
+                    <span className="bw-issue-meta">
+                      #{issue.n}
+                      <span className="bw-label">{issue.label}</span>
+                    </span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </Spot>
         </div>
       </div>
-      <ol className="fw-map-key">
-        {PLUGIN_MAP_REGIONS.map((label, index) => (
-          <li
-            key={label}
-            className={
-              index === lit ? "fw-map-key-item is-lit" : "fw-map-key-item"
-            }
-          >
-            <MapChip n={index + 1} />
-            <span>{label}</span>
-          </li>
-        ))}
-      </ol>
     </div>
   );
 }
@@ -753,248 +1013,301 @@ const DELEGATION_LEAD = "Ship the checkout fix";
 const DELEGATION_CHILDREN = [
   {
     icon: ClaudeIcon,
-    provider: "Claude Code",
     title: "Plan the fix",
-    landsAt: 0.6,
-    status: "running",
-    next: { status: "done", at: 2 },
+    landsAt: 0.8,
+    then: [{ status: "done", at: 2.2 }],
   },
   {
     icon: CursorIcon,
-    provider: "Cursor",
     title: "Build it",
-    landsAt: 3,
-    status: "running",
-    next: { status: "done", at: 6.8 },
+    landsAt: 3.4,
+    then: [
+      { status: "waiting", at: 4.8 },
+      { status: "running", at: 6.4 },
+      { status: "done", at: 7.8 },
+    ],
   },
   {
     icon: OpenAiIcon,
-    provider: "Codex",
     title: "Review the diff",
-    landsAt: 7.8,
-    status: "running",
-    next: { status: "waiting", at: 9.2 },
+    landsAt: 9,
+    then: [{ status: "waiting", at: 10.4 }],
   },
 ] as const;
 
-const DELEGATION_UPDATES = [
-  { text: "Started Plan the fix", from: 0.6, to: 2.4 },
-  { text: "Plan the fix finished → started Build it", from: 2.4, to: 4.8 },
-  {
-    text: "Build it asked a question → answered by the lead",
-    from: 4.8,
-    to: 7.2,
-  },
-  { text: "Build it finished → started Review the diff", from: 7.2 },
-] as const;
+function SpawnLine({ title, provider }: { title: string; provider: string }) {
+  return (
+    <div className="msg-step msg-spawn">
+      <SubagentIcon className="step-chev" />
+      Started <strong>{title}</strong> in {provider}
+    </div>
+  );
+}
 
-const DELEGATION_PING = "Review the diff · needs your approval";
+function ChildUpdate({
+  icon: Icon,
+  children,
+}: {
+  icon: RowIcon;
+  children: ReactNode;
+}) {
+  return (
+    <div className="bw-update">
+      <span className="bw-update-head">Child thread updates</span>
+      <span className="bw-update-body">
+        <Icon className="bw-update-ic" />
+        <span>{children}</span>
+      </span>
+    </div>
+  );
+}
+
+const DELEGATION_PING = "Review the diff needs your approval";
 
 export function DelegationTree() {
   const ref = useRef<HTMLDivElement>(null);
-  const { cycle, leaving, paused } = useCycle(13400, 600, ref);
+  const { cycle, leaving, paused } = useCycle(14800, 700, ref);
   return (
     <div
       ref={ref}
-      className="fw-win fw-lead"
+      className="bw bw-lead"
       role="img"
-      aria-label="bb sidebar: the lead thread Ship the checkout fix, running in Grok Build, starts Plan the fix in Claude Code, Build it in Cursor and Review the diff in Codex, one after another. Its Child thread updates say what finished and what started, and that the lead answered a question from Build it. Only one notification reaches you: Review the diff needs your approval."
+      aria-label="The bb app with the lead thread Ship the checkout fix, running in Grok Build. It starts Plan the fix in Claude Code, Build it in Cursor and Review the diff in Codex, which nest under it in the sidebar. Its timeline shows each Child thread update, and it answers a question from Build it on its own. One notification reaches you: Review the diff needs your approval."
     >
-      <div className="fw-band">
-        <WindowDots />
-      </div>
-      <div
-        className={stageClass("fw-card fw-lead-stage", leaving, paused)}
-        key={cycle}
-      >
-        <div className="fw-label">Threads</div>
-        <div className="fw-row fw-lead-row is-active">
-          <GrokIcon className="fw-prov" />
-          <span className="fw-row-title">{DELEGATION_LEAD}</span>
-          <span className="fw-lead-prov">Grok Build</span>
-          <span className="fw-tag">Lead</span>
-          <ThreadStatus status="running" />
-        </div>
-        <div className="fw-updates">
-          <span className="fw-updates-head">Child thread updates</span>
-          <span className="fw-updates-lines">
-            {DELEGATION_UPDATES.map((update) => (
-              <span
-                key={update.text}
-                className={
-                  "to" in update ? "fw-update fw-update-out" : "fw-update"
-                }
-                style={
-                  "to" in update
-                    ? between(update.from, update.to)
-                    : at(update.from)
-                }
-              >
-                {update.text}
-              </span>
-            ))}
-          </span>
-        </div>
-        <div className="fw-kids">
-          {DELEGATION_CHILDREN.map((child) => (
-            <div
-              key={child.title}
-              className="fw-row fw-grow"
-              style={at(child.landsAt)}
-            >
-              <child.icon className="fw-prov" />
-              <span className="fw-kid-text">
-                <span className="fw-row-title">{child.title}</span>
-                <span className="fw-kid-prov">{child.provider}</span>
-              </span>
-              <ThreadStatus status={child.status} next={child.next} />
+      <div className="mock bw-window">
+        <WindowBar title={DELEGATION_LEAD} />
+        <div
+          className={stageClass("mock-body bw-body", leaving, paused)}
+          key={cycle}
+        >
+          <aside className="side">
+            <SideActions />
+            <div className="side-label">All Threads</div>
+            <ThreadRow title="Bump the SDK" icon={ClaudeIcon} status="done" />
+            <ThreadRow
+              title={DELEGATION_LEAD}
+              icon={GrokIcon}
+              status="running"
+              active
+            />
+            <div className="thread-kids bw-kids">
+              {DELEGATION_CHILDREN.map((child) => (
+                <Reveal key={child.title} at={child.landsAt}>
+                  <ThreadRow
+                    title={child.title}
+                    icon={child.icon}
+                    status="running"
+                    then={child.then}
+                    kid
+                  />
+                </Reveal>
+              ))}
             </div>
-          ))}
-        </div>
-        <div className="fw-ping fw-rise" style={at(9.8)}>
-          <span aria-hidden className="bb-mark fw-ping-mark" />
-          <span className="fw-ping-text">
-            <span className="fw-ping-app">bb</span>
-            <span className="fw-ping-body">{DELEGATION_PING}</span>
-          </span>
+            <ThreadRow
+              title="Refactor auth"
+              icon={CursorIcon}
+              status="waiting"
+            />
+            <ThreadRow
+              title="Weekly changelog"
+              icon={OpenAiIcon}
+              status="done"
+            />
+          </aside>
+          <div className="main">
+            <div className="feed bw-feed bw-feed-live">
+              <div className="msg-user">
+                Ship the checkout timeout fix. Plan it, build it and get it
+                reviewed.
+              </div>
+              <Reveal at={0.6}>
+                <SpawnLine title="Plan the fix" provider="Claude Code" />
+              </Reveal>
+              <Reveal at={2.4}>
+                <ChildUpdate icon={ClaudeIcon}>
+                  <strong>Plan the fix</strong> finished: three steps in{" "}
+                  <code>plan.md</code>
+                </ChildUpdate>
+              </Reveal>
+              <Reveal at={3.2}>
+                <SpawnLine title="Build it" provider="Cursor" />
+              </Reveal>
+              <Reveal at={5}>
+                <ChildUpdate icon={CursorIcon}>
+                  <strong>Build it</strong> asked: keep the 30s timeout, or make
+                  it configurable?
+                </ChildUpdate>
+              </Reveal>
+              <Reveal at={6.2}>
+                <div className="msg-say">
+                  Replied to <strong>Build it</strong>: make it configurable,
+                  default 30s.
+                </div>
+              </Reveal>
+              <Reveal at={8}>
+                <ChildUpdate icon={CursorIcon}>
+                  <strong>Build it</strong> finished: PR #482 is open
+                </ChildUpdate>
+              </Reveal>
+              <Reveal at={8.8}>
+                <SpawnLine title="Review the diff" provider="Codex" />
+              </Reveal>
+              <Reveal at={10.6}>
+                <ChildUpdate icon={OpenAiIcon}>
+                  <strong>Review the diff</strong> is waiting on your approval
+                </ChildUpdate>
+              </Reveal>
+            </div>
+            <ComposerBox
+              placeholder="Ask for a follow-up"
+              model="Grok Build"
+              modelIcon={GrokIcon}
+            />
+          </div>
+          <div className="bw-toast" style={at(11.4)}>
+            <BbGlyph className="bw-toast-mark" />
+            <span className="bw-toast-text">
+              <span className="bw-toast-app">bb · now</span>
+              <span className="bw-toast-body">{DELEGATION_PING}</span>
+            </span>
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-const START_COMMAND = 'bb thread spawn --prompt "Fix CI on main"';
-
-type StartRow = {
-  icon: (props: IconProps) => ReactNode;
-  title: string;
-  landsAt: number;
-};
-
-const LINUX_ROWS: StartRow[] = [
-  { icon: OpenAiIcon, title: "Fix the checkout bug", landsAt: 1.6 },
-  { icon: TerminalIcon, title: "Fix CI on main", landsAt: 6.1 },
-  { icon: ClockIcon, title: "Daily changelog", landsAt: 8.1 },
-];
-
-const MACBOOK_ROWS: StartRow[] = [
-  { icon: PhoneIcon, title: "Fix flaky login test", landsAt: 4.3 },
-];
-
-function StartRows({ rows }: { rows: StartRow[] }) {
-  return rows.map((row) => (
-    <div key={row.title} className="fw-row fw-grow" style={at(row.landsAt)}>
-      <row.icon className="fw-src-ic" />
-      <span className="fw-row-title">{row.title}</span>
-      <ThreadStatus status="running" />
-    </div>
-  ));
-}
+const START_PROMPT = "Hand this off to bb: fix the checkout bug";
 
 export function StartAnywhere() {
   const ref = useRef<HTMLDivElement>(null);
-  const { cycle, leaving, paused } = useCycle(12000, 600, ref);
+  const { cycle, leaving, paused } = useCycle(11800, 700, ref);
   return (
     <div
       ref={ref}
-      className="fw-start"
+      className="bw bw-start"
       role="img"
-      aria-label="Work starts from many places and lands in one bb sidebar. From ChatGPT: Hand this off to bb, fix the checkout bug, then Used Control bb. Grok and Claude cards sit behind it. The same running thread, Fix the checkout bug, shows up on a phone, which also sends Fix flaky login test. A failed CI run on main runs bb thread spawn with the prompt Fix CI on main. Automations run Daily changelog on weekdays at 9:00 and Bump dependencies on Fridays. Each lands as a running thread in the sidebar, grouped by machine: linux-box, the server, and a MacBook."
+      aria-label="A ChatGPT chat says Hand this off to bb: fix the checkout bug and Used Control bb, with Claude and Grok behind it. The thread lands in the bb sidebar, grouped by machine under linux-box, the server, next to a thread from CI and one from a schedule. A phone shows the same thread running, picked up on the go."
     >
-      <div className={stageClass("fw-doors", leaving, paused)} key={cycle}>
-        <div className="fw-apps">
-          <div className="fw-app fw-app-3">
-            <div className="fw-app-head">
-              <GrokIcon className="fw-src-ic" />
-              Grok
+      <div
+        className={stageClass("bw-start-stage", leaving, paused)}
+        key={cycle}
+      >
+        <div className="mock bw-window">
+          <WindowBar title="Fix the checkout bug" />
+          <div className="mock-body bw-body">
+            <aside className="side">
+              <SideActions />
+              <div className="side-label bw-group">
+                <LinuxIcon className="bw-group-ic" />
+                linux-box
+                <span className="bw-chip">server</span>
+              </div>
+              <Reveal at={1.4}>
+                <ThreadRow
+                  title="Fix the checkout bug"
+                  icon={OpenAiIcon}
+                  status="running"
+                  active
+                />
+              </Reveal>
+              <Reveal at={6.4}>
+                <ThreadRow
+                  title="Fix CI on main"
+                  icon={TerminalIcon}
+                  status="running"
+                />
+              </Reveal>
+              <Reveal at={7.6}>
+                <ThreadRow
+                  title="Daily changelog"
+                  icon={ClockIcon}
+                  status="running"
+                />
+              </Reveal>
+              <div className="side-label bw-group">
+                <LaptopGlyph className="bw-group-ic" />
+                MacBook
+              </div>
+              <ThreadRow
+                title="Refactor auth"
+                icon={BbGlyph}
+                status="waiting"
+              />
+              <ThreadRow
+                title="Fix flaky login test"
+                icon={PhoneIcon}
+                status="done"
+              />
+            </aside>
+            <div className="main">
+              <div className="feed bw-feed">
+                <Reveal at={1.8}>
+                  <div className="msg-user">{START_PROMPT}</div>
+                </Reveal>
+                <Reveal at={2.4}>
+                  <div className="msg-step">
+                    <ChevronRight className="step-chev" />
+                    Read <code>src/checkout/pay.ts</code>
+                  </div>
+                </Reveal>
+                <Reveal at={3}>
+                  <div className="msg-say">
+                    The payment call has no timeout, so slow networks hang
+                    checkout. Adding one with a retry.
+                  </div>
+                </Reveal>
+              </div>
             </div>
           </div>
-          <div className="fw-app fw-app-2">
-            <div className="fw-app-head">
-              <ClaudeIcon className="fw-src-ic" />
-              Claude
-            </div>
+        </div>
+        <div className="bw-chat-stack">
+          <div className="bw-chat-back bw-chat-back-2">
+            <GrokIcon className="bw-chat-back-ic" />
+            Grok
           </div>
-          <div className="fw-app fw-app-1">
-            <div className="fw-app-head">
-              <OpenAiIcon className="fw-src-ic" />
+          <div className="bw-chat-back bw-chat-back-1">
+            <ClaudeIcon className="bw-chat-back-ic" />
+            Claude
+          </div>
+          <div className="bw-chat">
+            <div className="bw-chat-head">
+              <OpenAiIcon className="bw-chat-ic" />
               ChatGPT
             </div>
-            <div className="fw-app-body">
-              <span className="fw-bubble">
-                Hand this off to bb: fix the checkout bug
-              </span>
-              <span className="fw-used fw-land" style={at(0.9)}>
-                <span aria-hidden className="bb-mark fw-used-mark" />
+            <div className="bw-chat-body">
+              <span className="bw-bubble">{START_PROMPT}</span>
+              <span className="bw-used bw-fade" style={at(0.8)}>
+                <BbGlyph className="bw-used-mark" />
                 Used <b>Control bb</b>
-                <CheckGlyph className="fw-used-check" />
+                <CheckGlyph className="bw-used-check" />
               </span>
             </div>
           </div>
         </div>
-        <div className="fw-phone">
-          <div className="fw-phone-head">
-            <span aria-hidden className="bb-mark fw-phone-mark" />
-            bb
+        <div className="bw-phone">
+          <div className="bw-phone-bar">
+            <span>9:41</span>
           </div>
-          <div className="fw-phone-row fw-land" style={at(2.4)}>
-            <span className="fw-phone-state">
-              <Spinner className="trun" />
-              Working
-            </span>
-            <span>Fix the checkout bug</span>
+          <div className="bw-phone-head bw-fade" style={at(3.8)}>
+            <ChevronLeft className="bw-phone-back" />
+            <span className="bw-phone-title">Fix the checkout bug</span>
+            <ThreadStatus status="running" />
           </div>
-          <div className="fw-phone-feed">
-            <span className="fw-phone-msg fw-land" style={at(3.6)}>
-              Fix flaky login test
-            </span>
+          <div className="bw-phone-feed">
+            <Reveal at={4.2}>
+              <div className="msg-step">
+                <ChevronRight className="step-chev" />
+                Read <code>pay.ts</code>
+              </div>
+            </Reveal>
+            <Reveal at={4.8}>
+              <div className="msg-say">
+                No timeout on the payment call. Adding one with a retry.
+              </div>
+            </Reveal>
           </div>
-          <div className="fw-phone-input" />
-        </div>
-        <div className="fw-src fw-ci">
-          <div className="fw-src-head">
-            <TerminalIcon className="fw-src-ic" />
-            <span>CI · main failed</span>
-          </div>
-          <div className="fw-term">
-            <span className="fw-tline fw-tcmd" style={at(5.4)}>
-              <span className="fw-prompt">$</span> {START_COMMAND}
-            </span>
-          </div>
-        </div>
-        <div className="fw-autos">
-          <div className="fw-src fw-auto fw-auto-fire" style={at(7.4)}>
-            <ClockIcon className="fw-src-ic" />
-            <span className="fw-auto-text">
-              <span className="fw-auto-when">Weekdays 9:00</span>
-              <span>Daily changelog</span>
-            </span>
-          </div>
-          <div className="fw-src fw-auto">
-            <ClockIcon className="fw-src-ic" />
-            <span className="fw-auto-text">
-              <span className="fw-auto-when">Fridays</span>
-              <span>Bump dependencies</span>
-            </span>
-          </div>
-        </div>
-        <div className="fw-arrows" aria-hidden>
-          <ArrowDownGlyph className="fw-arrow" />
-          <ArrowDownGlyph className="fw-arrow" />
-          <ArrowDownGlyph className="fw-arrow" />
-        </div>
-        <div className="fw-side fw-machines">
-          <div className="fw-group">
-            <LinuxIcon className="fw-group-ic" />
-            <span className="fw-group-name">linux-box</span>
-            <span className="fw-tag">server</span>
-          </div>
-          <StartRows rows={LINUX_ROWS} />
-          <div className="fw-group">
-            <LaptopGlyph className="fw-group-ic" />
-            <span className="fw-group-name">MacBook</span>
-          </div>
-          <StartRows rows={MACBOOK_ROWS} />
+          <div className="bw-phone-input">Reply to this thread</div>
         </div>
       </div>
     </div>
