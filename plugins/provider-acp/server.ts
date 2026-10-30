@@ -17,7 +17,7 @@ import {
 } from "./src/known-agents.js";
 
 const CUSTOM_AGENTS_SETTING_DESCRIPTION =
-  "A JSON array of ACP agents to add. Each entry needs id, displayName and command; see the guide for the optional fields.";
+  "A JSON array of ACP agents to add. Each entry needs id, displayName and command; the ACP agents guide linked under Agent registry lists the optional fields.";
 
 const PROBEABLE_ACP_AGENTS = KNOWN_ACP_AGENTS.filter(
   (agent) => (agent.fork ?? "none") !== "none",

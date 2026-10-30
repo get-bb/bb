@@ -394,6 +394,11 @@
       "types": "./src/components/ui/video-thumbnail.tsx",
       "default": "./src/components/ui/video-thumbnail.tsx"
     },
+    "./docs-link": {
+      "source": "./src/components/ui/docs-link.tsx",
+      "types": "./src/components/ui/docs-link.tsx",
+      "default": "./src/components/ui/docs-link.tsx"
+    },
     "./copy-button": {
       "source": "./src/components/ui/copy-button.tsx",
       "types": "./src/components/ui/copy-button.tsx",

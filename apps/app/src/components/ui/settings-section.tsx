@@ -6,7 +6,7 @@ interface SettingsSectionProps {
   actionPlacement?: "inline" | "responsive";
   banner?: ReactNode;
   children: ReactNode;
-  description?: string;
+  description?: ReactNode;
   title: ReactNode;
   bodyClassName?: string;
 }

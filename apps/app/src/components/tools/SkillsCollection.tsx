@@ -1,3 +1,5 @@
+import { docsLinks } from "@bb/domain/docs-links";
+import { AppDocsLink } from "@/components/ui/app-docs-link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { SkillProvider, SkillSummary } from "@bb/server-contract";
@@ -237,8 +239,13 @@ const SKILLS_BROWSE_DESCRIPTION = (
     . Install one and every agent you use in bb can run it.
   </>
 );
-const SKILLS_LIBRARY_DESCRIPTION =
-  "The skills on this bb host — yours, your providers', and those bundled with plugins. They work with every agent you use in bb.";
+const SKILLS_LIBRARY_DESCRIPTION = (
+  <>
+    The skills on this bb host — yours, your providers', and those bundled with
+    plugins. They work with every agent you use in bb.{" "}
+    <AppDocsLink href={docsLinks.skills}>Learn more about skills</AppDocsLink>
+  </>
+);
 
 const PREFETCH_HOVER_INTENT_MS = 150;
 

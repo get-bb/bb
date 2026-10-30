@@ -1,3 +1,5 @@
+import { docsLinks } from "@bb/domain/docs-links";
+import { AppDocsLink } from "@/components/ui/app-docs-link";
 import { pluginInstallBadge } from "@bb/domain/plugin-install-badge";
 import { PluginBrandIcon } from "@bb/shared-ui/plugin-icon";
 import { useState, type ReactNode } from "react";
@@ -329,7 +331,10 @@ export function FullTrustWarning() {
       <Icon name="Lock" className="mt-0.5 size-3 shrink-0" />
       <span>
         Plugins run as full-trust code with access to your computer. Only
-        install from sources you trust.
+        install from sources you trust.{" "}
+        <AppDocsLink href={docsLinks.installPlugins}>
+          Learn more about plugins
+        </AppDocsLink>
       </span>
     </p>
   );
