@@ -14,7 +14,11 @@ interface Statement {
   body: string | null;
 }
 
-export function pluginScopeRoots(pluginId: string): string {
+export function pluginScopeRoots(
+  pluginId: string,
+  mode: "legacy" | "owned-root-v1" = "legacy",
+): string {
+  if (mode === "owned-root-v1") return `[data-bb-plugin="${pluginId}"]`;
   return `[data-bb-plugin="${pluginId}"], [data-bb-plugin-root]:not([data-bb-plugin])`;
 }
 

@@ -8,6 +8,9 @@
     "bb": ">=0.0",
     "bbPluginSdk": ">=0.6.53"
   },
+  "bbPluginBuild": {
+    "experimental_cssScope": "owned-root-v1"
+  },
   "bb": {
     "name": "Navigation",
     "description": "bb's sidebar navigation: the Rail and Top list layouts for New thread, Plugins, Skills, Automations, and plugin panels.",

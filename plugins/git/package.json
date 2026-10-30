@@ -8,6 +8,9 @@
     "bb": ">=0.0",
     "bbPluginSdk": ">=0.6.90"
   },
+  "bbPluginBuild": {
+    "experimental_cssScope": "owned-root-v1"
+  },
   "bb": {
     "name": "Git",
     "description": "Git status, changed files and the Diff tab for each environment",
