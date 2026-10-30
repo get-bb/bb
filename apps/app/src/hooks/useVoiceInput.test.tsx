@@ -455,7 +455,39 @@ it("transcribes an accepted recording when the recorder stops after unmount", as
   expect(appToast.error).not.toHaveBeenCalled();
 });
 
-it("discards a recording when its composer unmounts before acceptance", async () => {
+it("transcribes a recording into its draft when its composer unmounts mid-recording", async () => {
+  vi.stubGlobal("MediaRecorder", DeferredRecorder);
+  const onTranscribe = vi.fn().mockResolvedValue("Dictated words");
+  const onTranscript = vi.fn();
+  const { result, unmount } = renderHook(() =>
+    useVoiceInput({
+      recordingKey: "thread/unmounted-while-recording",
+      onTranscribe,
+      onTranscript,
+    }),
+  );
+  await act(() => result.current.start());
+  vi.advanceTimersByTime(180_000);
+  act(() => {
+    DeferredRecorder.current.ondataavailable({
+      data: new Blob(["audio before navigation"]),
+    });
+  });
+  unmount();
+
+  await act(async () => DeferredRecorder.current.finish());
+  expect(onTranscribe).toHaveBeenCalledOnce();
+  expect(await onTranscribe.mock.calls[0]?.[0].file.text()).toBe(
+    "audio before navigationrecorded audio",
+  );
+  expect(onTranscript).toHaveBeenCalledExactlyOnceWith(
+    "Dictated words",
+    "insert",
+  );
+  expect(appToast.error).not.toHaveBeenCalled();
+});
+
+it("discards a question-field recording when it unmounts before acceptance", async () => {
   vi.stubGlobal("MediaRecorder", DeferredRecorder);
   const onTranscribe = vi.fn();
   const { result, unmount } = renderHook(() =>
