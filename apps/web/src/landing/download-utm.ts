@@ -49,24 +49,18 @@ export function readSavedUtm(storage: UtmStorage): URLSearchParams {
   return pickUtmParams(storage.getItem(SAVED_UTM_KEY) ?? "");
 }
 
-type FirstTouchArgs = {
-  location: Pick<Location, "origin" | "pathname">;
-  referrer: string;
-  storage: UtmStorage;
-};
-
-export function rememberFirstTouch(args: FirstTouchArgs): void {
-  if (args.storage.getItem(FIRST_TOUCH_KEY) !== null) {
+function rememberFirstTouch(storage: UtmStorage): void {
+  if (storage.getItem(FIRST_TOUCH_KEY) !== null) {
     return;
   }
   const firstTouch = new URLSearchParams({
-    first_page: args.location.pathname,
+    first_page: window.location.pathname,
   });
-  const referrer = externalReferrer(args.referrer, args.location.origin);
+  const referrer = externalReferrer(document.referrer, window.location.origin);
   if (referrer) {
     firstTouch.set("first_referrer", referrer);
   }
-  args.storage.setItem(FIRST_TOUCH_KEY, firstTouch.toString());
+  storage.setItem(FIRST_TOUCH_KEY, firstTouch.toString());
 }
 
 function externalReferrer(referrer: string, origin: string): string | null {
@@ -79,19 +73,7 @@ function externalReferrer(referrer: string, origin: string): string | null {
   return url.origin === origin ? null : url.origin;
 }
 
-function readFirstTouch(storage: UtmStorage): URLSearchParams {
-  const stored = new URLSearchParams(storage.getItem(FIRST_TOUCH_KEY) ?? "");
-  const firstTouch = new URLSearchParams();
-  for (const name of ["first_page", "first_referrer"] as const) {
-    const value = stored.get(name);
-    if (value) {
-      firstTouch.set(name, value);
-    }
-  }
-  return firstTouch;
-}
-
-export function addVisitParams(
+function addVisitParams(
   search: string,
   visit: VisitIds | null,
   firstTouch: URLSearchParams,
@@ -141,11 +123,7 @@ export function carryUtmToDownloadLinks(
       storage.setItem(SAVED_UTM_KEY, saved.toString());
     }
     rememberLatestUtm(storage, landingParams.toString());
-    rememberFirstTouch({
-      location: window.location,
-      referrer: document.referrer,
-      storage,
-    });
+    rememberFirstTouch(storage);
   } catch {
     storage = null;
   }
@@ -167,7 +145,9 @@ export function carryUtmToDownloadLinks(
     try {
       if (storage) {
         saved = readSavedUtm(storage);
-        firstTouch = readFirstTouch(storage);
+        firstTouch = new URLSearchParams(
+          storage.getItem(FIRST_TOUCH_KEY) ?? "",
+        );
       }
     } catch {
       storage = null;

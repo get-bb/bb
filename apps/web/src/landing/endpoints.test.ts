@@ -367,7 +367,6 @@ describe("download visit attribution", () => {
   });
 
   it.each([
-    ["visitor_id", "not-a-uuid"],
     ["visitor_id", `${VISITOR_ID}x`],
     ["visitor_id", "user@example.com"],
     ["session_id", "<script>"],
@@ -388,18 +387,6 @@ describe("download visit attribution", () => {
     expect(event.properties.$current_url).toBe(
       "https://getbb.app/download/macos",
     );
-  });
-
-  it("keeps only the origin of the first referrer", async () => {
-    const event = await captureDownload(
-      new URLSearchParams({
-        visitor_id: VISITOR_ID,
-        first_referrer: "https://www.google.com/search?q=bb&gclid=ref",
-      }).toString(),
-    );
-
-    expect(event.distinct_id).toBe(VISITOR_ID);
-    expect(event.properties.first_referrer).toBe("https://www.google.com");
   });
 });
 

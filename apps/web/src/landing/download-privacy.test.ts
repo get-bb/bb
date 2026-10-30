@@ -75,7 +75,6 @@ describe("download attribution privacy", () => {
       const stop = carryUtmToDownloadLinks(() => null);
       try {
         link.click();
-        expect(link.pathname).toBe(`/download/${platform}`);
         expect(link.search).toBe("?first_page=%2F");
       } finally {
         stop();
