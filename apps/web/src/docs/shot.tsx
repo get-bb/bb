@@ -1,3 +1,7 @@
+export const SHOT_PLACEHOLDER_PATTERN = /<Shot\b/u;
+
+export const DOCS_IMAGES_BASE = "/docs-images";
+
 export function screenshotFiles(src: string): { light: string; dark: string } {
   return { light: `${src}-light.png`, dark: `${src}-dark.png` };
 }
