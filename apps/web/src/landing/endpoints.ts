@@ -441,6 +441,8 @@ function parseDownloadPlacement(
       return "closer";
     case "footer":
       return "footer";
+    case "download_page":
+      return "download_page";
     default:
       return "direct";
   }

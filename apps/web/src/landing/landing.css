@@ -570,6 +570,17 @@ body {
   color: var(--ink);
 }
 
+.oss-link {
+  white-space: nowrap;
+}
+
+.oss-ic {
+  width: 14px;
+  height: 14px;
+  margin-right: 4px;
+  vertical-align: -2px;
+}
+
 .install-choice .install-send,
 .install-choice .install-note-touch {
   display: none;
@@ -3456,5 +3467,122 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   .mock.constructing .composer,
   .kid-li {
     animation: none;
+  }
+}
+
+/* ── /download ──────────────────────────────────────────────────── */
+
+.dl-hero {
+  padding: 48px 0 40px;
+}
+
+/* The dark "bb" glyph is 105x89 px inside the 192px icon (x 43-148, y 51-140).
+   Scale the icon to 1.6em so the glyph is the heading's ascender height
+   (0.74em), then crop the box to the glyph so it sits on the baseline. */
+.dl-mark {
+  display: inline-block;
+  width: 0.875em;
+  height: 0.742em;
+  vertical-align: -0.005em;
+  background-size: 1.6em 1.6em;
+  background-position: -0.358em -0.425em;
+  background-repeat: no-repeat;
+}
+
+.dl-hero-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 30px;
+}
+
+.dl-hero-actions .install-choice {
+  gap: 12px;
+}
+
+.dl-hero-actions .btn-install {
+  font-size: 16px;
+}
+
+.dl-body {
+  max-width: 640px;
+  margin: 0 auto 96px;
+}
+
+.dl-h2 {
+  margin: 36px 0 8px;
+  padding: 0 4px;
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--ink);
+  text-align: left;
+}
+
+.dl-rows {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border-soft);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.dl-row {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 4px;
+}
+
+.dl-row + .dl-row {
+  border-top: 1px solid var(--border-soft);
+}
+
+.dl-row-name {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--heading);
+}
+
+.dl-row-tag {
+  overflow: hidden;
+  font-size: 13.5px;
+  color: var(--subtle);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.dl-row-action {
+  justify-self: end;
+  min-width: 0;
+}
+
+.dl-row-action .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.dl-row-action .btn .btn-ic {
+  width: 15px;
+  height: 15px;
+}
+
+@media (max-width: 640px) {
+  .dl-hero {
+    padding-top: 24px;
+  }
+
+  .dl-hero h1 {
+    font-size: clamp(30px, 8.6vw, 36px);
+  }
+
+  .dl-hero .sub {
+    margin-top: 16px;
+    font-size: 16px;
+  }
+
+  .dl-hero-actions .install-choice {
+    width: 100%;
+    max-width: 420px;
   }
 }

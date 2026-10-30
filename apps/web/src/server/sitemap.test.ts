@@ -22,6 +22,7 @@ describe("sitemapXml", () => {
     );
     for (const path of [
       "/",
+      "/download",
       "/blog",
       "/changelog",
       "/plugin-guide",

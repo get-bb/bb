@@ -366,6 +366,12 @@ describe("download visit attribution", () => {
     expect(event.properties.first_referrer).toBeUndefined();
   });
 
+  it("keeps the /download page placement", async () => {
+    const event = await captureDownload("placement=download_page");
+
+    expect(event.properties.placement).toBe("download_page");
+  });
+
   it.each([
     ["visitor_id", `${VISITOR_ID}x`],
     ["visitor_id", "user@example.com"],

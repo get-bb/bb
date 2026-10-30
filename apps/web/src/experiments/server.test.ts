@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { NO_EXPERIMENTS } from "./flags";
+import { EXPERIMENT_KEYS, NO_EXPERIMENTS } from "./flags";
 import {
   EXPERIMENT_CACHE_CONTROL,
   evaluateFlags,
@@ -137,6 +137,16 @@ describe("PostHog visitor cookie", () => {
     expect(resolution?.setCookie).not.toContain("secure");
   });
 
+  it("evaluates the /download page", async () => {
+    const { calls, config } = setup(async () => flagsResponse({ flags: {} }));
+    const resolution = await resolveExperiments(
+      pageRequest("/download", cookieFor({ distinct_id: EXISTING_ID })),
+      config,
+    );
+    expect(resolution?.bootstrap.distinctID).toBe(EXISTING_ID);
+    expect(calls).toHaveLength(1);
+  });
+
   it.each([
     ["another page", pageRequest("/blog")],
     ["a HEAD request", pageRequest("/", undefined, "HEAD")],
@@ -160,7 +170,7 @@ describe("/flags evaluation", () => {
         body: {
           api_key: KEY,
           distinct_id: EXISTING_ID,
-          flag_keys_to_evaluate: ["homepage-qa-check"],
+          flag_keys_to_evaluate: EXPERIMENT_KEYS,
           geoip_disable: true,
         },
       },
