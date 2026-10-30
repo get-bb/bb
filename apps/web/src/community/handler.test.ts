@@ -1,10 +1,21 @@
 import { Miniflare } from "miniflare";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { applyConnectDbMigrationsToD1 } from "@bb/connect-db/testing";
 import { emailKey, handleSurveySubmission, rateLimitKey } from "./handler";
+import { resetShopifyTokenCache } from "./shopify";
 import {
   ALREADY_CLAIMED,
   CLAIM_NOT_OPEN,
+  CLAIM_PENDING,
   SOLD_OUT,
   surveyReply,
   type SurveyReply,
@@ -14,6 +25,48 @@ let runtime: Miniflare;
 let db: D1Database;
 const origin = "https://community.test";
 const claimBase = "https://test-shop.myshopify.com/cart/123:1";
+const shopify = {
+  codes: new Set<string>(),
+  tokenRequests: 0,
+  down: false,
+  loseReply: false,
+};
+async function fakeShopify(url: string, init: RequestInit) {
+  if (url.endsWith("/admin/oauth/access_token")) {
+    shopify.tokenRequests++;
+    return Response.json({ access_token: "token", expires_in: 86399 });
+  }
+  if (shopify.down) return new Response("unavailable", { status: 503 });
+  const { query, variables } = JSON.parse(String(init.body));
+  if (query.includes("codeDiscountNodeByCode"))
+    return Response.json({
+      data: {
+        codeDiscountNodeByCode: shopify.codes.has(variables.code)
+          ? { id: "gid://shopify/DiscountCodeNode/1" }
+          : null,
+      },
+    });
+  const code = variables.discount.code;
+  if (shopify.codes.has(code))
+    return Response.json({
+      data: {
+        discountCodeBasicCreate: {
+          codeDiscountNode: null,
+          userErrors: [{ code: "TAKEN" }],
+        },
+      },
+    });
+  shopify.codes.add(code);
+  if (shopify.loseReply) return new Response("timeout", { status: 504 });
+  return Response.json({
+    data: {
+      discountCodeBasicCreate: {
+        codeDiscountNode: { id: "gid://shopify/DiscountCodeNode/2" },
+        userErrors: [],
+      },
+    },
+  });
+}
 const defaults = {
   discovery: "GitHub",
   role: "Developer or engineer",
@@ -28,7 +81,11 @@ const defaults = {
 const enabled = {
   COMMUNITY_FORMS_ENABLED: "true",
   COMMUNITY_FORM_RATE_LIMITER: { limit: async () => ({ success: true }) },
-  COMMUNITY_STICKER_CLAIM_URL: claimBase,
+  COMMUNITY_SHOPIFY_STORE: "test-shop.myshopify.com",
+  COMMUNITY_STICKER_VARIANT_ID: "123",
+  COMMUNITY_STICKER_LIMIT: "1000",
+  SHOPIFY_CLIENT_ID: "client",
+  SHOPIFY_CLIENT_SECRET: "secret",
 };
 const request = (body: string, headers: Record<string, string> = {}) =>
   new Request(`${origin}/api/community/survey`, {
@@ -60,7 +117,7 @@ const post = async (
   };
 };
 const codeFrom = (body: SurveyReply) =>
-  body.result?.claimLink?.match(/\?discount=([A-Z0-9]+)/)?.[1];
+  body.result?.claimLink?.match(/\?discount=(BB-[A-Z2-7]{12})/)?.[1];
 const count = (sql: string) =>
   db.prepare(`SELECT COUNT(*) AS n FROM ${sql}`).first<number>("n");
 beforeAll(async () => {
@@ -77,11 +134,17 @@ beforeEach(async () => {
   await db.batch([
     db.prepare("DELETE FROM community_survey_response"),
     db.prepare("DELETE FROM community_survey_email"),
-    db.prepare("DELETE FROM community_gift_code"),
-    db.prepare(
-      "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 10) INSERT INTO community_gift_code (code) SELECT printf('CODE%04d', i) FROM n",
-    ),
+    db.prepare("DELETE FROM community_sticker_claim"),
   ]);
+  Object.assign(shopify, { tokenRequests: 0, down: false, loseReply: false });
+  shopify.codes.clear();
+  resetShopifyTokenCache();
+  vi.stubGlobal("fetch", fakeShopify);
+  vi.spyOn(console, "error").mockImplementation(() => {});
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 afterAll(async () => {
   await runtime?.dispose();
@@ -193,11 +256,14 @@ describe("survey submissions", () => {
         ]),
       ),
     );
+    expect(shopify.codes).toEqual(new Set([codeFrom(body)]));
     expect((await post(fields, {}, id)).body).toEqual({
       result: { duplicate: true, claimLink: null, claimNote: null },
     });
     expect(await count("community_survey_response")).toBe(1);
-    expect(await count("community_gift_code WHERE claimed = 1")).toBe(1);
+    expect(
+      await count("community_sticker_claim WHERE status = 'created'"),
+    ).toBe(1);
   });
 
   it("gives each email one code, ignoring case and +tags", async () => {
@@ -214,45 +280,76 @@ describe("survey submissions", () => {
       codeFrom((await post({ email: "grace@example.test" })).body),
     ).toBeDefined();
     expect(await count("community_survey_response")).toBe(4);
-    expect(await count("community_gift_code WHERE claimed = 1")).toBe(2);
+    expect(await count("community_sticker_claim")).toBe(2);
+    expect(shopify.tokenRequests).toBe(1);
     expect(emailKey(" Ada+Tag@Example.TEST ")).toBe("ada@example.test");
   });
 
-  it("hands out the last code once and still saves answers when codes run out", async () => {
-    await db
-      .prepare(
-        "UPDATE community_gift_code SET claimed = 1 WHERE code != 'CODE0001'",
-      )
-      .run();
+  it("reserves the last claim once and still saves answers at the limit", async () => {
     const replies = await Promise.all(
-      [0, 1, 2, 3].map((index) => post({ email: `ada${index}@example.test` })),
+      [0, 1, 2, 3].map((index) =>
+        post(
+          { email: `ada${index}@example.test` },
+          { COMMUNITY_STICKER_LIMIT: "1" },
+        ),
+      ),
     );
-    expect(replies.map(({ body }) => codeFrom(body)).filter(Boolean)).toEqual([
-      "CODE0001",
-    ]);
+    expect(
+      replies.map(({ body }) => codeFrom(body)).filter(Boolean),
+    ).toHaveLength(1);
     expect(
       replies.filter(({ body }) => body.result?.claimNote === SOLD_OUT),
     ).toHaveLength(3);
     expect(await count("community_survey_response")).toBe(4);
+    expect(await count("community_sticker_claim")).toBe(1);
   });
 
-  it("keeps codes while claiming is off", async () => {
-    const { body } = await post({}, { COMMUNITY_STICKER_CLAIM_URL: "" });
-    expect(body.result?.claimNote).toBe(CLAIM_NOT_OPEN);
-    expect(await count("community_gift_code WHERE claimed = 1")).toBe(0);
+  it("keeps an email eligible while claims are closed", async () => {
+    const closed = await post({}, { SHOPIFY_CLIENT_SECRET: "" });
+    expect(closed.body.result?.claimNote).toBe(CLAIM_NOT_OPEN);
+    expect(await count("community_sticker_claim")).toBe(0);
+    expect(await count("community_survey_email")).toBe(0);
+    expect(codeFrom((await post()).body)).toBeDefined();
   });
 
-  it("rolls back answers when claiming a code fails", async () => {
+  it("keeps the claim pending when Shopify is unavailable", async () => {
+    shopify.down = true;
+    const { body } = await post();
+    expect(body.result).toEqual({
+      duplicate: false,
+      claimLink: null,
+      claimNote: CLAIM_PENDING,
+    });
+    expect(
+      await count(
+        "community_sticker_claim WHERE status = 'pending' AND attempts = 1",
+      ),
+    ).toBe(1);
+    expect(shopify.codes.size).toBe(0);
+  });
+
+  it("treats a code Shopify created before losing the reply as created", async () => {
+    shopify.loseReply = true;
+    const { body } = await post();
+    expect(codeFrom(body)).toBeDefined();
+    expect(shopify.codes.size).toBe(1);
+    expect(
+      await count("community_sticker_claim WHERE status = 'created'"),
+    ).toBe(1);
+  });
+
+  it("rolls back answers when reserving a claim fails", async () => {
     await db
       .prepare(
-        "CREATE TRIGGER reject_code BEFORE UPDATE ON community_gift_code BEGIN SELECT RAISE(ABORT, 'unavailable'); END",
+        "CREATE TRIGGER reject_claim BEFORE INSERT ON community_sticker_claim BEGIN SELECT RAISE(ABORT, 'unavailable'); END",
       )
       .run();
     try {
       expect((await post()).status).toBe(503);
       expect(await count("community_survey_response")).toBe(0);
+      expect(shopify.codes.size).toBe(0);
     } finally {
-      await db.prepare("DROP TRIGGER reject_code").run();
+      await db.prepare("DROP TRIGGER reject_claim").run();
     }
   });
 
