@@ -964,6 +964,12 @@ function MoreInCategory({
 
 let hasTrackedDetailViewInPageLoad = false;
 
+function isInitialDocumentPath(): boolean {
+  const [navigation] = performance.getEntriesByType("navigation");
+  if (navigation === undefined) return true;
+  return new URL(navigation.name).pathname === window.location.pathname;
+}
+
 export function PublicMarketplaceDetailPage({
   manifest,
   entry,
@@ -984,7 +990,8 @@ export function PublicMarketplaceDetailPage({
           searchParams: new URLSearchParams(window.location.search),
           referrer: document.referrer,
           siteOrigin: window.location.origin,
-          isFirstViewInPageLoad: !hasTrackedDetailViewInPageLoad,
+          isFirstViewInPageLoad:
+            !hasTrackedDetailViewInPageLoad && isInitialDocumentPath(),
         }),
       },
     });
