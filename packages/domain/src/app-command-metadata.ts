@@ -5,14 +5,14 @@ import {
   type AppCommandId,
 } from "./app-keybindings.js";
 
-export interface AppCommandMetadata {
+interface AppCommandMetadata {
   command: AppCommandId;
   description: string;
   label: string;
   paletteVisible: boolean;
 }
 
-export interface AppCommandGroup {
+interface AppCommandGroup {
   commands: readonly AppCommandMetadata[];
   label: string;
 }

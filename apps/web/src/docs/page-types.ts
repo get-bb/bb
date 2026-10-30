@@ -10,12 +10,12 @@ export const DOCS_PAGE_TYPES = [
 
 export type DocsPageType = (typeof DOCS_PAGE_TYPES)[number];
 
-export interface DocsPageTemplate {
+interface DocsPageTemplate {
   requiredHeadings: readonly string[];
   lastHeading: string;
 }
 
-export const DOCS_PAGE_TEMPLATES: Readonly<
+const DOCS_PAGE_TEMPLATES: Readonly<
   Record<DocsPageType, DocsPageTemplate>
 > = {
   tutorial: {
