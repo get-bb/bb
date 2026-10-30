@@ -1,9 +1,21 @@
 import { describe, expect, it } from "vitest";
 import { codexQuotaFromUsage, createCodexAdapter } from "./codex-adapter.js";
 import type { AccountQuota } from "./contracts.js";
-import { isQuotaExhausted } from "./quota.js";
+import { routeRank } from "./quota.js";
 
 const ACCOUNT_ID = "11111111-1111-4111-8111-111111111111";
+
+function routable(quota: AccountQuota, threshold: number, now: number) {
+  return (
+    routeRank(
+      { enabled: true, kind: "oauth" },
+      quota,
+      "other",
+      threshold,
+      now,
+    ) !== null
+  );
+}
 
 function emptyQuota(): AccountQuota {
   return {
@@ -15,6 +27,13 @@ function emptyQuota(): AccountQuota {
     sevenDayResetAt: null,
     sevenDayStatus: null,
     representativeClaim: null,
+    familyOverageUntil: {
+      fable: null,
+      sonnet: null,
+      opus: null,
+      haiku: null,
+      other: null,
+    },
     familyWeekly: {
       fable: null,
       sonnet: null,
@@ -250,7 +269,7 @@ describe("codexQuotaFromUsage", () => {
         },
       },
     };
-    expect(isQuotaExhausted(stale, "other", 0.9, 2_000)).toBe(true);
+    expect(routable(stale, 0.9, 2_000)).toBe(false);
     const refreshed = codexQuotaFromUsage(
       ACCOUNT_ID,
       {
@@ -267,7 +286,7 @@ describe("codexQuotaFromUsage", () => {
       familyWeekly: { other: null },
     });
     if (refreshed === null) throw new Error("Expected a quota.");
-    expect(isQuotaExhausted(refreshed, "other", 0.9, 2_000)).toBe(false);
+    expect(routable(refreshed, 0.9, 2_000)).toBe(true);
   });
 
   it("returns null for a payload without rate limits", () => {
@@ -296,7 +315,7 @@ describe("codex header quotas", () => {
         "other",
         3_000,
       );
-      expect(isQuotaExhausted(rejected, "other", 0.98, 3_000)).toBe(true);
+      expect(routable(rejected, 0.98, 3_000)).toBe(false);
       expect(
         rejected.limitWindows.find((window) => window.slot === slot)?.resetAt,
       ).toBeNull();
@@ -311,7 +330,7 @@ describe("codex header quotas", () => {
         4_000,
       );
       if (recovered === null) throw new Error("Expected refreshed usage.");
-      expect(isQuotaExhausted(recovered, "other", 0.98, 4_000)).toBe(false);
+      expect(routable(recovered, 0.98, 4_000)).toBe(true);
     },
   );
 
@@ -345,8 +364,8 @@ describe("codex header quotas", () => {
         source: "header",
       },
     ]);
-    expect(isQuotaExhausted(rejected, "other", 0.9, 2_000)).toBe(true);
-    expect(isQuotaExhausted(fromUsage, "other", 0.9, 2_000)).toBe(false);
+    expect(routable(rejected, 0.9, 2_000)).toBe(false);
+    expect(routable(fromUsage, 0.9, 2_000)).toBe(true);
   });
 
   it.each([

@@ -75,9 +75,7 @@ describe("AccountStore", () => {
       await host.harness.lifecycle.dispose();
       await fs.rm(dataDir, { recursive: true, force: true });
     });
-    const account = (
-      label: string,
-    ): Omit<Account, "id" | "createdAt" | "lastUsedAt" | "lastUsedHostId"> => ({
+    const account = (label: string): Parameters<AccountStore["add"]>[0] => ({
       provider: "claude",
       kind: "api-key",
       label,
@@ -184,6 +182,21 @@ describe("QuotaStore", () => {
         source: "usage",
       },
     ]);
+    database.close();
+  });
+
+  it("reads and writes quotas when a newer build has added a column", () => {
+    const database = new Database(":memory:");
+    for (const migration of QUOTA_MIGRATIONS) database.exec(migration);
+    database.exec(
+      "ALTER TABLE account_quota ADD COLUMN later_json TEXT NOT NULL DEFAULT '{}'",
+    );
+    const quotas = new QuotaStore(database);
+    const accountId = "11111111-1111-4111-8111-111111111111";
+
+    quotas.put({ ...quotas.get(accountId), sevenDayUtilization: 0.4 });
+
+    expect(quotas.get(accountId).sevenDayUtilization).toBe(0.4);
     database.close();
   });
 });

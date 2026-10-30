@@ -36,7 +36,8 @@ import type { ClaudeOAuthLogin } from "./oauth-login.js";
 import type { CodexDeviceLogin } from "./codex-device-login.js";
 
 const DESCRIPTION = [
-  "Accounts run sequentially by priority, then order added. The current fallback stays active until unavailable.",
+  "Accounts run sequentially by priority, then order added. Requests go to the best routing tier that has an account: below switchThreshold, then at or above it while the provider still allows the account, then paid (extra usage, overage, API key). The pool refuses only when every tier is empty.",
+  "New conversations follow the current account, which moves when a better tier has an account. Existing conversations keep their account while it is in one of the first two tiers and move back up off a paid account when a better account is available.",
   "When this bb server runs inside another bb server's thread, parent proxy routes its pooled traffic through that parent; isolate neutralises the inherited routing.",
   "Reorder includes every account for the provider and changes the next failover sequence; existing conversations stay pinned.",
 ].join("\n");
@@ -109,7 +110,18 @@ function formatFamilyQuota(quota: FamilyQuota | null): string {
   ].join(" ");
 }
 
-function formatAccounts(accounts: readonly AccountSummary[]): string {
+function formatOverage(account: AccountSummary, now: number): string {
+  const families = modelFamilySchema.options.filter((family) => {
+    const until = account.familyOverageUntil[family];
+    return until !== null && until > now;
+  });
+  return families.length === 0 ? "-" : families.join(",");
+}
+
+function formatAccounts(
+  accounts: readonly AccountSummary[],
+  now = Date.now(),
+): string {
   if (accounts.length === 0) return "No accounts configured.";
   const families = modelFamilySchema.options.filter((family) =>
     accounts.some((account) => account.familyWeekly[family] !== null),
@@ -129,8 +141,10 @@ function formatAccounts(accounts: readonly AccountSummary[]): string {
       "7d reset",
       "Windows",
       "Extra usage",
+      "Overage",
       ...families.map(familyLabel),
       "Status",
+      "Tier",
     ].join("\t"),
     ...accounts.map((account) =>
       [
@@ -147,10 +161,12 @@ function formatAccounts(accounts: readonly AccountSummary[]): string {
         formatReset(account.sevenDayResetAt),
         formatLimitWindows(account.limitWindows),
         account.extraUsage?.status ?? "-",
+        formatOverage(account, now),
         ...families.map((family) =>
           formatFamilyQuota(account.familyWeekly[family]),
         ),
         account.status,
+        account.tier ?? "-",
       ].join("\t"),
     ),
   ].join("\n");

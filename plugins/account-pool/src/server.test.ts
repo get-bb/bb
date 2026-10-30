@@ -7466,3 +7466,266 @@ describe("Account Pool nested proxy", () => {
     expect(await allowed.json()).toEqual({ claude: true, codex: false });
   });
 });
+
+describe("tiered routing", () => {
+  interface PooledAccount {
+    token: string;
+    usage: Record<string, unknown>;
+    claim?: (model: string) => string;
+  }
+
+  async function createPool(pooled: readonly PooledAccount[]) {
+    const served: Array<{ token: string; model: string }> = [];
+    let loginIndex = 0;
+    const usage = new Map(pooled.map((entry) => [entry.token, entry]));
+    const claudeLogin = async () => {
+      const entry = pooled[loginIndex];
+      loginIndex += 1;
+      if (entry === undefined) throw new Error("No login fixture.");
+      return claudeCredentials({
+        accessToken: entry.token,
+        accountUuid: `${String(loginIndex).repeat(8)}-1111-4111-8111-111111111111`,
+      });
+    };
+    const fixture = await createFixture({
+      upstreamUrl: "https://upstream.example",
+      source: "oauth",
+      priority: 1,
+      options: {
+        usageUrl: "https://upstream.example/usage",
+        claudeLogin,
+        fetch: async (input, init) => {
+          const headers = new Headers(init?.headers);
+          const token =
+            headers.get("authorization")?.replace(/^Bearer /u, "") ??
+            headers.get("x-api-key") ??
+            "missing";
+          const entry = usage.get(token);
+          if (new URL(String(input)).pathname === "/usage")
+            return Response.json(entry?.usage ?? {});
+          const body =
+            init?.body instanceof ArrayBuffer
+              ? new TextDecoder().decode(init.body)
+              : "{}";
+          const model = z
+            .object({ model: z.string() })
+            .parse(JSON.parse(body)).model;
+          served.push({ token, model });
+          return Response.json(
+            { ok: true },
+            {
+              headers: {
+                "anthropic-ratelimit-unified-representative-claim":
+                  entry?.claim?.(model) ?? "five_hour",
+              },
+            },
+          );
+        },
+      },
+    });
+    for (const [index] of pooled.slice(1).entries())
+      await addExistingAccount(
+        { host: fixture.host, logins: { claudeLogin } },
+        "claude",
+        { priority: index + 2 },
+      );
+    const send = async (model: string, session?: string) => {
+      const response = await fixture.host.harness.behavior.fetchHttp(
+        "POST",
+        "/v1/messages",
+        {
+          headers: authHeaders(fixture.key),
+          body: JSON.stringify({
+            model,
+            ...(session === undefined
+              ? {}
+              : {
+                  metadata: {
+                    user_id: JSON.stringify({ session_id: session }),
+                  },
+                }),
+          }),
+        },
+      );
+      const text = await response.text();
+      return { status: response.status, text };
+    };
+    const list = async () =>
+      z
+        .array(accountSummarySchema)
+        .parse(
+          await fixture.host.harness.behavior.callRpc("account.list", null),
+        );
+    const setUsage = async (token: string, next: Record<string, unknown>) => {
+      const entry = usage.get(token);
+      if (entry === undefined) throw new Error(`Unknown account ${token}.`);
+      usage.set(token, { ...entry, usage: next });
+      const index = pooled.findIndex((candidate) => candidate.token === token);
+      const account = (await list()).find(
+        (candidate) => candidate.priority === index + 1,
+      );
+      if (account === undefined) throw new Error(`Unlisted account ${token}.`);
+      await fixture.host.harness.behavior.callRpc("account.refreshUsage", {
+        accountId: account.id,
+      });
+      return account;
+    };
+    return { fixture, served, usage, send, list, setUsage };
+  }
+
+  const weekly = (utilization: number, status?: string) => ({
+    seven_day: {
+      utilization,
+      resets_at: "4102448400",
+      ...(status === undefined ? {} : { status }),
+    },
+  });
+
+  it("routes to accounts upstream still allows once every account is past the switch threshold (#6169)", async () => {
+    const rejectedReset = Math.floor((Date.now() + 2 * 3_600_000) / 1_000);
+    const pool = await createPool([
+      {
+        token: "a",
+        usage: {
+          five_hour: { utilization: 26, resets_at: "4102444800" },
+          seven_day: { utilization: 98, resets_at: "4102448400" },
+        },
+      },
+      {
+        token: "b",
+        usage: { seven_day: { utilization: 99, resets_at: "4102448400" } },
+      },
+      {
+        token: "d",
+        usage: {
+          seven_day: {
+            utilization: 100,
+            status: "rejected",
+            resets_at: String(rejectedReset),
+          },
+        },
+      },
+    ]);
+
+    expect(await pool.send("claude-opus-5-5")).toEqual({
+      status: 200,
+      text: '{"ok":true}',
+    });
+    expect(pool.served).toEqual([{ token: "a", model: "claude-opus-5-5" }]);
+    expect(
+      await pool.fixture.host.harness.behavior.callRpc(
+        retryAvailabilityMethod,
+        { threadId: "thread-one", requestId: "creq_aaaaaaaaaa" },
+      ),
+    ).toEqual({ kind: "ready" });
+    expect(
+      (await pool.list()).map((account) => [
+        account.priority,
+        account.status,
+        account.tier,
+      ]),
+    ).toEqual([
+      [1, "ready", "above-threshold"],
+      [2, "ready", "above-threshold"],
+      [3, "exhausted", null],
+    ]);
+
+    await pool.fixture.host.harness.behavior.callRpc("config.set", {
+      switchThreshold: 1,
+    });
+    await pool.setUsage("a", weekly(100, "allowed"));
+    expect(
+      (await pool.list()).map((account) => [account.status, account.tier]),
+    ).toEqual([
+      ["ready", "above-threshold"],
+      ["ready", "below-threshold"],
+      ["exhausted", null],
+    ]);
+  });
+
+  it("sends a family to the account that includes it once another account bills it as overage (#3615)", async () => {
+    const pool = await createPool([
+      {
+        token: "team",
+        usage: {
+          five_hour: { utilization: 2, resets_at: "4102444800" },
+          seven_day: { utilization: 0, resets_at: "4102448400" },
+          limits: [],
+        },
+        claim: (model) => (model.includes("fable") ? "overage" : "five_hour"),
+      },
+      {
+        token: "max",
+        usage: {
+          five_hour: { utilization: 0, resets_at: "4102444800" },
+          seven_day: { utilization: 18, resets_at: "4102448400" },
+          limits: [
+            {
+              kind: "weekly_scoped",
+              group: "weekly",
+              percent: 33,
+              resets_at: "4102452000",
+              scope: { model: { display_name: "Fable" } },
+            },
+          ],
+        },
+      },
+    ]);
+
+    for (const model of [
+      "claude-fable-5-1",
+      "claude-fable-5-1",
+      "claude-opus-5-5",
+      "claude-fable-5-1",
+    ])
+      expect((await pool.send(model)).status).toBe(200);
+
+    expect(pool.served).toEqual([
+      { token: "team", model: "claude-fable-5-1" },
+      { token: "max", model: "claude-fable-5-1" },
+      { token: "team", model: "claude-opus-5-5" },
+      { token: "max", model: "claude-fable-5-1" },
+    ]);
+  });
+
+  it("keeps a conversation on an account past the threshold while new conversations switch", async () => {
+    const pool = await createPool([
+      { token: "a", usage: weekly(50) },
+      { token: "b", usage: weekly(10) },
+    ]);
+    expect((await pool.send("claude-opus-5-5", "old")).status).toBe(200);
+    await pool.setUsage("a", weekly(99));
+    expect((await pool.send("claude-opus-5-5", "old")).status).toBe(200);
+    expect((await pool.send("claude-opus-5-5", "new")).status).toBe(200);
+    expect((await pool.send("claude-opus-5-5", "old")).status).toBe(200);
+    expect((await pool.send("claude-opus-5-5")).status).toBe(200);
+
+    expect(pool.served.map(({ token }) => token)).toEqual([
+      "a",
+      "a",
+      "b",
+      "a",
+      "b",
+    ]);
+  });
+
+  it("never routes to an API-key account while a subscription can serve", async () => {
+    const pool = await createPool([
+      { token: "subscription", usage: weekly(99) },
+    ]);
+    await pool.fixture.host.harness.behavior.callRpc("account.add", {
+      provider: "claude",
+      apiKey: "sk-metered",
+      label: "metered",
+      priority: 0,
+    });
+    expect((await pool.send("claude-opus-5-5")).status).toBe(200);
+    await pool.setUsage("subscription", weekly(100, "rejected"));
+    expect((await pool.send("claude-opus-5-5")).status).toBe(200);
+
+    expect(pool.served.map(({ token }) => token)).toEqual([
+      "subscription",
+      "sk-metered",
+    ]);
+  });
+});

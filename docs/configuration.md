@@ -1098,17 +1098,17 @@ account-pool`), except that a nested server with `BB_ACCOUNT_POOL_PARENT_URL`
 enables it. Account tokens and per-machine hub tokens are 0600 files under
 `<dataDir>/plugins/account-pool/secrets/accounts/`.
 
-| Setting                    | Default                                 | Effect                                                                                     |
-| -------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `switchThreshold`          | `0.98`                                  | Shared or model-family quota fraction at which an account stops receiving matching traffic |
-| `anthropicUpstreamBaseUrl` | `https://api.anthropic.com`             | Upstream for Claude traffic; only for tests and QA with a fake upstream                    |
-| `codexUpstreamBaseUrl`     | `https://chatgpt.com/backend-api/codex` | Upstream for Codex traffic; only for tests and QA with a fake upstream                     |
+| Setting                    | Default                                 | Effect                                                                                                                           |
+| -------------------------- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `switchThreshold`          | `0.98`                                  | Shared or model-family quota fraction from which other accounts are preferred; the account still serves while upstream allows it |
+| `anthropicUpstreamBaseUrl` | `https://api.anthropic.com`             | Upstream for Claude traffic; only for tests and QA with a fake upstream                                                          |
+| `codexUpstreamBaseUrl`     | `https://chatgpt.com/backend-api/codex` | Upstream for Codex traffic; only for tests and QA with a fake upstream                                                           |
 
 Inspect and change them with `bb pool config` and
 `bb pool config set <key> <value>`. Values stored through `bb.settings` by
 older builds are not migrated. Provider routing is persisted per provider and
 defaults on; `bb pool routing <claude|codex> --off` stops it. See the
-`account-pool` skill for accounts, ordering, and routing.
+`account-pool` skill for accounts, ordering, and routing tiers.
 
 ### Concurrency limit
 

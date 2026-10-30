@@ -9,6 +9,7 @@ import {
   accountSecretSchema,
   EMPTY_FAMILY_WEEKLY,
   hubTokenSummarySchema,
+  NO_FAMILY_OVERAGE,
   providerSchema,
   quotaSchema,
   type Account,
@@ -547,26 +548,25 @@ function safeTokenEqual(left: string, right: string): boolean {
   );
 }
 
-const quotaRowSchema = z
-  .object({
-    account_id: z.string().uuid(),
-    five_hour_utilization: z.number().nullable(),
-    five_hour_reset_at: z.number().int().nullable(),
-    five_hour_status: z.string().nullable(),
-    seven_day_utilization: z.number().nullable(),
-    seven_day_reset_at: z.number().int().nullable(),
-    seven_day_status: z.string().nullable(),
-    representative_claim: z.string().nullable(),
-    bucket_exhaustion_json: z.string(),
-    family_weekly_json: z.string(),
-    limit_windows_json: z.string(),
-    extra_usage_json: z.string(),
-    usage_restriction_json: z.string(),
-    observed_at: z.number().int().nullable(),
-    held_until: z.number().int().nullable(),
-    error: z.string().nullable(),
-  })
-  .strict();
+const quotaRowSchema = z.object({
+  account_id: z.string().uuid(),
+  five_hour_utilization: z.number().nullable(),
+  five_hour_reset_at: z.number().int().nullable(),
+  five_hour_status: z.string().nullable(),
+  seven_day_utilization: z.number().nullable(),
+  seven_day_reset_at: z.number().int().nullable(),
+  seven_day_status: z.string().nullable(),
+  representative_claim: z.string().nullable(),
+  family_overage_until_json: z.string(),
+  bucket_exhaustion_json: z.string(),
+  family_weekly_json: z.string(),
+  limit_windows_json: z.string(),
+  extra_usage_json: z.string(),
+  usage_restriction_json: z.string(),
+  observed_at: z.number().int().nullable(),
+  held_until: z.number().int().nullable(),
+  error: z.string().nullable(),
+});
 
 const EMPTY_QUOTA = {
   usageRestriction: null,
@@ -578,6 +578,7 @@ const EMPTY_QUOTA = {
   sevenDayResetAt: null,
   sevenDayStatus: null,
   representativeClaim: null,
+  familyOverageUntil: NO_FAMILY_OVERAGE,
   familyWeekly: EMPTY_FAMILY_WEEKLY,
   limitWindows: [],
   observedAt: null,
@@ -608,6 +609,7 @@ export class QuotaStore {
       sevenDayResetAt: row.seven_day_reset_at,
       sevenDayStatus: row.seven_day_status,
       representativeClaim: row.representative_claim,
+      familyOverageUntil: JSON.parse(row.family_overage_until_json),
       familyWeekly: JSON.parse(row.family_weekly_json),
       limitWindows: JSON.parse(row.limit_windows_json),
       extraUsage: JSON.parse(row.extra_usage_json),
@@ -626,8 +628,9 @@ export class QuotaStore {
           account_id, five_hour_utilization, five_hour_reset_at,
           five_hour_status, seven_day_utilization, seven_day_reset_at,
           seven_day_status, representative_claim, bucket_exhaustion_json,
-          family_weekly_json, limit_windows_json, extra_usage_json, usage_restriction_json, observed_at, held_until, error
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?, ?, ?, ?)
+          family_weekly_json, limit_windows_json, extra_usage_json, usage_restriction_json,
+          family_overage_until_json, observed_at, held_until, error
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(account_id) DO UPDATE SET
           five_hour_utilization = excluded.five_hour_utilization,
           five_hour_reset_at = excluded.five_hour_reset_at,
@@ -640,6 +643,7 @@ export class QuotaStore {
           limit_windows_json = excluded.limit_windows_json,
           extra_usage_json = excluded.extra_usage_json,
           usage_restriction_json = excluded.usage_restriction_json,
+          family_overage_until_json = excluded.family_overage_until_json,
           observed_at = excluded.observed_at,
           held_until = excluded.held_until,
           error = excluded.error`,
@@ -657,6 +661,7 @@ export class QuotaStore {
         JSON.stringify(value.limitWindows),
         JSON.stringify(value.extraUsage),
         JSON.stringify(value.usageRestriction),
+        JSON.stringify(value.familyOverageUntil),
         value.observedAt,
         value.heldUntil,
         value.error,
@@ -777,4 +782,5 @@ export const QUOTA_MIGRATIONS = [
   )`,
   `ALTER TABLE account_quota ADD COLUMN extra_usage_json TEXT NOT NULL DEFAULT 'null'`,
   `ALTER TABLE account_quota ADD COLUMN usage_restriction_json TEXT NOT NULL DEFAULT 'null'`,
+  `ALTER TABLE account_quota ADD COLUMN family_overage_until_json TEXT NOT NULL DEFAULT '{"fable":null,"sonnet":null,"opus":null,"haiku":null,"other":null}'`,
 ];

@@ -175,6 +175,34 @@ export const accountSecretSchema = z.discriminatedUnion("kind", [
 
 export type AccountSecret = z.infer<typeof accountSecretSchema>;
 
+export const familyOverageUntilSchema = z
+  .object({
+    fable: z.number().int().nullable(),
+    sonnet: z.number().int().nullable(),
+    opus: z.number().int().nullable(),
+    haiku: z.number().int().nullable(),
+    other: z.number().int().nullable(),
+  })
+  .strict();
+
+export type FamilyOverageUntil = z.infer<typeof familyOverageUntilSchema>;
+
+export const NO_FAMILY_OVERAGE: FamilyOverageUntil = {
+  fable: null,
+  sonnet: null,
+  opus: null,
+  haiku: null,
+  other: null,
+};
+
+export const routingTierSchema = z.enum([
+  "below-threshold",
+  "above-threshold",
+  "paid",
+]);
+
+export type RoutingTier = z.infer<typeof routingTierSchema>;
+
 export const extraUsageSchema = z
   .object({
     status: z.enum(["allowed", "rejected"]),
@@ -196,6 +224,7 @@ const quotaFieldsShape = {
   sevenDayResetAt: z.number().int().nullable(),
   sevenDayStatus: z.string().nullable(),
   representativeClaim: z.string().nullable(),
+  familyOverageUntil: familyOverageUntilSchema,
   familyWeekly: familyWeeklySchema,
   limitWindows: z.array(limitWindowSchema),
   observedAt: z.number().int().nullable(),
@@ -217,6 +246,7 @@ export const accountSummarySchema = accountSchema.extend({
   ...quotaFieldsShape,
   inFlight: z.number().int().nonnegative(),
   status: z.enum(["disabled", "ready", "held", "exhausted", "error"]),
+  tier: routingTierSchema.nullable(),
 });
 
 export type AccountSummary = z.infer<typeof accountSummarySchema>;

@@ -79,10 +79,10 @@ prior token valid for ten minutes. Agents should pipe API keys to
 `--api-key <key>` is an unsafe compatibility form that exposes the key in
 process arguments, shell history, and agent transcripts. OAuth quota refreshes
 on add, enable, or re-login of an enabled account and every five minutes while
-an account is idle. When a request finds no
-eligible account, the pool first refreshes the OAuth accounts it considers
-exhausted, at most once every 30 seconds per account, so a plan upgrade or an
-early reset takes effect on the next turn. Use
+an account is idle. Before a request would be refused or sent to a paid
+account, the pool first refreshes the OAuth accounts at or above the switch
+threshold for that request, at most once every 30 seconds per account, so a
+plan upgrade or an early reset takes effect on the next turn. Use
 `bb pool account refresh <id>` to request an immediate refresh for one account.
 For an OAuth account in error, `refresh` also forces a new token with the stored
 refresh token and clears the error when that succeeds, so a spurious error does
@@ -94,44 +94,71 @@ request gets HTTP 503, and that token is held out of routing for one minute.
 Account tables add columns for observed model-family buckets; JSON status
 exposes their utilization, reset, status, observation time, and source under
 `familyWeekly`. Selection skips an account whose requested family is spent
-while retaining it for other families. A present `metadata.user_id` account
+while retaining it for other families. When a Claude response for a model
+family carries `anthropic-ratelimit-unified-representative-claim: overage`, the
+account counts as paid for that family until its weekly reset (24 hours when the
+reset is unknown), so the family goes to an account whose plan includes it. JSON
+exposes the expiry per family under `familyOverageUntil`; the account table
+lists the families in its Overage column. A present `metadata.user_id` account
 UUID is aligned with the selected OAuth account. Use `bb pool config` to
 inspect the full routing configuration and
 `bb pool config set <key> <value>` to update one value. The upstream URL keys
 are QA-only overrides; `switchThreshold` must be greater than 0 and at most 1.
 
+Routing ranks every account for the request's provider and model family into
+three tiers, and the same ranking drives selection, the pool's HTTP 429 and
+`Retry-After`, the `provider-retry.v1.availability` RPC, and account status:
+
+1. `below-threshold`: every quota window is below `switchThreshold`.
+2. `above-threshold`: a window is at or above the threshold, but the provider
+   still allows the account. Where the provider reports a window status, that
+   status decides; only a window without one counts as spent at 100 percent, so
+   a window at exactly 100 percent that is still `allowed` stays usable.
+3. `paid`: the provider rejects a window but extra usage or Codex credits are
+   available, the account bills this model family as overage, or the account is
+   an API key. API keys are metered and never route ahead of a subscription.
+
+Paid accounts below the threshold rank ahead of those above it.
+Disabled and errored accounts, Codex workspace hard stops, and accounts the
+provider rejects without a paid fallback are in no tier. The pool refuses a
+request only when every tier is empty, quoting the earliest time a rejected or
+held account becomes usable again. `account list` and `status` show the tier in
+a Tier column and JSON `tier` field (`null` outside every tier); `status` is
+`ready` for any account in a tier and `exhausted` only for one the provider
+rejects.
+
 Accounts run sequentially per provider: lower priority numbers first, with ties
 following the order accounts were added. New conversations use the current
-account until it reaches the switch threshold or fails; the pool then advances
-to the next eligible account and wraps at the end. It keeps using that fallback
-even when an earlier account recovers. Existing conversations stay pinned while
-their account remains eligible. Short temporary rate limits wait on the same
-account once; longer holds return Retry-After for pinned conversations while new
-conversations can advance. A model-family limit detours only requests for that
-family without moving the session's main pin or the provider cursor. The cursor
-and session pins survive hub restarts. Session pins expire after 30 idle minutes,
-and the pool retains the 4,096 most recently used pins.
+account while it is in the best tier that has an available account. When a
+better tier opens, or the current account fails or leaves every tier, the pool
+advances to the next account in that tier and wraps at the end; within a tier it
+keeps using that fallback even when an earlier account recovers. Existing
+conversations stay pinned while their account is in the first two tiers, even
+when the current account moves on. Conversations pinned to a paid account
+return to a better tier as soon as one has an available
+account. A failover commits only after a successful response. Short temporary
+rate limits wait on the same account once without demoting it; longer holds
+return Retry-After for pinned conversations while new conversations can
+advance. A model-family limit detours only requests for that family without
+moving the session's main pin or the provider cursor. The cursor and session
+pins survive hub restarts. Session pins expire after 65 idle minutes, and the
+pool retains the 4,096 most recently used pins.
 
-Claude accounts with an exhausted subscription window remain eligible as a
-fallback when Anthropic reports extra usage enabled with remaining allowance,
-or an allowed overage response header. Accounts below the switch threshold
-are preferred, including for conversations pinned to an extra-usage fallback;
-those conversations return to subscription quota when it recovers. Before using
-extra usage, the pool rechecks exhausted OAuth accounts (at most every 30 seconds).
-Disabled, spent, or unobserved extra usage does not override subscription limits.
-This does not enable extra usage or change spending limits on Claude.
-`account list` and `status` show an Extra usage column; JSON and the corresponding
-plugin RPCs expose `extraUsage` with status, observation time, and source.
-This state survives hub restarts. Model entitlement differences between plans
-are not inferred from missing quota buckets.
+Claude extra usage counts as available when Anthropic reports it enabled with
+remaining allowance, or an allowed overage response header. Disabled, spent, or
+unobserved extra usage does not override a rejected window. This does not enable
+extra usage or change spending limits on Claude. `account list` and `status`
+show an Extra usage column; JSON and the corresponding plugin RPCs expose
+`extraUsage` with status, observation time, and source. This state survives hub
+restarts.
 
-Codex credits use the same fallback policy and availability pill. The pool reads
+Codex credits use the same paid tier and availability pill. The pool reads
 `credits.has_credits` and `credits.unlimited` from usage responses and the
 corresponding `x-codex-credits-*` headers. Credit-only updates are accepted;
 omitted fields preserve prior observations. Workspace hard stops (the
 `workspace_{owner,member}_{credits_depleted,usage_limit_reached}` limit types,
-or a reached spend control) block routing even below the subscription switch
-threshold and survive restarts. Other limit types, including unknown ones, do
+or a reached spend control) take the account out of every tier and survive
+restarts. Other limit types, including unknown ones, do
 not restrict the account. A refreshed allowance or spending-control observation can
 clear the matching restriction. JSON account/status responses expose
 `usageRestriction` (reason and optional reset time); the pool does not change
