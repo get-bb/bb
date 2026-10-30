@@ -74,27 +74,10 @@ describe("survey page", () => {
     await click('[name="role"][value="Founder or executive"]');
     await click('[name="work"][value="2–5 people"]');
     expect(
-      [
-        "work",
-        "company_size",
-        "team_improve",
-        "plugin_sharing",
-        "team_adopt",
-      ].map(shown),
-    ).toEqual([true, true, true, true, false]);
-    for (const option of [
-      "I've shared a plugin I made with coworkers",
-      "I use a plugin a coworker made",
-      "Our team keeps shared plugins in one place, like a private repo",
-    ])
-      await click(`[name="plugin_sharing"][value="${option}"]`);
-    expect(
-      field('[name="plugin_sharing"][value="None of these"]')!.disabled,
-    ).toBe(false);
+      ["work", "company_size", "team_improve", "team_adopt"].map(shown),
+    ).toEqual([true, true, true, false]);
     await click('[name="work"][value="Just me"]');
-    expect(["team_improve", "plugin_sharing", "team_adopt"].map(shown)).toEqual(
-      [false, false, true],
-    );
+    expect(["team_improve", "team_adopt"].map(shown)).toEqual([false, true]);
     await click('[name="role"][value="Student"]');
     expect(["work", "company_size", "team_adopt"].map(shown)).toEqual([
       false,

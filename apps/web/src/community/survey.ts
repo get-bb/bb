@@ -139,12 +139,12 @@ export const surveyQuestions: readonly Question[] = [
   },
 ];
 
-export const formValues = z.record(z.string(), z.array(z.string()));
+export const formValues = z.object({}).catchall(z.array(z.string()));
 export type FormValues = z.infer<typeof formValues>;
 export type FormErrors = Record<string, string>;
 export const surveyReply = z.object({
-  result: z.object({ duplicate: z.boolean() }).optional(),
-  errors: z.record(z.string(), z.string()).optional(),
+  result: z.object({ duplicate: z.literal([true, false]) }).optional(),
+  errors: z.object({}).catchall(z.string()).optional(),
   error: z.string().optional(),
 });
 export type SurveyReply = z.infer<typeof surveyReply>;
