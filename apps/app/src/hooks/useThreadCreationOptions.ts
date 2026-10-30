@@ -745,10 +745,15 @@ export function useThreadCreationOptions(
   const environmentSelectionValue = rawEnvironmentSelectionValue;
   const touchedFieldsPendingReset =
     usesLocalThreadSelections && threadResetKeyRef.current !== resetKey;
+  const fellBackFromUnofferedProvider =
+    rawSelectedProviderId.length > 0 &&
+    effectiveProviderId.length > 0 &&
+    effectiveProviderId !== rawSelectedProviderId;
   const effectiveInitialProviderSource: ExecutionInputFieldSource | undefined =
-    canResolveReadyProvider &&
-    readyProviderId !== undefined &&
-    effectiveProviderId === readyProviderId
+    fellBackFromUnofferedProvider ||
+    (canResolveReadyProvider &&
+      readyProviderId !== undefined &&
+      effectiveProviderId === readyProviderId)
       ? "client-preference"
       : undefined;
   const executionInputSources = useMemo(
