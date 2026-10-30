@@ -1,0 +1,115 @@
+---
+title: Add a machine
+description: Use this when you want threads to run on another computer, VM or container. Open Settings → Machines → Add a machine, run the one-line command it shows on that computer, and pick the machine when you start a thread.
+type: how-to
+sources:
+  - apps/app/src/components/dialogs/AddMachineDialog.tsx
+  - apps/app/src/components/settings/MachinesSettingsSection.tsx
+  - apps/app/src/components/machines/**
+  - apps/server/src/assets/install-machine.sh
+  - apps/server/src/assets/install-machine-windows.mjs
+  - apps/server/src/services/machines/manual-enrollment-command.ts
+  - apps/cli/src/commands/machine.ts
+since: 0.0.30
+owner: brsbl
+verified: 2026-10-30
+---
+
+Use this when you want threads to run on another computer, such as a desktop, home server, cloud VM or container, while your threads and settings stay on your bb server.
+
+The new computer becomes a machine: it runs a host daemon that connects to your server. It doesn't run a second server, and it doesn't get the bb app. [Machines, servers and the host daemon](/docs/machines-servers-and-the-host-daemon) explains the parts.
+
+## Before you start
+
+- **The new computer must be able to reach your server.** By default the server listens only on its own computer, so the first time you add a machine bb asks you to choose a route: **bb connect** or a **Manual** address. See [Set up remote access](/docs/set-up-remote-access).
+- **On macOS or Linux,** the new computer needs Node.js 22.19 or newer with npm, and `curl`.
+- **On Windows,** it needs Node.js 22.19 or newer and Git for Windows.
+- **Agents sign in on each machine.** Install and sign in to Claude Code, Codex or the other agents you want on the new computer itself.
+
+## Add the machine
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+1. Open **Settings → Machines** and choose **Add a machine**.
+2. If you see **Set up machine access**, choose a **Connection method**:
+   - **bb connect** uses a private getbb.app address. You sign this bb in to your bb account first.
+   - **Manual** uses your own domain or an address on a shared network, such as a Tailscale address. Enter it as the **Server address**. `localhost` won't work.
+3. Choose **macOS or Linux** or **Windows**, then **Copy** the command.
+4. Run the command on the new computer: in a terminal on macOS or Linux, or in PowerShell on Windows.
+5. Wait for the dialog to change from **Waiting for the machine to connect…** to *name* **connected**, then choose **Open machine**.
+
+<Screenshot
+  src="/docs-images/add-a-machine/add-machine-dialog"
+  alt="The Add a machine dialog shows macOS or Linux and Windows tabs above the install command, with a Copy button next to the countdown until the command expires."
+  width={544}
+  height={399}
+/>
+
+The command works once, and the dialog counts down until it expires. If it shows **Command expired**, choose **Generate a new command**.
+
+</Tab>
+<Tab value="CLI">
+
+Print a one-time command for the new computer and wait for it to connect:
+
+```bash
+bb machine create --provider manual
+```
+
+It prints a command for macOS and Linux and a PowerShell command for Windows. Run the one for the new computer's system there. Treat the command like a password until it's used.
+
+</Tab>
+</Tabs>
+
+## What the command installs
+
+The command installs the host daemon from your own server and keeps it running:
+
+| On | It installs | It starts |
+| --- | --- | --- |
+| macOS | A launch agent | When you log in |
+| Linux | A systemd user service, or a system service when run as root | When your user session starts; a system service starts at boot |
+| Windows | A startup entry in your user account | When you sign in to Windows |
+| A container or Linux without systemd | A background daemon | Now only; it doesn't start again after a reboot |
+
+Everything goes in `~/.bb-machines/<server-host>` on that computer, so it never touches a full bb install's `~/.bb`. The daemon updates itself to match your server's version after you update bb.
+
+## Run threads on the machine
+
+- **New thread:** in the composer's **Environment** picker, choose the machine, then where the thread should work. With several machines, they are listed under **Machines**.
+- **New project on that machine:** choose New project, select the machine, and browse to the folder there.
+- **From the CLI:**
+
+  ```bash
+  bb thread spawn --project <project-id> --machine "<machine name>" --prompt "Run the test suite"
+  ```
+
+Each machine also has a **Permission limit**: the highest permission mode any thread on it can use. Set it in **Settings → Machines** → the machine → **Permission limit**.
+
+## Rename or remove a machine
+
+Open **Settings → Machines** and use the **⋯** menu on the machine:
+
+- **Rename** changes the name shown in pickers. CLI: `bb machine rename <id-or-name> "<new name>"`.
+- **Reconnect** prints a command that brings a machine back online when its access was revoked. It keeps its projects and history. CLI: `bb machine reconnect <id-or-name>`.
+- **Remove machine** revokes its access to your server. Its files stay on its disk. CLI: `bb machine remove <id-or-name>`.
+
+The server's own machine can't be removed.
+
+## Check it worked
+
+The machine appears in **Settings → Machines** as online, and in the composer's **Environment** picker. From a terminal:
+
+```bash
+bb machine list
+```
+
+lists it with its ID, type and connection status.
+
+## Related troubleshooting
+
+- **The dialog shows Set up machine access instead of a command.** Your server only listens on its own computer. Choose bb connect or a Manual address first.
+- **The command fails with a connection error.** The new computer can't reach the address in the command. Check that the Manual address works from that computer, or use bb connect.
+- **The machine shows as offline after a reboot.** On a container or a Linux system without systemd, start the daemon again or run the command from a fresh **Add a machine**. If its access was revoked, use **Reconnect**.
+- **A thread on the new machine can't find Claude Code or Codex.** Agents run on the machine, so install and sign in to them there. `bb machine provider-cli status <machine>` shows what's installed.

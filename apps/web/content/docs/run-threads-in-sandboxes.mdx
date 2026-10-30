@@ -1,0 +1,136 @@
+---
+title: Run threads in sandboxes, containers and VMs
+description: Use this when you want threads to run somewhere other than your own computer. Install the Modal Sandbox plugin for a fresh cloud sandbox per thread, or add your own VM or container as a machine and pick it for each thread.
+type: how-to
+sources:
+  - plugins/environment-modal-sandbox/**
+  - apps/app/src/components/pickers/EnvironmentPicker.tsx
+  - apps/app/src/components/dialogs/AddMachineDialog.tsx
+  - apps/server/src/assets/install-machine.sh
+  - apps/cli/src/commands/thread/spawn.ts
+since: 0.43.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+Use this when you want an agent to work away from your own computer: in a disposable cloud sandbox, in a container, or on a VM you control.
+
+In bb, each of these is a machine. A thread runs on the machine you pick, in a checkout of your project there. [Machines, servers and the host daemon](/docs/machines-servers-and-the-host-daemon) explains how machines connect.
+
+## Choose an option
+
+| Option | What you get | Lifetime | Set up once |
+| --- | --- | --- | --- |
+| **Modal Sandbox** plugin | A new cloud sandbox for each thread, created when the thread starts | Removed after its last thread is archived | A Modal account and token |
+| **Your own VM or container**, added as a machine | A computer you manage that runs any number of threads | Until you remove it | Run the Add a machine command inside it |
+| **Worktree** on an existing machine | A separate Git worktree on the same computer, not a sandbox | Until the thread is archived | Nothing |
+
+bb has no built-in Docker option and no other sandbox provider today. Plugins can add more; see the [Plugin SDK](/docs/plugin-sdk).
+
+## Use Modal Sandbox
+
+Modal Sandbox is an experimental plugin that ships with bb. Modal bills its usage to your Modal account.
+
+### Before you start
+
+- A [Modal](https://modal.com) account and an API token. `modal token new` writes one to `~/.modal.toml`.
+- A project with a Git remote that the sandbox can clone.
+- A route the sandbox can use to reach your server, such as bb connect. See [Set up remote access](/docs/set-up-remote-access).
+- Agents signed in inside the sandbox. The default image includes Claude Code, Codex and Pi; give them credentials through **Settings → Environment variables**, which apply to every machine.
+
+### Install and connect it
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+1. Install **Modal Sandbox [Experimental]** from the plugin marketplace.
+2. Open **Modal Sandbox [Experimental]** under **Plugins** in the Settings sidebar.
+3. Enter the **Modal token id** and **Modal token secret**.
+4. Optionally change **Modal app name** (default `bb-sandboxes`) and **Hibernate after idle (minutes)** (default 15).
+5. Under **Sandbox sizes** and **Images**, add presets if you want a choice of CPU, memory or Docker image per thread, then choose **Save changes**.
+
+<Screenshot
+  src="/docs-images/run-threads-in-sandboxes/modal-settings"
+  alt="The Modal Sandbox [Experimental] settings page has Modal token id and Modal token secret fields, followed by Modal app name and Hibernate after idle."
+  width={750}
+  height={500}
+/>
+
+</Tab>
+<Tab value="CLI">
+
+```bash
+bb plugin install environment-modal-sandbox
+bb plugin config environment-modal-sandbox
+```
+
+Set the token in the plugin's settings, then check it without starting a sandbox:
+
+```bash
+bb modal account inspect --json
+```
+
+</Tab>
+</Tabs>
+
+### Start a thread in a sandbox
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+1. In the composer, choose the project, then open the **Environment** picker.
+2. Choose **Modal Sandbox**.
+3. If you added several sizes or images, choose them from the sandbox options chip next to it.
+4. Send your message.
+
+<Screenshot
+  src="/docs-images/run-threads-in-sandboxes/environment-picker-modal"
+  alt="The composer's Environment picker lists Modal Sandbox between Project checkout and Reuse existing."
+  width={740}
+  height={310}
+/>
+
+bb creates the sandbox, clones the project, runs your `.bb-env-setup.sh` and starts the agent. The thread shows each step while it prepares.
+
+</Tab>
+<Tab value="CLI">
+
+```bash
+bb thread spawn --project <project-id> --environment-provider modal-sandbox --prompt "Fix the failing tests"
+```
+
+Add `--machine-inputs '{"preset":"Large","image":"Node 22"}'` to pick a size preset and image by the names you gave them.
+
+</Tab>
+</Tabs>
+
+### How long a sandbox lives
+
+- **Idle pause:** after 15 idle minutes, bb saves the sandbox's files and stops it. Open terminals keep it awake. It resumes when you send a message; setup doesn't run again, and interrupted turns aren't replayed.
+- **24-hour limit:** Modal stops any sandbox after 24 hours of running. Changes since the last pause may be lost, so let it pause or commit your work before then.
+- **Removal:** the sandbox is removed after its last thread is archived. `.worktreeinclude` doesn't apply; put secrets in **Settings → Environment variables** instead.
+
+## Use your own VM or container
+
+Any Linux or macOS computer you can open a terminal on can be a machine: a cloud VM, an SSH box or a long-running container.
+
+1. In bb, open **Settings → Machines → Add a machine** and copy the **macOS or Linux** command.
+2. Run it inside the VM or container. It needs Node.js 22.19 or newer, npm and `curl`.
+3. Pick the machine in the composer's **Environment** picker for each thread, or pass `--machine "<machine name>"` to `bb thread spawn`.
+
+The machine connects out to your server, so you don't need to open ports on it. In a container without systemd, the daemon runs in the background but doesn't start again after the container restarts; run the command again or start it from your container's entrypoint.
+
+To let agents act freely inside the VM but not on your laptop, set each machine's **Permission limit** in **Settings → Machines** → the machine. Full steps are in [Add a machine](/docs/add-a-machine).
+
+## Check it worked
+
+- A sandbox or VM thread shows the machine's name in the composer's **Environment** picker.
+- `bb machine list --all` lists sandboxes alongside your other machines.
+- For Modal, `bb modal account inspect --json` succeeds and your Modal dashboard shows the sandbox while the thread runs.
+
+## Related troubleshooting
+
+- **Modal Sandbox shows that setup is required.** Enter both the Modal token id and token secret in the plugin's settings.
+- **The sandbox starts but cloning fails.** The project needs a Git remote, and the sandbox needs access to it. The machine stays so you can retry or remove it with `bb machine remove <machine> --yes`.
+- **The plugin page says "Machines cannot reach this bb yet".** Choose **Set up machine access** and set up bb connect, or a Manual address the sandbox can reach.
+- **The agent in the sandbox isn't signed in.** Give it credentials through **Settings → Environment variables**.

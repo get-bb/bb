@@ -1,0 +1,96 @@
+---
+title: Run bb on an always-on machine
+description: Use this when you want bb to keep working while your laptop sleeps. Run the bb server on a desktop, home server or VM that stays on, make it reachable, and connect your laptop, browser and phone to it.
+type: how-to
+sources:
+  - packages/bb-app/src/launcher.ts
+  - packages/bb-app/README.md
+  - apps/desktop/src/menu.ts
+  - apps/desktop/src/server-url-dialog.ts
+  - plugins/keep-awake/**
+  - docs/multiple-devices.md
+since: 0.0.30
+owner: brsbl
+verified: 2026-10-30
+---
+
+Use this when you want threads to keep running while your laptop is closed: one computer that stays on runs the bb server, and your laptop, browser and phone connect to it.
+
+Your threads, projects and settings live on the computer that runs the server, and agents run on its machines. The laptop only shows them. [Machines, servers and the host daemon](/docs/machines-servers-and-the-host-daemon) explains the split.
+
+## 1. Start bb on the always-on machine
+
+Pick a computer that doesn't sleep: a desktop, a home server or a cloud VM running macOS or Linux.
+
+<Tabs items={["Desktop app", "Terminal"]}>
+<Tab value="Desktop app">
+
+Install the bb desktop app on that computer and open it. The app runs the server while the app is running.
+
+</Tab>
+<Tab value="Terminal">
+
+On a computer without a screen, run bb from npm. It needs Node.js 22.19, 24 or 26, and Git.
+
+```bash
+npx bb-app@latest
+```
+
+This starts the server and the computer's own host daemon, keeps data in `~/.bb`, and serves bb at `http://localhost:38886`. If either process exits unexpectedly, bb restarts it. Stop it with Ctrl+C, or from another terminal with `npx bb-app stop`.
+
+</Tab>
+</Tabs>
+
+Already have threads on your laptop? [Move your server](/docs/move-your-server-to-another-machine) to the always-on machine instead of starting fresh.
+
+## 2. Keep it running
+
+- **Turn off sleep** on that computer. The bundled **Keep Awake** plugin keeps macOS and Windows machines awake while bb runs; choose them in **Settings → Keep Awake**.
+- **Start bb after a reboot.** `npx bb-app` doesn't install a service for the server. Start it from your system's own service manager, such as a systemd unit or a launch agent, or open the desktop app at login.
+
+## 3. Make it reachable
+
+The server listens only on its own computer until you choose a route. Pick one in [Set up remote access](/docs/set-up-remote-access):
+
+- **bb connect:** sign the server in to your bb account. It gets a private `https://<handle>.getbb.app` address that works from anywhere.
+- **Tailscale Serve:** a private HTTPS address on your tailnet.
+
+## 4. Connect your laptop, browser and phone
+
+<Tabs items={["Desktop app", "Browser", "Phone"]}>
+<Tab value="Desktop app">
+
+1. Open **Window → Server**.
+2. With bb connect, choose **Sign in to bb Connect…** if it's shown; your servers then appear in the menu. Otherwise choose **Add Server…**, enter the server's address and an optional name, and choose **Save**.
+3. Choose the server in the **Server** menu.
+
+When the app points at another server, it stops running a server on this computer. Choose **This Mac** (**This Computer** on Linux and Windows) to go back.
+
+</Tab>
+<Tab value="Browser">
+
+Open the server's address, such as `https://<handle>.getbb.app` or your Tailscale Serve address.
+
+</Tab>
+<Tab value="Phone">
+
+Pair the bb mobile app with the server. See [Use bb on your phone](/docs/use-bb-on-your-phone).
+
+</Tab>
+</Tabs>
+
+## 5. Optional: run agents on your laptop too
+
+Connecting the laptop as a client doesn't let agents run on it. To run some threads on the laptop, add it as a machine from **Settings → Machines → Add a machine**. See [Add a machine](/docs/add-a-machine).
+
+## Check it worked
+
+- **Settings → Machines** shows the always-on computer with the `server` badge.
+- Close the laptop, then open bb from your phone or a browser: threads you started keep running.
+- In the desktop app, **Window → Server** has the always-on server checked.
+
+## Related troubleshooting
+
+- **Nothing loads while the always-on computer is asleep or off.** Every app and machine depends on the server. Keep it awake and on.
+- **The desktop app shows the wrong server.** All windows show the server chosen in **Window → Server**. Pick the one you want there.
+- **`npx bb-app` exits right away.** Another bb is already running with the same data directory. Stop it with `npx bb-app stop`, or connect to it instead.

@@ -1,0 +1,98 @@
+---
+title: Move your server to another machine
+description: Use this when the bb server should run on a different computer, such as a new laptop or an always-on desktop. Turn on the Server move experiment, add the new computer as a machine, then choose Move server here or run bb server move.
+type: how-to
+sources:
+  - apps/app/src/components/machines/MoveServerDialog.tsx
+  - apps/app/src/components/machines/server-move.ts
+  - apps/app/src/components/machines/OldServerCopySection.tsx
+  - apps/server/src/services/server-move/**
+  - apps/cli/src/commands/server.ts
+since: 0.43.3
+owner: brsbl
+verified: 2026-10-30
+---
+
+Use this when the computer that runs your bb server is being replaced, or when you want the server on a computer that stays on. Your threads, settings and plugin data move; every machine and app switches to the new server; the old computer keeps running as a regular machine.
+
+Moving the server is experimental and off by default.
+
+## Before you start
+
+- **Turn on the experiment:** **Settings → Experiments → Server move**, or `bb settings experiment serverMove true`.
+- **Add the new computer as a machine** and keep it online. See [Add a machine](/docs/add-a-machine).
+- **The new computer must run macOS or Linux,** and the same bb version as the server or an older one; it updates during the move.
+- **The server must run its own machine,** as it does when you use the desktop app or `npx bb-app`.
+- **Finish or stop running work.** Moving stops every running turn and pauses scheduled automations.
+
+## What moves and what stays
+
+| Moves to the new server | Stays where it is |
+| --- | --- |
+| The database: threads, projects and their history | Worktrees and project checkouts, on the machines that own them |
+| Settings and plugin data | Thread storage, on the machine that owns it |
+| Attachments | The old computer's own files outside bb's data directory |
+
+With bb connect, every machine and app keeps the same `getbb.app` address. Without it, you give the new server's address during the move.
+
+## Move the server
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+1. Open **Settings → Machines**.
+2. Open the **⋯** menu on the new computer and choose **Move server here**.
+3. Read the checklist. Fix anything under **Fix before moving**, then choose **Check again**.
+4. If you don't use bb connect, enter the **New server address** that every machine and app will use, and choose **Check address**.
+5. Choose **Stop all and move**.
+
+The dialog shows each step, from **Stopping running work** to **Switching machines over**. Apps reconnect to the new server when it's done.
+
+</Tab>
+<Tab value="CLI">
+
+Check first; this prints the checklist and stops:
+
+```bash
+bb server move --to "<machine name>" --check
+```
+
+Then move. Without bb connect, add `--address` with the new server's URL:
+
+```bash
+bb server move --to "<machine name>"
+```
+
+Follow or stop a move with:
+
+```bash
+bb server move status
+bb server move cancel
+```
+
+`bb server move` exits with 0 once moved, 1 if the move fails or is cancelled, and 2 if it is waiting for the new server to confirm.
+
+</Tab>
+</Tabs>
+
+If the new computer already has bb server data, the move stops. To set that data aside in a dated folder instead of losing it, confirm it in the checklist, or pass `--archive-existing-data`. Existing data is never merged.
+
+## After the move
+
+- **The old computer becomes a regular machine.** bb on it won't start the old server again, so the two can't both run.
+- **The old data stays as a backup.** Open the old computer in **Settings → Machines** to find it, with **Delete old copy**. Keep it until you're happy with the new server; the old computer has to be online to delete it. CLI: `bb server delete-old-copy` on the old computer.
+- **If you ran the old server with `npx bb-app`,** run `bb server install-machine-service` on the old computer to keep it connected as a machine after reboots. The desktop app does this itself.
+
+## Check it worked
+
+- **Settings → Machines** shows the `server` badge on the new computer.
+- `bb server move status` shows the last move as finished.
+- Your threads open from every app, and a new thread runs.
+
+## Related troubleshooting
+
+- **Move server here is missing.** Turn on **Settings → Experiments → Server move**. The option appears only for a connected, persistent machine that isn't already the server, and not while another move is underway.
+- **The checklist says the new computer is offline.** Start bb's machine on that computer, or use **Reconnect** in **Settings → Machines**.
+- **The checklist says it runs a newer bb.** Update the current server first, then move.
+- **The move waits and `bb server move status` exits with 2.** The new server hasn't confirmed it took over. The old server stays up and read-only and finishes the move once the new one answers. `bb server move cancel` abandons the move and keeps the server where it was.
+- **The old copy won't start after an abandoned move.** `bb server unlock` lets it start again. Everything since the move is lost on that copy, so use it only as a last resort.

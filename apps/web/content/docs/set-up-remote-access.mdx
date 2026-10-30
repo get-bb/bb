@@ -1,0 +1,122 @@
+---
+title: Set up remote access
+description: Use this when you want to open bb from another device, or let other machines reach your server. bb listens only on its own computer by default; turn on bb connect for a private getbb.app address, or publish it on your own network with Tailscale Serve.
+type: how-to
+sources:
+  - plugins/connect/app.tsx
+  - plugins/connect/src/plugin.ts
+  - plugins/connect/src/cli.ts
+  - apps/app/src/components/settings/MachineAccessSettings.tsx
+  - apps/server/src/services/machines/server-access.ts
+  - apps/server/src/browser-request-guard.ts
+  - apps/web/src/routes/privacy.tsx
+  - docs/multiple-devices.md
+since: 0.0.30
+owner: brsbl
+verified: 2026-10-30
+---
+
+Use this when you want to open bb from your phone or another computer, or when you add a machine that has to reach your server.
+
+By default the bb server listens only on its own computer (`127.0.0.1`, port 38886), so nothing else can reach it. Pick one route below.
+
+## Choose a route
+
+| Route | Who can open bb | Works from | You need |
+| --- | --- | --- | --- |
+| **bb connect** | Only your bb account | Anywhere | A bb account |
+| **Tailscale Serve** | Devices your tailnet allows | Devices on your tailnet | Tailscale on the server and each device |
+| **Your own network address** | Anyone who can reach the address | That network | A trusted network you control |
+
+bb has no sign-in of its own. On the last two routes, anyone who can reach the address can run commands and read files through bb, so the network is your only protection. Never expose bb to the public internet without bb connect in front of it.
+
+## bb connect
+
+bb connect gives your server a private address, `https://<handle>.getbb.app`. Only someone signed in to your bb account can open it. The server keeps the connection open and reconnects after a restart.
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+1. Open **Settings → bb connect**; it's under **Plugins** in the Settings sidebar.
+2. Choose **Sign in to your bb account**. Confirm the code it shows on getbb.app, from any device.
+3. Once it shows **Connected**, open the `getbb.app` address it shows from any device.
+
+<Screenshot
+  src="/docs-images/set-up-remote-access/bb-connect-signin"
+  alt="Settings → bb connect, listed under Plugins in the Settings sidebar, shows a Sign in to your bb account button before this bb is signed in."
+  width={1130}
+  height={614}
+/>
+
+The **Remote access** switch keeps the address on or off without signing out.
+
+</Tab>
+<Tab value="CLI">
+
+```bash
+bb account login
+bb connect status
+```
+
+`bb connect off` and `bb connect on` turn remote access off and on. `bb connect servers` lists every server on your account.
+
+</Tab>
+</Tabs>
+
+### What the relay can see
+
+Traffic between your device and your server passes through the getbb.app relay. TLS protects it on the network, but the relay ends that TLS, so the content passes through it in readable form. bb doesn't record or store it; the relay caches only bb's own static files, such as its JavaScript and images. Treat the relay as a trusted middleman, not as end-to-end encryption. If your rules don't allow that, use Tailscale Serve instead. The [privacy policy](https://getbb.app/privacy) has the details.
+
+### Reconnecting
+
+When the connection drops, Settings → bb connect shows **Reconnecting…**: remote devices can't reach this bb right now, but local access still works. It reconnects on its own.
+
+## Tailscale Serve
+
+Tailscale Serve gives the server a private HTTPS address on your tailnet. Keep bb on its default local address and run, on the server's computer:
+
+```bash
+tailscale serve --bg --https=443 http://127.0.0.1:38886
+npx bb-app config set BB_APP_URL https://<machine>.<tailnet>.ts.net
+```
+
+Then open `https://<machine>.<tailnet>.ts.net` from any device on your tailnet. Tailscale's access rules decide who can reach it. Don't use Tailscale Funnel, which puts the address on the public internet.
+
+`BB_APP_URL` is needed for any hostname that isn't `localhost` or an IP address, such as a MagicDNS name or your own domain behind a reverse proxy. Without it, bb refuses the request and names the setting to fix.
+
+## Your own network address
+
+To let devices on a trusted network reach bb by IP address, start it listening on every network interface:
+
+```bash
+npx bb-app --server-bind-host 0.0.0.0
+```
+
+or set `BB_SERVER_BIND_HOST=0.0.0.0`. Use this only behind a network boundary you trust. In a container, also publish the port to the host.
+
+## Tell machines which route to use
+
+Machines you add and phones you pair need to know how to reach the server. Set this in **Settings → Machines → Machine access** (also shown in **Settings → Mobile**) under **Connection method**:
+
+- **bb connect:** "Use a private getbb.app address."
+- **Manual:** "Use your own domain or network address." Enter the **Server address**, such as your Tailscale Serve address. `localhost` won't work.
+
+From the CLI:
+
+```bash
+bb settings general defaultMachineAccess connect
+bb settings general machineServerUrl https://<machine>.<tailnet>.ts.net
+```
+
+## Check it worked
+
+- Open the address from another device: bb loads with your threads.
+- **Settings → Machines → Machine access** shows **Ready** for the connection method you chose.
+- `bb connect status` shows the connection when you use bb connect.
+
+## Related troubleshooting
+
+- **The page says the host must be localhost, an IP address, or the hostname in `BB_APP_URL`.** Run `npx bb-app config set BB_APP_URL <the address you open>`.
+- **You can't reach bb from another device after updating.** bb stopped listening on every network interface by default in 0.36.0. Use bb connect or Tailscale Serve, or opt back in with `--server-bind-host 0.0.0.0` on a trusted network.
+- **bb connect says this bb is signed out.** Choose **Sign in to your bb account** in Settings → bb connect, or run `bb account login`.
+- **A machine or phone can't be added because of a machine limit.** Revoke a device you no longer use in the getbb.app dashboard.

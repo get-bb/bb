@@ -1,0 +1,119 @@
+---
+title: Use bb on your phone
+description: Use this when you want to follow and reply to threads from your phone. Install the iOS app from TestFlight or the Android APK from Settings → Mobile, then pair it with your server through bb connect or a server address.
+type: how-to
+sources:
+  - apps/app/src/components/settings/MobileAppSection.tsx
+  - apps/app/src/components/settings/MachineAccessSettings.tsx
+  - packages/domain/src/mobile-app.ts
+  - plugins/connect/app.tsx
+  - apps/mobile/src/screens/**
+  - docs/platform-support.md
+since: 0.40.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+Use this when you want to read threads, answer questions, approve actions and start new threads from your phone.
+
+The phone app is a client for your bb server, like a browser tab. Agents keep running on your machines; the phone shows them. Your server has to be on and reachable.
+
+## 1. Install the app
+
+Open **Settings → Mobile** in bb on your computer, or run `bb settings mobile-app` to print the links.
+
+<Screenshot
+  src="/docs-images/use-bb-on-your-phone/settings-mobile"
+  alt="Settings → Mobile shows the connection method for your phone, with a Set up bb connect button, and a Join iOS TestFlight button below it."
+  width={760}
+  height={431}
+/>
+
+<Tabs items={["iPhone", "Android"]}>
+<Tab value="iPhone">
+
+1. Install Apple's TestFlight app.
+2. Choose **Join iOS TestFlight**, or open [testflight.apple.com/join/T9MayTMb](https://testflight.apple.com/join/T9MayTMb) on your iPhone.
+3. Install bb from TestFlight.
+
+</Tab>
+<Tab value="Android">
+
+1. Choose **Download Android APK**, or open [the APK download](https://github.com/get-bb/bb/releases/download/android-testing/bb-android.apk) on your phone.
+2. Open the file to install it. Allow installs from your browser if Android asks.
+
+Google Play isn't available yet. Settings → Mobile shows when a newer APK is out; download it again to update.
+
+</Tab>
+</Tabs>
+
+You can also open your server's address in the phone's browser and add it to the home screen. It's the same app the phone app loads.
+
+## 2. Pair it with your server
+
+<Tabs items={["bb connect", "Server address"]}>
+<Tab value="bb connect">
+
+Works from anywhere, over Wi-Fi or mobile data.
+
+1. On your computer, open **Settings → Mobile**. Under **Accessing bb from your phone**, choose **bb connect** as the connection method. If it shows **Set up bb connect**, choose it and sign in to your bb account.
+2. Under **Pair your phone**, choose **Add mobile device**. A QR code and a pairing code appear.
+3. In the phone app, choose **Connect with bb connect**, then **Scan QR code**, or type the **Pairing code**. Choose **Pair**.
+
+The code works once and expires after 10 minutes. From a terminal, `bb connect machine-code` prints a code.
+
+</Tab>
+<Tab value="Server address">
+
+Works when the phone can reach your server directly, such as on the same Wi-Fi or on your tailnet.
+
+1. Make the server reachable at an address your phone can open, for example with Tailscale Serve. See [Set up remote access](/docs/set-up-remote-access).
+2. In the phone app, enter the address under **Server URL**, add an optional **Label**, and choose **Connect**.
+
+On an iPhone, plain `http://` works only for local network IP addresses and `.local` names. Use an HTTPS address, such as Tailscale Serve, for anything else. A direct address has no sign-in: anyone who can reach it can use bb.
+
+</Tab>
+</Tabs>
+
+## 3. Turn on notifications
+
+The bundled Push notifications plugin sends your phone a notification when a thread asks a question, finishes or fails. No setup is needed on the server.
+
+- In the phone app, open **Settings → This device → Notifications** and turn on **Push notifications** for the server.
+- To change which threads notify you, open a thread's menu and choose **Notifications**.
+
+Push needs bb connect or an HTTPS address, and your server must be able to reach `exp.host`.
+
+## Use several servers
+
+The app saves every server you add. Open **Settings → This device → Servers**, or long-press the app icon and choose **Device settings**, then:
+
+- **Add server** to pair another server.
+- Tap a server under **Saved servers** to switch to it.
+
+## What works on the phone
+
+Threads, projects, settings and plugin screens are the same as in the browser.
+
+| Works | Doesn't work on the phone |
+| --- | --- |
+| Reading and replying to threads, answering questions and approvals | **Open in** your editor, and the native folder picker; the remote folder browser works |
+| Starting threads on any of your machines | Signing in to agents; do that in a terminal on the machine |
+| Voice dictation in the composer | The built-in browser, which is part of the desktop app |
+| Push notifications | Plugins don't run on the phone; they run on your server and machines |
+
+## Remove a phone
+
+Each phone paired through bb connect appears in the getbb.app dashboard's machine list, where you can revoke it. Its session stops working within about 20 seconds. Every phone uses one of your account's machine slots.
+
+## Check it worked
+
+The phone app opens your server's thread list. In **Settings → This device → Servers**, your server is listed under **Saved servers**.
+
+## Related troubleshooting
+
+- **Pair your phone doesn't appear in Settings → Mobile.** It appears once bb connect is the connection method, the server is signed in, remote access is on and connected.
+- **The pairing card says your account has reached its machine limit.** Revoke a phone or machine you no longer use in the getbb.app dashboard, then make a new code.
+- **"Code expired".** Choose **Generate a new code**, or **Add mobile device** again.
+- **"Could not reach the server".** The phone can't open that address. Check that it works in the phone's browser, or pair with bb connect.
+- **"Push needs HTTPS or bb connect".** Pair over bb connect or use an HTTPS address.

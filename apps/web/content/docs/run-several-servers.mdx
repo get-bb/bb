@@ -1,0 +1,86 @@
+---
+title: Run several servers
+description: Use this when you want separate bb servers, such as work and personal, and switch between them. Each server keeps its own threads and settings; the desktop app and the phone app save several servers and show one at a time.
+type: how-to
+sources:
+  - apps/desktop/src/menu.ts
+  - apps/desktop/src/server-url-dialog.ts
+  - apps/app/src/components/commands/CommandPaletteBody.tsx
+  - apps/mobile/src/screens/settings/ServersScreen.tsx
+  - apps/mobile/src/screens/settings/AddServerScreen.tsx
+  - packages/bb-app/src/launcher.ts
+since: 0.43.3
+owner: brsbl
+verified: 2026-10-30
+---
+
+Use this when you want two or more separate bb servers, for example one for work and one for personal projects, and want to switch between them from one app.
+
+Each server is fully separate: its own threads, projects, settings, plugins and machines. Nothing syncs between servers. If you only want agents to run on more computers, you don't need a second server; [add a machine](/docs/add-a-machine) to the one you have.
+
+## How switching works
+
+- **One server at a time.** The desktop app shows one server in all its windows. Switching reloads every window.
+- **Saved servers.** The desktop app and the phone app each keep a list of servers to switch between. The lists aren't shared between devices.
+- **Browsers** open one server per address, so you can keep each server in its own tab.
+
+## Start a second server
+
+Every server runs on a computer of its own, or in its own data directory on the same computer.
+
+- **On another computer:** install bb there, or run `npx bb-app@latest`. See [Run bb on an always-on machine](/docs/run-bb-on-an-always-on-machine).
+- **On the same computer:** give the second server its own data directory and ports:
+
+  ```bash
+  npx bb-app@latest --data-dir ~/.bb-work --server-port 48886 --host-daemon-port 48887
+  ```
+
+  The default server uses `~/.bb` and port 38886, so the two never touch each other's data.
+
+To reach a server from other devices, give it a route in [Set up remote access](/docs/set-up-remote-access). Each server signed in to your bb account gets its own `getbb.app` address.
+
+## Switch between servers
+
+<Tabs items={["Desktop app", "Phone", "CLI"]}>
+<Tab value="Desktop app">
+
+1. Open **Window → Server**. It lists **This Mac** (**This Computer** on Linux and Windows), every bb connect server on your bb account, and servers you saved.
+2. To save a server by address, choose **Add Server…**, enter its URL and an optional name, and choose **Save**.
+3. To see your bb connect servers, choose **Sign in to bb Connect…** if it's shown.
+4. Choose a server to switch to it.
+
+You can also open the command palette and choose **Switch to** *server name*. To rename or remove a saved server, select it and choose **Edit Server…**; leave the URL empty to remove it.
+
+</Tab>
+<Tab value="Phone">
+
+1. In the bb app, open **Settings → This device → Servers**. You can also long-press the app icon and choose **Device settings**.
+2. Choose **Add server**, then **Connect with bb connect** or enter a **Server URL**.
+3. Under **Saved servers**, tap a server to make it active. Long-press it to **Use this server** or **Remove** it.
+
+</Tab>
+<Tab value="CLI">
+
+The `bb` command talks to one server, set by `BB_SERVER_URL`. Inside a thread it's already set to that thread's server. From your own terminal, point it at another server for one command:
+
+```bash
+BB_SERVER_URL=http://127.0.0.1:48886 bb status
+```
+
+</Tab>
+</Tabs>
+
+## Use one computer as a machine for several servers
+
+A computer can run threads for more than one server. Run **Add a machine** from each server and run each command on that computer. Each server gets its own host daemon, port and folder there (`~/.bb-machines/<server-host>`), so their files stay apart.
+
+## Check it worked
+
+- The desktop **Window → Server** menu has a check next to the server you're on, and the sidebar shows that server's projects.
+- `bb status` prints the data directory of the server the CLI is talking to.
+
+## Related troubleshooting
+
+- **A setting or theme is missing after switching.** Settings belong to each server. Set them again on the other server.
+- **The second server won't start.** Another bb already uses that data directory or port. Pick a different `--data-dir`, `--server-port` and `--host-daemon-port`.
+- **Edit Server… is greyed out.** It edits only saved and bb connect servers, not **This Mac**.
