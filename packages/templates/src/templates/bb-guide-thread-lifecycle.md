@@ -51,6 +51,10 @@ Lifecycle:
   With --send-at, an accepted turn on a thread that already has a retry
   waiting joins that retry instead of queuing another nudge: the waiting row
   moves to the new time and the response names it.
+  A newer message sent to the thread overtakes a queued retry: a retry that
+  would continue an accepted turn is dropped, and one carrying input the
+  provider never accepted stays queued as Not sent (`waitingOn.kind`
+  `superseded`) until you send or delete it.
   SDK: `threads.retry({ threadId, turnRequestId?, sendAt?, reason? })`.
 
   bb thread archive [id]                   Archive a thread (and children/hidden forks)
