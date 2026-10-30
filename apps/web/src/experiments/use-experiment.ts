@@ -1,5 +1,5 @@
 import { useRouteContext } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 
 import { exposeExperiment } from "../landing/analytics";
 import {
@@ -34,16 +34,26 @@ export function useExperiment<K extends ExperimentKey>(
   return experimentVariant(useExperimentBootstrap(), key);
 }
 
-export function useExperimentExposure(
+export function useExperimentExposer(
   key: ExperimentKey,
   devices: ExperimentDevices,
-): void {
+): () => void {
   const bootstrap = useExperimentBootstrap();
   const assigned =
     !bootstrap.preview && bootstrap.featureFlags[key] !== undefined;
-  useEffect(() => {
+  return useCallback(() => {
     if (assigned) {
       exposeExperiment(key, devices);
     }
   }, [assigned, key, devices]);
+}
+
+export function useExperimentExposure(
+  key: ExperimentKey,
+  devices: ExperimentDevices,
+): void {
+  const expose = useExperimentExposer(key, devices);
+  useEffect(() => {
+    expose();
+  }, [expose]);
 }

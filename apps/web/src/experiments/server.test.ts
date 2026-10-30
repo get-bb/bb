@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { NO_EXPERIMENTS } from "./flags";
+import { EXPERIMENT_KEYS, NO_EXPERIMENTS } from "./flags";
 import {
   EXPERIMENT_CACHE_CONTROL,
   evaluateFlags,
@@ -160,7 +160,7 @@ describe("/flags evaluation", () => {
         body: {
           api_key: KEY,
           distinct_id: EXISTING_ID,
-          flag_keys_to_evaluate: ["homepage-qa-check"],
+          flag_keys_to_evaluate: EXPERIMENT_KEYS,
           geoip_disable: true,
         },
       },
