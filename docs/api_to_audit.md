@@ -727,8 +727,11 @@ New Thread environment picker renders beside that provider. Its props are
 `{ kind: "existing-host", hostId }` or `{ kind: "new-host" }`. The control
 reports `{ status: "ready", value }` or `{ status: "blocked", reason }`.
 Inputs are persisted and readable by every plugin, so they must hold no
-secrets. The branch picker, branch hook and checkout-state hook are the host's
-branch and checkout primitives for such controls.
+secrets. The root New Thread composer also keeps the last ready value in
+browser storage per project, provider and machine, and passes it back as
+`value` the next time that combination is picked. The branch picker, branch
+hook and checkout-state hook are the host's branch and checkout primitives
+for such controls.
 
 Docs: `frontend-components.md` (environment row, branch and checkout
 primitives). Only the API index names the slot registration itself.

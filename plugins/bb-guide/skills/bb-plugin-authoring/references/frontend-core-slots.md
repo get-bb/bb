@@ -183,7 +183,10 @@ onChange }` — the control the New Thread environment picker renders beside
   `{ environmentProviderId, component }`. `projectId` is null in projectless
   compose; `target` is `{ kind: "existing-host", hostId }` or
   `{ kind: "new-host" }`; `value` is the inputs the selection will carry
-  (null until `onChange` supplies one). Call
+  (null until `onChange` supplies one). The root New Thread composer starts
+  from the last ready value the control reported for the same project,
+  provider and machine in that browser, so it can name a branch or path that
+  no longer exists. Call
   `onChange({ status: "ready", value })` with a value the provider's schema
   accepts, or `onChange({ status: "blocked", reason })` to disable submit with
   that reason; the server parses the value with the schema at create time. A

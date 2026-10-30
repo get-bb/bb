@@ -3612,6 +3612,9 @@ export interface PluginEnvironmentProviderInputsProps {
   /**
    * The `inputs` value the selection will carry: null until `onChange`
    * supplies one.
+   * The root New Thread composer starts from the last ready value this control
+   * reported for the same project, provider and machine in this browser, so
+   * the value can name a branch or path that no longer exists.
    * The server parses it with the provider's `inputs` schema at create time,
    * so the component only has to produce a value that schema accepts.
    */
