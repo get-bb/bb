@@ -1,0 +1,105 @@
+---
+title: An agent won't sign in or can't be found
+description: bb says an agent isn't installed or signed in, though it works in your terminal. Install it and sign in on the machine where the thread runs.
+type: troubleshooting
+sources:
+  - apps/app/src/components/promptbox/banner/ProviderCliBanner.tsx
+  - apps/app/src/components/pickers/model-load-error-message.tsx
+  - plugins/provider-claude-code/server.ts
+  - plugins/provider-claude-code/src/bridge/missing-cli-error.ts
+  - plugins/provider-claude-code/src/bridge/provider-maintenance.ts
+  - plugins/provider-codex/server.ts
+  - plugins/provider-pi/src/declaration.ts
+  - plugins/provider-acp/src/known-agents.ts
+  - packages/process-utils/src/host-toolchain.ts
+since: 0.48.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+| What you see | Likely cause | Fix |
+| --- | --- | --- |
+| "Claude Code not installed", or "CLI not found" in the model picker | bb can't find the CLI on the thread's machine | Click **Install Claude Code**, or [install it yourself](#claude-code-not-installed) |
+| "Claude Code update required" | The CLI is older than bb supports | Click **Update Claude Code** |
+| "Could not load models for Claude Code." with "Not signed in" | The CLI on that machine has no working login | [Sign in on that machine](#not-signed-in) |
+| "Your Claude session expired. Run `claude`, then reload." | The saved login expired | Run `claude` on that machine, sign in, then reload bb |
+| It works in your terminal but not in bb | Another machine, user or environment | See [It works in my terminal](#it-works-in-my-terminal) |
+| The agent isn't in the picker | Its provider or plugin is off | See [The agent is missing from the picker](#the-agent-is-missing-from-the-picker) |
+
+## Claude Code not installed
+
+Messages name the agent you picked. The banner reads "Install Claude Code before starting a thread." and blocks sending.
+
+<Screenshot
+  src="/docs-images/an-agent-wont-sign-in-or-cant-be-found/agent-not-installed"
+  alt="The composer shows a Pi not installed banner with an Install Pi button, and the model picker below it says Could not load models for Pi with a CLI not found link."
+  width={752}
+  height={308}
+/>
+
+1. Click **Install Claude Code** in the banner, or install the CLI from a terminal on that machine: [Claude Code](https://claude.com/claude-code), [Codex](https://developers.openai.com/codex/cli), [Pi](https://pi.dev).
+2. Pick the agent again. bb checks each time, so no restart is needed.
+
+**Settings → Updates → Provider CLIs** lists every machine's agent CLIs with an install or update button.
+
+### bb can't find a CLI that is installed
+
+bb looks on your login shell's `PATH` (what a new terminal gets) and always in:
+
+- `~/.local/bin`
+- `~/.local/share/mise/shims`, `~/.asdf/shims`, `~/.asdf/bin`
+- `~/.volta/bin`
+- `/opt/homebrew/bin` on macOS, `/usr/local/bin`, `/usr/bin`, `/bin`
+
+Otherwise add the CLI's folder to `PATH` in your shell profile, and check that `command -v claude` prints it in a new terminal.
+
+For Claude Code only, you can set `BB_CLAUDE_CODE_EXECUTABLE` to the full path of `claude` in bb's environment, then restart bb.
+
+## Claude Code update required
+
+Click **Update Claude Code**, use **Settings → Updates**, or update the CLI the way you installed it.
+
+## Not signed in
+
+Sign in from a terminal on the thread's machine, as the user bb runs as, then open the picker again:
+
+| Agent | Sign in with |
+| --- | --- |
+| Claude Code | `claude`, then sign in |
+| Codex | `codex login`, or `codex login --device-auth` over SSH |
+| Pi | `pi`, then sign in |
+| Cursor | `cursor-agent login` |
+| opencode | `opencode auth login` |
+| omp | `omp login` |
+| Grok Build | `grok login` |
+| Hermes Agent | `hermes login` |
+
+### It works in my terminal
+
+- **The thread runs on another machine.** It runs on the machine picked in the composer. Sign in there.
+- **bb runs as another user**, for example a systemd service as `root`. Sign in as that user, or run bb as yourself.
+- **Claude Code's login isn't where bb looks.** bb looks for it in the macOS Keychain or `~/.claude/.credentials.json`.
+- **The API key is only in your shell.** The desktop app reads only `PATH` and proxy settings from your shell profile. Add keys such as `ANTHROPIC_API_KEY` in **Settings → Environment variables**.
+
+## Your Claude session expired. Run `claude`, then reload.
+
+Other agents name their own command, such as `codex`. Run it on that machine, sign in, then reload bb.
+
+## bb could not find the Claude Code CLI on this machine
+
+A thread started and the CLI was missing. Fix it as in [Claude Code not installed](#claude-code-not-installed).
+
+## The agent is missing from the picker
+
+- In **Settings → Providers**, open the agent's actions menu and choose **Enable**, or run `bb provider enable <provider-id>`.
+- If it shows **Unavailable**, turn its plugin on in **Settings → Installed plugins**, or run `bb plugin enable <plugin-id>`.
+- Add ACP agents such as Cursor and opencode under **ACP providers** in the Settings sidebar's **Plugins** group.
+
+`bb provider list --all` shows every agent and whether it's enabled.
+
+## What to send when you ask for help
+
+- `bb --version`, your operating system, and the agent's version on the thread's machine (`claude --version`).
+- `bb provider list --all` and `bb provider models <provider-id>`.
+- How you start bb, and `command -v claude` in a new terminal on the thread's machine.
+- The exact banner or error, and the server and host daemon logs from `~/.bb/logs/`.
