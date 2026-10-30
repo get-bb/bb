@@ -51,9 +51,10 @@ export function useExperimentExposer(
 export function useExperimentExposure(
   key: ExperimentKey,
   devices: ExperimentDevices,
+  seen = true,
 ): void {
   const expose = useExperimentExposer(key, devices);
   useEffect(() => {
-    expose();
-  }, [expose]);
+    if (seen) expose();
+  }, [expose, seen]);
 }
