@@ -1427,8 +1427,10 @@ function LandingPage() {
       className="wrap"
       data-qa-check={qaCheck === "test" ? qaCheck : undefined}
     >
-      <SiteNav sticky={stickyHeader === "test"} />
-      <SiteNav downloadPage={headerDownload === "test"} />
+      <SiteNav
+        sticky={stickyHeader === "test"}
+        downloadPage={headerDownload === "test"}
+      />
 
       <header className="hero">
         <a className="updates-callout" href={LATEST_RELEASE_URL}>
