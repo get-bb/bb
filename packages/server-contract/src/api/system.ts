@@ -279,6 +279,24 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
     .strict(),
   z
     .object({
+      name: z.literal("new_thread_blocker"),
+      properties: z
+        .object({
+          reason: z.enum([
+            "agent_missing",
+            "agent_update",
+            "sign_in",
+            "model_unavailable",
+            "provider_selection",
+            "model_selection",
+            "project_setup",
+          ]),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
       name: z.literal("new_thread_submit"),
       properties: z
         .object({ outcome: z.enum(["started", "accepted", "failed"]) })

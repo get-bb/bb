@@ -3818,7 +3818,8 @@ in `apps/app/src/components/onboarding/onboarding-telemetry.ts`: the setup guide
 through `provider-cli-install-store`), `NewThreadComposer`'s `new_thread_submit` outcomes,
 `PluginCreateButton`'s `plugin_creation_started`, and Settings → Updates'
 changelog (`release_notes_opened`, inline or on the web). `bb plugin new` sends
-`plugin_creation_started` through the same SDK method.
+`plugin_creation_started` through the same SDK method. `NewThreadComposer` also
+reports `new_thread_blocker` once per blocker reason while a draft exists.
 `onboarding_operation` reports a guide action's started, succeeded or failed
 outcome with only a public agent id or counts.
 

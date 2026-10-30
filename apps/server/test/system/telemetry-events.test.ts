@@ -56,6 +56,10 @@ describe("client telemetry events", () => {
           },
         },
         {
+          name: "new_thread_blocker",
+          properties: { reason: "sign_in" },
+        },
+        {
           name: "onboarding_operation",
           properties: {
             entry: "replay",
@@ -199,6 +203,10 @@ describe("client telemetry events", () => {
         {
           name: "new_thread_submit",
           properties: { outcome: "failed", message: "private prompt" },
+        },
+        {
+          name: "new_thread_blocker",
+          properties: { reason: "sign_in", message: "Not signed in." },
         },
         {
           name: "onboarding_operation",
