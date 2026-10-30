@@ -1,0 +1,113 @@
+---
+title: Send, steer and queue messages
+description: Enter sends. While the agent works, Enter steers the current run and Command+Enter or Ctrl+Enter queues the message. Swap them in Settings → General.
+type: how-to
+sources:
+  - plugins/composer/src/**
+  - apps/app/src/components/promptbox/**
+  - apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx
+  - packages/client-core/src/prompt/threadDetailPromptSubmission.ts
+  - plugins/scheduled-send/**
+  - packages/domain/src/prompt-attachment-limits.ts
+  - apps/cli/src/commands/thread/actions.ts
+  - apps/cli/src/commands/thread/organization.ts
+since: 0.41.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+Type in the box at the bottom of the thread and press **Enter** to send. **Shift+Enter** starts a new line.
+
+| While the agent works | What happens | Use it when |
+| --- | --- | --- |
+| **Enter** steers | The message joins the current run now | The agent needs a correction or detail |
+| **Command+Enter** (Ctrl+Enter) queues | The message runs as the next turn | It's the next task |
+
+## Change what Enter does
+
+Set **Settings → General → Default thread followup behavior** to **Queue**; Command+Enter then steers.
+
+**Send options** (the arrow by send, or long-press on a phone) offers the other action. While the agent waits on a question or approval, messages queue until you answer.
+
+```sh
+bb thread tell <thread-id> "Also update the changelog" --mode queue
+```
+
+`bb thread tell` steers by default; `--mode auto` steers a running thread or starts a turn on an idle one.
+
+## Manage the queue
+
+Queued messages show in a **Queue** card above the box. On each:
+
+- **Send now**, **Edit** or **Delete** it.
+- Drag to reorder. Messages above "Messages above send together" go as one turn.
+
+With an empty box, Command+Enter sends the first queued message.
+
+```sh
+bb thread queue list <thread-id>
+bb thread queue send <thread-id> <message-id>
+bb thread queue delete <thread-id> <message-id>
+```
+
+## Stop the agent
+
+With the box empty, the send button becomes **Stop run**. Esc doesn't stop a run. Stopping pauses the queue.
+
+```sh
+bb thread stop <thread-id>
+```
+
+## Send a message later
+
+<Screenshot
+  src="/docs-images/send-steer-and-queue-messages/send-options"
+  alt="The Send options menu next to the send button is open, with Send later outlined."
+  width={758}
+  height={169}
+/>
+
+1. Type your message.
+2. Open **Send options** and choose **Send later…**.
+3. Pick a time under **When**, such as **In 1 hour**.
+4. Click **Schedule send**.
+
+```sh
+bb thread tell <thread-id> "Rerun the test suite" --send-at 2h
+```
+
+## Edit a message you already sent
+
+Hover over your message, choose **Edit message**, change it and press Enter. bb stops the thread if needed and replaces that turn and every later one. File changes stay; there is no undo for them. To keep this thread, [fork it](/docs/fork-hand-off-or-switch-models) instead.
+
+Works in Claude Code, Codex and Pi threads, for messages without images.
+
+```sh
+bb thread edit-message <thread-id> --message "New text"
+```
+
+## Start over with a clear context
+
+Send `/clear`, or run `bb thread clear <thread-id>`. The agent starts fresh in the same thread. Earlier messages are hidden from you and the agent; show them with **Settings → General → Show messages from before a context clear**.
+
+## Attach files and images
+
+Paste, drop, or click **+** → **Attach files**. Limits:
+
+| Rule | Detail |
+| --- | --- |
+| Size | Up to 35 MB per file |
+| HEIC | Not supported; convert to JPEG or PNG |
+
+From a terminal, pass `--file <path>` or `--image <path>` to `bb thread tell`.
+
+## Check it worked
+
+- A steered message appears in the thread while the agent works.
+- A queued message sits in the **Queue** card until its turn starts.
+- A scheduled message appears at the time you picked.
+
+## Related troubleshooting
+
+- Didn't steer: the thread was idle, so Enter sent a new turn.
+- Queue stuck after a stop: use **Send now**.

@@ -1,0 +1,112 @@
+---
+title: Choose a permission mode
+description: Each thread runs in Accept Edits, Approve for me or Full Access, picked under the box at the bottom of the thread. Plan Mode is separate; start it with /plan.
+type: how-to
+sources:
+  - packages/client-core/src/prompt/permission-mode-options.ts
+  - packages/client-core/src/prompt/effective-prompt-mode.ts
+  - apps/app/src/components/pickers/PermissionModePicker.tsx
+  - apps/app/src/components/thread/pending-interactions/**
+  - apps/app/src/views/MachineSettingsView.tsx
+  - apps/server/src/services/threads/thread-default-policy.ts
+  - plugins/provider-claude-code/server.ts
+  - plugins/provider-codex/server.ts
+  - plugins/provider-pi/src/declaration.ts
+  - plugins/provider-acp/src/declaration.ts
+  - apps/cli/src/commands/thread/helpers.ts
+  - apps/cli/src/commands/thread/interactions.ts
+since: 0.35.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+| Mode | The agent can | It asks you about |
+| --- | --- | --- |
+| **Accept Edits** | Edit files inside the thread's folder | Anything beyond the folder |
+| **Approve for me** (default) | The same as Accept Edits | Only high-risk requests; the agent's reviewer handles the rest |
+| **Full Access** | Anything on your machine, with no sandbox | Nothing |
+
+bb remembers your last choice for each project.
+
+:::warning[Full Access has no sandbox]
+The agent can run any command and change any file your account can.
+:::
+
+## Pick a mode for a thread
+
+1. Under the message box, click the current mode, such as **Accept Edits**.
+2. Choose a mode. It applies from your next message or steer.
+
+<Screenshot
+  src="/docs-images/choose-a-permission-mode/permission-picker"
+  alt="The permission mode picker under the message box is open, listing Accept Edits, Approve for me and Full Access."
+  width={744}
+  height={316}
+/>
+
+You can't change it while an approval is waiting or Plan Mode is on.
+
+```sh
+bb thread spawn --project <project-id> --prompt "Fix the flaky test" --permission-mode accept-edits
+bb thread tell <thread-id> "Now run the full suite" --permission-mode full
+```
+
+`--permission-mode` takes `accept-edits`, `auto` or `full`.
+
+## What each agent supports
+
+| Agent | Accept Edits | Approve for me | Full Access |
+| --- | --- | --- | --- |
+| Claude Code | Yes | Yes, via auto mode | Yes |
+| Codex | Yes | Yes, via automatic review | Yes |
+| Pi | No | No | Yes |
+| Other ACP agents | Yes | No | Yes |
+
+With only one supported mode, bb hides the picker.
+
+Claude Code runs Bash in its sandbox in Accept Edits and Approve for me, unless you turn off **Claude Code sandbox** in the **Claude Code provider** plugin's settings.
+
+## Limit a machine
+
+A machine's **Permission limit** is the highest mode its threads may use; higher requests run at the limit.
+
+1. Open **Settings → Machines** and choose the machine.
+2. Under **Permission limit**, choose a mode.
+
+Agents that need more, such as Pi, can't run there.
+
+## Answer an approval
+
+An **Approval needed** card appears above the box. Choose **Allow once**, **Allow for session** or **Deny**.
+
+bb [notifies you](/docs/get-notified). Turns started by an agent or automation deny instead of asking.
+
+```sh
+bb thread interactions list <thread-id>
+bb thread interactions approve <interaction-id> <thread-id>
+bb thread interactions deny <interaction-id> <thread-id>
+```
+
+## Plan before the agent changes anything
+
+Plan Mode works in Claude Code and Codex.
+
+1. Send `/plan` followed by what you want.
+2. On the **Ready to code?** card, choose **Approve plan** to carry it out, or **Keep planning**.
+
+From a terminal, add `--plan` to `bb thread tell` or `bb thread spawn`; leave with `bb thread cancel-plan <thread-id>`.
+
+## Child threads
+
+A child thread starts in its parent's mode, adjusted to its agent, unless you ask for another.
+
+## Check it worked
+
+- The picker shows the mode you chose.
+- In Accept Edits, a command outside the folder brings up **Approval needed**.
+
+## Related troubleshooting
+
+- Asked about everything: switch to **Approve for me** or **Full Access**.
+- "This machine limits permission mode to …": raise the machine's **Permission limit**, or use an agent that supports a lower mode.
+- "Provider … only supports … permission mode": pick a supported mode.
