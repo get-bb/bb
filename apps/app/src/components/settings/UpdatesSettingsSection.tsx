@@ -469,14 +469,11 @@ function ReleaseNotesToggleButton({
       type="button"
       aria-expanded={expanded}
       aria-controls={expanded ? panelId : undefined}
-      aria-label={`Release notes for bb ${version}`}
+      aria-label={`Changelog for bb ${version}`}
       className="w-fit shrink-0 cursor-pointer rounded-sm text-2xs text-muted-foreground underline decoration-border underline-offset-4 hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none aria-expanded:text-foreground"
       onClick={onToggle}
     >
-      <span className="@min-[28rem]/update-row:hidden">Notes</span>
-      <span className="hidden @min-[28rem]/update-row:inline">
-        Release notes
-      </span>
+      Changelog
     </button>
   );
 }

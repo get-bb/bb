@@ -106,7 +106,7 @@ export function ReleaseNotesPanel({ id, version }: ReleaseNotesPanelProps) {
   return (
     <section
       id={id}
-      aria-label={`bb ${version} release notes`}
+      aria-label={`bb ${version} changelog`}
       data-updates-domain="release-notes"
       className="bg-sidebar px-4 py-3 text-xs leading-relaxed text-muted-foreground"
     >
@@ -119,7 +119,7 @@ export function ReleaseNotesPanel({ id, version }: ReleaseNotesPanelProps) {
         )}
       </h3>
       {entry === null ? (
-        <p>bb {version} has no release notes in the app.</p>
+        <p>bb {version} has no changelog in the app.</p>
       ) : (
         <div className="relative min-w-0">
           <div
@@ -154,7 +154,7 @@ export function ReleaseNotesPanel({ id, version }: ReleaseNotesPanelProps) {
             openReleaseNotesOnWeb(version);
           }}
         >
-          Full release notes
+          Full changelog
           <Icon aria-hidden name="ExternalLink" className="size-3" />
         </a>
       </div>

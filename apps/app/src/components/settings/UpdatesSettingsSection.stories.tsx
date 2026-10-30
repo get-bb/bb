@@ -323,7 +323,7 @@ export function RowVariations() {
         <h2 className="px-4 py-3 text-sm font-semibold">Server and desktop</h2>
         <StoryRow
           label="Up to date"
-          hint="Nothing to do. The settled state stays visually quiet; Release notes opens the installed version's notes in the browser."
+          hint="Nothing to do. The settled state stays visually quiet; Changelog opens the installed version's changes below the row."
         >
           <div className="w-full">
             <BbUpdatesCard>
@@ -358,7 +358,7 @@ export function RowVariations() {
 
         <StoryRow
           label="Update available"
-          hint="A web install cannot replace itself, so its action copies the upgrade command. Release notes opens the new version's notes, which open below the row."
+          hint="A web install cannot replace itself, so its action copies the upgrade command. Changelog opens the new version's changes below the row."
         >
           <div className="w-full">
             <BbUpdatesCard>

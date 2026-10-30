@@ -3425,7 +3425,7 @@ setup-guide, new-thread-submit, and release notes events; anything else is a 400
 callers, all through `recordTelemetryEvent` in
 `apps/app/src/components/onboarding/onboarding-telemetry.ts`: the setup guide
 (`OnboardingFlow`), `NewThreadComposer`'s `new_thread_submit` outcomes, and
-Settings → Updates' release notes (`release_notes_opened`, inline or on the
+Settings → Updates' changelog (`release_notes_opened`, inline or on the
 web).
 
 Stabilize after deciding whether third-party plugins may emit product events

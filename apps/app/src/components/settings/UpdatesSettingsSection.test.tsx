@@ -480,13 +480,13 @@ describe("UpdatesSettingsSection", () => {
 
     function releaseNotesButton(version: string): HTMLElement {
       return screen.getByRole("button", {
-        name: `Release notes for bb ${version}`,
+        name: `Changelog for bb ${version}`,
       });
     }
 
     function releaseNotesPanel(version: string): HTMLElement | null {
       return screen.queryByRole("region", {
-        name: `bb ${version} release notes`,
+        name: `bb ${version} changelog`,
       });
     }
 
@@ -523,9 +523,7 @@ describe("UpdatesSettingsSection", () => {
       );
       renderSection();
 
-      expect(
-        screen.queryByRole("button", { name: /Release notes/ }),
-      ).toBeNull();
+      expect(screen.queryByRole("button", { name: /Changelog/ })).toBeNull();
     });
 
     it("opens the release's notes under the bb row and closes them again", () => {
@@ -562,13 +560,13 @@ describe("UpdatesSettingsSection", () => {
       expect(recordTelemetryEvent).toHaveBeenCalledTimes(1);
     });
 
-    it("opens the full release notes in the external browser", () => {
+    it("opens the full changelog in the external browser", () => {
       renderSection();
       fireEvent.click(releaseNotesButton("0.47.0"));
       vi.mocked(recordTelemetryEvent).mockClear();
 
       const link = within(releaseNotesPanel("0.47.0")!).getByRole("link", {
-        name: /Full release notes/,
+        name: /Full changelog/,
       });
       expect(link.getAttribute("href")).toBe(
         "https://getbb.app/changelog#0-47-0",
@@ -610,7 +608,7 @@ The published lede.
 
       expect(
         within(releaseNotesPanel("0.0.5")!).getByText(
-          "bb 0.0.5 has no release notes in the app.",
+          "bb 0.0.5 has no changelog in the app.",
         ),
       ).toBeDefined();
     });
@@ -2420,7 +2418,7 @@ The published lede.
 
     function notesButton(bbCard: HTMLElement, version: string): HTMLElement {
       return within(bbCard).getByRole("button", {
-        name: `Release notes for bb ${version}`,
+        name: `Changelog for bb ${version}`,
       });
     }
 
@@ -2432,7 +2430,7 @@ The published lede.
       fireEvent.click(notesButton(bbCard, "0.47.0"));
 
       const panel = within(bbCard).getByRole("region", {
-        name: "bb 0.47.0 release notes",
+        name: "bb 0.47.0 changelog",
       });
       expect(notesButton(bbCard, "0.47.0").getAttribute("aria-controls")).toBe(
         panel.id,
@@ -2473,9 +2471,9 @@ The published lede.
 
       expect(
         within(bbCard)
-          .getAllByRole("button", { name: /Release notes/ })
+          .getAllByRole("button", { name: /Changelog/ })
           .map((button) => button.getAttribute("aria-label")),
-      ).toEqual(["Release notes for bb 0.0.6"]);
+      ).toEqual(["Changelog for bb 0.0.6"]);
     });
   });
 
