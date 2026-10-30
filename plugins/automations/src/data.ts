@@ -217,6 +217,7 @@ export const migrations = [
    CREATE UNIQUE INDEX IF NOT EXISTS automation_runs_single_flight_idx
      ON automation_runs(automation_id)
      WHERE status = 'running';`,
+  `DROP TABLE IF EXISTS automation_thread_marks;`,
 ];
 
 function automationRetryDelayMs(consecutiveFailures: number): number {
@@ -605,9 +606,6 @@ export function deleteAutomation(
   const existing = getAutomationForProject(db, args);
   if (!existing) return false;
   db.prepare(`DELETE FROM automation_runs WHERE automation_id = ?`).run(
-    args.automationId,
-  );
-  db.prepare(`DELETE FROM automation_thread_marks WHERE automation_id = ?`).run(
     args.automationId,
   );
   db.prepare(`DELETE FROM automations WHERE id = ? AND project_id = ?`).run(

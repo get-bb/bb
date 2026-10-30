@@ -141,11 +141,6 @@ function computeNextRunAt(
   });
 }
 
-const creatorThreadSchema = z.object({
-  id: z.string(),
-  originPluginId: z.string().nullable(),
-});
-
 async function assertNotRecursiveCreation(
   bb: ServiceApi,
   db: Db,
@@ -157,12 +152,7 @@ async function assertNotRecursiveCreation(
       "Threads executing an automation run cannot create automations",
     );
   }
-  const thread = creatorThreadSchema.parse(
-    await bb.sdk.threads.get({ threadId: createdByThreadId }),
-  );
-  if (thread.id !== createdByThreadId) {
-    throw new Error("Automation creator thread identity changed");
-  }
+  const thread = await bb.sdk.threads.get({ threadId: createdByThreadId });
   if (thread.originPluginId === "automations") {
     throw new Error("Automation-spawned threads cannot create automations");
   }

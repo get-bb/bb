@@ -766,8 +766,7 @@ describe("automations server plugin harness", () => {
   it.each(["agent", "script"] as const)(
     "allows a user thread to create %s work after its heartbeat settles, preserving history",
     async (mode) => {
-      const host = await bootAutomationsPlugin();
-      const { harness } = host;
+      const { harness } = await bootAutomationsPlugin();
       try {
         const heartbeat = await createAgentAutomation(harness, {
           targetThreadId: THREAD_ID,
@@ -803,12 +802,6 @@ describe("automations server plugin harness", () => {
           projectId: PROJECT_ID,
           automationId: heartbeat.id,
         });
-        host.bb.storage
-          .database()
-          .prepare(
-            "INSERT OR REPLACE INTO automation_thread_marks (thread_id, automation_id, run_id, created_at) VALUES (?, ?, ?, ?)",
-          )
-          .run(THREAD_ID, heartbeat.id, "legacy-run", 1);
         const created = await harness.callRpc("automations_create", {
           ...request,
           name: "New closeout",
@@ -843,7 +836,7 @@ describe("automations server plugin harness", () => {
     },
   );
 
-  it("rejects automation-created threads even without historical marks or runs", async () => {
+  it("rejects threads spawned by automations", async () => {
     const { harness } = await bootAutomationsPlugin();
     try {
       harness.sdk.stub("threads.get", async ({ threadId }) =>
@@ -870,39 +863,29 @@ describe("automations server plugin harness", () => {
     }
   });
 
-  it.each(["unavailable", "mismatched", "missing-origin"] as const)(
-    "rejects creation when creator metadata is %s",
-    async (metadata) => {
-      const { harness } = await bootAutomationsPlugin();
-      try {
-        harness.sdk.stub("threads.get", async ({ threadId }) => {
-          if (metadata === "unavailable") {
-            throw new Error("Creator lookup unavailable");
-          }
-          const thread = makeThreadResponse({ id: threadId });
-          if (metadata === "mismatched") {
-            return { ...thread, id: "thr_wrong" };
-          }
-          return { ...thread, originPluginId: undefined };
-        });
-        await expect(
-          harness.callRpc("automations_create", {
-            projectId: PROJECT_ID,
-            createdByThreadId: THREAD_ID,
-            name: "Unknown creator",
-            trigger: oneShotTrigger(),
-            execution: agentExecution(),
-            origin: "agent",
-          }),
-        ).rejects.toThrow();
-        expect(
-          await harness.callRpc("automations_list", { projectId: PROJECT_ID }),
-        ).toEqual([]);
-      } finally {
-        await harness.dispose();
-      }
-    },
-  );
+  it("rejects creation when the creator thread cannot be read", async () => {
+    const { harness } = await bootAutomationsPlugin();
+    try {
+      harness.sdk.stub("threads.get", async () => {
+        throw new Error("Creator lookup unavailable");
+      });
+      await expect(
+        harness.callRpc("automations_create", {
+          projectId: PROJECT_ID,
+          createdByThreadId: THREAD_ID,
+          name: "Unknown creator",
+          trigger: oneShotTrigger(),
+          execution: agentExecution(),
+          origin: "agent",
+        }),
+      ).rejects.toThrow("Creator lookup unavailable");
+      expect(
+        await harness.callRpc("automations_list", { projectId: PROJECT_ID }),
+      ).toEqual([]);
+    } finally {
+      await harness.dispose();
+    }
+  });
 
   it.each([
     {
