@@ -16,7 +16,11 @@ jobs:
           node-version: 22.x
       - run: npm install --global pnpm@9.15.0 --ignore-scripts
       - run: pnpm install --frozen-lockfile --ignore-scripts --filter bb --filter '@bb/app...' --filter '@bb/db...'
-      - run: pnpm exec turbo run test --filter=@bb/app -- src/views/thread-detail/thread-opening.model.test.tsx src/components/ui/markdown-incremental-pieces.test.ts
+      - shell: cmd
+        env:
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+        run: pnpm exec turbo run test --filter=@bb/app -- src/views/thread-detail/thread-opening.model.test.tsx src/components/ui/markdown-incremental-pieces.test.ts
       - env:
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
