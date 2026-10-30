@@ -354,8 +354,16 @@ export function SurveyPage({
                     className="btn btn-primary"
                     type="submit"
                     disabled={sending}
+                    aria-busy={sending}
                   >
-                    Send my answers
+                    {sending ? (
+                      <>
+                        <span className="community-spinner" aria-hidden />
+                        Sending…
+                      </>
+                    ) : (
+                      "Send my answers"
+                    )}
                   </button>
                 </div>
                 <p className="community-note">{EMAIL_NOTE}</p>

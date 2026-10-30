@@ -201,6 +201,28 @@
   font: inherit;
   font-weight: 500;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.community-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: community-spin 0.8s linear infinite;
+}
+@keyframes community-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .community-spinner {
+    animation-duration: 2.4s;
+  }
 }
 @media (max-width: 600px) {
   .community-email-row {

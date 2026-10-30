@@ -124,6 +124,32 @@ describe("survey page", () => {
     );
   });
 
+  it("shows a sending state while the answers are in flight", async () => {
+    let finish: (response: Response) => void = () => {};
+    vi.stubGlobal(
+      "fetch",
+      () => new Promise<Response>((resolve) => (finish = resolve)),
+    );
+    vi.stubGlobal("scrollTo", () => {});
+    localStorage.setItem(key, JSON.stringify(answers));
+    await render();
+    await submit();
+    const button = field<HTMLButtonElement>('[type="submit"]')!;
+    expect([button.disabled, button.textContent]).toEqual([true, "Sending…"]);
+    await act(async () =>
+      finish(
+        Response.json(
+          { error: "We couldn't save your response." },
+          { status: 503 },
+        ),
+      ),
+    );
+    expect([button.disabled, button.textContent]).toEqual([
+      false,
+      "Send my answers",
+    ]);
+  });
+
   it("keeps the answers on screen when saving fails", async () => {
     vi.stubGlobal("fetch", async () =>
       Response.json(
@@ -138,6 +164,10 @@ describe("survey page", () => {
       "We couldn't save your response.",
     );
     expect(field('[name="city"]')!.value).toBe("Austin");
-    expect(field<HTMLButtonElement>('[type="submit"]')!.disabled).toBe(false);
+    const button = field<HTMLButtonElement>('[type="submit"]')!;
+    expect([button.disabled, button.textContent]).toEqual([
+      false,
+      "Send my answers",
+    ]);
   });
 });
