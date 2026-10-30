@@ -38,12 +38,17 @@ import {
 } from "../components/tools/SkillsCollection";
 import { SkillsLibrary } from "../components/tools/SkillsLibrary";
 import { focusWithKeyboard } from "@/test/keyboard-focus";
+import {
+  resetPluginLogoStoreForTest,
+  setPluginLogoUrls,
+} from "@/lib/plugin-logos";
 
 afterEach(() => {
   focusManager.setFocused(undefined);
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  resetPluginLogoStoreForTest();
 });
 
 function makeSkill(overrides: Partial<SkillSummary> = {}): SkillSummary {
@@ -279,6 +284,82 @@ function NavigateButton({ to, label }: { to: string; label: string }) {
     </button>
   );
 }
+
+describe("plugin skill branding", () => {
+  const compactIconUrl = "/api/v1/plugins/branding-fixture/assets/icon?h=test";
+
+  it.each(
+    (["collection", "detail"] as const).flatMap((surface) =>
+      (["asset", "glyph", "unbranded", "unloaded"] as const).map(
+        (branding) => ({ surface, branding }),
+      ),
+    ),
+  )(
+    "uses $branding branding in the $surface and its provenance",
+    async ({ surface, branding }) => {
+      if (branding !== "unloaded") {
+        setPluginLogoUrls(
+          new Map([
+            [
+              "branding-fixture",
+              {
+                displayName: "Branding fixture",
+                icon: branding === "glyph" ? "FileText" : null,
+                compactIconUrl: branding === "asset" ? compactIconUrl : null,
+                logoUrl: null,
+                logoDarkUrl: null,
+                icons: new Map(),
+              },
+            ],
+          ]),
+        );
+      }
+      const skill = makeSkill({
+        name: "branding-skill",
+        provider: null,
+        scope: "plugin",
+        pluginId: "branding-fixture",
+        manageable: false,
+      });
+      const view =
+        surface === "detail"
+          ? renderSkillDetailDialog(skill)
+          : renderDom(
+              <SkillsOverview
+                providerRoster={NO_PROVIDER_ROSTER}
+                skills={[skill]}
+                isLoading={false}
+                hasError={false}
+                onCreateSkill={() => {}}
+                onSelectSkill={() => {}}
+              />,
+            );
+      const expectBranding = (element: HTMLElement) => {
+        const bbLogo = element.querySelector('img[src*="bb-logo"]');
+        if (branding === "asset") {
+          expect(
+            element.querySelector('[style*="mask"]')?.getAttribute("style"),
+          ).toContain(compactIconUrl);
+          expect(bbLogo).toBeNull();
+        } else if (branding === "glyph") {
+          expect(
+            element.querySelector('[data-icon="FileText"]'),
+          ).not.toBeNull();
+          expect(bbLogo).toBeNull();
+        } else {
+          expect(bbLogo).not.toBeNull();
+        }
+      };
+      expectBranding(view.container);
+      fireEvent.pointerMove(
+        screen.getByLabelText(
+          "branding-skill is included with Branding fixture (bb plugin)",
+        ),
+      );
+      expectBranding(await screen.findByRole("tooltip"));
+    },
+  );
+});
 
 describe("SkillsOverview", () => {
   it("shows skills from every provider by default with BB Official skills first", () => {
