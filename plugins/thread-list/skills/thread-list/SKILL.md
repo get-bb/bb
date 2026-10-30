@@ -101,6 +101,12 @@ turn it on. Parents start collapsed while it is on, without changing
 `collapsedThreads`, and `environmentGrouping` is ignored. The open thread keeps
 its place until another thread is opened.
 
+A custom section whose top-level threads were all spawned by plugins that set a
+numeric `sidebarSortKey` (epoch milliseconds) in their own plugin metadata
+lists those threads by that key, smallest first, instead of by the selected
+sort, read-status grouping, or running state. One thread without a key returns
+the section to the selected sort. Key changes appear within a minute.
+
 New threads inherit the sidebar group where creation was invoked. Pinned
 creates pinned threads; custom sections supply their section; project, machine,
 and general thread groups start unsectioned and unpinned. Environment rows

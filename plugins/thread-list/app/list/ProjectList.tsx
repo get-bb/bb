@@ -122,6 +122,11 @@ import {
 import { ReorderableSidebarSectionOrderList } from "./ReorderableSidebarSectionOrderList.js";
 import { useSidebarModeSectionOrder } from "./useSidebarModeSectionOrder.js";
 import { useReadStatusGrouping } from "./useReadStatusGrouping.js";
+import { useSidebarSortKeys } from "./useSidebarSortKeys.js";
+import {
+  findSortKeyedSectionIds,
+  sortKeyedSectionsSoonestFirst,
+} from "../model/section-sort-keys.js";
 import { haveSameOrder } from "../model/stored-order.js";
 import {
   SidebarProjectsContext,
@@ -877,6 +882,16 @@ function SectionModeSections({
     () => threads.filter((thread) => !effectivePinnedThreadIds.has(thread.id)),
     [effectivePinnedThreadIds, threads],
   );
+  const sortKeys = useSidebarSortKeys(nonPinnedThreads);
+  const sectionCompareThreads = useMemo(
+    () =>
+      sortKeyedSectionsSoonestFirst(
+        compareThreads,
+        sortKeys,
+        findSortKeyedSectionIds(nonPinnedThreads, sortKeys),
+      ),
+    [compareThreads, nonPinnedThreads, sortKeys],
+  );
   const threadListState = getProjectThreadListState({
     status,
     threads: nonPinnedThreads,
@@ -897,7 +912,7 @@ function SectionModeSections({
   return (
     <ChronologicalSectionThreadSections
       threadListState={threadListState}
-      compareThreads={compareThreads}
+      compareThreads={sectionCompareThreads}
       sections={sections}
       selectedThreadId={selectedThreadId}
       collapsedThreadIds={collapsedThreadIds}

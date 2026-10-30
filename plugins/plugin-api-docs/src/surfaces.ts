@@ -1594,6 +1594,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Seed it when spawning or forking a thread",
           "Read it when configuring that thread's agent",
           "Read it for many threads at once, along with each thread's ancestors",
+          "Order the threads it spawned soonest first in a custom sidebar section with a numeric sidebarSortKey",
         ],
         apiSymbols: [
           "PluginBbSdk",
@@ -1601,7 +1602,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "ReadonlyJsonValue",
           "BbPluginApi",
         ],
-        firstParty: ["Push notifications", "Workflows"],
+        firstParty: ["Push notifications", "Thread list", "Workflows"],
       },
       {
         id: "desktop-browsers",
