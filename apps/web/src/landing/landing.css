@@ -3920,6 +3920,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   color: var(--dim);
   max-width: 560px;
   margin: 16px auto 0;
+}
 
 /* ── Testimonials ───────────────────────────────────────────────── */
 
