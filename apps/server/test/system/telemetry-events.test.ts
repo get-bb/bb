@@ -18,9 +18,13 @@ describe("client telemetry events", () => {
       harness.deps.telemetry = { ...harness.deps.telemetry, capture };
       const events = [
         {
-          name: "onboarding_agent_diagnostic",
+          name: "onboarding_step_state",
           properties: {
-            source: "first_run",
+            surface: "onboarding",
+            entry: "first_run",
+            step: "agent",
+            resource_type: "agent",
+            resource_id: "codex",
             state: "unknown",
             trigger: "step_visible",
             any_agent_ready: null,
@@ -28,11 +32,15 @@ describe("client telemetry events", () => {
           },
         },
         {
-          name: "onboarding_project_state",
+          name: "onboarding_step_state",
           properties: {
-            source: "first_run",
+            surface: "onboarding",
+            entry: "first_run",
+            step: "projects",
+            resource_type: "project",
+            resource_id: "project_discovery",
             action: "scan_result",
-            result: "empty",
+            state: "empty",
             selection: "none",
           },
         },
@@ -41,7 +49,8 @@ describe("client telemetry events", () => {
           properties: {
             state: "shown",
             reason: "sign_in",
-            source: "unknown",
+            surface: "homepage",
+            entry: null,
           },
         },
       ];
@@ -62,22 +71,30 @@ describe("client telemetry events", () => {
       }
       for (const properties of [
         {
-          source: "first_run",
+          surface: "onboarding",
+          entry: "first_run",
+          step: "projects",
+          resource_type: "project",
+          resource_id: "project_discovery",
           action: "folder_opened",
-          result: "selected",
+          state: "selected",
           selection: "some",
         },
         {
-          source: "first_run",
+          surface: "onboarding",
+          entry: "first_run",
+          step: "projects",
+          resource_type: "project",
+          resource_id: "project_discovery",
           action: "scan_result",
-          result: "cancelled",
+          state: "cancelled",
           selection: "none",
         },
       ]) {
         expect(
           (
             await post(harness, {
-              name: "onboarding_project_state",
+              name: "onboarding_step_state",
               properties,
             })
           ).status,

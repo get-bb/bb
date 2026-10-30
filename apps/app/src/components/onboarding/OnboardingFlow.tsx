@@ -519,7 +519,11 @@ function AgentStepContainer({
             installInfoPending: cliStatusQuery.isPending,
           });
           const diagnostic = {
-            source: entry,
+            surface: "onboarding" as const,
+            entry,
+            step: "agent" as const,
+            resource_type: "agent" as const,
+            resource_id: health.providerId,
             ...agentDiagnostic(setupState),
             any_agent_ready: aggregateAgentReadiness(
               states,
@@ -531,7 +535,7 @@ function AgentStepContainer({
               key: JSON.stringify(diagnostic),
               record: (trigger: "step_visible" | "state_changed") =>
                 recordTelemetryEvent({
-                  name: "onboarding_agent_diagnostic",
+                  name: "onboarding_step_state",
                   properties: { ...diagnostic, trigger },
                 }),
             },
@@ -668,11 +672,15 @@ function ProjectsStepContainer({
           null
         ) {
           recordTelemetryEvent({
-            name: "onboarding_project_state",
+            name: "onboarding_step_state",
             properties: {
-              source: entry,
+              surface: "onboarding",
+              entry,
+              step: "projects",
+              resource_type: "project",
+              resource_id: "project_discovery",
               action: "scan_result",
-              result,
+              state: result,
               selection: "unknown",
             },
           });
@@ -786,11 +794,15 @@ function ProjectsStepContainer({
     const key = JSON.stringify({ hostId, result });
     if (scanObservation.current(key, true) === null) return;
     recordTelemetryEvent({
-      name: "onboarding_project_state",
+      name: "onboarding_step_state",
       properties: {
-        source: entry,
+        surface: "onboarding",
+        entry,
+        step: "projects",
+        resource_type: "project",
+        resource_id: "project_discovery",
         action: "scan_result",
-        result,
+        state: result,
         selection: reposQuery.isError ? "unknown" : projectSelection,
       },
     });
@@ -857,21 +869,29 @@ function ProjectsStepContainer({
         onAddFolder={() => {
           if (quickCreateProject.isAvailable && !quickCreateProject.isCreating)
             recordTelemetryEvent({
-              name: "onboarding_project_state",
+              name: "onboarding_step_state",
               properties: {
-                source: entry,
+                surface: "onboarding",
+                entry,
+                step: "projects",
+                resource_type: "project",
+                resource_id: "project_discovery",
                 action: "folder_opened",
-                result: "unknown",
+                state: "unknown",
                 selection: projectSelection,
               },
             });
           quickCreateProject.openCreateDialogWithResult((result) => {
             recordTelemetryEvent({
-              name: "onboarding_project_state",
+              name: "onboarding_step_state",
               properties: {
-                source: entry,
+                surface: "onboarding",
+                entry,
+                step: "projects",
+                resource_type: "project",
+                resource_id: "project_discovery",
                 action: "folder_result",
-                result,
+                state: result,
                 selection: "unknown",
               },
             });

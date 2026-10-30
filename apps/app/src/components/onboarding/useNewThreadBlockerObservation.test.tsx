@@ -43,7 +43,12 @@ describe("draft blockers", () => {
     view.rerender(<Observation />);
     expect(capture).toHaveBeenCalledExactlyOnceWith({
       name: "new_thread_blocker",
-      properties: { state: "shown", reason: "sign_in", source: "first_run" },
+      properties: {
+        state: "shown",
+        reason: "sign_in",
+        surface: "homepage",
+        entry: "first_run",
+      },
     });
     expect(takeOnboardingWorkSource()).toBe("other");
   });
