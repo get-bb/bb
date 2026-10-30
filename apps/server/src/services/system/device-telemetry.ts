@@ -15,7 +15,6 @@ const enrollments = new WeakMap<
     string,
     {
       source: DeviceSetupSource;
-      credentials: boolean;
       ready: boolean;
       result: "failed" | "cancelled" | "unknown" | null;
     }
@@ -57,7 +56,6 @@ export function beginMachineEnrollment(deps: Deps, hostId: string): void {
   const source = sourceContext.getStore() ?? "unknown";
   states.set(hostId, {
     source,
-    credentials: false,
     ready: false,
     result: null,
   });
@@ -70,34 +68,6 @@ export function beginMachineEnrollment(deps: Deps, hostId: string): void {
   });
 }
 
-export function recordMachineCredentials(deps: Deps, hostId: string): void {
-  if (getLatestSessionForHost(deps.db, { hostId }) !== null) return;
-  const states = pending(deps);
-  let state = states.get(hostId);
-  if (!state) {
-    const primary = readPrimaryHostIdFromDataDir({
-      dataDir: deps.config.dataDir,
-    });
-    if (primary === null || hostId === primary) return;
-    state = {
-      source: "unknown",
-      credentials: false,
-      ready: false,
-      result: null,
-    };
-    states.set(hostId, state);
-  }
-  if (state.credentials) return;
-  state.credentials = true;
-  emit(deps, {
-    target: "additional_machine",
-    action: "credentials_accepted",
-    outcome: "succeeded",
-    source: state.source,
-    error_category: null,
-  });
-}
-
 export function recordMachineReady(deps: Deps, hostId: string): void {
   const current = getHost(deps.db, hostId);
   if (!current || current.destroyedAt !== null || current.phase === "removing")
@@ -105,20 +75,13 @@ export function recordMachineReady(deps: Deps, hostId: string): void {
   const states = pending(deps);
   let state = states.get(hostId);
   if (!state) {
-    const host = getHost(deps.db, hostId);
     const primary = readPrimaryHostIdFromDataDir({
       dataDir: deps.config.dataDir,
     });
-    if (
-      !host ||
-      host.lastSeenAt !== null ||
-      primary === null ||
-      primary === hostId
-    )
+    if (current.lastSeenAt !== null || primary === null || primary === hostId)
       return;
     state = {
       source: "unknown",
-      credentials: false,
       ready: false,
       result: null,
     };

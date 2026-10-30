@@ -1,6 +1,3 @@
-import { createDeferredPromise } from "@bb/test-helpers";
-import { createPluginInstallJobs } from "../../../src/services/plugins/plugin-install-jobs.js";
-import { runWithPluginMeasurementSource } from "../../../src/services/plugins/plugin-measurement.js";
 import {
   cp,
   mkdtemp,
@@ -880,36 +877,12 @@ describe("plugin service", () => {
       captured.filter((event) => event.name === "plugin_installed"),
     ).toHaveLength(1);
     expect(
-      captured
-        .filter((event) => event.name === "plugin_state_changed")
-        .map((event) => event.properties),
-    ).toEqual([
-      {
-        public_plugin: null,
-        plugin_source: "local",
-        source: "unknown",
-        previous_state: "absent",
-        state: "enabled",
-      },
-      {
-        public_plugin: null,
-        plugin_source: "local",
-        source: "unknown",
-        previous_state: "enabled",
-        state: "disabled",
-      },
-      {
-        public_plugin: null,
-        plugin_source: "local",
-        source: "unknown",
-        previous_state: "disabled",
-        state: "enabled",
-      },
-    ]);
+      captured.filter((event) => event.name === "plugin_state_changed"),
+    ).toEqual([]);
     await tracked.stop();
   });
 
-  it("counts registered CLI and agent dispatch without counting initialization or reads", async () => {
+  it("does not collect private plugin use from CLI or agent dispatch", async () => {
     const captured: TelemetryEvent[] = [];
     const tracked = createTelemetryTrackedService(captured);
     const rootDir = await writePlugin(workDir, {
@@ -937,87 +910,7 @@ describe("plugin service", () => {
         signal: new AbortController().signal,
       },
     });
-    expect(
-      captured
-        .filter((event) => event.name === "plugin_use")
-        .map((event) => event.properties),
-    ).toEqual([
-      {
-        public_plugin: null,
-        plugin_source: "local",
-        initiator: "unknown",
-        action: "other_action",
-        outcome: "invoked",
-      },
-      {
-        public_plugin: null,
-        plugin_source: "local",
-        initiator: "agent",
-        action: "other_action",
-        outcome: "invoked",
-      },
-    ]);
-    await tracked.stop();
-  });
-
-  it("preserves each queued install source without borrowing the preceding job context", async () => {
-    const captured: TelemetryEvent[] = [];
-    const tracked = createTelemetryTrackedService(captured);
-    const jobs = createPluginInstallJobs({ notifyChanged: () => {} });
-    const release = createDeferredPromise<void>();
-    const firstPath = await writePlugin(workDir, {
-      name: "bb-plugin-first-source",
-      serverSource: "export default function plugin() {}",
-    });
-    const secondPath = await writePlugin(workDir, {
-      name: "bb-plugin-second-source",
-      serverSource: "export default function plugin() {}",
-    });
-    const thirdPath = await writePlugin(workDir, {
-      name: "bb-plugin-third-source",
-      serverSource: "export default function plugin() {}",
-    });
-    const target = (source: string) => ({
-      kind: "source" as const,
-      source,
-      selection: { kind: "root" as const },
-    });
-    const first = jobs.start({
-      target: target(firstPath),
-      displayName: "first",
-      run: () =>
-        runWithPluginMeasurementSource("first_run", async () => {
-          await release.promise;
-          return tracked.installPath(firstPath);
-        }),
-    });
-    const second = jobs.start({
-      target: target(secondPath),
-      displayName: "second",
-      run: () =>
-        runWithPluginMeasurementSource("replay", () =>
-          tracked.installPath(secondPath),
-        ),
-    });
-    const third = jobs.start({
-      target: target(thirdPath),
-      displayName: "third",
-      run: () =>
-        runWithPluginMeasurementSource("unknown", () =>
-          tracked.installPath(thirdPath),
-        ),
-    });
-    release.resolve();
-    await Promise.all([
-      jobs.settled(first.id),
-      jobs.settled(second.id),
-      jobs.settled(third.id),
-    ]);
-    expect(
-      captured
-        .filter((event) => event.name === "plugin_state_changed")
-        .map((event) => event.properties.source),
-    ).toEqual(["first_run", "replay", "unknown"]);
+    expect(captured).toEqual([]);
     await tracked.stop();
   });
 

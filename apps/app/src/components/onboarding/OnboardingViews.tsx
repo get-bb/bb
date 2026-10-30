@@ -34,7 +34,6 @@ const CONTENT_COLUMN_CLASS =
   "mx-auto w-full max-w-[600px] px-4 @min-[36rem]/onboarding:px-6";
 
 interface OnboardingLayoutProps {
-  observeDisplay?: () => void;
   step: OnboardingStepId;
   compact?: boolean;
   reserveMacosTrafficLights?: boolean;
@@ -54,7 +53,6 @@ interface OnboardingLayoutProps {
 }
 
 export function OnboardingLayout({
-  observeDisplay,
   step,
   compact = false,
   reserveMacosTrafficLights = false,
@@ -72,13 +70,9 @@ export function OnboardingLayout({
   onSelectStep,
   onSkipAll,
 }: OnboardingLayoutProps) {
-  const observationRef = useVisibleObservation<HTMLDivElement>(() =>
-    observeDisplay?.(),
-  );
   const activeIndex = ONBOARDING_STEPS.findIndex((entry) => entry.id === step);
   return (
     <div
-      ref={observationRef}
       data-testid="onboarding"
       className="@container/onboarding flex min-h-0 flex-1 flex-col bg-background text-foreground"
     >

@@ -114,21 +114,24 @@ describe("plugin measurement provenance", () => {
       sourceIntent: { kind: "path", canonicalPath: "/private" },
       exactResolution: { kind: "path" },
     });
-    expect(resolvePluginMeasurementIdentity(deps(), privateCopy)).toEqual({
-      public_plugin: null,
-      plugin_source: "local",
+    expect(resolvePluginMeasurementIdentity(deps(), privateCopy)).toBeNull();
+    capturePluginStateChanged(deps(), privateCopy.id, undefined);
+    reportPluginUse(deps(), privateCopy.id, {
+      action: "browser_run",
+      outcome: "succeeded",
     });
+    expect(captured).toEqual([]);
     const wrongBuiltin = install("browser-automation", {
       sourceIntent: { kind: "builtin", name: "workflows" },
     });
     expect(
-      resolvePluginMeasurementIdentity(deps(), wrongBuiltin).public_plugin,
+      resolvePluginMeasurementIdentity(deps(), wrongBuiltin),
     ).toBeNull();
     expect(
       resolvePluginMeasurementIdentity(
         { ...deps(), watchBuiltinPluginSources: true },
         row,
-      ).public_plugin,
+      ),
     ).toBeNull();
   });
 
@@ -153,10 +156,7 @@ describe("plugin measurement provenance", () => {
       },
     });
     marketplace("https://private.example/marketplace.json");
-    expect(resolvePluginMeasurementIdentity(deps(), row)).toEqual({
-      public_plugin: null,
-      plugin_source: "private",
-    });
+    expect(resolvePluginMeasurementIdentity(deps(), row)).toBeNull();
     marketplace();
     expect(resolvePluginMeasurementIdentity(deps(), row)).toEqual({
       public_plugin: "browser-automation",
@@ -166,13 +166,13 @@ describe("plugin measurement provenance", () => {
       resolvePluginMeasurementIdentity(deps(), {
         ...row,
         sourceNpmPackage: "private-browser",
-      }).public_plugin,
+      }),
     ).toBeNull();
     expect(
       resolvePluginMeasurementIdentity(deps(), {
         ...row,
         catalogEntryId: "private-browser",
-      }).public_plugin,
+      }),
     ).toBeNull();
   });
 });
@@ -218,6 +218,34 @@ describe("confirmed state changes", () => {
     ]);
   });
 
+  it("retains each source across interleaved asynchronous work", async () => {
+    const browser = install();
+    const workflows = install("workflows");
+    await Promise.all([
+      runWithPluginMeasurementSource("first_run", async () => {
+        await Promise.resolve();
+        capturePluginStateChanged(deps(), browser.id, undefined);
+      }),
+      runWithPluginMeasurementSource("replay", async () => {
+        capturePluginStateChanged(deps(), workflows.id, undefined);
+        await Promise.resolve();
+      }),
+    ]);
+    const editor = install("monaco-editor");
+    capturePluginStateChanged(deps(), editor.id, undefined);
+    expect(
+      captured.map((event) =>
+        event.name === "plugin_state_changed"
+          ? [event.properties.public_plugin, event.properties.source]
+          : null,
+      ),
+    ).toEqual([
+      ["workflows", "replay"],
+      ["browser-automation", "first_run"],
+      ["monaco-editor", "unknown"],
+    ]);
+  });
+
   it("does not collect opted-out state changes or invent replay on resume", () => {
     const row = install();
     enabled = false;
@@ -237,14 +265,12 @@ describe("intentional use", () => {
         outcome: "invoked",
       });
     await withPluginMeasurementInvocation(
-      deps(),
       "browser-automation",
       "agent",
       async () => {
         report();
         await Promise.resolve();
         withPluginMeasurementInvocation(
-          deps(),
           "browser-automation",
           "user",
           report,
@@ -256,7 +282,6 @@ describe("intentional use", () => {
       },
     );
     withPluginMeasurementInvocation(
-      deps(),
       "browser-automation",
       "user",
       report,
@@ -274,37 +299,26 @@ describe("intentional use", () => {
     ]);
   });
 
-  it("only counts explicit dispatch for anonymous plugins and rejects reported spoofed identity", () => {
-    install("private-name", {
+  it("ignores private state and use while rejecting reported spoofed identity", () => {
+    const privateRow = install("private-name", {
       sourceIntent: { kind: "path", canonicalPath: "/private" },
       exactResolution: { kind: "path" },
       provenance: { kind: "direct" },
     });
+    capturePluginStateChanged(deps(), privateRow.id, undefined);
     reportPluginUse(deps(), "private-name", {
       action: "browser_run",
       outcome: "invoked",
     });
     expect(captured).toEqual([]);
-    withPluginMeasurementInvocation(deps(), "private-name", "unknown", () => {
+    withPluginMeasurementInvocation("private-name", "unknown", () => {
       withPluginMeasurementInvocation(
-        deps(),
         "private-name",
         "unknown",
         () => {},
       );
     });
-    expect(captured).toEqual([
-      {
-        name: "plugin_use",
-        properties: {
-          public_plugin: null,
-          plugin_source: "local",
-          initiator: "unknown",
-          action: "other_action",
-          outcome: "invoked",
-        },
-      },
-    ]);
+    expect(captured).toEqual([]);
     expect(() =>
       reportPluginUse(deps(), "private-name", {
         action: "browser_run",
@@ -339,7 +353,7 @@ describe("intentional use", () => {
       action: "file_saved",
       outcome: "succeeded",
     });
-    withPluginMeasurementInvocation(deps(), "monaco-editor", "agent", () => {});
+    withPluginMeasurementInvocation("monaco-editor", "agent", () => {});
     expect(captured).toHaveLength(1);
   });
 });

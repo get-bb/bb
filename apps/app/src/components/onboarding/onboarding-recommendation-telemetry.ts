@@ -45,7 +45,6 @@ export function createPluginRecommendationObserver() {
       properties: {
         action,
         public_plugin,
-        recommendation_revision: "baseline",
         source: context.source,
         initial_state: initialState,
         availability: context.availability,

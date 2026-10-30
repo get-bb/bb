@@ -85,11 +85,6 @@ describe("trusted Connect lifecycle reporting", () => {
           target: "additional_machine",
           action: "machine_ready",
         },
-        {
-          ...properties,
-          target: "additional_machine",
-          action: "credentials_accepted",
-        },
       ]) {
         const response = await harness.app.request(
           "/api/v1/system/telemetry/events",
