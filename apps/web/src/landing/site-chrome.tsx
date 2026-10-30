@@ -192,13 +192,15 @@ function GuidesMenu({
 export function SiteNav({
   current,
   path,
+  sticky = false,
 }: {
   current?: SiteNavPage;
   path?: string;
+  sticky?: boolean;
 }) {
   const platform = useDesktopPlatform();
   return (
-    <nav className="nav">
+    <nav className={sticky ? "nav nav-sticky" : "nav"}>
       {}
       <a className="logo" href="/" aria-label="bb">
         <span className="bb-mark logo-mark" />

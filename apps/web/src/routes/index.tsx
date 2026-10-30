@@ -1400,6 +1400,8 @@ function LandingPage() {
   const subhead = useExperiment("homepage-subhead-text");
   useExperimentExposure("homepage-subhead-text", "desktop");
   useExperimentExposure("homepage-aa", "all");
+  const stickyHeader = useExperiment("homepage-sticky-header");
+  useExperimentExposure("homepage-sticky-header", "desktop");
   useScrollReveal();
   useSectionViews((section) => {
     if (BELOW_FOLD_SECTIONS[belowFold].includes(section)) exposeBelowFold();
@@ -1423,7 +1425,7 @@ function LandingPage() {
       className="wrap"
       data-qa-check={qaCheck === "test" ? qaCheck : undefined}
     >
-      <SiteNav />
+      <SiteNav sticky={stickyHeader === "test"} />
 
       <header className="hero">
         <a className="updates-callout" href={LATEST_RELEASE_URL}>
