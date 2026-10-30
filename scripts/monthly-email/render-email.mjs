@@ -102,13 +102,11 @@ function themeRows(theme, ym, imagesBase, hosted) {
 
 export function renderEmail(spec, { imagesBase = "", hosted } = {}) {
   const { ym, cta } = spec;
-  const preheader = escapeHtml(spec.preview) + "&#8199;&#847;".repeat(60);
   const themes = spec.themes
     .map((theme) => themeRows(theme, ym, imagesBase, hosted))
     .join("\n");
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(spec.subject)}</title></head>
 <body style="margin:0;padding:0;background:#ffffff;">
-<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${preheader}</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;"><tr><td align="center" style="padding:32px 16px;">
 <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:100%;max-width:560px;font-family:${FONT};color:${INK};">
 <tr><td style="padding:0 0 28px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td><img src="${LOGO}" width="28" height="28" alt="bb" style="display:block;"></td>

@@ -101,6 +101,15 @@ const typeInto = async (selector, value, slow) => {
 await typeInto("input[name=from]", ${JSON.stringify(spec.from)}, false);
 await typeInto("input[name=replyto]", ${JSON.stringify(spec.reply_to)}, true);
 await typeInto("input[placeholder=Subject]", ${JSON.stringify(spec.subject)}, false);
+await p.evaluate((value) => {
+  const el = document.querySelector("input[name=preview]");
+  el.focus();
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(el, value);
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+  el.dispatchEvent(new Event("change", { bubbles: true }));
+  el.blur();
+}, ${JSON.stringify(spec.preview)});
+await new Promise((r) => setTimeout(r, 400));
 const title = await p.evaluateHandle(() => ${TITLE_BUTTON});
 await title.click();
 await new Promise((r) => setTimeout(r, 600));
@@ -109,13 +118,13 @@ await p.keyboard.press("Backspace");
 await p.keyboard.type(${JSON.stringify(`What's new in bb · ${spec.month}`)});
 await p.keyboard.press("Enter");
 await new Promise((r) => setTimeout(r, 1500));
-return await p.evaluate(() => ({ from: document.querySelector("input[name=from]").value, replyTo: document.querySelector("input[name=replyto]").value, subject: document.querySelector("input[placeholder=Subject]").value }));`;
+return await p.evaluate(() => ({ from: document.querySelector("input[name=from]").value, replyTo: document.querySelector("input[name=replyto]").value, subject: document.querySelector("input[placeholder=Subject]").value, preview: document.querySelector("input[name=preview]").value }));`;
 }
 
 const EXTRACT = `${OPEN_MAIN}
 p.reload().catch(() => {});
 await new Promise((r) => setTimeout(r, 7000));
-const head = await p.evaluate(() => ({ from: document.querySelector("input[name=from]").value, replyTo: document.querySelector("input[name=replyto]").value, subject: document.querySelector("input[placeholder=Subject]").value, name: ${TITLE_BUTTON}?.textContent.trim() }));
+const head = await p.evaluate(() => ({ from: document.querySelector("input[name=from]").value, replyTo: document.querySelector("input[name=replyto]").value, subject: document.querySelector("input[placeholder=Subject]").value, preview: document.querySelector("input[name=preview]").value, name: ${TITLE_BUTTON}?.textContent.trim() }));
 const code = await p.evaluateHandle(() => [...document.querySelectorAll("button,a")].find((b) => (b.getAttribute("aria-label") || "") === "Code" || b.textContent.trim() === "Code"));
 await code.click();
 await new Promise((r) => setTimeout(r, 2500));

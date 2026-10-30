@@ -27,7 +27,12 @@ function decodeEntities(text) {
 }
 
 export function visibleText(html) {
-  const withoutHead = html.replace(/<(style|head)[^>]*>[\s\S]*?<\/\1>/g, "");
+  const withoutHead = html
+    .replace(/<(style|head)[^>]*>[\s\S]*?<\/\1>/g, "")
+    .replace(
+      /<div[^>]*data-skip-in-text="true"[^>]*>[\s\S]*?<\/div><\/div>/g,
+      "",
+    );
   return decodeEntities(withoutHead.replace(/<[^>]+>/g, " "))
     .replaceAll(" ", "")
     .replaceAll("͏", "")
@@ -62,7 +67,7 @@ export function compareResend(ours, theirs, spec, fields, hosted) {
       ["From", fields.from === spec.from],
       ["Reply-To", fields.replyTo === spec.reply_to],
       ["Subject", fields.subject === spec.subject],
-      ["preview line in preheader", visibleText(theirs).includes(spec.preview)],
+      ["Preview text", fields.preview === spec.preview],
       ["draft name", fields.name === `What's new in bb · ${spec.month}`],
     );
   }
