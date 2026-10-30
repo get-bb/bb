@@ -6,9 +6,14 @@ import type {
 import type { ChangelogEntry } from "../../../../../changelog-parser";
 
 const RELEASE_VERSION_PATTERN = /^\d+(?:\.\d+){1,3}$/;
+const NIGHTLY_VERSION_PATTERN = /^(\d+(?:\.\d+){1,3})-nightly\.\d+(?:\.\d+)*$/;
 
 export function isReleaseVersion(version: string): boolean {
   return RELEASE_VERSION_PATTERN.test(version);
+}
+
+export function nightlyBaseVersion(version: string): string | null {
+  return NIGHTLY_VERSION_PATTERN.exec(version)?.[1] ?? null;
 }
 
 function compareReleaseVersions(left: string, right: string): number {
@@ -89,12 +94,15 @@ function findEntryCoveringRelease(
   if (exact !== undefined) {
     return exact;
   }
+  const nightlyBase = nightlyBaseVersion(version);
+  const below = nightlyBase ?? version;
   let covering: ChangelogEntry | null = null;
   for (const candidate of entries) {
     if (
       isReleaseVersion(candidate.version) &&
-      isSameMinorRelease(candidate.version, version) &&
-      compareReleaseVersions(candidate.version, version) < 0 &&
+      (nightlyBase !== null ||
+        isSameMinorRelease(candidate.version, version)) &&
+      compareReleaseVersions(candidate.version, below) < 0 &&
       (covering === null ||
         compareReleaseVersions(candidate.version, covering.version) > 0)
     ) {

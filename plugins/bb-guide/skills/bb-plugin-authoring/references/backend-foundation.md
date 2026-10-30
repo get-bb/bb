@@ -317,7 +317,11 @@ artifact, including for managed Git installs, which run
 published `@get-bb/plugin-sdk/host` contract such as
 `experimental_nativeRootsHostContract` is bundled from the plugin's own SDK
 install, so that plugin lists the SDK under `dependencies`. Every provider
-plugin does this. Either way the daemon never resolves the SDK or private BB
+plugin does this. A server entry is the same: bb provides only the bare
+`@get-bb/plugin-sdk` at load time, so a runtime import of any SDK subpath
+needs the SDK under `dependencies`. `bb plugin types` reads the entries'
+imports and keeps or moves the SDK to the right field, and `--check` fails
+when it is in the wrong one. Either way the daemon never resolves the SDK or private BB
 packages from the plugin at runtime.
 
 Pure JavaScript dependencies are bundled, and host code may use Node APIs

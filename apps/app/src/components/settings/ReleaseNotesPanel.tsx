@@ -11,7 +11,7 @@ import {
   releaseMetaQueryOptions,
   type ChangelogBlock,
 } from "./changelog-preview";
-import { findReleaseEntry } from "./release-notes-model";
+import { findReleaseEntry, nightlyBaseVersion } from "./release-notes-model";
 import { getReleaseNotesUrl, openReleaseNotesOnWeb } from "./release-notes";
 
 const MARKDOWN_IMAGE_ONLY = /^!\[[^\]]*\]\([^)]*\)$/;
@@ -166,12 +166,17 @@ export function ReleaseNotesPanel({ id, version }: ReleaseNotesPanelProps) {
           ) : null}
         </div>
       )}
-      <div className="mt-2 flex justify-end">
+      <div className="mt-2 flex items-baseline justify-end gap-3">
+        {entry !== null && nightlyBaseVersion(version) !== null ? (
+          <p className="mr-auto min-w-0 text-2xs">
+            This build includes changes since {entry.version}
+          </p>
+        ) : null}
         <a
           href={getReleaseNotesUrl(notesVersion)}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex w-fit cursor-pointer items-center gap-1 rounded-sm text-xs text-foreground underline decoration-border underline-offset-4 hover:decoration-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+          className="inline-flex w-fit shrink-0 cursor-pointer items-center gap-1 rounded-sm text-xs whitespace-nowrap text-foreground underline decoration-border underline-offset-4 hover:decoration-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
           onClick={(event) => {
             event.preventDefault();
             openReleaseNotesOnWeb(version, notesVersion);

@@ -153,6 +153,10 @@ describe("bb plugin migrate", () => {
     expect(await readFile(join(rootDir, "server.ts"), "utf8")).toBe(
       'import type { BbPluginApi } from "@get-bb/plugin-sdk";\nimport "@get-bb/plugin-sdk/testing";\n',
     );
+    expect((await readManifest()).dependencies).toEqual({
+      "@get-bb/plugin-sdk": PLUGIN_SDK_VERSION,
+    });
+    await runCommand(["plugin", "types", rootDir, "--check"], register);
   });
 
   it("reports an already-migrated plugin without touching it", async () => {
@@ -196,30 +200,44 @@ describe("bb plugin migrate", () => {
     );
   });
 
-  it("aborts when the plugin changes between the plan and the confirmation", async () => {
-    await writeVendoredPlugin();
-    setTty(true);
-    readlineMocks.question.mockImplementation(async () => {
-      await writeFile(
-        join(rootDir, "types", "bb-plugin-sdk-app.d.ts"),
-        "// appeared mid-prompt\n",
+  it.each(["declarations", "entry imports"])(
+    "aborts when %s change between the plan and the confirmation",
+    async (change) => {
+      await writeVendoredPlugin();
+      setTty(true);
+      readlineMocks.question.mockImplementation(async () => {
+        if (change === "declarations") {
+          await writeFile(
+            join(rootDir, "types", "bb-plugin-sdk-app.d.ts"),
+            "// appeared mid-prompt\n",
+          );
+        } else {
+          await writeFile(
+            join(rootDir, "server.ts"),
+            'import "@get-bb/plugin-sdk/process";',
+          );
+        }
+        return "y";
+      });
+      const before = await readFile(join(rootDir, "package.json"), "utf8");
+
+      await expect(
+        runCommand(["plugin", "migrate", rootDir], register),
+      ).rejects.toThrow("process.exit:1");
+
+      expect(vi.mocked(console.error).mock.calls.flat().join("\n")).toContain(
+        "changed while awaiting confirmation",
       );
-      return "y";
-    });
-    const before = await readFile(join(rootDir, "package.json"), "utf8");
-
-    await expect(
-      runCommand(["plugin", "migrate", rootDir], register),
-    ).rejects.toThrow("process.exit:1");
-
-    expect(vi.mocked(console.error).mock.calls.flat().join("\n")).toContain(
-      "changed while awaiting confirmation",
-    );
-    expect(await readFile(join(rootDir, "package.json"), "utf8")).toBe(before);
-    expect(
-      await stat(join(rootDir, "types", "bb-plugin-sdk.d.ts")).then(() => true),
-    ).toBe(true);
-  });
+      expect(await readFile(join(rootDir, "package.json"), "utf8")).toBe(
+        before,
+      );
+      expect(
+        await stat(join(rootDir, "types", "bb-plugin-sdk.d.ts")).then(
+          () => true,
+        ),
+      ).toBe(true);
+    },
+  );
 });
 
 describe("bb plugin dev stale-pin warning", () => {
@@ -331,6 +349,134 @@ describe("legacy vendored SDK layout", () => {
 });
 
 describe("bb plugin types on a package-layout plugin", () => {
+  async function writeHostPlugin(
+    field: "dependencies" | "devDependencies",
+    hostSource: string,
+  ): Promise<void> {
+    await writeManifest({
+      name: "bb-plugin-provider",
+      bb: { server: "./server.ts", host: "./host.ts" },
+      [field]: { "@get-bb/plugin-sdk": PLUGIN_SDK_VERSION },
+    });
+    await writeFile(join(rootDir, "server.ts"), "export default () => {};\n");
+    await writeFile(join(rootDir, "host.ts"), hostSource);
+  }
+
+  const providerBridgeHost =
+    'import { experimental_defineProviderBridge } from "@get-bb/plugin-sdk/provider-bridge";\nexport const bridge = experimental_defineProviderBridge;\n';
+
+  it("keeps the SDK in dependencies when the host entry imports the provider bridge", async () => {
+    await writeHostPlugin("dependencies", providerBridgeHost);
+    const before = await readFile(join(rootDir, "package.json"), "utf8");
+
+    await runCommand(["plugin", "types", rootDir, "--check"], register);
+    await runCommand(["plugin", "types", rootDir], register);
+
+    expect(await readFile(join(rootDir, "package.json"), "utf8")).toBe(before);
+  });
+
+  it("--check asks to move a provider-bridge SDK pin to dependencies", async () => {
+    await writeHostPlugin("devDependencies", providerBridgeHost);
+
+    await expect(
+      runCommand(["plugin", "types", rootDir, "--check"], register),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(vi.mocked(console.error).mock.calls.flat().join("\n")).toContain(
+      'Move "@get-bb/plugin-sdk" from devDependencies to dependencies — host.ts imports "@get-bb/plugin-sdk/provider-bridge", which the build bundles from the plugin\'s own SDK install, and Git installs omit devDependencies (`bb plugin types` does it for you).',
+    );
+
+    await runCommand(["plugin", "types", rootDir], register);
+
+    const manifest = await readManifest();
+    expect(manifest.dependencies).toEqual({
+      "@get-bb/plugin-sdk": PLUGIN_SDK_VERSION,
+    });
+    expect(manifest.devDependencies).toBeUndefined();
+    expect(collectLogPayloads(vi.mocked(console.log)).join("\n")).toContain(
+      "Moved @get-bb/plugin-sdk from devDependencies to dependencies.",
+    );
+  });
+
+  const providerBridgeReason =
+    'host.ts imports "@get-bb/plugin-sdk/provider-bridge", which the build bundles from the plugin\'s own SDK install, and Git installs omit devDependencies (`bb plugin types` does it for you).';
+
+  it.each([
+    {
+      name: "a duplicate pin in devDependencies",
+      fields: {
+        dependencies: { "@get-bb/plugin-sdk": PLUGIN_SDK_VERSION },
+        devDependencies: { "@get-bb/plugin-sdk": PLUGIN_SDK_VERSION },
+      },
+      check: `Remove the duplicate "@get-bb/plugin-sdk" from devDependencies; keep it in dependencies — ${providerBridgeReason}`,
+      applied:
+        "Removed the duplicate @get-bb/plugin-sdk from devDependencies; it stays in dependencies.",
+    },
+    {
+      name: "a duplicate pin with a stale version",
+      fields: {
+        dependencies: { "@get-bb/plugin-sdk": "0.2.0" },
+        devDependencies: { "@get-bb/plugin-sdk": "0.2.0" },
+      },
+      check: `Remove the duplicate "@get-bb/plugin-sdk" from devDependencies, set it to ${PLUGIN_SDK_VERSION} in dependencies, and re-run npm install — ${providerBridgeReason}`,
+      applied:
+        "Removed the duplicate @get-bb/plugin-sdk from devDependencies; it stays in dependencies.",
+    },
+    {
+      name: "a stale pin in the wrong field",
+      fields: { devDependencies: { "@get-bb/plugin-sdk": "0.2.0" } },
+      check: `Move "@get-bb/plugin-sdk" from devDependencies to dependencies at ${PLUGIN_SDK_VERSION} and re-run npm install — ${providerBridgeReason}`,
+      applied: "Moved @get-bb/plugin-sdk from devDependencies to dependencies.",
+    },
+    {
+      name: "no SDK pin",
+      fields: {},
+      check: `Add "@get-bb/plugin-sdk" ${PLUGIN_SDK_VERSION} to dependencies and run npm install — ${providerBridgeReason}`,
+      applied: `@get-bb/plugin-sdk: (not declared) → ${PLUGIN_SDK_VERSION} in dependencies.`,
+    },
+  ])(
+    "--check names every fix for $name on a provider-bridge plugin",
+    async ({ fields, check, applied }) => {
+      await writeManifest({
+        name: "bb-plugin-provider",
+        bb: { server: "./server.ts", host: "./host.ts" },
+        ...fields,
+      });
+      await writeFile(join(rootDir, "server.ts"), "export default () => {};\n");
+      await writeFile(join(rootDir, "host.ts"), providerBridgeHost);
+
+      await expect(
+        runCommand(["plugin", "types", rootDir, "--check"], register),
+      ).rejects.toThrow("process.exit:1");
+      expect(vi.mocked(console.error).mock.calls.flat()).toContain(check);
+
+      await runCommand(["plugin", "types", rootDir], register);
+
+      const manifest = await readManifest();
+      expect(manifest.dependencies).toEqual({
+        "@get-bb/plugin-sdk": PLUGIN_SDK_VERSION,
+      });
+      expect(manifest.devDependencies).toBeUndefined();
+      expect(collectLogPayloads(vi.mocked(console.log))).toContain(applied);
+      await runCommand(["plugin", "types", rootDir, "--check"], register);
+    },
+  );
+
+  it("still moves a stub-only host entry's SDK pin to devDependencies", async () => {
+    await writeHostPlugin(
+      "dependencies",
+      'import { experimental_defineHostEntry } from "@get-bb/plugin-sdk/host";\nexport default experimental_defineHostEntry;\n',
+    );
+
+    await runCommand(["plugin", "types", rootDir], register);
+
+    const manifest = await readManifest();
+    expect(manifest.dependencies).toBeUndefined();
+    expect(manifest.devDependencies).toEqual({
+      "@get-bb/plugin-sdk": PLUGIN_SDK_VERSION,
+    });
+  });
+
   it("repoints an outdated pin to the running host's SDK version", async () => {
     await writeManifest({
       name: "bb-plugin-modern",

@@ -3,11 +3,34 @@ import { describe, expect, it } from "vitest";
 import {
   captureTrustedRemoteAddress,
   getTrustedRemoteAddress,
+  resolveRequestAccessRoute,
   resolveRequestAppSurface,
   TRUSTED_REMOTE_ADDRESS_CONTEXT_KEY,
 } from "../src/request-context.js";
 
 describe("request context", () => {
+  it.each([
+    ["/api/v1/threads", "10.0.0.5", "direct"],
+    ["/api/v1/threads", "127.0.0.1", "loopback"],
+    ["/internal/session/events", "10.0.0.5", null],
+  ])("labels %s from %s as %s", async (path, remoteAddress, expected) => {
+    const app = new Hono();
+    app.use("*", async (context, next) => {
+      captureTrustedRemoteAddress(context);
+      await next();
+    });
+    app.all("*", (context) =>
+      context.json({ route: resolveRequestAccessRoute(context) }),
+    );
+
+    const response = await app.fetch(
+      new Request(`http://example.test${path}`),
+      { incoming: { socket: { remoteAddress } } },
+    );
+
+    await expect(response.json()).resolves.toEqual({ route: expected });
+  });
+
   it("captures the trusted remote address from node connection metadata", async () => {
     const app = new Hono();
     app.use("*", async (context, next) => {

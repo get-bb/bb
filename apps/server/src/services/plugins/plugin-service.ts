@@ -1,3 +1,7 @@
+import {
+  capturePluginUse,
+  forgetPluginRecommendation,
+} from "./plugin-use-telemetry.js";
 import { rpcResponseTags } from "@get-bb/plugin-sdk/internal/rpc-tags";
 import type {
   PluginRpcDiscoveryQuery,
@@ -1320,6 +1324,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     providerIds: ReadonlySet<string>,
   ): Promise<void> {
     deps.onPluginUnregistered?.(row.id);
+    forgetPluginRecommendation(deps.db, row.id);
     forgetPluginProviders(deps.db, row.id, providerIds);
     // The uninstalled tree is no longer reloadable, so stop the module
     // resolve hook from scanning it on every later import.
@@ -1867,6 +1872,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
         if (getInstalledPlugin(deps.db, id) === undefined) return undefined;
         if (!(await applyEnabled(id, enabled))) return undefined;
+        if (!enabled) forgetPluginRecommendation(deps.db, id);
         await syncCliSkill();
         notifyPluginsChanged();
         return list().find((p) => p.id === id);
@@ -2283,6 +2289,13 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
               "cli run() must return { exitCode: number, stdout?, stderr? }",
             );
           }
+          if (
+            result.exitCode === 0 &&
+            !argv.includes("--help") &&
+            !argv.includes("-h")
+          ) {
+            capturePluginUse(deps, id);
+          }
           return enforcePluginCliOutputLimit(
             {
               exitCode: result.exitCode,
@@ -2520,8 +2533,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         owner,
         `tool ${record.name}`,
         async () => {
-          const result = await record.execute(parsed.value, ctx);
-          return normalizeAgentToolResult(record.name, result);
+          const result = normalizeAgentToolResult(
+            record.name,
+            await record.execute(parsed.value, ctx),
+          );
+          if (result.success) capturePluginUse(deps, pluginId);
+          return result;
         },
       );
       if (outcome.ok) return outcome.value;

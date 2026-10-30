@@ -1,3 +1,5 @@
+import { reportedProviderId } from "../services/system/provider-telemetry.js";
+import { rememberPluginRecommendation } from "../services/plugins/plugin-use-telemetry.js";
 import { createMobileAppReleaseService } from "../services/install/mobile-app-releases.js";
 import {
   setMachineEnvironmentVariable,
@@ -347,23 +349,45 @@ export function registerSystemRoutes(
   });
 
   post(routes.recordTelemetryEvent, (context, payload) => {
-    if (payload.name !== "plugin_link_shared") {
-      deps.telemetry.capture(payload);
+    if (payload.name === "plugin_link_shared") {
+      const page = pluginCatalog.marketplacePage(
+        payload.properties.marketplace,
+        payload.properties.entry_id,
+      );
+      deps.telemetry.capture({
+        name: "plugin_link_shared",
+        properties: {
+          plugin_id: page?.pluginId ?? null,
+          entry_id: page?.entryId ?? null,
+          marketplace: page?.marketplace ?? null,
+          share_method: payload.properties.share_method,
+        },
+      });
       return context.json({ ok: true });
     }
-    const page = pluginCatalog.marketplacePage(
-      payload.properties.marketplace,
-      payload.properties.entry_id,
+    if (
+      payload.name === "recommendation" &&
+      payload.properties.action === "selected"
+    ) {
+      rememberPluginRecommendation(
+        deps,
+        payload.properties.resource_id,
+        payload.properties.recommendation_id,
+      );
+    }
+    deps.telemetry.capture(
+      payload.name === "onboarding_operation" &&
+        payload.properties.step === "agent" &&
+        payload.properties.resource_id !== undefined
+        ? {
+            ...payload,
+            properties: {
+              ...payload.properties,
+              resource_id: reportedProviderId(payload.properties.resource_id),
+            },
+          }
+        : payload,
     );
-    deps.telemetry.capture({
-      name: "plugin_link_shared",
-      properties: {
-        plugin_id: page?.pluginId ?? null,
-        entry_id: page?.entryId ?? null,
-        marketplace: page?.marketplace ?? null,
-        share_method: payload.properties.share_method,
-      },
-    });
     return context.json({ ok: true });
   });
 

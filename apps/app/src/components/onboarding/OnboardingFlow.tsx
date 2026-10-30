@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { nanoid } from "nanoid";
 import { useLocation } from "react-router-dom";
 import {
   findLocalPathProjectSourceForHost,
@@ -410,7 +411,7 @@ function AgentStepContainer({
     if (hostId === null || status === undefined) return;
     const issue = buildProviderCliIssue({ provider: providerId, status });
     if (issue === null || !hasProviderCliAction(issue)) return;
-    installRunner.startInstall({ hostId, issue });
+    installRunner.startInstall({ hostId, issue, onboardingEntry: entry });
   };
 
   const viewInstallLog = (providerId: string) => {
@@ -696,10 +697,12 @@ function PluginCardContainer({
   entry,
   enabled,
   onChanged,
+  onSelected,
 }: {
   entry: PluginCatalogSearchEntry;
   enabled: boolean;
   onChanged: () => Promise<void>;
+  onSelected: () => void;
 }) {
   const queryClient = useQueryClient();
   const setPluginEnabled = useSetPluginEnabled();
@@ -721,6 +724,7 @@ function PluginCardContainer({
   }, [busy, settling]);
 
   const toggle = async (next: boolean) => {
+    if (next) onSelected();
     setTarget(next);
     setWorking(true);
     try {
@@ -769,11 +773,13 @@ function PluginCardContainer({
 
 function PluginsStepContainer({
   chrome,
+  entry: onboardingEntry,
   onBack,
   onContinue,
   onSkip,
 }: {
   chrome: StepChrome;
+  entry: OnboardingEntry;
   onBack: () => void;
   onContinue: () => void;
   onSkip: () => void;
@@ -805,6 +811,36 @@ function PluginsStepContainer({
     });
   }, [catalogQuery.data?.entries]);
 
+  const [recommendationIds] = useState(() => new Map<string, string>());
+  const recordRecommendation = useCallback(
+    (pluginId: string, action: "shown" | "selected") => {
+      let recommendationId = recommendationIds.get(pluginId);
+      if (recommendationId === undefined) {
+        recommendationId = nanoid();
+        recommendationIds.set(pluginId, recommendationId);
+      }
+      recordTelemetryEvent({
+        name: "recommendation",
+        properties: {
+          resource_type: "plugin",
+          resource_id: pluginId,
+          recommendation_id: recommendationId,
+          action,
+          surface: "onboarding",
+          entry: onboardingEntry,
+        },
+      });
+    },
+    [onboardingEntry, recommendationIds],
+  );
+  useEffect(() => {
+    for (const entry of entries ?? []) {
+      if (!recommendationIds.has(entry.pluginId)) {
+        recordRecommendation(entry.pluginId, "shown");
+      }
+    }
+  }, [entries, recommendationIds, recordRecommendation]);
+
   return (
     <OnboardingLayout
       {...chrome}
@@ -833,6 +869,9 @@ function PluginsStepContainer({
                   false)
               }
               onChanged={refresh}
+              onSelected={() =>
+                recordRecommendation(entry.pluginId, "selected")
+              }
             />
           ))
         )}
@@ -843,12 +882,14 @@ function PluginsStepContainer({
 
 function DevicesStepContainer({
   chrome,
+  entry,
   hostId,
   onBack,
   onFinish,
   onLeave,
 }: {
   chrome: StepChrome;
+  entry: OnboardingEntry;
   hostId: string | null;
   onBack: () => void;
   onFinish: () => void;
@@ -867,6 +908,42 @@ function DevicesStepContainer({
   const otherMachineCount = (hostsQuery.data ?? []).filter(
     (host) => host.id !== hostId,
   ).length;
+  const connect = connectAccessUrl(configQuery.data?.serverAccess);
+  const connectedMachineCount = hostsQuery.data?.filter(
+    (host) => host.id !== hostId && host.status === "connected",
+  ).length;
+  const pendingSetup = useRef<{
+    remoteAccess: boolean;
+    machinesBefore: number | null;
+  }>({ remoteAccess: false, machinesBefore: null });
+  const recordDeviceSetup = useCallback(
+    (
+      operation: "remote_access" | "add_machine",
+      outcome: "started" | "succeeded",
+    ) =>
+      recordTelemetryEvent({
+        name: "onboarding_operation",
+        properties: { entry, step: "devices", operation, outcome },
+      }),
+    [entry],
+  );
+  useEffect(() => {
+    if (connect.status !== "on" || !pendingSetup.current.remoteAccess) return;
+    pendingSetup.current.remoteAccess = false;
+    recordDeviceSetup("remote_access", "succeeded");
+  }, [connect.status, recordDeviceSetup]);
+  useEffect(() => {
+    const before = pendingSetup.current.machinesBefore;
+    if (
+      before === null ||
+      connectedMachineCount === undefined ||
+      connectedMachineCount <= before
+    ) {
+      return;
+    }
+    pendingSetup.current.machinesBefore = null;
+    recordDeviceSetup("add_machine", "succeeded");
+  }, [connectedMachineCount, recordDeviceSetup]);
 
   return (
     <OnboardingLayout
@@ -879,14 +956,33 @@ function DevicesStepContainer({
       onBack={onBack}
     >
       <DevicesStep
-        connect={connectAccessUrl(configQuery.data?.serverAccess)}
+        connect={connect}
         connectSetup={<PluginSettingsSections pluginId={CONNECT_PLUGIN_ID} />}
         connectSetupOpen={connectSetupOpen}
         otherMachineCount={otherMachineCount}
         mobileLinks={mobileAppDownloads}
-        onToggleConnectSetup={() => setConnectSetupOpen((open) => !open)}
+        onToggleConnectSetup={() => {
+          if (
+            !connectSetupOpen &&
+            connect.status === "off" &&
+            !pendingSetup.current.remoteAccess
+          ) {
+            pendingSetup.current.remoteAccess = true;
+            recordDeviceSetup("remote_access", "started");
+          }
+          setConnectSetupOpen((open) => !open);
+        }}
         onCopyConnectUrl={(url) => void copyToClipboardWithToast(url)}
-        onAddMachine={() => setAddMachineOpen(true)}
+        onAddMachine={() => {
+          if (
+            connectedMachineCount !== undefined &&
+            pendingSetup.current.machinesBefore === null
+          ) {
+            pendingSetup.current.machinesBefore = connectedMachineCount;
+            recordDeviceSetup("add_machine", "started");
+          }
+          setAddMachineOpen(true);
+        }}
       />
       <AddMachineDialog
         open={addMachineOpen}
@@ -923,7 +1019,34 @@ export function OnboardingFlow({
   }
   const primaryHost = usePrimaryHost();
   const hostId = primaryHost?.id ?? null;
-  useHostDiscoveredRepos(hostId);
+  const reposQuery = useHostDiscoveredRepos(hostId);
+  const { dataUpdatedAt, errorUpdatedAt } = reposQuery;
+  const foundCount = reposQuery.data?.repos.length;
+  useEffect(() => {
+    if (dataUpdatedAt === 0) return;
+    recordTelemetryEvent({
+      name: "onboarding_operation",
+      properties: {
+        entry,
+        step: "projects",
+        operation: "scan",
+        outcome: "succeeded",
+        item_count: foundCount,
+      },
+    });
+  }, [dataUpdatedAt, entry, foundCount]);
+  useEffect(() => {
+    if (errorUpdatedAt === 0) return;
+    recordTelemetryEvent({
+      name: "onboarding_operation",
+      properties: {
+        entry,
+        step: "projects",
+        operation: "scan",
+        outcome: "failed",
+      },
+    });
+  }, [entry, errorUpdatedAt]);
   const agentStatesQuery = useSystemProviderStates({
     enabled: hostId !== null,
     poll: false,
@@ -1056,6 +1179,7 @@ export function OnboardingFlow({
       return (
         <PluginsStepContainer
           chrome={chrome}
+          entry={entry}
           onBack={goTo(-1)}
           onContinue={advance("completed")}
           onSkip={advance("skipped")}
@@ -1065,6 +1189,7 @@ export function OnboardingFlow({
       return (
         <DevicesStepContainer
           chrome={chrome}
+          entry={entry}
           hostId={hostId}
           onBack={goTo(-1)}
           onFinish={() => close("completed")}

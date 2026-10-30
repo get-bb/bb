@@ -108,6 +108,7 @@ import {
 import { sdk } from "@/lib/sdk";
 import {
   isReleaseVersion,
+  nightlyBaseVersion,
   resolveReleaseUpdateVersion,
   type ReleaseVersionInput,
 } from "./release-notes-model";
@@ -1923,19 +1924,10 @@ function resolveReleaseNotesVersion(input: ReleaseVersionInput): string | null {
     : (input.appUpdate?.current.version ??
       input.systemVersion?.currentVersion ??
       null);
-  return installed !== null && isReleaseVersion(installed) ? installed : null;
-}
-
-function resolveDesktopReleaseNotesVersion(
-  desktopInfo: BbDesktopInfo | null,
-): string | null {
-  if (desktopInfo === null) {
-    return null;
-  }
-  const version = desktopInfo.updateAvailable
-    ? (desktopInfo.pendingVersion ?? desktopInfo.latestVersion)
-    : desktopInfo.version;
-  return version !== null && isReleaseVersion(version) ? version : null;
+  return installed !== null &&
+    (isReleaseVersion(installed) || nightlyBaseVersion(installed) !== null)
+    ? installed
+    : null;
 }
 
 type ReleaseNotesRow = "server" | "desktop";
@@ -2114,7 +2106,12 @@ export function UpdatesSettingsSection() {
   });
   const releaseNotesVersions: Record<ReleaseNotesRow, string | null> = {
     server: releaseNotesVersion,
-    desktop: resolveDesktopReleaseNotesVersion(desktopInfo),
+    desktop: resolveReleaseNotesVersion({
+      isDesktop: true,
+      desktopInfo,
+      appUpdate: undefined,
+      systemVersion: undefined,
+    }),
   };
   function releaseNotesToggle(row: ReleaseNotesRow): ReleaseNotesToggle | null {
     const version = releaseNotesVersions[row];

@@ -6,7 +6,7 @@
   "description": "Retry turns after transient provider errors and when subscription limits reset.",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.4.102"
+    "bbPluginSdk": ">=0.6.107"
   },
   "bb": {
     "name": "Provider retry",

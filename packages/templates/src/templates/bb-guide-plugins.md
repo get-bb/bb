@@ -332,7 +332,10 @@ Authoring a plugin
   bb plugin build [path]         Compile the plugin into dist/; no server
                                  required
   bb plugin types [path] [--check]  Sync the plugin's SDK and shimmed-package
-                                 type pins to this bb; --check only reports
+                                 type pins to this bb; keep the SDK in
+                                 dependencies when an entry needs its own
+                                 SDK install; --check reports stale pins
+                                 and the wrong dependency field
   bb plugin migrate [path] [--yes]  Move a plugin that vendors types/ to the
                                  @get-bb/plugin-sdk npm package
 

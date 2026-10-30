@@ -1,6 +1,6 @@
 import { recordTelemetryEvent } from "@/components/onboarding/onboarding-telemetry";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
-import { isReleaseVersion } from "./release-notes-model";
+import { nightlyBaseVersion } from "./release-notes-model";
 
 const RELEASE_NOTES_BASE_URL = "https://getbb.app/changelog";
 
@@ -14,12 +14,12 @@ export function recordReleaseNotesOpened(
   version: string,
   view: ReleaseNotesView,
 ): void {
-  if (!isReleaseVersion(version)) {
-    return;
-  }
   recordTelemetryEvent({
     name: "release_notes_opened",
-    properties: { release_version: version, view },
+    properties: {
+      release_version: nightlyBaseVersion(version) ?? version,
+      view,
+    },
   });
 }
 

@@ -528,12 +528,13 @@ describe("UpdatesSettingsSection", () => {
       expect(releaseNotesButton("0.0.5")).toBeDefined();
     });
 
-    it("hides the button for a nightly build", () => {
+    it("offers the newest release's notes on a nightly build", () => {
+      const nightly = "0.48.2-nightly.40981326765.1";
       useUpdateInventoryMock.mockReturnValue(
         makeInventory({
           systemVersion: {
-            currentVersion: "0.48.0-nightly.20261020",
-            latestVersion: "0.48.0-nightly.20261020",
+            currentVersion: nightly,
+            latestVersion: nightly,
             currentCommit: null,
             installKind: "npm",
             source: "npm",
@@ -544,8 +545,19 @@ describe("UpdatesSettingsSection", () => {
         }),
       );
       renderSection();
+      fireEvent.click(releaseNotesButton(nightly));
 
-      expect(screen.queryByRole("button", { name: /Changelog/ })).toBeNull();
+      const panel = releaseNotesPanel(nightly)!;
+      expect(
+        within(panel).getByText("bb 0.48.0 · October 28, 2026"),
+      ).toBeDefined();
+      expect(
+        within(panel).getByText("This build includes changes since 0.48.0"),
+      ).toBeDefined();
+      expect(recordTelemetryEvent).toHaveBeenCalledExactlyOnceWith({
+        name: "release_notes_opened",
+        properties: { release_version: "0.48.2", view: "inline" },
+      });
     });
 
     it("opens the release's notes under the bb row and closes them again", () => {
@@ -2750,13 +2762,6 @@ The published lede.
       });
     });
 
-    it("offers the latest desktop release when nothing is pending", async () => {
-      useSeparateDesktop({});
-      const bbCard = await renderBbCard();
-
-      expect(notesButton(bbCard, "0.47.0")).toBeDefined();
-    });
-
     it("offers the installed desktop release when no update is available", async () => {
       useSeparateDesktop({
         lastCheckedAt: "2026-10-20T12:00:00.000Z",
@@ -2766,20 +2771,6 @@ The published lede.
       const bbCard = await renderBbCard();
 
       expect(notesButton(bbCard, "0.46.0")).toBeDefined();
-    });
-
-    it("hides the desktop button for a nightly build", async () => {
-      useSeparateDesktop({
-        latestVersion: "0.48.0-nightly.20261021",
-        version: "0.48.0-nightly.20261020",
-      });
-      const bbCard = await renderBbCard();
-
-      expect(
-        within(bbCard)
-          .getAllByRole("button", { name: /Changelog/ })
-          .map((button) => button.getAttribute("aria-label")),
-      ).toEqual(["Changelog for bb 0.0.6"]);
     });
   });
 

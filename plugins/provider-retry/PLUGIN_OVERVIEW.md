@@ -7,6 +7,7 @@ Keep threads moving when a provider is overloaded or unreachable, or your subscr
 - Automatic retry after a subscription limit, timed to the reset the provider reports.
 - A queued message card on the thread that you can send now or cancel.
 - A cap of four retries per turn.
+- No retry of a scheduled run of a recurring automation. That automation runs again on its own schedule.
 
 ## How it works
 

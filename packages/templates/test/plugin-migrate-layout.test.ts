@@ -100,6 +100,7 @@ describe("migratePluginToPackageLayout", () => {
     const result = await migratePluginToPackageLayout({
       rootDir,
       sdkVersion: SDK_VERSION,
+      sdkInDependencies: false,
     });
 
     expect(result.changed).toBe(true);
@@ -131,6 +132,7 @@ describe("migratePluginToPackageLayout", () => {
     const raised = await migratePluginToPackageLayout({
       rootDir,
       sdkVersion: SDK_VERSION,
+      sdkInDependencies: false,
     });
     expect(raised.enginesFloor).toEqual({ from: ">=0.2.0", to: ">=0.4.3" });
     expect(
@@ -153,6 +155,7 @@ describe("migratePluginToPackageLayout", () => {
       const result = await migratePluginToPackageLayout({
         rootDir: newer,
         sdkVersion: SDK_VERSION,
+        sdkInDependencies: false,
       });
       expect(result.enginesFloor).toBeNull();
       expect(
@@ -192,6 +195,7 @@ describe("migratePluginToPackageLayout", () => {
       const result = await migratePluginToPackageLayout({
         rootDir,
         sdkVersion,
+        sdkInDependencies: false,
       });
       expect(result.enginesFloor).toEqual(
         raises ? { from: range, to: `>=${sdkVersion}` } : null,
@@ -205,7 +209,11 @@ describe("migratePluginToPackageLayout", () => {
 
   it("is a no-op the second time", async () => {
     await writeVendoredPlugin(rootDir);
-    await migratePluginToPackageLayout({ rootDir, sdkVersion: SDK_VERSION });
+    await migratePluginToPackageLayout({
+      rootDir,
+      sdkVersion: SDK_VERSION,
+      sdkInDependencies: false,
+    });
     const manifestAfterFirst = await readFile(
       join(rootDir, "package.json"),
       "utf8",
@@ -218,12 +226,14 @@ describe("migratePluginToPackageLayout", () => {
     const second = await migratePluginToPackageLayout({
       rootDir,
       sdkVersion: SDK_VERSION,
+      sdkInDependencies: false,
     });
 
     expect(second).toEqual({
       changed: false,
       pin: null,
-      movedFromDependencies: false,
+      sdkField: "devDependencies",
+      sdkRelocation: "none",
       enginesFloor: null,
       removedPathMaps: [],
       removedIncludes: [],
@@ -252,6 +262,7 @@ describe("migratePluginToPackageLayout", () => {
     const result = await migratePluginToPackageLayout({
       rootDir,
       sdkVersion: SDK_VERSION,
+      sdkInDependencies: false,
     });
 
     expect(result.changed).toBe(true);
@@ -272,6 +283,7 @@ describe("migratePluginToPackageLayout", () => {
     const result = await migratePluginToPackageLayout({
       rootDir,
       sdkVersion: SDK_VERSION,
+      sdkInDependencies: false,
     });
 
     expect(result.removedTypesDir).toBe(false);
@@ -301,6 +313,7 @@ describe("migratePluginToPackageLayout", () => {
     const result = await migratePluginToPackageLayout({
       rootDir,
       sdkVersion: SDK_VERSION,
+      sdkInDependencies: false,
     });
 
     expect(result.removedPathMaps).toEqual([
@@ -330,10 +343,11 @@ describe("migratePluginToPackageLayout", () => {
     const result = await migratePluginToPackageLayout({
       rootDir,
       sdkVersion: SDK_VERSION,
+      sdkInDependencies: false,
     });
 
     expect(result.changed).toBe(true);
-    expect(result.movedFromDependencies).toBe(true);
+    expect(result.sdkRelocation).toBe("deduplicated");
     const manifest = await readJson(join(rootDir, "package.json"));
     expect(manifest.dependencies).toEqual({ zod: "^4.3.6" });
     expect(manifest.devDependencies).toEqual({
@@ -355,6 +369,7 @@ describe("migratePluginToPackageLayout", () => {
     const result = await migratePluginToPackageLayout({
       rootDir,
       sdkVersion: SDK_VERSION,
+      sdkInDependencies: false,
     });
 
     expect(result.changed).toBe(true);
@@ -403,6 +418,7 @@ describe("migratePluginToPackageLayout", () => {
     const result = await migratePluginToPackageLayout({
       rootDir,
       sdkVersion: SDK_VERSION,
+      sdkInDependencies: false,
     });
 
     expect(result.rewrittenImports).toEqual([
@@ -433,6 +449,7 @@ describe("migratePluginToPackageLayout", () => {
     const second = await migratePluginToPackageLayout({
       rootDir,
       sdkVersion: SDK_VERSION,
+      sdkInDependencies: false,
     });
     expect(second.rewrittenImports).toEqual([]);
     expect(second.changed).toBe(false);
@@ -446,6 +463,7 @@ describe("migratePluginToPackageLayout", () => {
     const plan = await migratePluginToPackageLayout({
       rootDir,
       sdkVersion: SDK_VERSION,
+      sdkInDependencies: false,
       dryRun: true,
     });
 
@@ -469,6 +487,7 @@ describe("migratePluginToPackageLayout", () => {
     const result = await migratePluginToPackageLayout({
       rootDir,
       sdkVersion: SDK_VERSION,
+      sdkInDependencies: false,
     });
 
     expect(result.changed).toBe(true);
@@ -487,6 +506,7 @@ describe("migratePluginToPackageLayout", () => {
     const plan = await migratePluginToPackageLayout({
       rootDir,
       sdkVersion: SDK_VERSION,
+      sdkInDependencies: false,
       dryRun: true,
     });
 
@@ -510,7 +530,11 @@ describe("migratePluginToPackageLayout", () => {
       );
 
       await expect(
-        migratePluginToPackageLayout({ rootDir, sdkVersion: SDK_VERSION }),
+        migratePluginToPackageLayout({
+          rootDir,
+          sdkVersion: SDK_VERSION,
+          sdkInDependencies: false,
+        }),
       ).rejects.toThrow(/symbolic link/);
 
       expect(await readFile(join(outside, "bb-plugin-sdk.d.ts"), "utf8")).toBe(
@@ -536,7 +560,11 @@ describe("migratePluginToPackageLayout", () => {
     );
 
     await expect(
-      migratePluginToPackageLayout({ rootDir, sdkVersion: SDK_VERSION }),
+      migratePluginToPackageLayout({
+        rootDir,
+        sdkVersion: SDK_VERSION,
+        sdkInDependencies: false,
+      }),
     ).rejects.toThrow(/tsconfig\.json is not valid JSON/);
 
     expect(await readFile(join(rootDir, "package.json"), "utf8")).toBe(
@@ -580,11 +608,13 @@ describe("setPluginSdkPin", () => {
     const result = await setPluginSdkPin({
       rootDir,
       sdkVersion: SDK_VERSION,
+      sdkInDependencies: false,
     });
 
     expect(result).toEqual({
       pin: { from: "0.2.0", to: SDK_VERSION },
-      movedFromDependencies: false,
+      sdkField: "devDependencies",
+      sdkRelocation: "none",
       shimmedTypePins: [],
     });
     const manifest = await readJson(join(rootDir, "package.json"));
@@ -597,7 +627,11 @@ describe("setPluginSdkPin", () => {
       ">=0.2.0",
     );
     expect(
-      await setPluginSdkPin({ rootDir, sdkVersion: SDK_VERSION }),
+      await setPluginSdkPin({
+        rootDir,
+        sdkVersion: SDK_VERSION,
+        sdkInDependencies: false,
+      }),
     ).toBeNull();
   });
 
@@ -618,11 +652,13 @@ describe("setPluginSdkPin", () => {
     const result = await setPluginSdkPin({
       rootDir,
       sdkVersion: SDK_VERSION,
+      sdkInDependencies: false,
     });
 
     expect(result).toEqual({
       pin: null,
-      movedFromDependencies: true,
+      sdkField: "devDependencies",
+      sdkRelocation: "moved",
       shimmedTypePins: [],
     });
     const manifest = await readJson(join(rootDir, "package.json"));
@@ -631,7 +667,56 @@ describe("setPluginSdkPin", () => {
       "@get-bb/plugin-sdk": SDK_VERSION,
     });
     expect(
-      await setPluginSdkPin({ rootDir, sdkVersion: SDK_VERSION }),
+      await setPluginSdkPin({
+        rootDir,
+        sdkVersion: SDK_VERSION,
+        sdkInDependencies: false,
+      }),
+    ).toBeNull();
+  });
+
+  it("keeps the pin in dependencies when an entry needs the SDK install, dropping a devDependencies duplicate", async () => {
+    await writeFile(
+      join(rootDir, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "bb-plugin-provider",
+          bb: { server: "./server.ts", host: "./host.ts" },
+          dependencies: { "@get-bb/plugin-sdk": SDK_VERSION, zod: "^4.3.6" },
+          devDependencies: {
+            "@get-bb/plugin-sdk": "0.2.0",
+            typescript: "^5.7.0",
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+
+    const result = await setPluginSdkPin({
+      rootDir,
+      sdkVersion: SDK_VERSION,
+      sdkInDependencies: true,
+    });
+
+    expect(result).toEqual({
+      pin: null,
+      sdkField: "dependencies",
+      sdkRelocation: "deduplicated",
+      shimmedTypePins: [],
+    });
+    const manifest = await readJson(join(rootDir, "package.json"));
+    expect(manifest.dependencies).toEqual({
+      "@get-bb/plugin-sdk": SDK_VERSION,
+      zod: "^4.3.6",
+    });
+    expect(manifest.devDependencies).toEqual({ typescript: "^5.7.0" });
+    expect(
+      await setPluginSdkPin({
+        rootDir,
+        sdkVersion: SDK_VERSION,
+        sdkInDependencies: true,
+      }),
     ).toBeNull();
   });
 
@@ -660,6 +745,7 @@ describe("setPluginSdkPin", () => {
     const pending = await setPluginSdkPin({
       rootDir,
       sdkVersion: SDK_VERSION,
+      sdkInDependencies: false,
       dryRun: true,
     });
     expect(await readFile(join(rootDir, "package.json"), "utf8")).toBe(
@@ -669,6 +755,7 @@ describe("setPluginSdkPin", () => {
     const result = await setPluginSdkPin({
       rootDir,
       sdkVersion: SDK_VERSION,
+      sdkInDependencies: false,
     });
 
     expect(result).toEqual(pending);
@@ -695,7 +782,11 @@ describe("setPluginSdkPin", () => {
       typescript: "^5.7.0",
     });
     expect(
-      await setPluginSdkPin({ rootDir, sdkVersion: SDK_VERSION }),
+      await setPluginSdkPin({
+        rootDir,
+        sdkVersion: SDK_VERSION,
+        sdkInDependencies: false,
+      }),
     ).toBeNull();
   });
 
@@ -713,6 +804,7 @@ describe("setPluginSdkPin", () => {
         await setPluginSdkPin({
           rootDir,
           sdkVersion: SDK_VERSION,
+          sdkInDependencies: false,
           dryRun,
         }),
       ).toBeNull();
@@ -742,6 +834,7 @@ describe("setPluginSdkPin", () => {
     const result = await setPluginSdkPin({
       rootDir,
       sdkVersion: SDK_VERSION,
+      sdkInDependencies: false,
     });
 
     expect(result?.shimmedTypePins).toEqual([

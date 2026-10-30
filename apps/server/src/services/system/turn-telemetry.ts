@@ -2,6 +2,7 @@ import {
   afterCommit,
   claimInstallTurnNumber,
   getLatestStoredThreadEventOfTypes,
+  getEnvironment,
   getThread,
   type DbQueryConnection,
 } from "@bb/db";
@@ -14,10 +15,18 @@ import {
 } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import { buildTurnFailedEvent } from "../threads/turn-failed.js";
-import type { TurnErrorCategory, TurnFinishedOutcome } from "./telemetry.js";
+import { readPrimaryHostIdFromDataDir } from "../hosts/primary-host.js";
+import type {
+  TurnErrorCategory,
+  TurnExecutionLocation,
+  TurnFinishedOutcome,
+} from "./telemetry.js";
 import { reportedProviderId } from "./provider-telemetry.js";
 
-type TurnTelemetryDeps = Pick<AppDeps, "db" | "logger" | "telemetry">;
+type TurnTelemetryDeps = Pick<
+  AppDeps,
+  "config" | "db" | "logger" | "telemetry"
+>;
 
 const SYSTEM_ERROR_CATEGORIES: Readonly<Record<string, TurnErrorCategory>> = {
   provider_process_exited: "process_exited",
@@ -111,6 +120,20 @@ function failureCategory(
   );
 }
 
+function executionLocation(
+  deps: TurnTelemetryDeps,
+  db: DbQueryConnection,
+  environmentId: string | null,
+): TurnExecutionLocation {
+  const hostId =
+    environmentId === null ? null : getEnvironment(db, environmentId)?.hostId;
+  const serverHostId = readPrimaryHostIdFromDataDir({
+    dataDir: deps.config.dataDir,
+  });
+  if (!hostId || serverHostId === null) return "unknown";
+  return hostId === serverHostId ? "server_machine" : "additional_machine";
+}
+
 export function recordFinishedTurn(
   db: DbQueryConnection,
   threadId: string,
@@ -127,6 +150,7 @@ export function recordFinishedTurn(
     const properties = {
       outcome,
       provider: reportedProviderId(thread.providerId),
+      execution_location: executionLocation(deps, db, thread.environmentId),
       error_category:
         outcome === "failed"
           ? failureCategory(deps.db, threadId)

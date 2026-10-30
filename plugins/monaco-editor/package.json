@@ -24,7 +24,7 @@
   ],
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.4.91"
+    "bbPluginSdk": ">=0.6.109"
   },
   "bb": {
     "name": "File Editor",

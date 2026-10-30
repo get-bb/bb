@@ -629,7 +629,10 @@ whether this event needs matching resolved, cancelled, or interrupted events.
 These are observe-only announcements. `message.queued` (on first queue and on
 every rewritten wait) and `message.dispatched` carry the `ThreadQueuedMessage`
 DTO. `message.cancelled` fires when a queued row is deleted before dispatch.
-`turn.failed` carries ids and failure facts after a thread lands in `error`.
+`turn.failed` carries ids and failure facts after a thread lands in `error`,
+including `originPluginId`, the plugin that sent the failed message. Provider
+retry uses it to ask only that plugin whether to re-run the turn
+(`provider-retry.v1.consent`); Automations is the one sender that answers.
 
 Docs: `backend-events.md`.
 
@@ -1187,6 +1190,17 @@ Docs: `backend-foundation.md`.
 **Audit before stabilizing.** Decide whether `BB_EXTERNAL_URL` or the bb
 connect URL should supply this value when `BB_APP_URL` is empty. Confirm that
 one public URL has clear behavior when a server has several access paths.
+
+## `bb.internal_DO_NOT_USE_recordPluginUse`
+
+Internal to bb's first-party plugins whose meaningful use happens in their own
+UI rather than through an agent tool or CLI command: `monaco-editor` (a saved
+file), `prompt-library` (an inserted prompt) and `agent-annotations` (a saved
+annotation). It takes no arguments. The server counts it as one `plugin_use`
+of the calling plugin, exactly like a successful tool call or CLI command, and
+sends nothing for non-public plugins or when usage data is off. Each plugin's
+use is sent at most once per day. Forks of these plugins inherit the call, so
+removing it later means leaving a no-op stub.
 
 ## `bb.server.internal_DO_NOT_USE_openTunnelIngress`
 
@@ -3814,11 +3828,18 @@ a marketplace and entry id that the server replaces with the matched BB
 Official or BB Community entry, or nulls. App callers, all through
 `recordTelemetryEvent` in
 `apps/app/src/components/onboarding/onboarding-telemetry.ts`: the setup guide
-(`OnboardingFlow`), `NewThreadComposer`'s `new_thread_submit` outcomes,
+(`OnboardingFlow`, `useOnboardingProjectImport`, and agent installs it starts
+through `provider-cli-install-store`), `NewThreadComposer`'s `new_thread_submit` outcomes,
 `PluginCreateButton`'s `plugin_creation_started`, Settings → Updates'
 changelog (`release_notes_opened`, inline or on the web), and
 `PluginShareButton`'s `plugin_link_shared`. `bb plugin new` and
-`bb plugin share` send their events through the same SDK method.
+`bb plugin share` send their events through the same SDK method. The setup guide's
+Plugins step reports `recommendation` `shown` and `selected` with a per-visit
+`recommendation_id`; `selected` also stores that id in server-owned settings
+until the plugin's next use, disable or uninstall. `NewThreadComposer` also
+reports `new_thread_blocker` once per blocker reason while a draft exists.
+`onboarding_operation` reports a guide action's started, succeeded or failed
+outcome with only a public agent id or counts.
 
 Stabilize after deciding whether third-party plugins may emit product events
 at all and, if so, how they are namespaced and rate limited.

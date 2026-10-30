@@ -7,12 +7,17 @@ does not cover:
 
 1. **`bb plugin types`**, run in the plugin directory (or given its path),
    syncs that plugin's SDK surface to the running bb — no server needed. It
-   repins the exact `@get-bb/plugin-sdk` devDependency to this bb's SDK
-   version and brings the declared runtime-shimmed packages' type-only
-   devDependencies to the versions this bb ships, moving them out of
-   `dependencies` when needed (run `npm install` after). For an older plugin
-   that still vendors `types/*.d.ts` it rewrites those declarations instead.
-   `--check` compares declared files and package pins without writing. Build
+   repins the exact `@get-bb/plugin-sdk` to this bb's SDK version and brings
+   the declared runtime-shimmed packages' type-only devDependencies to the
+   versions this bb ships, moving them out of `dependencies` when needed (run
+   `npm install` after). The SDK goes in `devDependencies`, unless an entry
+   imports an SDK subpath that the build bundles from the plugin's own
+   install (see the host-entry dependency rule in backend-foundation.md);
+   then it goes in `dependencies`, because Git installs omit dev
+   dependencies. For an older plugin that still vendors `types/*.d.ts` it
+   rewrites those declarations instead. `--check` compares declared files
+   and package pins without writing, and fails when the SDK is in the wrong
+   field. Build
    and dev refresh vendored declarations and warn about stale package pins;
    they do not repin installed packages or lockfiles.
 2. **Read the bundled declarations** — the authoritative surface, with doc
@@ -28,7 +33,7 @@ does not cover:
      `/testing/host` subpaths, so migrate before adding `bb.host`.
      `bb plugin migrate` converts such a plugin to the npm package: it prints
      the plan and asks first (`--yes` when stdin is not a terminal), pins the
-     SDK devDependency (moving it out of `dependencies` and raising an older
+     SDK in the field `bb plugin types` picks (raising an older
      `engines.bbPluginSdk` floor), drops the tsconfig path map, deletes the
      vendored declarations (keeping `types/` if it holds your own files), and
      rewrites `@bb/plugin-sdk` imports; rerunning is a no-op, and you run
