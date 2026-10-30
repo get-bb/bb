@@ -875,8 +875,7 @@ Settings → Experiments, `bb settings general earlyAdopter on`) switches the
 shipped default to the early adopter default: experiments marked Early adopter
 (currently `applicationLinks`, `timelinePush`, `compactExpiredCache`,
 `pluginUpdates`, `sidebarMultiSelect`, `skipFocusedThreadNotifications`,
-`threadContextCard`, `unreadDividerAtAnswer`, and
-`websocketCompression`) turn on, and the rest stay
+`unreadDividerAtAnswer`, and `websocketCompression`) turn on, and the rest stay
 off. An experiment you set yourself keeps your value either way.
 `/system/config` and `sdk.system.config()` return the resolved values in
 `experiments`.
@@ -933,7 +932,7 @@ off. An experiment you set yourself keeps your value either way.
   them onto a composer as one mention per thread. Cmd/Ctrl-click still opens a
   thread in a split. Plugins read it with
   `experimental_useExperiment("sidebarMultiSelect")`.
-- `threadContextCard` (on for early adopters) moves a running thread's
+- `threadContextCard` moves a running thread's
   details into the thread context card at the upper-right of its pane: bb's parent
   thread and child threads, the Git plugin's changes, which open the Diff tab,
   and GitHub PR Status's pull request. The context row above the

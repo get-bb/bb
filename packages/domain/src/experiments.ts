@@ -52,7 +52,7 @@ export const earlyAdopterExperiments: Experiments = {
   pluginUpdates: true,
   sidebarMultiSelect: true,
   skipFocusedThreadNotifications: true,
-  threadContextCard: true,
+  threadContextCard: false,
   threadRowMetadata: false,
   timelinePush: true,
   unreadDividerAtAnswer: true,
