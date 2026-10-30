@@ -212,6 +212,12 @@ export function surveyAnswers(values: FormValues): FormValues {
   return answers;
 }
 
+export const SECTIONS: Record<string, string> = {
+  discovery: "Getting to know you",
+  love: "Your experience with bb",
+  community: "What you'd like from the bb community",
+};
+
 export type SurveyOrder = Record<string, string[]>;
 
 function shuffled(options: readonly string[], fixedLast: number): string[] {

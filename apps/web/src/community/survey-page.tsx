@@ -4,6 +4,7 @@ import { SiteFooter, SiteNav } from "../landing/site-chrome";
 import {
   formValues,
   questionVisible,
+  SECTIONS,
   surveyAnswers,
   surveyQuestions,
   surveyReply,
@@ -20,21 +21,13 @@ const SURVEY_DESCRIPTION =
 const SURVEY_PURPOSE =
   "This should take ~3 min. As a small thank you, we'll send you bb stickers free of charge (US-only for now). Thanks for building with us!";
 const CITY_HELP = "So we know where to start meetups.";
-const RESEARCH_CALL_NOTE =
-  "We'll email you to find a time. We'd love to hear your feedback and share tips.";
-const MEETUP_NOTE =
-  "If you help organize, we'll help with budget, merch and more.";
 const QUESTION_NOTES: Record<string, string> = {
-  meetup: MEETUP_NOTE,
-  research_call: RESEARCH_CALL_NOTE,
+  meetup: "If you help organize, we'll help with budget, merch and more.",
+  research_call:
+    "We'll email you to find a time. We'd love to hear your feedback and share tips.",
 };
 const EMAIL_NOTE = "We won't send you any marketing emails.";
 const PROGRESS_KEY = "bb-community-survey";
-const SECTIONS: Record<string, string> = {
-  discovery: "Getting to know you",
-  love: "Your experience with bb",
-  community: "What you'd like from the bb community",
-};
 
 function readProgress(): FormValues {
   try {
@@ -329,7 +322,7 @@ export function SurveyPage({
                     </Fragment>
                   ),
               )}
-              <label className="community-meetup" htmlFor="email">
+              <label className="community-last-step" htmlFor="email">
                 <strong>Last step.</strong> Your email, so we can send your
                 stickers and share your results with you.
                 <span className="community-required" aria-hidden>

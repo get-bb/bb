@@ -177,9 +177,12 @@
   .community-page fieldset {
     padding: 28px 0;
   }
+  .community-email-row {
+    flex-direction: column;
+  }
 }
 
-.community-meetup {
+.community-last-step {
   display: block;
   margin: 32px 0 0;
   line-height: 1.7;
@@ -222,11 +225,6 @@
 @media (prefers-reduced-motion: reduce) {
   .community-spinner {
     animation-duration: 2.4s;
-  }
-}
-@media (max-width: 600px) {
-  .community-email-row {
-    flex-direction: column;
   }
 }
 
