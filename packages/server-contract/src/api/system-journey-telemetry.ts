@@ -79,14 +79,6 @@ export const newThreadBlockerPropertiesSchema = z
   })
   .strict();
 
-export const onboardingWorkSurfacePropertiesSchema = z
-  .object({
-    surface: z.literal("first_task"),
-    action: z.literal("displayed"),
-    entry: z.enum(["completed_guide", "skipped_guide", "other", "unknown"]),
-  })
-  .strict();
-
 export const onboardingJourneyTelemetrySchemas = [
   z
     .object({
@@ -104,12 +96,6 @@ export const onboardingJourneyTelemetrySchemas = [
     .object({
       name: z.literal("new_thread_blocker"),
       properties: newThreadBlockerPropertiesSchema,
-    })
-    .strict(),
-  z
-    .object({
-      name: z.literal("onboarding_work_surface"),
-      properties: onboardingWorkSurfacePropertiesSchema,
     })
     .strict(),
 ] as const;
