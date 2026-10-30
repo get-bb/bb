@@ -30,6 +30,7 @@ import { Route as GuidesSlugRouteImport } from "./routes/guides.$slug";
 import { Route as DownloadWindowsRouteImport } from "./routes/download.windows";
 import { Route as DownloadMacosRouteImport } from "./routes/download.macos";
 import { Route as DownloadLinuxRouteImport } from "./routes/download.linux";
+import { Route as DocsSearchDotjsonRouteImport } from "./routes/docs.search[.]json";
 import { Route as DocsSplatRouteImport } from "./routes/docs.$";
 import { Route as CompareSlugRouteImport } from "./routes/compare.$slug";
 import { Route as BlogSlugRouteImport } from "./routes/blog_.$slug";
@@ -158,6 +159,11 @@ const DownloadMacosRoute = DownloadMacosRouteImport.update({
 const DownloadLinuxRoute = DownloadLinuxRouteImport.update({
   id: "/download/linux",
   path: "/download/linux",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const DocsSearchDotjsonRoute = DocsSearchDotjsonRouteImport.update({
+  id: "/docs/search.json",
+  path: "/docs/search.json",
   getParentRoute: () => rootRouteImport,
 } as any);
 const DocsSplatRoute = DocsSplatRouteImport.update({
@@ -309,6 +315,7 @@ export interface FileRoutesByFullPath {
   "/blog/$slug": typeof BlogSlugRoute;
   "/compare/$slug": typeof CompareSlugRoute;
   "/docs/$": typeof DocsSplatRoute;
+  "/docs/search.json": typeof DocsSearchDotjsonRoute;
   "/download/linux": typeof DownloadLinuxRoute;
   "/download/macos": typeof DownloadMacosRoute;
   "/download/windows": typeof DownloadWindowsRoute;
@@ -356,6 +363,7 @@ export interface FileRoutesByTo {
   "/blog/$slug": typeof BlogSlugRoute;
   "/compare/$slug": typeof CompareSlugRoute;
   "/docs/$": typeof DocsSplatRoute;
+  "/docs/search.json": typeof DocsSearchDotjsonRoute;
   "/download/linux": typeof DownloadLinuxRoute;
   "/download/macos": typeof DownloadMacosRoute;
   "/download/windows": typeof DownloadWindowsRoute;
@@ -404,6 +412,7 @@ export interface FileRoutesById {
   "/blog_/$slug": typeof BlogSlugRoute;
   "/compare/$slug": typeof CompareSlugRoute;
   "/docs/$": typeof DocsSplatRoute;
+  "/docs/search.json": typeof DocsSearchDotjsonRoute;
   "/download/linux": typeof DownloadLinuxRoute;
   "/download/macos": typeof DownloadMacosRoute;
   "/download/windows": typeof DownloadWindowsRoute;
@@ -453,6 +462,7 @@ export interface FileRouteTypes {
     | "/blog/$slug"
     | "/compare/$slug"
     | "/docs/$"
+    | "/docs/search.json"
     | "/download/linux"
     | "/download/macos"
     | "/download/windows"
@@ -500,6 +510,7 @@ export interface FileRouteTypes {
     | "/blog/$slug"
     | "/compare/$slug"
     | "/docs/$"
+    | "/docs/search.json"
     | "/download/linux"
     | "/download/macos"
     | "/download/windows"
@@ -547,6 +558,7 @@ export interface FileRouteTypes {
     | "/blog_/$slug"
     | "/compare/$slug"
     | "/docs/$"
+    | "/docs/search.json"
     | "/download/linux"
     | "/download/macos"
     | "/download/windows"
@@ -595,6 +607,7 @@ export interface RootRouteChildren {
   BlogSlugRoute: typeof BlogSlugRoute;
   CompareSlugRoute: typeof CompareSlugRoute;
   DocsSplatRoute: typeof DocsSplatRoute;
+  DocsSearchDotjsonRoute: typeof DocsSearchDotjsonRoute;
   DownloadLinuxRoute: typeof DownloadLinuxRoute;
   DownloadMacosRoute: typeof DownloadMacosRoute;
   DownloadWindowsRoute: typeof DownloadWindowsRoute;
@@ -766,6 +779,13 @@ declare module "@tanstack/react-router" {
       path: "/download/linux";
       fullPath: "/download/linux";
       preLoaderRoute: typeof DownloadLinuxRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/docs/search.json": {
+      id: "/docs/search.json";
+      path: "/docs/search.json";
+      fullPath: "/docs/search.json";
+      preLoaderRoute: typeof DocsSearchDotjsonRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/docs/$": {
@@ -978,6 +998,7 @@ const rootRouteChildren: RootRouteChildren = {
   BlogSlugRoute: BlogSlugRoute,
   CompareSlugRoute: CompareSlugRoute,
   DocsSplatRoute: DocsSplatRoute,
+  DocsSearchDotjsonRoute: DocsSearchDotjsonRoute,
   DownloadLinuxRoute: DownloadLinuxRoute,
   DownloadMacosRoute: DownloadMacosRoute,
   DownloadWindowsRoute: DownloadWindowsRoute,

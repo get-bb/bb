@@ -5,6 +5,7 @@ import { Suspense, useEffect, useRef, type ComponentProps } from "react";
 import { useInitAnalytics } from "../landing/analytics";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
 import { docs } from "./content";
+import { DocsSearch } from "./docs-search";
 import type { DocsNavSection, DocsPageView, DocsTocEntry } from "./page-view";
 
 function DocsNav({ view }: { view: DocsPageView }) {
@@ -138,6 +139,7 @@ export function DocsPage({ view }: { view: DocsPageView }) {
           Docs
         </a>
         <MobileNav view={view} />
+        <DocsSearch />
       </div>
       <div className="docs-shell">
         <aside className="docs-sidebar">
