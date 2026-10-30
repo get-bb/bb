@@ -229,6 +229,16 @@ heading.
 Then open the page on the dev server and check the sidebar, the Copy page menu,
 search, and the `.md` copy at `/docs/<slug>.md`.
 
+## Keep the home and landing pages unchanged
+
+Docs ship in the same app as the home and landing pages. On every PR that
+changes docs paths (`apps/web/content/docs/`, `apps/web/src/docs/`, the docs
+and `llms` routes, `apps/web/public/docs-images/`, or the docs skills), the CI
+job "Docs leave home and landing pages unchanged" builds the base and the PR
+and fails if the markup, CSS or loaded JS of `/` or a landing page changed.
+If the PR changes them on purpose, add the `allow-landing-change` label and
+re-run the job.
+
 ## Roll back a bad deploy
 
 A merge to `main` that changes the site deploys getbb.app. If a deploy breaks
