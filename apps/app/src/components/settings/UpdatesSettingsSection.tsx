@@ -1926,18 +1926,6 @@ function resolveReleaseNotesVersion(input: ReleaseVersionInput): string | null {
   return installed !== null && isReleaseVersion(installed) ? installed : null;
 }
 
-function resolveDesktopReleaseNotesVersion(
-  desktopInfo: BbDesktopInfo | null,
-): string | null {
-  if (desktopInfo === null) {
-    return null;
-  }
-  const version = desktopInfo.updateAvailable
-    ? (desktopInfo.pendingVersion ?? desktopInfo.latestVersion)
-    : desktopInfo.version;
-  return version !== null && isReleaseVersion(version) ? version : null;
-}
-
 type ReleaseNotesRow = "server" | "desktop";
 
 const RELEASE_NOTES_PANEL_IDS: Record<ReleaseNotesRow, string> = {
@@ -2114,7 +2102,12 @@ export function UpdatesSettingsSection() {
   });
   const releaseNotesVersions: Record<ReleaseNotesRow, string | null> = {
     server: releaseNotesVersion,
-    desktop: resolveDesktopReleaseNotesVersion(desktopInfo),
+    desktop: resolveReleaseNotesVersion({
+      isDesktop: true,
+      desktopInfo,
+      appUpdate: undefined,
+      systemVersion: undefined,
+    }),
   };
   function releaseNotesToggle(row: ReleaseNotesRow): ReleaseNotesToggle | null {
     const version = releaseNotesVersions[row];

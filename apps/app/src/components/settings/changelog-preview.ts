@@ -23,9 +23,6 @@ export type ReleaseMeta = (typeof RELEASE_META)[string];
 
 export const CHANGELOG_ENTRIES = parseChangelog(changelogSource);
 
-export const LATEST_CHANGELOG_ENTRY: ChangelogEntry | null =
-  CHANGELOG_ENTRIES[0] ?? null;
-
 export const CHANGELOG_STALE_TIME_MS = 5 * 60_000;
 
 export async function fetchChangelogEntries(

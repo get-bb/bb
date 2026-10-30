@@ -2750,13 +2750,6 @@ The published lede.
       });
     });
 
-    it("offers the latest desktop release when nothing is pending", async () => {
-      useSeparateDesktop({});
-      const bbCard = await renderBbCard();
-
-      expect(notesButton(bbCard, "0.47.0")).toBeDefined();
-    });
-
     it("offers the installed desktop release when no update is available", async () => {
       useSeparateDesktop({
         lastCheckedAt: "2026-10-20T12:00:00.000Z",
@@ -2766,20 +2759,6 @@ The published lede.
       const bbCard = await renderBbCard();
 
       expect(notesButton(bbCard, "0.46.0")).toBeDefined();
-    });
-
-    it("hides the desktop button for a nightly build", async () => {
-      useSeparateDesktop({
-        latestVersion: "0.48.0-nightly.20261021",
-        version: "0.48.0-nightly.20261020",
-      });
-      const bbCard = await renderBbCard();
-
-      expect(
-        within(bbCard)
-          .getAllByRole("button", { name: /Changelog/ })
-          .map((button) => button.getAttribute("aria-label")),
-      ).toEqual(["Changelog for bb 0.0.6"]);
     });
   });
 
