@@ -910,6 +910,7 @@ export async function createThreadFromRequest(
   }
   if (request.input.length > 0)
     captureAcceptedWork(deps.telemetry, {
+      provider: request.providerId,
       kind: "thread",
       initiator: workInitiator,
     });

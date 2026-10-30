@@ -92,7 +92,11 @@ describe("thread creation telemetry", () => {
 
       expect(capture).toHaveBeenCalledWith({
         name: "work_accepted",
-        properties: { work_kind: "thread", work_initiator: "user" },
+        properties: {
+          work_kind: "thread",
+          work_initiator: "user",
+          provider: "codex",
+        },
       });
       expect(capture).toHaveBeenCalledWith({
         name: "user_message_sent",

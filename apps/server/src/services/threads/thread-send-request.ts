@@ -86,6 +86,7 @@ export async function acceptThreadSendRequest(
       }),
   );
   captureAcceptedWork(deps.telemetry, {
+    provider: args.thread.providerId,
     kind: "message",
     initiator:
       payload.senderThreadId !== undefined && senderThreadId === null

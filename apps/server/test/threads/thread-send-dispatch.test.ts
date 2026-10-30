@@ -311,6 +311,7 @@ describe("user message telemetry", () => {
             name: "work_accepted",
             properties: {
               work_kind: "message",
+              provider: thread.providerId,
               work_initiator: "user",
             },
           },

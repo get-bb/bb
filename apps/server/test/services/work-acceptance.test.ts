@@ -52,12 +52,16 @@ describe("accepted work contract", () => {
         isEnabled: () => true,
         setEnabled: () => {},
       },
-      { kind: "message", initiator: "user" },
+      { kind: "message", initiator: "user", provider: "codex" },
     );
     expect(events).toEqual([
       {
         name: "work_accepted",
-        properties: { work_kind: "message", work_initiator: "user" },
+        properties: {
+          work_kind: "message",
+          work_initiator: "user",
+          provider: "codex",
+        },
       },
     ]);
     expect(recordTelemetryEventRequestSchema.safeParse(events[0]).success).toBe(

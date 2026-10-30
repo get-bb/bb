@@ -2937,7 +2937,11 @@ describe("public thread data routes", () => {
       ).toEqual([]);
       expect(capture).toHaveBeenCalledExactlyOnceWith({
         name: "work_accepted",
-        properties: { work_kind: "message", work_initiator: "agent" },
+        properties: {
+          work_kind: "message",
+          work_initiator: "agent",
+          provider: thread.providerId,
+        },
       });
     });
   });

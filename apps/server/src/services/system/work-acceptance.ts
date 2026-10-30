@@ -8,6 +8,7 @@ export type AcceptedWorkTelemetryEvent = {
   name: "work_accepted";
   properties: {
     work_kind: "thread" | "message";
+    provider: string;
     work_initiator: WorkInitiator;
   };
 };
@@ -23,10 +24,18 @@ export function resolveAcceptedWorkInitiator(args: {
 
 export function captureAcceptedWork(
   telemetry: TelemetryService,
-  args: { kind: "thread" | "message"; initiator: WorkInitiator },
+  args: {
+    kind: "thread" | "message";
+    initiator: WorkInitiator;
+    provider: string;
+  },
 ): void {
   telemetry.capture({
     name: "work_accepted",
-    properties: { work_kind: args.kind, work_initiator: args.initiator },
+    properties: {
+      work_kind: args.kind,
+      work_initiator: args.initiator,
+      provider: args.provider,
+    },
   });
 }

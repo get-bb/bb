@@ -4197,8 +4197,9 @@ removing the prefix.
 
 `work_accepted` records one server-accepted thread or message, including queued
 and scheduled submissions. Queue drains and automatic retries do not count again.
-It records only work kind and initiator so activation can distinguish human work
-from agents, plugins, automation and unknown SDK callers. Empty drafts are excluded.
+It records work kind, provider and initiator so activation can distinguish human
+work from agents, plugins, automation and unknown SDK callers, and compare the
+provider used with agent setup outcomes. Empty drafts are excluded.
 Existing `thread_created` and `user_message_sent` definitions remain unchanged.
 Accepted work uses their plugin/automation precedence, but does not count an
 unidentified SDK caller or an unverified sender thread as a user. Use

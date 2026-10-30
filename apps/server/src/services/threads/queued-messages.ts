@@ -312,6 +312,7 @@ export async function createQueuedMessageForThread(
     });
   }
   captureAcceptedWork(deps.telemetry, {
+    provider: thread.providerId,
     kind: "message",
     initiator: workInitiator,
   });
