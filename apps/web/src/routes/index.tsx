@@ -87,6 +87,7 @@ import {
 import { HeroWindowSlot } from "../landing/hero-window";
 import heroWindowCss from "../landing/hero-window.css?url";
 import { siteHeadLinks } from "../landing/page-head";
+import { Testimonials } from "../landing/testimonials";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
 import { ClaudeIcon } from "../landing/icons";
 import {
@@ -1164,6 +1165,8 @@ function TodayBelowFold() {
         </div>
       </section>
 
+      <Testimonials />
+
       <Closer
         title="Put your agents to work."
         lede="Free, open source, and local-first. Install in under a minute."
@@ -1222,6 +1225,8 @@ function RefreshedBelowFold() {
           laptop to a remote server or VM.
         </p>
       </Band>
+
+      <Testimonials />
 
       <Closer
         title="One programmable workspace for all your agents."
