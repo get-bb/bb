@@ -221,6 +221,8 @@ export function SiteNav({
           Changelog
         </a>
         <a href={DASHBOARD_PATH}>Sign in</a>
+      </div>
+      <div className="nav-actions">
         <GitHubLink
           placement="nav"
           className="nav-icon-button"
