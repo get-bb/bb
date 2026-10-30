@@ -68,7 +68,7 @@ base theme. The anchors that drive the most are `--canvas`, `--ink`,
 | Accent and state | `--primary` `--primary-foreground` `--file-accent` `--timeline-accent` `--surface-selected` `--state-hover` `--state-active` `--sidebar-accent` |
 | Status | `--success` `--warning` `--warning-text` `--destructive` `--destructive-text` `--pr-merged` `--diff-added` `--diff-removed` |
 | Lines | `--border` `--border-hairline` `--border-seam` `--sidebar-border` `--input` `--ring` |
-| Type | `--font-sans` `--font-mono` `--font-terminal` (declare once in `:root`) |
+| Type | `--font-sans` `--font-mono` `--font-serif` `--font-terminal` (declare once in `:root`) |
 
 How bb uses them (from bb's own components, so you can predict the result):
 sidebar rows hover with `--sidebar-accent`, the open thread's row is
