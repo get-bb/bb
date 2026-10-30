@@ -123,8 +123,11 @@ export type {
 } from "./threads.js";
 
 export {
+  deletePluginRecommendationId,
   forgetPluginProviders,
   getAiServiceSelections,
+  getPluginRecommendationId,
+  setPluginRecommendationId,
   getAppKeybindingOverrides,
   claimInstallTurnNumber,
   getAppSettings,

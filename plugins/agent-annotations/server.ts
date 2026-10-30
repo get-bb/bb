@@ -32,6 +32,7 @@ export default async function plugin(bb: BbPluginApi) {
     async save(annotation) {
       const id = annotation.id;
       await bb.storage.kv.set(`${STORAGE_PREFIX}${id}`, annotation);
+      bb.internal_DO_NOT_USE_recordPluginUse();
       return { id };
     },
   });

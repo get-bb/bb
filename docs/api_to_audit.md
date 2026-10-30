@@ -1191,6 +1191,17 @@ Docs: `backend-foundation.md`.
 connect URL should supply this value when `BB_APP_URL` is empty. Confirm that
 one public URL has clear behavior when a server has several access paths.
 
+## `bb.internal_DO_NOT_USE_recordPluginUse`
+
+Internal to bb's first-party plugins whose meaningful use happens in their own
+UI rather than through an agent tool or CLI command: `monaco-editor` (a saved
+file), `prompt-library` (an inserted prompt) and `agent-annotations` (a saved
+annotation). It takes no arguments. The server counts it as one `plugin_use`
+of the calling plugin, exactly like a successful tool call or CLI command, and
+sends nothing for non-public plugins or when usage data is off. Each plugin's
+use is sent at most once per day. Forks of these plugins inherit the call, so
+removing it later means leaving a no-op stub.
+
 ## `bb.server.internal_DO_NOT_USE_openTunnelIngress`
 
 Internal to bb's own connect plugins (`connect`, `bb--connect-next`): the `internal_DO_NOT_USE_` prefix marks members that are not part of the plugin API, are not offered to third-party plugins, and may change or disappear in any release.
@@ -3818,7 +3829,10 @@ in `apps/app/src/components/onboarding/onboarding-telemetry.ts`: the setup guide
 through `provider-cli-install-store`), `NewThreadComposer`'s `new_thread_submit` outcomes,
 `PluginCreateButton`'s `plugin_creation_started`, and Settings → Updates'
 changelog (`release_notes_opened`, inline or on the web). `bb plugin new` sends
-`plugin_creation_started` through the same SDK method. `NewThreadComposer` also
+`plugin_creation_started` through the same SDK method. The setup guide's
+Plugins step reports `recommendation` `shown` and `selected` with a per-visit
+`recommendation_id`; `selected` also stores that id in server-owned settings
+until the plugin's next use, disable or uninstall. `NewThreadComposer` also
 reports `new_thread_blocker` once per blocker reason while a draft exists.
 `onboarding_operation` reports a guide action's started, succeeded or failed
 outcome with only a public agent id or counts.

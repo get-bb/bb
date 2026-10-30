@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { nanoid } from "nanoid";
 import { useLocation } from "react-router-dom";
 import {
   findLocalPathProjectSourceForHost,
@@ -696,10 +697,12 @@ function PluginCardContainer({
   entry,
   enabled,
   onChanged,
+  onSelected,
 }: {
   entry: PluginCatalogSearchEntry;
   enabled: boolean;
   onChanged: () => Promise<void>;
+  onSelected: () => void;
 }) {
   const queryClient = useQueryClient();
   const setPluginEnabled = useSetPluginEnabled();
@@ -721,6 +724,7 @@ function PluginCardContainer({
   }, [busy, settling]);
 
   const toggle = async (next: boolean) => {
+    if (next) onSelected();
     setTarget(next);
     setWorking(true);
     try {
@@ -769,11 +773,13 @@ function PluginCardContainer({
 
 function PluginsStepContainer({
   chrome,
+  entry: onboardingEntry,
   onBack,
   onContinue,
   onSkip,
 }: {
   chrome: StepChrome;
+  entry: OnboardingEntry;
   onBack: () => void;
   onContinue: () => void;
   onSkip: () => void;
@@ -805,6 +811,36 @@ function PluginsStepContainer({
     });
   }, [catalogQuery.data?.entries]);
 
+  const [recommendationIds] = useState(() => new Map<string, string>());
+  const recordRecommendation = useCallback(
+    (pluginId: string, action: "shown" | "selected") => {
+      let recommendationId = recommendationIds.get(pluginId);
+      if (recommendationId === undefined) {
+        recommendationId = nanoid();
+        recommendationIds.set(pluginId, recommendationId);
+      }
+      recordTelemetryEvent({
+        name: "recommendation",
+        properties: {
+          resource_type: "plugin",
+          resource_id: pluginId,
+          recommendation_id: recommendationId,
+          action,
+          surface: "onboarding",
+          entry: onboardingEntry,
+        },
+      });
+    },
+    [onboardingEntry, recommendationIds],
+  );
+  useEffect(() => {
+    for (const entry of entries ?? []) {
+      if (!recommendationIds.has(entry.pluginId)) {
+        recordRecommendation(entry.pluginId, "shown");
+      }
+    }
+  }, [entries, recommendationIds, recordRecommendation]);
+
   return (
     <OnboardingLayout
       {...chrome}
@@ -833,6 +869,9 @@ function PluginsStepContainer({
                   false)
               }
               onChanged={refresh}
+              onSelected={() =>
+                recordRecommendation(entry.pluginId, "selected")
+              }
             />
           ))
         )}
@@ -1083,6 +1122,7 @@ export function OnboardingFlow({
       return (
         <PluginsStepContainer
           chrome={chrome}
+          entry={entry}
           onBack={goTo(-1)}
           onContinue={advance("completed")}
           onSkip={advance("skipped")}

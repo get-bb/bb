@@ -223,12 +223,31 @@ const onboardingStepTelemetryPropertiesSchema = z
   })
   .strict();
 
+const telemetryResourceIdSchema = z
+  .string()
+  .regex(/^[a-z0-9][a-z0-9_-]{0,127}$/);
+
 const releaseVersionTelemetrySchema = z
   .string()
   .max(32)
   .regex(/^\d+(\.\d+){1,3}$/);
 
 export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
+  z
+    .object({
+      name: z.literal("recommendation"),
+      properties: z
+        .object({
+          resource_type: z.enum(["plugin"]),
+          resource_id: telemetryResourceIdSchema,
+          recommendation_id: z.string().regex(/^[A-Za-z0-9_-]{21}$/),
+          action: z.enum(["shown", "selected"]),
+          surface: z.enum(["onboarding"]),
+          entry: onboardingEntryTelemetrySchema,
+        })
+        .strict(),
+    })
+    .strict(),
   z
     .object({
       name: z.literal("onboarding_operation"),
@@ -238,10 +257,7 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
           step: onboardingStepTelemetrySchema,
           operation: z.enum(["install", "update", "scan", "import"]),
           outcome: z.enum(["started", "succeeded", "failed"]),
-          resource_id: z
-            .string()
-            .regex(/^[a-z0-9][a-z0-9_-]{0,127}$/)
-            .optional(),
+          resource_id: telemetryResourceIdSchema.optional(),
           item_count: z.number().int().nonnegative().optional(),
           succeeded_count: z.number().int().nonnegative().optional(),
         })

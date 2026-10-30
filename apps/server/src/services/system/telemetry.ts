@@ -73,6 +73,16 @@ export type TelemetryEvent =
         entry_id: string | null;
       };
     }
+  | { name: "plugin_use"; properties: { plugin_id: string } }
+  | {
+      name: "recommendation";
+      properties: {
+        resource_type: "plugin";
+        resource_id: string;
+        recommendation_id: string;
+        action: "used";
+      };
+    }
   | RecordTelemetryEventRequest;
 
 export interface TelemetryService {

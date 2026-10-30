@@ -284,6 +284,40 @@ export function forgetPluginProviders(
   });
 }
 
+function pluginRecommendationKey(pluginId: string): string {
+  return `pluginRecommendation:${pluginId}`;
+}
+
+export function getPluginRecommendationId(
+  db: DbConnection,
+  pluginId: string,
+): string | null {
+  const row = db
+    .select({ value: appSettingsValues.value })
+    .from(appSettingsValues)
+    .where(eq(appSettingsValues.key, pluginRecommendationKey(pluginId)))
+    .get();
+  const value = row === undefined ? undefined : parseStoredValue(row.value);
+  return typeof value === "string" ? value : null;
+}
+
+export function setPluginRecommendationId(
+  db: DbConnection,
+  pluginId: string,
+  recommendationId: string,
+): void {
+  writeValue(db, pluginRecommendationKey(pluginId), recommendationId, Date.now());
+}
+
+export function deletePluginRecommendationId(
+  db: DbConnection,
+  pluginId: string,
+): void {
+  db.delete(appSettingsValues)
+    .where(eq(appSettingsValues.key, pluginRecommendationKey(pluginId)))
+    .run();
+}
+
 export function claimInstallTurnNumber(db: DbQueryConnection, now: number): number {
   const row = db
     .insert(appSettingsValues)

@@ -60,6 +60,17 @@ describe("client telemetry events", () => {
           properties: { reason: "sign_in" },
         },
         {
+          name: "recommendation",
+          properties: {
+            resource_type: "plugin",
+            resource_id: "bb--prompt-library",
+            recommendation_id: "V1StGXR8_Z5jdHi6B-myT",
+            action: "selected",
+            surface: "onboarding",
+            entry: "first_run",
+          },
+        },
+        {
           name: "onboarding_operation",
           properties: {
             entry: "replay",
@@ -207,6 +218,17 @@ describe("client telemetry events", () => {
         {
           name: "new_thread_blocker",
           properties: { reason: "sign_in", message: "Not signed in." },
+        },
+        {
+          name: "recommendation",
+          properties: {
+            resource_type: "plugin",
+            resource_id: "workflows",
+            recommendation_id: "user@example.com",
+            action: "shown",
+            surface: "onboarding",
+            entry: "first_run",
+          },
         },
         {
           name: "onboarding_operation",
