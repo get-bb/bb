@@ -1,10 +1,34 @@
 import { describe, expect, it } from "vitest";
 import { recordTelemetryEventRequestSchema } from "../src/api/system.js";
 
-function parse(properties: object) {
+function parse(properties: { operation?: string; [key: string]: unknown }) {
+  const operation = properties.operation ?? "";
+  const [resource_type, action] = operation.split("_");
+  const step =
+    resource_type === "agent"
+      ? "agent"
+      : resource_type === "plugin"
+        ? "plugins"
+        : "projects";
+  const resource_id =
+    resource_type === "agent"
+      ? "codex"
+      : resource_type === "plugin"
+        ? "browser-automation"
+        : action === "scan"
+          ? "project_discovery"
+          : "project_import";
   return recordTelemetryEventRequestSchema.safeParse({
     name: "onboarding_operation",
-    properties: { entry: "first_run", ...properties },
+    properties: {
+      entry: "first_run",
+      surface: "onboarding",
+      step,
+      resource_type,
+      resource_id,
+      ...properties,
+      operation: action ?? operation,
+    },
   });
 }
 

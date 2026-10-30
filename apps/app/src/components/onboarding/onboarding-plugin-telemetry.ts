@@ -8,13 +8,18 @@ import {
 
 export async function runOnboardingPluginAction<T>(
   entry: OnboardingEntry,
-  operation: "plugin_install" | "plugin_enable",
+  operation: "install" | "enable",
+  resourceId: string,
   action: () => Promise<T>,
 ): Promise<T> {
   recordTelemetryEvent({
     name: "onboarding_operation",
     properties: {
       entry,
+      surface: "onboarding",
+      step: "plugins",
+      resource_type: "plugin",
+      resource_id: resourceId,
       operation,
       outcome: "started",
       error_category: null,
@@ -28,18 +33,26 @@ export async function runOnboardingPluginAction<T>(
       name: "onboarding_operation",
       properties: {
         entry,
+        surface: "onboarding",
+        step: "plugins",
+        resource_type: "plugin",
+        resource_id: resourceId,
         operation,
-        outcome: operation === "plugin_install" ? "unknown" : "failed",
+        outcome: operation === "install" ? "unknown" : "failed",
         error_category: "request",
       },
     });
     throw error;
   }
-  if (operation === "plugin_enable") {
+  if (operation === "enable") {
     recordTelemetryEvent({
       name: "onboarding_operation",
       properties: {
         entry,
+        surface: "onboarding",
+        step: "plugins",
+        resource_type: "plugin",
+        resource_id: resourceId,
         operation,
         outcome: "succeeded",
         error_category: null,
@@ -53,6 +66,7 @@ export function observeOnboardingPluginInstall(
   queryClient: QueryClient,
   initialJob: PluginInstallJob,
   entry: OnboardingEntry,
+  resourceId: string,
 ): void {
   let unknownRecorded = false;
   const recordUnknown = () => {
@@ -62,7 +76,11 @@ export function observeOnboardingPluginInstall(
       name: "onboarding_operation",
       properties: {
         entry,
-        operation: "plugin_install",
+        surface: "onboarding",
+        step: "plugins",
+        resource_type: "plugin",
+        resource_id: resourceId,
+        operation: "install",
         outcome: "unknown",
         error_category: "request",
       },
@@ -79,7 +97,11 @@ export function observeOnboardingPluginInstall(
       name: "onboarding_operation",
       properties: {
         entry,
-        operation: "plugin_install",
+        surface: "onboarding",
+        step: "plugins",
+        resource_type: "plugin",
+        resource_id: resourceId,
+        operation: "install",
         outcome: job.state,
         error_category: job.state === "failed" ? "job_failed" : null,
       },
@@ -87,7 +109,10 @@ export function observeOnboardingPluginInstall(
     return true;
   };
   if (recordTerminal(initialJob)) return;
-  const observer = new QueryObserver(queryClient, pluginInstallJobsQueryOptions);
+  const observer = new QueryObserver(
+    queryClient,
+    pluginInstallJobsQueryOptions,
+  );
   let finished = false;
   let unsubscribe = () => {};
   const observe = () => {
