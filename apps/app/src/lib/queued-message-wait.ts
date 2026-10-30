@@ -2,6 +2,7 @@ import type { QueuedMessagePayload, QueuedMessageWaitingOn } from "@bb/domain";
 import type { IconName } from "@bb/shared-ui/icon";
 import { formatScheduledTime } from "@/lib/relative-time";
 
+const SUPERSEDED_WAIT_LINE = "Not sent · a newer message was sent after it";
 const MINUTE_MS = 60 * 1000;
 const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
@@ -42,6 +43,7 @@ export function isQueuedMessageSendNowAllowed({
     case "time":
     case "plugin":
     case "thread-busy":
+    case "superseded":
       return true;
   }
 }
@@ -63,6 +65,7 @@ export function queuedMessageWaitIcon(args: {
   waitingOn: QueuedMessageWaitingOn | null;
 }): IconName | null {
   if (args.failureReason !== null) return "AlertCircle";
+  if (args.waitingOn?.kind === "superseded") return "AlertCircle";
   if (args.payload.kind === "retry") return "RotateCcw";
   if (args.waitingOn === null) return null;
   switch (args.waitingOn.kind) {
@@ -109,6 +112,7 @@ export function describeQueuedMessageWait(
   args: DescribeQueuedMessageWaitArgs,
 ): string | null {
   if (args.failureReason !== null) return args.failureReason;
+  if (args.waitingOn?.kind === "superseded") return SUPERSEDED_WAIT_LINE;
 
   if (args.payload.kind === "retry") {
     const parts: string[] = [args.payload.reason];

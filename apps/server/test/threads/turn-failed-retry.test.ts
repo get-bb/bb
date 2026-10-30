@@ -23,6 +23,8 @@ import {
 import { setPluginThreadEventEmitter } from "../../src/services/plugins/plugin-thread-events.js";
 import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
 import { runQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
+import { sendQueuedMessageNow } from "../../src/services/threads/queued-messages.js";
+import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
 import { toThreadQueuedMessage } from "../../src/services/threads/thread-queued-messages.js";
 import { buildTurnFailedEvent } from "../../src/services/threads/turn-failed.js";
 import { retryFailedTurn } from "../../src/services/threads/turn-retry.js";
@@ -34,6 +36,7 @@ import {
   seedThread,
   seedThreadRuntimeState,
 } from "../helpers/seed.js";
+import { textInput } from "../helpers/prompt-input.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
 const WORKSPACE_PATH = "/tmp/turn-failed-project";
@@ -754,6 +757,159 @@ describe("retrying a failed turn", () => {
       });
     });
   });
+});
+
+function liveQueue(harness: TestAppHarness, threadId: string) {
+  return listQueuedThreadMessages(harness.db, threadId).map(
+    toThreadQueuedMessage,
+  );
+}
+
+function requestTexts(harness: TestAppHarness, threadId: string): string[] {
+  return turnRequests(harness, threadId).map(
+    (event) => turnRequestData(event).input[0]?.text ?? "",
+  );
+}
+
+async function scheduleRetry(
+  harness: TestAppHarness,
+  args: { threadId: string; requestId: string },
+): Promise<void> {
+  await retryFailedTurn(harness.deps, {
+    thread: requireThread(harness, args.threadId),
+    request: {
+      turnRequestId: args.requestId,
+      sendAt: Date.now() + 60_000,
+      reason: "Rate limited",
+    },
+  });
+}
+
+async function sendNewMessage(
+  harness: TestAppHarness,
+  args: { threadId: string; text: string; sendAt?: number },
+): Promise<void> {
+  await acceptThreadSendRequest(harness.deps, {
+    payload: {
+      input: textInput(args.text),
+      mode: "auto",
+      ...(args.sendAt === undefined ? {} : { sendAt: args.sendAt }),
+    },
+    thread: requireThread(harness, args.threadId),
+  });
+}
+
+describe("a queued retry", () => {
+  it("is kept as Not sent when a newer message overtakes input the provider never accepted", async () => {
+    await withTestHarness(async (harness) => {
+      const { requestId, thread } = seedFailableThread(
+        harness,
+        "host-superseded",
+      );
+      failThread(harness, thread.id);
+      await scheduleRetry(harness, { threadId: thread.id, requestId });
+
+      await sendNewMessage(harness, {
+        threadId: thread.id,
+        text: "Do something else",
+      });
+
+      const notSent = onlyQueuedRow(harness, thread.id);
+      expect(notSent.payload.kind).toBe("retry");
+      expect(notSent.waitingOn).toEqual({ kind: "superseded" });
+      expect(notSent.sendAt).toBeNull();
+
+      await sweepPastResume(harness);
+      expect(requestTexts(harness, thread.id)).toEqual([
+        "Do the thing",
+        "Do something else",
+      ]);
+
+      applyLoggedThreadLifecycleEvent(harness.deps, {
+        event: { type: "run.succeeded" },
+        threadId: thread.id,
+      });
+      await sendQueuedMessageNow(harness.deps, {
+        mode: "auto",
+        queuedMessageId: notSent.id,
+        threadId: thread.id,
+      });
+
+      const requests = turnRequests(harness, thread.id);
+      expect(requests).toHaveLength(3);
+      expect(turnRequestData(requests[2]!)).toMatchObject({
+        retryOfRequestId: requestId,
+        input: [expect.objectContaining({ text: "Do the thing" })],
+      });
+      expect(liveQueue(harness, thread.id)).toEqual([]);
+    });
+  });
+
+  it("is dropped when a newer message overtakes a turn the provider accepted", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, requestId, thread } = seedFailableThread(
+        harness,
+        "host-dropped",
+      );
+      seedInputAccepted(harness, {
+        environmentId: environment.id,
+        threadId: thread.id,
+        requestId,
+      });
+      failThread(harness, thread.id);
+      await scheduleRetry(harness, { threadId: thread.id, requestId });
+
+      await sendNewMessage(harness, {
+        threadId: thread.id,
+        text: "Do something else",
+      });
+
+      expect(liveQueue(harness, thread.id)).toEqual([]);
+      await sweepPastResume(harness);
+      expect(requestTexts(harness, thread.id)).toEqual([
+        "Do the thing",
+        "Do something else",
+      ]);
+    });
+  });
+
+  it("does not hold back messages once it is Not sent", async () => {
+    await withTestHarness(async (harness) => {
+      const { requestId, thread } = seedFailableThread(
+        harness,
+        "host-not-blocking",
+      );
+      failThread(harness, thread.id);
+      await scheduleRetry(harness, { threadId: thread.id, requestId });
+      await sendNewMessage(harness, {
+        threadId: thread.id,
+        text: "Do something else",
+      });
+      await sendNewMessage(harness, {
+        threadId: thread.id,
+        text: "Then this",
+      });
+      const [notSent, queued] = liveQueue(harness, thread.id);
+      expect(notSent?.waitingOn).toEqual({ kind: "superseded" });
+      expect(queued?.payload.kind).toBe("inline");
+
+      applyLoggedThreadLifecycleEvent(harness.deps, {
+        event: { type: "run.succeeded" },
+        threadId: thread.id,
+      });
+      await runQueuedMessageDispatch(harness.deps, {
+        kind: "thread-ready",
+        threadId: thread.id,
+      });
+
+      expect(requestTexts(harness, thread.id)).toEqual([
+        "Do the thing",
+        "Do something else",
+        "Then this",
+      ]);
+    });
+  });
+
 });
 
 describe("pooled provider retry integration", () => {

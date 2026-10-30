@@ -1038,6 +1038,99 @@ export function deleteQueuedRetriesForThreadEventSuffixInTransaction(
   return retries.length;
 }
 
+function hasAcceptedQueuedRetryInput(
+  db: DbQueryConnection,
+  retry: QueuedThreadMessageRow,
+): boolean {
+  const accepted = alias(events, "retry_chain_accepted");
+  const chainRequest = alias(events, "retry_chain_request");
+  return (
+    db
+      .select({ sequence: accepted.sequence })
+      .from(accepted)
+      .where(
+        and(
+          eq(accepted.threadId, retry.threadId),
+          eq(accepted.type, "turn/input/accepted"),
+          exists(
+            db
+              .select({ sequence: chainRequest.sequence })
+              .from(chainRequest)
+              .where(
+                and(
+                  eq(chainRequest.threadId, retry.threadId),
+                  eq(chainRequest.type, "client/turn/requested"),
+                  sql`json_extract(${chainRequest.data}, '$.requestId') = json_extract(${accepted.data}, '$.clientRequestId')`,
+                  or(
+                    sql`json_extract(${chainRequest.data}, '$.requestId') = ${retry.retryOfTurnRequestId}`,
+                    sql`json_extract(${chainRequest.data}, '$.retryOfRequestId') = ${retry.retryOfTurnRequestId}`,
+                  ),
+                ),
+              ),
+          ),
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
+}
+
+export function supersedeQueuedRetriesInTransaction(
+  tx: DbTransaction,
+  args: { threadId: string; retryOfTurnRequestId: string | null },
+): number {
+  const overtaken = tx
+    .select()
+    .from(queuedThreadMessages)
+    .where(
+      and(
+        eq(queuedThreadMessages.threadId, args.threadId),
+        eq(queuedThreadMessages.payloadKind, "retry"),
+        liveQueuedThreadMessage(),
+        notSupersededQueuedThreadMessage(),
+        ...(args.retryOfTurnRequestId === null
+          ? []
+          : [
+              ne(
+                queuedThreadMessages.retryOfTurnRequestId,
+                args.retryOfTurnRequestId,
+              ),
+            ]),
+      ),
+    )
+    .all();
+  const now = Date.now();
+  for (const retry of overtaken) {
+    clearPreviousQueuedMessageGroupEdgeInTransaction(tx, retry, now);
+    clearQueuedMessageGroupEdgeInTransaction(tx, retry, now);
+    if (hasAcceptedQueuedRetryInput(tx, retry)) {
+      tx.delete(queuedThreadMessages)
+        .where(eq(queuedThreadMessages.id, retry.id))
+        .run();
+      continue;
+    }
+    const current = getQueuedThreadMessage(tx, retry.id);
+    if (current === null) continue;
+    transitionQueuedMessage(tx, {
+      now,
+      row: current,
+      transition: {
+        event: "wait.recorded",
+        sendAt: null,
+        waitingOn: { kind: "superseded" },
+      },
+    });
+  }
+  return overtaken.length;
+}
+
+function notSupersededQueuedThreadMessage() {
+  return or(
+    isNull(queuedThreadMessages.waitingOn),
+    sql`json_extract(${queuedThreadMessages.waitingOn}, '$.kind') != 'superseded'`,
+  );
+}
+
 function manuallyStoppedQueuePauseQuery(
   db: DbQueryConnection,
   threadId: string | typeof threads.id,

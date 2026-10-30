@@ -48,6 +48,10 @@ Lifecycle:
   failed (`no_failed_turn`) or a turn that already has a retry queued
   (`retry_already_queued`). Without --send-at the retry
   is attempted now, and may still queue behind a busy thread or a plugin.
+  A newer message sent to the thread overtakes a queued retry: a retry that
+  would continue an accepted turn is dropped, and one carrying input the
+  provider never accepted stays queued as Not sent (`waitingOn.kind`
+  `superseded`) until you send or delete it.
   SDK: `threads.retry({ threadId, turnRequestId?, sendAt?, reason? })`.
 
   bb thread archive [id]                   Archive a thread (and children/hidden forks)

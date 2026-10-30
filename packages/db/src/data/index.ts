@@ -480,6 +480,7 @@ export {
   releaseStaleQueuedMessageClaims,
   reorderQueuedThreadMessage,
   setQueuedThreadMessageGroupBoundary,
+  supersedeQueuedRetriesInTransaction,
   updateQueuedThreadMessage,
 } from "./queued-thread-messages.js";
 export type {
