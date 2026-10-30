@@ -16,6 +16,7 @@ import {
   dropMarketplaceSourceGitSubdirectoryColumn,
   dropThreadParentNotificationsColumn,
   dropQueuedMessageDeliveryModeColumn,
+  dropThreadStatusChangedAtColumn,
   dropQueuedMessageEditHeldUntilColumn,
 } from "./helpers/rewind.js";
 
@@ -120,6 +121,7 @@ it.each([false, true])(
       dropMarketplaceSourceGitSubdirectoryColumn(db);
       dropThreadParentNotificationsColumn(db);
       dropQueuedMessageDeliveryModeColumn(db);
+      dropThreadStatusChangedAtColumn(db);
       migrate(db);
       migrate(db);
 

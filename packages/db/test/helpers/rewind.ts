@@ -123,3 +123,12 @@ export function dropQueuedMessageDeliveryModeColumn(db: DbConnection): void {
     );
   }
 }
+
+export function dropThreadStatusChangedAtColumn(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], { name: string }>("PRAGMA table_info(threads)")
+    .all();
+  if (columns.some((column) => column.name === "status_changed_at")) {
+    db.$client.exec("ALTER TABLE threads DROP COLUMN status_changed_at");
+  }
+}
