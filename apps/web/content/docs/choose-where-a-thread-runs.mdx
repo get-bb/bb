@@ -1,0 +1,138 @@
+---
+title: Choose where a thread runs
+description: Use this when you start a thread and want to pick its folder. Choose Worktree, Project checkout or another environment in the composer's Environment picker, pick the base branch, or reuse a worktree you already have. Prepare new worktrees with .worktreeinclude and .bb-env-setup.sh.
+type: how-to
+sources:
+  - apps/app/src/components/pickers/EnvironmentPicker.tsx
+  - apps/app/src/components/pickers/ReuseEnvironmentPicker.tsx
+  - apps/app/src/components/promptbox/ThreadEnvironmentSummary.tsx
+  - plugins/environment-git-worktree/**
+  - plugins/environment-project-checkout/**
+  - apps/cli/src/commands/thread/spawn.ts
+  - packages/templates/src/templates/bb-guide-environments.md
+since: 0.44.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+Use this when you start a thread and want to choose which folder its agent works in: a new worktree, your project's own checkout, or an environment another thread already uses. [Projects, threads and environments](/docs/projects-threads-and-environments) explains the kinds.
+
+## Pick the environment
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+1. In the composer for a new thread, choose the project.
+2. Open the **Environment** picker, next to the project. It starts on **Project checkout**. If several machines have the project, it lists the environments under each machine.
+3. Choose **Worktree** to give the thread its own copy, keep **Project checkout**, or choose another environment a plugin added. To join an environment another thread uses, choose **Reuse existing** and pick it.
+4. Use the control next to the picker to choose the branch, then send your message.
+
+<Screenshot
+  src="/docs-images/choose-where-a-thread-runs/environment-picker"
+  alt="The new-thread composer's Environment picker is open, listing Project checkout, Worktree and Reuse existing."
+  width={760}
+  height={290}
+/>
+
+</Tab>
+<Tab value="CLI">
+
+List the environments a project can use:
+
+```bash
+bb environment providers --project <project-id>
+```
+
+Start a thread in a new worktree from a base branch:
+
+```bash
+bb thread spawn --project <project-id> --new-environment worktree --base-branch main --prompt "Fix the failing tests"
+```
+
+Start one in the project's checkout, or in an environment another thread uses:
+
+```bash
+bb thread spawn --project <project-id> --environment-provider project-checkout --prompt "Update the README"
+bb thread spawn --project <project-id> --environment <environment-id> --prompt "Review the changes"
+```
+
+Without an environment flag, the CLI gives the thread a new worktree from the default branch, or the project's checkout if the project isn't a Git repository.
+
+</Tab>
+</Tabs>
+
+## Choose the branch
+
+The control next to the **Environment** picker depends on what you chose.
+
+**Worktree** shows **Branch from:**
+
+- **New worktree** creates a worktree on a new branch. Under **Branch from**, keep **Default branch** or pick another branch.
+- **Existing worktree** lists the Git worktrees this project already has on the machine, including ones you made outside bb. Pick one to run the thread there. bb doesn't delete a worktree it didn't create.
+
+**Project checkout** shows **Start from:**
+
+- **Current** keeps the branch the checkout is on.
+- **New branch** creates a branch from the one you pick.
+- **Checkout** switches the checkout to an existing branch.
+
+bb won't change the branch of a checkout with uncommitted changes, unresolved conflicts or a detached HEAD, or while another running thread uses it. The control says which, and how to fix it.
+
+## Where a new worktree starts
+
+bb fetches the base branch before it creates the worktree:
+
+- If your local branch is the same as `origin` or behind it, the worktree starts from `origin/<branch>`, so it's up to date.
+- If your local branch has commits that `origin` doesn't, the worktree starts from your local branch, so your commits are kept.
+- If the fetch fails, bb uses the last fetched `origin/<branch>` and says so while the thread prepares.
+
+To force one or the other, pass the full ref, such as `--base-branch refs/heads/main` for your local branch.
+
+The new branch has no upstream. Push it with `git push -u origin HEAD`.
+
+## Copy untracked files into new worktrees
+
+A new worktree has only the files Git tracks, so files like `.env.local` are missing. To copy them from your checkout, commit a `.worktreeinclude` file at the root of the repository. It uses `.gitignore` syntax:
+
+```text title=".worktreeinclude"
+.env
+.env.*
+!.env.example
+certs/
+```
+
+bb copies matching untracked files before the setup script runs. It copies files only, never replaces a file the worktree already has, and doesn't follow symlinks. Don't list large folders such as `node_modules`; install them in the setup script instead.
+
+## Run a setup script in new worktrees
+
+To install dependencies or prepare anything else in each new worktree, commit a `.bb-env-setup.sh` file at the root of the repository:
+
+```bash title=".bb-env-setup.sh"
+#!/usr/bin/env bash
+set -euo pipefail
+pnpm install --frozen-lockfile
+```
+
+- bb runs it with `bash` in the new worktree. On Windows it uses the `bash` that comes with Git for Windows.
+- It must be committed: a new worktree contains only tracked files.
+- It runs only in folders bb creates. It never runs in your project checkout or a personal workspace.
+- If it fails or runs longer than 15 minutes, bb removes the worktree and the thread shows the error. Make optional steps non-fatal if the thread should start anyway.
+
+To clean up things the setup script made outside the worktree, commit a `.bb-env-teardown.sh`. bb runs it in the worktree before it removes the worktree.
+
+## Add another thread to a thread's environment
+
+To start a second thread in the same folder, for example a reviewer, open the thread and click **New thread in this environment** next to its environment. Or choose **Reuse existing** in a new thread's **Environment** picker.
+
+## Check it worked
+
+- While the thread prepares, it shows each step, such as "Running .bb-env-setup.sh" and ".bb-env-setup.sh finished".
+- The thread shows its environment and branch next to its composer.
+- `bb environment show <environment-id>` prints the environment's path, branch and status. Find the ID with `bb environment list --project <project-id>`.
+
+## Related troubleshooting
+
+- **Worktree is greyed out or missing.** The project's folder on that machine isn't a Git repository, or the machine is offline.
+- **".bb-env-setup.sh failed" and the thread didn't start.** Run the script yourself in a fresh worktree to see the error. A missing untracked file usually belongs in `.worktreeinclude`.
+- **The worktree is behind `origin`.** Your local branch has commits `origin` doesn't, so bb kept them. Pass `--base-branch origin/main` to start from the remote.
+- **An environment shows "Needs recovery".** See A thread, environment or automation is stuck.

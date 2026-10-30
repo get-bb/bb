@@ -1,0 +1,79 @@
+---
+title: Use skills in a thread
+description: Use this when you want an agent to follow one of your skills. Type / or $ in the composer and pick the skill; bb hands it to the agent in the form that agent expects. Turn bb's own bundled skills on or off in Settings → BB guide.
+type: how-to
+sources:
+  - apps/app/src/hooks/useCommandSuggestions.ts
+  - apps/server/src/services/providers/plugin-provider-registration.ts
+  - apps/server/src/services/skills/**
+  - plugins/composer/src/mentions/**
+  - plugins/provider-codex/src/session-params.ts
+  - plugins/bb-guide/**
+since: 0.43.3
+owner: brsbl
+verified: 2026-10-30
+---
+
+Use this when you want the agent in a thread to follow a skill, a saved set of instructions such as "write release notes" or "review a pull request". To add skills of your own, see Add and share skills.
+
+## Pick a skill from the / menu
+
+1. In the composer, type `/` at the start of your message or after a space.
+2. Keep typing to filter. The menu lists the skills and commands the thread's agent can use.
+3. Pick one with the arrow keys and Enter, or click it. It appears as a pill in your message.
+4. Add the rest of your request after it, and send.
+
+Type `$` instead of `/` to list only skills, without commands. You can also open the composer's **+** menu and choose **Skills**.
+
+<Screenshot
+  src="/docs-images/use-skills-in-a-thread/slash-menu"
+  alt="Typing /aut in the composer opens a menu of matching skills, with the automations skill highlighted."
+  width={760}
+  height={232}
+/>
+
+The menu depends on the agent you picked for the thread and on the machine and project it runs in:
+
+| Listed | Where it comes from |
+| --- | --- |
+| Your skills and the project's skills | The skill folders that agent reads, plus `~/.bb/skills` and the project's `.bb/skills`, which every agent gets |
+| Plugin skills | Plugins you've turned on, such as Automations or Tasks |
+| bb's bundled skills | The **BB guide** plugin, such as `bb-cli` |
+| Commands | Commands from the agent and from bb, such as `/clear`, listed under **Commands** above the skills |
+
+Change the agent in the composer and the menu changes with it.
+
+## How each agent gets the skill
+
+You use `/` and `$` the same way for every agent. bb passes the skill you picked to the agent in its own format:
+
+- **Claude Code** receives `/<skill-name>` followed by the rest of your message.
+- **Codex** receives the skill itself, the same way Codex's own `$skill-name` works. If Codex doesn't list that skill, for example because it's turned off in Codex, bb sends your text as you typed it.
+- **Pi** receives `/skill:<skill-name>` followed by the rest of your message.
+- **ACP agents**, such as Cursor and opencode, receive your text as you typed it.
+
+Most agents also load a skill on their own when your request matches its description, without you picking it.
+
+## Turn skills off
+
+There's no switch for one skill in one thread. Instead:
+
+| To stop | Do this |
+| --- | --- |
+| bb's bundled skills, such as `bb-cli` | Open **Settings → BB guide** and turn off **Enable bundled skills**, or one skill under it, such as **BB CLI skill**. From a terminal: `bb plugin config bb-guide set skills false` |
+| A plugin's skills | Turn off the plugin in **Settings → Installed plugins**. Its skills go with it |
+| One of your own skills | Open **Skills** in the sidebar, then the skill's **⋯** menu, and choose **Delete**. Or move its folder out of the skills folder |
+
+The **BB guide** switches stop bb from giving those skills to agents, but the skills still show in the / menu and in **Skills**. Changes reach a thread's agent the next time bb starts it. To apply them to a running thread now, stop it with `bb thread stop <thread-id>` and send your next message; the thread keeps its history.
+
+## Check it worked
+
+- The skill shows as a pill in your sent message.
+- The agent's reply follows the skill's instructions.
+- `bb project commands <project-id> --provider <provider-id>` lists the skills and commands the menu offers for that agent in that project.
+
+## Related troubleshooting
+
+- **A skill isn't in the menu.** See A skill is missing from the / menu.
+- **The menu shows "Failed to load commands".** bb couldn't reach the thread's machine. Check it in **Settings → Machines**, then type `/` again.
+- **The agent ignores a skill you just added.** It started before you added it. Stop it with `bb thread stop <thread-id>`, then send again.

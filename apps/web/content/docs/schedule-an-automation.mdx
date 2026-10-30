@@ -1,0 +1,133 @@
+---
+title: Schedule an automation
+description: Use this when you want bb to start an agent or run a script on a schedule, or once at a set time. Create it from Automations in the sidebar or with bb automation create, then pause, resume or run it from the same place.
+type: how-to
+sources:
+  - plugins/automations/**
+since: 0.47.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+Use this when you want work to happen without you starting it: a daily summary, a check that runs every hour, or a reminder to an agent at a set time. An automation runs on a schedule in one of two ways:
+
+| Mode | What happens when it's due | Use it for |
+| --- | --- | --- |
+| **Agent** | bb starts a thread with your prompt, or sends the prompt to a thread you chose | Work that needs judgment: triage, summaries, drafting |
+| **Script** | bb runs a short script on the machine that runs the bb server and records its output | Checks with a fixed answer: health checks, alerts, polling an API |
+
+The **Automations** plugin comes with bb and is on by default.
+
+## Create an automation
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+1. Click **Automations** in the sidebar.
+2. Click **New automation**, or pick an example from its menu or from **Browse**. A new thread opens with "Create a new bb automation to" in the composer.
+3. Finish the sentence with what to do and when, for example "summarize yesterday's merged pull requests every weekday at 9am", and send it.
+4. The agent asks anything it needs, then creates the automation.
+
+You can also start from any composer: open the **+** menu and choose **Automation**.
+
+<Screenshot
+  src="/docs-images/schedule-an-automation/new-automation"
+  alt="The Automations page has the New automation button outlined at the top right, above the list of automations with their pause switches."
+  width={1380}
+  height={300}
+/>
+
+</Tab>
+<Tab value="CLI">
+
+An agent automation that runs every weekday at 9:00:
+
+```bash
+bb automation create --project <project-id> --name "Morning PR summary" \
+  --cron "0 9 * * 1-5" --timezone "America/New_York" \
+  --prompt "Summarize yesterday's merged pull requests"
+```
+
+A script automation that runs once, in two hours:
+
+```bash
+bb automation create --project <project-id> --name "Check the deploy" \
+  --in 2h --script-file ./check-deploy.sh --interpreter bash
+```
+
+Use `--project proj_personal` for an automation that isn't tied to a project. `bb automation create --help` lists every option.
+
+</Tab>
+</Tabs>
+
+## Choose when it runs
+
+| Schedule | Option | Example |
+| --- | --- | --- |
+| Repeating | `--cron` with a five-field cron expression, plus `--timezone`, which it requires | `--cron "0 9 * * 1-5" --timezone "Europe/Berlin"` |
+| Once, at a time | `--at` with a future date and time, preferably in ISO 8601. Without an offset, it's read in the server machine's time zone | `--at "YYYY-MM-DDT09:00"` |
+| Once, after a delay | `--in` with a duration | `--in 30m`, `--in 1d` |
+
+An automation runs only while the bb server runs, and an agent automation needs a connected machine. If a run was due while bb was off, it runs once when bb is back, then continues on schedule.
+
+## Choose what an agent automation does
+
+By default each run starts a new thread in the project's default environment: a new worktree from the default branch, or the project's folder if it isn't a Git repository. To change that:
+
+- **Send the prompt to one thread every time:** `--target-thread <thread-id>`. The thread's **Info** tab lists the automations that target it.
+- **Run in an environment that already exists:** `--environment <environment-id>`.
+- **Start each run in a new worktree:** `--new-environment worktree`, with `--base-branch <branch>` if needed.
+
+Set the agent with `--provider`, `--model`, `--reasoning` and `--permission-mode`. Without `--permission-mode`, runs use **Approve for me** when the agent supports it, and **Full Access** otherwise.
+
+A thread an automation started can't create automations itself.
+
+## Write a script automation
+
+- Scripts run with `bash`, `sh`, `node` or `python3` on the machine that runs the bb server, in the project's folder there if it has one.
+- A run stops after 2 minutes by default. Set `--timeout` up to 15 minutes.
+- Print nothing when there's nothing to report. A run that exits 0 with no output, or whose last line is `{"wakeAgent": false}`, is recorded as skipped. Any other output is kept with the run, and a non-zero exit fails it.
+- Scripts can run `bb` commands. bb sets `BB_SERVER_URL`, `BB_PROJECT_ID`, `BB_AUTOMATION_ID` and `BB_AUTOMATION_RUN_ID` for them.
+- bb keeps its own copy of a `--script-file`. After you edit the file, run `bb automation update <automation-id> --project <project-id> --script-file <path>` to use the new version.
+
+## Pause, resume and run it now
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+In **Automations**, use the switch on an automation's row to pause or resume it. Open its **⋯** menu and choose **Run now** to run it immediately. Click the automation to see its runs and the threads they started, or to edit its prompt.
+
+</Tab>
+<Tab value="CLI">
+
+```bash
+bb automation pause <automation-id> --project <project-id>
+bb automation resume <automation-id> --project <project-id>
+bb automation run <automation-id> --project <project-id>
+bb automation runs <automation-id> --project <project-id>
+```
+
+</Tab>
+</Tabs>
+
+An automation has at most one run going at a time. Starting it while it runs joins the run in progress.
+
+## When bb pauses an automation for you
+
+- **Three failures in a row.** A failed run of a repeating automation is retried after 30 seconds, then after 60 seconds. The third failure in a row pauses the automation. A successful run, or resuming it, resets the count.
+- **Its target thread is gone.** When the thread an automation sends its prompt to is archived, deleted or can't take a message, bb pauses the automation at once.
+
+Fix the cause, then resume it. A paused one-time automation whose time has passed shows **Expired — edit to reschedule**.
+
+## Check it worked
+
+- The automation is listed in **Automations** with its next run time.
+- After it runs, its page lists the run as **Succeeded**, **Failed** or **Skipped**, with a link to the thread or the script's output.
+- `bb automation list --project <project-id>` lists it, and `bb automation runs <automation-id> --project <project-id>` lists its runs.
+
+## Related troubleshooting
+
+- **The automation is paused and you didn't pause it.** It failed three times in a row, or its target thread was archived. Check its last runs, then resume it.
+- **An agent automation never runs.** No machine is connected to the server.
+- **A script works in your terminal but fails as an automation.** It runs on the server's machine, with a different working folder and environment. Use absolute paths, or set `--working-directory`.
+- **An automation won't stop running.** See A thread, environment or automation is stuck.

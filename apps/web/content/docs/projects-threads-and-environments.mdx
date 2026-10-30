@@ -1,0 +1,66 @@
+---
+title: Projects, threads and environments
+description: A project is a repository bb can work in. A thread is one conversation with an agent. An environment is the folder on one machine where a thread works, such as a fresh worktree or the project's own checkout.
+type: concept
+sources:
+  - plugins/environment-git-worktree/**
+  - plugins/environment-project-checkout/**
+  - plugins/environment-personal-workspace/**
+  - apps/server/src/services/threads/thread-default-policy.ts
+  - apps/app/src/components/pickers/EnvironmentPicker.tsx
+  - packages/templates/src/templates/bb-guide-environments.md
+since: 0.43.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+Every thread in bb belongs to a project and runs in an environment. The environment decides which files the agent sees and changes, so it's what keeps two agents from editing the same files at once.
+
+## Projects
+
+A project is a repository or folder you've added to bb. Its folder on each machine is called a **checkout**; a project can have a checkout on several machines. Worktrees need a Git repository; a folder without Git runs its threads in its own checkout.
+
+Threads that don't belong to a project go in **Personal**. Choose **Don't work in a project** in the composer's project picker to start one.
+
+## Threads
+
+A thread is one conversation with one agent, such as Claude Code or Codex. It belongs to one project and runs in one environment on one machine. You pick the environment when you start the thread.
+
+## Environments
+
+An environment is a folder on one machine. Several threads can share an environment, for example a thread that writes code and another that reviews it in the same worktree.
+
+| Environment | What the agent works in | Removed when |
+| --- | --- | --- |
+| **Worktree** | A new Git worktree on its own branch, made from the project's checkout. Other threads can't touch its files | Five minutes after its last thread is archived. The branch is kept |
+| **Project checkout** | The project's own folder, on the branch you choose | Never. bb doesn't delete your checkout |
+| **Personal workspace** | A new empty folder, for a thread with no project | After its last thread is archived |
+| **Sandbox** | A separate machine created for the thread, such as a Modal sandbox from the Modal Sandbox plugin | After its last thread is archived |
+
+Worktree, Project checkout and Personal workspace come with bb as plugins and are on by default. Plugins can add more kinds; they appear in the same **Environment** picker.
+
+bb creates each worktree inside its data folder on that machine (`~/.bb/worktrees` by default), not next to your checkout, and names its branch after the thread, starting with `bb/`.
+
+:::warning[Archiving a worktree thread removes its folder]
+When a worktree is removed, bb stops every process still running inside it, including terminals and servers you started there yourself. Uncommitted changes are lost; the branch and its commits stay. Unarchive the thread within five minutes to keep the worktree.
+:::
+
+## Child threads and environments
+
+A thread started by another thread, called a child thread, gets its own new worktree by default. When the parent works in a project checkout that isn't a Git repository, the child shares the parent's folder instead. An agent or you can also choose any environment for the child explicitly.
+
+## When to use which
+
+| If you want to | Use |
+| --- | --- |
+| Let an agent change code without touching your working copy, or run several agents on one repository at once | **Worktree** |
+| Have the agent work in the folder you have open in your editor, or work in a folder that isn't a Git repository | **Project checkout** |
+| Continue in a worktree you already made, yourself or in an earlier thread | **Worktree**, then **Existing worktree** |
+| Add a second thread to a thread's environment, such as a reviewer | **Reuse existing**, or **New thread in this environment** in the thread |
+| Ask a question or do a task that isn't about a repository | **Don't work in a project** (Personal workspace) |
+| Keep the agent off your own computer | A sandbox or another machine. See Run threads in sandboxes, containers and VMs |
+
+## Next steps
+
+- [Set up a project](/docs/set-up-a-project)
+- [Choose where a thread runs](/docs/choose-where-a-thread-runs)

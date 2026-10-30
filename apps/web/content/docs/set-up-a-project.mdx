@@ -1,0 +1,118 @@
+---
+title: Set up a project
+description: Use this when you want agents to work in a repository. Add its folder as a project from the composer, Settings → Projects or bb project create, then add a checkout on each machine that should run its threads.
+type: how-to
+sources:
+  - apps/app/src/components/settings/ProjectsSettingsSection.tsx
+  - apps/app/src/views/ProjectDetailSettingsView.tsx
+  - apps/app/src/components/dialogs/ProjectPathDialog.tsx
+  - apps/app/src/components/pickers/ProjectSelector.tsx
+  - apps/app/src/components/settings/MachineEnvironmentSettings.tsx
+  - apps/cli/src/commands/project.ts
+since: 0.43.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+Use this when you want agents to work in a repository or folder. A project is that folder plus the settings bb keeps for it; see [Projects, threads and environments](/docs/projects-threads-and-environments).
+
+## Add a project
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+1. Open the project picker in the composer and choose **New project**, or open **Settings → Projects** and click **Add a project**.
+2. If you have more than one machine, choose the one the folder is on.
+3. Browse to the folder, or type its path. bb shows the **Project name** it will use, taken from the folder's name.
+4. Click **Add project**.
+
+<Screenshot
+  src="/docs-images/set-up-a-project/add-project"
+  alt="The Add project dialog shows a folder browser open at the project's folder, the Project name bb will use, and the Add project button."
+  width={530}
+  height={470}
+/>
+
+</Tab>
+<Tab value="CLI">
+
+```bash
+bb project create --name "acme-web" --root ~/code/acme-web
+```
+
+Add `--machine <machine>` to add a folder on another machine. To find repositories you've used recently, run `bb project discover`.
+
+</Tab>
+</Tabs>
+
+The folder can be any folder. In a Git repository, threads can run in their own worktrees; in a folder without Git, they run in the folder itself.
+
+## Add the project on another machine
+
+A machine can run a project's threads only once the project has a checkout there.
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+1. Open **Settings → Projects** and click the project.
+2. Under **Checkouts**, find the machine and click **Set up**.
+3. Choose the folder on that machine.
+
+</Tab>
+<Tab value="CLI">
+
+Use a folder that's already there:
+
+```bash
+bb project source add <project-id> --path ~/code/acme-web --machine "Studio Mac"
+```
+
+Or clone the project's Git remote onto that machine:
+
+```bash
+bb project source add <project-id> --clone --machine "Studio Mac"
+```
+
+</Tab>
+</Tabs>
+
+## Change a project
+
+All of these are in **Settings → Projects**:
+
+| To | Do this |
+| --- | --- |
+| Rename it | Open the project's **⋯** menu and choose **Rename**, or run `bb project update <project-id> --name "New name"` |
+| Point it at a different folder on a machine | Click the project, then under **Checkouts** open the machine's **⋯** menu and choose **Change folder** |
+| Stop using it on a machine | The machine's **⋯** menu, then **Remove checkout**. A project needs at least one checkout |
+| Change the order in the sidebar | Drag the project in **Settings → Projects**, or run `bb project reorder <project-id> --after <other-project-id>` |
+| See the default agent, model, permission mode and reasoning | Click the project and look under **Thread defaults**. bb remembers the last options you used in the project |
+
+## Set environment variables for a project
+
+1. Open **Settings → Projects** and click the project.
+2. Under **Environment variables**, click **Add variable**, or **Import from .env**.
+3. Click **Save variables**.
+
+Project variables override the global ones in **Settings → Environment variables** for work in that project.
+
+## Delete a project
+
+Open the project's **⋯** menu in **Settings → Projects** and choose **Delete project**, or click **Delete project** under **Danger zone** on the project's page. From a terminal: `bb project delete <project-id>`.
+
+:::warning[Deleting a project deletes its threads]
+Deleting a project removes it and every thread in it, including archived ones. Its checkouts stay on disk.
+:::
+
+## Check it worked
+
+- The project appears in **Settings → Projects** and in the composer's project picker.
+- `bb project list` lists it, and `bb project show <project-id>` lists its checkouts.
+- Start a thread in the project. Its environment picker lists the machines that have a checkout.
+
+## Related troubleshooting
+
+- **"No machine is online. Start one to choose a project folder."** The Add project dialog needs a connected machine. Check **Settings → Machines**.
+- **A machine shows "Path not found".** The folder moved or was deleted. Use **Change folder** to point the project at its new place.
+- **Worktree is missing from the environment picker.** The folder isn't a Git repository. Run `git init` in it, or use **Project checkout**.
+- **A thread never finishes preparing its environment.** See A thread, environment or automation is stuck.
