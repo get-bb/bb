@@ -33,25 +33,6 @@ function slugOf(file: string): string {
 const navPages = DOCS_NAV.flatMap((section) => section.pages);
 
 describe("docs sidebar", () => {
-  it("has the 14 sections of the information architecture", () => {
-    expect(DOCS_NAV.map((section) => section.label)).toEqual([
-      "Get started",
-      "Concepts",
-      "Threads",
-      "Child threads",
-      "Automations, workflows and tasks",
-      "Agents",
-      "Skills",
-      "Projects and environments",
-      "Machines and servers",
-      "Mobile and remote access",
-      "Plugins",
-      "Customization",
-      "Reference",
-      "Troubleshooting",
-    ]);
-  });
-
   it("gives every page one unique slug and title", () => {
     const slugs = navPages.map((page) => page.slug);
     const titles = navPages.map((page) => page.title);

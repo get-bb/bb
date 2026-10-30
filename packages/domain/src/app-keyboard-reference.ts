@@ -45,14 +45,14 @@ export function formatAppShortcut(
   return parts.join(" + ");
 }
 
-export type AppShortcutSurface = "everywhere" | "desktop app" | "browser";
+type AppShortcutSurface = "everywhere" | "desktop app" | "browser";
 
 export interface AppShortcutReferenceKey {
   keys: string;
   surface: AppShortcutSurface;
 }
 
-export interface AppShortcutReferenceRow {
+interface AppShortcutReferenceRow {
   command: AppCommandId;
   label: string;
   description: string;
@@ -60,7 +60,7 @@ export interface AppShortcutReferenceRow {
   windowsLinux: AppShortcutReferenceKey[];
 }
 
-export interface AppShortcutReferenceGroup {
+interface AppShortcutReferenceGroup {
   label: string;
   rows: AppShortcutReferenceRow[];
 }
