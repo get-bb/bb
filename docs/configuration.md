@@ -343,10 +343,15 @@ first-send events through `POST /api/v1/system/telemetry/events`
 (`sdk.system.experimental_recordTelemetryEvent`): `onboarding_started`,
 `onboarding_step_reached`, `onboarding_step_completed`,
 `onboarding_step_skipped`, `onboarding_finished`, `onboarding_agent_state`,
-`onboarding_sign_in`, and `new_thread_submit` (started, accepted, or failed),
+`onboarding_sign_in`, `new_thread_submit` (started, accepted, or failed),
+`plugin_creation_started` (no properties; sent when you choose New plugin in
+the app or run `bb plugin new`, so it records intent, not a finished plugin),
 and `release_notes_opened` from Settings → Updates (`view` `inline` when the
 notes open under the bb row, `web` for the full notes on getbb.app).
-The route accepts only these events with fixed enums and booleans, plus a
+`bb plugin new` sends `plugin_creation_started` with `app_surface` `api`, skips
+it inside a bb agent thread (so an agent acting on New plugin isn't counted
+twice), and skips it silently when no bb server answers within 2 seconds. The
+route accepts only these events with fixed enums and booleans, plus a
 `release_version` of digits and dots (such as `0.47.0`): no provider ids,
 account details, prompts, release-note text, project or file names, terminal
 output, error messages, or session ids. Sign-in `exited` means the command exited before

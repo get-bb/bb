@@ -62,12 +62,16 @@ export function pluginInstalledTelemetryEvent(
   pluginId: string,
   provenance: PluginProvenance,
   sourceIntent: PluginSourceIntent,
+  isFreshInstall: boolean,
 ): Extract<TelemetryEvent, { name: "plugin_installed" }> {
+  const publicCatalogEntryId =
+    provenance.kind === "catalog" &&
+    (provenance.marketplace === CURATED_PLUGIN_MARKETPLACE_NAME ||
+      provenance.marketplace === BUNDLED_MARKETPLACE_NAME)
+      ? provenance.entryId
+      : null;
   const isPublic =
-    provenance.kind === "builtin" ||
-    (provenance.kind === "catalog" &&
-      (provenance.marketplace === CURATED_PLUGIN_MARKETPLACE_NAME ||
-        provenance.marketplace === BUNDLED_MARKETPLACE_NAME));
+    provenance.kind === "builtin" || publicCatalogEntryId !== null;
   return {
     name: "plugin_installed",
     properties: {
@@ -78,6 +82,8 @@ export function pluginInstalledTelemetryEvent(
           ? provenance.marketplace
           : null,
       source_kind: sourceIntent.kind,
+      is_fresh_install: isFreshInstall,
+      entry_id: publicCatalogEntryId,
     },
   };
 }
@@ -424,6 +430,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
         manifest.id,
         args.provenance,
         args.sourceIntent,
+        isFreshInstall,
       ),
     );
     return entry;
