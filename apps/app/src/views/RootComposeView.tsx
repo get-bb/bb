@@ -48,8 +48,8 @@ import {
   type ProjectMachineSetupCompletion,
   type ProjectMachineSetupDialogTarget,
 } from "@/components/dialogs/ProjectMachineSetupDialog";
-import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
 import {
+  RIGHT_PANEL_TOGGLE_BUTTON_CLASS,
   RIGHT_PANEL_TOGGLE_ICON_NAME,
   RIGHT_PANEL_TOGGLE_SHORTCUT_HINT_CLASS,
 } from "@/components/secondary-panel/panelToggleControlState";
@@ -245,7 +245,7 @@ export function RootComposeRightPanelToggle({
       type="button"
       variant="ghost"
       size="icon"
-      className={cn(HEADER_ICON_BUTTON_CLASS, "relative")}
+      className={cn(RIGHT_PANEL_TOGGLE_BUTTON_CLASS, "relative")}
       aria-label={
         shortcut ? `${rightPanelLabel} (${shortcut.label})` : rightPanelLabel
       }

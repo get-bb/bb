@@ -43,6 +43,7 @@ import {
 } from "@/lib/thread-actions/thread-action-registry";
 import { SecondaryPanelHostLayoutContext } from "@/components/secondary-panel/SecondaryPanelHostLayoutContext";
 import {
+  RIGHT_PANEL_TOGGLE_BUTTON_CLASS,
   RIGHT_PANEL_TOGGLE_ICON_NAME,
   RIGHT_PANEL_TOGGLE_SHORTCUT_HINT_CLASS,
 } from "@/components/secondary-panel/panelToggleControlState";
@@ -315,8 +316,7 @@ export function ThreadDetailHeader({
             variant="ghost"
             size="icon"
             className={cn(
-              HEADER_ICON_BUTTON_CLASS,
-              CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
+              RIGHT_PANEL_TOGGLE_BUTTON_CLASS,
               "relative",
               usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
               isTopRow &&
