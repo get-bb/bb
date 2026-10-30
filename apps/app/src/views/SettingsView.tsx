@@ -1154,6 +1154,11 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "In the built-in thread list sidebar, Cmd/Ctrl+Shift-click and Shift-click threads to select several, right-click for bulk actions, and drag them together into a section, under a thread, into Pinned, or into a composer as mentions.",
   },
+  skipFocusedThreadNotifications: {
+    label: "Skip notifications for the thread you're viewing",
+    description:
+      "Don't show a system notification for a thread that is open in a visible, focused bb window or tab. Other threads, and the same thread in a window you're not using, still notify.",
+  },
   threadContextCard: {
     label: "Thread context card",
     description:

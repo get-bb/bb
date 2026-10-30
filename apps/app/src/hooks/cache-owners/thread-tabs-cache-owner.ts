@@ -11,12 +11,32 @@ export function getCachedThreadTabs(
   );
 }
 
+function newerThreadTabs(
+  cached: ThreadTabsResponse | undefined,
+  response: ThreadTabsResponse,
+): ThreadTabsResponse {
+  return cached !== undefined && cached.revision > response.revision
+    ? cached
+    : response;
+}
+
+export function resolveFetchedThreadTabs(
+  queryClient: QueryClient,
+  threadId: string,
+  response: ThreadTabsResponse,
+): ThreadTabsResponse {
+  return newerThreadTabs(getCachedThreadTabs(queryClient, threadId), response);
+}
+
 export function setCachedThreadTabs(
   queryClient: QueryClient,
   threadId: string,
   response: ThreadTabsResponse,
 ): void {
-  queryClient.setQueryData(threadTabsQueryKey(threadId), response);
+  queryClient.setQueryData<ThreadTabsResponse>(
+    threadTabsQueryKey(threadId),
+    (cached) => newerThreadTabs(cached, response),
+  );
 }
 
 export function invalidateCachedThreadTabs(
