@@ -87,6 +87,38 @@ describe("bb thread organization commands", () => {
     });
   });
 
+  it("reschedules a queued message without resubmitting its content", async () => {
+    const list = vi.fn(async () => [
+      queuedMessage({
+        sendAt: Date.now() + 60_000,
+        state: "scheduled",
+        updatedAt: 7,
+        waitingOn: { kind: "time" },
+      }),
+    ]);
+    const update = vi.fn(async (_request: { json: { sendAt?: number } }) =>
+      queuedMessage({}),
+    );
+    stubServerApi({
+      "v1.threads.:id.queued-messages.$get": list,
+      "v1.threads.:id.queued-messages.:queuedMessageId.$patch": update,
+    });
+    const before = Date.now();
+
+    await runCommand(
+      ["thread", "queue", "update", "thread-1", "queued-1", "--send-at", "2h"],
+      register,
+    );
+
+    expect(update).toHaveBeenCalledExactlyOnceWith({
+      param: { id: "thread-1", queuedMessageId: "queued-1" },
+      json: { expectedUpdatedAt: 7, sendAt: expect.any(Number) },
+    });
+    const sendAt = update.mock.calls[0]?.[0].json.sendAt;
+    expect(sendAt).toBeGreaterThanOrEqual(before + 2 * 60 * 60_000);
+    expect(sendAt).toBeLessThanOrEqual(Date.now() + 2 * 60 * 60_000);
+  });
+
   it("queues existing attachment tokens with text and a model without uploading", async () => {
     const create = vi.fn(async () => queuedMessage({}));
     stubServerApi({ "v1.threads.:id.queued-messages.$post": create });

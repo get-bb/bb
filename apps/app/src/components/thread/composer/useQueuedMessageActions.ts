@@ -4,6 +4,7 @@ import type { SendQueuedMessageMode } from "@bb/server-contract";
 import type {
   QueuedMessageGroupBoundaryRequest,
   QueuedMessageProcessingAction,
+  QueuedMessageRescheduleRequest,
 } from "@/components/promptbox/banner/LazyQueuedMessagesList";
 import {
   useDeleteThreadQueuedMessage,
@@ -13,6 +14,7 @@ import {
   useUpdateThreadQueuedMessage,
 } from "@/hooks/mutations/thread-runtime-mutations";
 import {
+  getMutationErrorMessage,
   reportMutationError,
   showMutationErrorToast,
 } from "@/lib/mutation-errors";
@@ -48,6 +50,9 @@ interface UseQueuedMessageActionsResult {
   isUpdateQueuedMessagePending: boolean;
   sendQueuedMessageById: (args: SendQueuedMessageByIdArgs) => Promise<void>;
   handleSaveInlineQueuedMessage: () => Promise<void>;
+  handleRescheduleQueuedMessage: (
+    request: QueuedMessageRescheduleRequest,
+  ) => Promise<void>;
   handleDeleteQueuedMessage: (queuedMessageId: string) => void;
   handleReorderQueuedMessage: (request: QueuedMessageReorderRequest) => void;
   handleSetQueuedMessageGroupBoundary: (
@@ -66,6 +71,7 @@ export function useQueuedMessageActions({
   activeComposerDraftInput,
 }: UseQueuedMessageActionsArgs): UseQueuedMessageActionsResult {
   const updateQueuedMessage = useUpdateThreadQueuedMessage();
+  const rescheduleQueuedMessage = useUpdateThreadQueuedMessage();
   const sendQueuedMessage = useSendThreadQueuedMessage();
   const deleteQueuedMessage = useDeleteThreadQueuedMessage();
   const reorderQueuedMessage = useReorderThreadQueuedMessage();
@@ -188,6 +194,28 @@ export function useQueuedMessageActions({
     updateQueuedMessage,
   ]);
 
+  const handleRescheduleQueuedMessage = useCallback(
+    async (request: QueuedMessageRescheduleRequest) => {
+      try {
+        await rescheduleQueuedMessage.mutateAsync({
+          expectedUpdatedAt: request.expectedUpdatedAt,
+          id: threadId,
+          queuedMessageId: request.queuedMessageId,
+          sendAt: request.sendAt,
+        });
+      } catch (error) {
+        throw new Error(
+          getMutationErrorMessage({
+            error,
+            fallbackMessage: "Failed to reschedule queued message",
+            lifecycleOperation: "update_queued_message",
+          }),
+        );
+      }
+    },
+    [rescheduleQueuedMessage, threadId],
+  );
+
   const handleDeleteQueuedMessage = useCallback(
     (queuedMessageId: string) => {
       setProcessingQueuedMessage({ id: queuedMessageId, action: "delete" });
@@ -253,7 +281,8 @@ export function useQueuedMessageActions({
     reorderQueuedMessage.isPending ||
     setQueuedMessageGroupBoundary.isPending ||
     sendQueuedMessage.isPending ||
-    updateQueuedMessage.isPending;
+    updateQueuedMessage.isPending ||
+    rescheduleQueuedMessage.isPending;
 
   return {
     processingQueuedMessage: displayedProcessingQueuedMessage,
@@ -261,6 +290,7 @@ export function useQueuedMessageActions({
     isUpdateQueuedMessagePending: updateQueuedMessage.isPending,
     sendQueuedMessageById,
     handleSaveInlineQueuedMessage,
+    handleRescheduleQueuedMessage,
     handleDeleteQueuedMessage,
     handleReorderQueuedMessage,
     handleSetQueuedMessageGroupBoundary,

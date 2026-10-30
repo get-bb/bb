@@ -1506,6 +1506,13 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<ThreadQueuedMessage>({ status: 201 }),
     }),
+    /**
+     * Update a queued message in place, guarded by `expectedUpdatedAt`.
+     * `input` replaces its content and releases an edit hold. `sendAt` moves a
+     * scheduled message to another future instant and keeps any edit hold;
+     * a message that is not scheduled is rejected with 409. Omitted fields
+     * keep their current values.
+     */
     updateQueuedMessage: defineRoute({
       path: "/threads/:id/queued-messages/:queuedMessageId",
       method: "patch",

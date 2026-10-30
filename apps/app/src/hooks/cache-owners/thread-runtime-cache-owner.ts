@@ -1041,7 +1041,8 @@ export async function beginUpdateQueuedMessageTransaction({
         queuedMessage.id === request.queuedMessageId
           ? {
               ...queuedMessage,
-              content: request.input,
+              content: request.input ?? queuedMessage.content,
+              sendAt: request.sendAt ?? queuedMessage.sendAt,
               updatedAt: optimisticUpdatedAt ?? queuedMessage.updatedAt,
             }
           : queuedMessage,
@@ -1071,6 +1072,7 @@ export function rollbackUpdateQueuedMessageTransaction({
             ? {
                 ...queuedMessage,
                 content: previousQueuedMessage.content,
+                sendAt: previousQueuedMessage.sendAt,
                 updatedAt: previousQueuedMessage.updatedAt,
               }
             : queuedMessage,

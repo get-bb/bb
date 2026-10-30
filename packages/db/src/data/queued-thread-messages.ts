@@ -96,9 +96,10 @@ export interface CreateQueuedThreadMessageInput {
 }
 
 export interface UpdateQueuedThreadMessageInput {
-  content: PromptInput[];
+  content: PromptInput[] | null;
   expectedUpdatedAt: number;
   id: string;
+  sendAt: number | null;
   threadId: string;
 }
 
@@ -358,7 +359,8 @@ export type UpdateQueuedThreadMessageResult =
     }
   | { kind: "not_found" }
   | { kind: "claimed" }
-  | { kind: "stale" };
+  | { kind: "stale" }
+  | { kind: "not_scheduled" };
 
 export interface QueuedThreadMessageEditHoldArgs {
   id: string;
@@ -889,17 +891,25 @@ export function updateQueuedThreadMessage(
       if (existing.updatedAt !== input.expectedUpdatedAt) {
         return { kind: "stale" };
       }
+      if (input.sendAt !== null && existing.state !== "scheduled") {
+        return { kind: "not_scheduled" };
+      }
 
-      acquireProjectAttachmentOwnership(
-        tx,
-        input.threadId,
-        projectAttachmentPaths(input.content),
-      );
+      const content = input.content;
+      if (content !== null) {
+        acquireProjectAttachmentOwnership(
+          tx,
+          input.threadId,
+          projectAttachmentPaths(content),
+        );
+      }
       const queuedMessage = tx
         .update(queuedThreadMessages)
         .set({
-          content: JSON.stringify(input.content),
-          editHeldUntil: null,
+          ...(content === null
+            ? {}
+            : { content: JSON.stringify(content), editHeldUntil: null }),
+          ...(input.sendAt === null ? {} : { sendAt: input.sendAt }),
           updatedAt: Math.max(Date.now(), existing.updatedAt + 1),
         })
         .where(eq(queuedThreadMessages.id, input.id))
@@ -911,7 +921,7 @@ export function updateQueuedThreadMessage(
       return {
         kind: "updated",
         queuedMessage,
-        releasedEditHold: existing.editHeldUntil !== null,
+        releasedEditHold: content !== null && existing.editHeldUntil !== null,
       };
     },
     { behavior: "immediate" },

@@ -114,6 +114,8 @@ Queued messages:
   bb thread queue create <thread-id> <message> [--file <path>] [--image <path>]
   bb thread queue update <thread-id> <message-id> <message> [--file <path>] [--image <path>]
                                            create and update also take --message-file <path>
+  bb thread queue update <thread-id> <message-id> --send-at <when>
+                                           Reschedule a scheduled message; the message is optional
   bb thread queue send <thread-id> <message-id> [--mode auto|steer]
   bb thread queue reorder <thread-id> <message-id> [--after <id>] [--before <id>]
   bb thread queue group <thread-id> <boundary-id> --prefix <comma-separated-ids>
@@ -138,6 +140,12 @@ Queued messages:
   its typed reason), `failed_retrying` (an automatic retry is booked),
   `failed_exhausted` (retries spent; waits for you), or `claimed` (a dispatch
   attempt is sending it).
+
+  `queue update --send-at` moves a `scheduled` row to another future time
+  (an ISO 8601 timestamp or a duration such as 2h) and keeps its ID, content,
+  attachments, execution settings, and position. With no message it changes
+  only the time; a row that is not `scheduled`, or has started sending, is
+  rejected. SDK: `threads.queuedMessages.update` with `sendAt`, `input`, or both.
 
   Failed rows show their failure reason instead of their previous wait, followed
   by a recovery command: `bb thread queue send <thread-id> <message-id>`.

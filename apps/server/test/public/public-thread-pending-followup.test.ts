@@ -5,7 +5,7 @@ import {
   listQueuedThreadMessages,
   upsertProjectExecutionDefaults,
 } from "@bb/db";
-import { threadSchema } from "@bb/domain";
+import { threadQueuedMessageSchema, threadSchema } from "@bb/domain";
 import { sendMessageResponseSchema } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import { listQueuedThreadCommands } from "../helpers/commands.js";
@@ -107,4 +107,62 @@ describe("scheduled pending thread follow-ups", () => {
       });
     },
   );
+
+  it("moves the first scheduled message of a pending thread to an earlier time", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const sendAt = Date.now() + 2 * 24 * 60 * 60 * 1000;
+      const response = await harness.app.request("/api/v1/threads", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          origin: "cli",
+          projectId: project.id,
+          providerId: "codex",
+          environment: { type: "reuse", environmentId: environment.id },
+          input: textInput("scheduled spawn"),
+          sendAt,
+        }),
+      });
+      const thread = threadSchema.parse(await readJson(response));
+      const [spawn] = listQueuedThreadMessages(harness.db, thread.id);
+      expect(spawn).toBeDefined();
+
+      const earlierSendAt = sendAt - 24 * 60 * 60 * 1000;
+      const reschedule = await harness.app.request(
+        `/api/v1/threads/${thread.id}/queued-messages/${spawn.id}`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            expectedUpdatedAt: spawn.updatedAt,
+            sendAt: earlierSendAt,
+          }),
+        },
+      );
+
+      expect(reschedule.status).toBe(200);
+      expect(
+        threadQueuedMessageSchema.parse(await readJson(reschedule)),
+      ).toMatchObject({ id: spawn.id, sendAt: earlierSendAt });
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([
+        {
+          ...spawn,
+          sendAt: earlierSendAt,
+          updatedAt: expect.any(Number),
+        },
+      ]);
+      expect(getThread(harness.db, thread.id)?.status).toBe("pending");
+      expect(
+        listQueuedThreadCommands(harness, "thread.start", thread.id),
+      ).toEqual([]);
+    });
+  });
 });

@@ -29,6 +29,11 @@ import {
   queuedMessageHasWaitLine,
   queuedMessageWaitIcon,
 } from "@/lib/queued-message-wait";
+import { isQueuedMessageReschedulable } from "@/lib/queued-message-reschedule";
+import {
+  RescheduleQueuedMessageDialog,
+  type RescheduleQueuedMessageTarget,
+} from "@/components/promptbox/banner/RescheduleQueuedMessageDialog";
 import type {
   QueuedMessageEditRequest,
   QueuedMessageGroupBoundaryRequest,
@@ -137,6 +142,7 @@ interface QueuedMessageRowProps {
   onExpandMobileActions: (id: string) => void;
   onSend: (id: string) => void;
   onEdit: (request: QueuedMessageEditRequest) => void;
+  onReschedule: (queuedMessage: ThreadQueuedMessage) => void;
   onDelete: (id: string) => void;
   compact: boolean;
   isGroupBoundary: boolean;
@@ -759,6 +765,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
   onExpandMobileActions,
   onSend,
   onEdit,
+  onReschedule,
   onDelete,
   compact,
   isGroupBoundary,
@@ -964,6 +971,33 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                     </TooltipTrigger>
                     <TooltipContent className="max-md:hidden">
                       {sendLabel}
+                    </TooltipContent>
+                  </Tooltip>
+                ) : null}
+                {isQueuedMessageReschedulable(queuedMessage) ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className={cn(
+                          "shrink-0 text-muted-foreground",
+                          compact ? "size-7" : "size-8",
+                        )}
+                        disabled={actionDisabled}
+                        onClick={() => onReschedule(queuedMessage)}
+                        aria-label={`Reschedule queued message ${index + 1}`}
+                      >
+                        <Icon
+                          name="TimeSchedule"
+                          className="size-4"
+                          aria-hidden
+                        />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-md:hidden">
+                      Reschedule
                     </TooltipContent>
                   </Tooltip>
                 ) : null}
@@ -1191,6 +1225,7 @@ export function QueuedMessagesList({
   onReorder,
   onSetGroupBoundary,
   onEdit,
+  onReschedule,
   onDelete,
   expanded,
   onExpandedChange,
@@ -1502,6 +1537,32 @@ export function QueuedMessagesList({
     },
     [onEdit, openWorkspace],
   );
+  const [rescheduleTarget, setRescheduleTarget] =
+    useState<RescheduleQueuedMessageTarget | null>(null);
+  const handleOpenReschedule = useCallback(
+    (queuedMessage: ThreadQueuedMessage) => {
+      if (queuedMessage.sendAt === null) return;
+      setExpandedMobileActionsId(null);
+      setRescheduleTarget({
+        expectedUpdatedAt: queuedMessage.updatedAt,
+        queuedMessageId: queuedMessage.id,
+        sendAt: queuedMessage.sendAt,
+      });
+    },
+    [],
+  );
+  const closeReschedule = useCallback(() => setRescheduleTarget(null), []);
+  const handleReschedule = useCallback(
+    async (sendAt: number) => {
+      if (rescheduleTarget === null) return;
+      await onReschedule({
+        expectedUpdatedAt: rescheduleTarget.expectedUpdatedAt,
+        queuedMessageId: rescheduleTarget.queuedMessageId,
+        sendAt,
+      });
+    },
+    [onReschedule, rescheduleTarget],
+  );
   const baseSurfaceHeight =
     inlineEditor || mode === "workspace"
       ? getWorkspaceHeight({
@@ -1580,6 +1641,7 @@ export function QueuedMessagesList({
           isGroupBoundary={messageIndex === groupBoundaryIndex}
           onSend={onSend}
           onEdit={handleEdit}
+          onReschedule={handleOpenReschedule}
           onDelete={onDelete}
         />,
       );
@@ -1693,6 +1755,11 @@ export function QueuedMessagesList({
           />
         </div>
       ) : null}
+      <RescheduleQueuedMessageDialog
+        target={rescheduleTarget}
+        onClose={closeReschedule}
+        onReschedule={handleReschedule}
+      />
     </PromptStackCard>
   );
 }

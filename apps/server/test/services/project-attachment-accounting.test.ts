@@ -119,6 +119,7 @@ describe("project attachment accounting", () => {
       });
       const result = updateQueuedThreadMessage(h.db, h.hub, {
         id: queued.id,
+        sendAt: null,
         threadId: thread.id,
         expectedUpdatedAt: queued.updatedAt,
         content: input(b.path),
@@ -135,6 +136,7 @@ describe("project attachment accounting", () => {
       expect(
         updateQueuedThreadMessage(h.db, h.hub, {
           id: queued.id,
+          sendAt: null,
           threadId: thread.id,
           expectedUpdatedAt: queued.updatedAt,
           content: input("missing.txt"),

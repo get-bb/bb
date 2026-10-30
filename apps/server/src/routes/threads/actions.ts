@@ -294,17 +294,29 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
   patch(routes.updateQueuedMessage, async (context, payload) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     ensureThreadQueueIsWritable(thread);
-    const input = await resolvePromptAttachmentReferences({
-      db: deps.db,
-      dataDir: deps.config.dataDir,
-      input: payload.input,
-      projectId: thread.projectId,
-      hostId: threadTargetHostId(deps, thread),
-    });
+    const sendAt = payload.sendAt ?? null;
+    if (sendAt !== null && sendAt <= Date.now()) {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        "sendAt must be in the future",
+      );
+    }
+    const input =
+      payload.input === undefined
+        ? null
+        : await resolvePromptAttachmentReferences({
+            db: deps.db,
+            dataDir: deps.config.dataDir,
+            input: payload.input,
+            projectId: thread.projectId,
+            hostId: threadTargetHostId(deps, thread),
+          });
     const result = updateQueuedThreadMessage(deps.db, deps.hub, {
       content: input,
       expectedUpdatedAt: payload.expectedUpdatedAt,
       id: context.req.param("queuedMessageId"),
+      sendAt,
       threadId: thread.id,
     });
     if (result.kind === "not_found") {
@@ -322,6 +334,13 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
         409,
         "invalid_request",
         "Queued message changed since editing began",
+      );
+    }
+    if (result.kind === "not_scheduled") {
+      throw new ApiError(
+        409,
+        "invalid_request",
+        "Queued message is not scheduled",
       );
     }
     if (result.releasedEditHold) {

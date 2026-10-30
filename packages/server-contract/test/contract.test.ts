@@ -39,9 +39,7 @@ import {
   updateEnvironmentRequestSchema,
   unmanagedBranchSpecSchema,
 } from "../src/index.js";
-import type {
-  WorkspaceResolutionFailure,
-} from "@bb/host-daemon-contract/workspace";
+import type { WorkspaceResolutionFailure } from "@bb/host-daemon-contract/workspace";
 
 interface OptionalServerFieldGroup {
   fields: readonly string[];
@@ -1120,6 +1118,15 @@ describe("server-contract canonical schemas", () => {
       updateQueuedMessageRequestSchema.parse({
         input: [{ type: "text", text: "Edited queued message" }],
       }),
+    ).toThrow();
+    expect(
+      updateQueuedMessageRequestSchema.parse({
+        expectedUpdatedAt: 42,
+        sendAt: 1_800_000_000_000,
+      }),
+    ).toEqual({ expectedUpdatedAt: 42, sendAt: 1_800_000_000_000 });
+    expect(() =>
+      updateQueuedMessageRequestSchema.parse({ expectedUpdatedAt: 42 }),
     ).toThrow();
     expect(
       reorderQueuedMessageRequestSchema.parse({

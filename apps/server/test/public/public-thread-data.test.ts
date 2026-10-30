@@ -2874,6 +2874,94 @@ describe("public thread data routes", () => {
     });
   });
 
+  it("reschedules a scheduled queued message without resubmitting its content", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedThreadFixture(harness);
+      const originalSendAt = Date.now() + 60 * 60_000;
+      const scheduled = seedQueuedMessage(harness.deps, {
+        content: textInput("Run the repository checks."),
+        threadId: thread.id,
+        waitingOn: { kind: "time" },
+        sendAt: originalSendAt,
+      });
+      const ordinary = seedQueuedMessage(harness.deps, {
+        content: textInput("Not scheduled"),
+        threadId: thread.id,
+      });
+      const patchQueuedMessage = (
+        queuedMessageId: string,
+        body: Record<string, unknown>,
+      ) =>
+        harness.app.request(
+          `/api/v1/threads/${thread.id}/queued-messages/${queuedMessageId}`,
+          {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(body),
+          },
+        );
+
+      const pastResponse = await patchQueuedMessage(scheduled.id, {
+        expectedUpdatedAt: scheduled.updatedAt,
+        sendAt: Date.now() - 1_000,
+      });
+      expect(pastResponse.status).toBe(400);
+      await expect(readJson(pastResponse)).resolves.toMatchObject({
+        message: "sendAt must be in the future",
+      });
+
+      const emptyResponse = await patchQueuedMessage(scheduled.id, {
+        expectedUpdatedAt: scheduled.updatedAt,
+      });
+      expect(emptyResponse.status).toBe(400);
+
+      const laterSendAt = originalSendAt + 2 * 60 * 60_000;
+      const rescheduleResponse = await patchQueuedMessage(scheduled.id, {
+        expectedUpdatedAt: scheduled.updatedAt,
+        sendAt: laterSendAt,
+      });
+      expect(rescheduleResponse.status).toBe(200);
+      const rescheduled = threadQueuedMessageSchema.parse(
+        await readJson(rescheduleResponse),
+      );
+      expect(rescheduled).toMatchObject({
+        id: scheduled.id,
+        content: [
+          {
+            type: "text",
+            text: "Run the repository checks.",
+            mentions: [],
+          },
+        ],
+        sendAt: laterSendAt,
+        state: "scheduled",
+        waitingOn: { kind: "time" },
+      });
+      expect(rescheduled.updatedAt).toBeGreaterThan(scheduled.updatedAt);
+
+      const staleResponse = await patchQueuedMessage(scheduled.id, {
+        expectedUpdatedAt: scheduled.updatedAt,
+        sendAt: originalSendAt,
+      });
+      expect(staleResponse.status).toBe(409);
+      expect(getQueuedThreadMessage(harness.db, scheduled.id)?.sendAt).toBe(
+        laterSendAt,
+      );
+
+      const notScheduledResponse = await patchQueuedMessage(ordinary.id, {
+        expectedUpdatedAt: ordinary.updatedAt,
+        sendAt: laterSendAt,
+      });
+      expect(notScheduledResponse.status).toBe(409);
+      await expect(readJson(notScheduledResponse)).resolves.toMatchObject({
+        message: "Queued message is not scheduled",
+      });
+      expect(getQueuedThreadMessage(harness.db, ordinary.id)?.sendAt).toBe(
+        null,
+      );
+    });
+  });
+
   it("queues public send requests with sender context while the target thread is active", async () => {
     await withTestHarness(async (harness) => {
       const capture = vi.fn<TelemetryService["capture"]>();

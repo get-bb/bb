@@ -435,10 +435,16 @@ export type CreateQueuedMessageRequest = z.infer<
   typeof createQueuedMessageRequestSchema
 >;
 
-export const updateQueuedMessageRequestSchema = z.object({
-  expectedUpdatedAt: z.number().int().nonnegative(),
-  input: z.array(promptInputSchema).min(1),
-});
+export const updateQueuedMessageRequestSchema = z
+  .object({
+    expectedUpdatedAt: z.number().int().nonnegative(),
+    input: z.array(promptInputSchema).min(1).optional(),
+    sendAt: z.number().int().nonnegative().optional(),
+  })
+  .refine(
+    (request) => request.input !== undefined || request.sendAt !== undefined,
+    { message: "Provide input, sendAt, or both" },
+  );
 export type UpdateQueuedMessageRequest = z.infer<
   typeof updateQueuedMessageRequestSchema
 >;

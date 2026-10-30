@@ -82,6 +82,7 @@ vi.mock("@/components/ui/bottom-anchored-scroll-body", () => ({
 }));
 
 const noop = () => {};
+const asyncNoop = async () => {};
 
 function TypeaheadLayoutFixture({
   layout,
@@ -147,6 +148,7 @@ function renderQueuedMessages(
       onReorder={noop}
       onSetGroupBoundary={noop}
       onEdit={noop}
+      onReschedule={asyncNoop}
       onDelete={noop}
     />,
   );
@@ -169,6 +171,7 @@ function renderQueuedMessagesWithOptions(
       onReorder={noop}
       onSetGroupBoundary={noop}
       onEdit={noop}
+      onReschedule={asyncNoop}
       onDelete={noop}
     />,
   );
@@ -189,6 +192,7 @@ function renderQueuedMessagesWithExpandedSpy(
       onReorder={noop}
       onSetGroupBoundary={noop}
       onEdit={noop}
+      onReschedule={asyncNoop}
       onDelete={noop}
       onExpandedChange={onExpandedChange}
     />,
@@ -235,6 +239,7 @@ describe("QueuedMessagesList", () => {
         onReorder={noop}
         onSetGroupBoundary={noop}
         onEdit={noop}
+        onReschedule={asyncNoop}
         onDelete={noop}
       />,
     );
@@ -273,6 +278,7 @@ describe("QueuedMessagesList", () => {
           onReorder={noop}
           onSetGroupBoundary={noop}
           onEdit={noop}
+          onReschedule={asyncNoop}
           onDelete={noop}
         />
       </QueryClientProvider>,
@@ -445,6 +451,7 @@ describe("QueuedMessagesList", () => {
       onReorder: noop,
       onSetGroupBoundary: noop,
       onEdit: noop,
+      onReschedule: asyncNoop,
       onDelete: noop,
     } as const;
     const firstMessage = makeQueuedMessage("q_one", "First queued message");
@@ -506,6 +513,7 @@ describe("QueuedMessagesList", () => {
       onReorder: noop,
       onSetGroupBoundary: noop,
       onEdit: noop,
+      onReschedule: asyncNoop,
       onDelete: noop,
     } as const;
     const firstMessage = makeQueuedMessage("q_one", "First queued message");
@@ -569,6 +577,7 @@ describe("QueuedMessagesList", () => {
       onReorder: noop,
       onSetGroupBoundary: noop,
       onEdit: noop,
+      onReschedule: asyncNoop,
       onDelete: noop,
     } as const;
     const plainMessage = makeQueuedMessage("q_plain", "Plain follow-up");
@@ -713,6 +722,116 @@ describe("QueuedMessagesList", () => {
     }
   });
 
+  it("reschedules a scheduled row from a dialog prefilled with its send time", async () => {
+    const sendAt = new Date(2099, 0, 2, 9, 0).getTime();
+    const scheduled: ThreadQueuedMessage = {
+      ...makeQueuedMessage("q_scheduled", "Run the repository checks."),
+      sendAt,
+      state: "scheduled",
+      updatedAt: 42,
+      waitingOn: { kind: "time" },
+    };
+    const onReschedule = vi.fn(
+      async (
+        _request: Parameters<QueuedMessagesListProps["onReschedule"]>[0],
+      ) => {},
+    );
+    render(
+      <QueuedMessagesList
+        attachedToComposer={true}
+        queuedMessages={[
+          scheduled,
+          makeQueuedMessage("q_plain", "Not scheduled"),
+        ]}
+        sendDisabled={false}
+        actionDisabled={false}
+        processingMessageId={null}
+        processingAction={null}
+        onSend={noop}
+        onReorder={noop}
+        onSetGroupBoundary={noop}
+        onEdit={noop}
+        onReschedule={onReschedule}
+        onDelete={noop}
+      />,
+    );
+    expandQueue();
+
+    expect(
+      screen.queryByRole("button", { name: "Reschedule queued message 2" }),
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Reschedule queued message 1" }),
+    );
+    const dateInput = await screen.findByLabelText("Date");
+    const timeInput = screen.getByLabelText("Time");
+    expect((dateInput as HTMLInputElement).value).toBe("2099-01-02");
+    expect((timeInput as HTMLInputElement).value).toBe("09:00");
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Date")).toBeNull();
+    });
+    expect(onReschedule).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Reschedule queued message 1" }),
+    );
+    fireEvent.change(await screen.findByLabelText("Time"), {
+      target: { value: "11:00" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Reschedule" }));
+
+    await waitFor(() => {
+      expect(onReschedule).toHaveBeenCalledExactlyOnceWith({
+        expectedUpdatedAt: 42,
+        queuedMessageId: "q_scheduled",
+        sendAt: new Date(2099, 0, 2, 11, 0).getTime(),
+      });
+    });
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Date")).toBeNull();
+    });
+  });
+
+  it("keeps the reschedule dialog open with the server's reason when saving fails", async () => {
+    const scheduled: ThreadQueuedMessage = {
+      ...makeQueuedMessage("q_scheduled", "Run the repository checks."),
+      sendAt: new Date(2099, 0, 2, 9, 0).getTime(),
+      state: "scheduled",
+      waitingOn: { kind: "time" },
+    };
+    render(
+      <QueuedMessagesList
+        attachedToComposer={true}
+        queuedMessages={[scheduled]}
+        sendDisabled={false}
+        actionDisabled={false}
+        processingMessageId={null}
+        processingAction={null}
+        onSend={noop}
+        onReorder={noop}
+        onSetGroupBoundary={noop}
+        onEdit={noop}
+        onReschedule={async () => {
+          throw new Error("Queued message is already being sent");
+        }}
+        onDelete={noop}
+      />,
+    );
+    expandQueue();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Reschedule queued message 1" }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Reschedule" }));
+
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Queued message is already being sent",
+    );
+    expect(screen.getByLabelText("Date")).toBeTruthy();
+  });
+
   it("limits collapsed action hiding to compact widths", () => {
     const { container } = renderQueuedMessages([
       makeQueuedMessage("q_one", "First queued message"),
@@ -774,6 +893,7 @@ describe("QueuedMessagesList", () => {
           onReorder={noop}
           onSetGroupBoundary={noop}
           onEdit={noop}
+          onReschedule={asyncNoop}
           onDelete={noop}
         />,
       );
@@ -832,6 +952,7 @@ describe("QueuedMessagesList", () => {
         onReorder={noop}
         onSetGroupBoundary={noop}
         onEdit={noop}
+        onReschedule={asyncNoop}
         onDelete={noop}
       />,
     );
@@ -891,6 +1012,7 @@ describe("QueuedMessagesList", () => {
         onReorder={noop}
         onSetGroupBoundary={noop}
         onEdit={noop}
+        onReschedule={asyncNoop}
         onDelete={noop}
       />,
     );
@@ -925,6 +1047,7 @@ describe("QueuedMessagesList", () => {
       onReorder: noop,
       onSetGroupBoundary: noop,
       onEdit: noop,
+      onReschedule: asyncNoop,
       onDelete: noop,
     } as const;
     const { container, rerender } = render(
@@ -972,6 +1095,7 @@ describe("QueuedMessagesList", () => {
       onReorder: noop,
       onSetGroupBoundary: noop,
       onEdit: noop,
+      onReschedule: asyncNoop,
       onDelete: noop,
     } as const;
     const { container, getByRole, rerender } = render(
@@ -1034,6 +1158,7 @@ describe("QueuedMessagesList", () => {
       onReorder: noop,
       onSetGroupBoundary: noop,
       onEdit: noop,
+      onReschedule: asyncNoop,
       onDelete: noop,
     } as const;
     const renderSurface = (editing: boolean) => (
@@ -1136,6 +1261,7 @@ describe("QueuedMessagesList", () => {
             onReorder={noop}
             onSetGroupBoundary={noop}
             onEdit={noop}
+            onReschedule={asyncNoop}
             onDelete={noop}
           />
           <div>Bottom composer</div>
@@ -1222,6 +1348,7 @@ describe("QueuedMessagesList", () => {
             onReorder={noop}
             onSetGroupBoundary={noop}
             onEdit={noop}
+            onReschedule={asyncNoop}
             onDelete={noop}
           />
           <div>Bottom composer</div>
@@ -1326,6 +1453,7 @@ describe("QueuedMessagesList", () => {
               onReorder={noop}
               onSetGroupBoundary={noop}
               onEdit={noop}
+              onReschedule={asyncNoop}
               onDelete={noop}
             />
             <div>Bottom composer</div>
@@ -1483,6 +1611,7 @@ describe("QueuedMessagesList", () => {
         onReorder={noop}
         onSetGroupBoundary={noop}
         onEdit={noop}
+        onReschedule={asyncNoop}
         onDelete={noop}
       />,
     );
@@ -1894,6 +2023,7 @@ describe("QueuedMessagesList", () => {
         onReorder={noop}
         onSetGroupBoundary={noop}
         onEdit={noop}
+        onReschedule={asyncNoop}
         onDelete={noop}
       />,
     );
@@ -1918,6 +2048,7 @@ describe("QueuedMessagesList", () => {
         onReorder={noop}
         onSetGroupBoundary={noop}
         onEdit={noop}
+        onReschedule={asyncNoop}
         onDelete={noop}
       />,
     );
@@ -2122,6 +2253,7 @@ describe("queued row affordances", () => {
         onReorder={noop}
         onSetGroupBoundary={noop}
         onEdit={noop}
+        onReschedule={asyncNoop}
         onDelete={noop}
       />,
     );

@@ -354,6 +354,56 @@ describe("thread runtime cache owner", () => {
     ).toEqual([last, { ...edited, groupWithNext: false }, added]);
   });
 
+  it("moves a rescheduled message's time optimistically and restores it on rollback", async () => {
+    const queryClient = createAppQueryClient({
+      defaultOptions: { queries: { gcTime: Infinity, retry: false } },
+      showMutationErrorToasts: false,
+    });
+    const scheduled = makeQueuedMessage({
+      id: "qmsg-scheduled",
+      content: [{ type: "text", text: "Run the checks", mentions: [] }],
+      sendAt: 1_000,
+      state: "scheduled",
+      waitingOn: { kind: "time" },
+      updatedAt: 5,
+    });
+    queryClient.setQueryData(threadQueuedMessagesQueryKey("thread-1"), [
+      scheduled,
+    ]);
+    const request = {
+      expectedUpdatedAt: scheduled.updatedAt,
+      id: "thread-1",
+      queuedMessageId: scheduled.id,
+      sendAt: 9_000,
+    };
+
+    const transaction = await beginUpdateQueuedMessageTransaction({
+      queryClient,
+      request,
+    });
+    expect(
+      queryClient.getQueryData<ThreadQueuedMessage[]>(
+        threadQueuedMessagesQueryKey("thread-1"),
+      ),
+    ).toEqual([
+      {
+        ...scheduled,
+        sendAt: 9_000,
+        updatedAt: transaction.optimisticUpdatedAt,
+      },
+    ]);
+
+    rollbackUpdateQueuedMessageTransaction({
+      queryClient,
+      request,
+      transaction,
+    });
+
+    expect(
+      queryClient.getQueryData(threadQueuedMessagesQueryKey("thread-1")),
+    ).toEqual([scheduled]);
+  });
+
   it("does not roll back a newer update to the same queued message", async () => {
     const queryClient = createAppQueryClient({
       defaultOptions: { queries: { gcTime: Infinity, retry: false } },
@@ -439,51 +489,54 @@ describe("thread runtime cache owner", () => {
     "starting",
     "stopping",
     "waiting-for-host",
-  ] as const)("optimistically queues queue-if-active sends while %s", async (displayStatus) => {
-    const queryClient = createAppQueryClient({
-      defaultOptions: { queries: { gcTime: Infinity, retry: false } },
-      showMutationErrorToasts: false,
-    });
-    queryClient.setQueryData(threadQueryKey("thread-1"), {
-      status: "active",
-      runtime: { displayStatus },
-    });
-    queryClient.setQueryData(threadQueuedMessagesQueryKey("thread-1"), []);
+  ] as const)(
+    "optimistically queues queue-if-active sends while %s",
+    async (displayStatus) => {
+      const queryClient = createAppQueryClient({
+        defaultOptions: { queries: { gcTime: Infinity, retry: false } },
+        showMutationErrorToasts: false,
+      });
+      queryClient.setQueryData(threadQueryKey("thread-1"), {
+        status: "active",
+        runtime: { displayStatus },
+      });
+      queryClient.setQueryData(threadQueuedMessagesQueryKey("thread-1"), []);
 
-    const transaction = await beginSendThreadMessageTransaction({
-      queryClient,
-      request: {
-        id: "thread-1",
-        mode: "queue-if-active",
-        input: [{ type: "text", text: "Queue through send", mentions: [] }],
-      },
-    });
+      const transaction = await beginSendThreadMessageTransaction({
+        queryClient,
+        request: {
+          id: "thread-1",
+          mode: "queue-if-active",
+          input: [{ type: "text", text: "Queue through send", mentions: [] }],
+        },
+      });
 
-    expect(transaction.kind).toBe("queued-message");
-    expect(
-      queryClient.getQueryData<ThreadQueuedMessage[]>(
-        threadQueuedMessagesQueryKey("thread-1"),
-      ),
-    ).toMatchObject([
-      {
-        id: expect.stringMatching(/^optimistic-queued-/u),
-        content: [{ type: "text", text: "Queue through send", mentions: [] }],
-      },
-    ]);
+      expect(transaction.kind).toBe("queued-message");
+      expect(
+        queryClient.getQueryData<ThreadQueuedMessage[]>(
+          threadQueuedMessagesQueryKey("thread-1"),
+        ),
+      ).toMatchObject([
+        {
+          id: expect.stringMatching(/^optimistic-queued-/u),
+          content: [{ type: "text", text: "Queue through send", mentions: [] }],
+        },
+      ]);
 
-    rollbackSendThreadMessageTransaction({
-      queryClient,
-      request: {
-        id: "thread-1",
-        mode: "queue-if-active",
-        input: [{ type: "text", text: "Queue through send", mentions: [] }],
-      },
-      transaction,
-    });
-    expect(
-      queryClient.getQueryData(threadQueuedMessagesQueryKey("thread-1")),
-    ).toEqual([]);
-  });
+      rollbackSendThreadMessageTransaction({
+        queryClient,
+        request: {
+          id: "thread-1",
+          mode: "queue-if-active",
+          input: [{ type: "text", text: "Queue through send", mentions: [] }],
+        },
+        transaction,
+      });
+      expect(
+        queryClient.getQueryData(threadQueuedMessagesQueryKey("thread-1")),
+      ).toEqual([]);
+    },
+  );
 
   it("optimistically queues a scheduled send even when the cached thread is idle", async () => {
     const queryClient = createAppQueryClient({

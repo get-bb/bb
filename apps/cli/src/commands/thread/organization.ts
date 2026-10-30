@@ -12,7 +12,11 @@ import {
   truncateCell,
 } from "../../table.js";
 import { describeQueueWait } from "./actions.js";
-import { formatQueueSendCountdown } from "./send-time.js";
+import {
+  SEND_AT_HELP,
+  formatQueueSendCountdown,
+  parseSendAt,
+} from "./send-time.js";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import { requireTextInput, TEXT_FILE_HELP_SUFFIX } from "../../text-input.js";
@@ -59,6 +63,7 @@ interface QueueUpdateOptions extends JsonOptions {
   file?: string[];
   image?: string[];
   messageFile?: string;
+  sendAt?: string;
 }
 
 interface QueueSendOptions extends JsonOptions {
@@ -404,7 +409,9 @@ export function registerOrganizationCommands(
     );
   queue
     .command("update <threadId> <messageId> [message]")
-    .description("Update a queued message in place")
+    .description(
+      "Update a queued message in place: its content, its scheduled send time, or both",
+    )
     .option(
       "--message-file <path>",
       `Read the message from a file instead of [message]; ${TEXT_FILE_HELP_SUFFIX}`,
@@ -421,6 +428,10 @@ export function registerOrganizationCommands(
       collectOption,
       [],
     )
+    .option(
+      "--send-at <when>",
+      `Move a scheduled message to a new time. ${SEND_AT_HELP}`,
+    )
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(
@@ -430,12 +441,22 @@ export function registerOrganizationCommands(
           inlineMessage: string | undefined,
           opts: QueueUpdateOptions,
         ) => {
-          const message = await requireTextInput({
-            file: opts.messageFile,
-            fileLabel: "--message-file",
-            inline: inlineMessage,
-            inlineLabel: "<message>",
-          });
+          const sendAt =
+            opts.sendAt === undefined ? undefined : parseSendAt(opts.sendAt);
+          const replacesContent =
+            sendAt === undefined ||
+            inlineMessage !== undefined ||
+            opts.messageFile !== undefined ||
+            (opts.file?.length ?? 0) > 0 ||
+            (opts.image?.length ?? 0) > 0;
+          const message = replacesContent
+            ? await requireTextInput({
+                file: opts.messageFile,
+                fileLabel: "--message-file",
+                inline: inlineMessage,
+                inlineLabel: "<message>",
+              })
+            : null;
           const sdk = createCliBbSdk(getUrl());
           const queuedMessages = sdk.threads.queuedMessages;
           const existing = (await queuedMessages.list({ threadId })).find(
@@ -446,24 +467,32 @@ export function registerOrganizationCommands(
               `Queued message ${messageId} not found on thread ${threadId}.`,
             );
           }
-          const input = await uploadClientAttachmentInputs({
-            input: buildPromptInputs({
-              message,
-              files: opts.file,
-              images: opts.image,
-            }),
-            resolveProjectId: async () =>
-              (await sdk.threads.get({ threadId })).projectId,
-            sdk,
-          });
+          const input =
+            message === null
+              ? undefined
+              : await uploadClientAttachmentInputs({
+                  input: buildPromptInputs({
+                    message,
+                    files: opts.file,
+                    images: opts.image,
+                  }),
+                  resolveProjectId: async () =>
+                    (await sdk.threads.get({ threadId })).projectId,
+                  sdk,
+                });
           const result = await queuedMessages.update({
             threadId,
             queuedMessageId: messageId,
             expectedUpdatedAt: existing.updatedAt,
-            input,
+            ...(input === undefined ? {} : { input }),
+            ...(sendAt === undefined ? {} : { sendAt }),
           });
           if (outputJson(opts, result)) return;
-          console.log(`Queued message ${messageId} updated`);
+          console.log(
+            sendAt === undefined
+              ? `Queued message ${messageId} updated`
+              : `Queued message ${messageId} updated; it sends at ${new Date(sendAt).toLocaleString()}`,
+          );
         },
       ),
     );

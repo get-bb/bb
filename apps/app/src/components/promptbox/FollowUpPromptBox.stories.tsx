@@ -46,9 +46,7 @@ import {
   type WorkspaceCheckoutDisplay,
 } from "@bb/shared-ui/lib/workspace-checkout-display";
 import type { PickerOption } from "@/components/pickers/OptionPicker";
-import {
-  selectWorkspaceChangedFilesSection,
-} from "@bb/shared-ui/workspace-change-summary";
+import { selectWorkspaceChangedFilesSection } from "@bb/shared-ui/workspace-change-summary";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import {
   GitSegmentFixtureProvider,
@@ -81,6 +79,7 @@ export default {
 };
 
 const noop = () => {};
+const asyncNoop = async () => {};
 const STORY_BRANCH_NAME = "bb/design-system-polish";
 
 const baseExecution = makeExecutionControlsProps({
@@ -432,20 +431,20 @@ const contextBannerElement: ReactNode = dirtyContextBannerSection ? (
       mergeBase: gitSegmentFixtureMergeBase(),
     }}
   >
-  <ThreadPromptContextBanner
-    input={{
-      threadId: "thr_story",
-      projectId: "proj_story",
-      environment: null,
-    }}
-    core={{
-      parentThread: null,
-    }}
-    archivedSection={null}
-    environmentGoneSection={null}
-    expandedSegment={null}
-    onToggleSegment={noop}
-  />
+    <ThreadPromptContextBanner
+      input={{
+        threadId: "thr_story",
+        projectId: "proj_story",
+        environment: null,
+      }}
+      core={{
+        parentThread: null,
+      }}
+      archivedSection={null}
+      environmentGoneSection={null}
+      expandedSegment={null}
+      onToggleSegment={noop}
+    />
   </GitSegmentFixtureProvider>
 ) : null;
 
@@ -749,6 +748,7 @@ function Row({
         onEdit={handleEditQueuedMessage}
         expanded={queueExpanded}
         onExpandedChange={setQueueExpanded}
+        onReschedule={asyncNoop}
         onDelete={(id) =>
           setStoryQueuedMessages((current) =>
             current.filter((message) => message.id !== id),

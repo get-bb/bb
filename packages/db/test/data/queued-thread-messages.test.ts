@@ -11,6 +11,7 @@ import {
   deleteQueuedThreadMessage,
   getQueuedThreadMessage,
   holdQueuedThreadMessageForEdit,
+  listDueScheduledQueuedThreadMessages,
   listIdleThreadsWithQueuedMessages,
   listQueuedThreadMessages,
   releaseQueuedMessageClaim,
@@ -140,6 +141,7 @@ describe("queued thread messages", () => {
       content: textInput("edited in place"),
       expectedUpdatedAt: before?.updatedAt ?? -1,
       id: first.id,
+      sendAt: null,
       threadId: thread.id,
     });
 
@@ -180,6 +182,7 @@ describe("queued thread messages", () => {
         content: textInput("first edit"),
         expectedUpdatedAt: queuedMessage.updatedAt,
         id: queuedMessage.id,
+        sendAt: null,
         threadId: thread.id,
       }).kind,
     ).toBe("updated");
@@ -188,6 +191,7 @@ describe("queued thread messages", () => {
         content: textInput("stale edit"),
         expectedUpdatedAt: queuedMessage.updatedAt,
         id: queuedMessage.id,
+        sendAt: null,
         threadId: thread.id,
       }),
     ).toEqual({ kind: "stale" });
@@ -218,6 +222,7 @@ describe("queued thread messages", () => {
         content: altInput,
         expectedUpdatedAt: queuedMessage.updatedAt,
         id: queuedMessage.id,
+        sendAt: null,
         threadId: thread.id,
       });
 
@@ -253,12 +258,82 @@ describe("queued thread messages", () => {
         content: altInput,
         expectedUpdatedAt: queuedMessage.updatedAt,
         id: queuedMessage.id,
+        sendAt: null,
         threadId: thread.id,
       }),
     ).toEqual({ kind: "claimed" });
     expect(getQueuedThreadMessage(db, queuedMessage.id)?.content).toBe(
       JSON.stringify(defaultInput),
     );
+  });
+
+  it("reschedules a scheduled message in place without touching its content or edit hold", () => {
+    const { db, thread } = setup();
+    const originalSendAt = Date.now() + 60 * 60_000;
+    const laterSendAt = originalSendAt + 2 * 60 * 60_000;
+    const scheduled = queueTurnEndMessage(db, thread.id, defaultInput, {
+      sendAt: originalSendAt,
+      waitingOn: { kind: "time" },
+    });
+    const behind = queueTurnEndMessage(db, thread.id, altInput);
+    holdQueuedThreadMessageForEdit(db, {
+      heldUntil: Date.now() + 60_000,
+      id: scheduled.id,
+      threadId: thread.id,
+    });
+
+    const result = updateQueuedThreadMessage(db, noopNotifier, {
+      content: null,
+      expectedUpdatedAt: scheduled.updatedAt,
+      id: scheduled.id,
+      sendAt: laterSendAt,
+      threadId: thread.id,
+    });
+
+    expect(result).toMatchObject({ kind: "updated", releasedEditHold: false });
+    expect(getQueuedThreadMessage(db, scheduled.id)).toMatchObject({
+      content: scheduled.content,
+      sendAt: laterSendAt,
+      sortKey: scheduled.sortKey,
+      state: "scheduled",
+      waitingOn: scheduled.waitingOn,
+    });
+    expect(getQueuedThreadMessage(db, scheduled.id)?.editHeldUntil).not.toBe(
+      null,
+    );
+    expect(
+      listQueuedThreadMessages(db, thread.id).map((row) => row.id),
+    ).toEqual([scheduled.id, behind.id]);
+    expect(
+      listDueScheduledQueuedThreadMessages(db, originalSendAt).map(
+        (row) => row.id,
+      ),
+    ).toEqual([]);
+    expect(
+      listDueScheduledQueuedThreadMessages(db, laterSendAt).map(
+        (row) => row.id,
+      ),
+    ).toEqual([scheduled.id]);
+  });
+
+  it("refuses to schedule a message that is not waiting on a send time", () => {
+    const { db, thread } = setup();
+    const queuedMessage = queueTurnEndMessage(db, thread.id, defaultInput);
+
+    expect(
+      updateQueuedThreadMessage(db, noopNotifier, {
+        content: null,
+        expectedUpdatedAt: queuedMessage.updatedAt,
+        id: queuedMessage.id,
+        sendAt: Date.now() + 60_000,
+        threadId: thread.id,
+      }),
+    ).toEqual({ kind: "not_scheduled" });
+    expect(getQueuedThreadMessage(db, queuedMessage.id)).toMatchObject({
+      sendAt: null,
+      state: "waiting",
+      updatedAt: queuedMessage.updatedAt,
+    });
   });
 
   it("deletes a queued message", () => {
@@ -1984,6 +2059,7 @@ describe("queued thread messages", () => {
         content: textInput("SAVED EDIT"),
         expectedUpdatedAt: edited.updatedAt,
         id: edited.id,
+        sendAt: null,
         threadId: thread.id,
       });
       expect(saved).toMatchObject({ kind: "updated", releasedEditHold: true });
