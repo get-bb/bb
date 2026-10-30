@@ -4201,7 +4201,8 @@ milestones are server-only and rejected on that endpoint. Target/action/outcome 
 are validated together. Names, addresses, host IDs and credentials are excluded.
 Core uses the SDK event endpoint only for UI interest. Connect lifecycle and
 server enrollment owners use the opt-out-controlled service through trusted
-backend paths.
+backend paths. Browser service readiness closes a pending enable request only;
+startup and readiness refreshes emit no setup success.
 
 `hosts.experimental_create` accepts optional bounded `telemetrySource`; older
 requests default to unknown at the route boundary. Core onboarding, settings and
