@@ -1,0 +1,99 @@
+---
+title: Open files, previews and links
+description: Click a file link in a thread to preview it in the side panel; right-click it to open it in your editor or another viewer. Web links open in bb's browser on desktop, and you choose a viewer for each file type in Settings → Files.
+type: how-to
+sources:
+  - apps/app/src/lib/thread-local-file-links.ts
+  - apps/app/src/components/ui/markdown-local-file-link.ts
+  - apps/app/src/components/ui/markdown-preview.tsx
+  - apps/app/src/views/thread-detail/ThreadDetailView.tsx
+  - apps/app/src/components/secondary-panel/FilePreview.tsx
+  - apps/app/src/components/secondary-panel/info/ThreadStorageSection.tsx
+  - apps/app/src/components/settings/FileOpenersSettingsSection.tsx
+  - apps/app/src/lib/in-app-browser-link-preference.ts
+  - apps/app/src/views/SettingsView.tsx
+  - plugins/monaco-editor/package.json
+  - plugins/inline-vis/app.tsx
+  - apps/cli/src/commands/thread/open.ts
+since: 0.40.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+Use this when an agent mentions a file or link and you want to look at it, edit it, or open it somewhere else.
+
+## Preview a file from a thread
+
+Click a file link in an agent's message. The file opens as a tab in the thread's side panel.
+
+- **Code and text** show with syntax highlighting. **Wrap lines** wraps long lines.
+- **Markdown, HTML and CSV** open rendered. Switch between **Preview** and **Raw** at the top of the tab.
+- **Images, video and PDFs** show in their own viewers.
+- A link with a line number, such as `src/app.ts:42` or `src/app.ts#L42`, jumps to that line.
+
+The tab also has **Download**, **Copy file path**, and **Open in editor**, which opens the file in your preferred app (**Mod+O**). For a file bb can't show, you get "This file type can't be previewed." and a **Download** button.
+
+File links work for files on the thread's machine. The thread needs a folder: in a thread without one, links show "Thread file links are only available when the thread has an environment."
+
+From a terminal, open a file in a thread's panel:
+
+```sh
+bb thread open <thread-id> src/app.ts --line 42
+```
+
+## Open a file in another app
+
+Right-click a file link and choose:
+
+- **Open in**, then an app on your machine, such as VS Code, Cursor, Zed, Xcode, Finder or Terminal. On Windows and Linux, the list includes **File Explorer** or **File Manager**.
+- **Open with built-in preview**, or **Open with** a plugin viewer, when a plugin can open that file type.
+- **Copy file path** or **Copy file name**.
+
+To change which app files and folders open in by default, open **Settings → Files** and set **File default** and **Directory default** under **File preferences**. **Settings → Files** appears once bb can reach your local apps or a plugin opens files.
+
+## Choose a viewer for each file type
+
+1. Open **Settings → Files**.
+2. Under **File openers**, find the file type, such as **.md files**.
+3. Choose **Built-in preview**, a plugin, or **Automatic**, which uses the first plugin that opens that type.
+
+This choice is saved on the device you set it on.
+
+Plugins that open files:
+
+| Plugin | Opens | On by default |
+| --- | --- | --- |
+| **File Editor** | Code and text files, with a file tree and **Save** | No; turn it on in **Settings → Installed plugins** |
+| **PDF preview** | PDFs | Yes |
+| **Docs** | Markdown | Install it from the marketplace |
+
+With File Editor on, files you open from a thread can be edited and saved in place. Edits are saved only when you click **Save**.
+
+## Open web links
+
+On desktop, web links open in bb's own browser, in the side panel. To open them in your default browser instead, open **Settings → General** and turn off **Open links in the in-app browser** under **Links**. In the web app and on your phone, links open in your normal browser.
+
+Links to `localhost`, such as a dev server an agent started, are rewritten to the address you use to reach bb when you open bb from another device. Turn this off with **Rewrite localhost links** in **Settings → General**.
+
+For agents that drive the browser themselves, see Let agents use a browser or your computer in Threads.
+
+## Find files an agent saved for the thread
+
+Each thread has a storage folder for files an agent makes for you, such as reports and screenshots. Open the side panel's **Info** tab and look under **Thread storage**. Click a file to open it in a tab.
+
+## View visualizations and diagrams
+
+- **Mermaid** code blocks render as diagrams, with zoom and **Show Mermaid source**.
+- **Math** in `$…$` and `$$…$$` renders as formulas.
+- **Inline visualizations**, HTML that an agent shows in its answer, render in the message. When one comes from a file, its expand button opens it in the side panel; Command-click (Ctrl-click) the button to open it in the browser.
+
+## Check it worked
+
+- Clicking a file link opens a tab in the side panel with the file's name.
+- Right-clicking a file link shows **Open in** with the apps on your machine.
+
+## Related troubleshooting
+
+- "Failed to open file locally": the thread has no folder, or the link isn't an absolute path to a file. Folder links don't open in the preview.
+- **Settings → Files** is missing: bb can't reach your local apps and no plugin opens files. Install or turn on a plugin such as **File Editor**.
+- A file opens in a plugin instead of the preview: under **File openers**, set its file type to **Built-in preview**, or right-click the link and choose **Open with built-in preview**.

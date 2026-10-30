@@ -1,0 +1,67 @@
+---
+title: Dictate messages with voice
+description: Click the microphone in the message box, speak, then add the text to your draft or send it. bb transcribes with bb cloud or Codex, chosen in Settings → AI services.
+type: how-to
+sources:
+  - apps/app/src/components/promptbox/Voice*.tsx
+  - apps/app/src/components/promptbox/FailedVoiceRecordings.tsx
+  - apps/app/src/hooks/useVoiceInput.ts
+  - apps/app/src/hooks/voice-input-support.ts
+  - apps/app/src/components/settings/AiServicesSettingsSection.tsx
+  - apps/app/src/components/settings/VoiceInputSettingsSection.tsx
+  - apps/server/src/services/ai/voice-transcription.ts
+  - plugins/bb-ai/src/server.ts
+  - plugins/provider-codex/src/ai-service.ts
+  - apps/cli/src/commands/voice.ts
+since: 0.44.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+Use this when you'd rather speak a message than type it.
+
+## Dictate a message
+
+1. Click **Start voice input**, the microphone in the message box. On a phone, it takes the place of the send button while the box is empty.
+2. Allow microphone access if your browser or system asks.
+3. Speak. Recordings must be at least 1 second long.
+4. Click **Stop and add to draft** to add the text to your message so you can edit it, or **Send voice input** to send it right away.
+
+To throw a recording away, click **Cancel recording**.
+
+## Choose the transcription service
+
+Open **Settings → AI services** and set **Voice input**:
+
+| Choice | Transcribes with | Needs |
+| --- | --- | --- |
+| **Automatic** | bb cloud, or another available service | Nothing more |
+| **bb cloud** | bb's own service | Signing in to your bb account |
+| **Codex** | OpenAI's transcription model, through Codex | Codex set up on your primary machine, and that machine connected |
+
+From a terminal, `bb settings ai-services` shows the current choice and `bb settings ai-services set` changes it.
+
+## Choose the microphone
+
+Open **Settings → General** and pick a **Microphone** under **Voice Input**. The default is **System default**. You can also right-click the microphone in the message box to open **Voice preferences**.
+
+## Transcribe an audio file
+
+An agent or script can transcribe a recording with the same service:
+
+```sh
+bb voice transcribe meeting.webm
+```
+
+Pass `--type` for files that aren't WebM, such as `--type audio/mpeg` for MP3.
+
+## Check it worked
+
+While you speak, the box shows **Recording**, then **Transcribing**. The text appears in your draft, or as a sent message.
+
+## Related troubleshooting
+
+- "Voice input needs an HTTPS connection to this server": browsers allow the microphone only over HTTPS or on `localhost`. Open bb over HTTPS, for example through bb connect.
+- "Microphone permission denied": allow microphone access for bb in your browser or system settings.
+- "Couldn't transcribe your recording": bb keeps the recording in the message box under **Voice input failed**. Click **Retry**, **Download** to save it, or **Discard recording**.
+- "Recording too short (minimum 1 second)": hold the recording for longer.

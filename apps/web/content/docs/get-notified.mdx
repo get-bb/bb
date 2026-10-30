@@ -1,0 +1,102 @@
+---
+title: Get notified when a thread needs you
+description: bb notifies you when a thread finishes, fails, or waits for your answer or approval, on desktop, in the browser and on your phone. Set the channels and the default level on the Push notifications page in Settings, and mute or quiet one thread from its menu.
+type: how-to
+sources:
+  - plugins/push-notifications/**
+  - apps/mobile/src/notifications/**
+  - apps/mobile/src/screens/settings/NotificationsSettingsScreen.tsx
+  - apps/app/src/hooks/useThreadReadTracking.ts
+  - packages/client-core/src/thread/thread-activity.ts
+  - apps/desktop/src/desktop-attention.ts
+since: 0.46.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+Use this when you want to know that a thread is done or waiting for you without watching it.
+
+## What notifies you
+
+| Event | Notification |
+| --- | --- |
+| The agent asks a question or needs an approval | The question, or what it wants to do, such as "Approve command: …" or "Review the plan before the agent continues" |
+| The thread fails | "The thread hit an error" |
+| The agent finishes its turn | "Finished and waiting for you" |
+
+The title is the thread's name. Click a notification to open its thread.
+
+bb skips threads you have already read. Opening a thread while bb is in front of you marks it read, so you aren't notified about what you're looking at. Archived threads never notify.
+
+Notifications come from the **Push notifications** plugin, which ships with bb and is on by default.
+
+## Turn on notifications on this device
+
+<Tabs items={["Desktop", "Web", "Phone"]}>
+<Tab value="Desktop">
+
+1. Open **Settings** and choose **Push notifications** under **Plugins**.
+2. Under **This desktop app**, click **Allow notifications**, then **Send test notification**.
+
+Desktop notifications show while the bb app is running. The dock or taskbar icon also shows how many threads need your input.
+
+</Tab>
+<Tab value="Web">
+
+1. Open **Settings** and choose **Push notifications** under **Plugins**.
+2. Under **This browser**, click **Allow notifications** and accept your browser's prompt. Then click **Send test notification**.
+
+Web notifications show only while bb is open in a tab, and need HTTPS or `localhost`. Each browser asks for permission separately.
+
+</Tab>
+<Tab value="Phone">
+
+Phone notifications go to the bb app for iOS or Android, and arrive even when the app is closed. Pair the app with your server first; see Use bb on your phone in Mobile and remote access.
+
+1. When the app asks "Get notified when a thread needs you?", tap **Turn on notifications**.
+2. To change it later, open the app's **Settings**, then **This device** → **Notifications**, and turn **Push notifications** on or off for each server.
+
+Push needs your server to be reached over HTTPS or bb connect. The status under each server says why when it can't register.
+
+</Tab>
+</Tabs>
+
+From a terminal, send a test to open browsers or the desktop app:
+
+```sh
+bb push-notifications test desktop
+bb push-notifications status
+```
+
+## Choose what you're notified about
+
+On the **Push notifications** page in Settings:
+
+- **Mobile notifications**, **Web notifications** and **Desktop notifications** turn each channel on or off for the whole server.
+- **Default notifications** sets the level for threads you haven't set: **All activity**, **Needs input only** (skips finished turns) or **Muted**.
+- **Child thread notifications** sets the level for child threads. The default is **Needs input only**.
+
+To change one thread, open its menu in the sidebar, choose **Notifications**, and pick **Same as default**, **All activity**, **Needs input only** or **Muted**. A muted parent also mutes its child threads; a child can't notify more than its parent allows.
+
+From a terminal:
+
+```sh
+bb push-notifications thread <thread-id> --level muted
+bb plugin config push-notifications set defaultLevel input-only
+```
+
+## See what needs you in the sidebar
+
+Without notifications, the sidebar shows each thread's state: a question mark when it needs your input, a red cross when it failed, and a dot when it has a reply you haven't read. Use **Mark read** or **Mark unread** in a thread's menu to change it.
+
+## Check it worked
+
+- **Send test notification** shows "bb notifications are working".
+- `bb push-notifications status` lists the channels and devices that will receive notifications.
+
+## Related troubleshooting
+
+- "Notifications are blocked": allow notifications for bb in your browser or system settings, then return to the page.
+- No notification for a thread you had open: bb marked it read because you were looking at it.
+- No phone notifications: check that the app's status for the server reads "On · registered with this server", and that **Mobile notifications** is on.
+- "Push notifications plugin is disabled on this server": turn the plugin back on in **Settings → Installed plugins**.

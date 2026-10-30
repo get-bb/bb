@@ -1,0 +1,120 @@
+---
+title: Choose a permission mode
+description: Each thread runs in Accept Edits, Approve for me or Full Access, picked under the box at the bottom of the thread. Plan Mode is separate; start it with /plan.
+type: how-to
+sources:
+  - packages/client-core/src/prompt/permission-mode-options.ts
+  - packages/client-core/src/prompt/effective-prompt-mode.ts
+  - apps/app/src/components/pickers/PermissionModePicker.tsx
+  - apps/app/src/components/thread/pending-interactions/**
+  - apps/app/src/views/MachineSettingsView.tsx
+  - apps/server/src/services/threads/thread-default-policy.ts
+  - plugins/provider-claude-code/server.ts
+  - plugins/provider-codex/server.ts
+  - plugins/provider-pi/src/declaration.ts
+  - plugins/provider-acp/src/declaration.ts
+  - apps/cli/src/commands/thread/helpers.ts
+  - apps/cli/src/commands/thread/interactions.ts
+since: 0.35.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+Use this when you want to decide how much an agent may do without asking you.
+
+## The modes
+
+| Mode | What the agent can do | What asks you |
+| --- | --- | --- |
+| **Accept Edits** | Edit files inside the thread's folder | Anything beyond the folder |
+| **Approve for me** | The same as Accept Edits | Requests are reviewed automatically by the agent's own reviewer. High-risk actions can still come back to you |
+| **Full Access** | Anything on your machine, with no sandbox | Nothing |
+
+New threads use **Approve for me** unless you pick another mode. bb remembers your last choice for each project.
+
+:::warning[Full Access has no sandbox]
+In Full Access, the agent can run any command and change any file your user account can. Use it only for work you would let it do unattended.
+:::
+
+## Pick a mode for a thread
+
+1. Under the box at the bottom of the thread, click the permission mode on the right. It shows the thread's current mode, such as **Accept Edits**.
+2. Choose **Accept Edits**, **Approve for me** or **Full Access**.
+
+<Screenshot
+  src="/docs-images/choose-a-permission-mode/permission-picker"
+  alt="The permission mode picker under the message box is open, listing Accept Edits, Approve for me and Full Access."
+  width={744}
+  height={316}
+/>
+
+The mode applies from your next message, including a steer. You can change it at any time, except while an approval is waiting or Plan Mode is on.
+
+From a terminal, pass `--permission-mode` with `accept-edits`, `auto` or `full`:
+
+```sh
+bb thread spawn --project <project-id> --prompt "Fix the flaky test" --permission-mode accept-edits
+bb thread tell <thread-id> "Now run the full suite" --permission-mode full
+```
+
+## What each agent supports
+
+| Agent | Accept Edits | Approve for me | Full Access |
+| --- | --- | --- | --- |
+| Claude Code | Yes | Yes, using Claude Code's auto mode | Yes |
+| Codex | Yes | Yes, using Codex's automatic review | Yes |
+| Pi | No | No | Yes |
+| Other ACP agents, such as opencode and Cursor | Yes | No | Yes |
+
+When an agent supports only one mode, bb hides the picker. Pi threads always run in Full Access.
+
+In Accept Edits and Approve for me, Claude Code runs its Bash commands in its sandbox. To use Claude Code's own approval rules and sandbox settings instead, turn off **Claude Code sandbox** in the **Claude Code provider** plugin's settings. In Full Access, Claude Code approves everything, including `permissions.ask` rules in your Claude Code settings. Turn on **Approvals in Full Access** in the same settings to be asked about those.
+
+## Limit a machine
+
+A machine's **Permission limit** is the highest mode any thread on it may use. Threads that ask for more run at the limit instead.
+
+1. Open **Settings → Machines** and choose the machine.
+2. Under **Permission limit**, choose a mode.
+
+An agent that needs more than the limit, such as Pi under a limit below Full Access, can't run on that machine.
+
+## Answer an approval
+
+When an agent asks, an **Approval needed** card appears above the box, such as "Do you want to run this command?". Choose **Allow once**, **Allow for session** or **Deny**.
+
+While a thread waits, its sidebar row shows a question mark ("Thread needs user input"), and bb notifies you; see [Get notified when a thread needs you](/docs/get-notified). When a turn was started by another agent or an automation instead of you, requests beyond the mode are denied instead of asking.
+
+From a terminal:
+
+```sh
+bb thread interactions list <thread-id>
+bb thread interactions approve <interaction-id> <thread-id>
+bb thread interactions deny <interaction-id> <thread-id>
+```
+
+## Plan before the agent changes anything
+
+Plan Mode asks the agent for a plan first. Claude Code and Codex support it.
+
+1. Type `/plan` followed by what you want, and send it.
+2. With Claude Code, the permission picker shows **Plan Mode** and a **Plan** card shows above the box. Click **Exit plan mode** to leave it early.
+3. When the plan is ready, a **Ready to code?** card shows it. Choose **Approve plan** to let the agent carry it out in the mode you had picked, or **Keep planning** to ask for changes.
+
+From a terminal, add `--plan` to `bb thread tell` or `bb thread spawn`, and leave Plan Mode with `bb thread cancel-plan <thread-id>`.
+
+## Child threads
+
+A child thread starts in its parent's mode, adjusted to what the child's agent supports. You can ask for a different mode when you start it, and the machine's permission limit still applies.
+
+## Check it worked
+
+- The picker under the box shows the mode you chose.
+- In Accept Edits, a command outside the thread's folder brings up an **Approval needed** card.
+
+## Related troubleshooting
+
+- bb asks for approval on every action: switch the thread to **Approve for me** or **Full Access**.
+- The picker is missing: the thread's agent supports only one mode. Pi supports only Full Access.
+- "This machine limits permission mode to …": raise the machine's **Permission limit**, or use an agent that supports a lower mode.
+- "Provider … only supports … permission mode": pick one of the modes the agent supports, listed above.

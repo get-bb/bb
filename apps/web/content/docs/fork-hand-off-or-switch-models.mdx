@@ -1,0 +1,88 @@
+---
+title: Fork, hand off or switch models
+description: Change the model or reasoning level from the model picker at any time; it applies from your next message. To move to another agent, use Handoff to new thread. To try another direction without losing this one, fork the thread or open a side chat.
+type: how-to
+sources:
+  - apps/app/src/components/pickers/ModelReasoning*.tsx
+  - apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx
+  - apps/app/src/hooks/useForkThreadFromMessage.ts
+  - apps/app/src/components/thread/timeline/MessageActionBar.tsx
+  - packages/client-core/src/prompt/thread-handoff-request.ts
+  - packages/client-core/src/prompt/fork-thread-request.ts
+  - apps/server/src/services/threads/thread-fork-history.ts
+  - plugins/side-chat/**
+  - apps/cli/src/commands/thread/fork.ts
+since: 0.43.3
+owner: brsbl
+verified: 2026-10-30
+---
+
+Use this when you want a thread to continue with a different model or agent, or to branch off and try something else while keeping the original.
+
+| You want to | Use | What you get |
+| --- | --- | --- |
+| Keep going with another model from the same agent | The model picker | The same thread; the new model answers from your next message |
+| Keep going with a different agent, such as Codex instead of Claude Code | **Handoff to new thread** | A new thread that starts from a link to this one |
+| Try another direction from an earlier answer | **Fork into new thread** | A new thread with the conversation up to that answer |
+| Ask a quick question about one answer | **Reply in side chat** | A small chat in a panel, kept out of the sidebar |
+
+## Switch the model in a thread
+
+1. Click the model name in the box at the bottom of the thread.
+2. Pick another model or reasoning level from the same agent.
+3. Send your next message. It runs with the model you picked.
+
+From a terminal, pass `--model` or `--reasoning-level` to `bb thread tell`, or set the model for every later turn with `bb thread update <thread-id> --model <model>`.
+
+A thread stays with one agent. Picking a different agent in the model picker starts a handoff instead.
+
+## Hand off to another agent
+
+1. Click the model name in the box at the bottom of the thread.
+2. Choose **Handoff to new thread** at the bottom of the menu, or pick a model from another agent.
+3. Pick the agent and model. The box now shows **Handoff to new thread**; click **Exit handoff** to cancel.
+4. Type what the new thread should do and send it.
+
+bb creates a new thread in the same project and folder. Its first message starts with "Continue from" and a link to the old thread, followed by what you typed, so the new agent can read the old thread. It doesn't copy the old conversation into the new agent. Archive the old thread when you no longer need it; see [Organize and archive threads](/docs/organize-and-archive-threads).
+
+From a terminal, there is no handoff command. Start a new thread that mentions the old one. `bb thread show <thread-id> --json` prints the project and environment IDs:
+
+```sh
+bb thread spawn --project <project-id> --environment <environment-id> --provider codex --prompt "Continue from @thread:<thread-id> and finish the migration"
+```
+
+## Fork a thread
+
+1. Hover over an agent's answer and open **Message actions**.
+2. Choose **Fork into new thread**.
+
+bb opens a new thread with the conversation up to that answer, the same agent and model, and the same folder. It's named after the original, such as "(1) Fix login flow". The original thread doesn't change.
+
+A fork stays with the same agent. Claude Code, Codex and Pi can fork from any answer. Some other agents can only fork from the latest answer, and some can't fork at all; for those, **Fork into new thread** doesn't show.
+
+From a terminal:
+
+```sh
+bb thread fork <thread-id> --prompt "Try the same fix with a migration instead"
+```
+
+Add `--new-environment worktree` to give the fork its own worktree, so its changes don't mix with the original's. A fork can't move to another machine.
+
+## Ask a side question
+
+1. Hover over a message and choose **Reply in side chat**. Select part of the message first to ask about only that text.
+2. Ask your question in the panel that opens.
+3. To bring an answer back, choose **Send to main thread** on it. It's sent to the original thread, or queued if that thread is busy.
+
+A side chat is a fork that stays out of the sidebar and is archived or deleted with its thread. bb archives side chats you never wrote in after 24 hours. Side chats come from the **Side chat** plugin, which ships with bb and has no CLI commands.
+
+## Check it worked
+
+- After a model switch, your next message shows the new model in the model picker.
+- After a handoff or fork, the new thread opens and appears in the sidebar. A handoff's first message links to the old thread.
+
+## Related troubleshooting
+
+- **Fork into new thread** doesn't show: the thread's agent can't fork, the thread is archived, or it has no folder.
+- A fork fails with "can only fork at the end of a session, not from an earlier point in it": this agent forks only from its latest answer. Fork from the last answer instead.
+- A model is missing from the picker: see A model is missing from the model picker in Troubleshooting.

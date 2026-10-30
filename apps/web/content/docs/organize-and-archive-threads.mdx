@@ -1,0 +1,116 @@
+---
+title: Organize and archive threads
+description: Pin threads to keep them at the top of the sidebar, group them by project or machine or into your own sections, and archive finished ones. Archived threads stay in Settings → Archived threads, where you can unarchive them.
+type: how-to
+sources:
+  - plugins/thread-list/app/list/**
+  - plugins/thread-list/app/rows/**
+  - plugins/thread-list/server.ts
+  - apps/app/src/lib/thread-actions/core-thread-actions.ts
+  - apps/app/src/components/dialogs/ThreadArchiveDialog.tsx
+  - apps/app/src/components/dialogs/ThreadDeleteDialog.tsx
+  - apps/app/src/components/settings/ArchivedThreadsSettingsSection.tsx
+  - apps/server/src/services/threads/thread-archive.ts
+  - apps/cli/src/commands/thread/actions.ts
+  - apps/cli/src/commands/thread/organization.ts
+since: 0.43.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+Use this when your thread list gets long and you want to find what matters, or put finished work away.
+
+Every thread action below is in the thread's menu: right-click its row in the sidebar, or hover over the row and click **Thread actions** (**⋯**).
+
+## Pin a thread
+
+Choose **Pin** from the thread's menu, or drag the thread into **Pinned**. Pinned threads stay in the **Pinned** section at the top of the sidebar. Choose **Unpin** to put it back.
+
+```sh
+bb thread pin <thread-id>
+```
+
+## Group the sidebar
+
+Hover over the **Threads** heading in the sidebar and click **⋯**. Then:
+
+<Screenshot
+  src="/docs-images/organize-and-archive-threads/threads-menu"
+  alt="The menu on the sidebar's Threads heading is open, showing New section, Organize, Sort by and Filter."
+  width={412}
+  height={256}
+/>
+
+- **Organize** groups threads **By project**, **By machine**, or **Custom**, your own sections. You can also group them **By environment** or **By read status**, and turn **Provider icons** on or off.
+- **Sort by** orders threads by **Updated at**, **Created at** or **Alphabetical**. Choose the same option again to reverse the order.
+- **Filter** shows **Active** threads, **Archived** threads, or both.
+
+To hide a group you don't use, choose **Hide from list** from its menu. Hidden groups move under **More**.
+
+From a terminal, `bb thread-list prefs list` shows these choices and `bb thread-list prefs set` changes them, for example `bb thread-list prefs set organizationMode machine`.
+
+## Make your own sections
+
+1. Set **Organize** to **Custom**.
+2. From the **Threads** heading's **⋯** menu, choose **New section** and give it a name.
+3. Drag threads into it, or choose **Move to section** from a thread's menu.
+
+Sections appear only when **Organize** is set to **Custom**. To rename or remove a section, use **Rename** or **Remove** in its menu. Removing a section moves its threads back to **Threads**.
+
+```sh
+bb thread section create "Releases"
+bb thread section list
+bb thread update <thread-id> --section <section-id>
+```
+
+## Rename a thread
+
+Double-click its name in the sidebar, or choose **Rename** from its menu. **Regenerate title** asks bb to write a new one. From a terminal, run `bb thread update <thread-id> --title "New name"`.
+
+## Archive a thread
+
+Choose **Archive** from the thread's menu, or click the archive button that shows when you hover over its row. Archiving also archives the thread's child threads.
+
+Archiving stops the thread's agent and closes its terminals. If the agent is still working, it keeps running for 30 seconds first, so clicking **Undo** on the "Thread archived" message lets it carry on.
+
+```sh
+bb thread archive <thread-id>
+```
+
+To be asked before archiving a thread that has child threads, turn on **Thread archive confirmation** in **Settings → General**.
+
+## Find and restore archived threads
+
+1. Open **Settings → Archived threads**. You can also set the sidebar's **Filter** to **Archived**, or search with **Search threads** (**Mod+K**) and turn on archived threads there.
+2. Find the thread by name or project.
+3. Click **Unarchive**.
+
+An archived thread you open shows "Thread is archived" with an **Unarchive** button above the box.
+
+```sh
+bb thread list --archived
+bb thread unarchive <thread-id>
+```
+
+## Delete a thread
+
+Choose **Delete** from the thread's menu, then **Delete thread** to confirm. You don't need to archive it first.
+
+:::warning[Deleting can't be undone]
+Delete removes the thread, its child threads, their terminals and the thread's stored files. Archive instead if you might need it again.
+:::
+
+```sh
+bb thread delete <thread-id>
+```
+
+## Check it worked
+
+- A pinned thread shows under **Pinned**.
+- An archived thread leaves the sidebar and appears in **Settings → Archived threads**.
+
+## Related troubleshooting
+
+- "No thread list plugin is enabled": open **Settings → Appearance** and choose **Thread list** under **Sidebar thread list**.
+- **Move to section** is missing: set **Organize** to **Custom**. Child threads and archived threads can't be moved.
+- An archived thread is missing from search: turn on archived threads in the search's filter.
