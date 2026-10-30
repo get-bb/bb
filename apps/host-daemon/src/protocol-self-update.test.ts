@@ -74,6 +74,7 @@ async function createFixture(
     installFailure?: Error;
     now?: () => number;
     serverUrl?: string;
+    serverHeaders?: Record<string, string>;
     useDefaultInstaller?: boolean;
   } = {},
 ) {
@@ -111,6 +112,7 @@ async function createFixture(
     logger: testLogger,
     now: args.now,
     serverUrl: args.serverUrl ?? "https://server.example.test",
+    serverHeaders: args.serverHeaders,
   });
   return {
     dataDir,
@@ -138,6 +140,25 @@ describe("protocol self-update", () => {
     );
     expect(test.fetchFn).toHaveBeenCalledTimes(2);
     expect(test.installTarball).toHaveBeenCalledOnce();
+  });
+
+  it("includes custom server headers in version and package requests", async () => {
+    const headers = {
+      "CF-Access-Client-Id": "client-id",
+      "CF-Access-Client-Secret": "client-secret",
+    };
+    const test = await createFixture({ serverHeaders: headers });
+    await expect(test.updater.handleProtocolMismatch()).resolves.toBe("updated");
+    expect(test.fetchFn).toHaveBeenNthCalledWith(
+      1,
+      new URL("https://server.example.test/install/version"),
+      { method: "GET", headers },
+    );
+    expect(test.fetchFn).toHaveBeenNthCalledWith(
+      2,
+      new URL("https://server.example.test/install/bb-app.tgz"),
+      { method: "GET", headers },
+    );
   });
 
   it("verifies and persists the server artifact digest", async () => {

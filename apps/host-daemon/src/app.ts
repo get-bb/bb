@@ -866,6 +866,7 @@ export async function createHostDaemonApp(
       dataDir: options.dataDir,
       enabled: options.autoUpdate ?? false,
       fetchFn: options.fetchFn,
+      serverHeaders: options.serverHeaders,
       logger: options.logger,
       serverUrl: options.serverUrl,
     }),
