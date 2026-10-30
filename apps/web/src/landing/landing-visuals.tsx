@@ -3,25 +3,24 @@ import ArrowExpand01Icon from "@hugeicons/core-free-icons/ArrowExpand01Icon";
 import ArrowMoveDownLeftIcon from "@hugeicons/core-free-icons/ArrowMoveDownLeftIcon";
 import ArrowRight01Icon from "@hugeicons/core-free-icons/ArrowRight01Icon";
 import AttachmentIcon from "@hugeicons/core-free-icons/AttachmentIcon";
-import BubbleChatAddIcon from "@hugeicons/core-free-icons/BubbleChatAddIcon";
 import CheckmarkCircle02Icon from "@hugeicons/core-free-icons/CheckmarkCircle02Icon";
 import Clock01Icon from "@hugeicons/core-free-icons/Clock01Icon";
 import CommandLineIcon from "@hugeicons/core-free-icons/CommandLineIcon";
-import BrainIcon from "@hugeicons/core-free-icons/BrainIcon";
 import GithubIcon from "@hugeicons/core-free-icons/GithubIcon";
-import Message01Icon from "@hugeicons/core-free-icons/Message01Icon";
 import GitBranchIcon_ from "@hugeicons/core-free-icons/GitBranchIcon";
 import Loading03Icon from "@hugeicons/core-free-icons/Loading03Icon";
 import MessageQuestionIcon from "@hugeicons/core-free-icons/MessageQuestionIcon";
-import Plug02Icon from "@hugeicons/core-free-icons/Plug02Icon";
 import SidebarLeftIcon from "@hugeicons/core-free-icons/SidebarLeftIcon";
 import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
-import UserAdd01Icon from "@hugeicons/core-free-icons/UserAdd01Icon";
+import Home01Icon from "@hugeicons/core-free-icons/Home01Icon";
+import LaptopIcon from "@hugeicons/core-free-icons/LaptopIcon";
+import Settings01Icon from "@hugeicons/core-free-icons/Settings01Icon";
+import SmartPhone01Icon from "@hugeicons/core-free-icons/SmartPhone01Icon";
+import ArrowDown02Icon from "@hugeicons/core-free-icons/ArrowDown02Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode, RefObject } from "react";
 
-import linearLogo from "../assets/company-logos/linear.svg";
 import { trackLandingEvent } from "./analytics";
 import { CommandButton } from "./command-button";
 import { DesktopDownloadButton, DownloadLink } from "./cta";
@@ -32,6 +31,7 @@ import {
   CursorIcon,
   GrokIcon,
   HermesAgentIcon,
+  LinuxIcon,
   OmpIcon,
   OpenAiIcon,
   OpencodeIcon,
@@ -546,8 +546,8 @@ export function CustomizeBuild() {
   );
 }
 
-const PluginsIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={Plug02Icon} className={className} />
+const HomeGlyph = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={Home01Icon} className={className} />
 );
 const ClockIcon = ({ className }: IconProps) => (
   <HugeiconsIcon icon={Clock01Icon} className={className} />
@@ -561,35 +561,23 @@ const DoneIcon = ({ className }: IconProps) => (
 const WaitingIcon = ({ className }: IconProps) => (
   <HugeiconsIcon icon={MessageQuestionIcon} className={className} />
 );
-const ComposerIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={Message01Icon} className={className} />
-);
 const GitHubMark = ({ className }: IconProps) => (
   <HugeiconsIcon icon={GithubIcon} className={className} />
 );
-const MemoryIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={BrainIcon} className={className} />
+const SettingsGlyph = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={Settings01Icon} className={className} />
 );
-const LinearMark = ({ className }: IconProps) => (
-  <img src={linearLogo} alt="" className={`${className ?? ""} fw-logo`} />
+const PhoneIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={SmartPhone01Icon} className={className} />
 );
-const SentryMark = ({ className }: IconProps) => (
-  <svg
-    viewBox="0 0 24 24"
-    className={className}
-    aria-hidden
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.8"
-  >
-    <path d="M13.9 4.2a2.2 2.2 0 0 0-3.8 0L3.4 15.8a2.2 2.2 0 0 0 1.9 3.3h2.2a7.5 7.5 0 0 0-3.5-6.2M8.3 9.2a12.6 12.6 0 0 1 6 9.9h4.4a2.2 2.2 0 0 0 1.9-3.3l-6.7-11.6" />
-  </svg>
+const LaptopGlyph = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={LaptopIcon} className={className} />
 );
-const NewThreadIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={BubbleChatAddIcon} className={className} />
+const ArrowDownGlyph = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={ArrowDown02Icon} className={className} />
 );
-const SubagentIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={UserAdd01Icon} className={className} />
+const CheckGlyph = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={Tick02Icon} className={className} />
 );
 
 type ThreadState = "running" | "done" | "waiting";
@@ -602,12 +590,12 @@ function StatusGlyph({ status }: { status: ThreadState }) {
 
 function ThreadStatus({
   status,
-  doneAt,
+  next,
 }: {
   status: ThreadState;
-  doneAt?: number;
+  next?: { status: ThreadState; at: number };
 }) {
-  if (doneAt === undefined) {
+  if (next === undefined) {
     return (
       <span className="tstatus" aria-hidden>
         <StatusGlyph status={status} />
@@ -616,11 +604,11 @@ function ThreadStatus({
   }
   return (
     <span className="tstatus fw-swap" aria-hidden>
-      <span className="fw-swap-from" style={at(doneAt)}>
-        <StatusGlyph status="running" />
+      <span className="fw-swap-from" style={at(next.at)}>
+        <StatusGlyph status={status} />
       </span>
-      <span className="fw-swap-to" style={at(doneAt)}>
-        <StatusGlyph status="done" />
+      <span className="fw-swap-to" style={at(next.at)}>
+        <StatusGlyph status={next.status} />
       </span>
     </span>
   );
@@ -628,6 +616,10 @@ function ThreadStatus({
 
 function at(seconds: number): CSSProperties {
   return { "--fw-at": `${seconds}s` } as CSSProperties;
+}
+
+function between(start: number, end: number): CSSProperties {
+  return { "--fw-at": `${start}s`, "--fw-out": `${end}s` } as CSSProperties;
 }
 
 function WindowDots() {
@@ -644,289 +636,365 @@ function stageClass(base: string, leaving: boolean, paused: boolean) {
   return `${base}${leaving ? " leaving" : ""}${paused ? " fw-paused" : ""}`;
 }
 
-type PluginEntry = {
-  icon: (props: IconProps) => ReactNode;
-  name: string;
-  description: string;
-};
-
-const BUILT_IN_PLUGINS: PluginEntry[] = [
-  { icon: PanelIcon, name: "Thread list", description: "Threads, sections, and pins" },
-  {
-    icon: ComposerIcon,
-    name: "Composer",
-    description: "Mentions, slash commands, voice",
-  },
-  { icon: GitHubMark, name: "GitHub", description: "Pull requests and checks" },
-  {
-    icon: MemoryIcon,
-    name: "Memory",
-    description: "Durable memory for every agent",
-  },
-  {
-    icon: ClockIcon,
-    name: "Automations",
-    description: "Scheduled and one-shot runs",
-  },
-];
-
-const YOUR_PLUGINS: PluginEntry[] = [
-  { icon: SentryMark, name: "Sentry", description: "Errors beside your threads" },
-  {
-    icon: LinearMark,
-    name: "Linear issues",
-    description: "Your issues in a side panel",
-  },
-  {
-    icon: PanelIcon,
-    name: "Status sidebar",
-    description: "Threads grouped by what needs you",
-  },
-];
-
-function PluginRow({
-  plugin,
-  badge,
-}: {
-  plugin: PluginEntry;
-  badge: string;
-}) {
-  return (
-    <div className="fw-plugin">
-      <span className="fw-plugin-frame">
-        <plugin.icon className="fw-plugin-ic" />
-      </span>
-      <span className="fw-plugin-text">
-        <span className="fw-plugin-name">{plugin.name}</span>
-        <span className="fw-plugin-desc">{plugin.description}</span>
-      </span>
-      <span className="fw-tag">{badge}</span>
-      <span className="fw-switch" />
-    </div>
-  );
-}
-
-export function PluginsSheet() {
-  return (
-    <div
-      className="fw-win fw-plugins"
-      role="img"
-      aria-label="bb's Plugins page. Built-in plugins: Thread list, Composer, GitHub, Memory and Automations. Plugins you added: Sentry, Linear issues and Status sidebar. All are switched on."
-    >
-      <div className="fw-band">
-        <WindowDots />
-        <span className="fw-crumb">
-          <PluginsIcon className="fw-ic fw-ic-ink" />
-          Plugins
-        </span>
-      </div>
-      <div className="fw-card fw-sheet">
-        <div className="fw-label">Built-in</div>
-        {BUILT_IN_PLUGINS.map((plugin) => (
-          <PluginRow key={plugin.name} plugin={plugin} badge="Built-in" />
-        ))}
-        <div className="fw-label">Yours</div>
-        {YOUR_PLUGINS.map((plugin) => (
-          <PluginRow key={plugin.name} plugin={plugin} badge="Yours" />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-export function GitHubButtonMark() {
-  return <GitHubMark className="btn-ic" />;
-}
-
-const HANDOFF_PARENT = "Fix checkout timeout";
-const HANDOFF_CHILDREN = [
-  {
-    icon: OpenAiIcon,
-    title: "Write the tests",
-    landsAt: 0.8,
-    doneAt: 4.6,
-    note: "6 tests added. All pass with the fix.",
-  },
-  {
-    icon: PiIcon,
-    title: "Changelog entry",
-    landsAt: 1.5,
-    doneAt: 7,
-    note: "Added under Fixes for 0.42.",
-  },
-  { icon: ClaudeIcon, title: "Review the fix", landsAt: 2.2 },
+const PLUGIN_MAP_REGIONS = [
+  "Your own pages",
+  "PR status on every thread",
+  "Charts in replies",
+  "Controls in the composer",
 ] as const;
 
-export function DelegationTree() {
+const CHART_BARS = [38, 52, 46, 64, 72, 90];
+
+function MapChip({ n }: { n: number }) {
+  return (
+    <span className="fw-map-chip" aria-hidden>
+      {n}
+    </span>
+  );
+}
+
+export function PluginMap() {
   const ref = useRef<HTMLDivElement>(null);
-  const { cycle, leaving, paused } = useCycle(11000, 600, ref);
+  const { cycle, paused } = useCycle(2400, 300, ref);
+  const lit = cycle % PLUGIN_MAP_REGIONS.length;
+  const region = (index: number, base: string) =>
+    `${base} fw-map-region${index === lit ? " is-lit" : ""}`;
   return (
     <div
       ref={ref}
-      className="fw-win fw-handoff"
+      className={`fw-map${paused ? " fw-paused" : ""}`}
       role="img"
-      aria-label="bb sidebar: the Claude thread Fix checkout timeout starts three child threads, Codex writing the tests, Pi writing the changelog entry, and Claude reviewing the fix. When Codex and Pi finish, a finished note lands in the parent thread."
+      aria-label="A map of the bb window showing what plugins add: 1, a GitHub page with a badge in the navigation rail. 2, pull request 482 with passing checks on a thread row. 3, a bar chart inside an agent reply. 4, a Send later banner in the composer."
+    >
+      <div className="fw-win fw-map-win">
+        <div className="fw-band">
+          <WindowDots />
+        </div>
+        <div className="fw-map-body">
+          <div className="fw-map-rail">
+            <span className="fw-map-rail-btn is-current">
+              <HomeGlyph className="fw-ic fw-ic-ink" />
+            </span>
+            <span className={region(0, "fw-map-rail-btn")}>
+              <GitHubMark className="fw-ic fw-ic-ink" />
+              <span className="fw-map-badge" />
+              <MapChip n={1} />
+            </span>
+            <span className="fw-map-rail-btn">
+              <ClockIcon className="fw-ic" />
+            </span>
+            <span className="fw-map-rail-fill" />
+            <span className="fw-map-rail-btn">
+              <SettingsGlyph className="fw-ic" />
+            </span>
+          </div>
+          <div className="fw-map-side">
+            <div className="fw-label">Threads</div>
+            <div className="fw-row is-active">
+              <span className="fw-row-title">Signups</span>
+              <ThreadStatus status="running" />
+            </div>
+            <div className={region(1, "fw-map-pr")}>
+              <span className="fw-row-title">Checkout fix</span>
+              <span className="fw-map-meta">
+                #482
+                <CheckGlyph className="fw-map-check" />
+                checks
+              </span>
+              <MapChip n={2} />
+            </div>
+            <div className="fw-row">
+              <span className="fw-row-title">SDK bump</span>
+              <ThreadStatus status="done" />
+            </div>
+          </div>
+          <div className="fw-map-main">
+            <div className="fw-map-say">Signups by week</div>
+            <div className={region(2, "fw-map-chart")}>
+              {CHART_BARS.map((height, index) => (
+                <span
+                  key={index}
+                  className="fw-map-bar"
+                  style={{ height: `${height}%` }}
+                />
+              ))}
+              <MapChip n={3} />
+            </div>
+            <div className="fw-map-composer">
+              <div className={region(3, "fw-map-banner")}>
+                <ClockIcon className="fw-ic" />
+                <span className="fw-row-title">Send later · 9:00</span>
+                <MapChip n={4} />
+              </div>
+              <div className="fw-map-input">Ask anything</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <ol className="fw-map-key">
+        {PLUGIN_MAP_REGIONS.map((label, index) => (
+          <li
+            key={label}
+            className={
+              index === lit ? "fw-map-key-item is-lit" : "fw-map-key-item"
+            }
+          >
+            <MapChip n={index + 1} />
+            <span>{label}</span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+const DELEGATION_LEAD = "Ship the checkout fix";
+
+const DELEGATION_CHILDREN = [
+  {
+    icon: ClaudeIcon,
+    provider: "Claude Code",
+    title: "Plan the fix",
+    landsAt: 0.6,
+    status: "running",
+    next: { status: "done", at: 2 },
+  },
+  {
+    icon: CursorIcon,
+    provider: "Cursor",
+    title: "Build it",
+    landsAt: 3,
+    status: "running",
+    next: { status: "done", at: 6.8 },
+  },
+  {
+    icon: OpenAiIcon,
+    provider: "Codex",
+    title: "Review the diff",
+    landsAt: 7.8,
+    status: "running",
+    next: { status: "waiting", at: 9.2 },
+  },
+] as const;
+
+const DELEGATION_UPDATES = [
+  { text: "Started Plan the fix", from: 0.6, to: 2.4 },
+  { text: "Plan the fix finished → started Build it", from: 2.4, to: 4.8 },
+  {
+    text: "Build it asked a question → answered by the lead",
+    from: 4.8,
+    to: 7.2,
+  },
+  { text: "Build it finished → started Review the diff", from: 7.2 },
+] as const;
+
+const DELEGATION_PING = "Review the diff · needs your approval";
+
+export function DelegationTree() {
+  const ref = useRef<HTMLDivElement>(null);
+  const { cycle, leaving, paused } = useCycle(13400, 600, ref);
+  return (
+    <div
+      ref={ref}
+      className="fw-win fw-lead"
+      role="img"
+      aria-label="bb sidebar: the lead thread Ship the checkout fix, running in Grok Build, starts Plan the fix in Claude Code, Build it in Cursor and Review the diff in Codex, one after another. Its Child thread updates say what finished and what started, and that the lead answered a question from Build it. Only one notification reaches you: Review the diff needs your approval."
     >
       <div className="fw-band">
         <WindowDots />
-        <PanelIcon className="fw-ic fw-band-end" />
       </div>
-      <div className={stageClass("fw-split", leaving, paused)} key={cycle}>
-        <div className="fw-side">
-          <div className="fw-row">
-            <NewThreadIcon className="fw-ic fw-ic-ink" />
-            New thread
-          </div>
-          <div className="fw-label">Threads</div>
-          <div className="fw-row">
-            <span className="fw-row-title">Bump the SDK</span>
-            <ThreadStatus status="done" />
-          </div>
-          <div className="fw-row">
-            <span className="fw-row-title">Refactor auth</span>
-            <ThreadStatus status="waiting" />
-          </div>
-          <div className="fw-row is-active">
-            <span className="fw-row-title">{HANDOFF_PARENT}</span>
-            <ThreadStatus status="running" />
-          </div>
-          <div className="fw-kids">
-            {HANDOFF_CHILDREN.map((child) => (
-              <div
-                className="fw-row fw-kid fw-land"
-                key={child.title}
-                style={at(child.landsAt)}
-              >
-                <child.icon className="fw-kid-ic" />
-                <span className="fw-row-title">{child.title}</span>
-                <ThreadStatus
-                  status="running"
-                  doneAt={"doneAt" in child ? child.doneAt : undefined}
-                />
-              </div>
-            ))}
-          </div>
+      <div
+        className={stageClass("fw-card fw-lead-stage", leaving, paused)}
+        key={cycle}
+      >
+        <div className="fw-label">Threads</div>
+        <div className="fw-row fw-lead-row is-active">
+          <GrokIcon className="fw-prov" />
+          <span className="fw-row-title">{DELEGATION_LEAD}</span>
+          <span className="fw-lead-prov">Grok Build</span>
+          <span className="fw-tag">Lead</span>
+          <ThreadStatus status="running" />
         </div>
-        <div className="fw-main">
-          <div className="fw-main-head">
-            <ClaudeIcon className="fw-kid-ic" />
-            <span className="fw-row-title">{HANDOFF_PARENT}</span>
-          </div>
-          <div className="fw-feed">
-            <div className="fw-say">
-              I&rsquo;ll write the fix. Handing off the tests and the
-              changelog.
-            </div>
-            {HANDOFF_CHILDREN.map((child) => (
-              <div
-                className="fw-work fw-land"
-                key={child.title}
-                style={at(child.landsAt)}
+        <div className="fw-updates">
+          <span className="fw-updates-head">Child thread updates</span>
+          <span className="fw-updates-lines">
+            {DELEGATION_UPDATES.map((update) => (
+              <span
+                key={update.text}
+                className={
+                  "to" in update ? "fw-update fw-update-out" : "fw-update"
+                }
+                style={
+                  "to" in update
+                    ? between(update.from, update.to)
+                    : at(update.from)
+                }
               >
-                <SubagentIcon className="fw-step-ic" />
-                <span className="fw-work-verb">Started</span>
-                <span className="fw-pill">
-                  <child.icon className="fw-pill-ic" />
-                  <span className="fw-pill-text">{child.title}</span>
-                </span>
-              </div>
+                {update.text}
+              </span>
             ))}
-            {HANDOFF_CHILDREN.map((child) =>
-              "note" in child ? (
-                <div
-                  className="fw-note fw-land"
-                  key={child.title}
-                  style={at(child.doneAt)}
-                >
-                  <span className="fw-note-head">
-                    <DoneIcon className="fw-note-ic" />
-                    <span className="fw-note-subject">{child.title}</span>
-                    <span className="fw-note-verb">finished</span>
-                  </span>
-                  <span className="fw-note-body">{child.note}</span>
-                </div>
-              ) : null,
-            )}
-          </div>
+          </span>
+        </div>
+        <div className="fw-kids">
+          {DELEGATION_CHILDREN.map((child) => (
+            <div
+              key={child.title}
+              className="fw-row fw-grow"
+              style={at(child.landsAt)}
+            >
+              <child.icon className="fw-prov" />
+              <span className="fw-kid-text">
+                <span className="fw-row-title">{child.title}</span>
+                <span className="fw-kid-prov">{child.provider}</span>
+              </span>
+              <ThreadStatus status={child.status} next={child.next} />
+            </div>
+          ))}
+        </div>
+        <div className="fw-ping fw-rise" style={at(9.8)}>
+          <span aria-hidden className="bb-mark fw-ping-mark" />
+          <span className="fw-ping-text">
+            <span className="fw-ping-app">bb</span>
+            <span className="fw-ping-body">{DELEGATION_PING}</span>
+          </span>
         </div>
       </div>
     </div>
   );
 }
 
-const SPAWN_COMMAND = 'bb thread spawn --project "$BB_PROJECT_ID" --prompt "Fix CI on main"';
-const SPAWN_OUTPUT = "Thread spawned: thr_7q2m9xk4";
+const START_COMMAND = 'bb thread spawn --prompt "Fix CI on main"';
+
+type StartRow = {
+  icon: (props: IconProps) => ReactNode;
+  title: string;
+  landsAt: number;
+};
+
+const LINUX_ROWS: StartRow[] = [
+  { icon: OpenAiIcon, title: "Fix the checkout bug", landsAt: 1.6 },
+  { icon: TerminalIcon, title: "Fix CI on main", landsAt: 6.1 },
+  { icon: ClockIcon, title: "Daily changelog", landsAt: 8.1 },
+];
+
+const MACBOOK_ROWS: StartRow[] = [
+  { icon: PhoneIcon, title: "Fix flaky login test", landsAt: 4.3 },
+];
+
+function StartRows({ rows }: { rows: StartRow[] }) {
+  return rows.map((row) => (
+    <div key={row.title} className="fw-row fw-grow" style={at(row.landsAt)}>
+      <row.icon className="fw-src-ic" />
+      <span className="fw-row-title">{row.title}</span>
+      <ThreadStatus status="running" />
+    </div>
+  ));
+}
 
 export function StartAnywhere() {
   const ref = useRef<HTMLDivElement>(null);
-  const { cycle, leaving, paused } = useCycle(9600, 600, ref);
+  const { cycle, leaving, paused } = useCycle(12000, 600, ref);
   return (
     <div
       ref={ref}
       className="fw-start"
       role="img"
-      aria-label="A CI step runs bb thread spawn with the prompt Fix CI on main, and an Automations schedule, every weekday at 9:00, runs the Daily changelog. Each lands as a new thread in the bb sidebar."
+      aria-label="Work starts from many places and lands in one bb sidebar. From ChatGPT: Hand this off to bb, fix the checkout bug, then Used Control bb. Grok and Claude cards sit behind it. The same running thread, Fix the checkout bug, shows up on a phone, which also sends Fix flaky login test. A failed CI run on main runs bb thread spawn with the prompt Fix CI on main. Automations run Daily changelog on weekdays at 9:00 and Bump dependencies on Fridays. Each lands as a running thread in the sidebar, grouped by machine: linux-box, the server, and a MacBook."
     >
-      <div className={stageClass("fw-stage", leaving, paused)} key={cycle}>
-        <div className="fw-src">
-          <div className="fw-src-head">
-            <TerminalIcon className="fw-ic" />
-            <span>CI step</span>
-            <span className="fw-src-meta">main · checks failed</span>
-          </div>
-          <div className="fw-term">
-            <span className="fw-tline fw-tcmd" style={at(0.6)}>
-              <span className="fw-prompt">$</span> {SPAWN_COMMAND}
-            </span>
-            <span className="fw-tline fw-tout" style={at(1.5)}>
-              {SPAWN_OUTPUT}
-            </span>
-          </div>
-        </div>
-        <div className="fw-src fw-sched">
-          <ClockIcon className="fw-ic" />
-          <span className="fw-sched-text">
-            <span className="fw-sched-when">Every weekday 9:00</span>
-            <span className="fw-sched-sep"> · </span>
-            <span>Daily changelog</span>
-          </span>
-          <span className="fw-tag">
-            <PluginsIcon className="fw-tag-ic" />
-            Automations
-          </span>
-        </div>
-        <div className="fw-win">
-          <div className="fw-band">
-            <WindowDots />
-            <PanelIcon className="fw-ic fw-band-end" />
-          </div>
-          <div className="fw-card fw-side fw-side-solo">
-            <div className="fw-label">Threads</div>
-            <div className="fw-rows">
-              <div className="fw-row fw-land" style={at(4.6)}>
-                <span className="fw-row-title">Daily changelog</span>
-                <ThreadStatus status="running" />
-              </div>
-              <div className="fw-push" style={at(4.6)}>
-                <div className="fw-row fw-land" style={at(2)}>
-                  <span className="fw-row-title">Fix CI on main</span>
-                  <ThreadStatus status="running" />
-                </div>
-                <div className="fw-push" style={at(2)}>
-                  <div className="fw-row">
-                    <span className="fw-row-title">
-                      Refactor the timeline cache
-                    </span>
-                    <ThreadStatus status="waiting" />
-                  </div>
-                  <div className="fw-row">
-                    <span className="fw-row-title">Ship the CSV export</span>
-                    <ThreadStatus status="done" />
-                  </div>
-                </div>
-              </div>
+      <div className={stageClass("fw-doors", leaving, paused)} key={cycle}>
+        <div className="fw-apps">
+          <div className="fw-app fw-app-3">
+            <div className="fw-app-head">
+              <GrokIcon className="fw-src-ic" />
+              Grok
             </div>
           </div>
+          <div className="fw-app fw-app-2">
+            <div className="fw-app-head">
+              <ClaudeIcon className="fw-src-ic" />
+              Claude
+            </div>
+          </div>
+          <div className="fw-app fw-app-1">
+            <div className="fw-app-head">
+              <OpenAiIcon className="fw-src-ic" />
+              ChatGPT
+            </div>
+            <div className="fw-app-body">
+              <span className="fw-bubble">
+                Hand this off to bb: fix the checkout bug
+              </span>
+              <span className="fw-used fw-land" style={at(0.9)}>
+                <span aria-hidden className="bb-mark fw-used-mark" />
+                Used <b>Control bb</b>
+                <CheckGlyph className="fw-used-check" />
+              </span>
+            </div>
+          </div>
+        </div>
+        <div className="fw-phone">
+          <div className="fw-phone-head">
+            <span aria-hidden className="bb-mark fw-phone-mark" />
+            bb
+          </div>
+          <div className="fw-phone-row fw-land" style={at(2.4)}>
+            <span className="fw-phone-state">
+              <Spinner className="trun" />
+              Working
+            </span>
+            <span>Fix the checkout bug</span>
+          </div>
+          <div className="fw-phone-feed">
+            <span className="fw-phone-msg fw-land" style={at(3.6)}>
+              Fix flaky login test
+            </span>
+          </div>
+          <div className="fw-phone-input" />
+        </div>
+        <div className="fw-src fw-ci">
+          <div className="fw-src-head">
+            <TerminalIcon className="fw-src-ic" />
+            <span>CI · main failed</span>
+          </div>
+          <div className="fw-term">
+            <span className="fw-tline fw-tcmd" style={at(5.4)}>
+              <span className="fw-prompt">$</span> {START_COMMAND}
+            </span>
+          </div>
+        </div>
+        <div className="fw-autos">
+          <div className="fw-src fw-auto fw-auto-fire" style={at(7.4)}>
+            <ClockIcon className="fw-src-ic" />
+            <span className="fw-auto-text">
+              <span className="fw-auto-when">Weekdays 9:00</span>
+              <span>Daily changelog</span>
+            </span>
+          </div>
+          <div className="fw-src fw-auto">
+            <ClockIcon className="fw-src-ic" />
+            <span className="fw-auto-text">
+              <span className="fw-auto-when">Fridays</span>
+              <span>Bump dependencies</span>
+            </span>
+          </div>
+        </div>
+        <div className="fw-arrows" aria-hidden>
+          <ArrowDownGlyph className="fw-arrow" />
+          <ArrowDownGlyph className="fw-arrow" />
+          <ArrowDownGlyph className="fw-arrow" />
+        </div>
+        <div className="fw-side fw-machines">
+          <div className="fw-group">
+            <LinuxIcon className="fw-group-ic" />
+            <span className="fw-group-name">linux-box</span>
+            <span className="fw-tag">server</span>
+          </div>
+          <StartRows rows={LINUX_ROWS} />
+          <div className="fw-group">
+            <LaptopGlyph className="fw-group-ic" />
+            <span className="fw-group-name">MacBook</span>
+          </div>
+          <StartRows rows={MACBOOK_ROWS} />
         </div>
       </div>
     </div>

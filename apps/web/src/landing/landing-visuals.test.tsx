@@ -7,12 +7,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { trackLandingEvent } from "./analytics";
 import { MarketplaceLink } from "./cta";
-import { PluginsSheet, StartAnywhere, useCycle } from "./landing-visuals";
+import {
+  DelegationTree,
+  PluginMap,
+  StartAnywhere,
+  useCycle,
+} from "./landing-visuals";
 
 vi.mock("./analytics", () => ({ trackLandingEvent: vi.fn() }));
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-  true;
+(
+  globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
 class FakeObserver {
   static instances: FakeObserver[] = [];
@@ -141,35 +147,70 @@ describe("useCycle", () => {
 });
 
 describe("StartAnywhere", () => {
-  it("shows a bb thread spawn command that runs as written", () => {
+  it("shows each way in and a sidebar grouped by machine", () => {
     const html = renderToStaticMarkup(<StartAnywhere />);
     expect(html).toContain(
-      "bb thread spawn --project &quot;$BB_PROJECT_ID&quot; --prompt &quot;Fix CI on main&quot;",
+      "bb thread spawn --prompt &quot;Fix CI on main&quot;",
     );
-    expect(html).toContain("Every weekday 9:00");
-    expect(html).toContain("Daily changelog");
-    expect(html).not.toMatch(/from CI|scheduled</i);
-    expect(html).not.toMatch(/bb spawn/);
+    for (const text of [
+      ">Grok<",
+      ">Claude<",
+      ">ChatGPT<",
+      "Hand this off to bb: fix the checkout bug",
+      "Control bb",
+      "Fix flaky login test",
+      ">Working<",
+      "CI · main failed",
+      "Weekdays 9:00",
+      "Daily changelog",
+      "Bump dependencies",
+      ">linux-box<",
+      ">server<",
+      ">MacBook<",
+    ]) {
+      expect(html).toContain(text);
+    }
+    expect(html).not.toMatch(/bb spawn|--project/);
   });
 });
 
-describe("PluginsSheet", () => {
-  it("shows the Plugins page with built-in and added plugins", () => {
-    const html = renderToStaticMarkup(<PluginsSheet />);
-    for (const name of [
-      "Thread list",
-      "Composer",
-      "GitHub",
-      "Memory",
-      "Automations",
-      "Sentry",
-      "Linear issues",
-      "Status sidebar",
+describe("PluginMap", () => {
+  it("numbers four plugin regions of the bb window", () => {
+    const html = renderToStaticMarkup(<PluginMap />);
+    for (const label of [
+      "Your own pages",
+      "PR status on every thread",
+      "Charts in replies",
+      "Controls in the composer",
     ]) {
-      expect(html).toContain(`>${name}<`);
+      expect(html).toContain(`<span>${label}</span>`);
     }
-    expect(html).not.toContain("Settings");
-    expect(html).not.toContain("GitHub issues");
+    expect(html).toContain("#482");
+    expect(html).toContain("Send later · 9:00");
+    expect(html.match(/fw-map-region/g)).toHaveLength(4);
+  });
+});
+
+describe("DelegationTree", () => {
+  it("shows one lead, three workers and a single ping", () => {
+    const html = renderToStaticMarkup(<DelegationTree />);
+    for (const text of [
+      "Ship the checkout fix",
+      ">Lead<",
+      "Child thread updates",
+      "Plan the fix",
+      "Build it",
+      "Review the diff",
+      ">Claude Code<",
+      ">Cursor<",
+      ">Codex<",
+      ">Grok Build<",
+      "answered by the lead",
+    ]) {
+      expect(html).toContain(text);
+    }
+    expect(html.match(/fw-ping-body/g)).toHaveLength(1);
+    expect(html).toContain("Review the diff · needs your approval");
   });
 });
 

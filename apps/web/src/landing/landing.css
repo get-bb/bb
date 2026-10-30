@@ -2082,22 +2082,36 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   min-width: 0;
 }
 
+.band-link {
+  display: inline-block;
+  margin-top: 14px;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--ink);
+  text-decoration: none;
+  text-underline-offset: 3px;
+}
+
+.band-link:hover {
+  color: var(--heading);
+  text-decoration: underline;
+}
+
 .fw-win,
-.fw-start {
+.fw-start,
+.fw-map {
   --fw-frame: color-mix(in oklab, var(--ink) 7%, var(--bg));
   --fw-sidebar: color-mix(in oklab, var(--ink) 2.5%, var(--bg));
   --fw-active: color-mix(in oklab, var(--ink) 10%, transparent);
   --fw-seam: color-mix(in oklab, var(--ink) 9.5%, var(--bg));
   --fw-ease: cubic-bezier(0.16, 1, 0.3, 1);
-  --fw-row: 28px;
+  --fw-row: 32px;
 }
 
 .fw-win {
   width: 100%;
-  max-width: 460px;
   border: 1px solid var(--border);
   border-radius: 12px;
-  overflow: hidden;
   background: var(--fw-frame);
   box-shadow:
     0 1px 0 color-mix(in oklab, var(--shade) 4%, transparent),
@@ -2111,14 +2125,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .fw-band {
   display: flex;
   align-items: center;
-  gap: 14px;
-  height: 40px;
-  min-width: 0;
-  padding: 0 14px 0 16px;
-}
-
-.fw-band-end {
-  margin-left: auto;
+  height: 34px;
+  padding: 0 14px;
 }
 
 .fw-card {
@@ -2129,50 +2137,38 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .fw-ic {
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
   flex-shrink: 0;
   color: var(--subtle);
+}
+
+.fw-ic-ink {
+  color: var(--ink);
 }
 
 .fw-label {
   display: flex;
   align-items: center;
-  height: 24px;
-  margin-top: 8px;
+  height: 26px;
   padding: 0 8px;
-  font-size: 12px;
-  color: color-mix(in oklab, var(--subtle) 80%, transparent);
-}
-
-.fw-label:first-child {
-  margin-top: 2px;
+  font-size: 13px;
+  color: var(--subtle);
 }
 
 .fw-tag {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
   flex-shrink: 0;
-  height: 20px;
-  padding: 0 7px;
+  height: 22px;
+  padding: 0 8px;
   border: 1px solid var(--border);
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 13px;
+  font-weight: 400;
   line-height: 1;
   color: var(--dim);
   white-space: nowrap;
-}
-
-.fw-tag-ic {
-  width: 12px;
-  height: 12px;
-  flex-shrink: 0;
-  color: var(--subtle);
-}
-
-.fw-win .tdone {
-  color: var(--ok);
 }
 
 .fw-side {
@@ -2186,7 +2182,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .fw-row {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   height: var(--fw-row);
   flex-shrink: 0;
   padding: 0 8px;
@@ -2204,10 +2200,28 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fw-prov,
+.fw-src-ic {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--dim);
 }
 
 .fw-land {
   animation: fw-land 0.5s var(--fw-ease) var(--fw-at, 0s) both;
+}
+
+.fw-grow {
+  overflow: hidden;
+  animation: fw-grow 0.6s var(--fw-ease) var(--fw-at, 0s) both;
+}
+
+.fw-rise {
+  animation: fw-rise 0.7s var(--fw-ease) var(--fw-at, 0s) both;
 }
 
 .fw-swap {
@@ -2222,24 +2236,22 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .fw-swap-from {
-  animation: fw-fade-out 0.3s ease var(--fw-at, 0s) both;
+  animation: fw-fade-out 0.4s ease var(--fw-at, 0s) both;
 }
 
 .fw-swap-to {
-  animation: fw-fade-in 0.3s ease var(--fw-at, 0s) both;
-}
-
-.fw-push {
-  animation: fw-push 0.5s var(--fw-ease) var(--fw-at, 0s) both;
+  animation: fw-fade-in 0.4s ease var(--fw-at, 0s) both;
 }
 
 .leaving .fw-land,
-.leaving .fw-tline {
+.leaving .fw-rise,
+.leaving .fw-tline,
+.leaving .fw-update {
   animation: fw-fade-out 0.6s ease forwards;
 }
 
-.leaving .fw-push {
-  animation: fw-unpush 0.6s var(--fw-ease) forwards;
+.leaving .fw-grow {
+  animation: fw-shrink 0.6s var(--fw-ease) forwards;
 }
 
 .fw-paused,
@@ -2251,6 +2263,27 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   from {
     opacity: 0;
     transform: translateY(-4px);
+  }
+}
+
+@keyframes fw-grow {
+  from {
+    height: 0;
+    opacity: 0;
+  }
+}
+
+@keyframes fw-shrink {
+  to {
+    height: 0;
+    opacity: 0;
+  }
+}
+
+@keyframes fw-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
   }
 }
 
@@ -2266,36 +2299,635 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   }
 }
 
-@keyframes fw-push {
-  from {
-    transform: translateY(calc(-1 * var(--fw-row)));
+.fw-map,
+.fw-lead,
+.fw-start {
+  max-width: 460px;
+}
+
+.fw-map {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  width: 100%;
+  container-type: inline-size;
+  text-align: left;
+}
+
+.fw-map-body {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 38%) minmax(0, 1fr);
+  height: 254px;
+  margin: 0 8px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.fw-map-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 0;
+  border-right: 1px solid var(--fw-seam);
+  border-radius: 7px 0 0 7px;
+  background: var(--fw-sidebar);
+}
+
+.fw-map-rail-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 7px;
+}
+
+.fw-map-rail-btn.is-current {
+  background: var(--fw-active);
+}
+
+.fw-map-rail-fill {
+  flex: 1;
+}
+
+.fw-map-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 1.5px var(--fw-sidebar);
+}
+
+.fw-map-side {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 6px;
+  border-right: 1px solid var(--fw-seam);
+  background: var(--fw-sidebar);
+}
+
+.fw-map-pr {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-height: 52px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.fw-map-pr .fw-row-title {
+  flex: none;
+}
+
+.fw-map-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--subtle);
+}
+
+.fw-map-check {
+  width: 14px;
+  height: 14px;
+  margin-left: 3px;
+  color: var(--subtle);
+}
+
+.fw-map-main {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  border-radius: 0 7px 7px 0;
+}
+
+.fw-map-say {
+  color: var(--ink-strong);
+}
+
+.fw-map-chart {
+  display: flex;
+  align-items: flex-end;
+  flex: 1;
+  gap: 6px;
+  min-height: 72px;
+  padding: 10px 10px 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.fw-map-bar {
+  flex: 1;
+  border-radius: 3px 3px 1px 1px;
+  background: color-mix(in oklab, var(--accent) 72%, var(--bg));
+}
+
+.fw-map-composer {
+  margin-top: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.fw-map-banner {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--fw-seam);
+  border-radius: 9px 9px 0 0;
+  background: var(--surface);
+  color: var(--dim);
+  white-space: nowrap;
+}
+
+.fw-map-input {
+  display: flex;
+  align-items: center;
+  height: 36px;
+  white-space: nowrap;
+  padding: 0 10px;
+  color: var(--subtle);
+}
+
+.fw-map-region {
+  position: relative;
+  outline: 1.5px dashed transparent;
+  outline-offset: 2px;
+  transition:
+    outline-color 0.5s ease,
+    background-color 0.5s ease;
+}
+
+.fw-map-region.is-lit {
+  outline-color: var(--accent);
+  background-color: color-mix(in oklab, var(--accent) 12%, var(--bg));
+}
+
+.fw-map-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--bg);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--dim);
+  transition:
+    background-color 0.5s ease,
+    border-color 0.5s ease,
+    color 0.5s ease;
+}
+
+.fw-map-region > .fw-map-chip {
+  position: absolute;
+  z-index: 1;
+  top: -10px;
+  right: -10px;
+}
+
+.fw-map-rail-btn > .fw-map-chip {
+  top: auto;
+  right: -14px;
+  bottom: -9px;
+}
+
+.fw-map-region.is-lit > .fw-map-chip,
+.fw-map-key-item.is-lit .fw-map-chip {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.fw-map-key {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+  margin: 0;
+  padding: 0 4px;
+  list-style: none;
+}
+
+.fw-map-key-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 14px;
+  line-height: 1.3;
+  color: var(--subtle);
+  transition: color 0.5s ease;
+}
+
+.fw-map-key-item.is-lit {
+  color: var(--ink);
+}
+
+@container (max-width: 400px) {
+  .fw-map-body {
+    grid-template-columns: 42px minmax(0, 1fr);
+    height: auto;
+  }
+
+  .fw-map-rail {
+    border-radius: 7px 0 0;
+  }
+
+  .fw-map-side {
+    border-right: 0;
+  }
+
+  .fw-map-main {
+    grid-column: 1 / -1;
+    padding: 10px;
+    border-top: 1px solid var(--fw-seam);
+    border-radius: 0 0 7px 7px;
+  }
+
+  .fw-map-chart {
+    flex: none;
+    height: 76px;
+  }
+
+  .fw-map-composer {
+    margin-top: 4px;
+  }
+
+  .fw-map-key-item {
+    font-size: 13px;
   }
 }
 
-@keyframes fw-unpush {
-  to {
-    transform: translateY(calc(-1 * var(--fw-row)));
+.fw-lead {
+  container-type: inline-size;
+}
+
+.fw-lead-stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 336px;
+  padding: 6px;
+  background: var(--fw-sidebar);
+  font-size: 14px;
+  --fw-row: 34px;
+}
+
+.fw-lead-row {
+  font-weight: 500;
+}
+
+.fw-updates {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 4px 8px 6px 32px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--bg);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.fw-updates-head {
+  color: var(--subtle);
+}
+
+.fw-updates-lines {
+  display: grid;
+  color: var(--ink);
+}
+
+.fw-update {
+  grid-area: 1 / 1;
+  animation: fw-update-in 0.5s var(--fw-ease) var(--fw-at, 0s) both;
+}
+
+.fw-update-out {
+  opacity: 0;
+  animation:
+    fw-update-in 0.5s var(--fw-ease) var(--fw-at, 0s) both,
+    fw-update-off 0.4s ease var(--fw-out, 0s) forwards;
+}
+
+@keyframes fw-update-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
   }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes fw-update-off {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+.fw-kids {
+  margin-bottom: 12px;
+  margin-left: 16px;
+  padding-left: 6px;
+  border-left: 1px solid var(--border);
+}
+
+.fw-kid-text {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.fw-lead-prov,
+.fw-kid-prov {
+  flex-shrink: 0;
+  font-weight: 400;
+  font-size: 13px;
+  color: var(--subtle);
+}
+
+@container (max-width: 400px) {
+  .fw-lead-prov {
+    display: none;
+  }
+
+  .fw-lead-row {
+    --fw-row: 50px;
+  }
+
+  .fw-lead-row .fw-row-title {
+    line-height: 1.3;
+    white-space: normal;
+  }
+
+  .fw-kids {
+    --fw-row: 48px;
+  }
+
+  .fw-kid-text {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
+    line-height: 1.3;
+  }
+
+  .fw-kid-text .fw-row-title {
+    flex: none;
+    max-width: 100%;
+  }
+}
+
+.fw-ping {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin: auto 4px 4px;
+  padding: 11px 13px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow: 0 16px 36px -20px
+    color-mix(in oklab, var(--shade) 45%, transparent);
+}
+
+.fw-ping-mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+}
+
+.fw-ping-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.35;
+}
+
+.fw-ping-app {
+  font-size: 13px;
+  color: var(--subtle);
+}
+
+.fw-ping-body {
+  font-weight: 500;
+  color: var(--ink);
 }
 
 .fw-start {
   width: 100%;
-  max-width: 460px;
+  container-type: inline-size;
   text-align: left;
+  --fw-row: 28px;
 }
 
-.fw-stage {
+.fw-doors {
+  display: grid;
+  grid-template-areas:
+    "apps phone"
+    "ci ci"
+    "autos autos"
+    "arrows arrows"
+    "side side";
+  grid-template-columns: minmax(0, 1fr) 136px;
+  gap: 6px 10px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--ink);
+}
+
+.fw-apps {
+  display: grid;
+  grid-area: apps;
+  align-items: start;
+}
+
+.fw-app {
+  grid-area: 1 / 1;
+}
+
+.fw-app,
+.fw-phone {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  box-shadow: 0 14px 34px -22px
+    color-mix(in oklab, var(--shade) 34%, transparent);
+}
+
+.fw-app {
+  width: calc(100% - 24px);
+  border-radius: 12px;
+}
+
+.fw-app-3 {
+  height: 96px;
+  background: var(--surface);
+}
+
+.fw-app-2 {
+  height: 96px;
+  margin: 21px 0 0 12px;
+  background: color-mix(in oklab, var(--surface) 50%, var(--bg));
+}
+
+.fw-app-1 {
+  margin: 42px 0 0 24px;
+}
+
+.fw-app-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 21px;
+  padding: 0 12px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.fw-app-1 .fw-app-head {
+  height: 30px;
+  border-bottom: 1px solid var(--fw-seam);
+}
+
+.fw-app-body {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 10px 10px;
+}
+
+.fw-bubble {
+  align-self: flex-end;
+  padding: 5px 10px;
+  border-radius: 12px;
+  background: var(--surface-recessed);
+}
+
+.fw-used {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--dim);
+  white-space: nowrap;
+}
+
+.fw-used b {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.fw-used-mark {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+}
+
+.fw-used-check {
+  width: 15px;
+  height: 15px;
+  color: var(--accent);
+}
+
+.fw-phone {
+  display: flex;
+  flex-direction: column;
+  grid-area: phone;
+  gap: 6px;
+  align-self: start;
+  min-height: 176px;
+  margin-top: 8px;
+  padding: 9px 8px;
+  border-radius: 20px;
+}
+
+.fw-phone-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 3px;
+  font-weight: 600;
+}
+
+.fw-phone-mark {
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+}
+
+.fw-phone-row {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: var(--fw-active);
+  line-height: 1.3;
+}
+
+.fw-phone-state {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--subtle);
+}
+
+.fw-phone-feed {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.fw-phone-msg {
+  align-self: flex-end;
+  padding: 5px 8px;
+  border-radius: 10px;
+  background: var(--surface-recessed);
+  line-height: 1.35;
+}
+
+.fw-phone-input {
+  height: 24px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
 }
 
 .fw-src {
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--bg);
-  font-size: 13px;
-  color: var(--ink);
   box-shadow: 0 12px 34px -24px
     color-mix(in oklab, var(--shade) 30%, transparent);
 }
@@ -2304,31 +2936,22 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   display: flex;
   align-items: center;
   gap: 7px;
-  height: 32px;
+  height: 30px;
   padding: 0 12px;
   border-bottom: 1px solid var(--fw-seam);
-  color: var(--dim);
+  font-weight: 500;
   white-space: nowrap;
-}
-
-.fw-src-meta {
-  margin-left: auto;
-  overflow: hidden;
-  font-size: 12px;
-  color: var(--subtle);
-  text-overflow: ellipsis;
 }
 
 .fw-term {
   display: flex;
   flex-direction: column;
-  min-height: calc(2 * 1.6em + 20px);
-  padding: 10px 12px;
-  overflow: hidden;
+  min-height: calc(1.6em + 16px);
+  padding: 8px 12px;
   border-radius: 0 0 10px 10px;
   background: var(--surface);
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: 13px;
   line-height: 1.6;
   white-space: pre-wrap;
 }
@@ -2339,377 +2962,164 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .fw-tline {
-  animation: fw-fade-in 0.35s ease var(--fw-at, 0s) both;
+  animation: fw-fade-in 0.5s ease var(--fw-at, 0s) both;
 }
 
 .fw-prompt {
   color: var(--subtle);
 }
 
-.fw-tout {
-  color: var(--dim);
+.fw-ci {
+  grid-area: ci;
 }
 
-.fw-sched {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  min-height: 42px;
-  padding: 8px 12px;
-}
-
-.fw-sched-text {
-  flex: 1;
-  min-width: 0;
-}
-
-.fw-sched-when {
-  font-weight: 500;
-}
-
-.fw-sched-sep {
-  color: var(--subtle);
-}
-
-.fw-start .fw-win {
-  max-width: none;
-}
-
-.fw-side-solo {
-  overflow: hidden;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .fw-start .fw-land,
-  .fw-start .fw-push,
-  .fw-start .fw-tline {
-    animation: none;
-    opacity: 1;
-    transform: none;
-  }
-}
-
-.band-cta {
-  justify-content: flex-start;
-  margin-top: 28px;
-}
-
-.btn-with-ic {
-  display: inline-flex;
-  align-items: center;
+.fw-autos {
+  display: grid;
+  grid-area: autos;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
-.fw-plugins {
-  container-type: inline-size;
-}
-
-.fw-crumb {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  font-weight: 500;
-  color: var(--ink);
-  white-space: nowrap;
-}
-
-.fw-sheet {
-  padding: 6px;
-}
-
-.fw-plugin {
+.fw-auto {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 40px;
-  padding: 5px 8px;
-  border-radius: 6px;
-}
-
-.fw-plugin + .fw-plugin {
-  border-top: 1px solid var(--border-soft);
-  border-radius: 0;
-}
-
-.fw-plugin-frame {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  flex-shrink: 0;
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  background: color-mix(in oklab, var(--surface-recessed) 60%, transparent);
-}
-
-.fw-plugin-ic {
-  width: 14px;
-  height: 14px;
-  color: var(--dim);
-}
-
-.fw-logo {
-  object-fit: contain;
-}
-
-.dark .fw-logo {
-  filter: invert(1);
-}
-
-.fw-plugin-text {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
+  gap: 9px;
   min-width: 0;
-  line-height: 1.3;
+  padding: 6px 12px;
 }
 
-.fw-plugin-name {
-  font-weight: 500;
-  color: var(--ink);
+.fw-auto-fire {
+  border-color: color-mix(in oklab, var(--accent) 60%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 16%, transparent);
+  animation: fw-fire 0.6s ease var(--fw-at, 0s) both;
 }
 
-.fw-plugin-desc {
-  font-size: 11.5px;
-  color: var(--subtle);
+.leaving .fw-auto-fire {
+  animation: fw-unfire 0.6s ease forwards;
 }
 
-.fw-switch {
-  position: relative;
-  width: 26px;
-  height: 15px;
-  flex-shrink: 0;
-  border-radius: 999px;
-  background: color-mix(in oklab, var(--ink) 78%, var(--bg));
-}
-
-.fw-switch::after {
-  content: "";
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  width: 11px;
-  height: 11px;
-  border-radius: 50%;
-  background: var(--bg);
-}
-
-@container (max-width: 360px) {
-  .fw-switch {
-    display: none;
+@keyframes fw-fire {
+  from {
+    border-color: var(--border);
+    box-shadow: 0 0 0 0 transparent;
   }
 }
 
-.fw-ic-ink {
-  color: var(--ink);
+@keyframes fw-unfire {
+  to {
+    border-color: var(--border);
+    box-shadow: 0 0 0 0 transparent;
+  }
 }
 
-.fw-handoff {
-  container-type: inline-size;
-}
-
-.fw-split {
+.fw-auto-text {
   display: flex;
-  margin: 0 8px 8px;
-  min-height: 310px;
-}
-
-.fw-handoff .fw-side {
-  width: 47%;
-  flex-shrink: 0;
-  border: 1px solid var(--border);
-  border-right: 0;
-  border-radius: 8px 0 0 8px;
-}
-
-.fw-kids {
-  margin-left: 14px;
-  padding-left: 4px;
-  border-left: 1px solid var(--border);
-}
-
-.fw-kid {
-  --fw-row: 26px;
-  gap: 6px;
-  font-size: 12.5px;
-}
-
-.fw-kid-ic {
-  width: 13px;
-  height: 13px;
-  flex-shrink: 0;
-  color: var(--dim);
-}
-
-.fw-main {
-  display: flex;
-  flex: 1;
   flex-direction: column;
   min-width: 0;
-  border: 1px solid var(--border);
-  border-left-color: var(--fw-seam);
-  border-radius: 0 8px 8px 0;
-  background: var(--bg);
+  line-height: 1.35;
 }
 
-.fw-main-head {
+.fw-auto-when {
+  color: var(--subtle);
+  white-space: nowrap;
+}
+
+.fw-arrows {
+  display: flex;
+  grid-area: arrows;
+  justify-content: space-around;
+  height: 16px;
+  color: var(--accent);
+}
+
+.fw-arrow {
+  width: 18px;
+  height: 18px;
+}
+
+.fw-machines {
+  grid-area: side;
+  min-height: calc(2 * 26px + 4 * var(--fw-row) + 14px);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow:
+    0 1px 0 color-mix(in oklab, var(--shade) 4%, transparent),
+    0 24px 60px -32px color-mix(in oklab, var(--shade) 34%, transparent);
+}
+
+.fw-group {
   display: flex;
   align-items: center;
   gap: 7px;
-  height: 34px;
+  height: 26px;
   flex-shrink: 0;
-  padding: 0 12px;
-  border-bottom: 1px solid var(--fw-seam);
+  padding: 0 8px;
   font-weight: 500;
-  white-space: nowrap;
-}
-
-.fw-feed {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 10px 4px;
-}
-
-.fw-say {
-  padding: 0 8px 2px;
-  line-height: 1.55;
-  color: var(--ink-strong);
-}
-
-.fw-work {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  padding: 1px 8px;
-  color: var(--dim);
-  white-space: nowrap;
-}
-
-.fw-step-ic {
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
-  color: var(--subtle);
-}
-
-.fw-work-verb {
-  flex-shrink: 0;
-}
-
-.fw-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  min-width: 0;
-  padding: 1px 6px 1px 4px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: color-mix(in oklab, var(--surface-recessed) 50%, transparent);
-  font-size: 12px;
-  line-height: 16px;
-  color: var(--ink);
-}
-
-.fw-pill-ic {
-  width: 12px;
-  height: 12px;
-  flex-shrink: 0;
-}
-
-.fw-pill-text {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.fw-note {
-  display: flex;
-  flex-direction: column;
-  padding: 4px 8px 0;
-}
-
-.fw-note-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  line-height: 20px;
-  white-space: nowrap;
-}
-
-.fw-note-ic {
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
-  color: var(--ok);
-}
-
-.fw-note-subject {
-  overflow: hidden;
-  font-weight: 500;
-  color: var(--ink);
-  text-overflow: ellipsis;
-}
-
-.fw-note-verb {
-  flex-shrink: 0;
   color: var(--dim);
 }
 
-.fw-note-body {
-  position: relative;
-  margin: 3px 0 2px;
-  padding-left: 20px;
-  font-size: 12.5px;
-  line-height: 1.5;
-  color: var(--ink);
+.fw-group-ic {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
 }
 
-.fw-note-body::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 2px;
-  left: 6px;
-  width: 1px;
-  background: var(--fw-seam);
+.fw-group-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @container (max-width: 400px) {
-  .fw-split {
-    flex-direction: column;
-    min-height: 0;
+  .fw-doors {
+    grid-template-areas:
+      "apps apps"
+      "phone autos"
+      "ci ci"
+      "arrows arrows"
+      "side side";
+    grid-template-columns: 124px minmax(0, 1fr);
   }
 
-  .fw-handoff .fw-side {
-    width: auto;
-    border-right: 1px solid var(--border);
-    border-bottom: 0;
-    border-radius: 8px 8px 0 0;
+  .fw-phone {
+    margin-top: 0;
   }
 
-  .fw-main {
-    min-height: 292px;
-    border-left-color: var(--border);
-    border-top-color: var(--fw-seam);
-    border-radius: 0 0 8px 8px;
+  .fw-autos {
+    grid-template-columns: minmax(0, 1fr);
+    align-content: start;
+  }
+
+  .fw-auto {
+    padding: 8px 10px;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .fw-handoff .fw-land,
-  .fw-handoff .fw-swap-from,
-  .fw-handoff .fw-swap-to {
-    animation: none;
-    opacity: 1;
-    transform: none;
+  .fw-map *,
+  .fw-lead *,
+  .fw-start * {
+    animation: none !important;
+    transition: none !important;
   }
 
-  .fw-handoff .fw-swap-from {
+  .fw-map .fw-map-region {
+    outline-color: var(--accent);
+    background-color: transparent;
+  }
+
+  .fw-map .fw-map-chip {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--bg);
+  }
+
+  .fw-map .fw-map-key-item {
+    color: var(--ink);
+  }
+
+  .fw-swap-from {
     opacity: 0;
   }
 }

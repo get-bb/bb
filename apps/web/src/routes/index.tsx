@@ -78,8 +78,7 @@ import {
   InstallOptions,
   ProviderChips,
   DelegationTree,
-  GitHubButtonMark,
-  PluginsSheet,
+  PluginMap,
   StartAnywhere,
   useScrollReveal,
 } from "../landing/landing-visuals";
@@ -1210,59 +1209,51 @@ function LandingPage() {
       </section>
 
       <Band
-        title="Make it yours. No fork needed."
+        title="Make bb yours. No need to fork."
         flip
         section="make-it-yours"
-        visual={<PluginsSheet />}
+        visual={<PluginMap />}
       >
         <p>
-          bb&rsquo;s own sidebar, composer, and GitHub support are plugins,
-          built on the same system you get. So your changes are plugins too:
-          install one, or ask an agent to write it, and keep every bb update.
-          MIT-licensed, and it runs on your machine.
+          bb adapts to how you work, not the other way around. Use plugins to
+          change almost any part of bb by just prompting an agent, or pick from
+          400+ built by the community.
         </p>
-        <div className="cta-row band-cta">
-          <MarketplaceLink placement="customize" className="btn btn-ghost">
-            Browse plugins
-          </MarketplaceLink>
-          <GitHubLink placement="customize" className="btn btn-ghost btn-with-ic">
-            <GitHubButtonMark />
-            View the source
-          </GitHubLink>
-        </div>
+        <MarketplaceLink placement="customize" className="band-link">
+          Browse plugins &rarr;
+        </MarketplaceLink>
       </Band>
 
       <Band
-        title="Agents that hand off work."
+        title="Put an agent in charge."
         section="hand-off"
         visual={<DelegationTree />}
       >
         <p>
-          Any agent can start another, from any provider: Claude can hand Codex
-          the tests while it writes the fix. Each runs in its own thread you can
-          open, steer, or stop, and the parent hears back when it&rsquo;s done.
+          Stop babysitting threads. Have Claude Code plan, Cursor implement,
+          Codex review, and Grok orchestrate them all. You can step in anytime,
+          and only hear about what needs you.
         </p>
       </Band>
 
       <Band
-        title="Start work from anywhere."
+        title="Start anywhere. Pick up anywhere."
         flip
         section="start-anywhere"
         visual={<StartAnywhere />}
       >
         <p>
-          The <code>bb</code> command your agents use is yours too. A cron job,
-          a CI step, or a chat bot can run <code>bb thread spawn</code> and
-          start a thread, and Automations can run work on a schedule.
-          It&rsquo;s waiting in your sidebar when you&rsquo;re back.
+          Work doesn&rsquo;t wait for you to be at your desk. Start threads from
+          ChatGPT, Claude, your phone or CI, and pick them up on any device.
+          They run on your own machines, even a Linux box that never sleeps.
         </p>
       </Band>
 
       <section className="closer" data-reveal data-section="closer">
         <h2 className="sec-title">
-          All your coding agents, in one workspace you can change.
+          All your agents, in one workspace you control.
         </h2>
-        <p>Free, runs on your machine, and yours to change.</p>
+        <p>Free and runs on your machines and infrastructure.</p>
         <InstallOptions placement="closer" />
         <div className="cta-row cta-row-secondary">
           <GitHubLink placement="closer" className="btn btn-ghost">
