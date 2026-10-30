@@ -1,4 +1,9 @@
-import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import {
+  createHash,
+  randomBytes,
+  randomUUID,
+  timingSafeEqual,
+} from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type Database from "better-sqlite3";
@@ -24,6 +29,22 @@ const accountsSchema = z.array(accountSchema);
 const HUB_TOKEN_PREFIX = "hub-token-";
 const HUB_TOKEN_GRACE_MS = 10 * 60 * 1_000;
 const HUB_TOKEN_LAST_USED_PERSIST_MS = 60 * 1_000;
+const REJECTED_REFRESH_PREFIX = "rejected-refresh:";
+const rejectedRefreshSchema = z
+  .object({
+    fingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
+    message: z.string(),
+  })
+  .strict();
+
+interface RefreshRejection {
+  message: string;
+  sameToken: boolean;
+}
+
+function refreshTokenFingerprint(refreshToken: string): string {
+  return createHash("sha256").update(refreshToken).digest("hex");
+}
 
 const tokenValueSchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/u);
 const priorHubTokenSchema = z
@@ -108,6 +129,7 @@ export class AccountStore {
       if (next.length === accounts.length) return false;
       await this.kv.set(ACCOUNTS_KEY, next);
       await fs.rm(this.accountSecretPath(id), { force: true });
+      await this.kv.delete(this.rejectedRefreshKey(id));
       return true;
     });
   }
@@ -220,6 +242,41 @@ export class AccountStore {
     await fs.writeFile(temporary, value, { encoding: "utf8", mode: 0o600 });
     await fs.rename(temporary, destination);
     await fs.chmod(destination, 0o600);
+  }
+
+  async rejectedRefresh(
+    id: string,
+    refreshToken: string,
+  ): Promise<RefreshRejection | null> {
+    const value = await this.kv.get(this.rejectedRefreshKey(id));
+    if (value === undefined) return null;
+    const rejected = rejectedRefreshSchema.parse(value);
+    return {
+      message: rejected.message,
+      sameToken: rejected.fingerprint === refreshTokenFingerprint(refreshToken),
+    };
+  }
+
+  async recordRejectedRefresh(
+    id: string,
+    refreshToken: string,
+    message: string,
+  ): Promise<void> {
+    await this.serialized(async () => {
+      if (!(await this.list()).some((account) => account.id === id)) return;
+      await this.kv.set(this.rejectedRefreshKey(id), {
+        fingerprint: refreshTokenFingerprint(refreshToken),
+        message,
+      });
+    });
+  }
+
+  async clearRejectedRefresh(id: string): Promise<void> {
+    await this.kv.delete(this.rejectedRefreshKey(id));
+  }
+
+  private rejectedRefreshKey(id: string): string {
+    return `${REJECTED_REFRESH_PREFIX}${z.string().uuid().parse(id)}`;
   }
 
   private accountSecretPath(id: string): string {
