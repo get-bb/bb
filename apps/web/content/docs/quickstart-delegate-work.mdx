@@ -1,0 +1,98 @@
+---
+title: "Quickstart: delegate work to child threads"
+description: Ask one thread to split a task across child threads, then review each child's work and merge it back. About 15 minutes, plus your agents' working time.
+type: tutorial
+sources:
+  - apps/app/src/components/pickers/EnvironmentPicker.tsx
+  - apps/app/src/components/promptbox/banner/ThreadPromptContextBanner.tsx
+  - apps/cli/src/commands/thread/spawn.ts
+  - apps/server/src/services/threads/child-thread-notifications.ts
+  - packages/templates/src/templates/bb-guide-threads.md
+  - plugins/git/app.tsx
+since: 0.46.1
+owner: brsbl
+verified: 2026-10-30
+---
+
+You'll end with a parent thread, one child thread per part, each in its own worktree, and every part merged into one branch. A child is a normal thread with a parent: you can open it, answer it or take it over.
+
+## Before you start
+
+- bb is [installed](/docs/install) and at least one agent is [connected](/docs/connect-your-agents).
+- You have a Git repository and a task that splits into parts that don't touch the same files, such as a checkout page split into the form, the order total and the tests.
+
+## 1. Add your project
+
+Open **Settings → Projects**, choose **Add a project**, browse to your repository and choose **Add project**. The setup guide may have added it already.
+
+```bash
+bb project create --name acme-web --root ~/code/acme-web
+```
+
+You should see the project in the sidebar.
+
+## 2. Start the parent thread in a worktree
+
+1. Choose **New thread**.
+2. Below the message box, pick your project, then **Worktree** in the environment picker. The parent's merges then stay off your checkout.
+
+<Screenshot
+  src="/docs-images/quickstart-delegate-work/environment-picker"
+  alt="Below the new thread's message box, the environment picker is open next to the project picker, with Worktree selected."
+  width={760}
+  height={300}
+/>
+
+3. Send a prompt that asks for child threads. Agents only start them when asked:
+
+```text title="Prompt"
+Add a checkout page to this app. Split the work into two or three parts that
+don't touch the same files. Start a child thread for each part with
+`bb thread spawn --parent-self`, with a short title and a prompt that says
+exactly what to build and how to test it. Don't do the parts yourself.
+When every child is done, tell me what each one changed.
+```
+
+You should see the parent run `bb thread spawn` once per part.
+
+## 3. Follow the child threads
+
+Each child appears nested under the parent in the sidebar, with its own worktree and branch from your project's default branch, on the parent's machine.
+
+The parent's **Active child threads** card, above its message box, tracks them:
+
+- Select a child in the card or sidebar to open it.
+- Answer a child's question from the card.
+- When a child finishes, fails or gets stuck, bb messages the parent, including the child's final output.
+
+You should see the parent reply once every child has reported back.
+
+## 4. Review each child's changes
+
+Open a child and select the changed files above its message box, or press ⌘D (Ctrl+D on Windows and Linux), to open the **Diff** tab. To fix something, reply in that child; it keeps its context.
+
+You should see only the files that child's part needed.
+
+## 5. Merge the parts
+
+The children's branches are in the parent's repository. Ask the parent:
+
+```text title="Prompt"
+Merge each child thread's branch into this branch, resolve any conflicts,
+and run the tests. Tell me what you merged.
+```
+
+bb has no merge button between threads; the agent uses Git. For pull requests instead, ask each child to push and open one, then merge it from that thread's pull request controls.
+
+You should see every part merged and the tests passing. Review the parent's **Diff** tab, then push or open a pull request as usual.
+
+## 6. Archive the children
+
+Archive each child from the sidebar, or run `bb thread archive <thread-id>`. A few minutes after its last thread is archived, bb removes the child's worktree but keeps its branch.
+
+## Next steps
+
+- Child threads, subagents and workflows
+- Start child threads
+- Follow child threads from the parent
+- Run an orchestrator thread

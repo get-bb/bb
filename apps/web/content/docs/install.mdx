@@ -1,0 +1,145 @@
+---
+title: Install bb
+description: Download the desktop app for macOS, Linux or Windows, or run bb anywhere with npx bb-app@latest. This page also covers the bb CLI, nightly builds and updates.
+type: how-to
+sources:
+  - apps/desktop/electron-builder.config.json
+  - apps/desktop/src/desktop-auto-update.ts
+  - apps/web/src/landing/site.ts
+  - apps/app/src/components/settings/CliCommandSettingsSection.tsx
+  - apps/app/src/components/settings/UpdatesSettingsSection.tsx
+  - packages/bb-app/src/launcher.ts
+  - .github/workflows/publish-bb-app.yml
+since: 0.46.1
+owner: brsbl
+verified: 2026-10-30
+---
+
+The desktop app is the easiest start. `npx bb-app@latest` runs the same bb on any computer with Node.js, including Intel Macs and servers without a screen.
+
+## Install the desktop app
+
+Download it for [macOS](/download/macos), [Linux](/download/linux) or [Windows](/download/windows).
+
+<Tabs items={["macOS", "Linux", "Windows"]}>
+<Tab value="macOS">
+
+1. Choose **Download for macOS** and open the `.dmg`.
+2. Drag bb to Applications and open it.
+
+Needs Apple Silicon and macOS 13 or later. On an Intel Mac, [run bb with npx](#run-bb-with-npx).
+
+</Tab>
+<Tab value="Linux">
+
+1. Choose **Download for Linux** to get the x64 `.AppImage`.
+2. Make it executable and run it:
+
+```bash
+chmod +x bb-*.AppImage
+./bb-*.AppImage
+```
+
+Alpha, x64 only. On arm64, [run bb with npx](#run-bb-with-npx).
+
+</Tab>
+<Tab value="Windows">
+
+1. Install [Git for Windows](https://git-scm.com/download/win). bb uses its Git and bash.
+2. Choose **Download for Windows** and run the `.exe`. It installs for your user only, in `%LOCALAPPDATA%\Programs\bb`.
+
+Alpha, x64 only. Or [run bb with npx](#run-bb-with-npx) inside WSL2, with your projects and tools there too.
+
+</Tab>
+</Tabs>
+
+## Run bb with npx
+
+Needs Node.js 22.19+.
+
+```bash
+npx bb-app@latest
+```
+
+Open `http://localhost:38886`. bb keeps its data in `~/.bb/`. Stop it with `npx bb-app stop`.
+
+:::note
+npm 12+ blocks the install scripts bb needs. Allow them:
+
+```bash
+npx --allow-scripts=better-sqlite3,node-pty,@parcel/watcher bb-app@latest
+```
+:::
+
+## Put the bb command on your PATH
+
+Threads in bb already have `bb`. For your own terminal, or agents outside bb:
+
+1. Open **Settings → General**.
+2. Under **Command line**, choose **Install** on the **bb CLI** row.
+
+From a terminal:
+
+```bash
+npx --package bb-app bb settings cli-command install
+```
+
+bb links the command into a folder such as `~/.local/bin`, never replacing another `bb`. **Remove** undoes it.
+
+## Choose stable or nightly
+
+| | Stable | Nightly |
+| --- | --- | --- |
+| What it is | Tested releases | A build of the latest code, every day |
+| Desktop app | [macOS](/download/macos), [Linux](/download/linux) or [Windows](/download/windows) | **bb Nightly**, yellow icon, from [desktop-nightly](https://github.com/get-bb/bb/releases/tag/desktop-nightly) |
+| npx | `npx bb-app@latest` | `npx bb-app@nightly` |
+
+bb Nightly shares `~/.bb/` and the server port with stable, so run one at a time. Release notes are in the [changelog](/changelog).
+
+## Update bb
+
+<Tabs items={["Desktop", "npx", "CLI"]}>
+<Tab value="Desktop">
+
+The app installs updates when you quit. To install now: **Settings → Updates → Relaunch** on the **Desktop** row.
+
+On Linux, this needs the AppImage in a folder you can write to.
+
+</Tab>
+<Tab value="npx">
+
+In **Settings → Updates**, choose **Update** on the **Server** row, then **Update and restart**. If you started bb with `--no-in-app-updates`, choose **Copy command** and run it instead.
+
+</Tab>
+<Tab value="CLI">
+
+```bash
+bb updates app status
+bb updates app apply
+```
+
+`apply` downloads the update and restarts bb.
+
+</Tab>
+</Tabs>
+
+## Check it worked
+
+- The desktop app or `http://localhost:38886` opens bb's setup.
+
+<Screenshot
+  src="/docs-images/install/setup-guide"
+  alt="bb's setup guide opens on its first step, Connect a coding agent."
+  width={600}
+  height={200}
+/>
+
+- `bb status` in a new terminal prints your current context.
+- **Settings → Updates** lists the version you're running.
+
+Next, [connect your agents](/docs/connect-your-agents).
+
+## Related troubleshooting
+
+- bb won't install, update or start
+- Platform support
