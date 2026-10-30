@@ -1,7 +1,7 @@
 import {
-  WorkSurfaceObservation,
+  useNewThreadBlockerObservation,
   type NewThreadReadiness,
-} from "@/components/onboarding/WorkSurfaceObservation";
+} from "@/components/onboarding/useNewThreadBlockerObservation";
 import { createCoreComposerActions } from "@/lib/plugin-composer-handle";
 import {
   readPendingAttachmentUploads,
@@ -316,20 +316,15 @@ function LiveDraftNewThreadPromptBox({
   ...promptBoxProps
 }: LiveDraftNewThreadPromptBoxProps) {
   const draft = usePromptDraftSnapshot(promptDraft);
+  useNewThreadBlockerObservation(!isPromptDraftEmpty(draft), readiness);
   return (
-    <WorkSurfaceObservation
-      identity={promptDraft.storageKey}
-      hasDraft={!isPromptDraftEmpty(draft)}
-      readiness={readiness}
-    >
-      <NewThreadPromptBox
-        {...promptBoxProps}
-        value={draft.text}
-        mentionRanges={draft.mentions}
-        history={{ ...history, currentDraft: draft }}
-        attachments={{ ...attachments, items: draft.attachments }}
-      />
-    </WorkSurfaceObservation>
+    <NewThreadPromptBox
+      {...promptBoxProps}
+      value={draft.text}
+      mentionRanges={draft.mentions}
+      history={{ ...history, currentDraft: draft }}
+      attachments={{ ...attachments, items: draft.attachments }}
+    />
   );
 }
 

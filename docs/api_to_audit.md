@@ -3831,15 +3831,17 @@ Stabilize after deciding whether third-party plugins may emit product events
 at all and, if so, how they are namespaced and rate limited.
 
 The same endpoint accepts bounded journey observations: visible Agent readiness,
-project discovery and manual-folder outcomes, first-task composer display, and
+project discovery and manual-folder outcomes, and
 typed setup blockers for nonempty drafts. `OnboardingFlow`,
-`WorkSurfaceObservation` and the actual discovery/folder action owners use this
+`useNewThreadBlockerObservation` and the actual discovery/folder action owners use this
 path. A blocker being shown does not mean a send was attempted. Loading,
 emptying a draft and closing a surface do not report a blocker as resolved.
 Missing readiness remains null. The guide-to-composer context is passed locally;
 it is not inferred from event timing. Existing guide events remain unchanged.
-Stabilization additionally requires visible/background presentation,
-asynchronous outcomes, blocker recovery and duplicate-observer tests.
+Guide completion uses the existing `onboarding_finished` denominator. Blockers
+are deduplicated per composer mount; a draft without a blocker or accepted work
+does not establish a send attempt. Stabilization additionally requires
+asynchronous outcomes, blocker recovery and duplicate-effect tests.
 
 ## `PluginBbSdk.system.experimental_cliCommand`, `experimental_installCliCommand`, and `experimental_removeCliCommand`
 
@@ -4248,7 +4250,9 @@ malformed payload, forged client event and opt-out/resume coverage.
 Internal measurement plumbing for Browser Automation, Workflows, Monaco,
 Prompt Library, Agent Annotations and Ask User Question only. Their existing
 execution or visible-action owners report bounded action/outcome pairs; core's
-shared plugin tool and CLI dispatch supplies invocation context. Plugins outside
+shared plugin tool and CLI dispatch supplies invocation context. A CLI call
+with a thread context is agent-initiated; without one its initiator is unknown.
+Plugins outside
 the reviewed public allowlist emit no new use or state-change observations.
 The server derives public keys from installed provenance, validates the action
 owner and outcome, and uses the existing opt-out-controlled telemetry service.
