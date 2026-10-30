@@ -114,6 +114,47 @@ const connected = (overrides: Partial<ConnectStatus> = {}) =>
   });
 
 describe("connect settings section", () => {
+  it.each(["sign-in", "pairing-code"])(
+    "starts onboarding setup measurement on explicit %s without changing remote access",
+    async (flow) => {
+      const account = fakeAccountSdk({
+        "login.start": () => pendingLogin(),
+        redeemCode: () => signedInAccount,
+      });
+      const slot = renderSlot(
+        app.settingsSections[0]!,
+        { internal_DO_NOT_USE_setupSource: "first_run" },
+        {
+          sdk: account.sdk,
+          rpc: { status: () => status(), setupAttempt: () => null },
+        },
+      );
+      const signIn = await slot.findByRole("button", {
+        name: "Sign in to your bb account",
+      });
+      expect(slot.rpcCalls.some((call) => call.method === "setupAttempt")).toBe(false);
+      if (flow === "sign-in") {
+        fireEvent.click(signIn);
+      } else {
+        fireEvent.click(slot.getByRole("button", { name: "Have a pairing code?" }));
+        fireEvent.change(slot.getByLabelText("Pairing code"), {
+          target: { value: "K7QP-2M4X" },
+        });
+      }
+      await waitFor(() =>
+        expect(slot.rpcCalls).toContainEqual({
+          method: "setupAttempt",
+          input: {
+            id: expect.any(String),
+            source: "first_run",
+            outcome: "started",
+          },
+        }),
+      );
+      expect(slot.rpcCalls.some((call) => call.method === "setRemoteAccess")).toBe(false);
+    },
+  );
+
   it("asks to sign in to the bb account and names the local Cloud host", async () => {
     const dashboardUrl = "http://bb.localhost:42745/dashboard";
     const slot = renderSlot(
