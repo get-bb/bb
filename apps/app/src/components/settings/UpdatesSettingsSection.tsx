@@ -2069,7 +2069,9 @@ function PluginUpdateRow({
               reason={
                 failure.detail.length > 0
                   ? failure.detail
-                  : `bb couldn’t activate ${failure.label} and restored ${plugin.version}.`
+                  : failure.restored
+                    ? `bb couldn’t activate ${failure.label} and restored ${plugin.version}.`
+                    : `bb couldn’t activate ${failure.label} or undo the change. It kept ${plugin.version}.`
               }
             />
             <RowStateControl
@@ -2244,8 +2246,10 @@ export function UpdatesSettingsSection({
       const item = inventory.plugins?.items.find(
         (candidate) => candidate.plugin.id === pluginId,
       );
-      const name = item === undefined ? pluginId : pluginDisplayName(item);
-      void startPluginUpdate(pluginId).then(
+      const expectedVersion = item?.plugin.updateState.availableVersion ?? null;
+      if (item === undefined || expectedVersion === null) continue;
+      const name = pluginDisplayName(item);
+      void startPluginUpdate({ pluginId, expectedVersion }).then(
         (job) => applyPluginUpdateJob({ queryClient, job }),
         (error: unknown) => {
           appToast.error("Plugin update failed", {

@@ -67,6 +67,9 @@ function PluginStoryQueryBoundary({ children }: { children: ReactNode }) {
       client.setQueryData(pluginSourceQueryKey(pluginId), {
         requested: `npm:@bb-plugins/${pluginId}`,
         resolved: "1.4.0",
+        range: null,
+        npmSpecKind: "default",
+        distTag: null,
         integrity: null,
         registry: "npm",
         engines: { bb: null, bbPluginSdk: null },
@@ -474,6 +477,7 @@ const UPDATE_FAILED_PLUGIN: PluginListItem = {
       label: "1.5.0",
       at: new Date(2026, 6, 22).getTime(),
       detail: "The plugin failed to load after the update.",
+      restored: true,
     },
   },
 };

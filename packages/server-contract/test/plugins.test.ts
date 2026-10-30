@@ -5,7 +5,10 @@ import {
   pluginCatalogSearchResponseSchema,
   pluginCatalogSearchResultSchema,
   pluginCatalogStatusSchema,
+  pluginRollbackRequestSchema,
   pluginSettingDescriptorSchema,
+  pluginUpdateJobListResponseSchema,
+  pluginUpdateJobSchema,
 } from "../src/index.js";
 
 describe("plugin contracts", () => {
@@ -153,5 +156,78 @@ describe("plugin contracts", () => {
     expect(
       installedPluginSchema.shape.collections.safeParse(undefined).success,
     ).toBe(false);
+  });
+
+  it("reads a job from a server that predates rollback as an update", () => {
+    const job = {
+      id: "job-1",
+      pluginId: "notes",
+      displayName: "Notes",
+      state: "running",
+      phase: "checking",
+    };
+    expect(
+      pluginUpdateJobListResponseSchema
+        .parse({
+          jobs: [job, { ...job, id: "job-2", kind: "rollback" }],
+        })
+        .jobs.map((entry) => entry.kind),
+    ).toEqual(["update", "rollback"]);
+  });
+
+  it("reads a completed job's result by the job's kind", () => {
+    const completed = {
+      id: "job-1",
+      pluginId: "notes",
+      displayName: "Notes",
+      state: "completed",
+    };
+    const from = { version: "1.1.0", label: "1.1.0", display: "1.1.0" };
+    const to = { version: "1.0.0", label: "1.0.0", display: "1.0.0" };
+    expect(
+      pluginUpdateJobSchema.parse({
+        ...completed,
+        result: { applied: true, from, to, outcome: "updated" },
+      }),
+    ).toMatchObject({ kind: "update" });
+    expect(
+      pluginUpdateJobSchema.parse({
+        ...completed,
+        kind: "rollback",
+        result: { applied: true, from, to, outcome: "reverted" },
+      }),
+    ).toMatchObject({ kind: "rollback" });
+    for (const job of [
+      {
+        ...completed,
+        result: { applied: true, from, to, outcome: "reverted" },
+      },
+      {
+        ...completed,
+        kind: "rollback",
+        result: { applied: true, from, to, outcome: "updated" },
+      },
+      {
+        ...completed,
+        kind: "rollback",
+        result: { applied: true, from, outcome: "reverted" },
+      },
+    ]) {
+      expect(pluginUpdateJobSchema.safeParse(job).success).toBe(false);
+    }
+  });
+
+  it("accepts only an expected version on a rollback request", () => {
+    expect(pluginRollbackRequestSchema.parse({})).toEqual({});
+    expect(
+      pluginRollbackRequestSchema.parse({ expectedVersion: "1.0.0" }),
+    ).toEqual({ expectedVersion: "1.0.0" });
+    for (const body of [
+      { expectedVersion: "" },
+      { version: "1.0.0" },
+      { expectedVersion: "1.0.0", force: true },
+    ]) {
+      expect(pluginRollbackRequestSchema.safeParse(body).success).toBe(false);
+    }
   });
 });

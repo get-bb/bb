@@ -31,6 +31,8 @@ import {
   pluginCachePruneResponseSchema,
   pluginInstallRequestSchema,
   pluginRemoveResponseSchema,
+  pluginRollbackPointResponseSchema,
+  pluginRollbackRequestSchema,
   pluginSafeModeRequestSchema,
   pluginSafeModeResponseSchema,
   pluginSafeModeUpdateResponseSchema,
@@ -39,6 +41,8 @@ import {
   pluginSourceDetailSchema,
   pluginTokenRequestSchema,
   pluginTokenResponseSchema,
+  pluginTrackingRangeRequestSchema,
+  pluginTrackingRangeResultSchema,
   pluginUpdateCheckRequestSchema,
   pluginUpdateCheckResponseSchema,
   type InstalledPlugin,
@@ -51,6 +55,8 @@ import {
   type PluginCatalogStatus as PluginCatalogStatusContract,
   type PluginInstallJob as PluginInstallJobContract,
   type PluginApplyUpdateResult as PluginApplyUpdateContract,
+  type PluginRollbackPointResponse,
+  type PluginRollbackResult as PluginRollbackContract,
   type PluginCachePruneResponse,
   type PluginListResponse,
   type PluginReloadResponse,
@@ -61,23 +67,35 @@ import {
   type PluginSourceDetail,
   type PluginSourceSelection,
   type PluginTokenResponse,
+  type PluginTrackingRangeResult,
   type PluginUpdateCheckEntry,
 } from "@bb/server-contract";
 import { z } from "zod";
+import { BbHttpError } from "../response.js";
 import type { CreateSdkAreaArgs } from "./common.js";
 
 /**
- * A server older than `providerIds` (bb-app < 0.39) or `icons` answers with
- * the installed-plugin shape minus those fields. The contract keeps them
- * required — the server fills them once at its boundary — so the tolerance
- * lives here, on the response side only: the SDK never sends this shape, and a
- * default on the contract would leak into request bodies.
+ * A server older than `providerIds` (bb-app < 0.39), `icons`, or
+ * `updateState.lastFailure.restored` answers with the installed-plugin shape
+ * minus those fields; such a server always restored the release it replaced.
+ * The contract keeps them required — the server fills them once at its
+ * boundary — so the tolerance lives here, on the response side only: the SDK
+ * never sends this shape, and a default on the contract would leak into
+ * request bodies.
  */
+const updateStateResponseSchema =
+  installedPluginSchema.shape.updateState.extend({
+    lastFailure: installedPluginSchema.shape.updateState.shape.lastFailure
+      .unwrap()
+      .extend({ restored: z.boolean().default(true) })
+      .optional(),
+  });
 const installedPluginResponseSchema = installedPluginSchema.extend({
   screenshots: installedPluginSchema.shape.screenshots.default([]),
   collections: installedPluginSchema.shape.collections.default([]),
   providerIds: z.array(z.string()).default([]),
   icons: z.record(z.string(), z.string()).default({}),
+  updateState: updateStateResponseSchema,
 });
 const pluginListResponseSchema = z.object({
   plugins: z.array(installedPluginResponseSchema),
@@ -94,6 +112,7 @@ const INSTALL_JOB_POLL_INTERVAL_MS = 500;
 const pluginReloadResponseSchema = z.object({
   ok: z.literal(true),
   plugins: z.array(installedPluginResponseSchema),
+  warnings: z.array(z.string()).default([]),
 });
 const pluginCatalogSearchResponseCompatibilitySchema =
   pluginCatalogSearchResponseSchema.extend({
@@ -107,6 +126,7 @@ export const pluginMutationResponseSchema = z.object({
   error: z.string().optional(),
   plugin: installedPluginResponseSchema.optional(),
   plugins: z.array(installedPluginResponseSchema).optional(),
+  warnings: z.array(z.string()).optional(),
 });
 export type PluginMutationResponse = z.infer<
   typeof pluginMutationResponseSchema
@@ -114,6 +134,18 @@ export type PluginMutationResponse = z.infer<
 
 export interface PluginIdArgs {
   pluginId: string;
+}
+
+export interface PluginApplyUpdateArgs extends PluginIdArgs {
+  expectedVersion?: string;
+}
+
+export interface PluginRollbackUpdateArgs extends PluginIdArgs {
+  expectedVersion?: string;
+}
+
+export interface PluginGetRollbackPointArgs extends PluginIdArgs {
+  signal?: AbortSignal;
 }
 
 export interface PluginInstallArgs {
@@ -226,6 +258,12 @@ export interface PluginPruneCacheArgs {
   signal?: AbortSignal;
 }
 
+export interface PluginSetTrackingRangeArgs extends PluginIdArgs {
+  range: string;
+  dryRun?: boolean;
+  signal?: AbortSignal;
+}
+
 export type PluginDisableResult = InstalledPlugin;
 export type PluginEnableResult = InstalledPlugin;
 export type PluginGetSettingsResult = PluginSettingsResponse;
@@ -237,11 +275,14 @@ export type PluginRemoveResult = PluginRemoveResponse;
 export type PluginSafeModeResult = PluginSafeModeResponse;
 export type PluginSetSafeModeResult = PluginSafeModeUpdateResponse;
 export type PluginPruneCacheResult = PluginCachePruneResponse;
+export type PluginSetTrackingRangeResult = PluginTrackingRangeResult;
 export type PluginTokenResult = PluginTokenResponse;
 export type PluginUpdateSettingsResult = PluginSettingsResponse;
 export type PluginGetSourceResult = PluginSourceDetail;
 export type PluginCheckUpdatesResult = PluginUpdateCheckEntry[];
 export type PluginApplyUpdateResult = PluginApplyUpdateContract;
+export type PluginRollbackUpdateResult = PluginRollbackContract;
+export type PluginGetRollbackPointResult = PluginRollbackPointResponse;
 
 export type PluginCatalogStatusResult = PluginCatalogStatusContract;
 export type PluginCatalogSearchEntry = PluginCatalogSearchContract;
@@ -300,9 +341,23 @@ export interface PluginsArea {
   experimental_pruneCache(
     args?: PluginPruneCacheArgs,
   ): Promise<PluginPruneCacheResult>;
-  applyUpdate(args: PluginIdArgs): Promise<PluginApplyUpdateResult>;
-  experimental_startUpdate(args: PluginIdArgs): Promise<PluginUpdateJob>;
+  experimental_setTrackingRange(
+    args: PluginSetTrackingRangeArgs,
+  ): Promise<PluginSetTrackingRangeResult>;
+  applyUpdate(args: PluginApplyUpdateArgs): Promise<PluginApplyUpdateResult>;
+  experimental_startUpdate(
+    args: PluginApplyUpdateArgs,
+  ): Promise<PluginUpdateJob>;
   experimental_updateJobs: PluginUpdateJobsArea;
+  experimental_getRollbackPoint(
+    args: PluginGetRollbackPointArgs,
+  ): Promise<PluginGetRollbackPointResult>;
+  experimental_rollbackUpdate(
+    args: PluginRollbackUpdateArgs,
+  ): Promise<PluginRollbackUpdateResult>;
+  experimental_startRollbackUpdate(
+    args: PluginRollbackUpdateArgs,
+  ): Promise<PluginUpdateJob>;
   callRpc<TOutput>(args: PluginRpcArgs<TOutput>): Promise<TOutput>;
   checkUpdates(
     args?: PluginCheckUpdatesArgs,
@@ -336,6 +391,46 @@ function pluginSourceSelection(
   }
   if (args.plugin !== undefined) return { kind: "entry", name: args.plugin };
   return undefined;
+}
+
+export class PluginUpdateExpectedVersionUnsupportedError extends Error {
+  readonly expectedVersion: string;
+  readonly pluginId: string;
+
+  constructor(args: { expectedVersion: string; pluginId: string }) {
+    super(
+      `Update not started; this BB server predates reviewed-release updates and cannot honor expectedVersion "${args.expectedVersion}". Upgrade the BB server, or retry without expectedVersion`,
+    );
+    this.name = "PluginUpdateExpectedVersionUnsupportedError";
+    this.expectedVersion = args.expectedVersion;
+    this.pluginId = args.pluginId;
+  }
+}
+
+export class PluginRollbackUnsupportedError extends Error {
+  readonly pluginId: string;
+
+  constructor(args: { pluginId: string }) {
+    super(
+      "Rollback not started; this BB server predates plugin rollback. Upgrade the BB server to roll back an update",
+    );
+    this.name = "PluginRollbackUnsupportedError";
+    this.pluginId = args.pluginId;
+  }
+}
+
+function missingRollbackRoute(error: unknown): boolean {
+  return error instanceof BbHttpError && error.status === 404;
+}
+
+function rejectedUpdateRequestFields(error: unknown): boolean {
+  return (
+    error instanceof BbHttpError &&
+    error.status === 400 &&
+    z
+      .object({ error: z.literal("expected an empty JSON object") })
+      .safeParse(error.body).success
+  );
 }
 
 function pluginPath(pluginId: string, suffix = ""): string {
@@ -391,18 +486,86 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
     },
   };
 
-  function requestUpdate(input: PluginIdArgs) {
-    return requestParsed(
-      pluginPath(input.pluginId, "/update"),
-      z.union([pluginUpdateJobResponseSchema, pluginApplyUpdateResultSchema]),
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          prefer: "respond-async",
+  async function requestUpdate(input: PluginApplyUpdateArgs) {
+    const body = pluginApplyUpdateRequestSchema.parse(
+      input.expectedVersion === undefined
+        ? {}
+        : { expectedVersion: input.expectedVersion },
+    );
+    try {
+      return await requestParsed(
+        pluginPath(input.pluginId, "/update"),
+        z.union([pluginUpdateJobResponseSchema, pluginApplyUpdateResultSchema]),
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            prefer: "respond-async",
+          },
+          body: JSON.stringify(body),
         },
-        body: JSON.stringify(pluginApplyUpdateRequestSchema.parse({})),
-      },
+      );
+    } catch (error) {
+      if (
+        input.expectedVersion !== undefined &&
+        rejectedUpdateRequestFields(error)
+      ) {
+        throw new PluginUpdateExpectedVersionUnsupportedError({
+          expectedVersion: input.expectedVersion,
+          pluginId: input.pluginId,
+        });
+      }
+      throw error;
+    }
+  }
+
+  async function startRollback(
+    input: PluginRollbackUpdateArgs,
+  ): Promise<PluginUpdateJob> {
+    const body = pluginRollbackRequestSchema.parse(
+      input.expectedVersion === undefined
+        ? {}
+        : { expectedVersion: input.expectedVersion },
+    );
+    try {
+      const response = await requestParsed(
+        pluginPath(input.pluginId, "/rollback"),
+        pluginUpdateJobResponseSchema,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            prefer: "respond-async",
+          },
+          body: JSON.stringify(body),
+        },
+      );
+      return response.job;
+    } catch (error) {
+      if (missingRollbackRoute(error)) {
+        throw new PluginRollbackUnsupportedError({ pluginId: input.pluginId });
+      }
+      throw error;
+    }
+  }
+
+  async function settleUpdateJob(
+    started: PluginUpdateJob,
+  ): Promise<Extract<PluginUpdateJob, { state: "completed" }>> {
+    let job = started;
+    while (job.state === "queued" || job.state === "running") {
+      await new Promise((resolve) =>
+        setTimeout(resolve, INSTALL_JOB_POLL_INTERVAL_MS),
+      );
+      job = await updateJobs.get({ jobId: job.id });
+    }
+    if (job.state === "completed") return job;
+    throw new Error(job.error);
+  }
+
+  function unexpectedJobKind(job: PluginUpdateJob, expected: string): Error {
+    return new Error(
+      `${expected} job ${job.id} finished as a ${job.kind} job on the BB server`,
     );
   }
 
@@ -583,15 +746,9 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
     async applyUpdate(input) {
       const response = await requestUpdate(input);
       if (!("job" in response)) return response;
-      let job = response.job;
-      while (job.state === "queued" || job.state === "running") {
-        await new Promise((resolve) =>
-          setTimeout(resolve, INSTALL_JOB_POLL_INTERVAL_MS),
-        );
-        job = await updateJobs.get({ jobId: job.id });
-      }
-      if (job.state === "completed") return job.result;
-      throw new Error(job.error);
+      const job = await settleUpdateJob(response.job);
+      if (job.kind === "update") return job.result;
+      throw unexpectedJobKind(job, "Update");
     },
     async experimental_startUpdate(input) {
       const response = await requestUpdate(input);
@@ -601,6 +758,28 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
       );
     },
     experimental_updateJobs: updateJobs,
+    async experimental_getRollbackPoint(input) {
+      try {
+        return await requestParsed(
+          pluginPath(input.pluginId, "/rollback"),
+          pluginRollbackPointResponseSchema,
+          { signal: input.signal },
+        );
+      } catch (error) {
+        if (missingRollbackRoute(error)) {
+          throw new PluginRollbackUnsupportedError({
+            pluginId: input.pluginId,
+          });
+        }
+        throw error;
+      }
+    },
+    async experimental_rollbackUpdate(input) {
+      const job = await settleUpdateJob(await startRollback(input));
+      if (job.kind === "rollback") return job.result;
+      throw unexpectedJobKind(job, "Rollback");
+    },
+    experimental_startRollbackUpdate: startRollback,
     async experimental_discoverRpc(input = {}) {
       const query = pluginRpcDiscoveryQuerySchema.parse(input);
       const params = new URLSearchParams();
@@ -655,6 +834,18 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
       return requestParsed(
         "/api/v1/plugins/cache/prune",
         pluginCachePruneResponseSchema,
+        { ...jsonInit("POST", body), signal: input.signal },
+      );
+    },
+    async experimental_setTrackingRange(input) {
+      const body = pluginTrackingRangeRequestSchema.parse(
+        input.dryRun === undefined
+          ? { range: input.range }
+          : { range: input.range, dryRun: input.dryRun },
+      );
+      return requestParsed(
+        pluginPath(input.pluginId, "/tracking-range"),
+        pluginTrackingRangeResultSchema,
         { ...jsonInit("POST", body), signal: input.signal },
       );
     },

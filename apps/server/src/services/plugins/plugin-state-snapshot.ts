@@ -1,9 +1,13 @@
 import Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
+import { constants, type Stats } from "node:fs";
 import {
+  access,
   copyFile,
   cp,
+  lstat,
   mkdir,
+  readdir,
   readFile,
   rm,
   stat,
@@ -14,12 +18,15 @@ import { z } from "zod";
 import { CURATED_PLUGIN_MARKETPLACE_NAME } from "@bb/server-contract";
 import {
   createPluginStateSnapshot,
+  findIncompletePluginRollbackSnapshot,
   getInstalledPlugin,
+  getPluginArtifact,
   getPluginStateSnapshot,
   listPluginKvRows,
   listPluginSchedules,
   listPluginSettingRows,
   replacePluginSnapshotState,
+  setPluginStateSnapshotFailed,
   setPluginStateSnapshotStatus,
   type DbConnection,
   type InstalledPluginRow,
@@ -102,17 +109,19 @@ const legacyInstalledPluginRowSchema = z
   })
   .strict();
 
+function isMissing(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "ENOENT";
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 async function exists(path: string): Promise<boolean> {
   return stat(path).then(
     () => true,
     (error: unknown) => {
-      if (
-        error instanceof Error &&
-        "code" in error &&
-        error.code === "ENOENT"
-      ) {
-        return false;
-      }
+      if (isMissing(error)) return false;
       throw error;
     },
   );
@@ -131,6 +140,7 @@ export async function createPluginStateSnapshotOnDisk(args: {
   now: number;
   retainedUntil: number;
   previousRegistration: InstalledPluginRow;
+  operation: PluginStateSnapshotRow["operation"];
 }): Promise<PluginStateSnapshotRow> {
   const id = randomUUID();
   const snapshotPath = join(
@@ -160,11 +170,13 @@ export async function createPluginStateSnapshotOnDisk(args: {
     secretsPath: hasSecrets ? secretsPath : null,
     registrationPath,
     status: "pending",
+    operation: args.operation,
     rollbackCandidateVersion: null,
     rollbackSourceFingerprint: null,
     rollbackBbVersion: null,
     rollbackSdkVersion: null,
     rollbackDetail: null,
+    failureDetail: null,
     createdAt: args.now,
     retainedUntil: args.retainedUntil,
     updatedAt: args.now,
@@ -200,7 +212,10 @@ export async function createPluginStateSnapshotOnDisk(args: {
     setPluginStateSnapshotStatus(args.db, id, "ready", args.now);
     return { ...record, status: "ready" };
   } catch (error) {
-    setPluginStateSnapshotStatus(args.db, id, "failed", args.now);
+    setPluginStateSnapshotFailed(args.db, id, {
+      detail: errorMessage(error),
+      updatedAt: args.now,
+    });
     throw error;
   }
 }
@@ -209,23 +224,50 @@ export async function restorePluginStateSnapshot(args: {
   db: DbConnection;
   dataDir: string;
   snapshotId: string;
-  now: number;
 }): Promise<void> {
   const snapshot = getPluginStateSnapshot(args.db, args.snapshotId);
   if (snapshot === undefined) {
     throw new Error(`plugin state snapshot disappeared: ${args.snapshotId}`);
   }
-  if (
-    snapshot.status !== "ready" &&
-    snapshot.status !== "rollback-pending" &&
-    snapshot.status !== "restoring" &&
-    snapshot.status !== "restored"
-  ) {
+  if (snapshot.status !== "restoring") {
     throw new Error(
-      `plugin state snapshot ${snapshot.id} is not restorable (${snapshot.status})`,
+      `plugin state snapshot ${snapshot.id} is not being restored (${snapshot.status})`,
     );
   }
-  setPluginStateSnapshotStatus(args.db, snapshot.id, "restoring", args.now);
+  await writePluginStateSnapshotData({
+    db: args.db,
+    dataDir: args.dataDir,
+    snapshot,
+  });
+}
+
+export async function applyPluginStateSnapshot(args: {
+  db: DbConnection;
+  dataDir: string;
+  snapshotId: string;
+}): Promise<void> {
+  const snapshot = getPluginStateSnapshot(args.db, args.snapshotId);
+  if (snapshot === undefined) {
+    throw new Error(`plugin state snapshot disappeared: ${args.snapshotId}`);
+  }
+  if (snapshot.status !== "ready") {
+    throw new Error(
+      `plugin state snapshot ${snapshot.id} is no longer a rollback point (${snapshot.status})`,
+    );
+  }
+  await writePluginStateSnapshotData({
+    db: args.db,
+    dataDir: args.dataDir,
+    snapshot,
+  });
+}
+
+async function writePluginStateSnapshotData(args: {
+  db: DbConnection;
+  dataDir: string;
+  snapshot: PluginStateSnapshotRow;
+}): Promise<void> {
+  const { snapshot } = args;
   const targetDir = pluginDataDir(args.dataDir, snapshot.pluginId);
   await mkdir(targetDir, { recursive: true });
   const targetDatabasePath = join(targetDir, "data.db");
@@ -247,6 +289,46 @@ export async function restorePluginStateSnapshot(args: {
   });
 }
 
+function snapshotRegistration(
+  db: DbConnection,
+  json: unknown,
+):
+  | { ok: true; registration: InstalledPluginRow }
+  | { ok: false; error: z.ZodError } {
+  const current = installedPluginRowSchema.safeParse(json);
+  if (current.success) return { ok: true, registration: current.data };
+  const legacy = legacyInstalledPluginRowSchema.safeParse(json);
+  if (!legacy.success) return { ok: false, error: current.error };
+  const { marketplaceId, marketplaceEntryId, ...registration } = legacy.data;
+  const installed = getInstalledPlugin(db, legacy.data.id);
+  if (
+    legacy.data.provenance === "marketplace" &&
+    marketplaceId === CURATED_PLUGIN_MARKETPLACE_NAME &&
+    marketplaceEntryId !== null &&
+    installed?.provenance === "catalog" &&
+    installed.catalogEntryId === marketplaceEntryId
+  ) {
+    return {
+      ok: true,
+      registration: {
+        ...registration,
+        provenance: "catalog",
+        catalogEntryId: marketplaceEntryId,
+        catalogMarketplaceName: CURATED_PLUGIN_MARKETPLACE_NAME,
+      },
+    };
+  }
+  return {
+    ok: true,
+    registration: {
+      ...registration,
+      provenance: legacy.data.provenance === "builtin" ? "builtin" : "direct",
+      catalogEntryId: null,
+      catalogMarketplaceName: null,
+    },
+  };
+}
+
 export async function readPluginSnapshotRegistration(args: {
   db: DbConnection;
   snapshotId: string;
@@ -260,34 +342,211 @@ export async function readPluginSnapshotRegistration(args: {
       `plugin state snapshot ${snapshot.id} predates restart-safe rollback metadata`,
     );
   }
-  const json: unknown = JSON.parse(
-    await readFile(snapshot.registrationPath, "utf8"),
+  const parsed = snapshotRegistration(
+    args.db,
+    JSON.parse(await readFile(snapshot.registrationPath, "utf8")),
   );
-  const current = installedPluginRowSchema.safeParse(json);
-  if (current.success) return current.data;
-  const legacy = legacyInstalledPluginRowSchema.parse(json);
-  const { marketplaceId, marketplaceEntryId, ...registration } = legacy;
-  const installed = getInstalledPlugin(args.db, legacy.id);
-  if (
-    legacy.provenance === "marketplace" &&
-    marketplaceId === CURATED_PLUGIN_MARKETPLACE_NAME &&
-    marketplaceEntryId !== null &&
-    installed?.provenance === "catalog" &&
-    installed.catalogEntryId === marketplaceEntryId
-  ) {
+  if (!parsed.ok) throw parsed.error;
+  return parsed.registration;
+}
+
+function firstIssue(error: z.ZodError): string {
+  const [issue] = error.issues;
+  if (issue === undefined) return error.message;
+  const path = issue.path.map(String).join(".");
+  return path === "" ? issue.message : `${path}: ${issue.message}`;
+}
+
+interface SnapshotProblem {
+  kind: "unusable" | "unreadable";
+  reason: string;
+}
+
+function readProblem(
+  error: unknown,
+  missing: string,
+  unreadable: string,
+): SnapshotProblem {
+  return isMissing(error)
+    ? { kind: "unusable", reason: missing }
+    : { kind: "unreadable", reason: `${unreadable}: ${errorMessage(error)}` };
+}
+
+async function readSavedJson(
+  path: string,
+  label: string,
+): Promise<
+  { ok: true; json: unknown } | { ok: false; problem: SnapshotProblem }
+> {
+  let text: string;
+  try {
+    text = await readFile(path, "utf8");
+  } catch (error) {
     return {
-      ...registration,
-      provenance: "catalog",
-      catalogEntryId: marketplaceEntryId,
-      catalogMarketplaceName: CURATED_PLUGIN_MARKETPLACE_NAME,
+      ok: false,
+      problem: readProblem(
+        error,
+        `its saved ${label} is missing`,
+        `its saved ${label} could not be read`,
+      ),
     };
   }
-  return {
-    ...registration,
-    provenance: legacy.provenance === "builtin" ? "builtin" : "direct",
-    catalogEntryId: null,
-    catalogMarketplaceName: null,
-  };
+  try {
+    return { ok: true, json: JSON.parse(text) };
+  } catch {
+    return {
+      ok: false,
+      problem: {
+        kind: "unusable",
+        reason: `its saved ${label} is not valid JSON`,
+      },
+    };
+  }
+}
+
+async function assertReadable(path: string): Promise<void> {
+  const entry = await lstat(path);
+  if (entry.isDirectory()) {
+    await access(path, constants.R_OK | constants.X_OK);
+    for (const name of await readdir(path)) {
+      await assertReadable(join(path, name));
+    }
+  } else if (entry.isFile()) {
+    await access(path, constants.R_OK);
+  }
+}
+
+async function savedCopyProblem(
+  path: string,
+  kind: "file" | "directory",
+  label: string,
+): Promise<SnapshotProblem | null> {
+  const unreadable = `its copy of the plugin ${label} could not be read`;
+  let entry: Stats;
+  try {
+    entry = await stat(path);
+  } catch (error) {
+    return readProblem(
+      error,
+      `its copy of the plugin ${label} is missing`,
+      unreadable,
+    );
+  }
+  if (kind === "file" ? !entry.isFile() : !entry.isDirectory()) {
+    return { kind: "unreadable", reason: `${unreadable}: it is not a ${kind}` };
+  }
+  try {
+    await assertReadable(path);
+    return null;
+  } catch (error) {
+    return {
+      kind: "unreadable",
+      reason: `${unreadable}: ${errorMessage(error)}`,
+    };
+  }
+}
+
+function registrationContentProblem(args: {
+  db: DbConnection;
+  snapshot: PluginStateSnapshotRow;
+  registration: InstalledPluginRow;
+  registrationProblem: (registration: InstalledPluginRow) => string | null;
+}): string | null {
+  const { registration, snapshot } = args;
+  if (registration.id !== snapshot.pluginId) {
+    return `its saved registration belongs to plugin "${registration.id}"`;
+  }
+  const problem = args.registrationProblem(registration);
+  if (problem !== null) {
+    return `its saved registration is inconsistent (${problem})`;
+  }
+  if (registration.activeArtifactId !== snapshot.fromArtifactId) {
+    return "its saved registration names a different release than the one it was saved from";
+  }
+  if (
+    snapshot.fromArtifactId !== null &&
+    getPluginArtifact(args.db, snapshot.fromArtifactId) === undefined
+  ) {
+    return `the release it restores is no longer kept (artifact ${snapshot.fromArtifactId})`;
+  }
+  return null;
+}
+
+export async function checkPluginStateSnapshot(args: {
+  db: DbConnection;
+  snapshot: PluginStateSnapshotRow;
+  registrationProblem: (registration: InstalledPluginRow) => string | null;
+}): Promise<
+  { kind: "usable"; registration: InstalledPluginRow } | SnapshotProblem
+> {
+  const { snapshot } = args;
+  if (snapshot.registrationPath === null) {
+    return {
+      kind: "unusable",
+      reason: "it predates restart-safe rollback metadata",
+    };
+  }
+  const registrationJson = await readSavedJson(
+    snapshot.registrationPath,
+    "registration",
+  );
+  if (!registrationJson.ok) return registrationJson.problem;
+  const parsed = snapshotRegistration(args.db, registrationJson.json);
+  if (!parsed.ok) {
+    return {
+      kind: "unusable",
+      reason: `its saved registration does not match this bb's format (${firstIssue(parsed.error)})`,
+    };
+  }
+  const registrationProblem = registrationContentProblem({
+    db: args.db,
+    snapshot,
+    registration: parsed.registration,
+    registrationProblem: args.registrationProblem,
+  });
+  if (registrationProblem !== null) {
+    return { kind: "unusable", reason: registrationProblem };
+  }
+  const stateJson = await readSavedJson(snapshot.statePath, "host state");
+  if (!stateJson.ok) return stateJson.problem;
+  const state = stateSchema.safeParse(stateJson.json);
+  if (!state.success) {
+    return {
+      kind: "unusable",
+      reason: `its saved host state does not match this bb's format (${firstIssue(state.error)})`,
+    };
+  }
+  const copyProblem =
+    (snapshot.databasePath === null
+      ? null
+      : await savedCopyProblem(snapshot.databasePath, "file", "database")) ??
+    (snapshot.secretsPath === null
+      ? null
+      : await savedCopyProblem(snapshot.secretsPath, "directory", "secrets"));
+  if (copyProblem !== null) return copyProblem;
+  return { kind: "usable", registration: parsed.registration };
+}
+
+export function pluginRestoreHold(
+  db: DbConnection,
+  pluginId: string,
+): string | null {
+  const snapshot = findIncompletePluginRollbackSnapshot(db, pluginId);
+  if (snapshot === undefined) return null;
+  const reason =
+    snapshot.failureDetail === null ? "" : `: ${snapshot.failureDetail}`;
+  return `held until bb finishes undoing its ${snapshot.operation}${reason}; run \`bb plugin reload ${pluginId}\` to retry, or remove the plugin as a last resort`;
+}
+
+export function pluginRestoreHoldRefusal(
+  db: DbConnection,
+  pluginId: string,
+  action: string,
+): string | null {
+  const hold = pluginRestoreHold(db, pluginId);
+  return hold === null
+    ? null
+    : `${action} refused: plugin "${pluginId}" is ${hold}`;
 }
 
 export async function restorePluginHostStateSnapshot(args: {

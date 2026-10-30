@@ -176,7 +176,7 @@ async function cloneGitCommit(
   await rm(join(stagingDir, ".git"), { recursive: true, force: true });
 }
 
-function npmSourceString(intent: NpmSourceIntentForResolution): string {
+export function npmSourceString(intent: NpmSourceIntentForResolution): string {
   return intent.specKind === "default"
     ? `npm:${intent.packageName}`
     : `npm:${intent.packageName}@${intent.requestedSpec}`;

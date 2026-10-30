@@ -16,6 +16,16 @@ export function usePluginUpdateJobs() {
   });
 }
 
-export function startPluginUpdate(pluginId: string): Promise<PluginUpdateJob> {
-  return createPluginsClient(fetch).experimental_startUpdate({ pluginId });
+export function startPluginUpdate(args: {
+  pluginId: string;
+  expectedVersion: string;
+}): Promise<PluginUpdateJob> {
+  return createPluginsClient(fetch).experimental_startUpdate(args);
+}
+
+export function startPluginRollback(args: {
+  pluginId: string;
+  expectedVersion: string;
+}): Promise<PluginUpdateJob> {
+  return createPluginsClient(fetch).experimental_startRollbackUpdate(args);
 }

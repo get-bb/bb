@@ -9,6 +9,7 @@ import {
   createPluginStateSnapshot,
   getInstalledPluginRegistration,
   listPluginArtifacts,
+  listPluginStateSnapshots,
   upsertInstalledPlugin,
   type DbConnection,
 } from "@bb/db";
@@ -121,6 +122,7 @@ describe("plugin cache pruning", () => {
     id: string,
     fromArtifactId: string,
     status: "ready" | "rollback-pending",
+    retainedUntil = Date.now() + 7 * 24 * 60 * 60_000,
   ): void {
     const snapshotPath = join(dataDir, "plugins", "snapshots", id);
     createPluginStateSnapshot(db, {
@@ -134,20 +136,22 @@ describe("plugin cache pruning", () => {
       secretsPath: null,
       registrationPath: null,
       status,
+      operation: "update",
       rollbackCandidateVersion: status === "ready" ? null : "candidate",
       rollbackSourceFingerprint: status === "ready" ? null : "source",
       rollbackBbVersion: status === "ready" ? null : "1.0.0",
       rollbackSdkVersion: status === "ready" ? null : "0.6.0",
       rollbackDetail: status === "ready" ? null : "failed",
+      failureDetail: null,
       createdAt: Date.now(),
-      retainedUntil: Date.now() + 7 * 24 * 60 * 60_000,
+      retainedUntil,
       updatedAt: Date.now(),
     });
   }
 
   it("deletes unused versions inside their retention window and keeps everything in use", async () => {
     const commit = (letter: string) => letter.repeat(40);
-    for (const letter of ["a", "b", "c", "d", "e"]) {
+    for (const letter of ["a", "b", "c", "d", "e", "f"]) {
       await fill(join(gitRepoCache, commit(letter)));
     }
     const temporary = join(gitRepoCache, `${commit("b")}.staging`);
@@ -174,6 +178,7 @@ describe("plugin cache pruning", () => {
     gitArtifact("active", commit("a"), join(gitRepoCache, commit("a")));
     gitArtifact("replaced", commit("b"), join(gitRepoCache, commit("b")));
     gitArtifact("pending", commit("c"), join(gitRepoCache, commit("c")));
+    gitArtifact("expired", commit("f"), join(gitRepoCache, commit("f")));
     installGitRow(db, {
       id: "pruned",
       rootDir: join(gitRepoCache, commit("a")),
@@ -188,12 +193,14 @@ describe("plugin cache pruning", () => {
     });
     snapshot("ready", "replaced", "ready");
     snapshot("pending", "pending", "rollback-pending");
+    snapshot("expired", "expired", "ready", Date.now() - 1);
     const warnings: string[] = [];
     const prune = (dryRun: boolean) =>
       prunePluginCache({
         db,
         dataDir,
         dryRun,
+        now: Date.now(),
         warn: (message) => warnings.push(message),
       });
 
@@ -201,17 +208,17 @@ describe("plugin cache pruning", () => {
     expect(
       preview.removed.map(({ pluginId, version }) => ({ pluginId, version })),
     ).toEqual([
-      { pluginId: "pruned", version: commit("b") },
+      { pluginId: "pruned", version: commit("f") },
       { pluginId: null, version: commit("e") },
       { pluginId: null, version: "1.0.0" },
     ]);
     expect(preview.removed.every(({ bytes }) => bytes > 0)).toBe(true);
-    expect(await exists(join(gitRepoCache, commit("b")))).toBe(true);
-    expect(listPluginArtifacts(db, "pruned")).toHaveLength(3);
+    expect(await exists(join(gitRepoCache, commit("f")))).toBe(true);
+    expect(listPluginArtifacts(db, "pruned")).toHaveLength(4);
 
     const pruned = await prune(false);
     expect(pruned).toEqual({ ...preview, dryRun: false });
-    for (const removed of [commit("b"), commit("e")]) {
+    for (const removed of [commit("f"), commit("e")]) {
       expect(await exists(join(gitRepoCache, removed))).toBe(false);
     }
     expect(
@@ -219,6 +226,7 @@ describe("plugin cache pruning", () => {
     ).toBe(false);
     for (const kept of [
       join(gitRepoCache, commit("a")),
+      join(gitRepoCache, commit("b")),
       join(gitRepoCache, commit("c")),
       join(gitRepoCache, commit("d")),
       temporary,
@@ -230,7 +238,7 @@ describe("plugin cache pruning", () => {
       listPluginArtifacts(db, "pruned")
         .map((artifact) => artifact.id)
         .sort(),
-    ).toEqual(["active", "pending"]);
+    ).toEqual(["active", "pending", "replaced"]);
     expect(warnings).toEqual([]);
     expect((await prune(false)).removed).toEqual([]);
   });
@@ -289,7 +297,7 @@ describe("plugin cache pruning", () => {
       const unusedRoot = join(gitRepoCache, unusedCommit);
       await fill(unusedRoot);
       gitArtifact("unused", unusedCommit, unusedRoot);
-      const args = { db, dataDir, warn: () => {} };
+      const args = { db, dataDir, now: Date.now(), warn: () => {} };
 
       if (operation === "prune") {
         const preview = await prunePluginCache({ ...args, dryRun: true });
@@ -333,6 +341,7 @@ describe("plugin cache pruning", () => {
       db,
       dataDir,
       dryRun: false,
+      now: Date.now(),
       warn: () => {},
     });
 
@@ -424,7 +433,7 @@ describe("git plugin cache lifecycle", () => {
     return artifact.path;
   }
 
-  it("keeps no clone history and deletes the version an update replaced", async () => {
+  it("keeps no clone history and keeps the version an update replaced as its rollback point", async () => {
     const firstRoot = activeRoot();
     expect(await exists(join(firstRoot, "package.json"))).toBe(true);
     expect(await exists(join(firstRoot, ".git"))).toBe(false);
@@ -437,18 +446,44 @@ describe("git plugin cache lifecycle", () => {
     const secondRoot = activeRoot();
     expect(secondRoot).not.toBe(firstRoot);
     expect(await exists(join(secondRoot, ".git"))).toBe(false);
-    expect(await exists(firstRoot)).toBe(false);
+    expect(await exists(join(firstRoot, "package.json"))).toBe(true);
     expect(await exists(join(secondRoot, "package.json"))).toBe(true);
-    expect(listPluginArtifacts(db, "cached")).toHaveLength(1);
+    expect(listPluginArtifacts(db, "cached")).toHaveLength(2);
     await expect(service.pruneCache({ dryRun: false })).resolves.toMatchObject({
       removed: [],
     });
+    expect(await exists(join(firstRoot, "package.json"))).toBe(true);
     await expect(service.reload("cached")).resolves.toMatchObject({
       ok: true,
     });
     expect(service.list()).toMatchObject([
       { id: "cached", version: "1.1.0", status: "running" },
     ]);
+  });
+
+  it("deletes every kept version and rollback snapshot when the plugin is removed", async () => {
+    const firstRoot = activeRoot();
+    await commitPlugin("1.1.0");
+    await expect(service.applyUpdate("cached")).resolves.toMatchObject({
+      ok: true,
+      result: { applied: true },
+    });
+    const secondRoot = activeRoot();
+    const [rollbackSnapshot] = listPluginStateSnapshots(db, "cached");
+    if (rollbackSnapshot === undefined) throw new Error("missing snapshot");
+    expect(await exists(rollbackSnapshot.snapshotPath)).toBe(true);
+
+    await expect(service.remove("cached")).resolves.toBe(true);
+
+    for (const root of [firstRoot, secondRoot]) {
+      expect(await exists(root)).toBe(false);
+    }
+    expect(listPluginArtifacts(db, "cached")).toEqual([]);
+    expect(listPluginStateSnapshots(db, "cached")).toEqual([]);
+    expect(await exists(rollbackSnapshot.snapshotPath)).toBe(false);
+    expect(await readdir(join(workDir, "data", "plugins", "cache"))).toEqual(
+      [],
+    );
   });
 
   it("deletes the cached clone when the plugin is removed", async () => {

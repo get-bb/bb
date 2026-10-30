@@ -76,6 +76,48 @@ to the previous state snapshot and records the failure for the user. Keep the
 `engines` ranges honest and ship load-safe factories so an update never
 strands users.
 
+Updates stay inside the semver range recorded at install and never move to a
+release older than the installed one. An update applies only the release the
+user reviewed: `bb plugin update` and the app send the candidate the check
+showed, and when the range resolves to another release by the time it
+applies, bb refuses until the user checks again. A candidate that may break,
+a new major, a new minor before 1.0, or a new patch before 0.1, is flagged
+before the user confirms.
+
+When your newest stable release is newer than every release a user's range
+admits, such as a 0.x minor under `^0.y.z` or a new major under `^x.y.z`,
+`bb plugin outdated`, `bb plugin update`, and the plugin's page name it and
+say whether it may break, but never install it: bb has not checked its
+compatibility. An install keeps the range it was installed with, so a range
+you later change in your marketplace entry reaches new installs only. Users
+move an existing git semver-range or npm install to another range in place
+with `bb plugin track <id> <range>`, or Change range in the plugin's details.
+For that release, bb suggests `>=<installed> <N.0.0`, where N is one above its
+major version, when it is newer than every version the range admits; when the
+range also admits higher versions with no release yet, such as
+`^1.0.0 || ^3.0.0` while only 2.x is out, bb adds `>=<release> <N.0.0` to the
+range as another alternative instead, so nothing it allowed is dropped. The
+CLI prints the suggestion as the `bb plugin track` command to run, and Change
+range opens on it. Both keep the plugin's settings, secrets, schedules, and
+data. bb previews what the range offers, refuses a bare version, a range that
+admits no version, or one that admits neither the installed release nor a
+newer one, warns when the range has no upper bound so every future major
+release would be offered, and installs nothing until the user updates. Name
+the range to track in your release notes, in double quotes, which protect
+`<`, `>`, and `|` in POSIX shells, PowerShell, and cmd.exe:
+`bb plugin track <id> ">=0.2.0 <1.0.0"`.
+
+For 7 days after a successful update, a user can run `bb plugin rollback <id>`
+(or use Roll back on the plugin's page) to return to the release it replaced.
+Rollback restores the plugin's data.db, KV entries, settings, secrets, and
+schedules from before the update, so anything the new release wrote, including
+data migrations, is discarded. It does not restore thread plugin metadata or
+files your plugin keeps outside data.db and its secrets directory: those keep
+what the newer release wrote, so keep state that must match the running
+release in data.db, KV, or settings. Keep the previous release able to start
+from its own data, and do not assume a migration runs only once: after a
+rollback the next update applies it again.
+
 ### Releasing a git plugin with semver tags
 
 Tag each release `vX.Y.Z` and users can install a range instead of a ref:

@@ -2000,6 +2000,65 @@ describe("@bb/sdk", () => {
     ]);
   });
 
+  it("reads a failed update and a reload from a server that predates restored and warnings", async () => {
+    const plugin = {
+      id: "notes",
+      source: "npm:@bb/notes@^1",
+      rootDir: "/plugins/notes",
+      version: "1.2.0",
+      provenance: "direct",
+      isOrphanedBuiltin: false,
+      publisherLabel: null,
+      sourceDisplay: "npm · @bb/notes · tracks compatible",
+      updateState: {
+        lastFailure: {
+          version: "1.3.0",
+          label: "1.3.0",
+          at: 5,
+          detail: "boom",
+        },
+      },
+      enabled: true,
+      description: null,
+      name: null,
+      icon: null,
+      iconUrl: null,
+      status: "running",
+      statusDetail: null,
+      handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
+      services: [],
+      schedules: [],
+      cliCommand: null,
+      hasSettings: false,
+      app: { hasApp: false, bundle: null },
+      logoUrl: null,
+      logoDarkUrl: null,
+    };
+    const queue = createFetchQueue([
+      { body: { plugins: [plugin] } },
+      { body: { ok: true, plugins: [plugin] } },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test/",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    const listed = await sdk.plugins.list();
+    expect(listed.plugins[0]?.updateState.lastFailure).toEqual({
+      version: "1.3.0",
+      label: "1.3.0",
+      at: 5,
+      detail: "boom",
+      restored: true,
+    });
+    const reloaded = await sdk.plugins.reload({ pluginId: "notes" });
+    expect(reloaded.warnings).toEqual([]);
+    expect(reloaded.plugins[0]?.updateState.lastFailure?.restored).toBe(true);
+  });
+
   it("sends a nested-plugin selection and refuses two selectors at once", async () => {
     const plugin = { id: "notes" };
     const queue = createFetchQueue([

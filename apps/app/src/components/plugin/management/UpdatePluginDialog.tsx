@@ -20,6 +20,7 @@ import {
   DetailsDisclosure,
   formatAbsoluteDate,
   KeyValueGrid,
+  pluginUpdateFailureSummary,
   RollbackNote,
   SUCCESS_TEXT_STYLE,
 } from "./plugin-ui";
@@ -62,7 +63,8 @@ function UpdatePluginDialogContent({
   const state = plugin.updateState;
   const update = useMutation({
     meta: { showErrorToast: false },
-    mutationFn: () => startPluginUpdate(plugin.id),
+    mutationFn: (expectedVersion: string) =>
+      startPluginUpdate({ pluginId: plugin.id, expectedVersion }),
     onSuccess: (job) => {
       applyPluginUpdateJob({ queryClient, job });
       onOpenChange(false);
@@ -79,7 +81,8 @@ function UpdatePluginDialogContent({
   const failure = state.lastFailure;
 
   if (failure !== null) {
-    const retryVersion = state.availableLabel;
+    const retryVersion = state.availableVersion;
+    const retryLabel = state.availableLabel;
     return (
       <>
         <DialogHeader>
@@ -97,10 +100,7 @@ function UpdatePluginDialogContent({
               className="mt-0.5 size-4 shrink-0 text-destructive"
               aria-hidden
             />
-            <span>
-              bb couldn&rsquo;t activate {failure.label}. It restored{" "}
-              {plugin.version} and its data.
-            </span>
+            <span>{pluginUpdateFailureSummary(plugin)}</span>
           </div>
           {failure.detail.length > 0 ? (
             <DetailsDisclosure
@@ -114,9 +114,9 @@ function UpdatePluginDialogContent({
             </DetailsDisclosure>
           ) : null}
           <p className="text-xs text-muted-foreground">
-            {retryVersion === null
-              ? `The restored version can keep running. Try again when a compatible update becomes available.`
-              : `A compatible update to ${retryVersion} is still available. Retry when you’re ready.`}
+            {retryVersion === null || retryLabel === null
+              ? `${failure.restored ? "The restored version can keep running. " : ""}Try again when a compatible update becomes available.`
+              : `A compatible update to ${retryLabel} is still available. Retry when you’re ready.`}
           </p>
         </div>
         <DialogFooter>
@@ -127,13 +127,13 @@ function UpdatePluginDialogContent({
           >
             Close
           </Button>
-          {retryVersion === null ? null : (
+          {retryVersion === null || retryLabel === null ? null : (
             <Button
               type="button"
               disabled={update.isPending}
               aria-busy={update.isPending}
-              aria-label={`Retry update to ${retryVersion}`}
-              onClick={() => update.mutate()}
+              aria-label={`Retry update to ${retryLabel}`}
+              onClick={() => update.mutate(retryVersion)}
             >
               {update.isPending ? (
                 <Icon name="Spinner" className="animate-spin" />
@@ -146,13 +146,14 @@ function UpdatePluginDialogContent({
     );
   }
 
-  if (state.availableLabel !== null) {
-    const candidate = state.availableLabel;
+  if (state.availableVersion !== null && state.availableLabel !== null) {
+    const candidate = state.availableVersion;
+    const candidateLabel = state.availableLabel;
     return (
       <>
         <DialogHeader>
           <DialogTitle>
-            Update {name} to {candidate}?
+            Update {name} to {candidateLabel}?
           </DialogTitle>
           <DialogDescription>{fromLine}</DialogDescription>
         </DialogHeader>
@@ -163,16 +164,37 @@ function UpdatePluginDialogContent({
             </span>
             <span>Compatible with your bb and plugin SDK</span>
           </div>
+          {state.availableBreaking ? (
+            <div className="flex items-start gap-2 text-sm">
+              <Icon
+                name="AlertTriangle"
+                className="mt-0.5 size-4 shrink-0 text-warning"
+                aria-hidden
+              />
+              <span>
+                {candidateLabel} may include breaking changes: it moves to a new
+                major version, a new minor version before 1.0, or a new patch
+                version before 0.1. bb doesn&rsquo;t check that this
+                plugin&rsquo;s settings and data carry over.
+              </span>
+            </div>
+          ) : null}
           <DetailsDisclosure summary="Details — source, versions">
             <KeyValueGrid
               entries={[
                 { key: "Source", value: plugin.sourceDisplay },
                 { key: "Current", value: plugin.version },
-                { key: "Candidate", value: candidate },
+                {
+                  key: "Candidate",
+                  value: state.availableDisplay ?? candidateLabel,
+                },
               ]}
             />
           </DetailsDisclosure>
-          <RollbackNote fromVersion={plugin.version} toVersion={candidate} />
+          <RollbackNote
+            fromVersion={plugin.version}
+            toVersion={candidateLabel}
+          />
         </div>
         <DialogFooter>
           <Button
@@ -187,7 +209,7 @@ function UpdatePluginDialogContent({
             type="button"
             disabled={update.isPending}
             aria-busy={update.isPending}
-            onClick={() => update.mutate()}
+            onClick={() => update.mutate(candidate)}
           >
             {update.isPending ? (
               <Icon name="Spinner" className="animate-spin" />

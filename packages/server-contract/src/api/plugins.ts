@@ -33,12 +33,24 @@ export const pluginResolvedVersionSchema = z.object({
   display: z.string(),
 });
 
+export const pluginOutsideRangeReleaseSchema = z.object({
+  version: z.string(),
+  display: z.string(),
+  breaking: z.boolean(),
+  range: z.string(),
+  suggestedRange: z.string().optional(),
+});
+export type PluginOutsideRangeRelease = z.infer<
+  typeof pluginOutsideRangeReleaseSchema
+>;
+
 export const pluginUpdateCheckEntrySchema = z.object({
   id: z.string(),
   outcome: pluginUpdateOutcomeSchema,
   devMode: z.literal(true).optional(),
   installed: pluginResolvedVersionSchema,
   candidate: pluginResolvedVersionSchema.optional(),
+  candidateBreaking: z.literal(true).optional(),
   blocked: z
     .object({
       version: z.string(),
@@ -46,6 +58,7 @@ export const pluginUpdateCheckEntrySchema = z.object({
       reasons: z.array(z.string()),
     })
     .optional(),
+  outsideRange: pluginOutsideRangeReleaseSchema.optional(),
   detail: z.string().optional(),
 });
 export type PluginUpdateCheckEntry = z.infer<
@@ -60,7 +73,12 @@ export const pluginUpdateCheckResponseSchema = z.object({
   results: z.array(pluginUpdateCheckEntrySchema),
 });
 
-export const pluginApplyUpdateRequestSchema = z.object({}).strict();
+export const pluginApplyUpdateRequestSchema = z
+  .object({ expectedVersion: z.string().min(1).optional() })
+  .strict();
+export type PluginApplyUpdateRequest = z.infer<
+  typeof pluginApplyUpdateRequestSchema
+>;
 
 export const pluginApplyUpdateResultSchema = z.object({
   applied: z.boolean(),
@@ -73,6 +91,15 @@ export type PluginApplyUpdateResult = z.infer<
   typeof pluginApplyUpdateResultSchema
 >;
 
+export const pluginRollbackResultSchema = z.object({
+  applied: z.boolean(),
+  from: pluginResolvedVersionSchema,
+  to: pluginResolvedVersionSchema,
+  outcome: z.enum(["reverted", "rolled-back"]),
+  detail: z.string().optional(),
+});
+export type PluginRollbackResult = z.infer<typeof pluginRollbackResultSchema>;
+
 export const pluginUpdatePhaseSchema = z.enum([
   "preparing",
   "activating",
@@ -81,29 +108,34 @@ export const pluginUpdatePhaseSchema = z.enum([
 ]);
 export type PluginUpdatePhase = z.infer<typeof pluginUpdatePhaseSchema>;
 
-const pluginUpdateJobFields = {
-  id: z.string().min(1),
-  pluginId: z.string().min(1),
-  displayName: z.string().min(1),
-};
+function pluginUpdateJobStates<
+  Kind extends z.ZodType,
+  Result extends z.ZodType,
+>(kind: Kind, result: Result) {
+  const fields = {
+    id: z.string().min(1),
+    pluginId: z.string().min(1),
+    displayName: z.string().min(1),
+    kind,
+  };
+  return z.discriminatedUnion("state", [
+    z.object({ ...fields, state: z.literal("queued") }),
+    z.object({
+      ...fields,
+      state: z.literal("running"),
+      phase: pluginUpdatePhaseSchema,
+    }),
+    z.object({ ...fields, state: z.literal("completed"), result }),
+    z.object({ ...fields, state: z.literal("failed"), error: z.string() }),
+  ]);
+}
 
-export const pluginUpdateJobSchema = z.discriminatedUnion("state", [
-  z.object({ ...pluginUpdateJobFields, state: z.literal("queued") }),
-  z.object({
-    ...pluginUpdateJobFields,
-    state: z.literal("running"),
-    phase: pluginUpdatePhaseSchema,
-  }),
-  z.object({
-    ...pluginUpdateJobFields,
-    state: z.literal("completed"),
-    result: pluginApplyUpdateResultSchema,
-  }),
-  z.object({
-    ...pluginUpdateJobFields,
-    state: z.literal("failed"),
-    error: z.string(),
-  }),
+export const pluginUpdateJobSchema = z.discriminatedUnion("kind", [
+  pluginUpdateJobStates(
+    z.literal("update").default("update"),
+    pluginApplyUpdateResultSchema,
+  ),
+  pluginUpdateJobStates(z.literal("rollback"), pluginRollbackResultSchema),
 ]);
 export type PluginUpdateJob = z.infer<typeof pluginUpdateJobSchema>;
 export const pluginUpdateJobResponseSchema = z.object({
@@ -112,6 +144,29 @@ export const pluginUpdateJobResponseSchema = z.object({
 export const pluginUpdateJobListResponseSchema = z.object({
   jobs: z.array(pluginUpdateJobSchema),
 });
+
+export const pluginTrackingRangeRequestSchema = z
+  .object({ range: z.string().min(1), dryRun: z.boolean().optional() })
+  .strict();
+export type PluginTrackingRangeRequest = z.infer<
+  typeof pluginTrackingRangeRequestSchema
+>;
+
+export const pluginTrackingRangeResultSchema = z.object({
+  applied: z.boolean(),
+  /**
+   * What the install followed before the change: its git or npm semver range,
+   * or for an npm install its exact version or dist-tag. `null` for an npm
+   * install that named no version and followed its latest release.
+   */
+  previousRange: z.string().nullable(),
+  range: z.string(),
+  openEnded: z.boolean(),
+  check: pluginUpdateCheckEntrySchema,
+});
+export type PluginTrackingRangeResult = z.infer<
+  typeof pluginTrackingRangeResultSchema
+>;
 
 export const pluginSourceHistoryEntrySchema = z.object({
   version: z.string(),
@@ -123,6 +178,15 @@ export const pluginSourceDetailSchema = z.object({
   resolved: z.string(),
   subdirectory: z.string().optional(),
   range: z.string().optional(),
+  /**
+   * How an npm install picks releases: a semver `range` (see `range`), a
+   * dist-`tag` (see `distTag`), an `exact` version it is pinned to, or
+   * `default` when it named no version and follows its latest release.
+   * Absent for other sources.
+   */
+  npmSpecKind: z.enum(["default", "exact", "tag", "range"]).optional(),
+  /** The npm dist-tag a `tag` install follows. */
+  distTag: z.string().optional(),
   tagPrefix: z.string().optional(),
   resolvedTag: z.string().optional(),
   integrity: z.string().optional(),
@@ -136,11 +200,42 @@ export const pluginSourceDetailSchema = z.object({
 });
 export type PluginSourceDetail = z.infer<typeof pluginSourceDetailSchema>;
 
+export const pluginRollbackRequestSchema = z
+  .object({ expectedVersion: z.string().min(1).optional() })
+  .strict();
+export type PluginRollbackRequest = z.infer<typeof pluginRollbackRequestSchema>;
+
+export const pluginRollbackPointSchema = z.object({
+  version: z.string(),
+  label: z.string(),
+  display: z.string(),
+  until: z.number(),
+});
+export type PluginRollbackPoint = z.infer<typeof pluginRollbackPointSchema>;
+
+export const pluginRollbackPointResponseSchema = z.discriminatedUnion(
+  "outcome",
+  [
+    z.object({
+      outcome: z.literal("rollback-available"),
+      from: pluginResolvedVersionSchema,
+      point: pluginRollbackPointSchema,
+    }),
+    z.object({ outcome: z.literal("unavailable"), detail: z.string() }),
+  ],
+);
+export type PluginRollbackPointResponse = z.infer<
+  typeof pluginRollbackPointResponseSchema
+>;
+
 export const pluginUpdateStateSchema = z.object({
   outcome: pluginUpdateOutcomeSchema.optional(),
   detail: z.string().optional(),
   availableVersion: z.string().optional(),
   availableLabel: z.string().optional(),
+  availableDisplay: z.string().optional(),
+  availableBreaking: z.literal(true).optional(),
+  outsideRange: pluginOutsideRangeReleaseSchema.optional(),
   blockedVersion: z.string().optional(),
   blockedLabel: z.string().optional(),
   blockedReasons: z.array(z.string()).optional(),
@@ -151,8 +246,10 @@ export const pluginUpdateStateSchema = z.object({
       label: z.string(),
       at: z.number(),
       detail: z.string(),
+      restored: z.boolean(),
     })
     .optional(),
+  rollback: pluginRollbackPointSchema.optional(),
 });
 
 export const pluginHandlerStatsSchema = z.object({
@@ -365,6 +462,7 @@ export const pluginInstallJobListResponseSchema = z.object({
 export const pluginReloadResponseSchema = z.object({
   ok: z.literal(true),
   plugins: z.array(installedPluginSchema),
+  warnings: z.array(z.string()),
 });
 export type PluginReloadResponse = z.infer<typeof pluginReloadResponseSchema>;
 

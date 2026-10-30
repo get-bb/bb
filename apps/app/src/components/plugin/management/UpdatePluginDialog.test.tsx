@@ -122,19 +122,20 @@ describe("UpdatePluginDialog", () => {
   });
 
   it("opens persisted failure details and retries an available update", async () => {
-    const fetchMock = vi.fn(async () =>
-      Response.json(
-        {
-          job: {
-            id: "update-1",
-            pluginId: "linear",
-            displayName: "Linear",
-            state: "running",
-            phase: "preparing",
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        Response.json(
+          {
+            job: {
+              id: "update-1",
+              pluginId: "linear",
+              displayName: "Linear",
+              state: "running",
+              phase: "preparing",
+            },
           },
-        },
-        { status: 202 },
-      ),
+          { status: 202 },
+        ),
     );
     vi.stubGlobal("fetch", fetchMock);
     const onOpenChange = vi.fn();
@@ -150,6 +151,7 @@ describe("UpdatePluginDialog", () => {
             label: "1.7.0",
             at: failedAt,
             detail: "factory threw during activation",
+            restored: true,
           },
         })}
         open
@@ -172,7 +174,62 @@ describe("UpdatePluginDialog", () => {
     );
 
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      expectedVersion: "1.8.0",
+    });
     await vi.waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+  });
+
+  it("names a git release by its label, warns that it may break, and applies only that release", async () => {
+    const commit = "a985e1d5523398e9c7459d35679142cc4339771e";
+    const display = `https://github.com/acme/bb-plugin-linear.git@v2.0.0 (${commit.slice(0, 12)})`;
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        Response.json(
+          {
+            job: {
+              id: "update-1",
+              pluginId: "linear",
+              displayName: "Linear",
+              state: "running",
+              phase: "checking",
+            },
+          },
+          { status: 202 },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { wrapper } = createDialogTestHarness();
+    render(
+      <UpdatePluginDialog
+        plugin={plugin({
+          availableVersion: commit,
+          availableLabel: "2.0.0",
+          availableDisplay: display,
+          availableBreaking: true,
+        })}
+        open
+        onOpenChange={() => {}}
+      />,
+      { wrapper },
+    );
+
+    expect(screen.getByText("Update Linear to 2.0.0?")).toBeTruthy();
+    expect(
+      screen.getByText(/^2\.0\.0 may include breaking changes/u),
+    ).toBeTruthy();
+    expect(screen.getByTestId("rollback-note").textContent).toContain(
+      "if 2.0.0 fails to start",
+    );
+    fireEvent.click(screen.getByRole("button", { name: /details — source/i }));
+    expect(screen.getByText(display)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Update" }));
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      expectedVersion: commit,
+    });
   });
 
   it("keeps a persisted failure actionable without offering an unavailable retry", () => {
@@ -186,6 +243,7 @@ describe("UpdatePluginDialog", () => {
             label: "1.7.0",
             at: null,
             detail: "factory threw during activation",
+            restored: true,
           },
         })}
         open
@@ -198,11 +256,43 @@ describe("UpdatePluginDialog", () => {
     expect(screen.queryByRole("button", { name: /Retry update/ })).toBeNull();
   });
 
+  it("says bb kept the release it could not undo instead of claiming a restore", () => {
+    vi.stubGlobal("fetch", vi.fn());
+    const { wrapper } = createDialogTestHarness();
+    render(
+      <UpdatePluginDialog
+        plugin={plugin({
+          lastFailure: {
+            version: "1.6.2",
+            label: "1.6.2",
+            at: null,
+            detail: "its saved host state is missing",
+            restored: false,
+          },
+        })}
+        open
+        onOpenChange={() => {}}
+      />,
+      { wrapper },
+    );
+
+    expect(
+      screen.getByText(
+        "bb couldn’t activate 1.6.2 or undo the change. It kept 1.6.2 and its data.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/restored/u)).toBeNull();
+    expect(
+      screen.getByText("Try again when a compatible update becomes available."),
+    ).toBeTruthy();
+  });
+
   it("closes on job acceptance without waiting for the update to finish", async () => {
     const job = {
       id: "update-1",
       pluginId: "linear",
       displayName: "Linear",
+      kind: "update",
       state: "running",
       phase: "checking",
     };

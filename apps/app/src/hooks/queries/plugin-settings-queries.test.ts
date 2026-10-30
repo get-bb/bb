@@ -170,10 +170,62 @@ describe("plugin list envelope", () => {
       label: "1.7.0",
       at: 1752300000000,
       detail: "boom",
+      restored: true,
     });
     expect(plugin?.updateState.blockedVersion).toBeNull();
     expect(plugin?.updateState.blockedLabel).toBeNull();
     expect(plugin?.updateState.blockedReasons).toEqual([]);
+    expect(plugin?.updateState.availableDisplay).toBeNull();
+    expect(plugin?.updateState.availableBreaking).toBe(false);
+    expect(plugin?.updateState.outsideRange).toBeNull();
+  });
+
+  it("keeps the candidate display, breaking flag, and out-of-range release", async () => {
+    const outsideRange = {
+      version: "2.0.0",
+      display: "@bb-plugins/linear@2.0.0",
+      breaking: true,
+      range: "^1",
+      suggestedRange: ">=1.6.2 <3.0.0",
+    };
+    const result = await listPlugins(
+      fetchReturning({
+        plugins: [
+          {
+            ...ROW,
+            updateState: {
+              availableVersion: "1.7.0",
+              availableDisplay: "@bb-plugins/linear@1.7.0",
+              availableBreaking: true,
+              outsideRange,
+            },
+          },
+        ],
+      }),
+    );
+    expect(result.plugins[0]?.updateState).toMatchObject({
+      availableVersion: "1.7.0",
+      availableDisplay: "@bb-plugins/linear@1.7.0",
+      availableBreaking: true,
+      outsideRange,
+    });
+  });
+
+  it("keeps an out-of-range release from a server that suggests no range", async () => {
+    const outsideRange = {
+      version: "2.0.0",
+      display: "@bb-plugins/linear@2.0.0",
+      breaking: true,
+      range: "^1",
+    };
+    const result = await listPlugins(
+      fetchReturning({
+        plugins: [
+          { ...ROW, updateState: { ...ROW.updateState, outsideRange } },
+        ],
+      }),
+    );
+    expect(result.plugins[0]?.updateState.outsideRange).toEqual(outsideRange);
   });
 
   it("preserves authoritative source and activity metadata for detail pages", async () => {
@@ -240,6 +292,18 @@ describe("plugin list envelope", () => {
         }),
       ),
     ).rejects.toThrow();
+  });
+
+  it("keeps a failure bb could not undo distinct from a restored one", async () => {
+    const kept = {
+      ...ROW,
+      updateState: {
+        ...ROW.updateState,
+        lastFailure: { ...ROW.updateState.lastFailure, restored: false },
+      },
+    };
+    const result = await listPlugins(fetchReturning({ plugins: [kept] }));
+    expect(result.plugins[0]?.updateState.lastFailure?.restored).toBe(false);
   });
 
   it("drops a row with a partial lastFailure rather than showing the quiet state", async () => {

@@ -63,10 +63,12 @@ signatures (see "Looking up the exact API" in distribution.md).
 - `plugins`: `list` `install` `remove` `enable` `disable` `reload` `token`
   `callRpc` `getSource` `getSettings` `updateSettings` `checkUpdates`
   `listUpdateResults` `applyUpdate` `experimental_startUpdate`
-  `experimental_discoverRpc` `experimental_getSafeMode`
-  `experimental_setSafeMode` `experimental_pruneCache`; sub-areas `catalog`
-  (`search` `status` `installPlan` `install`), `marketplaces` (`add` `list`
-  `refresh` `remove`), `experimental_updateJobs` (`list` `get`)
+  `experimental_getRollbackPoint` `experimental_rollbackUpdate`
+  `experimental_startRollbackUpdate` `experimental_discoverRpc`
+  `experimental_getSafeMode` `experimental_setSafeMode`
+  `experimental_pruneCache` `experimental_setTrackingRange`; sub-areas
+  `catalog` (`search` `status` `installPlan` `install`), `marketplaces`
+  (`add` `list` `refresh` `remove`), `experimental_updateJobs` (`list` `get`)
 - `theme`: `get` `catalog` `resolve` `set`
 - `status`: `get`
 - `system`: `version` `config` `reloadConfig` `attention` `usageLimits`

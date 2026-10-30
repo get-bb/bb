@@ -1,6 +1,8 @@
 import type {
   InstalledPlugin,
   PluginCachePruneResponse,
+  PluginOutsideRangeRelease,
+  PluginRollbackPoint,
   PluginSafeModeUpdateResponse,
   PluginSettingDescriptor,
   PluginSettingsResponse,
@@ -23,6 +25,7 @@ interface PluginUpdateFailure {
   label: string;
   at: number | null;
   detail: string;
+  restored: boolean;
 }
 
 export interface PluginUpdateState {
@@ -30,11 +33,15 @@ export interface PluginUpdateState {
   detail: string | null;
   availableVersion: string | null;
   availableLabel: string | null;
+  availableDisplay: string | null;
+  availableBreaking: boolean;
+  outsideRange: PluginOutsideRangeRelease | null;
   blockedVersion: string | null;
   blockedLabel: string | null;
   blockedReasons: string[];
   lastCheckAt: number | null;
   lastFailure: PluginUpdateFailure | null;
+  rollback: PluginRollbackPoint | null;
 }
 
 export interface PluginListItem {
@@ -89,11 +96,15 @@ export const EMPTY_PLUGIN_UPDATE_STATE: PluginUpdateState = {
   detail: null,
   availableVersion: null,
   availableLabel: null,
+  availableDisplay: null,
+  availableBreaking: false,
+  outsideRange: null,
   blockedVersion: null,
   blockedLabel: null,
   blockedReasons: [],
   lastCheckAt: null,
   lastFailure: null,
+  rollback: null,
 };
 
 export function toPluginListItem(plugin: InstalledPlugin): PluginListItem {
@@ -132,6 +143,9 @@ export function toPluginListItem(plugin: InstalledPlugin): PluginListItem {
       detail: state.detail ?? null,
       availableVersion: state.availableVersion ?? null,
       availableLabel: state.availableLabel ?? null,
+      availableDisplay: state.availableDisplay ?? null,
+      availableBreaking: state.availableBreaking === true,
+      outsideRange: state.outsideRange ?? null,
       blockedVersion: state.blockedVersion ?? null,
       blockedLabel: state.blockedLabel ?? null,
       blockedReasons: state.blockedReasons ?? [],
@@ -144,7 +158,9 @@ export function toPluginListItem(plugin: InstalledPlugin): PluginListItem {
               label: state.lastFailure.label,
               at: toEpochMs(state.lastFailure.at),
               detail: state.lastFailure.detail,
+              restored: state.lastFailure.restored,
             },
+      rollback: state.rollback ?? null,
     },
   };
 }

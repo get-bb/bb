@@ -109,6 +109,7 @@ export function pluginRuntimeStatusPresentation(
 
 export type PluginRowSignal =
   | { kind: "update"; version: string }
+  | { kind: "outside-range"; version: string; range: string; breaking: boolean }
   | {
       kind: "status";
       icon: IconName;
@@ -130,7 +131,9 @@ export function pluginRowSignal(
       detail:
         state.lastFailure.detail.length > 0
           ? state.lastFailure.detail
-          : `Update to ${state.lastFailure.label} failed and was rolled back.`,
+          : state.lastFailure.restored
+            ? `Update to ${state.lastFailure.label} failed and was rolled back.`
+            : `Update to ${state.lastFailure.label} failed and couldn’t be undone.`,
     };
   }
   const runtimeStatus = pluginRuntimeStatusPresentation(plugin);
@@ -154,6 +157,14 @@ export function pluginRowSignal(
   }
   if (state.availableLabel !== null) {
     return { kind: "update", version: state.availableLabel };
+  }
+  if (state.outsideRange !== null) {
+    return {
+      kind: "outside-range",
+      version: state.outsideRange.version,
+      range: state.outsideRange.range,
+      breaking: state.outsideRange.breaking,
+    };
   }
   return null;
 }

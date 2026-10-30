@@ -16,6 +16,16 @@ export function isReadablePluginVersion(version: string): boolean {
   return /^v?\d+\.\d+/u.test(version);
 }
 
+export function pluginUpdateFailureSummary(
+  plugin: PluginListItem,
+): string | null {
+  const failure = plugin.updateState.lastFailure;
+  if (failure === null) return null;
+  return failure.restored
+    ? `bb couldn’t activate ${failure.label}. It restored ${plugin.version} and its data.`
+    : `bb couldn’t activate ${failure.label} or undo the change. It kept ${plugin.version} and its data.`;
+}
+
 export const SUCCESS_TEXT_STYLE = {
   color: "color-mix(in oklab, var(--success) 80%, var(--ink))",
 } as const;

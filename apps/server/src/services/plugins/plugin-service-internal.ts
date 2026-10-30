@@ -15,6 +15,7 @@ import type {
 } from "@bb/host-daemon-contract";
 import type {
   PluginApplyUpdateResult,
+  PluginRollbackResult,
   PluginRuntimeStatus,
 } from "@bb/server-contract";
 import type { ServerLogger } from "../../types.js";
@@ -275,4 +276,8 @@ export type PluginWireLookup<T> =
 
 export type PluginApplyUpdateOutcome =
   | { ok: true; result: PluginApplyUpdateResult }
+  | { ok: false; error: string };
+
+export type PluginRollbackOutcome =
+  | { ok: true; result: PluginRollbackResult }
   | { ok: false; error: string };

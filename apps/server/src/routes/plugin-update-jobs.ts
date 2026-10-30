@@ -1,5 +1,27 @@
-import type { Hono } from "hono";
+import type { Context, Hono } from "hono";
+import type { PluginUpdateJob } from "@bb/server-contract";
 import type { PluginUpdateJobs } from "../services/plugins/plugin-update-jobs.js";
+import { prefersRespondAsync } from "./plugin-install-jobs.js";
+
+export async function respondWithUpdateJob(
+  context: Context,
+  jobs: PluginUpdateJobs,
+  job: PluginUpdateJob,
+): Promise<Response> {
+  if (prefersRespondAsync(context)) return context.json({ job }, 202);
+  const settled = (await jobs.settled(job.id)) ?? job;
+  return settled.state === "completed"
+    ? context.json(settled.result)
+    : context.json(
+        {
+          error:
+            settled.state === "failed"
+              ? settled.error
+              : `${job.kind} did not complete`,
+        },
+        422,
+      );
+}
 
 export function registerPluginUpdateJobRoutes(
   app: Hono,

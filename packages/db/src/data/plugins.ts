@@ -461,6 +461,54 @@ export function setInstalledPluginSourceClassification(
   return result.changes > 0;
 }
 
+export interface InstalledPluginTrackingRangeChange {
+  sourceKind: "git" | "npm";
+  expectedSource: string;
+  source: string;
+  range: string;
+}
+
+export function setInstalledPluginTrackingRange(
+  db: DbConnection,
+  id: string,
+  change: InstalledPluginTrackingRangeChange,
+): boolean {
+  const selector =
+    change.sourceKind === "git"
+      ? { sourceGitRange: change.range }
+      : {
+          sourceNpmRequestedSpec: change.range,
+          sourceNpmSpecKind: "range" as const,
+        };
+  const result = db
+    .update(installedPlugins)
+    .set({
+      source: change.source,
+      ...selector,
+      lastUpdateCheckAt: null,
+      availableCompatibleVersion: null,
+      newestIncompatibleVersion: null,
+      updateStatusDetail: null,
+      lastFailureVersion: null,
+      lastFailureAt: null,
+      lastFailureDetail: null,
+      updatedAt: Date.now(),
+    })
+    .where(
+      and(
+        eq(installedPlugins.id, id),
+        eq(installedPlugins.sourceKind, change.sourceKind),
+        eq(installedPlugins.source, change.expectedSource),
+        change.sourceKind === "git"
+          ? isNotNull(installedPlugins.sourceGitRange)
+          : isNotNull(installedPlugins.sourceNpmRequestedSpec),
+        isNull(installedPlugins.removedAt),
+      ),
+    )
+    .run();
+  return result.changes > 0;
+}
+
 export function deleteInstalledPlugin(db: DbConnection, id: string): boolean {
   const result = db
     .delete(installedPlugins)

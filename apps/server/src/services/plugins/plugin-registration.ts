@@ -468,7 +468,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     });
   }
 
-  function npmIntentForRow(
+  function npmSourceIntentOf(
     row: InstalledPluginRow,
   ): NpmSourceIntentForResolution {
     if (
@@ -490,14 +490,6 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
         throw new Error(`plugin "${row.id}" has corrupt normalized npm state`);
       }
       specKind = parsed.specKind;
-      if (
-        !setInstalledPluginSourceClassification(deps.db, row.id, {
-          kind: "npm",
-          specKind,
-        })
-      ) {
-        throw new Error(`plugin "${row.id}" disappeared during normalization`);
-      }
     }
     return {
       packageName: row.sourceNpmPackage,
@@ -505,6 +497,22 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       requestedSpec: row.sourceNpmRequestedSpec,
       specKind,
     };
+  }
+
+  function npmIntentForRow(
+    row: InstalledPluginRow,
+  ): NpmSourceIntentForResolution {
+    const intent = npmSourceIntentOf(row);
+    if (
+      row.sourceNpmSpecKind === null &&
+      !setInstalledPluginSourceClassification(deps.db, row.id, {
+        kind: "npm",
+        specKind: intent.specKind,
+      })
+    ) {
+      throw new Error(`plugin "${row.id}" disappeared during normalization`);
+    }
+    return intent;
   }
 
   function installedUpdateVersion(
@@ -599,6 +607,18 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       return { kind: "git", commit: row.gitResolvedCommit };
     }
     throw new Error(`plugin "${row.id}" has corrupt exact resolution`);
+  }
+
+  function registrationRestoreProblem(row: InstalledPluginRow): string | null {
+    try {
+      provenanceForRow(row);
+      if (row.sourceKind === "npm") npmSourceIntentOf(row);
+      else sourceIntentForRow(row);
+      exactResolutionForRow(row);
+      return null;
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
   }
 
   function restoreRegistration(row: InstalledPluginRow): void {
@@ -807,6 +827,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     assertInstallRegistrationAvailable,
     backfillNormalizedPluginRegistrations,
     emptyPluginUpdateState,
+    exactResolutionForRow,
     installBuiltinSource,
     installPathSource,
     installedUpdateVersion,
@@ -816,7 +837,9 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     registerInstalled,
     registrationMatchesForActivation,
     refuseBuiltinShadow,
+    registrationRestoreProblem,
     restoreRegistration,
     sourceFingerprint,
+    sourceIntentForRow,
   };
 }

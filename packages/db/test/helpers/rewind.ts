@@ -65,6 +65,17 @@ export function dropThreadParentNotificationsColumn(db: DbConnection): void {
   }
 }
 
+export function dropPluginSnapshotRecoveryColumns(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], { name: string }>("PRAGMA table_info(plugin_state_snapshots)")
+    .all();
+  for (const name of ["operation", "failure_detail"]) {
+    if (columns.some((column) => column.name === name)) {
+      db.$client.exec(`ALTER TABLE plugin_state_snapshots DROP COLUMN ${name}`);
+    }
+  }
+}
+
 export const QUEUED_MESSAGE_STATE_MIGRATION_WHEN = 1792010323040;
 
 interface QueuedTableColumn {

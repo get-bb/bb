@@ -1,24 +1,36 @@
 import { randomUUID } from "node:crypto";
 import type {
   PluginApplyUpdateResult,
+  PluginRollbackResult,
   PluginUpdateJob,
 } from "@bb/server-contract";
 import { withPluginUpdateProgress } from "./plugin-update-progress.js";
 
+type CompletedPluginUpdateJob = Extract<
+  PluginUpdateJob,
+  { state: "completed" }
+>;
+
 interface JobEntry {
   job: PluginUpdateJob;
-  run: () => Promise<PluginApplyUpdateResult>;
+  expectedVersion: string | null;
+  complete: () => Promise<CompletedPluginUpdateJob>;
   finishedAt: number | null;
   settled: Promise<PluginUpdateJob>;
   settle: (job: PluginUpdateJob) => void;
 }
 
+type PluginUpdateJobStart = {
+  pluginId: string;
+  displayName: string;
+  expectedVersion: string | null;
+} & (
+  | { kind: "update"; run: () => Promise<PluginApplyUpdateResult> }
+  | { kind: "rollback"; run: () => Promise<PluginRollbackResult> }
+);
+
 export interface PluginUpdateJobs {
-  start(args: {
-    pluginId: string;
-    displayName: string;
-    run: () => Promise<PluginApplyUpdateResult>;
-  }): PluginUpdateJob;
+  start(args: PluginUpdateJobStart): PluginUpdateJob;
   settled(id: string): Promise<PluginUpdateJob> | undefined;
   get(id: string): PluginUpdateJob | undefined;
   list(): PluginUpdateJob[];
@@ -59,15 +71,15 @@ export function createPluginUpdateJobs(deps: {
     );
     if (entry === undefined) return;
     running = true;
-    const { id, pluginId, displayName } = entry.job;
-    const base = { id, pluginId, displayName };
+    const { id, pluginId, displayName, kind } = entry.job;
+    const base = { id, pluginId, displayName, kind };
     update(entry, { ...base, state: "running", phase: "preparing" });
     void withPluginUpdateProgress(
       (phase) => update(entry, { ...base, state: "running", phase }),
-      async () => entry.run(),
+      entry.complete,
     )
       .then(
-        (result) => update(entry, { ...base, state: "completed", result }),
+        (completed) => update(entry, completed),
         (error: unknown) =>
           update(entry, {
             ...base,
@@ -82,11 +94,14 @@ export function createPluginUpdateJobs(deps: {
   }
 
   return {
-    start({ pluginId, displayName, run }) {
+    start(args) {
+      const { pluginId, displayName, kind, expectedVersion } = args;
       pruneFinished();
       const duplicate = [...entries.values()].find(
         (entry) =>
           entry.job.pluginId === pluginId &&
+          entry.job.kind === kind &&
+          entry.expectedVersion === expectedVersion &&
           (entry.job.state === "queued" || entry.job.state === "running"),
       );
       if (duplicate !== undefined) return duplicate.job;
@@ -94,9 +109,24 @@ export function createPluginUpdateJobs(deps: {
       const settled = new Promise<PluginUpdateJob>((resolve) => {
         settle = resolve;
       });
+      const base = { id: randomUUID(), pluginId, displayName };
       const entry: JobEntry = {
-        job: { id: randomUUID(), pluginId, displayName, state: "queued" },
-        run,
+        job: { ...base, kind, state: "queued" },
+        expectedVersion,
+        complete:
+          args.kind === "update"
+            ? async () => ({
+                ...base,
+                kind: "update",
+                state: "completed",
+                result: await args.run(),
+              })
+            : async () => ({
+                ...base,
+                kind: "rollback",
+                state: "completed",
+                result: await args.run(),
+              }),
         finishedAt: null,
         settled,
         settle,

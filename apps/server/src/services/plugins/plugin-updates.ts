@@ -17,6 +17,7 @@ import {
 } from "./install-sources.js";
 import { readPluginManifest } from "./manifest.js";
 import {
+  carriedOutsideRangeRelease,
   createNpmResolverRun,
   type NpmResolverRun,
   resolveGitRef,
@@ -39,6 +40,7 @@ import {
 } from "./managed-plugin-artifacts.js";
 import { MARKETPLACE_FETCH_TIMEOUT_MS } from "../plugin-catalog/marketplace-http.js";
 import { removeUnusedPluginArtifacts } from "./plugin-artifact-gc.js";
+import { pluginRestoreHoldRefusal } from "./plugin-state-snapshot.js";
 import {
   SERVER_MOVE_FROZEN_RETRY_MS,
   isServerMoveFrozen,
@@ -46,13 +48,20 @@ import {
 import {
   pluginResolvedVersionSchema,
   pluginUpdateCheckEntrySchema,
+  type PluginApplyUpdateRequest,
   type PluginSourceDetail,
+  type PluginTrackingRangeRequest,
   type PluginUpdateCheckEntry,
 } from "@bb/server-contract";
 import type {
   PluginApplyUpdateOutcome,
   PluginServiceDeps,
 } from "./plugin-service-internal.js";
+import {
+  createPluginTrackingRange,
+  trackingRangeRefusal,
+  type PluginTrackingRangeOutcome,
+} from "./plugin-tracking-range.js";
 
 const PLUGIN_UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1_000;
 
@@ -120,13 +129,35 @@ function npmRunForRow(row: InstalledPluginRow): NpmResolverRun {
     : createListedRegistryNpmResolverRun(registry);
 }
 
+function untrackableResolution(
+  resolution: PluginUpdateResolution,
+  refusal: string,
+): PluginUpdateResolution {
+  if (resolution.outcome === "pinned") {
+    return { ...resolution, detail: refusal };
+  }
+  if (resolution.outsideRange === undefined) return resolution;
+  const { suggestedRange: _suggestedRange, ...outsideRange } =
+    resolution.outsideRange;
+  return { ...resolution, outsideRange };
+}
+
 export interface PluginUpdates {
   checkForUpdates(id?: string): Promise<PluginUpdateCheckEntry[]>;
+  checkInBackground(rows: InstalledPluginRow[]): void;
+  stopBackgroundChecks(): Promise<void>;
   startPeriodicUpdateChecks(): void;
   stopPeriodicUpdateChecks(): Promise<void>;
   listUpdateResults(): PluginUpdateCheckEntry[];
   getSource(id: string): Promise<PluginSourceDetail | undefined>;
-  applyUpdate(id: string): Promise<PluginApplyUpdateOutcome>;
+  applyUpdate(
+    id: string,
+    request?: PluginApplyUpdateRequest,
+  ): Promise<PluginApplyUpdateOutcome>;
+  setTrackingRange(
+    id: string,
+    request: PluginTrackingRangeRequest,
+  ): Promise<PluginTrackingRangeOutcome>;
 }
 
 interface PluginUpdatesContext {
@@ -202,27 +233,85 @@ export function createPluginUpdates(
       installed,
       ...dev,
       ...(blocked ? { blocked } : {}),
+      ...(resolution.outsideRange === undefined
+        ? {}
+        : { outsideRange: resolution.outsideRange }),
       ...(packagedDetail ? { detail: packagedDetail } : {}),
     };
     if (resolution.outcome === "update-available") {
-      return { ...common, candidate: resolution.candidate };
+      return {
+        ...common,
+        candidate: resolution.candidate,
+        ...(resolution.candidateBreaking ? { candidateBreaking: true } : {}),
+      };
     }
     if (resolution.outcome === "unavailable") {
+      return { ...common, detail: resolution.detail };
+    }
+    if (
+      (resolution.outcome === "current" || resolution.outcome === "pinned") &&
+      resolution.detail !== undefined
+    ) {
       return { ...common, detail: resolution.detail };
     }
     return common;
   }
 
-  function persistUpdateEntry(entry: PluginUpdateCheckEntry): void {
-    const changed = setInstalledPluginUpdateState(deps.db, entry.id, {
+  function failedCheckEntry(
+    row: InstalledPluginRow,
+    error: unknown,
+  ): PluginUpdateCheckEntry {
+    let installed: PluginResolvedUpdateVersion;
+    try {
+      installed = installedUpdateVersion(row);
+    } catch {
+      installed = {
+        version: row.version,
+        label: row.version,
+        display: row.source,
+      };
+    }
+    return {
+      id: row.id,
+      outcome: "unavailable",
+      installed,
+      detail: error instanceof Error ? error.message : String(error),
+    };
+  }
+
+  function persistUpdateEntry(entry: PluginUpdateCheckEntry): boolean {
+    return setInstalledPluginUpdateState(deps.db, entry.id, {
       lastCheckAt: now(),
       availableCompatibleVersion: entry.candidate?.version ?? null,
       newestIncompatibleVersion: entry.blocked?.version ?? null,
       statusDetail: JSON.stringify(entry),
     });
-    if (!changed) {
+  }
+
+  function persistRequiredUpdateEntry(entry: PluginUpdateCheckEntry): void {
+    if (!persistUpdateEntry(entry)) {
       throw new Error(`plugin "${entry.id}" disappeared during update check`);
     }
+  }
+
+  function expectedVersionRefusal(args: {
+    expectedVersion: string | undefined;
+    installed: PluginResolvedUpdateVersion;
+    resolution: PluginUpdateResolution;
+  }): string | null {
+    const { expectedVersion, installed, resolution } = args;
+    if (expectedVersion === undefined) return null;
+    if (resolution.outcome === "update-available") {
+      return resolution.candidate.version === expectedVersion
+        ? null
+        : `update refused: expected ${expectedVersion}, but the current candidate is ${resolution.candidate.display}; check for updates again and review it`;
+    }
+    if (resolution.outcome === "current") {
+      return installed.version === expectedVersion
+        ? null
+        : `update refused: expected ${expectedVersion}, but no update is available now (installed ${installed.display}); check for updates again`;
+    }
+    return null;
   }
 
   async function legacyGitRefEvidence(args: {
@@ -347,12 +436,16 @@ export function createPluginUpdates(
       };
     }
     if (args.row.sourceKind === "npm") {
-      return resolveNpmUpdate({
+      const resolution = await resolveNpmUpdate({
         intent: npmIntentForRow(args.row),
         current: installed,
         appVersion: deps.appVersion,
         run: args.npmRun,
       });
+      const refusal = trackingRangeRefusal(args.row);
+      return refusal === null
+        ? resolution
+        : untrackableResolution(resolution, refusal);
     }
     if (args.row.gitResolvedCommit === null) {
       throw new Error(
@@ -434,6 +527,12 @@ export function createPluginUpdates(
   let cancelPeriodicCheck: (() => void) | null = null;
   let periodicChecksStopped = true;
   let inFlightSweep: Promise<PluginUpdateCheckEntry[]> | null = null;
+  const backgroundChecks = new Set<Promise<void>>();
+  let backgroundChecksStopped = false;
+
+  async function settleBackgroundChecks(): Promise<void> {
+    while (backgroundChecks.size > 0) await Promise.all(backgroundChecks);
+  }
 
   function periodicCheckDelay(): number {
     const stamps = listInstalledPlugins(deps.db)
@@ -474,7 +573,7 @@ export function createPluginUpdates(
     rows: InstalledPluginRow[],
   ): Promise<PluginUpdateCheckEntry[]> {
     rows.sort((a, b) => a.id.localeCompare(b.id));
-    const results: PluginUpdateCheckEntry[] = [];
+    const results: Array<PluginUpdateCheckEntry | null> = [];
     let next = 0;
     const worker = async () => {
       while (next < rows.length) {
@@ -482,22 +581,26 @@ export function createPluginUpdates(
         const row = rows[index] as InstalledPluginRow;
         results[index] = await withLifecycleLock(row.id, async () => {
           const current = getInstalledPlugin(deps.db, row.id);
-          if (!current) {
-            throw new Error(
-              `plugin "${row.id}" disappeared during update check`,
+          if (!current) return null;
+          let checked: PluginUpdateCheckEntry;
+          try {
+            const resolution = await resolveUpdateForRow({
+              row: current,
+              npmRun: npmRunForRow(current),
+            });
+            checked = checkEntryFromResolution(
+              current.id,
+              installedUpdateVersion(current),
+              resolution,
             );
+          } catch (error: unknown) {
+            deps.logger.warn(
+              { err: error, pluginId: current.id },
+              "plugin update check failed",
+            );
+            checked = failedCheckEntry(current, error);
           }
-          const resolution = await resolveUpdateForRow({
-            row: current,
-            npmRun: npmRunForRow(current),
-          });
-          const checked = checkEntryFromResolution(
-            current.id,
-            installedUpdateVersion(current),
-            resolution,
-          );
-          persistUpdateEntry(checked);
-          return checked;
+          return persistUpdateEntry(checked) ? checked : null;
         });
       }
     };
@@ -508,10 +611,54 @@ export function createPluginUpdates(
       ),
     );
     notifyPluginsChanged();
-    return results;
+    return results.filter(
+      (entry): entry is PluginUpdateCheckEntry => entry !== null,
+    );
   }
 
+  const trackingRange = createPluginTrackingRange({
+    deps,
+    registrationMutationKey: REGISTRATION_MUTATION_KEY,
+    withLifecycleLock,
+    withPluginOperationLock,
+    previewUpdateCheck: async (row) => {
+      try {
+        return checkEntryFromResolution(
+          row.id,
+          installedUpdateVersion(row),
+          await resolveUpdateForRow({ row, npmRun: npmRunForRow(row) }),
+        );
+      } catch (error) {
+        return failedCheckEntry(row, error);
+      }
+    },
+    checkUpdates: (row) => checkRows([row]),
+  });
+
   const updates: PluginUpdates = {
+    setTrackingRange: trackingRange.setTrackingRange,
+
+    checkInBackground(rows) {
+      if (backgroundChecksStopped) return;
+      const check: Promise<void> = checkRows(rows)
+        .then(
+          () => undefined,
+          (error: unknown) => {
+            deps.logger.warn(
+              { err: error, pluginIds: rows.map(({ id }) => id) },
+              "background plugin update check failed",
+            );
+          },
+        )
+        .finally(() => backgroundChecks.delete(check));
+      backgroundChecks.add(check);
+    },
+
+    async stopBackgroundChecks() {
+      backgroundChecksStopped = true;
+      await settleBackgroundChecks();
+    },
+
     startPeriodicUpdateChecks() {
       if (!periodicChecksStopped) return;
       periodicChecksStopped = false;
@@ -526,13 +673,17 @@ export function createPluginUpdates(
       cancelPeriodicCheck?.();
       cancelPeriodicCheck = null;
       await inFlightSweep?.catch(() => undefined);
+      await settleBackgroundChecks();
     },
 
     checkForUpdates(id) {
       if (id !== undefined) {
         const row = getInstalledPlugin(deps.db, id);
         if (!row) throw new Error(`unknown plugin "${id}"`);
-        return checkRows([row]);
+        return checkRows([row]).then((results) => {
+          if (results.length === 0) throw new Error(`unknown plugin "${id}"`);
+          return results;
+        });
       }
       inFlightSweep ??= checkRows(listInstalledPlugins(deps.db)).finally(() => {
         inFlightSweep = null;
@@ -576,7 +727,19 @@ export function createPluginUpdates(
         ...(row.sourceGitSubdirectory === null
           ? {}
           : { subdirectory: row.sourceGitSubdirectory }),
-        ...(row.sourceGitRange === null ? {} : { range: row.sourceGitRange }),
+        ...(row.sourceGitRange !== null
+          ? { range: row.sourceGitRange }
+          : row.sourceNpmSpecKind === "range" &&
+              row.sourceNpmRequestedSpec !== null
+            ? { range: row.sourceNpmRequestedSpec }
+            : {}),
+        ...(row.sourceNpmSpecKind === null
+          ? {}
+          : { npmSpecKind: row.sourceNpmSpecKind }),
+        ...(row.sourceNpmSpecKind === "tag" &&
+        row.sourceNpmRequestedSpec !== null
+          ? { distTag: row.sourceNpmRequestedSpec }
+          : {}),
         ...(row.sourceGitTagPrefix === null ||
         row.sourceGitTagPrefix.length === 0
           ? {}
@@ -607,10 +770,12 @@ export function createPluginUpdates(
       };
     },
 
-    async applyUpdate(id) {
+    async applyUpdate(id, request = {}) {
       return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
         const row = getInstalledPlugin(deps.db, id);
         if (!row) return { ok: false, error: `unknown plugin "${id}"` };
+        const holdRefusal = pluginRestoreHoldRefusal(deps.db, id, "update");
+        if (holdRefusal !== null) return { ok: false, error: holdRefusal };
         const safeModeRefusal = safeModeActivationRefusal({
           pluginId: id,
           provenance: row.provenance,
@@ -630,7 +795,13 @@ export function createPluginUpdates(
           npmRun,
         });
         const checked = checkEntryFromResolution(id, from, resolution);
-        persistUpdateEntry(checked);
+        persistRequiredUpdateEntry(checked);
+        const refusal = expectedVersionRefusal({
+          expectedVersion: request.expectedVersion,
+          installed: from,
+          resolution,
+        });
+        if (refusal !== null) return { ok: false, error: refusal };
 
         if (resolution.outcome === "pinned") {
           return {
@@ -638,7 +809,9 @@ export function createPluginUpdates(
             error:
               row.sourceKind === "path"
                 ? `plugin "${id}" is a local path source with no update channel; edit it in place and run \`bb plugin reload ${id}\`, or move it with \`bb plugin install path:<new directory>\` (settings, secrets, and schedules are kept)`
-                : `plugin "${id}" is pinned by its source intent; remove and reinstall it with an npm range, a git branch, or a git semver range to track updates`,
+                : row.sourceKind === "npm" && row.activeArtifactId !== null
+                  ? `plugin "${id}" is pinned to ${from.display}; run \`bb plugin track ${id} <range>\` to follow a semver range such as ^${from.version} (settings, secrets, and schedules are kept)`
+                  : `plugin "${id}" is pinned by its source intent; remove and reinstall it with an npm range, a git branch, or a git semver range to track updates`,
           };
         }
         if (resolution.outcome === "incompatible") {
@@ -740,6 +913,7 @@ export function createPluginUpdates(
           db: deps.db,
           dataDir: deps.dataDir,
           pluginId: id,
+          now: now(),
           warn: (message) => deps.logger.warn(message),
         });
         await runArtifactGc();
@@ -748,13 +922,18 @@ export function createPluginUpdates(
           throw new Error(`plugin "${id}" disappeared after update`);
         }
         const updatedVersion = installedUpdateVersion(updatedRow);
-        persistUpdateEntry(
+        const outsideRange = carriedOutsideRangeRelease(
+          resolution.outsideRange,
+          resolution.candidateRelease,
+        );
+        persistRequiredUpdateEntry(
           checkEntryFromResolution(id, updatedVersion, {
             outcome: "current",
             current: updatedVersion,
             ...(semver.coerce(deps.appVersion)?.version === "0.0.0"
               ? { devMode: true }
               : {}),
+            ...(outsideRange === undefined ? {} : { outsideRange }),
           }),
         );
         return {

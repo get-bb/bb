@@ -29,7 +29,10 @@ describe("bundled plugin SDK declarations", () => {
     expect(declarations).toContain("catalog: PluginCatalogArea;");
     expect(declarations).toContain("getSource(args: PluginGetSourceArgs)");
     expect(declarations).toContain("checkUpdates(");
-    expect(declarations).toContain("applyUpdate(args: PluginIdArgs)");
+    expect(declarations).toContain("applyUpdate(args: PluginApplyUpdateArgs)");
+    expect(declarations).toContain(
+      "experimental_rollbackUpdate(args: PluginRollbackUpdateArgs): Promise<PluginRollbackUpdateResult>;",
+    );
     expect(declarations).toContain(
       "type PluginProviderNativeRootEntry = ProviderNativeRootInput;",
     );

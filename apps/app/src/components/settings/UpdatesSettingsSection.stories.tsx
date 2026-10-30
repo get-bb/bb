@@ -1221,6 +1221,7 @@ const STORY_PLUGINS = buildUpdateInventoryPlugins([
         label: "0.9.0",
         at: STORY_NOW,
         detail: "activation failed: settings schema rejected stored values",
+        restored: true,
       },
     },
   }),

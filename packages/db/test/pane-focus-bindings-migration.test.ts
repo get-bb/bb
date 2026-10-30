@@ -11,6 +11,7 @@ import {
   dropIdleLifecycleIndexes,
   rewindThreadPruningWork,
   dropMarketplaceSourceGitSubdirectoryColumn,
+  dropPluginSnapshotRecoveryColumns,
   dropThreadParentNotificationsColumn,
   dropQueuedMessageEditHeldUntilColumn,
 } from "./helpers/rewind.js";
@@ -54,6 +55,7 @@ function upgradeDatabase(overrides: AppKeybindingOverrides | undefined) {
   dropQueuedMessageEditHeldUntilColumn(db);
   dropMarketplaceSourceGitSubdirectoryColumn(db);
   dropThreadParentNotificationsColumn(db);
+  dropPluginSnapshotRecoveryColumns(db);
   db.$client
     .prepare("DELETE FROM __drizzle_migrations WHERE created_at >= ?")
     .run(migrationTimestamp);

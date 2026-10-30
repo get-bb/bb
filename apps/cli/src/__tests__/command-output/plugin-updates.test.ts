@@ -85,6 +85,32 @@ describe("bb plugin update commands", () => {
             installed: version("1.0.0"),
             detail: "registry offline",
           },
+          {
+            id: "f",
+            outcome: "update-available",
+            installed: version("1.4.0"),
+            candidate: version("2.0.0"),
+            candidateBreaking: true,
+          },
+          {
+            id: "g",
+            outcome: "current",
+            installed: version("0.1.0"),
+            outsideRange: {
+              version: "0.2.0",
+              display: "g@0.2.0",
+              breaking: true,
+              range: "^0.1.0",
+              suggestedRange: ">=0.1.0 <1.0.0",
+            },
+          },
+          {
+            id: "h",
+            outcome: "current",
+            installed: version("2.0.0"),
+            detail:
+              'npm dist-tag "next" points to 1.0.0, older than the installed 2.0.0; bb does not downgrade',
+          },
         ],
       }),
     );
@@ -92,6 +118,8 @@ describe("bb plugin update commands", () => {
     await runCommand(["plugin", "outdated"], register);
 
     const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
+    const row = (id: string) =>
+      output.split("\n").find((line) => line.startsWith(`${id} `)) ?? "";
     expect(output).toContain("update available");
     expect(output).toContain("pinned");
     expect(output).toContain("2.0.0: requires bb >= 9");
@@ -99,6 +127,21 @@ describe("bb plugin update commands", () => {
       "incompatible [dev build: engines.bb not enforced]",
     );
     expect(output).toContain("unavailable");
+    expect(output).toContain("Outside range");
+    expect(row("b")).not.toContain("may break");
+    expect(row("f")).toContain("update available (may break)");
+    expect(row("g")).toMatch(/0\.2\.0 \(may break\)\s+current$/u);
+    expect(output).toContain(
+      "Outside range: the newest release the installed range excludes; compatibility not checked.",
+    );
+    expect(output.split("\n")).toEqual(
+      expect.arrayContaining([
+        "e: registry offline",
+        'h: npm dist-tag "next" points to 1.0.0, older than the installed 2.0.0; bb does not downgrade',
+        'g: 0.2.0 (may break) is outside ^0.1.0. To follow it: bb plugin track g ">=0.1.0 <1.0.0"',
+      ]),
+    );
+    expect(output).not.toMatch(/^[abcdf]: /mu);
   });
 
   it("outdated --json prints the parsed results", async () => {
@@ -107,6 +150,13 @@ describe("bb plugin update commands", () => {
         id: "notes",
         outcome: "current",
         installed: version("1.0.0"),
+        outsideRange: {
+          version: "2.0.0",
+          display: "notes@2.0.0",
+          breaking: true,
+          range: "^1.0.0",
+          suggestedRange: ">=1.0.0 <3.0.0",
+        },
       },
     ];
     vi.mocked(fetch).mockResolvedValueOnce(Response.json({ results }));
@@ -141,6 +191,29 @@ describe("bb plugin update commands", () => {
     expect(output).toContain("resolved: 1.2.0");
     expect(output).toContain("engines.bbPluginSdk: ^0.2.0");
     expect(output).toContain("1.1.0");
+  });
+
+  it("source names the dist-tag an npm install follows", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      Response.json({
+        requested: "npm:notes@beta",
+        resolved: "notes@1.3.0-beta.2",
+        npmSpecKind: "tag",
+        distTag: "beta",
+        engines: {},
+        history: [],
+      }),
+    );
+
+    await runCommand(["plugin", "source", "notes"], register);
+
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      "notes",
+      "  requested: npm:notes@beta",
+      "  resolved: notes@1.3.0-beta.2",
+      "  dist-tag: beta",
+      "  history: none",
+    ]);
   });
 
   it("source --json prints the shared source contract", async () => {
@@ -195,6 +268,55 @@ describe("bb plugin update commands", () => {
     expect(output).not.toContain("other@1.0.0");
   });
 
+  it.each([
+    {
+      server: "an older server",
+      restored: undefined,
+      outcome: "restored the release before it",
+    },
+    {
+      server: "a server that kept the release",
+      restored: false,
+      outcome: "kept it because it could not undo the change",
+    },
+  ])(
+    "reload prints the last failed update from $server and the warnings bb returned",
+    async ({ restored, outcome }) => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const [notes] = pluginList("notes", "path:/notes").plugins;
+      const commit = "a985e1d5523398e9c7459d35679142cc4339771e";
+      vi.mocked(fetch).mockResolvedValueOnce(
+        Response.json({
+          ok: true,
+          plugins: [
+            {
+              ...notes,
+              updateState: {
+                lastFailure: {
+                  version: commit,
+                  label: "1.1.0",
+                  at: Date.UTC(2026, 6, 22),
+                  detail: "release 1.1.0 failed to start",
+                  ...(restored === undefined ? {} : { restored }),
+                },
+              },
+            },
+          ],
+          warnings: ['plugin "notes": bb could not undo the update'],
+        }),
+      );
+
+      await runCommand(["plugin", "reload", "notes"], register);
+
+      expect(collectLogPayloads(vi.mocked(console.log))).toContain(
+        `  update failed: bb couldn't activate 1.1.0 on 2026-07-22T00:00:00.000Z and ${outcome}: release 1.1.0 failed to start`,
+      );
+      expect(collectLogPayloads(warn)).toEqual([
+        'Warning: plugin "notes": bb could not undo the update',
+      ]);
+    },
+  );
+
   it("list annotates only CLI commands shadowed by core", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       Response.json({
@@ -222,25 +344,28 @@ describe("bb plugin update commands", () => {
   });
 
   it("skips pinned plugins with manual reinstall guidance", async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(
-      Response.json({
-        results: [
-          {
-            id: "notes",
-            outcome: "pinned",
-            installed: version("1.0.0"),
-            detail: "source pins 1.0.0",
-          },
-        ],
-      }),
-    );
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        Response.json({
+          results: [
+            {
+              id: "notes",
+              outcome: "pinned",
+              installed: version("1.0.0"),
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json(pluginList("notes", "git:https://example.com/notes@v1")),
+      );
 
     await runCommand(["plugin", "update", "notes"], register);
 
     expect(collectLogPayloads(vi.mocked(console.log)).join("\n")).toContain(
       "remove and reinstall with a tracking npm range, git branch, or git semver range",
     );
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it("starts an update without waiting and lets the user inspect its job", async () => {
@@ -248,6 +373,7 @@ describe("bb plugin update commands", () => {
       id: "update-1",
       pluginId: "notes",
       displayName: "Notes",
+      kind: "update",
       state: "running",
       phase: "checking",
     };
@@ -271,6 +397,9 @@ describe("bb plugin update commands", () => {
       register,
     );
     expect(fetch).toHaveBeenCalledTimes(3);
+    expect(
+      JSON.parse(String(vi.mocked(fetch).mock.calls[2]?.[1]?.body)),
+    ).toEqual({ expectedVersion: "1.1.0" });
     expect(collectLogPayloads(vi.mocked(console.log)).join("\n")).toContain(
       "bb plugin update-jobs update-1",
     );
@@ -324,8 +453,182 @@ describe("bb plugin update commands", () => {
     expect(output).toContain("pin: skipped — pinned");
     expect(output).toContain("bad: skipped — incompatible: requires newer bb");
     expect(output).toContain("good: updated and activated 1 → 2");
-    expect(JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body))).toEqual({});
+    expect(JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body))).toEqual({
+      expectedVersion: "2",
+    });
   });
+
+  it("explains a current plugin whose newest release is outside its range", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      Response.json({
+        results: [
+          {
+            id: "agent-board",
+            outcome: "current",
+            installed: version("0.6.1"),
+            outsideRange: {
+              version: "0.7.0",
+              display: "agent-board@0.7.0",
+              breaking: true,
+              range: "^0.6.1",
+              suggestedRange: ">=0.6.1 <1.0.0",
+            },
+          },
+        ],
+      }),
+    );
+
+    await runCommand(["plugin", "update", "agent-board"], register);
+
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      'agent-board: current within ^0.6.1; 0.7.0 (may break) is outside the range (compatibility not checked). To follow it: bb plugin track agent-board ">=0.6.1 <1.0.0"',
+    ]);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    {
+      command: "outdated",
+      args: ["plugin", "outdated"],
+      line: "notes: 2.0.0 (may break) is outside ^1.0.0.",
+    },
+    {
+      command: "update",
+      args: ["plugin", "update", "notes"],
+      line: "notes: current within ^1.0.0; 2.0.0 (may break) is outside the range (compatibility not checked).",
+    },
+  ])(
+    "$command names a release outside the range without a track command when the server suggests no range",
+    async ({ args, line }) => {
+      vi.mocked(fetch).mockResolvedValueOnce(
+        Response.json({
+          results: [
+            {
+              id: "notes",
+              outcome: "current",
+              installed: version("1.0.0"),
+              outsideRange: {
+                version: "2.0.0",
+                display: "notes@2.0.0",
+                breaking: true,
+                range: "^1.0.0",
+              },
+            },
+          ],
+        }),
+      );
+
+      await runCommand(args, register);
+
+      expect(collectLogPayloads(vi.mocked(console.log))).toContain(line);
+    },
+  );
+
+  it("warns about a breaking candidate before asking to apply it", async () => {
+    Object.defineProperty(process.stdin, "isTTY", {
+      value: false,
+      configurable: true,
+    });
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        Response.json({
+          results: [
+            {
+              id: "notes",
+              outcome: "update-available",
+              installed: version("1.4.0"),
+              candidate: version("2.0.0"),
+              candidateBreaking: true,
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(Response.json(pluginList("notes", "npm:notes")));
+
+    await expect(
+      runCommand(["plugin", "update", "notes"], register),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(collectLogPayloads(vi.mocked(console.log)).join("\n")).toContain(
+      "notes: 2.0.0 may include breaking changes",
+    );
+    expect(vi.mocked(console.error)).toHaveBeenCalledWith(
+      "Refusing to update without confirmation — re-run with --yes.",
+    );
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("names a breaking release outside the range alongside the in-range update", async () => {
+    Object.defineProperty(process.stdin, "isTTY", {
+      value: false,
+      configurable: true,
+    });
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        Response.json({
+          results: [
+            {
+              id: "notes",
+              outcome: "update-available",
+              installed: version("0.1.0"),
+              candidate: version("0.1.1"),
+              outsideRange: {
+                version: "0.2.0",
+                display: "notes@0.2.0",
+                breaking: true,
+                range: "^0.1.0",
+                suggestedRange: ">=0.1.0 <1.0.0",
+              },
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(Response.json(pluginList("notes", "npm:notes")));
+
+    await expect(
+      runCommand(["plugin", "update", "notes"], register),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(collectLogPayloads(vi.mocked(console.log))).toContain(
+      'notes: 0.2.0 (may break) is outside the range ^0.1.0 and is not part of this update (compatibility not checked). To follow it: bb plugin track notes ">=0.1.0 <1.0.0"',
+    );
+  });
+
+  it.each([[[]], [["--no-wait"]]])(
+    "tells the user to upgrade a bb server that cannot bind the update to the reviewed release (%j)",
+    async (flags) => {
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(
+          Response.json({
+            results: [
+              {
+                id: "notes",
+                outcome: "update-available",
+                installed: version("1.0.0"),
+                candidate: version("1.1.0"),
+              },
+            ],
+          }),
+        )
+        .mockResolvedValueOnce(
+          Response.json(pluginList("notes", "npm:notes@^1")),
+        )
+        .mockResolvedValueOnce(
+          Response.json(
+            { error: "expected an empty JSON object" },
+            { status: 400 },
+          ),
+        );
+
+      await expect(
+        runCommand(["plugin", "update", "notes", "--yes", ...flags], register),
+      ).rejects.toThrow("process.exit:1");
+
+      expect(vi.mocked(console.error)).toHaveBeenCalledWith(
+        "notes: not updated — the bb server is older than this bb CLI and cannot guarantee that it installs 1.1.0, the release this check showed. Upgrade bb on the server, then run `bb plugin update notes` again.",
+      );
+    },
+  );
 
   it("renders a rolled-back server result", async () => {
     vi.mocked(fetch)
