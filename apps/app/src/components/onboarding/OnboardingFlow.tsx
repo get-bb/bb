@@ -300,20 +300,53 @@ function AgentStepContainer({
   const { mutate: closeTerminalMutate } = closeTerminal;
   const { mutateAsync: createTerminalAsync } = createTerminal;
 
+  const recordSignIn = useCallback(
+    (
+      providerId: string,
+      outcome: "started" | "ready" | "exited" | "failed" | "cancelled",
+    ) => {
+      recordTelemetryEvent({
+        name: "onboarding_sign_in",
+        properties: { entry, outcome },
+      });
+      recordTelemetryEvent({
+        name: "onboarding_operation",
+        properties: {
+          surface: "onboarding",
+          step: "agent",
+          resource_type: "agent",
+          resource_id: providerId,
+          entry,
+          operation: "sign_in",
+          outcome:
+            outcome === "ready"
+              ? "succeeded"
+              : outcome === "exited"
+                ? "unknown"
+                : outcome,
+          error_category:
+            outcome === "failed"
+              ? "request"
+              : outcome === "exited"
+                ? "unknown"
+                : null,
+        },
+      });
+    },
+    [entry],
+  );
+
   const endSignIn = useCallback(
     (outcome: "ready" | "exited" | "failed" | "cancelled" = "cancelled") => {
       const current = signInRef.current;
       if (current === null) return;
       signInRef.current = null;
-      recordTelemetryEvent({
-        name: "onboarding_sign_in",
-        properties: { entry, outcome },
-      });
+      recordSignIn(current.providerId, outcome);
       setSignIn(null);
       closeTerminalMutate({ mode: "force", terminalId: current.session.id });
       void refetchStates();
     },
-    [closeTerminalMutate, entry, refetchStates],
+    [closeTerminalMutate, recordSignIn, refetchStates],
   );
 
   const signInRequestRef = useRef(0);
@@ -373,10 +406,7 @@ function AgentStepContainer({
     setSignInFailedProviderId(null);
     signInRequestRef.current += 1;
     const request = signInRequestRef.current;
-    recordTelemetryEvent({
-      name: "onboarding_sign_in",
-      properties: { entry, outcome: "started" },
-    });
+    recordSignIn(providerId, "started");
     const title = `Sign in to ${state.displayName}`;
     await closeAbandonedSignInTerminals({ hostId, title });
     let session: TerminalSession;
@@ -389,17 +419,11 @@ function AgentStepContainer({
         target: { kind: "host_path", hostId, cwd: null },
       });
     } catch {
-      recordTelemetryEvent({
-        name: "onboarding_sign_in",
-        properties: { entry, outcome: "failed" },
-      });
+      recordSignIn(providerId, "failed");
       return;
     }
     if (signInRequestRef.current !== request) {
-      recordTelemetryEvent({
-        name: "onboarding_sign_in",
-        properties: { entry, outcome: "cancelled" },
-      });
+      recordSignIn(providerId, "cancelled");
       void sdk.terminals
         .close({ mode: "force", terminalId: session.id })
         .catch(() => null);
@@ -458,7 +482,11 @@ function AgentStepContainer({
             installInfoPending: cliStatusQuery.isPending,
           });
           const diagnostic = {
-            source: entry,
+            surface: "onboarding" as const,
+            entry,
+            step: "agent" as const,
+            resource_type: "agent" as const,
+            resource_id: health.providerId,
             ...agentDiagnostic(setupState),
             any_agent_ready: aggregateAgentReadiness(
               states,
@@ -470,7 +498,7 @@ function AgentStepContainer({
               key: JSON.stringify(diagnostic),
               record: (trigger: "step_visible" | "state_changed") =>
                 recordTelemetryEvent({
-                  name: "onboarding_agent_diagnostic",
+                  name: "onboarding_step_state",
                   properties: { ...diagnostic, trigger },
                 }),
             },
@@ -571,7 +599,11 @@ function ProjectsStepContainer({
         name: "onboarding_operation",
         properties: {
           entry,
-          operation: "project_scan",
+          surface: "onboarding",
+          step: "projects",
+          resource_type: "project",
+          resource_id: "project_discovery",
+          operation: "scan",
           outcome: "started",
           error_category: null,
         },
@@ -581,7 +613,11 @@ function ProjectsStepContainer({
           name: "onboarding_operation",
           properties: {
             entry,
-            operation: "project_scan",
+            surface: "onboarding",
+            step: "projects",
+            resource_type: "project",
+            resource_id: "project_discovery",
+            operation: "scan",
             outcome,
             error_category: outcome === "failed" ? "request" : null,
           },
@@ -599,11 +635,15 @@ function ProjectsStepContainer({
           null
         ) {
           recordTelemetryEvent({
-            name: "onboarding_project_state",
+            name: "onboarding_step_state",
             properties: {
-              source: entry,
+              surface: "onboarding",
+              entry,
+              step: "projects",
+              resource_type: "project",
+              resource_id: "project_discovery",
               action: "scan_result",
-              result,
+              state: result,
               selection: "unknown",
             },
           });
@@ -717,11 +757,15 @@ function ProjectsStepContainer({
     const key = JSON.stringify({ hostId, result });
     if (scanObservation.current(key, true) === null) return;
     recordTelemetryEvent({
-      name: "onboarding_project_state",
+      name: "onboarding_step_state",
       properties: {
-        source: entry,
+        surface: "onboarding",
+        entry,
+        step: "projects",
+        resource_type: "project",
+        resource_id: "project_discovery",
         action: "scan_result",
-        result,
+        state: result,
         selection: reposQuery.isError ? "unknown" : projectSelection,
       },
     });
@@ -788,21 +832,29 @@ function ProjectsStepContainer({
         onAddFolder={() => {
           if (quickCreateProject.isAvailable && !quickCreateProject.isCreating)
             recordTelemetryEvent({
-              name: "onboarding_project_state",
+              name: "onboarding_step_state",
               properties: {
-                source: entry,
+                surface: "onboarding",
+                entry,
+                step: "projects",
+                resource_type: "project",
+                resource_id: "project_discovery",
                 action: "folder_opened",
-                result: "unknown",
+                state: "unknown",
                 selection: projectSelection,
               },
             });
           quickCreateProject.openCreateDialogWithResult((result) => {
             recordTelemetryEvent({
-              name: "onboarding_project_state",
+              name: "onboarding_step_state",
               properties: {
-                source: entry,
+                surface: "onboarding",
+                entry,
+                step: "projects",
+                resource_type: "project",
+                resource_id: "project_discovery",
                 action: "folder_result",
-                result,
+                state: result,
                 selection: "unknown",
               },
             });
@@ -882,7 +934,8 @@ function PluginCardContainer({
       if (next && !entry.installed) {
         const job = await runOnboardingPluginAction(
           onboardingEntry,
-          "plugin_install",
+          "install",
+          entry.entryId,
           () =>
             startCatalogPluginInstall(fetch, {
               entryId: entry.entryId,
@@ -891,13 +944,19 @@ function PluginCardContainer({
               recommendationId: recommendation.current.id,
             }),
         );
-        observeOnboardingPluginInstall(queryClient, job, onboardingEntry);
+        observeOnboardingPluginInstall(
+          queryClient,
+          job,
+          onboardingEntry,
+          entry.entryId,
+        );
         applyPluginInstallJob({ queryClient, job });
       } else {
         if (next) {
           await runOnboardingPluginAction(
             onboardingEntry,
-            "plugin_enable",
+            "enable",
+            entry.entryId,
             () =>
               setPluginEnabled(
                 entry.pluginId,

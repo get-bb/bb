@@ -436,13 +436,22 @@ describe("provider CLI install store", () => {
 describe("onboarding agent operation telemetry", () => {
   function event(
     entry: "first_run" | "replay",
-    operation: "agent_install" | "agent_update",
+    operation: "install" | "update",
     outcome: "started" | "succeeded" | "failed" | "unknown",
     error_category: "command_exit" | "request" | "unknown" | null = null,
   ) {
     return {
       name: "onboarding_operation",
-      properties: { entry, operation, outcome, error_category },
+      properties: {
+        surface: "onboarding",
+        step: "agent",
+        resource_type: "agent",
+        resource_id: operation === "install" ? "claude-code" : "codex",
+        entry,
+        operation,
+        outcome,
+        error_category,
+      },
     };
   }
 
@@ -506,8 +515,8 @@ describe("onboarding agent operation telemetry", () => {
       installAt(0).resolve(events);
       await settle();
       expect(telemetryMock.mock.calls).toEqual([
-        [event("first_run", "agent_update", "started")],
-        [event("first_run", "agent_update", outcome, error_category)],
+        [event("first_run", "update", "started")],
+        [event("first_run", "update", outcome, error_category)],
       ]);
     },
   );
@@ -538,7 +547,7 @@ describe("onboarding agent operation telemetry", () => {
       await settle();
       expect(telemetryMock).toHaveBeenCalledTimes(2);
       expect(telemetryMock).toHaveBeenLastCalledWith(
-        event("replay", "agent_update", "unknown", "request"),
+        event("replay", "update", "unknown", "request"),
       );
     },
   );
@@ -586,10 +595,10 @@ describe("onboarding agent operation telemetry", () => {
     installAt(1).resolve([completed, completed]);
     await settle();
     expect(telemetryMock.mock.calls.map(([event]) => event)).toEqual([
-      event("first_run", "agent_update", "started"),
-      event("first_run", "agent_update", "succeeded"),
-      event("replay", "agent_install", "started"),
-      event("replay", "agent_install", "succeeded"),
+      event("first_run", "update", "started"),
+      event("first_run", "update", "succeeded"),
+      event("replay", "install", "started"),
+      event("replay", "install", "succeeded"),
     ]);
     startProviderCliInstall(installJob);
     completeInstall(installAt(2), completed);

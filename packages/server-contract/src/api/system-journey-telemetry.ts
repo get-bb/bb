@@ -22,9 +22,13 @@ export const onboardingBlockerReasonSchema = z.enum([
   "other",
 ]);
 
-export const onboardingAgentDiagnosticPropertiesSchema = z
+const agentStepStateSchema = z
   .object({
-    source: onboardingTelemetrySourceSchema,
+    surface: z.literal("onboarding"),
+    entry: z.enum(["first_run", "replay"]),
+    step: z.literal("agent"),
+    resource_type: z.literal("agent"),
+    resource_id: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,127}$/),
     state: z.enum([
       "checking",
       "ready",
@@ -42,11 +46,15 @@ export const onboardingAgentDiagnosticPropertiesSchema = z
   })
   .strict();
 
-export const onboardingProjectStatePropertiesSchema = z
+const projectStepStateSchema = z
   .object({
-    source: onboardingTelemetrySourceSchema,
+    surface: z.literal("onboarding"),
+    entry: z.enum(["first_run", "replay"]),
+    step: z.literal("projects"),
+    resource_type: z.literal("project"),
+    resource_id: z.literal("project_discovery"),
     action: z.enum(["scan_result", "folder_opened", "folder_result"]),
-    result: z.enum([
+    state: z.enum([
       "empty",
       "nonempty",
       "selected",
@@ -62,11 +70,11 @@ export const onboardingProjectStatePropertiesSchema = z
       scan_result: ["empty", "nonempty", "failed", "unknown"],
       folder_opened: ["unknown"],
       folder_result: ["selected", "cancelled", "failed", "unknown"],
-    }[value.action].includes(value.result);
+    }[value.action].includes(value.state);
     if (!validResult) {
       context.addIssue({
         code: "custom",
-        path: ["result"],
+        path: ["state"],
         message: "Result must describe the observed project action",
       });
     }
@@ -76,21 +84,16 @@ export const newThreadBlockerPropertiesSchema = z
   .object({
     state: z.enum(["shown", "cleared"]),
     reason: onboardingBlockerReasonSchema,
-    source: onboardingTelemetrySourceSchema,
+    surface: z.literal("homepage"),
+    entry: z.enum(["first_run", "replay"]).nullable(),
   })
   .strict();
 
 export const onboardingJourneyTelemetrySchemas = [
   z
     .object({
-      name: z.literal("onboarding_agent_diagnostic"),
-      properties: onboardingAgentDiagnosticPropertiesSchema,
-    })
-    .strict(),
-  z
-    .object({
-      name: z.literal("onboarding_project_state"),
-      properties: onboardingProjectStatePropertiesSchema,
+      name: z.literal("onboarding_step_state"),
+      properties: z.union([agentStepStateSchema, projectStepStateSchema]),
     })
     .strict(),
   z

@@ -45,9 +45,12 @@ export function agentDiagnostic(
   state: AgentSetupState,
 ): Pick<
   Extract<
-    RecordTelemetryEventRequest,
-    { name: "onboarding_agent_diagnostic" }
-  >["properties"],
+    Extract<
+      RecordTelemetryEventRequest,
+      { name: "onboarding_step_state" }
+    >["properties"],
+    { step: "agent" }
+  >,
   "state" | "action_available"
 > {
   switch (state.status) {
