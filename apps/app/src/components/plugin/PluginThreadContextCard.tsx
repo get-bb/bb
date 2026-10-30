@@ -456,7 +456,7 @@ export function ThreadContextCardHeaderButton() {
         align="end"
         mobileTitle="Thread context"
         onOpenAutoFocus={(event) => event.preventDefault()}
-        className="max-h-[min(36rem,calc(100dvh-6rem))] w-72 overflow-y-auto p-0"
+        className="max-h-[min(36rem,calc(100dvh-6rem))] w-72 overflow-y-auto p-0 shadow-none"
       >
         <div
           role="group"
