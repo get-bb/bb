@@ -19,7 +19,7 @@ type Question = {
   label: string;
   type: "radio" | "checkbox" | "text" | "textarea";
   options: readonly string[];
-  placeholder: string;
+  placeholder?: string;
 };
 
 export const surveyQuestions: readonly Question[] = [
@@ -41,7 +41,6 @@ export const surveyQuestions: readonly Question[] = [
       "I don't remember",
       "Other",
     ],
-    placeholder: "",
   },
   {
     name: "role",
@@ -59,7 +58,6 @@ export const surveyQuestions: readonly Question[] = [
       "Not currently working",
       "Other",
     ],
-    placeholder: "",
   },
   {
     name: "work",
@@ -73,7 +71,6 @@ export const surveyQuestions: readonly Question[] = [
       "More than 10",
       "I'm not sure",
     ],
-    placeholder: "",
   },
   {
     name: "company_size",
@@ -81,47 +78,30 @@ export const surveyQuestions: readonly Question[] = [
       "Approximately how many people work at your company or organization?",
     type: "radio",
     options: ["1–50", "51–200", "201–999", "1,000 or more"],
-    placeholder: "",
-  },
-  {
-    name: "plugin_sharing",
-    label: "Have you shared a bb plugin with anyone?",
-    type: "radio",
-    options: [
-      "Yes, with a coworker",
-      "Yes, with someone else",
-      "Yes, with both",
-      "No",
-    ],
-    placeholder: "",
   },
   {
     name: "love",
     label: "What do you value most about bb, and why?",
     type: "textarea",
     options: [],
-    placeholder: "",
   },
   {
     name: "improve",
     label: "What would make bb better for you?",
     type: "textarea",
     options: [],
-    placeholder: "",
   },
   {
     name: "team_improve",
     label: "What would make bb better for your team at work?",
     type: "textarea",
     options: [],
-    placeholder: "",
   },
   {
     name: "team_adopt",
     label: "What would it take for others where you work to start using bb?",
     type: "textarea",
     options: [],
-    placeholder: "",
   },
   {
     name: "community",
@@ -136,7 +116,6 @@ export const surveyQuestions: readonly Question[] = [
       "Hear what's on the roadmap and have a say in it",
       "Other",
     ],
-    placeholder: "",
   },
   {
     name: "city",
@@ -150,7 +129,6 @@ export const surveyQuestions: readonly Question[] = [
     label: "Would you come to a bb meetup near you?",
     type: "radio",
     options: ["Yes, and I'd help organize it", "Yes, I'd come", "Maybe", "No"],
-    placeholder: "",
   },
   {
     name: "research_call",
@@ -158,7 +136,6 @@ export const surveyQuestions: readonly Question[] = [
       "Would you be open to a short call to walk us through how you use bb?",
     type: "radio",
     options: ["Yes", "No"],
-    placeholder: "",
   },
 ];
 
@@ -170,12 +147,15 @@ export const surveyReply = z.object({
   error: z.string().optional(),
 });
 export type SurveyReply = z.infer<typeof surveyReply>;
-export const surveyFields = [
-  ...surveyQuestions.map((question) => question.name),
+const DETAIL_FIELDS = [
   "discovery_other",
   "role_other",
   "community_other",
   "email",
+];
+export const surveyFields = [
+  ...surveyQuestions.map((question) => question.name),
+  ...DETAIL_FIELDS,
 ];
 
 export function validateSurvey(values: FormValues): FormErrors {
@@ -198,12 +178,7 @@ export function validateSurvey(values: FormValues): FormErrors {
       errors[question.name] = "Please answer this question.";
     }
   }
-  for (const name of [
-    "discovery_other",
-    "role_other",
-    "community_other",
-    "email",
-  ]) {
+  for (const name of DETAIL_FIELDS) {
     const selected = values[name] ?? [];
     if (selected.length > 1 || selected.some((value) => value.length > 250)) {
       errors[name] = "Please use one answer of up to 250 characters.";
