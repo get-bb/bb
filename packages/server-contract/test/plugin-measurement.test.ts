@@ -3,6 +3,7 @@ import {
   internalPluginUseReportSchema,
   pluginUseTelemetryEventSchema,
   pluginStateChangedTelemetryEventSchema,
+  pluginRecommendationTelemetryEventSchema,
   pluginInstallRequestSchema,
   pluginCatalogInstallRequestSchema,
   pluginStateMeasurementRequestSchema,
@@ -39,6 +40,8 @@ describe("plugin telemetry boundary", () => {
       { args: "private" },
       { output: "private" },
       { public_plugin: "private" },
+      { public_plugin: null },
+      { action: "other_action", outcome: "invoked" },
       { plugin_source: "local" },
     ]) {
       expect(
@@ -93,6 +96,37 @@ describe("plugin telemetry boundary", () => {
       }).success,
     ).toBe(false);
   });
+  it("keeps only current recommendation actions and sources", () => {
+    const event = {
+      name: "plugin_recommendation",
+      properties: {
+        action: "deselected",
+        public_plugin: "workflows",
+        source: "first_run",
+        initial_state: "enabled",
+        availability: "available",
+      },
+    };
+    expect(
+      pluginRecommendationTelemetryEventSchema.safeParse(event).success,
+    ).toBe(true);
+    for (const extra of [
+      { action: "browse_opened" },
+      { action: "dismissed" },
+      { source: "during_first_thread" },
+      { source: "after_first_thread" },
+      { public_plugin: null },
+      { recommendation_revision: "baseline" },
+    ]) {
+      expect(
+        pluginRecommendationTelemetryEventSchema.safeParse({
+          ...event,
+          properties: { ...event.properties, ...extra },
+        }).success,
+      ).toBe(false);
+    }
+  });
+
   it("preserves legacy requests with unknown source and rejects unbounded source", () => {
     expect(
       pluginInstallRequestSchema.parse({ source: "builtin:workflows" })

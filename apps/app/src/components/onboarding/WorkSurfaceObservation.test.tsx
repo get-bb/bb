@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { StrictMode } from "react";
-import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   WorkSurfaceObservation,
@@ -30,9 +30,7 @@ function Observation({
 }) {
   return (
     <WorkSurfaceObservation
-      surface="first_task"
       identity="same-local-draft"
-      enabled={true}
       hasDraft={hasDraft}
       readiness={readiness}
     >
@@ -134,7 +132,6 @@ describe("visible work measurement", () => {
         surface: "first_task",
         action: "displayed",
         entry: "skipped_guide",
-        content_revision: null,
       },
     });
     expect(capture).toHaveBeenNthCalledWith(2, {
@@ -167,6 +164,34 @@ describe("visible work measurement", () => {
         ([event]) => event.name === "onboarding_work_surface",
       ),
     ).toHaveLength(1);
+  });
+
+  it("waits for a composer inside a hidden ancestor without consuming the guide handoff", async () => {
+    recordOnboardingWorkEntry("completed", "replay");
+    const view = render(
+      <div hidden>
+        <Observation />
+      </div>,
+    );
+    expect(capture).not.toHaveBeenCalled();
+    view.rerender(
+      <div>
+        <Observation />
+      </div>,
+    );
+    await waitFor(() => expect(capture).toHaveBeenCalledTimes(2));
+    expect(capture).toHaveBeenNthCalledWith(1, {
+      name: "onboarding_work_surface",
+      properties: {
+        surface: "first_task",
+        action: "displayed",
+        entry: "completed_guide",
+      },
+    });
+    expect(capture).toHaveBeenNthCalledWith(2, {
+      name: "new_thread_blocker",
+      properties: { state: "shown", reason: "sign_in", source: "replay" },
+    });
   });
 
   it("records a deliberate remount as another display without clearing on unmount", async () => {

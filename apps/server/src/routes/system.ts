@@ -348,7 +348,6 @@ export function registerSystemRoutes(
   post(routes.recordTelemetryEvent, (context, payload) => {
     if (
       payload.name === "plugin_recommendation" &&
-      payload.properties.public_plugin !== null &&
       !isReviewedPluginRecommendation(deps.db, payload.properties.public_plugin)
     ) {
       throw new ApiError(

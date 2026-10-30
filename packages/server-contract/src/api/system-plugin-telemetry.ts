@@ -1,15 +1,7 @@
 import { z } from "zod";
+import { onboardingTelemetrySourceSchema } from "./system-journey-telemetry.js";
 
-export const pluginMeasurementSourceSchema = z.enum([
-  "first_run",
-  "replay",
-  "settings",
-  "cli",
-  "during_first_thread",
-  "after_first_thread",
-  "other",
-  "unknown",
-]);
+export const pluginMeasurementSourceSchema = onboardingTelemetrySourceSchema;
 export type PluginMeasurementSource = z.infer<
   typeof pluginMeasurementSourceSchema
 >;
@@ -26,13 +18,7 @@ export type PublicMeasurementPlugin = z.infer<
   typeof publicMeasurementPluginSchema
 >;
 
-const pluginSourceSchema = z.enum([
-  "builtin",
-  "public_catalog",
-  "private",
-  "local",
-  "unknown",
-]);
+const pluginSourceSchema = z.enum(["builtin", "public_catalog"]);
 export const pluginUseInitiatorSchema = z.enum([
   "user",
   "agent",
@@ -52,13 +38,13 @@ export const pluginUseObservationSchema = z.discriminatedUnion("action", [
     .strict(),
   z
     .object({
-      action: z.literal("workflow_started"),
+      action: z.enum(["workflow_started", "question_created"]),
       outcome: z.literal("succeeded"),
     })
     .strict(),
   z
     .object({
-      action: z.literal("editor_opened"),
+      action: z.enum(["editor_opened", "prompt_inserted", "annotation_inserted"]),
       outcome: z.literal("observed"),
     })
     .strict(),
@@ -66,24 +52,6 @@ export const pluginUseObservationSchema = z.discriminatedUnion("action", [
     .object({
       action: z.literal("file_saved"),
       outcome: z.enum(["succeeded", "failed"]),
-    })
-    .strict(),
-  z
-    .object({
-      action: z.literal("prompt_inserted"),
-      outcome: z.literal("observed"),
-    })
-    .strict(),
-  z
-    .object({
-      action: z.literal("annotation_inserted"),
-      outcome: z.literal("observed"),
-    })
-    .strict(),
-  z
-    .object({
-      action: z.literal("question_created"),
-      outcome: z.literal("succeeded"),
     })
     .strict(),
   z
@@ -109,79 +77,32 @@ const actionOwners = {
   PublicMeasurementPlugin
 >;
 
-const pluginUseActionSchema = z.enum([
-  "browser_run",
-  "workflow_started",
-  "editor_opened",
-  "file_saved",
-  "prompt_inserted",
-  "annotation_inserted",
-  "question_created",
-  "question_answered",
-]);
-const pluginUseOutcomeSchema = z.enum([
-  "invoked",
-  "observed",
-  "succeeded",
-  "failed",
-  "cancelled",
-  "unknown",
-]);
+const [firstObservation, ...otherObservations] = pluginUseObservationSchema.options;
+const reportFields = { initiator: pluginUseInitiatorSchema.optional() };
+const useFields = {
+  public_plugin: publicMeasurementPluginSchema,
+  plugin_source: pluginSourceSchema,
+  initiator: pluginUseInitiatorSchema,
+};
 
-export const internalPluginUseReportSchema = z
-  .object({
-    action: pluginUseActionSchema,
-    outcome: pluginUseOutcomeSchema,
-    initiator: pluginUseInitiatorSchema.optional(),
-  })
-  .strict()
-  .superRefine((value, context) => {
-    if (
-      !pluginUseObservationSchema.safeParse({
-        action: value.action,
-        outcome: value.outcome,
-      }).success
-    )
-      context.addIssue({
-        code: "custom",
-        message: "Outcome is not supported for this action",
-      });
-  });
+export const internalPluginUseReportSchema = z.discriminatedUnion("action", [
+  firstObservation.extend(reportFields),
+  ...otherObservations.map((option) => option.extend(reportFields)),
+]);
 
 export const pluginUseTelemetryEventSchema = z
   .object({
     name: z.literal("plugin_use"),
     properties: z
-      .object({
-        public_plugin: publicMeasurementPluginSchema.nullable(),
-        plugin_source: pluginSourceSchema,
-        initiator: pluginUseInitiatorSchema,
-        action: z.union([z.literal("other_action"), pluginUseActionSchema]),
-        outcome: z.enum([
-          "invoked",
-          "observed",
-          "succeeded",
-          "failed",
-          "cancelled",
-          "unknown",
-        ]),
-      })
-      .strict()
+      .discriminatedUnion("action", [
+        firstObservation.extend(useFields),
+        ...otherObservations.map((option) => option.extend(useFields)),
+      ])
       .superRefine((value, context) => {
-        const valid =
-          value.action === "other_action"
-            ? value.public_plugin === null && value.outcome === "invoked"
-            : value.public_plugin === actionOwners[value.action] &&
-              (value.plugin_source === "builtin" ||
-                value.plugin_source === "public_catalog") &&
-              pluginUseObservationSchema.safeParse({
-                action: value.action,
-                outcome: value.outcome,
-              }).success;
-        if (!valid)
+        if (value.public_plugin !== actionOwners[value.action])
           context.addIssue({
             code: "custom",
-            message: "Plugin action must match its owner and observed outcome",
+            message: "Plugin action must match its owner",
           });
       }),
   })
@@ -192,7 +113,7 @@ export const pluginStateChangedTelemetryEventSchema = z
     name: z.literal("plugin_state_changed"),
     properties: z
       .object({
-        public_plugin: publicMeasurementPluginSchema.nullable(),
+        public_plugin: publicMeasurementPluginSchema,
         plugin_source: pluginSourceSchema,
         source: pluginMeasurementSourceSchema,
         previous_state: z.enum(["absent", "disabled", "enabled", "unknown"]),
@@ -200,12 +121,7 @@ export const pluginStateChangedTelemetryEventSchema = z
       })
       .strict()
       .superRefine((value, context) => {
-        if (
-          value.state === value.previous_state ||
-          (value.public_plugin !== null &&
-            value.plugin_source !== "builtin" &&
-            value.plugin_source !== "public_catalog")
-        ) {
+        if (value.state === value.previous_state) {
           context.addIssue({
             code: "custom",
             message: "Expected a confirmed transition with public provenance",
@@ -223,40 +139,12 @@ export const pluginRecommendationTelemetryEventSchema = z
     name: z.literal("plugin_recommendation"),
     properties: z
       .object({
-        action: z.enum([
-          "shown",
-          "browse_opened",
-          "selected",
-          "deselected",
-          "dismissed",
-        ]),
-        public_plugin: publicMeasurementPluginSchema.nullable(),
-        recommendation_revision: z.literal("baseline"),
+        action: z.enum(["shown", "selected", "deselected"]),
+        public_plugin: publicMeasurementPluginSchema,
         source: pluginMeasurementSourceSchema,
         initial_state: z.enum(["absent", "disabled", "enabled", "unknown"]),
         availability: z.enum(["available", "unavailable", "unknown"]),
       })
-      .strict()
-      .superRefine((value, context) => {
-        const wholeSurface =
-          value.action === "browse_opened" ||
-          (value.action === "dismissed" && value.public_plugin === null);
-        if (
-          (wholeSurface &&
-            (value.public_plugin !== null ||
-              value.initial_state !== "unknown" ||
-              value.availability !== "unknown")) ||
-          (!wholeSurface && value.public_plugin === null) ||
-          (value.action === "dismissed" &&
-            value.source !== "during_first_thread" &&
-            value.source !== "after_first_thread")
-        ) {
-          context.addIssue({
-            code: "custom",
-            message:
-              "Recommendation observation must identify the actual card or whole surface",
-          });
-        }
-      }),
+      .strict(),
   })
   .strict();

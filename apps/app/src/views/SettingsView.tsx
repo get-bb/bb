@@ -1089,7 +1089,7 @@ export function PrivacySettingsSection({
 
         <SettingsWithControl
           label="Share anonymous usage data"
-          description="Send anonymous usage data, such as setup progress and outcomes, project import counts, setup blockers, displayed design versions, coarse window sizes, device setup and use, and feature use, to help improve bb. This includes choices and use of selected public plugins; private plugin names, prompts, project paths and account details are excluded. Turning this off takes effect immediately for this server."
+          description="Send anonymous usage data, such as app starts, setup progress and outcomes, project import counts, setup blockers, device setup and use, and feature use, to help improve bb. This includes choices and use of selected public plugins; private plugin names, prompts, project paths and account details are excluded. Turning this off takes effect immediately for this server."
         >
           <Switch
             checked={telemetryEnabled}

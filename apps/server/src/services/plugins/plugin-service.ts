@@ -2241,7 +2241,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         `cli ${registration.name}`,
         async (signal) => {
           const result = await withPluginMeasurementInvocation(
-            deps,
             id,
             "unknown",
             () => registration.run(argv, { ...ctx, signal }),
@@ -2489,7 +2488,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         `tool ${record.name}`,
         async () => {
           const result = await withPluginMeasurementInvocation(
-            deps,
             pluginId,
             "agent",
             () => record.execute(parsed.value, ctx),
