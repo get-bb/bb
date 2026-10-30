@@ -1,6 +1,5 @@
 import {
   createContext,
-  useCallback,
   useContext,
   useLayoutEffect,
   useMemo,
@@ -87,8 +86,9 @@ interface ThreadContextCardPaneState {
   popoverOpen: boolean;
   setPopoverOpen(open: boolean): void;
   pinnedCardHasContent: boolean;
-  reportPinnedCardContent(hasContent: boolean): void;
-  openIfEmptyOnNextPin(): void;
+  setPinnedCardHasContent(hasContent: boolean): void;
+  emptyCardShown: boolean;
+  setEmptyCardShownForThreadId(threadId: string | null): void;
 }
 
 const ThreadContextCardPaneContext =
@@ -129,16 +129,10 @@ export function ThreadContextCardProvider({
   const [layout, setLayout] = useState<ThreadContextCardLayout>("overlay");
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [pinnedCardHasContent, setPinnedCardHasContent] = useState(false);
-  const pinRequestedRef = useRef(false);
-  const reportPinnedCardContent = useCallback((hasContent: boolean) => {
-    setPinnedCardHasContent(hasContent);
-    if (!pinRequestedRef.current) return;
-    pinRequestedRef.current = false;
-    if (!hasContent) setPopoverOpen(true);
-  }, []);
-  const openIfEmptyOnNextPin = useCallback(() => {
-    pinRequestedRef.current = true;
-  }, []);
+  const [emptyCardShownForThreadId, setEmptyCardShownForThreadId] = useState<
+    string | null
+  >(null);
+  const emptyCardShown = emptyCardShownForThreadId === threadId;
   const environmentId = environment?.id ?? null;
   const value = useMemo<ThreadContextCardPaneState>(
     () => ({
@@ -176,20 +170,20 @@ export function ThreadContextCardProvider({
       popoverOpen,
       setPopoverOpen,
       pinnedCardHasContent,
-      reportPinnedCardContent,
-      openIfEmptyOnNextPin,
+      setPinnedCardHasContent,
+      emptyCardShown,
+      setEmptyCardShownForThreadId,
     }),
     [
       coreRows,
       coreSections,
       enabled,
       environmentId,
+      emptyCardShown,
       layout,
-      openIfEmptyOnNextPin,
       pinnedCardHasContent,
       popoverOpen,
       projectId,
-      reportPinnedCardContent,
       threadContextCardRows,
       threadContextCardSections,
       threadId,
@@ -225,13 +219,19 @@ export function useThreadContextKind(): ExperimentalThreadContextKind {
   return usePaneState() === null ? "banner" : "card";
 }
 
+function isPinnedCardShown(
+  state: ThreadContextCardPaneState,
+  pinned: boolean,
+): boolean {
+  return pinned && (state.pinnedCardHasContent || state.emptyCardShown);
+}
+
 export function useThreadContextCardContentInset(): number {
   const state = usePaneState();
   const [pinned] = useAtom(pinnedAtom);
   return state !== null &&
-    pinned &&
     state.layout === "shift" &&
-    state.pinnedCardHasContent
+    isPinnedCardShown(state, pinned)
     ? THREAD_CONTEXT_CARD_RESERVED_WIDTH_PX
     : 0;
 }
@@ -376,12 +376,12 @@ export function ThreadContextCard() {
   return (
     <>
       <span ref={probeRef} aria-hidden className="hidden" />
-      {pinned && state.layout !== "overlay" && !state.popoverOpen ? (
+      {pinned && state.layout !== "overlay" ? (
         <div
           role="group"
           aria-label="Thread context"
           data-thread-context-card=""
-          hidden={!state.pinnedCardHasContent}
+          hidden={!isPinnedCardShown(state, pinned)}
           className={cn(
             "pointer-events-auto max-h-[min(36rem,calc(100%-1.5rem))] w-72 shrink-0",
             CARD_CLASS,
@@ -389,7 +389,7 @@ export function ThreadContextCard() {
         >
           <ThreadContextCardContent
             state={state}
-            onHasContentChange={state.reportPinnedCardContent}
+            onHasContentChange={state.setPinnedCardHasContent}
           />
         </div>
       ) : null}
@@ -407,12 +407,9 @@ export function ThreadContextCardHeaderButton() {
   const state = usePaneState();
   const [pinned, setPinned] = useAtom(pinnedAtom);
   if (state === null) return null;
-  if (
-    state.layout !== "overlay" &&
-    !state.popoverOpen &&
-    (!pinned || state.pinnedCardHasContent)
-  ) {
-    const label = pinned ? "Unpin thread context" : "Pin thread context";
+  if (state.layout !== "overlay") {
+    const shown = isPinnedCardShown(state, pinned);
+    const label = shown ? "Unpin thread context" : "Pin thread context";
     return (
       <Tooltip>
         <TooltipTrigger asChild>
@@ -421,11 +418,13 @@ export function ThreadContextCardHeaderButton() {
             variant="ghost"
             size="icon"
             aria-label={label}
-            aria-pressed={pinned}
+            aria-pressed={shown}
             className={HEADER_BUTTON_CLASS}
             onClick={() => {
-              if (!pinned) state.openIfEmptyOnNextPin();
-              setPinned(!pinned);
+              setPinned(!shown);
+              state.setEmptyCardShownForThreadId(
+                shown ? null : state.props.threadId,
+              );
             }}
           >
             <Icon name="LayoutList" />

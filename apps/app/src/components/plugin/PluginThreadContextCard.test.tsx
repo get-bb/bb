@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 import {
-  act,
   cleanup,
   fireEvent,
   render,
@@ -252,7 +251,7 @@ describe("thread context card", () => {
     ).toBe("false");
   });
 
-  it("keeps an empty pinned card hidden until the header opens it", () => {
+  it("keeps an empty pinned card hidden until the header shows it", () => {
     renderPane({
       paneWidth: 1200,
       coreRows: CORE.map((row) => ({ ...row, component: Empty })),
@@ -264,38 +263,16 @@ describe("thread context card", () => {
     expect(screen.queryByRole("group", { name: "Thread context" })).toBeNull();
     expect(screen.getByLabelText("Inset").textContent).toBe("0");
 
-    fireEvent.click(screen.getByRole("button", { name: "Thread context" }));
-    expect(
-      screen.getByRole("group", { name: "Thread context" }).textContent,
-    ).toContain("Nothing to show yet");
-  });
-
-  it("opens the empty state when pinning a card that turns out empty", () => {
-    setPluginSlotRegistrations(
-      "first",
-      makePluginRegistrationSet({
-        threadContextCardRows: [
-          { id: "diff", group: "3_git", component: OpenDiffRow },
-        ],
-      }),
-    );
-    renderPane({
-      paneWidth: 1600,
-      coreRows: CORE.map((row) => ({ ...row, component: Empty })),
-      coreSections: CORE_SECTIONS.map((entry) => ({
-        ...entry,
-        component: Empty,
-      })),
-    });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Unpin thread context" }),
-    );
-    act(() => removePluginSlotRegistrations("first"));
-
     fireEvent.click(screen.getByRole("button", { name: "Pin thread context" }));
     expect(
       screen.getByRole("group", { name: "Thread context" }).textContent,
     ).toContain("Nothing to show yet");
+    expect(screen.getByLabelText("Inset").textContent).not.toBe("0");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Unpin thread context" }),
+    );
+    expect(screen.queryByRole("group", { name: "Thread context" })).toBeNull();
   });
 
   it("opens the card from the header in a narrow pane and closes it when a row runs", () => {
