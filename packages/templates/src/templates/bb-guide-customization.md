@@ -183,8 +183,7 @@ approvals locally for the current BB site and device profile. They do not sync
 across devices or server addresses. The Plugin SDK can list and revoke the
 viewing client's approvals; there is no CLI command that reads or modifies a
 remote client's localStorage.
-`changelogPreview` shows the latest
-release notes as a dismissible card on Settings → Updates. Experiments that
+Experiments that
 gate a feature are documented with it: `serverMove` in `bb guide machines`,
 `performanceDiagnostics` under Server performance diagnostics below.
 `timelinePush` sends an open thread's timeline updates over the live

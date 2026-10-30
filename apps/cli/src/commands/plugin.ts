@@ -35,6 +35,7 @@ import {
 } from "@bb/templates/plugin-scaffold";
 import { action, CliExitError } from "../action.js";
 import { cliFetch, createCliBbSdk } from "../client.js";
+import { resolveContextThreadId } from "../context-env.js";
 import {
   buildPluginApp,
   buildPluginHost,
@@ -310,6 +311,25 @@ async function isPackageInstalled(
       if (parent === dir) return false;
       dir = parent;
     }
+  }
+}
+
+const PLUGIN_CREATION_TELEMETRY_TIMEOUT_MS = 2_000;
+
+async function recordPluginCreationStarted(
+  getUrl: () => string,
+): Promise<void> {
+  if (resolveContextThreadId() !== undefined) return;
+  try {
+    await createCliBbSdk(
+      getUrl(),
+      PLUGIN_CREATION_TELEMETRY_TIMEOUT_MS,
+    ).system.experimental_recordTelemetryEvent({
+      name: "plugin_creation_started",
+      properties: {},
+    });
+  } catch {
+    return;
   }
 }
 
@@ -1463,6 +1483,7 @@ export function registerPluginCommands(
           );
           process.exit(1);
         }
+        const creationTelemetry = recordPluginCreationStarted(getUrl);
         const { directoryName, packageName } = target;
         const targetDir = resolve(process.cwd(), directoryName);
         await scaffoldPlugin({
@@ -1479,6 +1500,7 @@ export function registerPluginCommands(
           console.log("  npm install --include=dev");
         }
         console.log("  bb plugin install .");
+        await creationTelemetry;
       }),
     );
 

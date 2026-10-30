@@ -19,7 +19,11 @@ import {
 } from "@/lib/plugin-slots";
 import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlotMount";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
-import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
+import {
+  useEffect,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from "react";
 import { Link, MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
@@ -223,8 +227,8 @@ function RouteContent() {
   );
 }
 
-function renderLayout(initialPath = "/", children: ReactNode = null) {
-  return render(
+function layoutTree(initialPath: string, children: ReactNode) {
+  return (
     <MemoryRouter initialEntries={[initialPath]}>
       <AppCommandProvider>
         <AppLayout>
@@ -232,8 +236,12 @@ function renderLayout(initialPath = "/", children: ReactNode = null) {
           {children}
         </AppLayout>
       </AppCommandProvider>
-    </MemoryRouter>,
+    </MemoryRouter>
   );
+}
+
+function renderLayout(initialPath = "/", children: ReactNode = null) {
+  return render(layoutTree(initialPath, children));
 }
 
 beforeEach(() => {
@@ -280,6 +288,31 @@ describe("canonical thread routes", () => {
     await waitFor(() =>
       expect(screen.getByTestId("location").textContent).toBe(expected),
     );
+  });
+
+  it("keeps the layout mounted while redirecting to the thread's project route", async () => {
+    let mounts = 0;
+    function MountCounter() {
+      useEffect(() => {
+        mounts += 1;
+      }, []);
+      return null;
+    }
+    const view = renderLayout("/threads/thr_one", <MountCounter />);
+    useThreadDetailBootstrapMock.mockReturnValue({
+      data: { projectId: "proj_actual" },
+      isError: false,
+      isSuccess: true,
+    });
+
+    view.rerender(layoutTree("/threads/thr_one", <MountCounter />));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/projects/proj_actual/threads/thr_one",
+      ),
+    );
+    expect(mounts).toBe(1);
   });
 
   it("keeps an already canonical thread route", () => {

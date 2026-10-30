@@ -92,6 +92,7 @@ describe("thread provisioning recovery", () => {
         status: "starting",
       });
       const context = createThreadStartup({
+        initiator: "user",
         clientRequestId: encodeClientTurnRequestIdNumber({ value: 1 }),
         environmentIntent: { type: "reuse", environmentId: environment.id },
         execution: THREAD_START_EXECUTION,
@@ -221,6 +222,7 @@ describe("thread provisioning recovery", () => {
         status: "starting",
       });
       const requestedContext = createThreadStartup({
+        initiator: "user",
         clientRequestId: encodeClientTurnRequestIdNumber({ value: 1 }),
         environmentIntent: {
           type: "reuse",
@@ -352,6 +354,7 @@ describe("thread provisioning recovery", () => {
         status: "starting",
       });
       const requestedContext = createThreadStartup({
+        initiator: "user",
         clientRequestId: encodeClientTurnRequestIdNumber({ value: 1 }),
         environmentIntent: {
           type: "reuse",
@@ -630,6 +633,7 @@ it.each(["metadata", "workspace"])(
         status: "starting",
       });
       const requested = requestThreadProvision(harness.deps, {
+        author: { initiator: "user", senderThreadId: null },
         thread,
         environmentIntent: { type: "reuse", environmentId: environment.id },
         execution: THREAD_START_EXECUTION,
@@ -736,10 +740,12 @@ it("rejects an older startup checkpoint after a new attempt has been persisted",
       titleProvided: true,
     };
     const first = requestThreadProvision(harness.deps, {
+      author: { initiator: "user", senderThreadId: null },
       ...args,
       input: textInput("first"),
     });
     const second = requestThreadProvision(harness.deps, {
+      author: { initiator: "user", senderThreadId: null },
       ...args,
       input: textInput("second"),
     });
@@ -839,6 +845,7 @@ it.each(["success", "failure"])(
         status: "starting",
       });
       requestThreadProvision(harness.deps, {
+        author: { initiator: "user", senderThreadId: null },
         thread,
         environmentIntent: { type: "reuse", environmentId: environment.id },
         execution: THREAD_START_EXECUTION,
@@ -907,6 +914,7 @@ it("waits for the host to reconnect before recovering workspace setup", async ()
       status: "starting",
     });
     requestThreadProvision(harness.deps, {
+      author: { initiator: "user", senderThreadId: null },
       thread,
       environmentIntent: { type: "reuse", environmentId: environment.id },
       execution: THREAD_START_EXECUTION,
@@ -957,6 +965,7 @@ it("resumes workspace setup when the same daemon reconnects", async () => {
       status: "starting",
     });
     requestThreadProvision(harness.deps, {
+      author: { initiator: "user", senderThreadId: null },
       thread,
       environmentIntent: { type: "reuse", environmentId: environment.id },
       execution: THREAD_START_EXECUTION,
@@ -1035,6 +1044,7 @@ it("keeps workspace setup waiting while the host stays disconnected", async () =
       status: "starting",
     });
     requestThreadProvision(harness.deps, {
+      author: { initiator: "user", senderThreadId: null },
       thread,
       environmentIntent: { type: "reuse", environmentId: environment.id },
       execution: THREAD_START_EXECUTION,
@@ -1094,6 +1104,7 @@ it.each(["pending", "starting"] as const)(
         });
       } else {
         requestThreadProvision(harness.deps, {
+          author: { initiator: "user", senderThreadId: null },
           ...startup,
           thread,
           execution: THREAD_START_EXECUTION,

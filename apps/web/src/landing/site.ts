@@ -72,6 +72,13 @@ export const CAMPAIGN_PARAM_NAMES = [
   ...CLICK_ID_PARAM_NAMES,
 ] as const;
 
+export const VISIT_PARAM_NAMES = [
+  "visitor_id",
+  "session_id",
+  "first_page",
+  "first_referrer",
+] as const;
+
 export function downloadHref(
   platform: DesktopPlatform,
   placement: CtaPlacement,

@@ -11,6 +11,14 @@ export const queuedMessageStateValues = [
 export const queuedMessageStateSchema = z.enum(queuedMessageStateValues);
 export type QueuedMessageState = z.infer<typeof queuedMessageStateSchema>;
 
+export const queuedMessageDeliveryModeValues = ["steer", "queue"] as const;
+export const queuedMessageDeliveryModeSchema = z.enum(
+  queuedMessageDeliveryModeValues,
+);
+export type QueuedMessageDeliveryMode = z.infer<
+  typeof queuedMessageDeliveryModeSchema
+>;
+
 export const QUEUED_MESSAGE_FAILED_STATES = [
   "failed_retrying",
   "failed_exhausted",

@@ -2,6 +2,7 @@ import { requestToaster } from "@/components/ui/app-toast-runtime";
 import {
   markPluginFrontendBootStarted,
   markPluginFrontendsSettled,
+  setPluginFrontendLoadFailed,
 } from "./plugin-frontend-boot-state";
 
 type PluginFrontendModule = typeof import("./plugin-frontend");
@@ -37,6 +38,7 @@ export async function bootPluginFrontends(): Promise<void> {
     const pluginFrontend = await loadPluginFrontend();
     await pluginFrontend.bootPluginFrontends();
   } catch (error) {
+    setPluginFrontendLoadFailed(true);
     console.warn(
       `plugin runtime load failed: ${error instanceof Error ? error.message : String(error)}`,
     );

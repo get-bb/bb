@@ -11,7 +11,6 @@ import { ApiError } from "../../errors.js";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { attemptDispatch } from "./dispatch-attempt.js";
 import { requireThreadCommandEnvironment } from "./thread-command-environment.js";
-import { sendThreadMessage } from "./thread-send.js";
 import { assertThreadHostAcceptsWork } from "./thread-host-admission.js";
 import { runWithTurnTrace } from "../system/turn-trace.js";
 import { assertProviderAcceptsPromptActions } from "../providers/provider-plan-command.js";
@@ -36,10 +35,15 @@ export async function acceptThreadSendRequest(
     const environment = await requireThreadCommandEnvironment(deps, {
       thread: args.thread,
     });
-    await sendThreadMessage(deps, {
-      environment,
-      payload: request,
+    await attemptDispatch(deps, {
       thread: args.thread,
+      payload: request,
+      source: { kind: "operation", environment },
+      queuePayload: { kind: "inline" },
+      pluginSubmission: null,
+      origin: null,
+      originPluginId: null,
+      startedOnBehalfOf: null,
       trigger: "user",
     });
     return { ok: true, delivery: "sent" };

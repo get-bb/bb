@@ -181,7 +181,7 @@ describe("queued message dispatch hook", () => {
           mode: "auto",
         }),
       ).rejects.toMatchObject({
-        body: { code: "queued_message_claim_lost" },
+        body: { code: "thread_not_writable" },
       });
 
       expect(
@@ -225,7 +225,7 @@ describe("queued message dispatch hook", () => {
           mode: "auto",
         }),
       ).rejects.toMatchObject({
-        body: { code: "queued_message_claim_lost" },
+        body: { code: "thread_not_writable" },
       });
 
       expect(

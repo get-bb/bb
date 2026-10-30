@@ -112,3 +112,14 @@ export function rewindQueuedMessageStateMigration(db: DbConnection): void {
     DELETE FROM __drizzle_migrations WHERE created_at >= ${QUEUED_MESSAGE_STATE_MIGRATION_WHEN};
   `);
 }
+
+export function dropQueuedMessageDeliveryModeColumn(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], { name: string }>("PRAGMA table_info(queued_thread_messages)")
+    .all();
+  if (columns.some((column) => column.name === "delivery_mode")) {
+    db.$client.exec(
+      "ALTER TABLE queued_thread_messages DROP COLUMN delivery_mode",
+    );
+  }
+}

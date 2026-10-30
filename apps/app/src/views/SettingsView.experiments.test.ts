@@ -7,7 +7,7 @@ describe("visibleExperimentKeys", () => {
       "performanceDiagnostics",
     );
     expect(visibleExperimentKeys(false)).toEqual(
-      expect.arrayContaining(["changelogPreview", "serverMove", "timelinePush"]),
+      expect.arrayContaining(["serverMove", "timelinePush"]),
     );
   });
 

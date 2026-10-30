@@ -5,6 +5,7 @@ import {
   environmentQueryKey,
   threadSearchQueryKeyPrefix,
 } from "../queries/query-keys";
+import { keepNewerByUpdatedAt } from "./cache-effect-utils";
 import { invalidateEnvironmentWorkspaceStateQueries } from "./environment-cache-effects";
 import {
   beginThreadEntityPrediction,
@@ -83,13 +84,15 @@ export function completeEnvironmentNameUpdateTransaction({
 }
 
 export function applyEnvironmentUpdateResult({
-  environment,
+  environment: result,
   queryClient,
 }: EnvironmentUpdateResultArgs): void {
-  queryClient.setQueryData<Environment>(
-    environmentQueryKey(environment.id),
-    environment,
+  const queryKey = environmentQueryKey(result.id);
+  const environment = keepNewerByUpdatedAt(
+    queryClient.getQueryData<Environment>(queryKey),
+    result,
   );
+  queryClient.setQueryData<Environment>(queryKey, environment);
   for (const threadId of findThreadEntityIds(
     queryClient,
     (thread) => thread.environmentId === environment.id,

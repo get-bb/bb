@@ -6,6 +6,7 @@ import {
 import {
   deleteClaimedQueuedThreadMessageBatchInTransaction,
   getEnvironment,
+  type EnvironmentRow,
   getThread,
   isThreadQueueAutoSendPaused,
   listRunningThreads,
@@ -17,6 +18,7 @@ import {
   promptInputSchema,
   type PromptInput,
   type QueuedMessagePayload,
+  type QueuedMessageDeliveryMode,
   type QueuedMessageWaitingOn,
   type ResolvedThreadExecutionOptions,
   startedOnBehalfOfSchema,
@@ -85,11 +87,15 @@ import { isPreStartThreadStatus } from "./thread-status.js";
 import { queueInputForStartingTurn } from "./thread-turn-starting.js";
 import {
   ensureThreadIsWritable,
+  formatAgentThreadInput,
   resolveMessageSenderThreadId,
   sendThreadMessage,
   type SendThreadMessageTransactionPreflight,
 } from "./thread-send.js";
-import { resolveDispatchAuthor } from "./dispatch-author.js";
+import {
+  resolveDispatchAuthor,
+  type DispatchAuthor,
+} from "./dispatch-author.js";
 import type { TurnRequestRetryMarker } from "./thread-events.js";
 import { restoreInterruptedThreadStartupRequest } from "./thread-provisioning.js";
 import { markTurnTraceSpan } from "../system/turn-trace.js";
@@ -228,6 +234,15 @@ export type DispatchAttemptSource =
        * and cannot interrupt an interaction the user has not answered.
        */
       sendNow: boolean;
+    }
+  | {
+      kind: "operation";
+      environment: EnvironmentRow;
+      beforeAppendInTransaction?: SendThreadMessageTransactionPreflight;
+      historyReplacement?: {
+        forkSourceProviderThreadId: string | null;
+        onCommandSettled?: () => void | Promise<void>;
+      };
     };
 
 export interface DispatchAttemptArgs {
@@ -300,16 +315,53 @@ export function attemptDispatch(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: DispatchAttemptArgs,
 ): Promise<DispatchAttemptOutcome> {
-  return runDispatchAttempt(deps, args, false);
+  return runDispatchAttempt(deps, args, {
+    deliveryMode: deliveryModeForSendMode(args.payload.mode),
+    reattempted: false,
+  });
+}
+
+function deliveryModeForSendMode(
+  mode: SendMessageRequest["mode"],
+): QueuedMessageDeliveryMode {
+  return mode === "queue-if-active" || mode === "start" ? "queue" : "steer";
+}
+
+async function runOperationDispatch(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  args: DispatchAttemptArgs,
+  source: Extract<DispatchAttemptSource, { kind: "operation" }>,
+): Promise<DispatchAttemptOutcome> {
+  await sendThreadMessage(deps, {
+    environment: source.environment,
+    payload: args.payload,
+    thread: args.thread,
+    trigger: args.trigger,
+    ...(source.beforeAppendInTransaction !== undefined
+      ? { beforeAppendInTransaction: source.beforeAppendInTransaction }
+      : {}),
+    ...(source.historyReplacement !== undefined
+      ? { historyReplacement: source.historyReplacement }
+      : {}),
+  });
+  return { kind: "dispatched" };
+}
+
+interface DispatchAttemptRun {
+  deliveryMode: QueuedMessageDeliveryMode;
+  reattempted: boolean;
 }
 
 async function runDispatchAttempt(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: DispatchAttemptArgs,
-  reattempted: boolean,
+  run: DispatchAttemptRun,
 ): Promise<DispatchAttemptOutcome> {
   const { thread } = args;
   let { payload } = args;
+  if (args.source.kind === "operation") {
+    return runOperationDispatch(deps, args, args.source);
+  }
   // A stopping thread is writable HERE and nowhere upstream: the checkpoint
   // below turns it into a core wait, which is a truthful "not yet" the row can
   // recover from, rather than the 409 that used to make a stop a dead end for
@@ -320,7 +372,10 @@ async function runDispatchAttempt(
     payload.mode === "queue-if-active" &&
     isActiveTurnMainRunIdle(deps, thread)
   ) {
-    payload = { ...payload, mode: "steer-if-active" };
+    payload = {
+      ...payload,
+      mode: args.source.kind === "drain" ? "auto" : "steer-if-active",
+    };
     args = { ...args, payload };
   }
   if (args.trigger === "user" && args.source.kind === "inline") {
@@ -391,6 +446,7 @@ async function runDispatchAttempt(
     requestedBy: args.startedOnBehalfOf,
     payload: args.queuePayload,
     systemNotice: null,
+    deliveryMode: run.deliveryMode,
   };
 
   const waitOn = (
@@ -474,7 +530,12 @@ async function runDispatchAttempt(
       return;
     }
 
-    if (thread.status === "active" && attempt === "start-turn") {
+    if (
+      thread.status === "active" &&
+      (attempt === "start-turn" ||
+        (run.deliveryMode === "queue" &&
+          !isActiveTurnMainRunIdle(deps, currentThread)))
+    ) {
       continued.outcome = waitOn({ kind: "thread-busy" }, null);
       return;
     }
@@ -529,8 +590,18 @@ async function runDispatchAttempt(
 
     if (firstDispatch) {
       admitted.value = await admitPendingThread(deps, {
+        author,
         claimed,
-        payload: resolvedPayload,
+        payload:
+          senderThreadId === null
+            ? resolvedPayload
+            : {
+                ...resolvedPayload,
+                input: formatAgentThreadInput({
+                  input: resolvedPayload.input,
+                  senderThreadId,
+                }),
+              },
         respectManualStopPause,
         startContext: args.startContext ?? retryStartContext,
         thread,
@@ -600,7 +671,7 @@ async function runDispatchAttempt(
       deps,
       args,
       continued.reattemptThread,
-      reattempted,
+      run,
     );
   }
 
@@ -616,7 +687,7 @@ async function runDispatchAttempt(
       // for a thread that is gone. Reporting a dispatch here would tell the
       // caller their message went when it went nowhere.
       const current = getThread(deps.db, thread.id);
-      return reattemptDispatchForThreadChange(deps, args, current, reattempted);
+      return reattemptDispatchForThreadChange(deps, args, current, run);
     }
     await launchAdmittedThread(deps, admission);
     return { kind: "dispatched" };
@@ -652,7 +723,7 @@ async function runDispatchAttempt(
       deps,
       args,
       getThread(deps.db, thread.id),
-      reattempted,
+      run,
     );
   }
   if (claimed !== null) {
@@ -667,19 +738,23 @@ function reattemptDispatchForThreadChange(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: DispatchAttemptArgs,
   thread: Thread | null,
-  reattempted: boolean,
+  run: DispatchAttemptRun,
 ): Promise<DispatchAttemptOutcome> {
   if (thread === null) {
     throw new ApiError(404, "thread_not_found", "Thread not found");
   }
-  if (reattempted) {
+  if (run.reattempted) {
     throw new ApiError(
       500,
       "internal_error",
       `Thread ${thread.id} changed twice under one dispatch attempt`,
     );
   }
-  return runDispatchAttempt(deps, { ...args, thread }, true);
+  return runDispatchAttempt(
+    deps,
+    { ...args, thread },
+    { ...run, reattempted: true },
+  );
 }
 
 /**
@@ -707,6 +782,7 @@ function consumeClaimedRows(
 }
 
 interface AdmitPendingThreadArgs {
+  author: DispatchAuthor;
   claimed: ClaimedQueuedThreadMessageRow[] | null;
   payload: SendMessageRequest & { inputGroups?: PromptInput[][] };
   respectManualStopPause: boolean;
@@ -792,6 +868,7 @@ async function admitPendingThread(
         const starting = getThread(tx, args.thread.id);
         if (starting === null) throw new PendingThreadAdmissionLost();
         requestThreadProvision(deps, {
+          author: args.author,
           thread: starting,
           environmentIntent: startContext.environmentIntent,
           execution,
@@ -888,13 +965,18 @@ export async function compactThreadContext(
   }
 
   const environment = await requireThreadCommandEnvironment(deps, { thread });
-  await sendThreadMessage(deps, {
-    environment,
+  await attemptDispatch(deps, {
+    thread,
     payload: {
       input: createStandaloneBuiltinCompactCommandInput(),
       mode: "start",
     },
-    thread,
+    source: { kind: "operation", environment },
+    queuePayload: { kind: "inline" },
+    pluginSubmission: null,
+    origin: null,
+    originPluginId: null,
+    startedOnBehalfOf: null,
     trigger: "user",
   });
 }
