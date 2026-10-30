@@ -1386,10 +1386,16 @@ function RootComposeSurface({
     autoFocus: !isProviderCliBlocked,
     mentionMenuPlacement: isCompactViewport ? "top" : "bottom",
     banner: promptBanner,
-    blockedReason:
+    blocker:
       blockingProviderCliStatus === null
         ? undefined
-        : providerCliBlockedReason(blockingProviderCliStatus),
+        : {
+            status: "blocked",
+            reason: blockingProviderCliStatus.installed
+              ? "agent_update"
+              : "agent_missing",
+            message: providerCliBlockedReason(blockingProviderCliStatus),
+          },
     resolveMentionLink,
     pluginComposerHost,
     textEffects: promptTextEffects,
