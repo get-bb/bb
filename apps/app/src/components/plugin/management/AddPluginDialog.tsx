@@ -286,6 +286,7 @@ function AddPluginDialogContent({
     mutationFn: (body: NonNullable<typeof request>) =>
       body.kind === "catalog"
         ? startCatalogPluginInstall(fetch, {
+            measurementSource: "marketplace",
             entryId: body.entryId,
             marketplace: body.marketplace,
             ...(thirdParty && plan?.kind === "marketplace"

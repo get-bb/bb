@@ -9,6 +9,7 @@ import {
 import { createMigratedConnection } from "@bb/db/testing";
 import {
   capturePluginStateChanged,
+  clearRecommendationAttribution,
   reportPluginUse,
   resolvePluginMeasurementIdentity,
   runWithPluginMeasurementSource,
@@ -56,7 +57,10 @@ function install(
     ...overrides,
   });
 }
-function marketplace(url = CURATED_MARKETPLACE_V2_URL) {
+function marketplace(
+  url = CURATED_MARKETPLACE_V2_URL,
+  id = "browser-automation",
+) {
   upsertPluginMarketplace(db, {
     name: "bb-community",
     sourceKind: "https",
@@ -70,12 +74,12 @@ function marketplace(url = CURATED_MARKETPLACE_V2_URL) {
       displayName: "Community",
       plugins: [
         {
-          id: "browser-automation",
+          id,
           displayName: "Browser Automation",
           description: "Browser actions",
           icon: "Zap",
           author: { name: "bb" },
-          source: { npm: { package: "@get-bb/browser-automation" } },
+          source: { npm: { package: `@get-bb/${id}` } },
         },
       ],
     }),
@@ -180,7 +184,7 @@ describe("confirmed state changes", () => {
     const row = install();
     capturePluginStateChanged(deps(), row.id, undefined);
     capturePluginStateChanged(deps(), row.id, row);
-    runWithPluginMeasurementSource("first_run", () => {
+    runWithPluginMeasurementSource("first_run", null, () => {
       setInstalledPluginEnabled(db, row.id, false);
       capturePluginStateChanged(deps(), row.id, row);
     });
@@ -195,21 +199,24 @@ describe("confirmed state changes", () => {
       {
         public_plugin: "browser-automation",
         plugin_source: "builtin",
-        source: "unknown",
+        surface: "unknown",
+        entry: null,
         previous_state: "absent",
         state: "enabled",
       },
       {
         public_plugin: "browser-automation",
         plugin_source: "builtin",
-        source: "first_run",
+        surface: "onboarding",
+        entry: "first_run",
         previous_state: "enabled",
         state: "disabled",
       },
       {
         public_plugin: "browser-automation",
         plugin_source: "builtin",
-        source: "unknown",
+        surface: "unknown",
+        entry: null,
         previous_state: "disabled",
         state: "enabled",
       },
@@ -220,11 +227,11 @@ describe("confirmed state changes", () => {
     const browser = install();
     const workflows = install("workflows");
     await Promise.all([
-      runWithPluginMeasurementSource("first_run", async () => {
+      runWithPluginMeasurementSource("first_run", null, async () => {
         await Promise.resolve();
         capturePluginStateChanged(deps(), browser.id, undefined);
       }),
-      runWithPluginMeasurementSource("replay", async () => {
+      runWithPluginMeasurementSource("replay", null, async () => {
         capturePluginStateChanged(deps(), workflows.id, undefined);
         await Promise.resolve();
       }),
@@ -234,7 +241,10 @@ describe("confirmed state changes", () => {
     expect(
       captured.map((event) =>
         event.name === "plugin_state_changed"
-          ? [event.properties.public_plugin, event.properties.source]
+          ? [
+              event.properties.public_plugin,
+              event.properties.entry ?? event.properties.surface,
+            ]
           : null,
       ),
     ).toEqual([
@@ -337,4 +347,63 @@ describe("intentional use", () => {
     });
     expect(captured).toHaveLength(1);
   });
+});
+
+it("attributes a public plugin outside the old list only after enable, clears on consent and disable", () => {
+  const id = "new-recommended-plugin";
+  marketplace(CURATED_MARKETPLACE_V2_URL, id);
+  const row = install(id, {
+    enabled: false,
+    provenance: { kind: "catalog", marketplace: "bb-community", entryId: id },
+    sourceIntent: {
+      kind: "npm",
+      packageName: `@get-bb/${id}`,
+      registry: "https://registry.npmjs.org",
+      requestedSpec: "latest",
+      specKind: "tag",
+    },
+    exactResolution: {
+      kind: "npm",
+      version: "1.0.0",
+      integrity: "sha512-fixture",
+    },
+  });
+  const recommendationId = "00000000-0000-4000-8000-000000000001";
+  runWithPluginMeasurementSource("first_run", recommendationId, () => {
+    capturePluginStateChanged(deps(), id, row);
+    expect(captured).toHaveLength(0);
+    setInstalledPluginEnabled(db, id, true);
+    capturePluginStateChanged(deps(), id, row);
+  });
+  withPluginMeasurementInvocation(id, "user", () => {
+    reportPluginUse(deps(), id, {
+      action: "cli_invoked",
+      outcome: "succeeded",
+    });
+    reportPluginUse(deps(), id, {
+      action: "cli_invoked",
+      outcome: "succeeded",
+    });
+  });
+  expect(
+    captured.map((event) =>
+      event.name === "recommendation" ? event.properties.action : event.name,
+    ),
+  ).toEqual(["selected", "used"]);
+  clearRecommendationAttribution(db);
+  reportPluginUse(deps(), id, { action: "cli_invoked", outcome: "succeeded" });
+  expect(captured.at(-1)?.name).toBe("plugin_use");
+  const current = getInstalledPlugin(db, id);
+  setInstalledPluginEnabled(db, id, false);
+  capturePluginStateChanged(deps(), id, current);
+  const disabled = getInstalledPlugin(db, id);
+  runWithPluginMeasurementSource("replay", recommendationId, () => {
+    setInstalledPluginEnabled(db, id, true);
+    capturePluginStateChanged(deps(), id, disabled);
+  });
+  setInstalledPluginEnabled(db, id, false);
+  capturePluginStateChanged(deps(), id, getInstalledPlugin(db, id));
+  setInstalledPluginEnabled(db, id, true);
+  reportPluginUse(deps(), id, { action: "tool_invoked", outcome: "succeeded" });
+  expect(captured.at(-1)?.name).toBe("plugin_use");
 });

@@ -242,35 +242,59 @@ const onboardingStepTelemetryPropertiesSchema = z
   .strict();
 
 const onboardingOperationResultShape = {
+  surface: z.literal("onboarding"),
   entry: onboardingEntryTelemetrySchema,
   error_category: z
     .enum(["request", "command_exit", "job_failed", "unknown"])
     .nullable(),
 };
-const onboardingOperationOutcomeSchema = z.enum([
-  "started",
-  "succeeded",
-  "failed",
-  "unknown",
-]);
+const operationOutcome = z.enum(["started", "succeeded", "failed", "unknown"]);
+const resourceId = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,127}$/);
 const onboardingOperationTelemetryPropertiesSchema = z
-  .discriminatedUnion("operation", [
+  .union([
     z
       .object({
         ...onboardingOperationResultShape,
-        operation: z.enum([
-          "agent_install",
-          "agent_update",
-          "project_scan",
-          "plugin_enable",
-        ]),
-        outcome: onboardingOperationOutcomeSchema,
+        step: z.literal("agent"),
+        resource_type: z.literal("agent"),
+        resource_id: resourceId,
+        operation: z.enum(["install", "update"]),
+        outcome: operationOutcome,
       })
       .strict(),
     z
       .object({
         ...onboardingOperationResultShape,
-        operation: z.literal("project_import"),
+        step: z.literal("agent"),
+        resource_type: z.literal("agent"),
+        resource_id: resourceId,
+        operation: z.literal("sign_in"),
+        outcome: z.enum([
+          "started",
+          "succeeded",
+          "failed",
+          "cancelled",
+          "unknown",
+        ]),
+      })
+      .strict(),
+    z
+      .object({
+        ...onboardingOperationResultShape,
+        step: z.literal("projects"),
+        resource_type: z.literal("project"),
+        resource_id: z.literal("project_discovery"),
+        operation: z.literal("scan"),
+        outcome: operationOutcome,
+      })
+      .strict(),
+    z
+      .object({
+        ...onboardingOperationResultShape,
+        step: z.literal("projects"),
+        resource_type: z.literal("project"),
+        resource_id: z.literal("project_import"),
+        operation: z.literal("import"),
         outcome: z.enum([
           "started",
           "succeeded",
@@ -286,7 +310,20 @@ const onboardingOperationTelemetryPropertiesSchema = z
     z
       .object({
         ...onboardingOperationResultShape,
-        operation: z.literal("plugin_install"),
+        step: z.literal("plugins"),
+        resource_type: z.literal("plugin"),
+        resource_id: resourceId,
+        operation: z.literal("enable"),
+        outcome: operationOutcome,
+      })
+      .strict(),
+    z
+      .object({
+        ...onboardingOperationResultShape,
+        step: z.literal("plugins"),
+        resource_type: z.literal("plugin"),
+        resource_id: resourceId,
+        operation: z.literal("install"),
         outcome: z.enum([
           "started",
           "succeeded",
@@ -298,27 +335,26 @@ const onboardingOperationTelemetryPropertiesSchema = z
       .strict(),
   ])
   .superRefine((value, context) => {
-    const expectedFailureCategory =
-      value.operation === "agent_install" || value.operation === "agent_update"
+    const expected =
+      value.step === "agent" && value.operation !== "sign_in"
         ? "command_exit"
-        : value.operation === "plugin_install"
+        : value.step === "plugins" && value.operation === "install"
           ? "job_failed"
           : "request";
-    const validCategory =
+    const valid =
       value.outcome === "unknown"
         ? value.error_category === "request" ||
           value.error_category === "unknown"
         : value.outcome === "failed" || value.outcome === "partial"
-          ? value.error_category === expectedFailureCategory
+          ? value.error_category === expected
           : value.error_category === null;
-    if (!validCategory) {
+    if (!valid)
       context.addIssue({
         code: "custom",
         path: ["error_category"],
         message: "Error category must match the observed operation outcome",
       });
-    }
-    if (value.operation !== "project_import") return;
+    if (value.operation !== "import") return;
     const {
       selected_count: selected,
       succeeded_count: succeeded,
@@ -333,13 +369,12 @@ const onboardingOperationTelemetryPropertiesSchema = z
           : outcome === "partial"
             ? succeeded > 0 && succeeded < selected
             : true);
-    if (!validCounts) {
+    if (!validCounts)
       context.addIssue({
         code: "custom",
         path: ["succeeded_count"],
         message: "Import counts must match the observed batch outcome",
       });
-    }
   });
 
 export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [

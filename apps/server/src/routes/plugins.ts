@@ -751,13 +751,16 @@ export function registerPluginRoutes(
         422,
       );
     }
-    const { source, selection, measurementSource } = parsed.data;
+    const { source, selection, measurementSource, recommendationId } =
+      parsed.data;
     const job = installJobs.start({
       target: { kind: "source", source, selection },
       displayName: source,
       run: () =>
-        runWithPluginMeasurementSource(measurementSource, () =>
-          plugins.install(source, selection),
+        runWithPluginMeasurementSource(
+          measurementSource,
+          recommendationId,
+          () => plugins.install(source, selection),
         ),
     });
     return respondWithInstallJob(context, installJobs, job, (error) => ({
@@ -817,6 +820,7 @@ export function registerPluginRoutes(
         );
       const plugin = await runWithPluginMeasurementSource(
         body.data.measurementSource,
+        body.data.recommendationId,
         () => plugins.setEnabled(context.req.param("id"), action === "enable"),
       );
       if (!plugin)

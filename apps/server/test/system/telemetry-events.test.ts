@@ -16,15 +16,20 @@ describe("client telemetry events", () => {
   it("accepts reviewed official recommendations and rejects a catalog identity collision", async () => {
     await withTestHarness(async (harness) => {
       const capture = vi.fn<TelemetryService["capture"]>();
-      harness.deps.telemetry = { ...harness.deps.telemetry, capture };
+      harness.deps.telemetry = {
+        ...harness.deps.telemetry,
+        isEnabled: () => true,
+        capture,
+      };
       const event = {
-        name: "plugin_recommendation",
+        name: "recommendation",
         properties: {
           action: "shown",
-          public_plugin: "prompt-library",
-          source: "first_run",
-          initial_state: "absent",
-          availability: "available",
+          resource_type: "plugin",
+          resource_id: "prompt-library",
+          recommendation_id: "00000000-0000-4000-8000-000000000001",
+          surface: "onboarding",
+          entry: "first_run",
         },
       };
       expect((await post(harness, event)).status).toBe(200);
@@ -47,9 +52,13 @@ describe("client telemetry events", () => {
       harness.deps.telemetry = { ...harness.deps.telemetry, capture };
       const events = [
         {
-          name: "onboarding_agent_diagnostic",
+          name: "onboarding_step_state",
           properties: {
-            source: "first_run",
+            surface: "onboarding",
+            entry: "first_run",
+            step: "agent",
+            resource_type: "agent",
+            resource_id: "codex",
             state: "unknown",
             trigger: "step_visible",
             any_agent_ready: null,
@@ -57,11 +66,15 @@ describe("client telemetry events", () => {
           },
         },
         {
-          name: "onboarding_project_state",
+          name: "onboarding_step_state",
           properties: {
-            source: "first_run",
+            surface: "onboarding",
+            entry: "first_run",
+            step: "projects",
+            resource_type: "project",
+            resource_id: "project_discovery",
             action: "scan_result",
-            result: "empty",
+            state: "empty",
             selection: "none",
           },
         },
@@ -70,7 +83,8 @@ describe("client telemetry events", () => {
           properties: {
             state: "shown",
             reason: "sign_in",
-            source: "unknown",
+            surface: "homepage",
+            entry: null,
           },
         },
       ];
@@ -91,22 +105,30 @@ describe("client telemetry events", () => {
       }
       for (const properties of [
         {
-          source: "first_run",
+          surface: "onboarding",
+          entry: "first_run",
+          step: "projects",
+          resource_type: "project",
+          resource_id: "project_discovery",
           action: "folder_opened",
-          result: "selected",
+          state: "selected",
           selection: "some",
         },
         {
-          source: "first_run",
+          surface: "onboarding",
+          entry: "first_run",
+          step: "projects",
+          resource_type: "project",
+          resource_id: "project_discovery",
           action: "scan_result",
-          result: "cancelled",
+          state: "cancelled",
           selection: "none",
         },
       ]) {
         expect(
           (
             await post(harness, {
-              name: "onboarding_project_state",
+              name: "onboarding_step_state",
               properties,
             })
           ).status,
@@ -125,7 +147,11 @@ describe("client telemetry events", () => {
           name: "onboarding_operation",
           properties: {
             entry: "first_run",
-            operation: "project_import",
+            surface: "onboarding",
+            step: "projects",
+            resource_type: "project",
+            resource_id: "project_import",
+            operation: "import",
             outcome: "partial",
             error_category: "request",
             selected_count: 3,
@@ -136,7 +162,11 @@ describe("client telemetry events", () => {
           name: "onboarding_operation",
           properties: {
             entry: "replay",
-            operation: "agent_install",
+            surface: "onboarding",
+            step: "agent",
+            resource_type: "agent",
+            resource_id: "codex",
+            operation: "install",
             outcome: "unknown",
             error_category: "request",
           },
@@ -201,7 +231,11 @@ describe("client telemetry events", () => {
           name: "onboarding_operation",
           properties: {
             entry: "first_run",
-            operation: "project_import",
+            surface: "onboarding",
+            step: "projects",
+            resource_type: "project",
+            resource_id: "project_import",
+            operation: "import",
             outcome: "succeeded",
             error_category: null,
             selected_count: 3,
@@ -212,7 +246,11 @@ describe("client telemetry events", () => {
           name: "onboarding_operation",
           properties: {
             entry: "first_run",
-            operation: "agent_install",
+            surface: "onboarding",
+            step: "agent",
+            resource_type: "agent",
+            resource_id: "codex",
+            operation: "install",
             outcome: "failed",
             error_category: "request",
             command: "private command",
