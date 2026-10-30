@@ -677,6 +677,25 @@ html {
   border-radius: var(--radius);
 }
 
+.docs-wrap .docs-video {
+  margin: 18px 0;
+}
+
+.docs-wrap .docs-video video {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: var(--docs-panel);
+}
+
+.docs-wrap .docs-video figcaption {
+  margin-top: 8px;
+  color: var(--dim);
+  font-size: var(--text-label-small);
+}
+
 .docs-wrap .docs-tabs {
   margin: 18px 0;
 }
