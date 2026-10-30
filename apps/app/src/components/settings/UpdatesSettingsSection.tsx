@@ -2244,8 +2244,10 @@ export function UpdatesSettingsSection({
       const item = inventory.plugins?.items.find(
         (candidate) => candidate.plugin.id === pluginId,
       );
-      const name = item === undefined ? pluginId : pluginDisplayName(item);
-      void startPluginUpdate(pluginId).then(
+      const expectedVersion = item?.plugin.updateState.availableVersion ?? null;
+      if (item === undefined || expectedVersion === null) continue;
+      const name = pluginDisplayName(item);
+      void startPluginUpdate({ pluginId, expectedVersion }).then(
         (job) => applyPluginUpdateJob({ queryClient, job }),
         (error: unknown) => {
           appToast.error("Plugin update failed", {

@@ -126,7 +126,7 @@ describe("PluginDetailReleaseControl", () => {
   it("retries a failed update from the release action without opening a modal", async () => {
     let completeUpdate: (() => void) | undefined;
     const fetchMock = vi.fn(
-      () =>
+      (_input: RequestInfo | URL, _init?: RequestInit) =>
         new Promise<Response>((resolve) => {
           completeUpdate = () =>
             resolve(
@@ -203,6 +203,9 @@ describe("PluginDetailReleaseControl", () => {
     });
     fireEvent.click(retry);
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      expectedVersion: "1.9.0",
+    });
     expect(retry.getAttribute("aria-busy")).toBe("true");
     expect(retry).toHaveProperty("disabled", true);
     completeUpdate?.();
@@ -217,5 +220,85 @@ describe("PluginDetailReleaseControl", () => {
       },
     ]);
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});
+
+describe("PluginDetailReleaseStatus", () => {
+  const outsideRange = {
+    version: "0.7.0",
+    display:
+      "https://github.com/acme/bb-plugin-agent-board.git@v0.7.0 (a985e1d55233)",
+    breaking: true,
+    range: "^0.6.1",
+  };
+
+  function renderStatus(updateState: Partial<PluginListItem["updateState"]>) {
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <PluginDetailReleaseStatus
+        plugin={plugin({
+          updateState: { ...EMPTY_PLUGIN_UPDATE_STATE, ...updateState },
+        })}
+      />,
+      {
+        wrapper: ({ children }) => (
+          <MemoryRouter>{wrapper({ children })}</MemoryRouter>
+        ),
+      },
+    );
+  }
+
+  it("names a newer release outside the installed range when nothing in range is newer", () => {
+    renderStatus({ outcome: "current", outsideRange });
+
+    expect(
+      screen.getByRole("status", { name: "Newer release outside range" })
+        .textContent,
+    ).toBe(
+      "0.7.0 is outside the installed range ^0.6.1 and may include breaking changes. Compatibility not checked.",
+    );
+  });
+
+  it("leaves the out-of-range release out while an in-range update is offered", () => {
+    renderStatus({
+      outcome: "update-available",
+      availableVersion: "0.6.2",
+      availableLabel: "0.6.2",
+      outsideRange,
+    });
+
+    expect(
+      screen.queryByRole("status", { name: "Newer release outside range" }),
+    ).toBeNull();
+    expect(screen.getByRole("status").textContent).toBe("0.6.2Available");
+  });
+
+  it("explains why a current plugin was not moved to the release its source names", () => {
+    renderStatus({
+      outcome: "current",
+      detail:
+        'npm dist-tag "next" points to 1.0.0, older than the installed 1.6.2; bb does not downgrade',
+    });
+
+    expect(
+      screen.getByRole("status", { name: "Update check note" }).textContent,
+    ).toBe(
+      'npm dist-tag "next" points to 1.0.0, older than the installed 1.6.2; bb does not downgrade',
+    );
+  });
+
+  it("warns that an available release may break and names it by its label", () => {
+    renderStatus({
+      outcome: "update-available",
+      availableVersion: "a985e1d5523398e9c7459d35679142cc4339771e",
+      availableLabel: "2.0.0",
+      availableDisplay:
+        "https://github.com/acme/bb-plugin-linear.git@v2.0.0 (a985e1d55233)",
+      availableBreaking: true,
+    });
+
+    expect(screen.getByRole("status").textContent).toBe(
+      "2.0.0AvailableMay include breaking changes",
+    );
   });
 });

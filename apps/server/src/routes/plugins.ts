@@ -705,14 +705,19 @@ export function registerPluginRoutes(
     const json: unknown = await context.req.json().catch(() => null);
     const body = pluginApplyUpdateRequestSchema.safeParse(json);
     if (!body.success) {
-      return context.json({ error: "expected an empty JSON object" }, 400);
+      return context.json(
+        { error: 'expected { "expectedVersion"?: string }' },
+        400,
+      );
     }
     const pluginId = context.req.param("id");
+    const request = body.data;
     const job = updateJobs.start({
       pluginId,
       displayName: plugins.getDisplayName(pluginId),
+      expectedVersion: request.expectedVersion ?? null,
       run: async () => {
-        const outcome = await plugins.applyUpdate(pluginId);
+        const outcome = await plugins.applyUpdate(pluginId, request);
         if (!outcome.ok) throw new Error(outcome.error);
         return outcome.result;
       },

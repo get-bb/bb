@@ -33,12 +33,23 @@ export const pluginResolvedVersionSchema = z.object({
   display: z.string(),
 });
 
+export const pluginOutsideRangeReleaseSchema = z.object({
+  version: z.string(),
+  display: z.string(),
+  breaking: z.boolean(),
+  range: z.string(),
+});
+export type PluginOutsideRangeRelease = z.infer<
+  typeof pluginOutsideRangeReleaseSchema
+>;
+
 export const pluginUpdateCheckEntrySchema = z.object({
   id: z.string(),
   outcome: pluginUpdateOutcomeSchema,
   devMode: z.literal(true).optional(),
   installed: pluginResolvedVersionSchema,
   candidate: pluginResolvedVersionSchema.optional(),
+  candidateBreaking: z.literal(true).optional(),
   blocked: z
     .object({
       version: z.string(),
@@ -46,6 +57,7 @@ export const pluginUpdateCheckEntrySchema = z.object({
       reasons: z.array(z.string()),
     })
     .optional(),
+  outsideRange: pluginOutsideRangeReleaseSchema.optional(),
   detail: z.string().optional(),
 });
 export type PluginUpdateCheckEntry = z.infer<
@@ -60,7 +72,12 @@ export const pluginUpdateCheckResponseSchema = z.object({
   results: z.array(pluginUpdateCheckEntrySchema),
 });
 
-export const pluginApplyUpdateRequestSchema = z.object({}).strict();
+export const pluginApplyUpdateRequestSchema = z
+  .object({ expectedVersion: z.string().min(1).optional() })
+  .strict();
+export type PluginApplyUpdateRequest = z.infer<
+  typeof pluginApplyUpdateRequestSchema
+>;
 
 export const pluginApplyUpdateResultSchema = z.object({
   applied: z.boolean(),
@@ -141,6 +158,9 @@ export const pluginUpdateStateSchema = z.object({
   detail: z.string().optional(),
   availableVersion: z.string().optional(),
   availableLabel: z.string().optional(),
+  availableDisplay: z.string().optional(),
+  availableBreaking: z.literal(true).optional(),
+  outsideRange: pluginOutsideRangeReleaseSchema.optional(),
   blockedVersion: z.string().optional(),
   blockedLabel: z.string().optional(),
   blockedReasons: z.array(z.string()).optional(),

@@ -109,6 +109,7 @@ export function pluginRuntimeStatusPresentation(
 
 export type PluginRowSignal =
   | { kind: "update"; version: string }
+  | { kind: "outside-range"; version: string; range: string; breaking: boolean }
   | {
       kind: "status";
       icon: IconName;
@@ -154,6 +155,14 @@ export function pluginRowSignal(
   }
   if (state.availableLabel !== null) {
     return { kind: "update", version: state.availableLabel };
+  }
+  if (state.outsideRange !== null) {
+    return {
+      kind: "outside-range",
+      version: state.outsideRange.version,
+      range: state.outsideRange.range,
+      breaking: state.outsideRange.breaking,
+    };
   }
   return null;
 }

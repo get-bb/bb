@@ -57,6 +57,53 @@ describe("pluginRowSignal (the one-signal rule)", () => {
     expect(pluginRowSignal(plugin())).toBeNull();
   });
 
+  it.each([
+    ["no in-range release", {}],
+    [
+      "an incompatible in-range release",
+      { blockedVersion: "1.9.0", blockedReasons: ["requires bb >= 0.15"] },
+    ],
+  ])(
+    "hints at a release outside the installed range with %s",
+    (_case, updateState) => {
+      expect(
+        pluginRowSignal(
+          plugin({
+            ...updateState,
+            outsideRange: {
+              version: "2.0.0",
+              display: "@example/linear@2.0.0",
+              range: "^1.6.0",
+              breaking: true,
+            },
+          }),
+        ),
+      ).toEqual({
+        kind: "outside-range",
+        version: "2.0.0",
+        range: "^1.6.0",
+        breaking: true,
+      });
+    },
+  );
+
+  it("lets an in-range update outrank a release outside the range", () => {
+    expect(
+      pluginRowSignal(
+        plugin({
+          availableVersion: "1.7.0",
+          availableLabel: "1.7.0",
+          outsideRange: {
+            version: "2.0.0",
+            display: "@example/linear@2.0.0",
+            range: "^1.6.0",
+            breaking: true,
+          },
+        }),
+      ),
+    ).toEqual({ kind: "update", version: "1.7.0" });
+  });
+
   it("surfaces an update-source security refusal", () => {
     expect(
       pluginRowSignal(

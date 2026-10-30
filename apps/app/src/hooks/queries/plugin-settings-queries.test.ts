@@ -174,6 +174,39 @@ describe("plugin list envelope", () => {
     expect(plugin?.updateState.blockedVersion).toBeNull();
     expect(plugin?.updateState.blockedLabel).toBeNull();
     expect(plugin?.updateState.blockedReasons).toEqual([]);
+    expect(plugin?.updateState.availableDisplay).toBeNull();
+    expect(plugin?.updateState.availableBreaking).toBe(false);
+    expect(plugin?.updateState.outsideRange).toBeNull();
+  });
+
+  it("keeps the candidate display, breaking flag, and out-of-range release", async () => {
+    const outsideRange = {
+      version: "2.0.0",
+      display: "@bb-plugins/linear@2.0.0",
+      breaking: true,
+      range: "^1",
+    };
+    const result = await listPlugins(
+      fetchReturning({
+        plugins: [
+          {
+            ...ROW,
+            updateState: {
+              availableVersion: "1.7.0",
+              availableDisplay: "@bb-plugins/linear@1.7.0",
+              availableBreaking: true,
+              outsideRange,
+            },
+          },
+        ],
+      }),
+    );
+    expect(result.plugins[0]?.updateState).toMatchObject({
+      availableVersion: "1.7.0",
+      availableDisplay: "@bb-plugins/linear@1.7.0",
+      availableBreaking: true,
+      outsideRange,
+    });
   });
 
   it("preserves authoritative source and activity metadata for detail pages", async () => {

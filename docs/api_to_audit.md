@@ -3790,7 +3790,7 @@ Stabilize once message links have shipped and the seq has stayed stable across
 edit-and-rerun, forks and context clears, and decide whether `sourceSeqEnd`
 should remain alongside it.
 
-## `PluginBbSdk.plugins.experimental_startUpdate` and `experimental_updateJobs`
+## `PluginBbSdk.plugins.experimental_startUpdate`, `experimental_updateJobs`, and `applyUpdate.expectedVersion`
 
 Starts a server-owned plugin update and returns its job at once;
 `experimental_updateJobs.list/get` report queued/running phases and the
@@ -3800,8 +3800,21 @@ result contract by polling the job; raw callers without
 `Prefer: respond-async` keep the synchronous response. Running updates cannot
 be cancelled during activation or rollback.
 
+`applyUpdate.expectedVersion` is a plugin-visible field on the stable
+`applyUpdate` member, audited here with `experimental_startUpdate`, which
+accepts the same field. It is the `candidate.version` a check returned; the
+server refuses without touching the installation (the fresh check result is
+still saved) unless the release it resolves at apply time has that version,
+and a request only joins an active job for the same plugin and expected
+version. The CLI (`bb plugin update`) and the app's update dialog and Retry
+always send it through the same route. A server that predates the field
+rejects it; the SDK then throws `PluginUpdateExpectedVersionUnsupportedError`
+instead of the raw HTTP 400.
+
 Stabilization requires exercising reconnect/reload, concurrent deduplication,
-rollback delivery, missing jobs after restart, and CLI/SDK parity.
+rollback delivery, missing jobs after restart, and CLI/SDK parity, and, for
+`applyUpdate.expectedVersion`, a plugin caller receiving the refusal when the
+reviewed release is no longer the candidate.
 
 ## `PluginBbSdk.system.experimental_recordTelemetryEvent`
 
