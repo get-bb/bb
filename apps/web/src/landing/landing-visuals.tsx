@@ -650,7 +650,7 @@ type PluginEntry = {
 };
 
 const BUILT_IN_PLUGINS: PluginEntry[] = [
-  { icon: PanelIcon, name: "Sidebar", description: "Threads, sections, and pins" },
+  { icon: PanelIcon, name: "Thread list", description: "Threads, sections, and pins" },
   {
     icon: ComposerIcon,
     name: "Composer",
@@ -710,7 +710,7 @@ export function PluginsSheet() {
     <div
       className="fw-win fw-plugins"
       role="img"
-      aria-label="bb's Plugins page. Built-in plugins: Sidebar, Composer, GitHub, Memory and Automations. Plugins you added: Sentry, Linear issues and Status sidebar. All are switched on."
+      aria-label="bb's Plugins page. Built-in plugins: Thread list, Composer, GitHub, Memory and Automations. Plugins you added: Sentry, Linear issues and Status sidebar. All are switched on."
     >
       <div className="fw-band">
         <WindowDots />
@@ -853,7 +853,7 @@ export function DelegationTree() {
   );
 }
 
-const SPAWN_COMMAND = 'bb thread spawn --project "$BB_PROJECT" --prompt "Fix CI on main"';
+const SPAWN_COMMAND = 'bb thread spawn --project "$BB_PROJECT_ID" --prompt "Fix CI on main"';
 const SPAWN_OUTPUT = "Thread spawned: thr_7q2m9xk4";
 
 export function StartAnywhere() {
@@ -864,7 +864,7 @@ export function StartAnywhere() {
       ref={ref}
       className="fw-start"
       role="img"
-      aria-label="A CI step runs bb thread spawn with the prompt Fix CI on main, and an Automations schedule, every weekday at 9:00, runs the Nightly changelog. Each lands as a new thread in the bb sidebar."
+      aria-label="A CI step runs bb thread spawn with the prompt Fix CI on main, and an Automations schedule, every weekday at 9:00, runs the Daily changelog. Each lands as a new thread in the bb sidebar."
     >
       <div className={stageClass("fw-stage", leaving, paused)} key={cycle}>
         <div className="fw-src">
@@ -887,7 +887,7 @@ export function StartAnywhere() {
           <span className="fw-sched-text">
             <span className="fw-sched-when">Every weekday 9:00</span>
             <span className="fw-sched-sep"> · </span>
-            <span>Nightly changelog</span>
+            <span>Daily changelog</span>
           </span>
           <span className="fw-tag">
             <PluginsIcon className="fw-tag-ic" />
@@ -903,7 +903,7 @@ export function StartAnywhere() {
             <div className="fw-label">Threads</div>
             <div className="fw-rows">
               <div className="fw-row fw-land" style={at(4.6)}>
-                <span className="fw-row-title">Nightly changelog</span>
+                <span className="fw-row-title">Daily changelog</span>
                 <ThreadStatus status="running" />
               </div>
               <div className="fw-push" style={at(4.6)}>

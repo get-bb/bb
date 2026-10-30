@@ -122,10 +122,10 @@ describe("StartAnywhere", () => {
   it("shows a bb thread spawn command that runs as written", () => {
     const html = renderToStaticMarkup(<StartAnywhere />);
     expect(html).toContain(
-      "bb thread spawn --project &quot;$BB_PROJECT&quot; --prompt &quot;Fix CI on main&quot;",
+      "bb thread spawn --project &quot;$BB_PROJECT_ID&quot; --prompt &quot;Fix CI on main&quot;",
     );
     expect(html).toContain("Every weekday 9:00");
-    expect(html).toContain("Nightly changelog");
+    expect(html).toContain("Daily changelog");
     expect(html).not.toMatch(/from CI|scheduled</i);
     expect(html).not.toMatch(/bb spawn/);
   });
@@ -135,7 +135,7 @@ describe("PluginsSheet", () => {
   it("shows the Plugins page with built-in and added plugins", () => {
     const html = renderToStaticMarkup(<PluginsSheet />);
     for (const name of [
-      "Sidebar",
+      "Thread list",
       "Composer",
       "GitHub",
       "Memory",
