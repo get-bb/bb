@@ -9,8 +9,7 @@ export function questionVisible(name: string, values: FormValues): boolean {
   const work = workShown ? (values.work?.[0] ?? "") : "";
   if (name === "company_size")
     return Boolean(work && work !== "I don't use bb for work");
-  if (name === "team_improve" || name === "plugin_sharing")
-    return TEAM_WORK_OPTIONS.includes(work);
+  if (name === "team_improve") return TEAM_WORK_OPTIONS.includes(work);
   if (name === "team_adopt") return SOLO_WORK_OPTIONS.includes(work);
   return true;
 }
@@ -86,12 +85,12 @@ export const surveyQuestions: readonly Question[] = [
   },
   {
     name: "plugin_sharing",
-    label: "Do you share bb plugins with coworkers?",
+    label: "Have you shared a bb plugin with anyone?",
     type: "radio",
     options: [
-      "Yes, we share plugins with each other",
-      "Yes, and we keep them in one place, like a private repo",
-      "Not yet, but I'd like to",
+      "Yes, with a coworker",
+      "Yes, with someone else",
+      "Yes, with both",
       "No",
     ],
     placeholder: "",

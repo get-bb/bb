@@ -14,7 +14,7 @@ POST `application/json` to `/api/community/survey` with `{ "submission_id": "<uu
 
 Every visible question is required. Radio answers accept one listed choice. `community` is a checkbox that accepts one or more listed choices. `plugin_sharing`, `meetup` and `research_call` are radios. Text answers must not be blank.
 
-`work` is hidden when `role` is “Student” or “Not currently working”, and so are the four questions that depend on it. `company_size` is shown for any `work` answer except “I don't use bb for work”. `team_improve` and `plugin_sharing` are shown for “2–5 people”, “6–10 people” and “More than 10”. `team_adopt` is shown for “Just me”. `questionVisible` in `survey.ts` owns these rules; a hidden question is never required and its answer is never stored.
+`work` is hidden when `role` is “Student” or “Not currently working”, and so are the three questions that depend on it. `company_size` is shown for any `work` answer except “I don't use bb for work”. `team_improve` is shown for “2–5 people”, “6–10 people” and “More than 10”. `team_adopt` is shown for “Just me”. `questionVisible` in `survey.ts` owns these rules; a hidden question is never required and its answer is never stored.
 
 Picking “Other” on `discovery`, `role` or `community` requires its `discovery_other`, `role_other` or `community_other` text; otherwise that text is discarded.
 

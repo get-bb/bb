@@ -14,6 +14,7 @@ const contact = {
   city: ["Austin, USA"],
   meetup: ["Maybe"],
   research_call: ["Yes"],
+  plugin_sharing: ["No"],
 };
 
 describe("community survey submission rules", () => {
@@ -67,17 +68,12 @@ describe("community survey submission rules", () => {
         work: ["More than 10"],
         team_adopt: [],
         team_improve: ["Roles"],
-        plugin_sharing: ["Yes, we share plugins with each other"],
       }),
     ).toEqual({});
     expect(
-      validateSurvey({
-        ...contact,
-        work: ["2–5 people"],
-        team_improve: ["Roles"],
-      }).plugin_sharing,
+      validateSurvey({ ...contact, role: ["Student"], plugin_sharing: [] })
+        .plugin_sharing,
     ).toBe("Please answer this question.");
-    expect(validateSurvey(contact).plugin_sharing).toBeUndefined();
     expect(
       validateSurvey({ ...contact, work: ["2–5 people"] }).team_improve,
     ).toBe("Please answer this question.");

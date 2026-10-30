@@ -17,6 +17,7 @@ const defaults = {
   city: "Austin",
   meetup: "Maybe",
   research_call: "Yes",
+  plugin_sharing: "No",
 };
 const enabled = {
   COMMUNITY_FORMS_ENABLED: "true",
