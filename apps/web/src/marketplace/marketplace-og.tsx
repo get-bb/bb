@@ -28,7 +28,7 @@ interface MarketplaceOgArtwork {
   avatar: string | null;
 }
 
-function clip(text: string, length: number) {
+export function clip(text: string, length: number) {
   if (text.length <= length) return text;
   const cut = text.slice(0, length - 1);
   const space = cut.lastIndexOf(" ");
@@ -85,7 +85,7 @@ function PluginIcon({
   );
 }
 
-function BrandMark() {
+export function BrandMark() {
   const height = 26;
   const width = Math.round((height * 0.95) / 0.8);
   const imageWidth = width * 1.7778;

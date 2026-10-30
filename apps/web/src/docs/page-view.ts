@@ -1,3 +1,4 @@
+import { docsOgImagePath } from "./docs-og-paths";
 import { DOCS_NAV, DOCS_NAV_COMMUNITY, navSectionOf } from "./nav";
 import { REPO_BLOB } from "./reference";
 import {
@@ -43,6 +44,7 @@ interface DocsPageViewBase {
   community: { label: string; links: { title: string; href: string }[] };
   toc: DocsTocEntry[];
   breadcrumbs: DocsBreadcrumb[];
+  ogImagePath: string;
 }
 
 export type DocsPageView =
@@ -138,6 +140,7 @@ async function viewOf(page: DocsPage): Promise<DocsPageView> {
     },
     toc: await docsToc(page),
     breadcrumbs: breadcrumbsOf(page, section, nav),
+    ogImagePath: docsOgImagePath(page.slugs),
   };
   if (page.type === "reference") {
     return {
