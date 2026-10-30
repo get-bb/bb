@@ -203,6 +203,7 @@ export interface ThreadTimelineSurfaceOptions {
   maxInlineOutputChars: InlineOutputCharLimit;
   providerDisplayName?: string;
   planCommand?: ProviderComposerCommand | null;
+  extensionStateKinds?: readonly string[];
   summarizeShellCommands: boolean;
 }
 
@@ -933,8 +934,15 @@ function ensureLatestTimelineOpenBackgroundTaskStateRows(
 function listLatestTimelineHeadStateRows(
   db: DbConnection,
   threadId: string,
+  extensionStateKinds: readonly string[],
 ): StoredEventRow[] {
   return mergeStoredEventRowsById([
+    ...extensionStateKinds.flatMap((kind) =>
+      listLatestThreadStateEventRowsByThreadIds(db, {
+        threadIds: [threadId],
+        kind,
+      }),
+    ),
     ...listLatestThreadStateEventRowsByThreadIds(db, {
       threadIds: [threadId],
       kind: LEGACY_CODEX_GOAL_EXTENSION_KIND,
@@ -967,6 +975,7 @@ function selectStandardTimelineEventRows(
   contentCursor: TimelineContentCursor | undefined,
   knownBudgetFloor: TimelineBudgetFloor | null,
   profile: ThreadTimelineBuildProfileAccumulator,
+  extensionStateKinds: readonly string[],
 ): StandardTimelineEventRowSelection {
   const decode: StoredEventDecoder = (row) =>
     decodeStoredEventRowCached(db, row);
@@ -1191,7 +1200,11 @@ function selectStandardTimelineEventRows(
       headStateRows:
         page.kind === "latest"
           ? measureThreadTimelineStage(profile, "group-context-query", () =>
-              listLatestTimelineHeadStateRows(db, thread.id).filter(
+              listLatestTimelineHeadStateRows(
+                db,
+                thread.id,
+                extensionStateKinds,
+              ).filter(
                 (row) =>
                   row.sequence <= maxSeq && !visibleSequences.has(row.sequence),
               ),
@@ -1330,6 +1343,7 @@ function buildThreadTimelineInternal(
       contentCursor,
       knownBudgetFloor,
       profile,
+      options.extensionStateKinds ?? [],
     );
   const maxInlineOutputChars = options.maxInlineOutputChars;
   if (thread.status !== "active") {
@@ -1427,6 +1441,7 @@ function buildThreadTimelineInternal(
     isLatestPage: options.page.kind === "latest",
     providerDisplayName: options.providerDisplayName,
     planCommand: options.planCommand,
+    extensionStateKinds: options.extensionStateKinds,
     summarizeShellCommands: options.summarizeShellCommands,
     threadStatus: snapshot.status,
     threadName: surface.threadName,
@@ -1521,6 +1536,7 @@ function buildThreadTimelineInternal(
     activeBackgroundCommands:
       options.page.kind === "latest" ? timeline.activeBackgroundCommands : [],
     pendingTodos: timeline.pendingTodos,
+    extensionStates: timeline.extensionStates,
     goal: timeline.goal,
     providerCommands: timeline.providerCommands,
     sessionOptions: timeline.sessionOptions,

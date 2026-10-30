@@ -11,9 +11,8 @@ import {
 import type { BuiltInSidebarSectionOptionsById } from "./BuiltInSidebarSection.js";
 
 installTestPluginRuntime();
-const { renderBuiltInSidebarSection } = await import(
-  "./BuiltInSidebarSection.js"
-);
+const { renderBuiltInSidebarSection } =
+  await import("./BuiltInSidebarSection.js");
 
 const SECTIONS: BuiltInSidebarSectionOptionsById = {
   pinned: {
@@ -127,7 +126,7 @@ describe("built-in sidebar section renderer", () => {
             ...SECTIONS.threads,
             activity: {
               ...NO_COLLAPSED_CHILD_ACTIVITY,
-              goal: true,
+              planMode: true,
               working: true,
             },
           },
@@ -142,6 +141,6 @@ describe("built-in sidebar section renderer", () => {
         document.querySelectorAll("[data-thread-status-glyph]"),
         (glyph) => glyph.getAttribute("data-thread-status-glyph"),
       ),
-    ).toEqual(["goal"]);
+    ).toEqual(["plan-mode"]);
   });
 });

@@ -592,7 +592,7 @@ describe("thread runtime display", () => {
     ).toHaveLength(32_767);
   });
 
-  it("marks list entries active when the prompt banner would show plan or goal state", () => {
+  it("marks list entries active for an open Plan turn but never for a Goal", () => {
     const { db, hostId, hub } = setup();
     const activePlan = createThreadWithEnvironment({ db, hostId });
     const completedPlan = createThreadWithEnvironment({ db, hostId });
@@ -782,27 +782,21 @@ describe("thread runtime display", () => {
 
     expect(activityByThreadId.get(activePlan.thread.id)).toMatchObject({
       activePlanModeCount: 1,
-      activeGoalCount: 0,
     });
     expect(activityByThreadId.get(completedPlan.thread.id)).toMatchObject({
       activePlanModeCount: 0,
-      activeGoalCount: 0,
     });
     expect(activityByThreadId.get(activeGoal.thread.id)).toMatchObject({
       activePlanModeCount: 0,
-      activeGoalCount: 1,
     });
     expect(activityByThreadId.get(clearedGoal.thread.id)).toMatchObject({
       activePlanModeCount: 0,
-      activeGoalCount: 0,
     });
     expect(activityByThreadId.get(concurrentPlanGoal.thread.id)).toMatchObject({
       activePlanModeCount: 1,
-      activeGoalCount: 1,
     });
     expect(activityByThreadId.get(claudePlan.thread.id)).toMatchObject({
       activePlanModeCount: 1,
-      activeGoalCount: 0,
     });
   });
 });

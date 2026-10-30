@@ -120,6 +120,7 @@ function makeTimelineResponse(
     activeWorkflows: [],
     activeBackgroundCommands: [],
     pendingTodos: null,
+    extensionStates: {},
     goal: null,
     providerCommands: null,
     sessionOptions: null,

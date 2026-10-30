@@ -274,7 +274,6 @@ function MobileRecentThreadRow({
         isBackgroundCommandActive:
           indicatorState.isBackgroundCommandActive ||
           childActivity.backgroundCommand,
-        isGoalActive: indicatorState.isGoalActive || childActivity.goal,
         queuedWork: indicatorState.queuedWork,
         isPlanModeActive:
           indicatorState.isPlanModeActive || childActivity.planMode,

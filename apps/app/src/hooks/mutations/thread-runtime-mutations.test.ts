@@ -23,7 +23,6 @@ import {
 } from "../queries/query-keys";
 import {
   cancelThreadPlanMutationOptions,
-  clearThreadGoalMutationOptions,
   createThreadMutationOptions,
   deleteThreadQueuedMessageMutationOptions,
   editThreadMessageMutationOptions,
@@ -133,7 +132,6 @@ const executionInputSources = {
 beforeEach(() => {
   vi.mocked(wsManager.getConnectionState).mockReturnValue("connected");
   vi.mocked(sdk.threads.cancelPlan).mockResolvedValue({ ok: true });
-  vi.mocked(sdk.threads.clearGoal).mockResolvedValue({ ok: true });
   vi.mocked(sdk.threads.editMessage).mockResolvedValue({
     ok: true,
     operationId: "edit-op-1",
@@ -245,76 +243,64 @@ describe("thread runtime mutations", () => {
     );
   });
 
-  it.each([
-    ["Plan", cancelThreadPlanMutationOptions, () => sdk.threads.cancelPlan],
-    ["Goal", clearThreadGoalMutationOptions, () => sdk.threads.clearGoal],
-  ] as const)(
-    "invalidates persisted banner state only after successful %s cancellation",
-    async (_label, mutationOptionsFor, getSdkMethod) => {
-      const queryClient = createTestQueryClient();
-      const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
-      const cancellation = createDeferredPromise<{ ok: true }>();
-      vi.mocked(getSdkMethod()).mockReturnValueOnce(cancellation.promise);
-      queryClient.setQueryData(
+  it("invalidates persisted banner state only after successful Plan cancellation", async () => {
+    const getSdkMethod = () => sdk.threads.cancelPlan;
+    const queryClient = createTestQueryClient();
+    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
+    const cancellation = createDeferredPromise<{ ok: true }>();
+    vi.mocked(getSdkMethod()).mockReturnValueOnce(cancellation.promise);
+    queryClient.setQueryData(
+      threadTimelineQueryKey("thread-1"),
+      makeBannerTimeline(),
+    );
+    const mutation = new MutationObserver(
+      queryClient,
+      cancelThreadPlanMutationOptions(queryClient),
+    );
+
+    const cancellationPromise = mutation.mutate("thread-1");
+    await vi.waitFor(() => expect(getSdkMethod()).toHaveBeenCalledOnce());
+    expect(
+      queryClient.getQueryData<ThreadTimelineResponse>(
         threadTimelineQueryKey("thread-1"),
-        makeBannerTimeline(),
-      );
-      const mutation = new MutationObserver(
-        queryClient,
-        mutationOptionsFor(queryClient),
-      );
+      ),
+    ).toMatchObject({
+      activePromptMode: { mode: "plan" },
+      goal: { status: "active" },
+    });
 
-      const cancellationPromise = mutation.mutate("thread-1");
-      await vi.waitFor(() => expect(getSdkMethod()).toHaveBeenCalledOnce());
-      expect(
-        queryClient.getQueryData<ThreadTimelineResponse>(
-          threadTimelineQueryKey("thread-1"),
-        ),
-      ).toMatchObject({
-        activePromptMode: { mode: "plan" },
-        goal: { status: "active" },
-      });
-
-      cancellation.resolve({ ok: true });
-      await cancellationPromise;
-      expect(getSdkMethod()).toHaveBeenCalledWith({ threadId: "thread-1" });
-      expect(invalidateQueries).toHaveBeenCalled();
-      const timelineAfterSuccess =
-        queryClient.getQueryData<ThreadTimelineResponse>(
-          threadTimelineQueryKey("thread-1"),
-        );
-      if (_label === "Plan") {
-        expect(timelineAfterSuccess?.activePromptMode).toBeNull();
-        expect(timelineAfterSuccess?.goal).toMatchObject({ status: "active" });
-      } else {
-        expect(timelineAfterSuccess?.activePromptMode).toMatchObject({
-          mode: "plan",
-        });
-        expect(timelineAfterSuccess?.goal).toBeNull();
-      }
-
-      invalidateQueries.mockClear();
-      queryClient.setQueryData(
+    cancellation.resolve({ ok: true });
+    await cancellationPromise;
+    expect(getSdkMethod()).toHaveBeenCalledWith({ threadId: "thread-1" });
+    expect(invalidateQueries).toHaveBeenCalled();
+    const timelineAfterSuccess =
+      queryClient.getQueryData<ThreadTimelineResponse>(
         threadTimelineQueryKey("thread-1"),
-        makeBannerTimeline(),
       );
-      vi.mocked(getSdkMethod()).mockRejectedValueOnce(
-        new Error("provider rejected cancellation"),
-      );
-      await expect(mutation.mutate("thread-1")).rejects.toThrow(
-        "provider rejected cancellation",
-      );
-      expect(invalidateQueries).not.toHaveBeenCalled();
-      expect(
-        queryClient.getQueryData<ThreadTimelineResponse>(
-          threadTimelineQueryKey("thread-1"),
-        ),
-      ).toMatchObject({
-        activePromptMode: { mode: "plan" },
-        goal: { status: "active" },
-      });
-    },
-  );
+    expect(timelineAfterSuccess?.activePromptMode).toBeNull();
+    expect(timelineAfterSuccess?.goal).toMatchObject({ status: "active" });
+
+    invalidateQueries.mockClear();
+    queryClient.setQueryData(
+      threadTimelineQueryKey("thread-1"),
+      makeBannerTimeline(),
+    );
+    vi.mocked(getSdkMethod()).mockRejectedValueOnce(
+      new Error("provider rejected cancellation"),
+    );
+    await expect(mutation.mutate("thread-1")).rejects.toThrow(
+      "provider rejected cancellation",
+    );
+    expect(invalidateQueries).not.toHaveBeenCalled();
+    expect(
+      queryClient.getQueryData<ThreadTimelineResponse>(
+        threadTimelineQueryKey("thread-1"),
+      ),
+    ).toMatchObject({
+      activePromptMode: { mode: "plan" },
+      goal: { status: "active" },
+    });
+  });
 
   it("notifies composer submission only after the server accepts a message", async () => {
     const queryClient = createTestQueryClient();
@@ -466,9 +452,9 @@ describe("thread runtime mutations", () => {
 
     expect(
       queryClient
-        .getQueryData<ThreadQueuedMessage[]>(
-          threadQueuedMessagesQueryKey("thread-1"),
-        )
+        .getQueryData<
+          ThreadQueuedMessage[]
+        >(threadQueuedMessagesQueryKey("thread-1"))
         ?.map((queuedMessage) => queuedMessage.id),
     ).toEqual(["qmsg-2"]);
   });

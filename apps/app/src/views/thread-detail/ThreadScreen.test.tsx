@@ -77,7 +77,6 @@ const TIMELINE = {
   activeWorkflows: [],
   contextBoundarySeq: null,
   contextWindowUsage: null,
-  goal: null,
   hasOlderTimelineRows: false,
   isCatchingUpTimeline: false,
   isLoadingOlderTimelineRows: false,

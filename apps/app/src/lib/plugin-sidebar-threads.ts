@@ -49,7 +49,7 @@ export function toPluginSidebarThread(
       backgroundAgents: entry.activity.activeBackgroundAgentCount,
       backgroundCommands: entry.activity.activeBackgroundCommandCount,
       planMode: entry.activity.activePlanModeCount,
-      goals: entry.activity.activeGoalCount,
+      goals: 0,
     },
     indicator,
     indicatorLabel: getThreadListIndicatorLabel(indicator),

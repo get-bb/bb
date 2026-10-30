@@ -461,7 +461,6 @@ async function runScenario(
             activeBackgroundAgentCount: 0,
             activeBackgroundCommandCount: 0,
             activePlanModeCount: 0,
-            activeGoalCount: 0,
           },
           latestAttentionAt: 5_000_000 + iteration,
           updatedAt: 5_000_000 + iteration,

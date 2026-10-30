@@ -27,7 +27,6 @@ function makeChild(
       activeBackgroundAgentCount: 0,
       activeBackgroundCommandCount: 0,
       activePlanModeCount: 0,
-      activeGoalCount: 0,
     },
     runtime: { displayStatus: "idle" },
     ...overrides,
@@ -53,7 +52,6 @@ const idleIndicatorState: ThreadListIndicatorState = {
   hasUnreadSuccess: false,
   isBackgroundAgentActive: false,
   isBackgroundCommandActive: false,
-  isGoalActive: false,
   queuedWork: "none",
   isPlanModeActive: false,
   isRuntimeActive: false,
@@ -67,7 +65,6 @@ describe("thread-activity", () => {
       ["hasUnreadError", "unread-error"],
       ["hasUnsubmittedDraft", "working-draft"],
       ["isPlanModeActive", "plan-mode"],
-      ["isGoalActive", "goal"],
     ] as const)("shows %s as %s over the runtime spinner", (flag, kind) => {
       expect(
         resolveThreadListIndicator({
@@ -98,7 +95,6 @@ describe("thread-activity", () => {
       "isBackgroundAgentActive",
       "isBackgroundCommandActive",
       "isPlanModeActive",
-      "isGoalActive",
     ] as const)("uses the working draft pencil with %s", (flag) => {
       expect(
         resolveThreadListIndicator({
@@ -182,18 +178,18 @@ describe("thread-activity", () => {
       },
     );
 
-    it.each([
-      "isBackgroundAgentActive",
-      "isBackgroundCommandActive",
-    ] as const)("shows the unread success dot over concurrent %s", (flag) => {
-      expect(
-        resolveThreadListIndicator({
-          ...idleIndicatorState,
-          hasUnreadSuccess: true,
-          [flag]: true,
-        }),
-      ).toBe("unread-success");
-    });
+    it.each(["isBackgroundAgentActive", "isBackgroundCommandActive"] as const)(
+      "shows the unread success dot over concurrent %s",
+      (flag) => {
+        expect(
+          resolveThreadListIndicator({
+            ...idleIndicatorState,
+            hasUnreadSuccess: true,
+            [flag]: true,
+          }),
+        ).toBe("unread-success");
+      },
+    );
 
     it("shows a running workflow over unread success and a failed queued send", () => {
       expect(
@@ -206,34 +202,15 @@ describe("thread-activity", () => {
       ).toBe("workflow");
     });
 
-    it("keeps Plan and Goal independent and applies Plan precedence", () => {
-      expect(
-        resolveThreadListIndicator({
-          ...idleIndicatorState,
-          isGoalActive: true,
-          isPlanModeActive: true,
-        }),
-      ).toBe("plan-mode");
-    });
-
     it("applies idle activity precedence before background work", () => {
       expect(
         resolveThreadListIndicator({
           ...idleIndicatorState,
           isBackgroundAgentActive: true,
           isBackgroundCommandActive: true,
-          isGoalActive: true,
           isPlanModeActive: true,
         }),
       ).toBe("plan-mode");
-      expect(
-        resolveThreadListIndicator({
-          ...idleIndicatorState,
-          isBackgroundAgentActive: true,
-          isBackgroundCommandActive: true,
-          isGoalActive: true,
-        }),
-      ).toBe("goal");
     });
 
     it("applies critical, idle draft, and unread precedence", () => {
@@ -341,7 +318,6 @@ describe("thread-activity", () => {
           activeBackgroundAgentCount: 0,
           activeBackgroundCommandCount: 1,
           activePlanModeCount: 0,
-          activeGoalCount: 1,
         },
         runtime: { displayStatus: "active" },
       });
@@ -353,7 +329,6 @@ describe("thread-activity", () => {
         hasUnreadSuccess: false,
         isBackgroundAgentActive: false,
         isBackgroundCommandActive: true,
-        isGoalActive: true,
         queuedWork: "waiting",
         isPlanModeActive: false,
         isRuntimeActive: true,
@@ -387,7 +362,6 @@ describe("thread-activity", () => {
         backgroundAgent: false,
         backgroundCommand: false,
         planMode: false,
-        goal: false,
         unread: false,
         unreadError: false,
       });
@@ -400,7 +374,6 @@ describe("thread-activity", () => {
         backgroundAgent: false,
         backgroundCommand: false,
         planMode: false,
-        goal: false,
         unread: false,
         unreadError: false,
       });
@@ -416,7 +389,6 @@ describe("thread-activity", () => {
         backgroundAgent: false,
         backgroundCommand: false,
         planMode: false,
-        goal: false,
         unread: false,
         unreadError: false,
       });
@@ -429,7 +401,6 @@ describe("thread-activity", () => {
         backgroundAgent: false,
         backgroundCommand: false,
         planMode: false,
-        goal: false,
         unread: false,
         unreadError: false,
       });
@@ -442,7 +413,6 @@ describe("thread-activity", () => {
         backgroundAgent: false,
         backgroundCommand: false,
         planMode: false,
-        goal: false,
         unread: true,
         unreadError: false,
       });
@@ -455,7 +425,6 @@ describe("thread-activity", () => {
         backgroundAgent: false,
         backgroundCommand: false,
         planMode: false,
-        goal: false,
         unread: false,
         unreadError: true,
       });
@@ -473,7 +442,6 @@ describe("thread-activity", () => {
         backgroundAgent: false,
         backgroundCommand: false,
         planMode: false,
-        goal: false,
         unread: true,
         unreadError: false,
       });
@@ -493,7 +461,6 @@ describe("thread-activity", () => {
         backgroundAgent: false,
         backgroundCommand: false,
         planMode: false,
-        goal: false,
         unread: true,
         unreadError: true,
       });
@@ -509,7 +476,6 @@ describe("thread-activity", () => {
           activeBackgroundAgentCount: 1,
           activeBackgroundCommandCount: 1,
           activePlanModeCount: 0,
-          activeGoalCount: 0,
         },
         runtime: { displayStatus: "active" },
       });
@@ -523,7 +489,6 @@ describe("thread-activity", () => {
         backgroundAgent: true,
         backgroundCommand: true,
         planMode: false,
-        goal: false,
         unread: false,
         unreadError: true,
       });
@@ -544,7 +509,6 @@ describe("thread-activity", () => {
         backgroundAgent: false,
         backgroundCommand: false,
         planMode: false,
-        goal: false,
         unread: false,
         unreadError: false,
       });
@@ -563,7 +527,6 @@ describe("thread-activity", () => {
       ],
       ["idle workflow activity", "activeWorkflowCount", "workflow"],
       ["plan-mode banner activity", "activePlanModeCount", "planMode"],
-      ["active-goal banner activity", "activeGoalCount", "goal"],
     ] as const)(
       "distinguishes %s from runtime work",
       (_label, countKey, flag) => {
@@ -573,7 +536,6 @@ describe("thread-activity", () => {
             activeBackgroundAgentCount: 0,
             activeBackgroundCommandCount: 0,
             activePlanModeCount: 0,
-            activeGoalCount: 0,
             [countKey]: 1,
           },
         });
@@ -587,7 +549,6 @@ describe("thread-activity", () => {
           backgroundAgent: false,
           backgroundCommand: false,
           planMode: false,
-          goal: false,
           unread: false,
           unreadError: false,
           [flag]: true,

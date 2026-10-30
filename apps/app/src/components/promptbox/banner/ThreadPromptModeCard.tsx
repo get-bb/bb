@@ -1,23 +1,14 @@
 import type { ThreadTimelineActivePromptMode } from "@bb/domain";
-import { CollapsibleActiveStackCard } from "@/components/promptbox/banner/CollapsibleActiveStackCard";
+import { CollapsibleStackCard } from "@/components/promptbox/banner/CollapsibleStackCard";
 
 interface ThreadPromptModeCardProps {
   activePromptMode: ThreadTimelineActivePromptMode | null;
-  isExitPending?: boolean;
-  isExpanded: boolean;
-  onExitPlanMode?: () => void;
-  onToggle: () => void;
+  onExitPlanMode?: () => Promise<void>;
 }
-
-const BODY_ID = "thread-prompt-mode-card-body";
-const TOGGLE_ID = "thread-prompt-mode-card-toggle";
 
 export function ThreadPromptModeCard({
   activePromptMode,
-  isExitPending = false,
-  isExpanded,
   onExitPlanMode,
-  onToggle,
 }: ThreadPromptModeCardProps) {
   if (activePromptMode?.mode !== "plan") {
     return null;
@@ -26,26 +17,20 @@ export function ThreadPromptModeCard({
   const hasPrompt = promptText.length > 0;
 
   return (
-    <CollapsibleActiveStackCard
-      cardAriaLabel="Prompt mode"
-      controlsAriaLabel="Plan mode controls"
-      toggleId={TOGGLE_ID}
-      bodyId={BODY_ID}
-      toggleAriaLabel="Plan"
-      iconName="ListTodo"
+    <CollapsibleStackCard
+      label="Plan"
       title="Plan"
-      isExpanded={isExpanded}
-      onToggle={onToggle}
+      icon="ListTodo"
       isActive
-      dismiss={
-        onExitPlanMode
-          ? {
-              ariaLabel: "Exit plan mode",
-              isPending: isExitPending,
+      {...(onExitPlanMode
+        ? {
+            dismiss: {
+              label: "Exit plan mode",
+              failureMessage: "Failed to exit Plan mode.",
               onDismiss: onExitPlanMode,
-            }
-          : null
-      }
+            },
+          }
+        : {})}
     >
       <div className="px-3 pb-2.5 pt-2">
         <p
@@ -55,6 +40,6 @@ export function ThreadPromptModeCard({
           {hasPrompt ? promptText : "No prompt text."}
         </p>
       </div>
-    </CollapsibleActiveStackCard>
+    </CollapsibleStackCard>
   );
 }
