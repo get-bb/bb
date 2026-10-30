@@ -10,7 +10,8 @@ export function questionVisible(name: string, values: FormValues): boolean {
   const work = workShown ? (values.work?.[0] ?? "") : "";
   if (name === "company_size")
     return Boolean(work && work !== "I don't use bb for work");
-  if (name === "team_improve") return TEAM_WORK_OPTIONS.includes(work);
+  if (name === "team_improve" || name === "plugin_sharing")
+    return TEAM_WORK_OPTIONS.includes(work);
   if (name === "team_adopt") return SOLO_WORK_OPTIONS.includes(work);
   return true;
 }
@@ -55,6 +56,8 @@ export const surveyQuestions: readonly Question[] = [
       "Product manager",
       "Designer",
       "Data or business analyst",
+      "Marketing or operations",
+      "Freelancer, consultant or agency",
       "Student",
       "Not currently working",
       "Other",
@@ -108,6 +111,19 @@ export const surveyQuestions: readonly Question[] = [
     label: "What would it take for others where you work to start using bb?",
     type: "textarea",
     options: [],
+    placeholder: "",
+  },
+  {
+    name: "plugin_sharing",
+    label: "Which of these happen with bb plugins where you work?",
+    type: "checkbox",
+    options: [
+      "I've shared a plugin I made with coworkers",
+      "I use a plugin a coworker made",
+      "Our team keeps shared plugins in one place, like a private repo",
+      "Not yet, but I'd like to share plugins with coworkers",
+      "None of these",
+    ],
     placeholder: "",
   },
   {

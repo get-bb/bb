@@ -66,8 +66,17 @@ describe("community survey submission rules", () => {
         work: ["5 or more"],
         team_adopt: [],
         team_improve: ["Roles"],
+        plugin_sharing: ["I use a plugin a coworker made"],
       }),
     ).toEqual({});
+    expect(
+      validateSurvey({
+        ...contact,
+        work: ["2–4 people"],
+        team_improve: ["Roles"],
+      }).plugin_sharing,
+    ).toBe("Please answer this question.");
+    expect(validateSurvey(contact).plugin_sharing).toBeUndefined();
     expect(
       validateSurvey({ ...contact, work: ["2–4 people"] }).team_improve,
     ).toBe("Please answer this question.");
