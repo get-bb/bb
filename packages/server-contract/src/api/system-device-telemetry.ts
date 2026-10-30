@@ -120,10 +120,6 @@ export const clientDeviceStatePropertiesSchema =
     (value) => value.resource_id === "mobile" || value.state === "setup_open",
     { message: "Connection observations are server-owned" },
   );
-export const deviceSetupTelemetrySchema = deviceStateTelemetrySchema.extend({
-  properties: clientDeviceStatePropertiesSchema,
-});
-
 export type DeviceOperationProperties = z.infer<
   typeof deviceOperationPropertiesSchema
 >;
