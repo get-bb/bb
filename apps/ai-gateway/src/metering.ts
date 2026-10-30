@@ -1,10 +1,5 @@
 import { and, eq, lt, sql } from "drizzle-orm";
-import {
-  type ConnectDb,
-  aiRequestLog,
-  aiUsageDay,
-  rowsChanged,
-} from "@bb/connect-db";
+import { type ConnectDb, aiRequestLog, aiUsageDay } from "@bb/connect-db";
 
 export const RESERVE_MICROS = 5_000;
 export const TRANSCRIBE_RESERVE_MICROS = 20_000;
@@ -34,27 +29,27 @@ export async function reserveBudget(
   key: BudgetKey,
   limitMicros: number,
   reserveMicros: number,
-): Promise<boolean> {
-  await db
+): Promise<{ spentMicros: number } | null> {
+  if (reserveMicros > limitMicros) return null;
+  const reserved = await db
     .insert(aiUsageDay)
-    .values({ userId: key.userId, day: key.day })
-    .onConflictDoNothing()
-    .run();
-  const userReserved = await db
-    .update(aiUsageDay)
-    .set({
-      reservedMicros: sql`${aiUsageDay.reservedMicros} + ${reserveMicros}`,
-      requests: sql`${aiUsageDay.requests} + 1`,
+    .values({
+      userId: key.userId,
+      day: key.day,
+      reservedMicros: reserveMicros,
+      requests: 1,
     })
-    .where(
-      and(
-        eq(aiUsageDay.userId, key.userId),
-        eq(aiUsageDay.day, key.day),
-        sql`${aiUsageDay.spentMicros} + ${aiUsageDay.reservedMicros} + ${reserveMicros} <= ${limitMicros}`,
-      ),
-    )
-    .run();
-  return rowsChanged(userReserved) > 0;
+    .onConflictDoUpdate({
+      target: [aiUsageDay.userId, aiUsageDay.day],
+      set: {
+        reservedMicros: sql`${aiUsageDay.reservedMicros} + ${reserveMicros}`,
+        requests: sql`${aiUsageDay.requests} + 1`,
+      },
+      setWhere: sql`${aiUsageDay.spentMicros} + ${aiUsageDay.reservedMicros} + ${reserveMicros} <= ${limitMicros}`,
+    })
+    .returning({ spentMicros: aiUsageDay.spentMicros })
+    .get();
+  return reserved ?? null;
 }
 
 export async function settleBudget(
@@ -62,18 +57,16 @@ export async function settleBudget(
   key: BudgetKey,
   costMicros: number,
   reserveMicros: number,
-): Promise<{ spentTodayMicros: number }> {
+): Promise<void> {
   const charged = Math.max(0, Math.round(costMicros));
-  const settled = await db
+  await db
     .update(aiUsageDay)
     .set({
       reservedMicros: sql`max(${aiUsageDay.reservedMicros} - ${reserveMicros}, 0)`,
       spentMicros: sql`${aiUsageDay.spentMicros} + ${charged}`,
     })
     .where(and(eq(aiUsageDay.userId, key.userId), eq(aiUsageDay.day, key.day)))
-    .returning({ spentMicros: aiUsageDay.spentMicros })
-    .get();
-  return { spentTodayMicros: settled?.spentMicros ?? charged };
+    .run();
 }
 
 export async function spentMicros(

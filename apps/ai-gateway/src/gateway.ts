@@ -1,8 +1,8 @@
 import {
   type AiRequestOutcome,
   type ConnectDb,
+  type ServerCredentialCache,
   aiRequestLog,
-  resolveServerCredential,
   serverCredentialFromHeaders,
   sha256Hex,
 } from "@bb/connect-db";
@@ -57,6 +57,7 @@ const ERROR_STATUS: Record<ErrorCode, number> = {
 
 export interface GatewayDeps {
   db: ConnectDb;
+  credentials: ServerCredentialCache;
   config: GatewayConfig;
   rateLimiter: {
     limit(options: { key: string }): Promise<{ success: boolean }>;
@@ -77,9 +78,12 @@ function errorResponse(
   return Response.json({ error: { code, message, ...extra } }, { status });
 }
 
-async function authenticate(request: Request, db: ConnectDb) {
-  return resolveServerCredential(
-    db,
+async function authenticate(
+  request: Request,
+  deps: Pick<GatewayDeps, "credentials" | "db">,
+) {
+  return deps.credentials.resolve(
+    deps.db,
     serverCredentialFromHeaders(request.headers),
   );
 }
@@ -200,20 +204,22 @@ function parseTranscribe(body: unknown): Parsed<TranscribeInput> {
   };
 }
 
-async function logRequest(
+interface RequestLogEntry {
+  userId: string;
+  serverId: string;
+  model: string | null;
+  promptTokens: number | null;
+  completionTokens: number | null;
+  costMicros: number;
+  startedAt: number;
+  finishedAt: number;
+  outcome: AiRequestOutcome;
+}
+
+async function writeRequestLog(
   deps: GatewayDeps,
-  entry: {
-    userId: string;
-    serverId: string;
-    model: string | null;
-    promptTokens: number | null;
-    completionTokens: number | null;
-    costMicros: number;
-    startedAt: number;
-    outcome: AiRequestOutcome;
-  },
+  entry: RequestLogEntry,
 ): Promise<void> {
-  const finishedAt = deps.now();
   try {
     await deps.db
       .insert(aiRequestLog)
@@ -225,14 +231,36 @@ async function logRequest(
         promptTokens: entry.promptTokens,
         completionTokens: entry.completionTokens,
         costMicros: entry.costMicros,
-        latencyMs: Math.max(0, finishedAt - entry.startedAt),
+        latencyMs: Math.max(0, entry.finishedAt - entry.startedAt),
         outcome: entry.outcome,
-        createdAt: new Date(finishedAt),
+        createdAt: new Date(entry.finishedAt),
       })
       .run();
   } catch (error) {
     console.error("bb ai gateway: request log write failed", error);
   }
+}
+
+function logRequest(
+  deps: GatewayDeps,
+  entry: Omit<RequestLogEntry, "finishedAt">,
+): void {
+  deps.waitUntil(writeRequestLog(deps, { ...entry, finishedAt: deps.now() }));
+}
+
+async function settleAndLog(
+  deps: GatewayDeps,
+  key: BudgetKey,
+  reserveMicros: number,
+  costMicros: number,
+  entry: RequestLogEntry | null,
+): Promise<void> {
+  try {
+    await settleBudget(deps.db, key, costMicros, reserveMicros);
+  } catch (error) {
+    console.error("bb ai gateway: budget settle failed", error);
+  }
+  if (entry !== null) await writeRequestLog(deps, entry);
 }
 
 function chargedMicros(result: UpstreamResult, reserveMicros: number): number {
@@ -296,35 +324,38 @@ async function runReserved<T>(
   args: {
     base: LogBase;
     key: BudgetKey;
+    spentMicros: number;
     apiKey: string;
     input: T;
   },
 ): Promise<Response> {
-  let result: UpstreamResult | null = null;
-  let spentTodayMicros = 0;
+  let result: UpstreamResult;
   try {
     result = await task.call(deps, args.apiKey, args.input, args.base.userId);
-  } finally {
-    const costMicros =
-      result === null
-        ? task.reserveMicros
-        : chargedMicros(result, task.reserveMicros);
-    ({ spentTodayMicros } = await settleBudget(
-      deps.db,
-      args.key,
-      costMicros,
-      task.reserveMicros,
-    ));
+  } catch (error) {
+    deps.waitUntil(
+      settleAndLog(
+        deps,
+        args.key,
+        task.reserveMicros,
+        task.reserveMicros,
+        null,
+      ),
+    );
+    throw error;
   }
   const costMicros = chargedMicros(result, task.reserveMicros);
-  await logRequest(deps, {
-    ...args.base,
-    model: result.model,
-    promptTokens: result.promptTokens,
-    completionTokens: result.completionTokens,
-    costMicros,
-    outcome: result.kind === "ok" ? "ok" : result.reason,
-  });
+  deps.waitUntil(
+    settleAndLog(deps, args.key, task.reserveMicros, costMicros, {
+      ...args.base,
+      finishedAt: deps.now(),
+      model: result.model,
+      promptTokens: result.promptTokens,
+      completionTokens: result.completionTokens,
+      costMicros,
+      outcome: result.kind === "ok" ? "ok" : result.reason,
+    }),
+  );
 
   if (result.kind === "error") {
     return result.reason === "timeout"
@@ -336,7 +367,7 @@ async function runReserved<T>(
     model: result.model,
     usage: {
       costMicros,
-      spentTodayMicros,
+      spentTodayMicros: args.spentMicros + costMicros,
       limitMicros: deps.config.dailyBudgetMicros,
     },
   });
@@ -348,7 +379,7 @@ async function handleMetered<T>(
   task: MeteredTask<T>,
 ): Promise<Response> {
   const startedAt = deps.now();
-  const account = await authenticate(request, deps.db);
+  const account = await authenticate(request, deps);
   if (!account) {
     return errorResponse("unauthorized", "sign in to your bb account");
   }
@@ -359,14 +390,14 @@ async function handleMetered<T>(
   };
   const limited = await deps.rateLimiter.limit({ key: account.userId });
   if (!limited.success) {
-    await logRequest(deps, { ...base, ...NO_USAGE, outcome: "rate_limited" });
+    logRequest(deps, { ...base, ...NO_USAGE, outcome: "rate_limited" });
     return errorResponse("rate_limited", "too many requests; slow down");
   }
 
   const body = await readJson(request, task.maxBodyBytes);
   const parsed = body.ok ? task.parse(body.value) : body;
   if (!parsed.ok) {
-    await logRequest(deps, {
+    logRequest(deps, {
       ...base,
       ...NO_USAGE,
       outcome: "invalid_request",
@@ -375,7 +406,7 @@ async function handleMetered<T>(
   }
   const apiKey = deps.config.apiKey;
   if (apiKey === null) {
-    await logRequest(deps, { ...base, ...NO_USAGE, outcome: "unavailable" });
+    logRequest(deps, { ...base, ...NO_USAGE, outcome: "unavailable" });
     return errorResponse("unavailable", "hosted generation is not configured");
   }
 
@@ -386,8 +417,8 @@ async function handleMetered<T>(
     deps.config.dailyBudgetMicros,
     task.reserveMicros,
   );
-  if (!reserved) {
-    await logRequest(deps, {
+  if (reserved === null) {
+    logRequest(deps, {
       ...base,
       ...NO_USAGE,
       outcome: "budget_exhausted",
@@ -400,6 +431,7 @@ async function handleMetered<T>(
   const response = runReserved(deps, task, {
     base,
     key,
+    spentMicros: reserved.spentMicros,
     apiKey,
     input: parsed.value,
   });
@@ -423,9 +455,9 @@ export function handleTranscribe(
 
 export async function handleUsage(
   request: Request,
-  deps: Pick<GatewayDeps, "db" | "config" | "now">,
+  deps: Pick<GatewayDeps, "credentials" | "db" | "config" | "now">,
 ): Promise<Response> {
-  const account = await authenticate(request, deps.db);
+  const account = await authenticate(request, deps);
   if (!account) {
     return errorResponse("unauthorized", "sign in to your bb account");
   }
