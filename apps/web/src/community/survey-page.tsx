@@ -16,7 +16,7 @@ import {
 
 const SURVEY_API_PATH = "/api/community/survey";
 const SURVEY_DESCRIPTION =
-  "We're figuring out what's next for bb, from product changes to meetups and merch, and we'd love your input.";
+  "We're figuring out what's next for bb, from product changes to meetups, and we'd love your input.";
 const SURVEY_PURPOSE =
   "This should take ~3 min. As a small thank you, we'll send you bb stickers free of charge (US-only for now). Thanks for building with us!";
 const CITY_HELP = "So we know where to start meetups.";
