@@ -102,7 +102,6 @@ describe("useCycle", () => {
     act(() => vi.advanceTimersByTime(5000));
     expect(cycleOf(host)).toBe(entered + 1);
 
-    // Coming back starts again from the first frame.
     observer.show(true);
     expect(cycleOf(host)).toBe(entered + 2);
     expect(host.textContent).toBe("holding");

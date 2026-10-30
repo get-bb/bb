@@ -49,8 +49,6 @@ export const SUBSCRIBE_PATH = "/api/subscribe";
 export const CLI_COMMAND = "npx bb-app@latest";
 export const WINDOWS_DOWNLOAD_URL = "/download/windows";
 
-// "local" was the old "Fork it" section's GitHub link; it stays so past
-// events still type-check against this list.
 export type CtaPlacement =
   | "nav"
   | "hero"

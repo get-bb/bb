@@ -196,15 +196,6 @@ export function Band({
   );
 }
 
-/**
- * Drives a looping visual: `cycle` changes each loop (use it as a `key` to
- * replay CSS animations) and `leaving` is true during the fade-out.
- *
- * With `ref`, the loop only runs while that element is on screen: it starts
- * from the first frame when the element enters view and stops and resets when
- * it leaves, and `paused` is true while it's offscreen. Without `ref`, it
- * loops from mount, as before.
- */
 export function useCycle(
   holdMs: number,
   fadeMs: number,
@@ -554,8 +545,6 @@ export function CustomizeBuild() {
   );
 }
 
-/* ── Feature windows: small bb windows in the hero window's style ──────── */
-
 const PluginsIcon = ({ className }: IconProps) => (
   <HugeiconsIcon icon={Plug02Icon} className={className} />
 );
@@ -610,7 +599,6 @@ function StatusGlyph({ status }: { status: ThreadState }) {
   return <WaitingIcon className="twait" />;
 }
 
-/** A thread's status glyph; with `doneAt`, it turns from running to done. */
 function ThreadStatus({
   status,
   doneAt,
@@ -637,7 +625,6 @@ function ThreadStatus({
   );
 }
 
-/** Animation delay, in seconds from the start of the loop. */
 function at(seconds: number): CSSProperties {
   return { "--fw-at": `${seconds}s` } as CSSProperties;
 }
@@ -718,10 +705,6 @@ function PluginRow({
   );
 }
 
-/**
- * bb's Plugins page: the built-in plugins beside ones you added. Static, so
- * there is nothing to reduce for reduced motion.
- */
 export function PluginsSheet() {
   return (
     <div
@@ -750,7 +733,6 @@ export function PluginsSheet() {
   );
 }
 
-/** The GitHub mark, for buttons that link to the repo. */
 export function GitHubButtonMark() {
   return <GitHubMark className="btn-ic" />;
 }
@@ -774,11 +756,6 @@ const HANDOFF_CHILDREN = [
   { icon: ClaudeIcon, title: "Review the fix", landsAt: 2.2 },
 ] as const;
 
-/**
- * A Claude thread starts Codex, Pi and Claude child threads; as each child
- * finishes, its note lands in the parent. Children land at 0.8s, 1.5s and
- * 2.2s, Codex finishes at 4.6s and Pi at 7s, then a 4s hold.
- */
 export function DelegationTree() {
   const ref = useRef<HTMLDivElement>(null);
   const { cycle, leaving, paused } = useCycle(11000, 600, ref);
@@ -876,17 +853,9 @@ export function DelegationTree() {
   );
 }
 
-// `--project` is required and the prompt is a flag
-// (apps/cli/src/commands/thread/spawn.ts); the command prints
-// "Thread spawned: <id>".
 const SPAWN_COMMAND = 'bb thread spawn --project "$BB_PROJECT" --prompt "Fix CI on main"';
 const SPAWN_OUTPUT = "Thread spawned: thr_7q2m9xk4";
 
-/**
- * A CI step runs `bb thread spawn` and an Automations schedule fires; each
- * lands as a new thread in the sidebar. Command at 0.6s, output at 1.5s, the
- * CI thread at 2s and the scheduled thread at 4.6s, then a 5s hold.
- */
 export function StartAnywhere() {
   const ref = useRef<HTMLDivElement>(null);
   const { cycle, leaving, paused } = useCycle(9600, 600, ref);
@@ -932,7 +901,6 @@ export function StartAnywhere() {
           </div>
           <div className="fw-card fw-side fw-side-solo">
             <div className="fw-label">Threads</div>
-            {/* New rows land at the top and push the rest down a row. */}
             <div className="fw-rows">
               <div className="fw-row fw-land" style={at(4.6)}>
                 <span className="fw-row-title">Nightly changelog</span>

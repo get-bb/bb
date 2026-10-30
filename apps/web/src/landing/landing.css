@@ -2082,8 +2082,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   min-width: 0;
 }
 
-/* ── Feature windows: small bb windows in the hero window's style ──────── */
-
 .fw-win,
 .fw-start {
   --fw-frame: color-mix(in oklab, var(--ink) 7%, var(--bg));
@@ -2173,8 +2171,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   color: var(--subtle);
 }
 
-/* Status glyphs are the hero's (.tstatus/.trun/.tdone/.twait); only done
-   takes the success color. */
 .fw-win .tdone {
   color: var(--ok);
 }
@@ -2210,8 +2206,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   text-overflow: ellipsis;
 }
 
-/* Animation primitives. Delays come from --fw-at, in seconds from the start
-   of the loop; `both` holds the first frame until the delay is up. */
 .fw-land {
   animation: fw-land 0.5s var(--fw-ease) var(--fw-at, 0s) both;
 }
@@ -2235,13 +2229,10 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   animation: fw-fade-in 0.3s ease var(--fw-at, 0s) both;
 }
 
-/* Rows under a landing row start one row up and slide down as it lands. */
 .fw-push {
   animation: fw-push 0.5s var(--fw-ease) var(--fw-at, 0s) both;
 }
 
-/* End of a loop: landed parts fade and pushed rows slide back up, so the next
-   loop starts where this one left off. */
 .leaving .fw-land,
 .leaving .fw-tline {
   animation: fw-fade-out 0.6s ease forwards;
@@ -2251,7 +2242,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   animation: fw-unpush 0.6s var(--fw-ease) forwards;
 }
 
-/* Offscreen, the loop holds still. */
 .fw-paused,
 .fw-paused * {
   animation-play-state: paused !important;
@@ -2287,8 +2277,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     transform: translateY(calc(-1 * var(--fw-row)));
   }
 }
-
-/* ── Start work from anywhere: a CI step and a schedule start threads ──── */
 
 .fw-start {
   width: 100%;
@@ -2345,7 +2333,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   white-space: pre-wrap;
 }
 
-/* One command line; at narrow widths it wraps with a hanging indent. */
 .fw-tcmd {
   padding-left: 2ch;
   text-indent: -2ch;
@@ -2401,8 +2388,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     transform: none;
   }
 }
-
-/* ── Make it yours: bb's Plugins page ─────────────────────────────────── */
 
 .band-cta {
   justify-content: flex-start;
@@ -2491,7 +2476,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   color: var(--subtle);
 }
 
-/* The Plugins page's on switch, muted to the hero's palette. */
 .fw-switch {
   position: relative;
   width: 26px;
@@ -2518,8 +2502,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   }
 }
 
-/* ── Agents that hand off work: a parent thread and its children ──────── */
-
 .fw-ic-ink {
   color: var(--ink);
 }
@@ -2531,7 +2513,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .fw-split {
   display: flex;
   margin: 0 8px 8px;
-  /* Reserve the final height so the loop never shifts the band. */
   min-height: 310px;
 }
 
@@ -2698,7 +2679,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   background: var(--fw-seam);
 }
 
-/* Narrow: stack the parent thread under the sidebar. */
 @container (max-width: 400px) {
   .fw-split {
     flex-direction: column;
