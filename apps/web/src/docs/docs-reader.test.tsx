@@ -8,6 +8,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, describe, expect, it } from "vitest";
 
 import { breadcrumbJsonLd } from "./breadcrumbs";
+import { docsOgCard, serveDocsOg } from "./docs-og";
+import { docsOgImagePath, slugsFromOgPath } from "./docs-og-paths";
 import { DocsH2, DocsH3 } from "./docs-headings";
 import { ReferenceBody } from "./reference-body";
 import { docsMdxOptions } from "./mdx-options";
@@ -144,7 +146,34 @@ describe("docs headings", () => {
   });
 });
 
-describe("docs breadcrumbs", () => {
+describe("docs share images", () => {
+  it("maps each page to one image path and back", () => {
+    expect(docsOgImagePath([])).toBe("/docs/og/index.png");
+    expect(docsOgImagePath(["plugin-sdk", "thread-panel"])).toBe(
+      "/docs/og/plugin-sdk/thread-panel.png",
+    );
+    expect(slugsFromOgPath("index.png")).toEqual([]);
+    expect(slugsFromOgPath("plugin-sdk/thread-panel.png")).toEqual([
+      "plugin-sdk",
+      "thread-panel",
+    ]);
+    expect(slugsFromOgPath("cli")).toBeNull();
+  });
+
+  it("returns a PNG card with the section and title of a docs page", async () => {
+    const card = { section: "Reference", title: "Keyboard shortcuts" };
+    const html = renderToStaticMarkup(docsOgCard(card));
+    expect(html).toContain("Reference");
+    expect(html).toContain("Keyboard shortcuts");
+    expect(html).not.toMatch(/20\d\d/u);
+    const response = await serveDocsOg(card);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("image/png");
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    expect([...bytes.slice(1, 4)]).toEqual([80, 78, 71]);
+    expect((await serveDocsOg(null)).status).toBe(404);
+  });
+
   it("describes the page's place in the docs as a BreadcrumbList", () => {
     const data = JSON.parse(
       breadcrumbJsonLd([
