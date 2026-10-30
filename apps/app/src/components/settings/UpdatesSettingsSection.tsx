@@ -2263,7 +2263,7 @@ export function UpdatesSettingsSection({
       return;
     }
     applyAppUpdate.mutate(
-      { confirmInterruptingThreads: false },
+      { confirmInterruptingThreads: false, entry: "settings" },
       {
         onError: (error) => {
           const count = runningThreadCountFromError(error);
@@ -2471,7 +2471,7 @@ export function UpdatesSettingsSection({
           onCancel={() => setConfirmingAppUpdateThreads(null)}
           onConfirm={() => {
             applyAppUpdate.mutate(
-              { confirmInterruptingThreads: true },
+              { confirmInterruptingThreads: true, entry: "settings" },
               { onSettled: () => setConfirmingAppUpdateThreads(null) },
             );
           }}

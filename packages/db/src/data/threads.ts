@@ -1346,6 +1346,7 @@ export interface RunningThreadRow {
   id: string;
   /** The machine it runs on, or null while no environment has been chosen. */
   hostId: string | null;
+  providerId: string;
 }
 
 /**
@@ -1376,6 +1377,7 @@ export function listRunningThreads(db: DbQueryConnection): RunningThreadRow[] {
     .select({
       id: threads.id,
       hostId: environments.hostId,
+      providerId: threads.providerId,
     })
     .from(threads)
     .leftJoin(environments, eq(environments.id, threads.environmentId))

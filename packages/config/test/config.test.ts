@@ -320,6 +320,7 @@ describe("consumer-specific config", () => {
     expect(serverConfig.featureFlags).toEqual({
       placeholder: false,
       initiatorTelemetry: true,
+      appUpdateTelemetry: false,
       timelineWindowEventBudget: 1_500,
     });
   });

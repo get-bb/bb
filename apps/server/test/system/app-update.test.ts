@@ -14,6 +14,7 @@ import {
   createLauncherChannel,
   type LauncherChannel,
 } from "../../src/services/system/launcher-channel.js";
+import { createFakeAppUpdateTelemetry } from "../helpers/app-update-telemetry.js";
 import { testLogger } from "../helpers/test-app.js";
 
 const COMMIT_A = "a".repeat(40);
@@ -117,10 +118,12 @@ function createService(args: {
     config: { appVersion: "1.0.0", isDevelopment: args.isDevelopment ?? false },
     countRunningThreads: () => args.runningThreads ?? 0,
     launcher,
+    listRunningThreadProviders: () => [],
     logger: testLogger,
     mode: args.mode === undefined ? "npm" : args.mode,
     notifyChanged,
     ...(args.now === undefined ? {} : { now: args.now }),
+    telemetry: createFakeAppUpdateTelemetry(),
   });
   launcher?.push({});
   return { launcher, notifyChanged, service };
@@ -155,7 +158,7 @@ describe("app update service", () => {
     expect(status.support).toEqual({ kind: "unsupported", reason });
     expect(status.available).toBeNull();
     await expectApiError(
-      service.apply({ confirmInterruptingThreads: true }),
+      service.apply({ confirmInterruptingThreads: true, entry: "settings" }),
       "app_update_unsupported",
     );
   });
@@ -196,13 +199,16 @@ describe("app update service", () => {
     const { launcher, service } = createService({ runningThreads: 2 });
 
     const error = await expectApiError(
-      service.apply({ confirmInterruptingThreads: false }),
+      service.apply({ confirmInterruptingThreads: false, entry: "settings" }),
       "threads_running",
     );
     expect(error.body.details).toEqual({ runningThreadCount: 2 });
     expect(launcher?.requests).toEqual([]);
 
-    await service.apply({ confirmInterruptingThreads: true });
+    await service.apply({
+      confirmInterruptingThreads: true,
+      entry: "settings",
+    });
     expect(launcher?.requests).toEqual([
       {
         target: { kind: "npm", version: "1.1.0" },
@@ -218,7 +224,7 @@ describe("app update service", () => {
     });
 
     await expectApiError(
-      service.apply({ confirmInterruptingThreads: true }),
+      service.apply({ confirmInterruptingThreads: true, entry: "settings" }),
       "app_update_unavailable",
     );
   });
@@ -236,7 +242,7 @@ describe("app update service", () => {
       },
     });
     await expectApiError(
-      service.apply({ confirmInterruptingThreads: true }),
+      service.apply({ confirmInterruptingThreads: true, entry: "settings" }),
       "app_update_in_progress",
     );
   });
@@ -249,7 +255,7 @@ describe("app update service", () => {
     const { service } = createService({ launcher });
 
     const error = await expectApiError(
-      service.apply({ confirmInterruptingThreads: true }),
+      service.apply({ confirmInterruptingThreads: true, entry: "settings" }),
       "app_update_rejected",
     );
     expect(error.body.message).toContain("not source");
@@ -321,7 +327,7 @@ describe("app update service", () => {
     });
     expect(status.blocked?.reason).toBe("uncommitted-changes");
     await expectApiError(
-      service.apply({ confirmInterruptingThreads: true }),
+      service.apply({ confirmInterruptingThreads: true, entry: "settings" }),
       "app_update_blocked",
     );
   });
@@ -384,12 +390,17 @@ describe("app update service", () => {
       config: { appVersion: "1.0.0", isDevelopment: false },
       countRunningThreads: () => runningThreads,
       launcher,
+      listRunningThreadProviders: () => [],
       logger: testLogger,
       mode: "npm",
       notifyChanged: vi.fn(),
+      telemetry: createFakeAppUpdateTelemetry(),
     });
     launcher.push({});
-    await service.apply({ confirmInterruptingThreads: false });
+    await service.apply({
+      confirmInterruptingThreads: false,
+      entry: "settings",
+    });
 
     runningThreads = 1;
     launcher.push({
@@ -418,7 +429,10 @@ describe("app update service", () => {
     ]);
 
     launcher.push({});
-    await service.apply({ confirmInterruptingThreads: true });
+    await service.apply({
+      confirmInterruptingThreads: true,
+      entry: "settings",
+    });
     launcher.push({
       activity: {
         phase: "ready",
@@ -474,7 +488,10 @@ describe("app update service", () => {
     const { service } = createService({ launcher, mode: "source" });
     await service.getStatus({ forceRefresh: true });
 
-    await service.apply({ confirmInterruptingThreads: false });
+    await service.apply({
+      confirmInterruptingThreads: false,
+      entry: "settings",
+    });
 
     expect(launcher.requests.at(-1)).toMatchObject({
       target: { commit: "c".repeat(40), kind: "source" },

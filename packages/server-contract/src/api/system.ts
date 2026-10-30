@@ -509,8 +509,17 @@ export const systemAppUpdateQuerySchema = z.object({
 });
 export type SystemAppUpdateQuery = z.infer<typeof systemAppUpdateQuerySchema>;
 
+export const systemAppUpdateEntrySchema = z.enum([
+  "settings",
+  "cli",
+  "desktop_relaunch",
+  "api",
+]);
+export type SystemAppUpdateEntry = z.infer<typeof systemAppUpdateEntrySchema>;
+
 export const systemAppUpdateApplyRequestSchema = z.object({
   confirmInterruptingThreads: z.boolean(),
+  entry: systemAppUpdateEntrySchema.optional(),
 });
 export type SystemAppUpdateApplyRequest = z.infer<
   typeof systemAppUpdateApplyRequestSchema

@@ -324,6 +324,13 @@ export const BB_FF_INITIATOR_TELEMETRY_ENV = defineEnvVar<boolean>({
   parse: parseBooleanEnvValue,
 });
 
+export const BB_FF_APP_UPDATE_TELEMETRY_ENV = defineEnvVar<boolean>({
+  description:
+    "Sends anonymous app_update_* telemetry about in-app updates: how many threads were running, whether each saved its work, and how long bb was offline. Off by default; set true to send it.",
+  name: "BB_FF_APP_UPDATE_TELEMETRY",
+  parse: parseBooleanEnvValue,
+});
+
 export const BB_FF_TIMELINE_WINDOW_EVENT_BUDGET_ENV = defineEnvVar<number>({
   description:
     "Max events one thread-timeline window may span. Raise far above the default to restore unbounded windows.",
@@ -432,5 +439,7 @@ export const DEFAULT_BB_CONNECT_GATE_KEYS_URL =
 export const DEFAULT_BB_FF_PLACEHOLDER = defaultFeatureFlags.placeholder;
 export const DEFAULT_BB_FF_INITIATOR_TELEMETRY =
   defaultFeatureFlags.initiatorTelemetry;
+export const DEFAULT_BB_FF_APP_UPDATE_TELEMETRY =
+  defaultFeatureFlags.appUpdateTelemetry;
 export const DEFAULT_BB_FF_TIMELINE_WINDOW_EVENT_BUDGET =
   defaultFeatureFlags.timelineWindowEventBudget;

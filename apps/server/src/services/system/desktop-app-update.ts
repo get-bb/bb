@@ -14,6 +14,7 @@ import {
 import { ApiError } from "../../errors.js";
 import type { ServerLogger } from "../../types.js";
 import type { AppUpdateService } from "./app-update.js";
+import type { AppUpdateTelemetry } from "./app-update-telemetry.js";
 import type { DesktopUpdateChannel } from "./desktop-update-channel.js";
 
 const stateSchema = z
@@ -29,8 +30,10 @@ export function createDesktopAppUpdateService(args: {
   currentVersion: string;
   dataDir: string;
   countRunningThreads: () => number;
+  listRunningThreadProviders: () => string[];
   notifyChanged: () => void;
   logger: ServerLogger;
+  telemetry: AppUpdateTelemetry;
 }): AppUpdateService {
   const path = join(args.dataDir, "bb-desktop-app-update.json");
   let info: DesktopAppUpdateInfo | null = null;
@@ -209,6 +212,17 @@ export function createDesktopAppUpdateService(args: {
         targetVersion: version,
       };
       args.notifyChanged();
+      const providers = args.listRunningThreadProviders();
+      await args.telemetry.restarting({
+        reason: providers.length > 0 ? "update_now" : "nothing_running",
+        targetRevision: version,
+        threads: providers.map((providerId) => ({
+          providerId,
+          saveResult: "forced",
+          stopMethod: "none",
+        })),
+        waitMs: 0,
+      });
       await delay(1_500, undefined, { signal: abort.signal });
       await args.channel.request("install");
     } catch (error) {
@@ -233,7 +247,7 @@ export function createDesktopAppUpdateService(args: {
 
   return {
     getStatus,
-    async apply({ confirmInterruptingThreads }) {
+    async apply({ confirmInterruptingThreads, entry }) {
       if (applying)
         throw new ApiError(
           409,
@@ -266,6 +280,11 @@ export function createDesktopAppUpdateService(args: {
             { details: { runningThreadCount: count } },
           );
         }
+        args.telemetry.started({
+          entry,
+          mode: "now",
+          runningThreads: status.runningThreadCount,
+        });
         activity = {
           phase: "preparing",
           output: [],
