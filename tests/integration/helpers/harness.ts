@@ -505,12 +505,7 @@ export async function createIntegrationHarness(
     await currentResources.daemonApp.connection
       .shutdown()
       .catch(() => undefined);
-    await currentResources.daemonApp.localApi?.close().catch(() => undefined);
-    await currentResources.daemonApp.runtimeManager
-      .shutdownAll()
-      .catch(() => undefined);
-    await currentResources.daemonApp.eventSink.dispose().catch(() => undefined);
-    await currentResources.releaseLock().catch(() => undefined);
+    await currentResources.daemon.shutdown("integration-crash", 0);
   }
 
   async function cleanup(): Promise<void> {

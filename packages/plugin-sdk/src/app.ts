@@ -160,6 +160,9 @@ export const experimental_InfoList = runtimeComponent("experimental_InfoList");
 export const experimental_ThreadContextCardRow = runtimeComponent(
   "experimental_ThreadContextCardRow",
 );
+export const experimental_PanelTabIcon = runtimeComponent(
+  "experimental_PanelTabIcon",
+);
 export const experimental_InfoListRow = runtimeComponent(
   "experimental_InfoListRow",
 );
@@ -296,6 +299,9 @@ export const experimental_useExperiment = runtimeFunction(
 );
 export const experimental_useThreadContextKind = runtimeFunction(
   "experimental_useThreadContextKind",
+);
+export const experimental_usePanelTabs = runtimeFunction(
+  "experimental_usePanelTabs",
 );
 export const experimental_useSidebarThreadSplit = runtimeFunction(
   "experimental_useSidebarThreadSplit",

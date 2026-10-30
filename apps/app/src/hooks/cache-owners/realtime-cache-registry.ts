@@ -311,6 +311,13 @@ function invalidateTerminalTimelineQueryKeys({
   }
 }
 
+export function invalidateSidebarNavigation(queryClient: QueryClient): void {
+  void queryClient.invalidateQueries(
+    { exact: true, queryKey: sidebarNavigationQueryKey() },
+    { cancelRefetch: false },
+  );
+}
+
 export function disposeTrailingActiveRefetches(queryClient: QueryClient): void {
   const throttled = throttledActiveRefetchEntries.get(queryClient);
   if (throttled) {

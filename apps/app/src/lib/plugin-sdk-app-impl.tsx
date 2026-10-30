@@ -8,8 +8,10 @@ import { ProviderIcon } from "@/components/plugin/ProviderIcon";
 import { Icon } from "@bb/shared-ui/icon";
 import type {
   ExperimentalInfoListRowProps,
+  ExperimentalPanelTabIconProps,
   PluginSdkApp,
 } from "@get-bb/plugin-sdk";
+import { useSyncExternalStore } from "react";
 import { PluginBranchPicker } from "@/components/plugin/PluginBranchPicker";
 import {
   usePluginBranches,
@@ -72,7 +74,9 @@ import {
   useSettings,
   experimental_useAppPanel,
   experimental_useFixedTabTarget,
+  experimental_usePanelTabs,
 } from "./plugin-sdk-hooks";
+import { useAppNavigationHost } from "./app-navigation-host";
 import {
   useSidebarThreadActions,
   useSidebarThreadDraft,
@@ -142,6 +146,12 @@ function useArchiveEnvironmentThreads(): (
   return useThreadActions().archiveEnvironmentThreads;
 }
 
+function PanelTabIcon({ tabKey }: ExperimentalPanelTabIconProps) {
+  const { panel } = useAppNavigationHost();
+  useSyncExternalStore(panel.subscribeTabs, panel.getTabs, panel.getTabs);
+  return <>{panel.renderTabIcon(tabKey)}</>;
+}
+
 export const pluginSdkAppImplementation = {
   experimental_getApplicationLinkApprovals: applicationLinkApprovals.list,
   experimental_revokeApplicationLinkApproval: applicationLinkApprovals.revoke,
@@ -157,6 +167,8 @@ export const pluginSdkAppImplementation = {
   experimental_useServers: useServerChoices,
   experimental_useAppPanel,
   experimental_useFixedTabTarget,
+  experimental_usePanelTabs,
+  experimental_PanelTabIcon: PanelTabIcon,
   useComposer,
   useComposers,
   experimental_useComposerRenderer: useComposerRendererApi,

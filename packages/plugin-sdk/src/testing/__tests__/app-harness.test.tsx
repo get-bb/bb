@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { makePanelController } from "../fixtures.js";
 import { useEffect, useState } from "react";
 import { cleanup, fireEvent, render, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -1477,11 +1478,11 @@ describe("loadPluginApp", () => {
   });
 
   it("invokes a captured messageAction run with a plugin-authored context", () => {
-    const experimental_panel = {
+    const experimental_panel = makePanelController({
       openTab: () => true,
       toggleTab: () => true,
       close: () => true,
-    };
+    });
     app.messageActions[0]!.run({
       threadId: "thr_main",
       message: {

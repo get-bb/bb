@@ -56,9 +56,43 @@ import {
   AppCommandProvider,
   useAppCommandRunner,
 } from "@/components/commands/AppCommandProvider";
-import { pluginWorkspaceAtom } from "@/components/plugin/plugin-workspace-state";
+import { getFixedPanelTabsStateStorageKey } from "@bb/client-core";
+import { resetFixedPanelTabsStateForTest } from "@/lib/fixed-panel-tabs";
+import { getFocusedAppPanelController } from "@/lib/app-fixed-tab-navigation";
 import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
 import type { BbDesktopCloseWindowRequestHandler } from "@bb/desktop-contract";
+
+function seedBrowseTabs(
+  tabs: readonly string[],
+  activePluginId: string | null,
+) {
+  window.localStorage.setItem(
+    "bb.plugins.workspace.tabs",
+    JSON.stringify({ tabs, activePluginId }),
+  );
+}
+
+function browseTabs(): { tabs: string[]; activePluginId: string | null } {
+  const state = JSON.parse(
+    window.localStorage.getItem(
+      getFixedPanelTabsStateStorageKey({ threadId: "plugins-browse" }),
+    ) ?? "null",
+  ) as {
+    secondary: {
+      tabs: { id: string; detailKey: string }[];
+      activeTabId: string | null;
+      isOpen: boolean;
+    };
+  } | null;
+  const tabs = state?.secondary.tabs ?? [];
+  const active = state?.secondary.isOpen
+    ? tabs.find((tab) => tab.id === state.secondary.activeTabId)
+    : undefined;
+  return {
+    tabs: tabs.map((tab) => tab.detailKey),
+    activePluginId: active?.detailKey ?? null,
+  };
+}
 
 vi.mock("@/components/layout/AppLayout", () => ({
   AppLayout: ({ children }: { children: ReactNode }) => <>{children}</>,
@@ -150,7 +184,8 @@ function renderWithQueryClient(ui: ReactNode) {
 
 afterEach(() => {
   cleanup();
-  window.localStorage.removeItem("bb.plugins.workspace.tabs");
+  window.localStorage.clear();
+  resetFixedPanelTabsStateForTest();
   resetPluginSlotStoreForTest();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -219,10 +254,7 @@ describe("Plugins catalog close arbitration", () => {
         }),
       );
       const store = createStore();
-      store.set(pluginWorkspaceAtom, {
-        tabs: ["github", "automations"],
-        activePluginId: "automations",
-      });
+      seedBrowseTabs(["github", "automations"], "automations");
       const onHandled = vi.fn();
       const view = renderWithQueryClient(
         <Provider store={store}>
@@ -251,8 +283,18 @@ describe("Plugins catalog close arbitration", () => {
         });
         return handled;
       };
+      expect(
+        window.localStorage.getItem("bb.plugins.workspace.tabs"),
+      ).toBeNull();
+      expect(getFocusedAppPanelController()?.getTabs()).toMatchObject({
+        open: true,
+        tabs: [
+          { detail: { kind: "plugin-details", pluginId: "github" } },
+          { detail: { kind: "plugin-details", pluginId: "automations" } },
+        ],
+      });
       expect(requestClose()).toBe(true);
-      expect(store.get(pluginWorkspaceAtom)).toEqual({
+      expect(browseTabs()).toEqual({
         tabs: ["github"],
         activePluginId: "github",
       });
@@ -261,20 +303,9 @@ describe("Plugins catalog close arbitration", () => {
         "/plugins/github",
       );
       expect(requestClose()).toBe(true);
-      expect(store.get(pluginWorkspaceAtom)).toEqual({
-        tabs: [],
-        activePluginId: null,
-      });
+      expect(browseTabs()).toEqual({ tabs: [], activePluginId: null });
       expect(screen.getByTestId("location").textContent).toBe("/plugins");
       expect(requestClose()).toBe(false);
-      act(() =>
-        store.set(pluginWorkspaceAtom, {
-          tabs: ["github"],
-          activePluginId: null,
-        }),
-      );
-      expect(requestClose()).toBe(false);
-      expect(store.get(pluginWorkspaceAtom).tabs).toEqual(["github"]);
       view.unmount();
       expect(handlers.size).toBe(0);
     },
@@ -951,10 +982,10 @@ describe("BB Official plugin detail routing", () => {
         }),
       );
       const store = createStore();
-      store.set(pluginWorkspaceAtom, {
-        tabs: entries.map((entry) => entry.entryId),
-        activePluginId: active,
-      });
+      seedBrowseTabs(
+        entries.map((entry) => entry.entryId),
+        active,
+      );
       const { wrapper } = createQueryClientTestHarness();
       render(
         <Provider store={store}>
@@ -973,7 +1004,7 @@ describe("BB Official plugin detail routing", () => {
       fireEvent.click(screen.getByRole("menuitem", { name: action }));
 
       await waitFor(() => {
-        expect(store.get(pluginWorkspaceAtom)).toEqual({
+        expect(browseTabs()).toEqual({
           tabs: remaining,
           activePluginId: nextActive,
         });
@@ -981,11 +1012,6 @@ describe("BB Official plugin detail routing", () => {
           `/plugins/${nextActive}`,
         );
       });
-      expect(
-        JSON.parse(
-          window.localStorage.getItem("bb.plugins.workspace.tabs") ?? "null",
-        ),
-      ).toEqual({ tabs: remaining, activePluginId: nextActive });
       for (const entry of entries) {
         expect(
           screen.queryByRole("button", {
@@ -1082,11 +1108,7 @@ describe("BB Official plugin detail routing", () => {
             screen.queryByRole("heading", { name: "GitHub", level: 1 }),
           ).toBeNull(),
         );
-        expect(
-          JSON.parse(
-            window.localStorage.getItem("bb.plugins.workspace.tabs") ?? "{}",
-          ).tabs,
-        ).toContain("github");
+        expect(browseTabs().tabs).toContain("github");
         fireEvent.click(
           (
             await screen.findAllByRole("button", {

@@ -172,12 +172,21 @@ const pluginPanelFixedPanelTabSchema = z
     title: z.string().min(1),
   })
   .strict();
+const pluginDetailFixedPanelTabSchema = z
+  .object({
+    detailKey: z.string().min(1),
+    id: z.string().min(1),
+    kind: z.literal("plugin-detail"),
+    title: z.string().min(1),
+  })
+  .strict();
 const secondaryFixedPanelTabSchema = z.union([
   threadInfoFixedPanelTabSchema,
   gitDiffFixedPanelTabSchema,
   pluginFixedPanelTabSchema,
   pluginPageFixedPanelTabSchema,
   pluginPanelFixedPanelTabSchema,
+  pluginDetailFixedPanelTabSchema,
   workspaceFilePreviewFixedPanelTabSchema,
   hostFilePreviewFixedPanelTabSchema,
   threadStorageFilePreviewFixedPanelTabSchema,
@@ -245,6 +254,13 @@ export type FixedPanelViewTab =
   | GitDiffFixedPanelTab
   | PluginPageFixedPanelTab
   | PluginFixedPanelTab;
+
+export interface PluginDetailFixedPanelTab {
+  detailKey: string;
+  id: string;
+  kind: "plugin-detail";
+  title: string;
+}
 
 export interface PluginPanelFixedPanelTab {
   actionId: string;
@@ -322,6 +338,7 @@ export type SecondaryFixedPanelTab =
   | PluginPageFixedPanelTab
   | PluginFixedPanelTab
   | PluginPanelFixedPanelTab
+  | PluginDetailFixedPanelTab
   | WorkspaceFilePreviewFixedPanelTab
   | HostFilePreviewFixedPanelTab
   | ThreadStorageFilePreviewFixedPanelTab
@@ -338,7 +355,8 @@ export type SecondaryFileFixedPanelTab =
   | BrowserFixedPanelTab
   | NewTabFixedPanelTab
   | TerminalFixedPanelTab
-  | PluginPanelFixedPanelTab;
+  | PluginPanelFixedPanelTab
+  | PluginDetailFixedPanelTab;
 
 export type FixedPanelTab = SecondaryFixedPanelTab;
 
@@ -428,6 +446,11 @@ interface CreateWorkspaceFilePreviewFixedPanelTabArgs {
 interface CreateTerminalFixedPanelTabArgs {
   terminalId: string;
   target?: TerminalCreateTarget;
+}
+
+interface CreatePluginDetailFixedPanelTabArgs {
+  detailKey: string;
+  title: string;
 }
 
 interface CreatePluginPanelFixedPanelTabArgs {
@@ -633,6 +656,22 @@ export function createPluginPageFixedPanelTab({
     kind: "plugin-page-fixed",
     pageId,
     pluginId,
+  };
+}
+
+export function createPluginDetailFixedPanelTab({
+  detailKey,
+  title,
+}: CreatePluginDetailFixedPanelTabArgs): PluginDetailFixedPanelTab {
+  return {
+    detailKey,
+    id: buildFixedPanelTabId({
+      environmentId: null,
+      kind: "plugin-detail",
+      path: detailKey,
+    }),
+    kind: "plugin-detail",
+    title,
   };
 }
 
@@ -878,6 +917,10 @@ function normalizeFixedPanelTab(legacyTab: FixedPanelTab): FixedPanelTab {
       });
       return tab.id === id ? tab : { ...tab, id };
     }
+    case "plugin-detail": {
+      const id = createPluginDetailFixedPanelTab(tab).id;
+      return tab.id === id ? tab : { ...tab, id };
+    }
   }
 }
 
@@ -945,6 +988,7 @@ function stripTransientFixedPanelTabForStorage(
     case "browser":
     case "new-tab":
     case "terminal":
+    case "plugin-detail":
       return tab;
     case "plugin-panel":
       return tab.fileOpenerOwner === undefined
@@ -1162,6 +1206,12 @@ export function areFixedPanelTabsEquivalent(
         a.pluginId === b.pluginId &&
         a.pageId === b.pageId &&
         a.fixedTabId === b.fixedTabId
+      );
+    case "plugin-detail":
+      return (
+        b.kind === "plugin-detail" &&
+        a.detailKey === b.detailKey &&
+        a.title === b.title
       );
     case "plugin-panel":
       return (

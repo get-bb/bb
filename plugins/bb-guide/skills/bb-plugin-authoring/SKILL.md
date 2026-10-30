@@ -70,6 +70,8 @@ the same change.
   (rail or list placement) and controls beside the sidebar toggle.
 - Read references/frontend-thread-row-metadata.md to add a badge to every thread
   row (`experimental_threadRowMetadata`) or draw those badges on your own rows.
+- Read references/frontend-panel-tabs.md to list the side panel's open tabs,
+  bb's included, and select or close them.
 - Read references/frontend-thread-context-card.md to add a row or section to
   the thread context card beside each thread's transcript.
 - Read references/frontend-pull-requests.md to show bb's pull request badge
