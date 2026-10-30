@@ -1,0 +1,30 @@
+name: CI October 30 process diagnostics
+on:
+  push:
+    branches: [bb/probe-ci-oct30]
+permissions:
+  contents: read
+jobs:
+  automation:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: ./.github/actions/setup-workspace-tools
+        with:
+          node-version: 22.x
+          pnpm-version: 9.15.0
+      - run: pnpm install --frozen-lockfile --ignore-scripts --filter bb --filter 'bb-plugin-automations...' --filter '@bb/app...' --filter '@bb/db...'
+      - run: pnpm exec turbo run test --filter=bb-plugin-automations -- src/automations.test.ts -t 'stops a running script and its descendants'
+      - run: |
+          mkdir -p diagnostic-results
+          for i in $(seq 1 60); do
+            pnpm --filter bb-plugin-automations exec vitest run --config vitest.config.ts src/automations.test.ts -t 'stops a running script and its descendants' > "diagnostic-results/automation-$i.log" 2>&1
+            echo "$i $?" >> diagnostic-results/status.txt
+          done
+        shell: bash {0}
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: automation-exit-diagnostics
+          path: diagnostic-results
