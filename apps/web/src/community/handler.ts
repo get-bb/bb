@@ -153,7 +153,7 @@ export async function handleSurveySubmission(
   const email = values.email?.[0] ?? "";
   const config = shopifyConfig(env);
   const stickerLimit =
-    Number.parseInt(env.COMMUNITY_STICKER_LIMIT ?? "", 10) || 0;
+    Number.parseInt(env.COMMUNITY_STICKER_LIMIT ?? "", 10) || 1000;
   const emailHash = await sha256Hex(emailKey(email));
   const code = newStickerCode();
   const now = Date.now();
@@ -182,7 +182,8 @@ export async function handleSurveySubmission(
         "UPDATE community_sticker_claim SET status = ?, attempts = 1, last_attempt_at = ? WHERE code = ?",
       )
         .bind(created.ok ? "created" : "pending", now, code)
-        .run();
+        .run()
+        .catch(() => undefined);
     if (created && !created.ok)
       console.error(
         JSON.stringify({

@@ -30,12 +30,21 @@ const shopify = {
   tokenRequests: 0,
   down: false,
   loseReply: false,
+  taken: false,
+  tokenStatus: 200,
+  graphqlRequests: 0,
 };
 async function fakeShopify(url: string, init: RequestInit) {
   if (url.endsWith("/admin/oauth/access_token")) {
     shopify.tokenRequests++;
+    if (shopify.tokenStatus !== 200)
+      return Response.json(
+        { error: "application_cannot_be_found" },
+        { status: shopify.tokenStatus },
+      );
     return Response.json({ access_token: "token", expires_in: 86399 });
   }
+  shopify.graphqlRequests++;
   if (shopify.down) return new Response("unavailable", { status: 503 });
   const { query, variables } = JSON.parse(String(init.body));
   if (query.includes("codeDiscountNodeByCode"))
@@ -47,6 +56,7 @@ async function fakeShopify(url: string, init: RequestInit) {
       },
     });
   const code = variables.discount.code;
+  if (shopify.taken) shopify.codes.add(code);
   if (shopify.codes.has(code))
     return Response.json({
       data: {
@@ -136,7 +146,14 @@ beforeEach(async () => {
     db.prepare("DELETE FROM community_survey_email"),
     db.prepare("DELETE FROM community_sticker_claim"),
   ]);
-  Object.assign(shopify, { tokenRequests: 0, down: false, loseReply: false });
+  Object.assign(shopify, {
+    tokenRequests: 0,
+    down: false,
+    loseReply: false,
+    taken: false,
+    tokenStatus: 200,
+    graphqlRequests: 0,
+  });
   shopify.codes.clear();
   resetShopifyTokenCache();
   vi.stubGlobal("fetch", fakeShopify);
@@ -326,6 +343,20 @@ describe("survey submissions", () => {
       ),
     ).toBe(1);
     expect(shopify.codes.size).toBe(0);
+  });
+
+  it("treats a duplicate-code error for its own code as created", async () => {
+    shopify.taken = true;
+    const { body } = await post();
+    expect(codeFrom(body)).toBeDefined();
+    expect(shopify.codes.size).toBe(1);
+  });
+
+  it("stops at a failed token request without retrying it", async () => {
+    shopify.tokenStatus = 400;
+    const { body } = await post();
+    expect(body.result?.claimLink).toBeNull();
+    expect([shopify.tokenRequests, shopify.graphqlRequests]).toEqual([1, 0]);
   });
 
   it("treats a code Shopify created before losing the reply as created", async () => {

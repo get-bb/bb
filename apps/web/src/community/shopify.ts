@@ -9,14 +9,14 @@ export type ShopifyEnv = Pick<
   | "SHOPIFY_CLIENT_SECRET"
 >;
 
-export type ShopifyConfig = {
+type ShopifyConfig = {
   store: string;
   variantId: string;
   clientId: string;
   clientSecret: string;
 };
 
-export type CreateResult = { ok: true } | { ok: false; reason: string };
+type CreateResult = { ok: true } | { ok: false; reason: string };
 
 const API_VERSION = "2026-10";
 const TIMEOUT_MS = 5000;
@@ -34,6 +34,11 @@ const createResponse = z.object({
       userErrors,
     }),
   }),
+});
+const graphqlErrors = z.object({
+  errors: z.array(
+    z.object({ extensions: z.object({ code: z.string() }).optional() }),
+  ),
 });
 const lookupResponse = z.object({
   data: z.object({
@@ -82,8 +87,9 @@ export function resetShopifyTokenCache(): void {
   cachedToken = null;
 }
 
-async function accessToken(config: ShopifyConfig, now: number) {
+async function accessToken(config: ShopifyConfig) {
   const key = `${config.store}:${config.clientId}`;
+  const now = Date.now();
   if (cachedToken?.key === key && cachedToken.expiresAt - 60_000 > now)
     return cachedToken.token;
   const response = await fetch(
@@ -97,6 +103,7 @@ async function accessToken(config: ShopifyConfig, now: number) {
         client_secret: config.clientSecret,
       }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
+      redirect: "error",
     },
   );
   if (!response.ok) throw new Error(`token_${response.status}`);
@@ -110,8 +117,8 @@ async function accessToken(config: ShopifyConfig, now: number) {
 }
 
 async function graphql(
+  token: string,
   config: ShopifyConfig,
-  now: number,
   query: string,
   variables: Record<string, unknown>,
 ): Promise<unknown> {
@@ -121,22 +128,29 @@ async function graphql(
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "X-Shopify-Access-Token": await accessToken(config, now),
+        "X-Shopify-Access-Token": token,
       },
       body: JSON.stringify({ query, variables }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
+      redirect: "error",
     },
   );
   if (response.status === 401 || response.status === 403) cachedToken = null;
   if (!response.ok) throw new Error(`graphql_${response.status}`);
-  return response.json();
+  const body: unknown = await response.json();
+  const failure = graphqlErrors.safeParse(body);
+  if (failure.success && failure.data.errors.length)
+    throw new Error(
+      `graphql_${failure.data.errors[0]?.extensions?.code ?? "error"}`,
+    );
+  return body;
 }
 
-async function codeExists(config: ShopifyConfig, now: number, code: string) {
+async function codeExists(token: string, config: ShopifyConfig, code: string) {
   const body = lookupResponse.parse(
     await graphql(
+      token,
       config,
-      now,
       "query StickerCode($code: String!) { codeDiscountNodeByCode(code: $code) { id } }",
       { code },
     ),
@@ -150,11 +164,17 @@ export async function createStickerDiscount(
   submissionId: string,
   now: number,
 ): Promise<CreateResult> {
+  let token: string;
+  try {
+    token = await accessToken(config);
+  } catch (error) {
+    return { ok: false, reason: reasonOf(error) };
+  }
   try {
     const body = createResponse.parse(
       await graphql(
+        token,
         config,
-        now,
         "mutation StickerCode($discount: DiscountCodeBasicInput!) { discountCodeBasicCreate(basicCodeDiscount: $discount) { codeDiscountNode { id } userErrors { code } } }",
         {
           discount: {
@@ -189,18 +209,22 @@ export async function createStickerDiscount(
     const result = body.data.discountCodeBasicCreate;
     if (result.codeDiscountNode && !result.userErrors.length)
       return { ok: true };
-    if (await codeExists(config, now, code)) return { ok: true };
+    if (await codeExists(token, config, code)) return { ok: true };
     return {
       ok: false,
       reason: result.userErrors.map((error) => error.code).join(",") || "none",
     };
   } catch (error) {
     try {
-      if (await codeExists(config, now, code)) return { ok: true };
+      if (await codeExists(token, config, code)) return { ok: true };
     } catch {}
-    return {
-      ok: false,
-      reason: error instanceof Error ? error.message : "unknown",
-    };
+    return { ok: false, reason: reasonOf(error) };
   }
+}
+
+function reasonOf(error: unknown): string {
+  if (error instanceof Error && /^(token|graphql)_/.test(error.message))
+    return error.message;
+  if (error instanceof Error && error.name === "TimeoutError") return "timeout";
+  return "unavailable";
 }
