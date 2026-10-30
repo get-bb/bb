@@ -167,7 +167,7 @@
       "labels": {
         "anchor": ["fix/retry-flake", "Uncommitted"]
       },
-      "fixtureClassAnchors": ["rounded-2xl", "bg-popover", "font-mono text-2xs"],
+      "fixtureClassAnchors": ["rounded-md", "bg-popover", "font-mono text-2xs"],
       "sources": [
         {
           "path": "apps/app/src/components/plugin/PluginThreadContextCard.tsx",
@@ -176,7 +176,7 @@
             "slotKind=\"threadContextCardSection\"",
             "crashFallback={null}",
             "export function resolveThreadContextCardLayout",
-            "rounded-2xl border border-border bg-popover p-2"
+            "rounded-md border border-border bg-popover p-2"
           ]
         },
         {
