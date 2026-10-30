@@ -10,9 +10,10 @@ import viteReact from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { unstable_readConfig } from "wrangler";
 import { resolveCloudDevViteSettings } from "./src/server/cloud-dev-vite.js";
+import { fetchGitHubStars } from "./src/server/github-stars.js";
 import { resolveSiteOrigin } from "./src/server/site-origin.js";
 
-export default defineConfig(({ command }) => {
+export default defineConfig(async ({ command }) => {
   const cloudDev = resolveCloudDevViteSettings(command, process.env);
   const siteOrigin = resolveSiteOrigin(
     cloudDev?.vars.APP_URL ??
@@ -21,6 +22,9 @@ export default defineConfig(({ command }) => {
         env: process.env.CLOUDFLARE_ENV,
       }).vars.APP_URL,
   );
+  const githubStars = await fetchGitHubStars({
+    token: process.env.GITHUB_TOKEN,
+  });
   const cloudflareConfig: PluginConfig = {
     viteEnvironment: { name: "ssr" },
     ...(cloudDev
@@ -37,7 +41,10 @@ export default defineConfig(({ command }) => {
   };
 
   return {
-    define: { __SITE_ORIGIN__: JSON.stringify(siteOrigin) },
+    define: {
+      __SITE_ORIGIN__: JSON.stringify(siteOrigin),
+      __GITHUB_STARS__: JSON.stringify(githubStars),
+    },
     resolve: {
       alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
       dedupe: ["react", "react-dom"],

@@ -2,7 +2,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { guideMenu } from "./content-links";
-import { SiteFooter, SiteNav } from "./site-chrome";
+import { GitHubStarsLink, SiteFooter, SiteNav } from "./site-chrome";
+import { formatStarCount } from "./site";
 
 describe("site navigation", () => {
   it("shows the compact link set with an icon-only GitHub button", () => {
@@ -31,6 +32,26 @@ describe("site navigation", () => {
     expect(html).toContain("Download for macOS");
     expect(html).not.toContain(">GitHub<");
     expect(html).not.toContain("Theme");
+  });
+
+  it("shows the build-time star count beside the GitHub icon", () => {
+    const html = renderToStaticMarkup(<GitHubStarsLink stars={4762} />);
+    expect(html).toContain('class="nav-icon-button nav-github-stars"');
+    expect(html).toContain('aria-label="GitHub, 4,762 stars"');
+    expect(html).toContain(
+      '<span class="nav-star-count" aria-hidden="true">4.8k</span>',
+    );
+    const fallback = renderToStaticMarkup(<GitHubStarsLink stars={null} />);
+    expect(fallback).toContain('class="nav-icon-button" aria-label="GitHub"');
+    expect(fallback).not.toContain("nav-star-count");
+  });
+
+  it.each([
+    [812, "812"],
+    [4762, "4.8k"],
+    [12040, "12k"],
+  ])("formats %d stars as %s", (count, label) => {
+    expect(formatStarCount(count)).toBe(label);
   });
 
   it("marks Building plugins current inside the Plugins menu", () => {

@@ -354,6 +354,20 @@ body {
   height: 17px;
 }
 
+/* The GitHub button widens to carry the star count read at build time. */
+.nav-github-stars {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: auto;
+  padding: 0 8px;
+}
+
+.nav-star-count {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── Buttons ────────────────────────────────────────────────────── */
 
 .btn {
@@ -3259,6 +3273,19 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 @media (max-width: 500px) {
   .nav-links .nav-wide {
+    display: none;
+  }
+}
+
+/* Phones keep the square icon button; the count would crowd the links. */
+@media (max-width: 480px) {
+  .nav-github-stars {
+    width: 30px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .nav-star-count {
     display: none;
   }
 }
