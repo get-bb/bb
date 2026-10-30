@@ -160,7 +160,7 @@ describe("/flags evaluation", () => {
         body: {
           api_key: KEY,
           distinct_id: EXISTING_ID,
-          flag_keys_to_evaluate: ["homepage-qa-check"],
+          flag_keys_to_evaluate: ["homepage-qa-check", "homepage-hero-window"],
           geoip_disable: true,
         },
       },

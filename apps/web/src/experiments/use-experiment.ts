@@ -37,13 +37,14 @@ export function useExperiment<K extends ExperimentKey>(
 export function useExperimentExposure(
   key: ExperimentKey,
   devices: ExperimentDevices,
+  seen = true,
 ): void {
   const bootstrap = useExperimentBootstrap();
   const assigned =
     !bootstrap.preview && bootstrap.featureFlags[key] !== undefined;
   useEffect(() => {
-    if (assigned) {
+    if (assigned && seen) {
       exposeExperiment(key, devices);
     }
-  }, [assigned, key, devices]);
+  }, [assigned, seen, key, devices]);
 }
