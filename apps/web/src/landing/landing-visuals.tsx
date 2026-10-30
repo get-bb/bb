@@ -18,7 +18,9 @@ import { useDesktopPlatform } from "./desktop-platform";
 import { SendToComputerButton } from "./send-to-computer-button";
 import {
   ClaudeIcon,
+  CopilotIcon,
   CursorIcon,
+  GeminiIcon,
   GrokIcon,
   HermesAgentIcon,
   OmpIcon,
@@ -152,6 +154,37 @@ export function ProviderChips() {
         </span>
       ) : null}
     </>
+  );
+}
+
+// Homepage hero: the agents bb runs on the visitor's own subscription.
+const AGENT_ROW_ICONS = [
+  ClaudeIcon,
+  OpenAiIcon,
+  GeminiIcon,
+  CursorIcon,
+  CopilotIcon,
+  PiIcon,
+  OpencodeIcon,
+  GrokIcon,
+  OmpIcon,
+  HermesAgentIcon,
+] as const;
+
+export function AgentRow() {
+  return (
+    <div className="providers agent-row">
+      <span className="label">Bring your own subscription</span>
+      {AGENT_ROW_ICONS.map((Icon, i) => (
+        <Icon
+          key={i}
+          className={
+            i >= PROVIDER_ICONS_MOBILE_VISIBLE ? "plogo plogo-more" : "plogo"
+          }
+        />
+      ))}
+      <span className="agent-more">and more</span>
+    </div>
   );
 }
 

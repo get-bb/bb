@@ -791,6 +791,29 @@ body {
   transform: translateY(-1px);
 }
 
+/* Hero agent row: black-and-white marks, then "and more". */
+.agent-row .plogo {
+  color: var(--ink);
+}
+
+.agent-more {
+  font-size: 13px;
+  color: var(--subtle);
+  white-space: nowrap;
+}
+
+/* The longer label takes its own line on phones so the logos stay on one. */
+@media (max-width: 560px) {
+  .providers.agent-row {
+    row-gap: 10px;
+  }
+
+  .agent-row .label {
+    flex-basis: 100%;
+    text-align: center;
+  }
+}
+
 /* Collapsed "+N more" for the mobile provider row; desktop shows every logo. */
 .pmore {
   display: none;
