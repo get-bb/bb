@@ -1,5 +1,10 @@
 // @vitest-environment jsdom
-import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
+import {
+  defaultScheduler,
+  notifyManager,
+  QueryClientProvider,
+  type QueryClient,
+} from "@tanstack/react-query";
 import {
   act,
   cleanup,
@@ -60,16 +65,23 @@ function storedSettings(): AppSettings {
   return { ...defaultAppSettings, onboardingCompletedAt: server.completedAt };
 }
 
-function answerConfigRequests(): Promise<void> {
+function settle(replies: Array<() => void> = []): Promise<void> {
   return act(async () => {
-    for (const reply of server.configReplies.splice(0)) reply();
+    for (const reply of replies.splice(0)) reply();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
   });
 }
 
-function finishSaves(): Promise<void> {
-  return act(async () => {
-    for (const reply of server.saveReplies.splice(0)) reply();
-  });
+async function closeGuide(): Promise<void> {
+  fireEvent.click(screen.getByText("Start using bb"));
+  await settle();
+}
+
+function currentCompletedAt(queryClient: QueryClient): string | null {
+  const config = queryClient.getQueryData<SystemConfigResponse>(
+    systemConfigQueryKey(),
+  );
+  return config?.generalSettings.onboardingCompletedAt ?? null;
 }
 
 function AppShell() {
@@ -114,6 +126,7 @@ function createTestQueryClient(): QueryClient {
 }
 
 beforeEach(() => {
+  notifyManager.setScheduler((callback) => callback());
   window.localStorage.clear();
   guide.mounts = 0;
   server.completedAt = null;
@@ -138,6 +151,7 @@ afterEach(() => {
   server.configReplies.length = 0;
   server.saveReplies.length = 0;
   vi.clearAllMocks();
+  notifyManager.setScheduler(defaultScheduler);
 });
 
 describe("OnboardingGate completion against the settings cache", () => {
@@ -147,47 +161,44 @@ describe("OnboardingGate completion against the settings cache", () => {
     await screen.findByText("Start using bb");
     markSystemConfigStale(queryClient);
 
-    fireEvent.click(screen.getByText("Start using bb"));
-    await vi.waitFor(() =>
-      expect(sdk.system.updateGeneralSettings).toHaveBeenCalledTimes(1),
-    );
-    expect(sdk.system.config).toHaveBeenCalledTimes(1);
+    await closeGuide();
+    expect(sdk.system.updateGeneralSettings).toHaveBeenCalledTimes(1);
+    expect(server.configReplies).toHaveLength(1);
 
-    await answerConfigRequests();
+    await settle(server.configReplies);
+    expect(currentCompletedAt(queryClient)).toBeNull();
     expect(screen.queryByText("Start using bb")).toBeNull();
     expect(screen.getByText("Replay setup guide")).toBeTruthy();
 
-    await finishSaves();
-    await vi.waitFor(() => expect(server.configReplies).toHaveLength(1));
-    await answerConfigRequests();
+    await settle(server.saveReplies);
+    expect(server.configReplies).toHaveLength(1);
+    await settle(server.configReplies);
 
-    expect(
-      queryClient.getQueryData<SystemConfigResponse>(systemConfigQueryKey())
-        ?.generalSettings.onboardingCompletedAt,
-    ).toBe(server.completedAt);
     expect(server.completedAt).not.toBeNull();
+    expect(currentCompletedAt(queryClient)).toBe(server.completedAt);
     expect(screen.queryByText("Start using bb")).toBeNull();
+    expect(screen.getByText("Replay setup guide")).toBeTruthy();
     expect(guide.mounts).toBe(1);
   });
 
   it("shows the guide again when Settings clears the completion after a close in the same session", async () => {
     const queryClient = createTestQueryClient();
     renderGate(queryClient);
-    fireEvent.click(await screen.findByText("Start using bb"));
-    await vi.waitFor(() => expect(server.saveReplies).toHaveLength(1));
-    await finishSaves();
-    await vi.waitFor(() => expect(server.configReplies).toHaveLength(1));
-    await answerConfigRequests();
+    await screen.findByText("Start using bb");
+    await closeGuide();
+    await settle(server.saveReplies);
+    await settle(server.configReplies);
     expect(server.completedAt).not.toBeNull();
+    expect(screen.getByText("Replay setup guide")).toBeTruthy();
 
     fireEvent.click(screen.getByText("Replay setup guide"));
-    await vi.waitFor(() => expect(server.saveReplies).toHaveLength(1));
-    await finishSaves();
-    await vi.waitFor(() => expect(server.configReplies).toHaveLength(1));
-    await answerConfigRequests();
+    await settle();
+    await settle(server.saveReplies);
+    await settle(server.configReplies);
 
     expect(server.completedAt).toBeNull();
-    expect(await screen.findByText("Start using bb")).toBeTruthy();
+    expect(currentCompletedAt(queryClient)).toBeNull();
+    expect(screen.getByText("Start using bb")).toBeTruthy();
     expect(screen.queryByText("Replay setup guide")).toBeNull();
     expect(guide.mounts).toBe(2);
   });
