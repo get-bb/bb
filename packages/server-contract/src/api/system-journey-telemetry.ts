@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { clientDeviceStatePropertiesSchema } from "./system-device-telemetry.js";
 
 export const onboardingTelemetrySourceSchema = z.enum([
   "first_run",
@@ -93,7 +94,11 @@ export const onboardingJourneyTelemetrySchemas = [
   z
     .object({
       name: z.literal("onboarding_step_state"),
-      properties: z.union([agentStepStateSchema, projectStepStateSchema]),
+      properties: z.union([
+        agentStepStateSchema,
+        projectStepStateSchema,
+        clientDeviceStatePropertiesSchema,
+      ]),
     })
     .strict(),
   z

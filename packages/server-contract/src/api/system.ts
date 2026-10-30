@@ -1,4 +1,3 @@
-import { deviceSetupTelemetrySchema } from "./system-device-telemetry.js";
 export {
   deviceSetupSourceSchema,
   deviceTelemetryContext,
@@ -378,7 +377,6 @@ const onboardingOperationTelemetryPropertiesSchema = z
   });
 
 export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
-  deviceSetupTelemetrySchema,
   pluginRecommendationTelemetryEventSchema,
   ...onboardingJourneyTelemetrySchemas,
   z
