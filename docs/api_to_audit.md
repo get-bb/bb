@@ -4198,7 +4198,9 @@ removing the prefix.
 Internal measurement plumbing for Browser Automation, Workflows, Monaco,
 Prompt Library, Agent Annotations and Ask User Question only. Their existing
 execution or visible-action owners report bounded action/outcome pairs; core's
-shared plugin tool and CLI dispatch supplies invocation context. Plugins outside
+shared plugin tool and CLI dispatch supplies invocation context. A CLI call
+with a thread context is agent-initiated; without one its initiator is unknown.
+Plugins outside
 the reviewed public allowlist emit no new use or state-change observations.
 The server derives public keys from installed provenance, validates the action
 owner and outcome, and uses the existing opt-out-controlled telemetry service.

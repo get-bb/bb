@@ -2241,7 +2241,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         async (signal) => {
           const result = await withPluginMeasurementInvocation(
             id,
-            "unknown",
+            ctx.threadId === undefined ? "unknown" : "agent",
             () => registration.run(argv, { ...ctx, signal }),
           );
           if (typeof result?.exitCode !== "number") {
