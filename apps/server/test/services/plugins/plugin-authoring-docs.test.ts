@@ -259,9 +259,7 @@ const THREAD_EVENT_PAYLOAD_FIELDS = {
     "attemptNumber",
   ],
 } as const satisfies {
-  [
-    E in keyof PluginThreadEventPayloads
-  ]: readonly (keyof PluginThreadEventPayloads[E])[];
+  [E in keyof PluginThreadEventPayloads]: readonly (keyof PluginThreadEventPayloads[E])[];
 };
 
 type MissingThreadEventField = {
@@ -309,7 +307,9 @@ type SlotPropsByName = {
   experimental_machineProviderInputs: PluginMachineProviderInputsProps;
 };
 
-type SlotPropKeys<T> = T extends unknown ? keyof T : never;
+type SlotPropKeys<T> = T extends unknown
+  ? Exclude<keyof T, `internal_DO_NOT_USE_${string}`>
+  : never;
 
 type MissingSlot = Exclude<keyof PluginAppSlots, keyof SlotPropsByName>;
 const _assertAllSlotsListed: MissingSlot extends never ? true : never = true;
