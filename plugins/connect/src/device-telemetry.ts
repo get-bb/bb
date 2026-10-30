@@ -11,6 +11,14 @@ export const deviceSourceSchema = z.enum([
   "unknown",
 ]);
 export type DeviceSource = z.infer<typeof deviceSourceSchema>;
+export const setupAttemptSchema = z
+  .object({
+    id: z.string().uuid(),
+    source: deviceSourceSchema,
+    outcome: z.enum(["started", "failed", "cancelled", "unknown"]),
+  })
+  .strict();
+export type SetupAttempt = z.infer<typeof setupAttemptSchema>;
 type Observation = Parameters<
   BbPluginApi["internal_DO_NOT_USE_recordDeviceSetup"]
 >[0];
@@ -23,7 +31,11 @@ function context(source: DeviceSource) {
 export function createConnectSetupMeasurement(
   capture: (properties: Observation) => void,
 ) {
-  let pending: { source: DeviceSource; unknown: boolean } | null = null;
+  let pending: {
+    id: string | null;
+    source: DeviceSource;
+    unknown: boolean;
+  } | null = null;
   function record(
     source: DeviceSource,
     outcome: Observation["outcome"],
@@ -39,12 +51,29 @@ export function createConnectSetupMeasurement(
       error_category,
     });
   }
-  function begin(source: DeviceSource): void {
-    pending = { source, unknown: false };
+  function begin(source: DeviceSource, id: string | null = null): void {
+    pending = { id, source, unknown: false };
     record(source, "started", null);
   }
   return {
     begin,
+    attempt(input: SetupAttempt) {
+      if (input.outcome === "started") {
+        begin(input.source, input.id);
+      } else if (pending?.id === input.id) {
+        const source = pending.source;
+        pending = null;
+        record(
+          source,
+          input.outcome,
+          input.outcome === "cancelled"
+            ? null
+            : input.outcome === "failed"
+              ? "authentication"
+              : "request",
+        );
+      }
+    },
     beginIfIdle(source: DeviceSource) {
       if (pending === null) begin(source);
     },

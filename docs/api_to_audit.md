@@ -4207,6 +4207,13 @@ server enrollment owners use the opt-out-controlled service through trusted
 backend paths. Browser service readiness closes a pending enable request only;
 startup and readiness refreshes emit no setup success.
 
+Connect's private `setupAttempt` RPC also starts that same pending tracker for
+explicit account sign-in or pairing-code submission while remote access is
+enabled. It never changes the access setting or accepts a success report.
+Cancellation, terminal authentication failure and lost requests close the
+matching attempt; a later unrelated login cannot complete it. Attempt IDs stay
+inside Connect and prevent late results from closing a newer attempt.
+
 `hosts.experimental_create` accepts optional bounded `telemetrySource`; older
 requests default to unknown at the route boundary. Core onboarding, settings and
 the existing machine CLI use this shared operation. No telemetry-injection CLI

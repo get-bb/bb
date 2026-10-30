@@ -119,6 +119,7 @@ describe("connect settings section", () => {
     async (flow) => {
       const account = fakeAccountSdk({
         "login.start": () => pendingLogin(),
+        "login.cancel": () => ({ login: pendingLogin("cancelled") }),
         redeemCode: () => signedInAccount,
       });
       const slot = renderSlot(
@@ -132,11 +133,15 @@ describe("connect settings section", () => {
       const signIn = await slot.findByRole("button", {
         name: "Sign in to your bb account",
       });
-      expect(slot.rpcCalls.some((call) => call.method === "setupAttempt")).toBe(false);
+      expect(slot.rpcCalls.some((call) => call.method === "setupAttempt")).toBe(
+        false,
+      );
       if (flow === "sign-in") {
         fireEvent.click(signIn);
       } else {
-        fireEvent.click(slot.getByRole("button", { name: "Have a pairing code?" }));
+        fireEvent.click(
+          slot.getByRole("button", { name: "Have a pairing code?" }),
+        );
         fireEvent.change(slot.getByLabelText("Pairing code"), {
           target: { value: "K7QP-2M4X" },
         });
@@ -151,7 +156,24 @@ describe("connect settings section", () => {
           },
         }),
       );
-      expect(slot.rpcCalls.some((call) => call.method === "setRemoteAccess")).toBe(false);
+      expect(
+        slot.rpcCalls.some((call) => call.method === "setRemoteAccess"),
+      ).toBe(false);
+      if (flow === "sign-in") {
+        await slot.findByText("K7QP-2M4X");
+        const started = slot.rpcCalls.find(
+          (call) => call.method === "setupAttempt",
+        );
+        if (typeof started?.input !== "object" || started.input === null)
+          throw new Error("Missing setup attempt");
+        fireEvent.click(slot.getByRole("button", { name: "Cancel" }));
+        await waitFor(() =>
+          expect(slot.rpcCalls).toContainEqual({
+            method: "setupAttempt",
+            input: { ...started.input, outcome: "cancelled" },
+          }),
+        );
+      }
     },
   );
 
