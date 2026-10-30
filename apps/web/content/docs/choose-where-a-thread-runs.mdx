@@ -1,0 +1,108 @@
+---
+title: Choose where a thread runs
+description: Pick a thread's folder and base branch in the composer's Environment picker, such as a new worktree, the project checkout or another environment.
+type: how-to
+sources:
+  - apps/app/src/components/pickers/EnvironmentPicker.tsx
+  - apps/app/src/components/pickers/ReuseEnvironmentPicker.tsx
+  - apps/app/src/components/promptbox/ThreadEnvironmentSummary.tsx
+  - plugins/environment-git-worktree/**
+  - plugins/environment-project-checkout/**
+  - apps/cli/src/commands/thread/spawn.ts
+  - packages/templates/src/templates/bb-guide-environments.md
+since: 0.44.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+Pick the environment before you send a new thread's first message. [Projects, threads and environments](/docs/projects-threads-and-environments) explains each kind.
+
+## Pick the environment
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+1. In a new thread's composer, choose the project.
+2. Open the **Environment** picker next to it.
+3. Choose **Worktree** for the thread's own copy, keep **Project checkout**, or choose **Reuse existing** to join another thread's environment.
+4. Choose the branch next to the picker, then send.
+
+<Screenshot
+  src="/docs-images/choose-where-a-thread-runs/environment-picker"
+  alt="The Environment picker lists Project checkout, Worktree and Reuse existing."
+  width={760}
+  height={290}
+/>
+
+</Tab>
+<Tab value="CLI">
+
+```bash
+bb environment providers --project <project-id>
+bb thread spawn --project <project-id> --new-environment worktree --base-branch main --prompt "Fix the failing tests"
+bb thread spawn --project <project-id> --environment-provider project-checkout --prompt "Update the README"
+bb thread spawn --project <project-id> --environment <environment-id> --prompt "Review the changes"
+```
+
+These start a thread in a new worktree, the project's checkout, or another thread's environment. With no environment flag, the thread gets a new worktree from the default branch.
+
+</Tab>
+</Tabs>
+
+## Choose the branch
+
+| Environment | Option | What it does |
+| --- | --- | --- |
+| **Worktree** | **New worktree** | A new branch from the branch you pick |
+| **Worktree** | **Existing worktree** | Runs in a Git worktree the project already has |
+| **Project checkout** | **Current** | Keeps the checkout's branch |
+| **Project checkout** | **New branch** | Creates a branch from the one you pick |
+| **Project checkout** | **Checkout** | Switches the checkout to an existing branch |
+
+bb won't switch a checkout with uncommitted changes or while another running thread uses it.
+
+## Where a new worktree starts
+
+bb fetches the base branch first.
+
+| Your local branch | The worktree starts from |
+| --- | --- |
+| Same as `origin`, or behind it | `origin/<branch>` |
+| Has commits `origin` doesn't | Your local branch, so your commits are kept |
+
+To force one, pass the full ref, such as `--base-branch refs/heads/main`.
+
+## Prepare new worktrees
+
+A new worktree has only tracked files. Commit these at the repository root:
+
+```text title=".worktreeinclude"
+.env
+.env.*
+!.env.example
+certs/
+```
+
+```bash title=".bb-env-setup.sh"
+#!/usr/bin/env bash
+set -euo pipefail
+pnpm install --frozen-lockfile
+```
+
+- **`.worktreeinclude`** (`.gitignore` syntax) copies matching untracked files from your checkout.
+- **`.bb-env-setup.sh`** runs next, only in folders bb creates. If it fails, bb removes the worktree and the thread shows the error.
+- **`.bb-env-teardown.sh`** runs before bb removes the worktree.
+
+## Check it worked
+
+- The thread shows its environment and branch next to its composer.
+- `bb environment show <environment-id>` prints the path, branch and status.
+
+## Related troubleshooting
+
+| Symptom | Cause and fix |
+| --- | --- |
+| **Worktree** is greyed out or missing | The project folder isn't a Git repository, or the machine is offline |
+| ".bb-env-setup.sh failed" and the thread didn't start | Run the script in a fresh worktree to see the error |
+| The worktree is behind `origin` | Your local branch has unpushed commits. Pass `--base-branch origin/main` |
+| An environment shows "Needs recovery" | See A thread, environment or automation is stuck |
