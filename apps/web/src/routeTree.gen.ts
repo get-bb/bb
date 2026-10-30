@@ -30,6 +30,7 @@ import { Route as GuidesSlugRouteImport } from "./routes/guides.$slug";
 import { Route as DownloadWindowsRouteImport } from "./routes/download.windows";
 import { Route as DownloadMacosRouteImport } from "./routes/download.macos";
 import { Route as DownloadLinuxRouteImport } from "./routes/download.linux";
+import { Route as DocsSplatRouteImport } from "./routes/docs.$";
 import { Route as CompareSlugRouteImport } from "./routes/compare.$slug";
 import { Route as BlogSlugRouteImport } from "./routes/blog_.$slug";
 import { Route as ApiSubscribeRouteImport } from "./routes/api.subscribe";
@@ -157,6 +158,11 @@ const DownloadMacosRoute = DownloadMacosRouteImport.update({
 const DownloadLinuxRoute = DownloadLinuxRouteImport.update({
   id: "/download/linux",
   path: "/download/linux",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const DocsSplatRoute = DocsSplatRouteImport.update({
+  id: "/docs/$",
+  path: "/docs/$",
   getParentRoute: () => rootRouteImport,
 } as any);
 const CompareSlugRoute = CompareSlugRouteImport.update({
@@ -302,6 +308,7 @@ export interface FileRoutesByFullPath {
   "/api/subscribe": typeof ApiSubscribeRoute;
   "/blog/$slug": typeof BlogSlugRoute;
   "/compare/$slug": typeof CompareSlugRoute;
+  "/docs/$": typeof DocsSplatRoute;
   "/download/linux": typeof DownloadLinuxRoute;
   "/download/macos": typeof DownloadMacosRoute;
   "/download/windows": typeof DownloadWindowsRoute;
@@ -348,6 +355,7 @@ export interface FileRoutesByTo {
   "/api/subscribe": typeof ApiSubscribeRoute;
   "/blog/$slug": typeof BlogSlugRoute;
   "/compare/$slug": typeof CompareSlugRoute;
+  "/docs/$": typeof DocsSplatRoute;
   "/download/linux": typeof DownloadLinuxRoute;
   "/download/macos": typeof DownloadMacosRoute;
   "/download/windows": typeof DownloadWindowsRoute;
@@ -395,6 +403,7 @@ export interface FileRoutesById {
   "/api/subscribe": typeof ApiSubscribeRoute;
   "/blog_/$slug": typeof BlogSlugRoute;
   "/compare/$slug": typeof CompareSlugRoute;
+  "/docs/$": typeof DocsSplatRoute;
   "/download/linux": typeof DownloadLinuxRoute;
   "/download/macos": typeof DownloadMacosRoute;
   "/download/windows": typeof DownloadWindowsRoute;
@@ -443,6 +452,7 @@ export interface FileRouteTypes {
     | "/api/subscribe"
     | "/blog/$slug"
     | "/compare/$slug"
+    | "/docs/$"
     | "/download/linux"
     | "/download/macos"
     | "/download/windows"
@@ -489,6 +499,7 @@ export interface FileRouteTypes {
     | "/api/subscribe"
     | "/blog/$slug"
     | "/compare/$slug"
+    | "/docs/$"
     | "/download/linux"
     | "/download/macos"
     | "/download/windows"
@@ -535,6 +546,7 @@ export interface FileRouteTypes {
     | "/api/subscribe"
     | "/blog_/$slug"
     | "/compare/$slug"
+    | "/docs/$"
     | "/download/linux"
     | "/download/macos"
     | "/download/windows"
@@ -582,6 +594,7 @@ export interface RootRouteChildren {
   ApiSubscribeRoute: typeof ApiSubscribeRoute;
   BlogSlugRoute: typeof BlogSlugRoute;
   CompareSlugRoute: typeof CompareSlugRoute;
+  DocsSplatRoute: typeof DocsSplatRoute;
   DownloadLinuxRoute: typeof DownloadLinuxRoute;
   DownloadMacosRoute: typeof DownloadMacosRoute;
   DownloadWindowsRoute: typeof DownloadWindowsRoute;
@@ -753,6 +766,13 @@ declare module "@tanstack/react-router" {
       path: "/download/linux";
       fullPath: "/download/linux";
       preLoaderRoute: typeof DownloadLinuxRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/docs/$": {
+      id: "/docs/$";
+      path: "/docs/$";
+      fullPath: "/docs/$";
+      preLoaderRoute: typeof DocsSplatRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/compare/$slug": {
@@ -957,6 +977,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiSubscribeRoute: ApiSubscribeRoute,
   BlogSlugRoute: BlogSlugRoute,
   CompareSlugRoute: CompareSlugRoute,
+  DocsSplatRoute: DocsSplatRoute,
   DownloadLinuxRoute: DownloadLinuxRoute,
   DownloadMacosRoute: DownloadMacosRoute,
   DownloadWindowsRoute: DownloadWindowsRoute,
