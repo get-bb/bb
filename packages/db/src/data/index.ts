@@ -40,6 +40,16 @@ export type {
 } from "./prompt-history.js";
 
 export {
+  deleteProjectDefaultEnvironment,
+  getProjectDefaultEnvironment,
+  listProjectDefaultEnvironmentsByProjectIds,
+  setProjectDefaultEnvironment,
+} from "./project-default-environments.js";
+export type {
+  ProjectDefaultEnvironmentRecord,
+  SetProjectDefaultEnvironmentArgs,
+} from "./project-default-environments.js";
+export {
   getProjectExecutionDefaults,
   listProjectExecutionDefaultsByProjectIds,
   upsertProjectExecutionDefaults,

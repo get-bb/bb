@@ -533,10 +533,46 @@ export type AutomationRunRpcResponse = z.infer<
   typeof automationRunRpcResponseSchema
 >;
 
+const defaultEnvironmentSchema = z.object({
+  type: z.literal("provider"),
+  environmentProviderId: z.string().min(1),
+  machine: z.discriminatedUnion("type", [
+    z.object({ type: z.literal("existing"), hostId: z.string().min(1) }),
+    z.object({ type: z.literal("new") }),
+  ]),
+});
+export type DefaultEnvironment = z.infer<typeof defaultEnvironmentSchema>;
+
+const defaultEnvironmentProblemSchema = z.object({
+  message: z.string().min(1),
+});
+export type DefaultEnvironmentProblem = z.infer<
+  typeof defaultEnvironmentProblemSchema
+>;
+
+export const projectDefaultEnvironmentStateSchema = z.object({
+  defaultEnvironment: defaultEnvironmentSchema.nullable(),
+  defaultEnvironmentProblem: defaultEnvironmentProblemSchema.nullable(),
+});
+
+const automationsOverviewProjectSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    defaultEnvironment: defaultEnvironmentSchema.nullable().optional(),
+    defaultEnvironmentProblem: defaultEnvironmentProblemSchema
+      .nullable()
+      .optional(),
+  })
+  .strict();
+export type AutomationsOverviewProject = z.infer<
+  typeof automationsOverviewProjectSchema
+>;
+
 const automationsOverviewEntrySchema = z
   .object({
     automation: automationReadResultSchema,
-    project: z.object({ id: z.string(), name: z.string() }).strict(),
+    project: automationsOverviewProjectSchema,
   })
   .strict();
 export const automationsOverviewResponseSchema = z

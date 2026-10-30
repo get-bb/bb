@@ -55,6 +55,7 @@ import {
   useSystemExecutionOptions,
 } from "./queries/system-queries";
 import {
+  usePromptBoxDraftEnvironmentSelection,
   usePromptBoxEnvironmentPreference,
   usePromptBoxModelPreference,
   usePromptBoxPermissionModePreference,
@@ -134,7 +135,7 @@ interface UseThreadCreationOptionsResult<TExecutionInputSources> {
   setPermissionMode: PermissionModeSelectionSetter;
   environmentSelectionValue: string;
   setEnvironmentSelectionValue: StringSelectionSetter;
-  clearReuseEnvironment: ClearSelectionHandler;
+  clearSentEnvironmentChoice: ClearSelectionHandler;
   activeModel: AvailableModel | undefined;
   modelOptions: ModelPickerOption[];
   moreModelOptions: ModelPickerOption[];
@@ -241,6 +242,7 @@ export function useThreadCreationOptions(
     initialServiceTier,
     preferReadyProviderWhenUnset = false,
     preferenceProjectId,
+    projectDefaultEnvironmentValue,
     catalogProjectId,
     resolveProviderRouting,
     resetKey,
@@ -257,6 +259,10 @@ export function useThreadCreationOptions(
     setValue: setStoredEnvironmentSelectionValue,
     value: storedEnvironmentSelectionValue,
   } = usePromptBoxEnvironmentPreference(preferenceProjectId);
+  const {
+    setValue: setDraftEnvironmentSelectionValue,
+    value: draftEnvironmentSelectionValue,
+  } = usePromptBoxDraftEnvironmentSelection(preferenceProjectId ?? "");
   const [rootComposeReuseValue, setRootComposeReuseValue] =
     useRootComposeReuseEnvironment();
   const [threadSelections, setThreadSelections] =
@@ -333,7 +339,10 @@ export function useThreadCreationOptions(
   const rawEnvironmentSelectionValue =
     scope === "new-thread"
       ? (rootComposeReuseValue ??
-        sanitizeStoredEnvironmentValue(storedEnvironmentSelectionValue))
+        (projectDefaultEnvironmentValue === undefined
+          ? sanitizeStoredEnvironmentValue(storedEnvironmentSelectionValue)
+          : sanitizeStoredEnvironmentValue(draftEnvironmentSelectionValue) ||
+            projectDefaultEnvironmentValue))
       : renderedThreadSelections.environmentSelectionValue;
 
   const knownModelCatalogScope = useKnownProviderModelCatalogScope(
@@ -1067,7 +1076,11 @@ export function useThreadCreationOptions(
           return;
         }
         setRootComposeReuseValue(null);
-        setStoredEnvironmentSelectionValue(value);
+        if (projectDefaultEnvironmentValue === undefined) {
+          setStoredEnvironmentSelectionValue(value);
+        } else {
+          setDraftEnvironmentSelectionValue(value);
+        }
         return;
       }
       touchedThreadFieldsRef.current.add("environmentSelectionValue");
@@ -1079,12 +1092,19 @@ export function useThreadCreationOptions(
         }),
       );
     },
-    [scope, setRootComposeReuseValue, setStoredEnvironmentSelectionValue],
+    [
+      projectDefaultEnvironmentValue,
+      scope,
+      setDraftEnvironmentSelectionValue,
+      setRootComposeReuseValue,
+      setStoredEnvironmentSelectionValue,
+    ],
   );
-  const clearReuseEnvironment = useCallback(() => {
+  const clearSentEnvironmentChoice = useCallback(() => {
     if (scope !== "new-thread") return;
     setRootComposeReuseValue(null);
-  }, [scope, setRootComposeReuseValue]);
+    setDraftEnvironmentSelectionValue("");
+  }, [scope, setDraftEnvironmentSelectionValue, setRootComposeReuseValue]);
 
   return {
     executionOptionsRouting,
@@ -1107,7 +1127,7 @@ export function useThreadCreationOptions(
     setPermissionMode,
     environmentSelectionValue,
     setEnvironmentSelectionValue,
-    clearReuseEnvironment,
+    clearSentEnvironmentChoice,
     activeModel,
     modelOptions,
     moreModelOptions,

@@ -1088,6 +1088,11 @@ describe("PresetDialog environment section", () => {
       slot.getByRole("button", { name: "Edit preset Default env" }),
     );
     await slot.findByLabelText("Execution environment");
+    expect(
+      slot.getByText(
+        "Threads start in the default environment of the task's project, or Automatic when it has none.",
+      ),
+    ).toBeDefined();
     expect(slot.queryByLabelText("Base branch")).toBeNull();
     expect(slot.queryByLabelText("Machine")).toBeNull();
   });

@@ -30,6 +30,7 @@ import {
   type ProjectSourceDeleteDialogTarget,
 } from "@/components/dialogs/ProjectSourceDeleteDialog";
 import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
+import { ProjectDefaultEnvironmentSetting } from "@/components/settings/ProjectDefaultEnvironmentSetting";
 import {
   formatGitRemote,
   pluralize,
@@ -72,7 +73,7 @@ const CHECKOUTS_DESCRIPTION =
   "Where this project lives on each machine. A machine needs a checkout before it can run threads for this project.";
 
 const DEFAULTS_DESCRIPTION =
-  "What new threads in this project start with. bb remembers the last options you used here.";
+  "What new threads in this project start with. You choose the environment; the other options follow the last thread you started here.";
 
 interface CheckoutRowProps {
   host: Host;
@@ -465,33 +466,44 @@ export function ProjectDetailSettingsView() {
           title="Thread defaults"
           description={DEFAULTS_DESCRIPTION}
         >
-          {defaultsQuery.isError ? (
-            <p className="text-sm text-destructive" role="alert">
-              Couldn't load thread defaults.
-            </p>
-          ) : defaultsQuery.isPending ? (
-            <p className="text-sm text-muted-foreground">Loading…</p>
-          ) : defaults === null ? (
-            <p className="text-sm text-muted-foreground">
-              No threads have run here yet. The first thread's options become
-              the defaults.
-            </p>
-          ) : (
-            <SettingsRowList>
-              <SettingsDetailRow label="Provider">
-                <span>{defaults.providerId}</span>
-              </SettingsDetailRow>
-              <SettingsDetailRow label="Model">
-                <span className="font-mono text-xs">{defaults.model}</span>
-              </SettingsDetailRow>
-              <SettingsDetailRow label="Permission mode">
-                <span>{permissionLabel}</span>
-              </SettingsDetailRow>
-              <SettingsDetailRow label="Reasoning">
-                <span>{defaults.reasoningLevel}</span>
-              </SettingsDetailRow>
-            </SettingsRowList>
-          )}
+          <div className="space-y-4">
+            <ProjectDefaultEnvironmentSetting
+              project={project}
+              onRequestMachineSetup={openSetUp}
+            />
+            <div className="space-y-2">
+              <h3 className="text-xs font-medium text-subtle-foreground">
+                Last used
+              </h3>
+              {defaultsQuery.isError ? (
+                <p className="text-sm text-destructive" role="alert">
+                  Couldn't load thread defaults.
+                </p>
+              ) : defaultsQuery.isPending ? (
+                <p className="text-sm text-muted-foreground">Loading…</p>
+              ) : defaults === null ? (
+                <p className="text-sm text-muted-foreground">
+                  No threads have run here yet. The first thread's options
+                  become the defaults.
+                </p>
+              ) : (
+                <SettingsRowList>
+                  <SettingsDetailRow label="Provider">
+                    <span>{defaults.providerId}</span>
+                  </SettingsDetailRow>
+                  <SettingsDetailRow label="Model">
+                    <span className="font-mono text-xs">{defaults.model}</span>
+                  </SettingsDetailRow>
+                  <SettingsDetailRow label="Permission mode">
+                    <span>{permissionLabel}</span>
+                  </SettingsDetailRow>
+                  <SettingsDetailRow label="Reasoning">
+                    <span>{defaults.reasoningLevel}</span>
+                  </SettingsDetailRow>
+                </SettingsRowList>
+              )}
+            </div>
+          </div>
         </SettingsSection>
 
         <SettingsSection title="Project information">

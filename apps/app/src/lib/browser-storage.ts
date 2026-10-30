@@ -181,6 +181,27 @@ export function createTabScopedStorage<T>(
   };
 }
 
+export function createSessionStorageSyncStorage<T>(
+  codec: StoredValueCodec<T>,
+): SyncStorage<T> {
+  return {
+    getItem: (key: string, initialValue: T) =>
+      codec.parse(
+        withSessionStorage((storage) => storage.getItem(key), null),
+        initialValue,
+      ),
+    setItem: (key: string, value: T) => {
+      withSessionStorage(
+        (storage) => storage.setItem(key, codec.serialize(value)),
+        undefined,
+      );
+    },
+    removeItem: (key: string) => {
+      withSessionStorage((storage) => storage.removeItem(key), undefined);
+    },
+  };
+}
+
 export function createLocalStorageSyncStorage<T>(
   codec: StoredValueCodec<T>,
 ): SyncStorage<T> {

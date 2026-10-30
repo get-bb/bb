@@ -11,12 +11,17 @@ import { installTestPluginRuntime } from "@get-bb/plugin-sdk/testing/app";
 import type {
   AgentExecutionUpdate,
   AutomationDetailResponse,
+  DefaultEnvironment,
 } from "./rpc-types.js";
 import {
   AutomationDetailView as AutomationDetailViewBase,
   AgentAutomationDefinition,
   ScriptAutomationDefinition,
 } from "../detail-view.js";
+import {
+  summarizeProjectDefaultEnvironment,
+  type ProjectDefaultEnvironmentSummary,
+} from "../lib/project-default-environment.js";
 
 vi.mock("@get-bb/plugin-sdk/app", async (importOriginal) => ({
   ...(await importOriginal()),
@@ -148,12 +153,12 @@ const NO_RUNS = {
 
 type TestAutomationDetailProps = Omit<
   ComponentProps<typeof AutomationDetailViewBase>,
-  "editing" | "onCancelEdit" | "onUpdateAgent"
+  "editing" | "onCancelEdit" | "onUpdateAgent" | "projectDefaultEnvironment"
 > &
   Partial<
     Pick<
       ComponentProps<typeof AutomationDetailViewBase>,
-      "editing" | "onCancelEdit" | "onUpdateAgent"
+      "editing" | "onCancelEdit" | "onUpdateAgent" | "projectDefaultEnvironment"
     >
   >;
 
@@ -161,6 +166,7 @@ function AutomationDetailView({
   editing = false,
   onCancelEdit = () => {},
   onUpdateAgent = async () => {},
+  projectDefaultEnvironment = null,
   ...props
 }: TestAutomationDetailProps) {
   return (
@@ -169,6 +175,7 @@ function AutomationDetailView({
       editing={editing}
       onCancelEdit={onCancelEdit}
       onUpdateAgent={onUpdateAgent}
+      projectDefaultEnvironment={projectDefaultEnvironment}
     />
   );
 }
@@ -248,6 +255,7 @@ describe("Automation detail recipe", () => {
         editing={false}
         personalProject
         projectContextLabel="Personal"
+        projectDefaultEnvironment={null}
         pending={false}
         onCancel={() => {}}
         onUpdate={async () => {}}
@@ -750,6 +758,157 @@ describe("Automation detail recipe", () => {
           }"]`,
         ),
       ).not.toBeNull();
+    },
+  );
+});
+
+describe("Automation project default environment", () => {
+  const PROJECT_DEFAULT_EXECUTION = {
+    mode: "agent",
+    prompt: "Triage new issues",
+    providerId: "codex",
+    model: "gpt-5.6-codex",
+    reasoningLevel: "medium",
+    permissionMode: "auto",
+    environment: { type: "project-default" },
+  } satisfies AutomationDetailResponse["execution"];
+
+  const PROVIDERS = [
+    {
+      id: "git-worktree",
+      displayName: "Worktree",
+      icon: "FolderGit",
+      logoUrl: null,
+    },
+    { id: "berth", displayName: "Berth", icon: "Cloud", logoUrl: null },
+  ];
+
+  function summary(
+    defaultEnvironment: DefaultEnvironment | null,
+    problem: string | null = null,
+  ) {
+    return summarizeProjectDefaultEnvironment({
+      defaultEnvironment,
+      defaultEnvironmentProblem: problem === null ? null : { message: problem },
+      providers: PROVIDERS,
+      machines: [{ id: "host_david", name: "david" }],
+    });
+  }
+
+  const WORKTREE_ON_DAVID: DefaultEnvironment = {
+    type: "provider",
+    environmentProviderId: "git-worktree",
+    machine: { type: "existing", hostId: "host_david" },
+  };
+
+  function renderDefinition(
+    projectDefaultEnvironment: ProjectDefaultEnvironmentSummary | null,
+    execution: Extract<
+      AutomationDetailResponse["execution"],
+      { mode: "agent" }
+    > = PROJECT_DEFAULT_EXECUTION,
+  ) {
+    const { container } = render(
+      <AgentAutomationDefinition
+        execution={execution}
+        editing
+        personalProject={false}
+        projectContextLabel="bb"
+        projectDefaultEnvironment={projectDefaultEnvironment}
+        pending={false}
+        onCancel={() => {}}
+        onUpdate={async () => {}}
+      />,
+    );
+    const environment = container.querySelector(
+      '[data-automation-prompt-footer] [title^="Environment:"]',
+    ) as HTMLElement;
+    return {
+      container,
+      environment,
+      compactLabel: environment.querySelector("[data-promptbox-compact-label]")
+        ?.textContent,
+      problem: container.querySelector("[data-automation-environment-problem]"),
+      modelRouting: screen.getByTestId("bb-provider-model-picker").dataset,
+      permissionRouting: screen.getByTestId("bb-permission-mode-picker")
+        .dataset,
+    };
+  }
+
+  it("routes both pickers to the machine a usable project default runs on", () => {
+    const view = renderDefinition(summary(WORKTREE_ON_DAVID));
+
+    expect(view.environment.title).toBe(
+      "Environment: Project default · Worktree on david",
+    );
+    expect(view.compactLabel).toBe("Worktree");
+    expect(view.modelRouting.routingKind).toBe("host");
+    expect(view.modelRouting.routingId).toBe("host_david");
+    expect(view.permissionRouting.routingKind).toBe("host");
+    expect(view.problem).toBeNull();
+  });
+
+  it("names a composition default by its catalog entry and keeps primary routing", () => {
+    const view = renderDefinition(
+      summary({
+        type: "provider",
+        environmentProviderId: "berth",
+        machine: { type: "new" },
+      }),
+    );
+
+    expect(view.environment.title).toBe("Environment: Project default · Berth");
+    expect(
+      view.environment
+        .querySelector('[data-provider-kind="environment"]')
+        ?.getAttribute("data-provider-id"),
+    ).toBe("berth");
+    expect(view.modelRouting.routingKind).toBe("primary");
+    expect(view.permissionRouting.routingKind).toBe("primary");
+  });
+
+  it("says Automatic when the project has no default environment", () => {
+    const view = renderDefinition(summary(null));
+
+    expect(view.environment.title).toBe(
+      "Environment: Project default · Automatic",
+    );
+    expect(view.compactLabel).toBe("Automatic");
+    expect(view.modelRouting.routingKind).toBe("primary");
+  });
+
+  it("flags an unavailable default with its reason and stops routing to its machine", () => {
+    const view = renderDefinition(
+      summary(WORKTREE_ON_DAVID, "david has no checkout of bb"),
+    );
+
+    expect(view.environment.title).toBe(
+      "Environment: Project default · Worktree on david (unavailable)",
+    );
+    expect(
+      view.environment.querySelector('[data-icon="AlertTriangle"]'),
+    ).not.toBeNull();
+    expect(view.problem?.textContent).toBe(
+      "Project default unavailable: david has no checkout of bb. Runs fail until it is fixed.",
+    );
+    expect(view.modelRouting.routingKind).toBe("primary");
+    expect(view.permissionRouting.routingKind).toBe("primary");
+  });
+
+  it.each([
+    ["usable", summary(WORKTREE_ON_DAVID)],
+    ["unavailable", summary(WORKTREE_ON_DAVID, "its machine no longer exists")],
+  ])(
+    "ignores a %s project default when runs go to an existing thread",
+    (_state, projectDefaultEnvironment) => {
+      const view = renderDefinition(projectDefaultEnvironment, {
+        ...PROJECT_DEFAULT_EXECUTION,
+        targetThreadId: "thr_target",
+      });
+
+      expect(view.environment.title).toBe("Environment: Existing thread");
+      expect(view.problem).toBeNull();
+      expect(view.modelRouting.routingKind).toBe("primary");
     },
   );
 });

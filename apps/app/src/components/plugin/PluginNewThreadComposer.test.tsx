@@ -862,6 +862,64 @@ describe("PluginNewThreadComposer seeding", () => {
     });
   });
 
+  it("starts in the project's default environment and returns to it after a send", async () => {
+    mocks.extraProjects = [
+      makeProjectWithThreadsResponse({
+        ...PROJECT,
+        id: "proj_default",
+        name: "Project With Default",
+        sources: PROJECT.sources.map((source) => ({
+          ...source,
+          id: `${source.id}_default`,
+          projectId: "proj_default",
+        })),
+        defaultEnvironment: {
+          type: "provider",
+          environmentProviderId: "git-worktree",
+          machine: { type: "existing", hostId: "host_2" },
+          inputs: {},
+        },
+      }),
+    ];
+    window.localStorage.setItem(
+      "bb.promptbox.environment-proj_default-1",
+      "provider:project-checkout",
+    );
+    window.localStorage.setItem("bb.promptbox.machine-proj_default-1", "host_1");
+    getPromptDraftAccessor({ kind: "new-thread" }).setDraft({
+      text: "Run the sweep",
+      mentions: [],
+      attachments: [],
+    });
+    const environment = () => latestPromptBoxProps().modeConfig.environment;
+    render(newThreadElement("proj_default"));
+    await waitFor(() => {
+      expect(environment().value).toBe("provider:git-worktree");
+      expect(environment().selectedProviderHostId).toBe("host_2");
+    });
+
+    await act(async () => {
+      environment().onSelectProvider(CHECKOUT_PROVIDER, "host_1");
+    });
+    expect(environment().value).toBe("provider:project-checkout");
+    expect(environment().selectedProviderHostId).toBe("host_1");
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    await submit();
+
+    await waitFor(() => {
+      expect(environment().value).toBe("provider:git-worktree");
+      expect(environment().selectedProviderHostId).toBe("host_2");
+    });
+    expect(
+      window.localStorage.getItem("bb.promptbox.environment-proj_default-1"),
+    ).toBe("provider:project-checkout");
+    expect(window.localStorage.getItem("bb.promptbox.machine-proj_default-1")).toBe(
+      "host_1",
+    );
+  });
+
   it("selects a host immediately with the tab's current environment option", async () => {
     const first = render(newThreadElement("proj_1"));
     await act(async () => {

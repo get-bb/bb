@@ -23,6 +23,8 @@ import {
   resolvePrimaryHostId,
 } from "../hosts/primary-host.js";
 import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
+import { requirePublicProject } from "../lib/entity-lookup.js";
+import { requireUsableProjectDefaultEnvironment } from "../projects/project-default-environment.js";
 import {
   projectCheckoutPathOnHost,
   resolveProjectWorkspaceTarget,
@@ -282,25 +284,11 @@ async function resolveProjectDefaultHostId(
   return requireConnectedPrimaryHostId(deps);
 }
 
-export async function resolveProjectDefaultThreadEnvironment(
+async function resolveWorkspaceOnHost(
   deps: WorkSessionDeps,
-  args: { projectId: string },
+  args: { hostId: string; projectId: string },
 ): Promise<ResolvedCreateThreadEnvironment> {
-  if (args.projectId === PERSONAL_PROJECT_ID) {
-    return {
-      type: "provider",
-      environmentProviderId: requireDefaultEnvironmentProvider(
-        DEFAULT_ENVIRONMENT_PROVIDER_ID.personalWorkspace,
-      ),
-      machine: {
-        type: "existing",
-        hostId: requireConnectedPrimaryHostId(deps),
-      },
-      inputs: null,
-    };
-  }
-
-  const hostId = await resolveProjectDefaultHostId(deps, args.projectId);
+  const { hostId } = args;
   const source = resolveProjectWorkspaceTarget(deps, {
     hostId,
     projectId: args.projectId,
@@ -334,6 +322,77 @@ export async function resolveProjectDefaultThreadEnvironment(
     machine: { type: "existing", hostId },
     inputs: worktreeProviderInputs({ kind: "named", name: baseBranch }),
   };
+}
+
+interface ProjectDefaultResolution {
+  environment: ResolvedCreateThreadEnvironment;
+  fromProjectSetting: boolean;
+}
+
+async function resolveProjectDefault(
+  deps: WorkSessionDeps,
+  args: { projectId: string },
+): Promise<ProjectDefaultResolution> {
+  if (args.projectId === PERSONAL_PROJECT_ID) {
+    return {
+      environment: {
+        type: "provider",
+        environmentProviderId: requireDefaultEnvironmentProvider(
+          DEFAULT_ENVIRONMENT_PROVIDER_ID.personalWorkspace,
+        ),
+        machine: {
+          type: "existing",
+          hostId: requireConnectedPrimaryHostId(deps),
+        },
+        inputs: null,
+      },
+      fromProjectSetting: false,
+    };
+  }
+
+  const project = requirePublicProject(deps.db, args.projectId);
+  const setting = await requireUsableProjectDefaultEnvironment(deps, project);
+  if (setting !== null) {
+    deps.logger.info(
+      {
+        projectId: project.id,
+        environmentProviderId: setting.environmentProviderId,
+      },
+      "Starting a project-default thread in the project's default environment",
+    );
+    if (
+      setting.machine.type === "existing" &&
+      setting.environmentProviderId ===
+        DEFAULT_ENVIRONMENT_PROVIDER_ID.projectCheckout
+    ) {
+      await ensureHostSessionReadyForWork(deps, {
+        hostId: setting.machine.hostId,
+      });
+      return {
+        environment: await resolveWorkspaceOnHost(deps, {
+          hostId: setting.machine.hostId,
+          projectId: project.id,
+        }),
+        fromProjectSetting: true,
+      };
+    }
+    return { environment: setting, fromProjectSetting: true };
+  }
+
+  return {
+    environment: await resolveWorkspaceOnHost(deps, {
+      hostId: await resolveProjectDefaultHostId(deps, project.id),
+      projectId: project.id,
+    }),
+    fromProjectSetting: false,
+  };
+}
+
+export async function resolveProjectDefaultThreadEnvironment(
+  deps: WorkSessionDeps,
+  args: { projectId: string },
+): Promise<ResolvedCreateThreadEnvironment> {
+  return (await resolveProjectDefault(deps, args)).environment;
 }
 
 export async function resolveCreateThreadEnvironment(
@@ -417,12 +476,17 @@ export async function resolveCreateThreadEnvironment(
       inputs: worktreeProviderInputs({ kind: "default" }),
     };
   }
-  const environment =
-    args.requestedEnvironment.type === "project-default"
-      ? await resolveProjectDefaultThreadEnvironment(deps, {
-          projectId: args.projectId,
-        })
-      : args.requestedEnvironment;
+  let environment: ResolvedCreateThreadEnvironment;
+  let fromProjectSetting = false;
+  if (args.requestedEnvironment.type === "project-default") {
+    const resolution = await resolveProjectDefault(deps, {
+      projectId: args.projectId,
+    });
+    environment = resolution.environment;
+    fromProjectSetting = resolution.fromProjectSetting;
+  } else {
+    environment = args.requestedEnvironment;
+  }
 
   if (
     args.projectId === PERSONAL_PROJECT_ID &&
@@ -459,7 +523,8 @@ export async function resolveCreateThreadEnvironment(
     environment.type === "provider" &&
     environment.environmentProviderId ===
       DEFAULT_ENVIRONMENT_PROVIDER_ID.projectCheckout &&
-    args.requestedEnvironment.type === "project-default"
+    args.requestedEnvironment.type === "project-default" &&
+    !fromProjectSetting
   ) {
     return {
       type: "provider",

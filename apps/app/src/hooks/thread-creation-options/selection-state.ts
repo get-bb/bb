@@ -46,6 +46,7 @@ export interface UsePromptModelReasoningOptions {
   initialReasoningLevel?: ReasoningLevel;
   initialPermissionMode?: PermissionMode;
   initialEnvironmentSelectionValue?: string;
+  projectDefaultEnvironmentValue?: string;
   sessionOptionSelections?: SessionOptionSelections;
   preferenceProjectId?: string | null;
   catalogProjectId?: string;

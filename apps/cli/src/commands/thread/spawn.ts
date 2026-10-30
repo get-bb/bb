@@ -20,6 +20,10 @@ import {
 } from "../../context-env.js";
 import { resolveLocalHostId } from "../../daemon.js";
 import {
+  COMPOSITION_MACHINE_SELECTOR_ERROR,
+  findEnvironmentProviderTarget,
+} from "../environment-provider-target.js";
+import {
   resolveMachineHostId,
   resolveMachineTargetOption,
 } from "../machine.js";
@@ -235,17 +239,12 @@ async function buildProviderSpawnEnvironment(args: {
       "--base-branch requires --new-environment worktree; an --environment-provider takes its branch through --environment-inputs.",
     );
   }
-  const requested = args.environmentProvider.trim();
-  const providers = await createCliBbSdk(
-    args.serverUrl,
-  ).environments.listProviders({ projectId: args.projectId });
-  const match = providers.find((provider) => provider.id === requested);
-  if (match === undefined) {
-    const available = providers.map((provider) => provider.id).join(", ");
-    throw new Error(
-      `Unknown environment provider '${requested}'.${available ? ` Available: ${available}.` : ""}`,
-    );
-  }
+  const target = await findEnvironmentProviderTarget({
+    environmentProviderId: args.environmentProvider,
+    projectId: args.projectId,
+    serverUrl: args.serverUrl,
+  });
+  const match = target.provider;
   let inputs = parseJsonFlag(args.environmentInputs, "--environment-inputs");
   if (match.inputs !== null && inputs === null) {
     if (match.acceptsEmptyInputs) {
@@ -261,24 +260,22 @@ async function buildProviderSpawnEnvironment(args: {
       `The '${match.id}' environment provider takes no --environment-inputs.`,
     );
   }
-  if (match.machineProviderId) {
+  if (target.kind === "composition") {
     if (args.machine !== null || args.machineHostId !== null)
-      throw new Error(
-        "This environment provider chooses its own new machine; omit machine selectors.",
-      );
+      throw new Error(COMPOSITION_MACHINE_SELECTOR_ERROR);
     let machineInputs = args.machineInputs;
     if (match.machineInputs !== undefined) {
       if (match.machineInputs !== null && machineInputs === null) {
         if (match.machineAcceptsEmptyInputs) machineInputs = {};
         else {
           throw new Error(
-            `The '${match.machineProviderId}' machine provider needs --machine-inputs <json>; \`bb environment providers --json\` shows its schema.`,
+            `The '${target.machineProviderId}' machine provider needs --machine-inputs <json>; \`bb environment providers --json\` shows its schema.`,
           );
         }
       }
       if (match.machineInputs === null && machineInputs !== null) {
         throw new Error(
-          `The '${match.machineProviderId}' machine provider takes no --machine-inputs.`,
+          `The '${target.machineProviderId}' machine provider takes no --machine-inputs.`,
         );
       }
     }
@@ -290,7 +287,7 @@ async function buildProviderSpawnEnvironment(args: {
         : {
             machine: {
               type: "new" as const,
-              machineProviderId: match.machineProviderId,
+              machineProviderId: target.machineProviderId,
               inputs: machineInputs,
             },
           }),
@@ -324,7 +321,7 @@ export function registerSpawnCommand(
     .command("spawn")
     .aliases(["create", "new"])
     .description(
-      "Spawn a new thread; omitted execution flags use remembered project defaults, then the target provider catalog default",
+      "Spawn a new thread; with no environment flag it starts in the project's default environment, and omitted execution flags use the project's remembered choices, then the target provider catalog default",
     )
     .option(
       "--prompt <prompt>",

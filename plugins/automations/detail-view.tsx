@@ -1,7 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode, UIEvent } from "react";
 import type {
-  AgentEnvironment,
   AutomationDetailResponse,
   AutomationExecution,
   AutomationResponse,
@@ -51,6 +50,12 @@ import {
   oneShotLifecycleAllowsToggle,
   PERSONAL_PROJECT_ID,
 } from "./lib/format-schedule";
+import {
+  projectDefaultEnvironmentCompactLabel,
+  projectDefaultEnvironmentLabel,
+  projectDefaultEnvironmentRoutingHostId,
+  type ProjectDefaultEnvironmentSummary,
+} from "./lib/project-default-environment";
 import { AutomationMetadataItem, automationErrorMessage } from "./metadata";
 import { AutomationActionsMenu } from "./actions-menu";
 
@@ -67,6 +72,7 @@ interface AutomationRunsViewState {
 interface AutomationDetailViewProps {
   automation: AutomationDetailResponse;
   projectLabel: string;
+  projectDefaultEnvironment: ProjectDefaultEnvironmentSummary | null;
   runsState: AutomationRunsViewState;
   actionPending: boolean;
   editing: boolean;
@@ -94,13 +100,24 @@ function providerModelValue(
 }
 
 function providerModelRouting(
-  environment: AgentEnvironment,
+  execution: Extract<AutomationExecution, { mode: "agent" }>,
+  projectDefaultEnvironment: ProjectDefaultEnvironmentSummary | null,
 ): ExperimentalProviderModelPickerRouting | undefined {
+  const environment = execution.environment;
   if (environment.type === "reuse") {
     return { kind: "environment", environmentId: environment.environmentId };
   }
   if (environment.type === "host" && environment.hostId !== undefined) {
     return { kind: "host", hostId: environment.hostId };
+  }
+  if (
+    environment.type === "project-default" &&
+    execution.targetThreadId === undefined
+  ) {
+    const hostId = projectDefaultEnvironmentRoutingHostId(
+      projectDefaultEnvironment,
+    );
+    if (hostId !== null) return { kind: "host", hostId };
   }
   return undefined;
 }
@@ -285,10 +302,13 @@ function AutomationEnvironmentVariables({
 
 function automationEnvironmentLabel(
   execution: Extract<AutomationExecution, { mode: "agent" }>,
+  projectDefaultEnvironment: ProjectDefaultEnvironmentSummary | null,
 ): string {
   const environment = execution.environment;
   if (environment.type === "reuse") return "Reuse environment";
-  if (environment.type === "project-default") return "Project default";
+  if (environment.type === "project-default") {
+    return projectDefaultEnvironmentLabel(projectDefaultEnvironment);
+  }
   if (environment.workspace.type === "managed-worktree") return "New worktree";
   if (environment.workspace.type === "personal") return "Personal workspace";
   return environment.workspace.path == null
@@ -298,11 +318,14 @@ function automationEnvironmentLabel(
 
 function automationEnvironmentCompactLabel(
   execution: Extract<AutomationExecution, { mode: "agent" }>,
+  projectDefaultEnvironment: ProjectDefaultEnvironmentSummary | null,
 ): string {
   if (execution.targetThreadId !== undefined) return "Thread";
   const environment = execution.environment;
   if (environment.type === "reuse") return "Reuse environment";
-  if (environment.type === "project-default") return "Default";
+  if (environment.type === "project-default") {
+    return projectDefaultEnvironmentCompactLabel(projectDefaultEnvironment);
+  }
   if (environment.workspace.type === "managed-worktree") return "Worktree";
   if (environment.workspace.type === "personal") return "Personal workspace";
   return environment.workspace.path === null
@@ -310,10 +333,25 @@ function automationEnvironmentCompactLabel(
     : formatHomePathForDisplay(environment.workspace.path);
 }
 
+function projectDefaultEnvironmentProblem(
+  execution: Extract<AutomationExecution, { mode: "agent" }>,
+  projectDefaultEnvironment: ProjectDefaultEnvironmentSummary | null,
+): string | null {
+  if (
+    execution.targetThreadId !== undefined ||
+    execution.environment.type !== "project-default"
+  ) {
+    return null;
+  }
+  return projectDefaultEnvironment?.problem ?? null;
+}
+
 function AutomationEnvironmentIcon({
   execution,
+  projectDefaultEnvironment,
 }: {
   execution: Extract<AutomationExecution, { mode: "agent" }>;
+  projectDefaultEnvironment: ProjectDefaultEnvironmentSummary | null;
 }) {
   const className = "size-3.5 shrink-0";
   if (execution.targetThreadId !== undefined) {
@@ -324,7 +362,30 @@ function AutomationEnvironmentIcon({
     return <Icon name="Folder02" className={className} aria-hidden />;
   }
   if (environment.type === "project-default") {
-    return <Icon name="Folder" className={className} aria-hidden />;
+    if (
+      projectDefaultEnvironment !== null &&
+      projectDefaultEnvironment.problem !== null
+    ) {
+      return (
+        <Icon
+          name="AlertTriangle"
+          className={cn(className, "text-warning")}
+          aria-hidden
+        />
+      );
+    }
+    const provider = projectDefaultEnvironment?.provider ?? null;
+    if (provider === null) {
+      return <Icon name="Folder" className={className} aria-hidden />;
+    }
+    return (
+      <ProviderIcon
+        providerKind="environment"
+        provider={provider}
+        fallback="Folder"
+        className={className}
+      />
+    );
   }
   const providers = {
     personal: { id: "personal-workspace", fallback: "Folder" },
@@ -490,6 +551,7 @@ export function AgentAutomationDefinition({
   editing,
   personalProject,
   projectContextLabel,
+  projectDefaultEnvironment,
   pending,
   onCancel,
   onUpdate,
@@ -498,6 +560,7 @@ export function AgentAutomationDefinition({
   editing: boolean;
   personalProject: boolean;
   projectContextLabel: string;
+  projectDefaultEnvironment: ProjectDefaultEnvironmentSummary | null;
   pending: boolean;
   onCancel: () => void;
   onUpdate: (update: AgentExecutionUpdate) => Promise<void>;
@@ -522,7 +585,14 @@ export function AgentAutomationDefinition({
     execution.reasoningLevel,
     execution.serviceTier,
   ]);
-  const pickerRouting = providerModelRouting(execution.environment);
+  const pickerRouting = providerModelRouting(
+    execution,
+    projectDefaultEnvironment,
+  );
+  const environmentProblem = projectDefaultEnvironmentProblem(
+    execution,
+    projectDefaultEnvironment,
+  );
   const trimmedPrompt = prompt.trim();
   const dirty =
     prompt !== execution.prompt ||
@@ -531,7 +601,7 @@ export function AgentAutomationDefinition({
     providerModel.reasoningLevel !== execution.reasoningLevel ||
     providerModel.serviceTier !== execution.serviceTier ||
     permissionMode !== execution.permissionMode;
-  const promptFooter = (
+  const promptFooterRow = (
     <div
       data-automation-prompt-footer=""
       className="flex min-h-6 min-w-0 items-center justify-between gap-2 border-t border-border/70 px-3.5 py-1.5 text-xs text-muted-foreground"
@@ -553,10 +623,18 @@ export function AgentAutomationDefinition({
           value={
             execution.targetThreadId !== undefined
               ? "Existing thread"
-              : automationEnvironmentLabel(execution)
+              : automationEnvironmentLabel(execution, projectDefaultEnvironment)
           }
-          compactValue={automationEnvironmentCompactLabel(execution)}
-          leading={<AutomationEnvironmentIcon execution={execution} />}
+          compactValue={automationEnvironmentCompactLabel(
+            execution,
+            projectDefaultEnvironment,
+          )}
+          leading={
+            <AutomationEnvironmentIcon
+              execution={execution}
+              projectDefaultEnvironment={projectDefaultEnvironment}
+            />
+          }
         />
       </div>
       {editing ? (
@@ -579,6 +657,27 @@ export function AgentAutomationDefinition({
         />
       )}
     </div>
+  );
+  const promptFooter = (
+    <>
+      {promptFooterRow}
+      {environmentProblem === null ? null : (
+        <div
+          data-automation-environment-problem=""
+          className="flex min-w-0 items-start gap-1.5 border-t border-border/70 bg-warning/10 px-3.5 py-1.5 text-xs text-warning-text"
+        >
+          <Icon
+            name="AlertTriangle"
+            className="mt-px size-3.5 shrink-0"
+            aria-hidden
+          />
+          <span className="min-w-0">
+            Project default unavailable: {environmentProblem}. Runs fail until
+            it is fixed.
+          </span>
+        </div>
+      )}
+    </>
   );
 
   const promptBox = editing ? (
@@ -735,6 +834,7 @@ export function ScriptAutomationDefinition({
 export function AutomationDetailView({
   automation,
   projectLabel,
+  projectDefaultEnvironment,
   runsState,
   actionPending,
   editing,
@@ -878,6 +978,7 @@ export function AutomationDetailView({
               pending={actionPending}
               personalProject={personalProject}
               projectContextLabel={projectContextLabel}
+              projectDefaultEnvironment={projectDefaultEnvironment}
               onCancel={onCancelEdit}
               onUpdate={onUpdateAgent}
             />

@@ -1,7 +1,9 @@
 import { z } from "zod";
 import {
+  environmentMachineSelectionSchema,
   FILE_LIST_QUERY_MAX_LENGTH,
   getProjectPathValidationMessage,
+  jsonValueSchema,
   normalizeProjectPathInput,
   projectExecutionDefaultsSchema,
   projectSchema,
@@ -14,6 +16,7 @@ import {
 import {
   rejectMultipleWorkspaceSelectors,
   branchListQuerySchema,
+  providerEnvironmentSchema,
   isCommaSeparatedIncludeQueryValue,
   pathListIncludeQueryValueSchema,
 } from "./shared.js";
@@ -227,13 +230,47 @@ export type PromptHistoryResponse = z.infer<typeof promptHistoryResponseSchema>;
 
 export type ProjectAttachmentUploadForm = Record<"file", Blob>;
 
+export const defaultEnvironmentSchema = z.object({
+  type: z.literal("provider"),
+  environmentProviderId: z.string().min(1),
+  machine: environmentMachineSelectionSchema,
+  inputs: jsonValueSchema.nullable(),
+});
+export type DefaultEnvironment = z.infer<typeof defaultEnvironmentSchema>;
+
+export const defaultEnvironmentProblemReasonSchema = z.enum([
+  "environment_provider_missing",
+  "composition_target_missing",
+  "machine_provider_missing",
+  "machine_missing",
+  "machine_removing",
+  "machine_not_persistent",
+  "project_source_missing",
+  "git_remote_missing",
+  "projectless_provider",
+  "inputs_invalid",
+]);
+export type DefaultEnvironmentProblemReason = z.infer<
+  typeof defaultEnvironmentProblemReasonSchema
+>;
+
+export const defaultEnvironmentProblemSchema = z.object({
+  reason: defaultEnvironmentProblemReasonSchema,
+  message: z.string(),
+});
+export type DefaultEnvironmentProblem = z.infer<
+  typeof defaultEnvironmentProblemSchema
+>;
+
 export const updateProjectRequestSchema = z
   .object({
     name: z.string().min(1),
+    defaultEnvironment: providerEnvironmentSchema.nullable(),
   })
   .partial()
   .refine(
-    (value) => value.name !== undefined,
+    (value) =>
+      value.name !== undefined || value.defaultEnvironment !== undefined,
     "At least one field must be provided",
   );
 export type UpdateProjectRequest = z.infer<typeof updateProjectRequestSchema>;
@@ -420,6 +457,8 @@ export type UpdateSkillRequest = z.infer<typeof updateSkillRequestSchema>;
 
 export const projectResponseSchema = projectSchema.extend({
   sources: z.array(projectSourceSchema),
+  defaultEnvironment: defaultEnvironmentSchema.nullable(),
+  defaultEnvironmentProblem: defaultEnvironmentProblemSchema.nullable(),
 });
 export type ProjectResponse = z.infer<typeof projectResponseSchema>;
 

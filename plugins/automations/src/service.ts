@@ -32,6 +32,7 @@ import {
   WORKING_DIRECTORY_CONTROL_CHARACTER_MESSAGE,
   automationRunListResponseSchema,
   automationsOverviewResponseSchema,
+  projectDefaultEnvironmentStateSchema,
   type AgentExecutionUpdate,
   type AutomationExecution,
   type AutomationExecutionRequest,
@@ -43,6 +44,7 @@ import {
   type AutomationRunRpcResponse,
   type AutomationResponse,
   type AutomationScriptWorkingDirectory,
+  type AutomationsOverviewProject,
   type AutomationsOverviewResponse,
   type ListAutomationsInput,
   type ResolvedCreateAutomationInput,
@@ -534,9 +536,20 @@ function parseRunCursor(
   return { startedAt, id };
 }
 
-async function projectNameById(
+function toOverviewProject(
+  project: z.infer<typeof projectSummarySchema>,
+): AutomationsOverviewProject {
+  const defaults = projectDefaultEnvironmentStateSchema.safeParse(project);
+  return {
+    id: project.id,
+    name: project.name ?? project.id,
+    ...(defaults.success ? defaults.data : {}),
+  };
+}
+
+async function overviewProjectsById(
   bb: Pick<ServiceApi, "sdk" | "log">,
-): Promise<Map<string, string>> {
+): Promise<Map<string, AutomationsOverviewProject>> {
   try {
     const projects = projectSummaryListSchema.parse(
       await bb.sdk.projects.list({ includePersonal: true }),
@@ -547,7 +560,7 @@ async function projectNameById(
           (project) =>
             project.deletedAt === undefined || project.deletedAt === null,
         )
-        .map((project) => [project.id, project.name ?? project.id]),
+        .map((project) => [project.id, toOverviewProject(project)]),
     );
   } catch (error) {
     bb.log.warn(
@@ -613,17 +626,14 @@ export function createAutomationService(args: {
 
   return {
     async overview() {
-      const projects = await projectNameById(bb);
+      const projects = await overviewProjectsById(bb);
       const automations: AutomationsOverviewResponse["automations"] = [];
       for (const row of listAllAutomations(db)) {
-        const projectName = projects.get(row.projectId);
-        if (projects.size > 0 && projectName === undefined) continue;
+        const project = projects.get(row.projectId);
+        if (projects.size > 0 && project === undefined) continue;
         automations.push({
           automation: toStoredAutomationReadResult(bb, pluginDataDir, row),
-          project: {
-            id: row.projectId,
-            name: projectName ?? row.projectId,
-          },
+          project: project ?? { id: row.projectId, name: row.projectId },
         });
       }
       return automationsOverviewResponseSchema.parse({ automations });

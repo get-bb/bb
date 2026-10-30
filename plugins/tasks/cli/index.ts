@@ -2359,7 +2359,7 @@ export function registerTasksCli(
               values: PRESET_ENVIRONMENTS,
               default: "project-default",
               description:
-                "Where the thread runs; --base-branch and --machine require worktree",
+                "Where the thread runs: project-default starts in the project's default environment (Automatic when none is set); --base-branch and --machine require worktree",
             },
             "base-branch": {
               type: "string",
@@ -2465,7 +2465,7 @@ export function registerTasksCli(
               type: "enum",
               values: PRESET_ENVIRONMENTS,
               description:
-                "Where the thread runs; switching to project-default clears --base-branch and --machine",
+                "Where the thread runs: project-default starts in the project's default environment (Automatic when none is set) and clears --base-branch and --machine",
             },
             "base-branch": {
               type: "string",

@@ -16,7 +16,10 @@ import {
   deleteProjectSource,
   getProjectSourceByHost,
   getProjectSourceForProject,
+  deleteProjectDefaultEnvironment,
+  listProjectDefaultEnvironmentsByProjectIds,
   listProjectExecutionDefaultsByProjectIds,
+  setProjectDefaultEnvironment,
   listPublicProjects,
   listProjectSourcesByProjectIds,
   listThreadSections,
@@ -105,11 +108,19 @@ import {
 import { assertUsableHostId } from "../services/hosts/primary-host.js";
 import { listProviderLiveCommands } from "../services/providers/provider-live-commands.js";
 import {
+  findProjectDefaultEnvironmentProblem,
+  normalizeProjectDefaultEnvironment,
+  toDefaultEnvironmentResponse,
+} from "../services/projects/project-default-environment.js";
+import {
   resolveProjectCommandWorkspace,
   resolveProjectWorkspaceTarget,
 } from "../services/projects/project-workspace.js";
 
-type ProjectResponseProjectFields = Omit<ProjectResponse, "sources">;
+type ProjectResponseProjectFields = Omit<
+  ProjectResponse,
+  "sources" | "defaultEnvironment" | "defaultEnvironmentProblem"
+>;
 
 function toProjectResponseProjectFields(
   project: ProjectResponseProjectFields,
@@ -124,10 +135,10 @@ function toProjectResponseProjectFields(
   };
 }
 
-function buildProjectResponsesFromRows(
+async function buildProjectResponsesFromRows(
   deps: AppDeps,
   projects: ProjectResponseProjectFields[],
-): ProjectResponse[] {
+): Promise<ProjectResponse[]> {
   if (projects.length === 0) {
     return [];
   }
@@ -144,16 +155,42 @@ function buildProjectResponsesFromRows(
     sourcesByProjectId.set(source.projectId, [source]);
   }
 
-  return projects.map((project) => ({
-    ...toProjectResponseProjectFields(project),
-    sources: sourcesByProjectId.get(project.id) ?? [],
-  }));
+  const defaultEnvironmentsByProjectId =
+    listProjectDefaultEnvironmentsByProjectIds(
+      deps.db,
+      projects.map((project) => project.id),
+    );
+
+  return Promise.all(
+    projects.map(async (project) => {
+      const sources = sourcesByProjectId.get(project.id) ?? [];
+      const defaultEnvironment =
+        defaultEnvironmentsByProjectId.get(project.id) ?? null;
+      return {
+        ...toProjectResponseProjectFields(project),
+        sources,
+        defaultEnvironment:
+          defaultEnvironment === null
+            ? null
+            : toDefaultEnvironmentResponse(defaultEnvironment),
+        defaultEnvironmentProblem:
+          defaultEnvironment === null
+            ? null
+            : await findProjectDefaultEnvironmentProblem(
+                deps,
+                project,
+                sources,
+                defaultEnvironment,
+              ),
+      };
+    }),
+  );
 }
 
 function buildProjectResponses(
   deps: AppDeps,
   projectId?: string,
-): ProjectResponse[] {
+): Promise<ProjectResponse[]> {
   const projects = projectId
     ? [requirePublicStandardProject(deps.db, projectId)]
     : listPublicProjects(deps.db);
@@ -186,7 +223,7 @@ function listDiscoverableProjects(
 function toProjectOrderResponse(
   deps: AppDeps,
   result: ReorderProjectResult,
-): ProjectResponse[] {
+): Promise<ProjectResponse[]> {
   switch (result.kind) {
     case "reordered":
     case "unchanged":
@@ -216,18 +253,18 @@ function parseProjectListIncludes(
 function buildProjectsWithThreadsResponse(
   deps: AppDeps,
   options: ProjectListOptions,
-): ProjectWithThreadsResponse[] {
+): Promise<ProjectWithThreadsResponse[]> {
   return buildProjectsWithThreadsResponseFromRows(
     deps,
     listDiscoverableProjects(deps, options),
   );
 }
 
-function buildProjectsWithThreadsResponseFromRows(
+async function buildProjectsWithThreadsResponseFromRows(
   deps: AppDeps,
   projectRows: ProjectResponseProjectFields[],
-): ProjectWithThreadsResponse[] {
-  const projects = buildProjectResponsesFromRows(deps, projectRows);
+): Promise<ProjectWithThreadsResponse[]> {
+  const projects = await buildProjectResponsesFromRows(deps, projectRows);
   const projectIds = projects.map((project) => project.id);
   const threadRows = listThreadsWithPendingInteractionStateForProjects(
     deps.db,
@@ -260,7 +297,7 @@ function buildProjectsWithThreadsResponseFromRows(
   }));
 }
 
-function buildSidebarBootstrapResponse(deps: AppDeps) {
+async function buildSidebarBootstrapResponse(deps: AppDeps) {
   const personalProject = getPersonalProject(deps.db);
   if (!personalProject) {
     throw new ApiError(
@@ -269,10 +306,8 @@ function buildSidebarBootstrapResponse(deps: AppDeps) {
       "Personal project is not initialized",
     );
   }
-  const personalProjectResponse = buildProjectsWithThreadsResponseFromRows(
-    deps,
-    [personalProject],
-  )[0];
+  const [personalProjectResponse] =
+    await buildProjectsWithThreadsResponseFromRows(deps, [personalProject]);
   if (!personalProjectResponse) {
     throw new ApiError(
       500,
@@ -282,7 +317,7 @@ function buildSidebarBootstrapResponse(deps: AppDeps) {
   }
   return {
     sections: listThreadSections(deps.db),
-    projects: buildProjectsWithThreadsResponseFromRows(
+    projects: await buildProjectsWithThreadsResponseFromRows(
       deps,
       listPublicProjects(deps.db),
     ),
@@ -418,24 +453,24 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     );
   });
 
-  get(routes.list, (context, query) => {
+  get(routes.list, async (context, query) => {
     const includes = parseProjectListIncludes(query);
     const options: ProjectListOptions = {
       includePersonal: query.includePersonal === "true",
     };
     if (includes.has("threads")) {
-      return context.json(buildProjectsWithThreadsResponse(deps, options));
+      return context.json(await buildProjectsWithThreadsResponse(deps, options));
     }
     return context.json(
-      buildProjectResponsesFromRows(
+      await buildProjectResponsesFromRows(
         deps,
         listDiscoverableProjects(deps, options),
       ),
     );
   });
 
-  get(routes.sidebarBootstrap, (context) =>
-    context.json(buildSidebarBootstrapResponse(deps)),
+  get(routes.sidebarBootstrap, async (context) =>
+    context.json(await buildSidebarBootstrapResponse(deps)),
   );
 
   post(routes.create, async (context, payload) => {
@@ -448,7 +483,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     const existingProject = getPublicProjectByLocalPathSource(deps.db, source);
     if (existingProject) {
       return context.json(
-        buildProjectResponses(deps, existingProject.id)[0],
+        (await buildProjectResponses(deps, existingProject.id))[0],
         201,
       );
     }
@@ -469,14 +504,19 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         gitRemoteUrl,
       );
     }
-    return context.json(buildProjectResponses(deps, project.id)[0], 201);
+    return context.json(
+      (await buildProjectResponses(deps, project.id))[0],
+      201,
+    );
   });
 
-  get(routes.get, (context) =>
+  get(routes.get, async (context) =>
     context.json(
-      buildProjectResponsesFromRows(deps, [
-        requirePublicProject(deps.db, context.req.param("id")),
-      ])[0],
+      (
+        await buildProjectResponsesFromRows(deps, [
+          requirePublicProject(deps.db, context.req.param("id")),
+        ])
+      )[0],
     ),
   );
 
@@ -505,24 +545,41 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
   });
 
   patch(routes.update, async (context, payload) => {
-    requirePublicStandardProject(deps.db, context.req.param("id"));
-    const project = updateProject(
-      deps.db,
-      deps.hub,
-      context.req.param("id"),
-      payload,
-    );
-    if (!project) {
-      throw new ApiError(404, "project_not_found", "Project not found");
+    const projectId = context.req.param("id");
+    const existing = requirePublicStandardProject(deps.db, projectId);
+    const defaultEnvironment =
+      payload.defaultEnvironment === undefined ||
+      payload.defaultEnvironment === null
+        ? null
+        : await normalizeProjectDefaultEnvironment(
+            deps,
+            existing,
+            payload.defaultEnvironment,
+          );
+    if (payload.name !== undefined) {
+      const project = updateProject(deps.db, deps.hub, projectId, {
+        name: payload.name,
+      });
+      if (!project) {
+        throw new ApiError(404, "project_not_found", "Project not found");
+      }
     }
-    return context.json(buildProjectResponses(deps, project.id)[0]);
+    if (payload.defaultEnvironment === null) {
+      deleteProjectDefaultEnvironment(deps.db, deps.hub, projectId);
+    } else if (defaultEnvironment !== null) {
+      setProjectDefaultEnvironment(deps.db, deps.hub, {
+        projectId,
+        ...defaultEnvironment,
+      });
+    }
+    return context.json((await buildProjectResponses(deps, projectId))[0]);
   });
 
   patch(routes.reorder, async (context, payload) => {
     const projectId = context.req.param("id");
     requirePublicStandardProject(deps.db, projectId);
     return context.json(
-      toProjectOrderResponse(
+      await toProjectOrderResponse(
         deps,
         reorderProject({
           db: deps.db,

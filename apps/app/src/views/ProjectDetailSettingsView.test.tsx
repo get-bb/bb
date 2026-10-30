@@ -8,17 +8,25 @@ import {
   waitFor,
 } from "@testing-library/react";
 import type { Host, ProjectExecutionDefaults } from "@bb/domain";
+import type {
+  DefaultEnvironment,
+  DefaultEnvironmentProblem,
+  ProjectResponse,
+  SystemEnvironmentProvider,
+} from "@bb/server-contract";
 import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { makeSystemConfig } from "@/test/fixtures/system-config";
+import { getProjectScopedStorageKey } from "@/lib/project-scoped-storage";
 import { SETTINGS_PROJECT_ROUTE_PATH } from "@/lib/route-paths";
 import { ProjectDetailSettingsView } from "./ProjectDetailSettingsView";
 
 vi.mock("@/lib/sdk", () => ({
   sdk: {
+    environments: { listProviders: vi.fn() },
     hosts: {
       cloneDefaultPath: vi.fn(),
       directory: vi.fn(),
@@ -65,19 +73,92 @@ const offlineHost = host({
   status: "disconnected",
 });
 
+function environmentProvider(
+  id: string,
+  overrides: Partial<SystemEnvironmentProvider> = {},
+): SystemEnvironmentProvider {
+  return {
+    machineProviderId: null,
+    id,
+    displayName: id,
+    description: null,
+    icon: "Folder",
+    logoUrl: null,
+    pluginId: id,
+    acceptsEmptyInputs: true,
+    machineAvailability: {},
+    availability: null,
+    requires: {
+      projectCheckout: true,
+      gitCheckout: true,
+      gitRemote: false,
+      projectless: false,
+    },
+    inputs: null,
+    ...overrides,
+  };
+}
+
+const worktreeProvider = environmentProvider("git-worktree", {
+  displayName: "Worktree",
+});
+const berthProvider = environmentProvider("berth", {
+  displayName: "Berth",
+  machineProviderId: "berth",
+  machineInputs: null,
+  machineAcceptsEmptyInputs: true,
+});
+const sandboxProvider = environmentProvider("cloud-sandbox", {
+  displayName: "Cloud sandbox",
+  machineProviderId: "cloud",
+  machineInputs: { type: "object", required: ["size"] },
+  machineAcceptsEmptyInputs: false,
+});
+
+function updatedProject(
+  defaultEnvironment: DefaultEnvironment | null,
+): ProjectResponse {
+  return {
+    id: "proj_bb",
+    kind: "standard",
+    name: "bb",
+    gitRemoteUrl: "git@github.com:get-bb/bb.git",
+    createdAt: NOW - 86_400_000,
+    updatedAt: NOW,
+    sources: [],
+    defaultEnvironment,
+    defaultEnvironmentProblem: null,
+  };
+}
+
 interface SourceFixture {
   hostId: string;
   path: string;
 }
 
+interface SidebarProjectDefault {
+  defaultEnvironment: DefaultEnvironment | null;
+  defaultEnvironmentProblem: DefaultEnvironmentProblem | null;
+}
+
 function stubSidebarBootstrapFetch(
   sources: SourceFixture[],
-  options: { status?: number; projectId?: string } = {},
-): void {
+  options: {
+    status?: number;
+    projectId?: string;
+    gitRemoteUrl?: string | null;
+    defaultEnvironment?: DefaultEnvironment;
+    defaultEnvironmentProblem?: DefaultEnvironmentProblem;
+  } = {},
+): SidebarProjectDefault {
   const projectId = options.projectId ?? "proj_bb";
+  const projectDefault: SidebarProjectDefault = {
+    defaultEnvironment: options.defaultEnvironment ?? null,
+    defaultEnvironmentProblem: options.defaultEnvironmentProblem ?? null,
+  };
   vi.stubGlobal(
     "fetch",
-    vi.fn().mockResolvedValue(
+    vi.fn().mockImplementation(async () =>
       new Response(
         JSON.stringify({
           sections: [],
@@ -86,7 +167,10 @@ function stubSidebarBootstrapFetch(
               id: projectId,
               kind: "standard",
               name: "bb",
-              gitRemoteUrl: "git@github.com:get-bb/bb.git",
+              gitRemoteUrl:
+                options.gitRemoteUrl === undefined
+                  ? "git@github.com:get-bb/bb.git"
+                  : options.gitRemoteUrl,
               createdAt: NOW - 86_400_000,
               updatedAt: NOW,
               sources: sources.map((source, index) => ({
@@ -99,6 +183,7 @@ function stubSidebarBootstrapFetch(
                 createdAt: NOW,
                 updatedAt: NOW,
               })),
+              ...projectDefault,
               defaultExecutionOptions: null,
               threads: [{ id: "thr_1", projectId }],
             },
@@ -111,6 +196,8 @@ function stubSidebarBootstrapFetch(
             createdAt: NOW,
             updatedAt: NOW,
             sources: [],
+            defaultEnvironment: null,
+            defaultEnvironmentProblem: null,
             defaultExecutionOptions: null,
             threads: [],
           },
@@ -122,6 +209,18 @@ function stubSidebarBootstrapFetch(
       ),
     ),
   );
+  return projectDefault;
+}
+
+function serveDefaultEnvironmentUpdate(
+  projectDefault: SidebarProjectDefault,
+  stored: DefaultEnvironment | null,
+): void {
+  vi.mocked(sdk.projects.update).mockImplementation(async () => {
+    projectDefault.defaultEnvironment = stored;
+    projectDefault.defaultEnvironmentProblem = null;
+    return updatedProject(stored);
+  });
 }
 
 function renderView(projectId = "proj_bb") {
@@ -157,10 +256,16 @@ beforeEach(() => {
     path: "/home/me/bb",
   });
   vi.mocked(sdk.projects.defaultExecutionOptions).mockResolvedValue(null);
+  vi.mocked(sdk.environments.listProviders).mockResolvedValue([
+    worktreeProvider,
+    berthProvider,
+    sandboxProvider,
+  ]);
 });
 
 afterEach(() => {
   cleanup();
+  sessionStorage.clear();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
@@ -385,6 +490,141 @@ describe("ProjectDetailSettingsView", () => {
       await screen.findByText("Couldn't load thread defaults."),
     ).toBeDefined();
     expect(screen.queryByText(/^No threads have run here yet/u)).toBeNull();
+  });
+
+  it("stores the environment picked on another machine as the default", async () => {
+    const projectDefault = stubSidebarBootstrapFetch([
+      { hostId: "host_primary", path: "/Users/me/bb" },
+      { hostId: "host_remote", path: "/home/me/bb" },
+    ]);
+    serveDefaultEnvironmentUpdate(projectDefault, {
+      type: "provider",
+      environmentProviderId: "git-worktree",
+      machine: { type: "existing", hostId: "host_remote" },
+      inputs: {},
+    });
+    const composerDraftKey = getProjectScopedStorageKey(
+      "bb.promptbox.draft-environment",
+      "proj_bb",
+    );
+    sessionStorage.setItem(composerDraftKey, "provider:berth");
+
+    renderView();
+    const trigger = await screen.findByRole("button", { name: "Environment" });
+    await waitFor(() => expect(trigger.textContent).toContain("Automatic"));
+    fireEvent.click(trigger, { button: 0 });
+    fireEvent.click(await screen.findByRole("option", { name: "dev-vm" }));
+    expect(sdk.projects.update).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("option", { name: /Worktree/u }));
+
+    await waitFor(() =>
+      expect(sdk.projects.update).toHaveBeenCalledWith({
+        projectId: "proj_bb",
+        defaultEnvironment: {
+          type: "provider",
+          environmentProviderId: "git-worktree",
+          machine: { type: "existing", hostId: "host_remote" },
+          inputs: null,
+        },
+      }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Environment" }).textContent,
+      ).toContain("dev-vm · Worktree"),
+    );
+    expect(sessionStorage.getItem(composerDraftKey)).toBe("");
+  });
+
+  it("refuses a composition as the default of a project without a Git remote", async () => {
+    stubSidebarBootstrapFetch(
+      [{ hostId: "host_primary", path: "/Users/me/bb" }],
+      { gitRemoteUrl: null },
+    );
+
+    renderView();
+    const trigger = await screen.findByRole("button", { name: "Environment" });
+    await waitFor(() => expect(trigger.getAttribute("aria-busy")).toBe("false"));
+    fireEvent.click(trigger, { button: 0 });
+    const berth = await screen.findByRole("option", { name: /Berth/u });
+
+    expect(berth.getAttribute("aria-disabled")).toBe("true");
+    expect(berth.textContent).toContain("Needs the project's Git remote");
+  });
+
+  it("offers a composition as the default unless it asks for options on each thread", async () => {
+    const projectDefault = stubSidebarBootstrapFetch([
+      { hostId: "host_primary", path: "/Users/me/bb" },
+    ]);
+    serveDefaultEnvironmentUpdate(projectDefault, {
+      type: "provider",
+      environmentProviderId: "berth",
+      machine: { type: "new", machineProviderId: "berth", inputs: null },
+      inputs: null,
+    });
+
+    renderView();
+    const trigger = await screen.findByRole("button", { name: "Environment" });
+    await waitFor(() => expect(trigger.getAttribute("aria-busy")).toBe("false"));
+    fireEvent.click(trigger, { button: 0 });
+    const sandbox = await screen.findByRole("option", {
+      name: /Cloud sandbox/u,
+    });
+    expect(sandbox.getAttribute("aria-disabled")).toBe("true");
+    expect(sandbox.textContent).toContain("Asks for options on each thread");
+    fireEvent.click(screen.getByRole("option", { name: /Berth/u }));
+
+    await waitFor(() =>
+      expect(sdk.projects.update).toHaveBeenCalledWith({
+        projectId: "proj_bb",
+        defaultEnvironment: {
+          type: "provider",
+          environmentProviderId: "berth",
+          inputs: null,
+        },
+      }),
+    );
+    expect(await screen.findByText(/Each one gets a new machine\.$/u)).toBeDefined();
+  });
+
+  it("explains an unavailable default and resets it to Automatic", async () => {
+    const projectDefault = stubSidebarBootstrapFetch(
+      [{ hostId: "host_primary", path: "/Users/me/bb" }],
+      {
+        defaultEnvironment: {
+          type: "provider",
+          environmentProviderId: "git-worktree",
+          machine: { type: "existing", hostId: "host_destroyed" },
+          inputs: {},
+        },
+        defaultEnvironmentProblem: {
+          reason: "machine_missing",
+          message: "its machine no longer exists",
+        },
+      },
+    );
+    serveDefaultEnvironmentUpdate(projectDefault, null);
+
+    renderView();
+
+    expect(await screen.findByText("Unavailable")).toBeDefined();
+    expect(
+      screen.getByText(
+        "Its machine no longer exists. Threads started without a choice fail until you change or reset it.",
+      ),
+    ).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Reset" }));
+
+    await waitFor(() =>
+      expect(sdk.projects.update).toHaveBeenCalledWith({
+        projectId: "proj_bb",
+        defaultEnvironment: null,
+      }),
+    );
+    await waitFor(() => expect(screen.queryByText("Unavailable")).toBeNull());
+    expect(
+      screen.getByRole("button", { name: "Environment" }).textContent,
+    ).toContain("Automatic");
   });
 
   it("deletes the project and returns to the list", async () => {

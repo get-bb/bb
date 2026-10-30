@@ -331,6 +331,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
     fields: [
       "createThreadRequestSchema.environment.machine",
       "forkThreadRequestSchema.environment.machine",
+      "updateProjectRequestSchema.defaultEnvironment.machine",
     ],
   },
   {
@@ -453,6 +454,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
     reason:
       "Project and project-source PATCH requests omit fields that should be left unchanged.",
     fields: [
+      "updateProjectRequestSchema.defaultEnvironment",
       "updateProjectRequestSchema.name",
       "updateProjectSourceRequestSchema.isDefault",
       "updateProjectSourceRequestSchema.path",

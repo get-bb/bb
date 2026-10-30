@@ -210,6 +210,8 @@ function createAutomationServiceBb() {
             createdAt: 1,
             updatedAt: 1,
             sources,
+            defaultEnvironment: null,
+            defaultEnvironmentProblem: null,
           };
         },
         list: async () => [],
@@ -1557,6 +1559,119 @@ describe("automation service", () => {
         "echo old\n",
       );
       await expect(readdir(scriptDir)).resolves.toEqual(["old.sh"]);
+    } finally {
+      await rm(pluginDataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("carries each project's default environment on the overview and treats an unreadable one as unknown", async () => {
+    const db = createTestDb();
+    const pluginDataDir = await mkdtemp(join(tmpdir(), "bb-auto-overview-"));
+    const projects = [
+      {
+        id: "proj_machine",
+        name: "Machine default",
+        deletedAt: null,
+        defaultEnvironment: {
+          type: "provider",
+          environmentProviderId: "git-worktree",
+          machine: { type: "existing", hostId: "host_david" },
+          inputs: {},
+        },
+        defaultEnvironmentProblem: {
+          reason: "project_source_missing",
+          message: "david has no checkout of Machine default",
+        },
+      },
+      {
+        id: "proj_automatic",
+        name: "Automatic default",
+        deletedAt: null,
+        defaultEnvironment: null,
+        defaultEnvironmentProblem: null,
+      },
+      {
+        id: "proj_unreadable",
+        name: "Unreadable default",
+        deletedAt: null,
+        defaultEnvironment: {
+          type: "provider",
+          environmentProviderId: "pool-env",
+          machine: { type: "pool", poolId: "pool_1" },
+          inputs: null,
+        },
+        defaultEnvironmentProblem: null,
+      },
+    ];
+    for (const project of projects) {
+      createAutomation(db, {
+        id: `auto_${project.id}`,
+        projectId: project.id,
+        name: `Agent in ${project.name}`,
+        enabled: true,
+        trigger: oneShotTrigger(),
+        runMode: "agent",
+        execution: {
+          mode: "agent",
+          prompt: "Check",
+          providerId: "codex",
+          model: "gpt-5",
+          reasoningLevel: "medium",
+          permissionMode: "auto",
+          environment: { type: "project-default" },
+        },
+        origin: "human",
+        createdByThreadId: null,
+        nextRunAt: null,
+      });
+    }
+    const serviceBb = createAutomationServiceBb();
+    const service = createAutomationService({
+      bb: {
+        ...serviceBb,
+        sdk: {
+          ...serviceBb.sdk,
+          projects: {
+            ...serviceBb.sdk.projects,
+            list: async () => projects as never,
+          },
+        },
+      },
+      db,
+      pluginDataDir,
+      serverUrl: "http://127.0.0.1:38886",
+      scriptRuns: createScriptRunScope(),
+    });
+
+    try {
+      const overviewProjects = new Map(
+        (await service.overview()).automations.map((entry) => [
+          entry.project.id,
+          entry.project,
+        ]),
+      );
+      expect(overviewProjects.get("proj_machine")).toEqual({
+        id: "proj_machine",
+        name: "Machine default",
+        defaultEnvironment: {
+          type: "provider",
+          environmentProviderId: "git-worktree",
+          machine: { type: "existing", hostId: "host_david" },
+        },
+        defaultEnvironmentProblem: {
+          message: "david has no checkout of Machine default",
+        },
+      });
+      expect(overviewProjects.get("proj_automatic")).toEqual({
+        id: "proj_automatic",
+        name: "Automatic default",
+        defaultEnvironment: null,
+        defaultEnvironmentProblem: null,
+      });
+      expect(overviewProjects.get("proj_unreadable")).toEqual({
+        id: "proj_unreadable",
+        name: "Unreadable default",
+      });
     } finally {
       await rm(pluginDataDir, { recursive: true, force: true });
     }
