@@ -1,18 +1,16 @@
 import { deviceSetupTelemetrySchema } from "./system-device-telemetry.js";
 export {
   deviceSetupSourceSchema,
-  deviceSetupEvent,
   deviceTelemetryContext,
   deviceStateTelemetrySchema,
   deviceStatePropertiesSchema,
   clientDeviceStatePropertiesSchema,
-  deviceSetupPropertiesSchema,
   deviceOperationPropertiesSchema,
   connectDeviceSetupPropertiesSchema,
   type DeviceSetupEvent,
   type ConnectDeviceSetupProperties,
   type DeviceSetupSource,
-  type DeviceSetupProperties,
+  type DeviceOperationProperties,
 } from "./system-device-telemetry.js";
 import { pluginRecommendationTelemetryEventSchema } from "./system-plugin-telemetry.js";
 export * from "./system-plugin-telemetry.js";

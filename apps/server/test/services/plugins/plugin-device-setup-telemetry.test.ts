@@ -1,9 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  deviceSetupEvent,
-  deviceSetupPropertiesSchema,
-  type ConnectDeviceSetupProperties,
-} from "@bb/server-contract";
+import { type ConnectDeviceSetupProperties } from "@bb/server-contract";
 import { createConnectDeviceSetupRecorder } from "../../../src/services/plugins/plugin-device-setup-telemetry.js";
 import type { TelemetryService } from "../../../src/services/system/telemetry.js";
 import { createTestAppHarness } from "../../helpers/test-app.js";
@@ -15,10 +11,13 @@ const owner = {
   sourceBuiltinName: "connect",
 } as const;
 const properties: ConnectDeviceSetupProperties = {
-  target: "browser_access",
-  action: "service_ready",
+  step: "devices",
+  resource_type: "device",
+  resource_id: "browser_access",
+  operation: "enable",
   outcome: "succeeded",
-  source: "first_run",
+  surface: "onboarding",
+  entry: "first_run",
   error_category: null,
 };
 
@@ -52,15 +51,20 @@ describe("trusted Connect lifecycle reporting", () => {
     const report = createConnectDeviceSetupRecorder(telemetry, owner);
     if (!report) throw new Error("Missing trusted recorder");
     report(properties);
-    expect(capture).toHaveBeenCalledExactlyOnceWith(
-      deviceSetupEvent(properties),
-    );
+    expect(capture).toHaveBeenCalledExactlyOnceWith({
+      name: "onboarding_operation",
+      properties,
+    });
     expect(() =>
       Reflect.apply(report, null, [{ ...properties, url: "private" }]),
     ).toThrow();
     expect(() =>
       Reflect.apply(report, null, [
-        { ...properties, action: "remote_connected", outcome: "observed" },
+        {
+          ...properties,
+          resource_id: "additional_machine",
+          operation: "enroll",
+        },
       ]),
     ).toThrow();
     enabled = false;
@@ -82,11 +86,10 @@ describe("trusted Connect lifecycle reporting", () => {
       };
       for (const milestone of [
         properties,
-        { ...properties, action: "remote_connected", outcome: "observed" },
         {
           ...properties,
-          target: "additional_machine",
-          action: "machine_ready",
+          resource_id: "additional_machine",
+          operation: "enroll",
         },
       ]) {
         const response = await harness.app.request(
@@ -94,9 +97,10 @@ describe("trusted Connect lifecycle reporting", () => {
           {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify(
-              deviceSetupEvent(deviceSetupPropertiesSchema.parse(milestone)),
-            ),
+            body: JSON.stringify({
+              name: "onboarding_operation",
+              properties: milestone,
+            }),
           },
         );
         expect(response.status).toBe(400);
@@ -107,13 +111,17 @@ describe("trusted Connect lifecycle reporting", () => {
         {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify(
-            deviceSetupEvent({
-              ...properties,
-              action: "setup_opened",
-              outcome: "observed",
-            }),
-          ),
+          body: JSON.stringify({
+            name: "onboarding_step_state",
+            properties: {
+              surface: "onboarding",
+              entry: "first_run",
+              step: "devices",
+              resource_type: "device",
+              resource_id: "browser_access",
+              state: "setup_open",
+            },
+          }),
         },
       );
       expect(response.status).toBe(200);

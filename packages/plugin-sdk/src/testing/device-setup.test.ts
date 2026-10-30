@@ -3,10 +3,13 @@ import type { ConnectDeviceSetupProperties } from "@bb/server-contract";
 import { createFakePluginHost } from "./fake-plugin-host.js";
 
 const properties: ConnectDeviceSetupProperties = {
-  target: "browser_access",
-  action: "service_ready",
+  step: "devices",
+  resource_type: "device",
+  resource_id: "browser_access",
+  operation: "enable",
   outcome: "succeeded",
-  source: "unknown",
+  surface: "unknown",
+  entry: null,
   error_category: null,
 };
 

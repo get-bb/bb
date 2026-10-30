@@ -1,3 +1,4 @@
+import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import type { ConnectStatus } from "./types.js";
 
@@ -10,27 +11,37 @@ export const deviceSourceSchema = z.enum([
   "unknown",
 ]);
 export type DeviceSource = z.infer<typeof deviceSourceSchema>;
-type Observation = {
-  target: "browser_access";
-  action: "enable_requested" | "service_ready" | "setup_result";
-  outcome: "started" | "succeeded" | "unknown" | "cancelled";
-  source: DeviceSource;
-  error_category: "request" | "transport" | null;
-};
+type Observation = Parameters<
+  BbPluginApi["internal_DO_NOT_USE_recordDeviceSetup"]
+>[0];
+function context(source: DeviceSource) {
+  return source === "first_run" || source === "replay"
+    ? { surface: "onboarding" as const, entry: source }
+    : { surface: source, entry: null };
+}
 
 export function createConnectSetupMeasurement(
   capture: (properties: Observation) => void,
 ) {
   let pending: { source: DeviceSource; unknown: boolean } | null = null;
+  function record(
+    source: DeviceSource,
+    outcome: Observation["outcome"],
+    error_category: Observation["error_category"] = null,
+  ) {
+    capture({
+      step: "devices",
+      resource_type: "device",
+      resource_id: "browser_access",
+      operation: "enable",
+      ...context(source),
+      outcome,
+      error_category,
+    });
+  }
   function begin(source: DeviceSource): void {
     pending = { source, unknown: false };
-    capture({
-      target: "browser_access",
-      action: "enable_requested",
-      outcome: "started",
-      source,
-      error_category: null,
-    });
+    record(source, "started", null);
   }
   return {
     begin,
@@ -42,43 +53,19 @@ export function createConnectSetupMeasurement(
       if (!attempt) return;
       if (status.state === "connected" && status.enabled) {
         pending = null;
-        capture({
-          target: "browser_access",
-          action: "service_ready",
-          outcome: "succeeded",
-          source: attempt.source,
-          error_category: null,
-        });
+        record(attempt.source, "succeeded", null);
       } else if (!status.enabled) {
         pending = null;
-        capture({
-          target: "browser_access",
-          action: "setup_result",
-          outcome: "cancelled",
-          source: attempt.source,
-          error_category: null,
-        });
+        record(attempt.source, "cancelled", null);
       } else if (status.lastError !== null && !attempt.unknown) {
         attempt.unknown = true;
-        capture({
-          target: "browser_access",
-          action: "setup_result",
-          outcome: "unknown",
-          source: attempt.source,
-          error_category: "transport",
-        });
+        record(attempt.source, "unknown", "transport");
       }
     },
     requestLost() {
       if (!pending || pending.unknown) return;
       pending.unknown = true;
-      capture({
-        target: "browser_access",
-        action: "setup_result",
-        outcome: "unknown",
-        source: pending.source,
-        error_category: "request",
-      });
+      record(pending.source, "unknown", "request");
     },
   };
 }

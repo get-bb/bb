@@ -4239,9 +4239,8 @@ Internal backend plumbing used only by the builtin Connect plugin's actual
 remote-access switch and tunnel lifecycle. Its API handle must be live; the
 loaded owner must have Connect's builtin ID, provenance, source kind and source
 name. A private or catalog plugin reusing its name receives no reporter.
-Strict validation permits only browser `enable_requested`, `service_ready` and
-`setup_result` with valid outcomes, bounded source/error categories and no extra
-fields. It cannot report machine milestones or authenticated client connection.
+Strict validation permits only the shared browser-access `enable` operation
+with valid outcomes, bounded surface/entry/error properties and no extra fields. It cannot report machine milestones or authenticated client connection.
 Core's existing Connect controls, CLI and lifecycle use this same path; the
 server's trusted ingress and enrollment owners report their own milestones.
 The general telemetry HTTP endpoint cannot invoke it. Opt-out is checked at
