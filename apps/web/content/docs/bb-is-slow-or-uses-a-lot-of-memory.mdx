@@ -1,0 +1,113 @@
+---
+title: bb is slow or uses a lot of memory
+description: bb lags, switching threads takes seconds, or memory keeps growing. Most cases come from idle agents left running, a plugin working in the background, or a project with thousands of changed files.
+type: troubleshooting
+sources:
+  - apps/app/src/components/settings/ProvidersSettingsSection.tsx
+  - packages/domain/src/app-settings.ts
+  - apps/host-daemon/src/app.ts
+  - plugins/git/host.ts
+  - packages/host-watcher/src/**
+  - plugins/concurrency-limit/server.ts
+  - plugins/storage-retention/app.tsx
+  - apps/desktop/src/menu.ts
+since: 0.48.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+"Why is bb slow with many threads?" Each thread's agent runs as its own process on its machine, and plugins and file watching run alongside it. Find what you see below, apply the fix, and check again before trying the next one.
+
+| What you see | Likely cause | Fix |
+| --- | --- | --- |
+| Memory grows as you open more threads, and stays high | Agents stay running for 30 minutes after their last turn | Lower **Release idle agent sessions** in **Settings → Providers** |
+| The machine slows down while many threads run at once | More agents run at the same time than it can handle | Lower the limit in the **Concurrency limit** plugin |
+| bb got slow or hangs after you installed a plugin | A plugin works in the background | Turn on plugin safe mode to check, then turn plugins off one at a time |
+| Lag only in one project, and its diff shows "Showing the first 500 changed files" | Thousands of untracked files, such as build output | Add them to `.gitignore` |
+| Watching stops on Linux with "inotify watch limit reached" | The system limit on watched folders is too low | Raise `fs.inotify.max_user_watches` |
+| The sidebar is slow and you have thousands of threads | Every thread you keep is listed | Archive finished threads, or archive them automatically |
+| Remote access is slow, local is fine | The connection, not bb | See [bb Connect drops or won't connect](/docs/bb-connect-drops-or-wont-connect) |
+
+## Idle agents use memory
+
+bb keeps a thread's agent running after its turn ends, so your next message starts quickly. By default it stops an agent that has been idle for 30 minutes. The thread keeps its history, and the agent starts again with your next message.
+
+To free memory sooner, open **Settings → Providers** and change **Release idle agent sessions**, under **Configuration**, to **ASAP**, **5 minutes** or **10 minutes**.
+
+<Screenshot
+  src="/docs-images/bb-is-slow-or-uses-a-lot-of-memory/release-idle-agent-sessions"
+  alt="Settings → Providers, under Configuration, shows Release idle agent sessions with a menu set to 30 minutes."
+  width={760}
+  height={200}
+/>
+
+Or run:
+
+```bash
+bb settings general idleProviderSessionTimeoutMinutes 5
+```
+
+Machines check every five minutes, so an agent can run up to five minutes past the time you pick. Agents that are working or waiting for you aren't stopped.
+
+To stop one thread's agent now, run `bb thread stop <thread-id>`. The next message starts it again with the same history.
+
+## Too many threads run at once
+
+The **Concurrency limit** plugin holds new turns when too many threads run at once, and starts them when a running thread goes idle. By default it allows one running thread per processor on each machine. On a machine with little memory, set a lower limit:
+
+```bash
+bb concurrency-limit status
+bb concurrency-limit host <machine-id> 2
+```
+
+You can also change it in the plugin's page under **Plugins** in the Settings sidebar.
+
+## A plugin slows bb down
+
+Some plugins check services or files in the background. To find out whether a plugin is the cause:
+
+1. Turn on plugin safe mode: open the command palette and run **Turn on plugin safe mode**, or run `bb plugin safe-mode on`. Every plugin you installed stops; plugins included with bb keep running.
+2. If bb is fast again, turn safe mode off with `bb plugin safe-mode off`, then turn off your plugins one at a time in **Settings → Installed plugins**, or with `bb plugin disable <plugin-id>`, until you find the one.
+3. Run `bb plugin list` to see every plugin and whether it's running.
+
+When you find the plugin, tell its author, and include its log from `bb plugin logs <plugin-id>`.
+
+## Showing the first 500 changed files
+
+When a project has thousands of untracked or changed files, the thread's **Diff** tab shows "Showing the first 500 changed files. Additional changes are omitted." bb still has to look at every file to find what changed, and a very large set slows the project down.
+
+Add build output, downloaded dependencies and generated files to the project's `.gitignore`. bb doesn't watch folders that Git ignores, and it never watches `node_modules`, `.cache` or `__pycache__`. Using a folder that isn't a Git repository as a project root, such as your whole home folder, has the same effect; pick the repository folder instead.
+
+## inotify watch limit reached
+
+On Linux, bb's logs can show "inotify watch limit reached; see fs.inotify.max_user_watches", and bb can stop noticing file changes. Linux limits how many folders one user can watch. Raise the limit:
+
+```bash
+echo fs.inotify.max_user_watches=524288 | sudo tee /etc/sysctl.d/60-inotify.conf
+sudo sysctl --system
+```
+
+Then restart bb.
+
+## Thousands of threads
+
+bb lists every thread you keep. Archive threads you've finished with: run **Archive thread** from the command palette while the thread is open, or run `bb thread archive <thread-id>`. Archiving also removes the thread's worktree when its environment is managed by bb.
+
+To archive old threads automatically, turn on the **Storage & retention [Experimental]** plugin in **Settings → Installed plugins**, open **Storage & retention** in the sidebar, and set **Archive inactive threads**. Pinned threads are never archived or deleted.
+
+## Measure what is slow
+
+If none of the above helps, record what bb is doing so someone can find the cause:
+
+- **In the desktop app**, open **View → Toggle Developer Tools**, choose the **Performance** tab, and record while you repeat the slow action. Save the profile.
+- **On the server**, if you start bb with `npx bb-app`, add `--perf-diagnostics`, then turn on the experiment with `bb settings experiment performanceDiagnostics true`. bb writes CPU profiles every 30 seconds to `~/.bb/logs/performance/` and keeps them for 12 hours. They contain local paths, so check them before you share them.
+- Note how much memory each process uses in your system's activity monitor, and which ones they are: the bb app, the server, the host daemon, or agent CLIs such as `claude` and `codex`.
+
+## What to send when you ask for help
+
+- Your bb version (`bb --version`), operating system, and the machine's memory.
+- How many threads are open and how many are running, and which agents they use.
+- What is slow, step by step, and how long it takes.
+- The output of `bb plugin list`.
+- The server, host daemon and desktop logs from `~/.bb/logs/` (in the desktop app, **View → Local Logs**) from around when it was slow.
+- A performance profile from Developer Tools or `~/.bb/logs/performance/`, if you recorded one.

@@ -1,0 +1,108 @@
+---
+title: A skill is missing from the / menu
+description: A skill you added doesn't show when you type / in the composer. bb lists skills from the folders each agent reads on the thread's machine, plus bb's own skill folders, and skips skills in the wrong place or shape.
+type: troubleshooting
+sources:
+  - packages/skill-index/src/index.ts
+  - apps/host-daemon/src/command-discovery.ts
+  - apps/server/src/services/skills/injected-skills.ts
+  - apps/server/src/services/threads/provider-command-typeahead.ts
+  - plugins/composer/src/mentions/**
+  - plugins/provider-claude-code/src/native-roots.ts
+  - plugins/provider-codex/src/native-roots.ts
+  - plugins/provider-pi/src/native-roots.ts
+  - plugins/provider-acp/src/known-agents.ts
+since: 0.48.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+"Why don't my skills show up when I type /?" The / menu lists the skills that the agent picked for the thread reads, from its own folders on the thread's machine, plus bb's own skills, which every agent gets. A skill is missing when it's in a folder that agent doesn't read, or when bb skips it.
+
+| What you see | Likely cause | Fix |
+| --- | --- | --- |
+| The skill works in one agent but not another | Each agent reads its own folders | Put the skill in a folder that agent reads, or in `~/.bb/skills` for every agent |
+| A skill in `~/.agents/skills` is missing for Claude Code | Claude Code doesn't read `~/.agents/skills` | Use `~/.claude/skills` or `~/.bb/skills` |
+| A skill in a nested folder is missing | Most agents only look one folder deep | Move its folder directly under the skills folder |
+| A symlinked skill in your project is missing | The link points outside the project | Keep the target inside the repository, or put the skill in a user folder |
+| Project skills are missing, user skills show | The project has no checkout on the selected machine | Pick a machine that has the project, or add the project there |
+| A skill in `~/.bb/skills` is missing | Its `name` or `description` is invalid, or another skill has the same name | Fix the front-matter |
+| The menu shows the folder name, not the skill's `name` | bb names agent skills after their folder | Rename the folder |
+| Typing `/` does nothing | Nothing matches what you typed, or `/` isn't at the start of a word | Type `/` at the start of the message or after a space |
+| "Failed to load commands" | bb couldn't ask the machine for its skills | See [Failed to load commands](#failed-to-load-commands) |
+| The skill is in the menu, but the agent doesn't use it | The running agent started before you added it | Stop the thread's agent, then send again |
+
+## Where bb looks for skills
+
+A skill is a folder with a `SKILL.md` file in it. bb reads these folders, where `~` is the home folder on the thread's machine and project folders are inside the project's checkout:
+
+| Agent | Your skills | Project skills |
+| --- | --- | --- |
+| Every agent | `~/.bb/skills` | `.bb/skills` |
+| Claude Code | `~/.claude/skills`, and skills from Claude Code plugins you turned on | `.claude/skills`, and commands in `.claude/commands` |
+| Codex | `~/.codex/skills`, `~/.agents/skills` | `.codex/skills`, `.agents/skills` |
+| Pi | `~/.pi/agent/skills`, `~/.agents/skills`, and the `skills` paths in Pi's settings | `.pi/skills`, `.agents/skills` |
+| Cursor | `~/.cursor/skills`, `~/.agents/skills`, `~/.claude/skills`, `~/.codex/skills` | The same folders in the project |
+| opencode | `~/.claude/skills`, `~/.agents/skills`, `~/.config/opencode/skills` | `.opencode/skills`, `.claude/skills`, `.agents/skills` |
+
+Notes:
+
+- `~/.bb/skills` is read on the machine that runs the bb server, and works with every agent on every machine.
+- In a project, bb also reads `.claude/skills` and `.agents/skills` in parent folders, up to the folder that holds `.git`.
+- If you set `CLAUDE_CONFIG_DIR`, `CODEX_HOME` or `PI_CODING_AGENT_DIR` for that agent, bb reads the skills folder inside it too.
+
+**Skills** in bb's sidebar lists the skills bb found, under **My skills**. Run `bb skill list` to list them from the CLI.
+
+## The skill is in the wrong shape
+
+bb finds a skill only when:
+
+- **`SKILL.md` is one folder down.** The file must be `<skills folder>/<skill name>/SKILL.md`, named exactly `SKILL.md`. Pi and Cursor also look in nested folders; Claude Code, Codex and opencode don't.
+- **Links stay inside the project.** bb follows symlinks, but in a project folder it skips a link whose target is outside the repository. Links in your home folders can point anywhere. Claude Code also reports the skills it loads itself, so it may still list such a link.
+- **The folder name is the name you want.** The / menu names an agent's skill after its folder, not the `name` in its front-matter.
+
+Skills in `~/.bb/skills` and `.bb/skills` have stricter rules, because bb copies them to every agent:
+
+- `name` uses lowercase letters, numbers and single hyphens, and matches the folder name.
+- `description` isn't empty and is at most 1024 characters.
+- Only `SKILL.md` may be a symlink. Any other link inside the skill folder makes bb skip the skill.
+- A project skill replaces a skill with the same name in `~/.bb/skills`. Two skills with the same name at the same level are both skipped.
+
+```markdown title="~/.bb/skills/release-notes/SKILL.md"
+---
+name: release-notes
+description: Write release notes from the merged pull requests since the last tag.
+---
+```
+
+bb writes the reason it skipped a skill in the server log, as "Skipping invalid injected skill" or "Skipping colliding injected skill".
+
+## Project skills don't show
+
+Project skills come from the project's checkout on the machine selected for the thread. If the project has no checkout on that machine, bb can't read its folders and the menu shows only your own skills. Pick a machine that has the project in the composer.
+
+To see exactly what the menu gets for a project and agent, run:
+
+```bash
+bb project commands <project-id> --provider claude-code
+```
+
+Use `--machine <machine>` to ask a specific machine.
+
+## Failed to load commands
+
+The / menu shows "Failed to load commands" when bb couldn't get the list of skills and commands, for example because the thread's machine isn't connected. Check the machine in **Settings → Machines**, then type `/` again. bb asks again each time you open the menu.
+
+## The agent doesn't use the skill
+
+The menu is read fresh each time you open it, but a running agent loads skills when it starts. A skill you add while a thread's agent is running may reach the agent only when it starts again. Stop the agent with `bb thread stop <thread-id>`, then send your next message; the thread keeps its history.
+
+Codex also has to list the skill itself. If Codex doesn't know a skill, or it's turned off in Codex, bb sends your text as you typed it. Type `$` instead of `/` to get a menu of skills only.
+
+## What to send when you ask for help
+
+- Your bb version (`bb --version`), the agent, and the machine's operating system.
+- The full path of the skill's `SKILL.md` on the thread's machine, and whether any part of it is a symlink (`ls -la` of the folder).
+- The first lines of `SKILL.md`, with its front-matter.
+- The output of `bb skill list --json` and `bb project commands <project-id> --provider <provider-id> --json`.
+- The server log from `~/.bb/logs/` around the time you opened the menu (in the desktop app, **View → Local Logs**).

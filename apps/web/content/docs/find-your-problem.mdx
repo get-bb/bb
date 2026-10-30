@@ -1,0 +1,63 @@
+---
+title: Find your problem
+description: Look up the message or symptom you see in bb and go straight to the page and section that fixes it.
+type: troubleshooting
+sources:
+  - apps/web/content/docs/**
+since: 0.48.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+Find the message you see, or the closest description of what's wrong, and follow the link. Messages are quoted as bb shows them; "Claude Code" stands for whichever agent you use.
+
+## Messages
+
+| Message | Where you see it | Go to |
+| --- | --- | --- |
+| "Claude Code not installed" | Banner above the composer | [Claude Code not installed](/docs/an-agent-wont-sign-in-or-cant-be-found#claude-code-not-installed) |
+| "Claude Code update required" | Banner above the composer | [Claude Code update required](/docs/an-agent-wont-sign-in-or-cant-be-found#claude-code-update-required) |
+| "bb could not find the Claude Code CLI on this machine" | A thread's error | [bb could not find the Claude Code CLI](/docs/an-agent-wont-sign-in-or-cant-be-found#bb-could-not-find-the-claude-code-cli-on-this-machine) |
+| "Not signed in" | Model picker, under "Could not load models" | [Not signed in](/docs/an-agent-wont-sign-in-or-cant-be-found#not-signed-in) |
+| "Your Claude session expired. Run `claude`, then reload." | **Provider usage** | [Your session expired](/docs/an-agent-wont-sign-in-or-cant-be-found#your-claude-session-expired-run-claude-then-reload) |
+| "Could not load models for Claude Code." | Model picker | [Could not load models](/docs/a-model-is-missing-from-the-model-picker#could-not-load-models-for-claude-code) |
+| "No models available" | Model picker | [No models available](/docs/a-model-is-missing-from-the-model-picker#no-models-available) |
+| "Failed to load commands" | The / menu | [Failed to load commands](/docs/a-skill-is-missing-from-the-menu#failed-to-load-commands) |
+| "Showing the first 500 changed files. Additional changes are omitted." | A thread's **Diff** tab | [Showing the first 500 changed files](/docs/bb-is-slow-or-uses-a-lot-of-memory#showing-the-first-500-changed-files) |
+| "inotify watch limit reached; see fs.inotify.max_user_watches" | bb's logs on Linux | [inotify watch limit reached](/docs/bb-is-slow-or-uses-a-lot-of-memory#inotify-watch-limit-reached) |
+| "Your bb is offline" or "This machine is offline" | Your getbb.app address | [Your bb is offline](/docs/bb-connect-drops-or-wont-connect#your-bb-is-offline) |
+| "bb connect hit a temporary problem" | Your getbb.app address | [bb connect hit a temporary problem](/docs/bb-connect-drops-or-wont-connect#bb-connect-hit-a-temporary-problem) |
+| **Reconnecting…** | **Settings → bb connect** | [Reconnecting](/docs/bb-connect-drops-or-wont-connect#reconnecting) |
+| "The bb account plugin is off." | **Settings → bb connect** | [The bb account plugin is off](/docs/bb-connect-drops-or-wont-connect#the-bb-account-plugin-is-off-turn-it-on-under-plugins-then-try-again) |
+| "That code is invalid or has expired." | Pairing with a code | [That code is invalid or has expired](/docs/bb-connect-drops-or-wont-connect#that-code-is-invalid-or-has-expired) |
+| "Device limit reached" | The phone app | [Device limit reached](/docs/bb-connect-drops-or-wont-connect#device-limit-reached) |
+| "Could not sign in" or "Cannot reach this server" | The phone app | [Could not sign in](/docs/bb-connect-drops-or-wont-connect#could-not-sign-in) |
+
+## Symptoms
+
+| What's wrong | Go to |
+| --- | --- |
+| bb is slow, laggy, or uses a lot of memory | [bb is slow or uses a lot of memory](/docs/bb-is-slow-or-uses-a-lot-of-memory) |
+| Memory keeps growing as you open threads | [Idle agents use memory](/docs/bb-is-slow-or-uses-a-lot-of-memory#idle-agents-use-memory) |
+| bb got slow after installing a plugin | [A plugin slows bb down](/docs/bb-is-slow-or-uses-a-lot-of-memory#a-plugin-slows-bb-down) |
+| An agent works in your terminal but bb says to sign in | [It works in my terminal](/docs/an-agent-wont-sign-in-or-cant-be-found#it-works-in-my-terminal) |
+| An agent is missing from the picker | [The agent is missing from the picker](/docs/an-agent-wont-sign-in-or-cant-be-found#the-agent-is-missing-from-the-picker) |
+| A newly released model isn't in the picker | [A new model is missing](/docs/a-model-is-missing-from-the-model-picker#a-new-model-is-missing) |
+| No 1M-context model, or the context ring shows 200K | [1M context is missing](/docs/a-model-is-missing-from-the-model-picker#1m-context-is-missing) |
+| Reasoning shows only Medium | [Reasoning shows only Medium](/docs/a-model-is-missing-from-the-model-picker#reasoning-shows-only-medium) |
+| A skill doesn't show when you type / | [A skill is missing from the / menu](/docs/a-skill-is-missing-from-the-menu) |
+| A symlinked or nested skill is missing | [The skill is in the wrong shape](/docs/a-skill-is-missing-from-the-menu#the-skill-is-in-the-wrong-shape) |
+| A skill is in the menu but the agent ignores it | [The agent doesn't use the skill](/docs/a-skill-is-missing-from-the-menu#the-agent-doesnt-use-the-skill) |
+| Remote access through getbb.app keeps dropping | [It keeps dropping](/docs/bb-connect-drops-or-wont-connect#it-keeps-dropping) |
+| bb won't install, update or start | The page "bb won't install, update or start" in this section |
+| A plugin won't install, turn on or load | The page "A plugin won't install or load" in this section |
+| A thread, environment or automation is stuck or won't clean up | The page "A thread, environment or automation is stuck" in this section |
+
+## What to send when you ask for help
+
+If nothing here matches, ask on bb's Discord or open an issue on GitHub, and include:
+
+- Your bb version (`bb --version`) and operating system, and how you run bb: the desktop app, `npx bb-app`, or a service.
+- The exact message, copied as text, and where it appeared.
+- What you did just before, step by step.
+- The server and host daemon logs from `~/.bb/logs/` from around that time. In the desktop app, open them with **View → Local Logs**.

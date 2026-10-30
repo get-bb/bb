@@ -1,0 +1,105 @@
+---
+title: bb Connect drops or won't connect
+description: Your bb's getbb.app address shows "Your bb is offline", "bb connect hit a temporary problem", or Settings shows Reconnecting. Find the message below for its cause and fix.
+type: troubleshooting
+sources:
+  - plugins/connect/app.tsx
+  - plugins/connect/src/tunnel.ts
+  - plugins/connect/src/cli.ts
+  - packages/tunnel-client/src/**
+  - apps/connect/src/worker.ts
+  - apps/mobile/src/data/connect/enrollment.ts
+  - apps/mobile/src/lib/shell/shell-state.ts
+since: 0.48.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+"My phone says my bb is offline" or "What does 'temporary problem' mean?" bb Connect gives your bb a private address at getbb.app, reached through a tunnel that your bb server keeps open. When the tunnel drops, bb reconnects on its own. Local access on the machine running bb keeps working the whole time.
+
+| What you see | Likely cause | Fix |
+| --- | --- | --- |
+| "Your bb is offline" at your getbb.app address | The machine running bb is asleep, offline, or bb isn't running | Wake the machine and start bb; keep it awake |
+| "bb connect hit a temporary problem" | A short error in bb Connect's service, not in your bb | Wait; the page retries by itself |
+| "This is …'s bb" with a sign-in button | You're not signed in to getbb.app in this browser, or signed in as another account | Sign in with the account that owns the server |
+| **Reconnecting…** in **Settings → bb connect** | The tunnel dropped and bb is retrying | Read the details under it and find the message below |
+| **Remote access is off** | Remote access was turned off | Click **Turn on**, or run `bb connect on` |
+| "That code is invalid or has expired." | Pairing codes last 10 minutes and work once | Get a new code from the getbb.app dashboard |
+| "Device limit reached" on your phone | The account has as many paired devices as it allows | Revoke a device in the getbb.app dashboard, then pair again |
+| "Could not sign in" on your phone | The phone's pairing was revoked or couldn't be renewed | Pair the phone again with a new code |
+| Remote access drops often, local is fine | The server is too busy to answer the tunnel's heartbeat, or the network is unstable | See [It keeps dropping](#it-keeps-dropping) |
+
+## Your bb is offline
+
+Your getbb.app address shows "Your bb is offline" with "Usually this means the machine is asleep or bb isn't running." For a machine added through bb Connect, it says "This machine is offline".
+
+bb Connect can only reach your bb while the machine is awake, online and running bb. The page tries again every few seconds and opens your bb as soon as the tunnel is back. To fix it:
+
+1. Wake the machine and check that bb is running on it.
+2. On macOS and Windows, turn on the **Keep Awake** plugin, which keeps the machine awake while bb runs. Run `bb keep-awake status` to check it.
+3. If bb is running and the page stays offline, open **Settings → bb connect** on that machine, or run `bb connect status`, and look for the message below.
+
+## bb connect hit a temporary problem
+
+This page comes from bb Connect's own service at getbb.app, when a request failed before it reached your bb. Nothing on your machine caused it. The page tries again in a few seconds. If it keeps appearing for more than a few minutes while `bb connect status` on your machine shows `connected`, ask for help with the details below.
+
+## This is your bb, but it asks you to sign in
+
+The page "This is …'s bb" asks you to "Sign in with the account that owns this server to open it." Only the getbb.app account that owns a bb can open its address. Sign in with that account in this browser. If you're signed in with another account, bb Connect answers "bb connect: not your server".
+
+## Reconnecting…
+
+**Settings → bb connect** shows **Reconnecting…** and "Remote devices can't reach this bb right now. Local access is unaffected." bb retries on its own, waiting a little longer after each failure, up to 30 seconds. The text next to **Reconnecting…** says why the last try failed; open **Show details** if it is cut off:
+
+| Details | Cause | Fix |
+| --- | --- | --- |
+| "this bb isn't signed in to a bb account — sign in to turn remote access back on" | bb account is signed out | Sign in from **Settings → bb connect**, or run `bb account login` |
+| "the gate refused this bb's server credential (HTTP 401)" or "(HTTP 403)" | getbb.app no longer accepts this bb's sign-in | Sign in again with `bb account login` |
+| "another bb connected with this server's identity and took over bb connect" | A second bb, for example a copy of the same data folder on another machine, is using this server's identity | Stop the other bb. This one tries again after 5 minutes |
+| "can't reach getbb.app — handshake timed out", "connection closed", "connection refused" or "host not found" | The network, a firewall or a proxy blocks the connection to getbb.app | Check that the machine can open getbb.app in a browser, and allow WebSocket connections to it |
+| "can't read this bb's server credential" | The bb account plugin didn't answer | Check that **bb account** is on in **Settings → Installed plugins** |
+
+### The bb account plugin is off. Turn it on under Plugins, then try again.
+
+bb Connect signs in through the **bb account** plugin. Turn it on in **Settings → Installed plugins**, or run `bb plugin enable bb-account`, then sign in again.
+
+## That code is invalid or has expired.
+
+Pairing codes from the getbb.app dashboard last 10 minutes, and each one works once. Similar messages are "That code has expired." and "That code was already used." Get a new code from the dashboard and enter it again, or run `bb connect --code <code>`.
+
+## Device limit reached
+
+Your phone shows "Device limit reached" when the account already has as many paired devices as it allows. When you pair from **Settings → Mobile**, it says "Your getbb.app account has reached its machine limit." Revoke a device you no longer use in the getbb.app dashboard, then pair again.
+
+## Could not sign in
+
+Your phone shows "Could not sign in" with "bb connect could not renew this phone's sign-in. Pair again to reconnect." The phone's pairing was revoked or expired. Pair it again with a new code.
+
+If the phone shows "Cannot reach this server", the server is offline or its tunnel is down. Check it as in [Your bb is offline](#your-bb-is-offline).
+
+## It keeps dropping
+
+The tunnel sends a heartbeat every 20 seconds and reconnects when it gets no answer for 60 seconds. Remote access can drop when:
+
+- **The machine sleeps** or changes networks. Keep it awake with the **Keep Awake** plugin and a wired or stable connection.
+- **The bb server is overloaded**, for example while many agents run at once on a small machine. See [bb is slow or uses a lot of memory](/docs/bb-is-slow-or-uses-a-lot-of-memory).
+- **A proxy or firewall closes long-lived connections.** Allow WebSocket traffic to getbb.app.
+
+Requests that were in flight when the tunnel dropped fail and need a retry; reloading the page is enough.
+
+If bb Connect isn't reliable on your network, you can reach bb another way. On a private network you control, Tailscale works without bb Connect:
+
+```bash
+tailscale serve --bg --https=443 http://127.0.0.1:38886
+npx bb-app config set BB_APP_URL https://<machine>.<tailnet>.ts.net
+```
+
+Then open the HTTPS address. Your Tailscale access rules decide who can reach bb, so don't expose it with Funnel or to the public internet.
+
+## What to send when you ask for help
+
+- Your bb version (`bb --version`) and the operating system of the machine running bb.
+- The output of `bb connect status --json` and `bb account status`.
+- The exact message, where you saw it (the getbb.app page, Settings, the phone app), and roughly when.
+- The bb connect log, from `bb plugin logs connect -n 200`. It shows each connection attempt and why it closed.
+- Whether local access worked at the same time, and whether the machine was asleep or changing networks.
