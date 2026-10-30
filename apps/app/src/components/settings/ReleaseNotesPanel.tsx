@@ -8,6 +8,7 @@ import {
   CHANGELOG_ENTRIES,
   changelogEntriesQueryOptions,
   RELEASE_META,
+  releaseMetaQueryOptions,
   type ChangelogBlock,
 } from "./changelog-preview";
 import { findReleaseEntry } from "./release-notes-model";
@@ -91,7 +92,12 @@ export function ReleaseNotesPanel({ id, version }: ReleaseNotesPanelProps) {
     changelogQuery.data,
     CHANGELOG_ENTRIES,
   );
-  const releaseMeta = RELEASE_META[version];
+  const notesVersion = entry?.version ?? version;
+  const bundledMeta = RELEASE_META[notesVersion];
+  const metaQuery = useQuery(
+    releaseMetaQueryOptions(bundledMeta === undefined),
+  );
+  const releaseMeta = bundledMeta ?? metaQuery.data?.[notesVersion];
   const scrollRef = useRef<HTMLDivElement>(null);
   const [moreAbove, setMoreAbove] = useState(false);
   const [moreBelow, setMoreBelow] = useState(false);
@@ -114,7 +120,7 @@ export function ReleaseNotesPanel({ id, version }: ReleaseNotesPanelProps) {
     >
       {releaseMeta === undefined ? (
         <h3 className="mb-2 text-xs font-medium text-foreground">
-          What&apos;s new in bb {version}
+          What&apos;s new in bb {notesVersion}
         </h3>
       ) : (
         <div className="mb-2">
@@ -122,12 +128,18 @@ export function ReleaseNotesPanel({ id, version }: ReleaseNotesPanelProps) {
             {releaseMeta.headline}
           </h3>
           <p className="text-2xs">
-            bb {version} · {releaseMeta.date}
+            bb {notesVersion} · {releaseMeta.date}
           </p>
         </div>
       )}
       {entry === null ? (
-        <p>bb {version} has no changelog in the app.</p>
+        <p>
+          {changelogQuery.isPending
+            ? "Loading the changelog…"
+            : changelogQuery.isError
+              ? "Couldn't load the changelog."
+              : `bb ${version} has no changelog in the app.`}
+        </p>
       ) : (
         <div className="relative min-w-0">
           <div
@@ -156,13 +168,13 @@ export function ReleaseNotesPanel({ id, version }: ReleaseNotesPanelProps) {
       )}
       <div className="mt-2 flex justify-end">
         <a
-          href={getReleaseNotesUrl(version)}
+          href={getReleaseNotesUrl(notesVersion)}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex w-fit cursor-pointer items-center gap-1 rounded-sm text-xs text-foreground underline decoration-border underline-offset-4 hover:decoration-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
           onClick={(event) => {
             event.preventDefault();
-            openReleaseNotesOnWeb(version);
+            openReleaseNotesOnWeb(version, notesVersion);
           }}
         >
           Full changelog

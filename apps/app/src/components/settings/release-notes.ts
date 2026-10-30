@@ -23,7 +23,10 @@ export function recordReleaseNotesOpened(
   });
 }
 
-export function openReleaseNotesOnWeb(version: string): void {
-  openUrlInExternalBrowser(getReleaseNotesUrl(version));
+export function openReleaseNotesOnWeb(
+  version: string,
+  notesVersion: string,
+): void {
+  openUrlInExternalBrowser(getReleaseNotesUrl(notesVersion));
   recordReleaseNotesOpened(version, "web");
 }

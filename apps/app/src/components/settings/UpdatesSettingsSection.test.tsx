@@ -644,21 +644,83 @@ The published lede.
       ).not.toBeNull();
     });
 
-    it("says so when the changelog has no entry for the release", () => {
+    function stubPublishedSources(changelog: string, metadata: string): void {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((url: string) =>
+          Promise.resolve(
+            new Response(
+              url.endsWith("changelog-metadata.ts") ? metadata : changelog,
+            ),
+          ),
+        ),
+      );
+    }
+
+    it("says so when the changelog has no entry for the release", async () => {
+      stubPublishedSources("## 0.47.0\n\nAnother release.\n", "");
       useUpdateInventoryMock.mockReturnValue(makeInventory({}));
       renderSection();
       fireEvent.click(releaseNotesButton("0.0.5"));
 
+      const panel = releaseNotesPanel("0.0.5")!;
       expect(
-        within(releaseNotesPanel("0.0.5")!).getByRole("heading", {
-          name: "What's new in bb 0.0.5",
-        }),
+        await within(panel).findByText("bb 0.0.5 has no changelog in the app."),
       ).toBeDefined();
       expect(
-        within(releaseNotesPanel("0.0.5")!).getByText(
-          "bb 0.0.5 has no changelog in the app.",
-        ),
+        within(panel).getByRole("heading", { name: "What's new in bb 0.0.5" }),
       ).toBeDefined();
+    });
+
+    it("shows loading, not a missing changelog, while the notes load", () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(() => new Promise<Response>(() => {})),
+      );
+      useUpdateInventoryMock.mockReturnValue(makeInventory({}));
+      renderSection();
+      fireEvent.click(releaseNotesButton("0.0.5"));
+
+      const panel = releaseNotesPanel("0.0.5")!;
+      expect(within(panel).getByText("Loading the changelog…")).toBeDefined();
+      expect(within(panel).queryByText(/has no changelog/)).toBeNull();
+    });
+
+    it("says the changelog couldn't load when the fetch fails", async () => {
+      useUpdateInventoryMock.mockReturnValue(makeInventory({}));
+      renderSection();
+      fireEvent.click(releaseNotesButton("0.0.5"));
+
+      const panel = releaseNotesPanel("0.0.5")!;
+      expect(
+        await within(panel).findByText("Couldn't load the changelog."),
+      ).toBeDefined();
+      expect(within(panel).queryByText(/has no changelog/)).toBeNull();
+    });
+
+    it("takes a newer release's headline from the published metadata", async () => {
+      stubPublishedSources(
+        "## 0.0.5\n\nA tiny lede.\n",
+        `export const RELEASE_META = {
+  "0.0.5": {
+    date: "January 2, 2026",
+    headline: "A tiny release",
+  },
+};
+`,
+      );
+      useUpdateInventoryMock.mockReturnValue(makeInventory({}));
+      renderSection();
+      fireEvent.click(releaseNotesButton("0.0.5"));
+
+      const panel = releaseNotesPanel("0.0.5")!;
+      expect(
+        await within(panel).findByRole("heading", { name: "A tiny release" }),
+      ).toBeDefined();
+      expect(
+        within(panel).getByText("bb 0.0.5 · January 2, 2026"),
+      ).toBeDefined();
+      expect(within(panel).getByText("A tiny lede.")).toBeDefined();
     });
   });
 

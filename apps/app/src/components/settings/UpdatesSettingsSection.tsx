@@ -216,7 +216,7 @@ function RowVersions({
   return (
     <span
       data-version-metadata
-      className="min-w-0 shrink text-2xs text-muted-foreground"
+      className="min-w-0 shrink text-2xs break-words text-muted-foreground"
     >
       {current}
       {latest !== null && latest !== current ? (
@@ -248,7 +248,7 @@ function RowName({
         {name}
       </span>
       {current === null && trailing === null ? null : (
-        <span className="inline-flex shrink-0 items-baseline gap-x-2 whitespace-nowrap">
+        <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-2">
           <RowVersions current={current} latest={latest} />
           {trailing}
         </span>

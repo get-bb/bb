@@ -75,14 +75,44 @@ export function resolveReleaseUpdateVersion({
   return candidate;
 }
 
+function isSameMinorRelease(left: string, right: string): boolean {
+  const [leftMajor, leftMinor] = left.split(".");
+  const [rightMajor, rightMinor] = right.split(".");
+  return leftMajor === rightMajor && leftMinor === rightMinor;
+}
+
+function findEntryCoveringRelease(
+  version: string,
+  entries: readonly ChangelogEntry[],
+): ChangelogEntry | null {
+  const exact = entries.find((candidate) => candidate.version === version);
+  if (exact !== undefined) {
+    return exact;
+  }
+  let covering: ChangelogEntry | null = null;
+  for (const candidate of entries) {
+    if (
+      isReleaseVersion(candidate.version) &&
+      isSameMinorRelease(candidate.version, version) &&
+      compareReleaseVersions(candidate.version, version) < 0 &&
+      (covering === null ||
+        compareReleaseVersions(candidate.version, covering.version) > 0)
+    ) {
+      covering = candidate;
+    }
+  }
+  return covering;
+}
+
 export function findReleaseEntry(
   version: string,
   fetchedEntries: readonly ChangelogEntry[] | undefined,
   bundledEntries: readonly ChangelogEntry[],
 ): ChangelogEntry | null {
   return (
-    fetchedEntries?.find((candidate) => candidate.version === version) ??
-    bundledEntries.find((candidate) => candidate.version === version) ??
-    null
+    (fetchedEntries === undefined
+      ? null
+      : findEntryCoveringRelease(version, fetchedEntries)) ??
+    findEntryCoveringRelease(version, bundledEntries)
   );
 }

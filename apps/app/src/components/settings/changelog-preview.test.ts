@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
+import metadataSource from "../../../../../changelog-metadata.ts?raw";
 import { parseChangelog } from "../../../../../changelog-parser";
 import {
   CHANGELOG_ENTRIES,
   LATEST_CHANGELOG_ENTRY,
+  parseReleaseMeta,
   RELEASE_META,
 } from "./changelog-preview";
 
@@ -124,5 +126,11 @@ describe("LATEST_CHANGELOG_ENTRY", () => {
         ? undefined
         : RELEASE_META[LATEST_CHANGELOG_ENTRY.version],
     ).toBeDefined();
+  });
+});
+
+describe("parseReleaseMeta", () => {
+  it("reads every release from the repo's metadata source", () => {
+    expect(parseReleaseMeta(metadataSource)).toEqual(RELEASE_META);
   });
 });

@@ -213,4 +213,32 @@ Older lede.
   it("is null when neither changelog has the release", () => {
     expect(findReleaseEntry("0.49.0", FETCHED, CHANGELOG_ENTRIES)).toBeNull();
   });
+
+  it("covers a patch release with the newest earlier entry in its minor line", () => {
+    const entries = parseChangelog(`## 0.48.0
+
+Minor lede.
+
+## 0.43.3
+
+Patch lede.
+
+## 0.43.0
+
+Older minor lede.
+`);
+    expect(findReleaseEntry("0.48.1", undefined, entries)?.version).toBe(
+      "0.48.0",
+    );
+    expect(findReleaseEntry("0.43.4", undefined, entries)?.version).toBe(
+      "0.43.3",
+    );
+    expect(findReleaseEntry("0.43.3", undefined, entries)?.version).toBe(
+      "0.43.3",
+    );
+    expect(findReleaseEntry("0.43.2", undefined, entries)?.version).toBe(
+      "0.43.0",
+    );
+    expect(findReleaseEntry("0.49.1", undefined, entries)).toBeNull();
+  });
 });
