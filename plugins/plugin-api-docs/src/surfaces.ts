@@ -1591,10 +1591,9 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Use a private JSON record on each thread. With this, a plugin can:",
         bullets: [
           "Keep plugin data with the thread it belongs to, hidden from the model",
-          "Seed it when spawning or forking a thread",
+          "Seed it when spawning or forking, such as a key that orders a sidebar section",
           "Read it when configuring that thread's agent",
           "Read it for many threads at once, along with each thread's ancestors",
-          "Order the threads it spawned soonest first in a custom sidebar section with a numeric sidebarSortKey",
         ],
         apiSymbols: [
           "PluginBbSdk",
