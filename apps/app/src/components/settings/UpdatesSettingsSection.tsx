@@ -470,10 +470,15 @@ function ReleaseNotesToggleButton({
       aria-expanded={expanded}
       aria-controls={expanded ? panelId : undefined}
       aria-label={`Changelog for bb ${version}`}
-      className="w-fit shrink-0 cursor-pointer rounded-sm text-2xs text-muted-foreground underline decoration-border underline-offset-4 hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none aria-expanded:text-foreground"
+      className="inline-flex w-fit shrink-0 cursor-pointer items-center gap-0.5 rounded-sm text-2xs text-muted-foreground underline decoration-border underline-offset-4 hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none aria-expanded:text-foreground"
       onClick={onToggle}
     >
       Changelog
+      <Icon
+        aria-hidden
+        name="ChevronDown"
+        className={cn("size-3 transition-transform", expanded && "rotate-180")}
+      />
     </button>
   );
 }
