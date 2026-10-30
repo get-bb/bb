@@ -1022,7 +1022,11 @@ returns `{ threads: { threadId, metadata }[] }` for each thread holding that
 plugin's namespace, archived and deleted threads included, in one indexed
 query; threads without a namespace and corrupt namespaces are omitted. The
 plugin-bound SDKs default `pluginId` to the caller. First caller:
-push-notifications' Notifications thread action.
+push-notifications' Notifications thread action. The thread list also reads
+other plugins' namespaces with an explicit `pluginId`: it fetches
+`sidebarSortKey` from each sectioned thread's origin plugin to order custom
+sections soonest first, refetching when those threads change and once a
+minute.
 
 Docs: `backend-sdk.md`.
 
@@ -1030,7 +1034,8 @@ Docs: `backend-sdk.md`.
 
 1. **Route binding.** Any caller can read any plugin's namespace, as with
    the single-thread metadata routes. Decide whether plugin requests should
-   carry an identity the routes can enforce.
+   carry an identity the routes can enforce; the thread list's cross-plugin
+   `sidebarSortKey` read must keep working.
 2. **Batch size.** 200 ids per request; callers chunk. Revisit if the
    attributes layer replaces per-registration reads.
 

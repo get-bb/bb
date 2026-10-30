@@ -1595,6 +1595,9 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Read it when configuring that thread's agent",
           "Read it for many threads at once, along with each thread's ancestors",
         ],
+        reference: [
+          "sidebarSortKey: a finite number (epoch ms) in a thread's metadata under the plugin that spawned it. In a custom sidebar section where every top-level thread has one, bb's thread list orders that section by it, smallest first, instead of the user's sort, read-status grouping and running-first. One top-level thread without a key returns the section to the user's sort. The list rereads keys when the section's threads change and once a minute",
+        ],
         apiSymbols: [
           "PluginBbSdk",
           "PluginAgentConfigurationContext",
