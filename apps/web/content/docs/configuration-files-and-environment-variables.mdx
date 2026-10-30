@@ -1,0 +1,182 @@
+---
+title: Configuration files and environment variables
+description: The files bb reads from its data directory and from your repositories, the environment variables you can set, and the ones bb sets for agents in a thread.
+type: reference
+sources:
+  - packages/config/src/env-vars.ts
+  - packages/config/src/bb-app-managed-config.ts
+  - packages/config/src/runtime.ts
+  - packages/bb-app/src/launcher.ts
+  - packages/agent-runtime/src/thread-shell-environment.ts
+  - apps/host-daemon/src/runtime-shell-env.ts
+  - docs/configuration.md
+since: 0.0.29
+owner: brsbl
+verified: 2026-10-30
+---
+
+Most settings live in the app instead: see [Settings](/docs/settings).
+
+## The data directory
+
+| Question | Answer |
+| --- | --- |
+| Where is it? | `~/.bb`, in your home folder on macOS, Linux and Windows |
+| How do I use another folder? | Start bb with `--data-dir <path>` or `BB_DATA_DIR=<path>`, for example to run a second, separate bb |
+| Which one is in use? | `bb status` shows the data directory of the bb you're talking to |
+| What about an added machine? | A computer you add as a machine to another server keeps its state in `~/.bb-machines/<server-host>` |
+
+| Path in the data directory | What it holds | How to change it |
+| --- | --- | --- |
+| `bb.db` | The database: threads, projects, settings | Through the app, `bb` and the SDK. Don't open it while bb runs |
+| `config.json` | Launcher settings, extra models and shared skill folders (see below) | `npx bb-app config`, or edit and run `npx bb-app config refresh` |
+| `env.json` | Environment variables for bb and your agents, such as API keys | `npx bb-app env` |
+| `client.json` | SSH names for opening another computer's files in your local editor | `npx bb-app client ssh-target` |
+| `AGENTS.md` | Instructions added to every thread in every project | Edit the file. Applies when a thread's agent session starts |
+| `skills/<name>/SKILL.md` | Your own skills, available in every project | The Skills page, `bb skill`, or edit the files |
+| `theme/<name>/theme.css` | Custom color themes | `bb theme`; `bb theme dir` prints the folder |
+| `plugins/<plugin-id>/` | Each plugin's data, secret settings and logs | `bb plugin logs <plugin-id>` reads the logs |
+| `thread-storage/<thread-id>/` | Files a thread keeps outside its project | Removed when you delete the thread |
+| `logs/` | Server and CLI logs | Attach them when you report a problem |
+| `machine-environment-key` | The key that encrypts **Settings → Environment variables** | Back it up with `bb.db` |
+| `bin/bb` | The `bb` command that **Settings → General → Command line** puts on your PATH | Rewritten each time an installed bb starts |
+
+## config.json
+
+```bash
+npx bb-app config set BB_APP_URL https://bb.example.com
+npx bb-app config list
+npx bb-app config unset BB_APP_URL
+npx bb-app config refresh
+```
+
+| Key | What it does | Default |
+| --- | --- | --- |
+| `BB_APP_URL` | The address you open bb at, if not `localhost` or an IP address: a custom domain or reverse proxy. bb accepts requests for this hostname and uses it in links. Applies right away | Empty (local use) |
+| `BB_LOG_LEVEL` | `trace`, `debug`, `info`, `warn`, `error` or `fatal`. Needs a restart | `info` |
+| `BB_SERVER_URL` | The server the `bb` command and machine daemon on this computer talk to. It doesn't change where bb itself listens | `http://127.0.0.1:38886` |
+| `customModels` | Extra models for the model picker, for a model an agent accepts but doesn't list. Only makes the model selectable: the agent can still reject it. Edit the file, then run `npx bb-app config refresh`. **Streamer mode** in **Settings → General** hides these | None |
+| `customModels[].providerId` | `claude-code`, `codex`, `pi`, `acp-cursor` or another `acp-…` agent | |
+| `customModels[].model` | The model to add | |
+| `customModels[].displayName` | The name in the model picker | Optional |
+| `sharedSkillRoots` | Extra skill folders for every agent, as `{"user": [...], "project": [...]}` paths relative to your home folder and to the project | None |
+| `serverUrl`, `serverHeaders`, `machineCredential`, `connectMachineId` | Written to an added machine's `config.json` by bb. Don't copy or edit them; add the machine again instead | Managed by bb |
+
+```json title="~/.bb/config.json"
+{
+  "config": { "BB_APP_URL": "https://bb.example.com" },
+  "customModels": [
+    { "providerId": "claude-code", "model": "claude-example-preview" },
+    { "providerId": "acp-my-agent", "model": "my-proxy/my-model", "displayName": "My Proxy Model" }
+  ],
+  "sharedSkillRoots": { "user": [".agents/skills"], "project": [".agents/skills"] }
+}
+```
+
+## env.json
+
+```bash
+npx bb-app env set OPENAI_API_KEY <key>
+npx bb-app env list
+npx bb-app env unset OPENAI_API_KEY
+```
+
+| Fact | Detail |
+| --- | --- |
+| What it's for | Environment variables for bb's own processes and your agents: agent API keys, and network settings such as `HTTPS_PROXY` |
+| Secrets | Always go here: `npx bb-app config` refuses names that end in `API_KEY`, `TOKEN`, `SECRET` or `PASSWORD` |
+| `npx bb-app env list` | Shows only which names are set, never the values |
+| Every machine or one project | Use [Settings → Environment variables](/docs/settings#environment-variables) instead. Those values are encrypted and sync to every machine |
+
+## When changes apply
+
+| Order | bb reads | The first one that sets a value wins |
+| --- | --- | --- |
+| 1 | Launcher flags | Such as `--data-dir`, `--server-port` or `--server-bind-host` |
+| 2 | Files | `config.json`, `env.json` and `client.json` |
+| 3 | Your shell's environment | |
+| 4 | bb's defaults | |
+
+| Applies | Settings |
+| --- | --- |
+| Right away | `BB_APP_URL` set with `config`, `customModels`, `sharedSkillRoots` and agent variables. `npx bb-app config` and `npx bb-app env` reload a running bb; after editing a file by hand, run `npx bb-app config refresh` |
+| After a restart (`npx bb-app stop`, then `npx bb-app start`, or quit and reopen the desktop app) | `BB_DATA_DIR`, `BB_SERVER_PORT`, `BB_SERVER_BIND_HOST`, `BB_HOST_DAEMON_PORT`, `BB_EXTERNAL_URL`, `BB_LOG_LEVEL`, `BB_TELEMETRY`, `BB_PERF_DIAGNOSTICS`, `BB_APP_URL` when set with `env`, every `BB_FF_…` variable, and the proxy and certificate variables. `npx bb-app config refresh` names any of these it finds in your files |
+
+## Files in your repository
+
+Commit these to a project's repository so every worktree and every agent gets them.
+
+| File | What it does |
+| --- | --- |
+| `.bb/AGENTS.md` | Instructions added to every thread that runs in this repository, after `~/.bb/AGENTS.md`. Works for every agent. A repo-root `AGENTS.md` or `CLAUDE.md` is read by the agent itself, separately |
+| `.bb/skills/<name>/SKILL.md` | Skills for this project. A project skill replaces a user or plugin skill with the same name |
+| `.bb-env-setup.sh` | Runs in each new worktree bb creates, for setup such as installing dependencies. Must be committed; times out after 15 minutes |
+| `.bb-env-teardown.sh` | Runs before bb removes a worktree, to clean up what setup created outside it |
+| `.worktreeinclude` | Untracked files to copy from the project into each new worktree, such as `.env`, one pattern per line in `.gitignore` syntax |
+| `.bb/plugins.json` | Lists the plugins in a repository that holds several, so `bb plugin install … --plugin <name>` can pick one |
+
+## Environment variables you can set
+
+Set these in the environment you start bb from, or with `npx bb-app env set`.
+
+| Variable | What it does | Default |
+| --- | --- | --- |
+| `BB_DATA_DIR` | The data directory. Same as `--data-dir` | `~/.bb` |
+| `BB_SERVER_PORT` | The port bb listens on. Same as `--server-port` | `38886` |
+| `BB_SERVER_BIND_HOST` | `127.0.0.1` or `0.0.0.0`. Same as `--server-bind-host` | `127.0.0.1` |
+| `BB_HOST_DAEMON_PORT` | The local port of this computer's host daemon. Same as `--host-daemon-port` | `38887` |
+| `BB_SERVER_URL` | The server the `bb` command talks to, for example to point the CLI at another bb | `http://127.0.0.1:38886` |
+| `BB_APP_URL` | See [config.json](#configjson) | Empty |
+| `BB_EXTERNAL_URL` | A public HTTPS address used in links bb generates, and the address other machines use when **Settings → Machines** has none | Empty |
+| `BB_LOG_LEVEL` | Log detail: `trace`, `debug`, `info`, `warn`, `error` or `fatal` | `info` |
+| `BB_TELEMETRY` | `false` turns off anonymous usage data, whatever **Share anonymous usage data** says | `true` |
+| `BB_SKIP_ONBOARDING` | `1` skips the first-run setup guide. **Settings → General → Setup guide** can still replay it | Off |
+| `BB_PERF_DIAGNOSTICS` | `1` allows the Server performance diagnostics experiment. Same as `--perf-diagnostics` | Off |
+| `BB_CLI_ERROR_LOG` | `0` stops the `bb` command from recording failed commands (without their arguments) to `logs/cli-errors.jsonl` | On |
+| `BB_CLAUDE_CODE_EXECUTABLE` | Path of the `claude` program to use instead of the one on your PATH | Found on PATH |
+| `CLAUDE_CODE_OAUTH_TOKEN` | Signs Claude Code in on a machine with no interactive login, such as a CI runner. Create it with `claude setup-token` | None |
+| `BB_INSTALL_SKIP_SERVICE` | `1` on the Linux machine installer: run the daemon without a system service. Nothing restarts it after a reboot | Off |
+| `BB_MARKETPLACE_URL` | The address of the BB Community plugin marketplace, for testing a catalog | `https://getbb.app/marketplace/v2/marketplace.json` |
+| `BB_FF_TIMELINE_WINDOW_EVENT_BUDGET` | The most events one page of a thread's timeline spans | `1500` |
+
+:::warning[0.0.0.0 exposes bb to your network]
+bb has no login of its own. Anyone who can reach the port can run commands and read files on your machine. Bind to `0.0.0.0` only behind a network you trust, or use bb Connect or Tailscale.
+:::
+
+### Proxies and certificates
+
+Set these with `npx bb-app env set` so the desktop app gets them too, then restart bb.
+
+| Variable | What it does |
+| --- | --- |
+| `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` (or lowercase) | The proxy for bb's connections. Needs an `http://` or `https://` scheme; without one, bb ignores the proxy and warns `BB_INVALID_PROXY_ENV`. bb adds `localhost` and `127.0.0.1` to `NO_PROXY` so its own connections stay direct. Needs Node.js 22.21+ or 24.5+ |
+| `NODE_EXTRA_CA_CERTS` | A PEM file of extra certificate authorities, such as your company's root certificate |
+| `NODE_USE_SYSTEM_CA=0`, `NODE_USE_ENV_PROXY=0` | Turn off bb's use of system certificates or proxy variables. bb's own processes start with Node.js's `--use-system-ca` and `--use-env-proxy`, so they trust the certificates your operating system trusts and follow your proxy variables. These flags apply only to bb's own processes, not to terminals or agents |
+| Your shell profile | Not read by an app opened from the Dock or a launcher, so variables set only there don't reach the desktop app |
+
+### How bb finds your programs
+
+| Source | What bb takes from it |
+| --- | --- |
+| Your login shell (on Windows, your user and system `PATH`) | `PATH` and network settings, but no other shell variables. Agents, terminals and plugins find the same programs your terminal does, even when you open bb from the Dock or a launcher |
+| bb itself | The Node.js that runs bb, and common user tool folders such as `~/.local/bin` and mise or asdf shims |
+| A command that isn't found | bb checks your shell again in the background, and later launches use the result |
+
+## Variables bb sets in threads
+
+Every agent and terminal in a thread gets these, so scripts and tools can find their thread.
+
+| Variable | Value |
+| --- | --- |
+| `BB_THREAD_ID` | The thread's ID |
+| `BB_PROJECT_ID` | The thread's project, if it has one |
+| `BB_ENVIRONMENT_ID` | The thread's environment |
+| `BB_THREAD_STORAGE` | The thread's own storage folder |
+| `BB_SERVER_URL` | The bb server, so `bb` commands in the thread reach it |
+| `BB_CLI` | The full path of the `bb` command for this machine |
+| Worktree setup and teardown scripts | Get none of these `BB_` variables |
+| **Settings → Environment variables** | Passed as written: bb doesn't expand `~` or `$HOME` in them |
+
+## Where this list comes from
+
+Hand-written and checked against [`env-vars.ts`](https://github.com/get-bb/bb/blob/main/packages/config/src/env-vars.ts), which registers most variables with a description, [`bb-app-managed-config.ts`](https://github.com/get-bb/bb/blob/main/packages/config/src/bb-app-managed-config.ts) for `config.json` and `env.json`, the `bb-app` launcher, and the code that reads each other variable.
