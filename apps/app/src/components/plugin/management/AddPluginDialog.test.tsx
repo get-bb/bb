@@ -323,6 +323,7 @@ describe("AddPluginDialog", () => {
       );
       expect(post).toBeDefined();
       expect(JSON.parse(String(post?.init?.body))).toEqual({
+        measurementSource: "marketplace",
         entryId: "linear",
         marketplace: "bb-official",
       });
@@ -420,6 +421,7 @@ describe("AddPluginDialog", () => {
         (request) => request.url === "/api/v1/plugin-catalog/install",
       );
       expect(JSON.parse(String(post?.init?.body))).toEqual({
+        measurementSource: "marketplace",
         entryId: "notes",
         marketplace: "acme-plugins",
         confirmedSource: {

@@ -160,7 +160,7 @@ describe("bb.agents.registerTool", () => {
             name: "beta_tool",
             description: "Beta",
             parameters: { type: "object" },
-            execute: () => ({ content: [{ type: "text", text: "beta result" }] }),
+            execute: (input: any) => ({ isError: input.fail === true, content: [{ type: "text", text: input.fail ? "beta failure" : "beta result" }] }),
           });
         }
       `,
@@ -193,6 +193,12 @@ describe("bb.agents.registerTool", () => {
     ).resolves.toEqual({
       success: true,
       contentItems: [{ type: "inputText", text: "beta result" }],
+    });
+    await expect(
+      service.invokeAgentTool({ ...beta, input: { fail: true }, ctx }),
+    ).resolves.toEqual({
+      success: false,
+      contentItems: [{ type: "inputText", text: "beta failure" }],
     });
     expect(service.findAgentTool("missing_tool")).toBeUndefined();
   });

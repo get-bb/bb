@@ -313,3 +313,10 @@ function measurementLocation(source: PluginMeasurementSource) {
     ? { surface: "onboarding" as const, entry: source }
     : { surface: source, entry: null };
 }
+
+export function clearPluginRecommendationAttribution(
+  db: MeasurementDeps["db"],
+  pluginId: string,
+): void {
+  deletePluginKvValue(db, pluginId, selectionKey);
+}
