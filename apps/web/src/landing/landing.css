@@ -119,7 +119,7 @@
 html {
   overflow-x: clip;
   /* Reserve the scrollbar gutter on both sides so centered sections (hero,
-     closer) stay centered in the viewport rather than nudged left
+     statement, closer) stay centered in the viewport rather than nudged left
      by the vertical scrollbar's width. */
   scrollbar-gutter: stable both-edges;
 }
@@ -2082,6 +2082,346 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   min-width: 0;
 }
 
+/* ── Band visual: Telegram-style chat with the bb bot ───────────── */
+
+.tg {
+  width: 100%;
+  max-width: 340px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  overflow: hidden;
+  background: var(--bg);
+  box-shadow: 0 18px 50px -26px
+    color-mix(in oklab, var(--shade) 32%, transparent);
+}
+
+/* contact bar */
+.tg-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--surface);
+}
+
+.tg-back {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.tg-contact {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.15;
+}
+
+.tg-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.tg-sub {
+  font-size: 11px;
+  color: var(--subtle);
+}
+
+.tg-av {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-recessed);
+}
+
+.tg-av img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* wallpaper + messages. --tg-card is Telegram's own surface colour, not a bb
+   token: the mock imitates a foreign app, so its values are deliberately
+   literal in both schemes, like the wallpaper and the outgoing green bubble. */
+.tg-feed {
+  --tg-card: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 12px;
+  min-height: 236px;
+  background-color: oklch(0.95 0.025 150);
+  background-image:
+    radial-gradient(
+      color-mix(in oklab, oklch(0.45 0.06 150) 9%, transparent) 1px,
+      transparent 1.5px
+    ),
+    linear-gradient(165deg, oklch(0.96 0.02 155), oklch(0.92 0.035 140));
+  background-size:
+    17px 17px,
+    100% 100%;
+}
+
+/* The messages live in their own layer so they can fade out together at the end
+   of the loop while the wallpaper underneath stays put (no reset flash). */
+.tg-msgs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tg-msgs.leaving {
+  animation: tg-leave 0.6s ease forwards;
+}
+
+@keyframes tg-leave {
+  to {
+    opacity: 0;
+  }
+}
+
+.tg-msg {
+  display: flex;
+  max-width: 86%;
+  animation: tg-in 0.42s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+.tg-out {
+  align-self: flex-end;
+  justify-content: flex-end;
+}
+
+.tg-in {
+  align-self: flex-start;
+}
+
+.tg-bubble {
+  padding: 7px 10px 7px 11px;
+  border-radius: 15px;
+  font-size: 13px;
+  line-height: 1.4;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.05);
+}
+
+.tg-in .tg-bubble {
+  background: var(--tg-card);
+  color: var(--ink-strong);
+  border-bottom-left-radius: 5px;
+}
+
+.tg-out .tg-bubble {
+  background: linear-gradient(180deg, #4ec264, #38ab53);
+  color: #fff;
+  border-bottom-right-radius: 5px;
+}
+
+.tg-time {
+  margin-left: 8px;
+  font-size: 10px;
+  opacity: 0.55;
+  white-space: nowrap;
+}
+
+/* The bb spawn command the bot runs, shown inline in its message. */
+.tg-cmd {
+  display: block;
+  margin-top: 6px;
+  padding: 5px 8px;
+  border-radius: 7px;
+  background: var(--surface-recessed);
+  color: var(--dim);
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* the bb thread card the bot spawns */
+.tg-thread {
+  width: 100%;
+  background: var(--tg-card);
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  border-bottom-left-radius: 5px;
+  padding: 10px 11px;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.05);
+}
+
+.tg-thread-top {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.tg-thread-mark {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.tg-thread-eyebrow {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--subtle);
+}
+
+.tg-stat {
+  position: relative;
+  flex-shrink: 0;
+  width: 76px;
+  height: 18px;
+  margin-left: auto;
+}
+
+.tg-thread-title {
+  margin-top: 7px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.tg-thread-branch {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tg-stat-spawn,
+.tg-stat-run {
+  position: absolute;
+  right: 0;
+  top: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.tg-stat-spawn {
+  color: var(--accent);
+  animation: tg-fade-out 0.35s ease forwards;
+}
+
+.tg-stat-run {
+  opacity: 0;
+  color: var(--ok);
+  animation: tg-fade-in 0.35s ease forwards;
+}
+
+.tg-spin {
+  width: 12px;
+  height: 12px;
+  animation: spin 0.8s linear infinite;
+}
+
+.tg-rdot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+
+/* composer */
+.tg-input {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 11px;
+  border-top: 1px solid var(--border-soft);
+  background: var(--surface);
+}
+
+.tg-attach {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: var(--subtle);
+}
+
+.tg-field {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 12px;
+  border-radius: 99px;
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
+  font-size: 12.5px;
+  color: var(--subtle);
+}
+
+.tg-send {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent);
+}
+
+.tg-send-ic {
+  width: 15px;
+  height: 15px;
+  color: #fff;
+}
+
+@keyframes tg-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes tg-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes tg-fade-in {
+  to {
+    opacity: 1;
+  }
+}
+
+/* Telegram mock, dark: the wallpaper and incoming bubbles follow Telegram's
+   own dark appearance (dark green-tinted wallpaper, graphite bubbles) so the
+   foreign app stays recognizable instead of glaring white on the dark page.
+   The outgoing green bubble is Telegram's in both schemes and stays put. */
+.dark .tg-feed {
+  --tg-card: oklch(0.28 0 0);
+  background-color: oklch(0.24 0.02 150);
+  background-image:
+    radial-gradient(
+      color-mix(in oklab, oklch(0.75 0.06 150) 10%, transparent) 1px,
+      transparent 1.5px
+    ),
+    linear-gradient(165deg, oklch(0.26 0.025 155), oklch(0.2 0.03 140));
+}
+
+/* ── Below-the-fold refresh (homepage-below-fold test arm) ──────── */
+
 .band-link {
   display: inline-block;
   margin-top: 14px;
@@ -2146,9 +2486,78 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   height: 500px;
 }
 
-.bw .side,
 .bw .bar-left {
   width: 236px;
+}
+
+.bw .side {
+  width: 192px;
+}
+
+.bw-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 44px;
+  flex-shrink: 0;
+  padding: 8px 0 10px;
+  background: color-mix(in oklab, var(--ink) 4%, var(--surface));
+}
+
+.bw-rail-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  color: var(--dim);
+}
+
+.bw-rail-btn.is-on {
+  background: color-mix(in oklab, var(--ink) 9%, var(--bg));
+  color: var(--ink);
+}
+
+.bw-rail-ic {
+  width: 16px;
+  height: 16px;
+}
+
+.bw-rail-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border: 1.5px solid color-mix(in oklab, var(--ink) 4%, var(--surface));
+  border-radius: 999px;
+  background: var(--dim);
+  font-size: 9.5px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--bg);
+}
+
+.bw-rail-settings {
+  margin-top: auto;
+}
+
+.bw-side-foot {
+  display: flex;
+  gap: 12px;
+}
+
+.bw-foot-ic {
+  width: 15px;
+  height: 15px;
 }
 
 .bw-plugins .mock-body {
@@ -2209,21 +2618,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .bw-ok {
   margin-left: 4px;
   color: var(--ok);
-}
-
-.bw-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 20px;
-  height: 18px;
-  margin-left: auto;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: color-mix(in oklab, var(--ink) 8%, var(--bg));
-  font-size: 11.5px;
-  font-weight: 500;
-  color: var(--dim);
 }
 
 .bw-placeholder {
@@ -3420,6 +3814,24 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   background: var(--border);
 }
 
+/* ── Statement (Band 4) ─────────────────────────────────────────── */
+
+.statement {
+  border-top: 1px solid var(--border-soft);
+  padding: 84px 0;
+  text-align: center;
+}
+
+.statement .sec-title {
+  margin-bottom: 0;
+}
+
+.statement > p {
+  color: var(--dim);
+  max-width: 560px;
+  margin: 16px auto 0;
+}
+
 /* ── Section titles, closer, footer ─────────────────────────────── */
 
 .sec-title {
@@ -3735,6 +4147,16 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     zoom: var(--mock-scale, 0.62);
   }
 
+  /* Left-align the centered statement on mobile so it reads like the bands
+     above it instead of centered multi-line text on a narrow screen. */
+  .statement {
+    text-align: left;
+  }
+
+  .statement .cta-row {
+    justify-content: flex-start;
+  }
+
   /* The full download CTA is repeated immediately below in the hero. Hide the
      nav copy on mobile so the three utility links retain comfortable spacing. */
   .nav-links .btn {
@@ -3901,6 +4323,13 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     opacity: 1;
   }
 
+  .tg-msg,
+  .tg-stat-spawn,
+  .tg-stat-run,
+  .tg-spin {
+    animation: none;
+  }
+
   .sb-thread,
   .sb-run,
   .sb-done,
@@ -3914,6 +4343,15 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   }
 
   .sb-done {
+    opacity: 1;
+  }
+
+  /* Static spawned thread when motion is reduced. */
+  .tg-stat-spawn {
+    opacity: 0;
+  }
+
+  .tg-stat-run {
     opacity: 1;
   }
 

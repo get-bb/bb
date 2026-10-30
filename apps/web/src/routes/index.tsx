@@ -19,6 +19,7 @@ import MoreHorizontalIcon from "@hugeicons/core-free-icons/MoreHorizontalIcon";
 import PauseIcon from "@hugeicons/core-free-icons/PauseIcon";
 import PlayIcon from "@hugeicons/core-free-icons/PlayIcon";
 import PlusMinusSquare01Icon from "@hugeicons/core-free-icons/PlusMinusSquare01Icon";
+import SentIcon from "@hugeicons/core-free-icons/SentIcon";
 import Settings01Icon from "@hugeicons/core-free-icons/Settings01Icon";
 import SidebarLeftIcon from "@hugeicons/core-free-icons/SidebarLeftIcon";
 import SidebarRightIcon from "@hugeicons/core-free-icons/SidebarRightIcon";
@@ -33,6 +34,7 @@ import { RELEASE_META } from "../../../../changelog-metadata";
 import {
   useExperiment,
   useExperimentBootstrap,
+  useExperimentExposer,
   useExperimentExposure,
 } from "../experiments/use-experiment";
 import { useInitAnalytics } from "../landing/analytics";
@@ -67,6 +69,7 @@ import stitchFixLogo from "../assets/company-logos/stitch-fix.png";
 import tencentLogo from "../assets/company-logos/tencent.png";
 import vercelLogo from "../assets/company-logos/vercel.svg";
 import zooxLogo from "../assets/company-logos/zoox.png";
+import hermesAvatar from "../assets/hermes-avatar.jpg";
 import vscodeIcon from "../assets/vscode.png";
 import { parseChangelog } from "../../../../changelog-parser";
 import {
@@ -82,9 +85,12 @@ import {
   Band,
   InstallOptions,
   ProviderChips,
+  CustomizeBuild,
   DelegationTree,
   PluginMap,
+  SpawnSidebar,
   StartAnywhere,
+  useCycle,
   useScrollReveal,
 } from "../landing/landing-visuals";
 import {
@@ -370,6 +376,9 @@ const CircleCheckIcon = ({ className }: IconProps) => (
 );
 const MessageQuestionGlyph = ({ className }: IconProps) => (
   <HugeiconsIcon icon={MessageQuestionIcon} className={className} />
+);
+const PaperPlane = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={SentIcon} className={className} />
 );
 const Paperclip = ({ className }: IconProps) => (
   <HugeiconsIcon icon={AttachmentIcon} className={className} />
@@ -1132,14 +1141,246 @@ function HeroAppMock() {
   );
 }
 
+function AgentChat() {
+  const { cycle, leaving } = useCycle(6000, 600);
+  return (
+    <div
+      className="tg"
+      aria-label="Texting the Crunch bot, which spawns a bb thread"
+    >
+      <div className="tg-bar">
+        <ChevronLeft className="tg-back" />
+        <span className="tg-contact">
+          <span className="tg-name">Sawyer&rsquo;s Hermes</span>
+          <span className="tg-sub">bot</span>
+        </span>
+        <span className="tg-av" aria-hidden>
+          <img src={hermesAvatar} alt="" />
+        </span>
+      </div>
+      <div className="tg-feed">
+        <div className={leaving ? "tg-msgs leaving" : "tg-msgs"} key={cycle}>
+          <div className="tg-msg tg-out" style={{ animationDelay: "0.3s" }}>
+            <span className="tg-bubble">
+              spawn a thread to fix the failing CI on main
+              <span className="tg-time">9:41</span>
+            </span>
+          </div>
+          <div className="tg-msg tg-in" style={{ animationDelay: "1.4s" }}>
+            <span className="tg-bubble">
+              On it. Spawning a worker thread.
+              <span className="tg-cmd mono">bb spawn "fix CI on main"</span>
+            </span>
+          </div>
+          <div className="tg-msg tg-in" style={{ animationDelay: "2.4s" }}>
+            <div className="tg-thread">
+              <div className="tg-thread-top">
+                <span aria-hidden="true" className="bb-mark tg-thread-mark" />
+                <span className="tg-thread-eyebrow">Worker thread</span>
+                <span className="tg-stat" aria-hidden>
+                  <span
+                    className="tg-stat-spawn"
+                    style={{ animationDelay: "3.5s" }}
+                  >
+                    <Spinner className="tg-spin" />
+                    spawning
+                  </span>
+                  <span
+                    className="tg-stat-run"
+                    style={{ animationDelay: "3.5s" }}
+                  >
+                    <span className="tg-rdot" />
+                    running
+                  </span>
+                </span>
+              </div>
+              <div className="tg-thread-title">Fix CI on main</div>
+              <div className="tg-thread-branch mono">bb/fix-ci-on-main</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="tg-input">
+        <Paperclip className="tg-attach" />
+        <span className="tg-field">Message</span>
+        <span className="tg-send" aria-hidden>
+          <PaperPlane className="tg-send-ic" />
+        </span>
+      </div>
+    </div>
+  );
+}
+
+const BELOW_FOLD_SECTIONS: Record<"control" | "test", readonly string[]> = {
+  control: ["customizable", "kick-off", "gang", "fork-it", "closer"],
+  test: ["make-it-yours", "hand-off", "start-anywhere", "closer"],
+};
+
+function TodayBelowFold() {
+  return (
+    <>
+      <Band
+        title="Fully customizable."
+        flip
+        section="customizable"
+        visual={<CustomizeBuild />}
+      >
+        <p>
+          Almost anything in bb can be changed in a single prompt. Ask for your
+          Linear issues and they appear: a panel in your sidebar, a{" "}
+          <code>bb linear</code> command, and a skill that teaches every agent
+          to use it.
+        </p>
+        <p>
+          Many of bb&rsquo;s own features are built with the same tools you
+          have. The GitHub integration, agent memory, scheduled jobs, and even
+          remote access are all plugins.
+        </p>
+        <p>Nothing is stopping you from building your ideal workbench.</p>
+      </Band>
+
+      <Band
+        title="Anything can kick off work."
+        section="kick-off"
+        visual={<AgentChat />}
+      >
+        <p>
+          The same CLI your agents use is open to any program you write: a shell
+          script, a cron job, or your own Hermes Agent or OpenClaw bot in
+          Telegram, Signal, or Slack. Each can spawn a thread that&rsquo;s
+          waiting in your sidebar when you are.
+        </p>
+        <p>
+          It runs on your machine, and is waiting for you when you&rsquo;re
+          back.
+        </p>
+      </Band>
+
+      <Band
+        title="The gang's all here"
+        flip
+        section="gang"
+        visual={<SpawnSidebar />}
+      >
+        <p>
+          Claude Code, Codex, Cursor, Pi, OpenCode, Grok, omp, and Hermes all
+          live in bb. Give a task to whichever fits, and have one agent spawn
+          and manage another, each in its own thread.
+        </p>
+        <p>
+          Each runs on your own subscription: the provider plan you already pay
+          for, billed by them, not bb.
+        </p>
+        <div className="providers">
+          <ProviderChips />
+        </div>
+      </Band>
+
+      <section className="statement" data-reveal data-section="fork-it">
+        <h2 className="sec-title">Fork it. Make it your own.</h2>
+        <p>
+          bb is MIT-licensed end to end. Fork the repo, customize the agents,
+          tools, and UI, and deploy your own build across your whole
+          organization. It still runs local-first on your machines, on the
+          provider subscriptions you already pay for.
+        </p>
+        <div className="cta-row">
+          <GitHubLink placement="local" className="btn btn-ghost">
+            View the source →
+          </GitHubLink>
+        </div>
+      </section>
+
+      <section className="closer" data-reveal data-section="closer">
+        <h2 className="sec-title">Put your agents to work.</h2>
+        <p>Free, open source, and local-first. Install in under a minute.</p>
+        <InstallOptions placement="closer" />
+        <div className="cta-row cta-row-secondary">
+          <GitHubLink placement="closer" className="btn btn-ghost">
+            View on GitHub
+          </GitHubLink>
+        </div>
+      </section>
+    </>
+  );
+}
+
+function RefreshedBelowFold() {
+  return (
+    <>
+      <Band
+        title="Make bb yours. No need to fork."
+        stacked
+        section="make-it-yours"
+        visual={<PluginMap />}
+      >
+        <p>
+          bb adapts to how you work, not the other way around. Use plugins to
+          change almost any part of bb by just prompting an agent, or pick from
+          400+ built by the community.
+        </p>
+        <MarketplaceLink placement="customize" className="band-link">
+          Browse plugins &rarr;
+        </MarketplaceLink>
+      </Band>
+
+      <Band
+        title="Put an agent in charge."
+        stacked
+        section="hand-off"
+        visual={<DelegationTree />}
+      >
+        <p>
+          Stop babysitting threads. Have Claude Code plan, Cursor implement,
+          Codex review, and Grok orchestrate them all. You can step in anytime,
+          and only hear about what needs you.
+        </p>
+      </Band>
+
+      <Band
+        title="Start anywhere. Pick up anywhere."
+        stacked
+        section="start-anywhere"
+        visual={<StartAnywhere />}
+      >
+        <p>
+          Work doesn&rsquo;t wait for you to be at your desk. Start threads from
+          ChatGPT, Claude, your phone or CI, and pick them up on any device.
+          They run on your own machines, even a Linux box that never sleeps.
+        </p>
+      </Band>
+
+      <section className="closer" data-reveal data-section="closer">
+        <h2 className="sec-title">
+          All your agents, in one workspace you control.
+        </h2>
+        <p>Free and runs on your machines and infrastructure.</p>
+        <InstallOptions placement="closer" />
+        <div className="cta-row cta-row-secondary">
+          <GitHubLink placement="closer" className="btn btn-ghost">
+            View on GitHub
+          </GitHubLink>
+        </div>
+      </section>
+    </>
+  );
+}
+
 function LandingPage() {
   const [companyProofPaused, setCompanyProofPaused] = useState(false);
   const [companyProofInView, setCompanyProofInView] = useState(false);
   const companyProofRef = useRef<HTMLElement>(null);
   const qaCheck = useExperiment("homepage-qa-check");
   useExperimentExposure("homepage-qa-check", "all");
+  const belowFold = useExperiment("homepage-below-fold");
+  const exposeBelowFold = useExperimentExposer(
+    "homepage-below-fold",
+    "desktop",
+  );
   useScrollReveal();
-  useSectionViews();
+  useSectionViews((section) => {
+    if (BELOW_FOLD_SECTIONS[belowFold].includes(section)) exposeBelowFold();
+  });
   useConstructMock();
   useFitMock();
 
@@ -1218,60 +1459,7 @@ function LandingPage() {
         </div>
       </section>
 
-      <Band
-        title="Make bb yours. No need to fork."
-        stacked
-        section="make-it-yours"
-        visual={<PluginMap />}
-      >
-        <p>
-          bb adapts to how you work, not the other way around. Use plugins to
-          change almost any part of bb by just prompting an agent, or pick from
-          400+ built by the community.
-        </p>
-        <MarketplaceLink placement="customize" className="band-link">
-          Browse plugins &rarr;
-        </MarketplaceLink>
-      </Band>
-
-      <Band
-        title="Put an agent in charge."
-        stacked
-        section="hand-off"
-        visual={<DelegationTree />}
-      >
-        <p>
-          Stop babysitting threads. Have Claude Code plan, Cursor implement,
-          Codex review, and Grok orchestrate them all. You can step in anytime,
-          and only hear about what needs you.
-        </p>
-      </Band>
-
-      <Band
-        title="Start anywhere. Pick up anywhere."
-        stacked
-        section="start-anywhere"
-        visual={<StartAnywhere />}
-      >
-        <p>
-          Work doesn&rsquo;t wait for you to be at your desk. Start threads from
-          ChatGPT, Claude, your phone or CI, and pick them up on any device.
-          They run on your own machines, even a Linux box that never sleeps.
-        </p>
-      </Band>
-
-      <section className="closer" data-reveal data-section="closer">
-        <h2 className="sec-title">
-          All your agents, in one workspace you control.
-        </h2>
-        <p>Free and runs on your machines and infrastructure.</p>
-        <InstallOptions placement="closer" />
-        <div className="cta-row cta-row-secondary">
-          <GitHubLink placement="closer" className="btn btn-ghost">
-            View on GitHub
-          </GitHubLink>
-        </div>
-      </section>
+      {belowFold === "test" ? <RefreshedBelowFold /> : <TodayBelowFold />}
 
       <SubscribeSection
         reveal

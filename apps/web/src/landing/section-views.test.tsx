@@ -1,13 +1,23 @@
 // @vitest-environment jsdom
 
+import { act } from "react";
+import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { trackLandingEvent } from "./analytics";
 import { Band } from "./landing-visuals";
 import {
   SECTION_VIEW_DWELL_MS,
   observeSectionViews,
+  useSectionViews,
 } from "./section-views";
+
+vi.mock("./analytics", () => ({ trackLandingEvent: vi.fn() }));
+
+(
+  globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
 type Callback = (entries: IntersectionObserverEntry[]) => void;
 
@@ -138,6 +148,29 @@ describe("observeSectionViews", () => {
     stop();
     vi.advanceTimersByTime(SECTION_VIEW_DWELL_MS);
     expect(onView).not.toHaveBeenCalled();
+  });
+
+  it("tracks each view and hands it to the page's latest callback", () => {
+    const logos = section("logos");
+    const first = vi.fn();
+    const latest = vi.fn();
+    function Page({ onView }: { onView: (section: string) => void }) {
+      useSectionViews(onView);
+      return null;
+    }
+    const root = createRoot(document.createElement("div"));
+    act(() => root.render(<Page onView={first} />));
+    act(() => root.render(<Page onView={latest} />));
+
+    report(logos, 1);
+    vi.advanceTimersByTime(SECTION_VIEW_DWELL_MS);
+    expect(trackLandingEvent).toHaveBeenCalledExactlyOnceWith({
+      name: "landing_section_viewed",
+      properties: { section: "logos" },
+    });
+    expect(first).not.toHaveBeenCalled();
+    expect(latest).toHaveBeenCalledExactlyOnceWith("logos");
+    act(() => root.unmount());
   });
 });
 

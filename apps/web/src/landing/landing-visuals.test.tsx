@@ -209,6 +209,18 @@ describe("DelegationTree", () => {
   });
 });
 
+describe("below-the-fold bb windows", () => {
+  it.each([
+    ["PluginMap", PluginMap],
+    ["DelegationTree", DelegationTree],
+    ["StartAnywhere", StartAnywhere],
+  ])("%s uses the nav rail and no Commit button", (_, Visual) => {
+    const html = renderToStaticMarkup(<Visual />);
+    expect(html.match(/class="bw-rail"/g)).toHaveLength(1);
+    expect(html).not.toMatch(/Commit|commit-btn|Opus 4\.8/);
+  });
+});
+
 describe("MarketplaceLink", () => {
   afterEach(() => {
     vi.mocked(trackLandingEvent).mockClear();

@@ -23,6 +23,11 @@ import RecordIcon from "@hugeicons/core-free-icons/RecordIcon";
 import Plug02Icon from "@hugeicons/core-free-icons/Plug02Icon";
 import UserAdd01Icon from "@hugeicons/core-free-icons/UserAdd01Icon";
 import Mic02Icon from "@hugeicons/core-free-icons/Mic02Icon";
+import Home01Icon from "@hugeicons/core-free-icons/Home01Icon";
+import ZapIcon from "@hugeicons/core-free-icons/ZapIcon";
+import RepeatIcon from "@hugeicons/core-free-icons/RepeatIcon";
+import Settings01Icon from "@hugeicons/core-free-icons/Settings01Icon";
+import Bug01Icon from "@hugeicons/core-free-icons/Bug01Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode, RefObject } from "react";
@@ -294,6 +299,67 @@ export function SpawnRow({
           done
         </span>
       </span>
+    </div>
+  );
+}
+
+export function SpawnSidebar() {
+  const { cycle, leaving } = useCycle(5600, 500);
+  return (
+    <div
+      className="spawnbar"
+      aria-label="bb spawns and manages a worker thread for each provider"
+    >
+      <div className="sb-head">
+        <span aria-hidden="true" className="bb-mark sb-mark" />
+        <span className="sb-title">Threads</span>
+        <span className="sb-active">5 active</span>
+      </div>
+      <div className={leaving ? "sb-list leaving" : "sb-list"} key={cycle}>
+        <SpawnRow
+          parent
+          icon={<ClaudeIcon className="sb-ic" />}
+          name="Claude Code"
+          task="Ship the release"
+          status="managing"
+          at={0.1}
+          doneAt={4}
+        />
+        <div className="sb-kids">
+          <SpawnRow
+            icon={<OpenAiIcon className="sb-ic" />}
+            name="Codex"
+            task="Port module to TS"
+            status="running"
+            at={0.6}
+            doneAt={2.3}
+          />
+          <SpawnRow
+            icon={<CursorIcon className="sb-ic" />}
+            name="Cursor"
+            task="Refactor the auth flow"
+            status="running"
+            at={1}
+            doneAt={3}
+          />
+          <SpawnRow
+            icon={<PiIcon className="sb-ic" />}
+            name="Pi"
+            task="Write release notes"
+            status="running"
+            at={1.4}
+            doneAt={3.7}
+          />
+          <SpawnRow
+            icon={<OpencodeIcon className="sb-ic" />}
+            name="OpenCode"
+            task="Add integration tests"
+            status="running"
+            at={1.8}
+            doneAt={3.4}
+          />
+        </div>
+      </div>
     </div>
   );
 }
@@ -604,6 +670,21 @@ const SubagentIcon = ({ className }: IconProps) => (
 const MicIcon = ({ className }: IconProps) => (
   <HugeiconsIcon icon={Mic02Icon} className={className} />
 );
+const HomeIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={Home01Icon} className={className} />
+);
+const SkillsIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={ZapIcon} className={className} />
+);
+const AutomationsIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={RepeatIcon} className={className} />
+);
+const SettingsIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={Settings01Icon} className={className} />
+);
+const BugIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={Bug01Icon} className={className} />
+);
 const BbGlyph = ({ className }: IconProps) => (
   <span aria-hidden className={`bb-mark ${className ?? ""}`} />
 );
@@ -720,7 +801,6 @@ function WindowBar({
         <span className="bar-title">{title}</span>
         <MoreIcon className="bar-kebab" />
         <span className="bar-actions" aria-hidden>
-          <span className="commit-btn">Commit</span>
           <span className={panelOpen ? "bar-toggle active" : "bar-toggle"}>
             <PanelRightIcon className="ri" />
           </span>
@@ -730,18 +810,53 @@ function WindowBar({
   );
 }
 
-function SideActions({ children }: { children?: ReactNode }) {
+function NavRail({ children }: { children?: ReactNode }) {
+  return (
+    <nav className="bw-rail" aria-hidden>
+      <span className="bw-rail-btn is-on">
+        <HomeIcon className="bw-rail-ic" />
+      </span>
+      <span className="bw-rail-btn">
+        <PluginIcon className="bw-rail-ic" />
+      </span>
+      <span className="bw-rail-btn">
+        <SkillsIcon className="bw-rail-ic" />
+      </span>
+      <span className="bw-rail-btn">
+        <AutomationsIcon className="bw-rail-ic" />
+      </span>
+      {children}
+      <span className="bw-rail-btn">
+        <MoreIcon className="bw-rail-ic" />
+      </span>
+      <span className="bw-rail-btn bw-rail-settings">
+        <SettingsIcon className="bw-rail-ic" />
+      </span>
+    </nav>
+  );
+}
+
+function Sidebar({
+  rail,
+  children,
+}: {
+  rail?: ReactNode;
+  children: ReactNode;
+}) {
   return (
     <>
-      <div className="side-act">
-        <NewThreadIcon className="sa-ic" />
-        New thread
-      </div>
-      <div className="side-act">
-        <ClockIcon className="sa-ic" />
-        Automations
-      </div>
-      {children}
+      <NavRail>{rail}</NavRail>
+      <aside className="side">
+        <div className="side-act">
+          <NewThreadIcon className="sa-ic" />
+          New thread
+        </div>
+        {children}
+        <div className="side-foot bw-side-foot" aria-hidden>
+          <PhoneIcon className="bw-foot-ic" />
+          <BugIcon className="bw-foot-ic" />
+        </div>
+      </aside>
     </>
   );
 }
@@ -885,14 +1000,14 @@ export function PluginMap() {
       <div className="mock bw-window">
         <WindowBar title="Signups by plan" panelOpen />
         <div className="mock-body bw-body">
-          <aside className="side">
-            <SideActions>
-              <div className="side-act">
-                <GitHubMark className="sa-ic" />
-                GitHub
-                <span className="bw-count">5</span>
-              </div>
-            </SideActions>
+          <Sidebar
+            rail={
+              <span className="bw-rail-btn">
+                <GitHubMark className="bw-rail-ic" />
+                <span className="bw-rail-badge">5</span>
+              </span>
+            }
+          >
             <div className="side-label">All Threads</div>
             <ThreadRow title="Signups by plan" status="running" active />
             <Spot id="pr" lit={lit} className="bw-spot-rows">
@@ -921,7 +1036,7 @@ export function PluginMap() {
             </Spot>
             <ThreadRow title="Refactor auth" status="waiting" />
             <ThreadRow title="Weekly changelog" status="done" />
-          </aside>
+          </Sidebar>
           <div className="main">
             <div className="feed bw-feed">
               <div className="msg-user">
@@ -962,7 +1077,7 @@ export function PluginMap() {
             </div>
             <ComposerBox
               placeholder="Ask for a follow-up"
-              model="Opus 4.8"
+              model="Opus 5.5"
               modelIcon={ClaudeIcon}
               banner={
                 <Spot id="banner" lit={lit} className="pr-bar bw-banner">
@@ -1080,8 +1195,7 @@ export function DelegationTree() {
           className={stageClass("mock-body bw-body", leaving, paused)}
           key={cycle}
         >
-          <aside className="side">
-            <SideActions />
+          <Sidebar>
             <div className="side-label">All Threads</div>
             <ThreadRow title="Bump the SDK" icon={ClaudeIcon} status="done" />
             <ThreadRow
@@ -1113,7 +1227,7 @@ export function DelegationTree() {
               icon={OpenAiIcon}
               status="done"
             />
-          </aside>
+          </Sidebar>
           <div className="main">
             <div className="feed bw-feed bw-feed-live">
               <div className="msg-user">
@@ -1196,8 +1310,7 @@ export function StartAnywhere() {
         <div className="mock bw-window">
           <WindowBar title="Fix the checkout bug" />
           <div className="mock-body bw-body">
-            <aside className="side">
-              <SideActions />
+            <Sidebar>
               <div className="side-label bw-group">
                 <LinuxIcon className="bw-group-ic" />
                 linux-box
@@ -1239,7 +1352,7 @@ export function StartAnywhere() {
                 icon={PhoneIcon}
                 status="done"
               />
-            </aside>
+            </Sidebar>
             <div className="main">
               <div className="feed bw-feed">
                 <Reveal at={1.8}>
