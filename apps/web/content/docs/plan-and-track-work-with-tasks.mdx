@@ -1,0 +1,132 @@
+---
+title: Plan and track work with Tasks
+description: Keep a task list in bb that agents work from. Install the Tasks plugin, link a tracker to a project, and dispatch each task to an agent that reports back.
+type: how-to
+sources:
+  - plugins/tasks/**
+since: 0.39.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+Tasks has statuses, priorities, labels, due dates and subtasks. Each task collects its comments, attachments, worker threads and pull requests.
+
+## Set up Tasks
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+1. Click **Plugins** in the sidebar, find **Tasks** and install it.
+2. Open **Tasks** and click **New project** in its sidebar.
+3. Enter a **Name** and a **Prefix**, such as `PROD`, which starts task keys like `PROD-1`.
+4. Under **Linked bb project**, choose the bb project, then click **Create project**.
+
+</Tab>
+<Tab value="CLI">
+
+```bash
+bb plugin install tasks --yes
+bb tasks project create --name "Product" --prefix PROD --link-bb-project <project-id>
+```
+
+</Tab>
+</Tabs>
+
+## Add tasks
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+1. In **Tasks**, click **New task**.
+2. Enter a title and description, and set the project, status, priority and labels.
+3. Click **Create task**.
+
+Open a task to add comments, files, a due date or a sub-task.
+
+</Tab>
+<Tab value="CLI">
+
+```bash
+bb tasks create --project PROD --title "Add rate limiting" --description "Limit login attempts per IP." --priority high
+bb tasks create --project PROD --title "Write tests" --parent PROD-1
+bb tasks list --project PROD
+```
+
+</Tab>
+</Tabs>
+
+Statuses are `backlog`, `todo`, `in_progress`, `in_review`, `done` and `canceled`.
+
+## Create a preset
+
+A preset sets the agent, model, reasoning, permission mode, environment and extra instructions for a task's worker.
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+1. In **Tasks**, click **New preset** under **Agent presets**.
+2. Enter a **Name**, then choose **Provider, model, and reasoning**, **Permissions** and **Execution environment**.
+3. Click **Create preset**.
+
+</Tab>
+<Tab value="CLI">
+
+```bash
+bb tasks preset create --name "Codex high" --provider codex --model <model-id> --reasoning high --permission auto
+```
+
+Find model IDs with `bb provider models codex`.
+
+</Tab>
+</Tabs>
+
+## Dispatch a task
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+Open the task and click the button with the preset's name. For another preset, open the arrow next to it.
+
+<Screenshot
+  src="/docs-images/plan-and-track-work-with-tasks/dispatch"
+  alt="A task's dispatch button shows the preset's name, with its preset menu open."
+  width={550}
+  height={400}
+/>
+
+</Tab>
+<Tab value="CLI">
+
+```bash
+bb tasks dispatch PROD-1 --preset "Codex high"
+```
+
+</Tab>
+</Tabs>
+
+bb starts a worker thread in the linked bb project and moves the task to `in_progress`. The worker reads the task, comments as it goes, and moves it to `in_review` when done.
+
+:::note
+Each dispatch starts a new thread, even if one is already working the task.
+:::
+
+## Talk to the agent from the task
+
+| To | Do this |
+| --- | --- |
+| Message the worker | Comment with **Notify last responding agent** on |
+| Give any thread a task | Type `@` in the composer, choose **Tasks** and pick the task |
+| Attach a thread you started | Ask its agent to run `bb tasks attach PROD-1` |
+
+## Check it worked
+
+- The task lists the worker thread, and its status goes to **in_progress**, then **in_review**.
+- `bb tasks show PROD-1` prints the task with its comments and threads.
+
+## Related troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| No dispatch button, or it's greyed out | Create a preset, and check the project has a **Linked bb project** |
+| A subtask can't get its own subtask | Tasks allows one level. Make it a separate task |
+| A worker thread died | Detach it on the task's page, then dispatch again |

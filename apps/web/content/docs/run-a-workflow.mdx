@@ -1,0 +1,99 @@
+---
+title: Run a workflow
+description: Split one job into many similar pieces, such as reviewing every changed file. Turn on the Workflows plugin and ask an agent to run a workflow.
+type: how-to
+sources:
+  - plugins/workflows/**
+since: 0.35.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+A workflow is a short script an agent writes for you. It starts a worker thread per piece, passes results between stages, and sends the combined result back. For when to use child threads instead, see Child threads, subagents and workflows.
+
+## Turn on Workflows
+
+The **Workflows** plugin comes with bb, off by default.
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+Open **Settings → Installed plugins** and turn on **Workflows**.
+
+</Tab>
+<Tab value="CLI">
+
+```bash
+bb plugin enable workflows
+```
+
+</Tab>
+</Tabs>
+
+## Start a workflow
+
+1. Open or start a thread in a project. Workflows run only from project threads.
+2. Ask for one, and say how to split the work:
+
+   ```text title="Prompt"
+   Use a workflow to review each file changed on this branch for bugs, then verify every finding with a second agent.
+   ```
+
+3. The agent writes the script and starts the run. A live run card appears in the thread.
+
+To reuse a workflow, commit its script as `.bb/workflows/<name>.js` in the project, then ask "run the review workflow".
+
+## Follow the run
+
+| Where | What it shows |
+| --- | --- |
+| **Run card** in the thread | State, phases, current workers and elapsed time |
+| **Status card** above the composer | Every active run, with progress and a stop button |
+| **Workflow run** panel, from either card | Every phase and worker, with links to their threads and **Stop workflow** |
+
+When the run ends, its result goes to your thread.
+
+## How workers run
+
+- Each worker is a thread in your thread's environment, with your thread's permission mode, agent and model unless the workflow names others.
+- Workers are hidden from the sidebar and don't notify you. Open one from the **Workflow run** panel.
+- Finished workers are archived. Archiving your thread cancels its running workflows.
+- To resume a stopped run, ask the agent. Workers that succeeded aren't run again.
+
+## Set limits
+
+Open **Settings → Workflows**, or run `bb plugin config workflows set <key> <value>`. Changes apply to the next run.
+
+| Setting | Key | Default |
+| --- | --- | --- |
+| Maximum active runs | `maxActiveRuns` | 4 |
+| Per-run agent concurrency | `maxConcurrentAgents` | 8 |
+| Maximum agent calls | `maxAgentCalls` | 100 |
+| Total run timeout (milliseconds) | `totalRunTimeoutMs` | 86400000 (24 hours) |
+| Retention (days) | `retentionDays` | 7 |
+| Maximum notification bytes | `maxNotificationBytes` | 16384 |
+
+<Screenshot
+  src="/docs-images/run-a-workflow/settings"
+  alt="Settings → Workflows shows the plugin's switch and a field for each limit."
+  width={760}
+  height={510}
+/>
+
+:::note
+Every worker uses your agent account like any thread. Start with a few workers.
+:::
+
+## Check it worked
+
+- The run card shows the run as running, then finished.
+- In the thread, `bb workflows list` lists recent runs and `bb workflows status <run-id>` shows one.
+
+## Related troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| The agent says workflows aren't available | Turn on **Workflows**, then send again |
+| `bb workflows` commands fail outside bb | They run only inside a project thread |
+| A saved workflow isn't found | It must be at `.bb/workflows/<name>.js` in the thread's project |
+| A worker seems stuck | Open it from the **Workflow run** panel; it may be waiting for an answer |

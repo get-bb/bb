@@ -1,0 +1,103 @@
+---
+title: Set up a project
+description: Let agents work in a repository. Add its folder as a project from the composer, Settings → Projects or bb project create, then add a checkout per machine.
+type: how-to
+sources:
+  - apps/app/src/components/settings/ProjectsSettingsSection.tsx
+  - apps/app/src/views/ProjectDetailSettingsView.tsx
+  - apps/app/src/components/dialogs/ProjectPathDialog.tsx
+  - apps/app/src/components/pickers/ProjectSelector.tsx
+  - apps/app/src/components/settings/MachineEnvironmentSettings.tsx
+  - apps/cli/src/commands/project.ts
+since: 0.43.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+Any folder can be a project. In a Git repository, threads can run in their own worktrees; without Git, they run in the folder itself.
+
+## Add a project
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+1. In the composer's project picker, choose **New project**, or click **Add a project** in **Settings → Projects**.
+2. If you have more than one machine, choose the one the folder is on.
+3. Browse to the folder or type its path. bb names the project after the folder.
+4. Click **Add project**.
+
+<Screenshot
+  src="/docs-images/set-up-a-project/add-project"
+  alt="The Add project dialog shows a folder browser open at the project's folder, the Project name bb will use, and the Add project button."
+  width={530}
+  height={470}
+/>
+
+</Tab>
+<Tab value="CLI">
+
+```bash
+bb project create --name "acme-web" --root ~/code/acme-web
+```
+
+Add `--machine <machine>` for a folder on another machine. `bb project discover` finds repositories you've used recently.
+
+</Tab>
+</Tabs>
+
+## Add the project on another machine
+
+A machine runs a project's threads only once the project has a checkout there.
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+1. In **Settings → Projects**, click the project.
+2. Under **Checkouts**, click **Set up** next to the machine.
+3. Choose the folder on that machine.
+
+</Tab>
+<Tab value="CLI">
+
+```bash
+bb project source add <project-id> --path ~/code/acme-web --machine "Studio Mac"
+bb project source add <project-id> --clone --machine "Studio Mac"
+```
+
+The first uses a folder that's already there. The second clones the project's Git remote.
+
+</Tab>
+</Tabs>
+
+## Change a project
+
+Everything is in **Settings → Projects**.
+
+| To | Desktop | CLI |
+| --- | --- | --- |
+| Rename it | Project's **⋯** menu → **Rename** | `bb project update <project-id> --name "New name"` |
+| Change its folder on a machine | Click the project, then the machine's **⋯** menu under **Checkouts** → **Change folder** | — |
+| Stop using it on a machine | The machine's **⋯** menu → **Remove checkout**. A project needs at least one checkout | — |
+| Reorder the sidebar | Drag the project | `bb project reorder <project-id> --after <other-project-id>` |
+| See its default agent, model, permission mode and reasoning | Click the project → **Thread defaults**. bb remembers the last options you used in the project | — |
+| Set environment variables | Click the project → **Environment variables** → **Add variable** or **Import from .env** → **Save variables**. They override **Settings → Environment variables** | — |
+| Delete it | Project's **⋯** menu → **Delete project**, or **Danger zone** on its page | `bb project delete <project-id>` |
+
+:::warning[Deleting a project deletes its threads]
+Every thread in it goes too, including archived ones. Its checkouts stay on disk.
+:::
+
+## Check it worked
+
+- The project is in **Settings → Projects** and in the composer's project picker.
+- `bb project show <project-id>` lists its checkouts.
+- A new thread's environment picker lists the machines that have a checkout.
+
+## Related troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| "No machine is online. Start one to choose a project folder." | The Add project dialog needs a connected machine. Check **Settings → Machines** |
+| A machine shows "Path not found" | The folder moved or was deleted. Use **Change folder** |
+| **Worktree** is missing from the environment picker | The folder isn't a Git repository. Run `git init` in it, or use **Project checkout** |
+| A thread never finishes preparing its environment | See A thread, environment or automation is stuck |
