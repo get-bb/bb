@@ -177,11 +177,7 @@ describe("download attribution privacy", () => {
           "019a0000-0000-7000-8000-000000000002",
         );
         expect(params.get("first_page")).toBe("/compare/cursor-alternative");
-        expect(params.get("first_referrer")).toBe(
-          globalPrivacyControl
-            ? "https://www.google.com/search?q=bb"
-            : "https://www.google.com/search?q=bb&gclid=ref",
-        );
+        expect(params.get("first_referrer")).toBe("https://www.google.com");
         expect(params.get("gclid")).toBe(globalPrivacyControl ? null : "abc");
       } finally {
         stop();
@@ -205,7 +201,7 @@ describe("download attribution privacy", () => {
       link.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
       const params = new URL(link.href).searchParams;
       expect(params.get("first_page")).toBe("/blog");
-      expect(params.get("first_referrer")).toBe("https://duckduckgo.com/");
+      expect(params.get("first_referrer")).toBe("https://duckduckgo.com");
       expect(params.get("visitor_id")).toBeNull();
       expect(params.get("session_id")).toBeNull();
     } finally {

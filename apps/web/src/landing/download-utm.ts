@@ -50,7 +50,6 @@ export function readSavedUtm(storage: UtmStorage): URLSearchParams {
 }
 
 type FirstTouchArgs = {
-  globalPrivacyControl: boolean;
   location: Pick<Location, "origin" | "pathname">;
   referrer: string;
   storage: UtmStorage;
@@ -63,37 +62,21 @@ export function rememberFirstTouch(args: FirstTouchArgs): void {
   const firstTouch = new URLSearchParams({
     first_page: args.location.pathname,
   });
-  const referrer = externalReferrer(
-    args.referrer,
-    args.location.origin,
-    args.globalPrivacyControl,
-  );
+  const referrer = externalReferrer(args.referrer, args.location.origin);
   if (referrer) {
     firstTouch.set("first_referrer", referrer);
   }
   args.storage.setItem(FIRST_TOUCH_KEY, firstTouch.toString());
 }
 
-function externalReferrer(
-  referrer: string,
-  origin: string,
-  globalPrivacyControl: boolean,
-): string | null {
+function externalReferrer(referrer: string, origin: string): string | null {
   let url: URL;
   try {
     url = new URL(referrer);
   } catch {
     return null;
   }
-  if (url.origin === origin) {
-    return null;
-  }
-  if (globalPrivacyControl) {
-    for (const name of CLICK_ID_PARAM_NAMES) {
-      url.searchParams.delete(name);
-    }
-  }
-  return url.href;
+  return url.origin === origin ? null : url.origin;
 }
 
 function readFirstTouch(storage: UtmStorage): URLSearchParams {
@@ -159,7 +142,6 @@ export function carryUtmToDownloadLinks(
     }
     rememberLatestUtm(storage, landingParams.toString());
     rememberFirstTouch({
-      globalPrivacyControl,
       location: window.location,
       referrer: document.referrer,
       storage,

@@ -384,10 +384,7 @@ function buildDownloadEventProperties(
   if (firstPage) {
     properties.first_page = firstPage;
   }
-  const firstReferrer = parseFirstReferrer(
-    searchParams.get("first_referrer"),
-    globalPrivacyControl,
-  );
+  const firstReferrer = parseFirstReferrer(searchParams.get("first_referrer"));
   if (firstReferrer) {
     properties.first_referrer = firstReferrer;
   }
@@ -416,10 +413,7 @@ function parseFirstPage(value: string | null): string | null {
   return value;
 }
 
-function parseFirstReferrer(
-  value: string | null,
-  globalPrivacyControl: boolean,
-): string | null {
+function parseFirstReferrer(value: string | null): string | null {
   if (!value) {
     return null;
   }
@@ -432,12 +426,7 @@ function parseFirstReferrer(
   if (url.protocol !== "https:" && url.protocol !== "http:") {
     return null;
   }
-  if (globalPrivacyControl) {
-    for (const name of CLICK_ID_PARAM_NAMES) {
-      url.searchParams.delete(name);
-    }
-  }
-  return truncateProperty(url.href);
+  return url.origin;
 }
 
 function parseDownloadPlacement(

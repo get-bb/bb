@@ -339,7 +339,7 @@ describe("download visit attribution", () => {
         visitor_id: VISITOR_ID,
         session_id: SESSION_ID,
         first_page: "/compare/cursor-alternative",
-        first_referrer: "https://www.google.com/",
+        first_referrer: "https://www.google.com/search?q=bb",
       }).toString(),
       { referer: "https://getbb.app/compare/cursor-alternative" },
     );
@@ -351,7 +351,7 @@ describe("download visit attribution", () => {
       $session_id: SESSION_ID,
       download_target: "macos",
       first_page: "/compare/cursor-alternative",
-      first_referrer: "https://www.google.com/",
+      first_referrer: "https://www.google.com",
       placement: "hero",
       tracking_source: "landing_worker_redirect",
     });
@@ -390,19 +390,16 @@ describe("download visit attribution", () => {
     );
   });
 
-  it("drops ad click ids from the first referrer under Sec-GPC", async () => {
+  it("keeps only the origin of the first referrer", async () => {
     const event = await captureDownload(
       new URLSearchParams({
         visitor_id: VISITOR_ID,
         first_referrer: "https://www.google.com/search?q=bb&gclid=ref",
       }).toString(),
-      { "Sec-GPC": "1" },
     );
 
     expect(event.distinct_id).toBe(VISITOR_ID);
-    expect(event.properties.first_referrer).toBe(
-      "https://www.google.com/search?q=bb",
-    );
+    expect(event.properties.first_referrer).toBe("https://www.google.com");
   });
 });
 
