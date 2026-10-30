@@ -153,6 +153,7 @@ export function createAutomaticQueuedMessageGroupEligibility(
         }
         case "provisioning":
         case "interaction":
+        case "superseded":
           return false;
       }
     });
@@ -559,6 +560,8 @@ function describeCoreWait(waitingOn: QueuedMessageWaitingOn | null): string {
       return "the thread is still stopping";
     case "plugin":
       return `it is waiting on the "${waitingOn.pluginId}" plugin`;
+    case "superseded":
+      return "a newer message was sent after it";
     case "time":
     case "thread-busy":
     case undefined:

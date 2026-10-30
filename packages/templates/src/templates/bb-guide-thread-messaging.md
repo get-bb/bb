@@ -129,7 +129,8 @@ Queued messages:
   `queuedWork: none|waiting|failed`. Every one carries a typed reason in its
   `Waiting on` column (`waitingOn.kind` in JSON: `thread-busy`,
   `turn-starting`, `provisioning`, `host-offline`, `interaction`, `time` for
-  `Send at`, or `plugin` with `pluginId` and a reason). `queue list` with no thread id lists every
+  `Send at`, `plugin` with `pluginId` and a reason, or `superseded` for a
+  retry a newer message overtook, which is never sent automatically). `queue list` with no thread id lists every
   queued row in the workspace; `--wait-holder plugin:<plugin-id>` narrows it to
   the rows one plugin is holding.
 
