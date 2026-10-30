@@ -244,21 +244,12 @@ const onboardingOperationTelemetryPropertiesSchema = z
     z
       .object({
         ...onboardingOperationResultShape,
-        operation: z.literal("agent_install"),
-        outcome: onboardingOperationOutcomeSchema,
-      })
-      .strict(),
-    z
-      .object({
-        ...onboardingOperationResultShape,
-        operation: z.literal("agent_update"),
-        outcome: onboardingOperationOutcomeSchema,
-      })
-      .strict(),
-    z
-      .object({
-        ...onboardingOperationResultShape,
-        operation: z.literal("project_scan"),
+        operation: z.enum([
+          "agent_install",
+          "agent_update",
+          "project_scan",
+          "plugin_enable",
+        ]),
         outcome: onboardingOperationOutcomeSchema,
       })
       .strict(),
@@ -289,13 +280,6 @@ const onboardingOperationTelemetryPropertiesSchema = z
           "cancelled",
           "unknown",
         ]),
-      })
-      .strict(),
-    z
-      .object({
-        ...onboardingOperationResultShape,
-        operation: z.literal("plugin_enable"),
-        outcome: onboardingOperationOutcomeSchema,
       })
       .strict(),
   ])

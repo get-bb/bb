@@ -6,7 +6,6 @@ import {
   agentDiagnostic,
   aggregateAgentReadiness,
   createVisibleTransitionObserver,
-  onboardingNavigation,
   useVisibleObservation,
 } from "./onboarding-journey-observation";
 
@@ -84,7 +83,7 @@ describe("visible journey observations", () => {
   });
 });
 
-describe("bounded diagnostics and navigation", () => {
+describe("bounded diagnostics", () => {
   it("keeps unknown readiness and strips private provider detail", () => {
     expect(aggregateAgentReadiness(undefined, false)).toBeNull();
     expect(aggregateAgentReadiness([{ status: "unknown" }], false)).toBeNull();
@@ -111,29 +110,5 @@ describe("bounded diagnostics and navigation", () => {
     expect(
       agentDiagnostic({ status: "signIn", reason: "expired", canSignIn: true }),
     ).toEqual({ state: "sign_in", action_available: true });
-  });
-
-  it("distinguishes skips, continue, back, explicit step choice and observed route departure", () => {
-    expect(
-      onboardingNavigation("first_run", "agent", "skip_step", "projects", true),
-    ).toMatchObject({ action: "skip_step", reason: "agent_not_ready" });
-    expect(
-      onboardingNavigation("replay", "projects", "skip_step", "plugins"),
-    ).toMatchObject({ action: "skip_step", reason: "explicit_skip" });
-    expect(
-      onboardingNavigation("replay", "plugins", "skip_setup", null),
-    ).toMatchObject({
-      action: "skip_setup",
-      destination_step: null,
-      reason: "explicit_skip",
-    });
-    for (const action of ["continue", "back", "select_step"] as const) {
-      expect(
-        onboardingNavigation("replay", "projects", action, "agent"),
-      ).toMatchObject({ action, reason: "none", destination_step: "agent" });
-    }
-    expect(
-      onboardingNavigation("first_run", "devices", "leave", null),
-    ).toMatchObject({ action: "leave", reason: "navigation_away" });
   });
 });

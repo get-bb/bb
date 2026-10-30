@@ -170,52 +170,6 @@ describe("telemetry service", () => {
     }
   });
 
-  it("sends bounded setup results and immediately honors opt-out", async () => {
-    const telemetry = await createTelemetryService({
-      apiKey: "phc_test",
-      appInstall: null,
-      appSurface: "desktop",
-      appVersion: "1.2.3",
-      dataDir,
-      telemetryEnabled: false,
-      enabled: true,
-      logger: createTestLogger(),
-    });
-    const event = {
-      name: "onboarding_operation",
-      properties: {
-        entry: "first_run",
-        operation: "project_import",
-        outcome: "partial",
-        error_category: "request",
-        selected_count: 3,
-        succeeded_count: 2,
-      },
-    } as const;
-    telemetry.capture(event);
-    expect(fetchMock).not.toHaveBeenCalled();
-    telemetry.setEnabled(true);
-    telemetry.capture(event);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const call = fetchMock.mock.calls[0];
-    expect(call?.[0]).toBe("https://us.i.posthog.com/capture/");
-    const payload: unknown = JSON.parse(call?.[1].body);
-    expect(payload).toMatchObject({
-      event: event.name,
-      distinct_id: (
-        await readFile(join(dataDir, "telemetry-id"), "utf8")
-      ).trim(),
-      properties: {
-        ...event.properties,
-        app_surface: "desktop",
-        app_version: "1.2.3",
-      },
-    });
-    telemetry.setEnabled(false);
-    telemetry.capture(event);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
-
   it("reuses the persisted install id across restarts", async () => {
     const args = {
       apiKey: "phc_test",
@@ -290,21 +244,37 @@ describe("telemetry service", () => {
         telemetryEnabled: getAppSettings(db).telemetryEnabled,
         logger: createTestLogger(),
       };
+      const event = {
+        name: "onboarding_operation",
+        properties: {
+          entry: "first_run",
+          operation: "project_import",
+          outcome: "partial",
+          error_category: "request",
+          selected_count: 3,
+          succeeded_count: 2,
+        },
+      } as const;
       const telemetry = await createTelemetryService(args);
-      telemetry.capture({ name: "app_started" });
+      telemetry.capture(event);
       expect(fetchMock).not.toHaveBeenCalled();
       setAppSettings(db, { ...getAppSettings(db), telemetryEnabled: true });
       telemetry.setEnabled(true);
-      telemetry.capture({ name: "app_started" });
+      telemetry.capture(event);
       expect(fetchMock).toHaveBeenCalledTimes(1);
+      const payload: unknown = JSON.parse(fetchMock.mock.calls[0]?.[1].body);
+      expect(payload).toMatchObject({
+        event: event.name,
+        properties: event.properties,
+      });
       setAppSettings(db, { ...getAppSettings(db), telemetryEnabled: false });
       telemetry.setEnabled(false);
-      telemetry.capture({ name: "app_started" });
+      telemetry.capture(event);
       const restarted = await createTelemetryService({
         ...args,
         telemetryEnabled: getAppSettings(db).telemetryEnabled,
       });
-      restarted.capture({ name: "app_started" });
+      restarted.capture(event);
       expect(fetchMock).toHaveBeenCalledTimes(1);
     } finally {
       db.$client.close();

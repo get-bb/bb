@@ -1,9 +1,13 @@
+import {
+  isDocumentVisible,
+  subscribeToDocumentVisibility,
+} from "@/lib/document-visibility";
 import type {
   RecordTelemetryEventRequest,
   SystemProviderState,
 } from "@bb/server-contract";
 import { useEffect, useRef } from "react";
-import type { AgentSetupState, OnboardingStepId } from "./onboarding-model";
+import type { AgentSetupState } from "./onboarding-model";
 
 export function createVisibleTransitionObserver() {
   let previous: string | null = null;
@@ -23,14 +27,13 @@ export function useVisibleObservation<T extends HTMLElement>(
   const intersecting = useRef(false);
   useEffect(() => {
     callback.current = observe;
-    if (intersecting.current && document.visibilityState === "visible")
-      observe();
+    if (intersecting.current && isDocumentVisible()) observe();
   });
   useEffect(() => {
     const node = element.current;
     if (node === null) return;
     const notify = () => {
-      if (intersecting.current && document.visibilityState === "visible")
+      if (intersecting.current && isDocumentVisible())
         callback.current();
     };
     const observer = new IntersectionObserver((entries) => {
@@ -40,12 +43,12 @@ export function useVisibleObservation<T extends HTMLElement>(
       notify();
     });
     observer.observe(node);
-    document.addEventListener("visibilitychange", notify);
+    const unsubscribeVisibility = subscribeToDocumentVisibility(notify);
     window.addEventListener("resize", notify);
     return () => {
       observer.disconnect();
       intersecting.current = false;
-      document.removeEventListener("visibilitychange", notify);
+      unsubscribeVisibility();
       window.removeEventListener("resize", notify);
     };
   }, []);
@@ -86,30 +89,4 @@ export function aggregateAgentReadiness(
   if (failed || states === undefined) return null;
   if (states.some((state) => state.status === "ready")) return true;
   return states.some((state) => state.status === "unknown") ? null : false;
-}
-
-export function onboardingNavigation(
-  source: "first_run" | "replay",
-  current_step: OnboardingStepId,
-  action:
-    | "continue"
-    | "skip_step"
-    | "skip_setup"
-    | "back"
-    | "select_step"
-    | "leave",
-  destination_step: OnboardingStepId | null,
-  agentNotReady = false,
-): Extract<
-  RecordTelemetryEventRequest,
-  { name: "onboarding_navigation" }
->["properties"] {
-  const reason = agentNotReady
-    ? "agent_not_ready"
-    : action === "skip_step" || action === "skip_setup"
-      ? "explicit_skip"
-      : action === "leave"
-        ? "navigation_away"
-        : "none";
-  return { source, current_step, action, destination_step, reason };
 }

@@ -1,3 +1,7 @@
+import {
+  isDocumentVisible,
+  subscribeToDocumentVisibility,
+} from "@/lib/document-visibility";
 import type { RecordTelemetryEventRequest } from "@bb/server-contract";
 import { useEffect, useRef, type ReactNode } from "react";
 import { recordTelemetryEvent } from "./onboarding-telemetry";
@@ -16,8 +20,6 @@ export type NewThreadReadiness =
   | { status: "pending" | "empty"; message: string }
   | { status: "blocked"; reason: NewThreadBlockerReason; message: string };
 
-type WorkSurface = "first_task" | "continuation";
-
 interface Presentation {
   viewers: Set<object>;
   blockers: Set<NewThreadBlockerReason>;
@@ -28,9 +30,7 @@ const presentations = new Map<string, Presentation>();
 
 interface WorkSurfaceObservationProps {
   children: ReactNode;
-  surface: WorkSurface;
   identity: string;
-  enabled: boolean;
   hasDraft: boolean;
   readiness: NewThreadReadiness;
 }
@@ -52,21 +52,19 @@ function isVisible(element: HTMLElement): boolean {
 
 export function WorkSurfaceObservation({
   children,
-  surface,
   identity,
-  enabled,
   hasDraft,
   readiness,
 }: WorkSurfaceObservationProps) {
   const container = useRef<HTMLDivElement>(null);
-  const latest = useRef({ enabled, hasDraft, readiness });
-  latest.current = { enabled, hasDraft, readiness };
+  const latest = useRef({ hasDraft, readiness });
+  latest.current = { hasDraft, readiness };
   const refresh = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     const wrapper = container.current;
     if (!wrapper) return;
-    const key = `${surface}:${identity}`;
+    const key = identity;
     const viewer = {};
     let target: HTMLElement | null = null;
     let joined = false;
@@ -85,14 +83,14 @@ export function WorkSurfaceObservation({
       });
     };
     const update = () => {
-      if (document.visibilityState !== "visible") return;
+      if (!isDocumentVisible()) return;
       const element = wrapper.querySelector<HTMLElement>("[data-app-composer]");
       if (element !== target) {
         if (target) intersection?.unobserve(target);
         target = element;
         if (target) intersection?.observe(target);
       }
-      if (!latest.current.enabled || !element || !isVisible(element)) {
+      if (!element || !isVisible(element)) {
         leave();
         return;
       }
@@ -107,16 +105,15 @@ export function WorkSurfaceObservation({
         recordTelemetryEvent({
           name: "onboarding_work_surface",
           properties: {
-            surface,
+            surface: "first_task",
             action: "displayed",
             entry: presentation.context.entry,
-            content_revision: null,
           },
         });
       }
       joined = true;
       presentation.viewers.add(viewer);
-      if (surface !== "first_task" || !latest.current.hasDraft) return;
+      if (!latest.current.hasDraft) return;
       const state = latest.current.readiness;
       if (state.status === "blocked") {
         if (presentation.blockers.has(state.reason)) return;
@@ -161,7 +158,7 @@ export function WorkSurfaceObservation({
       });
       ancestor = ancestor.parentElement;
     }
-    document.addEventListener("visibilitychange", update);
+    const unsubscribeVisibility = subscribeToDocumentVisibility(update);
     window.addEventListener("resize", update);
     window.addEventListener("scroll", update, true);
     refresh.current = update;
@@ -171,11 +168,11 @@ export function WorkSurfaceObservation({
       leave();
       intersection?.disconnect();
       mutation.disconnect();
-      document.removeEventListener("visibilitychange", update);
+      unsubscribeVisibility();
       window.removeEventListener("resize", update);
       window.removeEventListener("scroll", update, true);
     };
-  }, [identity, surface]);
+  }, [identity]);
 
   useEffect(() => refresh.current?.());
 

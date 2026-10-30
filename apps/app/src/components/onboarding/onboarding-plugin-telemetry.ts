@@ -1,7 +1,6 @@
 import { QueryObserver, type QueryClient } from "@tanstack/react-query";
 import type { PluginInstallJob } from "@bb/server-contract";
-import { createPluginsClient } from "@/hooks/queries/plugin-client";
-import { pluginInstallJobsQueryKey } from "@/hooks/queries/query-keys";
+import { pluginInstallJobsQueryOptions } from "@/hooks/queries/plugin-install-job-queries";
 import {
   recordTelemetryEvent,
   type OnboardingEntry,
@@ -55,7 +54,6 @@ export function observeOnboardingPluginInstall(
   initialJob: PluginInstallJob,
   entry: OnboardingEntry,
 ): void {
-  const queryKey = pluginInstallJobsQueryKey();
   let unknownRecorded = false;
   const recordUnknown = () => {
     if (unknownRecorded) return;
@@ -89,10 +87,7 @@ export function observeOnboardingPluginInstall(
     return true;
   };
   if (recordTerminal(initialJob)) return;
-  const observer = new QueryObserver(queryClient, {
-    queryKey,
-    queryFn: () => createPluginsClient(fetch).installJobs.list(),
-  });
+  const observer = new QueryObserver(queryClient, pluginInstallJobsQueryOptions);
   let finished = false;
   let unsubscribe = () => {};
   const observe = () => {
