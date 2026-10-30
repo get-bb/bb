@@ -19,6 +19,7 @@ import {
   type PromptInput,
   type QueuedMessagePayload,
   type QueuedMessageDeliveryMode,
+  type QueuedMessageSystemNotice,
   type QueuedMessageWaitingOn,
   type ResolvedThreadExecutionOptions,
   startedOnBehalfOfSchema,
@@ -257,6 +258,7 @@ export interface DispatchAttemptArgs {
   /** What the queued row would carry; `retry` for a re-submitted failed turn. */
   queuePayload: QueuedMessagePayload;
   pluginSubmission: MessageDispatchHookContext["experimental_submission"];
+  systemNotice: QueuedMessageSystemNotice | null;
   /** Retry provenance, when this attempt re-submits a failed turn. */
   retryOf?: TurnRequestRetryMarker;
   origin: ThreadCreateOrigin | null;
@@ -399,13 +401,16 @@ async function runDispatchAttempt(
     targetThread: thread,
   });
 
+  const systemNotice = args.systemNotice;
   const interruptedStartupRequest =
+    systemNotice === null &&
     (thread.status === "error" || thread.status === "idle") &&
     thread.environmentId === null
       ? await restoreInterruptedThreadStartupRequest(deps, thread.id)
       : null;
   const firstDispatch =
-    thread.status === "pending" || interruptedStartupRequest !== null;
+    systemNotice === null &&
+    (thread.status === "pending" || interruptedStartupRequest !== null);
   const retryStartContext: PendingThreadStartContext | null =
     interruptedStartupRequest === null
       ? null
@@ -417,6 +422,7 @@ async function runDispatchAttempt(
         };
   const author = resolveDispatchAuthor({
     retrying: args.retryOf !== undefined,
+    systemNotice: systemNotice !== null,
     senderThreadId,
     startedOnBehalfOf: args.startedOnBehalfOf,
   });
@@ -446,7 +452,7 @@ async function runDispatchAttempt(
     originPluginId: args.originPluginId,
     requestedBy: args.startedOnBehalfOf,
     payload: args.queuePayload,
-    systemNotice: null,
+    systemNotice,
     deliveryMode: run.deliveryMode,
   };
 
@@ -501,10 +507,16 @@ async function runDispatchAttempt(
     }
     if (
       currentThread.status !== thread.status ||
+      currentThread.environmentId !== thread.environmentId ||
       currentThread.archivedAt !== thread.archivedAt ||
       currentThread.deletedAt !== thread.deletedAt
     ) {
       continued.reattemptThread = currentThread;
+      return;
+    }
+
+    if (systemNotice !== null && thread.environmentId === null) {
+      continued.outcome = waitOn({ kind: "provisioning" }, null);
       return;
     }
 
@@ -704,6 +716,7 @@ async function runDispatchAttempt(
       payload: resolvedPayload,
       thread,
       trigger: args.trigger,
+      ...(systemNotice !== null ? { systemNotice } : {}),
       ...(args.retryOf !== undefined ? { retryOf: args.retryOf } : {}),
       beforeAppendInTransaction: ({ tx }) => {
         if (getThread(tx, thread.id)?.status !== thread.status) {
@@ -979,6 +992,7 @@ export async function compactThreadContext(
     source: { kind: "operation", environment },
     queuePayload: { kind: "inline" },
     pluginSubmission: null,
+    systemNotice: null,
     origin: null,
     originPluginId: null,
     startedOnBehalfOf: null,

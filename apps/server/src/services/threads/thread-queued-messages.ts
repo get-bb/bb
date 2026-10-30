@@ -1,5 +1,6 @@
 import {
   promptInputSchema,
+  queuedMessageSystemNoticeSchema,
   queuedMessageWaitingOnSchema,
   threadQueuedMessageSchema,
 } from "@bb/domain";
@@ -9,6 +10,7 @@ import type {
   QueuedMessagePayload,
   QueuedMessagePayloadKind,
   QueuedMessageState,
+  QueuedMessageSystemNotice,
   QueuedMessageWaitingOn,
   StartedOnBehalfOf,
   StartedOnBehalfOfInitiator,
@@ -99,6 +101,27 @@ export function parseStoredQueuedThreadMessageWaitingOn(
   return parsed.data;
 }
 
+export function parseStoredQueuedThreadMessageSystemNotice(
+  row: Pick<StoredQueuedThreadMessageRow, "id" | "systemNotice" | "threadId">,
+): QueuedMessageSystemNotice | null {
+  if (row.systemNotice === null) return null;
+  let notice: unknown;
+  try {
+    notice = JSON.parse(row.systemNotice);
+  } catch {
+    notice = null;
+  }
+  const parsed = queuedMessageSystemNoticeSchema.safeParse(notice);
+  if (!parsed.success) {
+    throw new ApiError(
+      500,
+      "internal_error",
+      `Stored queued message ${row.id} for thread ${row.threadId} has a malformed system notice`,
+    );
+  }
+  return parsed.data;
+}
+
 /**
  * The requester a queued dispatch was written with, so a drained re-attempt
  * resolves the same author its first attempt did. The two columns are written
@@ -160,14 +183,12 @@ function toQueuedMessagePayload(
 export function toThreadQueuedMessage(
   row: StoredQueuedThreadMessageRow,
 ): ThreadQueuedMessage {
-  const author =
-    row.systemNotice !== null
-      ? { initiator: "system" as const, senderThreadId: null }
-      : resolveDispatchAuthor({
-          retrying: row.payloadKind === "retry",
-          senderThreadId: row.senderThreadId,
-          startedOnBehalfOf: storedQueuedThreadMessageRequestedBy(row),
-        });
+  const author = resolveDispatchAuthor({
+    retrying: row.payloadKind === "retry",
+    systemNotice: row.systemNotice !== null,
+    senderThreadId: row.senderThreadId,
+    startedOnBehalfOf: storedQueuedThreadMessageRequestedBy(row),
+  });
   return threadQueuedMessageSchema.parse({
     id: row.id,
     origin: row.origin,

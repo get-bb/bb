@@ -1036,6 +1036,8 @@ export const queuedThreadMessages = sqliteTable(
     })
       .notNull()
       .default("steer"),
+    coalesceKey: text("coalesce_key"),
+    coalesceState: text("coalesce_state"),
     claimedAt: integer("claimed_at"),
     claimToken: text("claim_token"),
     editHeldUntil: integer("edit_held_until"),
@@ -1064,6 +1066,9 @@ export const queuedThreadMessages = sqliteTable(
       table.nextAttemptAt,
       table.id,
     ),
+    index("queued_thread_messages_coalesce_idx")
+      .on(table.threadId, table.coalesceKey)
+      .where(sql`${table.coalesceKey} IS NOT NULL`),
     index("queued_thread_messages_wait_holder_idx")
       .on(table.waitHolder, table.id)
       .where(sql`${table.waitHolder} IS NOT NULL`),

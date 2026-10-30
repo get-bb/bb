@@ -113,13 +113,14 @@ export function rewindQueuedMessageStateMigration(db: DbConnection): void {
   `);
 }
 
-export function dropQueuedMessageDeliveryModeColumn(db: DbConnection): void {
+export function dropQueuedMessageDeliveryColumns(db: DbConnection): void {
+  db.$client.exec("DROP INDEX IF EXISTS queued_thread_messages_coalesce_idx");
   const columns = db.$client
     .prepare<[], { name: string }>("PRAGMA table_info(queued_thread_messages)")
     .all();
-  if (columns.some((column) => column.name === "delivery_mode")) {
-    db.$client.exec(
-      "ALTER TABLE queued_thread_messages DROP COLUMN delivery_mode",
-    );
+  for (const name of ["coalesce_state", "coalesce_key", "delivery_mode"]) {
+    if (columns.some((column) => column.name === name)) {
+      db.$client.exec(`ALTER TABLE queued_thread_messages DROP COLUMN ${name}`);
+    }
   }
 }
