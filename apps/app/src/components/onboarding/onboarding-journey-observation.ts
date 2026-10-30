@@ -1,12 +1,9 @@
-import {
-  isDocumentVisible,
-  subscribeToDocumentVisibility,
-} from "@/lib/document-visibility";
+import { useDocumentVisible } from "@/lib/document-visibility";
 import type {
   RecordTelemetryEventRequest,
   SystemProviderState,
 } from "@bb/server-contract";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AgentSetupState } from "./onboarding-model";
 
 export function createVisibleTransitionObserver() {
@@ -23,34 +20,23 @@ export function useVisibleObservation<T extends HTMLElement>(
   observe: () => void,
 ) {
   const element = useRef<T>(null);
-  const callback = useRef(observe);
-  const intersecting = useRef(false);
+  const [intersecting, setIntersecting] = useState(false);
+  const visible = useDocumentVisible();
   useEffect(() => {
-    callback.current = observe;
-    if (intersecting.current && isDocumentVisible()) observe();
+    if (intersecting && visible) observe();
   });
   useEffect(() => {
     const node = element.current;
     if (node === null) return;
-    const notify = () => {
-      if (intersecting.current && isDocumentVisible())
-        callback.current();
-    };
     const observer = new IntersectionObserver((entries) => {
-      intersecting.current = entries.some(
-        (entry) => entry.isIntersecting && entry.intersectionRatio > 0,
+      setIntersecting(
+        entries.some(
+          (entry) => entry.isIntersecting && entry.intersectionRatio > 0,
+        ),
       );
-      notify();
     });
     observer.observe(node);
-    const unsubscribeVisibility = subscribeToDocumentVisibility(notify);
-    window.addEventListener("resize", notify);
-    return () => {
-      observer.disconnect();
-      intersecting.current = false;
-      unsubscribeVisibility();
-      window.removeEventListener("resize", notify);
-    };
+    return () => observer.disconnect();
   }, []);
   return element;
 }

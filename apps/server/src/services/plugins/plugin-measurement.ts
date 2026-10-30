@@ -10,6 +10,7 @@ import {
   internalPluginUseReportSchema,
   pluginStateChangedTelemetryEventSchema,
   pluginUseTelemetryEventSchema,
+  publicMeasurementPluginSchema,
   type PluginMeasurementEvent,
   type PluginMeasurementSource,
   type PluginUseInitiator,
@@ -33,14 +34,12 @@ type PluginIdentity = Pick<
   PluginMeasurementEvent["properties"],
   "public_plugin" | "plugin_source"
 >;
-const reviewedPlugins: ReadonlyMap<string, PublicMeasurementPlugin> = new Map([
-  ["browser-automation", "browser-automation"],
-  ["workflows", "workflows"],
-  ["monaco-editor", "monaco-editor"],
-  ["bb--prompt-library", "prompt-library"],
-  ["agent-annotations", "agent-annotations"],
-  ["ask-user-question", "ask-user-question"],
-]);
+const reviewedPlugins = new Map<string, PublicMeasurementPlugin>(
+  publicMeasurementPluginSchema.options.map((key) => [
+    key === "prompt-library" ? "bb--prompt-library" : key,
+    key,
+  ]),
+);
 const sourceContext = new AsyncLocalStorage<PluginMeasurementSource>();
 const invocationContext = new AsyncLocalStorage<{
   pluginId: string;
