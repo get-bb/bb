@@ -95,6 +95,64 @@ const clientTurnRequestedDataSchema = z.object({
 type TimelineTurnRow = Extract<TimelineRow, { kind: "turn" }>;
 
 describe("public thread data routes", () => {
+  it.each(["send", "queued-messages"])(
+    "keeps unidentified SDK callers out of human acceptance through %s",
+    async (route) => {
+      await withTestHarness(async (harness) => {
+        const capture = vi.fn<TelemetryService["capture"]>();
+        harness.deps.telemetry = { ...harness.deps.telemetry, capture };
+        const { thread } = seedThreadFixture(harness, {
+          thread: { status: "active" },
+        });
+        for (const [surface, origin, plugin, initiator] of [
+          [null, null, null, "unknown"],
+          ["web", null, null, "user"],
+          ["desktop", null, null, "user"],
+          ["mobile", null, null, "user"],
+          [null, "cli", null, "user"],
+          ["web", "sdk", null, "unknown"],
+          [null, null, "example", "plugin"],
+          [null, null, "automations", "automation"],
+        ] as const) {
+          capture.mockClear();
+          const response = await harness.app.request(
+            `/api/v1/threads/${thread.id}/${route}`,
+            {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                ...(surface === null ? {} : { "x-bb-app-surface": surface }),
+              },
+              body: JSON.stringify({
+                input: textInput("Work awaiting execution"),
+                model: "gpt-5",
+                permissionMode: "full",
+                reasoningLevel: "medium",
+                serviceTier: "default",
+                ...(route === "send" ? { mode: "queue-if-active" } : {}),
+                ...(origin === null ? {} : { origin }),
+                ...(plugin === null ? {} : { originPluginId: plugin }),
+              }),
+            },
+          );
+          expect(response.status).toBe(route === "send" ? 200 : 201);
+          expect(
+            capture.mock.calls.filter(([event]) => event.name === "work_accepted"),
+          ).toEqual([
+            [{
+              name: "work_accepted",
+              properties: {
+                work_kind: "message",
+                work_initiator: initiator,
+                provider: thread.providerId,
+              },
+            }],
+          ]);
+        }
+      });
+    },
+  );
+
   it("manages sections through the canonical public route lifecycle", async () => {
     await withTestHarness(async (harness) => {
       const initialList = await harness.app.request("/api/v1/thread-sections");
