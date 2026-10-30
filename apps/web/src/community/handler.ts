@@ -1,6 +1,10 @@
+import { sha256Hex } from "@bb/connect-db";
 import { z } from "zod";
 import type { Env } from "../server/env";
 import {
+  ALREADY_CLAIMED,
+  CLAIM_NOT_OPEN,
+  SOLD_OUT,
   surveyAnswers,
   surveyFields,
   validateSurvey,
@@ -9,7 +13,10 @@ import {
 
 type CommunityEnv = Pick<
   Env,
-  "DB" | "COMMUNITY_FORMS_ENABLED" | "COMMUNITY_FORM_RATE_LIMITER"
+  | "DB"
+  | "COMMUNITY_FORMS_ENABLED"
+  | "COMMUNITY_STICKER_CLAIM_URL"
+  | "COMMUNITY_FORM_RATE_LIMITER"
 >;
 
 const MAX_BODY_BYTES = 16384;
@@ -21,6 +28,19 @@ const submission = z.object({
       Object.keys(values).every((name) => surveyFields.includes(name)),
     ),
 });
+
+export function emailKey(email: string): string {
+  const normalized = email.trim().toLowerCase();
+  const at = normalized.lastIndexOf("@");
+  return `${normalized.slice(0, at).split("+")[0]}${normalized.slice(at)}`;
+}
+
+function claimUrl(base: string, code: string, email: string): string {
+  const url = new URL(base);
+  url.searchParams.set("discount", code);
+  url.searchParams.set("checkout[email]", email);
+  return url.href;
+}
 
 export function rateLimitKey(ip: string | null): string {
   if (!ip) return "local-preview";
@@ -128,13 +148,37 @@ export async function handleSurveySubmission(
   const { submission_id: id, answers: values } = read;
   const errors = validateSurvey(values);
   if (Object.keys(errors).length) return reply({ errors }, 400);
+  const email = values.email?.[0] ?? "";
+  const claimBase = env.COMMUNITY_STICKER_CLAIM_URL;
   try {
-    const response = await env.DB.prepare(
-      "INSERT INTO community_survey_response (id, created_at, answers) VALUES (?, ?, ?) ON CONFLICT(id) DO NOTHING",
-    )
-      .bind(id, Date.now(), JSON.stringify(surveyAnswers(values)))
-      .run();
-    return reply({ result: { duplicate: !response.meta.changes } });
+    const [response, emailRow, allocation] = await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO community_survey_response (id, created_at, answers) VALUES (?, ?, ?) ON CONFLICT(id) DO NOTHING",
+      ).bind(id, Date.now(), JSON.stringify(surveyAnswers(values))),
+      env.DB.prepare(
+        "INSERT INTO community_survey_email (email_hash) SELECT ? WHERE changes() = 1 ON CONFLICT(email_hash) DO NOTHING",
+      ).bind(await sha256Hex(emailKey(email))),
+      env.DB.prepare(
+        "UPDATE community_gift_code SET claimed = 1 WHERE code = (SELECT code FROM community_gift_code WHERE claimed = 0 ORDER BY random() LIMIT 1) AND changes() = 1 AND ? RETURNING code",
+      ).bind(claimBase ? 1 : 0),
+    ]);
+    const duplicate = !response?.meta.changes;
+    const code = z
+      .object({ code: z.string() })
+      .safeParse(allocation?.results[0]);
+    const claimLink =
+      claimBase && code.success
+        ? claimUrl(claimBase, code.data.code, email)
+        : null;
+    const claimNote =
+      duplicate || claimLink
+        ? null
+        : !emailRow?.meta.changes
+          ? ALREADY_CLAIMED
+          : claimBase
+            ? SOLD_OUT
+            : CLAIM_NOT_OPEN;
+    return reply({ result: { duplicate, claimLink, claimNote } });
   } catch {
     return reply(
       { error: "We couldn't save your response. Please try again." },

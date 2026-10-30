@@ -14,6 +14,13 @@ export function questionVisible(name: string, values: FormValues): boolean {
   return true;
 }
 
+export const SOLD_OUT =
+  "We've given out all the stickers for now. Thank you for answering.";
+export const CLAIM_NOT_OPEN =
+  "Sticker claims aren't open yet. We'll post in Discord when they are.";
+export const ALREADY_CLAIMED =
+  "This email already has a sticker code. Thank you for answering again!";
+
 type Question = {
   name: string;
   label: string;
@@ -143,7 +150,13 @@ export const formValues = z.object({}).catchall(z.array(z.string()));
 export type FormValues = z.infer<typeof formValues>;
 export type FormErrors = Record<string, string>;
 export const surveyReply = z.object({
-  result: z.object({ duplicate: z.literal([true, false]) }).optional(),
+  result: z
+    .object({
+      duplicate: z.literal([true, false]),
+      claimLink: z.string().nullable(),
+      claimNote: z.string().nullable(),
+    })
+    .optional(),
   errors: z.object({}).catchall(z.string()).optional(),
   error: z.string().optional(),
 });

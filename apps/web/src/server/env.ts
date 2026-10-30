@@ -3,6 +3,7 @@ import { env as workerEnv } from "cloudflare:workers";
 export interface Env {
   DB: D1Database;
   COMMUNITY_FORMS_ENABLED?: string;
+  COMMUNITY_STICKER_CLAIM_URL?: string;
   COMMUNITY_FORM_RATE_LIMITER?: RateLimit;
   TUNNEL_DO: DurableObjectNamespace;
   LINK_START_RATE_LIMITER: RateLimit;

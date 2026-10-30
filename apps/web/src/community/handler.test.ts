@@ -1,12 +1,19 @@
 import { Miniflare } from "miniflare";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { applyConnectDbMigrationsToD1 } from "@bb/connect-db/testing";
-import { handleSurveySubmission, rateLimitKey } from "./handler";
-import { surveyReply } from "./survey";
+import { emailKey, handleSurveySubmission, rateLimitKey } from "./handler";
+import {
+  ALREADY_CLAIMED,
+  CLAIM_NOT_OPEN,
+  SOLD_OUT,
+  surveyReply,
+  type SurveyReply,
+} from "./survey";
 
 let runtime: Miniflare;
 let db: D1Database;
 const origin = "https://community.test";
+const claimBase = "https://test-shop.myshopify.com/cart/123:1";
 const defaults = {
   discovery: "GitHub",
   role: "Developer or engineer",
@@ -21,6 +28,7 @@ const defaults = {
 const enabled = {
   COMMUNITY_FORMS_ENABLED: "true",
   COMMUNITY_FORM_RATE_LIMITER: { limit: async () => ({ success: true }) },
+  COMMUNITY_STICKER_CLAIM_URL: claimBase,
 };
 const request = (body: string, headers: Record<string, string> = {}) =>
   new Request(`${origin}/api/community/survey`, {
@@ -51,6 +59,8 @@ const post = async (
     body: surveyReply.parse(await response.json()),
   };
 };
+const codeFrom = (body: SurveyReply) =>
+  body.result?.claimLink?.match(/\?discount=([A-Z0-9]+)/)?.[1];
 const count = (sql: string) =>
   db.prepare(`SELECT COUNT(*) AS n FROM ${sql}`).first<number>("n");
 beforeAll(async () => {
@@ -64,7 +74,14 @@ beforeAll(async () => {
   await applyConnectDbMigrationsToD1(db);
 });
 beforeEach(async () => {
-  await db.batch([db.prepare("DELETE FROM community_survey_response")]);
+  await db.batch([
+    db.prepare("DELETE FROM community_survey_response"),
+    db.prepare("DELETE FROM community_survey_email"),
+    db.prepare("DELETE FROM community_gift_code"),
+    db.prepare(
+      "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 10) INSERT INTO community_gift_code (code) SELECT printf('CODE%04d', i) FROM n",
+    ),
+  ]);
 });
 afterAll(async () => {
   await runtime?.dispose();
@@ -143,7 +160,7 @@ describe("survey submissions", () => {
     }
   });
 
-  it("saves only visible answers once per submission", async () => {
+  it("saves only visible answers and gives one claim link per submission", async () => {
     const id = crypto.randomUUID();
     const fields = {
       work: "Just me",
@@ -155,9 +172,10 @@ describe("survey submissions", () => {
         "Build things with other bb users",
       ],
     };
-    expect((await post(fields, {}, id)).body).toEqual({
-      result: { duplicate: false },
-    });
+    const { body } = await post(fields, {}, id);
+    expect(body.result?.claimLink).toBe(
+      `${claimBase}?discount=${codeFrom(body)}&checkout%5Bemail%5D=ada%40example.test`,
+    );
     const stored = await db
       .prepare("SELECT answers FROM community_survey_response WHERE id = ?")
       .bind(id)
@@ -176,23 +194,65 @@ describe("survey submissions", () => {
       ),
     );
     expect((await post(fields, {}, id)).body).toEqual({
-      result: { duplicate: true },
+      result: { duplicate: true, claimLink: null, claimNote: null },
     });
     expect(await count("community_survey_response")).toBe(1);
+    expect(await count("community_gift_code WHERE claimed = 1")).toBe(1);
   });
 
-  it("reports a save failure so the page can keep the answers", async () => {
+  it("gives each email one code, ignoring case and +tags", async () => {
+    expect(codeFrom((await post()).body)).toBeDefined();
+    for (const email of ["Ada@Example.test", " ada+again@example.test "]) {
+      const { body } = await post({ email });
+      expect(body.result).toEqual({
+        duplicate: false,
+        claimLink: null,
+        claimNote: ALREADY_CLAIMED,
+      });
+    }
+    expect(
+      codeFrom((await post({ email: "grace@example.test" })).body),
+    ).toBeDefined();
+    expect(await count("community_survey_response")).toBe(4);
+    expect(await count("community_gift_code WHERE claimed = 1")).toBe(2);
+    expect(emailKey(" Ada+Tag@Example.TEST ")).toBe("ada@example.test");
+  });
+
+  it("hands out the last code once and still saves answers when codes run out", async () => {
     await db
       .prepare(
-        "CREATE TRIGGER reject_response BEFORE INSERT ON community_survey_response BEGIN SELECT RAISE(ABORT, 'unavailable'); END",
+        "UPDATE community_gift_code SET claimed = 1 WHERE code != 'CODE0001'",
+      )
+      .run();
+    const replies = await Promise.all(
+      [0, 1, 2, 3].map((index) => post({ email: `ada${index}@example.test` })),
+    );
+    expect(replies.map(({ body }) => codeFrom(body)).filter(Boolean)).toEqual([
+      "CODE0001",
+    ]);
+    expect(
+      replies.filter(({ body }) => body.result?.claimNote === SOLD_OUT),
+    ).toHaveLength(3);
+    expect(await count("community_survey_response")).toBe(4);
+  });
+
+  it("keeps codes while claiming is off", async () => {
+    const { body } = await post({}, { COMMUNITY_STICKER_CLAIM_URL: "" });
+    expect(body.result?.claimNote).toBe(CLAIM_NOT_OPEN);
+    expect(await count("community_gift_code WHERE claimed = 1")).toBe(0);
+  });
+
+  it("rolls back answers when claiming a code fails", async () => {
+    await db
+      .prepare(
+        "CREATE TRIGGER reject_code BEFORE UPDATE ON community_gift_code BEGIN SELECT RAISE(ABORT, 'unavailable'); END",
       )
       .run();
     try {
-      const { status, body } = await post();
-      expect(status).toBe(503);
-      expect(body.error).toContain("couldn't save");
+      expect((await post()).status).toBe(503);
+      expect(await count("community_survey_response")).toBe(0);
     } finally {
-      await db.prepare("DROP TRIGGER reject_response").run();
+      await db.prepare("DROP TRIGGER reject_code").run();
     }
   });
 
