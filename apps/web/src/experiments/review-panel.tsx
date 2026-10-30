@@ -1,6 +1,6 @@
 // Review build only. This file lives on the integration branch that combines
 // every homepage PR for owner review and is never merged.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { EXPERIMENT_KEYS, EXPERIMENT_VARIANTS, type ExperimentKey } from "./flags";
 import { useExperimentBootstrap } from "./use-experiment";
@@ -20,6 +20,9 @@ const HIDDEN = new Set(["homepage-qa-check", "homepage-aa"]);
 export function ReviewPanel() {
   const bootstrap = useExperimentBootstrap();
   const [open, setOpen] = useState(true);
+  useEffect(() => {
+    if (window.innerWidth < 700) setOpen(false);
+  }, []);
   if (!bootstrap.preview) return null;
   const keys = EXPERIMENT_KEYS.filter((key) => !HIDDEN.has(key));
   const current = (key: ExperimentKey) =>
