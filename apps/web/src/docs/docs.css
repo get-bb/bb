@@ -412,6 +412,23 @@
   font-weight: 600;
 }
 
+.docs-wrap .docs-shot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 110px;
+  margin: 18px 0;
+  padding: 12px 30px;
+  border: 1.5px dashed var(--accent);
+  border-radius: var(--radius);
+  background: color-mix(in oklab, var(--accent) 5%, var(--bg));
+  color: var(--accent);
+  font-size: 13px;
+  text-align: center;
+}
+
 .docs-wrap .docs-toc {
   position: sticky;
   top: 72px;

@@ -9,17 +9,29 @@ import { surfaceDocsPath } from "../../../../plugins/plugin-api-docs/src/surface
 import { SURFACE_GROUPS } from "../../../../plugins/plugin-api-docs/src/surfaces";
 import { DOCS_NAV, navSectionOf, PLUGIN_SDK_SLUG } from "./nav";
 import {
+  DOCS_PAGE_TYPES,
+  docsFrontmatterFields,
+  templateProblems,
+  type DocsPageType,
+} from "./page-types";
+import {
   cliReferencePage,
   keyboardReferencePage,
   referenceSource,
   SOURCES_HEADING,
 } from "./reference";
+import { SHOT_PLACEHOLDER_PATTERN } from "./shot";
 
 const WEB_ROOT = path.resolve(__dirname, "../..");
 const CONTENT_DIR = path.join(WEB_ROOT, "content/docs");
+const TEMPLATES_DIR = path.resolve(
+  WEB_ROOT,
+  "../../.bb/skills/docs-writing/templates",
+);
 
 const frontmatterSchema = z.object({
   title: z.string().min(1),
+  ...docsFrontmatterFields,
 });
 
 function mdxFiles(dir: string): string[] {
@@ -89,14 +101,51 @@ describe("hand-written docs pages", () => {
   const files = mdxFiles(CONTENT_DIR);
 
   it.each(files.map((file) => [path.relative(WEB_ROOT, file), file]))(
-    "%s is in the sidebar under its title",
+    "%s follows its template",
     (_name, file) => {
-      const parsed = matter(readFileSync(file, "utf8"));
+      const source = readFileSync(file, "utf8");
+      const parsed = matter(source);
       const frontmatter = frontmatterSchema.parse(parsed.data);
+      expect(
+        templateProblems(frontmatter.type, h2Headings(parsed.content)),
+      ).toEqual([]);
+      expect(source).not.toMatch(SHOT_PLACEHOLDER_PATTERN);
       const navPage = navPages.find((page) => page.slug === slugOf(file));
       expect(navPage?.title).toBe(frontmatter.title);
     },
   );
+});
+
+describe("page templates", () => {
+  it.each(DOCS_PAGE_TYPES.map((type) => [type]))(
+    "the %s template has its required headings",
+    (type: DocsPageType) => {
+      const parsed = matter(
+        readFileSync(path.join(TEMPLATES_DIR, `${type}.mdx`), "utf8"),
+      );
+      expect(parsed.data.type).toBe(type);
+      expect(Object.keys(parsed.data).sort()).toEqual(
+        ["title", ...Object.keys(docsFrontmatterFields)].sort(),
+      );
+      expect(templateProblems(type, h2Headings(parsed.content))).toEqual([]);
+    },
+  );
+
+  it("reports missing and misplaced headings", () => {
+    expect(templateProblems("how-to", ["Steps", "Check it worked"])).toEqual([
+      'missing "## Related troubleshooting"',
+      'must end with "## Related troubleshooting"',
+    ]);
+  });
+
+  it("blocks image placeholders", () => {
+    expect('<Shot todo="Settings → Plugins" />').toMatch(
+      SHOT_PLACEHOLDER_PATTERN,
+    );
+    expect("A Shotgun is not a placeholder").not.toMatch(
+      SHOT_PLACEHOLDER_PATTERN,
+    );
+  });
 });
 
 describe("generated reference pages", () => {
@@ -108,6 +157,9 @@ describe("generated reference pages", () => {
     "%s follows the reference template",
     (_path, page) => {
       expect(page.data.type).toBe("reference");
+      expect(
+        templateProblems("reference", h2Headings(page.data.markdown)),
+      ).toEqual([]);
       expect(h2Headings(page.data.markdown).at(-1)).toBe(SOURCES_HEADING);
     },
   );

@@ -609,6 +609,56 @@ jobs:
       - name: Bound saved Turbo cache
         run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 1024
 
+  docs-isolation:
+    name: Docs leave home and landing pages unchanged
+    needs: plan
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 40
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Check for a docs-only change
+        id: scope
+        env:
+          BASE_SHA: ${{ needs.plan.outputs.base }}
+        run: echo "docs_only=$(node apps/web/scripts/docs-only-change.mjs "$BASE_SHA")" >> "$GITHUB_OUTPUT"
+
+      - name: Setup workspace tools
+        if: ${{ steps.scope.outputs.docs_only == 'true' }}
+        uses: ./.github/actions/setup-workspace-tools
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+
+      - name: Install dependencies
+        if: ${{ steps.scope.outputs.docs_only == 'true' }}
+        timeout-minutes: 5
+        run: bash .github/actions/setup-workspace/install-dependencies.sh
+
+      - name: Fingerprint this change
+        if: ${{ steps.scope.outputs.docs_only == 'true' }}
+        run: bash apps/web/scripts/capture-landing-fingerprint.sh "$GITHUB_WORKSPACE" 4517 "$RUNNER_TEMP/landing-head.json"
+
+      - name: Fingerprint the base
+        if: ${{ steps.scope.outputs.docs_only == 'true' }}
+        env:
+          BASE_SHA: ${{ needs.plan.outputs.base }}
+        run: |
+          git worktree add "$RUNNER_TEMP/base" "$BASE_SHA"
+          (cd "$RUNNER_TEMP/base" && pnpm install --frozen-lockfile --prefer-offline)
+          bash apps/web/scripts/capture-landing-fingerprint.sh "$RUNNER_TEMP/base" 4518 "$RUNNER_TEMP/landing-base.json"
+
+      - name: Compare home and landing pages
+        if: ${{ steps.scope.outputs.docs_only == 'true' }}
+        run: node apps/web/scripts/landing-fingerprint.mjs compare "$RUNNER_TEMP/landing-base.json" "$RUNNER_TEMP/landing-head.json"
+
   # Tests run on their own runners instead of inside the checks job: the big
   # suites are CPU-bound and previously fought each other (and the builds) for
   # the same 4 vCPUs, which made tests the critical path of every run.

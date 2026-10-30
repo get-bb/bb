@@ -18,6 +18,7 @@ import { CopyToast, PROMPT_COPIED, useCopy } from "../guides/guide-blocks";
 import { docs } from "./content";
 import { DocsSearch } from "./docs-search";
 import type { DocsNavSection, DocsPageView, DocsTocEntry } from "./page-view";
+import { Shot } from "./shot";
 
 const SITE = "https://getbb.app";
 
@@ -224,7 +225,7 @@ function MdxBody({ contentPath }: { contentPath: string }) {
     throw new Error(`Docs page ${contentPath} is not compiled`);
   }
   const Body = entry.body;
-  return <Body components={{ pre: CodeBlock, table: TableWrap }} />;
+  return <Body components={{ pre: CodeBlock, table: TableWrap, Shot }} />;
 }
 
 function ReferenceBody({
