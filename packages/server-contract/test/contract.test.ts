@@ -436,6 +436,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "Thread creation, queued messages, and follow-up messages omit their sender unless the request originates from another thread or, for sends, a plugin.",
     fields: [
       "createQueuedMessageRequestSchema.senderThreadId",
+      "createQueuedMessageRequestSchema.originPluginId",
       "sendMessageRequestSchema.senderThreadId",
       "createThreadRequestSchema.senderThreadId",
       "sendMessageRequestSchema.originPluginId",
