@@ -83,6 +83,13 @@ function summary(account: CodexDeviceAccount): AccountSummary {
     sevenDayResetAt: null,
     sevenDayStatus: null,
     representativeClaim: null,
+    familyOverageUntil: {
+      fable: null,
+      sonnet: null,
+      opus: null,
+      haiku: null,
+      other: null,
+    },
     familyWeekly: {
       fable: null,
       sonnet: null,
@@ -98,6 +105,7 @@ function summary(account: CodexDeviceAccount): AccountSummary {
     error: null,
     inFlight: 0,
     status: "ready",
+    tier: "below-threshold",
   };
 }
 

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { parseCodexRequestBody } from "./request-body.js";
 import {
   EMPTY_FAMILY_WEEKLY,
+  NO_FAMILY_OVERAGE,
   type AccountQuota,
   type AccountSecret,
   type LimitWindow,
@@ -141,7 +142,7 @@ function withoutClaudeSlots(previous: AccountQuota): AccountQuota {
     sevenDayResetAt: null,
     sevenDayStatus: null,
     representativeClaim: null,
-
+    familyOverageUntil: NO_FAMILY_OVERAGE,
     familyWeekly: EMPTY_FAMILY_WEEKLY,
   };
 }

@@ -1,13 +1,17 @@
-import type {
-  Account,
-  AccountQuota,
-  AccountSummary,
-  FamilyQuota,
-  LimitWindow,
-  ModelFamily,
+import {
+  routingTierSchema,
+  type Account,
+  type AccountQuota,
+  type AccountSummary,
+  type LimitWindow,
+  type ModelFamily,
+  type RoutingTier,
 } from "./contracts.js";
 
 const PREFIX = "anthropic-ratelimit-unified-";
+const OVERAGE_CLAIM = "overage";
+const UNKNOWN_OVERAGE_RESET_MS = 24 * 60 * 60 * 1_000;
+const ROUTING_TIERS = routingTierSchema.options;
 const SCOPED_HEADER =
   /^anthropic-ratelimit-unified-7d_(.+)-(utilization|reset|status)$/u;
 
@@ -124,7 +128,7 @@ export function quotaFromHeaders(
     representativeClaim !== null ||
     extraUsage !== previous.extraUsage ||
     scoped !== null;
-  return {
+  const next: AccountQuota = {
     accountId,
     usageRestriction: previous.usageRestriction,
     extraUsage,
@@ -135,108 +139,141 @@ export function quotaFromHeaders(
     sevenDayResetAt: sevenDayResetAt ?? previous.sevenDayResetAt,
     sevenDayStatus: sevenDayStatus ?? previous.sevenDayStatus,
     representativeClaim: representativeClaim ?? previous.representativeClaim,
+    familyOverageUntil: previous.familyOverageUntil,
     familyWeekly,
     limitWindows: previous.limitWindows,
     observedAt: observed ? now : previous.observedAt,
     heldUntil: previous.heldUntil,
     error: previous.error,
   };
+  if (representativeClaim === null) return next;
+  const weeklyReset = governingWeeklyResetAt(next, family);
+  return {
+    ...next,
+    familyOverageUntil: {
+      ...previous.familyOverageUntil,
+      [family]:
+        representativeClaim.toLowerCase() !== OVERAGE_CLAIM
+          ? null
+          : weeklyReset !== null && weeklyReset > now
+            ? weeklyReset
+            : now + UNKNOWN_OVERAGE_RESET_MS,
+    },
+  };
 }
 
-function activeWindow(
-  utilization: number | null,
-  status: string | null,
-  resetAt: number | null,
+interface QuotaWindow {
+  utilization: number | null;
+  status: string | null;
+  resetAt: number | null;
+}
+
+function quotaWindows(
+  quota: AccountQuota | AccountSummary,
+  family: ModelFamily | null,
+): QuotaWindow[] {
+  const familyQuota = family === null ? null : quota.familyWeekly[family];
+  return [
+    {
+      utilization: quota.fiveHourUtilization,
+      status: quota.fiveHourStatus,
+      resetAt: quota.fiveHourResetAt,
+    },
+    {
+      utilization: quota.sevenDayUtilization,
+      status: quota.sevenDayStatus,
+      resetAt: quota.sevenDayResetAt,
+    },
+    ...quota.limitWindows,
+    ...(familyQuota === null ? [] : [familyQuota]),
+  ];
+}
+
+function isBlockedUpstream(window: QuotaWindow, now: number): boolean {
+  if (window.resetAt !== null && window.resetAt <= now) return false;
+  const status = window.status?.toLowerCase() ?? null;
+  if (status !== null) return status === "rejected";
+  return window.utilization !== null && window.utilization >= 1;
+}
+
+function isAtThreshold(
+  window: QuotaWindow,
   threshold: number,
   now: number,
 ): boolean {
-  if (resetAt !== null && resetAt <= now) return false;
+  if (window.resetAt !== null && window.resetAt <= now) return false;
   return (
-    status?.toLowerCase() === "rejected" ||
-    (utilization !== null && utilization >= threshold)
+    isBlockedUpstream(window, now) ||
+    (window.utilization !== null && window.utilization >= threshold)
   );
 }
 
-function activeFamilyWindow(
-  quota: FamilyQuota | null,
-  threshold: number,
-  now: number,
-): boolean {
-  return (
-    quota !== null &&
-    activeWindow(quota.utilization, quota.status, quota.resetAt, threshold, now)
-  );
-}
+const TIER_SPAN = 3;
 
-export function blockingResetAt(
+export function routeRank(
+  account: Pick<Account, "enabled" | "kind">,
   quota: AccountQuota | AccountSummary,
   family: ModelFamily | null,
   threshold: number,
   now: number,
 ): number | null {
-  if (isUsageRestricted(quota, now))
-    return quota.usageRestriction?.resetAt ?? null;
-  let latest: number | null = null;
-  let unknown = false;
-  const include = (
-    utilization: number | null,
-    status: string | null,
-    resetAt: number | null,
-  ) => {
-    if (!activeWindow(utilization, status, resetAt, threshold, now)) return;
-    if (resetAt === null) unknown = true;
-    else latest = Math.max(latest ?? resetAt, resetAt);
-  };
-  include(
-    quota.fiveHourUtilization,
-    quota.fiveHourStatus,
-    quota.fiveHourResetAt,
-  );
-  include(
-    quota.sevenDayUtilization,
-    quota.sevenDayStatus,
-    quota.sevenDayResetAt,
-  );
-  for (const window of quota.limitWindows)
-    include(window.utilization, window.status, window.resetAt);
-  if (family !== null) {
-    const familyQuota = quota.familyWeekly[family];
-    if (familyQuota !== null)
-      include(familyQuota.utilization, familyQuota.status, familyQuota.resetAt);
-  }
-  return unknown ? null : latest;
+  if (!account.enabled || quota.error !== null || isUsageRestricted(quota, now))
+    return null;
+  const windows = quotaWindows(quota, family);
+  const blocked = windows.some((window) => isBlockedUpstream(window, now));
+  if (blocked && !hasExtraUsage(quota)) return null;
+  const headroom = blocked
+    ? 2
+    : windows.some((window) => isAtThreshold(window, threshold, now))
+      ? 1
+      : 0;
+  const overage = family === null ? null : quota.familyOverageUntil[family];
+  const paid =
+    blocked ||
+    account.kind === "api-key" ||
+    (overage !== null && overage > now);
+  const tier = paid ? 2 : headroom;
+  return tier * TIER_SPAN + headroom;
 }
 
-export function isSharedQuotaExhausted(
+export function routeTier(rank: number): RoutingTier {
+  const tier = ROUTING_TIERS[Math.floor(rank / TIER_SPAN)];
+  if (tier === undefined) throw new Error(`Unknown route rank ${rank}.`);
+  return tier;
+}
+
+export function isSubscriptionRank(rank: number): boolean {
+  return rank < 2 * TIER_SPAN;
+}
+
+export function isBelowThreshold(
   quota: AccountQuota,
+  family: ModelFamily,
   threshold: number,
   now: number,
 ): boolean {
   return (
-    activeWindow(
-      quota.fiveHourUtilization,
-      quota.fiveHourStatus,
-      quota.fiveHourResetAt,
-      threshold,
-      now,
-    ) ||
-    activeWindow(
-      quota.sevenDayUtilization,
-      quota.sevenDayStatus,
-      quota.sevenDayResetAt,
-      threshold,
-      now,
-    ) ||
-    quota.limitWindows.some((window) =>
-      activeWindow(
-        window.utilization,
-        window.status,
-        window.resetAt,
-        threshold,
-        now,
-      ),
+    !isUsageRestricted(quota, now) &&
+    !quotaWindows(quota, family).some((window) =>
+      isAtThreshold(window, threshold, now),
     )
   );
+}
+
+export function rejoinAt(
+  quota: AccountQuota | AccountSummary,
+  family: ModelFamily | null,
+  now: number,
+): number | null {
+  if (isUsageRestricted(quota, now))
+    return quota.usageRestriction?.resetAt ?? null;
+  let latest = now;
+  for (const window of quotaWindows(quota, family)) {
+    if (!isBlockedUpstream(window, now)) continue;
+    if (window.resetAt === null) return null;
+    latest = Math.max(latest, window.resetAt);
+  }
+  return latest;
 }
 
 export function longestLimitWindow(
@@ -253,19 +290,6 @@ export function longestLimitWindow(
   return longest;
 }
 
-export function isQuotaExhausted(
-  quota: AccountQuota,
-  family: ModelFamily,
-  threshold: number,
-  now: number,
-): boolean {
-  return (
-    isUsageRestricted(quota, now) ||
-    isSharedQuotaExhausted(quota, threshold, now) ||
-    activeFamilyWindow(quota.familyWeekly[family], threshold, now)
-  );
-}
-
 export function isUsageRestricted(
   quota: AccountQuota | AccountSummary,
   now: number,
@@ -277,7 +301,7 @@ export function isUsageRestricted(
   );
 }
 
-export function hasExtraUsage(quota: AccountQuota): boolean {
+export function hasExtraUsage(quota: AccountQuota | AccountSummary): boolean {
   return (
     quota.extraUsage?.status === "allowed" && quota.usageRestriction === null
   );
@@ -314,14 +338,14 @@ export function accountStatus(
   quota: AccountQuota,
   threshold: number,
   now: number,
-): AccountSummary["status"] {
-  if (!account.enabled) return "disabled";
-  if (quota.error !== null) return "error";
-  if (quota.heldUntil !== null && quota.heldUntil > now) return "held";
-  if (isUsageRestricted(quota, now)) return "exhausted";
-  if (isSharedQuotaExhausted(quota, threshold, now) && !hasExtraUsage(quota))
-    return "exhausted";
-  return "ready";
+): Pick<AccountSummary, "status" | "tier"> {
+  if (!account.enabled) return { status: "disabled", tier: null };
+  if (quota.error !== null) return { status: "error", tier: null };
+  const rank = routeRank(account, quota, null, threshold, now);
+  const tier = rank === null ? null : routeTier(rank);
+  if (quota.heldUntil !== null && quota.heldUntil > now)
+    return { status: "held", tier };
+  return { status: rank === null ? "exhausted" : "ready", tier };
 }
 
 export function retryAfterMilliseconds(

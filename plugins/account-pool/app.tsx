@@ -67,6 +67,7 @@ import type {
   PoolAvailability,
   PoolProvider,
   PoolStatus,
+  RoutingTier,
 } from "./src/contracts.js";
 import type { accountPoolRpcContract } from "./src/rpc.js";
 import type { OAuthLoginStart } from "./src/oauth-login.js";
@@ -76,7 +77,7 @@ import {
   modelFamilySchema,
   statusSchema,
 } from "./src/contracts.js";
-import { blockingResetAt } from "./src/quota.js";
+import { rejoinAt } from "./src/quota.js";
 import {
   ACCOUNT_POOL_ACCOUNTS_CHANGED,
   ACCOUNT_POOL_CONFIG_CHANGED,
@@ -105,6 +106,12 @@ const ACCOUNT_ACTIONS = [
   "relogin",
   "remove",
 ] as const;
+
+const TIER_LABELS: Record<RoutingTier, string | null> = {
+  "below-threshold": null,
+  "above-threshold": "above threshold",
+  paid: "paid",
+};
 
 const PROVIDERS: Array<{
   id: PoolProvider;
@@ -236,10 +243,7 @@ function writeCachedStatus(status: PoolStatus): void {
   }
 }
 
-function statusPresentation(
-  account: AccountSummary,
-  threshold: number,
-): {
+function statusPresentation(account: AccountSummary): {
   label: string;
   dot: string;
 } {
@@ -249,7 +253,7 @@ function statusPresentation(
       dot: "bg-warning",
     };
   if (account.status === "exhausted") {
-    const resetAt = blockingResetAt(account, null, threshold, Date.now());
+    const resetAt = rejoinAt(account, null, Date.now());
     return {
       label: `Exhausted${resetAt === null ? "" : ` · ${resetLabel(resetAt)}`}`,
       dot: "bg-destructive",
@@ -259,7 +263,11 @@ function statusPresentation(
     return { label: "Error", dot: "bg-destructive" };
   if (account.status === "disabled")
     return { label: "Disabled", dot: "bg-muted-foreground" };
-  return { label: "Ready", dot: "bg-success" };
+  const tier = account.tier === null ? null : TIER_LABELS[account.tier];
+  return {
+    label: tier === null ? "Ready" : `Ready · ${tier}`,
+    dot: account.tier === "below-threshold" ? "bg-success" : "bg-warning",
+  };
 }
 function tier(account: AccountSummary): string {
   return (
@@ -413,7 +421,7 @@ function AccountRow({
   onOpen: () => void;
   reorderDisabled: boolean;
 }) {
-  const status = statusPresentation(account, threshold);
+  const status = statusPresentation(account);
   const slots = quotaSlots(account);
   const email = secondaryEmail(account);
   const {
@@ -665,7 +673,7 @@ function QuotaDetail({
           {quota?.resetAt === null || quota === null
             ? ""
             : ` · ${resetLabel(quota.resetAt)}`}{" "}
-          · will be skipped at {Math.round(threshold * 100)}%
+          · other accounts preferred from {Math.round(threshold * 100)}%
         </div>
       </div>
     </div>
@@ -1423,7 +1431,7 @@ function AccountPoolSettings() {
               </ConfigFieldRow>
               <ConfigFieldRow
                 label="Quota switch threshold"
-                description="Stop selecting an account at this quota fraction."
+                description="Prefer accounts below this quota fraction. Accounts above it still serve while the provider allows them."
                 error={configErrors.switchThreshold}
               >
                 <Input
@@ -1717,9 +1725,7 @@ function AccountDialog({
     >
       <div className="flex items-center gap-2">
         <SettingsBadge>{tier(account)}</SettingsBadge>
-        <SettingsBadge>
-          {statusPresentation(account, threshold).label}
-        </SettingsBadge>
+        <SettingsBadge>{statusPresentation(account).label}</SettingsBadge>
       </div>
       <div className="space-y-4">
         {account.provider === "codex" ? (
