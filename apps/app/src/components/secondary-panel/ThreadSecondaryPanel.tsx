@@ -90,6 +90,12 @@ import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcut
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 import { TabPill } from "@/components/ui/tab-pill";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@bb/shared-ui/context-menu";
 import type { SplitSide } from "@/lib/split-layout";
 import { PaneArrangementButton } from "@/views/thread-detail/PaneMaximizeButton";
 import {
@@ -177,6 +183,10 @@ const HIDE_PANEL_LABEL = "Hide right panel";
 export interface SecondaryPanelFixedTab {
   ariaLabel: string;
   contentFillsRegion?: boolean;
+  customization?: {
+    onHide: () => void;
+    onCustomize: () => void;
+  };
   label: string;
   leadingVisual: ReactNode;
   onSelect: () => void;
@@ -618,6 +628,7 @@ function ThreadSecondaryPanelContent({
           <PinnedIconTab
             key={fixedTab.tab.id}
             ariaLabel={fixedTab.ariaLabel}
+            customization={fixedTab.customization}
             isActive={
               activeSurfaceFixedTab?.tab.id === fixedTab.tab.id &&
               !hasActiveSurfaceTab
@@ -1055,6 +1066,7 @@ interface NewTabButtonProps {
 interface PinnedIconTabProps {
   ariaLabel: string;
   ariaKeyshortcuts?: string;
+  customization?: SecondaryPanelFixedTab["customization"];
   isActive: boolean;
   label: string;
   leadingVisual: ReactNode;
@@ -1067,6 +1079,7 @@ interface PinnedIconTabProps {
 function PinnedIconTab({
   ariaLabel,
   ariaKeyshortcuts,
+  customization,
   isActive,
   label,
   leadingVisual,
@@ -1075,30 +1088,53 @@ function PinnedIconTab({
   title,
   usesDesktopChrome,
 }: PinnedIconTabProps) {
+  const tab = (
+    <div
+      data-testid={label === "Info" ? "thread-info-tab" : undefined}
+      className={cn(
+        "shrink-0",
+        usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
+      )}
+      onPointerDown={onPointerDown}
+    >
+      <TabPill
+        label={label}
+        ariaLabel={ariaLabel}
+        ariaKeyshortcuts={ariaKeyshortcuts}
+        iconOnly
+        leadingVisual={leadingVisual}
+        title={title}
+        isActive={isActive}
+        onSelect={onClick}
+        closeAction={null}
+      />
+    </div>
+  );
+  if (customization === undefined) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>{tab}</TooltipTrigger>
+        <TooltipContent>{title}</TooltipContent>
+      </Tooltip>
+    );
+  }
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <div
-          data-testid={label === "Info" ? "thread-info-tab" : undefined}
-          className={cn(
-            "shrink-0",
-            usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
-          )}
-          onPointerDown={onPointerDown}
-        >
-          <TabPill
-            label={label}
-            ariaLabel={ariaLabel}
-            ariaKeyshortcuts={ariaKeyshortcuts}
-            iconOnly
-            leadingVisual={leadingVisual}
-            title={title}
-            isActive={isActive}
-            onSelect={onClick}
-            closeAction={null}
-          />
-        </div>
-      </TooltipTrigger>
+      <ContextMenu>
+        <TooltipTrigger asChild>
+          <ContextMenuTrigger asChild>{tab}</ContextMenuTrigger>
+        </TooltipTrigger>
+        <ContextMenuContent>
+          <ContextMenuItem onSelect={customization.onHide}>
+            <Icon name="EyeOff" />
+            Hide {label}
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={customization.onCustomize}>
+            <Icon name="SlidersHorizontal" />
+            Customize right panel tabs
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
       <TooltipContent>{title}</TooltipContent>
     </Tooltip>
   );

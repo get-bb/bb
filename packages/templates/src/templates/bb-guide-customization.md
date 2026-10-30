@@ -369,6 +369,19 @@ In the app, the sidebar footer's More menu holds hidden actions and actions
 that don't fit; Settings → Appearance → Sidebar footer, or right-clicking an
 action, edits the footer.
 
+Right panel fixed tabs: `rightPanel.fixedTabOrder` and
+`rightPanel.hiddenFixedTabs` are string lists of
+`plugin-fixed:<encoded pluginId>:<encoded tabId>` IDs, as
+`bb thread tabs show` prints them (Info is `plugin-fixed:core:info`). They
+apply to every thread; unlisted tabs follow in registration order, and a hidden
+tab still shows while it is selected.
+
+bb settings ui set rightPanel.hiddenFixedTabs '["plugin-fixed:bb--git:diff"]'
+bb settings ui reset rightPanel.hiddenFixedTabs
+
+In the app, Settings → Appearance → Right panel tabs, or right-clicking a fixed
+tab, edits them.
+
 The command palette's thread search has its own Active/Archived filter, which
 is browser-local: it is not a server setting or a CLI/SDK option. The sidebar
 thread list's Active/Archived filter is the Thread list plugin's

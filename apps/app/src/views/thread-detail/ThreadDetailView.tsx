@@ -149,6 +149,11 @@ import {
   SIDE_CHAT_PLUGIN_PANEL_ACTION_ID,
 } from "@/lib/side-chat-plugin";
 import { usePanelTabPresenter } from "@/components/secondary-panel/usePanelTabPresenter";
+import {
+  useRightPanelFixedTabPreferences,
+  useSetRightPanelFixedTabShown,
+} from "@/components/secondary-panel/rightPanelFixedTabPreferences";
+import { getSettingsSectionRoutePath } from "@/components/settings/settings-sections";
 import { createFileOpenerOriginalTab } from "@/components/plugin/file-opener-tabs";
 import { ThreadTimelineNavigationProvider } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import {
@@ -357,6 +362,10 @@ function RoutedThreadDetailView() {
 queueSplitDownload("queued-messages-list");
 
 const THREAD_TAB_CONTEXT = { kind: "thread" } as const;
+
+function getSecondaryPanelFixedTabId(tab: SecondaryPanelFixedTab) {
+  return tab.tab.id;
+}
 
 export function ThreadDetailView(props: ThreadDetailViewProps) {
   if (props.surface === "pane") {
@@ -930,7 +939,8 @@ function ThreadDetailViewInternal(
   const toggleConversationCollapse = useCallback(() => {
     setStoredConversationCollapsed((collapsed) => !collapsed);
   }, [setStoredConversationCollapsed]);
-  const secondaryPanelFixedTabs = useMemo<
+  const setFixedTabShown = useSetRightPanelFixedTabShown();
+  const orderedThreadFixedTabs = useMemo<
     readonly SecondaryPanelFixedTab[]
   >(() => {
     if (thread === undefined) return [];
@@ -943,8 +953,8 @@ function ThreadDetailViewInternal(
           (order.get(left.tab.id) ?? Infinity) -
           (order.get(right.tab.id) ?? Infinity),
       )
-      .map((entry) =>
-        createThreadFixedTabDescriptor(
+      .map((entry) => ({
+        ...createThreadFixedTabDescriptor(
           entry,
           thread.id,
           threadTabEnvironment,
@@ -952,14 +962,27 @@ function ThreadDetailViewInternal(
             panel.openTab({ tab: reference, availability: "fixed" });
           },
         ),
-      );
+        customization: {
+          onHide: () => setFixedTabShown(entry.tab.id, false),
+          onCustomize: () =>
+            navigate(getSettingsSectionRoutePath("appearance")),
+        },
+      }));
   }, [
     threadTabEnvironment,
     fixedPanelTabsState.secondary.tabs,
     threadFixedTabs.entries,
+    navigate,
     panel,
+    setFixedTabShown,
     thread,
   ]);
+  const fixedTabPreferences = useRightPanelFixedTabPreferences({
+    items: orderedThreadFixedTabs,
+    getId: getSecondaryPanelFixedTabId,
+    activeId: activeFixedSecondaryTabId,
+  });
+  const secondaryPanelFixedTabs = fixedTabPreferences.shown;
   const openAttachment = useCallback(
     (attachment: OpenAttachmentRequest) => {
       openTab({ kind: "attachment-file-preview", ...attachment });
@@ -1940,7 +1963,7 @@ function ThreadDetailViewInternal(
             publish={panel.publishTabs}
             activeTabId={activeFixedSecondaryTabId}
             actionContext={THREAD_TAB_CONTEXT}
-            fixedTabs={secondaryPanelFixedTabs}
+            fixedTabs={fixedTabPreferences.ordered}
             isOpen={isSecondaryPanelOpen}
             tabs={panelTabs}
           />

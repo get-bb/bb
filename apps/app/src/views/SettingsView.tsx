@@ -58,6 +58,7 @@ import { CodeRendererSettings } from "@/components/settings/CodeRendererSettings
 import { SidebarThreadListSetting } from "@/components/settings/SidebarThreadListSetting";
 import { SidebarNavigationProviderSetting } from "@/components/settings/SidebarNavigationProviderSetting";
 import { SidebarFooterSettings } from "@/components/settings/SidebarFooterSettings";
+import { RightPanelTabsSettings } from "@/components/settings/RightPanelTabsSettings";
 import { SplitDimmingSetting } from "@/components/settings/SplitDimmingSetting";
 import { useSettingsNavState } from "@/components/settings/settings-nav";
 import { useRevealSettingsSearchTarget } from "@/components/settings/useRevealSettingsSearchTarget";
@@ -852,6 +853,7 @@ export function AppearanceSettingsSection({
           <SidebarThreadListSetting />
           <CodeRendererSettings />
           <SidebarFooterSettings />
+          <RightPanelTabsSettings />
         </div>
       </SettingsSection>
     </div>

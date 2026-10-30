@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 
-
 import { ThreadInfoFixedTabContent } from "@/components/secondary-panel/thread-info-registration";
 import {
   cleanup,
@@ -35,6 +34,7 @@ import {
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
   ThreadSecondaryPanel,
+  type SecondaryPanelFixedTab,
   type SecondaryPanelRenderableTab,
 } from "./ThreadSecondaryPanel";
 
@@ -103,6 +103,7 @@ function createTestRenderableTab(
 }
 
 function renderPanel(args: {
+  fixedTabs?: readonly SecondaryPanelFixedTab[];
   isConversationCollapsed: boolean;
   onToggleConversationCollapse: () => void;
   renderAsDrawer?: boolean;
@@ -732,7 +733,6 @@ describe("ThreadSecondaryPanel Diff eligibility", () => {
     ).toBeNull();
     expect(screen.queryByText("This panel view is unavailable.")).toBeNull();
   });
-
 });
 
 describe("ThreadSecondaryPanel hide control glyph", () => {
@@ -750,6 +750,45 @@ describe("ThreadSecondaryPanel hide control glyph", () => {
         .getByTestId("thread-secondary-panel-top-chrome")
         .classList.contains("pl-12"),
     ).toBe(false);
+  });
+});
+
+describe("ThreadSecondaryPanel fixed tab customization", () => {
+  it("hides a fixed tab or opens customization from its context menu", async () => {
+    const onHide = vi.fn();
+    const onCustomize = vi.fn();
+    renderPanel({
+      fixedTabs: [
+        infoFixedTabDescriptor,
+        {
+          ...diffFixedTabDescriptor,
+          customization: { onHide, onCustomize },
+        },
+      ],
+      isConversationCollapsed: false,
+      onToggleConversationCollapse: noop,
+    });
+
+    fireEvent.contextMenu(
+      screen.getByRole("button", { name: "Show diff panel" }),
+    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Hide Diff" }));
+    expect(onHide).toHaveBeenCalledTimes(1);
+
+    fireEvent.contextMenu(
+      screen.getByRole("button", { name: "Show diff panel" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", {
+        name: "Customize right panel tabs",
+      }),
+    );
+    expect(onCustomize).toHaveBeenCalledTimes(1);
+
+    fireEvent.contextMenu(
+      screen.getByRole("button", { name: "Show thread info panel" }),
+    );
+    expect(screen.queryByRole("menuitem", { name: "Hide Info" })).toBeNull();
   });
 });
 
