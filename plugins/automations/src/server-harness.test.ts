@@ -41,6 +41,7 @@ const rpcMethods = [
   "automations_resume",
   "automations_run",
   "automations_runs",
+  "provider-retry.v1.consent",
 ].sort();
 
 function project(projectId = PROJECT_ID) {

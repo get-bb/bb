@@ -47,6 +47,7 @@ describe("errored thread correction", () => {
       const { environment, thread } = seedErroredThread(harness);
 
       await sendThreadMessage(harness.deps, {
+        originPluginId: null,
         environment,
         payload: {
           input: textInput("corrective text"),
@@ -83,6 +84,7 @@ describe("errored thread correction", () => {
 
       await expect(
         sendThreadMessage(harness.deps, {
+          originPluginId: null,
           environment,
           payload: {
             input: textInput("explicit steer"),

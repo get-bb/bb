@@ -99,9 +99,8 @@ function unusableThreadReason(thread: SdkThread): string | null {
   switch (thread.status) {
     case "idle":
     case "active":
-      return null;
     case "error":
-      return "is in an error state";
+      return null;
     case "pending":
     case "starting":
     case "stopping":
