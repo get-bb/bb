@@ -406,6 +406,16 @@ A visitor `Host` may carry a port in such a local run (`<label>.next.localhost:8
 routes on the host without it and keeps the port on the upstream `Host`, so the server ingress still
 sees `Origin` equal to `http://<Host>`.
 
+### Request deadlines
+
+The gate times out a request body after 30 seconds without another chunk. Once the body has been
+forwarded, the response head gets a fresh 30 seconds. If headers are still pending and the directory
+still locates that tunnel, the gate checks again every 30 seconds, up to 10 minutes from arrival.
+That cap also bounds progressing uploads. A stalled upload still gets `504` with stage `request-body`;
+a response-head timeout gets stage `response-head`. Voice transcription uses the same rule, matching
+the healthy-tunnel wait policy of the Cloudflare gate. Routing and WebSocket handshakes retain their
+30-second deadline. These are gate-local changes, not a tunnel or host-daemon wire change.
+
 ### Answer cache
 
 `src/account-api.ts` caches each answer under a hash of the whole request (label, cookies,

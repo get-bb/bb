@@ -1,4 +1,4 @@
-import type { IncomingMessage } from "node:http";
+import { request as httpRequest, type IncomingMessage } from "node:http";
 import { brotliDecompressSync, gunzipSync } from "node:zlib";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import WebSocket from "ws";
@@ -44,6 +44,7 @@ const DESKTOP = "bb-connect.desktop_session";
 const BEE = `bee.${BASE_DOMAIN}`;
 const GRACE_MS = 2_000;
 const HEAD_MS = 3_000;
+const MAX_WAIT_MS = HEAD_MS * 3;
 
 const fixture: AccountFixture = {
   labels: {
@@ -200,7 +201,7 @@ describe.skipIf(!availability.ok)("connect-next gate end to end", () => {
       silentLog,
       {
         directory: createLocalDirectory({ graceMs: GRACE_MS }),
-        deadlines: { headMs: HEAD_MS, transcriptionHeadMs: HEAD_MS * 3 },
+        deadlines: { headMs: HEAD_MS, maxWaitMs: MAX_WAIT_MS },
         machineLabels: {
           async assign(credential, body) {
             machineLabelCalls.push({ credential, body: body.toString() });
@@ -955,12 +956,143 @@ describe.skipIf(!availability.ok)("connect-next gate end to end", () => {
   });
 
   describe("deadlines and offline", () => {
-    it("answers 504 when the server does not send a response head", async () => {
+    it.each([0, HEAD_MS / 5])(
+      "regression: accepts a progressing upload with %i ms chunk spacing",
+      async (spacingMs) => {
+        const chunkCount = 8;
+        const chunk = Buffer.alloc(2048, "b");
+        const started = Date.now();
+        let sentChunks = 0;
+        const answer = await new Promise<{ status: number; text: string }>(
+          (resolve, reject) => {
+            let timer: NodeJS.Timeout | undefined;
+            const outgoing = httpRequest(
+              {
+                hostname: "127.0.0.1",
+                port: gate.webPort,
+                method: "POST",
+                path: "/echo?deadline-upload",
+                headers: {
+                  ...owner,
+                  host: BEE,
+                  "content-length": String(chunkCount * chunk.length),
+                },
+                agent: false,
+              },
+              (response) => {
+                clearTimeout(timer);
+                const chunks: Buffer[] = [];
+                response.on("data", (data: Buffer) => chunks.push(data));
+                response.on("error", reject);
+                response.on("end", () => {
+                  outgoing.destroy();
+                  resolve({
+                    status: response.statusCode ?? 0,
+                    text: Buffer.concat(chunks).toString(),
+                  });
+                });
+              },
+            );
+            outgoing.on("error", (error) => {
+              clearTimeout(timer);
+              reject(error);
+            });
+            const sendChunk = () => {
+              if (outgoing.destroyed) return;
+              outgoing.write(chunk);
+              sentChunks += 1;
+              if (sentChunks === chunkCount) outgoing.end();
+              else timer = setTimeout(sendChunk, spacingMs);
+            };
+            sendChunk();
+          },
+        );
+        console.log(
+          JSON.stringify({
+            scenario: "upload",
+            spacingMs,
+            elapsedMs: Date.now() - started,
+            sentChunks,
+            totalChunks: chunkCount,
+            tunnel: gate.directory.locate("bee").kind,
+            ...answer,
+          }),
+        );
+        expect(answer.status).toBe(200);
+        expect(sentChunks).toBe(chunkCount);
+        expect(origin.seen.at(-1)?.body.length).toBe(chunkCount * chunk.length);
+      },
+    );
+
+    it.each([HEAD_MS / 5, HEAD_MS + 1000])(
+      "regression: delivers a finite answer delayed %i ms through a connected tunnel",
+      async (waitMs) => {
+        const started = Date.now();
+        const answer = await get(`/deadline-answer?wait=${waitMs}`);
+        console.log(
+          JSON.stringify({
+            scenario: "delayed-answer",
+            elapsedMs: Date.now() - started,
+            originDelayMs: waitMs,
+            tunnel: gate.directory.locate("bee").kind,
+            status: answer.status,
+            text: answer.text,
+          }),
+        );
+        expect(answer.status).toBe(200);
+      },
+    );
+
+    it("regression: bounds waiting for a connected server that never answers", async () => {
       const started = Date.now();
       const answer = await get("/slow");
       expect(answer.status).toBe(504);
       expect(answer.text).toContain("stage: response-head");
+      expect(Date.now() - started).toBeGreaterThanOrEqual(MAX_WAIT_MS - 50);
+      expect(Date.now() - started).toBeLessThan(MAX_WAIT_MS + 1500);
+    });
+
+    it("regression: expires an upload that stops making progress", async () => {
+      const started = Date.now();
+      const answer = await new Promise<{ status: number; text: string }>(
+        (resolve, reject) => {
+          const outgoing = httpRequest(
+            {
+              hostname: "127.0.0.1",
+              port: gate.webPort,
+              path: "/echo?stalled-upload",
+              method: "POST",
+              headers: { ...owner, host: BEE, "content-length": "4096" },
+              agent: false,
+            },
+            (response) => {
+              const chunks: Buffer[] = [];
+              response.on("data", (chunk: Buffer) => chunks.push(chunk));
+              response.on("error", reject);
+              response.on("end", () => {
+                outgoing.destroy();
+                resolve({
+                  status: response.statusCode ?? 0,
+                  text: Buffer.concat(chunks).toString(),
+                });
+              });
+            },
+          );
+          outgoing.on("error", reject);
+          outgoing.write(Buffer.alloc(2048));
+        },
+      );
+      console.log(
+        JSON.stringify({
+          scenario: "stalled-upload",
+          elapsedMs: Date.now() - started,
+          ...answer,
+        }),
+      );
+      expect(answer.status).toBe(504);
+      expect(answer.text).toContain("stage: request-body");
       expect(Date.now() - started).toBeGreaterThanOrEqual(HEAD_MS - 50);
+      expect(Date.now() - started).toBeLessThan(HEAD_MS + 1500);
     });
 
     it("answers 503 for a label with no tunnel", async () => {
