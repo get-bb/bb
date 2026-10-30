@@ -1207,6 +1207,8 @@ function LandingPage() {
   const companyProofRef = useRef<HTMLElement>(null);
   const qaCheck = useExperiment("homepage-qa-check");
   useExperimentExposure("homepage-qa-check", "all");
+  const subhead = useExperiment("homepage-subhead-text");
+  useExperimentExposure("homepage-subhead-text", "desktop");
   useScrollReveal();
   useConstructMock();
   useFitMock();
@@ -1236,10 +1238,17 @@ function LandingPage() {
           <ChevronRight className="updates-arrow" />
         </a>
         <h1>The IDE that builds itself</h1>
-        <p className="sub">
-          bb can control, customize, and automate itself, laying the groundwork
-          for your own software factory.
-        </p>
+        {subhead === "test" ? (
+          <p className="sub sub-wide">
+            Run all your coding agents in one programmable workspace. Change
+            almost anything with a plugin or a prompt, no need to fork.
+          </p>
+        ) : (
+          <p className="sub">
+            bb can control, customize, and automate itself, laying the
+            groundwork for your own software factory.
+          </p>
+        )}
 
         <InstallOptions placement="hero" />
 
