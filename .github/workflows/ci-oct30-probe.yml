@@ -2,6 +2,7 @@ name: CI October 30 process diagnostics
 on:
   push:
     branches: [bb/probe-ci-oct30]
+    paths: ['.github/workflows/ci-oct30-probe.yml', 'plugins/automations/src/automations.test.ts']
 permissions:
   contents: read
 jobs:
