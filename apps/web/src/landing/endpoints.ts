@@ -4,6 +4,7 @@ import {
   DOWNLOAD_RELEASE_ASSET_BASE_URL,
   CAMPAIGN_PARAM_NAMES,
   CLICK_ID_PARAM_NAMES,
+  VISIT_PARAM_NAMES,
 } from "./site";
 import type { CtaPlacement, DesktopPlatform } from "./site";
 
@@ -13,6 +14,9 @@ const MAX_URL_PROPERTY_LENGTH = 2048;
 const RESEND_CONTACTS_URL = "https://api.resend.com/audiences";
 const MAX_EMAIL_LENGTH = 254;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const POSTHOG_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_PATH_LENGTH = 512;
 
 type DownloadPlacement = CtaPlacement | "direct";
 
@@ -25,7 +29,10 @@ type MarketingEnv = {
 type DownloadEventProperties = {
   $current_url: string;
   $referrer?: string;
+  $session_id?: string;
   download_target: DesktopPlatform;
+  first_page?: string;
+  first_referrer?: string;
   gbraid?: string;
   gclid?: string;
   placement: DownloadPlacement;
@@ -306,7 +313,9 @@ async function trackDownloadClick(args: TrackDownloadClickArgs): Promise<void> {
 
   const payload: PostHogCapturePayload = {
     api_key: args.postHogKey,
-    distinct_id: crypto.randomUUID(),
+    distinct_id:
+      parsePostHogId(args.requestUrl.searchParams.get("visitor_id")) ??
+      crypto.randomUUID(),
     event: `landing_download_${args.platform}_clicked`,
     properties: buildDownloadEventProperties({
       platform: args.platform,
@@ -334,6 +343,9 @@ function buildDownloadEventProperties(
 ): DownloadEventProperties {
   const globalPrivacyControl = args.request.headers.get("Sec-GPC") === "1";
   const requestUrl = new URL(args.requestUrl);
+  for (const name of VISIT_PARAM_NAMES) {
+    requestUrl.searchParams.delete(name);
+  }
   let referrer = args.request.headers.get("referer");
   if (globalPrivacyControl) {
     for (const name of CLICK_ID_PARAM_NAMES) {
@@ -363,6 +375,23 @@ function buildDownloadEventProperties(
     properties.$referrer = truncateProperty(referrer);
   }
 
+  const searchParams = args.requestUrl.searchParams;
+  const sessionId = parsePostHogId(searchParams.get("session_id"));
+  if (sessionId) {
+    properties.$session_id = sessionId;
+  }
+  const firstPage = parseFirstPage(searchParams.get("first_page"));
+  if (firstPage) {
+    properties.first_page = firstPage;
+  }
+  const firstReferrer = parseFirstReferrer(
+    searchParams.get("first_referrer"),
+    globalPrivacyControl,
+  );
+  if (firstReferrer) {
+    properties.first_referrer = firstReferrer;
+  }
+
   addUtmProperties({
     properties,
     referrerSearchParams,
@@ -370,6 +399,45 @@ function buildDownloadEventProperties(
   });
 
   return properties;
+}
+
+function parsePostHogId(value: string | null): string | null {
+  return value && POSTHOG_ID_PATTERN.test(value) ? value : null;
+}
+
+function parseFirstPage(value: string | null): string | null {
+  if (
+    !value ||
+    value.length > MAX_PATH_LENGTH ||
+    !/^\/(?!\/)[^\s?#\\]*$/.test(value)
+  ) {
+    return null;
+  }
+  return value;
+}
+
+function parseFirstReferrer(
+  value: string | null,
+  globalPrivacyControl: boolean,
+): string | null {
+  if (!value) {
+    return null;
+  }
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    return null;
+  }
+  if (globalPrivacyControl) {
+    for (const name of CLICK_ID_PARAM_NAMES) {
+      url.searchParams.delete(name);
+    }
+  }
+  return truncateProperty(url.href);
 }
 
 function parseDownloadPlacement(

@@ -1,6 +1,12 @@
-import { CAMPAIGN_PARAM_NAMES, CLICK_ID_PARAM_NAMES } from "./site";
+import type { VisitIds } from "./analytics";
+import {
+  CAMPAIGN_PARAM_NAMES,
+  CLICK_ID_PARAM_NAMES,
+  VISIT_PARAM_NAMES,
+} from "./site";
 
 const SAVED_UTM_KEY = "bb:landing-utm";
+const FIRST_TOUCH_KEY = "bb:landing-first-touch";
 const DOWNLOAD_PATH = /^\/download\/(macos|windows|linux)$/;
 const CARRY_EVENTS = ["pointerdown", "click"] as const;
 
@@ -43,7 +49,90 @@ export function readSavedUtm(storage: UtmStorage): URLSearchParams {
   return pickUtmParams(storage.getItem(SAVED_UTM_KEY) ?? "");
 }
 
-export function carryUtmToDownloadLinks(): () => void {
+type FirstTouchArgs = {
+  globalPrivacyControl: boolean;
+  location: Pick<Location, "origin" | "pathname">;
+  referrer: string;
+  storage: UtmStorage;
+};
+
+export function rememberFirstTouch(args: FirstTouchArgs): void {
+  if (args.storage.getItem(FIRST_TOUCH_KEY) !== null) {
+    return;
+  }
+  const firstTouch = new URLSearchParams({
+    first_page: args.location.pathname,
+  });
+  const referrer = externalReferrer(
+    args.referrer,
+    args.location.origin,
+    args.globalPrivacyControl,
+  );
+  if (referrer) {
+    firstTouch.set("first_referrer", referrer);
+  }
+  args.storage.setItem(FIRST_TOUCH_KEY, firstTouch.toString());
+}
+
+function externalReferrer(
+  referrer: string,
+  origin: string,
+  globalPrivacyControl: boolean,
+): string | null {
+  let url: URL;
+  try {
+    url = new URL(referrer);
+  } catch {
+    return null;
+  }
+  if (url.origin === origin) {
+    return null;
+  }
+  if (globalPrivacyControl) {
+    for (const name of CLICK_ID_PARAM_NAMES) {
+      url.searchParams.delete(name);
+    }
+  }
+  return url.href;
+}
+
+function readFirstTouch(storage: UtmStorage): URLSearchParams {
+  const stored = new URLSearchParams(storage.getItem(FIRST_TOUCH_KEY) ?? "");
+  const firstTouch = new URLSearchParams();
+  for (const name of ["first_page", "first_referrer"] as const) {
+    const value = stored.get(name);
+    if (value) {
+      firstTouch.set(name, value);
+    }
+  }
+  return firstTouch;
+}
+
+export function addVisitParams(
+  search: string,
+  visit: VisitIds | null,
+  firstTouch: URLSearchParams,
+): string {
+  const params = new URLSearchParams(search);
+  for (const name of VISIT_PARAM_NAMES) {
+    params.delete(name);
+  }
+  if (visit) {
+    params.set("visitor_id", visit.distinctId);
+    if (visit.sessionId) {
+      params.set("session_id", visit.sessionId);
+    }
+  }
+  for (const [name, value] of firstTouch) {
+    params.set(name, value);
+  }
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+export function carryUtmToDownloadLinks(
+  readVisit: () => VisitIds | null,
+): () => void {
   const globalPrivacyControl =
     "globalPrivacyControl" in navigator &&
     navigator.globalPrivacyControl === true;
@@ -69,6 +158,12 @@ export function carryUtmToDownloadLinks(): () => void {
       storage.setItem(SAVED_UTM_KEY, saved.toString());
     }
     rememberLatestUtm(storage, landingParams.toString());
+    rememberFirstTouch({
+      globalPrivacyControl,
+      location: window.location,
+      referrer: document.referrer,
+      storage,
+    });
   } catch {
     storage = null;
   }
@@ -86,9 +181,11 @@ export function carryUtmToDownloadLinks(): () => void {
       return;
     }
     let saved = new URLSearchParams();
+    let firstTouch = new URLSearchParams();
     try {
       if (storage) {
         saved = readSavedUtm(storage);
+        firstTouch = readFirstTouch(storage);
       }
     } catch {
       storage = null;
@@ -103,7 +200,11 @@ export function carryUtmToDownloadLinks(): () => void {
       const query = params.toString();
       linkSearch = query ? `?${query}` : "";
     }
-    const search = addSavedUtmParams(linkSearch, saved);
+    const search = addVisitParams(
+      addSavedUtmParams(linkSearch, saved),
+      readVisit(),
+      firstTouch,
+    );
     if (search !== link.search) {
       link.search = search;
     }
