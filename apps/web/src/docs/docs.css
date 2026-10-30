@@ -1,0 +1,240 @@
+.docs-wrap .docs-shell {
+  display: grid;
+  grid-template-columns: 230px minmax(0, 1fr) 190px;
+  gap: 40px;
+  padding: 32px 0 72px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.docs-wrap .docs-sidebar {
+  position: sticky;
+  top: 24px;
+  align-self: start;
+  font-size: 14px;
+}
+
+.docs-wrap .docs-nav-group {
+  margin-top: 18px;
+}
+
+.docs-wrap .docs-nav-label {
+  padding: 0 8px 4px;
+  font-size: var(--text-label-small);
+  font-weight: 600;
+  color: var(--heading);
+}
+
+.docs-wrap .docs-sidebar nav a {
+  display: block;
+  padding: 4px 8px;
+  border-radius: 6px;
+  color: var(--dim);
+}
+
+.docs-wrap .docs-sidebar nav a:hover {
+  background: var(--state-hover);
+  color: var(--ink);
+}
+
+.docs-wrap .docs-sidebar nav a.active {
+  background: var(--surface-recessed);
+  color: var(--heading);
+  font-weight: 500;
+}
+
+.docs-wrap .docs-search {
+  position: relative;
+}
+
+.docs-wrap .docs-search-input {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+
+.docs-wrap .docs-search-results {
+  position: absolute;
+  z-index: 3;
+  top: calc(100% + 4px);
+  left: 0;
+  width: 320px;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  box-shadow: 0 8px 24px color-mix(in oklab, var(--shade) 14%, transparent);
+}
+
+.docs-wrap .docs-search-results a {
+  display: block;
+  padding: 6px 8px;
+  border-radius: 6px;
+  color: var(--ink);
+}
+
+.docs-wrap .docs-search-results a[data-kind="page"] {
+  font-weight: 600;
+  color: var(--heading);
+}
+
+.docs-wrap .docs-search-results a:hover {
+  background: var(--state-hover);
+}
+
+.docs-wrap .docs-search-empty {
+  padding: 6px 8px;
+  color: var(--subtle);
+}
+
+.docs-wrap .docs-eyebrow {
+  font-size: var(--text-label-small);
+  font-weight: 500;
+  color: var(--subtle);
+}
+
+.docs-wrap .docs-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.docs-wrap .docs-title-row h1 {
+  margin: 4px 0 8px;
+  font-size: 32px;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--heading);
+}
+
+.docs-wrap .docs-copy {
+  position: relative;
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.docs-wrap .docs-copy summary {
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  list-style: none;
+  white-space: nowrap;
+}
+
+.docs-wrap .docs-copy-menu {
+  position: absolute;
+  z-index: 2;
+  right: 0;
+  top: calc(100% + 4px);
+  width: 190px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+.docs-wrap .docs-copy-menu a {
+  display: block;
+  padding: 6px 10px;
+  border-radius: 6px;
+  color: var(--ink);
+}
+
+.docs-wrap .docs-copy-menu a:hover {
+  background: var(--state-hover);
+}
+
+.docs-wrap .docs-lede {
+  margin: 0 0 24px;
+  max-width: 640px;
+  color: var(--dim);
+}
+
+.docs-wrap .docs-body {
+  max-width: 680px;
+  color: var(--ink);
+  line-height: 1.65;
+}
+
+.docs-wrap .docs-body h2 {
+  margin: 32px 0 10px;
+  font-size: 20px;
+  color: var(--heading);
+}
+
+.docs-wrap .docs-body p,
+.docs-wrap .docs-body ul {
+  margin: 0 0 14px;
+}
+
+.docs-wrap .docs-body ul {
+  padding-left: 20px;
+  list-style: disc;
+}
+
+.docs-wrap .docs-body a {
+  color: var(--accent);
+}
+
+.docs-wrap .docs-body blockquote {
+  margin: 0 0 18px;
+  padding: 10px 14px;
+  border-left: 3px solid var(--border);
+  background: var(--surface);
+  color: var(--dim);
+}
+
+.docs-wrap .docs-body code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--surface-recessed);
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+}
+
+.docs-wrap .docs-toc {
+  position: sticky;
+  top: 24px;
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.docs-wrap .docs-toc a {
+  color: var(--dim);
+}
+
+.docs-wrap .docs-toc a:hover {
+  color: var(--ink);
+}
+
+.docs-wrap .docs-toc-label {
+  font-weight: 600;
+  color: var(--heading);
+}
+
+.docs-wrap .docs-edit {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-soft);
+}
+
+@media (max-width: 960px) {
+  .docs-wrap .docs-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .docs-wrap .docs-sidebar,
+  .docs-wrap .docs-toc {
+    position: static;
+  }
+}

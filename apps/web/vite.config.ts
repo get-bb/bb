@@ -6,11 +6,20 @@ import {
   type WorkerConfig,
 } from "@cloudflare/vite-plugin";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
+import { fumadocsMdx } from "fumadocs-mdx/vite";
 import viteReact from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { unstable_readConfig } from "wrangler";
 import { resolveCloudDevViteSettings } from "./src/server/cloud-dev-vite.js";
 import { resolveSiteOrigin } from "./src/server/site-origin.js";
+
+function isPrerenderedDocsPath(path: string): boolean {
+  return (
+    path === "/llms.txt" ||
+    path === "/llms-full.txt" ||
+    ((path === "/docs" || path.startsWith("/docs/")) && path !== "/docs/mcp")
+  );
+}
 
 export default defineConfig(({ command }) => {
   const cloudDev = resolveCloudDevViteSettings(command, process.env);
@@ -47,9 +56,23 @@ export default defineConfig(({ command }) => {
     },
     plugins: [
       cloudflare(cloudflareConfig),
+      fumadocsMdx({ macro: { include: "src/docs/content.ts" } }),
       tailwindcss(),
       tanstackStart({
         server: { entry: "server-entry.ts" },
+        pages: [
+          { path: "/docs" },
+          { path: "/docs/search.json" },
+          { path: "/llms.txt" },
+          { path: "/llms-full.txt" },
+        ],
+        prerender: {
+          enabled: true,
+          autoSubfolderIndex: false,
+          autoStaticPathsDiscovery: false,
+          crawlLinks: true,
+          filter: ({ path }) => isPrerenderedDocsPath(path),
+        },
         router: {
           quoteStyle: "double",
           semicolons: true,
