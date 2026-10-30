@@ -1,6 +1,6 @@
 # Community forms
 
-`/api/community/survey` accepts a survey of up to ten required questions, depending on earlier answers, followed by required email, and stores the answers.
+`/api/community/survey` accepts a survey of up to twelve required questions, depending on earlier answers, followed by required email, and stores the answers.
 
 ## Configuration and launch
 
