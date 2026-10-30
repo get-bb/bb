@@ -328,6 +328,74 @@ describe("marketing subscribe endpoint", () => {
     );
   });
 
+  it("also adds the email to the newsletter segment", async () => {
+    const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await handleSubscribe(subscribeRequest("a+b@c.co"), {
+      RESEND_API_KEY: "re_test",
+      RESEND_AUDIENCE_ID: "aud_test",
+      RESEND_NEWSLETTER_SEGMENT_ID: "seg_test",
+    });
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "https://api.resend.com/contacts/a%2Bb%40c.co/segments/seg_test",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("adds an already-subscribed email to the newsletter segment", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response('{"message":"Contact already exists"}', { status: 409 }),
+      )
+      .mockResolvedValueOnce(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await handleSubscribe(subscribeRequest("a@b.co"), {
+      RESEND_API_KEY: "re_test",
+      RESEND_AUDIENCE_ID: "aud_test",
+      RESEND_NEWSLETTER_SEGMENT_ID: "seg_test",
+    });
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the signup when the newsletter segment add fails", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("{}", { status: 200 }))
+      .mockResolvedValueOnce(new Response("{}", { status: 500 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await handleSubscribe(subscribeRequest("a@b.co"), {
+      RESEND_API_KEY: "re_test",
+      RESEND_AUDIENCE_ID: "aud_test",
+      RESEND_NEWSLETTER_SEGMENT_ID: "seg_test",
+    });
+
+    expect(response.status).toBe(200);
+    expect(errorSpy).toHaveBeenCalledWith(
+      "Resend newsletter segment add failed with status 500",
+    );
+  });
+
+  it("does not add to a segment when none is configured", async () => {
+    const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await handleSubscribe(subscribeRequest("a@b.co"), {
+      RESEND_API_KEY: "re_test",
+      RESEND_AUDIENCE_ID: "aud_test",
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects malformed emails without calling Resend", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);

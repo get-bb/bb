@@ -35,6 +35,9 @@
     // Resend audience that /api/subscribe adds emails to ("bb users").
     // Not a secret — only the API key is.
     "RESEND_AUDIENCE_ID": "299db4ee-f3db-476d-9847-0bf4344d9c44",
+    // Resend segment the monthly release email is sent to; /api/subscribe
+    // also adds every email to it.
+    "RESEND_NEWSLETTER_SEGMENT_ID": "940a248a-1271-4fe0-bb13-e60a52e91798",
     "PRESENCE_WRITES": "on-change",
     "NEXT_BASE_DOMAIN": "next.vibecodethis.site",
     "GATE_PUBLIC_KEYS": "{\"keys\":[{\"kid\":\"staging-2026-10-20\",\"kty\":\"OKP\",\"crv\":\"Ed25519\",\"x\":\"R5uinj0FFjpFtS9QHKb7LY7wsPo9RZkoRRsxegheihw\"}]}",
@@ -110,6 +113,7 @@
         "NEXT_BASE_DOMAIN": "next.getbb.app",
         "GATE_PUBLIC_KEYS": "{\"keys\":[{\"kid\":\"prod-2026-10-21\",\"kty\":\"OKP\",\"crv\":\"Ed25519\",\"x\":\"sSHHgGnUQNXtsJ2_4EDXj4ZpIq9y45fZDvMGkKsWnGU\"}]}",
         "RESEND_AUDIENCE_ID": "299db4ee-f3db-476d-9847-0bf4344d9c44",
+        "RESEND_NEWSLETTER_SEGMENT_ID": "940a248a-1271-4fe0-bb13-e60a52e91798",
       },
       "d1_databases": [
         {

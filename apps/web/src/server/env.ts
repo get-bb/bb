@@ -14,6 +14,7 @@ export interface Env {
   LANDING_POSTHOG_KEY?: string;
   RESEND_API_KEY?: string;
   RESEND_AUDIENCE_ID?: string;
+  RESEND_NEWSLETTER_SEGMENT_ID?: string;
   MARKETPLACE?: R2Bucket;
   ASSETLINKS_SHA256_FINGERPRINTS?: string;
   PRESENCE_WRITES?: string;

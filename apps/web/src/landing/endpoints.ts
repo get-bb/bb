@@ -11,6 +11,7 @@ const POSTHOG_CAPTURE_URL = "https://us.i.posthog.com/capture/?ip=0";
 const TRACKING_SOURCE = "landing_worker_redirect";
 const MAX_URL_PROPERTY_LENGTH = 2048;
 const RESEND_CONTACTS_URL = "https://api.resend.com/audiences";
+const RESEND_CONTACT_URL = "https://api.resend.com/contacts";
 const MAX_EMAIL_LENGTH = 254;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -20,6 +21,7 @@ type MarketingEnv = {
   LANDING_POSTHOG_KEY?: string;
   RESEND_API_KEY?: string;
   RESEND_AUDIENCE_ID?: string;
+  RESEND_NEWSLETTER_SEGMENT_ID?: string;
 };
 
 type DownloadEventProperties = {
@@ -192,9 +194,39 @@ export async function handleSubscribe(
   }
 
   if (resendResponse.ok || (await isAlreadySubscribed(resendResponse))) {
+    if (env.RESEND_NEWSLETTER_SEGMENT_ID) {
+      await addToSegment(
+        email,
+        env.RESEND_NEWSLETTER_SEGMENT_ID,
+        env.RESEND_API_KEY,
+      );
+    }
     return jsonResponse({ ok: true }, 200);
   }
   return jsonResponse({ error: "Could not add you to the list." }, 502);
+}
+
+async function addToSegment(
+  email: string,
+  segmentId: string,
+  apiKey: string,
+): Promise<void> {
+  try {
+    const response = await fetch(
+      `${RESEND_CONTACT_URL}/${encodeURIComponent(email)}/segments/${segmentId}`,
+      {
+        headers: { Authorization: `Bearer ${apiKey}` },
+        method: "POST",
+      },
+    );
+    if (!response.ok && !(await isAlreadySubscribed(response))) {
+      console.error(
+        `Resend newsletter segment add failed with status ${response.status}`,
+      );
+    }
+  } catch {
+    console.error("Resend newsletter segment add could not reach Resend");
+  }
 }
 
 async function readEmail(request: Request): Promise<string | null> {
