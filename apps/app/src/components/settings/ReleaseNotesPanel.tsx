@@ -169,8 +169,7 @@ export function ReleaseNotesPanel({ id, version }: ReleaseNotesPanelProps) {
       <div className="mt-2 flex items-baseline justify-end gap-3">
         {entry !== null && nightlyBaseVersion(version) !== null ? (
           <p className="mr-auto min-w-0 text-2xs">
-            This nightly build also includes changes made since bb{" "}
-            {entry.version}.
+            This build includes changes since {entry.version}
           </p>
         ) : null}
         <a
