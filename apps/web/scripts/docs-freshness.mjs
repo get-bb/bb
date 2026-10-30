@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { appendFileSync, readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import matter from "gray-matter";
@@ -30,7 +30,7 @@ function pathspec(glob) {
   return `:(glob)${glob}`;
 }
 
-export function checkDocsFreshness(repo) {
+function checkDocsFreshness(repo) {
   const results = [];
   for (const file of mdxFiles(path.join(repo, CONTENT_DIR)).toSorted()) {
     const relativeFile = path.relative(repo, file).split(path.sep).join("/");
@@ -67,7 +67,7 @@ function annotation(level, file, title, message) {
   return `::${level} file=${file},title=${title}::${message}`;
 }
 
-export function report(results) {
+function report(results) {
   const lines = [];
   for (const page of results) {
     for (const glob of page.unmatched) {
@@ -104,23 +104,6 @@ if (
   const lines = report(results);
   for (const line of lines) console.log(line);
   const stale = results.filter((page) => page.stale);
-  const summaryFile = process.env.GITHUB_STEP_SUMMARY;
-  if (summaryFile && stale.length > 0) {
-    appendFileSync(
-      summaryFile,
-      [
-        "### Docs pages whose sources changed after they were verified",
-        "",
-        "| Page | Owner | Verified | Sources changed |",
-        "| --- | --- | --- | --- |",
-        ...stale.map(
-          (page) =>
-            `| ${page.file} | ${page.owner} | ${page.verified} | ${page.changed} |`,
-        ),
-        "",
-      ].join("\n"),
-    );
-  }
   console.log(
     `${results.length} docs pages checked, ${stale.length} out of date.`,
   );

@@ -61,7 +61,6 @@ function commit(date: string) {
 function run() {
   const result = spawnSync(process.execPath, [SCRIPT, repo!], {
     encoding: "utf8",
-    env: { ...process.env, GITHUB_STEP_SUMMARY: "" },
   });
   return { status: result.status, lines: result.stdout.trim().split("\n") };
 }

@@ -60,7 +60,7 @@ function codeLanguage(children: ReactNode): string | undefined {
   return /(?:^|\s)language-(\S+)/u.exec(className)?.[1];
 }
 
-export function nodeText(node: ReactNode): string {
+function nodeText(node: ReactNode): string {
   if (typeof node === "string" || typeof node === "number") {
     return String(node);
   }
