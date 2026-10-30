@@ -310,6 +310,7 @@ export function registerTestHostRpcCapture(
     send(data) {
       const message = hostDaemonServerWsMessageSchema.parse(JSON.parse(data));
       if (message.type === "machine.shutdown") {
+        deps.hub.recordDaemonShutdownAck(args.sessionId);
         deps.hub.unregisterDaemon(args.sessionId);
         return;
       }

@@ -557,7 +557,11 @@ content.
    sub-agent as a `delegation` (codex does), re-open it when the agent works
    again, and settle it — as failed — when your provider child dies, or the
    runtime keeps refusing to reap a thread that no longer exists on your
-   side. There is no side channel for this.
+   side. There is no side channel for this. When the bridge process itself
+   exits, or the runtime shuts down, the runtime settles every
+   `backgroundTask` still pending on the bridge's threads as `interrupted`
+   with `taskStatus: "stopped"`; a bridge that outlives its provider child
+   still settles that child's work itself.
 
 ## Ordering guarantees
 

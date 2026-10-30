@@ -1720,6 +1720,12 @@ function createOnSdkDone(
     if (!threadSession) return;
 
     threadSession.streamEnded = true;
+    sendThreadDeltas(
+      args.threadIdRef.current,
+      threadSession.translator.buildBackgroundTaskSettlementDeltas(
+        args.threadIdRef.current,
+      ),
+    );
     resolvePendingSessionWork(
       threadSession,
       "Claude SDK stream ended before pending work completed",

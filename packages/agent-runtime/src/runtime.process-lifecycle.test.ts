@@ -35,6 +35,7 @@ import {
   scriptedEchoProcessEnv,
   waitForRuntimeState,
   waitForThreadAgentMessageText,
+  waitForThreadTurnCompleted,
   waitForThreadTurnStarted,
   withBridgeLaunch,
   type ScriptedEchoLaunchScript,
@@ -1607,6 +1608,135 @@ describe("createAgentRuntime process lifecycle", () => {
       }),
     );
     await runtime.shutdown();
+  });
+
+  async function startIdleThreadWithOpenBackgroundTask(): Promise<{
+    events: ThreadEvent[];
+    processLog: ReturnType<typeof createScriptedEchoProcessLog>;
+    providerThreadId: string;
+    runtime: ReturnType<typeof createScriptedEchoRuntime>;
+    startedTask: Extract<ThreadEvent, { type: "item/started" }>;
+  }> {
+    const events: ThreadEvent[] = [];
+    const processLog = createScriptedEchoProcessLog();
+    const runtime = createScriptedEchoRuntime({
+      runtime: {
+        workspacePath: tmpDir,
+        env: processLog.env,
+        onEvent: (event) => events.push(event),
+      },
+    });
+    const { providerThreadId } = await runtime.startThread({
+      environmentId: "env-1",
+      threadId: "t1",
+      projectId: "p1",
+      providerId: "fake",
+      options: fullRuntimeOptions,
+    });
+    await runtime.runTurn({
+      clientRequestId: "creq_bgtaskdea2",
+      threadId: "t1",
+      input: [promptTextInput({ text: "bg_task" })],
+      options: fullRuntimeOptions,
+    });
+    await waitForThreadTurnCompleted({ events, threadId: "t1" });
+    const startedTask = events.find(
+      (event): event is Extract<ThreadEvent, { type: "item/started" }> =>
+        event.type === "item/started" && event.item.type === "backgroundTask",
+    );
+    if (!startedTask) {
+      throw new Error("The bg_task turn opened no background task");
+    }
+    expect(runtime.hasOpenBackgroundWork()).toBe(true);
+    return { events, processLog, providerThreadId, runtime, startedTask };
+  }
+
+  function backgroundTaskCompletions(events: ThreadEvent[]): ThreadEvent[] {
+    return events.filter(
+      (event) => event.type === "item/backgroundTask/completed",
+    );
+  }
+
+  it("settles an idle thread's open background task when its provider process dies", async () => {
+    const { events, processLog, providerThreadId, runtime, startedTask } =
+      await startIdleThreadWithOpenBackgroundTask();
+    const [bridgePid] = processLog
+      .read()
+      .filter((line) => line.startsWith("spawn:"))
+      .map((line) => Number(line.slice("spawn:".length)));
+    if (bridgePid === undefined) {
+      throw new Error("The scripted bridge logged no spawn");
+    }
+
+    process.kill(bridgePid, "SIGKILL");
+    await waitForRuntimeState({
+      label: "the dead bridge's background task settled",
+      predicate: () => backgroundTaskCompletions(events).length > 0,
+      timeoutMs: 5_000,
+    });
+
+    expect(backgroundTaskCompletions(events)).toEqual([
+      {
+        type: "item/backgroundTask/completed",
+        threadId: "t1",
+        providerThreadId,
+        scope: { kind: "thread" },
+        item: {
+          ...startedTask.item,
+          status: "interrupted",
+          taskStatus: "stopped",
+        },
+      },
+    ]);
+    expect(runtime.hasOpenBackgroundWork()).toBe(false);
+    await runtime.shutdown();
+    expect(backgroundTaskCompletions(events)).toHaveLength(1);
+  });
+
+  it("settles open background tasks when the runtime shuts down", async () => {
+    const { events, providerThreadId, runtime, startedTask } =
+      await startIdleThreadWithOpenBackgroundTask();
+
+    await runtime.shutdown();
+
+    expect(backgroundTaskCompletions(events)).toEqual([
+      {
+        type: "item/backgroundTask/completed",
+        threadId: "t1",
+        providerThreadId,
+        scope: { kind: "thread" },
+        item: {
+          ...startedTask.item,
+          status: "interrupted",
+          taskStatus: "stopped",
+        },
+      },
+    ]);
+  });
+
+  it("does not settle a background task its provider already settled", async () => {
+    const { events, runtime } = await startIdleThreadWithOpenBackgroundTask();
+    await runtime.runTurn({
+      clientRequestId: "creq_bgtaskdeb3",
+      threadId: "t1",
+      input: [promptTextInput({ text: "bg_task_done" })],
+      options: fullRuntimeOptions,
+    });
+    await waitForRuntimeState({
+      label: "the provider settled its background task",
+      predicate: () => !runtime.hasOpenBackgroundWork(),
+      timeoutMs: 5_000,
+    });
+
+    await runtime.shutdown();
+
+    expect(
+      backgroundTaskCompletions(events).map((event) =>
+        event.type === "item/backgroundTask/completed"
+          ? event.item.taskStatus
+          : null,
+      ),
+    ).toEqual(["completed"]);
   });
 
   it("concurrent ensureProvider calls do not spawn duplicate processes", async () => {

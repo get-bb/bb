@@ -70,7 +70,9 @@ export async function handleHostSessionOpened(
     {
       sessionId: args.openedSession.id,
       hostId: args.hostId,
+      instanceId: args.openedSession.instanceId,
       replacedSessionId: args.previousSession?.id ?? null,
+      replacedInstanceId: args.previousSession?.instanceId ?? null,
     },
     "Session opened",
   );
@@ -108,7 +110,10 @@ export async function handleHostSessionOpened(
         hostId: args.hostId,
         reason: "host-daemon-restarted",
       });
-      settleDanglingBackgroundTasks(deps, { hostId: args.hostId });
+      settleDanglingBackgroundTasks(deps, {
+        hostId: args.hostId,
+        reason: "host-daemon-restarted",
+      });
     }
   }
 
@@ -233,7 +238,10 @@ export function settleRemovedHostWork(
     hostId: args.hostId,
     reason: "host-removed",
   });
-  settleDanglingBackgroundTasks(deps, { hostId: args.hostId });
+  settleDanglingBackgroundTasks(deps, {
+    hostId: args.hostId,
+    reason: "host-removed",
+  });
   notifyHostThreadRuntimeStatusChanged(deps, args.hostId);
 }
 
@@ -271,7 +279,10 @@ function settleLostHostWork(
     hostId: args.hostId,
     reason: DAEMON_DISCONNECTED_PENDING_INTERACTION_REASON,
   });
-  settleDanglingBackgroundTasks(deps, { hostId: args.hostId });
+  settleDanglingBackgroundTasks(deps, {
+    hostId: args.hostId,
+    reason: "host-connection-lost",
+  });
   notifyHostThreadRuntimeStatusChanged(deps, args.hostId);
   interruptActiveThreadsForHost(deps, {
     includeStopping: false,

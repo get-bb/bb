@@ -1,9 +1,11 @@
 import {
   closeSession,
+  getHost,
   getThread,
   hostDaemonSessions,
   listEvents,
   listQueuedThreadMessages,
+  updateHost,
 } from "@bb/db";
 import { eq } from "drizzle-orm";
 import { HOST_RECONNECT_GRACE_MS } from "../../src/constants.js";
@@ -16,7 +18,13 @@ import { threadScope, turnRequestEventDataSchema, turnScope } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { settleDanglingBackgroundTasks } from "../../src/services/threads/background-task-reconciliation.js";
 import { handleDaemonSocketClosed } from "../../src/internal/session-owner-side-effects.js";
-import { internalAuthHeaders } from "../helpers/commands.js";
+import { requestMachineSuspension } from "../../src/services/machines/provider-orchestration.js";
+import { setPluginMachineProviderBridge } from "../../src/services/plugins/plugin-machine-provider-registry.js";
+import {
+  internalAuthHeaders,
+  registerTestHostRpcCapture,
+} from "../helpers/commands.js";
+import { installMachineProvider } from "../helpers/machine-provider.js";
 import {
   seedEnvironment,
   seedHost,
@@ -210,7 +218,10 @@ describe("settleDanglingBackgroundTasks", () => {
         }),
       });
 
-      settleDanglingBackgroundTasks(harness.deps, { hostId: host.id });
+      settleDanglingBackgroundTasks(harness.deps, {
+        hostId: host.id,
+        reason: "host-daemon-restarted",
+      });
 
       const rows = listEvents(harness.deps.db, { threadId: thread.id });
       const completed = rows.filter(
@@ -224,7 +235,10 @@ describe("settleDanglingBackgroundTasks", () => {
       expect(data.item.taskStatus).toBe("stopped");
       expect(data.item.workflowName).toBe("fixture-mini");
 
-      settleDanglingBackgroundTasks(harness.deps, { hostId: host.id });
+      settleDanglingBackgroundTasks(harness.deps, {
+        hostId: host.id,
+        reason: "host-daemon-restarted",
+      });
       expect(
         listEvents(harness.deps.db, { threadId: thread.id }).filter(
           (row) => row.type === "item/backgroundTask/completed",
@@ -286,8 +300,14 @@ describe("settleDanglingBackgroundTasks", () => {
         }),
       });
 
-      settleDanglingBackgroundTasks(harness.deps, { hostId: otherHost.id });
-      settleDanglingBackgroundTasks(harness.deps, { hostId: host.id });
+      settleDanglingBackgroundTasks(harness.deps, {
+        hostId: otherHost.id,
+        reason: "host-daemon-restarted",
+      });
+      settleDanglingBackgroundTasks(harness.deps, {
+        hostId: host.id,
+        reason: "host-daemon-restarted",
+      });
 
       const completed = listEvents(harness.deps.db, {
         threadId: thread.id,
@@ -300,6 +320,49 @@ describe("settleDanglingBackgroundTasks", () => {
     });
   });
 
+  it("settles a task stored before items carried the foreground flag", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, host, thread } = seedThreadFixture(harness, {});
+      const data = backgroundTaskItemData({
+        itemId: "task:legacy",
+        status: "pending",
+        taskStatus: "running",
+      });
+      const { foreground: _foreground, ...legacyItem } = data.item as Record<
+        string,
+        unknown
+      >;
+      seedStoredEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 1,
+        type: "item/started",
+        scope: turnScope("turn-1"),
+        providerThreadId: "claude-session-1",
+        itemId: "task:legacy",
+        itemKind: "backgroundTask",
+        data: { ...data, item: legacyItem },
+      });
+
+      settleDanglingBackgroundTasks(harness.deps, {
+        hostId: host.id,
+        reason: "host-daemon-restarted",
+      });
+
+      const completed = listEvents(harness.deps.db, {
+        threadId: thread.id,
+      }).filter((row) => row.type === "item/backgroundTask/completed");
+      expect(completed).toHaveLength(1);
+      expect(JSON.parse(completed[0]!.data)).toMatchObject({
+        item: {
+          status: "interrupted",
+          taskStatus: "stopped",
+          foreground: false,
+        },
+      });
+    });
+  });
+
   it("preserves an already-finished task status instead of stomping it to interrupted", async () => {
     await withTestHarness(async (harness) => {
       const { host, thread } = seedOpenBackgroundTaskThread(harness, {
@@ -307,7 +370,10 @@ describe("settleDanglingBackgroundTasks", () => {
         taskStatus: "completed",
       });
 
-      settleDanglingBackgroundTasks(harness.deps, { hostId: host.id });
+      settleDanglingBackgroundTasks(harness.deps, {
+        hostId: host.id,
+        reason: "host-daemon-restarted",
+      });
 
       expect(listSettledBackgroundTaskItems(harness, thread.id)).toEqual([
         { status: "completed", taskStatus: "completed" },
@@ -318,7 +384,93 @@ describe("settleDanglingBackgroundTasks", () => {
 
 describe("background-task lifecycle reconciliation triggers", () => {
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.useRealTimers();
+    setPluginMachineProviderBridge(undefined);
+  });
+
+  it("settles an idle thread's open tasks once a machine suspension has shut its daemon down", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session, thread } = seedOpenBackgroundTaskThread(harness);
+      installMachineProvider({
+        suspend: async () => ({ resource: { id: "owned" } }),
+        resume: async () => ({ resource: { id: "owned" } }),
+      });
+      updateHost(harness.db, harness.hub, host.id, {
+        machineProviderId: "test-machine",
+        resource: { id: "owned" },
+      });
+      registerTestHostRpcCapture(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+      });
+
+      await requestMachineSuspension(harness.deps, host.id);
+
+      expect(getHost(harness.db, host.id)?.phase).toBe("suspended");
+      expect(listSettledBackgroundTaskItems(harness, thread.id)).toEqual([
+        { status: "interrupted", taskStatus: "stopped" },
+      ]);
+    });
+  });
+
+  it("keeps open tasks when the daemon's socket closes before it acknowledged the shutdown", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session, thread } = seedOpenBackgroundTaskThread(harness);
+      installMachineProvider({
+        suspend: async () => ({ resource: { id: "owned" } }),
+        resume: async () => ({ resource: { id: "owned" } }),
+      });
+      updateHost(harness.db, harness.hub, host.id, {
+        machineProviderId: "test-machine",
+        resource: { id: "owned" },
+      });
+      harness.deps.hub.registerDaemon(session.id, host.id, {
+        ...createMockHubSocket(),
+        send(data: string) {
+          if (
+            hostDaemonServerWsMessageSchema.parse(JSON.parse(data)).type ===
+            "machine.shutdown"
+          ) {
+            harness.deps.hub.unregisterDaemon(session.id);
+          }
+        },
+      });
+
+      await requestMachineSuspension(harness.deps, host.id);
+
+      expect(getHost(harness.db, host.id)?.phase).toBe("suspended");
+      expect(listSettledBackgroundTaskItems(harness, thread.id)).toEqual([]);
+    });
+  });
+
+  it("keeps open tasks when a suspension is cancelled because the daemon stayed up", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session, thread } = seedOpenBackgroundTaskThread(harness);
+      installMachineProvider({
+        suspend: async () => ({ resource: { id: "owned" } }),
+        resume: async () => ({ resource: { id: "owned" } }),
+      });
+      updateHost(harness.db, harness.hub, host.id, {
+        machineProviderId: "test-machine",
+        resource: { id: "owned" },
+      });
+      harness.deps.hub.registerDaemon(
+        session.id,
+        host.id,
+        createMockHubSocket(),
+      );
+      vi.spyOn(harness.hub, "waitForDaemonSessionClose").mockResolvedValue(
+        false,
+      );
+
+      await expect(
+        requestMachineSuspension(harness.deps, host.id),
+      ).rejects.toThrow("suspend was cancelled");
+
+      expect(getHost(harness.db, host.id)?.phase).toBe("active");
+      expect(listSettledBackgroundTaskItems(harness, thread.id)).toEqual([]);
+    });
   });
 
   it("settles open tasks when a restarted daemon re-registers after its previous session already closed", async () => {
