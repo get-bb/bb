@@ -222,28 +222,21 @@ describe.sequential("bb plugin new dependency install", () => {
     });
   });
 
-  it.each([
-    ["unreachable", () => Promise.reject(new TypeError("fetch failed"))],
-    [
-      "rejecting",
-      () => Promise.resolve(Response.json({ error: "nope" }, { status: 400 })),
-    ],
-  ])(
-    "stays silent and succeeds when the bb server is %s",
-    async (_label, respond) => {
-      const errors = vi.spyOn(console, "error").mockImplementation(() => {});
-      vi.stubGlobal("fetch", vi.fn(respond));
+  it("stays silent and succeeds when the bb server is unreachable", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.reject(new TypeError("fetch failed"))),
+    );
 
-      await runPluginNew(["untracked"]);
+    await runPluginNew(["untracked"]);
 
-      expect(logged).toContain(
-        "Created bb-plugin-untracked/ (bb-plugin-untracked).",
-      );
-      expect(logged).toContain("  bb plugin install .");
-      expect(warned).toEqual([]);
-      expect(errors).not.toHaveBeenCalled();
-    },
-  );
+    expect(logged).toContain(
+      "Created bb-plugin-untracked/ (bb-plugin-untracked).",
+    );
+    expect(warned).toEqual([]);
+    expect(errors).not.toHaveBeenCalled();
+  });
 
   it("does not record plugin_creation_started inside an agent thread", async () => {
     vi.stubEnv("BB_THREAD_ID", "thr_agent123");

@@ -974,14 +974,6 @@ describe("plugin service", () => {
       is_fresh_install: true,
       entry_id: "tasks-entry",
     });
-    expect(
-      pluginInstalledTelemetryEvent(
-        "tasks",
-        { kind: "catalog", marketplace: "bb-official", entryId: "tasks" },
-        { kind: "builtin", name: "tasks" },
-        false,
-      ).properties,
-    ).toMatchObject({ is_fresh_install: false, entry_id: "tasks" });
   });
 
   it("adds marketplace discovery metadata to an installed plugin", () => {

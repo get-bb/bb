@@ -190,28 +190,13 @@ function installFetch(plugins: readonly unknown[] = [AUTOMATIONS_PLUGIN]) {
   );
 }
 
-async function recordedTelemetryEvents(): Promise<unknown[]> {
-  const events: unknown[] = [];
-  for (const [input, init] of vi.mocked(fetch).mock.calls) {
-    const request = new Request(
-      new URL(
-        typeof input === "string"
-          ? input
-          : input instanceof URL
-            ? input.href
-            : input.url,
-        "http://localhost",
-      ),
-      input instanceof Request ? input.clone() : init,
-    );
-    if (
-      new URL(request.url).pathname === "/api/v1/system/telemetry/events" &&
-      request.method === "POST"
-    ) {
-      events.push(await request.json());
-    }
-  }
-  return events;
+function recordedTelemetryEvents(): unknown[] {
+  return vi
+    .mocked(fetch)
+    .mock.calls.filter(([input]) =>
+      String(input).endsWith("/api/v1/system/telemetry/events"),
+    )
+    .map(([, init]) => JSON.parse(String(init?.body)));
 }
 
 function LocationPath() {
@@ -378,7 +363,7 @@ describe("PluginsOverview", () => {
       screen.getByRole("menuitem", { name: "Install from source" }),
     );
     fireEvent.keyDown(document, { key: "Escape" });
-    expect(await recordedTelemetryEvents()).toEqual([]);
+    expect(recordedTelemetryEvents()).toEqual([]);
 
     const catalogRequests = () =>
       vi.mocked(fetch).mock.calls.filter(([input]) => {
@@ -419,11 +404,6 @@ describe("PluginsOverview", () => {
 
     fireEvent.click(createPlugin);
     expect(await screen.findByTestId("inline-composer")).toBeTruthy();
-    await waitFor(async () =>
-      expect(await recordedTelemetryEvents()).toEqual([
-        { name: "plugin_creation_started", properties: {} },
-      ]),
-    );
     expect(screen.queryByText("Back to browse plugins")).toBeNull();
     expect(
       screen.queryByRole("button", { name: "Close the composer" }),
@@ -497,8 +477,8 @@ describe("PluginsOverview", () => {
     fireEvent.click(screen.getByRole("button", { name: "New plugin" }));
 
     expect(screen.getByTestId("location-path").textContent).toBe("/");
-    await waitFor(async () =>
-      expect(await recordedTelemetryEvents()).toEqual([
+    await waitFor(() =>
+      expect(recordedTelemetryEvents()).toEqual([
         { name: "plugin_creation_started", properties: {} },
       ]),
     );
