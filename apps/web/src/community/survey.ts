@@ -85,6 +85,18 @@ export const surveyQuestions: readonly Question[] = [
     placeholder: "",
   },
   {
+    name: "plugin_sharing",
+    label: "Do you share bb plugins with coworkers?",
+    type: "radio",
+    options: [
+      "Yes, we share plugins with each other",
+      "Yes, and we keep them in one place, like a private repo",
+      "Not yet, but I'd like to",
+      "No",
+    ],
+    placeholder: "",
+  },
+  {
     name: "love",
     label: "What do you value most about bb, and why?",
     type: "textarea",
@@ -110,19 +122,6 @@ export const surveyQuestions: readonly Question[] = [
     label: "What would it take for others where you work to start using bb?",
     type: "textarea",
     options: [],
-    placeholder: "",
-  },
-  {
-    name: "plugin_sharing",
-    label: "Which of these happen with bb plugins where you work?",
-    type: "checkbox",
-    options: [
-      "I've shared a plugin I made with coworkers",
-      "I use a plugin a coworker made",
-      "Our team keeps shared plugins in one place, like a private repo",
-      "Not yet, but I'd like to share plugins with coworkers",
-      "None of these",
-    ],
     placeholder: "",
   },
   {

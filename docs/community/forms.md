@@ -10,9 +10,9 @@ The shared review preview keeps collection off. Local synthetic QA may override 
 
 ## Survey submission contract
 
-POST `application/json` to `/api/community/survey` with `{ "submission_id": "<uuid>", "answers": { "<field>": ["<value>", ...] } }`. A retried send with the same UUID is saved once. The question fields, in survey order, are `discovery`, `role`, `work`, `company_size`, `love`, `improve`, `team_improve`, `team_adopt`, `plugin_sharing`, `community`, `city`, `meetup` and `research_call`; `survey.ts` owns their labels and choices.
+POST `application/json` to `/api/community/survey` with `{ "submission_id": "<uuid>", "answers": { "<field>": ["<value>", ...] } }`. A retried send with the same UUID is saved once. The question fields, in survey order, are `discovery`, `role`, `work`, `company_size`, `plugin_sharing`, `love`, `improve`, `team_improve`, `team_adopt`, `community`, `city`, `meetup` and `research_call`; `survey.ts` owns their labels and choices.
 
-Every visible question is required. Radio answers accept one listed choice. `community` and `plugin_sharing` are checkboxes that accept one or more listed choices. `meetup` and `research_call` are radios. Text answers must not be blank.
+Every visible question is required. Radio answers accept one listed choice. `community` is a checkbox that accepts one or more listed choices. `plugin_sharing`, `meetup` and `research_call` are radios. Text answers must not be blank.
 
 `work` is hidden when `role` is “Student” or “Not currently working”, and so are the four questions that depend on it. `company_size` is shown for any `work` answer except “I don't use bb for work”. `team_improve` and `plugin_sharing` are shown for “2–5 people”, “6–10 people” and “More than 10”. `team_adopt` is shown for “Just me”. `questionVisible` in `survey.ts` owns these rules; a hidden question is never required and its answer is never stored.
 

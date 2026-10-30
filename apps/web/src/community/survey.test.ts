@@ -67,7 +67,7 @@ describe("community survey submission rules", () => {
         work: ["More than 10"],
         team_adopt: [],
         team_improve: ["Roles"],
-        plugin_sharing: ["I use a plugin a coworker made"],
+        plugin_sharing: ["Yes, we share plugins with each other"],
       }),
     ).toEqual({});
     expect(
