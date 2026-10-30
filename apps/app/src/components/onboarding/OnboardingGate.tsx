@@ -65,10 +65,13 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
             entry={seenBefore ? "replay" : "first_run"}
             onClose={() => {
               setFirstRunClosed(true);
-              updateSettings.mutate({
-                ...settings,
-                onboardingCompletedAt: new Date().toISOString(),
-              });
+              updateSettings.mutate(
+                {
+                  ...settings,
+                  onboardingCompletedAt: new Date().toISOString(),
+                },
+                { onError: () => setFirstRunClosed(false) },
+              );
             }}
           />
         </Suspense>

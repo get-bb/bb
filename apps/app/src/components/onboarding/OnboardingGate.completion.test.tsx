@@ -57,6 +57,7 @@ vi.mock("./OnboardingFlow", async () => {
 
 const server = {
   completedAt: null as string | null,
+  failSaves: false,
   configReplies: [] as Array<() => void>,
   saveReplies: [] as Array<() => void>,
 };
@@ -130,6 +131,7 @@ beforeEach(() => {
   window.localStorage.clear();
   guide.mounts = 0;
   server.completedAt = null;
+  server.failSaves = false;
   vi.mocked(sdk.system.config).mockImplementation(() => {
     const config = makeSystemConfig({ generalSettings: storedSettings() });
     const reply = createDeferredPromise<SystemConfigResponse>();
@@ -139,6 +141,10 @@ beforeEach(() => {
   vi.mocked(sdk.system.updateGeneralSettings).mockImplementation((input) => {
     const reply = createDeferredPromise<AppSettings>();
     server.saveReplies.push(() => {
+      if (server.failSaves) {
+        reply.reject(new Error("save failed"));
+        return;
+      }
       server.completedAt = input.onboardingCompletedAt ?? null;
       reply.resolve(storedSettings());
     });
@@ -201,5 +207,21 @@ describe("OnboardingGate completion against the settings cache", () => {
     expect(screen.getByText("Start using bb")).toBeTruthy();
     expect(screen.queryByText("Replay setup guide")).toBeNull();
     expect(guide.mounts).toBe(2);
+  });
+
+  it("shows the guide again when its completion save fails", async () => {
+    const queryClient = createTestQueryClient();
+    renderGate(queryClient);
+    await screen.findByText("Start using bb");
+    server.failSaves = true;
+
+    await closeGuide();
+    expect(screen.queryByText("Start using bb")).toBeNull();
+    await settle(server.saveReplies);
+    await settle(server.configReplies);
+
+    expect(server.completedAt).toBeNull();
+    expect(currentCompletedAt(queryClient)).toBeNull();
+    expect(screen.getByText("Start using bb")).toBeTruthy();
   });
 });
