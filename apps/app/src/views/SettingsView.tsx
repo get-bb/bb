@@ -1124,11 +1124,6 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "Open links like linear:// or slack:// in their apps on this device. BB asks first unless you choose Always allow. Manage approvals in General → Links → App links.",
   },
-  changelogPreview: {
-    label: "Changelog preview",
-    description:
-      "Show the latest release notes as a compact preview on the Updates page.",
-  },
   compactExpiredCache: {
     label: "Compact before resuming expired sessions",
     description:
@@ -1139,6 +1134,11 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "Collect CPU profiles and detailed performance logs while the server was launched with --perf-diagnostics. Turning this off stops collection; saved profiles remain.",
   },
+  pluginUpdates: {
+    label: "Plugin updates",
+    description:
+      "List plugins with updates on the Updates page, update them one by one or all at once, and count them in the sidebar updates badge.",
+  },
   serverMove: {
     label: "Server move",
     description:
@@ -1148,6 +1148,16 @@ const EXPERIMENT_DEFINITIONS: Record<
     label: "Select multiple sidebar threads",
     description:
       "In the built-in thread list sidebar, Cmd/Ctrl+Shift-click and Shift-click threads to select several, right-click for bulk actions, and drag them together into a section, under a thread, into Pinned, or into a composer as mentions.",
+  },
+  skipFocusedThreadNotifications: {
+    label: "Skip notifications for the thread you're viewing",
+    description:
+      "Don't show a system notification for a thread that is open in a visible, focused bb window or tab. Other threads, and the same thread in a window you're not using, still notify.",
+  },
+  threadContextCard: {
+    label: "Thread context card",
+    description:
+      "Show a thread's changes, pull request, and parent and child threads in a card at the upper-right of each thread pane instead of above the composer. A header button opens or pins it; wide panes keep it beside the transcript.",
   },
   threadRowMetadata: {
     label: "Thread row metadata",
@@ -1399,11 +1409,7 @@ export function SettingsView() {
   } else if (activeSection === "environment-variables") {
     content = <MachineEnvironmentSettings />;
   } else if (activeSection === "updates") {
-    content = (
-      <UpdatesSettingsSection
-        showChangelogPreview={experiments.changelogPreview}
-      />
-    );
+    content = <UpdatesSettingsSection />;
   } else if (activeSection === "mobile") {
     content = <MobileAppSection />;
   } else if (activeSection === "experiments") {

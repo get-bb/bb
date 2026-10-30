@@ -86,6 +86,7 @@ interface ClientTurnRequestedEventArgs {
   initiator: ThreadTurnInitiator;
   input: PromptInput[];
   inputGroups?: PromptInput[][];
+  originPluginId: string | null;
   requestMethod: "thread/start" | "turn/start";
   senderThreadId: string | null;
   source: "spawn" | "tell";
@@ -209,6 +210,9 @@ function buildClientTurnRequestedEventData(
         }
       : {}),
     senderThreadId: args.senderThreadId,
+    ...(args.originPluginId !== null
+      ? { originPluginId: args.originPluginId }
+      : {}),
     ...(args.systemMessageKind !== undefined
       ? { systemMessageKind: args.systemMessageKind }
       : {}),
@@ -465,13 +469,18 @@ function assertStoredTurnStartedForEvents(
 export function appendThreadEvent<TType extends ThreadEventType>(
   deps: Pick<AppDeps, "db" | "hub">,
   args: AppendThreadEventArgs<TType>,
+  beforeAppendInTransaction?: (args: { tx: DbTransaction }) => void,
 ): number;
 export function appendThreadEvent(
   deps: Pick<AppDeps, "db" | "hub">,
   args: AppendThreadEventArgs,
+  beforeAppendInTransaction?: (args: { tx: DbTransaction }) => void,
 ): number {
   const result = deps.db.transaction(
-    (tx) => appendThreadEventInTransactionWithAttention(tx, args),
+    (tx) => {
+      beforeAppendInTransaction?.({ tx });
+      return appendThreadEventInTransactionWithAttention(tx, args);
+    },
     { behavior: "immediate" },
   );
   deps.hub.notifyThread(

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { UNAVAILABLE_APP_PANEL_CONTROLLER } from "@/lib/app-fixed-tab-navigation";
 
 import {
   act,
@@ -1348,6 +1349,7 @@ describe("ThreadTimelineRows actions", () => {
       ]),
     );
     const panel = {
+      ...UNAVAILABLE_APP_PANEL_CONTROLLER,
       openTab: vi.fn(() => true),
       toggleTab: vi.fn(() => true),
       close: vi.fn(() => true),

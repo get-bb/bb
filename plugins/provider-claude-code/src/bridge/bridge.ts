@@ -2724,21 +2724,6 @@ function localAttachmentMarker(args: {
   return `[Attached ${args.kind}${namePart}${suffix}. It is on disk at ${args.path} — use the Read tool to view it.]`;
 }
 
-function normalizeClaudeSkillMentions(
-  entry: Extract<z.infer<typeof promptInputItemSchema>, { type: "text" }>,
-): string {
-  const replacements = new Set<number>();
-  for (const mention of selectedSkillMentions(entry)) {
-    if (mention.resource.trigger === "$") replacements.add(mention.start);
-  }
-
-  let normalized = entry.text;
-  for (const start of replacements) {
-    normalized = `${normalized.slice(0, start)}/${normalized.slice(start + 1)}`;
-  }
-  return normalized;
-}
-
 function buildPromptText(input: unknown): string | undefined {
   if (typeof input === "string") {
     return input.length > 0 ? input : undefined;
@@ -2746,14 +2731,29 @@ function buildPromptText(input: unknown): string | undefined {
   if (!Array.isArray(input)) return undefined;
 
   const chunks: string[] = [];
+  const skills: {
+    chunkIndex: number;
+    start: number;
+    end: number;
+    name: string;
+  }[] = [];
   for (const item of input) {
     const parsed = promptInputItemSchema.safeParse(item);
     if (!parsed.success) continue;
     const entry = parsed.data;
     switch (entry.type) {
       case "text":
-        if (entry.text.length > 0)
-          chunks.push(normalizeClaudeSkillMentions(entry));
+        if (entry.text.length > 0) {
+          const chunkIndex = chunks.push(entry.text) - 1;
+          for (const mention of selectedSkillMentions(entry)) {
+            skills.push({
+              chunkIndex,
+              start: mention.start,
+              end: mention.end,
+              name: mention.resource.name,
+            });
+          }
+        }
         break;
       case "image":
         chunks.push(`[Attached image: ${entry.url}]`);
@@ -2773,6 +2773,20 @@ function buildPromptText(input: unknown): string | undefined {
         );
         break;
     }
+  }
+
+  const [skill] = skills;
+  if (skills.length === 1 && skill) {
+    const chunk = chunks[skill.chunkIndex]!;
+    chunks[skill.chunkIndex] =
+      `${chunk.slice(0, skill.start)}${chunk.slice(skill.end)}`;
+    const argumentsText = chunks.join("\n");
+    const separator = argumentsText.startsWith(" ") ? "" : " ";
+    return `/${skill.name}${argumentsText ? `${separator}${argumentsText}` : ""}`;
+  }
+  for (const { chunkIndex, start } of skills) {
+    const chunk = chunks[chunkIndex]!;
+    chunks[chunkIndex] = `${chunk.slice(0, start)}/${chunk.slice(start + 1)}`;
   }
 
   return chunks.length > 0 ? chunks.join("\n") : undefined;

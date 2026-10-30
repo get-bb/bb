@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain } from "electron";
 import { BB_DESKTOP_FOCUS_WINDOW_CHANNEL } from "./desktop-window-command-ipc.js";
 
 export function registerDesktopWindowFocusIpc(
@@ -10,6 +10,7 @@ export function registerDesktopWindowFocusIpc(
     if (browserWindow === null || browserWindow.isDestroyed()) return;
     if (browserWindow.isMinimized()) browserWindow.restore();
     browserWindow.show();
+    if (process.platform === "darwin") app.focus({ steal: true });
     browserWindow.focus();
   });
 }

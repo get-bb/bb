@@ -16,6 +16,7 @@ export type SettingsSearchCondition =
   | "filePreferences"
   | "localhostLinkRewrite"
   | "performanceDiagnostics"
+  | "pluginUpdates"
   | "sidebarNavigations"
   | "sourceCodeRenderers"
   | "threadLists";
@@ -231,7 +232,14 @@ export const SETTINGS_SEARCH_INDEX: Record<
   },
   updates: {
     keywords: ["upgrade", "version", "release notes", "changelog"],
-    settings: [{ title: "Provider CLIs", keywords: ["agents", "upgrade"] }],
+    settings: [
+      { title: "Provider CLIs", keywords: ["agents", "upgrade"] },
+      {
+        title: "Plugins",
+        keywords: ["plugin updates", "outdated", "upgrade"],
+        when: "pluginUpdates",
+      },
+    ],
   },
   plugins: {
     keywords: ["extensions", "manage", "uninstall"],
@@ -255,7 +263,6 @@ export const SETTINGS_SEARCH_INDEX: Record<
           "URL schemes",
         ],
       },
-      { title: "Changelog preview", keywords: ["release notes", "updates"] },
       {
         title: "Server performance diagnostics",
         keywords: ["cpu profile", "logs"],

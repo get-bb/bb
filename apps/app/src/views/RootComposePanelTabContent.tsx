@@ -1,3 +1,4 @@
+import { PluginDetailTabContent } from "@/components/plugin/plugin-detail-navigation";
 import type { ReactNode } from "react";
 import type { SidebarProject } from "@/hooks/queries/project-queries";
 import { findLocalPathProjectSourceForHost } from "@bb/domain";
@@ -150,6 +151,8 @@ export function RootComposePanelTabContent({
   terminalTarget,
 }: RootComposePanelTabContentProps) {
   switch (tab.kind) {
+    case "plugin-detail":
+      return <PluginDetailTabContent detailKey={tab.detailKey} />;
     case "browser":
       return null;
     case "attachment-file-preview":

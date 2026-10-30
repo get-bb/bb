@@ -23,6 +23,49 @@ const message = {
   channels: ["web"],
 };
 
+function stubLocks() {
+  const held = new Map<string, number>();
+  const queued: (() => void)[] = [];
+  const state = {
+    paused: false,
+    grant() {
+      for (const run of queued.splice(0)) run();
+    },
+  };
+  function request(
+    name: string,
+    ...args:
+      | [LockOptions, LockGrantedCallback<unknown>]
+      | [LockGrantedCallback<unknown>]
+  ): Promise<unknown> {
+    const callback = args.length === 2 ? args[1] : args[0];
+    const run = async () => {
+      held.set(name, (held.get(name) ?? 0) + 1);
+      try {
+        return await callback(null);
+      } finally {
+        const count = (held.get(name) ?? 1) - 1;
+        if (count === 0) held.delete(name);
+        else held.set(name, count);
+      }
+    };
+    if (!state.paused || name !== "bb-notifications-web") return run();
+    return new Promise((resolve, reject) =>
+      queued.push(() => void run().then(resolve, reject)),
+    );
+  }
+  vi.stubGlobal("navigator", {
+    locks: {
+      request,
+      query: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        return { held: [...held.keys()].map((name) => ({ name })) };
+      },
+    },
+  });
+  return state;
+}
+
 beforeEach(() => {
   TestNotification.permission = "granted";
   TestNotification.instances = [];
@@ -58,7 +101,8 @@ describe("client system notifications", () => {
 
   it.each([
     { platform: "linux", native: true },
-    { platform: "macos", native: false },
+    { platform: "macos", native: true },
+    { platform: "windows", native: true },
     { platform: "web", native: false },
     { platform: "older-linux", native: false },
   ])(
@@ -92,6 +136,83 @@ describe("client system notifications", () => {
       delivery.dispose();
     },
   );
+
+  it("suppresses the visible focused thread even while waiting for the cross-window lock", async () => {
+    let focused = false;
+    vi.spyOn(document, "hasFocus").mockImplementation(() => focused);
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    const locks = stubLocks();
+    locks.paused = true;
+    const delivery = createClientDelivery(vi.fn(), () => "thread-1");
+    const first = delivery.deliver(message, true);
+    focused = true;
+    locks.grant();
+    await first;
+    expect(TestNotification.instances).toHaveLength(0);
+    focused = false;
+    const second = delivery.deliver({ ...message, id: "background" }, true);
+    locks.grant();
+    await second;
+    expect(TestNotification.instances).toHaveLength(1);
+    delivery.dispose();
+  });
+
+  it("suppresses a thread focused in another window, records it as seen, and resumes after blur", async () => {
+    stubLocks();
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    const hasFocus = vi.spyOn(document, "hasFocus").mockReturnValue(true);
+    const focusedWindow = createClientDelivery(vi.fn(), () => "thread-1");
+    hasFocus.mockReturnValue(false);
+    const backgroundWindow = createClientDelivery(vi.fn(), () => "thread-2");
+    await backgroundWindow.deliver(message, true);
+    await focusedWindow.deliver(message, true);
+    expect(TestNotification.instances).toHaveLength(0);
+    window.dispatchEvent(new Event("blur"));
+    await focusedWindow.deliver(message, true);
+    expect(TestNotification.instances).toHaveLength(0);
+    await backgroundWindow.deliver({ ...message, id: "event-2" }, true);
+    expect(TestNotification.instances).toHaveLength(1);
+    focusedWindow.dispose();
+    backgroundWindow.dispose();
+  });
+
+  it.each([
+    {
+      focused: true,
+      visible: "visible",
+      threadId: "other-thread",
+      delivered: true,
+    },
+    { focused: true, visible: "hidden", threadId: "thread-1", delivered: true },
+    {
+      focused: true,
+      visible: "visible",
+      threadId: "thread-1",
+      delivered: false,
+    },
+  ] as const)(
+    "matches focus, visibility and thread before suppressing: $threadId / $visible / $focused",
+    async ({ focused, visible, threadId, delivered }) => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(focused);
+      vi.spyOn(document, "visibilityState", "get").mockReturnValue(visible);
+      const delivery = createClientDelivery(vi.fn(), () => threadId);
+      await delivery.deliver(message, true);
+      expect(TestNotification.instances).toHaveLength(delivered ? 1 : 0);
+      delivery.dispose();
+    },
+  );
+
+  it("deduplicates windows whose stored seen list has not caught up", async () => {
+    stubLocks();
+    vi.spyOn(Storage.prototype, "getItem").mockReturnValue(null);
+    const first = createClientDelivery(vi.fn());
+    const second = createClientDelivery(vi.fn());
+    await first.deliver(message, true);
+    await second.deliver(message, true);
+    expect(TestNotification.instances).toHaveLength(1);
+    first.dispose();
+    second.dispose();
+  });
 
   it("deduplicates windows, navigates on click, and cleans up on disposal", async () => {
     const navigate = vi.fn();

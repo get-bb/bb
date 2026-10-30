@@ -13,8 +13,13 @@ import {
   DEFAULT_EXPO_PUSH_URL,
   DEVICE_LABEL_MAX_LENGTH,
   EXPO_PUSH_TOKEN_MAX_LENGTH,
+  NOTIFICATION_BODY_MAX_LENGTH,
+  NOTIFICATION_TITLE_MAX_LENGTH,
   pushNotificationsRpcContract,
+  sendNotificationInputSchema,
+  sendNotificationRpcContract,
   type ClientNotification,
+  type DeliveryChannel,
   type PushSubscriptionSummary,
 } from "./contract.js";
 import {
@@ -27,6 +32,7 @@ import {
 } from "./preferences.js";
 import {
   createPushSender,
+  SendNotificationError,
   type CreatePushSenderArgs,
   type LastSendOutcome,
 } from "./sender.js";
@@ -101,6 +107,10 @@ function formatThreadNotifications(
   row: ThreadNotifications,
 ): string {
   return `Notifications for ${threadId}: ${row.effective} (${describeNotificationSource(row)})`;
+}
+
+function formatSent(channels: readonly DeliveryChannel[]): string {
+  return `Sent to ${channels.join(", ")}`;
 }
 
 function waitForAbort(signal: AbortSignal): Promise<void> {
@@ -244,6 +254,21 @@ export function createPushNotificationsPlugin(
       return { ok: true as const };
     }
 
+    bb.rpc.register(
+      sendNotificationRpcContract,
+      {
+        "notifications.send": async (input, context) => ({
+          ok: true as const,
+          channels: await sender.send(input, context.experimental_caller),
+        }),
+      },
+      {
+        experimental_discoverable: true,
+        experimental_description:
+          "Notifications on bb's mobile, web and desktop channels.",
+      },
+    );
+
     bb.rpc.register(pushNotificationsRpcContract, {
       "notifications.test": ({ channel }) => sendTest(channel),
       "pushSubscriptions.list": async () => ({
@@ -316,6 +341,78 @@ export function createPushNotificationsPlugin(
                 stdout: input.options.json
                   ? JSON.stringify({ ok: true, channel: channel.data })
                   : `Test sent to connected ${channel.data} clients with notification permission`,
+              };
+            },
+          }),
+          send: cliCommand({
+            summary: "Send a notification to every enabled channel",
+            description: `Uses the same delivery as thread notifications: connected web and desktop clients with permission, and every registered mobile device. The title is cut to ${NOTIFICATION_TITLE_MAX_LENGTH} characters and the body to ${NOTIFICATION_BODY_MAX_LENGTH}. With --thread, a click opens that thread; otherwise it opens bb.`,
+            options: {
+              title: {
+                type: "string",
+                required: true,
+                placeholder: "text",
+                description: "Notification title",
+              },
+              body: {
+                type: "string",
+                placeholder: "text",
+                description: "Notification text under the title",
+              },
+              thread: {
+                type: "string",
+                placeholder: "thread-id",
+                description: "Thread to open when the notification is clicked",
+              },
+              json: JSON_OPTION,
+            },
+            async run(input) {
+              const parsed = sendNotificationInputSchema.safeParse({
+                title: input.options.title,
+                ...(input.options.body === undefined
+                  ? {}
+                  : { body: input.options.body }),
+                ...(input.options.thread === undefined
+                  ? {}
+                  : { threadId: input.options.thread }),
+              });
+              if (!parsed.success) {
+                throw new PluginCliError(
+                  parsed.error.issues
+                    .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+                    .join("; "),
+                  { code: "invalid_notification" },
+                );
+              }
+              let channels: DeliveryChannel[];
+              try {
+                channels = await sender.send(parsed.data, { kind: "client" });
+              } catch (error) {
+                if (!(error instanceof SendNotificationError)) throw error;
+                throw new PluginCliError(
+                  error.message,
+                  error.code === "thread_not_found"
+                    ? { code: error.code }
+                    : {
+                        code: error.code,
+                        hint: "Check the push-sender service in `bb plugin list`.",
+                      },
+                );
+              }
+              if (channels.length === 0) {
+                throw new PluginCliError(
+                  "No channel received the notification",
+                  {
+                    code: "not_delivered",
+                    hint: "Run `bb push-notifications status` to see which channels are on, how many devices are registered, and the last mobile send.",
+                  },
+                );
+              }
+              return {
+                exitCode: 0,
+                stdout: input.options.json
+                  ? JSON.stringify({ ok: true, channels })
+                  : formatSent(channels),
               };
             },
           }),

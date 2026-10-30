@@ -31,6 +31,28 @@ function fakeRpc(
   };
 }
 
+function deferredRpc(): PreferencesRpc & {
+  writes: { key: string; value: unknown; origin: string }[];
+  settleNextWrite: () => Promise<void>;
+} {
+  const writes: { key: string; value: unknown; origin: string }[] = [];
+  const settlers: (() => void)[] = [];
+  return {
+    writes,
+    async settleNextWrite() {
+      settlers.shift()?.();
+      await vi.advanceTimersByTimeAsync(0);
+    },
+    async call(method: string, input: unknown) {
+      if (method === "listPreferences") {
+        return { preferences: defaultPreferences() };
+      }
+      writes.push(input as { key: string; value: unknown; origin: string });
+      return new Promise((resolve) => settlers.push(() => resolve(input)));
+    },
+  };
+}
+
 function memoryStorage(): Storage {
   const rows = new Map<string, string>();
   return {
@@ -136,7 +158,11 @@ describe("preferences sync", () => {
       [
         {
           method: "setPreference",
-          input: { key: "collapsedProjects", value: ["proj_b"] },
+          input: {
+            key: "collapsedProjects",
+            value: ["proj_b"],
+            origin: expect.any(String),
+          },
         },
       ],
     );
@@ -147,20 +173,92 @@ describe("preferences sync", () => {
     await hydratePreferences(rpc);
     const store = getDefaultStore();
     const sortAtom = createSyncedPreferenceAtom("chronologicalSort");
-    applyRemotePreferenceSignal({ key: "chronologicalSort", value: "alpha" });
+    applyRemotePreferenceSignal({
+      key: "chronologicalSort",
+      value: "alpha",
+      origin: "other-window",
+    });
     expect(store.get(sortAtom)).toBe("alpha");
-    applyRemotePreferenceSignal({ key: "chronologicalSort", value: "bogus" });
+    applyRemotePreferenceSignal({
+      key: "chronologicalSort",
+      value: "bogus",
+      origin: "other-window",
+    });
     expect(store.get(sortAtom)).toBe("alpha");
-    applyRemotePreferenceSignal({ key: "nope", value: 1 });
+    applyRemotePreferenceSignal({
+      key: "nope",
+      value: 1,
+      origin: "other-window",
+    });
     expect(store.get(sortAtom)).toBe("alpha");
 
     store.set(sortAtom, "created");
-    applyRemotePreferenceSignal({ key: "chronologicalSort", value: "updated" });
+    applyRemotePreferenceSignal({
+      key: "chronologicalSort",
+      value: "updated",
+      origin: "other-window",
+    });
     expect(store.get(sortAtom)).toBe("created");
     vi.advanceTimersByTime(200);
     await flushPreferenceWritesForTest();
-    applyRemotePreferenceSignal({ key: "chronologicalSort", value: "updated" });
+    applyRemotePreferenceSignal({
+      key: "chronologicalSort",
+      value: "updated",
+      origin: "other-window",
+    });
     expect(store.get(sortAtom)).toBe("updated");
+  });
+
+  it("ignores the late echo of its own earlier write after the user toggles again", async () => {
+    const rpc = deferredRpc();
+    await hydratePreferences(rpc);
+    const store = getDefaultStore();
+    const collapsedAtom = createSyncedPreferenceAtom("collapsedProjects");
+    const seen: string[][] = [];
+    store.sub(collapsedAtom, () => seen.push(store.get(collapsedAtom)));
+
+    store.set(collapsedAtom, ["proj_a"]);
+    vi.advanceTimersByTime(150);
+    await rpc.settleNextWrite();
+    store.set(collapsedAtom, []);
+    vi.advanceTimersByTime(150);
+    await rpc.settleNextWrite();
+    for (const write of rpc.writes) {
+      applyRemotePreferenceSignal(write);
+    }
+
+    expect(seen).toEqual([["proj_a"], []]);
+    expect(store.get(collapsedAtom)).toEqual([]);
+  });
+
+  it("sends one write per key at a time and follows up with the latest value", async () => {
+    const rpc = deferredRpc();
+    await hydratePreferences(rpc);
+    const store = getDefaultStore();
+    const collapsedAtom = createSyncedPreferenceAtom("collapsedProjects");
+
+    store.set(collapsedAtom, ["proj_a"]);
+    vi.advanceTimersByTime(150);
+    store.set(collapsedAtom, []);
+    vi.advanceTimersByTime(150);
+    expect(rpc.writes.map((write) => write.value)).toEqual([["proj_a"]]);
+
+    await rpc.settleNextWrite();
+    expect(rpc.writes.map((write) => write.value)).toEqual([["proj_a"], []]);
+    applyRemotePreferenceSignal({
+      key: "collapsedProjects",
+      value: ["proj_b"],
+      origin: "other-window",
+    });
+    expect(store.get(collapsedAtom)).toEqual([]);
+
+    await rpc.settleNextWrite();
+    applyRemotePreferenceSignal({
+      key: "collapsedProjects",
+      value: ["proj_b"],
+      origin: "other-window",
+    });
+    expect(store.get(collapsedAtom)).toEqual(["proj_b"]);
   });
 
   it("does not write back a value that did not change", async () => {

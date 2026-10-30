@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
+import type { ChildProcess } from "node:child_process";
+import * as hostProcesses from "../../../../packages/process-utils/src/host-process.js";
 import {
   getThreadEvents,
   getThreadResponse,
@@ -23,8 +25,35 @@ import {
 describe.sequential("fake provider active crash recovery integration", () => {
   it(
     "marks in-flight work failed on daemon crash and allows retry after restart",
-    () =>
-      withHarness(async (harness) => {
+    async () => {
+      const workers: { child: ChildProcess; closed: boolean }[] = [];
+      const fork = hostProcesses.forkHostProcess;
+      const observation = vi
+        .spyOn(hostProcesses, "forkHostProcess")
+        .mockImplementation((...args) => {
+          const child = fork(...args);
+          if (String(args[0]).includes("plugin-host-worker")) {
+            const worker = { child, closed: false };
+            child.once("close", () => {
+              worker.closed = true;
+            });
+            workers.push(worker);
+          }
+          return child;
+        });
+      onTestFinished(async () => {
+        observation.mockRestore();
+        await Promise.all(
+          workers.map(({ child, closed }) => {
+            if (closed) return;
+            return new Promise<void>((resolve) => {
+              child.once("close", resolve);
+              child.kill("SIGKILL");
+            });
+          }),
+        );
+      });
+      await withHarness(async (harness) => {
         const { thread } = await createRecoveryThread(
           harness,
           "Crash Recovery Active",
@@ -40,7 +69,9 @@ describe.sequential("fake provider active crash recovery integration", () => {
           ACTIVE_TIMEOUT_MS,
         );
 
+        expect(workers.length).toBeGreaterThan(0);
         await harness.crashDaemon();
+        expect(workers.every((worker) => worker.closed)).toBe(true);
         await waitForHostDisconnected(
           harness.api,
           harness.hostId,
@@ -90,7 +121,8 @@ describe.sequential("fake provider active crash recovery integration", () => {
               event.data.code === "thread_command_failed",
           ),
         ).toBe(true);
-      }),
+      });
+    },
     RECOVERY_TEST_TIMEOUT_MS,
   );
 });

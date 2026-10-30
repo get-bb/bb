@@ -673,7 +673,7 @@ export function registerActionsCommands(
     },
     {
       name: "clear-goal",
-      description: "Ask the provider to clear the active Goal",
+      description: "Ask the provider to clear the thread's Goal",
       method: "clearGoal",
       done: "cleared its Goal",
     },

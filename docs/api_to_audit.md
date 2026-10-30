@@ -629,7 +629,10 @@ whether this event needs matching resolved, cancelled, or interrupted events.
 These are observe-only announcements. `message.queued` (on first queue and on
 every rewritten wait) and `message.dispatched` carry the `ThreadQueuedMessage`
 DTO. `message.cancelled` fires when a queued row is deleted before dispatch.
-`turn.failed` carries ids and failure facts after a thread lands in `error`.
+`turn.failed` carries ids and failure facts after a thread lands in `error`,
+including `originPluginId`, the plugin that sent the failed message. Provider
+retry uses it to ask only that plugin whether to re-run the turn
+(`provider-retry.v1.consent`); Automations is the one sender that answers.
 
 Docs: `backend-events.md`.
 
@@ -1187,6 +1190,17 @@ Docs: `backend-foundation.md`.
 **Audit before stabilizing.** Decide whether `BB_EXTERNAL_URL` or the bb
 connect URL should supply this value when `BB_APP_URL` is empty. Confirm that
 one public URL has clear behavior when a server has several access paths.
+
+## `bb.internal_DO_NOT_USE_recordPluginUse`
+
+Internal to bb's first-party plugins whose meaningful use happens in their own
+UI rather than through an agent tool or CLI command: `monaco-editor` (a saved
+file), `prompt-library` (an inserted prompt) and `agent-annotations` (a saved
+annotation). It takes no arguments. The server counts it as one `plugin_use`
+of the calling plugin, exactly like a successful tool call or CLI command, and
+sends nothing for non-public plugins or when usage data is off. Each plugin's
+use is sent at most once per day. Forks of these plugins inherit the call, so
+removing it later means leaving a no-op stub.
 
 ## `bb.server.internal_DO_NOT_USE_openTunnelIngress`
 
@@ -2133,7 +2147,15 @@ Docs: `frontend-hooks-and-ui.md`.
 
 Returns the remappable answer shortcuts bb binds while a pending interaction is
 open, keyed by option index, and `registerChoiceHandler` for a chosen index.
-Outside a pending interaction the map is empty and handlers never run.
+`actionShortcuts` and `registerActionHandler` do the same for the form actions
+`submit`, `previous`, `next`, and `cancel` (`question.submit`,
+`question.previous`, `question.next`, `question.cancel`); action shortcuts also
+fire from text fields inside an element marked `data-question-form`. Core's
+card uses `actionShortcuts` only for `aria-keyshortcuts` and shows no action
+shortcut labels.
+Core's own question card (`@bb/shared-ui/question-form`, rendered by
+`UserQuestionAnswerForm`) reads the same host through `ThreadQuestionFormHost`.
+Outside a pending interaction the maps are empty and handlers never run.
 
 Docs: `frontend-hooks-and-ui.md`.
 
@@ -2143,7 +2165,10 @@ Docs: `frontend-hooks-and-ui.md`.
    `PluginPendingInteractionProps` instead of a hook any component can call.
 2. **Scope.** Only pending interactions bind the shortcuts. Confirm no other
    surface (a message action form, a panel) should get them.
-3. **Consumer count.** Two first-party consumers (Ask User Question, pi's
+3. **Focus marker.** Action shortcuts reach a form's text fields only through
+   the `data-question-form` attribute. Decide whether a ref or wrapper
+   component should replace the attribute before the prefix drops.
+4. **Consumer count.** Two first-party consumers (Ask User Question, pi's
    extension dialogs). Confirm a third-party form needs it before the prefix
    drops.
 
@@ -2790,6 +2815,93 @@ Docs: `frontend-registration.md`, `frontend-components.md`.
 4. **Separators.** The Info tab draws section separators on every
    `[data-info-section]`, so a section that renders without
    `experimental_InfoSection` gets no separator. Confirm that is acceptable.
+
+## `app.slots.experimental_threadContextCardRow` / `app.slots.experimental_threadContextCardSection` / `experimental_ThreadContextCardRow` / `experimental_useThreadContextKind` (`@get-bb/plugin-sdk/app`)
+
+A thread pane shows its thread context one of two ways, its
+`ExperimentalThreadContextKind`: `banner`, the context row above the composer,
+or `card`, the thread context card at the pane's upper-right.
+`experimental_useThreadContextKind()` returns the kind of the pane the calling
+component renders in, `banner` outside a thread pane. A pane is `card` while
+the `threadContextCard` experiment is on, for a thread opened as a page,
+except on phones (a compact viewport with a coarse pointer, the rule
+`MessageActionBar` uses). Threads shown inside a panel or as a transcript are
+`banner`: `ThreadScreen` wraps those presentations in
+`WithoutThreadContextCard`.
+
+The card's counterparts of the Info tab's row and section slots. A row
+registration is `{ id, group, order?, component }` and draws in the card's top
+block; a section is `{ id, title, group, order?, component }` and draws below
+the rows. Components receive
+`{ threadId, projectId, environment }` (`environment` is `{ id }` from the
+thread, null only without one) and render `experimental_ThreadContextCardRow`
+rows (`{ icon?, leading?, label, trailing?, title?, disabled?, onClick?,
+action? }`), or null; `action` is a second control beside the main one, such
+as a menu.
+
+`ThreadDetailView` wraps each thread page and split pane in
+`ThreadContextCardProvider`
+(`apps/app/src/components/plugin/PluginThreadContextCard.tsx`), enabled only
+where the pane's kind is `card`. Rows and sections each merge bb's with plugin
+registrations and sort by `group`, `order` (unset last), then
+registration order with core first on a tie. Rows share one block with no
+heading; sections follow, each under its title and a divider. Every plugin
+row and section mounts in its own crash boundary keyed by thread, and CSS `:has` hides a
+block whose components render no element. `ThreadContextCard` sits in
+`ThreadScreen`'s scroll overlay, sibling to the scroll viewport, and measures
+the overlay: `gutter` when the card fits beside the 760px transcript column,
+`shift` when padding the scroll content by the card's width keeps the column
+whole, `overlay` otherwise. While `threadContextCard.pinned` (a synced UI
+preference, default true) is on, gutter and shift show the card in the pane
+and shift pads the transcript; the header button
+(`ThreadContextCardHeaderButton`) toggles the pin. In overlay the header
+button opens the same content in the shared Popover, which is the shared
+bottom drawer in a compact viewport. Unpinning or closing the popover does not
+change the pane's kind.
+
+Context segments render in both kinds, so a plugin that has not added a card
+row or section keeps its segment above the composer. A segment whose content is also a
+card row or section hides itself in `useVisible` while the kind is `card`.
+
+**Core callers.** bb's parent row (thread group) and its Child threads section
+(related group) are `CORE_THREAD_CONTEXT_CARD_ROWS` and
+`CORE_THREAD_CONTEXT_CARD_SECTIONS` in
+`apps/app/src/views/thread-detail/ThreadContextCardCore.tsx`, drawn with
+`ThreadContextCardRow`, the component behind `experimental_ThreadContextCardRow`.
+bb's parent segment hides through `useThreadContextKind`, the function behind
+`experimental_useThreadContextKind`. The Git plugin registers its `changes`
+row (full `+N −M` counts; it opens the Diff tab, where the merge base is
+picked) and GitHub PR Status its `pull-request` row (the banner's own label,
+`PullRequestSummaryLabel`, after the GitHub icon that carries the checks,
+opening the pull request; its `…` menu opens GitHub, copies the link, merges,
+and marks it ready or draft, at the card's width, flush with its edges); both
+hide their segments with `experimental_useThreadContextKind`. A row's `action`
+replaces its `trailing` while the row is hovered or focused or the action's
+menu is open, and always shows on touch screens. Contract tests:
+`PluginThreadContextCard.test.tsx` and
+`ThreadPromptContextBanner.segments.test.tsx`.
+
+Docs: `frontend-thread-context-card.md`, `frontend-registration.md`,
+`frontend-hooks-and-ui.md`, `frontend-components.md`, `docs/configuration.md`
+(experiment and preference).
+
+**Audit before stabilizing.**
+
+1. **Kinds.** Confirm `banner | card` covers the presentations bb plans, and
+   that a pane's kind should not follow the pin or the popover.
+2. **Context segments.** Decide whether `experimental_threadContextSegment`
+   becomes the banner's slot under a matching name once the card stabilizes,
+   and whether unmigrated segments should keep showing in card panes.
+3. **Shift.** Pinning or unpinning in a medium pane moves the transcript
+   sideways. Confirm that is acceptable or reserve the space permanently.
+4. **Row actions.** `action` takes any node; GitHub PR Status builds its own
+   `…` menu from shared tokens. Decide whether bb ships the menu as a
+   component, and whether menus should open beside the card instead of below.
+5. **Emptiness.** When every row and section renders nothing for a thread, the card
+   shows an empty state ("Nothing to show yet") instead of hiding, so the
+   header button and the transcript's position do not depend on the thread.
+6. **Groups.** Rows and sections reuse the Info tab's groups. Confirm the two surfaces
+   should share one group vocabulary.
 
 ## `app.slots.experimental_threadRowMetadata` / `experimental_ThreadRowMetadata` (`@get-bb/plugin-sdk/app`)
 
@@ -3710,10 +3822,20 @@ rollback delivery, missing jobs after restart, and CLI/SDK parity.
 Posts one anonymous product event to `POST /api/v1/system/telemetry/events`,
 which forwards it to usage telemetry under the install's anonymous id and
 drops it when usage data sharing is off. The schema is a strict allow-list of
-setup-guide and new-thread-submit events; anything else is a 400. Core
-callers, all through `recordTelemetryEvent` in
-`apps/app/src/components/onboarding/onboarding-telemetry.ts`: the setup guide
-(`OnboardingFlow`) and `NewThreadComposer`'s `new_thread_submit` outcomes.
+setup-guide, new-thread-submit, plugin-creation-started, and release notes
+events; anything else is a 400. App callers, all through `recordTelemetryEvent`
+in `apps/app/src/components/onboarding/onboarding-telemetry.ts`: the setup guide
+(`OnboardingFlow`, `useOnboardingProjectImport`, and agent installs it starts
+through `provider-cli-install-store`), `NewThreadComposer`'s `new_thread_submit` outcomes,
+`PluginCreateButton`'s `plugin_creation_started`, and Settings → Updates'
+changelog (`release_notes_opened`, inline or on the web). `bb plugin new` sends
+`plugin_creation_started` through the same SDK method. The setup guide's
+Plugins step reports `recommendation` `shown` and `selected` with a per-visit
+`recommendation_id`; `selected` also stores that id in server-owned settings
+until the plugin's next use, disable or uninstall. `NewThreadComposer` also
+reports `new_thread_blocker` once per blocker reason while a draft exists.
+`onboarding_operation` reports a guide action's started, succeeded or failed
+outcome with only a public agent id or counts.
 
 Stabilize after deciding whether third-party plugins may emit product events
 at all and, if so, how they are namespaced and rate limited.
@@ -3964,6 +4086,13 @@ own value, so plugins built against the old constant keep working.
   One behaviour narrows: an action tab's or New-thread action's own `ctx.openPanel()` now resolves through the launching surface's registered tabs instead of opening its action directly, so it declines if the action was hidden or unregistered while `run` awaited. The other retired members already resolved against registered tabs. Survey of the 342 bb-community source repositories (shallow clones, 2026-10-26, production sources): `openPanel(` 102 call sites in 47 repos, `openThreadPanel(` 111 in 55, `experimental_openTab(` 3 in 2, `openFixedTab(` 11 in 8. Three repos self-open after an `await` in `run` (bb-plugin-crew, bb-wterm-terminal-plugin, bb-plugin-feed), all through the legacy `threadPanelAction`, which has no `useVisible`; the one tab with `useVisible` (shuttle) self-opens synchronously from its visible launcher. No caller relies on opening an unregistered or hidden action. In-repo callers (side-chat, tasks, workflows, docs, the ThreadChat demo) moved to the controller.
 
 - **Stabilization:** audit focus resolution for commands and thread actions across split panes and plugin pages, `toggleTab` against compact drawers and plugin-detail overlays, `close()` acceptance when the panel is already closed, and whether a nav-panel action reference should resolve on thread surfaces. Remove the retired shims after published callers migrate, then rename project-wide and remove this entry.
+
+## Open panel tabs (`experimental_usePanelTabs`, `ExperimentalPanelController.getTabs`/`selectTab`/`closeTab`, `experimental_PanelTabIcon`)
+
+- **Surface:** `experimental_usePanelTabs(): ExperimentalPanelTabs` returns `{ open, selectedKey, tabs }` for the side panel of the surface the component renders in, following live changes. Each `ExperimentalPanelTab` is `{ key, title, status, closable, detail }`; `ExperimentalPanelTabDetail` is `info`, `file` (`path`), `browser` (`url`), `terminal` (`terminalId`), `new-tab`, `plugin` (`pluginId`, the tab's `ExperimentalTabReference`, action `params`) or `plugin-details` (`pluginId`). `ExperimentalPanelController.getTabs()` returns the same list once, for commands, thread actions and other non-component callers (from the focused surface for commands). `selectTab(key)` and `closeTab(key)` act on any listed tab and return false for a key that is not open (and `closeTab` for a tab without a close button). `experimental_PanelTabIcon({ tabKey })` draws the strip's icon for a key. The testing harness takes `experimental_panelTabs` and logs `selectTab`/`closeTab` in `experimental_panelCalls`; `@get-bb/plugin-sdk/testing` exports `experimental_makePanelController(overrides?)`, a controller that declines every call except the overrides, for tests that run a command or action directly.
+- **Behavior:** the list is the tab strip's, in its order: fixed tabs (Info, plugin fixed and page tabs), then content tabs. `title`, `status` and `closable` are what the strip shows; `selectTab` and `closeTab` call the strip's own `onSelect`/`onClose`, so closing a terminal ends it and selecting reveals the panel (the compact drawer on phones). Plugin components re-render only when the listed data changes. Keys are the core tab ids and are documented as valid only while the tab is open. A surface without a side panel reports a closed, empty list.
+- **Core callers:** every surface builds its strip from `usePanelTabPresenter` (`apps/app/src/components/secondary-panel/usePanelTabPresenter.tsx`) and renders `AppPanelTabsPublisher` (`apps/app/src/lib/app-panel-tabs.tsx`) with the same tab objects it hands `ThreadSecondaryPanel`: `ThreadDetailView`, `RootComposeView`, `PluginPanelRightPanelHost`, and the Plugins browse page (`PluginsView`, which now has its own panel controller). The publisher writes into the surface's `useAppPanelController` store in `apps/app/src/lib/app-fixed-tab-navigation.tsx`; the plugin hook, `selectTab`, `closeTab` and the icon read that store. Contract tests: the panel controller contract in `apps/app/src/test/panel-controller-contract.tsx`, run against the thread view, New thread screen and plugin page, plus `app-panel-tabs.test.tsx`.
+- **Stabilization:** audit whether every plugin should see other tabs' URLs and file paths; whether split panes need a per-pane list or `selectedKey` per pane (today it is the focused pane's tab); whether reorder, move between panes or pin should join `selectTab`/`closeTab`; and whether `detail` needs more (a file's source or line range, a terminal's target). Then rename project-wide and remove this entry.
 
 ## Unified tabs (`experimental_tab`)
 

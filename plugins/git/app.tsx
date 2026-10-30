@@ -5,6 +5,7 @@ import {
   experimental_THREAD_INFO_SECTION_GROUPS,
 } from "@get-bb/plugin-sdk/app";
 import { GIT_DIFF_TAB_ID } from "./contract.js";
+import { GitChangesContextCardRow } from "./ui/context-card/GitChangesContextCardRow.js";
 import { DiffTab, useDiffTabVisible } from "./ui/diff/DiffTab.js";
 import { gitDiffTabTarget } from "./ui/diff-tab-target.js";
 import {
@@ -89,6 +90,12 @@ export default definePluginApp((app) => {
     action: changedFilesSegmentPart("action"),
     details: changedFilesSegmentPart("details"),
     useVisible: useChangedFilesSegmentVisible,
+  });
+  app.slots.experimental_threadContextCardRow({
+    id: "changes",
+    group: experimental_THREAD_INFO_ROW_GROUPS.git,
+    order: 10,
+    component: GitChangesContextCardRow,
   });
   app.slots.experimental_threadAction(commitThreadAction);
   app.slots.experimental_appOverlay({

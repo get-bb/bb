@@ -26,13 +26,10 @@ import {
   routedThreadStatusListSchema,
   statusReportSchema,
   statusSchema,
+  type Account,
   type AccountSummary,
 } from "./contracts.js";
 import { z } from "zod";
-import type {
-  ImportedClaudeCredentials,
-  ImportedCodexCredentials,
-} from "./credentials.js";
 import { PARENT_TOKEN_ENV, PARENT_URL_ENV } from "./parent-pool.js";
 import { AccountStore, HubTokenStore } from "./store.js";
 import {
@@ -59,9 +56,11 @@ interface Fixture {
   >;
   key: string;
   account: AccountSummary;
+  logins: ExistingLogins;
 }
 
 const cleanups: Array<() => Promise<void>> = [];
+const NEW_ACCOUNT = { kind: "add", label: null, priority: 100 } as const;
 
 function sdkStubs() {
   return {
@@ -185,9 +184,9 @@ async function readRequestBody(request: IncomingMessage): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
-function importedCredentials(
-  overrides: Partial<ImportedClaudeCredentials> = {},
-): ImportedClaudeCredentials {
+function claudeCredentials(
+  overrides: Partial<ExistingClaudeLogin> = {},
+): ExistingClaudeLogin {
   return {
     accessToken: "oauth-access",
     refreshToken: "oauth-refresh",
@@ -208,11 +207,110 @@ function testJwt(payload: object): string {
   ].join(".");
 }
 
+interface ExistingClaudeLogin {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number | null;
+  subscriptionType: string | null;
+  rateLimitTier: string | null;
+  email: string | null;
+  accountUuid: string | null;
+}
+
+interface ExistingCodexLogin {
+  accessToken: string;
+  refreshToken: string;
+  idToken: string | null;
+  accountId: string;
+  email: string | null;
+  expiresAt: number | null;
+}
+
+interface FixtureOptions extends AccountPoolPluginOptions {
+  claudeLogin?: () => Promise<ExistingClaudeLogin>;
+  codexLogin?: () => Promise<ExistingCodexLogin>;
+}
+
+type ExistingLogins = Pick<FixtureOptions, "claudeLogin" | "codexLogin">;
+
+async function addExistingAccount(
+  target: { host: Fixture["host"]; logins: ExistingLogins },
+  provider: "claude" | "codex",
+  placement: { label?: string | null; priority?: number } = {},
+): Promise<Account> {
+  const store = new AccountStore(
+    target.host.bb.storage.kv,
+    path.join(
+      target.host.bb.server.experimental_dataDir,
+      "plugins",
+      "account-pool",
+      "secrets",
+      "accounts",
+    ),
+  );
+  const priority = placement.priority ?? 100;
+  let account: Account;
+  if (provider === "claude") {
+    const login = await (
+      target.logins.claudeLogin ?? (async () => claudeCredentials())
+    )();
+    account = await store.add(
+      {
+        provider,
+        kind: "oauth",
+        label: placement.label ?? login.email ?? "Claude Code account",
+        email: login.email,
+        accountUuid: login.accountUuid,
+        subscriptionType: login.subscriptionType,
+        rateLimitTier: login.rateLimitTier,
+        enabled: true,
+        priority,
+      },
+      {
+        kind: "oauth",
+        accessToken: login.accessToken,
+        refreshToken: login.refreshToken,
+        expiresAt: login.expiresAt,
+      },
+    );
+  } else {
+    if (target.logins.codexLogin === undefined) {
+      throw new Error("The fixture has no existing Codex login.");
+    }
+    const login = await target.logins.codexLogin();
+    account = await store.add(
+      {
+        provider,
+        kind: "oauth",
+        label: placement.label ?? login.email ?? "Codex account",
+        email: login.email,
+        accountUuid: null,
+        codexAccountId: login.accountId,
+        subscriptionType: null,
+        rateLimitTier: null,
+        enabled: true,
+        priority,
+      },
+      {
+        kind: "oauth",
+        accessToken: login.accessToken,
+        refreshToken: login.refreshToken,
+        expiresAt: login.expiresAt,
+        ...(login.idToken === null ? {} : { idToken: login.idToken }),
+      },
+    );
+  }
+  await target.host.harness.behavior.callRpc("account.enable", {
+    id: account.id,
+  });
+  return account;
+}
+
 async function createFixture(args: {
   upstreamUrl: string;
-  options?: AccountPoolPluginOptions;
+  options?: FixtureOptions;
   provider?: "claude" | "codex";
-  source?: "api-key" | "import";
+  source?: "api-key" | "oauth";
   apiKey?: string;
   priority?: number;
   beforePlugin?: (host: Fixture["host"]) => void;
@@ -227,23 +325,27 @@ async function createFixture(args: {
     anthropicUpstreamBaseUrl: args.upstreamUrl,
     codexUpstreamBaseUrl: args.upstreamUrl,
   });
+  const { claudeLogin, codexLogin, ...pluginOptions } = args.options ?? {};
+  const logins: ExistingLogins = { claudeLogin, codexLogin };
   const plugin = createAccountPoolPlugin({
     usageUrl: "data:application/json,{}",
-    ...args.options,
+    ...pluginOptions,
   });
   args.beforePlugin?.(host);
   await plugin(host.bb);
-  const accountMetadata = accountSchema.parse(
-    await host.harness.behavior.callRpc("account.add", {
-      provider: args.provider ?? "claude",
-      source:
-        args.source === "import"
-          ? { kind: "import" }
-          : { kind: "api-key", apiKey: args.apiKey ?? "sk-account" },
-      label: null,
-      priority: args.priority ?? 100,
-    }),
-  );
+  const accountMetadata =
+    args.source === "oauth"
+      ? await addExistingAccount({ host, logins }, args.provider ?? "claude", {
+          priority: args.priority ?? 100,
+        })
+      : accountSchema.parse(
+          await host.harness.behavior.callRpc("account.add", {
+            provider: "claude",
+            apiKey: args.apiKey ?? "sk-account",
+            label: null,
+            priority: args.priority ?? 100,
+          }),
+        );
   const service = host.harness.behavior.runService("hub");
   await vi.waitFor(async () => {
     const result = await host.harness.behavior.runCli(["status", "--json"]);
@@ -268,7 +370,7 @@ async function createFixture(args: {
     args.provider === "codex"
       ? (await resolveCodexToken(host)).token
       : await resolveToken(host);
-  return { dataDir, host, service, key, account };
+  return { dataDir, host, service, key, account, logins };
 }
 
 async function createOAuthRequestFixture(
@@ -279,7 +381,7 @@ async function createOAuthRequestFixture(
   return createFixture({
     upstreamUrl: "https://upstream.example",
     provider,
-    source: "import",
+    source: "oauth",
     options: {
       fetch: (input, init) =>
         String(input) === EMPTY_USAGE_URL
@@ -289,12 +391,12 @@ async function createOAuthRequestFixture(
       refreshUrl: "https://upstream.example/oauth/token",
       codexRefreshUrl: "https://upstream.example/oauth/token",
       codexUsageUrl: EMPTY_USAGE_URL,
-      importCredentials: async () =>
-        importedCredentials({
+      claudeLogin: async () =>
+        claudeCredentials({
           accessToken: "oauth-old",
           expiresAt: now() + 60 * 60 * 1_000,
         }),
-      importCodexCredentials: async () => ({
+      codexLogin: async () => ({
         accessToken: "oauth-old",
         refreshToken: "oauth-refresh",
         idToken: null,
@@ -330,7 +432,7 @@ async function addApiAccount(
   const added = accountSchema.parse(
     await fixture.host.harness.behavior.callRpc("account.add", {
       provider: "claude",
-      source: { kind: "api-key", apiKey },
+      apiKey,
       label: apiKey,
       priority,
     }),
@@ -554,7 +656,7 @@ describe("Account Pool plugin", () => {
     },
   );
 
-  it("imports, refreshes, and routes Codex HTTP sessions by provider", async () => {
+  it("refreshes and routes Codex HTTP sessions by provider", async () => {
     const seen: Array<{
       path: string;
       authorization: string | undefined;
@@ -665,19 +767,18 @@ describe("Account Pool plugin", () => {
     const dataDir = await mkdtemp(
       path.join(tmpdir(), "bb-account-pool-codex-"),
     );
-    let imported = 0;
-    const importCodexCredentials =
-      async (): Promise<ImportedCodexCredentials> => {
-        imported += 1;
-        return {
-          accessToken: "expired-token",
-          refreshToken: `refresh-${imported}`,
-          idToken: "id-token",
-          accountId: `chatgpt-account-${imported}`,
-          email: `codex-${imported}@example.com`,
-          expiresAt: Date.now() - 1,
-        };
+    let signedIn = 0;
+    const codexLogin = async (): Promise<ExistingCodexLogin> => {
+      signedIn += 1;
+      return {
+        accessToken: "expired-token",
+        refreshToken: `refresh-${signedIn}`,
+        idToken: "id-token",
+        accountId: `chatgpt-account-${signedIn}`,
+        email: `codex-${signedIn}@example.com`,
+        expiresAt: Date.now() - 1,
       };
+    };
     const host = createFakePluginHost({
       pluginId: "account-pool",
       dataDir,
@@ -690,7 +791,6 @@ describe("Account Pool plugin", () => {
     await createAccountPoolPlugin({
       codexRefreshUrl: `${upstream.url}/oauth`,
       codexUsageUrl: `${upstream.url}/usage`,
-      importCodexCredentials,
       usageUrl: "data:application/json,{}",
     })(host.bb);
     const service = host.harness.behavior.runService("hub");
@@ -709,24 +809,12 @@ describe("Account Pool plugin", () => {
     });
     await host.harness.behavior.callRpc("account.add", {
       provider: "claude",
-      source: { kind: "api-key", apiKey: "claude-key" },
+      apiKey: "claude-key",
       label: "Claude first",
       priority: 0,
     });
-    const importedByCli = await host.harness.behavior.runCli([
-      "account",
-      "add",
-      "--provider",
-      "codex",
-      "--import",
-    ]);
-    expect(importedByCli.exitCode).toBe(0);
-    await host.harness.behavior.callRpc("account.add", {
-      provider: "codex",
-      source: { kind: "import" },
-      label: null,
-      priority: 100,
-    });
+    await addExistingAccount({ host, logins: { codexLogin } }, "codex");
+    await addExistingAccount({ host, logins: { codexLogin } }, "codex");
     const accountTable = await host.harness.behavior.runCli([
       "account",
       "list",
@@ -967,14 +1055,6 @@ describe("Account Pool plugin", () => {
     await createAccountPoolPlugin({
       fetch: upstreamFetch,
       codexUsageUrl: CODEX_USAGE_STUB_URL,
-      importCodexCredentials: async () => ({
-        accessToken: "access",
-        refreshToken: "refresh",
-        idToken: null,
-        accountId: "account",
-        email: null,
-        expiresAt: null,
-      }),
     })(host.bb);
     const service = host.harness.behavior.runService("hub");
     cleanups.push(async () => {
@@ -990,12 +1070,22 @@ describe("Account Pool plugin", () => {
         ).accepting,
       ).toBe(true);
     });
-    await host.harness.behavior.callRpc("account.add", {
-      provider: "codex",
-      source: { kind: "import" },
-      label: null,
-      priority: 100,
-    });
+    await addExistingAccount(
+      {
+        host,
+        logins: {
+          codexLogin: async () => ({
+            accessToken: "access",
+            refreshToken: "refresh",
+            idToken: null,
+            accountId: "account",
+            email: null,
+            expiresAt: null,
+          }),
+        },
+      },
+      "codex",
+    );
     const { token } = await resolveCodexToken(host);
     const client = new AbortController();
     const response = await host.harness.behavior.fetchHttp(
@@ -1054,7 +1144,7 @@ describe("Account Pool plugin", () => {
     await expect(fs.access(goneTokenFile)).rejects.toThrow();
     await host.harness.behavior.callRpc("account.add", {
       provider: "claude",
-      source: { kind: "api-key", apiKey: "sk-account" },
+      apiKey: "sk-account",
       label: null,
       priority: 100,
     });
@@ -1357,7 +1447,7 @@ describe("Account Pool plugin", () => {
       "add",
       "--provider",
       "gemini",
-      "--import",
+      "--login",
     ]);
     expect(badProvider.exitCode).toBe(1);
     expect(badProvider.stderr).toContain(
@@ -1369,13 +1459,24 @@ describe("Account Pool plugin", () => {
       "add",
       "--provider",
       "claude",
-      "--import",
+      "--api-key",
+      "sk-conflict",
       "--login",
     ]);
     expect(conflicting.exitCode).toBe(1);
     expect(conflicting.stderr).toContain(
-      "--login and --import cannot be combined",
+      "--login and --api-key cannot be combined",
     );
+
+    const removedImport = await run([
+      "account",
+      "add",
+      "--provider",
+      "claude",
+      "--import",
+    ]);
+    expect(removedImport.exitCode).toBe(1);
+    expect(removedImport.stderr).toContain("--import");
 
     const jsonEnvelope = await run([
       "account",
@@ -1389,13 +1490,12 @@ describe("Account Pool plugin", () => {
       ok: false,
       error: {
         code: "missing_required",
-        message:
-          "missing required options: one of --login, --import, --api-key",
+        message: "missing required options: one of --login, --api-key",
         hint: expect.stringContaining("bb pool account add"),
       },
     });
     expect(jsonEnvelope.stderr).toContain(
-      "missing required options: one of --login, --import, --api-key",
+      "missing required options: one of --login, --api-key",
     );
 
     const bypassWithoutThread = await run(["bypass"], {
@@ -1464,7 +1564,7 @@ describe("Account Pool plugin", () => {
     const started = z
       .object({ sessionId: z.string().uuid(), authorizeUrl: z.string().url() })
       .strict()
-      .parse(await host.harness.behavior.callRpc("login.start", null));
+      .parse(await host.harness.behavior.callRpc("login.start", NEW_ACCOUNT));
     const state = new URL(started.authorizeUrl).searchParams.get("state");
     if (state === null) throw new Error("Login start did not return state.");
     const account = accountSchema.parse(
@@ -1544,7 +1644,7 @@ describe("Account Pool plugin", () => {
     ]);
     expect(cliCompleted).toMatchObject({
       exitCode: 0,
-      stdout: expect.stringContaining("Added Logged-in Claude"),
+      stdout: expect.stringContaining("Signed in Logged-in Claude"),
     });
     expect(tokenBodies).toHaveLength(2);
     expect(tokenBodies[1]).toMatchObject({ code: "cli-code", state: cliState });
@@ -1624,7 +1724,7 @@ describe("Account Pool plugin", () => {
     });
 
     const started = codexLoginStartSchema.parse(
-      await host.harness.behavior.callRpc("codexLogin.start", null),
+      await host.harness.behavior.callRpc("codexLogin.start", NEW_ACCOUNT),
     );
     expect(started).toMatchObject({
       verificationUri: `${auth.url}/codex/device`,
@@ -1678,7 +1778,7 @@ describe("Account Pool plugin", () => {
     ]);
     expect(cliCompleted).toMatchObject({
       exitCode: 0,
-      stdout: expect.stringContaining("Added codex@example.com"),
+      stdout: expect.stringContaining("Signed in codex@example.com"),
     });
     const cancelledStart = await host.harness.behavior.runCli([
       "account",
@@ -1746,6 +1846,12 @@ describe("Account Pool plugin", () => {
         reason: "Account Pooler hub token for this machine",
       },
       {
+        name: "CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST",
+        value: "1",
+        reason:
+          "Claude Code otherwise refreshes this machine's own Claude login while routed, which can spend its single-use refresh token and sign it out",
+      },
+      {
         name: "ENABLE_TOOL_SEARCH",
         value: "true",
         reason:
@@ -1808,10 +1914,10 @@ describe("Account Pool plugin", () => {
     const fixture = await createFixture({
       upstreamUrl: "https://upstream.example",
       provider: "codex",
-      source: "import",
+      source: "oauth",
       options: {
         codexUsageUrl: EMPTY_USAGE_URL,
-        importCodexCredentials: async () => ({
+        codexLogin: async () => ({
           accessToken: "sk-codex",
           refreshToken: "refresh",
           idToken: null,
@@ -1853,7 +1959,7 @@ describe("Account Pool plugin", () => {
     cleanups.push(upstream.close);
     const fixture = await createFixture({
       upstreamUrl: upstream.url,
-      options: { importCredentials: async () => importedCredentials() },
+      options: { claudeLogin: async () => claudeCredentials() },
     });
     const cacheEntry = async () =>
       (
@@ -1865,9 +1971,7 @@ describe("Account Pool plugin", () => {
       ).find((entry) => entry.name === "ENABLE_PROMPT_CACHING_1H");
     await expect(cacheEntry()).resolves.toBeUndefined();
     const subscription = accountSchema.parse(
-      await fixture.host.harness.behavior.callRpc("account.add", {
-        provider: "claude",
-        source: { kind: "import" },
+      await addExistingAccount(fixture, "claude", {
         label: null,
         priority: 100,
       }),
@@ -2168,8 +2272,8 @@ describe("Account Pool plugin", () => {
     cleanups.push(upstream.close);
     const fixture = await createFixture({
       upstreamUrl: upstream.url,
-      source: "import",
-      options: { importCredentials: async () => importedCredentials() },
+      source: "oauth",
+      options: { claudeLogin: async () => claudeCredentials() },
     });
     const unauthorized = await fixture.host.harness.behavior.fetchHttp(
       "POST",
@@ -2508,7 +2612,7 @@ describe("Account Pool plugin", () => {
     expect(keys).toEqual(["sk-one", "sk-one", "sk-two"]);
   });
 
-  it("refreshes usage on import and routes from its family observations", async () => {
+  it("refreshes usage when an OAuth account is enabled and routes from its family observations", async () => {
     const authorizations: Array<string | undefined> = [];
     const usageCalls = new Map<string, number>();
     const upstream = await startUpstream(async (request, response) => {
@@ -2551,35 +2655,33 @@ describe("Account Pool plugin", () => {
       response.end("{}");
     });
     cleanups.push(upstream.close);
-    const imports = [
-      importedCredentials({
+    const logins = [
+      claudeCredentials({
         accessToken: "oauth-a",
         accountUuid: null,
       }),
-      importedCredentials({
+      claudeCredentials({
         accessToken: "oauth-b",
         accountUuid: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
       }),
     ];
-    let importIndex = 0;
+    let loginIndex = 0;
     const fixture = await createFixture({
       upstreamUrl: upstream.url,
-      source: "import",
+      source: "oauth",
       options: {
         usageUrl: `${upstream.url}/usage`,
         oauthProfileUrl: `${upstream.url}/profile`,
-        importCredentials: async () => {
-          const imported = imports[importIndex];
-          importIndex += 1;
-          if (imported === undefined) throw new Error("No import fixture.");
-          return imported;
+        claudeLogin: async () => {
+          const login = logins[loginIndex];
+          loginIndex += 1;
+          if (login === undefined) throw new Error("No login fixture.");
+          return login;
         },
       },
     });
     const second = accountSchema.parse(
-      await fixture.host.harness.behavior.callRpc("account.add", {
-        provider: "claude",
-        source: { kind: "import" },
+      await addExistingAccount(fixture, "claude", {
         label: "second",
         priority: 100,
       }),
@@ -2640,9 +2742,9 @@ describe("Account Pool plugin", () => {
     const oldUuid = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
     const fixture = await createFixture({
       upstreamUrl: upstream.url,
-      source: "import",
+      source: "oauth",
       options: {
-        importCredentials: async () => importedCredentials({ accountUuid }),
+        claudeLogin: async () => claudeCredentials({ accountUuid }),
       },
     });
     const inputs = [
@@ -3782,12 +3884,12 @@ describe("Account Pool plugin", () => {
       upstreamFetch: typeof fetch,
       now = () => 1_800_000_000_000,
     ): Promise<Fixture> {
-      let imported = 0;
+      let signedIn = 0;
       const fixture = await createFixture({
         upstreamUrl: "https://upstream.example",
         provider,
         apiKey: "sk-first",
-        source: provider === "codex" ? "import" : "api-key",
+        source: provider === "codex" ? "oauth" : "api-key",
         options: {
           now,
           codexUsageUrl: EMPTY_USAGE_URL,
@@ -3795,12 +3897,12 @@ describe("Account Pool plugin", () => {
             String(input) === EMPTY_USAGE_URL
               ? Promise.resolve(Response.json({}))
               : upstreamFetch(input, init),
-          importCodexCredentials: async () => ({
+          codexLogin: async () => ({
             accessToken:
-              ["sk-first", "sk-second", "sk-third"][imported++] ?? "sk-extra",
+              ["sk-first", "sk-second", "sk-third"][signedIn++] ?? "sk-extra",
             refreshToken: "refresh",
             idToken: null,
-            accountId: `codex-account-${imported}`,
+            accountId: `codex-account-${signedIn}`,
             email: null,
             expiresAt: now() + 24 * 60 * 60 * 1_000,
           }),
@@ -3808,9 +3910,7 @@ describe("Account Pool plugin", () => {
       });
       if (provider === "claude") await addApiAccount(fixture, "sk-second");
       else
-        await fixture.host.harness.behavior.callRpc("account.add", {
-          provider,
-          source: { kind: "import" },
+        await addExistingAccount(fixture, provider, {
           label: null,
           priority: 100,
         });
@@ -3839,9 +3939,7 @@ describe("Account Pool plugin", () => {
         );
         if (provider === "claude") await addApiAccount(fixture, "sk-third");
         else
-          await fixture.host.harness.behavior.callRpc("account.add", {
-            provider,
-            source: { kind: "import" },
+          await addExistingAccount(fixture, provider, {
             label: null,
             priority: 100,
           });
@@ -5523,11 +5621,11 @@ describe("Account Pool plugin", () => {
     cleanups.push(upstream.close);
     const fixture = await createFixture({
       upstreamUrl: upstream.url,
-      source: "import",
+      source: "oauth",
       options: {
         now: () => now,
-        importCredentials: async () =>
-          importedCredentials({ expiresAt: now + 10 * 60 * 1_000 }),
+        claudeLogin: async () =>
+          claudeCredentials({ expiresAt: now + 10 * 60 * 1_000 }),
         refreshUrl: `${upstream.url}/oauth/token`,
       },
     });
@@ -5626,18 +5724,18 @@ describe("Account Pool plugin", () => {
       response.end("{}");
     });
     cleanups.push(upstream.close);
-    let imported = 0;
+    let signedIn = 0;
     const fixture = await createFixture({
       upstreamUrl: upstream.url,
-      source: "import",
+      source: "oauth",
       options: {
         now: () => now,
-        importCredentials: async () => {
-          imported += 1;
-          return importedCredentials({
-            accessToken: `access-${imported}`,
-            refreshToken: `refresh-${imported}`,
-            email: `account-${imported}@example.com`,
+        claudeLogin: async () => {
+          signedIn += 1;
+          return claudeCredentials({
+            accessToken: `access-${signedIn}`,
+            refreshToken: `refresh-${signedIn}`,
+            email: `account-${signedIn}@example.com`,
             expiresAt: now + 10 * 60 * 1_000,
           });
         },
@@ -5645,9 +5743,7 @@ describe("Account Pool plugin", () => {
       },
     });
     const second = accountSchema.parse(
-      await fixture.host.harness.behavior.callRpc("account.add", {
-        provider: "claude",
-        source: { kind: "import" },
+      await addExistingAccount(fixture, "claude", {
         label: "second",
         priority: 200,
       }),
@@ -5755,12 +5851,12 @@ describe("Account Pool plugin", () => {
       const fixture = await createFixture({
         upstreamUrl: upstream.url,
         provider,
-        source: "import",
+        source: "oauth",
         options: {
           now: () => now,
-          importCredentials: async () =>
-            importedCredentials({ accessToken: oldToken, expiresAt }),
-          importCodexCredentials: async () => ({
+          claudeLogin: async () =>
+            claudeCredentials({ accessToken: oldToken, expiresAt }),
+          codexLogin: async () => ({
             accessToken: oldToken,
             refreshToken: "old-refresh",
             idToken: null,
@@ -5852,10 +5948,10 @@ describe("Account Pool plugin", () => {
     cleanups.push(upstream.close);
     const fixture = await createFixture({
       upstreamUrl: upstream.url,
-      source: "import",
+      source: "oauth",
       options: {
         now: () => now,
-        importCredentials: async () => importedCredentials({ expiresAt }),
+        claudeLogin: async () => claudeCredentials({ expiresAt }),
         refreshUrl: `${upstream.url}/oauth/token`,
       },
     });
@@ -5896,10 +5992,10 @@ describe("Account Pool plugin", () => {
     cleanups.push(upstream.close);
     const refreshFixture = await createFixture({
       upstreamUrl: upstream.url,
-      source: "import",
+      source: "oauth",
       options: {
-        importCredentials: async () =>
-          importedCredentials({ expiresAt: Date.now() + 1_000 }),
+        claudeLogin: async () =>
+          claudeCredentials({ expiresAt: Date.now() + 1_000 }),
         refreshUrl: `${upstream.url}/oauth/token`,
       },
     });
@@ -5944,7 +6040,7 @@ describe("Account Pool plugin", () => {
       options: {
         fetch: async () => Response.json({}),
         codexUsageUrl: EMPTY_USAGE_URL,
-        importCodexCredentials: async () => ({
+        codexLogin: async () => ({
           accessToken: "codex-access",
           refreshToken: "codex-refresh",
           idToken: "codex-id",
@@ -5954,12 +6050,7 @@ describe("Account Pool plugin", () => {
         }),
       },
     });
-    await fixture.host.harness.behavior.callRpc("account.add", {
-      provider: "codex",
-      source: { kind: "import" },
-      label: null,
-      priority: 100,
-    });
+    await addExistingAccount(fixture, "codex", { label: null, priority: 100 });
     const disabled = await fixture.host.harness.behavior.runCli([
       "routing",
       "claude",
@@ -6233,19 +6324,19 @@ describe("sequential pool recovery", () => {
   });
 
   it("keeps Codex over-limit accounts ineligible until reset when utilization is omitted", async () => {
-    let imported = 0;
+    let signedIn = 0;
     const attempts: Array<string | null> = [];
     const fixture = await createFixture({
       upstreamUrl: "https://upstream.example",
       provider: "codex",
-      source: "import",
+      source: "oauth",
       options: {
         codexUsageUrl: EMPTY_USAGE_URL,
-        importCodexCredentials: async () => ({
-          accessToken: imported++ === 0 ? "sk-first" : "sk-second",
+        codexLogin: async () => ({
+          accessToken: signedIn++ === 0 ? "sk-first" : "sk-second",
           refreshToken: "refresh",
           idToken: null,
-          accountId: `review-codex-account-${imported}`,
+          accountId: `review-codex-account-${signedIn}`,
           email: null,
           expiresAt: Date.now() + 24 * 60 * 60 * 1_000,
         }),
@@ -6269,12 +6360,7 @@ describe("sequential pool recovery", () => {
         },
       },
     });
-    await fixture.host.harness.behavior.callRpc("account.add", {
-      provider: "codex",
-      source: { kind: "import" },
-      label: null,
-      priority: 100,
-    });
+    await addExistingAccount(fixture, "codex", { label: null, priority: 100 });
     for (const session of ["first-session", "second-session"]) {
       const response = await fixture.host.harness.behavior.fetchHttp(
         "POST",
@@ -6328,10 +6414,10 @@ describe("sequential pool recovery", () => {
       const fixture = await createFixture({
         upstreamUrl: "https://upstream.example",
         provider: "codex",
-        source: "import",
+        source: "oauth",
         options: {
           codexUsageUrl: "https://upstream.example/usage",
-          importCodexCredentials: async () => ({
+          codexLogin: async () => ({
             accessToken: "codex-credit",
             refreshToken: "refresh",
             expiresAt: Date.now() + 3600000,
@@ -6375,15 +6461,15 @@ describe("sequential pool recovery", () => {
 
   it("returns Codex paid pins to recovered subscriptions and persists spending restrictions", async () => {
     let now = Date.now();
-    let imports = 0;
+    let signIns = 0;
     let includedPercent = 10;
     let spendingBlocked = false;
     const calls: string[] = [];
-    const options: AccountPoolPluginOptions = {
+    const options: FixtureOptions = {
       now: () => now,
       codexUsageUrl: "https://upstream.example/usage",
-      importCodexCredentials: async () => ({
-        accessToken: ++imports === 1 ? "paid" : "included",
+      codexLogin: async () => ({
+        accessToken: ++signIns === 1 ? "paid" : "included",
         refreshToken: "refresh",
         expiresAt: now + 3600000,
         idToken: null,
@@ -6423,14 +6509,12 @@ describe("sequential pool recovery", () => {
     const fixture = await createFixture({
       upstreamUrl: "https://upstream.example",
       provider: "codex",
-      source: "import",
+      source: "oauth",
       priority: 1,
       options,
     });
     const second = accountSchema.parse(
-      await fixture.host.harness.behavior.callRpc("account.add", {
-        provider: "codex",
-        source: { kind: "import" },
+      await addExistingAccount(fixture, "codex", {
         label: "Included",
         priority: 2,
       }),
@@ -6536,10 +6620,10 @@ describe("sequential pool recovery", () => {
       const calls: string[] = [];
       const fixture = await createFixture({
         upstreamUrl: "https://upstream.example",
-        source: "import",
+        source: "oauth",
         options: {
           usageUrl: "https://upstream.example/usage",
-          importCredentials: async () => importedCredentials(),
+          claudeLogin: async () => claudeCredentials(),
           fetch: async (input) => {
             const pathname = new URL(String(input)).pathname;
             if (pathname === "/usage")
@@ -6588,18 +6672,18 @@ describe("sequential pool recovery", () => {
       let now = Date.now();
       let firstPercent = 100;
       let secondPercent = 10;
-      let importCount = 0;
+      let signInCount = 0;
       const attempts: string[] = [];
       const fixture = await createFixture({
         upstreamUrl: "https://upstream.example",
-        source: "import",
+        source: "oauth",
         priority: 1,
         options: {
           now: () => now,
           usageUrl: "https://upstream.example/usage",
-          importCredentials: async () =>
-            importedCredentials({
-              accessToken: ++importCount === 1 ? "paid" : "included",
+          claudeLogin: async () =>
+            claudeCredentials({
+              accessToken: ++signInCount === 1 ? "paid" : "included",
             }),
           fetch: async (input, init) => {
             const key = new Headers(init?.headers).get("authorization");
@@ -6622,9 +6706,7 @@ describe("sequential pool recovery", () => {
         },
       });
       const second = accountSchema.parse(
-        await fixture.host.harness.behavior.callRpc("account.add", {
-          provider: "claude",
-          source: { kind: "import" },
+        await addExistingAccount(fixture, "claude", {
           label: "included",
           priority: 2,
         }),
@@ -6676,7 +6758,6 @@ describe("sequential pool recovery", () => {
     let upstreamCalls = 0;
     const options: AccountPoolPluginOptions = {
       usageUrl: "https://upstream.example/usage",
-      importCredentials: async () => importedCredentials(),
       fetch: async (input) => {
         if (new URL(String(input)).pathname === "/usage")
           return Response.json({});
@@ -6699,7 +6780,7 @@ describe("sequential pool recovery", () => {
     };
     const fixture = await createFixture({
       upstreamUrl: "https://upstream.example",
-      source: "import",
+      source: "oauth",
       options,
     });
     let host = fixture.host;
@@ -6742,11 +6823,11 @@ describe("sequential pool recovery", () => {
     const calls: string[] = [];
     const fixture = await createFixture({
       upstreamUrl: "https://upstream.example",
-      source: "import",
+      source: "oauth",
       options: {
         now: () => now,
         usageUrl: "https://upstream.example/usage",
-        importCredentials: async () => importedCredentials(),
+        claudeLogin: async () => claudeCredentials(),
         fetch: async (input) => {
           const url = new URL(String(input));
           calls.push(url.pathname);
@@ -6792,11 +6873,11 @@ describe("sequential pool recovery", () => {
     const calls: string[] = [];
     const fixture = await createFixture({
       upstreamUrl: "https://upstream.example",
-      source: "import",
+      source: "oauth",
       options: {
         now: () => now,
         usageUrl: "https://upstream.example/usage",
-        importCredentials: async () => importedCredentials(),
+        claudeLogin: async () => claudeCredentials(),
         fetch: async (input) => {
           const url = new URL(String(input));
           calls.push(url.pathname);
@@ -7222,7 +7303,11 @@ describe("Account Pool nested proxy", () => {
   });
 
   const PROVIDER_ENV = {
-    claude: ["ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN"],
+    claude: [
+      "ANTHROPIC_BASE_URL",
+      "ANTHROPIC_AUTH_TOKEN",
+      "CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST",
+    ],
     codex: ["CODEX_OPENAI_BASE_URL", "CODEX_POOL_AUTH_TOKEN"],
   } as const;
 
@@ -7295,6 +7380,7 @@ describe("Account Pool nested proxy", () => {
     expect(envNames(entries)).toEqual([
       "ANTHROPIC_BASE_URL",
       "ANTHROPIC_AUTH_TOKEN",
+      "CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST",
       "ENABLE_TOOL_SEARCH",
       "_CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL",
       "ENABLE_PROMPT_CACHING_1H",

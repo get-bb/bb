@@ -2956,57 +2956,111 @@ describe("bridge", () => {
     },
   );
 
-  it("translates tagged dollar skill mentions without changing plain dollar text", async () => {
-    const bridge = createBridgeJsonRpcTestHarness(handleLine);
-    const queries: ControlledClaudeQuery[] = [];
-    queryMock.mockImplementation(() => {
-      const query = createControlledClaudeQuery();
-      queries.push(query);
-      return query;
-    });
+  function skillMention(start: number, trigger: "$" | "/", name: string) {
+    return {
+      start,
+      end: start + 1 + name.length,
+      resource: {
+        kind: "command",
+        trigger,
+        name,
+        source: "skill",
+        origin: "user",
+        label: name,
+        argumentHint: null,
+      },
+    };
+  }
 
-    try {
-      const threadId = "thread-dollar-skill";
-      await startBridgeThread({ bridge, threadId });
-      const call = getLatestQueryCall();
-      bridge.sendRequest(
-        2,
-        "turn/start",
-        canonicalTurnParams({
-          threadId,
-          input: [
-            {
-              type: "text",
-              text: "Use $review but keep $PATH and $review",
-              mentions: [
-                {
-                  start: 4,
-                  end: 11,
-                  resource: {
-                    kind: "command",
-                    trigger: "$",
-                    name: "review",
-                    source: "skill",
-                    origin: "user",
-                    label: "review",
-                    argumentHint: null,
-                  },
-                },
-              ],
-            },
+  it.each([
+    {
+      name: "an embedded dollar skill",
+      input: [
+        {
+          type: "text",
+          text: "Use $review but keep $PATH and $review",
+          mentions: [skillMention(4, "$", "review")],
+        },
+      ],
+      expected: "/review Use  but keep $PATH and $review",
+    },
+    {
+      name: "an embedded slash skill",
+      input: [
+        {
+          type: "text",
+          text: "Please use /review on this",
+          mentions: [skillMention(11, "/", "review")],
+        },
+      ],
+      expected: "/review Please use  on this",
+    },
+    {
+      name: "a leading dollar skill",
+      input: [
+        {
+          type: "text",
+          text: "$review the diff",
+          mentions: [skillMention(0, "$", "review")],
+        },
+      ],
+      expected: "/review the diff",
+    },
+    {
+      name: "a skill in a later input fragment",
+      input: [
+        { type: "text", text: "Inspect this fixture.", mentions: [] },
+        {
+          type: "text",
+          text: "$review",
+          mentions: [skillMention(0, "$", "review")],
+        },
+      ],
+      expected: "/review Inspect this fixture.\n",
+    },
+    {
+      name: "several selected skills",
+      input: [
+        {
+          type: "text",
+          text: "Run $lint then $review",
+          mentions: [
+            skillMention(4, "$", "lint"),
+            skillMention(15, "$", "review"),
           ],
-        }),
-      );
+        },
+      ],
+      expected: "Run /lint then /review",
+    },
+  ])(
+    "sends $name to Claude as a leading command only when it is the only selection",
+    async ({ input, expected }) => {
+      const bridge = createBridgeJsonRpcTestHarness(handleLine);
+      const queries: ControlledClaudeQuery[] = [];
+      queryMock.mockImplementation(() => {
+        const query = createControlledClaudeQuery();
+        queries.push(query);
+        return query;
+      });
 
-      expect(await readNextPromptText(call)).toBe(
-        "Use /review but keep $PATH and $review",
-      );
-      await bridge.waitForResponse(2);
-      await stopBridgeThread({ bridge, queries, threadId });
-    } finally {
-      bridge.restore();
-    }
-  });
+      try {
+        const threadId = "thread-selected-skill";
+        await startBridgeThread({ bridge, threadId });
+        const call = getLatestQueryCall();
+        bridge.sendRequest(
+          2,
+          "turn/start",
+          canonicalTurnParams({ threadId, input }),
+        );
+
+        expect(await readNextPromptText(call)).toBe(expected);
+        await bridge.waitForResponse(2);
+        await stopBridgeThread({ bridge, queries, threadId });
+      } finally {
+        bridge.restore();
+      }
+    },
+  );
 
   it("switches a live session into Plan mode when a later turn carries /plan", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);

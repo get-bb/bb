@@ -8,6 +8,7 @@ export interface PushNotificationTarget {
   threadId: string | null;
   projectId: string | null;
   serverUrl: string | null;
+  subscriptionId: string | null;
 }
 
 const pushDataSchema = z.object({
@@ -15,6 +16,7 @@ const pushDataSchema = z.object({
   projectId: z.string().min(1).nullish(),
   serverUrl: z.string().min(1).nullish(),
   url: z.string().min(1).nullish(),
+  subscriptionId: z.string().min(1).nullish(),
 });
 
 function normalizedHint(value: string, preservePath: boolean): string | null {
@@ -40,17 +42,22 @@ export function parsePushNotificationData(
       ? normalizedHint(fallbackUrl, false)
       : null;
   const threadId = parsed.data.threadId ?? null;
-  if (threadId === null && serverUrl === null) return null;
+  const subscriptionId = parsed.data.subscriptionId ?? null;
+  if (threadId === null && serverUrl === null && subscriptionId === null) {
+    return null;
+  }
   return {
     threadId,
     projectId: parsed.data.projectId ?? null,
     serverUrl,
+    subscriptionId,
   };
 }
 
 export interface ResolvePushTargetProfileDeps {
   profiles: readonly LinkProfileLike[];
   activeProfileId: string | null;
+  registrations: Readonly<Record<string, { subscriptionId: string | null }>>;
   hasThread(serverUrl: string, threadId: string): Promise<boolean>;
 }
 
@@ -60,6 +67,14 @@ export async function resolvePushTargetProfile(
 ): Promise<LinkProfileLike | null> {
   const { profiles } = deps;
   if (profiles.length === 0) return null;
+  const { subscriptionId } = target;
+  if (subscriptionId !== null) {
+    const registered = profiles.find(
+      (profile) =>
+        deps.registrations[profile.id]?.subscriptionId === subscriptionId,
+    );
+    if (registered) return registered;
+  }
   if (target.serverUrl) {
     try {
       const hint = new URL(target.serverUrl);

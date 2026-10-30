@@ -43,7 +43,7 @@ export interface InfoSectionHeadingProps {
   collapse?: InfoSectionCollapse;
 }
 
-const INFO_SECTION_TITLE_CLASS =
+export const INFO_SECTION_TITLE_CLASS =
   "m-0 flex min-w-0 items-center text-xs font-medium leading-5 text-muted-foreground";
 
 function InfoSectionHeading({

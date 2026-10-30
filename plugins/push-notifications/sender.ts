@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type {
   BbPluginApi,
+  ExperimentalPluginRpcCaller,
   PluginThreadEventPayloads,
 } from "@get-bb/plugin-sdk";
 import { EnvHttpProxyAgent, fetch as undiciFetch } from "undici";
@@ -8,8 +9,12 @@ import type { Dispatcher } from "undici";
 import { z } from "zod";
 import {
   CLIENT_NOTIFICATION_CHANNEL,
+  NOTIFICATION_BODY_MAX_LENGTH,
+  NOTIFICATION_TITLE_MAX_LENGTH,
   type ClientNotification,
+  type DeliveryChannel,
   type PushSubscription,
+  type SendNotificationInput,
 } from "./contract.js";
 import { notificationPreviewText, truncate } from "./notification-text.js";
 import {
@@ -25,8 +30,6 @@ type PendingInteraction =
 
 const EXPO_PUSH_BATCH_SIZE = 100;
 const DEFAULT_COALESCE_MS = 2_000;
-const PUSH_TITLE_MAX_LENGTH = 80;
-const PUSH_BODY_MAX_LENGTH = 180;
 const NETWORK_WARNING_INTERVAL_MS = 60 * 60 * 1_000;
 const LAST_OUTCOME_KEY = "last-send-outcome";
 const FALLBACK_BODIES: Record<PushNotificationKind, string> = {
@@ -80,11 +83,31 @@ export const lastSendOutcomeSchema = z.discriminatedUnion("status", [
 
 export type LastSendOutcome = z.infer<typeof lastSendOutcomeSchema>;
 
+export const SENT_NOTIFICATION_KIND = "message";
+
 interface PushNotificationData {
-  kind: PushNotificationKind;
-  projectId: string;
+  kind: PushNotificationKind | typeof SENT_NOTIFICATION_KIND;
+  projectId?: string;
   serverUrl?: string;
-  threadId: string;
+  subscriptionId: string;
+  threadId?: string;
+}
+
+export class SendNotificationError extends Error {
+  readonly code: "thread_not_found" | "sender_stopped";
+
+  constructor(code: SendNotificationError["code"], message: string) {
+    super(message);
+    this.name = "SendNotificationError";
+    this.code = code;
+  }
+}
+
+interface OutgoingNotification {
+  title: string;
+  body: string;
+  kind: PushNotificationData["kind"];
+  thread: { id: string; projectId: string } | null;
 }
 
 export interface ExpoPushMessage {
@@ -131,6 +154,10 @@ export interface PushSender {
   ): void;
   onThreadFailed(payload: PluginThreadEventPayloads["thread.failed"]): void;
   onThreadIdle(payload: PluginThreadEventPayloads["thread.idle"]): void;
+  send(
+    input: SendNotificationInput,
+    caller: ExperimentalPluginRpcCaller,
+  ): Promise<DeliveryChannel[]>;
   settle(): Promise<void>;
   start(): Promise<void>;
   stop(): Promise<void>;
@@ -200,6 +227,10 @@ function pickKind(
     if (kinds.has(kind)) return kind;
   }
   return null;
+}
+
+function describeCaller(caller: ExperimentalPluginRpcCaller): string {
+  return caller.kind === "plugin" ? `plugin ${caller.pluginId}` : "a client";
 }
 
 function chunks<T>(items: readonly T[], size: number): T[][] {
@@ -350,11 +381,19 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
       resolved.body,
       referencedThreadTitle,
     );
-    const title = truncate(threadDisplayTitle(thread), PUSH_TITLE_MAX_LENGTH);
-    const body = truncate(
-      preview || FALLBACK_BODIES[resolved.kind],
-      PUSH_BODY_MAX_LENGTH,
-    );
+    await deliver({
+      title: threadDisplayTitle(thread),
+      body: preview || FALLBACK_BODIES[resolved.kind],
+      kind: resolved.kind,
+      thread,
+    });
+  }
+
+  async function deliver(
+    notification: OutgoingNotification,
+  ): Promise<DeliveryChannel[]> {
+    const title = truncate(notification.title, NOTIFICATION_TITLE_MAX_LENGTH);
+    const body = truncate(notification.body, NOTIFICATION_BODY_MAX_LENGTH);
     const config = await args.getDeliverySettings();
     const channels: ClientNotification["channels"] = [];
     if (config.webEnabled) channels.push("web");
@@ -364,26 +403,31 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
         id: randomUUID(),
         title,
         body,
-        threadId: thread.id,
+        threadId: notification.thread?.id ?? null,
         channels,
       } satisfies ClientNotification);
     }
-    if (!config.mobileEnabled) return;
+    if (!config.mobileEnabled) return channels;
     const rows = await subscriptions.list();
-    if (rows.length === 0) return;
+    if (rows.length === 0) return channels;
     const serverUrl = bb.server.experimental_appUrl;
+    const data = {
+      kind: notification.kind,
+      ...(notification.thread === null
+        ? {}
+        : {
+            projectId: notification.thread.projectId,
+            threadId: notification.thread.id,
+          }),
+      ...(serverUrl === null ? {} : { serverUrl }),
+    };
     const deliveries: Delivery[] = rows.map((subscription) => ({
       subscription,
       message: {
         to: subscription.expoPushToken,
         title,
         body,
-        data: {
-          kind: resolved.kind,
-          projectId: thread.projectId,
-          ...(serverUrl === null ? {} : { serverUrl }),
-          threadId: thread.id,
-        },
+        data: { ...data, subscriptionId: subscription.id },
         sound: "default",
         channelId: "threads",
         priority: "high",
@@ -401,6 +445,48 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
         ? { status: "sent", at: now(), sentCount }
         : { status: "failed", at: now(), reason: failure },
     );
+    return sentCount > 0 ? [...channels, "mobile"] : channels;
+  }
+
+  async function send(
+    input: SendNotificationInput,
+    caller: ExperimentalPluginRpcCaller,
+  ): Promise<DeliveryChannel[]> {
+    if (!running) {
+      throw new SendNotificationError(
+        "sender_stopped",
+        "Push notifications are not running",
+      );
+    }
+    let thread: OutgoingNotification["thread"] = null;
+    if (input.threadId !== undefined) {
+      const threadId = input.threadId;
+      const found = await bb.sdk.threads.get({ threadId }).catch(() => null);
+      if (found === null || found.deletedAt !== null) {
+        throw new SendNotificationError(
+          "thread_not_found",
+          `Thread not found: ${threadId}`,
+        );
+      }
+      thread = { id: found.id, projectId: found.projectId };
+    }
+    const delivery = deliver({
+      title: input.title,
+      body: input.body,
+      kind: SENT_NOTIFICATION_KIND,
+      thread,
+    });
+    const tracked = delivery.then(
+      () => undefined,
+      () => undefined,
+    );
+    inFlight.add(tracked);
+    void tracked.finally(() => inFlight.delete(tracked));
+    const channels = await delivery;
+    bb.log.info(
+      `Sent a notification from ${describeCaller(caller)} to ${channels.length === 0 ? "no channel" : channels.join(", ")}`,
+    );
+    return channels;
   }
 
   async function sendBatch(batch: readonly Delivery[]): Promise<BatchResult> {
@@ -510,6 +596,7 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
       if (thread.visibility !== "visible") return;
       schedule(thread.id, "turn-finished", lastAssistantText ?? "");
     },
+    send,
     settle,
     async start() {
       if (running) return;

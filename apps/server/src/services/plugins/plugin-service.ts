@@ -1,3 +1,7 @@
+import {
+  capturePluginUse,
+  forgetPluginRecommendation,
+} from "./plugin-use-telemetry.js";
 import { rpcResponseTags } from "@get-bb/plugin-sdk/internal/rpc-tags";
 import type {
   PluginRpcDiscoveryQuery,
@@ -51,7 +55,6 @@ import {
 } from "../plugin-catalog/marketplace-publishers.js";
 import { deleteSecretFile, readOrCreateSecretFile } from "@bb/secret-storage";
 import {
-  pluginUpdateCheckEntrySchema,
   ROOT_PLUGIN_SOURCE_SELECTION,
   type InstalledPlugin,
   type PluginCapabilitySummary,
@@ -174,7 +177,11 @@ import {
   raceTimeout,
   settledWithin,
 } from "./plugin-time-box.js";
-import { createPluginUpdates } from "./plugin-updates.js";
+import {
+  createPluginUpdates,
+  parsePersistedUpdateEntry,
+  pluginVersionLabelForRow,
+} from "./plugin-updates.js";
 
 import type {
   LoadedPlugin,
@@ -948,40 +955,39 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   function updateStateForRow(
     row: InstalledPluginRow,
   ): InstalledPlugin["updateState"] {
-    let persisted: PluginUpdateCheckEntry | undefined;
-    if (row.updateStatusDetail !== null) {
-      try {
-        const parsed = pluginUpdateCheckEntrySchema.safeParse(
-          JSON.parse(row.updateStatusDetail),
-        );
-        if (parsed.success && parsed.data.id === row.id)
-          persisted = parsed.data;
-      } catch {}
-    }
+    const persisted = parsePersistedUpdateEntry(row);
     const failure =
       row.lastFailureVersion !== null &&
       row.lastFailureAt !== null &&
       row.lastFailureDetail !== null
         ? {
             version: row.lastFailureVersion,
+            label:
+              [persisted?.candidate, persisted?.blocked].find(
+                (version) => version?.version === row.lastFailureVersion,
+              )?.label ?? pluginVersionLabelForRow(row, row.lastFailureVersion),
             at: row.lastFailureAt,
             detail: row.lastFailureDetail,
           }
         : undefined;
     return {
-      ...(persisted === undefined ? {} : { outcome: persisted.outcome }),
+      ...(persisted === null ? {} : { outcome: persisted.outcome }),
       ...(persisted?.outcome === "unavailable"
         ? { detail: persisted.detail }
         : {}),
-      ...(row.availableCompatibleVersion === null
+      ...(persisted?.candidate === undefined
         ? {}
-        : { availableVersion: row.availableCompatibleVersion }),
-      ...(row.newestIncompatibleVersion === null
-        ? {}
-        : { blockedVersion: row.newestIncompatibleVersion }),
+        : {
+            availableVersion: persisted.candidate.version,
+            availableLabel: persisted.candidate.label,
+          }),
       ...(persisted?.blocked === undefined
         ? {}
-        : { blockedReasons: persisted.blocked.reasons }),
+        : {
+            blockedVersion: persisted.blocked.version,
+            blockedLabel: persisted.blocked.label,
+            blockedReasons: persisted.blocked.reasons,
+          }),
       ...(row.lastUpdateCheckAt === null
         ? {}
         : { lastCheckAt: row.lastUpdateCheckAt }),
@@ -1274,6 +1280,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     providerIds: ReadonlySet<string>,
   ): Promise<void> {
     deps.onPluginUnregistered?.(row.id);
+    forgetPluginRecommendation(deps.db, row.id);
     forgetPluginProviders(deps.db, row.id, providerIds);
     // The uninstalled tree is no longer reloadable, so stop the module
     // resolve hook from scanning it on every later import.
@@ -1617,7 +1624,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       for (const watcher of builtinSourceWatchers.splice(0)) watcher.close();
       await disposeAll();
       await syncCliSkill();
-      notifyPluginsChanged();
     },
 
     handleUncaughtException,
@@ -1822,6 +1828,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
         if (getInstalledPlugin(deps.db, id) === undefined) return undefined;
         if (!(await applyEnabled(id, enabled))) return undefined;
+        if (!enabled) forgetPluginRecommendation(deps.db, id);
         await syncCliSkill();
         notifyPluginsChanged();
         return list().find((p) => p.id === id);
@@ -2238,6 +2245,13 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
               "cli run() must return { exitCode: number, stdout?, stderr? }",
             );
           }
+          if (
+            result.exitCode === 0 &&
+            !argv.includes("--help") &&
+            !argv.includes("-h")
+          ) {
+            capturePluginUse(deps, id);
+          }
           return enforcePluginCliOutputLimit(
             {
               exitCode: result.exitCode,
@@ -2475,8 +2489,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         owner,
         `tool ${record.name}`,
         async () => {
-          const result = await record.execute(parsed.value, ctx);
-          return normalizeAgentToolResult(record.name, result);
+          const result = normalizeAgentToolResult(
+            record.name,
+            await record.execute(parsed.value, ctx),
+          );
+          if (result.success) capturePluginUse(deps, pluginId);
+          return result;
         },
       );
       if (outcome.ok) return outcome.value;

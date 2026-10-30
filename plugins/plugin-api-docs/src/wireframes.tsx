@@ -1192,24 +1192,32 @@ function AppShellWireframeBody({
             >
               <PluginGlyph className="size-3.5" />
             </Mark>
+            {mobile ? <ThreadContextCardMark compact /> : null}
             {mobile ? <MiniIcon icon="PanelRight" className="size-5" /> : null}
           </div>
 
           <div
             data-guide-fixture="app-window-timeline"
-            className={
+            className={cn(
+              "relative",
               mobile
                 ? "flex min-h-0 flex-1 flex-col justify-end gap-5 overflow-hidden px-4 py-4 text-sm leading-relaxed"
-                : "min-h-[510px] flex-1 space-y-7 overflow-hidden px-5 py-6"
-            }
+                : "min-h-[510px] flex-1 space-y-7 overflow-hidden px-5 py-6",
+            )}
           >
-            <div className="flex justify-end">
+            {mobile ? null : <ThreadContextCardMark compact={false} />}
+            <div className={cn("flex justify-end", !mobile && "mr-44")}>
               <span className="max-w-[70%] rounded-xl border border-border-seam bg-surface-recessed px-2.5 py-2 leading-snug text-foreground">
                 Fix the flaky checkout tests
               </span>
             </div>
 
-            <div className="w-[78%] space-y-1">
+            <div
+              className={cn(
+                "w-[78%] space-y-1",
+                !mobile && "max-w-[calc(100%-11rem)]",
+              )}
+            >
               <span className="flex items-center gap-1.5 text-foreground">
                 <PluginGlyph className="size-3.5" />
                 Re-ran checkout suite
@@ -1385,6 +1393,43 @@ function AppShellWireframeBody({
         </span>
       </Mark>
     </WindowFrame>
+  );
+}
+
+function ThreadContextCardMark({ compact }: { compact: boolean }) {
+  const label = "Plugin sections in the thread context card";
+  if (compact) {
+    return (
+      <Mark
+        id="thread-context-card"
+        label={label}
+        chip="corner"
+        className="flex size-7 items-center justify-center"
+      >
+        <MiniIcon icon="LayoutList" className="size-5" />
+      </Mark>
+    );
+  }
+  return (
+    <Mark
+      id="thread-context-card"
+      label={label}
+      chip="corner-inset"
+      className="absolute right-4 top-4 block w-40 rounded-md border border-border bg-popover p-1 text-foreground"
+    >
+      <span className="flex h-6.5 items-center gap-2 px-1.5">
+        <MiniIcon icon="GitPullRequest" className="size-3.5" />
+        <span className="truncate">PR #482</span>
+      </span>
+      <span className="flex h-6.5 items-center gap-2 px-1.5">
+        <MiniIcon icon="FileDiff" className="size-3.5" />
+        Changes
+        <span className="ml-auto font-mono text-2xs">
+          <span className="text-success">+12</span>{" "}
+          <span className="text-destructive">-3</span>
+        </span>
+      </span>
+    </Mark>
   );
 }
 

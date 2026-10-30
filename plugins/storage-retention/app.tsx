@@ -361,24 +361,16 @@ function StoragePanel(props: PluginNavPanelProps) {
       });
     }
   });
-  useEffect(() => {
-    const hosts = sdk.subscribe({
-      event: "host:changed",
-      callback: () => {
-        void refresh();
-      },
-    });
-    const connection = sdk.subscribe({
-      event: "realtime:connection",
-      callback: (event) => {
-        if (event.state === "connected" && event.reconnected) void refresh();
-      },
-    });
-    return () => {
-      hosts();
-      connection();
-    };
-  }, [sdk, refresh]);
+  useEffect(
+    () =>
+      sdk.subscribe({
+        event: "realtime:connection",
+        callback: (event) => {
+          if (event.state === "connected" && event.reconnected) void refresh();
+        },
+      }),
+    [sdk, refresh],
+  );
   return (
     <StoragePage
       key={props.subPath}

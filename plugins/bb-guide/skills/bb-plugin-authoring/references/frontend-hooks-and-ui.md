@@ -29,6 +29,7 @@ Hooks:
   durable server state on subsequent transitions to `connected` (not the first
   connection) because plugin signals are ephemeral and are not replayed.
 - `experimental_useExperiment(key)` → whether a known bb experiment is enabled, following live changes; false while configuration loads or for unknown keys.
+- `experimental_useThreadContextKind()` → `"banner"` or `"card"`: how the calling component's thread pane shows its thread context; `banner` outside a thread pane. See frontend-thread-context-card.md.
 - `useSettings()` → `{ values, isLoading }` — effective non-secret values
   (secret settings are excluded; read them server-side only).
 - `useBbContext()` → `{ projectId, threadId }` from the current route.
@@ -37,9 +38,12 @@ Hooks:
   it (localStorage entries, log prefixes) so a copy published under another
   package name does not share the original's state. `renderSlot` returns its
   `pluginId` option, `test-plugin` by default.
-- `experimental_useQuestionFormHost()` → `{ shortcuts, registerChoiceHandler }`
-  inside a `pendingInteraction` component: the host-owned answer shortcuts by
-  zero-based option index, and a way to act when the person presses one. The
+- `experimental_useQuestionFormHost()` → `{ shortcuts, actionShortcuts,
+registerChoiceHandler, registerActionHandler }` inside a `pendingInteraction`
+  component: the host-owned answer shortcuts by zero-based option index, the
+  `submit`, `previous`, `next`, and `cancel` action shortcuts, and a way to act
+  when the person presses one. Action shortcuts also
+  fire from text fields inside an element marked `data-question-form`. The
   registry's `question-form` item uses it. Empty outside a pending interaction
   and in `renderSlot`.
 - `useBbNavigate()` → `{ toThread(id), toProject(id), toPluginPanel(path,
@@ -349,6 +353,12 @@ panel.close();
   fixed tab selected with the panel open (the target is ignored), or the action
   tab instance with the same params selected — otherwise it calls `openTab`.
 - `close()` closes the side panel.
+- `selectTab(key)` and `closeTab(key)` act on any open tab, bb's or another
+  plugin's, by the `key` from `experimental_usePanelTabs()`. They run the same
+  select and close the tab strip runs, so closing a terminal's tab ends the
+  terminal; `closeTab` declines tabs without a close button. List the open
+  tabs with `experimental_usePanelTabs()`, or once with `getTabs()` outside
+  components; see frontend-panel-tabs.md.
 - Each call returns true when the host accepted it and false when it declined:
   no side panel on this surface, a tab this plugin did not register for the
   surface, or a target or params that are not JSON or fail validation. On the

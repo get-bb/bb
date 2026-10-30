@@ -37,6 +37,11 @@ import {
 import type { HostConnectionNotice } from "@/components/thread/timeline/ThreadTimelineSurface";
 import { ThreadTimelinePanelLoadingSkeleton } from "@/components/thread/timeline/ThreadChatLoading";
 import { ThreadTableOfContents } from "@/components/thread/toc/ThreadTableOfContents";
+import {
+  ThreadContextCard,
+  useThreadContextCardContentInset,
+  WithoutThreadContextCard,
+} from "@/components/plugin/PluginThreadContextCard";
 import { BottomAnchoredScrollBody } from "@/components/ui/bottom-anchored-scroll-body";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { appToast } from "@/components/ui/app-toast";
@@ -44,7 +49,6 @@ import { SelectionAddToChatContext } from "@/components/thread/SelectionAddToCha
 import {
   isThreadDisplayStatusBannerActive,
   type ThreadPromptChildThreadsSection,
-  type ThreadPromptParentThreadSection,
 } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import type { EnvironmentSummaryChrome } from "@/lib/environment-workspace-display";
 import type { MachineRemovalStatus } from "@/lib/machine-removal-display";
@@ -55,13 +59,13 @@ import {
   subscribeComposerFocusRequests,
 } from "@/lib/composer-focus-requests";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
+import { useParentThreadSection } from "./useParentThreadSection";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { showMutationErrorToast } from "@/lib/mutation-errors";
 import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import {
   useChildThreads,
-  useThread,
   useThreadPendingInteractions,
 } from "@/hooks/queries/thread-queries";
 import {
@@ -197,60 +201,6 @@ export function useThreadComposerAddToChat(thread: {
   );
 }
 
-function useParentThreadSection(
-  thread: ThreadResponse,
-  enabled: boolean,
-): ThreadPromptParentThreadSection | null {
-  const threadOriginKind = thread.originKind;
-  const threadSourceThreadId =
-    thread.sourceThreadId ?? (threadOriginKind ? thread.parentThreadId : null);
-  const { data: parentThread } = useThread(
-    enabled ? (thread.parentThreadId ?? "") : "",
-  );
-  const { data: sourceThread } = useThread(
-    enabled ? (threadSourceThreadId ?? "") : "",
-  );
-  return useMemo(() => {
-    const relatedThreadId =
-      threadOriginKind !== null ? threadSourceThreadId : thread.parentThreadId;
-    if (!enabled || !relatedThreadId) return null;
-    const relationship = threadOriginKind === "fork" ? "fork" : "parent";
-    const relatedThread =
-      relationship === "parent" ? parentThread : sourceThread;
-    const href = getThreadRoutePath({
-      projectId: relatedThread?.projectId ?? thread.projectId,
-      threadId: relatedThreadId,
-    });
-    if (relatedThread === undefined) {
-      return {
-        parentThreadTitle: relatedThreadId.slice(0, 8),
-        href,
-        relationship,
-      };
-    }
-    if (
-      relatedThread.archivedAt !== null ||
-      relatedThread.deletedAt !== null ||
-      (relationship !== "parent" &&
-        relatedThread.projectId !== thread.projectId)
-    ) {
-      return null;
-    }
-    return {
-      parentThreadTitle: getThreadDisplayTitle(relatedThread),
-      href,
-      relationship,
-    };
-  }, [
-    enabled,
-    parentThread,
-    sourceThread,
-    thread.parentThreadId,
-    thread.projectId,
-    threadOriginKind,
-    threadSourceThreadId,
-  ]);
-}
 
 function useChildThreadsSection(
   threadId: string,
@@ -505,6 +455,7 @@ export function ThreadScreen({
   workspaceRootPath,
 }: ThreadScreenProps) {
   const systemConfigQuery = useSystemConfig();
+  const contextCardInset = useThreadContextCardContentInset();
   const pendingInteractionsQuery = useThreadPendingInteractions(thread.id);
   const pendingInteractions = pendingInteractionsQuery.data ?? [];
   const hasPendingInteraction = pendingInteractions.length > 0;
@@ -663,20 +614,26 @@ export function ThreadScreen({
             key={thread.id}
             scrollBehavior="bottom-anchor"
             scrollAnchorThreadId={thread.id}
+            scrollContentInsetEndPx={contextCardInset}
             shellClassName="!mx-0 !mt-0 md:!mx-0 md:!mt-0"
             scrollAreaClassName="scroll-pt-4"
             contentClassName="gap-2 pt-4"
             footerClassName="chat-prompt-box"
             footer={promptArea}
             scrollOverlay={
-              <ThreadTableOfContents
-                contextBoundarySeq={timeline.contextBoundarySeq}
-                threadId={thread.id}
-                timelineRows={timelineRows}
-                hasOlderTimelineRows={timeline.hasOlderTimelineRows}
-                loadOlderTimelineRows={timeline.loadOlderTimelineRows}
-                onNavigateToRow={setTimelineNavigationTargetRowId}
-              />
+              <>
+                <ThreadContextCard />
+                <div className="pointer-events-auto my-auto">
+                  <ThreadTableOfContents
+                    contextBoundarySeq={timeline.contextBoundarySeq}
+                    threadId={thread.id}
+                    timelineRows={timelineRows}
+                    hasOlderTimelineRows={timeline.hasOlderTimelineRows}
+                    loadOlderTimelineRows={timeline.loadOlderTimelineRows}
+                    onNavigateToRow={setTimelineNavigationTargetRowId}
+                  />
+                </div>
+              </>
             }
           >
             {surface}
@@ -685,20 +642,26 @@ export function ThreadScreen({
       );
     case "panel":
       return (
-        <ThreadScreenPanelShell
-          presentation={presentation}
-          promptArea={promptArea}
-          surface={surface}
-          threadId={thread.id}
-        />
+        <WithoutThreadContextCard>
+          <ThreadScreenPanelShell
+            presentation={presentation}
+            promptArea={promptArea}
+            surface={surface}
+            threadId={thread.id}
+          />
+        </WithoutThreadContextCard>
       );
     case "transcript":
-      return presentation.layout === "contained" ? (
-        <div className="min-h-0 flex-1 overflow-y-auto bg-background px-2 pb-3 pt-3">
-          {surface}
-        </div>
-      ) : (
-        <div className="bg-background px-2 pb-3 pt-3">{surface}</div>
+      return (
+        <WithoutThreadContextCard>
+          {presentation.layout === "contained" ? (
+            <div className="min-h-0 flex-1 overflow-y-auto bg-background px-2 pb-3 pt-3">
+              {surface}
+            </div>
+          ) : (
+            <div className="bg-background px-2 pb-3 pt-3">{surface}</div>
+          )}
+        </WithoutThreadContextCard>
       );
   }
 }

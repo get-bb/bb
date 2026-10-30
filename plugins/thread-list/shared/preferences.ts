@@ -292,5 +292,6 @@ export const preferencesChangedSignalSchema = z
   .object({
     key: z.enum(PREFERENCE_KEYS as [PreferenceKey, ...PreferenceKey[]]),
     value: z.unknown(),
+    origin: z.string().nullable(),
   })
   .strict();

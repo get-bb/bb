@@ -66,14 +66,25 @@ export function spawnHostProcess(
   const launch = options.shell
     ? { command, args: [...args], env: hostToolchain.environment(options.env) }
     : hostToolchain.command(command, args, options);
+  const spawnOptions = {
+    ...options,
+    env: launch.env,
+    windowsHide: options.windowsHide ?? true,
+  };
+  if (
+    process.platform === "win32" &&
+    !options.shell &&
+    /[\\/]/u.test(command)
+  ) {
+    const parsed = parse(launch.command, launch.args, spawnOptions);
+    return observe(
+      parsed.file
+        ? nodeSpawn(parsed.command, parsed.args, parsed.options)
+        : nodeSpawn(launch.command, launch.args, spawnOptions),
+    );
+  }
   const spawn = options.shell ? nodeSpawn : crossSpawn;
-  return observe(
-    spawn(launch.command, launch.args, {
-      ...options,
-      env: launch.env,
-      windowsHide: options.windowsHide ?? true,
-    }),
-  );
+  return observe(spawn(launch.command, launch.args, spawnOptions));
 }
 
 export function forkHostProcess(

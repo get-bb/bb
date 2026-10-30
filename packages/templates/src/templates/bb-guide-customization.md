@@ -183,8 +183,7 @@ approvals locally for the current BB site and device profile. They do not sync
 across devices or server addresses. The Plugin SDK can list and revoke the
 viewing client's approvals; there is no CLI command that reads or modifies a
 remote client's localStorage.
-`changelogPreview` shows the latest
-release notes as a dismissible card on Settings → Updates. Experiments that
+Experiments that
 gate a feature are documented with it: `serverMove` in `bb guide machines`,
 `performanceDiagnostics` under Server performance diagnostics below.
 `timelinePush` sends an open thread's timeline updates over the live
@@ -195,6 +194,14 @@ see `bb guide thread-messaging` for `--compact-first`.
 `sidebarMultiSelect` lets the built-in thread list sidebar select several threads with
 Cmd/Ctrl+Shift-click and Shift-click for bulk actions and drag; Cmd/Ctrl-click
 still opens a thread in a split.
+`pluginUpdates` lists plugin updates on Settings → Updates with Update and
+Update all, and counts them in the sidebar updates badge; see `bb guide plugins`.
+`skipFocusedThreadNotifications` skips the web and desktop system notification
+for a thread open in a visible, focused bb window or tab. It defaults on for
+early adopters.
+`threadContextCard` moves a running thread's changes, pull request, and parent
+and child threads into a card at the upper-right of its pane, opened or pinned from
+the header. It defaults on for early adopters.
 `threadRowMetadata` adds Organize → Rows → Metadata to the built-in thread list,
 a line under each thread title where plugins show details such as the pull
 request number.
@@ -205,9 +212,10 @@ before its first tool call. It defaults on for early adopters.
 pushes) on the app's live connection; it applies when the app reconnects.
 `bb settings general earlyAdopter on` (Settings → Experiments → Become an early
 adopter) turns on the experiments marked Early adopter, currently
-`applicationLinks`, `timelinePush`, `compactExpiredCache`, `sidebarMultiSelect`,
-`unreadDividerAtAnswer`, and `websocketCompression`; an experiment you set yourself keeps
-your value.
+`applicationLinks`, `timelinePush`, `compactExpiredCache`, `pluginUpdates`,
+`sidebarMultiSelect`, `skipFocusedThreadNotifications`, `threadContextCard`,
+`unreadDividerAtAnswer`, and `websocketCompression`; an experiment you set
+yourself keeps your value.
 
 Launcher settings
 
@@ -257,6 +265,13 @@ on desktop and `Control+Shift+[` / `Control+Shift+]` on the web.
 unbound and act on the focused pane's open thread; Mark read and Pin toggle
 like the matching thread menu item.
 
+An open question card binds `question.select.1`–`9` (`1`–`9`),
+`question.submit` (`Mod+Enter`: Next, or Submit on the last question),
+`question.previous` / `question.next` (`ArrowLeft` / `ArrowRight` with focus
+in the card), and `question.cancel` (`Mod+.`). They skip text fields outside
+the card. In the card's answer field, `Enter` goes to the next question or
+submits and `Shift+Enter` adds a line.
+
 An override can be scoped with `--platform`; without it, it applies on all
 platforms. A platform-specific override takes precedence over a general one,
 including when disabled. Scoped `set` and `reset` keep other platforms'
@@ -276,7 +291,8 @@ Sidebar preferences
 
 `bb settings ui` reads and writes server-side sidebar preferences shared by
 every window, device, and the CLI. The same registry stores which thread Info
-panel sections are collapsed (`infoPanel.collapsedSections`).
+panel sections are collapsed (`infoPanel.collapsedSections`) and whether a
+thread pane's thread context card stays pinned open (`threadContextCard.pinned`).
 
 bb settings ui list [--json]
 bb settings ui get <key> [--json]

@@ -211,7 +211,10 @@ below it. Props carry `threadId`, `projectId`, `environment` (null without a
 usable environment), the visible `segments`
 as `{ key, pluginId }` in row order (`key` is `<pluginId>/<id>`; bb's own use
 `bb--core`), and `isExpanded`/`onToggle` (one segment is expanded at a time).
-`useVisible(input)` false leaves it out.
+`useVisible(input)` false leaves it out. A segment whose content is also a
+thread context card row or section hides itself while
+`experimental_useThreadContextKind()` is `card`; see
+frontend-thread-context-card.md.
 
 ### An action in every thread menu
 

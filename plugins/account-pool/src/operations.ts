@@ -1,12 +1,14 @@
 import type {
   Account,
+  AccountAddInput,
+  AccountSecret,
   AccountSummary,
   HubTokenSummary,
+  LoginTarget,
   PoolProvider,
   PoolStatus,
   RoutedThreadStatus,
 } from "./contracts.js";
-import type { AccountAddInput } from "./contracts.js";
 import type { AccountPoolHub } from "./hub.js";
 import type {
   AccountStore,
@@ -30,6 +32,39 @@ interface PoolProviderState {
 
 const ROUTED_WINDOW_MS = 24 * 60 * 60 * 1_000;
 
+export class LoginTargetError extends Error {}
+
+interface OAuthLogin {
+  provider: PoolProvider;
+  label: string;
+  email: string | null;
+  accountUuid: string | null;
+  codexAccountId: string | null;
+  subscriptionType: string | null;
+  rateLimitTier: string | null;
+  secret: Extract<AccountSecret, { kind: "oauth" }>;
+}
+
+function identityMismatch(account: Account, login: OAuthLogin): string | null {
+  const addInstead =
+    "or add the login as a new account with `bb pool account add --login`.";
+  if (
+    account.provider === "codex" &&
+    account.codexAccountId !== login.codexAccountId
+  ) {
+    return `This login is for a different ChatGPT workspace than ${account.label}. Sign in to that workspace, ${addInstead}`;
+  }
+  const sameAccount =
+    account.accountUuid !== null && login.accountUuid !== null
+      ? account.accountUuid === login.accountUuid
+      : account.email === null ||
+        login.email === null ||
+        account.email.toLowerCase() === login.email.toLowerCase();
+  if (sameAccount) return null;
+  const expected = account.email ?? account.label;
+  return `This login is for ${login.email ?? "a different account"}, not ${expected}. Sign in as ${expected}, ${addInstead}`;
+}
+
 export class PoolOperations {
   constructor(
     private readonly accounts: AccountStore,
@@ -52,107 +87,153 @@ export class PoolOperations {
   ) {}
 
   async add(input: AccountAddInput): Promise<Account> {
-    if (input.source.kind === "api-key") {
-      if (input.provider !== "claude") {
-        throw new Error("Codex accounts can only be added with --import.");
-      }
-      const account = await this.accounts.add(
-        {
-          provider: input.provider,
-          kind: "api-key",
-          label: input.label ?? "Claude API key",
-          email: null,
-          accountUuid: null,
-          subscriptionType: null,
-          rateLimitTier: null,
-          enabled: true,
-          priority: input.priority,
-        },
-        { kind: "api-key", apiKey: input.source.apiKey },
-      );
-      this.onAccountsChanged();
-      await this.onAccountEnabled(account.id);
-      return account;
-    }
-    const imported = await this.hub.importAccount(input.provider);
     const account = await this.accounts.add(
       {
         provider: input.provider,
-        kind: "oauth",
-        label: input.label ?? imported.label,
-        email: imported.email,
-        accountUuid: imported.accountUuid ?? null,
-        ...(imported.codexAccountId === undefined
-          ? {}
-          : { codexAccountId: imported.codexAccountId }),
-        subscriptionType: imported.subscriptionType,
-        rateLimitTier: imported.rateLimitTier,
+        kind: "api-key",
+        label: input.label ?? "Claude API key",
+        email: null,
+        accountUuid: null,
+        subscriptionType: null,
+        rateLimitTier: null,
         enabled: true,
         priority: input.priority,
       },
-      imported.secret,
+      { kind: "api-key", apiKey: input.apiKey },
     );
     this.onAccountsChanged();
     await this.onAccountEnabled(account.id);
     return account;
   }
 
-  async addOAuth(authenticated: ClaudeOAuthAccount): Promise<Account> {
-    const account = await this.accounts.add(
+  async validateLoginTarget(
+    provider: PoolProvider,
+    target: LoginTarget,
+  ): Promise<void> {
+    if (target.kind === "relogin") {
+      await this.reloginAccount(provider, target.accountId);
+    }
+  }
+
+  async addOAuth(
+    authenticated: ClaudeOAuthAccount,
+    target: LoginTarget,
+  ): Promise<Account> {
+    return this.saveLogin(
       {
         provider: "claude",
-        kind: "oauth",
         label: authenticated.label,
         email: authenticated.email,
         accountUuid: authenticated.accountUuid,
+        codexAccountId: null,
         subscriptionType: authenticated.subscriptionType,
         rateLimitTier: authenticated.rateLimitTier,
-        enabled: true,
-        priority: 100,
+        secret: {
+          kind: "oauth",
+          accessToken: authenticated.accessToken,
+          refreshToken: authenticated.refreshToken,
+          expiresAt: authenticated.expiresAt,
+        },
       },
-      {
-        kind: "oauth",
-        accessToken: authenticated.accessToken,
-        refreshToken: authenticated.refreshToken,
-        expiresAt: authenticated.expiresAt,
-      },
+      target,
     );
-    this.onAccountsChanged();
-    await this.onAccountEnabled(account.id);
-    return account;
   }
 
   async addCodexOAuth(
     authenticated: CodexDeviceAccount,
+    target: LoginTarget,
   ): Promise<AccountSummary> {
-    const account = await this.accounts.add(
+    const account = await this.saveLogin(
       {
         provider: "codex",
-        kind: "oauth",
         label: authenticated.label,
         email: authenticated.email,
         accountUuid: null,
         codexAccountId: authenticated.accountId,
         subscriptionType: null,
         rateLimitTier: null,
-        enabled: true,
-        priority: 100,
+        secret: {
+          kind: "oauth",
+          accessToken: authenticated.accessToken,
+          refreshToken: authenticated.refreshToken,
+          idToken: authenticated.idToken,
+          expiresAt: authenticated.expiresAt,
+        },
       },
+      target,
+    );
+    const summary = (await this.list()).find((item) => item.id === account.id);
+    if (summary === undefined) {
+      throw new Error("Saved Codex account could not be read back.");
+    }
+    return summary;
+  }
+
+  private async saveLogin(
+    login: OAuthLogin,
+    target: LoginTarget,
+  ): Promise<Account> {
+    if (target.kind === "relogin") {
+      return this.relogin(login, target.accountId);
+    }
+    const account = await this.accounts.add(
       {
+        provider: login.provider,
         kind: "oauth",
-        accessToken: authenticated.accessToken,
-        refreshToken: authenticated.refreshToken,
-        idToken: authenticated.idToken,
-        expiresAt: authenticated.expiresAt,
+        label: target.label ?? login.label,
+        email: login.email,
+        accountUuid: login.accountUuid,
+        ...(login.codexAccountId === null
+          ? {}
+          : { codexAccountId: login.codexAccountId }),
+        subscriptionType: login.subscriptionType,
+        rateLimitTier: login.rateLimitTier,
+        enabled: true,
+        priority: target.priority,
       },
+      login.secret,
     );
     this.onAccountsChanged();
     await this.onAccountEnabled(account.id);
-    const summary = (await this.list()).find((item) => item.id === account.id);
-    if (summary === undefined) {
-      throw new Error("Added Codex account could not be read back.");
+    return account;
+  }
+
+  private async relogin(
+    login: OAuthLogin,
+    accountId: string,
+  ): Promise<Account> {
+    const account = await this.reloginAccount(login.provider, accountId);
+    const mismatch = identityMismatch(account, login);
+    if (mismatch !== null) throw new LoginTargetError(mismatch);
+    const updated = await this.accounts.applyLogin(account.id, login);
+    if (updated === null) {
+      throw new LoginTargetError(`Account ${account.id} no longer exists.`);
     }
-    return summary;
+    await this.hub.replaceSecret(account.id, login.secret);
+    this.onAccountsChanged();
+    if (updated.enabled) await this.onAccountEnabled(updated.id);
+    return updated;
+  }
+
+  private async reloginAccount(
+    provider: PoolProvider,
+    accountId: string,
+  ): Promise<Account> {
+    const account = await this.accounts.get(accountId);
+    if (account === null) {
+      throw new LoginTargetError(`Account ${accountId} does not exist.`);
+    }
+    if (account.provider !== provider) {
+      throw new LoginTargetError(
+        `${account.label} is a ${account.provider === "claude" ? "Claude" : "Codex"} account.`,
+      );
+    }
+    if (account.kind !== "oauth") {
+      throw new LoginTargetError(
+        `${account.label} uses an API key and has no login to renew.`,
+      );
+    }
+    return account;
   }
 
   async list(): Promise<AccountSummary[]> {

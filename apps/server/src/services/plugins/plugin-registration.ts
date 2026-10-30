@@ -58,16 +58,30 @@ import {
   type PluginResolvedUpdateVersion,
 } from "./update-resolver.js";
 
+export function isPublicPluginProvenance(
+  kind: PluginProvenance["kind"],
+  marketplace: string | null,
+): boolean {
+  return (
+    kind === "builtin" ||
+    (kind === "catalog" &&
+      (marketplace === CURATED_PLUGIN_MARKETPLACE_NAME ||
+        marketplace === BUNDLED_MARKETPLACE_NAME))
+  );
+}
+
 export function pluginInstalledTelemetryEvent(
   pluginId: string,
   provenance: PluginProvenance,
   sourceIntent: PluginSourceIntent,
+  isFreshInstall: boolean,
 ): Extract<TelemetryEvent, { name: "plugin_installed" }> {
-  const isPublic =
-    provenance.kind === "builtin" ||
-    (provenance.kind === "catalog" &&
-      (provenance.marketplace === CURATED_PLUGIN_MARKETPLACE_NAME ||
-        provenance.marketplace === BUNDLED_MARKETPLACE_NAME));
+  const isPublic = isPublicPluginProvenance(
+    provenance.kind,
+    provenance.kind === "catalog" ? provenance.marketplace : null,
+  );
+  const publicCatalogEntryId =
+    isPublic && provenance.kind === "catalog" ? provenance.entryId : null;
   return {
     name: "plugin_installed",
     properties: {
@@ -78,6 +92,8 @@ export function pluginInstalledTelemetryEvent(
           ? provenance.marketplace
           : null,
       source_kind: sourceIntent.kind,
+      is_fresh_install: isFreshInstall,
+      entry_id: publicCatalogEntryId,
     },
   };
 }
@@ -424,6 +440,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
         manifest.id,
         args.provenance,
         args.sourceIntent,
+        isFreshInstall,
       ),
     );
     return entry;
@@ -516,6 +533,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       }
       return {
         version: row.npmResolvedVersion,
+        label: row.npmResolvedVersion,
         display: `${row.sourceNpmPackage}@${row.npmResolvedVersion}`,
       };
     }
@@ -531,10 +549,11 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       return gitResolvedVersion({
         url: row.sourceGitUrl,
         ref,
+        tagPrefix: row.sourceGitTagPrefix ?? "",
         commit: row.gitResolvedCommit,
       });
     }
-    return { version: row.version, display: row.source };
+    return { version: row.version, label: row.version, display: row.source };
   }
 
   function catalogMarketplaceOf(row: InstalledPluginRow): string {

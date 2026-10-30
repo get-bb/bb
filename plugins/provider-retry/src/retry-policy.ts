@@ -19,7 +19,8 @@ export type RetryDeclineReason =
   | "not-resettable"
   | "beyond-maximum-wait"
   | "attempts-exhausted"
-  | "pool-unavailable";
+  | "pool-unavailable"
+  | "declined-by-sender";
 
 export type RetryDecision =
   | { kind: "decline"; reason: RetryDeclineReason }

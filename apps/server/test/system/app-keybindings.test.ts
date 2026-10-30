@@ -214,6 +214,69 @@ describe("app keybindings", () => {
     ).toBe("thread.previous");
   });
 
+  it.each(DEFAULT_KEYBINDING_CLIENTS)(
+    "runs question actions from the card's text field but not other text fields: $name",
+    (client) => {
+      const defaults = applyAppKeybindingOverrides(DEFAULT_APP_KEYBINDINGS, []);
+      const commandsFor = (
+        input: Parameters<typeof matchesAppShortcut>[0],
+        active: readonly string[],
+      ) =>
+        defaults
+          .filter(
+            (binding) =>
+              binding.command.startsWith("question.") &&
+              isAppKeybindingAvailableForClient(binding, client) &&
+              matchesAppShortcut(input, binding.shortcut, client.isMac) &&
+              binding.when.all.every((key) => active.includes(key)) &&
+              !binding.when.none.some((key) => active.includes(key)),
+          )
+          .map((binding) => binding.command);
+      const key = (key: string, mod: boolean) => ({
+        key,
+        code: key,
+        metaKey: mod && client.isMac,
+        ctrlKey: mod && !client.isMac,
+        altKey: false,
+        shiftKey: false,
+      });
+      const presses = [
+        key("Enter", true),
+        key(".", true),
+        key("ArrowLeft", false),
+        key("ArrowRight", false),
+      ];
+      const pressed = (active: readonly string[]) =>
+        presses.map((input) => commandsFor(input, active)[0] ?? null);
+
+      expect(pressed(["mainSurface", "questionOpen", "editableFocus"])).toEqual(
+        [null, null, null, null],
+      );
+      expect(
+        pressed([
+          "mainSurface",
+          "questionOpen",
+          "questionFocus",
+          "editableFocus",
+        ]),
+      ).toEqual(["question.submit", "question.cancel", null, null]);
+      expect(pressed(["mainSurface", "questionOpen", "questionFocus"])).toEqual(
+        [
+          "question.submit",
+          "question.cancel",
+          "question.previous",
+          "question.next",
+        ],
+      );
+      expect(pressed(["mainSurface", "questionOpen"])).toEqual([
+        "question.submit",
+        "question.cancel",
+        null,
+        null,
+      ]);
+    },
+  );
+
   it("limits overlapping default chords to intentional scoped navigation", () => {
     const assignedDefaults = applyAppKeybindingOverrides(
       DEFAULT_APP_KEYBINDINGS,

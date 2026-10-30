@@ -118,6 +118,7 @@ describe.each<OrganizationMode>(["chronological", "project"])(
         },
       });
       await screen.findByText("Thread e");
+      await act(async () => undefined);
       const Component = registration.component;
 
       for (const [from, to] of [

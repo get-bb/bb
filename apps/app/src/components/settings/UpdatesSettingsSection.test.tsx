@@ -33,6 +33,8 @@ import {
   resetProviderCliInstallStoreForTests,
 } from "@/components/provider-cli/provider-cli-install-store";
 import { appToast } from "@/components/ui/app-toast";
+import { makePluginListItem } from "@/test/fixtures/plugins";
+import { buildUpdateInventoryPlugins } from "@/hooks/useUpdateInventory";
 import { sdk } from "@/lib/sdk";
 import { useDesktopUpdateInfo } from "@/hooks/useDesktopUpdateInfo";
 import {
@@ -40,10 +42,15 @@ import {
   type UpdateInventory,
   type UpdateInventoryMachine,
 } from "@/hooks/useUpdateInventory";
+import { recordTelemetryEvent } from "@/components/onboarding/onboarding-telemetry";
 import {
   UpdateActionButton,
   UpdatesSettingsSection,
 } from "./UpdatesSettingsSection";
+
+vi.mock("@/components/onboarding/onboarding-telemetry", () => ({
+  recordTelemetryEvent: vi.fn(),
+}));
 
 vi.mock("@/components/ui/app-toast", () => ({
   appToast: {
@@ -85,7 +92,8 @@ vi.mock("@/lib/ws", () => ({
   wsManager: { subscribe: vi.fn(), unsubscribe: vi.fn() },
 }));
 
-vi.mock("@/hooks/useUpdateInventory", () => ({
+vi.mock("@/hooks/useUpdateInventory", async (original) => ({
+  ...(await original<typeof import("@/hooks/useUpdateInventory")>()),
   useUpdateInventory: vi.fn(),
 }));
 
@@ -120,6 +128,23 @@ vi.mock("@/hooks/mutations/host-mutations", () => ({
 }));
 
 const startInstallMock = vi.fn();
+
+const startPluginUpdateMock = vi.hoisted(() => vi.fn());
+const pluginUpdateJobs = vi.hoisted(() => ({
+  current: [] as import("@bb/server-contract").PluginUpdateJob[],
+}));
+
+vi.mock("@/hooks/queries/plugin-catalog-queries", () => ({
+  usePluginUpdateCheck: () => ({ isFetching: false }),
+}));
+
+vi.mock("@/hooks/queries/plugin-update-job-queries", async (original) => ({
+  ...(await original<
+    typeof import("@/hooks/queries/plugin-update-job-queries")
+  >()),
+  startPluginUpdate: startPluginUpdateMock,
+  usePluginUpdateJobs: () => ({ data: pluginUpdateJobs.current }),
+}));
 
 vi.mock("@/components/provider-cli/provider-cli-install", async (original) => {
   const actual =
@@ -273,6 +298,7 @@ function makeInventory(overrides: Partial<UpdateInventory>): UpdateInventory {
         isPrimary: true,
       }),
     ],
+    plugins: { trackedCount: 0, items: [] },
     pluginAttentionCount: 0,
     actionableCount: 0,
     hasAttention: false,
@@ -281,9 +307,7 @@ function makeInventory(overrides: Partial<UpdateInventory>): UpdateInventory {
   };
 }
 
-function renderSection({
-  showChangelogPreview = false,
-}: { showChangelogPreview?: boolean } = {}): void {
+function renderSection(): void {
   render(
     <MemoryRouter>
       <TooltipProvider>
@@ -292,7 +316,7 @@ function renderSection({
             new QueryClient({ defaultOptions: { queries: { retry: false } } })
           }
         >
-          <UpdatesSettingsSection showChangelogPreview={showChangelogPreview} />
+          <UpdatesSettingsSection />
         </QueryClientProvider>
       </TooltipProvider>
     </MemoryRouter>,
@@ -345,6 +369,7 @@ function useWebApp(): void {
 
 beforeEach(() => {
   hostDaemon.localDaemonHostId = null;
+  pluginUpdateJobs.current = [];
   vi.mocked(sdk.system.appUpdate).mockResolvedValue(
     makeAppUpdateStatus({
       available: null,
@@ -451,44 +476,267 @@ describe("UpdatesSettingsSection", () => {
     ).toBeNull();
   });
 
-  it("keeps the changelog preview behind its experiment", () => {
-    useDesktopUpdateInfoMock.mockReturnValue({
-      desktopApi: null,
-      desktopInfo: null,
-      isDesktop: false,
+  describe("release notes", () => {
+    const updateInventory = () =>
+      makeInventory({
+        systemVersion: {
+          currentVersion: "0.46.0",
+          latestVersion: "0.47.0",
+          currentCommit: null,
+          installKind: "npm",
+          source: "npm",
+          updateAvailable: true,
+          isDevelopment: false,
+          upgradeCommand: "npx bb-app@latest",
+        },
+      });
+
+    beforeEach(() => {
+      useDesktopUpdateInfoMock.mockReturnValue({
+        desktopApi: null,
+        desktopInfo: null,
+        isDesktop: false,
+      });
+      useUpdateInventoryMock.mockReturnValue(updateInventory());
     });
-    useUpdateInventoryMock.mockReturnValue(makeInventory({}));
 
-    renderSection();
+    function releaseNotesButton(version: string): HTMLElement {
+      return screen.getByRole("button", {
+        name: `Changelog for bb ${version}`,
+      });
+    }
 
-    expect(
-      document.querySelector('[data-updates-domain="changelog"]'),
-    ).toBeNull();
-    expect(fetch).not.toHaveBeenCalled();
+    function releaseNotesPanel(version: string): HTMLElement | null {
+      return screen.queryByRole("region", {
+        name: `bb ${version} changelog`,
+      });
+    }
+
+    it("offers the target release's notes when an update is available", () => {
+      renderSection();
+
+      const button = releaseNotesButton("0.47.0");
+      expect(button.getAttribute("aria-expanded")).toBe("false");
+      expect(releaseNotesPanel("0.47.0")).toBeNull();
+      expect(recordTelemetryEvent).not.toHaveBeenCalled();
+    });
+
+    it("offers the installed release's notes when no update is available", () => {
+      useUpdateInventoryMock.mockReturnValue(makeInventory({}));
+      renderSection();
+
+      expect(releaseNotesButton("0.0.5")).toBeDefined();
+    });
+
+    it("offers the newest release's notes on a nightly build", () => {
+      const nightly = "0.48.2-nightly.40981326765.1";
+      useUpdateInventoryMock.mockReturnValue(
+        makeInventory({
+          systemVersion: {
+            currentVersion: nightly,
+            latestVersion: nightly,
+            currentCommit: null,
+            installKind: "npm",
+            source: "npm",
+            updateAvailable: false,
+            isDevelopment: false,
+            upgradeCommand: "npx bb-app@nightly",
+          },
+        }),
+      );
+      renderSection();
+      fireEvent.click(releaseNotesButton(nightly));
+
+      const panel = releaseNotesPanel(nightly)!;
+      expect(
+        within(panel).getByText("bb 0.48.0 · October 28, 2026"),
+      ).toBeDefined();
+      expect(
+        within(panel).getByText("This build includes changes since 0.48.0"),
+      ).toBeDefined();
+      expect(recordTelemetryEvent).toHaveBeenCalledExactlyOnceWith({
+        name: "release_notes_opened",
+        properties: { release_version: "0.48.2", view: "inline" },
+      });
+    });
+
+    it("opens the release's notes under the bb row and closes them again", () => {
+      renderSection();
+
+      fireEvent.click(releaseNotesButton("0.47.0"));
+
+      const button = releaseNotesButton("0.47.0");
+      const panel = releaseNotesPanel("0.47.0");
+      expect(button.getAttribute("aria-expanded")).toBe("true");
+      expect(button.getAttribute("aria-controls")).toBe(panel?.id);
+      expect(
+        within(panel!).getByRole("heading", {
+          name: "Customizable navigation, new and improved ACP support, and diff review",
+        }),
+      ).toBeDefined();
+      expect(
+        within(panel!).getByText("bb 0.47.0 · October 23, 2026"),
+      ).toBeDefined();
+      expect(
+        within(panel!).getByRole("heading", { name: "Highlights" }),
+      ).toBeDefined();
+      expect(
+        within(panel!).getByText(/Customizable sidebar navigation, new and/),
+      ).toBeDefined();
+      expect(within(panel!).queryByRole("img")).toBeNull();
+      expect(screen.getByRole("region", { name: "bb" }).contains(panel)).toBe(
+        true,
+      );
+      expect(recordTelemetryEvent).toHaveBeenCalledExactlyOnceWith({
+        name: "release_notes_opened",
+        properties: { release_version: "0.47.0", view: "inline" },
+      });
+
+      fireEvent.click(button);
+      expect(releaseNotesPanel("0.47.0")).toBeNull();
+      expect(recordTelemetryEvent).toHaveBeenCalledTimes(1);
+    });
+
+    it("opens the full changelog in the external browser", () => {
+      renderSection();
+      fireEvent.click(releaseNotesButton("0.47.0"));
+      vi.mocked(recordTelemetryEvent).mockClear();
+
+      const link = within(releaseNotesPanel("0.47.0")!).getByRole("link", {
+        name: /Full changelog/,
+      });
+      expect(link.getAttribute("href")).toBe(
+        "https://getbb.app/changelog#0-47-0",
+      );
+      fireEvent.click(link);
+
+      expect(openUrlInExternalBrowserMock).toHaveBeenCalledExactlyOnceWith(
+        "https://getbb.app/changelog#0-47-0",
+      );
+      expect(recordTelemetryEvent).toHaveBeenCalledExactlyOnceWith({
+        name: "release_notes_opened",
+        properties: { release_version: "0.47.0", view: "web" },
+      });
+    });
+
+    it("prefers the published changelog over the bundled one", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(
+          new Response(`# Changelog
+
+## 0.47.0
+
+The published lede.
+`),
+        ),
+      );
+      renderSection();
+      fireEvent.click(releaseNotesButton("0.47.0"));
+
+      expect(await screen.findByText("The published lede.")).toBeDefined();
+      expect(screen.queryByRole("heading", { name: "Highlights" })).toBeNull();
+    });
+
+    it("fades the top edge once the changelog is scrolled", () => {
+      renderSection();
+      fireEvent.click(releaseNotesButton("0.47.0"));
+
+      const panel = releaseNotesPanel("0.47.0")!;
+      const scroller = panel.querySelector<HTMLElement>(
+        "[data-release-notes-scroll]",
+      )!;
+      expect(panel.querySelector('[data-overflow-fade="above"]')).toBeNull();
+
+      scroller.scrollTop = 40;
+      fireEvent.scroll(scroller);
+
+      expect(
+        panel.querySelector('[data-overflow-fade="above"]'),
+      ).not.toBeNull();
+    });
+
+    function stubPublishedSources(changelog: string, metadata: string): void {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((url: string) =>
+          Promise.resolve(
+            new Response(
+              url.endsWith("changelog-metadata.ts") ? metadata : changelog,
+            ),
+          ),
+        ),
+      );
+    }
+
+    it("says so when the changelog has no entry for the release", async () => {
+      stubPublishedSources("## 0.47.0\n\nAnother release.\n", "");
+      useUpdateInventoryMock.mockReturnValue(makeInventory({}));
+      renderSection();
+      fireEvent.click(releaseNotesButton("0.0.5"));
+
+      const panel = releaseNotesPanel("0.0.5")!;
+      expect(
+        await within(panel).findByText("bb 0.0.5 has no changelog in the app."),
+      ).toBeDefined();
+      expect(
+        within(panel).getByRole("heading", { name: "What's new in bb 0.0.5" }),
+      ).toBeDefined();
+    });
+
+    it("shows loading, not a missing changelog, while the notes load", () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(() => new Promise<Response>(() => {})),
+      );
+      useUpdateInventoryMock.mockReturnValue(makeInventory({}));
+      renderSection();
+      fireEvent.click(releaseNotesButton("0.0.5"));
+
+      const panel = releaseNotesPanel("0.0.5")!;
+      expect(within(panel).getByText("Loading the changelog…")).toBeDefined();
+      expect(within(panel).queryByText(/has no changelog/)).toBeNull();
+    });
+
+    it("says the changelog couldn't load when the fetch fails", async () => {
+      useUpdateInventoryMock.mockReturnValue(makeInventory({}));
+      renderSection();
+      fireEvent.click(releaseNotesButton("0.0.5"));
+
+      const panel = releaseNotesPanel("0.0.5")!;
+      expect(
+        await within(panel).findByText("Couldn't load the changelog."),
+      ).toBeDefined();
+      expect(within(panel).queryByText(/has no changelog/)).toBeNull();
+    });
+
+    it("takes a newer release's headline from the published metadata", async () => {
+      stubPublishedSources(
+        "## 0.0.5\n\nA tiny lede.\n",
+        `export const RELEASE_META = {
+  "0.0.5": {
+    date: "January 2, 2026",
+    headline: "A tiny release",
+  },
+};
+`,
+      );
+      useUpdateInventoryMock.mockReturnValue(makeInventory({}));
+      renderSection();
+      fireEvent.click(releaseNotesButton("0.0.5"));
+
+      const panel = releaseNotesPanel("0.0.5")!;
+      expect(
+        await within(panel).findByRole("heading", { name: "A tiny release" }),
+      ).toBeDefined();
+      expect(
+        within(panel).getByText("bb 0.0.5 · January 2, 2026"),
+      ).toBeDefined();
+      expect(within(panel).getByText("A tiny lede.")).toBeDefined();
+    });
   });
 
   it("keeps a recently checked healthy fleet quiet and accessible", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockImplementation(() =>
-        Promise.resolve(
-          new Response(`# Changelog
-
-## 9.9.9
-
-The canonical release summary.
-
-### New features
-
-- One current feature.
-
-### Fixes
-
-- One current fix.
-`),
-        ),
-      ),
-    );
     useDesktopUpdateInfoMock.mockReturnValue({
       desktopApi: null,
       desktopInfo: null,
@@ -509,7 +757,7 @@ The canonical release summary.
       }),
     );
 
-    renderSection({ showChangelogPreview: true });
+    renderSection();
 
     await waitFor(() => {
       expect(
@@ -533,136 +781,8 @@ The canonical release summary.
     expect(screen.queryByRole("button", { name: /check/i })).toBeNull();
     expect(screen.queryByRole("heading", { name: "Updates" })).toBeNull();
     expect(
-      screen.getByRole("button", { name: /^Open the full bb .* changelog$/ }),
-    ).toBeDefined();
-    const changelog = document.querySelector(
-      '[data-updates-domain="changelog"]',
-    );
-    await waitFor(() => {
-      expect(changelog?.textContent).toContain("9.9.9");
-    });
-    expect(
-      within(changelog as HTMLElement).getByRole("heading", {
-        level: 2,
-        name: "What's new",
-      }),
-    ).toBeDefined();
-    expect(
-      within(changelog as HTMLElement).getByRole("heading", {
-        level: 3,
-        name: "9.9.9",
-      }),
-    ).toBeDefined();
-    expect(changelog?.textContent).toContain("The canonical release summary.");
-    expect(
-      changelog?.querySelector('[data-changelog-version="9.9.9"]'),
-    ).toBeNull();
-    const changelogPreview = changelog?.querySelector(
-      "[data-changelog-preview]",
-    );
-    expect(changelogPreview?.className).not.toContain("grid");
-    expect(
-      changelog?.querySelector("[data-changelog-release-scroll]")?.className,
-    ).toContain("max-h-56");
-    expect(
-      changelog?.querySelector("[data-changelog-footer]")?.className,
-    ).toContain("bg-foreground");
-    expect(
-      changelog?.querySelector("[data-changelog-footer]")?.className,
-    ).toContain("text-background");
-    expect(changelog?.textContent).toContain("Full changelog");
-    for (const highlight of ["New features", "Fixes"]) {
-      expect(
-        within(changelog as HTMLElement).getByRole("heading", {
-          level: 4,
-          name: highlight,
-        }),
-      ).toBeDefined();
-    }
-    expect(changelog?.textContent).toContain("One current feature.");
-    expect(changelog?.textContent).toContain("One current fix.");
-    const dismissChangelog = screen.getByRole("button", {
-      name: "Dismiss bb 9.9.9 changelog preview",
-    });
-    const changelogHeader = changelog?.querySelector("[data-changelog-header]");
-    const changelogCard = changelogHeader?.closest("section");
-    expect(changelogPreview?.firstElementChild).toBe(changelogHeader);
-    expect(changelogHeader?.contains(dismissChangelog)).toBe(true);
-    expect(changelogCard?.contains(changelogPreview ?? null)).toBe(true);
-    expect(dismissChangelog.querySelector('[data-icon="X"]')).not.toBeNull();
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "Open the full bb 9.9.9 changelog",
-      }),
-    );
-    expect(openUrlInExternalBrowserMock).toHaveBeenCalledWith(
-      "https://getbb.app/changelog#9-9-9",
-    );
-    vi.useFakeTimers();
-    fireEvent.click(dismissChangelog);
-    expect(screen.getByRole("status").textContent).toContain(
-      "You're all caught up",
-    );
-    expect(
-      screen.queryByRole("button", {
-        name: "Open the full bb 9.9.9 changelog",
-      }),
-    ).toBeNull();
-    expect(changelog?.getAttribute("data-changelog-dismiss-phase")).toBe(
-      "confirming",
-    );
-    expect(
-      changelog?.querySelector("[data-changelog-release-panel]")?.className,
-    ).toContain("grid-rows-[0fr]");
-    const confirmation = changelog?.querySelector(
-      "[data-changelog-dismiss-confirmation]",
-    );
-    expect(confirmation?.className).toContain("grid-rows-[1fr]");
-    expect(confirmation?.className).not.toContain("absolute");
-    expect(changelog?.className).toContain("motion-reduce:transition-none");
-    expect(
-      window.localStorage.getItem(
-        "bb.settings.updates.dismissed-changelog-version",
-      ),
-    ).toBe("9.9.9");
-
-    act(() => vi.advanceTimersByTime(1_999));
-    expect(changelog?.getAttribute("data-changelog-dismiss-phase")).toBe(
-      "confirming",
-    );
-    act(() => vi.advanceTimersByTime(1));
-    expect(changelog?.getAttribute("data-changelog-dismiss-phase")).toBe(
-      "exiting",
-    );
-    expect(changelog?.className).toContain("grid-rows-[0fr]");
-    act(() => vi.advanceTimersByTime(180));
-    expect(
       document.querySelector('[data-updates-domain="changelog"]'),
     ).toBeNull();
-    vi.useRealTimers();
-
-    cleanup();
-    renderSection({ showChangelogPreview: true });
-    await waitFor(() => {
-      expect(fetch).toHaveBeenCalledTimes(2);
-    });
-    expect(
-      document.querySelector('[data-updates-domain="changelog"]'),
-    ).toBeNull();
-
-    cleanup();
-    window.localStorage.setItem(
-      "bb.settings.updates.dismissed-changelog-version",
-      "9.9.8",
-    );
-    renderSection({ showChangelogPreview: true });
-    await waitFor(() => {
-      expect(
-        screen.getByRole("button", {
-          name: "Dismiss bb 9.9.9 changelog preview",
-        }),
-      ).toBeDefined();
-    });
 
     const settledRows = screen.getAllByText(/^Up to date/);
     expect(
@@ -704,7 +824,7 @@ The canonical release summary.
       makeInventory({ lastCheckedAt: Date.now(), machines: [machine] }),
     );
 
-    renderSection({});
+    renderSection();
 
     expect(screen.getByText("Nothing to update on workstation.")).toBeDefined();
     fireEvent.click(screen.getByRole("button", { name: "Show machines" }));
@@ -1831,6 +1951,202 @@ The canonical release summary.
     });
   });
 
+  it("updates tracking plugins from the Plugins section and leaves blocked ones alone", async () => {
+    useWebApp();
+    startPluginUpdateMock.mockImplementation(async (pluginId: string) => ({
+      id: `job_${pluginId}`,
+      pluginId,
+      displayName: pluginId,
+      state: "queued",
+    }));
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({
+        plugins: buildUpdateInventoryPlugins([
+          makePluginListItem({
+            id: "notes",
+            name: "Notes",
+            source: "npm:@acme/notes@^1.0.0",
+            version: "1.0.0",
+            updateState: {
+              outcome: "update-available",
+              availableVersion: "1.2.0",
+              availableLabel: "1.2.0",
+            },
+          }),
+          makePluginListItem({
+            id: "linear",
+            name: "Linear",
+            source: "git:github.com/acme/linear@^0.8.0",
+            version: "0.8.0",
+            updateState: {
+              outcome: "update-available",
+              availableVersion: "0.8.4",
+              availableLabel: "0.8.4",
+            },
+          }),
+          makePluginListItem({
+            id: "legacy",
+            name: "Legacy",
+            source: "npm:@acme/legacy@^2.0.0",
+            version: "2.0.0",
+            updateState: {
+              outcome: "incompatible",
+              blockedVersion: "3.0.0",
+              blockedLabel: "3.0.0",
+              blockedReasons: ["engines.bb requires >=9.0.0"],
+            },
+          }),
+        ]),
+      }),
+    );
+
+    renderSection();
+
+    const legacy = document.querySelector('[data-plugin-update-row="legacy"]');
+    expect(legacy?.textContent).toContain("3.0.0: engines.bb requires >=9.0.0");
+    expect(within(legacy as HTMLElement).queryByRole("button")).toBeNull();
+    expect(
+      within(legacy as HTMLElement)
+        .getByRole("link")
+        .getAttribute("href"),
+    ).toBe("/settings/plugins/legacy?view=installed");
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Update available · Update Notes to 1.2.0",
+      }),
+    );
+    expect(startPluginUpdateMock).toHaveBeenCalledTimes(1);
+    expect(startPluginUpdateMock).toHaveBeenLastCalledWith("notes");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Update all 2 plugins" }),
+    );
+    expect(startPluginUpdateMock.mock.calls.slice(1)).toEqual([
+      ["linear"],
+      ["notes"],
+    ]);
+  });
+
+  it("tracks plugin update jobs on their rows and counts through the batch", () => {
+    useWebApp();
+    const plugin = (id: string) =>
+      makePluginListItem({
+        id,
+        name: id,
+        source: `npm:@acme/${id}@^1.0.0`,
+        updateState: {
+          outcome: "update-available",
+          availableVersion: "1.1.0",
+          availableLabel: "1.1.0",
+        },
+      });
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({
+        plugins: buildUpdateInventoryPlugins([
+          plugin("alpha"),
+          plugin("beta"),
+          plugin("gamma"),
+        ]),
+      }),
+    );
+    const job = (
+      pluginId: string,
+      state: "queued" | "running",
+    ): import("@bb/server-contract").PluginUpdateJob =>
+      state === "queued"
+        ? { id: `job_${pluginId}`, pluginId, displayName: pluginId, state }
+        : {
+            id: `job_${pluginId}`,
+            pluginId,
+            displayName: pluginId,
+            state,
+            phase: "preparing",
+          };
+    const queryClient = new QueryClient();
+    const tree = () => (
+      <MemoryRouter>
+        <TooltipProvider>
+          <QueryClientProvider client={queryClient}>
+            <UpdatesSettingsSection />
+          </QueryClientProvider>
+        </TooltipProvider>
+      </MemoryRouter>
+    );
+    const section = () =>
+      document.querySelector('[data-updates-domain="plugins"]') as HTMLElement;
+    const progress = () =>
+      section().querySelector("[data-updates-progress]")?.textContent ?? null;
+    const rowState = (id: string) =>
+      section()
+        .querySelector(`[data-plugin-update-row="${id}"] [data-update-state]`)
+        ?.getAttribute("data-update-state") ?? null;
+
+    pluginUpdateJobs.current = [
+      job("alpha", "running"),
+      job("beta", "queued"),
+      job("gamma", "queued"),
+    ];
+    const view = render(tree());
+    expect(progress()).toBe("Updating 1 of 3");
+    expect(rowState("alpha")).toBe("in-progress");
+    expect(rowState("gamma")).toBe("in-progress");
+    expect(
+      within(section()).queryByRole("button", { name: /Update all/u }),
+    ).toBeNull();
+
+    pluginUpdateJobs.current = [job("gamma", "running")];
+    view.rerender(tree());
+    expect(progress()).toBe("Updating 3 of 3");
+    expect(rowState("alpha")).toBeNull();
+    expect(
+      within(section()).getByRole("button", {
+        name: "Update available · Update alpha to 1.1.0",
+      }),
+    ).toBeDefined();
+
+    pluginUpdateJobs.current = [];
+    view.rerender(tree());
+    expect(progress()).toBeNull();
+    expect(
+      within(section()).getByRole("button", { name: "Update all 3 plugins" }),
+    ).toBeDefined();
+  });
+
+  it("toasts a plugin update the server refuses to start", async () => {
+    useWebApp();
+    startPluginUpdateMock.mockRejectedValue(
+      new Error("server move in progress"),
+    );
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({
+        plugins: buildUpdateInventoryPlugins([
+          makePluginListItem({
+            id: "notes",
+            name: "Notes",
+            source: "npm:@acme/notes@^1.0.0",
+            updateState: {
+              outcome: "update-available",
+              availableVersion: "1.2.0",
+              availableLabel: "1.2.0",
+            },
+          }),
+        ]),
+      }),
+    );
+
+    renderSection();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Update all 1 plugin" }),
+    );
+
+    await waitFor(() => {
+      expect(appToast.error).toHaveBeenCalledWith("Plugin update failed", {
+        description: "Notes — server move in progress",
+      });
+    });
+  });
+
   it("shows an external Claude installation as a manual update without an update button", () => {
     useDesktopUpdateInfoMock.mockReturnValue({
       desktopApi: null,
@@ -2384,6 +2700,78 @@ The canonical release summary.
       }),
     );
     expect(installUpdate).toHaveBeenCalledOnce();
+  });
+
+  describe("Desktop row release notes", () => {
+    function useSeparateDesktop(overrides: Partial<BbDesktopInfo>): void {
+      const desktopInfo: BbDesktopInfo = {
+        downloadState: "idle",
+        lastCheckedAt: null,
+        latestVersion: "0.47.0",
+        pendingVersion: null,
+        platform: "macos",
+        updateAvailable: true,
+        updateDownloaded: false,
+        version: "0.46.0",
+        ...overrides,
+      };
+      useDesktopUpdateInfoMock.mockReturnValue({
+        desktopApi: {
+          checkForUpdates: vi.fn().mockResolvedValue(desktopInfo),
+          installUpdate: vi.fn(),
+        } as unknown as BbDesktopApi,
+        desktopInfo,
+        isDesktop: true,
+      });
+      useUpdateInventoryMock.mockReturnValue(desktopFleet());
+      vi.mocked(sdk.system.appUpdate).mockResolvedValue(makeAppUpdateStatus());
+    }
+
+    async function renderBbCard(): Promise<HTMLElement> {
+      renderSection();
+      const bbCard = screen.getByRole("region", { name: "bb" });
+      await within(bbCard).findByText("Desktop");
+      return bbCard;
+    }
+
+    function notesButton(bbCard: HTMLElement, version: string): HTMLElement {
+      return within(bbCard).getByRole("button", {
+        name: `Changelog for bb ${version}`,
+      });
+    }
+
+    it("opens the pending desktop release's notes under the Desktop row", async () => {
+      useSeparateDesktop({ latestVersion: "0.47.1", pendingVersion: "0.47.0" });
+      const bbCard = await renderBbCard();
+
+      expect(notesButton(bbCard, "0.0.6")).toBeDefined();
+      fireEvent.click(notesButton(bbCard, "0.47.0"));
+
+      const panel = within(bbCard).getByRole("region", {
+        name: "bb 0.47.0 changelog",
+      });
+      expect(notesButton(bbCard, "0.47.0").getAttribute("aria-controls")).toBe(
+        panel.id,
+      );
+      expect(notesButton(bbCard, "0.0.6").getAttribute("aria-expanded")).toBe(
+        "false",
+      );
+      expect(recordTelemetryEvent).toHaveBeenCalledExactlyOnceWith({
+        name: "release_notes_opened",
+        properties: { release_version: "0.47.0", view: "inline" },
+      });
+    });
+
+    it("offers the installed desktop release when no update is available", async () => {
+      useSeparateDesktop({
+        lastCheckedAt: "2026-10-20T12:00:00.000Z",
+        latestVersion: null,
+        updateAvailable: false,
+      });
+      const bbCard = await renderBbCard();
+
+      expect(notesButton(bbCard, "0.46.0")).toBeDefined();
+    });
   });
 
   it("uses the Server label when the desktop runs the server itself", async () => {

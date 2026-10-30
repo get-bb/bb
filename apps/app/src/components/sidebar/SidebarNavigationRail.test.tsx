@@ -128,6 +128,7 @@ vi.mock("@/hooks/useUpdateInventory", () => ({
     appUpdateAvailable: true,
     desktopUpdateReady: false,
     machines: [],
+    plugins: { trackedCount: 0, items: [] },
     isLoading: false,
   }),
 }));

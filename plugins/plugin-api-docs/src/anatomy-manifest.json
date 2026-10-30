@@ -159,6 +159,43 @@
         }
       ]
     },
+    "thread-context-card": {
+      "groupId": "app-shell",
+      "fidelity": "anchor",
+      "responsiveStrategy": "scale-together",
+      "requiredStates": ["anchor"],
+      "labels": {
+        "anchor": ["fix/retry-flake", "Uncommitted"]
+      },
+      "fixtureClassAnchors": ["rounded-md", "bg-popover", "font-mono text-2xs"],
+      "sources": [
+        {
+          "path": "apps/app/src/components/plugin/PluginThreadContextCard.tsx",
+          "anchors": [
+            "data-thread-context-card=\"\"",
+            "slotKind=\"threadContextCardSection\"",
+            "crashFallback={null}",
+            "export function resolveThreadContextCardLayout",
+            "rounded-md border border-border bg-popover p-2"
+          ]
+        },
+        {
+          "path": "apps/app/src/views/thread-detail/ThreadScreen.tsx",
+          "anchors": ["<ThreadContextCard />"]
+        },
+        {
+          "path": "apps/app/src/views/thread-detail/ThreadDetailView.tsx",
+          "anchors": ["<ThreadContextCardProvider", "<ThreadContextCardHeaderButton />", "CORE_THREAD_CONTEXT_CARD_ROWS"]
+        },
+        {
+          "path": "apps/app/src/components/plugin/PluginThreadContextCard.test.tsx",
+          "anchors": [
+            "orders rows by group, then order, core first on a tie, and puts titled sections below them",
+            "mounts one scoped instance per pane and drops only a crashing section"
+          ]
+        }
+      ]
+    },
     "app-overlay": {
       "groupId": "app-shell",
       "fidelity": "anchor",

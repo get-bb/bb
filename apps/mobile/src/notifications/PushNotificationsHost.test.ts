@@ -100,7 +100,15 @@ vi.mock("./push-controller", () => ({
   }),
 }));
 vi.mock("./push-storage", () => ({
-  getPushStore: () => ({ hasPrompted: vi.fn(() => true) }),
+  getPushStore: () => ({
+    getSnapshot: () => ({
+      registrations: {
+        "profile-1": { subscriptionId: "sub-1" },
+        "profile-2": { subscriptionId: "sub-2" },
+      },
+    }),
+    hasPrompted: vi.fn(() => true),
+  }),
 }));
 vi.mock("./use-push-store", () => ({
   usePushStoreSnapshot: () => ({
@@ -156,6 +164,22 @@ describe("PushNotificationsHost", () => {
 
   it("switches to the server that sent a threadless push", async () => {
     mocks.responseListener(threadlessPush("https://other.example.test"));
+    await vi.waitFor(() =>
+      expect(mocks.push).toHaveBeenCalledWith({
+        pathname: "/webview",
+        params: { profileId: "profile-2" },
+      }),
+    );
+  });
+
+  it("switches to the server whose registration a threadless push names", async () => {
+    mocks.responseListener({
+      notification: {
+        request: {
+          content: { data: { kind: "message", subscriptionId: "sub-2" } },
+        },
+      },
+    });
     await vi.waitFor(() =>
       expect(mocks.push).toHaveBeenCalledWith({
         pathname: "/webview",

@@ -20,7 +20,11 @@ export function useWebSocket(): void {
   deletedResourceRouteChangeRef.current = handleDeletedResourceRouteChange;
 
   useEffect(() => {
-    const cacheEffects = createRealtimeCacheEffects({ queryClient });
+    const cacheEffects = createRealtimeCacheEffects({
+      queryClient,
+      refreshSidebarWhileHidden:
+        window.bbDesktop?.setAttentionThreads !== undefined,
+    });
     const handleArchivedThreadBrowsers = createArchivedThreadBrowserOwner({
       desktopBrowser: getDesktopBrowserApi(),
       readArchivedAt: async (threadId) =>

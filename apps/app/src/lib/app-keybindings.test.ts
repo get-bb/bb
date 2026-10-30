@@ -38,6 +38,7 @@ const CONTEXT: AppCommandContext = {
   browserFocus: false,
   modelPickerOpen: false,
   questionOpen: false,
+  questionFocus: false,
   promptAvailable: false,
   splitActive: false,
   webSurface: false,

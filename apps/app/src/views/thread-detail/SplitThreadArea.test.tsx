@@ -2676,6 +2676,47 @@ describe("SplitThreadArea", () => {
     }
   });
 
+  it("gives only bottom-row split panes the shell's bottom inset", async () => {
+    setPluginSlotRegistrations(
+      "test-plugin",
+      makePluginRegistrationSet({
+        navPanels: ["top-left", "bottom-left", "top-right", "bottom-right"].map(
+          (path) => ({
+            id: path,
+            title: path,
+            icon: "FileText",
+            path,
+            component: () => <div>{path} panel</div>,
+          }),
+        ),
+        threadPanelActions: [],
+        pendingInteractions: [],
+        sidebarFooterActions: [],
+        fileOpeners: [],
+      }),
+    );
+
+    renderSplitArea({
+      path: "/plugins/test-plugin/bottom-right",
+      layout: fourPanePluginLayout(),
+      routeContent: pluginContent("bottom-right"),
+    });
+
+    const paneClassName = async (path: string) =>
+      (await screen.findByText(`${path} panel`)).closest("[data-split-pane-id]")
+        ?.className;
+    for (const path of ["top-left", "top-right"]) {
+      expect(await paneClassName(path)).toContain(
+        "[--bb-content-bottom-inset:0px]",
+      );
+    }
+    for (const path of ["bottom-left", "bottom-right"]) {
+      expect(await paneClassName(path)).not.toContain(
+        "--bb-content-bottom-inset",
+      );
+    }
+  });
+
   it("reserves collapsed window-left chrome only for the structural top-left plugin pane", async () => {
     const desktopInfo: BbDesktopInfo = {
       lastCheckedAt: null,
@@ -2980,20 +3021,13 @@ describe("SplitThreadArea", () => {
     expect(screen.queryAllByTestId(/^pane-/)).toHaveLength(1);
   });
 
-  it("closes the only thread into the new-thread page", async () => {
-    const store = renderSplitArea({
+  it("offers no close on the only thread", async () => {
+    renderSplitArea({
       path: threadPath("thr-a"),
       routeAwareContent: true,
     });
-    fireEvent.click(await screen.findByTestId("close-thr-a"));
 
-    await waitFor(() =>
-      expect(screen.getByTestId("location").textContent).toBe("/"),
-    );
-    expect(screen.getByTestId("root-compose-view")).toBeTruthy();
-    expect(listPanes(store.get(splitLayoutAtom)!.root)[0]?.content).toEqual(
-      newThreadContent,
-    );
+    await screen.findByTestId("pane-thr-a");
     expect(screen.queryByTestId("close-thr-a")).toBeNull();
   });
 
@@ -3187,7 +3221,7 @@ describe("SplitThreadArea compact breakpoint crossings", () => {
       isSplitPane: false,
       secondaryPanelHost: null,
       reservesWindowPanelToggle: false,
-      canClose: true,
+      canClose: false,
       isMaximized: false,
       canMaximize: false,
       canMove: false,
@@ -3305,7 +3339,7 @@ describe("SplitThreadArea compact breakpoint crossings", () => {
     );
     expect(paneMounts.get("thr-a")).toBe(1);
     expect(latestPaneContext("thr-a").paneId).toBe("pane-1");
-    expect(latestPaneContext("thr-a").onRequestClose).not.toBeNull();
+    expect(latestPaneContext("thr-a").onRequestClose).toBeNull();
   });
 
   it("keeps one new-thread composer mounted with focus and selection across crossings", async () => {

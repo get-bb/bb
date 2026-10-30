@@ -42,7 +42,11 @@ function wrapperAt(index: number): Element {
 }
 
 function emitIntersections(
-  entries: readonly { target: Element; isIntersecting: boolean }[],
+  entries: readonly {
+    target: Element;
+    isIntersecting: boolean;
+    boundingClientRect?: DOMRectReadOnly;
+  }[],
 ) {
   const observer = observerInstances.at(-1);
   if (!observer) {
@@ -54,7 +58,7 @@ function emitIntersections(
         ({
           target: entry.target,
           isIntersecting: entry.isIntersecting,
-          boundingClientRect: OFFSCREEN_ROW_RECT,
+          boundingClientRect: entry.boundingClientRect ?? OFFSCREEN_ROW_RECT,
         }) as unknown as IntersectionObserverEntry,
     ),
     observer as unknown as IntersectionObserver,
@@ -335,6 +339,32 @@ describe("SidebarWindowedItems", () => {
     });
 
     expect(screen.queryByTestId("real-d")).not.toBeNull();
+  });
+
+  it("keeps realized rows mounted while the sidebar is hidden and unmounts them once scrolled away", () => {
+    const realizeAll = () =>
+      emitIntersections(
+        Array.from(
+          document.querySelectorAll("[data-sidebar-windowed-item]"),
+          (target) => ({ target, isIntersecting: true }),
+        ),
+      );
+    const leaveAll = (boundingClientRect: DOMRectReadOnly) =>
+      emitIntersections(
+        Array.from(
+          document.querySelectorAll("[data-sidebar-windowed-item]"),
+          (target) => ({ target, isIntersecting: false, boundingClientRect }),
+        ),
+      );
+    renderList({ current: scrollElement });
+    act(realizeAll);
+    expect(screen.getAllByTestId(/^real-item-/)).toHaveLength(3);
+
+    act(() => leaveAll(new DOMRect()));
+    expect(screen.getAllByTestId(/^real-item-/)).toHaveLength(3);
+
+    act(() => leaveAll(OFFSCREEN_ROW_RECT));
+    expect(screen.queryAllByTestId(/^real-item-/)).toHaveLength(0);
   });
 
   it("re-observes wrappers on list changes so a stuck placeholder self-heals", () => {

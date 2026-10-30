@@ -223,17 +223,11 @@ describe("answering a single-select question", () => {
     expect(submit).toHaveBeenCalledTimes(1);
   });
 
-  it("does not intercept modified Enter after a shortcut", () => {
+  it("does not intercept modified Enter other than the submit shortcut", () => {
     const submit = vi.fn(async () => undefined);
     render(singleSelect, { submit });
     fireEvent.keyDown(document.body, { key: "2" });
-    for (const modifier of [
-      "shiftKey",
-      "ctrlKey",
-      "metaKey",
-      "altKey",
-      "isComposing",
-    ]) {
+    for (const modifier of ["shiftKey", "metaKey", "altKey", "isComposing"]) {
       fireEvent.keyDown(document.activeElement!, {
         key: "Enter",
         [modifier]: true,
@@ -242,17 +236,57 @@ describe("answering a single-select question", () => {
     expect(submit).not.toHaveBeenCalled();
   });
 
-  it("leaves free-text Enter available for newlines", () => {
+  it("submits free text with Enter like the composer, keeping Shift+Enter and IME Enter for the text (#3289)", () => {
     const submit = vi.fn(async () => undefined);
     const slot = render(singleSelect, { submit });
     fireEvent.keyDown(document.body, { key: "3" });
     const textarea = slot.getByLabelText("Database answer");
     expect(document.activeElement).toBe(textarea);
     fireEvent.change(textarea, { target: { value: "Custom" } });
-    fireEvent.keyDown(textarea, { key: "Enter" });
+    expect(fireEvent.keyDown(textarea, { key: "Enter", shiftKey: true })).toBe(
+      true,
+    );
+    expect(
+      fireEvent.keyDown(textarea, { key: "Enter", isComposing: true }),
+    ).toBe(true);
     expect(submit).not.toHaveBeenCalled();
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    expect(submit).toHaveBeenCalledExactlyOnceWith({
+      answers: { q0: { selected: [], freeText: "Custom" } },
+    });
+  });
+
+  it("submits from the free-text field with the submit shortcut too", () => {
+    const submit = vi.fn(async () => undefined);
+    const slot = render(singleSelect, { submit });
+    fireEvent.keyDown(document.body, { key: "3" });
+    const textarea = slot.getByLabelText("Database answer");
+    fireEvent.change(textarea, { target: { value: "Custom" } });
     fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
     expect(submit).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves Enter in a touch keyboard's free-text field for newlines, like the composer", () => {
+    vi.mocked(window.matchMedia).mockImplementation(
+      (query: string) =>
+        ({
+          matches: query.includes("pointer: coarse"),
+          media: query,
+          onchange: null,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          addListener: vi.fn(),
+          removeListener: vi.fn(),
+          dispatchEvent: vi.fn(),
+        }) as MediaQueryList,
+    );
+    const submit = vi.fn(async () => undefined);
+    const slot = render(singleSelect, { submit });
+    fireEvent.click(getButtonByText(slot, "Other…"));
+    const textarea = slot.getByLabelText("Database answer");
+    fireEvent.change(textarea, { target: { value: "Custom" } });
+    expect(fireEvent.keyDown(textarea, { key: "Enter" })).toBe(true);
+    expect(submit).not.toHaveBeenCalled();
   });
 
   it("uses the compact labels when the host is compact", () => {
@@ -610,6 +644,86 @@ describe("multi-select and multi-question flows", () => {
     expect(submit).toHaveBeenCalledExactlyOnceWith({
       answers: { q1: { selected: ["q1o1"] } },
     });
+  });
+
+  it("submits, switches questions, and cancels by keyboard with focus on an option button (#6321)", () => {
+    const submit = vi.fn(async () => undefined);
+    const cancel = vi.fn(async () => undefined);
+    const slot = render(multi, { submit, cancel });
+    const metrics = getButtonByText(slot, "Metrics");
+    fireEvent.click(metrics);
+    metrics.focus();
+
+    fireEvent.keyDown(metrics, { key: "ArrowRight" });
+    expect(slot.getByText("2 of 2")).toBeTruthy();
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowLeft" });
+    expect(slot.getByText("1 of 2")).toBeTruthy();
+
+    fireEvent.keyDown(document.activeElement!, { key: "Enter", ctrlKey: true });
+    expect(slot.getByText("2 of 2")).toBeTruthy();
+    expect(
+      getButtonByText(slot, "Submit answer").getAttribute("aria-keyshortcuts"),
+    ).toBe("Control+Enter");
+    const sqlite = getButtonByText(slot, "SQLite");
+    fireEvent.click(sqlite);
+    sqlite.focus();
+    fireEvent.keyDown(sqlite, { key: "Enter", ctrlKey: true });
+    expect(submit).toHaveBeenCalledExactlyOnceWith({
+      answers: {
+        q0: { selected: ["q0o0"] },
+        q1: { selected: ["q1o1"] },
+      },
+    });
+    expect(cancel).not.toHaveBeenCalled();
+  });
+
+  it("moves to the next question with Enter in a free-text field and keeps arrows for the text", () => {
+    const slot = render(multi);
+    fireEvent.click(getButtonByText(slot, "Other…"));
+    const textarea = slot.getByLabelText("Extras answer");
+    fireEvent.change(textarea, { target: { value: "Logs" } });
+    expect(fireEvent.keyDown(textarea, { key: "ArrowRight" })).toBe(true);
+    expect(slot.getByText("1 of 2")).toBeTruthy();
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    expect(slot.getByText("2 of 2")).toBeTruthy();
+    expect(document.activeElement?.hasAttribute("data-question-form")).toBe(
+      true,
+    );
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowLeft" });
+    expect(slot.getByText("1 of 2")).toBeTruthy();
+  });
+
+  it("cancels with the cancel shortcut from the card and from its free-text field", () => {
+    const cancel = vi.fn(async () => undefined);
+    const slot = render(multi, { cancel });
+    fireEvent.click(getButtonByText(slot, "Other…"));
+    fireEvent.keyDown(slot.getByLabelText("Extras answer"), {
+      key: ".",
+      ctrlKey: true,
+    });
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves the shortcuts to other text fields while a question is open", () => {
+    const submit = vi.fn(async () => undefined);
+    const cancel = vi.fn(async () => undefined);
+    const slot = render(multi, { submit, cancel });
+    fireEvent.click(getButtonByText(slot, "Metrics"));
+    const composer = document.createElement("textarea");
+    document.body.append(composer);
+    try {
+      composer.focus();
+      for (const key of ["Enter", "."]) {
+        expect(fireEvent.keyDown(composer, { key, ctrlKey: true })).toBe(true);
+      }
+      expect(fireEvent.keyDown(composer, { key: "ArrowRight" })).toBe(true);
+      expect(slot.getByText("1 of 2")).toBeTruthy();
+      expect(cancel).not.toHaveBeenCalled();
+      fireEvent.keyDown(document.body, { key: "Enter", ctrlKey: true });
+      expect(slot.getByText("2 of 2")).toBeTruthy();
+    } finally {
+      composer.remove();
+    }
   });
 
   it("cancels the request instead of submitting", () => {

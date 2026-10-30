@@ -38,6 +38,7 @@ import {
   type PluginSourceCodeRendererProps,
   type ExperimentalThreadContextSegmentProps,
   type ExperimentalThreadInfoProps,
+  type ExperimentalThreadContextCardProps,
   type ExperimentalThreadRowMetadataProps,
   type PluginThreadActionItemInput,
   type ExperimentalPluginBrowserToolbarActionProps,
@@ -194,7 +195,7 @@ const BB_PLUGIN_API_KEYS = [
 
 type MissingApiKey = Exclude<
   keyof BbPluginApi,
-  (typeof BB_PLUGIN_API_KEYS)[number]
+  (typeof BB_PLUGIN_API_KEYS)[number] | `internal_DO_NOT_USE_${string}`
 >;
 const _assertAllApiKeysListed: MissingApiKey extends never ? true : never =
   true;
@@ -256,6 +257,7 @@ const THREAD_EVENT_PAYLOAD_FIELDS = {
     "inputAccepted",
     "rateLimits",
     "attemptNumber",
+    "originPluginId",
   ],
 } as const satisfies {
   [
@@ -289,6 +291,8 @@ type SlotPropsByName = {
   experimental_threadRowMetadata: ExperimentalThreadRowMetadataProps;
   experimental_threadInfoRow: ExperimentalThreadInfoProps;
   experimental_threadInfoSection: ExperimentalThreadInfoProps;
+  experimental_threadContextCardRow: ExperimentalThreadContextCardProps;
+  experimental_threadContextCardSection: ExperimentalThreadContextCardProps;
   experimental_threadAction: PluginThreadActionItemInput<unknown>;
   experimental_browserToolbarAction: ExperimentalPluginBrowserToolbarActionProps;
   fileOpener: PluginFileOpenerProps;
@@ -386,6 +390,12 @@ const FRONTEND_SLOT_PROP_FIELDS = {
   ],
   experimental_threadInfoRow: ["threadId", "projectId", "environment"],
   experimental_threadInfoSection: ["threadId", "projectId", "environment"],
+  experimental_threadContextCardRow: ["threadId", "projectId", "environment"],
+  experimental_threadContextCardSection: [
+    "threadId",
+    "projectId",
+    "environment",
+  ],
   experimental_threadRowMetadata: ["thread", "data"],
   experimental_threadAction: [
     "thread",

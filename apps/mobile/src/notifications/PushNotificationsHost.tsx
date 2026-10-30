@@ -61,6 +61,7 @@ export function PushNotificationsHost() {
       const profile = await resolvePushTargetProfile(target, {
         profiles: profilesRef.current,
         activeProfileId: activeProfileIdRef.current,
+        registrations: getPushStore().getSnapshot().registrations,
         hasThread: hasThreadOnServer,
       });
       if (!profile) {

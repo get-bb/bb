@@ -80,3 +80,39 @@ describe("BranchPicker search", () => {
     expect(screen.getByText("No branches found.").className).toContain("py-3");
   });
 });
+
+describe("BranchPicker keyboard navigation", () => {
+  it("moves the highlight with arrow keys and selects it with Enter", () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    try {
+      const onChange = vi.fn();
+      render(
+        <BranchPicker
+          value="origin/main"
+          options={["main", "origin/main", "release"]}
+          onChange={onChange}
+          modal={false}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole("combobox", { name: "Branch" }));
+      const search = screen.getByPlaceholderText("Search branches");
+      const row = (name: string) => screen.getByRole("button", { name });
+      expect(row("origin/main").hasAttribute("data-highlighted")).toBe(true);
+
+      fireEvent.keyDown(search, { key: "ArrowDown" });
+      fireEvent.keyDown(search, { key: "ArrowDown" });
+      expect(row("origin/main").hasAttribute("data-highlighted")).toBe(false);
+      expect(row("release").hasAttribute("data-highlighted")).toBe(true);
+
+      fireEvent.keyDown(search, { key: "ArrowDown" });
+      fireEvent.keyDown(search, { key: "ArrowUp" });
+      expect(row("main").hasAttribute("data-highlighted")).toBe(true);
+
+      fireEvent.keyDown(search, { key: "Enter" });
+      expect(onChange).toHaveBeenCalledWith("main");
+    } finally {
+      Reflect.deleteProperty(Element.prototype, "scrollIntoView");
+    }
+  });
+});

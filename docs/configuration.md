@@ -337,16 +337,24 @@ lists what `bb project discover` and
 
 **Anonymous usage telemetry.** PostHog events carry a random install id, app
 version, install kind, platform, OS release, architecture, and Node version.
-The server sends `app_started`, `telemetry_disabled`, `thread_created`,
+The server sends events such as `app_started`, `telemetry_disabled`, `thread_created`,
 `user_message_sent`, `turn_finished`, and `plugin_installed`. The app reports setup-guide and
 first-send events through `POST /api/v1/system/telemetry/events`
-(`sdk.system.experimental_recordTelemetryEvent`): `onboarding_started`,
+(`sdk.system.experimental_recordTelemetryEvent`), such as `onboarding_started`,
 `onboarding_step_reached`, `onboarding_step_completed`,
 `onboarding_step_skipped`, `onboarding_finished`, `onboarding_agent_state`,
-`onboarding_sign_in`, and `new_thread_submit` (started, accepted, or failed).
-The route accepts only these events with fixed enums and booleans: no provider
-ids, account details, prompts, project or file names, terminal output, error
-messages, or session ids. Sign-in `exited` means the command exited before
+`onboarding_sign_in`, `new_thread_submit` (started, accepted, or failed),
+`plugin_creation_started` (no properties; sent when you choose New plugin in
+the app or run `bb plugin new`, so it records intent, not a finished plugin),
+and `release_notes_opened` from Settings → Updates (`view` `inline` when the
+notes open under the bb row, `web` for the full notes on getbb.app).
+`bb plugin new` sends `plugin_creation_started` with `app_surface` `api`, skips
+it inside a bb agent thread (so an agent acting on New plugin isn't counted
+twice), and skips it silently when no bb server answers within 2 seconds. The
+route accepts only allow-listed events and values, plus a
+`release_version` of digits and dots (such as `0.47.0`): no custom provider ids,
+account details, prompts, release-note text, project or file names, terminal
+output, error messages, or session ids. Sign-in `exited` means the command exited before
 readiness was observed, not that authentication succeeded; `new_thread_submit`
 `accepted` means the thread was created, not that the provider answered.
 By default (`BB_FF_INITIATOR_TELEMETRY=false` turns it off), `thread_created` and `user_message_sent` also carry
@@ -356,7 +364,7 @@ runs into an existing thread report `automation`. `bb thread spawn` run inside a
 sends that thread as `senderThreadId`; the new thread reports `agent` when the sender has a
 turn running, and `user` otherwise.
 
-`turn_finished` sends only `outcome` (`succeeded`, `failed`, or `stopped`),
+`turn_finished` sends `outcome` (`succeeded`, `failed`, or `stopped`),
 `error_category` (`none`, `auth`, `billing`, `rate_limit`, `limit_reached`,
 `provider_unavailable`, `start_failed`, `process_exited`, `host_lost`, or `other`),
 `provider` (a shipped built-in provider ID, otherwise `other`), and
@@ -516,6 +524,15 @@ like the matching thread menu item.
 | Composer  | Cycle reasoning effort forward / backward    | `Alt+T` / `Alt+Shift+T`     | All clients              |
 | Browser   | Focus location / reload / find in page       | `Mod+L` / `Mod+R` / `Mod+F` | Desktop embedded browser |
 | Questions | Choose visible answer 1–9                    | `1` … `9`                   | While a question is open |
+| Questions | Next question or submit answers              | `Mod+Enter`                 | While a question is open |
+| Questions | Previous / next question                     | `ArrowLeft` / `ArrowRight`  | Focus in a question card |
+| Questions | Cancel question                              | `Mod+.`                     | While a question is open |
+
+Question shortcuts act on the open question card in the focused pane. They
+skip text fields outside the card, so the composer keeps its own keys;
+`Mod+Enter` and `Mod+.` also work from the card's own answer field, where
+`Enter` goes to the next question or submits and `Shift+Enter` adds a line.
+Previous / next need focus in the card, outside its answer field.
 
 Cycle shortcuts act only from the active composer or an open picker; other
 editable controls keep their Option-composed input. Reasoning cycles through
@@ -809,6 +826,7 @@ list|get|set|reset` or `sdk.system.uiPreferences` (see
 | `sidebar.visiblePluginPanels` | Navigation destinations shown, or `null` for every destination                                                                                         |
 | `sidebar.footerOrder`         | Footer action order                                                                                                                                    |
 | `sidebar.hiddenFooterItems`   | Footer actions moved into More                                                                                                                         |
+| `threadContextCard.pinned`   | `true` (default) keeps a thread pane's thread context card open beside the transcript when the pane is wide enough; `false` opens it only from the header |
 | `infoPanel.collapsedSections` | Collapsed thread Info panel sections (`commits`, `uncommittedChanges`, `childThreads`, `forks`, `threadStorage`, or `<pluginId>/<sectionId>`)          |
 
 A legacy `__builtin__` thread list selection resolves to the bundled plugin.
@@ -864,7 +882,8 @@ The `earlyAdopter` general setting (the Become an early adopter banner on
 Settings → Experiments, `bb settings general earlyAdopter on`) switches the
 shipped default to the early adopter default: experiments marked Early adopter
 (currently `applicationLinks`, `timelinePush`, `compactExpiredCache`,
-`sidebarMultiSelect`, `unreadDividerAtAnswer`, and `websocketCompression`) turn on, and the rest stay
+`pluginUpdates`, `sidebarMultiSelect`, `skipFocusedThreadNotifications`,
+`unreadDividerAtAnswer`, and `websocketCompression`) turn on, and the rest stay
 off. An experiment you set yourself keeps your value either way.
 `/system/config` and `sdk.system.config()` return the resolved values in
 `experiments`.
@@ -873,8 +892,6 @@ off. An experiment you set yourself keeps your value either way.
   `linear://` and `slack://` in rendered Markdown and the plugin
   `navigate.openUrl` path. The viewing device asks before opening unless the
   scheme was saved with Always allow. See [App links](#app-links).
-- `changelogPreview` shows the latest release notes as a dismissible card on
-  Settings → Updates.
 - `compactExpiredCache` (on for early adopters) reports `compactionOfferAt` on a thread's context
   usage (timeline `contextWindowUsage` and `bb thread context`) once the
   provider has reported a prompt-cache lifetime, the provider supports manual
@@ -898,6 +915,14 @@ off. An experiment you set yourself keeps your value either way.
   collection. The experiment itself applies live; turning it off restores
   normal logging and flushes the in-flight profile, keeping saved files. See
   [diagnostics](debugging-and-qa.md#opt-in-server-performance-diagnostics).
+- `pluginUpdates` (on for early adopters) adds a Plugins section to
+  Settings → Updates: one row per tracking plugin with an update (installed →
+  candidate version and an Update button), Update all for compatible updates,
+  and candidates blocked by `engines.bb` or `engines.bbPluginSdk` with the
+  reason. Opening the page re-checks tracking sources, and the sidebar updates
+  badge counts plugin updates. While it is off, the six-hourly background check,
+  `bb plugin outdated`, `bb plugin update`, and Settings → Installed plugins
+  work as before.
 - `sidebarMultiSelect` (on for early adopters) lets the built-in thread list
   select several threads: Cmd/Ctrl+Shift-click toggles a row (starting from the
   open thread), Shift-click selects the visible range from the last clicked row,
@@ -913,11 +938,32 @@ off. An experiment you set yourself keeps your value either way.
   them onto a composer as one mention per thread. Cmd/Ctrl-click still opens a
   thread in a split. Plugins read it with
   `experimental_useExperiment("sidebarMultiSelect")`.
+- `threadContextCard` moves a running thread's
+  details into the thread context card at the upper-right of its pane: bb's parent
+  thread and child threads, the Git plugin's changes, which open the Diff tab,
+  and GitHub PR Status's pull request. The context row above the
+  composer drops those segments and keeps other plugins' segments; the
+  project, environment, and branch stay below the composer, side chats keep
+  their context row, and a new thread's composer is unchanged.
+  A header button opens the card or pins it: a pinned card sits beside the
+  transcript in a wide pane and moves the transcript aside in a medium one,
+  and a narrow pane or window opens it over the transcript. Phones keep the
+  context row above the composer and show no card. Plugins read how a pane
+  shows thread context with `experimental_useThreadContextKind()`.
 - `threadRowMetadata` adds Metadata to the built-in thread list's Organize →
   Rows menu. With it checked (`showRowMetadata`), plugins draw details such as
   GitHub PR Status's pull request number on a line under each thread title.
   While the experiment is off the sidebar ignores `showRowMetadata`. Plugins
   read it with `experimental_useExperiment("threadRowMetadata")`.
+- `skipFocusedThreadNotifications` (on for early adopters) makes the
+  push-notifications plugin skip the web and desktop system notification for a
+  thread that is open in a visible, focused bb window or browser tab of the same
+  origin. Each such window holds a shared Web Lock for its thread, so the window
+  that claims a notification also sees threads focused in other windows. Other
+  threads, notifications without a thread, and mobile push are unaffected. The
+  plugin reads it with
+  `experimental_useExperiment("skipFocusedThreadNotifications")` and follows a
+  toggle live.
 - `timelinePush` makes an open thread view subscribe to its latest timeline
   window over the WebSocket (`thread-timeline` subscription target); the server
   pushes the full window once, then row deltas after new events, instead of the

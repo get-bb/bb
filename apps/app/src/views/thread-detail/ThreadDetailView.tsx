@@ -1,3 +1,4 @@
+import { AppPanelTabsPublisher } from "@/lib/app-panel-tabs";
 import {
   getThreadFixedTabOwnerId,
   useAppPanelController,
@@ -17,8 +18,6 @@ import {
   getThreadFixedTabTargetKey,
   type ThreadFixedTabEntry,
 } from "@/components/plugin/PluginThreadFixedTabs";
-import { BrowserTabIcon } from "@/components/secondary-panel/BrowserTabIcon";
-import { getPanelTabHistoryKey } from "@/components/secondary-panel/recentlyClosedPanelTabs";
 import { queueSplitDownload } from "@/lib/split-prefetch";
 import {
   useCallback,
@@ -43,16 +42,14 @@ import {
   useThreadTimelineController,
 } from "@/components/thread/timeline";
 import { ThreadProviderContext } from "@/components/thread/thread-provider-context";
-import {
-  type ThreadListEntry,
-} from "@bb/domain";
+import { type ThreadListEntry } from "@bb/domain";
 import type { TerminalSession } from "@bb/server-contract";
 import type { WorkspaceOpenTarget } from "@bb/host-daemon-contract";
 import { appToast } from "@/components/ui/app-toast";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import {
-  PluginDetailPanelContext,
-  usePluginDetailPanelState,
+  PluginDetailTabContent,
+  usePluginDetailTabOpener,
 } from "@/components/plugin/plugin-detail-navigation";
 import { useForkThreadFromMessage } from "@/hooks/useForkThreadFromMessage";
 import { useUpdateEnvironment } from "../../hooks/mutations/environment-mutations";
@@ -76,10 +73,7 @@ import type {
 import { ThreadActionsMenu } from "@/components/thread/ThreadActionsMenu";
 import { toThreadActionTarget } from "@/lib/thread-actions/thread-action-target";
 import { Button } from "@bb/shared-ui/button";
-import {
-  COARSE_POINTER_ICON_SIZE_CLASS,
-  COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
-} from "@bb/shared-ui/coarse-pointer-sizing";
+import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { PluginThreadHeaderActions } from "@/components/plugin/PluginThreadHeaderActions";
 import { ThreadWorkspaceOpenButton } from "@/components/thread/ThreadWorkspaceOpenButton";
@@ -120,6 +114,14 @@ import {
 } from "@/lib/route-paths";
 import { THREAD_INFO_FIXED_TAB_REFERENCE } from "@/components/secondary-panel/thread-info-fixed-tab-navigation";
 import { ThreadDetailHeader } from "./ThreadDetailHeader";
+import {
+  CORE_THREAD_CONTEXT_CARD_ROWS,
+  CORE_THREAD_CONTEXT_CARD_SECTIONS,
+} from "./ThreadContextCardCore";
+import {
+  ThreadContextCardHeaderButton,
+  ThreadContextCardProvider,
+} from "@/components/plugin/PluginThreadContextCard";
 import { ThreadScreen, useThreadComposerAddToChat } from "./ThreadScreen";
 import { ThreadDetailSecondaryContent } from "./ThreadDetailSecondaryContent";
 import {
@@ -146,8 +148,7 @@ import {
   SIDE_CHAT_PLUGIN_ID,
   SIDE_CHAT_PLUGIN_PANEL_ACTION_ID,
 } from "@/lib/side-chat-plugin";
-import { RightPanelFileTabIcon } from "@/components/secondary-panel/RightPanelFileTabIcon";
-import { PluginItemIcon } from "@/components/plugin/PluginIcon";
+import { usePanelTabPresenter } from "@/components/secondary-panel/usePanelTabPresenter";
 import { createFileOpenerOriginalTab } from "@/components/plugin/file-opener-tabs";
 import { ThreadTimelineNavigationProvider } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import {
@@ -165,7 +166,6 @@ import {
   useAppNavigationHost,
 } from "@/lib/app-navigation-host";
 import { getFileBasename } from "@/lib/live-file-navigation";
-import { getBrowserUrlHost } from "@/lib/browser-url";
 import {
   useThreadStorageBrowser,
   type ThreadStoragePathSelectHandler,
@@ -175,7 +175,6 @@ import {
   type FileSearchSelection,
 } from "@/components/secondary-panel/useThreadFileTabs";
 import {
-  getEnvironmentFilePreviewSourceRef,
   getFilePreviewLineRangeStart,
   isSecondaryFileTab,
   isThreadForkable,
@@ -218,6 +217,7 @@ import type { SecondaryFileFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import { resolveGitDiffTabStatus } from "@/components/secondary-panel/gitDiffTabEligibility";
 import { isRootThread } from "./threadParentSelectorOptions";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import {
   getActiveFixedSecondaryTab,
   useSetThreadSecondaryPanelSelection,
@@ -356,6 +356,8 @@ function RoutedThreadDetailView() {
 
 queueSplitDownload("queued-messages-list");
 
+const THREAD_TAB_CONTEXT = { kind: "thread" } as const;
+
 export function ThreadDetailView(props: ThreadDetailViewProps) {
   if (props.surface === "pane") {
     return <ThreadDetailViewInternal {...props} />;
@@ -377,6 +379,11 @@ function ThreadDetailViewInternal(
   const navigate = useImmediateRouteNavigate();
   useFixedPanelTabsStorageMaintenance();
   const systemConfigQuery = useSystemConfig();
+  const isCompactViewport = useIsCompactViewport();
+  const isPointerCoarse = usePointerCoarse();
+  const threadContextCardEnabled =
+    systemConfigQuery.data?.experiments.threadContextCard === true &&
+    !(isCompactViewport && isPointerCoarse);
   const {
     hasThreadDetailBootstrapSettled,
     threadDetailBootstrapQuery,
@@ -440,26 +447,16 @@ function ThreadDetailViewInternal(
     fixedPanelTabsState,
   });
   const activeFixedSecondaryTabId = activeFixedSecondaryTab?.id ?? null;
-  const renderSecondaryPanelAsDrawer = useIsCompactViewport();
+  const renderSecondaryPanelAsDrawer = isCompactViewport;
   const secondaryPanelDrawerVisibility =
     useThreadSecondaryPanelDrawerVisibility({
       isCompactViewport: renderSecondaryPanelAsDrawer,
       threadId,
     });
-  const pluginDetails = usePluginDetailPanelState(
-    threadId,
-    isFocused,
-    getPanelTabHistoryKey({
-      environmentId: thread?.environmentId,
-      fileOwnerThreadId: threadId ?? null,
-      panelStateId: threadId ?? null,
-    }),
-  );
   const isWorkspacePanelOpen = renderSecondaryPanelAsDrawer
     ? secondaryPanelDrawerVisibility.isDrawerVisible
     : isPersistedSecondaryPanelOpen;
-  const isSecondaryPanelOpen =
-    isWorkspacePanelOpen || pluginDetails.activePluginId !== null;
+  const isSecondaryPanelOpen = isWorkspacePanelOpen;
   const touchFixedPanelTabsState = useTouchFixedPanelTabsState(
     threadId,
     threadId,
@@ -518,6 +515,7 @@ function ThreadDetailViewInternal(
     activateTab,
     closeTab,
     openTab,
+    openPluginDetail,
     openPluginPanel,
     orderedSecondaryFileTabs,
     reopenClosedTab,
@@ -666,6 +664,11 @@ function ThreadDetailViewInternal(
           }),
     [loadedTerminalSessions, orderedSecondaryFileTabs, pendingTerminalIds],
   );
+  const presentPanelTab = usePanelTabPresenter({
+    tabs: syncedOrderedSecondaryFileTabs,
+    terminalsById,
+    pluginActions: registeredThreadActions,
+  });
   useEffect(() => {
     if (terminalsListQuery.data === undefined) {
       return;
@@ -783,14 +786,16 @@ function ThreadDetailViewInternal(
     openPersistedWorkspaceFile: panelFiles.openWorkspaceFile,
     togglePersistedPanel: toggleDefaultPersistedSecondaryPanel,
   });
-  const dismissPluginDetails = pluginDetails.dismiss;
-  const closeSecondaryPanel = useCallback(() => {
-    dismissPluginDetails();
-    closeWorkspacePanel();
-  }, [dismissPluginDetails, closeWorkspacePanel]);
+  const openPluginDetailTab = useCallback(
+    (detail: { detailKey: string; title: string }) => {
+      openPluginDetail(detail);
+      openCompactDrawer();
+    },
+    [openCompactDrawer, openPluginDetail],
+  );
+  usePluginDetailTabOpener(openPluginDetailTab, isFocused);
   const openRegisteredFixedTab = useCallback(
     (entry: ThreadFixedTabEntry) => {
-      dismissPluginDetails();
       clearActiveFileTabs();
       updateFixedPanelTabsState((current) => ({
         ...current,
@@ -805,12 +810,7 @@ function ThreadDetailViewInternal(
       }));
       openCompactDrawer();
     },
-    [
-      dismissPluginDetails,
-      clearActiveFileTabs,
-      updateFixedPanelTabsState,
-      openCompactDrawer,
-    ],
+    [clearActiveFileTabs, updateFixedPanelTabsState, openCompactDrawer],
   );
   const setFixedTabTarget = useSetFixedTabTarget();
   const panelDestinations = useMemo(
@@ -837,7 +837,6 @@ function ThreadDetailViewInternal(
         createPanelActionDestination({
           action,
           openPluginPanel: (args) => {
-            dismissPluginDetails();
             openPluginPanel(args);
             openCompactDrawer();
           },
@@ -845,7 +844,6 @@ function ThreadDetailViewInternal(
       ),
     ],
     [
-      dismissPluginDetails,
       threadFixedTabs.actions,
       threadFixedTabs.entries,
       openCompactDrawer,
@@ -857,7 +855,7 @@ function ThreadDetailViewInternal(
   );
   const panel = useAppPanelController({
     activeTabId: isSecondaryPanelOpen ? activeFixedSecondaryTabId : null,
-    close: closeSecondaryPanel,
+    close: closeWorkspacePanel,
     destinations: panelDestinations,
     isFocused,
   });
@@ -1033,17 +1031,13 @@ function ThreadDetailViewInternal(
     return true;
   });
   useAppCommandHandler("panel.reopenClosedTab", () => {
-    if (!isFocused || !reopenClosedTab(pluginDetails)) return false;
+    if (!isFocused || !reopenClosedTab()) return false;
     openCompactDrawer();
     return true;
   });
   useAppCommandHandler("file.quickOpen", () => {
     if (!isFocused) return false;
-    if (
-      isSecondaryPanelOpen &&
-      pluginDetails.activePluginId === null &&
-      activeFixedSecondaryTab?.kind === "new-tab"
-    ) {
+    if (isSecondaryPanelOpen && activeFixedSecondaryTab?.kind === "new-tab") {
       panel.close();
     } else {
       handleOpenNewTab();
@@ -1090,10 +1084,6 @@ function ThreadDetailViewInternal(
     [openLiveFilePreview, panel, terminals.open],
   );
   const handleCloseWindowRequest = useCallback(() => {
-    if (pluginDetails.activePluginId !== null) {
-      pluginDetails.close(pluginDetails.activePluginId);
-      return true;
-    }
     if (!isSecondaryPanelOpen) {
       return false;
     }
@@ -1114,7 +1104,6 @@ function ThreadDetailViewInternal(
     panel,
     closeTab,
     isSecondaryPanelOpen,
-    pluginDetails,
     terminals,
   ]);
   useAppCommandHandler("panel.toggle", () => {
@@ -1720,6 +1709,7 @@ function ThreadDetailViewInternal(
       }
       thread={threadActionTarget}
       threadTitle={threadTitle}
+      contextCardButton={<ThreadContextCardHeaderButton />}
       workspaceOpenButton={workspaceOpenButton}
     />
   );
@@ -1756,6 +1746,8 @@ function ThreadDetailViewInternal(
     tab: SecondaryFileFixedPanelTab,
   ): ReactNode => {
     switch (tab.kind) {
+      case "plugin-detail":
+        return <PluginDetailTabContent detailKey={tab.detailKey} />;
       case "browser":
         return null;
       case "terminal":
@@ -1918,125 +1910,22 @@ function ThreadDetailViewInternal(
       }
     }
   };
-  const filenameOfPanelTab = (path: string) => path.split("/").at(-1) ?? path;
   const panelTabs: readonly SecondaryPanelRenderableTab[] =
-    syncedOrderedSecondaryFileTabs.map((tab): SecondaryPanelRenderableTab => {
-      const pluginAction =
-        tab.kind === "plugin-panel"
-          ? registeredThreadActions.find(
-              (action) =>
-                action.pluginId === tab.pluginId && action.id === tab.actionId,
-            )
-          : undefined;
-      const shared = {
-        contentFillsRegion:
-          tab.kind === "plugin-panel" &&
-          (tab.fileOpenerOwner !== undefined ||
-            pluginAction?.layout === "flush"),
-        onClose: () => closeTab(tab.id),
-        renderContent: () => renderSecondaryTabContent(tab),
+    syncedOrderedSecondaryFileTabs.map(
+      (tab): SecondaryPanelRenderableTab => ({
+        ...presentPanelTab(tab),
         tab,
-      };
-      switch (tab.kind) {
-        case "browser": {
-          const browserLabel =
-            tab.title ?? (tab.url.length > 0 ? getBrowserUrlHost(tab.url) : "");
-          return {
-            ...shared,
-            label: browserLabel.length > 0 ? browserLabel : "Browser",
-            leadingVisual: (
-              <BrowserTabIcon
-                tabId={tab.id}
-                className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
-              />
-            ),
-            statusLabel: null,
-            onSelect: () => handleActivateFileTab(tab.id),
-          };
-        }
-        case "terminal": {
-          const session = terminalsById.get(tab.terminalId);
-          return {
-            ...shared,
-            label: session?.title ?? "Terminal",
-            leadingVisual: (
-              <Icon
-                name="Terminal"
-                className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
-                aria-hidden
-              />
-            ),
-            statusLabel:
-              session === undefined || session.status === "running"
-                ? null
-                : session.status,
-            onSelect: () => terminals.select(tab.terminalId),
-            onClose: () => terminals.close(tab.terminalId),
-          };
-        }
-        case "workspace-file-preview":
-          return {
-            ...shared,
-            label: filenameOfPanelTab(tab.path),
-            leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
-            statusLabel: getEnvironmentFilePreviewSourceRef(tab.source),
-            onSelect: () => handleActivateFileTab(tab.id),
-          };
-        case "host-file-preview":
-          return {
-            ...shared,
-            label: filenameOfPanelTab(tab.path),
-            leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
-            statusLabel: null,
-            onSelect: () => handleActivateFileTab(tab.id),
-          };
-        case "thread-storage-file-preview":
-          return {
-            ...shared,
-            label: filenameOfPanelTab(tab.path),
-            isPinned: tab.isPinned,
-            leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
-            statusLabel: null,
-            onSelect: () => handleActivateFileTab(tab.id),
-          };
-        case "attachment-file-preview":
-          return {
-            ...shared,
-            label: tab.name,
-            leadingVisual: <RightPanelFileTabIcon path={tab.name} />,
-            statusLabel: null,
-            onSelect: () => handleActivateFileTab(tab.id),
-          };
-        case "new-tab":
-          return {
-            ...shared,
-            label: "New tab",
-            leadingVisual: (
-              <Icon
-                name="NewTab"
-                className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
-                aria-hidden
-              />
-            ),
-            statusLabel: null,
-            onSelect: () => handleActivateFileTab(tab.id),
-          };
-        case "plugin-panel":
-          return {
-            ...shared,
-            label: tab.title,
-            leadingVisual: (
-              <PluginItemIcon
-                pluginId={tab.pluginId}
-                icon={pluginAction?.icon ?? null}
-                className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
-              />
-            ),
-            statusLabel: null,
-            onSelect: () => handleActivateFileTab(tab.id),
-          };
-      }
-    });
+        renderContent: () => renderSecondaryTabContent(tab),
+        onSelect:
+          tab.kind === "terminal"
+            ? () => terminals.select(tab.terminalId)
+            : () => handleActivateFileTab(tab.id),
+        onClose:
+          tab.kind === "terminal"
+            ? () => terminals.close(tab.terminalId)
+            : () => closeTab(tab.id),
+      }),
+    );
   const threadDetailContent = (
     <MarkdownLocalFileContextMenuContext.Provider
       value={getLocalFileContextMenuItems}
@@ -2047,6 +1936,14 @@ function ThreadDetailViewInternal(
       />
       <UrlOpenRoutingProvider openInAppBrowser={openBrowser}>
         <AppNavigationHostProvider capabilities={appNavigationCapabilities}>
+          <AppPanelTabsPublisher
+            publish={panel.publishTabs}
+            activeTabId={activeFixedSecondaryTabId}
+            actionContext={THREAD_TAB_CONTEXT}
+            fixedTabs={secondaryPanelFixedTabs}
+            isOpen={isSecondaryPanelOpen}
+            tabs={panelTabs}
+          />
           {threadFixedTabs.observers}
           <ThreadDetailSecondaryContent
             header={timelineHeader}
@@ -2123,17 +2020,28 @@ function ThreadDetailViewInternal(
     <>
       <PaneThreadActionCommandHandler thread={threadActionTarget} />
       <ThreadProviderContext.Provider value={threadProviderContextValue}>
-        <PluginDetailPanelContext.Provider value={pluginDetails}>
-          <MarkdownLocalFileOpenTargetsContext.Provider value={fileOpenTargets}>
-            <AttachmentOpenerContext.Provider value={openAttachment}>
-              <SelectionAddToChatContext.Provider
-                value={handleSelectionAddToChat}
+        <MarkdownLocalFileOpenTargetsContext.Provider value={fileOpenTargets}>
+          <AttachmentOpenerContext.Provider value={openAttachment}>
+            <SelectionAddToChatContext.Provider
+              value={handleSelectionAddToChat}
+            >
+              <ThreadContextCardProvider
+                enabled={threadContextCardEnabled}
+                coreRows={CORE_THREAD_CONTEXT_CARD_ROWS}
+                coreSections={CORE_THREAD_CONTEXT_CARD_SECTIONS}
+                threadId={thread.id}
+                projectId={thread.projectId}
+                environment={
+                  thread.environmentId === null
+                    ? null
+                    : { id: thread.environmentId }
+                }
               >
                 {threadDetailContent}
-              </SelectionAddToChatContext.Provider>
-            </AttachmentOpenerContext.Provider>
-          </MarkdownLocalFileOpenTargetsContext.Provider>
-        </PluginDetailPanelContext.Provider>
+              </ThreadContextCardProvider>
+            </SelectionAddToChatContext.Provider>
+          </AttachmentOpenerContext.Provider>
+        </MarkdownLocalFileOpenTargetsContext.Provider>
       </ThreadProviderContext.Provider>
     </>
   );
