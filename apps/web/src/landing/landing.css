@@ -869,6 +869,11 @@ html:has(.nav-sticky) {
   text-wrap: balance;
 }
 
+/* Wide enough that the two-sentence subhead wraps between its sentences. */
+.hero .sub-wide {
+  max-width: 700px;
+}
+
 .providers {
   display: flex;
   align-items: center;
