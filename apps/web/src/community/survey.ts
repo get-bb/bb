@@ -1,7 +1,6 @@
 import { z } from "zod";
 
-export const COMMUNITY_MAX = 3;
-const TEAM_WORK_OPTIONS = ["2–4 people", "5 or more"];
+const TEAM_WORK_OPTIONS = ["2–5 people", "6–10 people", "More than 10"];
 const SOLO_WORK_OPTIONS = ["Just me"];
 const NOT_WORKING_ROLES = ["Student", "Not currently working"];
 export function questionVisible(name: string, values: FormValues): boolean {
@@ -56,7 +55,6 @@ export const surveyQuestions: readonly Question[] = [
       "Product manager",
       "Designer",
       "Data or business analyst",
-      "Marketing or operations",
       "Freelancer, consultant or agency",
       "Student",
       "Not currently working",
@@ -71,8 +69,9 @@ export const surveyQuestions: readonly Question[] = [
     options: [
       "I don't use bb for work",
       "Just me",
-      "2–4 people",
-      "5 or more",
+      "2–5 people",
+      "6–10 people",
+      "More than 10",
       "I'm not sure",
     ],
     placeholder: "",
@@ -197,11 +196,6 @@ export function validateSurvey(values: FormValues): FormErrors {
       errors[question.name] = "Choose one of the listed answers.";
     } else if (new Set(selected).size !== selected.length) {
       errors[question.name] = "Choose each answer only once.";
-    } else if (
-      question.name === "community" &&
-      selected.length > COMMUNITY_MAX
-    ) {
-      errors.community = `Pick up to ${COMMUNITY_MAX}.`;
     } else if (!selected.some((value) => value.trim())) {
       errors[question.name] = "Please answer this question.";
     }

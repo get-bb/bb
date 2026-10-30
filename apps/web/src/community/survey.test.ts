@@ -38,8 +38,9 @@ describe("community survey submission rules", () => {
     "",
     "I don't use bb for work",
     "Just me",
-    "2–4 people",
-    "5 or more",
+    "2–5 people",
+    "6–10 people",
+    "More than 10",
     "I'm not sure",
   ])("conditions company size on %s", (work) => {
     const values = { ...contact, work: work ? [work] : [], company_size: [] };
@@ -63,7 +64,7 @@ describe("community survey submission rules", () => {
     expect(
       validateSurvey({
         ...contact,
-        work: ["5 or more"],
+        work: ["More than 10"],
         team_adopt: [],
         team_improve: ["Roles"],
         plugin_sharing: ["I use a plugin a coworker made"],
@@ -72,13 +73,13 @@ describe("community survey submission rules", () => {
     expect(
       validateSurvey({
         ...contact,
-        work: ["2–4 people"],
+        work: ["2–5 people"],
         team_improve: ["Roles"],
       }).plugin_sharing,
     ).toBe("Please answer this question.");
     expect(validateSurvey(contact).plugin_sharing).toBeUndefined();
     expect(
-      validateSurvey({ ...contact, work: ["2–4 people"] }).team_improve,
+      validateSurvey({ ...contact, work: ["2–5 people"] }).team_improve,
     ).toBe("Please answer this question.");
     expect(
       validateSurvey({ ...contact, improve: ["   "] }).improve,
@@ -128,7 +129,7 @@ describe("community survey submission rules", () => {
       validateSurvey({ ...contact, city: ["x".repeat(251)] }).city,
     ).toBeTruthy();
   });
-  it("allows up to three listed community choices", () => {
+  it("allows any number of listed community choices", () => {
     expect(
       validateSurvey({
         ...contact,
@@ -136,22 +137,18 @@ describe("community survey submission rules", () => {
           "See how other people use bb",
           "Get help when I'm stuck",
           "Build things with other bb users",
+          "Meet other bb users, online or in person",
         ],
       }),
     ).toEqual({});
     for (const community of [
       ["Invented"],
       ["See how other people use bb", "See how other people use bb"],
-      [
-        "See how other people use bb",
-        "Get help when I'm stuck",
-        "Build things with other bb users",
-        "Meet other bb users, online or in person",
-      ],
     ]) {
       expect(validateSurvey({ ...contact, community }).community).toBeTruthy();
     }
   });
+
   it("stores contact and selected Other detail with answers, excluding unrelated fields", () => {
     expect(
       surveyAnswers({
