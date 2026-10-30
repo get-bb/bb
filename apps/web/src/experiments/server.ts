@@ -1,6 +1,7 @@
 import {
   EXPERIMENT_KEYS,
   EXPERIMENT_PATHS,
+  EXPERIMENT_VARIANTS,
   parseForcedFlags,
   type ExperimentBootstrap,
 } from "./flags";
@@ -249,8 +250,15 @@ export async function resolveExperiments(
   if (request.method !== "GET" || !EXPERIMENT_PATHS.has(url.pathname)) {
     return null;
   }
-  const forced = parseForcedFlags(url.searchParams);
-  const preview = forced !== null;
+  // Review build only: every experiment defaults to its new version, and
+  // ?ph_flag= overrides one at a time. Never merged.
+  const forced: Record<string, string> = {
+    ...Object.fromEntries(
+      EXPERIMENT_KEYS.map((key) => [key, EXPERIMENT_VARIANTS[key][0]]),
+    ),
+    ...(parseForcedFlags(url.searchParams) ?? {}),
+  };
+  const preview = true;
   if (!config.postHogKey) {
     return preview
       ? {

@@ -6,6 +6,8 @@ import {
 } from "@tanstack/react-router";
 import { useEffect } from "react";
 
+import { ReviewPanel } from "../experiments/review-panel";
+import "../experiments/review-panel.css";
 import { experimentsBeforeLoad } from "../experiments/use-experiment";
 import { readVisitIds } from "../landing/analytics";
 import { carryUtmToDownloadLinks } from "../landing/download-utm";
@@ -89,6 +91,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         {children}
+        <ReviewPanel />
         <Scripts />
       </body>
     </html>
