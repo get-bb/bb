@@ -3,12 +3,18 @@ import {
   defaultStreamHandler,
 } from "@tanstack/react-start/server";
 
+import { NO_EXPERIMENTS, type ExperimentBootstrap } from "./experiments/flags";
+import {
+  resolveExperiments,
+  withExperimentHeaders,
+} from "./experiments/server";
 import {
   marketplaceHtmlCacheControl,
   marketplaceResponseStatus,
 } from "./marketplace/marketplace-response-status.js";
+import { getEnv } from "./server/env";
 
-const fetch = createStartHandler(async (context) => {
+const handleRequest = createStartHandler(async (context) => {
   const pathname = new URL(context.request.url).pathname;
   const status = marketplaceResponseStatus(
     pathname,
@@ -33,4 +39,27 @@ const fetch = createStartHandler(async (context) => {
     : updatedResponse;
 });
 
-export default { fetch };
+export default {
+  async fetch(request: Request): Promise<Response> {
+    const resolution = await resolveExperiments(request, {
+      postHogKey: import.meta.env.VITE_POSTHOG_KEY,
+      postHogHost:
+        import.meta.env.VITE_POSTHOG_HOST ?? "https://us.i.posthog.com",
+      baseDomain: getEnv().BASE_DOMAIN,
+      fetch: (input, init) => fetch(input, init),
+      log: (entry) => console.log(JSON.stringify(entry)),
+    });
+    const response = await handleRequest(request, {
+      context: { experiments: resolution?.bootstrap ?? NO_EXPERIMENTS },
+    });
+    return resolution === null
+      ? response
+      : withExperimentHeaders(response, resolution);
+  },
+};
+
+declare module "@tanstack/react-start" {
+  interface Register {
+    server: { requestContext: { experiments: ExperimentBootstrap } };
+  }
+}
