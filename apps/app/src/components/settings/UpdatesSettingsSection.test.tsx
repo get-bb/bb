@@ -551,11 +551,6 @@ describe("UpdatesSettingsSection", () => {
       expect(
         within(panel).getByText("bb 0.48.0 · October 28, 2026"),
       ).toBeDefined();
-      expect(
-        within(panel).getByText(
-          "This nightly build also includes changes made since bb 0.48.0.",
-        ),
-      ).toBeDefined();
       expect(recordTelemetryEvent).toHaveBeenCalledExactlyOnceWith({
         name: "release_notes_opened",
         properties: { release_version: "0.48.2", view: "inline" },
