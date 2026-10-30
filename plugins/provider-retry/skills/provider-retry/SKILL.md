@@ -29,8 +29,8 @@ Before scheduling a retry, the plugin asks the plugin that sent the failed
 message, when that plugin answers the `provider-retry.v1.consent` RPC. A
 decline skips the retry, and `explain` reports `declined-by-sender` with the
 plugin's reason. A failing or slow answer counts as consent. Automations
-declines retries of scheduled runs of recurring automations, because those run
-again on their own schedule.
+declines retries of turns that scheduled runs of recurring automations
+started, because those run again on their own schedule.
 
 A turn gets at most four automatic retries. The `maximumWait` setting
 (`6 hours` by default, or `24 hours` or `No limit`) skips a subscription-limit

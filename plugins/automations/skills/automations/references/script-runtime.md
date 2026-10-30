@@ -87,10 +87,10 @@ a `[bb] warning:` line. A later `bb` call then fails normally.
   later than the next scheduled run. After two retries, a failing automation
   waits for its next scheduled run. A failing run never pauses the automation;
   its latest error stays on the automation until a run succeeds.
-- Provider retry does not re-run a failed turn from a scheduled run of a
-  recurring automation, because the automation runs again on its own. It still
-  retries turns from one-off automations and manual runs, which nothing else
-  re-runs.
+- Provider retry does not re-run a failed turn that a scheduled run of a
+  recurring automation started, because the automation runs again on its own.
+  It still retries one-off automations, manual runs, and turns the automation
+  prompt joined while another turn was running in the target thread.
 - A successful or skipped run clears the failure count. A resume command also
   clears the count.
 - An unavailable target thread disables every enabled automation that targets

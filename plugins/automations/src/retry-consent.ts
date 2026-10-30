@@ -31,10 +31,31 @@ export const retryConsentContract = defineRpcContract({
   },
 });
 
-export function answerRetryConsent(
+const failedTurnRequestSchema = z.object({
+  requestId: z.string(),
+  target: z.object({
+    kind: z.enum(["thread-start", "new-turn", "auto", "steer"]),
+  }),
+});
+
+export type LatestTurnRequestReader = (threadId: string) => Promise<unknown>;
+
+export async function answerRetryConsent(
   db: Db,
-  input: { threadId: string },
-): RetryConsent {
+  readLatestTurnRequest: LatestTurnRequestReader,
+  input: { threadId: string; requestId: string },
+): Promise<RetryConsent> {
+  const request = failedTurnRequestSchema.safeParse(
+    await readLatestTurnRequest(input.threadId),
+  );
+  if (
+    !request.success ||
+    request.data.requestId !== input.requestId ||
+    (request.data.target.kind !== "new-turn" &&
+      request.data.target.kind !== "thread-start")
+  ) {
+    return { kind: "allow" };
+  }
   const run = getLatestAutomationRunForThread(db, input.threadId);
   if (run === null || run.trigger !== "schedule") return { kind: "allow" };
   const automation = getAutomation(db, run.automationId);

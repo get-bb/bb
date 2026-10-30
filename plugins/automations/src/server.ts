@@ -42,7 +42,22 @@ export default async function plugin(bb: BbPluginApi) {
   bb.rpc.register(automationRpcContract, createRpcHandlers(service));
   bb.rpc.register(
     retryConsentContract,
-    { [retryConsentMethod]: (input) => answerRetryConsent(db, input) },
+    {
+      [retryConsentMethod]: (input) =>
+        answerRetryConsent(
+          db,
+          async (threadId) =>
+            (
+              await bb.sdk.threads.events.list({
+                threadId,
+                types: ["client/turn/requested"],
+                order: "desc",
+                limit: "1",
+              })
+            )[0]?.data,
+          input,
+        ),
+    },
     {
       experimental_discoverable: true,
       experimental_description:
