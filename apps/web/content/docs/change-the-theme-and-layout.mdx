@@ -1,0 +1,158 @@
+---
+title: Change the theme and layout
+description: Pick light or dark mode and a color palette in Settings → Appearance, or write your own theme. Choose between the icon rail and labelled rows for the sidebar, and show, hide or split the panels around a thread.
+type: how-to
+sources:
+  - apps/app/src/views/SettingsView.tsx
+  - apps/app/src/components/settings/SidebarNavigationProviderSetting.tsx
+  - apps/app/src/components/settings/SidebarFooterSettings.tsx
+  - apps/app/src/components/settings/SplitDimmingSetting.tsx
+  - plugins/navigation/**
+  - apps/cli/src/commands/theme.ts
+  - packages/domain/src/app-theme.ts
+since: 0.47.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+Use this when you want bb to look different: a darker or lighter theme, other colors or fonts, a labelled sidebar instead of icons, or more room for the conversation.
+
+Everything on this page is in **Settings → Appearance**, except the panel shortcuts at the end.
+
+## Switch between light and dark
+
+Open **Settings → Appearance → Theme** and choose **System**, **Light** or **Dark**. **System** follows your computer.
+
+This choice belongs to the device you set it on, so your phone and your laptop can differ.
+
+## Change the colors
+
+Open **Settings → Appearance → Palette**. Hover over a palette to preview it, and click to keep it. The built-in palettes are Default, Nord, Dracula, Solarized, Gruvbox and Catppuccin.
+
+A palette applies to every window and device connected to your bb, and it also colors code in diffs and file previews.
+
+From a terminal:
+
+```sh
+bb theme list
+bb theme set nord
+bb theme reset
+```
+
+**Favicon color**, under Palette, tints the browser tab icon so you can tell several bb windows apart.
+
+## Make your own theme
+
+A theme is one CSS file that sets bb's color and font variables, for light and dark mode.
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+1. Open **Settings → Appearance → Palette** and choose **Create**.
+2. A new thread opens with a prompt that asks an agent to make the theme. Send it, and tell the agent the name and the look you want.
+3. When the agent is done, pick your theme from **Palette**.
+
+</Tab>
+<Tab value="CLI">
+
+1. Print the folder where themes live:
+
+   ```sh
+   bb theme dir
+   ```
+
+2. Create `<that folder>/<name>/theme.css`. Light values go in a `:root, .light` block and dark values in a `.dark` block:
+
+   ```css title="theme.css"
+   :root,
+   .light {
+     --canvas: oklch(0.98 0.01 90);
+     --ink: oklch(0.25 0.02 260);
+     --primary: oklch(0.55 0.15 250);
+     --font-sans: "Helvetica Neue", system-ui, sans-serif;
+     --font-mono: "SF Mono", Menlo, monospace;
+   }
+   .dark {
+     --canvas: oklch(0.2 0.01 260);
+     --ink: oklch(0.92 0.01 90);
+     --primary: oklch(0.7 0.13 250);
+   }
+   ```
+
+3. Apply it:
+
+   ```sh
+   bb theme set <name>
+   ```
+
+</Tab>
+</Tabs>
+
+`--canvas` (the background) and `--ink` (the text) drive almost every surface; most other colors are mixed from them. `--font-sans`, `--font-mono` and `--font-terminal` change the app, code and terminal fonts. To change a theme, edit its `theme.css` and run `bb theme set <name>` again.
+
+Theme variables cover colors, fonts, corner rounding and shadows. There are none for sizes or layout, such as the width of the conversation column or the terminal font size.
+
+Plugins can add palettes too. They appear in the **Palette** list with the plugin's id next to them.
+
+## Choose labelled rows or the icon rail
+
+bb's sidebar navigation (New thread, Plugins, Skills, Automations and plugin pages) comes in two layouts:
+
+| Layout | What you get |
+| --- | --- |
+| **Rail** | A column of icons on the left edge of the sidebar. Settings sits at the bottom of the rail, and collapsing the sidebar leaves the rail visible. This is the default |
+| **Top list** | Labelled rows above your thread list. Settings moves to the sidebar footer, and collapsing the sidebar hides all of it |
+
+Choose one in **Settings → Appearance → Navigation**.
+
+<Screenshot
+  src="/docs-images/change-the-theme-and-layout/navigation"
+  alt="Settings → Appearance has Theme, Palette, Favicon color and Fade inactive splits, and under Interface the Navigation setting that picks the sidebar layout."
+  width={760}
+  height={520}
+/>
+
+**Automatic** uses a navigation plugin if you installed one, otherwise the rail.
+
+From a terminal:
+
+```sh
+bb settings ui set sidebar.navigationProvider navigation/top-list
+bb settings ui reset sidebar.navigationProvider
+```
+
+To reorder or hide items, right-click one in the rail or the top list and choose **Hide from rail** (**Hide from sidebar** in the top list) or **Customize navigation**. Hidden items stay available under **More**.
+
+## Customize the rest of the sidebar
+
+Also in **Settings → Appearance**, under **Interface**:
+
+- **Sidebar thread list** picks the plugin that draws your threads. The built-in one is Thread list; installing another thread list plugin switches to it.
+- **Sidebar footer** shows the footer buttons. Drag to reorder them, and use the switches to hide them. You can also right-click a footer button.
+
+How the thread list itself is grouped and sorted is covered in Organize and archive threads.
+
+## Show, hide and split panels
+
+| To | Do this | Default keys (Mac / Windows and Linux) |
+| --- | --- | --- |
+| Hide or show the sidebar | **Toggle sidebar** | ⌘\ / Ctrl+\ |
+| Hide or show the right panel | **Toggle panel** | ⌘J / Ctrl+J |
+| Open a thread next to the current one | Right-click the thread in the sidebar and choose **Open in split**, or Cmd/Ctrl-click it | |
+| Give one split the whole window, and back | **Toggle focused chat pane size** | ⌘⇧E / Ctrl+Shift+E |
+| Close the focused split | **Close focused chat pane** | ⌘⇧X / Ctrl+Shift+X |
+| Expand the right panel over the conversation | **Toggle panel full screen** | Not assigned |
+
+Change any of these keys in **Settings → Keyboard**; see Change keyboard shortcuts. Splits you aren't using fade out; to keep them at full strength, turn off **Settings → Appearance → Fade inactive splits**.
+
+## Check it worked
+
+- The app changes as soon as you pick a theme, palette or navigation. There is nothing to save or restart.
+- `bb theme list` marks the active palette.
+- `bb settings ui get sidebar.navigationProvider` prints the navigation you chose.
+
+## Related troubleshooting
+
+- **Your theme isn't in the Palette list:** the folder must be directly inside the folder `bb theme dir` prints and hold a file named exactly `theme.css`. A name may use letters, digits, `.`, `_` and `-`, and can't be the name of a built-in palette.
+- **A web font doesn't load:** an `@import` for the font must be the very first line of `theme.css`, and the font stack must end with a generic family such as `sans-serif`.
+- **The sidebar navigation is empty or missing:** the built-in Navigation plugin may be turned off. Turn it on with `bb plugin enable navigation`, then choose a layout again in **Settings → Appearance → Navigation**.

@@ -1,0 +1,91 @@
+---
+title: Agent context
+description: An agent in bb works from its own setup (CLAUDE.md, its skills and its MCP servers) plus what bb adds on top, such as a short introduction, your AGENTS.md files, skills and plugin tools. You can turn off each addition.
+type: concept
+sources:
+  - apps/server/src/services/threads/thread-runtime-config.ts
+  - apps/server/src/services/threads/workspace-agent-instructions.ts
+  - plugins/bb-guide/server.ts
+  - plugins/bb-guide/introduction.ts
+  - plugins/custom-instructions/server.ts
+  - plugins/connect/src/plugin.ts
+since: 0.43.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+When a thread starts, its agent gets context from two places: its own setup, which it reads the same way it would outside bb, and what bb adds. Knowing which is which tells you where to put an instruction and how to turn something off.
+
+<Screenshot
+  src="/docs-images/agent-context/agent-context"
+  alt="An agent session combines the agent's own setup, its instruction files, skills and MCP servers, with what bb adds: instructions, skills, plugin tools and the bb command."
+  width={720}
+  height={400}
+/>
+
+## What the agent brings itself
+
+bb starts Claude Code, Codex and the other agents on your machine with their normal configuration, so they read their own files as usual:
+
+- **Instruction files:** Claude Code reads `CLAUDE.md`, and recent versions also read `AGENTS.md` when there is no `CLAUDE.md`. Codex reads `AGENTS.md` at the repository root.
+- **Skills** from the agent's own folders, such as `~/.claude/skills` or `.agents/skills`.
+- **MCP servers** from the agent's own configuration.
+
+bb doesn't change these files. To change them, edit them as you would without bb.
+
+## What bb adds
+
+bb appends its own instructions to the agent's system prompt, in this order. Each part starts with a line naming where it came from.
+
+1. **Instructions from plugins.** These include:
+   - **bb's introduction**, from the BB guide plugin: the agent is working in bb, the `bb` command is available, and how to link threads and files.
+   - **Custom instructions:** text you save in **Settings → Custom instructions**, up to 4,096 characters.
+   - **Remote access**, from bb connect: while you use bb remotely, how to share a local server with you.
+   - Anything other plugins you enable add. A plugin's instructions are cut off at 4,096 characters.
+2. **`~/.bb/AGENTS.md`:** your own instructions for every thread in every project.
+3. **`.bb/AGENTS.md` in the workspace:** instructions for every thread in that project. Commit it so new worktrees include it.
+
+bb reads only those two `AGENTS.md` paths, and ignores an empty file. It doesn't look in parent folders. These go to every agent, so one file covers Claude Code, Codex and the rest.
+
+bb also gives the agent:
+
+- **Skills** from `~/.bb/skills`, the project's `.bb/skills` and enabled plugins. The BB guide plugin adds four: `bb-cli`, `bb-plugin-authoring`, `skill-creator` and `submit-a-plugin`. They appear in the `/` menu with the agent's own skills.
+- **Tools** that enabled plugins register. Claude Code and other ACP agents get them through an MCP server named `bb-bridge`, so they show as `mcp__bb-bridge__<tool>`. Codex and Pi get them directly.
+- **The `bb` command** on the agent's PATH, so it can read and manage bb.
+
+## When changes take effect
+
+A running agent session keeps the instructions and tools it started with. A change applies when the session next starts: in a new thread, or after the thread's agent stops and you send another message.
+
+To restart one thread's agent now, run `bb thread stop <thread-id>`, then send it a message. Its history stays.
+
+To see how much of the context window each part takes, run `bb thread context <thread-id>`. The breakdown is available for agents that report it.
+
+## Turn parts off
+
+| To stop sending | Do this |
+| --- | --- |
+| bb's introduction | Turn off **Settings → BB guide → Send BB introduction**, or `bb plugin config bb-guide set introduction false` |
+| bb's four skills | Turn off **Settings → BB guide → Enable bundled skills**, or one skill's switch below it. `bb plugin config bb-guide set skills false` |
+| Your custom instructions | Clear **Settings → Custom instructions**, or `bb instructions clear` |
+| The remote access instructions | Turn off **Settings → bb connect → Tell agents about remote access** |
+| Everything one plugin adds | Disable the plugin under **Settings → Installed plugins**, or `bb plugin disable <plugin-id>` |
+| Your `AGENTS.md` instructions | Delete or empty `~/.bb/AGENTS.md` or `.bb/AGENTS.md` |
+
+Turning off the introduction or the skills doesn't remove the `bb` command; the agent can still run it if it knows to.
+
+## When to use which
+
+| If you want | Use |
+| --- | --- |
+| A rule for every thread, written in the app | **Settings → Custom instructions** |
+| A rule for every thread, kept in a file you can version | `~/.bb/AGENTS.md` |
+| A rule for one project, shared with your team | `.bb/AGENTS.md` in the repository, or the agent's own `AGENTS.md` or `CLAUDE.md` |
+| Steps the agent loads only when needed | A skill |
+| A new capability, such as calling an API | A plugin tool or a plugin `bb` command |
+
+## Next steps
+
+- Add and share skills
+- Connect MCP servers
+- [Quickstart: build your first plugin](/docs/quickstart-build-a-plugin)
