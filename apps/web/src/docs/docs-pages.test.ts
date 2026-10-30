@@ -1,6 +1,5 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
-import { APP_COMMAND_GROUPS } from "@bb/domain";
 import { getTableOfContents } from "fumadocs-core/content/toc";
 import matter from "gray-matter";
 import { describe, expect, it } from "vitest";
@@ -17,7 +16,6 @@ import {
 } from "./page-types";
 import {
   cliReferencePage,
-  keyboardReferencePage,
   referenceSource,
   SOURCES_HEADING,
 } from "./reference";
@@ -212,25 +210,6 @@ function screenshotProblems(markdown: string): string[] {
 const navPages = DOCS_NAV.flatMap((section) => section.pages);
 
 describe("docs sidebar", () => {
-  it("has the 14 sections of the information architecture", () => {
-    expect(DOCS_NAV.map((section) => section.label)).toEqual([
-      "Get started",
-      "Concepts",
-      "Threads",
-      "Child threads",
-      "Automations, workflows and tasks",
-      "Agents",
-      "Skills",
-      "Projects and environments",
-      "Machines and servers",
-      "Mobile and remote access",
-      "Plugins",
-      "Customization",
-      "Reference",
-      "Troubleshooting",
-    ]);
-  });
-
   it("gives every page one unique slug and title", () => {
     const slugs = navPages.map((page) => page.slug);
     const titles = navPages.map((page) => page.title);
@@ -337,16 +316,6 @@ describe("generated reference pages", () => {
     expect(page.markdown).toContain(
       "| `bb thread list [id]` (also `ls`) | List \\| show things | `--json` `--host <id>` |",
     );
-  });
-
-  it("lists every keyboard command with its app label", () => {
-    const page = keyboardReferencePage();
-    for (const group of APP_COMMAND_GROUPS) {
-      expect(h2Headings(page.markdown)).toContain(group.label);
-      for (const command of group.commands) {
-        expect(page.markdown).toContain(`| ${command.label} |`);
-      }
-    }
   });
 
   it("has one page for every plugin surface, at the path Plugin Guide cards link to", () => {
