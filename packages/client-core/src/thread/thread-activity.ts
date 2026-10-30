@@ -19,25 +19,49 @@ type ThreadStatusShape = Pick<
 
 type ThreadRuntimeShape = Pick<ThreadWithRuntime, "runtime">;
 type ThreadActivityStateShape = Pick<ThreadListEntry, "activity">;
+type ThreadHostWorkShape = ThreadRuntimeShape & ThreadActivityStateShape;
 
 function isRuntimeBusyThread(thread: ThreadRuntimeShape): boolean {
   return isRunningThreadRuntimeDisplayStatus(thread.runtime.displayStatus);
 }
 
-function hasActiveWorkflowActivity(thread: ThreadActivityStateShape): boolean {
-  return thread.activity.activeWorkflowCount > 0;
+function hasActiveWorkflowActivity(thread: ThreadHostWorkShape): boolean {
+  return (
+    !thread.runtime.hostUnavailable && thread.activity.activeWorkflowCount > 0
+  );
 }
 
 function hasActiveBackgroundAgentActivity(
-  thread: ThreadActivityStateShape,
+  thread: ThreadHostWorkShape,
 ): boolean {
-  return thread.activity.activeBackgroundAgentCount > 0;
+  return (
+    !thread.runtime.hostUnavailable &&
+    thread.activity.activeBackgroundAgentCount > 0
+  );
 }
 
 function hasActiveBackgroundCommandActivity(
-  thread: ThreadActivityStateShape,
+  thread: ThreadHostWorkShape,
 ): boolean {
-  return thread.activity.activeBackgroundCommandCount > 0;
+  return (
+    !thread.runtime.hostUnavailable &&
+    thread.activity.activeBackgroundCommandCount > 0
+  );
+}
+
+function hasBackgroundTaskActivity(thread: ThreadActivityStateShape): boolean {
+  return (
+    thread.activity.activeWorkflowCount > 0 ||
+    thread.activity.activeBackgroundAgentCount > 0 ||
+    thread.activity.activeBackgroundCommandCount > 0
+  );
+}
+
+function isWaitingForHostThread(thread: ThreadHostWorkShape): boolean {
+  return (
+    thread.runtime.displayStatus === "waiting-for-host" ||
+    (thread.runtime.hostUnavailable && hasBackgroundTaskActivity(thread))
+  );
 }
 
 function hasActivePlanModeActivity(thread: ThreadActivityStateShape): boolean {
@@ -48,9 +72,7 @@ function hasActiveGoalActivity(thread: ThreadActivityStateShape): boolean {
   return thread.activity.activeGoalCount > 0;
 }
 
-function isBusyThread(
-  thread: ThreadRuntimeShape & ThreadActivityStateShape,
-): boolean {
+function isBusyThread(thread: ThreadHostWorkShape): boolean {
   return (
     isRuntimeBusyThread(thread) ||
     hasActiveWorkflowActivity(thread) ||
@@ -71,6 +93,7 @@ export interface ThreadListIndicatorState {
   isGoalActive: boolean;
   isPlanModeActive: boolean;
   isRuntimeActive: boolean;
+  isWaitingForHost: boolean;
   isWorkflowActive: boolean;
   /**
    * Whether the thread has work waiting on its queue. Read straight off the list
@@ -91,6 +114,7 @@ export type ThreadListIndicatorKind =
   | "plan-mode"
   | "goal"
   | "runtime"
+  | "waiting-for-host"
   | "queued-failed"
   | "queued-waiting"
   | "draft"
@@ -110,6 +134,7 @@ const THREAD_LIST_INDICATOR_LABELS: Record<
   "plan-mode": "Plan mode active",
   goal: "Goal active",
   runtime: "Thread working",
+  "waiting-for-host": "Thread waiting for its machine",
   "queued-failed": "Queued message failed to send",
   "queued-waiting": "Thread has a message waiting to send",
   draft: "Thread has unsubmitted draft",
@@ -151,6 +176,7 @@ export function threadListIndicatorStateForThread(
     queuedWork: thread.queuedWork,
     isPlanModeActive: hasActivePlanModeActivity(thread),
     isRuntimeActive: isRuntimeBusyThread(thread),
+    isWaitingForHost: isWaitingForHostThread(thread),
     isWorkflowActive: hasActiveWorkflowActivity(thread),
   };
 }
@@ -171,6 +197,7 @@ export function resolveThreadListIndicator(
   if (state.hasUnreadSuccess) return "unread-success";
   if (state.isBackgroundAgentActive) return "background-agent";
   if (state.isBackgroundCommandActive) return "background-command";
+  if (state.isWaitingForHost) return "waiting-for-host";
   if (state.queuedWork === "waiting") return "queued-waiting";
   if (state.hasUnsubmittedDraft) return "draft";
   return "none";
@@ -181,6 +208,7 @@ export interface CollapsedChildActivity {
   working: boolean;
   hasUnsubmittedDraft: boolean;
   runtimeWorking: boolean;
+  waitingForHost: boolean;
   workflow: boolean;
   backgroundAgent: boolean;
   backgroundCommand: boolean;
@@ -204,6 +232,7 @@ export function getCollapsedChildActivity(
   let working = false;
   let hasUnsubmittedDraft = false;
   let runtimeWorking = false;
+  let waitingForHost = false;
   let workflow = false;
   let backgroundAgent = false;
   let backgroundCommand = false;
@@ -227,6 +256,7 @@ export function getCollapsedChildActivity(
     }
     if (isBusyThread(thread)) working = true;
     if (isRuntimeBusyThread(thread)) runtimeWorking = true;
+    if (isWaitingForHostThread(thread)) waitingForHost = true;
     if (hasActiveWorkflowActivity(thread)) workflow = true;
     if (hasActiveBackgroundAgentActivity(thread)) backgroundAgent = true;
     if (hasActiveBackgroundCommandActivity(thread)) backgroundCommand = true;
@@ -238,6 +268,7 @@ export function getCollapsedChildActivity(
     working,
     hasUnsubmittedDraft,
     runtimeWorking,
+    waitingForHost,
     workflow,
     backgroundAgent,
     backgroundCommand,

@@ -57,6 +57,7 @@ const idleIndicatorState: ThreadListIndicatorState = {
   queuedWork: "none",
   isPlanModeActive: false,
   isRuntimeActive: false,
+  isWaitingForHost: false,
   isWorkflowActive: false,
 };
 
@@ -237,6 +238,53 @@ describe("thread-activity", () => {
       ).toBe("workflow");
     });
 
+    it("shows waiting-for-host where background work would show", () => {
+      const waitingForHost = { ...idleIndicatorState, isWaitingForHost: true };
+
+      expect(resolveThreadListIndicator(waitingForHost)).toBe(
+        "waiting-for-host",
+      );
+      expect(
+        resolveThreadListIndicator({
+          ...waitingForHost,
+          hasUnreadSuccess: true,
+        }),
+      ).toBe("unread-success");
+      expect(
+        resolveThreadListIndicator({ ...waitingForHost, queuedWork: "failed" }),
+      ).toBe("queued-failed");
+      expect(
+        resolveThreadListIndicator({
+          ...waitingForHost,
+          hasUnsubmittedDraft: true,
+        }),
+      ).toBe("waiting-for-host");
+      expect(
+        resolveThreadListIndicator({ ...waitingForHost, isGoalActive: true }),
+      ).toBe("goal");
+      expect(
+        resolveThreadListIndicator({ ...waitingForHost, hasUnreadError: true }),
+      ).toBe("unread-error");
+    });
+
+    it.each([
+      ["isRuntimeActive", "runtime"],
+      ["isWorkflowActive", "workflow"],
+      ["isBackgroundAgentActive", "background-agent"],
+      ["isBackgroundCommandActive", "background-command"],
+    ] as const)(
+      "ranks %s above waiting-for-host, so a roll-up keeps live work",
+      (flag, expectedIndicator) => {
+        expect(
+          resolveThreadListIndicator({
+            ...idleIndicatorState,
+            isWaitingForHost: true,
+            [flag]: true,
+          }),
+        ).toBe(expectedIndicator);
+      },
+    );
+
     it("keeps Plan and Goal independent and applies Plan precedence", () => {
       expect(
         resolveThreadListIndicator({
@@ -384,8 +432,46 @@ describe("thread-activity", () => {
         queuedWork: "waiting",
         isPlanModeActive: false,
         isRuntimeActive: true,
+        isWaitingForHost: false,
         isWorkflowActive: true,
       });
+    });
+
+    it("trades background work for waiting-for-host while the machine is offline", () => {
+      expect(
+        threadListIndicatorStateForThread(
+          makeEntry({
+            activity: {
+              workflows: 1,
+              backgroundAgents: 1,
+              backgroundCommands: 1,
+            },
+            experimental_hostUnavailable: true,
+          }),
+          false,
+        ),
+      ).toMatchObject({
+        isBackgroundAgentActive: false,
+        isBackgroundCommandActive: false,
+        isWaitingForHost: true,
+        isWorkflowActive: false,
+      });
+      expect(
+        threadListIndicatorStateForThread(
+          makeEntry({
+            status: "active",
+            runtimeStatus: "waiting-for-host",
+            experimental_hostUnavailable: true,
+          }),
+          false,
+        ),
+      ).toMatchObject({ isRuntimeActive: false, isWaitingForHost: true });
+      expect(
+        threadListIndicatorStateForThread(
+          makeEntry({ experimental_hostUnavailable: true }),
+          false,
+        ),
+      ).toMatchObject({ isWaitingForHost: false });
     });
   });
 
@@ -398,6 +484,7 @@ describe("thread-activity", () => {
         pending: true,
         working: true,
         runtimeWorking: true,
+        waitingForHost: false,
       });
     });
 
@@ -406,6 +493,7 @@ describe("thread-activity", () => {
         pending: false,
         working: false,
         runtimeWorking: false,
+        waitingForHost: false,
         workflow: false,
         backgroundAgent: false,
         backgroundCommand: false,
@@ -420,6 +508,7 @@ describe("thread-activity", () => {
         pending: false,
         working: false,
         runtimeWorking: false,
+        waitingForHost: false,
         workflow: false,
         backgroundAgent: false,
         backgroundCommand: false,
@@ -435,6 +524,7 @@ describe("thread-activity", () => {
         pending: false,
         working: true,
         runtimeWorking: true,
+        waitingForHost: false,
         workflow: false,
         backgroundAgent: false,
         backgroundCommand: false,
@@ -447,6 +537,7 @@ describe("thread-activity", () => {
         pending: true,
         working: false,
         runtimeWorking: false,
+        waitingForHost: false,
         workflow: false,
         backgroundAgent: false,
         backgroundCommand: false,
@@ -459,6 +550,7 @@ describe("thread-activity", () => {
         pending: false,
         working: false,
         runtimeWorking: false,
+        waitingForHost: false,
         workflow: false,
         backgroundAgent: false,
         backgroundCommand: false,
@@ -471,6 +563,7 @@ describe("thread-activity", () => {
         pending: false,
         working: false,
         runtimeWorking: false,
+        waitingForHost: false,
         workflow: false,
         backgroundAgent: false,
         backgroundCommand: false,
@@ -481,6 +574,44 @@ describe("thread-activity", () => {
       });
     });
 
+    it("flags a child whose machine is offline as waiting, not working", () => {
+      expect(
+        getCollapsedChildActivity([
+          makeChild({
+            activity: { backgroundCommands: 1 },
+            experimental_hostUnavailable: true,
+          }),
+        ]),
+      ).toMatchObject({
+        backgroundCommand: false,
+        waitingForHost: true,
+        working: false,
+      });
+    });
+
+    it("keeps a sibling's live work visible next to an offline child", () => {
+      const activity = getCollapsedChildActivity([
+        makeChild({ id: "thr-online", activity: { backgroundCommands: 1 } }),
+        makeChild({
+          id: "thr-offline",
+          activity: { backgroundCommands: 1 },
+          experimental_hostUnavailable: true,
+        }),
+      ]);
+
+      expect(activity).toMatchObject({
+        backgroundCommand: true,
+        waitingForHost: true,
+      });
+      expect(
+        resolveThreadListIndicator({
+          ...idleIndicatorState,
+          isBackgroundCommandActive: activity.backgroundCommand,
+          isWaitingForHost: activity.waitingForHost,
+        }),
+      ).toBe("background-command");
+    });
+
     it("flags pending and working independently when both are present", () => {
       expect(
         getCollapsedChildActivity([unreadChild, busyChild, pendingChild]),
@@ -488,6 +619,7 @@ describe("thread-activity", () => {
         pending: true,
         working: true,
         runtimeWorking: true,
+        waitingForHost: false,
         workflow: false,
         backgroundAgent: false,
         backgroundCommand: false,
@@ -507,6 +639,7 @@ describe("thread-activity", () => {
         pending: true,
         working: true,
         runtimeWorking: true,
+        waitingForHost: false,
         workflow: false,
         backgroundAgent: false,
         backgroundCommand: false,
@@ -536,6 +669,7 @@ describe("thread-activity", () => {
         pending: false,
         working: true,
         runtimeWorking: true,
+        waitingForHost: false,
         workflow: true,
         backgroundAgent: true,
         backgroundCommand: true,
@@ -556,6 +690,7 @@ describe("thread-activity", () => {
         pending: true,
         working: true,
         runtimeWorking: true,
+        waitingForHost: false,
         workflow: false,
         backgroundAgent: false,
         backgroundCommand: false,
@@ -590,6 +725,7 @@ describe("thread-activity", () => {
           pending: false,
           working: true,
           runtimeWorking: false,
+          waitingForHost: false,
           workflow: false,
           backgroundAgent: false,
           backgroundCommand: false,

@@ -13,6 +13,7 @@ export const threadRuntimeDisplayStatusSchema = z.enum(
 
 export const threadRuntimeStateSchema = z.object({
   displayStatus: threadRuntimeDisplayStatusSchema,
+  hostUnavailable: z.boolean(),
 });
 
 export const threadActivityStateSchema = z.object({

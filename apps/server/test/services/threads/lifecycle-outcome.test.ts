@@ -200,6 +200,7 @@ describe("applyLoggedThreadLifecycleEvent", () => {
           status: "active",
           runtime: {
             displayStatus: "active",
+            hostUnavailable: false,
           },
           activity: NO_ACTIVITY,
           latestAttentionAt: row?.latestAttentionAt,
@@ -221,9 +222,8 @@ describe("applyLoggedThreadLifecycleEvent", () => {
     );
 
     expect(
-      lastThreadListMessage(socket.messages).metadata?.statusChange?.runtime
-        .displayStatus,
-    ).toBe("waiting-for-host");
+      lastThreadListMessage(socket.messages).metadata?.statusChange?.runtime,
+    ).toEqual({ displayStatus: "waiting-for-host", hostUnavailable: true });
   });
 
   it("carries the status-gated plan and goal activity of the post-transition row", () => {

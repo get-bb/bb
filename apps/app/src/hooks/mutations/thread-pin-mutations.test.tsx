@@ -195,7 +195,7 @@ it("rolls back a failed pin under concurrent status and membership writes", asyn
   act(() => {
     const statusChange = {
       status: "active" as const,
-      runtime: { displayStatus: "active" as const },
+      runtime: { displayStatus: "active" as const, hostUnavailable: false },
       activity: entry("t1", null).activity,
       latestAttentionAt: 5,
       updatedAt: 5,
@@ -405,7 +405,7 @@ it("reads the thread back when a pin response is older than concurrent thread st
   act(() => {
     const statusChange = {
       status: "active" as const,
-      runtime: { displayStatus: "active" as const },
+      runtime: { displayStatus: "active" as const, hostUnavailable: false },
       activity: entry("t1", null).activity,
       latestAttentionAt: 5,
       updatedAt: 30,

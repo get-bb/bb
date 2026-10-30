@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import type { DbConnection, DbTransaction } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
 import { hostDaemonSessions } from "../schema.js";
@@ -17,6 +17,7 @@ export interface GetLatestSessionForHostArgs {
 }
 
 export interface ListLatestClosedSessionsForHostsArgs {
+  closedAfter: number;
   hostIds: readonly string[];
 }
 
@@ -142,23 +143,24 @@ export function listLatestClosedSessionsForHosts(
     return [];
   }
 
-  return db
+  const latestByHostId = new Map<string, HostDaemonSessionRow>();
+  for (const session of db
     .select()
     .from(hostDaemonSessions)
     .where(
       and(
+        eq(hostDaemonSessions.status, "closed"),
+        gt(hostDaemonSessions.closedAt, args.closedAfter),
         inArray(hostDaemonSessions.hostId, hostIds),
-        sql`${hostDaemonSessions.id} = (
-          SELECT latest.id
-          FROM host_daemon_sessions AS latest
-          WHERE latest.host_id = ${hostDaemonSessions.hostId}
-            AND latest.status = 'closed'
-          ORDER BY latest.closed_at DESC, latest.id DESC
-          LIMIT 1
-        )`,
       ),
     )
-    .all();
+    .orderBy(desc(hostDaemonSessions.closedAt), desc(hostDaemonSessions.id))
+    .all()) {
+    if (!latestByHostId.has(session.hostId)) {
+      latestByHostId.set(session.hostId, session);
+    }
+  }
+  return [...latestByHostId.values()];
 }
 
 export function getSessionById(

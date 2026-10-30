@@ -107,6 +107,7 @@ function SidebarSectionRowComponent({
     (collapsedSplitIndicator.miniMap !== null ||
       activity.pending ||
       activity.working ||
+      activity.waitingForHost ||
       hiddenThreadsHaveDraft ||
       activity.unread ||
       activity.unreadError ||

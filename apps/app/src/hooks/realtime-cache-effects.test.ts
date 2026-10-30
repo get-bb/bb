@@ -1006,6 +1006,7 @@ describe("createRealtimeCacheEffects", () => {
           latestAttentionAt: 100,
           runtime: {
             displayStatus: "active",
+            hostUnavailable: false,
           },
           status: "active",
           updatedAt: 200,
@@ -2376,6 +2377,7 @@ describe("createRealtimeCacheEffects", () => {
       latestAttentionAt: 100,
       runtime: {
         displayStatus: "active",
+        hostUnavailable: false,
       },
       status: "active",
       updatedAt: 200,
@@ -2548,6 +2550,7 @@ describe("createRealtimeCacheEffects", () => {
           latestAttentionAt: 100,
           runtime: {
             displayStatus: "active",
+            hostUnavailable: false,
           },
           status: "active",
           updatedAt: 200,
@@ -2655,6 +2658,7 @@ describe("createRealtimeCacheEffects", () => {
           latestAttentionAt: 100,
           runtime: {
             displayStatus: "active",
+            hostUnavailable: false,
           },
           status: "active",
           updatedAt: 200,
@@ -2731,7 +2735,7 @@ describe("createRealtimeCacheEffects", () => {
           statusChange: {
             activity: NO_THREAD_ACTIVITY,
             latestAttentionAt: 100,
-            runtime: { displayStatus: "active" },
+            runtime: { displayStatus: "active", hostUnavailable: false },
             status: "active",
             updatedAt: 200 + index,
           },
@@ -3190,7 +3194,7 @@ describe("createRealtimeCacheEffects", () => {
       const idleChange = {
         activity: NO_THREAD_ACTIVITY,
         latestAttentionAt: 300,
-        runtime: { displayStatus: "idle" },
+        runtime: { displayStatus: "idle", hostUnavailable: false },
         status: "idle",
         updatedAt: 300,
       } as const;
@@ -3207,7 +3211,7 @@ describe("createRealtimeCacheEffects", () => {
       expect(queryClient.getQueryData(threadKey)).toEqual({
         ...activeThread,
         latestAttentionAt: 300,
-        runtime: { displayStatus: "idle" },
+        runtime: { displayStatus: "idle", hostUnavailable: false },
         status: "idle",
         updatedAt: 300,
       });
@@ -3226,7 +3230,7 @@ describe("createRealtimeCacheEffects", () => {
           projectId: "project-1",
           statusChange: {
             ...idleChange,
-            runtime: { displayStatus: "active" },
+            runtime: { displayStatus: "active", hostUnavailable: false },
             status: "active",
             updatedAt: 200,
           },
@@ -3274,6 +3278,7 @@ describe("createRealtimeCacheEffects", () => {
             latestAttentionAt: 100,
             runtime: {
               displayStatus: "active",
+              hostUnavailable: false,
             },
             status: "active",
             updatedAt: 200,
@@ -3341,6 +3346,7 @@ describe("createRealtimeCacheEffects", () => {
             latestAttentionAt: 200,
             runtime: {
               displayStatus: "active",
+              hostUnavailable: false,
             },
             status: "active",
             updatedAt: 200,

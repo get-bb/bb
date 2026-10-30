@@ -386,21 +386,21 @@ await sdk.threadSections.create({ name: "Later" });
 await sdk.threads.update({ id: thread.id, sectionId });
 
 // threads: PluginSidebarThread[] — id, projectId, href (put it on the row's
-// anchor; the host routes clicks in place), title, titleFallback,
-// displayTitle, parentThreadId, parentNotifications ("auto" | "stuck" | "off"),
-// lifecycleOwnerThreadId, sourceThreadId, sectionId,
-// originKind, originPluginId, providerId, status (execution status; busy
-// threads sort first in bb's list), runtimeStatus (status refined by host
-// readiness), queuedWork ("none" | "waiting" | "failed"), hasPendingInteraction,
-// activity, isUnread/isPinned/pinnedAt/isArchived/archivedAt, pinSortKey
-// (manual pin order),
-// isHidden (bb's list filters these out; the array keeps them),
-// environment { id, name, branchName, path, isWorktree, providerId,
-// workspaceDisplayKind }, where workspaceDisplayKind is deprecated
-// compatibility data; host { id, name }, createdAt, updatedAt, lastReadAt,
-// latestAttentionAt, and `indicator` (bb's resolved status kind) +
-// `indicatorLabel` (its a11y string). Draw your own glyph for `indicator`;
-// the SDK ships no status component. Treat an unknown indicator, status, or
+// anchor; the host routes clicks in place), title, titleFallback, displayTitle,
+// parentThreadId, parentNotifications ("auto" | "stuck" | "off"),
+// lifecycleOwnerThreadId, sourceThreadId, sectionId, originKind,
+// originPluginId, providerId, status (execution status; busy threads sort first
+// in bb's list), runtimeStatus (status refined by host readiness),
+// experimental_hostUnavailable (the machine is offline, so activity counts may
+// be stale; older hosts omit it), queuedWork ("none" | "waiting" | "failed"),
+// hasPendingInteraction, activity, isUnread/isPinned/pinnedAt/isArchived/
+// archivedAt, pinSortKey (manual pin order), isHidden (bb's list filters these
+// out; the array keeps them), environment { id, name, branchName, path,
+// isWorktree, providerId, workspaceDisplayKind }, where workspaceDisplayKind is
+// deprecated compatibility data; host { id, name }, createdAt, updatedAt,
+// lastReadAt, latestAttentionAt, and `indicator` (bb's resolved status kind) +
+// `indicatorLabel` (its a11y string). Draw your own glyph for `indicator`; the
+// SDK ships no status component. Treat an unknown indicator, status, or
 // runtimeStatus value as its documented fallback — bb adds kinds over time.
 
 // Three more per-row facts are client-local, so they are hooks rather than

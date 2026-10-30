@@ -42,6 +42,7 @@ export function toPluginSidebarThread(
     providerId: entry.providerId,
     status: entry.status,
     runtimeStatus: entry.runtime.displayStatus,
+    experimental_hostUnavailable: entry.runtime.hostUnavailable,
     queuedWork: entry.queuedWork,
     hasPendingInteraction: entry.hasPendingInteraction,
     activity: {

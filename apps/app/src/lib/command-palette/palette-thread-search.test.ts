@@ -49,7 +49,7 @@ function makeThread(
     environmentName: null,
     environmentBranchName: null,
     environmentWorkspaceDisplayKind: "other",
-    runtime: { displayStatus: "idle" },
+    runtime: { displayStatus: "idle", hostUnavailable: false },
     queuedWork: "none",
     ...overrides,
   };

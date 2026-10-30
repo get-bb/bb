@@ -260,6 +260,7 @@ describe("thread runtime display", () => {
       ),
     ).toEqual({
       displayStatus: "active",
+      hostUnavailable: false,
     } satisfies ThreadRuntimeState);
   });
 
@@ -279,6 +280,7 @@ describe("thread runtime display", () => {
       ),
     ).toEqual({
       displayStatus: "waiting-for-host",
+      hostUnavailable: true,
     } satisfies ThreadRuntimeState);
   });
 
@@ -299,6 +301,7 @@ describe("thread runtime display", () => {
       ),
     ).toEqual({
       displayStatus: "active",
+      hostUnavailable: false,
     } satisfies ThreadRuntimeState);
   });
 
@@ -320,6 +323,7 @@ describe("thread runtime display", () => {
       ),
     ).toEqual({
       displayStatus: "active",
+      hostUnavailable: false,
     } satisfies ThreadRuntimeState);
   });
 
@@ -341,6 +345,7 @@ describe("thread runtime display", () => {
       ),
     ).toEqual({
       displayStatus: "waiting-for-host",
+      hostUnavailable: true,
     } satisfies ThreadRuntimeState);
   });
 
@@ -361,6 +366,7 @@ describe("thread runtime display", () => {
       ),
     ).toEqual({
       displayStatus: "waiting-for-host",
+      hostUnavailable: true,
     } satisfies ThreadRuntimeState);
   });
 
@@ -378,6 +384,7 @@ describe("thread runtime display", () => {
       ),
     ).toEqual({
       displayStatus: "idle",
+      hostUnavailable: true,
     } satisfies ThreadRuntimeState);
   });
 
@@ -395,7 +402,113 @@ describe("thread runtime display", () => {
       ),
     ).toEqual({
       displayStatus: "active",
+      hostUnavailable: false,
     } satisfies ThreadRuntimeState);
+  });
+
+  it.each([
+    { session: "registered", hostUnavailable: false },
+    { session: "closed within the reconnect grace", hostUnavailable: false },
+    { session: "closed past the reconnect grace", hostUnavailable: true },
+    { session: "expired by the server", hostUnavailable: true },
+    { session: "never opened", hostUnavailable: true },
+  ] as const)(
+    "reports an idle thread's host as unavailable=$hostUnavailable when its daemon session is $session",
+    ({ session, hostUnavailable }) => {
+      const { db, hostId, hub } = setup();
+      const now = 60_000;
+      if (session !== "never opened") {
+        const opened = openTestSession({ db, hostId });
+        if (session === "registered") {
+          registerTestDaemon(hub, { hostId, sessionId: opened.id });
+        } else {
+          closeTestSession({
+            closeReason:
+              session === "expired by the server"
+                ? "expired"
+                : "daemon-disconnect",
+            closedAt:
+              session === "closed past the reconnect grace"
+                ? now - HOST_RECONNECT_GRACE_MS - 1
+                : now - 1_000,
+            db,
+            sessionId: opened.id,
+          });
+        }
+      }
+
+      expect(
+        resolveThreadRuntimeState(
+          { db, hub },
+          { environmentHostId: hostId, now, status: "idle" },
+        ),
+      ).toEqual({
+        displayStatus: "idle",
+        hostUnavailable,
+      } satisfies ThreadRuntimeState);
+    },
+  );
+
+  it("reports each list entry's host availability whatever the thread's status", () => {
+    const { db, hostId: connectedHostId, hub } = setup();
+    const now = 60_000;
+    const connectedSession = openTestSession({ db, hostId: connectedHostId });
+    registerTestDaemon(hub, {
+      hostId: connectedHostId,
+      sessionId: connectedSession.id,
+    });
+    const offlineHostId = upsertHost(db, noopNotifier, {
+      id: "host-runtime-display-offline",
+      name: "Offline Host",
+    }).id;
+    closeTestSession({
+      closedAt: now - HOST_RECONNECT_GRACE_MS - 1,
+      db,
+      sessionId: openTestSession({ db, hostId: offlineHostId }).id,
+    });
+    const reconnectingHostId = upsertHost(db, noopNotifier, {
+      id: "host-runtime-display-reconnecting",
+      name: "Reconnecting Host",
+    }).id;
+    closeTestSession({
+      closedAt: now - HOST_RECONNECT_GRACE_MS + 1,
+      db,
+      sessionId: openTestSession({ db, hostId: reconnectingHostId }).id,
+    });
+    const threads = [
+      { hostId: connectedHostId, status: "idle" },
+      { hostId: offlineHostId, status: "idle" },
+      { hostId: offlineHostId, status: "active" },
+      { hostId: reconnectingHostId, status: "idle" },
+      { hostId: reconnectingHostId, status: "active" },
+      { hostId: null, status: "idle" },
+    ] as const;
+
+    const entries = toThreadListEntryResponses(
+      { db, hub, providerRegistry },
+      {
+        now,
+        threads: threads.map(({ hostId, status }) =>
+          createThreadListEntry({
+            environmentHostId: hostId,
+            thread: createThreadWithEnvironment({
+              db,
+              hostId: hostId ?? connectedHostId,
+              status,
+            }).thread,
+          }),
+        ),
+      },
+    );
+
+    expect(entries.map((entry) => entry.runtime)).toEqual([
+      { displayStatus: "idle", hostUnavailable: false },
+      { displayStatus: "idle", hostUnavailable: true },
+      { displayStatus: "waiting-for-host", hostUnavailable: true },
+      { displayStatus: "idle", hostUnavailable: false },
+      { displayStatus: "active", hostUnavailable: false },
+      { displayStatus: "idle", hostUnavailable: false },
+    ] satisfies ThreadRuntimeState[]);
   });
 
   it("carries the producing environment provider into the list entry", () => {
@@ -502,12 +615,15 @@ describe("thread runtime display", () => {
     expect(entries.map((entry) => entry.runtime)).toEqual([
       {
         displayStatus: "active",
+        hostUnavailable: false,
       },
       {
         displayStatus: "active",
+        hostUnavailable: false,
       },
       {
         displayStatus: "active",
+        hostUnavailable: false,
       },
     ] satisfies ThreadRuntimeState[]);
   });

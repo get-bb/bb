@@ -1005,6 +1005,39 @@ describe("thread runtime cache owner", () => {
     ]);
   });
 
+  it("predicts a send to a thread on an offline machine as waiting for it, not running", async () => {
+    const queryClient = createAppQueryClient({
+      defaultOptions: { queries: { gcTime: Infinity, retry: false } },
+      showMutationErrorToasts: false,
+    });
+    queryClient.setQueryData(threadQueryKey("thread-1"), {
+      id: "thread-1",
+      status: "idle",
+      updatedAt: 1,
+      runtime: { displayStatus: "idle", hostUnavailable: true },
+    });
+    queryClient.setQueryData(
+      threadTimelineQueryKey("thread-1"),
+      makeTimelineResponse(),
+    );
+    queryClient.setQueryData(threadQueuedMessagesQueryKey("thread-1"), []);
+
+    const transaction = await beginSendThreadMessageTransaction({
+      queryClient,
+      request: {
+        id: "thread-1",
+        mode: "queue-if-active",
+        input: [{ type: "text", text: "ship the notes", mentions: [] }],
+      },
+    });
+
+    expect(transaction.kind).toBe("accepted-turn");
+    expect(queryClient.getQueryData(threadQueryKey("thread-1"))).toMatchObject({
+      status: "active",
+      runtime: { displayStatus: "waiting-for-host", hostUnavailable: true },
+    });
+  });
+
   it("keeps newer realtime queue and thread state when it arrives before send success", async () => {
     const queryClient = createAppQueryClient({
       defaultOptions: { queries: { gcTime: Infinity, retry: false } },

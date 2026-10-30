@@ -58,6 +58,7 @@ const recentThreads: ThreadListEntry[] = [
       latestAttentionAt: 300,
       runtime: {
         displayStatus: "starting",
+        hostUnavailable: false,
       },
     },
   }),
@@ -72,6 +73,7 @@ const recentThreads: ThreadListEntry[] = [
       latestAttentionAt: 250,
       runtime: {
         displayStatus: "active",
+        hostUnavailable: false,
       },
     },
   }),
@@ -98,6 +100,7 @@ const statusThreads: ThreadListEntry[] = [
       latestAttentionAt: 500,
       runtime: {
         displayStatus: "active",
+        hostUnavailable: false,
       },
     },
   }),
@@ -112,6 +115,7 @@ const statusThreads: ThreadListEntry[] = [
       latestAttentionAt: 450,
       runtime: {
         displayStatus: "waiting-for-host",
+        hostUnavailable: true,
       },
     },
   }),
@@ -125,6 +129,7 @@ const statusThreads: ThreadListEntry[] = [
       latestAttentionAt: 400,
       runtime: {
         displayStatus: "error",
+        hostUnavailable: false,
       },
     },
   }),
@@ -178,7 +183,7 @@ const hierarchyThreads: ThreadListEntry[] = [
       status: "active",
       createdAt: 900,
       latestAttentionAt: 900,
-      runtime: { displayStatus: "active" },
+      runtime: { displayStatus: "active", hostUnavailable: false },
     },
   }),
   makeRecentThread({
@@ -191,7 +196,7 @@ const hierarchyThreads: ThreadListEntry[] = [
       status: "active",
       createdAt: 880,
       latestAttentionAt: 880,
-      runtime: { displayStatus: "active" },
+      runtime: { displayStatus: "active", hostUnavailable: false },
     },
   }),
   makeRecentThread({

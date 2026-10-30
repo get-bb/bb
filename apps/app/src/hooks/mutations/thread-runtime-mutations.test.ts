@@ -407,6 +407,7 @@ describe("thread runtime mutations", () => {
         status: "starting",
         runtime: {
           displayStatus: "provisioning",
+          hostUnavailable: false,
         },
       }),
     );

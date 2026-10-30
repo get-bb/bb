@@ -30,6 +30,7 @@ import {
   type ThreadEventWithMeta,
 } from "@bb/thread-view";
 import type { ThreadResponse } from "@bb/server-contract";
+import { HOST_RECONNECT_GRACE_MS } from "../../constants.js";
 import type { NotificationHub } from "../../ws/hub.js";
 import { isHostDisconnectHidden } from "../hosts/host-disconnect-display.js";
 import { resolveProviderPlanCommand } from "../providers/provider-plan-command.js";
@@ -69,7 +70,7 @@ interface ResolveThreadRuntimeStateFromLatestSessionArgs {
   environmentHostId: string | null;
   hostConnected: boolean;
   latestClosedSession: HostDaemonSessionRow | null;
-  now?: number;
+  now: number;
   status: ThreadStatus;
 }
 
@@ -91,7 +92,7 @@ interface ToThreadListEntryResponseFromLatestSessionArgs {
   activity: ThreadActivityState;
   hostConnected: boolean;
   latestClosedSession: HostDaemonSessionRow | null;
-  now?: number;
+  now: number;
   queuedWork: ThreadQueuedWork;
   thread: ThreadWithPendingInteractionState;
 }
@@ -122,7 +123,10 @@ const EMPTY_THREAD_ACTIVITY: ThreadActivityState = {
   activeWorkflowCount: 0,
 };
 
-function threadStatusRuntimeState(status: ThreadStatus): ThreadRuntimeState {
+function threadStatusRuntimeState(
+  status: ThreadStatus,
+  hostUnavailable: boolean,
+): ThreadRuntimeState {
   switch (status) {
     case "pending":
     case "starting":
@@ -130,7 +134,7 @@ function threadStatusRuntimeState(status: ThreadStatus): ThreadRuntimeState {
     case "active":
     case "stopping":
     case "error":
-      return { displayStatus: status };
+      return { displayStatus: status, hostUnavailable };
   }
 }
 
@@ -177,12 +181,13 @@ export function resolveThreadRuntimeState(
   deps: ThreadRuntimeDisplayDeps,
   args: ResolveThreadRuntimeStateArgs,
 ): ThreadRuntimeState {
-  if (args.status !== "active" || args.environmentHostId === null) {
+  const now = args.now ?? Date.now();
+  if (args.environmentHostId === null) {
     return resolveThreadRuntimeStateFromLatestSession({
-      environmentHostId: args.environmentHostId,
+      environmentHostId: null,
       hostConnected: false,
       latestClosedSession: null,
-      now: args.now,
+      now,
       status: args.status,
     });
   }
@@ -197,8 +202,9 @@ export function resolveThreadRuntimeState(
     latestClosedSession: getLatestClosedSessionForHost(deps, {
       hostConnected,
       hostId: args.environmentHostId,
+      now,
     }),
-    now: args.now,
+    now,
     status: args.status,
   });
 }
@@ -206,34 +212,37 @@ export function resolveThreadRuntimeState(
 function resolveThreadRuntimeStateFromLatestSession(
   args: ResolveThreadRuntimeStateFromLatestSessionArgs,
 ): ThreadRuntimeState {
+  const hostUnavailable =
+    args.environmentHostId !== null &&
+    !args.hostConnected &&
+    !isHostDisconnectHidden(args.latestClosedSession, args.now);
   // A `pending` thread needs no special case: it is never `active`, so it
   // falls straight through to `threadStatusRuntimeState`, which reports it as
   // itself. This used to short-circuit to a separate `held` display status
   // derived from live dispatch holds — the holds are gone and `pending` is the
   // status, so the derivation and its second vocabulary went with them.
   if (args.status !== "active" || args.environmentHostId === null) {
-    return threadStatusRuntimeState(args.status);
+    return threadStatusRuntimeState(args.status, hostUnavailable);
   }
 
-  if (
-    args.hostConnected ||
-    isHostDisconnectHidden(args.latestClosedSession, args.now ?? Date.now())
-  ) {
-    return threadStatusRuntimeState("active");
-  }
-  return { displayStatus: "waiting-for-host" };
+  return {
+    displayStatus: hostUnavailable ? "waiting-for-host" : "active",
+    hostUnavailable,
+  };
 }
 
 function getLatestClosedSessionForHost(
   deps: ThreadRuntimeDisplayDeps,
-  args: { hostConnected: boolean; hostId: string },
+  args: { hostConnected: boolean; hostId: string; now: number },
 ): HostDaemonSessionRow | null {
   if (args.hostConnected) {
     return null;
   }
   return (
-    listLatestClosedSessionsForHosts(deps.db, { hostIds: [args.hostId] })[0] ??
-    null
+    listLatestClosedSessionsForHosts(deps.db, {
+      closedAfter: args.now - HOST_RECONNECT_GRACE_MS,
+      hostIds: [args.hostId],
+    })[0] ?? null
   );
 }
 
@@ -274,6 +283,7 @@ export function buildThreadStatusChangeMetadataByThreadId(
     deps,
     args.threads,
   );
+  const now = Date.now();
   const hostConnected = hasOpenDaemonSessionForHost(
     deps,
     args.environmentHostId,
@@ -281,6 +291,7 @@ export function buildThreadStatusChangeMetadataByThreadId(
   const latestClosedSession = getLatestClosedSessionForHost(deps, {
     hostConnected,
     hostId: args.environmentHostId,
+    now,
   });
   return new Map(
     args.threads.map((thread) => [
@@ -291,6 +302,7 @@ export function buildThreadStatusChangeMetadataByThreadId(
           environmentHostId: args.environmentHostId,
           hostConnected,
           latestClosedSession,
+          now,
           status: thread.status,
         }),
         thread,
@@ -544,27 +556,25 @@ export function toThreadListEntryResponses(
   deps: ThreadPromptBannerDeps,
   args: ToThreadListEntryResponsesArgs,
 ): ThreadListEntry[] {
+  const now = args.now ?? Date.now();
   const activityByThreadId = buildThreadActivityStateByThreadId(
     deps,
     args.threads,
   );
-  const activeHostIds = [
+  const hostIds = [
     ...new Set(
       args.threads.flatMap((thread) =>
-        thread.status === "active" && thread.environmentHostId !== null
-          ? [thread.environmentHostId]
-          : [],
+        thread.environmentHostId === null ? [] : [thread.environmentHostId],
       ),
     ),
   ];
-  const connectedActiveHostIds = new Set(
-    activeHostIds.filter((hostId) => hasOpenDaemonSessionForHost(deps, hostId)),
+  const connectedHostIds = new Set(
+    hostIds.filter((hostId) => hasOpenDaemonSessionForHost(deps, hostId)),
   );
   const latestClosedSessionByHostId = new Map(
     listLatestClosedSessionsForHosts(deps.db, {
-      hostIds: activeHostIds.filter(
-        (hostId) => !connectedActiveHostIds.has(hostId),
-      ),
+      closedAfter: now - HOST_RECONNECT_GRACE_MS,
+      hostIds: hostIds.filter((hostId) => !connectedHostIds.has(hostId)),
     }).map((session) => [session.hostId, session]),
   );
   const queuedWorkByThreadId = buildThreadQueuedWorkByThreadId(
@@ -577,12 +587,12 @@ export function toThreadListEntryResponses(
       queuedWork: queuedWorkByThreadId.get(thread.id) ?? "none",
       hostConnected:
         thread.environmentHostId !== null &&
-        connectedActiveHostIds.has(thread.environmentHostId),
+        connectedHostIds.has(thread.environmentHostId),
       latestClosedSession:
         thread.environmentHostId === null
           ? null
           : (latestClosedSessionByHostId.get(thread.environmentHostId) ?? null),
-      now: args.now,
+      now,
       thread,
     });
     return thread.environmentHostId === null &&

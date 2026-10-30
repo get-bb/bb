@@ -127,7 +127,7 @@ describe("Git plugin server", () => {
       metadata: {
         statusChange: {
           status: "idle" as const,
-          runtime: { displayStatus: "idle" as const },
+          runtime: { displayStatus: "idle" as const, hostUnavailable: false },
           activity: {
             activeBackgroundAgentCount: 0,
             activeBackgroundCommandCount: 0,

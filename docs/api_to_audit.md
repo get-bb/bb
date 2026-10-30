@@ -2696,6 +2696,15 @@ doc covers three September 2026 additions:
 
 Docs: `frontend-registration.md`.
 
+**Offline machines (Oct 2026).** `PluginSidebarThread.experimental_hostUnavailable`
+is true while the thread's machine is offline past the reconnect grace,
+whatever the thread's status. It copies the server's `runtime.hostUnavailable`,
+and the `waiting-for-host` indicator then replaces `workflow`, the background
+kinds and an active turn's `runtime`; a starting or stopping thread keeps
+`runtime`. Older hosts omit it. bb's thread-list plugin reads it;
+the palette, related threads and mobile recents resolve the same state through
+`@bb/client-core`.
+
 **Audit before stabilizing.**
 
 1. **DTO scope.** Confirm every field earns its place and that the copy stays
@@ -2746,6 +2755,11 @@ Docs: `frontend-registration.md`.
    loading/errors, combined views, pagination retries, and archived row
    actions. Audit empty machine sections, machine removal, rename updates, and
    loading behavior for `experimental_hosts`.
+10. **Offline machines.** `activity` keeps the counts bb last heard while
+    `experimental_hostUnavailable` is true: zero would claim the work ended
+    when bb only lost sight of it. Confirm a per-thread boolean is the right
+    shape rather than a status on `host`, and that a list needs no reason
+    (suspended, asleep, crashed).
 
 ## `app.slots.experimental_threadInfoRow` / `app.slots.experimental_threadInfoSection` / `experimental_THREAD_INFO_ROW_GROUPS` / `experimental_THREAD_INFO_SECTION_GROUPS` / `experimental_InfoSection` / `experimental_DetailRow` / `experimental_InfoList` / `experimental_InfoListRow` (`@get-bb/plugin-sdk/app`)
 

@@ -194,6 +194,7 @@ describe("buildChronologicalThreadList", () => {
         status: "active",
         runtime: {
           displayStatus: "active",
+          hostUnavailable: false,
         },
       }),
       createThread({
@@ -209,6 +210,7 @@ describe("buildChronologicalThreadList", () => {
         working: true,
         hasUnsubmittedDraft: false,
         runtimeWorking: true,
+        waitingForHost: false,
         workflow: false,
         backgroundAgent: false,
         backgroundCommand: false,
@@ -225,6 +227,7 @@ describe("buildChronologicalThreadList", () => {
         working: true,
         hasUnsubmittedDraft: false,
         runtimeWorking: true,
+        waitingForHost: false,
         workflow: false,
         backgroundAgent: false,
         backgroundCommand: false,

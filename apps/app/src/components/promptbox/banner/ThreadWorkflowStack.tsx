@@ -20,6 +20,7 @@ import {
 
 interface ThreadWorkflowStackProps {
   workflows: readonly TimelineWorkflowWorkRow[];
+  hostUnavailable: boolean;
   isStackExpanded: boolean;
   onToggleStack: () => void;
   expandedWorkflowIds: ReadonlySet<string>;
@@ -28,6 +29,7 @@ interface ThreadWorkflowStackProps {
 
 export function ThreadWorkflowStack({
   workflows,
+  hostUnavailable,
   isStackExpanded,
   onToggleStack,
   expandedWorkflowIds,
@@ -53,14 +55,17 @@ export function ThreadWorkflowStack({
             ref={focus.triggerRef}
             type="button"
             aria-expanded="false"
-            aria-label={`${running.length} workflows running. Show all`}
+            aria-label={`${running.length} workflows ${hostUnavailable ? "on an offline machine" : "running"}. Show all`}
             onClick={focus.onTriggerClick}
             className={cn(
               PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
               PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
             )}
           >
-            <ThreadWorkflowSummary workflow={front} />
+            <ThreadWorkflowSummary
+              workflow={front}
+              hostUnavailable={hostUnavailable}
+            />
             <PromptStackCountSlot count={running.length} />
           </button>
         </PromptStackCard>
@@ -74,6 +79,7 @@ export function ThreadWorkflowStack({
           <ThreadWorkflowCard
             key={workflow.id}
             workflow={workflow}
+            hostUnavailable={hostUnavailable}
             isExpanded={expandedWorkflowIds.has(workflow.id)}
             onToggle={() => onToggleWorkflow(workflow.id)}
           />

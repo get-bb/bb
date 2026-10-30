@@ -19,6 +19,7 @@ describe("ThreadStatusGlyph", () => {
     ["queued-failed", "Queued message failed to send", "CircleX"],
     ["waiting-for-input", "Thread needs user input", "CircleQuestion"],
     ["queued-waiting", "Thread has a message waiting to send", "Clock"],
+    ["waiting-for-host", "Thread waiting for its machine", "Pause"],
     ["working-draft", "Thread working with unsubmitted draft", "Edit"],
     ["workflow", "Workflow running", "Workflow"],
     ["background-agent", "Background agent running", "UserRoundPlus"],
@@ -35,6 +36,16 @@ describe("ThreadStatusGlyph", () => {
       expect(screen.getByLabelText(label).getAttribute("data-icon")).toBe(icon);
     },
   );
+
+  it("draws waiting-for-host still, without the working shimmer", () => {
+    render(<ThreadStatusGlyph indicator="waiting-for-host" />);
+    const glyph = screen.getByLabelText("Thread waiting for its machine");
+
+    expect(Array.from(glyph.classList)).not.toContain("animate-shine-icon");
+    expect(Array.from(glyph.classList)).not.toContain(
+      SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+    );
+  });
 
   it("shimmers named work and spins the runtime glyph unless motion is reduced", () => {
     const { rerender } = render(<ThreadStatusGlyph indicator="workflow" />);

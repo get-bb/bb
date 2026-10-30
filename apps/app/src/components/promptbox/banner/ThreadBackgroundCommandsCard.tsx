@@ -47,7 +47,10 @@ interface BackgroundActivityDisplay {
   icon: "Terminal" | "UserRoundPlus";
   label: string;
   runningPrefix: string;
+  offlinePrefix: string;
 }
+
+const MACHINE_OFFLINE_SUFFIX = ", machine offline";
 
 function backgroundActivityDisplay(
   row: TimelineWorkflowWorkRow,
@@ -57,12 +60,14 @@ function backgroundActivityDisplay(
       icon: "UserRoundPlus",
       label: "Background agent",
       runningPrefix: "Running background agent:",
+      offlinePrefix: `Background agent${MACHINE_OFFLINE_SUFFIX}:`,
     };
   }
   return {
     icon: "Terminal",
     label: "Background command",
     runningPrefix: "Running background command:",
+    offlinePrefix: `Background command${MACHINE_OFFLINE_SUFFIX}:`,
   };
 }
 
@@ -93,7 +98,7 @@ function backgroundActivityAriaLabel(
     : `${label}: ${row.description}`;
 }
 
-function compactBackgroundActivityLabel(
+function compactBackgroundActivityCount(
   rows: readonly TimelineWorkflowWorkRow[],
 ): string {
   const agentCount = rows.filter((row) =>
@@ -101,35 +106,45 @@ function compactBackgroundActivityLabel(
   ).length;
   const commandCount = rows.length - agentCount;
   if (commandCount === 0) {
-    return `Running ${agentCount} background agent${agentCount === 1 ? "" : "s"}`;
+    return `${agentCount} background agent${agentCount === 1 ? "" : "s"}`;
   }
   if (agentCount === 0) {
-    return `Running ${commandCount} background command${commandCount === 1 ? "" : "s"}`;
+    return `${commandCount} background command${commandCount === 1 ? "" : "s"}`;
   }
-  return `Running ${rows.length} background activities`;
+  return `${rows.length} background activities`;
+}
+
+function compactBackgroundActivityLabel(
+  rows: readonly TimelineWorkflowWorkRow[],
+  hostUnavailable: boolean,
+): string {
+  const count = compactBackgroundActivityCount(rows);
+  return hostUnavailable
+    ? `${count}${MACHINE_OFFLINE_SUFFIX}`
+    : `Running ${count}`;
 }
 
 function BackgroundActivitySummary({
   row,
   showDuration,
+  hostUnavailable,
 }: {
   row: TimelineWorkflowWorkRow;
   showDuration: boolean;
+  hostUnavailable: boolean;
 }) {
   const display = backgroundActivityDisplay(row);
   const model = backgroundActivityModel(row);
+  const state = hostUnavailable ? "pending" : "active";
   return (
     <span className="flex min-w-0 flex-1 items-center gap-1 text-left">
       <span
-        className={cn(
-          "shrink-0 whitespace-nowrap",
-          activityMetaClass("active"),
-        )}
+        className={cn("shrink-0 whitespace-nowrap", activityMetaClass(state))}
       >
-        {display.runningPrefix}
+        {hostUnavailable ? display.offlinePrefix : display.runningPrefix}
       </span>
       <span
-        className={cn("min-w-0 truncate", activityTextClass("active"))}
+        className={cn("min-w-0 truncate", activityTextClass(state))}
         title={row.description}
       >
         {row.description}
@@ -138,17 +153,15 @@ function BackgroundActivitySummary({
         <span
           className={cn(
             "shrink-0 whitespace-nowrap font-mono text-2xs",
-            activityMetaClass("active"),
+            activityMetaClass(state),
           )}
           title={`Model: ${model}`}
         >
           {model}
         </span>
       ) : null}
-      {showDuration ? (
-        <span
-          className={cn("shrink-0 tabular-nums", activityMetaClass("active"))}
-        >
+      {showDuration && !hostUnavailable ? (
+        <span className={cn("shrink-0 tabular-nums", activityMetaClass(state))}>
           <LiveDurationText startedAt={row.startedAt} />
         </span>
       ) : null}
@@ -158,12 +171,14 @@ function BackgroundActivitySummary({
 
 interface ThreadBackgroundCommandsCardProps {
   commands: TimelineWorkflowWorkRow[];
+  hostUnavailable: boolean;
   isExpanded: boolean;
   onToggle: () => void;
 }
 
 export function ThreadBackgroundCommandsCard({
   commands,
+  hostUnavailable,
   isExpanded,
   onToggle,
 }: ThreadBackgroundCommandsCardProps) {
@@ -191,9 +206,14 @@ export function ThreadBackgroundCommandsCard({
   const useCompactSummary = isCompactCard ?? isCompactViewport;
   const canExpand = hasMore || useCompactSummary;
   const expandedRows = useCompactSummary ? commands : others;
-  const compactLabel = compactBackgroundActivityLabel(commands);
+  const compactLabel = compactBackgroundActivityLabel(
+    commands,
+    hostUnavailable,
+  );
   const primaryDisplay = backgroundActivityDisplay(primary);
   const groupLabel = backgroundActivityGroupLabel(commands);
+  const ariaSuffix = hostUnavailable ? MACHINE_OFFLINE_SUFFIX : "";
+  const activityState = hostUnavailable ? "pending" : "active";
 
   return (
     <PromptStackCard
@@ -212,7 +232,10 @@ export function ThreadBackgroundCommandsCard({
             aria-label={
               useCompactSummary
                 ? compactLabel
-                : backgroundActivityAriaLabel(primary, groupLabel)
+                : backgroundActivityAriaLabel(
+                    primary,
+                    `${groupLabel}${ariaSuffix}`,
+                  )
             }
             ref={focus.triggerRef}
             onClick={focus.onTriggerClick}
@@ -226,7 +249,7 @@ export function ThreadBackgroundCommandsCard({
           >
             <Icon
               name={primaryDisplay.icon}
-              className={activityIconClass("active", "size-3.5 shrink-0")}
+              className={activityIconClass(activityState, "size-3.5 shrink-0")}
               aria-hidden="true"
             />
             {useCompactSummary ? (
@@ -238,7 +261,11 @@ export function ThreadBackgroundCommandsCard({
               </>
             ) : (
               <>
-                <BackgroundActivitySummary row={primary} showDuration={false} />
+                <BackgroundActivitySummary
+                  row={primary}
+                  showDuration={false}
+                  hostUnavailable={hostUnavailable}
+                />
                 <PromptStackCountSlot count={commands.length} />
               </>
             )}
@@ -249,14 +276,21 @@ export function ThreadBackgroundCommandsCard({
               "active",
               "flex min-h-8 w-full min-w-0 cursor-default items-center gap-1.5 rounded-none px-3 py-1.5 text-xs text-foreground",
             )}
-            aria-label={backgroundActivityAriaLabel(primary)}
+            aria-label={backgroundActivityAriaLabel(
+              primary,
+              `${primaryDisplay.label}${ariaSuffix}`,
+            )}
           >
             <Icon
               name={primaryDisplay.icon}
-              className={activityIconClass("active", "size-3.5 shrink-0")}
+              className={activityIconClass(activityState, "size-3.5 shrink-0")}
               aria-hidden="true"
             />
-            <BackgroundActivitySummary row={primary} showDuration />
+            <BackgroundActivitySummary
+              row={primary}
+              showDuration
+              hostUnavailable={hostUnavailable}
+            />
           </div>
         )}
       </div>
@@ -307,7 +341,7 @@ export function ThreadBackgroundCommandsCard({
                     </span>
                   ) : null}
                   <span className="shrink-0 whitespace-nowrap tabular-nums text-subtle-foreground">
-                    {isExpanded ? (
+                    {isExpanded && !hostUnavailable ? (
                       <LiveDurationText startedAt={row.startedAt} />
                     ) : null}
                   </span>
