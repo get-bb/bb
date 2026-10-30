@@ -50,8 +50,15 @@ Look at the sidebar the way the asker would.
 | Addition | 3+ different people asked it in the last 90 days; a reader of that page would expect it there; the answer is stable |
 | Fix | The page is wrong or missing a step someone hit. Always done |
 
+The 3-person and 90-day thresholds are provisional: a starting point, not
+researched figures. Expect them to be tuned after the first quarter.
+
 A bug isn't a docs gap. If people ask because something is broken or confusing,
 fix the product. Document it only if no fix is planned.
+
+There is no scheduled cleanup. Remove a page in the same PR that removes the
+feature it documents. A page whose `sources` match no file fails the freshness
+check.
 
 ## Place the page in the sidebar
 
@@ -111,19 +118,60 @@ owner: github-handle
 verified: 2026-10-30
 ```
 
-- `sources`: globs of the code the page documents. CI flags the page when they
-  change after `verified`.
+- `sources`: globs of the code the page documents, relative to the repo root.
+  Keep them narrow: every commit under them makes the page due for a check.
 - `since`: the first release with the behavior, or `unreleased`. Unreleased
   pages show an Unreleased badge until the release process swaps in the
   version.
-- `owner`: the GitHub handle named on PRs that touch the page's sources.
+- `owner`: the GitHub handle the freshness check names.
 - `verified`: the date someone last checked the page against the app. It is
   never shown on the page.
+
+The freshness check (CI job "Docs pages are verified after their sources
+change", `apps/web/scripts/docs-freshness.mjs`) runs on every PR. For each
+page, it compares the date of the last commit touching its `sources` with
+`verified`:
+
+- A later commit adds a warning annotation on the page that names its `owner`.
+  It doesn't fail the PR. Check the page against the app, fix it, and set
+  `verified` to today.
+- A `sources` glob that matches no tracked file fails the job.
+
+## Use MDX components
+
+- **Tabs** for desktop, CLI and phone, or one tab per tool, when the steps
+  differ. Never make a variant page instead.
+
+  ```mdx
+  <Tabs items={["Desktop", "CLI"]}>
+  <Tab value="Desktop">
+
+  1. Open **Settings → Plugins**.
+
+  </Tab>
+  <Tab value="CLI">
+
+  Run `bb plugin list`.
+
+  </Tab>
+  </Tabs>
+  ```
+
+  Consecutive code blocks with a `tab="…"` attribute become tabs too.
+- **Code blocks** show their `title` in the header, otherwise their language:
+  `bash`, `sh` and `shell` show "Terminal", `yaml` shows "YAML", and a block
+  with no language shows "Text". Give file contents a title, such as
+  ` ```bash title=".bb-env-setup.sh" `, and prompts ` ```text title="Prompt" `.
+  Every block has a Copy button.
+- **Images:** `<Shot todo="…" />` while drafting, `<Screenshot … />` once
+  captured. See below.
 
 ## Images
 
 Read [references/images.md](references/images.md) before adding any image. While
 drafting, use `<Shot todo="what to capture" />`; CI fails while any remain.
+The docs-images skill (`.bb/skills/docs-images/SKILL.md`) captures the images
+and replaces each placeholder with a `<Screenshot>`.
 
 ## Keep it accurate
 
@@ -140,7 +188,36 @@ drafting, use `<Shot todo="what to capture" />`; CI fails while any remain.
 ```sh
 pnpm exec turbo run test typecheck build --filter=@bb/web
 pnpm exec turbo run test --filter=@bb/cli
+node apps/web/scripts/docs-freshness.mjs
 ```
+
+The `@bb/web` tests check front-matter, required headings, `<Shot>`
+placeholders, screenshots (light and dark files at 2×, sentence alt text),
+and links: every `/docs/…` and `https://getbb.app/docs/…` link and every
+`#anchor` in hand-written and generated pages must reach an existing page and
+heading.
 
 Then open the page on the dev server and check the sidebar, the Copy page menu,
 search, and the `.md` copy at `/docs/<slug>.md`.
+
+## Keep the home and landing pages unchanged
+
+Docs ship in the same app as the home and landing pages. On every PR that
+changes docs paths (`apps/web/content/docs/`, `apps/web/src/docs/`, the docs
+and `llms` routes, `apps/web/public/docs-images/`, or the docs skills), the CI
+job "Docs leave home and landing pages unchanged" builds the base and the PR
+and fails if the markup, CSS or loaded JS of `/` or a landing page changed.
+If the PR changes them on purpose, add the `allow-landing-change` label and
+re-run the job.
+
+## Roll back a bad deploy
+
+A merge to `main` that changes the site deploys getbb.app. If a deploy breaks
+it, roll back the production worker, `bb-web`, to its previous version:
+
+```sh
+pnpm --filter @bb/web exec wrangler rollback --name bb-web
+```
+
+Then revert or fix the change on `main`; the next deploy replaces the
+rollback.

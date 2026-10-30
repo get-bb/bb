@@ -1,24 +1,23 @@
 import { execFileSync } from "node:child_process";
 
-export const DOCS_ONLY_PATHS = [
+export const DOCS_PATHS = [
   /^apps\/web\/content\/docs\//u,
   /^apps\/web\/src\/docs\//u,
   /^apps\/web\/src\/routes\/docs[.]/u,
   /^apps\/web\/src\/routes\/llms(-full)?\[\.\]txt\.tsx$/u,
+  /^apps\/web\/public\/docs-images\//u,
   /^\.bb\/skills\/docs-writing\//u,
+  /^\.bb\/skills\/docs-images\//u,
 ];
 
-export function isDocsOnlyChange(files) {
-  return (
-    files.length > 0 &&
-    files.every((file) => DOCS_ONLY_PATHS.some((pattern) => pattern.test(file)))
-  );
+export function touchesDocs(files) {
+  return files.some((file) => DOCS_PATHS.some((pattern) => pattern.test(file)));
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const base = process.argv[2];
   if (!base) {
-    console.error("Usage: docs-only-change.mjs <base-sha>");
+    console.error("Usage: docs-change.mjs <base-sha>");
     process.exit(2);
   }
   const files = execFileSync("git", ["diff", "--name-only", `${base}...HEAD`], {
@@ -26,5 +25,5 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   })
     .split("\n")
     .filter(Boolean);
-  console.log(isDocsOnlyChange(files) ? "true" : "false");
+  console.log(touchesDocs(files) ? "true" : "false");
 }

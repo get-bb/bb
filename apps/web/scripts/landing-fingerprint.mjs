@@ -104,7 +104,7 @@ function compare(baseFile, headFile) {
   }
   if (problems.length > 0) {
     console.error(
-      `A docs-only change altered the home or landing pages:\n- ${problems.join("\n- ")}`,
+      `A docs change altered the home or landing pages:\n- ${problems.join("\n- ")}`,
     );
     process.exit(1);
   }

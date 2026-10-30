@@ -16,9 +16,10 @@ import { useInitAnalytics } from "../landing/analytics";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
 import { CopyToast, PROMPT_COPIED, useCopy } from "../guides/guide-blocks";
 import { docs } from "./content";
+import { CodeBlock, Tab, Tabs } from "./docs-blocks";
 import { DocsSearch } from "./docs-search";
 import type { DocsNavSection, DocsPageView, DocsTocEntry } from "./page-view";
-import { Shot } from "./shot";
+import { Screenshot, Shot } from "./shot";
 
 const SITE = "https://getbb.app";
 
@@ -200,17 +201,6 @@ function headingText(children: ReactNode): string {
   return "";
 }
 
-function CodeBlock({ children, ...props }: ComponentProps<"pre">) {
-  return (
-    <div className="gd-code">
-      <div className="gd-code-bar">
-        <span className="gd-code-label">Terminal</span>
-      </div>
-      <pre {...props}>{children}</pre>
-    </div>
-  );
-}
-
 function TableWrap(props: ComponentProps<"table">) {
   return (
     <div className="docs-table">
@@ -225,7 +215,18 @@ function MdxBody({ contentPath }: { contentPath: string }) {
     throw new Error(`Docs page ${contentPath} is not compiled`);
   }
   const Body = entry.body;
-  return <Body components={{ pre: CodeBlock, table: TableWrap, Shot }} />;
+  return (
+    <Body
+      components={{
+        pre: CodeBlock,
+        table: TableWrap,
+        Shot,
+        Screenshot,
+        Tabs,
+        Tab,
+      }}
+    />
+  );
 }
 
 function ReferenceBody({

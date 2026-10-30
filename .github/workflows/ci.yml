@@ -617,6 +617,8 @@ jobs:
     timeout-minutes: 40
     permissions:
       contents: read
+      issues: read
+      pull-requests: read
 
     steps:
       - name: Checkout repository
@@ -624,30 +626,38 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check for a docs-only change
+      - name: Check for a docs change
         id: scope
         env:
           BASE_SHA: ${{ needs.plan.outputs.base }}
-        run: echo "docs_only=$(node apps/web/scripts/docs-only-change.mjs "$BASE_SHA")" >> "$GITHUB_OUTPUT"
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          docs_change="$(node apps/web/scripts/docs-change.mjs "$BASE_SHA")"
+          if [ "$docs_change" = "true" ] && gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/labels" --jq '.[].name' | grep -qx 'allow-landing-change'; then
+            echo "::notice title=Docs isolation skipped::This PR has the allow-landing-change label, so home and landing page changes are allowed."
+            docs_change=false
+          fi
+          echo "docs_change=$docs_change" >> "$GITHUB_OUTPUT"
 
       - name: Setup workspace tools
-        if: ${{ steps.scope.outputs.docs_only == 'true' }}
+        if: ${{ steps.scope.outputs.docs_change == 'true' }}
         uses: ./.github/actions/setup-workspace-tools
         with:
           node-version: ${{ env.PRIMARY_NODE_VERSION }}
           pnpm-version: ${{ env.PNPM_VERSION }}
 
       - name: Install dependencies
-        if: ${{ steps.scope.outputs.docs_only == 'true' }}
+        if: ${{ steps.scope.outputs.docs_change == 'true' }}
         timeout-minutes: 5
         run: bash .github/actions/setup-workspace/install-dependencies.sh
 
       - name: Fingerprint this change
-        if: ${{ steps.scope.outputs.docs_only == 'true' }}
+        if: ${{ steps.scope.outputs.docs_change == 'true' }}
         run: bash apps/web/scripts/capture-landing-fingerprint.sh "$GITHUB_WORKSPACE" 4517 "$RUNNER_TEMP/landing-head.json"
 
       - name: Fingerprint the base
-        if: ${{ steps.scope.outputs.docs_only == 'true' }}
+        if: ${{ steps.scope.outputs.docs_change == 'true' }}
         env:
           BASE_SHA: ${{ needs.plan.outputs.base }}
         run: |
@@ -656,8 +666,40 @@ jobs:
           bash apps/web/scripts/capture-landing-fingerprint.sh "$RUNNER_TEMP/base" 4518 "$RUNNER_TEMP/landing-base.json"
 
       - name: Compare home and landing pages
-        if: ${{ steps.scope.outputs.docs_only == 'true' }}
+        if: ${{ steps.scope.outputs.docs_change == 'true' }}
         run: node apps/web/scripts/landing-fingerprint.mjs compare "$RUNNER_TEMP/landing-base.json" "$RUNNER_TEMP/landing-head.json"
+
+      - name: Explain how to allow a landing change
+        if: ${{ failure() && steps.scope.outputs.docs_change == 'true' }}
+        run: echo "::error title=Docs changed home or landing pages::If this PR changes the home or landing pages on purpose, add the allow-landing-change label and re-run this job."
+
+  docs-freshness:
+    name: Docs pages are verified after their sources change
+    needs: plan
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Setup workspace tools
+        uses: ./.github/actions/setup-workspace-tools
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+
+      - name: Install dependencies
+        timeout-minutes: 5
+        run: bash .github/actions/setup-workspace/install-dependencies.sh --filter @bb/web --ignore-scripts
+
+      - name: Flag docs pages whose sources changed after verified
+        run: node apps/web/scripts/docs-freshness.mjs "$GITHUB_WORKSPACE"
 
   # Tests run on their own runners instead of inside the checks job: the big
   # suites are CPU-bound and previously fought each other (and the builds) for

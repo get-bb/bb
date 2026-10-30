@@ -21,7 +21,25 @@ The placeholder shows as a dashed box in previews. CI fails while any `<Shot`
 remains in `apps/web/content/docs/`, so every placeholder is filled before
 merge.
 
-## Capturing an image
+## Filling a placeholder
+
+The docs-images skill (`.bb/skills/docs-images/SKILL.md`) captures each image
+by these rules and replaces the placeholder with a `<Screenshot>`:
+
+```mdx
+<Screenshot
+  src="/docs-images/<page-slug>/<name>"
+  alt="Settings → Plugins lists each plugin with an enable switch on the right."
+  width={720}
+  height={420}
+/>
+```
+
+The files are `apps/web/public/docs-images/<page-slug>/<name>-light.png` and
+`<name>-dark.png`, each exactly twice `width` by `height`. CI checks that both
+exist at that size and that the alt text is a sentence.
+
+## Capture rules
 
 - Capture real bb UI only, from an isolated dev bb at current `main`. Never use
   a real user's bb or data.
