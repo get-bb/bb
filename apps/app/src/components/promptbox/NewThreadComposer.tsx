@@ -318,9 +318,7 @@ function LiveDraftNewThreadPromptBox({
   const draft = usePromptDraftSnapshot(promptDraft);
   return (
     <WorkSurfaceObservation
-      surface="first_task"
       identity={promptDraft.storageKey}
-      enabled={true}
       hasDraft={!isPromptDraftEmpty(draft)}
       readiness={readiness}
     >
