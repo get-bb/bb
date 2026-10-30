@@ -479,46 +479,7 @@ Control-arrow editing. `pane.focus.previous` / `pane.focus.next` and
 unassigned and act on the focused pane's open thread; Mark read and Pin toggle
 like the matching thread menu item.
 
-| Area      | Command                                      | Default                     | Availability             |
-| --------- | -------------------------------------------- | --------------------------- | ------------------------ |
-| Palette   | Quick palette                                | `Mod+Shift+P`               | All clients              |
-| Window    | Back to app (from Settings, Plugins, Skills) | `Escape`                    | All clients              |
-| Threads   | New thread                                   | `Mod+N` / `Mod+Shift+O`     | Desktop / web            |
-| Threads   | Search threads                               | `Mod+K`                     | All clients              |
-| Threads   | Rename focused thread                        | Unassigned                  | Thread view              |
-| Threads   | Archive focused thread                       | Unassigned                  | Thread view              |
-| Threads   | Mark focused thread read or unread           | Unassigned                  | Thread view              |
-| Threads   | Pin or unpin focused thread                  | Unassigned                  | Thread view              |
-| Threads   | Previous / next thread                       | Surface defaults above      | Desktop / web            |
-| Threads   | Open visible thread 1–9                      | Platform defaults above     | Web / desktop            |
-| Layout    | Previous / next chat pane                    | Unassigned                  | While split              |
-| Layout    | Focus chat pane 1–8                          | Platform defaults above     | Split (web / desktop)    |
-| Layout    | Maximize / restore chat pane                 | `Mod+Shift+E`               | While split              |
-| Layout    | Close focused chat pane                      | `Mod+Shift+X`               | While split              |
-| Layout    | Toggle sidebar                               | `Mod+\`                     | All clients              |
-| Window    | New window                                   | `Mod+Shift+N`               | Desktop                  |
-| Window    | Find in window                               | `Mod+F`                     | Desktop                  |
-| Window    | Settings                                     | `Mod+,`                     | All clients              |
-| Window    | Open data directory                          | Unassigned                  | Desktop                  |
-| Window    | Open local logs                              | Unassigned                  | Desktop                  |
-| Window    | Show all notifications                       | Unassigned                  | All clients              |
-| Plugins   | Turn plugin safe mode on / off               | Unassigned                  | All clients              |
-| Panel     | New tab / close tab / toggle                 | `Mod+T` / `Mod+W` / `Mod+J` | All clients              |
-| Panel     | Reopen closed tab                            | `Mod+Shift+T`               | Desktop                  |
-| Workspace | Quick open file / toggle diff                | `Mod+P` / `Mod+D`           | All clients              |
-| Workspace | Open terminal                                | `Mod+Shift+Enter`           | All clients              |
-| Terminal  | Find in scrollback                           | `Cmd+F` / `Ctrl+Shift+F`    | Terminal focus           |
-| Workspace | Open in preferred app                        | `Mod+O`                     | All clients              |
-| Composer  | Focus composer                               | `Mod+Shift+C`               | All clients              |
-| Composer  | Toggle model picker                          | `Mod+Shift+M`               | All clients              |
-| Composer  | Cycle model forward / backward               | `Alt+M` / `Alt+Shift+M`     | All clients              |
-| Composer  | Cycle provider forward / backward            | `Alt+P` / `Alt+Shift+P`     | All clients              |
-| Composer  | Cycle reasoning effort forward / backward    | `Alt+T` / `Alt+Shift+T`     | All clients              |
-| Browser   | Focus location / reload / find in page       | `Mod+L` / `Mod+R` / `Mod+F` | Desktop embedded browser |
-| Questions | Choose visible answer 1–9                    | `1` … `9`                   | While a question is open |
-| Questions | Next question or submit answers              | `Mod+Enter`                 | While a question is open |
-| Questions | Previous / next question                     | `ArrowLeft` / `ArrowRight`  | Focus in a question card |
-| Questions | Cancel question                              | `Mod+.`                     | While a question is open |
+Every default shortcut is listed at [getbb.app/docs/keyboard-shortcuts](https://getbb.app/docs/keyboard-shortcuts), generated from `packages/domain/src/app-default-keybindings.ts`.
 
 Question shortcuts act on the open question card in the focused pane. They
 skip text fields outside the card, so the composer keeps its own keys;
