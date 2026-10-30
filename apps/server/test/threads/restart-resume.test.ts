@@ -169,13 +169,13 @@ describe("continuing threads after a restart", () => {
       ).toEqual(["bb will send this thread a message to continue."]);
       const [resume] = listQueuedThreadMessages(harness.db, working.thread.id);
       expect(resume?.content).toContain(
-        "bb restarted, or the machine running this thread did, while you were running `pnpm test`. The restart interrupted it; the user did not reject it, even if your history shows it as interrupted or rejected by the user.",
+        "Continue where you left off.",
       );
       expect(resume && waitingOnKind(resume)).toBe("time");
       expect(
         listQueuedThreadMessages(harness.db, delegating.thread.id)[0]?.content,
       ).toContain(
-        "while this background work was running: `Review the migration`",
+        "- Review the migration",
       );
       expect(
         listQueuedThreadMessages(harness.db, serving.thread.id),
@@ -183,7 +183,11 @@ describe("continuing threads after a restart", () => {
 
       await sweepPastResumes(harness);
 
-      expect(turnRequests(harness, working.thread.id)).toHaveLength(2);
+      const requests = turnRequests(harness, working.thread.id);
+      expect(requests).toHaveLength(2);
+      expect(JSON.parse(requests[1]!.data).input).toEqual([
+        { type: "text", text: "Continue where you left off.", mentions: [] },
+      ]);
       expect(
         listQueuedThreadMessages(harness.db, working.thread.id),
       ).toHaveLength(0);
@@ -308,7 +312,7 @@ describe("continuing threads after a restart", () => {
         parentResume?.sendAt ?? 0,
       );
       expect(parentResume?.content).toContain(
-        "while you were running `bb thread wait thr_child`",
+        "Continue where you left off.",
       );
       await new Promise((resolvePromise) => setTimeout(resolvePromise, 2_300));
       expect(

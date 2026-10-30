@@ -8,13 +8,11 @@ import {
   getLatestThreadInterruption,
   getLatestThreadSequence,
   getPendingQueuedSystemNotice,
-  getRunningCommandItemData,
   getThread,
   listLatestTurnRequestSystemMessageKinds,
   listQueuedThreadMessages,
   listRunningThreads,
   listStoredTurnCompletedRowsByTurnIds,
-  listThreadIdsWithActivePendingInteractions,
   listUnclaimedQueuedSystemNotices,
   moveQueuedThreadMessageToFront,
   rescheduleQueuedThreadMessage,
@@ -47,9 +45,6 @@ const ORDERED_BEHIND_RESUME_WAITS = new Set([
   "turn-starting",
 ]);
 
-const runningCommandItemDataSchema = z.object({
-  item: z.object({ command: z.string().min(1) }),
-});
 const turnCompletedDataSchema = z.object({
   status: threadEventTurnStatusSchema,
 });
@@ -66,12 +61,6 @@ interface RestartResumeSubject {
 interface PendingRestartResume {
   row: QueuedThreadMessageRow;
   subject: RestartResumeSubject;
-}
-
-interface ResumeText {
-  check: string;
-  interrupted: string;
-  restarted: string;
 }
 
 type RestartResumeDeps = LoggedPendingInteractionWorkSessionDeps;
@@ -118,62 +107,6 @@ function threadHostId(db: DbConnection, threadId: string): string | null {
     : (getEnvironment(db, environmentId)?.hostId ?? null);
 }
 
-function runningCommand(db: DbQueryConnection, threadId: string): string | null {
-  const data = getRunningCommandItemData(db, { threadId });
-  if (data === null) return null;
-  try {
-    const parsed = runningCommandItemDataSchema.safeParse(JSON.parse(data));
-    return parsed.success ? parsed.data.item.command : null;
-  } catch {
-    return null;
-  }
-}
-
-const RESTARTED = "bb restarted, or the machine running this thread did,";
-
-function turnResumeText(args: {
-  awaitingUser: boolean;
-  command: string | null;
-}): ResumeText {
-  const restarted = RESTARTED;
-  if (args.awaitingUser) {
-    return {
-      restarted,
-      interrupted:
-        args.command === null
-          ? "while you were waiting for the user"
-          : `while you were waiting for the user to approve \`${args.command}\``,
-      check:
-        "The restart cancelled that request; the user did not answer it, even if your history shows it as interrupted or rejected. Ask again if you still need it, and do not decide for them.",
-    };
-  }
-  if (args.command === null) {
-    return {
-      restarted,
-      interrupted: "while you were working",
-      check:
-        "The restart interrupted your turn; the user did not, even if your history shows it as interrupted or rejected by the user. Check whether your last step finished or is still running, then continue the task without repeating work that already happened.",
-    };
-  }
-  return {
-    restarted,
-    interrupted: `while you were running \`${args.command}\``,
-    check:
-      "The restart interrupted it; the user did not reject it, even if your history shows it as interrupted or rejected by the user. It may have completed, partly completed, never run, or still be running, so check its effects, then continue the task, rerunning it only if that is safe.",
-  };
-}
-
-function backgroundResumeText(jobs: readonly string[]): ResumeText {
-  return {
-    restarted: RESTARTED,
-    interrupted: `while this background work was running: ${jobs
-      .map((job) => `\`${job}\``)
-      .join(", ")}`,
-    check:
-      "The restart may have stopped it. Check whether each is still running and how far it got, and restart one only when that is safe; otherwise explain what needs attention.",
-  };
-}
-
 function hasReachedResumeLimit(db: DbQueryConnection, threadId: string): boolean {
   const kinds = listLatestTurnRequestSystemMessageKinds(db, {
     limit: MAX_CONSECUTIVE_RESTART_RESUMES,
@@ -189,9 +122,6 @@ export async function recordRestartResumes(
   deps: RestartResumeDeps,
   args: { now: number; work: readonly RestartWork[] },
 ): Promise<string[]> {
-  const awaitingUser = new Set(
-    listThreadIdsWithActivePendingInteractions(deps.db),
-  );
   const prepared = [];
   const seen = new Set<string>();
   for (const work of args.work) {
@@ -215,11 +145,10 @@ export async function recordRestartResumes(
     }
     const text =
       work.kind === "turn"
-        ? turnResumeText({
-            awaitingUser: awaitingUser.has(thread.id),
-            command: runningCommand(deps.db, thread.id),
-          })
-        : backgroundResumeText(work.jobs);
+        ? renderTemplate("systemMessageRestartResume", {})
+        : renderTemplate("systemMessageRestartResumeBackground", {
+            jobs: work.jobs.map((job) => `- ${job}`).join("\n"),
+          });
     try {
       prepared.push({
         execution: await buildExecutionOptions(
@@ -247,7 +176,7 @@ export async function recordRestartResumes(
       content: [
         {
           type: "text",
-          text: renderTemplate("systemMessageRestartResume", entry.text),
+          text: entry.text,
           mentions: [],
         },
       ],

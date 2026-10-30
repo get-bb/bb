@@ -899,10 +899,10 @@ off. An experiment you set yourself keeps your value either way.
   records one resume message per running thread when the server shuts down,
   and per cut turn or awaited background work (not background shells) when a
   machine's daemon comes back as a new process after a quit, crash, update, or
-  reboot. The message names what the thread was doing, such as the command it
-  was running, and asks the agent to check whether it finished or is still
-  running before continuing. Resumes go a few seconds apart per machine, child
-  threads before their parents, ahead of messages already queued for the
+  reboot. The message says "Continue where you left off." Interrupted awaited
+  background work gets a note explaining which jobs will no longer report back
+  and asking the agent to resume or restart what it still needs. Resumes go a
+  few seconds apart per machine, child threads before their parents, ahead of messages already queued for the
   thread. bb drops a resume if the turn finished after all, the user stopped
   it, or the user sent a newer message first, and stops after three automatic
   resumes in a row. A turn a restart cut off is not announced to retry

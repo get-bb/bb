@@ -365,7 +365,6 @@ export {
   listTodoSnapshotEventRowsForThread,
   listOpenTurnInputAcceptedRowsByThreadIds,
   listOpenBackgroundTaskItemRowsForHost,
-  getRunningCommandItemData,
   getLatestThreadInterruption,
   listLatestTurnRequestSystemMessageKinds,
   listOpenBackgroundTaskItemRowsForThread,
@@ -422,7 +421,6 @@ export type {
 export {
   createPendingInteraction,
   getActivePendingInteractionForThread,
-  listThreadIdsWithActivePendingInteractions,
   hasTurnBoundActivePendingInteractionForThread,
   getPendingInteraction,
   getPendingInteractionByProviderRequest,
