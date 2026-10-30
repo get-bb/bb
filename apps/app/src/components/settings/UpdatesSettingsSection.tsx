@@ -108,6 +108,7 @@ import {
 import { sdk } from "@/lib/sdk";
 import {
   isReleaseVersion,
+  nightlyBaseVersion,
   resolveReleaseUpdateVersion,
   type ReleaseVersionInput,
 } from "./release-notes-model";
@@ -1923,7 +1924,10 @@ function resolveReleaseNotesVersion(input: ReleaseVersionInput): string | null {
     : (input.appUpdate?.current.version ??
       input.systemVersion?.currentVersion ??
       null);
-  return installed !== null && isReleaseVersion(installed) ? installed : null;
+  return installed !== null &&
+    (isReleaseVersion(installed) || nightlyBaseVersion(installed) !== null)
+    ? installed
+    : null;
 }
 
 type ReleaseNotesRow = "server" | "desktop";

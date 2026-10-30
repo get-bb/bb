@@ -11,7 +11,7 @@ import {
   releaseMetaQueryOptions,
   type ChangelogBlock,
 } from "./changelog-preview";
-import { findReleaseEntry } from "./release-notes-model";
+import { findReleaseEntry, nightlyBaseVersion } from "./release-notes-model";
 import { getReleaseNotesUrl, openReleaseNotesOnWeb } from "./release-notes";
 
 const MARKDOWN_IMAGE_ONLY = /^!\[[^\]]*\]\([^)]*\)$/;
@@ -132,6 +132,12 @@ export function ReleaseNotesPanel({ id, version }: ReleaseNotesPanelProps) {
           </p>
         </div>
       )}
+      {entry !== null && nightlyBaseVersion(version) !== null ? (
+        <p className="mb-2 text-2xs">
+          This nightly build also includes changes made since bb {entry.version}
+          .
+        </p>
+      ) : null}
       {entry === null ? (
         <p>
           {changelogQuery.isPending
