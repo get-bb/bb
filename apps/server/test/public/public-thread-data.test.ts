@@ -2935,7 +2935,10 @@ describe("public thread data routes", () => {
           .where(eq(events.threadId, thread.id))
           .all(),
       ).toEqual([]);
-      expect(capture).not.toHaveBeenCalled();
+      expect(capture).toHaveBeenCalledExactlyOnceWith({
+        name: "work_accepted",
+        properties: { work_kind: "message", work_initiator: "agent" },
+      });
     });
   });
 
