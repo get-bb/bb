@@ -40,6 +40,17 @@ export function visibleText(html) {
     .trim();
 }
 
+export function firstDifference(a, b) {
+  let index = 0;
+  while (index < a.length && a[index] === b[index]) index += 1;
+  if (index === a.length && index === b.length) return null;
+  const start = Math.max(0, index - 30);
+  return {
+    ours: a.slice(start, index + 50),
+    theirs: b.slice(start, index + 50),
+  };
+}
+
 function attributeValues(html, pattern) {
   return [...html.matchAll(pattern)].map((match) => match[1]);
 }
@@ -97,6 +108,14 @@ function main() {
   if (sizeProblem) console.warn(sizeProblem.message);
   for (const [name, ok] of checks)
     console.log(`${ok ? "ok  " : "FAIL"} ${name}`);
+  const difference = firstDifference(
+    visibleText(read(oursPath)),
+    visibleText(read(theirsPath)),
+  );
+  if (difference) {
+    console.log(`  ours:   …${difference.ours}…`);
+    console.log(`  Resend: …${difference.theirs}…`);
+  }
   process.exitCode = checks.every(([, ok]) => ok) ? 0 : 1;
 }
 

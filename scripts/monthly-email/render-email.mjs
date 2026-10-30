@@ -14,6 +14,21 @@ export const MAX_HTML_BYTES = 80_000;
 export const WARN_HTML_BYTES = 60_000;
 export const MAX_SUBJECT_CHARS = 70;
 export const MAX_PREVIEW_CHARS = 90;
+export const LOGO = "bb-logo.png";
+const MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
 const USAGE =
   "Usage: node scripts/monthly-email/render-email.mjs issues/<yyyy-mm>.json [--images-base <url> | --hosted issues/<yyyy-mm>/hosted.json] [--out <file>]";
 
@@ -69,6 +84,29 @@ export function themeImages(theme) {
   return theme.image ? [theme.image] : [];
 }
 
+export function issueImages(spec) {
+  return [
+    LOGO,
+    ...new Set(spec.themes.flatMap(themeImages).map((image) => image.src)),
+  ];
+}
+
+export function issueIdentityProblems(spec, name) {
+  const match = /^(\d{4})-(\d{2})/.exec(name);
+  if (!match)
+    return [`The spec file name ${name} must start with <yyyy>-<mm>.`];
+  const [, year, month] = match;
+  const problems = [];
+  if (spec.ym !== `${year}_${month}`) {
+    problems.push(`ym is ${spec.ym} but the file is for ${year}-${month}.`);
+  }
+  const expected = `${MONTHS[Number(month) - 1]} ${year}`;
+  if (spec.month !== expected) {
+    problems.push(`month is ${spec.month} but the file is for ${expected}.`);
+  }
+  return problems;
+}
+
 function themeRows(theme, ym, imagesBase, hosted) {
   const slug = theme.title
     .toLowerCase()
@@ -100,7 +138,7 @@ function themeRows(theme, ym, imagesBase, hosted) {
 
 export function renderEmail(spec, { imagesBase = "", hosted } = {}) {
   const { ym, cta } = spec;
-  if (!spec.logo) throw new Error("The spec needs a logo URL.");
+  const logo = hosted?.[LOGO] ?? imagesBase + LOGO;
   const themes = spec.themes
     .map((theme) => themeRows(theme, ym, imagesBase, hosted))
     .join("\n");
@@ -108,7 +146,7 @@ export function renderEmail(spec, { imagesBase = "", hosted } = {}) {
 <body style="margin:0;padding:0;background:#ffffff;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;"><tr><td align="center" style="padding:32px 16px;">
 <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:100%;max-width:560px;font-family:${FONT};color:${INK};">
-<tr><td style="padding:0 0 28px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td><img src="${escapeHtml(spec.logo)}" width="28" height="28" alt="bb" style="display:block;"></td>
+<tr><td style="padding:0 0 28px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td><img src="${escapeHtml(logo)}" width="28" height="28" alt="bb" style="display:block;"></td>
 <td align="right" style="font-size:13px;color:${DIM};">${escapeHtml(spec.month)}</td></tr></table></td></tr>
 <tr><td><h1 style="margin:0;font-size:34px;line-height:40px;letter-spacing:-0.02em;color:${HEAD};font-weight:700;">What's new in bb</h1>
 <p style="margin:12px 0 0 0;font-size:17px;line-height:27px;color:${INK};">${escapeHtml(spec.opening)}</p></td></tr>
@@ -173,25 +211,23 @@ function parseArgs(argv) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const spec = JSON.parse(readFileSync(args.spec, "utf8"));
-  const inboxProblems = inboxLineProblems(spec);
-  if (inboxProblems.length) throw new Error(inboxProblems.join("\n"));
   const name = basename(args.spec, extname(args.spec));
-  const imagesBase = args.imagesBase ?? `${name}/`;
+  const specProblems = [
+    ...issueIdentityProblems(spec, name),
+    ...inboxLineProblems(spec),
+  ];
+  if (specProblems.length) throw new Error(specProblems.join("\n"));
+  const imagesBase = (args.imagesBase ?? name).replace(/\/*$/, "/");
   const hosted = args.hosted
     ? JSON.parse(readFileSync(args.hosted, "utf8"))
     : undefined;
   if (hosted) {
-    const missing = spec.themes
-      .flatMap(themeImages)
-      .map((image) => image.src)
-      .filter((src) => !hosted[src]);
+    const missing = issueImages(spec).filter((src) => !hosted[src]);
     if (missing.length) {
       throw new Error(`No hosted URL for: ${missing.join(", ")}`);
     }
     const current = await currentHostedNames(dirname(args.hosted));
-    const stale = [
-      ...new Set(spec.themes.flatMap(themeImages).map((image) => image.src)),
-    ].filter((src) => !current.has(src));
+    const stale = issueImages(spec).filter((src) => !current.has(src));
     if (stale.length) {
       throw new Error(
         `The hosted copy of ${stale.join(", ")} doesn't match the local file. Upload it again (1b-upload-changed-images-into-open-draft.js) and run hosted-map.mjs first.`,

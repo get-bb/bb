@@ -26,10 +26,11 @@ export function localGraphics(folder) {
   return byDigest;
 }
 
-export async function currentHostedNames(folder) {
+export async function checkHosted(folder) {
   const path = join(folder, "hosted.json");
-  if (!existsSync(path)) return new Map();
   const current = new Map();
+  const unreachable = new Map();
+  if (!existsSync(path)) return { current, unreachable };
   const local = localGraphics(folder);
   for (const [name, url] of Object.entries(
     JSON.parse(readFileSync(path, "utf8")),
@@ -37,17 +38,23 @@ export async function currentHostedNames(folder) {
     try {
       if (local.get(await fetchDigest(url)) === name) current.set(name, url);
     } catch (error) {
-      console.log(`Treating ${name} as out of date: ${error.message}`);
+      console.log(`Couldn't check ${name}: ${error.message}`);
+      unreachable.set(name, url);
     }
   }
-  return current;
+  return { current, unreachable };
+}
+
+export async function currentHostedNames(folder) {
+  return (await checkHosted(folder)).current;
 }
 
 async function main() {
   const [folder, ...urls] = process.argv.slice(2);
   if (!folder) throw new Error(USAGE);
   const local = localGraphics(folder);
-  const hosted = await currentHostedNames(folder);
+  const { current, unreachable } = await checkHosted(folder);
+  const hosted = new Map([...unreachable, ...current]);
   for (const url of urls) {
     const name = local.get(await fetchDigest(url));
     if (!name) {

@@ -1,10 +1,21 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { basename, dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { currentHostedNames } from "./hosted-map.mjs";
-import { themeImages } from "./render-email.mjs";
+import { issueImages } from "./render-email.mjs";
 
 const SCRIPT_LIMIT = 128000;
+export const MAX_IMAGE_BYTES = 700_000;
+export const IMAGES_PER_RUN = 4;
+export const DESIGNS_PER_RUN = 5;
 const USAGE = [
   "Usage:",
   "  node scripts/monthly-email/browser-scripts.mjs resend issues/<yyyy-mm>.json <out-dir> [--preview-base <url>]",
@@ -34,6 +45,8 @@ const q = await browser.getPage("assets");
 q.goto(${firstFile}).catch(() => {});
 await new Promise((r) => setTimeout(r, 4000));
 ${create ? CREATE_BROADCAST : OPEN_MAIN}
+const hostedCount = () => p.evaluate(() => [...document.querySelectorAll("img")].filter((i) => i.src.includes("resend-attachments")).length);
+const before = await hostedCount();
 await p.evaluate(() => { window.__bbUploads = []; });
 for (const name of NAMES) {
   const b64 = await q.evaluate(async (n) => {
@@ -51,7 +64,7 @@ await p.evaluate(() => {
   input.files = transfer.files;
   input.dispatchEvent(new Event("change", { bubbles: true }));
 });
-await new Promise((r) => setTimeout(r, 9000));
+for (let i = 0; i < 18 && (await hostedCount()) < before + NAMES.length; i++) await new Promise((r) => setTimeout(r, 500));
 return { draft: await p.evaluate(() => location.href), urls: await p.evaluate(() => [...document.querySelectorAll("img")].map((i) => i.src).filter((s) => s.includes("resend-attachments"))) };`;
 }
 
@@ -164,6 +177,34 @@ function checked(name, script) {
   return script;
 }
 
+const STEP_SCRIPT = /^(1|1b|2|2b|3|4|5)-[a-z0-9-]+\.js$/;
+
+function batches(names) {
+  const out = [];
+  for (let i = 0; i < names.length; i += IMAGES_PER_RUN) {
+    out.push(names.slice(i, i + IMAGES_PER_RUN));
+  }
+  return out;
+}
+
+function uploadScripts(scripts, prefix, names, previewBase, create) {
+  batches(names).forEach((batch, index) => {
+    const first = index === 0;
+    const name = first ? prefix : `${prefix}-part${index + 1}-into-open-draft`;
+    scripts[name] = uploadImages(batch, previewBase, create && first);
+  });
+}
+
+export function imageSizeProblems(issue, names) {
+  return names
+    .map((name) => [name, statSync(join(issue, name)).size])
+    .filter(([, bytes]) => bytes > MAX_IMAGE_BYTES)
+    .map(
+      ([name, bytes]) =>
+        `${name} is ${Math.round(bytes / 1000)} KB; one browser message holds about 1 MB of base64, so keep each graphic under ${MAX_IMAGE_BYTES / 1000} KB.`,
+    );
+}
+
 async function writeResendScripts(specPath, outDir, previewBase) {
   const spec = JSON.parse(readFileSync(specPath, "utf8"));
   const issue = join(dirname(specPath), basename(specPath, extname(specPath)));
@@ -183,21 +224,27 @@ async function writeResendScripts(specPath, outDir, previewBase) {
     );
   }
   if (previewBase) {
-    const names = [
-      ...new Set(spec.themes.flatMap(themeImages).map((image) => image.src)),
-    ].sort();
+    const names = issueImages(spec).sort();
+    const tooBig = imageSizeProblems(issue, names);
+    if (tooBig.length) throw new Error(tooBig.join("\n"));
     const current = await currentHostedNames(issue);
     const changed = names.filter((name) => !current.has(name));
-    scripts["1-upload-images"] = uploadImages(names, previewBase, true);
-    if (changed.length) {
-      scripts["1b-upload-changed-images-into-open-draft"] = uploadImages(
-        changed,
-        previewBase,
-        false,
-      );
-    }
+    uploadScripts(scripts, "1-upload-images", names, previewBase, true);
+    uploadScripts(
+      scripts,
+      "1b-upload-changed-images-into-open-draft",
+      changed,
+      previewBase,
+      false,
+    );
   }
   mkdirSync(outDir, { recursive: true });
+  for (const file of readdirSafe(outDir)) {
+    if (STEP_SCRIPT.test(file) && !(file.slice(0, -3) in scripts)) {
+      rmSync(join(outDir, file));
+      console.log(`Removed stale ${file}`);
+    }
+  }
   for (const [name, script] of Object.entries(scripts).sort()) {
     const path = join(outDir, `${name}.js`);
     writeFileSync(path, checked(name, script));
@@ -205,9 +252,14 @@ async function writeResendScripts(specPath, outDir, previewBase) {
   }
 }
 
+function readdirSafe(dir) {
+  return existsSync(dir) ? readdirSync(dir) : [];
+}
+
 function saveExtract(issue) {
   const run = JSON.parse(readFileSync(0, "utf8"));
   if (run.ok === false) throw new Error(`Extract failed: ${run.error.message}`);
+  if (run.exitCode) throw new Error(`Extract failed: ${run.text}`);
   const data = typeof run.text === "string" ? JSON.parse(run.text) : run.text;
   const { html, ...headerFields } = data;
   const base = issue.replace(/\/+$/, "");
@@ -220,17 +272,40 @@ function saveExtract(issue) {
   console.log(`${base}.resend-fields.json`);
 }
 
+export function parseResendArgs(args) {
+  const rest = [...args];
+  const index = rest.indexOf("--preview-base");
+  let previewBase = null;
+  if (index >= 0) {
+    previewBase = rest[index + 1];
+    rest.splice(index, 2);
+  }
+  const [specPath, outDir] = rest;
+  if (
+    rest.length !== 2 ||
+    (index >= 0 && (!previewBase || previewBase.startsWith("--"))) ||
+    rest.some((arg) => arg.startsWith("--"))
+  ) {
+    return null;
+  }
+  return { specPath, outDir, previewBase };
+}
+
 async function main() {
   const [command, ...args] = process.argv.slice(2);
-  if (command === "resend" && args.length >= 2) {
-    const index = args.indexOf("--preview-base");
+  const resend = command === "resend" ? parseResendArgs(args) : null;
+  if (resend) {
     await writeResendScripts(
-      args[0],
-      args[1],
-      index >= 0 ? args[index + 1] : null,
+      resend.specPath,
+      resend.outDir,
+      resend.previewBase,
     );
   } else if (command === "save-extract" && args.length === 1) {
     saveExtract(args[0]);
+  } else if (command === "designs" && args.length > 2 + DESIGNS_PER_RUN) {
+    throw new Error(
+      `Render at most ${DESIGNS_PER_RUN} designs per script, so a run stays under 30 seconds. Write a second script for the rest.`,
+    );
   } else if (command === "designs" && args.length >= 3) {
     process.stdout.write(
       checked("designs", renderDesigns(args[0], args[1], args.slice(2))),

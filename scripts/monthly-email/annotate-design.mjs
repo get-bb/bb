@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { escapeHtml } from "./render-email.mjs";
 
 const USAGE =
   "Usage: node scripts/monthly-email/annotate-design.mjs <annotations.json> <out.html>";
@@ -14,7 +15,7 @@ function round(value) {
 }
 
 function label(text, x, y, anchor = "c") {
-  return `<div class="lab" style="left:${x}px;top:${y}px;transform:${ANCHORS[anchor]}">${text}</div>`;
+  return `<div class="lab" style="left:${x}px;top:${y}px;transform:${ANCHORS[anchor]}">${escapeHtml(text)}</div>`;
 }
 
 function line(x, y1, y2) {
@@ -70,7 +71,7 @@ export function annotateDesign(config) {
   const shotHeight = round(pageHeight * scale);
   return `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="design-base.css"><style>
 .c{height:${height}px}
-.shot{position:absolute;left:${left}px;top:${top}px;width:${shotWidth}px;height:${shotHeight}px;background:url(${config.capture}) no-repeat;background-size:${shotWidth}px ${shotHeight}px;border-radius:10px;box-shadow:0 1px 2px rgba(20,40,70,.06),0 12px 30px rgba(20,40,70,.14);overflow:hidden}
+.shot{position:absolute;left:${left}px;top:${top}px;width:${shotWidth}px;height:${shotHeight}px;background:url(${JSON.stringify(config.capture)}) no-repeat;background-size:${shotWidth}px ${shotHeight}px;border-radius:10px;box-shadow:0 1px 2px rgba(20,40,70,.06),0 12px 30px rgba(20,40,70,.14);overflow:hidden}
 .ring{position:absolute;border-radius:5px;box-shadow:0 0 0 1px color-mix(in oklch, oklch(0.55 0.1 250) 75%, transparent);}
 .lab{position:absolute;font-size:9.5px;font-weight:500;color:oklch(0.48 0.1 250);background:rgba(255,255,255,.92);border:1px solid color-mix(in oklch, oklch(0.55 0.1 250) 30%, white);border-radius:999px;padding:2px 7px;white-space:nowrap;box-shadow:0 1px 2px rgba(20,40,70,.06)}
 .ln{position:absolute;width:1px;background:color-mix(in oklch, oklch(0.55 0.1 250) 55%, transparent)}
