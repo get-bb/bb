@@ -12,29 +12,32 @@ export const deviceSetupSourceSchema = z.enum([
 ]);
 export type DeviceSetupSource = z.infer<typeof deviceSetupSourceSchema>;
 
+const errorCategorySchema = z.enum([
+  "request",
+  "authentication",
+  "transport",
+  "enrollment",
+  "unknown",
+]);
 const failure = z.discriminatedUnion("outcome", [
   z.object({
-    outcome: z.literal("failed"),
-    error_category: z.enum([
-      "request",
-      "authentication",
-      "transport",
-      "enrollment",
-      "unknown",
-    ]),
-  }),
-  z.object({
-    outcome: z.literal("unknown"),
-    error_category: z.enum([
-      "request",
-      "authentication",
-      "transport",
-      "enrollment",
-      "unknown",
-    ]),
+    outcome: z.enum(["failed", "unknown"]),
+    error_category: errorCategorySchema,
   }),
   z.object({ outcome: z.literal("cancelled"), error_category: z.null() }),
 ]);
+const setupFields = {
+  outcome: z.enum([
+    "observed",
+    "started",
+    "succeeded",
+    "failed",
+    "cancelled",
+    "unknown",
+  ]),
+  source: deviceSetupSourceSchema,
+  error_category: errorCategorySchema.nullable(),
+};
 const browser = z.enum([
   "setup_opened",
   "enable_requested",
@@ -45,7 +48,6 @@ const browser = z.enum([
 const machine = z.enum([
   "setup_opened",
   "enrollment_requested",
-  "credentials_accepted",
   "machine_ready",
   "setup_result",
 ]);
@@ -56,48 +58,14 @@ export const deviceSetupPropertiesSchema = z
       .object({
         target: z.literal("browser_access"),
         action: browser,
-        outcome: z.enum([
-          "observed",
-          "started",
-          "succeeded",
-          "failed",
-          "cancelled",
-          "unknown",
-        ]),
-        source: deviceSetupSourceSchema,
-        error_category: z
-          .enum([
-            "request",
-            "authentication",
-            "transport",
-            "enrollment",
-            "unknown",
-          ])
-          .nullable(),
+        ...setupFields,
       })
       .strict(),
     z
       .object({
         target: z.literal("additional_machine"),
         action: machine,
-        outcome: z.enum([
-          "observed",
-          "started",
-          "succeeded",
-          "failed",
-          "cancelled",
-          "unknown",
-        ]),
-        source: deviceSetupSourceSchema,
-        error_category: z
-          .enum([
-            "request",
-            "authentication",
-            "transport",
-            "enrollment",
-            "unknown",
-          ])
-          .nullable(),
+        ...setupFields,
       })
       .strict(),
     z
@@ -148,9 +116,7 @@ export const connectDeviceSetupPropertiesSchema = z
     action: z.enum(["enable_requested", "service_ready", "setup_result"]),
     outcome: z.enum(["started", "succeeded", "failed", "cancelled", "unknown"]),
     source: deviceSetupSourceSchema,
-    error_category: z
-      .enum(["request", "authentication", "transport", "enrollment", "unknown"])
-      .nullable(),
+    error_category: errorCategorySchema.nullable(),
   })
   .strict()
   .superRefine((value, context) => {
@@ -170,16 +136,7 @@ export const deviceSetupTelemetrySchema = z
     properties: z.discriminatedUnion("target", [
       z
         .object({
-          target: z.literal("browser_access"),
-          action: z.literal("setup_opened"),
-          outcome: z.literal("observed"),
-          source: deviceSetupSourceSchema,
-          error_category: z.null(),
-        })
-        .strict(),
-      z
-        .object({
-          target: z.literal("additional_machine"),
+          target: z.enum(["browser_access", "additional_machine"]),
           action: z.literal("setup_opened"),
           outcome: z.literal("observed"),
           source: deviceSetupSourceSchema,

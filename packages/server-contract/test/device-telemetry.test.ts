@@ -7,7 +7,7 @@ import {
 
 const properties = {
   target: "additional_machine",
-  action: "credentials_accepted",
+  action: "machine_ready",
   outcome: "succeeded",
   source: "first_run",
   error_category: null,
@@ -19,9 +19,8 @@ const valid = (value: object) =>
   }).success;
 
 describe("device telemetry privacy and milestone contract", () => {
-  it("keeps credential acceptance separate from readiness and client interest", () => {
+  it("keeps readiness separate from client interest", () => {
     expect(valid(properties)).toBe(true);
-    expect(valid({ ...properties, action: "machine_ready" })).toBe(true);
     expect(
       valid({ ...properties, action: "setup_opened", outcome: "observed" }),
     ).toBe(true);
@@ -117,11 +116,6 @@ it.each([
   {
     target: "additional_machine",
     action: "machine_ready",
-    outcome: "succeeded",
-  },
-  {
-    target: "additional_machine",
-    action: "credentials_accepted",
     outcome: "succeeded",
   },
   {

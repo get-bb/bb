@@ -13,7 +13,6 @@ import {
 } from "../helpers/seed.js";
 import {
   beginMachineEnrollment,
-  recordMachineCredentials,
   recordMachineReady,
   recordMachineSetupResult,
   withDeviceSetupSource,
@@ -45,32 +44,28 @@ describe("device lifecycle measurement", () => {
         beginMachineEnrollment(deps, host.id),
       );
       beginMachineEnrollment(deps, host.id);
-      recordMachineCredentials(deps, host.id);
-      recordMachineCredentials(deps, host.id);
-      expect(capture).toHaveBeenCalledTimes(2);
+      expect(capture).toHaveBeenCalledTimes(1);
       recordMachineReady(deps, host.id);
       recordMachineReady(deps, host.id);
       beginMachineEnrollment(deps, primary.id);
-      recordMachineCredentials(deps, primary.id);
-      expect(capture).toHaveBeenCalledTimes(3);
+      expect(capture).toHaveBeenCalledTimes(2);
       expect(
         capture.mock.calls.map(([event]) =>
           event.name === "device_setup" ? event.properties.source : null,
         ),
-      ).toEqual(["first_run", "first_run", "first_run"]);
+      ).toEqual(["first_run", "first_run"]);
       expect(JSON.stringify(capture.mock.calls)).not.toContain(host.id);
       enabled = false;
       const silent = seedHost(deps);
       beginMachineEnrollment(deps, silent.id);
-      recordMachineCredentials(deps, silent.id);
       recordMachineReady(deps, silent.id);
-      expect(capture).toHaveBeenCalledTimes(3);
+      expect(capture).toHaveBeenCalledTimes(2);
       enabled = true;
       const failed = seedHost(deps);
       beginMachineEnrollment(deps, failed.id);
       recordMachineSetupResult(deps, failed.id, "unknown");
       recordMachineSetupResult(deps, failed.id, "unknown");
-      expect(capture).toHaveBeenCalledTimes(5);
+      expect(capture).toHaveBeenCalledTimes(4);
     } finally {
       await harness.cleanup();
     }

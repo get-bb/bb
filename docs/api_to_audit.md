@@ -4201,8 +4201,8 @@ requests default to unknown at the route boundary. Core onboarding, settings and
 the existing machine CLI use this shared operation. No telemetry-injection CLI
 or daemon wire change is introduced. Source survives asynchronous creation in
 local lifecycle ownership; after a server restart, missing source is unknown.
-Credential acceptance and an authenticated daemon WebSocket becoming usable
-are separate milestones; reconnects do not create new enrollment milestones.
+Readiness means an authenticated daemon WebSocket became usable; reconnects
+do not create new enrollment milestones.
 
 Existing accepted-work events add `access_route`. Signed Connect ingress markers
 establish connect, trusted non-loopback sockets establish direct, and loopback
