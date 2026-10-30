@@ -1,5 +1,7 @@
 import type { AppCommandContext, AppKeybinding, AppShortcut } from "@bb/domain";
-import { isMacKeyboardPlatform } from "@bb/domain";
+import { formatAppShortcut, isMacKeyboardPlatform } from "@bb/domain";
+
+export { formatAppShortcut };
 
 export interface AppShortcutPresentation {
   ariaKeyshortcuts: string;
@@ -34,44 +36,6 @@ export function matchesAppCommandContext(
     binding.when.all.every((key) => context[key]) &&
     binding.when.none.every((key) => !context[key])
   );
-}
-
-const SHORTCUT_KEY_GLYPHS: Readonly<Record<string, string>> = {
-  ArrowUp: "↑",
-  ArrowDown: "↓",
-  ArrowLeft: "←",
-  ArrowRight: "→",
-};
-
-export function formatAppShortcut(
-  shortcut: AppShortcut,
-  platform: string,
-): string {
-  const useMetaForMod = isMacKeyboardPlatform(platform);
-  const showMeta = shortcut.meta || (shortcut.mod && useMetaForMod);
-  const showControl = shortcut.control || (shortcut.mod && !useMetaForMod);
-  const key =
-    shortcut.key.length === 1
-      ? shortcut.key.toUpperCase()
-      : (SHORTCUT_KEY_GLYPHS[shortcut.key] ?? shortcut.key);
-
-  if (useMetaForMod) {
-    const parts: string[] = [];
-    if (showControl) parts.push("⌃");
-    if (shortcut.alt) parts.push("⌥");
-    if (shortcut.shift) parts.push("⇧");
-    if (showMeta) parts.push("⌘");
-    parts.push(key);
-    return parts.join(" ");
-  }
-
-  const parts: string[] = [];
-  if (showControl) parts.push("Ctrl");
-  if (shortcut.alt) parts.push("Alt");
-  if (shortcut.shift) parts.push("Shift");
-  if (showMeta) parts.push("Meta");
-  parts.push(key);
-  return parts.join(" + ");
 }
 
 export function formatAppShortcutAria(

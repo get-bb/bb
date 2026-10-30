@@ -26,6 +26,7 @@ import {
 import {
   applyAppKeybindingOverrides,
   appSettingsSchema,
+  DEFAULT_APP_KEYBINDINGS,
   customThemeNameSchema,
   isBuiltInThemeId,
   PERSONAL_PROJECT_ID,
@@ -88,7 +89,6 @@ import {
   listInstallableMachineIds,
   readGlobalCliSkillStatus,
 } from "../services/skills/global-skill-install.js";
-import { DEFAULT_APP_KEYBINDINGS } from "../services/system/app-keybindings.js";
 import { resolvePrimaryHostId } from "../services/hosts/primary-host.js";
 import {
   environmentProviderMatchesContext,
