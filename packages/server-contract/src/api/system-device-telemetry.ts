@@ -123,12 +123,18 @@ export const clientDeviceStatePropertiesSchema =
 export type DeviceOperationProperties = z.infer<
   typeof deviceOperationPropertiesSchema
 >;
-export const connectDeviceSetupPropertiesSchema =
+export const connectDeviceSetupPropertiesSchema = z.union([
   deviceOperationPropertiesSchema.refine(
     (value) =>
       value.resource_id === "browser_access" && value.operation === "enable",
     { message: "Connect only reports browser enable attempts" },
-  );
+  ),
+  deviceStatePropertiesSchema.refine(
+    (value) =>
+      value.resource_id === "browser_access" && value.state === "connected",
+    { message: "Connect only observes authenticated browser connections" },
+  ),
+]);
 export type ConnectDeviceSetupProperties = z.infer<
   typeof connectDeviceSetupPropertiesSchema
 >;

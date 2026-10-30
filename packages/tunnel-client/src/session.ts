@@ -132,6 +132,7 @@ interface TunnelSessionOptions {
   log: TunnelClientLogger;
   resolveOrigin: (target: string | undefined) => StreamOriginResult;
   onRemoteClientsChange?: (remoteClients: number) => void;
+  onAuthenticatedAppConnection?: () => void;
   onActivity?: (at: number) => void;
   monotonicNow?: () => number;
 }
@@ -540,6 +541,16 @@ export class TunnelSession {
     socket.on("open", () => {
       this.refusedOrigins.delete(resolved.origin);
       stream.open = true;
+      if (
+        frame.target === undefined &&
+        (frame.path === "/ws" || frame.path.startsWith("/ws?")) &&
+        frame.headers.some(
+          ([name, value]) =>
+            name.toLowerCase() === "x-bb-gate-auth" &&
+            (value === "session" || value === "machine"),
+        )
+      )
+        this.options.onAuthenticatedAppConnection?.();
       this.send({
         type: "ws-open-ack",
         streamId: frame.streamId,
