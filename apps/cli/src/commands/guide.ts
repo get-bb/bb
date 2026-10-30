@@ -8,11 +8,17 @@ interface GuideCommandOptions {
   json?: boolean;
 }
 
+interface GuideCommandOptionDetail {
+  flags: string;
+  description: string;
+}
+
 export interface GuideCommandIndexEntry {
   aliases: string[];
   arguments: string;
   description: string;
   options: string[];
+  optionDetails: GuideCommandOptionDetail[];
   path: string;
 }
 
@@ -34,14 +40,19 @@ function collectCommandIndex(
     const path = [...prefix, child.name()];
     const nested = collectCommandIndex(child, path);
     if (nested.length > 0) return nested;
+    const optionDetails = child.options
+      .filter((option) => !option.hidden)
+      .map((option) => ({
+        flags: option.flags.replace(/^-\w, /u, ""),
+        description: option.description,
+      }));
     return [
       {
         aliases: child.aliases(),
         arguments: argumentUsage(child),
         description: child.description(),
-        options: child.options
-          .filter((option) => !option.hidden)
-          .map((option) => option.flags.replace(/^-\w, /u, "")),
+        options: optionDetails.map((option) => option.flags),
+        optionDetails,
         path: path.join(" "),
       },
     ];

@@ -69,6 +69,17 @@ check.
 - Every symptom lives in Troubleshooting.
 - Add the page to `DOCS_NAV` in `apps/web/src/docs/nav.ts` with the same title
   as its front-matter. The sidebar shows only pages that exist.
+- Give it a short sidebar label, the third argument of `page()`: 1–3 words that
+  fit one line at sidebar width, such as "Permissions" for "Choose a
+  permission mode". The title stays the H1, the search result and the tab
+  title. Leave the label out only when the title is already that short. Labels
+  are unique within a section and never repeat the section name.
+- Section labels are short too: "Projects", not "Projects and environments".
+- Each section has one icon (`icon` in `DOCS_NAV`, drawn by `NAV_ICONS` in
+  `docs-page.tsx`), never one per page. Reuse the icon bb's app uses for the
+  same thing (`apps/app/src/components/settings/settings-sections.ts`, the
+  sidebar navigation items, a plugin's `package.json` icon); pick a new
+  `@hugeicons/core-free-icons` icon only when the app has none.
 
 Naming:
 
@@ -88,13 +99,40 @@ Copy the template for the page type from `templates/` next to this file. CI
 checks that each page has its type's required headings and ends with the right
 one (`DOCS_PAGE_TEMPLATES` in `apps/web/src/docs/page-types.ts`).
 
-| Type | Opens with | Body | Images | Ends with |
+| Type | `description` says | Body opens with | Images | Ends with |
 | --- | --- | --- | --- | --- |
-| `tutorial` | What you'll have at the end, and how long it takes | Numbered steps, each with what you should see | One per step where a control must be found | `## Next steps` |
-| `how-to` | "Use this when…", in one line | Steps, with tabs for desktop, CLI and phone when they differ; `## Check it worked` | Only where a control must be found | `## Related troubleshooting` |
-| `concept` | What it is and why it matters | Short sections; a "when to use which" table if there are choices | One diagram, light and dark | `## Next steps` |
-| `reference` | One line on what's listed | Tables | None | `## Where this list comes from` |
-| `troubleshooting` | The symptom, in the user's words | Symptom → cause → fix table, then detail; headings use the exact error text | Only to show where an error appears | `## What to send when you ask for help` |
+| `tutorial` | What you'll have at the end, and how long it takes | `## Before you start`, then numbered steps, each with what you should see | One per step where a control must be found | `## Next steps` |
+| `how-to` | "Use this when…", in one line | The first step; tabs for desktop, CLI and phone when they differ; `## Check it worked` | One of every screen the steps use | `## Related troubleshooting` |
+| `concept` | What it is and why it matters | The diagram, then short sections; a "when to use which" table if there are choices | One diagram, light and dark | `## Next steps` |
+| `reference` | One line on what's listed | The first table | None | `## Where this list comes from` |
+| `troubleshooting` | The symptom, in the user's words, and the most common fix | The symptom → cause → fix table, then detail; headings use the exact error text | Only to show where an error appears | `## What to send when you ask for help` |
+
+### Keep pages short
+
+| Type | Word budget |
+| --- | --- |
+| `how-to` | 450 |
+| `concept` | 500 |
+| `tutorial` | 600 |
+| `troubleshooting` | 800, and the symptom table comes first |
+| `reference` | Tables only; at most 150 words of prose |
+
+- Answer in the first two lines. The `description` is shown under the title,
+  so the body never opens with a paragraph that says it again: start with the
+  first step, table or new fact.
+- Steps, tables and screenshots over prose. If a paragraph lists things, make
+  it a table or a list.
+- Paragraphs are at most three lines at the page's text width.
+- Every how-to that happens on a screen has a screenshot of that screen.
+- The `description` is also the page's search result snippet. Keep it to 155
+  characters or fewer.
+
+CI checks the budgets, that descriptions are at most 160 characters, that the
+opening paragraph doesn't repeat the description, and that troubleshooting
+pages open with their table (`page diet` in
+`apps/web/src/docs/docs-pages.test.ts`). Words in code blocks, headings and MDX
+components don't count. Over budget means splitting the page or cutting it, not
+raising the budget.
 
 Every page:
 
@@ -220,7 +258,8 @@ pnpm exec turbo run test --filter=@bb/cli
 node apps/web/scripts/docs-freshness.mjs
 ```
 
-The `@bb/web` tests check front-matter, required headings, `<Shot>`
+The `@bb/web` tests check front-matter, required headings, word budgets,
+the opening paragraph, sidebar labels, `<Shot>`
 placeholders, screenshots (light and dark files at 2×, sentence alt text),
 and links: every `/docs/…` and `https://getbb.app/docs/…` link and every
 `#anchor` in hand-written and generated pages must reach an existing page and

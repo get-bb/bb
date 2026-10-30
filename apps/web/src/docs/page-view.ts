@@ -1,6 +1,11 @@
 import { docsOgImagePath } from "./docs-og-paths";
-import { DOCS_NAV, DOCS_NAV_COMMUNITY, navSectionOf } from "./nav";
-import { REPO_BLOB } from "./reference";
+import {
+  DOCS_NAV,
+  DOCS_NAV_COMMUNITY,
+  navSectionOf,
+  type DocsNavIcon,
+} from "./nav";
+import { REPO_BLOB, type ReferenceLayout } from "./reference";
 import {
   DOCS_BASE,
   docsLlms,
@@ -11,12 +16,14 @@ import {
 
 interface DocsNavLink {
   title: string;
+  navLabel: string;
   url: string;
   active: boolean;
 }
 
 export interface DocsNavSection {
   label: string;
+  icon: DocsNavIcon;
   links: DocsNavLink[];
 }
 
@@ -41,7 +48,11 @@ interface DocsPageViewBase {
   pageMarkdown: string;
   editUrl: string;
   nav: DocsNavSection[];
-  community: { label: string; links: { title: string; href: string }[] };
+  community: {
+    label: string;
+    icon: DocsNavIcon;
+    links: { title: string; href: string }[];
+  };
   toc: DocsTocEntry[];
   breadcrumbs: DocsBreadcrumb[];
   ogImagePath: string;
@@ -49,7 +60,11 @@ interface DocsPageViewBase {
 
 export type DocsPageView =
   | (DocsPageViewBase & { kind: "mdx"; contentPath: string })
-  | (DocsPageViewBase & { kind: "reference"; markdown: string });
+  | (DocsPageViewBase & {
+      kind: "reference";
+      markdown: string;
+      layout: ReferenceLayout;
+    });
 
 function pageUrl(slug: string): string {
   return slug === "" ? DOCS_BASE : `${DOCS_BASE}/${slug}`;
@@ -66,6 +81,7 @@ function docsNav(currentSlug: string | null): DocsNavSection[] {
       .filter((page) => existing.has(pageUrl(page.slug)))
       .map((page) => ({
         title: page.title,
+        navLabel: page.navLabel,
         url: pageUrl(page.slug),
         active:
           currentSlug !== null &&
@@ -73,7 +89,9 @@ function docsNav(currentSlug: string | null): DocsNavSection[] {
             ? currentSlug === ""
             : isActive(page.slug, currentSlug)),
       }));
-    return links.length === 0 ? [] : [{ label: section.label, links }];
+    return links.length === 0
+      ? []
+      : [{ label: section.label, icon: section.icon, links }];
   });
 }
 
@@ -136,6 +154,7 @@ async function viewOf(page: DocsPage): Promise<DocsPageView> {
     nav,
     community: {
       label: DOCS_NAV_COMMUNITY.label,
+      icon: DOCS_NAV_COMMUNITY.icon,
       links: [...DOCS_NAV_COMMUNITY.links],
     },
     toc: await docsToc(page),
@@ -149,6 +168,7 @@ async function viewOf(page: DocsPage): Promise<DocsPageView> {
       unreleased: false,
       editUrl: `${REPO_BLOB}/${page.data.editPath}`,
       markdown: page.data.markdown,
+      layout: page.data.layout,
     };
   }
   return {
