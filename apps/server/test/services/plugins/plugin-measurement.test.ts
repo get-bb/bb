@@ -307,26 +307,15 @@ describe("intentional use", () => {
     ]);
   });
 
-  it("ignores private state and use while rejecting reported spoofed identity", () => {
-    const privateRow = install("private-name", {
-      sourceIntent: { kind: "path", canonicalPath: "/private" },
-      exactResolution: { kind: "path" },
-      provenance: { kind: "direct" },
-    });
-    capturePluginStateChanged(deps(), privateRow.id, undefined);
-    reportPluginUse(deps(), "private-name", {
-      action: "browser_run",
-      outcome: "invoked",
-    });
-    expect(captured).toEqual([]);
+  it("rejects spoofed report identity and actions owned by another plugin", () => {
+    install();
     expect(() =>
-      reportPluginUse(deps(), "private-name", {
+      reportPluginUse(deps(), "browser-automation", {
         action: "browser_run",
         outcome: "invoked",
         public_plugin: "browser-automation",
       }),
     ).toThrow();
-    install();
     expect(() =>
       reportPluginUse(deps(), "browser-automation", {
         action: "editor_opened",

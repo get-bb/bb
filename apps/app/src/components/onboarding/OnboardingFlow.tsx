@@ -880,7 +880,6 @@ function ProjectsStepContainer({
 }
 
 function PluginCardContainer({
-  installedStateKnown,
   onboardingEntry,
   entry,
   enabled,
@@ -889,7 +888,6 @@ function PluginCardContainer({
   onboardingEntry: OnboardingEntry;
   entry: PluginCatalogSearchEntry;
   enabled: boolean;
-  installedStateKnown: boolean;
   onChanged: () => Promise<void>;
 }) {
   const queryClient = useQueryClient();
@@ -916,15 +914,6 @@ function PluginCardContainer({
     source: onboardingEntry,
     marketplace: entry.marketplace,
     entryId: entry.entryId,
-    initial_state: !entry.installed
-      ? "absent"
-      : !installedStateKnown
-        ? "unknown"
-        : enabled
-          ? "enabled"
-          : "disabled",
-    availability:
-      entry.installed || entry.compatible ? "available" : "unavailable",
   } as const;
 
   const toggle = async (next: boolean) => {
@@ -1071,7 +1060,6 @@ function PluginsStepContainer({
           entries.map((entry) => (
             <PluginCardContainer
               onboardingEntry={onboardingEntry}
-              installedStateKnown={installedPlugins !== undefined}
               key={entry.entryId}
               entry={entry}
               enabled={
