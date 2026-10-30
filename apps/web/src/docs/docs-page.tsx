@@ -2,7 +2,15 @@ import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
 import Copy01Icon from "@hugeicons/core-free-icons/Copy01Icon";
 import Menu01Icon from "@hugeicons/core-free-icons/Menu01Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Suspense, useEffect, useRef, type ComponentProps } from "react";
+import {
+  Suspense,
+  useEffect,
+  useRef,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import { useInitAnalytics } from "../landing/analytics";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
@@ -185,6 +193,12 @@ function DocsToc({
   );
 }
 
+function headingText(children: ReactNode): string {
+  if (typeof children === "string") return children;
+  if (Array.isArray(children)) return children.map(headingText).join("");
+  return "";
+}
+
 function CodeBlock({ children, ...props }: ComponentProps<"pre">) {
   return (
     <div className="gd-code">
@@ -211,6 +225,32 @@ function MdxBody({ contentPath }: { contentPath: string }) {
   }
   const Body = entry.body;
   return <Body components={{ pre: CodeBlock, table: TableWrap }} />;
+}
+
+function ReferenceBody({
+  markdown,
+  toc,
+}: {
+  markdown: string;
+  toc: DocsTocEntry[];
+}) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        h2: ({ children }) => (
+          <h2
+            id={toc.find((entry) => entry.title === headingText(children))?.id}
+          >
+            {children}
+          </h2>
+        ),
+        table: ({ node: _node, ...props }) => <TableWrap {...props} />,
+      }}
+    >
+      {markdown}
+    </ReactMarkdown>
+  );
 }
 
 export function DocsPage({ view }: { view: DocsPageView }) {
@@ -243,9 +283,13 @@ export function DocsPage({ view }: { view: DocsPageView }) {
             </div>
             <p className="docs-lede">{view.description}</p>
             <article className="docs-body">
-              <Suspense fallback={null}>
-                <MdxBody contentPath={view.contentPath} />
-              </Suspense>
+              {view.kind === "mdx" ? (
+                <Suspense fallback={null}>
+                  <MdxBody contentPath={view.contentPath} />
+                </Suspense>
+              ) : (
+                <ReferenceBody markdown={view.markdown} toc={view.toc} />
+              )}
             </article>
           </main>
           <DocsToc entries={view.toc} editUrl={view.editUrl} />

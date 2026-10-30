@@ -1,17 +1,21 @@
 import { llms, loader } from "fumadocs-core/source";
 
 import { docs } from "./content";
+import { referenceSource } from "./reference";
 
 export const DOCS_BASE = "/docs";
 
 export const source = loader({
-  source: docs.toFumadocsSource(),
+  source: { mdx: docs.toFumadocsSource(), reference: referenceSource },
   baseUrl: DOCS_BASE,
 });
 
 export type DocsPage = (typeof source)["$inferPage"];
 
 export async function pageMarkdownBody(page: DocsPage): Promise<string> {
+  if (page.type === "reference") {
+    return page.data.markdown;
+  }
   return page.data.getText("processed");
 }
 

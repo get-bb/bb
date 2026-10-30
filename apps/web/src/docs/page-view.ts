@@ -1,4 +1,5 @@
 import { DOCS_NAV, DOCS_NAV_FOOTER_LINKS, navSectionOf } from "./nav";
+import { REPO_BLOB } from "./reference";
 import {
   DOCS_BASE,
   docsLlms,
@@ -6,8 +7,6 @@ import {
   source,
   type DocsPage,
 } from "./source";
-
-const REPO_BLOB = "https://github.com/get-bb/bb/blob/main";
 
 export interface DocsNavLink {
   title: string;
@@ -39,7 +38,9 @@ interface DocsPageViewBase {
   toc: DocsTocEntry[];
 }
 
-export type DocsPageView = DocsPageViewBase & { contentPath: string };
+export type DocsPageView =
+  | (DocsPageViewBase & { kind: "mdx"; contentPath: string })
+  | (DocsPageViewBase & { kind: "reference"; markdown: string });
 
 function pageUrl(slug: string): string {
   return slug === "" ? DOCS_BASE : `${DOCS_BASE}/${slug}`;
@@ -67,28 +68,47 @@ export function docsNav(currentSlug: string | null): DocsNavSection[] {
   });
 }
 
+async function pageStructuredData(page: DocsPage) {
+  return page.type === "reference"
+    ? page.data.structuredData
+    : await page.data.structuredData();
+}
+
 async function viewOf(page: DocsPage): Promise<DocsPageView> {
   const slug = page.slugs.join("/");
   const section = navSectionOf(slug);
   if (section === null) {
     throw new Error(`Docs page ${page.url} is not in the docs sidebar`);
   }
-  return {
+  const base = {
     url: page.url,
     title: page.data.title,
     description: page.data.description,
     section,
-    unreleased: page.data.since === "unreleased",
     markdownUrl: markdownPath(page),
     pageMarkdown: await docsLlms.page(page),
-    editUrl: `${REPO_BLOB}/apps/web/content/docs/${page.path}`,
     nav: docsNav(slug),
     footerLinks: [...DOCS_NAV_FOOTER_LINKS],
-    toc: (await page.data.structuredData()).headings.map((heading) => ({
+    toc: (await pageStructuredData(page)).headings.map((heading) => ({
       id: heading.id,
       title: heading.content,
     })),
+  };
+  if (page.type === "reference") {
+    return {
+      ...base,
+      kind: "reference",
+      unreleased: false,
+      editUrl: `${REPO_BLOB}/${page.data.editPath}`,
+      markdown: page.data.markdown,
+    };
+  }
+  return {
+    ...base,
+    kind: "mdx",
+    unreleased: page.data.since === "unreleased",
     contentPath: page.path,
+    editUrl: `${REPO_BLOB}/apps/web/content/docs/${page.path}`,
   };
 }
 
