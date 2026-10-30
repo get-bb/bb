@@ -11,7 +11,7 @@ export const source = loader({
 
 export type DocsPage = (typeof source)["$inferPage"];
 
-export async function pageMarkdownBody(page: DocsPage): Promise<string> {
+async function pageMarkdownBody(page: DocsPage): Promise<string> {
   return page.data.getText("processed");
 }
 
