@@ -196,10 +196,12 @@ export async function setPluginEnabled(
   pluginId: string,
   enabled: boolean,
   measurementSource?: PluginMeasurementSource,
+  recommendationId?: string,
 ): Promise<void> {
   const plugins = createPluginsClient(fetchImpl);
-  if (enabled) await plugins.enable({ pluginId, measurementSource });
-  else await plugins.disable({ pluginId, measurementSource });
+  if (enabled)
+    await plugins.enable({ pluginId, measurementSource, recommendationId });
+  else await plugins.disable({ pluginId, measurementSource, recommendationId });
 }
 
 export async function reloadPlugin(

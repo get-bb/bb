@@ -31,14 +31,14 @@ describe("Connect setup milestones", () => {
     measurement.observe({ state: "connected", enabled: true, lastError: null });
     expect(
       capture.mock.calls.map(([event]) => [
-        event.action,
+        event.operation,
         event.outcome,
-        event.source,
+        event.entry,
       ]),
     ).toEqual([
-      ["enable_requested", "started", "first_run"],
-      ["setup_result", "unknown", "first_run"],
-      ["service_ready", "succeeded", "first_run"],
+      ["enable", "started", "first_run"],
+      ["enable", "unknown", "first_run"],
+      ["enable", "succeeded", "first_run"],
     ]);
     expect(JSON.stringify(capture.mock.calls)).not.toContain("private failure");
   });
@@ -51,9 +51,9 @@ describe("Connect setup milestones", () => {
     measurement.beginIfIdle("unknown");
     measurement.observe({ state: "connected", enabled: true, lastError: null });
     measurement.observe({ state: "connected", enabled: true, lastError: null });
-    expect(capture.mock.calls.map(([event]) => event.action)).toEqual([
-      "enable_requested",
-      "service_ready",
+    expect(capture.mock.calls.map(([event]) => event.outcome)).toEqual([
+      "started",
+      "succeeded",
     ]);
   });
   it("treats request loss as unknown and actual disabling as cancellation", () => {

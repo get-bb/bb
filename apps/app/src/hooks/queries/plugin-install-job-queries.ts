@@ -53,6 +53,7 @@ export function startCatalogPluginInstall(
     marketplace?: string;
     confirmedSource?: PluginCatalogResolvedSource;
     measurementSource?: PluginMeasurementSource;
+    recommendationId?: string;
   },
 ): Promise<PluginInstallJob> {
   return createPluginsClient(fetchImpl).catalog.startInstall(args);

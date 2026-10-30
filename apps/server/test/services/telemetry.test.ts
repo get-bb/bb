@@ -302,7 +302,11 @@ describe("telemetry service", () => {
         name: "onboarding_operation",
         properties: {
           entry: "first_run",
-          operation: "project_import",
+          surface: "onboarding",
+          step: "projects",
+          resource_type: "project",
+          resource_id: "project_import",
+          operation: "import",
           outcome: "partial",
           error_category: "request",
           selected_count: 3,

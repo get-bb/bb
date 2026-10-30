@@ -39,7 +39,6 @@ describe("plugin telemetry boundary", () => {
       { plugin_id: "private" },
       { args: "private" },
       { output: "private" },
-      { public_plugin: "private" },
       { public_plugin: null },
       { action: "other_action", outcome: "invoked" },
       { plugin_source: "local" },
@@ -75,7 +74,8 @@ describe("plugin telemetry boundary", () => {
       properties: {
         public_plugin: "workflows",
         plugin_source: "builtin",
-        source: "first_run",
+        surface: "onboarding",
+        entry: "first_run",
         previous_state: "disabled",
         state: "enabled",
       },
@@ -98,20 +98,23 @@ describe("plugin telemetry boundary", () => {
   });
   it("keeps only current recommendation actions and sources", () => {
     const event = {
-      name: "plugin_recommendation",
+      name: "recommendation",
       properties: {
-        action: "deselected",
-        public_plugin: "workflows",
-        source: "first_run",
-        initial_state: "enabled",
-        availability: "available",
+        action: "shown",
+        resource_type: "plugin",
+        resource_id: "workflows",
+        recommendation_id: "00000000-0000-4000-8000-000000000001",
+        surface: "onboarding",
+        entry: "first_run",
       },
     };
     expect(
       pluginRecommendationTelemetryEventSchema.safeParse(event).success,
     ).toBe(true);
     for (const extra of [
-      { action: "browse_opened" },
+      { action: "selected" },
+      { action: "used" },
+      { action: "deselected" },
       { action: "dismissed" },
       { source: "during_first_thread" },
       { source: "after_first_thread" },

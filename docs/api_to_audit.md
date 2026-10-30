@@ -4210,10 +4210,13 @@ policy and persisted origin values.
 
 ## Device setup measurement extension
 
-The existing client telemetry endpoint accepts only `device_setup` opening
-observations and iOS/Android download interest. Confirmed browser and machine
-milestones are server-only and rejected on that endpoint. Target/action/outcome combinations and nullable bounded error categories
-are validated together. Names, addresses, host IDs and credentials are excluded.
+Device setup attempts emit `onboarding_operation` with `step: devices`,
+`resource_type: device`, a category-valued `resource_id`, operation and outcome.
+The client endpoint accepts only `onboarding_step_state` observations of setup
+opening and mobile download interest. Connections are server-owned state
+observations, not human work. Confirmed operations are server-only and rejected
+on that endpoint. Source is normalized into `surface` and nullable onboarding
+`entry`; resource/operation/outcome combinations and bounded errors are validated together. Names, addresses, host IDs and credentials are excluded.
 Core uses the SDK event endpoint only for UI interest. Connect lifecycle and
 server enrollment owners use the opt-out-controlled service through trusted
 backend paths. Browser service readiness closes a pending enable request only;
@@ -4224,8 +4227,8 @@ requests default to unknown at the route boundary. Core onboarding, settings and
 the existing machine CLI use this shared operation. No telemetry-injection CLI
 or daemon wire change is introduced. Source survives asynchronous creation in
 local lifecycle ownership; after a server restart, missing source is unknown.
-Readiness means an authenticated daemon WebSocket became usable; reconnects
-do not create new enrollment milestones.
+Readiness closes a pending enrollment only when an authenticated daemon WebSocket
+becomes usable; reconnects and arrivals without a pending attempt emit no setup success.
 
 Existing accepted-work events add `access_route`. Signed Connect ingress markers
 establish connect, trusted non-loopback sockets establish direct, and loopback
@@ -4251,9 +4254,8 @@ Internal backend plumbing used only by the builtin Connect plugin's actual
 remote-access switch and tunnel lifecycle. Its API handle must be live; the
 loaded owner must have Connect's builtin ID, provenance, source kind and source
 name. A private or catalog plugin reusing its name receives no reporter.
-Strict validation permits only browser `enable_requested`, `service_ready` and
-`setup_result` with valid outcomes, bounded source/error categories and no extra
-fields. It cannot report machine milestones or authenticated client connection.
+Strict validation permits only the shared browser-access `enable` operation
+with valid outcomes, bounded surface/entry/error properties and no extra fields. It cannot report machine milestones or authenticated client connection.
 Core's existing Connect controls, CLI and lifecycle use this same path; the
 server's trusted ingress and enrollment owners report their own milestones.
 The general telemetry HTTP endpoint cannot invoke it. Opt-out is checked at
@@ -4268,16 +4270,17 @@ Prompt Library, Agent Annotations and Ask User Question only. Their existing
 execution or visible-action owners report bounded action/outcome pairs; core's
 shared plugin tool and CLI dispatch supplies invocation context. A CLI call
 with a thread context is agent-initiated; without one its initiator is unknown.
-Plugins outside
-the reviewed public allowlist emit no new use or state-change observations.
+All installed bundled and official public-catalog plugins can produce generic
+successful tool and CLI use observations; no fixed public-plugin list limits
+recommendation measurement. Private and local sources remain excluded.
 The server derives public keys from installed provenance, validates the action
 owner and outcome, and uses the existing opt-out-controlled telemetry service.
 No plugin identity is accepted from the report, and arguments, outputs, paths,
 private names and free-text properties are rejected. No generic RPC read or
 background startup counts as use. Client-only observations remain `observed`.
 This is deliberately internal and has no arbitrary telemetry CLI or client
-endpoint. Only these named first-party owners may call it; adding an owner or
-public key requires privacy review and tests. The existing setup-operation
+endpoint. Only these named first-party owners may call the specialized report hook;
+generic successful invocation reporting is owned by core. The existing setup-operation
 endpoint and `plugin_installed` event retain their previous meanings.
 
 Plugin install, catalog install, enable and disable SDK calls accept optional
@@ -4286,8 +4289,17 @@ and becomes `unknown` at the server boundary. Catalog/source install jobs retain
 the context of the request that created that job, including when queued behind
 another source; coalesced requests do not relabel an existing job. These fields
 are collection attribution, not authentication or experiment assignment.
-Recommendation observations are limited to shown, selected and deselected cards
-in the current guide; later browsing, timing and dismissal are not collected.
+Recommendation events use resource_type, resource_id, a unique recommendation_id,
+surface, entry, and shown/selected/used actions. Clients may report only shown;
+confirmed enable owns selected. The last successfully selected recommendation
+is stored in existing plugin KV storage and supplies attribution for subsequent
+meaningful use until replaced, disabled, uninstalled, or telemetry is turned off.
+Impressions never overwrite selection. Attributed use emits recommendation used
+instead of plugin_use; generic and specialized hooks deduplicate within a single
+invocation. A recommendation ID is optional on install/enable SDK requests and
+is carried through asynchronous jobs. Marketplace and settings are distinct
+surfaces. Prompt recommendations have a schema but no live prompt feature emitter.
+These associations describe a selection path, not proof of causal lift.
 `question_created` is recorded by the persisted input-request owner for the
 reviewed Ask User Question plugin, not optimistically before `requestInput`.
 

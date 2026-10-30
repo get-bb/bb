@@ -60,7 +60,11 @@ export function useOnboardingProjectImport({
         name: "onboarding_operation",
         properties: {
           entry,
-          operation: "project_import",
+          surface: "onboarding",
+          step: "projects",
+          resource_type: "project",
+          resource_id: "project_import",
+          operation: "import",
           outcome,
           error_category:
             outcome === "failed" || outcome === "partial" ? "request" : null,

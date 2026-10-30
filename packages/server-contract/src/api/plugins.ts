@@ -281,12 +281,14 @@ export const ROOT_PLUGIN_SOURCE_SELECTION: PluginSourceSelection = {
 export const pluginStateMeasurementRequestSchema = z
   .object({
     measurementSource: pluginMeasurementSourceSchema.default("unknown"),
+    recommendationId: z.string().uuid().nullable().default(null),
   })
   .strict();
 
 export const pluginInstallRequestSchema = z
   .object({
     measurementSource: pluginMeasurementSourceSchema.default("unknown"),
+    recommendationId: z.string().uuid().nullable().default(null),
     source: z.string().min(1),
     selection: pluginSourceSelectionSchema.default(
       ROOT_PLUGIN_SOURCE_SELECTION,
@@ -307,6 +309,7 @@ export const pluginMarketplaceNameSchema = z
 export const pluginCatalogInstallRequestSchema = z
   .object({
     measurementSource: pluginMeasurementSourceSchema.default("unknown"),
+    recommendationId: z.string().uuid().nullable().default(null),
     entryId: z.string().min(1),
     marketplace: pluginMarketplaceNameSchema.optional(),
     confirmedSource: z.lazy(() => pluginCatalogResolvedSourceSchema).optional(),

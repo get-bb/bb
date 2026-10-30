@@ -32,8 +32,15 @@ export function useSetPluginEnabled() {
       enabled: boolean,
       onNavigate?: () => void,
       measurementSource?: PluginMeasurementSource,
+      recommendationId?: string,
     ) => {
-      await setPluginEnabled(fetch, pluginId, enabled, measurementSource);
+      await setPluginEnabled(
+        fetch,
+        pluginId,
+        enabled,
+        measurementSource ?? "settings",
+        recommendationId,
+      );
       if (enabled) return;
       const current = store.get(splitLayoutAtom);
       let next = current;

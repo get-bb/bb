@@ -120,6 +120,7 @@ export interface PluginIdArgs {
 
 export interface PluginInstallArgs {
   measurementSource?: PluginMeasurementSource;
+  recommendationId?: string | null;
   source: string;
   subdirectory?: string;
   plugin?: string;
@@ -127,6 +128,7 @@ export interface PluginInstallArgs {
 
 export interface PluginCatalogInstallArgs {
   measurementSource?: PluginMeasurementSource;
+  recommendationId?: string | null;
   entryId: string;
   marketplace?: string;
   confirmedSource?: PluginCatalogResolvedSource;
@@ -314,10 +316,16 @@ export interface PluginsArea {
   catalog: PluginCatalogArea;
   marketplaces: PluginMarketplacesArea;
   disable(
-    args: PluginIdArgs & { measurementSource?: PluginMeasurementSource },
+    args: PluginIdArgs & {
+      measurementSource?: PluginMeasurementSource;
+      recommendationId?: string | null;
+    },
   ): Promise<PluginDisableResult>;
   enable(
-    args: PluginIdArgs & { measurementSource?: PluginMeasurementSource },
+    args: PluginIdArgs & {
+      measurementSource?: PluginMeasurementSource;
+      recommendationId?: string | null;
+    },
   ): Promise<PluginEnableResult>;
   getSettings(args: PluginGetSettingsArgs): Promise<PluginGetSettingsResult>;
   getSource(args: PluginGetSourceArgs): Promise<PluginGetSourceResult>;
@@ -493,6 +501,7 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
       source: input.source,
       selection: pluginSourceSelection(input),
       measurementSource: input.measurementSource,
+      recommendationId: input.recommendationId,
     };
     pluginInstallRequestSchema.parse(body);
     return body;
@@ -665,7 +674,10 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
     catalog,
     marketplaces,
     async disable(input) {
-      const body = { measurementSource: input.measurementSource };
+      const body = {
+        measurementSource: input.measurementSource,
+        recommendationId: input.recommendationId,
+      };
       pluginStateMeasurementRequestSchema.parse(body);
       const response = await requestParsed(
         pluginPath(input.pluginId, "/disable"),
@@ -675,7 +687,10 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
       return response.plugin;
     },
     async enable(input) {
-      const body = { measurementSource: input.measurementSource };
+      const body = {
+        measurementSource: input.measurementSource,
+        recommendationId: input.recommendationId,
+      };
       pluginStateMeasurementRequestSchema.parse(body);
       const response = await requestParsed(
         pluginPath(input.pluginId, "/enable"),

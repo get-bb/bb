@@ -6,17 +6,40 @@ export type PluginMeasurementSource = z.infer<
   typeof pluginMeasurementSourceSchema
 >;
 
-export const publicMeasurementPluginSchema = z.enum([
-  "browser-automation",
-  "workflows",
-  "monaco-editor",
-  "prompt-library",
-  "agent-annotations",
-  "ask-user-question",
-]);
+export const publicMeasurementPluginSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[a-z0-9][a-z0-9-]*$/);
 export type PublicMeasurementPlugin = z.infer<
   typeof publicMeasurementPluginSchema
 >;
+export const recommendationContextSchema = z
+  .object({
+    resource_type: z.enum(["plugin", "prompt"]),
+    resource_id: publicMeasurementPluginSchema,
+    recommendation_id: z.string().uuid(),
+    surface: z.enum([
+      "onboarding",
+      "marketplace",
+      "settings",
+      "homepage",
+      "thread",
+      "cli",
+      "other",
+      "unknown",
+    ]),
+    entry: z.enum(["first_run", "replay"]).nullable(),
+  })
+  .strict();
+export const recommendationTelemetryEventSchema = z
+  .object({
+    name: z.literal("recommendation"),
+    properties: recommendationContextSchema
+      .extend({ action: z.enum(["shown", "selected", "used"]) })
+      .strict(),
+  })
+  .strict();
 
 const pluginSourceSchema = z.enum(["builtin", "public_catalog"]);
 export const pluginUseInitiatorSchema = z.enum([
@@ -32,6 +55,12 @@ export type PluginUseInitiator = z.infer<typeof pluginUseInitiatorSchema>;
 export const pluginUseObservationSchema = z.discriminatedUnion("action", [
   z
     .object({
+      action: z.enum(["tool_invoked", "cli_invoked"]),
+      outcome: z.literal("succeeded"),
+    })
+    .strict(),
+  z
+    .object({
       action: z.literal("browser_run"),
       outcome: z.enum(["invoked", "succeeded", "failed", "unknown"]),
     })
@@ -44,7 +73,11 @@ export const pluginUseObservationSchema = z.discriminatedUnion("action", [
     .strict(),
   z
     .object({
-      action: z.enum(["editor_opened", "prompt_inserted", "annotation_inserted"]),
+      action: z.enum([
+        "editor_opened",
+        "prompt_inserted",
+        "annotation_inserted",
+      ]),
       outcome: z.literal("observed"),
     })
     .strict(),
@@ -63,21 +96,19 @@ export const pluginUseObservationSchema = z.discriminatedUnion("action", [
 ]);
 export type PluginUseObservation = z.infer<typeof pluginUseObservationSchema>;
 
-const actionOwners = {
-  browser_run: "browser-automation",
-  workflow_started: "workflows",
-  editor_opened: "monaco-editor",
-  file_saved: "monaco-editor",
-  prompt_inserted: "prompt-library",
-  annotation_inserted: "agent-annotations",
-  question_created: "ask-user-question",
-  question_answered: "ask-user-question",
-} as const satisfies Record<
-  PluginUseObservation["action"],
-  PublicMeasurementPlugin
->;
+const actionOwners = new Map<string, string>([
+  ["browser_run", "browser-automation"],
+  ["workflow_started", "workflows"],
+  ["editor_opened", "monaco-editor"],
+  ["file_saved", "monaco-editor"],
+  ["prompt_inserted", "prompt-library"],
+  ["annotation_inserted", "agent-annotations"],
+  ["question_created", "ask-user-question"],
+  ["question_answered", "ask-user-question"],
+]);
 
-const [firstObservation, ...otherObservations] = pluginUseObservationSchema.options;
+const [firstObservation, ...otherObservations] =
+  pluginUseObservationSchema.options;
 const reportFields = { initiator: pluginUseInitiatorSchema.optional() };
 const useFields = {
   public_plugin: publicMeasurementPluginSchema,
@@ -99,7 +130,8 @@ export const pluginUseTelemetryEventSchema = z
         ...otherObservations.map((option) => option.extend(useFields)),
       ])
       .superRefine((value, context) => {
-        if (value.public_plugin !== actionOwners[value.action])
+        const owner = actionOwners.get(value.action);
+        if (owner !== undefined && owner !== value.public_plugin)
           context.addIssue({
             code: "custom",
             message: "Plugin action must match its owner",
@@ -115,7 +147,8 @@ export const pluginStateChangedTelemetryEventSchema = z
       .object({
         public_plugin: publicMeasurementPluginSchema,
         plugin_source: pluginSourceSchema,
-        source: pluginMeasurementSourceSchema,
+        surface: recommendationContextSchema.shape.surface,
+        entry: recommendationContextSchema.shape.entry,
         previous_state: z.enum(["absent", "disabled", "enabled", "unknown"]),
         state: z.enum(["enabled", "disabled"]),
       })
@@ -132,19 +165,14 @@ export const pluginStateChangedTelemetryEventSchema = z
   .strict();
 export type PluginMeasurementEvent =
   | z.infer<typeof pluginUseTelemetryEventSchema>
-  | z.infer<typeof pluginStateChangedTelemetryEventSchema>;
+  | z.infer<typeof pluginStateChangedTelemetryEventSchema>
+  | z.infer<typeof recommendationTelemetryEventSchema>;
 
 export const pluginRecommendationTelemetryEventSchema = z
   .object({
-    name: z.literal("plugin_recommendation"),
-    properties: z
-      .object({
-        action: z.enum(["shown", "selected", "deselected"]),
-        public_plugin: publicMeasurementPluginSchema,
-        source: pluginMeasurementSourceSchema,
-        initial_state: z.enum(["absent", "disabled", "enabled", "unknown"]),
-        availability: z.enum(["available", "unavailable", "unknown"]),
-      })
+    name: z.literal("recommendation"),
+    properties: recommendationContextSchema
+      .extend({ action: z.literal("shown") })
       .strict(),
   })
   .strict();

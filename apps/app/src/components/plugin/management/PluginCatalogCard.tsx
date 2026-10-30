@@ -72,7 +72,11 @@ function PluginCatalogEnabledSwitch({
   plugin: PluginListItem;
   displayName: string;
 }) {
-  const { toggle, enabled } = usePluginEnabledMutation(plugin);
+  const { toggle, enabled } = usePluginEnabledMutation(
+    plugin,
+    undefined,
+    "marketplace",
+  );
   return (
     <Switch
       checked={enabled}

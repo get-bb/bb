@@ -20,6 +20,6 @@ export function createConnectDeviceSetupRecorder(
   return (input) => {
     const properties = connectDeviceSetupPropertiesSchema.parse(input);
     if (telemetry.isEnabled())
-      telemetry.capture({ name: "device_setup", properties });
+      telemetry.capture({ name: "onboarding_operation", properties });
   };
 }

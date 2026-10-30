@@ -33,14 +33,20 @@ export function useNewThreadBlockerObservation(
         properties: {
           state: "shown",
           reason: readiness.reason,
-          source: source.current,
+          surface: "homepage",
+          entry: source.current === "other" ? null : source.current,
         },
       });
     } else if (readiness.status === "ready") {
       for (const reason of blockers.current) {
         recordTelemetryEvent({
           name: "new_thread_blocker",
-          properties: { state: "cleared", reason, source: source.current },
+          properties: {
+            state: "cleared",
+            reason,
+            surface: "homepage",
+            entry: source.current === "other" ? null : source.current,
+          },
         });
       }
       blockers.current.clear();

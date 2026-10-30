@@ -39,6 +39,9 @@ describe("device lifecycle measurement", () => {
       };
       const { host: primary } = seedHostSession(deps);
       seedPrimaryHost(deps, primary.id);
+      const untracked = seedHost(deps);
+      recordMachineReady(deps, untracked.id);
+      expect(capture).not.toHaveBeenCalled();
       const host = seedHost(deps);
       withDeviceSetupSource("first_run", () =>
         beginMachineEnrollment(deps, host.id),
@@ -51,7 +54,7 @@ describe("device lifecycle measurement", () => {
       expect(capture).toHaveBeenCalledTimes(2);
       expect(
         capture.mock.calls.map(([event]) =>
-          event.name === "device_setup" ? event.properties.source : null,
+          event.name === "onboarding_operation" ? event.properties.entry : null,
         ),
       ).toEqual(["first_run", "first_run"]);
       expect(JSON.stringify(capture.mock.calls)).not.toContain(host.id);

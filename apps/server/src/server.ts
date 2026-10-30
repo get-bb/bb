@@ -1015,13 +1015,14 @@ export function createApp(
           ) {
             observedRemoteConnection = true;
             deps.telemetry.capture({
-              name: "device_setup",
+              name: "onboarding_step_state",
               properties: {
-                target: "browser_access",
-                action: "remote_connected",
-                outcome: "observed",
-                source: "unknown",
-                error_category: null,
+                surface: "unknown",
+                entry: null,
+                step: "devices",
+                resource_type: "device",
+                resource_id: "browser_access",
+                state: "connected",
               },
             });
           }

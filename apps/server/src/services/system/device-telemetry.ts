@@ -1,11 +1,11 @@
+import { deviceTelemetryContext } from "@bb/server-contract";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { getHost, getLatestSessionForHost, type DbConnection } from "@bb/db";
 import type {
   DeviceSetupSource,
-  DeviceSetupProperties,
+  DeviceOperationProperties,
 } from "@bb/server-contract";
 import type { AppDeps } from "../../types.js";
-import { readPrimaryHostIdFromDataDir } from "../hosts/primary-host.js";
 
 type Deps = Pick<AppDeps, "db" | "telemetry" | "config">;
 const sourceContext = new AsyncLocalStorage<DeviceSetupSource>();
@@ -39,10 +39,10 @@ function pending(deps: Pick<Deps, "db">) {
 
 function emit(
   deps: Pick<Deps, "telemetry">,
-  properties: DeviceSetupProperties,
+  properties: DeviceOperationProperties,
 ): void {
   if (deps.telemetry.isEnabled())
-    deps.telemetry.capture({ name: "device_setup", properties });
+    deps.telemetry.capture({ name: "onboarding_operation", properties });
 }
 
 export function beginMachineEnrollment(deps: Deps, hostId: string): void {
@@ -60,10 +60,12 @@ export function beginMachineEnrollment(deps: Deps, hostId: string): void {
     result: null,
   });
   emit(deps, {
-    target: "additional_machine",
-    action: "enrollment_requested",
+    step: "devices",
+    resource_type: "device",
+    resource_id: "additional_machine",
+    operation: "enroll",
     outcome: "started",
-    source,
+    ...deviceTelemetryContext(source),
     error_category: null,
   });
 }
@@ -73,27 +75,16 @@ export function recordMachineReady(deps: Deps, hostId: string): void {
   if (!current || current.destroyedAt !== null || current.phase === "removing")
     return;
   const states = pending(deps);
-  let state = states.get(hostId);
-  if (!state) {
-    const primary = readPrimaryHostIdFromDataDir({
-      dataDir: deps.config.dataDir,
-    });
-    if (current.lastSeenAt !== null || primary === null || primary === hostId)
-      return;
-    state = {
-      source: "unknown",
-      ready: false,
-      result: null,
-    };
-    states.set(hostId, state);
-  }
-  if (state.ready) return;
+  const state = states.get(hostId);
+  if (!state || state.ready) return;
   state.ready = true;
   emit(deps, {
-    target: "additional_machine",
-    action: "machine_ready",
+    step: "devices",
+    resource_type: "device",
+    resource_id: "additional_machine",
+    operation: "enroll",
     outcome: "succeeded",
-    source: state.source,
+    ...deviceTelemetryContext(state.source),
     error_category: null,
   });
 }
@@ -114,10 +105,12 @@ export function recordMachineSetupResult(
     return;
   state.result = outcome;
   emit(deps, {
-    target: "additional_machine",
-    action: "setup_result",
+    step: "devices",
+    resource_type: "device",
+    resource_id: "additional_machine",
+    operation: "enroll",
     outcome,
-    source: state.source,
+    ...deviceTelemetryContext(state.source),
     error_category: outcome === "cancelled" ? null : "enrollment",
   });
   if (outcome === "cancelled" || getHost(deps.db, hostId)?.destroyedAt != null)
