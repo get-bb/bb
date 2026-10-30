@@ -211,7 +211,7 @@ interface NewThreadComposerPromptOptions {
   placeholder?: string;
   autoFocus?: boolean;
   banner?: ReactNode;
-  blockedReason?: string;
+  blocker?: Extract<NewThreadReadiness, { status: "blocked" }>;
   resolveMentionLink?: PromptMentionLinkResolver;
   pluginComposerHost?: PluginComposerHost;
   textEffects?: NewThreadPromptBoxProps["textEffects"];
@@ -2024,24 +2024,16 @@ export function NewThreadComposer({
     (options: NewThreadComposerPromptOptions) => {
       const locks = options.locks ?? {};
       pickerLocksRef.current = locks;
-      const disabledReason = options.blockedReason ?? submitDisabledReason;
+      const disabledReason = options.blocker?.message ?? submitDisabledReason;
       return (
         <LiveDraftNewThreadPromptBox
-          readiness={
-            options.blockedReason === undefined
-              ? submissionReadiness
-              : {
-                  status: "blocked",
-                  reason: "other",
-                  message: options.blockedReason,
-                }
-          }
+          readiness={options.blocker ?? submissionReadiness}
           promptDraft={promptDraft}
           id={options.id}
           focusRequest={promptBoxFocusRequest}
           onChange={promptDraft.setTextAndMentions}
           onSubmit={(extras) =>
-            handleSubmit(options.blockedReason ?? null, extras)
+            handleSubmit(options.blocker?.message ?? null, extras)
           }
           isSubmitting={isSubmitting}
           disabled={disabledReason !== null}
