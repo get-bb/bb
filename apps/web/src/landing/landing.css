@@ -2788,8 +2788,14 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   height: 13px;
 }
 
+/* Room above the PR rows for their tag, so it never covers a thread title. */
 .bw-spot-rows {
-  margin: 2px 0;
+  margin: 22px 0 2px;
+}
+
+.bw-spot-rows .bw-spot-tag {
+  top: -24px;
+  right: 4px;
 }
 
 .bw-row-meta {
