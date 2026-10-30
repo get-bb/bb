@@ -593,6 +593,12 @@
       "dependsOn": ["//#ensure-native-modules", "topo"],
       "inputs": [
         "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/.bb/skills/**",
+        "$TURBO_ROOT$/apps/web/content/docs/**",
+        "$TURBO_ROOT$/apps/web/src/guides/**",
+        "$TURBO_ROOT$/packages/templates/src/templates/**",
+        "$TURBO_ROOT$/plugins/**/*.md",
+        "$TURBO_ROOT$/plugins/*/**/*.ts",
         "$TURBO_ROOT$/plugins/bb-guide/skills/bb-cli/**",
         "$TURBO_ROOT$/vitest*.ts"
       ]
