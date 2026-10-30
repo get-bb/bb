@@ -93,9 +93,11 @@ export function ReleaseNotesPanel({ id, version }: ReleaseNotesPanelProps) {
   );
   const releaseMeta = RELEASE_META[version];
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [moreAbove, setMoreAbove] = useState(false);
   const [moreBelow, setMoreBelow] = useState(false);
   const syncFade = (node: HTMLDivElement | null) => {
     if (node !== null) {
+      setMoreAbove(node.scrollTop > 0);
       setMoreBelow(node.scrollTop + node.clientHeight < node.scrollHeight - 1);
     }
   };
@@ -144,6 +146,9 @@ export function ReleaseNotesPanel({ id, version }: ReleaseNotesPanelProps) {
               </div>
             ))}
           </div>
+          {moreAbove ? (
+            <OverflowFade placement="above" tone="sidebar" inset />
+          ) : null}
           {moreBelow ? (
             <OverflowFade placement="below" tone="sidebar" inset />
           ) : null}

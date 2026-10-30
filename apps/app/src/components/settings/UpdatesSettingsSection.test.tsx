@@ -626,6 +626,24 @@ The published lede.
       expect(screen.queryByRole("heading", { name: "Highlights" })).toBeNull();
     });
 
+    it("fades the top edge once the changelog is scrolled", () => {
+      renderSection();
+      fireEvent.click(releaseNotesButton("0.47.0"));
+
+      const panel = releaseNotesPanel("0.47.0")!;
+      const scroller = panel.querySelector<HTMLElement>(
+        "[data-release-notes-scroll]",
+      )!;
+      expect(panel.querySelector('[data-overflow-fade="above"]')).toBeNull();
+
+      scroller.scrollTop = 40;
+      fireEvent.scroll(scroller);
+
+      expect(
+        panel.querySelector('[data-overflow-fade="above"]'),
+      ).not.toBeNull();
+    });
+
     it("says so when the changelog has no entry for the release", () => {
       useUpdateInventoryMock.mockReturnValue(makeInventory({}));
       renderSection();
