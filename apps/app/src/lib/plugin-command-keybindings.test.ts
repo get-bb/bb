@@ -111,10 +111,10 @@ describe("plugin command keybindings", () => {
     }
   });
 
-  it("ignores collisions whose contexts can never be active together", () => {
+  it("ignores a collision when the plugin requires a context the other binding excludes", () => {
     const defaults = [
-      { ...binding("thread.new"), when: { all: ["mainSurface", "terminalFocus"], none: [] } },
-      { ...binding("plugin:first/open"), when: { all: ["mainSurface"], none: ["terminalFocus"] } },
+      { ...binding("thread.new"), when: { all: ["mainSurface"], none: ["terminalFocus"] } },
+      { ...binding("plugin:first/open"), when: { all: ["mainSurface", "terminalFocus"], none: [] } },
     ] satisfies AppDefaultKeybinding[];
     const result = resolvePluginCommandDefaults(defaults, [], false, "Linux", NO_BUNDLED);
     expect(result.conflicts.size).toBe(0);

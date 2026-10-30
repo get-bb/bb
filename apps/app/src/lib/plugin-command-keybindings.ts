@@ -81,14 +81,12 @@ export function resolvePluginCommandDefaults(
         (!bundled ||
           !candidate.command.startsWith("plugin:") ||
           bundledCommands.has(candidate.command)) &&
-        shortcutsConflict(shortcut, candidate.shortcut, platform),
+        shortcutsConflict(shortcut, candidate.shortcut, platform) &&
+        !contextsExclusive(binding, candidate),
     );
-    const blocking = collisions.filter(
-      (candidate) => !contextsExclusive(binding, candidate),
-    );
-    if (blocking.length === 0) return binding;
+    if (collisions.length === 0) return binding;
     conflicts.set(binding.command, [
-      ...new Set(blocking.map((candidate) => candidate.command)),
+      ...new Set(collisions.map((candidate) => candidate.command)),
     ]);
     return { ...binding, shortcut: null };
   });
