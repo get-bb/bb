@@ -24,7 +24,7 @@ Threads without a project go in **Personal**: choose **Don't work in a project**
 
 ## Threads
 
-A thread is one conversation with one agent, such as Claude Code or Codex. It belongs to one project and runs in one environment on one machine, which you pick when you start it.
+A thread is one conversation with one agent, such as Claude Code or Codex. It belongs to one project and runs in one environment on one [machine](/docs/machines-servers-and-the-host-daemon), which you pick when you start it.
 
 ## Environments
 
@@ -40,10 +40,10 @@ An environment is a folder on one machine. Several threads can share one, such a
 The first three ship with bb as plugins and are on by default. Plugins can add more to the same **Environment** picker. Worktrees live in bb's data folder on that machine (`~/.bb/worktrees` by default), on a branch starting with `bb/`.
 
 :::warning[Archiving a worktree thread removes its folder]
-bb stops every process still running in it, including your own terminals and servers. Uncommitted changes are lost; the branch and its commits stay. Unarchive within five minutes to keep it.
+bb stops every process still running in it, including your own terminals and servers. Uncommitted changes are lost; the branch and its commits stay. [Unarchive](/docs/organize-and-archive-threads#find-and-restore-archived-threads) within five minutes to keep it.
 :::
 
-A child thread, one started by another thread, gets its own new worktree by default. If the parent's project checkout isn't a Git repository, the child shares the parent's folder. You or an agent can pick any environment for it instead.
+A [child thread](/docs/child-threads-subagents-and-workflows), one started by another thread, gets its own new worktree by default. If the parent's project checkout isn't a Git repository, the child shares the parent's folder. You or an agent can pick any environment for it instead.
 
 ## When to use which
 
@@ -54,7 +54,7 @@ A child thread, one started by another thread, gets its own new worktree by defa
 | Continue in a worktree you or an earlier thread made | **Worktree** → **Existing worktree** |
 | Add a second thread, such as a reviewer, to a thread's environment | **Reuse existing**, or **New thread in this environment** in the thread |
 | Do something that isn't about a repository | **Don't work in a project** (Personal workspace) |
-| Keep the agent off your own computer | A sandbox or another machine. See Run threads in sandboxes, containers and VMs |
+| Keep the agent off your own computer | A sandbox or another machine. See [Run threads in sandboxes, containers and VMs](/docs/run-threads-in-sandboxes) |
 
 ## Next steps
 

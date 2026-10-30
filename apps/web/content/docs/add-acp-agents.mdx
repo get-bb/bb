@@ -92,7 +92,7 @@ A custom agent runs as you. Add only agents you trust.
 
 bb doesn't run models. Set the model up in an agent that reaches it: [Pi](/docs/pi), opencode, or a custom agent.
 
-To make an extra model ID selectable, add it to `customModels`, then restart bb. The agent can still reject it.
+To make an extra model ID selectable, add it to [`customModels`](/docs/configuration-files-and-environment-variables#configjson), then restart bb. The agent can still reject it.
 
 ```json title="~/.bb/config.json"
 {
@@ -106,7 +106,7 @@ To make an extra model ID selectable, add it to `customModels`, then restart bb.
 
 | Feature | ACP agents |
 | --- | --- |
-| Permission modes | Accept Edits and Full Access |
+| [Permission modes](/docs/choose-a-permission-mode) | Accept Edits and Full Access |
 | Models, reasoning, context and cost | What the agent reports |
 | Questions | Up to 10 fields |
 | Forks | opencode, omp and Hermes Agent |
@@ -117,9 +117,9 @@ See [Agent feature support](/docs/agent-feature-support).
 
 ## Check it worked
 
-Run `bb provider list`; the agent appears as `acp-<id>`. If the picker can't load models, the command isn't installed or signed in.
+Run `bb provider list`; the agent appears as `acp-<id>`. If the picker [can't load models](/docs/a-model-is-missing-from-the-model-picker#could-not-load-models-for-claude-code), the command isn't installed or signed in.
 
 ## Related troubleshooting
 
-- [Choose a model, reasoning and context size](/docs/choose-a-model-reasoning-and-context-size#if-a-model-is-missing): a model is missing.
+- [A model is missing from the model picker](/docs/a-model-is-missing-from-the-model-picker): a model is missing.
 - [Connect MCP servers](/docs/connect-mcp-servers): the agent doesn't see MCP servers.

@@ -16,7 +16,7 @@ owner: brsbl
 verified: 2026-10-30
 ---
 
-A skill is a folder with a `SKILL.md` file. Where you put the folder decides who sees it in the `/` menu.
+A skill is a folder with a `SKILL.md` file. Where you put the folder decides who sees it in the [`/` menu](/docs/use-skills-in-a-thread).
 
 ## Choose where the skill goes
 
@@ -99,7 +99,7 @@ To give Claude Code or Codex bb's CLI skills outside bb, click **Install** next 
 
 ## Related troubleshooting
 
-- **The skill isn't listed:** check the file is named `SKILL.md`, its front matter starts with `---`, and `name` matches the folder.
+- **The skill isn't listed:** [check](/docs/a-skill-is-missing-from-the-menu#the-skill-is-in-the-wrong-shape) the file is named `SKILL.md`, its front matter starts with `---`, and `name` matches the folder.
 - **A linked skill in a project is missing:** the link points outside the project. Move the skill inside it or into `~/.bb/skills`.
-- **It shows for one agent only:** it is in that agent's own folder. Move it to `~/.bb/skills`.
+- **It shows for one agent only:** it is in [that agent's own folder](/docs/a-skill-is-missing-from-the-menu#where-bb-looks-for-skills). Move it to `~/.bb/skills`.
 - **It appears twice:** two folders hold different versions with the same name. Remove one.

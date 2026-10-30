@@ -16,7 +16,7 @@ owner: brsbl
 verified: 2026-10-30
 ---
 
-bb tells agents not to start other threads unless you ask, so ask explicitly. Each child shows in the sidebar under its parent, where you can steer it or take it over.
+bb tells agents not to start other threads unless you ask, so ask explicitly. Each child shows in the sidebar under its parent, where you can [steer it or take it over](/docs/follow-child-threads-from-the-parent).
 
 ## Ask an agent for child threads
 
@@ -30,7 +30,7 @@ The agent runs `bb thread spawn` once per part.
 
 ## Make it the default for a project
 
-1. Add a line like this to the project's `.bb/AGENTS.md`, which every agent in the project reads. Use `~/.bb/AGENTS.md` for every project.
+1. Add a line like this to the project's [`.bb/AGENTS.md`](/docs/agent-context#what-bb-adds), which every agent in the project reads. Use `~/.bb/AGENTS.md` for every project.
 
    ```text title=".bb/AGENTS.md"
    When a task has independent parts, delegate each part to a bb child thread with `bb thread spawn --parent-self` instead of using your own subagents.
@@ -80,6 +80,6 @@ A child can belong to a different project; the sidebar marks it. Threads nest at
 
 ## Related troubleshooting
 
-- **The agent uses its own subagents anyway:** turn on **Disable provider subagents** for that agent, and ask for child threads by name.
+- **The agent uses its own subagents anyway:** turn on [**Disable provider subagents**](#make-it-the-default-for-a-project) for that agent, and ask for child threads by name.
 - **"Thread nesting is limited to 4 levels.":** nest the thread under a parent higher up.
-- **A child fails to start because of its permission mode:** the machine's **Permission limit** in **Settings → Machines** is below what the child's agent needs. Pi, for example, runs only in Full Access.
+- **A child fails to start because of its permission mode:** the machine's [**Permission limit**](/docs/choose-a-permission-mode#limit-a-machine) in **Settings → Machines** is below what the child's agent needs. Pi, for example, runs only in Full Access.

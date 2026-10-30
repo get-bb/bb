@@ -64,7 +64,7 @@ bb thread tell <thread-id> "Now run the full suite" --permission-mode full
 
 With only one supported mode, bb hides the picker.
 
-Claude Code runs Bash in its sandbox in Accept Edits and Approve for me, unless you turn off **Claude Code sandbox** in the **Claude Code provider** plugin's settings.
+Claude Code runs Bash in its sandbox in Accept Edits and Approve for me, unless you turn off **Claude Code sandbox** in the [**Claude Code provider**](/docs/claude-code#change-claude-code-settings-in-bb) plugin's settings.
 
 ## Limit a machine
 
@@ -98,7 +98,7 @@ From a terminal, add `--plan` to `bb thread tell` or `bb thread spawn`; leave wi
 
 ## Child threads
 
-A child thread starts in its parent's mode, adjusted to its agent, unless you ask for another.
+A [child thread](/docs/start-child-threads) starts in its parent's mode, adjusted to its agent, unless you ask for another.
 
 ## Check it worked
 
@@ -108,5 +108,5 @@ A child thread starts in its parent's mode, adjusted to its agent, unless you as
 ## Related troubleshooting
 
 - Asked about everything: switch to **Approve for me** or **Full Access**.
-- "This machine limits permission mode to …": raise the machine's **Permission limit**, or use an agent that supports a lower mode.
+- "This machine limits permission mode to …": raise the machine's [**Permission limit**](#limit-a-machine), or use an agent that supports a lower mode.
 - "Provider … only supports … permission mode": pick a supported mode.

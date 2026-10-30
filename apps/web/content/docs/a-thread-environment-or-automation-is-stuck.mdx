@@ -48,9 +48,9 @@ The machine couldn't interrupt the turn. Check `bb thread show <thread-id> --jso
 ## A thread waits and never starts
 
 - **The machine is offline.** Sending says "Host is offline." Wake it and check bb runs on it, or check **Settings → Machines**.
-- **A concurrency limit holds it** until a running thread goes idle. See `bb concurrency-limit status`.
+- **A [concurrency limit](/docs/bb-is-slow-or-uses-a-lot-of-memory#too-many-threads-run-at-once) holds it** until a running thread goes idle. See `bb concurrency-limit status`.
 - **It waits for an automatic retry** after a provider overload or usage limit. `bb provider-retry retry <thread-id>` sends now.
-- **It waits for you.** Answer its question or approval in the thread.
+- **It waits for you.** Answer its question or [approval](/docs/choose-a-permission-mode#answer-an-approval) in the thread.
 
 ## A turn failed
 
@@ -58,7 +58,7 @@ The machine couldn't interrupt the turn. Check `bb thread show <thread-id> --jso
 
 ## Workspace setup failed
 
-Usually the repository's `.bb-env-setup.sh` failed: it must exit 0 within 15 minutes, or bb removes the new worktree. Fix the script or make optional steps non-fatal, then start a new thread.
+Usually the repository's `.bb-env-setup.sh` failed: it must exit 0 within 15 minutes, or bb removes the new worktree. [Fix the script](/docs/choose-where-a-thread-runs#prepare-new-worktrees) or make optional steps non-fatal, then start a new thread.
 
 ## Workspace no longer exists.
 
@@ -86,7 +86,7 @@ Recovery works only on Linux machines. It refuses while a setup or teardown scri
 
 ## An automation paused itself
 
-**Automations** in the sidebar marks it **Paused**, and its page shows the last error and its runs. It pauses after:
+[**Automations**](/docs/schedule-an-automation) in the sidebar marks it **Paused**, and its page shows the last error and its runs. It pauses after:
 
 - **Three failed runs in a row.**
 - **A target thread that can't take a run**, because it was archived, deleted or failed.

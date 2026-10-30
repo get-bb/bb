@@ -43,12 +43,12 @@ They show only while bb is open in a tab, over HTTPS or `localhost`. Each browse
 </Tab>
 <Tab value="Phone">
 
-The bb app for iOS or Android gets them even when closed. Pair it with your server first (see Use bb on your phone in Mobile and remote access).
+The bb app for iOS or Android gets them even when closed. Pair it with your server first (see [Use bb on your phone](/docs/use-bb-on-your-phone)).
 
 1. When asked "Get notified when a thread needs you?", tap **Turn on notifications**.
 2. To change it later: **Settings** → **This device** → **Notifications**, then **Push notifications** per server.
 
-The server must be reachable over HTTPS or bb connect. Each server's status says why when it can't register.
+The server must be reachable over HTTPS or [bb connect](/docs/set-up-remote-access#bb-connect). Each server's status says why when it can't register.
 
 </Tab>
 </Tabs>
@@ -73,7 +73,7 @@ On the **Push notifications** settings page:
 | --- | --- |
 | **Mobile**, **Web**, **Desktop notifications** | Turn each channel on or off for the whole server |
 | **Default notifications** | **All activity**, **Needs input only** (no finished turns) or **Muted** |
-| **Child thread notifications** | Level for child threads; default **Needs input only** |
+| **Child thread notifications** | Level for [child threads](/docs/follow-child-threads-from-the-parent); default **Needs input only** |
 
 For one thread, open its sidebar menu → **Notifications** and pick **Same as default**, **All activity**, **Needs input only** or **Muted**. A child can't notify more than its parent allows.
 
@@ -101,5 +101,5 @@ bb plugin config push-notifications set defaultLevel input-only
 
 - "Notifications are blocked": allow bb in your browser or system settings, then return.
 - None for a thread you had open: bb marked it read.
-- None on your phone: the server's status should read "On · registered with this server", and **Mobile notifications** be on.
-- "Push notifications plugin is disabled on this server": turn it on in **Settings → Installed plugins**.
+- None on your phone: [the server's status](/docs/use-bb-on-your-phone#3-turn-on-notifications) should read "On · registered with this server", and **Mobile notifications** be on.
+- "Push notifications plugin is disabled on this server": [turn it on](/docs/find-and-install-plugins#manage-installed-plugins) in **Settings → Installed plugins**.
