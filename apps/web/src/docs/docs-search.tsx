@@ -3,9 +3,9 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { useStaticSearch } from "fumadocs-core/search/client";
 import { useEffect, useRef, useState } from "react";
 
-export const DOCS_SEARCH_INDEX = "/docs/search.json";
+const DOCS_SEARCH_INDEX = "/docs/search.json";
 
-export function isSearchShortcut(event: {
+function isSearchShortcut(event: {
   key: string;
   metaKey: boolean;
   ctrlKey: boolean;
