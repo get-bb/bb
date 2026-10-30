@@ -164,7 +164,6 @@ export function Band({
 }: {
   title: ReactNode;
   flip?: boolean;
-  /** Id reported by `landing_section_viewed` on the homepage. */
   section?: string;
   visual: ReactNode;
   children: ReactNode;

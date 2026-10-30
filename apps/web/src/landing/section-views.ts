@@ -2,9 +2,7 @@ import { useEffect } from "react";
 
 import { trackLandingEvent } from "./analytics";
 
-/** Share of a section that must be on screen before it counts as viewed. */
 export const SECTION_VIEW_RATIO = 0.4;
-/** How long the section must stay on screen before it counts as viewed. */
 export const SECTION_VIEW_DWELL_MS = 1000;
 
 const THRESHOLDS = Array.from({ length: 21 }, (_, i) => i / 20);
@@ -12,8 +10,6 @@ const THRESHOLDS = Array.from({ length: 21 }, (_, i) => i / 20);
 function isVisibleEnough(entry: IntersectionObserverEntry): boolean {
   if (!entry.isIntersecting) return false;
   if (entry.intersectionRatio >= SECTION_VIEW_RATIO) return true;
-  // A section taller than the viewport can never be 40% visible on a short
-  // screen, so it also counts once it fills 40% of the viewport.
   const viewportHeight = entry.rootBounds?.height ?? window.innerHeight;
   return (
     viewportHeight > 0 &&
@@ -21,10 +17,6 @@ function isVisibleEnough(entry: IntersectionObserverEntry): boolean {
   );
 }
 
-/**
- * Calls `onView` once for each `[data-section]` element under `root` after it
- * has stayed at least 40% visible for one second. Returns a cleanup function.
- */
 export function observeSectionViews(
   root: ParentNode,
   onView: (section: string) => void,
@@ -82,11 +74,6 @@ export function observeSectionViews(
   };
 }
 
-/**
- * Sends `landing_section_viewed` once per homepage section per page view.
- * Only the homepage calls this, so other pages that reuse its sections send
- * nothing.
- */
 export function useSectionViews(): void {
   useEffect(
     () =>
