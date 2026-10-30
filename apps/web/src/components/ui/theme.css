@@ -1,5 +1,8 @@
 @import "tailwindcss";
 @source "../..";
+@source not "../../docs";
+@source not "../../routes/docs.*";
+@source not "../../routes/llms*";
 
 @custom-variant dark (&:is(.dark *));
 
