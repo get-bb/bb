@@ -40,6 +40,7 @@ describe("experiments settings", () => {
       expect(body.experiments).toEqual({
         applicationLinks: false,
         compactExpiredCache: false,
+        continueThreadsAfterRestarts: false,
         serverMove: false,
         performanceDiagnostics: false,
         pluginUpdates: false,
@@ -76,6 +77,7 @@ describe("experiments settings", () => {
         body: JSON.stringify({
           applicationLinks: true,
           compactExpiredCache: true,
+          continueThreadsAfterRestarts: false,
           serverMove: true,
           performanceDiagnostics: true,
           pluginUpdates: true,
@@ -92,6 +94,7 @@ describe("experiments settings", () => {
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
         applicationLinks: true,
         compactExpiredCache: true,
+        continueThreadsAfterRestarts: false,
         serverMove: true,
         performanceDiagnostics: true,
         pluginUpdates: true,
@@ -106,6 +109,7 @@ describe("experiments settings", () => {
       expect(getExperiments(harness.db)).toEqual({
         applicationLinks: true,
         compactExpiredCache: true,
+        continueThreadsAfterRestarts: false,
         serverMove: true,
         performanceDiagnostics: true,
         pluginUpdates: true,
@@ -124,6 +128,7 @@ describe("experiments settings", () => {
       ).toEqual({
         applicationLinks: true,
         compactExpiredCache: true,
+        continueThreadsAfterRestarts: false,
         serverMove: true,
         performanceDiagnostics: true,
         pluginUpdates: true,
@@ -146,6 +151,7 @@ describe("experiments settings", () => {
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
         applicationLinks: false,
         compactExpiredCache: false,
+        continueThreadsAfterRestarts: false,
         serverMove: true,
         performanceDiagnostics: false,
         pluginUpdates: false,

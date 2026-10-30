@@ -37,6 +37,7 @@ import type {
   PromptInput,
   QueuedMessagePayload,
   QueuedMessageSystemNotice,
+  SystemMessageKind,
   StartedOnBehalfOf,
   ThreadCreateOrigin,
   QueuedMessageWaitHolder,
@@ -2203,6 +2204,107 @@ export function listQueuedThreadMessagesWaitingOnKind(
     )
     .orderBy(asc(queuedThreadMessages.sortKey), asc(queuedThreadMessages.id))
     .all();
+}
+
+export function listUnclaimedQueuedSystemNotices(
+  db: DbQueryConnection,
+  kind: SystemMessageKind,
+): QueuedThreadMessageRow[] {
+  return db
+    .select()
+    .from(queuedThreadMessages)
+    .where(
+      and(
+        sql`json_extract(${queuedThreadMessages.systemNotice}, '$.kind') = ${kind}`,
+        isNull(queuedThreadMessages.claimToken),
+      ),
+    )
+    .orderBy(asc(queuedThreadMessages.createdAt), asc(queuedThreadMessages.id))
+    .all();
+}
+
+export function getPendingQueuedSystemNotice(
+  db: DbQueryConnection,
+  args: { kind: SystemMessageKind; threadId: string },
+): QueuedThreadMessageRow | null {
+  return (
+    db
+      .select()
+      .from(queuedThreadMessages)
+      .where(
+        and(
+          eq(queuedThreadMessages.threadId, args.threadId),
+          sql`json_extract(${queuedThreadMessages.systemNotice}, '$.kind') = ${args.kind}`,
+          isNull(queuedThreadMessages.claimToken),
+          isNull(queuedThreadMessages.failureReason),
+        ),
+      )
+      .limit(1)
+      .get() ?? null
+  );
+}
+
+export function moveQueuedThreadMessageToFront(
+  db: DbConnection,
+  notifier: DbNotifier,
+  args: { id: string; threadId: string },
+): boolean {
+  const moved = db.transaction(
+    (tx) => {
+      const [first] = listQueuedThreadMessages(tx, args.threadId);
+      if (first === undefined || first.id === args.id) return false;
+      return (
+        tx
+          .update(queuedThreadMessages)
+          .set({
+            sortKey: createOrderKeyBetween({
+              previousKey: null,
+              nextKey: first.sortKey,
+            }),
+            updatedAt: Date.now(),
+          })
+          .where(
+            and(
+              eq(queuedThreadMessages.id, args.id),
+              eq(queuedThreadMessages.threadId, args.threadId),
+              isNull(queuedThreadMessages.claimToken),
+            ),
+          )
+          .returning({ id: queuedThreadMessages.id })
+          .get() !== undefined
+      );
+    },
+    { behavior: "immediate" },
+  );
+  if (moved) notifier.notifyThread(args.threadId, ["queue-changed"]);
+  return moved;
+}
+
+export function rescheduleQueuedThreadMessage(
+  db: DbConnection,
+  notifier: DbNotifier,
+  args: { id: string; sendAt: number },
+): QueuedThreadMessageRow | null {
+  const updated = db.transaction(
+    (tx) => {
+      const row = getQueuedThreadMessage(tx, args.id);
+      if (!row || isQueuedThreadMessageClaimed(row)) return null;
+      return transitionQueuedMessage(tx, {
+        now: Date.now(),
+        row,
+        transition: {
+          event: "wait.recorded",
+          sendAt: args.sendAt,
+          waitingOn: { kind: "time" },
+        },
+      });
+    },
+    { behavior: "immediate" },
+  );
+  if (updated !== null) {
+    notifier.notifyThread(updated.threadId, ["queue-changed"]);
+  }
+  return updated;
 }
 
 /**

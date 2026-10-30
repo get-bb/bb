@@ -91,6 +91,7 @@ import PlusSignIcon from "@hugeicons/core-free-icons/PlusSignIcon";
 import PuzzleIcon from "@hugeicons/core-free-icons/PuzzleIcon";
 import Refresh01Icon from "@hugeicons/core-free-icons/Refresh01Icon";
 import RepeatIcon from "@hugeicons/core-free-icons/RepeatIcon";
+import ReplayIcon from "@hugeicons/core-free-icons/ReplayIcon";
 import SecurityCheckIcon from "@hugeicons/core-free-icons/SecurityCheckIcon";
 import SentIcon from "@hugeicons/core-free-icons/SentIcon";
 import SidebarBottomIcon from "@hugeicons/core-free-icons/SidebarBottomIcon";
@@ -332,6 +333,7 @@ export const EXTENDED_ICON_MAP: ExtendedIconMap = {
   Plus: PlusSignIcon,
   Puzzle: PuzzleIcon,
   Repeat: RepeatIcon,
+  Replay: ReplayIcon,
   SecurityCheck: SecurityCheckIcon,
   RotateCcw: Refresh01Icon,
   Rows2: LayoutTwoRowIcon,

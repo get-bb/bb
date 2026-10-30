@@ -10,6 +10,8 @@ import {
   getThread,
   listEvents,
   listQueuedThreadMessages,
+  setExperiments,
+  setQueuedThreadMessageFailureReason,
   setThreadExecutionOverride,
 } from "@bb/db";
 import type { ThreadQueuedMessage } from "@bb/domain";
@@ -20,6 +22,7 @@ import {
   setPluginHookProvider,
   type PluginHookRegistration,
 } from "../../src/services/plugins/plugin-hook-registry.js";
+import { handleHostSessionOpened } from "../../src/internal/session-owner-side-effects.js";
 import { setPluginThreadEventEmitter } from "../../src/services/plugins/plugin-thread-events.js";
 import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
 import { runQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
@@ -31,6 +34,7 @@ import {
   seedEvent,
   seedHostSession,
   seedProjectWithSource,
+  seedSession,
   seedThread,
   seedThreadRuntimeState,
 } from "../helpers/seed.js";
@@ -102,7 +106,7 @@ function recordTurnFailedAnnouncements(): string[] {
  * requested` events exist, and a second seeded one would hide a duplicate.
  */
 function seedFailableThread(harness: TestAppHarness, hostId: string) {
-  const { host } = seedHostSession(harness.deps, { id: hostId });
+  const { host, session } = seedHostSession(harness.deps, { id: hostId });
   const { project } = seedProjectWithSource(harness.deps, {
     hostId: host.id,
     path: WORKSPACE_PATH,
@@ -127,6 +131,7 @@ function seedFailableThread(harness: TestAppHarness, hostId: string) {
     environment,
     host,
     project,
+    session,
     thread,
     requestId: lastTurnRequest(harness, thread.id).requestId,
   };
@@ -319,6 +324,37 @@ async function sweepPastResume(harness: TestAppHarness): Promise<void> {
   });
 }
 
+function sendUserText(harness: TestAppHarness, threadId: string, text: string) {
+  return harness.app.request(`/api/v1/threads/${threadId}/send`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      input: [{ type: "text", text, mentions: [] }],
+      mode: "steer-if-active",
+      model: "gpt-5",
+      permissionMode: "full",
+      reasoningLevel: "medium",
+      serviceTier: "default",
+    }),
+  });
+}
+
+async function restartDaemon(
+  harness: TestAppHarness,
+  failable: ReturnType<typeof seedFailableThread>,
+): Promise<void> {
+  setExperiments(harness.db, { continueThreadsAfterRestarts: true });
+  await handleHostSessionOpened(harness.deps, {
+    activeThreads: [],
+    hostId: failable.host.id,
+    openedSession: seedSession(harness.deps, failable.host.id, {
+      instanceId: "instance-2",
+    }),
+    previousSession: failable.session,
+    undeliveredEventThreadIds: [],
+  });
+}
+
 describe("the turn.failed announcement", () => {
   it("carries the failed turn's ids and the provider's failure facts", async () => {
     await withTestHarness(async (harness) => {
@@ -432,6 +468,75 @@ describe("the turn.failed announcement", () => {
 
       failThread(harness, failing.id);
       expect(announced).toEqual([failing.id]);
+    });
+  });
+
+  it("is not announced for a turn a daemon restart cut, and the resume then starts the next turn", async () => {
+    await withTestHarness(async (harness) => {
+      const announced = recordTurnFailedAnnouncements();
+      const failable = seedFailableThread(harness, "host-restart");
+      await restartDaemon(harness, failable);
+      expect(getThread(harness.db, failable.thread.id)?.status).toBe("error");
+      expect(announced).toEqual([]);
+
+      await sweepPastResume(harness);
+
+      expect(turnRequests(harness, failable.thread.id)).toHaveLength(2);
+      expect(
+        listQueuedThreadMessages(harness.db, failable.thread.id),
+      ).toHaveLength(0);
+      failThread(harness, failable.thread.id);
+      expect(announced).toEqual([failable.thread.id]);
+    });
+  });
+
+  it("is announced again once the thread's resume could not be delivered", async () => {
+    await withTestHarness(async (harness) => {
+      const announced = recordTurnFailedAnnouncements();
+      const failable = seedFailableThread(harness, "host-restart");
+      await restartDaemon(harness, failable);
+      const [resume] = listQueuedThreadMessages(harness.db, failable.thread.id);
+      if (resume === undefined) throw new Error("expected a resume");
+
+      setQueuedThreadMessageFailureReason(harness.db, harness.hub, {
+        id: resume.id,
+        threadId: failable.thread.id,
+        failureReason: "Provider unavailable",
+        now: Date.now(),
+        retryDelaysMs: [],
+      });
+      expect(
+        (await sendUserText(harness, failable.thread.id, "Try again")).status,
+      ).toBe(200);
+      failThread(harness, failable.thread.id);
+
+      expect(announced).toEqual([failable.thread.id]);
+    });
+  });
+
+  it("drops the resume when the user started a newer turn after the restart", async () => {
+    await withTestHarness(async (harness) => {
+      const failable = seedFailableThread(harness, "host-restart");
+      await restartDaemon(harness, failable);
+
+      expect(
+        (await sendUserText(harness, failable.thread.id, "Do something else"))
+          .status,
+      ).toBe(200);
+      expect(turnRequests(harness, failable.thread.id)).toHaveLength(2);
+      applyLoggedThreadLifecycleEvent(harness.deps, {
+        event: { type: "run.succeeded" },
+        threadId: failable.thread.id,
+      });
+      await sweepPastResume(harness);
+
+      expect(turnRequests(harness, failable.thread.id)).toHaveLength(2);
+      expect(lastTurnRequest(harness, failable.thread.id).input[0]?.text).toBe(
+        "Do something else",
+      );
+      expect(
+        listQueuedThreadMessages(harness.db, failable.thread.id),
+      ).toHaveLength(0);
     });
   });
 });

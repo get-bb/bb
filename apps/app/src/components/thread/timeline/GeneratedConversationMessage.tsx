@@ -263,6 +263,8 @@ function systemMessageTitleSegments(
       return subject !== null && subject.kind === "directory"
         ? [verbSegment("Continued in"), subjectSegment(subject.path, null)]
         : SYSTEM_MESSAGE_FALLBACK_SEGMENTS;
+    case "restart-resume":
+      return [verbSegment("Resumed after a restart")];
     case "unlabeled":
       return SYSTEM_MESSAGE_FALLBACK_SEGMENTS;
   }
@@ -353,6 +355,8 @@ function systemMessageIconName(systemMessageKind: SystemMessageKind): IconName {
       return "Toolbox";
     case "environment-directory-updated":
       return "FolderOpen";
+    case "restart-resume":
+      return "Replay";
     case "unlabeled":
       return "Info";
   }

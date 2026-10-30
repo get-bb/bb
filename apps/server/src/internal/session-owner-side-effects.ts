@@ -21,6 +21,7 @@ import {
 } from "../services/threads/thread-lifecycle.js";
 import { buildThreadStatusChangeMetadataByThreadId } from "../services/threads/thread-runtime-display.js";
 import { settleDanglingBackgroundTasks } from "../services/threads/background-task-reconciliation.js";
+import { resumeWorkCutByHostRestart } from "../services/threads/restart-resume.js";
 import { interruptEnvironmentProvisioningForHost } from "../services/environments/environment-engine.js";
 
 const DAEMON_RESTARTED_PENDING_INTERACTION_REASON =
@@ -95,6 +96,10 @@ export async function handleHostSessionOpened(
     }
 
     if (!sameDaemonInstance) {
+      await resumeWorkCutByHostRestart(deps, {
+        hostId: args.hostId,
+        now: Date.now(),
+      });
       interruptEnvironmentProvisioningForHost(deps, {
         hostId: args.hostId,
         reason: DAEMON_RESTARTED_ENVIRONMENT_PROVISIONING_REASON,

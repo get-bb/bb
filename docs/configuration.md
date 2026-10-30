@@ -900,6 +900,20 @@ off. An experiment you set yourself keeps your value either way.
   next send passes `compactFirst` so the server runs `/compact` and queues the
   message behind it. Clicking the chip keeps the full history for that one
   send.
+- `continueThreadsAfterRestarts` resumes threads a restart interrupted. bb
+  records one resume message per running thread when the server shuts down,
+  and per cut turn or awaited background work (not background shells) when a
+  machine's daemon comes back as a new process after a quit, crash, update, or
+  reboot. The message says "Continue where you left off." Interrupted awaited
+  background work gets a note explaining which jobs will no longer report back
+  and asking the agent to resume or restart what it still needs. Resumes go a
+  few seconds apart per machine, child threads before their parents, ahead of messages already queued for the
+  thread. bb drops a resume if the turn finished after all, the user stopped
+  it, or the user sent a newer message first, and stops after three automatic
+  resumes in a row. A turn a restart cut off is not announced to retry
+  policies, and the parent of an interrupted child is told only when the child
+  finishes. `bb thread wait` keeps waiting on a failed thread whose resume is
+  scheduled.
 - `serverMove` enables Move server here in Settings → Machines,
   `bb server move`, `bb server export`, and old server copy deletion; while off
   those routes return 403 `server_move_experiment_disabled` (status and cancel

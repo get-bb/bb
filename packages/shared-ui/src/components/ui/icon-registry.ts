@@ -107,6 +107,7 @@ export const EXTENDED_ICON_NAMES = [
   "Plus",
   "Puzzle",
   "Repeat",
+  "Replay",
   "RotateCcw",
   "Rows2",
   "SecurityCheck",
