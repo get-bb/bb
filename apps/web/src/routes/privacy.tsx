@@ -9,7 +9,7 @@ const PAGE_TITLE = "Privacy — bb";
 const PAGE_DESCRIPTION =
   "What bb collects, what stays on your own machines, and what bb connect can see.";
 
-const LAST_UPDATED = "October 12, 2026";
+const LAST_UPDATED = "October 30, 2026";
 const CONTACT_EMAIL = "support@terragonlabs.com";
 
 export const Route = createFileRoute("/privacy")({
@@ -29,7 +29,7 @@ function PrivacyRoute() {
 
       <article className="post article">
         <div className="post-body">
-          <time className="date-pill" dateTime="2026-10-12">
+          <time className="date-pill" dateTime="2026-10-30">
             Last updated {LAST_UPDATED}
           </time>
           <h1>Privacy</h1>
@@ -204,7 +204,7 @@ function PrivacyRoute() {
             Automatic event capture is off. The pages send page views, the
             referrer and any campaign parameters in the URL, and a small set of
             named events, such as a click on a download link or a copy of the
-            install command.
+            install command, and which sections of the homepage are viewed.
           </p>
 
           <p>
