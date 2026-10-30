@@ -18,6 +18,7 @@ import {
   type Frame,
   type HeaderPair,
 } from "@bb/tunnel-contract";
+import { requestBodyChunks } from "./request-body-chunks.js";
 import { relayedResponse } from "./response-encoding.js";
 import { responseHeadTimeoutMs } from "./response-head-timeout.js";
 import {
@@ -651,21 +652,12 @@ export class TunnelDO {
     tunnel: WebSocket,
   ): Promise<void> {
     try {
-      const reader = body.getReader();
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        for (let offset = 0; offset < value.length; offset += 1024 * 1024) {
-          const sent = this.trySend(
-            tunnel,
-            encodeFrame({
-              type: "body-chunk",
-              streamId,
-              data: value.subarray(offset, offset + 1024 * 1024),
-            }),
-          );
-          if (!sent) return;
-        }
+      for await (const data of requestBodyChunks(body)) {
+        const sent = this.trySend(
+          tunnel,
+          encodeFrame({ type: "body-chunk", streamId, data }),
+        );
+        if (!sent) return;
       }
       this.trySend(tunnel, encodeFrame({ type: "body-end", streamId }));
     } catch {

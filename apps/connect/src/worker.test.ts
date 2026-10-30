@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { decodeFrame, encodeFrame, type Frame } from "@bb/tunnel-contract";
+import {
+  MAX_CHUNK_BYTES,
+  decodeFrame,
+  encodeFrame,
+  type Frame,
+} from "@bb/tunnel-contract";
 import {
   GATE_OAUTH_CLIENT_HEADER,
   GATE_OAUTH_GRANT_HEADER,
@@ -2603,6 +2608,49 @@ describe("TunnelDO voice transcription response head", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("TunnelDO request body", () => {
+  it("coalesces small body reads into full-size frames", async () => {
+    const sent: Uint8Array[] = [];
+    const state = mockDoState({ protocolVersion: 1 });
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+    const tunnel = fakeTunnelSocket(captureSent(sent));
+    state.addSocket(tunnel, ["tunnel"]);
+    const readBytes = 4 * 1024;
+    const bytes = new Uint8Array(2 * MAX_CHUNK_BYTES + readBytes).map(
+      (_, index) => index % 251,
+    );
+
+    void dob.fetch(
+      new Request("https://do.internal/upload", {
+        method: "POST",
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            for (let offset = 0; offset < bytes.length; offset += readBytes) {
+              controller.enqueue(bytes.slice(offset, offset + readBytes));
+            }
+            controller.close();
+          },
+        }),
+        duplex: "half",
+      } as RequestInit),
+    );
+
+    await vi.waitFor(() =>
+      expect(decodeFrame(sent.at(-1)!).type).toBe("body-end"),
+    );
+    const chunks = sent
+      .map(decodeFrame)
+      .flatMap((frame) => (frame.type === "body-chunk" ? [frame.data] : []));
+    expect(chunks.map((chunk) => chunk.length)).toEqual([
+      MAX_CHUNK_BYTES,
+      MAX_CHUNK_BYTES,
+      readBytes,
+    ]);
+    expect(Buffer.concat(chunks).equals(bytes)).toBe(true);
   });
 });
 

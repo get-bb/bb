@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { decodeFrame, encodeFrame, type Frame } from "@bb/tunnel-contract";
+import {
+  MAX_CHUNK_BYTES,
+  decodeFrame,
+  encodeFrame,
+  type Frame,
+} from "@bb/tunnel-contract";
 
 import type { GateProgress } from "./gate-deadline.js";
 import {
@@ -228,6 +233,41 @@ describe("fetchThroughRelay", () => {
       chunk?.type === "body-chunk" && new TextDecoder().decode(chunk.data),
     ).toBe("hello body");
     expect(requests[0]?.headers.get(RELAY_HAS_BODY_HEADER)).toBe("1");
+  });
+
+  it("coalesces small body reads into full-size frames", async () => {
+    const socket = new FakeRelaySocket();
+    const { stub } = upgradedWith(socket);
+    const readBytes = 4 * 1024;
+    const bytes = new Uint8Array(2 * MAX_CHUNK_BYTES + readBytes).map(
+      (_, index) => index % 251,
+    );
+    void fetchThroughRelay(
+      stub,
+      new Request("https://sawyer.getbb.app/api/v1/upload", {
+        method: "POST",
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            for (let offset = 0; offset < bytes.length; offset += readBytes) {
+              controller.enqueue(bytes.slice(offset, offset + readBytes));
+            }
+            controller.close();
+          },
+        }),
+        duplex: "half",
+      } as RequestInit),
+      newProgress(),
+    );
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("body-end"));
+    const chunks = socket.sent.flatMap((frame) =>
+      frame.type === "body-chunk" ? [frame.data] : [],
+    );
+    expect(chunks.map((chunk) => chunk.length)).toEqual([
+      MAX_CHUNK_BYTES,
+      MAX_CHUNK_BYTES,
+      readBytes,
+    ]);
+    expect(Buffer.concat(chunks).equals(bytes)).toBe(true);
   });
 
   it("answers 504 when the tunnel client never sends a response head", async () => {

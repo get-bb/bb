@@ -1,9 +1,4 @@
-import {
-  MAX_CHUNK_BYTES,
-  decodeFrame,
-  encodeFrame,
-  type Frame,
-} from "@bb/tunnel-contract";
+import { decodeFrame, encodeFrame, type Frame } from "@bb/tunnel-contract";
 import {
   HOP_HEADERS,
   RELAY_CONTENT_LENGTH_HEADER,
@@ -12,6 +7,7 @@ import {
   RELAY_METHOD_HEADER,
 } from "./protocol-headers.js";
 import type { GateProgress } from "./gate-deadline.js";
+import { requestBodyChunks } from "./request-body-chunks.js";
 import { relayedResponse } from "./response-encoding.js";
 import { responseHeadTimeoutMs } from "./response-head-timeout.js";
 
@@ -87,18 +83,8 @@ async function pumpRequestBody(
 ): Promise<void> {
   const streamId = RELAY_PLACEHOLDER_STREAM_ID;
   try {
-    const reader = body.getReader();
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      for (let offset = 0; offset < value.length; offset += MAX_CHUNK_BYTES) {
-        const sent = sendFrame(socket, {
-          type: "body-chunk",
-          streamId,
-          data: value.subarray(offset, offset + MAX_CHUNK_BYTES),
-        });
-        if (!sent) return;
-      }
+    for await (const data of requestBodyChunks(body)) {
+      if (!sendFrame(socket, { type: "body-chunk", streamId, data })) return;
     }
     sendFrame(socket, { type: "body-end", streamId });
     progress.stage = "response-head";
