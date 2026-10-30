@@ -1,0 +1,70 @@
+---
+title: Connect MCP servers
+description: bb has no settings of its own for your agents' MCP servers. Each agent reads the MCP servers from its own configuration on the machine, and bb adds its own tools. Separately, the MCP server plugin lets ChatGPT, Claude and other apps control bb.
+type: how-to
+sources:
+  - plugins/provider-claude-code/src/bridge/sdk-session.ts
+  - plugins/provider-codex/src/codex-home.ts
+  - packages/provider-bridge-acp/src/bridge/bridge.ts
+  - plugins/provider-pi/src/bridge/rpc-session.ts
+  - plugins/mcp/src/server.ts
+  - plugins/mcp/src/tools.ts
+since: 0.46.1
+owner: brsbl
+verified: 2026-10-30
+---
+
+Use this when you want an agent in bb to use an MCP server, or want an outside app such as ChatGPT or Claude to control bb over MCP.
+
+## Give your agents MCP servers
+
+bb doesn't have a place to add MCP servers for agents. Add them where you would without bb, in each agent's own configuration on the machine that runs the thread. bb starts the agent with that configuration.
+
+| Agent | Where its MCP servers come from |
+| --- | --- |
+| Claude Code | Claude Code's own MCP configuration, including user, project and local settings |
+| Codex | Your Codex config in `~/.codex` (or `CODEX_HOME`) |
+| ACP agents (Cursor, opencode and others) | The agent's own configuration. bb doesn't send it any MCP servers except its own. |
+| Pi | bb doesn't give Pi MCP servers. |
+
+Things to know:
+
+- **Each machine has its own configuration.** A server set up on your laptop isn't available to threads that run on another machine.
+- **New servers reach running threads only after a restart.** Stop the thread with `bb thread stop <id>`, then send a message; the agent starts again with the new configuration.
+- **Requests from MCP servers:** when a Codex MCP server asks for input or permission, bb shows a card naming the server.
+
+## bb's own tools
+
+bb gives agents the tools that bb plugins add. Claude Code and ACP agents receive them as an MCP server named `bb-bridge`, so their tools appear as `mcp__bb-bridge__<tool>`. Codex and Pi receive the same tools without MCP.
+
+If bb's tools disappear from a long-running thread, stop it with `bb thread stop <id>` and send a message to start it again.
+
+## Let other apps control bb
+
+The **MCP server** plugin lets ChatGPT, Claude and other MCP clients use bb: check on agents, start threads, or answer an agent's question. It is off by default.
+
+1. Turn it on in **Settings → Installed plugins**, or run `bb plugin enable bb--mcp`.
+2. Run `bb mcp status` to see its two addresses:
+   - **Remote:** `https://<your bb connect address>/mcp`, for apps anywhere. It needs a signed-in bb account and bb connect. Add it as a custom connector in ChatGPT or Claude, then approve the app on the bb account page it opens.
+   - **Local:** `http://127.0.0.1:<port>/api/v1/plugins/bb--mcp/http/mcp`, for apps on the same machine. It needs no sign-in and has the same trust as the `bb` CLI.
+
+The app gets three tools: `search` finds `bb` commands, `read` runs commands that only inspect bb, and `run` runs any `bb` command. Commands run in a sandbox on your bb server.
+
+Access is all or nothing. An approved app can start and steer agents, which run commands and change files on your machines, so approve only apps you trust.
+
+```sh
+bb mcp clients
+bb mcp revoke <grant-id>
+```
+
+`bb mcp clients` lists the remote apps with access, and `bb mcp revoke` disconnects one within about a minute.
+
+## Check it worked
+
+- **An agent's MCP server:** ask the agent in a new thread to list its MCP tools, or to call one.
+- **bb's MCP server:** `bb mcp status` prints a local address, and a connected app appears in `bb mcp clients`.
+
+## Related troubleshooting
+
+- [Add Cursor, opencode and other ACP agents](/docs/add-acp-agents): set up the agent first.
+- [Claude Code](/docs/claude-code#what-bb-uses-from-your-claude-code-setup): which Claude Code settings bb loads.

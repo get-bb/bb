@@ -1,0 +1,68 @@
+---
+title: Agent feature support
+description: Which bb features work with Claude Code, Codex, Pi and each ACP agent, from permission modes and reasoning levels to forks, compaction and usage limits.
+type: reference
+sources:
+  - plugins/provider-claude-code/server.ts
+  - plugins/provider-codex/server.ts
+  - plugins/provider-pi/src/declaration.ts
+  - plugins/provider-acp/src/declaration.ts
+  - plugins/provider-acp/src/known-agents.ts
+  - plugins/provider-acp/src/agents.ts
+  - packages/provider-bridge-acp/src/elicitation.ts
+since: 0.0.29
+owner: brsbl
+verified: 2026-10-30
+---
+
+Which bb features each agent supports. "ACP agents" covers Cursor, opencode, omp, Grok Build, Hermes Agent, registry agents and your own custom agents.
+
+## Threads and the composer
+
+| Feature | Claude Code | Codex | Pi | ACP agents |
+| --- | --- | --- | --- | --- |
+| Permission modes | Accept Edits, Approve for me, Full Access | Accept Edits, Approve for me, Full Access | Full Access only | Accept Edits, Full Access |
+| Plan (`/plan`) | Yes, as Plan Mode | Yes | No | No |
+| Goals (`/goal`) | No | Yes | No | No |
+| Reasoning levels | Low, Medium, High, Extra High, Ultracode, Max | None, Low, Medium, High, Extra High, Max, Ultra | None, Low, Medium, High, Extra High, Max | What the agent reports |
+| Faster speeds | Fast | Fast, Ultrafast | No | Fast, when the model offers it |
+| Fork a thread | Yes | Yes | Yes | opencode, omp and Hermes Agent, when the installed version supports it |
+| Edit an earlier message | Yes | Yes, with Codex 0.143.0 or newer | Yes | No |
+| Compaction (`/compact`) | Yes | Yes | Yes | See the ACP table below |
+| Questions from the agent | Claude's own question tool | Codex questions, including ones asked while it keeps working | Pi extension dialogs | Agent forms, up to 10 fields |
+| Rename and archive copied to the agent | No | Yes | No | No |
+| Disable native subagents | Setting | Setting | No | No |
+
+## Usage and context
+
+| Feature | Claude Code | Codex | Pi | ACP agents |
+| --- | --- | --- | --- | --- |
+| Context window ring | Yes | Yes | Yes, may be estimated | When the agent reports it |
+| Session cost | No | No | No | When the agent reports it |
+| Usage limits in Provider usage | Yes | ChatGPT accounts only | No | Cursor and opencode (OpenCode Go) |
+| Account Pooler routing | Yes | Yes | No | No |
+
+## Setup
+
+| Feature | Claude Code | Codex | Pi | ACP agents |
+| --- | --- | --- | --- | --- |
+| Minimum version | None | 0.136.0 | 0.84.0 | None checked |
+| Install or update from bb | Yes | Yes | Yes | Cursor only |
+| Sign in | `claude` | `codex login` | `pi` | The agent's own command |
+| Settings page in bb | Claude Code provider | Codex provider | None | ACP providers |
+| Skills in the `/` menu | `.claude/skills`, `.claude/commands`, Claude Code plugins | `.codex/skills`, `.agents/skills` | `.pi/agent/skills`, `.pi/skills`, `.agents/skills` | Each agent's own folders |
+
+## ACP agents
+
+| Agent | Shown in the picker | Compaction | Fork a thread | Usage limits |
+| --- | --- | --- | --- | --- |
+| Cursor | Always | No | No | Yes |
+| opencode | When installed | Yes | When supported | OpenCode Go |
+| omp | When installed | Yes | When supported | No |
+| Grok Build | When installed | Yes | No | No |
+| Hermes Agent | When installed | No | When supported | No |
+| Registry and custom agents | Always | Only with `supportsManualCompaction` | No | Only with `providerUsage` |
+
+## Where this list comes from
+
+Each agent's plugin declares what it supports when it registers with bb: [Claude Code](https://github.com/get-bb/bb/blob/main/plugins/provider-claude-code/server.ts), [Codex](https://github.com/get-bb/bb/blob/main/plugins/provider-codex/server.ts), [Pi](https://github.com/get-bb/bb/blob/main/plugins/provider-pi/src/declaration.ts), and the ACP agents in [declaration.ts](https://github.com/get-bb/bb/blob/main/plugins/provider-acp/src/declaration.ts) and [known-agents.ts](https://github.com/get-bb/bb/blob/main/plugins/provider-acp/src/known-agents.ts). This page is checked against those files by hand. See [Claude Code](/docs/claude-code), [Codex](/docs/codex), [Pi](/docs/pi) and [Add Cursor, opencode and other ACP agents](/docs/add-acp-agents) for details.

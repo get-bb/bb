@@ -1,0 +1,93 @@
+---
+title: Claude Code
+description: bb runs Claude Code threads with the Claude Code CLI installed on each machine, using that machine's Claude sign-in, settings and skills. This page covers setup, the settings bb adds, and what works.
+type: how-to
+sources:
+  - plugins/provider-claude-code/server.ts
+  - plugins/provider-claude-code/src/model-list.ts
+  - plugins/provider-claude-code/src/native-roots.ts
+  - plugins/provider-claude-code/src/bridge/session-options.ts
+  - plugins/provider-claude-code/src/bridge/sdk-session.ts
+  - plugins/provider-claude-code/src/bridge/provider-maintenance.ts
+since: 0.0.29
+owner: brsbl
+verified: 2026-10-30
+---
+
+Use this when you want bb threads to run on Claude Code, or want to know which of your Claude Code settings bb uses.
+
+bb doesn't bundle its own copy of Claude or its own Claude sign-in. Each thread runs the `claude` CLI on the machine that hosts it, signed in the way that machine is signed in.
+
+## Set up Claude Code
+
+1. Install Claude Code on every machine that will run Claude Code threads. If it's missing, the composer shows **Claude Code not installed** with an **Install Claude Code** button that runs Claude's installer for you. There is no minimum version.
+2. Sign in once in a terminal on that machine: run `claude` and follow its login. bb picks up the login; there is nothing to sign in to inside bb.
+3. In the composer, open the model picker and choose a Claude model.
+
+From a terminal, list the models Claude Code offers on a machine:
+
+```sh
+bb provider models claude-code
+```
+
+A machine with no interactive login, such as a CI runner, can sign in with a token instead: create one with `claude setup-token` and set it as `CLAUDE_CODE_OAUTH_TOKEN` in the environment bb starts with on that machine. To use a `claude` binary that isn't on `PATH`, set `BB_CLAUDE_CODE_EXECUTABLE` to its path the same way.
+
+## What bb uses from your Claude Code setup
+
+- **Settings:** Claude Code loads its user, project and local settings files, so your permission rules, hooks and MCP servers apply in bb threads.
+- **Instructions:** `CLAUDE.md` files from your home folder and the project, as Claude Code reads them.
+- **Skills and commands:** skills in `~/.claude/skills` and the project's `.claude/skills` (including parent folders), commands in `.claude/commands`, and skills from your Claude Code plugins. They appear in the composer's `/` menu next to bb's skills.
+- **Claude Code's own slash commands,** such as `/simplify`, also appear in the `/` menu. Commands for things bb manages itself (such as `/model`, `/config` and `/fast`) and terminal-only commands (such as `/doctor`) are left out.
+
+## Change Claude Code settings in bb
+
+Open **Settings → Plugins → Claude Code provider**.
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| Claude Code memory | On | Lets Claude Code read and write its auto-memory in bb threads. |
+| Disable provider subagents | Off | Hides Claude Code's own subagent tools, so the agent delegates through bb child threads instead. Changes restart Claude before the next turn and keep the conversation. |
+| Disable Workflow tool | Off | Hides Claude Code's Workflow tool. |
+| Disable 1M context | Off | Turns off the 1M-token context window. Applies on the next turn. |
+| Claude in Chrome | Off | Starts Claude Code with its Claude in Chrome browser tools. Needs the Chrome extension and a claude.ai login on the machine. |
+| Claude Artifacts | Off | Gives Claude Code its tools to read, publish and edit claude.ai artifacts. Claude may publish private pages without asking. |
+| Claude Code sandbox | On | Runs Bash commands in Claude Code's sandbox in Accept Edits and Approve for me. Turn it off to use Claude Code's own approvals and sandbox settings. |
+| Approvals in Full Access | Off | Shows Claude Code's own approval prompts in Full Access: `permissions.ask` rules, hooks that answer "ask", and its built-in safety checks. Off approves every request, so unattended threads never wait. |
+
+Changes apply from each thread's next turn. Where Claude has to restart for a change, bb restarts it and keeps the conversation.
+
+From a terminal, list the setting keys and change one:
+
+```sh
+bb plugin config provider-claude-code
+bb plugin config provider-claude-code set disable1MContext true
+```
+
+## What's supported
+
+- **Permission modes:** Accept Edits, Approve for me and Full Access, plus Plan Mode: type `/plan` in the composer, or pass `--plan` to `bb thread spawn` or `bb thread tell`.
+- **Reasoning:** Low, Medium, High, Extra High, Ultracode and Max, as each model allows. Ultracode is extra-high effort plus standing workflow orchestration.
+- **Fast mode:** faster responses on supported Opus models, at a higher cost per token. Turn it on in the model picker, or pass `--service-tier fast`. It needs Claude access that includes Fast mode.
+- **1M context:** see [Choose a model, reasoning and context size](/docs/choose-a-model-reasoning-and-context-size#get-1m-context).
+- **Forks:** fork a thread, or edit an earlier message and rerun from there.
+- **Compaction:** type `/compact` in the thread, or run `bb thread compact <id>`.
+- **Questions:** when Claude asks you a question, it shows as a question card.
+- **Usage limits:** your five-hour and weekly windows appear in [Provider usage](/docs/track-usage-limits-and-cost).
+- **Several accounts:** the [Account Pooler](/docs/use-several-accounts) can route Claude Code threads across your accounts.
+
+See [Agent feature support](/docs/agent-feature-support) to compare Claude Code with other agents.
+
+## Limits
+
+- Images you attach are saved to disk, and Claude Code is told to open them with its Read tool.
+- When bb runs as root, Full Access always approves every request, because Claude Code refuses its bypass mode there.
+- Thread titles and archiving stay in bb; they aren't copied to Claude Code's own session list.
+
+## Check it worked
+
+Start a thread with a Claude model and send a short message. The reply streams into the thread, and the model picker shows the Claude model you chose. If the composer says Claude Code isn't installed, or the model list is empty, Claude Code isn't installed or signed in on the machine the thread runs on.
+
+## Related troubleshooting
+
+- [Choose a model, reasoning and context size](/docs/choose-a-model-reasoning-and-context-size#if-a-model-is-missing): a model is missing from the picker.
+- [Use several accounts](/docs/use-several-accounts#if-no-account-is-eligible): threads stop with an Account Pooler error.

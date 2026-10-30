@@ -1,0 +1,87 @@
+---
+title: Track usage, limits and cost
+description: The Provider usage card in the sidebar shows how much of each subscription window you've used and when it resets, for every account. Each thread's context ring shows its context use, and its cost when the agent reports one.
+type: how-to
+sources:
+  - plugins/provider-usage/app.tsx
+  - plugins/provider-usage/settings.tsx
+  - plugins/provider-usage/server.ts
+  - apps/app/src/components/thread/timeline/ThreadContextWindowIndicator.tsx
+  - apps/app/src/components/promptbox/CompactBeforeSendChip.tsx
+  - apps/cli/src/commands/settings.ts
+since: 0.42.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+Use this when you want to know how close you are to a usage limit, when it resets, or how much context and money a thread is using.
+
+bb uses your agents' own subscriptions or API keys; it doesn't add a charge of its own. The limits shown are the ones each provider reports for your account.
+
+## See your usage limits
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+1. Click **Provider usage** (the chart icon) at the bottom of the sidebar.
+2. Pick a provider tab, or **All** to see every account together.
+
+Each account shows its plan and, for each window, a bar with the percent used and the time until it resets. **Reload provider usage** fetches fresh numbers.
+
+<Screenshot
+  src="/docs-images/track-usage-limits-and-cost/usage-card"
+  alt="The Provider usage card above the sidebar footer shows each account with a bar, the percent used and the time until reset for every usage window."
+  width={272}
+  height={262}
+/>
+
+The same numbers, at full size, are in **Settings → Plugins → Provider usage** under **Usage limits**.
+
+</Tab>
+<Tab value="CLI">
+
+```sh
+bb settings usage --machine <machine> --refresh
+```
+
+This shows the limits of the agents signed in on one machine. It doesn't include Account Pooler accounts; use `bb pool status` for those.
+
+</Tab>
+</Tabs>
+
+| Agent | What it shows |
+| --- | --- |
+| Claude Code | Five-hour and weekly windows, plus weekly windows per model family |
+| Codex | Codex windows, for ChatGPT accounts only |
+| Cursor | Plan usage and on-demand spend |
+| opencode | OpenCode Go's five-hour, weekly and monthly windows, when Go is set up on that machine |
+| Account Pooler | Every pooled Claude and Codex account |
+
+Pi and other agents don't report limits. "Usage not reported" means the agent didn't send any; it never means zero use.
+
+**Which machine:** each machine has its own logins, so usage is per machine. When the [Account Pooler](/docs/use-several-accounts) is on, the card shows the pool's accounts by default; use the machine menu in the card, or **Usage source** on the settings page, to switch to one machine's own logins.
+
+To move the card out of the sidebar footer, right-click it and choose **Hide**. **Settings → Appearance** sets the order and visibility of every footer action.
+
+## See a thread's context and cost
+
+Hover the ring in a thread's composer. It shows the percent of the context window used, the tokens used out of the window, and **Session cost** when the agent reports a cost. **Show details** breaks down what's in the context.
+
+Claude Code, Codex and Pi report context use. ACP agents report it, and cost, only if they support it. bb doesn't show a per-thread dollar cost for subscription agents.
+
+## Spend less of your limits
+
+- **Pick a lower reasoning level** or a smaller model, especially for child threads. See [Choose a model, reasoning and context size](/docs/choose-a-model-reasoning-and-context-size).
+- **Turn off faster speeds.** Fast and Ultrafast cost more per token. Switch off **Allow faster service tiers** in **Settings → Providers**.
+- **Compact long threads** with `/compact` before continuing them.
+- **Compact idle threads before resuming.** Turn on **Compact before resuming expired sessions** in **Settings → Experiments**. When an idle thread holds at least 100k tokens and its prompt cache has expired, the composer offers **Compact first** before your next message.
+- **Add another account** with the [Account Pooler](/docs/use-several-accounts), and let the Provider retry plugin resume threads when a limit resets.
+
+## Check it worked
+
+The Provider usage card lists each signed-in account with its windows and reset times. If an account says to sign in again, its login on that machine (or in the Account Pooler) has expired.
+
+## Related troubleshooting
+
+- [Use several accounts](/docs/use-several-accounts#if-no-account-is-eligible): every pooled account is at its limit.
+- [Codex](/docs/codex#check-it-worked): Codex limits are missing.

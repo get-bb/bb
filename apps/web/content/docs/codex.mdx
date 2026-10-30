@@ -1,0 +1,82 @@
+---
+title: Codex
+description: bb runs Codex threads with the Codex CLI installed on each machine, using that machine's Codex sign-in and configuration. This page covers setup, the settings bb adds, and what works.
+type: how-to
+sources:
+  - plugins/provider-codex/server.ts
+  - plugins/provider-codex/src/models.ts
+  - plugins/provider-codex/src/native-roots.ts
+  - plugins/provider-codex/src/codex-home.ts
+  - plugins/provider-codex/src/async-questions.ts
+  - plugins/provider-codex/src/bridge/provider-maintenance.ts
+since: 0.0.29
+owner: brsbl
+verified: 2026-10-30
+---
+
+Use this when you want bb threads to run on Codex, or want to know which Codex options bb supports.
+
+Each Codex thread runs the `codex` CLI on the machine that hosts it, with that machine's Codex sign-in and its Codex folder (`~/.codex`, or `CODEX_HOME` if you set it).
+
+## Set up Codex
+
+1. Install Codex 0.136.0 or newer on every machine that will run Codex threads. If it's missing or too old, the composer shows a banner with an **Install Codex** or **Update Codex** button that runs `npm install -g @openai/codex@latest` for you.
+2. Sign in once in a terminal on that machine: run `codex login`. A ChatGPT account or an OpenAI API key both work.
+3. In the composer, open the model picker and choose a Codex model.
+
+From a terminal, list the models, reasoning levels and speeds Codex offers on a machine:
+
+```sh
+bb provider models codex
+```
+
+## What bb uses from your Codex setup
+
+- **Configuration:** Codex reads its own folder, so the MCP servers and other options in your Codex config apply in bb threads.
+- **Skills:** skills in `~/.codex/skills`, `~/.agents/skills` and the project's `.codex/skills` and `.agents/skills` (including parent folders), plus Codex's built-in and plugin skills. They appear in the composer's `/` menu next to bb's skills.
+
+## Change Codex settings in bb
+
+Open **Settings → Plugins → Codex provider**.
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| Codex memory | On | Lets Codex recall existing memories and create new ones from bb threads. |
+| Disable provider subagents | Off | Stops Codex from starting its own subagents, so the agent delegates through bb child threads instead. |
+
+From a terminal:
+
+```sh
+bb plugin config provider-codex set subagentsDisabled true
+```
+
+## What's supported
+
+- **Permission modes:** Accept Edits, Approve for me and Full Access. Approve for me lets Codex's automatic reviewer approve requests.
+- **Plan and goals:** type `/plan` for a plan you approve before Codex runs it, or `/goal` to give Codex a goal it keeps working toward. `/goal pause`, `/goal resume` and `/goal clear` control it; `bb thread clear-goal <id>` also removes it. Stopping a thread pauses its goal.
+- **Reasoning:** None, Low, Medium, High, Extra High, Max and Ultra, as each model allows. Ultra is max effort plus automatic task delegation.
+- **Speed:** Default, Fast and Ultrafast. The picker shows only the speeds Codex reports for the model and your account. Pass one with `--service-tier fast` on `bb thread spawn` or `bb thread tell`.
+- **Daybreak:** if your account has Daybreak, the model picker shows a Daybreak switch. From a terminal, use `bb thread spawn --option daybreak=true`.
+- **Forks:** fork a thread, or edit an earlier message and rerun from there (editing needs Codex 0.143.0 or newer).
+- **Compaction:** type `/compact` in the thread, or run `bb thread compact <id>`.
+- **Rename and archive:** renaming or archiving a Codex thread in bb also updates it in Codex.
+- **Questions:** questions Codex asks show as question cards. Questions Codex asks while it keeps working stay open for up to an hour after the turn ends, and your answer reaches Codex as a new message.
+- **MCP and app access requests:** when an MCP server or Computer Use asks for input or permission, bb shows a card naming the server, with the choices Codex offers.
+- **Usage limits:** your Codex windows appear in [Provider usage](/docs/track-usage-limits-and-cost) for ChatGPT accounts, not API keys.
+- **Several accounts:** the [Account Pooler](/docs/use-several-accounts) can route Codex threads across your ChatGPT accounts.
+
+See [Agent feature support](/docs/agent-feature-support) to compare Codex with other agents.
+
+## Limits
+
+- A speed the model doesn't list is dropped, and Codex runs that turn at its default speed with a warning in the thread.
+- Codex accepts model IDs it doesn't list, but that doesn't mean your account can use them.
+
+## Check it worked
+
+Start a thread with a Codex model and send a short message. The reply streams into the thread. If the composer shows an install or update banner, or the model list is empty, Codex isn't installed, is older than 0.136.0, or isn't signed in on the machine the thread runs on.
+
+## Related troubleshooting
+
+- [Choose a model, reasoning and context size](/docs/choose-a-model-reasoning-and-context-size#if-a-model-is-missing): a model is missing from the picker.
+- [Use several accounts](/docs/use-several-accounts#if-no-account-is-eligible): threads stop with an Account Pooler error.
