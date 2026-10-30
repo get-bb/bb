@@ -1,0 +1,76 @@
+---
+title: Pi
+description: bb runs Pi threads with the Pi coding agent installed on each machine, with your own Pi sign-in, models and extensions. Pi threads always run in Full Access.
+type: how-to
+sources:
+  - plugins/provider-pi/src/declaration.ts
+  - plugins/provider-pi/src/native-roots.ts
+  - plugins/provider-pi/src/bridge/rpc-session.ts
+  - plugins/provider-pi/src/bridge/catalog.ts
+  - plugins/provider-pi/src/bridge/extension-ui.ts
+  - plugins/provider-pi/src/bridge/provider-maintenance.ts
+since: 0.0.29
+owner: brsbl
+verified: 2026-10-30
+---
+
+Install Pi 0.84.0 or newer on the machine, run `pi` once to log in to your model providers, then pick a Pi model in the composer. bb starts `pi` in RPC mode with a small bb extension loaded.
+
+## Set up Pi
+
+1. Install Pi 0.84.0 or newer on every machine that runs Pi threads. If it's missing or too old, the composer offers **Install Pi** or **Update Pi**. To install it yourself:
+
+   ```sh
+   npm install -g @earendil-works/pi-coding-agent
+   ```
+
+2. In a terminal on that machine, run `pi` and log in to the model providers you want.
+3. In the composer's model picker, choose a Pi model.
+
+<Screenshot
+  src="/docs-images/pi/install-pi"
+  alt="With Pi chosen in the model picker on a machine without Pi, the composer shows a Pi not installed banner with an Install Pi button."
+  width={760}
+  height={310}
+/>
+
+```sh
+bb provider models pi
+```
+
+To use a `pi` that isn't on `PATH`, set `BB_PI_BRIDGE_COMMAND` (and `BB_PI_BRIDGE_ARGS` for its arguments) in the environment bb starts with on that machine.
+
+## What bb uses from your Pi setup
+
+| From Pi | In bb |
+| --- | --- |
+| Models, including ones you add in Pi's configuration | Listed in the model picker. This is the usual way to use local or other models. |
+| Extensions | Load in bb threads. Pick, confirm and text prompts show as cards; status, widget and title updates are ignored. |
+| `~/.pi/agent/skills`, `~/.agents/skills`, the project's `.pi/skills` and `.agents/skills`, folders listed in your Pi `settings.json` | In the composer's `/` menu |
+| Sessions | bb keeps its threads' Pi sessions separate from your own. |
+
+Skills Pi installs through packages, single-file skill entries and the project's `.pi/settings.json` skill entries still work in Pi but don't appear in the `/` menu.
+
+## What's supported
+
+| Feature | Pi |
+| --- | --- |
+| Permission mode | Full Access only. Pi can run any command and change any file the machine's user can. |
+| Reasoning | None, Low, Medium, High, Extra High, Max, as each model allows |
+| Forks | Fork a thread, or edit an earlier message and rerun |
+| Compaction | `/compact` or `bb thread compact <id>` |
+| Context ring | Yes, may be estimated |
+| Plan, speed choice, Provider usage limits | No |
+| Settings page in bb | None; configure Pi itself |
+| [Account Pooler](/docs/use-several-accounts) | Not routed |
+
+See [Agent feature support](/docs/agent-feature-support) to compare agents.
+
+## Check it worked
+
+Send a short message in a thread with a Pi model; the reply streams in. An install or update banner, or an empty model list, means Pi isn't installed, is older than 0.84.0, or isn't signed in on the thread's machine.
+
+## Related troubleshooting
+
+- [Choose a model, reasoning and context size](/docs/choose-a-model-reasoning-and-context-size#if-a-model-is-missing): a model is missing from the picker.
+- [Add Cursor, opencode and other ACP agents](/docs/add-acp-agents#run-local-models): other ways to run local models.
