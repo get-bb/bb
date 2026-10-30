@@ -1,0 +1,108 @@
+---
+title: Add a machine
+description: Run threads on another computer, VM or container. Open Settings → Machines → Add a machine, run the command it shows, and pick the machine for a thread.
+type: how-to
+sources:
+  - apps/app/src/components/dialogs/AddMachineDialog.tsx
+  - apps/app/src/components/settings/MachinesSettingsSection.tsx
+  - apps/app/src/components/machines/**
+  - apps/server/src/assets/install-machine.sh
+  - apps/server/src/assets/install-machine-windows.mjs
+  - apps/server/src/services/machines/manual-enrollment-command.ts
+  - apps/cli/src/commands/machine.ts
+since: 0.0.30
+owner: brsbl
+verified: 2026-10-30
+---
+
+The new computer runs only a host daemon that connects to your server: no second server, no bb app. See [Machines, servers and the host daemon](/docs/machines-servers-and-the-host-daemon).
+
+## Before you start
+
+| Need | Details |
+| --- | --- |
+| A route to your server | **bb connect** or a **Manual** address. See [Set up remote access](/docs/set-up-remote-access). |
+| macOS or Linux | Node.js 22.19+ with npm, and `curl` |
+| Windows | Node.js 22.19+ and Git for Windows |
+| Agents | Installed and signed in on the new computer |
+
+## Add the machine
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+1. Open **Settings → Machines** and choose **Add a machine**.
+2. If you see **Set up machine access**, choose a **Connection method**:
+   - **bb connect**: a private getbb.app address; needs your bb account.
+   - **Manual**: your own domain or a Tailscale-style address, not `localhost`.
+3. Choose **macOS or Linux** or **Windows**, then **Copy** the command.
+4. Run it on the new computer, in a terminal or PowerShell.
+5. When it's connected, choose **Open machine**.
+
+<Screenshot
+  src="/docs-images/add-a-machine/add-machine-dialog"
+  alt="The Add a machine dialog shows the install command with a Copy button and an expiry countdown."
+  width={544}
+  height={399}
+/>
+
+The command works once; if it expires, generate a new one.
+
+</Tab>
+<Tab value="CLI">
+
+```bash
+bb machine create --provider manual
+```
+
+It prints the commands and waits for the machine. Treat them like a password.
+
+</Tab>
+</Tabs>
+
+## What the command installs
+
+The host daemon, from your own server:
+
+| On | It installs | It starts |
+| --- | --- | --- |
+| macOS | A launch agent | At login |
+| Linux | A systemd user service, or a system service as root | At session start, or boot for a system service |
+| Windows | A startup entry | At sign-in |
+| A container or Linux without systemd | A background daemon | Now only, not after a reboot |
+
+Files go in `~/.bb-machines/<server-host>`. The daemon updates itself.
+
+## Run threads on the machine
+
+- **New thread:** choose the machine in the composer's **Environment** picker, then where to work.
+- **New project:** select the machine and browse to the folder.
+- **CLI:**
+
+  ```bash
+  bb thread spawn --project <project-id> --machine "<machine name>" --prompt "Run the test suite"
+  ```
+
+Each machine's **Permission limit**, set in **Settings → Machines**, caps its threads' permission mode.
+
+## Rename or remove a machine
+
+Use the machine's **⋯** menu in **Settings → Machines**:
+
+| Action | What it does | CLI |
+| --- | --- | --- |
+| **Rename** | Changes its name in pickers | `bb machine rename <id-or-name> "<new name>"` |
+| **Reconnect** | Restores a revoked machine, keeping its projects and history | `bb machine reconnect <id-or-name>` |
+| **Remove machine** | Revokes its access; its files stay | `bb machine remove <id-or-name>` |
+
+## Check it worked
+
+The machine shows as online in **Settings → Machines**, or in `bb machine list`.
+
+## Related troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| The command fails with a connection error | The computer can't reach the address. Try bb connect. |
+| The machine is offline after a reboot | Without systemd, run a fresh command. If access was revoked, use **Reconnect**. |
+| A thread can't find Claude Code or Codex | Install them on the machine. Check with `bb machine provider-cli status <machine>`. |

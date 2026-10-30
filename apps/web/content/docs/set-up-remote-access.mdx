@@ -1,0 +1,116 @@
+---
+title: Set up remote access
+description: Open bb from another device or let other machines reach your server. Turn on bb connect for a private getbb.app address, or use Tailscale Serve.
+type: how-to
+sources:
+  - plugins/connect/app.tsx
+  - plugins/connect/src/plugin.ts
+  - plugins/connect/src/cli.ts
+  - apps/app/src/components/settings/MachineAccessSettings.tsx
+  - apps/server/src/services/machines/server-access.ts
+  - apps/server/src/browser-request-guard.ts
+  - apps/web/src/routes/privacy.tsx
+  - docs/multiple-devices.md
+since: 0.0.30
+owner: brsbl
+verified: 2026-10-30
+---
+
+The server listens on `127.0.0.1`, port 38886, until you pick one of these routes.
+
+## Choose a route
+
+| Route | Who can open bb | Works from | You need |
+| --- | --- | --- | --- |
+| **bb connect** | Only your bb account | Anywhere | A bb account |
+| **Tailscale Serve** | Devices your tailnet allows | Your tailnet | Tailscale on each device |
+| **Your own network address** | Anyone who can reach it | That network | A trusted network |
+
+:::warning[bb has no sign-in of its own]
+On the last two routes, anyone who reaches the address can run commands and read files. Never expose bb to the public internet without bb connect.
+:::
+
+## bb connect
+
+Your server gets `https://<handle>.getbb.app`, which only your bb account can open.
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+1. Open **Settings → bb connect**, under **Plugins**.
+2. Choose **Sign in to your bb account** and confirm the code on getbb.app.
+3. Once it shows **Connected**, open the address from any device.
+
+<Screenshot
+  src="/docs-images/set-up-remote-access/bb-connect-signin"
+  alt="Settings → bb connect shows a Sign in to your bb account button."
+  width={1130}
+  height={614}
+/>
+
+The **Remote access** switch turns the address on or off without signing out.
+
+</Tab>
+<Tab value="CLI">
+
+```bash
+bb account login
+bb connect status
+```
+
+`bb connect off` and `bb connect on` toggle remote access.
+
+</Tab>
+</Tabs>
+
+### What the relay can see
+
+The getbb.app relay ends TLS, so content passes through it readable. bb doesn't store it. It isn't end-to-end encryption; if you need that, use Tailscale Serve. See the [privacy policy](https://getbb.app/privacy).
+
+## Tailscale Serve
+
+On the server's computer, keep bb on its default local address and run:
+
+```bash
+tailscale serve --bg --https=443 http://127.0.0.1:38886
+npx bb-app config set BB_APP_URL https://<machine>.<tailnet>.ts.net
+```
+
+Open that address from your tailnet. Don't use Tailscale Funnel, which is public. `BB_APP_URL` is needed for any hostname that isn't `localhost` or an IP.
+
+## Your own network address
+
+On a trusted network, listen on every interface:
+
+```bash
+npx bb-app --server-bind-host 0.0.0.0
+```
+
+or set `BB_SERVER_BIND_HOST=0.0.0.0`.
+
+## Tell machines which route to use
+
+Added machines and paired phones use the **Connection method** in **Settings → Machines → Machine access**:
+
+| Method | Use |
+| --- | --- |
+| **bb connect** | A private getbb.app address |
+| **Manual** | Your own address, such as your Tailscale Serve address, as the **Server address** |
+
+```bash
+bb settings general defaultMachineAccess connect
+bb settings general machineServerUrl https://<machine>.<tailnet>.ts.net
+```
+
+## Check it worked
+
+- Open the address from another device: bb loads with your threads.
+- **Settings → Machines → Machine access** shows **Ready**.
+
+## Related troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| The page says the host must be localhost, an IP address, or the hostname in `BB_APP_URL` | Set `BB_APP_URL` to the address you open. |
+| bb connect says this bb is signed out | Sign in again, or run `bb account login`. |
+| A device hits a machine limit | Revoke an unused device in the getbb.app dashboard. |
