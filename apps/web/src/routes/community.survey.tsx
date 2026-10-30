@@ -1,8 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import css from "../community/forms.css?url";
 import { SurveyPage } from "../community/survey-page";
-import { SURVEY_TITLE, surveyOrder } from "../community/survey";
 import { siteHeadLinks } from "../landing/page-head";
+
+const SURVEY_TITLE = "Help shape the future of bb!";
 
 export const Route = createFileRoute("/community/survey")({
   head: () => ({
@@ -12,10 +13,11 @@ export const Route = createFileRoute("/community/survey")({
     ],
     links: siteHeadLinks(css),
   }),
-  loader: () => surveyOrder(),
+  loader: () =>
+    import("../community/survey").then((survey) => survey.surveyOrder()),
   component: SurveyRoute,
 });
 
 function SurveyRoute() {
-  return <SurveyPage order={Route.useLoaderData()} />;
+  return <SurveyPage title={SURVEY_TITLE} order={Route.useLoaderData()} />;
 }

@@ -31,7 +31,9 @@ async function render() {
   const container = document.createElement("div");
   document.body.replaceChildren(container);
   root = createRoot(container);
-  await act(async () => root!.render(<SurveyPage order={surveyOrder()} />));
+  await act(async () =>
+    root!.render(<SurveyPage title="Survey" order={surveyOrder()} />),
+  );
 }
 const field = <T extends HTMLElement = HTMLInputElement>(selector: string) =>
   document.querySelector<T>(selector);
@@ -70,12 +72,29 @@ describe("survey page", () => {
   it("shows only the questions that apply", async () => {
     await render();
     await click('[name="role"][value="Founder or executive"]');
-    await click('[name="work"][value="2–4 people"]');
+    await click('[name="work"][value="2–5 people"]');
     expect(
-      ["work", "company_size", "team_improve", "team_adopt"].map(shown),
-    ).toEqual([true, true, true, false]);
+      [
+        "work",
+        "company_size",
+        "team_improve",
+        "plugin_sharing",
+        "team_adopt",
+      ].map(shown),
+    ).toEqual([true, true, true, true, false]);
+    for (const option of [
+      "I've shared a plugin I made with coworkers",
+      "I use a plugin a coworker made",
+      "Our team keeps shared plugins in one place, like a private repo",
+    ])
+      await click(`[name="plugin_sharing"][value="${option}"]`);
+    expect(
+      field('[name="plugin_sharing"][value="None of these"]')!.disabled,
+    ).toBe(false);
     await click('[name="work"][value="Just me"]');
-    expect(["team_improve", "team_adopt"].map(shown)).toEqual([false, true]);
+    expect(["team_improve", "plugin_sharing", "team_adopt"].map(shown)).toEqual(
+      [false, false, true],
+    );
     await click('[name="role"][value="Student"]');
     expect(["work", "company_size", "team_adopt"].map(shown)).toEqual([
       false,
@@ -84,16 +103,10 @@ describe("survey page", () => {
     ]);
   });
 
-  it("asks for Other text while Other is picked and caps community picks", async () => {
+  it("asks for Other text while Other is picked", async () => {
     await render();
     await click('[name="community"][value="Other"]');
     expect(document.activeElement).toBe(field('[name="community_other"]'));
-    await click('[name="community"][value="Get help when I\'m stuck"]');
-    await click('[name="community"][value="See how other people use bb"]');
-    expect(
-      field('[name="community"][value="Build things with other bb users"]')!
-        .disabled,
-    ).toBe(true);
     await click('[name="community"][value="Other"]');
     expect(field('[name="community_other"]')).toBeNull();
   });
@@ -124,7 +137,7 @@ describe("survey page", () => {
     await submit();
     expect(fetch).not.toHaveBeenCalled();
     expect(field('[role="alert"]')!.textContent).toContain(
-      "What would you most want from the bb community?: Please answer this question.",
+      "What would you most want from the bb community? Please answer this question.",
     );
   });
 

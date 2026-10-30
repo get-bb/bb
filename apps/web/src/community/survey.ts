@@ -1,11 +1,5 @@
 import { z } from "zod";
 
-export const SURVEY_TITLE = "Help shape the future of bb!";
-export const SURVEY_DESCRIPTION =
-  "We're figuring out what's next for bb, from product changes to meetups and merch, and we'd love your input.";
-export const SURVEY_PURPOSE =
-  "This should take ~3 min. As a small thank you, we'll send you bb stickers free of charge (US-only for now). Thanks for building with us!";
-export const CITY_HELP = "So we know where to start meetups.";
 const TEAM_WORK_OPTIONS = ["2–5 people", "6–10 people", "More than 10"];
 const SOLO_WORK_OPTIONS = ["Just me"];
 const NOT_WORKING_ROLES = ["Student", "Not currently working"];
@@ -144,16 +138,6 @@ export const surveyQuestions: readonly Question[] = [
     options: ["Yes", "No"],
   },
 ];
-
-export const RESEARCH_CALL_NOTE =
-  "We'll email you to find a time. We'd love to hear your feedback and share tips.";
-export const MEETUP_NOTE =
-  "If you help organize, we'll help with budget, merch and more.";
-export const QUESTION_NOTES: Record<string, string> = {
-  meetup: MEETUP_NOTE,
-  research_call: RESEARCH_CALL_NOTE,
-};
-export const EMAIL_NOTE = "We won't send you any marketing emails.";
 
 export const formValues = z.record(z.string(), z.array(z.string()));
 export type FormValues = z.infer<typeof formValues>;

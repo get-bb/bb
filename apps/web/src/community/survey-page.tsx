@@ -2,13 +2,6 @@ import { Fragment, useEffect, useRef, useState, type FormEvent } from "react";
 import { flushSync } from "react-dom";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
 import {
-  CITY_HELP,
-  COMMUNITY_MAX,
-  EMAIL_NOTE,
-  QUESTION_NOTES,
-  SURVEY_DESCRIPTION,
-  SURVEY_PURPOSE,
-  SURVEY_TITLE,
   formValues,
   questionVisible,
   surveyAnswers,
@@ -21,7 +14,21 @@ import {
   type SurveyReply,
 } from "./survey";
 
-export const SURVEY_API_PATH = "/api/community/survey";
+const SURVEY_API_PATH = "/api/community/survey";
+const SURVEY_DESCRIPTION =
+  "We're figuring out what's next for bb, from product changes to meetups and merch, and we'd love your input.";
+const SURVEY_PURPOSE =
+  "This should take ~3 min. As a small thank you, we'll send you bb stickers free of charge (US-only for now). Thanks for building with us!";
+const CITY_HELP = "So we know where to start meetups.";
+const RESEARCH_CALL_NOTE =
+  "We'll email you to find a time. We'd love to hear your feedback and share tips.";
+const MEETUP_NOTE =
+  "If you help organize, we'll help with budget, merch and more.";
+const QUESTION_NOTES: Record<string, string> = {
+  meetup: MEETUP_NOTE,
+  research_call: RESEARCH_CALL_NOTE,
+};
+const EMAIL_NOTE = "We won't send you any marketing emails.";
 const PROGRESS_KEY = "bb-community-survey";
 const SECTIONS: Record<string, string> = {
   discovery: "Getting to know you",
@@ -76,7 +83,6 @@ function Question({
   const { name } = question;
   const selected = values[name] ?? [];
   const city = values.city?.[0]?.trim();
-  const full = selected.length >= COMMUNITY_MAX;
   const otherName = `${name}_other`;
   const other = useRef<HTMLInputElement>(null);
   const pick = (option: string, checked: boolean) => {
@@ -103,7 +109,7 @@ function Question({
             ? `Would you come to a bb meetup in ${city}?`
             : question.label}
         </span>
-        {question.type === "checkbox" && ` (pick up to ${COMMUNITY_MAX})`}
+        {question.type === "checkbox" && " (pick any)"}
         <span className="community-required" aria-hidden>
           {" *"}
         </span>
@@ -121,7 +127,6 @@ function Question({
                   value={option}
                   required={question.type === "radio"}
                   checked={checked}
-                  disabled={question.type === "checkbox" && full && !checked}
                   onChange={() => pick(option, checked)}
                 />
                 <span>{option}</span>
@@ -183,7 +188,13 @@ function Question({
   );
 }
 
-export function SurveyPage({ order }: { order: SurveyOrder }) {
+export function SurveyPage({
+  title,
+  order,
+}: {
+  title: string;
+  order: SurveyOrder;
+}) {
   const [values, setValues] = useState<FormValues>({});
   const [errors, setErrors] = useState<FormErrors>({});
   const [message, setMessage] = useState("");
@@ -246,7 +257,7 @@ export function SurveyPage({ order }: { order: SurveyOrder }) {
         ) : (
           <>
             <div className="community-intro">
-              <h1 aria-label={SURVEY_TITLE}>
+              <h1 aria-label={title}>
                 Help shape the future of{" "}
                 <span className="community-nowrap">
                   <span
@@ -275,17 +286,22 @@ export function SurveyPage({ order }: { order: SurveyOrder }) {
                 <strong>
                   {message || "Please check the marked questions."}
                 </strong>
-                {Object.entries(errors).map(([name, error]) => (
-                  <p key={name}>
-                    <a href={`#question-${name.replace(/_other$/, "")}`}>
-                      {surveyQuestions.find(
-                        (question) =>
-                          question.name === name.replace(/_other$/, ""),
-                      )?.label ?? "Email"}
-                      : {error}
-                    </a>
-                  </p>
-                ))}
+                {Object.entries(errors).map(([name, error]) => {
+                  const label =
+                    surveyQuestions.find(
+                      (question) =>
+                        question.name === name.replace(/_other$/, ""),
+                    )?.label ?? "Email";
+                  return (
+                    <p key={name}>
+                      <a href={`#question-${name.replace(/_other$/, "")}`}>
+                        {/[?.!]$/.test(label)
+                          ? `${label} ${error}`
+                          : `${label}: ${error}`}
+                      </a>
+                    </p>
+                  );
+                })}
               </div>
             )}
             <form
