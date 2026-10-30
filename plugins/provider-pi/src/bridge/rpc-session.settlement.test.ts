@@ -32,7 +32,7 @@ function deferred() {
 function harness(settlement = true) {
   const events: PiRpcEvent[] = [];
   const aDelivered = deferred();
-  const requestOk = vi.fn(async () => undefined);
+  const requestOk = vi.fn(async (): Promise<unknown> => undefined);
   const onDone = vi.fn();
   const kill = vi.fn();
   const session = new PiRpcSession(
@@ -156,6 +156,63 @@ it("keeps B processing and checkpoints run-local when A delivery is delayed", as
   expect(h.control.pendingRunSettlements).toHaveLength(0);
   expect(h.control.runs.size).toBe(0);
   expect(h.requestOk.mock.calls).toHaveLength(2);
+});
+
+it.each([true, false])(
+  "settles a prompt Pi handled without a run (settlement %s)",
+  async (settlement) => {
+    const h = harness(settlement);
+    h.requestOk.mockImplementationOnce(async () => {
+      h.event({ type: "entry_appended", customType: "command-handled" });
+      return { disposition: "handled" };
+    });
+    const handled = h.session.prompt("/return-now");
+    await handled.consumed;
+    expect(await handled.settled).toEqual({});
+    expect(h.events.map((e) => e.type)).toEqual(["entry_appended"]);
+    expect(h.control.isProcessing).toBe(false);
+    expect(h.control.pendingRunSettlements).toHaveLength(0);
+
+    h.requestOk.mockResolvedValueOnce({ disposition: "started" });
+    const next = h.session.prompt("next");
+    await next.consumed;
+    const nextSettled = vi.fn();
+    void next.settled.then(nextSettled);
+    h.event({ type: "agent_start" });
+    h.end("next");
+    await h.control.deliveryChain;
+    if (settlement) {
+      expect(nextSettled).not.toHaveBeenCalled();
+      h.settle("next");
+    }
+    expect(await next.settled).toEqual({
+      boundaryDelivered: true,
+    });
+    expect(h.control.isProcessing).toBe(false);
+  },
+);
+
+it.each([
+  ["a handled command that started a run", { disposition: "handled" }],
+  ["a reply without a disposition", undefined],
+])("waits for the run after %s", async (_name, reply) => {
+  const h = harness();
+  h.requestOk.mockImplementationOnce(async () => {
+    if (reply) h.event({ type: "agent_start" });
+    return reply;
+  });
+  const dispatch = h.session.prompt("/start-run");
+  await dispatch.consumed;
+  const settled = vi.fn();
+  void dispatch.settled.then(settled);
+  if (!reply) h.event({ type: "agent_start" });
+  h.end("run");
+  await h.control.deliveryChain;
+  expect(settled).not.toHaveBeenCalled();
+  expect(h.control.isProcessing).toBe(true);
+  h.settle("run");
+  expect(await dispatch.settled).toEqual({ boundaryDelivered: true });
+  expect(h.control.isProcessing).toBe(false);
 });
 
 it.each(["retry", "overflow", "followUp"])(

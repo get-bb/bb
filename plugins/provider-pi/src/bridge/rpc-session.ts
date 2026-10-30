@@ -127,6 +127,16 @@ function isPiCompactionPromptRejection(error: unknown): boolean {
     error.message.startsWith(PI_COMPACTION_PROMPT_REJECTION)
   );
 }
+
+function isHandledPromptReply(reply: unknown): boolean {
+  return (
+    typeof reply === "object" &&
+    reply !== null &&
+    "disposition" in reply &&
+    reply.disposition === "handled"
+  );
+}
+
 function readinessTimeoutMs(): number {
   const configured = Number(process.env.BB_PI_BRIDGE_READINESS_TIMEOUT_MS);
   return Number.isFinite(configured) && configured > 0 ? configured : 60_000;
@@ -405,8 +415,11 @@ export class PiRpcSession {
     }
     this.isProcessing = true;
     const tracked = this.trackPendingInputConsumption("followUp");
+    const runsStartedBeforeDispatch = this.agentRunsStarted;
+    let pendingSettlement!: PendingRunSettlement;
     const settlement = new Promise<PiPromptRunOutcome>((resolve) => {
-      this.pendingRunSettlements.push({ resolve });
+      pendingSettlement = { resolve };
+      this.pendingRunSettlements.push(pendingSettlement);
     });
     const settled = this.dispatchPromptAfterManualCompaction(
       child,
@@ -418,12 +431,18 @@ export class PiRpcSession {
       },
       tracked.pending,
     ).then(
-      async (): Promise<PiPromptRunOutcome | null> => {
+      async (reply: unknown): Promise<PiPromptRunOutcome | null> => {
         if (tracked.pending.queuedText !== null) {
           this.dropRunSettlement();
           return null;
         }
         this.resolvePendingInputConsumption(tracked.pending);
+        if (
+          isHandledPromptReply(reply) &&
+          this.agentRunsStarted === runsStartedBeforeDispatch
+        ) {
+          return this.settleHandledPrompt(pendingSettlement);
+        }
         const outcome = await settlement;
         return outcome;
       },
@@ -590,7 +609,7 @@ export class PiRpcSession {
     child: PiRpcChild,
     command: Record<string, unknown>,
     pending: PendingInputConsumption,
-  ): Promise<void> {
+  ): Promise<unknown> {
     for (let attempt = 0; ; attempt += 1) {
       if (this.piManualCompactionActive) {
         this.resolvePendingInputConsumption(pending);
@@ -601,12 +620,11 @@ export class PiRpcSession {
       }
       this.isProcessing = true;
       try {
-        await this.dispatchWithTransientAuthRetry(
+        return await this.dispatchWithTransientAuthRetry(
           child,
           command,
           NO_REQUEST_TIMEOUT,
         );
-        return;
       } catch (error) {
         if (
           !isPiCompactionPromptRejection(error) ||
@@ -642,11 +660,10 @@ export class PiRpcSession {
     child: PiRpcChild,
     command: Record<string, unknown>,
     timeoutMs?: number,
-  ): Promise<void> {
+  ): Promise<unknown> {
     for (let attempt = 0; ; attempt += 1) {
       try {
-        await child.requestOk(command, timeoutMs);
-        return;
+        return await child.requestOk(command, timeoutMs);
       } catch (error) {
         if (
           !(error instanceof Error) ||
@@ -872,6 +889,16 @@ export class PiRpcSession {
 
   private dropRunSettlement(): void {
     this.pendingRunSettlements.pop();
+  }
+
+  private async settleHandledPrompt(
+    pending: PendingRunSettlement,
+  ): Promise<PiPromptRunOutcome> {
+    const index = this.pendingRunSettlements.indexOf(pending);
+    if (index !== -1) this.pendingRunSettlements.splice(index, 1);
+    this.isProcessing = false;
+    await this.deliveryChain;
+    return {};
   }
 
   private async refreshLeafId(
