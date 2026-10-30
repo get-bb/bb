@@ -56,7 +56,7 @@ export default defineConfig(({ command }) => {
       tailwindcss(),
       tanstackStart({
         server: { entry: "server-entry.ts" },
-        pages: [{ path: "/docs" }],
+        pages: [{ path: "/docs" }, { path: "/docs/search.json" }],
         prerender: {
           enabled: true,
           autoSubfolderIndex: false,

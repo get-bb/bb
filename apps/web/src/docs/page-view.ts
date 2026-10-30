@@ -67,7 +67,7 @@ function docsNav(currentSlug: string | null): DocsNavSection[] {
 
 export const TOC_MAX_DEPTH = 3;
 
-async function pageStructuredData(page: DocsPage) {
+export async function pageStructuredData(page: DocsPage) {
   return await page.data.structuredData();
 }
 
