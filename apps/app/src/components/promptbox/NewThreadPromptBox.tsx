@@ -89,6 +89,7 @@ export interface NewThreadEnvironmentConfig {
   onSelectProvider?: EnvironmentPickerUIProps["onSelectProvider"];
   onSelectHost?: EnvironmentPickerUIProps["onSelectHost"];
   onSelectReuse?: EnvironmentPickerUIProps["onSelectReuse"];
+  projectDefault?: EnvironmentPickerUIProps["projectDefault"];
 }
 
 export interface NewThreadWorktreeConfig {
@@ -133,6 +134,7 @@ interface NewThreadPromptBoxUIProps {
   autoFocus?: boolean;
   pluginComposerHost?: PluginComposerHost | null;
   textEffects?: readonly ComposerTextEffectSource[];
+  suppressPluginComposerCustomizations?: boolean;
   placeholder?: string;
 
   history: HistoryConfig;
@@ -166,6 +168,7 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
   autoFocus,
   pluginComposerHost,
   textEffects,
+  suppressPluginComposerCustomizations,
   placeholder: placeholderOverride,
   history,
   typeahead,
@@ -225,6 +228,9 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
           disabledReason={disabledReason}
           autoFocus={autoFocus}
           textEffects={textEffects}
+          suppressPluginComposerCustomizations={
+            suppressPluginComposerCustomizations
+          }
           placeholder={placeholderOverride}
           history={history}
           typeahead={typeahead}
@@ -265,6 +271,7 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
   disabledReason,
   autoFocus,
   textEffects,
+  suppressPluginComposerCustomizations,
   placeholder: placeholderOverride,
   history,
   typeahead,
@@ -304,7 +311,10 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
       <div
         className={`mb-2 hidden gap-2 has-[>:not(:empty)]:grid ${PROMPT_STACK_TRACK_CLASS}`}
       >
-        <ComposerBannersSlot ownerPlacement="before">
+        <ComposerBannersSlot
+          ownerPlacement="before"
+          includePluginContributions={!suppressPluginComposerCustomizations}
+        >
           {modeConfig.banner}
         </ComposerBannersSlot>
       </div>
@@ -316,6 +326,9 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
         onChange={onChange}
         onSubmit={onSubmit}
         textEffects={textEffects}
+        suppressPluginComposerCustomizations={
+          suppressPluginComposerCustomizations
+        }
         onComposerLayoutChange={onComposerLayoutChange}
         history={history}
         typeahead={typeahead}
@@ -413,6 +426,7 @@ export function EnvironmentSlot({
   const [environmentPickerOpen, setEnvironmentPickerOpen] = useState(false);
   const showEnvironmentPicker =
     !projectless ||
+    environment.projectDefault !== undefined ||
     environment.isLoading ||
     providers.length > 1 ||
     showReuseEnvironmentPicker ||
@@ -445,6 +459,7 @@ export function EnvironmentSlot({
         onSelectProvider={environment.onSelectProvider}
         onSelectHost={environment.onSelectHost}
         onSelectReuse={environment.onSelectReuse}
+        projectDefault={environment.projectDefault}
         className="shrink-0"
         muted
       />

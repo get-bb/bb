@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   defaultAppSettings,
   PERSONAL_PROJECT_ID,
+  type PromptHistoryEntry,
   type ThreadListEntry,
   type ThreadSessionOption,
 } from "@bb/domain";
@@ -25,10 +26,12 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ExperimentalComposerSelection,
+  NewThreadComposerProps as PluginComposerProps,
   NewThreadRequest,
   PluginEnvironmentProviderInputsProps,
 } from "@get-bb/plugin-sdk";
 import type {
+  ProjectWithThreadsResponse,
   SystemEnvironmentProvider,
   SystemMachineProvider,
 } from "@bb/server-contract";
@@ -44,7 +47,10 @@ import {
 } from "@/lib/plugin-slots";
 import { encodeReuseValue } from "@/components/pickers/environment-picker-value";
 import { useRootComposeReuseEnvironment } from "@/lib/root-compose-selection";
-import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
+import {
+  flushPendingPromptDraftPersists,
+  getPromptDraftAccessor,
+} from "@/hooks/usePromptDraftStorage";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { createDeferredPromise } from "@bb/test-helpers";
 import type { PromptDraftAttachment } from "@bb/client-core";
@@ -53,6 +59,7 @@ import { RootComposeView } from "@/views/RootComposeView";
 import { DefaultPaneContextProvider } from "@/views/thread-detail/PaneContext";
 import { ROOT_COMPOSE_FIXED_PANEL_STATE_ID } from "@/views/RootComposePanelTabContent";
 import { resetFixedPanelTabsStateForTest } from "@/lib/fixed-panel-tabs";
+import { getProjectScopedStorageKey } from "@/lib/project-scoped-storage";
 import {
   createEmptyFixedPanelTabsState,
   createTerminalFixedPanelTab,
@@ -99,6 +106,7 @@ const mocks = vi.hoisted(() => ({
   sidebarNavigationReplayed: false,
   extraProjects: [] as Array<Record<string, unknown>>,
   promptHistoryQueryOptions: [] as Array<{ enabled?: boolean } | undefined>,
+  promptHistory: [] as PromptHistoryEntry[],
   environmentProviders: [] as unknown[],
   closeTerminal: vi.fn(() => Promise.resolve()),
   plugins: [] as unknown[],
@@ -395,7 +403,7 @@ vi.mock("@/hooks/queries/project-queries", () => ({
     options?: { enabled?: boolean },
   ) => {
     mocks.promptHistoryQueryOptions.push(options);
-    return { data: [] };
+    return { data: mocks.promptHistory };
   },
   useProjectSourceBranches: () => ({
     data: {
@@ -691,11 +699,119 @@ function pressSubmit(): void {
   );
 }
 
+const AGENT_SESSION_OPTIONS: ThreadSessionOption[] = [
+  { type: "boolean", id: "daybreak", label: "Daybreak", value: false },
+  {
+    type: "select",
+    id: "mode",
+    label: "Mode",
+    category: "mode",
+    value: "agent",
+    values: [
+      { id: "agent", label: "Agent" },
+      { id: "plan", label: "Plan" },
+    ],
+  },
+];
+
+function agentOptionLabels(): string[][] {
+  return latestPromptBoxProps().execution.agentOptions.sections.map(
+    (section: { id: string; selectedLabel: string }) => [
+      section.id,
+      section.selectedLabel,
+    ],
+  );
+}
+
+function modeMenu() {
+  return latestPromptBoxProps().modeConfig.sessionOptionsControl.props;
+}
+
 async function submit(): Promise<void> {
   await act(async () => {
     pressSubmit();
   });
 }
+
+async function settled(
+  promise: Promise<ExperimentalComposerSelection>,
+  timeout = 1_000,
+): Promise<ExperimentalComposerSelection> {
+  let result: ExperimentalComposerSelection | null = null;
+  let failure: unknown = null;
+  void promise.then(
+    (value) => {
+      result = value;
+    },
+    (error: unknown) => {
+      failure = error;
+    },
+  );
+  await waitFor(
+    () => {
+      expect(result !== null || failure !== null).toBe(true);
+    },
+    { timeout },
+  );
+  if (failure !== null) throw failure;
+  return result as unknown as ExperimentalComposerSelection;
+}
+
+function savedRequestElement(
+  request: NewThreadRequest,
+  onSubmit: (request: NewThreadRequest) => void,
+  props: Partial<PluginComposerProps> = {},
+) {
+  return (
+    <MemoryRouter>
+      <PluginNewThreadComposer
+        draftKey="saved-request"
+        defaultProjectId={request.projectId}
+        defaultProviderId={request.providerId}
+        defaultModel={request.model}
+        defaultReasoningLevel={request.reasoningLevel}
+        defaultPermissionMode={request.permissionMode}
+        defaultSessionOptions={request.sessionOptions}
+        defaultEnvironment={request.environment}
+        initialPrompt="review every PR for slop"
+        onSubmit={onSubmit}
+        {...props}
+      />
+    </MemoryRouter>
+  );
+}
+
+const WORKTREE_ON_OTHER_MACHINE: ProjectWithThreadsResponse["defaultEnvironment"] =
+  {
+    type: "provider",
+    environmentProviderId: "git-worktree",
+    machine: { type: "existing", hostId: "host_2" },
+    inputs: {},
+  };
+
+function projectWithDefaultEnvironment(
+  defaultEnvironment: ProjectWithThreadsResponse["defaultEnvironment"],
+  defaultEnvironmentProblem: ProjectWithThreadsResponse["defaultEnvironmentProblem"] = null,
+): ProjectWithThreadsResponse {
+  return makeProjectWithThreadsResponse({
+    ...PROJECT,
+    id: "proj_default",
+    name: "Project With Default",
+    sources: PROJECT.sources.map((source) => ({
+      ...source,
+      id: `${source.id}_default`,
+      projectId: "proj_default",
+    })),
+    defaultEnvironment,
+    defaultEnvironmentProblem,
+  });
+}
+
+const PROJECT_DEFAULT_REQUEST: NewThreadRequest = {
+  ...STORED_REQUEST,
+  projectId: "proj_default",
+  environment: { type: "project-default" },
+};
 
 describe("PluginNewThreadComposer seeding", () => {
   beforeEach(() => {
@@ -705,6 +821,7 @@ describe("PluginNewThreadComposer seeding", () => {
     mocks.unknownReasoning = false;
     mocks.promptBoxProps.length = 0;
     mocks.promptHistoryQueryOptions.length = 0;
+    mocks.promptHistory = [];
     mocks.copyAttachments.mockReset();
     mocks.uploadAttachment.mockReset();
     mocks.projectThreads = [];
@@ -743,6 +860,8 @@ describe("PluginNewThreadComposer seeding", () => {
       <Provider>
         <MemoryRouter>
           <NewThreadComposer
+            persistDraft
+            allowProjectDefaultEnvironment={false}
             projectId={projectId}
             onProjectChange={() => undefined}
             draftStorage={{ kind: "new-thread" }}
@@ -764,6 +883,8 @@ describe("PluginNewThreadComposer seeding", () => {
       <Provider>
         <MemoryRouter>
           <NewThreadComposer
+            persistDraft
+            allowProjectDefaultEnvironment={false}
             projectId="proj_1"
             onProjectChange={() => undefined}
             draftStorage={{ kind: "new-thread" }}
@@ -808,6 +929,8 @@ describe("PluginNewThreadComposer seeding", () => {
       <Provider>
         <MemoryRouter>
           <NewThreadComposer
+            persistDraft
+            allowProjectDefaultEnvironment={false}
             projectId="proj_1"
             onProjectChange={() => undefined}
             draftStorage={{ kind: "new-thread" }}
@@ -860,6 +983,64 @@ describe("PluginNewThreadComposer seeding", () => {
         latestPromptBoxProps().modeConfig.environment.selectedProviderHostId,
       ).toBe("host_2");
     });
+  });
+
+  it("starts in the project's default environment and returns to it after a send", async () => {
+    mocks.extraProjects = [
+      makeProjectWithThreadsResponse({
+        ...PROJECT,
+        id: "proj_default",
+        name: "Project With Default",
+        sources: PROJECT.sources.map((source) => ({
+          ...source,
+          id: `${source.id}_default`,
+          projectId: "proj_default",
+        })),
+        defaultEnvironment: {
+          type: "provider",
+          environmentProviderId: "git-worktree",
+          machine: { type: "existing", hostId: "host_2" },
+          inputs: {},
+        },
+      }),
+    ];
+    window.localStorage.setItem(
+      "bb.promptbox.environment-proj_default-1",
+      "provider:project-checkout",
+    );
+    window.localStorage.setItem("bb.promptbox.machine-proj_default-1", "host_1");
+    getPromptDraftAccessor({ kind: "new-thread" }).setDraft({
+      text: "Run the sweep",
+      mentions: [],
+      attachments: [],
+    });
+    const environment = () => latestPromptBoxProps().modeConfig.environment;
+    render(newThreadElement("proj_default"));
+    await waitFor(() => {
+      expect(environment().value).toBe("provider:git-worktree");
+      expect(environment().selectedProviderHostId).toBe("host_2");
+    });
+
+    await act(async () => {
+      environment().onSelectProvider(CHECKOUT_PROVIDER, "host_1");
+    });
+    expect(environment().value).toBe("provider:project-checkout");
+    expect(environment().selectedProviderHostId).toBe("host_1");
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    await submit();
+
+    await waitFor(() => {
+      expect(environment().value).toBe("provider:git-worktree");
+      expect(environment().selectedProviderHostId).toBe("host_2");
+    });
+    expect(
+      window.localStorage.getItem("bb.promptbox.environment-proj_default-1"),
+    ).toBe("provider:project-checkout");
+    expect(window.localStorage.getItem("bb.promptbox.machine-proj_default-1")).toBe(
+      "host_1",
+    );
   });
 
   it("selects a host immediately with the tab's current environment option", async () => {
@@ -1511,6 +1692,8 @@ describe("PluginNewThreadComposer seeding", () => {
       <Provider>
         <MemoryRouter>
           <NewThreadComposer
+            persistDraft
+            allowProjectDefaultEnvironment={false}
             projectId="proj_1"
             onProjectChange={() => undefined}
             draftStorage={{ kind: "new-thread" }}
@@ -1809,6 +1992,8 @@ describe("PluginNewThreadComposer seeding", () => {
       <Provider>
         <MemoryRouter>
           <NewThreadComposer
+            persistDraft
+            allowProjectDefaultEnvironment={false}
             projectId="proj_1"
             onProjectChange={() => undefined}
             draftStorage={{ kind: "new-thread" }}
@@ -2201,6 +2386,414 @@ describe("PluginNewThreadComposer seeding", () => {
     expect(latestPromptBoxProps().project.value).toBe("proj_1");
     expect(latestPromptBoxProps().attachments.items).toHaveLength(1);
   });
+
+  it("keeps the seeded project when project changes are not allowed", async () => {
+    const submitted: NewThreadRequest[] = [];
+    render(
+      savedRequestElement(
+        STORED_REQUEST,
+        (request) => {
+          submitted.push(request);
+        },
+        { allowProjectChange: false },
+      ),
+    );
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    expect(latestPromptBoxProps().project).toMatchObject({
+      value: "proj_1",
+      disabled: true,
+      showChevronWhenDisabled: false,
+    });
+
+    const host = latestPromptBoxProps()
+      .pluginComposerHost as PluginComposerHost;
+    const selection = await settled(
+      host.setSelection!({ projectId: "proj_2", permissionMode: "auto" }),
+    );
+    expect(selection).toMatchObject({
+      projectId: "proj_1",
+      permissionMode: "auto",
+    });
+    await submit();
+
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0]?.projectId).toBe("proj_1");
+  });
+
+  it("round-trips a saved project-default environment through the Project default entry", async () => {
+    mocks.extraProjects = [
+      projectWithDefaultEnvironment(WORKTREE_ON_OTHER_MACHINE),
+    ];
+    const submitted: NewThreadRequest[] = [];
+    render(
+      savedRequestElement(
+        PROJECT_DEFAULT_REQUEST,
+        (request) => {
+          submitted.push(request);
+        },
+        { allowProjectDefaultEnvironment: true },
+      ),
+    );
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+      "project-default",
+    );
+    expect(screen.queryByTestId("worktree-default-branch")).toBeNull();
+    await submit();
+
+    expect(submitted).toEqual([PROJECT_DEFAULT_REQUEST]);
+  });
+
+  it.each<{
+    name: string;
+    defaultEnvironment: ProjectWithThreadsResponse["defaultEnvironment"];
+    problem: ProjectWithThreadsResponse["defaultEnvironmentProblem"];
+    description: string;
+    routing: { hostId?: string };
+  }>([
+    {
+      name: "an automatic default",
+      defaultEnvironment: null,
+      problem: null,
+      description: "Automatic",
+      routing: {},
+    },
+    {
+      name: "a default on an existing machine",
+      defaultEnvironment: WORKTREE_ON_OTHER_MACHINE,
+      problem: null,
+      description: "Other machine · Worktree",
+      routing: { hostId: "host_2" },
+    },
+    {
+      name: "a default on a new machine",
+      defaultEnvironment: {
+        type: "provider",
+        environmentProviderId: "git-worktree",
+        machine: { type: "new", machineProviderId: "berth", inputs: null },
+        inputs: null,
+      },
+      problem: null,
+      description: "Worktree",
+      routing: {},
+    },
+    {
+      name: "a default the project reports a problem with",
+      defaultEnvironment: WORKTREE_ON_OTHER_MACHINE,
+      problem: {
+        reason: "project_source_missing",
+        message: "Other machine has no checkout of Project With Default",
+      },
+      description: "Other machine · Worktree",
+      routing: {},
+    },
+  ])(
+    "describes and routes $name",
+    async ({ defaultEnvironment, problem, description, routing }) => {
+      mocks.extraProjects = [
+        projectWithDefaultEnvironment(defaultEnvironment, problem),
+      ];
+      render(
+        savedRequestElement(PROJECT_DEFAULT_REQUEST, () => undefined, {
+          allowProjectDefaultEnvironment: true,
+        }),
+      );
+      await waitFor(() => {
+        expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+          "project-default",
+        );
+      });
+
+      expect(
+        latestPromptBoxProps().modeConfig.environment.projectDefault,
+      ).toMatchObject({ description, problem: problem?.message ?? null });
+      expect(latestPromptBoxProps().execution.providerRouting).toEqual(routing);
+    },
+  );
+
+  it("submits the Project default once the user picks it", async () => {
+    const submitted: NewThreadRequest[] = [];
+    render(
+      savedRequestElement(
+        STORED_REQUEST,
+        (request) => {
+          submitted.push(request);
+        },
+        { allowProjectDefaultEnvironment: true },
+      ),
+    );
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+      "provider:git-worktree",
+    );
+
+    await act(async () => {
+      latestPromptBoxProps().modeConfig.environment.projectDefault.onSelect();
+    });
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    await submit();
+
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0]?.environment).toEqual({ type: "project-default" });
+  });
+
+  it("submits a concrete environment for a project-default seed when the entry is not offered", async () => {
+    mocks.extraProjects = [
+      projectWithDefaultEnvironment(WORKTREE_ON_OTHER_MACHINE),
+    ];
+    const submitted: NewThreadRequest[] = [];
+    render(
+      savedRequestElement(PROJECT_DEFAULT_REQUEST, (request) => {
+        submitted.push(request);
+      }),
+    );
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    expect(
+      latestPromptBoxProps().modeConfig.environment.projectDefault,
+    ).toBeUndefined();
+    await submit();
+
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0]?.environment).toMatchObject({
+      type: "provider",
+      environmentProviderId: "project-checkout",
+      machine: { type: "existing", hostId: "host_1" },
+    });
+  });
+
+  it("keeps an unpersisted draft out of browser storage and drops it on unmount", async () => {
+    const element = () =>
+      savedRequestElement(STORED_REQUEST, () => undefined, {
+        draftKey: "automation-edit:auto_1",
+        persistDraft: false,
+      });
+    const first = render(element());
+    await waitFor(() => {
+      expect(latestPromptBoxProps().value).toBe("review every PR for slop");
+    });
+    act(() => {
+      latestPromptBoxProps().onChange("review only the risky PRs", []);
+    });
+    expect(latestPromptBoxProps().value).toBe("review only the risky PRs");
+    flushPendingPromptDraftPersists();
+    expect(
+      Object.keys(window.localStorage).filter((key) =>
+        key.startsWith("bb.promptbox.contents"),
+      ),
+    ).toEqual([]);
+
+    first.unmount();
+    render(element());
+
+    await waitFor(() => {
+      expect(latestPromptBoxProps().value).toBe("review every PR for slop");
+    });
+  });
+
+  it("takes no attachments, even from prompt history, when they are not allowed", async () => {
+    const spec = {
+      type: "localFile" as const,
+      path: ".bb/attachments/spec.md",
+      name: "spec.md",
+      sizeBytes: 12,
+    };
+    mocks.promptHistory = [
+      {
+        id: "hist_text_and_file",
+        createdAt: 2,
+        input: [{ type: "text", text: "follow the spec", mentions: [] }, spec],
+      },
+      { id: "hist_file_only", createdAt: 1, input: [spec] },
+    ];
+    render(
+      savedRequestElement(STORED_REQUEST, () => undefined, {
+        allowAttachments: false,
+      }),
+    );
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+
+    expect(latestPromptBoxProps().attachments.onAttachFiles).toBeUndefined();
+    expect(latestPromptBoxProps().history.entries).toEqual([
+      { text: "follow the spec", mentions: [], attachments: [] },
+    ]);
+  });
+
+  it("suppresses plugin composer customizations only when they are not allowed", async () => {
+    const view = render(savedRequestElement(STORED_REQUEST, () => undefined));
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    expect(latestPromptBoxProps().suppressPluginComposerCustomizations).toBe(
+      false,
+    );
+
+    view.rerender(
+      savedRequestElement(STORED_REQUEST, () => undefined, {
+        allowPluginCustomizations: false,
+      }),
+    );
+
+    expect(latestPromptBoxProps().suppressPluginComposerCustomizations).toBe(
+      true,
+    );
+  });
+
+  it("submits seeded agent options untouched and after the user changes one", async () => {
+    mocks.modelSessionOptions = AGENT_SESSION_OPTIONS;
+    const request: NewThreadRequest = {
+      ...STORED_REQUEST,
+      sessionOptions: { daybreak: true, mode: "plan" },
+    };
+    const submitted: NewThreadRequest[] = [];
+    render(
+      savedRequestElement(request, (submittedRequest) => {
+        submitted.push(submittedRequest);
+      }),
+    );
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    expect(agentOptionLabels()).toEqual([["daybreak", "On"]]);
+    expect(modeMenu().options[0].value).toBe("plan");
+    await submit();
+
+    act(() => {
+      latestPromptBoxProps().onChange("review every PR for slop", []);
+    });
+    await act(async () => {
+      modeMenu().onChange("mode", "agent");
+    });
+    await submit();
+
+    expect(submitted).toEqual([
+      request,
+      { ...request, sessionOptions: { daybreak: true, mode: "agent" } },
+    ]);
+  });
+
+  it("re-seeds agent options with the next record and keeps them with the seeded provider", async () => {
+    mocks.modelSessionOptions = AGENT_SESSION_OPTIONS;
+    const submitted: NewThreadRequest[] = [];
+    const onSubmit = (request: NewThreadRequest) => {
+      submitted.push(request);
+    };
+    const nextRecord: NewThreadRequest = {
+      ...STORED_REQUEST,
+      sessionOptions: { daybreak: true, mode: "plan" },
+    };
+    const view = render(
+      savedRequestElement(
+        { ...STORED_REQUEST, sessionOptions: { daybreak: true } },
+        onSubmit,
+      ),
+    );
+    await waitFor(() => {
+      expect(agentOptionLabels()).toEqual([["daybreak", "On"]]);
+    });
+    await act(async () => {
+      latestPromptBoxProps().execution.agentOptions.onChange("daybreak", false);
+    });
+    expect(agentOptionLabels()).toEqual([["daybreak", "Off"]]);
+
+    view.rerender(savedRequestElement(nextRecord, onSubmit));
+    await waitFor(() => {
+      expect(agentOptionLabels()).toEqual([["daybreak", "On"]]);
+    });
+    expect(modeMenu().options[0].value).toBe("plan");
+
+    await act(async () => {
+      latestPromptBoxProps().execution.provider.onChange("codex");
+    });
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    expect(agentOptionLabels()).toEqual([["daybreak", "Off"]]);
+    expect(modeMenu().options[0].value).toBe("agent");
+    await act(async () => {
+      latestPromptBoxProps().execution.provider.onChange("claude-code");
+    });
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    await submit();
+
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0]?.sessionOptions).toEqual(nextRecord.sessionOptions);
+  });
+
+  it("leaves the New thread screen's machine pick for this tab alone when it saves", async () => {
+    const draftMachineKey = getProjectScopedStorageKey(
+      "bb.promptbox.draft-machine",
+      STORED_REQUEST.projectId,
+    );
+    window.sessionStorage.setItem(draftMachineKey, "host_2");
+    const submitted: NewThreadRequest[] = [];
+    render(
+      savedRequestElement(STORED_REQUEST, (request) => {
+        submitted.push(request);
+      }),
+    );
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+
+    await submit();
+
+    expect(submitted).toHaveLength(1);
+    expect(window.sessionStorage.getItem(draftMachineKey)).toBe("host_2");
+  });
+
+  it("re-seeds agent options when the seed returns to an earlier record", async () => {
+    mocks.modelSessionOptions = AGENT_SESSION_OPTIONS;
+    const submitted: NewThreadRequest[] = [];
+    const onSubmit = (request: NewThreadRequest) => {
+      submitted.push(request);
+    };
+    const firstRecord: NewThreadRequest = {
+      ...STORED_REQUEST,
+      sessionOptions: { daybreak: true },
+    };
+    const view = render(savedRequestElement(firstRecord, onSubmit));
+    await waitFor(() => {
+      expect(agentOptionLabels()).toEqual([["daybreak", "On"]]);
+    });
+    await act(async () => {
+      latestPromptBoxProps().execution.agentOptions.onChange("daybreak", false);
+    });
+    expect(agentOptionLabels()).toEqual([["daybreak", "Off"]]);
+
+    view.rerender(
+      savedRequestElement(
+        { ...STORED_REQUEST, sessionOptions: { daybreak: true, mode: "plan" } },
+        onSubmit,
+      ),
+    );
+    await waitFor(() => {
+      expect(modeMenu().options[0].value).toBe("plan");
+    });
+    view.rerender(savedRequestElement(firstRecord, onSubmit));
+    await waitFor(() => {
+      expect(modeMenu().options[0].value).toBe("agent");
+    });
+
+    expect(agentOptionLabels()).toEqual([["daybreak", "On"]]);
+    await submit();
+    expect(submitted.map((request) => request.sessionOptions)).toEqual([
+      { daybreak: true },
+    ]);
+  });
 });
 
 const SANDBOX_PROVIDER: SystemEnvironmentProvider = {
@@ -2300,6 +2893,7 @@ const PROJECT_WITHOUT_CHECKOUT = {
 describe("NewThreadComposer environment providers", () => {
   beforeEach(() => {
     mocks.promptBoxProps.length = 0;
+    mocks.promptHistory = [];
     mocks.projectThreads = [];
     mocks.sidebarNavigationSettled = true;
     mocks.sidebarNavigationReplayed = false;
@@ -2884,6 +3478,7 @@ describe("NewThreadComposer setSelection", () => {
     resetFixedPanelTabsStateForTest();
     mocks.promptBoxProps.length = 0;
     mocks.promptHistoryQueryOptions.length = 0;
+    mocks.promptHistory = [];
     mocks.copyAttachments.mockReset();
     mocks.uploadAttachment.mockReset();
     mocks.projectThreads = [];
@@ -2926,6 +3521,8 @@ describe("NewThreadComposer setSelection", () => {
     const [projectId, setProjectId] = useState(initialProjectId);
     return (
       <NewThreadComposer
+        persistDraft
+        allowProjectDefaultEnvironment={false}
         projectId={projectId}
         onProjectChange={setProjectId}
         draftStorage={{ kind: "new-thread" }}
@@ -2967,30 +3564,6 @@ describe("NewThreadComposer setSelection", () => {
     expect(host.getSelection?.()).not.toBe(initial);
     expect(host.getSelection?.()?.projectId).toBe("proj_1");
   });
-
-  async function settled(
-    promise: Promise<ExperimentalComposerSelection>,
-    timeout = 1_000,
-  ): Promise<ExperimentalComposerSelection> {
-    let result: ExperimentalComposerSelection | null = null;
-    let failure: unknown = null;
-    void promise.then(
-      (value) => {
-        result = value;
-      },
-      (error: unknown) => {
-        failure = error;
-      },
-    );
-    await waitFor(
-      () => {
-        expect(result !== null || failure !== null).toBe(true);
-      },
-      { timeout },
-    );
-    if (failure !== null) throw failure;
-    return result as unknown as ExperimentalComposerSelection;
-  }
 
   it("switches the project first and remembers the environment and machine for the new project", async () => {
     render(rootLikeElement("proj_2"));
@@ -3211,5 +3784,37 @@ describe("NewThreadComposer setSelection", () => {
     expect(
       window.localStorage.getItem("bb.promptbox.permission-mode"),
     ).toBeNull();
+  });
+
+  it("selects the project default only in a composer that offers it", async () => {
+    const root = render(rootLikeElement("proj_1"));
+    const rootEnvironment = latestPromptBoxProps().modeConfig.environment.value;
+    const rootResult = await settled(
+      currentHost().setSelection!({ environment: { type: "project-default" } }),
+    );
+    expect(rootResult.environment).toMatchObject({
+      type: "provider",
+      environmentProviderId: "project-checkout",
+    });
+    expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+      rootEnvironment,
+    );
+    expect(
+      window.localStorage.getItem("bb.promptbox.environment-proj_1-1"),
+    ).toBeNull();
+    root.unmount();
+
+    render(
+      savedRequestElement(STORED_REQUEST, () => undefined, {
+        allowProjectDefaultEnvironment: true,
+      }),
+    );
+    const pluginResult = await settled(
+      currentHost().setSelection!({ environment: { type: "project-default" } }),
+    );
+    expect(pluginResult.environment).toEqual({ type: "project-default" });
+    expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+      "project-default",
+    );
   });
 });

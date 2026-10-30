@@ -49,6 +49,10 @@ This index lists every command path that the core CLI registers, including alias
 - `bb project attachment`
 - `bb project attachment upload`
 - `bb project attachment download`
+- `bb project default-environment`
+- `bb project default-environment show`
+- `bb project default-environment set`
+- `bb project default-environment reset`
 - `bb project list`
 - `bb project discover`
 - `bb project history`

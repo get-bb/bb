@@ -1,4 +1,10 @@
-import { useCallback, useMemo, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useId,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type { PromptTextMention } from "@bb/domain";
 import type { PromptDraftAttachment, PromptDraftState } from "@bb/client-core";
 import {
@@ -29,6 +35,16 @@ type PromptDraftListener = () => void;
 
 interface PromptDraftWriteOptions {
   persist: "immediate" | "deferred";
+}
+
+interface PromptDraftStore {
+  read: () => PromptDraftState;
+  write: (value: PromptDraftState, options?: PromptDraftWriteOptions) => void;
+  subscribe: (listener: PromptDraftListener) => () => void;
+}
+
+interface PromptDraftControllerOptions {
+  persist?: boolean;
 }
 
 const EMPTY_PROMPT_DRAFT = emptyPromptDraftState();
@@ -205,24 +221,32 @@ function writePromptDraft(
   emitPromptDraftChange(storageKey);
 }
 
-function restorePromptDraftIfEmpty(
-  storageKey: string | null,
-  value: PromptDraftState,
-): boolean {
-  if (
-    !storageKey ||
-    typeof window === "undefined" ||
-    isPromptDraftEmpty(value)
-  ) {
-    return false;
-  }
+function createBrowserPromptDraftStore(storageKey: string): PromptDraftStore {
+  return {
+    read: () => readPromptDraft(storageKey),
+    write: (value, options) => writePromptDraft(storageKey, value, options),
+    subscribe: (listener) => subscribePromptDraft(storageKey, listener),
+  };
+}
 
-  if (!isPromptDraftEmpty(readPromptDraft(storageKey))) {
-    return false;
-  }
-
-  writePromptDraft(storageKey, value);
-  return true;
+function createMemoryPromptDraftStore(): PromptDraftStore {
+  let draft = EMPTY_PROMPT_DRAFT;
+  const listeners = new Set<PromptDraftListener>();
+  return {
+    read: () => draft,
+    write: (value) => {
+      draft = isPromptDraftEmpty(value) ? EMPTY_PROMPT_DRAFT : value;
+      for (const listener of listeners) {
+        listener();
+      }
+    },
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+  };
 }
 
 function getPromptDraftStorageKey(scope: PromptDraftScope): string {
@@ -263,17 +287,17 @@ export interface PromptDraftController {
 
 function createPromptDraftController(
   storageKey: string,
+  store: PromptDraftStore,
 ): PromptDraftController {
   return {
     storageKey,
-    getCurrent: () => readPromptDraft(storageKey),
-    subscribe: (listener) => subscribePromptDraft(storageKey, listener),
-    setDraft: (draft) => writePromptDraft(storageKey, draft),
+    getCurrent: store.read,
+    subscribe: store.subscribe,
+    setDraft: (draft) => store.write(draft),
     setTextAndMentions: (nextText, nextMentions) => {
-      writePromptDraft(
-        storageKey,
+      store.write(
         {
-          ...readPromptDraft(storageKey),
+          ...store.read(),
           text: nextText,
           mentions: nextMentions,
         },
@@ -281,58 +305,84 @@ function createPromptDraftController(
       );
     },
     setAttachments: (attachments) => {
-      writePromptDraft(storageKey, {
-        ...readPromptDraft(storageKey),
+      store.write({
+        ...store.read(),
         attachments,
       });
     },
     addAttachment: (attachment) => {
-      const currentDraft = readPromptDraft(storageKey);
+      const currentDraft = store.read();
       const alreadyExists = currentDraft.attachments.some(
         (existingAttachment) => existingAttachment.path === attachment.path,
       );
       if (alreadyExists) return;
 
-      writePromptDraft(storageKey, {
+      store.write({
         ...currentDraft,
         attachments: [...currentDraft.attachments, attachment],
       });
     },
     updateAttachments: (update) => {
-      const currentDraft = readPromptDraft(storageKey);
-      writePromptDraft(storageKey, {
+      const currentDraft = store.read();
+      store.write({
         ...currentDraft,
         attachments: update(currentDraft.attachments),
       });
     },
-    clear: () => writePromptDraft(storageKey, EMPTY_PROMPT_DRAFT),
+    clear: () => store.write(EMPTY_PROMPT_DRAFT),
     clearIfCurrentMatches: (expectedDraft) => {
-      if (
-        !arePromptDraftStatesEqual(readPromptDraft(storageKey), expectedDraft)
-      ) {
+      if (!arePromptDraftStatesEqual(store.read(), expectedDraft)) {
         return false;
       }
 
-      writePromptDraft(storageKey, EMPTY_PROMPT_DRAFT);
+      store.write(EMPTY_PROMPT_DRAFT);
       return true;
     },
     restoreIfEmpty: (nextDraft) => {
-      restorePromptDraftIfEmpty(storageKey, nextDraft);
+      if (isPromptDraftEmpty(nextDraft) || !isPromptDraftEmpty(store.read())) {
+        return;
+      }
+      store.write(nextDraft);
     },
   };
+}
+
+function createBrowserPromptDraftController(
+  storageKey: string,
+): PromptDraftController {
+  return createPromptDraftController(
+    storageKey,
+    createBrowserPromptDraftStore(storageKey),
+  );
 }
 
 export function getPromptDraftAccessor(
   scope: PromptDraftScope,
 ): PromptDraftController {
-  return createPromptDraftController(getPromptDraftStorageKey(scope));
+  return createBrowserPromptDraftController(getPromptDraftStorageKey(scope));
 }
 
 export function usePromptDraftController(
   scope: PromptDraftScope,
+  { persist = true }: PromptDraftControllerOptions = {},
 ): PromptDraftController {
   const storageKey = getPromptDraftStorageKey(scope);
-  return useMemo(() => createPromptDraftController(storageKey), [storageKey]);
+  const instanceId = useId();
+  const [memoryControllers] = useState(
+    () => new Map<string, PromptDraftController>(),
+  );
+  return useMemo(() => {
+    if (persist) return createBrowserPromptDraftController(storageKey);
+    const memoryKey = `${storageKey}-memory-${instanceId}`;
+    const existing = memoryControllers.get(memoryKey);
+    if (existing !== undefined) return existing;
+    const controller = createPromptDraftController(
+      memoryKey,
+      createMemoryPromptDraftStore(),
+    );
+    memoryControllers.set(memoryKey, controller);
+    return controller;
+  }, [instanceId, memoryControllers, persist, storageKey]);
 }
 
 type PromptDraftSource = Pick<

@@ -2293,21 +2293,79 @@ Docs: `frontend-renderer-slots.md`, `backend-cli-agents.md` (form rows),
 
 ## `experimental_NewThreadComposer` (`@get-bb/plugin-sdk/app`)
 
-**Kept experimental (2026-08-22).** There are no consumers, and items 1 (a
-newly required create-thread field going missing silently) and 6
-(projectless switching) need a consumer to validate.
+**Kept experimental (2026-10-21).** Its first consumer is the Automations
+plugin's automation editor (`plugins/automations/detail-view.tsx`), added in
+the same PR. It seeds a saved automation and saves the submitted request
+instead of creating a thread, so item 1 still needs a consumer that creates
+threads with `bb.sdk.threads.spawn`.
 
 The host-owned new-thread compose surface. It calls `onSubmit` with a
 `NewThreadRequest` carrying every resolved selection (including
-`sessionOptions` when the user changed a provider's agent option), and the plugin then
-creates the thread with `bb.sdk.threads.spawn`, which owns filing and
-attribution.
+`sessionOptions` when the user changed a provider's agent option or
+`defaultSessionOptions` seeded one). The plugin then creates the thread with
+`bb.sdk.threads.spawn`, which owns filing and attribution, or stores the
+request for later.
 
 **Core callers.** The New thread screen (`RootComposeView`) renders the same
 `apps/app/src/components/promptbox/NewThreadComposer.tsx`;
 `PluginNewThreadComposer` adapts it for the SDK, and its round-trip tests
 (`PluginNewThreadComposer.test.tsx`, `new-thread-environment-seed.test.ts`)
 guard the seed mapping against the root composer's environment resolution.
+The "Project default" entry is an option of the shared `EnvironmentPickerUI`,
+and its description comes from `projectDefaultEnvironmentLabel`, which the
+Project settings default-environment control also uses.
+
+**Saved-request props.** The automation editor sets all six. Each defaults to
+the earlier behavior, so the New thread screen, Settings, and the showcase are
+unchanged.
+
+- `allowProjectChange` (default true). False sets core's `locks.project`: the
+  project picker is disabled without a chevron, and `setSelection` skips
+  `projectId`. Validated by "keeps the seeded project when project changes are
+  not allowed" in `PluginNewThreadComposer.test.tsx`.
+- `allowProjectDefaultEnvironment` (default false). True puts "Project
+  default" first in the environment picker. Choosing it submits
+  `{ type: "project-default" }`, which the server resolves when the thread is
+  created, and a `defaultEnvironment` of that type selects it. The entry's
+  description comes from the sidebar bootstrap's `defaultEnvironment` and
+  `defaultEnvironmentProblem`. While it is selected, no machine choice or
+  provider inputs control renders, and the model catalog routes to the
+  default's machine when that machine exists and has no problem. Validated by
+  "keeps the project default instead of resolving a concrete environment" in
+  `new-thread-environment-seed.test.ts`; by "round-trips a saved
+  project-default environment through the Project default entry", "describes
+  and routes …", "submits the Project default once the user picks it",
+  "submits a concrete environment for a project-default seed when the entry
+  is not offered", and "selects the project default only in a composer that
+  offers it" in `PluginNewThreadComposer.test.tsx`; by the two project-default
+  tests in `EnvironmentPicker.test.tsx`; and by "offers the project default in
+  the environment picker instead of the machine chip" in
+  `NewThreadPromptBox.test.tsx`.
+- `persistDraft` (default true). False backs the draft with a store owned by
+  the mounted composer, so nothing reaches browser storage and an unmount
+  discards the draft. Validated by "keeps an unpersisted draft out of browser
+  storage and drops it on unmount".
+- `allowAttachments` (default true). False withholds `onAttachFiles`, so the
+  prompt box offers no attach action and ignores pasted and dropped files, and
+  prompt-history restores lose their attachments. Validated by "takes no
+  attachments, even from prompt history, when they are not allowed" and by
+  "offers no Attach files action without an attach handler" in
+  `PromptBoxInternal.test.tsx`.
+- `allowPluginCustomizations` (default true). False passes core's
+  `suppressPluginComposerCustomizations` to the prompt box, the flag the
+  sent-message editor sets: no send-menu rows ("Send later…" and "Save
+  draft…" would otherwise save the automation), composer actions, banners,
+  popups, commands, or rich-text effects, and `useComposers()` stops listing
+  the composer. Plus-menu rows stay, as they do in the sent-message editor.
+  Validated by "suppresses plugin composer customizations only when they are
+  not allowed" in `PluginNewThreadComposer.test.tsx` and "drops plugin
+  send-menu rows while plugin customizations are suppressed" in
+  `PromptBoxInternal.test.tsx`.
+- `defaultSessionOptions`. Seeds the component-local agent options of the
+  seeded provider with the other seeds' semantics, and an untouched submit
+  carries them. Validated by "submits seeded agent options untouched and
+  after the user changes one" and "re-seeds agent options with the next
+  record and keeps them with the seeded provider".
 
 Docs: `frontend-components.md`.
 
@@ -2327,26 +2385,43 @@ Docs: `frontend-components.md`.
    Without codex-version blocking, a plugin can submit to a machine whose CLI
    the primary surface would have refused.
 3. **Draft and selection scoping.** Drafts persist under `draftKey ?? pluginId`
-   and execution selections are component-local, so a plugin panel never
-   rewrites the user's root-composer defaults. Confirm that is still what
-   plugin authors expect, and that `draftKey` is the right knob (versus a
-   per-instance ephemeral draft).
-4. **No plugin composer host binding.** Plugin composer customizations,
-   banners, and `useComposer()` writes do not reach it. Decide whether
-   composers rendered by a plugin should participate in that surface before
-   stabilizing.
+   unless `persistDraft` is false, which keeps an in-memory draft per key for
+   the mounted composer only. Execution selections are component-local, so a
+   plugin panel never rewrites the user's root-composer defaults. Confirm both
+   draft modes are what plugin authors expect.
+4. **Plugin composer host binding.** Composer customizations registered for
+   the `new-thread` scope render in this composer and act on it: the
+   automation editor showed "Save draft…" and "Send later…" until it set
+   `allowPluginCustomizations={false}`. `useComposers()` lists the composer,
+   and `useComposer()` reaches it only from its own slots. Decide whether a
+   composer rendered by a plugin should take other plugins' customizations by
+   default or opt in before stabilizing.
 5. **Seeding props and the round-trip guarantee.** The `default*` props are
    uncontrolled seeds that re-seed on any value change, including
-   user-touched selections. `defaultEnvironment` cannot represent
-   `project-default`, `personal` without a `hostId`, or an `unmanaged` `path`.
-   Confirm the seed mapping still inverts the root composer's environment
-   resolution, and decide whether re-seed-on-change should instead be an
-   explicit reset nonce.
-6. **Projectless contract.** The picker always offers "Don't work in a
-   project", even when a plugin seeds a specific project; that choice submits
-   the personal-project id with a `personal` workspace. Confirm unconditional
-   project switching is right for embedded plugin workflows, rather than
-   adding an explicit project-locking policy.
+   user-touched selections. `defaultEnvironment` cannot represent `personal`
+   without a `hostId` or an `unmanaged` `path`, and represents
+   `project-default` only with `allowProjectDefaultEnvironment`.
+   `defaultSessionOptions` belongs to the seeded provider. Confirm the seed
+   mapping still inverts the root composer's environment resolution, and
+   decide whether re-seed-on-change should instead be an explicit reset nonce.
+6. **Projectless contract.** Unless `allowProjectChange` is false, the picker
+   offers "Don't work in a project", even when a plugin seeds a specific
+   project; that choice submits the personal-project id with a `personal`
+   workspace. Confirm switching by default is right for embedded plugin
+   workflows. A locked composer whose `defaultProjectId` the sidebar bootstrap
+   no longer lists still falls back to the personal project, as the New
+   thread screen does; the automation editor refuses that request itself.
+   Decide whether the composer should refuse it instead.
+7. **Project default entry.** The description reflects the sidebar bootstrap
+   when the composer renders, and a reported problem does not block
+   submission because the server resolves the default only when it creates
+   the thread. Confirm a saved `project-default` request should still save
+   while the project reports a problem. The New thread screen does not offer
+   the entry, an exception to core using the API's path: it creates the
+   thread at once, so following the default and starting in what it resolves
+   to now give the same thread, and it preselects that environment instead.
+   The entry matters only to a request saved for later, which core has no
+   surface for yet. Revisit if core gains one.
 
 ## `app.slots.experimental_appOverlay` (`@get-bb/plugin-sdk/app`)
 
@@ -4165,3 +4240,21 @@ precedence, bounded discovery failure, and module-ABI preservation after Node
 replacement. Settle the shared process-local instance lifecycle across SDK
 bundle versions and whether `bundledNpmCli` belongs on the public surface before
 removing the prefix.
+
+## Project default environment
+
+`bb.sdk.projects.update` accepts `defaultEnvironment`: a provider environment,
+or null to return the project to Automatic. Project responses expose
+`defaultEnvironment` and `defaultEnvironmentProblem`, the server's reason the
+stored default cannot start a thread. These are data fields on existing SDK
+methods, so they carry no prefix. A thread created with `project-default`
+starts in the stored environment; a Project checkout default gives it a fresh
+worktree on that machine instead, and an unusable default refuses creation
+with HTTP 409 `project_default_environment_unavailable`. The root composer,
+Project settings, `bb project default-environment`, and the Automations plugin
+read and write these same fields.
+
+Audit before stabilization: providers, compositions, and machines removed
+while they are a default; compositions whose machine inputs become required;
+the composer's precedence over browser memory; and whether a default should
+ever carry inputs.

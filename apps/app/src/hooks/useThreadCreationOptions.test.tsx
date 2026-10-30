@@ -1854,3 +1854,70 @@ describe("useThreadCreationOptions", () => {
     });
   });
 });
+
+describe("useThreadCreationOptions with a project default environment", () => {
+  const BERTH = "provider:berth";
+
+  function renderNewThreadOptions(projectDefaultEnvironmentValue?: string) {
+    const { wrapper } = createQueryClientTestHarness();
+    return renderHook(
+      () =>
+        useThreadCreationOptions({
+          scope: "new-thread",
+          preferenceProjectId: PROJECT_ID,
+          projectDefaultEnvironmentValue,
+        }),
+      { wrapper },
+    );
+  }
+
+  it("starts from the project default instead of the browser's last pick", () => {
+    setProjectScopedValue("bb.promptbox.environment", "provider:git-worktree");
+
+    const { result } = renderNewThreadOptions(BERTH);
+
+    expect(result.current.environmentSelectionValue).toBe(BERTH);
+  });
+
+  it("keeps a pick until the thread is sent, without changing the browser's memory", () => {
+    setProjectScopedValue("bb.promptbox.environment", "provider:git-worktree");
+    const { result } = renderNewThreadOptions(BERTH);
+
+    act(() => {
+      result.current.setEnvironmentSelectionValue("provider:project-checkout");
+    });
+    expect(result.current.environmentSelectionValue).toBe(
+      "provider:project-checkout",
+    );
+    expect(
+      window.localStorage.getItem(
+        getProjectScopedStorageKey("bb.promptbox.environment", PROJECT_ID),
+      ),
+    ).toBe("provider:git-worktree");
+
+    act(() => {
+      result.current.clearSentEnvironmentChoice();
+    });
+    expect(result.current.environmentSelectionValue).toBe(BERTH);
+  });
+
+  it("remembers picks in the browser when the project has no default", () => {
+    const { result } = renderNewThreadOptions();
+
+    act(() => {
+      result.current.setEnvironmentSelectionValue("provider:project-checkout");
+    });
+    act(() => {
+      result.current.clearSentEnvironmentChoice();
+    });
+
+    expect(result.current.environmentSelectionValue).toBe(
+      "provider:project-checkout",
+    );
+    expect(
+      window.localStorage.getItem(
+        getProjectScopedStorageKey("bb.promptbox.environment", PROJECT_ID),
+      ),
+    ).toBe("provider:project-checkout");
+  });
+});

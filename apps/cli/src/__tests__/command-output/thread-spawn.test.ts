@@ -1280,11 +1280,48 @@ describe("bb thread spawn command output", () => {
           properties: { region: { type: "string" } },
         },
       },
+      {
+        id: "berth",
+        displayName: "Berth (new machine for each thread)",
+        description: "A new machine for each thread.",
+        icon: "Cloud",
+        pluginId: "berth",
+        machineProviderId: "berth-machine",
+        environmentProviderId: "git-worktree",
+        acceptsEmptyInputs: true,
+        machineAvailability: {},
+        availability: null,
+        requires: {
+          projectCheckout: true,
+          gitCheckout: true,
+          gitRemote: false,
+          projectless: false,
+        },
+        inputs: {
+          type: "object",
+          properties: { branch: { type: "object" } },
+        },
+        machineInputs: {
+          type: "object",
+          properties: { region: { type: "string" } },
+        },
+        machineAcceptsEmptyInputs: true,
+      },
     ];
 
     function stubProviders(post: Parameters<typeof stubServerApi>[0][string]) {
       stubServerApi({
         "v1.threads.$post": post,
+        "v1.hosts.$get": vi.fn(async () => [
+          {
+            id: "host-remote",
+            name: "builder",
+            status: "connected",
+            lastSeenAt: 1,
+            createdAt: 1,
+            updatedAt: 1,
+          },
+        ]),
         "v1.system.environment-providers.$get": vi.fn(async () => ({
           providers,
         })),
@@ -1401,7 +1438,54 @@ describe("bb thread spawn command output", () => {
       });
     });
 
+    it("lets a composed provider create its own new machine", async () => {
+      const post = vi.fn(async ({ json }: { json: unknown }) => {
+        createThreadRequestSchema.parse(json);
+        return fixtures.makeThread({
+          id: "thread-composed",
+          projectId: "proj-1",
+          providerId: "codex",
+        });
+      });
+      stubProviders(post);
+
+      await runCommand(
+        [
+          "thread",
+          "spawn",
+          "--project",
+          "proj-1",
+          "--prompt",
+          "hello",
+          "--environment-provider",
+          "berth",
+        ],
+        register,
+      );
+
+      expect(post).toHaveBeenCalledWith({
+        json: expect.objectContaining({
+          environment: {
+            type: "provider",
+            environmentProviderId: "berth",
+            machine: {
+              type: "new",
+              machineProviderId: "berth-machine",
+              inputs: {},
+            },
+            inputs: {},
+          },
+        }),
+      });
+      expect(resolveLocalHostIdMock).not.toHaveBeenCalled();
+    });
+
     it.each<[label: string, args: string[], error: string]>([
+      [
+        "a machine selector with a composed provider",
+        ["--environment-provider", "berth", "--machine", "builder"],
+        "Error: This environment provider chooses its own new machine; omit machine selectors.",
+      ],
       [
         "a provider with inputs and none given",
         ["--environment-provider", "git-worktree"],

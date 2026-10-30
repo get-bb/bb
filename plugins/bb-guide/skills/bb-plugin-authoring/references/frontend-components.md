@@ -230,10 +230,13 @@ onClick?, action? }`. `icon` is any name `experimental_Icon` accepts and
   the project selector, the environment picker, the selected environment
   provider's own inputs control, the reuse picker, and permission mode.
   Never hand-roll a textarea + "Start thread" button. Props:
-  `{ onSubmit, defaultProjectId?, defaultProviderId?, defaultModel?,
-defaultReasoningLevel?, defaultServiceTier?, defaultPermissionMode?,
-defaultEnvironment?, initialPrompt?, placeholder?, layout?, focusRequest?,
-className?, draftKey? }` — the `default*` props are SEEDS, not controlled
+  `{ onSubmit, defaultProjectId?, allowProjectChange?, defaultProviderId?,
+defaultModel?, defaultReasoningLevel?, defaultServiceTier?,
+defaultPermissionMode?, defaultSessionOptions?, defaultEnvironment?,
+allowProjectDefaultEnvironment?, initialPrompt?, placeholder?, layout?,
+focusRequest?, className?, draftKey?, persistDraft?, allowAttachments?,
+allowPluginCustomizations? }` —
+  the `default*` props are SEEDS, not controlled
   values: the user can change every one, and each takes precedence over the
   project's remembered defaults when provided. They are value-compared each
   render; changing any of them after mount re-seeds every selection
@@ -244,8 +247,49 @@ className?, draftKey? }` — the `default*` props are SEEDS, not controlled
   change-detected nonce that focuses the editor; `draftKey` picks where the
   draft persists (default: a key scoped to your plugin).
 
-  This component has no plugin composer-host binding. Composer customizations
-  and `useComposer()` writes do not reach this composer instance.
+  Editing a saved request instead of creating a thread: seed every saved
+  selection, then narrow the composer to what the record can hold. Each of
+  these defaults to the creating behavior.
+
+  - `allowProjectChange={false}` disables the project picker (no chevron) and
+    ignores programmatic project changes, so the request keeps
+    `defaultProjectId`, unless the sidebar no longer lists that project: then
+    it falls back to the personal project, so check `request.projectId`.
+  - `allowProjectDefaultEnvironment` adds a "Project default" entry first in
+    the environment picker. It submits `environment: { type:
+"project-default" }`, which `threads.spawn` resolves to the project's
+    default environment when the thread is created, and
+    `defaultEnvironment={{ type: "project-default" }}` selects it. The entry
+    describes what the default resolves to now ("berth", "david · Worktree",
+    or "Automatic" when the project sets none) and shows the problem the
+    project reports with it. While it is selected there is no machine choice
+    or provider inputs control, and the provider and model pickers load from
+    the default's machine when it is an existing machine without a problem.
+  - `persistDraft={false}` keeps the draft in memory for the mounted
+    composer only: nothing reaches browser storage, and the next mount with
+    the same `draftKey` starts again from `initialPrompt`.
+  - `allowAttachments={false}` hides the attach control, ignores pasted and
+    dropped files, and restores prompt history without attachments.
+  - `allowPluginCustomizations={false}` drops the composer customizations
+    that act on a send, as bb's sent-message editor does; see below.
+  - `defaultSessionOptions` seeds the agent options (the model picker's
+    options and the mode menu) of `defaultProviderId`, so pass both; an
+    untouched submit carries them in `sessionOptions`, and another provider
+    starts from its own options.
+
+  `onSubmit` then saves the request. A successful submit clears the draft,
+  and `initialPrompt` seeds only an empty draft when it changes, so close the
+  editor after a save, or remount it with a new `key`, rather than keep it
+  open on an empty draft. The automation editor in the Automations plugin
+  uses all six props and closes on save.
+
+  Composer customizations registered for the `new-thread` scope render in
+  this composer and act on it, and `useComposers()` lists it.
+  `allowPluginCustomizations={false}` removes its send-menu rows (such as
+  "Send later…" and "Save draft…"), composer actions, banners, popups,
+  commands, and rich-text effects, and `useComposers()` stops listing it.
+  Plus-menu rows stay. `useComposer()` called outside this composer's own
+  slots does not reach it.
 
   The environment row is provider-driven. The picker lists structurally
   eligible environment providers under each machine. Projectless-only
@@ -275,16 +319,19 @@ className?, draftKey? }` — the `default*` props are SEEDS, not controlled
   `defaultReasoningLevel={saved.reasoningLevel}` /
   `defaultServiceTier={saved.serviceTier}` /
   `defaultPermissionMode={saved.permissionMode}` /
+  `defaultSessionOptions={saved.sessionOptions}` /
   `defaultEnvironment={saved.environment}` (plus `defaultProjectId` and
   `initialPrompt`). An untouched submit reproduces equivalent supported
   selections. The host can reconcile a stale model, reasoning level, or
-  service tier. Environment limits are: `project-default` seeds nothing; a
+  service tier. Environment limits are: `project-default` round-trips only
+  with `allowProjectDefaultEnvironment` and otherwise seeds nothing; a
   missing host falls back; a `reuse` worktree needs an unarchived thread; an
   unmanaged path becomes null; and a managed default branch can resolve to a
   configured named base branch.
 
-  Projectless threads: the project picker always offers "Don't work in a
-  project". That choice submits BB's personal-project id in `projectId` (not
+  Projectless threads: unless `allowProjectChange={false}`, the project
+  picker offers "Don't work in a project". That choice submits BB's
+  personal-project id in `projectId` (not
   `null`) and uses an eligible projectless environment provider. The provider
   supplies its own inputs and workspace; the composer does not synthesize a
   personal-workspace request.

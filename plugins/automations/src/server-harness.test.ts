@@ -505,6 +505,21 @@ describe("automations server plugin harness", () => {
       "Cannot combine agent execution flags with script flags",
     );
 
+    const agentHostResult = await harness.runCli([
+      "update",
+      created.id,
+      "--project",
+      PROJECT_ID,
+      "--model",
+      "gpt-5",
+      "--host",
+      "host_fake",
+    ]);
+    expect(agentHostResult.exitCode).toBe(1);
+    expect(agentHostResult.stderr).toContain(
+      "--host names the host that holds --script-file; choose where an agent automation runs with --machine.",
+    );
+
     const errorResult = await harness.runCli([
       "create",
       "--project",
@@ -852,7 +867,7 @@ describe("automations server plugin harness", () => {
         permissionMode: "auto",
         environment: {
           type: "host",
-          hostId: "host_test",
+          hostId: "host_fake",
           workspace: { type: "unmanaged", path: "/tmp/design-doctrine" },
         },
       },
@@ -877,10 +892,32 @@ describe("automations server plugin harness", () => {
       targetThreadId: THREAD_ID,
       environment: {
         type: "host",
-        hostId: "host_test",
+        hostId: "host_fake",
         workspace: { type: "unmanaged", path: "/tmp/design-doctrine" },
       },
     });
+
+    const projectDefaultUpdate = await harness.runCli([
+      "update",
+      created.id,
+      "--project",
+      PROJECT_ID,
+      "--environment",
+      "project-default",
+      "--json",
+    ]);
+    expect(projectDefaultUpdate.exitCode).toBe(0);
+    const projectDefaultTargeted = automationDetailResponseSchema.parse(
+      JSON.parse(projectDefaultUpdate.stdout ?? ""),
+    );
+    expect(projectDefaultTargeted.execution).toMatchObject({
+      mode: "agent",
+      prompt: "use the new workspace",
+      environment: { type: "project-default" },
+    });
+    expect(projectDefaultTargeted.execution).not.toHaveProperty(
+      "targetThreadId",
+    );
 
     const worktreeUpdate = await harness.runCli([
       "update",
@@ -905,7 +942,7 @@ describe("automations server plugin harness", () => {
       permissionMode: "auto",
       environment: {
         type: "host",
-        hostId: "host_test",
+        hostId: "host_fake",
         workspace: {
           type: "managed-worktree",
           baseBranch: { kind: "named", name: "release" },
@@ -1242,6 +1279,19 @@ describe("automations server plugin harness", () => {
     expect(conflictingTargets.exitCode).toBe(1);
     expect(conflictingTargets.stderr).toContain(
       "Cannot combine target options",
+    );
+
+    const blankEnvironment = await harness.runCli([
+      "update",
+      created.id,
+      "--project",
+      PROJECT_ID,
+      "--environment",
+      " ",
+    ]);
+    expect(blankEnvironment.exitCode).toBe(1);
+    expect(blankEnvironment.stderr).toContain(
+      "Missing required option --environment <value>.",
     );
 
     const invalidPermissionMode = await harness.runCli([
@@ -1629,5 +1679,595 @@ describe("automations server plugin harness", () => {
     await expect(bb.storage.kv.get("after-dispose")).rejects.toThrow(
       PluginContextStaleError,
     );
+  });
+});
+
+const OBJECT_INPUTS = { type: "object" };
+
+const ENVIRONMENT_PROVIDERS = [
+  {
+    id: "git-worktree",
+    displayName: "Worktree",
+    machineProviderId: null,
+    inputs: OBJECT_INPUTS,
+    acceptsEmptyInputs: true,
+    machineAvailability: {
+      host_fake: { status: "available" },
+      host_laptop: null,
+    },
+  },
+  {
+    id: "project-checkout",
+    displayName: "Project checkout",
+    machineProviderId: null,
+    inputs: OBJECT_INPUTS,
+    acceptsEmptyInputs: true,
+    machineAvailability: {
+      host_fake: {
+        status: "unavailable",
+        message: "/test/project is not a Git checkout.",
+      },
+    },
+  },
+  {
+    id: "ticket-sandbox",
+    displayName: "Ticket sandbox",
+    machineProviderId: null,
+    inputs: { type: "object", required: ["ticket"] },
+    acceptsEmptyInputs: false,
+    machineAvailability: { host_fake: null },
+  },
+  {
+    id: "plain",
+    displayName: "Plain",
+    machineProviderId: null,
+    inputs: null,
+    acceptsEmptyInputs: false,
+    machineAvailability: { host_fake: null },
+  },
+  {
+    id: "berth",
+    displayName: "Berth",
+    machineProviderId: "berth-machine",
+    inputs: OBJECT_INPUTS,
+    acceptsEmptyInputs: true,
+    machineInputs: OBJECT_INPUTS,
+    machineAcceptsEmptyInputs: true,
+    machineAvailability: {},
+  },
+  {
+    id: "gpu-box",
+    displayName: "GPU box",
+    machineProviderId: "gpu-machine",
+    inputs: null,
+    acceptsEmptyInputs: false,
+    machineInputs: { type: "object", required: ["gpu"] },
+    machineAcceptsEmptyInputs: false,
+    machineAvailability: {},
+  },
+];
+
+const MACHINES = [
+  { id: "host_fake", name: "server", type: "persistent", status: "connected" },
+  {
+    id: "host_laptop",
+    name: "laptop",
+    type: "persistent",
+    status: "connected",
+  },
+  {
+    id: "host_sandbox",
+    name: "sandbox",
+    type: "ephemeral",
+    status: "connected",
+  },
+  {
+    id: "host_studio",
+    name: "studio",
+    type: "persistent",
+    status: "connected",
+  },
+];
+
+const AGENT_MODEL_CATALOG = {
+  providers: [],
+  permissionCeiling: "full",
+  models: [
+    {
+      id: "gpt-5",
+      model: "gpt-5",
+      displayName: "GPT-5",
+      description: "",
+      supportedReasoningEfforts: [],
+      defaultReasoningEffort: "medium",
+      isDefault: true,
+      sessionOptions: [
+        { id: "fast", label: "Fast", type: "boolean", value: false },
+        { id: "verbose", label: "Verbose", type: "boolean", value: true },
+        {
+          id: "effort",
+          label: "Effort",
+          type: "select",
+          value: "medium",
+          values: [
+            { id: "medium", label: "Medium" },
+            { id: "high", label: "High" },
+          ],
+        },
+      ],
+    },
+  ],
+  selectedOnlyModels: [],
+  modelLoadError: null,
+};
+
+const MACHINE_PROVIDERS = [
+  {
+    id: "modal",
+    inputs: { type: "object", required: ["region"] },
+    acceptsEmptyInputs: false,
+  },
+];
+
+async function bootWithEnvironmentCatalog(): Promise<FakePluginHost> {
+  const host = await bootAutomationsPlugin();
+  host.harness.sdk.stub(
+    "environments.listProviders",
+    async () => ENVIRONMENT_PROVIDERS,
+  );
+  host.harness.sdk.stub("hosts.list", async () => MACHINES);
+  host.harness.sdk.stub("providers.models", async () => AGENT_MODEL_CATALOG);
+  host.harness.sdk.stub(
+    "hosts.experimental_listProviders",
+    async () => MACHINE_PROVIDERS,
+  );
+  return host;
+}
+
+function createAgentCli(flags: string[]): string[] {
+  return [
+    "create",
+    "--project",
+    PROJECT_ID,
+    "--name",
+    "Environment flags",
+    "--in",
+    "30m",
+    "--prompt",
+    "Check the build",
+    "--provider",
+    "codex",
+    "--model",
+    "gpt-5",
+    ...flags,
+    "--json",
+  ];
+}
+
+function agentExecutionOutput(result: { stdout?: string; stderr?: string }) {
+  expect(result.stderr).toBe("");
+  const { execution } = automationDetailResponseSchema.parse(
+    JSON.parse(result.stdout ?? ""),
+  );
+  if (execution.mode !== "agent") {
+    throw new Error(`expected an agent execution, got ${execution.mode}`);
+  }
+  return execution;
+}
+
+async function runAgentEnvironmentUpdate(
+  harness: FakePluginHost["harness"],
+  automationId: string,
+  flags: string[],
+) {
+  return agentExecutionOutput(
+    await harness.runCli([
+      "update",
+      automationId,
+      "--project",
+      PROJECT_ID,
+      ...flags,
+      "--json",
+    ]),
+  );
+}
+
+describe("automation CLI environment flags", () => {
+  it("stores a provider environment on the named machine and shows it readably", async () => {
+    const { harness } = await bootWithEnvironmentCatalog();
+    const providerEnvironment = {
+      type: "provider",
+      environmentProviderId: "git-worktree",
+      machine: { type: "existing", hostId: "host_laptop" },
+      inputs: { branch: { kind: "named", name: "release" } },
+    };
+
+    const created = await harness.runCli(
+      createAgentCli([
+        "--environment-provider",
+        "git-worktree",
+        "--environment-inputs",
+        '{"branch":{"kind":"named","name":"release"}}',
+        "--machine",
+        "laptop",
+        "--option",
+        "fast=true",
+        "--option",
+        "effort=high",
+      ]),
+    );
+    const execution = agentExecutionOutput(created);
+    expect(execution.sessionOptions).toEqual({ fast: true, effort: "high" });
+    expect(execution.environment).toEqual(providerEnvironment);
+    const automation = automationDetailResponseSchema.parse(
+      JSON.parse(created.stdout ?? ""),
+    );
+
+    const shown = await harness.runCli([
+      "show",
+      automation.id,
+      "--project",
+      PROJECT_ID,
+    ]);
+    expect(shown.stdout).toContain(
+      "Environment: Worktree on laptop · from release",
+    );
+    expect(shown.stdout).toContain("Options:   fast=true, effort=high");
+    const listed = await harness.runCli(["list", "--project", PROJECT_ID]);
+    expect(listed.stdout).toContain("Worktree on laptop · from release");
+
+    const shownJson = await harness.runCli([
+      "show",
+      automation.id,
+      "--project",
+      PROJECT_ID,
+      "--json",
+    ]);
+    expect(
+      automationDetailResponseSchema.parse(JSON.parse(shownJson.stdout ?? ""))
+        .execution,
+    ).toMatchObject({ environment: providerEnvironment });
+    const listedJson = await harness.runCli([
+      "list",
+      "--project",
+      PROJECT_ID,
+      "--json",
+    ]);
+    expect(
+      automationListResponseSchema.parse(JSON.parse(listedJson.stdout ?? "")),
+    ).toEqual([
+      expect.objectContaining({
+        id: automation.id,
+        execution: expect.objectContaining({
+          environment: providerEnvironment,
+        }),
+      }),
+    ]);
+
+    await harness.dispose();
+  });
+
+  it("gives a composition its own new machine and a plain provider a new machine from --new-machine", async () => {
+    const { harness } = await bootWithEnvironmentCatalog();
+
+    const composed = agentExecutionOutput(
+      await harness.runCli(createAgentCli(["--environment-provider", "berth"])),
+    );
+    expect(composed.environment).toEqual({
+      type: "provider",
+      environmentProviderId: "berth",
+      machine: {
+        type: "new",
+        machineProviderId: "berth-machine",
+        inputs: {},
+      },
+      inputs: {},
+    });
+
+    const composedWithInputs = agentExecutionOutput(
+      await harness.runCli(
+        createAgentCli([
+          "--environment-provider",
+          "gpu-box",
+          "--machine-inputs",
+          '{"gpu":"a100"}',
+        ]),
+      ),
+    );
+    expect(composedWithInputs.environment).toEqual({
+      type: "provider",
+      environmentProviderId: "gpu-box",
+      machine: {
+        type: "new",
+        machineProviderId: "gpu-machine",
+        inputs: { gpu: "a100" },
+      },
+      inputs: null,
+    });
+
+    const newMachine = agentExecutionOutput(
+      await harness.runCli(
+        createAgentCli([
+          "--environment-provider",
+          "plain",
+          "--new-machine",
+          "modal",
+          "--machine-inputs",
+          '{"region":"eu"}',
+        ]),
+      ),
+    );
+    expect(newMachine.environment).toEqual({
+      type: "provider",
+      environmentProviderId: "plain",
+      machine: {
+        type: "new",
+        machineProviderId: "modal",
+        inputs: { region: "eu" },
+      },
+      inputs: null,
+    });
+
+    const listed = await harness.runCli(["list", "--project", PROJECT_ID]);
+    expect(listed.stdout).toContain("Berth");
+    expect(listed.stdout).toContain("Plain on a new modal machine");
+
+    await harness.dispose();
+  });
+
+  it.each([
+    {
+      refused: "a provider on a machine it cannot run on",
+      flags: ["--environment-provider", "git-worktree", "--machine", "studio"],
+      error:
+        "The 'git-worktree' environment provider cannot run on studio (host_studio) for this project. Machines it can run on: server (host_fake), laptop (host_laptop).",
+    },
+    {
+      refused: "a provider the default machine reports unavailable",
+      flags: ["--environment-provider", "project-checkout"],
+      error:
+        "The 'project-checkout' environment provider is unavailable on server (host_fake): /test/project is not a Git checkout.",
+    },
+    {
+      refused: "a composition given --machine",
+      flags: ["--environment-provider", "berth", "--machine", "laptop"],
+      error:
+        "This environment provider chooses its own new machine; omit machine selectors.",
+    },
+    {
+      refused: "a composition missing its machine inputs",
+      flags: ["--environment-provider", "gpu-box"],
+      error:
+        "The 'gpu-machine' machine provider needs --machine-inputs <json>; `bb environment providers --json` shows its schema.",
+    },
+    {
+      refused: "a provider missing its required inputs",
+      flags: ["--environment-provider", "ticket-sandbox"],
+      error:
+        "The 'ticket-sandbox' environment provider needs --environment-inputs <json>; `bb environment providers --json` shows its schema.",
+    },
+    {
+      refused: "inputs for a provider that takes none",
+      flags: ["--environment-provider", "plain", "--environment-inputs", "{}"],
+      error: "The 'plain' environment provider takes no --environment-inputs.",
+    },
+    {
+      refused: "inputs that are not JSON",
+      flags: [
+        "--environment-provider",
+        "git-worktree",
+        "--environment-inputs",
+        "{branch",
+      ],
+      error: "--environment-inputs must be valid JSON.",
+    },
+    {
+      refused: "--base-branch with --environment-provider",
+      flags: [
+        "--environment-provider",
+        "git-worktree",
+        "--base-branch",
+        "release",
+      ],
+      error:
+        "--base-branch requires --new-environment worktree; an --environment-provider takes its branch through --environment-inputs.",
+    },
+    {
+      refused: "an unknown provider",
+      flags: ["--environment-provider", "nope"],
+      error:
+        "Unknown environment provider 'nope'. Available: git-worktree, project-checkout, ticket-sandbox, plain, berth, gpu-box.",
+    },
+    {
+      refused: "an unknown machine",
+      flags: ["--environment-provider", "git-worktree", "--machine", "desk"],
+      error:
+        "Machine 'desk' was not found. Available machines: server (host_fake), laptop (host_laptop), sandbox (host_sandbox), studio (host_studio).",
+    },
+    {
+      refused: "a new machine without its inputs",
+      flags: ["--environment-provider", "plain", "--new-machine", "modal"],
+      error:
+        "The 'modal' machine provider needs --machine-inputs <json>; `bb machine providers --json` shows its schema.",
+    },
+    {
+      refused: "a new machine without an environment provider",
+      flags: ["--new-machine", "modal", "--machine-inputs", '{"region":"eu"}'],
+      error:
+        "The 'modal' machine provider requires an environment provider; combine --new-machine with --environment-provider <id>.",
+    },
+    {
+      refused: "--machine with an existing environment",
+      flags: ["--environment", "env_saved", "--machine", "laptop"],
+      error:
+        "Cannot combine --machine with an existing environment ID; that environment already selects its machine.",
+    },
+    {
+      refused: "--host, the --script-file host, as the agent's machine",
+      flags: ["--host", "laptop"],
+      error:
+        "--host names the host that holds --script-file; choose where an agent automation runs with --machine.",
+    },
+    {
+      refused: "an option without a value",
+      flags: ["--option", "fast"],
+      error: "Invalid --option 'fast'. Expected <option-id>=<value>.",
+    },
+    {
+      refused: "a temporary machine",
+      flags: ["--new-environment", "worktree", "--machine", "sandbox"],
+      error:
+        "Machine 'sandbox' is temporary, and every run would fail once it is removed. Persistent machines: server (host_fake), laptop (host_laptop), studio (host_studio).",
+    },
+    {
+      refused: "an option the model does not list",
+      flags: ["--option", "turbo=true"],
+      error:
+        "GPT-5 has no agent option turbo. Its options: fast, verbose, effort.",
+    },
+    {
+      refused: "an option value the model does not accept",
+      flags: ["--option", "effort=max"],
+      error:
+        "GPT-5 does not accept effort=max. Accepted values: medium, high.",
+    },
+  ])("refuses $refused and stores nothing", async ({ flags, error }) => {
+    const { harness } = await bootWithEnvironmentCatalog();
+
+    const result = await harness.runCli(createAgentCli(flags));
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(error);
+    expect(
+      automationListResponseSchema.parse(
+        await harness.callRpc("automations_list", { projectId: PROJECT_ID }),
+      ),
+    ).toHaveLength(0);
+    await harness.dispose();
+  });
+
+  it("accepts the composer's update shape through the rpc and shows a kept checkout path", async () => {
+    const { harness } = await bootWithEnvironmentCatalog();
+    const created = await harness.runCli(
+      createAgentCli(["--option", "fast=true"]),
+    );
+    const automationId = automationDetailResponseSchema.parse(
+      JSON.parse(created.stdout ?? ""),
+    ).id;
+    const composerUpdate = (environment: unknown) =>
+      harness.callRpc("automations_update", {
+        projectId: PROJECT_ID,
+        automationId,
+        agent: {
+          prompt: "Check the build",
+          providerId: "codex",
+          model: "gpt-5",
+          reasoningLevel: "medium",
+          serviceTier: null,
+          permissionMode: "auto",
+          sessionOptions: null,
+          target: { type: "environment", environment },
+        },
+      });
+
+    const onNewMachine = automationDetailResponseSchema.parse(
+      await composerUpdate({
+        type: "provider",
+        environmentProviderId: "git-worktree",
+        machine: {
+          type: "new",
+          machineProviderId: "modal",
+          inputs: { region: "eu" },
+        },
+        inputs: { branch: { kind: "named", name: "dev" } },
+      }),
+    );
+    expect(onNewMachine.execution).not.toHaveProperty("sessionOptions");
+    expect(onNewMachine.execution).toMatchObject({
+      environment: { machine: { type: "new", machineProviderId: "modal" } },
+    });
+
+    await composerUpdate({
+      type: "provider",
+      environmentProviderId: "project-checkout",
+      machine: { type: "existing", hostId: "host_laptop" },
+      inputs: { path: "/work/repo" },
+    });
+    const shown = await harness.runCli([
+      "show",
+      automationId,
+      "--project",
+      PROJECT_ID,
+    ]);
+    expect(shown.stdout).toContain("Environment: /work/repo on laptop");
+    await harness.dispose();
+  });
+
+  it("replaces the environment on update and replaces or clears the options", async () => {
+    const { harness } = await bootWithEnvironmentCatalog();
+    const created = await harness.runCli(
+      createAgentCli([
+        "--environment-provider",
+        "git-worktree",
+        "--option",
+        "fast=true",
+      ]),
+    );
+    const automationId = automationDetailResponseSchema.parse(
+      JSON.parse(created.stdout ?? ""),
+    ).id;
+
+    const projectDefault = await runAgentEnvironmentUpdate(
+      harness,
+      automationId,
+      ["--environment", "project-default"],
+    );
+    expect(projectDefault).toMatchObject({
+      environment: { type: "project-default" },
+      sessionOptions: { fast: true },
+    });
+
+    const machineOnly = await runAgentEnvironmentUpdate(
+      harness,
+      automationId,
+      ["--machine", "laptop"],
+    );
+    expect(machineOnly.environment).toEqual({
+      type: "host",
+      hostId: "host_laptop",
+      workspace: { type: "unmanaged", path: null },
+    });
+
+    const replacedOptions = await runAgentEnvironmentUpdate(
+      harness,
+      automationId,
+      ["--option", "effort=high", "--option", "verbose=false"],
+    );
+    expect(replacedOptions).toMatchObject({
+      environment: { type: "host", hostId: "host_laptop" },
+      sessionOptions: { effort: "high", verbose: false },
+    });
+    expect(replacedOptions).not.toHaveProperty("sessionOptions.fast");
+
+    const cleared = await runAgentEnvironmentUpdate(harness, automationId, [
+      "--clear-options",
+    ]);
+    expect(cleared).not.toHaveProperty("sessionOptions");
+
+    const conflicting = await harness.runCli([
+      "update",
+      automationId,
+      "--project",
+      PROJECT_ID,
+      "--option",
+      "fast=true",
+      "--clear-options",
+    ]);
+    expect(conflicting.exitCode).toBe(1);
+    expect(conflicting.stderr).toContain(
+      "Cannot combine --option and --clear-options.",
+    );
+
+    await harness.dispose();
   });
 });

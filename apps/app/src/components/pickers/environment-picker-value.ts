@@ -8,13 +8,20 @@ interface ParsedProviderEnvironmentValue {
   environmentProviderId: string;
 }
 
+interface ParsedProjectDefaultEnvironmentValue {
+  type: "project-default";
+}
+
 export const REUSE_VALUE_WITHOUT_ENVIRONMENT = "reuse";
+
+export const PROJECT_DEFAULT_ENVIRONMENT_VALUE = "project-default";
 
 const ENVIRONMENT_PROVIDER_ID_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
 
 export type ParsedEnvironmentValue =
   | ParsedReuseEnvironmentValue
   | ParsedProviderEnvironmentValue
+  | ParsedProjectDefaultEnvironmentValue
   | null;
 
 export function encodeReuseValue(environmentId: string): string {
@@ -38,6 +45,9 @@ function parseProviderValue(
 export function parseEnvironmentValue(value: string): ParsedEnvironmentValue {
   if (value === REUSE_VALUE_WITHOUT_ENVIRONMENT) {
     return { type: "reuse", environmentId: null };
+  }
+  if (value === PROJECT_DEFAULT_ENVIRONMENT_VALUE) {
+    return { type: "project-default" };
   }
   if (value.startsWith("reuse:")) {
     const environmentId = value.slice("reuse:".length);

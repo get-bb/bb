@@ -39,9 +39,12 @@ export const PERMISSION_LABELS: Record<PresetPermissionMode, string> = {
 };
 
 const ENVIRONMENT_LABELS: Record<EnvironmentKind, string> = {
-  "project-default": "Project default",
+  "project-default": "Project default environment",
   "new-worktree": "New worktree",
 };
+
+const PROJECT_DEFAULT_ENVIRONMENT_HINT =
+  "Threads start in the default environment of the task's project, or Automatic when it has none.";
 
 interface MachineOption {
   id: string;
@@ -224,7 +227,14 @@ export function PresetDialog({
               />
             </Field>
           </div>
-          <Field label="Execution environment">
+          <Field
+            label="Execution environment"
+            hint={
+              draft.environmentKind === "project-default"
+                ? PROJECT_DEFAULT_ENVIRONMENT_HINT
+                : undefined
+            }
+          >
             <Select
               value={draft.environmentKind}
               onValueChange={(value) => {

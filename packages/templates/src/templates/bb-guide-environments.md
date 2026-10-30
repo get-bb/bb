@@ -11,6 +11,9 @@ Environments determine where threads run. Multiple threads can share an environm
 (e.g., a coding thread and a review thread in the same worktree).
 The first-party choices are Project checkout (the project's existing directory),
 Worktree (a fresh Git worktree), and Personal workspace (a projectless workspace).
+A project's default environment (Project settings → Thread defaults, or
+`bb project default-environment`) is where its new threads start when their
+creator chooses none; `bb guide projects` describes it.
 
 New Worktree branches start at the selected base without an upstream, regardless
 of Git's branch.autoSetupMerge setting. Publish with `git push -u origin HEAD`

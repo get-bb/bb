@@ -1035,18 +1035,24 @@ function TestFileLink({
  */
 function TestNewThreadComposer({
   defaultProjectId,
+  allowProjectChange = true,
   defaultProviderId,
   defaultModel,
   defaultReasoningLevel,
   defaultServiceTier,
   defaultPermissionMode,
+  defaultSessionOptions,
   defaultEnvironment,
+  allowProjectDefaultEnvironment = false,
   initialPrompt,
   placeholder,
   layout = "contained",
   focusRequest,
   className,
   draftKey,
+  persistDraft = true,
+  allowAttachments = true,
+  allowPluginCustomizations = true,
   onSubmit,
 }: NewThreadComposerProps) {
   const [text, setText] = useState(initialPrompt ?? "");
@@ -1059,11 +1065,23 @@ function TestNewThreadComposer({
       data-default-reasoning-level={defaultReasoningLevel ?? ""}
       data-default-service-tier={defaultServiceTier ?? ""}
       data-default-permission-mode={defaultPermissionMode ?? ""}
+      data-default-session-options={
+        defaultSessionOptions === undefined
+          ? ""
+          : JSON.stringify(defaultSessionOptions)
+      }
       data-default-environment={
         defaultEnvironment === undefined
           ? ""
           : JSON.stringify(defaultEnvironment)
       }
+      data-allow-project-change={String(allowProjectChange)}
+      data-allow-project-default-environment={String(
+        allowProjectDefaultEnvironment,
+      )}
+      data-allow-attachments={String(allowAttachments)}
+      data-allow-plugin-customizations={String(allowPluginCustomizations)}
+      data-persist-draft={String(persistDraft)}
       data-layout={layout}
       data-focus-request={focusRequest ?? 0}
       data-draft-key={draftKey ?? ""}
@@ -1090,6 +1108,10 @@ function TestNewThreadComposer({
             permissionMode: defaultPermissionMode ?? "auto",
             ...(defaultServiceTier !== undefined
               ? { serviceTier: defaultServiceTier }
+              : {}),
+            ...(defaultSessionOptions !== undefined &&
+            Object.keys(defaultSessionOptions).length > 0
+              ? { sessionOptions: defaultSessionOptions }
               : {}),
             executionInputSources: {},
             environment: defaultEnvironment ?? { type: "project-default" },

@@ -1351,4 +1351,84 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
     ).toBeTruthy();
     expect(screen.queryByText("MacBook Pro")).toBeNull();
   });
+
+  it("offers the project default above the machines and reports a pick", () => {
+    const onSelect = vi.fn();
+    renderPicker(
+      <EnvironmentPickerUI
+        value="provider:project-checkout"
+        sources={machineSources}
+        host={thisMachine}
+        isLocal
+        machines={{
+          hosts: [thisMachine, studio],
+          localDaemonHostId: thisMachine.id,
+          primaryHostId: thisMachine.id,
+        }}
+        providers={[checkoutProvider]}
+        selectedProviderHostId={thisMachine.id}
+        onSelectProvider={vi.fn()}
+        projectDefault={{
+          description: "Mac Studio · Project checkout",
+          problem: null,
+          onSelect,
+        }}
+        modal={false}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Environment" }), {
+      button: 0,
+    });
+
+    const [first] = screen.getAllByRole("option");
+    expect(first?.textContent).toContain("Project default");
+    expect(first?.textContent).toContain("Mac Studio · Project checkout");
+    expect(first?.getAttribute("aria-current")).toBeNull();
+    fireEvent.click(first!);
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(
+      screen.queryByRole("option", { name: /Project default/u }),
+    ).toBeNull();
+  });
+
+  it("labels a selected project default instead of its machine and shows the project's problem", () => {
+    const offlineStudio: Host = { ...studio, status: "disconnected" };
+    renderPicker(
+      <EnvironmentPickerUI
+        value="project-default"
+        sources={machineSources}
+        host={offlineStudio}
+        isLocal={false}
+        machines={{
+          hosts: [thisMachine, offlineStudio],
+          localDaemonHostId: thisMachine.id,
+          primaryHostId: offlineStudio.id,
+        }}
+        providers={[checkoutProvider]}
+        selectedProviderHostId={null}
+        onSelectProvider={vi.fn()}
+        projectDefault={{
+          description: "Mac Studio · Project checkout",
+          problem: "its machine no longer exists",
+          onSelect: vi.fn(),
+        }}
+        modal={false}
+      />,
+    );
+
+    expect(
+      document.querySelector("[data-promptbox-full-label]")?.textContent,
+    ).toBe("Project default");
+    expect(
+      document.querySelector("[data-promptbox-compact-label]")?.textContent,
+    ).toBe("Default");
+    fireEvent.click(screen.getByRole("button", { name: "Environment" }), {
+      button: 0,
+    });
+    const option = screen.getByRole("option", { name: /Project default/u });
+    expect(option.getAttribute("aria-current")).toBe("true");
+    expect(option.textContent).toContain(
+      "Mac Studio · Project checkout is unavailable: its machine no longer exists",
+    );
+  });
 });

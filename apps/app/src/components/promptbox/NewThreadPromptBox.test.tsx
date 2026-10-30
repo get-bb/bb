@@ -299,6 +299,28 @@ describe("EnvironmentSlot", () => {
     expect(screen.getByRole("button", { name: "Machine" })).not.toBeNull();
   });
 
+  it("offers the project default in the environment picker instead of the machine chip", () => {
+    render(
+      <EnvironmentSlot
+        projectless
+        environment={{
+          ...makeEnvironment({ value: "project-default" }),
+          projectDefault: {
+            description: "Automatic",
+            problem: null,
+            onSelect: vi.fn(),
+          },
+        }}
+        worktree={makeWorktree()}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Machine" })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Environment" }).textContent,
+    ).toContain("Project default");
+  });
+
   it("omits project-only providers from the projectless picker", () => {
     render(
       <EnvironmentSlot

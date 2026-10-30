@@ -15,7 +15,7 @@ export const JSON_SHAPE_BY_COMMAND_PATH: Readonly<Record<string, string>> = {
   "prompt-history list":
     "{entries: [{id, createdAt, input, projectId, threadId, scope}], nextCursor: string | null}",
   "project list":
-    "[{id, kind, name, gitRemoteUrl, sources: [{id, hostId, path, isDefault}]}]    (bare array)",
+    "[{id, kind, name, gitRemoteUrl, sources: [{id, hostId, path, isDefault}], defaultEnvironment, defaultEnvironmentProblem}]    (bare array)",
   "machine list":
     "[{id, name, type, status, lifecycle, maxPermissionMode, lastSeenAt}]    (bare array)",
   "provider list":

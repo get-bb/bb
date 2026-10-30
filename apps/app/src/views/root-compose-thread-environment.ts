@@ -20,6 +20,7 @@ export function resolveRootComposeThreadEnvironment(
   if (!args.projectId) return null;
   const parsed = parseEnvironmentValue(args.environmentValue);
   if (!parsed) return null;
+  if (parsed.type === "project-default") return { type: "project-default" };
 
   if (parsed.type === "provider") {
     const provider = args.environmentProviders?.find(

@@ -4530,10 +4530,12 @@ export interface ComposerSelection {
   /** New-thread composers only. BB's personal-project id means "Don't work in a project". */
   projectId?: string;
   /**
-   * New-thread composers only. `{ type: "project-default" }` and a `host`
-   * environment without a `hostId` seed nothing and are ignored. Provider
-   * `inputs` are not applied; the provider's own inputs control keeps its
-   * value, and the result reports what the composer would submit.
+   * New-thread composers only. `{ type: "project-default" }` selects the
+   * "Project default" entry of an `experimental_NewThreadComposer` that sets
+   * `allowProjectDefaultEnvironment` and is ignored by every other composer.
+   * A `host` environment without a `hostId` seeds nothing and is ignored.
+   * Provider `inputs` are not applied; the provider's own inputs control
+   * keeps its value, and the result reports what the composer would submit.
    */
   environment?: CreateThreadEnvironmentArgs;
   /** A provider the composer does not list is ignored, and `model` and `reasoningLevel` with it. */
@@ -4807,7 +4809,8 @@ export interface NewThreadRequest {
   /**
    * Agent options the user chose in the model picker or the mode menu, keyed
    * by option id. Present only when the user changed at least one option the
-   * selected provider declares. Forward it to `threads.spawn` unchanged.
+   * selected provider declares, or `defaultSessionOptions` seeded one.
+   * Forward it to `threads.spawn` unchanged.
    */
   sessionOptions?: SessionOptionSelections;
   /**
@@ -4846,6 +4849,16 @@ export interface NewThreadComposerProps {
    */
   defaultProjectId?: string;
   /**
+   * Whether the user can change the project. Defaults to true. False disables
+   * the project picker, without a chevron, and the composer ignores
+   * programmatic project changes, so a submitted request carries
+   * `defaultProjectId` (BB's personal-project id when it is omitted). One
+   * exception: when the sidebar no longer lists that project, the composer
+   * falls back to the personal project, as the New thread screen does, so
+   * check `request.projectId` before saving it.
+   */
+  allowProjectChange?: boolean;
+  /**
    * Seeds the provider picker. Like every `default*` prop this is a SEED, not
    * a controlled value: the composer stays uncontrolled, the user can change
    * it, and when omitted the composer falls back to the project's remembered
@@ -4883,6 +4896,17 @@ export interface NewThreadComposerProps {
   /** Seeds the permission-mode picker. Same seed semantics as {@link defaultProviderId}. */
   defaultPermissionMode?: PermissionMode;
   /**
+   * Seeds the agent options (the model picker's options and the mode menu)
+   * submitted as {@link NewThreadRequest.sessionOptions}, keyed by option id.
+   * Same seed semantics as {@link defaultProviderId}. The seed belongs to
+   * `defaultProviderId`, or to the project's default provider when it is
+   * omitted, and another provider starts from its own options; with neither,
+   * every provider starts from the seeded options it declares. An untouched
+   * submit carries every seeded option the provider declares, as the
+   * caller's choice.
+   */
+  defaultSessionOptions?: SessionOptionSelections;
+  /**
    * Seeds the environment and branch pickers from a previously submitted
    * `NewThreadRequest.environment`. Same seed semantics as
    * {@link defaultProviderId}: a seed the user can change, taking precedence
@@ -4892,8 +4916,10 @@ export interface NewThreadComposerProps {
    * resubmitting untouched reproduces an equivalent environment, with these
    * documented limits — the composer cannot represent every args variant:
    *
-   * - `{ type: "project-default" }` seeds nothing; the composer resolves its
-   *   own default and submits that concrete environment instead.
+   * - `{ type: "project-default" }` selects the "Project default" entry and
+   *   round-trips unchanged when `allowProjectDefaultEnvironment` is set.
+   *   Otherwise it seeds nothing; the composer resolves its own default and
+   *   submits that concrete environment instead.
    * - A `host` environment whose host no longer exists (or whose project has
    *   no source on it) falls back to the composer's default host, exactly as
    *   the primary compose surface would.
@@ -4909,6 +4935,20 @@ export interface NewThreadComposerProps {
    *   the original `default` submission would have created from.
    */
   defaultEnvironment?: CreateThreadEnvironmentArgs;
+  /**
+   * Adds a "Project default" entry at the top of the environment picker.
+   * Defaults to false. Choosing it submits `environment: { type:
+   * "project-default" }`, which `threads.spawn` resolves to the project's
+   * default environment when the thread is created. The entry describes what
+   * that default resolves to now, such as "berth", "david · Worktree", or
+   * "Automatic" when the project sets none, and shows the problem the project
+   * reports with it. While it is selected the composer shows no machine
+   * choice and no environment provider's inputs control, and the provider
+   * and model pickers load from the default's machine when the default names
+   * an existing machine and the project reports no problem with it. A
+   * `defaultEnvironment` of `{ type: "project-default" }` selects it.
+   */
+  allowProjectDefaultEnvironment?: boolean;
   /**
    * Seeds the draft, only while the draft is still empty. Serialized
    * `@thread:<id>`, `@project:<id>`, and `@section:<id>` tokens become mention
@@ -4929,8 +4969,34 @@ export interface NewThreadComposerProps {
   /**
    * Where the draft persists. Drafts survive reloads and are shared by every
    * composer using the same key; defaults to a key scoped to this plugin.
+   * With `persistDraft: false` the key only keeps drafts apart within this
+   * mounted composer.
    */
   draftKey?: string;
+  /**
+   * Whether the draft persists in browser storage. Defaults to true. False
+   * keeps the draft in memory for this mounted composer only: nothing is
+   * written to browser storage, and the draft is discarded when the composer
+   * unmounts, so the next mount with the same `draftKey` starts again from
+   * `initialPrompt`. Suits an editor of a saved record, whose unsaved edits
+   * should not outlive the editor.
+   */
+  persistDraft?: boolean;
+  /**
+   * Whether the user can attach files. Defaults to true. False hides the
+   * attach control, ignores pasted and dropped files, and restores prompt
+   * history entries without their attachments.
+   */
+  allowAttachments?: boolean;
+  /**
+   * Whether composer customizations registered with `app.composer.customize`
+   * for the `new-thread` scope apply here. Defaults to true. False suppresses
+   * them as bb's sent-message editor does: send-menu rows such as "Send
+   * later…" and "Save draft…", composer actions, banners, popups, commands,
+   * and rich-text effects. Plus-menu rows stay. Set it to false when submitting
+   * saves the request instead of sending it, since those rows act on a send.
+   */
+  allowPluginCustomizations?: boolean;
   /**
    * Fires on submit with every selection resolved. The draft clears when this
    * resolves and is KEPT if it throws, so a failed create never loses what the

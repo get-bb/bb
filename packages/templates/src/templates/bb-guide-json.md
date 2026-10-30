@@ -75,10 +75,13 @@ the most-parsed commands ends with the same shape.
     bare arrays
 
   bb project list --json
-    [{id, kind, name, gitRemoteUrl, sources: [{id, hostId, path, isDefault}]}]    (bare array)
+    [{id, kind, name, gitRemoteUrl, sources: [{id, hostId, path, isDefault}], defaultEnvironment, defaultEnvironmentProblem}]    (bare array)
 
   bb project show <id> --json
-    {id, kind, name, gitRemoteUrl, sources}
+    {id, kind, name, gitRemoteUrl, sources, defaultEnvironment: {type: "provider", environmentProviderId, machine, inputs} | null, defaultEnvironmentProblem: {reason, message} | null}    (null defaultEnvironment means Automatic; a problem means threads that would start in it fail until it is changed or reset)
+
+  bb project default-environment [show] <id> --json, bb project default-environment set <id> ... --json, bb project default-environment reset <id> --json
+    the project, as bb project show <id> --json prints it    (set and reset print it after the change)
 
   bb machine list --json
     [{id, name, type, status, lifecycle, maxPermissionMode, lastSeenAt}]    (bare array)

@@ -9,7 +9,10 @@ import {
   type ServiceTier,
   type SessionOptionSelections,
 } from "@bb/domain";
-import { createTabScopedStorage } from "@/lib/browser-storage";
+import {
+  createSessionStorageSyncStorage,
+  createTabScopedStorage,
+} from "@/lib/browser-storage";
 import { getProjectScopedStorageKey } from "@/lib/project-scoped-storage";
 
 const MODEL_STORAGE_KEY = "bb.promptbox.model";
@@ -18,6 +21,8 @@ const REASONING_STORAGE_KEY = "bb.promptbox.reasoning";
 const PERMISSION_MODE_STORAGE_KEY = "bb.promptbox.permission-mode";
 const ENVIRONMENT_STORAGE_KEY = "bb.promptbox.environment";
 const MACHINE_STORAGE_KEY = "bb.promptbox.machine";
+const DRAFT_ENVIRONMENT_STORAGE_KEY = "bb.promptbox.draft-environment";
+const DRAFT_MACHINE_STORAGE_KEY = "bb.promptbox.draft-machine";
 const PROVIDER_STORAGE_KEY = "bb.promptbox.provider";
 const SESSION_OPTIONS_STORAGE_KEY = "bb.promptbox.session-options";
 const PROVIDER_SELECTION_STORAGE_VERSION = "1";
@@ -231,6 +236,45 @@ const machineSelectionAtomFamily = atomFamily((projectId: string) =>
     { getOnInit: true },
   ),
 );
+
+const draftSelectionStorage = createSessionStorageSyncStorage<string>({
+  parse: (value, initialValue) => value ?? initialValue,
+  serialize: (value) => value,
+});
+
+const draftEnvironmentSelectionAtomFamily = atomFamily((projectId: string) =>
+  atomWithStorage<string>(
+    getProjectScopedStorageKey(DRAFT_ENVIRONMENT_STORAGE_KEY, projectId),
+    "",
+    draftSelectionStorage,
+    { getOnInit: true },
+  ),
+);
+
+const draftMachineSelectionAtomFamily = atomFamily((projectId: string) =>
+  atomWithStorage<string>(
+    getProjectScopedStorageKey(DRAFT_MACHINE_STORAGE_KEY, projectId),
+    "",
+    draftSelectionStorage,
+    { getOnInit: true },
+  ),
+);
+
+export function usePromptBoxDraftEnvironmentSelection(
+  projectId: string,
+): PersistedStringSelectionField {
+  const [value, setValue] = useAtom(
+    draftEnvironmentSelectionAtomFamily(projectId),
+  );
+  return { setValue, value };
+}
+
+export function usePromptBoxDraftMachineSelection(
+  projectId: string,
+): PersistedStringSelectionField {
+  const [value, setValue] = useAtom(draftMachineSelectionAtomFamily(projectId));
+  return { setValue, value };
+}
 
 export function usePromptBoxMachinePreference(
   projectId: string,

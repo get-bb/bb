@@ -458,7 +458,7 @@ function uploadedAs(files: File[]): PromptDraftAttachment[] {
   }));
 }
 
-async function selectPromptAction(label: string) {
+async function openPromptActions(): Promise<HTMLElement> {
   await waitFor(() =>
     expect(document.activeElement).toBe(getPromptEditorElement()),
   );
@@ -468,7 +468,11 @@ async function selectPromptAction(label: string) {
   );
   const trigger = screen.getByRole("button", { name: "Prompt actions" });
   fireEvent.pointerDown(trigger, { button: 0 });
-  const menu = await screen.findByRole("menu", { name: "Prompt actions" });
+  return screen.findByRole("menu", { name: "Prompt actions" });
+}
+
+async function selectPromptAction(label: string) {
+  const menu = await openPromptActions();
   const menuItem = within(menu).getByRole("menuitem", { name: label });
   fireEvent.click(menuItem);
   await waitFor(() =>
@@ -2288,6 +2292,44 @@ describe("ComposerBox submit shortcuts", () => {
       }
     },
   );
+
+  it("drops plugin send-menu rows while plugin customizations are suppressed", () => {
+    setPluginSlotRegistrations(
+      "scheduled-send",
+      pluginRegistrationSet([
+        {
+          id: "send-later",
+          sendMenu: [{ id: "send-later", label: "Send later", run: vi.fn() }],
+        },
+      ]),
+    );
+    const draft = { ...emptyPromptDraftState(), text: "Save this request" };
+    const host: PluginComposerHost = {
+      scope: { kind: "new-thread", projectId: "proj_1" },
+      textEffectKey: "suppressed-send-menu-test",
+      getCurrent: () => draft,
+      subscribeDraft: () => () => {},
+      setDraft: vi.fn(),
+      focus: vi.fn(),
+    };
+    const renderComposer = (suppressPluginComposerCustomizations: boolean) => (
+      <PluginComposerHostProvider value={host}>
+        <ComposerBox
+          {...createPromptBoxProps({ value: "Save this request" })}
+          suppressPluginComposerCustomizations={
+            suppressPluginComposerCustomizations
+          }
+        />
+      </PluginComposerHostProvider>
+    );
+    const { rerender } = render(renderComposer(false));
+    expect(screen.getByRole("button", { name: "Send options" })).toBeTruthy();
+
+    rerender(renderComposer(true));
+
+    expect(screen.queryByRole("button", { name: "Send options" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Submit (Enter)" })).toBeTruthy();
+  });
 
   it.each([false, true])(
     "keeps save shortcuts without advertising steering in an editor (touch: %s)",
@@ -5621,6 +5663,17 @@ describe("ComposerBox prompt actions", () => {
     await waitFor(() =>
       expect(screen.queryByRole("menu", { name: "Prompt actions" })).toBeNull(),
     );
+  });
+
+  it("offers no Attach files action without an attach handler", async () => {
+    renderPromptBox("");
+
+    const menu = await openPromptActions();
+
+    expect(within(menu).getByRole("menuitem", { name: "Skills" })).toBeTruthy();
+    expect(
+      within(menu).queryByRole("menuitem", { name: "Attach files" }),
+    ).toBeNull();
   });
 
   it("inserts the skills trigger with no trailing space", async () => {

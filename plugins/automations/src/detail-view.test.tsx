@@ -1,25 +1,52 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { useState, type ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { NewThreadRequest } from "@get-bb/plugin-sdk";
 import type {
   ExperimentalPermissionModePickerProps,
   ExperimentalProviderModelPickerProps,
+  NewThreadComposerProps,
 } from "@get-bb/plugin-sdk/app";
 import { installTestPluginRuntime } from "@get-bb/plugin-sdk/testing/app";
+import { toast } from "sonner";
 import type {
   AgentExecutionUpdate,
   AutomationDetailResponse,
+  DefaultEnvironment,
 } from "./rpc-types.js";
 import {
   AutomationDetailView as AutomationDetailViewBase,
   AgentAutomationDefinition,
   ScriptAutomationDefinition,
 } from "../detail-view.js";
+import {
+  summarizeProjectDefaultEnvironment,
+  type ProjectDefaultEnvironmentSummary,
+} from "../lib/project-default-environment.js";
+import type { EnvironmentCatalog } from "../lib/automation-environment.js";
+
+const composerHarness = vi.hoisted(() => ({
+  props: null as NewThreadComposerProps | null,
+}));
+
+vi.mock("sonner", () => ({
+  toast: { error: vi.fn(), success: vi.fn() },
+}));
 
 vi.mock("@get-bb/plugin-sdk/app", async (importOriginal) => ({
   ...(await importOriginal()),
+  experimental_NewThreadComposer: (props: NewThreadComposerProps) => {
+    composerHarness.props = props;
+    return <div data-testid="bb-new-thread-composer" />;
+  },
   experimental_ProviderModelPicker: ({
     value,
     onChange,
@@ -83,7 +110,82 @@ vi.mock("@get-bb/plugin-sdk/app", async (importOriginal) => ({
 
 installTestPluginRuntime();
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  composerHarness.props = null;
+  vi.mocked(toast.error).mockClear();
+});
+
+function renderedComposer(): NewThreadComposerProps {
+  const props = composerHarness.props;
+  if (props === null) throw new Error("The composer editor is not rendered");
+  return props;
+}
+
+async function submitComposer(request: NewThreadRequest): Promise<unknown> {
+  const { onSubmit } = renderedComposer();
+  let outcome: unknown = "saved";
+  await act(async () => {
+    try {
+      await onSubmit(request);
+    } catch (error: unknown) {
+      outcome = error;
+    }
+  });
+  return outcome;
+}
+
+function composerRequest(
+  overrides: Partial<NewThreadRequest> = {},
+): NewThreadRequest {
+  return {
+    projectId: "proj_personal",
+    providerId: "claude",
+    model: "claude-sonnet-5",
+    reasoningLevel: "high",
+    permissionMode: "full",
+    executionInputSources: {},
+    environment: { type: "project-default" },
+    input: [
+      { type: "text", text: "Summarize the last two days.", mentions: [] },
+    ],
+    ...overrides,
+  };
+}
+
+const ENVIRONMENT_CATALOG: EnvironmentCatalog = {
+  providers: [
+    {
+      id: "git-worktree",
+      displayName: "Worktree",
+      icon: "FolderGit",
+      logoUrl: null,
+      machineProviderId: null,
+    },
+    {
+      id: "project-checkout",
+      displayName: "Project checkout",
+      icon: "Laptop",
+      logoUrl: null,
+      machineProviderId: null,
+    },
+    {
+      id: "personal-workspace",
+      displayName: "Personal workspace",
+      icon: "Folder",
+      logoUrl: null,
+      machineProviderId: null,
+    },
+    {
+      id: "berth",
+      displayName: "Berth",
+      icon: "Cloud",
+      logoUrl: null,
+      machineProviderId: "berth",
+    },
+  ],
+  machines: [{ id: "host_david", name: "david" }],
+};
 
 function renderedRecipe(container: HTMLElement): Array<[string, string]> {
   return [...container.querySelectorAll("[data-resource-detail-section]")].map(
@@ -146,21 +248,27 @@ const NO_RUNS = {
   retry: () => {},
 };
 
+type DefaultedDetailProp =
+  | "editing"
+  | "onCancelEdit"
+  | "onUpdateAgent"
+  | "projectDefaultEnvironment"
+  | "environmentCatalog";
+
 type TestAutomationDetailProps = Omit<
   ComponentProps<typeof AutomationDetailViewBase>,
-  "editing" | "onCancelEdit" | "onUpdateAgent"
+  DefaultedDetailProp
 > &
   Partial<
-    Pick<
-      ComponentProps<typeof AutomationDetailViewBase>,
-      "editing" | "onCancelEdit" | "onUpdateAgent"
-    >
+    Pick<ComponentProps<typeof AutomationDetailViewBase>, DefaultedDetailProp>
   >;
 
 function AutomationDetailView({
   editing = false,
   onCancelEdit = () => {},
   onUpdateAgent = async () => {},
+  projectDefaultEnvironment = null,
+  environmentCatalog = null,
   ...props
 }: TestAutomationDetailProps) {
   return (
@@ -169,8 +277,49 @@ function AutomationDetailView({
       editing={editing}
       onCancelEdit={onCancelEdit}
       onUpdateAgent={onUpdateAgent}
+      projectDefaultEnvironment={projectDefaultEnvironment}
+      environmentCatalog={environmentCatalog}
     />
   );
+}
+
+type AgentExecution = Extract<
+  AutomationDetailResponse["execution"],
+  { mode: "agent" }
+>;
+
+function renderAgentDefinition({
+  execution = REUSE_ENVIRONMENT_EXECUTION,
+  editing = false,
+  onUpdate = async () => {},
+}: {
+  execution?: AgentExecution;
+  editing?: boolean;
+  onUpdate?: (update: AgentExecutionUpdate) => Promise<void>;
+} = {}) {
+  const { container } = render(
+    <AgentAutomationDefinition
+      automationId="auto_1"
+      projectId="proj_personal"
+      execution={execution}
+      editing={editing}
+      personalProject={false}
+      projectContextLabel="bb"
+      projectDefaultEnvironment={null}
+      environmentCatalog={ENVIRONMENT_CATALOG}
+      pending={false}
+      onCancel={() => {}}
+      onUpdate={onUpdate}
+    />,
+  );
+  return {
+    environmentTitle: container.querySelector<HTMLElement>(
+      '[data-automation-prompt-footer] [title^="Environment:"]',
+    )?.title,
+    problem:
+      container.querySelector("[data-automation-environment-problem]")
+        ?.textContent ?? null,
+  };
 }
 
 describe("Automation detail recipe", () => {
@@ -236,6 +385,8 @@ describe("Automation detail recipe", () => {
   it("renders the personal workspace through the host's environment provider icon", () => {
     const { container } = render(
       <AgentAutomationDefinition
+        automationId="auto_1"
+        projectId="proj_personal"
         execution={{
           mode: "agent",
           prompt: "Check",
@@ -248,6 +399,8 @@ describe("Automation detail recipe", () => {
         editing={false}
         personalProject
         projectContextLabel="Personal"
+        projectDefaultEnvironment={null}
+        environmentCatalog={ENVIRONMENT_CATALOG}
         pending={false}
         onCancel={() => {}}
         onUpdate={async () => {}}
@@ -338,79 +491,49 @@ describe("Automation detail recipe", () => {
 
     fireEvent.click(editButton);
 
-    const promptContent = screen.getByRole("textbox", {
-      name: "Automation prompt",
-    }) as HTMLTextAreaElement;
-    const promptPanel = promptContent.closest("form") as HTMLElement;
     expect(
       container.querySelector('[data-automation-prompt-readonly-shell=""]'),
     ).toBeNull();
-    expect(promptContent.value).toBe("Summarize yesterday's commits.");
-    expect(promptContent.readOnly).toBe(false);
-    const promptActionRow = container.querySelector(
-      '[data-automation-prompt-action-row=""]',
-    ) as HTMLElement;
-    expect(promptPanel.contains(promptActionRow)).toBe(true);
-    const promptFooter = container.querySelector(
-      '[data-automation-prompt-footer=""]',
-    ) as HTMLElement;
-    expect(promptFooter.textContent).toContain("Personal workspace");
-    expect(
-      promptFooter.querySelector('[title="Environment: Personal workspace"]'),
-    ).not.toBeNull();
-    expect(promptFooter.textContent).toContain("Approve for me");
-    expect(
-      promptFooter.querySelectorAll('[data-option-display=""]'),
-    ).toHaveLength(1);
-    const accessSelector = promptFooter.querySelector(
-      '[data-testid="bb-permission-mode-picker"]',
-    ) as HTMLButtonElement;
-    expect(accessSelector.disabled).toBe(false);
-    expect(accessSelector.getAttribute("aria-label")).toBe("Permission mode");
-    expect(promptPanel.textContent).toContain("Opus 5");
-    expect(promptPanel.textContent).toContain("Claude");
-    const modelSelector = promptPanel.querySelector(
-      '[data-testid="bb-provider-model-picker"]',
-    ) as HTMLButtonElement;
-    expect(modelSelector.disabled).toBe(false);
-    expect(modelSelector.textContent).toContain("medium");
-    const savePrompt = screen.getByRole("button", { name: "Save Prompt" });
-    expect(promptPanel.contains(savePrompt)).toBe(true);
-    expect(savePrompt.querySelector('[data-icon="Check"]')).not.toBeNull();
-    expect((savePrompt as HTMLButtonElement).disabled).toBe(true);
-    const cancelEditing = screen.getByRole("button", { name: "Cancel" });
-    expect((cancelEditing as HTMLButtonElement).disabled).toBe(false);
-    fireEvent.click(cancelEditing);
+    expect(screen.getByText("Editing automation")).toBeTruthy();
+    const composer = renderedComposer();
+    expect(composer).toMatchObject({
+      defaultProjectId: "proj_personal",
+      allowProjectChange: false,
+      allowProjectDefaultEnvironment: true,
+      allowAttachments: false,
+      allowPluginCustomizations: false,
+      persistDraft: false,
+      draftKey: "automation-edit:auto_1",
+      initialPrompt: "Summarize yesterday's commits.",
+      defaultProviderId: "claude",
+      defaultModel: "claude-opus-5",
+      defaultReasoningLevel: "medium",
+      defaultPermissionMode: "auto",
+      defaultEnvironment: { type: "host", workspace: { type: "personal" } },
+    });
+    expect(composer).not.toHaveProperty("defaultServiceTier");
+    expect(composer).not.toHaveProperty("defaultSessionOptions");
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel editing" }));
     expect(
       await screen.findByRole("textbox", { name: "Saved prompt" }),
     ).toBeTruthy();
     expect(updateAgent).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Edit prompt" }));
-    const reopenedPrompt = screen.getByRole("textbox", {
-      name: "Automation prompt",
-    }) as HTMLTextAreaElement;
-    const reopenedPanel = reopenedPrompt.closest("form") as HTMLElement;
-    const reopenedModelSelector = reopenedPanel.querySelector(
-      '[data-testid="bb-provider-model-picker"]',
-    ) as HTMLButtonElement;
-    const reopenedAccessSelector = container.querySelector(
-      '[data-testid="bb-permission-mode-picker"]',
-    ) as HTMLButtonElement;
-    const reopenedSavePrompt = screen.getByRole("button", {
-      name: "Save Prompt",
-    });
-    fireEvent.change(reopenedPrompt, {
-      target: { value: "Summarize the last two days." },
-    });
-    fireEvent.click(reopenedModelSelector);
-    fireEvent.click(reopenedAccessSelector);
-    expect((reopenedSavePrompt as HTMLButtonElement).disabled).toBe(false);
     expect(
-      (screen.getByRole("button", { name: "Cancel" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
-    fireEvent.click(reopenedSavePrompt);
+      await submitComposer(
+        composerRequest({
+          serviceTier: "fast",
+          environment: {
+            type: "provider",
+            environmentProviderId: "git-worktree",
+            machine: { type: "existing", hostId: "host_david" },
+            inputs: { branch: { kind: "named", name: "dev" } },
+          },
+        }),
+      ),
+    ).toBe("saved");
     expect(updateAgent).toHaveBeenCalledWith({
       prompt: "Summarize the last two days.",
       providerId: "claude",
@@ -418,16 +541,24 @@ describe("Automation detail recipe", () => {
       reasoningLevel: "high",
       serviceTier: "fast",
       permissionMode: "full",
+      sessionOptions: null,
+      target: {
+        type: "environment",
+        environment: {
+          type: "provider",
+          environmentProviderId: "git-worktree",
+          machine: { type: "existing", hostId: "host_david" },
+          inputs: { branch: { kind: "named", name: "dev" } },
+        },
+      },
     });
     expect(
       await screen.findByRole("textbox", { name: "Saved prompt" }),
     ).toBeTruthy();
-    expect(
-      screen.queryByRole("textbox", { name: "Automation prompt" }),
-    ).toBeNull();
+    expect(screen.queryByText("Editing automation")).toBeNull();
   });
 
-  it("uses the standard editor to complete an automation with a missing prompt", () => {
+  it("opens the composer to complete an automation with a missing prompt", async () => {
     const onUpdate = vi.fn(async (_update: AgentExecutionUpdate) => {});
     render(
       <AutomationDetailView
@@ -456,14 +587,39 @@ describe("Automation detail recipe", () => {
       (screen.getByRole("button", { name: "Run now" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
-    const save = screen.getByRole("button", { name: "Save Prompt" });
-    expect((save as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText("Automation prompt"), {
-      target: { value: "Review the failed build" },
+    expect(renderedComposer()).toMatchObject({
+      initialPrompt: "",
+      defaultEnvironment: { type: "reuse", environmentId: "env_test" },
     });
-    expect((save as HTMLButtonElement).disabled).toBe(false);
-    fireEvent.click(save);
 
+    const reusedEnvironment = {
+      providerId: "codex",
+      model: "gpt-5.6-codex",
+      reasoningLevel: "medium",
+      permissionMode: "accept-edits",
+      environment: { type: "reuse", environmentId: "env_test" },
+    } satisfies Partial<NewThreadRequest>;
+    expect(
+      await submitComposer(
+        composerRequest({
+          ...reusedEnvironment,
+          input: [{ type: "text", text: " \n", mentions: [] }],
+        }),
+      ),
+    ).toBeInstanceOf(Error);
+    expect(toast.error).toHaveBeenCalledWith("Add a prompt before saving.");
+    expect(onUpdate).not.toHaveBeenCalled();
+
+    expect(
+      await submitComposer(
+        composerRequest({
+          ...reusedEnvironment,
+          input: [
+            { type: "text", text: "Review the failed build", mentions: [] },
+          ],
+        }),
+      ),
+    ).toBe("saved");
     expect(onUpdate).toHaveBeenCalledWith({
       prompt: "Review the failed build",
       providerId: "codex",
@@ -471,19 +627,21 @@ describe("Automation detail recipe", () => {
       reasoningLevel: "medium",
       serviceTier: null,
       permissionMode: "accept-edits",
+      sessionOptions: null,
+      target: {
+        type: "environment",
+        environment: { type: "reuse", environmentId: "env_test" },
+      },
     });
   });
 
-  it("routes both pickers to a reused environment and re-keys permissions on a provider change", () => {
-    const onUpdate = vi.fn(async (_update: AgentExecutionUpdate) => {});
+  it("routes the read-only pickers to a reused environment", () => {
     render(
       <AutomationDetailView
         automation={REUSE_ENVIRONMENT_AUTOMATION}
         projectLabel="Test project"
         runsState={NO_RUNS}
         actionPending={false}
-        editing
-        onUpdateAgent={onUpdate}
         onToggle={() => {}}
         onEdit={() => {}}
         onRunNow={() => {}}
@@ -495,20 +653,37 @@ describe("Automation detail recipe", () => {
     const picker = screen.getByTestId("bb-provider-model-picker");
     expect(picker.getAttribute("data-routing-kind")).toBe("environment");
     expect(picker.getAttribute("data-routing-id")).toBe("env_test");
-    expect(picker.getAttribute("data-provider-change-allowed")).toBe("true");
-    fireEvent.click(picker);
-    const permission = screen.getByLabelText("Permission mode");
-    expect(permission.getAttribute("data-provider-id")).toBe("claude");
-    expect(permission.getAttribute("data-routing-kind")).toBe("environment");
-    fireEvent.click(permission);
-    fireEvent.click(screen.getByText("Save Prompt"));
+    expect(
+      screen.getByLabelText("Permission mode").getAttribute("data-routing-kind"),
+    ).toBe("environment");
+  });
+
+  it("keeps the prompt editor for an automation that messages an existing thread", () => {
+    const onUpdate = vi.fn(async (_update: AgentExecutionUpdate) => {});
+    renderAgentDefinition({
+      execution: { ...REUSE_ENVIRONMENT_EXECUTION, targetThreadId: "thr_target" },
+      editing: true,
+      onUpdate,
+    });
+
+    expect(composerHarness.props).toBeNull();
+    expect(
+      screen
+        .getByTestId("bb-provider-model-picker")
+        .getAttribute("data-provider-change-allowed"),
+    ).toBe("false");
+    fireEvent.change(screen.getByLabelText("Automation prompt"), {
+      target: { value: "Post the nightly summary" },
+    });
+    fireEvent.click(screen.getByLabelText("Permission mode"));
+    fireEvent.click(screen.getByRole("button", { name: "Save Prompt" }));
 
     expect(onUpdate).toHaveBeenCalledWith({
-      prompt: "Summarize the inbox",
-      providerId: "claude",
-      model: "claude-sonnet-5",
-      reasoningLevel: "high",
-      serviceTier: "fast",
+      prompt: "Post the nightly summary",
+      providerId: "codex",
+      model: "gpt-5.6-codex",
+      reasoningLevel: "medium",
+      serviceTier: null,
       permissionMode: "full",
     });
   });
@@ -752,4 +927,276 @@ describe("Automation detail recipe", () => {
       ).not.toBeNull();
     },
   );
+});
+
+describe("Automation project default environment", () => {
+  const PROJECT_DEFAULT_EXECUTION = {
+    mode: "agent",
+    prompt: "Triage new issues",
+    providerId: "codex",
+    model: "gpt-5.6-codex",
+    reasoningLevel: "medium",
+    permissionMode: "auto",
+    environment: { type: "project-default" },
+  } satisfies AutomationDetailResponse["execution"];
+
+  const PROVIDERS = [
+    {
+      id: "git-worktree",
+      displayName: "Worktree",
+      icon: "FolderGit",
+      logoUrl: null,
+    },
+    { id: "berth", displayName: "Berth", icon: "Cloud", logoUrl: null },
+  ];
+
+  function summary(
+    defaultEnvironment: DefaultEnvironment | null,
+    problem: string | null = null,
+  ) {
+    return summarizeProjectDefaultEnvironment({
+      defaultEnvironment,
+      defaultEnvironmentProblem: problem === null ? null : { message: problem },
+      providers: PROVIDERS,
+      machines: [{ id: "host_david", name: "david" }],
+    });
+  }
+
+  const WORKTREE_ON_DAVID: DefaultEnvironment = {
+    type: "provider",
+    environmentProviderId: "git-worktree",
+    machine: { type: "existing", hostId: "host_david" },
+  };
+
+  function renderDefinition(
+    projectDefaultEnvironment: ProjectDefaultEnvironmentSummary | null,
+    execution: AgentExecution = PROJECT_DEFAULT_EXECUTION,
+  ) {
+    const { container } = render(
+      <AgentAutomationDefinition
+        automationId="auto_1"
+        projectId="proj_bb"
+        execution={execution}
+        editing={false}
+        personalProject={false}
+        projectContextLabel="bb"
+        projectDefaultEnvironment={projectDefaultEnvironment}
+        environmentCatalog={ENVIRONMENT_CATALOG}
+        pending={false}
+        onCancel={() => {}}
+        onUpdate={async () => {}}
+      />,
+    );
+    const environment = container.querySelector(
+      '[data-automation-prompt-footer] [title^="Environment:"]',
+    ) as HTMLElement;
+    return {
+      container,
+      environment,
+      compactLabel: environment.querySelector("[data-promptbox-compact-label]")
+        ?.textContent,
+      problem: container.querySelector("[data-automation-environment-problem]"),
+      modelRouting: screen.getByTestId("bb-provider-model-picker").dataset,
+      permissionRouting: screen.getByTestId("bb-permission-mode-picker")
+        .dataset,
+    };
+  }
+
+  it("routes both pickers to the machine a usable project default runs on", () => {
+    const view = renderDefinition(summary(WORKTREE_ON_DAVID));
+
+    expect(view.environment.title).toBe(
+      "Environment: Project default · Worktree on david",
+    );
+    expect(view.compactLabel).toBe("Worktree");
+    expect(view.modelRouting.routingKind).toBe("host");
+    expect(view.modelRouting.routingId).toBe("host_david");
+    expect(view.permissionRouting.routingKind).toBe("host");
+    expect(view.problem).toBeNull();
+  });
+
+  it("names a composition default by its catalog entry and keeps primary routing", () => {
+    const view = renderDefinition(
+      summary({
+        type: "provider",
+        environmentProviderId: "berth",
+        machine: { type: "new" },
+      }),
+    );
+
+    expect(view.environment.title).toBe("Environment: Project default · Berth");
+    expect(
+      view.environment
+        .querySelector('[data-provider-kind="environment"]')
+        ?.getAttribute("data-provider-id"),
+    ).toBe("berth");
+    expect(view.modelRouting.routingKind).toBe("primary");
+    expect(view.permissionRouting.routingKind).toBe("primary");
+  });
+
+  it("says Automatic when the project has no default environment", () => {
+    const view = renderDefinition(summary(null));
+
+    expect(view.environment.title).toBe(
+      "Environment: Project default · Automatic",
+    );
+    expect(view.compactLabel).toBe("Automatic");
+    expect(view.modelRouting.routingKind).toBe("primary");
+  });
+
+  it("flags an unavailable default with its reason and stops routing to its machine", () => {
+    const view = renderDefinition(
+      summary(WORKTREE_ON_DAVID, "david has no checkout of bb"),
+    );
+
+    expect(view.environment.title).toBe(
+      "Environment: Project default · Worktree on david (unavailable)",
+    );
+    expect(
+      view.environment.querySelector('[data-icon="AlertTriangle"]'),
+    ).not.toBeNull();
+    expect(view.problem?.textContent).toBe(
+      "Project default unavailable: david has no checkout of bb. Runs fail until it is fixed.",
+    );
+    expect(view.modelRouting.routingKind).toBe("primary");
+    expect(view.permissionRouting.routingKind).toBe("primary");
+  });
+
+  it.each([
+    ["usable", summary(WORKTREE_ON_DAVID)],
+    ["unavailable", summary(WORKTREE_ON_DAVID, "its machine no longer exists")],
+  ])(
+    "ignores a %s project default when runs go to an existing thread",
+    (_state, projectDefaultEnvironment) => {
+      const view = renderDefinition(projectDefaultEnvironment, {
+        ...PROJECT_DEFAULT_EXECUTION,
+        targetThreadId: "thr_target",
+      });
+
+      expect(view.environment.title).toBe("Environment: Existing thread");
+      expect(view.problem).toBeNull();
+      expect(view.modelRouting.routingKind).toBe("primary");
+    },
+  );
+});
+
+describe("Automation environment", () => {
+  it("names a worktree's machine and base branch and routes both pickers there", () => {
+    const view = renderAgentDefinition({
+      execution: {
+        ...REUSE_ENVIRONMENT_EXECUTION,
+        environment: {
+          type: "provider",
+          environmentProviderId: "git-worktree",
+          machine: { type: "existing", hostId: "host_david" },
+          inputs: { branch: { kind: "named", name: "dev" } },
+        },
+      },
+    });
+
+    expect(view.environmentTitle).toBe(
+      "Environment: Worktree on david · from dev",
+    );
+    expect(view.problem).toBeNull();
+    for (const picker of [
+      screen.getByTestId("bb-provider-model-picker"),
+      screen.getByTestId("bb-permission-mode-picker"),
+    ]) {
+      expect(picker.dataset.routingKind).toBe("host");
+    }
+    expect(
+      screen.getByTestId("bb-provider-model-picker").dataset.routingId,
+    ).toBe("host_david");
+  });
+
+  it("shows the checkout path a saved workspace keeps", () => {
+    const view = renderAgentDefinition({
+      execution: {
+        ...REUSE_ENVIRONMENT_EXECUTION,
+        environment: {
+          type: "provider",
+          environmentProviderId: "project-checkout",
+          machine: { type: "existing", hostId: "host_david" },
+          inputs: { path: "/Users/you/Code/bb" },
+        },
+      },
+    });
+
+    expect(view.environmentTitle).toBe("Environment: ~/Code/bb");
+  });
+
+  it("warns that runs fail while the environment's provider is missing", () => {
+    const view = renderAgentDefinition({
+      execution: {
+        ...REUSE_ENVIRONMENT_EXECUTION,
+        environment: {
+          type: "provider",
+          environmentProviderId: "modal-sandbox",
+          inputs: null,
+        },
+      },
+    });
+
+    expect(view.problem).toBe(
+      "Environment unavailable: the modal-sandbox environment provider is not installed. Runs fail until it is fixed.",
+    );
+  });
+});
+
+describe("Automation composer editor", () => {
+  it("seeds the stored service tier and agent options", () => {
+    renderAgentDefinition({
+      execution: {
+        ...REUSE_ENVIRONMENT_EXECUTION,
+        serviceTier: "fast",
+        sessionOptions: { "web-search": true },
+      },
+      editing: true,
+    });
+
+    expect(renderedComposer()).toMatchObject({
+      defaultServiceTier: "fast",
+      defaultSessionOptions: { "web-search": true },
+    });
+  });
+
+  it.each([
+    [
+      "an attachment",
+      composerRequest({
+        input: [
+          { type: "text", text: "Compare with this", mentions: [] },
+          { type: "localImage", path: "/tmp/screenshot.png" },
+        ],
+      }),
+      "An automation prompt is text only. Remove the attachment to save.",
+    ],
+    [
+      "another project",
+      composerRequest({ projectId: "proj_other" }),
+      "An automation stays in its project.",
+    ],
+  ])(
+    "refuses %s with a toast and rejects so the composer keeps the draft",
+    async (_case, request, message) => {
+      const onUpdate = vi.fn(async (_update: AgentExecutionUpdate) => {});
+      renderAgentDefinition({ editing: true, onUpdate });
+
+      expect(await submitComposer(request)).toBeInstanceOf(Error);
+      expect(toast.error).toHaveBeenCalledWith(message);
+      expect(onUpdate).not.toHaveBeenCalled();
+    },
+  );
+
+  it("rejects when the server refuses the update, so the composer keeps the draft", async () => {
+    const refusal = new Error("the berth provider is not installed");
+    renderAgentDefinition({
+      editing: true,
+      onUpdate: async () => {
+        throw refusal;
+      },
+    });
+
+    expect(await submitComposer(composerRequest())).toBe(refusal);
+  });
 });

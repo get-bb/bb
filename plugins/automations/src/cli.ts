@@ -4,6 +4,7 @@ import {
   cliCommand,
   defineCli,
   type BbPluginApi,
+  type JsonValue,
   type PluginCliContext,
   type PluginCliResult,
 } from "@get-bb/plugin-sdk";
@@ -21,9 +22,11 @@ import type {
   AutomationScriptWorkingDirectory,
   CreateAutomationInput,
   PermissionMode,
+  ProviderEnvironment,
   ReasoningLevel,
   ResolvedCreateAutomationInput,
   ScriptExecutionUpdate,
+  SessionOptionSelections,
   UpdateAutomationInput,
 } from "./rpc-types.js";
 import {
@@ -40,21 +43,18 @@ import {
 import {
   automationScriptInterpreterSchema,
   permissionModeSchema,
+  providerEnvironmentSchema,
   reasoningLevelSchema,
 } from "./rpc-types.js";
 import { interpreterForPath } from "./script-files.js";
 
 const DURATION_PATTERN =
   /^(\d+)\s*(s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days)$/iu;
-const hostListSchema = z.array(
-  z
-    .object({
-      id: z.string().optional(),
-      status: z.string().optional(),
-      connected: z.boolean().optional(),
-    })
-    .passthrough(),
-);
+const PROJECT_DEFAULT_ENVIRONMENT = "project-default";
+const COMPOSITION_MACHINE_SELECTOR_ERROR =
+  "This environment provider chooses its own new machine; omit machine selectors.";
+const AGENT_HOST_ERROR =
+  "--host names the host that holds --script-file; choose where an agent automation runs with --machine.";
 
 const DESCRIPTION = `Automations run agent prompts or server-side scripts on a schedule.
 
@@ -147,6 +147,13 @@ const AGENT_OPTIONS = {
     description:
       "Permission mode; defaults to the provider's best of auto then full",
   },
+  option: {
+    type: "string",
+    placeholder: "key=value",
+    repeatable: true,
+    description:
+      "Choose a value for an option the provider's model lists (see bb provider models); use true or false for an on/off option; on update, replaces every stored option",
+  },
   "target-thread": {
     type: "string",
     placeholder: "thread-id",
@@ -154,20 +161,56 @@ const AGENT_OPTIONS = {
   },
   environment: {
     type: "string",
-    placeholder: "id-or-path",
+    placeholder: "project-default|id|path",
     description:
-      "Existing environment id, or a workspace path to run in on a connected host",
+      "Where each run's new thread works: project-default, an existing environment id, or a workspace path on --machine",
   },
   "new-environment": {
     type: "enum",
     values: ["worktree"],
-    description: "Create a fresh environment of this kind for each run",
+    description:
+      "Create a fresh environment of this kind for each run, on --machine",
   },
   "base-branch": {
     type: "string",
     placeholder: "branch",
     description: "Base branch for --new-environment worktree",
   },
+  "environment-provider": {
+    type: "string",
+    placeholder: "id",
+    description:
+      "Run each new thread in this environment provider; `bb environment providers --project <id>` lists them",
+  },
+  "environment-inputs": {
+    type: "string",
+    placeholder: "json",
+    description:
+      "JSON inputs for an --environment-provider that declares them, such as a Worktree base branch (`bb environment providers --json` shows the schema)",
+  },
+  machine: {
+    type: "string",
+    placeholder: "id-or-name",
+    description:
+      "Persistent machine for a workspace path, --new-environment, or --environment-provider; defaults to the invoking thread's machine, or the server's outside a thread or from a temporary machine. Alone, runs work in the project's checkout on that machine; on update, it replaces the stored environment",
+  },
+  "new-machine": {
+    type: "string",
+    placeholder: "machine-provider-id",
+    description:
+      "Create each run's thread on a new machine from this machine provider; requires --environment-provider",
+  },
+  "machine-inputs": {
+    type: "string",
+    placeholder: "json",
+    description:
+      "Persisted non-secret inputs for --new-machine or a composed --environment-provider; store credentials in plugin settings",
+  },
+} as const;
+
+const CLEAR_OPTIONS_OPTION = {
+  type: "boolean",
+  description: "Remove the stored options; cannot combine with --option",
 } as const;
 
 const SCRIPT_OPTIONS = {
@@ -230,10 +273,17 @@ interface AgentOptionValues {
   "service-tier": string | undefined;
   "clear-service-tier": boolean | undefined;
   "permission-mode": PermissionMode | undefined;
+  option: string[];
+  "clear-options": boolean;
   "target-thread": string | undefined;
   environment: string | undefined;
   "new-environment": "worktree" | undefined;
   "base-branch": string | undefined;
+  "environment-provider": string | undefined;
+  "environment-inputs": string | undefined;
+  machine: string | undefined;
+  "new-machine": string | undefined;
+  "machine-inputs": string | undefined;
 }
 
 interface ScriptOptionValues {
@@ -393,29 +443,107 @@ function validateAgentTargetOptions(options: AgentOptionValues): void {
       "unexpected_argument",
     );
   }
+  if (options["clear-options"] && options.option.length > 0) {
+    throw cliError(
+      "Cannot combine --option and --clear-options.",
+      "unexpected_argument",
+    );
+  }
   const targetThread = options["target-thread"];
-  const environment = options.environment;
+  const environment = options.environment?.trim();
   const newEnvironment = options["new-environment"];
+  const environmentProvider = options["environment-provider"];
+  const machine = options.machine;
+  const newMachine = options["new-machine"];
   if (targetThread !== undefined) {
     requireOptionValue("target-thread", targetThread);
   }
   if (environment !== undefined) requireOptionValue("environment", environment);
-  const provided = [targetThread, environment, newEnvironment].filter(
-    (value) => value !== undefined,
-  );
+  if (environmentProvider !== undefined) {
+    requireOptionValue("environment-provider", environmentProvider.trim());
+  }
+  if (machine !== undefined) requireOptionValue("machine", machine.trim());
+  if (newMachine !== undefined) {
+    requireOptionValue("new-machine", newMachine.trim());
+  }
+  if (
+    environmentProvider !== undefined &&
+    (environment !== undefined || newEnvironment !== undefined)
+  ) {
+    throw cliError(
+      "Cannot combine --environment-provider with --environment or --new-environment.",
+      "unexpected_argument",
+    );
+  }
+  const provided = [
+    targetThread,
+    environment,
+    newEnvironment,
+    environmentProvider,
+  ].filter((value) => value !== undefined);
   if (provided.length > 1) {
     throw cliError(
-      "Cannot combine target options: --target-thread, --environment, and --new-environment.",
+      "Cannot combine target options: --target-thread, --environment, --new-environment, and --environment-provider.",
+      "unexpected_argument",
+    );
+  }
+  if (options["base-branch"] !== undefined && newEnvironment === undefined) {
+    throw environmentProvider === undefined
+      ? cliError(
+          "--base-branch requires --new-environment worktree.",
+          "missing_required",
+        )
+      : cliError(
+          "--base-branch requires --new-environment worktree; an --environment-provider takes its branch through --environment-inputs.",
+          "unexpected_argument",
+        );
+  }
+  if (
+    options["environment-inputs"] !== undefined &&
+    environmentProvider === undefined &&
+    newMachine === undefined
+  ) {
+    throw cliError(
+      "--environment-inputs requires --environment-provider <id>.",
+      "missing_required",
+    );
+  }
+  if (machine !== undefined && newMachine !== undefined) {
+    throw cliError(
+      "Cannot combine --new-machine with --machine.",
       "unexpected_argument",
     );
   }
   if (
-    options["base-branch"] !== undefined &&
-    options["new-environment"] === undefined
+    options["machine-inputs"] !== undefined &&
+    newMachine === undefined &&
+    environmentProvider === undefined
   ) {
     throw cliError(
-      "--base-branch requires --new-environment worktree.",
+      "--machine-inputs requires --new-machine <provider-id> or a composed --environment-provider.",
       "missing_required",
+    );
+  }
+  if (machine !== undefined && targetThread !== undefined) {
+    throw cliError(
+      "Cannot combine --machine with --target-thread; that thread already selects its machine.",
+      "unexpected_argument",
+    );
+  }
+  if (machine !== undefined && environment === PROJECT_DEFAULT_ENVIRONMENT) {
+    throw cliError(
+      "Cannot combine --machine with --environment project-default; the project's default environment selects its machine.",
+      "unexpected_argument",
+    );
+  }
+  if (
+    machine !== undefined &&
+    environment !== undefined &&
+    !looksLikePath(environment)
+  ) {
+    throw cliError(
+      "Cannot combine --machine with an existing environment ID; that environment already selects its machine.",
+      "unexpected_argument",
     );
   }
 }
@@ -444,40 +572,312 @@ function parseScriptEnv(
 }
 
 function looksLikePath(value: string): boolean {
-  return value.includes("/") || value.startsWith(".") || value.startsWith("~");
+  return (
+    value.includes("/") ||
+    value.includes("\\") ||
+    /^[A-Za-z]:/u.test(value) ||
+    value.startsWith(".") ||
+    value.startsWith("~")
+  );
 }
 
-async function resolveConnectedHostId(
-  bb: Pick<BbPluginApi, "sdk">,
-): Promise<string> {
-  const hosts = hostListSchema.parse(await bb.sdk.hosts.list());
-  const host =
-    hosts.find((candidate) => candidate.connected === true) ??
-    hosts.find((candidate) => candidate.status === "connected") ??
-    hosts[0];
-  if (!host?.id) {
-    throw cliError("No connected host is available.", "no_connected_host");
+type InputsFlag = "--environment-inputs" | "--machine-inputs";
+
+function parseJsonFlag(
+  value: string | undefined,
+  flag: InputsFlag,
+): JsonValue | null {
+  if (value === undefined) return null;
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(value);
+  } catch {
+    throw cliError(`${flag} must be valid JSON.`, "invalid_value");
   }
-  return host.id;
+  return providerEnvironmentSchema.shape.inputs.parse(decoded);
+}
+
+function fillDeclaredInputs(args: {
+  inputs: JsonValue | null;
+  declared: boolean;
+  acceptsEmptyInputs: boolean;
+  owner: string;
+  flag: InputsFlag;
+  schemaCommand: string;
+}): JsonValue | null {
+  if (args.declared && args.inputs === null) {
+    if (args.acceptsEmptyInputs) return {};
+    throw cliError(
+      `${args.owner} needs ${args.flag} <json>; \`${args.schemaCommand}\` shows its schema.`,
+      "missing_required",
+    );
+  }
+  if (!args.declared && args.inputs !== null) {
+    throw cliError(
+      `${args.owner} takes no ${args.flag}.`,
+      "unexpected_argument",
+    );
+  }
+  return args.inputs;
+}
+
+function parseSessionOptions(
+  assignments: readonly string[],
+): SessionOptionSelections | undefined {
+  if (assignments.length === 0) return undefined;
+  const selections: SessionOptionSelections = {};
+  for (const assignment of assignments) {
+    const separator = assignment.indexOf("=");
+    const optionId = separator === -1 ? "" : assignment.slice(0, separator);
+    const raw = assignment.slice(separator + 1);
+    if (optionId === "" || raw === "") {
+      throw cliError(
+        `Invalid --option '${assignment}'. Expected <option-id>=<value>.`,
+        "invalid_value",
+      );
+    }
+    selections[optionId] =
+      raw === "true" ? true : raw === "false" ? false : raw;
+  }
+  return selections;
+}
+
+type MachineList = Awaited<ReturnType<BbPluginApi["sdk"]["hosts"]["list"]>>;
+type EnvironmentProviderEntry = Awaited<
+  ReturnType<BbPluginApi["sdk"]["environments"]["listProviders"]>
+>[number];
+type NewMachineSelection = Extract<
+  NonNullable<ProviderEnvironment["machine"]>,
+  { type: "new" }
+>;
+
+function describeMachines(machines: MachineList): string {
+  if (machines.length === 0) return "none";
+  return machines
+    .map((machine) => `${machine.name} (${machine.id})`)
+    .join(", ");
+}
+
+async function resolveMachineHostId(
+  bb: Pick<BbPluginApi, "sdk">,
+  target: string,
+): Promise<string> {
+  const machines = await bb.sdk.hosts.list({ includeCreating: true });
+  const query = target.trim();
+  const nameMatches = machines.filter((machine) => machine.name === query);
+  const match =
+    machines.find((machine) => machine.id === query) ??
+    (nameMatches.length === 1 ? nameMatches[0] : undefined);
+  if (match === undefined && nameMatches.length > 1) {
+    throw cliError(
+      `Machine name '${query}' is ambiguous. Matches: ${describeMachines(nameMatches)}.`,
+      "invalid_value",
+    );
+  }
+  if (match === undefined) {
+    throw cliError(
+      `Machine '${query}' was not found. Available machines: ${describeMachines(machines)}.`,
+      "invalid_value",
+    );
+  }
+  if (match.type !== "persistent") {
+    throw cliError(
+      `Machine '${query}' is temporary, and every run would fail once it is removed. Persistent machines: ${describeMachines(machines.filter((machine) => machine.type === "persistent"))}.`,
+      "invalid_value",
+    );
+  }
+  return match.id;
+}
+
+async function resolveNewMachine(
+  bb: Pick<BbPluginApi, "sdk">,
+  options: AgentOptionValues,
+): Promise<NewMachineSelection | null> {
+  const requested = options["new-machine"]?.trim();
+  if (requested === undefined) return null;
+  const provider = (await bb.sdk.hosts.experimental_listProviders()).find(
+    (candidate) => candidate.id === requested,
+  );
+  if (provider === undefined) {
+    throw cliError(`Unknown machine provider '${requested}'.`, "invalid_value");
+  }
+  return {
+    type: "new",
+    machineProviderId: provider.id,
+    inputs: fillDeclaredInputs({
+      inputs: parseJsonFlag(options["machine-inputs"], "--machine-inputs"),
+      declared: provider.inputs !== null,
+      acceptsEmptyInputs: provider.acceptsEmptyInputs,
+      owner: `The '${provider.id}' machine provider`,
+      flag: "--machine-inputs",
+      schemaCommand: "bb machine providers --json",
+    }),
+  };
+}
+
+async function requireProviderRunsOnMachine(
+  bb: Pick<BbPluginApi, "sdk">,
+  provider: EnvironmentProviderEntry,
+  hostId: string,
+): Promise<void> {
+  const listed = Object.hasOwn(provider.machineAvailability, hostId);
+  const availability = provider.machineAvailability[hostId] ?? null;
+  if (listed && availability?.status !== "unavailable") return;
+  const machines = await bb.sdk.hosts.list({ includeCreating: true });
+  const machineLabel = (id: string) => {
+    const machine = machines.find((candidate) => candidate.id === id);
+    return machine === undefined ? id : `${machine.name} (${machine.id})`;
+  };
+  if (availability?.status === "unavailable") {
+    throw cliError(
+      `The '${provider.id}' environment provider is unavailable on ${machineLabel(hostId)}: ${availability.message}`,
+      "invalid_value",
+    );
+  }
+  const runnable = Object.entries(provider.machineAvailability)
+    .filter(([, candidate]) => candidate?.status !== "unavailable")
+    .map(([id]) => machineLabel(id));
+  throw cliError(
+    `The '${provider.id}' environment provider cannot run on ${machineLabel(hostId)} for this project. Machines it can run on: ${runnable.length === 0 ? "none" : runnable.join(", ")}.`,
+    "invalid_value",
+  );
+}
+
+async function buildProviderEnvironment(
+  bb: Pick<BbPluginApi, "sdk">,
+  args: {
+    options: AgentOptionValues;
+    ctx: Pick<PluginCliContext, "threadId">;
+    projectId: string;
+    environmentProviderId: string;
+    newMachine: NewMachineSelection | null;
+  },
+): Promise<ProviderEnvironment> {
+  const { options } = args;
+  const providers = await bb.sdk.environments.listProviders({
+    projectId: args.projectId,
+  });
+  const provider = providers.find(
+    (candidate) => candidate.id === args.environmentProviderId,
+  );
+  if (provider === undefined) {
+    const available = providers.map((candidate) => candidate.id).join(", ");
+    throw cliError(
+      `Unknown environment provider '${args.environmentProviderId}'.${available ? ` Available: ${available}.` : ""}`,
+      "invalid_value",
+    );
+  }
+  const inputs = fillDeclaredInputs({
+    inputs: parseJsonFlag(
+      options["environment-inputs"],
+      "--environment-inputs",
+    ),
+    declared: provider.inputs !== null,
+    acceptsEmptyInputs: provider.acceptsEmptyInputs,
+    owner: `The '${provider.id}' environment provider`,
+    flag: "--environment-inputs",
+    schemaCommand: "bb environment providers --json",
+  });
+  if (provider.machineProviderId !== null) {
+    if (args.newMachine !== null || options.machine !== undefined) {
+      throw cliError(COMPOSITION_MACHINE_SELECTOR_ERROR, "unexpected_argument");
+    }
+    const machineSchema = provider.machineInputs ?? null;
+    const machineInputs = fillDeclaredInputs({
+      inputs: parseJsonFlag(options["machine-inputs"], "--machine-inputs"),
+      declared: machineSchema !== null,
+      acceptsEmptyInputs: provider.machineAcceptsEmptyInputs === true,
+      owner: `The '${provider.machineProviderId}' machine provider`,
+      flag: "--machine-inputs",
+      schemaCommand: "bb environment providers --json",
+    });
+    if (machineSchema === null) {
+      return { type: "provider", environmentProviderId: provider.id, inputs };
+    }
+    return {
+      type: "provider",
+      environmentProviderId: provider.id,
+      machine: {
+        type: "new",
+        machineProviderId: provider.machineProviderId,
+        inputs: machineInputs,
+      },
+      inputs,
+    };
+  }
+  if (options["machine-inputs"] !== undefined && args.newMachine === null) {
+    throw cliError(
+      "--machine-inputs requires --new-machine <provider-id> or a composed --environment-provider.",
+      "missing_required",
+    );
+  }
+  if (args.newMachine !== null) {
+    return {
+      type: "provider",
+      environmentProviderId: provider.id,
+      machine: args.newMachine,
+      inputs,
+    };
+  }
+  const hostId =
+    options.machine === undefined
+      ? await resolveAgentEnvironmentHostId(bb, args.ctx)
+      : await resolveMachineHostId(bb, options.machine);
+  await requireProviderRunsOnMachine(bb, provider, hostId);
+  return {
+    type: "provider",
+    environmentProviderId: provider.id,
+    machine: { type: "existing", hostId },
+    inputs,
+  };
+}
+
+function hasEnvironmentFlag(options: AgentOptionValues): boolean {
+  return [
+    options.environment,
+    options["new-environment"],
+    options["environment-provider"],
+    options["environment-inputs"],
+    options.machine,
+    options["new-machine"],
+    options["machine-inputs"],
+  ].some((value) => value !== undefined);
 }
 
 async function buildAgentEnvironment(
   bb: Pick<BbPluginApi, "sdk">,
   options: AgentOptionValues,
+  ctx: Pick<PluginCliContext, "threadId">,
+  projectId: string,
 ): Promise<AgentEnvironment> {
-  const environment = options.environment?.trim();
-  const newEnvironment = options["new-environment"];
-  const baseBranch = options["base-branch"]?.trim();
-  if (environment && newEnvironment) {
+  const newMachine = await resolveNewMachine(bb, options);
+  const environmentProvider = options["environment-provider"]?.trim();
+  if (newMachine !== null && environmentProvider === undefined) {
     throw cliError(
-      "Cannot combine --environment with --new-environment.",
-      "unexpected_argument",
+      `The '${newMachine.machineProviderId}' machine provider requires an environment provider; combine --new-machine with --environment-provider <id>.`,
+      "missing_required",
     );
   }
-  if (newEnvironment) {
+  if (environmentProvider !== undefined) {
+    return buildProviderEnvironment(bb, {
+      options,
+      ctx,
+      projectId,
+      environmentProviderId: environmentProvider,
+      newMachine,
+    });
+  }
+  const environment = options.environment?.trim();
+  const machine = options.machine;
+  const resolveHostId = () =>
+    machine === undefined
+      ? resolveAgentEnvironmentHostId(bb, ctx)
+      : resolveMachineHostId(bb, machine);
+  if (options["new-environment"]) {
+    const baseBranch = options["base-branch"]?.trim();
     return {
       type: "host",
-      hostId: await resolveConnectedHostId(bb),
+      hostId: await resolveHostId(),
       workspace: {
         type: "managed-worktree",
         baseBranch: baseBranch
@@ -486,15 +886,31 @@ async function buildAgentEnvironment(
       },
     };
   }
-  if (!environment) return { type: "project-default" };
-  if (looksLikePath(environment)) {
+  if (environment === PROJECT_DEFAULT_ENVIRONMENT) {
+    return { type: "project-default" };
+  }
+  if (environment !== undefined && looksLikePath(environment)) {
     return {
       type: "host",
-      hostId: await resolveConnectedHostId(bb),
+      hostId: await resolveHostId(),
       workspace: { type: "unmanaged", path: environment },
     };
   }
-  return { type: "reuse", environmentId: environment };
+  if (environment !== undefined) {
+    return { type: "reuse", environmentId: environment };
+  }
+  if (machine !== undefined) {
+    const project = await bb.sdk.projects.get({ projectId });
+    return {
+      type: "host",
+      hostId: await resolveMachineHostId(bb, machine),
+      workspace:
+        project.kind === "personal"
+          ? { type: "personal" }
+          : { type: "unmanaged", path: null },
+    };
+  }
+  return { type: "project-default" };
 }
 
 const scriptFileHostListSchema = z.array(
@@ -509,6 +925,34 @@ const threadEnvironmentHostSchema = z
       .optional(),
   })
   .passthrough();
+
+async function resolveAgentEnvironmentHostId(
+  bb: Pick<BbPluginApi, "sdk">,
+  ctx: Pick<PluginCliContext, "threadId">,
+): Promise<string> {
+  if (ctx.threadId !== undefined) {
+    const thread = threadEnvironmentHostSchema.parse(
+      await bb.sdk.threads.get({
+        threadId: ctx.threadId,
+        include: "environment",
+      }),
+    );
+    if (thread.environment) {
+      const host = await bb.sdk.hosts.get({
+        hostId: thread.environment.hostId,
+      });
+      if (host.type === "persistent") return host.id;
+    }
+  }
+  const { primaryHostId } = await bb.sdk.system.config();
+  if (primaryHostId === null) {
+    throw cliError(
+      "The bb server has no primary host to run this environment on.",
+      "no_primary_host",
+    );
+  }
+  return primaryHostId;
+}
 
 async function resolveScriptFileHostId(
   bb: Pick<BbPluginApi, "sdk">,
@@ -607,6 +1051,7 @@ async function buildExecution(
   bb: Pick<BbPluginApi, "sdk">,
   options: ExecutionOptionValues,
   ctx: Pick<PluginCliContext, "cwd" | "threadId">,
+  projectId: string,
 ): Promise<BuiltExecution> {
   const prompt = options.prompt;
   const script = options.script;
@@ -631,6 +1076,9 @@ async function buildExecution(
       "unexpected_argument",
     );
   }
+  if (hasAgent && options.host !== undefined) {
+    throw cliError(AGENT_HOST_ERROR, "unexpected_argument");
+  }
   if (!hasAgent && !hasScript) {
     throw cliError(
       "Provide an execution mode: agent (--prompt --provider --model) or script (--script-file <path> or --script <inline>).",
@@ -647,7 +1095,13 @@ async function buildExecution(
       );
     }
     validateAgentTargetOptions(options);
-    const environment = await buildAgentEnvironment(bb, options);
+    const sessionOptions = parseSessionOptions(options.option);
+    const environment = await buildAgentEnvironment(
+      bb,
+      options,
+      ctx,
+      projectId,
+    );
     const serviceTier = options["service-tier"];
     return {
       execution: {
@@ -663,6 +1117,7 @@ async function buildExecution(
           options["permission-mode"],
           providerRoutingForEnvironment(environment),
         ),
+        ...(sessionOptions === undefined ? {} : { sessionOptions }),
         environment,
         ...(options["target-thread"]
           ? { targetThreadId: options["target-thread"] }
@@ -677,9 +1132,10 @@ async function buildExecution(
     options["service-tier"] !== undefined ||
     options["clear-service-tier"] === true ||
     options["permission-mode"] !== undefined ||
+    options.option.length > 0 ||
+    options["clear-options"] ||
     options["target-thread"] !== undefined ||
-    options.environment !== undefined ||
-    options["new-environment"] !== undefined ||
+    hasEnvironmentFlag(options) ||
     options["base-branch"] !== undefined
   ) {
     throw cliError(
@@ -731,19 +1187,21 @@ const SCRIPT_UPDATE_OPTION_NAMES = [
 ] as const;
 
 function hasAgentOptions(options: AgentOptionValues): boolean {
-  return [
-    options.prompt,
-    options.provider,
-    options.model,
-    options.reasoning,
-    options["service-tier"],
-    options["clear-service-tier"] || undefined,
-    options["permission-mode"],
-    options["target-thread"],
-    options.environment,
-    options["new-environment"],
-    options["base-branch"],
-  ].some((value) => value !== undefined);
+  return (
+    [
+      options.prompt,
+      options.provider,
+      options.model,
+      options.reasoning,
+      options["service-tier"],
+      options["clear-service-tier"] || undefined,
+      options["permission-mode"],
+      options.option.length > 0 ? options.option : undefined,
+      options["clear-options"] || undefined,
+      options["target-thread"],
+      options["base-branch"],
+    ].some((value) => value !== undefined) || hasEnvironmentFlag(options)
+  );
 }
 
 async function buildScriptExecutionUpdate(
@@ -786,10 +1244,13 @@ async function buildScriptExecutionUpdate(
 async function buildAgentExecutionUpdate(
   bb: Pick<BbPluginApi, "sdk">,
   options: AgentOptionValues,
+  ctx: Pick<PluginCliContext, "threadId">,
+  projectId: string,
 ): Promise<AgentExecutionUpdate | undefined> {
   if (!hasAgentOptions(options)) return undefined;
 
   validateAgentTargetOptions(options);
+  const sessionOptions = parseSessionOptions(options.option);
   const update: AgentExecutionUpdate = {};
   if (options.prompt !== undefined) {
     update.prompt = requireOptionValue("prompt", options.prompt);
@@ -812,18 +1273,20 @@ async function buildAgentExecutionUpdate(
   if (options["permission-mode"] !== undefined) {
     update.permissionMode = options["permission-mode"];
   }
+  if (options["clear-options"]) {
+    update.sessionOptions = null;
+  } else if (sessionOptions !== undefined) {
+    update.sessionOptions = sessionOptions;
+  }
   if (options["target-thread"] !== undefined) {
     update.target = {
       type: "target-thread",
       threadId: requireOptionValue("target-thread", options["target-thread"]),
     };
-  } else if (
-    options.environment !== undefined ||
-    options["new-environment"] !== undefined
-  ) {
+  } else if (hasEnvironmentFlag(options)) {
     update.target = {
       type: "environment",
-      environment: await buildAgentEnvironment(bb, options),
+      environment: await buildAgentEnvironment(bb, options, ctx, projectId),
     };
   }
   return update;
@@ -859,18 +1322,20 @@ async function buildUpdateRequest(
     (name) => options[name] !== undefined,
   );
   if (replacesAgentExecution) {
-    const built = await buildExecution(bb, options, ctx);
+    const built = await buildExecution(bb, options, ctx, projectId);
     request.execution = built.execution;
   } else if (hasScriptOptions) {
     if (hasAgentOptions(options)) {
       throw cliError(
-        "Cannot combine agent execution flags with script flags.",
+        options.host === undefined
+          ? "Cannot combine agent execution flags with script flags."
+          : AGENT_HOST_ERROR,
         "unexpected_argument",
       );
     }
     const current = await service.get({ projectId, automationId });
     if ("execution" in current && current.execution.mode === "agent") {
-      const built = await buildExecution(bb, options, ctx);
+      const built = await buildExecution(bb, options, ctx, projectId);
       request.execution = built.execution;
       scriptSource = built.scriptSource;
     } else {
@@ -879,7 +1344,12 @@ async function buildUpdateRequest(
       scriptSource = built.scriptSource;
     }
   } else {
-    const agentUpdate = await buildAgentExecutionUpdate(bb, options);
+    const agentUpdate = await buildAgentExecutionUpdate(
+      bb,
+      options,
+      ctx,
+      projectId,
+    );
     if (agentUpdate !== undefined) {
       request.agent = agentUpdate;
     }
@@ -910,12 +1380,187 @@ function formatAutomationTrigger(automation: AutomationResponse): string {
   return `${automation.trigger.cron} (${automation.trigger.timezone})`;
 }
 
+interface EnvironmentLabels {
+  providers: ReadonlyMap<string, { displayName: string; composition: boolean }>;
+  machines: ReadonlyMap<string, string>;
+}
+
+type AgentExecutionTarget = Pick<
+  Extract<AutomationResponse["execution"], { mode: "agent" }>,
+  "environment" | "targetThreadId"
+>;
+
+const PROJECT_CHECKOUT_PROVIDER_ID = "project-checkout";
+
+const projectCheckoutPathSchema = z.object({ path: z.string().min(1) });
+
+const providerInputsBranchSchema = z.object({
+  branch: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("named"), name: z.string().min(1) }),
+    z.object({ kind: z.literal("default") }),
+    z.object({ kind: z.literal("new"), baseBranch: z.string().min(1) }),
+    z.object({ kind: z.literal("existing"), name: z.string().min(1) }),
+  ]),
+});
+type BranchSelection = z.infer<typeof providerInputsBranchSchema>["branch"];
+
+async function readLabelSource<T>(read: () => Promise<T[]>): Promise<T[]> {
+  try {
+    return await read();
+  } catch {
+    return [];
+  }
+}
+
+function agentEnvironments(
+  automations: readonly AutomationReadResult[],
+): AgentEnvironment[] {
+  return automations.flatMap((automation) =>
+    "execution" in automation &&
+    automation.execution.mode === "agent" &&
+    automation.execution.targetThreadId === undefined
+      ? [automation.execution.environment]
+      : [],
+  );
+}
+
+async function loadEnvironmentLabels(
+  bb: Pick<BbPluginApi, "sdk">,
+  environments: readonly AgentEnvironment[],
+): Promise<EnvironmentLabels> {
+  const namesProviders = environments.some(
+    (environment) => environment.type === "provider",
+  );
+  const namesMachines = environments.some(
+    (environment) =>
+      (environment.type === "host" && environment.hostId !== undefined) ||
+      (environment.type === "provider" &&
+        environment.machine?.type === "existing"),
+  );
+  const providers = namesProviders
+    ? await readLabelSource(() => bb.sdk.environments.listProviders())
+    : [];
+  const machines = namesMachines
+    ? await readLabelSource(() => bb.sdk.hosts.list())
+    : [];
+  return {
+    providers: new Map(
+      providers.map((provider) => [
+        provider.id,
+        {
+          displayName: provider.displayName,
+          composition: provider.machineProviderId !== null,
+        },
+      ]),
+    ),
+    machines: new Map(machines.map((machine) => [machine.id, machine.name])),
+  };
+}
+
+function branchSelectionLabel(
+  branch: BranchSelection | undefined,
+): string | null {
+  switch (branch?.kind) {
+    case undefined:
+    case "default":
+      return null;
+    case "named":
+      return `from ${branch.name}`;
+    case "new":
+      return `from ${branch.baseBranch}`;
+    case "existing":
+      return `on ${branch.name}`;
+  }
+}
+
+function withBranch(placement: string, branch: string | null): string {
+  return branch === null ? placement : `${placement} · ${branch}`;
+}
+
+function describeEnvironment(
+  environment: AgentEnvironment,
+  labels: EnvironmentLabels,
+): string {
+  const machineName = (hostId: string) =>
+    labels.machines.get(hostId) ?? hostId;
+  switch (environment.type) {
+    case "project-default":
+      return "Project default";
+    case "reuse":
+      return `Environment ${environment.environmentId}`;
+    case "host": {
+      const on =
+        environment.hostId === undefined
+          ? ""
+          : ` on ${machineName(environment.hostId)}`;
+      const workspace = environment.workspace;
+      if (workspace.type === "managed-worktree") {
+        return withBranch(
+          `Worktree${on}`,
+          branchSelectionLabel(workspace.baseBranch),
+        );
+      }
+      if (workspace.type === "personal") return `Personal workspace${on}`;
+      return withBranch(
+        `${workspace.path ?? "Project checkout"}${on}`,
+        branchSelectionLabel(workspace.branch),
+      );
+    }
+    case "provider": {
+      const provider = labels.providers.get(environment.environmentProviderId);
+      const name = provider?.displayName ?? environment.environmentProviderId;
+      const machine = environment.machine;
+      const placement =
+        machine === undefined ||
+        (machine.type === "new" && provider?.composition === true)
+          ? name
+          : machine.type === "new"
+            ? `${name} on a new ${machine.machineProviderId} machine`
+            : `${name} on ${machineName(machine.hostId)}`;
+      const inputs = providerInputsBranchSchema.safeParse(environment.inputs);
+      const checkoutPath =
+        environment.environmentProviderId === PROJECT_CHECKOUT_PROVIDER_ID
+          ? projectCheckoutPathSchema.safeParse(environment.inputs)
+          : null;
+      const location =
+        checkoutPath?.success !== true
+          ? placement
+          : machine?.type === "existing"
+            ? `${checkoutPath.data.path} on ${machineName(machine.hostId)}`
+            : checkoutPath.data.path;
+      return withBranch(
+        location,
+        inputs.success ? branchSelectionLabel(inputs.data.branch) : null,
+      );
+    }
+  }
+}
+
+function describeAgentTarget(
+  execution: AgentExecutionTarget,
+  labels: EnvironmentLabels,
+): string {
+  return execution.targetThreadId === undefined
+    ? describeEnvironment(execution.environment, labels)
+    : `re-prompts thread ${execution.targetThreadId}`;
+}
+
+function formatSessionOptions(
+  sessionOptions: SessionOptionSelections | undefined,
+): string {
+  if (sessionOptions === undefined) return "-";
+  return Object.entries(sessionOptions)
+    .map(([optionId, value]) => `${optionId}=${String(value)}`)
+    .join(", ");
+}
+
 type PrintableAutomation =
   | AutomationDetailResponse
   | Extract<AutomationReadProblem, { problem: "missing-agent-prompt" }>;
 
 function printAutomation(
   automation: PrintableAutomation,
+  labels: EnvironmentLabels,
   status?: string,
 ): string {
   const lines = [
@@ -949,6 +1594,8 @@ function printAutomation(
       `  Reasoning: ${automation.execution.reasoningLevel}`,
       `  Tier:      ${automation.execution.serviceTier ?? "-"}`,
       `  Permission: ${automation.execution.permissionMode}`,
+      `  Options:   ${formatSessionOptions(automation.execution.sessionOptions)}`,
+      `  Environment: ${describeAgentTarget(automation.execution, labels)}`,
     );
   }
   if (automation.lastError) lines.push(`  Error:     ${automation.lastError}`);
@@ -1013,9 +1660,12 @@ function table(head: string[], rows: string[][]): string {
   return ["", format(head), ...rows.map(format), ""].join("\n") + "\n";
 }
 
-function printAutomationProblem(automation: AutomationReadProblem): string {
+function printAutomationProblem(
+  automation: AutomationReadProblem,
+  labels: EnvironmentLabels,
+): string {
   if (automation.problem === "missing-agent-prompt") {
-    return printAutomation(automation, "Prompt required");
+    return printAutomation(automation, labels, "Prompt required");
   }
   return (
     [
@@ -1028,9 +1678,26 @@ function printAutomationProblem(automation: AutomationReadProblem): string {
   );
 }
 
-function printAutomationTable(automations: AutomationReadResult[]): string {
+function printAutomationTable(
+  automations: AutomationReadResult[],
+  labels: EnvironmentLabels,
+): string {
+  const environmentCell = (
+    execution: AutomationResponse["execution"],
+  ): string =>
+    execution.mode === "agent" ? describeAgentTarget(execution, labels) : "-";
   return table(
-    ["ID", "Name", "Status", "On", "Schedule", "Next run", "Runs", "Origin"],
+    [
+      "ID",
+      "Name",
+      "Status",
+      "On",
+      "Schedule",
+      "Next run",
+      "Runs",
+      "Origin",
+      "Environment",
+    ],
     automations.map((automation) =>
       "problem" in automation
         ? automation.problem === "missing-agent-prompt"
@@ -1043,11 +1710,13 @@ function printAutomationTable(automations: AutomationReadResult[]): string {
               formatTimestamp(automation.nextRunAt),
               String(automation.runCount),
               automation.origin,
+              describeAgentTarget(automation.execution, labels),
             ]
           : [
               automation.id,
               automation.name,
               "Invalid data",
+              "-",
               "-",
               "-",
               "-",
@@ -1063,6 +1732,7 @@ function printAutomationTable(automations: AutomationReadResult[]): string {
             formatTimestamp(automation.nextRunAt),
             String(automation.runCount),
             automation.origin,
+            environmentCell(automation.execution),
           ],
     ),
   );
@@ -1131,13 +1801,21 @@ export function registerAutomationCli(args: {
                       ),
                     },
               );
+              if (input.options.json) {
+                return { exitCode: 0, stdout: jsonOutput(result) };
+              }
               return {
                 exitCode: 0,
-                stdout: input.options.json
-                  ? jsonOutput(result)
-                  : result.length === 0
+                stdout:
+                  result.length === 0
                     ? "No automations found\n"
-                    : printAutomationTable(result),
+                    : printAutomationTable(
+                        result,
+                        await loadEnvironmentLabels(
+                          bb,
+                          agentEnvironments(result),
+                        ),
+                      ),
               };
             }),
         }),
@@ -1172,8 +1850,9 @@ export function registerAutomationCli(args: {
               const projectId = requireProjectId(input.options.project, ctx);
               const { execution, scriptSource } = await buildExecution(
                 bb,
-                input.options,
+                { ...input.options, "clear-options": false },
                 ctx,
+                projectId,
               );
               const request: ResolvedCreateAutomationInput = {
                 projectId,
@@ -1185,11 +1864,16 @@ export function registerAutomationCli(args: {
                 ...(ctx.threadId ? { createdByThreadId: ctx.threadId } : {}),
               };
               const created = await service.create(request);
+              if (input.options.json) {
+                return { exitCode: 0, stdout: jsonOutput(created) };
+              }
+              const labels = await loadEnvironmentLabels(
+                bb,
+                agentEnvironments([created]),
+              );
               return {
                 exitCode: 0,
-                stdout: input.options.json
-                  ? jsonOutput(created)
-                  : `Automation created: ${created.id}\n${printAutomation(created)}${printScriptFileSnapshotNote(created, scriptSource)}`,
+                stdout: `Automation created: ${created.id}\n${printAutomation(created, labels)}${printScriptFileSnapshotNote(created, scriptSource)}`,
               };
             }),
         }),
@@ -1203,13 +1887,19 @@ export function registerAutomationCli(args: {
                 projectId: requireProjectId(input.options.project, ctx),
                 automationId: input.positionals.automationId,
               });
+              if (input.options.json) {
+                return { exitCode: 0, stdout: jsonOutput(found) };
+              }
+              const labels = await loadEnvironmentLabels(
+                bb,
+                agentEnvironments([found]),
+              );
               return {
                 exitCode: 0,
-                stdout: input.options.json
-                  ? jsonOutput(found)
-                  : "problem" in found
-                    ? printAutomationProblem(found)
-                    : printAutomation(found),
+                stdout:
+                  "problem" in found
+                    ? printAutomationProblem(found, labels)
+                    : printAutomation(found, labels),
               };
             }),
         }),
@@ -1227,6 +1917,7 @@ export function registerAutomationCli(args: {
             },
             ...SCHEDULE_OPTIONS,
             ...AGENT_OPTIONS,
+            "clear-options": CLEAR_OPTIONS_OPTION,
             ...SCRIPT_OPTIONS,
             json: JSON_OPTION,
           },
@@ -1245,11 +1936,16 @@ export function registerAutomationCli(args: {
                 ctx,
               );
               const updated = await service.update(request);
+              if (input.options.json) {
+                return { exitCode: 0, stdout: jsonOutput(updated) };
+              }
+              const labels = await loadEnvironmentLabels(
+                bb,
+                agentEnvironments([updated]),
+              );
               return {
                 exitCode: 0,
-                stdout: input.options.json
-                  ? jsonOutput(updated)
-                  : `Automation ${updated.id} updated\n${printAutomation(updated)}${printScriptFileSnapshotNote(updated, scriptSource)}`,
+                stdout: `Automation ${updated.id} updated\n${printAutomation(updated, labels)}${printScriptFileSnapshotNote(updated, scriptSource)}`,
               };
             }),
         }),
