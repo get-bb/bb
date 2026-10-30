@@ -24,6 +24,7 @@ import {
   ThreadContextCardHeaderButton,
   ThreadContextCardProvider,
   resolveThreadContextCardLayout,
+  useThreadContextCardContentInset,
   useThreadContextKind,
   WithoutThreadContextCard,
   type CoreThreadContextCardRow,
@@ -48,6 +49,14 @@ function OpenDiffRow() {
       onClick={() => {}}
     />
   );
+}
+
+function Empty() {
+  return null;
+}
+
+function Inset() {
+  return <output aria-label="Inset">{useThreadContextCardContentInset()}</output>;
 }
 
 function Crashes(): never {
@@ -77,10 +86,14 @@ function renderPane({
   enabled = true,
   paneWidth = 1600,
   threadIds = ["thr_1"],
+  coreRows = CORE,
+  coreSections = CORE_SECTIONS,
 }: {
   enabled?: boolean;
   paneWidth?: number;
   threadIds?: readonly string[];
+  coreRows?: readonly CoreThreadContextCardRow[];
+  coreSections?: readonly CoreThreadContextCardSection[];
 } = {}) {
   vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(
     paneWidth,
@@ -93,8 +106,8 @@ function renderPane({
             <ThreadContextCardProvider
               key={threadId}
               enabled={enabled}
-              coreRows={CORE}
-              coreSections={CORE_SECTIONS}
+              coreRows={coreRows}
+              coreSections={coreSections}
               threadId={threadId}
               projectId="proj_1"
               environment={null}
@@ -102,6 +115,7 @@ function renderPane({
               <header>
                 <ThreadContextCardHeaderButton />
               </header>
+              <Inset />
               <div data-scroll-overlay="">
                 <ThreadContextCard />
               </div>
@@ -235,6 +249,24 @@ describe("thread context card", () => {
         .getByRole("button", { name: "Pin thread context" })
         .getAttribute("aria-pressed"),
     ).toBe("false");
+  });
+
+  it("keeps an empty pinned card hidden until the header opens it", () => {
+    renderPane({
+      paneWidth: 1200,
+      coreRows: CORE.map((row) => ({ ...row, component: Empty })),
+      coreSections: CORE_SECTIONS.map((entry) => ({
+        ...entry,
+        component: Empty,
+      })),
+    });
+    expect(screen.queryByRole("group", { name: "Thread context" })).toBeNull();
+    expect(screen.getByLabelText("Inset").textContent).toBe("0");
+
+    fireEvent.click(screen.getByRole("button", { name: "Thread context" }));
+    expect(
+      screen.getByRole("group", { name: "Thread context" }).textContent,
+    ).toContain("Nothing to show yet");
   });
 
   it("opens the card from the header in a narrow pane and closes it when a row runs", () => {
