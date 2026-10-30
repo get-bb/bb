@@ -76,6 +76,7 @@ import { useServerConnectionState } from "@/hooks/useServerConnectionState";
 import { wsManager } from "@/lib/ws";
 import { pluginSdkSettingsQueryKey } from "@/hooks/queries/query-keys";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
+import { usePluginPanelTab } from "@/components/plugin/plugin-panel-tab";
 import {
   createPluginPanelController,
   withRetiredAppPanelMembers,
@@ -337,13 +338,14 @@ export function useBbContext(): BbContext {
 
 function useExperimentalAppPanel(): ExperimentalPanelController {
   const pluginId = usePluginId();
+  const callerTab = usePluginPanelTab();
   const { panel } = useAppNavigationHost();
   return useMemo(
     () =>
       withRetiredAppPanelMembers(
-        createPluginPanelController(pluginId, () => panel),
+        createPluginPanelController(pluginId, () => panel, callerTab),
       ),
-    [panel, pluginId],
+    [callerTab, panel, pluginId],
   );
 }
 

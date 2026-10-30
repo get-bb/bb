@@ -1024,14 +1024,47 @@ type ExperimentalTabCommon = ExperimentalTabReference & {
   layout?: "padded" | "flush";
 };
 
-type ExperimentalTabLifecycle<Props, Context> =
-  | {
+interface ExperimentalThreadTabUrlClaim {
+  /**
+   * Claim web links this thread action tab can show. In a thread view, a
+   * plain click on an http(s) link in Markdown (its messages and side panel)
+   * and another plugin's `useBbNavigate().openUrl` (such as the GitHub PR
+   * Status plugin's pull request in the composer's context row and the Info
+   * tab) call this with the URL before bb opens it. Return the `title` and
+   * `params` to open this tab with, as `openTab` takes them, or null
+   * (undefined counts as null) to leave the link to the browser. Return the
+   * same params for the same resource, so a second click focuses its tab. It
+   * runs on every such open, so keep it synchronous and cheap; `run` is not
+   * called. Clicks with Cmd, Ctrl, Shift, or Alt still open the URL, and so
+   * does a claim the side panel declines. When several tabs claim a link,
+   * the first in slot order wins; a claim that throws or returns anything but
+   * options or null is logged and skipped. Only thread tabs with action
+   * availability claim links, and a tab never claims its own plugin's
+   * `openUrl`.
+   *
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_claimUrl?(
+    url: URL,
+  ): { title?: string; params?: JsonValue } | null;
+}
+
+interface ExperimentalTabNoUrlClaim {
+  experimental_claimUrl?: never;
+}
+
+type ExperimentalTabLifecycle<
+  Props,
+  Context,
+  ActionClaim = ExperimentalTabNoUrlClaim,
+> =
+  | ({
       availability: "fixed";
       component: ComponentType<Props>;
       run?: never;
       params?: never;
-    }
-  | {
+    } & ExperimentalTabNoUrlClaim)
+  | ({
       availability: "action";
       component: ComponentType<Props & { params: JsonValue | null }>;
       /** Default persisted params when opened without explicit params. */
@@ -1039,7 +1072,7 @@ type ExperimentalTabLifecycle<Props, Context> =
       run?(
         context: Context & { experimental_panel: ExperimentalPanelController },
       ): void | Promise<void>;
-    };
+    } & ActionClaim);
 
 type ExperimentalTabContextProps<C extends ExperimentalTabContext> = C extends {
   kind: "thread";
@@ -1065,7 +1098,7 @@ type ExperimentalTabInput<
       run?: never;
       params?: never;
       experimental_target?: ExperimentalFixedTabTargetContract<JsonValue>;
-    }
+    } & ExperimentalTabNoUrlClaim
   : {
       component: ComponentType<
         ExperimentalTabContextProps<C> & { params: JsonValue | null }
@@ -1077,7 +1110,9 @@ type ExperimentalTabInput<
         },
       ): void | Promise<void>;
       experimental_target?: never;
-    });
+    } & (C extends { kind: "thread" }
+      ? ExperimentalThreadTabUrlClaim
+      : ExperimentalTabNoUrlClaim));
 
 /** One registration for pinned destinations and actions opening closable instances. */
 export type ExperimentalTabRegistration = ExperimentalTabCommon &
@@ -1088,7 +1123,8 @@ export type ExperimentalTabRegistration = ExperimentalTabCommon &
       } & (
         | (ExperimentalTabLifecycle<
             ExperimentalThreadTabProps,
-            ExperimentalThreadTabProps
+            ExperimentalThreadTabProps,
+            ExperimentalThreadTabUrlClaim
           > & {
             availability: "action";
             experimental_target?: never;
@@ -5036,7 +5072,7 @@ export type ExperimentalTabTargetReference<Target extends JsonValue> =
  * Fixed tabs accept a session-only `target`, validated by the tab's
  * `experimental_target`. Action tabs accept persisted `params`, which
  * identify the instance (opening with the same params focuses the existing
- * tab), and a `title`.
+ * tab), a `title`, and `experimental_replace`.
  */
 export type ExperimentalOpenTabOptions =
   | {
@@ -5044,12 +5080,28 @@ export type ExperimentalOpenTabOptions =
       target?: JsonValue;
       params?: never;
       title?: never;
+      experimental_replace?: never;
     }
   | {
       tab: ExperimentalTabReference & { availability: "action" };
       params?: JsonValue;
       title?: string;
       target?: never;
+      /**
+       * Open it in place of the side-panel tab the calling component renders
+       * in, as `toPluginPanel`'s `replace` swaps a history entry: use it when
+       * a tab finds out what it shows, such as a picker's pick, so the tab
+       * takes that item's params and a later open of the same params focuses
+       * it. The new tab keeps the calling tab's place and split pane, is
+       * active only if the calling tab was, and leaves a closed panel closed.
+       * When a tab with those params is already open, bb closes the calling
+       * tab instead, and focuses the open one if the calling tab was active.
+       * Declined outside one of this plugin's thread action tabs or New
+       * thread action tabs (fixed tabs, navigation-page tabs and launcher
+       * contexts' `experimental_panel` cannot replace), or once that tab has
+       * closed. Experimental: see docs/api_to_audit.md.
+       */
+      experimental_replace?: boolean;
     };
 
 /**
@@ -5060,7 +5112,10 @@ export type ExperimentalOpenTabOptions =
  * a JSON value or fails the tab's validator. A decline is never thrown.
  */
 export interface ExperimentalPanelController {
-  /** Select the tab and reveal the side panel. */
+  /**
+   * Select the tab and reveal the side panel; with `experimental_replace`, it
+   * takes the calling tab's place instead.
+   */
   openTab(options: ExperimentalOpenTabOptions): boolean;
   /**
    * The tabs open in this controller's side panel right now, the list
@@ -5187,8 +5242,11 @@ export interface BbNavigate {
    * Open an HTTP(S) URL using this client's BB browser preference, or request
    * an application link on this device with confirmation unless its scheme is approved when
    * the applicationLinks experiment is enabled. Returns false
-   * for blocked or unsupported schemes. True means handled, not launched. See
-   * docs/api_to_audit.md.
+   * for blocked or unsupported schemes. True means handled, not launched. In
+   * a thread view, another plugin's thread action tab that claims the URL
+   * (`experimental_claimUrl`) opens instead, as for a plain click on a link
+   * there. This plugin's own claims are skipped, so it can still open a URL
+   * its tabs claim in the browser. See docs/api_to_audit.md.
    */
   openUrl(url: string): boolean;
   /** Open a live file in this surface's shared BB preview panel. */

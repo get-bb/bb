@@ -1,6 +1,6 @@
 import { useLayoutEffect, type ReactNode } from "react";
 import { act } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type {
   ExperimentalOpenTabOptions,
   ExperimentalPanelController,
@@ -90,8 +90,19 @@ export function ContractTargetedFixedTab({
   );
 }
 
+const actionTabPanels = new Map<string, ExperimentalPanelController>();
+
 export function ContractActionTab({ params }: { params: JsonValue | null }) {
+  actionTabPanels.set(JSON.stringify(params), experimental_useAppPanel());
   return <div data-testid="contract-action-tab">{JSON.stringify(params)}</div>;
+}
+
+function actionTabPanel(params: JsonValue): ExperimentalPanelController {
+  const panel = actionTabPanels.get(JSON.stringify(params));
+  if (panel === undefined) {
+    throw new Error(`action tab ${JSON.stringify(params)} has not rendered`);
+  }
+  return panel;
 }
 
 export interface ContractPanelRef {
@@ -141,8 +152,20 @@ function actionOptions(
   };
 }
 
+function replaceOptions(
+  surface: PanelContractSurface,
+  params: JsonValue,
+): ExperimentalOpenTabOptions {
+  return {
+    tab: { ...surface.action.tab, availability: "action" },
+    params,
+    experimental_replace: true,
+  };
+}
+
 export interface PanelContractSupport {
   fixedTabs: boolean;
+  replaceTabs: boolean;
 }
 
 function required<T>(value: T | null): T {
@@ -156,6 +179,10 @@ export function describePanelControllerContract(
   mount: MountPanelContractSurface,
 ) {
   describe(`panel controller contract: ${surfaceName}`, () => {
+    beforeEach(() => {
+      actionTabPanels.clear();
+    });
+
     it.runIf(supports.fixedTabs)(
       "opens a fixed tab and reveals the side panel",
       async () => {
@@ -401,6 +428,105 @@ export function describePanelControllerContract(
         });
       },
     );
+
+    it.runIf(supports.replaceTabs)(
+      "replaces the calling action tab in its place with experimental_replace",
+      async () => {
+        const surface = await mount();
+        const one = surface.action.panelTabId({ n: 1 });
+        const three = surface.action.panelTabId({ n: 3 });
+        call(() => surface.panel().openTab(actionOptions(surface, { n: 1 })));
+        call(() => surface.panel().openTab(actionOptions(surface, { n: 2 })));
+        call(() => surface.panel().selectTab(one));
+        const { tabIds } = surface.snapshot();
+        expect(
+          call(() =>
+            actionTabPanel({ n: 1 }).openTab(replaceOptions(surface, { n: 3 })),
+          ),
+        ).toBe(true);
+        expect(surface.snapshot()).toEqual({
+          isOpen: true,
+          activeTabId: three,
+          tabIds: tabIds.map((id) => (id === one ? three : id)),
+        });
+      },
+    );
+
+    it.runIf(supports.replaceTabs)(
+      "keeps a replaced background tab in the background and a closed panel closed",
+      async () => {
+        const surface = await mount();
+        const one = surface.action.panelTabId({ n: 1 });
+        const two = surface.action.panelTabId({ n: 2 });
+        call(() => surface.panel().openTab(actionOptions(surface, { n: 1 })));
+        const background = actionTabPanel({ n: 1 });
+        call(() => surface.panel().openTab(actionOptions(surface, { n: 2 })));
+        const before = surface.snapshot().tabIds;
+        expect(
+          call(() => background.openTab(replaceOptions(surface, { n: 3 }))),
+        ).toBe(true);
+        expect(surface.snapshot()).toEqual({
+          isOpen: true,
+          activeTabId: two,
+          tabIds: before.map((id) =>
+            id === one ? surface.action.panelTabId({ n: 3 }) : id,
+          ),
+        });
+
+        const shown = actionTabPanel({ n: 2 });
+        call(() => surface.panel().close());
+        expect(
+          call(() => shown.openTab(replaceOptions(surface, { n: 4 }))),
+        ).toBe(true);
+        expect(surface.snapshot().isOpen).toBe(false);
+        expect(surface.snapshot().tabIds).toContain(
+          surface.action.panelTabId({ n: 4 }),
+        );
+        expect(surface.snapshot().tabIds).not.toContain(two);
+      },
+    );
+
+    it.runIf(supports.replaceTabs)(
+      "closes the calling tab onto an open tab with the same params",
+      async () => {
+        const surface = await mount();
+        const one = surface.action.panelTabId({ n: 1 });
+        const two = surface.action.panelTabId({ n: 2 });
+        call(() => surface.panel().openTab(actionOptions(surface, { n: 1 })));
+        call(() => surface.panel().openTab(actionOptions(surface, { n: 2 })));
+        call(() => surface.panel().selectTab(one));
+        expect(
+          call(() =>
+            actionTabPanel({ n: 1 }).openTab(replaceOptions(surface, { n: 2 })),
+          ),
+        ).toBe(true);
+        const snapshot = surface.snapshot();
+        expect(snapshot).toMatchObject({ isOpen: true, activeTabId: two });
+        expect(snapshot.tabIds).not.toContain(one);
+        expect(snapshot.tabIds.filter((id) => id === two)).toHaveLength(1);
+      },
+    );
+
+    it("declines experimental_replace outside the plugin's own replaceable tab, and once that tab has closed", async () => {
+      const surface = await mount();
+      call(() => surface.panel().openTab(actionOptions(surface, { n: 1 })));
+      const caller = actionTabPanel({ n: 1 });
+      const unchanged = surface.snapshot();
+      expect(
+        call(() => surface.panel().openTab(replaceOptions(surface, { n: 2 }))),
+      ).toBe(false);
+      expect(surface.snapshot()).toEqual(unchanged);
+      if (supports.replaceTabs) {
+        call(() =>
+          surface.panel().closeTab(surface.action.panelTabId({ n: 1 })),
+        );
+      }
+      const before = surface.snapshot();
+      expect(
+        call(() => caller.openTab(replaceOptions(surface, { n: 3 }))),
+      ).toBe(false);
+      expect(surface.snapshot()).toEqual(before);
+    });
 
     it("routes the panel.toggle command through the controller", async () => {
       const surface = await mount();

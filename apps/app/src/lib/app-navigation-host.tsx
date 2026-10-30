@@ -29,6 +29,7 @@ export interface AppTabOpenIntent {
   target?: JsonValue;
   params?: JsonValue;
   title?: string;
+  replaceTabId?: string;
 }
 
 interface AppNavigationHostCapabilities {

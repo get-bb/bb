@@ -131,7 +131,7 @@ vi.mock("@/hooks/queries/environment-queries", async (importOriginal) => ({
 
 describePanelControllerContract(
   "thread view",
-  { fixedTabs: true },
+  { fixedTabs: true, replaceTabs: true },
   async () => {
     const probe = fixtures.probe;
     probe.current = null;

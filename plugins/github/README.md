@@ -20,6 +20,19 @@ bb plugin install github
   (or a review thread on the PR) in the repo's BB project. The issue/PR then
   shows a ⚡ pill linking to the thread.
 - **Homepage section**: recent open issues with the same Send agent buttons.
+- **Thread side panel**: clicking a GitHub pull request or issue link in a
+  thread, or the thread's pull request in the prompt banner or the Info tab,
+  opens it in a tab beside the chat instead of the browser, one tab per pull
+  request or issue: a second click focuses it. Cmd-, Ctrl-, Shift-, or
+  Alt-click opens GitHub, and so do links to a comment, the files, or the
+  commits. From the panel's + menu, GitHub becomes the thread's pull request
+  tab, or, when the thread has none, offers open pull requests and open
+  issues to pick from; a pick becomes that item's tab. `bb thread tabs set`
+  opens the same tabs: a `plugin-panel` tab with `pluginId` `github`,
+  `actionId` `pull`, and `paramsJson` `{"repo":"owner/name","number":N}` for
+  a pull request or `{"kind":"issue","repo":"owner/name","number":N}` for an
+  issue, with the repository in lowercase and the keys in that order, the
+  form a clicked link opens, so a second click focuses that tab.
 - **Mentions**: `@` or `#` in any composer completes GitHub issues and PRs; the
   selected item's title/body/state is attached as agent context at send time.
 - **`bb github` CLI**: `repos`, `issues [repo]`, `prs [repo]`, `sync` — also

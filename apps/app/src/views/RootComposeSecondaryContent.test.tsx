@@ -166,6 +166,7 @@ function renderRootCompose(args: RenderRootComposeArgs) {
             isCompactHomeLayout={false}
             isSecondaryPanelOpen={renderArgs.isSecondaryPanelOpen}
             onToggleSecondaryPanel={() => undefined}
+            renderHostedPanel={(panel) => panel}
             secondaryPanel={createSecondaryPanel(
               renderArgs.isSecondaryPanelOpen,
             )}
@@ -209,6 +210,7 @@ describe("RootComposeSecondaryContent desktop layout", () => {
           isCompactHomeLayout={isCompactViewport}
           isSecondaryPanelOpen={false}
           onToggleSecondaryPanel={noop}
+          renderHostedPanel={(panel) => panel}
           secondaryPanel={createSecondaryPanel(false)}
         >
           <div data-testid="root-compose-content" />

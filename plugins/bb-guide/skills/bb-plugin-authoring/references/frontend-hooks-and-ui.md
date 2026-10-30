@@ -348,7 +348,17 @@ panel.close();
   `target`, validated by the tab's `experimental_target` (thread and
   nav-panel fixed tabs may both declare one) and read with
   `experimental_useFixedTabTarget(tab)`. Action tabs take persisted `params`
-  and a `title`; the same params focus the existing tab.
+  and a `title`; the same params focus the existing tab. With
+  `experimental_replace: true`, called from inside one of the plugin's own
+  thread or New thread action tabs, the tab opens in place of that tab, the
+  way `toPluginPanel`'s `replace` swaps a history entry: a picker or lookup
+  tab becomes the tab of what it found. The new tab keeps the calling tab's
+  place and split pane, is active only if the calling tab was, and leaves a
+  closed panel closed. When a tab with those params is already open, bb
+  closes the calling tab instead, and focuses the open one if the calling tab
+  was active. It returns false anywhere else (fixed tabs, navigation-page
+  tabs, and the `experimental_panel` of commands and other launchers), or once
+  that tab has closed. Experimental: see `docs/api_to_audit.md`.
 - `toggleTab(options)` closes the side panel when that tab is showing — a
   fixed tab selected with the panel open (the target is ignored), or the action
   tab instance with the same params selected — otherwise it calls `openTab`.

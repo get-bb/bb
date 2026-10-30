@@ -2379,6 +2379,123 @@ Docs: `frontend-core-slots.md`.
    standard slot-owned CSS retention are the right failure semantics for UI
    that may have no in-layout representation.
 
+## `ExperimentalTabRegistration.experimental_claimUrl` (`@get-bb/plugin-sdk/app`)
+
+**Added 2026-10-23 (SDK 0.6.105).** One consumer: the GitHub plugin's GitHub
+tab, which claims pull request and issue links.
+
+A thread action tab (`app.slots.experimental_tab` with
+`context: { kind: "thread" }` and `availability: "action"`) claims web links
+it can show; the registration collector rejects a claim on a fixed or
+navigation-page tab. In a thread view, a plain primary click on an http(s)
+link in Markdown (in the timeline and in its side panel, inline or hosted by
+a split pane) and a plugin's `useBbNavigate().openUrl` ask each action's claim
+in slot order, with a fresh `URL` each, before bb opens the link. The GitHub
+PR Status plugin's pull request segment in the composer's context row and its
+Info tab row open through `openUrl`. The first claim that returns
+`{ title?, params? }` opens that action's tab with those options, as
+`openTab` would, and `run` is not called. Null, or undefined, passes the link
+on to the next claim, then to the browser. Cmd-, Ctrl-, Shift-, and
+Alt-clicks skip claims, a claim the side panel declines falls back to the
+browser, and a claim that throws or returns anything but options or null is
+logged and skipped. `openUrl` skips the calling plugin's own claims, so the
+GitHub plugin's Open on GitHub still opens GitHub.
+
+**Core callers.** `MarkdownAnchor` offers plain clicks to
+`PluginUrlClaimContext` through `useOpenClaimedUrlOnClick`, and
+`useBbNavigate().openUrl` offers its URL there with the calling plugin's id
+before the navigation host's opener; `ThreadDetailView` provides the context
+around its timeline and its split-hosted side panel. `useOpenClaimedUrl` asks
+the thread action tabs the thread view shows (`useThreadFixedTabs().actions`,
+after `useVisible`), the list the thread view's panel destinations are built
+from, so a hidden tab never claims a link it cannot open. It opens the tab
+through the thread view's panel controller (`AppPanelController.openTab`),
+the path bb's tab strip, the + launcher and every plugin's
+`experimental_panel` take. `plugin-url-claims.test.tsx` covers resolution,
+and `plugin-url-claims.surfaces.test.tsx` runs one click contract table
+against a Markdown link and the GitHub PR Status plugin's pull request segment
+and Info row, rendered through the plugin runtime.
+
+Docs: `frontend-core-slots.md`, `frontend-hooks-and-ui.md`.
+
+**Audit before stabilizing.**
+
+1. **Link surfaces.** Markdown links and `useBbNavigate().openUrl` consult
+   claims. Decide whether terminal links, `UrlLink`, a thread action's
+   `navigate.openUrl` (its collector renders outside the thread view), and
+   Markdown on the New thread screen should too, and whether skipping the
+   caller's own claims should become an explicit `openUrl` option.
+2. **Conflicts.** The first claim in slot order wins: plugin id order, then
+   registration order. Decide whether people need a preference per kind of
+   link, like file openers' Open with, or a switch that turns claims off.
+3. **Escape hatch.** Once a plugin claims a link, only a modified click or
+   the tab's own link reaches the browser. Confirm that is discoverable, or
+   add "Open in browser" to the link's context menu.
+4. **Synchronous decision.** A claim decides at click time, so it cannot
+   consult server state: the GitHub plugin claims links while `gh` is signed
+   out, and its tab then shows the error with an Open on GitHub link. Decide
+   whether an asynchronous claim, or a fallback when the tab cannot load the
+   resource, is needed.
+5. **Slot placement.** Decide whether `experimental_newThreadPanelAction` and
+   navigation-page tabs should claim links too, or a dedicated URL-claim slot
+   should replace the per-tab function.
+
+## `ExperimentalOpenTabOptions.experimental_replace` (`@get-bb/plugin-sdk/app`)
+
+**Added 2026-10-23 (SDK 0.6.105).** One consumer: the GitHub plugin's GitHub
+tab, when a tab opened without params finds the thread's pull request, and
+when someone picks a pull request or issue in one.
+
+`experimental_useAppPanel().openTab({ tab, title?, params?,
+experimental_replace: true })` on an action tab opens it in place of the
+side-panel tab the calling component renders in, so a tab that finds out what
+it shows takes that item's params, and a later open or claimed link with the
+same params focuses it. The new tab keeps the calling tab's place and split
+pane, is active only if the calling tab was, and leaves a closed panel closed,
+since a lookup can finish after the person moved on. When a tab with those
+params is already open, bb closes the calling tab instead, and focuses the
+open one if the calling tab was active. `toggleTab` replaces the same way when
+it opens. Both return false when the caller is not inside one of its own
+plugin's thread or New thread action tabs (another plugin's content nested in
+the tab, and the `experimental_panel` of commands and other launchers,
+included), or once that tab has closed.
+
+**Core callers.** The flag takes the panel controller's one path.
+`createPluginPanelController` turns it into `AppTabOpenIntent.replaceTabId`
+only for a controller from `experimental_useAppPanel()` rendered inside that
+plugin's own tab, which `PluginPanelTabContent` provides through
+`PluginPanelTabContext` in the thread view and on the New thread screen.
+`resolveAppTabIntent` refuses it on fixed tabs, `createPanelActionDestination`
+hands the id to `useThreadFileTabs().openPluginPanel`, which refuses a tab
+that is not that plugin's, and the thread view and the New thread screen leave
+the compact drawer alone for a replacement. Both hand their navigation host to
+a side panel a split pane hosts, so its tabs reach the same controller.
+`replaceSecondaryPanelTabInState` is the transition core uses when an item
+picked in the new-tab launcher replaces the launcher; that path still focuses
+the result and opens the panel. `SidebarSplitContainer` keeps any tab
+replaced in place in its pane (`findReplacedSidebarTab`). Tests: the panel
+controller contract table (`apps/app/src/test/panel-controller-contract.tsx`)
+replaces in place, in the background and onto an open tab, and declines
+outside the plugin's own tab, on the thread view and the New thread screen,
+and declines on plugin pages; `plugin-panel-controller.test.ts` covers the
+caller check, `useThreadFileTabs.test.ts` the tab state, including a closed
+panel and an inactive caller, and `SidebarSplitContainer.test.tsx` the split
+panes.
+
+Docs: `frontend-hooks-and-ui.md`, `frontend-core-slots.md`.
+
+**Audit before stabilizing.**
+
+1. **Position.** A replacement keeps the tab's place, and a tab already open
+   keeps its own. Confirm people expect the merge to land on the existing
+   tab rather than where they were looking.
+2. **History.** A replaced tab is not offered by Reopen closed tab. Decide
+   whether back navigation inside a tab should restore the params it replaced.
+3. **Surfaces.** Only thread and New thread action tabs can replace
+   themselves; fixed and navigation-page tabs return false. Decide whether
+   navigation-page action tabs should, and whether `toggleTab` should take the
+   flag at all.
+
 ## `app.slots.experimental_newThreadPanelAction` (`@get-bb/plugin-sdk/app`)
 
 **Kept experimental (2026-08-22).** There are no consumers, and item 5 is
@@ -4046,7 +4163,7 @@ own value, so plugins built against the old constant keep working.
 
 ## Panel controller (`experimental_useAppPanel`, `ExperimentalPanelController`, `ExperimentalOpenTabOptions`, `experimental_panel`)
 
-- **Surface:** `experimental_useAppPanel(): ExperimentalPanelController` for components, and `experimental_panel: ExperimentalPanelController` on every launcher context: `PluginCommandContext`, `PluginThreadActionItemInput`/`PluginThreadActionBulkItemInput`, `PluginMessageActionContext`, `PluginNewThreadPanelActionContext`, `ExperimentalThreadTabActionContext` and nav-panel action tabs' `run`. `openTab(options)`, `toggleTab(options)` and `close()` each return host acceptance. `ExperimentalOpenTabOptions` is `{ tab: ExperimentalTabReference, target? }` for fixed tabs (session-only, validated by the tab's `experimental_target`) or `{ tab, params?, title? }` for action tabs (persisted; the same params focus the existing instance). The types reject `target` on action tabs and `params`/`title` on fixed tabs.
+- **Surface:** `experimental_useAppPanel(): ExperimentalPanelController` for components, and `experimental_panel: ExperimentalPanelController` on every launcher context: `PluginCommandContext`, `PluginThreadActionItemInput`/`PluginThreadActionBulkItemInput`, `PluginMessageActionContext`, `PluginNewThreadPanelActionContext`, `ExperimentalThreadTabActionContext` and nav-panel action tabs' `run`. `openTab(options)`, `toggleTab(options)` and `close()` each return host acceptance. `ExperimentalOpenTabOptions` is `{ tab: ExperimentalTabReference, target? }` for fixed tabs (session-only, validated by the tab's `experimental_target`) or `{ tab, params?, title?, experimental_replace? }` for action tabs (persisted; the same params focus the existing instance; `experimental_replace` swaps the calling tab, see `ExperimentalOpenTabOptions.experimental_replace`). The types reject `target` on action tabs and `params`/`title` on fixed tabs.
 - **Behavior:** components get the controller of the surface they render in (thread view, plugin nav-panel page, New thread screen); commands and thread actions get the focused surface's; message actions get the thread view's; tab and New-thread actions get the surface that launched them. `toggleTab` closes the side panel when a fixed tab is selected with the panel open (target ignored) or the action instance with the same params is selected, and otherwise calls `openTab`. `close()` closes the side panel. Declines: no side panel, a tab not registered by this plugin for the surface or hidden, wrong availability, non-JSON or invalid target/params. On the New thread screen a `{ context: { kind: "thread" }, availability: "action" }` reference resolves against `experimental_newThreadPanelAction` with the same id.
 - **Core callers:** `useAppPanelController` and `createAppPanelController` in `apps/app/src/lib/app-fixed-tab-navigation.tsx` are the one implementation; `ThreadDetailView`, `PluginPanelRightPanelHost` and `RootComposeView` build it from their destinations and route bb's own controls through it: the Git plugin's Mod+D command is `toggleTab` on its Diff tab through `ctx.experimental_panel`, `panel.toggle` and the header/page toggle close through `close()` (opening restores the last tab), Info, the fixed-tab strip and Diff file/commit opens use `openTab`, and the panel close/collapse buttons, `panel.close` and the window-close request use `close()`. Plugin calls map through `createPluginPanelController` in `apps/app/src/lib/plugin-panel-controller.ts`. Contract tests: `app-fixed-tab-navigation.test.ts` and the surface tests that run the shared table.
 - **Retired members (2026-10-26):** removed from public typings, the Plugin Guide and the authoring docs; runtime shims call the controller and `bb plugin build` warns with the replacement call (`packages/plugin-build/src/retired-sdk-members.ts`).

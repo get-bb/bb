@@ -31,7 +31,7 @@ export interface AppFixedTabDestination {
   availability?: "fixed" | "action";
   open(
     target: JsonValue | undefined,
-    options?: { params?: JsonValue; title?: string },
+    options?: { params?: JsonValue; title?: string; replaceTabId?: string },
   ): boolean;
   panelTabId(params: JsonValue | undefined): string | null;
   tab: AppFixedTabReference;
@@ -122,7 +122,9 @@ function resolveAppTabIntent(
   const { availability } = intent;
   if (
     availability === "fixed"
-      ? intent.params !== undefined || intent.title !== undefined
+      ? intent.params !== undefined ||
+        intent.title !== undefined ||
+        intent.replaceTabId !== undefined
       : intent.target !== undefined
   )
     return null;
@@ -149,18 +151,20 @@ function resolveAppTabIntent(
     params: params?.success ? params.data : undefined,
     target: target?.success ? target.data : undefined,
     title: intent.title,
+    replaceTabId: intent.replaceTabId,
   };
 }
 
 function openResolvedTab(
   resolved: NonNullable<ReturnType<typeof resolveAppTabIntent>>,
 ): boolean {
-  const { destination, params, target, title } = resolved;
+  const { destination, params, replaceTabId, target, title } = resolved;
   return (destination.availability ?? "fixed") === "fixed"
     ? destination.open(target)
     : destination.open(undefined, {
         ...(params === undefined ? {} : { params }),
         ...(title === undefined ? {} : { title }),
+        ...(replaceTabId === undefined ? {} : { replaceTabId }),
       });
 }
 

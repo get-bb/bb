@@ -40,6 +40,10 @@ describe("createAppPanelController", () => {
       { tab: actionTab, availability: "action", target: 1 },
     ],
     [
+      "a replacement on a fixed tab",
+      { tab: fixedTab, availability: "fixed", replaceTabId: "fixed-details" },
+    ],
+    [
       "a non-JSON target",
       {
         tab: fixedTab,
@@ -54,5 +58,21 @@ describe("createAppPanelController", () => {
     expect(openFixed).not.toHaveBeenCalled();
     expect(openAction).not.toHaveBeenCalled();
     expect(close).not.toHaveBeenCalled();
+  });
+
+  it("hands an action tab the tab it replaces", () => {
+    const { openAction, panel } = createSurface();
+    expect(
+      panel.openTab({
+        tab: actionTab,
+        availability: "action",
+        params: { n: 1 },
+        replaceTabId: "chat:caller",
+      }),
+    ).toBe(true);
+    expect(openAction).toHaveBeenCalledExactlyOnceWith(undefined, {
+      params: { n: 1 },
+      replaceTabId: "chat:caller",
+    });
   });
 });

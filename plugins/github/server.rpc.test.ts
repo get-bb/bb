@@ -1,5 +1,7 @@
+import { execFileSync } from "node:child_process";
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -431,6 +433,68 @@ describe("github plugin RPC behavior", () => {
         (signal) => signal.channel === "data-changed",
       ),
     ).toHaveLength(3);
+  });
+
+  it("acts on the cached issue and project of a repository spelled in another case", async () => {
+    const checkout = join(binDir, "checkout");
+    mkdirSync(checkout);
+    execFileSync("git", ["init", "--quiet", checkout]);
+    execFileSync("git", [
+      "-C",
+      checkout,
+      "remote",
+      "add",
+      "origin",
+      "https://github.com/Acme/Widgets.git",
+    ]);
+    const { harness, bb } = createFakePluginHost({
+      pluginId: "github",
+      settings: { extraRepos: "" },
+      sdk: {
+        projects: {
+          list: async () => [
+            {
+              id: "project-1",
+              sources: [{ type: "local_path", path: checkout }],
+            },
+          ],
+        },
+        threads: { spawn: async () => ({ id: "thr-work" }) },
+      },
+    });
+    await plugin(bb);
+    await expect(harness.callRpc("refresh")).resolves.toEqual({
+      repos: 1,
+      items: 2,
+    });
+
+    await expect(
+      harness.callRpc("setAssignees", {
+        repo: "acme/widgets",
+        number: 7,
+        assignees: [],
+      }),
+    ).resolves.toEqual({ ok: true, assignees: [] });
+    expect(ghCalls()).toContain(
+      "issue edit 7 -R acme/widgets --remove-assignee octocat",
+    );
+    await expect(
+      harness.callRpc("listItems", { kind: "issue" }),
+    ).resolves.toMatchObject({
+      items: [{ repo: "Acme/Widgets", number: 7, assignees: [] }],
+    });
+
+    await expect(
+      harness.callRpc("startWork", { repo: "acme/widgets", number: 7 }),
+    ).resolves.toEqual({ threadId: "thr-work" });
+    expect(harness.sdk.callsTo("threads.spawn")).toEqual([
+      [
+        expect.objectContaining({
+          projectId: "project-1",
+          title: "acme/widgets#7: Cache mutations",
+        }),
+      ],
+    ]);
   });
 
   it("normalizes draft state, checks, review threads, and paginated files", async () => {

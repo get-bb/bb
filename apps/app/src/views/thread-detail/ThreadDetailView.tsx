@@ -9,6 +9,10 @@ import {
   PluginPanelTabContent,
   usePluginPanelActions,
 } from "@/components/plugin/PluginPanelActions";
+import {
+  PluginUrlClaimContext,
+  useOpenClaimedUrl,
+} from "@/components/plugin/plugin-url-claims";
 import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
 import { GIT_DIFF_TAB_REFERENCE } from "@/lib/git-diff-tab";
 import { useGitWorkspaceStatus } from "@/hooks/queries/git-plugin-queries";
@@ -837,8 +841,9 @@ function ThreadDetailViewInternal(
         createPanelActionDestination({
           action,
           openPluginPanel: (args) => {
-            openPluginPanel(args);
-            openCompactDrawer();
+            const opened = openPluginPanel(args);
+            if (opened && args.replaceTabId === undefined) openCompactDrawer();
+            return opened;
           },
         }),
       ),
@@ -859,6 +864,7 @@ function ThreadDetailViewInternal(
     destinations: panelDestinations,
     isFocused,
   });
+  const openClaimedUrl = useOpenClaimedUrl(panel, threadFixedTabs.actions);
   const toggleSecondaryPanel = useCallback(() => {
     if (isSecondaryPanelOpen) panel.close();
     else toggleWorkspacePanel();
@@ -1963,9 +1969,15 @@ function ThreadDetailViewInternal(
                 <MarkdownLocalFileOpenTargetsContext.Provider
                   value={fileOpenTargets}
                 >
-                  <UrlOpenRoutingProvider openInAppBrowser={openBrowser}>
-                    {panel}
-                  </UrlOpenRoutingProvider>
+                  <PluginUrlClaimContext.Provider value={openClaimedUrl}>
+                    <UrlOpenRoutingProvider openInAppBrowser={openBrowser}>
+                      <AppNavigationHostProvider
+                        capabilities={appNavigationCapabilities}
+                      >
+                        {panel}
+                      </AppNavigationHostProvider>
+                    </UrlOpenRoutingProvider>
+                  </PluginUrlClaimContext.Provider>
                 </MarkdownLocalFileOpenTargetsContext.Provider>
               </MarkdownLocalFileContextMenuContext.Provider>
             )}
@@ -2021,26 +2033,28 @@ function ThreadDetailViewInternal(
       <PaneThreadActionCommandHandler thread={threadActionTarget} />
       <ThreadProviderContext.Provider value={threadProviderContextValue}>
         <MarkdownLocalFileOpenTargetsContext.Provider value={fileOpenTargets}>
-          <AttachmentOpenerContext.Provider value={openAttachment}>
-            <SelectionAddToChatContext.Provider
-              value={handleSelectionAddToChat}
-            >
-              <ThreadContextCardProvider
-                enabled={threadContextCardEnabled}
-                coreRows={CORE_THREAD_CONTEXT_CARD_ROWS}
-                coreSections={CORE_THREAD_CONTEXT_CARD_SECTIONS}
-                threadId={thread.id}
-                projectId={thread.projectId}
-                environment={
-                  thread.environmentId === null
-                    ? null
-                    : { id: thread.environmentId }
-                }
+          <PluginUrlClaimContext.Provider value={openClaimedUrl}>
+            <AttachmentOpenerContext.Provider value={openAttachment}>
+              <SelectionAddToChatContext.Provider
+                value={handleSelectionAddToChat}
               >
-                {threadDetailContent}
-              </ThreadContextCardProvider>
-            </SelectionAddToChatContext.Provider>
-          </AttachmentOpenerContext.Provider>
+                <ThreadContextCardProvider
+                  enabled={threadContextCardEnabled}
+                  coreRows={CORE_THREAD_CONTEXT_CARD_ROWS}
+                  coreSections={CORE_THREAD_CONTEXT_CARD_SECTIONS}
+                  threadId={thread.id}
+                  projectId={thread.projectId}
+                  environment={
+                    thread.environmentId === null
+                      ? null
+                      : { id: thread.environmentId }
+                  }
+                >
+                  {threadDetailContent}
+                </ThreadContextCardProvider>
+              </SelectionAddToChatContext.Provider>
+            </AttachmentOpenerContext.Provider>
+          </PluginUrlClaimContext.Provider>
         </MarkdownLocalFileOpenTargetsContext.Provider>
       </ThreadProviderContext.Provider>
     </>

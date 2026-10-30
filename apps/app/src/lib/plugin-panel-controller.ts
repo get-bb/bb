@@ -11,6 +11,7 @@ import {
   type AppPanelController,
 } from "@/lib/app-fixed-tab-navigation";
 import type { AppTabOpenIntent } from "@/lib/app-navigation-host";
+import type { PluginPanelTabIdentity } from "@/components/plugin/plugin-panel-tab";
 
 const NO_PANEL_TABS: ExperimentalPanelTabs = {
   open: false,
@@ -21,9 +22,10 @@ const NO_PANEL_TABS: ExperimentalPanelTabs = {
 function toAppTabIntent(
   pluginId: string,
   options: ExperimentalOpenTabOptions,
-): AppTabOpenIntent {
+  callerTab: PluginPanelTabIdentity | null,
+): AppTabOpenIntent | null {
   const { tab } = options;
-  return {
+  const intent: AppTabOpenIntent = {
     tab: {
       ownerId:
         tab.context.kind === "thread"
@@ -36,17 +38,25 @@ function toAppTabIntent(
     ...(options.params === undefined ? {} : { params: options.params }),
     ...(options.title === undefined ? {} : { title: options.title }),
   };
+  if (options.experimental_replace !== true) return intent;
+  if (callerTab === null || callerTab.pluginId !== pluginId) return null;
+  return { ...intent, replaceTabId: callerTab.tabId };
 }
 
 export function createPluginPanelController(
   pluginId: string,
   getController: () => AppPanelController | null,
+  callerTab: PluginPanelTabIdentity | null = null,
 ): ExperimentalPanelController {
   return {
-    openTab: (options) =>
-      getController()?.openTab(toAppTabIntent(pluginId, options)) ?? false,
-    toggleTab: (options) =>
-      getController()?.toggleTab(toAppTabIntent(pluginId, options)) ?? false,
+    openTab: (options) => {
+      const intent = toAppTabIntent(pluginId, options, callerTab);
+      return intent !== null && (getController()?.openTab(intent) ?? false);
+    },
+    toggleTab: (options) => {
+      const intent = toAppTabIntent(pluginId, options, callerTab);
+      return intent !== null && (getController()?.toggleTab(intent) ?? false);
+    },
     getTabs: () => getController()?.getTabs() ?? NO_PANEL_TABS,
     selectTab: (key) => getController()?.selectTab(key) ?? false,
     closeTab: (key) => getController()?.closeTab(key) ?? false,

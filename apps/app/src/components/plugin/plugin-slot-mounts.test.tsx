@@ -1914,7 +1914,7 @@ describe("plugin thread panel actions", () => {
     actions: readonly Parameters<
       typeof createPanelActionDestination
     >[0]["action"][],
-    openPluginPanel: (args: OpenPluginPanelArgs) => void,
+    openPluginPanel: (args: OpenPluginPanelArgs) => boolean,
   ) {
     return useMemo(
       () =>
@@ -1934,7 +1934,7 @@ describe("plugin thread panel actions", () => {
     openPluginPanel,
   }: {
     threadId: string | null;
-    openPluginPanel: (args: OpenPluginPanelArgs) => void;
+    openPluginPanel: (args: OpenPluginPanelArgs) => boolean;
   }) {
     const { actions } = useThreadFixedTabs({ threadId, environmentId: null });
     const entries = usePluginPanelActions({
@@ -1987,9 +1987,10 @@ describe("plugin thread panel actions", () => {
         <>
           <ActionsProbe
             threadId="thr_9"
-            openPluginPanel={(args) =>
-              setTab(createPluginPanelFixedPanelTab(args))
-            }
+            openPluginPanel={(args) => {
+              setTab(createPluginPanelFixedPanelTab(args));
+              return true;
+            }}
           />
           {tab ? (
             <PluginPanelTabContent
@@ -2133,6 +2134,7 @@ describe("plugin thread panel actions", () => {
     const opened: (string | null)[] = [];
     const recordOpen = (args: OpenPluginPanelArgs) => {
       opened.push(args.paramsJson);
+      return true;
     };
     function BothActionsHarness() {
       const { actions } = useThreadFixedTabs({ threadId: "thr_one", environmentId: null });
@@ -2219,9 +2221,10 @@ describe("plugin thread panel actions", () => {
       > | null>(null);
       const { newThreadPanelActions } = usePluginSlots();
       const entries = usePluginNewThreadPanelActions({
-        panel: usePanelFor(newThreadPanelActions, (args) =>
-          setTab(createPluginPanelFixedPanelTab(args)),
-        ),
+        panel: usePanelFor(newThreadPanelActions, (args) => {
+          setTab(createPluginPanelFixedPanelTab(args));
+          return true;
+        }),
         projectId: "proj_1",
       });
       const actions = useNewTabActions({

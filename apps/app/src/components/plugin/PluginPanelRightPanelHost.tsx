@@ -402,8 +402,9 @@ export function PluginPanelRightPanelHost({
         ...createPanelActionDestination({
           action,
           openPluginPanel: (args) => {
-            openPluginPanel(args);
-            revealPanel();
+            const opened = openPluginPanel(args);
+            if (opened && args.replaceTabId === undefined) revealPanel();
+            return opened;
           },
         }),
         tab: { ownerId: fixedTabOwnerId, tabId: action.id },

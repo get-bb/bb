@@ -1,9 +1,103 @@
-import type { PluginRpcResult } from "@get-bb/plugin-sdk/app";
+import type { JsonValue, PluginRpcResult } from "@get-bb/plugin-sdk/app";
 import type { githubRpcContract } from "./server.js";
 
 export type Item = PluginRpcResult<
   (typeof githubRpcContract)["listItems"]
 >["items"][number];
+
+export interface ItemRef {
+  repo: string;
+  number: number;
+}
+
+export interface LinkedItem extends ItemRef {
+  kind: Item["kind"];
+}
+
+interface ItemTabOptions {
+  title: string;
+  params: JsonValue;
+}
+
+const REPO_NAME_PATTERN = /^[\w.-]+\/[\w.-]+$/;
+const ITEM_NUMBER_PATTERN = /^[1-9]\d*$/;
+const GITHUB_HOSTNAMES = new Set(["github.com", "www.github.com"]);
+const ITEM_URL_SECTIONS = new Map<string, Item["kind"]>([
+  ["issues", "issue"],
+  ["pull", "pr"],
+]);
+
+export function isSameItem(a: ItemRef, b: ItemRef): boolean {
+  return a.number === b.number && a.repo.toLowerCase() === b.repo.toLowerCase();
+}
+
+export function linkKey(kind: Item["kind"], item: ItemRef): string {
+  return `${kind}:${item.repo.toLowerCase()}#${item.number}`;
+}
+
+export function byLinkKey<T>(
+  entriesByKey: Record<string, T[]>,
+): Record<string, T[]> {
+  const keyed: Record<string, T[]> = {};
+  for (const [key, entries] of Object.entries(entriesByKey)) {
+    const normalized = key.toLowerCase();
+    keyed[normalized] = [...(keyed[normalized] ?? []), ...entries];
+  }
+  return keyed;
+}
+
+export function itemUrl(kind: Item["kind"], item: ItemRef): string {
+  const section = kind === "pr" ? "pull" : "issues";
+  return `https://github.com/${item.repo}/${section}/${item.number}`;
+}
+
+function githubItemFromUrl(
+  url: URL,
+): (ItemRef & { kind: Item["kind"] }) | null {
+  if (!GITHUB_HOSTNAMES.has(url.hostname) || url.hash !== "") return null;
+  const parts = url.pathname.split("/").filter((part) => part.length > 0);
+  if (parts.length !== 4) return null;
+  const [owner, name, section, number] = parts;
+  const kind = ITEM_URL_SECTIONS.get(section);
+  const repo = `${owner}/${name}`;
+  if (
+    kind === undefined ||
+    !REPO_NAME_PATTERN.test(repo) ||
+    !ITEM_NUMBER_PATTERN.test(number)
+  ) {
+    return null;
+  }
+  const parsed = Number(number);
+  return Number.isSafeInteger(parsed) ? { kind, repo, number: parsed } : null;
+}
+
+export function itemTabOptions(
+  kind: Item["kind"],
+  item: ItemRef,
+): ItemTabOptions {
+  const params = { repo: item.repo.toLowerCase(), number: item.number };
+  return kind === "pr"
+    ? { title: `PR #${item.number}`, params }
+    : { title: `Issue #${item.number}`, params: { kind, ...params } };
+}
+
+export function claimItemUrl(url: URL): ItemTabOptions | null {
+  const item = githubItemFromUrl(url);
+  return item === null ? null : itemTabOptions(item.kind, item);
+}
+
+export function linkedItemFromParams(
+  params: JsonValue | null,
+): LinkedItem | null {
+  if (params === null || typeof params !== "object" || Array.isArray(params)) {
+    return null;
+  }
+  const { kind = "pr", repo, number } = params;
+  if (kind !== "pr" && kind !== "issue") return null;
+  if (typeof repo !== "string" || !REPO_NAME_PATTERN.test(repo)) return null;
+  if (typeof number !== "number" || !Number.isSafeInteger(number)) return null;
+  return number > 0 ? { kind, repo, number } : null;
+}
 
 export type Route =
   | { view: "issues" }

@@ -790,6 +790,26 @@ describe("collectPluginAppRegistrations", () => {
     ]);
   });
 
+  it("keeps a thread action tab's experimental_claimUrl", () => {
+    const claimUrl = () => null;
+    const registrations = collectPluginAppRegistrations(
+      definePluginApp((app) => {
+        app.slots.experimental_tab({
+          context: { kind: "thread" },
+          availability: "action",
+          id: "issue",
+          title: "Issue",
+          icon: "Github",
+          component: Component,
+          experimental_claimUrl: claimUrl,
+        });
+      }),
+    );
+    expect(registrations.tabs).toMatchObject([
+      { id: "issue", experimental_claimUrl: claimUrl },
+    ]);
+  });
+
   it("keeps loading a pre-0.6.53 nav panel that passes experimental_sidebarAccessory and warns", () => {
     const warned = vi.fn<(message: string) => void>();
     const definition = definePluginApp((app) => {
@@ -1102,6 +1122,54 @@ describe("collectPluginAppRegistrations", () => {
           });
         }),
       /extensions must be lowercase alphanumerics/,
+    ],
+    [
+      "thread action tab with a non-function experimental_claimUrl",
+      () =>
+        definePluginApp((app) => {
+          app.slots.experimental_tab({
+            context: { kind: "thread" },
+            availability: "action",
+            icon: "Info",
+            id: "x",
+            title: "X",
+            component: Component,
+            experimental_claimUrl: "github.com" as never,
+          });
+        }),
+      /experimental_claimUrl requires a thread action tab and a function/,
+    ],
+    [
+      "fixed thread tab with experimental_claimUrl",
+      () =>
+        definePluginApp((app) => {
+          app.slots.experimental_tab({
+            context: { kind: "thread" },
+            availability: "fixed",
+            icon: "Info",
+            id: "x",
+            title: "X",
+            component: Component,
+            experimental_claimUrl: (() => null) as never,
+          });
+        }),
+      /experimental_claimUrl requires a thread action tab and a function/,
+    ],
+    [
+      "navigation-page action tab with experimental_claimUrl",
+      () =>
+        definePluginApp((app) => {
+          app.slots.experimental_tab({
+            context: { kind: "nav-panel", panelId: "board" },
+            availability: "action",
+            icon: "Info",
+            id: "x",
+            title: "X",
+            component: Component,
+            experimental_claimUrl: (() => null) as never,
+          });
+        }),
+      /experimental_claimUrl requires a thread action tab and a function/,
     ],
     [
       "thread panel action with a non-function run",

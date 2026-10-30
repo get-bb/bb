@@ -221,7 +221,7 @@ afterEach(() => {
 
 describePanelControllerContract(
   "New thread screen",
-  { fixedTabs: false },
+  { fixedTabs: false, replaceTabs: true },
   async () => {
     const sink: ContractStateSink = { current: null };
     const router = createMemoryRouter(

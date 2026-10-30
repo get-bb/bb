@@ -7,6 +7,7 @@ import type {
   PluginBrowserBbSdk,
 } from "@get-bb/plugin-sdk";
 import { usePluginId } from "@/components/plugin/plugin-context";
+import { PluginUrlClaimContext } from "@/components/plugin/plugin-url-claims";
 import { BbHttpError, sdk } from "@/lib/sdk";
 import { getPluginBoundSdk } from "@/lib/plugin-bound-sdk";
 import {
@@ -60,6 +61,7 @@ export function useBbNavigate(): BbNavigate {
   const location = useLocation();
   const navigate = useNavigate();
   const appNavigation = useAppNavigationHost();
+  const openClaimedUrl = useContext(PluginUrlClaimContext);
   const store = useStore();
   const queryClient = useQueryClient();
   const isCompact = useIsCompactViewport();
@@ -156,8 +158,10 @@ export function useBbNavigate(): BbNavigate {
     [appNavigation.panel, pluginId],
   );
   const openUrl = useCallback<BbNavigate["openUrl"]>(
-    (url) => appNavigation.openUrl({ url }),
-    [appNavigation],
+    (url) =>
+      (openClaimedUrl !== null && openClaimedUrl(url, pluginId)) ||
+      appNavigation.openUrl({ url }),
+    [appNavigation, openClaimedUrl, pluginId],
   );
   const experimental_openFilePreview = useCallback<
     BbNavigate["experimental_openFilePreview"]

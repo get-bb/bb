@@ -23,6 +23,7 @@ import {
   parseFileOpenerParams,
 } from "./file-opener-tabs";
 import { PluginSlotMount } from "./PluginSlotMount";
+import { PluginPanelTabContext } from "./plugin-panel-tab";
 import { PluginReplacementSlot } from "./PluginReplacementSlot";
 import { resolveReplacement } from "@/lib/plugin-slot-resolvers";
 
@@ -40,9 +41,10 @@ export interface OpenPluginPanelArgs {
   actionId: string;
   title: string;
   paramsJson: string | null;
+  replaceTabId?: string;
 }
 
-export type OpenPluginPanelHandler = (args: OpenPluginPanelArgs) => void;
+export type OpenPluginPanelHandler = (args: OpenPluginPanelArgs) => boolean;
 
 export interface PluginPanelActionEntry {
   id: string;
@@ -100,13 +102,15 @@ export function createPanelActionDestination({
       } catch {
         return false;
       }
-      openPluginPanel({
+      return openPluginPanel({
         pluginId: action.pluginId,
         actionId: action.id,
         title: options?.title ?? action.title,
         paramsJson,
+        ...(options?.replaceTabId === undefined
+          ? {}
+          : { replaceTabId: options.replaceTabId }),
       });
-      return true;
     },
   };
 }
@@ -348,6 +352,24 @@ function usePersistedActionParams(tab: PluginPanelFixedPanelTab) {
   );
 }
 
+function PluginPanelTabProvider({
+  tab,
+  children,
+}: {
+  tab: PluginPanelFixedPanelTab;
+  children: ReactNode;
+}) {
+  const identity = useMemo(
+    () => ({ pluginId: tab.pluginId, tabId: tab.id }),
+    [tab.id, tab.pluginId],
+  );
+  return (
+    <PluginPanelTabContext.Provider value={identity}>
+      {children}
+    </PluginPanelTabContext.Provider>
+  );
+}
+
 function RegisteredActionTabContent({
   tab,
   context,
@@ -382,11 +404,13 @@ function RegisteredActionTabContent({
         instanceId={`${context.kind}/${context.kind === "thread" ? context.threadId : `${context.panelId}/${context.subPath}`}/${tab.id}`}
       >
         {isThreadTab(action) && context.kind === "thread" ? (
-          <action.component
-            threadId={context.threadId}
-            environment={context.environment}
-            params={params}
-          />
+          <PluginPanelTabProvider tab={tab}>
+            <action.component
+              threadId={context.threadId}
+              environment={context.environment}
+              params={params}
+            />
+          </PluginPanelTabProvider>
         ) : isNavTab(action) && context.kind === "nav-panel" ? (
           <action.component subPath={context.subPath} params={params} />
         ) : null}
@@ -421,7 +445,9 @@ function NewThreadActionTabContent({
         slotKind="newThreadPanelAction"
         slotId={action.id}
       >
-        <action.component projectId={projectId} params={params} />
+        <PluginPanelTabProvider tab={tab}>
+          <action.component projectId={projectId} params={params} />
+        </PluginPanelTabProvider>
       </PluginSlotMount>
     </PanelActionTabFrame>
   );

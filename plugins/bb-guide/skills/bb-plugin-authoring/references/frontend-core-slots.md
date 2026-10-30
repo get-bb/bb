@@ -166,6 +166,20 @@ Slot props contracts (versioned, additive-only):
   action instances. `tooltip` defaults to title; layout is padded or flush.
   Open tabs with the [panel controller](frontend-hooks-and-ui.md#panel-controller).
   See [Tab API migration](frontend-registration.md#tab-api-migration).
+  A thread action tab may set `experimental_claimUrl(url: URL)` to claim web
+  links it can show: in a thread view, a plain click on an http(s) link in
+  Markdown (its messages and side panel) and another plugin's
+  `useBbNavigate().openUrl` (such as the GitHub PR Status plugin's pull
+  request in the composer's context row and the Info tab) ask it first, and
+  the returned `{ title?, params? }` open that tab, as `openTab` would,
+  instead of the browser; null or undefined leaves the link alone. Keep it
+  synchronous and cheap, and return the same `params` for the same resource
+  so a second click focuses its tab. Modified clicks still open the URL, the
+  first claim in slot order wins, and a plugin's own `openUrl` never reaches
+  its own claims. A tab that learns what it shows after opening (a picker, or
+  a lookup of the thread's item) calls `experimental_useAppPanel().openTab`
+  with `experimental_replace: true` to become that item's tab.
+  Experimental: see `docs/api_to_audit.md`.
 - `experimental_newThreadPanelAction` → the root New thread counterpart to
   thread action tabs. It appears in that screen's right-panel Actions list
   and never appears beside an existing thread. Registration has the same

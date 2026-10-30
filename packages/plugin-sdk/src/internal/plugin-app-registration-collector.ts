@@ -556,6 +556,17 @@ export function collectPluginAppRegistrations(
     ) {
       throw new Error(`${kind}: run and params require action availability`);
     }
+    const claimUrl = registration.experimental_claimUrl;
+    if (
+      claimUrl !== undefined &&
+      (context.kind !== "thread" ||
+        availability !== "action" ||
+        typeof claimUrl !== "function")
+    ) {
+      throw new Error(
+        `${kind}: experimental_claimUrl requires a thread action tab and a function`,
+      );
+    }
     const target = registration.experimental_target;
     if (
       target !== undefined &&

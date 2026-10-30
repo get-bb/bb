@@ -403,6 +403,27 @@ export function focusSidebarPane(
   };
 }
 
+export function findReplacedSidebarTab(
+  previousTabIds: readonly string[],
+  tabIds: readonly string[],
+): { previousTabId: string; nextTabId: string } | null {
+  if (previousTabIds.length !== tabIds.length) return null;
+  let replacement: { previousTabId: string; nextTabId: string } | null = null;
+  for (const [index, nextTabId] of tabIds.entries()) {
+    const previousTabId = previousTabIds[index];
+    if (previousTabId === undefined || previousTabId === nextTabId) continue;
+    if (
+      replacement !== null ||
+      tabIds.includes(previousTabId) ||
+      previousTabIds.includes(nextTabId)
+    ) {
+      return null;
+    }
+    replacement = { previousTabId, nextTabId };
+  }
+  return replacement;
+}
+
 export function replaceSidebarTab(
   state: SidebarSplitState,
   previousTabId: string,

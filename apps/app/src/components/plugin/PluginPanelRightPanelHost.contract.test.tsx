@@ -174,7 +174,7 @@ afterEach(() => {
 
 describePanelControllerContract(
   "plugin nav-panel page",
-  { fixedTabs: true },
+  { fixedTabs: true, replaceTabs: false },
   async () => {
     const probe: ContractPanelRef = { current: null };
     const sink: ContractStateSink = { current: null };

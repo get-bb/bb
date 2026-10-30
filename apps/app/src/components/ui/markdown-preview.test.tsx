@@ -19,6 +19,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { highlightMarkdownCode } from "./markdown-code-highlight";
 import { MarkdownPreview } from "./markdown-preview";
 import { MARKDOWN_TABLE_START_OFFSET_VARIABLE } from "./markdown-table-breakout";
+import { PluginUrlClaimContext } from "@/components/plugin/plugin-url-claims";
 import {
   MarkdownLocalFileContextMenuContext,
   MarkdownLocalFileOpenTargetsContext,
@@ -659,18 +660,22 @@ describe("MarkdownPreview", () => {
 
   it("keeps absolute app-origin URLs on the app-route path", () => {
     const onOpenLink = vi.fn(() => true);
+    const claimWebLink = vi.fn(() => true);
     const href = `${window.location.origin}/threads/thr_localhost`;
 
     render(
-      <MarkdownPreview
-        content={`Open [local thread](${href}).`}
-        linkRouting={{ onOpenLink }}
-      />,
+      <PluginUrlClaimContext.Provider value={claimWebLink}>
+        <MarkdownPreview
+          content={`Open [local thread](${href}).`}
+          linkRouting={{ onOpenLink }}
+        />
+      </PluginUrlClaimContext.Provider>,
     );
 
     fireEvent.click(screen.getByRole("link", { name: "local thread" }));
 
     expect(onOpenLink).not.toHaveBeenCalled();
+    expect(claimWebLink).not.toHaveBeenCalled();
     expect(
       screen.getByRole("link", { name: "local thread" }).getAttribute("href"),
     ).toBe(href);

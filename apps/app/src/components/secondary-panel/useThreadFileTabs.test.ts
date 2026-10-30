@@ -5,7 +5,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createElement, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getActiveSecondaryPanelTab } from "@bb/client-core";
-import { useFixedPanelTabsState } from "@/lib/fixed-panel-tabs";
+import {
+  useCloseFixedSecondaryPanel,
+  useFixedPanelTabsState,
+} from "@/lib/fixed-panel-tabs";
 import {
   createEmptyFixedPanelTabsState,
   createHostFilePreviewFixedPanelTab,
@@ -71,11 +74,18 @@ function renderThreadHook<Result>(hook: () => Result) {
 function useThreadFileTabsWithActiveTab(
   params: Parameters<typeof useThreadFileTabs>[0],
 ) {
+  const state = useFixedPanelTabsState(
+    params.panelStateId,
+    params.syncThreadId,
+  );
   return {
     ...useThreadFileTabs(params),
-    activeTab: getActiveSecondaryPanelTab(
-      useFixedPanelTabsState(params.panelStateId, params.syncThreadId),
+    activeTab: getActiveSecondaryPanelTab(state),
+    closePanel: useCloseFixedSecondaryPanel(
+      params.panelStateId,
+      params.syncThreadId,
     ),
+    isPanelOpen: state.secondary.isOpen,
   };
 }
 
@@ -1114,6 +1124,232 @@ describe("useThreadFileTabs plugin panel tabs", () => {
       kind: "plugin-panel",
       paramsJson: '{"n":2}',
     });
+  });
+
+  it.each([
+    {
+      name: "takes the calling tab's place",
+      openTarget: false,
+      expectedOrder: ["Issue #2", "Notes"],
+    },
+    {
+      name: "closes the calling tab and focuses the tab already showing it",
+      openTarget: true,
+      expectedOrder: ["Notes", "Issue #2"],
+    },
+  ])(
+    "a plugin tab that replaces itself $name",
+    ({ openTarget, expectedOrder }) => {
+      const threadId = `plugin-panel-replace-${String(openTarget)}`;
+      const { result } = renderThreadHook(() =>
+        useThreadFileTabsWithActiveTab({
+          panelStateId: threadId,
+          syncThreadId: threadId,
+          environmentId: "env_1",
+          storageFiles: undefined,
+          terminalSessions: undefined,
+        }),
+      );
+      const issue = (n: number) => ({
+        pluginId: "demo",
+        actionId: "issue",
+        title: `Issue #${n}`,
+        paramsJson: JSON.stringify({ n }),
+      });
+      act(() => {
+        result.current.openPluginPanel({
+          pluginId: "demo",
+          actionId: "issue",
+          title: "Picker",
+          paramsJson: null,
+        });
+        result.current.openPluginPanel({
+          pluginId: "demo",
+          actionId: "notes",
+          title: "Notes",
+          paramsJson: null,
+        });
+        if (openTarget) result.current.openPluginPanel(issue(2));
+      });
+      const caller = result.current.orderedSecondaryFileTabs[0];
+      act(() => result.current.activateTab(caller?.id ?? ""));
+
+      let replaced = false;
+      act(() => {
+        replaced = result.current.openPluginPanel({
+          ...issue(2),
+          replaceTabId: caller?.id,
+        });
+      });
+
+      expect(replaced).toBe(true);
+      expect(
+        result.current.orderedSecondaryFileTabs.map((tab) =>
+          tab.kind === "plugin-panel" ? tab.title : tab.kind,
+        ),
+      ).toEqual(expectedOrder);
+      expect(result.current.activeTab).toMatchObject({
+        kind: "plugin-panel",
+        paramsJson: JSON.stringify({ n: 2 }),
+      });
+    },
+  );
+
+  it.each([
+    {
+      name: "keeps a closed panel closed",
+      callerActive: true,
+      openTarget: false,
+      expected: {
+        order: ["Issue #2", "Notes"],
+        active: "Issue #2",
+        open: false,
+      },
+    },
+    {
+      name: "leaves another active tab in front",
+      callerActive: false,
+      openTarget: false,
+      expected: { order: ["Issue #2", "Notes"], active: "Notes", open: false },
+    },
+    {
+      name: "closes quietly behind another active tab when the item is open",
+      callerActive: false,
+      openTarget: true,
+      expected: { order: ["Notes", "Issue #2"], active: "Notes", open: false },
+    },
+  ])(
+    "a plugin tab that replaces itself in the background $name",
+    ({ callerActive, openTarget, expected }) => {
+      const threadId = `plugin-panel-background-${String(callerActive)}-${String(openTarget)}`;
+      const { result } = renderThreadHook(() =>
+        useThreadFileTabsWithActiveTab({
+          panelStateId: threadId,
+          syncThreadId: threadId,
+          environmentId: "env_1",
+          storageFiles: undefined,
+          terminalSessions: undefined,
+        }),
+      );
+      const issue = {
+        pluginId: "demo",
+        actionId: "issue",
+        title: "Issue #2",
+        paramsJson: JSON.stringify({ n: 2 }),
+      };
+      act(() => {
+        result.current.openPluginPanel({
+          pluginId: "demo",
+          actionId: "issue",
+          title: "Picker",
+          paramsJson: null,
+        });
+        result.current.openPluginPanel({
+          pluginId: "demo",
+          actionId: "notes",
+          title: "Notes",
+          paramsJson: null,
+        });
+        if (openTarget) result.current.openPluginPanel(issue);
+      });
+      const [caller, notes] = result.current.orderedSecondaryFileTabs;
+      act(() =>
+        result.current.activateTab((callerActive ? caller : notes)?.id ?? ""),
+      );
+      act(() => result.current.closePanel());
+
+      let replaced = false;
+      act(() => {
+        replaced = result.current.openPluginPanel({
+          ...issue,
+          replaceTabId: caller?.id,
+        });
+      });
+
+      const titleOf = (tab: SecondaryFixedPanelTab | null | undefined) =>
+        tab?.kind === "plugin-panel" ? tab.title : tab?.kind;
+      expect(replaced).toBe(true);
+      expect({
+        order: result.current.orderedSecondaryFileTabs.map(titleOf),
+        active: titleOf(result.current.activeTab),
+        open: result.current.isPanelOpen,
+      }).toEqual(expected);
+    },
+  );
+
+  it("refuses to replace another plugin's tab", () => {
+    const threadId = "plugin-panel-replace-foreign";
+    const { result } = renderThreadHook(() =>
+      useThreadFileTabsWithActiveTab({
+        panelStateId: threadId,
+        syncThreadId: threadId,
+        environmentId: "env_1",
+        storageFiles: undefined,
+        terminalSessions: undefined,
+      }),
+    );
+    act(() => {
+      result.current.openPluginPanel({
+        pluginId: "demo",
+        actionId: "issue",
+        title: "Picker",
+        paramsJson: null,
+      });
+    });
+    const caller = result.current.activeTab;
+
+    let replaced = true;
+    act(() => {
+      replaced = result.current.openPluginPanel({
+        pluginId: "other",
+        actionId: "issue",
+        title: "Issue #2",
+        paramsJson: '{"n":2}',
+        replaceTabId: caller?.id,
+      });
+    });
+
+    expect(replaced).toBe(false);
+    expect(
+      result.current.orderedSecondaryFileTabs.map((tab) => tab.id),
+    ).toEqual([caller?.id]);
+  });
+
+  it("declines to replace a tab that has closed", () => {
+    const threadId = "plugin-panel-replace-closed";
+    const { result } = renderThreadHook(() =>
+      useThreadFileTabsWithActiveTab({
+        panelStateId: threadId,
+        syncThreadId: threadId,
+        environmentId: "env_1",
+        storageFiles: undefined,
+        terminalSessions: undefined,
+      }),
+    );
+    act(() => {
+      result.current.openPluginPanel({
+        pluginId: "demo",
+        actionId: "issue",
+        title: "Picker",
+        paramsJson: null,
+      });
+    });
+    const caller = result.current.activeTab;
+    act(() => result.current.closeTab(caller?.id ?? ""));
+
+    let replaced = true;
+    act(() => {
+      replaced = result.current.openPluginPanel({
+        pluginId: "demo",
+        actionId: "issue",
+        title: "Issue #2",
+        paramsJson: '{"n":2}',
+        replaceTabId: caller?.id,
+      });
+    });
+
+    expect(replaced).toBe(false);
+    expect(result.current.orderedSecondaryFileTabs).toEqual([]);
   });
 
   it("replaces a transient new-tab like the other launchers", () => {

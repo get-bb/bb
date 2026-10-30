@@ -4,6 +4,7 @@ import {
   experimental_Diff as Diff,
   experimental_FileLink as FileLink,
   experimental_copyToClipboard,
+  experimental_useAppPanel,
   UrlLink,
   useBbNavigate,
   useRealtime,
@@ -14,11 +15,19 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import {
   buildSuggestions,
+  byLinkKey,
+  claimItemUrl,
+  isSameItem,
+  itemTabOptions,
+  itemUrl,
+  linkKey,
+  linkedItemFromParams,
   matchesQuery,
   parseQuery,
   parseSubPath,
   routeToSubPath,
   type Item,
+  type ItemRef,
   type Route,
   type Suggestion,
   type SuggestionIcon,
@@ -124,7 +133,7 @@ function useLinks(): LinksMap {
   const [links, setLinks] = useState<LinksMap>({});
   const refetch = useCallback(() => {
     rpc.call("listLinks").then(
-      (result) => setLinks(result.links),
+      (result) => setLinks(byLinkKey(result.links)),
       () => {},
     );
   }, [rpc]);
@@ -795,7 +804,7 @@ function ItemsTable({
           <ItemRow
             key={`${item.repo}#${item.number}`}
             item={item}
-            links={links[`${kind}:${item.repo}#${item.number}`]}
+            links={links[linkKey(kind, item)]}
             onOpen={() => onOpenItem(item.repo, item.number)}
           />
         ))}
@@ -965,14 +974,27 @@ function LabelPicker({
   );
 }
 
+function DetailError({ message, url }: { message: string; url: string }) {
+  return (
+    <div className="flex flex-col items-center">
+      <EmptyState message={message} />
+      <UrlLink href={url} className="text-xs underline hover:text-foreground">
+        Open on GitHub ↗
+      </UrlLink>
+    </div>
+  );
+}
+
 function IssueDetailView({
   repo,
   number,
   onBack,
+  compact = false,
 }: {
   repo: string;
   number: number;
-  onBack: () => void;
+  onBack?: () => void;
+  compact?: boolean;
 }) {
   const rpc = useRpc<typeof githubRpcContract>();
   const links = useLinks();
@@ -1061,29 +1083,45 @@ function IssueDetailView({
       .finally(() => setPosting(false));
   }, [rpc, repo, number, comment, load]);
 
-  if (error !== null) return <EmptyState message={error} />;
+  if (error !== null) {
+    return (
+      <DetailError message={error} url={itemUrl("issue", { repo, number })} />
+    );
+  }
   if (detail === null) {
     return <DetailSkeleton />;
   }
 
-  const issueLinks = links[`issue:${repo}#${number}`];
+  const issueLinks = links[linkKey("issue", { repo, number })];
   return (
     <div className="@container/github-detail flex flex-col gap-4">
       <div className="flex items-center gap-1 text-xs text-muted-foreground">
-        <Button size="sm" variant="ghost" className="h-7 px-2" onClick={onBack}>
-          ← Issues
-        </Button>
-        <span>
+        {onBack !== undefined ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 px-2"
+            onClick={onBack}
+          >
+            ← Issues
+          </Button>
+        ) : null}
+        <span className="min-w-0 truncate">
           {repo} · #{number}
         </span>
         <span className="flex-1" />
-        <UrlLink href={detail.url} className="underline hover:text-foreground">
+        <UrlLink
+          href={detail.url}
+          className="shrink-0 underline hover:text-foreground"
+        >
           Open on GitHub ↗
         </UrlLink>
       </div>
 
       <div className="flex items-start gap-3">
-        <h2 className="min-w-0 flex-1 text-xl font-semibold text-foreground">
+        <h2
+          className={`min-w-0 flex-1 font-semibold text-foreground ${compact ? "text-base" : "text-xl"}`}
+        >
           {detail.title}{" "}
           <span className="font-normal text-muted-foreground">
             #{detail.number}
@@ -1635,12 +1673,16 @@ function PullDetailView({
     load();
   }, [load]);
 
-  if (error !== null) return <EmptyState message={error} />;
+  if (error !== null) {
+    return (
+      <DetailError message={error} url={itemUrl("pr", { repo, number })} />
+    );
+  }
   if (pull === null) {
     return <DetailSkeleton />;
   }
 
-  const pullLinks = links[`pr:${repo}#${number}`];
+  const pullLinks = links[linkKey("pr", { repo, number })];
   const mainColumn = (
     <div className="flex min-w-0 flex-1 flex-col gap-4">
       <ChecksSection checks={pull.checks} />
@@ -1799,12 +1841,14 @@ function PullDetailView({
   );
 }
 
-function PullPickerList({
+function ItemPickerList({
+  kind,
   onPick,
 }: {
+  kind: Item["kind"];
   onPick: (repo: string, number: number) => void;
 }) {
-  const { items, error } = useItems("pr");
+  const { items, error } = useItems(kind);
   if (error !== null) return <EmptyState message={error} />;
   if (items === null) {
     return (
@@ -1819,7 +1863,11 @@ function PullPickerList({
   }
   const open = items.filter((item) => item.state === "OPEN");
   if (open.length === 0) {
-    return <EmptyState message="No open pull requests in the tracked repos." />;
+    return (
+      <EmptyState
+        message={`No open ${kind === "pr" ? "pull requests" : "issues"} in the tracked repos.`}
+      />
+    );
   }
   return (
     <div className="@container/github-picker overflow-hidden rounded-lg border border-border bg-card">
@@ -1830,7 +1878,7 @@ function PullPickerList({
             className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-accent/50"
             onClick={() => onPick(item.repo, item.number)}
           >
-            <StateDot kind="pr" state={item.state} />
+            <StateDot kind={kind} state={item.state} />
             <span className="shrink-0 font-mono text-xs text-muted-foreground">
               #{item.number}
             </span>
@@ -1847,57 +1895,179 @@ function PullPickerList({
   );
 }
 
-function PullPanelTab({ threadId }: ExperimentalThreadActionTabProps) {
+interface ThreadPull extends ItemRef {
+  environmentId: string | null;
+}
+
+const GITHUB_TAB_ID = "pull";
+const GITHUB_TAB = {
+  id: GITHUB_TAB_ID,
+  context: { kind: "thread" },
+  availability: "action",
+} as const;
+
+function useThreadPull(
+  threadId: string,
+  onResolved?: (pull: ThreadPull | null) => void,
+): ThreadPull | null | undefined {
   const rpc = useRpc<typeof githubRpcContract>();
-  const [resolved, setResolved] = useState(false);
-  const [selected, setSelected] = useState<{
-    repo: string;
-    number: number;
-    environmentId: string | null;
+  const onResolvedRef = useRef(onResolved);
+  const [lookup, setLookup] = useState<{
+    threadId: string;
+    pull: ThreadPull | null;
   } | null>(null);
 
   useEffect(() => {
+    onResolvedRef.current = onResolved;
+  });
+
+  useEffect(() => {
     let cancelled = false;
+    const resolve = (pull: ThreadPull | null) => {
+      if (cancelled) return;
+      setLookup({ threadId, pull });
+      onResolvedRef.current?.(pull);
+    };
     rpc.call("pullForThread", { threadId }).then(
-      (result) => {
-        if (cancelled) return;
-        if (result.pull !== null) setSelected(result.pull);
-        setResolved(true);
-      },
-      () => {
-        if (!cancelled) setResolved(true);
-      },
+      (result) => resolve(result.pull),
+      () => resolve(null),
     );
     return () => {
       cancelled = true;
     };
   }, [rpc, threadId]);
 
-  if (!resolved) {
+  return lookup?.threadId === threadId ? lookup.pull : undefined;
+}
+
+function useShowItemInThisTab(kind: Item["kind"]): (item: ItemRef) => boolean {
+  const panel = experimental_useAppPanel();
+  return useCallback(
+    (item) =>
+      panel.openTab({
+        tab: GITHUB_TAB,
+        ...itemTabOptions(kind, item),
+        experimental_replace: true,
+      }),
+    [kind, panel],
+  );
+}
+
+function GithubPanelTab({
+  threadId,
+  params,
+}: ExperimentalThreadActionTabProps) {
+  const linked = linkedItemFromParams(params);
+  if (linked === null) return <ThreadGithubPanel threadId={threadId} />;
+  const key = `${linked.repo}#${linked.number}`;
+  if (linked.kind === "issue") {
+    return (
+      <IssueDetailView
+        key={key}
+        repo={linked.repo}
+        number={linked.number}
+        compact
+      />
+    );
+  }
+  return <LinkedPullPanel key={key} threadId={threadId} pull={linked} />;
+}
+
+function LinkedPullPanel({
+  threadId,
+  pull,
+}: {
+  threadId: string;
+  pull: ItemRef;
+}) {
+  const threadPull = useThreadPull(threadId);
+  return (
+    <PullDetailView
+      repo={pull.repo}
+      number={pull.number}
+      compact
+      workspaceEnvironmentId={
+        threadPull !== undefined &&
+        threadPull !== null &&
+        isSameItem(threadPull, pull)
+          ? threadPull.environmentId
+          : null
+      }
+    />
+  );
+}
+
+type ThreadPanelChoice = "picker" | ThreadPull | { issue: ItemRef };
+
+function ThreadGithubPanel({ threadId }: { threadId: string }) {
+  const showPullInThisTab = useShowItemInThisTab("pr");
+  const showIssueInThisTab = useShowItemInThisTab("issue");
+  const [choice, setChoice] = useState<ThreadPanelChoice | null>(null);
+  const [pickerKind, setPickerKind] = useState<Item["kind"]>("pr");
+  const threadPull = useThreadPull(threadId, (pull) => {
+    if (pull !== null && !showPullInThisTab(pull)) setChoice(pull);
+  });
+
+  if (threadPull === undefined) {
     return <DetailSkeleton />;
   }
-  if (selected === null) {
+  const view = choice ?? (threadPull === null ? "picker" : null);
+  if (view === null) {
+    return <DetailSkeleton />;
+  }
+  if (view === "picker") {
     return (
       <div className="flex flex-col gap-3">
         <p className="text-xs text-muted-foreground">
-          No pull request is linked to this thread yet — pick one:
+          {threadPull === null
+            ? "No pull request is linked to this thread yet — pick a pull request or an issue:"
+            : "Pick a pull request or an issue to show here:"}
         </p>
-        <PullPickerList
-          onPick={(repo, number) =>
-            setSelected({ repo, number, environmentId: null })
+        <Tabs
+          value={pickerKind}
+          onValueChange={(value) =>
+            setPickerKind(value === "issue" ? "issue" : "pr")
           }
+        >
+          <TabsList>
+            <TabsTrigger value="pr">Pull requests</TabsTrigger>
+            <TabsTrigger value="issue">Issues</TabsTrigger>
+          </TabsList>
+        </Tabs>
+        <ItemPickerList
+          key={pickerKind}
+          kind={pickerKind}
+          onPick={(repo, number) => {
+            if (pickerKind === "issue") {
+              const issue = { repo, number };
+              if (!showIssueInThisTab(issue)) setChoice({ issue });
+              return;
+            }
+            const pull = { repo, number, environmentId: null };
+            if (!showPullInThisTab(pull)) setChoice(pull);
+          }}
         />
       </div>
     );
   }
+  if ("issue" in view) {
+    return (
+      <IssueDetailView
+        repo={view.issue.repo}
+        number={view.issue.number}
+        compact
+        onBack={() => setChoice("picker")}
+      />
+    );
+  }
   return (
     <PullDetailView
-      repo={selected.repo}
-      number={selected.number}
+      repo={view.repo}
+      number={view.number}
       compact
-      workspaceEnvironmentId={selected.environmentId}
+      workspaceEnvironmentId={view.environmentId}
       backLabel="All PRs"
-      onBack={() => setSelected(null)}
+      onBack={() => setChoice("picker")}
     />
   );
 }
@@ -2239,9 +2409,10 @@ export default definePluginApp((app) => {
   app.slots.experimental_tab({
     context: { kind: "thread" },
     availability: "action",
-    id: "pull",
-    title: "GitHub PR",
+    id: GITHUB_TAB_ID,
+    title: "GitHub",
     icon: "Github",
-    component: PullPanelTab,
+    experimental_claimUrl: claimItemUrl,
+    component: GithubPanelTab,
   });
 });

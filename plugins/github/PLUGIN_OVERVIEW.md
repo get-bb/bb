@@ -6,6 +6,7 @@ See the open issues and pull requests of your repositories inside bb. Hand one t
 - Issue details: body, comments, a comment box, and editing of status, assignee, and labels.
 - Send agent on an issue, or Review with agent on a pull request. bb starts a thread in the repository's project and links it from the item.
 - Mentions. Type `@` or `#` in any composer to attach an issue or pull request. Its title, body, and state go to the agent at send time.
+- Links that open beside the chat. Click a GitHub pull request or issue link in a thread, or the thread's pull request in the prompt banner or the Info tab, and it opens in the side panel, one tab per pull request or issue. Cmd- or Ctrl-click opens GitHub instead, as do links to a comment, the files, or the commits. The panel's + menu also has GitHub, which shows the thread's pull request, or lets you pick an open pull request or issue when the thread has none.
 
 ## How it works
 
