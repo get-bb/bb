@@ -32,6 +32,7 @@ import type {
   PluginProvidersState,
   PluginSettingsState,
   ExperimentalPanelController,
+  ExperimentalPanelTabs,
   ExperimentalFixedTabTargetState,
   ExperimentalPluginFixedTabReference,
   JsonValue,
@@ -373,9 +374,19 @@ function useExperimentalFixedTabTarget<Target extends JsonValue>(
   };
 }
 
+function useExperimentalPanelTabs(): ExperimentalPanelTabs {
+  const { panel } = useAppNavigationHost();
+  return useSyncExternalStore(
+    panel.subscribeTabs,
+    panel.getTabs,
+    panel.getTabs,
+  );
+}
+
 export {
   useExperimentalAppPanel as experimental_useAppPanel,
   useExperimentalFixedTabTarget as experimental_useFixedTabTarget,
+  useExperimentalPanelTabs as experimental_usePanelTabs,
 };
 
 function createComposerScopeOwnership(scopeKey: string) {

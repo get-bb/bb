@@ -14,6 +14,52 @@ const app = await loadPluginApp(() => import("./app.js"));
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  localStorage.clear();
+});
+
+describe("notification delivery", () => {
+  it.each([
+    [["skipFocusedThreadNotifications"], 0],
+    [[], 1],
+  ])(
+    "with experiments %j shows %i notifications for the focused thread",
+    async (experiments, expected) => {
+      const shown: string[] = [];
+      vi.stubGlobal(
+        "Notification",
+        class {
+          static permission = "granted";
+          close = vi.fn();
+          constructor(title: string) {
+            shown.push(title);
+          }
+        },
+      );
+      vi.stubGlobal("isSecureContext", true);
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+      const view = renderSlot(
+        app.appOverlays[0]!,
+        {},
+        {
+          settings: { webEnabled: true },
+          context: { threadId: "thr_open" },
+          experiments,
+        },
+      );
+      await view.emitRealtime("notification", {
+        id: "event-1",
+        title: "Finished",
+        body: "Ready",
+        threadId: "thr_open",
+        channels: ["web"],
+      });
+      await waitFor(() => expect(shown).toHaveLength(expected));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(shown).toHaveLength(expected);
+    },
+  );
 });
 
 describe("device notification settings", () => {

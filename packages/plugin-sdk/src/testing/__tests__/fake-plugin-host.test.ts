@@ -303,9 +303,10 @@ describe("storage", () => {
     ).rejects.toThrow(/limit is 262144 \(256KB\)/);
   });
 
-  it("database() returns one shared database and migrate() is append-only by index", () => {
+  it("database() returns one shared WAL database and migrate() is append-only by index", () => {
     const { bb } = createFakePluginHost();
     const db = bb.storage.database();
+    expect(db.pragma("journal_mode", { simple: true })).toBe("wal");
     bb.storage.migrate(db, [
       "CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT)",
     ]);
@@ -362,6 +363,7 @@ describe("storage", () => {
     const reopened = bb.storage.database();
     expect(reopened).not.toBe(db);
     expect(reopened.open).toBe(true);
+    expect(reopened.pragma("journal_mode", { simple: true })).toBe("wal");
     expect(reopened.prepare("SELECT body FROM notes").all()).toEqual([
       { body: "hello" },
     ]);

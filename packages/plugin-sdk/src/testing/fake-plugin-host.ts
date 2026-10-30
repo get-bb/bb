@@ -775,6 +775,7 @@ function createFakePluginHostInternal(
       assertLive();
       if (!databaseHandle?.open) {
         databaseHandle = new Database(join(storageRoot, "data.db"));
+        databaseHandle.pragma("journal_mode = WAL");
         databaseHandle.pragma("busy_timeout = 5000");
       }
       return databaseHandle;
