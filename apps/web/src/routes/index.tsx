@@ -27,11 +27,16 @@ import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties, ReactNode, Ref } from "react";
 
 import changelogMd from "../../../../CHANGELOG.md?raw";
 import { RELEASE_META } from "../../../../changelog-metadata";
 import type { ExperimentVariant } from "../experiments/flags";
+import {
+  NO_EXPERIMENTS,
+  experimentVariant,
+  type ExperimentBootstrap,
+} from "../experiments/flags";
 import {
   useExperiment,
   useExperimentExposure,
@@ -72,6 +77,8 @@ import hermesAvatar from "../assets/hermes-avatar.jpg";
 import vscodeIcon from "../assets/vscode.png";
 import { parseChangelog } from "../../../../changelog-parser";
 import { DiscordLink, GitHubLink, SubscribeSection } from "../landing/cta";
+import { HeroWindow } from "../landing/hero-window";
+import heroWindowCss from "../landing/hero-window.css?url";
 import { siteHeadLinks } from "../landing/page-head";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
 import { ClaudeIcon } from "../landing/icons";
@@ -218,14 +225,25 @@ if (!LATEST_RELEASE_META) {
 }
 const LATEST_RELEASE_URL = `/changelog#${LATEST_RELEASE.version.replaceAll(".", "-")}`;
 
+function heroWindowStylesheets(context: {
+  experiments?: ExperimentBootstrap;
+}): string[] {
+  return experimentVariant(
+    context.experiments ?? NO_EXPERIMENTS,
+    "homepage-hero-window",
+  ) === "test"
+    ? [heroWindowCss]
+    : [];
+}
+
 export const Route = createFileRoute("/")({
-  head: () => ({
+  head: ({ match }) => ({
     meta: [
       { title: "bb: agentic IDE · The IDE that builds itself" },
       { name: "description", content: SITE_DESCRIPTION },
       ...unfurlMeta("bb", OG_DESCRIPTION, "/"),
     ],
-    links: siteHeadLinks(),
+    links: siteHeadLinks(...heroWindowStylesheets(match.context)),
     scripts: [
       {
         type: "application/ld+json",
@@ -946,7 +964,7 @@ function DiffPanel({
   );
 }
 
-function HeroAppMock() {
+function HeroAppMock({ ref }: { ref: Ref<HTMLElement> }) {
   const [activeId, setActiveId] = useState(HERO_THREADS[0].id);
   const [view, setView] = useState<"thread" | "new">("thread");
   const [diffOpen, setDiffOpen] = useState(false);
@@ -976,7 +994,7 @@ function HeroAppMock() {
   }, []);
 
   return (
-    <section className="mockup-wrap">
+    <section ref={ref} className="mockup-wrap">
       <div
         className="mock"
         data-construct
@@ -1217,6 +1235,11 @@ function LandingPage() {
   useExperimentExposure("homepage-qa-check", "all");
   const subhead = useExperiment("homepage-hero");
   useExperimentExposure("homepage-hero", "desktop");
+  const heroWindow = useExperiment("homepage-hero-window");
+  const heroWindowRef = useRef<HTMLElement>(null);
+  const [heroWindowInView, setHeroWindowInView] = useState(false);
+  const [heroWindowSeen, setHeroWindowSeen] = useState(false);
+  useExperimentExposure("homepage-hero-window", "desktop", heroWindowSeen);
   useScrollReveal();
   useSectionViews();
   useConstructMock();
@@ -1230,6 +1253,22 @@ function LandingPage() {
       setCompanyProofInView(entry?.isIntersecting ?? false);
     });
     observer.observe(companyProof);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const heroWindowEl = heroWindowRef.current;
+    if (!heroWindowEl) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        const visible = entry?.isIntersecting ?? false;
+        setHeroWindowInView(visible);
+        if (visible) setHeroWindowSeen(true);
+      },
+      { rootMargin: "0px 0px -20% 0px" },
+    );
+    observer.observe(heroWindowEl);
     return () => observer.disconnect();
   }, []);
 
@@ -1263,7 +1302,11 @@ function LandingPage() {
         )}
       </header>
 
-      <HeroAppMock />
+      {heroWindow === "test" ? (
+        <HeroWindow ref={heroWindowRef} inView={heroWindowInView} />
+      ) : (
+        <HeroAppMock ref={heroWindowRef} />
+      )}
 
       <section
         ref={companyProofRef}

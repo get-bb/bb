@@ -2,6 +2,7 @@ export const EXPERIMENT_VARIANTS = {
   "homepage-qa-check": ["test"],
   "homepage-download-path": ["test"],
   "homepage-hero": ["test"],
+  "homepage-hero-window": ["test"],
 } as const satisfies Record<string, readonly string[]>;
 
 export type ExperimentKey = keyof typeof EXPERIMENT_VARIANTS;
