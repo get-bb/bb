@@ -16,7 +16,14 @@ import { useInitAnalytics } from "../landing/analytics";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
 import { CopyToast, PROMPT_COPIED, useCopy } from "../guides/guide-blocks";
 import { docs } from "./content";
-import { CodeBlock, Tab, Tabs } from "./docs-blocks";
+import {
+  Callout,
+  CalloutDescription,
+  CalloutTitle,
+  CodeBlock,
+  Tab,
+  Tabs,
+} from "./docs-blocks";
 import { DocsSearch } from "./docs-search";
 import type { DocsNavSection, DocsPageView, DocsTocEntry } from "./page-view";
 import { Screenshot, Shot } from "./shot";
@@ -224,6 +231,9 @@ function MdxBody({ contentPath }: { contentPath: string }) {
         Screenshot,
         Tabs,
         Tab,
+        Callout,
+        CalloutTitle,
+        CalloutDescription,
       }}
     />
   );

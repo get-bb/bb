@@ -4,13 +4,14 @@ import {
   useContext,
   useId,
   useRef,
-  useState,
+  useSyncExternalStore,
   type ComponentProps,
   type KeyboardEvent,
   type ReactNode,
 } from "react";
 
 import { CodeCopy } from "../guides/guide-blocks";
+import { CALLOUT_TONES, isCalloutTone } from "./remark-docs";
 
 const TERMINAL = "Terminal";
 
@@ -71,6 +72,31 @@ function nodeText(node: ReactNode): string {
   return "";
 }
 
+export function shellCopyText(text: string): string {
+  const lines = text.split("\n");
+  if (!lines.some((line) => /^\s*\$ /u.test(line))) return text;
+  const commands: string[] = [];
+  let continues = false;
+  for (const line of lines) {
+    const prompt = /^\s*\$ (.*)$/u.exec(line);
+    if (prompt) {
+      commands.push(prompt[1]!);
+      continues = prompt[1]!.endsWith("\\");
+    } else if (continues) {
+      commands.push(line);
+      continues = line.endsWith("\\");
+    }
+  }
+  return commands.join("\n");
+}
+
+export function codeCopyText(text: string, language: string | undefined) {
+  const trimmed = text.replace(/\n$/u, "");
+  return language !== undefined && LANGUAGE_LABELS[language] === TERMINAL
+    ? shellCopyText(trimmed)
+    : trimmed;
+}
+
 type CodeBlockProps = ComponentProps<"pre"> & { icon?: string };
 
 export function CodeBlock({
@@ -79,17 +105,94 @@ export function CodeBlock({
   icon: _icon,
   ...props
 }: CodeBlockProps) {
+  const language = codeLanguage(children);
   return (
     <div className="gd-code">
       <div className="gd-code-bar">
-        <span className="gd-code-label">
-          {codeBlockLabel(title, codeLanguage(children))}
-        </span>
-        <CodeCopy text={nodeText(children).replace(/\n$/u, "")} />
+        <span className="gd-code-label">{codeBlockLabel(title, language)}</span>
+        <CodeCopy text={codeCopyText(nodeText(children), language)} />
       </div>
       <pre {...props}>{children}</pre>
     </div>
   );
+}
+
+const TAB_STORAGE_PREFIX = "bb-docs-tab:";
+const TAB_PARAM = "tab";
+const chosenTabs = new Map<string, string>();
+const tabListeners = new Set<() => void>();
+
+function tabKey(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/gu, "-");
+}
+
+export function tabGroupKey(items: readonly string[], group?: string): string {
+  return group ?? items.map(tabKey).join("|");
+}
+
+export function resolveTab(
+  items: readonly string[],
+  search: string,
+  stored: string | null,
+): string | undefined {
+  const requested = new URLSearchParams(search).get(TAB_PARAM);
+  const fromUrl =
+    requested === null
+      ? undefined
+      : items.find((item) => tabKey(item) === tabKey(requested));
+  return (
+    fromUrl ?? (stored !== null && items.includes(stored) ? stored : undefined)
+  );
+}
+
+function storedTab(group: string): string | null {
+  try {
+    return window.localStorage.getItem(`${TAB_STORAGE_PREFIX}${group}`);
+  } catch {
+    return null;
+  }
+}
+
+function storeTab(group: string, value: string) {
+  try {
+    window.localStorage.setItem(`${TAB_STORAGE_PREFIX}${group}`, value);
+  } catch {
+    return;
+  }
+}
+
+function chooseTab(group: string, value: string) {
+  chosenTabs.set(group, value);
+  storeTab(group, value);
+  const url = new URL(window.location.href);
+  url.searchParams.set(TAB_PARAM, tabKey(value));
+  window.history.replaceState(window.history.state, "", url);
+  for (const listener of tabListeners) listener();
+}
+
+function subscribeTabs(listener: () => void) {
+  tabListeners.add(listener);
+  window.addEventListener("storage", listener);
+  return () => {
+    tabListeners.delete(listener);
+    window.removeEventListener("storage", listener);
+  };
+}
+
+function useTabChoice(items: readonly string[], group: string) {
+  const remembered = useSyncExternalStore(
+    subscribeTabs,
+    () =>
+      chosenTabs.get(group) ??
+      resolveTab(items, window.location.search, storedTab(group)) ??
+      null,
+    () => null,
+  );
+  const active =
+    remembered !== null && items.includes(remembered)
+      ? remembered
+      : (items[0] ?? "");
+  return [active, (value: string) => chooseTab(group, value)] as const;
 }
 
 interface TabsState {
@@ -101,12 +204,14 @@ const TabsContext = createContext<TabsState | null>(null);
 
 export function Tabs({
   items,
+  group,
   children,
 }: {
   items: readonly string[];
+  group?: string;
   children: ReactNode;
 }) {
-  const [active, setActive] = useState(items[0] ?? "");
+  const [active, setActive] = useTabChoice(items, tabGroupKey(items, group));
   const baseId = useId();
   const listRef = useRef<HTMLDivElement>(null);
   const ids = (value: string) => {
@@ -190,4 +295,30 @@ export function Tab({
       {children}
     </div>
   );
+}
+
+export function Callout({
+  type,
+  children,
+}: {
+  type: string;
+  children: ReactNode;
+}) {
+  if (!isCalloutTone(type)) {
+    throw new Error(`Unknown callout type "${type}"`);
+  }
+  return (
+    <aside className="docs-callout" data-tone={type}>
+      <p className="docs-callout-label">{CALLOUT_TONES[type]}</p>
+      {children}
+    </aside>
+  );
+}
+
+export function CalloutTitle({ children }: { children: ReactNode }) {
+  return <p className="docs-callout-title">{children}</p>;
+}
+
+export function CalloutDescription({ children }: { children: ReactNode }) {
+  return <div className="docs-callout-body">{children}</div>;
 }

@@ -380,6 +380,54 @@
   background: none;
 }
 
+.docs-wrap .docs-body pre.shiki span {
+  color: var(--shiki-light);
+  font-style: var(--shiki-light-font-style);
+  font-weight: var(--shiki-light-font-weight);
+  text-decoration: var(--shiki-light-text-decoration);
+}
+
+.dark .docs-wrap .docs-body pre.shiki span {
+  color: var(--shiki-dark);
+  font-style: var(--shiki-dark-font-style);
+  font-weight: var(--shiki-dark-font-weight);
+  text-decoration: var(--shiki-dark-text-decoration);
+}
+
+.docs-wrap .docs-callout {
+  margin: 0 0 18px;
+  padding: 12px 16px;
+  border: 1px solid var(--border-soft);
+  border-left: 3px solid var(--callout-tone);
+  border-radius: var(--radius);
+  background: color-mix(in oklab, var(--callout-tone) 6%, var(--bg));
+}
+
+.docs-wrap .docs-callout[data-tone="note"] {
+  --callout-tone: var(--accent);
+}
+
+.docs-wrap .docs-callout[data-tone="warning"] {
+  --callout-tone: var(--spark);
+}
+
+.docs-wrap .docs-callout-label {
+  margin: 0 0 4px;
+  font-size: var(--text-label-small);
+  font-weight: 600;
+  color: var(--callout-tone);
+}
+
+.docs-wrap .docs-callout-title {
+  margin: 0 0 4px;
+  font-weight: 600;
+  color: var(--heading);
+}
+
+.docs-wrap .docs-callout-body > :last-child {
+  margin-bottom: 0;
+}
+
 .docs-wrap .docs-table {
   margin: 0 0 18px;
   overflow-x: auto;

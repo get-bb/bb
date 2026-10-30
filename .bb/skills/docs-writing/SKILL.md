@@ -158,11 +158,30 @@ page, it compares the date of the last commit touching its `sources` with
   ```
 
   Consecutive code blocks with a `tab="…"` attribute become tabs too.
+  Use the same labels everywhere (Desktop / CLI / Phone; macOS / Windows /
+  Linux), because the reader's choice is remembered for every group with the
+  same labels, on every page. Give groups with different labels a shared
+  `group="surface"` to share the choice. `?tab=cli` in a link opens that tab.
+  Every panel is in the page HTML, and the `.md` copy lists each panel under
+  a `**Label:**` line.
 - **Code blocks** show their `title` in the header, otherwise their language:
   `bash`, `sh` and `shell` show "Terminal", `yaml` shows "YAML", and a block
   with no language shows "Text". Give file contents a title, such as
   ` ```bash title=".bb-env-setup.sh" `, and prompts ` ```text title="Prompt" `.
-  Every block has a Copy button.
+  Every block has a Copy button. In shell blocks you may show a `$ ` prompt
+  and output; Copy takes only the commands, without the prompt.
+- **Callouts** for what a reader must not miss: `:::warning` for data loss,
+  full trust, security or exposure, and `:::note` for anything else. Use at
+  most one callout per section; if a section needs more, the text needs
+  rewriting. Never put steps inside one. An optional title goes in brackets.
+
+  ```mdx
+  :::warning[Plugins get full trust]
+  A plugin can read every file bb can. Install only plugins you trust.
+  :::
+  ```
+
+  The `.md` copy turns them into `> **Warning:** …` and `> **Note:** …`.
 - **Images:** `<Shot todo="…" />` while drafting, `<Screenshot … />` once
   captured. See below.
 
