@@ -476,8 +476,8 @@ function ReleaseNotesToggleButton({
       Changelog
       <Icon
         aria-hidden
-        name="ChevronDown"
-        className={cn("size-3 transition-transform", expanded && "rotate-180")}
+        name="ChevronRight"
+        className={cn("size-3 transition-transform", expanded && "rotate-90")}
       />
     </button>
   );
