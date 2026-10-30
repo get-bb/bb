@@ -123,7 +123,7 @@ describe("StartAnywhere", () => {
   it("shows a bb thread spawn command that runs as written", () => {
     const html = renderToStaticMarkup(<StartAnywhere />);
     expect(html).toContain(
-      "bb thread spawn --project web --prompt &quot;Fix CI on main&quot;",
+      "bb thread spawn --project &quot;$BB_PROJECT&quot; --prompt &quot;Fix CI on main&quot;",
     );
     expect(html).toContain("Every weekday 9:00");
     expect(html).toContain("Nightly changelog");

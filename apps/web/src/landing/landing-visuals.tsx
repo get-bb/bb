@@ -879,7 +879,7 @@ export function DelegationTree() {
 // `--project` is required and the prompt is a flag
 // (apps/cli/src/commands/thread/spawn.ts); the command prints
 // "Thread spawned: <id>".
-const SPAWN_COMMAND = 'bb thread spawn --project web --prompt "Fix CI on main"';
+const SPAWN_COMMAND = 'bb thread spawn --project "$BB_PROJECT" --prompt "Fix CI on main"';
 const SPAWN_OUTPUT = "Thread spawned: thr_7q2m9xk4";
 
 /**
