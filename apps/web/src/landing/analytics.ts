@@ -89,6 +89,22 @@ export function useInitAnalytics(): void {
   }, []);
 }
 
+export type VisitIds = {
+  distinctId: string;
+  sessionId: string | null;
+};
+
+export function readVisitIds(): VisitIds | null {
+  if (!client) {
+    return null;
+  }
+  const distinctId = client.get_distinct_id();
+  if (!distinctId) {
+    return null;
+  }
+  return { distinctId, sessionId: client.get_session_id() || null };
+}
+
 export function trackLandingEvent(event: LandingEvent): void {
   if (client) {
     client.capture(event.name, event.properties);
