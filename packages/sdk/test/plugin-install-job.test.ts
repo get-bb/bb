@@ -10,6 +10,7 @@ const plugin = {
   version: "1.0.0",
   provenance: "direct",
   isOrphanedBuiltin: false,
+  marketplacePageUrl: null,
   publisherLabel: null,
   sourceDisplay: "npm · notes",
   updateState: {},

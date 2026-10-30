@@ -1813,6 +1813,7 @@ describe("@bb/sdk", () => {
       provenance: "catalog" as const,
       isOrphanedBuiltin: false,
       catalogEntryId: "notes",
+      marketplacePageUrl: null,
       publisherLabel: "BB Community",
       sourceDisplay: "npm · @bb/notes · tracks compatible",
       updateState: {},

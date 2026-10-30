@@ -163,6 +163,7 @@ describe("plugin catalog queries", () => {
           installs: null,
           compatible: false,
           incompatibleReason: "requires bb >= 0.15",
+          marketplacePageUrl: null,
         },
       ],
       collections: [
