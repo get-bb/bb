@@ -21,7 +21,8 @@ describe("tunnel origin websockets", () => {
       host: "127.0.0.1",
       port: 0,
       perMessageDeflate: true,
-      verifyClient: ({ req }) => req.url !== "/ws?reject",
+      verifyClient: ({ req }: { req: IncomingMessage }) =>
+        req.url !== "/ws?reject",
     });
     await new Promise<void>((resolve) => origin.once("listening", resolve));
     const address = origin.address();
