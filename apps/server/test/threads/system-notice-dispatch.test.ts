@@ -271,6 +271,44 @@ describe("child outcome notices", () => {
   });
 });
 
+describe("child outcome window timer", () => {
+  it("delivers the row when it fires before the wall clock reaches sendAt", async () => {
+    await withTestHarness(async (harness) => {
+      const { project, thread: parent } = seedRunnableThread(harness, {
+        hostId: "host-early-timer",
+        status: "idle",
+      });
+      const child = seedThread(harness.deps, {
+        parentThreadId: parent.id,
+        projectId: project.id,
+      });
+      const before = turnRequests(harness, parent.id).length;
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+      try {
+        await queueChildThreadTurnNotificationBestEffort(harness.deps, {
+          childThread: child,
+          parentThreadId: parent.id,
+          turnStatus: "completed",
+        });
+        const [row] = listQueuedThreadMessages(harness.db, parent.id);
+        const delay = row!.sendAt! - Date.now();
+        vi.setSystemTime(Date.now() - 5);
+
+        await vi.advanceTimersByTimeAsync(delay + 50);
+
+        await vi.waitFor(() => {
+          expect(turnRequests(harness, parent.id).slice(before)).toEqual([
+            expect.objectContaining({ systemMessageKind: "child-completed" }),
+          ]);
+        });
+      } finally {
+        vi.useRealTimers();
+      }
+      expect(listQueuedThreadMessages(harness.db, parent.id)).toEqual([]);
+    });
+  });
+});
+
 describe("notice durability", () => {
   it("keeps a notice whose dispatch hook throws, for the retry sweep", async () => {
     await withTestHarness(async (harness) => {

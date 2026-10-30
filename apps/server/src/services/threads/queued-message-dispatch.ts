@@ -219,6 +219,10 @@ export function requestQueuedMessageDispatchAt(
 ): void {
   setTimeout(
     () => {
+      if (Date.now() < at) {
+        requestQueuedMessageDispatchAt(deps, at);
+        return;
+      }
       requestQueuedMessageDispatch(deps, {
         kind: "time-reached",
         now: Date.now(),
