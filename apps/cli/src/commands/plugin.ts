@@ -35,6 +35,7 @@ import {
 } from "@bb/templates/plugin-scaffold";
 import { action, CliExitError } from "../action.js";
 import { cliFetch, createCliBbSdk } from "../client.js";
+import { resolveContextThreadId } from "../context-env.js";
 import {
   buildPluginApp,
   buildPluginHost,
@@ -318,6 +319,7 @@ const PLUGIN_CREATION_TELEMETRY_TIMEOUT_MS = 2_000;
 async function recordPluginCreationStarted(
   getUrl: () => string,
 ): Promise<void> {
+  if (resolveContextThreadId() !== undefined) return;
   try {
     await createCliBbSdk(
       getUrl(),

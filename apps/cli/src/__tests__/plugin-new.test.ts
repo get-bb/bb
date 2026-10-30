@@ -52,6 +52,7 @@ describe.sequential("bb plugin new dependency install", () => {
     process.chdir(workDir);
     await installFakeNpm(workDir);
     vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("BB_THREAD_ID", "");
     logged = [];
     warned = [];
     vi.spyOn(console, "log").mockImplementation((line: unknown) => {
@@ -243,6 +244,39 @@ describe.sequential("bb plugin new dependency install", () => {
       expect(errors).not.toHaveBeenCalled();
     },
   );
+
+  it("does not record plugin_creation_started inside an agent thread", async () => {
+    vi.stubEnv("BB_THREAD_ID", "thr_agent123");
+    const telemetryFetch = vi.fn(async () => Response.json({ ok: true }));
+    vi.stubGlobal("fetch", telemetryFetch);
+
+    await runPluginNew(["agentmade"]);
+
+    expect(logged).toContain("  bb plugin install .");
+    expect(telemetryFetch).not.toHaveBeenCalled();
+  });
+
+  it("gives up on a bb server that never answers", async () => {
+    let aborted = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        (_input: RequestInfo | URL, init?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () => {
+              aborted = true;
+              reject(init.signal?.reason);
+            });
+          }),
+      ),
+    );
+
+    await runPluginNew(["stalled"]);
+
+    expect(aborted).toBe(true);
+    expect(logged).toContain("  bb plugin install .");
+    expect(warned).toEqual([]);
+  }, 10_000);
 
   it("does not record plugin_creation_started for an invalid name", async () => {
     const telemetryFetch = vi.fn(async () => Response.json({ ok: true }));

@@ -962,6 +962,8 @@ function MoreInCategory({
   );
 }
 
+let hasTrackedDetailViewInPageLoad = false;
+
 export function PublicMarketplaceDetailPage({
   manifest,
   entry,
@@ -978,12 +980,15 @@ export function PublicMarketplaceDetailPage({
       properties: {
         plugin_id: entry.id,
         entry_id: entry.id,
-        arrival_source: classifyArrivalSource(
-          new URLSearchParams(window.location.search),
-          document.referrer,
-        ),
+        arrival_source: classifyArrivalSource({
+          searchParams: new URLSearchParams(window.location.search),
+          referrer: document.referrer,
+          siteOrigin: window.location.origin,
+          isFirstViewInPageLoad: !hasTrackedDetailViewInPageLoad,
+        }),
       },
     });
+    hasTrackedDetailViewInPageLoad = true;
   }, [entry.id]);
   const categoryDefinition = resolveMarketplaceCategory(manifest, entry);
   const category = categoryDefinition?.displayName ?? "More plugins";

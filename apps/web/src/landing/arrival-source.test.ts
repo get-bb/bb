@@ -2,8 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import { classifyArrivalSource } from "./arrival-source";
 
-function classify(search: string, referrer: string) {
-  return classifyArrivalSource(new URLSearchParams(search), referrer);
+const SITE_ORIGIN = "https://getbb.app";
+
+function classify(search: string, referrer: string, isFirstViewInPageLoad = true) {
+  return classifyArrivalSource({
+    searchParams: new URLSearchParams(search),
+    referrer,
+    siteOrigin: SITE_ORIGIN,
+    isFirstViewInPageLoad,
+  });
 }
 
 describe("classifyArrivalSource", () => {
@@ -51,5 +58,18 @@ describe("classifyArrivalSource", () => {
 
   it("returns other for an unparseable referrer", () => {
     expect(classify("", "not a url")).toBe("other");
+  });
+
+  it("returns internal for a referrer on the same site", () => {
+    expect(classify("", "https://getbb.app/marketplace")).toBe("internal");
+  });
+
+  it("returns internal for later plugin pages opened in the same page load", () => {
+    expect(classify("", "https://www.google.com/", false)).toBe("internal");
+    expect(classify("", "", false)).toBe("internal");
+  });
+
+  it("keeps share for a shared link even after other views", () => {
+    expect(classify("?utm_medium=share", "", false)).toBe("share");
   });
 });

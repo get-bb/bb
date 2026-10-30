@@ -346,8 +346,9 @@ first-send events through `POST /api/v1/system/telemetry/events`
 `onboarding_sign_in`, `new_thread_submit` (started, accepted, or failed), and
 `plugin_creation_started` (no properties; sent when you choose New plugin in
 the app or run `bb plugin new`, so it records intent, not a finished plugin).
-`bb plugin new` sends it with `app_surface` `api` and skips it silently when no
-bb server answers. The route accepts only these events with fixed enums and booleans: no provider
+`bb plugin new` sends it with `app_surface` `api`, skips it inside a bb agent
+thread (so an agent acting on New plugin isn't counted twice), and skips it
+silently when no bb server answers within 2 seconds. The route accepts only these events with fixed enums and booleans: no provider
 ids, account details, prompts, project or file names, terminal output, error
 messages, or session ids. Sign-in `exited` means the command exited before
 readiness was observed, not that authentication succeeded; `new_thread_submit`

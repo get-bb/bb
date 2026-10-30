@@ -1,4 +1,10 @@
-export type ArrivalSource = "share" | "search" | "social" | "direct" | "other";
+export type ArrivalSource =
+  | "share"
+  | "internal"
+  | "search"
+  | "social"
+  | "direct"
+  | "other";
 
 const GOOGLE_HOST = /(^|\.)google\.(com|[a-z]{2}|co\.[a-z]{2}|com\.[a-z]{2})$/;
 
@@ -25,6 +31,14 @@ function matchesDomain(host: string, domains: readonly string[]): boolean {
   );
 }
 
+function referrerOrigin(referrer: string): string | null {
+  try {
+    return new URL(referrer).origin;
+  } catch {
+    return null;
+  }
+}
+
 function referrerHost(referrer: string): string | null {
   try {
     return new URL(referrer).hostname.toLowerCase();
@@ -33,15 +47,28 @@ function referrerHost(referrer: string): string | null {
   }
 }
 
-export function classifyArrivalSource(
-  searchParams: URLSearchParams,
-  referrer: string,
-): ArrivalSource {
+export function classifyArrivalSource({
+  searchParams,
+  referrer,
+  siteOrigin,
+  isFirstViewInPageLoad,
+}: {
+  searchParams: URLSearchParams;
+  referrer: string;
+  siteOrigin: string;
+  isFirstViewInPageLoad: boolean;
+}): ArrivalSource {
   if (searchParams.get("utm_medium")?.trim().toLowerCase() === "share") {
     return "share";
   }
+  if (!isFirstViewInPageLoad) {
+    return "internal";
+  }
   if (referrer.trim() === "") {
     return "direct";
+  }
+  if (referrerOrigin(referrer) === siteOrigin) {
+    return "internal";
   }
   const host = referrerHost(referrer);
   if (host === null || host === "") {
