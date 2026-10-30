@@ -32,6 +32,8 @@ import type { ProviderInfo } from "@bb/domain";
 import { ProviderIconMark } from "@/components/settings/ProviderIconMark";
 import { getProviderIconInfo } from "@/lib/provider-icon";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing";
+import { PluginIcon } from "@/components/plugin/PluginIcon";
+import { usePluginCompactBranding } from "@/lib/plugin-logos";
 
 type ResourceProviderFilter = "bb" | SkillProvider;
 export type ProviderRoster = ReadonlyMap<string, ProviderInfo>;
@@ -124,15 +126,33 @@ export function ProviderLogo({
   );
 }
 
+function SkillPluginLogo({
+  pluginId,
+  className,
+  fallbackClassName = className,
+}: {
+  pluginId: string;
+  className: string;
+  fallbackClassName?: string;
+}) {
+  const branding = usePluginCompactBranding(pluginId);
+  if (branding?.compactIconUrl || branding?.icon) {
+    return <PluginIcon pluginId={pluginId} icon={null} className={className} />;
+  }
+  return <BbLogo className={fallbackClassName} />;
+}
+
 export function SkillProvenanceTooltip({
   prefix,
   providerId,
   provider,
+  pluginId = null,
   name,
 }: {
   prefix: string;
   providerId: SkillProvider | null;
   provider?: ProviderInfo | undefined;
+  pluginId?: string | null;
   name: string;
 }) {
   return (
@@ -143,7 +163,13 @@ export function SkillProvenanceTooltip({
         aria-hidden="true"
         className="flex size-3.5 shrink-0 items-center justify-center"
       >
-        {providerId === null ? (
+        {providerId === null && pluginId !== null ? (
+          <SkillPluginLogo
+            pluginId={pluginId}
+            className="size-3.5"
+            fallbackClassName="size-3.5 brightness-0 invert"
+          />
+        ) : providerId === null ? (
           <BbLogo className="size-3.5 brightness-0 invert" />
         ) : (
           <ProviderLogo
@@ -173,6 +199,9 @@ function SkillLeading({
         className="size-6"
       />
     );
+  }
+  if (skill.scope === "plugin" && skill.pluginId !== null) {
+    return <SkillPluginLogo pluginId={skill.pluginId} className="size-6" />;
   }
   return <BbLogo className="size-6" />;
 }
@@ -287,6 +316,7 @@ function SkillRow({
               tooltip={
                 <SkillProvenanceTooltip
                   prefix="Included with"
+                  pluginId={skill.pluginId}
                   providerId={skill.provider}
                   provider={
                     skill.provider === null
@@ -703,6 +733,7 @@ export function SkillDetailDialogView({
                 tooltip: (
                   <SkillProvenanceTooltip
                     prefix="Included with"
+                    pluginId={skill.pluginId}
                     providerId={skill.provider}
                     provider={
                       skill.provider === null
