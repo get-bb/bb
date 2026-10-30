@@ -10,5 +10,6 @@ export const docs = defineDocs({
       description: z.string().min(1),
       since: z.string().min(1),
     }),
+    postprocess: { includeProcessedMarkdown: true },
   },
 });

@@ -35,6 +35,11 @@ export const Route = createFileRoute("/docs/$")({
           ),
           links: [
             { rel: "canonical", href: `https://getbb.app${loaderData.url}` },
+            {
+              rel: "alternate",
+              type: "text/markdown",
+              href: loaderData.markdownUrl,
+            },
             ...siteHeadLinks(guidesCss, docsCss),
           ],
         }
