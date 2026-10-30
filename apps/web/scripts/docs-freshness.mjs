@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { appendFileSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import matter from "gray-matter";
 
 const CONTENT_DIR = "apps/web/content/docs";
@@ -93,7 +94,10 @@ export function report(results) {
   return lines;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   const repo =
     process.argv[2] ?? git(process.cwd(), ["rev-parse", "--show-toplevel"]);
   const results = checkDocsFreshness(repo);

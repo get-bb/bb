@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
 
 export const DOCS_PATHS = [
   /^apps\/web\/content\/docs\//u,
@@ -14,7 +15,10 @@ export function touchesDocs(files) {
   return files.some((file) => DOCS_PATHS.some((pattern) => pattern.test(file)));
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   const base = process.argv[2];
   if (!base) {
     console.error("Usage: docs-change.mjs <base-sha>");
