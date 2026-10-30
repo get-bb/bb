@@ -1,0 +1,108 @@
+---
+title: Add and share skills
+description: Put a folder with a SKILL.md in ~/.bb/skills for every agent and project, or in a project's .bb/skills for that project. Symlinks work in your own folders and inside a project.
+type: how-to
+sources:
+  - packages/skill-index/src/**
+  - apps/server/src/services/skills/**
+  - apps/app/src/components/tools/SkillsCollection.tsx
+  - apps/app/src/components/settings/CliSkillsSettingsSection.tsx
+  - apps/cli/src/commands/skill.ts
+  - plugins/provider-claude-code/src/native-roots.ts
+  - plugins/provider-codex/src/native-roots.ts
+  - plugins/provider-pi/src/native-roots.ts
+since: 0.48.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+Use this when you want a skill, a reusable set of instructions, to show up in bb's `/` menu, and decide which agents and projects get it.
+
+A skill is a folder with a `SKILL.md` file in it. Where you put the folder decides who sees it.
+
+## Choose where the skill goes
+
+| Put it in | Who gets it |
+| --- | --- |
+| `~/.bb/skills/<name>/` | Every agent in every project |
+| `<project>/.bb/skills/<name>/` | Every agent in that project. Commit it to share it with your team |
+| An agent's own skills folder, such as `~/.claude/skills/<name>/` | Only agents that read that folder |
+
+Skills in `~/.bb/skills` and `.bb/skills` are bb's own: bb gives them to whichever agent a thread uses. When two have the same name, the project's wins.
+
+bb also lists each agent's own skills folders for that agent:
+
+| Agent | Your skills | Project skills |
+| --- | --- | --- |
+| Claude Code | `~/.claude/skills` (or `$CLAUDE_CONFIG_DIR/skills`) and enabled Claude Code plugins | `.claude/skills` |
+| Codex | `~/.agents/skills`, `$CODEX_HOME/skills` | `.agents/skills`, `.codex/skills` |
+| Pi | `~/.pi/agent/skills`, `~/.agents/skills` | `.pi/skills`, `.agents/skills` |
+| Cursor | `~/.cursor/skills`, `~/.agents/skills`, `~/.claude/skills`, `~/.codex/skills` | The same folders in the project |
+| OpenCode | `~/.config/opencode/skills`, `~/.claude/skills`, `~/.agents/skills` | `.opencode/skills`, `.claude/skills`, `.agents/skills` |
+
+Project folders are read from the repository root down to the folder the thread works in.
+
+## Add a skill
+
+<Tabs items={["Desktop", "Files"]}>
+<Tab value="Desktop">
+
+1. Click **Skills** in the sidebar, then **My skills**.
+2. Click **New bb skill**. The new thread screen opens with the prompt "Create a new bb skill that". Finish the sentence and send it; the agent writes the skill with you.
+
+To install a published skill instead, open **Browse skills**, or run `bb skill search <words>` and `bb skill install <registry-skill-id>`.
+
+</Tab>
+<Tab value="Files">
+
+Create the folder and its `SKILL.md`:
+
+```md title="~/.bb/skills/release-notes/SKILL.md"
+---
+name: release-notes
+description: Write release notes from the pull requests merged since the last tag.
+---
+
+Read the merged pull requests since the last tag and write release notes grouped by area.
+```
+
+- `name` uses lowercase letters, numbers and single hyphens, and matches the folder name.
+- `description` tells the agent when to use the skill. Keep it under 1,024 characters.
+
+</Tab>
+</Tabs>
+
+New and changed skills apply from a thread's next message.
+
+## Share skills with symlinks
+
+To keep one copy of a skill and use it in several places, link to it:
+
+```sh
+ln -s ~/my-skills/release-notes ~/.bb/skills/release-notes
+ln -s ~/my-skills/release-notes ~/.claude/skills/release-notes
+```
+
+- In your own folders, such as `~/.bb/skills` or `~/.claude/skills`, the skills folder, a skill's folder and its `SKILL.md` can all be links, to anywhere.
+- In a project, links must stay inside the project, or inside the repository for folders above the project. Links that point outside are skipped.
+- Inside a skill's folder, other files must be ordinary files, not links. Link the whole skill folder or its `SKILL.md` instead.
+- bb reads at most 1,000 folders in each skills folder.
+
+If the same skill shows up from several folders with identical contents, bb lists it once.
+
+## Let agents outside bb use bb's skills
+
+bb's own skills teach agents to use the `bb` CLI. To make them available to Claude Code or Codex when you run them outside bb, open **Settings → General**, find **bb CLI skills** under **Skills**, and click **Install**. This copies them into `~/.agents/skills` and `~/.claude/skills`. From a terminal: `bb skill install-cli-skills`.
+
+## Check it worked
+
+- **Skills → My skills** lists the skill.
+- `bb skill list` lists it, with where it came from.
+- Type `/` in a thread's composer, followed by the start of the skill's name. It appears in the menu.
+
+## Related troubleshooting
+
+- **The skill isn't in the list:** check that the file is named `SKILL.md`, that its front matter starts with `---`, and that `name` matches the folder name.
+- **A linked skill in a project is missing:** the link points outside the project. Move the skill into the project, or put it in `~/.bb/skills` instead.
+- **The skill shows for one agent but not another:** it is in one agent's own folder. Move it to `~/.bb/skills` to give it to every agent.
+- **The skill appears twice:** two folders hold different versions with the same name. Remove one.

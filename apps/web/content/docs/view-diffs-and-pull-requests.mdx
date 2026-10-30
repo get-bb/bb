@@ -1,0 +1,88 @@
+---
+title: View diffs and pull requests
+description: Press Mod+D to see a thread's changes in the Diff tab. The pull request for the thread's branch, and what it is waiting on, shows above the composer.
+type: how-to
+sources:
+  - plugins/git/app.tsx
+  - plugins/git/ui/diff/**
+  - plugins/github-pr-status/**
+since: 0.47.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+Use this when you want to see what a thread changed, or which pull request belongs to it and what it is waiting on.
+
+Both come from plugins that ship with bb and are on by default: **Git** shows changes, and **GitHub PR Status** shows pull requests.
+
+## See what a thread changed
+
+1. Open the thread.
+2. Press **Mod+D** (Command+D on macOS, Ctrl+D elsewhere), or choose the **Diff** tab in the thread's side panel.
+3. Pick what to compare from the menu at the top of the tab:
+
+| Option | Shows |
+| --- | --- |
+| **All changes** | Everything on the branch since its merge base, committed or not |
+| **Committed changes** | Only commits on the branch since the merge base |
+| **Uncommitted changes** | Only what isn't committed yet |
+| A single commit | That commit alone |
+
+**Committed changes** and **Uncommitted changes** appear only when the branch has commits or uncommitted work. The thread's **Info** tab shows the branch, the merge base it compares against, and its commits.
+
+From a terminal, `bb thread show <thread-id> --git-diff` prints the same diff.
+
+## See the thread's pull request
+
+bb shows the pull request for the branch the thread's environment has checked out. It appears in three places:
+
+- **Above the composer:** a **Pull request** segment with its number, state and next step, and actions such as **Mark ready** and **Merge**.
+- **Info tab:** a **Pull request** row.
+- **Sidebar:** the PR number on the thread's row, with a yellow dot while checks run and a red cross when they fail or the PR has conflicts.
+
+From a terminal, pass the environment ID from `bb thread show <thread-id> --json`:
+
+```sh
+bb pull-request show <environment-id>
+bb pull-request ready <environment-id>
+bb pull-request merge <environment-id> --method squash
+```
+
+### Which pull request bb picks
+
+bb finds pull requests the way `gh pr view` does: by the environment's current branch, in the repository `gh` resolves (`gh repo set-default`, then the `upstream`, `github` and `origin` remotes). When the branch has several pull requests, bb shows the open one, otherwise the newest. You can't link a different pull request by hand; check out its branch instead.
+
+Pull request status needs the GitHub CLI signed in on the machine that runs the thread: install `gh` and run `gh auth login`. bb never wakes a sleeping machine to check a pull request.
+
+### What the status means
+
+The state is **Open**, **Draft**, **Merged** or **Closed**. Next to it, bb shows the one thing the pull request is waiting on, checked in this order:
+
+| Status | Meaning |
+| --- | --- |
+| **Conflicts with** *base* | The branch conflicts with its base branch |
+| **Checks failing** | At least one check failed, was cancelled or timed out |
+| **Changes requested** | A reviewer requested changes |
+| **Queued to merge** | It is in GitHub's merge queue |
+| **Review required** / **Review requested** | It needs an approving review; requested means a reviewer has been asked |
+| **Checks running** | Checks are still running |
+| **Behind** *base* | The branch must be updated with its base before it can merge |
+| **Blocked by rules** | GitHub's branch rules block the merge, for example a required review or check |
+| **Blocked by hooks** | A merge hook blocks it |
+| **Ready to merge** | Mergeable, with passing checks |
+| **Checks passing**, **No checks**, **Checks unknown** | Nothing else is pending; shown for drafts and when no other status applies |
+
+**Auto-merge** shows when auto-merge is on.
+
+To hide the segment above the composer, turn off **Show pull request above the composer** in the GitHub PR Status plugin's settings, or run `bb plugin config bb--github-pr-status set showPullRequest false`.
+
+## Check it worked
+
+- The **Diff** tab lists the changed files for the option you chose.
+- After you push a branch that has a pull request, the **Pull request** segment shows its number. `bb pull-request show <environment-id>` prints the same status, or "No pull request found".
+
+## Related troubleshooting
+
+- **No pull request shows:** run `gh auth status` on the thread's machine and check that the thread's branch is the pull request's head branch.
+- **The wrong pull request shows:** bb follows `gh pr view`. Run `gh repo set-default` in the project if the base repository is wrong.
+- **A file says "No renderable diff for this file.":** bb couldn't parse that file's diff. Use **Open file** to view it.

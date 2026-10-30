@@ -1,0 +1,89 @@
+---
+title: Start child threads
+description: Ask for bb child threads in your prompt or in .bb/AGENTS.md, and turn off the agent's own subagents if it keeps using them. You can also nest any thread under another yourself.
+type: how-to
+sources:
+  - apps/cli/src/commands/thread/spawn.ts
+  - apps/cli/src/commands/thread/actions.ts
+  - apps/server/src/services/threads/thread-parent.ts
+  - apps/app/src/components/pickers/ParentThreadPicker.tsx
+  - plugins/thread-list/app/dnd/**
+  - plugins/bb-guide/introduction.ts
+  - plugins/provider-claude-code/server.ts
+  - plugins/provider-codex/server.ts
+since: 0.47.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+Use this when you want an agent to hand parts of a task to bb child threads, so you can see each part in the sidebar, steer it or take it over.
+
+bb tells agents not to start other threads unless you ask, so ask explicitly. Agents start child threads with the `bb` CLI, which every agent in bb can use.
+
+## Ask an agent for child threads
+
+Say that you want bb child threads, and say what each one should use. Anything you leave out comes from the parent: its agent, model and permission mode.
+
+```text title="Prompt"
+Split this into bb child threads with bb thread spawn --parent-self, one per part: the sign-up form, the API, and the tests. Give each its own worktree. Use Codex with high reasoning for the API. Don't do the parts yourself; review each child's result when it finishes.
+```
+
+The agent runs `bb thread spawn` once per part. Each child appears in the sidebar under the parent and starts working.
+
+## Make it the default for a project
+
+To make agents in a project use child threads without asking each time:
+
+1. Add a line like this to `.bb/AGENTS.md` in the project. bb adds this file to every agent's instructions in that project, whatever the agent. For every project, use `~/.bb/AGENTS.md` instead.
+
+   ```text title=".bb/AGENTS.md"
+   When a task has independent parts, delegate each part to a bb child thread with `bb thread spawn --parent-self` instead of using your own subagents.
+   ```
+
+2. Turn off the agent's own subagents so it can't fall back to them: turn on **Disable provider subagents** in **Settings → Claude Code provider** and **Settings → Codex provider**. From a terminal:
+
+   ```sh
+   bb plugin config provider-claude-code set subagentsDisabled true
+   bb plugin config provider-codex set subagentsDisabled true
+   ```
+
+   The change applies from the agent's next turn and keeps the conversation.
+
+## Nest an existing thread under another
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+- **Drag** a thread in the sidebar and hold it over another thread's row until it nests under it. Drag a child out to a section to make it a top-level thread again.
+- Or open the thread, open the right panel's **Info** tab (**Mod+J** shows the panel), and choose a thread in its **Parent** row. Click the **×** next to the parent to remove it.
+
+</Tab>
+<Tab value="CLI">
+
+```sh
+bb thread update <thread-id> --parent-thread <parent-id>
+bb thread update <thread-id> --clear-parent-thread
+```
+
+To start a new child thread yourself:
+
+```sh
+bb thread spawn --project <project-id> --parent-thread <parent-id> --prompt "Write the sign-up API tests"
+```
+
+</Tab>
+</Tabs>
+
+A child can belong to a different project from its parent; the sidebar nests it under the parent and marks the other project. Threads nest at most 4 levels deep.
+
+## Check it worked
+
+- The children show in the sidebar, nested under the parent.
+- The child's **Info** tab shows its **Parent**, and the parent's **Info** tab lists its **Child threads**.
+- `bb thread list --parent-thread <parent-id>` lists them.
+
+## Related troubleshooting
+
+- **The agent uses its own subagents anyway:** turn on **Disable provider subagents** for that agent, and ask for child threads by name in the prompt.
+- **"Thread nesting is limited to 4 levels.":** nest the thread under a parent higher up.
+- **A child fails to start because of its permission mode:** the machine's **Permission limit** in **Settings → Machines** is lower than the mode the child's agent needs. Pi, for example, runs only in Full Access.

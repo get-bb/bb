@@ -1,0 +1,64 @@
+---
+title: Child threads, subagents and workflows
+description: A child thread is a full bb thread that another thread started, which you can open, steer and take over. A subagent runs hidden inside one agent's session. A workflow is a scripted run whose workers bb manages for you.
+type: concept
+sources:
+  - apps/server/src/services/threads/thread-parent.ts
+  - apps/server/src/services/threads/child-thread-notifications.ts
+  - packages/templates/src/templates/bb-guide-threads.md
+  - plugins/bb-guide/introduction.ts
+  - plugins/provider-claude-code/server.ts
+  - plugins/provider-codex/server.ts
+  - plugins/workflows/src/service.ts
+since: 0.47.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+There are three ways one agent can hand work to another in bb. They differ in what you can see and control:
+
+- A **child thread** is a full bb thread that another thread started. It shows up in your sidebar under its parent, and you can open it, send it messages or take it over.
+- A **subagent** is the agent's own helper, such as Claude Code's or Codex's subagents. It runs inside one thread's session; you see its work as rows in that thread, but you can't open or steer it.
+- A **workflow** runs a script that starts many worker threads at once and reports back when the run ends.
+
+## Child threads
+
+A child thread is an ordinary bb thread with a parent:
+
+- **Its own agent:** each child picks its own agent, model, reasoning level and permission mode. Without a choice, it uses its parent's agent and model.
+- **Its own place to work:** a child can share its parent's environment, get its own worktree, or even belong to a different project.
+- **Reports back:** when a child finishes, fails or gets stuck, bb tells the parent's agent. **Notify parent** on the child controls which of these it hears about.
+- **Visible to you:** the sidebar nests children under their parent, and the parent shows its working children above the composer, where you can answer their questions.
+- **Limits:** threads nest at most 4 levels deep. Archiving a parent also archives its children.
+
+A child inherits its parent's permission mode unless it asks for another, adapted to what its agent supports. Nesting doesn't cap permissions: a child may ask for a higher mode than its parent. The only hard limit is the machine's **Permission limit**.
+
+bb tells agents not to start threads unless you ask. To get child threads, say so in your prompt or your project's instructions. See [Start child threads](/docs/start-child-threads).
+
+## Subagents
+
+Claude Code and Codex can start their own subagents inside a thread. These run inside that agent's session, with the same agent, account and permissions as the thread. You see their work as rows in the thread's timeline, but you can't open, message or reassign them.
+
+If you'd rather see every piece of work as its own thread, turn on **Disable provider subagents** in **Settings → Claude Code provider** or **Settings → Codex provider**. The agent then has no subagent tools and delegates through bb instead.
+
+## Workflows
+
+The **Workflows** plugin comes with bb and is off until you turn it on. A workflow is a script that starts worker threads, runs them in parallel or in sequence, and sends one message to the thread that started it when the run ends. Workers are hidden from the sidebar, aren't child threads, and are archived with the thread that started the run.
+
+Use workflows for large, well-defined jobs that split into many similar pieces, such as migrating every file in a folder.
+
+## When to use which
+
+| If you want to | Use |
+| --- | --- |
+| Let an agent quickly look something up or explore code without leaving its thread | A subagent |
+| Split a task into parts you can watch, steer, review or take over | Child threads |
+| Use a different agent or model for part of the work, such as a second model to review | A child thread with that agent |
+| Keep one long-running thread that hands out and checks work | [An orchestrator thread](/docs/run-an-orchestrator-thread) with child threads |
+| Run the same steps over many files or items, with little supervision | A workflow |
+
+## Next steps
+
+- [Start child threads](/docs/start-child-threads)
+- [Follow child threads from the parent](/docs/follow-child-threads-from-the-parent)
+- [Run an orchestrator thread](/docs/run-an-orchestrator-thread)

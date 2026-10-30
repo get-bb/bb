@@ -1,0 +1,66 @@
+---
+title: Run an orchestrator thread
+description: An orchestrator is a long-lived thread told to hand out work to child threads and check it instead of doing it itself. Give it standing instructions, pin it, and pick models per role.
+type: how-to
+sources:
+  - apps/cli/src/commands/thread/spawn.ts
+  - apps/cli/src/commands/thread/actions.ts
+  - plugins/bb-guide/skills/bb-cli/SKILL.md
+  - plugins/concurrency-limit/**
+  - plugins/workflows/PLUGIN_OVERVIEW.md
+since: 0.47.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+Use this when you have a stream of work, such as a backlog of issues or a set of PRs to review, and want one thread to coordinate it: split it up, start child threads, check their results and tell you what needs a decision.
+
+An orchestrator is an ordinary bb thread with standing instructions. bb needs no special mode for it.
+
+## Set up the orchestrator
+
+1. Start a thread in the project and give it its role. Be explicit that it delegates and doesn't do the work itself:
+
+   ```text title="Prompt"
+   You coordinate work in this project. For each task I give you:
+   - Start one bb child thread per independent part with bb thread spawn --parent-self, each in its own worktree.
+   - Use Codex with medium reasoning for implementation and Claude Code for review.
+   - Never write code yourself. Read each child's result, start a reviewer child for it, and send fixes back to the child that did the work.
+   - When a part is done and reviewed, tell me in one line, and ask me only for decisions you can't make.
+   ```
+
+2. Pin it so it stays at the top of the sidebar: choose **Pin** from its thread actions menu, or run `bb thread pin <thread-id>`.
+3. Give it tasks by sending messages, as you would to any thread.
+
+To give every orchestrator the same rules, put them in the project's `.bb/AGENTS.md` or a skill instead of the first message.
+
+## Patterns that work
+
+| Pattern | How |
+| --- | --- |
+| **Builder and reviewer** | The orchestrator starts a builder child, then a reviewer child in the same environment so it sees the same files. Agents get the environment ID from `bb thread show <thread-id> --json` and pass `--environment <environment-id>` to `bb thread spawn` |
+| **Cross-model review** | Build with one agent and review with another, by naming the agent and model for each child |
+| **One child per PR or issue** | Each child gets its own worktree, so parallel children don't touch each other's files |
+| **Quiet workers** | Start chatty workers with `--parent-notifications stuck`, so the orchestrator only wakes when one fails or needs help |
+
+For a large job that repeats the same steps over many files, use a workflow instead: turn on the **Workflows** plugin (`bb plugin enable workflows`) and ask the orchestrator to run one. See [Child threads, subagents and workflows](/docs/child-threads-subagents-and-workflows).
+
+## Keep cost under control
+
+Every child thread is a full agent session, billed to that agent's account like any other thread. An orchestrator with many children uses your plan's limits much faster than one thread.
+
+- **Pick models per role.** Use a cheaper or faster model for routine work and save the strongest model for review and hard parts.
+- **Limit how many run at once.** The **Concurrency limit** plugin, on by default, holds new turns when a machine already runs one thread per processor. Change the limits in **Settings → Concurrency limit** or with `bb concurrency-limit global <limit>`.
+- **Limit depth.** Tell the orchestrator whether children may start their own children. bb allows at most 4 levels.
+- **Keep the orchestrator's context small.** Ask children to end with a short summary; their final answer is what the orchestrator reads.
+
+## Check it worked
+
+- New child threads appear under the orchestrator in the sidebar, and **Active child threads** above its composer lists the ones still working.
+- The orchestrator's timeline shows a row each time a child finishes, and it reports to you without doing the work itself.
+
+## Related troubleshooting
+
+- **The orchestrator does the work itself:** restate the rule ("never write code yourself") and turn on **Disable provider subagents** for its agent, so it can't fall back to its own subagents.
+- **Children wait to start:** the concurrency limit is holding them. Raise it or let running threads finish.
+- **The orchestrator loses track over a long session:** ask it to keep a running list of open tasks in a file, and start a fresh orchestrator from that list when its context gets long.

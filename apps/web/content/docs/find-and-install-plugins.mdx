@@ -1,0 +1,119 @@
+---
+title: Find and install plugins
+description: Browse plugins under Plugins in the sidebar or at getbb.app/marketplace, or install from a repository, npm or a folder. Plugins run with full access to your computer, so install only ones you trust.
+type: how-to
+sources:
+  - apps/app/src/components/plugin/**
+  - apps/app/src/components/settings/MarketplacesSettingsSection.tsx
+  - apps/cli/src/commands/plugin.ts
+  - apps/cli/src/commands/marketplace.ts
+  - apps/server/src/services/plugins/builtin-registry.ts
+since: 0.38.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+Use this when you want to add a plugin to bb, from the marketplace or straight from a Git repository, npm or a folder.
+
+## Know what a plugin can reach
+
+Plugins run as full-trust code. A plugin runs inside the bb server as your user, with access to your computer and to all local bb data, including other plugins' secrets. There is no sandbox and no permission list to approve.
+
+Where a plugin comes from tells you who has looked at it:
+
+| Source | Reviewed by |
+| --- | --- |
+| **BB Official** | Ships with bb |
+| **BB Community** | The bb team reviews each plugin before it is listed |
+| A marketplace you added | Its owner, not bb. bb says "a third-party marketplace that BB does not review" before you install |
+| **Direct install** (a repository, npm package or folder) | Nobody. Read the code first |
+
+## Install from the marketplace
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+1. Click **Plugins** in the sidebar. **Browse plugins** opens.
+2. Search, or narrow the list with **Category**.
+3. Click a plugin to open its details, then click **Install**.
+4. Read the dialog, which names the exact source, and confirm.
+
+You can browse the same catalog on the web at [getbb.app/marketplace](https://getbb.app/marketplace).
+
+</Tab>
+<Tab value="CLI">
+
+```sh
+bb plugin search "sidebar"
+bb plugin install <name> --yes
+```
+
+To install an entry from a specific marketplace, use `<name>@<marketplace>`.
+
+</Tab>
+</Tabs>
+
+## Install a plugin that isn't in the marketplace
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+1. Click **Plugins** in the sidebar.
+2. Open the menu next to **New plugin** and choose **Install from source**.
+3. Enter a GitHub repository URL, `npm:package[@version]` or a local path, then click **Install plugin**.
+
+<Screenshot
+  src="/docs-images/find-and-install-plugins/add-plugin"
+  alt="The Add plugin dialog takes a GitHub repository URL, npm package or local path, and warns that plugins run as full-trust code."
+  width={480}
+  height={281}
+/>
+
+</Tab>
+<Tab value="CLI">
+
+```sh
+bb plugin install https://github.com/owner/bb-plugin-name --yes
+bb plugin install git:https://github.com/owner/bb-plugin-name.git@v1.2.0 --yes
+bb plugin install npm:bb-plugin-name@1.2.0 --yes
+bb plugin install ./path/to/plugin --yes
+```
+
+For a repository that holds several plugins, add `--subdirectory <path>`. A `git:` source accepts a tag, branch, commit or semver range such as `@^1.2.0`.
+
+</Tab>
+</Tabs>
+
+You can also give an agent the repository link and ask it to install the plugin. It runs the same command, and the same warning applies.
+
+## Turn plugins on, off or remove them
+
+- **Plugins → Installed plugins**, or **Settings → Installed plugins**, lists every installed plugin with a switch to turn it on or off. Some plugins that come with bb, such as Workflows, are installed but off until you turn them on.
+- `bb plugin list` shows the same list. `bb plugin enable <id>` and `bb plugin disable <id>` turn one on or off.
+- `bb plugin outdated` lists available updates, and `bb plugin update <id> --yes` installs one.
+- `bb plugin remove <id>` uninstalls a plugin and deletes its settings, secrets and schedules.
+
+If a plugin misbehaves and you can't tell which one, `bb plugin safe-mode on` stops every plugin you installed while the ones included with bb keep running. `bb plugin safe-mode off` restarts them.
+
+## Add or remove a marketplace
+
+**Settings → Plugin marketplaces** lists the marketplaces bb reads. Adding one only reads its catalog; it never installs or runs plugin code.
+
+```sh
+bb marketplace add git:https://github.com/owner/marketplace.git
+bb marketplace list
+bb marketplace remove <name>
+```
+
+BB Official and BB Community are always listed and can't be removed. Plugins installed from a marketplace you remove keep running as direct installs.
+
+## Check it worked
+
+- The plugin shows under **Plugins → Installed plugins** with its switch on.
+- `bb plugin list` lists it as enabled.
+
+## Related troubleshooting
+
+- **The install fails with a version error:** the plugin needs a newer bb. Update bb, or install an older version of the plugin.
+- **The CLI says "Refusing to install without confirmation":** add `--yes`, or run the command in a terminal where you can answer the prompt.
+- **bb stops working after you installed a plugin:** run `bb plugin safe-mode on`, then turn plugins back on one at a time.

@@ -1,0 +1,75 @@
+---
+title: Change keyboard shortcuts
+description: Open Settings → Keyboard, click an action's shortcut and press the new keys, or use bb settings keyboard set. Any action can be rebound or turned off.
+type: how-to
+sources:
+  - apps/app/src/components/settings/KeyboardSettingsSection.tsx
+  - apps/cli/src/commands/settings.ts
+  - packages/domain/src/app-keybindings.ts
+  - packages/domain/src/app-default-keybindings.ts
+since: 0.0.30
+owner: brsbl
+verified: 2026-10-30
+---
+
+Use this when you want to give an action a shortcut, change its keys, or turn a shortcut off. Every action listed in [Keyboard shortcuts](/docs/keyboard-shortcuts) can be rebound, including actions that have no default keys and actions that plugins add.
+
+## Change a shortcut
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+1. Open **Settings → Keyboard** (**Mod+,** opens Settings).
+2. Find the action, or type its name in **Search shortcuts**.
+3. Click the shortcut on the right of the action. It changes to **Press keys**.
+4. Press the new keys. Include Command, Control or Alt. Press Escape to cancel.
+
+<Screenshot
+  src="/docs-images/change-keyboard-shortcuts/shortcut-row"
+  alt="In Settings → Keyboard, each action has its shortcut on the right, then a button to clear it and a button to reset it."
+  width={728}
+  height={96}
+/>
+
+To turn a shortcut off, click the **×** next to it; the action shows **Unassigned**. To go back to bb's default, click the reset arrow next to it, or **Reset all** at the top for every action.
+
+</Tab>
+<Tab value="CLI">
+
+```sh
+bb settings keyboard list
+bb settings keyboard set thread.archive Mod+Shift+E
+bb settings keyboard set thread.archive disabled
+bb settings keyboard reset thread.archive
+bb settings keyboard reset
+```
+
+`bb settings keyboard list` prints each action's command ID and current keys. Write shortcuts as modifiers and a key joined with `+`, such as `Mod+Shift+P`. Modifiers are `Mod`, `Meta`, `Ctrl`, `Alt` and `Shift`. Add `--platform mac`, `--platform windows` or `--platform linux` to change a shortcut on one platform only.
+
+</Tab>
+</Tabs>
+
+**Mod** means Command on macOS and Control on Windows and Linux. Changes apply at once in every bb window.
+
+## When two actions share keys
+
+If the keys you press already belong to another action, bb asks "Shortcut already used by … Replace it with …?". Choose **Replace binding** to move the keys, or **Cancel**.
+
+Some actions only run in one place, such as the browser or a dialog. Those can share keys, and the row says "Also used by … Context determines which command runs."
+
+The CLI doesn't check for conflicts. Check the row in **Settings → Keyboard** after you set a shortcut from the terminal.
+
+## Show shortcut hints
+
+Turn on **Show keyboard hints when holding CMD / Control** in **Settings → Keyboard** to see each control's shortcut while you hold Command or Control. From a terminal, run `bb settings keyboard hints on` or `bb settings keyboard hints off`.
+
+## Check it worked
+
+- The action's row shows your keys and a **Custom** badge.
+- Pressing the keys runs the action.
+
+## Related troubleshooting
+
+- **"Use Command, Control, or Alt with a key.":** most shortcuts need a modifier. Add Command, Control or Alt.
+- **A shortcut does nothing on a non-English keyboard layout:** bb matches the character your layout types, not the key's position. Rebind the action to keys your layout types directly.
+- **A shortcut works on the web but not in the desktop app, or the reverse:** some actions have different defaults on each. The row lists **Web** and **Desktop** defaults separately, and actions marked **Desktop** exist only in the desktop app.

@@ -1,0 +1,94 @@
+---
+title: Follow child threads from the parent
+description: The parent lists working children above its composer, where you can answer their questions. Notify parent on each child sets which outcomes wake the parent.
+type: how-to
+sources:
+  - apps/app/src/components/promptbox/banner/ThreadPromptContextBanner.tsx
+  - apps/app/src/lib/parent-notifications.ts
+  - apps/app/src/components/thread/timeline/GeneratedConversationMessage.tsx
+  - apps/server/src/services/threads/child-thread-notifications.ts
+  - apps/server/src/services/threads/thread-parent.ts
+  - apps/cli/src/commands/thread/actions.ts
+  - apps/cli/src/commands/thread/wait.ts
+since: 0.47.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+Use this when a thread has started child threads and you want to keep track of them, answer their questions, or choose when the parent hears from them.
+
+## Watch children and answer their questions
+
+Open the parent thread. While any child is working or waiting for an answer, **Active child threads** shows above the composer:
+
+- Each child is marked **Working** or **Needs input**. Children with questions come first.
+- Click a child's question to answer it right there, without opening the child.
+- Click a child to open it. Send it a message to steer it, or take over the work yourself.
+
+The parent's **Info** tab lists all its **Child threads**, finished ones too. Each child shows a **Parent** banner above its composer that links back.
+
+## Choose what reaches the parent
+
+When a child finishes a turn, fails, is interrupted or gets stuck on an approval or question, bb tells the parent's agent and adds a row to the parent's timeline, such as "… finished", "… needs attention" or "3 threads updated". A finished child's final answer goes to the parent's agent, which picks up from there.
+
+**Notify parent** on each child chooses which of these reach the parent:
+
+| Option | The parent hears about |
+| --- | --- |
+| **Auto** (default) | Every finished turn, failure and blocker |
+| **When stuck** | Only failures, interruptions and blockers |
+| **Off** | Nothing |
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+Open the child, then the **Info** tab in the right panel (**Mod+J**), and pick an option in **Notify parent**. You can also choose **Notify parent** from the child's thread actions menu, for one thread or several selected in the sidebar.
+
+<Screenshot
+  src="/docs-images/follow-child-threads-from-the-parent/notify-parent"
+  alt="A child thread's Info tab shows its Parent, then the Notify parent menu set to When stuck."
+  width={480}
+  height={160}
+/>
+
+</Tab>
+<Tab value="CLI">
+
+```sh
+bb thread update <child-id> --parent-notifications stuck
+bb thread spawn --project <project-id> --parent-thread <parent-id> --parent-notifications off --prompt "Update the changelog"
+```
+
+Values are `auto`, `stuck` and `off`.
+
+</Tab>
+</Tabs>
+
+With **When stuck** or **Off**, bb doesn't pass on the child's final answer. bb tells the child's agent to send its results to the parent itself when it needs to.
+
+## Follow children from the parent's agent
+
+Agents use the same commands you can run in a terminal:
+
+```sh
+bb thread list --parent-thread <parent-id>
+bb thread wait <child-id>
+bb thread output <child-id>
+bb thread tell <child-id> "Use the existing validation helper"
+bb thread tell <child-id> --mode queue "Also update the README when you're done"
+```
+
+`bb thread wait` blocks until the child is idle. `bb thread tell` steers the child's current turn by default; `--mode queue` waits until the turn ends.
+
+To have a parent check on its children regularly instead of waiting for notifications, ask it to, or schedule an automation that messages it.
+
+## Check it worked
+
+- The child's **Info** tab shows your choice in **Notify parent**, and `bb thread show <child-id>` prints `Parent notifications:` with it.
+- When the child finishes, a "… finished" row appears in the parent's timeline (with **Auto**).
+
+## Related troubleshooting
+
+- **The parent never hears from a child:** check that the child has a **Parent** in its **Info** tab and that **Notify parent** isn't **Off**. Forks never notify the thread they came from.
+- **The parent wakes up for every turn of a chatty child:** set that child to **When stuck**.
+- **A child is waiting on an approval and nothing happens:** open the parent and look for **Needs input** in **Active child threads**, or open the child.
