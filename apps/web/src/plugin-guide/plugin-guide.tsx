@@ -1,5 +1,6 @@
 import bbLogoUrl from "../../../../assets/bb-logo.svg?url";
 import { ProductMap } from "../../../../plugins/plugin-api-docs/src/product-map";
+import { surfaceDocsPath } from "../../../../plugins/plugin-api-docs/src/surface-docs";
 import { plainSurfaceCopy } from "../../../../plugins/plugin-api-docs/src/surface-copy";
 import {
   GROUP_BY_SURFACE_ID,
@@ -64,6 +65,7 @@ export default function PluginGuide({
   return (
     <ProductMap
       pluginPageHref={pluginPageHref}
+      surfaceDocsHref={surfaceDocsPath}
       renderPluginIcon={renderBrandIcon}
       initialSlideId={initialSlideId}
       onSlideChange={onSlideChange}

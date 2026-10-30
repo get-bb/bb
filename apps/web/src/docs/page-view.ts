@@ -1,10 +1,17 @@
-import { markdownPath, source, type DocsPage } from "./source";
-
-const REPO_BLOB = "https://github.com/get-bb/bb/blob/main";
+import { DOCS_NAV, DOCS_NAV_FOOTER_LINKS, navSectionOf } from "./nav";
+import { REPO_BLOB } from "./reference";
+import {
+  DOCS_BASE,
+  docsLlms,
+  markdownPath,
+  source,
+  type DocsPage,
+} from "./source";
 
 export interface DocsNavLink {
   title: string;
   url: string;
+  active: boolean;
 }
 
 export interface DocsNavSection {
@@ -22,9 +29,12 @@ interface DocsPageViewBase {
   title: string;
   description: string;
   section: string;
+  unreleased: boolean;
   markdownUrl: string;
+  pageMarkdown: string;
   editUrl: string;
   nav: DocsNavSection[];
+  footerLinks: { title: string; href: string }[];
   toc: DocsTocEntry[];
 }
 
@@ -32,33 +42,47 @@ export type DocsPageView =
   | (DocsPageViewBase & { kind: "mdx"; contentPath: string })
   | (DocsPageViewBase & { kind: "reference"; markdown: string });
 
-function docsNav(): DocsNavSection[] {
-  const sections: DocsNavSection[] = [];
-  for (const page of source.getPages()) {
-    const label = page.data.section;
-    const link = { title: page.data.title, url: page.url };
-    const existing = sections.find((section) => section.label === label);
-    if (existing) {
-      existing.links.push(link);
-    } else {
-      sections.push({ label, links: [link] });
-    }
+function pageUrl(slug: string): string {
+  return slug === "" ? DOCS_BASE : `${DOCS_BASE}/${slug}`;
+}
+
+function isActive(slug: string, currentSlug: string): boolean {
+  return currentSlug === slug || currentSlug.startsWith(`${slug}/`);
+}
+
+export function docsNav(currentSlug: string | null): DocsNavSection[] {
+  const existing = new Set(source.getPages().map((page) => page.url));
+  return DOCS_NAV.flatMap((section) => {
+    const links = section.pages
+      .filter((page) => existing.has(pageUrl(page.slug)))
+      .map((page) => ({
+        title: page.title,
+        url: pageUrl(page.slug),
+        active:
+          currentSlug !== null &&
+          (page.slug === ""
+            ? currentSlug === ""
+            : isActive(page.slug, currentSlug)),
+      }));
+    return links.length === 0 ? [] : [{ label: section.label, links }];
+  });
+}
+
+async function viewOf(page: DocsPage): Promise<DocsPageView> {
+  const slug = page.slugs.join("/");
+  const section = navSectionOf(slug);
+  if (section === null) {
+    throw new Error(`Docs page ${page.url} is not in the docs sidebar`);
   }
-  return sections;
-}
-
-function slugsFromSplat(splat: string): string[] {
-  return splat.split("/").filter(Boolean);
-}
-
-function viewOf(page: DocsPage): DocsPageView {
   const base = {
     url: page.url,
     title: page.data.title,
     description: page.data.description,
-    section: page.data.section,
+    section,
     markdownUrl: markdownPath(page),
-    nav: docsNav(),
+    pageMarkdown: await docsLlms.page(page),
+    nav: docsNav(slug),
+    footerLinks: [...DOCS_NAV_FOOTER_LINKS],
     toc: page.data.structuredData.headings.map((heading) => ({
       id: heading.id,
       title: heading.content,
@@ -68,19 +92,23 @@ function viewOf(page: DocsPage): DocsPageView {
     return {
       ...base,
       kind: "reference",
-      editUrl: `${REPO_BLOB}/plugins/plugin-api-docs/src/surfaces.ts`,
+      unreleased: false,
+      editUrl: `${REPO_BLOB}/${page.data.editPath}`,
       markdown: page.data.markdown,
     };
   }
   return {
     ...base,
     kind: "mdx",
+    unreleased: page.data.since === "unreleased",
     contentPath: page.path,
     editUrl: `${REPO_BLOB}/apps/web/content/docs/${page.path}`,
   };
 }
 
-export function docsPageView(splat: string): DocsPageView | null {
-  const page = source.getPage(slugsFromSplat(splat));
+export async function docsPageView(
+  splat: string,
+): Promise<DocsPageView | null> {
+  const page = source.getPage(splat.split("/").filter(Boolean));
   return page ? viewOf(page) : null;
 }

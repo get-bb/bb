@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  APP_COMMAND_GROUPS,
   APP_COMMAND_IDS,
   type AppDefaultKeybindings,
   type AppKeybindingOverrides,
   type AppKeybindings,
 } from "@bb/domain";
-import { APP_COMMAND_GROUPS } from "./app-command-metadata";
 import {
   appShortcutFromInput,
   canAssignAppShortcut,

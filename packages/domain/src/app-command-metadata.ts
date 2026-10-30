@@ -3,16 +3,16 @@ import {
   PANE_FOCUS_APP_COMMAND_IDS,
   THREAD_JUMP_APP_COMMAND_IDS,
   type AppCommandId,
-} from "@bb/domain";
+} from "./app-keybindings.js";
 
-interface AppCommandMetadata {
+export interface AppCommandMetadata {
   command: AppCommandId;
   description: string;
   label: string;
   paletteVisible: boolean;
 }
 
-interface AppCommandGroup {
+export interface AppCommandGroup {
   commands: readonly AppCommandMetadata[];
   label: string;
 }

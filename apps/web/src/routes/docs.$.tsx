@@ -10,7 +10,7 @@ const loadDocsPage = createServerFn({ method: "GET" })
   .validator((splat: string) => String(splat))
   .handler(async ({ data }) => {
     const { docsPageView } = await import("../docs/page-view");
-    const view = docsPageView(data);
+    const view = await docsPageView(data);
     if (!view) {
       throw notFound();
     }

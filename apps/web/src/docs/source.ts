@@ -33,3 +33,7 @@ export function slugsFromMarkdownPath(splat: string): string[] {
   const slugs = splat.replace(/\.md$/u, "").split("/").filter(Boolean);
   return slugs.length === 1 && slugs[0] === "index" ? [] : slugs;
 }
+
+export function docsPaths(): string[] {
+  return source.getPages().map((page) => page.url);
+}

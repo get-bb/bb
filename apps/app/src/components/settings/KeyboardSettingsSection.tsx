@@ -8,6 +8,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import {
+  APP_COMMAND_GROUPS,
   defaultAppSettings,
   findAppKeybindingOverride,
   keyboardPlatform,
@@ -21,7 +22,6 @@ import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import { Switch } from "@bb/shared-ui/switch";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { APP_COMMAND_GROUPS } from "@/lib/app-command-metadata";
 import {
   areAppShortcutsEqual,
   appShortcutFromInput,

@@ -733,6 +733,7 @@ function MobileCardFlow({ children }: { children: ReactNode }) {
 
 export function ProductMap({
   pluginPageHref,
+  surfaceDocsHref,
   renderPluginIcon,
   initialSlideId,
   onSlideChange,
@@ -741,6 +742,7 @@ export function ProductMap({
   mobileOnlyOnCompactViewport = false,
 }: {
   pluginPageHref?: (displayName: string) => string | null;
+  surfaceDocsHref?: (surfaceId: string) => string;
   renderPluginIcon?: (displayName: string) => ReactNode;
   initialSlideId?: string;
   onSlideChange?: (slideId: string) => void;
@@ -899,6 +901,7 @@ export function ProductMap({
       numberOf: (id: string) => numbers.get(id) ?? null,
       onSelect: selectSurface,
       pluginPageHref,
+      surfaceDocsHref,
       renderPluginIcon,
       currentGroupId: slides[index].groupId,
       onGoToSurface: goToSurface,
@@ -908,6 +911,7 @@ export function ProductMap({
       hoverId,
       card.openId,
       pluginPageHref,
+      surfaceDocsHref,
       renderPluginIcon,
       index,
       selectedId,
