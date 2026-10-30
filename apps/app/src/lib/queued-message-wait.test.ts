@@ -24,6 +24,7 @@ const HOUR = 60 * MINUTE;
 function describeWait(
   waitingOn: QueuedMessageWaitingOn | null,
   overrides: {
+    compactFirst?: boolean;
     failureReason?: string | null;
     now?: number;
     pluginDisplayName?: string | null;
@@ -31,6 +32,7 @@ function describeWait(
   } = {},
 ): string | null {
   return describeQueuedMessageWait({
+    compactFirst: overrides.compactFirst ?? false,
     failureReason: overrides.failureReason ?? null,
     now: overrides.now ?? NOW,
     payload: { kind: "inline" },
@@ -76,7 +78,28 @@ describe("describeQueuedMessageWait", () => {
     ).toBe("Host is not connected");
     expect(
       queuedMessageHasWaitLine({
+        compactFirst: false,
         failureReason: "Host is not connected",
+        payload: { kind: "inline" },
+        waitingOn: { kind: "thread-busy" },
+      }),
+    ).toBe(true);
+  });
+
+  it("leads a compact-first row with the compaction, then its wait", () => {
+    expect(
+      describeWait(
+        { kind: "host-offline", hostName: "M4" },
+        { compactFirst: true },
+      ),
+    ).toBe("Compact first · Waiting for M4 to be ready");
+    expect(describeWait({ kind: "thread-busy" }, { compactFirst: true })).toBe(
+      "Compact first",
+    );
+    expect(
+      queuedMessageHasWaitLine({
+        compactFirst: true,
+        failureReason: null,
         payload: { kind: "inline" },
         waitingOn: { kind: "thread-busy" },
       }),
@@ -107,6 +130,7 @@ describe("describeQueuedMessageWait", () => {
   it("leads a retry with why it is being retried, then when and which attempt", () => {
     expect(
       describeQueuedMessageWait({
+        compactFirst: false,
         failureReason: null,
         now: NOW,
         payload: {
@@ -122,6 +146,7 @@ describe("describeQueuedMessageWait", () => {
     ).toBe(`Rate limited · retrying at ${clockAt(NOW + HOUR)} · attempt 2`);
     expect(
       describeQueuedMessageWait({
+        compactFirst: false,
         failureReason: null,
         now: NOW,
         payload: {
@@ -149,8 +174,10 @@ describe("queuedMessageWaitIcon", () => {
     const icon = (
       waitingOn: QueuedMessageWaitingOn | null,
       failureReason: string | null = null,
+      compactFirst = false,
     ) =>
       queuedMessageWaitIcon({
+        compactFirst,
         failureReason,
         payload: { kind: "inline" },
         waitingOn,
@@ -165,11 +192,16 @@ describe("queuedMessageWaitIcon", () => {
     expect(icon({ kind: "thread-busy" })).toBeNull();
     expect(icon(null)).toBeNull();
     expect(icon({ kind: "time" }, "Host is not connected")).toBe("AlertCircle");
+    expect(icon({ kind: "thread-busy" }, null, true)).toBe("CircleArrowShrink");
+    expect(icon({ kind: "host-offline", hostName: "M4" }, null, true)).toBe(
+      "CloudOff",
+    );
   });
 
   it("marks a retry with the reload glyph regardless of its wait", () => {
     expect(
       queuedMessageWaitIcon({
+        compactFirst: false,
         failureReason: null,
         payload: {
           kind: "retry",

@@ -1402,6 +1402,7 @@ describe("editThreadMessage", () => {
           reason: "Rate limited",
         },
         systemNotice: null,
+        compactFirst: false,
       });
       const editPromise = editThreadMessage(harness.deps, {
         environment,

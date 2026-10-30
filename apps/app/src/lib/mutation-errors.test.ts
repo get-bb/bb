@@ -1,6 +1,7 @@
 import { isValidElement, type ReactElement, type ReactNode } from "react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { toast } from "sonner";
+import { BbHttpError } from "@bb/sdk/browser";
 import { attachSonnerToast } from "@/components/ui/app-toast-runtime";
 import { HttpError } from "./api";
 import {
@@ -239,6 +240,49 @@ describe("showMutationErrorToast", () => {
     expect(readLatestToastProps()).toMatchObject({
       title: "Failed to send message",
       description: "The thread is still starting.",
+    });
+  });
+
+  it.each([
+    "bb connect: timed out waiting for the tunnel client (stage: response-head)",
+    "bb connect: timed out finishing the response (stage: finishing)",
+  ])("warns that a send may still be delivered after %s", (gateMessage) => {
+    const options = {
+      error: new BbHttpError({
+        body: null,
+        code: null,
+        message: gateMessage,
+        status: 504,
+      }),
+      fallbackMessage: "Failed to send message",
+      lifecycleOperation: "send_message" as const,
+    };
+    showMutationErrorToast(options);
+    expect(readLatestToastProps()).toMatchObject({
+      tone: "warning",
+      title: "Still waiting on your server",
+      description:
+        "bb connect stopped waiting, but your server may still deliver this message. Check the thread before sending it again.",
+    });
+    expect(getMutationErrorMessage(options)).toBe(
+      "Still waiting on your server. bb connect stopped waiting, but your server may still deliver this message. Check the thread before sending it again.",
+    );
+  });
+
+  it("keeps a bb connect stall before the request reached the server a failed send", () => {
+    showMutationErrorToast({
+      error: new BbHttpError({
+        body: null,
+        code: null,
+        message: "bb connect: timed out checking access (stage: routing)",
+        status: 504,
+      }),
+      fallbackMessage: "Failed to send message",
+      lifecycleOperation: "send_message",
+    });
+    expect(readLatestToastProps()).toMatchObject({
+      tone: "error",
+      title: "Failed to send message",
     });
   });
 

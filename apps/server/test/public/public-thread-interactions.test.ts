@@ -943,6 +943,7 @@ describe("public thread interaction routes", () => {
         sendAt: null,
         payload: { kind: "inline" },
         systemNotice: null,
+        compactFirst: false,
       });
       const pending = registerPendingInteraction(
         harness.deps,

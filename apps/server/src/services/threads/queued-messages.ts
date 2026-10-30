@@ -3,6 +3,7 @@ import {
   claimNextQueuedThreadMessageGroup,
   claimQueuedThreadMessageGroup,
   createQueuedThreadMessageInTransaction,
+  clearThreadQueuedMessagesCompactFirstInTransaction,
   deleteClaimedQueuedThreadMessageBatchInTransaction,
   getEnvironment,
   getHost,
@@ -22,6 +23,7 @@ import {
 import {
   flattenPromptInputGroups,
   isQueuedMessageFailedState,
+  isStandaloneBuiltinCompactCommand,
   queuedMessageSystemNoticeSchema,
 } from "@bb/domain";
 import type {
@@ -84,6 +86,7 @@ import {
   createQueuedMessageClaimLostError,
   QUEUED_MESSAGE_AUTO_SEND_PAUSED_CODE,
   QUEUED_MESSAGE_CLAIM_LOST_CODE,
+  recordClaimedQueuedMessageWait,
   settleQueueRowDispatched,
 } from "./queue-waits.js";
 import { recordQueuedMessageDrainFailure } from "./queue-drain-failure.js";
@@ -283,6 +286,7 @@ export async function createQueuedMessageForThread(
           sendAt: null,
           payload: { kind: "inline" },
           systemNotice: null,
+          compactFirst: false,
         });
         return { currentThread, hasProviderSession, queuedMessage };
       },
@@ -347,11 +351,16 @@ function sendQueuedMessagePayload(
   return {
     input: queuedMessage.content,
     mode,
-    model: queuedMessage.model,
-    permissionMode: queuedMessage.permissionMode,
-    reasoningLevel: queuedMessage.reasoningLevel,
-    serviceTier: queuedMessage.serviceTier,
+    ...(isStandaloneBuiltinCompactCommand(queuedMessage.content)
+      ? {}
+      : {
+          model: queuedMessage.model,
+          permissionMode: queuedMessage.permissionMode,
+          reasoningLevel: queuedMessage.reasoningLevel,
+          serviceTier: queuedMessage.serviceTier,
+        }),
     ...(senderThreadId !== null ? { senderThreadId } : {}),
+    ...(queuedMessage.compactFirst ? { compactFirst: true } : {}),
   };
 }
 
@@ -469,7 +478,10 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: SendClaimedQueuedMessageForThreadArgs,
 ): Promise<ThreadQueuedMessage | null> {
-  if (args.mode !== "auto") {
+  if (
+    args.mode !== "auto" ||
+    args.queuedMessages.some((queuedMessage) => queuedMessage.compactFirst)
+  ) {
     return null;
   }
   // This fast path dispatches straight to the daemon, bypassing the dispatch
@@ -598,6 +610,9 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
           requestSequence: request.sequence,
         },
       );
+      if (isStandaloneBuiltinCompactCommand(input)) {
+        clearThreadQueuedMessagesCompactFirstInTransaction(tx, thread.id);
+      }
       const command = addRequestIdToTurnSubmitCommandPayload({
         requestId: request.requestId,
         preparedCommand,
@@ -716,12 +731,15 @@ async function sendClaimedQueuedMessageForThread(
     (queuedMessage) => queuedMessage.content,
   );
   const input = flattenPromptInputGroups(inputGroups);
+  const compactFirst = queuedMessages.some(
+    (queuedMessage) => queuedMessage.compactFirst,
+  );
   const lead = args.queuedMessages[0]!;
   const outcome = await attemptDispatch(deps, {
     thread: args.thread,
     payload: {
       ...sendQueuedMessagePayload(
-        { ...queuedMessage, content: input },
+        { ...queuedMessage, content: input, compactFirst },
         args.mode,
         lead.senderThreadId,
       ),
@@ -731,7 +749,9 @@ async function sendClaimedQueuedMessageForThread(
       kind: "drain",
       claimed: args.queuedMessages,
       respectManualStopPause: respectsManualStopPause(args),
-      sendNow: args.sendNow,
+      sendNow:
+        args.sendNow ||
+        args.queuedMessages.some((queuedMessage) => queuedMessage.sendNow),
     },
     queuePayload: queuedMessage.payload,
     pluginSubmission: null,
@@ -752,7 +772,8 @@ async function sendClaimedQueuedMessageForThread(
     args.sendNow &&
     args.mode !== "steer" &&
     outcome.kind === "queued" &&
-    outcome.entry.waitingOn?.kind !== "stopping"
+    outcome.entry.waitingOn?.kind !== "stopping" &&
+    !(compactFirst && !outcome.entry.compactFirst)
   ) {
     // "Send now" overrides every plugin wait and the row's own schedule, but
     // not a core wait — those guard invariants rather than express a policy.
@@ -807,6 +828,25 @@ export async function sendQueuedMessage(
     return toThreadQueuedMessage(existing);
   }
   const thread = getThread(deps.db, args.threadId);
+  if (
+    thread &&
+    !sendNow &&
+    isManualCompactionActive(deps, thread) &&
+    queuedMessages.every(
+      (queuedMessage) =>
+        parseStoredQueuedThreadMessageWaitingOn(queuedMessage)?.kind ===
+        "host-offline",
+    )
+  ) {
+    return (
+      recordClaimedQueuedMessageWait(deps, {
+        claimed: queuedMessages,
+        sendAt: null,
+        threadId: thread.id,
+        waitingOn: { kind: "thread-busy" },
+      }) ?? toThreadQueuedMessage(queuedMessages[0]!)
+    );
+  }
   if (
     thread &&
     (isManualCompactionActive(deps, thread) ||

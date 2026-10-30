@@ -116,9 +116,11 @@ function printQueueTable(rows: ThreadQueuedMessagesResult): void {
     truncateCell(queuedMessagePreview(row.content), MAX_QUEUE_TEXT_WIDTH),
     row.state,
     truncateCell(
-      row.failureReason === null
-        ? describeQueueWait(row)
-        : `Failed: ${row.failureReason}`,
+      row.failureReason !== null
+        ? `Failed: ${row.failureReason}`
+        : row.compactFirst
+          ? `compact first; ${describeQueueWait(row)}`
+          : describeQueueWait(row),
       MAX_QUEUE_TEXT_WIDTH,
     ),
     formatQueueSendCountdown(row.sendAt, now),

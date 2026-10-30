@@ -70,6 +70,7 @@ export const threadQueuedMessageSchema = z.object({
   permissionMode: permissionModeSchema,
   serviceTier: serviceTierSchema,
   groupWithNext: z.boolean(),
+  compactFirst: z.boolean(),
   /**
    * Epoch ms this row is scheduled to attempt dispatch, or null when it is
    * eligible as soon as its other waits clear.

@@ -41,7 +41,7 @@ import {
 import { parseSafeRelativeRoutePath } from "../relative-route-path.js";
 import { resolvePromptAttachmentReferences } from "../../services/projects/attachments.js";
 import {
-  compactThreadContext,
+  requestThreadCompaction,
   threadTargetHostId,
 } from "../../services/threads/dispatch-attempt.js";
 import {
@@ -385,8 +385,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
 
   post(routes.compact, async (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
-    await compactThreadContext(deps, thread);
-    return context.json({ ok: true });
+    return context.json(await requestThreadCompaction(deps, thread));
   });
 
   post(routes.clearContext, async (context) => {

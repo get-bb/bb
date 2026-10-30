@@ -632,6 +632,7 @@ function QueuedMessageWaitLine({
 }) {
   const now = useSecondTick();
   const label = describeQueuedMessageWait({
+    compactFirst: queuedMessage.compactFirst,
     failureReason: queuedMessage.failureReason,
     now,
     payload: queuedMessage.payload,

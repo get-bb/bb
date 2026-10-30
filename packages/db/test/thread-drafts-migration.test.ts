@@ -63,6 +63,7 @@ it.each([false, true])(
           sendAt: null,
           payload: { kind: "inline" },
           systemNotice: null,
+          compactFirst: false,
         });
       queue(draftThread.id, [text("First draft")], "drafts");
       queue(followUpThread.id, [text("Draft one")], "drafts");

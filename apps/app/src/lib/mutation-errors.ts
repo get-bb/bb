@@ -4,6 +4,7 @@ import { asHttpError, getHttpErrorMessage } from "./http-error";
 import {
   describeLifecycleError,
   formatLifecycleErrorDescription,
+  type LifecycleErrorDescription,
   type LifecycleErrorOperation,
 } from "./lifecycle-errors";
 
@@ -11,6 +12,8 @@ const NETWORK_TRANSPORT_ERROR_MESSAGE =
   "Could not reach the server. Check that it is running and try again.";
 const GENERIC_REQUEST_FAILED_MESSAGE = "Request failed";
 const TRAILING_PERIOD_PATTERN = /\.$/u;
+const UNANSWERED_GATE_REQUEST_PATTERN =
+  /^bb connect: timed out .+ \(stage: (?:response-head|finishing)\)$/u;
 
 interface MutationErrorMessageOptions {
   error: unknown;
@@ -50,6 +53,29 @@ function isNetworkTransportError(error: unknown): boolean {
     normalizedMessage.includes("load failed") ||
     normalizedMessage.includes("networkerror")
   );
+}
+
+export function isUnansweredGateRequestError(error: unknown): boolean {
+  const httpError = asHttpError(error);
+  if (httpError === null || httpError.status !== 504) {
+    return false;
+  }
+  const message = getHttpErrorMessage(httpError);
+  return message !== null && UNANSWERED_GATE_REQUEST_PATTERN.test(message);
+}
+
+function describeUnansweredGateRequest(
+  lifecycleOperation: LifecycleErrorOperation | undefined,
+): LifecycleErrorDescription {
+  return {
+    title: "Still waiting on your server",
+    body:
+      lifecycleOperation === "send_message" ||
+      lifecycleOperation === "queue_message"
+        ? "bb connect stopped waiting, but your server may still deliver this message. Check the thread before sending it again."
+        : "bb connect stopped waiting, but your server may still finish this. Check before trying again.",
+    severity: "warning",
+  };
 }
 
 function toLifecycleErrorOperation(
@@ -113,6 +139,11 @@ export function getMutationErrorMessage({
   fallbackMessage,
   lifecycleOperation,
 }: MutationErrorMessageOptions): string {
+  if (isUnansweredGateRequestError(error)) {
+    return formatLifecycleErrorDescription(
+      describeUnansweredGateRequest(lifecycleOperation),
+    );
+  }
   const lifecycleErrorDescription = describeLifecycleError({
     error,
     operation: lifecycleOperation,
@@ -149,6 +180,12 @@ export function showMutationErrorToast({
   lifecycleOperation,
 }: MutationErrorMessageOptions): void {
   if (!shouldShowMutationErrorToast(error)) {
+    return;
+  }
+
+  if (isUnansweredGateRequestError(error)) {
+    const description = describeUnansweredGateRequest(lifecycleOperation);
+    appToast.warning(description.title, { description: description.body });
     return;
   }
 

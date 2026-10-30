@@ -606,7 +606,7 @@ export function registerActionsCommands(
           if (outputJson(opts, { threadId: id, ...response })) return;
           console.log(
             opts.compactFirst === true
-              ? `Thread ${id} compacting; the message sends when compaction finishes`
+              ? describeCompactFirstTellOutcome(id, response)
               : describeThreadTellOutcome(id, response),
           );
         },
@@ -646,18 +646,31 @@ export function registerActionsCommands(
       ),
     );
 
+  parent
+    .command("compact [id]")
+    .description("Request compaction of an idle or errored thread's context")
+    .option("--self", "Target the current thread (from BB_THREAD_ID)")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (id: string | undefined, opts: ThreadActionOptions) => {
+        const threadId = requireThreadIdOrSelf(id, opts);
+        const sdk = createCliBbSdk(getUrl());
+        const response = await sdk.threads.compact({ threadId });
+        if (outputJson(opts, { threadId, ...response })) return;
+        console.log(
+          response.delivery === "queued"
+            ? `Thread ${threadId} compaction queued (${describeQueueWait(response.queuedMessage)}); it starts when that clears`
+            : `Thread ${threadId} context compaction requested`,
+        );
+      }),
+    );
+
   for (const { name, description, method, done } of [
     {
       name: "stop",
       description: "Stop work and release the loaded agent runtime",
       method: "stop",
       done: "stopped",
-    },
-    {
-      name: "compact",
-      description: "Request compaction of an idle or errored thread's context",
-      method: "compact",
-      done: "context compaction requested",
     },
     {
       name: "clear",
@@ -769,6 +782,15 @@ function describeThreadTellOutcome(
   return response.mode === "steer"
     ? `Thread ${threadId} steered`
     : `Thread ${threadId} updated`;
+}
+
+function describeCompactFirstTellOutcome(
+  threadId: string,
+  response: PostThreadMessageResult,
+): string {
+  return response.delivery === "queued" && response.queuedMessage.compactFirst
+    ? `Thread ${threadId} message queued to compact first (${describeQueueWait(response.queuedMessage)}); it compacts, then sends, when that clears`
+    : `Thread ${threadId} compacting; the message sends when compaction finishes`;
 }
 
 /**

@@ -1,4 +1,5 @@
 import {
+  clearThreadQueuedMessagesCompactFirstInTransaction,
   getEnvironment,
   getThread,
   requireThreadLifecycleEventApplied,
@@ -15,6 +16,7 @@ import type {
 import {
   flattenPromptInputGroups,
   isStandaloneBuiltinClearCommand,
+  isStandaloneBuiltinCompactCommand,
 } from "@bb/domain";
 import type { SendMessageRequest } from "@bb/server-contract";
 import { renderTemplate } from "@bb/templates";
@@ -535,6 +537,7 @@ async function sendThreadMessageWithoutContextClear(
     { input, ...(inputGroups !== undefined ? { inputGroups } : {}) },
     deferredFirstTurnContext,
   ));
+  const coveredCompactFirst = { rows: 0 };
   const beforeAppendInTransaction: SendThreadMessageTransactionPreflight = ({
     tx,
   }) => {
@@ -544,6 +547,15 @@ async function sendThreadMessageWithoutContextClear(
         requestSequence: deferredFirstTurnContext.requestSequence,
         threadId: thread.id,
       });
+    }
+    if (mode === "start" && isStandaloneBuiltinCompactCommand(input)) {
+      coveredCompactFirst.rows =
+        clearThreadQueuedMessagesCompactFirstInTransaction(tx, thread.id);
+    }
+  };
+  const announceCoveredCompactFirst = () => {
+    if (coveredCompactFirst.rows > 0) {
+      deps.hub.notifyThread(thread.id, ["queue-changed"]);
     }
   };
   const resolvedInput = await resolvePromptAttachmentReferences({
@@ -624,6 +636,7 @@ async function sendThreadMessageWithoutContextClear(
       thread,
     })
   ) {
+    announceCoveredCompactFirst();
     if (shouldCaptureUserMessageSent) {
       captureUserMessageSentTelemetry(deps, {
         isChildThread: thread.parentThreadId !== null,
@@ -750,6 +763,7 @@ async function sendThreadMessageWithoutContextClear(
         buildThreadStatusChangeMetadata(deps, queuedRequest.activeThread),
       );
     }
+    announceCoveredCompactFirst();
     if (shouldCaptureUserMessageSent) {
       captureUserMessageSentTelemetry(deps, {
         isChildThread: thread.parentThreadId !== null,

@@ -343,6 +343,46 @@ describe("thread runtime mutations", () => {
     }
   });
 
+  it("refetches the thread only when bb connect stopped waiting for the server's answer", async () => {
+    const queryClient = createTestQueryClient();
+    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
+    const mutation = new MutationObserver(
+      queryClient,
+      sendThreadMessageMutationOptions(queryClient),
+    );
+    const request = {
+      id: "thread-1",
+      mode: "auto" as const,
+      input: [{ type: "text" as const, text: "Run this", mentions: [] }],
+    };
+    const threadRefetches = [
+      threadTimelineQueryKey("thread-1"),
+      threadQueuedMessagesQueryKey("thread-1"),
+    ].map((queryKey) => expect.objectContaining({ queryKey }));
+
+    vi.mocked(sdk.threads.send).mockRejectedValueOnce(new Error("offline"));
+    await expect(mutation.mutate(request)).rejects.toThrow("offline");
+    for (const refetch of threadRefetches) {
+      expect(invalidateQueries).not.toHaveBeenCalledWith(refetch);
+    }
+
+    vi.mocked(sdk.threads.send).mockRejectedValueOnce(
+      new BbHttpError({
+        body: null,
+        code: null,
+        message:
+          "bb connect: timed out waiting for the tunnel client (stage: response-head)",
+        status: 504,
+      }),
+    );
+    await expect(mutation.mutate(request)).rejects.toThrow(
+      "stage: response-head",
+    );
+    for (const refetch of threadRefetches) {
+      expect(invalidateQueries).toHaveBeenCalledWith(refetch);
+    }
+  });
+
   it("forwards execution input sources when sending a thread message", async () => {
     const queryClient = createTestQueryClient();
     const mutation = new MutationObserver(

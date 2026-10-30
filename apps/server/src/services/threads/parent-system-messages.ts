@@ -285,6 +285,7 @@ async function queueActiveParentSystemMessage(
           kind: args.systemMessageKind,
           subject: args.systemMessageSubject,
         },
+        compactFirst: false,
       },
       threadId: args.thread.id,
     });
@@ -520,6 +521,7 @@ export async function queueParentSystemMessage(
       kind: args.systemMessageKind,
       subject: args.systemMessageSubject,
     },
+    compactFirst: false,
   });
   if (!hasPendingInteraction && !hostUnavailable) {
     requestQueuedMessageDispatch(deps, {

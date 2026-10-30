@@ -398,6 +398,7 @@ describe("prompt history service", () => {
       sendAt: null,
       payload: { kind: "inline" },
       systemNotice: null,
+      compactFirst: false,
     });
 
     expect(

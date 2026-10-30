@@ -93,6 +93,7 @@ export interface CreateQueuedThreadMessageInput {
   payload: QueuedMessagePayload;
   /** Non-null only for one of core's own system notices. */
   systemNotice: QueuedMessageSystemNotice | null;
+  compactFirst: boolean;
 }
 
 export interface UpdateQueuedThreadMessageInput {
@@ -578,7 +579,7 @@ export function getQueuedThreadStartMessage(
   );
 }
 
-function getLastQueuedThreadMessage(
+export function getLastQueuedThreadMessage(
   db: DbQueryConnection,
   threadId: string,
 ): QueuedThreadMessageRow | null {
@@ -832,6 +833,7 @@ export function createQueuedThreadMessageInTransaction(
       reasoningLevel: input.reasoningLevel,
       permissionMode: input.permissionMode,
       serviceTier: input.serviceTier,
+      compactFirst: input.compactFirst,
       state,
       waitingOn,
       waitHolder:
@@ -1548,6 +1550,20 @@ export function requeueClaimedQueuedThreadMessages(
   notifier: DbNotifier,
   args: RequeueClaimedQueuedThreadMessagesArgs,
 ): QueuedThreadMessageRow | null {
+  const queued = db.transaction(
+    (tx) => requeueClaimedQueuedThreadMessagesInTransaction(tx, args),
+    { behavior: "immediate" },
+  );
+  if (queued) {
+    notifier.notifyThread(args.threadId, ["queue-changed"]);
+  }
+  return queued;
+}
+
+export function requeueClaimedQueuedThreadMessagesInTransaction(
+  tx: DbTransaction,
+  args: RequeueClaimedQueuedThreadMessagesArgs,
+): QueuedThreadMessageRow | null {
   const lead = args.claims[0];
   if (lead === undefined) return null;
   const transition: QueuedMessageTransition = {
@@ -1555,27 +1571,50 @@ export function requeueClaimedQueuedThreadMessages(
     sendAt: args.sendAt,
     waitingOn: args.waitingOn,
   };
-  const queued = db.transaction(
-    (tx) => {
-      const now = Date.now();
-      let queuedLead: QueuedThreadMessageRow | null = null;
-      for (const claim of args.claims) {
-        const row = getQueuedThreadMessage(tx, claim.id);
-        if (!row || row.threadId !== args.threadId) continue;
-        const ownsClaim = row.claimToken === claim.claimToken;
-        if (!ownsClaim && (claim !== lead || isQueuedThreadMessageClaimed(row)))
-          continue;
-        const updated = transitionQueuedMessage(tx, { now, row, transition });
-        if (claim === lead) queuedLead = updated;
-      }
-      return queuedLead;
-    },
-    { behavior: "immediate" },
-  );
-  if (queued) {
-    notifier.notifyThread(args.threadId, ["queue-changed"]);
+  const now = Date.now();
+  let queuedLead: QueuedThreadMessageRow | null = null;
+  for (const claim of args.claims) {
+    const row = getQueuedThreadMessage(tx, claim.id);
+    if (!row || row.threadId !== args.threadId) continue;
+    const ownsClaim = row.claimToken === claim.claimToken;
+    if (!ownsClaim && (claim !== lead || isQueuedThreadMessageClaimed(row)))
+      continue;
+    const updated = transitionQueuedMessage(tx, { now, row, transition });
+    if (claim === lead) queuedLead = updated;
   }
-  return queued;
+  return queuedLead;
+}
+
+export function clearThreadQueuedMessagesCompactFirstInTransaction(
+  tx: DbTransaction,
+  threadId: string,
+): number {
+  return tx
+    .update(queuedThreadMessages)
+    .set({ compactFirst: false, updatedAt: Date.now() })
+    .where(
+      and(
+        eq(queuedThreadMessages.threadId, threadId),
+        eq(queuedThreadMessages.compactFirst, true),
+      ),
+    )
+    .run().changes;
+}
+
+export function markQueuedThreadMessagesSendNowInTransaction(
+  tx: DbTransaction,
+  args: { ids: readonly string[]; threadId: string },
+): void {
+  if (args.ids.length === 0) return;
+  tx.update(queuedThreadMessages)
+    .set({ sendNow: true, updatedAt: Date.now() })
+    .where(
+      and(
+        eq(queuedThreadMessages.threadId, args.threadId),
+        inArray(queuedThreadMessages.id, [...args.ids]),
+      ),
+    )
+    .run();
 }
 
 export function releaseQueuedMessageClaim(

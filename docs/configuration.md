@@ -892,8 +892,11 @@ off. An experiment you set yourself keeps your value either way.
   compaction, and the context holds at least 100k tokens. After that time the
   composer shows a Compact chip beside the context meter; while it is on, the
   next send passes `compactFirst` so the server runs `/compact` and queues the
-  message behind it. Clicking the chip keeps the full history for that one
-  send.
+  message behind it. While the thread's machine is suspended or its host is
+  offline, the message waits in the queue as one row marked "Compact first";
+  once the host is back it compacts, then sends. One compaction serves every
+  message queued that way. Clicking the chip keeps the full history for that
+  one send.
 - `serverMove` enables Move server here in Settings → Machines,
   `bb server move`, `bb server export`, and old server copy deletion; while off
   those routes return 403 `server_move_experiment_disabled` (status and cancel

@@ -241,6 +241,7 @@ describe("the requested queue drain", () => {
             ],
           },
         },
+        compactFirst: false,
       });
 
       await runQueuedMessageDispatch(harness.deps, {
@@ -297,6 +298,7 @@ describe("the requested queue drain", () => {
         sendAt: null,
         payload: { kind: "inline" },
         systemNotice: { kind: "unlabeled", subject: null },
+        compactFirst: false,
       });
       for (const path of [
         `/api/v1/threads/${thread.id}/queued-messages`,

@@ -154,9 +154,17 @@ Queued messages:
 
   --compact-first runs the same /compact turn as `bb thread compact` and queues
   the message behind it, so it needs an idle or errored thread whose provider
-  supports manual compaction; it cannot be combined with --send-at. The SDK
-  takes `compactFirst: true` on `threads.send`, which also rejects
-  `mode: "steer"`.
+  supports manual compaction; it cannot be combined with --send-at. While the
+  thread's machine is suspended or its host is offline, the message waits as
+  one queued row with `compactFirst: true` (`compact first;` in `queue list`);
+  when it can dispatch it starts the /compact turn, then sends once that turn
+  ends. One compaction serves every row queued before it starts: those rows
+  drop `compactFirst` instead of compacting again. The message never goes
+  ahead of its compaction, and neither a compact-first row nor a /compact ever
+  joins a running turn; sent while one runs, they queue behind it. Send now on
+  a compact-first row starts its compaction, and the message then sends
+  without waiting on plugins again. The SDK takes `compactFirst: true` on
+  `threads.send`, which also rejects `mode: "steer"`.
 
   --send-at takes an ISO 8601 timestamp (2026-08-25T09:00, local without an
   offset) or a duration from now (30s, 10m, 2h, 7d). A time that has already

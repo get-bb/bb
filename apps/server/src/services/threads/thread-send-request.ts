@@ -9,7 +9,7 @@ import type {
 } from "@bb/server-contract";
 import { ApiError } from "../../errors.js";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
-import { attemptDispatch } from "./dispatch-attempt.js";
+import { assertThreadCanCompact, attemptDispatch } from "./dispatch-attempt.js";
 import { requireThreadCommandEnvironment } from "./thread-command-environment.js";
 import { sendThreadMessage } from "./thread-send.js";
 import { assertThreadHostAcceptsWork } from "./thread-host-admission.js";
@@ -55,6 +55,7 @@ export async function acceptThreadSendRequest(
     if (request.mode === "steer") {
       throwInvalidCompactFirst("cannot steer a turn");
     }
+    assertThreadCanCompact(deps, args.thread);
   }
   const payload: SendMessageRequest = compactFirst
     ? { ...request, mode: "queue-if-active", compactFirst }

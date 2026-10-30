@@ -1014,6 +1014,10 @@ export const queuedThreadMessages = sqliteTable(
     groupWithNext: integer("group_with_next", { mode: "boolean" })
       .notNull()
       .default(false),
+    compactFirst: integer("compact_first", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    sendNow: integer("send_now", { mode: "boolean" }).notNull().default(false),
     state: text("state", { enum: queuedMessageStateValues }).notNull(),
     sendAt: integer("send_at"),
     waitingOn: text("waiting_on"),

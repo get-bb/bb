@@ -1,11 +1,16 @@
 import {
   clearQueuedThreadMessageWaitingOn,
+  clearThreadQueuedMessagesCompactFirstInTransaction,
   createQueuedThreadMessageInTransaction,
+  getQueuedThreadMessage,
+  markQueuedThreadMessagesSendNowInTransaction,
   requeueClaimedQueuedThreadMessages,
+  requeueClaimedQueuedThreadMessagesInTransaction,
   type ClaimedQueuedThreadMessageRow,
   type DbConnection,
   type DbNotifier,
   type DbQueryConnection,
+  type DbTransaction,
   type QueuedThreadMessageRow,
 } from "@bb/db";
 import type {
@@ -75,6 +80,7 @@ export interface QueuedDispatchMessage {
   payload: QueuedMessagePayload;
   /** Non-null only when core is queueing one of its own system notices. */
   systemNotice: QueuedMessageSystemNotice | null;
+  compactFirst: boolean;
 }
 
 export interface RecordQueuedMessageWaitArgs {
@@ -114,52 +120,132 @@ export function recordQueuedMessageWait(
   args: RecordQueuedMessageWaitArgs,
 ): ThreadQueuedMessage | null {
   const claimed = args.claimed ?? [];
-  const leadClaim = claimed[0];
-  let row: QueuedThreadMessageRow | null;
-
-  if (leadClaim === undefined) {
-    row = deps.db.transaction(
-      (tx) => {
-        assertThreadHostAcceptsWork(tx, args.thread);
-        return createQueuedThreadMessageInTransaction(tx, {
-          threadId: args.thread.id,
-          content: args.message.input,
-          senderThreadId: args.message.senderThreadId,
-          origin: args.message.origin,
-          originPluginId: args.message.originPluginId,
-          requestedBy: args.message.requestedBy,
-          model: args.message.execution.model,
-          reasoningLevel: args.message.execution.reasoningLevel,
-          permissionMode: args.message.execution.permissionMode,
-          serviceTier: args.message.execution.serviceTier,
-          waitingOn: args.waitingOn,
-          sendAt: args.sendAt,
-          payload: args.message.payload,
-          systemNotice: args.message.systemNotice,
-        });
-      },
-      { behavior: "immediate" },
-    );
-  } else {
-    row = requeueClaimedQueuedThreadMessages(deps.db, deps.hub, {
-      claims: claimed.map((claim) => ({
-        id: claim.id,
-        claimToken: claim.claimToken,
-      })),
+  if (claimed.length > 0) {
+    return recordClaimedQueuedMessageWait(deps, {
+      claimed,
+      sendAt: args.sendAt,
       threadId: args.thread.id,
       waitingOn: args.waitingOn,
-      sendAt: args.sendAt,
     });
   }
+  return createQueuedMessageWait(deps, args);
+}
 
+export function createQueuedMessageWait(
+  deps: QueueWaitDeps,
+  args: Pick<
+    RecordQueuedMessageWaitArgs,
+    "message" | "sendAt" | "thread" | "waitingOn"
+  >,
+): ThreadQueuedMessage {
+  const row = deps.db.transaction(
+    (tx) => createQueuedMessageRowInTransaction(tx, args),
+    { behavior: "immediate" },
+  );
+  return announceQueuedMessageWait(deps, row);
+}
+
+function createQueuedMessageRowInTransaction(
+  tx: DbTransaction,
+  args: Pick<
+    RecordQueuedMessageWaitArgs,
+    "message" | "sendAt" | "thread" | "waitingOn"
+  >,
+): QueuedThreadMessageRow {
+  assertThreadHostAcceptsWork(tx, args.thread);
+  return createQueuedThreadMessageInTransaction(tx, {
+    threadId: args.thread.id,
+    content: args.message.input,
+    senderThreadId: args.message.senderThreadId,
+    origin: args.message.origin,
+    originPluginId: args.message.originPluginId,
+    requestedBy: args.message.requestedBy,
+    model: args.message.execution.model,
+    reasoningLevel: args.message.execution.reasoningLevel,
+    permissionMode: args.message.execution.permissionMode,
+    serviceTier: args.message.execution.serviceTier,
+    waitingOn: args.waitingOn,
+    sendAt: args.sendAt,
+    payload: args.message.payload,
+    systemNotice: args.message.systemNotice,
+    compactFirst: args.message.compactFirst,
+  });
+}
+
+export function queueBehindCompactionInTransaction(
+  tx: DbTransaction,
+  args: Pick<RecordQueuedMessageWaitArgs, "claimed" | "message" | "thread"> & {
+    sendNow: boolean;
+  },
+): QueuedThreadMessageRow {
+  const waitingOn: QueuedMessageWaitingOn = { kind: "thread-busy" };
+  const claimed = args.claimed ?? [];
+  clearThreadQueuedMessagesCompactFirstInTransaction(tx, args.thread.id);
+  if (claimed.length === 0) {
+    return createQueuedMessageRowInTransaction(tx, {
+      message: { ...args.message, compactFirst: false },
+      sendAt: null,
+      thread: args.thread,
+      waitingOn,
+    });
+  }
+  const lead = requeueClaimedQueuedThreadMessagesInTransaction(tx, {
+    claims: claimed.map((claim) => ({
+      id: claim.id,
+      claimToken: claim.claimToken,
+    })),
+    threadId: args.thread.id,
+    waitingOn,
+    sendAt: null,
+  });
+  if (lead === null) throw createQueuedMessageClaimLostError();
+  if (args.sendNow) {
+    markQueuedThreadMessagesSendNowInTransaction(tx, {
+      ids: claimed.map((claim) => claim.id),
+      threadId: args.thread.id,
+    });
+  }
+  const queued = getQueuedThreadMessage(tx, lead.id);
+  if (queued === null) throw createQueuedMessageClaimLostError();
+  return queued;
+}
+
+export function recordClaimedQueuedMessageWait(
+  deps: QueueWaitDeps,
+  args: {
+    claimed: readonly Pick<
+      ClaimedQueuedThreadMessageRow,
+      "claimToken" | "id"
+    >[];
+    sendAt: number | null;
+    threadId: string;
+    waitingOn: QueuedMessageWaitingOn;
+  },
+): ThreadQueuedMessage | null {
+  const row = requeueClaimedQueuedThreadMessages(deps.db, deps.hub, {
+    claims: args.claimed.map((claim) => ({
+      id: claim.id,
+      claimToken: claim.claimToken,
+    })),
+    threadId: args.threadId,
+    waitingOn: args.waitingOn,
+    sendAt: args.sendAt,
+  });
   if (row === null) {
     // The claim no longer holds: the row was deleted under the drain, or a
     // stale-claim sweep reclaimed it. Either way there is no row left to queue.
     return null;
   }
+  return announceQueuedMessageWait(deps, row);
+}
+
+export function announceQueuedMessageWait(
+  deps: QueueWaitDeps,
+  row: QueuedThreadMessageRow,
+): ThreadQueuedMessage {
   const entry = toThreadQueuedMessage(row);
   emitPluginMessageQueued(entry);
-  deps.hub.notifyThread(args.thread.id, ["queue-changed"]);
+  deps.hub.notifyThread(row.threadId, ["queue-changed"]);
   return entry;
 }
 

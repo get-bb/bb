@@ -207,7 +207,7 @@ export type ThreadSendResult = SendMessageResponse;
 export type ThreadRetryResult = RetryTurnResponse;
 export type ThreadEditMessageResult = EditMessageResponse;
 export type ThreadStopResult = { ok: true };
-export type ThreadCompactResult = { ok: true };
+export type ThreadCompactResult = SendMessageResponse;
 export type ThreadBannerActionResult = { ok: true };
 export type ThreadUnarchiveResult = { ok: true };
 export type ThreadArchiveAllResult = ThreadArchiveAllResponse;
@@ -1581,12 +1581,11 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       return { ok: true };
     },
     async compact(input) {
-      await transport.readVoid(
+      return transport.readJson(
         transport.api.v1.threads[":id"].compact.$post({
           param: { id: input.threadId },
         }),
       );
-      return { ok: true };
     },
     async clearContext(input) {
       await transport.readVoid(

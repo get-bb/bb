@@ -47,27 +47,30 @@ export function isQueuedMessageSendNowAllowed({
 }
 
 export function queuedMessageHasWaitLine(args: {
+  compactFirst: boolean;
   failureReason: string | null;
   payload: QueuedMessagePayload;
   waitingOn: QueuedMessageWaitingOn | null;
 }): boolean {
   if (args.failureReason !== null) return true;
   if (args.payload.kind === "retry") return true;
+  if (args.compactFirst) return true;
   if (args.waitingOn === null) return false;
   return args.waitingOn.kind !== "thread-busy";
 }
 
 export function queuedMessageWaitIcon(args: {
+  compactFirst: boolean;
   failureReason: string | null;
   payload: QueuedMessagePayload;
   waitingOn: QueuedMessageWaitingOn | null;
 }): IconName | null {
   if (args.failureReason !== null) return "AlertCircle";
   if (args.payload.kind === "retry") return "RotateCcw";
-  if (args.waitingOn === null) return null;
+  if (args.waitingOn === null || args.waitingOn.kind === "thread-busy") {
+    return args.compactFirst ? "CircleArrowShrink" : null;
+  }
   switch (args.waitingOn.kind) {
-    case "thread-busy":
-      return null;
     case "stopping":
     case "turn-starting":
       return "TimeSchedule";
@@ -85,6 +88,7 @@ export function queuedMessageWaitIcon(args: {
 }
 
 export interface DescribeQueuedMessageWaitArgs {
+  compactFirst: boolean;
   failureReason: string | null;
   now: number;
   payload: QueuedMessagePayload;
@@ -126,7 +130,14 @@ export function describeQueuedMessageWait(
     return parts.join(" · ");
   }
 
-  if (!queuedMessageHasWaitLine(args)) return null;
+  const wait = describeInlineQueuedMessageWait(args);
+  if (!args.compactFirst) return wait;
+  return wait === null ? "Compact first" : `Compact first · ${wait}`;
+}
+
+function describeInlineQueuedMessageWait(
+  args: DescribeQueuedMessageWaitArgs,
+): string | null {
   if (args.waitingOn === null) return null;
   switch (args.waitingOn.kind) {
     case "thread-busy":
