@@ -52,6 +52,15 @@ group with its options on one page. Failures are logged without argument values
 to <dataDir>/logs/cli-errors.jsonl; `bb diagnostics cli-errors [--since 7d]
 [--clear]` tallies or deletes it, and BB_CLI_ERROR_LOG=0 turns logging off.
 
+To answer a question about bb, run `bb guide search "<question>"` [--limit <n>]
+[--project <id>] [--environment <id>] [--json]. It searches the online docs at
+https://getbb.app/docs, these guide chapters, and the skills `bb skill list`
+shows for the current project, and prints one ranked list with each match's
+page or chapter, section, and URL, command, or file. When the docs are
+unreachable within 5 seconds, or no bb server answers for skills, it says so
+and shows the rest. BB_DOCS_URL points it at another docs site, such as a
+local preview.
+
 To make a repo work with bb worktrees, run `bb guide environments` for the
 repo-level `.bb-env-setup.sh` and `.bb-env-teardown.sh` hooks. Run `bb guide
 agent-configuration` for the data-dir and workspace files that customize agent
@@ -80,3 +89,4 @@ Run `bb guide <chapter>` for command details:
                        plugins, and their contributed bb commands
   json                 The --json contract: output shapes and the error envelope
   commands [group]     Every core command on one page; add a group for options
+  search <question>    Search the online docs, these chapters, and skills

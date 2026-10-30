@@ -28,6 +28,7 @@ const NON_COMMAND_NAMES = new Set(["cloud", "hello", "weather"]);
 interface CommandNode {
   children: Map<string, CommandNode>;
   flags: Set<string>;
+  takesArguments: boolean;
 }
 
 interface Reference {
@@ -52,7 +53,11 @@ function commandNode(command: Command): CommandNode {
       flags.add(`--no-${option.long.slice(2)}`);
     }
   }
-  return { children, flags };
+  return {
+    children,
+    flags,
+    takesArguments: command.registeredArguments.length > 0,
+  };
 }
 
 async function coreCommandTree(): Promise<CommandNode> {
@@ -182,6 +187,7 @@ function problem(
     }
     if (node.children.size === 0 || !WORD.test(arg)) continue;
     const child = node.children.get(arg);
+    if (!child && node.takesArguments) break;
     if (!child) {
       return `unknown command \`bb ${[...path, arg].join(" ")}\``;
     }
