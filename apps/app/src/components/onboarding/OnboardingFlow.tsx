@@ -308,6 +308,29 @@ function AgentStepContainer({
         name: "onboarding_sign_in",
         properties: { entry, outcome },
       });
+      recordTelemetryEvent({
+        name: "onboarding_operation",
+        properties: {
+          surface: "onboarding",
+          step: "agent",
+          resource_type: "agent",
+          resource_id: current.providerId,
+          entry,
+          operation: "sign_in",
+          outcome:
+            outcome === "ready"
+              ? "succeeded"
+              : outcome === "exited"
+                ? "unknown"
+                : outcome,
+          error_category:
+            outcome === "failed"
+              ? "request"
+              : outcome === "exited"
+                ? "unknown"
+                : null,
+        },
+      });
       setSignIn(null);
       closeTerminalMutate({ mode: "force", terminalId: current.session.id });
       void refetchStates();
@@ -376,6 +399,19 @@ function AgentStepContainer({
       name: "onboarding_sign_in",
       properties: { entry, outcome: "started" },
     });
+    recordTelemetryEvent({
+      name: "onboarding_operation",
+      properties: {
+        surface: "onboarding",
+        step: "agent",
+        resource_type: "agent",
+        resource_id: providerId,
+        entry,
+        operation: "sign_in",
+        outcome: "started",
+        error_category: null,
+      },
+    });
     const title = `Sign in to ${state.displayName}`;
     await closeAbandonedSignInTerminals({ hostId, title });
     let session: TerminalSession;
@@ -392,12 +428,38 @@ function AgentStepContainer({
         name: "onboarding_sign_in",
         properties: { entry, outcome: "failed" },
       });
+      recordTelemetryEvent({
+        name: "onboarding_operation",
+        properties: {
+          surface: "onboarding",
+          step: "agent",
+          resource_type: "agent",
+          resource_id: providerId,
+          entry,
+          operation: "sign_in",
+          outcome: "failed",
+          error_category: "request",
+        },
+      });
       return;
     }
     if (signInRequestRef.current !== request) {
       recordTelemetryEvent({
         name: "onboarding_sign_in",
         properties: { entry, outcome: "cancelled" },
+      });
+      recordTelemetryEvent({
+        name: "onboarding_operation",
+        properties: {
+          surface: "onboarding",
+          step: "agent",
+          resource_type: "agent",
+          resource_id: providerId,
+          entry,
+          operation: "sign_in",
+          outcome: "cancelled",
+          error_category: null,
+        },
       });
       void sdk.terminals
         .close({ mode: "force", terminalId: session.id })
@@ -570,7 +632,11 @@ function ProjectsStepContainer({
         name: "onboarding_operation",
         properties: {
           entry,
-          operation: "project_scan",
+          surface: "onboarding",
+          step: "projects",
+          resource_type: "project",
+          resource_id: "project_discovery",
+          operation: "scan",
           outcome: "started",
           error_category: null,
         },
@@ -580,7 +646,11 @@ function ProjectsStepContainer({
           name: "onboarding_operation",
           properties: {
             entry,
-            operation: "project_scan",
+            surface: "onboarding",
+            step: "projects",
+            resource_type: "project",
+            resource_id: "project_discovery",
+            operation: "scan",
             outcome,
             error_category: outcome === "failed" ? "request" : null,
           },
@@ -863,20 +933,27 @@ function PluginCardContainer({
       if (next && !entry.installed) {
         const job = await runOnboardingPluginAction(
           onboardingEntry,
-          "plugin_install",
+          "install",
+          entry.entryId,
           () =>
             startCatalogPluginInstall(fetch, {
               entryId: entry.entryId,
               marketplace: entry.marketplace,
             }),
         );
-        observeOnboardingPluginInstall(queryClient, job, onboardingEntry);
+        observeOnboardingPluginInstall(
+          queryClient,
+          job,
+          onboardingEntry,
+          entry.entryId,
+        );
         applyPluginInstallJob({ queryClient, job });
       } else {
         if (next) {
           await runOnboardingPluginAction(
             onboardingEntry,
-            "plugin_enable",
+            "enable",
+            entry.entryId,
             () => setPluginEnabled(entry.pluginId, true),
           );
         } else {
