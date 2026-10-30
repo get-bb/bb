@@ -83,6 +83,7 @@ import { Testimonials } from "../landing/testimonials";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
 import { ClaudeIcon } from "../landing/icons";
 import {
+  AgentRow,
   Band,
   InstallOptions,
   ProviderChips,
@@ -1444,10 +1445,7 @@ function LandingPage() {
 
         <InstallBlock placement="hero" />
 
-        <div className="providers">
-          <span className="label">Works with</span>
-          <ProviderChips />
-        </div>
+        <AgentRow />
       </header>
 
       <HeroAppMock />
