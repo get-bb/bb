@@ -63,6 +63,15 @@ describe("site navigation", () => {
     [12040, "12k"],
   ])("formats %d stars as %s", (count, label) => {
     expect(formatStarCount(count)).toBe(label);
+  it("keeps GitHub and Download apart from the centered page links", () => {
+    const html = renderToStaticMarkup(<SiteNav />);
+    const actionsAt = html.indexOf('<div class="nav-actions">');
+    const links = html.slice(html.indexOf('class="nav-links"'), actionsAt);
+    const actions = html.slice(actionsAt);
+    expect(links).toContain("Sign in");
+    expect(links).not.toContain("GitHub");
+    expect(actions).toContain('aria-label="GitHub"');
+    expect(actions).toContain("Download for macOS");
   });
 
   it("marks Building plugins current inside the Plugins menu", () => {
