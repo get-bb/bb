@@ -1,5 +1,11 @@
 import { DOCS_NAV, DOCS_NAV_COMMUNITY, navSectionOf } from "./nav";
-import { DOCS_BASE, source, type DocsPage } from "./source";
+import {
+  DOCS_BASE,
+  docsLlms,
+  markdownPath,
+  source,
+  type DocsPage,
+} from "./source";
 
 const REPO_BLOB = "https://github.com/get-bb/bb/blob/main";
 
@@ -31,6 +37,8 @@ export interface DocsPageView {
   description: string;
   section: string;
   unreleased: boolean;
+  markdownUrl: string;
+  pageMarkdown: string;
   editUrl: string;
   nav: DocsNavSection[];
   community: { label: string; links: { title: string; href: string }[] };
@@ -117,6 +125,8 @@ async function viewOf(page: DocsPage): Promise<DocsPageView> {
     description: page.data.description,
     section,
     unreleased: page.data.since === "unreleased",
+    markdownUrl: markdownPath(page),
+    pageMarkdown: await docsLlms.page(page),
     editUrl: `${REPO_BLOB}/apps/web/content/docs/${page.path}`,
     nav,
     community: {
