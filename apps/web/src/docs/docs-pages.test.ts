@@ -214,6 +214,106 @@ function screenshotProblems(markdown: string): string[] {
   return problems;
 }
 
+const WORD_BUDGETS: Readonly<Record<DocsPageType, number>> = {
+  "how-to": 450,
+  concept: 500,
+  tutorial: 600,
+  troubleshooting: 800,
+  reference: 150,
+};
+
+const OPENING_STOP_WORDS = new Set(
+  "about after also and are because been but can does each for from has have here into its just more not only page that the their them then there these this those through until use what when where which while will with you your".split(
+    " ",
+  ),
+);
+
+function proseLines(markdown: string): string[] {
+  return withoutCodeFences(markdown)
+    .split("\n")
+    .filter(
+      (line) =>
+        !/^\s*(?:<\/?[A-Z][^>]*>|:::|import |export |#{1,6} )/u.test(line),
+    );
+}
+
+function wordCount(markdown: string, type: DocsPageType): number {
+  const lines = proseLines(markdown).filter(
+    (line) => type !== "reference" || !/^\s*\|/u.test(line),
+  );
+  return (
+    lines
+      .join(" ")
+      .replace(/\]\([^)]*\)/gu, "]")
+      .match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu)?.length ?? 0
+  );
+}
+
+function openingParagraph(markdown: string): string {
+  const paragraph: string[] = [];
+  for (const line of proseLines(markdown)) {
+    const text = line.replace(/^\s*>\s?/u, "").trim();
+    if (text === "") {
+      if (paragraph.length > 0) break;
+      continue;
+    }
+    if (/^\s*(?:\||[-*] |\d+\. )/u.test(line)) break;
+    paragraph.push(text);
+  }
+  return paragraph.join(" ");
+}
+
+function contentWords(text: string): Set<string> {
+  return new Set(
+    (text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).filter(
+      (word) => word.length > 2 && !OPENING_STOP_WORDS.has(word),
+    ),
+  );
+}
+
+function repeatsDescription(opening: string, description: string): boolean {
+  const openingWords = contentWords(opening);
+  const descriptionWords = contentWords(description);
+  const smaller = Math.min(openingWords.size, descriptionWords.size);
+  if (smaller < 3) return false;
+  const shared = [...openingWords].filter((word) =>
+    descriptionWords.has(word),
+  ).length;
+  return shared / smaller >= 0.6;
+}
+
+const DESCRIPTION_MAX_LENGTH = 160;
+
+function pageDietProblems(
+  type: DocsPageType,
+  description: string,
+  markdown: string,
+): string[] {
+  const problems: string[] = [];
+  if (description.length > DESCRIPTION_MAX_LENGTH) {
+    problems.push(
+      `the description is ${description.length} characters; search results cut it after ${DESCRIPTION_MAX_LENGTH}`,
+    );
+  }
+  const words = wordCount(markdown, type);
+  const budget = WORD_BUDGETS[type];
+  if (words > budget) {
+    problems.push(
+      `${words} words of ${type === "reference" ? "prose" : "text"}; a ${type} page has at most ${budget}`,
+    );
+  }
+  if (repeatsDescription(openingParagraph(markdown), description)) {
+    problems.push(
+      "the opening paragraph repeats the description, which is already shown under the title",
+    );
+  }
+  const firstLine = proseLines(markdown).find((line) => line.trim() !== "");
+  if (type === "troubleshooting" && !/^\s*\|/u.test(firstLine ?? "")) {
+    problems.push("a troubleshooting page opens with its symptom table");
+  }
+  return problems;
+}
+
 const navPages = DOCS_NAV.flatMap((section) => section.pages);
 
 describe("docs sidebar", () => {
@@ -222,6 +322,22 @@ describe("docs sidebar", () => {
     const titles = navPages.map((page) => page.title);
     expect(new Set(slugs).size).toBe(slugs.length);
     expect(new Set(titles).size).toBe(titles.length);
+  });
+
+  it("gives every page a short sidebar label that fits one line", () => {
+    for (const page of navPages) {
+      expect(
+        page.navLabel.split(" ").filter((word) => !/^(?:and|or)$/u.test(word))
+          .length,
+      ).toBeLessThanOrEqual(3);
+      expect(page.navLabel.length).toBeLessThanOrEqual(22);
+    }
+    for (const section of DOCS_NAV) {
+      expect(section.label.length).toBeLessThanOrEqual(22);
+    }
+    expect(new Set(DOCS_NAV.map((section) => section.icon)).size).toBe(
+      DOCS_NAV.length,
+    );
   });
 
   it("puts plugin surface pages under Reference", () => {
@@ -276,6 +392,99 @@ describe("hand-written docs pages", () => {
       expect(navPage?.title).toBe(frontmatter.title);
     },
   );
+
+  it.each(files.map((file) => [path.relative(WEB_ROOT, file), file]))(
+    "%s keeps to its word budget and opens with something new",
+    (_name, file) => {
+      const parsed = matter(readFileSync(file, "utf8"));
+      const frontmatter = frontmatterSchema.parse(parsed.data);
+      expect(
+        pageDietProblems(
+          frontmatter.type,
+          frontmatter.description,
+          parsed.content,
+        ),
+      ).toEqual([]);
+    },
+  );
+});
+
+describe("page diet", () => {
+  it("counts text outside code, components and headings", () => {
+    expect(
+      wordCount(
+        [
+          "## Heading words",
+          "Two words.",
+          "```sh",
+          "bb not counted here",
+          "```",
+          '<Tabs items={["A"]}>',
+          "| Cell | Other |",
+        ].join("\n"),
+        "how-to",
+      ),
+    ).toBe(4);
+    expect(wordCount("Two words.\n| Cell | Other |", "reference")).toBe(2);
+  });
+
+  it("flags a page over its budget", () => {
+    expect(pageDietProblems("how-to", "Short.", "word ".repeat(451))).toEqual([
+      "451 words of text; a how-to page has at most 450",
+    ]);
+  });
+
+  it("flags a description too long for search results", () => {
+    expect(pageDietProblems("how-to", "a".repeat(160), "Step one.")).toEqual(
+      [],
+    );
+    expect(pageDietProblems("how-to", "a".repeat(161), "Step one.")).toEqual([
+      "the description is 161 characters; search results cut it after 160",
+    ]);
+  });
+
+  it("flags an opening paragraph that repeats the description", () => {
+    const description =
+      "Choose how much an agent may do without asking, from read-only to full access.";
+    expect(
+      pageDietProblems(
+        "how-to",
+        description,
+        "Choose how much the agent may do without asking you: read-only up to full access.\n\n## Steps",
+      ),
+    ).toEqual([
+      "the opening paragraph repeats the description, which is already shown under the title",
+    ]);
+    expect(
+      pageDietProblems(
+        "how-to",
+        description,
+        "1. Open the composer's mode menu.\n\n## Check it worked",
+      ),
+    ).toEqual([]);
+  });
+
+  it("flags a troubleshooting page that does not open with its table", () => {
+    expect(
+      pageDietProblems(
+        "troubleshooting",
+        "A skill is missing.",
+        "Some text first.\n\n| What you see | Fix |\n| --- | --- |",
+      ),
+    ).toEqual(["a troubleshooting page opens with its symptom table"]);
+  });
+
+  it.each(DOCS_PAGE_TYPES.map((type) => [type]))(
+    "the %s template follows the page diet",
+    (type: DocsPageType) => {
+      const parsed = matter(
+        readFileSync(path.join(TEMPLATES_DIR, `${type}.mdx`), "utf8"),
+      );
+      expect(
+        pageDietProblems(type, String(parsed.data.description), parsed.content),
+      ).toEqual([]);
+    },
+  );
 });
 
 describe("page templates", () => {
@@ -327,31 +536,53 @@ describe("generated reference pages", () => {
   );
 
   it("lists every CLI command from the command index", () => {
+    const json = { flags: "--json", description: "Print JSON" };
     const commands = [
       {
         aliases: ["ls"],
         arguments: "[id]",
         description: "List | show things",
-        options: ["--json", "--host <id>"],
+        optionDetails: [
+          json,
+          { flags: "--host <id>", description: "Machine to use" },
+        ],
         path: "thread list",
+      },
+      {
+        aliases: [],
+        arguments: "<id>",
+        description: "Show a thread",
+        optionDetails: [json],
+        path: "thread show",
       },
       {
         aliases: [],
         arguments: "",
         description: "Show status",
-        options: [],
+        optionDetails: [],
         path: "status",
       },
     ];
     const page = cliReferencePage(commands);
+    expect(page.layout).toBe("cli");
     expect(h2Headings(page.markdown)).toEqual([
       "bb thread",
       "bb status",
       SOURCES_HEADING,
     ]);
     expect(page.markdown).toContain(
-      "| `bb thread list [id]` (also `ls`) | List \\| show things | `--json` `--host <id>` |",
+      [
+        "Common flags on every `bb thread` command:",
+        "| Flag | What it does |\n| --- | --- |\n| `--json` | Print JSON |",
+        "### `bb thread list` `[id]`",
+        "List \\| show things. Also `bb thread ls`.",
+        "| Flag | What it does |\n| --- | --- |\n| `--host <id>` | Machine to use |",
+        "### `bb thread show` `<id>`",
+        "Show a thread",
+      ].join("\n\n"),
     );
+    expect(page.markdown).toContain("### `bb status`\n\nShow status\n\n## ");
+    expect(page.markdown).not.toContain("Common flags on every `bb status`");
   });
 
   it("has one page for every plugin surface, at the path Plugin Guide cards link to", () => {
@@ -363,6 +594,18 @@ describe("generated reference pages", () => {
     }
     expect(pagePaths).toContain(`/docs/${PLUGIN_SDK_SLUG}/index.md`);
   });
+
+  it.each(pages.map((page) => [page.path, page]))(
+    "%s does not open by repeating its description",
+    (_path, page) => {
+      expect(
+        repeatsDescription(
+          openingParagraph(page.data.markdown),
+          page.data.description,
+        ),
+      ).toBe(false);
+    },
+  );
 
   it("only places generated pages that are in the sidebar", () => {
     for (const page of pages) {
