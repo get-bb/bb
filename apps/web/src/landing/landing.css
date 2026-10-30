@@ -119,7 +119,7 @@
 html {
   overflow-x: clip;
   /* Reserve the scrollbar gutter on both sides so centered sections (hero,
-     statement, closer) stay centered in the viewport rather than nudged left
+     closer) stay centered in the viewport rather than nudged left
      by the vertical scrollbar's width. */
   scrollbar-gutter: stable both-edges;
 }
@@ -2082,342 +2082,870 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   min-width: 0;
 }
 
-/* ── Band visual: Telegram-style chat with the bb bot ───────────── */
-
-.tg {
-  width: 100%;
-  max-width: 340px;
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  overflow: hidden;
-  background: var(--bg);
-  box-shadow: 0 18px 50px -26px
-    color-mix(in oklab, var(--shade) 32%, transparent);
-}
-
-/* contact bar */
-.tg-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 12px;
-  border-bottom: 1px solid var(--border-soft);
-  background: var(--surface);
-}
-
-.tg-back {
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
-  color: var(--accent);
-}
-
-.tg-contact {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  line-height: 1.15;
-}
-
-.tg-name {
-  font-size: 13.5px;
-  font-weight: 600;
+.band-link {
+  display: inline-block;
+  margin-top: 14px;
+  font-size: 16px;
+  font-weight: 500;
   color: var(--ink);
+  text-decoration: none;
+  text-underline-offset: 3px;
 }
 
-.tg-sub {
-  font-size: 11px;
-  color: var(--subtle);
+.band-link:hover {
+  color: var(--heading);
+  text-decoration: underline;
 }
 
-.tg-av {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  overflow: hidden;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--surface-recessed);
+.band-stacked .band-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 44px;
 }
 
-.tg-av img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+.band-stacked .band-copy,
+.band-stacked.band-flip .band-copy {
+  order: 0;
+  max-width: 640px;
 }
 
-/* wallpaper + messages. --tg-card is Telegram's own surface colour, not a bb
-   token: the mock imitates a foreign app, so its values are deliberately
-   literal in both schemes, like the wallpaper and the outgoing green bubble. */
-.tg-feed {
-  --tg-card: #fff;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 14px 12px;
-  min-height: 236px;
-  background-color: oklch(0.95 0.025 150);
-  background-image:
-    radial-gradient(
-      color-mix(in oklab, oklch(0.45 0.06 150) 9%, transparent) 1px,
-      transparent 1.5px
-    ),
-    linear-gradient(165deg, oklch(0.96 0.02 155), oklch(0.92 0.035 140));
-  background-size:
-    17px 17px,
-    100% 100%;
+.band-stacked .band-visual,
+.band-stacked.band-flip .band-visual {
+  display: block;
+  order: 1;
 }
 
-/* The messages live in their own layer so they can fade out together at the end
-   of the loop while the wallpaper underneath stays put (no reset flash). */
-.tg-msgs {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.fw-paused,
+.fw-paused * {
+  animation-play-state: paused !important;
 }
 
-.tg-msgs.leaving {
-  animation: tg-leave 0.6s ease forwards;
+@keyframes fw-fade-in {
+  from {
+    opacity: 0;
+  }
 }
 
-@keyframes tg-leave {
+@keyframes fw-fade-out {
   to {
     opacity: 0;
   }
 }
 
-.tg-msg {
-  display: flex;
-  max-width: 86%;
-  animation: tg-in 0.42s cubic-bezier(0.16, 1, 0.3, 1) backwards;
-}
-
-.tg-out {
-  align-self: flex-end;
-  justify-content: flex-end;
-}
-
-.tg-in {
-  align-self: flex-start;
-}
-
-.tg-bubble {
-  padding: 7px 10px 7px 11px;
-  border-radius: 15px;
-  font-size: 13px;
-  line-height: 1.4;
-  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.05);
-}
-
-.tg-in .tg-bubble {
-  background: var(--tg-card);
-  color: var(--ink-strong);
-  border-bottom-left-radius: 5px;
-}
-
-.tg-out .tg-bubble {
-  background: linear-gradient(180deg, #4ec264, #38ab53);
-  color: #fff;
-  border-bottom-right-radius: 5px;
-}
-
-.tg-time {
-  margin-left: 8px;
-  font-size: 10px;
-  opacity: 0.55;
-  white-space: nowrap;
-}
-
-/* The bb spawn command the bot runs, shown inline in its message. */
-.tg-cmd {
-  display: block;
-  margin-top: 6px;
-  padding: 5px 8px;
-  border-radius: 7px;
-  background: var(--surface-recessed);
-  color: var(--dim);
-  font-size: 11.5px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* the bb thread card the bot spawns */
-.tg-thread {
+.bw {
+  --fw-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
   width: 100%;
-  background: var(--tg-card);
-  border: 1px solid var(--border-soft);
-  border-radius: 12px;
-  border-bottom-left-radius: 5px;
-  padding: 10px 11px;
-  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.05);
+  text-align: left;
 }
 
-.tg-thread-top {
+.bw-window {
+  width: 100%;
+}
+
+.bw .mock-body {
+  height: 500px;
+}
+
+.bw .side,
+.bw .bar-left {
+  width: 236px;
+}
+
+.bw-plugins .mock-body {
+  height: 540px;
+}
+
+.bw .side-act {
+  cursor: default;
+}
+
+.bw .trow {
+  cursor: default;
+}
+
+.bw .trow:hover {
+  background: none;
+}
+
+.bw .trow.active,
+.bw .trow.active:hover {
+  background: color-mix(in oklab, var(--ink) 7%, var(--bg));
+}
+
+.bw .bar-toggle {
+  cursor: default;
+}
+
+.bw-row-ic {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  color: var(--dim);
+}
+
+.bw-row-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.bw-meta {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 4px;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--subtle);
+  white-space: nowrap;
 }
 
-.tg-thread-mark {
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
+.bw-meta-ic {
+  width: 13px;
+  height: 13px;
   flex-shrink: 0;
 }
 
-.tg-thread-eyebrow {
-  font-size: 11px;
+.bw-ok {
+  margin-left: 4px;
+  color: var(--ok);
+}
+
+.bw-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  margin-left: auto;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--ink) 8%, var(--bg));
+  font-size: 11.5px;
   font-weight: 500;
+  color: var(--dim);
+}
+
+.bw-placeholder {
   color: var(--subtle);
 }
 
-.tg-stat {
-  position: relative;
-  flex-shrink: 0;
-  width: 76px;
-  height: 18px;
-  margin-left: auto;
+.bw-feed {
+  gap: 0;
+  padding: 18px 22px;
 }
 
-.tg-thread-title {
-  margin-top: 7px;
+.bw-feed > * + * {
+  margin-top: 14px;
+}
+
+.bw-feed > .bw-reveal {
+  margin-top: 0;
+}
+
+.bw-feed > .bw-reveal > .bw-reveal-inner {
+  padding-top: 14px;
+}
+
+.bw-feed-live {
+  justify-content: flex-end;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 48px);
+  mask-image: linear-gradient(to bottom, transparent, #000 48px);
+}
+
+.bw-reveal {
+  display: grid;
+  grid-template-rows: 1fr;
+  animation: bw-reveal 0.6s var(--fw-ease) var(--fw-at, 0s) both;
+}
+
+.bw-reveal-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.leaving .bw-reveal {
+  animation: bw-collapse 0.6s var(--fw-ease) forwards;
+}
+
+@keyframes bw-reveal {
+  from {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+}
+
+@keyframes bw-collapse {
+  to {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+}
+
+.bw-fade {
+  animation: fw-fade-in 0.5s ease var(--fw-at, 0s) both;
+}
+
+.leaving .bw-fade {
+  animation: fw-fade-out 0.6s ease forwards;
+}
+
+.bw-phases {
+  display: inline-grid;
+}
+
+.bw-phase {
+  display: flex;
+  grid-area: 1 / 1;
+  align-items: center;
+  justify-content: center;
+}
+
+.bw-phase-first {
+  opacity: 0;
+  animation: bw-hide 0.35s ease var(--fw-out, 0s) both;
+}
+
+.bw-phase-mid {
+  opacity: 0;
+  animation:
+    bw-show 0.35s ease var(--fw-at, 0s) both,
+    bw-hide 0.35s ease var(--fw-out, 0s) forwards;
+}
+
+.bw-phase-last {
+  animation: bw-show 0.35s ease var(--fw-at, 0s) both;
+}
+
+@keyframes bw-show {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes bw-hide {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.bw-spot {
+  position: relative;
+  border-radius: 8px;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  transition: outline-color 0.6s ease;
+}
+
+.bw-spot.is-lit {
+  outline-color: color-mix(in oklab, var(--accent) 75%, transparent);
+}
+
+.bw-spot-tag {
+  position: absolute;
+  z-index: 2;
+  top: -12px;
+  right: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: var(--accent);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--bg);
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateY(3px);
+  transition:
+    opacity 0.5s ease,
+    transform 0.5s ease;
+  pointer-events: none;
+}
+
+.bw-spot.is-lit .bw-spot-tag {
+  opacity: 1;
+  transform: none;
+}
+
+.bw-spot-ic {
+  width: 13px;
+  height: 13px;
+}
+
+.bw-spot-rows {
+  margin: 2px 0;
+}
+
+.bw-row-meta {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.bw-chart {
+  padding: 12px 14px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.bw-chart-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.bw-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--subtle);
+}
+
+.bw-key {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-left: 4px;
+  border-radius: 2px;
+}
+
+.bw-key-team,
+.bw-bar-team {
+  background: color-mix(in oklab, var(--accent) 82%, var(--bg));
+}
+
+.bw-key-pro,
+.bw-bar-pro {
+  background: color-mix(in oklab, var(--accent) 38%, var(--bg));
+}
+
+.bw-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  height: 96px;
+  margin-top: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.bw-bar-col {
+  display: flex;
+  flex: 1;
+  flex-direction: column-reverse;
+  gap: 2px;
+  height: 100%;
+}
+
+.bw-bar {
+  display: block;
+  border-radius: 3px 3px 0 0;
+}
+
+.bw-banner {
+  margin-bottom: 10px;
+  flex-wrap: nowrap;
+}
+
+.bw-banner-edit {
+  margin-left: auto;
+  color: var(--subtle);
+}
+
+.bw-panel {
+  width: 300px;
+  border-radius: 0;
+  outline-offset: -3px;
+}
+
+.bw-panel .bw-spot-tag {
+  top: 12px;
+  right: 12px;
+}
+
+.bw-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.bw-tab {
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: var(--dim);
+}
+
+.bw-tab.is-on {
+  background: color-mix(in oklab, var(--ink) 7%, var(--bg));
+  color: var(--ink);
+}
+
+.bw-tab-n {
+  margin-left: 3px;
+  color: var(--subtle);
+}
+
+.bw-issues {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+}
+
+.bw-issue {
+  display: flex;
+  gap: 9px;
+  padding: 8px;
+  border-radius: 7px;
+}
+
+.bw-issue-ic {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--ok);
+}
+
+.bw-issue-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.bw-issue-title {
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--ink);
+}
+
+.bw-issue-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--subtle);
+}
+
+.bw-label {
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 11.5px;
+  line-height: 17px;
+  color: var(--dim);
+}
+
+.bw-kids {
+  margin-top: 0;
+}
+
+.bw-kids .trow-kid {
+  padding-left: 26px;
+}
+
+.bw-update {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 60ch;
+  padding: 9px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: var(--surface);
+  font-size: 13px;
+  color: var(--ink-strong);
+}
+
+.bw-update-head {
+  font-size: 12px;
+  color: var(--subtle);
+}
+
+.bw-update-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  line-height: 1.45;
+}
+
+.bw-update-ic {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--dim);
+}
+
+.bw-update strong,
+.bw .msg-say strong {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.bw-update code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--surface-recessed);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.bw-toast {
+  position: absolute;
+  z-index: 3;
+  top: 14px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 300px;
+  padding: 11px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow: 0 18px 40px -18px
+    color-mix(in oklab, var(--shade) 45%, transparent);
+  animation: bw-toast 0.7s var(--fw-ease) var(--fw-at, 0s) both;
+}
+
+.leaving .bw-toast {
+  animation: fw-fade-out 0.6s ease forwards;
+}
+
+@keyframes bw-toast {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+}
+
+.bw-toast-mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+}
+
+.bw-toast-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.35;
+}
+
+.bw-toast-app {
+  font-size: 12px;
+  color: var(--subtle);
+}
+
+.bw-toast-body {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.bw-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bw-group-ic {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+
+.bw-chip {
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.bw-start-stage {
+  position: relative;
+  padding-bottom: 116px;
+}
+
+.bw-start .mock-body {
+  height: 440px;
+}
+
+.bw-chat-stack {
+  position: absolute;
+  z-index: 2;
+  bottom: 0;
+  left: 280px;
+  width: 340px;
+}
+
+.bw-chat-back {
+  position: absolute;
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  height: 80px;
+  padding: 7px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--subtle);
+}
+
+.bw-chat-back-1 {
+  top: -22px;
+  right: 12px;
+  left: 12px;
+}
+
+.bw-chat-back-2 {
+  top: -44px;
+  right: 24px;
+  left: 24px;
+  opacity: 0.8;
+}
+
+.bw-chat-back-ic {
+  width: 14px;
+  height: 14px;
+  margin-top: 1px;
+}
+
+.bw-chat {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg);
+  box-shadow: 0 24px 50px -24px
+    color-mix(in oklab, var(--shade) 45%, transparent);
+}
+
+.bw-chat-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--border-soft);
   font-size: 13.5px;
   font-weight: 600;
   color: var(--ink);
 }
 
-.tg-thread-branch {
-  margin-top: 2px;
-  font-size: 11px;
-  color: var(--subtle);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.bw-chat-ic {
+  width: 16px;
+  height: 16px;
 }
 
-.tg-stat-spawn,
-.tg-stat-run {
-  position: absolute;
-  right: 0;
-  top: 0;
+.bw-chat-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px;
+}
+
+.bw-bubble {
+  align-self: flex-end;
+  max-width: 92%;
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: var(--surface-recessed);
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.bw-used {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  font-weight: 500;
-  white-space: nowrap;
+  gap: 6px;
+  height: 30px;
+  padding: 0 11px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  font-size: 13px;
+  color: var(--dim);
 }
 
-.tg-stat-spawn {
+.bw-used b {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.bw-used-mark {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+}
+
+.bw-used-check {
+  width: 15px;
+  height: 15px;
   color: var(--accent);
-  animation: tg-fade-out 0.35s ease forwards;
 }
 
-.tg-stat-run {
-  opacity: 0;
-  color: var(--ok);
-  animation: tg-fade-in 0.35s ease forwards;
+.bw-phone {
+  position: absolute;
+  z-index: 2;
+  right: 36px;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 214px;
+  height: 400px;
+  padding: 10px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 30px;
+  background: var(--bg);
+  box-shadow:
+    0 0 0 5px color-mix(in oklab, var(--ink) 9%, var(--bg)),
+    0 26px 54px -22px color-mix(in oklab, var(--shade) 50%, transparent);
 }
 
-.tg-spin {
-  width: 12px;
-  height: 12px;
-  animation: spin 0.8s linear infinite;
+.bw-phone-bar {
+  display: flex;
+  justify-content: center;
+  padding: 2px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
 }
 
-.tg-rdot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--ok);
-}
-
-/* composer */
-.tg-input {
+.bw-phone-head {
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 9px 11px;
-  border-top: 1px solid var(--border-soft);
-  background: var(--surface);
+  gap: 6px;
+  padding: 6px 4px 9px;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
 }
 
-.tg-attach {
-  width: 18px;
-  height: 18px;
+.bw-phone-back {
+  width: 16px;
+  height: 16px;
   flex-shrink: 0;
   color: var(--subtle);
 }
 
-.tg-field {
+.bw-phone-title {
   flex: 1;
   min-width: 0;
-  padding: 7px 12px;
-  border-radius: 99px;
-  background: var(--bg);
-  border: 1px solid var(--border-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bw-phone-feed {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  padding: 0 4px;
+}
+
+.bw-phone-feed > .bw-reveal > .bw-reveal-inner {
+  padding-top: 10px;
+}
+
+.bw-phone-input {
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
   font-size: 12.5px;
   color: var(--subtle);
 }
 
-.tg-send {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--accent);
-}
-
-.tg-send-ic {
-  width: 15px;
-  height: 15px;
-  color: #fff;
-}
-
-@keyframes tg-in {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
+@media (max-width: 980px) {
+  .band-stacked .band-visual {
+    margin-right: -28px;
+    overflow-x: clip;
   }
-  to {
+
+  .bw-plugins {
+    width: 924px;
+  }
+
+  .bw-chat-stack {
+    left: 236px;
+    width: 250px;
+  }
+
+  .bw-phone {
+    right: 16px;
+  }
+}
+
+@media (max-width: 720px) {
+  .band-stacked .band-visual {
+    margin: 0 -28px;
+    padding-left: 28px;
+    overflow-x: clip;
+  }
+
+  .bw {
+    width: 560px;
+    zoom: 0.8;
+  }
+
+  .bw-plugins .bw-panel {
+    display: none;
+  }
+
+  .bw-lead .bw-toast {
+    right: auto;
+    left: 150px;
+    width: 270px;
+  }
+
+  .bw-chat-stack {
+    left: 8px;
+    width: 270px;
+  }
+
+  .bw-phone {
+    right: auto;
+    left: 290px;
+    width: 180px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bw *,
+  .bw *::before,
+  .bw *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .bw .bw-spot-tag {
     opacity: 1;
-    transform: translateY(0);
+    transform: none;
   }
-}
-
-@keyframes tg-fade-out {
-  to {
-    opacity: 0;
-  }
-}
-
-@keyframes tg-fade-in {
-  to {
-    opacity: 1;
-  }
-}
-
-/* Telegram mock, dark: the wallpaper and incoming bubbles follow Telegram's
-   own dark appearance (dark green-tinted wallpaper, graphite bubbles) so the
-   foreign app stays recognizable instead of glaring white on the dark page.
-   The outgoing green bubble is Telegram's in both schemes and stays put. */
-.dark .tg-feed {
-  --tg-card: oklch(0.28 0 0);
-  background-color: oklch(0.24 0.02 150);
-  background-image:
-    radial-gradient(
-      color-mix(in oklab, oklch(0.75 0.06 150) 10%, transparent) 1px,
-      transparent 1.5px
-    ),
-    linear-gradient(165deg, oklch(0.26 0.025 155), oklch(0.2 0.03 140));
 }
 
 /* ── Band 3 visual: mobile bb app mock ──────────────────────────── */
@@ -2892,24 +3420,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   background: var(--border);
 }
 
-/* ── Statement (Band 4) ─────────────────────────────────────────── */
-
-.statement {
-  border-top: 1px solid var(--border-soft);
-  padding: 84px 0;
-  text-align: center;
-}
-
-.statement .sec-title {
-  margin-bottom: 0;
-}
-
-.statement > p {
-  color: var(--dim);
-  max-width: 560px;
-  margin: 16px auto 0;
-}
-
 /* ── Section titles, closer, footer ─────────────────────────────── */
 
 .sec-title {
@@ -3225,16 +3735,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     zoom: var(--mock-scale, 0.62);
   }
 
-  /* Left-align the centered statement on mobile so it reads like the bands
-     above it instead of centered multi-line text on a narrow screen. */
-  .statement {
-    text-align: left;
-  }
-
-  .statement .cta-row {
-    justify-content: flex-start;
-  }
-
   /* The full download CTA is repeated immediately below in the hero. Hide the
      nav copy on mobile so the three utility links retain comfortable spacing. */
   .nav-links .btn {
@@ -3401,13 +3901,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     opacity: 1;
   }
 
-  .tg-msg,
-  .tg-stat-spawn,
-  .tg-stat-run,
-  .tg-spin {
-    animation: none;
-  }
-
   .sb-thread,
   .sb-run,
   .sb-done,
@@ -3421,15 +3914,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   }
 
   .sb-done {
-    opacity: 1;
-  }
-
-  /* Static spawned thread when motion is reduced. */
-  .tg-stat-spawn {
-    opacity: 0;
-  }
-
-  .tg-stat-run {
     opacity: 1;
   }
 
