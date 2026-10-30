@@ -9,7 +9,7 @@ import {
 
 const REPO_BLOB = "https://github.com/get-bb/bb/blob/main";
 
-export interface DocsNavLink {
+interface DocsNavLink {
   title: string;
   url: string;
   active: boolean;
@@ -49,7 +49,7 @@ function isActive(slug: string, currentSlug: string): boolean {
   return currentSlug === slug || currentSlug.startsWith(`${slug}/`);
 }
 
-export function docsNav(currentSlug: string | null): DocsNavSection[] {
+function docsNav(currentSlug: string | null): DocsNavSection[] {
   const existing = new Set(source.getPages().map((page) => page.url));
   return DOCS_NAV.flatMap((section) => {
     const links = section.pages
