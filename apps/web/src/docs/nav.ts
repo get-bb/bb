@@ -1,26 +1,19 @@
-export interface DocsNavPage {
+interface DocsNavPage {
   title: string;
   slug: string;
 }
 
-export interface DocsNavSectionPlan {
+interface DocsNavSectionPlan {
   label: string;
   pages: DocsNavPage[];
 }
 
-export interface DocsNavExternalLink {
+interface DocsNavExternalLink {
   title: string;
   href: string;
 }
 
-function slugFromTitle(title: string): string {
-  return title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
-function page(title: string, slug = slugFromTitle(title)): DocsNavPage {
+function page(title: string, slug: string): DocsNavPage {
   return { title, slug };
 }
 
@@ -96,9 +89,9 @@ export const DOCS_NAV: readonly DocsNavSectionPlan[] = [
   {
     label: "Agents",
     pages: [
-      page("Claude Code"),
-      page("Codex"),
-      page("Pi"),
+      page("Claude Code", "claude-code"),
+      page("Codex", "codex"),
+      page("Pi", "pi"),
       page("Add Cursor, opencode and other ACP agents", "add-acp-agents"),
       page(
         "Choose a model, reasoning and context size",
