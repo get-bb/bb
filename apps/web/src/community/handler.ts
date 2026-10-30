@@ -52,14 +52,37 @@ function reply(body: SurveyReply, status = 200): Response {
   });
 }
 
-async function readSubmission(request: Request) {
-  if (
-    !request.headers.get("content-type")?.startsWith("application/json") ||
-    Number(request.headers.get("content-length") ?? 0) > MAX_BODY_BYTES
-  )
+async function readBody(request: Request): Promise<string | null> {
+  if (Number(request.headers.get("content-length") ?? 0) > MAX_BODY_BYTES)
     return null;
-  const body = await request.text();
-  if (body.length > MAX_BODY_BYTES) return null;
+  const reader = request.body?.getReader();
+  if (!reader) return null;
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const chunk = await reader.read();
+    if (chunk.done) break;
+    size += chunk.value.byteLength;
+    if (size > MAX_BODY_BYTES) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(chunk.value);
+  }
+  const body = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(body);
+}
+
+async function readSubmission(request: Request) {
+  if (!request.headers.get("content-type")?.startsWith("application/json"))
+    return null;
+  const body = await readBody(request);
+  if (body === null) return null;
   let json: unknown;
   try {
     json = JSON.parse(body);

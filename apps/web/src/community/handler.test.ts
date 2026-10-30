@@ -86,7 +86,7 @@ describe("survey submissions", () => {
     expect(await count("community_survey_response")).toBe(0);
   });
 
-  it("reads bodies without a length header but still caps their size", async () => {
+  it("reads bodies without a length header but stops at 16 KiB of bytes", async () => {
     const unsized = (body: string) =>
       new Request(`${origin}/api/community/survey`, {
         method: "POST",
@@ -103,11 +103,29 @@ describe("survey submissions", () => {
       { DB: db, ...enabled },
     );
     expect(ok.status).toBe(200);
-    const big = await handleSurveySubmission(unsized("x".repeat(16385)), {
+    let pulls = 0;
+    const endless = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls++;
+        controller.enqueue(new Uint8Array(4096));
+      },
+    });
+    const streamed = await handleSurveySubmission(
+      new Request(`${origin}/api/community/survey`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: endless,
+        duplex: "half",
+      } as RequestInit),
+      { DB: db, ...enabled },
+    );
+    expect(streamed.status).toBe(400);
+    expect(pulls).toBeLessThan(10);
+    const multibyte = await handleSurveySubmission(unsized("é".repeat(9000)), {
       DB: db,
       ...enabled,
     });
-    expect(big.status).toBe(400);
+    expect(multibyte.status).toBe(400);
   });
 
   it("rejects oversized or non-JSON bodies", async () => {
