@@ -176,7 +176,7 @@ export function ReleaseNotesPanel({ id, version }: ReleaseNotesPanelProps) {
           href={getReleaseNotesUrl(notesVersion)}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex w-fit cursor-pointer items-center gap-1 rounded-sm text-xs text-foreground underline decoration-border underline-offset-4 hover:decoration-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+          className="inline-flex w-fit shrink-0 cursor-pointer items-center gap-1 rounded-sm text-xs whitespace-nowrap text-foreground underline decoration-border underline-offset-4 hover:decoration-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
           onClick={(event) => {
             event.preventDefault();
             openReleaseNotesOnWeb(version, notesVersion);
