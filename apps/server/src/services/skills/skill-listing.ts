@@ -137,9 +137,15 @@ export function assembleSkillList(
   perProvider: readonly ProviderSkillDiscovery[],
 ): SkillSummary[] {
   const registrations: SkillSummary[] = [];
+  const discoveringProviders = new Map<string, Set<SkillProvider>>();
   for (const { provider, skills } of perProvider) {
     for (const skill of skills) {
       const mapped = mapSkillScope(provider, skill.rootKind, skill.filePath);
+      if (mapped.provider !== null) {
+        const providers = discoveringProviders.get(skill.id) ?? new Set();
+        providers.add(mapped.provider);
+        discoveringProviders.set(skill.id, providers);
+      }
       registrations.push({
         id: skill.id,
         name: skill.name,
@@ -156,9 +162,13 @@ export function assembleSkillList(
       });
     }
   }
-  return firstPerIdentity(registrations, (skill) => skill.id).sort(
-    compareSkillSummaries,
-  );
+  return firstPerIdentity(registrations, (skill) => skill.id)
+    .map((skill) =>
+      (discoveringProviders.get(skill.id)?.size ?? 0) > 1
+        ? { ...skill, provider: null }
+        : skill,
+    )
+    .sort(compareSkillSummaries);
 }
 
 async function listServerOwnedSkills(deps: AppDeps): Promise<SkillSummary[]> {

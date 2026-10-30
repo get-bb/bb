@@ -161,6 +161,31 @@ describe("assembleSkillList", () => {
     ]);
   });
 
+  it("lists a provider skill root that several providers read as shared", () => {
+    const shared = discovered(
+      "bb-cli",
+      "provider-user",
+      "/home/.agents/skills/bb-cli/SKILL.md",
+    );
+    const cursorOnly = discovered(
+      "cursor-only",
+      "provider-user",
+      "/home/.cursor/skills/cursor-only/SKILL.md",
+    );
+    const result = assembleSkillList([
+      { provider: "acp-cursor", skills: [shared, cursorOnly] },
+      { provider: "codex", skills: [shared] },
+    ]);
+
+    expect(
+      result.map((skill) => [skill.name, skill.scope, skill.provider]),
+    ).toEqual([
+      ["bb-cli", "provider-user", null],
+      ["cursor-only", "provider-user", "acp-cursor"],
+    ]);
+    expect(result[0]?.manageable).toBe(true);
+  });
+
   it("protects a Cursor skill discovered through a symlinked root", () => {
     const cursor = {
       ...discovered(

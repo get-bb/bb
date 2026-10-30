@@ -120,7 +120,8 @@ It also includes project ancestor roots for providers that search to the Git
 repository root. Configured Pi, omp, Grok, and Hermes directories are included.
 Enabled provider plugins also contribute skills to the selected provider's `/`
 command menu. `bb skill list` shows native skills for Claude Code, Codex, and
-Cursor.
+Cursor. A skill file that more than one provider reads (for example under
+~/.agents/skills) is listed once as shared, with provider null.
 
 ACP agents (acp-*), including custom agents set in the ACP providers plugin's
 customAgents setting, are documented in the acp-provider skill.

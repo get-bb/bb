@@ -717,6 +717,11 @@ and packages, omp's `skills.customDirectories`, Hermes' `skills.external_dirs`,
 and Grok's `[skills].paths` in `config.toml` add paths; Grok also reads enabled
 Grok and Claude-compatible plugin skills.
 
+A skill file that more than one registered provider reads, such as one under
+`~/.agents/skills` or `~/.claude/skills`, is listed once with no provider
+(`provider: null`) and shown as Shared on the Skills page and in `bb skill
+list`, instead of being attributed to whichever provider was scanned first.
+
 ## Multi-machine
 
 Multi-machine execution lets this server dispatch work to host daemons on

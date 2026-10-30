@@ -646,6 +646,41 @@ describe("SkillsOverview", () => {
     ).toBe("true");
   });
 
+  it("files a skill shared by several providers under Shared, not bb", async () => {
+    renderDom(
+      <SkillsOverview
+        providerRoster={DEFAULT_PROVIDER_ROSTER}
+        skills={[
+          makeSkill({
+            name: "shared-skill",
+            provider: null,
+            scope: "provider-user",
+            filePath: "/home/u/.agents/skills/shared-skill/SKILL.md",
+          }),
+          makeSkill({
+            id: `skill_${"b".repeat(64)}`,
+            name: "bb-skill",
+            provider: null,
+            scope: "bb-user",
+          }),
+        ]}
+        isLoading={false}
+        hasError={false}
+        onCreateSkill={() => {}}
+        onSelectSkill={() => {}}
+      />,
+    );
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: /^Filters/ }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Shared" }));
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    await waitFor(() => {
+      expect(screen.getByText("shared-skill")).toBeTruthy();
+      expect(screen.queryByText("bb-skill")).toBeNull();
+    });
+  });
+
   it("shows provider skills when the library has no bb skills", async () => {
     renderDom(
       <SkillsOverview

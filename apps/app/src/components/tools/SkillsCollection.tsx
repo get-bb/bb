@@ -19,6 +19,7 @@ import {
   ResourceToolbar,
 } from "@bb/shared-ui/resource-list";
 import { BbLogo } from "@/components/ui/bb-logo";
+import { Icon } from "@bb/shared-ui/icon";
 import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogContent,
@@ -33,7 +34,7 @@ import { ProviderIconMark } from "@/components/settings/ProviderIconMark";
 import { getProviderIconInfo } from "@/lib/provider-icon";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing";
 
-type ResourceProviderFilter = "bb" | SkillProvider;
+type ResourceProviderFilter = "bb" | "shared" | SkillProvider;
 export type ProviderRoster = ReadonlyMap<string, ProviderInfo>;
 type ResourceSkillSourceFilter = "included" | "bb-official" | "user";
 type ResourceSortMode = "provider" | "alpha";
@@ -58,15 +59,34 @@ function providerLabel(
   return providerRoster.get(provider)?.displayName ?? provider;
 }
 
+function isSharedSkill(skill: SkillSummary): boolean {
+  return (
+    skill.provider === null &&
+    (skill.scope.startsWith("provider-") || skill.scope.startsWith("shared-"))
+  );
+}
+
+function skillOwnerLabel(
+  skill: SkillSummary,
+  providerRoster: ProviderRoster,
+): string {
+  return isSharedSkill(skill)
+    ? "Shared"
+    : providerLabel(skill.provider, providerRoster);
+}
+
 function skillProviderFilterId(skill: SkillSummary): ResourceProviderFilter {
-  return skill.provider ?? "bb";
+  if (skill.provider !== null) return skill.provider;
+  return isSharedSkill(skill) ? "shared" : "bb";
 }
 
 function providerFilterLabel(
   provider: ResourceProviderFilter,
   providerRoster: ProviderRoster,
 ): string {
-  return provider === "bb" ? "bb" : providerLabel(provider, providerRoster);
+  if (provider === "bb") return "bb";
+  if (provider === "shared") return "Shared";
+  return providerLabel(provider, providerRoster);
 }
 
 function skillSourceFilterId(skill: SkillSummary): ResourceSkillSourceFilter {
@@ -174,6 +194,9 @@ function SkillLeading({
       />
     );
   }
+  if (isSharedSkill(skill)) {
+    return <Icon name="Layers" className="size-6" />;
+  }
   return <BbLogo className="size-6" />;
 }
 
@@ -220,6 +243,7 @@ function skillMutationDisabledReason(
 ): string {
   if (skill.scope === "bb-builtin") return "Built-in skill";
   if (skill.scope === "plugin") return "Bundled with plugin";
+  if (isSharedSkill(skill)) return "Read-only shared skill";
   return `Bundled with ${providerLabel(skill.provider, providerRoster)}`;
 }
 
@@ -390,6 +414,8 @@ export function SkillsOverview({
       leading:
         provider === "bb" ? (
           <BbLogo className="size-4" />
+        ) : provider === "shared" ? (
+          <Icon name="Layers" className="size-4" />
         ) : (
           <ProviderLogo
             providerId={provider}
@@ -424,7 +450,7 @@ export function SkillsOverview({
         [
           skill.name,
           skill.description ?? "",
-          providerLabel(skill.provider, providerRoster),
+          skillOwnerLabel(skill, providerRoster),
           skillScopeLabel(skill, providerLabelForScope(skill, providerRoster)),
         ]
           .join(" ")
@@ -439,8 +465,8 @@ export function SkillsOverview({
       if (officialResult !== 0) return officialResult;
       const base =
         sortMode === "provider"
-          ? providerLabel(left.provider, providerRoster).localeCompare(
-              providerLabel(right.provider, providerRoster),
+          ? skillOwnerLabel(left, providerRoster).localeCompare(
+              skillOwnerLabel(right, providerRoster),
             ) || left.name.localeCompare(right.name)
           : left.name.localeCompare(right.name);
       if (base !== 0) return sortDirection === "asc" ? base : -base;
@@ -727,7 +753,13 @@ export function SkillDetailDialogView({
                   ),
                   accessibleLabel: `${skill.name} is imported from ${providerLabel(skill.provider, providerRoster)}`,
                 }
-              : undefined
+              : isSharedSkill(skill)
+                ? {
+                    label: "Shared",
+                    tooltip: "Read by more than one agent provider",
+                    accessibleLabel: `${skill.name} is shared by more than one agent provider`,
+                  }
+                : undefined
       }
       files={files.length > 0 ? files : ["SKILL.md"]}
       markdownLinkRouting={markdownLinkRouting}
