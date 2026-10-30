@@ -72,7 +72,7 @@ export function useCopy(text: string, message: string) {
   return { copied, copy };
 }
 
-function CodeCopy({ text }: { text: string }) {
+export function CodeCopy({ text }: { text: string }) {
   const { copied, copy } = useCopy(text, TEXT_COPIED);
   return (
     <button type="button" className="gd-code-copy" onClick={copy}>

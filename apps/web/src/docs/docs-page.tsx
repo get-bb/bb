@@ -9,10 +9,19 @@ import { useInitAnalytics } from "../landing/analytics";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
 import { CopyToast, PROMPT_COPIED, useCopy } from "../guides/guide-blocks";
 import { docs } from "./content";
+import {
+  Callout,
+  CalloutDescription,
+  CalloutTitle,
+  CodeBlock,
+  Tab,
+  Tabs,
+} from "./docs-blocks";
 import { DocsH2, DocsH3, DocsPageUrl } from "./docs-headings";
 import { DocsSearch } from "./docs-search";
-import { ReferenceBody } from "./reference-body";
+import { ReferenceBody, TableWrap } from "./reference-body";
 import type { DocsNavSection, DocsPageView, DocsTocEntry } from "./page-view";
+import { Screenshot, Shot } from "./shot";
 
 const SITE = "https://getbb.app";
 
@@ -206,8 +215,17 @@ function MdxBody({ contentPath }: { contentPath: string }) {
   return (
     <Body
       components={{
+        pre: CodeBlock,
+        table: TableWrap,
         h2: DocsH2,
         h3: DocsH3,
+        Shot,
+        Screenshot,
+        Tabs,
+        Tab,
+        Callout,
+        CalloutTitle,
+        CalloutDescription,
       }}
     />
   );
