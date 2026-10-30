@@ -319,6 +319,9 @@ export function createFakeRuntime() {
     hasOpenBackgroundWork() {
       return false;
     },
+    listOpenBackgroundWork() {
+      return [];
+    },
     async listModels() {
       return {
         models: [] satisfies AvailableModel[],

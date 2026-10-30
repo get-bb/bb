@@ -138,6 +138,7 @@ async function reopenSessionWithoutThreads(
       localApiPort: null,
       protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
       activeThreads: [],
+      openThreadWork: [],
     }),
   });
   expect(response.status).toBe(201);
@@ -347,6 +348,7 @@ describe("background-task lifecycle reconciliation triggers", () => {
           localApiPort: null,
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
           activeThreads: [],
+          openThreadWork: [],
         }),
       });
 
@@ -357,7 +359,7 @@ describe("background-task lifecycle reconciliation triggers", () => {
     });
   });
 
-  it("does not settle tasks when the same daemon instance reconnects", async () => {
+  it("does not settle tasks the same daemon instance still runs when it reconnects", async () => {
     await withTestHarness(async (harness) => {
       const { host, session, thread } = seedOpenBackgroundTaskThread(harness);
 
@@ -383,6 +385,86 @@ describe("background-task lifecycle reconciliation triggers", () => {
           localApiPort: null,
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
           activeThreads: [],
+          openThreadWork: [
+            {
+              threadId: thread.id,
+              backgroundItemIds: ["task:wf-1"],
+              interactiveRequests: [],
+            },
+          ],
+        }),
+      });
+
+      expect(response.status).toBe(201);
+      expect(listSettledBackgroundTaskItems(harness, thread.id)).toEqual([]);
+    });
+  });
+
+  it("settles a task the same daemon instance no longer runs when it reconnects", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session, thread } = seedOpenBackgroundTaskThread(harness);
+
+      closeSession(
+        harness.deps.db,
+        harness.deps.hub,
+        session.id,
+        "daemon-disconnect",
+      );
+
+      const response = await harness.app.request("/internal/session/open", {
+        method: "POST",
+        headers: internalAuthHeaders(harness, {
+          hostId: host.id,
+        }),
+        body: JSON.stringify({
+          hostId: host.id,
+          instanceId: "instance-1",
+          hostName: host.name,
+          hasMachineCredential: false,
+          platform: "darwin",
+          dataDir: "/tmp/host-daemon-task-settle-same-instance-gone",
+          localApiPort: null,
+          protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+          activeThreads: [],
+          openThreadWork: [],
+        }),
+      });
+
+      expect(response.status).toBe(201);
+      expect(listSettledBackgroundTaskItems(harness, thread.id)).toEqual([
+        { status: "interrupted", taskStatus: "stopped" },
+      ]);
+    });
+  });
+
+  it("keeps a task the same daemon instance no longer reports while the thread's buffered events are still arriving", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session, thread } = seedOpenBackgroundTaskThread(harness);
+
+      closeSession(
+        harness.deps.db,
+        harness.deps.hub,
+        session.id,
+        "daemon-disconnect",
+      );
+
+      const response = await harness.app.request("/internal/session/open", {
+        method: "POST",
+        headers: internalAuthHeaders(harness, {
+          hostId: host.id,
+        }),
+        body: JSON.stringify({
+          hostId: host.id,
+          instanceId: "instance-1",
+          hostName: host.name,
+          hasMachineCredential: false,
+          platform: "darwin",
+          dataDir: "/tmp/host-daemon-task-settle-same-instance-buffered",
+          localApiPort: null,
+          protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+          activeThreads: [],
+          openThreadWork: [],
+          undeliveredEventThreadIds: [thread.id],
         }),
       });
 
@@ -412,6 +494,13 @@ describe("background-task lifecycle reconciliation triggers", () => {
           localApiPort: null,
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
           activeThreads: [],
+          openThreadWork: [
+            {
+              threadId: thread.id,
+              backgroundItemIds: ["task:wf-1"],
+              interactiveRequests: [],
+            },
+          ],
         }),
       });
 
@@ -458,6 +547,7 @@ describe("background-task lifecycle reconciliation triggers", () => {
           localApiPort: null,
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
           activeThreads: [],
+          openThreadWork: [],
         }),
       });
 
@@ -526,6 +616,7 @@ describe("active thread disconnect reconciliation triggers", () => {
           localApiPort: null,
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
           activeThreads: [{ threadId: thread.id }],
+          openThreadWork: [],
         }),
       });
 
@@ -562,6 +653,7 @@ describe("active thread disconnect reconciliation triggers", () => {
             localApiPort: null,
             protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
             activeThreads: [],
+            openThreadWork: [],
           }),
         });
 
@@ -747,6 +839,7 @@ describe("active thread disconnect reconciliation triggers", () => {
           localApiPort: null,
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
           activeThreads: [],
+          openThreadWork: [],
           undeliveredEventThreadIds: [thread.id],
         }),
       });
@@ -836,6 +929,7 @@ describe("active thread disconnect reconciliation triggers", () => {
           localApiPort: null,
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
           activeThreads: [{ threadId: thread.id }],
+          openThreadWork: [],
         }),
       });
       expect(response.status).toBe(201);
@@ -897,6 +991,7 @@ describe("active thread disconnect reconciliation triggers", () => {
           localApiPort: null,
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
           activeThreads: [{ threadId: thread.id }],
+          openThreadWork: [],
         }),
       });
 
