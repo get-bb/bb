@@ -2452,6 +2452,9 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .band-stacked.band-flip .band-visual {
   display: block;
   order: 1;
+  margin: 0 -28px;
+  padding-left: 28px;
+  overflow-x: clip;
 }
 
 .fw-paused,
@@ -2471,10 +2474,19 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   }
 }
 
+/* Each window keeps its full desktop layout at every width and is only
+   cropped on the right, like the hero mock on phones. useFitWindow sets
+   --bw-scale so a --bw-visible-width slice fills the space up to the
+   viewport edge (never scaling up), and --bw-slice to the window width
+   that slice shows, so overlays stay on screen. */
 .bw {
   --fw-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --bw-width: 924px;
+  --bw-visible-width: 560px;
+  --bw-fit-slice: var(--bw-slice, min(var(--bw-width), 100vw - 28px));
   position: relative;
-  width: 100%;
+  width: var(--bw-width);
+  zoom: var(--bw-scale, 1);
   text-align: left;
 }
 
@@ -3006,7 +3018,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   position: absolute;
   z-index: 3;
   top: 14px;
-  right: 16px;
+  left: calc(var(--bw-fit-slice) - 316px);
   display: flex;
   align-items: center;
   gap: 11px;
@@ -3085,11 +3097,12 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .bw-chat-stack {
+  --bw-chat-left: clamp(8px, var(--bw-fit-slice) - 644px, 280px);
   position: absolute;
   z-index: 2;
   bottom: 0;
-  left: 280px;
-  width: 340px;
+  left: var(--bw-chat-left);
+  width: clamp(250px, var(--bw-fit-slice) - 264px - var(--bw-chat-left), 340px);
 }
 
 .bw-chat-back {
@@ -3203,8 +3216,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .bw-phone {
   position: absolute;
   z-index: 2;
-  right: 36px;
   bottom: 0;
+  left: calc(var(--bw-fit-slice) - 250px);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -3274,57 +3287,10 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   color: var(--subtle);
 }
 
-@media (max-width: 980px) {
-  .band-stacked .band-visual {
-    margin-right: -28px;
-    overflow-x: clip;
-  }
-
-  .bw-plugins {
-    width: 924px;
-  }
-
-  .bw-chat-stack {
-    left: 236px;
-    width: 250px;
-  }
-
-  .bw-phone {
-    right: 16px;
-  }
-}
-
-@media (max-width: 720px) {
-  .band-stacked .band-visual {
-    margin: 0 -28px;
-    padding-left: 28px;
-    overflow-x: clip;
-  }
-
+@media (max-width: 587px) {
   .bw {
-    width: 560px;
-    zoom: 0.8;
-  }
-
-  .bw-plugins .bw-panel {
-    display: none;
-  }
-
-  .bw-lead .bw-toast {
-    right: auto;
-    left: 150px;
-    width: 270px;
-  }
-
-  .bw-chat-stack {
-    left: 8px;
-    width: 270px;
-  }
-
-  .bw-phone {
-    right: auto;
-    left: 290px;
-    width: 180px;
+    --bw-fit-slice: var(--bw-slice, var(--bw-visible-width));
+    zoom: var(--bw-scale, 0.62);
   }
 }
 
