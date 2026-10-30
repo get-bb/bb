@@ -268,15 +268,22 @@ function runInstall(job: ProviderCliInstallJob): void {
   const { hostId, issue, onboardingEntry } = job;
   const { action, provider } = issue;
   const jobKey = providerCliJobKey(hostId, provider);
-  const operation =
-    action.kind === "install" ? "agent_install" : "agent_update";
+  const operation = action.kind === "install" ? "install" : "update";
   let resultRecorded = false;
   const recordResult = (result: AgentOperationResult): void => {
     if (onboardingEntry === undefined || resultRecorded) return;
     resultRecorded = true;
     recordTelemetryEvent({
       name: "onboarding_operation",
-      properties: { entry: onboardingEntry, operation, ...result },
+      properties: {
+        surface: "onboarding",
+        step: "agent",
+        resource_type: "agent",
+        resource_id: provider,
+        entry: onboardingEntry,
+        operation,
+        ...result,
+      },
     });
   };
 
@@ -293,6 +300,10 @@ function runInstall(job: ProviderCliInstallJob): void {
       name: "onboarding_operation",
       properties: {
         entry: onboardingEntry,
+        surface: "onboarding",
+        step: "agent",
+        resource_type: "agent",
+        resource_id: provider,
         operation,
         outcome: "started",
         error_category: null,

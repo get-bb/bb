@@ -42,7 +42,12 @@ it.each(["failed", "cancelled"] as const)(
     });
     clients.push(client);
     client.setQueryData(pluginInstallJobsQueryKey(), [queued]);
-    observeOnboardingPluginInstall(client, queued, "replay");
+    observeOnboardingPluginInstall(
+      client,
+      queued,
+      "replay",
+      "browser-automation",
+    );
     expect(recordTelemetryEvent).not.toHaveBeenCalled();
     const terminal: PluginInstallJob =
       state === "failed"
@@ -55,7 +60,11 @@ it.each(["failed", "cancelled"] as const)(
       name: "onboarding_operation",
       properties: {
         entry: "replay",
-        operation: "plugin_install",
+        surface: "onboarding",
+        step: "plugins",
+        resource_type: "plugin",
+        resource_id: "browser-automation",
+        operation: "install",
         outcome: state,
         error_category: state === "failed" ? "job_failed" : null,
       },
@@ -69,7 +78,12 @@ it("records an unknown transport result then a later authoritative cancellation"
   });
   clients.push(client);
   client.setQueryData(pluginInstallJobsQueryKey(), [queued]);
-  observeOnboardingPluginInstall(client, queued, "first_run");
+  observeOnboardingPluginInstall(
+    client,
+    queued,
+    "first_run",
+    "browser-automation",
+  );
   listJobs.mockRejectedValue(new Error("private transport detail"));
   await client.refetchQueries({ queryKey: pluginInstallJobsQueryKey() });
   client.setQueryData(pluginInstallJobsQueryKey(), [
@@ -80,28 +94,41 @@ it("records an unknown transport result then a later authoritative cancellation"
   ).toEqual(["unknown", "cancelled"]);
 });
 
-it.each(["plugin_install", "plugin_enable"] as const)(
+it.each(["install", "enable"] as const)(
   "keeps request failures distinct for %s",
   async (operation) => {
     const failure = new Error("private request");
     await expect(
-      runOnboardingPluginAction("first_run", operation, async () => {
-        throw failure;
-      }),
+      runOnboardingPluginAction(
+        "first_run",
+        operation,
+        "browser-automation",
+        async () => {
+          throw failure;
+        },
+      ),
     ).rejects.toBe(failure);
     expect(
       recordTelemetryEvent.mock.calls.map(([event]) => event.properties),
     ).toEqual([
       {
         entry: "first_run",
+        surface: "onboarding",
+        step: "plugins",
+        resource_type: "plugin",
+        resource_id: "browser-automation",
         operation,
         outcome: "started",
         error_category: null,
       },
       {
         entry: "first_run",
+        surface: "onboarding",
+        step: "plugins",
+        resource_type: "plugin",
+        resource_id: "browser-automation",
         operation,
-        outcome: operation === "plugin_install" ? "unknown" : "failed",
+        outcome: operation === "install" ? "unknown" : "failed",
         error_category: "request",
       },
     ]);
@@ -111,7 +138,8 @@ it.each(["plugin_install", "plugin_enable"] as const)(
 it("does not mark an accepted install as succeeded", async () => {
   await runOnboardingPluginAction(
     "first_run",
-    "plugin_install",
+    "install",
+    "browser-automation",
     async () => queued,
   );
   expect(
@@ -122,7 +150,8 @@ it("does not mark an accepted install as succeeded", async () => {
 it("records successful enable before unrelated refresh work", async () => {
   await runOnboardingPluginAction(
     "replay",
-    "plugin_enable",
+    "enable",
+    "browser-automation",
     async () => undefined,
   );
   expect(
