@@ -1,0 +1,121 @@
+import { z } from "zod";
+import type { Env } from "../server/env";
+import {
+  surveyAnswers,
+  surveyFields,
+  validateSurvey,
+  type SurveyReply,
+} from "./survey";
+
+type CommunityEnv = Pick<
+  Env,
+  "DB" | "COMMUNITY_FORMS_ENABLED" | "COMMUNITY_FORM_RATE_LIMITER"
+>;
+
+const MAX_BODY_BYTES = 16384;
+const submission = z.object({
+  submission_id: z.uuid(),
+  answers: z
+    .record(z.string(), z.array(z.string().trim()))
+    .refine((values) =>
+      Object.keys(values).every((name) => surveyFields.includes(name)),
+    ),
+});
+
+export function rateLimitKey(ip: string | null): string {
+  if (!ip) return "local-preview";
+  if (!ip.includes(":")) return ip;
+  const [head = "", tail] = ip.toLowerCase().split("::");
+  const groups = (part: string) =>
+    part
+      ? part
+          .split(":")
+          .flatMap((group) => (group.includes(".") ? ["0", "0"] : [group]))
+      : [];
+  const before = groups(head);
+  const after = tail === undefined ? [] : groups(tail);
+  const full = [
+    ...before,
+    ...Array<string>(Math.max(0, 8 - before.length - after.length)).fill("0"),
+    ...after,
+  ];
+  return `${full
+    .slice(0, 4)
+    .map((group) => group.replace(/^0+(?=.)/, ""))
+    .join(":")}::/64`;
+}
+
+function reply(body: SurveyReply, status = 200): Response {
+  return Response.json(body, {
+    status,
+    headers: { "cache-control": "no-store" },
+  });
+}
+
+async function readSubmission(request: Request) {
+  if (
+    !request.headers.get("content-type")?.startsWith("application/json") ||
+    Number(request.headers.get("content-length") ?? 0) > MAX_BODY_BYTES
+  )
+    return null;
+  const body = await request.text();
+  if (body.length > MAX_BODY_BYTES) return null;
+  let json: unknown;
+  try {
+    json = JSON.parse(body);
+  } catch {
+    return null;
+  }
+  const parsed = submission.safeParse(json);
+  return parsed.success ? parsed.data : null;
+}
+
+export async function handleSurveySubmission(
+  request: Request,
+  env: CommunityEnv,
+): Promise<Response> {
+  if (
+    env.COMMUNITY_FORMS_ENABLED !== "true" ||
+    !env.COMMUNITY_FORM_RATE_LIMITER
+  )
+    return reply(
+      { error: "The form is temporarily unavailable. Please try again later." },
+      503,
+    );
+  const limit = await env.COMMUNITY_FORM_RATE_LIMITER.limit({
+    key: rateLimitKey(request.headers.get("cf-connecting-ip")),
+  });
+  if (!limit.success)
+    return reply(
+      {
+        error:
+          "Too many submissions just now. Please wait a minute and try again.",
+      },
+      429,
+    );
+  const read = await readSubmission(request);
+  if (!read)
+    return reply(
+      {
+        error:
+          "We couldn't read that response. Please reload the page and try again.",
+      },
+      400,
+    );
+  const { submission_id: id, answers: values } = read;
+  const errors = validateSurvey(values);
+  if (Object.keys(errors).length) return reply({ errors }, 400);
+  try {
+    const response = await env.DB.prepare(
+      "INSERT INTO community_survey_response (id, created_at, answers) VALUES (?, ?, ?) ON CONFLICT(id) DO NOTHING",
+    )
+      .bind(id, Date.now(), JSON.stringify(surveyAnswers(values)))
+      .run();
+    return reply({ result: { duplicate: !response.meta.changes } });
+  } catch {
+    return reply(
+      { error: "We couldn't save your response. Please try again." },
+      503,
+    );
+  }
+}

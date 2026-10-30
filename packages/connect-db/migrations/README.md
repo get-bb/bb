@@ -97,3 +97,8 @@ Cloudflare tunnel is connected or `next_tunnel_gate` is set and
 additive: old workers never read the columns. Both workers select whole
 `server` rows, so apply the migration before deploying either new worker, which
 the deploy workflows already do.
+
+Migration 0011 uses the normal schema-diff workflow. It adds
+`community_survey_response` for the getbb.app community survey: a random
+submission ID, its creation time and the answers as JSON, including email.
+The change is additive and only the web worker reads or writes the table.

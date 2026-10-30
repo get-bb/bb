@@ -48,6 +48,7 @@ import { Route as ApiConnectRedeemMachineRouteImport } from "./routes/api.connec
 import { Route as ApiConnectRedeemRouteImport } from "./routes/api.connect.redeem";
 import { Route as ApiConnectMachineCodeLookupRouteImport } from "./routes/api.connect.machine-code-lookup";
 import { Route as ApiConnectMachineCodeRouteImport } from "./routes/api.connect.machine-code";
+import { Route as ApiCommunitySurveyRouteImport } from "./routes/api.community.survey";
 import { Route as ApiAuthSplatRouteImport } from "./routes/api.auth.$";
 import { Route as ApiAccountMeRouteImport } from "./routes/api.account.me";
 import { Route as ApiMcpGrantsRevokeRouteImport } from "./routes/api.mcp.grants_.revoke";
@@ -255,6 +256,11 @@ const ApiConnectMachineCodeRoute = ApiConnectMachineCodeRouteImport.update({
   path: "/api/connect/machine-code",
   getParentRoute: () => rootRouteImport,
 } as any);
+const ApiCommunitySurveyRoute = ApiCommunitySurveyRouteImport.update({
+  id: "/api/community/survey",
+  path: "/api/community/survey",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: "/api/auth/$",
   path: "/api/auth/$",
@@ -312,6 +318,7 @@ export interface FileRoutesByFullPath {
   "/oauth/token": typeof OauthTokenRoute;
   "/api/account/me": typeof ApiAccountMeRoute;
   "/api/auth/$": typeof ApiAuthSplatRoute;
+  "/api/community/survey": typeof ApiCommunitySurveyRoute;
   "/api/connect/machine-code": typeof ApiConnectMachineCodeRoute;
   "/api/connect/machine-code-lookup": typeof ApiConnectMachineCodeLookupRoute;
   "/api/connect/redeem": typeof ApiConnectRedeemRoute;
@@ -358,6 +365,7 @@ export interface FileRoutesByTo {
   "/oauth/token": typeof OauthTokenRoute;
   "/api/account/me": typeof ApiAccountMeRoute;
   "/api/auth/$": typeof ApiAuthSplatRoute;
+  "/api/community/survey": typeof ApiCommunitySurveyRoute;
   "/api/connect/machine-code": typeof ApiConnectMachineCodeRoute;
   "/api/connect/machine-code-lookup": typeof ApiConnectMachineCodeLookupRoute;
   "/api/connect/redeem": typeof ApiConnectRedeemRoute;
@@ -405,6 +413,7 @@ export interface FileRoutesById {
   "/oauth/token": typeof OauthTokenRoute;
   "/api/account/me": typeof ApiAccountMeRoute;
   "/api/auth/$": typeof ApiAuthSplatRoute;
+  "/api/community/survey": typeof ApiCommunitySurveyRoute;
   "/api/connect/machine-code": typeof ApiConnectMachineCodeRoute;
   "/api/connect/machine-code-lookup": typeof ApiConnectMachineCodeLookupRoute;
   "/api/connect/redeem": typeof ApiConnectRedeemRoute;
@@ -453,6 +462,7 @@ export interface FileRouteTypes {
     | "/oauth/token"
     | "/api/account/me"
     | "/api/auth/$"
+    | "/api/community/survey"
     | "/api/connect/machine-code"
     | "/api/connect/machine-code-lookup"
     | "/api/connect/redeem"
@@ -499,6 +509,7 @@ export interface FileRouteTypes {
     | "/oauth/token"
     | "/api/account/me"
     | "/api/auth/$"
+    | "/api/community/survey"
     | "/api/connect/machine-code"
     | "/api/connect/machine-code-lookup"
     | "/api/connect/redeem"
@@ -545,6 +556,7 @@ export interface FileRouteTypes {
     | "/oauth/token"
     | "/api/account/me"
     | "/api/auth/$"
+    | "/api/community/survey"
     | "/api/connect/machine-code"
     | "/api/connect/machine-code-lookup"
     | "/api/connect/redeem"
@@ -591,6 +603,7 @@ export interface RootRouteChildren {
   OauthTokenRoute: typeof OauthTokenRoute;
   ApiAccountMeRoute: typeof ApiAccountMeRoute;
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute;
+  ApiCommunitySurveyRoute: typeof ApiCommunitySurveyRoute;
   ApiConnectMachineCodeRoute: typeof ApiConnectMachineCodeRoute;
   ApiConnectMachineCodeLookupRoute: typeof ApiConnectMachineCodeLookupRoute;
   ApiConnectRedeemRoute: typeof ApiConnectRedeemRoute;
@@ -881,6 +894,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof ApiConnectMachineCodeRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/api/community/survey": {
+      id: "/api/community/survey";
+      path: "/api/community/survey";
+      fullPath: "/api/community/survey";
+      preLoaderRoute: typeof ApiCommunitySurveyRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/api/auth/$": {
       id: "/api/auth/$";
       path: "/api/auth/$";
@@ -966,6 +986,7 @@ const rootRouteChildren: RootRouteChildren = {
   OauthTokenRoute: OauthTokenRoute,
   ApiAccountMeRoute: ApiAccountMeRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiCommunitySurveyRoute: ApiCommunitySurveyRoute,
   ApiConnectMachineCodeRoute: ApiConnectMachineCodeRoute,
   ApiConnectMachineCodeLookupRoute: ApiConnectMachineCodeLookupRoute,
   ApiConnectRedeemRoute: ApiConnectRedeemRoute,
