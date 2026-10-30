@@ -182,6 +182,16 @@ page, it compares the date of the last commit touching its `sources` with
   ```
 
   The `.md` copy turns them into `> **Warning:** …` and `> **Note:** …`.
+- **Heading ids:** every h2 and h3 gets an id from its text, a `#` link
+  that copies the section URL, and (h2 and h3) a line in "On this page". When
+  the app, a guide or another page links to a heading, give it a stable id so
+  rewording the heading can't break the link, and never change that id:
+
+  ```mdx
+  ## Change the folder of a thread [#change-folder]
+  ```
+
+  The link checker in the `@bb/web` tests resolves these ids.
 - **Images:** `<Shot todo="…" />` while drafting, `<Screenshot … />` once
   captured. See below.
 

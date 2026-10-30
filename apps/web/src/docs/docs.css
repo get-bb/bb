@@ -189,9 +189,39 @@
 }
 
 .docs-wrap .docs-search-results a[data-kind="heading"],
-.docs-wrap .docs-search-results a[data-kind="text"] {
+.docs-wrap .docs-search-results a[data-kind="text"],
+.docs-wrap .docs-search-results a[data-kind="table"] {
   padding-left: 20px;
   color: var(--dim);
+}
+
+.docs-wrap .docs-search-results li + li a[data-kind="page"] {
+  margin-top: 4px;
+}
+
+.docs-wrap .docs-search-section,
+.docs-wrap .docs-search-context {
+  display: block;
+  font-size: var(--text-label-small);
+  font-weight: 400;
+  color: var(--subtle);
+}
+
+.docs-wrap .docs-search-hit {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.docs-wrap .docs-search-hash {
+  color: var(--subtle);
+}
+
+.docs-wrap .docs-search-results mark {
+  border-radius: 3px;
+  background: color-mix(in oklab, var(--accent) 22%, var(--bg));
+  color: var(--heading);
 }
 
 .docs-wrap .docs-search-results a:hover,
@@ -337,6 +367,37 @@
   font-size: 16px;
   color: var(--heading);
   scroll-margin-top: 72px;
+}
+
+.docs-wrap .docs-anchor {
+  margin-left: 8px;
+  padding: 0 4px;
+  border-radius: 4px;
+  color: var(--subtle);
+  font-weight: 400;
+  text-decoration: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.docs-wrap .docs-body h2:hover .docs-anchor,
+.docs-wrap .docs-body h3:hover .docs-anchor,
+.docs-wrap .docs-anchor:focus-visible {
+  opacity: 1;
+}
+
+.docs-wrap .docs-anchor:hover {
+  color: var(--accent);
+}
+
+.docs-wrap .docs-anchor:focus-visible {
+  outline: 2px solid var(--accent);
+}
+
+@media (hover: none) {
+  .docs-wrap .docs-anchor {
+    opacity: 0.5;
+  }
 }
 
 .docs-wrap .docs-body p,
@@ -545,11 +606,28 @@
 }
 
 .docs-wrap .docs-toc a {
+  padding-left: 10px;
+  border-left: 2px solid var(--border-soft);
   color: var(--dim);
+}
+
+.docs-wrap .docs-toc a[data-depth="3"] {
+  padding-left: 22px;
 }
 
 .docs-wrap .docs-toc a:hover {
   color: var(--ink);
+}
+
+.docs-wrap .docs-toc a[data-active="true"] {
+  border-left-color: var(--accent);
+  color: var(--heading);
+  font-weight: 500;
+}
+
+.docs-wrap .docs-toc a.docs-edit {
+  padding-left: 0;
+  border-left: 0;
 }
 
 .docs-wrap .docs-toc-label {

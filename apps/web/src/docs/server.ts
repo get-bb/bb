@@ -2,9 +2,24 @@ import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
 import { registerSearchTool, registerSourceTools } from "fumadocs-core/mcp";
 import { createFromSource } from "fumadocs-core/search/server";
 
+import { navSectionOf } from "./nav";
+import { pageStructuredData } from "./page-view";
 import { docsLlms, source } from "./source";
 
-export const docsSearch = createFromSource(source, { language: "english" });
+export const docsSearch = createFromSource(source, {
+  language: "english",
+  buildIndex: async (page) => {
+    const section = navSectionOf(page.slugs.join("/"));
+    return {
+      id: page.url,
+      url: page.url,
+      title: page.data.title,
+      description: page.data.description,
+      breadcrumbs: section === null ? [] : [section],
+      structuredData: await pageStructuredData(page),
+    };
+  },
+});
 
 let mcpHandler: ReturnType<typeof createMcpHandler> | null = null;
 

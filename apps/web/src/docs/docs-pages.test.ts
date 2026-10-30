@@ -55,7 +55,9 @@ function h2Headings(markdown: string): string[] {
   for (const line of markdown.split("\n")) {
     if (/^\s*(```|~~~)/u.test(line)) inFence = !inFence;
     const heading = /^## (.+)$/u.exec(line);
-    if (!inFence && heading) headings.push(heading[1]!.trim());
+    if (!inFence && heading) {
+      headings.push(heading[1]!.replace(/\s*\[#[^\]]+\]$/u, "").trim());
+    }
   }
   return headings;
 }

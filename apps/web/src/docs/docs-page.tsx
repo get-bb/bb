@@ -2,15 +2,8 @@ import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
 import Copy01Icon from "@hugeicons/core-free-icons/Copy01Icon";
 import Menu01Icon from "@hugeicons/core-free-icons/Menu01Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
-import {
-  Suspense,
-  useEffect,
-  useRef,
-  type ComponentProps,
-  type ReactNode,
-} from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { Suspense, useEffect, useRef } from "react";
+import { AnchorProvider, TOCItem, type TOCItemType } from "fumadocs-core/toc";
 
 import { useInitAnalytics } from "../landing/analytics";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
@@ -24,7 +17,9 @@ import {
   Tab,
   Tabs,
 } from "./docs-blocks";
+import { DocsH2, DocsH3, DocsPageUrl } from "./docs-headings";
 import { DocsSearch } from "./docs-search";
+import { ReferenceBody, TableWrap } from "./reference-body";
 import type { DocsNavSection, DocsPageView, DocsTocEntry } from "./page-view";
 import { Screenshot, Shot } from "./shot";
 
@@ -191,28 +186,14 @@ function DocsToc({
     <nav className="docs-toc" aria-label="On this page">
       <div className="docs-toc-label">On this page</div>
       {entries.map((entry) => (
-        <a key={entry.id} href={`#${entry.id}`}>
+        <TOCItem key={entry.id} href={`#${entry.id}`} data-depth={entry.depth}>
           {entry.title}
-        </a>
+        </TOCItem>
       ))}
       <a className="docs-edit" href={editUrl}>
         Edit on GitHub
       </a>
     </nav>
-  );
-}
-
-function headingText(children: ReactNode): string {
-  if (typeof children === "string") return children;
-  if (Array.isArray(children)) return children.map(headingText).join("");
-  return "";
-}
-
-function TableWrap(props: ComponentProps<"table">) {
-  return (
-    <div className="docs-table">
-      <table {...props} />
-    </div>
   );
 }
 
@@ -227,6 +208,8 @@ function MdxBody({ contentPath }: { contentPath: string }) {
       components={{
         pre: CodeBlock,
         table: TableWrap,
+        h2: DocsH2,
+        h3: DocsH3,
         Shot,
         Screenshot,
         Tabs,
@@ -239,75 +222,61 @@ function MdxBody({ contentPath }: { contentPath: string }) {
   );
 }
 
-function ReferenceBody({
-  markdown,
-  toc,
-}: {
-  markdown: string;
-  toc: DocsTocEntry[];
-}) {
-  return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
-      components={{
-        h2: ({ children }) => (
-          <h2
-            id={toc.find((entry) => entry.title === headingText(children))?.id}
-          >
-            {children}
-          </h2>
-        ),
-        table: ({ node: _node, ...props }) => <TableWrap {...props} />,
-      }}
-    >
-      {markdown}
-    </ReactMarkdown>
-  );
+function tocItems(entries: DocsTocEntry[]): TOCItemType[] {
+  return entries.map((entry) => ({
+    title: entry.title,
+    url: `#${entry.id}`,
+    depth: entry.depth,
+  }));
 }
 
 export function DocsPage({ view }: { view: DocsPageView }) {
   useInitAnalytics();
   return (
     <CopyToast>
-      <div className="wrap docs-wrap">
-        <SiteNav />
-        <div className="docs-bar">
-          <a className="docs-bar-title" href="/docs">
-            Docs
-          </a>
-          <MobileNav view={view} />
-          <DocsSearch />
-        </div>
-        <div className="docs-shell">
-          <aside className="docs-sidebar">
-            <DocsNav view={view} />
-          </aside>
-          <main className="docs-main">
-            <div className="docs-eyebrow">
-              {view.section}
-              {view.unreleased ? (
-                <span className="docs-badge">Unreleased</span>
-              ) : null}
+      <DocsPageUrl.Provider value={view.url}>
+        <AnchorProvider toc={tocItems(view.toc)} single>
+          <div className="wrap docs-wrap">
+            <SiteNav />
+            <div className="docs-bar">
+              <a className="docs-bar-title" href="/docs">
+                Docs
+              </a>
+              <MobileNav view={view} />
+              <DocsSearch />
             </div>
-            <div className="docs-title-row">
-              <h1>{view.title}</h1>
-              <CopyPageMenu view={view} />
+            <div className="docs-shell">
+              <aside className="docs-sidebar">
+                <DocsNav view={view} />
+              </aside>
+              <main className="docs-main">
+                <div className="docs-eyebrow">
+                  {view.section}
+                  {view.unreleased ? (
+                    <span className="docs-badge">Unreleased</span>
+                  ) : null}
+                </div>
+                <div className="docs-title-row">
+                  <h1>{view.title}</h1>
+                  <CopyPageMenu view={view} />
+                </div>
+                <p className="docs-lede">{view.description}</p>
+                <article className="docs-body">
+                  {view.kind === "mdx" ? (
+                    <Suspense fallback={null}>
+                      <MdxBody contentPath={view.contentPath} />
+                    </Suspense>
+                  ) : (
+                    <ReferenceBody markdown={view.markdown} toc={view.toc} />
+                  )}
+                </article>
+              </main>
+              <DocsToc entries={view.toc} editUrl={view.editUrl} />
             </div>
-            <p className="docs-lede">{view.description}</p>
-            <article className="docs-body">
-              {view.kind === "mdx" ? (
-                <Suspense fallback={null}>
-                  <MdxBody contentPath={view.contentPath} />
-                </Suspense>
-              ) : (
-                <ReferenceBody markdown={view.markdown} toc={view.toc} />
-              )}
-            </article>
-          </main>
-          <DocsToc entries={view.toc} editUrl={view.editUrl} />
-        </div>
-        <SiteFooter />
-      </div>
+            <SiteFooter />
+          </div>
+        </AnchorProvider>
+      </DocsPageUrl.Provider>
     </CopyToast>
   );
 }

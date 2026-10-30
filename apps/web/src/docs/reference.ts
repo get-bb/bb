@@ -13,6 +13,7 @@ import {
   type SurfaceGroup,
 } from "../../../../plugins/plugin-api-docs/src/surfaces";
 import cliCommands from "./generated/cli-commands.json";
+import { headingId } from "./heading-id";
 import { PLUGIN_SDK_SLUG } from "./nav";
 
 export const REPO_BLOB = "https://github.com/get-bb/bb/blob/main";
@@ -50,13 +51,6 @@ const KEYBOARD_SOURCES = [
 
 function surfaceDocsSlug(surfaceId: string): string {
   return surfaceDocsPath(surfaceId).replace(/^\/docs\//u, "");
-}
-
-function headingId(heading: string): string {
-  return heading
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/gu, "-")
-    .replace(/^-|-$/gu, "");
 }
 
 function tableCell(text: string): string {

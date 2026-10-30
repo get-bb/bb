@@ -48,6 +48,7 @@ import { Route as MarketplaceV2SplatRouteImport } from "./routes/marketplace.v2.
 import { Route as MarketplaceV1SplatRouteImport } from "./routes/marketplace.v1.$";
 import { Route as MarketplaceOgPluginIdRouteImport } from "./routes/marketplace.og.$pluginId";
 import { Route as MarketplaceBuiltinPluginRouteImport } from "./routes/marketplace.builtin.$plugin";
+import { Route as DocsOgSplatRouteImport } from "./routes/docs.og.$";
 import { Route as ApiMcpGrantsRouteImport } from "./routes/api.mcp.grants";
 import { Route as ApiConnectRevokeMachineRouteImport } from "./routes/api.connect.revoke-machine";
 import { Route as ApiConnectRedeemMachineRouteImport } from "./routes/api.connect.redeem-machine";
@@ -260,6 +261,11 @@ const MarketplaceBuiltinPluginRoute =
     path: "/marketplace/builtin/$plugin",
     getParentRoute: () => rootRouteImport,
   } as any);
+const DocsOgSplatRoute = DocsOgSplatRouteImport.update({
+  id: "/docs/og/$",
+  path: "/docs/og/$",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const ApiMcpGrantsRoute = ApiMcpGrantsRouteImport.update({
   id: "/api/mcp/grants",
   path: "/api/mcp/grants",
@@ -360,6 +366,7 @@ export interface FileRoutesByFullPath {
   "/api/connect/redeem-machine": typeof ApiConnectRedeemMachineRoute;
   "/api/connect/revoke-machine": typeof ApiConnectRevokeMachineRoute;
   "/api/mcp/grants": typeof ApiMcpGrantsRoute;
+  "/docs/og/$": typeof DocsOgSplatRoute;
   "/marketplace/builtin/$plugin": typeof MarketplaceBuiltinPluginRoute;
   "/marketplace/og/$pluginId": typeof MarketplaceOgPluginIdRoute;
   "/marketplace/v1/$": typeof MarketplaceV1SplatRoute;
@@ -412,6 +419,7 @@ export interface FileRoutesByTo {
   "/api/connect/redeem-machine": typeof ApiConnectRedeemMachineRoute;
   "/api/connect/revoke-machine": typeof ApiConnectRevokeMachineRoute;
   "/api/mcp/grants": typeof ApiMcpGrantsRoute;
+  "/docs/og/$": typeof DocsOgSplatRoute;
   "/marketplace/builtin/$plugin": typeof MarketplaceBuiltinPluginRoute;
   "/marketplace/og/$pluginId": typeof MarketplaceOgPluginIdRoute;
   "/marketplace/v1/$": typeof MarketplaceV1SplatRoute;
@@ -465,6 +473,7 @@ export interface FileRoutesById {
   "/api/connect/redeem-machine": typeof ApiConnectRedeemMachineRoute;
   "/api/connect/revoke-machine": typeof ApiConnectRevokeMachineRoute;
   "/api/mcp/grants": typeof ApiMcpGrantsRoute;
+  "/docs/og/$": typeof DocsOgSplatRoute;
   "/marketplace/builtin/$plugin": typeof MarketplaceBuiltinPluginRoute;
   "/marketplace/og/$pluginId": typeof MarketplaceOgPluginIdRoute;
   "/marketplace/v1/$": typeof MarketplaceV1SplatRoute;
@@ -519,6 +528,7 @@ export interface FileRouteTypes {
     | "/api/connect/redeem-machine"
     | "/api/connect/revoke-machine"
     | "/api/mcp/grants"
+    | "/docs/og/$"
     | "/marketplace/builtin/$plugin"
     | "/marketplace/og/$pluginId"
     | "/marketplace/v1/$"
@@ -571,6 +581,7 @@ export interface FileRouteTypes {
     | "/api/connect/redeem-machine"
     | "/api/connect/revoke-machine"
     | "/api/mcp/grants"
+    | "/docs/og/$"
     | "/marketplace/builtin/$plugin"
     | "/marketplace/og/$pluginId"
     | "/marketplace/v1/$"
@@ -623,6 +634,7 @@ export interface FileRouteTypes {
     | "/api/connect/redeem-machine"
     | "/api/connect/revoke-machine"
     | "/api/mcp/grants"
+    | "/docs/og/$"
     | "/marketplace/builtin/$plugin"
     | "/marketplace/og/$pluginId"
     | "/marketplace/v1/$"
@@ -675,6 +687,7 @@ export interface RootRouteChildren {
   ApiConnectRedeemMachineRoute: typeof ApiConnectRedeemMachineRoute;
   ApiConnectRevokeMachineRoute: typeof ApiConnectRevokeMachineRoute;
   ApiMcpGrantsRoute: typeof ApiMcpGrantsRoute;
+  DocsOgSplatRoute: typeof DocsOgSplatRoute;
   MarketplaceBuiltinPluginRoute: typeof MarketplaceBuiltinPluginRoute;
   MarketplaceOgPluginIdRoute: typeof MarketplaceOgPluginIdRoute;
   MarketplaceV1SplatRoute: typeof MarketplaceV1SplatRoute;
@@ -959,6 +972,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof MarketplaceBuiltinPluginRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/docs/og/$": {
+      id: "/docs/og/$";
+      path: "/docs/og/$";
+      fullPath: "/docs/og/$";
+      preLoaderRoute: typeof DocsOgSplatRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/api/mcp/grants": {
       id: "/api/mcp/grants";
       path: "/api/mcp/grants";
@@ -1098,6 +1118,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiConnectRedeemMachineRoute: ApiConnectRedeemMachineRoute,
   ApiConnectRevokeMachineRoute: ApiConnectRevokeMachineRoute,
   ApiMcpGrantsRoute: ApiMcpGrantsRoute,
+  DocsOgSplatRoute: DocsOgSplatRoute,
   MarketplaceBuiltinPluginRoute: MarketplaceBuiltinPluginRoute,
   MarketplaceOgPluginIdRoute: MarketplaceOgPluginIdRoute,
   MarketplaceV1SplatRoute: MarketplaceV1SplatRoute,

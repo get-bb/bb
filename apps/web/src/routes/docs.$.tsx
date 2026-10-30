@@ -2,6 +2,8 @@ import { createFileRoute, notFound } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 
 import guidesCss from "../guides/guides.css?url";
+import { breadcrumbJsonLd } from "../docs/breadcrumbs";
+import { DOCS_OG_SIZE } from "../docs/docs-og-paths";
 import { DocsPage } from "../docs/docs-page";
 import docsCss from "../docs/docs.css?url";
 import { pageMeta, siteHeadLinks } from "../landing/page-head";
@@ -34,6 +36,11 @@ export const Route = createFileRoute("/docs/$")({
             `${loaderData.title} — bb docs`,
             loaderData.description,
             loaderData.url,
+            {
+              path: loaderData.ogImagePath,
+              ...DOCS_OG_SIZE,
+              alt: `${loaderData.section}: ${loaderData.title}`,
+            },
           ),
           links: [
             { rel: "canonical", href: `https://getbb.app${loaderData.url}` },
@@ -43,6 +50,12 @@ export const Route = createFileRoute("/docs/$")({
               href: loaderData.markdownUrl,
             },
             ...siteHeadLinks(guidesCss, docsCss),
+          ],
+          scripts: [
+            {
+              type: "application/ld+json",
+              children: breadcrumbJsonLd(loaderData.breadcrumbs),
+            },
           ],
         }
       : { meta: [{ title: "bb docs" }] },

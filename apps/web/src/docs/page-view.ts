@@ -1,3 +1,4 @@
+import { docsOgImagePath } from "./docs-og-paths";
 import { DOCS_NAV, DOCS_NAV_FOOTER_LINKS, navSectionOf } from "./nav";
 import { REPO_BLOB } from "./reference";
 import {
@@ -22,6 +23,12 @@ export interface DocsNavSection {
 export interface DocsTocEntry {
   id: string;
   title: string;
+  depth: number;
+}
+
+interface DocsBreadcrumb {
+  name: string;
+  url: string;
 }
 
 interface DocsPageViewBase {
@@ -36,6 +43,8 @@ interface DocsPageViewBase {
   nav: DocsNavSection[];
   footerLinks: { title: string; href: string }[];
   toc: DocsTocEntry[];
+  breadcrumbs: DocsBreadcrumb[];
+  ogImagePath: string;
 }
 
 export type DocsPageView =
@@ -68,10 +77,46 @@ function docsNav(currentSlug: string | null): DocsNavSection[] {
   });
 }
 
-async function pageStructuredData(page: DocsPage) {
+export const TOC_MAX_DEPTH = 3;
+
+export async function pageStructuredData(page: DocsPage) {
   return page.type === "reference"
     ? page.data.structuredData
     : await page.data.structuredData();
+}
+
+async function headingDepths(page: DocsPage): Promise<Map<string, number>> {
+  if (page.type === "reference") return new Map();
+  const { toc } = await page.data.load();
+  return new Map(toc.map((item) => [item.url.replace(/^#/u, ""), item.depth]));
+}
+
+export async function docsToc(page: DocsPage): Promise<DocsTocEntry[]> {
+  const depths = await headingDepths(page);
+  return (await pageStructuredData(page)).headings
+    .map((heading) => ({
+      id: heading.id,
+      title: heading.content,
+      depth: depths.get(heading.id) ?? 2,
+    }))
+    .filter((entry) => entry.depth <= TOC_MAX_DEPTH);
+}
+
+function breadcrumbsOf(
+  page: DocsPage,
+  section: string,
+  nav: DocsNavSection[],
+): DocsBreadcrumb[] {
+  const root = { name: "Docs", url: DOCS_BASE };
+  if (page.url === DOCS_BASE) return [root];
+  const sectionStart = nav.find((group) => group.label === section)?.links[0];
+  return [
+    root,
+    ...(sectionStart && sectionStart.url !== page.url
+      ? [{ name: section, url: sectionStart.url }]
+      : []),
+    { name: page.data.title, url: page.url },
+  ];
 }
 
 async function viewOf(page: DocsPage): Promise<DocsPageView> {
@@ -80,6 +125,7 @@ async function viewOf(page: DocsPage): Promise<DocsPageView> {
   if (section === null) {
     throw new Error(`Docs page ${page.url} is not in the docs sidebar`);
   }
+  const nav = docsNav(slug);
   const base = {
     url: page.url,
     title: page.data.title,
@@ -87,12 +133,11 @@ async function viewOf(page: DocsPage): Promise<DocsPageView> {
     section,
     markdownUrl: markdownPath(page),
     pageMarkdown: await docsLlms.page(page),
-    nav: docsNav(slug),
+    nav,
     footerLinks: [...DOCS_NAV_FOOTER_LINKS],
-    toc: (await pageStructuredData(page)).headings.map((heading) => ({
-      id: heading.id,
-      title: heading.content,
-    })),
+    toc: await docsToc(page),
+    breadcrumbs: breadcrumbsOf(page, section, nav),
+    ogImagePath: docsOgImagePath(page.slugs),
   };
   if (page.type === "reference") {
     return {

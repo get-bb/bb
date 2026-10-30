@@ -1,7 +1,10 @@
 import Search01Icon from "@hugeicons/core-free-icons/Search01Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { createContentHighlighter } from "fumadocs-core/search";
 import { useStaticSearch } from "fumadocs-core/search/client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+import { searchEntries, type DocsSearchEntry } from "./search-results";
 
 const DOCS_SEARCH_INDEX = "/docs/search.json";
 
@@ -20,6 +23,62 @@ function isSearchShortcut(event: {
   );
 }
 
+type Highlighter = ReturnType<typeof createContentHighlighter>;
+
+function Highlighted({
+  text,
+  highlighter,
+}: {
+  text: string;
+  highlighter: Highlighter;
+}) {
+  return highlighter
+    .highlight(text)
+    .map((part, index) =>
+      part.styles?.highlight ? (
+        <mark key={index}>{part.content}</mark>
+      ) : (
+        <span key={index}>{part.content}</span>
+      ),
+    );
+}
+
+function SearchEntryText({
+  entry,
+  highlighter,
+}: {
+  entry: DocsSearchEntry;
+  highlighter: Highlighter;
+}) {
+  if (entry.kind === "page") {
+    return (
+      <>
+        {entry.section ? (
+          <span className="docs-search-section">{entry.section}</span>
+        ) : null}
+        <span className="docs-search-page">
+          <Highlighted text={entry.text} highlighter={highlighter} />
+        </span>
+      </>
+    );
+  }
+  return (
+    <>
+      <span className="docs-search-hit">
+        {entry.kind === "heading" ? (
+          <span className="docs-search-hash" aria-hidden>
+            #{" "}
+          </span>
+        ) : null}
+        <Highlighted text={entry.text} highlighter={highlighter} />
+      </span>
+      {entry.kind === "table" ? (
+        <span className="docs-search-context">Table row</span>
+      ) : null}
+    </>
+  );
+}
+
 export function DocsSearch() {
   const input = useRef<HTMLInputElement>(null);
   const [active, setActive] = useState(0);
@@ -27,9 +86,11 @@ export function DocsSearch() {
   const { search, onSearchChange, isLoading, data, error } = useStaticSearch({
     from: DOCS_SEARCH_INDEX,
   });
-  const items = (data?.items ?? [])
-    .flatMap((item) => (item.type === "table" ? [] : [item]))
-    .slice(0, 8);
+  const items = useMemo(() => searchEntries(data?.items ?? []), [data]);
+  const highlighter = useMemo(
+    () => createContentHighlighter(data?.query ?? ""),
+    [data?.query],
+  );
 
   useEffect(() => {
     setMac(/Mac|iPhone|iPad/u.test(navigator.platform));
@@ -89,13 +150,13 @@ export function DocsSearch() {
             <li className="docs-search-empty">No results</li>
           ) : null}
           {items.map((item, index) => (
-            <li key={item.id}>
+            <li key={`${item.kind}-${item.id}`}>
               <a
                 href={item.url}
-                data-kind={item.type}
+                data-kind={item.kind}
                 className={index === active ? "active" : undefined}
               >
-                {item.content}
+                <SearchEntryText entry={item} highlighter={highlighter} />
               </a>
             </li>
           ))}
