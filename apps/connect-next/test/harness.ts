@@ -296,7 +296,12 @@ export async function startOrigin(options: OriginOptions) {
   };
   const server = http.createServer(async (request, response) => {
     const chunks: Buffer[] = [];
-    for await (const chunk of request) chunks.push(chunk as Buffer);
+    try {
+      for await (const chunk of request) chunks.push(chunk as Buffer);
+    } catch (error) {
+      if (request.destroyed && !request.complete) return;
+      throw error;
+    }
     const assertion = await verify(request);
     const entry: SeenRequest = {
       method: request.method ?? "GET",
@@ -316,6 +321,14 @@ export async function startOrigin(options: OriginOptions) {
       return;
     }
     if (path === "/slow") return;
+    if (path === "/deadline-answer") {
+      const delay = Number(
+        new URL(request.url ?? "/", "http://origin.test").searchParams.get(
+          "wait",
+        ),
+      );
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
     if (path === "/refuse" || path === "/plain-401") {
       const body = JSON.stringify(
         path === "/refuse"

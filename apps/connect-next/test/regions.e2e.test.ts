@@ -175,7 +175,7 @@ describe.skipIf(!availability.ok)("connect-next across regions", () => {
       silentLog,
       {
         directory: local,
-        deadlines: { headMs: 10_000, transcriptionHeadMs: 10_000 },
+        deadlines: { headMs: 10_000, maxWaitMs: 30_000 },
         resolvePeers: async () => peerUrls(),
         drainMs: DRAIN_MS,
         peerTimings: { helloTimeoutMs: 500 },
