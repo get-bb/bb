@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { getAppKeybindingOverrides } from "@bb/db";
 import {
+  DEFAULT_APP_KEYBINDINGS,
   PANE_FOCUS_APP_COMMAND_IDS,
   THREAD_JUMP_APP_COMMAND_IDS,
   applyAppKeybindingOverrides,
@@ -9,7 +10,6 @@ import {
   matchesAppShortcut,
 } from "@bb/domain";
 import { systemConfigResponseSchema } from "@bb/server-contract";
-import { DEFAULT_APP_KEYBINDINGS } from "../../src/services/system/app-keybindings.js";
 import { readJson } from "../helpers/json.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
