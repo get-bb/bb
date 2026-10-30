@@ -1,0 +1,145 @@
+---
+title: Install bb
+description: Download the desktop app for macOS, Linux or Windows, or run bb anywhere with npx bb-app@latest. This page also covers the bb CLI, nightly builds and updates.
+type: how-to
+sources:
+  - apps/desktop/electron-builder.config.json
+  - apps/desktop/src/desktop-auto-update.ts
+  - apps/web/src/landing/site.ts
+  - apps/app/src/components/settings/CliCommandSettingsSection.tsx
+  - apps/app/src/components/settings/UpdatesSettingsSection.tsx
+  - packages/bb-app/src/launcher.ts
+  - .github/workflows/publish-bb-app.yml
+since: 0.46.1
+owner: brsbl
+verified: 2026-10-30
+---
+
+Use this when you're setting up bb for the first time, adding the `bb` command to your terminal, or moving between stable and nightly builds.
+
+bb comes two ways. The **desktop app** is the easiest start. **npx** runs the same bb on any computer with Node.js, including Intel Macs and servers without a screen.
+
+## Install the desktop app
+
+Download it from [getbb.app](https://getbb.app) or the [latest release on GitHub](https://github.com/get-bb/bb/releases/tag/desktop-latest).
+
+<Tabs items={["macOS", "Linux", "Windows"]}>
+<Tab value="macOS">
+
+1. Choose **Download for macOS** and open the `.dmg`.
+2. Drag bb to Applications and open it.
+
+The desktop app needs a Mac with Apple Silicon and macOS 13 or later. On an Intel Mac, [run bb with npx](#run-bb-with-npx) instead.
+
+</Tab>
+<Tab value="Linux">
+
+1. Choose **Download for Linux** to get the x64 `.AppImage`.
+2. Make it executable and run it:
+
+```bash
+chmod +x bb-*.AppImage
+./bb-*.AppImage
+```
+
+The Linux app is in alpha and built for x64 only. On arm64, [run bb with npx](#run-bb-with-npx).
+
+</Tab>
+<Tab value="Windows">
+
+1. Install [Git for Windows](https://git-scm.com/download/win). bb uses its Git, and its bash for environment setup scripts.
+2. Choose **Download for Windows** and run the `.exe` installer. It installs for your user only, in `%LOCALAPPDATA%\Programs\bb`.
+
+Native Windows is in alpha and built for x64 only. You can also run bb inside WSL2: install WSL2, then [run bb with npx](#run-bb-with-npx) from your WSL2 shell, and keep your projects, Node.js, Git and agent CLIs inside WSL2 too.
+
+</Tab>
+</Tabs>
+
+## Run bb with npx
+
+You need Node.js 22.19 or later. Run:
+
+```bash
+npx bb-app@latest
+```
+
+Then open `http://localhost:38886`. bb keeps its data in `~/.bb/`.
+
+npm 12 and later block the install scripts bb needs to build its native add-ons. If your npm is version 12 or later, allow them:
+
+```bash
+npx --allow-scripts=better-sqlite3,node-pty,@parcel/watcher bb-app@latest
+```
+
+To stop bb, run `npx bb-app stop`.
+
+## Put the bb command on your PATH
+
+Threads in bb already have the `bb` command. To use it from your own terminal, or from an agent running outside bb, install it:
+
+1. Open **Settings → General**.
+2. Under **Command line**, choose **Install** on the **bb CLI** row.
+
+From a terminal:
+
+```bash
+npx --package bb-app bb settings cli-command install
+```
+
+bb links the command into a folder such as `/opt/homebrew/bin`, `/usr/local/bin`, `~/.local/bin` or `~/bin` on macOS and Linux, and adds bb's own folder to your user PATH on Windows. If that folder isn't on your PATH, the setting says so. bb never replaces another `bb` already on your PATH: the setting names it and Install is refused. **Remove** takes the command off again.
+
+## Choose stable or nightly
+
+| | Stable | Nightly |
+| --- | --- | --- |
+| What it is | Tested releases | A build of the latest code, every day |
+| Desktop app | [desktop-latest](https://github.com/get-bb/bb/releases/tag/desktop-latest) | **bb Nightly**, with a yellow icon, from [desktop-nightly](https://github.com/get-bb/bb/releases/tag/desktop-nightly) |
+| npx | `npx bb-app@latest` | `npx bb-app@nightly` |
+
+bb Nightly is a separate app with its own update feed, so it can be installed beside stable bb. Both use the same bb data folder, `~/.bb/`, and the same server port, so run one at a time.
+
+To see which desktop build you're on, choose **About bb** in the **bb** menu. Its **Build Type** line reads **Stable** or **Nightly**.
+
+What changed in each release is on the [changelog](/changelog).
+
+## Update bb
+
+<Tabs items={["Desktop", "npx", "CLI"]}>
+<Tab value="Desktop">
+
+The desktop app checks for updates when it opens, every hour, and when you switch back to it. It downloads them in the background and installs them the next time you quit. To install one now, open **Settings → Updates** and choose **Relaunch** on the **Desktop** row.
+
+On Linux, the app can only update itself when the AppImage is in a folder you can write to. Otherwise it tells you a new version is out, and you download it again.
+
+</Tab>
+<Tab value="npx">
+
+A bb started with `npx bb-app` can update itself. Open **Settings → Updates** and choose **Update** on the **Server** row, then **Update and restart**.
+
+If you started bb with `--no-in-app-updates`, the row offers **Copy command** instead: run that command to upgrade.
+
+</Tab>
+<Tab value="CLI">
+
+```bash
+bb updates app status
+bb updates app apply
+```
+
+`bb updates app apply` downloads the update and restarts bb into it. `bb updates` with no subcommand also lists updates for the agent CLIs on each machine.
+
+</Tab>
+</Tabs>
+
+## Check it worked
+
+- The desktop app or `http://localhost:38886` opens bb's setup.
+- After installing the command, `bb status` in a new terminal prints your current context.
+- **Settings → Updates** lists the version you're running.
+
+Next, [connect your agents](/docs/connect-your-agents).
+
+## Related troubleshooting
+
+- [bb won't install, update or start](/docs/bb-wont-install-update-or-start)
+- [Platform support](/docs/platform-support)

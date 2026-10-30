@@ -1,0 +1,105 @@
+---
+title: "Quickstart: delegate work to child threads"
+description: Ask one thread to split a task and hand each part to a child thread, then review what each child did and merge it back. It takes about 15 minutes, plus the time your agents spend working.
+type: tutorial
+sources:
+  - apps/app/src/components/pickers/EnvironmentPicker.tsx
+  - apps/app/src/components/promptbox/banner/ThreadPromptContextBanner.tsx
+  - apps/cli/src/commands/thread/spawn.ts
+  - apps/server/src/services/threads/child-thread-notifications.ts
+  - packages/templates/src/templates/bb-guide-threads.md
+  - plugins/git/app.tsx
+since: 0.46.1
+owner: brsbl
+verified: 2026-10-30
+---
+
+By the end you'll have one parent thread that split a task into parts, a child thread that did each part in its own worktree, and the parts merged into one branch. It takes about 15 minutes, plus the time your agents spend working.
+
+A child thread is a normal bb thread with a parent. You can open it, read it, answer its questions and take it over, and its parent hears back when it finishes.
+
+## Before you start
+
+- bb is [installed](/docs/install).
+- At least one agent is [connected and signed in](/docs/connect-your-agents).
+- You have a Git repository to work in, with a task that splits into parts that don't touch the same files, such as "add a checkout page" split into the form, the order total and the tests.
+
+## 1. Add your project
+
+Open **Settings → Projects** and choose **Add a project**. Browse to your repository's folder and choose **Add project**. If you went through bb's setup guide, your project may already be listed.
+
+From a terminal:
+
+```bash
+bb project create --name acme-web --root ~/code/acme-web
+```
+
+You should see the project in **Settings → Projects** and in the sidebar.
+
+## 2. Start the parent thread in a worktree
+
+1. Choose **New thread**.
+2. Below the message box, pick your project, then choose **Worktree** in the environment picker. The parent gets its own branch, so its merges don't touch your checkout.
+
+<Screenshot
+  src="/docs-images/quickstart-delegate-work/environment-picker"
+  alt="Below the new thread's message box, the environment picker is open next to the project picker, with Worktree selected."
+  width={760}
+  height={300}
+/>
+
+3. Paste a prompt that asks for child threads, and send it. Agents start child threads only when you ask, so say so:
+
+```text title="Prompt"
+Add a checkout page to this app. Split the work into two or three parts that
+don't touch the same files. Start a child thread for each part with
+`bb thread spawn --parent-self`, with a short title and a prompt that says
+exactly what to build and how to test it. Don't do the parts yourself.
+When every child is done, tell me what each one changed.
+```
+
+You should see the parent run `bb thread spawn` once for each part.
+
+## 3. Follow the child threads
+
+Each child appears in the sidebar, nested under the parent. Each one gets its own worktree and branch, starting from your project's default branch, on the parent's machine.
+
+While children are working, the parent shows an **Active child threads** card above its message box:
+
+- Select a child in the card or the sidebar to open it.
+- If a child asks a question or needs your input, the card shows it, and you can answer from the parent.
+- When a child finishes, bb sends the parent a message with the child's final output, so the parent can check the work and continue. If a child fails or gets stuck, the parent hears about that too.
+
+You should see the parent reply once every child has reported back.
+
+## 4. Review each child's changes
+
+Open a child thread. Select the changed files in the row above its message box to open the **Diff** tab, or press ⌘D on macOS or Ctrl+D on Windows and Linux (**Toggle diff**).
+
+If something is wrong, reply in the child thread. It keeps its context and fixes its own part.
+
+You should see only the files that child's part needed.
+
+## 5. Merge the parts
+
+The children's branches live in the same repository as the parent's. Ask the parent to bring them together:
+
+```text title="Prompt"
+Merge each child thread's branch into this branch, resolve any conflicts,
+and run the tests. Tell me what you merged.
+```
+
+bb has no button that merges one thread's branch into another; the agent does it with Git. If you'd rather review each part as a pull request, ask each child to push its branch and open one, then merge it from the pull request controls in that thread.
+
+You should see the parent's branch with every part merged and the tests passing. Review the result in the parent's **Diff** tab, then push it or open a pull request as you normally would.
+
+## 6. Archive the children
+
+When you're done with them, archive the child threads from the sidebar, or run `bb thread archive <thread-id>`. A few minutes after its last thread is archived, bb removes the child's worktree. Its branch is kept.
+
+## Next steps
+
+- [Child threads, subagents and workflows](/docs/child-threads-subagents-and-workflows)
+- [Start child threads](/docs/start-child-threads)
+- [Follow child threads from the parent](/docs/follow-child-threads-from-the-parent)
+- [Run an orchestrator thread](/docs/run-an-orchestrator-thread)

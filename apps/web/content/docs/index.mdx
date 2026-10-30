@@ -1,26 +1,62 @@
 ---
 title: What is bb
-description: bb runs your coding agents side by side on your own machines and keeps every thread in one place. This page is a placeholder until its real text is written.
+description: bb is an open-source app for running coding agents such as Claude Code, Codex, Cursor and Pi side by side on your own machines. Each piece of work is a thread you can follow live, steer, or split into child threads.
 type: concept
 sources:
-  - apps/app/src/**
-since: 0.48.1
+  - README.md
+  - apps/web/src/landing/site.ts
+  - apps/app/src/components/onboarding/onboarding-model.ts
+  - apps/web/src/docs/nav.ts
+since: 0.46.1
 owner: brsbl
 verified: 2026-10-30
 ---
 
-> Placeholder. The finished page explains what bb is and points you to the page for what you want to do. Until then, the [home page](/) has the current description.
+bb is an open-source app for running coding agents side by side on your own machines. You bring the agents you already use, such as Claude Code, Codex, Cursor and Pi, and bb gives each piece of work its own thread, its own copy of your code, and one place to follow, steer and review all of it.
 
-## What is here today
+bb is local-first: your code, agents and threads stay on machines you control. The desktop app, the web app, the phone app, the `bb` CLI and its API all drive the same bb, so anything you can do in the app, you or an agent can also script.
 
-The reference pages are generated from bb's source, so they are already complete:
+## How bb fits together
 
-- [CLI](/docs/cli): every core `bb` command and its flags.
-- [Keyboard shortcuts](/docs/keyboard-shortcuts): every shortcut and its default keys.
-- [Plugin SDK](/docs/plugin-sdk): one page for each place a plugin can add to bb.
+- **Thread:** one conversation with one agent about one piece of work. You can watch it live, send it more messages while it works, fork it, or hand it to another agent.
+- **Child thread:** a thread started by another thread. A parent can split a task into parts, hand each to a child, and hear back when each one finishes.
+- **Project:** a repository bb works in.
+- **Environment:** where a thread's code lives. By default each thread gets its own Git worktree, so threads don't step on each other's changes. A thread can also work in your project checkout or a personal workspace.
+- **Agent:** the coding agent CLI that does the work. In Settings, agents are called **Providers**.
+- **Machine and server:** bb runs a server that keeps your threads, and a host daemon on each machine that runs agents there. One server can use several machines, and you can reach it from a browser or your phone.
+- **Plugins and skills:** plugins add features to bb itself; skills are instructions your agents can load.
+
+## I want to…
+
+| I want to | Go here |
+| --- | --- |
+| Install bb, or update it | [Install bb](/docs/install) |
+| Use my Claude Code, Codex, Cursor or Pi sign-in | [Connect your agents](/docs/connect-your-agents) |
+| Split a task across several agents | [Quickstart: delegate work to child threads](/docs/quickstart-delegate-work) |
+| Move over from Claude Code, Codex, Conductor or Cursor | [Switch from another tool](/docs/switch-from-another-tool) |
+| Understand worktrees, checkouts and sandboxes | [Projects, threads and environments](/docs/projects-threads-and-environments) |
+| Decide between child threads, an agent's own subagents and workflows | [Child threads, subagents and workflows](/docs/child-threads-subagents-and-workflows) |
+| Steer or queue messages while an agent works | [Send, steer and queue messages](/docs/send-steer-and-queue-messages) |
+| Review an agent's changes and pull requests | [View diffs and pull requests](/docs/view-diffs-and-pull-requests) |
+| Choose a model, reasoning level or context size | [Choose a model, reasoning and context size](/docs/choose-a-model-reasoning-and-context-size) |
+| Add an agent bb doesn't list, or a local model | [Add Cursor, opencode and other ACP agents](/docs/add-acp-agents) |
+| Use several accounts for one agent | [Use several accounts](/docs/use-several-accounts) |
+| Make my skills show up in the / menu | [Add and share skills](/docs/add-and-share-skills) |
+| Run threads in a sandbox, container or VM | [Run threads in sandboxes, containers and VMs](/docs/run-threads-in-sandboxes) |
+| Run agents on another computer | [Add a machine](/docs/add-a-machine) |
+| Keep bb running on an always-on machine | [Run bb on an always-on machine](/docs/run-bb-on-an-always-on-machine) |
+| Use bb from my phone or away from my desk | [Use bb on your phone](/docs/use-bb-on-your-phone) |
+| Run a prompt on a schedule | [Schedule an automation](/docs/schedule-an-automation) |
+| Find and install plugins | [Find and install plugins](/docs/find-and-install-plugins) |
+| Look up a command or keyboard shortcut | [CLI](/docs/cli) and [Keyboard shortcuts](/docs/keyboard-shortcuts) |
+| Fix something that isn't working | [Find your problem](/docs/find-your-problem) |
+
+## Ask your agent about bb
+
+Agents running in bb already have the `bb` command. Ask one how to do something in bb, and it can look it up with `bb guide` and do it for you.
 
 ## Next steps
 
-- [CLI](/docs/cli)
-- [Keyboard shortcuts](/docs/keyboard-shortcuts)
-- [Plugin SDK](/docs/plugin-sdk)
+- [Install bb](/docs/install)
+- [Connect your agents](/docs/connect-your-agents)
+- [Quickstart: delegate work to child threads](/docs/quickstart-delegate-work)

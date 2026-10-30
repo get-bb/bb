@@ -1,0 +1,124 @@
+---
+title: Switch from another tool
+description: Move from the Claude Code CLI, the Codex CLI, Conductor or Cursor to bb. Your sign-ins, instructions, skills and worktrees come along; bb can't import old sessions, so you continue a task by letting the agent read the old conversation.
+type: how-to
+sources:
+  - apps/app/src/components/pickers/EnvironmentPicker.tsx
+  - plugins/environment-git-worktree/app.tsx
+  - plugins/provider-claude-code/src/native-roots.ts
+  - plugins/provider-codex/src/native-roots.ts
+  - plugins/provider-acp/src/known-agents.ts
+  - packages/templates/src/templates/bb-guide-environments.md
+since: 0.46.1
+owner: brsbl
+verified: 2026-10-30
+---
+
+Use this when you've been working in another coding agent tool and want to carry on in bb without losing your setup or your work in progress.
+
+bb runs the same agents you already use, on your own computer. Whatever those agents read today, they still read in bb: their sign-ins, `CLAUDE.md` and `AGENTS.md` files, skills and MCP servers. Two things don't move on their own:
+
+- **Old sessions.** bb can't import conversations from other tools. To keep going on a task, start a bb thread where the work is and let the agent read the old conversation from disk.
+- **Worktree setup scripts.** bb uses its own setup files, `.bb-env-setup.sh` and `.worktreeinclude`, described below.
+
+## Pick your tool
+
+<Tabs items={["Claude Code CLI", "Codex CLI", "Conductor", "Cursor"]}>
+<Tab value="Claude Code CLI">
+
+**What carries over:** bb runs Claude Code with your user, project and local settings, so it loads your `CLAUDE.md` files, settings and MCP servers, and skills from `.claude/skills`. Your sign-in carries over too; see [Claude Code](/docs/claude-code).
+
+**Old conversations:** Claude Code keeps each one as a `.jsonl` file in `~/.claude/projects/`, in a folder named after the path it ran in.
+
+**Setup:** Claude Code has no worktree setup of its own. If you run setup commands by hand in each new checkout, put them in `.bb-env-setup.sh`.
+
+</Tab>
+<Tab value="Codex CLI">
+
+**What carries over:** bb runs the `codex` CLI you already have, with your `AGENTS.md` files and skills from `.codex/skills` and `.agents/skills`. Your sign-in carries over too; see [Codex](/docs/codex).
+
+**Old conversations:** Codex keeps each one as a `.jsonl` file under `~/.codex/sessions/`. The first line's `payload.cwd` is the folder it ran in.
+
+**Setup:** If you run setup commands by hand in each new checkout, put them in `.bb-env-setup.sh`.
+
+</Tab>
+<Tab value="Conductor">
+
+**What carries over:** Conductor runs Claude Code or Codex, and bb runs the same CLIs with the same sign-ins and instruction files. bb works with Conductor's workspaces where they are, as long as they're Git worktrees of your repository.
+
+**Old conversations:** look in `~/.claude/projects/` and `~/.codex/sessions/` for the workspace's folder path.
+
+**Setup:** bb doesn't read Conductor's settings. Move Conductor's setup script into `.bb-env-setup.sh`, and its files-to-copy list into `.worktreeinclude`.
+
+</Tab>
+<Tab value="Cursor">
+
+**What carries over:** bb runs Cursor's agent as the **Cursor** provider, using the `cursor-agent` command and its sign-in (`cursor-agent login`). It reads skills from `.cursor/skills`, `.agents/skills`, `.claude/skills` and `.codex/skills`. See [Connect your agents](/docs/connect-your-agents).
+
+**Old conversations:** Cursor saves agent transcripts in `~/.cursor/projects/<project>/agent-transcripts/`. Let the agent read only those files, not Cursor's own databases.
+
+**Setup:** Move the setup commands from `.cursor/worktrees.json` into `.bb-env-setup.sh`, and list files like `.env` in `.worktreeinclude`.
+
+</Tab>
+</Tabs>
+
+## Add your project
+
+Open **Settings → Projects** and choose **Add a project**. Browse to your repository's folder and choose **Add project**.
+
+From a terminal:
+
+```bash
+bb project create --name acme-web --root ~/code/acme-web
+```
+
+## Continue a task from your old tool
+
+1. Choose **New thread** and pick your project below the message box.
+2. Choose where to work:
+   - To continue in a worktree your old tool made, choose **Worktree**, open the **Branch from** menu, choose **Existing worktree**, and pick it.
+   - To continue in your main checkout, choose **Project checkout**.
+3. Send a handoff prompt, with the conversation location from your tool's tab above:
+
+```text title="Prompt"
+Pick up a task I was working on in another tool, in this folder.
+1. Check where the work stands: git log, git status, and git diff against the
+   base branch.
+2. Find the latest conversation for this folder in <where your tool keeps
+   conversations>. Only read it.
+3. Write me a short handoff: the goal, what's done, the decisions made, and
+   what's left. Wait for my OK before you continue.
+```
+
+Repeat for each task you want to bring over. Your old tool keeps working while you try bb, and bb doesn't move or delete a worktree it didn't create.
+
+## Set up new worktrees
+
+bb gives each new thread its own Git worktree. A new worktree only has the files Git tracks, so two files at the root of your repository fill in the rest. Commit both.
+
+- **`.worktreeinclude`** lists untracked files to copy into each new worktree from your checkout, in `.gitignore` syntax. bb copies them before setup runs.
+
+```text title=".worktreeinclude"
+.env
+.env.*
+!.env.example
+```
+
+- **`.bb-env-setup.sh`** runs in each new worktree bb creates, with `bash`, for up to 15 minutes. If it fails, bb removes the new worktree.
+
+```bash title=".bb-env-setup.sh"
+pnpm install
+```
+
+On Windows, bb runs the script with Git for Windows' bash. Worktrees bb didn't create, such as one your old tool made, never run it.
+
+## Check it worked
+
+- The new thread opens in your old worktree or checkout, and its agent writes a handoff that matches where you left off.
+- A new thread in a fresh worktree shows `.bb-env-setup.sh` finishing while the worktree is set up, and your copied files are there.
+
+## Related troubleshooting
+
+- [An agent won't sign in or can't be found](/docs/an-agent-wont-sign-in-or-cant-be-found)
+- [A skill is missing from the / menu](/docs/a-skill-is-missing-from-the-menu)
+- [A thread, environment or automation is stuck](/docs/a-thread-environment-or-automation-is-stuck)

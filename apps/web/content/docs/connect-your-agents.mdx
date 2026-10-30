@@ -1,0 +1,104 @@
+---
+title: Connect your agents
+description: bb runs the coding agents you already use, such as Claude Code, Codex, Pi and Cursor. Install each one and sign in to it on the machine that runs your threads; bb finds it on its own.
+type: how-to
+sources:
+  - apps/app/src/components/onboarding/**
+  - apps/app/src/components/settings/ProvidersSettingsSection.tsx
+  - plugins/provider-claude-code/src/bridge/provider-maintenance.ts
+  - plugins/provider-codex/src/bridge/provider-maintenance.ts
+  - plugins/provider-pi/src/bridge/provider-maintenance.ts
+  - plugins/provider-acp/src/known-agents.ts
+  - packages/process-utils/src/host-toolchain.ts
+since: 0.46.1
+owner: brsbl
+verified: 2026-10-30
+---
+
+Use this when you've installed bb and want your first thread to run, or an agent you use isn't showing up.
+
+bb has no login of its own for agents. Each agent is a command-line tool that you install and sign in to on the machine that runs your threads, the same way you would in a terminal. bb then uses that sign-in and your existing config.
+
+## Agents bb knows
+
+In Settings, agents are called **Providers**.
+
+| Agent | Command bb runs | Sign in with | bb can install it |
+| --- | --- | --- | --- |
+| [Claude Code](/docs/claude-code) | `claude` | `claude auth login` | Yes |
+| [Codex](/docs/codex) | `codex` | `codex login` | Yes |
+| [Pi](/docs/pi) | `pi` | `pi` | Yes |
+| Cursor | `cursor-agent acp` | `cursor-agent login` | Yes |
+| opencode | `opencode acp` | `opencode auth login` | No |
+| omp | `omp acp` | `omp login` | No |
+| Grok Build | `grok agent stdio` | `grok login` | No |
+| Hermes Agent | `hermes acp` | `hermes login` | No |
+
+Cursor is always listed. opencode, omp, Grok Build and Hermes Agent appear only on machines where their command is installed. To add an agent that isn't here, see [Add Cursor, opencode and other ACP agents](/docs/add-acp-agents).
+
+## Sign in to an agent
+
+<Tabs items={["Desktop", "Terminal"]}>
+<Tab value="Desktop">
+
+1. Open the setup guide. It opens on first run; later, open **Settings → General** and choose **Show setup guide** on the **Setup guide** row.
+2. On **Connect a coding agent**, find your agent. A signed-in agent shows **Ready**. Otherwise its line reads **Installed · not signed in**, **Installed · your session expired** or **Not installed**.
+3. If it's not installed, choose **Install**. bb can install Claude Code, Codex, Pi and Cursor; install other agents yourself, then choose **Check again**.
+4. Choose **Sign in**. bb opens a terminal on that machine and runs the agent's sign-in command, then shows the sign-in link and a box for the code. Choose **Open sign-in page**, finish signing in, and paste the code if the agent gives you one.
+5. When the agent shows **Ready**, choose **Continue**.
+
+</Tab>
+<Tab value="Terminal">
+
+Run the agent's sign-in command from the table above in a terminal on the machine that runs your threads. For example:
+
+```bash
+claude auth login
+codex login
+```
+
+On a machine you reach over SSH, `codex login --device-auth` signs in with a one-time code instead of a browser on that machine.
+
+You don't need to restart bb afterwards.
+
+</Tab>
+</Tabs>
+
+## How bb finds your agents
+
+- **The command:** bb looks for the agent's command on the PATH from your login shell, the same PATH a new terminal gets. It also checks common install folders, such as `~/.local/bin`, `/opt/homebrew/bin` and `/usr/local/bin`. If you install an agent while bb is running, bb finds it the next time it looks.
+- **The sign-in:** bb reads the agent's own saved sign-in each time it checks:
+  - Claude Code: the macOS Keychain, or `~/.claude/.credentials.json`.
+  - Codex: `~/.codex/auth.json`, or `auth.json` in `CODEX_HOME` if you set it.
+  - Pi: Pi counts as signed in when it can list at least one model.
+  - Cursor: the sign-in saved by `cursor-agent login`.
+  - Other ACP agents count as ready once their command is installed.
+- **Your config:** agents run with their usual config files, so Claude Code keeps its `CLAUDE.md`, settings and MCP servers, and Codex keeps its `AGENTS.md` and skills. See [Agent context](/docs/agent-context).
+
+Each machine has its own agents and sign-ins. When you [add a machine](/docs/add-a-machine), install and sign in to your agents there too.
+
+## Choose which agents bb shows
+
+Open **Settings → Providers**. Each enabled agent appears in the provider picker when you start a thread.
+
+- Open an agent's actions menu (**⋯**) and choose **Disable** to hide it, or **Enable** to bring it back.
+- Choose **Default** in the same menu to make it your default agent.
+- Drag agents to change their order in the picker.
+
+From a terminal:
+
+```bash
+bb provider list
+bb provider enable codex
+bb provider disable acp-cursor
+```
+
+## Check it worked
+
+- The setup guide shows **Ready** next to your agent, or `bb provider list --all` shows it as **Enabled**.
+- Start a new thread and pick the agent in the provider picker. The model picker lists its models.
+
+## Related troubleshooting
+
+- [An agent won't sign in or can't be found](/docs/an-agent-wont-sign-in-or-cant-be-found)
+- [A model is missing from the model picker](/docs/a-model-is-missing-from-the-model-picker)
