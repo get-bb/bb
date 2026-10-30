@@ -559,9 +559,12 @@ describe("UpdatesSettingsSection", () => {
       expect(button.getAttribute("aria-controls")).toBe(panel?.id);
       expect(
         within(panel!).getByRole("heading", {
-          name: /^What's new in bb 0\.47\.0/,
-        }).textContent,
-      ).toBe("What's new in bb 0.47.0 · October 23, 2026");
+          name: "Customizable navigation, new and improved ACP support, and diff review",
+        }),
+      ).toBeDefined();
+      expect(
+        within(panel!).getByText("bb 0.47.0 · October 23, 2026"),
+      ).toBeDefined();
       expect(
         within(panel!).getByRole("heading", { name: "Highlights" }),
       ).toBeDefined();
@@ -628,6 +631,11 @@ The published lede.
       renderSection();
       fireEvent.click(releaseNotesButton("0.0.5"));
 
+      expect(
+        within(releaseNotesPanel("0.0.5")!).getByRole("heading", {
+          name: "What's new in bb 0.0.5",
+        }),
+      ).toBeDefined();
       expect(
         within(releaseNotesPanel("0.0.5")!).getByText(
           "bb 0.0.5 has no changelog in the app.",

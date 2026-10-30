@@ -91,7 +91,7 @@ export function ReleaseNotesPanel({ id, version }: ReleaseNotesPanelProps) {
     changelogQuery.data,
     CHANGELOG_ENTRIES,
   );
-  const releaseDate = RELEASE_META[version]?.date;
+  const releaseMeta = RELEASE_META[version];
   const scrollRef = useRef<HTMLDivElement>(null);
   const [moreBelow, setMoreBelow] = useState(false);
   const syncFade = (node: HTMLDivElement | null) => {
@@ -110,14 +110,20 @@ export function ReleaseNotesPanel({ id, version }: ReleaseNotesPanelProps) {
       data-updates-domain="release-notes"
       className="bg-sidebar px-4 py-3 text-xs leading-relaxed text-muted-foreground"
     >
-      <h3 className="mb-2 text-xs font-medium text-foreground">
-        What&apos;s new in bb {version}
-        {releaseDate === undefined ? null : (
-          <span className="font-normal text-muted-foreground">
-            {` · ${releaseDate}`}
-          </span>
-        )}
-      </h3>
+      {releaseMeta === undefined ? (
+        <h3 className="mb-2 text-xs font-medium text-foreground">
+          What&apos;s new in bb {version}
+        </h3>
+      ) : (
+        <div className="mb-2">
+          <h3 className="text-xs font-medium text-foreground">
+            {releaseMeta.headline}
+          </h3>
+          <p className="text-2xs">
+            bb {version} · {releaseMeta.date}
+          </p>
+        </div>
+      )}
       {entry === null ? (
         <p>bb {version} has no changelog in the app.</p>
       ) : (
@@ -126,7 +132,7 @@ export function ReleaseNotesPanel({ id, version }: ReleaseNotesPanelProps) {
             ref={scrollRef}
             data-release-notes-scroll
             onScroll={(event) => syncFade(event.currentTarget)}
-            className="max-h-48 overflow-y-auto pr-2"
+            className="max-h-48 overflow-x-hidden overflow-y-auto pr-2 break-words"
           >
             <Blocks blocks={entry.lede} />
             {entry.sections.map((section) => (
