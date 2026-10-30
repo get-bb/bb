@@ -316,6 +316,7 @@ describe("telemetry service", () => {
       const telemetry = await createTelemetryService(args);
       telemetry.capture(event);
       captureAcceptedWork(telemetry, {
+        provider: "codex",
         kind: "thread",
         initiator: "user",
       });
@@ -338,6 +339,7 @@ describe("telemetry service", () => {
       });
       restarted.capture(event);
       captureAcceptedWork(restarted, {
+        provider: "codex",
         kind: "message",
         initiator: "user",
       });
