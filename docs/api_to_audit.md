@@ -4289,3 +4289,13 @@ Recommendation observations are limited to shown, selected and deselected cards
 in the current guide; later browsing, timing and dismissal are not collected.
 `question_created` is recorded by the persisted input-request owner for the
 reviewed Ask User Question plugin, not optimistically before `requestInput`.
+
+## `PluginSettingsSectionProps.internal_DO_NOT_USE_setupSource`
+
+Core supplies bounded first-run, replay or settings context through the existing
+settings-section slot props. Connect is its only consumer, forwarding it to the
+remote-access request so asynchronous outcomes retain the initiating source.
+Older hosts omit it and Connect retains its settings fallback. This is internal
+measurement context, not authorization; other plugins must not depend on it.
+Audit all settings-section hosts and compatibility with older hosts before
+changing or exposing this member. No DOM attribute or ancestor lookup is used.

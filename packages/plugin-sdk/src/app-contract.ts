@@ -67,9 +67,12 @@ export interface PluginHomepageSectionProps {
 /**
  * Props passed to a `settingsSection` component.
  *
- * Deliberately empty in V1; versioned additive like the other slot props.
+ * Versioned additive like the other slot props.
  */
-export interface PluginSettingsSectionProps {}
+export interface PluginSettingsSectionProps {
+  /** Internal Connect setup attribution; older hosts omit it. */
+  internal_DO_NOT_USE_setupSource?: "first_run" | "replay" | "settings";
+}
 
 /**
  * Props passed to an `experimental_appOverlay` component.

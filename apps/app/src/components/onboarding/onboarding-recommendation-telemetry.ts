@@ -1,4 +1,4 @@
-import type { PublicMeasurementPlugin } from "@bb/server-contract";
+import { publicMeasurementPluginSchema } from "@bb/server-contract";
 import {
   recordTelemetryEvent,
   type OnboardingEntry,
@@ -12,23 +12,6 @@ interface RecommendationContext {
   availability: "available" | "unavailable" | "unknown";
 }
 
-function publicRecommendation(
-  context: RecommendationContext,
-): PublicMeasurementPlugin | null {
-  if (context.marketplace !== "bb-official") return null;
-  switch (context.entryId) {
-    case "browser-automation":
-    case "workflows":
-    case "monaco-editor":
-    case "prompt-library":
-    case "agent-annotations":
-    case "ask-user-question":
-      return context.entryId;
-    default:
-      return null;
-  }
-}
-
 export function createPluginRecommendationObserver() {
   let shown = false;
   let initialState: RecommendationContext["initial_state"] | null = null;
@@ -36,8 +19,11 @@ export function createPluginRecommendationObserver() {
     action: "shown" | "selected" | "deselected",
     context: RecommendationContext,
   ) => {
-    const public_plugin = publicRecommendation(context);
-    if (public_plugin === null || (action === "shown" && shown)) return;
+    if (context.marketplace !== "bb-official") return;
+    const public_plugin = publicMeasurementPluginSchema.safeParse(
+      context.entryId,
+    ).data;
+    if (public_plugin === undefined || (action === "shown" && shown)) return;
     if (action === "shown") shown = true;
     initialState ??= context.initial_state;
     recordTelemetryEvent({

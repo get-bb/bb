@@ -710,6 +710,29 @@ describe("connect settings section", () => {
     slot.getByRole("button", { name: "Add mobile device" });
   });
 
+  it.each(["first_run", "replay", "settings"] as const)(
+    "keeps %s source through the settings slot and enable request",
+    async (source) => {
+      const slot = renderSlot(
+        app.settingsSections[0]!,
+        { internal_DO_NOT_USE_setupSource: source },
+        {
+          rpc: {
+            status: () => connected({ enabled: false, state: "disconnected" }),
+            setRemoteAccess: () => connected(),
+          },
+        },
+      );
+      fireEvent.click(await slot.findByRole("button", { name: "Turn on" }));
+      await waitFor(() =>
+        expect(slot.rpcCalls).toContainEqual({
+          method: "setRemoteAccess",
+          input: { enabled: true, source },
+        }),
+      );
+    },
+  );
+
   it("turn off confirms, keeps the account, and shows the off card with a receipt", async () => {
     let currentStatus = connected();
     const slot = renderSlot(

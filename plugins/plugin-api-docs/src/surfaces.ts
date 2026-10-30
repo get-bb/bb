@@ -915,6 +915,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginSettingsSectionRegistration.experimental_page",
           "PluginSettingsSectionRegistration",
           "PluginSettingsSectionProps",
+          "PluginSettingsSectionProps.internal_DO_NOT_USE_setupSource",
         ],
         firstParty: [
           "Account Pooler [Experimental]",

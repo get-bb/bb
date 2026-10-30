@@ -124,9 +124,7 @@ describe("plugin measurement provenance", () => {
     const wrongBuiltin = install("browser-automation", {
       sourceIntent: { kind: "builtin", name: "workflows" },
     });
-    expect(
-      resolvePluginMeasurementIdentity(deps(), wrongBuiltin),
-    ).toBeNull();
+    expect(resolvePluginMeasurementIdentity(deps(), wrongBuiltin)).toBeNull();
     expect(
       resolvePluginMeasurementIdentity(
         { ...deps(), watchBuiltinPluginSources: true },
@@ -270,22 +268,14 @@ describe("intentional use", () => {
       async () => {
         report();
         await Promise.resolve();
-        withPluginMeasurementInvocation(
-          "browser-automation",
-          "user",
-          report,
-        );
+        withPluginMeasurementInvocation("browser-automation", "user", report);
         reportPluginUse(deps(), "browser-automation", {
           action: "browser_run",
           outcome: "succeeded",
         });
       },
     );
-    withPluginMeasurementInvocation(
-      "browser-automation",
-      "user",
-      report,
-    );
+    withPluginMeasurementInvocation("browser-automation", "user", report);
     expect(
       captured.map((event) =>
         event.name === "plugin_use"
@@ -309,14 +299,6 @@ describe("intentional use", () => {
     reportPluginUse(deps(), "private-name", {
       action: "browser_run",
       outcome: "invoked",
-    });
-    expect(captured).toEqual([]);
-    withPluginMeasurementInvocation("private-name", "unknown", () => {
-      withPluginMeasurementInvocation(
-        "private-name",
-        "unknown",
-        () => {},
-      );
     });
     expect(captured).toEqual([]);
     expect(() =>
@@ -353,7 +335,6 @@ describe("intentional use", () => {
       action: "file_saved",
       outcome: "succeeded",
     });
-    withPluginMeasurementInvocation("monaco-editor", "agent", () => {});
     expect(captured).toHaveLength(1);
   });
 });

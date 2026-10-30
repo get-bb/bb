@@ -50,6 +50,17 @@ const machine = z.enum([
   "setup_result",
 ]);
 
+const mobileDownloadPropertiesSchema = z
+  .object({
+    target: z.literal("mobile"),
+    action: z.literal("download_clicked"),
+    outcome: z.literal("observed"),
+    source: deviceSetupSourceSchema,
+    error_category: z.null(),
+    platform: z.enum(["ios", "android"]),
+  })
+  .strict();
+
 export const deviceSetupPropertiesSchema = z
   .discriminatedUnion("target", [
     z
@@ -66,16 +77,7 @@ export const deviceSetupPropertiesSchema = z
         ...setupFields,
       })
       .strict(),
-    z
-      .object({
-        target: z.literal("mobile"),
-        action: z.literal("download_clicked"),
-        outcome: z.literal("observed"),
-        source: deviceSetupSourceSchema,
-        error_category: z.null(),
-        platform: z.enum(["ios", "android"]),
-      })
-      .strict(),
+    mobileDownloadPropertiesSchema,
   ])
   .superRefine((value, context) => {
     if (value.target === "mobile") return;
@@ -141,16 +143,7 @@ export const deviceSetupTelemetrySchema = z
           error_category: z.null(),
         })
         .strict(),
-      z
-        .object({
-          target: z.literal("mobile"),
-          action: z.literal("download_clicked"),
-          outcome: z.literal("observed"),
-          source: deviceSetupSourceSchema,
-          error_category: z.null(),
-          platform: z.enum(["ios", "android"]),
-        })
-        .strict(),
+      mobileDownloadPropertiesSchema,
     ]),
   })
   .strict();

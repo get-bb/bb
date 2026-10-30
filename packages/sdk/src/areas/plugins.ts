@@ -489,17 +489,13 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
         "plugin install accepts subdirectory or plugin, not both",
       );
     }
-    const selection = pluginSourceSelection(input);
-    const body =
-      selection === undefined
-        ? { source: input.source }
-        : { source: input.source, selection };
-    const measuredBody =
-      input.measurementSource === undefined
-        ? body
-        : { ...body, measurementSource: input.measurementSource };
-    pluginInstallRequestSchema.parse(measuredBody);
-    return measuredBody;
+    const body = {
+      source: input.source,
+      selection: pluginSourceSelection(input),
+      measurementSource: input.measurementSource,
+    };
+    pluginInstallRequestSchema.parse(body);
+    return body;
   }
 
   const catalog: PluginCatalogArea = {
@@ -669,10 +665,7 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
     catalog,
     marketplaces,
     async disable(input) {
-      const body =
-        input.measurementSource === undefined
-          ? {}
-          : { measurementSource: input.measurementSource };
+      const body = { measurementSource: input.measurementSource };
       pluginStateMeasurementRequestSchema.parse(body);
       const response = await requestParsed(
         pluginPath(input.pluginId, "/disable"),
@@ -682,10 +675,7 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
       return response.plugin;
     },
     async enable(input) {
-      const body =
-        input.measurementSource === undefined
-          ? {}
-          : { measurementSource: input.measurementSource };
+      const body = { measurementSource: input.measurementSource };
       pluginStateMeasurementRequestSchema.parse(body);
       const response = await requestParsed(
         pluginPath(input.pluginId, "/enable"),

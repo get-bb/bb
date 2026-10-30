@@ -1075,9 +1075,10 @@ function DevicesStepContainer({
       <DevicesStep
         connect={connectAccessUrl(configQuery.data?.serverAccess)}
         connectSetup={
-          <div data-device-setup-source={entry}>
-            <PluginSettingsSections pluginId={CONNECT_PLUGIN_ID} />
-          </div>
+          <PluginSettingsSections
+            pluginId={CONNECT_PLUGIN_ID}
+            setupSource={entry}
+          />
         }
         connectSetupOpen={connectSetupOpen}
         otherMachineCount={otherMachineCount}
