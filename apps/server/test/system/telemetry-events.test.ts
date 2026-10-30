@@ -16,15 +16,20 @@ describe("client telemetry events", () => {
   it("accepts reviewed official recommendations and rejects a catalog identity collision", async () => {
     await withTestHarness(async (harness) => {
       const capture = vi.fn<TelemetryService["capture"]>();
-      harness.deps.telemetry = { ...harness.deps.telemetry, capture };
+      harness.deps.telemetry = {
+        ...harness.deps.telemetry,
+        isEnabled: () => true,
+        capture,
+      };
       const event = {
-        name: "plugin_recommendation",
+        name: "recommendation",
         properties: {
           action: "shown",
-          public_plugin: "prompt-library",
-          source: "first_run",
-          initial_state: "absent",
-          availability: "available",
+          resource_type: "plugin",
+          resource_id: "prompt-library",
+          recommendation_id: "00000000-0000-4000-8000-000000000001",
+          surface: "onboarding",
+          entry: "first_run",
         },
       };
       expect((await post(harness, event)).status).toBe(200);

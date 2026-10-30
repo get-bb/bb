@@ -245,7 +245,7 @@ function PluginDetailToolView({ detailKey }: { detailKey: string }) {
     mutationFn: async (plugin: PluginListItem) => {
       const action = plugin.enabled ? "disable" : "enable";
       try {
-        await setEnabled(plugin.id, !plugin.enabled);
+        await setEnabled(plugin.id, !plugin.enabled, undefined, "marketplace");
       } catch {
         throw new Error(`Failed to ${action} plugin`);
       }

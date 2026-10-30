@@ -1,4 +1,7 @@
-import { isReviewedPluginRecommendation } from "../services/plugins/plugin-measurement.js";
+import {
+  isReviewedPluginRecommendation,
+  clearRecommendationAttribution,
+} from "../services/plugins/plugin-measurement.js";
 import { createMobileAppReleaseService } from "../services/install/mobile-app-releases.js";
 import {
   setMachineEnvironmentVariable,
@@ -339,6 +342,7 @@ export function registerSystemRoutes(
     setAppSettings(deps.db, updatedSettings);
     if (current.telemetryEnabled && !updatedSettings.telemetryEnabled) {
       deps.telemetry.capture({ name: "telemetry_disabled" });
+      clearRecommendationAttribution(deps.db);
     }
     deps.telemetry.setEnabled(updatedSettings.telemetryEnabled);
     deps.hub.notifySystem(["config-changed"]);
@@ -346,15 +350,19 @@ export function registerSystemRoutes(
   });
 
   post(routes.recordTelemetryEvent, (context, payload) => {
-    if (
-      payload.name === "plugin_recommendation" &&
-      !isReviewedPluginRecommendation(deps.db, payload.properties.public_plugin)
-    ) {
-      throw new ApiError(
-        400,
-        "invalid_request",
-        "Recommendation is not in the official reviewed catalog",
-      );
+    if (payload.name === "recommendation") {
+      if (
+        !isReviewedPluginRecommendation(
+          deps.db,
+          payload.properties.resource_id,
+        ) ||
+        payload.properties.resource_type !== "plugin"
+      )
+        throw new ApiError(
+          400,
+          "invalid_request",
+          "Unknown public recommendation",
+        );
     }
     deps.telemetry.capture(payload);
     return context.json({ ok: true });

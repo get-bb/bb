@@ -4,6 +4,7 @@ export const onboardingTelemetrySourceSchema = z.enum([
   "first_run",
   "replay",
   "settings",
+  "marketplace",
   "cli",
   "other",
   "unknown",

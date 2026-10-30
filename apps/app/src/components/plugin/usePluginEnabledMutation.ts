@@ -1,3 +1,4 @@
+import type { PluginMeasurementSource } from "@bb/server-contract";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { appToast } from "@/components/ui/app-toast";
 import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
@@ -7,12 +8,14 @@ import { useSetPluginEnabled } from "./useSetPluginEnabled";
 export function usePluginEnabledMutation(
   plugin: PluginListItem,
   onSettled?: () => Promise<unknown>,
+  measurementSource: PluginMeasurementSource = "settings",
 ) {
   const queryClient = useQueryClient();
   const setEnabled = useSetPluginEnabled();
   const toggle = useMutation({
     meta: { showErrorToast: false },
-    mutationFn: (enabled: boolean) => setEnabled(plugin.id, enabled),
+    mutationFn: (enabled: boolean) =>
+      setEnabled(plugin.id, enabled, undefined, measurementSource),
     onError: (error, enabled) => {
       appToast.error(
         `${enabled ? "Enabling" : "Disabling"} ${plugin.id} failed`,

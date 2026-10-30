@@ -4200,16 +4200,17 @@ Prompt Library, Agent Annotations and Ask User Question only. Their existing
 execution or visible-action owners report bounded action/outcome pairs; core's
 shared plugin tool and CLI dispatch supplies invocation context. A CLI call
 with a thread context is agent-initiated; without one its initiator is unknown.
-Plugins outside
-the reviewed public allowlist emit no new use or state-change observations.
+All installed bundled and official public-catalog plugins can produce generic
+successful tool and CLI use observations; no fixed public-plugin list limits
+recommendation measurement. Private and local sources remain excluded.
 The server derives public keys from installed provenance, validates the action
 owner and outcome, and uses the existing opt-out-controlled telemetry service.
 No plugin identity is accepted from the report, and arguments, outputs, paths,
 private names and free-text properties are rejected. No generic RPC read or
 background startup counts as use. Client-only observations remain `observed`.
 This is deliberately internal and has no arbitrary telemetry CLI or client
-endpoint. Only these named first-party owners may call it; adding an owner or
-public key requires privacy review and tests. The existing setup-operation
+endpoint. Only these named first-party owners may call the specialized report hook;
+generic successful invocation reporting is owned by core. The existing setup-operation
 endpoint and `plugin_installed` event retain their previous meanings.
 
 Plugin install, catalog install, enable and disable SDK calls accept optional
@@ -4218,7 +4219,16 @@ and becomes `unknown` at the server boundary. Catalog/source install jobs retain
 the context of the request that created that job, including when queued behind
 another source; coalesced requests do not relabel an existing job. These fields
 are collection attribution, not authentication or experiment assignment.
-Recommendation observations are limited to shown, selected and deselected cards
-in the current guide; later browsing, timing and dismissal are not collected.
+Recommendation events use resource_type, resource_id, a unique recommendation_id,
+surface, entry, and shown/selected/used actions. Clients may report only shown;
+confirmed enable owns selected. The last successfully selected recommendation
+is stored in existing plugin KV storage and supplies attribution for subsequent
+meaningful use until replaced, disabled, uninstalled, or telemetry is turned off.
+Impressions never overwrite selection. Attributed use emits recommendation used
+instead of plugin_use; generic and specialized hooks deduplicate within a single
+invocation. A recommendation ID is optional on install/enable SDK requests and
+is carried through asynchronous jobs. Marketplace and settings are distinct
+surfaces. Prompt recommendations have a schema but no live prompt feature emitter.
+These associations describe a selection path, not proof of causal lift.
 `question_created` is recorded by the persisted input-request owner for the
 reviewed Ask User Question plugin, not optimistically before `requestInput`.

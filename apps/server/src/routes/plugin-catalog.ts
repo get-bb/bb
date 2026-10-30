@@ -106,7 +106,7 @@ export function registerPluginCatalogRoutes(
     } catch (error) {
       return context.json({ error: errorMessage(error) }, 422);
     }
-    const { measurementSource, ...input } = body.data;
+    const { measurementSource, recommendationId, ...input } = body.data;
     const job = installJobs.start({
       target: {
         kind: "catalog",
@@ -115,8 +115,10 @@ export function registerPluginCatalogRoutes(
       },
       displayName: entry.displayName,
       run: () =>
-        runWithPluginMeasurementSource(measurementSource, () =>
-          catalog.install(input),
+        runWithPluginMeasurementSource(
+          measurementSource,
+          recommendationId,
+          () => catalog.install(input),
         ),
     });
     return respondWithInstallJob(context, installJobs, job, (error) => ({

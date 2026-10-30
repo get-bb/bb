@@ -876,10 +876,6 @@ function PluginCardContainer({
   } as const;
 
   const toggle = async (next: boolean) => {
-    recommendation.current(
-      next ? "selected" : "deselected",
-      recommendationContext,
-    );
     setTarget(next);
     setWorking(true);
     try {
@@ -892,6 +888,7 @@ function PluginCardContainer({
               entryId: entry.entryId,
               marketplace: entry.marketplace,
               measurementSource: onboardingEntry,
+              recommendationId: recommendation.current.id,
             }),
         );
         observeOnboardingPluginInstall(queryClient, job, onboardingEntry);
@@ -907,6 +904,7 @@ function PluginCardContainer({
                 true,
                 undefined,
                 onboardingEntry,
+                recommendation.current.id,
               ),
           );
         } else {
