@@ -1207,6 +1207,7 @@ function LandingPage() {
   const companyProofRef = useRef<HTMLElement>(null);
   const qaCheck = useExperiment("homepage-qa-check");
   useExperimentExposure("homepage-qa-check", "all");
+  useExperimentExposure("homepage-aa", "all");
   useScrollReveal();
   useConstructMock();
   useFitMock();
