@@ -13,10 +13,9 @@ import { describe, expect, it } from "vitest";
 import type { ReuseThreadOption } from "@/components/pickers/ReuseEnvironmentPicker";
 import {
   resolveNewThreadProjectDefaultsState,
-  resolveNewThreadSubmitDisabledReason,
   resolveNewThreadReadiness,
   restorePromptDraftAfterOptionChange,
-  type ResolveNewThreadSubmitDisabledReasonArgs,
+  type ResolveNewThreadReadinessArgs,
 } from "@/components/promptbox/NewThreadComposer";
 import { getProjectStoredPromptAttachmentPaths } from "@bb/client-core";
 import {
@@ -237,7 +236,7 @@ describe("resolveNewThreadProjectDefaultsState", () => {
   });
 });
 
-describe("resolveNewThreadSubmitDisabledReason", () => {
+describe("resolveNewThreadReadiness", () => {
   const readyState = {
     environmentProviderInputsBlocker: null,
     environmentSetupRequiredReason: null,
@@ -254,7 +253,7 @@ describe("resolveNewThreadSubmitDisabledReason", () => {
     selectedThreadModel: "gpt-5.6-sol",
     submissionEnvironmentUnavailable: false,
     submissionMachineUnavailable: false,
-  } satisfies ResolveNewThreadSubmitDisabledReasonArgs;
+  } satisfies ResolveNewThreadReadinessArgs;
 
   it.each([
     ["missing_executable", "agent_missing"],
@@ -304,20 +303,21 @@ describe("resolveNewThreadSubmitDisabledReason", () => {
 
   it("blocks the send while the selected environment needs setting up", () => {
     expect(
-      resolveNewThreadSubmitDisabledReason({
+      resolveNewThreadReadiness({
         ...readyState,
         environmentSetupRequiredReason:
           "Modal Sandbox is not configured: set tokenId, tokenSecret in the plugin's settings.",
       }),
-    ).toBe(
-      "Modal Sandbox is not configured: set tokenId, tokenSecret in the plugin's settings.",
-    );
+    ).toMatchObject({
+      status: "blocked",
+      message: "Modal Sandbox is not configured: set tokenId, tokenSecret in the plugin's settings.",
+    });
   });
 
   it.each<
     [
       label: string,
-      change: Partial<ResolveNewThreadSubmitDisabledReasonArgs>,
+      change: Partial<ResolveNewThreadReadinessArgs>,
       reason: string,
     ]
   >([
@@ -374,17 +374,17 @@ describe("resolveNewThreadSubmitDisabledReason", () => {
     ],
   ])("reports %s", (_label, change, reason) => {
     expect(
-      resolveNewThreadSubmitDisabledReason({ ...readyState, ...change }),
-    ).toBe(reason);
+      resolveNewThreadReadiness({ ...readyState, ...change }),
+    ).toMatchObject({ message: reason });
   });
 
   it("returns no reason when every submission requirement is ready", () => {
-    expect(resolveNewThreadSubmitDisabledReason(readyState)).toBeNull();
+    expect(resolveNewThreadReadiness(readyState)).toEqual({ status: "ready" });
   });
 
   it("allows a selected fallback model after a transient model-list failure", () => {
     expect(
-      resolveNewThreadSubmitDisabledReason({
+      resolveNewThreadReadiness({
         ...readyState,
         modelLoadError: {
           providerId: "claude-code",
@@ -392,7 +392,7 @@ describe("resolveNewThreadSubmitDisabledReason", () => {
           detail: null,
         },
       }),
-    ).toBeNull();
+    ).toEqual({ status: "ready" });
   });
 });
 
