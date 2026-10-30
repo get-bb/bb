@@ -39,7 +39,11 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     if (typeof completedAt === "string") rememberOnboardingSeen();
   }, [completedAt]);
 
-  if (firstRunClosed && typeof completedAt === "string") {
+  if (
+    firstRunClosed &&
+    typeof completedAt === "string" &&
+    !updateSettings.isPending
+  ) {
     setFirstRunClosed(false);
   }
 
