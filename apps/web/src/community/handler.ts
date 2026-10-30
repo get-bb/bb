@@ -1,32 +1,15 @@
-import { sha256Hex } from "@bb/connect-db";
 import { z } from "zod";
 import type { Env } from "../server/env";
 import {
-  claimUrl,
-  createStickerDiscount,
-  newStickerCode,
-  shopifyConfig,
-  type ShopifyEnv,
-} from "./shopify";
-import {
-  ALREADY_CLAIMED,
-  CLAIM_NOT_OPEN,
+  advanceClaim,
   CLAIM_PENDING,
-  SOLD_OUT,
-  surveyAnswers,
-  surveyFields,
-  validateSurvey,
-  type SurveyReply,
-} from "./survey";
+  saveResponse,
+  type ClaimsEnv,
+} from "./claims";
+import { surveyFields, validateSurvey, type SurveyReply } from "./survey";
 
-type CommunityEnv = ShopifyEnv &
-  Pick<
-    Env,
-    | "DB"
-    | "COMMUNITY_FORMS_ENABLED"
-    | "COMMUNITY_STICKER_LIMIT"
-    | "COMMUNITY_FORM_RATE_LIMITER"
-  >;
+type CommunityEnv = ClaimsEnv &
+  Pick<Env, "COMMUNITY_FORMS_ENABLED" | "COMMUNITY_FORM_RATE_LIMITER">;
 
 const MAX_BODY_BYTES = 16384;
 const submission = z.object({
@@ -37,12 +20,6 @@ const submission = z.object({
       Object.keys(values).every((name) => surveyFields.includes(name)),
     ),
 });
-
-export function emailKey(email: string): string {
-  const normalized = email.trim().toLowerCase();
-  const at = normalized.lastIndexOf("@");
-  return `${normalized.slice(0, at).split("+")[0]}${normalized.slice(at)}`;
-}
 
 export function rateLimitKey(ip: string | null): string {
   if (!ip) return "local-preview";
@@ -150,63 +127,18 @@ export async function handleSurveySubmission(
   const { submission_id: id, answers: values } = read;
   const errors = validateSurvey(values);
   if (Object.keys(errors).length) return reply({ errors }, 400);
-  const email = values.email?.[0] ?? "";
-  const config = shopifyConfig(env);
-  const stickerLimit =
-    Number.parseInt(env.COMMUNITY_STICKER_LIMIT ?? "", 10) || 1000;
-  const emailHash = await sha256Hex(emailKey(email));
-  const code = newStickerCode();
-  const now = Date.now();
   try {
-    const [existing, response, claim] = await env.DB.batch([
-      env.DB.prepare(
-        "SELECT EXISTS(SELECT 1 FROM community_survey_email WHERE email_hash = ?) AS claimed",
-      ).bind(emailHash),
-      env.DB.prepare(
-        "INSERT INTO community_survey_response (id, created_at, answers) VALUES (?, ?, ?) ON CONFLICT(id) DO NOTHING",
-      ).bind(id, now, JSON.stringify(surveyAnswers(values))),
-      env.DB.prepare(
-        "INSERT INTO community_sticker_claim (code, submission_id, status, created_at) SELECT ?, ?, 'pending', ? WHERE changes() = 1 AND ? AND NOT EXISTS (SELECT 1 FROM community_survey_email WHERE email_hash = ?) AND (SELECT COUNT(*) FROM community_sticker_claim) < ?",
-      ).bind(code, id, now, config ? 1 : 0, emailHash, stickerLimit),
-      env.DB.prepare(
-        "INSERT INTO community_survey_email (email_hash) SELECT ? WHERE changes() = 1 ON CONFLICT(email_hash) DO NOTHING",
-      ).bind(emailHash),
-    ]);
-    const duplicate = !response?.meta.changes;
-    const reserved = config !== null && claim?.meta.changes === 1;
-    const created = reserved
-      ? await createStickerDiscount(config, code, id, now)
+    const now = Date.now();
+    const saved = await saveResponse(env, id, values, now);
+    const advanced = saved.claim
+      ? await advanceClaim(env, saved.claim, now)
       : null;
-    if (created)
-      await env.DB.prepare(
-        "UPDATE community_sticker_claim SET status = ?, attempts = 1, last_attempt_at = ? WHERE code = ?",
-      )
-        .bind(created.ok ? "created" : "pending", now, code)
-        .run()
-        .catch(() => undefined);
-    if (created && !created.ok)
-      console.error(
-        JSON.stringify({
-          event: "community_sticker_claim_failed",
-          reason: created.reason,
-        }),
-      );
-    const claimLink =
-      config && created?.ok ? claimUrl(config, code, email) : null;
-    const alreadyClaimed = z
-      .object({ claimed: z.literal(1) })
-      .safeParse(existing?.results[0]).success;
+    const claimLink = advanced?.ok ? advanced.claimLink : null;
     const claimNote =
-      duplicate || claimLink
-        ? null
-        : reserved
-          ? CLAIM_PENDING
-          : alreadyClaimed
-            ? ALREADY_CLAIMED
-            : config
-              ? SOLD_OUT
-              : CLAIM_NOT_OPEN;
-    return reply({ result: { duplicate, claimLink, claimNote } });
+      saved.note ?? (saved.claim && !claimLink ? CLAIM_PENDING : null);
+    return reply({
+      result: { duplicate: saved.duplicate, claimLink, claimNote },
+    });
   } catch {
     return reply(
       { error: "We couldn't save your response. Please try again." },

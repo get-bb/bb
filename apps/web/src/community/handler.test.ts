@@ -10,42 +10,34 @@ import {
   vi,
 } from "vitest";
 import { applyConnectDbMigrationsToD1 } from "@bb/connect-db/testing";
-import { emailKey, handleSurveySubmission, rateLimitKey } from "./handler";
-import { resetShopifyTokenCache } from "./shopify";
 import {
   ALREADY_CLAIMED,
   CLAIM_NOT_OPEN,
   CLAIM_PENDING,
+  emailKey,
   SOLD_OUT,
-  surveyReply,
-  type SurveyReply,
-} from "./survey";
+} from "./claims";
+import { handleSurveySubmission, rateLimitKey } from "./handler";
+import { surveyReply, type SurveyReply } from "./survey";
 
 let runtime: Miniflare;
 let db: D1Database;
 const origin = "https://community.test";
 const claimBase = "https://test-shop.myshopify.com/cart/123:1";
+type ShopifyMode = "ok" | "down" | "tokenDenied" | "loseReply" | "taken";
 const shopify = {
+  mode: "ok" as ShopifyMode,
   codes: new Set<string>(),
-  tokenRequests: 0,
-  down: false,
-  loseReply: false,
-  taken: false,
-  tokenStatus: 200,
-  graphqlRequests: 0,
+  requests: 0,
 };
 async function fakeShopify(url: string, init: RequestInit) {
-  if (url.endsWith("/admin/oauth/access_token")) {
-    shopify.tokenRequests++;
-    if (shopify.tokenStatus !== 200)
-      return Response.json(
-        { error: "application_cannot_be_found" },
-        { status: shopify.tokenStatus },
-      );
-    return Response.json({ access_token: "token", expires_in: 86399 });
-  }
-  shopify.graphqlRequests++;
-  if (shopify.down) return new Response("unavailable", { status: 503 });
+  shopify.requests++;
+  if (url.endsWith("/admin/oauth/access_token"))
+    return shopify.mode === "tokenDenied"
+      ? Response.json({ error: "invalid_client" }, { status: 400 })
+      : Response.json({ access_token: "token", expires_in: 86399 });
+  if (shopify.mode === "down")
+    return new Response("unavailable", { status: 503 });
   const { query, variables } = JSON.parse(String(init.body));
   if (query.includes("codeDiscountNodeByCode"))
     return Response.json({
@@ -56,24 +48,18 @@ async function fakeShopify(url: string, init: RequestInit) {
       },
     });
   const code = variables.discount.code;
-  if (shopify.taken) shopify.codes.add(code);
-  if (shopify.codes.has(code))
-    return Response.json({
-      data: {
-        discountCodeBasicCreate: {
-          codeDiscountNode: null,
-          userErrors: [{ code: "TAKEN" }],
-        },
-      },
-    });
+  const existed = shopify.codes.has(code) || shopify.mode === "taken";
   shopify.codes.add(code);
-  if (shopify.loseReply) return new Response("timeout", { status: 504 });
+  if (shopify.mode === "loseReply")
+    return new Response("timeout", { status: 504 });
   return Response.json({
     data: {
-      discountCodeBasicCreate: {
-        codeDiscountNode: { id: "gid://shopify/DiscountCodeNode/2" },
-        userErrors: [],
-      },
+      discountCodeBasicCreate: existed
+        ? { codeDiscountNode: null, userErrors: [{ code: "TAKEN" }] }
+        : {
+            codeDiscountNode: { id: "gid://shopify/DiscountCodeNode/2" },
+            userErrors: [],
+          },
     },
   });
 }
@@ -146,16 +132,9 @@ beforeEach(async () => {
     db.prepare("DELETE FROM community_survey_email"),
     db.prepare("DELETE FROM community_sticker_claim"),
   ]);
-  Object.assign(shopify, {
-    tokenRequests: 0,
-    down: false,
-    loseReply: false,
-    taken: false,
-    tokenStatus: 200,
-    graphqlRequests: 0,
-  });
+  shopify.mode = "ok";
+  shopify.requests = 0;
   shopify.codes.clear();
-  resetShopifyTokenCache();
   vi.stubGlobal("fetch", fakeShopify);
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
@@ -298,7 +277,6 @@ describe("survey submissions", () => {
     ).toBeDefined();
     expect(await count("community_survey_response")).toBe(4);
     expect(await count("community_sticker_claim")).toBe(2);
-    expect(shopify.tokenRequests).toBe(1);
     expect(emailKey(" Ada+Tag@Example.TEST ")).toBe("ada@example.test");
   });
 
@@ -329,45 +307,40 @@ describe("survey submissions", () => {
     expect(codeFrom((await post()).body)).toBeDefined();
   });
 
-  it("keeps the claim pending when Shopify is unavailable", async () => {
-    shopify.down = true;
-    const { body } = await post();
-    expect(body.result).toEqual({
-      duplicate: false,
-      claimLink: null,
-      claimNote: CLAIM_PENDING,
-    });
-    expect(
-      await count(
-        "community_sticker_claim WHERE status = 'pending' AND attempts = 1",
-      ),
-    ).toBe(1);
-    expect(shopify.codes.size).toBe(0);
-  });
+  it.each([
+    ["down", 3],
+    ["tokenDenied", 1],
+  ] as const)(
+    "keeps the claim pending when Shopify is %s",
+    async (mode, requests) => {
+      shopify.mode = mode;
+      const { body } = await post();
+      expect(body.result).toEqual({
+        duplicate: false,
+        claimLink: null,
+        claimNote: CLAIM_PENDING,
+      });
+      expect(
+        await count(
+          "community_sticker_claim WHERE status = 'pending' AND attempts = 1",
+        ),
+      ).toBe(1);
+      expect([shopify.codes.size, shopify.requests]).toEqual([0, requests]);
+    },
+  );
 
-  it("treats a duplicate-code error for its own code as created", async () => {
-    shopify.taken = true;
-    const { body } = await post();
-    expect(codeFrom(body)).toBeDefined();
-    expect(shopify.codes.size).toBe(1);
-  });
-
-  it("stops at a failed token request without retrying it", async () => {
-    shopify.tokenStatus = 400;
-    const { body } = await post();
-    expect(body.result?.claimLink).toBeNull();
-    expect([shopify.tokenRequests, shopify.graphqlRequests]).toEqual([1, 0]);
-  });
-
-  it("treats a code Shopify created before losing the reply as created", async () => {
-    shopify.loseReply = true;
-    const { body } = await post();
-    expect(codeFrom(body)).toBeDefined();
-    expect(shopify.codes.size).toBe(1);
-    expect(
-      await count("community_sticker_claim WHERE status = 'created'"),
-    ).toBe(1);
-  });
+  it.each(["taken", "loseReply"] as const)(
+    "treats its own code as created after a %s reply",
+    async (mode) => {
+      shopify.mode = mode;
+      const { body } = await post();
+      expect(codeFrom(body)).toBeDefined();
+      expect(shopify.codes.size).toBe(1);
+      expect(
+        await count("community_sticker_claim WHERE status = 'created'"),
+      ).toBe(1);
+    },
+  );
 
   it("rolls back answers when reserving a claim fails", async () => {
     await db

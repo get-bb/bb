@@ -9,36 +9,29 @@ export type ShopifyEnv = Pick<
   | "SHOPIFY_CLIENT_SECRET"
 >;
 
-type ShopifyConfig = {
+export type ShopifyConfig = {
   store: string;
   variantId: string;
   clientId: string;
   clientSecret: string;
 };
 
-type CreateResult = { ok: true } | { ok: false; reason: string };
+export type CreateResult =
+  | { ok: true }
+  | { ok: false; kind: "auth" | "unreachable" | "rejected" };
 
 const API_VERSION = "2026-10";
 const TIMEOUT_MS = 5000;
 const CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
-const tokenResponse = z.object({
-  access_token: z.string(),
-  expires_in: z.number(),
-});
-const userErrors = z.array(z.object({ code: z.string().nullable() }));
+const tokenResponse = z.object({ access_token: z.string() });
 const createResponse = z.object({
   data: z.object({
     discountCodeBasicCreate: z.object({
       codeDiscountNode: z.object({ id: z.string() }).nullable(),
-      userErrors,
+      userErrors: z.array(z.unknown()),
     }),
   }),
-});
-const graphqlErrors = z.object({
-  errors: z.array(
-    z.object({ extensions: z.object({ code: z.string() }).optional() }),
-  ),
 });
 const lookupResponse = z.object({
   data: z.object({
@@ -46,8 +39,11 @@ const lookupResponse = z.object({
   }),
 });
 
-let cachedToken: { key: string; token: string; expiresAt: number } | null =
-  null;
+class ShopifyError extends Error {
+  constructor(readonly kind: "auth" | "unreachable" | "rejected") {
+    super(kind);
+  }
+}
 
 export function shopifyConfig(env: ShopifyEnv): ShopifyConfig | null {
   const store = env.COMMUNITY_SHOPIFY_STORE ?? "";
@@ -73,7 +69,7 @@ export function newStickerCode(): string {
 }
 
 export function claimUrl(
-  config: ShopifyConfig,
+  config: Pick<ShopifyConfig, "store" | "variantId">,
   code: string,
   email: string,
 ): string {
@@ -83,79 +79,68 @@ export function claimUrl(
   return url.href;
 }
 
-export function resetShopifyTokenCache(): void {
-  cachedToken = null;
+async function post(url: string, init: RequestInit): Promise<unknown> {
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...init,
+      method: "POST",
+      redirect: "error",
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+  } catch {
+    throw new ShopifyError("unreachable");
+  }
+  if (response.status >= 500 || response.status === 429)
+    throw new ShopifyError("unreachable");
+  if (!response.ok) throw new ShopifyError("auth");
+  return response.json();
 }
 
-async function accessToken(config: ShopifyConfig) {
-  const key = `${config.store}:${config.clientId}`;
-  const now = Date.now();
-  if (cachedToken?.key === key && cachedToken.expiresAt - 60_000 > now)
-    return cachedToken.token;
-  const response = await fetch(
-    `https://${config.store}/admin/oauth/access_token`,
-    {
-      method: "POST",
+async function accessToken(config: ShopifyConfig): Promise<string> {
+  const body = tokenResponse.safeParse(
+    await post(`https://${config.store}/admin/oauth/access_token`, {
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         grant_type: "client_credentials",
         client_id: config.clientId,
         client_secret: config.clientSecret,
       }),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-      redirect: "error",
-    },
+    }),
   );
-  if (!response.ok) throw new Error(`token_${response.status}`);
-  const body = tokenResponse.parse(await response.json());
-  cachedToken = {
-    key,
-    token: body.access_token,
-    expiresAt: now + body.expires_in * 1000,
-  };
-  return body.access_token;
+  if (!body.success) throw new ShopifyError("auth");
+  return body.data.access_token;
 }
 
-async function graphql(
-  token: string,
+function graphql(
   config: ShopifyConfig,
+  token: string,
   query: string,
   variables: Record<string, unknown>,
 ): Promise<unknown> {
-  const response = await fetch(
-    `https://${config.store}/admin/api/${API_VERSION}/graphql.json`,
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "X-Shopify-Access-Token": token,
-      },
-      body: JSON.stringify({ query, variables }),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-      redirect: "error",
+  return post(`https://${config.store}/admin/api/${API_VERSION}/graphql.json`, {
+    headers: {
+      "content-type": "application/json",
+      "X-Shopify-Access-Token": token,
     },
-  );
-  if (response.status === 401 || response.status === 403) cachedToken = null;
-  if (!response.ok) throw new Error(`graphql_${response.status}`);
-  const body: unknown = await response.json();
-  const failure = graphqlErrors.safeParse(body);
-  if (failure.success && failure.data.errors.length)
-    throw new Error(
-      `graphql_${failure.data.errors[0]?.extensions?.code ?? "error"}`,
-    );
-  return body;
+    body: JSON.stringify({ query, variables }),
+  });
 }
 
-async function codeExists(token: string, config: ShopifyConfig, code: string) {
-  const body = lookupResponse.parse(
+async function codeExists(
+  config: ShopifyConfig,
+  token: string,
+  code: string,
+): Promise<boolean> {
+  const body = lookupResponse.safeParse(
     await graphql(
-      token,
       config,
+      token,
       "query StickerCode($code: String!) { codeDiscountNodeByCode(code: $code) { id } }",
       { code },
     ),
   );
-  return body.data.codeDiscountNodeByCode !== null;
+  return body.success && body.data.data.codeDiscountNodeByCode !== null;
 }
 
 export async function createStickerDiscount(
@@ -168,13 +153,17 @@ export async function createStickerDiscount(
   try {
     token = await accessToken(config);
   } catch (error) {
-    return { ok: false, reason: reasonOf(error) };
+    return {
+      ok: false,
+      kind: error instanceof ShopifyError ? error.kind : "unreachable",
+    };
   }
+  let failure: ShopifyError = new ShopifyError("rejected");
   try {
-    const body = createResponse.parse(
+    const body = createResponse.safeParse(
       await graphql(
-        token,
         config,
+        token,
         "mutation StickerCode($discount: DiscountCodeBasicInput!) { discountCodeBasicCreate(basicCodeDiscount: $discount) { codeDiscountNode { id } userErrors { code } } }",
         {
           discount: {
@@ -206,25 +195,16 @@ export async function createStickerDiscount(
         },
       ),
     );
-    const result = body.data.discountCodeBasicCreate;
-    if (result.codeDiscountNode && !result.userErrors.length)
+    const created = body.success
+      ? body.data.data.discountCodeBasicCreate
+      : null;
+    if (created?.codeDiscountNode && !created.userErrors.length)
       return { ok: true };
-    if (await codeExists(token, config, code)) return { ok: true };
-    return {
-      ok: false,
-      reason: result.userErrors.map((error) => error.code).join(",") || "none",
-    };
   } catch (error) {
-    try {
-      if (await codeExists(token, config, code)) return { ok: true };
-    } catch {}
-    return { ok: false, reason: reasonOf(error) };
+    if (error instanceof ShopifyError) failure = error;
   }
-}
-
-function reasonOf(error: unknown): string {
-  if (error instanceof Error && /^(token|graphql)_/.test(error.message))
-    return error.message;
-  if (error instanceof Error && error.name === "TimeoutError") return "timeout";
-  return "unavailable";
+  try {
+    if (await codeExists(config, token, code)) return { ok: true };
+  } catch {}
+  return { ok: false, kind: failure.kind };
 }
