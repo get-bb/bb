@@ -197,6 +197,9 @@ Cmd/Ctrl+Shift-click and Shift-click for bulk actions and drag; Cmd/Ctrl-click
 still opens a thread in a split.
 `pluginUpdates` lists plugin updates on Settings → Updates with Update and
 Update all, and counts them in the sidebar updates badge; see `bb guide plugins`.
+`skipFocusedThreadNotifications` skips the web and desktop system notification
+for a thread open in a visible, focused bb window or tab. It defaults on for
+early adopters.
 `threadContextCard` moves a running thread's changes, pull request, and parent
 and child threads into a card at the upper-right of its pane, opened or pinned from
 the header. It defaults on for early adopters.
@@ -211,8 +214,9 @@ pushes) on the app's live connection; it applies when the app reconnects.
 `bb settings general earlyAdopter on` (Settings → Experiments → Become an early
 adopter) turns on the experiments marked Early adopter, currently
 `applicationLinks`, `timelinePush`, `compactExpiredCache`, `pluginUpdates`,
-`sidebarMultiSelect`, `threadContextCard`, `unreadDividerAtAnswer`, and
-`websocketCompression`; an experiment you set yourself keeps your value.
+`sidebarMultiSelect`, `skipFocusedThreadNotifications`, `threadContextCard`,
+`unreadDividerAtAnswer`, and `websocketCompression`; an experiment you set
+yourself keeps your value.
 
 Launcher settings
 

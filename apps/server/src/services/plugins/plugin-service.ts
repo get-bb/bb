@@ -1623,7 +1623,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       for (const watcher of builtinSourceWatchers.splice(0)) watcher.close();
       await disposeAll();
       await syncCliSkill();
-      notifyPluginsChanged();
     },
 
     handleUncaughtException,

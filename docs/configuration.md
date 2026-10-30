@@ -874,9 +874,8 @@ The `earlyAdopter` general setting (the Become an early adopter banner on
 Settings → Experiments, `bb settings general earlyAdopter on`) switches the
 shipped default to the early adopter default: experiments marked Early adopter
 (currently `applicationLinks`, `timelinePush`, `compactExpiredCache`,
-`pluginUpdates`, `sidebarMultiSelect`, `threadContextCard`,
-`unreadDividerAtAnswer`, and
-`websocketCompression`) turn on, and the rest stay
+`pluginUpdates`, `sidebarMultiSelect`, `skipFocusedThreadNotifications`,
+`unreadDividerAtAnswer`, and `websocketCompression`) turn on, and the rest stay
 off. An experiment you set yourself keeps your value either way.
 `/system/config` and `sdk.system.config()` return the resolved values in
 `experiments`.
@@ -933,7 +932,7 @@ off. An experiment you set yourself keeps your value either way.
   them onto a composer as one mention per thread. Cmd/Ctrl-click still opens a
   thread in a split. Plugins read it with
   `experimental_useExperiment("sidebarMultiSelect")`.
-- `threadContextCard` (on for early adopters) moves a running thread's
+- `threadContextCard` moves a running thread's
   details into the thread context card at the upper-right of its pane: bb's parent
   thread and child threads, the Git plugin's changes, which open the Diff tab,
   and GitHub PR Status's pull request. The context row above the
@@ -950,6 +949,15 @@ off. An experiment you set yourself keeps your value either way.
   GitHub PR Status's pull request number on a line under each thread title.
   While the experiment is off the sidebar ignores `showRowMetadata`. Plugins
   read it with `experimental_useExperiment("threadRowMetadata")`.
+- `skipFocusedThreadNotifications` (on for early adopters) makes the
+  push-notifications plugin skip the web and desktop system notification for a
+  thread that is open in a visible, focused bb window or browser tab of the same
+  origin. Each such window holds a shared Web Lock for its thread, so the window
+  that claims a notification also sees threads focused in other windows. Other
+  threads, notifications without a thread, and mobile push are unaffected. The
+  plugin reads it with
+  `experimental_useExperiment("skipFocusedThreadNotifications")` and follows a
+  toggle live.
 - `timelinePush` makes an open thread view subscribe to its latest timeline
   window over the WebSocket (`thread-timeline` subscription target); the server
   pushes the full window once, then row deltas after new events, instead of the

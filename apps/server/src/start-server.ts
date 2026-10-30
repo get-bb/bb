@@ -485,6 +485,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       return shutdownPromise;
     }
     shutdownPromise = (async () => {
+      hub.stopClientChangeNotifications();
       serverMove.dispose();
       appUpdate.dispose();
       providerModelCatalogPrewarm?.stop();
