@@ -11,6 +11,7 @@ import { CopyToast, PROMPT_COPIED, useCopy } from "../guides/guide-blocks";
 import { docs } from "./content";
 import { DocsH2, DocsH3, DocsPageUrl } from "./docs-headings";
 import { DocsSearch } from "./docs-search";
+import { ReferenceBody } from "./reference-body";
 import type { DocsNavSection, DocsPageView, DocsTocEntry } from "./page-view";
 
 const SITE = "https://getbb.app";
@@ -252,9 +253,13 @@ export function DocsPage({ view }: { view: DocsPageView }) {
                 </div>
                 <p className="docs-lede">{view.description}</p>
                 <article className="docs-body">
-                  <Suspense fallback={null}>
-                    <MdxBody contentPath={view.contentPath} />
-                  </Suspense>
+                  {view.kind === "mdx" ? (
+                    <Suspense fallback={null}>
+                      <MdxBody contentPath={view.contentPath} />
+                    </Suspense>
+                  ) : (
+                    <ReferenceBody markdown={view.markdown} toc={view.toc} />
+                  )}
                 </article>
               </main>
               <DocsToc entries={view.toc} editUrl={view.editUrl} />

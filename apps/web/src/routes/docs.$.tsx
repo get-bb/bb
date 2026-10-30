@@ -22,8 +22,10 @@ export const Route = createFileRoute("/docs/$")({
   staticData: { ownsCanonical: true },
   loader: async ({ params }) => {
     const view = await loadDocsPage({ data: params._splat ?? "" });
-    const { docs } = await import("../docs/content");
-    await docs.getPage(view.contentPath)?.preload();
+    if (view.kind === "mdx") {
+      const { docs } = await import("../docs/content");
+      await docs.getPage(view.contentPath)?.preload();
+    }
     return view;
   },
   head: ({ loaderData }) =>
