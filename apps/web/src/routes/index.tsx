@@ -1399,6 +1399,7 @@ function LandingPage() {
   useExperimentExposure("homepage-download-area", "desktop");
   const subhead = useExperiment("homepage-subhead-text");
   useExperimentExposure("homepage-subhead-text", "desktop");
+  useExperimentExposure("homepage-aa", "all");
   useScrollReveal();
   useSectionViews((section) => {
     if (BELOW_FOLD_SECTIONS[belowFold].includes(section)) exposeBelowFold();
