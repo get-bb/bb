@@ -257,6 +257,7 @@ const THREAD_EVENT_PAYLOAD_FIELDS = {
     "inputAccepted",
     "rateLimits",
     "attemptNumber",
+    "originPluginId",
   ],
 } as const satisfies {
   [

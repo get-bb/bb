@@ -107,7 +107,7 @@ export function PullRequestBadge({
         <div className="truncate">
           #{pullRequest.number} {pullRequest.title}
         </div>
-        <div className="text-muted-foreground">
+        <div className="text-primary-foreground/75">
           {describePullRequestStatus(pullRequest)}
           {counts === null ? null : ` · ${counts}`}
         </div>

@@ -246,6 +246,7 @@ describe("generated thread titles", () => {
       });
       const input = textInput("Stop during metadata inference before setup");
       requestThreadProvision(harness.deps, {
+        originPluginId: null,
         author: { initiator: "user", senderThreadId: null },
         environmentIntent: {
           type: "provider",
@@ -582,6 +583,7 @@ describe("generated thread titles", () => {
       });
 
       requestThreadProvision(harness.deps, {
+        originPluginId: null,
         author: { initiator: "user", senderThreadId: null },
         environmentIntent: {
           type: "reuse",
@@ -694,6 +696,7 @@ describe("generated thread titles", () => {
       });
 
       requestThreadProvision(harness.deps, {
+        originPluginId: null,
         author: { initiator: "user", senderThreadId: null },
         environmentIntent: {
           type: "reuse",

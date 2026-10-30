@@ -29,10 +29,12 @@ import {
   parseAutomationExecution,
   setAutomationEnabled,
   setAutomationRunThread,
+  AUTOMATION_QUICK_RETRY_LIMIT,
   AUTOMATION_RETRY_BASE_MS,
   type Db,
 } from "./data.js";
 import { ingestLegacyImport } from "./legacy-import.js";
+import { answerRetryConsent } from "./retry-consent.js";
 import {
   computeInitialNextRunAt,
   computeNextScheduledTime,
@@ -603,7 +605,7 @@ describe("automation data access", () => {
     const claim = claimAutomationScheduledRun(db, {
       automationId: automation.id,
       expectedNextRunAt: 1000,
-      newNextRunAt: 2000,
+      newNextRunAt: 1000 + 3_600_000,
       now: 1000,
     });
     if (!claim.advanced) throw new Error("claim failed");
@@ -658,17 +660,19 @@ describe("automation data access", () => {
     expect(getAutomation(db, automation.id)?.nextRunAt).toBeNull();
   });
 
-  it("auto-pauses after three consecutive scheduled failures", () => {
+  it("keeps a failing recurring automation on its schedule after two quick retries", () => {
     const db = createTestDb();
     const automation = createScheduledAutomation(db, 1000);
+    const HOUR = 3_600_000;
+    let scheduledSlot = 1000;
     let expectedNextRunAt = 1000;
 
-    for (let failure = 1; failure <= 3; failure += 1) {
-      const advancedNextRunAt = expectedNextRunAt + 60_000;
+    for (let failure = 1; failure <= 5; failure += 1) {
+      if (expectedNextRunAt === scheduledSlot) scheduledSlot += HOUR;
       const claim = claimAutomationScheduledRun(db, {
         automationId: automation.id,
         expectedNextRunAt,
-        newNextRunAt: advancedNextRunAt,
+        newNextRunAt: scheduledSlot,
         now: expectedNextRunAt,
       });
       if (!claim.advanced) throw new Error(`claim ${failure} failed`);
@@ -680,20 +684,39 @@ describe("automation data access", () => {
         now: failedAt,
       });
       const current = getAutomation(db, automation.id);
-      expect(current?.consecutiveFailures).toBe(failure);
-      if (failure < 3) {
-        expectedNextRunAt =
-          failedAt + AUTOMATION_RETRY_BASE_MS * 2 ** (failure - 1);
-        expect(current?.enabled).toBe(true);
-        expect(current?.nextRunAt).toBe(expectedNextRunAt);
-      } else {
-        expect(current?.enabled).toBe(false);
-        expect(current?.nextRunAt).toBeNull();
-        expect(current?.lastError).toContain(
-          "paused after 3 consecutive failures",
-        );
-      }
+      expectedNextRunAt =
+        failure <= AUTOMATION_QUICK_RETRY_LIMIT
+          ? failedAt + AUTOMATION_RETRY_BASE_MS * 2 ** (failure - 1)
+          : scheduledSlot;
+      expect(current).toMatchObject({
+        enabled: true,
+        consecutiveFailures: failure,
+        nextRunAt: expectedNextRunAt,
+        lastError: `dispatch failed ${failure}`,
+      });
     }
+  });
+
+  it("never schedules a quick retry after the next scheduled run", () => {
+    const db = createTestDb();
+    const automation = createScheduledAutomation(db, 1000);
+    const nextSlot = 1000 + AUTOMATION_RETRY_BASE_MS / 2;
+    const claim = claimAutomationScheduledRun(db, {
+      automationId: automation.id,
+      expectedNextRunAt: 1000,
+      newNextRunAt: nextSlot,
+      now: 1000,
+    });
+    if (!claim.advanced) throw new Error("claim failed");
+
+    closeAutomationRun(db, {
+      runId: claim.run.id,
+      status: "failed",
+      error: "dispatch failed",
+      now: 1001,
+    });
+
+    expect(getAutomation(db, automation.id)?.nextRunAt).toBe(nextSlot);
   });
 
   it("enforces one running execution per automation", () => {
@@ -2897,5 +2920,154 @@ describe("legacy import", () => {
         await rm(pluginDataDir, { recursive: true, force: true });
       }
     }
+  });
+});
+
+describe("answering provider retry consent", () => {
+  const REQUEST_ID = "creq_failedturn";
+
+  function runOnThread(
+    db: Db,
+    args: {
+      automationId: string;
+      threadId: string;
+      trigger: "schedule" | "manual";
+      now: number;
+    },
+  ) {
+    const automation = getAutomation(db, args.automationId);
+    if (automation === null) throw new Error("missing automation");
+    const run =
+      args.trigger === "manual"
+        ? createManualRun(db, {
+            automationId: automation.id,
+            runMode: "agent",
+            now: args.now,
+          }).run
+        : (() => {
+            const claim = claimAutomationScheduledRun(db, {
+              automationId: automation.id,
+              expectedNextRunAt: args.now,
+              newNextRunAt:
+                automation.triggerType === "once" ? null : args.now + 60_000,
+              now: args.now,
+            });
+            if (!claim.advanced) throw new Error("claim failed");
+            return claim.run;
+          })();
+    setAutomationRunThread(db, { runId: run.id, threadId: args.threadId });
+    closeAutomationRun(db, {
+      runId: run.id,
+      status: "failed",
+      error: "Provider unavailable",
+      now: args.now + 1,
+    });
+  }
+
+  function latestRequest(
+    target: "new-turn" | "thread-start" | "steer" | "auto",
+    requestId = REQUEST_ID,
+  ) {
+    return async () => ({
+      requestId,
+      target:
+        target === "steer" || target === "auto"
+          ? { kind: target, expectedTurnId: "turn_user" }
+          : { kind: target },
+    });
+  }
+
+  function ask(
+    db: Db,
+    threadId: string,
+    reader: () => Promise<unknown> = latestRequest("new-turn"),
+  ) {
+    return answerRetryConsent(db, reader, { threadId, requestId: REQUEST_ID });
+  }
+
+  it.each(["new-turn", "thread-start"] as const)(
+    "declines a scheduled run of a recurring automation that started its own turn (%s)",
+    async (target) => {
+      const db = createTestDb();
+      createScheduledAutomation(db, 1000);
+      runOnThread(db, {
+        automationId: "auto_test",
+        threadId: "thr_target",
+        trigger: "schedule",
+        now: 1000,
+      });
+
+      expect(await ask(db, "thr_target", latestRequest(target))).toEqual({
+        kind: "decline",
+        reason: 'automation "Test" runs again on its schedule',
+      });
+    },
+  );
+
+  it.each([
+    { label: "it joined a turn someone else was running", reader: latestRequest("steer") },
+    { label: "it joined a turn in auto mode", reader: latestRequest("auto") },
+    {
+      label: "the failed turn is not the latest request",
+      reader: latestRequest("new-turn", "creq_someoneelse"),
+    },
+    { label: "the thread has no readable request", reader: async () => undefined },
+  ])("allows a recurring run's retry when $label", async ({ reader }) => {
+    const db = createTestDb();
+    createScheduledAutomation(db, 1000);
+    runOnThread(db, {
+      automationId: "auto_test",
+      threadId: "thr_target",
+      trigger: "schedule",
+      now: 1000,
+    });
+
+    expect(await ask(db, "thr_target", reader)).toEqual({ kind: "allow" });
+  });
+
+  it.each([
+    {
+      label: "a manual run of a recurring automation",
+      once: false,
+      trigger: "manual",
+    },
+    { label: "a one-off automation", once: true, trigger: "schedule" },
+  ] as const)(
+    "allows $label, which nothing else re-runs",
+    async ({ once, trigger }) => {
+      const db = createTestDb();
+      const automation = once
+        ? createOnceAutomation(db, 1000)
+        : createScheduledAutomation(db, 1000);
+      runOnThread(db, {
+        automationId: automation.id,
+        threadId: "thr_target",
+        trigger,
+        now: 1000,
+      });
+
+      expect(await ask(db, "thr_target")).toEqual({ kind: "allow" });
+    },
+  );
+
+  it("answers for the latest run on a thread several automations target", async () => {
+    const db = createTestDb();
+    createScheduledAutomation(db, 1000, "auto_recurring");
+    createOnceAutomation(db, 2000, "auto_once");
+    runOnThread(db, {
+      automationId: "auto_recurring",
+      threadId: "thr_shared",
+      trigger: "schedule",
+      now: 1000,
+    });
+    runOnThread(db, {
+      automationId: "auto_once",
+      threadId: "thr_shared",
+      trigger: "schedule",
+      now: 2000,
+    });
+
+    expect(await ask(db, "thr_shared")).toEqual({ kind: "allow" });
+    expect(await ask(db, "thr_unknown")).toEqual({ kind: "allow" });
   });
 });

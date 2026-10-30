@@ -629,7 +629,10 @@ whether this event needs matching resolved, cancelled, or interrupted events.
 These are observe-only announcements. `message.queued` (on first queue and on
 every rewritten wait) and `message.dispatched` carry the `ThreadQueuedMessage`
 DTO. `message.cancelled` fires when a queued row is deleted before dispatch.
-`turn.failed` carries ids and failure facts after a thread lands in `error`.
+`turn.failed` carries ids and failure facts after a thread lands in `error`,
+including `originPluginId`, the plugin that sent the failed message. Provider
+retry uses it to ask only that plugin whether to re-run the turn
+(`provider-retry.v1.consent`); Automations is the one sender that answers.
 
 Docs: `backend-events.md`.
 

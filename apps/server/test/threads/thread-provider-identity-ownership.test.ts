@@ -162,6 +162,7 @@ async function sendUserMessage(
   },
 ): Promise<void> {
   await sendThreadMessage(harness.deps, {
+    originPluginId: null,
     environment: args.environment,
     payload: {
       input: args.input ?? textInput("continue"),
