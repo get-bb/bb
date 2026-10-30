@@ -34,6 +34,7 @@ import { Route as DownloadMacosRouteImport } from "./routes/download.macos";
 import { Route as DownloadLinuxRouteImport } from "./routes/download.linux";
 import { Route as DocsChar123Char125DotmdRouteImport } from "./routes/docs.{$}[.]md";
 import { Route as DocsSearchDotjsonRouteImport } from "./routes/docs.search[.]json";
+import { Route as DocsSearchIndexDotv1DotjsonRouteImport } from "./routes/docs.search-index[.]v1[.]json";
 import { Route as DocsMcpRouteImport } from "./routes/docs.mcp";
 import { Route as DocsSplatRouteImport } from "./routes/docs.$";
 import { Route as CompareSlugRouteImport } from "./routes/compare.$slug";
@@ -186,6 +187,12 @@ const DocsSearchDotjsonRoute = DocsSearchDotjsonRouteImport.update({
   path: "/docs/search.json",
   getParentRoute: () => rootRouteImport,
 } as any);
+const DocsSearchIndexDotv1DotjsonRoute =
+  DocsSearchIndexDotv1DotjsonRouteImport.update({
+    id: "/docs/search-index.v1.json",
+    path: "/docs/search-index.v1.json",
+    getParentRoute: () => rootRouteImport,
+  } as any);
 const DocsMcpRoute = DocsMcpRouteImport.update({
   id: "/docs/mcp",
   path: "/docs/mcp",
@@ -348,6 +355,7 @@ export interface FileRoutesByFullPath {
   "/compare/$slug": typeof CompareSlugRoute;
   "/docs/$": typeof DocsSplatRoute;
   "/docs/mcp": typeof DocsMcpRoute;
+  "/docs/search-index.v1.json": typeof DocsSearchIndexDotv1DotjsonRoute;
   "/docs/search.json": typeof DocsSearchDotjsonRoute;
   "/docs/{$}.md": typeof DocsChar123Char125DotmdRoute;
   "/download/linux": typeof DownloadLinuxRoute;
@@ -401,6 +409,7 @@ export interface FileRoutesByTo {
   "/compare/$slug": typeof CompareSlugRoute;
   "/docs/$": typeof DocsSplatRoute;
   "/docs/mcp": typeof DocsMcpRoute;
+  "/docs/search-index.v1.json": typeof DocsSearchIndexDotv1DotjsonRoute;
   "/docs/search.json": typeof DocsSearchDotjsonRoute;
   "/docs/{$}.md": typeof DocsChar123Char125DotmdRoute;
   "/download/linux": typeof DownloadLinuxRoute;
@@ -455,6 +464,7 @@ export interface FileRoutesById {
   "/compare/$slug": typeof CompareSlugRoute;
   "/docs/$": typeof DocsSplatRoute;
   "/docs/mcp": typeof DocsMcpRoute;
+  "/docs/search-index.v1.json": typeof DocsSearchIndexDotv1DotjsonRoute;
   "/docs/search.json": typeof DocsSearchDotjsonRoute;
   "/docs/{$}.md": typeof DocsChar123Char125DotmdRoute;
   "/download/linux": typeof DownloadLinuxRoute;
@@ -510,6 +520,7 @@ export interface FileRouteTypes {
     | "/compare/$slug"
     | "/docs/$"
     | "/docs/mcp"
+    | "/docs/search-index.v1.json"
     | "/docs/search.json"
     | "/docs/{$}.md"
     | "/download/linux"
@@ -563,6 +574,7 @@ export interface FileRouteTypes {
     | "/compare/$slug"
     | "/docs/$"
     | "/docs/mcp"
+    | "/docs/search-index.v1.json"
     | "/docs/search.json"
     | "/docs/{$}.md"
     | "/download/linux"
@@ -616,6 +628,7 @@ export interface FileRouteTypes {
     | "/compare/$slug"
     | "/docs/$"
     | "/docs/mcp"
+    | "/docs/search-index.v1.json"
     | "/docs/search.json"
     | "/docs/{$}.md"
     | "/download/linux"
@@ -670,6 +683,7 @@ export interface RootRouteChildren {
   CompareSlugRoute: typeof CompareSlugRoute;
   DocsSplatRoute: typeof DocsSplatRoute;
   DocsMcpRoute: typeof DocsMcpRoute;
+  DocsSearchIndexDotv1DotjsonRoute: typeof DocsSearchIndexDotv1DotjsonRoute;
   DocsSearchDotjsonRoute: typeof DocsSearchDotjsonRoute;
   DocsChar123Char125DotmdRoute: typeof DocsChar123Char125DotmdRoute;
   DownloadLinuxRoute: typeof DownloadLinuxRoute;
@@ -872,6 +886,13 @@ declare module "@tanstack/react-router" {
       path: "/docs/search.json";
       fullPath: "/docs/search.json";
       preLoaderRoute: typeof DocsSearchDotjsonRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/docs/search-index.v1.json": {
+      id: "/docs/search-index.v1.json";
+      path: "/docs/search-index.v1.json";
+      fullPath: "/docs/search-index.v1.json";
+      preLoaderRoute: typeof DocsSearchIndexDotv1DotjsonRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/docs/mcp": {
@@ -1101,6 +1122,7 @@ const rootRouteChildren: RootRouteChildren = {
   CompareSlugRoute: CompareSlugRoute,
   DocsSplatRoute: DocsSplatRoute,
   DocsMcpRoute: DocsMcpRoute,
+  DocsSearchIndexDotv1DotjsonRoute: DocsSearchIndexDotv1DotjsonRoute,
   DocsSearchDotjsonRoute: DocsSearchDotjsonRoute,
   DocsChar123Char125DotmdRoute: DocsChar123Char125DotmdRoute,
   DownloadLinuxRoute: DownloadLinuxRoute,

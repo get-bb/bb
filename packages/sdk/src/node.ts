@@ -4,6 +4,7 @@ import {
   DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST,
 } from "@bb/host-daemon-contract";
 import { createGuideArea } from "./areas/guide.js";
+import { createSkillsArea } from "./areas/skills.js";
 import { createBbSdk, type BbSdk, type BbSdkAreas } from "./core.js";
 import { createNodeWebsocketFactory } from "./node-websocket.js";
 import {
@@ -62,10 +63,11 @@ export function createNodeTransport(
 }
 
 export function createNodeBbSdk(args: CreateNodeBbSdkArgs = {}): BbSdk {
+  const transport = createNodeTransport(args);
   return createBbSdk({
     context: args.context,
-    guide: createGuideArea(),
-    transport: createNodeTransport(args),
+    guide: createGuideArea({ skills: createSkillsArea({ transport }) }),
+    transport,
   });
 }
 
@@ -100,6 +102,7 @@ export {
 } from "./areas/plugins.js";
 export { createBuiltinPlanCommandTextInput } from "./core.js";
 export { createGuideArea } from "./areas/guide.js";
+export { parseGuideSearchQuery } from "./areas/guide-search.js";
 export {
   DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS,
   DEFAULT_THREAD_WAIT_TIMEOUT_MS,

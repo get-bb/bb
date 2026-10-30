@@ -19,6 +19,8 @@ bb status --json
 - `bb guide commands <group>` prints every command in a group with its options.
   `bb <command> --help` shows current flags and defaults.
 - references/command-index.md lists every core command path and alias.
+- For any question about how bb works, run `bb guide search "<question>"`
+  first and answer from the pages it returns, not from memory.
 
 ## Find the chapter
 

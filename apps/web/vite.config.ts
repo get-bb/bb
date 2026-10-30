@@ -65,6 +65,7 @@ export default defineConfig(({ command }) => {
         pages: [
           { path: "/docs" },
           { path: "/docs/search.json" },
+          { path: "/docs/search-index.v1.json" },
           { path: "/llms.txt" },
           { path: "/llms-full.txt" },
         ],
