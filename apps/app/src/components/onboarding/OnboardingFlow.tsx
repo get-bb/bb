@@ -291,11 +291,11 @@ function AgentStepContainer({
   const { mutate: closeTerminalMutate } = closeTerminal;
   const { mutateAsync: createTerminalAsync } = createTerminal;
 
-  const endSignIn = useCallback(
-    (outcome: "ready" | "exited" | "failed" | "cancelled" = "cancelled") => {
-      const current = signInRef.current;
-      if (current === null) return;
-      signInRef.current = null;
+  const recordSignIn = useCallback(
+    (
+      providerId: string,
+      outcome: "started" | "ready" | "exited" | "failed" | "cancelled",
+    ) => {
       recordTelemetryEvent({
         name: "onboarding_sign_in",
         properties: { entry, outcome },
@@ -306,7 +306,7 @@ function AgentStepContainer({
           surface: "onboarding",
           step: "agent",
           resource_type: "agent",
-          resource_id: current.providerId,
+          resource_id: providerId,
           entry,
           operation: "sign_in",
           outcome:
@@ -323,11 +323,21 @@ function AgentStepContainer({
                 : null,
         },
       });
+    },
+    [entry],
+  );
+
+  const endSignIn = useCallback(
+    (outcome: "ready" | "exited" | "failed" | "cancelled" = "cancelled") => {
+      const current = signInRef.current;
+      if (current === null) return;
+      signInRef.current = null;
+      recordSignIn(current.providerId, outcome);
       setSignIn(null);
       closeTerminalMutate({ mode: "force", terminalId: current.session.id });
       void refetchStates();
     },
-    [closeTerminalMutate, entry, refetchStates],
+    [closeTerminalMutate, recordSignIn, refetchStates],
   );
 
   const signInRequestRef = useRef(0);
@@ -387,23 +397,7 @@ function AgentStepContainer({
     setSignInFailedProviderId(null);
     signInRequestRef.current += 1;
     const request = signInRequestRef.current;
-    recordTelemetryEvent({
-      name: "onboarding_sign_in",
-      properties: { entry, outcome: "started" },
-    });
-    recordTelemetryEvent({
-      name: "onboarding_operation",
-      properties: {
-        surface: "onboarding",
-        step: "agent",
-        resource_type: "agent",
-        resource_id: providerId,
-        entry,
-        operation: "sign_in",
-        outcome: "started",
-        error_category: null,
-      },
-    });
+    recordSignIn(providerId, "started");
     const title = `Sign in to ${state.displayName}`;
     await closeAbandonedSignInTerminals({ hostId, title });
     let session: TerminalSession;
@@ -416,43 +410,11 @@ function AgentStepContainer({
         target: { kind: "host_path", hostId, cwd: null },
       });
     } catch {
-      recordTelemetryEvent({
-        name: "onboarding_sign_in",
-        properties: { entry, outcome: "failed" },
-      });
-      recordTelemetryEvent({
-        name: "onboarding_operation",
-        properties: {
-          surface: "onboarding",
-          step: "agent",
-          resource_type: "agent",
-          resource_id: providerId,
-          entry,
-          operation: "sign_in",
-          outcome: "failed",
-          error_category: "request",
-        },
-      });
+      recordSignIn(providerId, "failed");
       return;
     }
     if (signInRequestRef.current !== request) {
-      recordTelemetryEvent({
-        name: "onboarding_sign_in",
-        properties: { entry, outcome: "cancelled" },
-      });
-      recordTelemetryEvent({
-        name: "onboarding_operation",
-        properties: {
-          surface: "onboarding",
-          step: "agent",
-          resource_type: "agent",
-          resource_id: providerId,
-          entry,
-          operation: "sign_in",
-          outcome: "cancelled",
-          error_category: null,
-        },
-      });
+      recordSignIn(providerId, "cancelled");
       void sdk.terminals
         .close({ mode: "force", terminalId: session.id })
         .catch(() => null);
