@@ -1,6 +1,14 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createPluginService } from "../../../src/services/plugins/plugin-service.js";
+import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
+import { testLogger } from "../../helpers/test-app.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   getInstalledPlugin,
+  getPluginKvValue,
+  setPluginKvValue,
   setInstalledPluginEnabled,
   upsertInstalledPlugin,
   upsertPluginMarketplace,
@@ -406,4 +414,47 @@ it("attributes a public plugin outside the old list only after enable, clears on
   setInstalledPluginEnabled(db, id, true);
   reportPluginUse(deps(), id, { action: "tool_invoked", outcome: "succeeded" });
   expect(captured.at(-1)?.name).toBe("plugin_use");
+});
+
+it("uninstall removes only recommendation attribution and reinstall does not inherit it", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "bb-recommendation-removal-"));
+  const service = createPluginService({
+    ...deps(),
+    dataDir,
+    appVersion: "0.9.0",
+    logger: testLogger,
+    aiServices: createAiServiceRegistry(),
+    hub: {
+      getDaemonSessionIdForHost: () => null,
+      notifyPluginChanged: () => {},
+      onWatchedTargets: () => () => {},
+      notifyPluginSignal: () => 0,
+      notifySystem: () => {},
+    },
+  });
+  try {
+    const row = install("browser-automation", { enabled: false });
+    runWithPluginMeasurementSource(
+      "first_run",
+      "00000000-0000-4000-8000-000000000001",
+      () => {
+        setInstalledPluginEnabled(db, row.id, true);
+        capturePluginStateChanged(deps(), row.id, row);
+      },
+    );
+    setPluginKvValue(db, row.id, "user-data", "keep");
+    expect(getPluginKvValue(db, row.id, "@bb/recommendation")).toBeDefined();
+    expect(await service.remove(row.id)).toBe(true);
+    expect(getPluginKvValue(db, row.id, "@bb/recommendation")).toBeUndefined();
+    expect(getPluginKvValue(db, row.id, "user-data")).toBe("keep");
+    install();
+    reportPluginUse(deps(), row.id, {
+      action: "tool_invoked",
+      outcome: "succeeded",
+    });
+    expect(captured.at(-1)?.name).toBe("plugin_use");
+  } finally {
+    await service.stop();
+    await rm(dataDir, { recursive: true, force: true });
+  }
 });
