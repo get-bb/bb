@@ -626,6 +626,7 @@ describe("active thread disconnect reconciliation triggers", () => {
       vi.useFakeTimers();
       await reopenSessionWithoutThreads(harness, session);
       await vi.advanceTimersByTimeAsync(2_000);
+      await vi.runOnlyPendingTimersAsync();
 
       const parentNotices = listQueuedThreadMessages(
         harness.deps.db,

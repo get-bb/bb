@@ -457,6 +457,7 @@ export {
   deleteQueuedRetriesForThreadEventSuffixInTransaction,
   deleteClaimedQueuedThreadMessageBatchInTransaction,
   deleteQueuedThreadMessage,
+  getPendingCoalescedQueuedThreadMessage,
   getQueuedThreadMessage,
   getQueuedThreadStartMessage,
   getFirstUnclaimedQueuedRetry,
@@ -467,6 +468,7 @@ export {
   isThreadQueueAutoSendPaused,
   listDueScheduledQueuedThreadMessages,
   listIdleThreadsWithQueuedMessages,
+  listReadySystemNoticesOnBusyThreads,
   listQueuedThreadMessageCountsByThreadIds,
   listQueuedThreadMessagePluginWaitRefs,
   listQueuedThreadMessages,
@@ -484,6 +486,7 @@ export {
   reorderQueuedThreadMessage,
   setQueuedThreadMessageGroupBoundary,
   supersedeQueuedRetriesInTransaction,
+  updateCoalescedQueuedThreadMessageInTransaction,
   updateQueuedThreadMessage,
 } from "./queued-thread-messages.js";
 export type {

@@ -329,6 +329,7 @@ async function sendUserMessage(
   text: string,
 ): Promise<void> {
   const delivery = await attemptDispatch(harness.deps, {
+    systemNotice: null,
     thread: requireThread(harness, threadId),
     payload: {
       mode: "queue-if-active",
