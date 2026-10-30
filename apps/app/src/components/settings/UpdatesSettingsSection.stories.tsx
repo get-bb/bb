@@ -370,18 +370,18 @@ export function RowVariations() {
               <BbAppUpdateRows
                 systemVersion={{
                   ...NPM_VERSION,
-                  latestVersion: "0.47.0",
+                  latestVersion: "0.48.0",
                   updateAvailable: true,
                 }}
                 desktopInfo={null}
                 isDesktop={false}
                 onRelaunchDesktop={null}
                 onRetryDesktop={null}
-                releaseNotes={storyReleaseNotes("0.47.0", true)}
+                releaseNotes={storyReleaseNotes("0.48.0", true)}
               />
               <ReleaseNotesPanel
-                id="story-release-notes-0.47.0"
-                version="0.47.0"
+                id="story-release-notes-0.48.0"
+                version="0.48.0"
               />
             </BbUpdatesCard>
           </div>
