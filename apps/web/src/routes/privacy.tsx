@@ -204,7 +204,7 @@ function PrivacyRoute() {
             Automatic event capture is off. The pages send page views, the
             referrer and any campaign parameters in the URL, and a small set of
             named events, such as a click on a download link or a copy of the
-            install command.
+            install command, and which sections of the homepage are viewed.
           </p>
 
           <p>
