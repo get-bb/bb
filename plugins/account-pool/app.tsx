@@ -1244,6 +1244,29 @@ function AccountPoolSettings() {
             {error}
           </div>
         )}
+        {accounts.length === 0 ? null : (
+          <aside
+            aria-label="How accounts are used"
+            className="flex items-start gap-3 rounded-lg border border-border bg-muted/40 px-4 py-3"
+          >
+            <Icon
+              name="Info"
+              className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+            />
+            <div className="min-w-0 space-y-1">
+              <h2 className="text-sm font-medium">How accounts are used</h2>
+              <p className="text-xs leading-snug text-subtle-foreground/75">
+                New conversations use one account at a time, in the order below.
+                Once it passes {Math.round(threshold * 100)}%, the next account
+                with room takes over, and accounts past{" "}
+                {Math.round(threshold * 100)}% keep working when none have room.
+                Paid usage (extra usage, overage, and API keys) is used only
+                when nothing else can serve. Ongoing conversations stay on their
+                account until it runs out.
+              </p>
+            </div>
+          </aside>
+        )}
         {status !== null && !statusIsCached && accounts.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border px-5 py-6 text-center">
             <h2 className="text-sm font-semibold text-foreground">
