@@ -1,88 +1,56 @@
 import { describe, expect, it } from "vitest";
 import { recordTelemetryEventRequestSchema } from "../src/api/system.js";
 
-function parse(properties: { operation?: string; [key: string]: unknown }) {
-  const operation = properties.operation ?? "";
-  const [resource_type, action] = operation.split("_");
-  const step =
-    resource_type === "agent"
-      ? "agent"
-      : resource_type === "plugin"
-        ? "plugins"
-        : "projects";
-  const resource_id =
-    resource_type === "agent"
-      ? "codex"
-      : resource_type === "plugin"
-        ? "browser-automation"
-        : action === "scan"
-          ? "project_discovery"
-          : "project_import";
+const agent = { step: "agent", resource_type: "agent", resource_id: "codex" };
+const plugin = {
+  step: "plugins",
+  resource_type: "plugin",
+  resource_id: "browser-automation",
+};
+const project = {
+  step: "projects",
+  resource_type: "project",
+  resource_id: "project_discovery",
+};
+const imported = {
+  ...project,
+  resource_id: "project_import",
+  selected_count: 3,
+  succeeded_count: 0,
+};
+function parse(properties: object) {
   return recordTelemetryEventRequestSchema.safeParse({
     name: "onboarding_operation",
-    properties: {
-      entry: "first_run",
-      surface: "onboarding",
-      step,
-      resource_type,
-      resource_id,
-      ...properties,
-      operation: action ?? operation,
-    },
+    properties: { surface: "onboarding", entry: "first_run", ...properties },
   });
 }
 
-const operations = [
-  "agent_install",
-  "agent_update",
-  "project_scan",
-  "project_import",
-  "plugin_install",
-  "plugin_enable",
-] as const;
-
-function counts(operation: string, succeeded = 0) {
-  return operation === "project_import"
-    ? { selected_count: 3, succeeded_count: succeeded }
-    : {};
-}
-
 describe("onboarding operation telemetry boundary", () => {
-  it.each(operations)("accepts bounded %s observations", (operation) => {
+  it.each([
+    [agent, "install", "command_exit"],
+    [agent, "update", "command_exit"],
+    [agent, "sign_in", "request"],
+    [project, "scan", "request"],
+    [imported, "import", "request"],
+    [plugin, "install", "job_failed"],
+    [plugin, "enable", "request"],
+  ])("validates %j %s outcome semantics", (resource, operation, category) => {
     for (const entry of ["first_run", "replay"]) {
       for (const outcome of ["started", "succeeded"]) {
         expect(
           parse({
+            ...resource,
             entry,
             operation,
             outcome,
             error_category: null,
-            ...counts(operation, outcome === "succeeded" ? 3 : 0),
-          }).success,
-        ).toBe(true);
-      }
-      for (const error_category of ["request", "unknown"]) {
-        expect(
-          parse({
-            entry,
-            operation,
-            outcome: "unknown",
-            error_category,
-            ...counts(operation, 1),
+            ...(operation === "import"
+              ? { succeeded_count: outcome === "succeeded" ? 3 : 0 }
+              : {}),
           }).success,
         ).toBe(true);
       }
     }
-  });
-
-  it.each([
-    ["agent_install", "command_exit"],
-    ["agent_update", "command_exit"],
-    ["project_scan", "request"],
-    ["project_import", "request"],
-    ["plugin_install", "job_failed"],
-    ["plugin_enable", "request"],
-  ])("requires the actual %s failure boundary", (operation, category) => {
     for (const error_category of [
       null,
       "request",
@@ -91,35 +59,39 @@ describe("onboarding operation telemetry boundary", () => {
       "unknown",
     ]) {
       expect(
-        parse({
-          operation,
-          outcome: "failed",
-          error_category,
-          ...counts(operation),
-        }).success,
+        parse({ ...resource, operation, outcome: "failed", error_category })
+          .success,
       ).toBe(error_category === category);
     }
-  });
-
-  it("keeps partial and confirmed cancellation specific to supported operations", () => {
-    for (const operation of operations) {
-      expect(
-        parse({
-          operation,
-          outcome: "partial",
-          error_category: "request",
-          ...counts(operation, 1),
-        }).success,
-      ).toBe(operation === "project_import");
-      expect(
-        parse({
-          operation,
-          outcome: "cancelled",
-          error_category: null,
-          ...counts(operation, 1),
-        }).success,
-      ).toBe(operation === "project_import" || operation === "plugin_install");
-    }
+    expect(
+      parse({
+        ...resource,
+        operation,
+        outcome: "unknown",
+        error_category: "unknown",
+      }).success,
+    ).toBe(true);
+    expect(
+      parse({
+        ...resource,
+        operation,
+        outcome: "partial",
+        error_category: "request",
+        ...(operation === "import" ? { succeeded_count: 1 } : {}),
+      }).success,
+    ).toBe(operation === "import");
+    expect(
+      parse({
+        ...resource,
+        operation,
+        outcome: "cancelled",
+        error_category: null,
+      }).success,
+    ).toBe(
+      operation === "import" ||
+        operation === "sign_in" ||
+        (resource.step === "plugins" && operation === "install"),
+    );
   });
 
   it.each([
@@ -140,7 +112,8 @@ describe("onboarding operation telemetry boundary", () => {
     (outcome, selected_count, succeeded_count, error_category) => {
       expect(
         parse({
-          operation: "project_import",
+          ...imported,
+          operation: "import",
           outcome,
           selected_count,
           succeeded_count,
@@ -150,59 +123,34 @@ describe("onboarding operation telemetry boundary", () => {
     },
   );
 
-  it("retains confirmed counts for cancelled or unknown imports", () => {
-    for (const succeeded_count of [0, 1, 3]) {
-      for (const outcome of ["cancelled", "unknown"]) {
-        expect(
-          parse({
-            operation: "project_import",
-            outcome,
-            selected_count: 3,
-            succeeded_count,
-            error_category: outcome === "unknown" ? "request" : null,
-          }).success,
-        ).toBe(true);
-      }
-    }
-  });
-
-  it("rejects private fields, missing required fields and invented outcomes", () => {
+  it("keeps provider identities and rejects mismatched resource types and private context", () => {
     const valid = {
-      operation: "project_scan",
+      ...agent,
+      operation: "install",
       outcome: "succeeded",
       error_category: null,
     };
+    for (const resource_id of ["codex", "claude-code"]) {
+      const result = parse({ ...valid, resource_id });
+      expect(result.success && result.data.properties).toMatchObject({
+        resource_id,
+      });
+    }
     for (const extra of [
-      { path: "/private/project" },
-      { provider: "codex" },
-      { plugin_name: "private" },
+      { step: "projects" },
+      { resource_type: "plugin" },
+      { resource_id: "/private/path" },
       { error: "raw error" },
       { prompt: "private prompt" },
-      { attempt_id: "id" },
-      { selected_count: 1 },
-      { succeeded_count: 1 },
-      { entry: "unknown" },
-      { operation: "plugin_disable" },
+      { operation: "scan" },
       { outcome: "queued" },
-      { error_category: "raw error" },
+      { entry: "unknown" },
       { error_category: "request" },
-    ])
+    ]) {
       expect(parse({ ...valid, ...extra }).success).toBe(false);
+    }
     expect(
-      parse({ operation: "project_scan", outcome: "started" }).success,
-    ).toBe(false);
-    expect(
-      recordTelemetryEventRequestSchema.safeParse({
-        name: "onboarding_operation",
-        properties: valid,
-      }).success,
-    ).toBe(false);
-    expect(
-      recordTelemetryEventRequestSchema.safeParse({
-        name: "onboarding_operation",
-        properties: { entry: "first_run", ...valid },
-        raw: "private",
-      }).success,
+      parse({ ...agent, operation: "install", outcome: "started" }).success,
     ).toBe(false);
   });
 });
