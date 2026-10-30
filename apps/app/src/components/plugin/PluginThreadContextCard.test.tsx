@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -251,7 +252,7 @@ describe("thread context card", () => {
     ).toBe("false");
   });
 
-  it("keeps an empty pinned card hidden until the header shows it", () => {
+  it("shows an empty card from the header without changing the pin preference", async () => {
     renderPane({
       paneWidth: 1200,
       coreRows: CORE.map((row) => ({ ...row, component: Empty })),
@@ -273,6 +274,21 @@ describe("thread context card", () => {
       screen.getByRole("button", { name: "Unpin thread context" }),
     );
     expect(screen.queryByRole("group", { name: "Thread context" })).toBeNull();
+
+    act(() => {
+      setPluginSlotRegistrations(
+        "first",
+        makePluginRegistrationSet({
+          threadContextCardRows: [
+            { id: "branch", group: "3_git", component: section("Branch") },
+          ],
+        }),
+      );
+    });
+    expect(
+      (await screen.findByRole("group", { name: "Thread context" }))
+        .textContent,
+    ).toContain("Branch for thr_1");
   });
 
   it("opens the card from the header in a narrow pane and closes it when a row runs", () => {
