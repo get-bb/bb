@@ -1,0 +1,56 @@
+---
+title: Child threads, subagents and workflows
+description: A child thread is a full bb thread you can open, steer and take over. A subagent runs hidden inside one agent. A workflow is a scripted run of workers.
+type: concept
+sources:
+  - apps/server/src/services/threads/thread-parent.ts
+  - apps/server/src/services/threads/child-thread-notifications.ts
+  - packages/templates/src/templates/bb-guide-threads.md
+  - plugins/bb-guide/introduction.ts
+  - plugins/provider-claude-code/server.ts
+  - plugins/provider-codex/server.ts
+  - plugins/workflows/src/service.ts
+since: 0.47.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+| | Child thread | Subagent | Workflow |
+| --- | --- | --- | --- |
+| **What it is** | A full bb thread that another thread started | The agent's own helper, such as Claude Code's or Codex's | A script that starts many worker threads |
+| **In the sidebar** | Yes, nested under its parent | No; rows in its thread's timeline | No |
+| **You can open, steer or take it over** | Yes | No | No |
+| **Reports back** | To the parent's agent, per **Notify parent** | Within the agent's session | One message when the run ends |
+
+## Child threads
+
+- **Its own agent:** each child picks its own agent, model, reasoning level and permission mode. Without a choice, it uses its parent's agent and model.
+- **Its own place to work:** a child can share its parent's environment, get its own worktree, or belong to another project.
+- **Permissions:** a child inherits its parent's permission mode unless it asks for another, and may ask for a higher one. Only the machine's **Permission limit** caps it.
+- **Limits:** threads nest at most 4 levels deep. Archiving a parent also archives its children.
+
+bb tells agents not to start threads unless you ask, so ask in your prompt or your project's instructions.
+
+## Subagents
+
+Subagents run inside the agent's session, with the same account and permissions as the thread. To see every piece of work as its own thread instead, turn on **Disable provider subagents** in **Settings → Claude Code provider** or **Settings → Codex provider**. The agent then delegates through bb.
+
+## Workflows
+
+The **Workflows** plugin comes with bb, off until you turn it on. Workers run in parallel or in sequence, aren't child threads, and are archived with the thread that started the run.
+
+## When to use which
+
+| If you want to | Use |
+| --- | --- |
+| Let an agent quickly look something up without leaving its thread | A subagent |
+| Split a task into parts you can watch, steer, review or take over | Child threads |
+| Use a different agent or model for part of the work, such as a reviewer | A child thread with that agent |
+| Keep one long-running thread that hands out and checks work | [An orchestrator thread](/docs/run-an-orchestrator-thread) |
+| Run the same steps over many files or items, with little supervision | A workflow |
+
+## Next steps
+
+- [Start child threads](/docs/start-child-threads)
+- [Follow child threads from the parent](/docs/follow-child-threads-from-the-parent)
+- [Run an orchestrator thread](/docs/run-an-orchestrator-thread)
