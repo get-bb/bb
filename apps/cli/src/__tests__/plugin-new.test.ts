@@ -65,6 +65,7 @@ describe.sequential("bb plugin new dependency install", () => {
   afterEach(async () => {
     process.chdir(originalCwd);
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
     await rm(workDir, { recursive: true, force: true });
   });
@@ -194,6 +195,66 @@ describe.sequential("bb plugin new dependency install", () => {
     const warnings = warned.join("\n");
     expect(warnings).toContain("npm error code EPERM");
     expect(warnings).not.toContain("progress line");
+  });
+
+  it("records plugin_creation_started with the bb server", async () => {
+    const requests: Request[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        requests.push(new Request(input, init));
+        return Response.json({ ok: true });
+      }),
+    );
+
+    await runPluginNew(["tracked"]);
+
+    expect(requests).toHaveLength(1);
+    const [request] = requests;
+    expect(request?.method).toBe("POST");
+    expect(request?.url).toBe(
+      "http://localhost/api/v1/system/telemetry/events",
+    );
+    expect(await request?.json()).toEqual({
+      name: "plugin_creation_started",
+      properties: {},
+    });
+  });
+
+  it.each([
+    ["unreachable", () => Promise.reject(new TypeError("fetch failed"))],
+    [
+      "rejecting",
+      () => Promise.resolve(Response.json({ error: "nope" }, { status: 400 })),
+    ],
+  ])(
+    "stays silent and succeeds when the bb server is %s",
+    async (_label, respond) => {
+      const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+      vi.stubGlobal("fetch", vi.fn(respond));
+
+      await runPluginNew(["untracked"]);
+
+      expect(logged).toContain(
+        "Created bb-plugin-untracked/ (bb-plugin-untracked).",
+      );
+      expect(logged).toContain("  bb plugin install .");
+      expect(warned).toEqual([]);
+      expect(errors).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not record plugin_creation_started for an invalid name", async () => {
+    const telemetryFetch = vi.fn(async () => Response.json({ ok: true }));
+    vi.stubGlobal("fetch", telemetryFetch);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(process, "exit").mockImplementation((code) => {
+      throw new Error(`process.exit:${code}`);
+    });
+
+    await expect(runPluginNew(["Invalid"])).rejects.toThrow("process.exit:1");
+
+    expect(telemetryFetch).not.toHaveBeenCalled();
   });
 
   it("falls back to the manual step when npm is not on PATH", async () => {

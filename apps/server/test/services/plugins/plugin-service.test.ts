@@ -858,6 +858,8 @@ describe("plugin service", () => {
           provenance: "direct",
           marketplace: null,
           source_kind: "path",
+          is_fresh_install: true,
+          entry_id: null,
         },
       },
     ]);
@@ -870,6 +872,25 @@ describe("plugin service", () => {
     );
     expect((await tracked.setEnabled("tracked", true))?.status).toBe("running");
     expect(captured).toHaveLength(1);
+    await tracked.stop();
+  });
+
+  it("marks a reinstall of an installed plugin as not fresh", async () => {
+    const captured: TelemetryEvent[] = [];
+    const tracked = createTelemetryTrackedService(captured);
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-reinstalled",
+      serverSource: "export default function plugin() {}",
+    });
+    await tracked.installPath(rootDir);
+    await tracked.installPath(rootDir);
+    expect(
+      captured.map((event) =>
+        event.name === "plugin_installed"
+          ? event.properties.is_fresh_install
+          : undefined,
+      ),
+    ).toEqual([true, false]);
     await tracked.stop();
   });
 
@@ -907,27 +928,35 @@ describe("plugin service", () => {
         subdirectory: null,
         selector: { kind: "ref", ref: "main", refKind: "branch" },
       },
+      true,
     ).properties;
     expect(properties).toEqual({
       plugin_id: null,
       provenance: "catalog",
       marketplace: null,
       source_kind: "git",
+      is_fresh_install: true,
+      entry_id: null,
     });
-    expect(
-      pluginInstalledTelemetryEvent(
-        "tasks",
-        { kind: "builtin" },
-        { kind: "builtin", name: "tasks" },
-      ).properties.plugin_id,
-    ).toBe("tasks");
+    const builtin = pluginInstalledTelemetryEvent(
+      "tasks",
+      { kind: "builtin" },
+      { kind: "builtin", name: "tasks" },
+      true,
+    ).properties;
+    expect(builtin.plugin_id).toBe("tasks");
+    expect(builtin.entry_id).toBeNull();
   });
 
   it("names public plugins in the install event so PostHog can rank them", () => {
     expect(
       pluginInstalledTelemetryEvent(
         "tasks",
-        { kind: "catalog", marketplace: "bb-community", entryId: "tasks" },
+        {
+          kind: "catalog",
+          marketplace: "bb-community",
+          entryId: "tasks-entry",
+        },
         {
           kind: "npm",
           packageName: "@get-bb/tasks",
@@ -935,13 +964,24 @@ describe("plugin service", () => {
           requestedSpec: "^1",
           specKind: "range",
         },
+        true,
       ).properties,
     ).toEqual({
       plugin_id: "tasks",
       provenance: "catalog",
       marketplace: "bb-community",
       source_kind: "npm",
+      is_fresh_install: true,
+      entry_id: "tasks-entry",
     });
+    expect(
+      pluginInstalledTelemetryEvent(
+        "tasks",
+        { kind: "catalog", marketplace: "bb-official", entryId: "tasks" },
+        { kind: "builtin", name: "tasks" },
+        false,
+      ).properties,
+    ).toMatchObject({ is_fresh_install: false, entry_id: "tasks" });
   });
 
   it("adds marketplace discovery metadata to an installed plugin", () => {

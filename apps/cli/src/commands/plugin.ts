@@ -313,6 +313,24 @@ async function isPackageInstalled(
   }
 }
 
+const PLUGIN_CREATION_TELEMETRY_TIMEOUT_MS = 2_000;
+
+async function recordPluginCreationStarted(
+  getUrl: () => string,
+): Promise<void> {
+  try {
+    await createCliBbSdk(
+      getUrl(),
+      PLUGIN_CREATION_TELEMETRY_TIMEOUT_MS,
+    ).system.experimental_recordTelemetryEvent({
+      name: "plugin_creation_started",
+      properties: {},
+    });
+  } catch {
+    return;
+  }
+}
+
 async function warnIfSdkVersionUnpublished(): Promise<void> {
   const status = await probeSdkVersionPublished();
   if (status === "published") return;
@@ -1463,6 +1481,7 @@ export function registerPluginCommands(
           );
           process.exit(1);
         }
+        const creationTelemetry = recordPluginCreationStarted(getUrl);
         const { directoryName, packageName } = target;
         const targetDir = resolve(process.cwd(), directoryName);
         await scaffoldPlugin({
@@ -1479,6 +1498,7 @@ export function registerPluginCommands(
           console.log("  npm install --include=dev");
         }
         console.log("  bb plugin install .");
+        await creationTelemetry;
       }),
     );
 

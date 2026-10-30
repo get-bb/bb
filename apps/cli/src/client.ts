@@ -10,6 +10,6 @@ export function cliFetch(
   return fetch(input, init);
 }
 
-export function createCliBbSdk(baseUrl: string): BbSdk {
-  return createNodeBbSdk({ baseUrl, fetch: cliFetch });
+export function createCliBbSdk(baseUrl: string, timeoutMs?: number): BbSdk {
+  return createNodeBbSdk({ baseUrl, fetch: cliFetch, timeoutMs });
 }

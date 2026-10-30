@@ -299,6 +299,12 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
         .strict(),
     })
     .strict(),
+  z
+    .object({
+      name: z.literal("plugin_creation_started"),
+      properties: z.object({}).strict(),
+    })
+    .strict(),
 ]);
 export type RecordTelemetryEventRequest = z.infer<
   typeof recordTelemetryEventRequestSchema

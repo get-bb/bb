@@ -1,5 +1,6 @@
 import type { PostHog } from "posthog-js";
 import { useEffect } from "react";
+import type { ArrivalSource } from "./arrival-source";
 import type { CtaPlacement } from "./site";
 
 type LandingEvent =
@@ -44,11 +45,15 @@ type LandingEvent =
     }
   | {
       name: "marketplace_plugin_detail_viewed";
-      properties: { plugin_id: string };
+      properties: {
+        plugin_id: string;
+        entry_id: string;
+        arrival_source: ArrivalSource;
+      };
     }
   | {
       name: "marketplace_install_command_copied";
-      properties: { plugin_id: string };
+      properties: { plugin_id: string; entry_id: string };
     };
 
 let client: PostHog | null = null;

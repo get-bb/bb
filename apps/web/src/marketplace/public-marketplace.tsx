@@ -17,6 +17,7 @@ import {
 } from "react";
 
 import { initAnalytics, trackLandingEvent } from "../landing/analytics.js";
+import { classifyArrivalSource } from "../landing/arrival-source.js";
 import { CommandButton } from "../landing/command-button.js";
 import { SiteFooter, SiteNav } from "../landing/site-chrome.js";
 import {
@@ -974,7 +975,14 @@ export function PublicMarketplaceDetailPage({
     initAnalytics();
     trackLandingEvent({
       name: "marketplace_plugin_detail_viewed",
-      properties: { plugin_id: entry.id },
+      properties: {
+        plugin_id: entry.id,
+        entry_id: entry.id,
+        arrival_source: classifyArrivalSource(
+          new URLSearchParams(window.location.search),
+          document.referrer,
+        ),
+      },
     });
   }, [entry.id]);
   const categoryDefinition = resolveMarketplaceCategory(manifest, entry);
@@ -1054,7 +1062,7 @@ export function PublicMarketplaceDetailPage({
                     if (!copied) return;
                     trackLandingEvent({
                       name: "marketplace_install_command_copied",
-                      properties: { plugin_id: entry.id },
+                      properties: { plugin_id: entry.id, entry_id: entry.id },
                     });
                   }}
                 />
