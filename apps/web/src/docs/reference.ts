@@ -26,7 +26,7 @@ interface CliCommandEntry {
   path: string;
 }
 
-export interface ReferencePageData {
+interface ReferencePageData {
   title: string;
   description: string;
   type: "reference";
@@ -42,8 +42,13 @@ interface ReferenceSection {
 }
 
 const SURFACES_PATH = "plugins/plugin-api-docs/src/surfaces.ts";
+const KEYBOARD_SOURCES = [
+  "packages/domain/src/app-keybindings.ts",
+  "packages/domain/src/app-default-keybindings.ts",
+  "packages/domain/src/app-command-metadata.ts",
+];
 
-export function surfaceDocsSlug(surfaceId: string): string {
+function surfaceDocsSlug(surfaceId: string): string {
   return surfaceDocsPath(surfaceId).replace(/^\/docs\//u, "");
 }
 
@@ -207,7 +212,7 @@ function shortcutCell(keys: readonly AppShortcutReferenceKey[]): string {
     .join(", ");
 }
 
-export function keyboardReferencePage(): ReferencePageData {
+function keyboardReferencePage(): ReferencePageData {
   const sections = appKeyboardShortcutReference().map((group) => ({
     heading: group.label,
     body: table(
@@ -226,24 +231,13 @@ export function keyboardReferencePage(): ReferencePageData {
       "Every bb keyboard shortcut with its default keys on Mac, Windows and Linux.",
     intro:
       "Every action you can bind to a key, with bb's default keys. Change any of them in Settings → Keyboard. Actions marked Not assigned have no default key; you can give them one there.",
-    sources: [
-      "packages/domain/src/app-keybindings.ts",
-      "packages/domain/src/app-default-keybindings.ts",
-      "packages/domain/src/app-command-metadata.ts",
-    ],
+    sources: KEYBOARD_SOURCES,
     editPath: "packages/domain/src/app-default-keybindings.ts",
-    sections: [
-      ...sections,
-      sourcesSection([
-        "packages/domain/src/app-keybindings.ts",
-        "packages/domain/src/app-default-keybindings.ts",
-        "packages/domain/src/app-command-metadata.ts",
-      ]),
-    ],
+    sections: [...sections, sourcesSection(KEYBOARD_SOURCES)],
   });
 }
 
-export function surfaceCopyMarkdown(text: string): string {
+function surfaceCopyMarkdown(text: string): string {
   return text
     .split(COPY_TOKEN)
     .filter((part) => part !== undefined)
@@ -265,7 +259,7 @@ function surfaceSummary(surface: PluginSurface): string {
   );
 }
 
-export function surfacePage(
+function surfacePage(
   surface: PluginSurface,
   group: SurfaceGroup,
 ): ReferencePageData {
@@ -312,7 +306,7 @@ export function surfacePage(
   });
 }
 
-export function pluginSdkIndexPage(): ReferencePageData {
+function pluginSdkIndexPage(): ReferencePageData {
   const sections = SURFACE_GROUPS.map((group) => ({
     heading: group.title,
     body: `${group.blurb}\n\n${table(
@@ -335,7 +329,7 @@ export function pluginSdkIndexPage(): ReferencePageData {
   });
 }
 
-export function allSurfaces(): {
+function allSurfaces(): {
   surface: PluginSurface;
   group: SurfaceGroup;
 }[] {
