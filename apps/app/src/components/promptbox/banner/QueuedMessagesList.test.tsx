@@ -30,6 +30,10 @@ import {
 } from "./QueuedMessagesList";
 import type { QueuedMessagesListProps } from "./LazyQueuedMessagesList";
 import {
+  formatSendTimeInputValue,
+  parseSendTimeInputValue,
+} from "./QueuedMessageSendTimeDialog";
+import {
   QueuedEditorTypeaheadLayoutContext,
   type QueuedEditorTypeaheadLayout,
 } from "@/components/promptbox/queued-editor-typeahead-layout";
@@ -147,6 +151,7 @@ function renderQueuedMessages(
       onReorder={noop}
       onSetGroupBoundary={noop}
       onEdit={noop}
+      onChangeSendTime={noop}
       onDelete={noop}
     />,
   );
@@ -169,6 +174,7 @@ function renderQueuedMessagesWithOptions(
       onReorder={noop}
       onSetGroupBoundary={noop}
       onEdit={noop}
+      onChangeSendTime={noop}
       onDelete={noop}
     />,
   );
@@ -189,6 +195,7 @@ function renderQueuedMessagesWithExpandedSpy(
       onReorder={noop}
       onSetGroupBoundary={noop}
       onEdit={noop}
+      onChangeSendTime={noop}
       onDelete={noop}
       onExpandedChange={onExpandedChange}
     />,
@@ -235,6 +242,7 @@ describe("QueuedMessagesList", () => {
         onReorder={noop}
         onSetGroupBoundary={noop}
         onEdit={noop}
+        onChangeSendTime={noop}
         onDelete={noop}
       />,
     );
@@ -273,6 +281,7 @@ describe("QueuedMessagesList", () => {
           onReorder={noop}
           onSetGroupBoundary={noop}
           onEdit={noop}
+          onChangeSendTime={noop}
           onDelete={noop}
         />
       </QueryClientProvider>,
@@ -445,6 +454,7 @@ describe("QueuedMessagesList", () => {
       onReorder: noop,
       onSetGroupBoundary: noop,
       onEdit: noop,
+      onChangeSendTime: noop,
       onDelete: noop,
     } as const;
     const firstMessage = makeQueuedMessage("q_one", "First queued message");
@@ -506,6 +516,7 @@ describe("QueuedMessagesList", () => {
       onReorder: noop,
       onSetGroupBoundary: noop,
       onEdit: noop,
+      onChangeSendTime: noop,
       onDelete: noop,
     } as const;
     const firstMessage = makeQueuedMessage("q_one", "First queued message");
@@ -569,6 +580,7 @@ describe("QueuedMessagesList", () => {
       onReorder: noop,
       onSetGroupBoundary: noop,
       onEdit: noop,
+      onChangeSendTime: noop,
       onDelete: noop,
     } as const;
     const plainMessage = makeQueuedMessage("q_plain", "Plain follow-up");
@@ -713,6 +725,78 @@ describe("QueuedMessagesList", () => {
     }
   });
 
+  it("changes or clears the send time of a scheduled row only", () => {
+    const sendAt = Date.now() + 2 * 3_600_000;
+    const scheduled: ThreadQueuedMessage = {
+      ...makeQueuedMessage("q_scheduled", "Scheduled message"),
+      sendAt,
+      state: "scheduled",
+      updatedAt: 42,
+      waitingOn: { kind: "time" },
+    };
+    const onChangeSendTime = vi.fn();
+    const { getByLabelText, getByRole, queryByRole } = render(
+      <QueuedMessagesList
+        queuedMessages={[
+          makeQueuedMessage("q_plain", "Plain message"),
+          scheduled,
+        ]}
+        sendDisabled={false}
+        actionDisabled={false}
+        processingMessageId={null}
+        processingAction={null}
+        onSend={noop}
+        onReorder={noop}
+        onSetGroupBoundary={noop}
+        onEdit={noop}
+        onChangeSendTime={onChangeSendTime}
+        onDelete={noop}
+      />,
+    );
+    expandQueue();
+
+    expect(
+      queryByRole("button", { name: "Change when queued message 1 sends" }),
+    ).toBeNull();
+    const openDialog = () =>
+      fireEvent.click(
+        getByRole("button", { name: "Change when queued message 2 sends" }),
+      );
+
+    openDialog();
+    const input = getByLabelText("Send at") as HTMLInputElement;
+    const moved = new Date(sendAt - 3_600_000);
+    moved.setSeconds(0, 0);
+    fireEvent.change(input, {
+      target: { value: formatSendTimeInputValue(moved.getTime()) },
+    });
+    fireEvent.click(getByRole("button", { name: "Save" }));
+    expect(onChangeSendTime).toHaveBeenLastCalledWith({
+      expectedUpdatedAt: 42,
+      queuedMessageId: "q_scheduled",
+      sendAt: moved.getTime(),
+    });
+
+    openDialog();
+    fireEvent.click(getByRole("button", { name: "Send when ready" }));
+    expect(onChangeSendTime).toHaveBeenLastCalledWith({
+      expectedUpdatedAt: 42,
+      queuedMessageId: "q_scheduled",
+      sendAt: null,
+    });
+  });
+
+  it("refuses a send time that has already passed", () => {
+    const now = Date.now();
+    expect(
+      parseSendTimeInputValue(formatSendTimeInputValue(now - 60_000), now),
+    ).toEqual({ ok: false, message: "Choose a future time." });
+    expect(parseSendTimeInputValue("", now)).toEqual({
+      ok: false,
+      message: "Choose a date and time.",
+    });
+  });
+
   it("limits collapsed action hiding to compact widths", () => {
     const { container } = renderQueuedMessages([
       makeQueuedMessage("q_one", "First queued message"),
@@ -774,6 +858,7 @@ describe("QueuedMessagesList", () => {
           onReorder={noop}
           onSetGroupBoundary={noop}
           onEdit={noop}
+          onChangeSendTime={noop}
           onDelete={noop}
         />,
       );
@@ -832,6 +917,7 @@ describe("QueuedMessagesList", () => {
         onReorder={noop}
         onSetGroupBoundary={noop}
         onEdit={noop}
+        onChangeSendTime={noop}
         onDelete={noop}
       />,
     );
@@ -891,6 +977,7 @@ describe("QueuedMessagesList", () => {
         onReorder={noop}
         onSetGroupBoundary={noop}
         onEdit={noop}
+        onChangeSendTime={noop}
         onDelete={noop}
       />,
     );
@@ -925,6 +1012,7 @@ describe("QueuedMessagesList", () => {
       onReorder: noop,
       onSetGroupBoundary: noop,
       onEdit: noop,
+      onChangeSendTime: noop,
       onDelete: noop,
     } as const;
     const { container, rerender } = render(
@@ -972,6 +1060,7 @@ describe("QueuedMessagesList", () => {
       onReorder: noop,
       onSetGroupBoundary: noop,
       onEdit: noop,
+      onChangeSendTime: noop,
       onDelete: noop,
     } as const;
     const { container, getByRole, rerender } = render(
@@ -1034,6 +1123,7 @@ describe("QueuedMessagesList", () => {
       onReorder: noop,
       onSetGroupBoundary: noop,
       onEdit: noop,
+      onChangeSendTime: noop,
       onDelete: noop,
     } as const;
     const renderSurface = (editing: boolean) => (
@@ -1136,6 +1226,7 @@ describe("QueuedMessagesList", () => {
             onReorder={noop}
             onSetGroupBoundary={noop}
             onEdit={noop}
+            onChangeSendTime={noop}
             onDelete={noop}
           />
           <div>Bottom composer</div>
@@ -1222,6 +1313,7 @@ describe("QueuedMessagesList", () => {
             onReorder={noop}
             onSetGroupBoundary={noop}
             onEdit={noop}
+            onChangeSendTime={noop}
             onDelete={noop}
           />
           <div>Bottom composer</div>
@@ -1326,6 +1418,7 @@ describe("QueuedMessagesList", () => {
               onReorder={noop}
               onSetGroupBoundary={noop}
               onEdit={noop}
+              onChangeSendTime={noop}
               onDelete={noop}
             />
             <div>Bottom composer</div>
@@ -1483,6 +1576,7 @@ describe("QueuedMessagesList", () => {
         onReorder={noop}
         onSetGroupBoundary={noop}
         onEdit={noop}
+        onChangeSendTime={noop}
         onDelete={noop}
       />,
     );
@@ -1894,6 +1988,7 @@ describe("QueuedMessagesList", () => {
         onReorder={noop}
         onSetGroupBoundary={noop}
         onEdit={noop}
+        onChangeSendTime={noop}
         onDelete={noop}
       />,
     );
@@ -1918,6 +2013,7 @@ describe("QueuedMessagesList", () => {
         onReorder={noop}
         onSetGroupBoundary={noop}
         onEdit={noop}
+        onChangeSendTime={noop}
         onDelete={noop}
       />,
     );
@@ -2122,6 +2218,7 @@ describe("queued row affordances", () => {
         onReorder={noop}
         onSetGroupBoundary={noop}
         onEdit={noop}
+        onChangeSendTime={noop}
         onDelete={noop}
       />,
     );

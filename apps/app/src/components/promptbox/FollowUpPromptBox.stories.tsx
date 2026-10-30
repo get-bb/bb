@@ -747,6 +747,7 @@ function Row({
         onReorder={noop}
         onSetGroupBoundary={noop}
         onEdit={handleEditQueuedMessage}
+        onChangeSendTime={noop}
         expanded={queueExpanded}
         onExpandedChange={setQueueExpanded}
         onDelete={(id) =>

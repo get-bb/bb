@@ -919,6 +919,7 @@ export function ThreadDetailPromptArea({
     isUpdateQueuedMessagePending,
     sendQueuedMessageById,
     handleSaveInlineQueuedMessage,
+    handleChangeQueuedMessageSendTime,
     handleDeleteQueuedMessage,
     handleReorderQueuedMessage,
     handleSetQueuedMessageGroupBoundary,
@@ -2159,6 +2160,7 @@ export function ThreadDetailPromptArea({
             onReorder={handleReorderQueuedMessage}
             onSetGroupBoundary={handleSetQueuedMessageGroupBoundary}
             onEdit={beginEditQueuedMessage}
+            onChangeSendTime={handleChangeQueuedMessageSendTime}
             onDelete={handleDeleteQueuedMessage}
             expanded={queueExpanded}
             onExpandedChange={setQueueExpanded}
@@ -2176,6 +2178,7 @@ export function ThreadDetailPromptArea({
       expandedBannerSegment,
       contextEnvironmentId,
       thread.projectId,
+      handleChangeQueuedMessageSendTime,
       handleDeleteQueuedMessage,
       beginEditQueuedMessage,
       handleReorderQueuedMessage,

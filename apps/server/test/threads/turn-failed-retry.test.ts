@@ -494,6 +494,48 @@ describe("retrying a failed turn", () => {
     });
   });
 
+  it("moves a waiting retry earlier in place, keeping its attempt", async () => {
+    await withTestHarness(async (harness) => {
+      const sendAt = Date.now() + 3_600_000;
+      const { requestId, thread } = seedFailableThread(
+        harness,
+        "host-retry-move",
+      );
+      failThread(harness, thread.id);
+      await retryFailedTurn(harness.deps, {
+        thread: requireThread(harness, thread.id),
+        request: { turnRequestId: requestId, sendAt, reason: "Rate limited" },
+      });
+      const queued = onlyQueuedRow(harness, thread.id);
+      const earlier = Date.now() + 60_000;
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/queued-messages/${queued.id}`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            expectedUpdatedAt: queued.updatedAt,
+            sendAt: earlier,
+          }),
+        },
+      );
+      expect(response.status).toBe(200);
+      expect(onlyQueuedRow(harness, thread.id)).toMatchObject({
+        id: queued.id,
+        payload: queued.payload,
+        sendAt: earlier,
+      });
+
+      await sweepPastResume(harness);
+
+      const data = lastTurnRequest(harness, thread.id);
+      expect(data.retryOfRequestId).toBe(requestId);
+      expect(data.retryAttempt).toBe(2);
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
+    });
+  });
+
   it("continues an accepted turn instead of re-asking it", async () => {
     await withTestHarness(async (harness) => {
       const { environment, requestId, thread } = seedFailableThread(

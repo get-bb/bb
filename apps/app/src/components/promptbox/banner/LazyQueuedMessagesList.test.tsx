@@ -58,6 +58,7 @@ function Queue({
       onReorder={noop}
       onSetGroupBoundary={noop}
       onEdit={noop}
+      onChangeSendTime={noop}
       onDelete={noop}
       expanded={expanded}
       onExpandedChange={setExpanded}

@@ -4,6 +4,7 @@ import type { SendQueuedMessageMode } from "@bb/server-contract";
 import type {
   QueuedMessageGroupBoundaryRequest,
   QueuedMessageProcessingAction,
+  QueuedMessageSendTimeRequest,
 } from "@/components/promptbox/banner/LazyQueuedMessagesList";
 import {
   useDeleteThreadQueuedMessage,
@@ -48,6 +49,9 @@ interface UseQueuedMessageActionsResult {
   isUpdateQueuedMessagePending: boolean;
   sendQueuedMessageById: (args: SendQueuedMessageByIdArgs) => Promise<void>;
   handleSaveInlineQueuedMessage: () => Promise<void>;
+  handleChangeQueuedMessageSendTime: (
+    request: QueuedMessageSendTimeRequest,
+  ) => void;
   handleDeleteQueuedMessage: (queuedMessageId: string) => void;
   handleReorderQueuedMessage: (request: QueuedMessageReorderRequest) => void;
   handleSetQueuedMessageGroupBoundary: (
@@ -188,6 +192,26 @@ export function useQueuedMessageActions({
     updateQueuedMessage,
   ]);
 
+  const handleChangeQueuedMessageSendTime = useCallback(
+    ({ expectedUpdatedAt, queuedMessageId, sendAt }: QueuedMessageSendTimeRequest) => {
+      void updateQueuedMessage
+        .mutateAsync({
+          expectedUpdatedAt,
+          id: threadId,
+          queuedMessageId,
+          sendAt,
+        })
+        .catch((error) => {
+          showMutationErrorToast({
+            error,
+            fallbackMessage: "Failed to change when the queued message sends",
+            lifecycleOperation: "update_queued_message",
+          });
+        });
+    },
+    [threadId, updateQueuedMessage],
+  );
+
   const handleDeleteQueuedMessage = useCallback(
     (queuedMessageId: string) => {
       setProcessingQueuedMessage({ id: queuedMessageId, action: "delete" });
@@ -261,6 +285,7 @@ export function useQueuedMessageActions({
     isUpdateQueuedMessagePending: updateQueuedMessage.isPending,
     sendQueuedMessageById,
     handleSaveInlineQueuedMessage,
+    handleChangeQueuedMessageSendTime,
     handleDeleteQueuedMessage,
     handleReorderQueuedMessage,
     handleSetQueuedMessageGroupBoundary,

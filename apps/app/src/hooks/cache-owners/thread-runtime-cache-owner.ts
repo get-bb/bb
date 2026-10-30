@@ -1041,7 +1041,7 @@ export async function beginUpdateQueuedMessageTransaction({
         queuedMessage.id === request.queuedMessageId
           ? {
               ...queuedMessage,
-              content: request.input,
+              content: request.input ?? queuedMessage.content,
               updatedAt: optimisticUpdatedAt ?? queuedMessage.updatedAt,
             }
           : queuedMessage,

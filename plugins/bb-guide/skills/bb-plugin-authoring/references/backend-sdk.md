@@ -31,7 +31,8 @@ signatures (see "Looking up the exact API" in distribution.md).
   `interactions` (`get` `list` `cancel` `resolve` `respond`), `queue`
   (`list`), `queuedMessages` (`create` `list` `update` `delete` `send`
   `reorder` `setGroupBoundary` `experimental_holdForEdit`
-  `experimental_releaseEditHold`), `tabs` (`get` `update`)
+  `experimental_releaseEditHold`; `update` takes `input`, `sendAt`, or both),
+  `tabs` (`get` `update`)
 - `threadSections`: `list` `create` `update` `delete`
 - `projects`: `list` `get` `create` `update` `delete` `reorder` `paths`
   `files` `fileContent` `branches` `commands` `defaultExecutionOptions`

@@ -98,7 +98,8 @@ export interface CreateQueuedThreadMessageInput {
 }
 
 export interface UpdateQueuedThreadMessageInput {
-  content: PromptInput[];
+  content: PromptInput[] | null;
+  reschedule: { sendAt: number | null } | null;
   expectedUpdatedAt: number;
   id: string;
   threadId: string;
@@ -357,6 +358,7 @@ export type UpdateQueuedThreadMessageResult =
       kind: "updated";
       queuedMessage: QueuedThreadMessageRow;
       releasedEditHold: boolean;
+      rescheduled: boolean;
     }
   | { kind: "not_found" }
   | { kind: "claimed" }
@@ -875,6 +877,28 @@ export function createQueuedThreadMessage(
   return row;
 }
 
+function rescheduleTransition(
+  row: QueuedThreadMessageRow,
+  sendAt: number | null,
+): QueuedMessageTransition | null {
+  if (sendAt !== null) {
+    return { event: "wait.recorded", sendAt, waitingOn: { kind: "time" } };
+  }
+  return row.sendAt !== null || hasTimeWait(row)
+    ? { event: "wait.cleared" }
+    : null;
+}
+
+function hasTimeWait(row: QueuedThreadMessageRow): boolean {
+  if (row.waitingOn === null) return false;
+  try {
+    const parsed = JSON.parse(row.waitingOn) as { kind?: unknown };
+    return parsed.kind === "time";
+  } catch {
+    return false;
+  }
+}
+
 export function updateQueuedThreadMessage(
   db: DbConnection,
   notifier: DbNotifier,
@@ -893,17 +917,42 @@ export function updateQueuedThreadMessage(
         return { kind: "stale" };
       }
 
-      acquireProjectAttachmentOwnership(
-        tx,
-        input.threadId,
-        projectAttachmentPaths(input.content),
-      );
+      const now = Date.now();
+      const contentPatch =
+        input.content === null
+          ? {}
+          : { content: JSON.stringify(input.content), editHeldUntil: null };
+      if (input.content !== null) {
+        acquireProjectAttachmentOwnership(
+          tx,
+          input.threadId,
+          projectAttachmentPaths(input.content),
+        );
+      }
+      const transition =
+        input.reschedule === null
+          ? null
+          : rescheduleTransition(existing, input.reschedule.sendAt);
+      const schedulePatch =
+        transition === null
+          ? {}
+          : queuedMessageTransitionPatch(existing, transition, now);
+      const state =
+        transition === null
+          ? existing.state
+          : requireQueuedMessageTransition({
+              event: transition.event,
+              from: existing.state,
+              id: existing.id,
+              to: queuedMessageStateOf({ ...existing, ...schedulePatch }),
+            });
       const queuedMessage = tx
         .update(queuedThreadMessages)
         .set({
-          content: JSON.stringify(input.content),
-          editHeldUntil: null,
-          updatedAt: Math.max(Date.now(), existing.updatedAt + 1),
+          ...contentPatch,
+          ...schedulePatch,
+          state,
+          updatedAt: Math.max(now, existing.updatedAt + 1),
         })
         .where(eq(queuedThreadMessages.id, input.id))
         .returning()
@@ -914,7 +963,9 @@ export function updateQueuedThreadMessage(
       return {
         kind: "updated",
         queuedMessage,
-        releasedEditHold: existing.editHeldUntil !== null,
+        releasedEditHold:
+          input.content !== null && existing.editHeldUntil !== null,
+        rescheduled: transition !== null,
       };
     },
     { behavior: "immediate" },
