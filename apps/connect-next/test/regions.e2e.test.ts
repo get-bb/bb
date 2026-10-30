@@ -136,8 +136,6 @@ describe.skipIf(!availability.ok)("connect-next across regions", () => {
   }
 
   async function startInstance(id: string): Promise<Instance> {
-    const internalPort = internalPorts.get(id) ?? (await freePort());
-    internalPorts.set(id, internalPort);
     const local = createLocalDirectory({ graceMs: 1_000 });
     locals.set(id, local);
     const gate = await startConnectNext(
@@ -167,9 +165,9 @@ describe.skipIf(!availability.ok)("connect-next across regions", () => {
         peers: {
           secret: PEER_SECRET,
           appName: "bb-connect-next-test",
-          internalPort,
+          internalPort: 0,
           internalBindHost: "127.0.0.1",
-          refreshMs: 60_000,
+          refreshMs: 100,
         },
       },
       silentLog,
@@ -181,6 +179,9 @@ describe.skipIf(!availability.ok)("connect-next across regions", () => {
         peerTimings: { helloTimeoutMs: 500 },
       },
     );
+    const internalPort = gate.internalPort;
+    if (internalPort === null) throw new Error("Peer listener did not start");
+    internalPorts.set(id, internalPort);
     const edge = await startEdge(gate.webPort);
     const started = { id, internalPort, gate, edge };
     instances.set(id, started);
@@ -192,6 +193,7 @@ describe.skipIf(!availability.ok)("connect-next across regions", () => {
     const found = instance(id);
     instances.delete(id);
     webPorts.delete(id);
+    internalPorts.delete(id);
     await found.gate.stop();
     await found.edge.close();
   }
@@ -257,10 +259,15 @@ describe.skipIf(!availability.ok)("connect-next across regions", () => {
       audience: gateAudienceForServer("srv-bee"),
     });
     blackHole = await startBlackHole();
-    for (const id of ["m-a", "m-b", "m-c"]) {
-      internalPorts.set(id, await freePort());
-    }
     for (const id of ["m-a", "m-b", "m-c"]) await startInstance(id);
+    await waitFor(
+      () =>
+        [...instances.values()].every(
+          ({ gate }) => gate.regions?.peerCount() === 3,
+        ),
+      5_000,
+      "all peer listeners to be discovered",
+    );
     fly = await startFlyProxy(webPorts);
     first = await connectBee("m-b");
     await waitFor(
