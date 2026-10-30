@@ -1,5 +1,3 @@
-import { unknownWorkSuggestionAttribution } from "@bb/server-contract";
-import { workTelemetryProperties } from "../../src/services/system/work-acceptance.js";
 import {
   createEnvironment,
   ensurePersonalProject,
@@ -93,16 +91,16 @@ describe("thread creation telemetry", () => {
       });
 
       expect(capture).toHaveBeenCalledWith({
+        name: "work_accepted",
+        properties: { work_kind: "thread", work_initiator: "user" },
+      });
+      expect(capture).toHaveBeenCalledWith({
         name: "user_message_sent",
         properties: {
           initiator: "user",
           is_child_thread: false,
           message_source: "thread_create",
           provider: "codex",
-          ...workTelemetryProperties(
-            "user",
-            unknownWorkSuggestionAttribution(),
-          ),
         },
       });
     });
@@ -148,14 +146,7 @@ describe("thread creation initiator telemetry", () => {
       await createThreadFromRequest(harness.deps, request);
       expect(capture).toHaveBeenCalledWith({
         name: "thread_created",
-        properties: {
-          is_child_thread: false,
-          provider: "codex",
-          ...workTelemetryProperties(
-            "user",
-            unknownWorkSuggestionAttribution(),
-          ),
-        },
+        properties: { is_child_thread: false, provider: "codex" },
       });
 
       capture.mockClear();
@@ -170,10 +161,6 @@ describe("thread creation initiator telemetry", () => {
           is_child_thread: false,
           provider: "codex",
           initiator: "user",
-          ...workTelemetryProperties(
-            "user",
-            unknownWorkSuggestionAttribution(),
-          ),
         },
       });
       expect(capture).toHaveBeenCalledWith({
@@ -183,10 +170,6 @@ describe("thread creation initiator telemetry", () => {
           message_source: "thread_create",
           provider: "codex",
           initiator: "user",
-          ...workTelemetryProperties(
-            "user",
-            unknownWorkSuggestionAttribution(),
-          ),
         },
       });
     });
@@ -249,10 +232,6 @@ describe("thread creation initiator for CLI spawns from a thread", () => {
             is_child_thread: false,
             provider: "codex",
             initiator: expected,
-            ...workTelemetryProperties(
-              expected === "agent" ? "agent" : "unknown",
-              unknownWorkSuggestionAttribution(),
-            ),
           },
         });
       });
@@ -855,6 +834,9 @@ describe("thread creation child-thread boundary validation", () => {
         });
         expect(capture).not.toHaveBeenCalledWith(
           expect.objectContaining({ name: "user_message_sent" }),
+        );
+        expect(capture).not.toHaveBeenCalledWith(
+          expect.objectContaining({ name: "work_accepted" }),
         );
 
         await reportQueuedCommandSuccess(harness, queuedStart, {

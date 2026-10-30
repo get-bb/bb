@@ -142,7 +142,6 @@ function composerDraftTarget(source: ComposerDraftSource) {
       const current = source.getCurrent();
       source.setDraft({
         ...current,
-        suggestion: undefined,
         text: next.text,
         mentions: next.mentions.map(promptTextMentionFromComposerMention),
         attachments:

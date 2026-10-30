@@ -137,7 +137,6 @@ import {
 import {
   emptyPromptDraftState,
   promptDraftToInput,
-  promptDraftWorkAttribution,
   type PromptDraftAttachment,
   type PromptDraftState,
 } from "@bb/client-core";
@@ -1281,7 +1280,6 @@ export function ThreadDetailPromptArea({
         if (request) {
           await sendMessage.mutateAsync({
             ...request,
-            suggestionAttribution: promptDraftWorkAttribution(submittedDraft),
             ...(sendAt === undefined ? {} : { sendAt }),
             ...(pluginSubmission === undefined ? {} : { pluginSubmission }),
           });
@@ -1343,8 +1341,6 @@ export function ThreadDetailPromptArea({
             try {
               await sendMessage.mutateAsync({
                 ...shortcutRequest.request,
-                suggestionAttribution:
-                  promptDraftWorkAttribution(submittedDraft),
                 ...(sendAt === undefined ? {} : { sendAt }),
                 ...(pluginSubmission === undefined ? {} : { pluginSubmission }),
               });

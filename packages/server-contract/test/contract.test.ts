@@ -39,7 +39,9 @@ import {
   updateEnvironmentRequestSchema,
   unmanagedBranchSpecSchema,
 } from "../src/index.js";
-import type { WorkspaceResolutionFailure } from "@bb/host-daemon-contract/workspace";
+import type {
+  WorkspaceResolutionFailure,
+} from "@bb/host-daemon-contract/workspace";
 
 interface OptionalServerFieldGroup {
   fields: readonly string[];
@@ -431,13 +433,9 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "Work requests omit sender/plugin provenance unless supplied by that origin. Legacy callers omit suggestion attribution and the server records unknown; current composers send explicit none when no suggestion contributed.",
+      "Thread creation, queued messages, and follow-up messages omit their sender unless the request originates from another thread or, for sends, a plugin.",
     fields: [
       "createQueuedMessageRequestSchema.senderThreadId",
-      "createQueuedMessageRequestSchema.originPluginId",
-      "createThreadRequestSchema.suggestionAttribution",
-      "sendMessageRequestSchema.suggestionAttribution",
-      "createQueuedMessageRequestSchema.suggestionAttribution",
       "sendMessageRequestSchema.senderThreadId",
       "createThreadRequestSchema.senderThreadId",
       "sendMessageRequestSchema.originPluginId",

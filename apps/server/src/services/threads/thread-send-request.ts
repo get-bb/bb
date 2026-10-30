@@ -1,4 +1,3 @@
-import { unknownWorkSuggestionAttribution } from "@bb/server-contract";
 import {
   captureAcceptedWork,
   resolveAcceptedWorkInitiator,
@@ -96,8 +95,6 @@ export async function acceptThreadSendRequest(
             origin: payload.originPluginId === undefined ? null : "plugin",
             originPluginId: payload.originPluginId ?? null,
           }),
-    suggestion:
-      payload.suggestionAttribution ?? unknownWorkSuggestionAttribution(),
   });
   if (outcome.kind === "dispatched") {
     return { ok: true, delivery: "sent" };

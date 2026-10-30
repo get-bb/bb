@@ -1,23 +1,10 @@
 import { describe, expect, it } from "vitest";
-import {
-  unknownWorkSuggestionAttribution,
-  noWorkSuggestionAttribution,
-  recordTelemetryEventRequestSchema,
-  type WorkSuggestionAttribution,
-} from "@bb/server-contract";
+import { recordTelemetryEventRequestSchema } from "@bb/server-contract";
 import {
   captureAcceptedWork,
   resolveAcceptedWorkInitiator,
 } from "../../src/services/system/work-acceptance.js";
 import type { TelemetryEvent } from "../../src/services/system/telemetry.js";
-
-const suggestion: WorkSuggestionAttribution = {
-  origin: "agent_context",
-  surface: "continuation",
-  template_key: null,
-  content_revision: "baseline",
-  edit_state: "edited",
-};
 
 describe("accepted work contract", () => {
   it("keeps actors independent of wrappers without claiming backend plugin work is user work", () => {
@@ -57,80 +44,24 @@ describe("accepted work contract", () => {
       }),
     ).toBe("automation");
   });
-  it("counts one accepted message and a distinct suggestion observation, excluding private references", () => {
+  it("emits only server-owned acceptance, excluding client-forged events", () => {
     const events: TelemetryEvent[] = [];
-    const telemetry = {
-      capture: (event: TelemetryEvent) => events.push(event),
-      isEnabled: () => true,
-      setEnabled: () => {},
-    };
-    captureAcceptedWork(telemetry, {
-      kind: "message",
-      initiator: "user",
-      suggestion,
-    });
-    expect(events.map((event) => event.name)).toEqual([
-      "work_accepted",
-      "onboarding_suggestion",
+    captureAcceptedWork(
+      {
+        capture: (event) => events.push(event),
+        isEnabled: () => true,
+        setEnabled: () => {},
+      },
+      { kind: "message", initiator: "user" },
+    );
+    expect(events).toEqual([
+      {
+        name: "work_accepted",
+        properties: { work_kind: "message", work_initiator: "user" },
+      },
     ]);
-    expect(events[0]).toMatchObject({
-      properties: {
-        work_kind: "message",
-        work_initiator: "user",
-        suggestion_origin: "agent_context",
-        suggestion_edit_state: "edited",
-      },
-    });
-    expect(events[1]).toEqual({
-      name: "onboarding_suggestion",
-      properties: {
-        action: "send_accepted",
-        surface: "continuation",
-        origin: "agent_context",
-        target: "current_thread",
-        fallback_reason: "none",
-        template_key: null,
-        content_revision: "baseline",
-        edit_state: "edited",
-      },
-    });
     expect(recordTelemetryEventRequestSchema.safeParse(events[0]).success).toBe(
       false,
     );
-    expect(recordTelemetryEventRequestSchema.safeParse(events[1]).success).toBe(
-      false,
-    );
-    events.length = 0;
-    captureAcceptedWork(telemetry, {
-      kind: "message",
-      initiator: "plugin",
-      suggestion,
-    });
-    expect(events.map((event) => event.name)).toEqual(["work_accepted"]);
-  });
-  it("distinguishes a legacy unknown draft from explicitly unsuggested work", () => {
-    const events: TelemetryEvent[] = [];
-    const telemetry = {
-      capture: (event: TelemetryEvent) => events.push(event),
-      isEnabled: () => true,
-      setEnabled: () => {},
-    };
-    captureAcceptedWork(telemetry, {
-      kind: "thread",
-      initiator: "user",
-      suggestion: unknownWorkSuggestionAttribution(),
-    });
-    captureAcceptedWork(telemetry, {
-      kind: "thread",
-      initiator: "user",
-      suggestion: noWorkSuggestionAttribution(),
-    });
-    expect(
-      events.map((event) =>
-        event.name === "work_accepted"
-          ? event.properties.suggestion_origin
-          : null,
-      ),
-    ).toEqual(["unknown", "none"]);
   });
 });

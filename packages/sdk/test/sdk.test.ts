@@ -1400,69 +1400,6 @@ describe("@bb/sdk", () => {
     ]);
   });
 
-  it("preserves optional suggestion attribution through every work admission surface", async () => {
-    const queue = createFetchQueue([
-      { body: { id: "thr_accepted" }, status: 201 },
-      { body: { ok: true, delivery: "sent" } },
-      { body: { id: "qmsg_accepted" }, status: 201 },
-      { body: { ok: true, delivery: "sent" } },
-    ]);
-    const sdk = createBbSdk({
-      transport: createHttpTransport({
-        baseUrl: "http://bb.test",
-        fetch: queue.fetch,
-        runtime: "node",
-      }),
-    });
-    const suggestionAttribution = {
-      origin: "agent_context",
-      surface: "continuation",
-      template_key: null,
-      content_revision: "baseline",
-      edit_state: "edited",
-    } as const;
-    const input = [
-      { type: "text" as const, text: "Edited draft", mentions: [] },
-    ];
-    await sdk.threads.spawn({
-      projectId: "proj_accepted",
-      environment: {
-        type: "host",
-        hostId: "host_accepted",
-        workspace: { type: "unmanaged", path: null },
-      },
-      prompt: "Edited draft",
-      suggestionAttribution,
-    });
-    await sdk.threads.send({
-      threadId: "thr_accepted",
-      input: [...input],
-      mode: "auto",
-      suggestionAttribution,
-    });
-    await sdk.threads.queuedMessages.create({
-      threadId: "thr_accepted",
-      input: [...input],
-      suggestionAttribution,
-      originPluginId: "fixture-plugin",
-    });
-    await sdk.threads.send({
-      threadId: "thr_accepted",
-      input: [...input],
-      mode: "auto",
-    });
-    const bodies = queue.requests.map((request) =>
-      JSON.parse(request.bodyText ?? "{}"),
-    );
-    expect(bodies.slice(0, 3)).toEqual(
-      Array.from({ length: 3 }, () =>
-        expect.objectContaining({ suggestionAttribution }),
-      ),
-    );
-    expect(bodies[2]).toHaveProperty("originPluginId", "fixture-plugin");
-    expect(bodies[3]).not.toHaveProperty("suggestionAttribution");
-  });
-
   it("submits an atomic message edit", async () => {
     const queue = createFetchQueue([
       {

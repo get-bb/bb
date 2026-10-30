@@ -126,7 +126,6 @@ import {
   getProjectStoredPromptAttachmentPaths,
   isPromptDraftEmpty,
   promptDraftToInput,
-  promptDraftWorkAttribution,
   type PromptDraftAttachment,
   type PromptDraftState,
 } from "@bb/client-core";
@@ -272,7 +271,6 @@ export function resolveSubmittedExecutionSources(
 }
 
 export interface NewThreadComposerSubmission extends NewThreadRequest {
-  suggestionAttribution?: CreateThreadRequest["suggestionAttribution"];
   pluginSubmission?: CreateThreadRequest["pluginSubmission"];
   sendAt?: number;
 }
@@ -1745,7 +1743,6 @@ export function NewThreadComposer({
         ...seededExecutionInputSources,
       };
       const request: NewThreadComposerSubmission = {
-        suggestionAttribution: promptDraftWorkAttribution(submittedDraft),
         projectId,
         providerId: selectedProviderId,
         model: selectedThreadModel,

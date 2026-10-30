@@ -1526,7 +1526,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Retry failed environment cleanup with recover: true after inspecting processes using the workspace",
         ],
         reference: [
-          "Core onboarding comparison observers read experimental_onboardingContext for server-reviewed baseline revisions and dormant experiment support. No test is active. Future variants must obtain eligible assignment before deciding or displaying the tested policy; failed context reads leave comparison coverage missing.",
           "Internal first-party plugin reporting uses internal_DO_NOT_USE_recordPluginUse for reviewed action/result pairs. The server binds identity to validated installed provenance and honors telemetry opt-out. UI observations remain observations; arbitrary plugin analytics, arguments, results and private identifiers are unsupported.",
           "Core setup telemetry uses system.experimental_recordTelemetryEvent: strict anonymous guide-operation observations (agent install/update, project scan/import, plugin install/enable), with first_run/replay, bounded outcomes and categories, and counts only for imports. Journey observations cover visible baseline design/window classes, explicit navigation, Agent readiness, project discovery/manual-folder results, work surfaces and typed setup blockers. A shown blocker is not a send attempt; loading or closing does not mean recovery. Missing results stay unknown; queued is not success. Clients cannot report experiment assignments. Existing events and usage-data opt-out are preserved. No prompts, raw errors, paths, names or new tracking IDs are accepted; this is not a general plugin analytics API.",
           "Device setup separates browser readiness, authenticated remote connection, additional-machine enrollment and actual execution, and mobile download interest. Client telemetry accepts only setup opening and mobile interest. internal_DO_NOT_USE_recordDeviceSetup is restricted to builtin Connect; core enrollment and trusted ingress own the other confirmed milestones. hosts.experimental_create accepts bounded optional telemetrySource, defaulting to unknown. No device, host or account identifiers are exported.",
@@ -1537,7 +1536,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginServerApi",
           "PluginBbSdk.hosts.get",
           "PluginBbSdk.system.experimental_recordTelemetryEvent",
-          "PluginBbSdk.system.experimental_onboardingContext",
           "BbPluginApi.internal_DO_NOT_USE_recordDeviceSetup",
           "PluginBbSdk.hosts.experimental_discoverRepos",
           "PluginBbSdk.experimental_promptHistory.list",

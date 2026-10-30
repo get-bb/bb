@@ -2796,12 +2796,12 @@ describe("public thread data routes", () => {
       });
       expect(capture).toHaveBeenCalledWith({
         name: "user_message_sent",
-        properties: expect.objectContaining({
+        properties: {
           initiator: "user",
           is_child_thread: false,
           message_source: "queued_message",
           provider: "codex",
-        }),
+        },
       });
       const queuedMessageBeforeUpdate = getQueuedThreadMessage(
         harness.db,
@@ -2935,15 +2935,7 @@ describe("public thread data routes", () => {
           .where(eq(events.threadId, thread.id))
           .all(),
       ).toEqual([]);
-      expect(capture).toHaveBeenCalledExactlyOnceWith(
-        expect.objectContaining({
-          name: "work_accepted",
-          properties: expect.objectContaining({
-            work_kind: "message",
-            work_initiator: "agent",
-          }),
-        }),
-      );
+      expect(capture).not.toHaveBeenCalled();
     });
   });
 

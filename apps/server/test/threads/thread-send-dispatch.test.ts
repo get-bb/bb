@@ -1,5 +1,3 @@
-import { unknownWorkSuggestionAttribution } from "@bb/server-contract";
-import { workTelemetryProperties } from "../../src/services/system/work-acceptance.js";
 import {
   archiveThread,
   getAppSettings,
@@ -287,14 +285,14 @@ describe("queued message auto-send notification", () => {
 });
 
 describe("user message telemetry", () => {
-  it("records queued acceptance with suggestion attribution once, preserving a core user through plugin submission", async () => {
+  it("counts queued user acceptance once through a plugin submission and queue drain", async () => {
     await withTestHarness(async (harness) => {
       const capture = installTelemetryCaptureSpy(harness);
       const { thread } = seedColdIdleThreadFixture({ harness, value: 28 });
       const result = await acceptThreadSendRequest(harness.deps, {
         thread,
         payload: {
-          input: textInput("An edited suggestion"),
+          input: textInput("A queued user message"),
           model: "gpt-5",
           permissionMode: "full",
           reasoningLevel: "medium",
@@ -302,13 +300,6 @@ describe("user message telemetry", () => {
           mode: "auto",
           sendAt: Date.now() + 60_000,
           pluginSubmission: { pluginId: "fixture-action", data: null },
-          suggestionAttribution: {
-            origin: "agent_context",
-            surface: "continuation",
-            template_key: null,
-            content_revision: "baseline",
-            edit_state: "edited",
-          },
         },
       });
       expect(result.delivery).toBe("queued");
@@ -321,20 +312,10 @@ describe("user message telemetry", () => {
             properties: {
               work_kind: "message",
               work_initiator: "user",
-              suggestion_origin: "agent_context",
-              suggestion_surface: "continuation",
-              suggestion_template_key: null,
-              suggestion_content_revision: "baseline",
-              suggestion_edit_state: "edited",
             },
           },
         ],
       ]);
-      expect(
-        capture.mock.calls.filter(
-          ([event]) => event.name === "onboarding_suggestion",
-        ),
-      ).toHaveLength(1);
       expect(
         capture.mock.calls.filter(
           ([event]) => event.name === "user_message_sent",
@@ -349,11 +330,6 @@ describe("user message telemetry", () => {
       });
       expect(
         capture.mock.calls.filter(([event]) => event.name === "work_accepted"),
-      ).toHaveLength(1);
-      expect(
-        capture.mock.calls.filter(
-          ([event]) => event.name === "onboarding_suggestion",
-        ),
       ).toHaveLength(1);
     });
   });
@@ -378,7 +354,6 @@ describe("user message telemetry", () => {
           name: "work_accepted",
           properties: expect.objectContaining({
             work_initiator: "automation",
-            suggestion_origin: "unknown",
           }),
         }),
       );
@@ -433,10 +408,6 @@ describe("user message telemetry", () => {
           is_child_thread: false,
           message_source: "thread_send",
           provider: "codex",
-          ...workTelemetryProperties(
-            "user",
-            unknownWorkSuggestionAttribution(),
-          ),
         },
       });
     });
@@ -476,10 +447,6 @@ describe("user message telemetry", () => {
           message_source: "thread_send",
           provider: "codex",
           initiator: "automation",
-          ...workTelemetryProperties(
-            "automation",
-            unknownWorkSuggestionAttribution(),
-          ),
         },
       });
     });

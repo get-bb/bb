@@ -12,8 +12,6 @@ export * from "./system-plugin-telemetry.js";
 import { rejectMultipleWorkspaceSelectors } from "./shared.js";
 import { z } from "zod";
 import { onboardingJourneyTelemetrySchemas } from "./system-journey-telemetry.js";
-import { onboardingSuggestionTelemetrySchemas } from "./system-suggestion-telemetry.js";
-export * from "./system-suggestion-telemetry.js";
 export * from "./system-journey-telemetry.js";
 import {
   aiServiceSelectionSchema,
@@ -359,7 +357,6 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
   deviceSetupTelemetrySchema,
   pluginRecommendationTelemetryEventSchema,
   ...onboardingJourneyTelemetrySchemas,
-  ...onboardingSuggestionTelemetrySchemas,
   z
     .object({
       name: z.literal("onboarding_operation"),

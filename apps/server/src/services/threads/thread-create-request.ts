@@ -23,7 +23,6 @@ export interface ThreadCreateServiceRequestInput {
    * waiting on the clock.
    */
   sendAt?: CreateThreadRequest["sendAt"];
-  suggestionAttribution?: CreateThreadRequest["suggestionAttribution"];
   input: PromptInput[];
   pluginMetadata?: CreateThreadRequest["pluginMetadata"];
   pluginSubmission?: CreateThreadRequest["pluginSubmission"];
@@ -52,11 +51,8 @@ export interface ThreadCreateServiceRequestInput {
 
 export interface ThreadCreateServiceRequest extends Omit<
   ThreadCreateServiceRequestInput,
-  "environment" | "pluginMetadata" | "providerId" | "suggestionAttribution"
+  "environment" | "pluginMetadata" | "providerId"
 > {
-  suggestionAttribution: NonNullable<
-    CreateThreadRequest["suggestionAttribution"]
-  >;
   environment: EnvironmentArgs | ProviderEnvironmentArgs;
   pluginMetadata: { pluginId: string; metadata: JsonObject } | null;
   providerId: string;

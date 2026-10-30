@@ -13,45 +13,6 @@ function post(harness: TestAppHarness, body: unknown) {
 }
 
 describe("client telemetry events", () => {
-  it("returns the baseline without assignment and refuses fabricated experiment exposure", async () => {
-    await withTestHarness(async (harness) => {
-      const capture = vi.fn<TelemetryService["capture"]>();
-      harness.deps.telemetry = { ...harness.deps.telemetry, capture };
-      const response = await harness.app.request(
-        "/api/v1/system/onboarding/context",
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ source: "first_run", stage: "first_task" }),
-        },
-      );
-      expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({
-        design_revision: "baseline",
-        recommendation_revision: "baseline",
-        assignment: null,
-      });
-      expect(capture).not.toHaveBeenCalled();
-      const event = {
-        name: "onboarding_comparison",
-        properties: {
-          phase: "displayed",
-          experiment_key: "home_starters",
-          experiment_revision: "invented_v1",
-          variant: "candidate",
-          design_revision: "baseline",
-          recommendation_revision: "baseline",
-          source: "first_run",
-          stage: "first_task",
-          width_class: "standard",
-          height_class: "regular",
-        },
-      };
-      expect((await post(harness, event)).status).toBe(400);
-      expect(capture).not.toHaveBeenCalled();
-    });
-  });
-
   it("accepts reviewed official recommendations and rejects a catalog identity collision", async () => {
     await withTestHarness(async (harness) => {
       const capture = vi.fn<TelemetryService["capture"]>();

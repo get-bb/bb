@@ -6,7 +6,6 @@ import {
   emptyPromptDraftState,
   isPromptDraftEmpty,
   parsePromptDraftStorage,
-  preserveEditedSuggestion,
   promptDraftToInput,
   serializePromptDraftStorage,
 } from "@bb/client-core";
@@ -193,8 +192,6 @@ function writePromptDraft(
   options: PromptDraftWriteOptions = { persist: "immediate" },
 ): void {
   if (!storageKey || typeof window === "undefined") return;
-  if (value.suggestion !== undefined)
-    value = preserveEditedSuggestion(readPromptDraft(storageKey), value);
 
   promptDraftCache.set(storageKey, {
     rawValue: null,

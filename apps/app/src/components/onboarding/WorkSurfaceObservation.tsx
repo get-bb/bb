@@ -1,8 +1,4 @@
-import { sdk } from "@/lib/sdk";
-import type {
-  OnboardingContextResponse,
-  RecordTelemetryEventRequest,
-} from "@bb/server-contract";
+import type { RecordTelemetryEventRequest } from "@bb/server-contract";
 import { useEffect, useRef, type ReactNode } from "react";
 import { recordTelemetryEvent } from "./onboarding-telemetry";
 import {
@@ -23,11 +19,9 @@ export type NewThreadReadiness =
 type WorkSurface = "first_task" | "continuation";
 
 interface Presentation {
-  viewers: Map<object, () => void>;
+  viewers: Set<object>;
   blockers: Set<NewThreadBlockerReason>;
   context: OnboardingWorkContext;
-  comparisonContext: OnboardingContextResponse | null;
-  comparisonSignature: string | null;
 }
 
 const presentations = new Map<string, Presentation>();
@@ -105,26 +99,11 @@ export function WorkSurfaceObservation({
       let presentation = presentations.get(key);
       if (!presentation) {
         presentation = {
-          viewers: new Map(),
+          viewers: new Set(),
           blockers: new Set(),
           context: takeOnboardingWorkEntry(),
-          comparisonContext: null,
-          comparisonSignature: null,
         };
         presentations.set(key, presentation);
-        const requestedPresentation = presentation;
-        void sdk.system
-          .experimental_onboardingContext({
-            source: presentation.context.source,
-            stage: surface,
-          })
-          .then((context) => {
-            if (presentations.get(key) !== requestedPresentation) return;
-            requestedPresentation.comparisonContext = context;
-            for (const refresh of requestedPresentation.viewers.values())
-              refresh();
-          })
-          .catch(() => undefined);
         recordTelemetryEvent({
           name: "onboarding_work_surface",
           properties: {
@@ -136,35 +115,7 @@ export function WorkSurfaceObservation({
         });
       }
       joined = true;
-      presentation.viewers.set(viewer, update);
-      if (presentation.comparisonContext !== null) {
-        const context = presentation.comparisonContext;
-        const properties = {
-          phase: "displayed" as const,
-          design_revision: context.design_revision,
-          recommendation_revision: context.recommendation_revision,
-          experiment_key: context.assignment?.experiment_key ?? null,
-          experiment_revision: context.assignment?.experiment_revision ?? null,
-          variant: context.assignment?.variant ?? null,
-          source: presentation.context.source,
-          stage: surface,
-          width_class:
-            window.innerWidth <= 640
-              ? ("compact" as const)
-              : window.innerWidth < 1200
-                ? ("standard" as const)
-                : ("wide" as const),
-          height_class:
-            window.innerHeight < 700
-              ? ("short" as const)
-              : ("regular" as const),
-        };
-        const signature = JSON.stringify(properties);
-        if (signature !== presentation.comparisonSignature) {
-          presentation.comparisonSignature = signature;
-          recordTelemetryEvent({ name: "onboarding_comparison", properties });
-        }
-      }
+      presentation.viewers.add(viewer);
       if (surface !== "first_task" || !latest.current.hasDraft) return;
       const state = latest.current.readiness;
       if (state.status === "blocked") {

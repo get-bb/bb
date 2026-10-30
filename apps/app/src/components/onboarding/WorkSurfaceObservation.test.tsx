@@ -12,10 +12,6 @@ import {
 } from "./onboarding-work-context";
 
 const capture = vi.hoisted(() => vi.fn());
-const getContext = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/sdk", () => ({
-  sdk: { system: { experimental_onboardingContext: getContext } },
-}));
 vi.mock("./onboarding-telemetry", () => ({ recordTelemetryEvent: capture }));
 
 const blocked: NewThreadReadiness = {
@@ -47,11 +43,6 @@ function Observation({
 
 beforeEach(() => {
   capture.mockClear();
-  getContext.mockReset().mockResolvedValue({
-    design_revision: "baseline",
-    recommendation_revision: "baseline",
-    assignment: null,
-  });
   vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
     new DOMRect(10, 10, 300, 100),
@@ -63,81 +54,9 @@ afterEach(async () => {
   await Promise.resolve();
   takeOnboardingWorkEntry();
   vi.restoreAllMocks();
-  vi.unstubAllGlobals();
 });
 
 describe("visible work measurement", () => {
-  it("keeps composing and leaves comparison coverage missing when context fails", async () => {
-    getContext.mockRejectedValueOnce(new Error("offline"));
-    const view = render(<Observation />);
-    await act(async () => {
-      await Promise.resolve();
-    });
-    expect(view.getByText("Composer")).toBeTruthy();
-    expect(
-      capture.mock.calls.some(
-        ([event]) => event.name === "onboarding_comparison",
-      ),
-    ).toBe(false);
-  });
-
-  it("records server-reviewed first-task and continuation comparison classes only while visible", async () => {
-    const view = render(<Observation />);
-    expect(
-      capture.mock.calls.some(
-        ([event]) => event.name === "onboarding_comparison",
-      ),
-    ).toBe(false);
-    await act(async () => {
-      await Promise.resolve();
-    });
-    const comparisons = () =>
-      capture.mock.calls
-        .map(([event]) => event)
-        .filter((event) => event.name === "onboarding_comparison");
-    expect(comparisons()).toHaveLength(1);
-    expect(comparisons()[0].properties).toMatchObject({
-      stage: "first_task",
-      experiment_key: null,
-      experiment_revision: null,
-      variant: null,
-      design_revision: "baseline",
-      recommendation_revision: "baseline",
-    });
-    fireEvent.resize(window);
-    expect(comparisons()).toHaveLength(1);
-    vi.stubGlobal("innerWidth", 500);
-    vi.stubGlobal("innerHeight", 600);
-    fireEvent.resize(window);
-    expect(comparisons()).toHaveLength(2);
-    expect(comparisons()[1].properties).toMatchObject({
-      width_class: "compact",
-      height_class: "short",
-    });
-    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
-    vi.stubGlobal("innerWidth", 1300);
-    fireEvent.resize(window);
-    expect(comparisons()).toHaveLength(2);
-    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
-    view.rerender(
-      <WorkSurfaceObservation
-        surface="continuation"
-        identity="continued"
-        enabled
-        hasDraft={false}
-        readiness={ready}
-      >
-        <div data-app-composer="">Composer</div>
-      </WorkSurfaceObservation>,
-    );
-    await act(async () => {
-      await Promise.resolve();
-    });
-    expect(comparisons().at(-1)).toMatchObject({
-      properties: { stage: "continuation", width_class: "wide" },
-    });
-  });
-
   it("deduplicates strict effects, rerenders and simultaneous views of the same draft", () => {
     const view = render(
       <StrictMode>

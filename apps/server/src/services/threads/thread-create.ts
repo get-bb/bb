@@ -1,8 +1,6 @@
-import { unknownWorkSuggestionAttribution } from "@bb/server-contract";
 import {
   captureAcceptedWork,
   resolveAcceptedWorkInitiator,
-  workTelemetryProperties,
 } from "../system/work-acceptance.js";
 import { requestThreadStorageDeletion } from "./thread-lifecycle.js";
 import { seedThreadSessionOptionSelections } from "./thread-session-options.js";
@@ -725,8 +723,6 @@ export async function createThreadFromRequest(
   }
   const request: ThreadCreateServiceRequest = {
     ...requestRest,
-    suggestionAttribution:
-      requestInput.suggestionAttribution ?? unknownWorkSuggestionAttribution(),
     ...(hierarchyParentThreadId
       ? { parentThreadId: hierarchyParentThreadId }
       : {}),
@@ -893,16 +889,11 @@ export async function createThreadFromRequest(
           initiator:
             spawnedByWorkingAgent && initiator === "user" ? "agent" : initiator,
         });
-  const workProperties = workTelemetryProperties(
-    workInitiator,
-    request.suggestionAttribution,
-  );
   deps.telemetry.capture({
     name: "thread_created",
     properties: {
       is_child_thread: parentThread !== null,
       provider: request.providerId,
-      ...workProperties,
       ...initiatorTelemetryProperty(
         deps.config.featureFlags,
         telemetryInitiator,
@@ -915,14 +906,12 @@ export async function createThreadFromRequest(
       messageSource: "thread_create",
       providerId: request.providerId,
       initiator: telemetryInitiator,
-      workProperties,
     });
   }
   if (request.input.length > 0)
     captureAcceptedWork(deps.telemetry, {
       kind: "thread",
       initiator: workInitiator,
-      suggestion: request.suggestionAttribution,
     });
   return thread;
 }

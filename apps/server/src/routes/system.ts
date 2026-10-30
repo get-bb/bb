@@ -1,4 +1,3 @@
-import { createOnboardingContextService } from "../services/system/onboarding-context.js";
 import { isReviewedPluginRecommendation } from "../services/plugins/plugin-measurement.js";
 import { createMobileAppReleaseService } from "../services/install/mobile-app-releases.js";
 import {
@@ -346,34 +345,7 @@ export function registerSystemRoutes(
     return context.json(compatibleGeneralSettings());
   });
 
-  const onboardingContext = createOnboardingContextService(deps);
-  post(routes.onboardingContext, (context, payload) =>
-    context.json(onboardingContext.context(payload)),
-  );
-
   post(routes.recordTelemetryEvent, (context, payload) => {
-    if (
-      payload.name === "onboarding_comparison" &&
-      payload.properties.experiment_key !== null
-    ) {
-      const { experiment_key, experiment_revision, variant, stage } =
-        payload.properties;
-      if (
-        experiment_revision === null ||
-        variant === null ||
-        stage === null ||
-        !onboardingContext.acceptsDisplay(
-          { experiment_key, experiment_revision, variant },
-          stage,
-        )
-      ) {
-        throw new ApiError(
-          400,
-          "invalid_request",
-          "Exposure requires the installation's reviewed assignment",
-        );
-      }
-    }
     if (
       payload.name === "plugin_recommendation" &&
       payload.properties.public_plugin !== null &&

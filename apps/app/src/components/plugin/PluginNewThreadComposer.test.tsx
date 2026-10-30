@@ -1,7 +1,5 @@
 // @vitest-environment jsdom
 
-import { noWorkSuggestionAttribution } from "@bb/server-contract";
-
 import { useContext, useEffect, useState, type ReactNode } from "react";
 import { Provider } from "jotai";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -176,11 +174,6 @@ vi.mock("@/lib/sdk", () => ({
   sdk: {
     projects: { attachments: { copy: mocks.copyAttachments } },
     system: {
-      experimental_onboardingContext: vi.fn().mockResolvedValue({
-        design_revision: "baseline",
-        recommendation_revision: "baseline",
-        assignment: null,
-      }),
       experimental_recordTelemetryEvent: vi
         .fn()
         .mockRejectedValue(new Error("Telemetry unavailable")),
@@ -985,10 +978,7 @@ describe("PluginNewThreadComposer seeding", () => {
     await submit();
 
     expect(submitted).toHaveLength(1);
-    expect(submitted[0]).toEqual({
-      ...STORED_REQUEST,
-      suggestionAttribution: noWorkSuggestionAttribution(),
-    });
+    expect(submitted[0]).toEqual(STORED_REQUEST);
     await waitFor(() => {
       expect(latestPromptBoxProps().value).toBe("");
     });
@@ -1167,7 +1157,6 @@ describe("PluginNewThreadComposer seeding", () => {
     expect(submitted).toEqual([
       {
         ...STORED_REQUEST,
-        suggestionAttribution: noWorkSuggestionAttribution(),
         input: [{ type: "text", text: "Background transcript", mentions: [] }],
       },
     ]);
@@ -1354,7 +1343,6 @@ describe("PluginNewThreadComposer seeding", () => {
     expect(submitted).toHaveLength(1);
     expect(submitted[0]).toEqual({
       ...otherRecord,
-      suggestionAttribution: noWorkSuggestionAttribution(),
       environment: {
         type: "provider",
         environmentProviderId: "project-checkout",
@@ -1389,10 +1377,7 @@ describe("PluginNewThreadComposer seeding", () => {
     await submit();
 
     expect(submitted).toHaveLength(1);
-    expect(submitted[0]).toEqual({
-      ...otherProjectRecord,
-      suggestionAttribution: noWorkSuggestionAttribution(),
-    });
+    expect(submitted[0]).toEqual(otherProjectRecord);
   });
 
   it("does not resurrect the seeded inputs after the user leaves and returns to the environment", async () => {

@@ -1,8 +1,6 @@
-import { unknownWorkSuggestionAttribution } from "@bb/server-contract";
 import {
   captureAcceptedWork,
   resolveAcceptedWorkInitiator,
-  workTelemetryProperties,
 } from "../system/work-acceptance.js";
 import {
   getLatestThreadSequence,
@@ -311,17 +309,11 @@ export async function createQueuedMessageForThread(
       messageSource: "queued_message",
       providerId: thread.providerId,
       initiator: "user",
-      workProperties: workTelemetryProperties(
-        workInitiator,
-        payload.suggestionAttribution ?? unknownWorkSuggestionAttribution(),
-      ),
     });
   }
   captureAcceptedWork(deps.telemetry, {
     kind: "message",
     initiator: workInitiator,
-    suggestion:
-      payload.suggestionAttribution ?? unknownWorkSuggestionAttribution(),
   });
   if (
     (currentThread.status === "idle" && hasProviderSession) ||

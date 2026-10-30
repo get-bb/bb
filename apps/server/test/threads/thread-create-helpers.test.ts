@@ -1,4 +1,3 @@
-import { unknownWorkSuggestionAttribution } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import {
   createEnvironment,
@@ -116,7 +115,6 @@ describe("createThreadRecord", () => {
           {
             environmentId: null,
             request: {
-              suggestionAttribution: unknownWorkSuggestionAttribution(),
               ...mode,
               environment: { type: "reuse", environmentId: "env_unused" },
               sectionId: section.section.id,
@@ -178,7 +176,6 @@ describe("createThreadRecord", () => {
         createThreadRecord(deps, {
           environmentId: environment.id,
           request: {
-            suggestionAttribution: unknownWorkSuggestionAttribution(),
             environment: {
               environmentId: environment.id,
               type: "reuse",
