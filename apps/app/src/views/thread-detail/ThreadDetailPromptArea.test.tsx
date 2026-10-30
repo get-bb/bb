@@ -43,6 +43,10 @@ import {
 import { LazyQueuedMessagesList } from "@/components/promptbox/banner/LazyQueuedMessagesList";
 import { workflowRow } from "@/test/fixtures/thread-timeline-rows";
 import type { PromptDraftAttachment } from "@bb/client-core";
+import {
+  getPromptDraftAccessor,
+  usePromptDraftStorage,
+} from "@/hooks/usePromptDraftStorage";
 import { BbHttpError } from "@/lib/sdk";
 import type { ExperimentalComposerSelection } from "@get-bb/plugin-sdk";
 import { setComposerTextEffect } from "@/lib/composer-text-effects";
@@ -56,8 +60,9 @@ import {
 } from "./ThreadDetailPromptArea";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 
-vi.mock("@/hooks/usePromptDraftStorage", () => ({
-  usePromptDraftStorage: () => mocks.promptDraft,
+vi.mock("@/hooks/usePromptDraftStorage", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/hooks/usePromptDraftStorage")>()),
+  usePromptDraftStorage: vi.fn(),
 }));
 
 function makeQueuedMessage(
@@ -214,7 +219,169 @@ function renderPromptArea(options: RenderPromptAreaOptions = {}) {
 
 beforeAll(() => LazyQueuedMessagesList.preload());
 
+describe("shared draft submission ownership", () => {
+  let nextId = 0;
+
+  beforeEach(async () => {
+    const storage = await vi.importActual<
+      typeof import("@/hooks/usePromptDraftStorage")
+    >("@/hooks/usePromptDraftStorage");
+    vi.mocked(usePromptDraftStorage).mockImplementation(
+      storage.usePromptDraftStorage,
+    );
+  });
+
+  afterEach(() => {
+    mocks.sendMessageMutateAsync.mockReset().mockResolvedValue(undefined);
+  });
+
+  function openComposer(threadId: string) {
+    const mounted = renderPromptArea({
+      thread: makeThread({
+        id: threadId,
+        status: "active",
+        runtime: { displayStatus: "active" },
+      }),
+    });
+    fireEvent.click(
+      within(mounted.container).getByRole("button", {
+        name: "Capture plugin host",
+      }),
+    );
+    const ordinary = mocks.composerSubmit;
+    const modifier = mocks.composerModifierSubmit;
+    if (!ordinary || !modifier) throw new Error("Missing composer actions");
+    return { ...mounted, ordinary, modifier };
+  }
+
+  function draftFor(threadId: string) {
+    return getPromptDraftAccessor({
+      kind: "thread",
+      projectId: "proj_1",
+      threadId,
+    });
+  }
+
+  describe.each(["same callback", "remount", "sibling"])("%s", (lifetime) => {
+    it.each([
+      ["ordinary", "ordinary"],
+      ["ordinary", "modifier"],
+      ["modifier", "ordinary"],
+      ["modifier", "modifier"],
+    ] as const)(
+      "serializes %s then %s without losing edits",
+      async (firstAction, secondAction) => {
+        const threadId = `thr_lock_${++nextId}`;
+        const draft = draftFor(threadId);
+        const original = {
+          text: "first message",
+          mentions: [],
+          attachments: [
+            {
+              type: "localFile" as const,
+              path: "uploads/first.txt",
+              name: "first.txt",
+            },
+          ],
+        };
+        const newer = { ...original, text: "edited while pending" };
+        draft.setDraft(original);
+        const response = createDeferredPromise<void>();
+        mocks.sendMessageMutateAsync.mockReturnValue(response.promise);
+        const firstView = openComposer(threadId);
+        const sibling = lifetime === "sibling" ? openComposer(threadId) : null;
+        let firstAttempt: Promise<unknown> = Promise.resolve();
+        let secondAttempt: Promise<unknown> = Promise.resolve();
+        let calls = 0;
+        let pendingVisible = false;
+        try {
+          act(() => {
+            firstAttempt = Promise.resolve(firstView[firstAction]()).catch(
+              (error) => error,
+            );
+            draft.setDraft(newer);
+            if (lifetime === "same callback") {
+              secondAttempt = Promise.resolve(firstView[secondAction]()).catch(
+                (error) => error,
+              );
+            }
+          });
+          if (lifetime !== "same callback") {
+            if (lifetime === "remount") firstView.unmount();
+            const nextView = sibling ?? openComposer(threadId);
+            pendingVisible =
+              within(nextView.container).queryByRole("button", {
+                name: "Modifier submit",
+              }) === null;
+            act(() => {
+              secondAttempt = Promise.resolve(nextView[secondAction]()).catch(
+                (error) => error,
+              );
+            });
+          }
+          calls = mocks.sendMessageMutateAsync.mock.calls.length;
+        } finally {
+          await act(async () => {
+            response.reject(new Error("Simulated transport failure"));
+            await Promise.all([firstAttempt, secondAttempt]);
+          });
+        }
+        expect({ requests: calls, draft: draft.getCurrent() }).toEqual({
+          requests: 1,
+          draft: newer,
+        });
+        expect(await secondAttempt).toBeInstanceOf(Error);
+        if (lifetime !== "same callback") expect(pendingVisible).toBe(true);
+        const retry = openComposer(threadId);
+        mocks.sendMessageMutateAsync.mockResolvedValue(undefined);
+        await act(async () => {
+          await retry.ordinary();
+        });
+        expect(mocks.sendMessageMutateAsync).toHaveBeenCalledTimes(2);
+      },
+    );
+  });
+
+  it("allows a different thread to submit while one scope is pending", async () => {
+    const firstId = `thr_parallel_${++nextId}`;
+    const secondId = `${firstId}_other`;
+    draftFor(firstId).setDraft({ text: "one", mentions: [], attachments: [] });
+    draftFor(secondId).setDraft({ text: "two", mentions: [], attachments: [] });
+    const response = createDeferredPromise<void>();
+    mocks.sendMessageMutateAsync
+      .mockReturnValueOnce(response.promise)
+      .mockResolvedValue(undefined);
+    const firstView = openComposer(firstId);
+    let firstAttempt: Promise<unknown> = Promise.resolve();
+    try {
+      act(() => {
+        firstAttempt = Promise.resolve(firstView.ordinary());
+      });
+      firstView.unmount();
+      const otherView = openComposer(secondId);
+      await act(async () => {
+        await otherView.modifier();
+      });
+      expect(mocks.sendMessageMutateAsync).toHaveBeenCalledTimes(2);
+      expect(mocks.sendMessageMutateAsync).toHaveBeenLastCalledWith(
+        expect.objectContaining({ id: secondId }),
+      );
+    } finally {
+      await act(async () => {
+        response.resolve();
+        await firstAttempt;
+      });
+    }
+  });
+});
+
 beforeEach(() => {
+  vi.mocked(usePromptDraftStorage).mockImplementation(() => ({
+    ...mocks.promptDraft,
+    value: mocks.promptDraft.text,
+    clear: vi.fn(),
+    setAttachments: vi.fn(),
+  }));
   testQueryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });

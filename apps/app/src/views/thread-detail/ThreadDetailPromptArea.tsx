@@ -79,6 +79,7 @@ import {
   type SessionOptionChoices,
 } from "@/components/pickers/SessionOptionsMenu";
 import { useThreadSessionOptionChoices } from "./useThreadSessionOptionChoices";
+import { useDraftSubmission } from "./useDraftSubmission";
 import {
   LazyQueuedMessagesList,
   QueuedMessagesPendingCard,
@@ -520,6 +521,9 @@ export function ThreadDetailPromptArea({
     inlineDraft: inlineEditingQueuedMessage?.draft ?? null,
     inlineSessionRef: inlineDraftSessionRef,
   });
+  const { isSubmitting: isDraftSubmitting, submitDraft } = useDraftSubmission(
+    promptDraft.storageKey,
+  );
   const subscribeInlineQueuedDraft = useComposerHostDraftNotifier(
     inlineEditingQueuedMessage?.draft ?? null,
   );
@@ -938,6 +942,7 @@ export function ThreadDetailPromptArea({
     queuedMessageActionPending ||
     isFollowUpShortcutSending;
   const isFollowUpSubmitting =
+    isDraftSubmitting ||
     sendMessage.isPending ||
     createThread.isPending ||
     isFollowUpShortcutSending;
@@ -1227,7 +1232,7 @@ export function ThreadDetailPromptArea({
     ],
   );
 
-  const handleSend = useCallback(
+  const submitFollowUpDraft = useCallback(
     async ({ sendAt, pluginSubmission }: ComposerSubmitExtras = {}) => {
       const submittedDraft = promptDraft.getCurrent();
       const submittedInput = promptDraftToInput(submittedDraft);
@@ -1314,6 +1319,11 @@ export function ThreadDetailPromptArea({
       runtimeDisplayStatus,
     ],
   );
+  const handleSend = useCallback(
+    (extras: ComposerSubmitExtras = {}) =>
+      submitDraft(() => submitFollowUpDraft(extras)),
+    [submitDraft, submitFollowUpDraft],
+  );
   const handleModifierSubmit = useCallback(
     async ({ sendAt, pluginSubmission }: ComposerSubmitExtras = {}) => {
       if (!canSubmitModifierShortcut) {
@@ -1333,27 +1343,31 @@ export function ThreadDetailPromptArea({
       }
 
       if (shortcutRequest.kind === "draft") {
-        promptDraft.clearIfCurrentMatches(submittedDraft);
-        setBottomAttachmentError(null);
-        await runWhileFollowUpShortcutSending(
-          setIsFollowUpShortcutSending,
-          async () => {
-            try {
-              await sendMessage.mutateAsync({
-                ...shortcutRequest.request,
-                ...(sendAt === undefined ? {} : { sendAt }),
-                ...(pluginSubmission === undefined ? {} : { pluginSubmission }),
-              });
-            } catch (nextError) {
-              promptDraft.restoreIfEmpty(submittedDraft);
-              throw reportMutationError({
-                error: nextError,
-                fallbackMessage: "Failed to send message",
-                lifecycleOperation: "send_message",
-              });
-            }
-          },
-        );
+        await submitDraft(async () => {
+          promptDraft.clearIfCurrentMatches(submittedDraft);
+          setBottomAttachmentError(null);
+          await runWhileFollowUpShortcutSending(
+            setIsFollowUpShortcutSending,
+            async () => {
+              try {
+                await sendMessage.mutateAsync({
+                  ...shortcutRequest.request,
+                  ...(sendAt === undefined ? {} : { sendAt }),
+                  ...(pluginSubmission === undefined
+                    ? {}
+                    : { pluginSubmission }),
+                });
+              } catch (nextError) {
+                promptDraft.restoreIfEmpty(submittedDraft);
+                throw reportMutationError({
+                  error: nextError,
+                  fallbackMessage: "Failed to send message",
+                  lifecycleOperation: "send_message",
+                });
+              }
+            },
+          );
+        });
         return;
       }
 
@@ -1386,6 +1400,7 @@ export function ThreadDetailPromptArea({
       sendMessage,
       sendQueuedMessageById,
       setBottomAttachmentError,
+      submitDraft,
       thread.id,
     ],
   );
