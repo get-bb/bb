@@ -1431,7 +1431,7 @@ describe("Account Pool plugin", () => {
         response.end(
           JSON.stringify({
             account: {
-              uuid: "22222222-2222-4222-8222-222222222222",
+              uuid: `22222222-2222-4222-8222-${String(tokenBodies.length).padStart(12, "0")}`,
               email: "login@example.com",
               display_name: "Logged-in Claude",
               has_claude_pro: true,
@@ -1551,6 +1551,7 @@ describe("Account Pool plugin", () => {
   });
 
   it("exposes Codex device login over RPC and the two-step CLI", async () => {
+    let tokenExchanges = 0;
     let holdTokenPoll = false;
     let markTokenPollStarted: () => void = () => {};
     const tokenPollStarted = new Promise<void>((resolve) => {
@@ -1596,7 +1597,7 @@ describe("Account Pool plugin", () => {
             id_token: testJwt({
               email: "codex@example.com",
               "https://api.openai.com/auth": {
-                chatgpt_account_id: "chatgpt-account-1",
+                chatgpt_account_id: `chatgpt-account-${++tokenExchanges}`,
               },
             }),
           }),
@@ -5638,6 +5639,7 @@ describe("Account Pool plugin", () => {
             accessToken: `access-${imported}`,
             refreshToken: `refresh-${imported}`,
             email: `account-${imported}@example.com`,
+            accountUuid: `11111111-1111-4111-8111-${String(imported).padStart(12, "0")}`,
             expiresAt: now + 10 * 60 * 1_000,
           });
         },
@@ -6387,7 +6389,7 @@ describe("sequential pool recovery", () => {
         refreshToken: "refresh",
         expiresAt: now + 3600000,
         idToken: null,
-        accountId: "codex-qa",
+        accountId: `codex-qa-${imports}`,
         email: null,
       }),
       fetch: async (input, init) => {
@@ -6600,6 +6602,7 @@ describe("sequential pool recovery", () => {
           importCredentials: async () =>
             importedCredentials({
               accessToken: ++importCount === 1 ? "paid" : "included",
+              accountUuid: `11111111-1111-4111-8111-${String(importCount).padStart(12, "0")}`,
             }),
           fetch: async (input, init) => {
             const key = new Headers(init?.headers).get("authorization");

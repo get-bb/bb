@@ -7,6 +7,7 @@ import {
   codexAccessTokenExpiresAt,
 } from "./credentials.js";
 import type { AccountSummary } from "./contracts.js";
+import { DuplicateAccountError } from "./store.js";
 
 const LOGIN_SESSION_TTL_MS = 10 * 60 * 1_000;
 const DEVICE_CALLBACK_PATH = "/deviceauth/callback";
@@ -401,6 +402,9 @@ export class CodexDeviceLogin {
       });
       return { status: "complete", account };
     } catch (error) {
+      if (error instanceof DuplicateAccountError) {
+        return { status: "error", message: error.message };
+      }
       return {
         status: "error",
         message:

@@ -5,9 +5,14 @@ import { mkdtemp } from "node:fs/promises";
 import Database from "better-sqlite3";
 import type { PluginKvStorage } from "@get-bb/plugin-sdk";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Account } from "./contracts.js";
-import { AccountStore, QUOTA_MIGRATIONS, QuotaStore } from "./store.js";
+import {
+  AccountStore,
+  DuplicateAccountError,
+  QUOTA_MIGRATIONS,
+  QuotaStore,
+} from "./store.js";
 
 const cleanups: Array<() => Promise<void>> = [];
 
@@ -31,13 +36,45 @@ function delayedAccountReads(kv: PluginKvStorage): PluginKvStorage {
 }
 
 describe("AccountStore", () => {
-  it("loads account metadata written before account UUIDs were stored", async () => {
+  const CLAUDE_UUID = "11111111-1111-4111-8111-111111111111";
+  const accountInput = {
+    provider: "claude",
+    kind: "oauth",
+    label: "original",
+    email: null,
+    accountUuid: null,
+    subscriptionType: null,
+    rateLimitTier: null,
+    enabled: false,
+    priority: 7,
+  } as const;
+  const secret = {
+    kind: "oauth" as const,
+    accessToken: "access",
+    refreshToken: "refresh",
+    expiresAt: null,
+  };
+  const rotatedSecret = {
+    ...secret,
+    accessToken: "rotated",
+    refreshToken: "rotated",
+  };
+  let host: ReturnType<typeof createFakePluginHost>;
+  let store: AccountStore;
+  let secretsDir: string;
+
+  beforeEach(async () => {
     const dataDir = await mkdtemp(path.join(tmpdir(), "bb-account-store-"));
-    const host = createFakePluginHost({ pluginId: "account-pool", dataDir });
-    const store = new AccountStore(
-      host.bb.storage.kv,
-      path.join(dataDir, "secrets"),
-    );
+    host = createFakePluginHost({ pluginId: "account-pool", dataDir });
+    secretsDir = path.join(dataDir, "secrets");
+    store = new AccountStore(host.bb.storage.kv, secretsDir);
+    cleanups.push(async () => {
+      await host.harness.lifecycle.dispose();
+      await fs.rm(dataDir, { recursive: true, force: true });
+    });
+  });
+
+  it("loads account metadata written before account UUIDs were stored", async () => {
     await host.bb.storage.kv.set("accounts:v1", [
       {
         id: "11111111-1111-4111-8111-111111111111",
@@ -52,41 +89,121 @@ describe("AccountStore", () => {
         createdAt: 1,
       },
     ]);
-    cleanups.push(async () => {
-      await host.harness.lifecycle.dispose();
-      await fs.rm(dataDir, { recursive: true, force: true });
-    });
 
     expect(await store.list()).toEqual([
       expect.objectContaining({ accountUuid: null }),
     ]);
   });
 
+  it("rejects a concurrent duplicate OAuth add without changing the original", async () => {
+    store = new AccountStore(
+      delayedAccountReads(host.bb.storage.kv),
+      secretsDir,
+    );
+    const results = await Promise.allSettled([
+      store.add(accountInput, secret),
+      store.add(
+        { ...accountInput, label: "duplicate", enabled: true, priority: 100 },
+        secret,
+      ),
+    ]);
+
+    expect(results[0]?.status).toBe("fulfilled");
+    expect(results[1]).toMatchObject({
+      status: "rejected",
+      reason: new DuplicateAccountError(),
+    });
+    const accounts = await store.list();
+    expect(accounts).toHaveLength(1);
+    expect(accounts[0]).toMatchObject(accountInput);
+    expect(await fs.readdir(secretsDir)).toHaveLength(1);
+  });
+
+  it.each([
+    { provider: "claude", identity: { accountUuid: CLAUDE_UUID } },
+    { provider: "codex", identity: { codexAccountId: "workspace-1" } },
+  ] as const)(
+    "rejects the same $provider account ID with a new email and tokens",
+    async ({ provider, identity }) => {
+      const input = { ...accountInput, provider, ...identity };
+      await store.add({ ...input, email: "person@example.com" }, secret);
+
+      await expect(
+        store.add({ ...input, email: "changed@example.com" }, rotatedSecret),
+      ).rejects.toThrow(DuplicateAccountError);
+    },
+  );
+
+  it("rejects a case-insensitive email match when one account UUID is missing", async () => {
+    await store.add(
+      {
+        ...accountInput,
+        accountUuid: CLAUDE_UUID,
+        email: "Person@Example.com",
+      },
+      secret,
+    );
+
+    await expect(
+      store.add(
+        { ...accountInput, email: "person@example.com" },
+        rotatedSecret,
+      ),
+    ).rejects.toThrow(DuplicateAccountError);
+  });
+
+  it("rejects the same tokens when one email is missing", async () => {
+    await store.add({ ...accountInput, email: "person@example.com" }, secret);
+
+    await expect(store.add(accountInput, secret)).rejects.toThrow(
+      DuplicateAccountError,
+    );
+  });
+
+  it("keeps different Codex workspace IDs separate despite the same email and tokens", async () => {
+    const input = {
+      ...accountInput,
+      provider: "codex",
+      email: "person@example.com",
+    } as const;
+    await store.add({ ...input, codexAccountId: "workspace-1" }, secret);
+    await store.add({ ...input, codexAccountId: "workspace-2" }, secret);
+
+    expect(await store.list()).toHaveLength(2);
+  });
+
+  it("keeps different providers separate despite the same email and tokens", async () => {
+    const input = { ...accountInput, email: "person@example.com" };
+    await store.add(input, secret);
+    await store.add(
+      { ...input, provider: "codex", codexAccountId: "workspace-1" },
+      secret,
+    );
+
+    expect(await store.list()).toHaveLength(2);
+  });
+
+  it("adds an account when an existing account's secret is unreadable", async () => {
+    await store.add(accountInput, secret);
+    await fs.rm(secretsDir, { recursive: true });
+
+    await store.add(accountInput, rotatedSecret);
+
+    expect(await store.list()).toHaveLength(2);
+  });
+
   it("preserves both accounts added concurrently", async () => {
-    const dataDir = await mkdtemp(path.join(tmpdir(), "bb-account-store-"));
-    const host = createFakePluginHost({ pluginId: "account-pool", dataDir });
-    const secretsDir = path.join(dataDir, "secrets");
-    const store = new AccountStore(
+    store = new AccountStore(
       delayedAccountReads(host.bb.storage.kv),
       secretsDir,
     );
     await store.initialize();
-    cleanups.push(async () => {
-      await host.harness.lifecycle.dispose();
-      await fs.rm(dataDir, { recursive: true, force: true });
-    });
     const account = (
       label: string,
     ): Omit<Account, "id" | "createdAt" | "lastUsedAt" | "lastUsedHostId"> => ({
-      provider: "claude",
+      ...accountInput,
       kind: "api-key",
       label,
-      email: null,
-      accountUuid: null,
-      subscriptionType: null,
-      rateLimitTier: null,
-      enabled: true,
-      priority: 100,
     });
 
     const [first, second] = await Promise.all([

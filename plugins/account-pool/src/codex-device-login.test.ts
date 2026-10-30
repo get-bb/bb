@@ -5,6 +5,7 @@ import {
   CodexDeviceLogin,
   type CodexDeviceAccount,
 } from "./codex-device-login.js";
+import { DuplicateAccountError } from "./store.js";
 
 type Handler = (
   request: IncomingMessage,
@@ -196,6 +197,7 @@ describe("Codex device login", () => {
       now: () => now,
       addAccount: async (account) => {
         added.push(account);
+        if (added.length > 1) throw new DuplicateAccountError();
         return summary(account);
       },
     });
@@ -252,6 +254,12 @@ describe("Codex device login", () => {
         code_verifier: "verifier-secret",
       }),
     );
+    const duplicate = await login.start();
+    now += 5_000;
+    expect(await login.poll({ sessionId: duplicate.sessionId })).toEqual({
+      status: "error",
+      message: "This account is already in the pool.",
+    });
   });
 
   it("extends the session interval after slow_down", async () => {
