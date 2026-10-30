@@ -19,9 +19,10 @@ export const setupAttemptSchema = z
   })
   .strict();
 export type SetupAttempt = z.infer<typeof setupAttemptSchema>;
-type Observation = Parameters<
-  BbPluginApi["internal_DO_NOT_USE_recordDeviceSetup"]
->[0];
+type Observation = Extract<
+  Parameters<BbPluginApi["internal_DO_NOT_USE_recordDeviceSetup"]>[0],
+  { operation: string }
+>;
 function context(source: DeviceSource) {
   return source === "first_run" || source === "replay"
     ? { surface: "onboarding" as const, entry: source }

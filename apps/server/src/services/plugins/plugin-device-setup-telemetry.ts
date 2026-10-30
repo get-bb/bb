@@ -17,9 +17,16 @@ export function createConnectDeviceSetupRecorder(
     owner.sourceBuiltinName !== "connect"
   )
     return null;
+  let observedConnection = false;
   return (input) => {
     const properties = connectDeviceSetupPropertiesSchema.parse(input);
-    if (telemetry.isEnabled())
+    if (!telemetry.isEnabled()) return;
+    if ("state" in properties) {
+      if (observedConnection) return;
+      observedConnection = true;
+      telemetry.capture({ name: "onboarding_step_state", properties });
+    } else {
       telemetry.capture({ name: "onboarding_operation", properties });
+    }
   };
 }

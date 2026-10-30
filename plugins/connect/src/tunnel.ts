@@ -51,6 +51,7 @@ interface ConnectTunnelOptions {
   getLoopbackBaseUrl: () => string;
   log: PluginLogger;
   onStatusChange?: (status: ConnectStatus) => void;
+  onAuthenticatedAppConnection?: () => void;
 }
 
 function identityOf(account: Account | null): ConnectIdentity | null {
@@ -509,6 +510,7 @@ export class ConnectTunnel {
         tunnel,
         log: this.options.log,
         resolveOrigin: (target) => this.resolveStreamOrigin(target),
+        onAuthenticatedAppConnection: this.options.onAuthenticatedAppConnection,
         onRemoteClientsChange: (count) => {
           this.remoteClients = count;
           this.publish();

@@ -73,6 +73,32 @@ describe("trusted Connect lifecycle reporting", () => {
     enabled = true;
     report(properties);
     expect(capture).toHaveBeenCalledTimes(2);
+    const connection = {
+      surface: "unknown",
+      entry: null,
+      step: "devices",
+      resource_type: "device",
+      resource_id: "browser_access",
+      state: "connected",
+    } as const;
+    enabled = false;
+    report(connection);
+    expect(capture).toHaveBeenCalledTimes(2);
+    enabled = true;
+    report(connection);
+    report(connection);
+    expect(capture).toHaveBeenCalledTimes(3);
+    expect(capture).toHaveBeenLastCalledWith({
+      name: "onboarding_step_state",
+      properties: connection,
+    });
+    for (const invalid of [
+      { ...connection, state: "setup_open" },
+      { ...connection, resource_id: "additional_machine" },
+      { ...connection, url: "private" },
+    ]) {
+      expect(() => Reflect.apply(report, null, [invalid])).toThrow();
+    }
   });
 
   it("rejects confirmed milestones on the client endpoint while retaining interest observations", async () => {

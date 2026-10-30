@@ -101,6 +101,16 @@ export function createConnectPlugin(options: ConnectPluginOptions = {}) {
       enabled: currentSettings.remoteAccess,
       getLoopbackBaseUrl,
       log: bb.log,
+      onAuthenticatedAppConnection: () => {
+        bb.internal_DO_NOT_USE_recordDeviceSetup({
+          surface: "unknown",
+          entry: null,
+          step: "devices",
+          resource_type: "device",
+          resource_id: "browser_access",
+          state: "connected",
+        });
+      },
       onStatusChange: (status) => {
         measurement.observe(status);
         bb.realtime.publish(CONNECT_REALTIME_CHANNEL, status);

@@ -21,6 +21,7 @@ describe("tunnel origin websockets", () => {
       host: "127.0.0.1",
       port: 0,
       perMessageDeflate: true,
+      verifyClient: ({ req }) => req.url !== "/ws?reject",
     });
     await new Promise<void>((resolve) => origin.once("listening", resolve));
     const address = origin.address();
@@ -33,7 +34,9 @@ describe("tunnel origin websockets", () => {
       socket.send("x".repeat(64 * 1024));
     });
     const tunnel = new FakeTunnel();
+    const connected = vi.fn();
     const session = new TunnelSession({
+      onAuthenticatedAppConnection: connected,
       tunnel: tunnel as unknown as NodeWebSocket,
       log: { warn: () => {} },
       monotonicNow: () => 0,
@@ -67,6 +70,79 @@ describe("tunnel origin websockets", () => {
       );
       expect(upgrades).toHaveLength(1);
       expect(upgrades[0]?.headers["sec-websocket-extensions"]).toBe(undefined);
+      expect(connected).not.toHaveBeenCalled();
+      const cases = [
+        {
+          path: "/ws?reject",
+          auth: "session",
+          target: undefined,
+          opens: false,
+          counts: false,
+        },
+        {
+          path: "/ws",
+          auth: "session",
+          target: "3000",
+          opens: true,
+          counts: false,
+        },
+        {
+          path: "/ws/terminals/example",
+          auth: "session",
+          target: undefined,
+          opens: true,
+          counts: false,
+        },
+        {
+          path: "/ws",
+          auth: "oauth",
+          target: undefined,
+          opens: true,
+          counts: false,
+        },
+        {
+          path: "/ws",
+          auth: "session",
+          target: undefined,
+          opens: true,
+          counts: true,
+        },
+        {
+          path: "/ws?client=mobile",
+          auth: "machine",
+          target: undefined,
+          opens: true,
+          counts: true,
+        },
+      ];
+      let expectedConnections = 0;
+      for (const [index, test] of cases.entries()) {
+        const streamId = index + 2;
+        tunnel.emit(
+          "message",
+          Buffer.from(
+            encodeFrame({
+              type: "open-ws",
+              streamId,
+              path: test.path,
+              headers: [["x-bb-gate-auth", test.auth]],
+              protocols: [],
+              ...(test.target === undefined ? {} : { target: test.target }),
+            }),
+          ),
+          true,
+        );
+        await vi.waitFor(() =>
+          expect(tunnel.frames).toContainEqual(
+            expect.objectContaining({
+              type: test.opens ? "ws-open-ack" : "close-stream",
+              streamId,
+            }),
+          ),
+        );
+        if (test.counts) expectedConnections++;
+        expect(connected).toHaveBeenCalledTimes(expectedConnections);
+      }
     } finally {
       session.dispose();
       for (const client of origin.clients) client.terminate();
