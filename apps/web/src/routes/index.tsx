@@ -1259,8 +1259,10 @@ function LandingPage() {
       </Band>
 
       <section className="closer" data-reveal data-section="closer">
-        <h2 className="sec-title">Put your agents to work.</h2>
-        <p>Free, open source, and local-first. Install in under a minute.</p>
+        <h2 className="sec-title">
+          All your coding agents, in one workspace you can change.
+        </h2>
+        <p>Free, runs on your machine, and yours to change.</p>
         <InstallOptions placement="closer" />
         <div className="cta-row cta-row-secondary">
           <GitHubLink placement="closer" className="btn btn-ghost">
