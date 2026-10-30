@@ -483,7 +483,16 @@
       "dependsOn": ["^topo", "@bb/plugin-build#generate"]
     },
     "@bb/web#topo": {
-      "dependsOn": ["^topo", "@bb/server#generate:bb-official-marketplace"]
+      "dependsOn": [
+        "^topo",
+        "@bb/server#generate:bb-official-marketplace",
+        "@bb/web#generate:docs-reference"
+      ]
+    },
+    "@bb/web#generate:docs-reference": {
+      "dependsOn": ["@bb/cli#build"],
+      "inputs": ["scripts/generate-docs-reference.mjs"],
+      "outputs": ["src/docs/generated/**"]
     },
     "@bb/server#topo": {
       "dependsOn": ["^topo", "@bb/server#generate:bb-official-marketplace"]
