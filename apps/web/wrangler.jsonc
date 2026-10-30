@@ -35,8 +35,6 @@
     // Resend audience that /api/subscribe adds emails to ("bb users").
     // Not a secret — only the API key is.
     "RESEND_AUDIENCE_ID": "299db4ee-f3db-476d-9847-0bf4344d9c44",
-    // Resend segment the monthly release email is sent to; /api/subscribe
-    // also adds every email to it.
     "RESEND_NEWSLETTER_SEGMENT_ID": "940a248a-1271-4fe0-bb13-e60a52e91798",
     "PRESENCE_WRITES": "on-change",
     "NEXT_BASE_DOMAIN": "next.vibecodethis.site",
