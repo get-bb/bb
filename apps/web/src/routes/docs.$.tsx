@@ -19,7 +19,14 @@ const loadDocsPage = createServerFn({ method: "GET" })
 
 export const Route = createFileRoute("/docs/$")({
   staticData: { ownsCanonical: true },
-  loader: ({ params }) => loadDocsPage({ data: params._splat ?? "" }),
+  loader: async ({ params }) => {
+    const view = await loadDocsPage({ data: params._splat ?? "" });
+    if (view.kind === "mdx") {
+      const { docs } = await import("../docs/content");
+      await docs.getPage(view.contentPath)?.preload();
+    }
+    return view;
+  },
   head: ({ loaderData }) =>
     loaderData
       ? {

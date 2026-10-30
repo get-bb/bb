@@ -2,7 +2,13 @@ import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
 import Copy01Icon from "@hugeicons/core-free-icons/Copy01Icon";
 import Menu01Icon from "@hugeicons/core-free-icons/Menu01Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useEffect, useRef, type ComponentProps, type ReactNode } from "react";
+import {
+  Suspense,
+  useEffect,
+  useRef,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -279,7 +285,9 @@ export function DocsPage({ view }: { view: DocsPageView }) {
             <p className="docs-lede">{view.description}</p>
             <article className="docs-body">
               {view.kind === "mdx" ? (
-                <MdxBody contentPath={view.contentPath} />
+                <Suspense fallback={null}>
+                  <MdxBody contentPath={view.contentPath} />
+                </Suspense>
               ) : (
                 <ReferenceBody markdown={view.markdown} toc={view.toc} />
               )}

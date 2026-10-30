@@ -68,6 +68,12 @@ export function docsNav(currentSlug: string | null): DocsNavSection[] {
   });
 }
 
+async function pageStructuredData(page: DocsPage) {
+  return page.type === "reference"
+    ? page.data.structuredData
+    : await page.data.structuredData();
+}
+
 async function viewOf(page: DocsPage): Promise<DocsPageView> {
   const slug = page.slugs.join("/");
   const section = navSectionOf(slug);
@@ -83,7 +89,7 @@ async function viewOf(page: DocsPage): Promise<DocsPageView> {
     pageMarkdown: await docsLlms.page(page),
     nav: docsNav(slug),
     footerLinks: [...DOCS_NAV_FOOTER_LINKS],
-    toc: page.data.structuredData.headings.map((heading) => ({
+    toc: (await pageStructuredData(page)).headings.map((heading) => ({
       id: heading.id,
       title: heading.content,
     })),

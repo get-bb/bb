@@ -6,6 +6,7 @@ import { docsFrontmatterFields } from "./page-types";
 export const docs = defineDocs({
   dir: "content/docs",
   docs: {
+    async: true,
     schema: pageSchema.extend(docsFrontmatterFields),
     postprocess: { includeProcessedMarkdown: true },
   },
