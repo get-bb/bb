@@ -571,6 +571,7 @@ describe("Docs nav panel", () => {
       documentResult("switch-second.md", "# Second\n\nSecond body", "sha-2"),
     );
     await slot.findByText("Second body");
+    await act(async () => undefined);
     expect(slot.queryByText("First body")).toBeNull();
     await waitFor(() =>
       expect(document.activeElement).toBe(
@@ -1246,15 +1247,19 @@ describe("Docs nav panel", () => {
   });
 
   it("opens HTML Docs directive cards in the thread panel or full editor", () => {
-    const openThreadPanel = vi.fn(() => true);
+    const openTab = vi.fn(() => true);
     const slot = renderDocument("plans/release.html", "Release plan", {
-      openThreadPanel,
+      experimental_panel: { openTab },
     });
 
     fireEvent.click(slot.getByText("Release plan"));
     expect(slot.queryByText("personal · plans/release.html")).toBeNull();
-    expect(openThreadPanel).toHaveBeenCalledWith({
-      actionId: "document",
+    expect(openTab).toHaveBeenCalledWith({
+      tab: {
+        id: "document",
+        context: { kind: "thread" },
+        availability: "action",
+      },
       title: "Release plan",
       params: {
         vaultId: "personal",
@@ -1330,10 +1335,10 @@ describe("Docs nav panel", () => {
     const bounds = vi
       .spyOn(HTMLElement.prototype, "getBoundingClientRect")
       .mockImplementation(() => new DOMRect(0, 0, 600, height));
-    const openThreadPanel = vi.fn(() => true);
+    const openTab = vi.fn(() => true);
     try {
       const slot = renderDocument("tall-inline.md", "Tall document", {
-        openThreadPanel,
+        experimental_panel: { openTab },
         rpc: {
           readDocument: (rawInput: unknown) =>
             documentResult(
@@ -1351,8 +1356,12 @@ describe("Docs nav panel", () => {
         expect(editor.getAttribute("contenteditable")).toBe("false");
       });
       fireEvent.click(button);
-      expect(openThreadPanel).toHaveBeenCalledWith({
-        actionId: "document",
+      expect(openTab).toHaveBeenCalledWith({
+        tab: {
+          id: "document",
+          context: { kind: "thread" },
+          availability: "action",
+        },
         title: "Tall document",
         params: {
           vaultId: "personal",
@@ -1376,9 +1385,9 @@ describe("Docs nav panel", () => {
   });
 
   it("edits Markdown inline and opens the same document in a tab", async () => {
-    const openThreadPanel = vi.fn(() => true);
+    const openTab = vi.fn(() => true);
     const slot = renderDocument("inline-header.md", "Inline header", {
-      openThreadPanel,
+      experimental_panel: { openTab },
     });
     const editor = await slot.findByRole("textbox", {
       name: "Document content",
@@ -1391,8 +1400,12 @@ describe("Docs nav panel", () => {
     expect(slot.container.querySelector("footer")).toBeNull();
     expect(slot.getByRole("button", { name: "Ask for changes" })).toBeTruthy();
     fireEvent.click(slot.getByRole("button", { name: "Open in tab" }));
-    expect(openThreadPanel).toHaveBeenCalledWith({
-      actionId: "document",
+    expect(openTab).toHaveBeenCalledWith({
+      tab: {
+        id: "document",
+        context: { kind: "thread" },
+        availability: "action",
+      },
       title: "Inline header",
       params: {
         vaultId: "personal",
@@ -1566,12 +1579,12 @@ describe("Docs nav panel", () => {
   });
 
   it("opens a chosen document from the unconfigured Document panel", async () => {
-    const openThreadPanel = vi.fn(() => true);
+    const openTab = vi.fn(() => true);
     const slot = renderSlot(
       app.threadPanelActions[0]!,
-      { threadId: "thr_1", params: null },
+      { threadId: "thr_1", environment: null, params: null },
       {
-        openThreadPanel,
+        experimental_panel: { openTab },
         rpc: {
           listNotes: () =>
             listNotesResult([
@@ -1586,8 +1599,12 @@ describe("Docs nav panel", () => {
       },
     );
     fireEvent.click(await slot.findByRole("button", { name: "Launch 50%" }));
-    expect(openThreadPanel).toHaveBeenCalledWith({
-      actionId: "document",
+    expect(openTab).toHaveBeenCalledWith({
+      tab: {
+        id: "document",
+        context: { kind: "thread" },
+        availability: "action",
+      },
       title: "Launch 50%",
       params: {
         vaultId: "personal",
@@ -1605,6 +1622,7 @@ describe("Docs nav panel", () => {
       app.threadPanelActions[0]!,
       {
         threadId: "thr_1",
+        environment: null,
         params: {
           vaultId: "personal",
           path: "plans/panel-release.md",
@@ -1730,6 +1748,7 @@ describe("Docs nav panel", () => {
               app.threadPanelActions[0]!,
               {
                 threadId: "thr_1",
+                environment: null,
                 params: { vaultId: "personal", path, title: "Metrics" },
               },
               options,

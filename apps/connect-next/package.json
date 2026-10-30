@@ -12,7 +12,8 @@
   "dependencies": {
     "@bb/connect-db": "workspace:*",
     "@bb/text-utils": "workspace:*",
-    "@bb/tunnel-contract": "workspace:*"
+    "@bb/tunnel-contract": "workspace:*",
+    "@bb/process-utils": "workspace:*"
   },
   "devDependencies": {
     "@bb/test-helpers": "workspace:*",

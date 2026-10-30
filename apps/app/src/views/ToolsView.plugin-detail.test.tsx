@@ -52,6 +52,47 @@ import {
   makePluginRegistrationSet,
 } from "@/test/fixtures/plugins";
 import { LocationProbe } from "@/test/location-probe";
+import {
+  AppCommandProvider,
+  useAppCommandRunner,
+} from "@/components/commands/AppCommandProvider";
+import { getFixedPanelTabsStateStorageKey } from "@bb/client-core";
+import { resetFixedPanelTabsStateForTest } from "@/lib/fixed-panel-tabs";
+import { getFocusedAppPanelController } from "@/lib/app-fixed-tab-navigation";
+import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
+import type { BbDesktopCloseWindowRequestHandler } from "@bb/desktop-contract";
+
+function seedBrowseTabs(
+  tabs: readonly string[],
+  activePluginId: string | null,
+) {
+  window.localStorage.setItem(
+    "bb.plugins.workspace.tabs",
+    JSON.stringify({ tabs, activePluginId }),
+  );
+}
+
+function browseTabs(): { tabs: string[]; activePluginId: string | null } {
+  const state = JSON.parse(
+    window.localStorage.getItem(
+      getFixedPanelTabsStateStorageKey({ threadId: "plugins-browse" }),
+    ) ?? "null",
+  ) as {
+    secondary: {
+      tabs: { id: string; detailKey: string }[];
+      activeTabId: string | null;
+      isOpen: boolean;
+    };
+  } | null;
+  const tabs = state?.secondary.tabs ?? [];
+  const active = state?.secondary.isOpen
+    ? tabs.find((tab) => tab.id === state.secondary.activeTabId)
+    : undefined;
+  return {
+    tabs: tabs.map((tab) => tab.detailKey),
+    activePluginId: active?.detailKey ?? null,
+  };
+}
 
 vi.mock("@/components/layout/AppLayout", () => ({
   AppLayout: ({ children }: { children: ReactNode }) => <>{children}</>,
@@ -143,10 +184,132 @@ function renderWithQueryClient(ui: ReactNode) {
 
 afterEach(() => {
   cleanup();
-  window.localStorage.removeItem("bb.plugins.workspace.tabs");
+  window.localStorage.clear();
+  resetFixedPanelTabsStateForTest();
   resetPluginSlotStoreForTest();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  delete window.bbDesktop;
+});
+
+function ClosePluginCommand({
+  onHandled,
+}: {
+  onHandled: (handled: boolean) => void;
+}) {
+  const runner = useAppCommandRunner();
+  return (
+    <button onClick={() => onHandled(runner.dispatch("panel.close", null))}>
+      Request plugin close
+    </button>
+  );
+}
+
+describe("Plugins catalog close arbitration", () => {
+  it.each([
+    ["desktop", false],
+    ["command", false],
+    ["desktop", true],
+    ["command", true],
+  ] as const)(
+    "closes active details before window fallback via %s (compact: %s)",
+    async (entryPoint, compact) => {
+      const handlers = new Set<BbDesktopCloseWindowRequestHandler>();
+      window.bbDesktop = {
+        ...createBbDesktopApi({
+          platform: "macos",
+          version: "0.0.0-test",
+          lastCheckedAt: null,
+          latestVersion: null,
+          pendingVersion: null,
+          updateAvailable: false,
+          updateDownloaded: false,
+        }),
+        onCloseWindowRequest(handler) {
+          handlers.add(handler);
+          return () => handlers.delete(handler);
+        },
+      };
+      const entries = [
+        GITHUB_CATALOG_ENTRY,
+        {
+          ...GITHUB_CATALOG_ENTRY,
+          entryId: "automations",
+          pluginId: "automations",
+          displayName: "Automations",
+          source: "builtin:automations",
+        },
+      ];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: RequestInfo | URL) => {
+          const url = String(input);
+          if (url === "/api/v1/plugins") {
+            return Response.json({ enabled: true, plugins: [] });
+          }
+          if (url.startsWith("/api/v1/plugin-catalog/search")) {
+            return Response.json({ results: entries, collections: [] });
+          }
+          return Response.json({ error: "not found" }, { status: 404 });
+        }),
+      );
+      const store = createStore();
+      seedBrowseTabs(["github", "automations"], "automations");
+      const onHandled = vi.fn();
+      const view = renderWithQueryClient(
+        <Provider store={store}>
+          <CompactViewportOverrideProvider isCompactViewport={compact}>
+            <MemoryRouter initialEntries={["/plugins/automations"]}>
+              <AppCommandProvider>
+                <ClosePluginCommand onHandled={onHandled} />
+                <RoutedPluginsView />
+              </AppCommandProvider>
+            </MemoryRouter>
+          </CompactViewportOverrideProvider>
+        </Provider>,
+      );
+      await screen.findByRole("heading", { name: "Automations", level: 1 });
+      const requestClose = () => {
+        let handled = false;
+        act(() => {
+          if (entryPoint === "desktop") {
+            handled = [...handlers].some((handler) => handler());
+          } else {
+            fireEvent.click(
+              screen.getByRole("button", { name: "Request plugin close" }),
+            );
+            handled = onHandled.mock.lastCall?.[0] ?? false;
+          }
+        });
+        return handled;
+      };
+      expect(
+        window.localStorage.getItem("bb.plugins.workspace.tabs"),
+      ).toBeNull();
+      expect(getFocusedAppPanelController()?.getTabs()).toMatchObject({
+        open: true,
+        tabs: [
+          { detail: { kind: "plugin-details", pluginId: "github" } },
+          { detail: { kind: "plugin-details", pluginId: "automations" } },
+        ],
+      });
+      expect(requestClose()).toBe(true);
+      expect(browseTabs()).toEqual({
+        tabs: ["github"],
+        activePluginId: "github",
+      });
+      await screen.findByRole("heading", { name: "GitHub", level: 1 });
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/plugins/github",
+      );
+      expect(requestClose()).toBe(true);
+      expect(browseTabs()).toEqual({ tabs: [], activePluginId: null });
+      expect(screen.getByTestId("location").textContent).toBe("/plugins");
+      expect(requestClose()).toBe(false);
+      view.unmount();
+      expect(handlers.size).toBe(0);
+    },
+  );
 });
 
 describe("PluginDetail official catalog lifecycle", () => {
@@ -352,6 +515,7 @@ describe("PluginDetail official catalog lifecycle", () => {
       updateState: {
         ...EMPTY_PLUGIN_UPDATE_STATE,
         availableVersion: "1.5.0",
+        availableLabel: "1.5.0",
       },
     };
     render(
@@ -495,8 +659,10 @@ describe("PluginDetail official catalog lifecycle", () => {
       updateState: {
         ...EMPTY_PLUGIN_UPDATE_STATE,
         availableVersion: "1.5.0",
+        availableLabel: "1.5.0",
         lastFailure: {
           version: "1.5.0",
+          label: "1.5.0",
           at: null,
           detail: "The plugin failed to load.",
         },
@@ -509,6 +675,7 @@ describe("PluginDetail official catalog lifecycle", () => {
       updateState: {
         ...EMPTY_PLUGIN_UPDATE_STATE,
         blockedVersion: "2.0.0",
+        blockedLabel: "2.0.0",
         blockedReasons: ["Requires bb 0.20 or newer."],
       },
       expected: "Update blocked",
@@ -760,6 +927,101 @@ describe("PluginDetail official catalog lifecycle", () => {
 });
 
 describe("BB Official plugin detail routing", () => {
+  it.each([
+    {
+      action: "Close other tabs",
+      target: "memory",
+      active: "memory",
+      remaining: ["memory"],
+      nextActive: "memory",
+    },
+    {
+      action: "Close other tabs",
+      target: "github",
+      active: "memory",
+      remaining: ["github"],
+      nextActive: "github",
+    },
+    {
+      action: "Close tabs to the right",
+      target: "automations",
+      active: "memory",
+      remaining: ["github", "automations"],
+      nextActive: "automations",
+    },
+    {
+      action: "Close tabs to the right",
+      target: "automations",
+      active: "github",
+      remaining: ["github", "automations"],
+      nextActive: "github",
+    },
+  ])(
+    "$action on $target with $active active persists every close and the surviving selection",
+    async ({ action, target, active, remaining, nextActive }) => {
+      const entries = ["github", "automations", "tasks", "memory"].map(
+        (id) => ({
+          ...GITHUB_CATALOG_ENTRY,
+          entryId: id,
+          pluginId: id,
+          displayName: id,
+          source: `builtin:${id}`,
+        }),
+      );
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: RequestInfo | URL) => {
+          const url = String(input);
+          if (url === "/api/v1/plugins") {
+            return Response.json({ enabled: true, plugins: [] });
+          }
+          if (url.startsWith("/api/v1/plugin-catalog/search")) {
+            return Response.json({ results: entries, collections: [] });
+          }
+          return Response.json({ error: "not found" }, { status: 404 });
+        }),
+      );
+      const store = createStore();
+      seedBrowseTabs(
+        entries.map((entry) => entry.entryId),
+        active,
+      );
+      const { wrapper } = createQueryClientTestHarness();
+      render(
+        <Provider store={store}>
+          <CompactViewportOverrideProvider isCompactViewport={false}>
+            <MemoryRouter initialEntries={[`/plugins/${active}`]}>
+              <RoutedPluginsView />
+            </MemoryRouter>
+          </CompactViewportOverrideProvider>
+        </Provider>,
+        { wrapper },
+      );
+
+      fireEvent.contextMenu(
+        await screen.findByRole("button", { name: target }),
+      );
+      fireEvent.click(screen.getByRole("menuitem", { name: action }));
+
+      await waitFor(() => {
+        expect(browseTabs()).toEqual({
+          tabs: remaining,
+          activePluginId: nextActive,
+        });
+        expect(screen.getByTestId("location").textContent).toBe(
+          `/plugins/${nextActive}`,
+        );
+      });
+      for (const entry of entries) {
+        expect(
+          screen.queryByRole("button", {
+            name: `Close ${entry.displayName}`,
+          }) !== null,
+        ).toBe(remaining.includes(entry.entryId));
+      }
+    },
+  );
+
   it.each([false, true])(
     "keeps official attribution and tabs through collection navigation (compact: %s)",
     async (compact) => {
@@ -846,11 +1108,7 @@ describe("BB Official plugin detail routing", () => {
             screen.queryByRole("heading", { name: "GitHub", level: 1 }),
           ).toBeNull(),
         );
-        expect(
-          JSON.parse(
-            window.localStorage.getItem("bb.plugins.workspace.tabs") ?? "{}",
-          ).tabs,
-        ).toContain("github");
+        expect(browseTabs().tabs).toContain("github");
         fireEvent.click(
           (
             await screen.findAllByRole("button", {
@@ -1709,10 +1967,13 @@ describe("PluginDetail banner precedence", () => {
     updateState: {
       ...EMPTY_PLUGIN_UPDATE_STATE,
       availableVersion: "1.5.0",
+      availableLabel: "1.5.0",
       blockedVersion: "2.0.0",
+      blockedLabel: "2.0.0",
       blockedReasons: ["Requires a newer bb."],
       lastFailure: {
         version: "1.4.5",
+        label: "1.4.5",
         at: null,
         detail: "The plugin failed to load after the update.",
       },

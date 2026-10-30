@@ -29,6 +29,7 @@ Hooks:
   durable server state on subsequent transitions to `connected` (not the first
   connection) because plugin signals are ephemeral and are not replayed.
 - `experimental_useExperiment(key)` → whether a known bb experiment is enabled, following live changes; false while configuration loads or for unknown keys.
+- `experimental_useThreadContextKind()` → `"banner"` or `"card"`: how the calling component's thread pane shows its thread context; `banner` outside a thread pane. See frontend-thread-context-card.md.
 - `useSettings()` → `{ values, isLoading }` — effective non-secret values
   (secret settings are excluded; read them server-side only).
 - `useBbContext()` → `{ projectId, threadId }` from the current route.
@@ -37,22 +38,21 @@ Hooks:
   it (localStorage entries, log prefixes) so a copy published under another
   package name does not share the original's state. `renderSlot` returns its
   `pluginId` option, `test-plugin` by default.
-- `experimental_useQuestionFormHost()` → `{ shortcuts, registerChoiceHandler }`
-  inside a `pendingInteraction` component: the host-owned answer shortcuts by
-  zero-based option index, and a way to act when the person presses one. The
+- `experimental_useQuestionFormHost()` → `{ shortcuts, actionShortcuts,
+registerChoiceHandler, registerActionHandler }` inside a `pendingInteraction`
+  component: the host-owned answer shortcuts by zero-based option index, the
+  `submit`, `previous`, `next`, and `cancel` action shortcuts, and a way to act
+  when the person presses one. Action shortcuts also
+  fire from text fields inside an element marked `data-question-form`. The
   registry's `question-form` item uses it. Empty outside a pending interaction
   and in `renderSlot`.
 - `useBbNavigate()` → `{ toThread(id), toProject(id), toPluginPanel(path,
 { subPath?, replace? }?), toCompose({ initialPrompt?, focusPrompt? }?),
-openThreadPanel({ actionId, title?, params? }), openUrl(url),
-experimental_openFilePreview(options), experimental_openFileExternally(options),
-experimental_openTerminal({ terminalId }) }`.
+openUrl(url), experimental_openFilePreview(options),
+experimental_openFileExternally(options), experimental_openTerminal({ terminalId }) }`.
   `toCompose` opens the root compose screen; pass `initialPrompt` to seed the
-  composer draft and `focusPrompt: true` to focus it. The panel
-  opener opens one of the current plugin's registered `experimental_tab` with thread context and action availability tabs
-  in a thread, or its `experimental_newThreadPanelAction` tabs on the New
-  thread screen, and returns whether the host accepted it; it returns false on
-  plugin pages, which have no panel actions.
+  composer draft and `focusPrompt: true` to focus it. Open side-panel tabs
+  with the [panel controller](#panel-controller).
   `openUrl` owns HTTP(S) only and returns false for schemes BB
   leaves to normal anchor behavior. The two file methods accept an
   `ExperimentalFileOpenOptions` live-file target.
@@ -316,6 +316,76 @@ literals: the build's Tailwind pass emits default-theme utilities only, and
 hardcoded colors break custom palettes. `tw-animate-css` utilities also
 compile in plugin builds.
 
+## Panel controller
+
+`experimental_useAppPanel()` returns the `ExperimentalPanelController` of the
+surface the component renders in: the thread view, the plugin page, or the New
+thread screen. Every launcher context carries the same controller as
+`experimental_panel`: plugin commands, thread actions, message actions,
+New-thread panel actions, and action tabs' `run`. Commands and thread actions
+use the focused surface's controller.
+
+```tsx
+const panel = experimental_useAppPanel();
+panel.openTab({
+  tab: { id: "chat", context: { kind: "thread" }, availability: "action" },
+  params: { threadId },
+  title: "Chat",
+});
+panel.toggleTab({
+  tab: {
+    id: "details",
+    context: { kind: "nav-panel", panelId },
+    availability: "fixed",
+  },
+  target: { recordId },
+});
+panel.close();
+```
+
+- `openTab({ tab, target?, params?, title? })` selects one of this plugin's
+  registered tabs and reveals the side panel. Fixed tabs take a session-only
+  `target`, validated by the tab's `experimental_target` (thread and
+  nav-panel fixed tabs may both declare one) and read with
+  `experimental_useFixedTabTarget(tab)`. Action tabs take persisted `params`
+  and a `title`; the same params focus the existing tab.
+- `toggleTab(options)` closes the side panel when that tab is showing — a
+  fixed tab selected with the panel open (the target is ignored), or the action
+  tab instance with the same params selected — otherwise it calls `openTab`.
+- `close()` closes the side panel.
+- `selectTab(key)` and `closeTab(key)` act on any open tab, bb's or another
+  plugin's, by the `key` from `experimental_usePanelTabs()`. They run the same
+  select and close the tab strip runs, so closing a terminal's tab ends the
+  terminal; `closeTab` declines tabs without a close button. List the open
+  tabs with `experimental_usePanelTabs()`, or once with `getTabs()` outside
+  components; see frontend-panel-tabs.md.
+- Each call returns true when the host accepted it and false when it declined:
+  no side panel on this surface, a tab this plugin did not register for the
+  surface, or a target or params that are not JSON or fail validation. On the
+  New thread screen a `{ context: { kind: "thread" }, availability: "action" }`
+  tab resolves against `experimental_newThreadPanelAction` with the same id.
+
+bb's own panel shortcuts and controls (panel toggle, Info, tab strip, close
+buttons) and the Git plugin's Mod+D command go through the same controller.
+
+`experimental_useTabVisible()` is true while the panel tab it renders in is
+the selected tab and the side panel is open, false otherwise. bb keeps a
+closed panel's tab mounted, so pause reads that only feed the tab while it is
+false; the Git plugin's Diff tab does.
+
+Retired members keep working for existing plugins, and `bb plugin build` warns
+with the replacement:
+
+| Retired                                                                               | Replacement                                                                                                                         |
+| ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `ctx.openPanel({ actionId?, params?, title? })`                                       | `ctx.experimental_panel.openTab({ tab: { id, context: { kind: "thread" }, availability: "action" }, params, title })`               |
+| `useBbNavigate().openThreadPanel({ actionId, params?, title? })`                      | `experimental_useAppPanel().openTab({ tab: { id: actionId, context: { kind: "thread" }, availability: "action" }, params, title })` |
+| `experimental_useAppPanel().experimental_openTab({ surface, ...options })`            | `experimental_useAppPanel().openTab(options)`                                                                                       |
+| `experimental_useAppPanel().openFixedTab({ surface, tab: { panelId, id }, target? })` | `experimental_useAppPanel().openTab({ tab: { id, context: { kind: "nav-panel", panelId }, availability: "fixed" }, target })`       |
+
+In `renderSlot`, pass `experimental_panel: { openTab?, toggleTab?, close? }` to
+accept calls (omitted methods decline) and read `inspection.experimental_panelCalls`.
+
 ## Optimistic RPC updates
 
 `experimental_useRpcMutation({ contract, method, optimistic(input, cache) { ... } })`
@@ -336,8 +406,10 @@ All live hooks take `{ contract, method, ... }` and infer their types without
 explicit generic arguments. Plain queries add `input`; mutations add optional
 `optimistic`. Use `experimental_useRpcKeyedQuery({ contract, method, keys, select? })` for
 contract-inferred rows and selection results. Keyed methods accept `{ keys }`
-and return a record containing every requested key. Tags are plain strings;
-reads and writes use matching strings to declare their dependencies.
+and return a record containing every requested key. Tags are plain strings:
+reads declare them, and the server marks them stale with
+`bb.rpc.experimental_invalidate` where the data changes (see "Tags and
+invalidation" below).
 
 `data` retains the last successful value and optimistic predictions during
 refreshes and refresh errors. Plain reads start undefined; keyed selections
@@ -346,7 +418,9 @@ read is fetching never-loaded requested data. `isFetching` includes background
 attempts; keyed views share method activity. `error` is the last completed
 failure, cleared on success; retrying a first load clears its old error while
 loading. `refetch` forces an attempt, waits through retries, and records any
-failure in `error` without rejecting or discarding existing data.
+failure in `error` without rejecting or discarding existing data. Keyed reads
+also return `refetchKeys(keys)`, which reads only those keys again and keeps
+every other row, for a per-row Retry.
 
 Reads stay fresh for two seconds without polling. Focus does not refetch while
 BB's realtime connection is healthy. While disconnected, focus/browser-online
@@ -361,3 +435,42 @@ Its `code` is required; use a fallback when switching because error codes may
 grow. Unknown server codes become `unknown_error` with the original `serverCode`.
 Client failures use `transport_error` or `invalid_response`. The CLI preserves
 unrecognized codes in text and JSON output.
+
+## Tags and invalidation
+
+A read declares what it depends on with `tags(input, output)`, or
+`keyTags(key, value)` for each row of a keyed read. Writes declare nothing.
+Call `bb.rpc.experimental_invalidate(tags)` in the server code that changes
+the data, after the change, so a write from the app, the CLI, an agent tool
+or background work refreshes every matching read in every client once.
+`bb.rpc.experimental_invalidateAll()` refreshes all of the plugin's reads,
+including untagged ones.
+
+```ts
+const rpcContract = defineRpcContract({
+  item: {
+    input: z.object({ id: z.string() }).strict(),
+    output: itemSchema,
+    tags: ({ id }) => [`item:${id}`],
+  },
+  rename: {
+    input: z.object({ id: z.string(), title: z.string() }).strict(),
+    output: itemSchema,
+  },
+});
+
+async function rename(bb: BbPluginApi, id: string, title: string) {
+  const item = await saveTitle(id, title);
+  bb.rpc.experimental_invalidate([`item:${id}`]);
+  return item;
+}
+```
+
+Register `rename` as the RPC handler and call the same function from the CLI
+command and agent tool. When core already reports the change, invalidate from
+that event instead, as the Git plugin does for Viewed marks on
+`environment:changed`; invalidating in both places refreshes twice.
+
+Contract `invalidates(input, output)` is retired. It fired only when the write
+came through that RPC method. Existing plugins keep working, and
+`bb plugin build` warns with this replacement.

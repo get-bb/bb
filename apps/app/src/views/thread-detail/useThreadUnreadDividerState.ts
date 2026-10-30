@@ -1,5 +1,8 @@
 import { useState } from "react";
-import type { ThreadTimelineUnreadDividerPlacement } from "@/components/thread/timeline";
+import type {
+  ThreadTimelineUnreadDividerAnchor,
+  ThreadTimelineUnreadDividerPlacement,
+} from "@/components/thread/timeline";
 
 interface ThreadUnreadDividerThreadState {
   id: string;
@@ -15,6 +18,7 @@ interface ThreadUnreadDividerSnapshot {
 }
 
 interface ThreadUnreadDividerState {
+  ready: boolean;
   autoScroll: boolean;
   placement: ThreadTimelineUnreadDividerPlacement | null;
 }
@@ -25,11 +29,14 @@ interface ShouldTrackThreadUnreadDividerArgs {
 }
 
 interface UseThreadUnreadDividerStateArgs {
+  anchor: ThreadTimelineUnreadDividerAnchor;
+  hasFreshThread: boolean;
   routeThreadId: string | undefined;
   thread: ThreadUnreadDividerThreadState | undefined;
 }
 
 const NO_UNREAD_DIVIDER_STATE: ThreadUnreadDividerState = {
+  ready: false,
   autoScroll: false,
   placement: null,
 };
@@ -47,49 +54,46 @@ function shouldTrackThreadUnreadDivider({
 
 function buildUnreadDividerPlacement(
   thread: ThreadUnreadDividerThreadState,
+  anchor: ThreadTimelineUnreadDividerAnchor,
 ): ThreadTimelineUnreadDividerPlacement | null {
-  if (thread.lastReadAt === null) {
-    return { kind: "before-first" };
+  if (
+    thread.lastReadAt === null ||
+    thread.lastReadAt >= thread.latestAttentionAt
+  ) {
+    return null;
   }
-  if (thread.lastReadAt < thread.latestAttentionAt) {
-    return { kind: "after-cutoff", cutoffAt: thread.lastReadAt };
-  }
-  return null;
+  return { anchor, cutoffAt: thread.lastReadAt };
 }
 
 function nextThreadUnreadDividerSnapshot(
   currentSnapshot: ThreadUnreadDividerSnapshot | null,
   thread: ThreadUnreadDividerThreadState,
-): ThreadUnreadDividerSnapshot {
+  hasFreshThread: boolean,
+  anchor: ThreadTimelineUnreadDividerAnchor,
+): ThreadUnreadDividerSnapshot | null {
+  const isOpening = currentSnapshot?.threadId !== thread.id;
+  if (isOpening && !hasFreshThread) {
+    return null;
+  }
   if (
     currentSnapshot?.threadId === thread.id &&
     currentSnapshot.attentionAt === thread.latestAttentionAt
   ) {
-    if (thread.lastReadAt === null) {
-      if (currentSnapshot.placement?.kind === "before-first") {
-        return currentSnapshot;
-      }
-      return {
-        attentionAt: thread.latestAttentionAt,
-        autoScroll:
-          currentSnapshot.placement !== null && currentSnapshot.autoScroll,
-        placement: { kind: "before-first" },
-        threadId: thread.id,
-      };
-    }
     return currentSnapshot;
   }
 
-  const placement = buildUnreadDividerPlacement(thread);
+  const placement = buildUnreadDividerPlacement(thread, anchor);
   return {
     attentionAt: thread.latestAttentionAt,
-    autoScroll: currentSnapshot?.threadId !== thread.id && placement !== null,
+    autoScroll: isOpening && placement !== null,
     placement,
     threadId: thread.id,
   };
 }
 
 export function useThreadUnreadDividerState({
+  anchor,
+  hasFreshThread,
   routeThreadId,
   thread,
 }: UseThreadUnreadDividerStateArgs): ThreadUnreadDividerState {
@@ -113,7 +117,12 @@ export function useThreadUnreadDividerState({
   const currentSnapshot =
     trackedThread === null
       ? null
-      : nextThreadUnreadDividerSnapshot(snapshot, trackedThread);
+      : nextThreadUnreadDividerSnapshot(
+          snapshot,
+          trackedThread,
+          hasFreshThread,
+          anchor,
+        );
   if (currentSnapshot !== snapshot) {
     setSnapshot(currentSnapshot);
   }
@@ -123,6 +132,7 @@ export function useThreadUnreadDividerState({
   }
 
   return {
+    ready: true,
     autoScroll: currentSnapshot.autoScroll,
     placement: currentSnapshot.placement,
   };

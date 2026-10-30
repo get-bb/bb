@@ -29,6 +29,7 @@ export const pluginUpdateOutcomeSchema = z.enum([
 
 export const pluginResolvedVersionSchema = z.object({
   version: z.string(),
+  label: z.string(),
   display: z.string(),
 });
 
@@ -39,7 +40,11 @@ export const pluginUpdateCheckEntrySchema = z.object({
   installed: pluginResolvedVersionSchema,
   candidate: pluginResolvedVersionSchema.optional(),
   blocked: z
-    .object({ version: z.string(), reasons: z.array(z.string()) })
+    .object({
+      version: z.string(),
+      label: z.string(),
+      reasons: z.array(z.string()),
+    })
     .optional(),
   detail: z.string().optional(),
 });
@@ -135,11 +140,18 @@ export const pluginUpdateStateSchema = z.object({
   outcome: pluginUpdateOutcomeSchema.optional(),
   detail: z.string().optional(),
   availableVersion: z.string().optional(),
+  availableLabel: z.string().optional(),
   blockedVersion: z.string().optional(),
+  blockedLabel: z.string().optional(),
   blockedReasons: z.array(z.string()).optional(),
   lastCheckAt: z.number().optional(),
   lastFailure: z
-    .object({ version: z.string(), at: z.number(), detail: z.string() })
+    .object({
+      version: z.string(),
+      label: z.string(),
+      at: z.number(),
+      detail: z.string(),
+    })
     .optional(),
 });
 
@@ -175,6 +187,7 @@ export const pluginAppStateSchema = z.object({
       sdkMajor: z.number(),
       sdkVersion: z.string(),
       compatible: z.boolean(),
+      runtimeSlots: z.array(z.string()),
     })
     .nullable(),
 });

@@ -927,59 +927,55 @@ describe("workflow service policy integration", () => {
     await worker;
   });
 
-  it("publishes a workflow-runs signal for the origin thread on start, claim, and cancel", async () => {
+  it("invalidates workflow reads for the origin thread on start, claim, and cancel", async () => {
     const test = setup();
     harnesses.push(test.harness);
-    const signalsFor = (threadId: string) =>
-      test.harness.realtimeSignals.filter(
-        (signal) =>
-          signal.channel === "workflow-runs" &&
-          (signal.payload as { threadId?: unknown }).threadId === threadId,
+    const invalidationsFor = (threadId: string) =>
+      test.harness.experimental_rpcInvalidations.filter((tags) =>
+        tags?.includes(`runs:${threadId}`),
       );
     const run = await test.start(
-      source(`return await agent("never");`, "signal-run"),
+      source(`return await agent("never");`, "live-run"),
     );
-    expect(signalsFor("origin")).toHaveLength(1);
+    expect(invalidationsFor("origin")).toHaveLength(1);
     const controller = new AbortController();
     const worker = test.service.runWorker(controller.signal);
     await eventually(() => expect(test.childCount()).toBe(1));
-    expect(signalsFor("origin").length).toBeGreaterThanOrEqual(2);
-    const beforeStop = signalsFor("origin").length;
+    expect(invalidationsFor("origin").length).toBeGreaterThanOrEqual(2);
+    const beforeStop = invalidationsFor("origin").length;
     await expect(test.service.stop(run.id)).resolves.toBe(true);
-    expect(signalsFor("origin").length).toBeGreaterThan(beforeStop);
-    const afterStop = signalsFor("origin").length;
+    expect(invalidationsFor("origin").length).toBeGreaterThan(beforeStop);
+    const afterStop = invalidationsFor("origin").length;
     await expect(test.service.stop(run.id)).resolves.toBe(false);
-    expect(signalsFor("origin")).toHaveLength(afterStop);
+    expect(invalidationsFor("origin")).toHaveLength(afterStop);
     controller.abort();
     await worker;
   });
 
-  it("publishes a workflow-runs signal for phase and call progress, not only run lifecycle", async () => {
+  it("invalidates workflow reads for phase and call progress, not only run lifecycle", async () => {
     const test = setup();
     harnesses.push(test.harness);
-    const signalCount = () =>
-      test.harness.realtimeSignals.filter(
-        (signal) =>
-          signal.channel === "workflow-runs" &&
-          (signal.payload as { threadId?: unknown }).threadId === "origin",
+    const invalidationCount = () =>
+      test.harness.experimental_rpcInvalidations.filter((tags) =>
+        tags?.includes("runs:origin"),
       ).length;
     const run = await test.start(
       source(`phase("Review"); return await agent("one");`, "progress-run"),
     );
-    const afterStart = signalCount();
+    const afterStart = invalidationCount();
     const controller = new AbortController();
     const worker = test.service.runWorker(controller.signal);
     await eventually(() =>
       expect(getCall(test.db, run.id, 0)?.childThreadId).toBe("child-1"),
     );
-    expect(signalCount()).toBeGreaterThanOrEqual(afterStart + 4);
+    expect(invalidationCount()).toBeGreaterThanOrEqual(afterStart + 4);
 
-    const beforeSettle = signalCount();
+    const beforeSettle = invalidationCount();
     test.service.onThreadIdle("child-1", "done");
     await eventually(() =>
       expect(getCall(test.db, run.id, 0)?.status).toBe("succeeded"),
     );
-    expect(signalCount()).toBeGreaterThan(beforeSettle);
+    expect(invalidationCount()).toBeGreaterThan(beforeSettle);
     await eventually(() =>
       expect(getRunRequired(test.db, run.id).status).toBe("succeeded"),
     );

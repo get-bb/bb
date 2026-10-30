@@ -77,6 +77,11 @@ interface ThreadPinCommandOptions {
   json?: boolean;
 }
 
+interface ThreadRegenerateTitleCommandOptions {
+  self?: boolean;
+  json?: boolean;
+}
+
 interface ThreadDeleteCommandOptions {
   confirmChildThreads?: boolean;
   yes?: boolean;
@@ -400,6 +405,38 @@ export function registerActionsCommands(
   }
 
   parent
+    .command("regenerate-title [id]")
+    .description(
+      "Replace a thread's title with one generated from its task and latest messages",
+    )
+    .option("--self", "Target the current thread (from BB_THREAD_ID)")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          id: string | undefined,
+          opts: ThreadRegenerateTitleCommandOptions,
+        ) => {
+          const threadId = requireThreadIdOrSelf(id, opts);
+          const sdk = createCliBbSdk(getUrl());
+          let thread;
+          try {
+            thread = await sdk.threads.experimental_regenerateTitle({
+              threadId,
+            });
+          } catch (err: unknown) {
+            throw prependErrorContext(
+              `Failed to regenerate the title of thread ${threadId}`,
+              err,
+            );
+          }
+          if (outputJson(opts, thread)) return;
+          console.log(`Thread ${thread.id} titled "${thread.title}"`);
+        },
+      ),
+    );
+
+  parent
     .command("delete <id>")
     .description("Delete a thread permanently")
     .option("--yes", "Skip the confirmation prompt")
@@ -636,7 +673,7 @@ export function registerActionsCommands(
     },
     {
       name: "clear-goal",
-      description: "Ask the provider to clear the active Goal",
+      description: "Ask the provider to clear the thread's Goal",
       method: "clearGoal",
       done: "cleared its Goal",
     },

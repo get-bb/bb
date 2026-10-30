@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
-import type { ThreadTimelineResponse, TimelineRow } from "@bb/server-contract";
+import type { TimelineRow } from "@bb/server-contract";
+import type { ThreadTimelineWindow } from "../../../src/services/threads/timeline.js";
 import {
   DEFAULT_MAX_INLINE_OUTPUT_CHARS,
   shortenTimelineResponseOutputs,
 } from "../../../src/services/threads/timeline-output-shortening.js";
 
-function truncateOnly(input: ThreadTimelineResponse): ThreadTimelineResponse {
+function truncateOnly(input: ThreadTimelineWindow): ThreadTimelineWindow {
   return shortenTimelineResponseOutputs(input, {
     maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
     preview: false,
@@ -22,7 +23,7 @@ const base = {
   createdAt: 0,
 };
 
-function response(rows: TimelineRow[]): ThreadTimelineResponse {
+function response(rows: TimelineRow[]): ThreadTimelineWindow {
   return {
     rows,
     contextBoundarySeq: null,

@@ -28,7 +28,7 @@ export function FilePreviewHeaderFrame({
 }) {
   return (
     <div ref={headerRef} className="sticky top-0 z-30 bg-sidebar">
-      <div className="flex h-9 items-center gap-2 bg-surface-raised px-4 max-md:pointer-coarse:h-12 max-md:pointer-coarse:px-3">
+      <div className="flex min-h-9 items-center gap-2 bg-surface-raised px-4 max-md:pointer-coarse:min-h-12 max-md:pointer-coarse:px-3">
         {children}
       </div>
     </div>

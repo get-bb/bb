@@ -9,6 +9,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import {
+  experimental_useAppPanel,
   definePluginApp,
   experimental_FileLink as FileLink,
   experimental_copyToClipboard,
@@ -1258,6 +1259,7 @@ function InlineDocument({
 
 function DocsDirectiveCard({ attributes }: PluginMessageDirectiveProps) {
   const navigate = useBbNavigate();
+  const panel = experimental_useAppPanel();
   const document = parseDocumentRef(attributes);
   if (!document) {
     return (
@@ -1271,8 +1273,12 @@ function DocsDirectiveCard({ attributes }: PluginMessageDirectiveProps) {
       subPath: `${document.vaultId}/${document.path}`,
     });
   const openPreview = (title = document.title) => {
-    const opened = navigate.openThreadPanel({
-      actionId: "document",
+    const opened = panel.openTab({
+      tab: {
+        id: "document",
+        context: { kind: "thread" },
+        availability: "action",
+      },
       title,
       params: {
         vaultId: document.vaultId,
@@ -1345,6 +1351,7 @@ function HtmlPreview({
 function DocumentPicker() {
   const [subPath, setSubPath] = useState("");
   const navigate = useBbNavigate();
+  const panel = experimental_useAppPanel();
   return (
     <div className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto p-4">
       <p className="text-sm text-muted-foreground">
@@ -1361,8 +1368,12 @@ function DocumentPicker() {
               /\.(md|html?)$/i,
               "",
             );
-            navigate.openThreadPanel({
-              actionId: "document",
+            panel.openTab({
+              tab: {
+                id: "document",
+                context: { kind: "thread" },
+                availability: "action",
+              },
               title,
               params: { vaultId, path: filePath, title },
             });

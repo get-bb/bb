@@ -28,6 +28,7 @@ function candidate(
       sdkMajor: 0,
       sdkVersion: "0.1.0",
       compatible: true,
+      runtimeSlots: [],
       ...overrides,
     },
   };
@@ -44,7 +45,7 @@ describe("loadPluginFrontend", () => {
     });
     const warn = vi.fn();
 
-    const deps = { importModule, warn };
+    const deps = { importModule, prefetchModule: vi.fn(), warn };
 
     expect(await loadPluginFrontend(candidate("broken"), deps)).toEqual({
       pluginId: "broken",
@@ -68,6 +69,7 @@ describe("loadPluginFrontend", () => {
       candidate("odd", { cssUrl: null }),
       {
         importModule: async () => undefined,
+        prefetchModule: vi.fn(),
         warn: vi.fn(),
       },
     );
@@ -87,7 +89,7 @@ describe("loadPluginFrontend", () => {
         sdkMajor: 9,
         sdkVersion: "9.2.0",
       }),
-      { importModule, warn },
+      { importModule, prefetchModule: vi.fn(), warn },
     );
 
     expect(record).toEqual({
@@ -110,7 +112,7 @@ describe("installPluginRuntime", () => {
     delete (globalThis as RuntimeHost).__bbPluginRuntime;
   });
 
-  it("exposes the app's own runtime modules on every shim slot, exactly once", () => {
+  it("exposes the app's eager runtime modules, exactly once", () => {
     installPluginRuntime();
     const runtime = (globalThis as RuntimeHost).__bbPluginRuntime as Record<
       string,
@@ -121,8 +123,6 @@ describe("installPluginRuntime", () => {
       "clsx",
       "jsxDevRuntime",
       "jsxRuntime",
-      "pierreDiffs",
-      "pierreDiffsReact",
       "pluginSdkApp",
       "questionFormHost",
       "radixAlertDialog",
@@ -160,13 +160,43 @@ describe("installPluginRuntime", () => {
     expect((globalThis as RuntimeHost).__bbPluginRuntime).toBe(runtime);
   });
 
-  it("hands plugins every @pierre/diffs/react export, with the diff components gated", async () => {
+  it("provides @pierre/diffs only to bundles that import it, downloading the bundle meanwhile", async () => {
+    const pierreSlots = () =>
+      Object.keys(
+        (globalThis as RuntimeHost).__bbPluginRuntime as Record<string, unknown>,
+      ).filter((slot) => slot.startsWith("pierre"));
+    const slotsAtImport: string[][] = [];
+    const importModule = vi.fn(async () => {
+      slotsAtImport.push(pierreSlots());
+      return { default: {} };
+    });
     installPluginRuntime();
+
+    const prefetchModule = vi.fn((url: string) =>
+      slotsAtImport.push([`prefetch ${url.split("/")[4]}`, ...pierreSlots()]),
+    );
+    await loadPluginFrontend(candidate("plain", { runtimeSlots: ["react"] }), {
+      importModule,
+      prefetchModule,
+      warn: vi.fn(),
+    });
+    await loadPluginFrontend(
+      candidate("differ", { runtimeSlots: ["pierreDiffsReact", "react"] }),
+      { importModule, prefetchModule, warn: vi.fn() },
+    );
+
+    expect(slotsAtImport).toEqual([
+      [],
+      ["prefetch differ"],
+      ["pierreDiffs", "pierreDiffsReact"],
+    ]);
     const runtime = (globalThis as RuntimeHost).__bbPluginRuntime as Record<
       string,
       unknown
     >;
+    const pierreDiffs = await import("@pierre/diffs");
     const pierreDiffsReact = await import("@pierre/diffs/react");
+    expect(runtime.pierreDiffs).toBe(pierreDiffs);
     const slot = runtime.pierreDiffsReact as Record<string, unknown>;
     expect(Object.keys(slot).sort()).toEqual(
       Object.keys(pierreDiffsReact).sort(),

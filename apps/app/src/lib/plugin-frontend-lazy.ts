@@ -23,6 +23,10 @@ const loadPluginFrontend = createRetryingModuleLoader<PluginFrontendModule>(
   () => import("./plugin-frontend"),
 );
 
+export function preloadPluginFrontend(): void {
+  void loadPluginFrontend().catch(() => {});
+}
+
 let bootRequested = false;
 
 export async function bootPluginFrontends(): Promise<void> {

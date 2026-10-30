@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   discoveredCommandSuggestions,
-  isCommandSuggestionsActive,
   promptActionCommandSuggestions,
-  shouldPrefetchCommandCatalog,
   threadProviderCommandSuggestions,
 } from "./useCommandSuggestions";
 
@@ -153,54 +151,7 @@ describe("threadProviderCommandSuggestions", () => {
   });
 });
 
-const BASE_ARGS = {
-  projectId: "project-1",
-  providerId: "codex",
-  skillsTriggers: ["/"] as const,
-  activeTrigger: null,
-  query: null,
-};
-
-describe("useCommandSuggestions catalog prefetch", () => {
-  it("warms the command catalog when a coarse-pointer composer gains focus", () => {
-    expect(
-      shouldPrefetchCommandCatalog({
-        ...BASE_ARGS,
-        composerFocused: false,
-        isPointerCoarse: true,
-      }),
-    ).toBe(false);
-    expect(
-      shouldPrefetchCommandCatalog({
-        ...BASE_ARGS,
-        composerFocused: true,
-        isPointerCoarse: true,
-      }),
-    ).toBe(true);
-    expect(isCommandSuggestionsActive(BASE_ARGS)).toBe(false);
-  });
-
-  it("does not add a request for fine-pointer composers, which autofocus on mount", () => {
-    expect(
-      shouldPrefetchCommandCatalog({
-        ...BASE_ARGS,
-        composerFocused: true,
-        isPointerCoarse: false,
-      }),
-    ).toBe(false);
-    expect(isCommandSuggestionsActive(BASE_ARGS)).toBe(false);
-  });
-
-  it("still fetches on the first trigger without any focus signal", () => {
-    expect(
-      isCommandSuggestionsActive({
-        ...BASE_ARGS,
-        activeTrigger: "/",
-        query: "",
-      }),
-    ).toBe(true);
-  });
-
+describe("discoveredCommandSuggestions", () => {
   it("offers only skills for the explicit dollar trigger", () => {
     expect(
       discoveredCommandSuggestions({

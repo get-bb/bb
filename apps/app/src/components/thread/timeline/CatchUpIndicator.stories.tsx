@@ -3,7 +3,8 @@ import type { TimelineRow } from "@bb/server-contract";
 import { Switch } from "@bb/shared-ui/switch";
 import { FollowUpPromptBox } from "@/components/promptbox/FollowUpPromptBox";
 import type { ExecutionPermissionConfig } from "@/components/promptbox/ExecutionControls";
-import { ThreadTimelinePane } from "@/views/thread-detail/ThreadTimelinePane";
+import { PageShell } from "@/components/ui/page-shell";
+import { ThreadTimelineSurface } from "./ThreadTimelineSurface";
 import {
   makeAttachmentsConfig,
   makeExecutionControlsProps,
@@ -112,10 +113,13 @@ export function Overview() {
         />
       </div>
       <div className="h-[640px] min-h-0 overflow-hidden rounded-lg border border-border bg-background">
-        <ThreadTimelinePane
-          activeThinking={null}
-          canSpawnChild={false}
-          contextBoundarySeq={null}
+        <PageShell
+          scrollBehavior="bottom-anchor"
+          scrollAnchorThreadId={THREAD_ID}
+          shellClassName="!mx-0 !mt-0 md:!mx-0 md:!mt-0"
+          scrollAreaClassName="scroll-pt-4"
+          contentClassName="gap-2 pt-4"
+          footerClassName="chat-prompt-box"
           footer={
             <FollowUpPromptBox
               attachments={attachments}
@@ -154,23 +158,28 @@ export function Overview() {
               collapseResetKey={THREAD_ID}
             />
           }
-          hasOlderTimelineRows={false}
-          isCatchingUpTimeline={isCatchingUp}
-          isLoadingOlderTimelineRows={false}
-          isStopping={false}
-          isThreadTimelinePending={false}
-          onLoadOlderRows={noop}
-          resolveMentionLink={() => null}
-          showOngoingIndicator={isRunning}
-          stoppingAnchorAt={0}
-          threadId={THREAD_ID}
-          threadRuntimeDisplayStatus={threadRuntimeDisplayStatus}
-          timelineError={false}
-          timelineRows={cachedRows}
-          unreadDividerAutoScroll={false}
-          unreadDividerPlacement={null}
-          workspaceRootPath={undefined}
-        />
+        >
+          <ThreadTimelineSurface
+            activeThinking={null}
+            canSpawnChild={false}
+            contextBoundarySeq={null}
+            hasOlderTimelineRows={false}
+            isCatchingUpTimeline={isCatchingUp}
+            isLoadingOlderTimelineRows={false}
+            isStopping={false}
+            isThreadTimelinePending={false}
+            onLoadOlderRows={noop}
+            showOngoingIndicator={isRunning}
+            stoppingAnchorAt={0}
+            threadId={THREAD_ID}
+            threadRuntimeDisplayStatus={threadRuntimeDisplayStatus}
+            timelineError={false}
+            timelineRows={cachedRows}
+            unreadDividerAutoScroll={false}
+            unreadDividerPlacement={null}
+            workspaceRootPath={undefined}
+          />
+        </PageShell>
       </div>
     </div>
   );

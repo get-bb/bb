@@ -32,7 +32,11 @@ export function registerInternalPluginHostArtifactRoutes(
     const response = await hostArtifactFileResponse({
       path: artifact.path,
       byteLength: artifact.byteLength,
-      digest,
+      headers: {
+        "cache-control": "private, immutable, max-age=31536000",
+        "content-type": "text/javascript; charset=utf-8",
+        etag: `"${digest}"`,
+      },
     });
     if (response === null) {
       throw notFound;

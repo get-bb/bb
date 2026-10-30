@@ -1,3 +1,4 @@
+import { experimental_makePanelController } from "@get-bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
 
@@ -20,6 +21,12 @@ function stubRpcFetch(handler: (method: string, input: unknown) => unknown) {
   });
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
+}
+
+function panelStub() {
+  return experimental_makePanelController({
+    openTab: vi.fn(() => true),
+  });
 }
 
 const message = {
@@ -67,12 +74,12 @@ describe("reply-in-side-chat message action", () => {
       inputs.push(input);
       return { threadId: "thr_fork" };
     });
-    const openPanel = vi.fn(() => true);
+    const experimental_panel = panelStub();
 
     await app.messageActions[0]!.run({
       threadId: "thr_src",
       message,
-      openPanel,
+      experimental_panel,
       composer: null,
     });
 
@@ -87,8 +94,12 @@ describe("reply-in-side-chat message action", () => {
         anchorText: "whole message text",
       },
     ]);
-    expect(openPanel).toHaveBeenCalledWith({
-      actionId: "side-chat",
+    expect(experimental_panel.openTab).toHaveBeenCalledWith({
+      tab: {
+        id: "side-chat",
+        context: { kind: "thread" },
+        availability: "action",
+      },
       title: "Side chat",
       params: {
         threadId: "thr_fork",
@@ -109,11 +120,11 @@ describe("reply-in-side-chat message action", () => {
       return rpcResponse({ threadId: "thr_fork" });
     });
     vi.stubGlobal("fetch", fetchMock);
-    const openPanel = vi.fn(() => true);
+    const experimental_panel = panelStub();
     const context = {
       threadId: "thr_src",
       message,
-      openPanel,
+      experimental_panel,
       composer: null,
     };
 
@@ -125,7 +136,7 @@ describe("reply-in-side-chat message action", () => {
     await Promise.all([first, second]);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(openPanel).toHaveBeenCalledTimes(1);
+    expect(experimental_panel.openTab).toHaveBeenCalledTimes(1);
 
     await app.messageActions[0]!.run(context);
     expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -133,17 +144,17 @@ describe("reply-in-side-chat message action", () => {
 
   it("anchors on the selection when invoked from the selection menu", async () => {
     stubRpcFetch(() => ({ threadId: "thr_fork" }));
-    const openPanel = vi.fn(() => true);
+    const experimental_panel = panelStub();
 
     await app.messageActions[0]!.run({
       threadId: "thr_src",
       message,
       selectedText: "just this part",
-      openPanel,
+      experimental_panel,
       composer: null,
     });
 
-    expect(openPanel).toHaveBeenCalledWith(
+    expect(experimental_panel.openTab).toHaveBeenCalledWith(
       expect.objectContaining({
         title: "Side chat",
         params: expect.objectContaining({

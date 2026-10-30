@@ -1,5 +1,6 @@
 import type { TimelineRow, TimelineRowStatus } from "@bb/server-contract";
 import { sliceUtf16Head } from "@bb/text-utils";
+import { parseSentThreadMessage } from "@bb/thread-view";
 
 export const TIMELINE_DEFERRED_CONTENT_MIN_CHARS = 1_000;
 
@@ -35,7 +36,8 @@ function deferRowContent(row: TimelineRow): TimelineRow {
       case "command": {
         if (
           row.output.length + row.command.length <=
-          TIMELINE_DEFERRED_CONTENT_MIN_CHARS
+            TIMELINE_DEFERRED_CONTENT_MIN_CHARS ||
+          parseSentThreadMessage(row) !== null
         ) {
           return row;
         }

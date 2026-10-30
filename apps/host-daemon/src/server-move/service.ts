@@ -1,7 +1,11 @@
+import {
+  hostToolchain,
+  sanitizeInheritedChildProcessEnv,
+} from "@bb/process-utils";
 import { timingSafeEqual } from "node:crypto";
 import { mkdir, rename, rm } from "node:fs/promises";
 import { homedir } from "node:os";
-import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { readBbAppRuntimeFile } from "@bb/config/app-runtime-file";
 import { resolveCodexHome } from "@bb/config/codex-home";
@@ -13,7 +17,6 @@ import type {
   HostPlatform,
   ServerMoveProgressMessage,
 } from "@bb/host-daemon-contract";
-import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
 import {
   archiveExistingServerData,
   discardImportBackups,
@@ -1092,14 +1095,10 @@ export class ServerMoveService {
     const sanitized = sanitizeInheritedChildProcessEnv({
       env: this.options.env,
     });
-    const executableDirectory = dirname(process.execPath);
     const npmPrefix = this.options.env.BB_APP_NPM_PREFIX;
     return {
       ...sanitized,
-      PATH:
-        sanitized.PATH === undefined
-          ? executableDirectory
-          : `${executableDirectory}${delimiter}${sanitized.PATH}`,
+      PATH: hostToolchain.environment(sanitized).PATH,
       BB_DATA_DIR: this.options.dataDir,
       ...(npmPrefix === undefined ? {} : { BB_APP_NPM_PREFIX: npmPrefix }),
       ...(forcesNoServiceManager(this.options.env)

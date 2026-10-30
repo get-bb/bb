@@ -3,18 +3,14 @@ import {
   environmentStatusSchema,
   FILE_LIST_QUERY_MAX_LENGTH,
   gitBranchNameSchema,
-  gitBranchOptionsSchema,
-  threadGitDiffResponseSchema,
   workspaceDiffTargetSchema,
-  workspaceStatusSchema,
 } from "@bb/domain";
-import { workspaceResolutionFailureSchema } from "@bb/host-daemon-contract/workspace";
 import { apiErrorSchema } from "../errors.js";
 import {
-  branchListQuerySchema,
   environmentProviderInstanceKeySchema,
   pathListIncludeQueryValueSchema,
 } from "./shared.js";
+import { workspaceResolutionFailureSchema } from "@bb/host-daemon-contract/workspace";
 
 export const environmentCleanupQuerySchema = z.object({
   recover: z.enum(["true", "false"]).default("false"),
@@ -59,28 +55,9 @@ export const environmentPathsQuerySchema = z.object({
 });
 export type EnvironmentPathsQuery = z.infer<typeof environmentPathsQuerySchema>;
 
-export const environmentDiffBranchesQuerySchema = branchListQuerySchema.extend({
-  selectedBranch: gitBranchNameSchema.optional(),
-});
-export type EnvironmentDiffBranchesQuery = z.infer<
-  typeof environmentDiffBranchesQuerySchema
->;
-
-export const environmentDiffBranchesResponseSchema = gitBranchOptionsSchema;
-export type EnvironmentDiffBranchesResponse = z.infer<
-  typeof environmentDiffBranchesResponseSchema
->;
-
 const mergeBaseBranchQuerySchema = z
   .string("A merge base branch is required")
   .pipe(gitBranchNameSchema);
-
-export const environmentStatusQuerySchema = z.object({
-  mergeBaseBranch: mergeBaseBranchQuerySchema.optional(),
-});
-export type EnvironmentStatusQuery = z.infer<
-  typeof environmentStatusQuerySchema
->;
 
 export const environmentDiffQuerySchema = z.discriminatedUnion("target", [
   z.object({
@@ -100,59 +77,6 @@ export const environmentDiffQuerySchema = z.discriminatedUnion("target", [
   }),
 ]);
 export type EnvironmentDiffQuery = z.infer<typeof environmentDiffQuerySchema>;
-
-export const environmentDiffFilesQuerySchema = environmentDiffQuerySchema.and(
-  z.object({
-    ignoreWhitespace: z.enum(["true", "false"]).optional(),
-  }),
-);
-export type EnvironmentDiffFilesQuery = z.infer<
-  typeof environmentDiffFilesQuerySchema
->;
-
-const diffFileSideSchema = z.enum(["old", "new"]);
-
-const mergeBaseRefQuerySchema = z.string().regex(/^[0-9a-f]{4,40}$/iu);
-
-export const environmentDiffFileQuerySchema = z.discriminatedUnion("target", [
-  z.object({
-    target: z.literal("uncommitted"),
-    path: z.string().min(1),
-    side: diffFileSideSchema,
-  }),
-  z.object({
-    target: z.literal("branch_committed"),
-    mergeBaseRef: mergeBaseRefQuerySchema,
-    path: z.string().min(1),
-    side: diffFileSideSchema,
-  }),
-  z.object({
-    target: z.literal("all"),
-    mergeBaseRef: mergeBaseRefQuerySchema,
-    path: z.string().min(1),
-    side: diffFileSideSchema,
-  }),
-  z.object({
-    target: z.literal("commit"),
-    sha: z.string().regex(/^[0-9a-f]{4,40}$/iu),
-    path: z.string().min(1),
-    side: diffFileSideSchema,
-  }),
-]);
-export type EnvironmentDiffFileQuery = z.infer<
-  typeof environmentDiffFileQuerySchema
->;
-
-export const environmentDiffFileResponseSchema = z.object({
-  path: z.string(),
-  content: z.string(),
-  contentEncoding: z.enum(["base64", "utf8"]),
-  mimeType: z.string().optional(),
-  sizeBytes: z.number().int().nonnegative(),
-});
-export type EnvironmentDiffFileResponse = z.infer<
-  typeof environmentDiffFileResponseSchema
->;
 
 export const environmentArchiveThreadsResponseSchema = z.object({
   ok: z.literal(true),
@@ -201,170 +125,6 @@ export type EnvironmentActionApiError = z.infer<
   typeof environmentActionApiErrorSchema
 >;
 
-export const environmentWorkspaceNotApplicableReasonSchema = z.enum([
-  "non_git_environment",
-]);
-
-const environmentWorkspaceNotApplicableOutcomeSchema = z
-  .object({
-    outcome: z.literal("not_applicable"),
-    reason: environmentWorkspaceNotApplicableReasonSchema,
-    message: z.string().min(1),
-  })
-  .strict();
-
-export const environmentStatusResponseSchema = z.discriminatedUnion("outcome", [
-  z
-    .object({
-      outcome: z.literal("available"),
-      workspace: workspaceStatusSchema,
-    })
-    .strict(),
-  environmentWorkspaceNotApplicableOutcomeSchema,
-  z
-    .object({
-      outcome: z.literal("unavailable"),
-      failure: workspaceResolutionFailureSchema,
-    })
-    .strict(),
-]);
-
-export const environmentDiffResponseSchema = z.discriminatedUnion("outcome", [
-  z
-    .object({
-      outcome: z.literal("available"),
-      diff: threadGitDiffResponseSchema,
-    })
-    .strict(),
-  environmentWorkspaceNotApplicableOutcomeSchema,
-  z
-    .object({
-      outcome: z.literal("unavailable"),
-      failure: workspaceResolutionFailureSchema,
-    })
-    .strict(),
-]);
-export type EnvironmentDiffResponse = z.infer<
-  typeof environmentDiffResponseSchema
->;
-
-export const gitDiffFileChangeKindSchema = z.enum([
-  "added",
-  "modified",
-  "deleted",
-  "renamed",
-  "copied",
-  "type_changed",
-]);
-export type GitDiffFileChangeKind = z.infer<typeof gitDiffFileChangeKindSchema>;
-
-export function letterToChangeKind({
-  letter,
-}: {
-  letter: string;
-}): GitDiffFileChangeKind {
-  switch (letter) {
-    case "A":
-      return "added";
-    case "M":
-      return "modified";
-    case "D":
-      return "deleted";
-    case "R":
-      return "renamed";
-    case "C":
-      return "copied";
-    case "T":
-      return "type_changed";
-    default:
-      throw new Error(`Unrecognized git name-status letter: ${letter}`);
-  }
-}
-
-export const DIFF_PATCH_MAX_PATHS_PER_REQUEST = 50;
-
-export const diffFileEntrySchema = z.object({
-  path: z.string(),
-  previousPath: z.string().nullable(),
-  changeKind: gitDiffFileChangeKindSchema,
-  additions: z.number().int().nonnegative(),
-  deletions: z.number().int().nonnegative(),
-  binary: z.boolean(),
-  origin: z.enum(["tracked", "untracked"]),
-  loadMode: z.enum(["auto", "on_demand", "too_large"]),
-  revision: z.string().min(1),
-});
-export type DiffFileEntry = z.infer<typeof diffFileEntrySchema>;
-
-export const diffPatchEntrySchema = z.object({
-  path: z.string(),
-  patch: z.string(),
-  truncated: z.boolean(),
-});
-export type DiffPatchEntry = z.infer<typeof diffPatchEntrySchema>;
-
-export const environmentDiffFilesResponseSchema = z.discriminatedUnion(
-  "outcome",
-  [
-    z
-      .object({
-        outcome: z.literal("available"),
-        files: z.array(diffFileEntrySchema),
-        truncated: z.boolean(),
-        shortstat: z.string(),
-        mergeBaseRef: z.string().nullable(),
-        initialPatches: z.array(diffPatchEntrySchema),
-      })
-      .strict(),
-    environmentWorkspaceNotApplicableOutcomeSchema,
-    z
-      .object({
-        outcome: z.literal("unavailable"),
-        failure: workspaceResolutionFailureSchema,
-      })
-      .strict(),
-  ],
-);
-export type EnvironmentDiffFilesResponse = z.infer<
-  typeof environmentDiffFilesResponseSchema
->;
-
-export const environmentDiffPatchResponseSchema = z.discriminatedUnion(
-  "outcome",
-  [
-    z
-      .object({
-        outcome: z.literal("available"),
-        patches: z.array(diffPatchEntrySchema),
-      })
-      .strict(),
-    environmentWorkspaceNotApplicableOutcomeSchema,
-    z
-      .object({
-        outcome: z.literal("unavailable"),
-        failure: workspaceResolutionFailureSchema,
-      })
-      .strict(),
-  ],
-);
-export type EnvironmentDiffPatchResponse = z.infer<
-  typeof environmentDiffPatchResponseSchema
->;
-
-export const environmentDiffPatchRequestSchema = z
-  .object({
-    target: workspaceDiffTargetSchema,
-    paths: z
-      .array(z.string().min(1))
-      .min(1)
-      .max(DIFF_PATCH_MAX_PATHS_PER_REQUEST),
-    ignoreWhitespace: z.boolean().optional(),
-  })
-  .strict();
-export type EnvironmentDiffPatchRequest = z.infer<
-  typeof environmentDiffPatchRequestSchema
->;
-
 export const diffViewedFileSchema = z
   .object({
     path: z.string().min(1),
@@ -411,6 +171,3 @@ export type EnvironmentDiffViewedClearRequest = z.infer<
   typeof environmentDiffViewedClearRequestSchema
 >;
 
-export type EnvironmentStatusResponse = z.infer<
-  typeof environmentStatusResponseSchema
->;

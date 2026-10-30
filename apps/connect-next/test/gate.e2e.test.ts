@@ -1,3 +1,4 @@
+import type { IncomingMessage } from "node:http";
 import { brotliDecompressSync, gunzipSync } from "node:zlib";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import WebSocket from "ws";
@@ -134,13 +135,14 @@ describe.skipIf(!availability.ok)("connect-next gate end to end", () => {
     label: string,
     credential: string,
     subdomains: string[],
+    localPort: number = origin.port,
   ): Promise<FrpcProcess> {
     const client = await startFrpc({
       binary: binaries.frpc,
       edgePort: edge.port,
       label,
       credential,
-      localPort: origin.port,
+      localPort,
       subdomains,
       loginFailExit: true,
     });
@@ -925,6 +927,31 @@ describe.skipIf(!availability.ok)("connect-next gate end to end", () => {
         claims: { kind: "session", htm: "GET", htu: "/ws?room=1" },
       });
     });
+
+    it("negotiates permessage-deflate with the origin through the raw pipe", async () => {
+      const socket = new WebSocket(`ws://127.0.0.1:${gate.webPort}/ws`, {
+        headers: { host: BEE, ...owner, origin: `http://${BEE}` },
+      });
+      const upgraded = new Promise<IncomingMessage>((resolve) =>
+        socket.once("upgrade", resolve),
+      );
+      await new Promise((resolve, reject) => {
+        socket.once("open", resolve);
+        socket.once("error", reject);
+      });
+      const upgrade = await upgraded;
+      expect(socket.extensions).toContain("permessage-deflate");
+      const before = upgrade.socket.bytesRead;
+      socket.send(origin.BIG_JSON);
+      const message = await new Promise<string>((resolve) =>
+        socket.once("message", (data) => resolve(String(data))),
+      );
+      expect(message).toBe(`echo:${origin.BIG_JSON}`);
+      expect(upgrade.socket.bytesRead - before).toBeLessThan(
+        message.length / 4,
+      );
+      socket.close();
+    });
   });
 
   describe("deadlines and offline", () => {
@@ -984,6 +1011,30 @@ describe.skipIf(!availability.ok)("connect-next gate end to end", () => {
         "accept-encoding": "gzip",
       });
       expect(cached.headers["x-bb-cache"]).toBe("hit");
+    });
+
+    it("answers with a bb page when nothing listens behind a proxy", async () => {
+      const client = await connect(
+        "wasp",
+        "cred-wasp",
+        ["wasp"],
+        await freePort(),
+      );
+      try {
+        await waitFor(
+          () => gate.directory.locate("wasp").kind === "here",
+          15_000,
+          "wasp to connect",
+        );
+        const html = await visit(gate.webPort, `wasp.${BASE_DOMAIN}`, "/", {
+          headers: { ...owner, accept: "text/html" },
+        });
+        expect(html.status).toBe(404);
+        expect(html.text).toContain("Nothing answered at this address");
+        expect(html.text).not.toContain("frp");
+      } finally {
+        await client.kill();
+      }
     });
 
     it("answers 502 when the account API fails", async () => {

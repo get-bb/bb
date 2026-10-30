@@ -1,0 +1,47 @@
+name: Windows dependency disk
+description: Reuse an exact dependency image without extracting individual package files.
+inputs:
+  seed:
+    description: Create a missing image for the cache warmer instead of restoring one.
+    default: "false"
+outputs:
+  key:
+    description: Exact cache key for this dependency image.
+    value: ${{ steps.identity.outputs.key }}
+  active:
+    description: Whether pnpm is using the dependency disk.
+    value: ${{ steps.disk.outputs.active }}
+runs:
+  using: composite
+  steps:
+    - name: Identify dependency image
+      id: identity
+      shell: node {0}
+      env:
+        DEPENDENCY_INPUTS: ${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', '**/package.json', '.npmrc', '.pnpmfile.cjs', 'patches/**', '.github/actions/windows-dependency-cache/**', '.github/actions/setup-workspace/install-dependencies.sh') }}
+      run: |
+        const { createHash } = require('node:crypto');
+        const { appendFileSync, readFileSync } = require('node:fs');
+        const { release } = require('node:os');
+        const inputs = [process.env.DEPENDENCY_INPUTS, process.version, process.arch,
+          release(), process.env.ImageVersion, process.env.GITHUB_WORKSPACE,
+          process.env.RUNNER_TEMP, JSON.parse(readFileSync('package.json')).packageManager];
+        const digest = createHash('sha256').update(JSON.stringify(inputs)).digest('hex');
+        appendFileSync(process.env.GITHUB_OUTPUT, `key=windows-dependencies-v1-${digest}\n`);
+    - name: Restore dependency image
+      id: cache
+      continue-on-error: true
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      env:
+        SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
+      with:
+        path: ${{ runner.temp }}/bb-dependencies.vhdx
+        key: ${{ steps.identity.outputs.key }}
+        lookup-only: ${{ inputs.seed == 'true' }}
+    - name: Prepare dependency disk
+      id: disk
+      if: ${{ (inputs.seed == 'true' && steps.cache.outputs.cache-hit != 'true') || (inputs.seed != 'true' && steps.cache.outcome == 'success' && steps.cache.outputs.cache-hit == 'true') }}
+      shell: pwsh
+      env:
+        DISK_OPERATION: ${{ inputs.seed == 'true' && 'create' || 'mount' }}
+      run: '& "$env:GITHUB_ACTION_PATH/disk.ps1" -Operation $env:DISK_OPERATION'

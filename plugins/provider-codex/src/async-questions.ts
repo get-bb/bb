@@ -1,4 +1,5 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import { PLUGIN_INTERACTION_MAX_TITLE_LENGTH } from "@get-bb/plugin-sdk/provider-bridge";
 import {
   CODEX_ASYNC_QUESTION_EXTENSION_KIND,
   codexAsyncQuestionStateSchema,
@@ -9,6 +10,7 @@ import {
   asyncQuestionResponseSchema,
   formatAsyncQuestionAnswer,
 } from "./async-question-form.js";
+import { truncateCodePoints } from "./mcp-elicitation.js";
 
 const CODEX_PROVIDER_ID = "codex";
 const QUESTION_TIMEOUT_MS = 60 * 60 * 1000;
@@ -75,10 +77,12 @@ export function registerAsyncQuestions(bb: BbPluginApi): void {
     const result = await bb.ui.requestInput({
       threadId,
       rendererId: CODEX_ASYNC_QUESTION_RENDERER_ID,
-      title:
+      title: truncateCodePoints(
         state.questions.length === 1
           ? state.questions[0].title
           : `${state.questions.length} questions`,
+        PLUGIN_INTERACTION_MAX_TITLE_LENGTH,
+      ),
       payload: { questions: state.questions },
       timeoutMs: QUESTION_TIMEOUT_MS,
       presentation: {

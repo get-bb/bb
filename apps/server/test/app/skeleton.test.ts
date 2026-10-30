@@ -100,6 +100,7 @@ describe("server skeleton", () => {
       expect(response.headers.get("content-type")).toBe("application/gzip");
       expect(response.headers.get("etag")).toBe(`"sha256-${digest}"`);
       expect(response.headers.get("x-bb-artifact-sha256")).toBe(digest);
+      expect(response.headers.get("content-length")).toBe("13");
       expect(await response.text()).toBe("tarball-bytes");
       const unchanged = await app.request("/install/bb-app.tgz", {
         headers: { "if-none-match": `"sha256-${digest}"` },
@@ -107,6 +108,31 @@ describe("server skeleton", () => {
       expect(unchanged.status).toBe(304);
       expect(await unchanged.text()).toBe("");
       expect(getArtifact).toHaveBeenCalledTimes(2);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("reports an unavailable host package when the cached tarball changed", async () => {
+    const harness = await createTestAppHarness();
+    const tarballPath = join(harness.config.dataDir, "fixture.tgz");
+    writeFileSync(tarballPath, "truncated");
+    const { app } = createApp(harness.deps, {
+      bbAppArtifactService: {
+        getArtifact: async () => ({
+          digest: "b".repeat(64),
+          path: tarballPath,
+          size: 13,
+        }),
+        getVersion: async () => "test",
+      },
+    });
+    try {
+      const response = await app.request("/install/bb-app.tgz");
+      expect(response.status).toBe(500);
+      await expect(readJson(response)).resolves.toMatchObject({
+        code: "host_package_unavailable",
+      });
     } finally {
       await harness.cleanup();
     }

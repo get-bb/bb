@@ -40,8 +40,9 @@ Messaging:
 
   --plan sends the same structured /plan command the composer's plan action
   sends, so the agent proposes a plan for approval before executing (Claude
-  Code and Codex threads). Plain "/plan ..." text is not recognized; it reaches
-  the provider as literal text. Approve or deny the proposed plan with
+  Code and Codex threads). Providers without a declared plan action reject
+  --plan with an error for both spawn and tell. Plain "/plan ..." text is not
+  recognized; it reaches the provider as literal text. Approve or deny the proposed plan with
   `bb thread interactions`; `bb thread cancel-plan` leaves Plan mode early.
   SDK callers build the same input with
   `createBuiltinPlanCommandTextInput(text)` from `@bb/sdk` and pass it as
@@ -69,6 +70,17 @@ Ownership:
   validates them against that provider's current model catalog, applies them on
   the next turn, and keeps using them on later turns until changed.
 
+  bb thread regenerate-title [id]          Replace the title with a generated one
+    --self                                 Target current thread
+
+  regenerate-title asks the thread-title AI service (Settings → AI services)
+  for a title built from the thread's first task message, its latest user
+  messages, and the agent's latest replies, written in the task's language. It
+  replaces the current title, including one set by hand, unless that title
+  still fits. The title is kept when no service is available or generation
+  fails, and the error says why. bb never regenerates on its own.
+  SDK: `threads.experimental_regenerateTitle({ threadId })`.
+
   bb thread read [id]                      Mark read
   bb thread unread [id]                    Mark unread
   bb thread reorder-pinned <id> [--after <id>] [--before <id>]
@@ -91,6 +103,7 @@ Interactions:
     --self                                 Target current thread (every subcommand)
     --json                                 Machine-readable output (every subcommand)
 
+  `answer` may skip questions that `show` marks Optional.
   `show` prints a plugin form's `Data` so you can shape the `--value` JSON.
   A provider's plugin-defined request cannot be cancelled; stop the thread to
   back out of it.
@@ -152,3 +165,20 @@ Queued messages:
   scheduled spawn creates a `pending` thread and does no environment work (no
   worktree, no setup script) until it is due. The SDK takes `sendAt` in epoch
   milliseconds on `threads.spawn` and `threads.send`.
+
+Application links in messages:
+
+  Use an explicit Markdown link such as `[Review note](reflect://note/Project%20X)`
+  or `[Open issue](linear://issue/ABC-123)`. The receiving user clicks the link
+  to open it on their viewing device; sending or rendering a message never
+  launches an application. Bare custom-scheme text is not auto-linked.
+
+  Enable with `bb settings experiment applicationLinks true` or Settings →
+  Experiments → Application links. BB asks before launching unless the user
+  chose Always allow for that scheme on this BB site and device. Settings →
+  General → Application link approvals can revoke saved choices. Executable
+  web schemes and reserved editor-action
+  schemes remain blocked. Existing editor file links keep their file-opening
+  behavior. Desktop and native mobile clients need application-link support
+  (mobile bridge version 3); older clients show an update message. Web browsers
+  handle their own OS handoff and cannot reliably report missing applications.

@@ -73,7 +73,6 @@ vi.mock("@/components/ui/bottom-anchored-scroll-body.js", () => ({
     isAtBottom: true,
     scrollToBottom: () => {},
     scrollElementIntoView: () => {},
-    scrollElementIntoViewClampedToMaxScroll: () => {},
     positionKeeper: createInertScrollPositionKeeper(),
     holdContentPosition: () => {},
   }),

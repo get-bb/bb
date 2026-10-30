@@ -1,3 +1,4 @@
+import { parseApplicationUrl } from "@bb/domain/application-url";
 import { useAtom } from "jotai";
 import { createBooleanPreferenceAtom } from "./browser-storage";
 
@@ -29,6 +30,7 @@ export function resolveUrlOpenTarget({
   openLinksInAppBrowser,
   url,
 }: ResolveUrlOpenTargetArgs): UrlOpenTarget {
+  if (parseApplicationUrl(url) !== null) return "external-browser";
   if (!isHttpOrHttpsUrl(url)) {
     return "unhandled";
   }

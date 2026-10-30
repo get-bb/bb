@@ -188,7 +188,7 @@ function persistThreadProvisionContext(
 export function readThreadStartupContextOfKind<T>(
   db: DbConnection | DbTransaction,
   threadId: string,
-  kind: "pending" | "provisioning",
+  kind: "pending" | "provisioning" | "dispatched",
   schema: z.ZodType<T>,
 ): T | null {
   const stored = getThreadStartupContext(db, threadId);
@@ -210,6 +210,20 @@ export function readThreadProvisionContext(
     threadId,
     "provisioning",
     persistedThreadProvisionContextSchema,
+  );
+}
+
+export function readDispatchedThreadStartFork(
+  db: DbConnection | DbTransaction,
+  threadId: string,
+): ThreadForkDescriptor | null {
+  return (
+    readThreadStartupContextOfKind(
+      db,
+      threadId,
+      "dispatched",
+      persistedThreadProvisionContextSchema,
+    )?.request.fork ?? null
   );
 }
 

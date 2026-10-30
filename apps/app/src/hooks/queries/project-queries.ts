@@ -282,28 +282,6 @@ export function useProjectFilePreview(
   });
 }
 
-export function projectCommandsQueryOptions(args: UseProjectCommandsArgs) {
-  return {
-    queryKey: projectCommandsQueryKey(
-      args.projectId,
-      args.providerId,
-      args.environmentId,
-      args.hostId,
-    ),
-    queryFn: ({ signal }: { signal: AbortSignal }) =>
-      sdk.projects.commands({
-        projectId: requireProjectId(args.projectId, "useProjectCommands"),
-        provider: requireProviderId(args.providerId, "useProjectCommands"),
-        signal,
-        ...(args.environmentId !== null
-          ? { environmentId: args.environmentId }
-          : args.hostId !== null
-            ? { hostId: args.hostId }
-            : {}),
-      }),
-  };
-}
-
 export function useProjectCommands(
   args: UseProjectCommandsArgs,
   options?: QueryOptions,
@@ -315,7 +293,23 @@ export function useProjectCommands(
   useProjectDetailRealtimeSubscription(args.projectId, { enabled });
 
   return useQuery<CommandListResponse>({
-    ...projectCommandsQueryOptions(args),
+    queryKey: projectCommandsQueryKey(
+      args.projectId,
+      args.providerId,
+      args.environmentId,
+      args.hostId,
+    ),
+    queryFn: ({ signal }) =>
+      sdk.projects.commands({
+        projectId: requireProjectId(args.projectId, "useProjectCommands"),
+        provider: requireProviderId(args.providerId, "useProjectCommands"),
+        signal,
+        ...(args.environmentId !== null
+          ? { environmentId: args.environmentId }
+          : args.hostId !== null
+            ? { hostId: args.hostId }
+            : {}),
+      }),
     enabled,
     ...TYPEAHEAD_QUERY_POLICY,
     staleTime: 0,

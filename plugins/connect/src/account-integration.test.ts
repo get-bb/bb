@@ -41,10 +41,19 @@ let blockedAccountReads = 0;
 let successfulAccountReads = 0;
 let credentialReads = 0;
 let failCredentialRead: number | null = null;
+let accountPollGate: Promise<void> | null = null;
 let tunnelService: { controller: AbortController; done: Promise<void> } | null =
   null;
 
-function callAccountRpc(args: RpcArgs): Promise<unknown> {
+async function callAccountRpc(args: RpcArgs): Promise<unknown> {
+  if (
+    args.method === "bb-account.v1.waitForStatusChange" &&
+    accountPollGate !== null
+  ) {
+    const gate = accountPollGate;
+    accountPollGate = null;
+    await gate;
+  }
   if (serverMoving) {
     blockedAccountReads += 1;
     return Promise.reject(
@@ -164,6 +173,7 @@ beforeEach(async () => {
   successfulAccountReads = 0;
   credentialReads = 0;
   failCredentialRead = null;
+  accountPollGate = null;
 });
 
 afterEach(async () => {
@@ -181,11 +191,18 @@ describe("connect on top of bb account", () => {
   it("keeps the live tunnel through a server move freeze and resumes account polling", async () => {
     await loadBoth();
     await signInAccount();
+    let resumeAccountPoll = () => {};
+    accountPollGate = new Promise<void>((resolve) => {
+      resumeAccountPoll = resolve;
+    });
     startTunnel();
-    await waitForConnected(1);
+    try {
+      await waitForConnected(1);
+      serverMoving = true;
+    } finally {
+      resumeAccountPoll();
+    }
     const socket = stub.tunnelDials[0]!.socket!;
-
-    serverMoving = true;
     await vi.waitFor(
       () => expect(blockedAccountReads).toBeGreaterThanOrEqual(2),
       { timeout: 30_000 },

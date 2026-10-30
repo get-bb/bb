@@ -2,8 +2,10 @@ import {
   useCallback,
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ComponentType,
 } from "react";
 import { useIsCompactViewport } from "./hooks/use-compact-viewport";
@@ -73,13 +75,26 @@ export function renameError(error: unknown, kind: RenameSession["kind"]) {
 }
 
 export function useRenameController() {
-  const [session, setSession] = useState<RenameSession | null>(null);
   const sessionRef = useRef<RenameSession | null>(null);
+  const [listeners] = useState(() => new Set<() => void>());
   const startRequestRef = useRef(0);
-  const update = useCallback((next: RenameSession | null) => {
-    sessionRef.current = next;
-    setSession(next);
-  }, []);
+  const subscribe = useCallback(
+    (listener: () => void) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    [listeners],
+  );
+  const getSession = useCallback(() => sessionRef.current, []);
+  const update = useCallback(
+    (next: RenameSession | null) => {
+      sessionRef.current = next;
+      for (const listener of listeners) listener();
+    },
+    [listeners],
+  );
 
   const save = useCallback(
     (clear = false): Promise<boolean> => {
@@ -164,21 +179,39 @@ export function useRenameController() {
     update(null);
   }, [update]);
 
-  return {
-    session,
-    start,
-    save,
-    cancel,
-    change: (draft: string) => {
+  const change = useCallback(
+    (draft: string) => {
       const current = sessionRef.current;
       if (current && !current.pending) {
         update({ ...current, draft, error: null, cannotRetry: false });
       }
     },
-  };
+    [update],
+  );
+
+  return useMemo(
+    () => ({ start, save, cancel, change, subscribe, getSession }),
+    [start, save, cancel, change, subscribe, getSession],
+  );
 }
 
 export type RenameController = ReturnType<typeof useRenameController>;
+
+export function useRenameSessionValue<T extends string | number | boolean>(
+  controller: Pick<RenameController, "subscribe" | "getSession">,
+  read: (session: RenameSession) => T,
+): T | null {
+  return useSyncExternalStore(controller.subscribe, () => {
+    const session = controller.getSession();
+    return session === null ? null : read(session);
+  });
+}
+
+export function useRenameSession(
+  controller: RenameController,
+): RenameSession | null {
+  return useSyncExternalStore(controller.subscribe, controller.getSession);
+}
 
 export interface InlineRenameEditorProps {
   session: RenameSession;
@@ -201,7 +234,14 @@ export function useInlineRename(
   const pendingMenuRename = useRef<(() => void) | null>(null);
   const generatedOwnerKey = useId();
   const ownerKey = args.ownerKey ?? generatedOwnerKey;
-  const { session, start, cancel } = controller;
+  const { start, cancel } = controller;
+  const session = useSyncExternalStore(
+    controller.subscribe,
+    useCallback(() => {
+      const current = controller.getSession();
+      return current?.ownerKey === ownerKey ? current : null;
+    }, [controller, ownerKey]),
+  );
   const isEditing =
     session?.ownerKey === ownerKey &&
     session.kind === args.kind &&
@@ -215,9 +255,10 @@ export function useInlineRename(
     });
   }, [args, start, ownerKey, coarse]);
   const startEditingFromDoubleClick = useCallback(() => {
+    if (coarse) return false;
     startEditing();
     return true;
-  }, [startEditing]);
+  }, [coarse, startEditing]);
 
   useEffect(() => {
     if (

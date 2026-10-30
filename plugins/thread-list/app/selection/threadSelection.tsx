@@ -3,11 +3,14 @@ import {
   useContext,
   useEffect,
   useLayoutEffect,
+  useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
   type ReactNode,
 } from "react";
 import { experimental_useExperiment } from "@get-bb/plugin-sdk/app";
+import { useSidebarData } from "../model/use-sidebar-data.js";
 import { SIDEBAR_CONTENT_SELECTOR } from "../ui/sidebar.js";
 import { SIDEBAR_WINDOWED_NAV_ATTRIBUTE } from "../list/sidebarThreadShortcuts.js";
 
@@ -16,7 +19,7 @@ const NO_THREAD_IDS: readonly string[] = [];
 const THREAD_ROW_TARGET_SELECTOR = "a[data-sidebar-thread-id]";
 
 const SELECTION_KEEPING_SELECTOR =
-  '[data-sidebar="sidebar"], [data-radix-popper-content-wrapper], [role="menu"]';
+  '[data-sidebar-rename-row], [data-radix-popper-content-wrapper], [role="menu"]';
 
 export const SIDEBAR_MULTI_SELECT_EXPERIMENT = "sidebarMultiSelect";
 
@@ -61,6 +64,11 @@ export class ThreadSelectionStore {
     this.replace(NO_THREAD_IDS);
   }
 
+  remove(threadIds: ReadonlySet<string>): void {
+    if (this.anchor !== null && threadIds.has(this.anchor)) this.anchor = null;
+    this.replace(this.selected.filter((threadId) => !threadIds.has(threadId)));
+  }
+
   restoreActiveThreadFocus(): void {
     const focused = document.activeElement;
     const active = [
@@ -83,15 +91,14 @@ export class ThreadSelectionStore {
     modifiers: ThreadSelectionModifiers,
     origin: Element,
   ): boolean {
-    const toggle = modifiers.metaKey || modifiers.ctrlKey;
     if (!this.enabled) return false;
-    if (!toggle && !modifiers.shiftKey) {
+    if (!modifiers.shiftKey) {
       this.anchor = threadId;
       if (this.selected.length > 0) this.replace(NO_THREAD_IDS);
       return false;
     }
     const order = collectVisibleThreadIds(origin);
-    if (modifiers.shiftKey) {
+    if (!modifiers.metaKey && !modifiers.ctrlKey) {
       const anchor = this.anchor ?? this.activeThreadId ?? threadId;
       const from = order.indexOf(anchor);
       const to = order.indexOf(threadId);
@@ -100,12 +107,8 @@ export class ThreadSelectionStore {
         this.replace([threadId]);
         return true;
       }
-      const range = order.slice(Math.min(from, to), Math.max(from, to) + 1);
-      const next = toggle
-        ? sortByOrder(new Set([...this.selected, ...range]), order)
-        : range;
       this.anchor = anchor;
-      this.replace(next);
+      this.replace(order.slice(Math.min(from, to), Math.max(from, to) + 1));
       return true;
     }
     const base = new Set(this.selected);
@@ -204,6 +207,25 @@ export function ThreadSelectionProvider({
   useLayoutEffect(() => {
     store.setEnabled(enabled);
   }, [enabled, store]);
+  const { projects } = useSidebarData();
+  const listedThreadIds = useMemo(
+    () =>
+      new Set(
+        projects.flatMap((project) =>
+          project.threads.map((thread) => thread.id),
+        ),
+      ),
+    [projects],
+  );
+  const previousListedThreadIds = useRef(listedThreadIds);
+  useLayoutEffect(() => {
+    const previous = previousListedThreadIds.current;
+    previousListedThreadIds.current = listedThreadIds;
+    const removed = new Set(
+      [...previous].filter((threadId) => !listedThreadIds.has(threadId)),
+    );
+    if (removed.size > 0) store.remove(removed);
+  }, [listedThreadIds, store]);
   const hasSelection = useSyncExternalStore(
     store.subscribe,
     () => store.getSelected().length > 0,

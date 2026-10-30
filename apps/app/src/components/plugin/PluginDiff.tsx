@@ -1,7 +1,8 @@
 import { useMemo } from "react";
 import type { DiffProps } from "@get-bb/plugin-sdk";
 import { DiffHost } from "@/components/code/DiffHost";
-import { normalizeFilePatch } from "@/components/git-diff/git-diff-parsing";
+import { normalizeFilePatch } from "@bb/shared-ui/git-diff/parsing";
+import { useSelectionAddToChat } from "@/components/thread/SelectionAddToChatContext";
 import { cn } from "@bb/shared-ui/lib/utils";
 
 export function PluginDiff({
@@ -13,6 +14,7 @@ export function PluginDiff({
   experimental_fullFileContents: fullFileContents,
   className,
 }: DiffProps) {
+  const onSelectionAddToChat = useSelectionAddToChat();
   const normalized = useMemo(
     () => normalizeFilePatch({ patch, path }),
     [patch, path],
@@ -38,6 +40,7 @@ export function PluginDiff({
       overflow={overflow}
       showLineNumbers={showLineNumbers}
       className={className}
+      onSelectionAddToChat={onSelectionAddToChat}
     />
   );
 }

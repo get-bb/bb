@@ -3,11 +3,11 @@ import {
   jsonValueSchema,
   PERSONAL_PROJECT_ID,
   threadVisibilitySchema,
-  type GitBranchSelection,
   type EnvironmentMachineSelection,
   type Thread,
   type ThreadParentNotifications,
   type JsonValue,
+  type GitBranchSelection,
 } from "@bb/domain";
 import type { CreateThreadEnvironmentArgs } from "@bb/server-contract";
 import { action, CliUsageError } from "../../action.js";
@@ -350,7 +350,7 @@ export function registerSpawnCommand(
     )
     .option(
       "--base-branch <branch>",
-      "Exact Git ref; omit for bb's project default (use origin/<branch> for a remote ref)",
+      "Base branch or ref; a named branch uses origin/<name> unless local has commits it lacks (use refs/heads/<name> to force local)",
     )
     .option(
       "--machine <id-or-name>",

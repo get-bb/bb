@@ -74,6 +74,7 @@ const singleSelect: InteractionPayload = {
       shortLabel: "Database",
       multiSelect: false,
       allowFreeText: true,
+      required: true,
       options: [
         {
           value: "q0o0",
@@ -222,17 +223,11 @@ describe("answering a single-select question", () => {
     expect(submit).toHaveBeenCalledTimes(1);
   });
 
-  it("does not intercept modified Enter after a shortcut", () => {
+  it("does not intercept modified Enter other than the submit shortcut", () => {
     const submit = vi.fn(async () => undefined);
     render(singleSelect, { submit });
     fireEvent.keyDown(document.body, { key: "2" });
-    for (const modifier of [
-      "shiftKey",
-      "ctrlKey",
-      "metaKey",
-      "altKey",
-      "isComposing",
-    ]) {
+    for (const modifier of ["shiftKey", "metaKey", "altKey", "isComposing"]) {
       fireEvent.keyDown(document.activeElement!, {
         key: "Enter",
         [modifier]: true,
@@ -241,17 +236,57 @@ describe("answering a single-select question", () => {
     expect(submit).not.toHaveBeenCalled();
   });
 
-  it("leaves free-text Enter available for newlines", () => {
+  it("submits free text with Enter like the composer, keeping Shift+Enter and IME Enter for the text (#3289)", () => {
     const submit = vi.fn(async () => undefined);
     const slot = render(singleSelect, { submit });
     fireEvent.keyDown(document.body, { key: "3" });
     const textarea = slot.getByLabelText("Database answer");
     expect(document.activeElement).toBe(textarea);
     fireEvent.change(textarea, { target: { value: "Custom" } });
-    fireEvent.keyDown(textarea, { key: "Enter" });
+    expect(fireEvent.keyDown(textarea, { key: "Enter", shiftKey: true })).toBe(
+      true,
+    );
+    expect(
+      fireEvent.keyDown(textarea, { key: "Enter", isComposing: true }),
+    ).toBe(true);
     expect(submit).not.toHaveBeenCalled();
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    expect(submit).toHaveBeenCalledExactlyOnceWith({
+      answers: { q0: { selected: [], freeText: "Custom" } },
+    });
+  });
+
+  it("submits from the free-text field with the submit shortcut too", () => {
+    const submit = vi.fn(async () => undefined);
+    const slot = render(singleSelect, { submit });
+    fireEvent.keyDown(document.body, { key: "3" });
+    const textarea = slot.getByLabelText("Database answer");
+    fireEvent.change(textarea, { target: { value: "Custom" } });
     fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
     expect(submit).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves Enter in a touch keyboard's free-text field for newlines, like the composer", () => {
+    vi.mocked(window.matchMedia).mockImplementation(
+      (query: string) =>
+        ({
+          matches: query.includes("pointer: coarse"),
+          media: query,
+          onchange: null,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          addListener: vi.fn(),
+          removeListener: vi.fn(),
+          dispatchEvent: vi.fn(),
+        }) as MediaQueryList,
+    );
+    const submit = vi.fn(async () => undefined);
+    const slot = render(singleSelect, { submit });
+    fireEvent.click(getButtonByText(slot, "Other…"));
+    const textarea = slot.getByLabelText("Database answer");
+    fireEvent.change(textarea, { target: { value: "Custom" } });
+    expect(fireEvent.keyDown(textarea, { key: "Enter" })).toBe(true);
+    expect(submit).not.toHaveBeenCalled();
   });
 
   it("uses the compact labels when the host is compact", () => {
@@ -392,6 +427,7 @@ describe("multi-select and multi-question flows", () => {
         shortLabel: "Extras",
         multiSelect: true,
         allowFreeText: true,
+        required: true,
         options: [
           { value: "q0o0", label: "Metrics", description: "Prometheus." },
           { value: "q0o1", label: "Tracing", description: "OTel." },
@@ -403,6 +439,7 @@ describe("multi-select and multi-question flows", () => {
         shortLabel: "Database",
         multiSelect: false,
         allowFreeText: true,
+        required: true,
         options: [
           { value: "q1o0", label: "Postgres", description: "Server." },
           { value: "q1o1", label: "SQLite", description: "Embedded." },
@@ -576,6 +613,119 @@ describe("multi-select and multi-question flows", () => {
     } satisfies InteractionResponse);
   });
 
+  it("submits once every required question is answered, leaving a blank optional one out (#6131)", () => {
+    const submit = vi.fn(async () => undefined);
+    const slot = render(
+      {
+        questions: [
+          multi.questions[1]!,
+          {
+            id: "notes",
+            prompt: "Anything else?",
+            shortLabel: "Notes",
+            multiSelect: false,
+            allowFreeText: true,
+            options: [],
+            required: false,
+          },
+        ],
+      },
+      { submit },
+    );
+
+    fireEvent.click(getButtonByText(slot, "Next"));
+    expect(slot.getByText("Optional")).toBeTruthy();
+    expect(getButtonByText(slot, "Submit answer").disabled).toBe(true);
+    fireEvent.click(getButtonByText(slot, "Back"));
+    fireEvent.click(getButtonByText(slot, "SQLite"));
+    fireEvent.click(getButtonByText(slot, "Next"));
+    fireEvent.click(getButtonByText(slot, "Submit answer"));
+
+    expect(submit).toHaveBeenCalledExactlyOnceWith({
+      answers: { q1: { selected: ["q1o1"] } },
+    });
+  });
+
+  it("submits, switches questions, and cancels by keyboard with focus on an option button (#6321)", () => {
+    const submit = vi.fn(async () => undefined);
+    const cancel = vi.fn(async () => undefined);
+    const slot = render(multi, { submit, cancel });
+    const metrics = getButtonByText(slot, "Metrics");
+    fireEvent.click(metrics);
+    metrics.focus();
+
+    fireEvent.keyDown(metrics, { key: "ArrowRight" });
+    expect(slot.getByText("2 of 2")).toBeTruthy();
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowLeft" });
+    expect(slot.getByText("1 of 2")).toBeTruthy();
+
+    fireEvent.keyDown(document.activeElement!, { key: "Enter", ctrlKey: true });
+    expect(slot.getByText("2 of 2")).toBeTruthy();
+    expect(
+      getButtonByText(slot, "Submit answer").getAttribute("aria-keyshortcuts"),
+    ).toBe("Control+Enter");
+    const sqlite = getButtonByText(slot, "SQLite");
+    fireEvent.click(sqlite);
+    sqlite.focus();
+    fireEvent.keyDown(sqlite, { key: "Enter", ctrlKey: true });
+    expect(submit).toHaveBeenCalledExactlyOnceWith({
+      answers: {
+        q0: { selected: ["q0o0"] },
+        q1: { selected: ["q1o1"] },
+      },
+    });
+    expect(cancel).not.toHaveBeenCalled();
+  });
+
+  it("moves to the next question with Enter in a free-text field and keeps arrows for the text", () => {
+    const slot = render(multi);
+    fireEvent.click(getButtonByText(slot, "Other…"));
+    const textarea = slot.getByLabelText("Extras answer");
+    fireEvent.change(textarea, { target: { value: "Logs" } });
+    expect(fireEvent.keyDown(textarea, { key: "ArrowRight" })).toBe(true);
+    expect(slot.getByText("1 of 2")).toBeTruthy();
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    expect(slot.getByText("2 of 2")).toBeTruthy();
+    expect(document.activeElement?.hasAttribute("data-question-form")).toBe(
+      true,
+    );
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowLeft" });
+    expect(slot.getByText("1 of 2")).toBeTruthy();
+  });
+
+  it("cancels with the cancel shortcut from the card and from its free-text field", () => {
+    const cancel = vi.fn(async () => undefined);
+    const slot = render(multi, { cancel });
+    fireEvent.click(getButtonByText(slot, "Other…"));
+    fireEvent.keyDown(slot.getByLabelText("Extras answer"), {
+      key: ".",
+      ctrlKey: true,
+    });
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves the shortcuts to other text fields while a question is open", () => {
+    const submit = vi.fn(async () => undefined);
+    const cancel = vi.fn(async () => undefined);
+    const slot = render(multi, { submit, cancel });
+    fireEvent.click(getButtonByText(slot, "Metrics"));
+    const composer = document.createElement("textarea");
+    document.body.append(composer);
+    try {
+      composer.focus();
+      for (const key of ["Enter", "."]) {
+        expect(fireEvent.keyDown(composer, { key, ctrlKey: true })).toBe(true);
+      }
+      expect(fireEvent.keyDown(composer, { key: "ArrowRight" })).toBe(true);
+      expect(slot.getByText("1 of 2")).toBeTruthy();
+      expect(cancel).not.toHaveBeenCalled();
+      fireEvent.keyDown(document.body, { key: "Enter", ctrlKey: true });
+      expect(slot.getByText("2 of 2")).toBeTruthy();
+    } finally {
+      composer.remove();
+    }
+  });
+
   it("cancels the request instead of submitting", () => {
     const cancel = vi.fn(async () => undefined);
     const slot = render(multi, { cancel });
@@ -639,5 +789,136 @@ describe("question answer dictation", () => {
     expect(submit).not.toHaveBeenCalled();
     fireEvent.click(slot.getByRole("button", { name: "Cancel transcription" }));
     expect(idle.cancel).toHaveBeenCalledOnce();
+  });
+});
+
+describe("question tabs on a narrow card", () => {
+  const TAB_WIDTH = 60;
+  const VIEWPORT_WIDTH = 150;
+  const scrollLefts = new WeakMap<Element, number>();
+  const stubbed: Array<[keyof HTMLElement, PropertyDescriptor | undefined]> =
+    [];
+
+  function isViewport(element: Element): boolean {
+    return element.hasAttribute("data-question-tabs");
+  }
+
+  function tabIndex(element: Element): number | null {
+    const parent = element.parentElement;
+    if (!parent || !isViewport(parent)) return null;
+    return Array.from(parent.children).indexOf(element);
+  }
+
+  function stub(name: keyof HTMLElement, descriptor: PropertyDescriptor) {
+    stubbed.push([
+      name,
+      Object.getOwnPropertyDescriptor(HTMLElement.prototype, name),
+    ]);
+    Object.defineProperty(HTMLElement.prototype, name, {
+      configurable: true,
+      ...descriptor,
+    });
+  }
+
+  function stubGeometry(tabCount: number) {
+    const scrollWidth = tabCount * TAB_WIDTH;
+    const maxScrollLeft = Math.max(0, scrollWidth - VIEWPORT_WIDTH);
+    stub("clientWidth", {
+      get(this: HTMLElement) {
+        return isViewport(this) ? VIEWPORT_WIDTH : 0;
+      },
+    });
+    stub("scrollWidth", {
+      get(this: HTMLElement) {
+        return isViewport(this) ? Math.max(scrollWidth, VIEWPORT_WIDTH) : 0;
+      },
+    });
+    stub("offsetWidth", {
+      get(this: HTMLElement) {
+        return tabIndex(this) === null ? 0 : TAB_WIDTH;
+      },
+    });
+    stub("offsetLeft", {
+      get(this: HTMLElement) {
+        return (tabIndex(this) ?? 0) * TAB_WIDTH;
+      },
+    });
+    stub("scrollLeft", {
+      get(this: HTMLElement) {
+        return scrollLefts.get(this) ?? 0;
+      },
+      set(this: HTMLElement, value: number) {
+        scrollLefts.set(this, Math.min(Math.max(0, value), maxScrollLeft));
+      },
+    });
+  }
+
+  afterEach(() => {
+    for (const [name, descriptor] of stubbed.splice(0).reverse()) {
+      if (descriptor) {
+        Object.defineProperty(HTMLElement.prototype, name, descriptor);
+      } else {
+        Reflect.deleteProperty(HTMLElement.prototype, name);
+      }
+    }
+  });
+
+  function questionsFor(count: number): InteractionPayload {
+    return {
+      questions: Array.from({ length: count }, (_, index) => ({
+        id: `q${index}`,
+        prompt: `Question ${index + 1}?`,
+        shortLabel: `Q${index + 1}`,
+        multiSelect: false,
+        allowFreeText: false,
+        required: false,
+        options: [{ value: `q${index}o0`, label: "Yes" }],
+      })),
+    };
+  }
+
+  function fades(slot: ReturnType<typeof render>) {
+    const visible = (placement: string) =>
+      slot.container
+        .querySelector(`[data-overflow-fade="${placement}"]`)
+        ?.classList.contains("opacity-100") ?? false;
+    return { left: visible("left"), right: visible("right") };
+  }
+
+  function viewport(slot: ReturnType<typeof render>): HTMLElement {
+    const element = slot.container.querySelector("[data-question-tabs]");
+    if (!(element instanceof HTMLElement)) {
+      throw new Error("question tabs are not rendered");
+    }
+    return element;
+  }
+
+  it("scrolls the current question's tab clear of the fade and fades only the edges with tabs past them", () => {
+    stubGeometry(10);
+    const slot = render(questionsFor(10));
+    expect(viewport(slot).scrollLeft).toBe(0);
+    expect(fades(slot)).toEqual({ left: false, right: true });
+
+    fireEvent.click(getButtonByText(slot, "Q8"));
+    expect(viewport(slot).scrollLeft).toBe(8 * TAB_WIDTH + 24 - VIEWPORT_WIDTH);
+    expect(fades(slot)).toEqual({ left: true, right: true });
+
+    fireEvent.click(getButtonByText(slot, "Next"));
+    fireEvent.click(getButtonByText(slot, "Next"));
+    expect(slot.getByText("10 of 10")).toBeTruthy();
+    expect(viewport(slot).scrollLeft).toBe(10 * TAB_WIDTH - VIEWPORT_WIDTH);
+    expect(fades(slot)).toEqual({ left: true, right: false });
+
+    fireEvent.click(getButtonByText(slot, "Q1"));
+    expect(viewport(slot).scrollLeft).toBe(0);
+    expect(fades(slot)).toEqual({ left: false, right: true });
+  });
+
+  it("shows no fade when every tab fits", () => {
+    stubGeometry(2);
+    const slot = render(questionsFor(2));
+    fireEvent.click(getButtonByText(slot, "Next"));
+    expect(slot.getByText("2 of 2")).toBeTruthy();
+    expect(fades(slot)).toEqual({ left: false, right: false });
   });
 });

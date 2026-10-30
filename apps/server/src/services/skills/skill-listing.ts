@@ -1,9 +1,10 @@
 import { firstPerIdentity, skillRegistrationId } from "@bb/skill-index";
 import { Buffer } from "node:buffer";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { resolveDataDirSkillsRootPath } from "@bb/config/skill-storage-paths";
+import { replaceFile } from "@bb/file-transfer";
 import type { DiscoveredSkill, SkillRootKind } from "@bb/host-daemon-contract";
 import type {
   SkillProvider,
@@ -13,6 +14,10 @@ import type {
 import { editableSkillScopeSchema } from "@bb/server-contract";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
+import {
+  remapDaemonFileRouteError,
+  requireDaemonFileContentResult,
+} from "../hosts/daemon-file-response.js";
 import type { AppDeps } from "../../types.js";
 import {
   callHostOnlineRpcForWork,
@@ -53,6 +58,12 @@ function hostPathBasename(filePath: string): string {
   return /^[a-zA-Z]:[\\/]/u.test(filePath)
     ? path.win32.basename(filePath)
     : path.posix.basename(filePath);
+}
+
+function hostPathJoin(rootPath: string, segments: readonly string[]): string {
+  return /^[a-zA-Z]:[\\/]/u.test(rootPath)
+    ? path.win32.join(rootPath, ...segments)
+    : path.posix.join(rootPath, ...segments);
 }
 
 function isBundledProviderSkill(filePath: string): boolean {
@@ -503,22 +514,22 @@ export async function readProjectSkill(
     hostId: args.workspace.hostId,
     timeoutMs: COMMAND_TIMEOUT_MS,
     command: {
-      type: "host.read_file_relative",
-      followRootSymlink: true,
-      rootPath,
+      type: "host.read_file",
       path:
         args.path === SKILL_FILE_NAME
-          ? hostPathBasename(skill.realPath)
-          : args.path,
-      dotfiles: "deny",
+          ? skill.realPath
+          : hostPathJoin(rootPath, validateServerSkillRelativePath(args.path)),
+      rootPath,
+      followRootSymlink: true,
     },
-  });
+  }).catch(remapDaemonFileRouteError);
+  const content = requireDaemonFileContentResult(result);
   return {
     content:
-      result.contentEncoding === "utf8"
-        ? result.content
-        : Buffer.from(result.content, "base64").toString("utf8"),
-    revision: result.sha256,
+      content.contentEncoding === "utf8"
+        ? content.content
+        : Buffer.from(content.content, "base64").toString("utf8"),
+    revision: content.sha256,
   };
 }
 
@@ -549,40 +560,15 @@ export async function writeProjectSkill(
   }
   if (editableScope.data === "bb-user" && isServerOwnedSkill(deps, skill)) {
     const skillFilePath = await resolveServerSkillFile(skill, SKILL_FILE_NAME);
-    const currentContents = await fs.readFile(skillFilePath);
-    const currentRevision = createHash("sha256")
-      .update(currentContents)
-      .digest("hex");
-    if (currentRevision !== args.revision) {
+    const result = await replaceFile({
+      contents: Buffer.from(args.content, "utf8"),
+      expectedSha256: args.revision,
+      path: skillFilePath,
+    });
+    if (result.outcome === "conflict") {
       throw new ApiError(409, "conflict", "Skill changed before it was saved");
     }
-    const currentMode = (await fs.stat(skillFilePath)).mode & 0o777;
-    const temporaryPath = `${skillFilePath}.bb-write-${randomUUID()}`;
-    try {
-      const handle = await fs.open(temporaryPath, "wx", currentMode);
-      try {
-        await handle.writeFile(args.content, "utf8");
-        await handle.sync();
-      } finally {
-        await handle.close();
-      }
-      const latestContents = await fs.readFile(skillFilePath);
-      const latestRevision = createHash("sha256")
-        .update(latestContents)
-        .digest("hex");
-      if (latestRevision !== args.revision) {
-        throw new ApiError(
-          409,
-          "conflict",
-          "Skill changed before it was saved",
-        );
-      }
-      await fs.rename(temporaryPath, skillFilePath);
-    } finally {
-      await fs.rm(temporaryPath, { force: true }).catch(() => undefined);
-    }
-    const revision = createHash("sha256").update(args.content).digest("hex");
-    return { filePath: skillFilePath, revision };
+    return { filePath: skillFilePath, revision: result.sha256 };
   }
   if (editableScope.data !== "bb-user" && editableScope.data !== "bb-project") {
     const result = await callHostOnlineRpcForWork(deps, {

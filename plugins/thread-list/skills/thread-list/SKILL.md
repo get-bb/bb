@@ -6,7 +6,7 @@ description: "Inspect or change the sidebar thread list's layout preferences: or
 # Thread list preferences
 
 The Thread list plugin owns the sidebar's layout state. Read it with
-`bb thread-list prefs list --json`; keys are `showProviderIcons`, `threadLifecycles`, `organizationMode`,
+`bb thread-list prefs list --json`; keys are `showProviderIcons`, `showRowMetadata`, `threadLifecycles`, `organizationMode`,
 `environmentGrouping`, `groupByReadStatus`, `chronologicalSort`, `sortDirection`, `sectionOrder`,
 `manualSectionOrder`, `machineSectionOrder`, `hiddenGroups` (including the
 built-in `threads` group), `rowActions`,
@@ -30,6 +30,10 @@ section are bb core state: use `bb thread section` and `bb thread update`.
 
 On first load the plugin copies any non-default `sidebar.*` values from
 `bb settings ui` once; after that the two are independent.
+
+Collapsed groups stay collapsed when background threads appear or become
+unread. Their headers retain activity indicators. Opening a thread reveals
+its containing groups; background activity does not change collapse preferences.
 
 `environmentGrouping` decides whether sibling threads sharing one worktree
 collapse into a single row: `"auto"` (default) groups them in every
@@ -57,6 +61,11 @@ shows archived threads, and `'["active","archived"]'` shows both. The default
 is `'["active"]'`. Archived results load in pages; use Show more at the end
 of the list. The same preference is available through `setPreference` RPC.
 
+Every write is broadcast on the plugin's `preferences` realtime channel as
+`{ key, value, origin }`. `setPreference` takes an optional `origin` string
+that the broadcast repeats, so an open window can ignore the echo of its own
+write; CLI writes and resets broadcast `origin: null`.
+
 `rowActions` picks up to three quick-action buttons a thread row shows on
 hover, left to right before its actions menu, as thread action keys: bb's
 `bb--core/split`, `bb--core/copyLink`, `bb--core/read`, `bb--core/pin`,
@@ -76,6 +85,14 @@ Organize → Rows → Provider icons toggles the icon before each thread title.
 `showProviderIcons` defaults to `true`; use
 `bb thread-list prefs set showProviderIcons false` to hide them. Unknown
 provider ids have no icon.
+
+Organize → Rows → Metadata adds a line under each thread's title where plugins
+draw metadata, such as GitHub PR Status's pull request number. Rows grow to
+two lines only when a plugin shows something for them. The option appears only
+while the `threadRowMetadata` experiment is on
+(`bb settings experiment threadRowMetadata true`); while it is off the sidebar
+ignores `showRowMetadata`. `showRowMetadata` defaults to `false`; use
+`bb thread-list prefs set showRowMetadata true` to turn it on.
 
 Organize → Groups → By read status lists threads that show the unread dot above
 the rest, keeping the selected sort within each group. `groupByReadStatus`

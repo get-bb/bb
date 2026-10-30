@@ -9,6 +9,7 @@ import {
 } from "@/views/thread-detail/PaneContext";
 import { beginSplitDrag, decideThreadDrop } from "@/lib/split-drag";
 import { SecondaryPanelLayout } from "./SecondaryPanelLayout";
+import { secondaryPanelWidthPercentAtom } from "./threadSecondaryPanelAtoms";
 
 const noop = () => {};
 const context: PaneContextValue = {
@@ -52,6 +53,7 @@ it.each([false, true])(
               main={<div data-testid="chat">Chat</div>}
               renderPanel={() => <div data-testid="details">Details</div>}
               composerHost={null}
+              widthPercentAtom={secondaryPanelWidthPercentAtom}
             />
           </CompactViewportOverrideProvider>
         </PaneContext.Provider>

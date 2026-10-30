@@ -5,7 +5,9 @@ import {
   type ReactNode,
 } from "react";
 import {
+  experimental_useThreadContextKind,
   useBbNavigate,
+  useSettings,
   type ExperimentalThreadContextSegmentInput,
   type ExperimentalThreadContextSegmentProps,
   type ExperimentalThreadContextSegmentReference,
@@ -26,7 +28,11 @@ import {
   PROMPT_BANNER_ACTION_SEGMENT_CLASS,
   PromptBannerActionButton,
 } from "@bb/shared-ui/prompt-banner-actions";
-import type { PullRequest, PullRequestMergeMethod } from "../contract";
+import {
+  SHOW_PULL_REQUEST_SETTING,
+  type PullRequest,
+  type PullRequestMergeMethod,
+} from "../contract";
 import {
   describePullRequestStatus,
   getPullRequestGithubCheckStatus,
@@ -38,7 +44,7 @@ import { PullRequestNextStepLabel } from "./PullRequestNextStepLabel";
 import { PullRequestStatusPill } from "./PullRequestStatusPill";
 import { useEnvironmentPullRequest, usePullRequestActions } from "./queries";
 
-const CHANGED_FILES_SEGMENT_KEY = "bb--core/changed-files";
+const CHANGED_FILES_SEGMENT_KEY = "bb--git/changed-files";
 
 export function useOpenUrlClick(
   url: string,
@@ -62,7 +68,9 @@ function useThreadPullRequest(
 export function usePullRequestSegmentVisible(
   input: ExperimentalThreadContextSegmentInput,
 ): boolean {
-  return useThreadPullRequest(input.environment) !== null;
+  const enabled = useSettings().values?.[SHOW_PULL_REQUEST_SETTING] === true;
+  const show = enabled && experimental_useThreadContextKind() === "banner";
+  return useThreadPullRequest(show ? input.environment : null) !== null;
 }
 
 function shouldShowAttentionLabel(pullRequest: PullRequest): boolean {
@@ -92,7 +100,6 @@ export function PullRequestLink({
   const isAlone = segments.length === 1;
   const showLabel =
     isAlone || (segments.length === 2 && segments.some(isChangedFilesSegment));
-  const nextStep = getPullRequestNextStep(pullRequest);
   const handleClick = useOpenUrlClick(pullRequest.url);
   return (
     <a
@@ -112,34 +119,58 @@ export function PullRequestLink({
     >
       <PullRequestStatusPill pullRequest={pullRequest} className="h-4" />
       {showLabel ? (
-        <span
-          className="min-w-0 truncate"
-          data-promptbox-hide-compact={isAlone ? undefined : ""}
-        >
-          PR #{pullRequest.number}
-          {isAlone && pullRequest.state !== "open"
-            ? ` · ${PULL_REQUEST_STATE_DISPLAY[pullRequest.state].label}`
-            : ""}
-        </span>
-      ) : null}
-      {showLabel && nextStep && shouldShowAttentionLabel(pullRequest) ? (
-        <>
-          <span aria-hidden>·</span>
-          <PullRequestNextStepLabel nextStep={nextStep} />
-        </>
-      ) : null}
-      {showLabel && isPullRequestAutoMergeOn(pullRequest) ? (
-        <Icon
-          name="Zap"
-          aria-label="Auto-merge on"
-          className="size-3 shrink-0 text-subtle-foreground"
+        <PullRequestSummaryLabel
+          pullRequest={pullRequest}
+          showState={isAlone}
+          hideNumberWhenCompact={!isAlone}
         />
       ) : null}
     </a>
   );
 }
 
-const MERGE_ACTIONS: readonly {
+export function PullRequestSummaryLabel({
+  pullRequest,
+  showState,
+  hideNumberWhenCompact,
+}: {
+  pullRequest: PullRequest;
+  showState: boolean;
+  hideNumberWhenCompact: boolean;
+}) {
+  const nextStep = shouldShowAttentionLabel(pullRequest)
+    ? getPullRequestNextStep(pullRequest)
+    : null;
+  const showAutoMerge =
+    nextStep === null && isPullRequestAutoMergeOn(pullRequest);
+  return (
+    <>
+      <span
+        className="min-w-0 truncate"
+        data-promptbox-hide-compact={hideNumberWhenCompact ? "" : undefined}
+      >
+        PR #{pullRequest.number}
+        {showState && pullRequest.state !== "open"
+          ? ` · ${PULL_REQUEST_STATE_DISPLAY[pullRequest.state].label}`
+          : ""}
+      </span>
+      {nextStep ? (
+        <>
+          <span aria-hidden>·</span>
+          <PullRequestNextStepLabel nextStep={nextStep} />
+        </>
+      ) : null}
+      {showAutoMerge ? (
+        <>
+          <span aria-hidden>·</span>
+          <span className="shrink-0">Auto-merge</span>
+        </>
+      ) : null}
+    </>
+  );
+}
+
+export const MERGE_ACTIONS: readonly {
   method: PullRequestMergeMethod;
   label: string;
 }[] = [

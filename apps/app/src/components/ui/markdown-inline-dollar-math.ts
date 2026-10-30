@@ -12,6 +12,9 @@ import type { Processor } from "unified";
 const DOLLAR = 36;
 const BACKSLASH = 92;
 const BACKTICK = 96;
+const COMMA = 44;
+const PERIOD = 46;
+const CURRENCY_TERMINATORS = new Set([33, 41, 58, 59, 63]);
 
 function isWhitespace(code: Code): boolean {
   return code === null || code < 0 || code === 32;
@@ -44,7 +47,21 @@ function tokenizeInlineDollarMath(
 
   function afterOpen(code: Code): State | undefined {
     if (code === DOLLAR || isWhitespace(code)) return nok(code);
+    if (isDigit(code)) {
+      effects.enter("mathTextData");
+      return leadingNumber(code);
+    }
     return between(code);
+  }
+
+  function leadingNumber(code: Code): State | undefined {
+    if (isDigit(code) || code === COMMA || code === PERIOD) {
+      effects.consume(code);
+      return leadingNumber;
+    }
+    if (isWhitespace(code) || (code !== null && CURRENCY_TERMINATORS.has(code)))
+      return nok(code);
+    return data(code);
   }
 
   function between(code: Code): State | undefined {

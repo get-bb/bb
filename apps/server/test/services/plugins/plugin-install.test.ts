@@ -1147,6 +1147,7 @@ describe("plugin install flows", () => {
         dataDir,
         appVersion: "0.9.0",
         loadTimeoutMs: 2000,
+        bundledPlugins: [],
       });
 
       await service.start();

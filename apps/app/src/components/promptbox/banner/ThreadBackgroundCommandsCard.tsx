@@ -2,7 +2,6 @@ import { useRef, useState } from "react";
 import { isBackgroundAgentTaskType } from "@bb/domain";
 import type { TimelineWorkflowWorkRow } from "@bb/server-contract";
 import { useResizeObserver } from "usehooks-ts";
-import { AnimatedDisclosureBody } from "@/components/promptbox/banner/AnimatedBody";
 import {
   PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
   PROMPT_STACK_CARD_ROW_HEIGHT,
@@ -23,6 +22,7 @@ import {
   PromptStackCountSlot,
   PromptStackHoverChevron,
   useDisclosureFocusHandoff,
+  AnimatedDisclosureBody,
 } from "@bb/shared-ui/prompt-stack-disclosure";
 
 const BODY_ID = "thread-background-commands-card-body";
@@ -292,9 +292,7 @@ export function ThreadBackgroundCommandsCard({
                   <span
                     className={cn(
                       "min-w-0 flex-1 text-muted-foreground",
-                      useCompactSummary
-                        ? "line-clamp-2 break-all"
-                        : "truncate",
+                      useCompactSummary ? "line-clamp-2 break-all" : "truncate",
                     )}
                     title={row.description}
                   >

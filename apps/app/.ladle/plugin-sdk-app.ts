@@ -8,6 +8,8 @@ export type * from "@get-bb/plugin-sdk";
 
 export const {
   experimental_ThreadStatusGlyph,
+  experimental_ThreadContextCardRow,
+  experimental_PanelTabIcon,
   experimental_Icon,
   experimental_ProviderIcon,
   definePluginApp,
@@ -24,6 +26,9 @@ export const {
   experimental_SourceCode,
   experimental_Diff,
   useRpc,
+  experimental_useRpcKeyedQuery,
+  experimental_useRpcMutation,
+  experimental_DetailRow,
   useRealtime,
   useRealtimeConnectionState,
   useSettings,
@@ -43,6 +48,8 @@ export const {
   experimental_THREAD_ACTION_GROUPS,
   experimental_useSidebarThreadSplit,
   experimental_useExperiment,
+  experimental_useThreadContextKind,
+  experimental_usePanelTabs,
   useSidebarThreadDraft,
   useSidebarThreadDraftIds,
   useSidebarThreadRowStatus,

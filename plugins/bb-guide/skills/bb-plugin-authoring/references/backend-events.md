@@ -444,7 +444,7 @@ from `@get-bb/plugin-sdk` for expected refusals:
 `forbidden` → 403, `not_found` → 404, `conflict` → 409, `invalid` → 422.
 Codes and optional `PluginRpcValidationIssue[]` issues reach callers in the error envelope.
 Refusals do not increment handler error counts or change status detail.
-A refused mutation rejects, rolls back shared optimistic updates, and publishes no invalidations. `bb plugin rpc call` prints the code and message and exits non-zero.
+A refused mutation rejects and rolls back shared optimistic updates. `bb plugin rpc call` prints the code and message and exits non-zero.
 Results must be strict JSON values: cyclic objects, bigint,
 undefined/functions, class instances, symbol keys, and non-finite numbers are
 rejected rather than coerced or silently dropped.

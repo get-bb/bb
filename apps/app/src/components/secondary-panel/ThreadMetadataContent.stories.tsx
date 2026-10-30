@@ -9,9 +9,6 @@ import {
   PanelStage,
   baseProps,
   makeThread,
-  makeWorkspaceStatus,
-  STORY_AHEAD_COMMITS,
-  STORY_DIRTY_WORKING_TREE,
 } from "./ThreadMetadataContent.fixtures";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 
@@ -43,28 +40,6 @@ function WorkInProgressPanel() {
     threadId: "thr_story",
   });
   return render({
-    workspaceStatus: makeWorkspaceStatus({
-      workingTree: {
-        ...STORY_DIRTY_WORKING_TREE,
-        state: "dirty_and_committed_unmerged",
-      },
-      mergeBase: {
-        mergeBaseBranch: "main",
-        baseRef: "main",
-        aheadCount: STORY_AHEAD_COMMITS.length,
-        behindCount: 0,
-        squashMergeCheckComplete: true,
-        hasCommittedUnmergedChanges: true,
-        commits: STORY_AHEAD_COMMITS,
-        insertions: 0,
-        deletions: 0,
-        lineStatsComplete: true,
-        fileCount: 0,
-        files: [],
-      },
-    }),
-    onCommitClick: () => {},
-    onOpenChangedFile: () => {},
     storage: { controller, filesError: null },
   });
 }
@@ -115,7 +90,6 @@ export function Overview() {
             environmentId: null,
           }),
           environment: null,
-          workspaceStatus: undefined,
         })}
       </StoryRow>
     </StoryCard>

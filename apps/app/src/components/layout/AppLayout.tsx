@@ -68,6 +68,7 @@ import {
   PluginPanelHeaderCenter,
 } from "@/components/plugin/PluginPanelHeader";
 import { PluginAppOverlays } from "@/components/plugin/PluginAppOverlays";
+import { ThreadRowMetadataCollectors } from "@/components/plugin/ThreadRowMetadataCollectors";
 import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
 import {
   usePluginNavPanelChrome,
@@ -100,14 +101,16 @@ import {
   getRootComposeRoutePath,
   getThreadRoutePath,
   isProjectlessProjectId,
-  PLUGIN_PANEL_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
 } from "@/lib/route-paths";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
 import { useFaviconBadge } from "@/lib/favicon-color-preference";
-import { shouldShowFaviconAttentionDot } from "./faviconAttentionDot";
+import {
+  desktopAttentionThreads,
+  shouldShowFaviconAttentionDot,
+} from "./faviconAttentionDot";
 import { AppLayoutSidebar } from "./AppLayoutSidebar";
 import { resolveRouteSidebar } from "./routeSidebar";
 import { NAV_RAIL_COLLAPSED_SIDEBAR_WIDTH } from "@/components/sidebar/navRailWidth";
@@ -123,7 +126,10 @@ import { isIOSWebKit } from "@/lib/ios-webkit";
 import { wsManager } from "@/lib/ws";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { findPaneByThread } from "@/lib/split-layout";
-import { applyThreadOpenToLayout } from "@/views/thread-detail/splitThreadNavigation";
+import {
+  applyThreadOpenToLayout,
+  paneContentForPathname,
+} from "@/views/thread-detail/splitThreadNavigation";
 import { useAppSettingsRouteMemory } from "@/hooks/useAppSettingsRouteMemory";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import { BackToAppCommandHandler } from "./BackToAppCommandHandler";
@@ -467,7 +473,6 @@ function AppLayoutContent({ children }: AppLayoutProps) {
   );
   useMobileVisualViewportHeight(
     contentShell,
-    isCompactViewport,
     restoreIOSViewportOnKeyboardDismissal,
   );
   const location = useLocation();
@@ -479,20 +484,19 @@ function AppLayoutContent({ children }: AppLayoutProps) {
   const navPanelChrome = usePluginNavPanelChrome();
   const isGlobalSettingsView =
     matchPath(`${SETTINGS_ROUTE_PATH}/*`, location.pathname) !== null;
-  const pluginPanelMatch = matchPath(
-    PLUGIN_PANEL_ROUTE_PATH,
-    location.pathname,
-  );
-  const pluginPanelEntry = pluginPanelMatch
+  const routeContent = paneContentForPathname(location.pathname);
+  const pluginPanelRoute =
+    routeContent?.kind === "plugin-panel" ? routeContent : null;
+  const pluginPanelEntry = pluginPanelRoute
     ? navPanelChrome.find(
         (candidate) =>
-          candidate.chrome.pluginId === pluginPanelMatch.params.pluginId &&
-          candidate.chrome.path === pluginPanelMatch.params.panelPath,
+          candidate.chrome.pluginId === pluginPanelRoute.pluginId &&
+          candidate.chrome.path === pluginPanelRoute.panelPath,
       )
     : undefined;
   const pluginPanel = pluginPanelEntry?.panel ?? undefined;
   const pluginPanelChrome = pluginPanelEntry?.chrome;
-  const pluginPanelSubPath = pluginPanelMatch?.params["*"] ?? "";
+  const pluginPanelSubPath = pluginPanelRoute?.subPath ?? "";
   const routeSidebar = resolveRouteSidebar(
     location.pathname,
     pluginPanel === undefined
@@ -598,7 +602,7 @@ function AppLayoutContent({ children }: AppLayoutProps) {
   const startWidthRef = useRef(0);
   const liveWidthRef = useRef(0);
   const animationFrameRef = useRef<number | null>(null);
-  const showHeader = !isThreadView && !isRootView && pluginPanelMatch === null;
+  const showHeader = !isThreadView && !isRootView && pluginPanelRoute === null;
   const [desktopInfo] = useState(getBbDesktopInfo);
   const desktopWindowState = useDesktopWindowState();
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
@@ -718,6 +722,19 @@ function AppLayoutContent({ children }: AppLayoutProps) {
     ? "unread"
     : "none";
   useFaviconBadge(faviconBadge);
+  useEffect(() => {
+    window.bbDesktop?.setAttentionThreads?.(
+      desktopAttentionThreads(sidebarThreads),
+    );
+  }, [sidebarThreads]);
+  useEffect(
+    () => () =>
+      window.bbDesktop?.setAttentionThreads?.({
+        pendingThreadIds: [],
+        unreadThreadIds: [],
+      }),
+    [],
+  );
 
   const handleResizeMouseDown = useCallback(
     (event: SidebarResizeMouseEvent) => {
@@ -831,7 +848,7 @@ function AppLayoutContent({ children }: AppLayoutProps) {
                     ref={setContentShell}
                     data-testid="app-layout-content-shell"
                     data-app-content-shell=""
-                    className="relative flex h-full min-h-0 min-w-0 w-full flex-col pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[var(--bb-safe-area-bottom,env(safe-area-inset-bottom))] pl-[env(safe-area-inset-left)]"
+                    className="relative flex h-full min-h-0 min-w-0 w-full flex-col pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-(--bb-content-bottom-inset) pl-[env(safe-area-inset-left)] [--bb-content-bottom-inset:var(--bb-safe-area-bottom,env(safe-area-inset-bottom))]"
                   >
                     {showHeader ? (
                       <AppHeader
@@ -861,6 +878,7 @@ function AppLayoutContent({ children }: AppLayoutProps) {
                 />
               </SidebarStateBridge>
               <PluginAppOverlays />
+              <ThreadRowMetadataCollectors />
               <IframeDragGuardOverlay
                 active={isSidebarResizing}
                 cursor="col-resize"

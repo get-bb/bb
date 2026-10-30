@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
-import { getHost } from "@bb/db";
+import { getHost, setExperiments } from "@bb/db";
 import {
   GATE_ASSERTION_HEADER,
   generateGateKeyPair,
@@ -606,6 +606,7 @@ describe("bb connect next tunnel ingress", () => {
   });
 
   it("verifies WebSocket upgrades for /ws and plugin sockets", async () => {
+    setExperiments(server.db, { websocketCompression: true });
     const refused = await openSocket(ingressBaseUrl, "/ws", {});
     expect(refused).toMatchObject({ status: 401 });
     expect(JSON.parse((refused as { body: string }).body)).toMatchObject({
@@ -631,6 +632,7 @@ describe("bb connect next tunnel ingress", () => {
       [GATE_ASSERTION_HEADER]: await assertion({ method: "GET", path: "/ws" }),
     });
     if (!("socket" in realtime)) throw new Error("expected /ws to open");
+    expect(realtime.socket.extensions).toContain("permessage-deflate");
     await closeSocket(realtime.socket);
 
     const plugin = await openSocket(ingressBaseUrl, SOCKET_PATH, {
@@ -642,6 +644,7 @@ describe("bb connect next tunnel ingress", () => {
       }),
     });
     if (!("socket" in plugin)) throw new Error("expected plugin socket");
+    expect(plugin.socket.extensions).toBe("");
     const loopbackOrigin = `http://127.0.0.1:${server.config.serverPort}`;
     expect(JSON.parse(await plugin.firstMessage)).toEqual({
       host: new URL(loopbackOrigin).host,
@@ -767,6 +770,7 @@ describe("bb connect next tunnel ingress", () => {
   });
 
   it("carries gate-signed requests through real frps and the connect-next plugin's frpc", async () => {
+    setExperiments(server.db, { websocketCompression: true });
     const binaries = await installTestFrp(join(workDir, "bin"));
     const hooks = await startGateHooks(() => "bbcred_ingress");
     const frps = await startFrps(binaries.frps, workDir, hooks.port);
@@ -871,6 +875,18 @@ describe("bb connect next tunnel ingress", () => {
         "x-bb-gate-auth": "session",
       });
       await closeSocket(socket.socket);
+
+      const realtime = await openSocket(vhost, "/ws", {
+        host,
+        origin: `https://${host}`,
+        [GATE_ASSERTION_HEADER]: await assertion({
+          method: "GET",
+          path: "/ws",
+        }),
+      });
+      if (!("socket" in realtime)) throw new Error("expected /ws to open");
+      expect(realtime.socket.extensions).toContain("permessage-deflate");
+      await closeSocket(realtime.socket);
       expect(logs.join("\n")).not.toContain("bbcred_ingress");
     } finally {
       await tunnel.stop();

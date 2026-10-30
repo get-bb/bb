@@ -1,10 +1,11 @@
+import path from "node:path";
 import type { DiscoveredWorkspaceProperties } from "@bb/domain";
 import {
   provisionWorkspace,
   type HostWorkspace,
   type LocalStateSnapshot,
-  type SharedGitRefsSnapshot,
   type ProvisionWorkspaceArgs,
+  type SharedGitRefsSnapshot,
 } from "@bb/host-workspace";
 import type {
   HostDaemonEnvironmentChange,
@@ -44,6 +45,11 @@ interface WorkspaceWatchEntry {
   target: HostDaemonWatchSetWorkspaceTarget;
   watchState: WorkspaceWatchState;
   workspace: HostWorkspace;
+}
+
+interface ThreadStorageWatchEntry {
+  stopWatching: StopWatching;
+  target: HostDaemonWatchSetThreadStorageTarget;
 }
 
 interface RefreshWorkspaceArgs {
@@ -107,14 +113,13 @@ export class WatchManager {
   private readonly hostWatcher;
   private readonly provisionWorkspace;
   private readonly refreshWorkspace;
-  private readonly threadStorageTargets = new Map<
+  private readonly threadStorageEntries = new Map<
     string,
-    HostDaemonWatchSetThreadStorageTarget
+    ThreadStorageWatchEntry
   >();
   private readonly workspaceEntries = new Map<string, WorkspaceWatchEntry>();
   private latestAppliedWatchSetGeneration = -1;
   private watchSetMutationTail: Promise<void> = Promise.resolve();
-  private stopWatchingThreadStorageRoot: StopWatching = STOP_WATCHING;
 
   constructor(private readonly options: WatchManagerOptions = {}) {
     this.hostWatcher = options.hostWatcher;
@@ -149,10 +154,13 @@ export class WatchManager {
   async shutdown(): Promise<void> {
     await this.enqueueWatchSetMutation(async () => {
       const entries = [...this.workspaceEntries.values()];
+      const threadStorageEntries = [...this.threadStorageEntries.values()];
       this.workspaceEntries.clear();
-      this.threadStorageTargets.clear();
-      await Promise.all(entries.map((entry) => this.stopWorkspaceWatch(entry)));
-      await this.stopThreadStorageWatcher();
+      this.threadStorageEntries.clear();
+      await Promise.all([
+        ...entries.map((entry) => this.stopWorkspaceWatch(entry)),
+        ...threadStorageEntries.map((entry) => entry.stopWatching()),
+      ]);
     });
   }
 
@@ -161,7 +169,7 @@ export class WatchManager {
   }
 
   threadStorageWatchTargetCount(): number {
-    return this.threadStorageTargets.size;
+    return this.threadStorageEntries.size;
   }
 
   private async replaceWorkspaceTargets(
@@ -192,16 +200,30 @@ export class WatchManager {
   private async replaceThreadStorageTargets(
     targets: readonly HostDaemonWatchSetThreadStorageTarget[],
   ): Promise<void> {
-    this.threadStorageTargets.clear();
+    const nextTargets = new Map<
+      string,
+      HostDaemonWatchSetThreadStorageTarget
+    >();
     for (const target of targets) {
-      this.threadStorageTargets.set(target.threadId, target);
+      nextTargets.set(target.threadId, target);
     }
 
-    if (this.threadStorageTargets.size > 0) {
-      this.ensureThreadStorageWatcher();
-      return;
+    const stops: (void | Promise<void>)[] = [];
+    for (const [threadId, entry] of this.threadStorageEntries) {
+      const nextTarget = nextTargets.get(threadId);
+      if (nextTarget) {
+        entry.target = nextTarget;
+        nextTargets.delete(threadId);
+        continue;
+      }
+      this.threadStorageEntries.delete(threadId);
+      stops.push(entry.stopWatching());
     }
-    await this.stopThreadStorageWatcher();
+    await Promise.all(stops);
+
+    for (const target of nextTargets.values()) {
+      this.startThreadStorageWatch(target);
+    }
   }
 
   private enqueueWatchSetMutation(work: () => Promise<void>): Promise<void> {
@@ -506,43 +528,45 @@ export class WatchManager {
     await stopWatchingStatus();
   }
 
-  private ensureThreadStorageWatcher(): void {
+  private startThreadStorageWatch(
+    target: HostDaemonWatchSetThreadStorageTarget,
+  ): void {
+    const entry: ThreadStorageWatchEntry = {
+      stopWatching: STOP_WATCHING,
+      target,
+    };
+    this.threadStorageEntries.set(target.threadId, entry);
+
+    const threadStorageRootPath = this.options.threadStorageRootPath;
+    if (!this.hostWatcher || !threadStorageRootPath) {
+      return;
+    }
+    const threadStoragePath = path.resolve(
+      threadStorageRootPath,
+      target.threadId,
+    );
     if (
-      !this.hostWatcher ||
-      this.stopWatchingThreadStorageRoot !== STOP_WATCHING
+      path.dirname(threadStoragePath) !== path.resolve(threadStorageRootPath)
     ) {
       return;
     }
 
-    const threadStorageRootPath = this.options.threadStorageRootPath;
-    if (!threadStorageRootPath) {
-      return;
-    }
-
-    this.stopWatchingThreadStorageRoot =
-      this.hostWatcher.watchThreadStorageRoot({
-        threadStorageRootPath,
-        resolveThreadTarget: (threadId) =>
-          this.threadStorageTargets.get(threadId) ?? null,
-        onChange: (event) => {
-          if (event.kind === "thread-storage-changed") {
-            this.options.onThreadStorageChanged?.({
-              environmentId: event.environmentId,
-              threadId: event.threadId,
-            });
-          }
-        },
-        onWatchError: (error) => {
-          this.options.onThreadStorageWatchError?.({
-            error,
-          });
-        },
-      });
-  }
-
-  private async stopThreadStorageWatcher(): Promise<void> {
-    const stopWatchingThreadStorageRoot = this.stopWatchingThreadStorageRoot;
-    this.stopWatchingThreadStorageRoot = STOP_WATCHING;
-    await stopWatchingThreadStorageRoot();
+    entry.stopWatching = this.hostWatcher.watchThreadStorage({
+      threadStoragePath,
+      onChange: () => {
+        if (this.threadStorageEntries.get(entry.target.threadId) !== entry) {
+          return;
+        }
+        this.options.onThreadStorageChanged?.({
+          environmentId: entry.target.environmentId,
+          threadId: entry.target.threadId,
+        });
+      },
+      onWatchError: (error) => {
+        this.options.onThreadStorageWatchError?.({
+          error,
+        });
+      },
+    });
   }
 }

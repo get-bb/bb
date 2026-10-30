@@ -6,10 +6,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import {
-  ImageLightbox,
-  getWrappedImageIndex,
-} from "@/components/ui/image-lightbox";
+import { ImageLightbox } from "@/components/ui/image-lightbox";
+import { getWrappedImageIndex } from "@bb/shared-ui/lib/image-preview";
 import type { SecondaryPanelRenderableTab } from "./secondaryPanelTab";
 
 interface ImageTabLightboxValue {

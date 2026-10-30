@@ -33,6 +33,7 @@ export function toPluginSidebarThread(
       titleResources,
     ),
     parentThreadId: entry.parentThreadId,
+    parentNotifications: entry.parentNotifications,
     lifecycleOwnerThreadId: entry.lifecycleOwnerThreadId,
     sourceThreadId: entry.sourceThreadId,
     sectionId: entry.sectionId,

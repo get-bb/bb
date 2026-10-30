@@ -66,6 +66,7 @@
     "@tiptap/react": "^3.26.0",
     "@tiptap/suggestion": "^3.26.0",
     "@xterm/addon-fit": "0.12.0-beta.292",
+    "@xterm/addon-search": "0.17.0-beta.292",
     "@xterm/addon-unicode11": "^0.9.0",
     "@xterm/addon-web-links": "0.13.0-beta.292",
     "@xterm/addon-webgl": "0.20.0-beta.291",
@@ -106,6 +107,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@bb/plugin-build": "workspace:*",
     "@bb/plugin-registry": "workspace:*",
     "@bb/test-helpers": "workspace:*",
     "@bb/tsconfig": "workspace:*",
@@ -126,6 +128,7 @@
     "bb-plugin-automations": "workspace:*",
     "bb-plugin-bb-guide": "workspace:*",
     "bb-plugin-environment-modal-sandbox": "workspace:*",
+    "bb-plugin-bb--git": "workspace:*",
     "bb-plugin-bb--github-pr-status": "workspace:*",
     "bb-plugin-provider-pi": "workspace:*",
     "bb-plugin-secrets": "workspace:*",

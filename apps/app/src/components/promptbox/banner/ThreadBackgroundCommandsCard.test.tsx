@@ -51,6 +51,7 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
   resizeObserverCallback = null;
   resizeObserver = null;
 });
@@ -194,5 +195,41 @@ describe("ThreadBackgroundCommandsCard", () => {
     expect(item.textContent).toContain(description);
     expect(screen.getByTitle("Model: haiku").textContent).toBe("haiku");
     expect(screen.queryByRole("button")).toBeNull();
+  });
+});
+
+describe("prompt-stack card bodies", () => {
+  it("does not mount per-row live durations for a collapsed background-activity card", () => {
+    vi.useFakeTimers();
+    const setInterval = vi.spyOn(globalThis, "setInterval");
+    const startedAt = Date.now() - 5_000;
+    function Card() {
+      const [isExpanded, setIsExpanded] = useState(false);
+      return (
+        <ThreadBackgroundCommandsCard
+          commands={[1, 2, 3].map((index) =>
+            workflowRow({
+              id: `wf_${index}`,
+              description: `Background agent ${index}`,
+              model: "haiku",
+              startedAt,
+              status: "pending",
+              taskStatus: "running",
+              taskType: "local_agent",
+              workflowName: null,
+            }),
+          )}
+          isExpanded={isExpanded}
+          onToggle={() => setIsExpanded((value) => !value)}
+        />
+      );
+    }
+    render(<Card />);
+    expect(screen.queryByText("Background agent 2")).toBeNull();
+    expect(setInterval).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    expect(screen.getByText("Background agent 2")).not.toBeNull();
+    expect(setInterval).toHaveBeenCalledTimes(1);
   });
 });

@@ -10,7 +10,11 @@ import type {
 import { TASK_PRIORITIES, TASK_STATUSES } from "../../shared/contract.js";
 import type { Preset } from "../../shared/contract.js";
 import { errorMessage } from "../../shared/errors.js";
-import { useTasksQuery, useTasksRpc } from "../../shell/data.js";
+import {
+  selectBbProjects,
+  useTasksQuery,
+  useTasksRpc,
+} from "../../shell/data.js";
 import {
   PriorityIcon,
   StatusIcon,
@@ -511,10 +515,7 @@ export function PropertiesRail({
     task.labelIds.includes(label.id),
   );
   const active = threads.filter(isActiveThread);
-  const bbProjects = useTasksQuery(
-    async (query) => (await query.call("listBbProjects")).bbProjects,
-    ["projects:changed"],
-  );
+  const bbProjects = useTasksQuery("listBbProjects", null, selectBbProjects);
   return (
     <aside className={cn("w-56 shrink-0 py-10 pl-2 pr-6", className)}>
       <h2 className="mb-1.5 text-xs font-semibold text-muted-foreground">

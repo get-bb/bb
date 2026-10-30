@@ -1,9 +1,9 @@
-import type {
-  ChangedMessage,
-  ClientMessage,
-  RealtimeSubscriptionTarget,
+import {
+  type ChangedMessage,
+  type ClientMessage,
+  type RealtimeSubscriptionTarget,
+  realtimeSubscriptionTargetKey,
 } from "@bb/domain";
-import { realtimeSubscriptionTargetKey } from "@bb/domain";
 import { serverMessageLenientSchema } from "@bb/server-contract";
 import { resolveRealtimeUrl } from "./realtime-url.js";
 import type {

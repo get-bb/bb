@@ -3,7 +3,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PluginRowSignalView } from "./PluginRowSignal";
-import { displayPluginVersion } from "./plugin-ui";
 import { focusWithKeyboard } from "@/test/keyboard-focus";
 
 afterEach(cleanup);
@@ -81,17 +80,5 @@ describe("PluginRowSignalView", () => {
     );
     const button = screen.getByRole("button", { name: "Update available" });
     expect(button.getAttribute("aria-label")).not.toContain("a985e1d");
-  });
-});
-
-describe("displayPluginVersion", () => {
-  it("shortens only long hex hashes, never versions, tags, or refs", () => {
-    expect(
-      displayPluginVersion("a985e1d5523398e9c7459d35679142cc4339771e"),
-    ).toBe("a985e1d");
-    expect(displayPluginVersion("1.2.0")).toBe("1.2.0");
-    expect(displayPluginVersion("v1.2.0-rc.1")).toBe("v1.2.0-rc.1");
-    expect(displayPluginVersion("main")).toBe("main");
-    expect(displayPluginVersion("deadbee")).toBe("deadbee");
   });
 });

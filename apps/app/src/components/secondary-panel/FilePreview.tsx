@@ -31,7 +31,7 @@ import {
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { CopyButton } from "@/components/ui/copy-button.js";
 import { Icon } from "@bb/shared-ui/icon";
-import { OpenInEditorButton } from "@/components/ui/open-in-editor-button.js";
+import { OpenInEditorButton } from "@bb/shared-ui/open-in-editor-button";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
@@ -44,13 +44,12 @@ import {
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
-import { formatByteSize } from "@/lib/format-byte-size";
+import { formatByteSize } from "@bb/shared-ui/lib/format-byte-size";
 import { saveFile } from "@/lib/save-file";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import type {
   FilePreviewLineRange,
   UnsupportedFilePreviewReason,
-  WorkspaceFilePreviewStatusLabel,
 } from "@bb/client-core";
 import {
   DEFAULT_CODE_OVERFLOW_MODE,
@@ -126,7 +125,7 @@ interface FilePreviewProps {
   onRefresh?: () => void;
   isRefreshing?: boolean;
   markdownLinkRouting?: MarkdownLinkRouting;
-  statusLabel?: WorkspaceFilePreviewStatusLabel | null;
+  statusLabel?: string | null;
 }
 
 interface FilePreviewBodyProps {
@@ -157,7 +156,7 @@ interface FilePreviewHeaderProps {
   onOpenInEditor?: (path: string) => void;
   onRefresh?: () => void;
   isRefreshing: boolean;
-  statusLabel: WorkspaceFilePreviewStatusLabel | null;
+  statusLabel: string | null;
   toggleKind: FilePreviewToggleKind | null;
   showLineOverflowToggle: boolean;
   lineOverflowMode: CodeOverflowMode;

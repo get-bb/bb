@@ -1,10 +1,9 @@
-import { execFile } from "node:child_process";
+import { execHostFile, execPortableFile } from "@bb/process-utils";
 import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { promisify } from "node:util";
 import type {
   ProviderHealthResult,
   ProviderInstallationRunResult,
@@ -13,7 +12,6 @@ import type {
   ProviderUsageResult,
   ProviderUsageWindow,
 } from "@bb/provider-bridge-protocol";
-import { execPortableFile } from "@bb/process-utils";
 import {
   clampPercent,
   downloadedInstallerCommand,
@@ -23,7 +21,7 @@ import {
 import { z } from "zod";
 import { readOpenCodeGoUsage } from "./opencode-usage.js";
 
-const execFileAsync = promisify(execFile);
+const execFileAsync = execHostFile;
 const USAGE_FETCH_TIMEOUT_MS = 15_000;
 const CURSOR_DASHBOARD_URL =
   "https://api2.cursor.sh/aiserver.v1.DashboardService";

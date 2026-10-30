@@ -14,9 +14,8 @@ import {
 import { BbHttpError, sdk } from "./sdk";
 import {
   areFixedPanelTabsEquivalent,
-  createThreadInfoFixedPanelTab,
-  createGitDiffFixedPanelTab,
   ensureOpenFixedPanelHasActiveTab,
+  migrateLegacyFixedPanelTab,
   type FixedPanelTab,
   type FixedPanelTabsState,
 } from "./fixed-panel-tabs-state";
@@ -42,24 +41,30 @@ const MAX_WRITE_ATTEMPTS = 3;
 
 type PersistedThreadFixedPanelTab = Exclude<
   FixedPanelTab,
-  { kind: "plugin-page-fixed" }
+  { kind: "plugin-page-fixed" | "plugin-detail" }
 >;
+
+function isClientOnlyThreadTab(tab: FixedPanelTab): boolean {
+  return tab.kind === "plugin-page-fixed" || tab.kind === "plugin-detail";
+}
 
 function persistedThreadTabs(
   tabs: readonly (FixedPanelTab | ThreadTab)[],
 ): readonly PersistedThreadFixedPanelTab[] {
+  const seenTabIds = new Set<string>();
   return tabs
     .filter(
       (tab): tab is PersistedThreadFixedPanelTab =>
-        tab.kind !== "side-chat" && tab.kind !== "plugin-page-fixed",
+        tab.kind !== "side-chat" &&
+        tab.kind !== "plugin-page-fixed" &&
+        tab.kind !== "plugin-detail",
     )
-    .map((tab) =>
-      tab.kind === "git-diff"
-        ? createGitDiffFixedPanelTab()
-        : tab.kind === "thread-info"
-          ? createThreadInfoFixedPanelTab()
-          : tab,
-    );
+    .map(migrateLegacyFixedPanelTab)
+    .filter((tab) => {
+      if (seenTabIds.has(tab.id)) return false;
+      seenTabIds.add(tab.id);
+      return true;
+    });
 }
 
 export function areThreadTabListsEquivalent(
@@ -84,7 +89,12 @@ export function reconcileFixedPanelTabsState(
   if (areThreadTabListsEquivalent(current.secondary.tabs, serverTabs)) {
     return current;
   }
-  const tabs = persistedThreadTabs(serverTabs);
+  const tabs: FixedPanelTab[] = [...persistedThreadTabs(serverTabs)];
+  current.secondary.tabs.forEach((tab, index) => {
+    if (isClientOnlyThreadTab(tab) && !tabs.some(({ id }) => id === tab.id)) {
+      tabs.splice(Math.min(index, tabs.length), 0, tab);
+    }
+  });
   const retainedIds = new Set(tabs.map((tab) => tab.id));
   let reconciled = current;
   for (const tab of current.secondary.tabs) {
@@ -219,9 +229,15 @@ export function mergeThreadTabChanges(
   for (const [index, tab] of next.entries()) {
     if (previousById.has(tab.id)) continue;
     const existingIndex = merged.findIndex((item) => item.id === tab.id);
+    const followingIds = new Set(next.slice(index + 1).map((item) => item.id));
+    if (
+      existingIndex !== -1 &&
+      !merged.some((item) => followingIds.has(item.id))
+    ) {
+      continue;
+    }
     const existing =
       existingIndex === -1 ? undefined : merged.splice(existingIndex, 1)[0];
-    const followingIds = new Set(next.slice(index + 1).map((item) => item.id));
     const insertionIndex = merged.findIndex((item) =>
       followingIds.has(item.id),
     );

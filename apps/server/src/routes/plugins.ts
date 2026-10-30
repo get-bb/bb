@@ -1,6 +1,6 @@
+import { HOST_TAILWIND_VERSION } from "@bb/plugin-build/host-tailwind-version";
 import type { PluginUpdateJobs } from "../services/plugins/plugin-update-jobs.js";
 import { timingSafeEqual } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { brotliCompress, constants as zlibConstants, gzip } from "node:zlib";
 import type { Context, Hono } from "hono";
@@ -21,6 +21,7 @@ import type {
   PluginService,
   PluginWireLookup,
 } from "../services/plugins/plugin-service.js";
+import type { LoadedPlugin } from "../services/plugins/plugin-service-internal.js";
 import type {
   PluginMentionTrigger,
   PluginWebSocketRouteRecord,
@@ -37,6 +38,7 @@ import {
   type AppAssetCompressionCache,
 } from "../services/plugins/app-asset-compression-cache.js";
 import { rankAcceptedAssetEncodings } from "../asset-content-encoding.js";
+import { declineWebSocketCompression } from "../ws/compression.js";
 import {
   hashedAssetCacheControl,
   pluginImageResponse,
@@ -293,7 +295,7 @@ function pluginWebSocketError(event: Event): Error {
 
 function pluginWebSocketEvents(args: {
   handlers: ExperimentalPluginWebSocketHandlers;
-  id: string;
+  owner: LoadedPlugin;
   plugins: PluginService;
   route: PluginWebSocketRouteRecord;
 }): WSEvents {
@@ -313,7 +315,7 @@ function pluginWebSocketEvents(args: {
   ): void => {
     const previous = eventQueues.get(socket) ?? Promise.resolve();
     const current = args.plugins.invokeWebSocketEvent(
-      args.id,
+      args.owner,
       args.route,
       event,
       async () => {
@@ -388,6 +390,7 @@ export function registerPluginRoutes(
     MAX_CACHED_APP_ASSETS,
   );
   const upgradePluginWebSocket = upgradeWebSocket?.(async (context) => {
+    declineWebSocketCompression(context);
     const id = context.req.param("id");
     const subPath = pluginHttpSubPath(context, id);
     const lookup = plugins.getWebSocketRoute(id, subPath);
@@ -430,11 +433,15 @@ export function registerPluginRoutes(
         `plugin "${id}" reloaded during the request — retry`,
       );
     }
-    const result = await plugins.invokeWebSocketRoute(id, fresh.value, {
-      request: context.req.raw,
-      url: new URL(context.req.url),
-      headers: context.req.raw.headers,
-    });
+    const result = await plugins.invokeWebSocketRoute(
+      fresh.owner,
+      fresh.value,
+      {
+        request: context.req.raw,
+        url: new URL(context.req.url),
+        headers: context.req.raw.headers,
+      },
+    );
     if (!result.ok) {
       throw new ApiError(
         500,
@@ -444,7 +451,7 @@ export function registerPluginRoutes(
     }
     return pluginWebSocketEvents({
       handlers: result.handlers,
-      id,
+      owner: fresh.owner,
       plugins,
       route: fresh.value,
     });
@@ -558,14 +565,17 @@ export function registerPluginRoutes(
         404,
       );
     }
+    const hostTailwind =
+      spec.kind === "css" &&
+      context.req.query("host-tailwind") === HOST_TAILWIND_VERSION;
     let bytes: Buffer;
     try {
-      bytes = await readFile(asset.path);
+      bytes = await asset.read(hostTailwind);
     } catch {
       return context.json({ ok: false, error: "bundle file missing" }, 404);
     }
     return appAssetResponse(context, bytes, {
-      assetKey: `${hash}:${spec.kind}`,
+      assetKey: `${hash}:${spec.kind}:${hostTailwind}`,
       cache: appAssetCompressionCache,
       contentType: spec.contentType,
       cacheControl: "public, max-age=31536000, immutable",
@@ -620,9 +630,12 @@ export function registerPluginRoutes(
         404,
       );
     }
+    const hostTailwind =
+      spec.kind === "css" &&
+      context.req.query("host-tailwind") === HOST_TAILWIND_VERSION;
     let bytes: Buffer;
     try {
-      bytes = await readFile(asset.path);
+      bytes = await asset.read(hostTailwind);
     } catch {
       return context.json({ ok: false, error: "bundle file missing" }, 404);
     }
@@ -631,7 +644,7 @@ export function registerPluginRoutes(
       asset.hash,
     );
     return appAssetResponse(context, bytes, {
-      assetKey: `${context.req.param("id")}:${spec.kind}`,
+      assetKey: `${context.req.param("id")}:${spec.kind}:${hostTailwind}`,
       cache: appAssetCompressionCache,
       contentType: spec.contentType,
       cacheControl,
@@ -922,7 +935,7 @@ export function registerPluginRoutes(
         503,
       );
     }
-    return plugins.invokeHttpRoute(id, fresh.value, context);
+    return plugins.invokeHttpRoute(fresh.owner, fresh.value, context);
   });
 
   app.post("/plugins/:id/rpc/:method", async (context) => {
@@ -986,11 +999,12 @@ export function registerPluginRoutes(
       );
     }
     const outcome = await plugins.invokeRpcHandler(
-      id,
+      lookup.owner,
       method,
       lookup.value,
       input,
       callerResolution.caller,
+      context.req.raw.signal,
     );
     if (!outcome.ok) {
       return context.json(

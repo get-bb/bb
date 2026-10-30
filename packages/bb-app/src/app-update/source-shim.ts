@@ -30,7 +30,6 @@ export interface RunSourceShimArgs {
   installDependencies: () => Promise<void>;
   output: ShimOutput;
   prepareRuntime: () => Promise<void>;
-  readHead: () => Promise<string>;
   repoRoot: string;
   runner: RunCommand;
   spawnLauncher: (mode: LauncherUpdateMode) => LauncherRun;
@@ -63,19 +62,10 @@ export async function runSourceShim(args: RunSourceShimArgs): Promise<number> {
     },
   });
 
-  const readHead = async (): Promise<string | null> => {
-    try {
-      return await args.readHead();
-    } catch {
-      return null;
-    }
-  };
-
   const applyPending = async (pending: SourcePending): Promise<boolean> => {
     args.output.info(`Updating bb to ${formatRevision(pending.to)}`);
     try {
       await fastForwardSource({
-        from: pending.from.commit,
         repoRoot: args.repoRoot,
         runner: args.runner,
         to: pending.to.commit,
@@ -143,11 +133,7 @@ export async function runSourceShim(args: RunSourceShimArgs): Promise<number> {
       const pending = asSourcePending(
         (await readAppUpdateStateFile(args.dataDir))?.pending ?? null,
       );
-      if (
-        pending !== null &&
-        (await readHead()) === pending.from.commit &&
-        !(await applyPending(pending))
-      ) {
+      if (pending !== null && !(await applyPending(pending))) {
         return 1;
       }
     }

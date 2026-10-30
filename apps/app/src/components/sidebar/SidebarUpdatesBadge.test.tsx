@@ -19,6 +19,7 @@ import type {
   UpdateInventoryMachine,
 } from "@/hooks/useUpdateInventory";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { makePluginListItem } from "@/test/fixtures/plugins";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
 
 const useUpdateInventoryMock = vi.hoisted(() => vi.fn());
@@ -141,6 +142,11 @@ function machine(
   };
 }
 
+const NO_PLUGIN_UPDATES: UpdateInventory["plugins"] = {
+  trackedCount: 0,
+  items: [],
+};
+
 function renderBadge(inventory: Partial<UpdateInventory>) {
   useUpdateInventoryMock.mockReturnValue({
     isLoading: false,
@@ -149,6 +155,7 @@ function renderBadge(inventory: Partial<UpdateInventory>) {
     appUpdateAvailable: false,
     desktopUpdateReady: false,
     machines: [],
+    plugins: NO_PLUGIN_UPDATES,
     actionableCount: 0,
     hasAttention: false,
     ...inventory,
@@ -180,6 +187,33 @@ describe("SidebarUpdatesBadge", () => {
     expect(screen.queryByTestId("sidebar-updates-badge-providers")).toBeNull();
   });
 
+  it("counts plugin updates but not blocked plugin candidates", () => {
+    const plugin = (id: string) =>
+      makePluginListItem({ id, source: `npm:@acme/${id}@^1.0.0` });
+    renderBadge({
+      plugins: {
+        trackedCount: 3,
+        items: [
+          { kind: "update", plugin: plugin("notes"), version: "1.1.0" },
+          { kind: "update", plugin: plugin("linear"), version: "1.2.0" },
+          {
+            kind: "blocked",
+            plugin: plugin("legacy"),
+            version: "2.0.0",
+            reasons: ["engines.bb requires >=9.0.0"],
+          },
+        ],
+      },
+    });
+
+    const chip = screen.getByRole("link", {
+      name: "2 plugin updates available",
+    });
+    expect(chip.getAttribute("href")).toBe("/settings/updates");
+    expect(chip.textContent).toBe("2");
+    expect(screen.queryByTestId("sidebar-updates-badge-bb")).toBeNull();
+  });
+
   it("acknowledges offline machines across reloads without suppressing real updates", () => {
     const offline = machine({
       host: makeHost({
@@ -204,6 +238,7 @@ describe("SidebarUpdatesBadge", () => {
     const reloaded = renderBadge({ isLoading: true });
     useUpdateInventoryMock.mockReturnValue({
       isLoading: false,
+      plugins: NO_PLUGIN_UPDATES,
       machines: [
         {
           ...offline,
@@ -234,6 +269,7 @@ describe("SidebarUpdatesBadge", () => {
     fireEvent.click(screen.getByRole("link", { name: "Machines offline" }));
     useUpdateInventoryMock.mockReturnValue({
       isLoading: false,
+      plugins: NO_PLUGIN_UPDATES,
       machines: [first],
     });
     result.rerender(<BadgeHarness />);
@@ -241,6 +277,7 @@ describe("SidebarUpdatesBadge", () => {
 
     useUpdateInventoryMock.mockReturnValue({
       isLoading: false,
+      plugins: NO_PLUGIN_UPDATES,
       machines: [
         first,
         { ...second, host: { ...second.host, status: "connected" } },
@@ -249,6 +286,7 @@ describe("SidebarUpdatesBadge", () => {
     result.rerender(<BadgeHarness />);
     useUpdateInventoryMock.mockReturnValue({
       isLoading: false,
+      plugins: NO_PLUGIN_UPDATES,
       machines: [first, second],
     });
     result.rerender(<BadgeHarness />);

@@ -6,6 +6,7 @@ import type Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { createStore } from "../api";
 import { registerLifecycle } from ".";
+import { commentsTag, threadsChangedTags } from "../shared/tags";
 
 interface ExecutedStatement {
   sql: string;
@@ -117,7 +118,7 @@ describe("lifecycle SQL scope", () => {
         await registerLifecycle(f.bb, f.store);
         f.queries.length = 0;
         await emitAllEvents(f, "thr_unrelated");
-        expect(f.harness.realtimeSignals).toEqual([]);
+        expect(f.harness.experimental_rpcInvalidations).toEqual([]);
         expect(f.queries).toHaveLength(5);
         expect(
           f.queries.every((q) => q.sql.includes("WHERE thread_id = ?")),
@@ -150,7 +151,7 @@ describe("lifecycle SQL scope", () => {
           comments: number,
         ) => {
           f.queries.length = 0;
-          const signalsBefore = f.harness.realtimeSignals.length;
+          const signalsBefore = f.harness.experimental_rpcInvalidations.length;
           const thread = makeThreadResponse({
             id: "thr_shared",
             status: status === "deleted" ? "idle" : status,
@@ -169,16 +170,20 @@ describe("lifecycle SQL scope", () => {
             });
           else await f.harness.emitThreadEvent("thread.deleted", { thread });
           expect(f.queries).toHaveLength(1 + count * statementsPerMapping);
-          expect(f.harness.realtimeSignals.length - signalsBefore).toBe(
-            statementsPerMapping === 0 ? 0 : count * 2,
-          );
+          expect(
+            f.harness.experimental_rpcInvalidations.length - signalsBefore,
+          ).toBe(statementsPerMapping === 0 ? 0 : count * 2);
           if (statementsPerMapping > 0) {
-            expect(f.harness.realtimeSignals.slice(signalsBefore)).toEqual(
+            expect(
+              f.harness.experimental_rpcInvalidations.slice(signalsBefore),
+            ).toEqual(
               expect.arrayContaining(
-                f.tasks.slice(0, count).flatMap((task) => [
-                  { channel: "threads:changed", payload: { taskId: task.id } },
-                  { channel: "comments:changed", payload: { taskId: task.id } },
-                ]),
+                f.tasks
+                  .slice(0, count)
+                  .flatMap((task) => [
+                    threadsChangedTags(task.id),
+                    [commentsTag(task.id)],
+                  ]),
               ),
             );
           }
@@ -296,7 +301,7 @@ describe("lifecycle SQL scope", () => {
       f.queries.length = 0;
       await emitAllEvents(f, "thr_worker_0");
       expect(f.queries).toHaveLength(5);
-      expect(f.harness.realtimeSignals).toEqual([]);
+      expect(f.harness.experimental_rpcInvalidations).toEqual([]);
     } finally {
       await f.dispose();
     }

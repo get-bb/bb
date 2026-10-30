@@ -6,6 +6,7 @@ import { ThreadSelectionStore } from "./threadSelection.js";
 const NONE = { metaKey: false, ctrlKey: false, shiftKey: false };
 const META = { ...NONE, metaKey: true };
 const SHIFT = { ...NONE, shiftKey: true };
+const META_SHIFT = { ...META, shiftKey: true };
 
 function renderSidebar(
   rows: readonly (string | readonly string[])[],
@@ -44,16 +45,27 @@ afterEach(() => {
 });
 
 describe("ThreadSelectionStore", () => {
-  it("seeds a cmd-click selection with the open thread and toggles rows in list order", () => {
+  it("drops removed threads and forgets a removed range anchor", () => {
+    renderSidebar(["a", "b", "c", "d"]);
+    const store = new ThreadSelectionStore();
+    store.handleClick("b", SHIFT, row("b"));
+    store.handleClick("c", META_SHIFT, row("c"));
+    store.remove(new Set(["c", "x"]));
+    expect(store.getSelected()).toEqual(["b"]);
+    store.handleClick("d", SHIFT, row("d"));
+    expect(store.getSelected()).toEqual(["d"]);
+  });
+
+  it("seeds a cmd-shift-click selection with the open thread and toggles rows in list order", () => {
     renderSidebar(["a", "b", "c", "d"]);
     const store = new ThreadSelectionStore();
     store.setActiveThreadId("c");
 
-    expect(store.handleClick("a", META, row("a"))).toBe(true);
+    expect(store.handleClick("a", META_SHIFT, row("a"))).toBe(true);
     expect(store.getSelected()).toEqual(["a", "c"]);
-    store.handleClick("d", META, row("d"));
+    store.handleClick("d", META_SHIFT, row("d"));
     expect(store.getSelected()).toEqual(["a", "c", "d"]);
-    store.handleClick("c", META, row("c"));
+    store.handleClick("c", META_SHIFT, row("c"));
     expect(store.getSelected()).toEqual(["a", "d"]);
   });
 
@@ -64,7 +76,7 @@ describe("ThreadSelectionStore", () => {
 
     expect(store.handleClick("d", SHIFT, row("d"))).toBe(true);
     expect(store.getSelected()).toEqual(["a", "b", "c", "d"]);
-    store.handleClick("e", META, row("e"));
+    store.handleClick("e", META_SHIFT, row("e"));
     store.handleClick("a", SHIFT, row("a"));
     expect(store.getSelected()).toEqual(["a", "b", "c", "d", "e"]);
   });
@@ -92,8 +104,8 @@ describe("ThreadSelectionStore", () => {
   it("re-anchors on a plain click, which clears the selection and lets the row open", () => {
     renderSidebar(["a", "b", "c", "d"]);
     const store = new ThreadSelectionStore();
-    store.handleClick("a", META, row("a"));
-    store.handleClick("b", META, row("b"));
+    store.handleClick("a", META_SHIFT, row("a"));
+    store.handleClick("b", META_SHIFT, row("b"));
 
     expect(store.handleClick("c", NONE, row("c"))).toBe(false);
     expect(store.getSelected()).toEqual([]);

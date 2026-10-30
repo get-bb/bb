@@ -47,8 +47,14 @@ const ROW = {
   sourceDisplay: "npm · @bb-plugins/linear · pinned",
   updateState: {
     availableVersion: "1.7.0",
+    availableLabel: "1.7.0",
     lastCheckAt: 1752300000000,
-    lastFailure: { version: "1.7.0", at: 1752300000000, detail: "boom" },
+    lastFailure: {
+      version: "1.7.0",
+      label: "1.7.0",
+      at: 1752300000000,
+      detail: "boom",
+    },
   },
   description: "Linear integration",
   name: "Linear",
@@ -77,6 +83,7 @@ function pluginWithBundle(hash: string) {
         sdkMajor: 0,
         sdkVersion: "0.4.27",
         compatible: true,
+        runtimeSlots: [],
       },
     },
   };
@@ -157,12 +164,15 @@ describe("plugin list envelope", () => {
     const plugin = result.plugins[0];
     expect(plugin?.provenance).toBe("direct");
     expect(plugin?.updateState.availableVersion).toBe("1.7.0");
+    expect(plugin?.updateState.availableLabel).toBe("1.7.0");
     expect(plugin?.updateState.lastFailure).toEqual({
       version: "1.7.0",
+      label: "1.7.0",
       at: 1752300000000,
       detail: "boom",
     });
     expect(plugin?.updateState.blockedVersion).toBeNull();
+    expect(plugin?.updateState.blockedLabel).toBeNull();
     expect(plugin?.updateState.blockedReasons).toEqual([]);
   });
 
@@ -235,7 +245,7 @@ describe("plugin list envelope", () => {
   it("drops a row with a partial lastFailure rather than showing the quiet state", async () => {
     const partialFailure = {
       ...ROW,
-      updateState: { lastFailure: { version: "1.7.0" } },
+      updateState: { lastFailure: { version: "1.7.0", label: "1.7.0" } },
     };
     await expect(
       listPlugins(fetchReturning({ plugins: [partialFailure] })),

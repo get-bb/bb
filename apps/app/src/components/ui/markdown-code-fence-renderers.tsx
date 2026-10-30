@@ -18,10 +18,8 @@ import type {
 } from "@get-bb/plugin-sdk";
 import { visit } from "unist-util-visit";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount.js";
-import { PluginThreadPanelNavigationProvider } from "@/components/plugin/plugin-thread-panel-navigation.js";
 import { resolveCodeFenceRendererRegistry } from "@/lib/plugin-slot-resolvers.js";
 import type { PluginCodeFenceRendererSlot } from "@/lib/plugin-slots.js";
-import type { MarkdownMessageDirectiveOpenThreadPanel } from "./markdown-message-directives.js";
 import {
   closesAnyIndentMarkdownFence,
   parseMarkdownFenceStart,
@@ -174,7 +172,6 @@ export function useCodeFenceLanguages(): CodeFenceRendererRegistry | null {
 interface CodeFenceRendererHostProps {
   children: ReactNode;
   message: ExperimentalCodeFenceRendererProps["message"];
-  openThreadPanel: MarkdownMessageDirectiveOpenThreadPanel | null;
   registry: CodeFenceRendererRegistry;
   streaming: boolean;
 }
@@ -182,7 +179,6 @@ interface CodeFenceRendererHostProps {
 export function CodeFenceRendererHost({
   children,
   message,
-  openThreadPanel,
   registry,
   streaming,
 }: CodeFenceRendererHostProps) {
@@ -270,7 +266,6 @@ export function CodeFenceRendererHost({
               index={index}
               language={block.language}
               message={message}
-              openThreadPanel={openThreadPanel}
               slot={slot}
               status={
                 block.closed ? "closed" : streaming ? "streaming" : "unclosed"
@@ -300,7 +295,6 @@ interface CodeFenceMountProps {
   index: number;
   language: string;
   message: ExperimentalCodeFenceRendererProps["message"];
-  openThreadPanel: MarkdownMessageDirectiveOpenThreadPanel | null;
   slot: PluginCodeFenceRendererSlot;
   status: ExperimentalCodeFenceStatus;
 }
@@ -310,21 +304,10 @@ const CodeFenceMount = memo(function CodeFenceMount({
   index,
   language,
   message,
-  openThreadPanel,
   slot,
   status,
 }: CodeFenceMountProps) {
   const Component = slot.component;
-  const element = (
-    <Component
-      code={code}
-      language={language}
-      status={status}
-      index={index}
-      message={message}
-      Original={CodeFenceOriginal}
-    />
-  );
   return (
     <PluginSlotMount
       key={`${slot.pluginId}/${slot.id}/${slot.generation}`}
@@ -335,13 +318,14 @@ const CodeFenceMount = memo(function CodeFenceMount({
       crashResetKey={`${status}\n${code}`}
       crashFallback={<CodeFenceOriginal />}
     >
-      {openThreadPanel === null ? (
-        element
-      ) : (
-        <PluginThreadPanelNavigationProvider openThreadPanel={openThreadPanel}>
-          {element}
-        </PluginThreadPanelNavigationProvider>
-      )}
+      <Component
+        code={code}
+        language={language}
+        status={status}
+        index={index}
+        message={message}
+        Original={CodeFenceOriginal}
+      />
     </PluginSlotMount>
   );
 });

@@ -1,8 +1,8 @@
+import { experimental_execHostFileCallback as execFile } from "@get-bb/plugin-sdk/process";
 import {
   experimental_runVcsProcess as runVcsProcess,
   type ExperimentalVcsProcessPriority as VcsProcessPriority,
 } from "@get-bb/plugin-sdk/host";
-import { execFile } from "node:child_process";
 import {
   defineRpcContract,
   PluginCliError,

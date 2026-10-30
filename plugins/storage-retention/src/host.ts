@@ -11,7 +11,11 @@ import {
 } from "./developer-storage.js";
 import { randomUUID } from "node:crypto";
 import { hostStorageContract } from "./host-contract.js";
-import { listGitWorktrees, removeGitWorktrees } from "./git-worktrees.js";
+import {
+  inspectGitWorktree,
+  listGitWorktrees,
+  removeGitWorktrees,
+} from "./git-worktrees.js";
 import { measureDiskUsage } from "./disk-usage.js";
 import { isFsErrorWithCode } from "./fs-errors.js";
 
@@ -41,6 +45,8 @@ export default experimental_defineHostEntry({
     homeDirectory: () => os.homedir(),
     listGitWorktrees: (input, context) =>
       listGitWorktrees(input, context.signal),
+    inspectGitWorktree: (input, context) =>
+      inspectGitWorktree(input, context.signal),
     removeGitWorktrees: (input, context) =>
       removeGitWorktrees(input, context.signal),
     measure: (input, context) =>

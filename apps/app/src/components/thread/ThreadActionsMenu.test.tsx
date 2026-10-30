@@ -11,11 +11,12 @@ import {
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createStore, Provider } from "jotai";
-import type { ReactElement } from "react";
+import { useSyncExternalStore, type ReactElement } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   experimental_THREAD_ACTION_GROUPS,
+  type PluginThreadActionEntry,
   type PluginThreadActionRegistration,
   type PluginThreadActionsInlineItem,
 } from "@get-bb/plugin-sdk";
@@ -38,17 +39,21 @@ import {
   resetThreadActionRegistryForTest,
   useThreadActionEntries,
   useThreadActionRegistrationInfos,
+  useThreadHeaderActionEntries,
 } from "@/lib/thread-actions/thread-action-registry";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
-import { usePublishThreadPanelOpener } from "@/components/plugin/plugin-thread-panel-navigation";
+import {
+  useAppPanelController,
+  type AppFixedTabDestination,
+} from "@/lib/app-fixed-tab-navigation";
 import {
   ThreadActionsContextMenu,
   ThreadActionsMenu,
 } from "./ThreadActionsMenu";
 
 const hostActions = vi.hoisted(() => ({
-  requestArchive: vi.fn(),
-  requestDelete: vi.fn(),
+  requestArchiveThreads: vi.fn(),
+  requestDeleteThreads: vi.fn(),
 }));
 const sdkThreads = vi.hoisted(() => ({
   pin: vi.fn(),
@@ -58,6 +63,7 @@ const sdkThreads = vi.hoisted(() => ({
   unarchive: vi.fn(),
   update: vi.fn(),
   get: vi.fn(),
+  experimental_regenerateTitle: vi.fn(),
 }));
 const copyToClipboardWithToast = vi.hoisted(() => vi.fn(async () => true));
 
@@ -99,6 +105,20 @@ const pluginGroupAction: PluginThreadActionRegistration = {
     label: "Notifications",
     icon: "Notification",
     run: pluginGroupRun,
+  }),
+};
+
+const headerAction: PluginThreadActionRegistration = {
+  id: "commit",
+  title: "Commit",
+  icon: "GitBranch",
+  group: "0_header",
+  placement: "header",
+  item: () => ({ label: "Commit", icon: "GitBranch", run: vi.fn() }),
+  experimental_bulkItem: () => ({
+    label: "Commit all",
+    icon: "GitBranch",
+    run: vi.fn(),
   }),
 };
 
@@ -216,7 +236,11 @@ function twoPaneLayout(focusedPaneId: string): SplitLayout {
         {
           type: "pane",
           paneId: "pane_other",
-          content: { kind: "thread", projectId: "proj_a", threadId: "thr_other" },
+          content: {
+            kind: "thread",
+            projectId: "proj_a",
+            threadId: "thr_other",
+          },
         },
         {
           type: "pane",
@@ -259,7 +283,12 @@ function renderSurface(
   setPluginSlotRegistrations(
     "fixture",
     makePluginRegistrationSet({
-      threadActions: [moveAction, pluginGroupAction, ...threadActions],
+      threadActions: [
+        moveAction,
+        pluginGroupAction,
+        headerAction,
+        ...threadActions,
+      ],
     }),
   );
   return render(
@@ -319,7 +348,7 @@ afterEach(() => {
   window.sessionStorage.clear();
   resetPluginSlotStoreForTest();
   resetThreadActionRegistryForTest();
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   vi.useRealTimers();
 });
 
@@ -363,6 +392,7 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
         "Mark unread",
         "---",
         "Rename",
+        "Regenerate title",
         "Move to section",
         "---",
         "Customize actions",
@@ -380,6 +410,7 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
         "Mark unread",
         "---",
         "Rename",
+        "Regenerate title",
         "Move to section",
         "---",
         "Customize actions",
@@ -409,8 +440,10 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
         "---",
         "Unpin",
         "Mark read",
+        "Notify parent, Auto",
         "---",
         "Rename",
+        "Regenerate title",
         "---",
         "Customize actions",
         "---",
@@ -424,8 +457,10 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
         "---",
         "Unpin",
         "Mark read",
+        "Notify parent, Auto",
         "---",
         "Rename",
+        "Regenerate title",
         "---",
         "Customize actions",
         "---",
@@ -450,6 +485,7 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
         "Mark unread",
         "---",
         "Rename",
+        "Regenerate title",
         "Move to section",
         "---",
         "Customize actions",
@@ -467,6 +503,7 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
         "Mark unread",
         "---",
         "Rename",
+        "Regenerate title",
         "Move to section",
         "---",
         "Customize actions",
@@ -490,6 +527,7 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
         "Mark unread",
         "---",
         "Rename",
+        "Regenerate title",
         "Move to section",
         "---",
         "Customize actions",
@@ -507,6 +545,7 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
         "Mark unread",
         "---",
         "Rename",
+        "Regenerate title",
         "Move to section",
         "---",
         "Customize actions",
@@ -532,6 +571,7 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
         "Mark unread",
         "---",
         "Rename",
+        "Regenerate title",
         "Move to section",
         "---",
         "Customize actions",
@@ -549,6 +589,7 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
         "Mark unread",
         "---",
         "Rename",
+        "Regenerate title",
         "Move to section",
         "---",
         "Customize actions",
@@ -562,7 +603,11 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
   ])(
     "lists the items for $state",
     async ({ thread, route, layout, desktop, compact }) => {
-      renderSurface(surface, { thread, inline: [CUSTOMIZE] }, { route, layout });
+      renderSurface(
+        surface,
+        { thread, inline: [CUSTOMIZE] },
+        { route, layout },
+      );
       await surface.open();
       expect(await menuRows()).toEqual(surface.compact ? compact : desktop);
     },
@@ -599,6 +644,10 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
 
   it("runs each action's effect", async () => {
     sdkThreads.pin.mockResolvedValue({ ...baseThread, pinnedAt: 9 });
+    sdkThreads.experimental_regenerateTitle.mockResolvedValue({
+      ...baseThread,
+      title: "Regenerated",
+    });
     sdkThreads.markUnread.mockResolvedValue({
       ...baseThread,
       lastReadAt: null,
@@ -628,19 +677,29 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
     expect(defaultRequestRename).not.toHaveBeenCalled();
 
     await surface.open();
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Regenerate title" }),
+    );
+    await waitFor(() =>
+      expect(sdkThreads.experimental_regenerateTitle).toHaveBeenCalledWith({
+        threadId: baseThread.id,
+      }),
+    );
+
+    await surface.open();
     fireEvent.click(await screen.findByRole("menuitem", { name: "Archive" }));
     await waitFor(() =>
-      expect(hostActions.requestArchive).toHaveBeenCalledWith(
+      expect(hostActions.requestArchiveThreads).toHaveBeenCalledWith([
         expect.objectContaining({ id: baseThread.id }),
-      ),
+      ]),
     );
 
     await surface.open();
     fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
     await waitFor(() =>
-      expect(hostActions.requestDelete).toHaveBeenCalledWith(
+      expect(hostActions.requestDeleteThreads).toHaveBeenCalledWith([
         expect.objectContaining({ id: baseThread.id }),
-      ),
+      ]),
     );
 
     await surface.open();
@@ -650,9 +709,7 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
     );
 
     await surface.open();
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Copy link" }),
-    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Copy link" }));
     expect(copyToClipboardWithToast).toHaveBeenCalledWith(
       `${window.location.origin}/projects/proj_a/threads/thr_target`,
       {
@@ -807,7 +864,9 @@ describe("thread action registrations", () => {
       "bb--core/newThreadInEnvironment",
       "bb--core/pin",
       "bb--core/read",
+      "bb--core/parentNotifications",
       "bb--core/rename",
+      "bb--core/regenerateTitle",
       "fixture/move",
       "bb--core/archive",
       "bb--core/delete",
@@ -827,28 +886,45 @@ describe("thread actions outside bb's own surfaces", () => {
     await surface.open();
     fireEvent.click(await screen.findByRole("menuitem", { name: "Archive" }));
     await waitFor(() =>
-      expect(hostActions.requestArchive).toHaveBeenCalledWith(
+      expect(hostActions.requestArchiveThreads).toHaveBeenCalledWith([
         expect.objectContaining({ id: baseThread.id }),
-      ),
+      ]),
     );
 
     await surface.open();
     fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
     await waitFor(() =>
-      expect(hostActions.requestDelete).toHaveBeenCalledWith(
+      expect(hostActions.requestDeleteThreads).toHaveBeenCalledWith([
         expect.objectContaining({ id: baseThread.id }),
-      ),
+      ]),
     );
     expect(sdkThreads.get).toHaveBeenCalledWith({ threadId: baseThread.id });
   });
 
-  it("opens a plugin's thread panel in the focused thread view", async () => {
-    const opener = vi.fn(() => true);
+  it("opens a plugin's thread panel in the focused thread view, through experimental_panel and the retired openThreadPanel", async () => {
+    const open = vi.fn(() => true);
+    const close = vi.fn();
     const opened = vi.fn();
+    const destinations: AppFixedTabDestination[] = [
+      {
+        tab: { ownerId: "plugin-thread:fixture", tabId: "details" },
+        availability: "action",
+        open,
+        panelTabId: () => "details-tab",
+      },
+    ];
     function FocusedThreadView() {
-      usePublishThreadPanelOpener(opener, true);
+      useAppPanelController({
+        activeTabId: null,
+        close,
+        destinations,
+        isFocused: true,
+      });
       return null;
     }
+    type RetiredNavigate = {
+      openThreadPanel(options: { actionId: string }): boolean;
+    };
     render(<FocusedThreadView />);
     renderSurface(
       surface,
@@ -860,11 +936,24 @@ describe("thread actions outside bb's own surfaces", () => {
             title: "Open details",
             icon: "Info",
             group: "5_plugin",
-            item: ({ navigate }) => ({
+            item: ({ navigate, experimental_panel }) => ({
               label: "Open details",
               icon: "Info",
               run: () => {
-                opened(navigate.openThreadPanel({ actionId: "details" }));
+                opened(
+                  experimental_panel.openTab({
+                    tab: {
+                      id: "details",
+                      context: { kind: "thread" },
+                      availability: "action",
+                    },
+                    params: { from: "panel" },
+                  }),
+                  (navigate as unknown as RetiredNavigate).openThreadPanel({
+                    actionId: "details",
+                  }),
+                  experimental_panel.close(),
+                );
               },
             }),
           },
@@ -876,11 +965,12 @@ describe("thread actions outside bb's own surfaces", () => {
     fireEvent.click(
       await screen.findByRole("menuitem", { name: "Open details" }),
     );
-    await waitFor(() => expect(opened).toHaveBeenCalledWith(true));
-    expect(opener).toHaveBeenCalledWith({
-      actionId: "details",
-      pluginId: "fixture",
+    await waitFor(() => expect(opened).toHaveBeenCalledWith(true, true, true));
+    expect(open).toHaveBeenNthCalledWith(1, undefined, {
+      params: { from: "panel" },
     });
+    expect(open).toHaveBeenNthCalledWith(2, undefined, {});
+    expect(close).toHaveBeenCalledOnce();
   });
 });
 
@@ -961,6 +1051,48 @@ describe("thread action data input", () => {
     expect(seen).toEqual([[], ["thr_a", "thr_b", "thr_c"]]);
   });
 
+  it("passes a header action only the threads whose header is shown", async () => {
+    const seen: (readonly string[])[] = [];
+    const headerRecorder: PluginThreadActionRegistration<null> = {
+      id: "header-recorder",
+      title: "Header recorder",
+      icon: "GitBranch",
+      group: "git",
+      placement: "header",
+      useData: ({ threadIds }) => {
+        if (seen.at(-1) !== threadIds) seen.push(threadIds);
+        return null;
+      },
+      item: () => null,
+    };
+    setPluginSlotRegistrations(
+      "fixture",
+      makePluginRegistrationSet({ threadActions: [headerRecorder] }),
+    );
+    function Header({ id }: { id: string }) {
+      useThreadHeaderActionEntries(
+        threadListEntryActionTarget({ ...baseThread, id }),
+      );
+      return null;
+    }
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <ThreadActionCollectors
+            coreRegistrations={[]}
+            requestRename={defaultRequestRename}
+          />
+          <Row id="thr_row_a" />
+          <Row id="thr_row_b" />
+          <Header id="thr_open" />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(seen.at(-1)).toEqual(["thr_open"]));
+    await settle();
+    expect(seen).toEqual([[], ["thr_open"]]);
+  });
+
   it("counts no ids from a hidden surface until it is shown", async () => {
     const { seen, Surface } = renderRecorder();
     const ids = Array.from({ length: 250 }, (_, index) => `thr_${index}`);
@@ -969,5 +1101,399 @@ describe("thread action data input", () => {
     expect(seen).toEqual([[]]);
     view.rerender(<Surface ids={ids.slice(0, 2)} visible />);
     await waitFor(() => expect(seen.at(-1)).toEqual(["thr_0", "thr_1"]));
+  });
+});
+
+describe.each([
+  { name: "desktop context menu", compact: false },
+  { name: "compact long press", compact: true },
+])("thread selection actions on the $name", ({ compact }) => {
+  const readThread = makeThreadListEntry({
+    ...baseThread,
+    id: "thr_read",
+    pinnedAt: null,
+  });
+  const unreadThread = makeThreadListEntry({
+    ...baseThread,
+    id: "thr_unread",
+    pinnedAt: 4,
+    lastReadAt: 1,
+    latestAttentionAt: 9,
+  });
+  const seenThreadIds: (readonly string[])[] = [];
+  const levelRun = vi.fn();
+  const levelAction: PluginThreadActionRegistration<null> = {
+    id: "level",
+    title: "Level",
+    icon: "Notification",
+    group: experimental_THREAD_ACTION_GROUPS.state,
+    order: 50,
+    useData: ({ threadIds }) => {
+      if (seenThreadIds.at(-1) !== threadIds) seenThreadIds.push(threadIds);
+      return null;
+    },
+    item: () => null,
+    experimental_bulkItem: ({ threads }) => ({
+      label: `Level for ${threads.length}`,
+      icon: "Notification",
+      choices: { items: [{ id: "loud", label: "Loud" }] },
+      run: levelRun,
+    }),
+  };
+  const onEscapeKeyDown = vi.fn();
+  const clearRun = vi.fn();
+  const CLEAR: PluginThreadActionsInlineItem = {
+    key: "surface/clear",
+    group: "5_selection",
+    action: { label: "Clear selection", icon: "X", run: clearRun },
+  };
+
+  function renderSelection(threads: readonly ThreadListEntry[]) {
+    const queryClient = new QueryClient();
+    for (const thread of threads) {
+      queryClient.setQueryData(threadQueryKey(thread.id), thread);
+    }
+    setPluginSlotRegistrations(
+      "fixture",
+      makePluginRegistrationSet({
+        threadActions: [
+          moveAction,
+          pluginGroupAction,
+          headerAction,
+          levelAction,
+        ],
+      }),
+    );
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <Provider store={createStore()}>
+          <MemoryRouter>
+            <CompactViewportOverrideProvider isCompactViewport={compact}>
+              <ThreadActionCollectors
+                coreRegistrations={CORE_THREAD_ACTIONS}
+                requestRename={defaultRequestRename}
+              />
+              <ThreadActionsContextMenu
+                thread={threadListEntryActionTarget(threads[0] ?? baseThread)}
+                experimental_bulkThreads={threads.map(
+                  threadListEntryActionTarget,
+                )}
+                inline={[CLEAR]}
+                onEscapeKeyDown={onEscapeKeyDown}
+              >
+                <div>Selection</div>
+              </ThreadActionsContextMenu>
+            </CompactViewportOverrideProvider>
+          </MemoryRouter>
+        </Provider>
+      </QueryClientProvider>,
+    );
+  }
+
+  afterEach(() => {
+    seenThreadIds.length = 0;
+  });
+
+  it("lists only bulk items under the selection count, then inline items", async () => {
+    renderSelection([readThread, unreadThread]);
+    fireEvent.contextMenu(screen.getByText("Selection"));
+    const menu = await openMenu();
+    expect(within(menu).getByText("2 threads selected")).toBeTruthy();
+    expect(await menuRows()).toEqual([
+      "---",
+      "Pin",
+      "Mark read",
+      "Level for 2",
+      "---",
+      "Archive 2 threads",
+      "Delete 2 threads",
+      "---",
+      "Clear selection",
+    ]);
+  });
+
+  it("loads data for every selected thread while the menu is open", async () => {
+    renderSelection([readThread, unreadThread]);
+    fireEvent.contextMenu(screen.getByText("Selection"));
+    await openMenu();
+    await waitFor(() =>
+      expect(seenThreadIds.at(-1)).toEqual(["thr_read", "thr_unread"]),
+    );
+  });
+
+  it("runs each selection action against every selected thread", async () => {
+    sdkThreads.pin.mockResolvedValue({ ...readThread, pinnedAt: 9 });
+    renderSelection([readThread, unreadThread]);
+    const open = () => fireEvent.contextMenu(screen.getByText("Selection"));
+
+    open();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Mark read" }));
+    await waitFor(() =>
+      expect(sdkThreads.markRead.mock.calls).toEqual([
+        [{ threadId: "thr_read" }],
+        [{ threadId: "thr_unread" }],
+      ]),
+    );
+
+    open();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Pin" }));
+    await waitFor(() =>
+      expect(sdkThreads.pin.mock.calls).toEqual([[{ threadId: "thr_read" }]]),
+    );
+
+    open();
+    const level = await screen.findByRole("menuitem", { name: "Level for 2" });
+    if (compact) fireEvent.click(level);
+    else fireEvent.keyDown(level, { key: "ArrowRight" });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Loud" }));
+    expect(levelRun).toHaveBeenCalledWith(
+      expect.objectContaining({ value: "loud" }),
+    );
+
+    open();
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Archive 2 threads" }),
+    );
+    await waitFor(() =>
+      expect(hostActions.requestArchiveThreads).toHaveBeenCalledWith([
+        expect.objectContaining({ id: "thr_read" }),
+        expect.objectContaining({ id: "thr_unread" }),
+      ]),
+    );
+
+    open();
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Delete 2 threads" }),
+    );
+    await waitFor(() =>
+      expect(hostActions.requestDeleteThreads).toHaveBeenCalledWith([
+        expect.objectContaining({ id: "thr_read" }),
+        expect.objectContaining({ id: "thr_unread" }),
+      ]),
+    );
+
+    open();
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Clear selection" }),
+    );
+    expect(clearRun).toHaveBeenCalled();
+  });
+
+  it("sets Notify parent on the selected child threads only", async () => {
+    sdkThreads.update.mockResolvedValue(readThread);
+    renderSelection([
+      { ...readThread, parentThreadId: "thr_parent" },
+      {
+        ...unreadThread,
+        parentThreadId: "thr_parent",
+        parentNotifications: "off",
+      },
+      { ...baseThread, id: "thr_root" },
+    ]);
+    fireEvent.contextMenu(screen.getByText("Selection"));
+    const trigger = await screen.findByRole("menuitem", {
+      name: "Notify parent, Mixed",
+    });
+    if (compact) fireEvent.click(trigger);
+    else fireEvent.keyDown(trigger, { key: "ArrowRight" });
+    expect(
+      await screen.findByText("Applies to 2 threads with a parent"),
+    ).toBeTruthy();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Off" }));
+    await waitFor(() =>
+      expect(sdkThreads.update.mock.calls).toEqual([
+        [{ threadId: "thr_read", parentNotifications: "off" }],
+      ]),
+    );
+  });
+
+  it("offers Unarchive when every selected thread is archived", async () => {
+    renderSelection([
+      { ...readThread, archivedAt: 3 },
+      { ...unreadThread, archivedAt: 3 },
+    ]);
+    fireEvent.contextMenu(screen.getByText("Selection"));
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Unarchive 2 threads" }),
+    );
+    await waitFor(() =>
+      expect(sdkThreads.unarchive.mock.calls).toEqual([
+        [{ threadId: "thr_read" }],
+        [{ threadId: "thr_unread" }],
+      ]),
+    );
+  });
+
+  it("shows the thread's own menu for a selection of one", async () => {
+    renderSelection([readThread]);
+    fireEvent.contextMenu(screen.getByText("Selection"));
+    await openMenu();
+    expect(screen.queryByText(/selected$/)).toBeNull();
+    expect(
+      await screen.findByRole("menuitem", { name: "Rename" }),
+    ).toBeTruthy();
+  });
+
+  it.skipIf(compact)(
+    "reports Escape so the surface can clear its selection",
+    async () => {
+      renderSelection([readThread, unreadThread]);
+      fireEvent.contextMenu(screen.getByText("Selection"));
+      const menu = await openMenu();
+      fireEvent.keyDown(menu, { key: "Escape" });
+      expect(onEscapeKeyDown).toHaveBeenCalled();
+    },
+  );
+});
+
+describe("header thread actions", () => {
+  function HeaderLabels() {
+    return (
+      <ol>
+        {useThreadHeaderActionEntries(
+          threadListEntryActionTarget(baseThread),
+        ).map((entry) => (
+          <li key={entry.key}>{entry.action.label}</li>
+        ))}
+      </ol>
+    );
+  }
+
+  it("evaluates only header registrations and leaves out ones with choices", async () => {
+    const [surface] = SURFACES;
+    if (surface === undefined) throw new Error("no surface");
+    renderSurface(
+      { ...surface, render: () => <HeaderLabels /> },
+      { thread: baseThread },
+      {
+        threadActions: [
+          {
+            ...headerAction,
+            id: "pick-branch",
+            item: () => ({
+              label: "Pick branch",
+              icon: "GitBranch",
+              choices: { items: [{ id: "main", label: "main" }] },
+              run: vi.fn(),
+            }),
+          },
+        ],
+      },
+    );
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole("listitem").map((item) => item.textContent),
+      ).toEqual(["Commit"]),
+    );
+  });
+});
+
+describe("thread action rows", () => {
+  function createValueStore<T>(initial: T) {
+    let value = initial;
+    const listeners = new Set<() => void>();
+    return {
+      set(next: T) {
+        value = next;
+        for (const listener of listeners) listener();
+      },
+      use: () =>
+        useSyncExternalStore(
+          (listener) => {
+            listeners.add(listener);
+            return () => listeners.delete(listener);
+          },
+          () => value,
+        ),
+    };
+  }
+
+  it("redraws only the rows whose actions change and runs with the latest data", async () => {
+    const focus = createValueStore({ threadId: "thr_a", version: 1 });
+    const header = createValueStore(1);
+    const ran = vi.fn();
+    const focusAction: PluginThreadActionRegistration<{
+      threadId: string;
+      version: number;
+    }> = {
+      id: "focus",
+      title: "Focus",
+      icon: "Columns2",
+      group: "5_plugin",
+      useData: focus.use,
+      item: ({ thread, data }) => ({
+        label: data.threadId === thread.id ? "Focused" : "Focus",
+        icon: "Columns2",
+        run: () => ran(thread.id, data.version),
+      }),
+    };
+    const headerAction: PluginThreadActionRegistration<number> = {
+      id: "counter",
+      title: "Counter",
+      icon: "GitBranch",
+      group: "git",
+      placement: "header",
+      useData: header.use,
+      item: ({ data }) => ({
+        label: `Counter ${data}`,
+        icon: "GitBranch",
+        run: vi.fn(),
+      }),
+    };
+    setPluginSlotRegistrations(
+      "fixture",
+      makePluginRegistrationSet({ threadActions: [focusAction, headerAction] }),
+    );
+    const renders = new Map<string, number>();
+    const entries = new Map<string, readonly PluginThreadActionEntry[]>();
+    function Row({ id }: { id: string }) {
+      renders.set(id, (renders.get(id) ?? 0) + 1);
+      entries.set(
+        id,
+        useThreadActionEntries(
+          threadListEntryActionTarget({ ...baseThread, id }),
+          {},
+        ),
+      );
+      return null;
+    }
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <ThreadActionCollectors
+            coreRegistrations={[]}
+            requestRename={defaultRequestRename}
+          />
+          <Row id="thr_a" />
+          <Row id="thr_b" />
+          <Row id="thr_c" />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await waitFor(() =>
+      expect(entries.get("thr_a")?.map((entry) => entry.action.label)).toEqual([
+        "Focused",
+      ]),
+    );
+    const before = new Map(renders);
+    const redrawn = () =>
+      [...renders].flatMap(([id, count]) =>
+        count === before.get(id) ? [] : [id],
+      );
+
+    act(() => header.set(2));
+    act(() => focus.set({ threadId: "thr_a", version: 2 }));
+    expect(redrawn()).toEqual([]);
+
+    act(() => focus.set({ threadId: "thr_b", version: 3 }));
+    expect(redrawn()).toEqual(["thr_a", "thr_b"]);
+    expect(
+      ["thr_a", "thr_b", "thr_c"].map(
+        (id) => entries.get(id)?.[0]?.action.label,
+      ),
+    ).toEqual(["Focus", "Focused", "Focus"]);
+
+    await entries.get("thr_c")?.[0]?.action.run();
+    expect(ran).toHaveBeenCalledWith("thr_c", 3);
   });
 });

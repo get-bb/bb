@@ -87,6 +87,45 @@ jobs:
         timeout-minutes: 5
         run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts
 
+  windows-dependency-cache:
+    name: Warm Windows dependencies
+    if: ${{ github.event_name != 'pull_request' }}
+    runs-on: blacksmith-4vcpu-windows-2025
+    timeout-minutes: 10
+    continue-on-error: true
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          package-manager-cache: false
+      - name: Setup pnpm
+        run: npm install --global pnpm@${{ env.PNPM_VERSION }} --ignore-scripts
+      - name: Prepare missing dependency image
+        id: dependencies
+        timeout-minutes: 1
+        uses: ./.github/actions/windows-dependency-cache
+        with:
+          seed: "true"
+      - name: Populate dependency image
+        if: steps.dependencies.outputs.active == 'true'
+        timeout-minutes: 5
+        shell: bash
+        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter '!@bb/mobile'
+      - name: Detach populated dependency image
+        if: steps.dependencies.outputs.active == 'true'
+        timeout-minutes: 1
+        run: ./.github/actions/windows-dependency-cache/disk.ps1 detach
+      - name: Save dependency image before builds modify it
+        if: steps.dependencies.outputs.active == 'true'
+        timeout-minutes: 1
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: ${{ runner.temp }}/bb-dependencies.vhdx
+          key: ${{ steps.dependencies.outputs.key }}
+
   windows-foundation:
     needs: plan
     if: ${{ fromJSON(needs.plan.outputs.selection).foundation }}
@@ -108,6 +147,11 @@ jobs:
 
       - name: Setup pnpm
         run: npm install --global pnpm@${{ env.PNPM_VERSION }} --ignore-scripts
+
+      - name: Restore Windows dependency disk
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/windows-dependency-cache
 
       - name: Restore workspace caches
         id: cache
@@ -156,6 +200,11 @@ jobs:
       - name: Setup pnpm
         run: npm install --global pnpm@${{ env.PNPM_VERSION }} --ignore-scripts
 
+      - name: Restore Windows dependency disk
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/windows-dependency-cache
+
       - name: Restore React Compiler cache
         timeout-minutes: 1
         continue-on-error: true
@@ -191,8 +240,25 @@ jobs:
         shell: bash
         run: pnpm exec turbo run smoke:boot --filter=bb-app --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only
 
+      - name: Restore npm package downloads
+        id: npm-downloads
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/cache-npm-downloads
+
       - name: Smoke test the bb-app tarball
         run: pnpm exec turbo run smoke:tarball --filter=bb-app --output-logs=new-only
+
+      - name: Save newly populated npm downloads
+        if: steps.npm-downloads.outcome == 'success' && steps.npm-downloads.outputs.cache-hit != 'true'
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
+            ${{ steps.npm-downloads.outputs.path }}/_cacache
+            ${{ steps.npm-downloads.outputs.path }}/_prebuilds
+          key: ${{ steps.npm-downloads.outputs.key }}
 
       - name: Bound saved Turbo cache
         run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 256
@@ -218,6 +284,11 @@ jobs:
 
       - name: Setup pnpm
         run: npm install --global pnpm@${{ env.PNPM_VERSION }} --ignore-scripts
+
+      - name: Restore Windows dependency disk
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/windows-dependency-cache
 
       - name: Restore React Compiler cache
         timeout-minutes: 1
@@ -289,6 +360,11 @@ jobs:
       - name: Setup pnpm
         run: npm install --global pnpm@${{ env.PNPM_VERSION }} --ignore-scripts
 
+      - name: Restore Windows dependency disk
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/windows-dependency-cache
+
       - name: Restore React Compiler cache
         if: ${{ contains(matrix.filter, '--filter=@bb/demo-server') }}
         timeout-minutes: 1
@@ -321,6 +397,8 @@ jobs:
           PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
           APP_SHARD: ${{ startsWith(matrix.shard, 'app-') }}
           SERVER_SHARD: ${{ startsWith(matrix.shard, 'server-') }}
+          PLUGIN_SHARD: ${{ matrix.shard == 'plugins-2' }}
+          TEST_FILTERS: ${{ matrix.filter }}
           MOBILE_TESTS: ${{ matrix.mobile }}
         run: |
           filters=()
@@ -328,6 +406,14 @@ jobs:
             filters=(--filter bb --filter '@bb/app...' --filter '@bb/db...')
           elif [[ "$SERVER_SHARD" == "true" ]]; then
             filters=(--filter bb --filter '@bb/server...' --filter '@bb/host-daemon...' --filter '@bb/app...' --filter 'bb-plugin-*...')
+          elif [[ "$PLUGIN_SHARD" == "true" ]]; then
+            read -r -a selected_filters <<< "$TEST_FILTERS"
+            selection=$(pnpm list "${selected_filters[@]}" --depth -1 --json)
+            packages=$(node -e 'for (const pkg of JSON.parse(process.argv[1])) console.log(pkg.name)' "$selection")
+            filters=(--filter bb --filter '@bb/app...' --filter '@bb/db...')
+            while IFS= read -r package; do
+              filters+=(--filter "$package...")
+            done <<< "$packages"
           elif [[ "$MOBILE_TESTS" != "true" ]]; then
             filters=(--filter '!@bb/mobile')
           fi
@@ -340,9 +426,17 @@ jobs:
         with:
           version: "1.3.14"
 
+      - name: Prepare plugin SDK runtime
+        if: ${{ matrix.shard == 'plugins-2' && contains(matrix.filter, '--filter=bb-plugin-*') }}
+        shell: cmd
+        run: |
+          if not defined TURBO_CACHE_DIR set TURBO_CACHE_DIR=.turbo/cache
+          pnpm exec turbo run build --filter=@get-bb/plugin-sdk --cache-dir="%TURBO_CACHE_DIR%" --output-logs=new-only --summarize --concurrency=2
+
       - name: Test on Windows
         shell: cmd
         env:
+          VITEST_MAX_WORKERS: ${{ startsWith(matrix.shard, 'app-') && '4' || '' }}
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
           BB_CI_TEST_SHARD: ${{ matrix.vitestShard }}
@@ -582,7 +676,7 @@ jobs:
           bash .github/actions/setup-workspace/install-dependencies.sh "${filters[@]}"
 
       - name: Setup Bun
-        if: ${{ startsWith(matrix.shard, 'packages-') || matrix.shard == 'plugins' }}
+        if: ${{ startsWith(matrix.shard, 'packages-') || startsWith(matrix.shard, 'plugins-') }}
         timeout-minutes: 4
         uses: ./.github/actions/setup-bun
         with:
@@ -597,7 +691,7 @@ jobs:
       - name: Test
         env:
           BB_CI_TEST_SHARD: ${{ matrix.vitestShard }}
-          VITEST_MAX_WORKERS: "2"
+          VITEST_MAX_WORKERS: ${{ (startsWith(matrix.shard, 'server-') || matrix.shard == 'integration') && '4' || '2' }}
         run: ${{ contains(matrix.filter, '--filter=@bb/desktop') && 'xvfb-run -a' || '' }} pnpm exec turbo run test ${{ matrix.filter }} --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4
 
       - name: Test native browser address interactions
@@ -696,6 +790,7 @@ jobs:
       - name: Build, typecheck, and test forkable plugins outside the workspace
         if: steps.selection.outputs.count != '0'
         env:
+          VITEST_MAX_WORKERS: "2"
           BASE_SHA: ${{ github.event_name == 'pull_request' && needs.plan.outputs.base || '' }}
         run: node scripts/check-plugin-forks.mjs --changed-from="$BASE_SHA" --shard=${{ matrix.shard }}/3
 
@@ -844,7 +939,12 @@ jobs:
         run: bash .github/actions/setup-workspace/install-dependencies.sh --filter '!@bb/mobile'
 
       - name: Smoke bb-app tarball
+        if: ${{ runner.os != 'Linux' }}
         run: pnpm exec turbo run smoke:tarball --filter=bb-app --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4
+
+      - name: Package Linux artifacts and smoke bb-app tarball
+        if: ${{ runner.os == 'Linux' }}
+        run: pnpm exec turbo run 'bb-app#smoke:tarball' '@bb/desktop#desktop:build:linux' --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4 --continue=dependencies-successful
 
       - name: Install AppImage FUSE runtime
         if: ${{ runner.os == 'Linux' }}
@@ -852,10 +952,6 @@ jobs:
         timeout-minutes: 5
         with:
           package: libfuse2t64
-
-      - name: Package Linux AppImage
-        if: ${{ runner.os == 'Linux' }}
-        run: pnpm exec turbo run desktop:build:linux --filter=@bb/desktop --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize
 
       - name: Smoke Linux AppImage mount lifecycle
         if: ${{ runner.os == 'Linux' }}

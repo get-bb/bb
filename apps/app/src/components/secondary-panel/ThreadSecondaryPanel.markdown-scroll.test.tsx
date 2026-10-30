@@ -20,9 +20,6 @@ const loading = vi.hoisted(() => ({ current: false }));
 
 vi.mock("@/hooks/queries/environment-queries", () => ({
   useEnvironment: () => ({ data: { path: "/workspace" } }),
-  useEnvironmentDiffFiles: () => ({ data: undefined, isLoading: false }),
-  useEnvironmentDiffViewed: () => ({ data: undefined }),
-  useEnvironmentWorkStatus: () => ({ data: undefined }),
   useEnvironmentFilePreview: (_environmentId: string, path: string) => ({
     data: loading.current
       ? undefined
@@ -94,7 +91,6 @@ function Harness({
           isPanelOpen
           lineRange={null}
           source={document.source}
-          statusLabel={null}
           markdownLinkRouting={{
             onOpenLink: () => {
               setActiveId(browserTab.id);
@@ -135,7 +131,6 @@ function Harness({
         <ThreadSecondaryPanel
           splitPanelStateId={panelStateId}
           activeTab={tabs.find((tab) => tab.tab.id === activeId)?.tab ?? null}
-          canUseGitUi={false}
           fixedTabs={[]}
           tabs={tabs}
           isOpen

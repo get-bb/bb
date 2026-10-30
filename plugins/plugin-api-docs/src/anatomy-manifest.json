@@ -11,10 +11,7 @@
       },
       {
         "path": "apps/app/src/views/RootComposeSecondaryContent.tsx",
-        "anchors": [
-          "RootComposeCompactHome composer={children}",
-          "PluginHomepageSections"
-        ]
+        "anchors": ["isCompact={isCompactHomeLayout}", "PluginHomepageSections"]
       },
       {
         "path": "apps/app/src/components/secondary-panel/CompactSecondaryPanelShelf.tsx",
@@ -27,6 +24,24 @@
     ]
   },
   "surfaceFixtures": {
+    "message-metadata": {
+      "groupId": "app-shell",
+      "fidelity": "anchor",
+      "responsiveStrategy": "scale-together",
+      "requiredStates": ["anchor"],
+      "labels": { "anchor": ["Yesterday, 3:42 PM"] },
+      "fixtureClassAnchors": ["text-muted-foreground"],
+      "sources": [
+        {
+          "path": "apps/app/src/components/thread/timeline/MessageMetadata.tsx",
+          "anchors": ["aria-label=\"Message metadata\"", "<PluginSlotMount", "<slot.component message={message} />"]
+        },
+        {
+          "path": "apps/app/src/components/thread/timeline/ThreadTimelineRows.tsx",
+          "anchors": ["<MessageMetadata placement=\"above\" {...metadata} />", "slots: messageMetadata"]
+        }
+      ]
+    },
     "composer-banners": {
       "groupId": "composer",
       "fidelity": "flow",
@@ -42,10 +57,13 @@
           "path": "apps/app/src/components/promptbox/banner/ThreadPromptContextBanner.tsx",
           "anchors": [
             "function ParentThreadSummary",
-            "function ChangedFilesSummary",
             "mount(entry, \"summary\")",
             "mount(entry, \"details\")"
           ]
+        },
+        {
+          "path": "plugins/git/ui/segment/ChangedFilesSegment.tsx",
+          "anchors": ["function ChangedFilesSegmentView"]
         },
         {
           "path": "apps/app/src/components/plugin/PluginThreadContextSegments.tsx",
@@ -137,6 +155,43 @@
             "fixed inset-0 z-50 bg-black/40",
             "bg-background p-6 shadow-sm",
             "sm:rounded-lg"
+          ]
+        }
+      ]
+    },
+    "thread-context-card": {
+      "groupId": "app-shell",
+      "fidelity": "anchor",
+      "responsiveStrategy": "scale-together",
+      "requiredStates": ["anchor"],
+      "labels": {
+        "anchor": ["fix/retry-flake", "Uncommitted"]
+      },
+      "fixtureClassAnchors": ["rounded-2xl", "bg-popover", "font-mono text-2xs"],
+      "sources": [
+        {
+          "path": "apps/app/src/components/plugin/PluginThreadContextCard.tsx",
+          "anchors": [
+            "data-thread-context-card=\"\"",
+            "slotKind=\"threadContextCardSection\"",
+            "crashFallback={null}",
+            "export function resolveThreadContextCardLayout",
+            "rounded-2xl border border-border bg-popover p-2"
+          ]
+        },
+        {
+          "path": "apps/app/src/views/thread-detail/ThreadScreen.tsx",
+          "anchors": ["<ThreadContextCard />"]
+        },
+        {
+          "path": "apps/app/src/views/thread-detail/ThreadDetailView.tsx",
+          "anchors": ["<ThreadContextCardProvider", "<ThreadContextCardHeaderButton />", "CORE_THREAD_CONTEXT_CARD_ROWS"]
+        },
+        {
+          "path": "apps/app/src/components/plugin/PluginThreadContextCard.test.tsx",
+          "anchors": [
+            "orders rows by group, then order, core first on a tie, and puts titled sections below them",
+            "mounts one scoped instance per pane and drops only a crashing section"
           ]
         }
       ]
@@ -270,6 +325,39 @@
             "label={updatesWithBb ? \"Delivery\" : \"Installed\"}",
             "<PluginIncludes plugin={plugin} configurationPath={configurationPath} />"
           ]
+        }
+      ]
+    },
+    "thread-row-metadata": {
+      "groupId": "app-shell",
+      "fidelity": "anchor",
+      "responsiveStrategy": "scale-together",
+      "requiredStates": ["anchor"],
+      "labels": {
+        "anchor": ["Ship dark mode"]
+      },
+      "fixtureClassAnchors": ["size-3", "tabular-nums", "bg-attention"],
+      "sources": [
+        {
+          "path": "apps/app/src/components/plugin/ThreadRowMetadata.tsx",
+          "anchors": [
+            "data-thread-row-metadata=\"\"",
+            "slotKind=\"threadRowMetadata\"",
+            "crashFallback={null}",
+            "min-w-0 flex-1"
+          ]
+        },
+        {
+          "path": "plugins/thread-list/app/rows/ThreadRow.tsx",
+          "anchors": ["<ThreadRowMetadata thread={thread} />", "showRowMetadata"]
+        },
+        {
+          "path": "plugins/github-pr-status/app.tsx",
+          "anchors": ["app.slots.experimental_threadRowMetadata"]
+        },
+        {
+          "path": "plugins/github-pr-status/ui/PullRequestRowMetadata.tsx",
+          "anchors": ["export function usePullRequestRows", "enabled: keys.length > 0"]
         }
       ]
     },

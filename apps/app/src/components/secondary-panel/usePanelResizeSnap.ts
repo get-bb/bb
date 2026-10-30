@@ -5,11 +5,13 @@ import { createSplitResizeSnapSession } from "@/lib/split-resize-snap";
 interface UsePanelResizeSnapArgs {
   onResize: (leadingFraction: number) => void;
   onDragging: (isDragging: boolean) => void;
+  onReset: () => void;
 }
 
 export function usePanelResizeSnap({
   onResize,
   onDragging,
+  onReset,
 }: UsePanelResizeSnapArgs) {
   const hitTargetRef = useRef<HTMLSpanElement>(null);
   const activeDragRef = useRef<((commit: boolean) => void) | null>(null);
@@ -17,19 +19,26 @@ export function usePanelResizeSnap({
   useEffect(() => () => activeDragRef.current?.(false), []);
 
   useEffect(() => {
-    const onPointerDownCapture = (event: PointerEvent) => {
-      const eventTarget = event.target;
-      if (!(eventTarget instanceof HTMLElement)) return;
+    const findEnabledDivider = (eventTarget: EventTarget | null) => {
+      if (!(eventTarget instanceof HTMLElement)) return null;
       const divider = eventTarget.closest<HTMLElement>(
         "[data-panel-resize-snap-handle]",
       );
-      if (
-        divider === null ||
-        hitTargetRef.current?.parentElement !== divider ||
-        divider.getAttribute("data-panel-resize-handle-enabled") !== "true" ||
-        event.button !== 0
-      )
+      return divider !== null &&
+        hitTargetRef.current?.parentElement === divider &&
+        divider.getAttribute("data-panel-resize-handle-enabled") === "true"
+        ? divider
+        : null;
+    };
+    const onDoubleClick = (event: MouseEvent) => {
+      if (event.button !== 0 || findEnabledDivider(event.target) === null) {
         return;
+      }
+      onReset();
+    };
+    const onPointerDownCapture = (event: PointerEvent) => {
+      const divider = findEnabledDivider(event.target);
+      if (divider === null || event.button !== 0) return;
       activeDragRef.current?.(true);
       const previous = divider.previousElementSibling;
       const next = divider.nextElementSibling;
@@ -153,9 +162,12 @@ export function usePanelResizeSnap({
     };
 
     window.addEventListener("pointerdown", onPointerDownCapture, true);
-    return () =>
+    window.addEventListener("dblclick", onDoubleClick, true);
+    return () => {
       window.removeEventListener("pointerdown", onPointerDownCapture, true);
-  }, [onDragging, onResize]);
+      window.removeEventListener("dblclick", onDoubleClick, true);
+    };
+  }, [onDragging, onReset, onResize]);
 
   return hitTargetRef;
 }

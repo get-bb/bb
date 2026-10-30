@@ -38,22 +38,14 @@ const GATE_STYLE = `
   .glyph svg{width:16px;height:16px;stroke:currentColor}
 `;
 
-function gatePage(
-  cardBody: string,
-  status: number,
-  metaRefreshSeconds?: number,
-): Reply {
+const WIFI_OFF_GLYPH = `<svg viewBox="0 0 16 16" fill="none" stroke-width="1.5"><path d="M1.5 6.2a9.5 9.5 0 0 1 13 0M3.8 8.7a6 6 0 0 1 8.4 0M6.1 11.2a2.6 2.6 0 0 1 3.8 0" stroke-linecap="round"/><path d="M2 2l12 12" stroke-linecap="round"/><circle cx="8" cy="13.6" r="0.9" fill="currentColor" stroke="none"/></svg>`;
+
+function gateDocument(cardBody: string, metaRefreshSeconds?: number): string {
   const refresh =
     metaRefreshSeconds !== undefined
       ? `<meta http-equiv="refresh" content="${metaRefreshSeconds}">`
       : "";
-  return {
-    status,
-    headers: {
-      "content-type": "text/html; charset=utf-8",
-      "cache-control": "no-store",
-    },
-    body: `<!doctype html><html lang="en"><head><meta charset="utf-8">
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
      <meta name="viewport" content="width=device-width, initial-scale=1">
      ${refresh}<title>bb connect</title>
      <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -63,7 +55,21 @@ function gatePage(
      <body><div class="wrap">
        <div class="brand"><img src="${BB_ICON_DATA_URI}" alt="bb"><div><b>bb connect</b><br><span>Your bb, reachable anywhere</span></div></div>
        <div class="card">${cardBody}</div>
-     </div></body></html>`,
+     </div></body></html>`;
+}
+
+function gatePage(
+  cardBody: string,
+  status: number,
+  metaRefreshSeconds?: number,
+): Reply {
+  return {
+    status,
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+    },
+    body: gateDocument(cardBody, metaRefreshSeconds),
   };
 }
 
@@ -118,7 +124,7 @@ export function offlinePage(
       ? "Usually this means the machine is asleep or bb isn't running on it."
       : "Usually this means the machine is asleep or bb isn't running.";
   const page = gatePage(
-    `<div class="glyph"><svg viewBox="0 0 16 16" fill="none" stroke-width="1.5"><path d="M1.5 6.2a9.5 9.5 0 0 1 13 0M3.8 8.7a6 6 0 0 1 8.4 0M6.1 11.2a2.6 2.6 0 0 1 3.8 0" stroke-linecap="round"/><path d="M2 2l12 12" stroke-linecap="round"/><circle cx="8" cy="13.6" r="0.9" fill="currentColor" stroke="none"/></svg></div>
+    `<div class="glyph">${WIFI_OFF_GLYPH}</div>
      <h1>${heading}</h1>
      <p>${lastSeen}This page retries automatically when it comes back.</p>
      <p class="note">${note}</p>
@@ -154,6 +160,17 @@ export function machinePage(
      <p>This machine is on <code>${escapeHtmlText(accountHandle)}</code>'s account. Its shares appear at <code>${escapeHtmlText(label)}--&lt;port&gt;.${escapeHtmlText(shareBaseDomain)}</code>.</p>
      <a class="btn primary" href="${escapeHtmlText(appOrigin)}">Open the bb app at ${escapeHtmlText(appHost)}</a>`,
     200,
+  );
+}
+
+export function unreachablePageHtml(): string {
+  return gateDocument(
+    `<div class="glyph">${WIFI_OFF_GLYPH}</div>
+     <h1>Nothing answered at this address</h1>
+     <p>bb connect reached this machine, but nothing on it answered. This page retries automatically.</p>
+     <p class="note">If this is a shared port, check that the server on that port is still running.</p>
+     <button class="btn" onclick="location.reload()">Retry now</button>`,
+    10,
   );
 }
 

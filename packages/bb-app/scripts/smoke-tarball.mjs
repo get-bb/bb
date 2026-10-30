@@ -1,8 +1,10 @@
 import { fork, spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { createServer as createHttpServer } from "node:http";
 import { mkdirSync, readdirSync } from "node:fs";
 import {
   copyFile,
+  cp,
   mkdir,
   mkdtemp,
   readFile,
@@ -12,7 +14,15 @@ import {
 } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { basename, dirname, extname, join, resolve } from "node:path";
+import {
+  basename,
+  dirname,
+  extname,
+  join,
+  relative,
+  resolve,
+  sep,
+} from "node:path";
 import { fileURLToPath } from "node:url";
 import { createManagedProcessStop } from "./managed-process.mjs";
 
@@ -415,29 +425,93 @@ function createInstalledBinInvocation(binDir, bin, args) {
 }
 
 async function smokeNpxEntrypoint(tarballPath) {
-  // Keep one real invocation through the package's advertised npx path. Once
-  // npx dispatches the bin, the installed-package smokes below cover the same
-  // launcher without repeatedly charging npm startup to readiness budgets.
-  await timed("npx install and help", () =>
-    runCommand({
-      args: [
-        "--yes",
-        "--no-audit",
-        "--no-fund",
-        "--package",
-        tarballPath,
-        "--",
-        "bb-app",
-        "--help",
-      ],
-      command: "npx",
-      label: "bb-app npx help",
+  const archive = await readFile(tarballPath);
+  const manifest = JSON.parse(
+    await runCommand({
+      command: "tar",
+      args: ["-xOf", basename(tarballPath), "package/package.json"],
+      cwd: dirname(tarballPath),
+      label: "read packed manifest",
     }),
   );
+  if (
+    !isRecord(manifest) ||
+    manifest.name !== "bb-app" ||
+    typeof manifest.version !== "string"
+  ) {
+    throw new Error("Expected a packed bb-app manifest with a version");
+  }
+  const tag = `smoke-${randomUUID()}`;
+  const integrity = `sha512-${createHash("sha512").update(archive).digest("base64")}`;
+  let registryUrl;
+  const server = createHttpServer((request, response) => {
+    if (request.url === "/bb-app.tgz") {
+      response.setHeader("content-type", "application/octet-stream");
+      response.end(archive);
+    } else if (request.url === "/bb-app") {
+      response.setHeader("content-type", "application/json");
+      response.end(
+        JSON.stringify({
+          name: manifest.name,
+          "dist-tags": { [tag]: manifest.version },
+          versions: {
+            [manifest.version]: {
+              ...manifest,
+              dist: { tarball: `${registryUrl}/bb-app.tgz`, integrity },
+            },
+          },
+        }),
+      );
+    } else {
+      response.writeHead(302, {
+        location: `https://registry.npmjs.org${request.url}`,
+      });
+      response.end();
+    }
+  });
+  await new Promise((resolvePromise, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolvePromise);
+  });
+  try {
+    registryUrl = `http://127.0.0.1:${server.address().port}`;
+    await timed("npx install and help", () =>
+      runCommand({
+        args: [
+          "--yes",
+          "--no-audit",
+          "--no-fund",
+          "--package",
+          `bb-app@${tag}`,
+          "--",
+          "bb-app",
+          "--help",
+        ],
+        command: "npx",
+        env: { npm_config_registry: registryUrl },
+        label: "bb-app npx help",
+      }),
+    );
+  } finally {
+    await new Promise((resolvePromise, reject) =>
+      server.close((error) => (error ? reject(error) : resolvePromise())),
+    );
+  }
 }
 
 async function packTarball() {
-  const chunkDir = join(packageRoot, "host-daemon", "dist", "bb-chunks");
+  const packRoot =
+    process.platform === "linux" ? join(tempRoot, "package") : packageRoot;
+  if (packRoot !== packageRoot) {
+    await cp(packageRoot, packRoot, {
+      recursive: true,
+      filter: (source) =>
+        !["node_modules", ".turbo"].includes(
+          relative(packageRoot, source).split(sep)[0],
+        ),
+    });
+  }
+  const chunkDir = join(packRoot, "host-daemon", "dist", "bb-chunks");
   const liveChunk = readdirSync(chunkDir).find((name) => name.endsWith(".js"));
   if (liveChunk === undefined) {
     throw new Error("Built bb-app has no CLI chunk to exercise");
@@ -449,7 +523,7 @@ async function packTarball() {
   await copyFile(join(chunkDir, liveChunk), staleChunk);
   try {
     const stdout = await runCommand({
-      args: ["pack", packageRoot, "--pack-destination", tempRoot, "--json"],
+      args: ["pack", packRoot, "--pack-destination", tempRoot, "--json"],
       command: "npm",
       label: "npm pack",
     });
@@ -868,7 +942,7 @@ async function smokeSdkPackage(tarballPath) {
         "--ignore-scripts=false",
         "--no-audit",
         "--no-fund",
-        tarballPath,
+        `bb-app@file:${tarballPath}`,
       ],
       command: "npm",
       cwd: sdkDir,
@@ -1262,7 +1336,7 @@ try {
   const smokeStartedAt = performance.now();
   const tarballPath = await timed("npm pack", () => packTarball());
   let sdkDir;
-  if (process.platform === "win32") {
+  if (process.platform === "win32" || process.platform === "linux") {
     const [npxResult, sdkResult] = await Promise.allSettled([
       timed("npx entrypoint", () => smokeNpxEntrypoint(tarballPath)),
       timed("sdk package", () => smokeSdkPackage(tarballPath)),
@@ -1287,8 +1361,18 @@ try {
   await timed("plugin host worker bundle", () =>
     smokePluginHostWorkerBundle(installedPackageDir),
   );
-  await timed("full stack", () => smokeFullStack(installedBinDir, sdkDir));
-  await timed("daemon join", () => smokeDaemonJoin(installedBinDir));
+  if (process.platform === "linux") {
+    const results = await Promise.allSettled([
+      timed("full stack", () => smokeFullStack(installedBinDir, sdkDir)),
+      timed("daemon join", () => smokeDaemonJoin(installedBinDir)),
+    ]);
+    for (const result of results) {
+      if (result.status === "rejected") throw result.reason;
+    }
+  } else {
+    await timed("full stack", () => smokeFullStack(installedBinDir, sdkDir));
+    await timed("daemon join", () => smokeDaemonJoin(installedBinDir));
+  }
   process.stdout.write(
     `bb-app tarball smoke passed in ${formatElapsed(smokeStartedAt)}\n`,
   );

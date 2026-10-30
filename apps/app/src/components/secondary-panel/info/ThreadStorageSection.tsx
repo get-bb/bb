@@ -16,9 +16,9 @@ import {
   infoListCollapses,
   InfoList,
   InfoListMoreRow,
-  InfoListRow,
   InfoSection,
 } from "./info-list";
+import { InfoListRow } from "@bb/shared-ui/info-list-row";
 import {
   buildThreadStorageTree,
   flattenThreadStorageNode,

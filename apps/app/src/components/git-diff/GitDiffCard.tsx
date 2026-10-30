@@ -1,13 +1,17 @@
 import { memo, useMemo } from "react";
 import { useIntersectionObserver } from "usehooks-ts";
 import { cn } from "@bb/shared-ui/lib/utils";
-import type { DiffPresentation } from "@/components/code/code-rendering";
-import { GitDiffCardBody, useGitDiffCardBody } from "./GitDiffCardBody";
+import { CoreGitDiffRendererProvider } from "./CoreGitDiffRendererProvider";
+import type { DiffPresentation } from "@bb/shared-ui/git-diff/renderers";
+import {
+  GitDiffCardBody,
+  useGitDiffCardBody,
+} from "@bb/shared-ui/git-diff/card-body";
 import {
   GitDiffCardHeader,
   gitDiffCardHeaderWrapperClass,
   type GitDiffCardHeaderModel,
-} from "./GitDiffCardHeader";
+} from "@bb/shared-ui/git-diff/card-header";
 import {
   formatGitDiffFileLabel,
   getGitDiffFileChangeKind,
@@ -15,7 +19,7 @@ import {
   normalizeGitDiffPath,
   summarizeGitDiffFile,
   type ParsedGitDiffFile,
-} from "./git-diff-parsing";
+} from "@bb/shared-ui/git-diff/parsing";
 
 interface GitDiffCardProps {
   fileDiff: ParsedGitDiffFile;
@@ -60,7 +64,6 @@ export const GitDiffCard = memo(function GitDiffCard({
     changeKind: headerModel.changeKind,
     onRequestFileContents: undefined,
     patchText,
-    renderBeforeVisible: true,
   });
   const hasChanges = fileDiff.hunks.length > 0;
   const { ref: stickySentinelRef, isIntersecting } = useIntersectionObserver({
@@ -70,36 +73,39 @@ export const GitDiffCard = memo(function GitDiffCard({
   const isHeaderStuck = stickyHeader && !isIntersecting;
 
   return (
-    <div
-      className={cn(
-        "rounded-lg border border-border bg-background",
-        cardClassName,
-      )}
-    >
-      {stickyHeader ? <div ref={stickySentinelRef} className="h-0" /> : null}
+    <CoreGitDiffRendererProvider>
       <div
-        className={gitDiffCardHeaderWrapperClass({
-          stickyHeader,
-          isBodyHidden: !hasChanges,
-          isStuck: isHeaderStuck,
-          showStuckHeaderEdge,
-        })}
+        className={cn(
+          "rounded-lg border border-border bg-background",
+          cardClassName,
+        )}
       >
-        <GitDiffCardHeader
-          model={headerModel}
-          previousPath={previousPath}
-          filePathRoot={filePathRoot}
-          hasChanges={hasChanges}
-        />
+        {stickyHeader ? <div ref={stickySentinelRef} className="h-0" /> : null}
+        <div
+          className={gitDiffCardHeaderWrapperClass({
+            stickyHeader,
+            isBodyHidden: !hasChanges,
+            isStuck: isHeaderStuck,
+            showStuckHeaderEdge,
+          })}
+        >
+          <GitDiffCardHeader
+            model={headerModel}
+            previousPath={previousPath}
+            filePathRoot={filePathRoot}
+            hasChanges={hasChanges}
+          />
+        </div>
+        {hasChanges ? (
+          <GitDiffCardBody
+            state={bodyState}
+            presentation={presentation}
+            svgDisplayMode="preview"
+            reservesCollapseGutter={false}
+            defersOffscreenRendering
+          />
+        ) : null}
       </div>
-      {hasChanges ? (
-        <GitDiffCardBody
-          state={bodyState}
-          presentation={presentation}
-          svgDisplayMode="preview"
-          reservesCollapseGutter={false}
-        />
-      ) : null}
-    </div>
+    </CoreGitDiffRendererProvider>
   );
 });

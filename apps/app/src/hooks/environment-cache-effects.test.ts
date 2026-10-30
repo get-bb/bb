@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createAppQueryClient } from "@/lib/query-client";
 import {
-  environmentDiffFilesQueryKey,
-  environmentDiffPatchQueryKey,
-  environmentWorkStatusQueryKey,
+  environmentFilePreviewQueryKey,
   systemExecutionOptionsQueryKey,
 } from "./queries/query-keys";
 import { removeEnvironmentScopedQueries } from "./cache-owners/environment-cache-effects";
@@ -50,9 +48,10 @@ describe("environment cache effects", () => {
     const retainedExecutionOptionsKey = scopedSystemExecutionOptionsKey({
       environmentId: "env-retained",
     });
-    const removedWorkStatusKey = environmentWorkStatusQueryKey(
+    const removedFilePreviewKey = environmentFilePreviewQueryKey(
       "env-removed",
-      "main",
+      "README.md",
+      { kind: "working-tree" },
     );
     queryClient.setQueryData(
       removedExecutionOptionsKey,
@@ -62,7 +61,7 @@ describe("environment cache effects", () => {
       retainedExecutionOptionsKey,
       EMPTY_EXECUTION_OPTIONS,
     );
-    queryClient.setQueryData(removedWorkStatusKey, {});
+    queryClient.setQueryData(removedFilePreviewKey, {});
 
     removeEnvironmentScopedQueries({
       environmentId: "env-removed",
@@ -72,71 +71,10 @@ describe("environment cache effects", () => {
     expect(
       queryClient.getQueryData(removedExecutionOptionsKey),
     ).toBeUndefined();
-    expect(queryClient.getQueryData(removedWorkStatusKey)).toBeUndefined();
+    expect(queryClient.getQueryData(removedFilePreviewKey)).toBeUndefined();
     expect(queryClient.getQueryData(retainedExecutionOptionsKey)).toEqual(
       EMPTY_EXECUTION_OPTIONS,
     );
   });
 
-  it("removes both the diff TOC and the observer-less patch cache for the torn-down environment", () => {
-    const queryClient = createCacheEffectQueryClient();
-    const removedDiffFilesKey = environmentDiffFilesQueryKey(
-      "env-removed",
-      "all",
-      "main",
-      false,
-    );
-    const removedDiffPatchKey = environmentDiffPatchQueryKey(
-      "env-removed",
-      "all",
-      "main",
-      false,
-      "file.ts",
-    );
-    const retainedDiffFilesKey = environmentDiffFilesQueryKey(
-      "env-retained",
-      "all",
-      "main",
-      false,
-    );
-    const retainedDiffPatchKey = environmentDiffPatchQueryKey(
-      "env-retained",
-      "all",
-      "main",
-      false,
-      "file.ts",
-    );
-    queryClient.setQueryData(removedDiffFilesKey, {
-      outcome: "available",
-      files: [],
-      shortstat: "1 file changed",
-      mergeBaseRef: "base-ref",
-    });
-    queryClient.setQueryData(removedDiffPatchKey, {
-      path: "file.ts",
-      patch: "diff --git a/file.ts b/file.ts\n",
-      truncated: false,
-    });
-    queryClient.setQueryData(retainedDiffFilesKey, {
-      outcome: "available",
-      files: [],
-      shortstat: "1 file changed",
-      mergeBaseRef: "base-ref",
-    });
-    queryClient.setQueryData(retainedDiffPatchKey, {
-      path: "file.ts",
-      patch: "diff --git a/file.ts b/file.ts\n",
-      truncated: false,
-    });
-
-    removeEnvironmentScopedQueries({
-      environmentId: "env-removed",
-      queryClient,
-    });
-
-    expect(queryClient.getQueryData(removedDiffFilesKey)).toBeUndefined();
-    expect(queryClient.getQueryData(removedDiffPatchKey)).toBeUndefined();
-    expect(queryClient.getQueryData(retainedDiffFilesKey)).toBeDefined();
-    expect(queryClient.getQueryData(retainedDiffPatchKey)).toBeDefined();
-  });
 });

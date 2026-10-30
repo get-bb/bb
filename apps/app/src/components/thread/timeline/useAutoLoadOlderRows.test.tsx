@@ -15,6 +15,7 @@ function createBottomAnchor(
     bottomThresholdPx: 4,
     deferWritesWhileScrolling: false,
     getContentElement: () => null,
+    getFloorElement: () => null,
     getFooterElement: () => null,
     getScrollElement: () => scrollElement,
     getTopLevelRows: () => [],
@@ -25,7 +26,6 @@ function createBottomAnchor(
     isAtBottom: false,
     scrollToBottom: vi.fn(),
     scrollElementIntoView: vi.fn(),
-    scrollElementIntoViewClampedToMaxScroll: vi.fn(),
     positionKeeper,
     holdContentPosition: vi.fn(),
   };

@@ -36,11 +36,13 @@ const codexPlanStepStatusSchema = z.enum([
 const codexThreadGoalStatusSchema = z.enum([
   "active",
   "paused",
+  "blocked",
+  "usageLimited",
   "budgetLimited",
   "complete",
 ]);
 
-const codexThreadGoalSchema = z
+export const codexThreadGoalSchema = z
   .object({
     objective: z.string(),
     status: codexThreadGoalStatusSchema,

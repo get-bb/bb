@@ -121,6 +121,35 @@ describe("worktree inputs control", () => {
     });
   });
 
+  it("moves the Enter target from the search across sections with arrow keys", async () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    try {
+      const { slot, onChange } = render({ branch: { kind: "default" } });
+      await openPicker(slot);
+      const search = slot.getByRole("textbox", { name: "Search branches" });
+      fireEvent.change(search, { target: { value: "release" } });
+      const release = slot.getByRole("button", { name: "release" });
+      expect(release.hasAttribute("data-highlighted")).toBe(true);
+      fireEvent.keyDown(search, { key: "ArrowUp" });
+      expect(release.hasAttribute("data-highlighted")).toBe(false);
+      expect(
+        slot
+          .getByRole("button", { name: "Default branch" })
+          .hasAttribute("data-highlighted"),
+      ).toBe(true);
+      expect(scrollIntoView).toHaveBeenCalled();
+      fireEvent.keyDown(search, { key: "ArrowDown" });
+      fireEvent.keyDown(search, { key: "Enter" });
+      expect(onChange).toHaveBeenLastCalledWith({
+        status: "ready",
+        value: { branch: { kind: "named", name: "release" } },
+      });
+    } finally {
+      Reflect.deleteProperty(Element.prototype, "scrollIntoView");
+    }
+  });
+
   it("falls back to the default branch", async () => {
     const { slot, onChange } = render({
       branch: { kind: "named", name: "release" },

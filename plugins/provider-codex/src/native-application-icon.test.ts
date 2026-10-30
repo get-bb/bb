@@ -14,10 +14,8 @@ const { execute } = vi.hoisted(() => ({
     >(),
 }));
 
-vi.mock("node:child_process", () => ({
-  execFile: Object.assign(() => {}, {
-    [Symbol.for("nodejs.util.promisify.custom")]: execute,
-  }),
+vi.mock("@get-bb/plugin-sdk/process", () => ({
+  experimental_execHostFile: execute,
 }));
 
 const originalPlatform = process.platform;

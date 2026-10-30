@@ -6,7 +6,7 @@
   "description": "GitHub pull request status and actions for each environment's branch",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.6.75"
+    "bbPluginSdk": ">=0.6.94"
   },
   "bb": {
     "name": "GitHub PR Status",
@@ -19,7 +19,9 @@
     "app": "./app.tsx"
   },
   "exports": {
-    "./contract": "./contract.ts"
+    "./contract": "./contract.ts",
+    "./read-contract": "./read-contract.ts",
+    "./refetch-on-show": "./ui/refetch-on-show.ts"
   },
   "keywords": [
     "bb-plugin"
@@ -38,6 +40,7 @@
   "devDependencies": {
     "@bb/plugin-build": "workspace:*",
     "@get-bb/plugin-sdk": "workspace:*",
+    "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",

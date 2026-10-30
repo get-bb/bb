@@ -668,7 +668,7 @@ const gate = {
       if (isHostManagementMutation(request, url.pathname)) {
         return text("bb connect: machine cannot manage hosts\n", 403);
       }
-      ctx.waitUntil(markMachineSeen(verified.machineId, db));
+      ctx.waitUntil(markMachineSeen(verified, db));
       return responseForVisitor(
         await tunnelDo(
           requestForTunnelDo(request, null, "machine", verified.machineId),

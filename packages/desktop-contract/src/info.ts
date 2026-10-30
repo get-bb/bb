@@ -62,9 +62,15 @@ export type BbDesktopOpenNewTabHandler = () => void;
 export type BbDesktopAppCommandHandler = (command: AppCommandId) => void;
 export type BbDesktopCloseWindowRequestHandler = () => boolean;
 
+export interface BbDesktopAttentionThreads {
+  pendingThreadIds: string[];
+  unreadThreadIds: string[];
+}
+
 export interface BbDesktopApi extends BbDesktopInfo {
   browser: BbDesktopBrowserApi;
   getServerChoices?(): Promise<BbDesktopServerChoice[]>;
+  listServerChoices?(): Promise<BbDesktopServerChoice[]>;
   onServerChoicesChange?(
     listener: (choices: BbDesktopServerChoice[]) => void,
   ): () => void;
@@ -72,6 +78,7 @@ export interface BbDesktopApi extends BbDesktopInfo {
   checkForUpdates(): Promise<BbDesktopInfo>;
   getInfo(): Promise<BbDesktopInfo>;
   focusWindow?(): void;
+  setAttentionThreads?(threads: BbDesktopAttentionThreads): void;
   getWindowState?(): Promise<BbDesktopWindowState>;
   installUpdate(): Promise<void>;
   macosTrafficLightInset?: number;
@@ -90,6 +97,7 @@ export interface BbDesktopApi extends BbDesktopInfo {
   openWindowFind?(request: BbDesktopWindowFindRequest): void;
   openDataDirectory?(): Promise<void>;
   openExternalUrl(url: string): void;
+  openApplicationUrl?(url: string): Promise<void>;
   openServerDaemonLogs?(): Promise<void>;
   reloadWindow?(): void;
   setSplitNavigationEnabled?(

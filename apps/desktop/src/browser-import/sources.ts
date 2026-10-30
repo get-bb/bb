@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execHostFileCallback as execFile } from "@bb/process-utils";
 import { readdir, readFile, readlink, stat } from "node:fs/promises";
 import { hostname } from "node:os";
 import { isAbsolute, join, normalize, relative, resolve, sep } from "node:path";

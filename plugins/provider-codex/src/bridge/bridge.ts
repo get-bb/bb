@@ -50,8 +50,12 @@ import {
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
 import {
+  CODEX_GOAL_EXTENSION_KIND,
   CODEX_MACOS_PERMISSION_EXTENSION_KIND,
+  codexGoalStateSchema,
   summarizeCodexMacOsPermissions,
+  type CodexGoal,
+  type CodexGoalStatus,
 } from "../extension-kinds.js";
 import {
   buildCodexInteractiveResult,
@@ -70,6 +74,7 @@ import {
 import { resolveCodexMcpElicitationAppIcon } from "../mcp-elicitation-host.js";
 import { macOsPermissionPresentation } from "../presentation.js";
 import {
+  codexThreadGoalSchema,
   codexTurnSchema,
   codexRateLimitReadResponseSchema,
 } from "../schemas.js";
@@ -488,18 +493,11 @@ interface CodexBridgeSession {
   closing: boolean;
   previousChildExit: Promise<void> | null;
   releasePromise: Promise<void> | null;
+  goalStatus: CodexGoalStatus | null;
 }
 
 const sessionsByBbThreadId = new Map<string, CodexBridgeSession>();
 const maintenanceConnections = new Set<CodexAppServerConnection>();
-let modelListConnection: {
-  launchKey: string;
-  connection: CodexAppServerConnection;
-} | null = null;
-let modelListConnectionPromise: {
-  launchKey: string;
-  promise: Promise<CodexAppServerConnection>;
-} | null = null;
 let sessionSerialCounter = 0;
 let configuredSkillExtraRoots: string[] | null = null;
 
@@ -621,6 +619,15 @@ function sendThreadDeltas(
     }
     if (delta.kind === "provider.rateLimits") {
       session.turnRateLimits = delta.rateLimits;
+    }
+    if (
+      delta.kind === "extension.state" &&
+      delta.extensionKind === CODEX_GOAL_EXTENSION_KIND
+    ) {
+      const goal = codexGoalStateSchema.safeParse(delta.payload);
+      if (goal.success) {
+        session.goalStatus = goal.data?.status ?? null;
+      }
     }
     if (delta.kind === "turn.open") {
       session.translator.resetRateLimits();
@@ -838,7 +845,6 @@ function handleChildRequest(
       callId: parsed.data.callId,
       tool: parsed.data.tool,
       arguments: parsed.data.arguments ?? {},
-      providerNativeIds: true,
     })
       .then((result) => {
         responder.result(result);
@@ -889,7 +895,6 @@ function handleChildRequest(
           threadId: session.bbThreadId,
           turnId: request.turnId,
           payload: request.payload,
-          providerNativeIds: true,
         }),
       ]);
       responder.result(
@@ -1035,18 +1040,42 @@ const codexThreadIdentityResultSchema = z
 const SESSION_OPTIONS_STATE_KIND = "bb/session-options";
 const SESSION_MODEL_CATALOG_TIMEOUT_MS = 10_000;
 
+async function loadModelCatalog(
+  connection: CodexAppServerConnection,
+  timeoutMs: number,
+): Promise<CodexModelCatalog> {
+  const result = await connection.request({
+    method: "model/list",
+    params: {},
+    resultSchema: ignoredChildResultSchema,
+    timeoutMs,
+  });
+  const catalog = parseModelCatalog(result);
+  const configuredModel = await connection
+    .request({
+      method: "config/read",
+      params: {},
+      resultSchema: z.object({
+        config: z.object({ model: z.string().nullish() }),
+      }),
+      timeoutMs,
+    })
+    .then((configResult) => configResult.config.model)
+    .catch(() => null);
+  if (catalog.models.some((model) => model.model === configuredModel)) {
+    for (const model of catalog.models) {
+      model.isDefault = model.model === configuredModel;
+    }
+  }
+  return catalog;
+}
+
 function loadSessionModelCatalog(
   connection: CodexAppServerConnection,
 ): Promise<CodexModelCatalog | null> {
-  return connection
-    .request({
-      method: "model/list",
-      params: {},
-      resultSchema: ignoredChildResultSchema,
-      timeoutMs: SESSION_MODEL_CATALOG_TIMEOUT_MS,
-    })
-    .then(parseModelCatalog)
-    .catch(() => null);
+  return loadModelCatalog(connection, SESSION_MODEL_CATALOG_TIMEOUT_MS).catch(
+    () => null,
+  );
 }
 
 function publishDaybreakState(
@@ -1242,6 +1271,7 @@ async function constructThreadSession(
     closing: false,
     previousChildExit: null,
     releasePromise: null,
+    goalStatus: existing?.goalStatus ?? null,
   };
   sessionsByBbThreadId.set(args.threadId, session);
   if (existing) {
@@ -1394,7 +1424,21 @@ async function constructThreadSession(
     }
     const modelCatalog = loadSessionModelCatalog(connection);
     session.modelCatalog = modelCatalog;
-    void modelCatalog.then((catalog) => publishDaybreakState(session, catalog));
+    void modelCatalog.then((catalog) => {
+      if (!session.closing && catalog !== null) {
+        sendThreadDeltas(session, [
+          {
+            kind: "extension.state",
+            extensionKind: "bb/provider-model-catalog",
+            payload: {
+              models: catalog.models,
+              selectedOnlyModels: catalog.selectedOnlyModels,
+            },
+          },
+        ]);
+      }
+      publishDaybreakState(session, catalog);
+    });
     return { session, codexThreadId };
   } catch (error) {
     const released = session.closing;
@@ -1448,6 +1492,7 @@ function registerResumableSession(session: CodexBridgeSession): void {
     closing: false,
     previousChildExit: null,
     releasePromise: null,
+    goalStatus: session.goalStatus,
   });
 }
 
@@ -1491,8 +1536,10 @@ async function rebuildThreadSession(
 
 async function withMaintenanceChild<T>(
   fn: (connection: CodexAppServerConnection) => Promise<T>,
+  envVars?: Readonly<Record<string, string>>,
 ): Promise<T> {
   const connection = spawnChildConnection({
+    envVars,
     recordThreadId: null,
     onNotification: () => {},
     onRequest: (_method, _params, responder) => {
@@ -1511,88 +1558,6 @@ async function withMaintenanceChild<T>(
     maintenanceConnections.delete(connection);
     await connection.kill();
   }
-}
-
-function poolRouteLaunchKey(
-  envVars: Readonly<Record<string, string>> | undefined,
-): string {
-  return JSON.stringify([
-    envVars?.[CODEX_POOL_BASE_URL_ENV] ?? null,
-    envVars?.[CODEX_POOL_AUTH_TOKEN_ENV] ?? null,
-  ]);
-}
-
-async function getModelListConnection(
-  envVars: Readonly<Record<string, string>> | undefined,
-): Promise<CodexAppServerConnection> {
-  const launchKey = poolRouteLaunchKey(envVars);
-  if (modelListConnection !== null) {
-    if (
-      modelListConnection.launchKey === launchKey &&
-      !modelListConnection.connection.exited
-    ) {
-      return modelListConnection.connection;
-    }
-    retireModelListConnection(modelListConnection.connection);
-  }
-  if (modelListConnectionPromise?.launchKey === launchKey) {
-    return modelListConnectionPromise.promise;
-  }
-
-  const pending = {
-    launchKey,
-    promise: (async () => {
-      const connection = spawnChildConnection({
-        envVars,
-        recordThreadId: null,
-        onNotification: () => {},
-        onRequest: (_method, _params, responder) => {
-          responder.error(
-            BRIDGE_JSON_RPC_ERRORS.METHOD_NOT_FOUND,
-            "model-list codex app-server does not serve requests",
-          );
-        },
-        onExit: () => {
-          maintenanceConnections.delete(connection);
-          if (modelListConnection?.connection === connection) {
-            modelListConnection = null;
-          }
-        },
-      });
-      maintenanceConnections.add(connection);
-      try {
-        await initializeChild(connection);
-      } catch (error) {
-        maintenanceConnections.delete(connection);
-        await connection.kill();
-        throw error;
-      }
-      if (modelListConnectionPromise?.launchKey !== launchKey) {
-        retireModelListConnection(connection);
-        throw new Error(
-          "The Codex model list route changed while the app-server started.",
-        );
-      }
-      modelListConnection = { launchKey, connection };
-      return connection;
-    })(),
-  };
-  modelListConnectionPromise = pending;
-  try {
-    return await pending.promise;
-  } finally {
-    if (modelListConnectionPromise === pending) {
-      modelListConnectionPromise = null;
-    }
-  }
-}
-
-function retireModelListConnection(connection: CodexAppServerConnection): void {
-  maintenanceConnections.delete(connection);
-  if (modelListConnection?.connection === connection) {
-    modelListConnection = null;
-  }
-  connection.kill();
 }
 
 async function withChildForThread<T>(
@@ -1639,40 +1604,18 @@ async function handleModelList(
   id: string | number,
   params: z.infer<typeof modelListParamsSchema>,
 ): Promise<void> {
-  let connection: CodexAppServerConnection | null = null;
   try {
-    connection = await getModelListConnection(params.envVars);
-    const result = await connection.request({
-      method: "model/list",
-      params: {},
-      resultSchema: ignoredChildResultSchema,
-      timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
-    });
-    const { models, selectedOnlyModels } = parseModelCatalog(result);
-    const configuredModel = await connection
-      .request({
-        method: "config/read",
-        params: {},
-        resultSchema: z.object({
-          config: z.object({ model: z.string().nullish() }),
-        }),
-        timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
-      })
-      .then((configResult) => configResult.config.model)
-      .catch(() => null);
-    if (models.some((model) => model.model === configuredModel)) {
-      for (const model of models) {
-        model.isDefault = model.model === configuredModel;
-      }
-    }
-    sendResult(id, {
-      models,
-      selectedOnlyModels,
-    });
+    await withMaintenanceChild(async (connection) => {
+      const { models, selectedOnlyModels } = await loadModelCatalog(
+        connection,
+        CHILD_REQUEST_TIMEOUT_MS,
+      );
+      sendResult(id, {
+        models,
+        selectedOnlyModels,
+      });
+    }, params.envVars);
   } catch (error) {
-    if (connection !== null) {
-      retireModelListConnection(connection);
-    }
     sendError(
       id,
       isCodexSpawnFailure(error)
@@ -1794,7 +1737,12 @@ function settleAcceptedDispatch(args: {
   }
   const parsed = codexTurnStartResultSchema.safeParse(result);
   if (!parsed.success) {
-    scheduleZeroWorkTurnSettlement({ clientRequestId, prepared, session });
+    scheduleZeroWorkTurnSettlement({
+      clientRequestId,
+      prepared,
+      session,
+      graceMs: ZERO_WORK_SETTLEMENT_GRACE_MS,
+    });
     return;
   }
   if (prepared === null) {
@@ -1884,6 +1832,7 @@ function waitForNativeTurnStart(
 }
 
 const ZERO_WORK_SETTLEMENT_GRACE_MS = 250;
+const GOAL_RESUME_TURN_GRACE_MS = 5_000;
 
 let syntheticZeroWorkTurnCounter = 0;
 
@@ -1919,6 +1868,7 @@ function scheduleZeroWorkTurnSettlement(args: {
   clientRequestId: TurnStartParamsShape["clientRequestId"];
   prepared: PreparedProviderCommandDispatch | null;
   session: CodexBridgeSession;
+  graceMs: number;
 }): void {
   const { clientRequestId, prepared, session } = args;
   if (prepared === null) {
@@ -1935,7 +1885,7 @@ function scheduleZeroWorkTurnSettlement(args: {
       { clientRequestId, prepared },
       { status: "completed" },
     );
-  }, ZERO_WORK_SETTLEMENT_GRACE_MS);
+  }, args.graceMs);
   timer.unref?.();
 }
 
@@ -2065,6 +2015,32 @@ async function handleTurnStart(
     clientRequestId: params.clientRequestId,
     providerThreadId: codexThreadId,
   });
+
+  const goalCommand = parseCodexGoalCommand(input);
+  if (goalCommand !== null) {
+    try {
+      await runCodexGoalCommand(connection, codexThreadId, goalCommand);
+    } catch (error) {
+      prepared?.rollback();
+      sendError(
+        id,
+        BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
+        error instanceof Error ? error.message : String(error),
+      );
+      return;
+    }
+    sendResult(id, { threadId: params.threadId });
+    scheduleZeroWorkTurnSettlement({
+      clientRequestId: params.clientRequestId,
+      prepared,
+      session,
+      graceMs:
+        goalCommand === "resume"
+          ? GOAL_RESUME_TURN_GRACE_MS
+          : ZERO_WORK_SETTLEMENT_GRACE_MS,
+    });
+    return;
+  }
 
   const compaction = isStandaloneBuiltinCompactCommand(input);
   try {
@@ -2244,6 +2220,9 @@ async function handleThreadStop(
     return;
   }
 
+  if (session.goalStatus === "active") {
+    await pauseActiveGoalForInterrupt(session, session.codexThreadId);
+  }
   const interruptFailure = await interruptCodexTurn(
     session,
     session.codexThreadId,
@@ -2279,6 +2258,109 @@ async function handleThreadStop(
   );
   await releaseSession(session);
   sendResult(id, { ok: true });
+}
+
+async function setCodexGoalStatus(
+  connection: CodexAppServerConnection,
+  codexThreadId: string,
+  status: "active" | "paused",
+): Promise<CodexGoal> {
+  const { goal } = await connection.request({
+    method: "thread/goal/set",
+    params: { threadId: codexThreadId, origin: "user", status },
+    resultSchema: z.object({ goal: codexThreadGoalSchema }).passthrough(),
+    timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+  });
+  return {
+    objective: goal.objective,
+    status: goal.status,
+    tokenBudget: goal.tokenBudget,
+    tokensUsed: goal.tokensUsed,
+    timeUsedSeconds: goal.timeUsedSeconds,
+  };
+}
+
+async function pauseActiveGoalForInterrupt(
+  session: CodexBridgeSession,
+  codexThreadId: string,
+): Promise<void> {
+  const connection = session.connection;
+  if (connection === null || connection.exited) {
+    return;
+  }
+  try {
+    const goal = await setCodexGoalStatus(connection, codexThreadId, "paused");
+    sendThreadDeltas(session, [
+      {
+        kind: "extension.state",
+        extensionKind: CODEX_GOAL_EXTENSION_KIND,
+        payload: goal,
+      },
+    ]);
+  } catch (error) {
+    process.stderr.write(
+      `codex goal pause before interrupt failed: ${describeCodexLaunchError(error)}\n`,
+    );
+  }
+}
+
+const codexGoalCommandSchema = z.enum(["resume", "pause", "clear"]);
+type CodexGoalCommand = z.infer<typeof codexGoalCommandSchema>;
+
+function parseCodexGoalCommand(
+  input: readonly PromptInput[],
+): CodexGoalCommand | null {
+  const texts = input.flatMap((chunk) =>
+    chunk.type === "text" ? [chunk.text] : [],
+  );
+  if (texts.length !== input.length) {
+    return null;
+  }
+  const match = /^\/goal\s+(\S+)$/u.exec(texts.join("").trim());
+  const command = codexGoalCommandSchema.safeParse(match?.[1]?.toLowerCase());
+  return command.success ? command.data : null;
+}
+
+async function runCodexGoalCommand(
+  connection: CodexAppServerConnection,
+  codexThreadId: string,
+  command: CodexGoalCommand,
+): Promise<void> {
+  const { goal } = await connection.request({
+    method: "thread/goal/get",
+    params: { threadId: codexThreadId },
+    resultSchema: z
+      .object({ goal: codexThreadGoalSchema.nullish() })
+      .passthrough(),
+    timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+  });
+  if (goal === null || goal === undefined) {
+    throw new Error(`This thread has no Goal to ${command}.`);
+  }
+  switch (command) {
+    case "clear":
+      await connection.request({
+        method: "thread/goal/clear",
+        params: { threadId: codexThreadId },
+        resultSchema: ignoredChildResultSchema,
+        timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+      });
+      return;
+    case "pause":
+      if (goal.status !== "active") {
+        throw new Error(
+          "The Goal is not active, so there is nothing to pause.",
+        );
+      }
+      await setCodexGoalStatus(connection, codexThreadId, "paused");
+      return;
+    case "resume":
+      if (goal.status === "active" || goal.status === "complete") {
+        throw new Error(`The Goal is already ${goal.status}.`);
+      }
+      await setCodexGoalStatus(connection, codexThreadId, "active");
+      return;
+  }
 }
 
 async function requestCodexTurnInterrupt(
@@ -2375,6 +2457,25 @@ function waitForCodexTurnSettlement(
 interface ThreadRefParamsShape {
   threadId: string;
   providerThreadId: string;
+}
+
+async function handleThreadGoalClear(
+  id: string | number,
+  params: ThreadRefParamsShape,
+): Promise<void> {
+  try {
+    const result = await withChildForThread(params.threadId, (connection) =>
+      connection.request({
+        method: "thread/goal/clear",
+        params: { threadId: params.providerThreadId },
+        resultSchema: z.object({ cleared: z.boolean() }),
+        timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+      }),
+    );
+    sendResult(id, result);
+  } catch (error) {
+    rejectWithCodexError(id, error);
+  }
 }
 
 async function handleThreadMaintenance(
@@ -2597,10 +2698,7 @@ async function handleRequest(
       );
       break;
     case "thread/goal/clear":
-      await handleThreadMaintenance(request.id, request.params, {
-        method: "thread/goal/clear",
-        params: { threadId: request.params.providerThreadId },
-      });
+      await handleThreadGoalClear(request.id, request.params);
       break;
     case "skills/configure":
       await handleSkillsConfigure(request.id, request.params);
@@ -2651,8 +2749,6 @@ function killAllChildren(): void {
     session.connection = null;
   }
   sessionsByBbThreadId.clear();
-  modelListConnection = null;
-  modelListConnectionPromise = null;
   for (const connection of maintenanceConnections) {
     connection.kill();
   }

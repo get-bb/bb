@@ -1,8 +1,4 @@
-import type { ContractTagDeclarations } from "@bb/domain";
-import type {
-  ContentfulStatusCode,
-  SuccessStatusCode,
-} from "hono/utils/http-status";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
 import type { ZodType } from "zod";
 import type * as z from "zod";
 import type { EmptyInput, Endpoint } from "./endpoint.js";
@@ -63,28 +59,6 @@ export type AnyRouteResponseDescriptor = RouteResponseDescriptor<
 export type RouteResponseDefinition =
   | AnyRouteResponseDescriptor
   | readonly AnyRouteResponseDescriptor[];
-
-export interface RouteTagInput<ParsedInput> {
-  params: Record<string, string>;
-  input: ParsedInput;
-}
-
-export type RouteSuccessOutput<Response> =
-  Response extends readonly AnyRouteResponseDescriptor[]
-    ? RouteSuccessOutput<Response[number]>
-    : Response extends RouteResponseDescriptor<
-          infer Output,
-          infer Status,
-          RouteResponseFormat
-        >
-      ? Status extends SuccessStatusCode
-        ? Output
-        : never
-      : never;
-
-type RouteTagParsedInput<Request> = [RouteParsedInput<Request>] extends [never]
-  ? undefined
-  : RouteParsedInput<Request>;
 
 export interface RouteDefinition<
   Path extends string = string,
@@ -150,16 +124,14 @@ type RoutePath<Descriptor> =
 
 export type ApiSchemaFromRouteUnion<Routes extends RouteDefinition> = {
   [Path in RoutePath<Routes>]: {
-    [
-      Descriptor in Routes as Descriptor extends RouteDefinition<
-        Path,
-        infer Method,
-        any,
-        any
-      >
-        ? MethodKeyFromRouteMethod<Method>
-        : never
-    ]: EndpointFromRouteDescriptor<Descriptor>;
+    [Descriptor in Routes as Descriptor extends RouteDefinition<
+      Path,
+      infer Method,
+      any,
+      any
+    >
+      ? MethodKeyFromRouteMethod<Method>
+      : never]: EndpointFromRouteDescriptor<Descriptor>;
   };
 };
 
@@ -251,23 +223,13 @@ export function formRequest<InputPrefix, FormInput>(): FormRouteRequest<
   return { source: "form" };
 }
 
-export type RouteTagDeclarations<
-  Request extends AnyRouteRequestDescriptor = AnyRouteRequestDescriptor,
-  Response extends RouteResponseDefinition = RouteResponseDefinition,
-> = ContractTagDeclarations<
-  RouteTagInput<RouteTagParsedInput<Request>>,
-  RouteSuccessOutput<Response>
->;
-
 export function defineRoute<
   const Path extends string,
   const Method extends RouteMethod,
   const Request extends AnyRouteRequestDescriptor,
   const Response extends RouteResponseDefinition,
 >(
-  definition: RouteDefinition<Path, Method, Request, Response> &
-    RouteTagDeclarations<Request, Response>,
-): RouteDefinition<Path, Method, Request, Response> &
-  RouteTagDeclarations<Request, Response> {
+  definition: RouteDefinition<Path, Method, Request, Response>,
+): RouteDefinition<Path, Method, Request, Response> {
   return definition;
 }

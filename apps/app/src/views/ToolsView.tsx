@@ -1,7 +1,32 @@
+import { AppPanelTabsPublisher } from "@/lib/app-panel-tabs";
+import { AppNavigationHostProvider } from "@/lib/app-navigation-host";
+import {
+  useAppPanelController,
+  type AppFixedTabDestination,
+} from "@/lib/app-fixed-tab-navigation";
+import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
+import type { TerminalSession } from "@bb/server-contract";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import { useAtom } from "jotai";
 import { PluginSettingsPage } from "@/components/plugin/PluginSettings";
-import { pluginWorkspaceAtom } from "@/components/plugin/plugin-workspace-state";
+import {
+  PLUGINS_BROWSE_PANEL_STATE_ID,
+  takeLegacyPluginWorkspaceTabs,
+} from "@/components/plugin/plugin-workspace-state";
+import { PluginDetailTabContent } from "@/components/plugin/plugin-detail-navigation";
+import { usePanelTabPresenter } from "@/components/secondary-panel/usePanelTabPresenter";
+import { useThreadFileTabs } from "@/components/secondary-panel/useThreadFileTabs";
+import {
+  useFixedPanelTabsState,
+  useGetFixedPanelTabsState,
+  useUpdateFixedPanelTabsState,
+} from "@/lib/fixed-panel-tabs";
+import {
+  createPluginDetailFixedPanelTab,
+  type PluginDetailFixedPanelTab,
+} from "@/lib/fixed-panel-tabs-state";
+import { setSecondaryPanelTabsInState } from "@bb/client-core";
+import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
+import { getBbDesktopInfo } from "@/lib/bb-desktop";
 import { useSetPluginEnabled } from "@/components/plugin/useSetPluginEnabled";
 import {
   Suspense,
@@ -65,17 +90,15 @@ import {
 import { getToolsOwnedCollectionRoutePath } from "@/components/tools/tools-navigation";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { SkillsLibrary } from "@/components/tools/SkillsLibrary";
-import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { pluginToast } from "@/components/plugin/PluginNotificationDescription";
 import {
   SecondaryPanelLayout,
   type SecondaryPanelRenderArgs,
 } from "@/components/secondary-panel/SecondaryPanelLayout";
+import { secondaryPanelWidthPercentAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { ThreadSecondaryPanel } from "@/components/secondary-panel/ThreadSecondaryPanel";
-import type {
-  SecondaryPanelRenderableTab,
-  SecondaryPanelTabReorderHandler,
-} from "@/components/secondary-panel/secondaryPanelTab";
+import type { SecondaryPanelRenderableTab } from "@/components/secondary-panel/secondaryPanelTab";
+import type { SecondaryPanelFixedTab } from "@/components/secondary-panel/ThreadSecondaryPanel";
 
 function ResourceBodyFallback() {
   return (
@@ -460,47 +483,96 @@ export function PluginDetailPaneView({ pluginId }: { pluginId: string }) {
   );
 }
 
+const NO_TERMINALS: ReadonlyMap<string, TerminalSession> = new Map();
+const NO_PANEL_DESTINATIONS: readonly AppFixedTabDestination[] = [];
+const BROWSE_TAB_CONTEXT = { kind: "thread" } as const;
+const NO_FIXED_TABS: readonly SecondaryPanelFixedTab[] = [];
+
 export function PluginsView({ detailKey }: { detailKey?: string } = {}) {
   const location = useLocation();
   const navigate = useNavigate();
   const focusReturnRef = useRef<HTMLButtonElement | null>(null);
   const [isPluginDetailFullPage, setIsPluginDetailFullPage] = useState(false);
-  const [workspace, setWorkspace] = useAtom(pluginWorkspaceAtom);
   const isCompact = useIsCompactViewport();
-  const activePluginId = detailKey ?? workspace.activePluginId;
+  const panelState = useFixedPanelTabsState(
+    PLUGINS_BROWSE_PANEL_STATE_ID,
+    null,
+  );
+  const updatePanelState = useUpdateFixedPanelTabsState(
+    PLUGINS_BROWSE_PANEL_STATE_ID,
+    null,
+  );
+  const getPanelState = useGetFixedPanelTabsState(
+    PLUGINS_BROWSE_PANEL_STATE_ID,
+  );
+  const {
+    closeTab: closePanelTab,
+    openPluginDetail,
+    orderedSecondaryFileTabs,
+    reorderTab,
+  } = useThreadFileTabs({
+    panelStateId: PLUGINS_BROWSE_PANEL_STATE_ID,
+    syncThreadId: null,
+    environmentId: null,
+    fileOwnerThreadId: null,
+    preserveWorkspaceTabsAcrossContexts: true,
+    storageFiles: undefined,
+    terminalSessions: undefined,
+  });
+  const detailTabs = useMemo(
+    () =>
+      orderedSecondaryFileTabs.filter(
+        (tab): tab is PluginDetailFixedPanelTab => tab.kind === "plugin-detail",
+      ),
+    [orderedSecondaryFileTabs],
+  );
+  const storedActiveDetailKey = panelState.secondary.isOpen
+    ? (detailTabs.find((tab) => tab.id === panelState.secondary.activeTabId)
+        ?.detailKey ?? null)
+    : null;
+  const activePluginId = detailKey ?? storedActiveDetailKey;
   const isPanelOpen =
     activePluginId !== null && (!isCompact || detailKey !== undefined);
-  const catalogQuery = usePluginCatalogSearch("", { enabled: isPanelOpen });
-  const listQuery = usePluginList({ enabled: true });
-  const openIds = useMemo(
-    () =>
-      detailKey !== undefined && !workspace.tabs.includes(detailKey)
-        ? [...workspace.tabs, detailKey]
-        : workspace.tabs,
-    [detailKey, workspace.tabs],
-  );
+
+  useEffect(() => {
+    const legacy = takeLegacyPluginWorkspaceTabs();
+    if (legacy === null) return;
+    updatePanelState((state) => {
+      const openIds = new Set(state.secondary.tabs.map((tab) => tab.id));
+      const legacyTabs = legacy.detailKeys
+        .map((key) =>
+          createPluginDetailFixedPanelTab({ detailKey: key, title: key }),
+        )
+        .filter((tab) => !openIds.has(tab.id));
+      const activeTab =
+        legacy.activeDetailKey === null
+          ? null
+          : createPluginDetailFixedPanelTab({
+              detailKey: legacy.activeDetailKey,
+              title: legacy.activeDetailKey,
+            });
+      return setSecondaryPanelTabsInState({
+        state,
+        tabs: [...state.secondary.tabs, ...legacyTabs],
+        activeTabId: activeTab?.id ?? state.secondary.activeTabId,
+        isOpen: activeTab !== null || state.secondary.isOpen,
+      });
+    });
+  }, [updatePanelState]);
 
   useEffect(() => {
     if (detailKey === undefined) return;
-    setWorkspace((current) =>
-      current.activePluginId === detailKey && current.tabs.includes(detailKey)
-        ? current
-        : {
-            tabs: current.tabs.includes(detailKey)
-              ? current.tabs
-              : [...current.tabs, detailKey],
-            activePluginId: detailKey,
-          },
-    );
-  }, [detailKey, setWorkspace]);
+    openPluginDetail({ detailKey, title: detailKey });
+  }, [detailKey, openPluginDetail]);
 
   const selectPlugin = useCallback(
     (nextDetailKey: string) => {
+      openPluginDetail({ detailKey: nextDetailKey, title: nextDetailKey });
       const params = new URLSearchParams(location.search);
       params.delete("configure");
       navigate(pluginDetailLocation(nextDetailKey, params.toString()));
     },
-    [location.search, navigate],
+    [location.search, navigate, openPluginDetail],
   );
   const openPlugin = useCallback(
     (nextDetailKey: string, trigger: HTMLButtonElement) => {
@@ -517,84 +589,78 @@ export function PluginsView({ detailKey }: { detailKey?: string } = {}) {
   }, []);
   const closePanel = useCallback(() => {
     setIsPluginDetailFullPage(false);
-    setWorkspace((current) => ({ ...current, activePluginId: null }));
+    updatePanelState((state) => ({
+      ...state,
+      secondary: { ...state.secondary, isOpen: false },
+    }));
     const params = new URLSearchParams(withoutPluginListing(location.search));
     params.delete("configure");
     navigate({ pathname: getPluginsRoutePath(), search: params.toString() });
     restoreFocus();
-  }, [location.search, navigate, restoreFocus, setWorkspace]);
+  }, [location.search, navigate, restoreFocus, updatePanelState]);
   const closeTab = useCallback(
-    (closedPluginId: string) => {
-      const tabs = openIds.filter((id) => id !== closedPluginId);
-      const closedIndex = openIds.indexOf(closedPluginId);
+    (closedDetailKey: string) => {
+      const openDetailTabs = () =>
+        getPanelState().secondary.tabs.filter(
+          (tab): tab is PluginDetailFixedPanelTab =>
+            tab.kind === "plugin-detail",
+        );
+      const before = openDetailTabs();
+      const closedIndex = before.findIndex(
+        (tab) => tab.detailKey === closedDetailKey,
+      );
+      const closedTab = before[closedIndex];
+      if (closedTab === undefined) return;
+      closePanelTab(closedTab.id);
+      if (activePluginId !== closedDetailKey) return;
+      const remaining = openDetailTabs();
       const next =
-        activePluginId === closedPluginId
-          ? (tabs[Math.min(closedIndex, tabs.length - 1)] ?? null)
-          : activePluginId;
-      setWorkspace({ tabs, activePluginId: next });
-      if (next !== null) selectPlugin(next);
+        remaining[Math.min(closedIndex, remaining.length - 1)] ?? null;
+      if (next !== null) selectPlugin(next.detailKey);
       else closePanel();
     },
-    [activePluginId, closePanel, openIds, selectPlugin, setWorkspace],
+    [activePluginId, closePanel, closePanelTab, getPanelState, selectPlugin],
   );
-  const reorderTab = useCallback<SecondaryPanelTabReorderHandler>(
-    ({ activeTabId, overTabId }) => {
-      const tabs = [...openIds];
-      const from = tabs.findIndex(
-        (id) => `marketplace-plugin:${id}` === activeTabId,
-      );
-      const to = tabs.findIndex(
-        (id) => `marketplace-plugin:${id}` === overTabId,
-      );
-      if (from < 0 || to < 0 || from === to) return;
-      const moving = tabs.splice(from, 1)[0];
-      if (moving === undefined) return;
-      tabs.splice(to, 0, moving);
-      setWorkspace((current) => ({ ...current, tabs }));
-    },
-    [openIds, setWorkspace],
-  );
+  const closeActiveTab = useCallback(() => {
+    if (!isPanelOpen || activePluginId === null) return false;
+    closeTab(activePluginId);
+    return true;
+  }, [activePluginId, closeTab, isPanelOpen]);
+  useAppCommandHandler("panel.close", closeActiveTab);
+  useEffect(() => {
+    return getBbDesktopInfo()?.onCloseWindowRequest?.(closeActiveTab);
+  }, [closeActiveTab]);
+  const presentPanelTab = usePanelTabPresenter({
+    tabs: detailTabs,
+    terminalsById: NO_TERMINALS,
+    pluginActions: [],
+  });
   const panelTabs = useMemo<readonly SecondaryPanelRenderableTab[]>(
     () =>
-      openIds.map((id) => {
-        const { plugin, entry } = resolvePluginDetailKey(
-          id,
-          listQuery.data?.plugins ?? [],
-          catalogQuery.data?.entries ?? [],
-        );
-        return {
-          contentFillsRegion: true,
-          label: entry?.displayName ?? plugin?.name ?? id,
-          leadingVisual: (
-            <PluginIcon
-              pluginId={plugin?.id ?? entry?.pluginId ?? id}
-              icon={entry?.icon ?? plugin?.icon ?? null}
-              compactIconUrl={plugin?.compactIconUrl}
-              className="size-3.5"
-            />
-          ),
-          onClose: () => closeTab(id),
-          onSelect: () => selectPlugin(id),
-          renderContent: () => <PluginDetailToolView key={id} detailKey={id} />,
-          statusLabel: null,
-          tab: {
-            id: `marketplace-plugin:${id}`,
-            kind: "marketplace-plugin-detail",
-          },
-        };
-      }),
-    [
-      catalogQuery.data?.entries,
-      closeTab,
-      listQuery.data?.plugins,
-      openIds,
-      selectPlugin,
-    ],
+      detailTabs.map((tab) => ({
+        ...presentPanelTab(tab),
+        tab,
+        renderContent: () => (
+          <PluginDetailTabContent detailKey={tab.detailKey} />
+        ),
+        onSelect: () => selectPlugin(tab.detailKey),
+        onClose: () => closeTab(tab.detailKey),
+      })),
+    [closeTab, detailTabs, presentPanelTab, selectPlugin],
   );
   const activeTab =
-    panelTabs.find(
-      (tab) => tab.tab.id === `marketplace-plugin:${activePluginId}`,
-    )?.tab ?? null;
+    detailTabs.find((tab) => tab.detailKey === activePluginId) ?? null;
+  const paneContext = useOptionalPaneContext();
+  const panelController = useAppPanelController({
+    activeTabId: isPanelOpen ? (activeTab?.id ?? null) : null,
+    close: closePanel,
+    destinations: NO_PANEL_DESTINATIONS,
+    isFocused: paneContext?.isFocused ?? true,
+  });
+  const navigationCapabilities = useMemo(
+    () => ({ panel: panelController }),
+    [panelController],
+  );
   const mainContent = (
     <div className="min-h-0 flex-1 overflow-hidden">
       <Suspense fallback={<ResourceBodyFallback />}>
@@ -611,7 +677,6 @@ export function PluginsView({ detailKey }: { detailKey?: string } = {}) {
     }: SecondaryPanelRenderArgs) => (
       <ThreadSecondaryPanel
         activeTab={activeTab}
-        canUseGitUi={false}
         metadataContent={null}
         tabs={panelTabs}
         fixedTabs={[]}
@@ -633,26 +698,37 @@ export function PluginsView({ detailKey }: { detailKey?: string } = {}) {
   );
 
   return (
-    <div className="-mx-4 -mb-4 -mt-4 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:-mx-5 md:-mb-5 md:-mt-5">
-      <SecondaryPanelLayout
-        open={isPanelOpen}
-        onToggle={isPanelOpen ? closePanel : () => undefined}
-        onClose={closePanel}
-        panelGroupKey="extensions-plugin-details"
-        resetKey="extensions-plugin-details"
-        contentKey={activePluginId ?? "extensions-plugins"}
-        drawerLabel="Plugin details"
-        drawerFallback={<ResourceBodyFallback />}
-        mainPanelId="extensions-main-panel"
-        main={mainContent}
-        collapse={{
-          active: isPluginDetailFullPage,
-          onToggle: () => setIsPluginDetailFullPage((current) => !current),
-        }}
-        renderPanel={renderPanel}
-        composerHost={null}
+    <AppNavigationHostProvider capabilities={navigationCapabilities}>
+      <AppPanelTabsPublisher
+        publish={panelController.publishTabs}
+        activeTabId={activeTab?.id ?? null}
+        actionContext={BROWSE_TAB_CONTEXT}
+        fixedTabs={NO_FIXED_TABS}
+        isOpen={isPanelOpen}
+        tabs={panelTabs}
       />
-    </div>
+      <div className="-mx-4 -mb-4 -mt-4 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:-mx-5 md:-mb-5 md:-mt-5">
+        <SecondaryPanelLayout
+          open={isPanelOpen}
+          onToggle={isPanelOpen ? closePanel : () => undefined}
+          onClose={closePanel}
+          panelGroupKey="extensions-plugin-details"
+          resetKey="extensions-plugin-details"
+          contentKey={activePluginId ?? "extensions-plugins"}
+          drawerLabel="Plugin details"
+          drawerFallback={<ResourceBodyFallback />}
+          mainPanelId="extensions-main-panel"
+          main={mainContent}
+          collapse={{
+            active: isPluginDetailFullPage,
+            onToggle: () => setIsPluginDetailFullPage((current) => !current),
+          }}
+          renderPanel={renderPanel}
+          composerHost={null}
+          widthPercentAtom={secondaryPanelWidthPercentAtom}
+        />
+      </div>
+    </AppNavigationHostProvider>
   );
 }
 

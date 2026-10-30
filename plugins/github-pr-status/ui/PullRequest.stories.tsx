@@ -10,6 +10,7 @@ import {
   PullRequestActionButtons,
   PullRequestLink,
 } from "./PullRequestContextSegment";
+import { PullRequestContextCardRowView } from "./PullRequestContextCardRow";
 import { PullRequestRow } from "./PullRequestInfoRow";
 
 export default {
@@ -72,7 +73,7 @@ const SELF = {
   key: "bb--github-pr-status/pull-request",
   pluginId: "bb--github-pr-status",
 };
-const CHANGED_FILES = { key: "bb--core/changed-files", pluginId: "bb--core" };
+const CHANGED_FILES = { key: "bb--git/changed-files", pluginId: "bb--git" };
 const PARENT = { key: "bb--core/parent-thread", pluginId: "bb--core" };
 
 function SegmentStage({
@@ -458,5 +459,167 @@ export function InfoRow() {
         </RowStage>
       </StoryRow>
     </StoryList>
+  );
+}
+
+const PASSING_CHECKS = {
+  state: "passing" as const,
+  totalCount: 3,
+  passedCount: 3,
+  failedCount: 0,
+  pendingCount: 0,
+};
+
+const CARD_PULL_REQUESTS: readonly {
+  label: string;
+  pullRequest: PullRequest;
+}[] = [
+  { label: "open, ready to merge", pullRequest: makePullRequest() },
+  {
+    label: "open, review requested",
+    pullRequest: makePullRequest({
+      review: { state: "review_required", reviewRequestCount: 1 },
+      mergeability: {
+        state: "blocked",
+        mergeStateStatus: "BLOCKED",
+        mergeable: "MERGEABLE",
+      },
+      attention: "review_requested",
+    }),
+  },
+  {
+    label: "open, checks pending",
+    pullRequest: makePullRequest({
+      checks: {
+        ...PASSING_CHECKS,
+        state: "pending",
+        passedCount: 2,
+        pendingCount: 1,
+      },
+      mergeability: {
+        state: "blocked",
+        mergeStateStatus: "BLOCKED",
+        mergeable: "MERGEABLE",
+      },
+      attention: "checks_pending",
+    }),
+  },
+  {
+    label: "open, checks failing",
+    pullRequest: makePullRequest({
+      checks: {
+        ...PASSING_CHECKS,
+        state: "failing",
+        passedCount: 2,
+        failedCount: 1,
+      },
+      mergeability: {
+        state: "blocked",
+        mergeStateStatus: "BLOCKED",
+        mergeable: "MERGEABLE",
+      },
+      attention: "checks_failed",
+    }),
+  },
+  {
+    label: "open, changes requested",
+    pullRequest: makePullRequest({
+      review: { state: "changes_requested", reviewRequestCount: 0 },
+      mergeability: {
+        state: "blocked",
+        mergeStateStatus: "BLOCKED",
+        mergeable: "MERGEABLE",
+      },
+      attention: "changes_requested",
+    }),
+  },
+  {
+    label: "open, conflicts",
+    pullRequest: makePullRequest({
+      mergeability: {
+        state: "conflicts",
+        mergeStateStatus: "DIRTY",
+        mergeable: "CONFLICTING",
+      },
+      attention: "conflicts",
+    }),
+  },
+  {
+    label: "open, auto-merge, checks running",
+    pullRequest: makePullRequest({
+      autoMerge: true,
+      checks: {
+        ...PASSING_CHECKS,
+        state: "pending",
+        passedCount: 2,
+        pendingCount: 1,
+      },
+      mergeability: {
+        state: "blocked",
+        mergeStateStatus: "BLOCKED",
+        mergeable: "MERGEABLE",
+      },
+      attention: "checks_pending",
+    }),
+  },
+  {
+    label: "open, queued with auto-merge",
+    pullRequest: makePullRequest({
+      autoMerge: true,
+      inMergeQueue: true,
+      attention: "queued",
+    }),
+  },
+  {
+    label: "draft",
+    pullRequest: makePullRequest({
+      state: "draft",
+      mergeability: {
+        state: "draft",
+        mergeStateStatus: "DRAFT",
+        mergeable: "MERGEABLE",
+      },
+      attention: "draft",
+    }),
+  },
+  {
+    label: "merged",
+    pullRequest: makePullRequest({ state: "merged", attention: "merged" }),
+  },
+  {
+    label: "closed",
+    pullRequest: makePullRequest({ state: "closed", attention: "closed" }),
+  },
+];
+
+const CARD_HANDLERS = {
+  isPending: false,
+  onOpen: noop,
+  onCopyLink: noop,
+  onMarkReady: noop,
+  onMarkDraft: noop,
+  onMerge: noop,
+};
+
+export function ContextCardRow() {
+  return (
+    <div className="flex flex-col gap-2 p-4">
+      {CARD_PULL_REQUESTS.map(({ label, pullRequest }) => (
+        <div key={label} className="flex items-center gap-4">
+          <span className="w-44 shrink-0 text-xs text-muted-foreground">
+            {label}
+          </span>
+          <div
+            data-story-card=""
+            className="w-72 shrink-0 rounded-2xl border border-border bg-popover p-2 text-popover-foreground"
+          >
+            <PullRequestContextCardRowView
+              pullRequest={pullRequest}
+              handlers={CARD_HANDLERS}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }

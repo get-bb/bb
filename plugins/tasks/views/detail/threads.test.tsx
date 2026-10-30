@@ -3,6 +3,7 @@ import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { makeTask, rpcInput } from "../../test-fixtures.js";
+import { threadsChangedTags } from "../../shared/tags";
 
 if (!window.matchMedia) {
   window.matchMedia = (query: string) => ({
@@ -148,7 +149,7 @@ describe("task detail pull request pills", () => {
     expect(slot.queryByRole("link")).toBeNull();
   });
 
-  it("detaches a thread from its card after confirmation and refetches the list", async () => {
+  it("detaches a thread from its card after confirmation and refreshes when the server invalidates", async () => {
     let detached = false;
     const slot = renderSlot(
       app.navPanels[0]!,
@@ -177,6 +178,7 @@ describe("task detail pull request pills", () => {
         input: { taskId: TASK_ID, threadId: "thr_worker000" },
       });
     });
+    await slot.behavior.experimental_invalidateRpc(threadsChangedTags(TASK_ID));
     await waitFor(() => expect(slot.queryByText("Worker")).toBeNull());
   });
 

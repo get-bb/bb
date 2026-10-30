@@ -118,6 +118,7 @@ describe("fetchThreadPendingTodos", () => {
       modelFallback: null,
       rows: [],
       maxSeq: 0,
+      tag: "timeline-0",
       timelinePage: {
         returnedSegmentCount: 0,
         olderCursor: null,

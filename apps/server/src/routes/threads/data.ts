@@ -250,7 +250,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
           page: parseThreadTimelinePage(query),
           summaryOnly: query.summaryOnly === "true",
         },
-        parseOptionalInteger(query.afterSequence, "afterSequence"),
+        query.afterTag,
       ),
     );
   });

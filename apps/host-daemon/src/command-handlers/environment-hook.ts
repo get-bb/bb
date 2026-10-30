@@ -102,6 +102,18 @@ export async function runEnvironmentHook(
   return done;
 }
 
+export async function cancelEnvironmentHooks(
+  runtimeManager: CommandDispatchOptions["runtimeManager"],
+): Promise<void> {
+  const running = [...(operations.get(runtimeManager)?.values() ?? [])].filter(
+    (operation) => operation !== "cancelled",
+  );
+  for (const operation of running) operation.controller.abort();
+  await Promise.all(
+    running.map((operation) => operation.done.catch(() => undefined)),
+  );
+}
+
 export async function cancelEnvironmentHook(
   command: CommandOf<"environment.hook.cancel">,
   options: CommandDispatchOptions,

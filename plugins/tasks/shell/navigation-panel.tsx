@@ -6,7 +6,6 @@ import {
   useProjects,
   useSidebarSummary,
 } from "./data.js";
-import { TasksRefreshProvider } from "./refresh.js";
 import { parseTasksRoute, useTasksNavigation } from "./routes.js";
 import { TasksSidebar } from "./sidebar.js";
 import { NewProjectDialog } from "../views/manage/new-project-dialog.js";
@@ -54,9 +53,5 @@ function TasksNavigationPanelContent({ subPath }: PluginNavPanelProps) {
 }
 
 export function TasksNavigationPanel(props: PluginNavPanelProps) {
-  return (
-    <TasksRefreshProvider>
-      <TasksNavigationPanelContent {...props} />
-    </TasksRefreshProvider>
-  );
+  return <TasksNavigationPanelContent {...props} />;
 }

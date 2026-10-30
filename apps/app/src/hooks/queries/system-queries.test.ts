@@ -388,6 +388,7 @@ describe("useSystemExecutionOptions", () => {
     model: "gpt-5.6-sol",
     displayName: "GPT-5.6 Sol",
     description: "",
+    reasoningDiscovery: "known" as const,
     supportedReasoningEfforts: [],
     defaultReasoningEffort: "medium",
     isDefault: true,
@@ -686,30 +687,25 @@ describe("useSystemExecutionOptions", () => {
     expect(otherHost.data).toBeUndefined();
   });
 
-  it("prefetches sibling catalogs without touching remembered localStorage catalogs", async () => {
-    vi.mocked(sdk.system.executionOptions).mockImplementation(async (args) => ({
-      ...CODEX_CATALOG,
-      models: [{ ...CODEX_MODEL, id: `${args?.providerId}-model` }],
-    }));
+  it("prefetches a provider catalog without touching remembered localStorage catalogs", async () => {
+    vi.mocked(sdk.system.executionOptions).mockResolvedValue(CODEX_CATALOG);
     const { queryClient } = createQueryClientTestHarness();
 
     prefetchSystemExecutionOptions(queryClient, {
       routing: { hostId: "host-a" },
-      providerIds: ["codex", "pi"],
+      providerId: "codex",
     });
 
     await vi.waitFor(() => {
-      for (const providerId of ["codex", "pi"]) {
-        expect(
-          queryClient.getQueryData<SystemExecutionOptionsResponse>(
-            systemExecutionOptionsQueryKey({
-              environmentId: null,
-              hostId: "host-a",
-              providerId,
-            }),
-          )?.models[0]?.id,
-        ).toBe(`${providerId}-model`);
-      }
+      expect(
+        queryClient.getQueryData<SystemExecutionOptionsResponse>(
+          systemExecutionOptionsQueryKey({
+            environmentId: null,
+            hostId: "host-a",
+            providerId: "codex",
+          }),
+        ),
+      ).toEqual(CODEX_CATALOG);
     });
     expect(storage.length).toBe(0);
   });

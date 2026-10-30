@@ -1,6 +1,5 @@
 import { useCallback, useContext, useMemo, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
   ThreadChatMessageAction,
   ThreadChatProps,
@@ -12,34 +11,46 @@ import {
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { PromptMentionLinkResolver } from "@bb/client-core";
-import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
-import { EmbeddedThreadChat } from "@/components/thread/embedded-chat";
+import { isThreadForkable } from "@bb/client-core";
 import {
-  ThreadTimelinePanelContent,
+  useThreadTimelineController,
   type ThreadTimelineConsumerMessageAction,
+  type ThreadTimelineForkMessageHandler,
 } from "@/components/thread/timeline";
 import { useThreadTimelineNavigation } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { PluginContext } from "@/components/plugin/plugin-context";
+import { PluginComposerHostScopeProvider } from "@/components/plugin/plugin-composer-host";
 import { ThreadProviderContext } from "@/components/thread/thread-provider-context";
 import { useEnvironment } from "@/hooks/queries/environment-queries";
-import { useProjectDisplayName } from "@/hooks/queries/sidebar-navigation-query";
 import { useSystemProviderInfo } from "@/hooks/queries/system-queries";
 import { useThread } from "@/hooks/queries/thread-queries";
+import { useMarkThreadRead } from "@/hooks/mutations/thread-state-mutations";
+import { useForkThreadFromMessage } from "@/hooks/useForkThreadFromMessage";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
+import { useThreadReadTracking } from "@/hooks/useThreadReadTracking";
 import { useHosts } from "@/hooks/queries/host-queries";
 import {
   findEnvironmentDisplayProvider,
   getEnvironmentSummaryChrome,
+  isHostAmbiguous,
 } from "@/lib/environment-workspace-display";
 import { useSystemEnvironmentProviders } from "@/hooks/queries/environment-provider-queries";
 import { useSystemMachineProviders } from "@/hooks/queries/machine-provider-queries";
-import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
+import {
+  formatWorkspaceCheckoutDisplay,
+} from "@bb/shared-ui/lib/workspace-checkout-display";
 import { BbHttpError } from "@/lib/sdk";
 import { ThreadChatLoadingBody } from "@/components/thread/timeline/ThreadChatLoading";
 import {
   getProjectComposeRoutePath,
   getThreadRoutePath,
+  type ThreadRoutePathArgs,
 } from "@/lib/route-paths";
+import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
+import {
+  ThreadScreen,
+  type ThreadScreenPresentation,
+} from "@/views/thread-detail/ThreadScreen";
 
 export function PluginThreadChat({
   threadId,
@@ -91,9 +102,16 @@ function PluginThreadChatBody({
 }: PluginThreadChatBodyProps) {
   const threadQuery = useThread(threadId, { enabled: threadId.length > 0 });
   const thread = threadQuery.data;
-  const projectName = useProjectDisplayName(
-    thread?.projectId === PERSONAL_PROJECT_ID ? undefined : thread?.projectId,
-  );
+  const hasComposer = variant !== "timeline";
+  const timeline = useThreadTimelineController({
+    enabled: threadId.length > 0,
+    threadId,
+  });
+  const markThreadRead = useMarkThreadRead();
+  useThreadReadTracking({
+    markThreadRead,
+    thread: hasComposer ? thread : undefined,
+  });
   const threadProviderInfo = useSystemProviderInfo(
     thread?.environmentId
       ? {
@@ -115,6 +133,33 @@ function PluginThreadChatBody({
     [thread?.providerId, threadProviderPluginId],
   );
   const navigate = useNavigate();
+  const paneNavigateInPane = useOptionalPaneContext()?.navigateInPane;
+  const navigateToThread = useCallback(
+    (target: ThreadRoutePathArgs) => {
+      if (paneNavigateInPane) {
+        paneNavigateInPane(target);
+        return;
+      }
+      navigate(getThreadRoutePath(target));
+    },
+    [navigate, paneNavigateInPane],
+  );
+  const forkThreadFromMessage = useForkThreadFromMessage({
+    navigateInPane: navigateToThread,
+    sourceThread: thread ?? null,
+  });
+  const handleForkMessage = useCallback<ThreadTimelineForkMessageHandler>(
+    (target) => {
+      void forkThreadFromMessage(target);
+    },
+    [forkThreadFromMessage],
+  );
+  const isForkAvailable =
+    hasComposer &&
+    isThreadForkable(
+      thread ?? null,
+      threadProviderInfo?.capabilities.supportsFork ?? false,
+    );
   const { isLocalDaemonHost } = useHostDaemon();
   const environmentQuery = useEnvironment(thread?.environmentId ?? null);
   const environment = environmentQuery.data ?? null;
@@ -187,9 +232,9 @@ function PluginThreadChatBody({
     [navigate, resolveHostMentionLink, thread?.projectId],
   );
 
-  const environmentSummary = useMemo(() => {
+  const environmentChrome = useMemo(() => {
     if (environment === null) {
-      return null;
+      return undefined;
     }
     const host: EnvironmentDisplayHostContext = {
       locality: isLocalDaemonHost(environment.hostId) ? "local" : "remote",
@@ -204,35 +249,13 @@ function PluginThreadChatBody({
       host,
       providerLookup,
     });
-    const chrome = getEnvironmentSummaryChrome({
+    return getEnvironmentSummaryChrome({
       display,
       providerLookup,
       hasMultipleMachines,
       host: environmentHost,
       machineProviders,
     });
-    return (
-      <ThreadEnvironmentSummary
-        projectName={projectName}
-        environmentLabel={chrome.environmentLabel}
-        environmentCompactLabel={chrome.environmentCompactLabel}
-        environmentHost={chrome.environmentHost}
-        environmentIcon={chrome.environmentIcon}
-        environmentMachineProvider={chrome.environmentMachineProvider}
-        environmentProviderName={chrome.environmentProviderName}
-        environmentCheckout={
-          environment.branchName
-            ? formatWorkspaceCheckoutDisplay({
-                checkout: {
-                  kind: "branch",
-                  branchName: environment.branchName,
-                  headSha: null,
-                },
-              })
-            : undefined
-        }
-      />
-    );
   }, [
     environment,
     environmentHost,
@@ -240,8 +263,16 @@ function PluginThreadChatBody({
     hasMultipleMachines,
     isLocalDaemonHost,
     machineProviders,
-    projectName,
   ]);
+  const environmentCheckout = environment?.branchName
+    ? formatWorkspaceCheckoutDisplay({
+        checkout: {
+          kind: "branch",
+          branchName: environment.branchName,
+          headSha: null,
+        },
+      })
+    : undefined;
 
   const isThreadMissing =
     threadQuery.error instanceof BbHttpError &&
@@ -262,70 +293,55 @@ function PluginThreadChatBody({
     );
   }
 
-  if (variant === "timeline") {
-    const transcript = (
-      <ThreadTimelinePanelContent
-        leadingContent={leadingContent}
-        consumerMessageActions={consumerMessageActions}
-        includePluginMessageActions={false}
-        onOpenLink={onOpenLink}
-        onOpenLocalFileLink={onOpenLocalFileLink}
-        projectId={thread.projectId}
-        resolveMentionLink={resolveMentionLink}
-        surfaceKey={`plugin-thread-chat:${threadId}`}
-        threadId={threadId}
-        workspaceRootPath={workspaceRootPath}
-      />
-    );
-    return (
-      <ThreadProviderContext.Provider value={threadProviderContextValue}>
-        {layout === "contained" ? (
-          <div className="min-h-0 flex-1 overflow-y-auto bg-background px-2 pb-3 pt-3">
-            {transcript}
-          </div>
-        ) : (
-          <div className="bg-background px-2 pb-3 pt-3">{transcript}</div>
-        )}
-      </ThreadProviderContext.Provider>
-    );
-  }
-
+  const presentation: ThreadScreenPresentation =
+    variant === "timeline"
+      ? { kind: "transcript", layout }
+      : {
+          kind: "panel",
+          layout,
+          measure: variant === "full" ? "page" : "panel",
+          tone: variant === "compact" ? "sidebar" : "background",
+        };
   return (
     <ThreadProviderContext.Provider value={threadProviderContextValue}>
-      <EmbeddedThreadChat
-        variant="compact"
-        layout={layout}
-        measure={variant === "full" ? "page" : "panel"}
-        surfaceTone={variant === "compact" ? "sidebar" : "background"}
-        threadId={threadId}
-        projectId={thread.projectId}
-        providerId={thread.providerId}
-        promptContextEnvironmentId={thread.environmentId}
-        resolveMentionLink={resolveMentionLink}
-        leadingContent={leadingContent}
-        consumerMessageActions={consumerMessageActions}
-        includePluginMessageActions={false}
-        onOpenLink={onOpenLink}
-        onOpenLocalFileLink={onOpenLocalFileLink}
-        workspaceRootPath={workspaceRootPath}
-        composer={{
-          draftScope: {
-            kind: "thread",
-            projectId: thread.projectId,
-            threadId,
-          },
-          executionDefaultsThreadId: threadId,
-          executionResetKey: threadId,
-          executionEnvironmentId: thread.environmentId ?? undefined,
-          executionEnvironmentHostId: environment?.hostId,
-          permissionPolicy:
-            permissionPolicy === "editable" ? "editable" : "snapshot",
-          environmentSummary,
-          pluginComposerBottomScope: { kind: "thread", threadId },
-          composerIdentity: `plugin-thread-chat:${threadId}`,
-          focusRequestKey: focusRequest,
-        }}
-      />
+      <PluginComposerHostScopeProvider>
+        <ThreadScreen
+          composer={
+            hasComposer
+              ? {
+                  environmentCheckout,
+                  environmentChrome,
+                  focusRequest,
+                  contextEnvironmentId: null,
+                  permissionPolicy:
+                    permissionPolicy === "editable" ? "editable" : "snapshot",
+                }
+              : null
+          }
+          environment={environment}
+          presentation={presentation}
+          projectId={thread.projectId}
+          resolveMentionLink={resolveMentionLink}
+          thread={thread}
+          timeline={timeline}
+          timelineHost={{
+            consumerMessageActions,
+            environmentHostName:
+              environmentHost !== null &&
+              isHostAmbiguous(hasMultipleMachines, environmentHost.type)
+                ? environmentHost.name
+                : null,
+            includePluginMessageActions: false,
+            leadingContent,
+            onForkMessage: isForkAvailable ? handleForkMessage : undefined,
+            onOpenLink,
+            onOpenLocalFileLink,
+            unreadDividerAutoScroll: false,
+            unreadDividerPlacement: null,
+          }}
+          workspaceRootPath={workspaceRootPath}
+        />
+      </PluginComposerHostScopeProvider>
     </ThreadProviderContext.Provider>
   );
 }

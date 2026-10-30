@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { bbAppManagedEnvFileSchema } from "@bb/config/bb-app-managed-config";
 import { readFile } from "node:fs/promises";
 import { mutateManagedJsonFile } from "@bb/config/managed-json-file";
@@ -16,16 +16,47 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 const packageRoot = fileURLToPath(new URL("..", import.meta.url));
 const observer = join(packageRoot, "test/fixtures/managed-json-observer.cjs");
-const entry = join(packageRoot, "src/bin/bb-app.ts");
+let fixtureRoot: string;
+let entry: string;
 const enrollmentEntry = join(
   packageRoot,
   "test/fixtures/machine-enrollment-process.mjs",
 );
 const cleanups: Array<() => void | Promise<void>> = [];
+
+beforeAll(() => {
+  fixtureRoot = mkdtempSync(join(packageRoot, ".managed-json-cli-"));
+  entry = join(fixtureRoot, "bb-app.mjs");
+  execFileSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "--eval",
+      `
+import { buildNodeEsmEntry } from ${JSON.stringify(new URL("../../../scripts/build-utils.mjs", import.meta.url).href)};
+await buildNodeEsmEntry({
+  cleanDist: false,
+  entryPoint: process.argv[1],
+  outfile: process.argv[2],
+  packageRoot: process.argv[3],
+  sourcemap: false,
+});
+`,
+      join(packageRoot, "src/bin/bb-app.ts"),
+      entry,
+      packageRoot,
+    ],
+    { timeout: 30_000 },
+  );
+}, 30_000);
+
+afterAll(() => {
+  if (fixtureRoot) rmSync(fixtureRoot, { recursive: true, force: true });
+});
 
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
@@ -65,9 +96,9 @@ function start(
     [
       "--require",
       observer,
-      "--conditions=source",
-      "--import",
-      "tsx",
+      ...(controls.entry === undefined
+        ? []
+        : ["--conditions=source", "--import", "tsx"]),
       ...processArgs,
     ],
     {

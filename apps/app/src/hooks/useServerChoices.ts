@@ -1,27 +1,44 @@
-import { useEffect, useState } from "react";
-import { getServerChoices, type ServerChoice } from "@/lib/server-choices";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
+import {
+  getServerChoices,
+  type ServerChoice,
+  type ServerChoicesSnapshot,
+} from "@/lib/server-choices";
 
-export function useServerChoices() {
-  const [capability] = useState(getServerChoices);
-  const [choices, setChoices] = useState<ServerChoice[]>([]);
+export interface ServerChoicesState {
+  status: "loading" | "ready";
+  servers: readonly ServerChoice[];
+  switchTo(id: string): void;
+}
+
+const noServers: ServerChoicesSnapshot = { status: "ready", servers: [] };
+
+function subscribeToNothing(): () => void {
+  return () => {};
+}
+
+function readNoServers(): ServerChoicesSnapshot {
+  return noServers;
+}
+
+export function useServerChoices(): ServerChoicesState | null {
+  const choices = getServerChoices();
+  const snapshot = useSyncExternalStore(
+    choices?.subscribe ?? subscribeToNothing,
+    choices?.getSnapshot ?? readNoServers,
+  );
   useEffect(() => {
-    if (capability === null) return;
-    let disposed = false;
-    let receivedEvent = false;
-    const unsubscribe = capability.subscribe((choices) => {
-      receivedEvent = true;
-      if (!disposed) setChoices(choices);
-    });
-    void capability
-      .list()
-      .then((choices) => {
-        if (!disposed && !receivedEvent) setChoices(choices);
-      })
-      .catch(() => undefined);
-    return () => {
-      disposed = true;
-      unsubscribe();
-    };
-  }, [capability]);
-  return { choices, select: capability?.select };
+    choices?.refresh();
+  }, [choices]);
+  return useMemo(
+    () =>
+      choices === null
+        ? null
+        : {
+            status: snapshot.status,
+            servers: snapshot.servers,
+            switchTo: choices.switchTo,
+          },
+    [choices, snapshot],
+  );
 }

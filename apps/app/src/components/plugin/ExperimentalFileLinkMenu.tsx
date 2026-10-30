@@ -6,6 +6,7 @@ import {
   ContextMenuSubContent,
   ContextMenuSubTrigger,
 } from "@bb/shared-ui/context-menu";
+import { useCanOpenFileExternally } from "@/hooks/useCanOpenFileExternally";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 import { useResolvedLiveFileTarget } from "@/hooks/useResolvedLiveFileTarget";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
@@ -30,6 +31,7 @@ export function ExperimentalFileLinkMenu({
   intent: ExperimentalFileOpenOptions;
 }) {
   const navigation = useAppNavigationHost();
+  const canOpenFileExternally = useCanOpenFileExternally(intent.target);
   const resolved = useResolvedLiveFileTarget(intent.target, { enabled: true });
   const localTargets = useLocalOpenTargets({
     enabled: resolved.status === "available",
@@ -40,7 +42,9 @@ export function ExperimentalFileLinkMenu({
   const { fileOpeners } = usePluginSlots();
   const extension = getFileExtension(intent.target.path);
   const matchingOpeners =
-    extension === null
+    extension === null ||
+    (intent.target.kind === "workspace" &&
+      intent.target.experimental_ref !== undefined)
       ? []
       : fileOpeners.filter((opener) => opener.extensions.includes(extension));
   const location = getExperimentalFileLocationStart(intent.location);
@@ -81,11 +85,7 @@ export function ExperimentalFileLinkMenu({
         </ContextMenuSub>
       ) : null}
       <ContextMenuItem
-        disabled={
-          resolved.status !== "available" ||
-          localTargets.isLoading ||
-          !localTargets.canOpenPreferredFileTarget
-        }
+        disabled={!canOpenFileExternally}
         onSelect={() => navigation.openFileExternally(intent)}
       >
         Open externally

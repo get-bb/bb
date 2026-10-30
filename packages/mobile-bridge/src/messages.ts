@@ -36,6 +36,12 @@ const sharePayloadSchema = z
 export type BridgeSharePayload = z.infer<typeof sharePayloadSchema>;
 
 const bridgeRequestSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("open-application"),
+      payload: z.object({ url: z.string().max(8192) }).strict(),
+    })
+    .strict(),
   z.object({ kind: z.literal("share"), payload: sharePayloadSchema }).strict(),
   z
     .object({
@@ -75,6 +81,12 @@ export const pageToShellMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("open-external"), url: httpUrlSchema }).strict(),
   z
     .object({ type: z.literal("open-native"), screen: nativeScreenSchema })
+    .strict(),
+  z
+    .object({
+      type: z.literal("switch-server"),
+      id: z.string().min(1).max(256),
+    })
     .strict(),
   z
     .object({

@@ -6,7 +6,7 @@
   "type": "module",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.6.27"
+    "bbPluginSdk": ">=0.6.86"
   },
   "bb": {
     "name": "Storage & retention [Experimental]",

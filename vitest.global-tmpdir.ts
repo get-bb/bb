@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { killProcessesReferencingPath } from "./packages/test-helpers/src/process-sweep.js";
 
 const ACTIVE = Symbol.for("@bb/vitest-tmpdir-sandbox");
 
@@ -12,7 +13,7 @@ interface Sandbox {
 
 type SandboxHolder = { [ACTIVE]?: Sandbox };
 
-export default function setup(): () => void {
+export default function setup(): () => Promise<void> {
   const holder = globalThis as SandboxHolder;
   let sandbox = holder[ACTIVE];
   if (sandbox === undefined) {
@@ -26,7 +27,7 @@ export default function setup(): () => void {
     process.env.TMPDIR = sandbox.root;
   }
   sandbox.references += 1;
-  return () => {
+  return async () => {
     const active = holder[ACTIVE];
     if (active === undefined) return;
     active.references -= 1;
@@ -34,6 +35,7 @@ export default function setup(): () => void {
     delete holder[ACTIVE];
     if (active.previous === undefined) delete process.env.TMPDIR;
     else process.env.TMPDIR = active.previous;
+    await killProcessesReferencingPath(active.root);
     rmSync(active.root, {
       recursive: true,
       force: true,

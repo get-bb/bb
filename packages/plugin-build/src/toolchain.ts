@@ -1,15 +1,16 @@
-import { execFile } from "node:child_process";
+import {
+  execHostFile,
+  omitNpmScriptPolicyEnv,
+  hostToolchain,
+} from "@bb/process-utils";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { promisify } from "node:util";
-import { omitNpmScriptPolicyEnv } from "@bb/process-utils";
-import { resolveBundledNpmCli } from "./npm-cli.js";
 
-const run = promisify(execFile);
+const run = execHostFile;
 
 export const NODE_ESM_REQUIRE_BANNER = [
   'import { createRequire as __createRequire } from "node:module";',
@@ -163,7 +164,7 @@ export async function resolvePluginBuildToolchain(
     await run(
       process.execPath,
       [
-        resolveBundledNpmCli(),
+        hostToolchain.bundledNpmCli(),
         "install",
         "--prefix",
         staging,

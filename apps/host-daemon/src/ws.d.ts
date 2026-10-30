@@ -5,8 +5,14 @@ declare module "ws" {
 
   export type RawData = string | Buffer | ArrayBuffer | Buffer[];
 
+  export interface PerMessageDeflateOptions {
+    threshold?: number;
+    zlibDeflateOptions?: { level?: number };
+  }
+
   export interface ClientOptions {
     headers?: Record<string, string>;
+    perMessageDeflate?: boolean;
   }
 
   export class WebSocket extends EventEmitter {
@@ -41,6 +47,7 @@ declare module "ws" {
 
   export class WebSocketServer extends EventEmitter {
     clients: Set<WebSocket>;
+    options: { perMessageDeflate?: boolean | PerMessageDeflateOptions };
     constructor(options?: { noServer?: boolean; maxPayload?: number });
     handleUpgrade(
       request: IncomingMessage,

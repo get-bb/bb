@@ -37,19 +37,21 @@ never forces. The matching CLI command is
 `bb storage remove-external-worktrees --machine HOST_ID [--path PATH [--force]] --yes`.
 
 Large-file cleanup from the page starts a background job so slow folder walks
-can finish after the remote HTTP request returns. Each machine reports running,
+can finish after the remote HTTP request returns. Each machine reports queued, running,
 completed, or failed status, including after navigation or reconnection. The
 `startClearLargeFiles({hostId})` RPC starts the job; pass null for all scanned
 online machines. `bb storage usage` exposes `largeFileCleanup` status. The
 `clearLargeFiles` RPC and `bb storage clear-large-files` continue to wait for
 completion and return deleted file/byte totals.
 
-Cached reports are snapshots; rescan to see external filesystem changes. Bulk
-cleanup runs exclusively per machine. Scans run alongside cleanup; a finished
-scan leaves out entries cleared while it ran. Different stopped threads
-can clear concurrently, while duplicate clears for one thread are rejected.
-The UI starts a clear immediately, shows row progress and error toasts,
-and keeps other thread actions available. Settings save immediately without
+Cached reports are snapshots; rescan to see external filesystem changes. Cleanup requests run in FIFO order, one at a time per machine; different machines
+run independently. Duplicate background requests share the pending job. Scans run
+alongside cleanup; a finished scan leaves out entries cleared while it ran.
+Each job rechecks safety when it starts. Targets already removed by an earlier
+job are treated as handled, and force/stop permission never comes from queueing.
+The queue lives in the server process and is canceled on shutdown or plugin reload.
+The UI submits a clear immediately, reports progress, results and errors in
+toasts only, and keeps every other action available. Settings save immediately without
 success toasts; failed saves restore the previous value. Concurrent core cleanup tolerates
 missing entries. Disk measurement and deletion remain in the plugin host worker. Core emits an environment-removal notification; storage scans and cleanup stay
 in the plugin.
@@ -74,7 +76,10 @@ actual filesystem state.
 
 Orphan, development, worktree, external-worktree, and archived-file bulk cleanup can also run as
 background jobs. `startCleanup` and `startClearArchivedFiles` start them; `host`
-and `hosts` report progress. The CLI offers `bb storage cleanup` for maintenance
+and `hosts` report progress, with `maintenanceJobs` retaining a separate status per
+maintenance kind. `maintenance` remains the latest maintenance status. Individual
+thread/development cleanup uses `startEntryCleanup` and polls `entryCleanup` for
+queued/running/result status so waiting never holds a remote HTTP request open. The CLI offers `bb storage cleanup` for maintenance
 jobs and keeps synchronous cleanup commands for callers that need final totals.
 
 ## TODO

@@ -44,7 +44,7 @@ import {
 import {
   getPluginFixedTabOwnerId,
   getThreadFixedTabOwnerId,
-  openAppTabFromDestinations,
+  createAppPanelController,
   type AppFixedTabDestination,
 } from "@/lib/app-fixed-tab-navigation";
 import { useThreadFileTabs } from "../secondary-panel/useThreadFileTabs";
@@ -107,13 +107,13 @@ function Host({ context }: { context: PluginTabContext }) {
       ? {
           ...createPanelActionDestination({
             action: slot,
-            slot: "tab",
             openPluginPanel: files.openPluginPanel,
           }),
           tab: { ownerId, tabId: slot.id },
         }
       : {
           tab: { ownerId, tabId: slot.id },
+          panelTabId: () => null,
           open: () => {
             const tab = fixed.find((entry) => entry.slot === slot)?.tab;
             if (!tab) return false;
@@ -135,8 +135,11 @@ function Host({ context }: { context: PluginTabContext }) {
         <button
           key={slot.id}
           onClick={() =>
-            openAppTabFromDestinations(destinations, {
-              surface: { kind: "current" },
+            createAppPanelController(() => ({
+              activeTabId: null,
+              close: () => undefined,
+              destinations,
+            })).openTab({
               tab: { ownerId, tabId: slot.id },
               availability: slot.availability,
               ...(slot.availability === "action"
@@ -158,6 +161,7 @@ function Host({ context }: { context: PluginTabContext }) {
           {isThreadTab(entry.slot) ? (
             <entry.slot.component
               threadId={context.kind === "thread" ? context.threadId : ""}
+              environment={context.kind === "thread" ? context.environment : null}
             />
           ) : isNavTab(entry.slot) ? (
             <entry.slot.component
@@ -247,7 +251,7 @@ it.each(cases)(
     register("Details");
     const context: PluginTabContext =
       kind === "thread"
-        ? { kind, threadId: "thr_one" }
+        ? { kind, threadId: "thr_one", environment: null }
         : { kind, pluginId: "example", panelId: "board", subPath: "item/one" };
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },

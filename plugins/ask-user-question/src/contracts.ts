@@ -3,7 +3,7 @@ import { TOO_FEW_OPTIONS_MESSAGE } from "./tool-definition.js";
 
 export const ASK_USER_QUESTION_RENDERER_ID = "ask-user-question";
 
-const MAX_QUESTIONS = 4;
+const MAX_QUESTIONS = 10;
 export const MAX_OPTIONS = 4;
 const MAX_SELECTED = MAX_OPTIONS;
 const MAX_FREE_TEXT_LENGTH = 4096;
@@ -108,7 +108,7 @@ export const toolInputSchema = z.strictObject({
     .array(toolQuestionSchema)
     .min(1)
     .max(MAX_QUESTIONS)
-    .describe("Questions to ask the user (1-4 questions)"),
+    .describe("Questions to ask the user (1-10 questions)"),
 });
 export type ToolInput = z.infer<typeof toolInputSchema>;
 

@@ -3,6 +3,7 @@ import {
   type SensorProps,
   type TouchSensorOptions,
 } from "@dnd-kit/core";
+import { flushSync } from "react-dom";
 
 const TOUCH_HOLD_DELAY_MS = 500;
 const TOUCH_DRAG_DISTANCE_PX = 12;
@@ -14,6 +15,7 @@ export class SidebarTouchSensor {
   autoScrollEnabled = true;
   private readonly props: SensorProps<TouchSensorOptions>;
   private readonly document: Document;
+  private readonly touchTarget: GlobalEventHandlers;
   private readonly activator: HTMLElement | null;
   private readonly armedChip: HTMLElement | null;
   private readonly initialCoordinates: { x: number; y: number };
@@ -30,11 +32,15 @@ export class SidebarTouchSensor {
     const touch = event.touches[0];
     this.initialCoordinates = { x: touch.clientX, y: touch.clientY };
     this.document = event.target instanceof Node ? event.target.ownerDocument ?? document : document;
+    this.touchTarget =
+      event.target instanceof HTMLElement || event.target instanceof SVGElement
+        ? event.target
+        : this.document;
     this.activator = props.activeNode.activatorNode.current ?? props.activeNode.node.current;
     this.armedChip = this.activator?.querySelector("[data-sidebar-touch-armed-chip]") ?? null;
-    this.document.addEventListener("touchmove", this.handleMove, { passive: false });
-    this.document.addEventListener("touchend", this.handleEnd);
-    this.document.addEventListener("touchcancel", this.handleCancel);
+    this.touchTarget.addEventListener("touchmove", this.handleMove, { passive: false });
+    this.touchTarget.addEventListener("touchend", this.handleEnd);
+    this.touchTarget.addEventListener("touchcancel", this.handleCancel);
     this.document.addEventListener("keydown", this.handleKeyDown);
     this.document.addEventListener("visibilitychange", this.handleCancel);
     this.document.defaultView?.addEventListener("blur", this.handleCancel);
@@ -65,13 +71,13 @@ export class SidebarTouchSensor {
       if (distance > TOUCH_HOLD_TOLERANCE_PX) this.handleCancel();
       return;
     }
+    if (event.cancelable) event.preventDefault();
     if (!this.dragging) {
       if (distance <= TOUCH_DRAG_DISTANCE_PX) return;
       this.dragging = true;
       this.activator?.removeAttribute("data-sidebar-touch-armed");
-      this.props.onStart(this.initialCoordinates);
+      flushSync(() => this.props.onStart(this.initialCoordinates));
     }
-    if (event.cancelable) event.preventDefault();
     this.props.onMove(coordinates);
   };
 
@@ -95,9 +101,9 @@ export class SidebarTouchSensor {
     if (this.timer !== null) clearTimeout(this.timer);
     this.activator?.removeAttribute("data-sidebar-touch-armed");
     this.armedChip?.style.removeProperty("transform");
-    this.document.removeEventListener("touchmove", this.handleMove);
-    this.document.removeEventListener("touchend", this.handleEnd);
-    this.document.removeEventListener("touchcancel", this.handleCancel);
+    this.touchTarget.removeEventListener("touchmove", this.handleMove);
+    this.touchTarget.removeEventListener("touchend", this.handleEnd);
+    this.touchTarget.removeEventListener("touchcancel", this.handleCancel);
     this.document.removeEventListener("keydown", this.handleKeyDown);
     this.document.removeEventListener("visibilitychange", this.handleCancel);
     this.document.defaultView?.removeEventListener("blur", this.handleCancel);

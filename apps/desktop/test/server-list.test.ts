@@ -8,6 +8,8 @@ import {
   createServerTargetStore,
 } from "../src/server-target.js";
 
+const LOCAL_URL = "http://127.0.0.1:38886";
+
 function createStore() {
   return createServerTargetStore({
     storagePath: "/test/server-target.json",
@@ -37,17 +39,33 @@ describe("buildDesktopServerChoices", () => {
 
     await store.adoptConnectServers(servers);
 
-    expect(buildDesktopServerChoices(store, servers)).toEqual([
-      { id: "builtin", name: BUILTIN_SERVER_NAME, active: false },
-      { id: "connect:brsbl", name: "brsbl.getbb.app", active: false },
+    expect(buildDesktopServerChoices(store, servers, LOCAL_URL)).toEqual([
+      {
+        id: "builtin",
+        name: BUILTIN_SERVER_NAME,
+        origin: LOCAL_URL,
+        kind: "local",
+        active: false,
+      },
+      {
+        id: "connect:brsbl",
+        name: "brsbl.getbb.app",
+        origin: "https://brsbl.getbb.app",
+        kind: "account",
+        active: false,
+      },
       {
         id: "connect:brsbl-bbox",
         name: "brsbl-bbox.getbb.app",
+        origin: "https://brsbl-bbox.getbb.app",
+        kind: "account",
         active: false,
       },
       {
         id: customServerId("https://bb.example.com/team"),
         name: "bb.example.com",
+        origin: "https://bb.example.com",
+        kind: "custom",
         active: true,
       },
     ]);
@@ -70,16 +88,36 @@ describe("buildDesktopServerChoices", () => {
 
     await store.adoptConnectServers(servers);
 
-    expect(buildDesktopServerChoices(store, servers)).toEqual([
-      { id: "builtin", name: BUILTIN_SERVER_NAME, active: false },
-      { id: "connect:brsbl", name: "Studio Mac", active: false },
-      { id: "connect:brsbl-bbox", name: "Devbox", active: true },
+    expect(buildDesktopServerChoices(store, servers, LOCAL_URL)).toEqual([
+      {
+        id: "builtin",
+        name: BUILTIN_SERVER_NAME,
+        origin: LOCAL_URL,
+        kind: "local",
+        active: false,
+      },
+      {
+        id: "connect:brsbl",
+        name: "Studio Mac",
+        origin: "https://brsbl.getbb.app",
+        kind: "account",
+        active: false,
+      },
+      {
+        id: "connect:brsbl-bbox",
+        name: "Devbox",
+        origin: "https://brsbl-bbox.getbb.app",
+        kind: "account",
+        active: true,
+      },
     ]);
 
     await store.setConnectServerName("brsbl-bbox", null);
-    expect(buildDesktopServerChoices(store, servers)[2]).toEqual({
+    expect(buildDesktopServerChoices(store, servers, LOCAL_URL)[2]).toEqual({
       id: "connect:brsbl-bbox",
       name: "brsbl-bbox.getbb.app",
+      origin: "https://brsbl-bbox.getbb.app",
+      kind: "account",
       active: true,
     });
   });

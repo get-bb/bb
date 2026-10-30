@@ -18,8 +18,10 @@ import {
 
 const sdk = vi.hoisted(() => ({
   rows: {} as Record<string, EnvironmentPullRequest>,
+  settings: { showPullRequest: true } as Record<string, boolean> | undefined,
   mutate: vi.fn(async () => ({ message: "Merged" })),
   isPending: false,
+  threadContextKind: "banner" as "banner" | "card",
 }));
 
 vi.mock("@get-bb/plugin-sdk/app", () => ({
@@ -33,6 +35,8 @@ vi.mock("@get-bb/plugin-sdk/app", () => ({
     isPending: sdk.isPending,
   }),
   useBbNavigate: () => ({ openUrl: () => false }),
+  useSettings: () => ({ values: sdk.settings, isLoading: false }),
+  experimental_useThreadContextKind: () => sdk.threadContextKind,
 }));
 
 vi.mock("sonner", () => ({
@@ -69,7 +73,7 @@ const SELF = {
   key: "bb--github-pr-status/pull-request",
   pluginId: "bb--github-pr-status",
 };
-const CHANGED_FILES = { key: "bb--core/changed-files", pluginId: "bb--core" };
+const CHANGED_FILES = { key: "bb--git/changed-files", pluginId: "bb--git" };
 const PARENT = { key: "bb--core/parent-thread", pluginId: "bb--core" };
 
 function show(pullRequest: PullRequest) {
@@ -101,7 +105,9 @@ function renderPart(
 afterEach(() => {
   cleanup();
   sdk.rows = {};
+  sdk.settings = { showPullRequest: true };
   sdk.isPending = false;
+  sdk.threadContextKind = "banner";
   sdk.mutate.mockClear();
   window.localStorage.clear();
 });
@@ -128,6 +134,37 @@ describe("pull request context segment", () => {
       renderHook(() =>
         usePullRequestSegmentVisible({
           ...input,
+          environment: { id: "env_1" },
+        }),
+      ).result.current,
+    ).toBe(false);
+  });
+
+  it("hides while the pane shows thread context in the card", () => {
+    show(PULL_REQUEST);
+    sdk.threadContextKind = "card";
+    expect(
+      renderHook(() =>
+        usePullRequestSegmentVisible({
+          threadId: "thr_1",
+          projectId: "proj_1",
+          environment: { id: "env_1" },
+        }),
+      ).result.current,
+    ).toBe(false);
+  });
+
+  it.each([
+    ["off", { showPullRequest: false }],
+    ["loading", undefined],
+  ])("hides while the Show pull request setting is %s", (_state, settings) => {
+    show(PULL_REQUEST);
+    sdk.settings = settings;
+    expect(
+      renderHook(() =>
+        usePullRequestSegmentVisible({
+          threadId: "thr_1",
+          projectId: "proj_1",
           environment: { id: "env_1" },
         }),
       ).result.current,
@@ -173,9 +210,9 @@ describe("pull request context segment", () => {
   it.each([
     ["checks_pending", false, null],
     ["checks_failed", false, null],
-    ["checks_failed", true, null],
-    ["checks_pending", true, null],
-    ["ready_to_merge", true, null],
+    ["checks_failed", true, "Auto-merge"],
+    ["checks_pending", true, "Auto-merge"],
+    ["ready_to_merge", true, "Auto-merge"],
     ["queued", true, "Queued to merge"],
   ] as const)(
     "shows the next step and auto-merge for %s with auto-merge %s",
@@ -201,7 +238,9 @@ describe("pull request context segment", () => {
       } else {
         expect(markup).not.toContain('aria-hidden="true">·</span>');
       }
-      expect(markup.includes('aria-label="Auto-merge on"')).toBe(autoMerge);
+      expect(markup.includes(">Auto-merge</span>")).toBe(
+        label === "Auto-merge",
+      );
       expect(markup).toContain(
         attention === "checks_failed"
           ? 'class="fill-destructive"'

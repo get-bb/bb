@@ -160,6 +160,17 @@ className? }` —
   Usage is in frontend-registration.md. Experimental: see
   `docs/api_to_audit.md`.
 
+- `experimental_ThreadContextCardRow` — the thread context card's row, the one
+  bb's own rows use: `{ icon?, leading?, label, trailing?, title?, disabled?,
+onClick?, action? }`. `icon` is any name `experimental_Icon` accepts and
+  `leading` draws any node in its place (an app or site icon), `trailing`
+  draws at the row's end (a count or `+4 −1`), `onClick` makes the label a
+  button, and `action` is a second control, such as a `…` that opens a menu,
+  shown in place of `trailing` while the row is hovered or focused (always on
+  touch screens). Usage is in
+  frontend-thread-context-card.md. Experimental: see
+  `docs/api_to_audit.md`.
+
 - `Markdown` — bb's chat-message markdown renderer (same typography,
   spacing, and code styling as timeline messages). Props:
   `{ content, className? }`. Use it wherever plugin UI quotes or previews
@@ -184,24 +195,33 @@ className? }` —
   target, available client apps, and copy actions. Valid targets expose an
   encoded, scheme-safe href; traversal paths, ill-formed Unicode, and other
   malformed runtime targets are inert in both the app and SDK test harness.
+  A workspace target's optional `experimental_ref` (`"HEAD"` or a 4–40
+  character commit SHA; anything else makes the target invalid) previews the
+  file read-only at that Git revision, labelled with the ref; external opens
+  ignore it and open the working copy.
   Optional `location` is a one-based line/column or line range. For buttons and
   effects use
   `useBbNavigate().experimental_openFilePreview({ target, location })` or
   `.experimental_openFileExternally({ target, location })`; the boolean means
-  host acceptance, not completed I/O. Every identity is explicit—never invent
+  host acceptance, not completed I/O.
+  The `experimental_useCanOpenFileExternally(target)` hook is true when the
+  target resolves on its host and this client has an external file target
+  for it; it is false while loading and re-renders the component when it
+  changes. Every identity is explicit—never invent
   an environment id or turn a project id into a workspace target. The testing
   harness records both calls in `navigateCalls` and gates them with the
-  `openFilePreview` / `openFileExternally` behavior options.
-- `experimental_useAppPanel` — returns the generic current-surface fixed-tab
-  controller. `openFixedTab({ surface: { kind: "current" }, tab, target? })`
-  accepts a plugin's own eligible fixed-tab registration, validates any target
-  through that registration's `experimental_target` contract, opens the shared
-  panel, and returns host acceptance. The controller does not interpret target
-  shapes. Targeted fixed tabs use `experimental_useFixedTabTarget(tab)` to read
-  current-session state and call `clear()` when returning to an untargeted
-  state. The frontend harness records accepted calls in
-  `experimental_fixedTabOpenCalls`, gates them with
-  `experimental_openFixedTab`, and seeds state with
+  `openFilePreview` / `openFileExternally` behavior options; its
+  `canOpenFileExternally` option answers the hook.
+- `experimental_PanelTabIcon` — `{ tabKey }`; the icon bb's tab strip draws
+  for an open side panel tab, from `experimental_usePanelTabs()`; see
+  frontend-panel-tabs.md.
+- `experimental_useAppPanel` — returns the current surface's
+  `ExperimentalPanelController`; see
+  [Panel controller](frontend-hooks-and-ui.md#panel-controller). Targeted
+  fixed tabs use `experimental_useFixedTabTarget(tab)` to read current-session
+  state and call `clear()` when returning to an untargeted state. The frontend
+  harness records every call in `experimental_panelCalls`, gates them with the
+  `experimental_panel` option, and seeds state with
   `experimental_fixedTabTarget`.
 - `experimental_NewThreadComposer` — bb's complete compose surface for
   CREATING a thread (the create-side counterpart to `ThreadChat`): prompt

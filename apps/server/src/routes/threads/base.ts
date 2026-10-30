@@ -1,4 +1,5 @@
 import { countUnarchivedThreadDescendants } from "../../services/threads/thread-archive.js";
+import { listThreadCascades } from "../../services/threads/thread-cascade.js";
 import { cancelAbandonedProviderCreations } from "../../services/threads/thread-environment-providers.js";
 import {
   THREAD_SEARCH_LIMIT_PER_GROUP_DEFAULT,
@@ -35,6 +36,7 @@ import {
   type PluginThreadMetadataListResponse,
   type ThreadAncestorsListResponse,
   type ThreadDescendantsListResponse,
+  type ThreadCascadeListResponse,
   type ThreadRunningResponse,
   type ThreadSearchResponse,
   type ThreadWithIncludesResponse,
@@ -51,12 +53,11 @@ import {
 } from "../../services/lib/validation.js";
 import {
   getNonDestroyedHostWithStatus,
-  requireEnvironment,
   requirePublicProject,
   requirePublicThread,
 } from "../../services/lib/entity-lookup.js";
 import { listRunningThreadsWithIntendedHosts } from "../../services/threads/dispatch-attempt.js";
-import { dispatchThreadRenameCommand } from "../../services/threads/thread-commands.js";
+import { syncThreadTitleToProvider } from "../../services/threads/thread-commands.js";
 import { requestThreadStorageDeletion } from "../../services/threads/thread-lifecycle.js";
 import { createThreadFromRequest } from "../../services/threads/thread-create.js";
 import { createThreadForkFromRequest } from "../../services/threads/thread-fork.js";
@@ -277,6 +278,12 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     } satisfies ThreadDescendantsListResponse);
   });
 
+  post(routes.cascade, (context, payload) => {
+    return context.json({
+      threads: listThreadCascades(deps.db, payload.threadIds, payload.action),
+    } satisfies ThreadCascadeListResponse);
+  });
+
   post(routes.pluginMetadata.list, (context, payload) => {
     const { threads, corruptThreadIds } = listPluginThreadMetadata(
       deps.db,
@@ -491,23 +498,8 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       throw new ApiError(404, "thread_not_found", "Thread not found");
     }
 
-    if (
-      payload.title &&
-      payload.title !== thread.title &&
-      updated.environmentId
-    ) {
-      const environment = requireEnvironment(deps.db, updated.environmentId);
-      if (environment.status === "ready" && environment.path) {
-        dispatchThreadRenameCommand(deps, {
-          environment: {
-            id: environment.id,
-            hostId: environment.hostId,
-          },
-          providerId: updated.providerId,
-          threadId: updated.id,
-          title: payload.title,
-        });
-      }
+    if (payload.title && payload.title !== thread.title) {
+      syncThreadTitleToProvider(deps, updated);
     }
 
     if (

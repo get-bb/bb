@@ -12,14 +12,20 @@ import {
   sha256Hex,
 } from "@bb/connect-db";
 
-const LABEL_TTL_MS = 15_000;
-const SESSION_TTL_MS = 20_000;
-const MACHINE_CREDENTIAL_TTL_MS = 20_000;
+const LABEL_TTL_MS = 60_000;
+const LABEL_MISS_TTL_MS = 15_000;
+const SESSION_TTL_MS = 60_000;
+const SESSION_MISS_TTL_MS = 20_000;
+const MACHINE_CREDENTIAL_TTL_MS = 60_000;
+const MACHINE_CREDENTIAL_MISS_TTL_MS = 20_000;
 const SESSION_REFRESH_BEFORE_EXPIRY_MS =
   (CONNECT_SESSION_EXPIRES_IN_SECONDS - CONNECT_SESSION_UPDATE_AGE_SECONDS) *
   1000;
 
 export const LOOKUP_JOIN_TIMEOUT_MS = 2_000;
+export const LOOKUP_RETRY_DELAY_MS = 250;
+export const LOOKUP_FALLBACK_AFTER_MS = 1_000;
+export const LOOKUP_FALLBACK_WINDOW_MS = 10 * 60_000;
 const LOOKUP_POLL_MS = 10;
 
 type LookupOutcome<T> = { ok: true; value: T } | { ok: false; error: unknown };
@@ -29,20 +35,45 @@ interface InFlightLookup<T> {
   outcome: LookupOutcome<T> | null;
 }
 
+interface CachedLookup<T> {
+  value: T;
+  expires: number;
+  fallbackUntil: number;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function awaitOutcome<T>(
   lookup: InFlightLookup<T>,
+  deadline: number,
 ): Promise<LookupOutcome<T> | null> {
-  const deadline = lookup.startedAt + LOOKUP_JOIN_TIMEOUT_MS;
   while (lookup.outcome === null && Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, LOOKUP_POLL_MS));
+    await sleep(LOOKUP_POLL_MS);
   }
   return lookup.outcome;
 }
 
+async function loadWithRetry<T>(
+  load: () => Promise<T>,
+  retry: boolean,
+): Promise<T> {
+  try {
+    return await load();
+  } catch (error) {
+    if (!retry) throw error;
+    await sleep(LOOKUP_RETRY_DELAY_MS);
+    return load();
+  }
+}
+
 export class SettledLookupCache<T> {
-  private readonly entries = new Map<string, { value: T; expires: number }>();
+  private readonly entries = new Map<string, CachedLookup<T>>();
   private readonly lookups = new Map<string, InFlightLookup<T>>();
   private generation = 0;
+
+  constructor(private readonly fallbackWindowMs: number = 0) {}
 
   async read(
     key: string,
@@ -53,11 +84,33 @@ export class SettledLookupCache<T> {
       load: () => Promise<T>;
     },
   ): Promise<T> {
+    const entry = this.entries.get(key);
+    if (!options.fresh && entry && entry.expires > options.now) {
+      return entry.value;
+    }
+    if (entry && entry.fallbackUntil <= options.now) this.entries.delete(key);
+    const fallback =
+      !options.fresh && entry && entry.fallbackUntil > options.now
+        ? entry
+        : undefined;
+    const outcome = await this.settle(key, options, fallback !== undefined);
+    if (outcome?.ok === true) return outcome.value;
+    if (fallback) return fallback.value;
+    if (outcome?.ok === false) throw outcome.error;
+    throw new Error("bb connect: lookup did not settle");
+  }
+
+  private async settle(
+    key: string,
+    options: {
+      fresh?: boolean;
+      expires: (value: T) => number;
+      load: () => Promise<T>;
+    },
+    hasFallback: boolean,
+  ): Promise<LookupOutcome<T> | null> {
     if (!options.fresh) {
       for (;;) {
-        const hit = this.entries.get(key);
-        if (hit && hit.expires > options.now) return hit.value;
-        if (hit) this.entries.delete(key);
         const inFlight = this.lookups.get(key);
         if (
           inFlight === undefined ||
@@ -65,27 +118,42 @@ export class SettledLookupCache<T> {
         ) {
           break;
         }
-        const outcome = await awaitOutcome(inFlight);
-        if (outcome?.ok === true) return outcome.value;
-        if (outcome?.ok === false) throw outcome.error;
+        const joinDeadline = inFlight.startedAt + LOOKUP_JOIN_TIMEOUT_MS;
+        const outcome = await awaitOutcome(
+          inFlight,
+          hasFallback
+            ? Math.min(joinDeadline, Date.now() + LOOKUP_FALLBACK_AFTER_MS)
+            : joinDeadline,
+        );
+        if (outcome !== null || hasFallback) return outcome;
+        const hit = this.entries.get(key);
+        if (hit && hit.expires > Date.now()) {
+          return { ok: true, value: hit.value };
+        }
       }
     }
     const generation = this.generation;
     const lookup: InFlightLookup<T> = { startedAt: Date.now(), outcome: null };
     this.lookups.set(key, lookup);
-    try {
-      const value = await options.load();
-      lookup.outcome = { ok: true, value };
-      if (generation === this.generation) {
-        this.entries.set(key, { value, expires: options.expires(value) });
+    const settled = (async () => {
+      try {
+        const value = await loadWithRetry(options.load, !hasFallback);
+        lookup.outcome = { ok: true, value };
+        if (generation === this.generation) {
+          this.entry(key, value, options.expires(value));
+        }
+      } catch (error) {
+        lookup.outcome = { ok: false, error };
+      } finally {
+        if (this.lookups.get(key) === lookup) this.lookups.delete(key);
       }
-      return value;
-    } catch (error) {
-      lookup.outcome = { ok: false, error };
-      throw error;
-    } finally {
-      if (this.lookups.get(key) === lookup) this.lookups.delete(key);
+    })();
+    if (!hasFallback) {
+      await settled;
+      return lookup.outcome;
     }
+    await Promise.race([settled, sleep(LOOKUP_FALLBACK_AFTER_MS)]);
+    return lookup.outcome;
   }
 
   delete(key: string): void {
@@ -95,11 +163,21 @@ export class SettledLookupCache<T> {
   }
 
   prime(key: string, value: T, expires: number): void {
-    this.entries.set(key, { value, expires });
+    this.entry(key, value, expires);
+  }
+
+  private entry(key: string, value: T, expires: number): void {
+    this.entries.set(key, {
+      value,
+      expires,
+      fallbackUntil: expires + this.fallbackWindowMs,
+    });
   }
 }
 
-const labelCache = new SettledLookupCache<ResolvedLabel | null>();
+const labelCache = new SettledLookupCache<ResolvedLabel | null>(
+  LOOKUP_FALLBACK_WINDOW_MS,
+);
 
 interface CachedSession {
   sessionId: string;
@@ -148,7 +226,8 @@ export async function resolveLabel(
   return labelCache.read(label, {
     now,
     fresh: options?.fresh,
-    expires: () => now + LABEL_TTL_MS,
+    expires: (value) =>
+      now + (value === null ? LABEL_MISS_TTL_MS : LABEL_TTL_MS),
     load: () => lookupLabel(label, db),
   });
 }
@@ -227,7 +306,11 @@ export async function resolveLabels(
     });
   }
   for (const [label, value] of resolved) {
-    labelCache.prime(label, value, now + LABEL_TTL_MS);
+    labelCache.prime(
+      label,
+      value,
+      now + (value === null ? LABEL_MISS_TTL_MS : LABEL_TTL_MS),
+    );
   }
   return resolved;
 }
@@ -331,7 +414,7 @@ export async function verifySessionCookieDetails(
       fresh,
       expires: (looked) =>
         looked === null
-          ? now + SESSION_TTL_MS
+          ? now + SESSION_MISS_TTL_MS
           : Math.min(now + SESSION_TTL_MS, looked.expiresAt),
       load: () => {
         loaded = true;
@@ -408,6 +491,7 @@ export async function verifyMachineCredential(
 interface VerifiedMachine {
   machineId: string;
   userId: string;
+  lastSeenAt: Date | null;
 }
 
 const machineCredentialCache = new SettledLookupCache<VerifiedMachine | null>();
@@ -421,7 +505,11 @@ export async function verifyMachineCredentialDetails(
   const now = Date.now();
   return machineCredentialCache.read(hash, {
     now,
-    expires: () => now + MACHINE_CREDENTIAL_TTL_MS,
+    expires: (value) =>
+      now +
+      (value === null
+        ? MACHINE_CREDENTIAL_MISS_TTL_MS
+        : MACHINE_CREDENTIAL_TTL_MS),
     load: () => lookupMachineCredential(hash, db),
   });
 }
@@ -431,7 +519,11 @@ async function lookupMachineCredential(
   db: ConnectDb,
 ): Promise<VerifiedMachine | null> {
   const row = await db
-    .select({ machineId: machine.id, userId: machine.userId })
+    .select({
+      machineId: machine.id,
+      userId: machine.userId,
+      lastSeenAt: machine.lastSeenAt,
+    })
     .from(machine)
     .where(and(eq(machine.credentialHash, hash), isNull(machine.revokedAt)))
     .get();
@@ -439,15 +531,16 @@ async function lookupMachineCredential(
 }
 
 export async function markMachineSeen(
-  machineId: string,
+  verified: Pick<VerifiedMachine, "machineId" | "lastSeenAt">,
   db: ConnectDb,
   now: number = Date.now(),
 ): Promise<boolean> {
-  const previous = machineLastSeenWrites.get(machineId);
-  if (
-    previous !== undefined &&
-    now - previous < MACHINE_LAST_SEEN_WRITE_INTERVAL_MS
-  ) {
+  const { machineId } = verified;
+  const previous = Math.max(
+    machineLastSeenWrites.get(machineId) ?? Number.NEGATIVE_INFINITY,
+    verified.lastSeenAt?.getTime() ?? Number.NEGATIVE_INFINITY,
+  );
+  if (now - previous < MACHINE_LAST_SEEN_WRITE_INTERVAL_MS) {
     return false;
   }
   machineLastSeenWrites.set(machineId, now);

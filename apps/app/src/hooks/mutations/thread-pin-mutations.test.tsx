@@ -389,9 +389,19 @@ async function acknowledgedPin(server: ReturnType<typeof serve>) {
     );
 }
 
-it("keeps concurrent thread state when a pin succeeds", async () => {
+it("reads the thread back when a pin response is older than concurrent thread state", async () => {
   const server = serve([entry("t1", null)]);
   const acknowledge = await acknowledgedPin(server);
+  vi.mocked(sdk.threads.get).mockResolvedValue(
+    makeThreadResponse({
+      ...entry("t1", 777),
+      status: "active",
+      runtime: { displayStatus: "active" },
+      updatedAt: 30,
+      sectionId: "new",
+      lastReadAt: 25,
+    }),
+  );
   act(() => {
     const statusChange = {
       status: "active" as const,

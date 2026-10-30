@@ -167,10 +167,10 @@ export function resolveThreadListIndicator(
   if (state.isGoalActive) return "goal";
   if (state.isRuntimeActive) return "runtime";
   if (state.isWorkflowActive) return "workflow";
-  if (state.isBackgroundAgentActive) return "background-agent";
-  if (state.isBackgroundCommandActive) return "background-command";
   if (state.queuedWork === "failed") return "queued-failed";
   if (state.hasUnreadSuccess) return "unread-success";
+  if (state.isBackgroundAgentActive) return "background-agent";
+  if (state.isBackgroundCommandActive) return "background-command";
   if (state.queuedWork === "waiting") return "queued-waiting";
   if (state.hasUnsubmittedDraft) return "draft";
   return "none";

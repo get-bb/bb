@@ -9,6 +9,7 @@ import {
   type AppToastOptions,
   type AppToastTone,
 } from "@/components/ui/app-toast";
+import { withSonnerToast } from "@/components/ui/app-toast-runtime";
 
 type SonnerToast = typeof sonnerToastFunction;
 type ToastTitle = Parameters<SonnerToast>[0];
@@ -94,15 +95,19 @@ const SONNER_METHODS = {
 } as const satisfies Record<AppToastTone, keyof SonnerToast>;
 
 let nextPromiseToastId = 0;
+let nextRawToastId = 0;
 
 export function createPluginToast(sonnerToast: SonnerToast): SonnerToast {
   const toneMethod =
     (tone: AppToastTone) =>
     (title: ToastTitle, data?: ExternalToast): string | number => {
       const options = toAppToastOptions(data);
-      return options === null
-        ? sonnerToast[SONNER_METHODS[tone]](title, data)
-        : appToast[tone](resolveNode(title), options);
+      if (options !== null) return appToast[tone](resolveNode(title), options);
+      const id = data?.id ?? `plugin-raw-toast-${(nextRawToastId += 1)}`;
+      withSonnerToast(() => {
+        sonnerToast[SONNER_METHODS[tone]](title, { ...data, id });
+      }, id);
+      return id;
     };
   const message = toneMethod("message");
   const promise = <Data>(
@@ -152,7 +157,16 @@ export function createPluginToast(sonnerToast: SonnerToast): SonnerToast {
       return id ?? "";
     },
     promise,
-    custom: sonnerToast.custom,
+    custom: (
+      render: Parameters<SonnerToast["custom"]>[0],
+      data?: ExternalToast,
+    ) => {
+      const id = data?.id ?? `plugin-raw-toast-${(nextRawToastId += 1)}`;
+      withSonnerToast(() => {
+        sonnerToast.custom(render, { ...data, id });
+      }, id);
+      return id;
+    },
     getHistory: sonnerToast.getHistory,
     getToasts: sonnerToast.getToasts,
   });

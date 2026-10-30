@@ -10,12 +10,6 @@ import {
 import { useStore } from "jotai";
 import { useNavigate } from "react-router-dom";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import {
-  getPluginPanelRoutePath,
-  getRootComposeRoutePath,
-  getThreadRoutePath,
-  getPluginDetailRoutePath,
-} from "@/lib/route-paths";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { openPaneContentInSplit } from "@/lib/split-layout/openPaneContentInSplit";
 import {
@@ -35,22 +29,10 @@ import {
   shouldEngageSidebarSplitDrag,
   type SplitDragFallbackTarget,
 } from "@/lib/split-drag";
+import { paneContentRoute } from "@/views/thread-detail/splitThreadNavigation";
 
 const SIDEBAR_SELECTOR = '[data-sidebar="sidebar"]';
 const MAIN_CONTENT_SELECTOR = "main";
-
-function routeForContent(content: PaneContent): string {
-  if (content.kind === "thread") return getThreadRoutePath(content);
-  if (content.kind === "new-thread") return getRootComposeRoutePath();
-  if (content.kind === "plugin-detail") {
-    return getPluginDetailRoutePath({ pluginId: content.pluginId });
-  }
-  return getPluginPanelRoutePath({
-    pluginId: content.pluginId,
-    path: content.panelPath,
-    subPath: content.subPath,
-  });
-}
 
 export function usePaneContentSplitDrag(options: PaneContentSplitOptions) {
   const actions = usePaneContentSplitActions();
@@ -92,7 +74,7 @@ export function usePaneContentSplitActions() {
         store,
         navigate,
         content,
-        route: routeForContent(content),
+        route: paneContentRoute(content),
         enabled: enabled && !isCompact,
       });
     },
@@ -212,7 +194,7 @@ export function beginSidebarPaneContentSplitDrag({
       if (next !== layout) store.set(splitLayoutAtom, next);
       onNavigate?.();
       void navigate(
-        routeForContent(content),
+        paneContentRoute(content),
         existing !== null ? { replace: true } : undefined,
       );
     },

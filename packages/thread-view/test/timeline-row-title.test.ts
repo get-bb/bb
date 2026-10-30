@@ -1728,6 +1728,7 @@ const branchQuestion = {
   shortLabel: "Branch",
   multiSelect: false,
   allowFreeText: true,
+  required: true,
   options: [
     { value: "main", label: "main" },
     { value: "release", label: "release/1.0" },
@@ -1740,6 +1741,7 @@ const testsQuestion = {
   shortLabel: "Tests",
   multiSelect: false,
   allowFreeText: true,
+  required: true,
   options: [
     { value: "yes", label: "Yes" },
     { value: "no", label: "No" },

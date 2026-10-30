@@ -20,11 +20,13 @@
   },
   "dependencies": {
     "@bb/agent-runtime": "workspace:*",
+    "@bb/async-cache": "workspace:*",
     "bb-environment-provider-host": "workspace:*",
     "@bb/cli": "workspace:*",
     "@bb/connect-client": "workspace:*",
     "@bb/config": "workspace:*",
     "@bb/domain": "workspace:*",
+    "@bb/file-transfer": "workspace:*",
     "@bb/frp-client": "workspace:*",
     "@bb/fuzzy-match": "workspace:*",
     "@bb/host-daemon-contract": "workspace:*",

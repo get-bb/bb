@@ -12,10 +12,15 @@ import {
   usePluginSlots,
   type PluginTabSlot,
 } from "@/lib/plugin-slots";
+import type { ExperimentalThreadEnvironment } from "@get-bb/plugin-sdk";
 import { PluginSlotMount } from "./PluginSlotMount";
 
 export type PluginTabContext =
-  | { kind: "thread"; threadId: string }
+  | {
+      kind: "thread";
+      threadId: string;
+      environment: ExperimentalThreadEnvironment | null;
+    }
   | { kind: "nav-panel"; pluginId: string; panelId: string; subPath: string };
 
 export function PluginTabScope({
@@ -75,7 +80,10 @@ function Visibility({
   const { slot } = props;
   const visible =
     isThreadTab(slot) && context.kind === "thread"
-      ? (slot.useVisible?.({ threadId: context.threadId }) ?? true)
+      ? (slot.useVisible?.({
+          threadId: context.threadId,
+          environment: context.environment,
+        }) ?? true)
       : isNavTab(slot) && context.kind === "nav-panel"
         ? (slot.useVisible?.({ subPath: context.subPath }) ?? true)
         : false;

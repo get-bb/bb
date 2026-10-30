@@ -211,6 +211,7 @@ describe("buildPluginProviderRegistration", () => {
         model: "m-1",
         displayName: "Model One",
         description: "The one.",
+        reasoningDiscovery: "known",
         supportedReasoningEfforts: [
           { reasoningEffort: "low", description: "Low." },
           { reasoningEffort: "high", description: "High." },

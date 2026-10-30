@@ -189,7 +189,6 @@ describe("the echo bridge's grammar v3 stream", () => {
       turnId: null,
       tool: ECHO_STAMP_TOOL_NAME,
       arguments: { text: PROMPT },
-      providerNativeIds: true,
     });
 
     const events = assembledEvents();

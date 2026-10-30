@@ -14,13 +14,13 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const spawnMock = vi.hoisted(() => vi.fn());
-vi.mock("node:child_process", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("node:child_process")>()),
-  spawn: spawnMock,
+vi.mock("@bb/process-utils", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@bb/process-utils")>()),
+  spawnHostProcess: spawnMock,
 }));
 
 import { installServerRegistrySkill } from "../../src/services/skills/registry-skill-install.js";
-import { readSkillTreeManifest } from "../../src/services/skills/injected-skills.js";
+import { SkillTreeRegistry } from "../../src/services/skills/injected-skills.js";
 import {
   readRegistrySkillProvenance,
   REGISTRY_SKILL_PROVENANCE_FILE_NAME,
@@ -30,7 +30,11 @@ afterEach(() => {
   spawnMock.mockReset();
 });
 
-function stubDownloadedSkill(skillId: string, body?: string): void {
+function stubDownloadedSkill(
+  skillId: string,
+  body?: string,
+  asset?: Buffer,
+): void {
   spawnMock.mockImplementation(
     (_command: string, _args: string[], options: { cwd: string }) => {
       const child = new EventEmitter() as EventEmitter & {
@@ -48,6 +52,10 @@ function stubDownloadedSkill(skillId: string, body?: string): void {
           join(skillDirectory, "SKILL.md"),
           body ?? `---\nname: ${skillId}\ndescription: Test skill.\n---\n`,
         );
+        if (asset !== undefined) {
+          await mkdir(join(skillDirectory, "assets"));
+          await writeFile(join(skillDirectory, "assets", "example.bin"), asset);
+        }
         child.emit("close", 0);
       })();
       return child;
@@ -91,9 +99,34 @@ describe("installServerRegistrySkill", () => {
         (await stat(join(skillDirectory, REGISTRY_SKILL_PROVENANCE_FILE_NAME)))
           .mode & 0o777,
       ).toBe(0o444);
-      expect(readSkillTreeManifest(skillDirectory).entries).toEqual([
-        expect.objectContaining({ path: "SKILL.md" }),
-      ]);
+      expect(
+        (await new SkillTreeRegistry().readTree(skillDirectory)).files,
+      ).toEqual([expect.objectContaining({ path: "SKILL.md" })]);
+    } finally {
+      await rm(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("installs a skill whose supporting assets exceed 10 MiB", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "bb-registry-assets-test-"));
+    try {
+      const asset = Buffer.alloc(11 * 1024 * 1024);
+      stubDownloadedSkill("find-skills", undefined, asset);
+
+      await installServerRegistrySkill({
+        dataDir,
+        packageRef: "vercel-labs/skills",
+        registrySkillId: "github.com/vercel-labs/skills/find-skills",
+        skillId: "find-skills",
+      });
+
+      expect(
+        (
+          await stat(
+            join(dataDir, "skills", "find-skills", "assets", "example.bin"),
+          )
+        ).size,
+      ).toBe(asset.length);
     } finally {
       await rm(dataDir, { recursive: true, force: true });
     }

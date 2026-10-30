@@ -144,11 +144,10 @@ openWorkspaceFile }` — register a leaf
   `(path: string) => boolean` or `null`; pass it a worktree-relative path to
   open that file in the host's workspace viewer. It is `null` when the message
   surface has no workspace viewer, and it returns whether the host accepted
-  the path. To open one of the same plugin's registered `experimental_tab` with thread context and action availability
-  components, call
-  `useBbNavigate().openThreadPanel({ actionId, title?, params? })`.
-  `params` is typed as `JsonValue`; use normal plugin navigation as the
-  fallback when it returns false.
+  the path. To open one of the same plugin's side-panel tabs, call
+  `experimental_useAppPanel().openTab({ tab, params?, title? })`
+  ([Panel controller](frontend-hooks-and-ui.md#panel-controller)); use normal
+  plugin navigation as the fallback when it returns false.
   **Host behavior / fallbacks:** only assistant and
   nested agent Markdown activate directives — user messages, file previews,
   and other Markdown surfaces stay plain. Directives inside inline code or
@@ -182,7 +181,7 @@ message, Original }` — render fenced code blocks of chosen languages in
   survives the whole stream, including the fence closing and the reply
   finishing. State that must outlive the mounted component (a reload, the
   message scrolling out of the rendered window) belongs under
-  `${message.id}#${language}#${index}`. `useBbNavigate().openThreadPanel`
+  `${message.id}#${language}#${index}`. `experimental_useAppPanel()`
   works inside it as for `messageDirective`. **Host behavior / fallbacks:**
   activates only where `messageDirective` does (assistant and nested agent
   Markdown); user messages, file previews, and plugin Markdown keep BB's code
@@ -196,33 +195,45 @@ message, Original }` — render fenced code blocks of chosen languages in
   frame, never in the bb page. Reference implementation:
   `plugins/inline-vis` (a ` ```inline-vis ` block holding an HTML page).
   Experimental: see `docs/api_to_audit.md`.
+- `experimental_messageMetadata` → React metadata beside realized user and assistant
+  messages in the main timeline and embedded `ThreadChat`. Registration:
+  `{ id, placement?: "above" | "actionRow", component }`; omitted placement
+  means above. `"actionRow"` renders in the message's action row, shows and hides
+  with the actions, and never narrows them; components decide their own device
+  policy (bb's own inline time hides itself on touch);
+  bb's own inline message time uses it. The component receives `{ message }` with
+  stable `id`, `threadId`, `createdAt`, `turnId`, and `role`; user messages also
+  have `initiator`. Filter by returning null. Contributions retain bb, then
+  plugin/registration order within each placement; each throw is contained
+  independently. Text streaming does not update this context, and windowed-out
+  rows unmount the component. See the Plugin Guide message metadata card for the
+  public contract and examples.
 - `messageAction` → an action on chat messages: an icon button in the
   per-message action bar (user and assistant messages) and an entry in the
   assistant-message text-selection menu. Slot actions are limited to the main
   timeline; embedded `ThreadChat` suppresses them on both surfaces. Host-rendered chrome, no plugin
   component — registration: `{ id, title, icon?, run }`. Activating it calls
-  `run(context)` with `{ threadId, message, selectedText?, openPanel }`:
+  `run(context)` with `{ threadId, message, selectedText?, experimental_panel, composer }`:
   `message` is a narrow stable reference
   `{ id, threadId, role: "user" | "assistant", text, sourceSeqEnd, experimental_messageSeq }` (never
   an internal timeline row); `experimental_messageSeq` is the recorded message
   sequence used by `?msg=`, `sdk.threads.message`, and `bb thread log --message`,
   while `sourceSeqEnd` anchors provider-history forks; `selectedText` is present only for
   selection-menu invocations and holds the exact highlighted text; and
-  `openPanel({ actionId, title?, params? })` opens one of the same plugin's
-  registered `experimental_tab` with thread context and action availability components in the current thread's side
-  panel — same semantics and boolean return as
-  `useBbNavigate().openThreadPanel`. Errors from `run` (sync or
+  `experimental_panel` is the thread view's
+  [panel controller](frontend-hooks-and-ui.md#panel-controller). Errors from `run` (sync or
   async) are contained and
   logged, never breaking the timeline.
 - `app.commands.register` → a row in bb's quick palette (Mod+Shift+P), listed
   under "Plugins" beside bb's own commands. Host-rendered chrome, no plugin
   component — registration: `{ id, title, defaultShortcut?, isAvailable?, run }`. Both callbacks
-  receive `{ threadId, projectId, openPanel }`, where `threadId` and
-  `projectId` are null on surfaces without one and `openPanel` matches
-  `messageAction`'s. `isAvailable` is called for palette listing and keyboard invocation — keep
+  receive `{ threadId, projectId, experimental_panel }`, where `threadId` and
+  `projectId` are null on surfaces without one and `experimental_panel` is the
+  focused surface's [panel controller](frontend-hooks-and-ui.md#panel-controller). `isAvailable` is called for palette listing and keyboard invocation — keep
   it cheap and synchronous — and hides the row when it returns false; a row
   that needs a thread should use it, because the palette opens anywhere and
-  `openPanel` declines (returning false) unless a thread view is focused.
+  `experimental_panel` declines (returning false) when the focused surface has
+  no such tab.
   Errors from either callback are contained and logged, never breaking the
   palette. Write self-identifying titles ("Linear: open issue for this
   thread"): the palette matches the query against the title.

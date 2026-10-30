@@ -27,6 +27,66 @@ Launcher status output is plain when stdout is redirected, including in CI.
 Set `FORCE_COLOR=1` to request color or `NO_COLOR=1` to disable it; `NO_COLOR`
 takes precedence. In-place progress updates require a stdout TTY.
 
+## Outbound proxies and trusted certificates
+
+The packaged server and daemon launchers start bb's own Node processes with
+`--use-system-ca` and `--use-env-proxy`, and bb's forked workers and provider
+bridge workers inherit them.
+The flags are not exported as environment variables, so terminals, provider
+CLIs, and agent shells keep the Node networking defaults of the user's
+environment. `--use-system-ca` adds OS-managed certificate authorities to Node's
+bundled roots; `NODE_EXTRA_CA_CERTS` still adds a PEM bundle. Set
+`NODE_USE_SYSTEM_CA=0` or `NODE_USE_ENV_PROXY=0` before launch to opt out.
+
+Set `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` (or their lowercase forms) in the
+launch environment or with `bb-app env set`. Proxy URLs need an `http://` or
+`https://` scheme: when any `HTTP_PROXY`/`HTTPS_PROXY` variable (either case)
+lacks one, such as `proxy.corp:3128`, bb starts that Node process without
+`--use-env-proxy` and prints a `BB_INVALID_PROXY_ENV` warning instead of letting
+Node fail at startup. bb checks this against each process's final environment,
+including forked and provider bridge workers that inherit the flag. When a
+process keeps `--use-env-proxy` with a proxy set, bb appends
+`localhost,127.0.0.1,::1,[::1]` to its existing `NO_PROXY`/`no_proxy` values
+(a `*` entry is left as is), so local bb connections stay direct; that process's
+children inherit those entries. Restart bb after changing these settings;
+existing sockets and workers keep their startup configuration.
+
+Built-in proxy support requires Node 22.21+ or 24.5+ (or Node 26); on older
+supported Node releases the launcher omits `--use-env-proxy`. Libraries that create their own agents
+or sockets can also bypass Node's global proxy support, including daemon
+WebSockets; these launch defaults do not configure those libraries or the OS
+proxy settings.
+
+## Host executable discovery
+
+Core process launches and the Plugin SDK process helpers share one resolver.
+It reads the user's login-shell PATH (or Windows user/machine registry PATH),
+and adds the running Node's directory and standard user tool directories to
+every child PATH. When the PATH is the one bb started with, the login-shell
+PATH comes first; when a caller passes a different PATH, its entries come first
+and the login-shell PATH and standard directories follow. Native provider
+installs in `~/.local/bin` and
+mise/asdf shim directories are available to services as well as terminal launches.
+Shell network settings are read alongside PATH; unrelated shell variables are
+not copied into child environments. Discovery runs in the background, bounded to
+three seconds per probe; launches use the latest completed snapshot and never
+wait for a probe. The server, daemon, and packaged desktop app start discovery
+at launch; the `bb` CLI does not.
+
+Missing-command errors and exit 127 start a background refresh, and later
+launches use its result; commands are never replayed automatically because an
+exit 127 can happen after an installation has already changed files. An
+unavailable running Node path is re-resolved before launching a worker, and
+replacement runtimes must match its native-module ABI and Electron/Node family.
+Scripts with a `#!/usr/bin/env node` line run with the `node` found on PATH.
+`npm` and `npx` run as found on PATH. Daemon self-update instead runs npm's
+JavaScript entry point with the Node installation that owns it, which avoids
+version-manager wrapper post-hooks; inside the Electron desktop runtime, bb
+never substitutes its own runtime for npm.
+
+Standalone machine bootstrap installers run before the shared runtime is
+installed, so their initial Node/package acquisition remains self-contained.
+
 ## Repository worktree hooks
 
 Commit `.bb-env-setup.sh` when a managed worktree needs repository setup.
@@ -216,7 +276,6 @@ for the command surface.
 | `showDiagnosticEvents`                                                     | `false` in all builds               | Settings → General → Privacy & diagnostics → Show diagnostic events. Shows provider environment resolution and raw provider events bb does not yet understand in the timeline. Warnings, errors, and model fallback stay visible. Hidden diagnostics do not count toward timeline event or byte limits.                                                                                                                                                                                                                                        |
 | `steerActiveThreadOnEnter`                                                 | `true`                              | Settings → General → Default thread followup behavior, when no typeahead suggestion is active. `true` ("Steer"): Enter sends to the agent during its current run and Mod+Enter queues the message until the agent stops; `false` ("Queue") swaps them. Installs with saved settings or work from before the setting were migrated once to `false`.                                                                                                                                                                                             |
 | `confirmThreadArchive`                                                     | `true`                              | Settings → General → Thread archive confirmation. `false` archives a thread and its children in the app without a confirmation popup; the toast still offers Undo. CLI and SDK archives never prompt.                                                                                                                                                                                                                                                                                                                                          |
-| `showGitChanges`                                                           | `true`                              | Settings → General → Show Git changes and Commit button. `false` hides the untracked, uncommitted, and committed file summary and expanded file list above every thread composer, that shelf's pull-request status and actions, and the Commit action in the thread header and overflow menu. Thread relationships and workspace warnings stay visible.                                                                                                                                                                                        |
 | `keepHistoryAfterContextClear`                                             | `false`                             | Settings → General → Show messages from before a context clear. When `false`, a thread's timeline, conversation outline, and message lookup start at its latest `Context cleared` boundary; `true` keeps earlier messages, which load on scroll and appear in the outline and `bb thread log --message`. Clearing always starts a fresh provider conversation and resets the context meter.                                                                                                                                                    |
 | `summarizeShellCommands`                                                   | `true`                              | Settings → General → Summarize shell commands. `true` titles a shell command that runs `ls`, `find`, `grep`, `rg`, `cat`, `head`, `tail`, `nl`, or `sed -n` with a summary such as `Searched for X`, and the row does not expand. `false` titles every shell command row with its command (`Running …`, `Ran …`), expands it to the command and its output, and counts it as a command in step summaries. Native read and search tool rows keep their titles.                                                                                  |
 | `streamerMode`                                                             | `false`                             | Settings → General. Hides every `customModels` entry from the web and mobile pickers, `bb provider models`, and `sdk.providers.models`, for example before a screen share. Entries stay in `config.json`; a thread that names a hidden model still runs, and default model resolution keeps the full list, so a provider whose only models are custom still starts. A composer whose stored selection is hidden falls back to the provider default and records it on the next send; reselect the custom model after turning streamer mode off. |
@@ -240,8 +299,11 @@ On Linux browsers with native primary-selection support, middle-click focuses
 the terminal and pastes the primary selection independently of this setting.
 Unsupported browsers never substitute unrelated regular clipboard contents.
 
-Older clients that omit `showGitChanges`, `keepHistoryAfterContextClear`,
-`summarizeShellCommands`, or `earlyAdopter` preserve the saved value. For older SDK callers, the
+Older clients that omit `keepHistoryAfterContextClear`,
+`summarizeShellCommands`, or `earlyAdopter` preserve the saved value. The
+former Show Git changes and Commit button switch is now
+[plugin settings](#git-and-github-pr-status-plugins), and the general-settings
+API rejects an update that still sends `showGitChanges`. For older SDK callers, the
 general-settings API still accepts and returns `showUnhandledProviderEvents` as
 a deprecated alias of `showDiagnosticEvents`, and an existing value is
 preserved; when a read-modify-write payload contains conflicting values, the one
@@ -416,6 +478,10 @@ chat-pane focus). These start unassigned on Windows/Linux to preserve native
 Control-arrow editing. `pane.focus.previous` / `pane.focus.next` and
 `panel.fullScreen.toggle` start unassigned.
 
+`thread.rename`, `thread.archive`, `thread.markRead`, and `thread.pin` start
+unassigned and act on the focused pane's open thread; Mark read and Pin toggle
+like the matching thread menu item.
+
 | Area      | Command                                      | Default                     | Availability             |
 | --------- | -------------------------------------------- | --------------------------- | ------------------------ |
 | Palette   | Quick palette                                | `Mod+Shift+P`               | All clients              |
@@ -424,6 +490,8 @@ Control-arrow editing. `pane.focus.previous` / `pane.focus.next` and
 | Threads   | Search threads                               | `Mod+K`                     | All clients              |
 | Threads   | Rename focused thread                        | Unassigned                  | Thread view              |
 | Threads   | Archive focused thread                       | Unassigned                  | Thread view              |
+| Threads   | Mark focused thread read or unread           | Unassigned                  | Thread view              |
+| Threads   | Pin or unpin focused thread                  | Unassigned                  | Thread view              |
 | Threads   | Previous / next thread                       | Surface defaults above      | Desktop / web            |
 | Threads   | Open visible thread 1–9                      | Platform defaults above     | Web / desktop            |
 | Layout    | Previous / next chat pane                    | Unassigned                  | While split              |
@@ -442,6 +510,7 @@ Control-arrow editing. `pane.focus.previous` / `pane.focus.next` and
 | Panel     | Reopen closed tab                            | `Mod+Shift+T`               | Desktop                  |
 | Workspace | Quick open file / toggle diff                | `Mod+P` / `Mod+D`           | All clients              |
 | Workspace | Open terminal                                | `Mod+Shift+Enter`           | All clients              |
+| Terminal  | Find in scrollback                           | `Cmd+F` / `Ctrl+Shift+F`    | Terminal focus           |
 | Workspace | Open in preferred app                        | `Mod+O`                     | All clients              |
 | Composer  | Focus composer                               | `Mod+Shift+C`               | All clients              |
 | Composer  | Toggle model picker                          | `Mod+Shift+M`               | All clients              |
@@ -450,6 +519,15 @@ Control-arrow editing. `pane.focus.previous` / `pane.focus.next` and
 | Composer  | Cycle reasoning effort forward / backward    | `Alt+T` / `Alt+Shift+T`     | All clients              |
 | Browser   | Focus location / reload / find in page       | `Mod+L` / `Mod+R` / `Mod+F` | Desktop embedded browser |
 | Questions | Choose visible answer 1–9                    | `1` … `9`                   | While a question is open |
+| Questions | Next question or submit answers              | `Mod+Enter`                 | While a question is open |
+| Questions | Previous / next question                     | `ArrowLeft` / `ArrowRight`  | Focus in a question card |
+| Questions | Cancel question                              | `Mod+.`                     | While a question is open |
+
+Question shortcuts act on the open question card in the focused pane. They
+skip text fields outside the card, so the composer keeps its own keys;
+`Mod+Enter` and `Mod+.` also work from the card's own answer field, where
+`Enter` goes to the next question or submits and `Shift+Enter` adds a line.
+Previous / next need focus in the card, outside its answer field.
 
 Cycle shortcuts act only from the active composer or an open picker; other
 editable controls keep their Option-composed input. Reasoning cycles through
@@ -743,6 +821,7 @@ list|get|set|reset` or `sdk.system.uiPreferences` (see
 | `sidebar.visiblePluginPanels` | Navigation destinations shown, or `null` for every destination                                                                                         |
 | `sidebar.footerOrder`         | Footer action order                                                                                                                                    |
 | `sidebar.hiddenFooterItems`   | Footer actions moved into More                                                                                                                         |
+| `threadContextCard.pinned`   | `true` (default) keeps a thread pane's thread context card open beside the transcript when the pane is wide enough; `false` opens it only from the header |
 | `infoPanel.collapsedSections` | Collapsed thread Info panel sections (`commits`, `uncommittedChanges`, `childThreads`, `forks`, `threadStorage`, or `<pluginId>/<sectionId>`)          |
 
 A legacy `__builtin__` thread list selection resolves to the bundled plugin.
@@ -797,11 +876,17 @@ bb stores only the experiments you set; the others follow the shipped default.
 The `earlyAdopter` general setting (the Become an early adopter banner on
 Settings → Experiments, `bb settings general earlyAdopter on`) switches the
 shipped default to the early adopter default: experiments marked Early adopter
-(currently `timelinePush`, `compactExpiredCache`, and `sidebarMultiSelect`) turn on, and the rest stay
+(currently `applicationLinks`, `timelinePush`, `compactExpiredCache`,
+`pluginUpdates`, `sidebarMultiSelect`, `skipFocusedThreadNotifications`,
+`unreadDividerAtAnswer`, and `websocketCompression`) turn on, and the rest stay
 off. An experiment you set yourself keeps your value either way.
 `/system/config` and `sdk.system.config()` return the resolved values in
 `experiments`.
 
+- `applicationLinks` (on for early adopters) enables explicit app links such as
+  `linear://` and `slack://` in rendered Markdown and the plugin
+  `navigate.openUrl` path. The viewing device asks before opening unless the
+  scheme was saved with Always allow. See [App links](#app-links).
 - `compactExpiredCache` (on for early adopters) reports `compactionOfferAt` on a thread's context
   usage (timeline `contextWindowUsage` and `bb thread context`) once the
   provider has reported a prompt-cache lifetime, the provider supports manual
@@ -825,22 +910,76 @@ off. An experiment you set yourself keeps your value either way.
   collection. The experiment itself applies live; turning it off restores
   normal logging and flushes the in-flight profile, keeping saved files. See
   [diagnostics](debugging-and-qa.md#opt-in-server-performance-diagnostics).
+- `pluginUpdates` (on for early adopters) adds a Plugins section to
+  Settings → Updates: one row per tracking plugin with an update (installed →
+  candidate version and an Update button), Update all for compatible updates,
+  and candidates blocked by `engines.bb` or `engines.bbPluginSdk` with the
+  reason. Opening the page re-checks tracking sources, and the sidebar updates
+  badge counts plugin updates. While it is off, the six-hourly background check,
+  `bb plugin outdated`, `bb plugin update`, and Settings → Installed plugins
+  work as before.
 - `sidebarMultiSelect` (on for early adopters) lets the built-in thread list
-  select several threads: Cmd/Ctrl-click toggles a row (starting from the open
-  thread), Shift-click selects the visible range from the last clicked row, and
-  a plain click, Escape, or a click outside the sidebar clears the selection.
-  Right-clicking a selected row offers Mark read/unread, Pin/Unpin, Move to
-  section, and Archive for the whole selection. Dragging a selected row moves
+  select several threads: Cmd/Ctrl+Shift-click toggles a row (starting from the
+  open thread), Shift-click selects the visible range from the last clicked row,
+  and a plain click, Cmd/Ctrl-click, Escape, or a click outside the sidebar
+  clears the selection.
+  Right-clicking a selected row offers Mark read/unread, Pin/Unpin,
+  Notifications, Move to section, Archive (Unarchive when every selected
+  thread is archived), and Delete for the whole selection. Archive and Delete
+  ask once for the whole selection, counting child threads that are not
+  selected, and act on the topmost selected threads; Archive skips the
+  question when the Archive confirmation setting is off. Dragging a selected row moves
   every selected thread onto a section, under a thread, or into Pinned, or drops
-  them onto a composer as one mention per thread. While it is off, Cmd/Ctrl-click
-  opens a thread in a split. Plugins read it with
+  them onto a composer as one mention per thread. Cmd/Ctrl-click still opens a
+  thread in a split. Plugins read it with
   `experimental_useExperiment("sidebarMultiSelect")`.
+- `threadContextCard` moves a running thread's
+  details into the thread context card at the upper-right of its pane: bb's parent
+  thread and child threads, the Git plugin's changes, which open the Diff tab,
+  and GitHub PR Status's pull request. The context row above the
+  composer drops those segments and keeps other plugins' segments; the
+  project, environment, and branch stay below the composer, side chats keep
+  their context row, and a new thread's composer is unchanged.
+  A header button opens the card or pins it: a pinned card sits beside the
+  transcript in a wide pane and moves the transcript aside in a medium one,
+  and a narrow pane or window opens it over the transcript. Phones keep the
+  context row above the composer and show no card. Plugins read how a pane
+  shows thread context with `experimental_useThreadContextKind()`.
+- `threadRowMetadata` adds Metadata to the built-in thread list's Organize →
+  Rows menu. With it checked (`showRowMetadata`), plugins draw details such as
+  GitHub PR Status's pull request number on a line under each thread title.
+  While the experiment is off the sidebar ignores `showRowMetadata`. Plugins
+  read it with `experimental_useExperiment("threadRowMetadata")`.
+- `skipFocusedThreadNotifications` (on for early adopters) makes the
+  push-notifications plugin skip the web and desktop system notification for a
+  thread that is open in a visible, focused bb window or browser tab of the same
+  origin. Each such window holds a shared Web Lock for its thread, so the window
+  that claims a notification also sees threads focused in other windows. Other
+  threads, notifications without a thread, and mobile push are unaffected. The
+  plugin reads it with
+  `experimental_useExperiment("skipFocusedThreadNotifications")` and follows a
+  toggle live.
 - `timelinePush` makes an open thread view subscribe to its latest timeline
   window over the WebSocket (`thread-timeline` subscription target); the server
   pushes the full window once, then row deltas after new events, instead of the
   client refetching the latest window after every update. A missed push falls
   back to the delta request used when it is off. Open views follow a toggle
   live.
+- `unreadDividerAtAnswer` (on for early adopters) moves the NEW divider in an unread thread from the
+  first row after your read point to the answer of a turn that finished while
+  you were away: the turn's final assistant message, or the error that ended
+  it. The turn's tool calls and in-between notes stay above the divider. A
+  message that started a new turn keeps the divider above it, a turn that is
+  still running or has no answer keeps the old placement, and the divider never
+  lands on your own message. It applies the next time you open a thread.
+- `websocketCompression` (on for early adopters) lets the realtime client
+  WebSocket (`/ws`) negotiate `permessage-deflate`, so messages of 1 KB or more,
+  such as timeline pushes, are compressed (about 4x for timeline JSON). It
+  helps clients that reach the server over a network, including bb connect
+  next; the bb connect relay re-frames messages and does not carry it.
+  Terminal, host daemon, and plugin WebSockets are never compressed. The server
+  reads the experiment when a client connects, so a toggle applies when the
+  app reconnects.
 
 ## Thread Timeline Window
 
@@ -926,16 +1065,18 @@ skills.
 
 ### Claude Code provider
 
-| Setting            | Default | Effect                                                                                                                                                                                                                                                                |
-| ------------------ | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `disable1MContext` | `false` | Sets `CLAUDE_CODE_DISABLE_1M_CONTEXT=1` (`0` when off).                                                                                                                                                                                                               |
-| `chromeEnabled`    | `false` | Starts Claude Code with `--chrome` for Claude in Chrome tools, which bb otherwise leaves off even when the interactive `claude` CLI enables them; the host needs the extension and a claude.ai login (API-key sessions stay off).                                     |
-| `artifactsEnabled` | `false` | Sets `CLAUDE_CODE_ARTIFACT=1` so Claude Code loads its Artifact tools (read, publish, and edit claude.ai artifacts), which it withholds from SDK sessions by default; when off, bb leaves any inherited value alone. Claude may publish private pages without asking. |
-| `sandboxEnabled`   | `true`  | Runs Bash in Claude Code's sandbox in Accept Edits and Approve for me modes; `false` uses Claude Code's own approvals and sandbox settings.                                                                                                                           |
+| Setting                      | Default | Effect                                                                                                                                                                                                                                                                |
+| ---------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `subagentsDisabled`          | `false` | Removes native Agent, Task, and ListAgents tools from the model context. Changes restart Claude before the next turn, preserving the conversation.                                                                                                                    |
+| `disable1MContext`           | `false` | Sets `CLAUDE_CODE_DISABLE_1M_CONTEXT=1` (`0` when off).                                                                                                                                                                                                               |
+| `chromeEnabled`              | `false` | Starts Claude Code with `--chrome` for Claude in Chrome tools, which bb otherwise leaves off even when the interactive `claude` CLI enables them; the host needs the extension and a claude.ai login (API-key sessions stay off).                                     |
+| `artifactsEnabled`           | `false` | Sets `CLAUDE_CODE_ARTIFACT=1` so Claude Code loads its Artifact tools (read, publish, and edit claude.ai artifacts), which it withholds from SDK sessions by default; when off, bb leaves any inherited value alone. Claude may publish private pages without asking. |
+| `sandboxEnabled`             | `true`  | Runs Bash in Claude Code's sandbox in Accept Edits and Approve for me modes; `false` uses Claude Code's own approvals and sandbox settings.                                                                                                                           |
+| `fullAccessApprovalsEnabled` | `false` | Shows Claude Code's own prompts in Full Access (`permissions.ask` rules, PreToolUse hooks that answer `ask`, and built-in safety checks); `false` approves every request. Applies from the next turn without a restart.                                               |
 
-Set them with `bb plugin config provider-claude-code set <key> <value>`. A
-change restarts the thread's Claude process before its next turn, keeping the
-conversation. Memory, native subagents, and the Workflow tool are toggled on
+Set them with `bb plugin config provider-claude-code set <key> <value>`. Unless
+noted, a change restarts the thread's Claude process before its next turn,
+keeping the conversation. Memory, native subagents, and the Workflow tool are toggled on
 the provider's page in Settings → Providers (see `bb guide providers`).
 
 Two host-daemon environment variables reach the Claude Code bridge:
@@ -1020,6 +1161,33 @@ commands; background cleanup started from the page survives navigation and
 reconnects. See the
 [plugin skill](../plugins/storage-retention/skills/storage-retention/SKILL.md).
 
+### Git and GitHub PR Status plugins
+
+The builtin Git plugin's settings page has two switches:
+
+- `showGitChanges` (default `true`), Show Git changes above the composer.
+  `false` hides the untracked, uncommitted, and committed file summary,
+  expanded file list, and merge-base picker above every thread composer.
+- `showCommitButton` (default `false`), Show Commit button. `true` shows the
+  Commit action in the thread header and overflow menu when the workspace has
+  uncommitted changes.
+
+The builtin GitHub PR Status plugin's `showPullRequest` (default `true`) is
+Show pull request above the composer on its plugin page. `false` hides the pull
+request status, Mark ready and merge actions above every thread composer; the
+Info tab's Pull request row stays. Thread relationships and workspace warnings
+stay visible either way.
+
+```bash
+bb plugin config bb--git set showGitChanges false
+bb plugin config bb--git set showCommitButton true
+bb plugin config bb--github-pr-status set showPullRequest false
+```
+
+Upgrading copies the former Settings → General switch's saved value into
+`showGitChanges` and `showPullRequest`. The Commit button starts off for
+everyone.
+
 ### Ask User Question plugin
 
 The builtin Ask User Question plugin keeps an unanswered question card open for
@@ -1085,6 +1253,7 @@ row's Customize actions, or `bb thread-list prefs get|set|reset <key>`
 | `threadLifecycles`    | `["active"]`                      | `["active"]`, `["archived"]`, or both; empty and duplicate values are rejected                                                              |
 | `rowActions`          | `["bb--core/archive"]`            | Up to three thread action keys in display order; see below                                                                                  |
 | `showProviderIcons`   | `false`                           | Shows the provider icon before each thread title                                                                                            |
+| `showRowMetadata`     | `false`                           | Shows plugins' metadata on a line under each thread title; needs the `threadRowMetadata` experiment                                         |
 | `collapsed*`          | `[]`                              | Collapsed sections, projects, threads, environments, custom sections, and machines                                                          |
 
 `rowActions` keys are `bb--core/<id>` (`split`, `newThreadInEnvironment`,
@@ -1276,3 +1445,29 @@ metadata is preserved. This is a desktop-local preference, with no server
 settings CLI/SDK endpoint. Builds with tolerant readers ignore the field and
 may drop it on save; older strict readers can reject the whole file, so keep a
 backup before rolling back to a build predating the tolerant-reader fix #5286.
+
+## App links
+
+Enable App links in Settings → Experiments or run
+`bb settings experiment applicationLinks true`. The experiment is a server
+setting shared by its clients. Disable it with
+`bb settings experiment applicationLinks false`.
+
+Explicit Markdown links such as `[Review note](reflect://note/Project%20X)`
+become clickable while enabled. Bare custom-scheme text is not auto-linked.
+The shared web UI asks before opening an app on the viewing device; choose
+Always allow to remember that URL scheme. All clients save approvals in
+localStorage for this BB site on this device. They do not sync between devices,
+browsers, app profiles, or server addresses. Settings → General → Links → App links lists
+saved schemes; the trash button next to a scheme revokes it.
+The Plugin SDK can list and revoke through the same implementation; it cannot
+grant approval. There is no server-side or local-desktop-profile approval store.
+
+Desktop and mobile validate the URL again and hand it to the OS after the web
+UI approves it. Native code does not show a second confirmation or store
+permissions. Failed native launches do not save new approvals. Resetting
+approvals invalidates pending remember choices. Old native clients show an
+update message. Web browsers control their own handoff and may show a second
+prompt; BB cannot reliably detect missing apps in a browser. Executable web
+schemes, local-file launch schemes, and reserved editor-action schemes remain
+blocked.

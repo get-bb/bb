@@ -24,6 +24,7 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from "@bb/shared-ui/context-menu";
+import { ImageLightbox } from "@/components/ui/image-lightbox";
 
 function inPluginScope(children: ReactNode) {
   return (
@@ -132,5 +133,27 @@ describe("usePortalScopeProps", () => {
     const menu = baseElement.querySelector('[role="menu"]');
     expect(menu?.getAttribute("data-bb-portaled-overlay")).toBe("");
     expect(menu?.classList.contains("z-[70]")).toBe(true);
+  });
+
+  it.each([
+    ["inside a plugin slot", true],
+    ["in the host tree", false],
+  ])("scopes the image lightbox portal %s by plugin id", (_case, inPlugin) => {
+    const lightbox = (
+      <ImageLightbox
+        imageSrc="/image.png"
+        imageAlt="Image"
+        title="Image preview"
+        onClose={() => {}}
+      />
+    );
+    render(inPlugin ? inPluginScope(lightbox) : lightbox);
+
+    const dialog = screen.getByRole("dialog", { name: "Image preview" });
+    expect(dialog.getAttribute("data-bb-portaled-overlay")).toBe("");
+    expect(dialog.getAttribute("data-bb-plugin")).toBe(
+      inPlugin ? "test-plugin" : null,
+    );
+    expect(dialog.hasAttribute("data-bb-plugin-root")).toBe(inPlugin);
   });
 });

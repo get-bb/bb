@@ -4,6 +4,7 @@ import {
   getLatestThreadOutputEventRow,
   getLatestThreadSystemErrorEventRow,
   hydrateRetainedEventOutputRows,
+  listLatestTurnFinalAgentMessageEventRows,
   listStoredEventRows as listStoredEventRowRecords,
 } from "@bb/db";
 import type { DbConnection, StoredEventRow } from "@bb/db";
@@ -185,6 +186,24 @@ export function getLastThreadOutput(
   }
 
   return null;
+}
+
+interface ListLatestTurnFinalAgentRepliesArgs {
+  limit: number;
+  threadId: string;
+}
+
+export function listLatestTurnFinalAgentReplies(
+  db: DbConnection,
+  args: ListLatestTurnFinalAgentRepliesArgs,
+): string[] {
+  return listLatestTurnFinalAgentMessageEventRows(db, args).flatMap((row) => {
+    const eventRow = parseStoredEventRow(row);
+    return eventRow.type === "item/completed" &&
+      eventRow.data.item.type === "agentMessage"
+      ? [eventRow.data.item.text]
+      : [];
+  });
 }
 
 export function getLastThreadErrorMessage(

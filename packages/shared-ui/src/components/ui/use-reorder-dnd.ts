@@ -19,8 +19,10 @@ import {
   type DragMoveEvent,
   type DragOverEvent,
   type DragStartEvent,
+  type KeyboardSensorOptions,
   type MeasuringConfiguration,
   type Modifier,
+  type MouseSensorOptions,
   type Sensor,
   type TouchSensorOptions,
 } from "@dnd-kit/core";
@@ -41,6 +43,18 @@ const restrictDragToVerticalAxis: Modifier = ({ transform }) => ({
 });
 
 const REORDER_MODIFIERS: Modifier[] = [restrictDragToVerticalAxis];
+
+const MOUSE_SENSOR_OPTIONS: MouseSensorOptions = {
+  activationConstraint: { distance: 8 },
+};
+
+const TOUCH_SENSOR_OPTIONS: TouchSensorOptions = {
+  activationConstraint: { delay: 200, tolerance: 6 },
+};
+
+const KEYBOARD_SENSOR_OPTIONS: KeyboardSensorOptions = {
+  coordinateGetter: sortableKeyboardCoordinates,
+};
 
 export interface UseReorderDndArgs {
   onDragEnd: (event: DragEndEvent) => void;
@@ -91,13 +105,9 @@ export function useReorderDnd({
   } = useDragClickSuppression();
   const isDraggingRef = useRef(false);
   const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(touchSensor, {
-      activationConstraint: { delay: 200, tolerance: 6 },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
+    useSensor(MouseSensor, MOUSE_SENSOR_OPTIONS),
+    useSensor(touchSensor, TOUCH_SENSOR_OPTIONS),
+    useSensor(KeyboardSensor, KEYBOARD_SENSOR_OPTIONS),
   );
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {

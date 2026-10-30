@@ -98,11 +98,11 @@ General. Machine-related keys (`machineServerUrl`, `defaultMachineAccess`,
   install with saved settings or work keeps false): when on, Enter steers a
   running thread and Command+Enter queues a follow-up; when off, those are
   reversed. Shift+Enter inserts a newline.
-- `showGitChanges` (default true; Settings → General → Show Git changes and
-  Commit button): false hides the git summary, expanded file list,
-  pull-request status and actions above the composer, and Commit action in the
-  thread header and overflow menu for every thread and connected client. Thread
-  relationships and workspace warnings remain visible.
+- Git changes above the composer, the Commit button (off by default) and the
+  pull request above the composer are plugin settings:
+  `bb plugin config bb--git set showGitChanges false`,
+  `bb plugin config bb--git set showCommitButton true` and
+  `bb plugin config bb--github-pr-status set showPullRequest false`.
 - `keepHistoryAfterContextClear` (default false; Settings → General → Show
   messages from before a context clear): true keeps a cleared thread's earlier
   messages above the `Context cleared` boundary in the timeline, outline, and
@@ -174,7 +174,16 @@ existing threads too, including `bb thread log`. Settings → Providers has the
 same per-provider switch.
 
 Experiments: `bb settings experiment <key> <true|false>` toggles a default-off
-experiment (Settings → Experiments). Experiments that
+experiment (Settings → Experiments). `applicationLinks` enables explicit
+Markdown links to apps such as Linear and Reflect, with confirmation on the
+viewing device unless that scheme was previously allowed. It defaults on for early adopters.
+Choose Always allow to save an approval on that device. Settings → General →
+Application link approvals can revoke one or all approvals. All clients store
+approvals locally for the current BB site and device profile. They do not sync
+across devices or server addresses. The Plugin SDK can list and revoke the
+viewing client's approvals; there is no CLI command that reads or modifies a
+remote client's localStorage.
+Experiments that
 gate a feature are documented with it: `serverMove` in `bb guide machines`,
 `performanceDiagnostics` under Server performance diagnostics below.
 `timelinePush` sends an open thread's timeline updates over the live
@@ -183,12 +192,30 @@ update. `compactExpiredCache` offers a Compact chip in the composer when an idle
 thread's prompt cache has expired and its context holds at least 100k tokens;
 see `bb guide thread-messaging` for `--compact-first`.
 `sidebarMultiSelect` lets the built-in thread list sidebar select several threads with
-Cmd/Ctrl-click and Shift-click for bulk actions and drag; while it is off,
-Cmd/Ctrl-click opens a thread in a split.
+Cmd/Ctrl+Shift-click and Shift-click for bulk actions and drag; Cmd/Ctrl-click
+still opens a thread in a split.
+`pluginUpdates` lists plugin updates on Settings → Updates with Update and
+Update all, and counts them in the sidebar updates badge; see `bb guide plugins`.
+`skipFocusedThreadNotifications` skips the web and desktop system notification
+for a thread open in a visible, focused bb window or tab. It defaults on for
+early adopters.
+`threadContextCard` moves a running thread's changes, pull request, and parent
+and child threads into a card at the upper-right of its pane, opened or pinned from
+the header. It defaults on for early adopters.
+`threadRowMetadata` adds Organize → Rows → Metadata to the built-in thread list,
+a line under each thread title where plugins show details such as the pull
+request number.
+`unreadDividerAtAnswer` places the NEW divider of an unread thread before the
+final assistant message of a turn that finished while you were away, instead of
+before its first tool call. It defaults on for early adopters.
+`websocketCompression` compresses large realtime messages (such as timeline
+pushes) on the app's live connection; it applies when the app reconnects.
 `bb settings general earlyAdopter on` (Settings → Experiments → Become an early
 adopter) turns on the experiments marked Early adopter, currently
-`timelinePush`, `compactExpiredCache`, and `sidebarMultiSelect`; an experiment you set yourself keeps
-your value.
+`applicationLinks`, `timelinePush`, `compactExpiredCache`, `pluginUpdates`,
+`sidebarMultiSelect`, `skipFocusedThreadNotifications`, `threadContextCard`,
+`unreadDividerAtAnswer`, and `websocketCompression`; an experiment you set
+yourself keeps your value.
 
 Launcher settings
 
@@ -224,14 +251,26 @@ bb settings keyboard reset [command] [--platform mac|windows|linux]
 `keyboard list` prints core command ids with their effective bindings, plus
 every saved override; examples include `panel.previousTab` / `panel.nextTab`,
 `pane.focus.left|right|up|down`, `pane.maximize.toggle`, and the initially
-unbound `panel.fullScreen.toggle`. `hints` (default true) shows or hides the
-delayed shortcut badges shown while holding the modifier key; shortcuts work
-either way.
+unbound `panel.fullScreen.toggle`. `terminal.find` applies while a terminal has
+focus: `Cmd+F` on macOS and `Ctrl+Shift+F` elsewhere, so Ctrl+letter keys keep
+reaching the shell. `hints` (default true) shows or hides the delayed shortcut
+badges shown while holding the modifier key; shortcuts work either way.
 
 `history.back` / `history.forward` (`Mod+[` / `Mod+]`) follow the pages opened
 in the current window, like the sidebar arrows. `thread.previous` /
 `thread.next` follow sidebar order instead: `Mod+Shift+[` / `Mod+Shift+]`
 on desktop and `Control+Shift+[` / `Control+Shift+]` on the web.
+
+`thread.rename`, `thread.archive`, `thread.markRead`, and `thread.pin` start
+unbound and act on the focused pane's open thread; Mark read and Pin toggle
+like the matching thread menu item.
+
+An open question card binds `question.select.1`–`9` (`1`–`9`),
+`question.submit` (`Mod+Enter`: Next, or Submit on the last question),
+`question.previous` / `question.next` (`ArrowLeft` / `ArrowRight` with focus
+in the card), and `question.cancel` (`Mod+.`). They skip text fields outside
+the card. In the card's answer field, `Enter` goes to the next question or
+submits and `Shift+Enter` adds a line.
 
 An override can be scoped with `--platform`; without it, it applies on all
 platforms. A platform-specific override takes precedence over a general one,
@@ -252,7 +291,8 @@ Sidebar preferences
 
 `bb settings ui` reads and writes server-side sidebar preferences shared by
 every window, device, and the CLI. The same registry stores which thread Info
-panel sections are collapsed (`infoPanel.collapsedSections`).
+panel sections are collapsed (`infoPanel.collapsedSections`) and whether a
+thread pane's thread context card stays pinned open (`threadContextCard.pinned`).
 
 bb settings ui list [--json]
 bb settings ui get <key> [--json]
@@ -418,3 +458,14 @@ metadata is preserved. This is a desktop-local preference, with no server
 settings CLI/SDK endpoint. Builds with tolerant readers ignore the field and
 may drop it on save; older strict readers can reject the whole file, so keep a
 backup before rolling back to a build predating the tolerant-reader fix #5286.
+
+Outbound networking
+
+bb's own server, daemon, and worker processes trust OS-managed certificate
+authorities and enable Node's environment proxy support by default; terminals,
+provider CLIs, and agent shells keep the user's Node networking defaults. Configure `HTTP_PROXY`,
+`HTTPS_PROXY`, and `NO_PROXY` with `bb-app env set` or in the launch environment;
+include `localhost,127.0.0.1,::1` in `NO_PROXY`. `NODE_EXTRA_CA_CERTS` adds a PEM
+bundle. `NODE_USE_SYSTEM_CA=0` and `NODE_USE_ENV_PROXY=0` opt out of the defaults.
+Restart bb after changes. Proxy support requires Node 22.21+, 24.5+, or 26;
+custom socket/agent libraries, including daemon WebSockets, can still bypass it.

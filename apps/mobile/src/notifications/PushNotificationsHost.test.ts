@@ -57,11 +57,18 @@ vi.mock("@/app-shell", () => {
     mode: "connect",
     serverUrl: "https://bb.example.test",
   };
+  const otherProfile = {
+    ...profile,
+    handle: "other",
+    id: "profile-2",
+    label: "Other",
+    serverUrl: "https://other.example.test",
+  };
   return {
     useProfiles: () => ({
       activeProfile: profile,
       connection: null,
-      profiles: [profile],
+      profiles: [profile, otherProfile],
       status: "ready",
     }),
     useAppRevealed: () => true,
@@ -93,7 +100,15 @@ vi.mock("./push-controller", () => ({
   }),
 }));
 vi.mock("./push-storage", () => ({
-  getPushStore: () => ({ hasPrompted: vi.fn(() => true) }),
+  getPushStore: () => ({
+    getSnapshot: () => ({
+      registrations: {
+        "profile-1": { subscriptionId: "sub-1" },
+        "profile-2": { subscriptionId: "sub-2" },
+      },
+    }),
+    hasPrompted: vi.fn(() => true),
+  }),
 }));
 vi.mock("./use-push-store", () => ({
   usePushStoreSnapshot: () => ({
@@ -146,4 +161,46 @@ describe("PushNotificationsHost", () => {
       }),
     );
   });
+
+  it("switches to the server that sent a threadless push", async () => {
+    mocks.responseListener(threadlessPush("https://other.example.test"));
+    await vi.waitFor(() =>
+      expect(mocks.push).toHaveBeenCalledWith({
+        pathname: "/webview",
+        params: { profileId: "profile-2" },
+      }),
+    );
+  });
+
+  it("switches to the server whose registration a threadless push names", async () => {
+    mocks.responseListener({
+      notification: {
+        request: {
+          content: { data: { kind: "message", subscriptionId: "sub-2" } },
+        },
+      },
+    });
+    await vi.waitFor(() =>
+      expect(mocks.push).toHaveBeenCalledWith({
+        pathname: "/webview",
+        params: { profileId: "profile-2" },
+      }),
+    );
+  });
+
+  it("leaves the screen alone for a threadless push from the active server", async () => {
+    mocks.responseListener(threadlessPush("https://bb.example.test"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mocks.push).not.toHaveBeenCalled();
+  });
 });
+
+function threadlessPush(serverUrl: string): NotificationResponse {
+  return {
+    notification: {
+      request: {
+        content: { data: { kind: "message", serverUrl } },
+      },
+    },
+  };
+}

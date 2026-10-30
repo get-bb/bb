@@ -1,7 +1,11 @@
 import { cn } from "../../lib/utils";
 
 type OverflowFadePlacement = "above" | "below" | "left" | "right";
-export type OverflowFadeTone = "background" | "sidebar" | "surface-raised";
+export type OverflowFadeTone =
+  | "background"
+  | "sidebar"
+  | "surface-raised"
+  | "surface-recessed";
 type OverflowFadeSize = "default" | "sm" | "lg";
 
 interface OverflowFadeProps {
@@ -55,6 +59,7 @@ interface OverflowFadeGradientClasses {
   background: string;
   sidebar: string;
   "surface-raised": string;
+  "surface-recessed": string;
 }
 
 const OVERFLOW_FADE_GRADIENT_CLASSES: Record<
@@ -66,24 +71,32 @@ const OVERFLOW_FADE_GRADIENT_CLASSES: Record<
     sidebar: "bg-gradient-to-b from-transparent to-sidebar",
     "surface-raised":
       "bg-gradient-to-b from-transparent to-surface-raised-solid",
+    "surface-recessed":
+      "bg-gradient-to-b from-transparent to-surface-recessed-solid",
   },
   below: {
     background: "bg-gradient-to-b to-transparent from-background",
     sidebar: "bg-gradient-to-b to-transparent from-sidebar",
     "surface-raised":
       "bg-gradient-to-b to-transparent from-surface-raised-solid",
+    "surface-recessed":
+      "bg-gradient-to-b to-transparent from-surface-recessed-solid",
   },
   left: {
     background: "bg-gradient-to-l from-transparent to-background",
     sidebar: "bg-gradient-to-l from-transparent to-sidebar",
     "surface-raised":
       "bg-gradient-to-l from-transparent to-surface-raised-solid",
+    "surface-recessed":
+      "bg-gradient-to-l from-transparent to-surface-recessed-solid",
   },
   right: {
     background: "bg-gradient-to-r from-transparent to-background",
     sidebar: "bg-gradient-to-r from-transparent to-sidebar",
     "surface-raised":
       "bg-gradient-to-r from-transparent to-surface-raised-solid",
+    "surface-recessed":
+      "bg-gradient-to-r from-transparent to-surface-recessed-solid",
   },
 };
 
@@ -96,12 +109,16 @@ const OVERFLOW_FADE_INSET_VERTICAL_GRADIENT_CLASSES: Record<
     sidebar: "bg-gradient-to-b from-sidebar to-transparent",
     "surface-raised":
       "bg-gradient-to-b from-surface-raised-solid to-transparent",
+    "surface-recessed":
+      "bg-gradient-to-b from-surface-recessed-solid to-transparent",
   },
   below: {
     background: "bg-gradient-to-b from-transparent to-background",
     sidebar: "bg-gradient-to-b from-transparent to-sidebar",
     "surface-raised":
       "bg-gradient-to-b from-transparent to-surface-raised-solid",
+    "surface-recessed":
+      "bg-gradient-to-b from-transparent to-surface-recessed-solid",
   },
 };
 

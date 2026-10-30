@@ -663,6 +663,7 @@ function FollowUpPromptBoxWithComposer({
       permissionPickerDisabled,
     ],
   );
+  const positionKeeper = useBottomAnchoredScroll()?.positionKeeper ?? null;
   const stackRef = useRef<HTMLDivElement>(null);
   const lastStackHeightRef = useRef(0);
   const [stackHeight, setStackHeight] = useState(0);
@@ -691,10 +692,11 @@ function FollowUpPromptBoxWithComposer({
       const measured = borderBoxSize?.blockSize ?? entry.contentRect.height;
       if (lastStackHeightRef.current === measured) return;
       flushSync(() => applyStackHeight(measured));
+      positionKeeper?.remeasure();
     });
     observer.observe(element);
     return () => observer.disconnect();
-  }, [applyStackHeight]);
+  }, [applyStackHeight, positionKeeper]);
   const elasticTextareaMinHeight =
     stack === null
       ? FOLLOW_UP_PROMPT_BOX_DEFAULT_MIN_HEIGHT

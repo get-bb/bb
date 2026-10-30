@@ -16,6 +16,7 @@ export type SettingsSearchCondition =
   | "filePreferences"
   | "localhostLinkRewrite"
   | "performanceDiagnostics"
+  | "pluginUpdates"
   | "sidebarNavigations"
   | "sourceCodeRenderers"
   | "threadLists";
@@ -43,10 +44,6 @@ export const SETTINGS_SEARCH_INDEX: Record<
         keywords: ["new thread", "open", "background"],
       },
       {
-        title: "Show Git changes and Commit button",
-        keywords: ["pull request", "pr", "diff", "composer"],
-      },
-      {
         title: "Default thread followup behavior",
         keywords: ["enter", "steer", "queue", "follow-up"],
       },
@@ -61,6 +58,18 @@ export const SETTINGS_SEARCH_INDEX: Record<
       {
         title: "Setup guide",
         keywords: ["onboarding", "getting started", "welcome"],
+      },
+      {
+        title: "App links",
+        keywords: [
+          "always allow",
+          "native apps",
+          "linear",
+          "reflect",
+          "application links",
+          "approvals",
+          "permissions",
+        ],
       },
       {
         title: "Open links in the in-app browser",
@@ -223,7 +232,14 @@ export const SETTINGS_SEARCH_INDEX: Record<
   },
   updates: {
     keywords: ["upgrade", "version", "release notes", "changelog"],
-    settings: [{ title: "Provider CLIs", keywords: ["agents", "upgrade"] }],
+    settings: [
+      { title: "Provider CLIs", keywords: ["agents", "upgrade"] },
+      {
+        title: "Plugins",
+        keywords: ["plugin updates", "outdated", "upgrade"],
+        when: "pluginUpdates",
+      },
+    ],
   },
   plugins: {
     keywords: ["extensions", "manage", "uninstall"],
@@ -237,6 +253,16 @@ export const SETTINGS_SEARCH_INDEX: Record<
     keywords: ["beta", "preview", "labs", "feature flags"],
     settings: [
       { title: "Early adopter", keywords: ["beta", "opt in", "preview"] },
+      {
+        title: "App links",
+        keywords: [
+          "application links",
+          "deep links",
+          "linear",
+          "slack",
+          "URL schemes",
+        ],
+      },
       {
         title: "Server performance diagnostics",
         keywords: ["cpu profile", "logs"],

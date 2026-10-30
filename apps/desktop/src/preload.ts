@@ -58,6 +58,7 @@ import {
   BB_DESKTOP_INFO_CHANGED_CHANNEL,
   BB_DESKTOP_INSTALL_UPDATE_CHANNEL,
   BB_DESKTOP_OPEN_EXTERNAL_URL_CHANNEL,
+  BB_DESKTOP_OPEN_APPLICATION_URL_CHANNEL,
   BB_DESKTOP_SET_THEME_CHANNEL,
   BB_DESKTOP_ZOOM_CHANGED_CHANNEL,
   BB_DESKTOP_ZOOM_COMMAND_CHANNEL,
@@ -106,6 +107,7 @@ import {
   BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
   BB_DESKTOP_FOCUS_WINDOW_CHANNEL,
+  BB_DESKTOP_SET_ATTENTION_THREADS_CHANNEL,
   BB_DESKTOP_GET_WINDOW_STATE_CHANNEL,
   BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
   BB_DESKTOP_OPEN_DATA_DIRECTORY_CHANNEL,
@@ -261,6 +263,12 @@ function addListener<T>(listeners: Set<T>, listener: T): () => void {
   return () => {
     listeners.delete(listener);
   };
+}
+
+async function listServerChoices(): Promise<BbDesktopServerChoice[]> {
+  return bbDesktopServerChoicesSchema.parse(
+    await ipcRenderer.invoke(BB_DESKTOP_GET_SERVER_CHOICES_CHANNEL),
+  );
 }
 
 function forwardParsed<T>(
@@ -431,11 +439,8 @@ const bbBrowserApi: BbDesktopBrowserApi = {
 
 const bbDesktopApi: BbDesktopApi = {
   browser: bbBrowserApi,
-  async getServerChoices() {
-    return bbDesktopServerChoicesSchema.parse(
-      await ipcRenderer.invoke(BB_DESKTOP_GET_SERVER_CHOICES_CHANNEL),
-    );
-  },
+  getServerChoices: listServerChoices,
+  listServerChoices,
   onServerChoicesChange(listener) {
     return addListener(serverChoiceListeners, listener);
   },
@@ -469,6 +474,9 @@ const bbDesktopApi: BbDesktopApi = {
   },
   getInfo() {
     return invokeDesktopInfo(BB_DESKTOP_GET_INFO_CHANNEL);
+  },
+  setAttentionThreads(threads) {
+    ipcRenderer.send(BB_DESKTOP_SET_ATTENTION_THREADS_CHANNEL, threads);
   },
   focusWindow() {
     ipcRenderer.send(BB_DESKTOP_FOCUS_WINDOW_CHANNEL);
@@ -509,6 +517,9 @@ const bbDesktopApi: BbDesktopApi = {
   },
   async openDataDirectory(): Promise<void> {
     await ipcRenderer.invoke(BB_DESKTOP_OPEN_DATA_DIRECTORY_CHANNEL);
+  },
+  async openApplicationUrl(url: string): Promise<void> {
+    await ipcRenderer.invoke(BB_DESKTOP_OPEN_APPLICATION_URL_CHANNEL, url);
   },
   openExternalUrl(url: string): void {
     ipcRenderer.send(BB_DESKTOP_OPEN_EXTERNAL_URL_CHANNEL, url);

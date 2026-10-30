@@ -82,9 +82,9 @@ export function withManualMachineProvider(
     ],
     getMachineProvider: (id) =>
       id === manual.provider.id ? manual : bridge.getMachineProvider(id),
-    async invokeProvider(pluginId, label, run) {
-      if (pluginId !== MANUAL_PROVIDER_OWNER)
-        return bridge.invokeProvider(pluginId, label, run);
+    async invokeProvider(record, label, run) {
+      if (record.pluginId !== MANUAL_PROVIDER_OWNER)
+        return bridge.invokeProvider(record, label, run);
       return invokePluginInline(run);
     },
   };

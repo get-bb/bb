@@ -11,12 +11,13 @@ import { z } from "zod";
 
 import {
   createComment,
-  publishProjectsChanged,
+  invalidateFolders,
+  invalidateProjectTasks,
   registerHandlers,
   type TasksApiStore,
 } from "../api";
 import {
-  publishAttachmentChanged,
+  invalidateAttachmentChanged,
   readAttachmentContent,
   saveAttachmentFromBytes,
 } from "../attachments";
@@ -929,7 +930,7 @@ export function registerTasksCli(
                   linkedBbProjectId: updateInput?.linkedBbProjectId,
                 }),
               );
-              publishProjectsChanged(bb, updated.id);
+              invalidateProjectTasks(bb, updated.id);
               return input.options.json
                 ? JSON.stringify({ project: updated })
                 : `Updated project ${updated.prefix}  ${updated.name}`;
@@ -1079,7 +1080,7 @@ export function registerTasksCli(
                   parentFolderId: moveInput?.parentFolderId,
                 }),
               );
-              publishProjectsChanged(bb, null);
+              invalidateFolders(bb, { projectsMoved: false });
               return input.options.json
                 ? JSON.stringify({ folder: updated })
                 : `Updated folder ${updated.name}  ${updated.id}`;
@@ -1281,7 +1282,7 @@ export function registerTasksCli(
                       fileName: attachmentFileName(source.path),
                     },
                   );
-                  publishAttachmentChanged(bb, store.tasks, attachment);
+                  invalidateAttachmentChanged(bb, store.tasks, attachment);
                   attachments.push(attachment);
                 } catch (error) {
                   failedAttachments.push({
@@ -2086,7 +2087,7 @@ export function registerTasksCli(
                     input.options.name ?? attachmentFileName(sourcePath),
                 },
               );
-              publishAttachmentChanged(bb, store.tasks, attachment);
+              invalidateAttachmentChanged(bb, store.tasks, attachment);
               return input.options.json
                 ? JSON.stringify({
                     attachment,

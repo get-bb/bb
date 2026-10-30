@@ -7,6 +7,11 @@ import { createStore } from "../api";
 import type { Comment, Project, Task } from "../db";
 import { delegationRpcContract } from "./contract";
 import { buildSeedPrompt, registerDelegation } from ".";
+import {
+  commentsTag,
+  taskChangedTags,
+  threadsChangedTags,
+} from "../shared/tags";
 
 function createTestPreset(
   store: ReturnType<typeof createStore>,
@@ -115,13 +120,10 @@ describe("task delegation", () => {
         }),
       ]),
     );
-    expect(harness.realtimeSignals).toEqual([
-      { channel: "threads:changed", payload: { taskId: task.id } },
-      {
-        channel: "tasks:changed",
-        payload: { taskId: task.id, projectId: project.id },
-      },
-      { channel: "comments:changed", payload: { taskId: task.id } },
+    expect(harness.experimental_rpcInvalidations).toEqual([
+      threadsChangedTags(task.id),
+      taskChangedTags({ id: task.id, projectId: project.id }),
+      [commentsTag(task.id)],
     ]);
 
     await harness.dispose();
@@ -408,12 +410,9 @@ describe("task delegation", () => {
         liveStatus: "working",
       }),
     ]);
-    expect(harness.realtimeSignals).toEqual([
-      { channel: "threads:changed", payload: { taskId: task.id } },
-      {
-        channel: "tasks:changed",
-        payload: { taskId: task.id, projectId: project.id },
-      },
+    expect(harness.experimental_rpcInvalidations).toEqual([
+      threadsChangedTags(task.id),
+      taskChangedTags({ id: task.id, projectId: project.id }),
     ]);
 
     await harness.dispose();
@@ -463,7 +462,7 @@ describe("task thread detach", () => {
       taskId: otherTask.id,
       threadId: "thr_dead",
     });
-    harness.realtimeSignals.length = 0;
+    harness.experimental_rpcInvalidations.length = 0;
 
     await expect(
       harness.callRpc("taskThreadsDetach", {
@@ -480,12 +479,9 @@ describe("task thread detach", () => {
         .listTaskThreads(otherTask.id)
         .map((thread) => thread.threadId),
     ).toEqual(["thr_dead"]);
-    expect(harness.realtimeSignals).toEqual([
-      { channel: "threads:changed", payload: { taskId: task.id } },
-      {
-        channel: "tasks:changed",
-        payload: { taskId: task.id, projectId: project.id },
-      },
+    expect(harness.experimental_rpcInvalidations).toEqual([
+      threadsChangedTags(task.id),
+      taskChangedTags({ id: task.id, projectId: project.id }),
     ]);
 
     await expect(

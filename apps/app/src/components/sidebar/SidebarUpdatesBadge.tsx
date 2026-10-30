@@ -62,6 +62,9 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
     }
   }
   const staleProviders = [...staleProvidersByKey.values()];
+  const pluginUpdateCount =
+    inventory.plugins?.items.filter((item) => item.kind === "update").length ??
+    0;
   const providerUpdateRunning = inventory.machines.some((machine) =>
     machine.issues.some(
       (issue) =>
@@ -73,6 +76,7 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
   if (
     bbUpdateCount === 0 &&
     staleProviders.length === 0 &&
+    pluginUpdateCount === 0 &&
     machineAttention.label === null
   ) {
     return null;
@@ -84,6 +88,10 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
   const providerLabel = `${joinNames(
     staleProviders.map((stale) => stale.displayName),
   )} ${staleProviders.length === 1 ? "update" : "updates"} available`;
+  const pluginLabel =
+    pluginUpdateCount === 1
+      ? "1 plugin update available"
+      : `${pluginUpdateCount} plugin updates available`;
 
   return (
     <SidebarMenuItem className="flex min-w-0 items-center gap-1">
@@ -177,6 +185,23 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
             </Link>
           </TooltipTrigger>
           <TooltipContent side="top">{providerLabel}</TooltipContent>
+        </Tooltip>
+      ) : null}
+      {pluginUpdateCount > 0 ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Link
+              to={updatesRoutePath}
+              onClick={onNavigate}
+              aria-label={pluginLabel}
+              data-testid="sidebar-updates-badge-plugins"
+              className={CHIP_CLASS}
+            >
+              <Icon name="Plug02" className="size-3 text-muted-foreground" />
+              {pluginUpdateCount}
+            </Link>
+          </TooltipTrigger>
+          <TooltipContent side="top">{pluginLabel}</TooltipContent>
         </Tooltip>
       ) : null}
     </SidebarMenuItem>

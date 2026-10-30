@@ -94,7 +94,6 @@ describe("installNpmRevision", () => {
 
     const revision = await installNpmRevision({
       dataDir,
-      npmCliPath: "/bundled/npm-cli.js",
       onLine: () => undefined,
       onStep: (step) => steps.push(step),
       runner: npm.runner,
@@ -114,7 +113,7 @@ describe("installNpmRevision", () => {
     expect(install?.command).toBe(process.execPath);
     expect(install?.args).toEqual(
       expect.arrayContaining([
-        "/bundled/npm-cli.js",
+        expect.stringMatching(/npm-cli\.js$/u),
         "install",
         "bb-app@1.1.0",
       ]),
@@ -142,7 +141,6 @@ describe("installNpmRevision", () => {
 
     await installNpmRevision({
       dataDir,
-      npmCliPath: null,
       onLine: () => undefined,
       onStep: () => undefined,
       runner: npm.runner,
@@ -159,7 +157,6 @@ describe("installNpmRevision", () => {
     await expect(
       installNpmRevision({
         dataDir,
-        npmCliPath: null,
         onLine: () => undefined,
         onStep: () => undefined,
         runner: npm.runner,
@@ -176,7 +173,6 @@ describe("installNpmRevision", () => {
     await expect(
       installNpmRevision({
         dataDir,
-        npmCliPath: null,
         onLine: () => undefined,
         onStep: () => undefined,
         runner: npm.runner,
@@ -192,7 +188,6 @@ describe("installNpmRevision", () => {
     await expect(
       installNpmRevision({
         dataDir: scratchDir(),
-        npmCliPath: null,
         onLine: () => undefined,
         onStep: () => undefined,
         runner: fakeNpm({}).runner,

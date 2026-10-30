@@ -70,6 +70,7 @@ describe("PluginDetailReleaseControl", () => {
           updateState: {
             ...EMPTY_PLUGIN_UPDATE_STATE,
             availableVersion: "1.9.0",
+            availableLabel: "1.9.0",
           },
         })}
       />,
@@ -96,6 +97,7 @@ describe("PluginDetailReleaseControl", () => {
           updateState: {
             ...EMPTY_PLUGIN_UPDATE_STATE,
             blockedVersion: "1.9.0",
+            blockedLabel: "1.9.0",
             blockedReasons: ["requires bb >= 0.15"],
           },
         })}
@@ -155,8 +157,10 @@ describe("PluginDetailReleaseControl", () => {
             updateState: {
               ...EMPTY_PLUGIN_UPDATE_STATE,
               availableVersion: "1.9.0",
+              availableLabel: "1.9.0",
               lastFailure: {
                 version: "1.9.0",
+                label: "1.9.0",
                 at: null,
                 detail: "The plugin failed to load.",
               },
@@ -168,8 +172,10 @@ describe("PluginDetailReleaseControl", () => {
             updateState: {
               ...EMPTY_PLUGIN_UPDATE_STATE,
               availableVersion: "1.9.0",
+              availableLabel: "1.9.0",
               lastFailure: {
                 version: "1.9.0",
+                label: "1.9.0",
                 at: null,
                 detail: "The plugin failed to load.",
               },

@@ -76,6 +76,17 @@ export const READ_ONLY_COMMAND_PATHS: ReadonlySet<string> = new Set([
   "skill cli-skills-status",
 ]);
 
+export const READ_ONLY_BUNDLED_PLUGIN_COMMAND_PATHS: ReadonlySet<string> =
+  new Set([
+    "git status",
+    "git branches",
+    "git diff",
+    "git files",
+    "git file",
+    "git patch",
+    "git viewed list",
+  ]);
+
 const UNAVAILABLE_COMMAND_PREFIXES: readonly (readonly string[])[] = [
   ["terminal", "attach"],
   ["plugin", "dev"],
@@ -186,13 +197,21 @@ export function evaluateCliAccess(
   if (mode === "write") return { allowed: true };
 
   if (argv.length === 1 && argv[0] === "--version") return { allowed: true };
-  if (isHelpRequest(argv, knownPaths)) return { allowed: true };
-  const path = longestKnownPath(words, knownPaths);
-  if (path !== null && READ_ONLY_COMMAND_PATHS.has(path)) {
+  const readablePaths = new Set([
+    ...knownPaths,
+    ...READ_ONLY_BUNDLED_PLUGIN_COMMAND_PATHS,
+  ]);
+  if (isHelpRequest(argv, readablePaths)) return { allowed: true };
+  const path = longestKnownPath(words, readablePaths);
+  if (
+    path !== null &&
+    (READ_ONLY_COMMAND_PATHS.has(path) ||
+      READ_ONLY_BUNDLED_PLUGIN_COMMAND_PATHS.has(path))
+  ) {
     return { allowed: true };
   }
   const shown = path ?? words.slice(0, 3).join(" ");
   return deny(
-    `\`bb ${shown}\` is not on the read-only list. The \`read\` tool accepts only the canonical command names that inspect bb (no aliases, no plugin commands). Use the \`run\` tool for anything else.`,
+    `\`bb ${shown}\` is not on the read-only list. The \`read\` tool accepts only the canonical command names that inspect bb (no aliases, and no plugin commands except the bundled Git plugin's reads). Use the \`run\` tool for anything else.`,
   );
 }

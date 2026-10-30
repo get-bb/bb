@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { act } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import { PluginSourceCode } from "@/components/plugin/PluginSourceCode";
-import { PluginDiff } from "@/components/plugin/PluginDiff";
-import { parseGitDiffFiles } from "@/components/git-diff/git-diff-parsing";
+import { LazyPluginDiff } from "@/components/plugin/lazy-plugin-renderers";
+import { parseGitDiffFiles } from "@bb/shared-ui/git-diff/parsing";
 import { DiffHost } from "./DiffHost";
 import { SourceCodeHost } from "./SourceCodeHost";
 
@@ -47,7 +47,7 @@ it("shows the renderer skeleton until the renderer imports resolve", async () =>
   );
   const sdk = render(
     <>
-      <PluginDiff patch={patch} path="app.ts" />
+      <LazyPluginDiff patch={patch} path="app.ts" />
       <PluginSourceCode content="const a = 2;" path="app.ts" />
     </>,
   );
@@ -65,8 +65,10 @@ it("shows the renderer skeleton until the renderer imports resolve", async () =>
     downloads.source.resolve();
   });
 
-  expect(await screen.findAllByText("Diff ready")).toHaveLength(2);
-  expect(await screen.findAllByText("Source ready")).toHaveLength(2);
+  await waitFor(() => {
+    expect(screen.getAllByText("Diff ready")).toHaveLength(2);
+    expect(screen.getAllByText("Source ready")).toHaveLength(2);
+  });
   for (const view of [hosts, sdk]) {
     expect(view.container.querySelectorAll(".animate-pulse")).toHaveLength(0);
   }

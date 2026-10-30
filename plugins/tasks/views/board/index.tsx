@@ -11,7 +11,7 @@ import {
   type TaskStatus,
   type TaskThread,
 } from "../../shared/contract.js";
-import { useTasksQuery, useTasksRpc } from "../../shell/data.js";
+import { useTasksRpc } from "../../shell/data.js";
 import { useTasksNavigation } from "../../shell/routes.js";
 import { NewTaskDialog } from "../manage/new-task-dialog.js";
 import {
@@ -22,13 +22,7 @@ import {
   visibleBoardStatuses,
 } from "./drop-position.js";
 import { PriorityIcon, StatusIcon } from "./icons.js";
-import {
-  EMPTY_META,
-  fetchBoard,
-  patchBoard,
-  type BoardCardMeta,
-  type BoardData,
-} from "./board-data.js";
+import { EMPTY_META, useBoard, type BoardCardMeta } from "./board-data.js";
 import { STATUS_LABELS } from "../list/lib.js";
 import { Button } from "@/components/ui/button";
 import { DelayedLoading } from "@/components/ui/delayed-loading";
@@ -186,15 +180,7 @@ interface BoardViewProps {
 export function BoardView({ projectId }: BoardViewProps) {
   const rpc = useTasksRpc();
   const navigation = useTasksNavigation();
-  const board = useTasksQuery<BoardData>(
-    (queryRpc) => fetchBoard(queryRpc, projectId),
-    ["tasks:changed", "projects:changed", "threads:changed"],
-    [projectId],
-    {
-      applySignals: (queryRpc, current, signals) =>
-        patchBoard(queryRpc, projectId, current, signals),
-    },
-  );
+  const board = useBoard(projectId);
 
   const [columns, setColumns] = useState<ColumnMap | undefined>(undefined);
   useEffect(() => {
@@ -250,6 +236,11 @@ export function BoardView({ projectId }: BoardViewProps) {
     return null;
   };
 
+  const restoreColumns = () => {
+    if (board.data) setColumns(groupColumns(board.data.tasks));
+    board.refresh();
+  };
+
   const commitDrop = (
     taskId: string,
     toStatus: TaskStatus,
@@ -271,12 +262,9 @@ export function BoardView({ projectId }: BoardViewProps) {
         afterTaskId: neighbors.afterTaskId,
         authorName: "You",
       })
-      .then(
-        (result) => {
-          if (!result.ok) board.refresh();
-        },
-        () => board.refresh(),
-      );
+      .then((result) => {
+        if (!result.ok) restoreColumns();
+      }, restoreColumns);
   };
 
   const handleCardPointerDown = (

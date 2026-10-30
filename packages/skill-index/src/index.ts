@@ -165,6 +165,7 @@ export async function findSkillFiles(
     }
     if (leaf) return;
     for (const entry of entries) {
+      if (root.shape !== "command" && entry.isFile()) continue;
       const entryPath = path.join(directory, entry.name);
       const target = await resolveSkillPath(entryPath, root.boundaryPath);
       if (target === null) continue;

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { makePanelController } from "../fixtures.js";
 import { useEffect, useState } from "react";
 import { cleanup, fireEvent, render, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -110,6 +111,12 @@ const taskDetailsTab = {
   },
 } satisfies ExperimentalPluginFixedTabReference<TestTaskTarget>;
 
+const taskDetailsTabReference = {
+  id: "details",
+  context: { kind: "nav-panel", panelId: "tasks" },
+  availability: "fixed",
+} as const;
+
 function FixedTabProbe() {
   const panel = experimental_useAppPanel();
   const targetState = experimental_useFixedTabTarget(taskDetailsTab);
@@ -118,9 +125,8 @@ function FixedTabProbe() {
       <button
         type="button"
         onClick={() =>
-          panel.openFixedTab({
-            surface: { kind: "current" },
-            tab: taskDetailsTab,
+          panel.openTab({
+            tab: taskDetailsTabReference,
             target: { kind: "task", taskId: "TASK-42" },
           })
         }
@@ -129,12 +135,7 @@ function FixedTabProbe() {
       </button>
       <button
         type="button"
-        onClick={() =>
-          panel.openFixedTab({
-            surface: { kind: "current" },
-            tab: taskDetailsTab,
-          })
-        }
+        onClick={() => panel.openTab({ tab: taskDetailsTabReference })}
       >
         Select details
       </button>
@@ -1341,6 +1342,51 @@ describe("loadPluginApp", () => {
     ).rejects.toThrow('slots.messageAction: duplicate id "dup"');
   });
 
+  it("validates message metadata components and placement", async () => {
+    const component = () => null;
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.slots.experimental_messageMetadata({
+          id: "timestamp",
+          placement: "above",
+          component,
+        });
+      }),
+    );
+    expect(captured.messageMetadata[0]?.placement).toBe("above");
+
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.experimental_messageMetadata({
+            id: "bad-placement",
+            placement: "outside" as never,
+            component,
+          });
+        }),
+      ),
+    ).rejects.toThrow('"placement" must be "above" or "actionRow"');
+
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.experimental_messageMetadata({
+            id: "bad",
+            component: undefined as never,
+          });
+        }),
+      ),
+    ).rejects.toThrow('"component" must be a React component');
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.experimental_messageMetadata({ id: "dup", component });
+          builder.slots.experimental_messageMetadata({ id: "dup", component });
+        }),
+      ),
+    ).rejects.toThrow('slots.experimental_messageMetadata: duplicate id "dup"');
+  });
+
   it("collects separate provider kinds and the legacy all-kinds registration", async () => {
     const captured = await loadPluginApp(
       definePluginApp((builder) => {
@@ -1432,8 +1478,11 @@ describe("loadPluginApp", () => {
   });
 
   it("invokes a captured messageAction run with a plugin-authored context", () => {
-    const openPanel = (options: { actionId: string }) =>
-      options.actionId === "panel";
+    const experimental_panel = makePanelController({
+      openTab: () => true,
+      toggleTab: () => true,
+      close: () => true,
+    });
     app.messageActions[0]!.run({
       threadId: "thr_main",
       message: {
@@ -1445,7 +1494,7 @@ describe("loadPluginApp", () => {
         experimental_messageSeq: 12,
       },
       selectedText: "answer",
-      openPanel,
+      experimental_panel,
       composer: null,
     });
     expect(messageActionRuns).toHaveLength(1);
@@ -1652,12 +1701,12 @@ describe("renderSlot", () => {
     ]);
   });
 
-  it("records fixed-tab opens and retains target state until the owner clears it", () => {
+  it("records panel calls and retains target state until the owner clears it", () => {
     const slot = renderSlot(
       { component: FixedTabProbe },
       {},
       {
-        experimental_openFixedTab: () => true,
+        experimental_panel: { openTab: () => true },
         experimental_fixedTabTarget: {
           panelId: "tasks",
           tabId: "details",
@@ -1673,19 +1722,74 @@ describe("renderSlot", () => {
     expect(slot.getByRole("button", { name: "Clear TASK-42" })).toBeTruthy();
     fireEvent.click(slot.getByRole("button", { name: "Select details" }));
     expect(slot.getByRole("button", { name: "Clear TASK-42" })).toBeTruthy();
-    expect(slot.inspection.experimental_fixedTabOpenCalls).toEqual([
+    expect(slot.inspection.experimental_panelCalls).toEqual([
       {
-        surface: { kind: "current" },
-        panelId: "tasks",
-        tabId: "details",
-        target: { kind: "task", taskId: "TASK-42" },
+        method: "openTab",
+        options: {
+          tab: taskDetailsTabReference,
+          target: { kind: "task", taskId: "TASK-42" },
+        },
       },
-      {
-        surface: { kind: "current" },
-        panelId: "tasks",
-        tabId: "details",
-      },
+      { method: "openTab", options: { tab: taskDetailsTabReference } },
     ]);
+  });
+
+  it("keeps retired panel openers and their host options working through the controller", () => {
+    type RetiredPanel = {
+      openFixedTab(options: {
+        surface: { kind: "current" };
+        tab: typeof taskDetailsTab;
+        target?: TestTaskTarget;
+      }): boolean;
+    };
+    type RetiredNavigate = {
+      openThreadPanel(options: { actionId: string; params?: string }): boolean;
+    };
+    const results: boolean[] = [];
+    function RetiredProbe() {
+      const panel = experimental_useAppPanel() as unknown as RetiredPanel;
+      const navigate = useBbNavigate() as unknown as RetiredNavigate;
+      return (
+        <button
+          type="button"
+          onClick={() => {
+            results.push(
+              panel.openFixedTab({
+                surface: { kind: "current" },
+                tab: taskDetailsTab,
+                target: { kind: "task", taskId: "TASK-9" },
+              }),
+              navigate.openThreadPanel({ actionId: "chat", params: "p" }),
+            );
+          }}
+        >
+          Open retired
+        </button>
+      );
+    }
+    const openFixedTab = vi.fn(() => true);
+    const openThreadPanel = vi.fn(() => false);
+    const retiredOptions = {
+      pluginId: "test-plugin",
+      experimental_openFixedTab: openFixedTab,
+      openThreadPanel,
+    };
+    const slot = renderSlot({ component: RetiredProbe }, {}, retiredOptions);
+    fireEvent.click(slot.getByRole("button", { name: "Open retired" }));
+    expect(results).toEqual([true, false]);
+    expect(openFixedTab).toHaveBeenCalledWith({
+      surface: { kind: "current" },
+      panelId: "tasks",
+      tabId: "details",
+      target: { kind: "task", taskId: "TASK-9" },
+    });
+    expect(openThreadPanel).toHaveBeenCalledWith({
+      actionId: "chat",
+      params: "p",
+    });
+    expect(
+      slot.inspection.experimental_panelCalls.map((call) => call.method),
+    ).toEqual(["openTab", "openTab"]);
   });
 
   it("drives the shared realtime connection lifecycle", async () => {
@@ -2085,6 +2189,7 @@ describe("thread actions menu fake", () => {
     id: "thr_menu",
     projectId: "proj_menu",
     parentThreadId: null,
+    parentNotifications: "auto" as const,
     archivedAt: null,
     pinnedAt: null,
     sectionId: null,

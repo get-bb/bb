@@ -6,7 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 import type { Thread } from "@bb/domain";
 import { makeThread as makeThreadFixture } from "@bb/test-helpers/domain-fixtures";
 import { defaultAppSettings } from "@bb/domain";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
 import { PaneContext, type PaneContextValue } from "./PaneContext";
 import { threadQueryKey } from "@/hooks/queries/query-keys";
@@ -16,16 +16,24 @@ import {
   ThreadActionCollectors,
   resetThreadActionRegistryForTest,
 } from "@/lib/thread-actions/thread-action-registry";
-import { ThreadArchiveCommandHandler } from "./ThreadArchiveCommandHandler";
+import { PaneThreadActionCommandHandler } from "./PaneThreadActionCommandHandler";
 
 const mocks = vi.hoisted(() => ({
-  requestArchive: vi.fn(),
-  requestDelete: vi.fn(),
+  requestArchiveThreads: vi.fn<(threads: readonly Thread[]) => void>(),
+  requestDeleteThreads: vi.fn(),
+}));
+const sdkThreads = vi.hoisted(() => ({
+  pin: vi.fn(),
+  unpin: vi.fn(),
+  markRead: vi.fn(),
+  markUnread: vi.fn(),
+  unarchive: vi.fn(),
+  get: vi.fn(),
 }));
 
 const testState = vi.hoisted(() => {
   const keybinding = (
-    command: "thread.archive" | "thread.rename",
+    command: "thread.archive" | "thread.markRead" | "thread.pin",
     key: string,
   ) => ({
     command,
@@ -43,10 +51,13 @@ const testState = vi.hoisted(() => {
   return {
     keybindings: [
       keybinding("thread.archive", "a"),
-      keybinding("thread.rename", "r"),
+      keybinding("thread.markRead", "m"),
+      keybinding("thread.pin", "p"),
     ],
   };
 });
+
+vi.mock("@/lib/sdk", () => ({ sdk: { threads: sdkThreads } }));
 
 vi.mock("@/components/thread/ThreadActionsProvider", () => ({
   useThreadActions: () => mocks,
@@ -124,7 +135,7 @@ function SplitHandlers({
               focusedThreadId === firstPaneThread.id,
             )}
           >
-            <ThreadArchiveCommandHandler
+            <PaneThreadActionCommandHandler
               thread={toThreadActionTarget(firstPaneThread, null)}
             />
           </PaneContext.Provider>
@@ -134,7 +145,7 @@ function SplitHandlers({
               focusedThreadId === secondThread.id,
             )}
           >
-            <ThreadArchiveCommandHandler
+            <PaneThreadActionCommandHandler
               thread={toThreadActionTarget(secondThread, null)}
             />
           </PaneContext.Provider>
@@ -144,7 +155,7 @@ function SplitHandlers({
   );
 }
 
-function pressShortcut(letter: "A" | "R") {
+function pressShortcut(letter: "A" | "M" | "P") {
   fireEvent.keyDown(window, {
     key: letter,
     code: `Key${letter}`,
@@ -153,37 +164,73 @@ function pressShortcut(letter: "A" | "R") {
   });
 }
 
+const PANE_COMMANDS = [
+  {
+    command: "thread.archive",
+    letter: "A",
+    targets: () =>
+      mocks.requestArchiveThreads.mock.calls.flatMap(([threads]) =>
+        threads.map((thread) => thread.id),
+      ),
+  },
+  {
+    command: "thread.pin",
+    letter: "P",
+    targets: () => sdkThreads.pin.mock.calls.map(([args]) => args.threadId),
+  },
+  {
+    command: "thread.markRead",
+    letter: "M",
+    targets: () =>
+      sdkThreads.markRead.mock.calls.map(([args]) => args.threadId),
+  },
+] as const;
+
+beforeEach(() => {
+  sdkThreads.pin.mockImplementation(async ({ threadId }) => ({
+    ...makeThread(threadId, threadId),
+    pinnedAt: 9,
+  }));
+  sdkThreads.markRead.mockImplementation(async ({ threadId }) => ({
+    ...makeThread(threadId, threadId),
+    lastReadAt: 9,
+  }));
+});
+
 afterEach(() => {
   cleanup();
   resetThreadActionRegistryForTest();
   vi.clearAllMocks();
 });
 
-describe("thread archive command handler", () => {
-  it("runs the archive action for the focused pane's thread as focus changes", async () => {
-    const view = render(<SplitHandlers focusedThreadId={firstThread.id} />);
+describe("pane thread action command handler", () => {
+  it.each(PANE_COMMANDS)(
+    "runs $command for the focused pane's thread as focus changes",
+    async ({ letter, targets }) => {
+      const view = render(<SplitHandlers focusedThreadId={firstThread.id} />);
 
-    pressShortcut("A");
-    await waitFor(() =>
-      expect(mocks.requestArchive.mock.calls).toEqual([[firstThread]]),
-    );
+      pressShortcut(letter);
+      await waitFor(() => expect(targets()).toEqual([firstThread.id]));
 
-    mocks.requestArchive.mockClear();
-    view.rerender(<SplitHandlers focusedThreadId={secondThread.id} />);
-    pressShortcut("A");
-    await waitFor(() =>
-      expect(mocks.requestArchive.mock.calls).toEqual([[secondThread]]),
-    );
-  });
+      view.rerender(<SplitHandlers focusedThreadId={secondThread.id} />);
+      pressShortcut(letter);
+      await waitFor(() =>
+        expect(targets()).toEqual([firstThread.id, secondThread.id]),
+      );
+    },
+  );
 
-  it("does nothing when no pane is focused", async () => {
-    render(<SplitHandlers focusedThreadId={null} />);
+  it.each(PANE_COMMANDS)(
+    "does nothing for $command when no pane is focused",
+    async ({ letter, targets }) => {
+      render(<SplitHandlers focusedThreadId={null} />);
 
-    pressShortcut("A");
-    await new Promise((resolve) => setTimeout(resolve, 0));
+      pressShortcut(letter);
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(mocks.requestArchive).not.toHaveBeenCalled();
-  });
+      expect(targets()).toEqual([]);
+    },
+  );
 
   it("does nothing when the focused thread is archived", async () => {
     const archivedThread = { ...firstThread, archivedAt: 2 };
@@ -197,6 +244,6 @@ describe("thread archive command handler", () => {
     pressShortcut("A");
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(mocks.requestArchive).not.toHaveBeenCalled();
+    expect(mocks.requestArchiveThreads).not.toHaveBeenCalled();
   });
 });

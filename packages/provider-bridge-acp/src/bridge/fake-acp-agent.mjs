@@ -85,6 +85,8 @@
  *                            → stop reason returned for /compact
  * - FAKE_ACP_RESUME_SESSION=1
  *                            → advertise and serve session/resume
+ * - FAKE_ACP_ADDITIONAL_DIRECTORIES=1
+ *                            → advertise sessionCapabilities.additionalDirectories
  * - FAKE_ACP_SESSION_BUSY_PROMPTS=<n>
  *                            → reject the first n prompts as session_busy
  *                              (omp's typed -32003 rejection)
@@ -109,12 +111,14 @@
 
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
-import { appendFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, renameSync, writeFileSync } from "node:fs";
 
 const failLoad = process.env.FAKE_ACP_FAIL_LOAD === "1";
 const loadSession = process.env.FAKE_ACP_LOAD_SESSION === "1" || failLoad;
 const forkSession = process.env.FAKE_ACP_FORK_SESSION === "1";
 const deleteSession = process.env.FAKE_ACP_DELETE_SESSION === "1";
+const additionalDirectories =
+  process.env.FAKE_ACP_ADDITIONAL_DIRECTORIES === "1";
 const forkReuseSourceId = process.env.FAKE_ACP_FORK_REUSE_SOURCE_ID === "1";
 const usageOnLoad = process.env.FAKE_ACP_USAGE_ON_LOAD === "1";
 const usageSessionId = process.env.FAKE_ACP_USAGE_SESSION_ID;
@@ -193,7 +197,7 @@ const fakeModels = [
 let activePromptId = null;
 let stuckAfterCancel = false;
 let nextAgentRequestId = 1000;
-let selectedModel = "fake/default";
+let selectedModel = process.env.FAKE_ACP_INITIAL_MODEL ?? "fake/default";
 let selectedEffort = "none";
 let selectedFast = process.env.FAKE_ACP_INITIAL_FAST ?? "false";
 let clientSupportsParameterizedModels = false;
@@ -237,7 +241,9 @@ if (process.env.FAKE_ACP_LINGERING_DESCENDANT_PID_FILE) {
 }
 
 if (process.env.FAKE_ACP_READY_FILE) {
-  writeFileSync(process.env.FAKE_ACP_READY_FILE, String(process.pid));
+  const readyFile = process.env.FAKE_ACP_READY_FILE;
+  writeFileSync(readyFile + ".tmp", String(process.pid));
+  renameSync(readyFile + ".tmp", readyFile);
 }
 
 if (process.env.FAKE_ACP_LAUNCH_LOG) {
@@ -733,23 +739,40 @@ async function handlePrompt(message) {
     });
     notifyUpdate(messageChunk("commands advertised"));
   } else if (text.includes("ask-form")) {
-    const properties = text.includes("ask-form-too-large")
-      ? Object.fromEntries(
-          ["a", "b", "c", "d", "e"].map((name) => [name, { type: "string" }]),
-        )
-      : {
-          strategy: {
+    const droid = text.includes("ask-form-other-droid");
+    const properties = text.includes("ask-form-other")
+      ? {
+          choice: {
             type: "string",
-            title: "Strategy",
-            enum: ["conservative", "balanced"],
+            enum: droid ? ["a", "b", "other"] : ["a", "b"],
           },
-          dryRun: { type: "boolean", title: "Dry run" },
-        };
+          [droid ? "choice_other" : "choice__other"]: { type: "string" },
+        }
+      : text.includes("ask-form-too-large")
+        ? Object.fromEntries(
+            Array.from({ length: 11 }, (_, index) => [
+              `field${index}`,
+              { type: "string" },
+            ]),
+          )
+        : {
+            strategy: {
+              type: "string",
+              title: "Strategy",
+              enum: ["conservative", "balanced"],
+            },
+            dryRun: { type: "boolean", title: "Dry run" },
+          };
+    const required = droid ? ["choice"] : Object.keys(properties);
     const result = await requestClient("elicitation/create", {
       sessionId: activeSessionId,
       mode: "form",
       message: "How should I proceed?",
-      requestedSchema: { type: "object", properties },
+      requestedSchema: {
+        type: "object",
+        properties,
+        ...(text.includes("ask-form-other-omp") ? {} : { required }),
+      },
     }).catch((error) => ({ error: String(error) }));
     if (requestLog) {
       appendFileSync(
@@ -882,12 +905,18 @@ async function handleMessage(message) {
           agentCapabilities: {
             loadSession,
             promptCapabilities: { image: false },
-            ...(forkSession || resumeSession || deleteSession
+            ...(forkSession ||
+            resumeSession ||
+            deleteSession ||
+            additionalDirectories
               ? {
                   sessionCapabilities: {
                     ...(forkSession ? { fork: {} } : {}),
                     ...(resumeSession ? { resume: {} } : {}),
                     ...(deleteSession ? { delete: {} } : {}),
+                    ...(additionalDirectories
+                      ? { additionalDirectories: {} }
+                      : {}),
                   },
                 }
               : {}),
@@ -1108,6 +1137,12 @@ async function handleMessage(message) {
           });
           return;
         }
+        await new Promise((resolve) =>
+          setTimeout(
+            resolve,
+            Number(process.env.FAKE_ACP_MODEL_DELAY_MS ?? "0"),
+          ),
+        );
         selectedModel = value;
         send({
           jsonrpc: "2.0",

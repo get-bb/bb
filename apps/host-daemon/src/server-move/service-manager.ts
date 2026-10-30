@@ -1,10 +1,9 @@
-import { execFile, spawn } from "node:child_process";
+import { execHostFile, spawnHostProcess as spawn } from "@bb/process-utils";
 import { closeSync, mkdirSync, openSync } from "node:fs";
 import { dirname } from "node:path";
-import { promisify } from "node:util";
 import type { ServiceDefinition } from "./service-definition.js";
 
-const execFileAsync = promisify(execFile);
+const execFileAsync = execHostFile;
 const SERVICE_COMMAND_TIMEOUT_MS = 30_000;
 
 export const LAUNCHD_RESTART_SCRIPT = [

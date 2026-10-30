@@ -45,7 +45,7 @@ bb.providers.register({
     reasoningLevels: ["medium"], // coarse fallback ladder
   },
   reasoningLevels: [{ id: "medium", label: "Medium" }], // labelled picker options
-  serviceTiers: undefined, // e.g. [{ id: "default", label: "Default" }, { id: "fast", label: "Fast" }]
+  serviceTiers: undefined, // e.g. [{ id: "default", label: "Default" }, { id: "fast", label: "Fast" }]; experimental_icon (a host glyph or a declared "<pluginId>/<name>" icon) overrides the selected tier's default Zap glyph
   composerActions: [], // skills typeahead is implicit; ["plan"] opts into plan mode
   models: { fallback: [], scope: "workspace" },
   env: { passthrough: ["BB_ECHO_AGENT_EXECUTABLE"] },

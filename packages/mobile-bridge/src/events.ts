@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { safeAreaInsetsSchema } from "./handshake.js";
+import { bridgeServersSchema, safeAreaInsetsSchema } from "./handshake.js";
 
 const bridgeResponseSchema = z.discriminatedUnion("ok", [
   z.object({ ok: z.literal(true), result: z.unknown() }),
@@ -11,6 +11,9 @@ export const shellToPageEventSchema = z.discriminatedUnion("type", [
     .object({ type: z.literal("safe-area"), safeArea: safeAreaInsetsSchema })
     .strict(),
   z.object({ type: z.literal("resume") }).strict(),
+  z
+    .object({ type: z.literal("servers"), servers: bridgeServersSchema })
+    .strict(),
   z
     .object({
       type: z.literal("response"),

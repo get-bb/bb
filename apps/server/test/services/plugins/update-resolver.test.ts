@@ -1,9 +1,9 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { PLUGIN_SDK_VERSION } from "@bb/domain";
 import {
   createNpmResolverRun,
@@ -74,7 +74,11 @@ describe("npm update candidate selection", () => {
   it("selects an older compatible range candidate and reports the newer block", async () => {
     const resolution = await resolveNpmUpdate({
       intent: npmIntent("^1.0.0", "range"),
-      current: { version: "1.0.0", display: "bb-plugin-matrix@1.0.0" },
+      current: {
+        version: "1.0.0",
+        label: "1.0.0",
+        display: "bb-plugin-matrix@1.0.0",
+      },
       appVersion: "1.5.0",
       run: createNpmResolverRun({
         fetch: packumentFetch({
@@ -99,7 +103,11 @@ describe("npm update candidate selection", () => {
   it("enforces SDK compatibility and returns incompatible when none match", async () => {
     const resolution = await resolveNpmUpdate({
       intent: npmIntent("", "default"),
-      current: { version: "1.0.0", display: "bb-plugin-matrix@1.0.0" },
+      current: {
+        version: "1.0.0",
+        label: "1.0.0",
+        display: "bb-plugin-matrix@1.0.0",
+      },
       appVersion: "1.5.0",
       run: createNpmResolverRun({
         fetch: packumentFetch({
@@ -129,7 +137,11 @@ describe("npm update candidate selection", () => {
     });
     const stable = await resolveNpmUpdate({
       intent: npmIntent("", "default"),
-      current: { version: "1.0.0", display: "bb-plugin-matrix@1.0.0" },
+      current: {
+        version: "1.0.0",
+        label: "1.0.0",
+        display: "bb-plugin-matrix@1.0.0",
+      },
       appVersion: "1.0.0",
       run: createNpmResolverRun({ fetch }),
     });
@@ -137,6 +149,7 @@ describe("npm update candidate selection", () => {
       intent: npmIntent(">=1.0.0-beta.1 <1.0.0", "range"),
       current: {
         version: "1.0.0-alpha.1",
+        label: "1.0.0-alpha.1",
         display: "bb-plugin-matrix@1.0.0-alpha.1",
       },
       appVersion: "1.0.0",
@@ -156,7 +169,11 @@ describe("npm update candidate selection", () => {
   it("labels dev mode, ignores engines.bb for selection, and still enforces SDK", async () => {
     const resolution = await resolveNpmUpdate({
       intent: npmIntent("", "default"),
-      current: { version: "1.0.0", display: "bb-plugin-matrix@1.0.0" },
+      current: {
+        version: "1.0.0",
+        label: "1.0.0",
+        display: "bb-plugin-matrix@1.0.0",
+      },
       appVersion: "0.0.0",
       run: createNpmResolverRun({
         fetch: packumentFetch({
@@ -182,13 +199,21 @@ describe("npm update candidate selection", () => {
     });
     const tagged = await resolveNpmUpdate({
       intent: npmIntent("next", "tag"),
-      current: { version: "1.0.0", display: "bb-plugin-matrix@1.0.0" },
+      current: {
+        version: "1.0.0",
+        label: "1.0.0",
+        display: "bb-plugin-matrix@1.0.0",
+      },
       appVersion: "1.0.0",
       run,
     });
     const exact = await resolveNpmUpdate({
       intent: npmIntent("1.0.0", "exact"),
-      current: { version: "1.0.0", display: "bb-plugin-matrix@1.0.0" },
+      current: {
+        version: "1.0.0",
+        label: "1.0.0",
+        display: "bb-plugin-matrix@1.0.0",
+      },
       appVersion: "1.0.0",
       run,
     });
@@ -198,14 +223,22 @@ describe("npm update candidate selection", () => {
     });
     expect(exact).toEqual({
       outcome: "pinned",
-      current: { version: "1.0.0", display: "bb-plugin-matrix@1.0.0" },
+      current: {
+        version: "1.0.0",
+        label: "1.0.0",
+        display: "bb-plugin-matrix@1.0.0",
+      },
     });
   });
 
   it("binds a registry version when the registry omits integrity", async () => {
     const resolution = await resolveNpmUpdate({
       intent: npmIntent("next", "tag"),
-      current: { version: "1.0.0", display: "bb-plugin-matrix@1.0.0" },
+      current: {
+        version: "1.0.0",
+        label: "1.0.0",
+        display: "bb-plugin-matrix@1.0.0",
+      },
       appVersion: "1.0.0",
       run: createNpmResolverRun({
         fetch: async () =>
@@ -303,18 +336,17 @@ describe("git update resolution", () => {
 });
 
 describe("git semver tag resolution", () => {
-  async function tagRepo(): Promise<{
-    repo: string;
-    commitOf: Map<string, string>;
-  }> {
-    const repo = await mkdtemp(join(tmpdir(), "bb-git-tags-"));
-    cleanup.push(repo);
+  let template: string;
+  const commitOf = new Map<string, string>();
+
+  beforeAll(async () => {
+    template = await mkdtemp(join(tmpdir(), "bb-git-tags-template-"));
+    const repo = template;
     await run("git", ["init", "-q", "-b", "main"], { cwd: repo });
     await run("git", ["config", "user.email", "test@example.com"], {
       cwd: repo,
     });
     await run("git", ["config", "user.name", "Test"], { cwd: repo });
-    const commitOf = new Map<string, string>();
     const releases: Array<{ tag: string; annotated: boolean }> = [
       { tag: "v1.0.0", annotated: false },
       { tag: "v1.1.0", annotated: true },
@@ -341,7 +373,17 @@ describe("git semver tag resolution", () => {
         (await run("git", ["rev-parse", "HEAD"], { cwd: repo })).stdout.trim(),
       );
     }
-    return { repo, commitOf };
+  });
+
+  afterAll(async () => {
+    if (template) await rm(template, { recursive: true, force: true });
+  });
+
+  async function tagRepo() {
+    const repo = await mkdtemp(join(tmpdir(), "bb-git-tags-"));
+    cleanup.push(repo);
+    await cp(template, repo, { recursive: true });
+    return { repo, commitOf: new Map(commitOf) };
   }
 
   it("lists only [prefix]vX.Y.Z tags, peels annotated ones, and orders them", async () => {

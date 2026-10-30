@@ -316,7 +316,6 @@ export function registerSystemRoutes(
       telemetryEnabled: settings.telemetryEnabled ?? current.telemetryEnabled,
       terminalCopyOnSelect:
         settings.terminalCopyOnSelect ?? current.terminalCopyOnSelect,
-      showGitChanges: settings.showGitChanges ?? current.showGitChanges,
       keepHistoryAfterContextClear:
         settings.keepHistoryAfterContextClear ??
         current.keepHistoryAfterContextClear,

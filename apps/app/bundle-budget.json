@@ -123,7 +123,13 @@
     "leaving about 15% raw headroom, and both journey limits are set 25% above",
     "their measured sizes (20% headroom) so ordinary feature work does not hit",
     "them every week. The forbidden-package and split-boundary guards catch",
-    "structural regressions."
+    "structural regressions.",
+    "",
+    "On 2026-10-21 the plugin runtime stopped importing @pierre/diffs eagerly.",
+    "Bundles that import it get it before they evaluate; experimental_Diff",
+    "loads behind a split. The PluginFrontend closure, which every plugin",
+    "waits on, measures 528.9 KB raw / 165.3 KB brotli. Its limits sit 25%",
+    "above that, and the diff engine and Shiki are forbidden."
   ],
   "maxBootBytes": 1722436,
   "maxBootBrotliBytes": 424031,
@@ -273,6 +279,21 @@
     "rehype-sanitize": "src/components/ui/markdown-html.tsx"
   },
   "routeClosures": {
+    "PluginFrontend": {
+      "maxBytes": 676970,
+      "maxBrotliBytes": 211533,
+      "forbiddenPackages": [
+        "@pierre/diffs",
+        "@pierre/theming",
+        "@shikijs/core",
+        "@shikijs/engine-javascript",
+        "@shikijs/engine-oniguruma",
+        "@shikijs/langs",
+        "@shikijs/vscode-textmate",
+        "oniguruma-to-es",
+        "shiki"
+      ]
+    },
     "ThreadPage": {
       "maxBytes": 2428911,
       "maxBrotliBytes": 699019,

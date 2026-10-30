@@ -3,7 +3,11 @@ import finderIcon from "@/assets/workspace-open-target-icons/finder.png";
 import terminalIcon from "@/assets/workspace-open-target-icons/terminal.png";
 import vscodeIcon from "@/assets/workspace-open-target-icons/vscode.png";
 import zedIcon from "@/assets/workspace-open-target-icons/zed.png";
-import { SplitButton, type SplitButtonAction } from "./split-button";
+import {
+  SplitButton,
+  type SplitButtonAction,
+  type SplitButtonMenuAction,
+} from "./split-button";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 
 export default {
@@ -33,8 +37,8 @@ const commitAction: SplitButtonAction = {
   onSelect: noop,
 };
 
-const gitSecondaries: SplitButtonAction[] = [
-  { label: "Amend commit", onSelect: noop },
+const gitSecondaries: SplitButtonMenuAction[] = [
+  { id: "amend", label: "Amend commit", onSelect: noop },
 ];
 
 const openInVSCodeAction: SplitButtonAction = {
@@ -43,8 +47,9 @@ const openInVSCodeAction: SplitButtonAction = {
   content: <EditorIcon src={vscodeIcon} alt="VS Code" />,
 };
 
-const editorSecondaries: SplitButtonAction[] = [
+const editorSecondaries: SplitButtonMenuAction[] = [
   {
+    id: "vs-code",
     label: "VS Code",
     onSelect: noop,
     content: (
@@ -55,6 +60,7 @@ const editorSecondaries: SplitButtonAction[] = [
     ),
   },
   {
+    id: "cursor",
     label: "Cursor",
     onSelect: noop,
     content: (
@@ -65,6 +71,7 @@ const editorSecondaries: SplitButtonAction[] = [
     ),
   },
   {
+    id: "zed",
     label: "Zed",
     onSelect: noop,
     content: (
@@ -75,6 +82,7 @@ const editorSecondaries: SplitButtonAction[] = [
     ),
   },
   {
+    id: "finder",
     label: "Finder",
     onSelect: noop,
     content: (
@@ -85,6 +93,7 @@ const editorSecondaries: SplitButtonAction[] = [
     ),
   },
   {
+    id: "terminal",
     label: "Terminal",
     onSelect: noop,
     content: (

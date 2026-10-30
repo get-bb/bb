@@ -1,4 +1,4 @@
-import type { ThreadTimelineGoal } from "@bb/domain";
+import type { ThreadTimelineGoal, ThreadTimelineGoalStatus } from "@bb/domain";
 import { CollapsibleActiveStackCard } from "@/components/promptbox/banner/CollapsibleActiveStackCard";
 import { Icon } from "@bb/shared-ui/icon";
 
@@ -24,6 +24,13 @@ function formatTokenUsage(goal: ThreadTimelineGoal): string {
   return `${used} / ${goal.tokenBudget.toLocaleString()} tokens`;
 }
 
+const GOAL_STATUS_TITLES: Partial<Record<ThreadTimelineGoalStatus, string>> = {
+  active: "Goal",
+  paused: "Goal paused",
+  blocked: "Goal blocked",
+  usageLimited: "Goal usage limited",
+};
+
 interface ThreadGoalCardProps {
   goal: ThreadTimelineGoal | null;
   isClearPending?: boolean;
@@ -42,10 +49,12 @@ export function ThreadGoalCard({
   onClearGoal,
   onToggle,
 }: ThreadGoalCardProps) {
-  if (!goal || goal.status !== "active") {
+  const title = goal ? GOAL_STATUS_TITLES[goal.status] : undefined;
+  if (!goal || title === undefined) {
     return null;
   }
   const objective = goal.objective.trim();
+  const isActive = goal.status === "active";
   return (
     <CollapsibleActiveStackCard
       cardAriaLabel="Goal"
@@ -54,13 +63,14 @@ export function ThreadGoalCard({
       bodyId={BODY_ID}
       toggleAriaLabel="Goal"
       iconName="Target"
-      title="Goal"
+      title={title}
+      isActive={isActive}
       isExpanded={isExpanded}
       onToggle={onToggle}
       dismiss={
         onClearGoal
           ? {
-              ariaLabel: "Clear active Goal",
+              ariaLabel: isActive ? "Clear active Goal" : "Clear Goal",
               isPending: isClearPending,
               onDismiss: onClearGoal,
             }

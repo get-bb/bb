@@ -8,3 +8,6 @@ export const BB_DESKTOP_ZOOM_CHANGED_CHANNEL = "bb-desktop:zoom-changed";
 export const BB_DESKTOP_SET_THEME_CHANNEL = "bb-desktop:set-theme";
 export const BB_DESKTOP_OPEN_EXTERNAL_URL_CHANNEL =
   "bb-desktop:open-external-url";
+
+export const BB_DESKTOP_OPEN_APPLICATION_URL_CHANNEL =
+  "bb-desktop:open-application-url";

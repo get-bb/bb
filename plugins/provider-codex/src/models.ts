@@ -167,6 +167,7 @@ function toAvailableModel(
         ? raw.displayName
         : raw.model,
     description: typeof raw.description === "string" ? raw.description : "",
+    reasoningDiscovery: "known",
     supportedReasoningEfforts: efforts,
     defaultReasoningEffort,
     supportedServiceTiers: parseSupportedServiceTiers(raw),

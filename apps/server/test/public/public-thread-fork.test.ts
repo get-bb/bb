@@ -1,3 +1,5 @@
+import { availableModelFixture } from "../helpers/available-models.js";
+import { seedModelCatalog } from "../helpers/provider-model-catalogs.js";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -25,8 +27,10 @@ import {
   threadTimelineResponseSchema,
 } from "@bb/server-contract";
 import { eq } from "drizzle-orm";
+import { hostDaemonCommandSchema } from "@bb/host-daemon-contract";
 import { createDeferredPromise } from "@bb/test-helpers";
 import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { storeAttachment } from "../../src/services/projects/attachments.js";
 import * as placement from "../../src/services/threads/thread-environment-placement.js";
 import { appendClientTurnEventInTransaction } from "../../src/services/threads/thread-events.js";
@@ -54,7 +58,11 @@ import {
   seedThreadRuntimeState,
   seedTurnStarted,
 } from "../helpers/seed.js";
-import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import {
+  startTestServer,
+  withTestHarness,
+  type TestAppHarness,
+} from "../helpers/test-app.js";
 
 function seedForkSource(
   harness: TestAppHarness,
@@ -604,6 +612,89 @@ describe("public thread fork route", () => {
     });
   });
 
+  it("keeps the fork when a failed fork start is retried or messaged", async () => {
+    await withTestHarness(async (harness) => {
+      const { sourceThread } = seedForkSource(harness);
+      const response = await postFork(harness, {
+        sourceThreadId: sourceThread.id,
+      });
+      expect(response.status).toBe(201);
+      const fork = threadResponseSchema.parse(await readJson(response));
+      const failedStart = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.start" && command.threadId === fork.id,
+      );
+      if (failedStart.command.type !== "thread.start") {
+        throw new Error("Expected thread.start");
+      }
+      const forkDescriptor = failedStart.command.fork;
+      expect(forkDescriptor).toEqual({
+        sourceProviderThreadId: "provider-fork-source",
+      });
+      await reportQueuedCommandError(harness, failedStart, {
+        errorCode: "provider_error",
+        errorMessage: "Session provider-fork-source not found",
+      });
+      await vi.waitFor(() =>
+        expect(getThread(harness.db, fork.id)?.status).toBe("error"),
+      );
+
+      const retry = await harness.app.request(
+        `/api/v1/threads/${fork.id}/retry`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({}),
+        },
+      );
+      expect(retry.status).toBe(200);
+      const retriedStart = await waitForQueuedCommandAfter(
+        harness,
+        failedStart.row.cursor,
+        ({ command }) =>
+          command.type === "thread.start" && command.threadId === fork.id,
+      );
+      expect(retriedStart.command).toMatchObject({
+        fork: forkDescriptor,
+        input: [],
+      });
+      expect(
+        hostDaemonCommandSchema.safeParse(retriedStart.command).success,
+      ).toBe(true);
+      await reportQueuedCommandError(harness, retriedStart, {
+        errorCode: "provider_error",
+        errorMessage: "Session provider-fork-source not found",
+      });
+      await vi.waitFor(() =>
+        expect(getThread(harness.db, fork.id)?.status).toBe("error"),
+      );
+
+      const send = await harness.app.request(
+        `/api/v1/threads/${fork.id}/send`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            mode: "start",
+            input: textInput("Continue the fork"),
+          }),
+        },
+      );
+      expect(send.status).toBe(200);
+      const sentStart = await waitForQueuedCommandAfter(
+        harness,
+        retriedStart.row.cursor,
+        ({ command }) =>
+          command.type === "thread.start" && command.threadId === fork.id,
+      );
+      expect(sentStart.command).toMatchObject({
+        fork: forkDescriptor,
+        input: textInput("Continue the fork"),
+      });
+    });
+  });
+
   it("persists an agent-only seed while keeping an idle fork input empty", async () => {
     await withTestHarness(async (harness) => {
       const seed = {
@@ -996,10 +1087,21 @@ describe("public thread fork route", () => {
 
   it("inherits the source's recorded model, reasoning level, and service tier", async () => {
     await withTestHarness(async (harness) => {
-      const { sourceThread } = seedForkSource(harness, {
+      const { sourceThread, host } = seedForkSource(harness, {
         model: "gpt-5-mini",
         reasoningLevel: "high",
         serviceTier: "fast",
+      });
+
+      await seedModelCatalog(harness, {
+        hostId: host.id,
+        providerId: sourceThread.providerId,
+        models: [
+          availableModelFixture({
+            model: "gpt-5-mini",
+            reasoningLevels: ["high"],
+          }),
+        ],
       });
 
       const response = await postFork(harness, {
@@ -1636,7 +1738,7 @@ describe("fork branch point and inherited history", () => {
       });
       expect(running.status).toBe(400);
       expect(await readJson(running)).toMatchObject({
-        code: "fork_source_session_unavailable",
+        code: "fork_source_turn_incomplete",
         message:
           "Cannot fork at sequence 14: the turn containing it has not completed",
       });
@@ -1652,6 +1754,77 @@ describe("fork branch point and inherited history", () => {
           "Cannot fork at sequence 2: no turn has started at or before it",
       });
     });
+  });
+
+  it("refuses a Side chat reply inside a running turn instead of forking an older checkpoint", async () => {
+    const server = await startTestServer();
+    try {
+      server.pluginService.bindSdk({ baseUrl: server.baseUrl });
+      const entry = await server.pluginService.install("builtin:side-chat", {
+        kind: "root",
+      });
+      expect(entry.status, entry.statusDetail ?? undefined).toBe("running");
+      const { environment, sourceThread } = seedConversationForkSource(server);
+      const base = {
+        environmentId: environment.id,
+        providerThreadId: HISTORY_PROVIDER_THREAD_ID,
+        threadId: sourceThread.id,
+      };
+      const anchorText = "A progress note from the running turn.";
+      seedEvent(server.deps, {
+        ...base,
+        sequence: 15,
+        type: "item/completed",
+        scope: turnScope("turn-3"),
+        data: {
+          providerThreadId: HISTORY_PROVIDER_THREAD_ID,
+          item: { type: "agentMessage", id: "msg-3", text: anchorText },
+        },
+      });
+      const createSideChat = () =>
+        server.app.request("/api/v1/plugins/side-chat/rpc/createSideChat", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            sourceThreadId: sourceThread.id,
+            sourceSeqEnd: 15,
+            anchorText,
+          }),
+        });
+
+      const running = await createSideChat();
+      const runningBody = await readJson(running);
+      expect(running.status, JSON.stringify(runningBody)).not.toBe(200);
+      expect(JSON.stringify(runningBody)).toContain(
+        "the turn containing it has not completed",
+      );
+      expect(listQueuedCommands(server, "thread.start")).toHaveLength(0);
+
+      seedEvent(server.deps, {
+        ...base,
+        sequence: 16,
+        type: "turn/completed",
+        scope: turnScope("turn-3"),
+        data: {
+          providerThreadId: HISTORY_PROVIDER_THREAD_ID,
+          status: "completed",
+          providerCheckpointId: "checkpoint-after-turn-3",
+        },
+      });
+      const completed = await createSideChat();
+      const completedBody = await readJson(completed);
+      expect(completed.status, JSON.stringify(completedBody)).toBe(200);
+      const { result } = z
+        .object({ result: z.object({ threadId: z.string() }) })
+        .parse(completedBody);
+      const start = await waitForForkStart(server, result.threadId);
+      expect(start.fork?.sourceProviderCheckpointId).toBe(
+        "checkpoint-after-turn-3",
+      );
+    } finally {
+      await server.pluginService.stop();
+      await server.close();
+    }
   });
 
   const TIP_ONLY_PROVIDER_ID = "acp-opencode";

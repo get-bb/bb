@@ -33,6 +33,7 @@ import {
   DEFAULT_MAX_INLINE_OUTPUT_CHARS,
   shortenTimelineResponseOutputs,
 } from "../../src/services/threads/timeline-output-shortening.js";
+import { timelineWindowTag } from "../../src/services/threads/timeline-window-tag.js";
 
 export const SNAPSHOT_MODE_ENV = "BB_PROVIDER_CORPUS_SNAPSHOT";
 
@@ -190,13 +191,11 @@ export function buildRouteTimelinePage(
       summaryOnly: false,
     },
   );
-  return {
-    profile,
-    response: shortenTimelineResponseOutputs(response, {
-      maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
-      preview: !includeNestedRows,
-    }),
-  };
+  const window = shortenTimelineResponseOutputs(response, {
+    maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
+    preview: !includeNestedRows,
+  });
+  return { profile, response: { ...window, tag: timelineWindowTag(window) } };
 }
 
 export function clearCrossBuildTimelineCaches(db: DbConnection): void {

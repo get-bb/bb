@@ -68,9 +68,18 @@ the same change.
   and Browser toolbar controls, and sidebar replacement.
 - Read references/frontend-sidebar-navigation.md for navigation providers
   (rail or list placement) and controls beside the sidebar toggle.
-- Read references/frontend-pull-requests.md to show a thread's GitHub pull
-  request on a row, or to migrate off
-  `experimental_useSidebarThreadPullRequest`.
+- Read references/frontend-thread-row-metadata.md to add a badge to every thread
+  row (`experimental_threadRowMetadata`) or draw those badges on your own rows.
+- Read references/frontend-panel-tabs.md to list the side panel's open tabs,
+  bb's included, and select or close them.
+- Read references/frontend-thread-context-card.md to add a row or section to
+  the thread context card beside each thread's transcript.
+- Read references/frontend-pull-requests.md to show bb's pull request badge
+  (`experimental_ThreadRowMetadata`) or a thread's GitHub pull request on a row,
+  or to migrate off `experimental_useSidebarThreadPullRequest`.
+- Read references/git-reads.md to read an environment's git status, changed
+  files or diffs, or to migrate off the retired `environments.status` and
+  `diff*` SDK methods.
 - Read references/frontend-api-index.md to check every public frontend
   runtime value and type export.
 - Read references/frontend-core-slots.md for trusted content scripts, homepage,

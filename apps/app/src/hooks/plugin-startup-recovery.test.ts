@@ -13,7 +13,8 @@ import { definePluginApp } from "@/lib/plugin-app-definition";
 import { makeInstalledPlugin } from "@/test/fixtures/plugins";
 
 const scheduled = vi.hoisted(() => ({ run: () => {} }));
-vi.mock("@/lib/plugin-frontend-lazy", () => ({
+vi.mock(import("@/lib/plugin-frontend-lazy"), async (importOriginal) => ({
+  ...(await importOriginal()),
   schedulePluginFrontendReconcile: () => scheduled.run(),
 }));
 
@@ -41,6 +42,7 @@ it.each(["initial connect", "reconnect", "reload notification"])(
             sdkMajor: 0,
             sdkVersion: "0.1.0",
             compatible: true,
+            runtimeSlots: [],
           },
         },
       }),
@@ -69,6 +71,7 @@ it.each(["initial connect", "reconnect", "reload notification"])(
       setRegistrations: register,
       removeRegistrations: () => {},
       beginSlotBatch: () => () => {},
+      flushSlotBatch: () => {},
       warn: () => {},
       priorityPluginIds: () => [],
     };

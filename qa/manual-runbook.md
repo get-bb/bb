@@ -347,8 +347,8 @@ bb thread show "$WORKTREE_THREAD_ID" --git-diff --diff-target uncommitted
 bb thread show "$WORKTREE_THREAD_ID" --git-diff --diff-target branch_committed
 bb thread show "$WORKTREE_THREAD_ID" --git-diff --diff-target all
 curl -fsS "$BB_SERVER_URL/api/v1/environments/$WORKTREE_ENV_ID" | jq
-curl -fsS "$BB_SERVER_URL/api/v1/environments/$WORKTREE_ENV_ID/status" | jq
-curl -fsS "$BB_SERVER_URL/api/v1/environments/$WORKTREE_ENV_ID/diff/branches" | jq
+bb git status "$WORKTREE_ENV_ID" --json | jq
+bb git branches "$WORKTREE_ENV_ID" --json | jq
 ```
 
 Verify Codex-backed helper inference for environment commit. This catches
@@ -780,7 +780,7 @@ bb thread wait "$PROVIDER_WORKTREE_THREAD_ID" --status idle --timeout 120
 PROVIDER_WORKTREE_ENV_ID=$(curl -fsS "$BB_SERVER_URL/api/v1/threads/$PROVIDER_WORKTREE_THREAD_ID" | jq -r '.environmentId')
 
 bb thread output "$PROVIDER_WORKTREE_THREAD_ID"
-curl -fsS "$BB_SERVER_URL/api/v1/environments/$PROVIDER_WORKTREE_ENV_ID/status" | jq
+bb git status "$PROVIDER_WORKTREE_ENV_ID" --json | jq
 ```
 
 Run a pending-interaction pass with permission-restricted turns:

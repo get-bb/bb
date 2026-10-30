@@ -66,6 +66,8 @@ function seedPluginInteractionThread(deps: AppDeps, suffix: string) {
   });
 }
 
+const PLUGIN_OWNER = { pluginId: "secrets" };
+
 function requestPluginInteraction(
   deps: AppDeps,
   args: {
@@ -89,6 +91,7 @@ function requestPluginInteraction(
     },
     describeSubmission: null,
     timeoutMs: 10_000,
+    owner: PLUGIN_OWNER,
     ...(args.signal ? { signal: args.signal } : {}),
   });
 }
@@ -251,6 +254,7 @@ describe("pending interaction lifecycle", () => {
           },
           describeSubmission,
           timeoutMs: 10_000,
+          owner: PLUGIN_OWNER,
         },
       );
       const [interaction] =
@@ -321,6 +325,7 @@ describe("pending interaction lifecycle", () => {
           },
           describeSubmission,
           timeoutMs: 10_000,
+          owner: PLUGIN_OWNER,
         },
       );
       const [interaction] =
@@ -372,6 +377,7 @@ describe("pending interaction lifecycle", () => {
             throw new Error("plugin bug");
           },
           timeoutMs: 10_000,
+          owner: PLUGIN_OWNER,
         },
       );
       const [interaction] =

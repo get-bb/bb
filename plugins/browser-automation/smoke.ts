@@ -1,3 +1,4 @@
+import { experimental_execHostFile } from "@get-bb/plugin-sdk/process";
 import {
   copyFile,
   mkdir,
@@ -9,8 +10,6 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { strict as assert } from "node:assert";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { supervise } from "./process.js";
 import { setTimeout as delay } from "node:timers/promises";
 import { createRuntime } from "./runtime.js";
@@ -27,7 +26,9 @@ const version = z
   .string()
   .regex(/^dev-browser \S+$/)
   .parse(
-    (await promisify(execFile)(runtimeBinary, ["--version"])).stdout.trim(),
+    (
+      await experimental_execHostFile(runtimeBinary, ["--version"])
+    ).stdout.trim(),
   )
   .split(" ")[1]!;
 await symlink(resolve(chrome), join(dataDir, "runtime", "chrome"));

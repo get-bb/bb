@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { AnimatedDisclosureBody } from "@/components/promptbox/banner/AnimatedBody";
 import {
   PROMPT_STACK_CARD_ROW_HEIGHT,
   PromptStackCard,
@@ -15,6 +14,7 @@ import {
   PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
   PromptStackHoverChevron,
   useDisclosureFocusHandoff,
+  AnimatedDisclosureBody,
 } from "@bb/shared-ui/prompt-stack-disclosure";
 
 const HEADER_GROUP_CLASS = activityRowClass(
@@ -24,7 +24,7 @@ const HEADER_GROUP_CLASS = activityRowClass(
 const HEADER_BUTTON_CLASS =
   "flex min-h-8 min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-none bg-transparent px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-background/80";
 const DISMISS_BUTTON_CLASS =
-  "flex min-h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-none border-l border-border/35 bg-transparent text-muted-foreground transition-colors hover:text-foreground disabled:cursor-wait disabled:text-muted-foreground/60";
+  "flex min-h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-none border-l border-border/35 bg-transparent text-muted-foreground transition-colors hover:text-foreground disabled:text-muted-foreground/60";
 
 interface CollapsibleActiveStackCardProps {
   cardAriaLabel: string;
@@ -34,6 +34,7 @@ interface CollapsibleActiveStackCardProps {
   toggleAriaLabel: string;
   iconName: IconName;
   title: string;
+  isActive: boolean;
   isExpanded: boolean;
   onToggle: () => void;
   dismiss: {
@@ -52,11 +53,13 @@ export function CollapsibleActiveStackCard({
   toggleAriaLabel,
   iconName,
   title,
+  isActive,
   isExpanded,
   onToggle,
   dismiss,
   children,
 }: CollapsibleActiveStackCardProps) {
+  const activity = isActive ? "active" : "pending";
   const focus = useDisclosureFocusHandoff(isExpanded, onToggle);
   return (
     <PromptStackCard
@@ -84,12 +87,12 @@ export function CollapsibleActiveStackCard({
         >
           <Icon
             name={iconName}
-            className={activityIconClass("active", "size-3.5 shrink-0")}
+            className={activityIconClass(activity, "size-3.5 shrink-0")}
             aria-hidden="true"
           />
           <span
             className={activityTextClass(
-              "active",
+              activity,
               "min-w-0 flex-1 truncate text-left",
             )}
           >

@@ -19,6 +19,11 @@
       "types": "./src/protocol.ts",
       "default": "./src/protocol.ts"
     },
+    "./skill-tree": {
+      "source": "./src/skill-tree.ts",
+      "types": "./src/skill-tree.ts",
+      "default": "./src/skill-tree.ts"
+    },
     "./workspace": {
       "source": "./src/workspace.ts",
       "types": "./src/workspace.ts",

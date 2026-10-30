@@ -5,7 +5,7 @@ import {
 } from "@bb/query-tags/testing";
 import type { SidebarBootstrapResponse } from "@bb/server-contract";
 import { makeThreadListEntry as makeEntry } from "@bb/test-helpers/domain-fixtures";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   makeProjectWithThreadsResponse,
   makeSidebarBootstrapResponse,
@@ -29,6 +29,28 @@ import {
   rollbackThreadListMutationTransaction,
   settleArchiveThreadsTransaction,
 } from "./thread-state-cache-owner";
+import {
+  applySendThreadMessageSuccess,
+  beginSendThreadMessageTransaction,
+  beginStopThreadTransaction,
+  settleStopThreadTransaction,
+} from "./thread-runtime-cache-owner";
+
+const readBack = vi.hoisted(() => ({
+  rows: new Map<string, unknown>(),
+}));
+
+vi.mock("./thread-read-back", () => ({
+  readThreadBack:
+    (queryClient: import("@tanstack/react-query").QueryClient) =>
+    async (threadId: string) => {
+      await queryClient.fetchQuery({
+        queryKey: ["thread", threadId],
+        queryFn: async () => structuredClone(readBack.rows.get(threadId)),
+        staleTime: 0,
+      });
+    },
+}));
 
 const entry = (id: string, overrides: Partial<ThreadListEntry> = {}) =>
   makeEntry({
@@ -139,7 +161,7 @@ describe("thread entity store", () => {
     ]);
   });
 
-  it("ignores a read that started before the write was acknowledged and accepts one that started after", async () => {
+  it("ignores a read that started before the write was confirmed and accepts one that started after", async () => {
     const server = [entry("t1")];
     const s = setup(server);
     await s.fetchList(s.listKey, () => server);
@@ -158,13 +180,60 @@ describe("thread entity store", () => {
         return rows;
       },
     });
-    pin.succeed({ ...server[0]!, pinnedAt: 7 });
+    const readBackThread = vi.fn(async () => {});
+    pin.confirm([entry("t1", { pinnedAt: 7, updatedAt: 11 })], readBackThread);
     releaseStale();
     await stale;
     expect(s.describeRows(s.listRows(s.lateKey))).toEqual(["t1:7:idle"]);
+    expect(readBackThread).not.toHaveBeenCalled();
 
-    await s.fetchList(s.lateKey, () => [entry("t1", { pinnedAt: 9 })]);
+    await s.fetchList(s.lateKey, () => [
+      entry("t1", { pinnedAt: 9, updatedAt: 12 }),
+    ]);
     expect(s.describeRows(s.sidebarRows())).toEqual(["t1:9:idle"]);
+  });
+
+  it("reads the thread back before dropping a guess when the stored row is newer than the response", async () => {
+    const server = [entry("t1")];
+    const s = setup(server);
+    const pin = predictThreadPinState(s.queryClient, {
+      pinnedAt: 5,
+      threadId: "t1",
+    });
+    updateCachedThreadListStatusState(s.queryClient, "t1", {
+      status: "active",
+      runtime: { displayStatus: "active" },
+      activity: server[0]!.activity,
+      latestAttentionAt: 12,
+      updatedAt: 12,
+    });
+    let finishReadBack!: () => void;
+    const readBackThread = vi.fn(
+      (threadId: string) =>
+        new Promise<void>((resolve) => {
+          finishReadBack = () => {
+            void s
+              .fetchList(s.lateKey, () => [
+                entry(threadId, {
+                  pinnedAt: 7,
+                  status: "active",
+                  runtime: { displayStatus: "active" },
+                  updatedAt: 12,
+                }),
+              ])
+              .then(() => resolve());
+          };
+        }),
+    );
+
+    pin.confirm([entry("t1", { pinnedAt: 7, updatedAt: 11 })], readBackThread);
+    expect(readBackThread).toHaveBeenCalledWith("t1");
+    expect(s.describeRows(s.sidebarRows())).toEqual(["t1:5:active"]);
+
+    finishReadBack();
+    await vi.waitFor(() =>
+      expect(s.describeRows(s.sidebarRows())).toEqual(["t1:7:active"]),
+    );
   });
 
   it("hides an archived family from every active view and restores it in place on failure", async () => {
@@ -317,6 +386,88 @@ describe("thread entity store", () => {
     releaseStale();
     await stale;
     expect(s.sidebarRows().map((row) => row.id)).toContain("t1");
+  });
+
+  it("shows the server's idle status when a stop is confirmed after the thread already went idle", async () => {
+    const server = [
+      entry("t1", { status: "active", runtime: { displayStatus: "active" } }),
+    ];
+    const s = setup(server);
+    const transaction = await beginStopThreadTransaction({
+      queryClient: s.queryClient,
+      requestedAt: 10,
+      threadId: "t1",
+    });
+    updateCachedThreadListStatusState(s.queryClient, "t1", {
+      status: "idle",
+      runtime: { displayStatus: "idle" },
+      activity: server[0]!.activity,
+      latestAttentionAt: 11,
+      updatedAt: 11,
+    });
+    expect(s.describeRows(s.sidebarRows())).toEqual(["t1:null:stopping"]);
+
+    readBack.rows.set("t1", {
+      ...server[0],
+      status: "idle",
+      runtime: { displayStatus: "idle" },
+      updatedAt: 11,
+    });
+    settleStopThreadTransaction({ queryClient: s.queryClient, transaction });
+    await vi.waitFor(() =>
+      expect(s.sidebarRows()[0]).toMatchObject({
+        status: "idle",
+        runtime: { displayStatus: "idle" },
+        updatedAt: 11,
+      }),
+    );
+  });
+
+  it("shows the server's idle status when a send is confirmed after its turn already finished", async () => {
+    const server = [entry("t1")];
+    const s = setup(server);
+    const request = {
+      id: "t1",
+      mode: "auto" as const,
+      input: [{ type: "text" as const, text: "Quick prompt", mentions: [] }],
+    };
+    const transaction = await beginSendThreadMessageTransaction({
+      queryClient: s.queryClient,
+      request,
+    });
+    for (const [status, updatedAt] of [
+      ["active", 11],
+      ["idle", 12],
+    ] as const)
+      updateCachedThreadListStatusState(s.queryClient, "t1", {
+        status,
+        runtime: { displayStatus: status },
+        activity: server[0]!.activity,
+        latestAttentionAt: updatedAt,
+        updatedAt,
+      });
+    expect(s.describeRows(s.sidebarRows())).toEqual(["t1:null:active"]);
+
+    readBack.rows.set("t1", {
+      ...server[0],
+      status: "idle",
+      runtime: { displayStatus: "idle" },
+      updatedAt: 12,
+    });
+    applySendThreadMessageSuccess({
+      queryClient: s.queryClient,
+      realtimeConnected: true,
+      request,
+      result: { ok: true, delivery: "sent" },
+      transaction,
+    });
+    await vi.waitFor(() =>
+      expect(s.sidebarRows()[0]).toMatchObject({
+        status: "idle",
+        runtime: { displayStatus: "idle" },
+        updatedAt: 12,
+      }),
+    );
   });
 
   it("drops an entity once no view holds it", async () => {

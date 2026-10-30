@@ -1,4 +1,6 @@
 import type { ILinkHandler } from "@xterm/xterm";
+import { isMacKeyboardPlatform } from "@bb/domain";
+import { browserPlatform } from "@/lib/app-keybindings";
 
 export interface TerminalLinkTarget {
   source: "detected-url" | "osc8";
@@ -16,13 +18,21 @@ interface RequestTerminalLinkOpenArgs {
   target: TerminalLinkTarget;
 }
 
+export function isTerminalLinkActivation(event: MouseEvent): boolean {
+  if (event.button !== 0) return false;
+  if (window.matchMedia("(pointer: coarse)").matches) return true;
+  return isMacKeyboardPlatform(browserPlatform())
+    ? event.metaKey
+    : event.ctrlKey;
+}
+
 export function createTerminalOsc8LinkHandler({
   onActivate,
   onHover,
 }: CreateTerminalOsc8LinkHandlerArgs): ILinkHandler {
   return {
     activate: (event, uri) => {
-      if (event.button !== 0) {
+      if (!isTerminalLinkActivation(event)) {
         return;
       }
       onActivate({ source: "osc8", uri });

@@ -11,6 +11,10 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  checkRecordedCellReplay,
+  RECORDED_CONFORMANCE_CELLS,
+} from "@bb/provider-bridge-protocol/conformance";
+import {
   compareParity,
   type ParityAllowlistEntry,
 } from "@bb/provider-bridge-protocol/testing";
@@ -268,6 +272,38 @@ describe("replay through the current bridge", () => {
       readBridgeRecording(cell.dir).manifest?.scope !== "process",
   );
 
+  const conformanceNames = new Set<string>(RECORDED_CONFORMANCE_CELLS);
+  const conformanceCells = replayable.filter(
+    (cell) =>
+      ["claude-code", "codex", "pi"].includes(cell.provider) &&
+      conformanceNames.has(cell.cell),
+  );
+
+  it.each(["claude-code", "codex"])(
+    "%s has recorded conformance cells",
+    (provider) => {
+      expect(
+        conformanceCells.filter((cell) => cell.provider === provider).length,
+      ).toBeGreaterThan(0);
+    },
+  );
+
+  it("has every recorded pi conformance cell", () => {
+    expect(
+      conformanceCells
+        .filter((cell) => cell.provider === "pi")
+        .map((cell) => cell.cell)
+        .sort(),
+    ).toEqual([
+      "fork",
+      "resume",
+      "steer",
+      "stop-interrupt",
+      "turn-tools",
+      "user-question",
+    ]);
+  });
+
   it.concurrent.each(replayable.map((cell) => [cellKey(cell), cell] as const))(
     "%s reproduces its recording",
     async (_key, cell) => {
@@ -277,6 +313,20 @@ describe("replay through the current bridge", () => {
         timeoutMs: 60_000,
         planFromCurrentLane: true,
       });
+      if (conformanceCells.includes(cell)) {
+        const checks = checkRecordedCellReplay({
+          provider: cell.provider,
+          cell: cell.cell,
+          events: replayed.events,
+          recordedEvents: recorded.events,
+          stalls: replayed.run.stalls,
+        });
+        expect(
+          checks
+            .filter((check) => check.status !== "pass")
+            .map((check) => `${check.id}: ${check.detail}`),
+        ).toEqual([]);
+      }
       expect(replayed.run.stalls).toEqual([]);
       const comparison = compareCell(cell, recorded, replayed, []);
       expect({

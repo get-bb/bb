@@ -5,8 +5,8 @@ import { createHttpTransport } from "../src/transport-http.js";
 const base = { id: "update-1", pluginId: "notes", displayName: "Notes" };
 const result = {
   applied: true,
-  from: { version: "1.0.0", display: "1.0.0" },
-  to: { version: "1.1.0", display: "1.1.0" },
+  from: { version: "1.0.0", label: "1.0.0", display: "1.0.0" },
+  to: { version: "1.1.0", label: "1.1.0", display: "1.1.0" },
   outcome: "updated",
 };
 

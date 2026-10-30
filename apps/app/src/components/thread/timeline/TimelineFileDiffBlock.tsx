@@ -8,7 +8,7 @@ import {
 } from "@bb/client-core";
 import { GitDiffCard } from "../../git-diff/GitDiffCard.js";
 import { EventCodeBlock } from "../../ui/event-code-block.js";
-import type { DiffPresentation } from "@/components/code/code-rendering";
+import type { DiffPresentation } from "@bb/shared-ui/git-diff/renderers";
 import { TimelineDetailScroll } from "./TimelineDetailScroll.js";
 
 export interface TimelineFileDiffBlockProps {

@@ -96,6 +96,12 @@ export const preferenceDefinitions = {
     "Show each thread's agent provider icon before its title.",
     null,
   ),
+  showRowMetadata: definePreference(
+    z.boolean(),
+    false,
+    "Show plugin metadata, such as pull request status, on each thread row.",
+    null,
+  ),
   threadLifecycles: definePreference(
     z
       .array(z.enum(["active", "archived"]))
@@ -286,5 +292,6 @@ export const preferencesChangedSignalSchema = z
   .object({
     key: z.enum(PREFERENCE_KEYS as [PreferenceKey, ...PreferenceKey[]]),
     value: z.unknown(),
+    origin: z.string().nullable(),
   })
   .strict();
