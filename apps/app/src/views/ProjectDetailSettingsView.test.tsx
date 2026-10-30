@@ -21,6 +21,7 @@ vi.mock("@/lib/sdk", () => ({
   sdk: {
     hosts: {
       cloneDefaultPath: vi.fn(),
+      directory: vi.fn(),
       list: vi.fn(),
       pathsExist: vi.fn(),
       pickFolder: vi.fn(),
@@ -261,6 +262,74 @@ describe("ProjectDetailSettingsView", () => {
         sourceId: "src_1",
       }),
     );
+  });
+
+  it("changes the folder of a checkout on another machine", async () => {
+    stubSidebarBootstrapFetch([
+      { hostId: "host_primary", path: "/Users/me/bb" },
+      { hostId: "host_remote", path: "/home/me/bb" },
+    ]);
+    vi.mocked(sdk.hosts.directory).mockResolvedValue({
+      directory: "/home/me/bb",
+      parent: "/home/me",
+      entries: [],
+      roots: ["/"],
+    });
+
+    renderView();
+    fireEvent.pointerDown(
+      await screen.findByRole("button", { name: "dev-vm checkout actions" }),
+      { button: 0 },
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Change folder" }),
+    );
+
+    expect(
+      await screen.findByText(
+        "Browse to the project folder on dev-vm, or edit the path directly.",
+      ),
+    ).toBeDefined();
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("button", { name: "Save path" })
+          .hasAttribute("disabled"),
+      ).toBe(false),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save path" }));
+
+    await waitFor(() =>
+      expect(sdk.projects.sources.update).toHaveBeenCalledWith({
+        projectId: "proj_bb",
+        sourceId: "src_1",
+        type: "local_path",
+        path: "/home/me/bb",
+      }),
+    );
+    expect(sdk.hosts.directory).toHaveBeenCalledWith(
+      expect.objectContaining({ hostId: "host_remote" }),
+    );
+  });
+
+  it("disables changing the folder on an offline machine", async () => {
+    stubSidebarBootstrapFetch([
+      { hostId: "host_primary", path: "/Users/me/bb" },
+      { hostId: "host_offline", path: "/home/old/bb" },
+    ]);
+
+    renderView();
+    fireEvent.pointerDown(
+      await screen.findByRole("button", {
+        name: "old-laptop checkout actions",
+      }),
+      { button: 0 },
+    );
+
+    const changeFolder = await screen.findByRole("menuitem", {
+      name: "Change folder",
+    });
+    expect(changeFolder.getAttribute("aria-disabled")).toBe("true");
   });
 
   it("disables removal when the project has a single checkout", async () => {

@@ -32,6 +32,7 @@ import {
   contractTarget,
   describePanelControllerContract,
   readContractPanel,
+  readContractTabs,
   snapshotFromState,
   type ContractStateSink,
 } from "@/test/panel-controller-contract";
@@ -184,6 +185,7 @@ describePanelControllerContract(
     return {
       panel: () => readContractPanel(probe),
       snapshot: () => snapshotFromState(sink),
+      tabs: () => readContractTabs(probe),
       renderedTabVisible: () =>
         screen.queryByTestId("contract-tab-visible")?.textContent ?? null,
       renderedTarget: () =>

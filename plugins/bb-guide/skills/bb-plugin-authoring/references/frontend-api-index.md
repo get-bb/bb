@@ -45,6 +45,8 @@ Read the installed SDK declarations for the exact current signatures.
 - `experimental_useCanOpenFileExternally`
 - `experimental_useTabVisible`
 - `experimental_useAppPanel`
+- `experimental_usePanelTabs`
+- `experimental_PanelTabIcon`
 - `experimental_useFixedTabTarget`
 - `useComposer`
 - `useComposers`
@@ -401,6 +403,10 @@ Read the installed SDK declarations for the exact current signatures.
 - `ExperimentalThreadTabProps`
 - `ExperimentalThreadTabActionContext`
 - `ExperimentalPanelController`
+- `ExperimentalPanelTab`
+- `ExperimentalPanelTabDetail`
+- `ExperimentalPanelTabs`
+- `ExperimentalPanelTabIconProps`
 - `BbContext`
 - `BbNavigate`
 - `PluginSdkApp`

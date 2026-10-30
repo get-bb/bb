@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { experimental_makePanelController } from "@get-bb/plugin-sdk/testing";
 
 import { expect, it, vi } from "vitest";
 import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
@@ -48,11 +49,9 @@ it("toggles the Diff tab through the thread's panel with Mod+D", async () => {
     id: "toggle-diff",
     defaultShortcut: { key: "d", mod: true },
   });
-  const panel = {
-    openTab: vi.fn(() => true),
+  const panel = experimental_makePanelController({
     toggleTab: vi.fn(() => true),
-    close: vi.fn(() => true),
-  };
+  });
   expect(
     command.isAvailable?.({
       threadId: null,
