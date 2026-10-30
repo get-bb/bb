@@ -26,6 +26,7 @@ import {
   XLink,
 } from "./cta";
 import { useDesktopPlatform } from "./desktop-platform";
+import { GITHUB_STARS, formatStarCount } from "./site";
 
 type SiteNavPage = "blog" | "changelog" | "plugins" | "plugin-guide" | "guides";
 
@@ -189,6 +190,29 @@ function GuidesMenu({
   );
 }
 
+export function GitHubStarsLink({ stars }: { stars: number | null }) {
+  return (
+    <GitHubLink
+      placement="nav"
+      className={
+        stars === null ? "nav-icon-button" : "nav-icon-button nav-github-stars"
+      }
+      aria-label={
+        stars === null
+          ? "GitHub"
+          : `GitHub, ${stars.toLocaleString("en")} stars`
+      }
+    >
+      <HugeiconsIcon icon={GithubIcon} />
+      {stars !== null && (
+        <span className="nav-star-count" aria-hidden="true">
+          {formatStarCount(stars)}
+        </span>
+      )}
+    </GitHubLink>
+  );
+}
+
 export function SiteNav({
   current,
   path,
@@ -246,6 +270,12 @@ export function SiteNav({
             className="btn btn-primary btn-sm nav-download"
           />
         )}
+        <GitHubStarsLink stars={GITHUB_STARS} />
+        <DesktopDownloadButton
+          placement="nav"
+          platform={platform}
+          className="btn btn-primary btn-sm nav-download"
+        />
       </div>
     </nav>
   );

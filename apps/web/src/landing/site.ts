@@ -1,4 +1,18 @@
 export const GITHUB_URL = "https://github.com/get-bb/bb";
+
+declare const __GITHUB_STARS__: number | null | undefined;
+export const GITHUB_STARS: number | null =
+  typeof __GITHUB_STARS__ === "number" ? __GITHUB_STARS__ : null;
+
+export function formatStarCount(count: number): string {
+  return new Intl.NumberFormat("en", {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  })
+    .format(count)
+    .toLowerCase();
+}
+
 export const DISCORD_URL = "https://discord.gg/kvBU6tJhcJ";
 export const X_URL = "https://x.com/get_bb_app";
 export const DOWNLOAD_FALLBACK_URL =

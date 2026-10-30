@@ -79,10 +79,14 @@ jobs:
       # CLOUDFLARE_ENV selects the wrangler env at BUILD time (the
       # @cloudflare/vite-plugin writes the resolved production config to
       # dist/server/wrangler.json; plain `wrangler deploy` follows it).
+      # GITHUB_TOKEN lifts the GitHub API rate limit for the build-time star
+      # count in the site header. Without it the build still succeeds and the
+      # header shows the GitHub icon alone.
       - name: Build web (production)
         env:
           CLOUDFLARE_ENV: production
           VITE_POSTHOG_KEY: ${{ secrets.VITE_POSTHOG_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: pnpm exec turbo run build --filter=@bb/web --cache-dir=.turbo/cache --output-logs=new-only
 
       - name: Sync marketing analytics secret
