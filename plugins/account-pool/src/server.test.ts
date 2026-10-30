@@ -5709,10 +5709,10 @@ describe("Account Pool plugin", () => {
         expectedStatus: 503,
       },
       {
-        name: "keeps invalid_grant accounts excluded despite a valid access token",
+        name: "keeps serving a valid access token after invalid_grant without replaying the refresh token",
         elapsedMinutes: 6,
         failureStatus: 400,
-        expectedStatus: 429,
+        expectedStatus: 200,
       },
     ])("$name", async ({ elapsedMinutes, failureStatus, expectedStatus }) => {
       let now = 1_800_000_000_000;
@@ -5790,11 +5790,7 @@ describe("Account Pool plugin", () => {
         .parse(
           await fixture.host.harness.behavior.callRpc("account.list", null),
         );
-      expect(accounts[0]?.error).toEqual(
-        failureStatus === 400
-          ? expect.stringContaining("OAuth refresh failed")
-          : null,
-      );
+      expect(accounts[0]?.error).toBeNull();
       expect(authorizations).toEqual(
         expectedStatus === 200
           ? [`Bearer ${oldToken}`, `Bearer ${oldToken}`]
@@ -5808,17 +5804,17 @@ describe("Account Pool plugin", () => {
         { headers: authHeaders(fixture.key), body: "{}" },
       );
       await recovered.text();
-      expect(recovered.status).toBe(failureStatus === 400 ? 429 : 200);
+      expect(recovered.status).toBe(200);
       expect(refreshCalls).toBe(failureStatus === 400 ? 1 : 2);
-      if (failureStatus !== 400) {
-        expect(authorizations.at(-1)).toBe(`Bearer ${newToken}`);
-        const recoveredAccounts = z
-          .array(accountSummarySchema)
-          .parse(
-            await fixture.host.harness.behavior.callRpc("account.list", null),
-          );
-        expect(recoveredAccounts[0]?.error).toBeNull();
-      }
+      expect(authorizations.at(-1)).toBe(
+        `Bearer ${failureStatus === 400 ? oldToken : newToken}`,
+      );
+      const recoveredAccounts = z
+        .array(accountSummarySchema)
+        .parse(
+          await fixture.host.harness.behavior.callRpc("account.list", null),
+        );
+      expect(recoveredAccounts[0]?.error).toBeNull();
     });
   });
 
@@ -5899,7 +5895,7 @@ describe("Account Pool plugin", () => {
       source: "import",
       options: {
         importCredentials: async () =>
-          importedCredentials({ expiresAt: Date.now() + 1_000 }),
+          importedCredentials({ expiresAt: Date.now() - 1_000 }),
         refreshUrl: `${upstream.url}/oauth/token`,
       },
     });
