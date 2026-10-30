@@ -1,0 +1,149 @@
+---
+title: A thread, environment or automation is stuck
+description: A thread shows Working for a long time, an environment can't be removed and says Needs recovery, or an automation stopped running. Stop the thread, recover the environment, or resume the automation.
+type: troubleshooting
+sources:
+  - apps/server/src/services/environments/environment-engine.ts
+  - apps/server/src/services/threads/thread-provisioning.ts
+  - apps/server/src/services/threads/background-task-reconciliation.ts
+  - apps/app/src/lib/lifecycle-errors.ts
+  - apps/app/src/components/thread/timeline/ThreadTimelineSurface.tsx
+  - plugins/composer/src/PromptBoxInternal.tsx
+  - packages/templates/src/templates/bb-guide-environments.md
+  - packages/templates/src/templates/bb-guide-thread-lifecycle.md
+  - plugins/automations/src/data.ts
+  - plugins/automations/src/run.ts
+  - plugins/automations/skills/automations/references/script-runtime.md
+since: 0.48.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+"My thread has said Working for an hour," "Teardown failed, how do I clean up?" or "My automation stopped running." A thread runs an agent on one machine, in an environment such as a worktree, and an automation starts threads or scripts on a schedule. Each can wait on something else; this page shows how to tell what it's waiting on and how to get it moving again.
+
+| What you see | Likely cause | Fix |
+| --- | --- | --- |
+| A thread shows Working with no new output | The agent is running a long command, or a command hangs | Open the thread to see the running step; click **Stop run** or run `bb thread stop <thread-id>` |
+| A thread waits and never starts working | Its machine is offline, a concurrency limit holds it, or it waits for an automatic retry | See [A thread waits and never starts](#a-thread-waits-and-never-starts) |
+| A thread stays on "Stop requested" | The machine didn't confirm the stop | Run `bb thread show <thread-id> --json`, then stop it again |
+| A background command card says Running after the agent finished | The session that owned it ended without closing it | Run `bb thread stop <thread-id>` |
+| A turn failed with an error | The agent or its provider failed | Run `bb thread retry <thread-id>`, or send a new message |
+| "Workspace setup failed" | `.bb-env-setup.sh` failed or ran longer than 15 minutes, or the worktree couldn't be created | Fix the cause, then start a new thread |
+| "Workspace no longer exists." | The thread was archived and its worktree removed | Unarchive it, then run `bb thread restore-environment <thread-id>` |
+| An environment says "Needs recovery" | Removing it failed five times | Inspect it, then run `bb environment cleanup <environment-id> --recover` |
+| An automation shows Paused after failed runs | Three runs in a row failed | Fix the cause, then resume it |
+| An automation paused with "Target thread … is in an error state" | The thread it prompts is archived, deleted or failed | Fix or replace the thread, then resume it |
+
+## A thread is Working for a long time
+
+Open the thread. The timeline shows what the agent is doing now, such as a command that is still running. A long build or test can be fine; a command waiting for input that never comes isn't.
+
+To stop the work, click **Stop run** in the composer (the square button that replaces send while the composer is empty), or run:
+
+```bash
+bb thread stop <thread-id>
+```
+
+The timeline shows "Stop requested" until the machine confirms. Stopping keeps the thread's history, workspace and settings; send a new message to continue. bb also releases an idle agent on its own, by default after 30 idle minutes.
+
+### A background command card says Running
+
+A command the agent started in the background can show Running after the agent's session ended, for example after a restart. Stopping the thread with `bb thread stop <thread-id>` marks its leftover background commands as finished.
+
+### A thread stays on Stop requested
+
+If the machine can't interrupt the turn, the thread stays stopping. Check its status with `bb thread show <thread-id> --json`. If the thread's machine is offline, bring it back first; see the next section.
+
+## A thread waits and never starts
+
+A thread waits when something holds its turn:
+
+- **The machine is offline.** Sending says "Host is offline." Wake the machine and check that bb runs on it, or check **Settings → Machines**.
+- **A concurrency limit holds it.** The **Concurrency limit** plugin holds new turns until a running thread goes idle. Run `bb concurrency-limit status` to see the limits.
+- **It waits for an automatic retry.** After a provider overload or usage limit, the **Provider retry** plugin queues a retry. Run `bb provider-retry status` to see pending retries, `bb provider-retry retry <thread-id>` to send it now, or `bb provider-retry cancel <thread-id>` to drop it.
+- **It waits for you.** A thread that asks a question or an approval waits for your answer. Open the thread and answer it.
+
+## A turn failed
+
+When a turn fails, the thread shows the error in its timeline. Retry the failed turn without sending your message again:
+
+```bash
+bb thread retry <thread-id>
+```
+
+Or send a new message. If the agent's context is the problem, `bb thread clear <thread-id>` starts a fresh conversation in the same thread and workspace.
+
+## Workspace setup failed
+
+The thread's timeline shows "Workspace setup failed", and its **Info** shows **Environment: Not created · provisioning failed**. Sending to it fails with "Workspace setup failed."
+
+For a worktree, the usual cause is the repository's `.bb-env-setup.sh` script. It must exit with 0 within 15 minutes; otherwise bb removes the new worktree. Its progress in the timeline ends with ".bb-env-setup.sh failed". Fix the script, or make optional steps in it non-fatal, then start a new thread.
+
+## Workspace no longer exists.
+
+After a thread is archived, bb removes its worktree when the grace period ends. The branch is kept. Unarchive the thread, then build the workspace again:
+
+```bash
+bb thread unarchive <thread-id>
+bb thread restore-environment <thread-id>
+```
+
+A worktree is created again on the branch it had. Uncommitted changes in the removed worktree can't be restored.
+
+## Needs recovery
+
+bb removes a worktree five minutes after its last thread is archived: it runs `.bb-env-teardown.sh` if the repository has one, stops the processes still running inside the worktree, then deletes the worktree. If removal fails, bb retries after 1, 2, 4 and 8 minutes. After the fifth failure it stops and records:
+
+`Needs recovery: <reason> Inspect the workspace, then run bb environment cleanup <environment-id> --recover.`
+
+`bb environment list` shows each environment with its failure message, and `bb environment show <environment-id>` shows its path, teardown attempts and the message.
+
+Then:
+
+1. Open the environment's path and check what's left: your own shells, editors or dev servers still running there, or files a teardown script didn't clean up.
+2. Stop the processes that still use the folder, or move your shells out of it.
+3. Acknowledge the failure and retry the removal:
+
+   ```bash
+   bb environment cleanup <environment-id> --recover
+   ```
+
+4. Check that it's gone with `bb environment show <environment-id>`.
+
+:::note
+Recovery currently works only on Linux machines. It refuses while a setup or teardown script still runs, or while a process of the user bb runs as still works in the folder or uses a file in it. It never stops processes for you.
+:::
+
+`bb environment cleanup <environment-id>` without `--recover` removes an unused environment early, without waiting for the grace period. It refuses environments that still have live threads, and environments bb doesn't manage.
+
+## An automation paused itself
+
+**Automations** in the sidebar marks an automation **Paused** when bb stops running it, and the automation's page shows the last error and its runs. Two things pause an automation:
+
+- **Three failed runs in a row.** A failed recurring run is retried after 30 seconds, then 60 seconds. The third failure in a row pauses it, and the error ends with "(automation paused after 3 consecutive failures)".
+- **Its target thread can't take a run.** An automation that prompts an existing thread pauses at once when that thread was archived, deleted or failed. The error reads, for example, "Target thread … is in an error state".
+
+To see why, open the automation's run history, or run:
+
+```bash
+bb automation runs <automation-id> --project <project-id>
+```
+
+Fix the cause, such as the script's error or the target thread, then click **Resume automation**, or run:
+
+```bash
+bb automation resume <automation-id> --project <project-id>
+```
+
+Resuming clears the failure count. To check it now instead of waiting for the schedule, choose **Run now**.
+
+An automation runs once at a time: while one run is still going, the next tick uses that run instead of starting another.
+
+## What to send when you ask for help
+
+- Your bb version (`bb --version`) and operating system, and how you run bb: the desktop app, `npx bb-app`, or a service.
+- For a thread: the output of `bb thread show <thread-id> --json`.
+- For an environment: the output of `bb environment show <environment-id>`, and whether the repository has `.bb-env-setup.sh` or `.bb-env-teardown.sh`.
+- For an automation: the output of `bb automation show <automation-id> --project <project-id>` and `bb automation runs <automation-id> --project <project-id>`.
+- The exact message, copied as text, and where it appeared.
+- The server and host daemon logs from `~/.bb/logs/` from around that time. In the desktop app, open them with **View → Local Logs**.

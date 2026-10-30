@@ -1,0 +1,138 @@
+---
+title: A plugin won't install or load
+description: A plugin install fails, or the plugin shows Failed, Incompatible or Missing in Settings → Installed plugins. Read the reason bb gives, check the plugin's log, and turn on plugin safe mode if a plugin breaks bb.
+type: troubleshooting
+sources:
+  - apps/server/src/services/plugins/plugin-runtime.ts
+  - apps/server/src/services/plugins/managed-plugin-artifacts.ts
+  - apps/server/src/services/plugins/install-sources.ts
+  - apps/server/src/services/plugins/sdk-compat.ts
+  - apps/server/src/services/plugins/plugin-log.ts
+  - apps/app/src/components/plugin/PluginInstallJobsHost.tsx
+  - apps/app/src/components/plugin/management/plugin-status.ts
+  - apps/app/src/components/plugin/management/PluginAttentionBanner.tsx
+  - apps/app/src/components/plugin/management/AddPluginDialog.tsx
+  - apps/app/src/components/tools/PluginCapabilities.tsx
+  - apps/app/src/components/sidebar/ThreadListPlaceholder.tsx
+  - apps/app/src/hooks/usePluginSafeModeCommands.ts
+  - apps/cli/src/commands/plugin.ts
+since: 0.48.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+"I installed a plugin and nothing happened" or "Why does it say Incompatible?" bb installs a plugin in the background on the server, then starts it. If the install fails, a "Plugin installation failed" notification gives the reason. If the plugin installs but can't start, **Settings → Installed plugins** shows "1 plugin isn’t running" and a status on the plugin.
+
+| What you see | Likely cause | Fix |
+| --- | --- | --- |
+| "Plugin installation failed" with `requires bb …, this is …` | The plugin needs a newer bb | Update bb, or install an older version of the plugin |
+| "Plugin installation failed" with `requires bb plugin SDK …, running SDK is …` | The plugin was built for a newer plugin SDK | Update bb, or ask the author to lower the SDK range |
+| `install failed: server bundle build for "…" failed` | The plugin's code doesn't build, often a dependency missing from its `package.json` | Read the error; report it to the plugin's author |
+| `git ls-remote failed (exit 128)` or `git clone failed (exit 128)` | bb can't reach the repository: a wrong URL, or a private repository | Check the URL and that this machine's Git can clone it |
+| "Source access denied. Check repository permissions." | A marketplace lists a private or moved source | Check that you can access the repository, or ask the marketplace owner |
+| `plugin safe mode is on; turn it off with bb plugin safe-mode off …` | Plugin safe mode is on | Turn safe mode off, then install again |
+| **Incompatible**: "This version is incompatible with bb." | The installed version needs another bb or SDK version | Install a compatible version, or update bb |
+| **Failed**: "The plugin couldn't start." | The plugin threw an error while starting, or took longer than 30 seconds | Read its log, then click **Reload** |
+| **Missing**: "Plugin files are missing." | The plugin's folder was moved or deleted | Reinstall it, or restore a local folder and reload |
+| **Needs configuration** | The plugin needs a setting before it can start | Click **Open settings** and fill it in |
+| "… stopped working." in the sidebar or composer | The plugin's interface crashed | Click **Reload**; read its log if it happens again |
+| bb is slow or broken right after installing a plugin | A plugin you installed misbehaves | Turn on plugin safe mode |
+
+## Plugin installation failed
+
+The notification reads "Plugin installation failed" with the plugin's name and the reason. Installs run one at a time as jobs on the server, so they keep going if you close the window. To see every recent install and its error:
+
+```bash
+bb plugin install-jobs
+```
+
+From the CLI, `bb plugin install <source>` prints the same reason when it fails. Common reasons:
+
+### install refused: plugin "…" requires bb …, this is …
+
+The plugin declares the bb versions it works with, and yours isn't one of them. Update bb from **Settings → Updates**, or install an older release of the plugin that supports your bb, for example `bb plugin install git:https://github.com/<owner>/<repo>@v1.2.0`. `bb plugin search <name>` shows "requires newer bb" for catalog plugins your bb can't run.
+
+### requires bb plugin SDK …, running SDK is …
+
+The plugin was built for a newer plugin SDK than your bb includes. Plugins built against a nightly build often need the next stable release. Update bb, or ask the plugin's author to lower the `engines.bbPluginSdk` range in its `package.json`.
+
+### install failed: server bundle build for "…" failed
+
+bb builds plugins installed from Git on your machine. The build failed, and the text after the colon is the build error. A common cause is a package the plugin imports, such as `zod`, that isn't listed in its `package.json` dependencies. Report the error to the plugin's author. If you're the author, see the Plugin Guide.
+
+Similar messages name the other parts of a plugin: `frontend bundle build` for its interface and `host bundle build` for code that runs on machines.
+
+### git ls-remote failed or git clone failed
+
+The message ends with Git's own error, for example `git ls-remote failed (exit 128): …`. bb clones Git plugins with the `git` on the machine running the bb server, using that machine's Git credentials. Check the URL, then check that `git clone <url>` works in a terminal there as the same user bb runs as. For a private repository, set up an SSH key or credential helper for that user.
+
+### install refused: npm plugins with a frontend (bb.app) must publish a prebuilt bundle
+
+A plugin published to npm with an interface must include its built `dist/app.js` and `dist/app.meta.json`. The package is missing them. Install it from its Git repository instead, or ask the author to publish the built files.
+
+## A plugin shows Failed, Incompatible or Missing
+
+When an enabled plugin can't run, **Settings → Installed plugins** shows "1 plugin isn’t running" (or how many) with **View details** for each. The plugin's page shows its status, what's wrong, and what to do:
+
+| Status | What bb says | What to do |
+| --- | --- | --- |
+| **Failed** | "The plugin couldn't start." | Read the plugin's log, then click **Reload**. A local plugin needs its code fixed first |
+| **Incompatible** | "This version is incompatible with bb." | Install a compatible version. For a plugin included with bb, update bb |
+| **Missing** | "Plugin files are missing." | Reinstall it from its source. For a local folder, put the folder back and click **Reload** |
+| **Needs configuration** | The missing setting, or "Complete the required settings." | Click **Open settings** and fill in what it asks for |
+| **Degraded** | "A service is still stopping." | Wait a moment, then click **Reload** |
+
+`bb plugin list` shows the same status and the full reason for every plugin, and `bb status` names the enabled plugins that are incompatible, failed or missing. To restart a plugin from the CLI, run `bb plugin reload <plugin-id>`; it exits with an error if the plugin doesn't come back.
+
+A plugin that takes longer than 30 seconds to start fails with `load timed out after 30000ms`.
+
+## Read a plugin's log
+
+Each plugin writes its own log. Print the last lines, or follow it while you reproduce the problem:
+
+```bash
+bb plugin logs <plugin-id> -n 200
+bb plugin logs <plugin-id> --follow
+```
+
+`bb plugin list` shows each plugin's ID. The log file is `~/.bb/plugins/<plugin-id>/logs/plugin.log`. Problems loading a plugin are also in the server log in `~/.bb/logs/`.
+
+## A plugin stopped working
+
+When the interface a plugin adds crashes, bb shows "… stopped working." with the plugin's name where it was, and a **Reload** button. bb keeps working; only that plugin's part is gone until you reload it.
+
+If the sidebar shows "No thread list plugin is enabled.", the plugin chosen to draw the sidebar is off or removed. Pick another in **Settings → Appearance → Sidebar thread list**.
+
+## Turn on plugin safe mode
+
+If bb is slow, crashes or won't load after you install or update a plugin, safe mode stops every plugin you installed, including official store plugins, and keeps the plugins included with bb running. Each plugin keeps its enabled setting, so turning safe mode off brings them back.
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+1. Open the command palette.
+2. Choose **Turn plugin safe mode on**.
+3. To leave safe mode, choose **Turn plugin safe mode off**.
+
+</Tab>
+<Tab value="CLI">
+
+```bash
+bb plugin safe-mode on
+bb plugin safe-mode off
+```
+
+`bb plugin safe-mode` alone shows whether it's on. `off` exits with an error and lists the plugins that fail to start again.
+
+</Tab>
+</Tabs>
+
+While safe mode is on, bb refuses to install or update the plugins it stopped. To find the plugin at fault, turn safe mode off, then disable plugins one at a time with `bb plugin disable <plugin-id>`, or with the switch on the plugin's page.
+
+## What to send when you ask for help
+
+- Your bb version (`bb --version`) and operating system, and how you run bb: the desktop app, `npx bb-app`, or a service.
+- The plugin and how you installed it: the output of `bb plugin source <plugin-id>`.
+- The exact message, copied as text, from the notification, the plugin's page, or `bb plugin install-jobs`.
+- The plugin's log, from `bb plugin logs <plugin-id> -n 200`.
+- The server log from `~/.bb/logs/` from around that time. In the desktop app, open it with **View → Local Logs**.
