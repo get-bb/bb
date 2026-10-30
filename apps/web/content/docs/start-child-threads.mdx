@@ -1,0 +1,85 @@
+---
+title: Start child threads
+description: Ask for bb child threads in your prompt or .bb/AGENTS.md, and turn off the agent's own subagents if it keeps using them. You can nest threads yourself too.
+type: how-to
+sources:
+  - apps/cli/src/commands/thread/spawn.ts
+  - apps/cli/src/commands/thread/actions.ts
+  - apps/server/src/services/threads/thread-parent.ts
+  - apps/app/src/components/pickers/ParentThreadPicker.tsx
+  - plugins/thread-list/app/dnd/**
+  - plugins/bb-guide/introduction.ts
+  - plugins/provider-claude-code/server.ts
+  - plugins/provider-codex/server.ts
+since: 0.47.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+bb tells agents not to start other threads unless you ask, so ask explicitly. Each child shows in the sidebar under its parent, where you can steer it or take it over.
+
+## Ask an agent for child threads
+
+Say you want bb child threads and what each should use. Anything you leave out (agent, model, permission mode) comes from the parent.
+
+```text title="Prompt"
+Split this into bb child threads with bb thread spawn --parent-self, one per part: the sign-up form, the API, and the tests. Give each its own worktree. Use Codex with high reasoning for the API. Don't do the parts yourself; review each child's result when it finishes.
+```
+
+The agent runs `bb thread spawn` once per part.
+
+## Make it the default for a project
+
+1. Add a line like this to the project's `.bb/AGENTS.md`, which every agent in the project reads. Use `~/.bb/AGENTS.md` for every project.
+
+   ```text title=".bb/AGENTS.md"
+   When a task has independent parts, delegate each part to a bb child thread with `bb thread spawn --parent-self` instead of using your own subagents.
+   ```
+
+2. Turn on **Disable provider subagents** in **Settings → Claude Code provider** and **Settings → Codex provider**, so the agent can't fall back to its own subagents. It applies from the agent's next turn.
+
+   ```sh
+   bb plugin config provider-claude-code set subagentsDisabled true
+   bb plugin config provider-codex set subagentsDisabled true
+   ```
+
+## Nest an existing thread under another
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+- **Drag** a thread in the sidebar and hold it over another thread's row until it nests. Drag a child out to a section to un-nest it.
+- Or open the thread's **Info** tab (**Mod+J**) and choose a thread in its **Parent** row. Click **×** to remove it.
+
+<Screenshot
+  src="/docs-images/start-child-threads/parent-row"
+  alt="A thread's Info tab shows its Parent row, where you choose the thread to nest it under."
+  width={464}
+  height={60}
+/>
+
+</Tab>
+<Tab value="CLI">
+
+```sh
+bb thread update <thread-id> --parent-thread <parent-id>
+bb thread update <thread-id> --clear-parent-thread
+bb thread spawn --project <project-id> --parent-thread <parent-id> --prompt "Write the sign-up API tests"
+```
+
+</Tab>
+</Tabs>
+
+A child can belong to a different project; the sidebar marks it. Threads nest at most 4 levels deep.
+
+## Check it worked
+
+- The children show in the sidebar, nested under the parent.
+- The parent's **Info** tab lists its **Child threads**.
+- `bb thread list --parent-thread <parent-id>` lists them.
+
+## Related troubleshooting
+
+- **The agent uses its own subagents anyway:** turn on **Disable provider subagents** for that agent, and ask for child threads by name.
+- **"Thread nesting is limited to 4 levels.":** nest the thread under a parent higher up.
+- **A child fails to start because of its permission mode:** the machine's **Permission limit** in **Settings → Machines** is below what the child's agent needs. Pi, for example, runs only in Full Access.

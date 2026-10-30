@@ -1,0 +1,71 @@
+---
+title: Security, privacy and teams
+description: bb runs agents on your machines with your access, and anyone who can reach your server can run commands. Share a server only with people you trust.
+type: concept
+sources:
+  - SECURITY.md
+  - apps/server/src/browser-request-guard.ts
+  - apps/server/src/internal/auth.ts
+  - packages/client-core/src/prompt/permission-mode-options.ts
+  - apps/app/src/views/SettingsView.tsx
+  - apps/web/src/routes/privacy.tsx
+  - plugins/connect/**
+since: 0.45.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+Whoever can reach your bb server, or install a plugin in it, can do what you can do on that computer.
+
+## What bb can reach
+
+| Who | Can reach | Limited by |
+| --- | --- | --- |
+| **Agents** | Files and commands on the thread's machine | The thread's permission mode and the machine's permission limit |
+| **Plugins** | Everything the bb server can, including other plugins' secrets | Nothing: plugins are full-trust code, so install only ones you trust |
+| **Host daemon** on each machine | Runs agents and commands there | Takes work only from the server it was added to |
+
+| Permission mode | What the agent may do |
+| --- | --- |
+| **Accept Edits** | Edits inside the workspace automatically; anything beyond asks you first |
+| **Approve for me** | The same sandbox, with requests reviewed automatically; high-risk actions can still come back to you |
+| **Full Access** | No sandbox and no approvals |
+
+A machine's **Permission limit** (**Settings → Machines**) caps every thread on it. Child threads get no cap from their parent; only the machine limit applies.
+
+## Who can reach bb
+
+- **On your machine:** the server listens on `127.0.0.1` (port 38886) by default. Its local API has no password: any program on that machine can drive bb, but web pages on other sites can't.
+- **From your other devices:** use bb connect or a private network such as Tailscale. bb connect lets in only the bb account that owns the server. Phones pair with a one-time code that lasts 10 minutes; revoke devices from your getbb.app dashboard.
+- **Other machines** get their own credential and can't change machine settings such as the permission limit.
+
+:::warning
+`--server-bind-host 0.0.0.0` exposes the unauthenticated API to everyone who can reach that address. Use it only behind a network boundary you trust, never on the public internet.
+:::
+
+## What leaves your machine
+
+| What | Where it goes |
+| --- | --- |
+| Your code and conversations | Only the agent providers you use, such as Anthropic or OpenAI, under your account |
+| Anonymous usage data (app starts, setup progress, feature use) | Sent by bb unless you turn it off in **Settings → General → Privacy & diagnostics → Share anonymous usage data**, or set `BB_TELEMETRY=false` on the server. The iOS and Android apps send none |
+| bb connect traffic | Through the relay, which terminates TLS but doesn't record or store it. Not end-to-end encrypted |
+| Push notifications | Apple or Google, with a short preview. Not end-to-end encrypted |
+
+bb keeps its data in `~/.bb` on the server's machine. **Settings → Environment variables** are stored encrypted.
+
+## Teams
+
+bb has no user accounts, roles or per-person permissions. Everyone who can open a server has full access to it, its machines and its plugins.
+
+| If you want to | Do this |
+| --- | --- |
+| Work alone across your devices | One server, reached through bb connect or Tailscale |
+| Share with a small team you fully trust | One server on a private network. Agree on permission modes, since every thread runs as the server's user |
+| Keep people or clients separate | A separate bb server for each |
+
+## Next steps
+
+- [Find and install plugins](/docs/find-and-install-plugins): what to check before you install one.
+- [Child threads, subagents and workflows](/docs/child-threads-subagents-and-workflows): how permissions carry over to child threads.
+- [CLI](/docs/cli): `bb machine` and `bb connect` commands.

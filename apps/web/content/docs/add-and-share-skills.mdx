@@ -1,0 +1,105 @@
+---
+title: Add and share skills
+description: Put a folder with a SKILL.md in ~/.bb/skills for every project, or in a project's .bb/skills for that project only. Symlinks work in both places.
+type: how-to
+sources:
+  - packages/skill-index/src/**
+  - apps/server/src/services/skills/**
+  - apps/app/src/components/tools/SkillsCollection.tsx
+  - apps/app/src/components/settings/CliSkillsSettingsSection.tsx
+  - apps/cli/src/commands/skill.ts
+  - plugins/provider-claude-code/src/native-roots.ts
+  - plugins/provider-codex/src/native-roots.ts
+  - plugins/provider-pi/src/native-roots.ts
+since: 0.48.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+A skill is a folder with a `SKILL.md` file. Where you put the folder decides who sees it in the `/` menu.
+
+## Choose where the skill goes
+
+| Put it in | Who gets it |
+| --- | --- |
+| `~/.bb/skills/<name>/` | Every agent in every project |
+| `<project>/.bb/skills/<name>/` | Every agent in that project; commit it to share. Wins over a same-named skill in `~/.bb/skills` |
+| An agent's own skills folder | Only that agent (see below) |
+
+| Agent | Your skills | Project skills |
+| --- | --- | --- |
+| Claude Code | `~/.claude/skills` and enabled Claude Code plugins | `.claude/skills` |
+| Codex | `~/.agents/skills`, `$CODEX_HOME/skills` | `.agents/skills`, `.codex/skills` |
+| Pi | `~/.pi/agent/skills`, `~/.agents/skills` | `.pi/skills`, `.agents/skills` |
+| Cursor | `~/.cursor/skills`, `~/.agents/skills`, `~/.claude/skills` | The same folders in the project |
+| OpenCode | `~/.config/opencode/skills`, `~/.claude/skills`, `~/.agents/skills` | `.opencode/skills`, `.claude/skills`, `.agents/skills` |
+
+Project folders are read from the repository root down to the thread's working folder.
+
+## Add a skill
+
+<Tabs items={["Desktop", "Files"]}>
+<Tab value="Desktop">
+
+1. Click **Skills** in the sidebar, then **My skills**.
+2. Click **New bb skill**, finish the sentence "Create a new bb skill that", and send it.
+
+<Screenshot
+  src="/docs-images/add-and-share-skills/my-skills"
+  alt="Skills → My skills lists the skills on this bb host, with the New bb skill button next to the search box."
+  width={924}
+  height={228}
+/>
+
+To install a published skill, open **Browse skills**, or run `bb skill search <words>` and `bb skill install <registry-skill-id>`.
+
+</Tab>
+<Tab value="Files">
+
+```md title="~/.bb/skills/release-notes/SKILL.md"
+---
+name: release-notes
+description: Write release notes from the pull requests merged since the last tag.
+---
+
+Read the merged pull requests since the last tag and write release notes grouped by area.
+```
+
+- `name`: lowercase letters, numbers and single hyphens, matching the folder name.
+- `description`: when the agent should use the skill.
+
+</Tab>
+</Tabs>
+
+Skills apply from a thread's next message.
+
+## Share skills with symlinks
+
+Keep one copy and link to it:
+
+```sh
+ln -s ~/my-skills/release-notes ~/.bb/skills/release-notes
+ln -s ~/my-skills/release-notes ~/.claude/skills/release-notes
+```
+
+| Where | What can be a link |
+| --- | --- |
+| Your own folders (`~/.bb/skills`, …) | The skills folder, a skill's folder or its `SKILL.md`, pointing anywhere |
+| A project | The same, but only pointing inside the project or repository |
+| Inside a skill's folder | Nothing else |
+
+## Let agents outside bb use bb's skills
+
+To give Claude Code or Codex bb's CLI skills outside bb, click **Install** next to **bb CLI skills** in **Settings → General**, or run `bb skill install-cli-skills`.
+
+## Check it worked
+
+- **Skills → My skills** lists the skill, and `bb skill list` shows where it came from.
+- Typing `/` and the start of its name in a composer shows it in the menu.
+
+## Related troubleshooting
+
+- **The skill isn't listed:** check the file is named `SKILL.md`, its front matter starts with `---`, and `name` matches the folder.
+- **A linked skill in a project is missing:** the link points outside the project. Move the skill inside it or into `~/.bb/skills`.
+- **It shows for one agent only:** it is in that agent's own folder. Move it to `~/.bb/skills`.
+- **It appears twice:** two folders hold different versions with the same name. Remove one.
