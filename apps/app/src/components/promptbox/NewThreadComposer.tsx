@@ -333,7 +333,7 @@ type ProjectDefaultsState =
   | { status: "error" }
   | { status: "resolved"; defaults: ProjectExecutionDefaults | null };
 
-export interface ResolveNewThreadSubmitDisabledReasonArgs {
+export interface ResolveNewThreadReadinessArgs {
   environmentProviderInputsBlocker: string | null;
   environmentSetupRequiredReason: string | null;
   isCopyingAttachments: boolean;
@@ -367,7 +367,7 @@ export function resolveNewThreadReadiness({
   selectedThreadModel,
   submissionEnvironmentUnavailable,
   submissionMachineUnavailable,
-}: ResolveNewThreadSubmitDisabledReasonArgs): NewThreadReadiness {
+}: ResolveNewThreadReadinessArgs): NewThreadReadiness {
   if (isSubmitting) return { status: "pending", message: "Starting thread..." };
   if (isCopyingAttachments) {
     return {
@@ -450,13 +450,6 @@ export function resolveNewThreadReadiness({
   if (promptInputEmpty)
     return { status: "empty", message: "Enter a prompt or attach a file." };
   return { status: "ready" };
-}
-
-export function resolveNewThreadSubmitDisabledReason(
-  args: ResolveNewThreadSubmitDisabledReasonArgs,
-): string | null {
-  const readiness = resolveNewThreadReadiness(args);
-  return readiness.status === "ready" ? null : readiness.message;
 }
 
 export function resolveNewThreadProjectDefaultsState({
