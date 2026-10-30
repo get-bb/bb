@@ -217,20 +217,16 @@ export function SiteNav({
   current,
   path,
   sticky = false,
-}: {
-  current?: SiteNavPage;
-  path?: string;
-  sticky?: boolean;
   downloadPage = false,
 }: {
   current?: SiteNavPage;
   path?: string;
+  sticky?: boolean;
   downloadPage?: boolean;
 }) {
   const platform = useDesktopPlatform();
   return (
     <nav className={sticky ? "nav nav-sticky" : "nav"}>
-      {}
       <a className="logo" href="/" aria-label="bb">
         <span className="bb-mark logo-mark" />
       </a>
@@ -254,13 +250,7 @@ export function SiteNav({
         <a href={DASHBOARD_PATH}>Sign in</a>
       </div>
       <div className="nav-actions">
-        <GitHubLink
-          placement="nav"
-          className="nav-icon-button"
-          aria-label="GitHub"
-        >
-          <HugeiconsIcon icon={GithubIcon} />
-        </GitHubLink>
+        <GitHubStarsLink stars={GITHUB_STARS} />
         {downloadPage ? (
           <a className="btn btn-primary btn-sm nav-download" href="/download">
             Download
@@ -272,12 +262,6 @@ export function SiteNav({
             className="btn btn-primary btn-sm nav-download"
           />
         )}
-        <GitHubStarsLink stars={GITHUB_STARS} />
-        <DesktopDownloadButton
-          placement="nav"
-          platform={platform}
-          className="btn btn-primary btn-sm nav-download"
-        />
       </div>
     </nav>
   );

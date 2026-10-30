@@ -39,12 +39,16 @@ describe("site navigation", () => {
     expect(renderToStaticMarkup(<SiteNav sticky />)).toMatch(
       /^<nav class="nav nav-sticky">/,
     );
+  });
+
   it("can send the header button to the download page", () => {
     const html = renderToStaticMarkup(<SiteNav downloadPage />);
     expect(html).toContain(
       '<a class="btn btn-primary btn-sm nav-download" href="/download">Download</a>',
     );
     expect(html).not.toContain("/download/macos");
+  });
+
   it("shows the build-time star count beside the GitHub icon", () => {
     const html = renderToStaticMarkup(<GitHubStarsLink stars={4762} />);
     expect(html).toContain('class="nav-icon-button nav-github-stars"');
@@ -63,6 +67,8 @@ describe("site navigation", () => {
     [12040, "12k"],
   ])("formats %d stars as %s", (count, label) => {
     expect(formatStarCount(count)).toBe(label);
+  });
+
   it("keeps GitHub and Download apart from the centered page links", () => {
     const html = renderToStaticMarkup(<SiteNav />);
     const actionsAt = html.indexOf('<div class="nav-actions">');
