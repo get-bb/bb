@@ -23,13 +23,13 @@ bb runs the same agent CLIs your old tool used. Worktree setup scripts move into
 | Claude Code CLI | Sign-in, settings, `CLAUDE.md`, MCP servers and skills | `.jsonl` files in `~/.claude/projects/`, by folder path | Per-checkout commands: `.bb-env-setup.sh` |
 | Codex CLI | Sign-in, `AGENTS.md` and skills | `.jsonl` files under `~/.codex/sessions/` | Per-checkout commands: `.bb-env-setup.sh` |
 | Conductor | The Claude Code or Codex CLI it runs, and its Git worktrees | `~/.claude/projects/` and `~/.codex/sessions/` | Setup script: `.bb-env-setup.sh`. Files to copy: `.worktreeinclude` |
-| Cursor | `cursor-agent` as the **Cursor** provider, with its sign-in and skills | `~/.cursor/projects/<project>/agent-transcripts/` | `.cursor/worktrees.json` commands: `.bb-env-setup.sh`. Files like `.env`: `.worktreeinclude` |
+| Cursor | `cursor-agent` as the [**Cursor**](/docs/add-acp-agents) provider, with its sign-in and skills | `~/.cursor/projects/<project>/agent-transcripts/` | `.cursor/worktrees.json` commands: `.bb-env-setup.sh`. Files like `.env`: `.worktreeinclude` |
 
 ## Continue a task from your old tool
 
 1. In **Settings → Projects**, choose **Add a project** and pick your repository. Or run `bb project create --name acme-web --root ~/code/acme-web`.
 2. Choose **New thread** and pick your project below the message box.
-3. Choose where to work:
+3. [Choose where to work](/docs/choose-where-a-thread-runs):
    - **Worktree**, then **Branch from → Existing worktree**, to continue in a worktree your old tool made.
    - **Project checkout**, to continue in your main checkout.
 
@@ -80,6 +80,6 @@ pnpm install
 
 ## Related troubleshooting
 
-- An agent won't sign in or can't be found
-- A skill is missing from the / menu
-- A thread, environment or automation is stuck
+- [An agent won't sign in or can't be found](/docs/an-agent-wont-sign-in-or-cant-be-found)
+- [A skill is missing from the / menu](/docs/a-skill-is-missing-from-the-menu)
+- [A thread, environment or automation is stuck](/docs/a-thread-environment-or-automation-is-stuck)

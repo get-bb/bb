@@ -23,12 +23,12 @@ verified: 2026-10-30
 
 | What you see | Likely cause | Fix |
 | --- | --- | --- |
-| `requires bb …, this is …` | The plugin needs a newer bb | [Update bb, or install an older version](#requires-a-newer-bb) |
-| `requires bb plugin SDK …, running SDK is …` | The plugin was built for a newer plugin SDK | Update bb, or ask the author to lower the SDK range |
-| `install failed: server bundle build for "…" failed` | The plugin's code doesn't build | Report the error to the plugin's author |
-| `git ls-remote failed (exit 128)` or `git clone failed (exit 128)` | A wrong URL, or a private repository | [Check Git access](#git-ls-remote-failed-or-git-clone-failed) |
+| "requires bb …, this is …" | The plugin needs a newer bb | [Update bb, or install an older version](#requires-a-newer-bb) |
+| "requires bb plugin SDK …, running SDK is …" | The plugin was built for a newer plugin SDK | Update bb, or ask the author to lower the SDK range |
+| "install failed: server bundle build for "…" failed" | The plugin's code doesn't build | Report the error to the plugin's author |
+| "git ls-remote failed (exit 128)" or "git clone failed (exit 128)" | A wrong URL, or a private repository | [Check Git access](#git-ls-remote-failed-or-git-clone-failed) |
 | "Source access denied. Check repository permissions." | A marketplace lists a private or moved source | Check your access, or ask the marketplace owner |
-| `plugin safe mode is on; turn it off with bb plugin safe-mode off …` | Plugin safe mode is on | Turn safe mode off, then install again |
+| "plugin safe mode is on; turn it off with bb plugin safe-mode off …" | Plugin safe mode is on | Turn safe mode off, then install again |
 | **Incompatible** | The installed version needs another bb or SDK version | Install a compatible version, or update bb |
 | **Failed**: "The plugin couldn't start." | It threw while starting, or took over 30 seconds | [Read its log](#read-a-plugins-log), then click **Reload** |
 | **Missing**: "Plugin files are missing." | Its folder was moved or deleted | Reinstall it |
@@ -43,7 +43,7 @@ The notification gives the reason. `bb plugin install-jobs` lists recent install
 
 ### install refused: plugin "…" requires bb …, this is … [#requires-a-newer-bb]
 
-Update bb from **Settings → Updates**, or install an older release, for example `bb plugin install git:https://github.com/<owner>/<repo>@v1.2.0`.
+[Update bb](/docs/install#update-bb) from **Settings → Updates**, or install an older release, for example `bb plugin install git:https://github.com/<owner>/<repo>@v1.2.0`.
 
 ### requires bb plugin SDK …, running SDK is …
 
@@ -81,7 +81,7 @@ bb plugin logs <plugin-id> --follow
 
 ## A plugin stopped working
 
-bb shows "… stopped working." with a **Reload** button where the plugin's interface was; the rest of bb keeps working. If the sidebar shows "No thread list plugin is enabled.", pick another in **Settings → Appearance → Sidebar thread list**.
+bb shows "… stopped working." with a **Reload** button where the plugin's interface was; the rest of bb keeps working. If the sidebar shows "No thread list plugin is enabled.", pick another in [**Settings → Appearance → Sidebar thread list**](/docs/change-the-theme-and-layout#choose-labelled-rows-or-the-icon-rail).
 
 ## Turn on plugin safe mode
 

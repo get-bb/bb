@@ -19,7 +19,7 @@ Your data moves, every machine and app switches over, and the old computer stays
 
 1. Turn on **Settings → Experiments → Server move**, or run `bb settings experiment serverMove true`.
 2. [Add the new computer as a machine](/docs/add-a-machine) and keep it online. It must run macOS or Linux, with the server's bb version or older.
-3. Finish running work. Moving stops every turn and pauses automations.
+3. Finish running work. Moving stops every turn and pauses [automations](/docs/schedule-an-automation).
 
 <Screenshot
   src="/docs-images/move-your-server-to-another-machine/server-move-experiment"
@@ -35,7 +35,7 @@ Your data moves, every machine and app switches over, and the old computer stays
 | Threads, projects and history | Worktrees and checkouts |
 | Settings, plugin data and attachments | Thread storage |
 
-With bb connect, the `getbb.app` address stays the same. Without it, you give the new address.
+With [bb connect](/docs/set-up-remote-access#bb-connect), the `getbb.app` address stays the same. Without it, you give the new address.
 
 ## Move the server
 
@@ -91,8 +91,8 @@ If the new computer already has server data, confirm in the checklist or pass `-
 
 | Symptom | Fix |
 | --- | --- |
-| **Move server here** is missing | Turn on the experiment. It appears only for a connected, persistent machine. |
-| The checklist says the new computer is offline | Use **Reconnect** in **Settings → Machines**. |
-| The checklist says it runs a newer bb | Update the current server first, then move. |
+| **Move server here** is missing | [Turn on the experiment](#before-you-start). It appears only for a connected, persistent machine. |
+| The checklist says the new computer is offline | Use [**Reconnect**](/docs/add-a-machine#rename-or-remove-a-machine) in **Settings → Machines**. |
+| The checklist says it runs a newer bb | [Update the current server](/docs/install#update-bb) first, then move. |
 | `bb server move status` exits with 2 | The old server stays up, read-only, until the new one confirms. `bb server move cancel` stays put. |
 | The old copy won't start after an abandoned move | As a last resort, `bb server unlock`. Changes since the move are lost. |

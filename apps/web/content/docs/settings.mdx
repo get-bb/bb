@@ -27,7 +27,7 @@ Settings are saved on your bb server and apply to every window and device, excep
 | Setting | What it does | Default |
 | --- | --- | --- |
 | Navigate to threads on creation | Opens a new thread as soon as you start it. Off keeps you on the New thread screen. This device | On |
-| Default thread followup behavior | What Enter does while the agent is working. **Steer**: Enter sends the message to the agent now, and Mod+Enter queues it until the agent stops. **Queue** swaps the two | Steer |
+| [Default thread followup behavior](/docs/send-steer-and-queue-messages#change-what-enter-does) | What Enter does while the agent is working. **Steer**: Enter sends the message to the agent now, and Mod+Enter queues it until the agent stops. **Queue** swaps the two | Steer |
 | Thread archive confirmation | Asks before archiving a thread that has unarchived child threads. The toast after archiving still offers Undo | On |
 | Show messages from before a context clear | Keeps a thread's earlier messages visible after you clear its context. The agent doesn't see them either way | Off |
 | Summarize shell commands | Shows commands that read, list or search files as a short summary, such as "Searched for …". Off shows each command's text and lets you expand its output | On |
@@ -36,7 +36,7 @@ Settings are saved on your bb server and apply to every window and device, excep
 | Rewrite localhost links | When you open bb at another address, rewrites `localhost` links to that host so they reach the right machine. Shown only when you aren't on `localhost`. This device | On |
 | App links | Lists the apps you chose **Always allow** for, such as `linear://` links, and lets you remove them. Opening app links needs the App links experiment. This device | None |
 | Copy on select | Copies terminal text when you select it | On |
-| New branch prefix | Added in front of every branch bb creates for a worktree, such as `bb/fix-login-flow-thr_ab12cd34ef`. Leave empty for no prefix. Existing branches keep their names | `bb/` |
+| [New branch prefix](/docs/name-threads-and-branches#change-the-branch-prefix) | Added in front of every branch bb creates for a worktree, such as `bb/fix-login-flow-thr_ab12cd34ef`. Leave empty for no prefix. Existing branches keep their names | `bb/` |
 | Command line | **Install** puts the `bb` command on your PATH so you and agents outside bb can use it. **Remove** takes it off. Also `bb settings cli-command install`. Shown for the desktop app and `npx bb-app`, not source checkouts | Not installed |
 | bb CLI skills | **Install** copies bb's CLI skills into `~/.agents/skills` and `~/.claude/skills` on your machines, so agents outside bb know how to use `bb`. Also `bb skill install-cli-skills` | Not installed |
 | Microphone | The microphone voice input records from. This device | System default |
@@ -50,9 +50,9 @@ Settings are saved on your bb server and apply to every window and device, excep
 
 | Setting | What it does | Default |
 | --- | --- | --- |
-| Provider list | The agents bb found: Claude Code, Codex, Pi, Cursor and other ACP agents. Drag to change their order in the provider picker. A row's menu sets the **Default** provider for new threads, or **Disable**s a provider to hide it from pickers. Also `bb provider disable <id>` | All found agents; the first is the default |
+| [Provider list](/docs/connect-your-agents#choose-which-agents-bb-shows) | The agents bb found: Claude Code, Codex, Pi, Cursor and other ACP agents. Drag to change their order in the provider picker. A row's menu sets the **Default** provider for new threads, or **Disable**s a provider to hide it from pickers. Also `bb provider disable <id>` | All found agents; the first is the default |
 | Allow faster service tiers | Lets you pick a faster tier, such as Fast, where an agent offers one. Off runs every new turn at the default tier, including queued messages and automations | On |
-| Release idle agent sessions | Stops an agent that has been idle this long, to free memory: ASAP, 5, 10, 30 or 60 minutes. Its thread keeps its history and resumes on your next message. Checked every 5 minutes | 30 minutes |
+| [Release idle agent sessions](/docs/bb-is-slow-or-uses-a-lot-of-memory#idle-agents-use-memory) | Stops an agent that has been idle this long, to free memory: ASAP, 5, 10, 30 or 60 minutes. Its thread keeps its history and resumes on your next message. Checked every 5 minutes | 30 minutes |
 | Collapse finished turns | One switch per agent. On folds a finished turn's work into one "Worked for" row and keeps the final answer visible. Also `bb settings completed-turns <provider-id> <collapse\|flat\|default>` | On, except Claude Code |
 | One agent's settings | Such as Claude Code's sandbox or turning off an agent's own subagents: on its plugin page, see [Plugin settings](#plugin-settings) | |
 
@@ -60,9 +60,9 @@ Settings are saved on your bb server and apply to every window and device, excep
 
 | Setting | What it does | Default |
 | --- | --- | --- |
-| Thread titles | Writes thread titles, and the branch names that follow them | Automatic |
+| [Thread titles](/docs/name-threads-and-branches#choose-who-writes-titles) | Writes thread titles, and the branch names that follow them | Automatic |
 | Commit messages | Writes commit messages for the Commit action | Automatic |
-| Voice input | Transcribes voice input | Automatic |
+| [Voice input](/docs/dictate-messages-with-voice#choose-the-transcription-service) | Transcribes voice input | Automatic |
 | **Automatic** | Tries bb cloud first if you're signed in to a bb account, then the other services that can do the task | |
 | **Off**, or one service | Turns the task off, or always uses that service | |
 | **Test** | Runs a sample | |
@@ -73,7 +73,7 @@ Settings are saved on your bb server and apply to every window and device, excep
 | Setting | What it does | Default |
 | --- | --- | --- |
 | Theme | System, Light or Dark. This device | System |
-| Palette | bb's colors, including syntax colors in diffs and file previews. Pick a built-in palette, or create one: bb starts a thread that writes it for you. Also `bb theme` | Default |
+| [Palette](/docs/change-the-theme-and-layout#change-the-colors) | bb's colors, including syntax colors in diffs and file previews. Pick a built-in palette, or create one: bb starts a thread that writes it for you. Also `bb theme` | Default |
 | Favicon color | Tints the browser tab icon so you can tell bb instances apart. This device | Default |
 | Fade inactive splits | Fades split panes that don't have focus. This device | On |
 | Navigation | Which plugin draws New thread, Plugins, Skills and plugin pages in the sidebar: the rail or the labeled top list | Automatic |
@@ -94,20 +94,20 @@ Settings are saved on your bb server and apply to every window and device, excep
 
 | Setting | What it does | Default |
 | --- | --- | --- |
-| Browsers | Brings signed-in sessions from a browser on your computer into bb's in-app browser, so previews and agent tabs open already logged in. Desktop app only | |
+| [Browsers](/docs/let-agents-use-a-browser#sign-the-bb-browser-in-to-your-sites) | Brings signed-in sessions from a browser on your computer into bb's in-app browser, so previews and agent tabs open already logged in. Desktop app only | |
 
 ## Files
 
 | Setting | What it does | Default |
 | --- | --- | --- |
 | File preferences | The app that opens folders (**Directory default**) and files (**File default**) when you choose Open in. Needs a machine on this computer. This device | The first app bb finds |
-| File openers | Which viewer opens each file type, such as `.pdf` files. Automatic uses a matching plugin. Right-click a file link to choose once | Automatic |
+| [File openers](/docs/open-files-previews-and-links#choose-a-viewer-for-each-file-type) | Which viewer opens each file type, such as `.pdf` files. Automatic uses a matching plugin. Right-click a file link to choose once | Automatic |
 
 ## Projects
 
 | Control | What it does |
 | --- | --- |
-| Project list | The repositories bb can work in. Drag to change their order in the sidebar |
+| [Project list](/docs/set-up-a-project) | The repositories bb can work in. Drag to change their order in the sidebar |
 | **Add a project** | Adds a repository |
 | Project menu | **Rename** or **Delete project** |
 | Project page | The project's own settings, such as environment variables for that project |
@@ -116,7 +116,7 @@ Settings are saved on your bb server and apply to every window and device, excep
 
 | Setting | What it does | Default |
 | --- | --- | --- |
-| Machine list | The computers that run your agents, all connected to one bb server. Each machine's page renames it, removes it, and sets the most permission its threads may have | |
+| [Machine list](/docs/add-a-machine) | The computers that run your agents, all connected to one bb server. Each machine's page renames it, removes it, and sets the most permission its threads may have | |
 | **Add a machine** | Shows the command to run on another computer | |
 | Connection method | How your other devices reach this server: bb connect (a private getbb.app address) or your own address | bb connect |
 | Server address | With your own address: the URL your devices use to reach the server, such as a domain or a Tailscale address. `localhost` won't work | None |
@@ -150,13 +150,13 @@ Settings are saved on your bb server and apply to every window and device, excep
 
 | Control | What it does |
 | --- | --- |
-| Plugin list | Every plugin on this bb server. Turn one on or off, apply updates, or open it for its settings. Also `bb plugin list` |
+| [Plugin list](/docs/find-and-install-plugins#manage-installed-plugins) | Every plugin on this bb server. Turn one on or off, apply updates, or open it for its settings. Also `bb plugin list` |
 
 ## Plugin marketplaces
 
 | Control | What it does |
 | --- | --- |
-| Marketplace list | The catalogs bb lists plugins from: **BB Official** and **BB Community** |
+| [Marketplace list](/docs/find-and-install-plugins#add-or-remove-a-marketplace) | The catalogs bb lists plugins from: **BB Official** and **BB Community** |
 | **Add** | Takes an `https` manifest URL, `git:<url>`, or `path:<directory>` on the server. Never installs or runs plugin code. Also `bb marketplace add` |
 
 ## Experiments
@@ -168,7 +168,7 @@ Every experiment is off until you turn it on, or until **Become an early adopter
 | App links | Opens links such as `linear://` or `slack://` in their apps. bb asks first unless you choose Always allow | Yes |
 | Changelog preview | Shows the latest release notes on the Updates page | No |
 | Compact before resuming expired sessions | When an idle thread holds at least 100k tokens and its prompt cache has expired, offers to compact before your next message | Yes |
-| Server move | Moves your bb server to another machine from **Settings → Machines**, and exports or imports server data with `bb server` | No |
+| [Server move](/docs/move-your-server-to-another-machine) | Moves your bb server to another machine from **Settings → Machines**, and exports or imports server data with `bb server` | No |
 | Plugin updates | Lists plugin updates on the Updates page and counts them in the sidebar badge | Yes |
 | Select multiple sidebar threads | Select several threads with Cmd/Ctrl+Shift-click or Shift-click, then act on all of them | Yes |
 | Skip notifications for the thread you're viewing | No system notification for a thread that's open in the focused bb window | Yes |
@@ -191,7 +191,7 @@ Below the sections, **Plugins** lists one page for each enabled plugin that has 
 
 | Plugin page | Setting | Default |
 | --- | --- | --- |
-| Claude Code provider | Claude Code memory | On |
+| [Claude Code provider](/docs/claude-code#change-claude-code-settings-in-bb) | Claude Code memory | On |
 | Claude Code provider | Disable provider subagents: hides Claude Code's own subagent tools, so agents delegate with bb child threads | Off |
 | Claude Code provider | Disable Workflow tool | Off |
 | Claude Code provider | Disable 1M context | Off |
@@ -199,13 +199,13 @@ Below the sections, **Plugins** lists one page for each enabled plugin that has 
 | Claude Code provider | Claude Artifacts | Off |
 | Claude Code provider | Claude Code sandbox: runs Bash in Claude Code's sandbox in Accept Edits and Approve for me | On |
 | Claude Code provider | Approvals in Full Access: shows Claude Code's own approval prompts in Full Access | Off |
-| Codex provider | Codex memory | On |
+| [Codex provider](/docs/codex#change-codex-settings-in-bb) | Codex memory | On |
 | Codex provider | Disable provider subagents | Off |
 | BB guide | Send BB introduction, Enable bundled skills, and one switch per bundled skill | All on |
 | Git | Show Git changes above the composer | On |
 | Git | Show Commit button | Off |
 | GitHub PR Status | Show pull request above the composer | On |
-| Push notifications | Mobile, Web and Desktop notifications | All on |
+| [Push notifications](/docs/get-notified#choose-what-youre-notified-about) | Mobile, Web and Desktop notifications | All on |
 | Push notifications | Default notifications | All activity |
 | Push notifications | Child thread notifications | Needs input only |
 | Provider retry | Maximum automatic wait before a retry after a usage limit resets | 6 hours |
@@ -214,7 +214,7 @@ Below the sections, **Plugins** lists one page for each enabled plugin that has 
 
 | Control | What it does |
 | --- | --- |
-| Archived list | Find and restore archived threads from every project. Filter by project, or by threads and child threads. Also `bb thread list --archived` |
+| [Archived list](/docs/organize-and-archive-threads#find-and-restore-archived-threads) | Find and restore archived threads from every project. Filter by project, or by threads and child threads. Also `bb thread list --archived` |
 
 ## Where this list comes from
 

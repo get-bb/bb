@@ -14,8 +14,6 @@ owner: brsbl
 verified: 2026-10-30
 ---
 
-bb has no Claude sign-in of its own; it uses the machine's Claude Code login.
-
 ## Set up Claude Code
 
 1. Install Claude Code on each machine that runs its threads. If it's missing, the composer offers **Install Claude Code**.
@@ -59,7 +57,7 @@ Open **Settings → Plugins → Claude Code provider**. Changes apply from each 
 | Disable provider subagents | Off | Delegates through bb child threads instead. |
 | Disable Workflow tool | Off | Hides the Workflow tool. |
 | Disable 1M context | Off | Turns off the 1M-token window. |
-| Claude in Chrome | Off | Adds browser tools. Needs the Chrome extension. |
+| Claude in Chrome | Off | Adds [browser tools](/docs/let-agents-use-a-browser#use-claude-in-chrome-or-codex-computer-use). Needs the Chrome extension. |
 | Claude Artifacts | Off | Adds claude.ai artifact tools. Claude may publish without asking. |
 | Claude Code sandbox | On | Sandboxes Bash below Full Access. |
 | Approvals in Full Access | Off | Shows Claude Code's own approval prompts in Full Access. |
@@ -73,11 +71,11 @@ bb plugin config provider-claude-code set disable1MContext true
 
 | Feature | Claude Code |
 | --- | --- |
-| Permission modes | All three, plus Plan Mode (`/plan` or `--plan`) |
+| [Permission modes](/docs/choose-a-permission-mode) | All three, plus Plan Mode (`/plan` or `--plan`) |
 | Reasoning | Low, Medium, High, Extra High, Ultracode, Max |
 | Fast mode | Supported Opus models, at a higher cost |
-| 1M context | See [Choose a model](/docs/choose-a-model-reasoning-and-context-size#get-1m-context) |
-| Forks and message edits | Yes |
+| 1M context | See [Choose a model, reasoning and context size](/docs/choose-a-model-reasoning-and-context-size#get-1m-context) |
+| [Forks](/docs/fork-hand-off-or-switch-models#fork-a-thread) and message edits | Yes |
 | Compaction | `/compact` |
 | Questions | Question cards |
 | Usage limits | Five-hour and weekly, in [Provider usage](/docs/track-usage-limits-and-cost) |
@@ -87,9 +85,9 @@ Attached images are saved to disk for Claude Code to read. Thread titles and arc
 
 ## Check it worked
 
-Send a message with a Claude model; the reply streams in. An empty model list means Claude Code isn't installed or signed in on the thread's machine.
+Send a message with a Claude model; the reply streams in. An empty model list means Claude Code [isn't installed or signed in](/docs/an-agent-wont-sign-in-or-cant-be-found) on the thread's machine.
 
 ## Related troubleshooting
 
-- [Choose a model, reasoning and context size](/docs/choose-a-model-reasoning-and-context-size#if-a-model-is-missing): a model is missing.
+- [A model is missing from the model picker](/docs/a-model-is-missing-from-the-model-picker): a model is missing.
 - [Use several accounts](/docs/use-several-accounts#if-no-account-is-eligible): an Account Pooler error.

@@ -70,7 +70,7 @@ By default each run starts a new thread.
 | `--environment <environment-id>` | Run in an existing environment |
 | `--new-environment worktree`, `--base-branch <branch>` | Start each run in a new worktree |
 | `--provider`, `--model`, `--reasoning` | Choose the agent |
-| `--permission-mode` | Defaults to **Approve for me** when supported, else **Full Access** |
+| `--permission-mode` | Defaults to [**Approve for me**](/docs/choose-a-permission-mode) when supported, else **Full Access** |
 
 ## Script automation rules
 
@@ -110,7 +110,7 @@ bb pauses an automation after three failures in a row, or when its target thread
 
 | Symptom | Cause and fix |
 | --- | --- |
-| Paused, and you didn't pause it | Check its last runs, fix the cause, then resume |
-| An agent automation never runs | No machine is connected to the server |
+| Paused, and you didn't pause it | Check its last runs, [fix the cause](/docs/a-thread-environment-or-automation-is-stuck#an-automation-paused-itself), then resume |
+| An agent automation never runs | No [machine](/docs/add-a-machine) is connected to the server |
 | A script fails only as an automation | It runs on the server's machine. Use absolute paths, or set `--working-directory` |
-| An automation won't stop running | See A thread, environment or automation is stuck |
+| An automation won't stop running | See [A thread, environment or automation is stuck](/docs/a-thread-environment-or-automation-is-stuck) |

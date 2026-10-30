@@ -54,7 +54,7 @@ bb concurrency-limit host <machine-id> 2
 
 ## A plugin slows bb down
 
-1. Turn on plugin safe mode: **Turn on plugin safe mode** in the command palette, or `bb plugin safe-mode on`. Plugins you installed stop; plugins included with bb keep running.
+1. Turn on [plugin safe mode](/docs/a-plugin-wont-install-or-load#turn-on-plugin-safe-mode): **Turn on plugin safe mode** in the command palette, or `bb plugin safe-mode on`. Plugins you installed stop; plugins included with bb keep running.
 2. If bb is fast again, run `bb plugin safe-mode off`, then turn your plugins off one at a time in **Settings → Installed plugins** or with `bb plugin disable <plugin-id>`.
 3. Send the culprit's author its log from `bb plugin logs <plugin-id>`.
 
@@ -73,7 +73,7 @@ sudo sysctl --system
 
 ## Thousands of threads
 
-Archive finished threads with **Archive thread** in the command palette or `bb thread archive <thread-id>`. This also removes the worktree of a bb-managed environment.
+[Archive](/docs/organize-and-archive-threads#archive-a-thread) finished threads with **Archive thread** in the command palette or `bb thread archive <thread-id>`. This also removes the worktree of a bb-managed environment.
 
 To archive automatically, turn on **Storage & retention [Experimental]** in **Settings → Installed plugins**, then set **Archive inactive threads** under **Storage & retention** in the sidebar. Pinned threads are never archived or deleted.
 

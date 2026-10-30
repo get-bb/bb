@@ -14,7 +14,7 @@ owner: brsbl
 verified: 2026-10-30
 ---
 
-A skill is a saved set of instructions, such as "write release notes". To add your own, see Add and share skills.
+A skill is a saved set of instructions, such as "write release notes". To add your own, see [Add and share skills](/docs/add-and-share-skills).
 
 ## Pick a skill from the / menu
 
@@ -37,7 +37,7 @@ The menu depends on the thread's agent, machine and project:
 | Listed | Where it comes from |
 | --- | --- |
 | Your skills and the project's skills | The agent's own skill folders, plus `~/.bb/skills` and the project's `.bb/skills` |
-| Plugin skills | Plugins you've turned on, such as Automations |
+| Plugin skills | Plugins you've turned on, such as [Automations](/docs/schedule-an-automation) |
 | bb's bundled skills | The **BB guide** plugin, such as `bb-cli` |
 | Commands | The agent's and bb's commands, such as `/clear` |
 
@@ -48,7 +48,7 @@ The menu depends on the thread's agent, machine and project:
 | Claude Code | `/<skill-name>` and the rest of your message |
 | Codex | The skill itself, like Codex's own `$skill-name` |
 | Pi | `/skill:<skill-name>` and the rest of your message |
-| ACP agents, such as Cursor | Your text as typed |
+| [ACP agents](/docs/add-acp-agents), such as Cursor | Your text as typed |
 
 Most agents also load a skill on their own when your request matches its description.
 
@@ -71,6 +71,6 @@ Changes reach an agent the next time bb starts it. To apply them now, run `bb th
 
 | Symptom | Fix |
 | --- | --- |
-| A skill isn't in the menu | See A skill is missing from the / menu |
-| "Failed to load commands" | bb couldn't reach the thread's machine. Check **Settings → Machines** |
-| The agent ignores a skill you just added | Run `bb thread stop <thread-id>`, then send again |
+| A skill isn't in the menu | See [A skill is missing from the / menu](/docs/a-skill-is-missing-from-the-menu) |
+| "Failed to load commands" | [bb couldn't reach the thread's machine](/docs/a-skill-is-missing-from-the-menu#failed-to-load-commands). Check **Settings → Machines** |
+| The agent ignores a skill you just added | [Run `bb thread stop <thread-id>`](/docs/a-skill-is-missing-from-the-menu#the-agent-doesnt-use-the-skill), then send again |

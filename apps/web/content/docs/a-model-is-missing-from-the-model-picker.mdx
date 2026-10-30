@@ -18,7 +18,7 @@ verified: 2026-10-30
 | What you see | Likely cause | Fix |
 | --- | --- | --- |
 | A newly released model is missing | The agent's CLI on that machine is older than the model | Update the CLI, then open the picker again |
-| The model is in your terminal but not in bb | The thread is set to another machine, where the CLI is older or signed in differently | Pick the machine in the composer, or update the CLI on it |
+| The model is in your terminal but not in bb | The thread is set to another machine, where the CLI is older or signed in differently | [Pick the machine](/docs/choose-where-a-thread-runs) in the composer, or update the CLI on it |
 | A Claude thread is limited to 200K context | The model or your login doesn't get the 1M window, **Disable 1M context** is on, or a custom base URL limits it | See [1M context is missing](#1m-context-is-missing) |
 | "Could not load models for Claude Code." | bb couldn't get the list from the agent | Read the reason under it; see [the reasons below](#could-not-load-models-for-claude-code) |
 | "No models available" | The agent answered with an empty list | Update the CLI and check its sign-in. For Pi, sign in to at least one model provider inside Pi |
@@ -37,8 +37,8 @@ Some models, such as Claude Code's aliases, are under **More models** at the bot
 Claude Code, not bb, decides which models get the 1M window, based on the model, its version and your login. Some models offer it as a separate "(1M)" entry, for example "Opus 5.5 (1M)"; pick it. The context ring shows the window Claude Code reports. If a thread is limited to 200K:
 
 - **Update Claude Code.**
-- **Turn off Disable 1M context** in **Settings → Claude Code provider** (sidebar **Plugins** group), or run `bb plugin config provider-claude-code set disable1MContext false`.
-- **Check `ANTHROPIC_BASE_URL`.** Claude Code limits Opus to 200K when it points at another server. The Account Pooler plugin keeps the 1M window for its own accounts.
+- **Turn off Disable 1M context** in [**Settings → Claude Code provider**](/docs/claude-code#change-claude-code-settings-in-bb) (sidebar **Plugins** group), or run `bb plugin config provider-claude-code set disable1MContext false`.
+- **Check `ANTHROPIC_BASE_URL`.** Claude Code limits Opus to 200K when it points at another server. The [Account Pooler](/docs/use-several-accounts) plugin keeps the 1M window for its own accounts.
 
 ## Could not load models for Claude Code.
 
@@ -64,7 +64,7 @@ Update bb. It now checks a model's reasoning levels when you pick it, and hides 
 
 ## Add a model the agent doesn't list
 
-Add it to `customModels`, then run `npx bb-app config refresh` or restart bb:
+Add it to [`customModels`](/docs/configuration-files-and-environment-variables#configjson), then run `npx bb-app config refresh` or restart bb:
 
 ```json title="~/.bb/config.json"
 {

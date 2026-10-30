@@ -20,9 +20,9 @@ verified: 2026-10-30
 
 | What you see | Likely cause | Fix |
 | --- | --- | --- |
-| No desktop download for your computer | Builds exist for Apple Silicon Macs, Linux x64 and Windows x64 only | Run `npx bb-app@latest` |
+| No desktop download for your computer | [Builds exist](/docs/platform-support#desktop-app) for Apple Silicon Macs, Linux x64 and Windows x64 only | Run `npx bb-app@latest` |
 | The Linux AppImage doesn't open | FUSE isn't installed | Install `libfuse2`, or start it with `--appimage-extract-and-run` |
-| `Could not locate the bindings file` | npm 12 or later blocked the install scripts bb needs | [Allow the scripts](#could-not-locate-the-bindings-file) |
+| "Could not locate the bindings file" | npm 12 or later blocked the install scripts bb needs | [Allow the scripts](#could-not-locate-the-bindings-file) |
 | npm warns about an unsupported engine | Node.js is older than 22.19 | Install Node.js 22.19 or newer, 24, or 26 |
 | "bb is already running" or "Another bb already runs on this data directory" | Another bb uses the same data | [Connect to it or stop it](#bb-is-already-running) |
 | "Port conflict" or "port 38887 is already in use" | Another program uses bb's port | [Stop it, or use another port](#port-conflict) |
@@ -76,7 +76,7 @@ npm config set allow-scripts=better-sqlite3,node-pty,@parcel/watcher --location=
 
 ### The bb command isn't found
 
-In the desktop app, open **Settings → General → Command line**, click **Install** next to **bb CLI**, then open a new terminal. Until then, use `npx --package bb-app bb --help`.
+In the desktop app, open [**Settings → General → Command line**](/docs/install#put-the-bb-command-on-your-path), click **Install** next to **bb CLI**, then open a new terminal. Until then, use `npx --package bb-app bb --help`.
 
 ## bb is already running
 
@@ -149,7 +149,7 @@ npx bb-app env set HTTPS_PROXY http://proxy.example.com:3128
 npx bb-app env set NO_PROXY .example.com
 ```
 
-The address must start with `http://` or `https://`. For a company certificate, set `NODE_EXTRA_CA_CERTS` to a PEM file the same way.
+The address must start with `http://` or `https://`. For a company certificate, set [`NODE_EXTRA_CA_CERTS`](/docs/configuration-files-and-environment-variables#proxies-and-certificates) to a PEM file the same way.
 
 ## What to send when you ask for help
 

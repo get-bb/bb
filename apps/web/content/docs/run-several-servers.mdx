@@ -14,7 +14,7 @@ owner: brsbl
 verified: 2026-10-30
 ---
 
-Each server has its own threads, projects, settings, plugins and machines, and nothing syncs between them. To run agents on more computers, you don't need a second server: [add a machine](/docs/add-a-machine).
+To run agents on more computers, you don't need a second server: [add a machine](/docs/add-a-machine).
 
 ## How switching works
 
@@ -26,7 +26,7 @@ Each server has its own threads, projects, settings, plugins and machines, and n
 
 ## Start a second server
 
-- **On another computer:** install bb there, or run `npx bb-app@latest`. See [Run bb on an always-on machine](/docs/run-bb-on-an-always-on-machine).
+- **On another computer:** [install bb](/docs/install) there, or run `npx bb-app@latest`. See [Run bb on an always-on machine](/docs/run-bb-on-an-always-on-machine).
 - **On the same computer:** give it its own data directory and ports. The default server uses `~/.bb` and port 38886.
 
   ```bash
@@ -82,5 +82,5 @@ Run **Add a machine** from each server and run each command on that computer. Ea
 | Symptom | Fix |
 | --- | --- |
 | A setting or theme is missing after switching | Settings belong to each server. Set them again on the other server. |
-| The second server won't start | Another bb uses that data directory or port. Pick a different `--data-dir`, `--server-port` and `--host-daemon-port`. |
+| The second server won't start | Another bb uses that [data directory](/docs/bb-wont-install-update-or-start#bb-is-already-running) or [port](/docs/bb-wont-install-update-or-start#port-conflict). Pick a different `--data-dir`, `--server-port` and `--host-daemon-port`. |
 | **Edit Server…** is greyed out | It edits only saved and bb connect servers, not **This Mac**. |

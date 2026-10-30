@@ -14,7 +14,7 @@ owner: brsbl
 verified: 2026-10-30
 ---
 
-Any folder can be a project. In a Git repository, threads can run in their own worktrees; without Git, they run in the folder itself.
+Any folder can be a project. In a Git repository, threads can run in their own [worktrees](/docs/choose-where-a-thread-runs); without Git, they run in the folder itself.
 
 ## Add a project
 
@@ -22,7 +22,7 @@ Any folder can be a project. In a Git repository, threads can run in their own w
 <Tab value="Desktop">
 
 1. In the composer's project picker, choose **New project**, or click **Add a project** in **Settings → Projects**.
-2. If you have more than one machine, choose the one the folder is on.
+2. If you have more than one [machine](/docs/add-a-machine), choose the one the folder is on.
 3. Browse to the folder or type its path. bb names the project after the folder.
 4. Click **Add project**.
 
@@ -100,4 +100,4 @@ Every thread in it goes too, including archived ones. Its checkouts stay on disk
 | "No machine is online. Start one to choose a project folder." | The Add project dialog needs a connected machine. Check **Settings → Machines** |
 | A machine shows "Path not found" | The folder moved or was deleted. Use **Change folder** |
 | **Worktree** is missing from the environment picker | The folder isn't a Git repository. Run `git init` in it, or use **Project checkout** |
-| A thread never finishes preparing its environment | See A thread, environment or automation is stuck |
+| A thread never finishes preparing its environment | See [A thread, environment or automation is stuck](/docs/a-thread-environment-or-automation-is-stuck#workspace-setup-failed) |

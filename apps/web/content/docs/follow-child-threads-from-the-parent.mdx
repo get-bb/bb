@@ -15,13 +15,11 @@ owner: brsbl
 verified: 2026-10-30
 ---
 
-Open the parent thread. While any child is working or waiting, **Active child threads** shows above the composer.
-
 ## Watch children and answer their questions
 
-- Each child is marked **Working** or **Needs input**; children with questions come first.
+- In **Active child threads**, each child is marked **Working** or **Needs input**; children with questions come first.
 - Click a child's question to answer it without opening the child.
-- Click a child to open it, steer it with a message, or take over.
+- Click a child to open it, [steer it](/docs/send-steer-and-queue-messages) with a message, or take over.
 
 The parent's **Info** tab lists all its **Child threads**, finished ones too.
 
@@ -83,6 +81,6 @@ bb thread tell <child-id> --mode queue "Also update the README when you're done"
 
 ## Related troubleshooting
 
-- **The parent never hears from a child:** check the child's **Info** tab has a **Parent** and **Notify parent** isn't **Off**. Forks never notify the thread they came from.
+- **The parent never hears from a child:** check the child's **Info** tab has a **Parent** and **Notify parent** isn't **Off**. [Forks](/docs/fork-hand-off-or-switch-models#fork-a-thread) never notify the thread they came from.
 - **A chatty child wakes the parent every turn:** set it to **When stuck**.
-- **A child waits on an approval:** look for **Needs input** in the parent's **Active child threads**, or open the child.
+- **A child waits on an [approval](/docs/choose-a-permission-mode#answer-an-approval):** look for **Needs input** in the parent's **Active child threads**, or open the child.
