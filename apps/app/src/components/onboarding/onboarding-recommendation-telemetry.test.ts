@@ -44,7 +44,6 @@ describe("onboarding recommendations", () => {
       properties: {
         action: "shown",
         public_plugin: "prompt-library",
-        recommendation_revision: "baseline",
         source: "first_run",
         initial_state: "unknown",
         availability: "unavailable",

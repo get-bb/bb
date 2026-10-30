@@ -22,7 +22,6 @@ describe("client telemetry events", () => {
         properties: {
           action: "shown",
           public_plugin: "prompt-library",
-          recommendation_revision: "baseline",
           source: "first_run",
           initial_state: "absent",
           availability: "available",

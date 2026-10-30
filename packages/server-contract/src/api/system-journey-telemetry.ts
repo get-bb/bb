@@ -5,8 +5,6 @@ export const onboardingTelemetrySourceSchema = z.enum([
   "replay",
   "settings",
   "cli",
-  "during_first_thread",
-  "after_first_thread",
   "other",
   "unknown",
 ]);

@@ -58,13 +58,14 @@ export function runWithPluginMeasurementSource<T>(
 export function resolvePluginMeasurementIdentity(
   deps: Pick<MeasurementDeps, "db" | "watchBuiltinPluginSources">,
   row: InstalledPluginRow,
-): PluginIdentity {
-  const publicKey = reviewedPlugins.get(row.id) ?? null;
+): PluginIdentity | null {
+  const publicKey = reviewedPlugins.get(row.id);
+  if (publicKey === undefined) return null;
   if (
     row.sourceKind === "path" ||
     (row.sourceKind === "builtin" && deps.watchBuiltinPluginSources)
   )
-    return { public_plugin: null, plugin_source: "local" };
+    return null;
   if (row.sourceKind === "builtin") {
     const definition = BUNDLED_PLUGINS.find(
       (plugin) =>
@@ -76,10 +77,9 @@ export function resolvePluginMeasurementIdentity(
         (row.provenance === "catalog" &&
           row.catalogMarketplaceName === BUNDLED_MARKETPLACE_NAME &&
           row.catalogEntryId === definition.name));
-    return {
-      public_plugin: official ? publicKey : null,
-      plugin_source: official ? "builtin" : "unknown",
-    };
+    return official
+      ? { public_plugin: publicKey, plugin_source: "builtin" }
+      : null;
   }
   if (row.provenance === "catalog" && row.catalogMarketplaceName !== null) {
     const marketplace = getPluginMarketplace(
@@ -109,21 +109,16 @@ export function resolvePluginMeasurementIdentity(
               row.sourceKind === "git" &&
               row.sourceGitUrl === source.git.url &&
               row.sourceGitSubdirectory === (source.git.subdir ?? null)));
-        return {
-          public_plugin:
-            sourceMatches && entry?.id === publicKey ? publicKey : null,
-          plugin_source: sourceMatches ? "public_catalog" : "unknown",
-        };
+        return sourceMatches && entry?.id === publicKey
+          ? { public_plugin: publicKey, plugin_source: "public_catalog" }
+          : null;
       } catch {
-        return { public_plugin: null, plugin_source: "unknown" };
+        return null;
       }
     }
-    return {
-      public_plugin: null,
-      plugin_source: marketplace === undefined ? "unknown" : "private",
-    };
+    return null;
   }
-  return { public_plugin: null, plugin_source: "private" };
+  return null;
 }
 
 export function capturePluginStateChanged(
@@ -134,10 +129,12 @@ export function capturePluginStateChanged(
   if (!deps.telemetry.isEnabled()) return;
   const row = getInstalledPlugin(deps.db, pluginId);
   if (row === undefined || previous?.enabled === row.enabled) return;
+  const identity = resolvePluginMeasurementIdentity(deps, row);
+  if (identity === null) return;
   const event = pluginStateChangedTelemetryEventSchema.parse({
     name: "plugin_state_changed",
     properties: {
-      ...resolvePluginMeasurementIdentity(deps, row),
+      ...identity,
       source: sourceContext.getStore() ?? "unknown",
       previous_state:
         previous === undefined
@@ -161,7 +158,7 @@ export function reportPluginUse(
   const row = getInstalledPlugin(deps.db, pluginId);
   if (row === undefined || !row.enabled) return;
   const identity = resolvePluginMeasurementIdentity(deps, row);
-  if (identity.public_plugin === null) return;
+  if (identity === null) return;
   const context = invocationContext.getStore();
   const event = pluginUseTelemetryEventSchema.parse({
     name: "plugin_use",
@@ -179,29 +176,12 @@ export function reportPluginUse(
 }
 
 export function withPluginMeasurementInvocation<T>(
-  deps: MeasurementDeps,
   pluginId: string,
   initiator: PluginUseInitiator,
   run: () => T,
 ): T {
   const current = invocationContext.getStore();
   if (current?.pluginId === pluginId) return run();
-  const row = getInstalledPlugin(deps.db, pluginId);
-  if (row !== undefined && row.enabled && deps.telemetry.isEnabled()) {
-    const identity = resolvePluginMeasurementIdentity(deps, row);
-    if (identity.public_plugin === null)
-      deps.telemetry.capture(
-        pluginUseTelemetryEventSchema.parse({
-          name: "plugin_use",
-          properties: {
-            ...identity,
-            initiator: current?.initiator ?? initiator,
-            action: "other_action",
-            outcome: "invoked",
-          },
-        }),
-      );
-  }
   return invocationContext.run(
     {
       pluginId,

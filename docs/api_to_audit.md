@@ -4191,8 +4191,8 @@ removing the prefix.
 Internal measurement plumbing for Browser Automation, Workflows, Monaco,
 Prompt Library, Agent Annotations and Ask User Question only. Their existing
 execution or visible-action owners report bounded action/outcome pairs; core's
-shared plugin tool and CLI dispatch supplies invocation context and anonymous
-`other_action` observations for plugins outside the reviewed public allowlist.
+shared plugin tool and CLI dispatch supplies invocation context. Plugins outside
+the reviewed public allowlist emit no new use or state-change observations.
 The server derives public keys from installed provenance, validates the action
 owner and outcome, and uses the existing opt-out-controlled telemetry service.
 No plugin identity is accepted from the report, and arguments, outputs, paths,
@@ -4209,5 +4209,7 @@ and becomes `unknown` at the server boundary. Catalog/source install jobs retain
 the context of the request that created that job, including when queued behind
 another source; coalesced requests do not relabel an existing job. These fields
 are collection attribution, not authentication or experiment assignment.
+Recommendation observations are limited to shown, selected and deselected cards
+in the current guide; later browsing, timing and dismissal are not collected.
 `question_created` is recorded by the persisted input-request owner for the
 reviewed Ask User Question plugin, not optimistically before `requestInput`.
