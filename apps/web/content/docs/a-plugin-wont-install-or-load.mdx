@@ -1,0 +1,118 @@
+---
+title: A plugin won't install or load
+description: A plugin won't install, or shows Failed, Incompatible or Missing. Read bb's reason, check the plugin's log, and use plugin safe mode if a plugin breaks bb.
+type: troubleshooting
+sources:
+  - apps/server/src/services/plugins/plugin-runtime.ts
+  - apps/server/src/services/plugins/managed-plugin-artifacts.ts
+  - apps/server/src/services/plugins/install-sources.ts
+  - apps/server/src/services/plugins/sdk-compat.ts
+  - apps/server/src/services/plugins/plugin-log.ts
+  - apps/app/src/components/plugin/PluginInstallJobsHost.tsx
+  - apps/app/src/components/plugin/management/plugin-status.ts
+  - apps/app/src/components/plugin/management/PluginAttentionBanner.tsx
+  - apps/app/src/components/plugin/management/AddPluginDialog.tsx
+  - apps/app/src/components/tools/PluginCapabilities.tsx
+  - apps/app/src/components/sidebar/ThreadListPlaceholder.tsx
+  - apps/app/src/hooks/usePluginSafeModeCommands.ts
+  - apps/cli/src/commands/plugin.ts
+since: 0.48.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+| What you see | Likely cause | Fix |
+| --- | --- | --- |
+| `requires bb …, this is …` | The plugin needs a newer bb | [Update bb, or install an older version](#requires-a-newer-bb) |
+| `requires bb plugin SDK …, running SDK is …` | The plugin was built for a newer plugin SDK | Update bb, or ask the author to lower the SDK range |
+| `install failed: server bundle build for "…" failed` | The plugin's code doesn't build | Report the error to the plugin's author |
+| `git ls-remote failed (exit 128)` or `git clone failed (exit 128)` | A wrong URL, or a private repository | [Check Git access](#git-ls-remote-failed-or-git-clone-failed) |
+| "Source access denied. Check repository permissions." | A marketplace lists a private or moved source | Check your access, or ask the marketplace owner |
+| `plugin safe mode is on; turn it off with bb plugin safe-mode off …` | Plugin safe mode is on | Turn safe mode off, then install again |
+| **Incompatible** | The installed version needs another bb or SDK version | Install a compatible version, or update bb |
+| **Failed**: "The plugin couldn't start." | It threw while starting, or took over 30 seconds | [Read its log](#read-a-plugins-log), then click **Reload** |
+| **Missing**: "Plugin files are missing." | Its folder was moved or deleted | Reinstall it |
+| **Needs configuration** | It needs a setting first | Click **Open settings** and fill it in |
+| **Degraded**: "A service is still stopping." | A service is still stopping | Wait, then click **Reload** |
+| "… stopped working." in the sidebar or composer | The plugin's interface crashed | Click **Reload** |
+| bb breaks right after installing a plugin | That plugin misbehaves | [Turn on plugin safe mode](#turn-on-plugin-safe-mode) |
+
+## Plugin installation failed
+
+The notification gives the reason. `bb plugin install-jobs` lists recent installs and their errors.
+
+### install refused: plugin "…" requires bb …, this is … [#requires-a-newer-bb]
+
+Update bb from **Settings → Updates**, or install an older release, for example `bb plugin install git:https://github.com/<owner>/<repo>@v1.2.0`.
+
+### requires bb plugin SDK …, running SDK is …
+
+Plugins built against a nightly often need the next stable release. Update bb, or ask the author to lower `engines.bbPluginSdk` in its `package.json`.
+
+### install failed: server bundle build for "…" failed
+
+bb builds Git plugins on your machine; the text after the colon is the build error. A common cause is an imported package missing from `package.json` dependencies. `frontend bundle build` and `host bundle build` are the same failure for other parts of the plugin.
+
+### git ls-remote failed or git clone failed
+
+bb clones with the `git` and credentials of the bb server's machine. Check the URL, then check `git clone <url>` works there as the user bb runs as. For a private repository, give that user an SSH key or credential helper.
+
+### install refused: npm plugins with a frontend (bb.app) must publish a prebuilt bundle
+
+The npm package lacks its built `dist/app.js` and `dist/app.meta.json`. Install from its Git repository, or ask the author to publish them.
+
+## A plugin shows Failed, Incompatible or Missing
+
+**Settings → Installed plugins** shows how many plugins aren't running, with **View details**; the plugin's page says what's wrong. From the CLI:
+
+- `bb plugin list` shows every plugin's status and full reason.
+- `bb plugin reload <plugin-id>` restarts one and exits with an error if it doesn't come back.
+
+For a plugin included with bb that's **Incompatible**, update bb.
+
+## Read a plugin's log
+
+```bash
+bb plugin logs <plugin-id> -n 200
+bb plugin logs <plugin-id> --follow
+```
+
+`bb plugin list` shows plugin IDs. Load errors also go to the server log in `~/.bb/logs/`.
+
+## A plugin stopped working
+
+bb shows "… stopped working." with a **Reload** button where the plugin's interface was; the rest of bb keeps working. If the sidebar shows "No thread list plugin is enabled.", pick another in **Settings → Appearance → Sidebar thread list**.
+
+## Turn on plugin safe mode
+
+Safe mode stops every plugin you installed and keeps those included with bb. Turning it off brings them back.
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+1. Open the command palette.
+2. Choose **Turn on plugin safe mode**.
+3. To leave safe mode, choose **Turn off plugin safe mode**.
+
+</Tab>
+<Tab value="CLI">
+
+```bash
+bb plugin safe-mode on
+bb plugin safe-mode off
+```
+
+`bb plugin safe-mode` alone shows whether it's on.
+
+</Tab>
+</Tabs>
+
+While it's on, bb refuses to install or update the stopped plugins. To find the culprit, turn it off, then disable plugins one at a time with `bb plugin disable <plugin-id>` or the switch on each plugin's page.
+
+## What to send when you ask for help
+
+- `bb --version`, your operating system, and how you run bb.
+- `bb plugin source <plugin-id>`.
+- The exact message.
+- `bb plugin logs <plugin-id> -n 200`.
+- The server log from `~/.bb/logs/` (desktop: **View → Local Logs**).
