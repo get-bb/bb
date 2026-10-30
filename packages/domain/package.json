@@ -9,6 +9,11 @@
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./docs-links": {
+      "source": "./src/docs-links.ts",
+      "types": "./src/docs-links.ts",
+      "default": "./src/docs-links.ts"
+    },
     "./thread-status": {
       "source": "./src/thread-status.ts",
       "types": "./src/thread-status.ts",

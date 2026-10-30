@@ -26,6 +26,7 @@
     "prepare:bundled": "bb-plugin-build prepare-bundled"
   },
   "dependencies": {
+    "@bb/domain": "workspace:*",
     "@bb/connect-client": "workspace:*",
     "@bb/shared-ui": "workspace:*",
     "@bb/tunnel-client": "workspace:*",

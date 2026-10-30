@@ -1,0 +1,18 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "docs-link",
+  "type": "registry:ui",
+  "title": "docs-link",
+  "description": "BB ui \"docs-link\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "registryDependencies": [
+    "@bb/icon"
+  ],
+  "files": [
+    {
+      "path": "registry/components/ui/docs-link.tsx",
+      "content": "import type { ReactNode } from \"react\";\nimport { Icon } from \"./icon\";\n\ninterface DocsLinkProps {\n  href: string;\n  children: ReactNode;\n  onOpen: (href: string) => boolean | void;\n}\n\nexport function DocsLink({ href, children, onOpen }: DocsLinkProps) {\n  return (\n    <a\n      href={href}\n      target=\"_blank\"\n      rel=\"noreferrer\"\n      className=\"inline-flex items-center gap-0.5 rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring\"\n      onClick={(event) => {\n        if (onOpen(href) !== false) event.preventDefault();\n      }}\n    >\n      {children}\n      <Icon name=\"ExternalLink\" className=\"size-3 shrink-0\" aria-hidden />\n    </a>\n  );\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/docs-link.tsx"
+    }
+  ]
+}

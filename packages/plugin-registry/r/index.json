@@ -106,6 +106,10 @@
       "type": "registry:ui"
     },
     {
+      "name": "docs-link",
+      "type": "registry:ui"
+    },
+    {
       "name": "drawer",
       "type": "registry:ui"
     },

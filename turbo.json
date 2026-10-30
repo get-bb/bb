@@ -629,6 +629,7 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/vitest*.ts",
         "$TURBO_ROOT$/plugins/plugin-api-docs/src/**",
+        "$TURBO_ROOT$/plugins/**/*.tsx",
         "$TURBO_ROOT$/plugins/*/package.json"
       ],
       "passThroughEnv": [

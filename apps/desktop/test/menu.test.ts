@@ -4,9 +4,11 @@ import type { BaseWindow, MenuItemConstructorOptions } from "electron";
 vi.mock("electron", () => ({
   app: { name: "bb" },
   Menu: { sendActionToFirstResponder: vi.fn() },
+  shell: { openExternal: vi.fn(async () => {}) },
 }));
 
-import { Menu } from "electron";
+import { Menu, shell } from "electron";
+import { docsLinks } from "@bb/domain/docs-links";
 
 import {
   buildApplicationMenuTemplate,
@@ -80,6 +82,27 @@ function findDesktopSettingsServerSubmenu(
 }
 
 describe("application menu", () => {
+  it("lists help links before License and Uninstall and opens the docs", () => {
+    const template = buildApplicationMenuTemplate(menuArgs(() => {}));
+    const help = template.find((item) => item.role === "help")
+      ?.submenu as MenuItemConstructorOptions[];
+    expect(
+      help
+        .filter((item) => item.type !== "separator")
+        .map((item) => item.label),
+    ).toEqual([
+      "bb Docs",
+      "Keyboard Shortcuts",
+      "Release Notes",
+      "Discord",
+      "Report a Bug",
+      "View License",
+      "How to Uninstall bb",
+    ]);
+    help[0]?.click?.({} as never, undefined, {} as never);
+    expect(shell.openExternal).toHaveBeenCalledWith(docsLinks.home);
+  });
+
   it.each([true, false])(
     "opens local logs independently of runtime ownership (isMac=%s)",
     (isMac) => {
