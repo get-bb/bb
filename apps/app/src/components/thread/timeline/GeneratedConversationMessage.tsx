@@ -356,7 +356,7 @@ function systemMessageIconName(systemMessageKind: SystemMessageKind): IconName {
     case "environment-directory-updated":
       return "FolderOpen";
     case "restart-resume":
-      return "RotateCcw";
+      return "Replay";
     case "unlabeled":
       return "Info";
   }
