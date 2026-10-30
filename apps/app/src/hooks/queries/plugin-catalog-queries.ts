@@ -27,6 +27,9 @@ type FetchLike = typeof fetch;
 interface PluginSourceDetail {
   requested: string;
   resolved: string;
+  range: string | null;
+  npmSpecKind: NonNullable<SdkPluginSourceDetail["npmSpecKind"]> | null;
+  distTag: string | null;
   integrity: string | null;
   registry: string | null;
   engines: { bb: string | null; bbPluginSdk: string | null };
@@ -40,6 +43,9 @@ function toPluginSourceDetail(
   return {
     requested: source.requested,
     resolved: source.resolved,
+    range: source.range ?? null,
+    npmSpecKind: source.npmSpecKind ?? null,
+    distTag: source.distTag ?? null,
     integrity: source.integrity ?? null,
     registry: source.registry ?? null,
     engines: {

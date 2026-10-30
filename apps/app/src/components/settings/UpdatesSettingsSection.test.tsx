@@ -1855,12 +1855,15 @@ The canonical release summary.
 
   it("updates tracking plugins from the Plugins section and leaves blocked ones alone", async () => {
     useWebApp();
-    startPluginUpdateMock.mockImplementation(async (pluginId: string) => ({
-      id: `job_${pluginId}`,
-      pluginId,
-      displayName: pluginId,
-      state: "queued",
-    }));
+    startPluginUpdateMock.mockImplementation(
+      async ({ pluginId }: { pluginId: string }) => ({
+        id: `job_${pluginId}`,
+        pluginId,
+        displayName: pluginId,
+        state: "queued",
+      }),
+    );
+    const linearCommit = "9f8e7d6c5b4a39281706f5e4d3c2b1a098765432";
     useUpdateInventoryMock.mockReturnValue(
       makeInventory({
         plugins: buildUpdateInventoryPlugins([
@@ -1882,7 +1885,7 @@ The canonical release summary.
             version: "0.8.0",
             updateState: {
               outcome: "update-available",
-              availableVersion: "0.8.4",
+              availableVersion: linearCommit,
               availableLabel: "0.8.4",
             },
           }),
@@ -1919,14 +1922,17 @@ The canonical release summary.
       }),
     );
     expect(startPluginUpdateMock).toHaveBeenCalledTimes(1);
-    expect(startPluginUpdateMock).toHaveBeenLastCalledWith("notes");
+    expect(startPluginUpdateMock).toHaveBeenLastCalledWith({
+      pluginId: "notes",
+      expectedVersion: "1.2.0",
+    });
 
     fireEvent.click(
       screen.getByRole("button", { name: "Update all 2 plugins" }),
     );
     expect(startPluginUpdateMock.mock.calls.slice(1)).toEqual([
-      ["linear"],
-      ["notes"],
+      [{ pluginId: "linear", expectedVersion: linearCommit }],
+      [{ pluginId: "notes", expectedVersion: "1.2.0" }],
     ]);
   });
 

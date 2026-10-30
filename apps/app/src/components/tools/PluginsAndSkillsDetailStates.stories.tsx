@@ -67,6 +67,9 @@ function PluginStoryQueryBoundary({ children }: { children: ReactNode }) {
       client.setQueryData(pluginSourceQueryKey(pluginId), {
         requested: `npm:@bb-plugins/${pluginId}`,
         resolved: "1.4.0",
+        range: null,
+        npmSpecKind: "default",
+        distTag: null,
         integrity: null,
         registry: "npm",
         engines: { bb: null, bbPluginSdk: null },

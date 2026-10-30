@@ -681,6 +681,32 @@ describe("PluginDetail official catalog lifecycle", () => {
       expected: "Update blocked",
       actionName: null,
     },
+    {
+      state: "outside-range",
+      updateState: {
+        ...EMPTY_PLUGIN_UPDATE_STATE,
+        outcome: "current" as const,
+        outsideRange: {
+          version: "2.0.0",
+          display: "@example/github@2.0.0",
+          breaking: true,
+          range: "^1.0.0",
+        },
+      },
+      expected: "Newer release outside range",
+      actionName: null,
+    },
+    {
+      state: "current-with-detail",
+      updateState: {
+        ...EMPTY_PLUGIN_UPDATE_STATE,
+        outcome: "current" as const,
+        detail:
+          'npm dist-tag "next" points to 1.0.0, older than the installed 1.2.0; bb does not downgrade',
+      },
+      expected: "Update check note",
+      actionName: null,
+    },
   ])(
     "places $state information below metadata and keeps its action in the section header",
     ({ updateState, expected, actionName }) => {

@@ -1727,7 +1727,9 @@ describe("plugin install flows", () => {
 
           await expect(service.applyUpdate("npmhero")).resolves.toMatchObject({
             ok: false,
-            error: expect.stringContaining("pinned by its source intent"),
+            error: expect.stringContaining(
+              "run `bb plugin track npmhero <range>`",
+            ),
           });
           expect(tarballRequests).toBe(1);
           expect(getInstalledPluginRegistration(db, "npmhero")).toMatchObject({
@@ -1737,6 +1739,26 @@ describe("plugin install flows", () => {
             rootDir: join(prefix, "node_modules", name),
           });
           await stat(prefix);
+
+          await expect(
+            service.setTrackingRange("npmhero", { range: "^0.1.0" }),
+          ).resolves.toMatchObject({
+            ok: true,
+            result: {
+              applied: true,
+              previousRange: version,
+              range: "^0.1.0",
+              check: { outcome: "current" },
+            },
+          });
+          expect(getInstalledPluginRegistration(db, "npmhero")).toMatchObject({
+            source: `npm:${name}@^0.1.0`,
+            sourceNpmRequestedSpec: "^0.1.0",
+            sourceNpmSpecKind: "range",
+            npmResolvedVersion: version,
+            rootDir: join(prefix, "node_modules", name),
+          });
+          expect(tarballRequests).toBe(1);
 
           expect(await service.remove("npmhero")).toBe(true);
           await expect(stat(prefix)).rejects.toMatchObject({

@@ -347,6 +347,65 @@ retained-but-unused sizes so a UI can show reclaimable space without a dry
 run, and whether stale `.staging`, `.promoting`, and `.corrupt` directories
 left by crashes should be collected too.
 
+## Plugin tracking range
+
+`bb.sdk.plugins.experimental_setTrackingRange({ pluginId, range, dryRun? })`
+(`POST /plugins/:id/tracking-range`) changes the semver range an installed
+plugin follows for updates and returns `{ applied, previousRange, range,
+openEnded, check }`. `previousRange` is what the install followed before:
+its range, or for an npm install its exact version or dist-tag, and `null`
+for an npm install that named no version. `range` is the requested range
+with its whitespace collapsed to single spaces, as it is checked, compared,
+and stored. `check` is the update check entry for the new range, and
+`openEnded` says the range has no upper bound, so every future major release
+will be offered; `bb plugin track` and the dialog accept such a range but
+warn before it applies. It accepts git semver-range installs, whose `source`
+and range change while the URL, subdirectory, tag prefix, resolved tag, and
+commit stay, and npm installs with a managed artifact, whose spec becomes the
+range. It refuses path, builtin, and git ref installs, older npm installs
+whose directory is named after their spec, an invalid range, a bare version,
+a range that admits no version, and a range that admits neither the
+installed release nor a newer one (404 for an unknown plugin, 422 for a
+refusal). A pinned check of such an older npm install carries that refusal
+as its `detail`, which `bb plugin update` prints instead of pointing at
+`bb plugin track`. It keeps provenance, the catalog link, the enabled flag,
+settings, secrets, schedules, KV, and data.db, and clears the persisted update
+check and last failure. It reads, plans, and writes under the plugin
+registration and lifecycle locks, then releases them and checks the plugin
+again under its lifecycle lock alone, as `checkForUpdates` does, and persists
+that check. `dryRun` and the current range check without persisting anything
+(`applied: false`), and a dry run takes no lock, so a preview never waits
+behind an install, update, or removal. It installs nothing;
+`applyUpdate` applies what the range offers. Core callers, both through this
+method: `bb plugin track` and the plugin detail page's Change range dialog
+(`ChangeTrackingRangeDialog`), which names what a range-less npm install
+follows from `plugins.getSource`'s `npmSpecKind` and `distTag`, and opens on
+the last check's `outsideRange.suggestedRange` when it found a newer release
+outside the range. When that release is newer than every version the
+range admits (`semver.gtr`), the update check suggests
+`>=<installed> <(major of that release + 1).0.0`, where `installed` is the
+resolved git tag's version or the npm version, never package.json, so the
+range does not grow. The reported release is always newer than every release
+the range admits, so the other case only arises when the range admits higher
+versions with no release yet, such as `^1.0.0 || ^3.0.0` while only 2.x is
+out, or a range tracked upward before its first release; then it suggests
+`<range> || >=<release> <(major + 1).0.0`, so nothing the range allowed is
+dropped. `bb plugin outdated` and `bb plugin update` print it as the
+`bb plugin track` command that follows the release, with the range in
+double quotes, which protect `<`, `>`, and `|` in POSIX shells, PowerShell,
+and cmd.exe. `suggestedRange` is absent for an install this method refuses,
+such as an older npm install whose directory is named after its spec, and
+when the server computed none, as with a server older than the field or a
+check such a server saved: the CLI then prints no command and the dialog
+opens on the current range.
+
+Before stabilization, audit whether a no-op should still run a check, whether
+a warning is enough for open-ended ranges (`*`, `>=x`), whether a range
+change should be able to set a tag prefix, and whether a suggestion that
+fills a gap should merge it into the neighboring alternatives (for example
+with semver's `simplifyRange` over the published releases) instead of
+appending another `||` alternative.
+
 ## RPC caller identity (`ExperimentalPluginRpcHandlerContext.experimental_caller`)
 
 Every `bb.rpc.register` handler receives a context whose `experimental_caller`
@@ -3790,7 +3849,7 @@ Stabilize once message links have shipped and the seq has stayed stable across
 edit-and-rerun, forks and context clears, and decide whether `sourceSeqEnd`
 should remain alongside it.
 
-## `PluginBbSdk.plugins.experimental_startUpdate` and `experimental_updateJobs`
+## `PluginBbSdk.plugins.experimental_startUpdate`, `experimental_updateJobs`, and `applyUpdate.expectedVersion`
 
 Starts a server-owned plugin update and returns its job at once;
 `experimental_updateJobs.list/get` report queued/running phases and the
@@ -3800,8 +3859,21 @@ result contract by polling the job; raw callers without
 `Prefer: respond-async` keep the synchronous response. Running updates cannot
 be cancelled during activation or rollback.
 
+`applyUpdate.expectedVersion` is a plugin-visible field on the stable
+`applyUpdate` member, audited here with `experimental_startUpdate`, which
+accepts the same field. It is the `candidate.version` a check returned; the
+server refuses without touching the installation (the fresh check result is
+still saved) unless the release it resolves at apply time has that version,
+and a request only joins an active job for the same plugin and expected
+version. The CLI (`bb plugin update`) and the app's update dialog and Retry
+always send it through the same route. A server that predates the field
+rejects it; the SDK then throws `PluginUpdateExpectedVersionUnsupportedError`
+instead of the raw HTTP 400.
+
 Stabilization requires exercising reconnect/reload, concurrent deduplication,
-rollback delivery, missing jobs after restart, and CLI/SDK parity.
+rollback delivery, missing jobs after restart, and CLI/SDK parity, and, for
+`applyUpdate.expectedVersion`, a plugin caller receiving the refusal when the
+reviewed release is no longer the candidate.
 
 ## `PluginBbSdk.system.experimental_recordTelemetryEvent`
 

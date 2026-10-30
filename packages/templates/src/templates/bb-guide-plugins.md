@@ -46,11 +46,25 @@ under `<bb-data-dir>/plugins/<id>/` (SQLite database, secrets, logs).
                                  started registering, which then finishes
   bb plugin outdated             Check installed plugins for compatible
                                  updates (--json for raw results), including
-                                 newer releases blocked by engine ranges
+                                 newer releases blocked by engine ranges and
+                                 the newest release outside the installed
+                                 range (compatibility not checked) with the
+                                 `bb plugin track` command that follows it
   bb plugin update <id> | --all  Apply compatible updates for one plugin or
                                  every tracking plugin. Same confirmation as
                                  install (--yes skips; non-TTY refuses
-                                 without --yes)
+                                 without --yes). Applies only the release
+                                 the check showed and warns first when it
+                                 may break (a new major, a new 0.x minor, or
+                                 a new 0.0.x patch)
+  bb plugin track <id> <range>   Change the semver range a git: or npm:
+                                 plugin follows, in place: settings,
+                                 secrets, schedules, and data are kept. It
+                                 shows what the range offers, then asks
+                                 (--yes skips; non-TTY refuses without
+                                 --yes); --dry-run only previews; --json
+                                 prints the result. Installs nothing: run
+                                 `bb plugin update <id>` next
   bb plugin list                 Status, services, schedules, handler timings,
                                  and contributed CLI commands. `bb status`
                                  also names enabled plugins that are
@@ -280,13 +294,49 @@ demand and `bb plugin update` applies compatible candidates. Reinstalling an
 installed managed plugin is refused; use `bb plugin update`. A failed
 activation restores the previous version and leaves the failure visible.
 
+Updates stay inside the range recorded at install and never move to a release
+older than the installed one. `bb plugin outdated`, `bb plugin update`, and
+the plugin's page also name the newest stable release newer than every release
+the range admits, if there is one, and say whether it may break (a new major,
+a new minor before 1.0, or a new patch before 0.1); bb does not check its
+compatibility and never installs it as an update. `^0.y.z` with y above 0
+admits only 0.y patches, and `^0.0.z` admits only 0.0.z itself.
+
 Exact npm versions, Git tags and commits, path sources, and bundled official
 plugins are pinned. npm ranges, dist-tags, and omitted specs, omitted Git refs
 (the default branch), Git branches, and Git semver ranges track compatible
-updates. Change a pinned git:/npm: source with `bb plugin remove` (which
-deletes settings, secrets, and schedules) and a fresh install. Edit a local
-path plugin in place and `bb plugin reload <id>`, or move it with
-`bb plugin install path:<new dir>`; both keep its configuration.
+updates. Edit a local path plugin in place and `bb plugin reload <id>`, or move
+it with `bb plugin install path:<new dir>`; both keep its configuration.
+
+An install keeps the range it was installed with, including a marketplace
+entry's range when the listing changes later. `bb plugin track <id> <range>`
+changes the range of a git semver-range install or of an npm install (an exact
+version, dist-tag, or omitted spec becomes that range) and keeps its settings,
+secrets, schedules, and data. Put the range in double quotes, which protect
+`<`, `>`, and `|` in POSIX shells, PowerShell, and cmd.exe:
+
+  bb plugin track notes ">=0.2.0 <1.0.0"
+
+That range follows every 0.x release, and a 0.x minor may break. The command
+refuses a bare version, a range that admits no version, and a range that
+admits neither the installed release nor a newer one, because bb does not
+downgrade, and warns before applying a range with no upper bound, such as
+`>=0.2.0`: every future major release will be offered as an update. An npm
+install that an earlier bb placed in a directory named after its version spec
+cannot change its range in place: its next update moves a tracking install
+to managed storage, and a pinned one must be removed (which deletes its
+settings, secrets, and schedules) and installed again with a range. For the
+release named outside the range, bb suggests `>=<installed> <N.0.0`, where N
+is one above that release's major version, when it is newer than every
+version the range admits; when the range also admits higher versions with no
+release yet, such as `^1.0.0 || ^3.0.0` while only 2.x is out, bb adds
+`>=<release> <N.0.0` to the range as another alternative instead, so nothing
+the range allowed is dropped. It suggests nothing for an install that
+`bb plugin track` refuses. `bb plugin outdated` and `bb plugin update` print
+the suggestion as a `bb plugin track` command, and the app's Change range
+opens on it. To move a Git branch, tag, or commit install to a semver range,
+`bb plugin remove` it (which deletes settings, secrets, and schedules) and
+install it again.
 
 Managed git:/npm: installs refuse engines.bb and engines.bbPluginSdk
 mismatches, manifest and artifact identity mismatches, and ids reserved by
@@ -347,4 +397,4 @@ plugins.
 
 `bb plugin update <id> --yes` starts a server job and waits by polling, so the activation stability check does not hold one HTTP request open. Add `--no-wait` to return immediately. Use `bb plugin update-jobs [job-id] --json` for progress and results, including automatic rollback. Queued/running updates continue after the CLI or app disconnects. Finished jobs remain for ten minutes; jobs do not survive server restarts. Running updates cannot be cancelled midway through activation.
 
-SDK: `plugins.applyUpdate({ pluginId })` waits; `plugins.experimental_startUpdate({ pluginId })` returns the job. Inspect with `plugins.experimental_updateJobs.list()` or `.get({ jobId })`. Raw HTTP callers opt in with `Prefer: respond-async`; legacy callers still receive the completed result.
+SDK: `plugins.applyUpdate({ pluginId, expectedVersion? })` waits; `plugins.experimental_startUpdate({ pluginId, expectedVersion? })` returns the job. `expectedVersion` is the `candidate.version` a check returned: when the release the server would install is no longer that one, it refuses and leaves the installation untouched (the fresh check result is still saved). Without it the newest compatible release in range is applied. Inspect with `plugins.experimental_updateJobs.list()` or `.get({ jobId })`. Raw HTTP callers opt in with `Prefer: respond-async`; legacy callers still receive the completed result.

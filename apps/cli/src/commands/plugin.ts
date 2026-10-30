@@ -22,9 +22,15 @@ import type {
   PluginCatalogInstallPlan,
   PluginCatalogResolvedSource,
   PluginCatalogSearchResult,
+  PluginTrackingRangeResult,
   PluginUpdateCheckEntry as PluginUpdateResult,
+  PluginUpdateJob,
 } from "@bb/server-contract";
-import { BbHttpError, pluginMutationResponseSchema } from "@bb/sdk";
+import {
+  BbHttpError,
+  pluginMutationResponseSchema,
+  PluginUpdateExpectedVersionUnsupportedError,
+} from "@bb/sdk";
 import { parseDataDirEnvValue, resolveProdDataDir } from "@bb/config/runtime";
 import {
   migratePluginToPackageLayout,
@@ -462,8 +468,70 @@ function blockedSummary(result: PluginUpdateResult): string {
   return `${result.blocked.label}: ${result.blocked.reasons.join("; ")}`;
 }
 
+function outsideRangeSummary(result: PluginUpdateResult): string {
+  if (!result.outsideRange) return "—";
+  return `${result.outsideRange.version}${result.outsideRange.breaking ? " (may break)" : ""}`;
+}
+
+function followOutsideRange(
+  id: string,
+  outsideRange: { suggestedRange?: string },
+): string {
+  return outsideRange.suggestedRange === undefined
+    ? ""
+    : ` To follow it: bb plugin track ${id} "${outsideRange.suggestedRange}"`;
+}
+
+function updateStatusSummary(result: PluginUpdateResult): string {
+  return `${UPDATE_STATUS_LABELS[result.outcome]}${result.candidateBreaking ? " (may break)" : ""}${result.devMode ? " [dev build: engines.bb not enforced]" : ""}`;
+}
+
 function updateDetail(result: PluginUpdateResult): string {
   return result.detail ?? result.blocked?.reasons.join("; ") ?? "";
+}
+
+function pinnedSkipMessage(
+  result: PluginUpdateResult,
+  source: string | undefined,
+): string {
+  const skipped = `${result.id}: skipped — pinned`;
+  if (result.detail !== undefined) return `${skipped}: ${result.detail}.`;
+  if (source?.startsWith("npm:")) {
+    return `${skipped}; run \`bb plugin track ${result.id} <range>\` (for example ^${result.installed.version}) to receive updates; settings, secrets, and schedules are kept.`;
+  }
+  return `${skipped}; remove and reinstall with a tracking npm range, git branch, or git semver range to receive updates (remove deletes the plugin's settings, secrets, and schedules). A local path plugin updates with \`bb plugin reload\`; move it with \`bb plugin install path:<new directory>\`.`;
+}
+
+function trackingPreviousRange(previousRange: string | null): string {
+  return previousRange ?? "its latest release";
+}
+
+function warnOpenEndedRange(result: PluginTrackingRangeResult): void {
+  if (!result.openEnded) return;
+  console.warn(
+    `Warning: ${result.range} has no upper bound, so every future major release will be offered as an update.`,
+  );
+}
+
+function trackingCheckSummary(
+  id: string,
+  check: PluginUpdateResult,
+  applied: boolean,
+): string {
+  const outside = check.outsideRange
+    ? `; ${check.outsideRange.version} stays outside the range (compatibility not checked)`
+    : "";
+  if (check.outcome === "update-available") {
+    const offer = `update available${check.candidateBreaking ? " (may break)" : ""}: ${check.installed.display} → ${check.candidate?.display ?? "a newer release"}${outside}`;
+    return applied
+      ? `${offer}; apply it with \`bb plugin update ${id}\`.`
+      : `${offer}.`;
+  }
+  if (check.outcome === "current") {
+    return `current: ${check.installed.display} is the newest compatible release in range${outside}.`;
+  }
+  const detail = updateDetail(check);
+  return `${UPDATE_STATUS_LABELS[check.outcome]}${detail ? `: ${detail}` : "."}`;
 }
 
 async function confirmPluginAction(
@@ -720,6 +788,13 @@ function sdkErrorMessage(error: unknown): string {
     return error.message.replace(/^HTTP \d+: /u, "");
   }
   return error instanceof Error ? error.message : String(error);
+}
+
+function olderServerUpdateMessage(error: unknown): string | null {
+  if (!(error instanceof PluginUpdateExpectedVersionUnsupportedError)) {
+    return null;
+  }
+  return `${error.pluginId}: not updated — the bb server is older than this bb CLI and cannot guarantee that it installs ${error.expectedVersion}, the release this check showed. Upgrade bb on the server, then run \`bb plugin update ${error.pluginId}\` again.`;
 }
 
 function printSettings(result: PluginSettingsResult): void {
@@ -1007,6 +1082,9 @@ export function registerPluginCommands(
           console.log(`  subdirectory: ${source.subdirectory}`);
         }
         if (source.range !== undefined) console.log(`  range: ${source.range}`);
+        if (source.distTag !== undefined) {
+          console.log(`  dist-tag: ${source.distTag}`);
+        }
         if (source.tagPrefix !== undefined) {
           console.log(`  tag prefix: ${source.tagPrefix}`);
         }
@@ -1035,6 +1113,86 @@ export function registerPluginCommands(
           );
         }
       }),
+    );
+
+  plugin
+    .command("track <id> <range>")
+    .description(
+      "Change the semver range a git: or npm: plugin follows for updates, in place: its settings, secrets, schedules, and data are kept. Shows what the new range offers and asks for confirmation; it installs nothing, so run `bb plugin update <id>` afterwards",
+    )
+    .option("--dry-run", "Show what the range would offer without changing it")
+    .option("--yes", "Skip the confirmation prompt")
+    .option("--json", "Output JSON")
+    .action(
+      action(
+        async (
+          id: string,
+          range: string,
+          opts: JsonOutputOptions & { dryRun?: boolean; yes?: boolean },
+        ) => {
+          const plugins = createCliBbSdk(getUrl()).plugins;
+          let preview: PluginTrackingRangeResult;
+          try {
+            preview = await plugins.experimental_setTrackingRange({
+              pluginId: id,
+              range,
+              dryRun: true,
+            });
+          } catch (error) {
+            exitWithError({ error: sdkErrorMessage(error) });
+          }
+          const unchanged = preview.previousRange === preview.range;
+          if (opts.dryRun === true || unchanged) {
+            if (opts.json) {
+              outputJson(opts, preview);
+              return;
+            }
+            console.log(
+              unchanged
+                ? `${id} already tracks ${preview.range}; nothing changed.`
+                : `${id} would track ${preview.range} instead of ${trackingPreviousRange(preview.previousRange)}; nothing changed (dry run).`,
+            );
+            console.log(
+              `  ${trackingCheckSummary(id, preview.check, unchanged)}`,
+            );
+            if (!unchanged) warnOpenEndedRange(preview);
+            return;
+          }
+          if (!opts.json) {
+            console.log(
+              `${id}: track ${preview.range} instead of ${trackingPreviousRange(preview.previousRange)}. Settings, secrets, schedules, and data are kept; nothing is installed until you update.`,
+            );
+            console.log(
+              `  With ${preview.range}: ${trackingCheckSummary(id, preview.check, false)}`,
+            );
+            warnOpenEndedRange(preview);
+          }
+          await confirmPluginAction(
+            "Change the range?",
+            "Refusing to change the range without confirmation — re-run with --yes.",
+            opts.yes === true,
+          );
+          let result: PluginTrackingRangeResult;
+          try {
+            result = await plugins.experimental_setTrackingRange({
+              pluginId: id,
+              range,
+            });
+          } catch (error) {
+            exitWithError({ error: sdkErrorMessage(error) });
+          }
+          if (opts.json) {
+            outputJson(opts, result);
+            return;
+          }
+          console.log(
+            result.applied
+              ? `${id} now tracks ${result.range} (was ${trackingPreviousRange(result.previousRange)}).`
+              : `${id} already tracks ${result.range}; nothing changed.`,
+          );
+          console.log(`  ${trackingCheckSummary(id, result.check, true)}`);
+        },
+      ),
     );
 
   plugin
@@ -1278,7 +1436,8 @@ export function registerPluginCommands(
           result.installed.display,
           result.candidate?.display ?? "—",
           blockedSummary(result),
-          `${UPDATE_STATUS_LABELS[result.outcome]}${result.devMode ? " [dev build: engines.bb not enforced]" : ""}`,
+          outsideRangeSummary(result),
+          updateStatusSummary(result),
         ]);
         console.log(
           renderBorderlessTable(
@@ -1288,14 +1447,32 @@ export function registerPluginCommands(
                 "Installed",
                 "Latest compatible",
                 "Blocked newer",
+                "Outside range",
                 "Status",
               ],
-              colWidths: [22, 20, 22, 42, 54],
+              colWidths: [22, 20, 22, 42, 24, 54],
               trimTrailingWhitespace: true,
             },
             rows,
           ),
         );
+        for (const result of results) {
+          if (result.detail !== undefined) {
+            console.log(`${result.id}: ${result.detail}`);
+          }
+        }
+        if (results.some((result) => result.outsideRange !== undefined)) {
+          console.log(
+            "Outside range: the newest release the installed range excludes; compatibility not checked.",
+          );
+        }
+        for (const result of results) {
+          if (result.outsideRange !== undefined) {
+            console.log(
+              `${result.id}: ${outsideRangeSummary(result)} is outside ${result.outsideRange.range}.${followOutsideRange(result.id, result.outsideRange)}`,
+            );
+          }
+        }
       }),
     );
 
@@ -1371,22 +1548,28 @@ export function registerPluginCommands(
           const results = await sdk.plugins.checkUpdates(
             id === undefined ? {} : { pluginId: id },
           );
-          const sources = new Map<string, string>();
-          if (results.some((result) => result.outcome === "update-available")) {
+          const entries = new Map<string, PluginEntry>();
+          if (
+            results.some(
+              (result) =>
+                result.outcome === "update-available" ||
+                result.outcome === "pinned",
+            )
+          ) {
             const list = await sdk.plugins.list();
-            for (const entry of list.plugins)
-              sources.set(entry.id, entry.sourceDisplay);
+            for (const entry of list.plugins) entries.set(entry.id, entry);
           }
 
           for (const result of results) {
-            const source = sources.get(result.id) ?? "unknown source";
+            const source =
+              entries.get(result.id)?.sourceDisplay ?? "unknown source";
             const detail = updateDetail(result);
             const shouldAttempt = result.outcome === "update-available";
 
             if (!shouldAttempt) {
               if (result.outcome === "pinned") {
                 console.log(
-                  `${result.id}: skipped — pinned${detail ? ` (${detail})` : ""}; remove and reinstall with a tracking npm range, git branch, or git semver range to receive updates (remove deletes the plugin's settings, secrets, and schedules). A local path plugin updates with \`bb plugin reload\`; move it with \`bb plugin install path:<new directory>\`.`,
+                  pinnedSkipMessage(result, entries.get(result.id)?.source),
                 );
               } else if (result.outcome === "incompatible") {
                 console.log(
@@ -1396,9 +1579,13 @@ export function registerPluginCommands(
                 console.log(
                   `${result.id}: skipped — unavailable${detail ? `: ${detail}` : "."}`,
                 );
+              } else if (result.outsideRange) {
+                console.log(
+                  `${result.id}: current within ${result.outsideRange.range}; ${outsideRangeSummary(result)} is outside the range (compatibility not checked).${followOutsideRange(result.id, result.outsideRange)}`,
+                );
               } else {
                 console.log(
-                  `${result.id}: current (${result.installed.display}).`,
+                  `${result.id}: current (${result.installed.display})${result.detail ? ` — ${result.detail}` : ""}.`,
                 );
               }
               continue;
@@ -1408,16 +1595,37 @@ export function registerPluginCommands(
             console.log(
               `${result.id}: ${result.installed.display} → ${target} from ${source}. Plugins are full-trust code.`,
             );
+            if (result.candidateBreaking) {
+              console.log(
+                `${result.id}: ${target} may include breaking changes — it moves to a new major version, a new minor version before 1.0, or a new patch version before 0.1. bb does not check that this plugin's settings and data carry over.`,
+              );
+            }
+            if (result.outsideRange) {
+              console.log(
+                `${result.id}: ${outsideRangeSummary(result)} is outside the range ${result.outsideRange.range} and is not part of this update (compatibility not checked).${followOutsideRange(result.id, result.outsideRange)}`,
+              );
+            }
             await confirmPluginAction(
               "Update and activate?",
               "Refusing to update without confirmation — re-run with --yes.",
               opts.yes === true,
             );
+            const updateArgs = {
+              pluginId: result.id,
+              ...(result.candidate === undefined
+                ? {}
+                : { expectedVersion: result.candidate.version }),
+            };
 
             if (opts.wait === false) {
-              const job = await sdk.plugins.experimental_startUpdate({
-                pluginId: result.id,
-              });
+              let job: PluginUpdateJob;
+              try {
+                job = await sdk.plugins.experimental_startUpdate(updateArgs);
+              } catch (error) {
+                const message = olderServerUpdateMessage(error);
+                if (message === null) throw error;
+                exitWithError({ error: message });
+              }
               console.log(
                 `Updating ${job.displayName} in the background (job ${job.id}).`,
               );
@@ -1429,11 +1637,12 @@ export function registerPluginCommands(
 
             let mutation: PluginApplyUpdateResult;
             try {
-              mutation = await sdk.plugins.applyUpdate({
-                pluginId: result.id,
-              });
+              mutation = await sdk.plugins.applyUpdate(updateArgs);
             } catch (error) {
-              exitWithError({ error: sdkErrorMessage(error) });
+              exitWithError({
+                error:
+                  olderServerUpdateMessage(error) ?? sdkErrorMessage(error),
+              });
             }
             if (mutation.applied) {
               console.log(

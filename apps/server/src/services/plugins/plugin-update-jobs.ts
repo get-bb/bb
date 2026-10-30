@@ -7,6 +7,7 @@ import { withPluginUpdateProgress } from "./plugin-update-progress.js";
 
 interface JobEntry {
   job: PluginUpdateJob;
+  expectedVersion: string | null;
   run: () => Promise<PluginApplyUpdateResult>;
   finishedAt: number | null;
   settled: Promise<PluginUpdateJob>;
@@ -17,6 +18,7 @@ export interface PluginUpdateJobs {
   start(args: {
     pluginId: string;
     displayName: string;
+    expectedVersion: string | null;
     run: () => Promise<PluginApplyUpdateResult>;
   }): PluginUpdateJob;
   settled(id: string): Promise<PluginUpdateJob> | undefined;
@@ -82,11 +84,12 @@ export function createPluginUpdateJobs(deps: {
   }
 
   return {
-    start({ pluginId, displayName, run }) {
+    start({ pluginId, displayName, expectedVersion, run }) {
       pruneFinished();
       const duplicate = [...entries.values()].find(
         (entry) =>
           entry.job.pluginId === pluginId &&
+          entry.expectedVersion === expectedVersion &&
           (entry.job.state === "queued" || entry.job.state === "running"),
       );
       if (duplicate !== undefined) return duplicate.job;
@@ -96,6 +99,7 @@ export function createPluginUpdateJobs(deps: {
       });
       const entry: JobEntry = {
         job: { id: randomUUID(), pluginId, displayName, state: "queued" },
+        expectedVersion,
         run,
         finishedAt: null,
         settled,

@@ -33,12 +33,24 @@ export const pluginResolvedVersionSchema = z.object({
   display: z.string(),
 });
 
+export const pluginOutsideRangeReleaseSchema = z.object({
+  version: z.string(),
+  display: z.string(),
+  breaking: z.boolean(),
+  range: z.string(),
+  suggestedRange: z.string().optional(),
+});
+export type PluginOutsideRangeRelease = z.infer<
+  typeof pluginOutsideRangeReleaseSchema
+>;
+
 export const pluginUpdateCheckEntrySchema = z.object({
   id: z.string(),
   outcome: pluginUpdateOutcomeSchema,
   devMode: z.literal(true).optional(),
   installed: pluginResolvedVersionSchema,
   candidate: pluginResolvedVersionSchema.optional(),
+  candidateBreaking: z.literal(true).optional(),
   blocked: z
     .object({
       version: z.string(),
@@ -46,6 +58,7 @@ export const pluginUpdateCheckEntrySchema = z.object({
       reasons: z.array(z.string()),
     })
     .optional(),
+  outsideRange: pluginOutsideRangeReleaseSchema.optional(),
   detail: z.string().optional(),
 });
 export type PluginUpdateCheckEntry = z.infer<
@@ -60,7 +73,12 @@ export const pluginUpdateCheckResponseSchema = z.object({
   results: z.array(pluginUpdateCheckEntrySchema),
 });
 
-export const pluginApplyUpdateRequestSchema = z.object({}).strict();
+export const pluginApplyUpdateRequestSchema = z
+  .object({ expectedVersion: z.string().min(1).optional() })
+  .strict();
+export type PluginApplyUpdateRequest = z.infer<
+  typeof pluginApplyUpdateRequestSchema
+>;
 
 export const pluginApplyUpdateResultSchema = z.object({
   applied: z.boolean(),
@@ -113,6 +131,29 @@ export const pluginUpdateJobListResponseSchema = z.object({
   jobs: z.array(pluginUpdateJobSchema),
 });
 
+export const pluginTrackingRangeRequestSchema = z
+  .object({ range: z.string().min(1), dryRun: z.boolean().optional() })
+  .strict();
+export type PluginTrackingRangeRequest = z.infer<
+  typeof pluginTrackingRangeRequestSchema
+>;
+
+export const pluginTrackingRangeResultSchema = z.object({
+  applied: z.boolean(),
+  /**
+   * What the install followed before the change: its git or npm semver range,
+   * or for an npm install its exact version or dist-tag. `null` for an npm
+   * install that named no version and followed its latest release.
+   */
+  previousRange: z.string().nullable(),
+  range: z.string(),
+  openEnded: z.boolean(),
+  check: pluginUpdateCheckEntrySchema,
+});
+export type PluginTrackingRangeResult = z.infer<
+  typeof pluginTrackingRangeResultSchema
+>;
+
 export const pluginSourceHistoryEntrySchema = z.object({
   version: z.string(),
   activatedAt: z.number(),
@@ -123,6 +164,15 @@ export const pluginSourceDetailSchema = z.object({
   resolved: z.string(),
   subdirectory: z.string().optional(),
   range: z.string().optional(),
+  /**
+   * How an npm install picks releases: a semver `range` (see `range`), a
+   * dist-`tag` (see `distTag`), an `exact` version it is pinned to, or
+   * `default` when it named no version and follows its latest release.
+   * Absent for other sources.
+   */
+  npmSpecKind: z.enum(["default", "exact", "tag", "range"]).optional(),
+  /** The npm dist-tag a `tag` install follows. */
+  distTag: z.string().optional(),
   tagPrefix: z.string().optional(),
   resolvedTag: z.string().optional(),
   integrity: z.string().optional(),
@@ -141,6 +191,9 @@ export const pluginUpdateStateSchema = z.object({
   detail: z.string().optional(),
   availableVersion: z.string().optional(),
   availableLabel: z.string().optional(),
+  availableDisplay: z.string().optional(),
+  availableBreaking: z.literal(true).optional(),
+  outsideRange: pluginOutsideRangeReleaseSchema.optional(),
   blockedVersion: z.string().optional(),
   blockedLabel: z.string().optional(),
   blockedReasons: z.array(z.string()).optional(),

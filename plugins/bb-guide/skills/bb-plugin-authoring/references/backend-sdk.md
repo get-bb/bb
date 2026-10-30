@@ -64,7 +64,8 @@ signatures (see "Looking up the exact API" in distribution.md).
   `callRpc` `getSource` `getSettings` `updateSettings` `checkUpdates`
   `listUpdateResults` `applyUpdate` `experimental_startUpdate`
   `experimental_discoverRpc` `experimental_getSafeMode`
-  `experimental_setSafeMode` `experimental_pruneCache`; sub-areas `catalog`
+  `experimental_setSafeMode` `experimental_pruneCache`
+  `experimental_setTrackingRange`; sub-areas `catalog`
   (`search` `status` `installPlan` `install`), `marketplaces` (`add` `list`
   `refresh` `remove`), `experimental_updateJobs` (`list` `get`)
 - `theme`: `get` `catalog` `resolve` `set`

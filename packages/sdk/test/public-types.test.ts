@@ -289,6 +289,7 @@ type ExpectedPluginsKey =
   | "experimental_getSafeMode"
   | "experimental_setSafeMode"
   | "experimental_pruneCache"
+  | "experimental_setTrackingRange"
   | "applyUpdate"
   | "experimental_startUpdate"
   | "experimental_updateJobs"
