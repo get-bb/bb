@@ -381,6 +381,7 @@ html:has(.nav-sticky) {
   display: inline-block;
   padding: 10px 20px;
   border-radius: calc(var(--radius) - 2px);
+  font-family: var(--font-sans);
   font-size: 14.5px;
   font-weight: 500;
   cursor: pointer;
