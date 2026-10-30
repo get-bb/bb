@@ -468,11 +468,20 @@ describe("framed desktop sidebar", () => {
     for (const edge of [
       "before:rounded-tr-(--bb-frame-card-radius)",
       "before:rounded-br-(--bb-frame-card-radius)",
-      "before:border-r",
       "px-px",
       "pb-px",
     ]) {
       expect(inset.classList.contains(edge)).toBe(true);
+    }
+    const insetEdge = inset.lastElementChild;
+    expect(insetEdge?.getAttribute("data-sidebar")).toBe("inset-edge");
+    for (const edge of [
+      "z-50",
+      "border",
+      "rounded-tr-(--bb-frame-card-radius)",
+      "rounded-br-(--bb-frame-card-radius)",
+    ]) {
+      expect(insetEdge?.classList.contains(edge)).toBe(true);
     }
     expect(inset.classList.contains("-mt-(--bb-window-title-bar-height)")).toBe(
       true,
