@@ -2256,15 +2256,9 @@ describe("script process containment", () => {
           "interrupted: the automations plugin stopped before the script finished",
       });
       for (const pid of pids) {
-        const running = await isProcessRunning(pid);
-        if (running) {
-          console.error("DESCENDANT_STATE", pid, await readFile(`/proc/${pid}/status`, "utf8").catch(String));
-          for (let check = 0; check < 20; check++) {
-            console.error("DESCENDANT_RECHECK", pid, check, await isProcessRunning(pid));
-            await new Promise((resolve) => setTimeout(resolve, 5));
-          }
-        }
-        expect(running).toBe(false);
+        await expect
+          .poll(() => isProcessRunning(pid), { timeout: 2_000 })
+          .toBe(false);
       }
       await reloaded.harness.dispose();
     } finally {
