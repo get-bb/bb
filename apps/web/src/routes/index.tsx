@@ -32,6 +32,7 @@ import type { CSSProperties, ReactNode } from "react";
 import changelogMd from "../../../../CHANGELOG.md?raw";
 import { RELEASE_META } from "../../../../changelog-metadata";
 import { useInitAnalytics } from "../landing/analytics";
+import { useSectionViews } from "../landing/section-views";
 import adobeLogo from "../assets/company-logos/adobe.svg";
 import atlassianLogo from "../assets/company-logos/atlassian.svg";
 import blackstoneLogo from "../assets/company-logos/blackstone.png";
@@ -1201,6 +1202,7 @@ function LandingPage() {
   const [companyProofInView, setCompanyProofInView] = useState(false);
   const companyProofRef = useRef<HTMLElement>(null);
   useScrollReveal();
+  useSectionViews();
   useConstructMock();
   useFitMock();
 
@@ -1245,6 +1247,7 @@ function LandingPage() {
         ref={companyProofRef}
         className={`company-proof${companyProofPaused ? " is-paused" : ""}${companyProofInView ? "" : " is-offscreen"}`}
         aria-labelledby="company-proof-title"
+        data-section="logos"
       >
         <div className="company-proof-heading">
           <h2 id="company-proof-title">Used by builders at</h2>
@@ -1275,7 +1278,12 @@ function LandingPage() {
         </div>
       </section>
 
-      <Band title="Fully customizable." flip visual={<CustomizeBuild />}>
+      <Band
+        title="Fully customizable."
+        flip
+        section="customizable"
+        visual={<CustomizeBuild />}
+      >
         <p>
           Almost anything in bb can be changed in a single prompt. Ask for your
           Linear issues and they appear: a panel in your sidebar, a{" "}
@@ -1290,7 +1298,11 @@ function LandingPage() {
         <p>Nothing is stopping you from building your ideal workbench.</p>
       </Band>
 
-      <Band title="Anything can kick off work." visual={<AgentChat />}>
+      <Band
+        title="Anything can kick off work."
+        section="kick-off"
+        visual={<AgentChat />}
+      >
         <p>
           The same CLI your agents use is open to any program you write: a shell
           script, a cron job, or your own Hermes Agent or OpenClaw bot in
@@ -1303,7 +1315,12 @@ function LandingPage() {
         </p>
       </Band>
 
-      <Band title="The gang's all here" flip visual={<SpawnSidebar />}>
+      <Band
+        title="The gang's all here"
+        flip
+        section="gang"
+        visual={<SpawnSidebar />}
+      >
         <p>
           Claude Code, Codex, Cursor, Pi, OpenCode, Grok, omp, and Hermes all
           live in bb. Give a task to whichever fits, and have one agent spawn
@@ -1318,7 +1335,7 @@ function LandingPage() {
         </div>
       </Band>
 
-      <section className="statement" data-reveal>
+      <section className="statement" data-reveal data-section="fork-it">
         <h2 className="sec-title">Fork it. Make it your own.</h2>
         <p>
           bb is MIT-licensed end to end. Fork the repo, customize the agents,
@@ -1333,7 +1350,7 @@ function LandingPage() {
         </div>
       </section>
 
-      <section className="closer" data-reveal>
+      <section className="closer" data-reveal data-section="closer">
         <h2 className="sec-title">Put your agents to work.</h2>
         <p>Free, open source, and local-first. Install in under a minute.</p>
         <InstallOptions placement="closer" />
