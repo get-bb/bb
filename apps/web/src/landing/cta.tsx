@@ -64,7 +64,11 @@ const WindowsSolidIcon: IconSvgElement = [
   ],
 ];
 
-function DesktopDownloadIcon({ platform }: { platform: DesktopPlatform }) {
+export function DesktopDownloadIcon({
+  platform,
+}: {
+  platform: DesktopPlatform;
+}) {
   if (platform === "linux") {
     return <LinuxIcon className="btn-ic" />;
   }

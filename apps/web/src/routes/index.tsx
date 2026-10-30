@@ -86,6 +86,7 @@ import {
   Band,
   InstallOptions,
   ProviderChips,
+  SimpleInstallOptions,
   CustomizeBuild,
   DelegationTree,
   PluginMap,
@@ -1217,6 +1218,14 @@ const BELOW_FOLD_SECTIONS: Record<"control" | "test", readonly string[]> = {
   test: ["make-it-yours", "hand-off", "start-anywhere", "closer"],
 };
 
+function CloserInstall() {
+  return useExperiment("homepage-download-area") === "test" ? (
+    <SimpleInstallOptions placement="closer" />
+  ) : (
+    <InstallOptions placement="closer" />
+  );
+}
+
 function TodayBelowFold() {
   return (
     <>
@@ -1297,7 +1306,7 @@ function TodayBelowFold() {
       <section className="closer" data-reveal data-section="closer">
         <h2 className="sec-title">Put your agents to work.</h2>
         <p>Free, open source, and local-first. Install in under a minute.</p>
-        <InstallOptions placement="closer" />
+        <CloserInstall />
         <div className="cta-row cta-row-secondary">
           <GitHubLink placement="closer" className="btn btn-ghost">
             View on GitHub
@@ -1360,7 +1369,7 @@ function RefreshedBelowFold() {
           All your agents, in one workspace you control.
         </h2>
         <p>Free and runs on your machines and infrastructure.</p>
-        <InstallOptions placement="closer" />
+        <CloserInstall />
         <div className="cta-row cta-row-secondary">
           <GitHubLink placement="closer" className="btn btn-ghost">
             View on GitHub
@@ -1382,6 +1391,11 @@ function LandingPage() {
     "homepage-below-fold",
     "desktop",
   );
+  const InstallBlock =
+    useExperiment("homepage-download-area") === "test"
+      ? SimpleInstallOptions
+      : InstallOptions;
+  useExperimentExposure("homepage-download-area", "desktop");
   useScrollReveal();
   useSectionViews((section) => {
     if (BELOW_FOLD_SECTIONS[belowFold].includes(section)) exposeBelowFold();
@@ -1419,7 +1433,7 @@ function LandingPage() {
           for your own software factory.
         </p>
 
-        <InstallOptions placement="hero" />
+        <InstallBlock placement="hero" />
 
         <div className="providers">
           <span className="label">Works with</span>
