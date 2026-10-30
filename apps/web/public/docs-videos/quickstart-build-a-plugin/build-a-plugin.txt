@@ -1,0 +1,7 @@
+Quickstart: build your first plugin
+
+1. In the folder where you keep your code, run bb plugin new hello.
+2. Install it from its folder, then confirm the full-trust prompt.
+3. Open Example todos. A todo added from the terminal appears without a reload.
+4. Run bb plugin dev and change the title in app.tsx. The sidebar shows the new name.
+5. Find every place a plugin can add to bb in the Plugin Guide.

@@ -16,6 +16,8 @@ verified: 2026-10-30
 
 A child is a normal thread with a parent: you can open it, answer it or take it over.
 
+<Video src="/docs-videos/quickstart-delegate-work/delegate" title="Delegate work to child threads, step by step" width={1280} height={720} />
+
 ## Before you start
 
 - bb is [installed](/docs/install) and at least one agent is [connected](/docs/connect-your-agents).
@@ -48,8 +50,9 @@ You should see the project in the sidebar.
 ```text title="Prompt"
 Add a checkout page to this app. Split the work into two or three parts that
 don't touch the same files. Start a child thread for each part with
-`bb thread spawn --parent-self`, with a short title and a prompt that says
-exactly what to build and how to test it. Don't do the parts yourself.
+`bb thread spawn --parent-self` and no --environment, so each gets its own
+worktree, with a short title and a prompt that says exactly what to build and
+how to test it. Don't do the parts yourself, and don't merge them yet.
 When every child is done, tell me what each one changed.
 ```
 

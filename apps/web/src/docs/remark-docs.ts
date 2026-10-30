@@ -1,6 +1,7 @@
 import { replaceSource } from "fumadocs-core/mdx-plugins/stringifier";
 import type { Nodes, Parent, Root, RootContent } from "mdast";
 import type {} from "remark-directive";
+import { videoMarkdown } from "./video-files";
 
 type VFile = Parameters<typeof replaceSource>[0];
 
@@ -52,6 +53,14 @@ function jsxAttribute(node: Nodes, name: string): string | undefined {
 }
 
 function registerMarkdown(node: Nodes, file: VFile) {
+  if (node.type === "mdxJsxFlowElement" && node.name === "Video") {
+    const src = jsxAttribute(node, "src");
+    const title = jsxAttribute(node, "title");
+    if (src !== undefined && title !== undefined) {
+      replaceSource(file, node, () => videoMarkdown(title, src));
+    }
+    return;
+  }
   if (node.type === "containerDirective" && isCalloutTone(node.name)) {
     const tone = node.name;
     const title = node.children.find(

@@ -1,0 +1,25 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:04.170
+1. Open Settings → Projects and choose Add a project.
+
+2
+00:00:04.170 --> 00:00:17.700
+2. Choose New thread, pick your project and Worktree, then ask for child threads.
+
+3
+00:00:17.700 --> 00:00:27.500
+3. Each child appears under the parent. The Active child threads card tracks them.
+
+4
+00:00:27.500 --> 00:00:35.130
+4. Open a child and press Ctrl+D (⌘D on a Mac) to open its Diff tab.
+
+5
+00:00:35.130 --> 00:00:47.330
+5. Ask the parent to merge each child's branch and run the tests.
+
+6
+00:00:47.330 --> 00:00:58.930
+6. When the parent has merged them, archive each child from the sidebar.
