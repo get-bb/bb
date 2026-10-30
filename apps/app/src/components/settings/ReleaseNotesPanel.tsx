@@ -11,7 +11,7 @@ import {
   releaseMetaQueryOptions,
   type ChangelogBlock,
 } from "./changelog-preview";
-import { findReleaseEntry } from "./release-notes-model";
+import { findReleaseEntry, nightlyBaseVersion } from "./release-notes-model";
 import { getReleaseNotesUrl, openReleaseNotesOnWeb } from "./release-notes";
 
 const MARKDOWN_IMAGE_ONLY = /^!\[[^\]]*\]\([^)]*\)$/;
@@ -166,7 +166,13 @@ export function ReleaseNotesPanel({ id, version }: ReleaseNotesPanelProps) {
           ) : null}
         </div>
       )}
-      <div className="mt-2 flex justify-end">
+      <div className="mt-2 flex items-baseline justify-end gap-3">
+        {entry !== null && nightlyBaseVersion(version) !== null ? (
+          <p className="mr-auto min-w-0 text-2xs">
+            This nightly build also includes changes made since bb{" "}
+            {entry.version}.
+          </p>
+        ) : null}
         <a
           href={getReleaseNotesUrl(notesVersion)}
           target="_blank"
