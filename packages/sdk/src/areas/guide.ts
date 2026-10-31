@@ -1,4 +1,27 @@
+import { BB_DOCS_URL } from "@bb/domain/docs-links";
 import { templateDefinitions, type TemplateId } from "@bb/templates/generated";
+import {
+  DEFAULT_GUIDE_SEARCH_DOCS_TIMEOUT_MS,
+  fetchDocsDocuments,
+  fetchGuideSearchIndex,
+  guideChapterDocuments,
+  loadSkillDocuments,
+  parseGuideSearchQuery,
+  rankGuideSearchDocuments,
+  type GuideSearchIndexFetcher,
+  type GuideSearchResponse,
+  type GuideSkillSource,
+} from "./guide-search.js";
+
+export type {
+  GuideSearchDocsStatus,
+  GuideSearchIndexFetcher,
+  GuideSearchResponse,
+  GuideSearchResult,
+  GuideSearchSkillsStatus,
+  GuideSearchSource,
+  GuideSkillSource,
+} from "./guide-search.js";
 
 export interface GuideRenderArgs {
   chapter?: string;
@@ -9,8 +32,35 @@ export interface GuideRenderResult {
   content: string;
 }
 
+export interface GuideSearchArgs {
+  query: string;
+  limit?: number;
+  projectId: string;
+  environmentId: string | null;
+}
+
 export interface GuideArea {
   render(args?: GuideRenderArgs): GuideRenderResult;
+  search(args: GuideSearchArgs): Promise<GuideSearchResponse>;
+}
+
+export interface CreateGuideAreaOptions {
+  docsBaseUrl?: string;
+  docsTimeoutMs?: number;
+  fetchIndex?: GuideSearchIndexFetcher;
+  skills?: GuideSkillSource;
+}
+
+function defaultDocsBaseUrl(env: NodeJS.ProcessEnv): string {
+  const configured = env.BB_DOCS_URL?.trim();
+  if (configured === undefined || configured.length === 0) {
+    return BB_DOCS_URL;
+  }
+  const url = new URL(configured);
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    throw new Error("BB_DOCS_URL must be an http or https URL.");
+  }
+  return url.toString().replace(/\/+$/u, "");
 }
 
 const guideChapters: Record<string, TemplateId> = {
@@ -96,8 +146,46 @@ function renderStaticTemplate(templateId: TemplateId): string {
   return body;
 }
 
-export function createGuideArea(): GuideArea {
+export function createGuideArea(
+  options: CreateGuideAreaOptions = {},
+): GuideArea {
   return {
+    async search(args) {
+      const { query, limit } = parseGuideSearchQuery(args);
+      const docsBaseUrl =
+        options.docsBaseUrl ?? defaultDocsBaseUrl(process.env);
+      const chapters = [
+        { chapter: null, content: renderStaticTemplate("bbGuideOverview") },
+        ...Object.entries(guideChapters).map(([chapter, templateId]) => ({
+          chapter,
+          content: renderStaticTemplate(templateId),
+        })),
+      ];
+      const [docs, skills] = await Promise.all([
+        fetchDocsDocuments({
+          docsBaseUrl,
+          timeoutMs:
+            options.docsTimeoutMs ?? DEFAULT_GUIDE_SEARCH_DOCS_TIMEOUT_MS,
+          fetchIndex: options.fetchIndex ?? fetchGuideSearchIndex,
+        }),
+        loadSkillDocuments({
+          skills: options.skills ?? null,
+          projectId: args.projectId,
+          environmentId: args.environmentId,
+        }),
+      ]);
+      const documents = [
+        ...docs.documents,
+        ...guideChapterDocuments(chapters),
+        ...skills.documents,
+      ];
+      return {
+        query,
+        results: rankGuideSearchDocuments(query, documents, limit),
+        docs: docs.status,
+        skills: skills.status,
+      };
+    },
     render(input = {}) {
       if (!input.chapter) {
         return { content: renderStaticTemplate("bbGuideOverview") };

@@ -33,6 +33,8 @@ export const JSON_SHAPE_BY_COMMAND_PATH: Readonly<Record<string, string>> = {
   "terminal wait": "{terminalId, matched, nextSeq, exitCode}",
   "plugin list":
     "{plugins: [{id, version, enabled, status, source, rootDir}]}    (wrapped in .plugins)",
+  "guide search":
+    '{query, results: [{source, title, section, location, snippet}], docs: {url, ok, error}, skills: {ok, error}}    (source is "docs", "guide", or "skill"; location is a docs URL, a `bb guide` command, or a SKILL.md path; docs.ok is false when the online docs were unreachable; skills.ok is false when no bb server was reachable)',
   "skill list":
     "{skills: [{id, name, description, scope, provider, filePath}]}    (wrapped in .skills)",
 };

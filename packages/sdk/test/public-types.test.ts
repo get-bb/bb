@@ -258,7 +258,7 @@ type ExpectedFilesKey =
   | "remove"
   | "write";
 
-type ExpectedGuideKey = "render";
+type ExpectedGuideKey = "render" | "search";
 
 type ExpectedHostsKey =
   | "cloneDefaultPath"

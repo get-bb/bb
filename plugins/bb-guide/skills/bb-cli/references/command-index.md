@@ -310,6 +310,7 @@ Use `--selected-model <model-id>` to discover its reasoning choices and include 
 ## guide
 
 - `bb guide`
+- `bb guide search`
 
 ## diagnostics
 

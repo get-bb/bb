@@ -14,6 +14,11 @@
       "types": "./src/docs-links.ts",
       "default": "./src/docs-links.ts"
     },
+    "./docs-search-index": {
+      "source": "./src/docs-search-index.ts",
+      "types": "./src/docs-search-index.ts",
+      "default": "./src/docs-search-index.ts"
+    },
     "./thread-status": {
       "source": "./src/thread-status.ts",
       "types": "./src/thread-status.ts",
