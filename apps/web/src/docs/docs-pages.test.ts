@@ -4,7 +4,19 @@ import matter from "gray-matter";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
-import { DOCS_NAV, DOCS_NAV_COMMUNITY, navSectionOf } from "./nav";
+import { surfaceDocsPath } from "../../../../plugins/plugin-api-docs/src/surface-docs";
+import { SURFACE_GROUPS } from "../../../../plugins/plugin-api-docs/src/surfaces";
+import {
+  DOCS_NAV,
+  DOCS_NAV_COMMUNITY,
+  navSectionOf,
+  PLUGIN_SDK_SLUG,
+} from "./nav";
+import {
+  cliReferencePage,
+  referenceSource,
+  SOURCES_HEADING,
+} from "./reference";
 
 const WEB_ROOT = path.resolve(__dirname, "../..");
 const CONTENT_DIR = path.join(WEB_ROOT, "content/docs");
@@ -19,6 +31,19 @@ function mdxFiles(dir: string): string[] {
     if (entry.isDirectory()) return mdxFiles(entryPath);
     return entry.name.endsWith(".mdx") ? [entryPath] : [];
   });
+}
+
+function h2Headings(markdown: string): string[] {
+  const headings: string[] = [];
+  let inFence = false;
+  for (const line of markdown.split("\n")) {
+    if (/^\s*(```|~~~)/u.test(line)) inFence = !inFence;
+    const heading = /^## (.+)$/u.exec(line);
+    if (!inFence && heading) {
+      headings.push(heading[1]!.replace(/\s*\[#[^\]]+\]$/u, "").trim());
+    }
+  }
+  return headings;
 }
 
 function slugOf(file: string): string {
@@ -40,8 +65,8 @@ describe("docs sidebar", () => {
     expect(new Set(titles).size).toBe(titles.length);
   });
 
-  it("finds the section of a sidebar page", () => {
-    expect(navSectionOf("cli")).toBe("Reference");
+  it("puts plugin surface pages under Reference", () => {
+    expect(navSectionOf(`${PLUGIN_SDK_SLUG}/thread-panel`)).toBe("Reference");
     expect(navSectionOf("not-a-page")).toBeNull();
   });
 
@@ -87,4 +112,63 @@ describe("hand-written docs pages", () => {
       expect(navPage?.title).toBe(frontmatter.title);
     },
   );
+});
+
+describe("generated reference pages", () => {
+  const pages = referenceSource.files.flatMap((file) =>
+    file.type === "page" ? [file] : [],
+  );
+
+  it.each(pages.map((page) => [page.path, page]))(
+    "%s follows the reference template",
+    (_path, page) => {
+      expect(page.data.type).toBe("reference");
+      expect(h2Headings(page.data.markdown).at(-1)).toBe(SOURCES_HEADING);
+    },
+  );
+
+  it("lists every CLI command from the command index", () => {
+    const commands = [
+      {
+        aliases: ["ls"],
+        arguments: "[id]",
+        description: "List | show things",
+        options: ["--json", "--host <id>"],
+        path: "thread list",
+      },
+      {
+        aliases: [],
+        arguments: "",
+        description: "Show status",
+        options: [],
+        path: "status",
+      },
+    ];
+    const page = cliReferencePage(commands);
+    expect(h2Headings(page.markdown)).toEqual([
+      "bb thread",
+      "bb status",
+      SOURCES_HEADING,
+    ]);
+    expect(page.markdown).toContain(
+      "| `bb thread list [id]` (also `ls`) | List \\| show things | `--json` `--host <id>` |",
+    );
+  });
+
+  it("has one page for every plugin surface, at the path Plugin Guide cards link to", () => {
+    const pagePaths = new Set(pages.map((page) => `/docs/${page.path}`));
+    for (const group of SURFACE_GROUPS) {
+      for (const surface of group.surfaces) {
+        expect(pagePaths).toContain(`${surfaceDocsPath(surface.id)}.md`);
+      }
+    }
+    expect(pagePaths).toContain(`/docs/${PLUGIN_SDK_SLUG}/index.md`);
+  });
+
+  it("only places generated pages that are in the sidebar", () => {
+    for (const page of pages) {
+      const slug = page.path.replace(/(\/index)?\.md$/u, "");
+      expect(navSectionOf(slug)).not.toBeNull();
+    }
+  });
 });

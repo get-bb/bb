@@ -28,6 +28,7 @@ export interface SurfaceMapState {
   expandedId?: string | null;
   numberOf: (id: string) => number | null;
   pluginPageHref?: (displayName: string) => string | null;
+  surfaceDocsHref?: (surfaceId: string) => string;
   renderPluginIcon?: (displayName: string) => ReactNode;
   onSelect?: (id: string) => void;
   currentGroupId?: string;
