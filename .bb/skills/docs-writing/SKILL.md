@@ -177,6 +177,8 @@ verified: 2026-10-30
   ```mdx
   ## Change the folder of a thread [#change-folder]
   ```
+
+  The link checker in the `@bb/web` tests resolves these ids.
 - **Images:** `<Shot todo="…" />` while drafting, `<Screenshot … />` once
   captured. See below.
 
@@ -204,7 +206,10 @@ pnpm exec turbo run test typecheck build --filter=@bb/web
 ```
 
 The `@bb/web` tests check front-matter, required headings, `<Shot>`
-placeholders and screenshots (light and dark files at 2×, sentence alt text).
+placeholders, screenshots (light and dark files at 2×, sentence alt text),
+and links: every `/docs/…` and `https://getbb.app/docs/…` link and every
+`#anchor` in hand-written and generated pages must reach an existing page and
+heading.
 
 Then open the page on the dev server and check the sidebar, the Copy page menu,
 search, and the `.md` copy at `/docs/<slug>.md`.

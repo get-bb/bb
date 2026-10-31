@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
+import { getTableOfContents } from "fumadocs-core/content/toc";
 import matter from "gray-matter";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -33,6 +34,8 @@ import {
 const WEB_ROOT = path.resolve(__dirname, "../..");
 const CONTENT_DIR = path.join(WEB_ROOT, "content/docs");
 const PUBLIC_DIR = path.join(WEB_ROOT, "public");
+const SITE_ORIGIN = "https://getbb.app";
+const NON_PAGE_DOCS_ROUTES = ["/docs/mcp", "/docs/search.json"];
 const TEMPLATES_DIR = path.resolve(
   WEB_ROOT,
   "../../.bb/skills/docs-writing/templates",
@@ -73,6 +76,10 @@ function slugOf(file: string): string {
   return relative.join("/");
 }
 
+function pageUrlOf(slug: string): string {
+  return slug === "" ? "/docs" : `/docs/${slug}`;
+}
+
 function withoutCodeFences(markdown: string): string {
   let inFence = false;
   return markdown
@@ -85,6 +92,78 @@ function withoutCodeFences(markdown: string): string {
       return !inFence;
     })
     .join("\n");
+}
+
+function linkTargets(markdown: string): string[] {
+  const text = withoutCodeFences(markdown).replace(/`[^`\n]*`/gu, "");
+  return [
+    ...[...text.matchAll(/\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/gu)].map(
+      (match) => match[1]!,
+    ),
+    ...[...text.matchAll(/\bhref=(?:"([^"]+)"|\{"([^"]+)"\})/gu)].map(
+      (match) => (match[1] ?? match[2])!,
+    ),
+  ];
+}
+
+interface LinkablePage {
+  url: string;
+  markdown: string;
+  anchors: ReadonlySet<string>;
+}
+
+function brokenLinks(
+  page: LinkablePage,
+  pages: ReadonlyMap<string, LinkablePage>,
+): string[] {
+  const problems: string[] = [];
+  for (const raw of linkTargets(page.markdown)) {
+    const target = raw.startsWith(`${SITE_ORIGIN}/docs`)
+      ? raw.slice(SITE_ORIGIN.length)
+      : raw;
+    if (!target.startsWith("/docs") && !target.startsWith("#")) continue;
+    const [pathPart = "", anchor] = target.split("#", 2);
+    const pagePath = pathPart === "" ? page.url : pathPart.replace(/\/$/u, "");
+    const resolvedUrl =
+      pagePath === "/docs/index.md" ? "/docs" : pagePath.replace(/\.md$/u, "");
+    if (NON_PAGE_DOCS_ROUTES.includes(pagePath) && anchor === undefined) {
+      continue;
+    }
+    const linked = pages.get(resolvedUrl);
+    if (!linked) {
+      problems.push(`${raw}: no docs page at ${resolvedUrl}`);
+    } else if (anchor !== undefined && !linked.anchors.has(anchor)) {
+      problems.push(`${raw}: ${resolvedUrl} has no heading #${anchor}`);
+    }
+  }
+  return problems;
+}
+
+function mdxLinkablePage(file: string): LinkablePage {
+  const content = matter(readFileSync(file, "utf8")).content;
+  return {
+    url: pageUrlOf(slugOf(file)),
+    markdown: content,
+    anchors: new Set(
+      getTableOfContents(content).map((item) => item.url.replace(/^#/u, "")),
+    ),
+  };
+}
+
+function referenceLinkablePages(): LinkablePage[] {
+  return referenceSource.files.flatMap((file) =>
+    file.type === "page"
+      ? [
+          {
+            url: pageUrlOf(file.path.replace(/(\/?index)?\.md$/u, "")),
+            markdown: file.data.markdown,
+            anchors: new Set(
+              file.data.structuredData.headings.map((heading) => heading.id),
+            ),
+          },
+        ]
+      : [],
+  );
 }
 
 function jsxAttribute(tag: string, name: string): string | undefined {
@@ -290,6 +369,49 @@ describe("generated reference pages", () => {
       const slug = page.path.replace(/(\/index)?\.md$/u, "");
       expect(navSectionOf(slug)).not.toBeNull();
     }
+  });
+});
+
+describe("docs links", () => {
+  const mdxPages = mdxFiles(CONTENT_DIR).map(mdxLinkablePage);
+  const allPages = [...mdxPages, ...referenceLinkablePages()];
+  const pagesByUrl = new Map(allPages.map((page) => [page.url, page]));
+
+  it.each(allPages.map((page) => [page.url, page]))(
+    "every /docs link and #anchor on %s resolves",
+    (_url, page) => {
+      expect(brokenLinks(page, pagesByUrl)).toEqual([]);
+    },
+  );
+
+  it("reports links to missing pages and headings", () => {
+    const target: LinkablePage = {
+      url: "/docs/cli",
+      markdown: "",
+      anchors: new Set(["bb-thread"]),
+    };
+    const page: LinkablePage = {
+      url: "/docs/example",
+      markdown: [
+        "## Setup",
+        "[ok](/docs/cli#bb-thread) [md](/docs/cli.md) [here](#setup)",
+        "[gone](/docs/nope) [bad anchor](https://getbb.app/docs/cli#bb-nope)",
+        '<a href="#missing">x</a> [mcp](/docs/mcp) [site](/guides)',
+        "```md",
+        "[in a fence](/docs/ignored)",
+        "```",
+      ].join("\n"),
+      anchors: new Set(["setup"]),
+    };
+    const pages = new Map([
+      [target.url, target],
+      [page.url, page],
+    ]);
+    expect(brokenLinks(page, pages)).toEqual([
+      "/docs/nope: no docs page at /docs/nope",
+      "https://getbb.app/docs/cli#bb-nope: /docs/cli has no heading #bb-nope",
+      "#missing: /docs/example has no heading #missing",
+    ]);
   });
 });
 
