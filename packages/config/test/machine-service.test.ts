@@ -1,8 +1,13 @@
+import { readFileSync, writeFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { findMachineServiceFile } from "../src/machine-service.js";
+import {
+  findMachineServiceFile,
+  HOST_DAEMON_PROCESS_NAME,
+  setLinuxProcessName,
+} from "../src/machine-service.js";
 
 const tempDirs: string[] = [];
 
@@ -169,4 +174,24 @@ describe("findMachineServiceFile", () => {
       findMachineServiceFile({ dataDir, homeDir, platform: "win32" }),
     ).resolves.toBeNull();
   });
+});
+
+describe("setLinuxProcessName", () => {
+  it.runIf(process.platform === "linux")(
+    "names the process for memory killers without touching its command line",
+    () => {
+      const originalName = readFileSync("/proc/self/comm", "utf8").trim();
+      const commandLine = readFileSync("/proc/self/cmdline", "utf8");
+      try {
+        setLinuxProcessName(HOST_DAEMON_PROCESS_NAME);
+
+        expect(readFileSync("/proc/self/comm", "utf8").trim()).toBe(
+          HOST_DAEMON_PROCESS_NAME,
+        );
+        expect(readFileSync("/proc/self/cmdline", "utf8")).toBe(commandLine);
+      } finally {
+        writeFileSync("/proc/self/comm", originalName);
+      }
+    },
+  );
 });

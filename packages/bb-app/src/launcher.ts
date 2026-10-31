@@ -33,6 +33,7 @@ import { stopVerifiedProcess } from "@bb/config/verified-process-stop";
 import {
   findMachineServiceFile,
   HOST_DAEMON_RESTART_EXIT_CODE,
+  HOST_DAEMON_SIGNAL_EXIT_CODES,
   MACHINE_INSTALLER_ENV_NAME,
 } from "@bb/config/machine-service";
 import {
@@ -2504,6 +2505,13 @@ function toExitCode(result: ProcessExitResult): number {
   return result.signal === null ? 1 : 128;
 }
 
+function toHostDaemonLauncherExitCode(result: ProcessExitResult): number {
+  const stoppedBySignal = Object.entries(HOST_DAEMON_SIGNAL_EXIT_CODES).some(
+    ([signal, code]) => result.signal === signal || result.code === code,
+  );
+  return stoppedBySignal ? 0 : toExitCode(result);
+}
+
 function delayMilliseconds(args: DelayMillisecondsArgs): Promise<void> {
   return new Promise((resolvePromise) => {
     setTimeout(resolvePromise, args.ms);
@@ -2991,7 +2999,7 @@ async function runHostDaemonOnly(args: RunHostDaemonOnlyArgs): Promise<void> {
         ? await Promise.race([ready.then(() => null), daemonExit])
         : await ready.then(() => null);
       if (exited !== null) {
-        process.exitCode = toExitCode(exited);
+        process.exitCode = toHostDaemonLauncherExitCode(exited);
         return;
       }
     } catch {
@@ -3023,7 +3031,7 @@ async function runHostDaemonOnly(args: RunHostDaemonOnlyArgs): Promise<void> {
     process.stdout.write("\n");
     log(" ", dim("Press Ctrl+C to stop"));
 
-    process.exitCode = toExitCode(await daemonExit);
+    process.exitCode = toHostDaemonLauncherExitCode(await daemonExit);
   } finally {
     readiness.abort();
     removeSignalForwarding();
@@ -3129,9 +3137,12 @@ Usage:
   bb-app host-daemon [--server-url <url>] [--host-daemon-port <port>] [--host-id <id>] [--enroll-key <key>] [--auto-update] [--supervise]
   bb-app host-daemon join --server-url <url> [--host-daemon-port <port>] [--join-code <code> --host-id <id>] [--auto-update]
 
-  --supervise restarts the host daemon when it crashes or installs an
-  update, for machines where no service manager restarts it. A daemon
-  that stops on purpose (exit 0) is not restarted.
+  --supervise restarts the host daemon when it crashes, installs an
+  update, or is stopped by a signal the launcher did not send (such as
+  an out-of-memory killer's SIGTERM), for machines where no service
+  manager restarts it. A daemon that stops on purpose (exit 0) is not
+  restarted. On Linux the launcher's process is named bb-app and the
+  daemon's bb-host-daemon, so a memory killer can spare them by name.
 
 CLI:
   npx --package bb-app bb <command>

@@ -1,8 +1,26 @@
+import { writeFileSync } from "node:fs";
 import { readdir, readFile, realpath } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 export const MACHINE_INSTALLER_ENV_NAME = "BB_MACHINE_INSTALLER";
 export const HOST_DAEMON_RESTART_EXIT_CODE = 75;
+export const HOST_DAEMON_SIGNAL_EXIT_CODES = {
+  SIGINT: 130,
+  SIGTERM: 143,
+} as const;
+export type HostDaemonSignalExitCode =
+  (typeof HOST_DAEMON_SIGNAL_EXIT_CODES)[keyof typeof HOST_DAEMON_SIGNAL_EXIT_CODES];
+export const BB_APP_PROCESS_NAME = "bb-app";
+export const HOST_DAEMON_PROCESS_NAME = "bb-host-daemon";
+
+export function setLinuxProcessName(name: string): void {
+  if (process.platform !== "linux") {
+    return;
+  }
+  try {
+    writeFileSync("/proc/self/comm", name);
+  } catch {}
+}
 
 const LAUNCHD_SERVICE_PREFIX = "app.getbb.host-daemon.";
 const LAUNCHD_SERVICE_SUFFIX = ".plist";

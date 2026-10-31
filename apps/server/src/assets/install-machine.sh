@@ -256,8 +256,9 @@ run_lifecycle() {
     case "$daemon_pid" in *[!0-9]*|'0'|'1') fail_step "Invalid installed daemon PID."; exit 1 ;; esac
     daemon_command=$(ps -p "$daemon_pid" -o command= 2>/dev/null) || return 1
     launcher="$data_dir/npm/bin/bb-app"
-    case " $daemon_command " in *" $launcher "*" host-daemon "*" --host-daemon-port $host_daemon_port "*" --server-url $server_url "*) return 0 ;; esac
-    fail_step "Recorded daemon PID belongs to another process."
+    case " $daemon_command " in *" $launcher host-daemon "*) ;; *) return 1 ;; esac
+    case " $daemon_command " in *" --host-daemon-port $host_daemon_port --server-url $server_url "*) return 0 ;; esac
+    fail_step "Recorded daemon PID runs a host daemon with another port or server URL."
     exit 1
   }
   if [ "$lifecycle_action" = start ]; then
@@ -981,10 +982,27 @@ stop_recorded_daemon() {
 }
 
 if [ "${BB_INSTALL_SKIP_SERVICE:-0}" = 1 ]; then
-  if [ "$reconnect" = yes ] && [ -z "$join_pid" ] && daemon_status_matches "$host_daemon_port" no; then
+  if [ -n "$join_pid" ]; then
+    active_step "Stopping the temporary join daemon so a supervised daemon replaces it"
+    kill "$join_pid" 2>/dev/null || true
+    wait "$join_pid" 2>/dev/null || true
+    stop_attempts=0
+    while daemon_status_matches "$host_daemon_port" no; do
+      stop_attempts=$((stop_attempts + 1))
+      if [ "$stop_attempts" -ge "$DAEMON_WAIT_ATTEMPTS" ]; then
+        fail_step "The temporary bb host daemon did not stop."
+        exit 1
+      fi
+      sleep 1
+    done
+    rm -f "$data_dir/install-daemon.pid"
+    join_pid=
+    complete_step "Stopped the temporary join daemon"
+  elif [ "$reconnect" = yes ] && daemon_status_matches "$host_daemon_port" no; then
     stop_recorded_daemon
   fi
-  if [ -z "$join_pid" ] && ! daemon_status_matches "$host_daemon_port" no; then
+  daemon_pid=
+  if ! daemon_status_matches "$host_daemon_port" no; then
     daemon_log="$data_dir/install-daemon.log"
     active_step "Starting the host daemon"
     detail "Host daemon output is logged to $daemon_log"
@@ -993,19 +1011,19 @@ if [ "${BB_INSTALL_SKIP_SERVICE:-0}" = 1 ]; then
       --supervise \
       --host-daemon-port "$host_daemon_port" \
       --server-url "$server_url" >"$daemon_log" 2>&1 &
-    join_pid=$!
-    echo "$join_pid" >"$data_dir/install-daemon.pid"
+    daemon_pid=$!
+    echo "$daemon_pid" >"$data_dir/install-daemon.pid"
     if ! wait_for_daemon_connection "the host daemon"; then
-      kill "$join_pid" 2>/dev/null || true
-      wait "$join_pid" 2>/dev/null || true
+      kill "$daemon_pid" 2>/dev/null || true
+      wait "$daemon_pid" 2>/dev/null || true
       fail_step "The bb host daemon did not connect to $server_url."
       detail "See $daemon_log" >&2
       exit 1
     fi
     complete_step "Host daemon connected"
   fi
-  if [ -n "$join_pid" ]; then
-    warning_step "Service installation skipped; temporary join daemon PID $join_pid is still running and will not restart if it exits or after a reboot."
+  if [ -n "$daemon_pid" ]; then
+    warning_step "Service installation skipped; host daemon PID $daemon_pid restarts when its daemon exits unexpectedly, but will not start after a reboot."
   else
     warning_step "Service installation skipped; the daemon is already running but will not start after a reboot."
   fi

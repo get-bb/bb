@@ -1,4 +1,7 @@
-import { HOST_DAEMON_RESTART_EXIT_CODE } from "@bb/config/machine-service";
+import {
+  HOST_DAEMON_RESTART_EXIT_CODE,
+  HOST_DAEMON_SIGNAL_EXIT_CODES,
+} from "@bb/config/machine-service";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { makeTempDir } from "@bb/test-helpers";
@@ -325,7 +328,9 @@ describe("daemon lifecycle", () => {
     signalSource.emit("SIGTERM");
     await daemon.waitUntilStopped();
 
-    expect(exitProcess).toHaveBeenCalledWith(0);
+    expect(exitProcess).toHaveBeenCalledWith(
+      HOST_DAEMON_SIGNAL_EXIT_CODES.SIGTERM,
+    );
     expect(logger.info).not.toHaveBeenCalledWith(
       expect.anything(),
       "Host daemon started",
@@ -334,4 +339,34 @@ describe("daemon lifecycle", () => {
     resolveStartup();
     await startPromise;
   });
+
+  it.for([
+    ["SIGINT", 130],
+    ["SIGTERM", 143],
+  ] as const)(
+    "exits %s-triggered shutdown with code %i so a supervisor can tell it from a requested stop",
+    async ([signal, exitCode]) => {
+      const signalSource = new FakeSignalSource();
+      const exitProcess = vi.fn();
+      const daemon = createDaemon({
+        identity: {
+          hostId: "host-1",
+          hostName: "test-host",
+          instanceId: "instance-1",
+        },
+        logger: createLogger(),
+        releaseLock: async () => undefined,
+        signalSource,
+        exitProcess,
+        shutdownExitGraceMs: 60_000,
+      });
+
+      await daemon.start();
+      signalSource.emit(signal);
+      await daemon.waitUntilStopped();
+
+      expect(exitProcess).toHaveBeenCalledOnce();
+      expect(exitProcess).toHaveBeenCalledWith(exitCode);
+    },
+  );
 });

@@ -758,7 +758,9 @@ the runtime path from `loginctl` when the user bus is unavailable and failing
 before enrollment if it still cannot reach it. In containers and on machines
 without systemd as init it runs a detached daemon instead. Set
 `BB_INSTALL_SKIP_SERVICE=1` on the installer command only when running without a
-service is intentional; nothing then restarts the daemon after a reboot.
+service is intentional; nothing then restarts the daemon after a reboot. Its
+`--supervise` launcher still restarts the daemon after a crash, a self-update,
+or a SIGTERM the launcher did not send.
 
 The installer writes these `config.json` fields; they are managed by bb, not
 user knobs. Do not copy, edit, or commit them, and re-add the machine instead of
