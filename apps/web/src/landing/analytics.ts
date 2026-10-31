@@ -21,6 +21,10 @@ type LandingEvent =
       properties: { placement: CtaPlacement; command: string };
     }
   | {
+      name: "landing_section_viewed";
+      properties: { section: string };
+    }
+  | {
       name: "landing_send_to_computer_clicked";
       properties: { placement: CtaPlacement };
     }
