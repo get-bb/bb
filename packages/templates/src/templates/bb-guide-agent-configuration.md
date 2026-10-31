@@ -79,7 +79,7 @@ Skills (.bb/skills/):
   machine's global agent skill roots (`~/.agents/skills` and
   `~/.claude/skills`) so agents running outside bb can drive it. It installs on
   every connected persistent machine unless you pass `--machine <id-or-name>`
-  (repeatable; required for a sandbox) (Settings → Skills has the same action). Machines install
+  (repeatable; required for a sandbox) (Settings → General → Skills has the same action). Machines install
   independently, so the command reports each machine's outcome and exits
   non-zero if any failed. The install replaces a previously installed copy of
   the same skill and leaves other skills alone. `bb skill cli-skills-status`

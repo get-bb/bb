@@ -37,6 +37,10 @@ credentials. If you use multiple providers, you can mix and match per task.
 
 - macOS
 - Linux
+- Windows 11 x64, native (alpha): run `npx bb-app@latest` in PowerShell or
+  CMD. [Git for Windows](https://git-scm.com/download/win) is required; bb uses
+  its Git and its bash for environment setup scripts. Project paths are
+  drive-letter paths such as `C:\Users\me\repo`.
 
 <details>
 <summary>Windows via Ubuntu on WSL2</summary>
@@ -132,8 +136,8 @@ To control bb from outside bb, open **Settings → General → Command line** an
 choose **Install** next to **bb CLI**. Threads in bb already have `bb`; this
 is for your own terminals, scripts, and agents running outside bb, such as
 Claude Code or Codex. bb links a launcher from `~/.bb/bin/bb` into a folder on
-your PATH (`~/.local/bin` on Linux; `/opt/homebrew/bin`, `/usr/local/bin`, or
-`~/.local/bin` on macOS). On Windows it adds `~/.bb/bin` to your user PATH;
+your PATH (`~/.local/bin` or `~/bin` on Linux; `/opt/homebrew/bin`,
+`/usr/local/bin`, `~/.local/bin`, or `~/bin` on macOS). On Windows it adds `~/.bb/bin` to your user PATH;
 open a new terminal afterwards. **Remove** takes it off again. bb leaves any
 other `bb` you already have in place.
 

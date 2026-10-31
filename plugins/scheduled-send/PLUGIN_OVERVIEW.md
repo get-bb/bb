@@ -2,7 +2,7 @@ Write a message now and let bb send it when you choose. The draft keeps its atta
 
 ## What you get
 
-- A **Send later…** entry in the composer plus menu.
+- A **Send later…** entry in the composer's **Send options** menu.
 - Presets for 5 minutes, 10 minutes, 30 minutes, 1 hour, 2 hours, this evening, and tomorrow morning.
 - A custom date and time picker with a preview of the local send time and time zone.
 - A queued card above the composer with a countdown, **Send now**, and **Delete**.
@@ -10,7 +10,7 @@ Write a message now and let bb send it when you choose. The draft keeps its atta
 ## How it works
 
 1. Type a message in a thread or in the new-thread screen.
-2. Open the plus menu and choose **Send later…**.
+2. Open **Send options** next to the send button and choose **Send later…**.
 3. Pick a preset or a custom time up to one year ahead.
 4. Choose **Schedule send**.
 
