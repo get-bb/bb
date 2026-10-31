@@ -338,14 +338,17 @@ lists what `bb project discover` and
 The guide shown is `control` (current) or `new` (redesign), from
 `GET /api/v1/system/setup-guide` (`sdk.system.experimental_setupGuide()`,
 `{ variant, featuredPluginEntryIds }`). The server resolves it once per run on
-the first request: `BB_SETUP_GUIDE_VARIANT` forces a variant for QA; with
-telemetry off or unavailable it is `control`; otherwise it reuses the
-assignment saved in `<dataDir>/setup-guide-assignment.json`, else evaluates the
-PostHog `setup-guide-redesign` flag for the anonymous install id (3-second
-timeout). Failures, a missing or disabled flag, or an unknown variant fall back
-to `control`. The `new` variant's flag payload `{"plugins": ["memory", ...]}`
-lists bb-official entry ids to feature; `featuredPluginEntryIds` is `null`
-when it is absent or invalid, and the app uses its default list.
+the first request from two independent PostHog flags evaluated in one
+request for the anonymous install id (3-second timeout): `setup-guide-redesign`
+picks `variant`, and `onboarding-featured-plugins` picks the featured plugins.
+Each flag is `control` on its own when telemetry is off or unavailable, or when
+its evaluation fails, it is missing or disabled, or its variant is unknown.
+Assignments saved in `<dataDir>/setup-guide-assignment.json` are reused.
+`BB_SETUP_GUIDE_VARIANT` forces only the guide variant for QA. The
+`onboarding-featured-plugins` `new` variant's payload
+`{"plugins": ["memory", ...]}` lists bb-official entry ids to feature in either
+guide; `featuredPluginEntryIds` is `null` when it is absent or invalid, and the
+app uses its default list.
 
 **Anonymous usage telemetry.** PostHog events carry a random install id, app
 version, install kind, platform, OS release, architecture, and Node version.
@@ -361,13 +364,15 @@ the app or run `bb plugin new`, so it records intent, not a finished plugin),
 and `release_notes_opened` from Settings → Updates (`view` `inline` when the
 notes open under the bb row, `web` for the full notes on getbb.app).
 `onboarding_exposed` (`entry` `first_run` or `replay`) marks the setup guide
-being shown: the server saves the setup-guide assignment, adds
-`setup_guide_variant` and `setup_guide_source` (`override`, `flag`, or
-`default`), sets the `setup_guide_variant` person property, and, when the
-variant came from the flag, also sends PostHog's `$feature_flag_called`. The
-server adds `setup_guide_variant` to every setup-guide event (`onboarding_*`
-and onboarding `recommendation`), and once a flag assignment is known every
-event, including `turn_finished`, carries `$feature/setup-guide-redesign`.
+being shown: the server saves both flag assignments, adds
+`setup_guide_variant`, `setup_guide_source`, `featured_plugins_variant`, and
+`featured_plugins_source` (`override`, `flag`, or `default`), sets both variants
+as person properties, and sends PostHog's `$feature_flag_called` for each flag
+that decided its variant. The server adds `setup_guide_variant` and
+`featured_plugins_variant` to every setup-guide event (`onboarding_*` and
+onboarding `recommendation`), and once a flag assignment is known every event,
+including `turn_finished`, carries `$feature/setup-guide-redesign` or
+`$feature/onboarding-featured-plugins`.
 `bb plugin new` sends `plugin_creation_started` with `app_surface` `api`, skips
 it inside a bb agent thread (so an agent acting on New plugin isn't counted
 twice), and skips it silently when no bb server answers within 2 seconds. The

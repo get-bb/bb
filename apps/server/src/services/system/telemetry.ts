@@ -102,7 +102,12 @@ export type TelemetryEvent =
         entry: "first_run" | "replay";
         setup_guide_variant: SetupGuideVariant;
         setup_guide_source: "override" | "flag" | "default";
-        $set: { setup_guide_variant: SetupGuideVariant };
+        featured_plugins_variant: SetupGuideVariant;
+        featured_plugins_source: "override" | "flag" | "default";
+        $set: {
+          setup_guide_variant: SetupGuideVariant;
+          featured_plugins_variant: SetupGuideVariant;
+        };
       };
     }
   | {
@@ -117,6 +122,7 @@ export type TelemetryEvent =
       name: RecordTelemetryEventRequest["name"];
       properties: Readonly<Record<string, unknown>> & {
         setup_guide_variant: SetupGuideVariant;
+        featured_plugins_variant: SetupGuideVariant;
       };
     };
 

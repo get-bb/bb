@@ -6,7 +6,6 @@ import {
   setupGuideVariantSchema,
   type RecordTelemetryEventRequest,
   type SetupGuideVariant,
-  type SystemSetupGuideResponse,
 } from "@bb/server-contract";
 import type { ServerLogger } from "../../types.js";
 import type {
@@ -16,19 +15,29 @@ import type {
 } from "./telemetry.js";
 
 export const SETUP_GUIDE_FLAG_KEY = "setup-guide-redesign";
+export const FEATURED_PLUGINS_FLAG_KEY = "onboarding-featured-plugins";
 export const SETUP_GUIDE_FLAG_TIMEOUT_MS = 3_000;
 export const SETUP_GUIDE_ASSIGNMENT_FILE_NAME = "setup-guide-assignment.json";
 const POSTHOG_FLAGS_URL = "https://us.i.posthog.com/flags?v=2";
-const FEATURE_PROPERTY_NAME = `$feature/${SETUP_GUIDE_FLAG_KEY}`;
 
 export type SetupGuideAssignmentSource = "override" | "flag" | "default";
 
-export interface SetupGuideAssignment extends SystemSetupGuideResponse {
+export interface FlagAssignment {
+  variant: SetupGuideVariant;
   source: SetupGuideAssignmentSource;
 }
 
+export interface FeaturedPluginsAssignment extends FlagAssignment {
+  featuredPluginEntryIds: string[] | null;
+}
+
+export interface SetupGuideAssignments {
+  guide: FlagAssignment;
+  plugins: FeaturedPluginsAssignment;
+}
+
 export interface SetupGuideExperiment {
-  resolve(): Promise<SetupGuideAssignment>;
+  resolve(): Promise<SetupGuideAssignments>;
   recordExposure(entry: "first_run" | "replay"): Promise<void>;
   annotate(event: RecordTelemetryEventRequest): Promise<TelemetryEvent>;
 }
@@ -42,19 +51,44 @@ interface CreateSetupGuideExperimentArgs {
   telemetry: TelemetryService;
 }
 
-const DEFAULT_ASSIGNMENT: SetupGuideAssignment = {
+const DEFAULT_GUIDE: FlagAssignment = { variant: "control", source: "default" };
+
+const DEFAULT_PLUGINS: FeaturedPluginsAssignment = {
   variant: "control",
-  featuredPluginEntryIds: null,
   source: "default",
+  featuredPluginEntryIds: null,
 };
 
-const persistedAssignmentSchema = z
+const persistedSourceSchema = z.enum(["flag", "default"]);
+
+const persistedGuideSchema = z
+  .object({ variant: setupGuideVariantSchema, source: persistedSourceSchema })
+  .strict();
+
+const persistedPluginsSchema = z
+  .object({
+    variant: setupGuideVariantSchema,
+    source: persistedSourceSchema,
+    featuredPluginEntryIds: z.array(z.string().min(1)).nullable(),
+  })
+  .strict();
+
+const persistedAssignmentsSchema = z
+  .object({
+    guide: persistedGuideSchema.nullable(),
+    plugins: persistedPluginsSchema.nullable(),
+  })
+  .strict();
+
+const singleFlagPersistedAssignmentSchema = z
   .object({
     variant: setupGuideVariantSchema,
     featuredPluginEntryIds: z.array(z.string().min(1)).nullable(),
-    source: z.enum(["flag", "default"]),
+    source: persistedSourceSchema,
   })
   .strict();
+
+type PersistedAssignments = z.infer<typeof persistedAssignmentsSchema>;
 
 const flagsResponseSchema = z.object({
   flags: z.record(z.string(), z.unknown()),
@@ -95,31 +129,65 @@ function parseFeaturedPluginEntryIds(payload: unknown): string[] | null {
   return parsed.success ? parsed.data.plugins : null;
 }
 
-export function assignmentFromFlagsResponse(
-  body: unknown,
-): SetupGuideAssignment {
-  const response = flagsResponseSchema.safeParse(body);
-  if (!response.success) return DEFAULT_ASSIGNMENT;
-  const flag = flagDetailSchema.safeParse(
-    response.data.flags[SETUP_GUIDE_FLAG_KEY],
-  );
-  if (!flag.success || !flag.data.enabled) return DEFAULT_ASSIGNMENT;
+function flagVariant(
+  flags: Record<string, unknown>,
+  key: string,
+): { variant: SetupGuideVariant; payload: unknown } | null {
+  const flag = flagDetailSchema.safeParse(flags[key]);
+  if (!flag.success || !flag.data.enabled) return null;
   const variant = setupGuideVariantSchema.safeParse(flag.data.variant);
-  if (!variant.success) return DEFAULT_ASSIGNMENT;
+  if (!variant.success) return null;
+  return { variant: variant.data, payload: flag.data.metadata?.payload };
+}
+
+export function assignmentsFromFlagsResponse(body: unknown): {
+  guide: FlagAssignment;
+  plugins: FeaturedPluginsAssignment;
+} {
+  const response = flagsResponseSchema.safeParse(body);
+  if (!response.success) {
+    return { guide: DEFAULT_GUIDE, plugins: DEFAULT_PLUGINS };
+  }
+  const guide = flagVariant(response.data.flags, SETUP_GUIDE_FLAG_KEY);
+  const plugins = flagVariant(response.data.flags, FEATURED_PLUGINS_FLAG_KEY);
   return {
-    variant: variant.data,
-    featuredPluginEntryIds:
-      variant.data === "new"
-        ? parseFeaturedPluginEntryIds(flag.data.metadata?.payload)
-        : null,
-    source: "flag",
+    guide:
+      guide === null
+        ? DEFAULT_GUIDE
+        : { variant: guide.variant, source: "flag" },
+    plugins:
+      plugins === null
+        ? DEFAULT_PLUGINS
+        : {
+            variant: plugins.variant,
+            source: "flag",
+            featuredPluginEntryIds:
+              plugins.variant === "new"
+                ? parseFeaturedPluginEntryIds(plugins.payload)
+                : null,
+          },
   };
 }
 
-async function readPersistedAssignment(
+function persistedFromJson(json: unknown): PersistedAssignments | null {
+  const current = persistedAssignmentsSchema.safeParse(json);
+  if (current.success) return current.data;
+  const singleFlag = singleFlagPersistedAssignmentSchema.safeParse(json);
+  if (!singleFlag.success) return null;
+  return {
+    guide: { variant: singleFlag.data.variant, source: singleFlag.data.source },
+    plugins: {
+      variant: "control",
+      source: "default",
+      featuredPluginEntryIds: singleFlag.data.featuredPluginEntryIds,
+    },
+  };
+}
+
+async function readPersistedAssignments(
   path: string,
   logger: ServerLogger,
-): Promise<SetupGuideAssignment | null> {
+): Promise<PersistedAssignments | null> {
   let text: string;
   try {
     text = await readFile(path, "utf8");
@@ -131,19 +199,20 @@ async function readPersistedAssignment(
     }
     return null;
   }
-  const parsed = persistedAssignmentSchema.safeParse(parseJsonText(text));
-  if (parsed.success) return parsed.data;
-  logger.debug({ path }, "Ignoring an invalid setup guide assignment file");
-  return null;
+  const parsed = persistedFromJson(parseJsonText(text));
+  if (parsed === null) {
+    logger.debug({ path }, "Ignoring an invalid setup guide assignment file");
+  }
+  return parsed;
 }
 
-async function writePersistedAssignment(
+async function writePersistedAssignments(
   path: string,
-  assignment: z.infer<typeof persistedAssignmentSchema>,
+  assignments: PersistedAssignments,
 ): Promise<void> {
   const tempPath = `${path}.${randomBytes(6).toString("hex")}.tmp`;
   try {
-    await writeFile(tempPath, `${JSON.stringify(assignment)}\n`, {
+    await writeFile(tempPath, `${JSON.stringify(assignments)}\n`, {
       encoding: "utf8",
       mode: 0o600,
     });
@@ -154,30 +223,61 @@ async function writePersistedAssignment(
   }
 }
 
+function persistedGuide(
+  assignment: FlagAssignment,
+): PersistedAssignments["guide"] {
+  return assignment.source === "override"
+    ? null
+    : { variant: assignment.variant, source: assignment.source };
+}
+
+function persistedPlugins(
+  assignment: FeaturedPluginsAssignment,
+): PersistedAssignments["plugins"] {
+  return assignment.source === "override"
+    ? null
+    : {
+        variant: assignment.variant,
+        source: assignment.source,
+        featuredPluginEntryIds: assignment.featuredPluginEntryIds,
+      };
+}
+
 export async function createSetupGuideExperiment(
   args: CreateSetupGuideExperimentArgs,
 ): Promise<SetupGuideExperiment> {
   const assignmentPath = join(args.dataDir, SETUP_GUIDE_ASSIGNMENT_FILE_NAME);
-  let persisted =
-    args.override === null
-      ? await readPersistedAssignment(assignmentPath, args.logger)
-      : null;
-  let resolution: Promise<SetupGuideAssignment> | null = null;
+  let persisted = await readPersistedAssignments(assignmentPath, args.logger);
+  let resolution: Promise<SetupGuideAssignments> | null = null;
 
-  function tagFlagVariant(assignment: SetupGuideAssignment): void {
-    if (assignment.source === "flag") {
+  function tagFlagVariants(assignments: {
+    guide: FlagAssignment | null;
+    plugins: FlagAssignment | null;
+  }): void {
+    if (assignments.guide?.source === "flag") {
       args.telemetry.setSharedProperty(
-        FEATURE_PROPERTY_NAME,
-        assignment.variant,
+        `$feature/${SETUP_GUIDE_FLAG_KEY}`,
+        assignments.guide.variant,
+      );
+    }
+    if (assignments.plugins?.source === "flag") {
+      args.telemetry.setSharedProperty(
+        `$feature/${FEATURED_PLUGINS_FLAG_KEY}`,
+        assignments.plugins.variant,
       );
     }
   }
 
-  if (persisted !== null) tagFlagVariant(persisted);
+  if (persisted !== null) {
+    tagFlagVariants({
+      guide: args.override === null ? persisted.guide : null,
+      plugins: persisted.plugins,
+    });
+  }
 
-  async function fetchFlagAssignment(
+  async function fetchFlagAssignments(
     identity: FeatureFlagIdentity,
-  ): Promise<SetupGuideAssignment> {
+  ): Promise<{ guide: FlagAssignment; plugins: FeaturedPluginsAssignment }> {
     try {
       const response = await args.fetch(POSTHOG_FLAGS_URL, {
         body: JSON.stringify({
@@ -193,35 +293,43 @@ export async function createSetupGuideExperiment(
           { status: response.status },
           "Setup guide flag evaluation failed",
         );
-        return DEFAULT_ASSIGNMENT;
+        return { guide: DEFAULT_GUIDE, plugins: DEFAULT_PLUGINS };
       }
-      return assignmentFromFlagsResponse(await response.json());
+      return assignmentsFromFlagsResponse(await response.json());
     } catch (error) {
       args.logger.debug({ err: error }, "Setup guide flag evaluation failed");
-      return DEFAULT_ASSIGNMENT;
+      return { guide: DEFAULT_GUIDE, plugins: DEFAULT_PLUGINS };
     }
   }
 
-  async function resolveAssignment(): Promise<SetupGuideAssignment> {
-    if (args.override !== null) {
-      return {
-        variant: args.override,
-        featuredPluginEntryIds: null,
-        source: "override",
-      };
-    }
+  async function resolveAssignments(): Promise<SetupGuideAssignments> {
+    const override: FlagAssignment | null =
+      args.override === null
+        ? null
+        : { variant: args.override, source: "override" };
     const identity = args.telemetry.featureFlagIdentity();
     if (identity === null || !args.telemetry.isEnabled()) {
-      return DEFAULT_ASSIGNMENT;
+      return { guide: override ?? DEFAULT_GUIDE, plugins: DEFAULT_PLUGINS };
     }
-    if (persisted !== null) return persisted;
-    return fetchFlagAssignment(identity);
+    const savedGuide = persisted?.guide ?? null;
+    const savedPlugins = persisted?.plugins ?? null;
+    if ((override !== null || savedGuide !== null) && savedPlugins !== null) {
+      return {
+        guide: override ?? savedGuide ?? DEFAULT_GUIDE,
+        plugins: savedPlugins,
+      };
+    }
+    const fetched = await fetchFlagAssignments(identity);
+    return {
+      guide: override ?? savedGuide ?? fetched.guide,
+      plugins: savedPlugins ?? fetched.plugins,
+    };
   }
 
-  function resolve(): Promise<SetupGuideAssignment> {
-    resolution ??= resolveAssignment().then((assignment) => {
-      tagFlagVariant(assignment);
-      return assignment;
+  function resolve(): Promise<SetupGuideAssignments> {
+    resolution ??= resolveAssignments().then((assignments) => {
+      tagFlagVariants(assignments);
+      return assignments;
     });
     return resolution;
   }
@@ -229,16 +337,18 @@ export async function createSetupGuideExperiment(
   return {
     resolve,
     async recordExposure(entry) {
-      const assignment = await resolve();
+      const { guide, plugins } = await resolve();
       if (!args.telemetry.isEnabled()) return;
-      if (assignment.source !== "override" && persisted === null) {
-        const toPersist = {
-          variant: assignment.variant,
-          featuredPluginEntryIds: assignment.featuredPluginEntryIds,
-          source: assignment.source,
-        };
+      const toPersist: PersistedAssignments = {
+        guide: persisted?.guide ?? persistedGuide(guide),
+        plugins: persisted?.plugins ?? persistedPlugins(plugins),
+      };
+      if (
+        toPersist.guide !== (persisted?.guide ?? null) ||
+        toPersist.plugins !== (persisted?.plugins ?? null)
+      ) {
         try {
-          await writePersistedAssignment(assignmentPath, toPersist);
+          await writePersistedAssignments(assignmentPath, toPersist);
           persisted = toPersist;
         } catch (error) {
           args.logger.warn(
@@ -247,22 +357,32 @@ export async function createSetupGuideExperiment(
           );
         }
       }
-      if (assignment.source === "flag") {
-        args.telemetry.capture({
-          name: "$feature_flag_called",
-          properties: {
-            $feature_flag: SETUP_GUIDE_FLAG_KEY,
-            $feature_flag_response: assignment.variant,
-          },
-        });
+      for (const [key, assignment] of [
+        [SETUP_GUIDE_FLAG_KEY, guide],
+        [FEATURED_PLUGINS_FLAG_KEY, plugins],
+      ] as const) {
+        if (assignment.source === "flag") {
+          args.telemetry.capture({
+            name: "$feature_flag_called",
+            properties: {
+              $feature_flag: key,
+              $feature_flag_response: assignment.variant,
+            },
+          });
+        }
       }
       args.telemetry.capture({
         name: "onboarding_exposed",
         properties: {
           entry,
-          setup_guide_variant: assignment.variant,
-          setup_guide_source: assignment.source,
-          $set: { setup_guide_variant: assignment.variant },
+          setup_guide_variant: guide.variant,
+          setup_guide_source: guide.source,
+          featured_plugins_variant: plugins.variant,
+          featured_plugins_source: plugins.source,
+          $set: {
+            setup_guide_variant: guide.variant,
+            featured_plugins_variant: plugins.variant,
+          },
         },
       });
     },
@@ -270,12 +390,13 @@ export async function createSetupGuideExperiment(
       if (!args.telemetry.isEnabled() || !isSetupGuideTelemetryEvent(event)) {
         return event;
       }
-      const assignment = await resolve();
+      const { guide, plugins } = await resolve();
       return {
         name: event.name,
         properties: {
           ...event.properties,
-          setup_guide_variant: assignment.variant,
+          setup_guide_variant: guide.variant,
+          featured_plugins_variant: plugins.variant,
         },
       };
     },
