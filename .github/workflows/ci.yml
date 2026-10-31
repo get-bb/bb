@@ -422,6 +422,7 @@ jobs:
               filters+=(--filter '@bb/server...' --filter '@bb/cli...' --filter 'bb-plugin-provider-*...')
             fi
             while IFS= read -r package; do
+              [[ -z "$package" ]] && continue
               filters+=(--filter "$package...")
             done <<< "$packages"
           elif [[ "$MOBILE_TESTS" != "true" ]]; then
