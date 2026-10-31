@@ -1,70 +1,15 @@
-import { useRef, useState } from "react";
+import { useId, useState } from "react";
 import { isBackgroundAgentTaskType } from "@bb/domain";
 import type { TimelineWorkflowWorkRow } from "@bb/server-contract";
-import { useResizeObserver } from "usehooks-ts";
-import {
-  PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
-  PROMPT_STACK_CARD_ROW_HEIGHT,
-  PromptStackCard,
-} from "@/components/promptbox/banner/PromptStackCard";
+import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
 import { LiveDurationText } from "@/components/thread/timeline/LiveDurationText";
+import { activityIconClass } from "@bb/shared-ui/activity-row-styles";
 import { Icon } from "@bb/shared-ui/icon";
-import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import {
-  activityIconClass,
-  activityMetaClass,
-  activityRowClass,
-  activityTextClass,
-} from "@bb/shared-ui/activity-row-styles";
 import { cn } from "@bb/shared-ui/lib/utils";
-import {
-  PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
-  PromptStackCountSlot,
-  PromptStackHoverChevron,
-  useDisclosureFocusHandoff,
-  AnimatedDisclosureBody,
-} from "@bb/shared-ui/prompt-stack-disclosure";
 
-const BODY_ID = "thread-background-commands-card-body";
-const TOGGLE_ID = "thread-background-commands-card-toggle";
-const COMPACT_PROMPT_SHELL_MAX_WIDTH_REM = 34;
-const DEFAULT_ROOT_FONT_SIZE_PX = 16;
-
-function isCompactPromptShellWidth(width: number): boolean {
-  const parsedRootFontSize =
-    typeof window === "undefined"
-      ? Number.NaN
-      : Number.parseFloat(
-          window.getComputedStyle(document.documentElement).fontSize,
-        );
-  const rootFontSize = Number.isFinite(parsedRootFontSize)
-    ? parsedRootFontSize
-    : DEFAULT_ROOT_FONT_SIZE_PX;
-  return width <= COMPACT_PROMPT_SHELL_MAX_WIDTH_REM * rootFontSize;
-}
-
-interface BackgroundActivityDisplay {
-  icon: "Terminal" | "UserRoundPlus";
-  label: string;
-  runningPrefix: string;
-}
-
-function backgroundActivityDisplay(
-  row: TimelineWorkflowWorkRow,
-): BackgroundActivityDisplay {
-  if (isBackgroundAgentTaskType(row.taskType)) {
-    return {
-      icon: "UserRoundPlus",
-      label: "Background agent",
-      runningPrefix: "Running background agent:",
-    };
-  }
-  return {
-    icon: "Terminal",
-    label: "Background command",
-    runningPrefix: "Running background command:",
-  };
-}
+const ROW_CLASS =
+  "flex h-8 w-full min-w-0 items-center gap-2 px-3 text-left text-xs";
+const OLDER_ROW_STAGGER_MS = 40;
 
 function backgroundActivityGroupLabel(
   rows: readonly TimelineWorkflowWorkRow[],
@@ -83,76 +28,40 @@ function backgroundActivityModel(row: TimelineWorkflowWorkRow): string | null {
   return isBackgroundAgentTaskType(row.taskType) ? row.model : null;
 }
 
-function backgroundActivityAriaLabel(
-  row: TimelineWorkflowWorkRow,
-  label = backgroundActivityDisplay(row).label,
-): string {
-  const model = backgroundActivityModel(row);
-  return model
-    ? `${label}: ${row.description} · Model ${model}`
-    : `${label}: ${row.description}`;
-}
-
-function compactBackgroundActivityLabel(
-  rows: readonly TimelineWorkflowWorkRow[],
-): string {
-  const agentCount = rows.filter((row) =>
-    isBackgroundAgentTaskType(row.taskType),
-  ).length;
-  const commandCount = rows.length - agentCount;
-  if (commandCount === 0) {
-    return `Running ${agentCount} background agent${agentCount === 1 ? "" : "s"}`;
-  }
-  if (agentCount === 0) {
-    return `Running ${commandCount} background command${commandCount === 1 ? "" : "s"}`;
-  }
-  return `Running ${rows.length} background activities`;
-}
-
-function BackgroundActivitySummary({
+function BackgroundActivityRow({
   row,
   showDuration,
 }: {
   row: TimelineWorkflowWorkRow;
   showDuration: boolean;
 }) {
-  const display = backgroundActivityDisplay(row);
+  const isAgent = isBackgroundAgentTaskType(row.taskType);
   const model = backgroundActivityModel(row);
   return (
-    <span className="flex min-w-0 flex-1 items-center gap-1 text-left">
+    <>
+      <Icon
+        name={isAgent ? "UserRoundPlus" : "Terminal"}
+        className={activityIconClass("active", "size-3.5 shrink-0")}
+        aria-hidden="true"
+      />
       <span
-        className={cn(
-          "shrink-0 whitespace-nowrap",
-          activityMetaClass("active"),
-        )}
-      >
-        {display.runningPrefix}
-      </span>
-      <span
-        className={cn("min-w-0 truncate", activityTextClass("active"))}
+        className="min-w-0 truncate text-foreground"
         title={row.description}
       >
         {row.description}
       </span>
       {model ? (
         <span
-          className={cn(
-            "shrink-0 whitespace-nowrap font-mono text-2xs",
-            activityMetaClass("active"),
-          )}
+          className="shrink-0 font-mono text-2xs text-subtle-foreground"
           title={`Model: ${model}`}
         >
           {model}
         </span>
       ) : null}
-      {showDuration ? (
-        <span
-          className={cn("shrink-0 tabular-nums", activityMetaClass("active"))}
-        >
-          <LiveDurationText startedAt={row.startedAt} />
-        </span>
-      ) : null}
-    </span>
+      <span className="shrink-0 whitespace-nowrap tabular-nums text-subtle-foreground">
+        {showDuration ? <LiveDurationText startedAt={row.startedAt} /> : null}
+      </span>
+    </>
   );
 }
 
@@ -167,156 +76,97 @@ export function ThreadBackgroundCommandsCard({
   isExpanded,
   onToggle,
 }: ThreadBackgroundCommandsCardProps) {
-  const isCompactViewport = useIsCompactViewport();
-  const cardRef = useRef<HTMLElement>(null!);
-  const [isCompactCard, setIsCompactCard] = useState<boolean | null>(null);
-  const focus = useDisclosureFocusHandoff(isExpanded, onToggle);
-  useResizeObserver({
-    ref: cardRef,
-    box: "border-box",
-    onResize: ({ width }) => {
-      if (width === undefined) return;
-      const nextIsCompact = isCompactPromptShellWidth(width);
-      setIsCompactCard((previous) =>
-        previous === nextIsCompact ? previous : nextIsCompact,
-      );
-    },
-  });
-  const primary = commands[0];
-  if (!primary) {
+  const olderListId = useId();
+  const [hasOpenedOlder, setHasOpenedOlder] = useState(isExpanded);
+  const keepsOlderRows = commands.length > 1 && (hasOpenedOlder || isExpanded);
+  if (keepsOlderRows !== hasOpenedOlder) {
+    setHasOpenedOlder(keepsOlderRows);
+  }
+  const newest = commands[0];
+  if (!newest) {
     return null;
   }
-  const others = commands.slice(1);
-  const hasMore = others.length > 0;
-  const useCompactSummary = isCompactCard ?? isCompactViewport;
-  const canExpand = hasMore || useCompactSummary;
-  const expandedRows = useCompactSummary ? commands : others;
-  const compactLabel = compactBackgroundActivityLabel(commands);
-  const primaryDisplay = backgroundActivityDisplay(primary);
+  const older = commands.slice(1).reverse();
   const groupLabel = backgroundActivityGroupLabel(commands);
+  const newestModel = backgroundActivityModel(newest);
 
   return (
     <PromptStackCard
-      rootRef={cardRef}
       ariaLabel={groupLabel}
-      className="overflow-hidden"
-      style={{ minHeight: PROMPT_STACK_CARD_ROW_HEIGHT }}
+      className="overflow-hidden bg-background shadow-xs"
     >
-      <div className="flex items-center">
-        {canExpand ? (
+      {older.length === 0 ? (
+        <div className={ROW_CLASS}>
+          <BackgroundActivityRow row={newest} showDuration />
+        </div>
+      ) : (
+        <>
+          <div
+            aria-hidden={!isExpanded}
+            inert={!isExpanded}
+            className={cn(
+              "grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none",
+              isExpanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+            )}
+          >
+            <ul
+              id={olderListId}
+              className="flex min-h-0 flex-col justify-end overflow-hidden"
+            >
+              {hasOpenedOlder
+                ? older.map((row, index) => (
+                    <li
+                      key={row.id}
+                      className={cn(
+                        ROW_CLASS,
+                        "shrink-0 transition-[opacity,translate] duration-200 ease-out starting:translate-y-1.5 starting:opacity-0 motion-reduce:transition-none",
+                        isExpanded
+                          ? "translate-y-0 opacity-100"
+                          : "translate-y-1.5 opacity-0",
+                      )}
+                      style={
+                        isExpanded
+                          ? {
+                              transitionDelay: `${(older.length - 1 - index) * OLDER_ROW_STAGGER_MS}ms`,
+                            }
+                          : undefined
+                      }
+                    >
+                      <BackgroundActivityRow
+                        row={row}
+                        showDuration={isExpanded}
+                      />
+                    </li>
+                  ))
+                : null}
+            </ul>
+          </div>
           <button
             type="button"
-            id={TOGGLE_ID}
             aria-expanded={isExpanded}
-            aria-controls={BODY_ID}
-            aria-label={
-              useCompactSummary
-                ? compactLabel
-                : backgroundActivityAriaLabel(primary, groupLabel)
-            }
-            ref={focus.triggerRef}
-            onClick={focus.onTriggerClick}
-            className={activityRowClass(
-              "active",
-              cn(
-                PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
-                PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
-              ),
+            aria-controls={olderListId}
+            aria-label={`${groupLabel} (${commands.length}): ${newest.description}${newestModel ? ` · Model ${newestModel}` : ""}`}
+            onClick={onToggle}
+            className={cn(
+              ROW_CLASS,
+              "group/toggle cursor-pointer transition-colors hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring",
             )}
           >
-            <Icon
-              name={primaryDisplay.icon}
-              className={activityIconClass("active", "size-3.5 shrink-0")}
-              aria-hidden="true"
-            />
-            {useCompactSummary ? (
-              <>
-                <span className="min-w-0 flex-1 truncate text-left font-medium">
-                  {compactLabel}
-                </span>
-                <PromptStackHoverChevron isExpanded={isExpanded} />
-              </>
-            ) : (
-              <>
-                <BackgroundActivitySummary row={primary} showDuration={false} />
-                <PromptStackCountSlot count={commands.length} />
-              </>
-            )}
+            <BackgroundActivityRow row={newest} showDuration />
+            <span className="ml-auto inline-flex h-4.5 shrink-0 items-center gap-0.5 rounded-full bg-surface-recessed pr-1 pl-1.5 text-2xs leading-none tabular-nums text-muted-foreground transition-colors group-hover/toggle:bg-state-active group-hover/toggle:text-foreground">
+              {commands.length}
+              <Icon
+                name="ChevronUp"
+                className={cn(
+                  "size-3 transition-transform duration-200 ease-out motion-reduce:transition-none",
+                  isExpanded && "rotate-180",
+                )}
+                aria-hidden="true"
+              />
+            </span>
           </button>
-        ) : (
-          <div
-            className={activityRowClass(
-              "active",
-              "flex min-h-8 w-full min-w-0 cursor-default items-center gap-1.5 rounded-none px-3 py-1.5 text-xs text-foreground",
-            )}
-            aria-label={backgroundActivityAriaLabel(primary)}
-          >
-            <Icon
-              name={primaryDisplay.icon}
-              className={activityIconClass("active", "size-3.5 shrink-0")}
-              aria-hidden="true"
-            />
-            <BackgroundActivitySummary row={primary} showDuration />
-          </div>
-        )}
-      </div>
-      {canExpand ? (
-        <AnimatedDisclosureBody
-          id={BODY_ID}
-          labelledBy={TOGGLE_ID}
-          isExpanded={isExpanded}
-          collapsedBorder="none"
-          collapseLabel={`Collapse ${groupLabel.toLowerCase()}`}
-          collapseRef={focus.collapseRef}
-          onCollapse={focus.onCollapseClick}
-        >
-          <div className="flex flex-col gap-0.5 py-1">
-            {expandedRows.map((row) => {
-              const display = backgroundActivityDisplay(row);
-              const model = backgroundActivityModel(row);
-              return (
-                <div
-                  key={row.id}
-                  className={cn(
-                    "flex min-w-0 gap-1.5 px-3 py-0.5 text-xs",
-                    useCompactSummary ? "items-start" : "items-center",
-                  )}
-                >
-                  <span className="flex h-[1lh] shrink-0 items-center">
-                    <Icon
-                      name={display.icon}
-                      className="size-3.5 text-muted-foreground/60"
-                      aria-hidden="true"
-                    />
-                  </span>
-                  <span
-                    className={cn(
-                      "min-w-0 flex-1 text-muted-foreground",
-                      useCompactSummary ? "line-clamp-2 break-all" : "truncate",
-                    )}
-                    title={row.description}
-                  >
-                    {row.description}
-                  </span>
-                  {model ? (
-                    <span
-                      className="shrink-0 whitespace-nowrap font-mono text-2xs text-subtle-foreground"
-                      title={`Model: ${model}`}
-                    >
-                      {model}
-                    </span>
-                  ) : null}
-                  <span className="shrink-0 whitespace-nowrap tabular-nums text-subtle-foreground">
-                    {isExpanded ? (
-                      <LiveDurationText startedAt={row.startedAt} />
-                    ) : null}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </AnimatedDisclosureBody>
-      ) : null}
+        </>
+      )}
     </PromptStackCard>
   );
 }
