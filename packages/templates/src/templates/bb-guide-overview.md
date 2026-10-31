@@ -13,7 +13,7 @@ Core concepts:
 - Thread — a single agent conversation. The fundamental unit of work.
 - Environment — where a thread runs. Kinds: project checkout or isolated worktree. Multiple threads can share an environment.
 - Machine — an execution host where project sources and thread environments live.
-- Terminal — a persistent PTY session scoped to a thread, environment, or machine path. Use terminals for long-running commands such as dev servers.
+- Terminal — a persistent PTY session scoped to a thread, environment, or machine path. Use terminals for long-running commands such as dev servers, and `bb exec` to run one command on another machine and get its output and exit code.
 - Provider — the agent backend powering a thread (e.g., codex, claude-code). Each provider supports different models.
 
 Threads can have a parent-child relationship. The parent coordinates the child and receives lifecycle notifications when it completes, fails, or is interrupted. Threads without a parent are managed directly by the user.
@@ -69,7 +69,8 @@ Run `bb guide <chapter>` for command details:
   projects             Project CRUD and sources
   machines             Listing and targeting execution machines, moving the
                        server
-  terminals            Persistent PTY sessions across all supported scopes
+  terminals            Running commands on other machines with bb exec, and
+                       persistent PTY sessions across all supported scopes
   browser              Experimental built-in browser tabs and control leases
   customization        Theme, server-backed settings, keyboard shortcuts,
                        sidebar preferences, host files, voice
