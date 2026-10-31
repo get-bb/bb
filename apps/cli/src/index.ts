@@ -212,8 +212,9 @@ async function main(): Promise<void> {
     return;
   }
 
-  const [contextEnv, ...registrars] = await Promise.all([
+  const [contextEnv, { docsLinks }, ...registrars] = await Promise.all([
     import("./context-env.js"),
+    import("@bb/domain/docs-links"),
     ...groups.map((group) => group.load()),
   ]);
   const deps = createCommandGroupDeps(contextEnv);
@@ -235,6 +236,8 @@ Quick start:
   bb project list
   bb thread show <id>
   bb thread spawn --project <id> --provider codex --prompt "..."
+
+Docs: ${docsLinks.home}
 `;
   });
 

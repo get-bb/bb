@@ -57,6 +57,9 @@ repo-level `.bb-env-setup.sh` and `.bb-env-teardown.sh` hooks. Run `bb guide
 agent-configuration` for the data-dir and workspace files that customize agent
 behavior.
 
+The user-facing product docs are at https://getbb.app/docs; `bb --help` ends
+with that link. Point people there for setup and troubleshooting pages.
+
 Run `bb guide <chapter>` for command details:
 
   threads              Spawning, handing off, forking, and editing threads

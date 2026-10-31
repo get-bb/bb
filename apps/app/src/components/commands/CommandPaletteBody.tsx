@@ -34,8 +34,21 @@ import {
   PaletteShortcut,
 } from "./PaletteShell";
 import { COMMAND_PALETTE_INPUT } from "./PaletteInputBand";
+import { docsLinks } from "@bb/domain/docs-links";
+import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 
 const THREAD_SEARCH_ACTION_ID = paletteActionIdForCommand("thread.search");
+
+const HELP_ACTIONS: readonly PaletteAction[] = [
+  {
+    id: "help:open-docs",
+    bucket: "Actions",
+    group: "Help",
+    title: "Open docs",
+    shortcut: null,
+    run: () => openUrlInExternalBrowser(docsLinks.home),
+  },
+];
 
 export interface CommandPaletteBodyProps {
   actions: readonly PaletteAction[];
@@ -111,6 +124,7 @@ export function CommandPaletteBody({
       ...settingsActions,
       ...pluginPageActions,
       ...serverActions,
+      ...HELP_ACTIONS,
     ],
     [actions, pluginPageActions, settingsActions, serverActions],
   );

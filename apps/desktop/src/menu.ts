@@ -6,6 +6,7 @@ import {
   type MenuItemConstructorOptions,
 } from "electron";
 import type { BbDesktopZoomCommand } from "@bb/desktop-contract";
+import { bbHelpLinks, docsLinks } from "@bb/domain/docs-links";
 import type { ApplicationMenuAccelerators } from "./desktop-menu-shortcuts.js";
 import { builtinServerName } from "./server-target.js";
 import type { ConnectServerSyncSkipReason } from "./connect-server-sync.js";
@@ -17,6 +18,13 @@ const NEW_THREAD_MENU_LABEL = "New Thread";
 const NEW_WINDOW_MENU_LABEL = "New Window";
 const CLOSE_WINDOW_MENU_LABEL = "Close Window";
 const OPEN_SETTINGS_MENU_LABEL = "Settings…";
+const HELP_LINK_MENU_ITEMS = [
+  { label: "bb Docs", url: docsLinks.home },
+  { label: "Keyboard Shortcuts", url: docsLinks.keyboardShortcuts },
+  { label: "Release Notes", url: bbHelpLinks.releaseNotes },
+  { label: "Discord", url: bbHelpLinks.discord },
+  { label: "Report a Bug", url: bbHelpLinks.reportBug },
+] as const;
 const VIEW_LICENSE_MENU_LABEL = "View License";
 const LICENSE_URL = "https://github.com/get-bb/bb/blob/main/LICENSE";
 const UNINSTALL_MENU_LABEL = "How to Uninstall bb";
@@ -339,6 +347,15 @@ export function buildApplicationMenuTemplate(
     {
       role: "help",
       submenu: [
+        ...HELP_LINK_MENU_ITEMS.map(
+          (item): MenuItemConstructorOptions => ({
+            label: item.label,
+            click: () => {
+              void shell.openExternal(item.url);
+            },
+          }),
+        ),
+        { type: "separator" },
         {
           label: VIEW_LICENSE_MENU_LABEL,
           click: () => {

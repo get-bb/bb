@@ -1,3 +1,5 @@
+import { docsLinks } from "@bb/domain/docs-links";
+import { AppDocsLink } from "@/components/ui/app-docs-link";
 import { nanoid } from "nanoid";
 import { MachineAccessControls } from "@/components/settings/MachineAccessSettings";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
@@ -305,8 +307,15 @@ export function ManualMachineSetupView({
             errorMessage === null ? undefined : "text-destructive-text"
           }
         >
-          {errorMessage ??
-            "Run this command on the machine you want to add. It installs bb and keeps the machine connected to this server."}
+          {errorMessage ?? (
+            <>
+              Run this command on the machine you want to add. It installs bb
+              and keeps the machine connected to this server.{" "}
+              <AppDocsLink href={docsLinks.addMachine}>
+                Learn more about adding machines
+              </AppDocsLink>
+            </>
+          )}
         </DialogDescription>
       </DialogHeader>
       {errorMessage === null ? null : (

@@ -4,6 +4,7 @@ import { getTableOfContents } from "fumadocs-core/content/toc";
 import matter from "gray-matter";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
+import { DOCS_LINK_SOURCE_QUERY, docsLinks } from "@bb/domain/docs-links";
 
 import { surfaceDocsPath } from "../../../../plugins/plugin-api-docs/src/surface-docs";
 import { SURFACE_GROUPS } from "../../../../plugins/plugin-api-docs/src/surfaces";
@@ -42,6 +43,8 @@ const CONTENT_DIR = path.join(WEB_ROOT, "content/docs");
 const PUBLIC_DIR = path.join(WEB_ROOT, "public");
 const SITE_ORIGIN = "https://getbb.app";
 const NON_PAGE_DOCS_ROUTES = ["/docs/mcp", "/docs/search.json"];
+const PLUGINS_DIR = path.resolve(WEB_ROOT, "../../plugins");
+const PLUGIN_DOCS_URL = /https:\/\/getbb\.app\/docs(?:[/?#][^"'`\s)}]*)?/gu;
 const TEMPLATES_DIR = path.resolve(
   WEB_ROOT,
   "../../.bb/skills/docs-writing/templates",
@@ -58,6 +61,34 @@ function mdxFiles(dir: string): string[] {
     if (entry.isDirectory()) return mdxFiles(entryPath);
     return entry.name.endsWith(".mdx") ? [entryPath] : [];
   });
+}
+
+function pluginSourceFiles(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const entryPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      return entry.name === "node_modules" ||
+        entry.name === "dist" ||
+        entry.name.startsWith(".")
+        ? []
+        : pluginSourceFiles(entryPath);
+    }
+    return entry.name.endsWith(".tsx") ? [entryPath] : [];
+  });
+}
+
+function withoutQuery(url: string): string {
+  const parsed = new URL(url);
+  parsed.search = "";
+  return parsed.href;
+}
+
+function pluginDocsLinks(): Array<[string, string]> {
+  return pluginSourceFiles(PLUGINS_DIR).flatMap((file) =>
+    [...readFileSync(file, "utf8").matchAll(PLUGIN_DOCS_URL)].map(
+      (match): [string, string] => [path.relative(PLUGINS_DIR, file), match[0]],
+    ),
+  );
 }
 
 function h2Headings(markdown: string): string[] {
@@ -688,6 +719,39 @@ describe("docs links", () => {
       const linking: LinkablePage = {
         url: `/guides/${slug}`,
         markdown: `[${slug}](${href})`,
+        anchors: new Set(),
+      };
+      expect(brokenLinks(linking, pagesByUrl)).toEqual([]);
+    },
+  );
+
+  it.each(Object.entries(docsLinks))(
+    "the app's %s docs link opens a real page and section",
+    (name, url) => {
+      expect(url.startsWith(`${SITE_ORIGIN}/docs`)).toBe(true);
+      expect(new URL(url).search).toBe(`?${DOCS_LINK_SOURCE_QUERY}`);
+      const linking: LinkablePage = {
+        url: `/app/${name}`,
+        markdown: `[${name}](${withoutQuery(url)})`,
+        anchors: new Set(),
+      };
+      expect(brokenLinks(linking, pagesByUrl)).toEqual([]);
+    },
+  );
+
+  const pluginLinks = pluginDocsLinks();
+
+  it("finds the docs links written in plugins", () => {
+    expect(pluginLinks.length).toBeGreaterThan(0);
+  });
+
+  it.each(pluginLinks)(
+    "%s links to a real docs page and section: %s",
+    (file, url) => {
+      expect(new URL(url).search).toBe(`?${DOCS_LINK_SOURCE_QUERY}`);
+      const linking: LinkablePage = {
+        url: `/plugins/${file}`,
+        markdown: `[${file}](${withoutQuery(url)})`,
         anchors: new Set(),
       };
       expect(brokenLinks(linking, pagesByUrl)).toEqual([]);

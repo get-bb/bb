@@ -365,6 +365,7 @@ function SettingsPreview({ scenario }: { scenario: ScenarioName }) {
         error={scenario === "failedRefresh" || scenario === "loadFailed"}
         onSelect={setSelectedId}
         onRefresh={() => {}}
+        onOpenUrl={() => false}
       />
     </div>
   );
@@ -471,6 +472,7 @@ export function CompactSettingsActions() {
                   error={false}
                   onSelect={() => {}}
                   onRefresh={() => {}}
+                  onOpenUrl={() => false}
                 />
               </div>
             ))}

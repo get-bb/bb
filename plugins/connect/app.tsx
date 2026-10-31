@@ -8,7 +8,10 @@ import {
   useRealtimeConnectionState,
   useRpc,
   useSdk,
+  useBbNavigate,
 } from "@get-bb/plugin-sdk/app";
+import { docsLinks } from "@bb/domain/docs-links";
+import { DocsLink } from "@bb/shared-ui/docs-link";
 import {
   encodeMobilePairingPayload,
   mobilePairingPayload,
@@ -1584,6 +1587,21 @@ function MobilePairingSection() {
 }
 
 function ConnectSettingsSection() {
+  const navigate = useBbNavigate();
+  return (
+    <div className="space-y-3">
+      <p className="text-xs leading-snug text-subtle-foreground/75">
+        Use this bb from any device, anywhere — powered by getbb.app.{" "}
+        <DocsLink href={docsLinks.remoteAccess} onOpen={navigate.openUrl}>
+          Learn more about remote access
+        </DocsLink>
+      </p>
+      <ConnectSettingsBody />
+    </div>
+  );
+}
+
+function ConnectSettingsBody() {
   const { status, loadError, refetch } = useConnectStatus();
   const [flash, setFlash] = useState<string | null>(null);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1649,8 +1667,6 @@ function ConnectSettingsSection() {
 export default definePluginApp((app) => {
   app.slots.settingsSection({
     id: "remote-access",
-    description:
-      "Use this bb from any device, anywhere — powered by getbb.app.",
     component: ConnectSettingsSection,
   });
   app.slots.settingsSection({

@@ -1,3 +1,5 @@
+import { docsLinks } from "@bb/domain/docs-links";
+import { AppDocsLink } from "@/components/ui/app-docs-link";
 import {
   memo,
   useCallback,
@@ -734,7 +736,15 @@ export function KeyboardSettingsSection() {
           Reset all
         </Button>
       }
-      description="Click a shortcut, then press its new keys. Changes sync to every bb window."
+      description={
+        <>
+          Click a shortcut, then press its new keys. Changes sync to every bb
+          window.{" "}
+          <AppDocsLink href={docsLinks.changeKeyboardShortcuts}>
+            Learn more about keyboard shortcuts
+          </AppDocsLink>
+        </>
+      }
       title="Keyboard shortcuts"
     >
       <div className="space-y-5">

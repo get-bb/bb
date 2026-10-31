@@ -38,6 +38,7 @@ bb status --json
 | Plugins and marketplaces                                                | `bb guide plugins`             |
 | Scheduled work                                                          | the `automations` skill        |
 | Built-in browser tabs                                                   | `bb guide browser`             |
+| Send a person to setup or troubleshooting docs                          | https://getbb.app/docs         |
 | `--json` output shapes and the error envelope                           | `bb guide json`                |
 | Writing theme CSS                                                       | references/theming.md          |
 
