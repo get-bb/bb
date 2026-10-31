@@ -9,6 +9,9 @@ Read the installed declarations for exact current signatures.
 - `PLUGIN_CLI_OUTPUT_MAX_BYTES`
 - `defineRpcContract`
 - `experimental_defineHostEntry`
+- `experimental_normalizeHostPath`
+- `experimental_resolveHostPath`
+- `experimental_isHostPathWithin`
 - `defineCli`
 - `cliCommand`
 - `PluginCliError`
