@@ -12,7 +12,10 @@ if [ "$action" = cancel ]; then
 else
   xdotool key --window "$wid" ctrl+l
   sleep 0.5
+  xdotool key --window "$wid" ctrl+a BackSpace
   xdotool type --window "$wid" --delay 30 "$target"
+  sleep 1
+  xdotool key --window "$wid" Delete
   sleep 0.5
   import -window root "$shots/linux-$action-typed.png"
   xdotool key --window "$wid" Return
