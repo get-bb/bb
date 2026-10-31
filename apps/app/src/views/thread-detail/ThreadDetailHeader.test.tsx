@@ -3,11 +3,11 @@
 import {
   cleanup,
   fireEvent,
-  render,
+  render as renderUi,
   screen,
   waitFor,
 } from "@testing-library/react";
-import type { ReactNode, Ref } from "react";
+import type { ReactElement, ReactNode, Ref } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ThreadDetailHeader } from "./ThreadDetailHeader";
 import { PaneContext, type PaneContextValue } from "./PaneContext";
@@ -25,6 +25,12 @@ import {
   resetThreadActionRegistryForTest,
 } from "@/lib/thread-actions/thread-action-registry";
 import type { ThreadDetailHeaderActionsMenuArgs } from "./ThreadDetailHeader";
+import { useRenameController } from "@bb/shared-ui/inline-rename";
+import {
+  RENAME_PRESENTATION_CASES,
+  type RenamePresentationOutcome,
+} from "@bb/shared-ui/inline-rename-presentation-cases";
+import { RenameControllerProvider } from "@/components/sidebar/SidebarInlineRename";
 import type {
   PluginThreadActionRegistration,
   PluginThreadActionTarget,
@@ -95,6 +101,19 @@ vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
 vi.mock("@bb/shared-ui/hooks/use-pointer-coarse", () => ({
   usePointerCoarse: () => viewportState.isPointerCoarse,
 }));
+
+function RenameHost({ children }: { children: ReactNode }) {
+  const controller = useRenameController();
+  return (
+    <RenameControllerProvider controller={controller}>
+      {children}
+    </RenameControllerProvider>
+  );
+}
+
+function render(ui: ReactElement) {
+  return renderUi(ui, { wrapper: RenameHost });
+}
 
 const THREAD_ID = "thr_header";
 const THREAD_TARGET: PluginThreadActionTarget = {
@@ -791,13 +810,8 @@ describe("ThreadDetailHeader", () => {
     const menuArgs: { current: ThreadDetailHeaderActionsMenuArgs | null } = {
       current: null,
     };
-    const requestRenameDialog = vi.fn();
     render(
       <AppCommandProvider>
-        <ThreadActionCollectors
-          coreRegistrations={[]}
-          requestRename={requestRenameDialog}
-        />
         <PaneContext.Provider value={{ ...PANE_CONTEXT, isFocused: focused }}>
           <ThreadDetailHeader
             actionsMenu={(args) => {
@@ -812,11 +826,29 @@ describe("ThreadDetailHeader", () => {
         </PaneContext.Provider>
       </AppCommandProvider>,
     );
-    return { menuArgs, requestRenameDialog };
+    return menuArgs;
+  }
+
+  async function expectRenamePresentation(
+    outcome: RenamePresentationOutcome,
+  ) {
+    if (outcome === "none") {
+      expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
+      return;
+    }
+    const input = await screen.findByRole("textbox", { name: "Thread name" });
+    expect(input).toHaveProperty("value", "Focused thread");
+    expect(input.closest('[role="dialog"]') === null ? "inline" : "dialog").toBe(
+      outcome,
+    );
+    fireEvent.keyDown(input, { key: "Escape" });
+    await waitFor(() =>
+      expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull(),
+    );
   }
 
   it("renames inline from the actions menu once the menu has closed on desktop", async () => {
-    const { menuArgs, requestRenameDialog } = renderWithMenuArgs();
+    const menuArgs = renderWithMenuArgs();
     menuArgs.current?.requestRename(THREAD_ID);
     expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
     const closeEvent = new Event("focusout", { cancelable: true });
@@ -826,69 +858,53 @@ describe("ThreadDetailHeader", () => {
     expect(
       await screen.findByRole("textbox", { name: "Thread name" }),
     ).toHaveProperty("value", "Focused thread");
-    expect(requestRenameDialog).not.toHaveBeenCalled();
   });
 
-  it.each([
-    { compact: false, coarse: false },
-    { compact: true, coarse: false },
-    { compact: false, coarse: true },
-    { compact: true, coarse: true },
-  ])(
-    "chooses rename presentation for compact=$compact coarse=$coarse",
-    async ({ compact, coarse }) => {
+  it.each(RENAME_PRESENTATION_CASES)(
+    "presents rename from the menu, shortcut, and double click for compact=$compact coarse=$coarse",
+    async ({ compact, coarse, menu, direct, doubleClick }) => {
       viewportState.isCompactViewport = compact;
       viewportState.isPointerCoarse = coarse;
-      const { menuArgs, requestRenameDialog } = renderWithMenuArgs();
-      const expectsDialog = compact || coarse;
+      const menuArgs = renderWithMenuArgs();
       menuArgs.current?.requestRename(THREAD_ID);
       menuArgs.current?.onCloseAutoFocus(
         new Event("focusout", { cancelable: true }),
       );
-      if (expectsDialog) {
-        expect(requestRenameDialog).toHaveBeenCalledWith(THREAD_ID);
-        expect(
-          screen.queryByRole("textbox", { name: "Thread name" }),
-        ).toBeNull();
-      } else {
-        fireEvent.keyDown(
-          await screen.findByRole("textbox", { name: "Thread name" }),
-          { key: "Escape" },
-        );
-      }
-      requestRenameDialog.mockClear();
+      await expectRenamePresentation(menu);
       fireEvent.keyDown(window, {
         key: "R",
         code: "KeyR",
         ctrlKey: true,
         shiftKey: true,
       });
-      if (expectsDialog) {
-        expect(requestRenameDialog).toHaveBeenCalledWith(THREAD_ID);
-        expect(
-          screen.queryByRole("textbox", { name: "Thread name" }),
-        ).toBeNull();
-      } else {
-        fireEvent.keyDown(
-          await screen.findByRole("textbox", { name: "Thread name" }),
-          { key: "Escape" },
-        );
-      }
-      requestRenameDialog.mockClear();
+      await expectRenamePresentation(direct);
       fireEvent.doubleClick(screen.getByText("Focused thread"));
-      if (coarse) {
-        expect(requestRenameDialog).not.toHaveBeenCalled();
-        expect(
-          screen.queryByRole("textbox", { name: "Thread name" }),
-        ).toBeNull();
-      } else {
-        expect(
-          await screen.findByRole("textbox", { name: "Thread name" }),
-        ).toHaveProperty("value", "Focused thread");
-        expect(requestRenameDialog).not.toHaveBeenCalled();
-      }
+      await expectRenamePresentation(doubleClick);
     },
   );
+
+  it("saves a dialog rename through the thread rename mutation", async () => {
+    viewportState.isPointerCoarse = true;
+    mocks.renameThreadAsync.mockResolvedValue(undefined);
+    renderWithMenuArgs();
+    fireEvent.keyDown(window, {
+      key: "R",
+      code: "KeyR",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+    const dialog = await screen.findByRole("dialog", { name: "Rename thread" });
+    fireEvent.change(screen.getByRole("textbox", { name: "Thread name" }), {
+      target: { value: "  From dialog  " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Rename thread" }));
+
+    await waitFor(() => expect(dialog.isConnected).toBe(false));
+    expect(mocks.renameThreadAsync).toHaveBeenCalledExactlyOnceWith(
+      THREAD_ID,
+      "From dialog",
+    );
+  });
 
   it.each([
     [true, true],

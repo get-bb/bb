@@ -247,18 +247,21 @@ export function useInlineRename(
     session.kind === args.kind &&
     session.id === args.id &&
     session.presentation === "inline";
+  const prefersDialog = compact || coarse;
+  const startEditingAs = useCallback(
+    (presentation: RenamePresentation) => {
+      void start({ ...args, ownerKey, presentation });
+    },
+    [args, start, ownerKey],
+  );
   const startEditing = useCallback(() => {
-    void start({
-      ...args,
-      ownerKey,
-      presentation: coarse ? "dialog" : "inline",
-    });
-  }, [args, start, ownerKey, coarse]);
+    startEditingAs(prefersDialog ? "dialog" : "inline");
+  }, [prefersDialog, startEditingAs]);
   const startEditingFromDoubleClick = useCallback(() => {
     if (coarse) return false;
-    startEditing();
+    startEditingAs("inline");
     return true;
-  }, [coarse, startEditing]);
+  }, [coarse, startEditingAs]);
 
   useEffect(() => {
     if (
@@ -282,11 +285,8 @@ export function useInlineRename(
     startEditing,
     startEditingFromDoubleClick,
     startEditingFromMenu: () => {
-      if (compact || coarse) {
-        void start({ ...args, ownerKey, presentation: "dialog" });
-      } else {
-        pendingMenuRename.current = startEditing;
-      }
+      if (prefersDialog) startEditing();
+      else pendingMenuRename.current = startEditing;
     },
     onCloseAutoFocus: (event: Event) => {
       const begin = pendingMenuRename.current;

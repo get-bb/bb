@@ -7,6 +7,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -22,10 +23,12 @@ import {
 import {
   sidebarNavigationQueryKey,
   threadListQueryKey,
+  threadQueryKey,
 } from "@/hooks/queries/query-keys";
 import { getCachedSidebarNavigationThreads } from "@/hooks/cache-owners/query-cache";
 import { appToast } from "@/components/ui/app-toast";
 import { sdk } from "@/lib/sdk";
+import { useDefaultRequestRename } from "@/lib/thread-actions/thread-action-registry";
 import {
   ThreadActionsProvider,
   useThreadActions,
@@ -79,10 +82,6 @@ vi.mock("@/components/dialogs/ThreadDeleteDialog", () => ({
         </button>
       </div>
     ),
-}));
-
-vi.mock("@/components/dialogs/ThreadRenameDialog", () => ({
-  ThreadRenameDialog: () => null,
 }));
 
 vi.mock("@/components/ui/app-toast", () => ({
@@ -193,6 +192,15 @@ function mockCascade(cascades: Record<string, string[]>) {
         cascadeThreadIds: cascades[threadId] ?? [],
       })),
     }),
+  );
+}
+
+function DefaultRenameButton({ threadId }: { threadId: string }) {
+  const requestRename = useDefaultRequestRename();
+  return (
+    <button type="button" onClick={() => requestRename(threadId)}>
+      Rename
+    </button>
   );
 }
 
@@ -868,5 +876,34 @@ describe("ThreadActionsProvider selections", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(screen.getByRole("alertdialog")).toBeTruthy();
     expect(mocks.closePanesForThreads).not.toHaveBeenCalled();
+  });
+});
+
+describe("default thread rename", () => {
+  it("opens the shared rename dialog and keeps it open with the error until a save succeeds", async () => {
+    const thread = makeThread();
+    queryClient.setQueryData(threadQueryKey(thread.id), thread);
+    mocks.mutation
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce(undefined);
+    renderProvider(<DefaultRenameButton threadId={thread.id} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Rename" }));
+    const dialog = await screen.findByRole("dialog", { name: "Rename thread" });
+    const input = within(dialog).getByRole("textbox", { name: "Thread name" });
+    expect(input).toHaveProperty("value", "Investigate archive behavior");
+    fireEvent.change(input, { target: { value: "  Renamed  " } });
+    const submit = within(dialog).getByRole("button", { name: "Rename thread" });
+    fireEvent.click(submit);
+
+    expect((await within(dialog).findByRole("alert")).textContent).toBe(
+      "Could not save the name. Try again.",
+    );
+    fireEvent.click(submit);
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(mocks.mutation.mock.calls).toEqual([
+      [{ id: thread.id, title: "Renamed" }],
+      [{ id: thread.id, title: "Renamed" }],
+    ]);
   });
 });

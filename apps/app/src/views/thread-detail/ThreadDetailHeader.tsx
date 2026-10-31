@@ -37,10 +37,7 @@ import {
 import { useSidebarRename } from "@/components/sidebar/SidebarInlineRename";
 import { useThreadActions } from "@/components/thread/ThreadActionsProvider";
 import { ThreadTitle } from "@/components/thread/ThreadTitleMentions";
-import {
-  useDefaultRequestRename,
-  useThreadHeaderActionEntries,
-} from "@/lib/thread-actions/thread-action-registry";
+import { useThreadHeaderActionEntries } from "@/lib/thread-actions/thread-action-registry";
 import { SecondaryPanelHostLayoutContext } from "@/components/secondary-panel/SecondaryPanelHostLayoutContext";
 import {
   RIGHT_PANEL_TOGGLE_ICON_NAME,
@@ -49,7 +46,6 @@ import {
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { dimInactiveSplitsAtom } from "@/lib/split-layout/atoms";
 import {
   CONTEXT_INACTIVE_TEXT_CLASS,
@@ -95,7 +91,6 @@ export function ThreadDetailHeader({
   contextCardButton,
 }: ThreadDetailHeaderProps) {
   const isCompactViewport = useIsCompactViewport();
-  const isPointerCoarse = usePointerCoarse();
   const threadId = thread.id;
   const headerActions = useThreadHeaderActionEntries(thread);
   const [primaryAction, ...secondaryActions] = headerActions;
@@ -104,29 +99,20 @@ export function ThreadDetailHeader({
     (nextTitle: string) => renameThreadAsync(threadId, nextTitle),
     [renameThreadAsync, threadId],
   );
-  const { editor, isEditing, startEditing } = useSidebarRename({
+  const {
+    editor,
+    isEditing,
+    startEditing,
+    startEditingFromDoubleClick,
+    startEditingFromMenu,
+    onCloseAutoFocus,
+  } = useSidebarRename({
     kind: "thread",
     id: threadId,
     name: threadTitle,
     label: "Thread name",
     onSave: handleRename,
   });
-  const requestRenameDialog = useDefaultRequestRename();
-  const pendingMenuRename = useRef(false);
-  const requestRename = (id: string) => {
-    if (isCompactViewport || isPointerCoarse) requestRenameDialog(id);
-    else startEditing();
-  };
-  const requestRenameFromMenu = (id: string) => {
-    if (isCompactViewport || isPointerCoarse) requestRenameDialog(id);
-    else pendingMenuRename.current = true;
-  };
-  const handleActionsMenuCloseAutoFocus = (event: Event) => {
-    if (!pendingMenuRename.current) return;
-    pendingMenuRename.current = false;
-    event.preventDefault();
-    startEditing();
-  };
   const [desktopInfo] = useState(getBbDesktopInfo);
   const dimsInactiveSplits = useAtomValue(dimInactiveSplitsAtom);
   const panelShortcut = useAppCommandShortcut("panel.toggle");
@@ -143,7 +129,7 @@ export function ThreadDetailHeader({
   } = usePaneContext();
   useAppCommandHandler("thread.rename", () => {
     if (!isFocused) return false;
-    requestRename(threadId);
+    startEditing();
     return true;
   });
   const isWindowPanelOpen =
@@ -183,10 +169,7 @@ export function ThreadDetailHeader({
     beginPaneDrag(event, threadTitle);
   };
   const handleTitleDoubleClick = () => {
-    if (isEditing || isPointerCoarse) {
-      return;
-    }
-    startEditing();
+    if (!isEditing) startEditingFromDoubleClick();
   };
   const rightPanelIconName = RIGHT_PANEL_TOGGLE_ICON_NAME;
   const mountRightPanelToggle = secondaryPanelHost === null;
@@ -236,8 +219,8 @@ export function ThreadDetailHeader({
           {actionsMenu({
             includeResponsiveActions: usesResponsiveActionOverflow,
             headerActions,
-            requestRename: requestRenameFromMenu,
-            onCloseAutoFocus: handleActionsMenuCloseAutoFocus,
+            requestRename: startEditingFromMenu,
+            onCloseAutoFocus,
           })}
         </span>
       )}
