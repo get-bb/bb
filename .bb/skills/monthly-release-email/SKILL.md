@@ -50,9 +50,9 @@ verification, Resend and the shareable screenshot.
 4. **Graphics.** One or two per theme, made as in
    [references/graphics.md](references/graphics.md).
 5. **Verify.** Check every claim and every image against the source at the
-   release tags (see "Accuracy"). This is the accuracy pass `release-themes`
-   describes; run it once, on the final copy. Fix or cut anything not confirmed,
-   and raise anything only the reviewer can settle.
+   newest tag in the range (see "Accuracy"). This is the accuracy pass
+   `release-themes` describes; run it once, on the final copy. Fix or cut
+   anything not confirmed, and raise anything only the reviewer can settle.
 6. **Build it in Resend** as in [references/resend.md](references/resend.md).
    The reviewer reviews the real email there. For your own checks first, write a
    local preview with local images:
@@ -68,29 +68,30 @@ verification, Resend and the shareable screenshot.
 
 7. **Review rounds.** Share the draft's Resend link and ask for review. The
    reviewer edits the draft in Resend, and copy edits from a review round go
-   straight into the draft too; reload and extract afterwards to confirm only
-   the intended text changed. Rebuild only for changes the editor can't make,
-   such as new graphics or layout. Before a rebuild, extract the draft and run
-   `check-resend.mjs` against the last send HTML (see the Resend reference); if
-   the visible text differs, carry the draft's edits into the JSON first. Then
-   apply the change, re-verify changed claims, rebuild the draft (re-uploading
-   only changed images), and delete the previous draft only once its edits are
-   in the JSON.
+   straight into the draft too; save the draft's HTML and fields and run
+   `check-resend.mjs` afterwards, as in the Resend reference's "Check the
+   build", to confirm only the intended text changed. It shows the first
+   difference, so run it again after each fix. Rebuild only for changes the
+   editor can't make, such as new graphics or layout. Before a rebuild, run the
+   same check against the last send HTML; if the visible text differs, carry the
+   draft's edits into the JSON first. Then apply the change, re-verify changed
+   claims, rebuild the draft (re-uploading only changed images), and delete the
+   previous draft only once its edits are in the JSON.
 8. **Screenshot for sharing**, if asked, as in the Resend reference.
 9. **Test emails, then send**, only when the reviewer says, as in the Resend
    reference's "Sending".
 
 ## Issue JSON
 
-| Field                                      | Used for                                                                                                                                                                                          |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `month` ("October 2026"), `ym` ("2026_10") | Header, draft name, UTM campaign `monthly_releases_<ym>`                                                                                                                                          |
-| `from`, `reply_to`                         | Resend header fields (checked by `check-resend.mjs`)                                                                                                                                              |
-| `subject`, `preview`, `opening`            | Inbox lines and the opening paragraph                                                                                                                                                             |
-| `themes[]`                                 | `title`; `image {src, alt}` or `images [{src, alt}, …]`; `items [{title, body, versions}]`; optional `try {label, prompt}`; optional `direction` (the VISION principle it advances, not rendered) |
-| `cta`                                      | `text` (button), `download_prefix`, `download_text`                                                                                                                                               |
-| `address`                                  | Footer                                                                                                                                                                                            |
-| `left_out`                                 | `[{title, version, reason}]`, not rendered                                                                                                                                                        |
+| Field                                      | Used for                                                                                                                                                                                                                                                     |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `month` ("October 2026"), `ym` ("2026_10") | Header, draft name, UTM campaign `monthly_releases_<ym>`                                                                                                                                                                                                     |
+| `from`, `reply_to`                         | Resend header fields (checked by `check-resend.mjs`)                                                                                                                                                                                                         |
+| `subject`, `preview`, `opening`            | Inbox lines and the opening paragraph                                                                                                                                                                                                                        |
+| `themes[]`                                 | `title`; `image {src, alt}` or `images [{src, alt}, …]`, where `src` is the PNG's file name in `issues/<yyyy-mm>/`; `items [{title, body, versions}]`; optional `try {label, prompt}`; optional `direction` (the VISION principle it advances, not rendered) |
+| `cta`                                      | `text` (button), `download_prefix`, `download_text`                                                                                                                                                                                                          |
+| `address`                                  | Footer                                                                                                                                                                                                                                                       |
+| `left_out`                                 | `[{title, version, reason}]`, not rendered                                                                                                                                                                                                                   |
 
 Item `body` is inserted as HTML so it can hold `<code>` and `<a href>` (links
 get the link style automatically); escape any literal `<` or `&`. `versions` is
@@ -123,8 +124,8 @@ for the email:
   and no versions per segment.
 - **Structure.** Group by theme, never by release, and never add a catch-all
   list.
-- **Titles end with a period** ("Use bb from any terminal.", "Add any ACP agent
-  in one step.").
+- **Item titles end with a period** ("Use bb from any terminal.", "Add any ACP
+  agent in one step."); theme titles don't.
 - **Order items as a narrative:** the core value, then what it means, then the
   detail.
 - **Say "built into bb core"**, not just "built into bb".
@@ -135,10 +136,10 @@ for the email:
   (see the graphics reference) or describe the change without a number. Never
   present a "before" level as a reduction: a PR that reports 80–90% CPU before,
   with no "after", doesn't mean "80–90% less".
-- **Try it prompts** work with default settings; a prompt that depends on
-  something off by default fails for most readers. Layout: a small grey
-  uppercase label naming where to try it, then a standalone centered
-  composer-style box with a send button.
+- **Try it prompts** work with default settings, or after the setup line the
+  item already gives; a prompt that depends on anything else fails for most
+  readers. Layout: a small grey uppercase label naming where to try it, then a
+  standalone centered composer-style box with a send button.
 - **Links.** Every version links to its release-notes section (the renderer does
   this). Link inline anything a reader would want to get, since the release
   notes don't carry download links: a desktop platform to
@@ -149,8 +150,8 @@ for the email:
 
 ## Accuracy
 
-Release notes can be wrong, so confirm each claim in the source at the release
-tag: `git show desktop-v<ver>:<path>`.
+Release notes can be wrong, so confirm each claim in the source at the newest
+tag in the range: `git show desktop-v<newest>:<path>`.
 
 - **Labels and paths:** core settings pages in
   `apps/app/src/components/settings/settings-sections.ts`; plugin settings pages

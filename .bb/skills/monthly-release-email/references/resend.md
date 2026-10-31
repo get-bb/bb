@@ -31,7 +31,7 @@ Each step below says what must be true when it's done, whichever way it's done.
    ```
 
    Rendering with `--hosted` refuses any image whose hosted copy no longer
-   matches the local file.
+   matches the local file or couldn't be reached.
 
 3. **Import the HTML** into a new broadcast so it becomes editable blocks,
    keeping text, links, images and the unsubscribe placeholder. In the dashboard
@@ -96,6 +96,7 @@ section before sharing it.
 - **Schedule** after the reviewer's go-ahead on the test email: the first
   Thursday after the month ends, 16:00 UTC, unless they pick otherwise.
 - **Changes after scheduling** need the reviewer's go-ahead. Unschedule, edit,
-  then extract the draft to confirm only the intended text changed. Schedule it
-  again, check the contacts, time and links on the way, and confirm the
-  broadcast shows as scheduled. Test emails still work while scheduled.
+  then save the draft and run `check-resend.mjs` as in step 6 to confirm only
+  the intended text changed. Schedule it again, check the contacts, time and
+  links on the way, and confirm the broadcast shows as scheduled. Test emails
+  still work while scheduled.

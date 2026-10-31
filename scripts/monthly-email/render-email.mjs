@@ -30,7 +30,7 @@ const MONTHS = [
   "December",
 ];
 const USAGE =
-  "Usage: node scripts/monthly-email/render-email.mjs issues/<yyyy-mm>.json [--images-base <url> | --hosted issues/<yyyy-mm>/hosted.json] [--out <file>]";
+  "Usage: node scripts/monthly-email/render-email.mjs scripts/monthly-email/issues/<yyyy-mm>.json [--images-base <url> | --hosted scripts/monthly-email/issues/<yyyy-mm>/hosted.json] [--out <file>]";
 
 export function escapeHtml(value) {
   return String(value)
@@ -230,7 +230,7 @@ async function main() {
     const stale = issueImages(spec).filter((src) => !current.has(src));
     if (stale.length) {
       throw new Error(
-        `The hosted copy of ${stale.join(", ")} doesn't match the local file. Upload it again (1b-upload-changed-images-into-open-draft.js) and run hosted-map.mjs first.`,
+        `The hosted copy of ${stale.join(", ")} doesn't match the local file or couldn't be reached. Upload it to Resend again and run hosted-map.mjs first.`,
       );
     }
   }

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const USAGE =
-  "Usage: node scripts/monthly-email/hosted-map.mjs issues/<yyyy-mm> <url> [<url> ...]";
+  "Usage: node scripts/monthly-email/hosted-map.mjs scripts/monthly-email/issues/<yyyy-mm> <url> [<url> ...]";
 
 export function md5(buffer) {
   return createHash("md5").update(buffer).digest("hex");

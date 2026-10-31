@@ -2,8 +2,9 @@
 
 One or two images per theme, 560 CSS px wide, exported at 3×. Work in the
 issue's local `scripts/monthly-email/issues/<yyyy-mm>/design/` (gitignored):
-copy `scripts/monthly-email/design/design-base.css` there, copy Inter
-(`inter-latin-wght-normal.woff2` and `inter-latin-ext-wght-normal.woff2` from
+copy `scripts/monthly-email/design/design-base.css` there, copy Inter (after
+`pnpm install`, `inter-latin-wght-normal.woff2` and
+`inter-latin-ext-wght-normal.woff2` from
 `apps/app/node_modules/@fontsource-variable/inter/files/`) into `fonts/` as
 `inter-latin.woff2` and `inter-latin-ext.woff2`, and put captures in `caps/`.
 Final PNGs go one level up.
@@ -37,8 +38,9 @@ Final PNGs go one level up.
 - **Default settings.** Show bb as it ships. If something has to be turned on to
   appear, tell the reviewer.
 - **Charts** are plain line or bar charts with labeled axes, before in grey and
-  now in blue. The x-axis is what actually drives the cost (files written in
-  threads you aren't viewing, not thread count). Measured values only.
+  now in blue. The x-axis is what actually drives the cost (October's: files
+  written in threads you aren't viewing, not thread count). Measured values
+  only.
 - **Annotations stay subtle:** 1 px outlines in
   `color-mix(in oklch, oklch(0.55 0.1 250) 75%, transparent)` on the element's
   measured edges, small white pill labels with blue text, and 1 px leader lines.
@@ -104,13 +106,17 @@ Final PNGs go one level up.
      render the real component in Ladle with realistic fixture data, in a
      local-only story (step 7).
 4. **Capture** with a headless browser:
-   - Set the viewport (`{width, height, deviceScaleFactor: 3}`) before loading,
-     and capture with `page.screenshot({clip, captureBeyondViewport: false})`.
-     Without `false`, the layout reflows.
+   - Set a 3× device scale before loading, and capture only the clip, without
+     letting the screenshot grow past the viewport; growing it reflows the
+     layout.
    - Measure elements with `getBoundingClientRect()` in the same session, and
-     write the measurements to an annotations config holding `capture`, `page`,
-     `elements` and `labels`. Give a label a `dx` to move its leader line off
-     text it would cross. Generate the design with:
+     write them to an annotations config in `design/`: `capture` (a file in
+     `caps/`), `page` (`[width, height]` of the capture in CSS px), `elements`
+     (`{name: [x1, y1, x2, y2, radius]}`) and `labels`
+     (`[{element, text, side, gap, dx, anchor}]`, where `side` is `above` or
+     `below`, `anchor` is `c`, `l` or `r`, and `dx` moves a leader line off text
+     it would cross). Optional `left`, `top` and `shot_width` place the capture
+     on the canvas. Generate the design with:
 
      ```sh
      node scripts/monthly-email/annotate-design.mjs <config.json> <out.html>
@@ -138,9 +144,8 @@ Final PNGs go one level up.
    `.ladle/plugin-sdk-app.ts` is missing exports that
    `src/lib/plugin-sdk-app-impl.tsx` has; add them locally. Add local-only
    stories for realistic sample data and never commit them.
-8. **Mobile.** Load the thread at
-   `{width: 390, height: 780, deviceScaleFactor: 2, isMobile: true}`; the mobile
-   apps wrap the same web app.
+8. **Mobile.** Load the thread at 390×780 CSS px, 2× scale, emulating a mobile
+   device; the mobile apps wrap the same web app.
 9. **Desktop-only surfaces** (the desktop browser tab, Agent Annotations) need
    the desktop app. On a Mac, `pnpm desktop:worktree` launches it against the
    test bb; on Linux, run it under Xvfb and capture over its debugging port.

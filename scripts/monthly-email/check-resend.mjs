@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { htmlSizeProblem, renderEmail } from "./render-email.mjs";
 
 const USAGE =
-  "Usage: node scripts/monthly-email/check-resend.mjs issues/<yyyy-mm>.send.html issues/<yyyy-mm>.resend.html [issues/<yyyy-mm>.json issues/<yyyy-mm>.resend-fields.json]";
+  "Usage: node scripts/monthly-email/check-resend.mjs scripts/monthly-email/issues/<yyyy-mm>.send.html scripts/monthly-email/issues/<yyyy-mm>.resend.html [scripts/monthly-email/issues/<yyyy-mm>.json scripts/monthly-email/issues/<yyyy-mm>.resend-fields.json]";
 
 const ENTITIES = {
   amp: "&",

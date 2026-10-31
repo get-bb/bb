@@ -87,7 +87,7 @@ Chosen from research on Supabase, Vercel, opencode and T3 Code.
   do. Name the exact setting path or command, such as "Settings → Appearance →
   Navigation".
 - **Lead with the value, then the mechanism.** The bold title states the gain
-  ("Use bb from any terminal"), and the body's first clause says what you can
+  ("Use bb from any terminal."), and the body's first clause says what you can
   now do, with the how after it: "bb now keeps responding to clicks and typing
   while a thread opens, because it no longer lays out the thread's whole history
   first."
@@ -120,8 +120,8 @@ Chosen from research on Supabase, Vercel, opencode and T3 Code.
   lot of agents", not "many agents").
 - **Try it:** end a theme with one prompt a reader can use right now, in bb or
   in the app the feature connects to ("Try it in ChatGPT or Claude"). It must
-  use the month's new capability and really work. Leave it out when there's no
-  honest action.
+  use the month's new capability, and every step it needs must exist. Leave it
+  out when there's no honest action.
 - **Which tag.** Labels, settings paths and plugin state can change inside a
   month. Use the newest tag in the range, because that's what readers have when
   the email lands, and check older items still read true there.
@@ -164,13 +164,13 @@ Chosen from research on Supabase, Vercel, opencode and T3 Code.
 
 Check the final copy against the shipped product, not just the notes, since the
 notes can be wrong (0.46.1's "Settings → Plugins" is labeled "Installed plugins"
-in the app). Confirm each claim at the release tag
-(`git show desktop-v<version>:<path>`, cited as path:line): settings paths
+in the app). Confirm each claim at the newest tag in the range
+(`git show desktop-v<newest>:<path>`, cited as path:line): settings paths
 against the exact labels a user sees, commands and flags, default-on or
-default-off state, plugin names, and that each Try it really works. Fix or cut
-every claim that isn't confirmed. Also check that every fact cites a version
-that contains it, no item appears in two themes, and nothing experimental reads
-as finished.
+default-off state, plugin names, and that every step each Try it needs exists.
+Fix or cut every claim that isn't confirmed. Also check that every fact cites a
+version that contains it, no item appears in two themes, and nothing
+experimental reads as finished.
 
 ## Output
 
