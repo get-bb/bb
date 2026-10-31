@@ -1661,7 +1661,8 @@ Docs: `frontend-core-slots.md`, `frontend-components.md`.
 ## `PluginNavPanelRegistration.experimental_useBadge`
 
 **Added 2026-10-15 (SDK 0.6.53), replacing `experimental_sidebarAccessory`.**
-One consumer: the Tasks plugin's open-task count.
+Two consumers: the Tasks plugin's open-task count and the GitHub plugin's
+count of pull requests that need the viewer.
 
 A nav panel hook returning `ExperimentalBadge`
 (`{ count?, text?, tone?, label }`) or `null`. `count` and `text` are
@@ -2307,9 +2308,15 @@ Docs: `frontend-renderer-slots.md`, `backend-cli-agents.md` (form rows),
 
 ## `experimental_NewThreadComposer` (`@get-bb/plugin-sdk/app`)
 
-**Kept experimental (2026-08-22).** There are no consumers, and items 1 (a
-newly required create-thread field going missing silently) and 6
-(projectless switching) need a consumer to validate.
+**Kept experimental (2026-08-22).** The GitHub plugin's Start an agent sheet
+is the first consumer. It seeds `defaultEnvironment` (`reuse` for a bb
+worktree already on a pull request's head branch, otherwise a
+`managed-worktree` based on `origin/<head>`; none for an issue),
+`initialPrompt` from the pull request's or issue's state, and one `draftKey`
+per item, waits for its seeds to settle before mounting (item 5 re-seeds on
+any change), and spawns with `bb.sdk.threads.spawn`. Items 1 (a newly
+required create-thread field going missing silently) and 6 (projectless
+switching) still need validation.
 
 The host-owned new-thread compose surface. It calls `onSubmit` with a
 `NewThreadRequest` carrying every resolved selection (including
