@@ -1768,7 +1768,7 @@ function usePhonePairing(active: boolean): PhonePairing {
     const timer = setTimeout(
       () => setMintRequest((request) => request + 1),
       Math.max(
-        0,
+        PAIRING_CODE_RETRY_MS,
         payload.expiresAt - Date.now() - PAIRING_CODE_RENEW_BEFORE_MS,
       ),
     );

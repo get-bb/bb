@@ -1000,6 +1000,33 @@ describe("connect setup guide section", () => {
     expect(slot.queryByText(/expire/i)).toBeNull();
   });
 
+  it("waits between re-mints when the host's clock says the code already expired", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let minted = 0;
+    const slot = renderSlot(
+      section(),
+      { onPhone: false, onSetupStarted: () => {} },
+      {
+        rpc: {
+          status: () => connected(),
+          createMachineCode: () => {
+            minted += 1;
+            return {
+              code: `CODE-000${minted}`,
+              expiresAt: Date.now() - 60_000,
+              serverUrl: "https://workstation.getbb.app",
+            };
+          },
+          lookupMachineCode: () => ({ consumed: false, machineId: null }),
+        },
+      },
+    );
+
+    await slot.findByText("CODE-0001");
+    await act(async () => vi.advanceTimersByTimeAsync(5_000));
+    expect(minted).toBe(1);
+  });
+
   it("swaps the pairing code for the install QR while a platform is open", async () => {
     const slot = renderSlot(
       section(),
