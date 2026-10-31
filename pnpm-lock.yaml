@@ -1459,6 +1459,9 @@ importers:
       better-sqlite3:
         specifier: 12.10.0
         version: 12.10.0
+      miniflare:
+        specifier: ^4.20260701.0
+        version: 4.20260701.0
       tailwindcss:
         specifier: ^4.3.0
         version: 4.3.0
