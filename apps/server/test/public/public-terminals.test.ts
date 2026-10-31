@@ -1004,6 +1004,36 @@ describe("public terminal routes", () => {
     );
   });
 
+  it("returns a command terminal that exits before its open settles", async () => {
+    const fixture = await createTerminalRouteFixture();
+    harnesses.push(fixture.harness);
+    const { openMessage, responsePromise } =
+      await startPendingTerminalOpen(fixture);
+
+    acknowledgeTerminalOpen(fixture, openMessage);
+    fixture.harness.deps.terminalSessions.handleDaemonTerminalMessage({
+      hostId: fixture.host.id,
+      sessionId: fixture.session.id,
+      message: {
+        type: "terminal.exited",
+        terminalId: openMessage.terminalId,
+        exitCode: 3,
+        closeReason: "process-exit",
+      },
+    });
+
+    const response = await responsePromise;
+    expect(response.status).toBe(201);
+    expect(terminalSessionSchema.parse(await readJson(response))).toMatchObject(
+      {
+        closeReason: "process-exit",
+        exitCode: 3,
+        id: openMessage.terminalId,
+        status: "exited",
+      },
+    );
+  });
+
   it("rejects a client-chosen terminal ID that already exists", async () => {
     const fixture = await createTerminalRouteFixture();
     harnesses.push(fixture.harness);
