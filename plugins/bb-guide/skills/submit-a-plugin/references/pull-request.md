@@ -59,6 +59,9 @@ git diff -- entries/PLUGIN_ID.json icons/ screenshots/PLUGIN_ID/ overview/PLUGIN
 
 Omit each screenshots/PLUGIN_ID/ argument when the entry has no screenshots.
 
+A range warning does not fail the build. Report it to the author and keep the
+author's range.
+
 Confirm:
 
 - The entry ID matches the filename and plugin manifest.

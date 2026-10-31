@@ -90,6 +90,14 @@ Prereleases stay out unless the range names one. Give each plugin of a
 multi-plugin repository its own tag prefix — `notes/v1.2.3` — and users add
 `--tag-prefix notes/`.
 
+bb matches ranges with npm's semver rules, where a caret on 0.x is narrow:
+`^0.6.1` admits only 0.6.x patches, so 0.7.0 never reaches those installs.
+`>=0.6.1 <1.0.0` follows every 0.x release and accepts that a 0.x minor may
+break; `^1.2.3` follows every 1.x release and stops before 2.0.0. Never
+publish an unbounded `>=` range — it admits every future major. Each install
+keeps the range it was installed with, so a range a marketplace entry adopts
+later reaches new installs only.
+
 bb records the tag it installed together with the commit that tag pointed at,
 and refuses the plugin if that tag is ever moved to another commit. Publish a
 fix as a new version rather than retagging.
@@ -192,10 +200,17 @@ read from a fresh checkout on each refresh, with `marketplace.json` and any
 relative icons read from the repository root, or from the directory named by
 `--subdirectory <relative-path>`. An entry's `source.git.subdir` stays
 relative to the repository root. Prefer git tag ranges over
-pinned refs so a release reaches users without a catalog change. Before
-installing from a marketplace that does not ship with bb, bb resolves and
-shows the true source — including the exact release tag and commit a range
-lands on — so keep your listed URL, subdirectory, and range honest.
+pinned refs so a release inside the range reaches users without a catalog
+change. Before installing from a marketplace that does not ship with bb, bb
+resolves and shows the true source — including the exact release tag and
+commit a range lands on — so keep your listed URL, subdirectory, and range
+honest.
+
+An install copies its entry's range and a refresh never changes it, so a range
+edit reaches new installs only. Pick git and npm ranges by the rules in
+"Releasing a git plugin with semver tags". When you list someone else's
+plugin, the range is its author's compatibility promise: point out a `^0.y.z`
+or unbounded range to the author rather than rewriting it.
 
 Two marketplaces ship with bb. `bb-official` lists the plugins bundled inside
 the app, which install from that local copy with no network fetch; inclusion

@@ -114,6 +114,15 @@ Use this shape only as a guide:
 }
 ```
 
+### Set the source
+
+Copy the source that you verified with references/plugin-release.md. Keep the
+range that the author chose there. A 0.x caret range such as ^0.6.1 admits only
+0.6.x patch releases, so state that limit to the author before you submit it.
+If the author keeps a range with no upper bound, state that it admits every
+future major release, then submit the author's range. BB records the range in
+each install, so a later range change in this entry reaches new installs only.
+
 ## Choose the category
 
 Marketplace CI refuses a new or changed entry with no category. Set one
@@ -271,6 +280,7 @@ statement below before you open the pull request.
 - Every claim in the description matches behavior you observed.
 - The description names each external service, account, and separate install.
 - The category matches the surface the user gets.
+- You stated the range's limit and the author confirmed it.
 - The tags hold words a user would search for.
 - The icon reads clearly at 40 pixels.
 - The first screenshot shows the main surface with real content.
