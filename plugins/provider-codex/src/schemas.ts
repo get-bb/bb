@@ -1060,6 +1060,10 @@ export const codexHandledEventSchema = z.discriminatedUnion("method", [
   createCodexEventSchema("deprecationNotice", codexWarningParamsSchema),
   createCodexEventSchema("configWarning", codexWarningParamsSchema),
   createCodexEventSchema(
+    "guardianWarning",
+    z.object({ threadId: z.string(), message: z.string() }).passthrough(),
+  ),
+  createCodexEventSchema(
     "warning",
     z
       .object({ threadId: z.string().nullable(), message: z.string() })

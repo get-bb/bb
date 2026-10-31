@@ -1353,6 +1353,7 @@ export function translateCodexEventToDeltas(
             : {}),
         },
       ];
+    case "guardianWarning":
     case "warning":
       return [
         {
