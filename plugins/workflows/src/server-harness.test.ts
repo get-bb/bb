@@ -1,6 +1,7 @@
 import {
   createFakePluginHost,
   makePluginAgentConfigurationContext,
+  makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it } from "vitest";
 import { getCall, getRunRequired, migrations } from "./data.js";
@@ -45,6 +46,32 @@ describe("workflows plugin", () => {
     await Promise.all(hosts.map((host) => host.dispose()));
     hosts.length = 0;
   });
+
+  it.each([
+    ["workflows", "decline"],
+    ["automations", "allow"],
+    [null, "allow"],
+  ] as const)(
+    "answers provider retry consent for origin %s with %s",
+    async (originPluginId, kind) => {
+      const { bb, harness } = createFakePluginHost({
+        pluginId: "workflows",
+        sdk: {
+          threads: { get: async () => makeThreadResponse({ originPluginId }) },
+        },
+      });
+      hosts.push(harness);
+      await plugin(bb);
+      await expect(
+        harness.callRpc("provider-retry.v1.consent", {
+          threadId: "thread-1",
+          requestId: "failed-request",
+          reason: "Provider overloaded",
+          sendAt: Date.now(),
+        }),
+      ).resolves.toMatchObject({ kind });
+    },
+  );
 
   it("loads with defaults and needs-configuration when persisted settings are invalid", async () => {
     const { bb, harness } = createFakePluginHost({
