@@ -562,7 +562,7 @@ describe("Theme Preview", () => {
       });
 
       await waitFor(() =>
-        expect(screen.queryByText("bb-plugins")).not.toBeNull(),
+        expect(screen.queryByText("Workspace")).not.toBeNull(),
       );
       expect(screen.getByText("Pull request")).toBeDefined();
       expect(
