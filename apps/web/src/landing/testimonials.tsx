@@ -3,12 +3,16 @@ import Link01Icon from "@hugeicons/core-free-icons/Link01Icon";
 import NewTwitterIcon from "@hugeicons/core-free-icons/NewTwitterIcon";
 import { HugeiconsIcon } from "@hugeicons/react";
 
+import banesAvatar from "../assets/testimonials/chris-banes.jpg";
 import bornszteinAvatar from "../assets/testimonials/bruno-bornsztein.jpg";
-import emreAvatar from "../assets/testimonials/emre.jpg";
+import ajiboyeAvatar from "../assets/testimonials/timi-ajiboye.jpg";
 import haisfieldAvatar from "../assets/testimonials/rob-haisfield.jpg";
-import jingAvatar from "../assets/testimonials/jing.jpg";
+import lutkeAvatar from "../assets/testimonials/tobi-lutke.jpg";
+import ondrejAvatar from "../assets/testimonials/david-ondrej.jpg";
 import frostAvatar from "../assets/testimonials/steve-frost.jpg";
+import sunartoAvatar from "../assets/testimonials/scott-sunarto.jpg";
 import swairAvatar from "../assets/testimonials/swair.jpg";
+import tossellAvatar from "../assets/testimonials/ben-tossell.jpg";
 import { trackLandingEvent } from "./analytics";
 
 export type TestimonialSource = "x" | "github" | "blog";
@@ -31,6 +35,72 @@ const SOURCE_ICON = {
 
 const TESTIMONIALS: readonly Testimonial[] = [
   {
+    author: "Tobi Lütke",
+    byline: "CEO, Shopify",
+    avatar: lutkeAvatar,
+    source: "x",
+    url: "https://x.com/tobi/status/2104898204135297252",
+    quote: "I think it’s really really good, too! Use it daily.",
+  },
+  {
+    author: "Ben Tossell",
+    byline: "Founder, Ben’s Bites",
+    avatar: tossellAvatar,
+    source: "x",
+    url: "https://x.com/bentossell/status/2085300851824787550",
+    quote: "best new app i’ve tried in a while\n\nlikely my new default",
+  },
+  {
+    author: "David Ondrej",
+    byline: "@DavidOndrej1",
+    avatar: ondrejAvatar,
+    source: "x",
+    url: "https://x.com/DavidOndrej1/status/2090488406228840865",
+    quote: "bb has the best GUI for Agentic Engineering right now",
+  },
+  {
+    author: "Chris Banes",
+    byline: "@chrisbanes",
+    avatar: banesAvatar,
+    source: "x",
+    url: "https://x.com/chrisbanes/status/2095501731530481784",
+    quote:
+      "After trying out bb for a few days, I might have just replaced the ChatGPT app.",
+  },
+  {
+    author: "Scott Sunarto",
+    byline: "CEO, Argus Labs",
+    avatar: sunartoAvatar,
+    source: "x",
+    url: "https://x.com/smsunarto/status/2087277136952578498",
+    quote:
+      "…no AI dev tool … became my daily driver as quickly as bb",
+  },
+  {
+    author: "Timi Ajiboye",
+    byline: "@timigod",
+    avatar: ajiboyeAvatar,
+    source: "x",
+    url: "https://x.com/timigod/status/2087664204744450515",
+    quote: "It’s just been 15 mins but it feels like bb might be the one.",
+  },
+  {
+    author: "Hemanth Soni",
+    byline: "hem.so",
+    source: "blog",
+    url: "https://hem.so/multiplexers",
+    quote:
+      "This is my current daily driver, primarily because of its incredibly robust and thoughtful plugin system. … I can’t recommend it enough.",
+  },
+  {
+    author: "Swair",
+    byline: "@swairshah",
+    avatar: swairAvatar,
+    source: "x",
+    url: "https://x.com/swairshah/status/2095643295020122216",
+    quote: "Only good malleable software I’ve used in the LLM era is bb…",
+  },
+  {
     author: "Bruno Bornsztein",
     byline: "@brunotorious",
     avatar: bornszteinAvatar,
@@ -49,23 +119,6 @@ const TESTIMONIALS: readonly Testimonial[] = [
       "How is bb everything I’ve ever wanted from codex? Customizable like pi, first-class css overrides… I never want this to end.",
   },
   {
-    author: "Hemanth Soni",
-    byline: "hem.so",
-    source: "blog",
-    url: "https://hem.so/multiplexers",
-    quote:
-      "This is my current daily driver, primarily because of its incredibly robust and thoughtful plugin system. … I can’t recommend it enough.",
-  },
-  {
-    author: "Jing",
-    byline: "@Jingg_n_Tonic",
-    avatar: jingAvatar,
-    source: "x",
-    url: "https://x.com/Jingg_n_Tonic/status/2095517767415795911",
-    quote:
-      "One of my favorite new apps… it’s the first app that lives up to the promise of personalized software.",
-  },
-  {
     author: "Rob Haisfield",
     byline: "@RobertHaisfield",
     avatar: haisfieldAvatar,
@@ -74,23 +127,6 @@ const TESTIMONIALS: readonly Testimonial[] = [
     quote:
       "I use child threads… and I highly recommend them… child threads are more like teammates that build up their own context over many tasks and collaborate",
     wide: true,
-  },
-  {
-    author: "emre",
-    byline: "@bu7emba",
-    avatar: emreAvatar,
-    source: "x",
-    url: "https://x.com/bu7emba/status/2114098680089444565",
-    quote:
-      "Loving the embedded generative UI and how much you can customize. The terminal was indeed a stopgap.",
-  },
-  {
-    author: "Swair",
-    byline: "@swairshah",
-    avatar: swairAvatar,
-    source: "x",
-    url: "https://x.com/swairshah/status/2095643295020122216",
-    quote: "Only good malleable software I’ve used in the LLM era is bb…",
   },
 ];
 
