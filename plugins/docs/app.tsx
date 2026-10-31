@@ -1,3 +1,4 @@
+import { MarkdownLink, MarkdownStarterKit } from "./markdown-editor";
 import {
   useCallback,
   useEffect,
@@ -57,8 +58,6 @@ import {
   Node,
   mergeAttributes,
 } from "@tiptap/core";
-import StarterKit from "@tiptap/starter-kit";
-import Link from "@tiptap/extension-link";
 import Image from "@tiptap/extension-image";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
@@ -517,9 +516,9 @@ function TiptapEditor(props: {
     editor = new Editor({
       element: rootRef.current,
       extensions: [
-        StarterKit,
+        MarkdownStarterKit,
         createProposalDiff({ getBaseDocument: () => baselineRef.current }),
-        Link.configure({ openOnClick: false, autolink: true }),
+        MarkdownLink.configure({ openOnClick: false, autolink: true }),
         Image.configure({ allowBase64: false }),
         TaskList,
         TaskItem.configure({ nested: true }),
