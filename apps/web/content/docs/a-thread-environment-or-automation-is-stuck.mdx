@@ -1,0 +1,108 @@
+---
+title: A thread, environment or automation is stuck
+description: A thread stays on Working, an environment says Needs recovery, or an automation stopped. Stop the thread, recover the environment or resume the automation.
+type: troubleshooting
+sources:
+  - apps/server/src/services/environments/environment-engine.ts
+  - apps/server/src/services/threads/thread-provisioning.ts
+  - apps/server/src/services/threads/background-task-reconciliation.ts
+  - apps/app/src/lib/lifecycle-errors.ts
+  - apps/app/src/components/thread/timeline/ThreadTimelineSurface.tsx
+  - plugins/composer/src/PromptBoxInternal.tsx
+  - packages/templates/src/templates/bb-guide-environments.md
+  - packages/templates/src/templates/bb-guide-thread-lifecycle.md
+  - plugins/automations/src/data.ts
+  - plugins/automations/src/run.ts
+  - plugins/automations/skills/automations/references/script-runtime.md
+since: 0.48.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+| What you see | Likely cause | Fix |
+| --- | --- | --- |
+| A thread shows Working with no new output | A long or hung command | [Open the thread, then stop it](#a-thread-is-working-for-a-long-time) |
+| A thread waits and never starts working | An offline machine, a concurrency limit, or a pending retry | See [A thread waits and never starts](#a-thread-waits-and-never-starts) |
+| A thread stays on "Stop requested" | The machine didn't confirm the stop | Bring the machine back, then stop it again |
+| A background command card says Running after the agent finished | Its session ended without closing it | Run `bb thread stop <thread-id>` |
+| A turn failed with an error | The agent or its provider failed | Run `bb thread retry <thread-id>` |
+| "Workspace setup failed" | `.bb-env-setup.sh` failed, or the worktree couldn't be created | [Fix the cause, then start a new thread](#workspace-setup-failed) |
+| "Workspace no longer exists." | The thread was archived and its worktree removed | [Restore the environment](#workspace-no-longer-exists) |
+| An environment says "Needs recovery" | Removing it failed five times | [Inspect it, then recover](#needs-recovery) |
+| An automation shows Paused | Three runs failed, or its target thread can't take a run | [Fix the cause, then resume it](#an-automation-paused-itself) |
+
+## A thread is Working for a long time
+
+Open the thread; the timeline shows the running step. A long build is fine; a command waiting for input isn't. Click **Stop run**, or run:
+
+```bash
+bb thread stop <thread-id>
+```
+
+The thread keeps its history, workspace and settings; send a new message to continue. Stopping also marks leftover background commands as finished.
+
+### A thread stays on Stop requested
+
+The machine couldn't interrupt the turn. Check `bb thread show <thread-id> --json`, and if the machine is offline, bring it back first.
+
+## A thread waits and never starts
+
+- **The machine is offline.** Sending says "Host is offline." Wake it and check bb runs on it, or check **Settings → Machines**.
+- **A concurrency limit holds it** until a running thread goes idle. See `bb concurrency-limit status`.
+- **It waits for an automatic retry** after a provider overload or usage limit. `bb provider-retry retry <thread-id>` sends now.
+- **It waits for you.** Answer its question or approval in the thread.
+
+## A turn failed
+
+`bb thread retry <thread-id>` retries without resending your message. If the agent's context is the problem, `bb thread clear <thread-id>` starts a fresh conversation in the same thread and workspace.
+
+## Workspace setup failed
+
+Usually the repository's `.bb-env-setup.sh` failed: it must exit 0 within 15 minutes, or bb removes the new worktree. Fix the script or make optional steps non-fatal, then start a new thread.
+
+## Workspace no longer exists.
+
+bb removed the archived thread's worktree but kept the branch. Rebuild it on that branch:
+
+```bash
+bb thread unarchive <thread-id>
+bb thread restore-environment <thread-id>
+```
+
+Uncommitted changes in the removed worktree can't be restored.
+
+## Needs recovery
+
+After a worktree's last thread is archived, bb runs `.bb-env-teardown.sh` if present, stops processes inside it, and deletes it. After five failures, it shows Needs recovery.
+
+1. Run `bb environment show <environment-id>` for its path and message.
+2. Stop your shells, editors or dev servers still using that folder.
+3. Run `bb environment cleanup <environment-id> --recover`.
+4. Check it's gone with `bb environment show <environment-id>`.
+
+:::note
+Recovery works only on Linux machines. It refuses while a setup or teardown script runs, or while a process of bb's user still uses the folder. It never stops processes for you.
+:::
+
+## An automation paused itself
+
+**Automations** in the sidebar marks it **Paused**, and its page shows the last error and its runs. It pauses after:
+
+- **Three failed runs in a row.**
+- **A target thread that can't take a run**, because it was archived, deleted or failed.
+
+Fix the cause, then click **Resume automation**. **Run now** checks it without waiting for the schedule.
+
+```bash
+bb automation runs <automation-id> --project <project-id>
+bb automation resume <automation-id> --project <project-id>
+```
+
+## What to send when you ask for help
+
+- `bb --version`, your operating system, and how you run bb.
+- Thread: `bb thread show <thread-id> --json`.
+- Environment: `bb environment show <environment-id>`, and whether the repository has `.bb-env-setup.sh` or `.bb-env-teardown.sh`.
+- Automation: `bb automation show <automation-id> --project <project-id>` and `bb automation runs <automation-id> --project <project-id>`.
+- The exact message and where it appeared.
+- Server and host daemon logs from `~/.bb/logs/` (desktop: **View → Local Logs**).
