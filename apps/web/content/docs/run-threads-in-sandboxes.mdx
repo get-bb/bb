@@ -1,0 +1,132 @@
+---
+title: Run threads in sandboxes, containers and VMs
+description: Run threads off your own computer. Install the Modal Sandbox plugin for a cloud sandbox per thread, or add your own VM or container as a machine.
+type: how-to
+sources:
+  - plugins/environment-modal-sandbox/**
+  - apps/app/src/components/pickers/EnvironmentPicker.tsx
+  - apps/app/src/components/dialogs/AddMachineDialog.tsx
+  - apps/server/src/assets/install-machine.sh
+  - apps/cli/src/commands/thread/spawn.ts
+since: 0.43.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+Each option is a machine; the thread runs on the one you pick. See [Machines, servers and the host daemon](/docs/machines-servers-and-the-host-daemon).
+
+## Choose an option
+
+| Option | What you get | Lifetime | Set up once |
+| --- | --- | --- | --- |
+| **Modal Sandbox** plugin | A cloud sandbox per thread | Until its last thread is archived | A Modal token |
+| **Your own VM or container** | A computer you manage | Until you remove it | The Add a machine command |
+| **Worktree** | A Git worktree on the same computer, not a sandbox | Until the thread is archived | Nothing |
+
+Plugins can add other providers. See the [Plugin SDK](/docs/plugin-sdk).
+
+## Use Modal Sandbox
+
+An experimental bundled plugin. Modal bills your account.
+
+### Before you start
+
+| Need | Details |
+| --- | --- |
+| A [Modal](https://modal.com) API token | From `modal token new` |
+| A Git remote | The sandbox clones it |
+| A route to your server | See [Set up remote access](/docs/set-up-remote-access). |
+| Agent credentials | In **Settings → Environment variables** |
+
+### Install and connect it
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+1. Install **Modal Sandbox [Experimental]** from the plugin marketplace.
+2. Open it under **Plugins** in Settings.
+3. Enter the **Modal token id** and **Modal token secret**.
+4. Optionally add **Sandbox sizes** and **Images** presets. Choose **Save changes**.
+
+<Screenshot
+  src="/docs-images/run-threads-in-sandboxes/modal-settings"
+  alt="The Modal Sandbox settings page has Modal token id and token secret fields."
+  width={750}
+  height={500}
+/>
+
+</Tab>
+<Tab value="CLI">
+
+```bash
+bb plugin install environment-modal-sandbox
+bb plugin config environment-modal-sandbox
+```
+
+Set the token, then check it:
+
+```bash
+bb modal account inspect --json
+```
+
+</Tab>
+</Tabs>
+
+### Start a thread in a sandbox
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+1. In the composer's **Environment** picker, choose **Modal Sandbox**.
+2. Pick a size or image from the chip next to it, if you added any.
+3. Send your message.
+
+<Screenshot
+  src="/docs-images/run-threads-in-sandboxes/environment-picker-modal"
+  alt="The composer's Environment picker lists Modal Sandbox."
+  width={740}
+  height={310}
+/>
+
+bb creates the sandbox, clones the project, runs `.bb-env-setup.sh` and starts the agent.
+
+</Tab>
+<Tab value="CLI">
+
+```bash
+bb thread spawn --project <project-id> --environment-provider modal-sandbox --prompt "Fix the failing tests"
+```
+
+Pick presets with `--machine-inputs '{"preset":"Large","image":"Node 22"}'`.
+
+</Tab>
+</Tabs>
+
+### How long a sandbox lives
+
+| Event | What happens |
+| --- | --- |
+| 15 idle minutes | bb saves its files and stops it. It resumes when you send a message. |
+| 24 hours running | Modal stops it; unsaved changes may be lost. |
+| Last thread archived | The sandbox is removed. |
+
+## Use your own VM or container
+
+1. Copy the **macOS or Linux** command from **Settings → Machines → Add a machine**.
+2. Run it inside the VM or container.
+3. Pick the machine in the **Environment** picker, or pass `--machine "<machine name>"` to `bb thread spawn`.
+
+It needs no open ports. Its **Permission limit** can let agents act freely there but not on your laptop. See [Add a machine](/docs/add-a-machine).
+
+## Check it worked
+
+- The **Environment** picker shows the machine's name.
+- `bb machine list --all` lists sandboxes too.
+
+## Related troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| Modal Sandbox shows that setup is required | Enter both token fields. |
+| Cloning fails | The sandbox needs access to the Git remote. Retry, or `bb machine remove <machine> --yes`. |
+| "Machines cannot reach this bb yet" | Choose **Set up machine access**. |
