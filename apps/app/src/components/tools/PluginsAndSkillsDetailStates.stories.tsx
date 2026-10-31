@@ -1554,7 +1554,7 @@ export function PluginCopyLinkStates() {
     <PluginStoryQueryBoundary>
       <Story
         title="Plugin copy link states"
-        description="Every plugin with a getbb.app page gets a Copy link icon button. Catalog pages: Copy link, Install, ⋯ (hidden when empty). Installed pages: Copy link, a divider, then the switch and ⋯, with Settings as the first ⋯ item when the plugin has settings. Clicking copies the page link on every device and shows “Link copied”. Plugins with no page show no Copy link, and ⋯ no longer has Copy marketplace link."
+        description="Every plugin with a getbb.app page gets a labeled “Copy link” secondary button, the same height as Install. Catalog pages: Copy link, Install, ⋯ (hidden when empty). Installed pages: Copy link, a divider, then the switch and ⋯, with Settings as the first ⋯ item when the plugin has settings. Clicking copies the page link on every device and shows “Link copied”. Plugins with no page show no Copy link, and ⋯ no longer has Copy marketplace link."
         renderedNote="The real header, at desktop and phone widths (page clipped below the header)"
       >
         <State

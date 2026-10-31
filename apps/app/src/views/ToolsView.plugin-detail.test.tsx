@@ -955,6 +955,7 @@ describe("PluginDetail official catalog lifecycle", () => {
     const copyLink = screen.getByRole("button", {
       name: "Copy link to Simple Notes",
     });
+    expect(copyLink.textContent).toBe("Copy link");
     const toggle = screen.getByRole("switch", {
       name: "Disable Simple Notes",
     });
