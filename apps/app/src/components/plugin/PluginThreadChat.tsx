@@ -18,9 +18,8 @@ import {
   type ThreadTimelineForkMessageHandler,
 } from "@/components/thread/timeline";
 import { useThreadTimelineNavigation } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
-import type { ThreadTimelineLocalFileLinkHandler } from "@/components/thread/timeline/types";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
-import { resolveThreadLocalFileLink } from "@/lib/thread-local-file-links";
+import { useOpenThreadLocalFileLink } from "@/hooks/useOpenThreadLocalFileLink";
 import { PluginContext } from "@/components/plugin/plugin-context";
 import { PluginComposerHostScopeProvider } from "@/components/plugin/plugin-composer-host";
 import { ThreadProviderContext } from "@/components/thread/thread-provider-context";
@@ -179,28 +178,11 @@ function PluginThreadChatBody({
     thread.environmentId === timelineNavigation?.environmentId;
   const onOpenLink = timelineNavigation?.onOpenLink;
   const navigation = useAppNavigationHost();
-  const onOpenLocalFileLink = useMemo<
-    ThreadTimelineLocalFileLinkHandler | undefined
-  >(() => {
-    if (canUseHostFileNavigation) return timelineNavigation.onOpenLocalFileLink;
-    if (environment === null) return undefined;
-    return (link) => {
-      const resolution = resolveThreadLocalFileLink({
-        fileOpenTargetIds: [],
-        hostId: environment.hostId,
-        link,
-        threadStorage: null,
-        workspace:
-          environment.path === null
-            ? null
-            : { environmentId: environment.id, rootPath: environment.path },
-      });
-      return (
-        resolution.kind === "preview" &&
-        navigation.openFilePreview(resolution.options)
-      );
-    };
-  }, [canUseHostFileNavigation, environment, navigation, timelineNavigation]);
+  const onOpenLocalFileLink = useOpenThreadLocalFileLink({
+    environment,
+    openFilePreview: navigation.openFilePreview,
+    threadId: thread?.id,
+  });
   const resolveHostMentionLink = canUseHostFileNavigation
     ? timelineNavigation.resolveMentionLink
     : undefined;

@@ -44,7 +44,6 @@ import { ThreadProviderContext } from "@/components/thread/thread-provider-conte
 import { type ThreadListEntry } from "@bb/domain";
 import type { TerminalSession } from "@bb/server-contract";
 import type { WorkspaceOpenTarget } from "@bb/host-daemon-contract";
-import { appToast } from "@/components/ui/app-toast";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import {
   PluginDetailTabContent,
@@ -122,7 +121,6 @@ import { ThreadDetailSecondaryContent } from "./ThreadDetailSecondaryContent";
 import {
   useThreadSecondaryPanelDrawerVisibility,
   useThreadSecondaryPanelVisibility,
-  type ThreadSecondaryPanelFileOpenOptions,
 } from "./useThreadSecondaryPanelVisibility";
 import {
   shouldLoadThreadStorageFileList,
@@ -191,7 +189,7 @@ import {
   resolveEnvironmentOpenContext,
   resolveThreadWorkspaceOpenPath,
 } from "./threadWorkspaceOpenPath";
-import { resolveThreadLocalFileLink } from "@/lib/thread-local-file-links";
+import { useOpenThreadLocalFileLink } from "@/hooks/useOpenThreadLocalFileLink";
 import {
   MarkdownLocalFileContextMenuContext,
   MarkdownLocalFileOpenTargetsContext,
@@ -1119,61 +1117,11 @@ function ThreadDetailViewInternal(
     },
     [thread, updateThread],
   );
-  const handleOpenTimelineLocalFileLink = useCallback(
-    (
-      link: ThreadTimelineLocalFileLink,
-      options?: ThreadSecondaryPanelFileOpenOptions,
-    ) => {
-      const resolution = resolveThreadLocalFileLink({
-        fileOpenTargetIds: fileOpenTargets.map((target) => target.id),
-        hostId:
-          thread?.environmentId == null ? null : (environment?.hostId ?? null),
-        link,
-        threadStorage:
-          thread === undefined || threadStorageRootPath === null
-            ? null
-            : { rootPath: threadStorageRootPath, threadId: thread.id },
-        workspace:
-          thread?.environmentId == null || workspacePreviewRootPath === null
-            ? null
-            : {
-                environmentId: thread.environmentId,
-                rootPath: workspacePreviewRootPath,
-              },
-      });
-      switch (resolution.kind) {
-        case "app-route":
-          return false;
-        case "error":
-          appToast.error("Failed to open file locally", {
-            description: resolution.description,
-          });
-          return true;
-        case "open-in-target":
-          void openPathInFileTarget({
-            lineNumber: getFilePreviewLineRangeStart({
-              lineRange: resolution.lineRange,
-            }),
-            path: resolution.path,
-            rememberTarget: false,
-            targetId: resolution.targetId,
-          });
-          return true;
-        case "preview":
-          openLiveFilePreview({ ...resolution.options, ...options });
-          return true;
-      }
-    },
-    [
-      environment?.hostId,
-      fileOpenTargets,
-      openLiveFilePreview,
-      openPathInFileTarget,
-      thread,
-      threadStorageRootPath,
-      workspacePreviewRootPath,
-    ],
-  );
+  const handleOpenTimelineLocalFileLink = useOpenThreadLocalFileLink({
+    environment: thread?.environmentId == null ? null : environment,
+    openFilePreview: openLiveFilePreview,
+    threadId: thread?.id,
+  });
   const handleOpenTimelineLink = useCallback<ThreadTimelineLinkHandler>(
     ({ href }) => openBrowserUrl(href),
     [openBrowserUrl],
