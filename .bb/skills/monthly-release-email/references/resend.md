@@ -96,7 +96,7 @@ section before sharing it.
 - **Schedule** after the reviewer's go-ahead on the test email: the first
   Thursday after the month ends, 16:00 UTC, unless they pick otherwise.
 - **Changes after scheduling** need the reviewer's go-ahead. Unschedule, edit,
-  then save the draft and run `check-resend.mjs` as in step 6 to confirm only
-  the intended text changed. Schedule it again, check the contacts, time and
-  links on the way, and confirm the broadcast shows as scheduled. Test emails
-  still work while scheduled.
+  carry the edit into the JSON and re-render, then run the check in step 6 until
+  it passes. Schedule it again, check the contacts, time and links on the way,
+  and confirm the broadcast shows as scheduled. Test emails still work while
+  scheduled.

@@ -110,8 +110,9 @@ Final PNGs go one level up.
      letting the screenshot grow past the viewport; growing it reflows the
      layout.
    - Measure elements with `getBoundingClientRect()` in the same session, and
-     write them to an annotations config in `design/`: `capture` (a file in
-     `caps/`), `page` (`[width, height]` of the capture in CSS px), `elements`
+     write them to an annotations config in `design/`: `capture` (its path
+     relative to the output HTML, such as `caps/<name>.png`), `page`
+     (`[width, height]` of the capture in CSS px), `elements`
      (`{name: [x1, y1, x2, y2, radius]}`) and `labels`
      (`[{element, text, side, gap, dx, anchor}]`, where `side` is `above` or
      `below`, `anchor` is `c`, `l` or `r`, and `dx` moves a leader line off text
@@ -121,6 +122,9 @@ Final PNGs go one level up.
      ```sh
      node scripts/monthly-email/annotate-design.mjs <config.json> <out.html>
      ```
+
+     Write `<out.html>` into `design/`, so it finds `design-base.css` and the
+     capture.
 
    - Narrow crops stay readable at half width: open the right panel or shrink
      the viewport so the chat column narrows, or set a Ladle story's width to

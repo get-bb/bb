@@ -68,15 +68,14 @@ verification, Resend and the shareable screenshot.
 
 7. **Review rounds.** Share the draft's Resend link and ask for review. The
    reviewer edits the draft in Resend, and copy edits from a review round go
-   straight into the draft too; save the draft's HTML and fields and run
-   `check-resend.mjs` afterwards, as in the Resend reference's "Check the
-   build", to confirm only the intended text changed. It shows the first
-   difference, so run it again after each fix. Rebuild only for changes the
-   editor can't make, such as new graphics or layout. Before a rebuild, run the
-   same check against the last send HTML; if the visible text differs, carry the
-   draft's edits into the JSON first. Then apply the change, re-verify changed
-   claims, rebuild the draft (re-uploading only changed images), and delete the
-   previous draft only once its edits are in the JSON.
+   straight into the draft too. After each round, carry the edits into the JSON,
+   re-render the send HTML (Resend reference, step 2), and run the check in its
+   "Check the build" until all twelve lines are ok. It shows one difference at a
+   time; any difference left is either an unintended change or an edit not yet
+   in the JSON. Rebuild only for changes the editor can't make, such as new
+   graphics or layout: apply the change, re-verify changed claims, rebuild the
+   draft (re-uploading only changed images), and delete the previous draft once
+   the new one passes the check.
 8. **Screenshot for sharing**, if asked, as in the Resend reference.
 9. **Test emails, then send**, only when the reviewer says, as in the Resend
    reference's "Sending".
