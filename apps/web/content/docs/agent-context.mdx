@@ -1,0 +1,87 @@
+---
+title: Agent context
+description: Which context comes from the agent's own setup and which bb adds to a thread, such as an introduction and AGENTS.md, and how to turn each addition off.
+type: concept
+sources:
+  - apps/server/src/services/threads/thread-runtime-config.ts
+  - apps/server/src/services/threads/workspace-agent-instructions.ts
+  - plugins/bb-guide/server.ts
+  - plugins/bb-guide/introduction.ts
+  - plugins/custom-instructions/server.ts
+  - plugins/connect/src/plugin.ts
+since: 0.43.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+<Screenshot
+  src="/docs-images/agent-context/agent-context"
+  alt="An agent session combines the agent's own setup, its instruction files, skills and MCP servers, with what bb adds: instructions, skills, plugin tools and the bb command."
+  width={720}
+  height={400}
+/>
+
+## What the agent brings itself
+
+bb starts each agent with its normal configuration and doesn't change its files:
+
+| Part | Where it comes from |
+| --- | --- |
+| Instruction files | Claude Code reads `CLAUDE.md` (recent versions fall back to `AGENTS.md`). Codex reads `AGENTS.md` at the repository root |
+| Skills | The agent's own folders, such as `~/.claude/skills` or `.agents/skills` |
+| MCP servers | The agent's own configuration |
+
+## What bb adds
+
+bb appends these to the system prompt, in order, each headed by its source:
+
+1. **Plugin instructions**, each cut off at 4,096 characters:
+   - **bb's introduction** (BB guide plugin): the agent is in bb, can run `bb`, and how to link threads and files.
+   - **Custom instructions** from **Settings → Custom instructions**.
+   - **Remote access** (bb connect): how to share a local server while you use bb remotely.
+   - Anything other enabled plugins add.
+2. **`~/.bb/AGENTS.md`:** your instructions for every project.
+3. **`.bb/AGENTS.md`** in the workspace: instructions for that project. Commit it so new worktrees get it.
+
+bb reads only those two `AGENTS.md` paths, skips empty files, and sends them to every agent.
+
+It also provides:
+
+- **Skills** from `~/.bb/skills`, the project's `.bb/skills` and enabled plugins, including BB guide's `bb-cli`, `bb-plugin-authoring`, `skill-creator` and `submit-a-plugin`.
+- **Plugin tools.** Claude Code and other ACP agents see them as `mcp__bb-bridge__<tool>`; Codex and Pi get them directly.
+- **The `bb` command** on the agent's PATH.
+
+## When changes take effect
+
+A running session keeps the context it started with. Changes apply in a new thread, or after `bb thread stop <thread-id>` and your next message; history stays.
+
+`bb thread context <thread-id>` shows how much of the context window each part takes, for agents that report it.
+
+## Turn parts off
+
+| To stop sending | Do this |
+| --- | --- |
+| bb's introduction | **Settings → BB guide → Send BB introduction**, or `bb plugin config bb-guide set introduction false` |
+| bb's four skills | **Settings → BB guide → Enable bundled skills** or one skill's switch, or `bb plugin config bb-guide set skills false` |
+| Custom instructions | Clear **Settings → Custom instructions**, or `bb instructions clear` |
+| Remote access instructions | **Settings → bb connect → Tell agents about remote access** |
+| Everything one plugin adds | `bb plugin disable <plugin-id>`, or **Settings → Installed plugins** |
+| `AGENTS.md` instructions | Delete or empty `~/.bb/AGENTS.md` or `.bb/AGENTS.md` |
+
+The `bb` command stays available either way.
+
+## When to use which
+
+| If you want | Use |
+| --- | --- |
+| A rule for every thread, set in the app | **Settings → Custom instructions** |
+| A rule for every thread, in a versioned file | `~/.bb/AGENTS.md` |
+| A rule for one project, shared with your team | `.bb/AGENTS.md`, or the agent's own `AGENTS.md` or `CLAUDE.md` |
+| Steps the agent loads only when needed | A skill |
+| A new capability, such as calling an API | A plugin tool or `bb` command |
+
+## Next steps
+
+- Add and share skills
+- Connect MCP servers
+- [Quickstart: build your first plugin](/docs/quickstart-build-a-plugin)

@@ -1,0 +1,109 @@
+---
+title: Name threads and branches
+description: bb titles new threads with the AI service set in Settings → AI services and names worktree branches after the title. Rename or regenerate a title any time.
+type: how-to
+sources:
+  - apps/server/src/services/threads/title-generation.ts
+  - apps/server/src/services/threads/thread-create-helpers.ts
+  - apps/app/src/components/settings/AiServicesSettingsSection.tsx
+  - apps/app/src/lib/thread-actions/core-thread-actions.ts
+  - apps/cli/src/commands/settings.ts
+  - plugins/bb-ai/src/server.ts
+  - plugins/provider-codex/src/ai-service.ts
+since: 0.44.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+A new thread first shows the start of your prompt, then swaps in a generated title of at most 48 characters. It keeps the prompt text when:
+
+- The prompt is under five words and doesn't start a skill or command.
+- You gave the thread a title when you created it.
+- **Thread titles** is **Off**, or no service is ready.
+
+## Rename or regenerate a title
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+Right-click the thread in the sidebar and choose:
+
+- **Rename** to type your own title.
+- **Regenerate title** to write a new one from the first and latest messages, for a thread that drifted.
+
+To rename from the keyboard, give **Rename thread** a key in **Settings → Keyboard**.
+
+</Tab>
+<Tab value="CLI">
+
+```sh
+bb thread update <thread-id> --title "Fix the login redirect"
+bb thread regenerate-title <thread-id>
+```
+
+</Tab>
+</Tabs>
+
+## Choose who writes titles
+
+Open **Settings → AI services → Thread titles**:
+
+<Screenshot
+  src="/docs-images/name-threads-and-branches/ai-services"
+  alt="Settings → AI services lists Thread titles, Commit messages and Voice input, each with a service picker, and the Thread titles picker is outlined."
+  width={760}
+  height={276}
+/>
+
+| Choice | What it does |
+| --- | --- |
+| **Automatic** (default) | bb cloud if ready, otherwise the next ready service |
+| **bb cloud** | bb's own service; needs a bb account sign-in |
+| **Codex** | Your Codex sign-in on the computer running the bb server |
+| **Off** | Threads keep the start of the prompt |
+
+Plugins can add services to the list. Each service picks its own model. **Test** tries your choice on a sample.
+
+```sh
+bb settings ai-services
+bb settings ai-services set thread-title codex
+bb settings ai-services test thread-title
+```
+
+To stop sending anything to bb cloud, run `bb ai off`.
+
+## Change the branch prefix
+
+A worktree thread's branch is the prefix, the title in lowercase with hyphens, and the thread ID: `bb/fix-login-redirect-thr_ab12cd34ef`. Without a title it uses the start of your prompt.
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+1. Open **Settings → General → Git → New branch prefix**.
+2. Type a prefix, such as `alex/`, or clear the field for none.
+
+</Tab>
+<Tab value="CLI">
+
+```sh
+bb settings general managedBranchPrefix alex/
+```
+
+</Tab>
+</Tabs>
+
+Only new branches use it. Renaming a thread doesn't rename its branch.
+
+## Check it worked
+
+- A prompt of five words or more gets a short title in the sidebar within seconds.
+- `bb settings ai-services` shows each task's service and whether it is ready.
+- In a new worktree thread, `git branch --show-current` starts with your prefix.
+
+## Related troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| Threads keep the start of the prompt | `bb settings ai-services` says why a service isn't ready. Sign in, or pick another |
+| Codex titles stopped | Sign in to Codex on the computer running the bb server |
+| The prefix field turns red | Use a valid start of a git branch name, 64 characters at most |

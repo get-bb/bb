@@ -1,0 +1,106 @@
+---
+title: "Quickstart: build your first plugin"
+description: Scaffold a plugin with bb plugin new, install it, see its sidebar page, command and skill work, then change it with live reload. About 10 minutes.
+type: tutorial
+sources:
+  - apps/cli/src/commands/plugin.ts
+  - packages/templates/src/plugin-scaffold.ts
+  - apps/app/src/components/plugin/PluginCreateButton.tsx
+  - apps/app/src/components/plugin/PluginsOverview.tsx
+since: 0.40.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+:::warning[Plugins run with full trust]
+A plugin runs inside the bb server as your user, with access to your files and all bb data. Install only plugins whose code you trust, including your own.
+:::
+
+## Before you start
+
+- bb is running and the `bb` command works. If it doesn't, turn it on in **Settings → General → Command line**.
+- An internet connection. The scaffold installs packages from npm with bb's own npm, so you don't need Node.js.
+
+**Or let an agent do it:** click **Plugins** in the sidebar, then **New plugin**. Finish the prompt "Create a new bb plugin that" and send it.
+
+## 1. Scaffold the plugin
+
+In the folder where you keep your code, run:
+
+```sh
+bb plugin new hello
+```
+
+You should see `Created bb-plugin-hello/ (bb-plugin-hello).`, then `Installed dependencies (npm install).`
+
+The folder holds an example todo-list plugin:
+
+| File | What it does |
+| --- | --- |
+| `package.json` | Manifest. Its `bb` field names the plugin, icon and entry files |
+| `server.ts` | Backend: stores todos, registers the `hello` command and a setting |
+| `app.tsx` | Frontend: the **Example todos** sidebar page |
+| `skills/example-todos/SKILL.md` | Tells agents how to use the `hello` command |
+| `PLUGIN_OVERVIEW.md` | Long description for the store page |
+
+The plugin id is `hello`. Ids use lowercase letters, digits and hyphens, and can't be a core `bb` command.
+
+## 2. Install it from its folder
+
+```sh
+cd bb-plugin-hello
+bb plugin install .
+```
+
+Confirm the full-trust prompt. bb builds the plugin, starts it, and keeps running the code in this folder.
+
+You should see `Installed:` and `hello@0.1.0  running`. `bb plugin list` shows it any time.
+
+## 3. See it run
+
+1. Click **Example todos** in the sidebar rail (or its row in the Top list navigation).
+
+   <Screenshot
+     src="/docs-images/quickstart-build-a-plugin/example-todos"
+     alt="The new Example todos icon is in the sidebar rail, and its page lists the todos with a field to add more."
+     width={1280}
+     height={260}
+   />
+2. Add a todo from the terminal. `bb hello add` works too.
+
+   ```sh
+   bb plugin run hello add "Ship it"
+   ```
+
+   You should see "Ship it" appear on the page without a reload.
+3. Start a thread and ask "Add 'Write the README' to my example todos". The agent reads the `example-todos` skill and runs the command.
+
+## 4. Change it and watch it reload
+
+1. In the plugin folder, run:
+
+   ```sh
+   bb plugin dev
+   ```
+
+   You should see `Watching … for plugin "hello"`.
+2. In `app.tsx`, change `title: "Example todos"` to `title: "My todos"` and save. The sidebar shows the new name.
+3. Press Ctrl+C to stop watching.
+
+Server code, commands and skills reload the same way. A running thread keeps the agent tools and instructions it started with: run `bb thread stop <thread-id>`, then send it a message.
+
+## 5. Find the API
+
+| Where | What |
+| --- | --- |
+| [Plugin Guide](https://getbb.app/plugin-guide) | Each place a plugin can add to bb, with a live example |
+| [Plugin SDK reference](/docs/plugin-sdk) | One page per surface with its SDK symbols |
+| `node_modules/@get-bb/plugin-sdk/bundled-types/` | Type declarations, with comments on every symbol |
+
+After you update bb, run `bb plugin types` and then `npm install` in the plugin folder to match the SDK to your bb.
+
+## Next steps
+
+- [Publish to the marketplace](/docs/publish-to-the-marketplace)
+- [Plugin SDK reference](/docs/plugin-sdk)
+- [Plugin Guide](https://getbb.app/plugin-guide)

@@ -1,0 +1,141 @@
+---
+title: Publish to the marketplace
+description: Release your plugin from a public Git repository or npm package, then open a pull request that adds it to the BB Community marketplace for review.
+type: how-to
+sources:
+  - plugins/bb-guide/skills/submit-a-plugin/**
+  - plugins/bb-guide/skills/bb-plugin-authoring/references/distribution.md
+  - apps/server/src/services/plugin-catalog/marketplace-*.ts
+  - apps/server/src/services/plugin-catalog/curated-marketplace.ts
+  - apps/cli/src/commands/marketplace.ts
+since: 0.38.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+The BB Community marketplace is the GitHub repository [get-bb/marketplace](https://github.com/get-bb/marketplace): one entry file per plugin, reviewed by the bb team. Your code stays where it is.
+
+## Get the plugin ready
+
+| Check | What it needs |
+| --- | --- |
+| `package.json` | `bb.name`, a one-sentence `bb.description` and `bb.branding` with an icon |
+| `engines.bb` | The bb versions it works with; bb won't install it outside the range |
+| `dependencies` | Imports bb doesn't provide |
+| `bb plugin build` | Passes |
+| `PLUGIN_OVERVIEW.md` | The store page's long description |
+
+The plugin id drops the npm scope and `bb-plugin-`: `@acme/bb-plugin-notes` is `notes`. It can't start with `bb--` or match a bundled plugin.
+
+## Choose Git or npm
+
+| | Git repository | npm package |
+| --- | --- | --- |
+| **Install** | bb clones and builds it | Must contain `dist/`: run `bb plugin build` before `npm publish` |
+| **Release** | Push a `vX.Y.Z` tag | Publish a new version |
+| **Entry source** | `"git": { "url": "…", "range": "^1.0.0" }` | `"npm": { "package": "…", "range": "^1.0.0" }` |
+
+Prefer a Git range: users get later tags without a new pull request.
+
+:::warning[Never move a tag]
+bb refuses a re-pointed tag. Publish fixes as new versions.
+:::
+
+## Submit the entry
+
+<Tabs items={["Ask an agent", "By hand"]}>
+<Tab value="Ask an agent">
+
+In the plugin's project, send:
+
+```text title="Prompt"
+Submit this plugin to the BB Community marketplace.
+```
+
+It follows the `submit-a-plugin` skill, asks your approval before it tags or publishes, then opens the pull request from your GitHub account.
+
+</Tab>
+<Tab value="By hand">
+
+1. Push the tag or publish to npm.
+2. Fork [get-bb/marketplace](https://github.com/get-bb/marketplace).
+3. Add `entries/<plugin-id>.json`; its name and `id` match the plugin id:
+
+   ```json title="entries/notes.json"
+   {
+     "id": "notes",
+     "displayName": "Notes",
+     "description": "Keeps project notes beside each bb thread.",
+     "icon": { "url": "./icons/notes-1234abcd.svg" },
+     "screenshots": ["./screenshots/notes/overview.png"],
+     "overview": "./overview/notes.md",
+     "tags": ["notes"],
+     "author": { "name": "Acme", "github": "acme" },
+     "category": "thread-content",
+     "source": {
+       "git": {
+         "url": "https://github.com/acme/bb-plugin-notes.git",
+         "range": "^1.0.0"
+       }
+     }
+   }
+   ```
+
+4. Add the files it points to:
+
+   | File | Rules |
+   | --- | --- |
+   | `icons/` | SVG, PNG or WebP, at most 256 KB |
+   | `screenshots/<plugin-id>/` | Up to six PNG, JPEG or WebP, 1200 px wide or more, at most 2 MiB |
+   | `overview/<plugin-id>.md` | Your `PLUGIN_OVERVIEW.md`, 4000 characters at most, no HTML, images or tables |
+
+5. Set `category` from `marketplace.base.json`, and `author.github` to your account.
+6. Check the entry:
+
+   ```sh
+   npm ci --ignore-scripts
+   npm run build
+   npm run check
+   ```
+
+7. Open the pull request, describing the plugin and each screenshot.
+
+</Tab>
+</Tabs>
+
+CI validates the entry, then a maintainer reviews the plugin.
+
+## Release updates
+
+- **A version inside the range** needs nothing. Users run `bb plugin update`.
+- **Any entry change**, such as the source, icon or range, needs a new pull request.
+
+## Share without the marketplace
+
+Share an install command, such as `bb plugin install git:https://github.com/acme/bb-plugin-notes.git@^1.0.0`, or host a `marketplace.json` that others add with `bb marketplace add <source>`.
+
+## Check it worked
+
+bb picks up a merged entry within two hours, or now with:
+
+```sh
+bb marketplace refresh bb-community
+bb plugin search notes
+```
+
+It then appears under **Plugins → Browse plugins** and on getbb.app/marketplace.
+
+<Screenshot
+  src="/docs-images/publish-to-the-marketplace/browse-plugins"
+  alt="Browse plugins lists marketplace plugins that match notes."
+  width={952}
+  height={432}
+/>
+
+## Related troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| CI rejects the entry | Fix the field the message names |
+| Users get a version error | Their bb is outside `engines.bb` |
+| bb refuses an update after a re-tag | Publish a new version instead |
