@@ -104,6 +104,12 @@ the most-parsed commands ends with the same shape.
   bb terminal wait <terminalId> ... --json
     {terminalId, matched, nextSeq, exitCode}
 
+  bb exec --machine <id-or-name> --cwd <path> ... --json -- <command>
+    {terminalId, hostId, environmentId, cwd, status, observation, exitCode, closeReason, output, truncated, nextSeq}    (observation is "exited", "matched", or "yielded"; output is plain text with terminal escapes removed, or null once the machine no longer keeps it)
+
+  bb exec wait <terminalId> ... --json
+    {terminalId, hostId, environmentId, cwd, status, observation, exitCode, closeReason, output, truncated, nextSeq}    (same shape as bb exec)
+
   bb plugin list --json
     {plugins: [{id, version, enabled, status, source, rootDir}]}    (wrapped in .plugins)
 

@@ -143,6 +143,11 @@ Use `--selected-model <model-id>` to discover its reasoning choices and include 
 - `bb terminal close`
 - `bb terminal stop`
 
+## exec
+
+- `bb exec`
+- `bb exec wait`
+
 ## thread
 
 - `bb thread`

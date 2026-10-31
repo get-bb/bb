@@ -1,9 +1,9 @@
 ---
 kind: instruction
 title: bb Terminal Guide
-summary: Creating and managing persistent terminals across thread, environment, and machine scopes.
-intent: Help agents route terminal sessions explicitly and manage them by terminal ID.
-editingNotes: Keep scope selectors and ID-only commands aligned with bb terminal --help.
+summary: Running commands on other machines with bb exec, and managing persistent terminals across thread, environment, and machine scopes.
+intent: Help agents run one-shot commands on another machine, route terminal sessions explicitly, and manage them by terminal ID.
+editingNotes: Keep scope selectors, exec exit codes, and ID-only commands aligned with bb exec --help and bb terminal --help.
 ---
 Terminal commands
 
@@ -85,6 +85,50 @@ For a dev server, prefer:
 
 Do not run long-lived servers as one-off foreground commands when the user will
 need to inspect logs, refresh the page, or stop the process later.
+
+Commands on another machine
+
+Use your own shell for commands in your current workspace. Use `bb exec` to run
+a command on another machine and get its output and exit code in one call:
+
+  bb exec --machine <id-or-name> --cwd <absolute-path> -- <program> [args...]
+  bb exec --environment <environment-id> -- <program> [args...]
+    --host <id-or-name>                   Alias for --machine
+    --yield-after <duration>              Return a still-running command after this long (default: 30s); 0 returns at once
+    --contains <text>                     Return once the output contains text
+    --regex <pattern>                     Return once the output matches regex
+    --max-output-bytes <n>                Return the last N bytes of output (default: 65536)
+    --id <terminal-id>                    Run under this ID (term_ plus 10 characters); a retry with it fails instead of running twice
+    --title <title>                       Terminal title (default: the command)
+    --json                                Print terminalId, status, observation, exitCode, closeReason, output, truncated, and nextSeq
+
+  bb exec wait <terminal-id>              Keep observing a command that bb exec left running
+    --since-seq <n>                       Return and match only output from the previous result's nextSeq
+    --yield-after, --contains, --regex, --max-output-bytes, --json   As for bb exec
+
+Pass the program and its arguments after `--`; the machine quotes them for its
+shell, as `terminal create -- ...` does. Write `sh -c '...'` (or the machine's
+shell) for pipes and `&&`. The command runs in a new terminal on that machine,
+so it appears in the bb UI and `bb terminal` commands work on its ID. It runs in
+a PTY: stdout and stderr arrive interleaved in one `output`, colors and progress
+redraws are removed from it, and commands that page or prompt (`git log`,
+`npm init`) wait for input. Use `git --no-pager` or the command's
+non-interactive flags.
+
+The exit code says how it ended:
+
+  the command's exit code                 It finished
+  0                                       --contains or --regex matched; it may still be running
+  1                                       It exited before the text appeared, or its terminal was closed before it finished
+  124                                     Still running after --yield-after
+
+Returning never stops the command. Continue with the `bb exec wait` line printed
+on stderr, stop it with `bb terminal close <terminal-id>`, or read all of its
+output with `bb terminal output <terminal-id>`. After the machine discards a
+finished command's output, `bb exec wait` still reports its exit code, with
+`output` null. When `bb exec` fails without
+printing a result, check `bb terminal list --machine <id-or-name>` before
+running it again, or pass `--id` so a retry cannot run it twice.
 
 In the app, Find in terminal (`terminal.find`; Cmd+F on macOS, Ctrl+Shift+F
 elsewhere) searches the focused terminal's scrollback; Enter and Shift+Enter
