@@ -115,7 +115,7 @@ export type TelemetryEvent =
   | RecordTelemetryEventRequest
   | {
       name: RecordTelemetryEventRequest["name"];
-      properties: RecordTelemetryEventRequest["properties"] & {
+      properties: Readonly<Record<string, unknown>> & {
         setup_guide_variant: SetupGuideVariant;
       };
     };
