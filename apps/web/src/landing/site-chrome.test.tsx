@@ -14,7 +14,7 @@ describe("site navigation", () => {
     const guideLinks = guideMenu().flatMap((item) =>
       "links" in item ? item.links : [item],
     );
-    expect(links).toHaveLength(7 + guideLinks.length);
+    expect(links).toHaveLength(8 + guideLinks.length);
     expect(html).toMatch(
       /<details class="nav-menu"><summary class="nav-current">Plugins/,
     );
@@ -22,6 +22,8 @@ describe("site navigation", () => {
       'href="/marketplace" aria-current="page">Marketplace',
     );
     expect(html).toContain('href="/plugin-guide">Building plugins');
+    expect(html).toContain('class="nav-wide" href="/docs">Docs');
+    expect(html.indexOf(">Docs<")).toBeLessThan(html.indexOf(">Blog<"));
     expect(html).toContain('href="/blog">Blog');
     expect(html).toContain('href="/changelog">Changelog');
     expect(html.indexOf("Changelog")).toBeLessThan(html.indexOf("Sign in"));
@@ -42,6 +44,13 @@ describe("site navigation", () => {
     expect(html).not.toContain('aria-current="page">Marketplace');
   });
 
+  it("marks Docs current on docs pages and links the docs from the footer", () => {
+    const html = renderToStaticMarkup(<SiteNav current="docs" />);
+    expect(html).toContain('class="nav-current nav-wide" href="/docs">Docs');
+    const footer = renderToStaticMarkup(<SiteFooter />);
+    expect(footer).toContain('<a href="/docs">Docs</a>');
+  });
+
   it("marks Changelog current on the changelog route", () => {
     const html = renderToStaticMarkup(<SiteNav current="changelog" />);
     expect(html).toContain(
@@ -58,7 +67,13 @@ describe("site navigation", () => {
     const footer = renderToStaticMarkup(
       <SiteFooter current="/compare/superset-alternative" />,
     );
-    for (const title of ["Product", "Guides", "Compare", "Community", "Legal"]) {
+    for (const title of [
+      "Product",
+      "Guides",
+      "Compare",
+      "Community",
+      "Legal",
+    ]) {
       expect(footer).toContain(`<h2 class="footer-title">${title}</h2>`);
     }
     expect(footer).toContain(

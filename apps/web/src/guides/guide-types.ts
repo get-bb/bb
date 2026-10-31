@@ -42,6 +42,11 @@ export interface GuideFaq {
   answer: ReactNode;
 }
 
+export interface GuideDocsLink {
+  href: string;
+  label: string;
+}
+
 export interface Guide extends GuideMeta {
   description: string;
   heroTop: ReactNode | null;
@@ -51,5 +56,6 @@ export interface Guide extends GuideMeta {
   steps: GuideStep[];
   troubleshooting: [GuideFaq, ...GuideFaq[]];
   faq: GuideFaq[];
+  docs: GuideDocsLink | null;
   closer: { title: string; body: string };
 }

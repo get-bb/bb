@@ -329,6 +329,10 @@ export function switchGuide(meta: GuideMeta, tool: SwitchTool): Guide {
       COST_FAQ,
       AGENTS_FAQ,
     ],
+    docs: {
+      href: "/docs/switch-from-another-tool#continue-a-task-from-your-old-tool",
+      label: "Continue a task from your old tool",
+    },
     closer: {
       title: "Get more done with the agents you already use",
       body: "Run more agents at once, see which one needs you, and let them hand work to each other. Free and open source, on the subscriptions you already have.",
