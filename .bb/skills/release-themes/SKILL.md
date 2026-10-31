@@ -162,20 +162,15 @@ Chosen from research on Supabase, Vercel, opencode and T3 Code.
 
 ## Verify
 
-Two independent agents draft the themes from the same neutral brief (the range
-and sources, not your draft), for example two bb threads started with the same
-prompt. Compare their drafts and resolve every difference before anyone uses the
-result.
-
-Then two more independent agents check the final copy against the shipped
-product, not just the notes, since the notes can be wrong (0.46.1's "Settings →
-Plugins" is labeled "Installed plugins" in the app). They confirm each claim at
-the release tag (`git show desktop-v<version>:<path>`, cited as path:line):
-settings paths against the exact labels a user sees, commands and flags,
-default-on or default-off state, plugin names, and that each Try it really
-works. Fix or cut every claim that isn't confirmed. Also check that every fact
-cites a version that contains it, no item appears in two themes, and nothing
-experimental reads as finished.
+Check the final copy against the shipped product, not just the notes, since the
+notes can be wrong (0.46.1's "Settings → Plugins" is labeled "Installed plugins"
+in the app). Confirm each claim at the release tag
+(`git show desktop-v<version>:<path>`, cited as path:line): settings paths
+against the exact labels a user sees, commands and flags, default-on or
+default-off state, plugin names, and that each Try it really works. Fix or cut
+every claim that isn't confirmed. Also check that every fact cites a version
+that contains it, no item appears in two themes, and nothing experimental reads
+as finished.
 
 ## Output
 

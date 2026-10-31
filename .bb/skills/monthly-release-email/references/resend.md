@@ -23,21 +23,17 @@ Limits:
 - One browser message holds about 1 MB, so the generated scripts upload at most
   four images per run and refuse any graphic over 700 KB.
 
-When the desktop app runs on the same machine as your checkout, `--script-host`
-and `--machine` are both that machine's host ID and files need no copying. When
-it runs on another machine, copy files back with
+Files the browser writes are on its machine; read them with
 `bb file read <path> --host <host> --json`.
 
 ## Build the draft
 
-Serve `scripts/monthly-email/issues/<yyyy-mm>/` so the browser can read the
-graphics. On the same machine, `python3 -m http.server --bind 127.0.0.1` in that
-folder is enough, and its `http://127.0.0.1:<port>/` is the preview base. From
-another machine, share it through bb connect (`share-server-links`, which needs
-`bb account login`). Then write the step scripts:
+Serve `scripts/monthly-email/issues/<yyyy-mm>/` at a URL the browser can reach
+(`share-server-links`), and use that URL as the preview base. Then write the
+step scripts:
 
 ```sh
-node scripts/monthly-email/browser-scripts.mjs resend scripts/monthly-email/issues/<yyyy-mm>.json scripts/monthly-email/browser --preview-base <share URL>
+node scripts/monthly-email/browser-scripts.mjs resend scripts/monthly-email/issues/<yyyy-mm>.json scripts/monthly-email/browser --preview-base <preview URL>
 ```
 
 Regenerating removes step scripts that no longer apply. Run each step, in order,
@@ -103,10 +99,9 @@ bb browser-automation run <session> --timeout 28s --script-file scripts/monthly-
 
 ## Screenshot for sharing
 
-Render Resend's built HTML full length in the bb desktop app's browser on a Mac
-or Windows machine, which has the system fonts the email falls back to. Headless
-Chrome on a Linux server may have no fonts at all and render blank text. Write
-the script, run it in a desktop session, and copy the PNG back:
+Render Resend's built HTML full length in the bb desktop app's browser, which
+has the system fonts the email falls back to. Write the script, run it in a
+desktop session, and copy the PNG back:
 
 ```sh
 node scripts/monthly-email/browser-scripts.mjs slack-shot scripts/monthly-email/issues/<yyyy-mm>.resend.html /tmp/bb-email-<month>-<year>.png > scripts/monthly-email/browser/slack.js

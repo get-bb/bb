@@ -32,34 +32,30 @@ verification, Resend and the shareable screenshot.
   access to broadcasts and contacts. Ask an admin of that team to invite you.
 - **Browser Automation.** Install it from Plugins → Browse plugins, then turn it
   on in Settings → Installed plugins. The Resend steps drive the bb desktop
-  app's browser (Mac or Windows) while it's signed in to Resend.
+  app's browser while it's signed in to Resend.
 - **Analytics.** Access to getbb.app's PostHog project, to confirm test links
   arrive with their UTM tags.
 - **The reviewer** is whoever owns that month's email. They approve the copy and
   graphics, name the test recipients and the contact lists to send to, and give
   the go-ahead to schedule.
-- **Two agents.** Steps 2 and 5 each use two agents working independently from
-  the same brief, for example two bb threads started with the same prompt.
-  Compare their results and resolve every difference before using them.
 
 ## Steps
 
 1. **Range.** `git fetch -q origin`, then take every release dated in the month
    from `changelog-metadata.ts` on origin/main. Tags without a changelog section
    have nothing to cover; a later release's notes may say they cover them.
-2. **Themes.** Run `release-themes` for the range: two independent drafts,
-   reconciled. Then apply "Content rules" below. Record what was left out as
-   `left_out`, and pull in strong user-facing items rather than repeat a point.
+2. **Themes.** Run `release-themes` for the range. Then apply "Content rules"
+   below. Record what was left out as `left_out`, and pull in strong user-facing
+   items rather than repeat a point.
 3. **Copy.** Write `issues/<yyyy-mm>.json` with the fields below, and copy
    `apps/app/public/icon-192.png` to `issues/<yyyy-mm>/bb-logo.png`. The logo is
    hosted with the graphics.
 4. **Graphics.** One or two per theme, made as in
    [references/graphics.md](references/graphics.md).
-5. **Verify.** Two independent agents check every claim and every image against
-   the source at the release tags (see "Accuracy"), from one neutral brief, then
-   reconcile. This is the accuracy pass `release-themes` describes; run it once,
-   on the final copy. Fix or cut anything not confirmed, and raise anything only
-   the reviewer can settle.
+5. **Verify.** Check every claim and every image against the source at the
+   release tags (see "Accuracy"). This is the accuracy pass `release-themes`
+   describes; run it once, on the final copy. Fix or cut anything not confirmed,
+   and raise anything only the reviewer can settle.
 6. **Build it in Resend** as in [references/resend.md](references/resend.md).
    The reviewer reviews the real email there. For your own checks first, write a
    local preview with local images:
