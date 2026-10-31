@@ -137,7 +137,7 @@ const FRONTEND_TYPE_EXPORT_NAMES = [
     .split(",")
     .map((name) => name.trim())
     .filter(Boolean),
-];
+].filter((name) => !name.startsWith("InternalDoNotUse"));
 
 const FRONTEND_TEST_EXPORT_NAMES = [
   "packages/plugin-sdk/src/testing/app.tsx",
