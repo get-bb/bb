@@ -450,6 +450,54 @@
   background: none;
 }
 
+.docs-wrap .docs-body pre.shiki span {
+  color: var(--shiki-light);
+  font-style: var(--shiki-light-font-style);
+  font-weight: var(--shiki-light-font-weight);
+  text-decoration: var(--shiki-light-text-decoration);
+}
+
+.dark .docs-wrap .docs-body pre.shiki span {
+  color: var(--shiki-dark);
+  font-style: var(--shiki-dark-font-style);
+  font-weight: var(--shiki-dark-font-weight);
+  text-decoration: var(--shiki-dark-text-decoration);
+}
+
+.docs-wrap .docs-callout {
+  margin: 0 0 18px;
+  padding: 12px 16px;
+  border: 1px solid var(--border-soft);
+  border-left: 3px solid var(--callout-tone);
+  border-radius: var(--radius);
+  background: color-mix(in oklab, var(--callout-tone) 6%, var(--bg));
+}
+
+.docs-wrap .docs-callout[data-tone="note"] {
+  --callout-tone: var(--accent);
+}
+
+.docs-wrap .docs-callout[data-tone="warning"] {
+  --callout-tone: var(--spark);
+}
+
+.docs-wrap .docs-callout-label {
+  margin: 0 0 4px;
+  font-size: var(--text-label-small);
+  font-weight: 600;
+  color: var(--callout-tone);
+}
+
+.docs-wrap .docs-callout-title {
+  margin: 0 0 4px;
+  font-weight: 600;
+  color: var(--heading);
+}
+
+.docs-wrap .docs-callout-body > :last-child {
+  margin-bottom: 0;
+}
+
 .docs-wrap .docs-table {
   margin: 0 0 18px;
   overflow-x: auto;
@@ -480,6 +528,78 @@
   background: var(--surface);
   color: var(--heading);
   font-weight: 600;
+}
+
+.docs-wrap .docs-shot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 110px;
+  margin: 18px 0;
+  padding: 12px 30px;
+  border: 1.5px dashed var(--accent);
+  border-radius: var(--radius);
+  background: color-mix(in oklab, var(--accent) 5%, var(--bg));
+  color: var(--accent);
+  font-size: 13px;
+  text-align: center;
+}
+
+.docs-wrap .docs-screenshot {
+  margin: 18px 0;
+}
+
+.docs-wrap .docs-screenshot img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+}
+
+.docs-wrap .docs-tabs {
+  margin: 18px 0;
+}
+
+.docs-wrap .docs-tabs-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.docs-wrap .docs-tabs-list [role="tab"] {
+  margin-bottom: -1px;
+  padding: 6px 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--dim);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.docs-wrap .docs-tabs-list [role="tab"]:hover {
+  color: var(--ink);
+}
+
+.docs-wrap .docs-tabs-list [role="tab"][aria-selected="true"] {
+  border-bottom-color: var(--accent);
+  color: var(--heading);
+  font-weight: 600;
+}
+
+.docs-wrap .docs-tabs-list [role="tab"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: 6px 6px 0 0;
+}
+
+.docs-wrap .docs-tab-panel > :first-child {
+  margin-top: 14px;
 }
 
 .docs-wrap .docs-toc {

@@ -17,6 +17,7 @@ import {
   referenceSource,
   SOURCES_HEADING,
 } from "./reference";
+import { codeBlockLabel } from "./docs-blocks";
 
 const WEB_ROOT = path.resolve(__dirname, "../..");
 const CONTENT_DIR = path.join(WEB_ROOT, "content/docs");
@@ -170,5 +171,15 @@ describe("generated reference pages", () => {
       const slug = page.path.replace(/(\/index)?\.md$/u, "");
       expect(navSectionOf(slug)).not.toBeNull();
     }
+  });
+});
+
+describe("docs code blocks", () => {
+  it("labels a block by its title, then its language", () => {
+    expect(codeBlockLabel("bb.config.yaml", "yaml")).toBe("bb.config.yaml");
+    expect(codeBlockLabel(undefined, "bash")).toBe("Terminal");
+    expect(codeBlockLabel(undefined, "yaml")).toBe("YAML");
+    expect(codeBlockLabel(undefined, "plaintext")).toBe("Text");
+    expect(codeBlockLabel(" ", "mdx")).toBe("MDX");
   });
 });
