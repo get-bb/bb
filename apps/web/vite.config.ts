@@ -14,7 +14,12 @@ import { resolveCloudDevViteSettings } from "./src/server/cloud-dev-vite.js";
 import { resolveSiteOrigin } from "./src/server/site-origin.js";
 
 function isPrerenderedDocsPath(path: string): boolean {
-  return path === "/docs" || path.startsWith("/docs/");
+  return (
+    path === "/llms.txt" ||
+    path === "/llms-full.txt" ||
+    path === "/docs" ||
+    path.startsWith("/docs/")
+  );
 }
 
 export default defineConfig(({ command }) => {
@@ -56,7 +61,12 @@ export default defineConfig(({ command }) => {
       tailwindcss(),
       tanstackStart({
         server: { entry: "server-entry.ts" },
-        pages: [{ path: "/docs" }, { path: "/docs/search.json" }],
+        pages: [
+          { path: "/docs" },
+          { path: "/docs/search.json" },
+          { path: "/llms.txt" },
+          { path: "/llms-full.txt" },
+        ],
         prerender: {
           enabled: true,
           autoSubfolderIndex: false,
