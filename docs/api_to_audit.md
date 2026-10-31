@@ -3835,7 +3835,9 @@ Plugins step reports `recommendation` `shown` and `selected` with a per-visit
 until the plugin's next use, disable or uninstall. `NewThreadComposer` also
 reports `new_thread_blocker` once per blocker reason while a draft exists.
 `onboarding_operation` reports a guide action's started, succeeded or failed
-outcome with only a public agent id or counts.
+outcome with only a public agent id, counts, and, for the Projects scan, whether
+it ran out of time, how many folders it could not read, and a failure reason
+(`no_host`, `host_unavailable`, `timed_out`, or `other`).
 
 Stabilize after deciding whether third-party plugins may emit product events
 at all and, if so, how they are namespaced and rate limited.
@@ -3863,7 +3865,9 @@ installs.
 repositories under the machine's home directory with local activity in the
 last 30 days, newest first, each with `path`, `name`, `lastActivityAt`,
 `originUrl`, and the bound `projectId` or null; `truncated` reports an
-exhausted three-second walk budget. The walk skips dot, build, and scratch
+exhausted ten-second walk budget or a folder read that did not finish in time,
+and `unreadablePaths` lists up to 20 folders the scan was not allowed to read
+(`EACCES`/`EPERM`, such as macOS privacy-protected folders). The walk skips dot, build, and scratch
 directories, linked worktrees, and submodules. Core callers: the setup guide
 (`OnboardingFlow`) and `bb project discover`; it rides the
 `host.discover_repos` daemon command.

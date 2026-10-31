@@ -573,15 +573,21 @@ export interface OnboardingRepo {
   added: boolean;
 }
 
-type ProjectsStepStatus =
+export type ProjectsStepStatus =
   | { kind: "scanning" }
+  | { kind: "unavailable"; message: string; canRetry: boolean }
   | { kind: "error"; message: string }
-  | { kind: "results"; truncated: boolean };
+  | {
+      kind: "results";
+      truncated: boolean;
+      unreadableFolderNames: readonly string[];
+    };
 
 interface ProjectsStepProps {
   status: ProjectsStepStatus;
   repos: readonly OnboardingRepo[];
   selectedIds: ReadonlySet<string>;
+  failedNames: readonly string[];
   onToggle: (id: string) => void;
   onSelectAll: () => void;
   onSelectNone: () => void;
@@ -589,10 +595,24 @@ interface ProjectsStepProps {
   onRetry: () => void;
 }
 
+function formatNameList(names: readonly string[]): string {
+  const shown = names.slice(0, 3);
+  const hidden = names.length - shown.length;
+  return new Intl.ListFormat("en", { type: "conjunction" }).format(
+    hidden > 0 ? [...shown, `${hidden} more`] : shown,
+  );
+}
+
+function unreadableFoldersNote(names: readonly string[]): string | null {
+  if (names.length === 0) return null;
+  return `bb wasn't allowed to open ${formatNameList(names)}, so repos there may be missing.`;
+}
+
 export function ProjectsStep({
   status,
   repos,
   selectedIds,
+  failedNames,
   onToggle,
   onSelectAll,
   onSelectNone,
@@ -621,7 +641,29 @@ export function ProjectsStep({
     );
   }
 
+  if (status.kind === "unavailable") {
+    return (
+      <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border px-6 py-10 text-center">
+        <Icon
+          name="FolderGit"
+          aria-hidden
+          className="size-6 text-muted-foreground"
+        />
+        <p className="text-sm text-muted-foreground">{status.message}</p>
+        {status.canRetry ? (
+          <Button size="sm" variant="outline" onClick={onRetry}>
+            Try again
+          </Button>
+        ) : null}
+      </div>
+    );
+  }
+
   if (status.kind === "error" || repos.length === 0) {
+    const unreadableNote =
+      status.kind === "results"
+        ? unreadableFoldersNote(status.unreadableFolderNames)
+        : null;
     return (
       <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border px-6 py-10 text-center">
         <Icon
@@ -632,8 +674,13 @@ export function ProjectsStep({
         <p className="text-sm text-muted-foreground">
           {status.kind === "error"
             ? status.message
-            : "bb didn't find a git repo you've worked in over the last 30 days."}
+            : status.truncated
+              ? "The scan ran out of time before bb found a git repo you've worked in over the last 30 days."
+              : "bb didn't find a git repo you've worked in over the last 30 days."}
         </p>
+        {unreadableNote === null ? null : (
+          <p className="text-xs text-muted-foreground">{unreadableNote}</p>
+        )}
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" onClick={onRetry}>
             {status.kind === "error" ? "Try again" : "Scan again"}
@@ -647,6 +694,7 @@ export function ProjectsStep({
     );
   }
 
+  const unreadableNote = unreadableFoldersNote(status.unreadableFolderNames);
   const selectableCount = repos.filter((repo) => !repo.added).length;
   return (
     <div className="flex flex-col gap-3">
@@ -707,9 +755,28 @@ export function ProjectsStep({
           </li>
         ))}
       </ul>
-      {status.truncated ? (
+      {failedNames.length > 0 ? (
+        <p role="alert" className="text-xs text-muted-foreground">
+          bb couldn't add {formatNameList(failedNames)}.
+        </p>
+      ) : null}
+      {status.truncated || unreadableNote !== null ? (
         <p className="text-xs text-muted-foreground">
-          The scan ran out of time, so some repos may be missing.
+          {[
+            status.truncated
+              ? "The scan ran out of time, so some repos may be missing."
+              : null,
+            unreadableNote,
+          ]
+            .filter((note) => note !== null)
+            .join(" ")}{" "}
+          <button
+            type="button"
+            className="hover:text-foreground underline underline-offset-2"
+            onClick={onRetry}
+          >
+            Scan again
+          </button>
         </p>
       ) : null}
       <button

@@ -353,6 +353,17 @@ export function registerHostRoutes(
         limit: DISCOVERED_REPOS_LIMIT,
       },
     });
+    if (result.truncated || result.unreadablePaths.length > 0) {
+      deps.logger.info(
+        {
+          hostId,
+          repoCount: result.repos.length,
+          truncated: result.truncated,
+          unreadableCount: result.unreadablePaths.length,
+        },
+        "Repo discovery returned partial results",
+      );
+    }
     return context.json({
       repos: result.repos.map((repo) => ({
         ...repo,
@@ -364,6 +375,7 @@ export function registerHostRoutes(
           })?.id ?? null,
       })),
       truncated: result.truncated,
+      unreadablePaths: result.unreadablePaths,
     });
   });
 

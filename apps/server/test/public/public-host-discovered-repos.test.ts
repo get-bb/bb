@@ -61,6 +61,7 @@ describe("GET /hosts/:id/discovered-repos", () => {
           },
         ],
         truncated: true,
+        unreadablePaths: ["/home/user/Documents"],
       });
 
       const response = await responsePromise;
@@ -83,6 +84,7 @@ describe("GET /hosts/:id/discovered-repos", () => {
           },
         ],
         truncated: true,
+        unreadablePaths: ["/home/user/Documents"],
       });
     });
   });

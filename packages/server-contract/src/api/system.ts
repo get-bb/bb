@@ -267,6 +267,11 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
           resource_id: telemetryResourceIdSchema.optional(),
           item_count: z.number().int().nonnegative().optional(),
           succeeded_count: z.number().int().nonnegative().optional(),
+          timed_out: z.boolean().optional(),
+          unreadable_count: z.number().int().nonnegative().optional(),
+          failure_reason: z
+            .enum(["no_host", "host_unavailable", "timed_out", "other"])
+            .optional(),
         })
         .strict(),
     })

@@ -369,6 +369,11 @@ export function registerProjectCommands(
         if (result.truncated) {
           console.log("The scan ran out of time, so the list may be partial.");
         }
+        if (result.unreadablePaths.length > 0) {
+          console.log(
+            `bb couldn't read these folders: ${result.unreadablePaths.join(", ")}`,
+          );
+        }
       }),
     );
 

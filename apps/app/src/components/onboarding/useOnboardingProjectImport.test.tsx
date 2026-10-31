@@ -84,12 +84,16 @@ describe("onboarding project imports", () => {
     },
   );
 
-  it("records how many selected projects imported before a failure", async () => {
+  it("keeps importing past a failure and reports the failed repos", async () => {
     createProject
       .mockResolvedValueOnce({ id: "proj_atlas-web" })
       .mockRejectedValueOnce(new Error("exists"));
     const view = arrange();
     await act(() => view.result.current.importProjects("host_local", repos));
+    expect(createProject).toHaveBeenCalledTimes(3);
+    expect(view.result.current.failedPaths).toEqual(["/repos/atlas-api"]);
+    expect(view.result.current.selection[0]).toBe("proj_docs-site");
+    expect(view.onContinue).not.toHaveBeenCalled();
     expect(
       vi
         .mocked(recordTelemetryEvent)
@@ -97,7 +101,7 @@ describe("onboarding project imports", () => {
     ).toEqual(
       [
         ["started", 0],
-        ["failed", 1],
+        ["failed", 2],
       ].map(([outcome, succeeded]) => ({
         entry: "first_run",
         step: "projects",
@@ -107,6 +111,18 @@ describe("onboarding project imports", () => {
         succeeded_count: succeeded,
       })),
     );
+  });
+
+  it("clears the failed repos when a retry succeeds", async () => {
+    createProject.mockRejectedValueOnce(new Error("exists"));
+    const view = arrange();
+    await act(() => view.result.current.importProjects("host_local", repos));
+    expect(view.result.current.failedPaths).toEqual(["/repos/atlas-web"]);
+    await act(() =>
+      view.result.current.importProjects("host_local", repos.slice(0, 1)),
+    );
+    expect(view.result.current.failedPaths).toEqual([]);
+    expect(view.onContinue).toHaveBeenCalledOnce();
   });
 
   it("does not preselect imports when the setup guide is replayed", async () => {
@@ -144,7 +160,6 @@ describe("onboarding project imports", () => {
       expect(selection.result.current[0]).toBe(PERSONAL_PROJECT_ID);
       if (interruption === "close") {
         expect(view.onContinue).not.toHaveBeenCalled();
-        expect(createProject).toHaveBeenCalledOnce();
       }
     },
   );
@@ -152,6 +167,7 @@ describe("onboarding project imports", () => {
   it("retains successful imports and selects the last successful retry", async () => {
     createProject
       .mockResolvedValueOnce({ id: "proj_atlas-web" })
+      .mockRejectedValueOnce(new Error("Import failed"))
       .mockRejectedValueOnce(new Error("Import failed"));
     const view = arrange();
     await act(() => view.result.current.importProjects("host_local", repos));
@@ -167,6 +183,7 @@ describe("onboarding project imports", () => {
   it("keeps an explicit selection of the imported project during a retry", async () => {
     createProject
       .mockResolvedValueOnce({ id: "proj_atlas-web" })
+      .mockRejectedValueOnce(new Error("Import failed"))
       .mockRejectedValueOnce(new Error("Import failed"));
     const view = arrange();
     await act(() => view.result.current.importProjects("host_local", repos));
