@@ -4,6 +4,7 @@ import {
   isServerApiUrl,
   resolveOpenWindowAction,
   resolveServerFileUrl,
+  SHELL_ORIGIN_WHITELIST,
   supportsNativeDownloads,
 } from "./shell-save-file";
 
@@ -60,6 +61,34 @@ describe("resolveOpenWindowAction", () => {
     expect(resolveOpenWindowAction("blob:https://bee.getbb.app/1", ROOT)).toBe(
       "ignore",
     );
+  });
+});
+
+function passesWebViewWhitelist(url: string, whitelist: readonly string[]) {
+  const origin = /^[A-Za-z][A-Za-z0-9+\-.]+:(\/\/)?[^/]*/.exec(url)?.[0] ?? "";
+  return ["about:blank", ...whitelist].some((pattern) =>
+    new RegExp(
+      `^${pattern.replace(/[|\\{}()[\]^$+?.]/g, "\\$&").replace(/\*/g, ".*")}`,
+    ).test(origin),
+  );
+}
+
+describe("SHELL_ORIGIN_WHITELIST", () => {
+  it("lets every frame allowsSubframeLoad accepts reach the shell's handler", () => {
+    for (const url of [
+      "about:srcdoc",
+      "blob:https://box.example.ts.net/1",
+      "data:text/html,<p>x</p>",
+      "https://box.example.ts.net/api/v1/x",
+    ]) {
+      expect(allowsSubframeLoad(url, PREFIXED)).toBe(true);
+      expect(passesWebViewWhitelist(url, SHELL_ORIGIN_WHITELIST)).toBe(true);
+    }
+  });
+
+  it("is what an about:srcdoc frame needs beyond the WebView default", () => {
+    const webViewDefault = ["http://*", "https://*"];
+    expect(passesWebViewWhitelist("about:srcdoc", webViewDefault)).toBe(false);
   });
 });
 
