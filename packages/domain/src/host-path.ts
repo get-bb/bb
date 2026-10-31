@@ -168,6 +168,22 @@ export function joinHostPath({
   });
 }
 
+export function resolveHostPath({
+  rootPath,
+  path,
+}: {
+  rootPath: string;
+  path: string;
+}): string | null {
+  if (path.length === 0 || path.includes("\0") || rootPath.includes("\0")) {
+    return null;
+  }
+  const absolute = normalizeHostPath(path);
+  if (absolute !== null) return absolute;
+  if (path.startsWith("\\") || /^[A-Za-z]:/u.test(path)) return null;
+  return joinHostPath({ rootPath, relativePath: path });
+}
+
 export function getHostPathDirname(path: string): string | null {
   const parsed = parseHostPath(path);
   if (parsed === null) {
