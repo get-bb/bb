@@ -1,3 +1,5 @@
+import { resolveBbAppRuntimeState } from "../../../packages/bb-app/src/launcher.js";
+import { pathToFileURL } from "node:url";
 import { spawnHostProcess as spawn, hostToolchain } from "@bb/process-utils";
 import { openApplicationUrl } from "./application-url.js";
 import { createDesktopLogger } from "./desktop-logger.js";
@@ -371,10 +373,6 @@ interface ResolveDataDirFromEnvArgs {
   homeDir: string;
 }
 
-interface ResolveDesktopServerUrlArgs {
-  env: NodeJS.ProcessEnv;
-}
-
 interface ResolveDesktopWindowUrlArgs {
   env: NodeJS.ProcessEnv;
   serverUrl: string;
@@ -453,20 +451,6 @@ let localServerMove: DesktopServerMove | null = null;
 let serverMovedWatcher: ServerMovedWatcher | null = null;
 let serverUrlDialogPreloadPath: string | null = null;
 let existingServerDialogPreloadPath: string | null = null;
-
-function resolveDesktopServerUrl(args: ResolveDesktopServerUrlArgs): string {
-  const rawPort = args.env.BB_SERVER_PORT?.trim();
-  if (rawPort === undefined || rawPort.length === 0) {
-    return DEFAULT_BB_SERVER_URL;
-  }
-
-  const port = Number(rawPort);
-  if (Number.isInteger(port) && port >= 1 && port <= 65_535) {
-    return `http://127.0.0.1:${port}`;
-  }
-
-  throw new Error("BB_SERVER_PORT must be a valid TCP port");
-}
 
 function resolveDesktopWindowUrl(args: ResolveDesktopWindowUrlArgs): string {
   const rawAppUrl = args.env.BB_DESKTOP_APP_URL?.trim();
@@ -2964,7 +2948,15 @@ async function runDesktopApp(): Promise<void> {
     "dist",
     "server-url-dialog-preload.cjs",
   );
-  const serverUrl = resolveDesktopServerUrl({ env: process.env });
+  const {
+    context: { serverUrl },
+  } = await resolveBbAppRuntimeState({
+    entrypointUrl: pathToFileURL(bridgePath).href,
+    env: process.env,
+    homeDir: homedir(),
+    options: { help: false },
+    serverUrlMode: "local",
+  });
   builtinServerUrl = serverUrl;
   desktopBridgePath = bridgePath;
   const desktopVersion = getDesktopVersion(process.env.BB_DESKTOP_VERSION);

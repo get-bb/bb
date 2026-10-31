@@ -89,7 +89,11 @@ async function run() {
     await chmod(crashingRuntime, 0o755);
     process.env.BB_DESKTOP_NODE_EXEC_PATH = crashingRuntime;
   }
-  process.env.BB_SERVER_PORT = String(port);
+  await writeFile(
+    join(process.env.BB_DATA_DIR, "env.json"),
+    JSON.stringify({ env: { BB_SERVER_PORT: String(port) } }),
+  );
+  if (scenario === "attached") delete process.env.BB_SERVER_PORT;
   await writeFile(
     join(app.getPath("userData"), "server-target.json"),
     JSON.stringify(

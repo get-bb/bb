@@ -4,7 +4,7 @@
     "@bb/tsconfig/typecheck-overrides.json"
   ],
   "compilerOptions": {
-    "rootDir": ".",
+    "rootDir": "../..",
     "types": ["node", "vitest/globals"]
   },
   "include": ["src", "test"]
