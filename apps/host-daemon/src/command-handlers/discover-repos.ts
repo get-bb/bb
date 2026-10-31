@@ -1,4 +1,4 @@
-import type { Dir, Stats } from "node:fs";
+import type { Stats } from "node:fs";
 import { opendir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
@@ -29,7 +29,10 @@ const SKIP_DIRECTORIES = new Set([
 const SKIP_DIRECTORY_PREFIXES = ["tmp-", "tmp_"];
 
 const ACTIVITY_MARKERS = ["HEAD", "index", join("logs", "HEAD")];
-const WALK_BUDGET_MS = 3_000;
+const WALK_BUDGET_MS = 10_000;
+const ORIGIN_READ_BUDGET_MS = 1_000;
+const UNREADABLE_PATHS_LIMIT = 20;
+const PERMISSION_ERROR_CODES = new Set(["EACCES", "EPERM"]);
 const WALK_CONCURRENCY = 32;
 const MS_PER_DAY = 86_400_000;
 
@@ -50,30 +53,21 @@ interface DiscoverReposArgs {
 async function withDeadline<T>(
   operation: Promise<T>,
   deadline: number,
-  disposeLate?: (value: T) => void,
 ): Promise<T | null> {
   const remaining = deadline - Date.now();
   if (remaining <= 0) {
-    void operation.then((value) => disposeLate?.(value)).catch(() => {});
+    void operation.catch(() => {});
     return null;
   }
   let timer: NodeJS.Timeout | undefined;
-  let timedOut = false;
   try {
-    const result = await Promise.race([
-      operation.then((value) => {
-        if (timedOut) disposeLate?.(value);
-        return value;
-      }),
+    return await Promise.race([
+      operation,
       new Promise<null>((resolve) => {
-        timer = setTimeout(() => {
-          timedOut = true;
-          resolve(null);
-        }, remaining);
+        timer = setTimeout(() => resolve(null), remaining);
         timer.unref();
       }),
     ]);
-    return timedOut ? null : result;
   } catch {
     return null;
   } finally {
@@ -81,8 +75,13 @@ async function withDeadline<T>(
   }
 }
 
-function closeLateDir(dir: Dir): void {
-  void dir.close().catch(() => {});
+function isPermissionError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    typeof error.code === "string" &&
+    PERMISSION_ERROR_CODES.has(error.code)
+  );
 }
 
 async function readLastActivityMs(
@@ -114,55 +113,61 @@ function createLimiter(limit: number) {
   };
 }
 
+type DirectoryListing =
+  | {
+      kind: "listed";
+      children: string[];
+      gitMarker: "directory" | "file" | null;
+    }
+  | { kind: "unreadable" }
+  | { kind: "failed" }
+  | { kind: "timedOut" };
+
+async function listDirectory(
+  dir: string,
+  depth: number,
+  deadline: number,
+): Promise<DirectoryListing> {
+  const children: string[] = [];
+  let gitMarker: "directory" | "file" | null = null;
+  try {
+    for await (const entry of await opendir(dir)) {
+      if (Date.now() > deadline) return { kind: "timedOut" };
+      if (entry.name === ".git") {
+        if (depth > 0) {
+          gitMarker = entry.isDirectory() ? "directory" : "file";
+        }
+        continue;
+      }
+      if (!entry.isDirectory()) continue;
+      if (entry.name.startsWith(".")) continue;
+      if (SKIP_DIRECTORIES.has(entry.name)) continue;
+      if (
+        SKIP_DIRECTORY_PREFIXES.some((prefix) => entry.name.startsWith(prefix))
+      ) {
+        continue;
+      }
+      children.push(entry.name);
+    }
+  } catch (error) {
+    return { kind: isPermissionError(error) ? "unreadable" : "failed" };
+  }
+  return { kind: "listed", children, gitMarker };
+}
+
 async function walkForRepos(
   root: string,
   maxDepth: number,
   deadline: number,
-): Promise<{ repos: FoundRepo[]; truncated: boolean }> {
+): Promise<{
+  repos: FoundRepo[];
+  truncated: boolean;
+  unreadablePaths: string[];
+}> {
   const repos: FoundRepo[] = [];
+  const unreadablePaths: string[] = [];
   let truncated = false;
   const limitOpenDirectories = createLimiter(WALK_CONCURRENCY);
-
-  const readDirectory = async (
-    dir: string,
-    depth: number,
-  ): Promise<{
-    children: string[];
-    gitMarker: "directory" | "file" | null;
-  } | null> => {
-    const handle = await withDeadline(opendir(dir), deadline, closeLateDir);
-    if (handle === null) {
-      if (Date.now() > deadline) truncated = true;
-      return null;
-    }
-
-    const children: string[] = [];
-    let gitMarker: "directory" | "file" | null = null;
-    try {
-      for await (const entry of handle) {
-        if (entry.name === ".git") {
-          if (depth > 0) {
-            gitMarker = entry.isDirectory() ? "directory" : "file";
-          }
-          continue;
-        }
-        if (!entry.isDirectory()) continue;
-        if (entry.name.startsWith(".")) continue;
-        if (SKIP_DIRECTORIES.has(entry.name)) continue;
-        if (
-          SKIP_DIRECTORY_PREFIXES.some((prefix) =>
-            entry.name.startsWith(prefix),
-          )
-        ) {
-          continue;
-        }
-        children.push(entry.name);
-      }
-    } catch {
-      return null;
-    }
-    return { children, gitMarker };
-  };
 
   const walk = async (dir: string, depth: number): Promise<void> => {
     if (depth > maxDepth) return;
@@ -171,8 +176,22 @@ async function walkForRepos(
       return;
     }
 
-    const listing = await limitOpenDirectories(() => readDirectory(dir, depth));
-    if (listing === null) return;
+    const listing = await limitOpenDirectories(() =>
+      Date.now() > deadline
+        ? Promise.resolve(null)
+        : withDeadline(listDirectory(dir, depth, deadline), deadline),
+    );
+    if (listing === null || listing.kind === "timedOut") {
+      truncated = true;
+      return;
+    }
+    if (listing.kind === "unreadable") {
+      if (unreadablePaths.length < UNREADABLE_PATHS_LIMIT) {
+        unreadablePaths.push(dir);
+      }
+      return;
+    }
+    if (listing.kind === "failed") return;
 
     if (listing.gitMarker === "file") return;
     if (listing.gitMarker === "directory") {
@@ -194,16 +213,18 @@ async function walkForRepos(
   };
 
   await walk(root, 0);
-  return { repos, truncated };
+  return { repos, truncated, unreadablePaths };
 }
 
-async function readOriginUrl(repoPath: string): Promise<string | null> {
-  let config: string;
-  try {
-    config = await readFile(join(repoPath, ".git", "config"), "utf8");
-  } catch {
-    return null;
-  }
+async function readOriginUrl(
+  repoPath: string,
+  deadline: number,
+): Promise<string | null> {
+  const config = await withDeadline(
+    readFile(join(repoPath, ".git", "config"), "utf8"),
+    deadline,
+  );
+  if (config === null) return null;
   const section = config.split(/\[remote "origin"\]/u)[1];
   if (section === undefined) return null;
   const match = /^\s*url\s*=\s*(.+)$/mu.exec(section.split("[")[0] ?? "");
@@ -216,7 +237,7 @@ export async function discoverRepos(
 ): Promise<DiscoverReposResult> {
   const home = args.home ?? homedir();
   const now = args.now ?? Date.now();
-  const { repos, truncated } = await walkForRepos(
+  const { repos, truncated, unreadablePaths } = await walkForRepos(
     home,
     args.maxDepth,
     Date.now() + (args.walkBudgetMs ?? WALK_BUDGET_MS),
@@ -227,6 +248,7 @@ export async function discoverRepos(
     .filter((repo) => repo.lastActivityMs >= cutoff)
     .sort((left, right) => right.lastActivityMs - left.lastActivityMs)
     .slice(0, args.limit);
+  const originDeadline = Date.now() + ORIGIN_READ_BUDGET_MS;
 
   return {
     repos: await Promise.all(
@@ -234,9 +256,10 @@ export async function discoverRepos(
         path: repo.path,
         name: basename(repo.path),
         lastActivityAt: new Date(repo.lastActivityMs).toISOString(),
-        originUrl: await readOriginUrl(repo.path),
+        originUrl: await readOriginUrl(repo.path, originDeadline),
       })),
     ),
     truncated,
+    unreadablePaths,
   };
 }

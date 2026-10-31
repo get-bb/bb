@@ -90,6 +90,28 @@ describe("client telemetry events", () => {
             succeeded_count: 1,
           },
         },
+        {
+          name: "onboarding_operation",
+          properties: {
+            entry: "first_run",
+            step: "projects",
+            operation: "scan",
+            outcome: "succeeded",
+            item_count: 0,
+            timed_out: true,
+            unreadable_count: 2,
+          },
+        },
+        {
+          name: "onboarding_operation",
+          properties: {
+            entry: "first_run",
+            step: "projects",
+            operation: "scan",
+            outcome: "failed",
+            failure_reason: "host_unavailable",
+          },
+        },
         { name: "plugin_creation_started", properties: {} },
       ];
       for (const event of events) {

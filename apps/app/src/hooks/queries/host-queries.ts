@@ -119,6 +119,7 @@ export function useHostDiscoveredRepos(
             sdk.hosts.experimental_discoverRepos({ hostId, signal }),
     enabled: options?.enabled ?? true,
     staleTime: 5 * 60_000,
+    refetchOnMount: "always",
     retry: false,
   });
 }

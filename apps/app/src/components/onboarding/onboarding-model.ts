@@ -1,4 +1,5 @@
 import type { ProviderCliStatus } from "@bb/host-daemon-contract";
+import { BbHttpError } from "@bb/sdk/browser";
 import type {
   HostDiscoveredRepo,
   ServerAccessStatus,
@@ -143,6 +144,19 @@ export function defaultSelectedRepoPaths(
       ? recent.slice(0, DEFAULT_SELECTED_REPO_LIMIT)
       : importable.slice(0, 1);
   return new Set(chosen.map((repo) => repo.path));
+}
+
+export type RepoScanFailureReason = "host_unavailable" | "timed_out" | "other";
+
+export function repoScanFailureReason(error: unknown): RepoScanFailureReason {
+  if (!(error instanceof BbHttpError)) return "other";
+  if (error.code === "host_unavailable") return "host_unavailable";
+  if (error.code === "command_timeout") return "timed_out";
+  return "other";
+}
+
+export function folderName(path: string): string {
+  return path.split(/[\\/]/u).filter(Boolean).at(-1) ?? path;
 }
 
 export function shortRemoteName(originUrl: string | null): string | null {

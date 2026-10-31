@@ -6,6 +6,7 @@ import {
   findLocalPathProjectSourceForHost,
   isActiveTerminalSessionStatus,
   mobileAppDownloads,
+  type Host,
 } from "@bb/domain";
 import type { TerminalOutputChunk, TerminalSession } from "@bb/server-contract";
 import { useMediaQuery } from "@bb/shared-ui/hooks/use-media-query";
@@ -74,6 +75,7 @@ import {
   ProjectsStep,
   type OnboardingAgent,
   type OnboardingRepo,
+  type ProjectsStepStatus,
 } from "./OnboardingViews";
 import {
   CONNECT_PLUGIN_ID,
@@ -81,9 +83,11 @@ import {
   ONBOARDING_PLUGIN_MARKETPLACE,
   connectAccessUrl,
   defaultSelectedRepoPaths,
+  folderName,
   hasReadyAgent,
   parseSignInOutput,
   resolveAgentSetupState,
+  repoScanFailureReason,
   resolveSignInCommand,
   shortRemoteName,
   type OnboardingStepId,
@@ -513,7 +517,8 @@ function AgentStepContainer({
 function ProjectsStepContainer({
   chrome,
   entry,
-  hostId,
+  host,
+  hostsLoaded,
   projectIdsAtOpen,
   onBack,
   onContinue,
@@ -521,13 +526,17 @@ function ProjectsStepContainer({
 }: {
   chrome: StepChrome;
   entry: OnboardingEntry;
-  hostId: string | null;
+  host: Host | null;
+  hostsLoaded: boolean;
   projectIdsAtOpen: ReadonlySet<string> | null;
   onBack: () => void;
   onContinue: () => void;
   onSkip: () => void;
 }) {
-  const reposQuery = useHostDiscoveredRepos(hostId);
+  const hostId = host?.id ?? null;
+  const hostConnected = host?.status === "connected";
+  const reposQuery = useHostDiscoveredRepos(hostConnected ? hostId : null);
+  const { refetch: refetchHosts } = useHosts();
   const quickCreateProject = useQuickCreateProjectController();
   const navigationQuery = useSidebarNavigation();
   const [selection, setSelection] = useState<ReadonlySet<string> | null>(null);
@@ -535,11 +544,13 @@ function ProjectsStepContainer({
   const [now] = useState(() => Date.now());
 
   const { refetch: refetchRepos } = reposQuery;
-  const { importing, importProjects } = useOnboardingProjectImport({
-    entry,
-    onContinue,
-    onSettled: () => void refetchRepos(),
-  });
+  const { importing, failedPaths, importProjects } = useOnboardingProjectImport(
+    {
+      entry,
+      onContinue,
+      onSettled: () => void refetchRepos(),
+    },
+  );
   const navigationProjects = navigationQuery.data?.projects;
   const hostProjects = useMemo(
     () =>
@@ -622,7 +633,45 @@ function ProjectsStepContainer({
     void importProjects(hostId, chosen);
   };
 
-  const scanning = hostId === null || reposQuery.isPending || rescanning;
+  const failureReason = reposQuery.isError
+    ? repoScanFailureReason(reposQuery.error)
+    : null;
+  const status: ProjectsStepStatus =
+    !hostsLoaded || rescanning
+      ? { kind: "scanning" }
+      : host === null
+        ? {
+            kind: "unavailable",
+            message: "Add a computer to bb to find your projects.",
+            canRetry: false,
+          }
+        : !hostConnected || failureReason === "host_unavailable"
+          ? {
+              kind: "unavailable",
+              message: `${host.name} is offline. bb will look for projects when it reconnects.`,
+              canRetry: true,
+            }
+          : reposQuery.isPending
+            ? { kind: "scanning" }
+            : reposQuery.isError
+              ? {
+                  kind: "error",
+                  message:
+                    failureReason === "timed_out"
+                      ? "bb couldn't finish scanning this computer in time."
+                      : "bb couldn't scan this computer for git repos.",
+                }
+              : {
+                  kind: "results",
+                  truncated: reposQuery.data.truncated,
+                  unreadableFolderNames:
+                    reposQuery.data.unreadablePaths.map(folderName),
+                };
+  const scanning = status.kind === "scanning";
+  const failedNames = failedPaths.map(
+    (path) =>
+      discovered?.find((repo) => repo.path === path)?.name ?? folderName(path),
+  );
   return (
     <OnboardingLayout
       {...chrome}
@@ -645,18 +694,10 @@ function ProjectsStepContainer({
       onBack={onBack}
     >
       <ProjectsStep
-        status={
-          scanning
-            ? { kind: "scanning" }
-            : reposQuery.isError
-              ? {
-                  kind: "error",
-                  message: "bb couldn't scan this computer for git repos.",
-                }
-              : { kind: "results", truncated: reposQuery.data.truncated }
-        }
+        status={status}
         repos={repos}
         selectedIds={selectedPaths}
+        failedNames={failedNames}
         onToggle={(path) => {
           const next = new Set(selectedPaths);
           if (next.has(path)) next.delete(path);
@@ -676,7 +717,9 @@ function ProjectsStepContainer({
         onAddFolder={quickCreateProject.openCreateDialog}
         onRetry={() => {
           setRescanning(true);
-          void refetchRepos().finally(() => setRescanning(false));
+          void (hostConnected ? refetchRepos() : refetchHosts()).finally(() =>
+            setRescanning(false),
+          );
         }}
       />
       <ProjectPathDialog
@@ -1017,13 +1060,16 @@ export function OnboardingFlow({
       new Set(navigationProjects.map((project) => project.id)),
     );
   }
+  const hostsQuery = useHosts();
+  const hostsLoaded = hostsQuery.data !== undefined;
   const primaryHost = usePrimaryHost();
   const hostId = primaryHost?.id ?? null;
-  const reposQuery = useHostDiscoveredRepos(hostId);
+  const reposQuery = useHostDiscoveredRepos(hostId, { enabled: false });
   const { dataUpdatedAt, errorUpdatedAt } = reposQuery;
-  const foundCount = reposQuery.data?.repos.length;
+  const scanResult = reposQuery.data;
+  const scanError = reposQuery.error;
   useEffect(() => {
-    if (dataUpdatedAt === 0) return;
+    if (dataUpdatedAt === 0 || scanResult === undefined) return;
     recordTelemetryEvent({
       name: "onboarding_operation",
       properties: {
@@ -1031,10 +1077,12 @@ export function OnboardingFlow({
         step: "projects",
         operation: "scan",
         outcome: "succeeded",
-        item_count: foundCount,
+        item_count: scanResult.repos.length,
+        timed_out: scanResult.truncated,
+        unreadable_count: scanResult.unreadablePaths.length,
       },
     });
-  }, [dataUpdatedAt, entry, foundCount]);
+  }, [dataUpdatedAt, entry, scanResult]);
   useEffect(() => {
     if (errorUpdatedAt === 0) return;
     recordTelemetryEvent({
@@ -1044,9 +1092,34 @@ export function OnboardingFlow({
         step: "projects",
         operation: "scan",
         outcome: "failed",
+        failure_reason: repoScanFailureReason(scanError),
       },
     });
-  }, [entry, errorUpdatedAt]);
+  }, [entry, errorUpdatedAt, scanError]);
+  const unscannableReason =
+    step !== "projects" || !hostsLoaded
+      ? null
+      : primaryHost === null
+        ? "no_host"
+        : primaryHost.status !== "connected"
+          ? "host_unavailable"
+          : null;
+  const unscannableReportedRef = useRef(new Set<string>());
+  useEffect(() => {
+    if (unscannableReason === null) return;
+    if (unscannableReportedRef.current.has(unscannableReason)) return;
+    unscannableReportedRef.current.add(unscannableReason);
+    recordTelemetryEvent({
+      name: "onboarding_operation",
+      properties: {
+        entry,
+        step: "projects",
+        operation: "scan",
+        outcome: "failed",
+        failure_reason: unscannableReason,
+      },
+    });
+  }, [entry, unscannableReason]);
   const agentStatesQuery = useSystemProviderStates({
     enabled: hostId !== null,
     poll: false,
@@ -1168,7 +1241,8 @@ export function OnboardingFlow({
         <ProjectsStepContainer
           chrome={chrome}
           entry={entry}
-          hostId={hostId}
+          host={primaryHost}
+          hostsLoaded={hostsLoaded}
           projectIdsAtOpen={projectIdsAtOpen}
           onBack={goTo(-1)}
           onContinue={advance("completed")}

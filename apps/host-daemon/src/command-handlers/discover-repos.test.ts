@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -34,6 +34,7 @@ describe("discoverRepos", () => {
   });
 
   afterEach(async () => {
+    await chmod(join(home, "Documents"), 0o755).catch(() => {});
     await rm(home, { recursive: true, force: true });
   });
 
@@ -171,6 +172,21 @@ describe("discoverRepos", () => {
       walkBudgetMs: -1,
     });
 
-    expect(result).toEqual({ repos: [], truncated: true });
+    expect(result).toEqual({ repos: [], truncated: true, unreadablePaths: [] });
   });
+
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "reports folders it is not allowed to read and keeps scanning the rest",
+    async () => {
+      await makeRepo("projects/app");
+      await makeRepo("Documents/hidden");
+      await chmod(join(home, "Documents"), 0o000);
+
+      const { repos, truncated, unreadablePaths } = await run();
+
+      expect(truncated).toBe(false);
+      expect(repos.map((repo) => repo.name)).toEqual(["app"]);
+      expect(unreadablePaths).toEqual([join(home, "Documents")]);
+    },
+  );
 });
