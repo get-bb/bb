@@ -37,6 +37,115 @@ afterEach(cleanup);
 
 describe("plugin SDK Markdown", () => {
   it.each([
+    {
+      name: "GitHub PR tables with inline code",
+      content:
+        "## Changes\n\n| Action | Pinned SHA | Version |\n| --- | --- | --- |\n| `actions/checkout` | `11d5960a…` | v4.4.0 |\n| `actions/setup-node` | `49933ea5…` | v4.4.0 |",
+      elements: {
+        h2: ["Changes"],
+        th: ["Action", "Pinned SHA", "Version"],
+        td: [
+          "actions/checkout",
+          "11d5960a…",
+          "v4.4.0",
+          "actions/setup-node",
+          "49933ea5…",
+          "v4.4.0",
+        ],
+        "td code": [
+          "actions/checkout",
+          "11d5960a…",
+          "actions/setup-node",
+          "49933ea5…",
+        ],
+      },
+    },
+    {
+      name: "aligned tables, escaped pipes, and following paragraphs",
+      content:
+        "Name | Notes | Total\n:--- | :---: | ---:\ncheckout | uses \\| safely | 2\n\nAfter the table.",
+      elements: {
+        'th[style*="left"]': ["Name"],
+        'th[style*="center"]': ["Notes"],
+        'th[style*="right"]': ["Total"],
+        'td[style*="left"]': ["checkout"],
+        'td[style*="center"]': ["uses | safely"],
+        'td[style*="right"]': ["2"],
+        p: ["After the table."],
+      },
+    },
+    {
+      name: "GitHub issue links and inline formatting",
+      content:
+        "[Open issue](https://github.com/get-bb/bb/issues/1) **strong** *emphasis* `code`",
+      elements: {
+        'a[href="https://github.com/get-bb/bb/issues/1"][target="_blank"]': [
+          "Open issue",
+        ],
+        strong: ["strong"],
+        em: ["emphasis"],
+        code: ["code"],
+      },
+    },
+    {
+      name: "headings, fenced code, and dash lists",
+      content: "# Heading\n\n```text\n<literal>\n```\n\n- First\n- Second",
+      elements: {
+        h1: ["Heading"],
+        "pre code": ["<literal>"],
+        "ul > li": ["First", "Second"],
+      },
+    },
+    {
+      name: "numbered, star, nested, and task lists",
+      content:
+        "1. First\n2. Second\n\n* Parent\n  * Child\n\n- [x] Done\n- [ ] Pending",
+      elements: {
+        "ol > li": ["First", "Second"],
+        "ul ul > li": ["Child"],
+        'input[type="checkbox"][checked][disabled]': [""],
+        'input[type="checkbox"]:not([checked])[disabled]': [""],
+      },
+    },
+    {
+      name: "quotes, strikethrough, autolinks, and hidden HTML comments",
+      content:
+        "> Quoted\n\n~~Removed~~ https://example.com\n\n<!-- hidden template -->",
+      elements: {
+        "blockquote p": ["Quoted"],
+        del: ["Removed"],
+        'a[href="https://example.com"]': ["https://example.com"],
+        p: ["Quoted", "Removed https://example.com"],
+      },
+    },
+    {
+      name: "Markdown and HTML images with sanitized attributes",
+      content:
+        '![Chart](https://example.com/chart.png)\n\n<img src="https://example.com/screen.png" alt="Screen" width="320" onerror="alert(1)">',
+      elements: {
+        'img[alt="Chart"][src="https://example.com/chart.png"]': [""],
+        'img[alt="Screen"][width="320"]': [""],
+        "[onerror]": [],
+      },
+    },
+  ])(
+    "renders $name through the shared host path",
+    async ({ content, elements }) => {
+      const Markdown = pluginSdkAppImplementation.Markdown;
+      const { container } = render(<Markdown content={content} />);
+      await waitFor(() => {
+        for (const [selector, expected] of Object.entries(elements)) {
+          expect(
+            [...container.querySelectorAll(selector)].map((node) =>
+              node.textContent?.trim(),
+            ),
+          ).toEqual(expected);
+        }
+      });
+    },
+  );
+
+  it.each([
     ["@thread:thr_1234567890", "/projects/proj_demo/threads/thr_1234567890"],
     [
       "@thread:thr_1234567890#msg=42",
