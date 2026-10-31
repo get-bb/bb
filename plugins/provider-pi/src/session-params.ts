@@ -3,7 +3,18 @@ import {
   type DynamicTool,
   type InstructionMode,
   type ReasoningLevel,
+  type ServiceTier,
 } from "@get-bb/plugin-sdk/provider-bridge";
+
+export const PI_LONG_CACHE_SERVICE_TIER = "long-cache";
+
+export type PiCacheRetention = "long";
+
+function toPiCacheRetention(
+  serviceTier: ServiceTier | undefined,
+): PiCacheRetention | undefined {
+  return serviceTier === PI_LONG_CACHE_SERVICE_TIER ? "long" : undefined;
+}
 
 type PiReasoningLevel = "off" | "low" | "medium" | "high" | "xhigh" | "max";
 
@@ -27,6 +38,7 @@ function toPiThinkingLevel(
 interface PiSessionOptions {
   model?: string | undefined;
   reasoningLevel?: ReasoningLevel | undefined;
+  serviceTier?: ServiceTier | undefined;
   instructions?: string | undefined;
   envVars?: Record<string, string> | undefined;
 }
@@ -44,6 +56,7 @@ export interface PiSessionParams {
   additionalSkillPaths?: readonly string[];
   appendSystemPrompt?: string;
   baseInstructions?: string;
+  cacheRetention?: PiCacheRetention;
   cwd: string;
   dynamicTools?: readonly DynamicTool[];
   model?: string;
@@ -54,12 +67,14 @@ export interface PiSessionParams {
 export interface PiTurnOptions {
   model: string | undefined;
   thinkingLevel: PiReasoningLevel | undefined;
+  cacheRetention: PiCacheRetention | undefined;
 }
 
 export function buildPiTurnOptions(options: PiSessionOptions): PiTurnOptions {
   return {
     model: options.model ? options.model : undefined,
     thinkingLevel: toPiThinkingLevel(options.reasoningLevel),
+    cacheRetention: toPiCacheRetention(options.serviceTier),
   };
 }
 
@@ -68,6 +83,7 @@ export function buildPiSessionParams(
 ): PiSessionParams {
   const instructions = args.options.instructions?.trim();
   const thinkingLevel = toPiThinkingLevel(args.options.reasoningLevel);
+  const cacheRetention = toPiCacheRetention(args.options.serviceTier);
   return {
     cwd: args.cwd,
     shellEnvOverrides: {
@@ -81,6 +97,7 @@ export function buildPiSessionParams(
       : {}),
     ...(args.options.model ? { model: args.options.model } : {}),
     ...(thinkingLevel ? { thinkingLevel } : {}),
+    ...(cacheRetention ? { cacheRetention } : {}),
     ...(args.dynamicTools && args.dynamicTools.length > 0
       ? { dynamicTools: args.dynamicTools }
       : {}),

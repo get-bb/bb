@@ -728,6 +728,9 @@ async function buildSessionOptions(args: {
     ...(args.params.thinkingLevel
       ? { thinkingLevel: args.params.thinkingLevel }
       : {}),
+    ...(args.params.cacheRetention
+      ? { cacheRetention: args.params.cacheRetention }
+      : {}),
     ...(args.params.dynamicTools && args.params.dynamicTools.length > 0
       ? { dynamicTools: args.params.dynamicTools }
       : {}),
@@ -1011,10 +1014,14 @@ async function reconcileTurnOptions(
   const thinkingLevelChanged =
     turnOptions.thinkingLevel !== undefined &&
     turnOptions.thinkingLevel !== construction.thinkingLevel;
+  const cacheRetentionChanged =
+    options.serviceTier !== undefined &&
+    turnOptions.cacheRetention !== construction.cacheRetention;
   if (
     !environmentChanged &&
     changedModelRequest === undefined &&
-    !thinkingLevelChanged
+    !thinkingLevelChanged &&
+    !cacheRetentionChanged
   ) {
     return threadSession;
   }
@@ -1027,17 +1034,34 @@ async function reconcileTurnOptions(
     (threadSession.constructionModel === undefined ||
       threadSession.constructionModel.provider !== nextModel.provider ||
       threadSession.constructionModel.id !== nextModel.id);
-  if (!environmentChanged && !modelChanged && !thinkingLevelChanged) {
+  if (
+    !environmentChanged &&
+    !modelChanged &&
+    !thinkingLevelChanged &&
+    !cacheRetentionChanged
+  ) {
     return threadSession;
   }
-  const replacement = await rebuildThreadSession(threadId, threadSession, {
+  const nextConstruction: PiSessionParams = {
     ...construction,
     ...(shellEnvOverrides === undefined ? {} : { shellEnvOverrides }),
     ...(turnOptions.model === undefined ? {} : { model: turnOptions.model }),
     ...(turnOptions.thinkingLevel === undefined
       ? {}
       : { thinkingLevel: turnOptions.thinkingLevel }),
-  });
+  };
+  if (cacheRetentionChanged) {
+    if (turnOptions.cacheRetention) {
+      nextConstruction.cacheRetention = turnOptions.cacheRetention;
+    } else {
+      delete nextConstruction.cacheRetention;
+    }
+  }
+  const replacement = await rebuildThreadSession(
+    threadId,
+    threadSession,
+    nextConstruction,
+  );
   sendThreadIdentity(threadId, replacement.providerThreadId);
   sendSessionResetBoundary(threadId);
   send({

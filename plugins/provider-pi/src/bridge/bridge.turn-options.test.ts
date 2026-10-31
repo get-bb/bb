@@ -69,7 +69,8 @@ function providerThreadIdFor(threadId: string): string {
   const providerThreadId = (identity?.params as { providerThreadId?: unknown })
     .providerThreadId;
   expect(typeof providerThreadId).toBe("string");
-  if (typeof providerThreadId !== "string") throw new Error("missing provider thread identity");
+  if (typeof providerThreadId !== "string")
+    throw new Error("missing provider thread identity");
   return providerThreadId;
 }
 
@@ -123,7 +124,9 @@ it(
     const threadId = "thr_turn_options_model";
     const start = await harness.startThread(threadId, { options: MINI });
     const originalProviderThreadId = providerThreadIdFor(threadId);
-    expect(start.result).toMatchObject({ providerThreadId: originalProviderThreadId });
+    expect(start.result).toMatchObject({
+      providerThreadId: originalProviderThreadId,
+    });
 
     expect((await turnStart(1, threadId, "first", MINI)).error).toBeUndefined();
     let seen = await harness.waitForTurnBoundary(threadId, 0);
@@ -305,6 +308,44 @@ it(
     });
     expect(steer.result).toMatchObject({ threadId });
     expect(sessionReplacements(threadId)).toEqual([]);
+  },
+  TURN_OPTIONS_TEST_TIMEOUT_MS,
+);
+
+it(
+  "starts Pi with long cache retention on the long-cache tier and rebuilds when the tier changes",
+  async () => {
+    const threadId = "thr_turn_options_cache";
+    const cacheLog = join(harness.workspaceDir, "cache-retention.log");
+    const options = (serviceTier: string) => ({
+      ...MINI,
+      serviceTier,
+      envVars: { FAKE_PI_CACHE_RETENTION_LOG: cacheLog },
+    });
+    await harness.startThread(threadId, { options: options("long-cache") });
+
+    expect(
+      (await turnStart(1, threadId, "first", options("long-cache"))).error,
+    ).toBeUndefined();
+    let seen = await harness.waitForTurnBoundary(threadId, 0);
+    expect(sessionReplacements(threadId)).toEqual([]);
+
+    expect(
+      (await turnStart(2, threadId, "second", options("long-cache"))).error,
+    ).toBeUndefined();
+    seen = await harness.waitForTurnBoundary(threadId, seen);
+    expect(sessionReplacements(threadId)).toEqual([]);
+
+    expect(
+      (await turnStart(3, threadId, "third", options("default"))).error,
+    ).toBeUndefined();
+    await harness.waitForTurnBoundary(threadId, seen);
+
+    expect(readFileSync(cacheLog, "utf8").trim().split("\n")).toEqual([
+      "long",
+      "unset",
+    ]);
+    expect(sessionReplacements(threadId)).toHaveLength(1);
   },
   TURN_OPTIONS_TEST_TIMEOUT_MS,
 );

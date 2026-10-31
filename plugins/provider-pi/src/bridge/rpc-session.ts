@@ -15,6 +15,7 @@ export interface PiRpcSessionOptions {
   cwd: string;
   model?: { provider: string; id: string };
   thinkingLevel?: string;
+  cacheRetention?: "long";
   additionalSkillPaths?: readonly string[];
   shellEnvOverrides?: Record<string, string>;
   dynamicTools?: readonly DynamicToolDefinition[];
@@ -311,6 +312,9 @@ export class PiRpcSession {
       cwd: this.options.cwd,
       env: buildPiChildEnv({
         ...(this.options.shellEnvOverrides ?? {}),
+        ...(this.options.cacheRetention
+          ? { PI_CACHE_RETENTION: this.options.cacheRetention }
+          : {}),
         PI_BB_TOOLS_FILE: toolsFilePath,
       }),
       args,

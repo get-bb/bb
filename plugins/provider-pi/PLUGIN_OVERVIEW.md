@@ -3,6 +3,7 @@ Start a thread, pick Pi, and let the Pi coding agent work in your repository fro
 ## What you get
 
 - Reasoning levels from None to Max.
+- A Long cache service tier: Pi keeps the prompt cache for an hour on Anthropic models (24 hours on OpenAI) instead of a few minutes, for threads that sit idle between messages.
 - Checkpoint forks and manual compaction.
 - Pi skills from your home directory and project, listed next to bb skills.
 - Health and install status on each host, with an install or update action.
