@@ -30,7 +30,7 @@ describe("Testimonials", () => {
     const cards = [
       ...container.querySelectorAll<HTMLAnchorElement>("a.tm-card"),
     ];
-    expect(cards).toHaveLength(7);
+    expect(cards).toHaveLength(11);
     for (const card of cards) {
       expect(card.target).toBe("_blank");
       expect(card.rel).toBe("noopener noreferrer");

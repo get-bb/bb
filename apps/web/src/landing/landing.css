@@ -2978,6 +2978,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   font-size: 14px;
   line-height: 1.45;
   text-wrap: pretty;
+  /* Keep a post's own line breaks. */
+  white-space: pre-line;
 }
 
 .tm-author {
