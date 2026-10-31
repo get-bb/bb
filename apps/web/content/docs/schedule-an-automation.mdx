@@ -1,0 +1,116 @@
+---
+title: Schedule an automation
+description: Start an agent or run a script on a schedule or once at a set time. Create it from Automations in the sidebar or with bb automation create.
+type: how-to
+sources:
+  - plugins/automations/**
+since: 0.47.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+The **Automations** plugin comes with bb and is on by default. An automation runs in one of two modes:
+
+| Mode | When it's due | Use it for |
+| --- | --- | --- |
+| **Agent** | bb starts a thread with your prompt, or sends it to a chosen thread | Triage, summaries |
+| **Script** | bb runs a script on the server's machine and records its output | Health checks, alerts |
+
+## Create an automation
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+1. Click **Automations** in the sidebar.
+2. Click **New automation**. A thread opens with "Create a new bb automation to" in the composer.
+3. Finish the sentence with what and when, such as "summarize merged pull requests every weekday at 9am", and send.
+4. The agent asks what it needs, then creates the automation.
+
+<Screenshot
+  src="/docs-images/schedule-an-automation/new-automation"
+  alt="The Automations page shows the New automation button above the list of automations."
+  width={1380}
+  height={300}
+/>
+
+</Tab>
+<Tab value="CLI">
+
+```bash
+bb automation create --project <project-id> --name "Morning PR summary" \
+  --cron "0 9 * * 1-5" --timezone "America/New_York" \
+  --prompt "Summarize yesterday's merged pull requests"
+
+bb automation create --project <project-id> --name "Check the deploy" \
+  --in 2h --script-file ./check-deploy.sh --interpreter bash
+```
+
+The first runs an agent every weekday at 9:00; the second runs a script once, in two hours.
+
+</Tab>
+</Tabs>
+
+## Choose when it runs
+
+| Schedule | Option | Example |
+| --- | --- | --- |
+| Repeating | `--cron`, with `--timezone` | `--cron "0 9 * * 1-5" --timezone "Europe/Berlin"` |
+| Once, at a time | `--at`, preferably ISO 8601 | `--at "YYYY-MM-DDT09:00"` |
+| Once, after a delay | `--in` | `--in 30m`, `--in 1d` |
+
+Automations run only while the bb server runs; agent ones also need a connected machine.
+
+## Agent automation options
+
+By default each run starts a new thread.
+
+| Option | Effect |
+| --- | --- |
+| `--target-thread <thread-id>` | Send the prompt to one thread every time |
+| `--environment <environment-id>` | Run in an existing environment |
+| `--new-environment worktree`, `--base-branch <branch>` | Start each run in a new worktree |
+| `--provider`, `--model`, `--reasoning` | Choose the agent |
+| `--permission-mode` | Defaults to **Approve for me** when supported, else **Full Access** |
+
+## Script automation rules
+
+- Scripts run with `bash`, `sh`, `node` or `python3` on the server's machine.
+- Runs stop after 2 minutes. `--timeout` allows up to 15.
+- Exit 0 with no output records a skip; a non-zero exit fails the run.
+- bb copies a `--script-file`. After editing it, run `bb automation update` with `--script-file` again.
+
+## Pause, resume and run it now
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+In **Automations**, use a row's switch to pause or resume, or its **⋯** menu → **Run now**.
+
+</Tab>
+<Tab value="CLI">
+
+```bash
+bb automation pause <automation-id> --project <project-id>
+bb automation resume <automation-id> --project <project-id>
+bb automation run <automation-id> --project <project-id>
+bb automation runs <automation-id> --project <project-id>
+```
+
+</Tab>
+</Tabs>
+
+bb pauses an automation after three failures in a row, or when its target thread is archived.
+
+## Check it worked
+
+- **Automations** lists it with its next run time.
+- After a run, its page shows **Succeeded**, **Failed** or **Skipped**.
+
+## Related troubleshooting
+
+| Symptom | Cause and fix |
+| --- | --- |
+| Paused, and you didn't pause it | Check its last runs, fix the cause, then resume |
+| An agent automation never runs | No machine is connected to the server |
+| A script fails only as an automation | It runs on the server's machine. Use absolute paths, or set `--working-directory` |
+| An automation won't stop running | See A thread, environment or automation is stuck |
