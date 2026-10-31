@@ -76,9 +76,11 @@ async function bootAutomationsPlugin(
     "full",
   ],
   routedPermissionModes?: Array<"accept-edits" | "auto" | "full">,
+  loopbackBaseUrl?: string,
 ): Promise<FakePluginHost> {
   const host = createFakePluginHost({
     pluginId: "automations",
+    loopbackBaseUrl,
     sdk: {
       system: { config: async () => ({ primaryHostId: "host_fake" }) },
       projects: {
@@ -1213,7 +1215,6 @@ describe("automations server plugin harness", () => {
       bb: host.bb as never,
       db: host.bb.storage.database(),
       pluginDataDir: "/tmp/bb-automations-test",
-      serverUrl: "http://127.0.0.1:38886",
       scriptRuns: createScriptRunScope(),
     });
     await expect(
@@ -1539,6 +1540,53 @@ describe("automations server plugin harness", () => {
       await service.done;
       await harness.dispose();
     }
+  });
+
+  it("points a script's bb calls at the server the plugin runs in", async () => {
+    const { harness } = await bootAutomationsPlugin(
+      undefined,
+      undefined,
+      "http://127.0.0.1:48886",
+    );
+    const created = await harness.runCli([
+      "create",
+      "--project",
+      PROJECT_ID,
+      "--name",
+      "Server URL",
+      "--in",
+      "1h",
+      "--script",
+      'printf "%s" "$BB_SERVER_URL"',
+      "--interpreter",
+      "sh",
+      "--working-directory",
+      "automation-storage",
+      "--json",
+    ]);
+    expect(created.exitCode).toBe(0);
+    const automation = automationDetailResponseSchema.parse(
+      JSON.parse(created.stdout!),
+    );
+
+    await harness.callRpc("automations_run", {
+      projectId: PROJECT_ID,
+      automationId: automation.id,
+    });
+    await vi.waitFor(async () => {
+      const { runs } = automationRunListResponseSchema.parse(
+        await harness.callRpc("automations_runs", {
+          projectId: PROJECT_ID,
+          automationId: automation.id,
+        }),
+      );
+      expect(runs[0]).toMatchObject({
+        status: "succeeded",
+        output: expect.stringMatching(/(?:^|\n)http:\/\/127\.0\.0\.1:48886$/),
+      });
+    });
+
+    await harness.dispose();
   });
 
   it("dispatches a due agent automation from one sweep tick and closes it from thread.idle", async () => {
