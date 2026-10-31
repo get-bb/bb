@@ -33,13 +33,7 @@ import type { UploadedPromptAttachment } from "@bb/server-contract";
 import mimeTypes from "mime-types";
 import { ApiError } from "../../errors.js";
 import { requirePublicProject } from "../lib/entity-lookup.js";
-
-const HEIF_IMAGE_MIME_TYPES = new Set([
-  "image/heic",
-  "image/heic-sequence",
-  "image/heif",
-  "image/heif-sequence",
-]);
+import { normalizeHeifAttachment } from "./heic-conversion.js";
 
 interface ResolvePromptAttachmentReferencesArgs {
   db: DbConnection;
@@ -267,25 +261,7 @@ function formatMegabytes(bytes: number): string {
   return Number.isInteger(megabytes) ? String(megabytes) : megabytes.toFixed(1);
 }
 
-function isHeifImageUpload(file: File): boolean {
-  const mimeType = (file.type.split(";")[0] ?? "").trim().toLowerCase();
-  return HEIF_IMAGE_MIME_TYPES.has(mimeType);
-}
-
-export async function storeAttachment(
-  db: DbConnection,
-  dataDir: string,
-  projectId: string,
-  file: File,
-): Promise<UploadedPromptAttachment> {
-  if (isHeifImageUpload(file)) {
-    throw new ApiError(
-      400,
-      "invalid_request",
-      "HEIC images are not supported. Convert the image to JPEG or PNG before attaching it.",
-    );
-  }
-  const isImage = (file.type || "").startsWith("image/");
+function assertAttachmentSize(file: File): void {
   if (file.size > PROMPT_ATTACHMENT_MAX_BYTES) {
     throw new ApiError(
       400,
@@ -295,29 +271,41 @@ export async function storeAttachment(
       )}MB attachment limit`,
     );
   }
+}
+
+export async function storeAttachment(
+  db: DbConnection,
+  dataDir: string,
+  projectId: string,
+  file: File,
+): Promise<UploadedPromptAttachment> {
+  assertAttachmentSize(file);
+  const storedFile = await normalizeHeifAttachment(file);
+  assertAttachmentSize(storedFile);
+  const isImage = (storedFile.type || "").startsWith("image/");
 
   const dir = projectAttachmentDir(dataDir, projectId);
   await mkdir(dir, { recursive: true });
 
-  const storedName = buildStoredFilename(file.name);
-  const bytes = Buffer.from(await file.arrayBuffer());
+  const storedName = buildStoredFilename(storedFile.name);
+  const bytes = Buffer.from(await storedFile.arrayBuffer());
   await writeInventoriedAttachment(
     db,
     dataDir,
     projectId,
     storedName,
     bytes,
-    file.name,
-    file.type || null,
+    storedFile.name,
+    storedFile.type || null,
   );
 
   return {
     type: isImage ? "localImage" : "localFile",
     sourceProjectId: projectId,
     path: storedName,
-    name: file.name,
-    mimeType: file.type || undefined,
-    sizeBytes: file.size,
+    name: storedFile.name,
+    mimeType: storedFile.type || undefined,
+    sizeBytes: storedFile.size,
   };
 }
 

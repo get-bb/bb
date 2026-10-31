@@ -399,8 +399,13 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
     },
     async upload(input) {
       const filename = resolveAttachmentFilename(input);
-      const mimeType =
+      const suppliedMimeType =
         input.mimeType ?? embeddedAttachmentMimeType(input.clientFile) ?? "";
+      const heifExtension = /\.(heic|heif)$/iu
+        .exec(filename)?.[1]
+        ?.toLowerCase();
+      const mimeType =
+        suppliedMimeType || (heifExtension ? `image/${heifExtension}` : "");
       const file =
         input.clientFile instanceof Blob && input.clientFile.type === mimeType
           ? input.clientFile

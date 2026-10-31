@@ -406,6 +406,7 @@
       // clean worktree must build that runtime before the server starts.
       "dependsOn": [
         "@bb/server#generate:bb-official-marketplace",
+        "@bb/server#generate:heic-worker",
         "@bb/templates#generate:templates",
         "@bb/plugin-build#generate",
         "@get-bb/plugin-sdk#build:runtime"
@@ -486,7 +487,21 @@
       "dependsOn": ["^topo", "@bb/server#generate:bb-official-marketplace"]
     },
     "@bb/server#topo": {
-      "dependsOn": ["^topo", "@bb/server#generate:bb-official-marketplace"]
+      "dependsOn": [
+        "^topo",
+        "@bb/server#generate:bb-official-marketplace",
+        "@bb/server#generate:heic-worker"
+      ]
+    },
+    "@bb/server#generate:heic-worker": {
+      "dependsOn": [],
+      "inputs": [
+        "src/services/projects/heic-conversion-worker.ts",
+        "scripts/generate-heic-worker.mjs",
+        "package.json",
+        "$TURBO_ROOT$/pnpm-lock.yaml"
+      ],
+      "outputs": ["src/generated/heic-worker.ts"]
     },
     "@bb/server#generate:bb-official-marketplace": {
       "dependsOn": [],

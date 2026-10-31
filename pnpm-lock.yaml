@@ -1277,6 +1277,9 @@ importers:
       hono:
         specifier: ^4.7.0
         version: 4.11.9
+      libheif-js:
+        specifier: ^1.23.5
+        version: 1.23.5
       mime-types:
         specifier: ^3.0.2
         version: 3.0.2
@@ -1292,6 +1295,9 @@ importers:
       pino-roll:
         specifier: ^4.0.0
         version: 4.0.0
+      pngjs:
+        specifier: ^7.0.0
+        version: 7.0.0
       semver:
         specifier: ^7.7.0
         version: 7.7.4
@@ -1335,6 +1341,9 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.10
+      '@types/pngjs':
+        specifier: ^6.0.5
+        version: 6.0.5
       '@types/semver':
         specifier: ^7.7.0
         version: 7.7.1
@@ -11342,6 +11351,9 @@ packages:
   '@types/picomatch@4.0.3':
     resolution: {integrity: sha512-iG0T6+nYJ9FAPmx9SsUlnwcq1ZVRuCXcVEvWnntoPlrOpwtSTKNDC9uVAxTsC3PUvJ+99n4RpAcNgBbHX3JSnQ==}
 
+  '@types/pngjs@6.0.5':
+    resolution: {integrity: sha512-0k5eKfrA83JOZPppLtS2C7OUtyNAl2wKNxfyYl9Q5g9lPkgBl/9hNyAu6HuEH2J4XmIv2znEpkDd0SaZVxW6iQ==}
+
   '@types/prismjs@1.26.6':
     resolution: {integrity: sha512-vqlvI7qlMvcCBbVe0AKAb4f97//Hy0EBTaiW8AalRnG/xAN5zOiWWyrNqNXeq8+KAuvRewjCVY1+IPxk4RdNYw==}
 
@@ -14636,6 +14648,10 @@ packages:
   leven@3.1.0:
     resolution: {integrity: sha512-qsda+H8jTaUaN/x5vzW2rzc+8Rw4TAQ/4KjB46IwK5VH+IlVeeeje/EoZRpiXvIqjFgK84QffqPztGI3VBLG1A==}
     engines: {node: '>=6'}
+
+  libheif-js@1.23.5:
+    resolution: {integrity: sha512-umXZPthnWZtF3iG/5mQG+AZ2V6i0UeYpo3z2CkggTEgL8dKmIIwJT6TDuAMuabXa1yTW8uJ1ZAgR+CxNTklYYw==}
+    engines: {node: '>=8.0.0'}
 
   lightningcss-android-arm64@1.32.0:
     resolution: {integrity: sha512-YK7/ClTt4kAK0vo6w3X+Pnm0D2cf2vPHbhOXdoNti1Ga0al1P4TBZhwjATvjNwLEBCnKvjJc2jQgHXH0NEwlAg==}
@@ -23566,6 +23582,10 @@ snapshots:
 
   '@types/picomatch@4.0.3': {}
 
+  '@types/pngjs@6.0.5':
+    dependencies:
+      '@types/node': 24.12.4
+
   '@types/prismjs@1.26.6': {}
 
   '@types/qrcode@1.5.6':
@@ -27371,6 +27391,8 @@ snapshots:
   lazy-val@1.0.5: {}
 
   leven@3.1.0: {}
+
+  libheif-js@1.23.5: {}
 
   lightningcss-android-arm64@1.32.0:
     optional: true
