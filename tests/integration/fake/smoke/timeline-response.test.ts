@@ -85,6 +85,7 @@ describe("timeline response helpers", () => {
         summaryCount: 1,
         completedAt: null,
         children: [ASSISTANT_ROW],
+        experimental_touchedFilePaths: [],
       },
     ]);
 

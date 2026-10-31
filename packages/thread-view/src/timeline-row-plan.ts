@@ -20,8 +20,54 @@ interface TimelineSummaryPlan {
 
 export type TimelineRowPlan = TimelineMessagePlan | TimelineSummaryPlan;
 
+const TOUCHED_FILE_PATH_LIMIT = 200;
+
 function messagePlan(message: EventProjectionMessage): TimelineMessagePlan {
   return { kind: "message", message };
+}
+
+function touchFilePath(paths: Set<string>, path: string): void {
+  if (path.length === 0) {
+    return;
+  }
+  paths.delete(path);
+  paths.add(path);
+}
+
+function applyTouchedFilePaths(
+  paths: Set<string>,
+  message: EventProjectionMessage,
+): void {
+  switch (message.kind) {
+    case "file-edit":
+      for (const change of message.changes) {
+        if (change.kind === "delete") {
+          paths.delete(change.path);
+        } else if (change.movePath) {
+          paths.delete(change.path);
+          touchFilePath(paths, change.movePath);
+        } else {
+          touchFilePath(paths, change.path);
+        }
+      }
+      return;
+    case "file-read":
+    case "image-view":
+      touchFilePath(paths, message.path);
+      return;
+    default:
+      return;
+  }
+}
+
+function collectTouchedFilePaths(
+  messages: readonly EventProjectionMessage[],
+): string[] {
+  const paths = new Set<string>();
+  for (const message of messages) {
+    applyTouchedFilePaths(paths, message);
+  }
+  return [...paths].slice(-TOUCHED_FILE_PATH_LIMIT);
 }
 
 function planTurn(
@@ -84,6 +130,9 @@ function planTurn(
         summaryCount: item.summaryCount,
         completedAt,
         children: null,
+        experimental_touchedFilePaths: collectTouchedFilePaths(
+          item.sourceMessages,
+        ),
       },
       messages: item.sourceMessages,
     });

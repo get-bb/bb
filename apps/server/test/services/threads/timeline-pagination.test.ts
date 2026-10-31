@@ -237,6 +237,7 @@ describe("paginateTimelineRows", () => {
       summaryCount: 1,
       completedAt: 5,
       children: [child(5)],
+      experimental_touchedFilePaths: [],
     };
     const changedChild = child(4, 25);
     const newChild = userRow({
@@ -375,6 +376,7 @@ describe("paginateTimelineRows", () => {
           { ...assistantRow(3), sourceSeqEnd: 30 },
           { ...assistantRow(4), sourceSeqEnd: 31 },
         ],
+        experimental_touchedFilePaths: [],
       };
       const tail = assistantRow(5);
       const page = paginateTimelineRows({

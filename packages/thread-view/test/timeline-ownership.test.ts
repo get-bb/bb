@@ -166,6 +166,7 @@ describe("timeline source ownership", () => {
             completedAt: 10,
             summaryCount: 1,
             children: [{ ...timeline.rows[0], id: message.id }],
+            experimental_touchedFilePaths: [],
           },
         ],
         [],

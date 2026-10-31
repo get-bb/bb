@@ -127,6 +127,10 @@ import {
   useArmTopLevelTimelineRowContainment,
 } from "./timeline-row-containment.js";
 import { NESTED_TIMELINE_GROUP_LINE_CLASS_NAME } from "./timeline-nested-group-line.js";
+import {
+  TimelineTouchedFilesContext,
+  useTimelineTouchedFilesStore,
+} from "./timeline-touched-files.js";
 import { GeneratedConversationMessage } from "./GeneratedConversationMessage.js";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import { useThreadTimelineTurnSummaryDetails } from "@/hooks/queries/thread-panel-queries";
@@ -2303,9 +2307,15 @@ function TimelineRowsList({
 
 function ThreadTimelineRowsComponent(props: ThreadTimelineRowsProps) {
   const ownerKey = props.threadId ?? props.timelineRows[0]?.threadId ?? "";
+  const touchedFiles = useTimelineTouchedFilesStore(
+    props.timelineRows,
+    props.workspaceRootPath,
+  );
   return (
     <TimelineImageGallery key={ownerKey}>
-      <ThreadTimelineRowsForTimelineView {...props} />
+      <TimelineTouchedFilesContext.Provider value={touchedFiles}>
+        <ThreadTimelineRowsForTimelineView {...props} />
+      </TimelineTouchedFilesContext.Provider>
     </TimelineImageGallery>
   );
 }

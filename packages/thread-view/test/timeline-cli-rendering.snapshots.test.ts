@@ -473,6 +473,7 @@ describe("timeline CLI rendering snapshots", () => {
           summaryCount: 0,
           completedAt: null,
           children: null,
+          experimental_touchedFilePaths: [],
         } satisfies TimelineRow,
       ],
       {

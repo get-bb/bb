@@ -3400,6 +3400,38 @@ still hydrate it. `detail-limit` means that read exceeded its byte budget.
 3. Verify old persisted previews and mixed-version clients still receive a
    deterministic state before making the field stable.
 
+## `TimelineTurnRow.experimental_touchedFilePaths` (`@get-bb/plugin-sdk`)
+
+The files a collapsed turn's work read, changed or viewed and left in place,
+as returned by `bb.sdk.threads.timeline`: each path as its provider reported
+it (absolute, or relative to the thread's workspace), once, most recent last,
+at most 200. A file the turn deleted is dropped, a renamed file is listed by
+its new path, and a file only a shell command read or wrote is not listed.
+
+The thread timeline is the core caller
+(`apps/app/src/components/thread/timeline/timeline-touched-files.ts`). With
+the file reads and changes of the rows it shows, these paths resolve a file an
+assistant message's link or inline code names by a relative path or a bare
+name to the one touched file whose path ends with it, before the workspace
+root is tried; a name two touched files end with falls back to the root.
+Markdown image sources do not use them. A mention of a file the agent edited
+outside its workspace, in another clone or from a package directory, then
+opens that file rather than a missing one under the root. Each message keeps
+only the touched files it names, so a file touched later re-renders only the
+messages that name it.
+
+**Audit before stabilizing.**
+
+1. Decide whether files a shell command read or wrote should count; the
+   projection already parses command read intents, with paths relative to a
+   working directory it does not always know.
+2. Decide whether a touched file should still win over an existing file of
+   the same name at the workspace root, or apply only when the root target is
+   missing.
+3. Confirm the 200-path cap and most-recent-last order hold up for long turns,
+   and whether delegated work should contribute its own files.
+4. Confirm plugins need the list rather than a resolved target per message.
+
 ## Document Markdown (`MarkdownProps.experimental_document`)
 
 The Markdown component accepts explicit `{ target, rootPath, threadId }`

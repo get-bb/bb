@@ -24,6 +24,7 @@ import {
   MarkdownLocalFileOpenTargetsContext,
   type MarkdownLinkRouting,
 } from "./markdown-link-routing";
+import { buildMarkdownTouchedFiles } from "./markdown-local-file-link";
 
 const workspaceLinkRouting = {
   localFile: {
@@ -393,6 +394,61 @@ describe("MarkdownPreview", () => {
       });
     },
   );
+
+  it("opens mentions of files the thread touched outside its workspace", () => {
+    const onOpenLink = vi.fn(() => true);
+    const cloneRows =
+      "/home/dev/fork-work/link-probe/plugins/thread-list/app/rows";
+    render(
+      <MarkdownPreview
+        content={[
+          "Now the full new `ProbeRow.tsx`.",
+          "See [the row](plugins/thread-list/app/rows/ProbeRow.tsx:2), `package.json` and `index.ts`.",
+          "Conflicts only in `plugins/github` (`README.md`).",
+        ].join("\n\n")}
+        linkRouting={{
+          localFile: {
+            absoluteLinks: { kind: "trusted-host" },
+            relativeLinks: {
+              baseDir: "/workspace",
+              rootPath: "/workspace",
+              touchedFiles: buildMarkdownTouchedFiles({
+                paths: [
+                  `${cloneRows}/ProbeRow.tsx`,
+                  `${cloneRows}/index.ts`,
+                  "/workspace/src/index.ts",
+                  "/workspace/plugins/github/README.md",
+                ],
+                rootPath: "/workspace",
+              }),
+            },
+            onOpenLink,
+          },
+        }}
+      />,
+    );
+
+    const hrefs = [
+      "ProbeRow.tsx",
+      "the row",
+      "package.json",
+      "index.ts",
+      "README.md",
+    ].map((name) => screen.getByRole("link", { name }).getAttribute("href"));
+    expect(hrefs).toEqual([
+      `file://${cloneRows}/ProbeRow.tsx`,
+      `file://${cloneRows}/ProbeRow.tsx#L2`,
+      "file:///workspace/package.json",
+      "file:///workspace/index.ts",
+      "file:///workspace/plugins/github/README.md",
+    ]);
+    fireEvent.click(screen.getByRole("link", { name: "ProbeRow.tsx" }));
+    expect(onOpenLink).toHaveBeenCalledExactlyOnceWith({
+      path: `${cloneRows}/ProbeRow.tsx`,
+      lineRange: null,
+      openTargetId: null,
+    });
+  });
 
   it.each([
     "origin/main",

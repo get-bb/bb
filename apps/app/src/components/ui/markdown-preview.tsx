@@ -76,6 +76,7 @@ import {
   buildLocalFileAnchorHref,
   parseLocalFileHref,
   resolveRelativeLocalFileHref,
+  resolveTouchedLocalFileHref,
   type MarkdownAbsoluteLocalFileLinkRouting,
   type MarkdownPreviewLocalFileLink,
   type MarkdownRelativeLocalFileLinkRouting,
@@ -350,7 +351,9 @@ function areMarkdownRelativeLocalFileLinkRoutingsEqual({
   if (previous === next) return true;
   if (previous === undefined || next === undefined) return false;
   return (
-    previous.baseDir === next.baseDir && previous.rootPath === next.rootPath
+    previous.baseDir === next.baseDir &&
+    previous.rootPath === next.rootPath &&
+    previous.touchedFiles === next.touchedFiles
   );
 }
 
@@ -517,9 +520,29 @@ function resolveMarkdownLocalFileTarget(
     return null;
   }
 
+  const touchedHref =
+    relative.touchedFiles === undefined
+      ? null
+      : resolveTouchedLocalFileHref({
+          href: value,
+          touchedFiles: relative.touchedFiles,
+        });
+  const touchedLink =
+    touchedHref === null
+      ? null
+      : parseLocalFileHref({ absoluteLinks: absolute, href: touchedHref });
+  if (touchedHref !== null && touchedLink !== null) {
+    return {
+      href: touchedHref,
+      link: touchedLink,
+      sourceKind: "absolute",
+    };
+  }
+
   const resolvedHref = resolveRelativeLocalFileHref({
+    baseDir: relative.baseDir,
     href: value,
-    ...relative,
+    rootPath: relative.rootPath,
   });
   if (resolvedHref === null) {
     return null;

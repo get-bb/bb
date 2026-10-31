@@ -397,6 +397,7 @@ function turnRow(): TimelineViewTurnRow {
     summaryCount: 1,
     completedAt: 3_661_001,
     children: null,
+    experimental_touchedFilePaths: [],
   };
 }
 

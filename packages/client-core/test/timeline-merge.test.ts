@@ -100,6 +100,7 @@ function turnSummaryRow(args: TimelineTurnTestRowArgs): TimelineTurnRow {
     summaryCount: 1,
     completedAt: args.sequence,
     children: args.children ?? null,
+    experimental_touchedFilePaths: [],
   };
 }
 

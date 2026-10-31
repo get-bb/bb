@@ -97,6 +97,7 @@ describe("shortenTimelineResponseOutputs", () => {
       summaryCount: 1,
       completedAt: 1,
       children: [commandRow(big)],
+      experimental_touchedFilePaths: [],
     };
     const out = truncateOnly(response([turn]));
     const turnOut = out.rows[0] as Extract<TimelineRow, { kind: "turn" }>;

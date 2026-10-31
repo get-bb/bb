@@ -64,6 +64,83 @@ function requireOnlyTurnRow(rows: readonly TimelineRow[]): TimelineTurnRow {
 }
 
 describe("completed turn summary rendering", () => {
+  it("lists the files its collapsed work left in place on the summary row, most recent last", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const request = event.clientTurnRequested({
+      target: { kind: "new-turn" },
+      text: "Add a probe row in the fork clone",
+    });
+    const rows = "/home/dev/fork-work/link-probe/plugins/thread-list/app/rows";
+
+    const timeline = renderTimelineFixture({
+      events: [
+        request,
+        event.turnStarted(),
+        event.inputAccepted({ clientRequestId: request.data.requestId }),
+        event.fileReadCompleted({ path: `${rows}/Stale.tsx` }),
+        event.fileReadCompleted({ path: `${rows}/ThreadRow.tsx` }),
+        event.assistantCompleted({
+          itemId: "assistant-1",
+          text: "Now the full new `ProbeRow.tsx`.",
+        }),
+        event.fileChangeCompleted({
+          changes: [
+            { kind: "add", path: `${rows}/ProbeRow.tsx` },
+            {
+              kind: "update",
+              path: `${rows}/OldName.tsx`,
+              movePath: `${rows}/NewName.tsx`,
+            },
+            { kind: "delete", path: `${rows}/Stale.tsx` },
+          ],
+        }),
+        event.fileReadCompleted({ path: `${rows}/ThreadRow.tsx` }),
+        event.assistantCompleted({
+          itemId: "assistant-2",
+          text: "Created `ProbeRow.tsx`.",
+        }),
+        event.turnCompleted(),
+      ],
+      projectionOptions: { threadStatus: "idle", turnMessageDetail: "full" },
+    });
+
+    expect(
+      requireOnlyTurnRow(timeline.rows).experimental_touchedFilePaths,
+    ).toEqual([
+      `${rows}/ProbeRow.tsx`,
+      `${rows}/NewName.tsx`,
+      `${rows}/ThreadRow.tsx`,
+    ]);
+  });
+
+  it("keeps the 200 most recent touched files on the summary row", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const request = event.clientTurnRequested({
+      target: { kind: "new-turn" },
+      text: "Read the whole package",
+    });
+    const paths = Array.from(
+      { length: 201 },
+      (_, index) => `/repo/src/file-${index}.ts`,
+    );
+
+    const timeline = renderTimelineFixture({
+      events: [
+        request,
+        event.turnStarted(),
+        event.inputAccepted({ clientRequestId: request.data.requestId }),
+        ...paths.map((path) => event.fileReadCompleted({ path })),
+        event.assistantCompleted({ itemId: "assistant-1", text: "Read it." }),
+        event.turnCompleted(),
+      ],
+      projectionOptions: { threadStatus: "idle", turnMessageDetail: "full" },
+    });
+
+    expect(
+      requireOnlyTurnRow(timeline.rows).experimental_touchedFilePaths,
+    ).toEqual(paths.slice(1));
+  });
+
   it("keeps an assistant answer visible when the provider re-queries and the model answers again", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const request = event.clientTurnRequested({

@@ -1,4 +1,5 @@
 import {
+  buildAbsoluteFilePath,
   isAbsoluteFilePathWithinRoot,
   normalizeAbsoluteFilePath,
 } from "@bb/shared-ui/lib/absolute-file-path";
@@ -6,6 +7,7 @@ import {
   createFilePreviewLineRange,
   type FilePreviewLineRange,
 } from "@bb/client-core";
+import { getHostPathSegments, isAbsoluteHostPath } from "@bb/domain";
 import type { WorkspaceOpenTargetId } from "@bb/host-daemon-contract";
 
 export interface MarkdownPreviewLocalFileLink {
@@ -43,9 +45,39 @@ export type MarkdownAbsoluteLocalFileLinkRouting =
   | MarkdownTrustedAbsoluteLocalFileLinkRouting
   | MarkdownContainedAbsoluteLocalFileLinkRouting;
 
+export interface MarkdownTouchedFiles {
+  pathsBySuffix: ReadonlyMap<string, string | null>;
+}
+
 export interface MarkdownRelativeLocalFileLinkRouting {
   baseDir: string;
   rootPath: string;
+  touchedFiles?: MarkdownTouchedFiles;
+}
+
+interface BuildMarkdownTouchedFilesArgs {
+  paths: Iterable<string>;
+  rootPath: string | null;
+}
+
+interface ResolveTouchedFilePathArgs {
+  path: string;
+  rootPath: string | null;
+}
+
+interface ResolveTouchedLocalFileHrefArgs {
+  href: string | undefined;
+  touchedFiles: MarkdownTouchedFiles;
+}
+
+interface SelectMentionedTouchedFilesArgs {
+  markdown: string;
+  touchedFiles: MarkdownTouchedFiles;
+}
+
+interface TouchedLocalFileLookup {
+  suffix: string;
+  trailer: string;
 }
 
 interface LocalFileHrefParts {
@@ -68,8 +100,10 @@ interface ParseLineRangeArgs {
   startValue: string;
 }
 
-interface ResolveRelativeLocalFileHrefArgs extends MarkdownRelativeLocalFileLinkRouting {
+interface ResolveRelativeLocalFileHrefArgs {
+  baseDir: string;
   href: string | undefined;
+  rootPath: string;
 }
 
 interface ParseLocalFileHrefArgs {
@@ -290,6 +324,9 @@ const URI_SCHEME_PATTERN = /^[a-zA-Z][a-zA-Z0-9+.-]*:/u;
 
 const HOME_RELATIVE_PATH_PATTERN = /^~(?:[^/]*\/|$)/u;
 
+const MARKDOWN_FILE_MENTION_PATTERN =
+  /`([^`\n]+)`|\]\(\s*<([^<>\n]+)>|\]\(\s*([^\s()<>]+)/gu;
+
 export function resolveRelativeLocalFileHref({
   baseDir,
   href,
@@ -344,6 +381,121 @@ export function resolveRelativeLocalFileHref({
   }
 
   return `${normalizedHrefPath}${decodedHref.slice(parsedHref.path.length)}`;
+}
+
+export function resolveTouchedFilePath({
+  path,
+  rootPath,
+}: ResolveTouchedFilePathArgs): string | null {
+  if (path.length === 0) {
+    return null;
+  }
+  if (isAbsoluteHostPath(path)) {
+    return normalizeAbsoluteFilePath({ path });
+  }
+  if (rootPath === null) {
+    return null;
+  }
+  return normalizeAbsoluteFilePath({
+    path: buildAbsoluteFilePath({ path, rootPath }),
+  });
+}
+
+export function buildMarkdownTouchedFiles({
+  paths,
+  rootPath,
+}: BuildMarkdownTouchedFilesArgs): MarkdownTouchedFiles {
+  const pathsBySuffix = new Map<string, string | null>();
+  for (const path of paths) {
+    const touchedPath = resolveTouchedFilePath({ path, rootPath });
+    const segments =
+      touchedPath === null ? null : getHostPathSegments(touchedPath);
+    if (touchedPath === null || segments === null) {
+      continue;
+    }
+    for (let start = segments.length - 1; start >= 0; start--) {
+      const suffix = segments.slice(start).join("/");
+      const knownPath = pathsBySuffix.get(suffix);
+      if (knownPath === undefined) {
+        pathsBySuffix.set(suffix, touchedPath);
+      } else if (knownPath !== touchedPath) {
+        pathsBySuffix.set(suffix, null);
+      }
+    }
+  }
+  return { pathsBySuffix };
+}
+
+function parseTouchedLocalFileLookup(
+  href: string | undefined,
+): TouchedLocalFileLookup | null {
+  if (!href || href.trim() !== href) {
+    return null;
+  }
+
+  const decodedHref = safeDecodeURIComponent(href);
+  const parsedHref = parseLineSuffix(decodedHref);
+  if (
+    parsedHref === null ||
+    parsedHref.path.startsWith("/") ||
+    isWindowsDriveLocalFilePath(parsedHref.path) ||
+    HOME_RELATIVE_PATH_PATTERN.test(parsedHref.path) ||
+    URI_SCHEME_PATTERN.test(parsedHref.path)
+  ) {
+    return null;
+  }
+
+  const segments = parsedHref.path.split("/");
+  while (segments[0] === ".") {
+    segments.shift();
+  }
+  if (
+    segments.length === 0 ||
+    segments.some(
+      (segment) => segment.length === 0 || segment === "." || segment === "..",
+    )
+  ) {
+    return null;
+  }
+
+  return {
+    suffix: segments.join("/"),
+    trailer: decodedHref.slice(parsedHref.path.length),
+  };
+}
+
+export function resolveTouchedLocalFileHref({
+  href,
+  touchedFiles,
+}: ResolveTouchedLocalFileHrefArgs): string | null {
+  const lookup = parseTouchedLocalFileLookup(href);
+  const touchedPath =
+    lookup === null ? undefined : touchedFiles.pathsBySuffix.get(lookup.suffix);
+  return lookup !== null && typeof touchedPath === "string"
+    ? `${touchedPath}${lookup.trailer}`
+    : null;
+}
+
+export function selectMentionedTouchedFiles({
+  markdown,
+  touchedFiles,
+}: SelectMentionedTouchedFilesArgs): [string, string][] {
+  const selected = new Map<string, string>();
+  for (const match of markdown.matchAll(MARKDOWN_FILE_MENTION_PATTERN)) {
+    const lookup = parseTouchedLocalFileLookup(
+      match[1] ?? match[2] ?? match[3],
+    );
+    const touchedPath =
+      lookup === null
+        ? undefined
+        : touchedFiles.pathsBySuffix.get(lookup.suffix);
+    if (lookup !== null && typeof touchedPath === "string") {
+      selected.set(lookup.suffix, touchedPath);
+    }
+  }
+  return [...selected].sort(([left], [right]) =>
+    left < right ? -1 : left > right ? 1 : 0,
+  );
 }
 
 function isLinkContainedInRoot({
