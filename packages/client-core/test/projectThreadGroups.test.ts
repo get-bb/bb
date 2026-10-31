@@ -3,7 +3,7 @@ import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { describe, expect, it } from "vitest";
 import {
   buildChronologicalThreadList,
-  resolveSidebarProjectId,
+  getProjectThreadItemDescendants,
   type ProjectThreadItem,
   type ProjectThreadNode,
   type ThreadComparator,
@@ -179,62 +179,24 @@ describe("buildChronologicalThreadList", () => {
     ]);
   });
 
-  it("rolls collapsed child activity up from all descendants", () => {
+  it("lists every descendant of a parent for its collapsed rollup", () => {
     const rootItems = buildList([
-      createThread({
-        id: "parent",
-      }),
-      createThread({
-        id: "quiet-child",
-        parentThreadId: "parent",
-      }),
+      createThread({ id: "parent" }),
+      createThread({ id: "quiet-child", parentThreadId: "parent" }),
       createThread({
         id: "busy-grandchild",
         parentThreadId: "quiet-child",
-        status: "active",
-        runtime: {
-          displayStatus: "active",
-        },
+        latestAttentionAt: 3,
       }),
-      createThread({
-        id: "pending-grandchild",
-        parentThreadId: "quiet-child",
-        hasPendingInteraction: true,
-      }),
+      createThread({ id: "pending-grandchild", parentThreadId: "quiet-child" }),
     ]);
 
-    expect(findNode(rootItems, "parent")?.stats).toEqual({
-      childActivity: {
-        pending: true,
-        working: true,
-        hasUnsubmittedDraft: false,
-        runtimeWorking: true,
-        workflow: false,
-        backgroundAgent: false,
-        backgroundCommand: false,
-        planMode: false,
-        goal: false,
-        unread: false,
-        unreadError: false,
-      },
-      childCount: 3,
-    });
-    expect(findNode(rootItems, "quiet-child")?.stats).toEqual({
-      childActivity: {
-        pending: true,
-        working: true,
-        hasUnsubmittedDraft: false,
-        runtimeWorking: true,
-        workflow: false,
-        backgroundAgent: false,
-        backgroundCommand: false,
-        planMode: false,
-        goal: false,
-        unread: false,
-        unreadError: false,
-      },
-      childCount: 2,
-    });
+    const parent = findNode(rootItems, "parent");
+    expect(
+      getProjectThreadItemDescendants(parent?.children ?? []).map(
+        (thread) => thread.id,
+      ),
+    ).toEqual(["quiet-child", "busy-grandchild", "pending-grandchild"]);
   });
 
   it("nests parent/child threads under globally sorted roots", () => {
@@ -296,57 +258,5 @@ describe("buildChronologicalThreadList", () => {
     ]);
 
     expect(summarizeItems(items)).toEqual(["root"]);
-  });
-});
-
-describe("resolveSidebarProjectId", () => {
-  it("files a child from another project under its root ancestor's project", () => {
-    const root = createThread({ id: "thr_root", projectId: "proj_a" });
-    const child = createThread({
-      id: "thr_child",
-      parentThreadId: "thr_root",
-      projectId: "proj_b",
-    });
-    const grandchild = createThread({
-      id: "thr_grandchild",
-      parentThreadId: "thr_child",
-      projectId: "proj_c",
-    });
-    const threadById = new Map(
-      [root, child, grandchild].map((thread) => [thread.id, thread]),
-    );
-
-    expect(resolveSidebarProjectId(root, threadById)).toBe("proj_a");
-    expect(resolveSidebarProjectId(child, threadById)).toBe("proj_a");
-    expect(resolveSidebarProjectId(grandchild, threadById)).toBe("proj_a");
-  });
-
-  it("falls back to the thread's own project when the parent is not listed", () => {
-    const orphan = createThread({
-      id: "thr_orphan",
-      parentThreadId: "thr_missing",
-      projectId: "proj_b",
-    });
-    expect(
-      resolveSidebarProjectId(orphan, new Map([[orphan.id, orphan]])),
-    ).toBe("proj_b");
-  });
-
-  it("stops at a cycle instead of looping", () => {
-    const left = createThread({
-      id: "thr_left",
-      parentThreadId: "thr_right",
-      projectId: "proj_a",
-    });
-    const right = createThread({
-      id: "thr_right",
-      parentThreadId: "thr_left",
-      projectId: "proj_b",
-    });
-    const threadById = new Map([
-      [left.id, left],
-      [right.id, right],
-    ]);
-    expect(resolveSidebarProjectId(left, threadById)).toBe("proj_b");
   });
 });

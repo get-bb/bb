@@ -3,7 +3,7 @@
 import { cleanup, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { NO_COLLAPSED_CHILD_ACTIVITY } from "../model/thread-activity.js";
+import { makeSidebarThread } from "../model/fixtures.js";
 import {
   installTestPluginRuntime,
   renderSlot,
@@ -11,9 +11,8 @@ import {
 import type { BuiltInSidebarSectionOptionsById } from "./BuiltInSidebarSection.js";
 
 installTestPluginRuntime();
-const { renderBuiltInSidebarSection } = await import(
-  "./BuiltInSidebarSection.js"
-);
+const { renderBuiltInSidebarSection } =
+  await import("./BuiltInSidebarSection.js");
 
 const SECTIONS: BuiltInSidebarSectionOptionsById = {
   pinned: {
@@ -125,11 +124,13 @@ describe("built-in sidebar section renderer", () => {
           ...SECTIONS,
           threads: {
             ...SECTIONS.threads,
-            activity: {
-              ...NO_COLLAPSED_CHILD_ACTIVITY,
-              goal: true,
-              working: true,
-            },
+            collapsedThreads: [
+              makeSidebarThread({
+                id: "thread-goal",
+                isUnread: false,
+                activity: { goals: 1 },
+              }),
+            ],
           },
         },
         showPinnedSection: false,
