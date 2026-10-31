@@ -1,4 +1,15 @@
-import { forwardRef, type ComponentProps, type ReactNode } from "react";
+import {
+  forwardRef,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
+import { DndContext, TouchSensor, type DragEndEvent } from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 import {
   experimental_SidebarNavigationIcon as SidebarNavigationIcon,
   experimental_useSidebarNavigation,
@@ -8,6 +19,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { ShortcutPill } from "@/components/ui/shortcut-pill";
+import { useSidebarSortable } from "@/components/ui/sortable-motion";
+import { useSidebarReorderDnd } from "@/components/ui/use-sidebar-reorder-dnd";
 import {
   PROJECT_LIST_ACTION_BUTTON_CLASS,
   SIDEBAR_RAIL_BUTTON_CLASS,
@@ -42,36 +55,65 @@ interface RailButtonProps extends Omit<
 > {
   label: string;
   active?: boolean;
+  isDragging?: boolean;
   children: ReactNode;
 }
 
 const RailButton = forwardRef<HTMLButtonElement, RailButtonProps>(
-  ({ label, active = false, className, children, ...props }, ref) => (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          ref={ref}
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label={label}
-          aria-current={active ? "page" : undefined}
-          className={cn(SIDEBAR_RAIL_BUTTON_CLASS, className)}
-          {...props}
-        >
-          {children}
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent side="right">{label}</TooltipContent>
-    </Tooltip>
-  ),
+  (
+    {
+      label,
+      active = false,
+      isDragging = false,
+      className,
+      children,
+      ...props
+    },
+    ref,
+  ) => {
+    const [isTooltipOpen, setTooltipOpen] = useState(false);
+    return (
+      <Tooltip
+        open={isTooltipOpen && !isDragging}
+        onOpenChange={setTooltipOpen}
+      >
+        <TooltipTrigger asChild>
+          <Button
+            ref={ref}
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={label}
+            aria-current={active ? "page" : undefined}
+            className={cn(SIDEBAR_RAIL_BUTTON_CLASS, className)}
+            {...props}
+          >
+            {children}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="right">{label}</TooltipContent>
+      </Tooltip>
+    );
+  },
 );
 RailButton.displayName = "RailButton";
 
-function RailItem({ item }: { item: ExperimentalSidebarNavigationItem }) {
+function RailItem({
+  item,
+  reorderDisabled,
+}: {
+  item: ExperimentalSidebarNavigationItem;
+  reorderDisabled: boolean;
+}) {
   const { activeItemId, actions } = experimental_useSidebarNavigation();
   const split = experimental_useSidebarNavigationSplit(item.id);
   const label = navigationBadgeAccessibleLabel(item.label, item.badge);
+  const { dragBindings, setNodeRef, style } = useSidebarSortable({
+    id: item.id,
+    disabled: reorderDisabled,
+  });
+  const { onKeyDown: _keyboardDrag, ...pointerDragListeners } =
+    dragBindings.listeners ?? {};
 
   return (
     <SidebarNavigationItemContextMenu
@@ -79,10 +121,17 @@ function RailItem({ item }: { item: ExperimentalSidebarNavigationItem }) {
       surface="rail"
       canOpenInSplit={split.isAvailable}
     >
-      <span className="flex" data-nav-rail-item={item.id}>
+      <span
+        ref={setNodeRef}
+        style={style}
+        className="flex touch-manipulation"
+        data-nav-rail-item={item.id}
+        {...pointerDragListeners}
+      >
         <RailButton
           label={item.shortcut ? `${label} (${item.shortcut.label})` : label}
           active={item.id === activeItemId}
+          isDragging={dragBindings.isDragging}
           disabled={item.isDisabled}
           aria-busy={item.isLoading || undefined}
           aria-keyshortcuts={item.shortcut?.ariaKeyShortcuts}
@@ -124,6 +173,18 @@ export function Rail() {
   const hiddenBadgeTone = strongestNavigationBadgeTone(
     hidden.map((item) => item.badge),
   );
+  const handleDragEnd = ({ active, over }: DragEndEvent) => {
+    if (over === null || active.id === over.id) return;
+    const ids = items.map((item) => item.id);
+    const from = ids.indexOf(String(active.id));
+    const to = ids.indexOf(String(over.id));
+    if (from === -1 || to === -1) return;
+    actions.setOrder(arrayMove(ids, from, to));
+  };
+  const { dndContextProps, onClickCapture } = useSidebarReorderDnd({
+    onDragEnd: handleDragEnd,
+    touchSensor: TouchSensor,
+  });
 
   return (
     <TooltipProvider>
@@ -131,7 +192,10 @@ export function Rail() {
         data-testid="app-nav-rail"
         className="flex min-h-0 flex-1 flex-col items-center pb-2"
       >
-        <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-1.5 overflow-y-auto py-0.5 [scrollbar-width:none]">
+        <div
+          className="flex min-h-0 w-full flex-1 flex-col items-center gap-1.5 overflow-y-auto py-0.5 [scrollbar-width:none]"
+          onClickCapture={onClickCapture}
+        >
           <RailButton
             label="Home"
             active={isHomeActive}
@@ -143,9 +207,20 @@ export function Rail() {
           >
             <Icon name="Home" aria-hidden="true" />
           </RailButton>
-          {visible.map((item) => (
-            <RailItem key={item.id} item={item} />
-          ))}
+          <DndContext {...dndContextProps}>
+            <SortableContext
+              items={visible.map((item) => item.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              {visible.map((item) => (
+                <RailItem
+                  key={item.id}
+                  item={item}
+                  reorderDisabled={visible.length < 2}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
           <SidebarNavigationMoreMenu
             trigger={
               <RailButton
