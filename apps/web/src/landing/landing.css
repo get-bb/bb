@@ -814,6 +814,13 @@ body {
   }
 }
 
+/* Where the row collapses to three marks, "+N more" replaces "and more". */
+@media (max-width: 720px) {
+  .agent-more {
+    display: none;
+  }
+}
+
 /* Collapsed "+N more" for the mobile provider row; desktop shows every logo. */
 .pmore {
   display: none;

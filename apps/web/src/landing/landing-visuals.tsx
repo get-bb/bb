@@ -184,6 +184,12 @@ export function AgentRow() {
         />
       ))}
       <span className="agent-more">and more</span>
+      <span
+        className="pmore"
+        aria-label={`${AGENT_ROW_ICONS.length - PROVIDER_ICONS_MOBILE_VISIBLE} more agents`}
+      >
+        +{AGENT_ROW_ICONS.length - PROVIDER_ICONS_MOBILE_VISIBLE} more
+      </span>
     </div>
   );
 }
