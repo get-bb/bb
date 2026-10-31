@@ -33,18 +33,17 @@ function collectCommandIndex(
     if (child.name() === "help") return [];
     const path = [...prefix, child.name()];
     const nested = collectCommandIndex(child, path);
-    if (nested.length > 0) return nested;
-    return [
-      {
-        aliases: child.aliases(),
-        arguments: argumentUsage(child),
-        description: child.description(),
-        options: child.options
-          .filter((option) => !option.hidden)
-          .map((option) => option.flags.replace(/^-\w, /u, "")),
-        path: path.join(" "),
-      },
-    ];
+    const entry: GuideCommandIndexEntry = {
+      aliases: child.aliases(),
+      arguments: argumentUsage(child),
+      description: child.description(),
+      options: child.options
+        .filter((option) => !option.hidden)
+        .map((option) => option.flags.replace(/^-\w, /u, "")),
+      path: path.join(" "),
+    };
+    if (nested.length === 0) return [entry];
+    return child.registeredArguments.length > 0 ? [entry, ...nested] : nested;
   });
 }
 

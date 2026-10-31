@@ -31,6 +31,9 @@ export const JSON_SHAPE_BY_COMMAND_PATH: Readonly<Record<string, string>> = {
   "terminal output":
     '{chunks: [{seq, dataBase64}], nextSeq, truncated, status, exitCode, closeReason}    (chunk data is base64; status is "exited" once the command has finished)',
   "terminal wait": "{terminalId, matched, nextSeq, exitCode}",
+  exec: '{terminalId, hostId, environmentId, cwd, status, observation, exitCode, closeReason, output, truncated, nextSeq}    (observation is "exited", "matched", or "yielded"; output is plain text with terminal escapes removed, or null once the machine no longer keeps it)',
+  "exec wait":
+    "{terminalId, hostId, environmentId, cwd, status, observation, exitCode, closeReason, output, truncated, nextSeq}    (same shape as bb exec)",
   "plugin list":
     "{plugins: [{id, version, enabled, status, source, rootDir}]}    (wrapped in .plugins)",
   "skill list":
