@@ -8,9 +8,17 @@ import { sitemapXml } from "../server/sitemap.js";
 declare const __SITE_ORIGIN__: string;
 
 async function serveSitemap(): Promise<Response> {
-  const marketplace = await getPublicMarketplace();
+  const [marketplace, { docsPaths }] = await Promise.all([
+    getPublicMarketplace(),
+    import("../docs/source"),
+  ]);
   return new Response(
-    sitemapXml(__SITE_ORIGIN__, POSTS, contentPaths(), marketplace),
+    sitemapXml(
+      __SITE_ORIGIN__,
+      POSTS,
+      [...contentPaths(), ...docsPaths()],
+      marketplace,
+    ),
     {
       headers: {
         "content-type": "application/xml; charset=utf-8",
