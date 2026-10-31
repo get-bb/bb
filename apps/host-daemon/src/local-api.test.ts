@@ -12,7 +12,6 @@ import {
 } from "@bb/host-daemon-contract";
 import { startLocalApiServer, type LocalApiServer } from "./local-api.js";
 import { resolveHostPlatform } from "./host-platform.js";
-import { resolveFolderPickerCommand } from "./command-handlers/native-folder-picker.js";
 import type { HostDaemonLocalApiConfig } from "./local-api-config.js";
 import {
   WorkspaceOpenTargetError,
@@ -203,7 +202,7 @@ describe("local API server", () => {
       connected: true,
       protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
       serverUrl: "http://server.test",
-      supportsNativeFolderPicker: resolveFolderPickerCommand() !== null,
+      supportsNativeFolderPicker: process.platform === "darwin",
       platform: resolveHostPlatform(),
     });
     const healthResponse = await client.health.$get();

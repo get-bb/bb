@@ -37,7 +37,6 @@ import { HTTPException } from "hono/http-exception";
 import { isFsErrorWithCode } from "./fs-errors.js";
 import type { HostDaemonLocalApiConfig } from "./local-api-config.js";
 import { resolveHostPlatform } from "./host-platform.js";
-import { resolveFolderPickerCommand } from "./command-handlers/native-folder-picker.js";
 import { userExecutableProcessOptions } from "./user-executable-env.js";
 
 type WorkspaceOpenTargetListHandler = (
@@ -284,8 +283,7 @@ export async function startLocalApiServer(
       connected: options.getConnected(),
       protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
       serverUrl: options.serverUrl,
-      supportsNativeFolderPicker:
-        resolveFolderPickerCommand({ platform }) !== null,
+      supportsNativeFolderPicker: platform === "darwin",
       platform,
     }),
   );
