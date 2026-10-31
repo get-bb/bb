@@ -1,5 +1,4 @@
 import {
-  getProjectExecutionDefaults,
   getThreadExecutionOverride,
   setThreadExecutionOverride,
   type ThreadExecutionOverride,
@@ -15,7 +14,7 @@ import { ApiError } from "../../errors.js";
 import type { LoggedWorkSessionDeps } from "../../types.js";
 import type { ProviderRegistryService } from "../providers/provider-registry.js";
 import { resolveSystemExecutionOptionsForValidation } from "../system/execution-options.js";
-import { getLastExecutionOptions } from "./thread-events.js";
+import { resolveThreadFallbackModel } from "./thread-execution-plan.js";
 import { getSupportedReasoningLevelsForProvider } from "./thread-reasoning-policy.js";
 
 interface ThreadExecutionOverridePatch {
@@ -137,7 +136,7 @@ export async function applyThreadExecutionOverride(
     patch,
     models,
     providerId: thread.providerId,
-    fallbackModel: resolveFallbackModel(deps, thread),
+    fallbackModel: resolveThreadFallbackModel(deps, thread),
   });
 
   setThreadExecutionOverride(deps.db, {
@@ -200,18 +199,4 @@ async function loadThreadProviderModels(
     );
   }
   return [...result.models, ...result.selectedOnlyModels];
-}
-
-function resolveFallbackModel(
-  deps: LoggedWorkSessionDeps,
-  thread: Thread,
-): string | null {
-  const lastExecution = getLastExecutionOptions(deps, thread.id);
-  if (lastExecution?.model) {
-    return lastExecution.model;
-  }
-  const projectDefaults = getProjectExecutionDefaults(deps.db, {
-    projectId: thread.projectId,
-  });
-  return projectDefaults?.model ?? null;
 }

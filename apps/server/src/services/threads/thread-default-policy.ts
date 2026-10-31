@@ -3,8 +3,9 @@ import type {
   PermissionMode,
   ProjectExecutionDefaults,
   RecordedPermissionMode,
+  RecordedThreadExecutionOptions,
   ReasoningLevel,
-  Thread,
+  ServiceTier,
 } from "@bb/domain";
 import { getEnvironment, getProjectSourceOnPersistentHost } from "@bb/db";
 import { DEFAULT_ENVIRONMENT_PROVIDER_ID } from "../environments/environment-provider-ids.js";
@@ -74,30 +75,26 @@ interface ResolveCreateThreadExecutionDefaultsArgs {
 }
 
 interface CreateThreadExecutionDefaultsResolved {
-  executionDefaults: ProjectExecutionDefaults | null;
   providerId: string;
   providerFallbackCandidates: readonly string[];
 }
 
-interface IsManagedChildThreadArgs {
-  parentThread?: ParentThread | null;
-  thread: Pick<Thread, "parentThreadId" | "projectId">;
+export interface ThreadParentExecution {
+  execution: RecordedThreadExecutionOptions;
+  providerId: string;
 }
 
-interface ResolveThreadDefaultPermissionModeArgs {
-  thread: Pick<Thread, "providerId">;
+export interface ThreadExecutionDefaults {
+  model: string | null;
+  permissionMode: PermissionMode;
+  reasoningLevel: ReasoningLevel;
+  serviceTier: ServiceTier;
 }
 
-interface ResolveThreadExecutionPermissionModeArgs {
-  lastExecutionPermissionMode?: RecordedPermissionMode;
-  parentThread?: ParentThread | null;
-  parentThreadExecutionPermissionMode?: RecordedPermissionMode;
-  projectExecutionPermissionMode?: PermissionMode;
-  requestedPermissionMode?: PermissionMode;
-  thread: Pick<
-    Thread,
-    "originKind" | "parentThreadId" | "projectId" | "providerId"
-  >;
+interface ResolveThreadExecutionDefaultsArgs {
+  parent: ThreadParentExecution | null;
+  projectDefaults: ProjectExecutionDefaults | null;
+  providerId: string;
 }
 
 interface ResolveCreateThreadEnvironmentArgs {
@@ -159,14 +156,6 @@ function requireHostEnvironmentId(
   throw new Error("Host environment is missing hostId");
 }
 
-function isManagedChildThread(args: IsManagedChildThreadArgs): boolean {
-  if (args.thread.parentThreadId === null) {
-    return false;
-  }
-
-  return isLiveParentThread({ parentThread: args.parentThread ?? null });
-}
-
 function resolveSupportedPermissionMode(
   registry: ProviderRegistryService,
   args: ResolveSupportedPermissionModeArgs,
@@ -223,10 +212,7 @@ export function resolveCreateThreadExecutionDefaults(
     );
   }
 
-  const storedDefaults =
-    args.storedDefaults?.providerId === providerId ? args.storedDefaults : null;
   return {
-    executionDefaults: storedDefaults,
     providerId,
     providerFallbackCandidates: defaultCandidates.filter(
       (id) => id !== providerId,
@@ -234,22 +220,37 @@ export function resolveCreateThreadExecutionDefaults(
   };
 }
 
-export function buildProviderThreadExecutionDefaults(
+export function resolveThreadExecutionDefaults(
   registry: ProviderRegistryService,
-  args: {
-    model: string;
-    providerId: string;
-  },
-): ProjectExecutionDefaults {
+  args: ResolveThreadExecutionDefaultsArgs,
+): ThreadExecutionDefaults {
+  const project =
+    args.projectDefaults?.providerId === args.providerId
+      ? args.projectDefaults
+      : null;
+  const parent =
+    args.parent?.providerId === args.providerId ? args.parent.execution : null;
   return {
-    providerId: args.providerId,
-    model: args.model,
-    reasoningLevel: DEFAULT_REASONING_LEVEL,
-    permissionMode: resolveSupportedPermissionMode(registry, {
-      providerId: args.providerId,
-      preferredPermissionMode: DEFAULT_PERMISSION_MODE,
-    }),
-    serviceTier: DEFAULT_SERVICE_TIER,
+    model: parent?.model ?? project?.model ?? null,
+    permissionMode:
+      args.parent !== null
+        ? resolveSupportedPermissionMode(registry, {
+            providerId: args.providerId,
+            preferredPermissionMode: normalizeRecordedPermissionMode(
+              args.parent.execution.permissionMode,
+            ),
+          })
+        : (project?.permissionMode ??
+          resolveSupportedPermissionMode(registry, {
+            providerId: args.providerId,
+            preferredPermissionMode: DEFAULT_PERMISSION_MODE,
+          })),
+    reasoningLevel:
+      parent?.reasoningLevel ??
+      project?.reasoningLevel ??
+      DEFAULT_REASONING_LEVEL,
+    serviceTier:
+      parent?.serviceTier ?? project?.serviceTier ?? DEFAULT_SERVICE_TIER,
   };
 }
 
@@ -474,46 +475,7 @@ export async function resolveCreateThreadEnvironment(
   return environment;
 }
 
-export function resolveThreadDefaultPermissionMode(
-  registry: ProviderRegistryService,
-  args: ResolveThreadDefaultPermissionModeArgs,
-): PermissionMode {
-  return resolveSupportedPermissionMode(registry, {
-    providerId: args.thread.providerId,
-    preferredPermissionMode: DEFAULT_PERMISSION_MODE,
-  });
-}
-
-export function resolveThreadExecutionPermissionMode(
-  registry: ProviderRegistryService,
-  args: ResolveThreadExecutionPermissionModeArgs,
-): PermissionMode {
-  if (args.requestedPermissionMode) {
-    return args.requestedPermissionMode;
-  }
-  if (args.lastExecutionPermissionMode) {
-    return normalizeRecordedPermissionMode(args.lastExecutionPermissionMode);
-  }
-
-  if (
-    isManagedChildThread(args) &&
-    args.parentThreadExecutionPermissionMode !== undefined
-  ) {
-    return resolveSupportedPermissionMode(registry, {
-      providerId: args.thread.providerId,
-      preferredPermissionMode: normalizeRecordedPermissionMode(
-        args.parentThreadExecutionPermissionMode,
-      ),
-    });
-  }
-
-  const defaultPermissionMode = resolveThreadDefaultPermissionMode(registry, {
-    thread: args.thread,
-  });
-  return args.projectExecutionPermissionMode ?? defaultPermissionMode;
-}
-
-function normalizeRecordedPermissionMode(
+export function normalizeRecordedPermissionMode(
   permissionMode: RecordedPermissionMode,
 ): PermissionMode {
   switch (permissionMode) {
