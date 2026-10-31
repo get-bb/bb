@@ -75,11 +75,7 @@ export default definePluginApp((app) => {
     component: IssuePanel,
     run: async ({ threadId, experimental_panel }) => {
       experimental_panel.openTab({
-        tab: {
-          id: "issue",
-          context: { kind: "thread" },
-          availability: "action",
-        },
+        tab: { id: "issue", context: { kind: "thread" }, availability: "action" },
         title: `Issue for ${threadId}`,
       });
     },
@@ -163,18 +159,9 @@ not apply. Header buttons do not show `choices`. bb's Git plugin registers
 Commit this way.
 
 ```tsx
-app.slots.experimental_threadAction({
-  id: "deploy",
-  title: "Deploy",
-  icon: "Rocket",
-  group: "deploy",
-  placement: "header",
+app.slots.experimental_threadAction({ id: "deploy", title: "Deploy", icon: "Rocket", group: "deploy", placement: "header",
   useData: ({ threadIds }) => useDeployable(threadIds),
-  item: ({ thread, data }) =>
-    data.has(thread.id)
-      ? { label: "Deploy", icon: "Rocket", run: () => openDeploy(thread.id) }
-      : null,
-});
+  item: ({ thread, data }) => data.has(thread.id) ? { label: "Deploy", icon: "Rocket", run: () => openDeploy(thread.id) } : null });
 ```
 
 `app.slots.experimental_threadHeaderAction` is retired: existing callers keep
@@ -492,14 +479,11 @@ For multi-row selections (`experimental_bulkItem`), see frontend-sidebar-navigat
 `experimental_useArchiveEnvironmentThreads()` archives a whole environment
 group with bb's pane cleanup and Undo toast.
 
-**bb's status glyph on your row.** Pass the row's thread, the threads it
-hides while collapsed, its draft (`useSidebarThreadDraft`), and
-`useSidebarThreadRowStatus(threadId)` to `experimental_resolveThreadStatus`,
-then render `experimental_ThreadStatusGlyph` with the result's `indicator`
-and `rowStatus`. bb's own lists resolve through the same function, so your row
-shows the same icon, color, and accessible label; the result's `label` and
-`isWorking` cover an accessible name and a working state for anything else
-you draw.
+**bb's status glyph on your row.** Pass the row's thread, its hidden children,
+its draft, and `useSidebarThreadRowStatus(threadId)` to
+`experimental_resolveThreadStatus` (bb's lists use the same function), then
+render `experimental_ThreadStatusGlyph` with the result's `indicator` and
+`rowStatus`; `label` and `isWorking` cover anything else you draw.
 
 **Keyboard support is a DOM contract.** bb's thread shortcuts find rows by
 query selector, not by React state. Put both attributes on each row's anchor or
