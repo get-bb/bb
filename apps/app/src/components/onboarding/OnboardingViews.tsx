@@ -233,7 +233,14 @@ export function OnboardingLayout({
             )}
           >
             <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-            <p className="text-sm text-muted-foreground">{description}</p>
+            <p
+              className={cn(
+                "text-sm text-muted-foreground",
+                centered && "text-balance",
+              )}
+            >
+              {description}
+            </p>
           </div>
           {children}
           {centered ? (
@@ -360,6 +367,7 @@ function AgentRow({
             expandLabel="Show details"
             className={cn(
               "text-xs text-muted-foreground",
+              quiet && state.status === "ready" && "text-subtle-foreground",
               loudFailure && "text-destructive-text",
             )}
           >
