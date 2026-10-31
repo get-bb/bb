@@ -1,4 +1,8 @@
-import path from "node:path";
+import {
+  experimental_normalizeHostPath as normalizeHostPath,
+  experimental_resolveHostPath as resolveHostPath,
+  experimental_isHostPathWithin as isHostPathWithin,
+} from "@get-bb/plugin-sdk";
 import type { WorkflowReference } from "./types.js";
 import { MAX_WORKFLOW_SOURCE_BYTES } from "./validation.js";
 
@@ -86,15 +90,10 @@ function parseSourceMode(
   return { kind: "name", name: name! };
 }
 
-function pathFlavor(rootPath: string): typeof path.posix | typeof path.win32 {
-  return /^[a-zA-Z]:[\\/]/.test(rootPath) || rootPath.startsWith("\\\\")
-    ? path.win32
-    : path.posix;
-}
-
 export function resolveConfinedWorkflowPath(
   rootPath: string,
   requestedPath: string,
+  basePath = rootPath,
 ): string {
   if (rootPath.length === 0)
     throw new Error("Workflow workspace path is empty");
@@ -103,28 +102,16 @@ export function resolveConfinedWorkflowPath(
   if (requestedPath.includes("\0"))
     throw new Error("Workflow scriptPath contains a NUL byte");
 
-  const flavor = pathFlavor(rootPath);
-  if (!flavor.isAbsolute(rootPath)) {
+  if (normalizeHostPath(rootPath) === null) {
     throw new Error("Workflow workspace root must be an absolute path");
   }
-  const otherFlavor = flavor === path.win32 ? path.posix : path.win32;
-  const root = flavor.resolve(rootPath);
+  const candidate = resolveHostPath({
+    rootPath: basePath,
+    path: requestedPath,
+  });
   if (
-    otherFlavor.isAbsolute(requestedPath) &&
-    !flavor.isAbsolute(requestedPath)
-  ) {
-    throw new Error(
-      `Workflow scriptPath uses an absolute path form outside the workspace: ${requestedPath}`,
-    );
-  }
-  const candidate = flavor.isAbsolute(requestedPath)
-    ? flavor.normalize(requestedPath)
-    : flavor.resolve(root, requestedPath);
-  const relative = flavor.relative(root, candidate);
-  if (
-    relative === ".." ||
-    relative.startsWith(`..${flavor.sep}`) ||
-    flavor.isAbsolute(relative)
+    candidate === null ||
+    !isHostPathWithin({ rootPath, candidatePath: candidate })
   ) {
     throw new Error(
       `Workflow scriptPath must stay inside the origin workspace: ${requestedPath}`,
@@ -139,11 +126,7 @@ function workflowNamePath(rootPath: string, name: string): string {
       "Workflow name must be lowercase kebab-case and at most 64 characters",
     );
   }
-  const flavor = pathFlavor(rootPath);
-  return resolveConfinedWorkflowPath(
-    rootPath,
-    flavor.join(".bb", "workflows", `${name}.js`),
-  );
+  return resolveConfinedWorkflowPath(rootPath, `.bb/workflows/${name}.js`);
 }
 
 async function readWorkflowFile(
@@ -208,20 +191,16 @@ export async function resolveWorkflowSource(
     mode.kind === "name"
       ? workflowNamePath(environment.path, mode.name)
       : (() => {
-          if (mode.scriptPathBase === null) {
+          if (
+            mode.scriptPathBase === null ||
+            normalizeHostPath(mode.scriptPath) !== null
+          ) {
             return resolveConfinedWorkflowPath(
               environment.path,
               mode.scriptPath,
             );
           }
-          const flavor = pathFlavor(environment.path);
-          if (flavor.isAbsolute(mode.scriptPath)) {
-            return resolveConfinedWorkflowPath(
-              environment.path,
-              mode.scriptPath,
-            );
-          }
-          if (!flavor.isAbsolute(mode.scriptPathBase)) {
+          if (normalizeHostPath(mode.scriptPathBase) === null) {
             throw new Error("Workflow CLI cwd must be an absolute path");
           }
           const base = resolveConfinedWorkflowPath(
@@ -230,7 +209,8 @@ export async function resolveWorkflowSource(
           );
           return resolveConfinedWorkflowPath(
             environment.path,
-            flavor.resolve(base, mode.scriptPath),
+            mode.scriptPath,
+            base,
           );
         })();
   const source = await readWorkflowFile(

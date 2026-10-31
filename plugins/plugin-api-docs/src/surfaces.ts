@@ -1532,9 +1532,17 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Read Viewed state for up to 500 file paths; mark and clear return acknowledgements",
           "Retry failed environment cleanup with recover: true after inspecting processes using the workspace",
         ],
+        reference: [
+          "Normalize and resolve host paths with experimental_normalizeHostPath(path) and experimental_resolveHostPath({ rootPath, path }) from @get-bb/plugin-sdk; invalid paths return null",
+          "Recognize drive roots (including C:) and UNC paths with either Windows separator, regardless of the server OS; reject rootless backslashes and drive-relative paths such as C:foo during resolution",
+          "Check lexical containment separately with experimental_isHostPathWithin({ rootPath, candidatePath }): resolution allows .. escapes, and neither helper resolves symlinks",
+        ],
         apiSymbols: [
           "BbPluginApi",
           "PluginServerApi",
+          "experimental_normalizeHostPath",
+          "experimental_resolveHostPath",
+          "experimental_isHostPathWithin",
           "PluginBbSdk.hosts.get",
           "PluginBbSdk.hosts.experimental_discoverRepos",
           "PluginBbSdk.experimental_promptHistory.list",
