@@ -1004,7 +1004,7 @@ describe("public terminal routes", () => {
     );
   });
 
-  it("returns a command terminal that exits before its open settles", async () => {
+  it("returns a terminal that exits before its open settles", async () => {
     const fixture = await createTerminalRouteFixture();
     harnesses.push(fixture.harness);
     const { openMessage, responsePromise } =
@@ -1032,6 +1032,7 @@ describe("public terminal routes", () => {
         status: "exited",
       },
     );
+    expect(readDaemonOperationMessages(fixture.socket)).toEqual([openMessage]);
   });
 
   it("rejects a client-chosen terminal ID that already exists", async () => {
